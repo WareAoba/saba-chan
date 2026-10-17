@@ -398,16 +398,16 @@ impl InstanceStore {
         let mut meta = instance.clone();
         let settings = std::mem::take(&mut meta.module_settings);
         let instance_json = serde_json::to_string_pretty(&meta)?;
-        fs::write(dir.join("instance.json"), &instance_json)?;
+        write_atomic(&dir.join("instance.json"), &instance_json)?;
 
         // settings.json — 모듈별 동적 설정 (비어있어도 저장)
         let settings_json = serde_json::to_string_pretty(&settings)?;
-        fs::write(dir.join("settings.json"), &settings_json)?;
+        write_atomic(&dir.join("settings.json"), &settings_json)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            // instance.json에 민감 데이터(RCON 비밀번호 등) 포함 가능
+            // instance.json·settings.json에 비밀번호가 들어 있을 수 있다
             let _ = fs::set_permissions(dir.join("instance.json"), fs::Permissions::from_mode(0o600));
             let _ = fs::set_permissions(dir.join("settings.json"), fs::Permissions::from_mode(0o600));
         }
@@ -422,14 +422,27 @@ impl InstanceStore {
             .with_context(|| format!("instance.json 읽기 실패: {}", instance_path.display()))?;
 
         let mut instance: ServerInstance = serde_json::from_str(&content)?;
+        let mut stale = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|v| v.as_object().map(|o| LEGACY_RCON_KEYS.iter().any(|k| o.contains_key(*k))))
+            .unwrap_or(false);
 
         // settings.json이 있으면 module_settings 머지
         let settings_path = dir.join("settings.json");
         if settings_path.exists() {
             let settings_content = fs::read_to_string(&settings_path)?;
-            let settings: HashMap<String, serde_json::Value> =
+            let mut settings: HashMap<String, serde_json::Value> =
                 serde_json::from_str(&settings_content).unwrap_or_default();
+            stale |= drop_legacy_rcon_keys(&mut settings);
             instance.module_settings = settings;
+        }
+
+        // RCON을 없애기 전에 만든 인스턴스: 남은 RCON 키를 한 번 지우고 다시 쓴다
+        if stale {
+            match self.save_instance(&instance) {
+                Ok(()) => tracing::info!("Removed leftover RCON settings from instance '{}'", instance.name),
+                Err(e) => tracing::warn!("Could not clean RCON settings of '{}': {}", instance.name, e),
+            }
         }
 
         Ok(instance)
@@ -446,6 +459,38 @@ impl InstanceStore {
 // ═══════════════════════════════════════════════════════════════
 //  Tests
 // ═══════════════════════════════════════════════════════════════
+
+/// RCON은 보안상 쓰지 않는다 (2026-10-17). 그 전에 만든 인스턴스 파일에 남은 키
+const LEGACY_RCON_KEYS: &[&str] = &[
+    "rcon_port",
+    "rcon_password",
+    "enable_rcon",
+    "broadcast_rcon_to_ops",
+    "rcon.port",
+    "rcon.password",
+    "enable-rcon",
+    "broadcast-rcon-to-ops",
+];
+
+/// 남은 RCON 키를 지운다. 하나라도 지웠으면 true
+fn drop_legacy_rcon_keys(settings: &mut HashMap<String, serde_json::Value>) -> bool {
+    let before = settings.len();
+    settings.retain(|k, _| !LEGACY_RCON_KEYS.contains(&k.as_str()));
+    settings.len() != before
+}
+
+/// 임시 파일에 쓰고 rename: 쓰는 도중 꺼져도 예전 파일이나 새 파일 중 하나가 온전히 남는다
+fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+    }
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
 
 /// 설정 파일에서 읽은 값을 module.toml 필드 타입에 맞춘다.
 /// number·boolean은 문자열이면 바꾸고, 그 밖의 알려진 타입(text, password, select…)은 문자열로 둔다
@@ -604,6 +649,39 @@ mod tests {
         store2.load().unwrap();
         assert_eq!(store2.list()[0].id, id_b);
         assert_eq!(store2.list()[1].id, id_a);
+    }
+
+    #[test]
+    fn leftover_rcon_keys_are_removed_once_on_load() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("old", "minecraft");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+
+        // RCON을 없애기 전의 파일처럼 만든다
+        let dir = store.instance_dir(&id);
+        let mut meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
+        meta["rcon_port"] = serde_json::json!(25575);
+        meta["rcon_password"] = serde_json::json!("pw");
+        fs::write(dir.join("instance.json"), meta.to_string()).unwrap();
+        fs::write(
+            dir.join("settings.json"),
+            r#"{"rcon_port":25575,"rcon.port":"25575","rcon.password":"pw","enable-rcon":"false","motd":"hi"}"#,
+        )
+        .unwrap();
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let loaded = store.get(&id).unwrap();
+        assert_eq!(loaded.module_settings.keys().collect::<Vec<_>>(), vec!["motd"]);
+        let settings: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings, serde_json::json!({ "motd": "hi" }));
+        let meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
+        assert!(meta.get("rcon_port").is_none() && meta.get("rcon_password").is_none());
+        assert!(!dir.join("settings.json.tmp").exists());
     }
 
     #[test]

@@ -77,6 +77,12 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
         None => tracing::warn!("[Uninstall] Not running from an install folder; install files are left alone"),
     }
 
+    // 사용자 데이터는 설치본들이 함께 쓴다: 다른 설치본이 남아 있으면 지우지 않는다
+    let last_install = saba_chan_updater_lib::uninstall_entry::is_last_install(
+        &saba_chan_updater_lib::uninstall_entry::entries(),
+        install_dir.as_deref(),
+    );
+
     // Step 2: 프로세스 종료
     emit("stop", "Stopping saba-chan processes...", 10);
     if let Some(dir) = &install_dir {
@@ -110,7 +116,9 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
 
     // Step 5: 사용자 데이터 삭제 (%APPDATA%/saba-chan)
     // python-standalone, python-env, node-portable 등 런타임 디렉토리도 포함
-    if keep_settings {
+    if !last_install {
+        emit("data-shared", "Keeping user data: another Saba-chan install still uses it", 55);
+    } else if keep_settings {
         emit("data-keep", "Removing runtime environments (keeping settings)...", 55);
         remove_appdata_dir_keep_settings();
     } else {
@@ -124,7 +132,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
 
     // Step 7: 모듈 디렉토리 삭제 (%APPDATA%/saba-chan/modules)
     // (앞서 appdata 전체를 삭제하므로 포함됨 — 혹시 남아있을 경우 대비)
-    if !keep_settings {
+    if last_install && !keep_settings {
         emit("modules", "Cleaning modules directory...", 80);
         remove_modules_dir();
     } else {
@@ -149,7 +157,11 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     }
 
     // 완료
-    emit_complete("Saba-chan has been completely removed.");
+    emit_complete(if last_install {
+        "Saba-chan has been completely removed."
+    } else {
+        "This Saba-chan install was removed. Your settings and servers were kept because another Saba-chan install still uses them."
+    });
     tracing::info!("[Uninstall] Complete");
 }
 
@@ -189,17 +201,27 @@ pub async fn do_silent_uninstall() {
         let _ = remove_dir_robust(dir);
     }
 
-    // 사용자 데이터
-    eprintln!("  Removing user data and runtime environments...");
-    remove_appdata_dir();
+    // 사용자 데이터: 다른 설치본이 남아 있으면 그대로 둔다
+    let last_install = saba_chan_updater_lib::uninstall_entry::is_last_install(
+        &saba_chan_updater_lib::uninstall_entry::entries(),
+        install_dir.as_deref(),
+    );
+    if last_install {
+        eprintln!("  Removing user data and runtime environments...");
+        remove_appdata_dir();
+    } else {
+        eprintln!("  Keeping user data: another Saba-chan install still uses it");
+    }
 
     // 임시 파일
     eprintln!("  Cleaning temp files...");
     remove_temp_files();
 
     // 모듈
-    eprintln!("  Cleaning modules...");
-    remove_modules_dir();
+    if last_install {
+        eprintln!("  Cleaning modules...");
+        remove_modules_dir();
+    }
 
     // 레지스트리
     eprintln!("  Removing registry entries...");
@@ -214,7 +236,11 @@ pub async fn do_silent_uninstall() {
         schedule_self_delete(install_dir.as_ref());
     }
 
-    eprintln!("[OK] Saba-chan has been completely removed.");
+    if last_install {
+        eprintln!("[OK] Saba-chan has been completely removed.");
+    } else {
+        eprintln!("[OK] This install was removed; settings and servers were kept for the other install.");
+    }
 }
 
 // ═══════════════════════════════════════════════════════
