@@ -1,83 +1,92 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEBOUNCE_MS, LaunchPreview, launchDraft, launchPreviewAvailable } from '../components/servers/LaunchPreview';
+import { DEBOUNCE_MS, LaunchPreview, joinArgs, launchDraft } from '../components/servers/LaunchPreview';
 
 const fields = [
-    { name: 'port', field_type: 'number', launch_arg: true },
-    { name: 'motd', field_type: 'text' },
-    { name: 'nogui', field_type: 'boolean', launch_arg: true },
+    { name: 'port', field_type: 'number' },
+    { name: 'ram', field_type: 'text' },
+    { name: 'nogui', field_type: 'boolean' },
 ];
+const settle = () =>
+    act(async () => {
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    });
 
 describe('LaunchPreview', () => {
-    beforeEach(() => vi.useFakeTimers());
+    beforeEach(() => {
+        vi.useFakeTimers();
+        window.showToast = vi.fn();
+    });
     afterEach(() => {
         vi.useRealTimers();
         delete window.api.instanceLaunchPreview;
+        delete window.showToast;
     });
 
-    it('실행 인자 필드가 있을 때만 쓰고, 그 필드의 저장 전 값만 보낸다', () => {
-        window.api.instanceLaunchPreview = vi.fn();
-        expect(launchPreviewAvailable(fields)).toBe(true);
-        expect(launchPreviewAvailable([{ name: 'motd' }])).toBe(false);
-        expect(launchDraft(fields, { port: '25566', motd: 'hi', nogui: 'true' })).toEqual({ port: 25566, nogui: true });
+    it('저장 전 값을 저장 때처럼 바꾸고, 저장된 추가 인자는 따옴표를 살려 입력칸에 보인다', () => {
+        expect(launchDraft(fields, { port: '25566', ram: '', nogui: 'true' })).toEqual({ port: 25566, nogui: true });
+        expect(joinArgs(['-a', 'two words'])).toBe('-a "two words"');
     });
 
-    it('값이 바뀌면 잠깐 기다렸다 한 번만 묻고, 못 구하면 이유를 보인다', async () => {
-        window.api.instanceLaunchPreview = vi
-            .fn()
-            .mockResolvedValueOnce({ success: true, command_line: 'java -jar server.jar --port 25566 nogui' })
-            .mockResolvedValueOnce({
-                success: false,
-                action_required: 'server_jar_not_found',
-                message: 'No server jar',
-            });
-        const { rerender } = render(<LaunchPreview serverId="s1" fields={fields} values={{ port: '25565' }} />);
-        rerender(<LaunchPreview serverId="s1" fields={fields} values={{ port: '25566', nogui: true }} />);
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-        });
-        expect(window.api.instanceLaunchPreview).toHaveBeenCalledTimes(1);
-        expect(window.api.instanceLaunchPreview).toHaveBeenCalledWith('s1', {
-            settings: { port: 25566, nogui: true },
-            extra_args: '',
-        });
-        expect(screen.getByText('java -jar server.jar --port 25566 nogui')).toBeTruthy();
-
-        // 실행 인자가 아닌 필드만 바뀌면 다시 묻지 않는다
-        rerender(<LaunchPreview serverId="s1" fields={fields} values={{ port: '25566', nogui: true, motd: 'x' }} />);
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-        });
-        expect(window.api.instanceLaunchPreview).toHaveBeenCalledTimes(1);
-
-        rerender(<LaunchPreview serverId="s1" fields={fields} values={{ port: '1', nogui: true }} />);
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-        });
-        expect(screen.getByText(/Needs attention before launch: No server jar/)).toBeTruthy();
+    it('실행 인자를 쓰지 않는 모듈이면 아무것도 띄우지 않는다', async () => {
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({ success: true, has_launch_args: false });
+        const { container } = render(<LaunchPreview serverId="s1" fields={fields} values={{}} />);
+        await settle();
+        expect(container.innerHTML).toBe('');
     });
 
-    it('추가 인자는 맞는 필드에 반영하고, 타입 오류와 남는 인자를 보인다', async () => {
+    it('값이 바뀌면 잠깐 기다렸다 한 번만 묻고, 추가 인자는 칸에 반영하고 남는 것만 저장용으로 올린다', async () => {
         window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
             success: true,
-            command_line: 'srv --port abc -fast',
-            fields_from_args: { port: 25570 },
-            unknown_args: ['-fast'],
-            errors: [{ arg: '--port', field: 'port', expected: 'number', got: 'abc' }],
+            has_launch_args: true,
+            command_line: 'java -Xmx4G -jar server.jar --port 25570 -fast',
+            settings_from_args: { ram: '4G' },
+            extra_args: ['-fast'],
+            errors: [],
         });
-        const onFields = vi.fn();
-        const props = { serverId: 's1', fields, values: {}, onExtraArgsChange: () => {}, onFieldsFromArgs: onFields };
+        const onSettings = vi.fn();
+        const onLeftover = vi.fn();
+        const props = {
+            serverId: 's1',
+            fields,
+            values: { port: '25570' },
+            onExtraArgsChange: () => {},
+            onSettingsFromArgs: onSettings,
+            onLeftoverArgs: onLeftover,
+        };
         const { rerender } = render(<LaunchPreview {...props} extraArgs="" />);
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-        });
-        expect(onFields).not.toHaveBeenCalled(); // 추가 인자가 그대로면 필드를 건드리지 않는다
-        rerender(<LaunchPreview {...props} extraArgs="--port abc -fast" />);
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-        });
-        expect(onFields).toHaveBeenCalledWith({ port: 25570 });
-        expect(screen.getByText(/--port: port expects a number \(got abc\)/)).toBeTruthy();
-        expect(screen.getByText(/passed as is: -fast/)).toBeTruthy();
+        rerender(<LaunchPreview {...props} extraArgs="-Xmx4G -fast" />);
+        await settle();
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledTimes(1);
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledWith(
+            's1',
+            { port: 25570, nogui: false },
+            '-Xmx4G -fast',
+        );
+        expect(screen.getByText('java -Xmx4G -jar server.jar --port 25570 -fast')).toBeTruthy();
+        expect(onSettings).toHaveBeenCalledWith({ ram: '4G' });
+        expect(onLeftover).toHaveBeenCalledWith(['-fast']);
+        expect(window.showToast).not.toHaveBeenCalled();
+    });
+
+    it('형식이 틀리면 토스트 하나만 띄우고, 같은 오류로는 다시 띄우지 않는다', async () => {
+        const bad = {
+            success: true,
+            has_launch_args: true,
+            command_line: 'java -Xmx4096 -jar server.jar',
+            settings_from_args: {},
+            extra_args: [],
+            errors: [{ arg: '-Xmx4096', field: 'ram', expected: 'memory_size', got: '4096' }],
+        };
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue(bad);
+        const props = { serverId: 's1', fields, values: {}, onExtraArgsChange: () => {} };
+        const { rerender } = render(<LaunchPreview {...props} extraArgs="-Xmx4096" />);
+        await settle();
+        expect(window.showToast).toHaveBeenCalledTimes(1);
+        expect(window.showToast.mock.calls[0][0]).toBe('Invalid format.');
+        rerender(<LaunchPreview {...props} extraArgs="-Xmx4096 " />);
+        await settle();
+        expect(window.showToast).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText(/memory_size/)).toBeNull(); // 칸마다 형식 설명을 보이지 않는다
     });
 });

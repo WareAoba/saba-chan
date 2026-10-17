@@ -1043,11 +1043,7 @@
     "failed": "无法计算预览。",
     "extra_label": "额外参数",
     "extra_placeholder": "例如：-players=16 -useperfthreads",
-    "arg_error": "{{arg}}：{{field}} 需要{{expected}}（输入：{{got}}）",
-    "type_number": "数字",
-    "type_boolean": "真/假",
-    "type_text": "文本",
-    "type_select": "列出的值之一",
-    "unknown_args": "没有对应设置的参数将原样传递：{{args}}"
+    "unknown_args": "没有对应设置的参数将原样传递：{{args}}",
+    "invalid_format": "格式无效。"
   }
 }

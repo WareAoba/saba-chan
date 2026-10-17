@@ -61,4 +61,12 @@ describe('AuditLog', () => {
         expect(window.api.auditList).toHaveBeenCalledWith({ limit: 100 });
         expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
     });
+
+    it('데몬이 이름을 주면 디스코드 id 대신 이름을 보인다', async () => {
+        window.api.auditList = vi
+            .fn()
+            .mockResolvedValue({ entries: [entry({ user: '2840', userName: 'Aoba', guildName: 'Saba Village' })] });
+        render(<AuditLog instanceId="mc-1" />);
+        expect(await screen.findByText('Discord · Aoba · Saba Village')).toBeTruthy();
+    });
 });

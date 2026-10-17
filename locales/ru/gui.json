@@ -1043,11 +1043,7 @@
     "failed": "Не удалось рассчитать предпросмотр.",
     "extra_label": "Дополнительные аргументы",
     "extra_placeholder": "напр. -players=16 -useperfthreads",
-    "arg_error": "{{arg}}: для «{{field}}» нужно {{expected}} (введено: {{got}})",
-    "type_number": "число",
-    "type_boolean": "да/нет",
-    "type_text": "текст",
-    "type_select": "одно из значений списка",
-    "unknown_args": "Аргументы без соответствующей настройки передаются как есть: {{args}}"
+    "unknown_args": "Аргументы без соответствующей настройки передаются как есть: {{args}}",
+    "invalid_format": "Неверный формат."
   }
 }

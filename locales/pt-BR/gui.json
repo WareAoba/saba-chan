@@ -1043,11 +1043,7 @@
     "failed": "Não foi possível calcular a prévia.",
     "extra_label": "Argumentos extras",
     "extra_placeholder": "ex.: -players=16 -useperfthreads",
-    "arg_error": "{{arg}}: {{field}} espera {{expected}} (recebido: {{got}})",
-    "type_number": "um número",
-    "type_boolean": "verdadeiro/falso",
-    "type_text": "texto",
-    "type_select": "um dos valores listados",
-    "unknown_args": "Argumentos sem configuração correspondente são passados como estão: {{args}}"
+    "unknown_args": "Argumentos sem configuração correspondente são passados como estão: {{args}}",
+    "invalid_format": "Formato inválido."
   }
 }

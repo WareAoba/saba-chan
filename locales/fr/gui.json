@@ -1043,11 +1043,7 @@
     "failed": "Impossible de calculer l'aperçu.",
     "extra_label": "Arguments supplémentaires",
     "extra_placeholder": "ex. -players=16 -useperfthreads",
-    "arg_error": "{{arg}} : {{field}} attend {{expected}} (reçu : {{got}})",
-    "type_number": "un nombre",
-    "type_boolean": "vrai/faux",
-    "type_text": "du texte",
-    "type_select": "une des valeurs proposées",
-    "unknown_args": "Les arguments sans paramètre correspondant sont transmis tels quels : {{args}}"
+    "unknown_args": "Les arguments sans paramètre correspondant sont transmis tels quels : {{args}}",
+    "invalid_format": "Format invalide."
   }
 }

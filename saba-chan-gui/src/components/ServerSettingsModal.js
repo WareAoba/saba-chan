@@ -415,6 +415,7 @@ export function ServerSettingsModal({
     handleSaveSettings,
     handleResetServer,
     resettingServer,
+    setLaunchExtraArgs,
     isClosing,
     onClose,
     embedded = false,
@@ -509,22 +510,18 @@ export function ServerSettingsModal({
             </div>
 
             <div className="modal-body">
-                {settingsActiveTab === 'general' && launchPreviewAvailable(module?.settings?.fields) && (
+                {settingsActiveTab === 'general' && launchPreviewAvailable() && (
                     <LaunchPreview
+                        key={settingsServer.id}
                         serverId={settingsServer.id}
-                        fields={module.settings.fields}
+                        fields={module?.settings?.fields}
                         values={settingsValues}
                         extraArgs={settingsValues.extra_args || ''}
                         onExtraArgsChange={(v) => handleSettingChange('extra_args', v)}
-                        onFieldsFromArgs={(found) => {
+                        onSettingsFromArgs={(found) => {
                             for (const [k, v] of Object.entries(found)) handleSettingChange(k, v);
                         }}
-                        labelOf={(name) => {
-                            const f = module.settings.fields.find((x) => x.name === name);
-                            return t(`mod_${settingsServer.module}:settings.${name}.label`, {
-                                defaultValue: f?.label || name,
-                            });
-                        }}
+                        onLeftoverArgs={setLaunchExtraArgs}
                     />
                 )}
                 {settingsSource === 'stored' && (

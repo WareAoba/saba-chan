@@ -1072,11 +1072,7 @@
     "failed": "미리보기를 계산하지 못했어요.",
     "extra_label": "추가 인자",
     "extra_placeholder": "예: -players=16 -useperfthreads",
-    "arg_error": "{{arg}}: {{field}}에는 {{expected}}이(가) 들어가야 해요 (입력: {{got}})",
-    "type_number": "숫자",
-    "type_boolean": "참/거짓",
-    "type_text": "글자",
-    "type_select": "정해진 값 중 하나",
-    "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}"
+    "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}",
+    "invalid_format": "잘못된 형식입니다."
   }
 }

@@ -1043,11 +1043,7 @@
     "failed": "Die Vorschau konnte nicht berechnet werden.",
     "extra_label": "Zusätzliche Argumente",
     "extra_placeholder": "z. B. -players=16 -useperfthreads",
-    "arg_error": "{{arg}}: {{field}} erwartet {{expected}} (erhalten: {{got}})",
-    "type_number": "eine Zahl",
-    "type_boolean": "wahr/falsch",
-    "type_text": "Text",
-    "type_select": "einen der aufgeführten Werte",
-    "unknown_args": "Argumente ohne passende Einstellung werden unverändert übergeben: {{args}}"
+    "unknown_args": "Argumente ohne passende Einstellung werden unverändert übergeben: {{args}}",
+    "invalid_format": "Ungültiges Format."
   }
 }

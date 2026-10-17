@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { joinArgs } from '../components/servers/LaunchPreview';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { useModalClose } from './useModalClose';
 
@@ -62,6 +63,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [settingsServer, setSettingsServer] = useState(null);
     const [settingsValues, setSettingsValues] = useState({});
+    // 실행 인자 미리보기가 정리한 남는 추가 인자 (저장할 때 extra_args로). 미리보기가 없으면 null이라 보내지 않는다
+    const launchExtra = useRef(null);
+    const setLaunchExtraArgs = useCallback((args) => {
+        launchExtra.current = args;
+    }, []);
     const [settingsActiveTab, setSettingsActiveTab] = useState('general');
     const [advancedExpanded, setAdvancedExpanded] = useState(false);
     const [availableVersions, setAvailableVersions] = useState([]);
@@ -82,6 +88,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
     // ── handleOpenSettings ──────────────────────────────────
     const handleOpenSettings = async (server) => {
+        launchExtra.current = null;
         // Fetch latest server data from API
         let latestServer = server;
         try {
@@ -148,6 +155,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             }
 
             Object.assign(initial, restartFlagsOf(latestServer));
+            initial.extra_args = joinArgs(latestServer.extra_args);
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -165,6 +173,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                       }
                     : {}),
                 ...restartFlagsOf(latestServer),
+                extra_args: joinArgs(latestServer.extra_args),
             });
         }
 
@@ -481,6 +490,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }
 
+            if (Array.isArray(launchExtra.current)) convertedSettings.extra_args = launchExtra.current;
+
             // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 변경한 값을 그대로 전달
             if (settingsValues._extension_data) {
                 convertedSettings.extension_data = { ...settingsValues._extension_data };
@@ -491,7 +502,10 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             // 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
             const stillOpen = request === openRequest.current;
 
-            if (result.error) {
+            if (result.error && (result.status === 400 || result.error_code === 'invalid_format')) {
+                // 형식이 틀린 값: 칸마다 따로 알리지 않고 토스트 하나로 (미리보기와 같은 문구)
+                safeShowToast(t('launch_preview.invalid_format'), 'warning', 4000);
+            } else if (result.error) {
                 // validation_failed: 상세 에러 목록 포함
                 if (result.error_code === 'validation_failed' && result.details) {
                     const detailStr = result.details.join('\n');
@@ -546,5 +560,6 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
+        setLaunchExtraArgs,
     };
 }

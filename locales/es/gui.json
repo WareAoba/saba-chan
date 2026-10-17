@@ -1043,11 +1043,7 @@
     "failed": "No se pudo calcular la vista previa.",
     "extra_label": "Argumentos adicionales",
     "extra_placeholder": "p. ej. -players=16 -useperfthreads",
-    "arg_error": "{{arg}}: {{field}} espera {{expected}} (recibido: {{got}})",
-    "type_number": "un número",
-    "type_boolean": "verdadero/falso",
-    "type_text": "texto",
-    "type_select": "uno de los valores de la lista",
-    "unknown_args": "Los argumentos sin ajuste correspondiente se pasan tal cual: {{args}}"
+    "unknown_args": "Los argumentos sin ajuste correspondiente se pasan tal cual: {{args}}",
+    "invalid_format": "Formato no válido."
   }
 }
