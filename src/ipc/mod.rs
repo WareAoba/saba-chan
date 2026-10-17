@@ -205,6 +205,9 @@ pub struct ServerInfo {
     /// 익스텐션이 프로비저닝 중인지 여부
     #[serde(default)]
     pub provisioning: bool,
+    /// saba-runner가 맡아 실행하는지 (`Supervisor::uses_managed_start`, 판정은 데몬만 한다)
+    #[serde(default)]
+    pub managed: bool,
     /// 익스텐션 런타임 상태 (확장별 데이터, 예: {"<ext_id>": {"memory_percent": 25.5, ...}})
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub extension_status: std::collections::HashMap<String, serde_json::Value>,
@@ -555,7 +558,6 @@ pub struct IPCServer {
     pub extension_status_cache: ExtensionStatusCache,
     /// 익스텐션 초기화(daemon.startup) 진행 상태
     pub extension_init_tracker: ExtensionInitTracker,
-    /// 인스턴스별 RCON 연결 풀 (연결 재사용)
     /// 인스턴스별 게임 접속 정보 캐시 (명령마다 Python get_credentials를 띄우지 않게)
     pub credentials: CredentialsCache,
     /// Graceful shutdown 토큰 — 정리가 끝난 뒤 취소되며, 취소 시 모든 태스크 종료
