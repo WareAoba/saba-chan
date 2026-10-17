@@ -939,6 +939,8 @@
     "perm_dynamic_code": "执行动态代码",
     "perm_env_secrets": "读取环境变量（机密）",
     "perm_fs_outside_instance": "服务器文件夹以外的文件",
-    "perm_unparsable": "无法检查的代码"
+    "perm_unparsable": "无法检查的代码",
+    "ext_title": "扩展 '{{name}}' 使用了未声明的功能。",
+    "ext_summary": "代码使用了{{perms}}，但 manifest.json 的 permissions 中没有列出。请确认你信任此扩展。"
   }
 }

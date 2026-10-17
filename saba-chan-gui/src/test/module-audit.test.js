@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearModuleAuditCache, ModuleAuditNotice } from '../components/servers/ModuleAuditNotice';
+import {
+    clearModuleAuditCache,
+    ExtensionAuditNotice,
+    ModuleAuditNotice,
+} from '../components/servers/ModuleAuditNotice';
 
 describe('ModuleAuditNotice (데몬 M12)', () => {
     afterEach(() => {
         delete window.api.moduleAudit;
+        delete window.api.extensionAudit;
         clearModuleAuditCache();
     });
 
@@ -30,5 +35,20 @@ describe('ModuleAuditNotice (데몬 M12)', () => {
         expect(screen.getByText(/network access, running other programs/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Details (3)' }));
         expect(screen.getByText('helper.py:3')).toBeTruthy();
+    });
+
+    it('익스텐션도 같은 모양으로 경고하고, 실패한 검사는 다시 묻는다', async () => {
+        window.api.extensionAudit = vi
+            .fn()
+            .mockResolvedValueOnce({ success: false, error: 'boom' })
+            .mockResolvedValue({ undeclared: [{ permission: 'dynamic_code', file: 'main.py', line: 7 }] });
+        const { container, unmount } = render(<ExtensionAuditNotice extId="music" name="Music" />);
+        await waitFor(() => expect(window.api.extensionAudit).toHaveBeenCalledTimes(1));
+        expect(container.innerHTML).toBe('');
+        unmount();
+        render(<ExtensionAuditNotice extId="music" name="Music" />);
+        expect(await screen.findByText("Extension 'Music' uses capabilities it doesn't declare.")).toBeTruthy();
+        expect(screen.getByText(/running dynamic code/)).toBeTruthy();
+        expect(window.api.extensionAudit).toHaveBeenCalledWith('music');
     });
 });

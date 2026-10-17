@@ -939,6 +939,8 @@
     "perm_dynamic_code": "동적 코드 실행",
     "perm_env_secrets": "환경 변수(비밀값) 읽기",
     "perm_fs_outside_instance": "서버 폴더 밖 파일 접근",
-    "perm_unparsable": "검사할 수 없는 코드"
+    "perm_unparsable": "검사할 수 없는 코드",
+    "ext_title": "'{{name}}' 익스텐션이 선언하지 않은 기능을 써요.",
+    "ext_summary": "코드에서 {{perms}}을(를) 쓰는데 manifest.json의 permissions에는 없어요. 믿을 수 있는 익스텐션인지 확인해 주세요."
   }
 }

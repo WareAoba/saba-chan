@@ -939,6 +939,8 @@
     "perm_dynamic_code": "execução de código dinâmico",
     "perm_env_secrets": "leitura de segredos do ambiente",
     "perm_fs_outside_instance": "arquivos fora da pasta do servidor",
-    "perm_unparsable": "código que não pôde ser verificado"
+    "perm_unparsable": "código que não pôde ser verificado",
+    "ext_title": "A extensão '{{name}}' usa recursos que não declara.",
+    "ext_summary": "O código usa {{perms}}, mas as permissions do manifest.json não listam isso. Confirme se você confia nesta extensão."
   }
 }

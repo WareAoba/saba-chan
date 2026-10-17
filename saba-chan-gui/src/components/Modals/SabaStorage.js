@@ -6,6 +6,7 @@ import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 import { localizedDescription } from '../../utils/localizedText';
+import { ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -1080,6 +1081,7 @@ function ExtensionsTab() {
                                     {(localizedDescription(ext, i18n.language) || ext.id) && (
                                         <span className="ss-card-desc">{localizedDescription(ext, i18n.language) || ext.id}</span>
                                     )}
+                                    <ExtensionAuditNotice extId={ext.id} name={ext.name} />
                                 </div>
                                 <div className="ss-card-actions">
                                     {updateInfo && (

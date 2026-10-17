@@ -939,6 +939,8 @@
     "perm_dynamic_code": "Ausführen von dynamischem Code",
     "perm_env_secrets": "Lesen geheimer Umgebungsvariablen",
     "perm_fs_outside_instance": "Dateien außerhalb des Serverordners",
-    "perm_unparsable": "nicht prüfbarer Code"
+    "perm_unparsable": "nicht prüfbarer Code",
+    "ext_title": "Die Erweiterung '{{name}}' nutzt Funktionen, die sie nicht angibt.",
+    "ext_summary": "Ihr Code nutzt {{perms}}, aber die permissions in manifest.json führen das nicht auf. Stelle sicher, dass du dieser Erweiterung vertraust."
   }
 }

@@ -9,20 +9,27 @@ export function clearModuleAuditCache() {
     cache.clear();
 }
 
-function loadAudit(moduleName) {
-    if (!cache.has(moduleName)) {
+// 모듈과 익스텐션은 같은 검사·같은 응답 모양이다 (GET /api/module/:name/audit, /api/extensions/:id/audit)
+const SOURCES = {
+    module: { api: 'moduleAudit', title: 'module_audit.title', summary: 'module_audit.summary' },
+    extension: { api: 'extensionAudit', title: 'module_audit.ext_title', summary: 'module_audit.ext_summary' },
+};
+
+function loadAudit(kind, id) {
+    const key = `${kind}:${id}`;
+    if (!cache.has(key)) {
         cache.set(
-            moduleName,
-            Promise.resolve(window.api.moduleAudit(moduleName))
+            key,
+            Promise.resolve(window.api[SOURCES[kind].api](id))
                 .catch(() => null)
                 .then((res) => {
                     // 실패(데몬 꺼짐·4xx/5xx)는 기억하지 않는다: 다음에 이 서버를 열 때 다시 묻는다
-                    if (!Array.isArray(res?.undeclared)) cache.delete(moduleName);
+                    if (!Array.isArray(res?.undeclared)) cache.delete(key);
                     return res;
                 }),
         );
     }
-    return cache.get(moduleName);
+    return cache.get(key);
 }
 
 /**
@@ -31,22 +38,32 @@ function loadAudit(moduleName) {
  * 정적 검사라 다 잡지는 못한다: 선언과 다른 곳을 보여 주는 한 겹이다.
  */
 export function ModuleAuditNotice({ moduleName }) {
+    return <AuditNotice kind="module" id={moduleName} name={moduleName} />;
+}
+
+/** 익스텐션 카드용: manifest `permissions`와 코드 비교 */
+export function ExtensionAuditNotice({ extId, name }) {
+    return <AuditNotice kind="extension" id={extId} name={name || extId} />;
+}
+
+function AuditNotice({ kind, id, name }) {
     const { t } = useTranslation('gui');
+    const source = SOURCES[kind];
     const [undeclared, setUndeclared] = useState([]);
     const [open, setOpen] = useState(false);
 
     useEffect(() => {
         setUndeclared([]);
         setOpen(false);
-        if (!moduleName || !window.api?.moduleAudit) return;
+        if (!id || !window.api?.[source.api]) return;
         let alive = true;
-        loadAudit(moduleName).then((res) => {
+        loadAudit(kind, id).then((res) => {
             if (alive && Array.isArray(res?.undeclared)) setUndeclared(res.undeclared);
         });
         return () => {
             alive = false;
         };
-    }, [moduleName]);
+    }, [kind, id, source.api]);
 
     if (undeclared.length === 0) return null;
     const kinds = [...new Set(undeclared.map((f) => f.permission))];
@@ -56,8 +73,8 @@ export function ModuleAuditNotice({ moduleName }) {
         <div className="notice tone-warn module-audit" role="alert">
             <Icon name="alertTriangle" size="sm" />
             <span className="module-audit-body">
-                <strong>{t('module_audit.title', { module: moduleName })}</strong>{' '}
-                {t('module_audit.summary', { perms: kinds.map(label).join(', ') })}
+                <strong>{t(source.title, { module: name, name })}</strong>{' '}
+                {t(source.summary, { perms: kinds.map(label).join(', ') })}
                 <button type="button" className="btn-link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
                     {open ? t('module_audit.hide') : t('module_audit.show', { count: undeclared.length })}
                 </button>

@@ -939,6 +939,8 @@
     "perm_dynamic_code": "執行動態程式碼",
     "perm_env_secrets": "讀取環境變數（機密）",
     "perm_fs_outside_instance": "伺服器資料夾以外的檔案",
-    "perm_unparsable": "無法檢查的程式碼"
+    "perm_unparsable": "無法檢查的程式碼",
+    "ext_title": "擴充功能 '{{name}}' 使用了未宣告的功能。",
+    "ext_summary": "程式碼使用了{{perms}}，但 manifest.json 的 permissions 中沒有列出。請確認你信任此擴充功能。"
   }
 }
