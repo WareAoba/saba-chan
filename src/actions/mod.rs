@@ -158,6 +158,59 @@ fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
     password_fields.iter().any(|f| f == key) || SECRET_KEYS.iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s)))
 }
 
+/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자와 그 밖으로 새는 연결 대상
+const LAUNCH_KEYS: &[&str] = &["executable_path", "working_dir", "instance_dir", "extra_args", "extension_data", "rest_host"];
+
+/// 모듈 설정 필드 중 원격에서 다루지 않는 것들
+#[derive(Debug, Default)]
+struct FieldRules {
+    /// password 형식
+    secret: Vec<String>,
+    /// 실행 대상·인자가 되는 값: file 형식, path 형식, 형식·정규식 없이 실행 인자로 들어가는 글자 값
+    launch: Vec<String>,
+}
+
+fn field_rules(module: &crate::supervisor::module_loader::LoadedModule) -> FieldRules {
+    let mut rules = FieldRules::default();
+    for f in module.metadata.settings.iter().flat_map(|s| s.fields.iter()) {
+        if f.field_type == "password" {
+            rules.secret.push(f.name.clone());
+        }
+        let free_text_arg = !f.arg.is_empty() && f.field_type == "text" && f.format.is_none() && f.pattern.is_none();
+        if f.field_type == "file" || f.format.as_deref() == Some("path") || free_text_arg {
+            rules.launch.push(f.name.clone());
+        }
+    }
+    rules
+}
+
+/// 원격 입력에서 비밀값·실행 관련 키를 어느 깊이에서든 찾는다
+fn forbidden_remote_key(v: &Value, rules: &FieldRules) -> Option<String> {
+    match v {
+        Value::Object(m) => m.iter().find_map(|(k, v)| {
+            if is_secret_key(k, &rules.secret) || LAUNCH_KEYS.contains(&k.as_str()) || rules.launch.iter().any(|f| f == k) {
+                Some(k.clone())
+            } else {
+                forbidden_remote_key(v, rules)
+            }
+        }),
+        Value::Array(a) => a.iter().find_map(|x| forbidden_remote_key(x, rules)),
+        _ => None,
+    }
+}
+
+/// 원격으로 나가는 결과에서 비밀값을 어느 깊이에서든 지운다
+fn strip_secrets(v: &mut Value, password_fields: &[String]) {
+    match v {
+        Value::Object(m) => {
+            m.retain(|k, _| !is_secret_key(k, password_fields));
+            m.values_mut().for_each(|x| strip_secrets(x, password_fields));
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| strip_secrets(x, password_fields)),
+        _ => {}
+    }
+}
+
 // ── 목록 ────────────────────────────────────────────────
 
 /// 언어 카탈로그 (`locales/<lang>/bot.json`의 `actions`)
@@ -470,14 +523,18 @@ async fn resolve(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             Some(_) => {}
         }
     }
-    // 챗봇이 비밀값을 바꾸지 못하게 (모듈의 password 형식 필드 포함)
-    if def.id == "instance.settings.set" && caller.surface == Chatbot {
-        let password_fields = match &instance {
-            Some(i) => password_fields(server, i).await,
-            None => Vec::new(),
+    // 원격(디스코드·챗봇)은 비밀값과 실행 파일·폴더·인자를 바꾸지 못한다 (어느 깊이든, 모듈 필드 포함)
+    if caller.remote.is_some() && matches!(def.id, "instance.settings.set" | "instance.create") {
+        let module = match &instance {
+            Some(i) => server.supervisor.read().await.instance_store.get(i).map(|x| x.module_name.clone()),
+            None => input.get("module_name").and_then(Value::as_str).map(str::to_string),
         };
-        if let Some(key) = input.keys().find(|k| is_secret_key(k, &password_fields)) {
-            return Err(bad_input(key, "secret values cannot be changed from the chatbot"));
+        let rules = match module {
+            Some(m) => server.supervisor.read().await.module_loader.get_module(&m).map(|m| field_rules(&m)).unwrap_or_default(),
+            None => FieldRules::default(),
+        };
+        if let Some(key) = forbidden_remote_key(&Value::Object(input.clone()), &rules) {
+            return Err(bad_input(&key, "this value cannot be changed remotely"));
         }
     }
     let body = if def.method == "GET" || def.method == "DELETE" || (body.is_empty() && !def.open_input && def.fields.is_empty()) {
@@ -500,16 +557,18 @@ async fn resolve(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
     })
 }
 
-async fn password_fields(server: &IPCServer, instance: &str) -> Vec<String> {
+/// 원격으로 나가는 결과에서 지울 모듈 password 필드 이름 (모든 모듈)
+async fn all_password_fields(server: &IPCServer) -> Vec<String> {
     let sup = server.supervisor.read().await;
-    let Some(inst) = sup.instance_store.get(instance) else { return Vec::new() };
-    let Ok(module) = sup.module_loader.get_module(&inst.module_name) else { return Vec::new() };
-    module
-        .metadata
-        .settings
-        .as_ref()
-        .map(|s| s.fields.iter().filter(|f| f.field_type == "password").map(|f| f.name.clone()).collect())
-        .unwrap_or_default()
+    sup.module_loader.discover_modules().unwrap_or_default().iter().flat_map(|m| field_rules(m).secret).collect()
+}
+
+/// 길드가 `allowedInstances`를 정했으면 그 목록 (원격만)
+async fn allowed_instances(server: &IPCServer, caller: &Caller) -> Option<Vec<String>> {
+    let guild = caller.remote.as_ref()?.guild_id.clone()?;
+    let bot = server.config_store.get_bot_config().await;
+    let list = bot.node_settings.get(&guild)?.get("allowedInstances")?.as_array()?.clone();
+    Some(list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
 }
 
 /// 표면과 레벨 판정. 챗봇 경로는 표면부터 본다 (레벨·설정으로 풀 수 없다)
@@ -530,6 +589,15 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
     };
     perms.check_basic(who).map_err(|d| denied(d.need))?;
     let instance = r.instance.as_deref().unwrap_or("");
+    // 이 길드에 열리지 않은 인스턴스
+    if let (Some(i), Some(allowed)) = (&r.instance, allowed_instances(server, caller).await) {
+        if !allowed.contains(i) {
+            return Err(ActionError {
+                data: json!({ "args": { "need": Value::Null, "level": perms.effective_level(who), "via": who.via_chatbot.then_some("chatbot"), "instance": i } }),
+                ..ActionError::new(403, "PERMISSION_DENIED", "Permission denied")
+            });
+        }
+    }
     let need = match (r.discord_level, &r.command) {
         (Some(level), _) => level,
         (None, Some(cmd)) => perms.required(instance, cmd, &r.risk),
@@ -679,6 +747,12 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
     let mut result = resp.body;
     if r.id == "server.console.tail" && caller.surface == Chatbot {
         mask_console(&mut result);
+    }
+    if caller.remote.is_some() {
+        strip_secrets(&mut result, &all_password_fields(server).await);
+        if let (Some(allowed), Some(servers)) = (allowed_instances(server, caller).await, result.get_mut("servers").and_then(Value::as_array_mut)) {
+            servers.retain(|s| s.get("id").and_then(Value::as_str).is_some_and(|id| allowed.iter().any(|a| a == id)));
+        }
     }
     let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
     Ok(json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result }))

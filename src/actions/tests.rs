@@ -3,7 +3,7 @@ use crate::chat::permissions::Requester;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\nlabel = \"pw\"\n";
+const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\nlabel = \"pw\"\n\n[[settings.fields]]\nname = \"java_path\"\ntype = \"file\"\nlabel = \"java\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\nlabel = \"motd\"\narg = \"-motd={value}\"\n\n[[settings.fields]]\nname = \"players\"\ntype = \"number\"\nlabel = \"players\"\narg = \"-players={value}\"\n";
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
     // 토큰은 한 번만 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
@@ -20,7 +20,9 @@ async fn server() -> (IPCServer, String, tempfile::TempDir) {
     let instances = tmp.path().join("instances");
     let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
     sup.initialize().await.unwrap();
-    let inst = crate::instance::ServerInstance::new("srv", "plain");
+    let mut inst = crate::instance::ServerInstance::new("srv", "plain");
+    inst.rest_password = Some("S3CRET-REST".into());
+    inst.module_settings.insert("admin_pass".into(), json!("S3CRET-MOD"));
     let id = inst.id.clone();
     sup.instance_store.add(inst).unwrap();
     let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
@@ -47,9 +49,9 @@ async fn set_node(state: &IPCServer, node: Value) {
         .unwrap();
 }
 
-/// 이 길드는 무엇이든 열어 둔다 (느슨, 챗봇 상한 소유자, 명령별 덮어쓰기 0)
+/// 이 길드는 무엇이든 열어 둔다 (느슨, 챗봇 상한 관리자(줄 수 있는 최고), 명령별 덮어쓰기 0)
 async fn open_everything(state: &IPCServer) {
-    set_node(state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 3, "defaultLevel": 2, "commandLevels": { "update.apply": 0 } })).await;
+    set_node(state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": { "update.apply": 0 } })).await;
 }
 
 #[tokio::test]
@@ -146,4 +148,61 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
         }
     }
     assert!(command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap()["surfaces"].as_array().unwrap().iter().all(|s| s != "chatbot"));
+}
+
+#[tokio::test]
+async fn remote_results_never_carry_secrets() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    for caller in [relay("someone", false), relay("someone", true)] {
+        let listed = query(&state, "instance.list", None, &json!({}), &caller).await.unwrap();
+        let text = listed.to_string();
+        assert!(listed["result"]["servers"][0]["name"] == "srv" && !text.contains("S3CRET"), "{}", text);
+    }
+    // GUI·CLI는 PC 주인이라 그대로
+    assert!(run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap().to_string().contains("S3CRET-MOD"));
+}
+
+#[tokio::test]
+async fn remote_settings_cannot_touch_launch_values_at_any_depth() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
+    let owner_bot = relay("owner", true);
+    let cases = [
+        json!({ "executable_path": "x" }),
+        json!({ "extra_args": "-x" }),
+        json!({ "working_dir": "x" }),
+        json!({ "extension_data": { "a": 1 } }),
+        json!({ "java_path": "x" }),
+        json!({ "motd": "x" }),
+        json!({ "module_settings": { "java_path": "x" } }),
+        json!({ "module_settings": { "admin_pass": "x" } }),
+    ];
+    for input in &cases {
+        let err = plan(&state, "instance.settings.set", Some(&id), input, &owner_bot).await.unwrap_err();
+        assert_eq!(err.code, "invalid_input", "{}", input);
+        assert!(plan(&state, "instance.settings.set", Some(&id), input, &gui()).await.is_ok(), "{}", input);
+    }
+    // 실행 인자여도 형식이 정해진 값(숫자)은 바꿀 수 있다
+    let ok = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 8 }), &owner_bot).await;
+    assert!(ok.is_ok(), "{:?}", ok);
+    let create = json!({ "name": "n", "module_name": "plain", "module_settings": { "java_path": "x" } });
+    assert_eq!(plan(&state, "instance.create", None, &create, &owner_bot).await.unwrap_err().code, "invalid_input");
+}
+
+#[tokio::test]
+async fn guilds_only_reach_their_allowed_instances() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "allowedInstances": ["other"] })).await;
+    let owner = relay("owner", false);
+    let err = query(&state, "server.status", Some(&id), &json!({}), &owner).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &owner).await.unwrap_err().code, "PERMISSION_DENIED");
+    let listed = query(&state, "instance.list", None, &json!({}), &owner).await.unwrap();
+    assert_eq!(listed["result"]["servers"], json!([]));
+
+    set_node(&state, json!({ "ownerDiscordId": "owner", "allowedInstances": [id.clone()] })).await;
+    assert!(query(&state, "server.status", Some(&id), &json!({}), &owner).await.is_ok());
+    let listed = query(&state, "instance.list", None, &json!({}), &owner).await.unwrap();
+    assert_eq!(listed["result"]["servers"].as_array().unwrap().len(), 1);
 }
