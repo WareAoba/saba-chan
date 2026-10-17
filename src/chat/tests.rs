@@ -204,6 +204,7 @@ async fn unrecognized_input_carries_a_code_for_the_interpreter() {
     let r = reply("mc dance").await;
     assert_eq!((r.code, r.args["command"].as_str()), (Some("UNKNOWN_COMMAND"), Some("dance")));
     assert!(r.text.starts_with(&cat.t("errors.command_not_found", &[])), "{}", r.text);
+    assert!(r.args["help"].as_str().is_some_and(|h| h.contains(&cat.t("modules.help_start", &[]))), "{}", r.args);
     // 모듈 이름만 쓰면 명령 안내, 권한 거부도 처리한 응답이다
     assert_eq!(reply("survival").await.code, None);
     assert_eq!(reply("help").await.code, None);

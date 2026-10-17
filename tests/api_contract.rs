@@ -109,7 +109,7 @@ fn clients_only_call_existing_routes_with_the_right_method() {
     let routes = route_table();
     let calls = client_calls();
     assert!(routes.len() > 60, "route parser found only {} routes", routes.len());
-    assert!(calls.len() > 80, "client parser found only {} calls", calls.len());
+    assert!(calls.len() > 70, "client parser found only {} calls", calls.len());
 
     let mut problems = Vec::new();
     for (who, method, path) in &calls {

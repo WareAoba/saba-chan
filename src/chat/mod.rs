@@ -391,11 +391,15 @@ impl<D: DaemonApi> Ctx<'_, D> {
             _ => match module.command(&command) {
                 Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await.into(),
                 // 없는 명령이면 이 모듈에서 쓸 수 있는 명령을 같이 보여준다
-                None => Reply::unrecognized(
-                    "UNKNOWN_COMMAND",
-                    format!("{}\n\n{}", self.t("errors.command_not_found", &[]), self.module_help(alias, servers)),
-                    json!({ "command": cmd_alias, "name": server.name }),
-                ),
+                // 릴레이는 해석에 실패하면 자기 문구 뒤에 `args.help`를 붙인다
+                None => {
+                    let help = self.module_help(alias, servers);
+                    Reply::unrecognized(
+                        "UNKNOWN_COMMAND",
+                        format!("{}\n\n{}", self.t("errors.command_not_found", &[]), help),
+                        json!({ "command": cmd_alias, "name": server.name, "help": help }),
+                    )
+                }
             },
         }
     }
