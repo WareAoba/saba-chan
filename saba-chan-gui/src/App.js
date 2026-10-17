@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
 import {
     AddInstanceModal,
-    DiscordBotModal,
     FailureModal,
     Icon,
     LoadingScreen,
@@ -14,6 +13,7 @@ import {
     SuccessModal,
     Toast,
 } from './components';
+import { DiscordPage } from './components/discord/DiscordPage';
 import { AppBar } from './components/shell/AppBar';
 import { ServersPage } from './components/servers/ServersPage';
 import { ExtensionProvider } from './contexts/ExtensionContext';
@@ -78,6 +78,8 @@ function App() {
     const setShowModuleManager = useUIStore((s) => s.setShowModuleManager);
     const page = useUIStore((s) => s.activeTab);
     const setPage = useUIStore((s) => s.setActiveTab);
+    // 다른 화면에서 디스코드 페이지의 특정 메뉴로 보낼 때 (예: 서버 설정 → 명령어 단어)
+    const [discordView, setDiscordView] = useState(null);
     const settingsInitialView = useUIStore((s) => s.settingsInitialView);
     const contextMenu = useUIStore((s) => s.contextMenu);
     const setContextMenu = useUIStore((s) => s.setContextMenu);
@@ -170,29 +172,17 @@ function App() {
         versionsLoading,
         versionInstalling,
         resettingServer,
-        editingModuleAliases,
-        setEditingModuleAliases,
-        editingCommandAliases,
-        setEditingCommandAliases,
         isSettingsClosing,
         handleOpenSettings,
         handleSettingChange,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
-        handleSaveAliasesForModule,
-        handleResetAliasesForModule,
     } = useServerSettings({
         servers,
         modules,
         setModal,
         setProgressBar,
-        moduleAliasesPerModule,
-        discordModuleAliases,
-        discordCommandAliases,
-        setDiscordModuleAliases: (val) => useDiscordStore.getState().update({ discordModuleAliases: val }),
-        setDiscordCommandAliases: (val) => useDiscordStore.getState().update({ discordCommandAliases: val }),
-        discordPrefix,
         fetchServers,
     });
 
@@ -584,15 +574,11 @@ function App() {
     }
 
     // ── 디스코드 페이지 props ──
-    const discordModalProps = {
-        isOpen: true,
-        onClose: () => setPage('servers'),
-        isClosing: false,
+    const discordPageProps = {
         discordBotStatus,
         discordPrefix,
         setDiscordPrefix: (val) => useDiscordStore.getState().update({ discordPrefix: val }),
         discordCloudRelayUrl,
-        setDiscordCloudRelayUrl: (val) => useDiscordStore.getState().update({ discordCloudRelayUrl: val }),
         discordCloudHostId,
         setDiscordCloudHostId: (val) => useDiscordStore.getState().update({ discordCloudHostId: val }),
         relayConnected,
@@ -603,6 +589,10 @@ function App() {
         servers,
         modules,
         moduleAliasesPerModule,
+        discordModuleAliases,
+        discordCommandAliases,
+        setDiscordModuleAliases: (val) => useDiscordStore.getState().update({ discordModuleAliases: val }),
+        setDiscordCommandAliases: (val) => useDiscordStore.getState().update({ discordCommandAliases: val }),
         nodeSettings,
         setNodeSettings: (valOrFn) => {
             const prev = useDiscordStore.getState().nodeSettings;
@@ -671,15 +661,11 @@ function App() {
         handleSaveSettings,
         handleResetServer,
         resettingServer,
-        editingModuleAliases,
-        setEditingModuleAliases,
-        editingCommandAliases,
-        setEditingCommandAliases,
-        handleSaveAliasesForModule,
-        handleResetAliasesForModule,
         isClosing: isSettingsClosing,
-        moduleAliasesPerModule,
-        discordModuleAliases,
+        onOpenDiscordWords: (module) => {
+            setDiscordView({ kind: 'words', module });
+            setPage('discord');
+        },
     };
 
     const anyPopoverOpen = showBackgroundSection || showNoticeSection;
@@ -699,7 +685,10 @@ function App() {
                 <Toast />
                 <AppBar
                     page={page}
-                    onNavigate={setPage}
+                    onNavigate={(p) => {
+                        setDiscordView(null);
+                        setPage(p);
+                    }}
                     daemonStatus={backgroundDaemonStatus}
                     discordStatus={discordBotStatus}
                     unreadCount={unreadNoticeCount}
@@ -750,11 +739,7 @@ function App() {
                             settingsProps={settingsProps}
                         />
                     )}
-                    {page === 'discord' && (
-                        <div className="page page-scroll">
-                            <DiscordBotModal {...discordModalProps} displayMode="page" />
-                        </div>
-                    )}
+                    {page === 'discord' && <DiscordPage {...discordPageProps} initialView={discordView} />}
                     {page === 'settings' && (
                         <div className="page page-scroll">
                             <SettingsModal

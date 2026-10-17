@@ -116,9 +116,10 @@ describe('상단 탭 페이지 전환', () => {
         expect(tabs).toHaveLength(3);
 
         await act(async () => fireEvent.click(tabs[1]));
-        await waitFor(() => expect(document.querySelector('.discord-modal-container.page-panel')).not.toBeNull());
-        // 페이지에는 닫기 버튼이 없다
-        expect(document.querySelector('.discord-modal-close')).toBeNull();
+        await waitFor(() => expect(document.querySelector('.discord-page')).not.toBeNull());
+        // 왼쪽 메뉴 + 오른쪽 화면 (연결 화면이 먼저)
+        expect(document.querySelector('.dc-nav')).not.toBeNull();
+        expect(document.querySelector('.dc-hero')).not.toBeNull();
 
         await act(async () => fireEvent.click(tabs[2]));
         await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull());

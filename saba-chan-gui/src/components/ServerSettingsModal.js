@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { checkAliasConflicts, checkPortConflicts, validateAllSettings } from '../utils/validation';
+import { checkPortConflicts, validateAllSettings } from '../utils/validation';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { CustomDropdown, ExtensionSlot, Icon, SabaToggle } from './index';
 
@@ -429,162 +429,7 @@ function GeneralTab({
 }
 
 /**
- * AliasesTab — The "Discord Aliases" tab content.
- */
-function AliasesTab({
-    settingsServer,
-    editingModuleAliases,
-    setEditingModuleAliases,
-    editingCommandAliases,
-    setEditingCommandAliases,
-    handleSaveAliasesForModule,
-    handleResetAliasesForModule,
-    aliasConflicts,
-    servers,
-}) {
-    const { t } = useTranslation('gui');
-    const modNs = `mod_${settingsServer.module}`;
-
-    // 동일 모듈을 사용하는 다른 인스턴스 검색
-    const sameModuleInstances = React.useMemo(() => {
-        if (!servers || !settingsServer) return [];
-        return servers.filter((s) => s.module === settingsServer.module && s.id !== settingsServer.id);
-    }, [servers, settingsServer]);
-
-    return (
-        <div className="aliases-tab-content">
-            {/* 동일 모듈 다중 인스턴스 경고 */}
-            {sameModuleInstances.length > 0 && (
-                <div className="validation-warning-banner">
-                    <Icon name="alertCircle" size="sm" />
-                    <div>
-                        <strong>{t('settings.alias_conflict_title')}</strong>
-                        <div className="validation-warning-detail">
-                            {t('settings.multiple_instances_warning', {
-                                module: settingsServer.module,
-                                names: sameModuleInstances.map((s) => s.name).join(', '),
-                            })}
-                        </div>
-                    </div>
-                </div>
-            )}
-            {/* Alias conflict warnings */}
-            {aliasConflicts && aliasConflicts.length > 0 && (
-                <div className="validation-warning-banner">
-                    <Icon name="alertCircle" size="sm" />
-                    <div>
-                        <strong>{t('settings.alias_conflict_title')}</strong>
-                        {aliasConflicts.map((c, i) => (
-                            <div key={i} className="validation-warning-detail">
-                                {t('settings.alias_conflict_detail', { alias: c.alias, module: c.conflictModule })}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-            <div className="module-aliases-detail">
-                <h4>
-                    <Icon name="edit" size="sm" /> {t('server_settings.module_aliases_title')}
-                </h4>
-                <small>{t('server_settings.module_aliases_hint', { module: settingsServer.module })}</small>
-                <div className="module-aliases-input">
-                    <input
-                        type="text"
-                        placeholder={t('server_settings.module_aliases_placeholder', { module: settingsServer.module })}
-                        value={editingModuleAliases.join(' ')}
-                        onChange={(e) => {
-                            const aliases = e.target.value.split(/\s+/).filter((a) => a.length > 0);
-                            setEditingModuleAliases(aliases);
-                        }}
-                    />
-                    {editingModuleAliases.length === 0 && (
-                        <div className="placeholder-hint">
-                            <small>
-                                <Icon name="lightbulb" size="xs" /> {t('server_settings.module_aliases_empty_hint')}{' '}
-                                <code>{settingsServer.module}</code>
-                            </small>
-                        </div>
-                    )}
-                </div>
-                <div className="aliases-display">
-                    {editingModuleAliases.map((alias, idx) => (
-                        <span key={idx} className="alias-badge">
-                            {alias}
-                        </span>
-                    ))}
-                </div>
-
-                <h4>
-                    <Icon name="zap" size="sm" /> {t('server_settings.command_aliases_title')}
-                </h4>
-                <small>{t('server_settings.command_aliases_hint')}</small>
-                <div className="command-aliases-input">
-                    {Object.entries(editingCommandAliases).map(([cmd, cmdData]) => {
-                        const aliases = cmdData.aliases || [];
-                        const description = t(`${modNs}:commands.${cmd}.description`, {
-                            defaultValue: cmdData.description || '',
-                        });
-                        const label = t(`${modNs}:commands.${cmd}.label`, { defaultValue: cmdData.label || cmd });
-                        return (
-                            <div key={cmd} className="command-alias-editor">
-                                <div className="cmd-header">
-                                    <span className="cmd-name">{cmd}</span>
-                                    {label !== cmd && <span className="cmd-label">({label})</span>}
-                                    {description && (
-                                        <span className="cmd-help" title={description}>
-                                            ?
-                                        </span>
-                                    )}
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder={t('server_settings.command_aliases_placeholder', { cmd })}
-                                    value={aliases.join(', ')}
-                                    onChange={(e) => {
-                                        const newAliases = e.target.value
-                                            .split(',')
-                                            .map((a) => a.trim())
-                                            .filter((a) => a.length > 0);
-                                        setEditingCommandAliases({
-                                            ...editingCommandAliases,
-                                            [cmd]: { ...cmdData, aliases: newAliases },
-                                        });
-                                    }}
-                                />
-                                <div className="aliases-display">
-                                    {aliases.length === 0 ? (
-                                        <span className="alias-badge-default">{cmd}</span>
-                                    ) : (
-                                        aliases.map((alias, idx) => (
-                                            <span key={idx} className="alias-badge-sm">
-                                                {alias}
-                                            </span>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-
-                <div className="module-aliases-actions">
-                    <button className="btn btn-save" onClick={() => handleSaveAliasesForModule(settingsServer.module)}>
-                        <Icon name="save" size="sm" /> {t('server_settings.save_aliases')}
-                    </button>
-                    <button
-                        className="btn btn-reset"
-                        onClick={() => handleResetAliasesForModule(settingsServer.module)}
-                    >
-                        <Icon name="refresh" size="sm" /> {t('server_settings.reset_aliases')}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/**
- * ServerSettingsModal — Full server settings modal with general + aliases tabs.
+ * ServerSettingsModal — Full server settings modal with general tab (+ a link to the Discord words page).
  */
 export function ServerSettingsModal({
     settingsServer,
@@ -602,19 +447,12 @@ export function ServerSettingsModal({
     handleSaveSettings,
     handleResetServer,
     resettingServer,
-    editingModuleAliases,
-    setEditingModuleAliases,
-    editingCommandAliases,
-    setEditingCommandAliases,
-    handleSaveAliasesForModule,
-    handleResetAliasesForModule,
     isClosing,
     onClose,
     embedded = false,
+    onOpenDiscordWords,
     // validation props
     servers,
-    moduleAliasesPerModule,
-    discordModuleAliases,
 }) {
     const { t } = useTranslation('gui');
 
@@ -644,17 +482,6 @@ export function ServerSettingsModal({
         };
         return checkPortConflicts(settingsServer.id, targetPorts, servers, moduleProtocols, settingsServer.module);
     }, [settingsServer, settingsValues, servers, moduleProtocols]);
-
-    // ── Validation: 별명 충돌 검사 ──
-    const aliasConflicts = React.useMemo(() => {
-        if (!settingsServer || !editingModuleAliases) return [];
-        return checkAliasConflicts(
-            settingsServer.module,
-            editingModuleAliases,
-            moduleAliasesPerModule || {},
-            discordModuleAliases || {},
-        );
-    }, [settingsServer, editingModuleAliases, moduleAliasesPerModule, discordModuleAliases]);
 
     // ── Dynamic tab indicator ──
     const tabsRef = useRef(null);
@@ -702,12 +529,16 @@ export function ServerSettingsModal({
                 >
                     <Icon name="gamepad" size="sm" /> {t('server_settings.general_tab')}
                 </button>
-                <button
-                    className={clsx('settings-tab', { active: settingsActiveTab === 'aliases' })}
-                    onClick={() => setSettingsActiveTab('aliases')}
-                >
-                    <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab')}
-                </button>
+                {onOpenDiscordWords && (
+                    // 명령어 단어는 디스코드 화면에서 모듈별로 고친다
+                    <button
+                        className="settings-tab settings-tab-link"
+                        onClick={() => onOpenDiscordWords(settingsServer.module)}
+                    >
+                        <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab')}
+                        <Icon name="externalLinkIn" size="xs" />
+                    </button>
+                )}
             </div>
 
             <div className="modal-body">
@@ -729,19 +560,6 @@ export function ServerSettingsModal({
                         portConflicts={portConflicts}
                     />
                 )}
-                {settingsActiveTab === 'aliases' && (
-                    <AliasesTab
-                        settingsServer={settingsServer}
-                        editingModuleAliases={editingModuleAliases}
-                        setEditingModuleAliases={setEditingModuleAliases}
-                        editingCommandAliases={editingCommandAliases}
-                        setEditingCommandAliases={setEditingCommandAliases}
-                        handleSaveAliasesForModule={handleSaveAliasesForModule}
-                        handleResetAliasesForModule={handleResetAliasesForModule}
-                        aliasConflicts={aliasConflicts}
-                        servers={servers}
-                    />
-                )}
                 <ExtensionSlot
                     slotId="ServerSettings.tab"
                     server={settingsServer}
@@ -754,11 +572,9 @@ export function ServerSettingsModal({
             </div>
 
             <div className="modal-footer">
-                {settingsActiveTab !== 'aliases' && (
-                    <button className="btn btn-confirm" onClick={handleSaveSettings}>
-                        <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
-                    </button>
-                )}
+                <button className="btn btn-confirm" onClick={handleSaveSettings}>
+                    <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
+                </button>
                 {!embedded && (
                     <button className="btn btn-cancel" onClick={onClose}>
                         <Icon name="close" size="sm" /> {t('server_settings.close')}

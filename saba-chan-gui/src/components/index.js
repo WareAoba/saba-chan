@@ -9,7 +9,6 @@ export { LoadingScreen } from './LoadingScreen';
 export { AddInstanceModal } from './Modals/AddInstanceModal';
 export { default as BackgroundModal } from './Modals/BackgroundModal';
 export { default as CommandModal } from './Modals/CommandModal';
-export { default as DiscordBotModal } from './Modals/DiscordBotModal';
 export { FailureModal, NotificationModal, QuestionModal, SuccessModal } from './Modals/Modals';
 export { default as NoticeModal } from './Modals/NoticeModal';
 export { default as SettingsModal } from './Modals/SettingsModal';

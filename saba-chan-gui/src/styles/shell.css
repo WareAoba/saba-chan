@@ -775,28 +775,6 @@
     overflow: visible;
 }
 
-
-.discord-modal-container.page-panel {
-    position: static;
-    transform: none;
-    width: 100%;
-    max-width: 880px;
-    max-height: none;
-    height: auto;
-    animation: none;
-    background: var(--sheen), var(--surface-gradient);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-raised);
-    border-radius: var(--r-lg);
-}
-.discord-modal-container.page-panel::before {
-    display: none;
-}
-.discord-modal-container.page-panel .discord-modal-content {
-    max-height: none;
-    overflow: visible;
-}
-
 /* ── 좁은 창 ── */
 @media (max-width: 899px) {
     .appbar-name {
@@ -1125,4 +1103,775 @@
 }
 .restart-row.disabled {
     opacity: 0.5;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   디스코드 페이지: 왼쪽 메뉴(연결 · 디스코드 서버 · 봇) | 오른쪽 화면
+   서버 페이지의 목록-상세 틀(.server-list-pane / .server-detail-pane)을 그대로 쓴다
+   ════════════════════════════════════════════════════════════════ */
+.dc-nav-list {
+    padding-top: var(--sp-4);
+}
+.dc-nav-row {
+    width: 100%;
+    text-align: left;
+    background: none;
+    color: inherit;
+    font: inherit;
+}
+.dc-nav-row .server-row-icon {
+    color: var(--text-2);
+}
+.dc-nav-row .server-row-sub .status-chip-dot {
+    display: inline-block;
+}
+.dc-nav-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: var(--sp-4) 4px 2px 12px;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-3);
+    min-height: 28px;
+}
+.dc-nav-add {
+    width: 28px;
+    height: 28px;
+}
+.dc-nav-empty {
+    margin: 2px 12px 4px;
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+}
+
+.dc-main {
+    max-width: 880px;
+}
+.dc-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    animation: page-in var(--dur) var(--ease);
+}
+.dc-view-head h1 {
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.dc-view-head p {
+    margin-top: 4px;
+}
+.dc-crumb {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 4px 4px;
+    border-radius: var(--r-xs);
+    background: none;
+    border: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.dc-crumb:hover {
+    color: var(--text-1);
+    background: var(--bg-2);
+}
+
+/* 카드 */
+.dc-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-5);
+    border-radius: var(--r-lg);
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+}
+.dc-card .dc-card {
+    padding: var(--sp-4);
+    background: var(--bg-1);
+    box-shadow: none;
+}
+.dc-card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+.dc-card-head h2 {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    flex: 1;
+}
+.dc-card-desc {
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    margin-top: -6px;
+}
+.dc-row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+}
+.dc-danger-zone {
+    justify-content: space-between;
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--line);
+    font-size: var(--fs-sm);
+}
+.dc-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 10px var(--sp-4);
+    align-items: center;
+    font-size: var(--fs-sm);
+}
+.dc-facts dt {
+    color: var(--text-3);
+}
+.dc-facts dd {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.dc-facts code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    color: var(--text-1);
+}
+
+/* 처음 연결 */
+.dc-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--sp-3);
+    padding: var(--sp-8) var(--sp-6);
+}
+.dc-hero-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 22px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: #5865f2;
+    box-shadow: var(--shadow-raised);
+    margin-bottom: var(--sp-2);
+}
+.dc-hero h1 {
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.dc-hero p {
+    color: var(--text-2);
+    max-width: 440px;
+    margin-bottom: var(--sp-2);
+}
+
+/* 페어링 */
+.dc-pair.tone-ok,
+.dc-pair.tone-warn {
+    border-color: color-mix(in srgb, var(--chip-color) 40%, var(--line));
+}
+.dc-pair-wait {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+}
+.dc-pair-result {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    color: var(--chip-color);
+}
+.dc-pair-result strong {
+    color: var(--text-1);
+}
+.dc-steps {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+.dc-steps li {
+    display: flex;
+    gap: var(--sp-3);
+}
+.dc-step-num {
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+.dc-step-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.dc-step-title {
+    font-weight: 600;
+    line-height: 26px;
+}
+.dc-code {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--text-1);
+}
+.dc-command-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+}
+.dc-command-row code {
+    padding: 6px 10px;
+    border-radius: var(--r-xs);
+    background: var(--inset);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+}
+.dc-timer {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    color: var(--text-3);
+}
+
+/* 자동 저장 표시 */
+.dc-save-state {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    align-self: flex-start;
+}
+.dc-save-state.saved::before {
+    content: '✓ ';
+    color: var(--ok);
+}
+
+.dc-tab {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    animation: page-in var(--dur) var(--ease);
+}
+
+/* 둘 중 하나 고르기 (라디오 카드) */
+.dc-choice {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--sp-2);
+}
+.dc-choice-item {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        background var(--dur-fast) var(--ease);
+}
+.dc-choice-item:hover {
+    background: var(--bg-2);
+}
+.dc-choice-item.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-1));
+}
+.dc-radio {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    margin-top: 2px;
+    border-radius: 50%;
+    border: 2px solid var(--line-strong);
+    display: grid;
+    place-items: center;
+}
+.dc-choice-item.active .dc-radio {
+    border-color: var(--accent);
+}
+.dc-choice-item.active .dc-radio::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+.dc-choice-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.dc-choice-text small {
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+}
+
+/* 목록 (인스턴스 · 멤버) */
+.dc-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    overflow: hidden;
+}
+.dc-list > li + li {
+    border-top: 1px solid var(--line);
+}
+.dc-list-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 10px var(--sp-4);
+    width: 100%;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.dc-list-row.dim .dc-list-text {
+    opacity: 0.55;
+}
+.dc-list-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.dc-list-btn:hover {
+    background: var(--bg-2);
+}
+.dc-list-btn > svg {
+    color: var(--text-3);
+}
+.dc-list-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.dc-list-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dc-list-sub {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dc-avatar,
+.dc-srv-icon {
+    flex: none;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    font-weight: 800;
+    color: var(--text-2);
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+}
+.dc-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.dc-srv-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    font-size: var(--fs-sm);
+}
+.server-row-icon .dc-avatar {
+    border-radius: 12px;
+}
+.detail-icon .dc-avatar {
+    border: none;
+    border-radius: 15px;
+    font-size: 22px;
+    background: transparent;
+}
+.dc-badge {
+    flex: none;
+    padding: 2px 10px;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--chip-color);
+    background: color-mix(in srgb, var(--chip-color) 14%, transparent);
+}
+.dc-toolbar {
+    display: flex;
+    gap: var(--sp-2);
+}
+.dc-toolbar .input {
+    flex: 1;
+}
+.dc-hint {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    margin-top: -4px;
+}
+
+/* 멤버 한 명 */
+.dc-member-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+.dc-member-head h2 {
+    font-size: var(--fs-xl);
+    font-weight: 800;
+}
+.dc-perm-card .dc-card-head {
+    flex-wrap: wrap;
+}
+.dc-mini-actions {
+    display: flex;
+    gap: 4px;
+}
+.dc-cmd-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.dc-cmd {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    border: 1px dashed var(--line-strong);
+    background: transparent;
+    color: var(--text-3);
+    font: inherit;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+    transition:
+        background var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease);
+}
+.dc-cmd span {
+    text-decoration: line-through;
+}
+.dc-cmd.on {
+    border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+    background: var(--ok-soft);
+    color: var(--text-1);
+}
+.dc-cmd.on > svg:first-child {
+    color: var(--ok);
+}
+.dc-cmd.on span {
+    text-decoration: none;
+}
+.dc-cmd.danger > svg:last-child {
+    color: var(--warn);
+}
+
+/* 명령어 단어 */
+.dc-module-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.dc-pill {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.dc-pill:hover {
+    color: var(--text-1);
+}
+.dc-pill.active {
+    color: var(--text-1);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-1));
+    font-weight: 600;
+}
+.dc-example {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 10px 14px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
+    border: 1px solid var(--line);
+    font-size: var(--fs-sm);
+}
+.dc-example svg {
+    color: var(--text-3);
+}
+.dc-example code {
+    font-family: var(--font-mono);
+    color: var(--text-1);
+}
+.dc-code-tag {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.dc-field-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--warn);
+    font-size: var(--fs-xs);
+}
+.dc-word-table {
+    display: flex;
+    flex-direction: column;
+}
+.dc-word-row {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: var(--sp-3);
+    align-items: center;
+    padding: 10px 0;
+}
+.dc-word-row + .dc-word-row {
+    border-top: 1px solid var(--line);
+}
+.dc-word-cmd {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.dc-word-cmd code {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.dc-savebar {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-float);
+}
+.dc-savebar.dirty {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+.dc-savebar-text {
+    flex: 1;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    text-align: right;
+}
+
+/* 단어 칩 입력 */
+.word-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 5px 8px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-inset);
+    cursor: text;
+}
+.word-input:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--accent-ring);
+}
+.word-input input {
+    flex: 1;
+    min-width: 100px;
+    height: 28px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-sm);
+}
+.word-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 26px;
+    padding: 0 4px 0 10px;
+    border-radius: var(--r-pill);
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    font-size: var(--fs-sm);
+    color: var(--text-1);
+}
+.word-chip.bad {
+    border-color: var(--warn);
+    background: var(--warn-soft);
+}
+.word-chip-x {
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: none;
+    background: none;
+    color: var(--text-3);
+    cursor: pointer;
+}
+.word-chip-x:hover {
+    color: var(--text-1);
+    background: var(--bg-4);
+}
+
+/* 기본 설정 */
+.dc-prefix-input {
+    max-width: 240px;
+    font-family: var(--font-mono);
+}
+.dc-usage {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
+}
+.dc-usage li {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+.dc-usage code {
+    min-width: 200px;
+    padding: 4px 10px;
+    border-radius: var(--r-xs);
+    background: var(--inset);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+}
+.dc-usage span {
+    color: var(--text-2);
+}
+
+/* 서버 설정 탭 줄의 "디스코드 단어" 바로가기 */
+.settings-tab-link svg:last-child {
+    opacity: 0.6;
+}
+
+@media (max-width: 640px) {
+    .dc-word-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+    .dc-usage li {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+.dc-radio-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.dc-choice-item:has(.dc-radio-input:focus-visible) {
+    box-shadow: var(--accent-ring);
+}
+.dc-nav-row {
+    border: 1px solid transparent;
+}
+.dc-nav-row .server-row-text,
+.dc-nav-row .server-row-sub {
+    display: flex;
+}
+.dc-nav-row .server-row-name {
+    display: block;
+}
+.dc-nav-row .server-row-text {
+    flex-direction: column;
+    gap: 2px;
+}
+.dc-nav-row .server-row-sub .status-chip {
+    padding: 0;
+    background: none;
+    border: none;
+}
+.dc-view > .segmented {
+    align-self: flex-start;
+}
+.dc-savebar:not(.dirty) {
+    position: static;
+    box-shadow: none;
+}
+/* 세로 flex 안에서 줄어들어 겹치지 않게 */
+.dc-nav-row,
+.dc-view > *,
+.dc-tab > *,
+.dc-list > li {
+    flex-shrink: 0;
+}
+/* 전역 button 높이(36px)를 쓰지 않는 카드형 버튼 */
+.dc-nav-row,
+.dc-list-btn,
+.dc-crumb {
+    height: auto;
+    justify-content: flex-start;
+    white-space: normal;
+    font-size: inherit;
+    font-weight: inherit;
+}
+.dc-crumb {
+    font-size: var(--fs-sm);
 }

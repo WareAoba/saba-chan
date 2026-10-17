@@ -4,20 +4,14 @@ import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { useModalClose } from './useModalClose';
 
 /**
- * Manages server settings modal: open, save, install version, reset,
- * and alias editing for Discord bot integration.
+ * Manages server settings modal: open, save, install version, reset.
+ * (Discord command words moved to the Discord page — components/discord/WordsView.js)
  *
  * @param {Object} params
  * @param {Array} params.servers - Current server list
  * @param {Array} params.modules - Current module list
  * @param {Function} params.setModal - Modal state setter
  * @param {Function} params.setProgressBar - Progress bar state setter
- * @param {Object} params.moduleAliasesPerModule - Per-module alias definitions from module.toml
- * @param {Object} params.discordModuleAliases - Saved user module aliases
- * @param {Object} params.discordCommandAliases - Saved user command aliases
- * @param {Function} params.setDiscordModuleAliases - Module aliases state setter
- * @param {Function} params.setDiscordCommandAliases - Command aliases state setter
- * @param {string} params.discordPrefix - Bot command prefix
  * @param {Function} params.fetchServers - Server list refresh function
  * @returns {Object} Settings modal state and handlers
  */
@@ -34,12 +28,6 @@ export function useServerSettings({
     modules,
     setModal,
     setProgressBar,
-    moduleAliasesPerModule,
-    discordModuleAliases,
-    discordCommandAliases,
-    setDiscordModuleAliases,
-    setDiscordCommandAliases,
-    discordPrefix,
     fetchServers,
 }) {
     const { t } = useTranslation('gui');
@@ -55,10 +43,6 @@ export function useServerSettings({
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionInstalling, setVersionInstalling] = useState(false);
     const [resettingServer, setResettingServer] = useState(false);
-
-    // ── Alias editing state ─────────────────────────────────
-    const [editingModuleAliases, setEditingModuleAliases] = useState([]);
-    const [editingCommandAliases, setEditingCommandAliases] = useState({});
 
     // ── Close animation ─────────────────────────────────────
     const closeSettingsModal = useCallback(() => setShowSettingsModal(false), []);
@@ -151,49 +135,6 @@ export function useServerSettings({
                     : {}),
                 ...restartFlagsOf(latestServer),
             });
-        }
-
-        // Load aliases
-        const moduleName = latestServer.module;
-        if (moduleAliasesPerModule[moduleName]) {
-            const aliases = moduleAliasesPerModule[moduleName];
-
-            if (moduleName in discordModuleAliases) {
-                const saved = discordModuleAliases[moduleName] || '';
-                const parsed = saved
-                    .split(',')
-                    .map((a) => a.trim())
-                    .filter((a) => a.length > 0);
-                setEditingModuleAliases(parsed);
-            } else {
-                setEditingModuleAliases(aliases.module_aliases || []);
-            }
-
-            const cmdAliases = aliases.commands || {};
-            const normalized = {};
-            for (const [cmd, data] of Object.entries(cmdAliases)) {
-                let baseAliases = [];
-                if (Array.isArray(data)) {
-                    baseAliases = data;
-                } else if (data.aliases) {
-                    baseAliases = data.aliases;
-                }
-
-                const hasSavedCmd = discordCommandAliases[moduleName] && cmd in discordCommandAliases[moduleName];
-                const merged = hasSavedCmd
-                    ? (discordCommandAliases[moduleName][cmd] || '')
-                          .split(',')
-                          .map((a) => a.trim())
-                          .filter((a) => a.length > 0)
-                    : baseAliases;
-
-                normalized[cmd] = {
-                    aliases: merged,
-                    description: (data && data.description) || '',
-                    label: (data && data.label) || cmd,
-                };
-            }
-            setEditingCommandAliases(normalized);
         }
 
         setSettingsActiveTab('general');
@@ -524,105 +465,6 @@ export function useServerSettings({
         }
     };
 
-    // ── Alias save/reset for settings modal ─────────────────
-    const handleSaveAliasesForModule = async (moduleName) => {
-        try {
-            const current = await window.api.botConfigLoad();
-            const moduleAliases = { ...(current.moduleAliases || {}) };
-            const commandAliases = { ...(current.commandAliases || {}) };
-
-            moduleAliases[moduleName] = (editingModuleAliases || []).join(',');
-
-            const cmdMap = {};
-            Object.entries(editingCommandAliases || {}).forEach(([cmd, data]) => {
-                cmdMap[cmd] = (data.aliases || []).join(',');
-            });
-            commandAliases[moduleName] = cmdMap;
-
-            const payload = {
-                prefix: current.prefix || discordPrefix || '!saba',
-                moduleAliases,
-                commandAliases,
-            };
-
-            const res = await window.api.botConfigSave(payload);
-            if (res.error) {
-                setModal({
-                    type: 'failure',
-                    title: t('settings.aliases_save_failed_title'),
-                    message: translateError(res.error),
-                });
-            } else {
-                const saved = await window.api.botConfigLoad();
-                setDiscordModuleAliases(saved.moduleAliases || {});
-                setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({
-                    type: 'success',
-                    title: t('server_actions.aliases_saved'),
-                    message: t('server_actions.aliases_saved'),
-                });
-            }
-        } catch (error) {
-            console.error('Failed to save aliases:', error);
-            setModal({
-                type: 'failure',
-                title: t('settings.aliases_save_error_title'),
-                message: translateError(error.message),
-            });
-        }
-    };
-
-    const handleResetAliasesForModule = async (moduleName) => {
-        try {
-            setEditingModuleAliases([]);
-            const clearedCmds = {};
-            const defaults = moduleAliasesPerModule[moduleName];
-            if (defaults && defaults.commands) {
-                for (const [cmd, data] of Object.entries(defaults.commands)) {
-                    clearedCmds[cmd] = { aliases: [], description: data.description || '', label: data.label || cmd };
-                }
-            }
-            setEditingCommandAliases(clearedCmds);
-
-            const current = await window.api.botConfigLoad();
-            const moduleAliases = { ...(current.moduleAliases || {}) };
-            const commandAliases = { ...(current.commandAliases || {}) };
-            delete moduleAliases[moduleName];
-            delete commandAliases[moduleName];
-
-            const payload = {
-                prefix: current.prefix || discordPrefix || '!saba',
-                moduleAliases,
-                commandAliases,
-            };
-
-            const res = await window.api.botConfigSave(payload);
-            if (res.error) {
-                setModal({
-                    type: 'failure',
-                    title: t('settings.aliases_reset_failed_title'),
-                    message: translateError(res.error),
-                });
-            } else {
-                const saved = await window.api.botConfigLoad();
-                setDiscordModuleAliases(saved.moduleAliases || {});
-                setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({
-                    type: 'success',
-                    title: t('settings.aliases_reset_completed_title'),
-                    message: t('settings.aliases_reset_message'),
-                });
-            }
-        } catch (error) {
-            console.error('Failed to reset aliases:', error);
-            setModal({
-                type: 'failure',
-                title: t('settings.aliases_reset_failed_title'),
-                message: translateError(error.message),
-            });
-        }
-    };
-
     return {
         // Settings modal state
         showSettingsModal,
@@ -636,11 +478,6 @@ export function useServerSettings({
         versionsLoading,
         versionInstalling,
         resettingServer,
-        // Alias editing state
-        editingModuleAliases,
-        setEditingModuleAliases,
-        editingCommandAliases,
-        setEditingCommandAliases,
         // Close animation
         isSettingsClosing,
         requestSettingsClose,
@@ -650,7 +487,5 @@ export function useServerSettings({
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
-        handleSaveAliasesForModule,
-        handleResetAliasesForModule,
     };
 }

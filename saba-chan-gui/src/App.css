@@ -270,80 +270,6 @@ span[style*="--icon-loader"] svg,
 }
 
 /* Discord Bot Section */
-.discord-section {
-    background: var(--bg-surface);
-    margin: 0 20px 20px 20px;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 6px var(--shadow-md);
-    border-left: 4px solid #5865f2;
-}
-
-.discord-section h3 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    color: #5865f2;
-}
-
-.discord-status {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 15px;
-}
-
-.discord-status .status-label {
-    color: var(--text-tertiary);
-    font-weight: bold;
-}
-
-.discord-status .status-value {
-    font-weight: bold;
-}
-
-.discord-status .status-running {
-    color: var(--ok);
-}
-
-.discord-status .status-stopped {
-    color: var(--text-muted);
-}
-
-.discord-status .status-error {
-    color: var(--stop);
-}
-
-.discord-token-form {
-    margin-bottom: 15px;
-}
-
-.discord-token-form label {
-    display: block;
-    margin-bottom: 5px;
-    color: var(--text-secondary);
-    font-weight: bold;
-}
-
-.discord-token-form input {
-    width: 100%;
-    padding: 10px;
-    border-radius: 6px;
-    border: 1px solid var(--border-default);
-    background: var(--bg-surface-input);
-    color: var(--text-primary);
-    font-family: monospace;
-    box-sizing: border-box;
-}
-
-.discord-token-form input:focus {
-    outline: none;
-    border-color: #5865f2;
-}
-
-.discord-actions {
-    display: flex;
-    gap: 10px;
-}
 
 .btn-discord {
     background: var(--bg-surface);
@@ -481,133 +407,6 @@ span[style*="--icon-loader"] svg,
     }
 }
 
-.discord-config-grid {
-    display: grid;
-    gap: 15px;
-    margin-bottom: 20px;
-}
-
-.discord-prefix-form label,
-.discord-autostart label {
-    display: block;
-    margin-bottom: 5px;
-    color: var(--text-secondary);
-    font-weight: bold;
-}
-
-.discord-prefix-form input {
-    width: 150px;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid var(--border-default);
-    background: var(--bg-surface-input);
-    font-family: monospace;
-    font-size: calc(14px * var(--font-scale));
-}
-
-.discord-prefix-form small {
-    display: block;
-    color: var(--text-muted);
-    font-size: calc(11px * var(--font-scale));
-    margin-top: 4px;
-}
-
-.discord-prefix-form .warning-text {
-    color: var(--stop);
-    font-weight: bold;
-}
-
-.discord-autostart {
-    display: flex;
-    align-items: center;
-}
-
-.discord-autostart input[type="checkbox"] {
-    margin-right: 8px;
-    width: 18px;
-    height: 18px;
-}
-
-.discord-aliases-section {
-    background: var(--bg-surface-secondary);
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 15px;
-}
-
-.discord-aliases-section h4 {
-    margin: 0 0 5px 0;
-    color: var(--text-primary);
-    font-size: calc(14px * var(--font-scale));
-}
-
-.discord-aliases-section > small {
-    display: block;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-    font-size: calc(11px * var(--font-scale));
-}
-
-.alias-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 10px;
-}
-
-.alias-item {
-    display: flex;
-    align-items: center;
-    background: var(--bg-surface);
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border-default);
-    font-size: calc(13px * var(--font-scale));
-}
-
-.alias-key {
-    color: #5865f2;
-    font-weight: bold;
-}
-
-.alias-arrow {
-    margin: 0 6px;
-    color: var(--text-disabled);
-}
-
-.alias-value {
-    color: var(--text-primary);
-    font-family: monospace;
-}
-
-.btn-alias-remove {
-    margin-left: 8px;
-    background: none;
-    border: none;
-    color: var(--stop);
-    cursor: pointer;
-    font-size: calc(14px * var(--font-scale));
-    padding: 0 4px;
-}
-
-.btn-alias-remove:hover {
-    color: var(--stop);
-}
-
-.alias-add-form {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.alias-add-form input {
-    padding: 6px 10px;
-    border: 1px solid var(--border-default);
-    border-radius: 4px;
-    font-size: calc(13px * var(--font-scale));
-    width: 120px;
-}
-
 .btn-small {
     padding: 6px 12px;
     font-size: calc(12px * var(--font-scale));
@@ -620,45 +419,6 @@ span[style*="--icon-loader"] svg,
 
 .btn-small:hover {
     background: #4752c4;
-}
-
-.discord-usage-hint {
-    background: var(--info-bg);
-    padding: 10px 15px;
-    border-radius: 6px;
-    margin-bottom: 15px;
-    border-left: 3px solid var(--info-border);
-}
-
-.discord-usage-hint h4 {
-    margin: 0 0 5px 0;
-    color: var(--info-title);
-    font-size: calc(13px * var(--font-scale));
-}
-
-.discord-usage-hint code {
-    background: var(--bg-surface);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-family: monospace;
-    color: var(--text-primary);
-}
-
-.discord-usage-hint .hint-placeholder {
-    color: var(--text-disabled);
-    font-style: italic;
-}
-
-.discord-usage-hint .hint-desc {
-    display: block;
-    margin-top: 8px;
-    color: var(--text-tertiary);
-    font-size: calc(12px * var(--font-scale));
-}
-
-.discord-usage-hint .hint-desc code {
-    padding: 2px 6px;
-    font-size: calc(12px * var(--font-scale));
 }
 
 .btn-save {
@@ -2331,26 +2091,6 @@ span[style*="--icon-loader"] svg,
     background-color: #218838;
 }
 /* 모듈별 별명 관리 섹션 */
-.extensions-aliases-section {
-    background: var(--bg-surface);
-    margin: 20px;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px var(--shadow-md);
-}
-
-.extensions-aliases-section h3 {
-    color: var(--text-primary);
-    margin-bottom: 10px;
-    font-size: calc(18px * var(--font-scale));
-}
-
-.extensions-aliases-section > small {
-    display: block;
-    color: var(--text-tertiary);
-    margin-bottom: 15px;
-    font-size: calc(13px * var(--font-scale));
-}
 
 .extension-tabs {
     display: flex;
@@ -2383,71 +2123,6 @@ span[style*="--icon-loader"] svg,
     border-bottom-color: var(--accent);
 }
 
-.module-aliases-detail {
-    background: var(--bg-surface-input);
-    padding: 15px;
-    border-radius: 4px;
-    border-left: 4px solid var(--brand-primary);
-}
-
-.module-aliases-detail.no-data {
-    text-align: center;
-    color: var(--text-disabled);
-    padding: 40px 20px;
-    border-left-color: var(--border-default);
-}
-
-.module-aliases-detail h4 {
-    color: var(--text-primary);
-    margin-top: 15px;
-    margin-bottom: 8px;
-    font-size: calc(14px * var(--font-scale));
-}
-
-.module-aliases-detail h4:first-child {
-    margin-top: 0;
-}
-
-.module-aliases-detail > small {
-    display: block;
-    color: var(--text-disabled);
-    margin-bottom: 12px;
-    font-size: calc(12px * var(--font-scale));
-    font-style: italic;
-}
-
-.aliases-display {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 15px;
-}
-
-.alias-badge {
-    background: var(--brand-primary);
-    color: var(--brand-text);
-    padding: 6px 12px;
-    border-radius: 16px;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 500;
-}
-
-.command-aliases-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.command-alias-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    background: var(--bg-surface);
-    border-radius: 4px;
-    border: 1px solid var(--border-light);
-}
-
 .cmd-name {
     background: var(--bg-surface-tertiary);
     padding: 4px 8px;
@@ -2458,35 +2133,7 @@ span[style*="--icon-loader"] svg,
     text-align: center;
 }
 
-.cmd-aliases {
-    flex: 1;
-    color: var(--text-tertiary);
-    font-size: calc(13px * var(--font-scale));
-}
-
 /* 모듈 별명 입력 섹션 */
-.module-aliases-input {
-    position: relative;
-    margin-bottom: 15px;
-}
-
-.module-aliases-input input {
-    width: 100%;
-    padding: 12px;
-    border: 2px solid var(--border-separator);
-    border-radius: 4px;
-    font-size: calc(14px * var(--font-scale));
-    font-family: "Segoe UI", sans-serif;
-    transition: border-color 0.2s;
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-}
-
-.module-aliases-input input:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px var(--brand-shadow-subtle);
-}
 
 .placeholder-hint {
     margin-top: 8px;
@@ -2497,24 +2144,6 @@ span[style*="--icon-loader"] svg,
 }
 
 /* 명령어 별명 입력 섹션 */
-.command-aliases-input {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.command-alias-editor {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-separator);
-    border-radius: 4px;
-    padding: 12px;
-    transition: all 0.2s;
-}
-
-.command-alias-editor:hover {
-    border-color: var(--brand-primary);
-    box-shadow: 0 2px 4px var(--brand-shadow-subtle);
-}
 
 .cmd-header {
     display: flex;
@@ -2596,127 +2225,7 @@ span[style*="--icon-loader"] svg,
     pointer-events: auto;
 }
 
-.command-alias-editor:hover .cmd-tooltip {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.command-alias-editor input {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid var(--border-default);
-    border-radius: 3px;
-    font-size: calc(13px * var(--font-scale));
-    margin-bottom: 8px;
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-}
-
-.command-alias-editor input:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 0 2px var(--brand-shadow-subtle);
-}
-
-.alias-badge-sm {
-    display: inline-block;
-    background: var(--badge-subtle-bg);
-    color: var(--brand-primary);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: calc(11px * var(--font-scale));
-    font-weight: 500;
-    margin-right: 6px;
-    margin-top: 4px;
-}
-
-.alias-badge-default {
-    display: inline-block;
-    background: var(--badge-default-bg);
-    color: var(--badge-default-text);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: calc(11px * var(--font-scale));
-    font-weight: 500;
-    margin-right: 6px;
-    margin-top: 4px;
-    font-style: italic;
-}
-
-.module-aliases-actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-.module-aliases-actions .btn {
-    padding: 10px 14px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-    transition:
-        transform 0.1s ease,
-        box-shadow 0.2s ease;
-}
-
-.module-aliases-actions .btn-save {
-    background: var(--ok);
-    color: #fff;
-    box-shadow: 0 4px 10px color-mix(in srgb, var(--ok) 20%, transparent);
-}
-
-.module-aliases-actions .btn-reset {
-    background: var(--bg-surface-tertiary);
-    color: var(--text-secondary);
-    box-shadow: 0 4px 10px var(--shadow-sm);
-}
-
-.module-aliases-actions .btn:hover {
-    transform: translateY(-1px);
-}
-
 /* Discord Info Box */
-.discord-info-box {
-    background: var(--info-bg-gradient);
-    border-left: 4px solid var(--info-border);
-    padding: 20px;
-    border-radius: 8px;
-    margin: 20px 0;
-}
-
-.discord-info-box h4 {
-    color: var(--info-title);
-    margin-bottom: 12px;
-    font-size: calc(16px * var(--font-scale));
-}
-
-.discord-info-box p {
-    color: var(--text-dark);
-    margin-bottom: 10px;
-    line-height: 1.6;
-}
-
-.discord-info-box code {
-    background: var(--bg-surface);
-    color: var(--stop);
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-family: "Courier New", monospace;
-    font-size: calc(14px * var(--font-scale));
-    display: inline-block;
-    margin: 8px 0;
-}
-
-.discord-info-box .info-note {
-    margin-top: 12px;
-    font-size: calc(14px * var(--font-scale));
-    color: var(--text-secondary);
-}
-
-.discord-info-box .info-note strong {
-    color: var(--info-title);
-}
 
 /* Settings Modal Tabs - 서버 설정 모달용 (별칭 탭 등) */
 .modal-content-large {
@@ -2787,20 +2296,6 @@ span[style*="--icon-loader"] svg,
     transition: all 0.3s ease;
     border-bottom: none;
     background: none;
-}
-
-.aliases-tab-content {
-    padding: 20px 0;
-}
-
-.aliases-tab-content .module-aliases-detail {
-    margin-top: 0;
-}
-
-.aliases-tab-content .module-aliases-actions {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border-separator);
 }
 
 /* ========== Protocol Mode Toggle ========== */

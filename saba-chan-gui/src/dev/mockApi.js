@@ -134,9 +134,49 @@ const impl = {
         ok({
             prefix: '!saba',
             cloud: { relayUrl: 'https://relay.example', hostId: mockBot === 'stopped' ? '' : 'mock-host' },
-            moduleAliases: {},
+            moduleAliases: { minecraft: '마크,mc' },
             commandAliases: {},
+            nodeSettings: {
+                'guild-1': {
+                    allowedInstances: ['srv-1'],
+                    memberPermissions: { 'u-3': { 'srv-1': ['stop', 'save-all'] } },
+                },
+            },
         }),
+    moduleGetMetadata: (name) => {
+        const mod = modules.find((m) => m.name === name);
+        const aliases = { minecraft: ['minecraft', 'mc'], palworld: ['pal', '팰월드'], zomboid: ['좀보이드'] };
+        return ok({
+            metadata: {
+                module_aliases: aliases[name] || [],
+                command_aliases: {
+                    start: { aliases: ['시작', '켜기'], description: '서버 시작' },
+                    stop: { aliases: ['정지', '끄기'], description: '서버 정지' },
+                    status: { aliases: ['상태'], description: '상태 보기' },
+                },
+                commands: mod?.commands || { fields: [] },
+            },
+        });
+    },
+    relayListHostNodes: () =>
+        ok([
+            { guildId: 'guild-1', guildName: '사바 마을' },
+            { guildId: 'guild-2', guildName: '주말 게임방' },
+        ]),
+    relayListNodeMembers: (guildId) =>
+        ok(
+            guildId === 'guild-1'
+                ? [
+                      { id: 'u-1', username: 'wareaoba', displayName: '아오바' },
+                      { id: 'u-2', username: 'mint', displayName: '민트' },
+                      { id: 'u-3', username: 'newbie01', displayName: '뉴비' },
+                      { id: 'u-4', username: 'sabafan', displayName: '사바팬' },
+                  ]
+                : [{ id: 'u-1', username: 'wareaoba', displayName: '아오바' }],
+        ),
+    relayInitiatePairing: () =>
+        ok({ code: 'K7Q2-M9', expiresAt: new Date(Date.now() + 297000).toISOString(), pollSecret: 'x' }),
+    relayPollPairingStatus: () => ok({ status: 'pending' }),
     discordBotStatus: () => ok(mockBot === 'stopped' ? 'stopped' : 'running'),
     relayCheckHostStatus: () => ok(mockBot === 'running' ? { online: true } : { error: 'offline' }),
     daemonStatus: () => ok({ running: mockDaemonUp }),
