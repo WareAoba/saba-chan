@@ -349,7 +349,9 @@ def cmd_registration(args: argparse.Namespace) -> int:
 
 
 def write_json(value: dict, out: str | None) -> None:
-    text = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    # 한글은 \uXXXX로 내보낸다. 본문이 ASCII뿐이라 PowerShell 5.1 Invoke-RestMethod처럼
+    # UTF-8로 보내지 않는 클라이언트를 거쳐도 릴레이에 ???로 깨져 들어가지 않는다
+    text = json.dumps(value, indent=2, ensure_ascii=True) + "\n"
     if out:
         Path(out).write_text(text, encoding="utf-8")
     else:
