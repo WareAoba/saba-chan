@@ -212,11 +212,6 @@ impl NodePermissions {
     }
 }
 
-/// 데몬이 이 길드의 부여값을 가졌는가 (`members`나 `defaultLevel`이 있다). 아직이면 릴레이 캐시를 덮지 않는다
-pub fn configured(node: Option<&Value>) -> bool {
-    node.and_then(Value::as_object).is_some_and(|n| n.contains_key("members") || n.contains_key("defaultLevel"))
-}
-
 /// 챗봇 경로인가. `via`가 "direct"일 때만 직접 명령이다. P1을 아는 릴레이(`ownerDiscordId`를 싣는다)가
 /// `via`를 빠뜨리면 챗봇으로 본다 (열린 쪽으로 처리하지 않는다). 두 필드가 다 없는 옛 릴레이만 직접 명령
 pub fn via_chatbot(via: Option<&str>, owner_reported: bool) -> bool {

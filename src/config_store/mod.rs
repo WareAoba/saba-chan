@@ -311,18 +311,24 @@ impl ConfigStore {
 
     /// JSON Value로 봇 설정 교체 (API 요청 수용, 스키마 검증 포함)
     pub async fn set_bot_config_from_json(&self, json: Value) -> Result<BotConfig, ConfigStoreError> {
-        // 기존 설정을 base로 하여 부분 업데이트 지원
-        let current = self.bot_config.read().await.clone();
-        let current_json = serde_json::to_value(&current).unwrap_or_default();
+        self.merge_bot_config(json, true).await
+    }
+
+    /// 부분 업데이트. 읽기·병합·저장 동안 쓰기 잠금을 잡아 그사이의 권한 변경(주인 고정 등)을 덮지 않는다.
+    /// `keep_permissions`면 권한 키는 권한 API(`update_node_settings`)로만 바뀐다 (가져오기는 로컬 동작이라 false)
+    async fn merge_bot_config(&self, json: Value, keep_permissions: bool) -> Result<BotConfig, ConfigStoreError> {
+        let mut current = self.bot_config.write().await;
+        let current_json = serde_json::to_value(&*current).unwrap_or_default();
 
         let mut merged = merge_json(current_json.clone(), json);
-        // 권한 키는 권한 API(`update_node_settings`)로만 바꾼다: 봇 설정 저장이 고정된 주인·부여값을 덮지 않게
-        keep_permission_keys(&mut merged, &current_json);
+        if keep_permissions {
+            keep_permission_keys(&mut merged, &current_json);
+        }
 
         let config: BotConfig = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
         self.file.set_section("relay", serde_json::to_value(&config)?)?;
-        *self.bot_config.write().await = config.clone();
+        *current = config.clone();
         Ok(config)
     }
 
@@ -404,10 +410,15 @@ impl ConfigStore {
             *self.gui_settings.write().await = settings;
             Ok(self.get_gui_settings_json().await)
         } else {
-            let config: BotConfig = serde_json::from_value(Value::Object(full))
+            let mut current = self.bot_config.write().await;
+            // 초기화도 고정된 주인·부여값은 지우지 않는다 (권한 API로만 바뀐다)
+            let mut full = Value::Object(full);
+            keep_permission_keys(&mut full, &serde_json::to_value(&*current).unwrap_or_default());
+            let config: BotConfig = serde_json::from_value(full)
                 .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
             self.file.set_section("relay", serde_json::to_value(&config)?)?;
-            *self.bot_config.write().await = config;
+            *current = config;
+            drop(current);
             Ok(self.get_bot_config_json().await)
         }
     }
@@ -463,7 +474,8 @@ impl ConfigStore {
                     self.set_gui_settings_from_json(value).await?;
                 }
                 "relay" => {
-                    self.set_bot_config_from_json(value).await?;
+                    // 내보낸 파일을 이 PC에서 가져오는 로컬 동작이라 권한 키도 함께 가져온다
+                    self.merge_bot_config(value, false).await?;
                 }
                 "chatbot" => {
                     let merged = merge_json(serde_json::to_value(self.get_chatbot())?, value);
@@ -811,6 +823,27 @@ mod tests {
         assert!(store.reset_to_defaults("gui", Some(&["nope".to_string()])).await.is_err());
         let out = store.reset_to_defaults("gui", None).await.unwrap();
         assert_eq!(out["fontScale"], 100);
+    }
+
+    #[tokio::test]
+    async fn resetting_the_bot_config_keeps_the_pinned_owner_and_import_brings_grants() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        store
+            .update_node_settings("g", |node| {
+                node.insert("ownerDiscordId".into(), serde_json::json!("own"));
+                node.insert("members".into(), serde_json::json!({ "a": 2 }));
+                ((), true)
+            })
+            .await
+            .unwrap();
+        let out = store.reset_to_defaults("bot", None).await.unwrap();
+        assert_eq!(out["nodeSettings"]["g"], serde_json::json!({ "ownerDiscordId": "own", "members": { "a": 2 } }));
+
+        let mut sections = serde_json::Map::new();
+        sections.insert("relay".into(), serde_json::json!({ "nodeSettings": { "h": { "ownerDiscordId": "x", "defaultLevel": -1 } } }));
+        store.import_sections(sections).await.unwrap();
+        assert_eq!(store.get_bot_config().await.node_settings["h"]["defaultLevel"], -1);
     }
 
     #[tokio::test]

@@ -618,14 +618,13 @@ async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::pe
     }
 }
 
-/// 길드별 `{defaultLevel, members}` (릴레이 바깥 검사 캐시용). 부여값을 가진 길드만
+/// 길드별 `{defaultLevel, members}` (릴레이 바깥 검사 캐시용). `nodeSettings`에 있는 길드는 값이 없어도 늘 싣는다
+/// (부여값을 다 지운 길드도 릴레이가 데몬 행을 지우게). 릴레이에서만 부여한 행은 릴레이가 남긴다
 fn permissions_by_guild(node_settings: &Value) -> Value {
     let map: serde_json::Map<String, Value> = node_settings
         .as_object()
         .into_iter()
         .flatten()
-        // 데몬이 아직 부여값을 갖지 않은 길드는 싣지 않는다 (릴레이에만 있던 부여값을 지우지 않게)
-        .filter(|(_, node)| crate::chat::permissions::configured(Some(node)))
         .map(|(guild, node)| {
             let p = crate::chat::permissions::NodePermissions::from_node(Some(node));
             (guild.clone(), json!({ "defaultLevel": p.default_level, "members": p.members }))
@@ -658,7 +657,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn heartbeat_carries_permissions_only_for_guilds_the_daemon_configured() {
+    fn heartbeat_carries_permissions_for_every_known_guild() {
         let nodes = json!({
             "g1": { "members": { "a": 2, "bad": 7 }, "ownerDiscordId": "o" },
             "g2": { "ownerDiscordId": "o", "allowedInstances": ["x"] },
@@ -666,7 +665,11 @@ mod tests {
         });
         assert_eq!(
             permissions_by_guild(&nodes),
-            json!({ "g1": { "defaultLevel": 1, "members": { "a": 2 } }, "g3": { "defaultLevel": -1, "members": {} } })
+            json!({
+                "g1": { "defaultLevel": 1, "members": { "a": 2 } },
+                "g2": { "defaultLevel": 1, "members": {} },
+                "g3": { "defaultLevel": -1, "members": {} }
+            })
         );
     }
 
