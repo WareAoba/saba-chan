@@ -396,13 +396,18 @@ impl Session {
         match action {
             "raw_command" => {
                 let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                let name = |key: &str| {
+                    payload.get(key).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+                };
                 let req = crate::chat::ChatRequest {
                     text: text.to_string(),
                     guild_id: cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string),
                     user_id: cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string),
+                    user_name: name("userName"),
+                    guild_name: name("guildName"),
                 };
-                // 감사 로그 (A10): 디스코드에서 누가 보냈는지
-                let origin = crate::audit::Origin { source: "discord".into(), user: req.user_id.clone(), guild: req.guild_id.clone() };
+                // 감사 로그 (A10): 디스코드에서 누가 보냈는지 (이름은 릴레이가 payload에 실어 보낸 것)
+                let origin = crate::audit::Origin::new("discord").requested_by(&req);
                 let reply = crate::audit::with_origin(origin, crate::chat::api::run_with_daemon_settings(&self.server, &req)).await;
                 raw_command_result(reply)
             }

@@ -27,23 +27,44 @@ pub struct Origin {
     pub user: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guild: Option<String>,
+    /// 디스코드 표시 이름·서버 이름 (릴레이가 id와 함께 보낸다, 기록 당시 이름)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guild_name: Option<String>,
 }
 
 impl Origin {
     pub fn new(source: &str) -> Self {
-        Self { source: source.to_string(), user: None, guild: None }
+        Self { source: source.to_string(), user: None, guild: None, user_name: None, guild_name: None }
     }
 
-    /// `X-Saba-Client` 헤더 → 출처. 소문자·숫자·`-`만, 16자까지 (로그를 더럽히지 않게)
+    /// 채팅 명령을 보낸 사람·서버를 붙인다
+    pub fn requested_by(self, req: &crate::chat::ChatRequest) -> Self {
+        Self {
+            user: req.user_id.clone(),
+            guild: req.guild_id.clone(),
+            user_name: req.user_name.clone(),
+            guild_name: req.guild_name.clone(),
+            ..self
+        }
+    }
+
+    /// `X-Saba-Client` 헤더 → 출처. 소문자·숫자·`-`만, 16자까지 (로그를 더럽히지 않게).
+    /// 데몬 안에서만 붙이는 출처(`INTERNAL_SOURCES`)는 헤더로 받지 않는다
     pub fn from_headers(headers: &axum::http::HeaderMap) -> Self {
         let client = headers
             .get("X-Saba-Client")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.trim().to_ascii_lowercase())
-            .filter(|v| !v.is_empty() && v.len() <= 16 && v.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'));
+            .filter(|v| !v.is_empty() && v.len() <= 16 && v.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+            .filter(|v| !INTERNAL_SOURCES.contains(&v.as_str()));
         Self::new(client.as_deref().unwrap_or("api"))
     }
 }
+
+/// 데몬이 스스로 정하는 출처: HTTP 헤더로 흉내 낼 수 없다
+const INTERNAL_SOURCES: [&str; 3] = ["discord", "schedule", "daemon"];
 
 tokio::task_local! {
     static ORIGIN: Origin;
@@ -129,7 +150,15 @@ impl AuditLog {
             "status": event.status,
         });
         let obj = line.as_object_mut().expect("object");
-        for (key, value) in [("user", origin.user.as_deref()), ("guild", origin.guild.as_deref()), ("instance", event.instance), ("command", event.command)] {
+        let fields = [
+            ("user", origin.user.as_deref()),
+            ("userName", origin.user_name.as_deref()),
+            ("guild", origin.guild.as_deref()),
+            ("guildName", origin.guild_name.as_deref()),
+            ("instance", event.instance),
+            ("command", event.command),
+        ];
+        for (key, value) in fields {
             if let Some(v) = value {
                 obj.insert(key.into(), Value::String(clip(v)));
             }
@@ -148,7 +177,10 @@ impl AuditLog {
             std::fs::create_dir_all(parent)?;
         }
         if std::fs::metadata(&self.path).is_ok_and(|m| m.len() >= MAX_BYTES) {
-            std::fs::rename(&self.path, self.rotated())?;
+            // 넘기지 못해도 (편집기가 열어 둔 Windows 등) 기록은 이어서 남긴다
+            if let Err(e) = std::fs::rename(&self.path, self.rotated()) {
+                tracing::warn!("[Audit] Could not rotate {}: {}", self.path.display(), e);
+            }
         }
         let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&self.path)?;
         writeln!(f, "{}", line)
@@ -189,6 +221,87 @@ pub fn record(event: Event<'_>) {
     }
 }
 
+/// 이름만 보고 비밀로 치는 낱말 (인자·명령 이름)
+const SECRET_WORDS: [&str; 6] = ["pass", "pwd", "token", "secret", "apikey", "api_key"];
+
+fn sensitive(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    SECRET_WORDS.iter().any(|w| name.contains(w))
+}
+
+const MASK: &str = "***";
+
+/// 기록하기 전에 비밀을 가린다 (A10 P3-1). `text`는 명령 원문이나 stdin 줄, `args`는 따로 받은 인자.
+/// - 모듈이 `password`로 선언한 명령 인자, 이름에 pass·token·secret 같은 낱말이 든 인자는 값을 가린다
+/// - 그런 인자를 받는 명령(이름·별명이나 `console_template`의 첫 낱말이 같은 줄)과 이름부터 비밀스러운
+///   명령은 첫 낱말 뒤를 모두 가린다
+/// - 인스턴스의 `password` 설정값과 REST 비밀번호는 어디에 나오든 가린다
+pub fn redact(
+    module: Option<&crate::supervisor::module_loader::ModuleMetadata>,
+    instance: Option<&crate::instance::ServerInstance>,
+    text: Option<&str>,
+    args: Option<&Value>,
+) -> (Option<String>, Option<Value>) {
+    use crate::supervisor::module_loader::CommandInput;
+    let secret_input = |i: &CommandInput| i.input_type.as_deref() == Some("password") || sensitive(&i.name);
+    let fields = module.and_then(|m| m.commands.as_ref()).map(|c| c.fields.as_slice()).unwrap_or(&[]);
+    let word = text.and_then(|t| t.split_whitespace().next()).unwrap_or("");
+    let field = module.filter(|_| !word.is_empty()).and_then(|m| crate::commands::find(m, word));
+    // 이 줄이 비밀 인자를 받는 명령의 콘솔 줄이면 인자 자리를 모른다: 첫 낱말 뒤를 모두 가린다
+    let whole = !word.is_empty()
+        && (sensitive(word)
+            || fields.iter().any(|f| {
+                f.inputs.iter().any(secret_input)
+                    && f.console_template.as_deref().and_then(|t| t.split_whitespace().next()).is_some_and(|t| t.eq_ignore_ascii_case(word))
+            }));
+    let inputs = field.map(|f| f.inputs.as_slice()).unwrap_or(&[]);
+    let secret_at = |i: usize| whole || inputs.get(i).is_some_and(secret_input);
+
+    let text = text.map(|t| {
+        let mut words = t.split_whitespace();
+        let first = words.next().unwrap_or("").to_string();
+        let rest: Vec<String> =
+            words.enumerate().map(|(i, w)| if secret_at(i) { MASK.to_string() } else { w.to_string() }).collect();
+        if whole && !rest.is_empty() {
+            format!("{} {}", first, MASK)
+        } else {
+            std::iter::once(first).chain(rest).collect::<Vec<_>>().join(" ")
+        }
+    });
+    let args = args.map(|a| match a {
+        Value::Array(items) => Value::Array(
+            items.iter().enumerate().map(|(i, v)| if secret_at(i) { json!(MASK) } else { v.clone() }).collect(),
+        ),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| {
+                    let secret = whole || sensitive(k) || inputs.iter().any(|i| i.name == *k && secret_input(i));
+                    (k.clone(), if secret { json!(MASK) } else { v.clone() })
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    });
+
+    // 설정해 둔 비밀값이 그대로 나오면 가린다 (짧은 값은 흔한 낱말과 겹치므로 뺀다)
+    let mut values: Vec<String> = instance.into_iter().flat_map(|inst| {
+        let settings = module.and_then(|m| m.settings.as_ref()).map(|s| s.fields.as_slice()).unwrap_or(&[]);
+        settings
+            .iter()
+            .filter(|f| f.field_type == "password" || sensitive(&f.name))
+            .filter_map(|f| inst.module_settings.get(&f.name).and_then(Value::as_str).map(str::to_string))
+            .chain(inst.rest_password.clone())
+            .collect::<Vec<_>>()
+    })
+    .filter(|v| v.chars().count() >= 4)
+    .collect();
+    values.sort_by_key(|v| std::cmp::Reverse(v.len()));
+    let scrub = |s: &str| values.iter().fold(s.to_string(), |acc, v| acc.replace(v.as_str(), MASK));
+    let text = text.map(|t| scrub(&t));
+    let args = args.map(|a| if values.is_empty() { a } else { serde_json::from_str(&scrub(&a.to_string())).unwrap_or(a) });
+    (text, args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,7 +311,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let log = AuditLog::at(dir.path().join("audit.log"));
         let cli = Origin::new("cli");
-        let discord = Origin { source: "discord".into(), user: Some("42".into()), guild: Some("7".into()) };
+        let discord = Origin { user: Some("42".into()), guild: Some("7".into()), user_name: Some("사바".into()), ..Origin::new("discord") };
         log.record(&cli, &Event { action: "start", instance_id: "a", instance: Some("마크"), ok: true, status: 200, ..Default::default() });
         let args = json!(["x".repeat(400)]);
         log.record(&discord, &Event { action: "command", instance_id: "b", command: Some("say"), args: Some(&args), ok: false, status: 400, ..Default::default() });
@@ -208,6 +321,8 @@ mod tests {
         assert_eq!(all[0]["source"], "discord");
         assert_eq!(all[0]["user"], "42");
         assert_eq!(all[0]["guild"], "7");
+        assert_eq!(all[0]["userName"], "사바");
+        assert!(all[0].get("guildName").is_none());
         assert!(all[0]["args"].as_str().unwrap().chars().count() <= MAX_TEXT + 1);
         assert_eq!(all[1]["instance"], "마크");
         assert!(all[1].get("user").is_none());
@@ -218,6 +333,54 @@ mod tests {
         log.record(&cli, &Event { action: "stop", instance_id: "a", ok: true, status: 200, ..Default::default() });
         let all = log.recent(10, None);
         assert_eq!(all.iter().map(|v| v["action"].as_str().unwrap()).collect::<Vec<_>>(), ["stop", "command", "start"]);
+    }
+
+    #[test]
+    fn secrets_are_masked_before_they_reach_the_log() {
+        let module = crate::supervisor::module_loader::parse_module_toml(
+            r#"
+[module]
+name = "game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[[settings.fields]]
+name = "admin_password"
+type = "password"
+
+[[commands.fields]]
+name = "setadmin"
+label = "setadmin"
+method = "console"
+console_template = "adminpass {user} {pw}"
+inputs = [{ name = "user", type = "text" }, { name = "pw", type = "password" }]
+
+[[commands.fields]]
+name = "say"
+label = "say"
+method = "console"
+console_template = "say {message}"
+inputs = [{ name = "message", type = "text" }]
+"#,
+        )
+        .expect("module.toml");
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.module_settings.insert("admin_password".into(), json!("hunter22"));
+
+        let r = |text: &str, args: Value| redact(Some(&module), Some(&inst), Some(text), Some(&args));
+        // 명령 정의의 password 인자: 자리로도 이름으로도
+        assert_eq!(r("setadmin", json!(["bob", "pw1"])), (Some("setadmin".into()), Some(json!(["bob", "***"]))));
+        assert_eq!(r("setadmin", json!({"user": "bob", "pw": "pw1"})).1, Some(json!({"user": "bob", "pw": "***"})));
+        assert_eq!(r("setadmin bob pw1", Value::Null).0.as_deref(), Some("setadmin bob ***"));
+        // 그 명령의 콘솔 줄(stdin)과 이름부터 비밀스러운 명령은 뒤를 통째로
+        assert_eq!(r("adminpass bob pw1", Value::Null).0.as_deref(), Some("adminpass ***"));
+        assert_eq!(r("rcon_password abc", Value::Null).0.as_deref(), Some("rcon_password ***"));
+        assert_eq!(r("say", json!({"token": "x", "message": "hi"})).1, Some(json!({"token": "***", "message": "hi"})));
+        // 설정해 둔 비밀번호는 어디에 나오든
+        assert_eq!(r("say my pw is hunter22", json!(["hunter22!"]),), (Some("say my pw is ***".into()), Some(json!(["***!"]))));
+        // 평범한 명령은 그대로
+        assert_eq!(r("say hello", json!(["hello"])), (Some("say hello".into()), Some(json!(["hello"]))));
+        assert_eq!(redact(None, None, Some("stop"), None), (Some("stop".into()), None));
     }
 
     #[tokio::test]
@@ -231,6 +394,8 @@ mod tests {
         h.insert("X-Saba-Client", "GUI".parse().unwrap());
         assert_eq!(Origin::from_headers(&h).source, "gui");
         h.insert("X-Saba-Client", "evil\"json".parse().unwrap());
+        assert_eq!(Origin::from_headers(&h).source, "api");
+        h.insert("X-Saba-Client", "discord".parse().unwrap());
         assert_eq!(Origin::from_headers(&h).source, "api");
     }
 }
