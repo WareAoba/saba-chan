@@ -131,6 +131,7 @@ export function ConnectionView({
     onDisconnect,
     onStartAgent,
     onStopAgent,
+    onInviteBot,
 }) {
     const { t } = useTranslation('gui');
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
@@ -145,10 +146,18 @@ export function ConnectionView({
                     <h1>{t('discord.connect_title')}</h1>
                     <p>{t('discord.connect_body')}</p>
                     {!pairing.active && (
-                        <button type="button" className="btn btn-primary btn-lg" onClick={onStartPairing}>
-                            <Icon name="plug" size="sm" /> {t('discord.pair_start')}
-                        </button>
+                        <div className="dc-hero-actions">
+                            {onInviteBot && (
+                                <button type="button" className="btn btn-secondary btn-lg" onClick={onInviteBot}>
+                                    <Icon name="externalLink" size="sm" /> {t('discord.invite_bot')}
+                                </button>
+                            )}
+                            <button type="button" className="btn btn-primary btn-lg" onClick={onStartPairing}>
+                                <Icon name="plug" size="sm" /> {t('discord.pair_start')}
+                            </button>
+                        </div>
                     )}
+                    {onInviteBot && !pairing.active && <p className="dc-hero-hint muted">{t('discord.invite_hint')}</p>}
                 </div>
                 {pairing.active && <PairingCard pairing={pairing} onCancel={onCancelPairing} />}
             </div>
@@ -228,6 +237,11 @@ export function ConnectionView({
                     <PairingCard pairing={pairing} onCancel={onCancelPairing} />
                 ) : (
                     <div className="dc-row-actions">
+                        {onInviteBot && (
+                            <button type="button" className="btn btn-ghost" onClick={onInviteBot}>
+                                <Icon name="externalLink" size="sm" /> {t('discord.invite_bot')}
+                            </button>
+                        )}
                         <button type="button" className="btn btn-secondary" onClick={onStartPairing}>
                             <Icon name="plus" size="sm" /> {t('discord.pair_start')}
                         </button>

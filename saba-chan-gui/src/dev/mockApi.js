@@ -136,6 +136,7 @@ const impl = {
             cloud: { relayUrl: 'https://relay.example', hostId: mockBot === 'stopped' ? '' : 'mock-host' },
             moduleAliases: { minecraft: '마크,mc' },
             commandAliases: {},
+            instanceAliases: { 'srv-1': '야생' },
             nodeSettings: {
                 'guild-1': {
                     allowedInstances: ['srv-1'],
@@ -218,6 +219,7 @@ const impl = {
                   ]
                 : [{ id: 'u-1', username: 'wareaoba', displayName: '아오바' }],
         ),
+    relayBotInvite: () => ok({ url: 'https://discord.com/oauth2/authorize?client_id=0&scope=bot' }),
     relayInitiatePairing: () =>
         ok({ code: 'K7Q2-M9', expiresAt: new Date(Date.now() + 297000).toISOString(), pollSecret: 'x' }),
     relayPollPairingStatus: () => ok({ status: 'pending' }),

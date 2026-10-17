@@ -57,6 +57,20 @@ describe('nodePermissions (데몬 src/chat/mod.rs 해석과 같다)', () => {
         expect(P.commandAliasClashes({ start: { aliases: ['켜'] }, stop: { aliases: ['꺼'] } })).toHaveLength(0);
     });
 
+    it('인스턴스 별명: 다른 서버 이름·별명이나 이 모듈 단어와 겹치면 찾아낸다', () => {
+        const servers = [
+            { id: 'a', name: '야생' },
+            { id: 'b', name: '건축' },
+            { id: 'c', name: '팰' },
+        ];
+        const saved = { c: '팰월드' };
+        expect(P.instanceAliasClashes({ a: ['건축'], b: [] }, servers, saved, ['minecraft', 'mc'])).toHaveLength(1);
+        expect(P.instanceAliasClashes({ a: ['팰월드'] }, servers, saved, ['mc'])).toHaveLength(1);
+        expect(P.instanceAliasClashes({ a: ['mc'] }, servers, saved, ['mc'])).toHaveLength(1);
+        expect(P.instanceAliasClashes({ a: ['야1'], b: ['야1'] }, servers, saved, [])).toHaveLength(1);
+        expect(P.instanceAliasClashes({ a: ['야1'], b: ['건1'] }, servers, saved, ['mc'])).toHaveLength(0);
+    });
+
     it('연결 상태', () => {
         expect(cloudStateOf({ hostId: '' })).toBe('no_host');
         expect(cloudStateOf({ hostId: 'h', connected: true })).toBe('connected');
@@ -210,5 +224,40 @@ describe('DiscordPage', () => {
         expect(window.showToast).toHaveBeenCalledWith(expect.stringContaining('EPERM'), 'error', 5000, undefined);
         expect(save).not.toHaveBeenCalled();
         expect(document.querySelector('.dc-danger-zone')).not.toBeNull();
+    });
+
+    it('서버별 별명을 칩으로 고치면 instanceAliases로 저장한다', async () => {
+        const botConfigSave = vi.fn().mockResolvedValue({});
+        window.api.botConfigLoad = vi.fn().mockResolvedValue({ prefix: '!saba', instanceAliases: { s2: '팰' } });
+        await act(async () =>
+            render(
+                <Harness
+                    save={vi.fn()}
+                    botConfigSave={botConfigSave}
+                    initialView={{ kind: 'words', module: 'minecraft' }}
+                />,
+            ),
+        );
+        const input = document.querySelector('input[aria-label="Aliases for 야생 서버"]');
+        await act(async () => fireEvent.change(input, { target: { value: '야생' } }));
+        await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
+        await act(async () => fireEvent.click(document.querySelector('.dc-savebar .btn-primary')));
+        expect(botConfigSave).toHaveBeenCalledWith(
+            expect.objectContaining({ instanceAliases: { s1: '야생', s2: '팰' } }),
+        );
+    });
+
+    it('봇 초대: 데몬이 준 초대 주소를 브라우저로 연다', async () => {
+        window.api.relayBotInvite = vi.fn().mockResolvedValue({ url: 'https://discord.com/invite-x' });
+        window.api.shell = { openExternal: vi.fn().mockResolvedValue({ success: true }) };
+        await act(async () => render(<Harness save={vi.fn()} />));
+        const btn = await waitFor(() => {
+            const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Invite the bot'));
+            expect(b).toBeTruthy();
+            return b;
+        });
+        await act(async () => fireEvent.click(btn));
+        expect(window.api.relayBotInvite).toHaveBeenCalledWith('https://saba-chan.online');
+        expect(window.api.shell.openExternal).toHaveBeenCalledWith('https://discord.com/invite-x');
     });
 });

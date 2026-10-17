@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { checkAliasConflicts } from '../../utils/validation';
 import { Icon } from '../Icon';
-import { aliasDraftFor, commandAliasClashes } from './nodePermissions';
+import { aliasDraftFor, commandAliasClashes, instanceAliasClashes, parseAliasList } from './nodePermissions';
 import { TagInput } from './TagInput';
 
 const sameList = (a, b) => a.length === b.length && a.every((w, i) => w === b[i]);
@@ -11,6 +11,8 @@ const sameList = (a, b) => a.length === b.length && a.every((w, i) => w === b[i]
 function isDirty(draft, base) {
     if (!draft || !base) return false;
     if (!sameList(draft.moduleAliases, base.moduleAliases)) return true;
+    if (Object.keys(draft.instances).some((id) => !sameList(draft.instances[id], base.instances[id] || [])))
+        return true;
     return Object.keys(draft.commands).some(
         (c) => !sameList(draft.commands[c].aliases, base.commands[c]?.aliases || []),
     );
@@ -18,6 +20,7 @@ function isDirty(draft, base) {
 
 /**
  * 모듈별 디스코드 명령어 단어: `!saba <모듈 단어> <명령 단어>`의 두 칸을 모듈마다 고친다.
+ * 같은 게임 서버가 여럿이면 모듈 단어 자리에 서버마다 별명을 줄 수 있다 (instanceAliases).
  */
 export function WordsView({
     modules,
@@ -27,6 +30,8 @@ export function WordsView({
     moduleAliasesPerModule,
     savedModuleAliases,
     savedCommandAliases,
+    servers = [],
+    savedInstanceAliases,
     onSave,
     onReset,
 }) {
@@ -37,12 +42,23 @@ export function WordsView({
         return list;
     }, [modules, moduleAliasesPerModule]);
     const current = names.includes(moduleName) ? moduleName : names[0];
+    const instances = useMemo(() => servers.filter((s) => s.module === current && s.id), [servers, current]);
     const base = useMemo(
         () =>
             current
-                ? aliasDraftFor(current, moduleAliasesPerModule?.[current], savedModuleAliases, savedCommandAliases)
+                ? {
+                      ...aliasDraftFor(
+                          current,
+                          moduleAliasesPerModule?.[current],
+                          savedModuleAliases,
+                          savedCommandAliases,
+                      ),
+                      instances: Object.fromEntries(
+                          instances.map((s) => [s.id, parseAliasList(savedInstanceAliases?.[s.id])]),
+                      ),
+                  }
                 : null,
-        [current, moduleAliasesPerModule, savedModuleAliases, savedCommandAliases],
+        [current, moduleAliasesPerModule, savedModuleAliases, savedCommandAliases, instances, savedInstanceAliases],
     );
     const [draft, setDraft] = useState(base);
     const [busy, setBusy] = useState(false);
@@ -63,6 +79,10 @@ export function WordsView({
         : [];
     const clashes = draft ? commandAliasClashes(draft.commands) : [];
     const badCmdWords = clashes.map((c) => c.alias);
+    const instClashes = draft
+        ? instanceAliasClashes(draft.instances, servers, savedInstanceAliases, [current, ...draft.moduleAliases])
+        : [];
+    const blocked = clashes.length > 0 || instClashes.length > 0;
     const firstModuleWord = draft?.moduleAliases[0] || current;
     const commandEntries = Object.entries(draft?.commands || {});
     const firstCmd = commandEntries[0];
@@ -99,7 +119,7 @@ export function WordsView({
                                 if (busy || n === current) return;
                                 if (dirty) {
                                     // 다른 모듈로 넘어가면 고친 내용이 사라지므로 먼저 저장한다 (겹치는 단어가 있으면 머문다)
-                                    if (clashes.length > 0) return;
+                                    if (blocked) return;
                                     run(() => onSave(current, draft)).then(() => onSelectModule(n));
                                     return;
                                 }
@@ -142,6 +162,41 @@ export function WordsView({
                     </p>
                 )}
             </section>
+
+            {instances.length > 0 && (
+                <section className="dc-card">
+                    <div className="dc-card-head">
+                        <h2>{t('discord.words_instances_title')}</h2>
+                    </div>
+                    <p className="dc-card-desc">{t('discord.words_instances_desc')}</p>
+                    <div className="dc-word-table">
+                        {instances.map((s) => (
+                            <div key={s.id} className="dc-word-row">
+                                <div className="dc-word-cmd">
+                                    <span className="dc-list-name">{s.name}</span>
+                                </div>
+                                <TagInput
+                                    value={draft?.instances[s.id] || []}
+                                    onChange={(v) =>
+                                        setDraft((d) => ({ ...d, instances: { ...d.instances, [s.id]: v } }))
+                                    }
+                                    placeholder={t('discord.words_add_placeholder')}
+                                    ariaLabel={t('discord.words_instance_aria', { name: s.name })}
+                                    invalid={instClashes.filter((c) => c.instance === s.name).map((c) => c.alias)}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                    {instClashes.length > 0 && (
+                        <p className="dc-field-error">
+                            <Icon name="alertTriangle" size="xs" />{' '}
+                            {instClashes
+                                .map((c) => t('discord.words_conflict_instance', { alias: c.alias, other: c.other }))
+                                .join(' · ')}
+                        </p>
+                    )}
+                </section>
+            )}
 
             <section className="dc-card">
                 <div className="dc-card-head">
@@ -209,7 +264,7 @@ export function WordsView({
                 <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={!dirty || busy || clashes.length > 0}
+                    disabled={!dirty || busy || blocked}
                     onClick={() => run(() => onSave(current, draft))}
                 >
                     <Icon name="save" size="sm" /> {t('discord.save')}

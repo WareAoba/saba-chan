@@ -158,3 +158,37 @@ export function commandAliasClashes(commands) {
     }
     return clashes;
 }
+
+/**
+ * 인스턴스 별명 충돌: 봇은 인스턴스 이름 → 인스턴스 별명 → 모듈 단어 순으로 찾으므로
+ * 한 단어가 두 인스턴스를 가리키거나, 이 모듈의 단어와 같으면 헷갈린다.
+ * @param {Record<string,string[]>} draft 이 모듈 인스턴스들의 별명 (편집 중)
+ * @param {Array<{id,name}>} servers 모든 인스턴스
+ * @param {Record<string,string>} savedInstanceAliases 저장된 전체 인스턴스 별명 ("a, b")
+ * @param {string[]} moduleWords 이 모듈의 단어 (모듈 이름 포함)
+ * @returns {Array<{alias:string, instance:string, other:string}>}
+ */
+export function instanceAliasClashes(draft, servers, savedInstanceAliases, moduleWords) {
+    const owner = new Map(); // 단어 → 가리키는 것 이름
+    const add = (word, who) => {
+        const k = word.toLowerCase();
+        if (!owner.has(k)) owner.set(k, who);
+    };
+    for (const s of servers) if (s.name) add(s.name, s.name);
+    for (const s of servers) {
+        if (Object.hasOwn(draft, s.id)) continue;
+        for (const a of parseAliasList(savedInstanceAliases?.[s.id])) add(a, s.name);
+    }
+    for (const w of moduleWords) add(w, w);
+    const clashes = [];
+    const nameOf = (id) => servers.find((s) => s.id === id)?.name || id;
+    for (const [id, words] of Object.entries(draft)) {
+        for (const w of words) {
+            const k = w.toLowerCase();
+            const other = owner.get(k);
+            if (other !== undefined && other !== nameOf(id)) clashes.push({ alias: w, instance: nameOf(id), other });
+            else owner.set(k, nameOf(id));
+        }
+    }
+    return clashes;
+}

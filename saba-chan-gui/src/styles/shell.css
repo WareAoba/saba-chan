@@ -2002,3 +2002,12 @@ button.appbar-preflight {
     font-variant-numeric: tabular-nums;
     color: var(--text-3);
 }
+.dc-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-2);
+}
+.dc-hero .dc-hero-hint {
+    font-size: var(--fs-sm);
+}

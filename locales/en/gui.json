@@ -800,6 +800,13 @@
     "usage_list": "Server list and status",
     "usage_start_word": "start",
     "usage_command": "Module word + command word",
-    "disconnect_failed": "Couldn't disconnect: {{error}}. The bot may still accept commands."
+    "disconnect_failed": "Couldn't disconnect: {{error}}. The bot may still accept commands.",
+    "invite_bot": "Invite the bot",
+    "invite_hint": "If the Saba-chan bot isn't in your Discord server yet, invite it first.",
+    "invite_failed": "Couldn't open the invite link: {{error}}",
+    "words_instances_title": "Server aliases",
+    "words_instances_desc": "When you run several servers of the same game, give each one its own word in place of the module word. The bot looks up server name, then server alias, then module word.",
+    "words_instance_aria": "Aliases for {{name}}",
+    "words_conflict_instance": "'{{alias}}' is already used by {{other}}"
   }
 }

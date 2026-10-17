@@ -247,37 +247,72 @@ export function DiscordPage({
         saveCurrentSettings();
     };
 
+    // ── 봇 초대: 데몬이 릴레이의 초대 주소를 받아 온다 (GET /api/relay/bot-invite) ──
+    const inviteBot = window.api?.relayBotInvite
+        ? async () => {
+              try {
+                  const res = await window.api.relayBotInvite(relayUrl);
+                  const url = res?.url || res?.inviteUrl || res?.invite_url;
+                  if (!url) throw new Error(res?.error || 'no invite url');
+                  const opened = await window.api.shell?.openExternal?.(url);
+                  if (opened?.error) throw new Error(opened.error);
+              } catch (e) {
+                  safeShowToast(t('discord.invite_failed', { error: e.message }), 'error', 4000);
+              }
+          }
+        : null;
+
+    // 인스턴스 별명은 디스코드 페이지에서만 쓰므로 스토어 대신 여기서 bot-config를 직접 읽는다
+    const [instanceAliases, setInstanceAliases] = useState({});
+    useEffect(() => {
+        let alive = true;
+        Promise.resolve(window.api?.botConfigLoad?.())
+            .then((cfg) => alive && setInstanceAliases(cfg?.instanceAliases || {}))
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+    }, []);
+
     // ── 명령어 단어 저장 (bot-config의 별명 키만 보낸다; 데몬이 최상위 키 단위로 병합) ──
     const persistAliases = async (mutate, okMsg) => {
         try {
             const current = (await window.api.botConfigLoad()) || {};
             const moduleAliases = { ...(current.moduleAliases || {}) };
             const commandAliases = { ...(current.commandAliases || {}) };
-            mutate(moduleAliases, commandAliases);
+            const instanceAliases = { ...(current.instanceAliases || {}) };
+            mutate(moduleAliases, commandAliases, instanceAliases);
             const res = await window.api.botConfigSave({
                 prefix: current.prefix || discordPrefix || '!saba',
                 moduleAliases,
                 commandAliases,
+                instanceAliases,
             });
             if (res?.error) throw new Error(res.error);
             setDiscordModuleAliases(moduleAliases);
             setDiscordCommandAliases(commandAliases);
+            setInstanceAliases(instanceAliases);
             safeShowToast(okMsg, 'success', 2500);
         } catch (e) {
             safeShowToast(t('discord.words_save_failed', { error: e.message }), 'error', 4000);
         }
     };
     const saveWords = (moduleName, draft) =>
-        persistAliases((ma, ca) => {
+        persistAliases((ma, ca, ia) => {
+            for (const [id, words] of Object.entries(draft.instances || {})) {
+                if (words.length) ia[id] = words.join(',');
+                else delete ia[id];
+            }
             ma[moduleName] = draft.moduleAliases.join(',');
             ca[moduleName] = Object.fromEntries(
                 Object.entries(draft.commands).map(([cmd, d]) => [cmd, d.aliases.join(',')]),
             );
         }, t('discord.words_saved'));
     const resetWords = (moduleName) =>
-        persistAliases((ma, ca) => {
+        persistAliases((ma, ca, ia) => {
             delete ma[moduleName];
             delete ca[moduleName];
+            for (const s of servers) if (s.module === moduleName) delete ia[s.id];
         }, t('discord.words_reset_done'));
 
     // ── 명령 목록 / 위험도 ──
@@ -445,6 +480,7 @@ export function DiscordPage({
                                 onDisconnect={disconnect}
                                 onStartAgent={handleStartDiscordBot}
                                 onStopAgent={handleStopDiscordBot}
+                                onInviteBot={inviteBot}
                             />
                         )}
                         {view.kind === 'node' && currentNode && (
@@ -474,6 +510,8 @@ export function DiscordPage({
                                 moduleAliasesPerModule={moduleAliasesPerModule}
                                 savedModuleAliases={discordModuleAliases}
                                 savedCommandAliases={discordCommandAliases}
+                                servers={servers}
+                                savedInstanceAliases={instanceAliases}
                                 onSave={saveWords}
                                 onReset={resetWords}
                             />
