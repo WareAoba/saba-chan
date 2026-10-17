@@ -39,8 +39,7 @@ use crate::utils::apply_creation_flags;
 // python-build-standalone: https://github.com/indygreg/python-build-standalone
 // `install_only_stripped` 변형: pip/venv 포함, 디버그 심볼 제거 (~20 MB)
 
-const PYTHON_VERSION: &str = "3.12.8";
-const PYTHON_RELEASE_TAG: &str = "20250106";
+use saba_chan_updater_lib::python_pin::PYTHON_VERSION;
 
 /// 시스템 Python 사용 시 최소 요구 버전
 const MIN_PYTHON_VERSION: (u32, u32) = (3, 10);
@@ -230,43 +229,14 @@ async fn find_base_python(data_dir: &Path) -> Result<String> {
     Ok(exe.to_string_lossy().into_owned())
 }
 
-/// python-build-standalone 다운로드 URL 생성
-fn python_download_url() -> Result<String> {
-    // 환경변수 오버라이드 (미러, 사내망 등)
-    if let Ok(custom_url) = std::env::var("SABA_PYTHON_URL") {
-        return Ok(custom_url);
-    }
-
-    let triple = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        "x86_64-pc-windows-msvc"
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        "x86_64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        "aarch64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        "x86_64-apple-darwin"
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "aarch64-apple-darwin"
-    } else {
-        return Err(anyhow::anyhow!(
-            "이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다. \
-             Python {}.{} 이상을 수동으로 설치해 주세요.",
-            MIN_PYTHON_VERSION.0,
-            MIN_PYTHON_VERSION.1
-        ));
-    };
-
-    Ok(format!(
-        "https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz",
-        tag = PYTHON_RELEASE_TAG,
-        ver = PYTHON_VERSION,
-        triple = triple,
-    ))
-}
-
 /// 포터블 Python 다운로드 → 추출 → 검증
 async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
-    let url = python_download_url()?;
+    let (url, sha256) = saba_chan_updater_lib::python_pin::download().ok_or_else(|| anyhow::anyhow!(
+        "이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다. \
+         Python {}.{} 이상을 수동으로 설치해 주세요.",
+        MIN_PYTHON_VERSION.0,
+        MIN_PYTHON_VERSION.1
+    ))?;
     let portable_dir = data_dir.join(PORTABLE_DIR_NAME);
     let tmp_archive = data_dir.join("_python_download.tar.gz");
 
@@ -283,6 +253,12 @@ async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
             "Python 다운로드 실패. \
              인터넷 연결을 확인하거나, Python 3.10 이상을 수동 설치해 주세요.",
         )?;
+
+    // 고정 해시와 다르면 풀지 않는다 (C6)
+    if let Err(e) = saba_chan_updater_lib::python_pin::verify(&tmp_archive, sha256.as_deref()) {
+        let _ = std::fs::remove_file(&tmp_archive);
+        return Err(anyhow::anyhow!(e));
+    }
 
     // ── 추출 ──
     tracing::info!("포터블 Python 추출 중...");
@@ -577,7 +553,8 @@ mod tests {
 
     #[test]
     fn test_python_download_url_format() {
-        let url = python_download_url().unwrap();
+        let (url, sha) = saba_chan_updater_lib::python_pin::download().unwrap();
+        assert!(sha.is_some_and(|s| s.len() == 64) || std::env::var("SABA_PYTHON_URL").is_ok());
         assert!(url.contains("python-build-standalone"));
         assert!(url.contains(PYTHON_VERSION));
         assert!(url.ends_with(".tar.gz"));

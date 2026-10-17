@@ -12,8 +12,7 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 // ── Python 버전 (메인 앱과 동일) ────────────────────────────────
-const PYTHON_VERSION: &str = "3.12.8";
-const PYTHON_RELEASE_TAG: &str = "20250106";
+use saba_chan_updater_lib::python_pin::PYTHON_VERSION;
 const PORTABLE_PYTHON_DIR: &str = "python-standalone";
 const VENV_DIR_NAME: &str = "python-env";
 
@@ -40,14 +39,19 @@ pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
             let _ = std::fs::remove_dir_all(&portable_dir);
         }
 
-        let url = python_download_url()
-            .map_err(|e| format!("Python 다운로드 URL 생성 실패: {}", e))?;
+        let (url, sha256) = saba_chan_updater_lib::python_pin::download()
+            .ok_or_else(|| "이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다".to_string())?;
 
         let tmp_archive = data_dir.join("_python_download.tar.gz");
 
         download_file(&url, &tmp_archive)
             .await
             .map_err(|e| format!("Python 다운로드 실패: {}", e))?;
+        // 고정 해시와 다르면 풀지 않는다
+        if let Err(e) = saba_chan_updater_lib::python_pin::verify(&tmp_archive, sha256.as_deref()) {
+            let _ = std::fs::remove_file(&tmp_archive);
+            return Err(e);
+        }
 
         std::fs::create_dir_all(&portable_dir)
             .map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
@@ -150,29 +154,6 @@ pub async fn setup_python_with_repair(data_dir: &Path) -> Result<PathBuf, String
 // ═══════════════════════════════════════════════════════════════
 //  URL 생성
 // ═══════════════════════════════════════════════════════════════
-
-fn python_download_url() -> Result<String, String> {
-    let triple = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        "x86_64-pc-windows-msvc"
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        "x86_64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        "aarch64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        "x86_64-apple-darwin"
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "aarch64-apple-darwin"
-    } else {
-        return Err("이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다".into());
-    };
-
-    Ok(format!(
-        "https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz",
-        tag = PYTHON_RELEASE_TAG,
-        ver = PYTHON_VERSION,
-        triple = triple,
-    ))
-}
 
 // ═══════════════════════════════════════════════════════════════
 //  다운로드 & 추출 (OS 네이티브 도구)
