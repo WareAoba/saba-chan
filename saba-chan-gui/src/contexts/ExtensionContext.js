@@ -10,6 +10,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { clearModuleAuditCache } from '../components/servers/ModuleAuditNotice';
 import i18n from '../i18n';
 import { safeShowToast } from '../utils/helpers';
 
@@ -114,6 +115,8 @@ export function ExtensionProvider({ children }) {
     const fetchExtensions = useCallback(async () => {
         try {
             const data = await window.api.extensionList();
+            // 설치·업데이트·삭제·재검색 뒤 목록이 바뀌면 코드 검사도 다시 한다
+            clearModuleAuditCache();
             setExtensions(data.extensions || []);
         } catch (e) {
             console.warn('[Extension] Failed to fetch extensions:', e);

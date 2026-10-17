@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     clearModuleAuditCache,
@@ -50,5 +50,18 @@ describe('ModuleAuditNotice (데몬 M12)', () => {
         expect(await screen.findByText("Extension 'Music' uses capabilities it doesn't declare.")).toBeTruthy();
         expect(screen.getByText(/running dynamic code/)).toBeTruthy();
         expect(window.api.extensionAudit).toHaveBeenCalledWith('music');
+    });
+
+    it('캐시를 비우면 떠 있는 경고도 다시 묻고, 파일 단위 항목은 줄 번호 없이 보인다', async () => {
+        window.api.moduleAudit = vi
+            .fn()
+            .mockResolvedValueOnce({ undeclared: [] })
+            .mockResolvedValue({ undeclared: [{ permission: 'opaque_code', file: 'helper.pyc', line: 0 }] });
+        render(<ModuleAuditNotice moduleName="game" />);
+        await waitFor(() => expect(window.api.moduleAudit).toHaveBeenCalledTimes(1));
+        act(() => clearModuleAuditCache());
+        expect(await screen.findByText(/compiled code with no source/)).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Details (1)' }));
+        expect(screen.getByText('helper.pyc')).toBeTruthy();
     });
 });
