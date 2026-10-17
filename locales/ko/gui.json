@@ -104,7 +104,13 @@
     "console_font_scale_label": "콘솔 텍스트 크기",
     "console_font_scale_description": "콘솔 텍스트 크기를 조정합니다 (50%–200%)",
     "reset_theme_label": "기본값으로 초기화",
-    "reset_theme_description": "모든 외관 설정을 기본값으로 복원합니다"
+    "reset_theme_description": "모든 외관 설정을 기본값으로 복원합니다",
+    "reset_gui_label": "GUI 설정 초기화",
+    "reset_gui_description": "테마, 색, 글자 크기, 새로고침 주기 같은 GUI 설정을 처음 값으로 되돌려요. 서버와 디스코드 설정은 그대로예요.",
+    "reset_gui_button": "초기화",
+    "reset_gui_confirm": "한 번 더 누르면 초기화",
+    "reset_gui_done": "GUI 설정을 처음 값으로 되돌렸어요",
+    "reset_gui_failed": "설정을 초기화하지 못했어요"
   },
   "add_server_modal": {
     "title": "새 서버 추가",
@@ -374,7 +380,15 @@
     "extension_required_message": "서버 '{{name}}'에 필요한 확장 기능이 활성화되어 있지 않습니다.",
     "extension_required_message_detail": "서버 '{{name}}'에 다음 확장 기능이 필요합니다: {{extensions}}. 설정 → 확장 기능에서 활성화해 주세요.",
     "extension_open_settings": "확장 기능 설정 열기",
-    "start_in_progress": "'{{name}}'은(는) 이미 켜는 중이에요. 조금만 기다려 주세요."
+    "start_in_progress": "'{{name}}'은(는) 이미 켜는 중이에요. 조금만 기다려 주세요.",
+    "restart_confirm_title": "서버 재시작",
+    "restart_confirm_message": "'{{name}}' 서버를 껐다가 다시 켤까요? 접속한 사람은 잠시 끊겨요.",
+    "restarting_toast": "'{{name}}' 재시작 중…",
+    "restart_completed_toast": "'{{name}}'을(를) 다시 켰어요",
+    "restart_failed_toast": "재시작하지 못했어요: {{error}}",
+    "rename_failed_toast": "이름을 바꾸지 못했어요: {{error}}",
+    "rename_name_taken": "'{{name}}' 이름은 이미 있어요",
+    "rename_server_running": "켜져 있는 서버는 이름을 바꿀 수 없어요"
   },
   "settings": {
     "save_failed_title": "설정 저장 실패",
@@ -661,7 +675,9 @@
     "exit_in_game_stop": "게임 안에서 끔",
     "exit_crash": "크래시",
     "exit_unknown_exit": "이유 모름",
-    "exit_restart_in": "{{secs}}초 뒤 다시 켬"
+    "exit_restart_in": "{{secs}}초 뒤 다시 켬",
+    "restart": "재시작",
+    "rename": "이름 바꾸기"
   },
   "discord": {
     "nav_connection": "연결",

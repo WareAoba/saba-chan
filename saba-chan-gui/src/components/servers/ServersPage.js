@@ -24,6 +24,8 @@ export function ServersPage({
     onAddServer,
     onStart,
     onStop,
+    onRestart,
+    onRename,
     onDelete,
     setModal,
     drag,
@@ -151,6 +153,8 @@ export function ServersPage({
                         formatUptime={formatUptime}
                         onStart={onStart}
                         onStop={onStop}
+                        onRestart={onRestart}
+                        onRename={onRename}
                         onDelete={onDelete}
                         onBack={singleColumn ? () => setShowDetailNarrow(false) : null}
                         setModal={setModal}

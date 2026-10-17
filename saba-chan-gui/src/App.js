@@ -139,7 +139,7 @@ function App() {
     const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
     const handleStopDiscordBot = useDiscordStore((s) => s.stopBot);
 
-    const { fetchServers, handleStart, handleStop, handleAddServer, handleDeleteServer } =
+    const { fetchServers, handleStart, handleStop, handleRestart, handleRename, handleAddServer, handleDeleteServer } =
         useServerActions({
             servers,
             setServers,
@@ -732,6 +732,8 @@ function App() {
                             onAddServer={() => setShowModuleManager(true)}
                             onStart={handleStart}
                             onStop={handleStop}
+                            onRestart={handleRestart}
+                            onRename={handleRename}
                             onDelete={handleDeleteServer}
                             setModal={setModal}
                             drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}

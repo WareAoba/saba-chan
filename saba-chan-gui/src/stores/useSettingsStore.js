@@ -90,6 +90,20 @@ export const useSettingsStore = create((set, get) => ({
         }
     },
 
+    /** GUI 설정을 데몬 기본값으로 되돌리고 다시 읽는다 (창 위치·언어는 데몬이 정한 대로) */
+    resetToDefaults: async () => {
+        if (!window.api?.configReset) return false;
+        try {
+            const res = await window.api.configReset('gui');
+            if (res?.ok === false) return false;
+            await get().load();
+            return true;
+        } catch (error) {
+            console.error('[Settings] Failed to reset settings:', error);
+            return false;
+        }
+    },
+
     save: async () => {
         const state = get();
         if (!state.settingsPath) {

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
+import { useInstanceCommands } from '../../hooks/useInstanceCommands';
 import { useModalClose } from '../../hooks/useModalClose';
 import { needsConfirm } from '../../utils/commandRisk';
 import { createTranslateError } from '../../utils/helpers';
@@ -22,9 +23,9 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
     const inputRef = useRef(null);
     const historyEndRef = useRef(null);
 
-    // 모듈 명령어 목록
+    // 모듈 명령 + 켜진 익스텐션이 주는 명령
     const currentModule = modules.find((m) => m.name === server.module);
-    const commands = currentModule?.commands?.fields || [];
+    const commands = useInstanceCommands(server, currentModule?.commands?.fields || []);
 
     // 입력값 기준 필터링된 힌트
     const filteredHints = commandInput.trim()
@@ -197,6 +198,11 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                                 title={cmd.description}
                             >
                                 <span className="cmd-hint-name">{cmd.name}</span>
+                                {cmd.source === 'extension' && (
+                                    <span className="cmd-source" title={cmd.extension}>
+                                        <Icon name="extension" size="xs" /> {cmd.extension}
+                                    </span>
+                                )}
                                 {cmd.risk && cmd.risk !== 'safe' && (
                                     <span className={clsx('cmd-risk', `risk-${cmd.risk}`)}>
                                         {t(`shell.risk_${cmd.risk}`)}

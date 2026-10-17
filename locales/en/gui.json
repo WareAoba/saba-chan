@@ -104,7 +104,13 @@
     "console_font_scale_label": "Console Text Size",
     "console_font_scale_description": "Adjust the console text size (50%–200%)",
     "reset_theme_label": "Reset to Default",
-    "reset_theme_description": "Restore all appearance settings to defaults"
+    "reset_theme_description": "Restore all appearance settings to defaults",
+    "reset_gui_label": "Reset GUI settings",
+    "reset_gui_description": "Restores GUI settings such as theme, colors, font size and refresh interval. Server and Discord settings stay as they are.",
+    "reset_gui_button": "Reset",
+    "reset_gui_confirm": "Click again to reset",
+    "reset_gui_done": "GUI settings restored to defaults",
+    "reset_gui_failed": "Couldn't reset settings"
   },
   "add_server_modal": {
     "title": "Add New Server",
@@ -374,7 +380,15 @@
     "extension_required_message": "Server '{{name}}' requires an extension that is not currently enabled.",
     "extension_required_message_detail": "Server '{{name}}' requires the following extension(s): {{extensions}}. Enable them in Settings → Extensions first.",
     "extension_open_settings": "Open Extension Settings",
-    "start_in_progress": "'{{name}}' is already starting. Hang on a moment."
+    "start_in_progress": "'{{name}}' is already starting. Hang on a moment.",
+    "restart_confirm_title": "Restart server",
+    "restart_confirm_message": "Stop and start '{{name}}' again? Connected players will be dropped for a moment.",
+    "restarting_toast": "Restarting '{{name}}'…",
+    "restart_completed_toast": "'{{name}}' restarted",
+    "restart_failed_toast": "Couldn't restart: {{error}}",
+    "rename_failed_toast": "Couldn't rename: {{error}}",
+    "rename_name_taken": "'{{name}}' is already taken",
+    "rename_server_running": "Stop the server before renaming it"
   },
   "settings": {
     "save_failed_title": "Settings save failed",
@@ -661,7 +675,9 @@
     "exit_in_game_stop": "Stopped in game",
     "exit_crash": "Crash",
     "exit_unknown_exit": "Unknown",
-    "exit_restart_in": "Restarting in {{secs}}s"
+    "exit_restart_in": "Restarting in {{secs}}s",
+    "restart": "Restart",
+    "rename": "Rename"
   },
   "discord": {
     "nav_connection": "Connection",

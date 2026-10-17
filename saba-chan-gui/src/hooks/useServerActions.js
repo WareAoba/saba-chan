@@ -487,7 +487,11 @@ export function useServerActions({
                     const useGraceful = srv?.module_settings?.graceful_stop;
                     const forceStop = useGraceful === false;
 
-                    const result = await window.api.serverStop(name, { force: forceStop });
+                    // id로 정지 (이름이 바뀌어도 안전). 옛 데몬·IPC면 이름으로
+                    const result =
+                        srv?.id && window.api.instanceStop
+                            ? await window.api.instanceStop(srv.id, { force: forceStop })
+                            : await window.api.serverStop(name, { force: forceStop });
 
                     // ── extension_required 처리 ──
                     if (result.action_required === 'extension_required') {
@@ -580,6 +584,70 @@ export function useServerActions({
             },
             onCancel: () => setModal(null),
         });
+    };
+
+    // ── handleRestart: 데몬이 프로세스가 끝나길 기다렸다가 다시 켠다 ──
+    const handleRestart = async (name) => {
+        const srv = servers.find((s) => s.name === name);
+        if (!srv?.id || !window.api.instanceRestart) return;
+        setModal({
+            type: 'question',
+            title: t('servers.restart_confirm_title'),
+            message: t('servers.restart_confirm_message', { name }),
+            onConfirm: async () => {
+                setModal(null);
+                optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
+                setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
+                guiInitiatedOpsRef.current.add(name);
+                setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
+                try {
+                    const force = srv.module_settings?.graceful_stop === false;
+                    const result = await window.api.instanceRestart(srv.id, { force });
+                    if (result?.error || result?.success === false) {
+                        revertOptimistic(name);
+                        const msg = translateError(result.error || result.message || '');
+                        safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
+                    } else {
+                        safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
+                    }
+                } catch (error) {
+                    revertOptimistic(name);
+                    safeShowToast(
+                        t('servers.restart_failed_toast', { error: translateError(error.message) }),
+                        'error',
+                        4000,
+                    );
+                } finally {
+                    setProgressBar(null);
+                    fetchServers();
+                }
+            },
+            onCancel: () => setModal(null),
+        });
+    };
+
+    // ── handleRename: 꺼져 있을 때만 (데몬이 server_running으로 거절) ──
+    const handleRename = async (id, newName) => {
+        const name = (newName || '').trim();
+        const srv = servers.find((s) => s.id === id);
+        if (!srv || !name || name === srv.name || !window.api.instanceRename) return false;
+        try {
+            const result = await window.api.instanceRename(id, name);
+            if (result?.success) {
+                setServers((prev) => prev.map((s) => (s.id === id ? { ...s, name: result.name || name } : s)));
+                fetchServers();
+                return true;
+            }
+            const code = result?.error_code;
+            const msg =
+                code === 'name_taken' || code === 'server_running'
+                    ? t(`servers.rename_${code}`, { name })
+                    : translateError(result?.error || '');
+            safeShowToast(t('servers.rename_failed_toast', { error: msg }), 'error', 4000);
+        } catch (error) {
+            safeShowToast(t('servers.rename_failed_toast', { error: translateError(error.message) }), 'error', 4000);
+        }
+        return false;
     };
 
     // ── handleStatus ────────────────────────────────────────
@@ -735,6 +803,8 @@ export function useServerActions({
         fetchServers,
         handleStart,
         handleStop,
+        handleRestart,
+        handleRename,
         handleStatus,
         handleAddServer,
         handleDeleteServer,

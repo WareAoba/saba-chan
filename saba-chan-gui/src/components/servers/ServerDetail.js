@@ -28,6 +28,8 @@ export function ServerDetail({
     formatUptime,
     onStart,
     onStop,
+    onRestart,
+    onRename,
     onDelete,
     onBack,
     setModal,
@@ -113,9 +115,22 @@ export function ServerDetail({
             );
         }
         return action === 'stop' ? (
-            <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.name)}>
-                <Icon name="stop" size="sm" /> {t('shell.stop')}
-            </button>
+            <>
+                {onRestart && window.api?.instanceRestart && (
+                    <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => onRestart(server.name)}
+                        title={t('shell.restart')}
+                        aria-label={t('shell.restart')}
+                    >
+                        <Icon name="refresh" size="sm" />
+                    </button>
+                )}
+                <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.name)}>
+                    <Icon name="stop" size="sm" /> {t('shell.stop')}
+                </button>
+            </>
         ) : (
             <button
                 type="button"
@@ -144,7 +159,7 @@ export function ServerDetail({
                     {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
                 </div>
                 <div className="detail-title">
-                    <h1>{server.name}</h1>
+                    <ServerName server={server} canRename={!!onRename && status === 'stopped'} onRename={onRename} />
                     <div className="detail-sub">
                         <span>{gameName}</span>
                         {server.server_version && <span className="tag">{server.server_version}</span>}
@@ -286,6 +301,73 @@ export function ServerDetail({
                 />
             )}
         </section>
+    );
+}
+
+/**
+ * 서버 이름. 꺼져 있을 때 연필을 누르면 그 자리에서 고친다 (Enter 저장, Esc 취소).
+ * 켜진 서버는 데몬이 이름 바꾸기를 거절하므로 연필을 숨긴다.
+ */
+function ServerName({ server, canRename, onRename }) {
+    const { t } = useTranslation('gui');
+    const [editing, setEditing] = useState(false);
+    const [value, setValue] = useState(server.name);
+    const [saving, setSaving] = useState(false);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 다른 서버로 바뀌면 편집을 끝낸다
+    useEffect(() => {
+        setEditing(false);
+        setValue(server.name);
+    }, [server.id, server.name]);
+
+    if (!editing) {
+        return (
+            <h1 className="detail-name">
+                <span>{server.name}</span>
+                {canRename && window.api?.instanceRename && (
+                    <button
+                        type="button"
+                        className="icon-btn detail-rename"
+                        onClick={() => setEditing(true)}
+                        title={t('shell.rename')}
+                        aria-label={t('shell.rename')}
+                    >
+                        <Icon name="edit" size="sm" />
+                    </button>
+                )}
+            </h1>
+        );
+    }
+    const commit = async () => {
+        if (saving) return;
+        const next = value.trim();
+        if (!next || next === server.name) {
+            setEditing(false);
+            setValue(server.name);
+            return;
+        }
+        setSaving(true);
+        const ok = await onRename(server.id, next);
+        setSaving(false);
+        if (ok) setEditing(false);
+    };
+    return (
+        <input
+            className="input detail-name-input"
+            value={value}
+            disabled={saving}
+            aria-label={t('shell.rename')}
+            // biome-ignore lint/a11y/noAutofocus: 연필을 누른 직후 바로 입력하게
+            autoFocus
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') {
+                    setValue(server.name);
+                    setEditing(false);
+                }
+            }}
+        />
     );
 }
 

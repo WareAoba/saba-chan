@@ -158,6 +158,30 @@ const impl = {
             },
         });
     },
+    instanceStop: (id) => {
+        servers = servers.map((s) => (s.id === id ? { ...s, status: 'stopped', start_time: null } : s));
+        return ok({ success: true });
+    },
+    instanceRestart: (id) => {
+        servers = servers.map((s) => (s.id === id ? { ...s, status: 'running', start_time: now() } : s));
+        return ok({ success: true, stopped: true });
+    },
+    instanceRename: (id, name) => {
+        if (servers.some((s) => s.name === name && s.id !== id)) return ok({ success: false, error_code: 'name_taken' });
+        servers = servers.map((s) => (s.id === id ? { ...s, name } : s));
+        return ok({ success: true, id, name });
+    },
+    instanceCommands: (id) => {
+        const srv = servers.find((s) => s.id === id);
+        const mod = modules.find((m) => m.name === srv?.module);
+        return ok({
+            commands: [
+                ...(mod?.commands?.fields || []).map((f) => ({ ...f, risk: f.risk || 'caution', source: 'module' })),
+                { name: 'backup-now', label: '지금 백업', risk: 'caution', source: 'extension', extension: 'world-backup' },
+            ],
+        });
+    },
+    configReset: () => ok({ ok: true, config: {} }),
     relayListHostNodes: () =>
         ok([
             { guildId: 'guild-1', guildName: '사바 마을' },

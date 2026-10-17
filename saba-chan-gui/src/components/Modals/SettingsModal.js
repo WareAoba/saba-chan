@@ -18,6 +18,7 @@ import {
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { safeShowToast } from '../../utils/helpers';
 import { SabaToggle } from '../ui/SabaUI';
 import SabaStorage from './SabaStorage';
 
@@ -1084,6 +1085,9 @@ function SettingsModal({
                                 </div>
                             )}
 
+                            {/* GUI 설정 기본값으로 (데몬 /api/config/gui/reset) */}
+                            {window.api?.configReset && <ResetGuiSettings />}
+
                             {/* 사바쨩 삭제 */}
                             <div className="setting-item setting-item-danger" onClick={handleUninstall}>
                                 <label className="setting-label" style={{ cursor: 'pointer' }}>
@@ -1203,3 +1207,43 @@ function SettingsModal({
 }
 
 export default SettingsModal;
+
+/** 두 번 눌러야 실행되는 "GUI 설정 기본값으로" 줄 */
+function ResetGuiSettings() {
+    const { t } = useTranslation(['gui']);
+    const [armed, setArmed] = useState(false);
+    const [busy, setBusy] = useState(false);
+    return (
+        <div className="setting-item">
+            <label className="setting-label">
+                <span className="setting-title">
+                    <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_gui_label')}
+                </span>
+                <span className="setting-description">{t('gui:settings_modal.reset_gui_description')}</span>
+            </label>
+            <button
+                type="button"
+                className={clsx('btn', armed ? 'btn-danger' : 'btn-secondary')}
+                disabled={busy}
+                onBlur={() => setArmed(false)}
+                onClick={async () => {
+                    if (!armed) {
+                        setArmed(true);
+                        return;
+                    }
+                    setBusy(true);
+                    const ok = await useSettingsStore.getState().resetToDefaults();
+                    setBusy(false);
+                    setArmed(false);
+                    safeShowToast(
+                        t(ok ? 'gui:settings_modal.reset_gui_done' : 'gui:settings_modal.reset_gui_failed'),
+                        ok ? 'success' : 'error',
+                        3000,
+                    );
+                }}
+            >
+                {armed ? t('gui:settings_modal.reset_gui_confirm') : t('gui:settings_modal.reset_gui_button')}
+            </button>
+        </div>
+    );
+}
