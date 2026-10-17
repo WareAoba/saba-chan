@@ -70,7 +70,7 @@ describe('데몬 이벤트 스트림', () => {
             'Backed up Survival (Scheduled).',
         );
         expect(
-            eventToast({ type: 'backup.done', data: { kind: 'manual', ok: false, error: 'disk full' } }, t, nameOf)
+            eventToast({ type: 'backup.done', data: { kind: 'scheduled', ok: false, error: 'disk full' } }, t, nameOf)
                 .type,
         ).toBe('error');
         expect(eventToast({ type: 'mystery', data: {} }, t)).toBeNull();

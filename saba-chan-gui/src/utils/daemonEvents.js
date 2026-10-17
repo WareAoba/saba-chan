@@ -1,4 +1,4 @@
-import { activityText } from '../components/shell/ActivityBar';
+import { auditWhat } from '../components/servers/AuditTab';
 import { safeShowToast } from './helpers';
 
 /** 데몬 이벤트 스트림 (P4: GET /api/events → main.js → preload onDaemonEvent) */
@@ -46,7 +46,9 @@ export function eventToast(ev, t, nameOf = (id) => id) {
         case 'action.run': {
             if (d.source !== 'discord') return null;
             // 출처는 문구에 이미 있다 ("디스코드에서 실행")
-            const text = activityText({ ...auditEntryOf(d), source: undefined }, t);
+            const text = [d.userName || d.user, d.instance || d.instanceId, auditWhat(d, t)]
+                .filter(Boolean)
+                .join(' · ');
             return d.ok
                 ? { message: t('events.remote_action', { text }), type: 'info', duration: 5000 }
                 : {
@@ -67,6 +69,8 @@ export function eventToast(ev, t, nameOf = (id) => id) {
             };
         }
         case 'backup.done': {
+            // 직접 백업은 시킨 쪽(GUI 토스트, 디스코드면 action.run)이 이미 알린다
+            if (d.kind === 'manual') return null;
             const name = nameOf(d.instanceId);
             if (!d.ok) {
                 return {
@@ -75,7 +79,6 @@ export function eventToast(ev, t, nameOf = (id) => id) {
                     duration: 8000,
                 };
             }
-            if (d.kind === 'manual') return null;
             const kind = t(`maintenance.kind_${d.kind}`, { defaultValue: d.kind });
             return { message: t('events.backup_done', { name, kind }), type: 'success', duration: 4000 };
         }
