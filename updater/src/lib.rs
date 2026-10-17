@@ -43,6 +43,7 @@ pub mod config_file;
 pub mod constants;
 pub mod download;
 pub mod python_pin;
+pub mod launch_ticket;
 pub mod error;
 pub mod foreground;
 pub mod github;
@@ -177,6 +178,9 @@ pub struct ComponentVersion {
     pub downloaded: bool,
     /// 다운로드 완료된 파일의 경로 (적용 대기 중인 경우)
     pub downloaded_path: Option<String>,
+    /// 받은 파일의 sha256 (manifest 값). 적용 직전에 다시 대조한다 (C13)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged_sha256: Option<String>,
     /// 해당 컴포넌트가 설치되어 있는지 여부 (false면 미설치 상태)
     pub installed: bool,
 }
@@ -777,6 +781,7 @@ impl UpdateManager {
                     published_at: release.latest.released_at.clone(),
                     downloaded: false,
                     downloaded_path: None,
+                    staged_sha256: None,
                     installed,
                 });
             }
@@ -884,6 +889,7 @@ impl UpdateManager {
                 published_at,
                 downloaded: false,
                 downloaded_path: None,
+                staged_sha256: None,
                 installed,
             });
         }
@@ -950,6 +956,7 @@ impl UpdateManager {
             published_at: release.published_at.clone(),
             downloaded: false,
             downloaded_path: None,
+            staged_sha256: None,
             installed,
         }))
     }
@@ -1066,6 +1073,7 @@ impl UpdateManager {
             published_at: release.published_at.clone(),
             downloaded: false,
             downloaded_path: None,
+            staged_sha256: None,
             installed,
         }))
     }
@@ -1218,6 +1226,9 @@ impl UpdateManager {
                     comp.downloaded_path = Some(
                         self.staging_dir.join(name).to_string_lossy().to_string()
                     );
+                    comp.staged_sha256 = to_download.iter()
+                        .find(|(_, rc)| &rc.asset_name == name)
+                        .and_then(|(_, rc)| rc.sha256.clone());
                 }
             }
         }
@@ -1287,11 +1298,13 @@ impl UpdateManager {
         }
 
         let asset_name = rc.asset_name.clone();
+        let sha256 = rc.sha256.clone();
 
         // 상태 업데이트
         if let Some(comp) = self.status.components.iter_mut().find(|c| &c.component == component) {
             comp.downloaded = true;
             comp.downloaded_path = Some(dest.to_string_lossy().to_string());
+            comp.staged_sha256 = sha256;
         }
 
         Ok(asset_name)
@@ -1334,8 +1347,7 @@ impl UpdateManager {
         components.sort_by_key(|c| Self::component_apply_priority(&c.component));
 
         for comp in &components {
-            let staged_path = comp.downloaded_path.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("No staged file for {:?}", comp.component))?;
+            let staged_path = Self::verified_staged_path(comp)?;
 
             match &comp.component {
                 Component::Module(name) => {
@@ -1408,6 +1420,19 @@ impl UpdateManager {
         }
 
         Ok(applied)
+    }
+
+    /// 적용할 받은 파일. 다운로드 뒤 바뀌었으면(sha256 불일치) 적용하지 않는다 (C13)
+    fn verified_staged_path(comp: &ComponentVersion) -> Result<&String> {
+        let path = comp.downloaded_path.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No staged file for {:?}", comp.component))?;
+        if let Some(expected) = &comp.staged_sha256 {
+            let got = crate::integrity::compute_sha256(Path::new(path)).map_err(|e| anyhow::anyhow!(e))?;
+            if !got.eq_ignore_ascii_case(expected) {
+                anyhow::bail!("Staged file for {} changed since download (sha256 {} != {})", comp.component.display_name(), got, expected);
+            }
+        }
+        Ok(path)
     }
 
     /// 컴포넌트의 적용 우선순위를 반환합니다.
@@ -1755,8 +1780,7 @@ impl UpdateManager {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Component {:?} is not ready for apply", component))?;
 
-        let staged_path = comp.downloaded_path.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No staged file for {:?}", component))?;
+        let staged_path = Self::verified_staged_path(&comp)?;
 
         let result = match component {
             Component::Module(name) => {
@@ -1955,36 +1979,8 @@ impl UpdateManager {
     /// 모듈 업데이트 적용 — 기존 zip 파일을 압축 해제하여 디렉터리에 배치
     async fn apply_module_update(&self, module_name: &str, staged_path: &str) -> Result<()> {
         let target_dir = self.modules_dir.join(module_name);
-        let staged = Path::new(staged_path);
-
         tracing::info!("[Updater] Applying module update: {} → {}", module_name, target_dir.display());
-
-        // 기존 백업 생성
-        let backup_dir = self.staging_dir.join(format!("{}_backup", module_name));
-        if target_dir.exists() {
-            if backup_dir.exists() {
-                std::fs::remove_dir_all(&backup_dir)?;
-            }
-            self.copy_dir_recursive(&target_dir, &backup_dir)?;
-        }
-
-        // zip 압축 해제
-        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            // 기존 파일을 삭제하고 새 파일로 교체
-            if target_dir.exists() {
-                // __pycache__와 같은 캐시 파일은 제외하고 삭제
-                self.clean_module_dir(&target_dir)?;
-            }
-
-            extract_zip(staged, &target_dir, |_| Ok(()))?;
-        } else {
-            // zip이 아닌 단일 파일인 경우 직접 복사
-            std::fs::copy(staged, &target_dir)?;
-        }
-
-        // 스테이징 파일 삭제
-        std::fs::remove_file(staged).ok();
-
+        self.replace_dir(&target_dir, Path::new(staged_path), &format!("{}_backup", module_name))?;
         tracing::info!("[Updater] Module '{}' updated successfully", module_name);
         Ok(())
     }
@@ -1992,33 +1988,46 @@ impl UpdateManager {
     /// 익스텐션 업데이트 적용 — zip 압축 해제하여 extensions/ 디렉터리에 배치
     async fn apply_extension_update(&self, ext_name: &str, staged_path: &str) -> Result<()> {
         let target_dir = self.resolve_ext_dir(ext_name);
-        let staged = Path::new(staged_path);
-
         tracing::info!("[Updater] Applying extension update: {} → {}", ext_name, target_dir.display());
+        self.replace_dir(&target_dir, Path::new(staged_path), &format!("{}_ext_backup", ext_name))?;
+        tracing::info!("[Updater] Extension '{}' updated successfully", ext_name);
+        Ok(())
+    }
 
-        // 기존 백업
-        let backup_dir = self.staging_dir.join(format!("{}_ext_backup", ext_name));
-        if target_dir.exists() {
+    /// `target_dir`을 받은 zip 내용으로 바꾼다. 도중에 실패하면 백업으로 되돌린다 (C13).
+    /// `__pycache__`와 점(.)으로 시작하는 항목은 남긴다
+    fn replace_dir(&self, target_dir: &Path, staged: &Path, backup_name: &str) -> Result<()> {
+        let backup_dir = self.staging_dir.join(backup_name);
+        let had_target = target_dir.exists();
+        if had_target {
             if backup_dir.exists() {
                 std::fs::remove_dir_all(&backup_dir)?;
             }
-            self.copy_dir_recursive(&target_dir, &backup_dir)?;
+            self.copy_dir_recursive(target_dir, &backup_dir)?;
         }
-
-        // zip 압축 해제
-        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            if target_dir.exists() {
-                self.clean_module_dir(&target_dir)?;
+        let result = (|| -> Result<()> {
+            if staged.extension().is_some_and(|e| e == "zip") {
+                if had_target {
+                    self.clean_module_dir(target_dir)?;
+                }
+                extract_zip(staged, target_dir, |_| Ok(()))?;
+            } else {
+                std::fs::copy(staged, target_dir)?;
             }
-
-            extract_zip(staged, &target_dir, |_| Ok(()))?;
-        } else {
-            std::fs::copy(staged, &target_dir)?;
+            Ok(())
+        })();
+        if let Err(e) = result {
+            tracing::error!("[Updater] Replacing {} failed, restoring backup: {}", target_dir.display(), e);
+            if had_target {
+                let _ = self.clean_module_dir(target_dir);
+                if let Err(re) = self.copy_dir_recursive(&backup_dir, target_dir) {
+                    tracing::error!("[Updater] Restore of {} failed: {}", target_dir.display(), re);
+                }
+            }
+            return Err(e);
         }
-
         std::fs::remove_file(staged).ok();
-
-        tracing::info!("[Updater] Extension '{}' updated successfully", ext_name);
+        let _ = std::fs::remove_dir_all(&backup_dir);
         Ok(())
     }
 
@@ -2099,7 +2108,28 @@ impl UpdateManager {
         tracing::info!("[Updater] Applying binary update: {} in {}", binary_name, exe_dir.display());
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            extract_zip(staged, &exe_dir, Self::move_aside_binary)?;
+            // 옮겨 둔 실행 파일을 기억해 두었다가, 풀다가 실패하면 되돌린다 (C13)
+            let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+            let result = extract_zip(staged, &exe_dir, |out_path| {
+                let existed = out_path.exists();
+                Self::move_aside_binary(out_path)?;
+                if existed && !out_path.exists() {
+                    let exe_old = out_path.with_extension("exe.old");
+                    let backup = if exe_old.exists() { exe_old } else { out_path.with_extension("old") };
+                    moved.push((out_path.to_path_buf(), backup));
+                }
+                Ok(())
+            });
+            if let Err(e) = result {
+                tracing::error!("[Updater] Applying {} failed, restoring previous binaries: {}", binary_name, e);
+                for (original, backup) in moved.iter().rev() {
+                    let _ = std::fs::remove_file(original);
+                    if let Err(re) = std::fs::rename(backup, original) {
+                        tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+                    }
+                }
+                return Err(e);
+            }
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, &exe_dir)?;
         }

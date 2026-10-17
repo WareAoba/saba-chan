@@ -35,6 +35,7 @@ Environment (the daemon sets these for every Python run):
 """
 
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -358,6 +359,19 @@ def wait_for_exit(pid, timeout=30, interval=1.0):
     return True
 
 
+def _descendants(pid):
+    """pid의 자손 PID를 맨 아래부터 (Unix, pgrep 사용). 못 구하면 빈 목록"""
+    try:
+        out = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    result = []
+    for child in (int(p) for p in out.split() if p.isdigit()):
+        result.extend(_descendants(child))
+        result.append(child)
+    return result
+
+
 def force_kill(pid, *, tree=True):
     """프로세스를 강제 종료한다. 반환: (성공 여부, 오류 메시지 또는 None)."""
     try:
@@ -377,7 +391,12 @@ def force_kill(pid, *, tree=True):
                 return False, (result.stderr or result.stdout).strip()
         else:
             import signal
-            os.kill(pid, signal.SIGKILL)
+            # tree: 자식부터(맨 아래부터) 끝낸다. 부모를 먼저 죽이면 손자가 고아가 되어 남는다
+            for target in (_descendants(pid) if tree else []) + [pid]:
+                try:
+                    os.kill(target, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
     except (OSError, subprocess.SubprocessError) as e:
         if is_process_alive(pid):
             return False, str(e)
@@ -425,24 +444,27 @@ _INT_RE = re.compile(r"^[+-]?\d+$")
 def coerce_setting(value, field_type):
     """설정 파일의 문자열 값을 module.toml 필드 타입에 맞게 변환한다.
 
-    number → int/float, boolean → bool. 그 외(text/password/select/미선언)는
-    문자열을 유지한다 — 큰 숫자 시드나 숫자 비밀번호가 손상되지 않게 한다.
+    number → int/float(유한수만), boolean → bool. 그 외(text/password/select/미선언)는
+    받은 문자열을 그대로 둔다 — 앞뒤 공백도, 숫자 같은 비밀번호("000123")도 바꾸지 않는다.
     """
+    if field_type not in ("number", "boolean"):
+        return value if isinstance(value, str) else str(value)
     text = str(value).strip()
     if field_type == "boolean":
         lowered = text.lower()
         if lowered in ("true", "false"):
             return lowered == "true"
         return text
-    if field_type == "number":
-        if _INT_RE.match(text):
-            return int(text)
-        try:
-            number = float(text)
-        except ValueError:
-            return text
-        return int(number) if number.is_integer() and "." not in text and "e" not in text.lower() else number
-    return text
+    if _INT_RE.match(text):
+        return int(text)
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    # inf/nan은 JSON으로 못 보낸다 (데몬이 파싱에 실패한다): 문자열로 둔다
+    if not math.isfinite(number):
+        return text
+    return int(number) if number.is_integer() and "." not in text and "e" not in text.lower() else number
 
 
 # ─── CLI 진입점 ───────────────────────────────────────────────
