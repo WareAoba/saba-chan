@@ -268,6 +268,9 @@ pub struct ExtensionManifest {
     /// 인스턴스 명령 카탈로그에 더하는 명령. 모듈 명령과 같은 화면·CLI·디스코드·AI 해석에 실린다
     #[serde(default)]
     pub commands: Vec<ExtensionCommand>,
+    /// 코드가 쓰는 위험한 능력 선언 (모듈 `[permissions]`와 같은 표). `extension audit`가 코드와 대조한다
+    #[serde(default)]
+    pub permissions: crate::supervisor::module_loader::ModulePermissions,
 }
 
 /// 익스텐션이 선언하는 게임 명령. 실행하면 `module`의 `function`을 부른다
@@ -1270,6 +1273,11 @@ impl ExtensionManager {
     }
 
     /// 익스텐션 파일 절대 경로
+    /// 발견된 익스텐션 (manifest + 폴더)
+    pub fn discovered(&self, ext_id: &str) -> Option<&DiscoveredExtension> {
+        self.discovered.get(ext_id)
+    }
+
     pub fn extension_file_path(&self, ext_id: &str, relative: &str) -> Option<PathBuf> {
         self.discovered.get(ext_id).map(|ext| ext.dir.join(relative))
     }
@@ -1820,6 +1828,13 @@ mod tests {
         let (m, warnings) = parse_manifest(&legacy.to_string()).unwrap();
         assert_eq!(m.schema_version, 0);
         assert!(warnings.iter().any(|w| w.contains("never fired")), "{warnings:?}");
+
+        let mut perms = ok.clone();
+        perms["permissions"] = json!({"network": true, "spawn_process": true});
+        let (m, _) = parse_manifest(&perms.to_string()).unwrap();
+        assert!(m.permissions.network && m.permissions.spawn_process && !m.permissions.native_code);
+        perms["permissions"]["netwrok"] = json!(true);
+        assert!(parse_manifest(&perms.to_string()).unwrap_err().to_string().contains("netwrok"));
 
         let mut newer = ok.clone();
         newer["schema_version"] = json!(2);
