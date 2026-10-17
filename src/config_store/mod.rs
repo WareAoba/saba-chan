@@ -32,6 +32,8 @@ pub struct GuiSettings {
     pub port_conflict_check: bool,
 
     // Theme customization
+    /// "dark" | "light" | "system"
+    pub theme: String,
     pub accent_color: String,
     pub accent_secondary: String,
     pub use_gradient: bool,
@@ -42,6 +44,8 @@ pub struct GuiSettings {
     pub console_text_color: String,
     pub sidebar_compact: bool,
     pub window_opacity: u32,
+    /// 콘솔 글꼴 배율 (%)
+    pub console_font_scale: u32,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,6 +85,7 @@ impl Default for GuiSettings {
             console_buffer_size: 2000,
             auto_generate_passwords: true,
             port_conflict_check: true,
+            theme: "dark".to_string(),
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
             use_gradient: true,
@@ -91,6 +96,7 @@ impl Default for GuiSettings {
             console_text_color: "#cdd6f4".to_string(),
             sidebar_compact: false,
             window_opacity: 100,
+            console_font_scale: 100,
             window_bounds: None,
             language: None,
         }

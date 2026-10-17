@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('api', {
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
     instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
+    instanceStop: (id, opts) => ipcRenderer.invoke('instance:stop', id, opts),
+    instanceRestart: (id, opts) => ipcRenderer.invoke('instance:restart', id, opts),
+    instanceRename: (id, name) => ipcRenderer.invoke('instance:rename', id, name),
+    instanceCommands: (id) => ipcRenderer.invoke('instance:commands', id),
+    configDefaults: (kind) => ipcRenderer.invoke('config:defaults', kind),
+    configReset: (kind, keys) => ipcRenderer.invoke('config:reset', kind, keys),
     // Extension API
     extensionList: () => ipcRenderer.invoke('extension:list'),
     extensionEnable: (extId) => ipcRenderer.invoke('extension:enable', extId),
