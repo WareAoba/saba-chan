@@ -149,7 +149,8 @@
       "port_conflict": "請替其中一個指定其他連接埠：saba-chan-cli server set NAME port=PORT",
       "backup_unsupported": "此遊戲的模組沒有說明要備份哪些內容。較新的模組可能支援：saba-chan-cli update check",
       "nothing_to_back_up": "世界尚不存在。請先啟動一次伺服器來建立它。",
-      "backup_busy": "此伺服器已有備份或還原正在進行。請在完成後再試一次。"
+      "backup_busy": "此伺服器已有備份或還原正在進行。請在完成後再試一次。",
+      "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",

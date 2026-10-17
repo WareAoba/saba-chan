@@ -149,7 +149,8 @@
       "port_conflict": "Attribuez d'autres ports à l'un d'eux : saba-chan-cli server set NAME port=PORT",
       "backup_unsupported": "Le module de ce jeu n'indique pas quoi sauvegarder. Un module plus récent le fait peut-être : saba-chan-cli update check",
       "nothing_to_back_up": "Le monde n'existe pas encore. Démarrez le serveur une fois pour le créer.",
-      "backup_busy": "Une sauvegarde ou une restauration de ce serveur est déjà en cours. Réessayez quand elle sera terminée."
+      "backup_busy": "Une sauvegarde ou une restauration de ce serveur est déjà en cours. Réessayez quand elle sera terminée.",
+      "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
