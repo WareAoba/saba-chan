@@ -1023,11 +1023,21 @@
       "module_unverified": "Created from a module ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
       "module_modified": "The module ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
       "extension_unverified": "Enabled an extension ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
-      "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself."
+      "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
+      "isolated": "This component runs in an isolated environment (allowed folders only)"
     },
     "start_blocked": {
       "malware_detected": "Antivirus flagged a file of this unverified component: {{file}}",
-      "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}}"
+      "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}}",
+      "unscannable_file": "This unverified component has compiled files without their source, so it can't be scanned: {{file}}",
+      "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run."
+    },
+    "sandbox": {
+      "title": "Run without isolation?",
+      "message": "Couldn't prepare an isolated environment for {{component}}. {{detail}}\n\nIf you trust it, you can run it without isolation. You'll be asked again if its files change.",
+      "allow": "Run without isolation",
+      "allowed": "{{component}} will run without isolation. You'll be asked again if its files change.",
+      "allow_failed": "Couldn't save the consent: {{error}}"
     }
   },
   "patch_notes": {
