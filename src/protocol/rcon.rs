@@ -234,16 +234,19 @@ impl RconClient {
         match &self.stream {
             None => false,
             Some(stream) => {
-                // peek으로 소켓 상태 확인 (짧은 타임아웃)
+                // peek으로 소켓 상태 확인 (짧은 타임아웃). 다음 명령이 50ms에 끊기지 않게 원래 값을 되돌린다
+                let previous = stream.read_timeout().ok().flatten();
                 let _ = stream.set_read_timeout(Some(Duration::from_millis(50)));
                 let mut peek_buf = [0u8; 1];
-                match stream.peek(&mut peek_buf) {
+                let alive = match stream.peek(&mut peek_buf) {
                     Ok(0) => false, // 서버가 연결을 닫음
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
                         || e.kind() == std::io::ErrorKind::TimedOut => true, // 데이터 없이 타임아웃 = 정상
                     Err(_) => false, // 기타 에러 = 연결 끊김
                     Ok(_) => true,   // 데이터 있음 = 연결 살아있음
-                }
+                };
+                let _ = stream.set_read_timeout(previous);
+                alive
             }
         }
     }
