@@ -705,6 +705,12 @@ impl IPCServer {
                 "/api/permissions/:guild_id/members/:discord_id",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
+            // ── 확인되지 않은 구성요소를 격리 없이 돌리기 동의 ──
+            .route("/api/sandbox/unisolated", get(handlers::sandbox::list_unisolated))
+            .route(
+                "/api/sandbox/unisolated/:component",
+                post(handlers::sandbox::allow_unisolated).delete(handlers::sandbox::revoke_unisolated),
+            )
             // ── 액션 카탈로그 (P2) ──
             .route("/api/actions", get(handlers::actions::list_actions))
             .route("/api/actions/:id/plan", post(handlers::actions::plan_action))

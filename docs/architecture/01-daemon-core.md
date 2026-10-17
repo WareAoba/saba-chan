@@ -315,6 +315,8 @@
 | GET | `/api/permissions/:guildId` | `permissions.rs` `get_permissions` | - | `{guildId, ownerDiscordId, relayOwnerDiscordId, defaultLevel, preset, chatbotCap, members, commandLevels, presets}` |
 | PATCH | `/api/permissions/:guildId` | `permissions.rs` `update_permissions` | `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?:{key: level\|null}}` | 바뀐 전체(GET과 같은 모양). 하나라도 틀리면 저장하지 않고 400 `invalid_level`·`invalid_preset`·`invalid_command`·`invalid_member`·`unknown_key`. `ownerDiscordId`는 고정된 주인을 바꾸는 유일한 길이다(CLI `saba perm owner`) |
 | PUT·DELETE | `/api/permissions/:guildId/members/:discordId` | `permissions.rs` `set_member`·`remove_member` | PUT `{level: -1..2}` | 바뀐 전체. 주인이면 400 `owner_fixed`. DELETE는 기본 레벨로 되돌린다 |
+| GET | `/api/sandbox/unisolated` | `sandbox.rs` `list_unisolated` | - | `{components:[{component, fingerprint, current}]}`. `current`가 false면 파일이 바뀌어 동의가 쓰이지 않는다. 릴레이로는 열지 않는다 |
+| POST·DELETE | `/api/sandbox/unisolated/:component` | `sandbox.rs` `allow_unisolated`·`revoke_unisolated` | - | `{success, component, fingerprint}`(DELETE는 `fingerprint:null`). `component`는 `module-<이름>`·`ext-<이름>`. 없으면 404 `unknown_component`. 확인되지 않은 구성요소를 격리 없이 돌리기 동의(02 문서 §2.1) |
 | GET | `/api/actions` | `actions.rs` `list_actions` | query `surface?`(gui·cli·discord·chatbot), `instance?`, `locale?` | `{actions:[{id, kind, risk, surfaces, scope, input, titleKey, title, description?, route}], locale}`. `instance`를 주면 그 서버 명령이 `server.command:<이름>`으로 펼쳐진다. 선언은 `src/actions/mod.rs` `ACTIONS` 하나(P2) |
 | POST | `/api/actions/:id/plan` | `actions.rs` `plan_action` | `{input, instance?, locale?}` | `{success, planId, actionId, instance, summary:[{labelKey, label, value}], risk, needsConfirm, expiresAt}`. 부작용 없음. 400 `invalid_input {field, reason}`, 403 `action_not_allowed`·`PERMISSION_DENIED {args}`, 404 `unknown_action` |
 | POST | `/api/actions/:id/run` | `actions.rs` `run_action` | `{input, instance?}` 또는 `{planId}` | `{success, actionId, status, result}`(`result`는 밑 라우트 응답 그대로). 404 `plan_expired`, 403 `plan_not_yours`. 데몬 라우터를 안에서 부르므로 감사 기록은 원래 요청의 출처로 남는다 |
@@ -470,6 +472,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 - 모든 사용자 설정은 `<data_dir>/config.json` 하나에 네임스페이스별로 들어간다(`updater/src/config_file.rs:1-27`). 저장은 임시 파일 → fsync → 직전 파일을 `config.json.bak`으로 복사 → rename이고, 깨진 파일은 `.bak`에서 복구한다. 예전 개별 파일(`settings.json`, `bot-config.json`, `cli-settings.json`, `update-config.json`, `boot-config.json`, `extensions_state.json`, `extensionConfig.json`)은 해당 키가 없을 때 한 번 이관하고, 원본은 그대로 두며 `.migrated` 사본을 남긴다(`config_file.rs:37-45, 155-182`).
 - `ConfigStore`는 그중 `gui`와 `relay`(봇 설정) 네임스페이스를 메모리에 캐시하고 쓸 때 `config.json`에 flush한다(`config_store/mod.rs:193-288`). 기동할 때 한 번 로드한다(`ipc/mod.rs:594-596`). `chatbot`은 캐시 없이 읽고 쓰며, 그 밖의 클라이언트 네임스페이스(`cli` 등)는 JSON 그대로 최상위 키 머지한다(`:352-387`).
+- `sandbox.unisolated{"module-<이름>"·"ext-<이름>": 파일 지문}`: 확인되지 않은 구성요소를 격리 없이 돌리기 동의. `POST·DELETE /api/sandbox/unisolated/:component`만 바꾼다(02 문서 §2.1).
 - PUT 동작: 현재 값을 JSON으로 바꾼 뒤 요청값을 **얕게** 머지하고(`merge_json`, `:418`), 강타입으로 역직렬화해 저장한다.
 - 스키마에 없는 키는 **저장할 때 버려진다.** 예를 들어 레거시 `discordToken`이나 GUI가 임의로 넣은 키가 그렇다.
 
@@ -574,6 +577,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - `PYTHONPATH` = `<data_dir>/python-guard` + `<extensions_dir의 부모>` + `<modules_dir>` + 기존 값(`:196-233`). 앞의 둘은 `extensions_dir`가 디렉토리일 때만 넣는다. `python-guard/sitecustomize.py`는 활성 익스텐션만 import되게 막는다(`:84-96`).
 - `SABA_ENABLED_EXTENSIONS` = `config.json`의 `extensions.enabled`를 쉼표로 연결한 값. 목록이 없으면 빈 문자열이다(`:200-205`).
 - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`daemon_env`, `:14-37`).
+- 확인되지 않은 구성요소(Windows)는 AppContainer 안에서 띄우고 `SABA_TOKEN_PATH`를 빼며 `PYTHONPYCACHEPREFIX`·`TEMP`·`TMP`를 격리용 폴더로 바꾼다(`sandbox::isolation_for`, 02 문서 §2.1).
 - 첫 실행 때 내장 공용 유틸리티(`i18n.py`, `daemon_rcon.py`)를 모듈 폴더에 맞춰 쓴다(`:98-116, 218-224`).
 
 **모듈의 `lifecycle.py`가 응답해야 하는 함수** (코어에서 직접 호출하는 것만)

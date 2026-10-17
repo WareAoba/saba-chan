@@ -894,8 +894,9 @@ async fn e2e_install_server_backup_and_restore() {
             "install_dir": install_dir.to_string_lossy(),
         }))
         .send().await.unwrap();
-    assert!(install_resp.status().is_success());
+    let status = install_resp.status();
     let install: Value = install_resp.json().await.unwrap();
+    assert!(status.is_success(), "install: {status} {install}");
     assert_eq!(install["success"].as_bool(), Some(true));
 
     // server.jar가 새 버전으로 업데이트됨

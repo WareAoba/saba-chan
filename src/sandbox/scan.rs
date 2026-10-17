@@ -40,32 +40,54 @@ pub fn mpcmdrun_verdict(code: Option<i32>) -> Verdict {
 
 /// AMSI로 볼 파일 (Python이 읽거나 셸이 실행할 수 있는 글)
 const SCRIPT_SUFFIXES: &[&str] = &["py", "pyw", "pth", "ps1", "psm1", "bat", "cmd", "js", "vbs", "wsf"];
+/// Defender로 볼 파일 (Python이 import로 불러오는 네이티브 코드와 압축 묶음)
+const NATIVE_SUFFIXES: &[&str] = &["pyd", "dll", "so", "exe", "zip", "egg", "whl"];
+/// 원본 없이 실행될 수 있어 검사할 수 없는 파일. `__pycache__` 밖의 `.pyc`는 막는다
+/// (`__pycache__` 안의 것은 `PYTHONPYCACHEPREFIX` 때문에 읽히지 않는다)
+const UNSCANNABLE_SUFFIXES: &[&str] = &["pyc", "pyo"];
 
-fn script_files(dir: &Path, out: &mut Vec<PathBuf>) {
+#[derive(Default)]
+struct ComponentFiles {
+    scripts: Vec<PathBuf>,
+    native: Vec<PathBuf>,
+    unscannable: Vec<PathBuf>,
+}
+
+fn component_files(dir: &Path, out: &mut ComponentFiles) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
         let Ok(kind) = entry.file_type() else { continue };
         if kind.is_dir() {
             if entry.file_name() != "__pycache__" {
-                script_files(&path, out);
+                component_files(&path, out);
             }
         } else if kind.is_file() {
             let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
             if SCRIPT_SUFFIXES.contains(&ext.as_str()) {
-                out.push(path);
+                out.scripts.push(path);
+            } else if NATIVE_SUFFIXES.contains(&ext.as_str()) {
+                out.native.push(path);
+            } else if UNSCANNABLE_SUFFIXES.contains(&ext.as_str()) {
+                out.unscannable.push(path);
             }
         }
     }
 }
 
-/// 구성요소 폴더의 스크립트를 검사한다. 하나라도 찾으면 `malware_detected`
+/// 구성요소 폴더를 검사한다. 스크립트는 AMSI, 네이티브 코드는 Defender로 보고 하나라도 찾으면
+/// `malware_detected`. 원본 없는 바이트코드가 있으면 `unscannable_file`
 pub fn scan_component(dir: &Path, scanner: &dyn Scanner, cache: &mut VerdictCache) -> Result<(), Blocked> {
-    let mut files = Vec::new();
-    script_files(dir, &mut files);
-    files.sort();
+    let mut files = ComponentFiles::default();
+    component_files(dir, &mut files);
+    files.unscannable.sort();
+    if let Some(file) = files.unscannable.first() {
+        return Err(Blocked { code: "unscannable_file", file: Some(file.to_string_lossy().into_owned()), detail: None });
+    }
+    files.scripts.sort();
+    files.native.sort();
     let mut result = Ok(());
-    for file in files {
+    for file in files.scripts {
         let Ok(bytes) = std::fs::read(&file) else { continue };
         let sha = sha256_of(&bytes);
         let detected = match cache.get(&sha) {
@@ -82,13 +104,19 @@ pub fn scan_component(dir: &Path, scanner: &dyn Scanner, cache: &mut VerdictCach
                 }
                 Verdict::Unavailable => {
                     tracing::info!("[Sandbox] no AMSI provider; skipping script scan");
-                    return result;
+                    break;
                 }
             },
         };
         if detected && result.is_ok() {
             result = Err(Blocked { code: "malware_detected", file: Some(file.to_string_lossy().into_owned()), detail: None });
         }
+    }
+    for file in files.native {
+        if result.is_err() {
+            break;
+        }
+        result = scan_executable(&file, scanner, cache);
     }
     result
 }
@@ -291,5 +319,27 @@ mod tests {
         std::fs::write(&exe, b"EICAR").unwrap();
         assert!(scan_executable(&exe, &fake, &mut cache).is_err());
         assert_eq!(scan_executable(&exe, &none, &mut VerdictCache::in_memory()), Ok(()));
+    }
+
+    #[test]
+    fn native_code_is_scanned_and_sourceless_bytecode_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("lifecycle.py"), b"import helper").unwrap();
+        std::fs::create_dir_all(tmp.path().join("lib")).unwrap();
+        std::fs::write(tmp.path().join("lib").join("helper.pyd"), b"EICAR").unwrap();
+        let fake = Fake { calls: Cell::new(0), available: true };
+        let blocked = scan_component(tmp.path(), &fake, &mut VerdictCache::in_memory()).unwrap_err();
+        assert_eq!(blocked.code, "malware_detected");
+        assert!(blocked.file.unwrap().ends_with("helper.pyd"));
+
+        std::fs::write(tmp.path().join("lib").join("helper.pyd"), b"clean").unwrap();
+        assert_eq!(scan_component(tmp.path(), &fake, &mut VerdictCache::in_memory()), Ok(()));
+        // __pycache__ 밖의 .pyc는 검사할 수 없어 막는다. 안의 것은 읽히지 않으므로 둔다
+        std::fs::create_dir_all(tmp.path().join("__pycache__")).unwrap();
+        std::fs::write(tmp.path().join("__pycache__").join("lifecycle.cpython-312.pyc"), b"x").unwrap();
+        assert_eq!(scan_component(tmp.path(), &fake, &mut VerdictCache::in_memory()), Ok(()));
+        std::fs::write(tmp.path().join("helper.pyc"), b"x").unwrap();
+        let blocked = scan_component(tmp.path(), &fake, &mut VerdictCache::in_memory()).unwrap_err();
+        assert_eq!(blocked.code, "unscannable_file");
     }
 }

@@ -14,6 +14,7 @@ pub mod migration;
 pub mod diagnostics;
 pub mod system;
 pub mod permissions;
+pub mod sandbox;
 pub mod actions;
 
 /// 감사 로그 (A10): 응답은 그대로 돌려주고, 출처(`crate::audit::current`)와 함께 한 건 남긴다.

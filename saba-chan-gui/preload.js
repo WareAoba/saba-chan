@@ -117,6 +117,11 @@ contextBridge.exposeInMainWorld('api', {
     permissionsUpdate: (guildId, patch) => ipcRenderer.invoke('permissions:update', guildId, patch),
     permissionsSetMember: (guildId, discordId, level) => ipcRenderer.invoke('permissions:setMember', guildId, discordId, level),
     permissionsRemoveMember: (guildId, discordId) => ipcRenderer.invoke('permissions:removeMember', guildId, discordId),
+    // 격리를 준비할 수 없을 때 그 구성요소를 격리 없이 돌리기 (파일이 바뀌면 다시 묻는다): {success, component, fingerprint}
+    // 동의 목록: {components: [{component, fingerprint, current}]} (current=false면 파일이 바뀌어 다시 묻는다)
+    sandboxListUnisolated: () => ipcRenderer.invoke('sandbox:listUnisolated'),
+    sandboxAllowUnisolated: (component) => ipcRenderer.invoke('sandbox:allowUnisolated', component),
+    sandboxRevokeUnisolated: (component) => ipcRenderer.invoke('sandbox:revokeUnisolated', component),
     // 액션 카탈로그 (P2): {actions:[{id, kind, risk, surfaces, scope, input, title, description?}], locale}
     actionsList: (opts) => ipcRenderer.invoke('actions:list', opts),
     // {input, instance} → {planId, summary:[{labelKey, label, value}], risk, needsConfirm, expiresAt}
