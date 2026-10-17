@@ -16,7 +16,7 @@ const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin'];
 const argsText = (args) => {
     try {
         const v = JSON.parse(args);
-        if (Array.isArray(v)) return v.join(' ');
+        if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' && x ? JSON.stringify(x) : x)).join(' ');
     } catch {}
     return args;
 };
@@ -45,6 +45,7 @@ export function AuditLog({ instanceId }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const alive = useRef(true);
+    const seq = useRef(0); // 늦게 온 이전 응답이 새 응답을 덮지 않게
     useEffect(
         () => () => {
             alive.current = false;
@@ -53,17 +54,19 @@ export function AuditLog({ instanceId }) {
     );
 
     const load = useCallback(async () => {
+        const mine = ++seq.current;
+        const current = () => alive.current && mine === seq.current;
         setLoading(true);
         setError(null);
         try {
             const res = await window.api.auditList({ limit, ...(instanceId ? { instance: instanceId } : {}) });
-            if (!alive.current) return;
+            if (!current()) return;
             if (!Array.isArray(res?.entries)) throw new Error(res?.error || t('audit.load_failed'));
             setEntries(res.entries);
         } catch (err) {
-            if (alive.current) setError(err.message || String(err));
+            if (current()) setError(err.message || String(err));
         } finally {
-            if (alive.current) setLoading(false);
+            if (current()) setLoading(false);
         }
     }, [instanceId, limit, t]);
 
