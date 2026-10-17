@@ -261,6 +261,19 @@ pub struct SettingField {
     pub step: Option<f64>,
     pub options: Option<Vec<String>>,
     pub group: Option<String>,  // "basic" (default), "advanced", "saba-chan" etc.
+    /// 네트워크 포트 값인가. 같은 게임을 여러 개 만들 때 데몬이 겹치지 않게 옮긴다
+    #[serde(default)]
+    pub port: bool,
+}
+
+/// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
+pub const CORE_PORT_FIELDS: &[&str] = &["port", "rcon_port", "rest_port"];
+
+impl ModuleSettings {
+    /// 포트로 표시된 설정 이름 (`port = true`)
+    pub fn port_fields(&self) -> Vec<&str> {
+        self.fields.iter().filter(|f| f.port).map(|f| f.name.as_str()).collect()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -519,6 +532,9 @@ struct SettingFieldToml {
     /// "basic"(기본) | "advanced" | "saba-chan" 등
     #[serde(default)]
     group: Option<String>,
+    /// 네트워크 포트 값이면 true. 인스턴스를 만들 때 다른 인스턴스와 겹치지 않게 옮겨진다
+    #[serde(default)]
+    port: bool,
 }
 
 fn default_field_type() -> String { "text".to_string() }
@@ -701,6 +717,7 @@ impl ModuleToml {
                 step: f.step,
                 options: f.options,
                 group: f.group,
+                port: f.port,
             }).collect();
             if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
         } else {

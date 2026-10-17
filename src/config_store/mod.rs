@@ -223,6 +223,45 @@ impl ConfigStore {
     }
 
 
+    // ── 기본값 ──
+
+    /// `gui` | `bot` 설정의 기본값 (JSON)
+    pub fn defaults_json(kind: &str) -> Option<Value> {
+        match kind {
+            "gui" => serde_json::to_value(GuiSettings::default()).ok(),
+            "bot" => serde_json::to_value(BotConfig::default()).ok(),
+            _ => None,
+        }
+    }
+
+    /// `keys`(없으면 전부)를 기본값으로 되돌리고 바뀐 설정 전체를 돌려준다.
+    /// 키는 최상위 이름이다 (예: `language`, `portConflictCheck`)
+    pub async fn reset_to_defaults(&self, kind: &str, keys: Option<&[String]>) -> Result<Value, ConfigStoreError> {
+        let defaults = Self::defaults_json(kind)
+            .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown config: {}", kind)))?;
+        let patch = match keys {
+            None => defaults,
+            Some(keys) => {
+                let obj = defaults.as_object().cloned().unwrap_or_default();
+                let mut patch = serde_json::Map::new();
+                for key in keys {
+                    let value = obj
+                        .get(key)
+                        .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown {} setting: {}", kind, key)))?;
+                    patch.insert(key.clone(), value.clone());
+                }
+                Value::Object(patch)
+            }
+        };
+        if kind == "gui" {
+            self.set_gui_settings_from_json(patch).await?;
+            Ok(self.get_gui_settings_json().await)
+        } else {
+            self.set_bot_config_from_json(patch).await?;
+            Ok(self.get_bot_config_json().await)
+        }
+    }
+
     // ── Client namespaces ──
 
     /// 클라이언트 네임스페이스 이름 검사: 소문자로 시작, 소문자·숫자·`-`, 32자 이하, 예약어 제외

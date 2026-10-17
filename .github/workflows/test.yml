@@ -76,6 +76,10 @@ jobs:
       - name: Build Rust Daemon
         run: cargo build --release
 
+      # 러너 테스트는 target/debug의 saba-runner를 띄운다. target/이 캐시되므로 새로 빌드해 둔다
+      - name: Build saba-runner for tests
+        run: cargo build -p saba-runner
+
       - name: Run Rust Daemon Tests
         run: cargo test --workspace
 

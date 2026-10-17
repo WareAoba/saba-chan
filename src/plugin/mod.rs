@@ -81,6 +81,20 @@ pub fn resolve_modules_dir() -> std::path::PathBuf {
     candidate
 }
 
+/// import 가드(`sitecustomize.py`)를 둔 폴더. 데이터 폴더에 한 번 쓰고, 내용이 바뀌었을 때만 다시 쓴다.
+fn import_guard_dir() -> Option<std::path::PathBuf> {
+    const GUARD: &str = include_str!("sitecustomize.py");
+    let dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-guard");
+    let file = dir.join("sitecustomize.py");
+    if std::fs::read_to_string(&file).ok().as_deref() != Some(GUARD) {
+        if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&file, GUARD)) {
+            tracing::warn!("Cannot write the extension import guard to {}: {}", file.display(), e);
+            return None;
+        }
+    }
+    Some(dir)
+}
+
 /// 기본 플러그인 타임아웃 (초)
 pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 
@@ -161,20 +175,23 @@ async fn run_plugin_inner(
             .section("extensions")
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
-        if let Some(enabled_list) = enabled {
-            cmd.env("SABA_ENABLED_EXTENSIONS", enabled_list.join(","));
-        }
-
-        let mut pypath = extensions_dir.parent()
-            .unwrap_or(&extensions_dir)
-            .to_string_lossy()
-            .into_owned();
-
         // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
         #[cfg(windows)]
         const PYPATH_SEP: char = ';';
         #[cfg(not(windows))]
         const PYPATH_SEP: char = ':';
+
+        // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
+        cmd.env("SABA_ENABLED_EXTENSIONS", enabled.unwrap_or_default().join(","));
+
+        let mut pypath = extensions_dir.parent()
+            .unwrap_or(&extensions_dir)
+            .to_string_lossy()
+            .into_owned();
+        // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py)
+        if let Some(guard) = import_guard_dir() {
+            pypath = format!("{}{}{}", guard.display(), PYPATH_SEP, pypath);
+        }
 
         // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등)
         let modules_lib_dir = resolve_modules_dir();
@@ -291,6 +308,33 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 가드는 활성 목록에 없는 `extensions.<이름>` import만 막는다 (`-`와 `_`는 같다)
+    #[test]
+    fn import_guard_blocks_only_disabled_extensions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let guard = tmp.path().join("guard");
+        std::fs::create_dir_all(&guard).unwrap();
+        std::fs::write(guard.join("sitecustomize.py"), include_str!("sitecustomize.py")).unwrap();
+        for name in ["steamcmd", "ue4_ini"] {
+            let dir = tmp.path().join("root").join("extensions").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("__init__.py"), "").unwrap();
+        }
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let pypath = format!("{}{}{}", guard.display(), sep, tmp.path().join("root").display());
+        let probe = "import importlib\nfor m in ('steamcmd', 'ue4_ini'):\n    try:\n        importlib.import_module('extensions.' + m); print(m, 'ok')\n    except ImportError:\n        print(m, 'blocked')";
+        let Ok(out) = std::process::Command::new(if cfg!(windows) { "python" } else { "python3" })
+            .args(["-c", probe])
+            .env("PYTHONPATH", pypath)
+            .env("SABA_ENABLED_EXTENSIONS", "ue4-ini")
+            .output()
+        else {
+            eprintln!("SKIP: python not found");
+            return;
+        };
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "steamcmd blocked\nue4_ini ok");
+    }
 
     #[test]
     fn plugin_result_is_whole_stdout_or_last_line() {

@@ -101,6 +101,12 @@ async fn relay_update_cycle_verifies_signature_and_hashes() {
     std::env::set_var(signature::TEST_PUBKEY_ENV, &public);
     let base = start_mock(&private, signature::TEST_KEY_ID).await;
     let modules = tempfile::tempdir().unwrap();
+    // 업데이트 대상은 설치된 모듈뿐이다
+    for name in ["good", "bad"] {
+        let dir = modules.path().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nname = \"{}\"\nversion = \"1.0.0\"\n", name)).unwrap();
+    }
     let mut mgr = manager(&base, modules.path());
 
     // 1. 확인: 서명된 manifest에서 두 모듈이 나온다
@@ -136,6 +142,12 @@ async fn manifest_signed_by_unknown_key_is_rejected() {
     // 번들 키 ID를 사칭하지만 다른 개인키로 서명
     let base = start_mock(&private, signature::TRUSTED_KEYS[0].0).await;
     let modules = tempfile::tempdir().unwrap();
+    // 업데이트 대상은 설치된 모듈뿐이다
+    for name in ["good", "bad"] {
+        let dir = modules.path().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nname = \"{}\"\nversion = \"1.0.0\"\n", name)).unwrap();
+    }
     let mut mgr = manager(&base, modules.path());
 
     let err = mgr.check_for_updates().await.expect_err("forged manifest must fail");

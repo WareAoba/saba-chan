@@ -55,6 +55,43 @@ pub async fn execute_command(
         .map(|f| f.name.clone())
         .unwrap_or_else(|| request.name.clone());
 
+    // 모듈에 없는 이름이면 익스텐션 명령인지 본다 (서버가 꺼져 있어도 부를 수 있다)
+    let module_has_it = metadata.as_ref().is_some_and(|m| crate::commands::find(m, &request.name).is_some());
+    if !module_has_it {
+        let context = json!({
+            "instance_id": &instance.id,
+            "instance_name": &instance.name,
+            "module": &instance.module_name,
+            "extension_data": &instance.extension_data,
+            "running": running,
+            "args": &req.args,
+        });
+        let planned = state.extension_manager.read().await.plan_command(&request.name, context);
+        if let Some(plan) = planned {
+            let resp = match plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next() {
+                Some((ext_id, Ok(value))) => {
+                    let failed = value.get("success").and_then(Value::as_bool) == Some(false);
+                    let mut body = match value {
+                        Value::Object(map) => map,
+                        other => serde_json::Map::from_iter([("data".to_string(), other)]),
+                    };
+                    body.insert("protocol".into(), json!("extension"));
+                    body.insert("extension".into(), json!(ext_id));
+                    InternalResponse {
+                        status: if failed { StatusCode::UNPROCESSABLE_ENTITY } else { StatusCode::OK },
+                        body: Value::Object(body),
+                    }
+                }
+                Some((ext_id, Err(e))) => InternalResponse {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    body: json!({ "error": e.to_string(), "extension": ext_id }),
+                },
+                None => InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": "no handler" }) },
+            };
+            return command_reply(resp, &request.name, &errors);
+        }
+    }
+
     let plan = match &metadata {
         Some(meta) => crate::commands::plan(meta, &request),
         None => Ok(Plan::Raw { line: request.line.clone() }),
@@ -118,6 +155,55 @@ pub async fn execute_command(
         },
     };
     command_reply(resp, &name, &errors)
+}
+
+/// GET /api/instance/:id/commands — 이 인스턴스에서 쓸 수 있는 명령 전체 (모듈 + 활성 익스텐션)
+///
+/// `{commands: [{name, label, description, risk, inputs, source: "module"|"extension", extension?, aliases?}]}`
+pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<IPCServer>) -> axum::response::Response {
+    let (instance, metadata) = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
+            )
+                .into_response();
+        };
+        let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+        (instance, metadata)
+    };
+    let mut commands = Vec::new();
+    if let Some(meta) = &metadata {
+        for field in meta.commands.as_ref().map(|c| c.fields.as_slice()).unwrap_or(&[]) {
+            let aliases = meta.command_aliases.get(&field.name).map(|a| a.aliases.clone()).unwrap_or_default();
+            commands.push(json!({
+                "name": field.name,
+                "label": field.label,
+                "description": field.description,
+                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "inputs": field.inputs,
+                "source": "module",
+                "aliases": aliases,
+            }));
+        }
+    }
+    let mgr = state.extension_manager.read().await;
+    for (ext_id, cmd) in mgr.commands_for(&instance.extension_data) {
+        if commands.iter().any(|c| c["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(&cmd.name))) {
+            continue; // 모듈 명령이 먼저다
+        }
+        commands.push(json!({
+            "name": cmd.name,
+            "label": cmd.label.as_deref().unwrap_or(&cmd.name),
+            "description": cmd.description,
+            "risk": cmd.risk.as_deref().unwrap_or("caution"),
+            "inputs": cmd.inputs,
+            "source": "extension",
+            "extension": ext_id,
+        }));
+    }
+    Json(json!({ "commands": commands })).into_response()
 }
 
 /// 모듈 lifecycle.py `command()` 실행

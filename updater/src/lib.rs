@@ -737,6 +737,10 @@ impl UpdateManager {
                 };
                 let current = local_versions.get(key).cloned().unwrap_or_default();
                 let installed = self.is_component_installed(&component);
+                // 모듈·익스텐션은 설치한 것만 업데이트한다. 새로 받는 건 목록 화면의 몫
+                if !installed && matches!(component, Component::Module(_) | Component::Extension(_)) {
+                    continue;
+                }
                 // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록 (GitHub 경로와 같은 규칙)
                 let update_available = if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);

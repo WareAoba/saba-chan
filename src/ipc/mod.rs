@@ -648,6 +648,8 @@ impl IPCServer {
             .route("/api/server/:name/start", post(handlers::server::start_server_handler))
             .route("/api/instance/:id/start", post(handlers::server::start_instance_handler))
             .route("/api/instance/:id/events", get(handlers::server::instance_events_handler))
+            .route("/api/instance/:id/stop", post(handlers::server::stop_instance_handler))
+            .route("/api/instance/:id/restart", post(handlers::server::restart_instance_handler))
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
@@ -661,6 +663,7 @@ impl IPCServer {
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
+            .route("/api/instance/:id/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             // ── Provision progress ──
             .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
@@ -669,6 +672,7 @@ impl IPCServer {
             .route("/api/instance/:id/apply-update", post(handlers::instance::apply_server_update))
             // ── Command execution ──
             .route("/api/instance/:id/command", post(handlers::command::execute_command))
+            .route("/api/instance/:id/commands", get(handlers::command::list_instance_commands))
             .route("/api/instance/:id/rcon", post(handlers::command::execute_rcon_command))
             .route("/api/instance/:id/rest", post(handlers::command::execute_rest_command))
             // ── Managed-process & module-feature endpoints ──
@@ -691,6 +695,8 @@ impl IPCServer {
             // ── GUI config (settings.json) ──
             .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config))
             .route("/api/config/client/:kind", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
+            .route("/api/config/:kind/defaults", get(handlers::config::get_config_defaults))
+            .route("/api/config/:kind/reset", post(handlers::config::reset_config))
             // ── Node token (cloud relay auth) ──
             .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──

@@ -1,5 +1,4 @@
 pub mod process;
-pub mod state_machine;
 pub mod module_loader;
 pub mod managed_process;
 pub mod crash;
@@ -1514,7 +1513,11 @@ impl Supervisor {
             }));
         }
 
-        Err(anyhow::anyhow!("No managed process or console log for instance '{}'", instance_id))
+        if self.instance_store.get(instance_id).is_none() {
+            anyhow::bail!("Instance not found: {}", instance_id);
+        }
+        // 한 번도 시작하지 않은 서버: 빈 콘솔
+        Ok(json!({ "success": true, "lines": [], "running": false, "source": "none" }))
     }
 
     /// Run validation on an instance (via module's validate function)

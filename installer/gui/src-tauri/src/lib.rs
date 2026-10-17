@@ -5,7 +5,6 @@
 //! - `saba-chan-installer --uninstall`          → GUI 제거 모드
 //! - `saba-chan-installer --uninstall --silent` → 사일런트 제거 (GUI 없음)
 
-pub mod github;
 #[cfg(target_os = "windows")]
 pub mod registry;
 pub mod release;
@@ -21,7 +20,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants;
-use saba_chan_updater_lib::relay::ReleaseManifest;
+use saba_chan_updater_lib::relay::{self, ReleaseManifest};
 use saba_chan_updater_lib::UpdateManager;
 
 /// 현재 인스톨러 바이너리의 버전 — tauri.conf.json과 동기화
@@ -35,8 +34,6 @@ const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Debug)]
 pub struct InstallerState {
     pub install_path: String,
-    /// 모듈·익스텐션을 받는 GitHub 계정 (U9e 전까지)
-    pub github_owner: String,
     pub language: String,
     pub create_desktop_shortcut: bool,
     pub create_start_menu_shortcut: bool,
@@ -52,7 +49,6 @@ impl Default for InstallerState {
     fn default() -> Self {
         Self {
             install_path: get_default_install_path(),
-            github_owner: constants::GITHUB_OWNER.to_string(),
             language: "en".to_string(),
             create_desktop_shortcut: true,
             create_start_menu_shortcut: true,
@@ -160,104 +156,24 @@ async fn set_selected_modules(
 // Tauri 커맨드 — 모듈
 // ═══════════════════════════════════════════════════════
 
-/// GitHub raw URL로 모듈 아이콘 경로 생성
-fn module_icon_url(owner: &str, modules_repo: &str, module_name: &str) -> String {
-    format!(
-        "https://raw.githubusercontent.com/{}/{}/main/{}/icon.png",
-        owner, modules_repo, module_name
-    )
-}
-
-/// 원격 module.toml에서 모듈 메타데이터를 파싱
-fn parse_module_info(module_name: &str, toml_str: &str, owner: &str, modules_repo: &str) -> Option<ModuleInfo> {
-    let val: toml::Value = toml::from_str(toml_str).ok()?;
-    let module_section = val.get("module")?;
-
-    let id = module_section
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or(module_name)
-        .to_string();
-
-    let display_name = module_section
-        .get("display_name")
-        .or_else(|| module_section.get("game_name"))
-        .and_then(|v| v.as_str())
-        .unwrap_or(module_name)
-        .to_string();
-
-    let description = module_section
-        .get("description")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let icon = module_icon_url(owner, modules_repo, module_name);
-
-    // [install] 섹션의 requires_extensions
-    let required_extensions = val
-        .get("install")
-        .and_then(|i| i.get("requires_extensions"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Some(ModuleInfo {
-        id,
-        name: display_name,
-        description,
-        icon,
-        required_extensions,
-    })
-}
-
 #[tauri::command]
 async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<ModuleInfo>, String> {
-    let (owner, modules_repo) = {
-        let s = state.read().await;
-        (s.github_owner.clone(), constants::GITHUB_MODULES_REPO.to_string())
-    };
-
-    // 목록은 원격에서만 온다. 실패하면 화면이 알리고, 모듈은 설치 뒤 앱에서 받을 수 있다.
-    let modules = fetch_modules_from_remote(&owner, &modules_repo).await?;
-    if modules.is_empty() {
-        return Err("No modules found in the module repository".into());
-    }
-    tracing::info!("원격에서 {} 모듈 메타데이터 로드 성공", modules.len());
-
-    // 모듈 메타데이터를 state에 저장 (required_extensions 자동 설치에 필요)
-    state.write().await.module_metadata = modules.clone();
-
-    Ok(modules)
-}
-
-/// 원격 GitHub 레포에서 모듈 목록 + 각 module.toml을 가져와 파싱
-async fn fetch_modules_from_remote(owner: &str, modules_repo: &str) -> Result<Vec<ModuleInfo>, String> {
-    let module_dirs = github::fetch_module_list(owner, modules_repo)
-        .await
-        .map_err(|e| format!("모듈 디렉토리 목록 가져오기 실패: {}", e))?;
-
-    let mut modules = Vec::new();
-
-    for module_name in &module_dirs {
-        match github::fetch_module_toml(owner, modules_repo, module_name).await {
-            Ok(toml_str) => {
-                if let Some(info) = parse_module_info(module_name, &toml_str, owner, modules_repo) {
-                    modules.push(info);
-                } else {
-                    tracing::warn!("module.toml 파싱 실패: {}", module_name);
-                }
-            }
-            Err(e) => {
-                tracing::warn!("module.toml 가져오기 실패 ({}): {}", module_name, e);
-            }
+    // 목록은 최신 릴리즈 manifest의 `module-*` 컴포넌트다 (U9e). 실패하면 화면이 알리고, 모듈은 설치 뒤 앱에서 받을 수 있다.
+    let cached = state.read().await.release.clone();
+    let manifest = match cached {
+        Some(m) => m,
+        None => {
+            let m = release::fetch_latest().await?;
+            state.write().await.release = Some(m.clone());
+            m
         }
+    };
+    let modules = release::modules(&manifest);
+    if modules.is_empty() {
+        return Err("No modules are published in the latest release".into());
     }
-
+    // required_extensions 자동 설치에 쓴다
+    state.write().await.module_metadata = modules.clone();
     Ok(modules)
 }
 
@@ -292,7 +208,6 @@ async fn start_install(
         let s = state.read().await;
         InstallConfig {
             install_path: s.install_path.clone(),
-            github_owner: s.github_owner.clone(),
             language: s.language.clone(),
             create_desktop_shortcut: s.create_desktop_shortcut,
             create_start_menu_shortcut: s.create_start_menu_shortcut,
@@ -315,7 +230,6 @@ async fn start_install(
 #[derive(Debug, Clone)]
 struct InstallConfig {
     install_path: String,
-    github_owner: String,
     language: String,
     // 바로가기는 Windows에서만 만든다
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -485,64 +399,17 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     if !config.selected_modules.is_empty() {
         emit("modules-download", "Downloading game modules...", 47);
 
-        let temp_dir = std::env::temp_dir().join("saba-chan-installer");
-        let _ = std::fs::create_dir_all(&temp_dir);
-        let modules_zip = temp_dir.join("saba-chan-modules.zip");
-
-        // 스트리밍 다운로드 + 진행률
-        let app_mod_dl = app.clone();
-        let modules_progress_cb = move |received: u64, total_bytes: Option<u64>| {
-            let mb_received = received as f64 / 1_048_576.0;
-            let msg = if let Some(total) = total_bytes {
-                let mb_total = total as f64 / 1_048_576.0;
-                let pct = if total > 0 { (received as f64 / total as f64 * 100.0) as i32 } else { 0 };
-                format!("Downloading game modules — {:.1}/{:.1} MB ({}%)", mb_received, mb_total, pct)
-            } else {
-                format!("Downloading game modules — {:.1} MB", mb_received)
+        let data_dir = resolve_data_dir();
+        for module_id in &config.selected_modules {
+            let key = format!("{}{}", relay::MODULE_PREFIX, module_id);
+            let Some(info) = manifest.components.get(&key) else {
+                tracing::warn!("Module '{}' is not in the release", module_id);
+                continue;
             };
-            let p = InstallProgress {
-                step: "modules-download".to_string(),
-                message: msg,
-                percent: 49,
-                complete: false,
-                error: None,
-                installed_components: Vec::new(),
-                download_file: Some("saba-chan-modules.zip".to_string()),
-                download_received: Some(received),
-                download_total: total_bytes,
-            };
-            app_mod_dl.emit("install:progress", &p).ok();
-        };
-
-        match github::download_repo_zipball_with_progress(
-            &config.github_owner,
-            constants::GITHUB_MODULES_REPO,
-            &modules_zip,
-            Some(modules_progress_cb),
-        )
-        .await
-        {
-            Ok(()) => {
-                emit("modules-extract", "Extracting game modules...", 52);
-                let data_dir = resolve_data_dir();
-                match extract_modules_from_zipball(
-                    &modules_zip,
-                    &data_dir,
-                    &config.selected_modules,
-                ) {
-                    Ok(module_names) => {
-                        for name in module_names {
-                            installed.push(format!("module:{}", name));
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to extract modules: {}", e);
-                    }
-                }
-                let _ = std::fs::remove_file(&modules_zip);
-            }
-            Err(e) => {
-                tracing::warn!("Failed to download modules: {}", e);
+            emit("modules-download", &format!("Installing module: {}...", module_id), 49);
+            match release::install_addon(info, &data_dir.join("modules").join(module_id)).await {
+                Ok(()) => installed.push(format!("module:{}", module_id)),
+                Err(e) => tracing::warn!("Failed to install module '{}': {}", module_id, e),
             }
         }
 
@@ -559,13 +426,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
                 required_extensions
             );
 
-            match install_required_extensions(
-                &app,
-                &config.github_owner,
-                &required_extensions,
-                &install_dir,
-            )
-            .await
+            match install_required_extensions(&app, &manifest, &required_extensions).await
             {
                 Ok(ext_names) => {
                     for name in ext_names {
@@ -896,67 +757,6 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
     saba_chan_updater_lib::extract_zip(zip_path, target_dir, |_| Ok(()))
 }
 
-fn extract_modules_from_zipball(
-    zip_path: &Path,
-    data_dir: &Path,
-    selected_modules: &[String],
-) -> anyhow::Result<Vec<String>> {
-    let file = std::fs::File::open(zip_path)?;
-    let mut archive = zip::ZipArchive::new(file)?;
-    let mut installed: Vec<String> = Vec::new();
-
-    let modules_dir = data_dir.join("modules");
-    std::fs::create_dir_all(&modules_dir)?;
-
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)?;
-        // zip-slip 방지: 상위 경로·절대 경로 엔트리는 거부
-        let Some(safe) = entry.enclosed_name() else {
-            anyhow::bail!("Unsafe path in archive: {}", entry.name());
-        };
-        let name = safe.to_string_lossy().replace('\\', "/");
-
-        // Strip root dir prefix (e.g., "WareAoba-saba-chan-modules-abc1234/")
-        let parts: Vec<&str> = name.splitn(2, '/').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-        let relative = parts[1];
-        if relative.is_empty() {
-            continue;
-        }
-
-        // Check if this file belongs to a selected module
-        let module_name = relative.split('/').next().unwrap_or("");
-        if !selected_modules.iter().any(|m| m == module_name) {
-            continue;
-        }
-
-        // Skip __pycache__, .git, etc.
-        if relative.contains("__pycache__") || relative.starts_with('.') {
-            continue;
-        }
-
-        let out_path = modules_dir.join(relative);
-
-        if entry.is_dir() {
-            std::fs::create_dir_all(&out_path)?;
-        } else {
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let mut out_file = std::fs::File::create(&out_path)?;
-            std::io::copy(&mut entry, &mut out_file)?;
-        }
-
-        if !installed.contains(&module_name.to_string()) {
-            installed.push(module_name.to_string());
-        }
-    }
-
-    Ok(installed)
-}
-
 /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
 /// %APPDATA%/saba-chan/modules/로 복사한다.
 /// 게임 모듈(minecraft, palworld 등)의 lifecycle.py가 이 유틸리티를 import 한다.
@@ -1062,97 +862,38 @@ fn collect_required_extensions(
     extensions
 }
 
-/// 필요한 익스텐션을 원격 매니페스트에서 조회하고 다운로드/설치
+/// 필요한 익스텐션을 릴리즈 manifest의 `ext-*` 컴포넌트에서 받아 설치 (SHA-256 검증)
 async fn install_required_extensions(
     app: &AppHandle,
-    github_owner: &str,
+    manifest: &ReleaseManifest,
     required_extensions: &[String],
-    _install_dir: &Path,
 ) -> Result<Vec<String>, String> {
-    let ext_manifest = github::fetch_extensions_manifest(
-        github_owner,
-        constants::GITHUB_EXTENSIONS_REPO,
-    )
-    .await
-    .map_err(|e| format!("익스텐션 매니페스트 페치 실패: {}", e))?;
-
-    let extensions_map = ext_manifest
-        .get("extensions")
-        .and_then(|v| v.as_object())
-        .ok_or("익스텐션 매니페스트에 extensions 키가 없습니다")?;
-
-    let mut installed = Vec::new();
     let data_dir = resolve_data_dir();
-    let temp_dir = std::env::temp_dir().join("saba-chan-installer");
-    let _ = std::fs::create_dir_all(&temp_dir);
-
+    let mut installed = Vec::new();
     for ext_id in required_extensions {
-        let ext_info = match extensions_map.get(ext_id.as_str()) {
-            Some(info) => info,
-            None => {
-                tracing::warn!("익스텐션 '{}' 이 매니페스트에 없습니다", ext_id);
-                continue;
-            }
+        let Some(info) = manifest.components.get(&format!("{}{}", relay::EXTENSION_PREFIX, ext_id)) else {
+            tracing::warn!("익스텐션 '{}' 이 릴리즈에 없습니다", ext_id);
+            continue;
         };
-
-        let download_url = ext_info
-            .get("download_url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| format!("익스텐션 '{}' 에 download_url이 없습니다", ext_id))?;
-
-        let default_install_dir = format!("extensions/{}", ext_id);
-        let install_sub_dir = ext_info
-            .get("install_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&default_install_dir);
-
-        let ext_name = ext_info
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or(ext_id.as_str());
-
-        let emit_msg = format!("Installing extension: {}...", ext_name);
         let p = InstallProgress {
             step: "extensions".to_string(),
-            message: emit_msg,
+            message: format!("Installing extension: {}...", ext_id),
             percent: 54,
-            complete: false,
-            error: None,
-            installed_components: Vec::new(),
-            download_file: Some(format!("extension-{}.zip", ext_id)),
-            download_received: None,
-            download_total: None,
+            download_file: Some(info.filename.clone()),
+            ..Default::default()
         };
         app.emit("install:progress", &p).ok();
 
-        let default_asset_name = format!("extension-{}.zip", ext_id);
-        let asset_name = ext_info
-            .get("asset")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&default_asset_name);
-
-        let temp_file = temp_dir.join(asset_name);
-
-        // 다운로드
-        if let Err(e) = github::download_asset(download_url, &temp_file).await {
-            tracing::warn!("익스텐션 '{}' 다운로드 실패: {}", ext_id, e);
-            continue;
+        let default_dir = format!("extensions/{}", ext_id.replace('-', "_"));
+        let target_dir = data_dir.join(info.install_dir.as_deref().unwrap_or(&default_dir));
+        match release::install_addon(info, &target_dir).await {
+            Ok(()) => {
+                tracing::info!("익스텐션 '{}' 설치 완료: {}", ext_id, target_dir.display());
+                installed.push(ext_id.clone());
+            }
+            Err(e) => tracing::warn!("익스텐션 '{}' 설치 실패: {}", ext_id, e),
         }
-
-        // 설치 경로 결정 — data_dir/extensions/<ext_id>
-        let target_dir = data_dir.join(install_sub_dir);
-        let _ = std::fs::create_dir_all(&target_dir);
-
-        if let Err(e) = extract_zip(&temp_file.to_path_buf(), &target_dir.to_path_buf()) {
-            tracing::warn!("익스텐션 '{}' 추출 실패: {}", ext_id, e);
-            continue;
-        }
-
-        let _ = std::fs::remove_file(&temp_file);
-        tracing::info!("익스텐션 '{}' 설치 완료: {}", ext_id, target_dir.display());
-        installed.push(ext_id.clone());
     }
-
     Ok(installed)
 }
 
