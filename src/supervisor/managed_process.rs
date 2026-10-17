@@ -135,6 +135,11 @@ impl LogBuffer {
         line
     }
 
+    /// 다음 줄이 받을 id. `get_since(cursor())`는 지금 이후에 나온 줄만 준다
+    fn cursor(&self) -> u64 {
+        self.next_id
+    }
+
     /// Get all lines with id >= `since_id` (for polling).
     fn get_since(&self, since_id: u64) -> Vec<LogLine> {
         self.lines.iter()
@@ -557,6 +562,11 @@ impl ManagedProcess {
     /// Get all log lines with `id >= since_id`.
     pub async fn get_console_since(&self, since_id: u64) -> Vec<LogLine> {
         self.log_buffer.lock().await.get_since(since_id)
+    }
+
+    /// 지금 이후의 콘솔 줄만 보려면 이 값으로 `get_console_since`를 부른다
+    pub async fn console_cursor(&self) -> u64 {
+        self.log_buffer.lock().await.cursor()
     }
 
     /// Get the most recent `count` log lines.
@@ -1030,6 +1040,18 @@ mod tests {
     // ═══════════════════════════════════════════════════════
     // LogBuffer 단위 테스트
     // ═══════════════════════════════════════════════════════
+
+    /// 명령 직전 커서로 읽으면 명령 뒤의 줄만 온다 (직전 줄이 답에 섞이지 않는다)
+    #[test]
+    fn cursor_reads_only_lines_after_it() {
+        let mut buffer = LogBuffer::new();
+        assert!(buffer.get_since(buffer.cursor()).is_empty());
+        buffer.push(LogSource::Stdout, "Done (0.512s)!".into(), LogLevel::Info);
+        let before = buffer.cursor();
+        buffer.push(LogSource::Stdout, "There are 0 of 20 players online".into(), LogLevel::Info);
+        let after: Vec<_> = buffer.get_since(before).into_iter().map(|l| l.content).collect();
+        assert_eq!(after, vec!["There are 0 of 20 players online"]);
+    }
 
     #[test]
     fn test_log_buffer_push_and_query() {

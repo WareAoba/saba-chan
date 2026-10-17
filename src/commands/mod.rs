@@ -10,7 +10,7 @@
 //!
 //! 명령 찾기: 이름(대소문자 무시) → `[aliases.commands]`의 별명.
 //! 정의된 명령의 `method`:
-//! - `rcon`: `rcon_template`의 `{입력}` 자리를 채워 RCON(managed면 stdin)으로
+//! - `rcon`: `rcon_template`의 `{입력}` 자리를 채워 서버 콘솔(stdin)로. 이름은 예전 그대로다 (RCON은 쓰지 않는다)
 //! - `rest`: `endpoint_template` + `http_method`, 입력을 본문으로
 //! - `module`(예전 이름 `dual`/`both`) 또는 생략: 모듈 `lifecycle.py`의 `command()`가 처리
 //!
