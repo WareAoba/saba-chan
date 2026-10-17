@@ -102,7 +102,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | daemonStatus (132) | daemon:status | 2810 | GET /health | ✓ 574 |
 | daemonRestart (133) | daemon:restart | 2820 | **자기가 spawn한 daemon 프로세스를 kill한 뒤 `startDaemon()`.** API(`/api/daemon/shutdown`)를 거치지 않는다 | — |
 | minimize/maximize/closeWindow (135-137) | window:* | 3428-3451 | 창 조작 | n/a |
-| electron.getLanguage/setLanguage/getSystemLanguage (146-148) | language:* | 3000-3041 | 로컬 settings.json 읽기/쓰기. 언어 저장은 데몬 설정으로 간다. 로컬 봇 재시작 단계는 없어졌다 | 부분 |
+| electron.getLanguage/setLanguage/getSystemLanguage (146-148) | language:* | 3000-3041 | 로컬 settings.json 읽기/쓰기. 언어를 저장하고 번역을 다시 읽는다. 데몬은 재시작하지 않고, 로컬 봇 재시작 단계는 없어졌다(qcza9f main.js:2737-2747) | 부분 |
 | electron.shell.openExternal (151) | shell:openExternal | 3330 | 외부 URL 열기 | n/a |
 
 Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `updates:available`, `updates:completed`, `bot:error`, `bot:relaunch`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
