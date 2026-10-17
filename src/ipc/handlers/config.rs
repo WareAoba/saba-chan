@@ -148,7 +148,10 @@ pub async fn save_node_token(
 }
 
 /// DELETE /api/config/node-token
-pub async fn delete_node_token(State(_state): State<IPCServer>) -> impl IntoResponse {
+/// 연결 해제: 토큰을 지우기 전에 릴레이 에이전트를 멈춰 더는 원격 명령을 받지 않는다.
+/// 토큰이 없으면 다음 기동 때도 자동 시작하지 않는다.
+pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
+    state.relay_agent.stop();
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let token_path = data_dir.join(".node_token");
 
