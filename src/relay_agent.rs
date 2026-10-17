@@ -99,7 +99,7 @@ impl RelayAgent {
                     return;
                 }
             };
-            let session = Session { agent: agent.clone(), server, client, base: relay_url, cancel: cancel.clone() };
+            let session = Session { agent: agent.clone(), server, client, base: relay_url, cancel: cancel.clone(), generation };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
                 agent.finish(generation, Some(e));
@@ -140,8 +140,12 @@ impl RelayAgent {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn update(&self, f: impl FnOnce(&mut AgentStatus)) {
-        f(&mut self.lock().status)
+    /// 세션 상태 갱신. 끝난(세대가 지난) 세션의 늦은 응답은 버린다
+    fn update(&self, generation: u64, f: impl FnOnce(&mut AgentStatus)) {
+        let mut inner = self.lock();
+        if inner.generation == generation && inner.cancel.is_some() {
+            f(&mut inner.status)
+        }
     }
 }
 
@@ -164,6 +168,7 @@ struct Session {
     client: reqwest::Client,
     base: String,
     cancel: CancellationToken,
+    generation: u64,
 }
 
 impl Session {
@@ -234,7 +239,7 @@ impl Session {
                     tracing::warn!("[RelayAgent] relay asks for agent update (min {})", data.get("minVersion").and_then(|v| v.as_str()).unwrap_or("?"));
                 }
                 let sleeping = data.get("sleeping").and_then(|v| v.as_bool()).unwrap_or(false);
-                self.agent.update(|s| {
+                self.agent.update(self.generation, |s| {
                     if s.sleeping != sleeping {
                         tracing::info!("[RelayAgent] relay {}", if sleeping { "sleeping — polling paused" } else { "awake — polling resumed" });
                     }
@@ -245,7 +250,7 @@ impl Session {
             }
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
-                self.agent.update(|s| s.last_error = Some(e));
+                self.agent.update(self.generation, |s| s.last_error = Some(e));
             }
         }
     }
@@ -328,7 +333,7 @@ impl Session {
                     failures += 1;
                     let backoff = backoff(failures);
                     tracing::warn!("[RelayAgent] poll failed ({}), retry in {}s", e, backoff.as_secs());
-                    self.agent.update(|s| s.last_error = Some(e));
+                    self.agent.update(self.generation, |s| s.last_error = Some(e));
                     self.pause(backoff).await;
                 }
             }
@@ -352,20 +357,27 @@ impl Session {
         if status.as_u16() == 204 {
             return Ok(());
         }
-        let body: Value = resp.json().await.unwrap_or(Value::Null);
+        let body: Value = tokio::select! {
+            _ = self.cancel.cancelled() => return Ok(()),
+            b = resp.json() => b.unwrap_or(Value::Null),
+        };
         if !status.is_success() {
             return Err(format!("poll {}: {}", status, body.get("error").and_then(|v| v.as_str()).unwrap_or("")));
         }
         if body.get("sleeping").and_then(|v| v.as_bool()) == Some(true) {
-            self.agent.update(|s| s.sleeping = true);
+            self.agent.update(self.generation, |s| s.sleeping = true);
             return Ok(());
         }
         let commands = body.get("commands").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         for cmd in commands {
+            // 연결 해제(취소) 뒤에는 이미 받은 명령도 실행하지 않는다
+            if self.cancel.is_cancelled() {
+                break;
+            }
             let Some(id) = cmd.get("id").and_then(|v| v.as_str()) else { continue };
             let result = self.handle_payload(&cmd).await;
             self.post_result(id, &result).await;
-            self.agent.update(|s| s.commands_handled += 1);
+            self.agent.update(self.generation, |s| s.commands_handled += 1);
         }
         Ok(())
     }

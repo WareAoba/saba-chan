@@ -16,8 +16,15 @@ pub struct RunningProcess {
 
 /// 크로스 플랫폼: 실행 중인 모든 프로세스 목록 가져오기
 pub fn get_running_processes() -> Vec<RunningProcess> {
+    use sysinfo::{ProcessRefreshKind, UpdateKind};
     let mut sys = System::new();
-    sys.refresh_processes();
+    // 기본 refresh_processes()는 커맨드라인·작업 폴더를 읽지 않는다: 자동 감지(cmd_patterns, 주인 가리기)에 필요하다
+    sys.refresh_processes_specifics(
+        ProcessRefreshKind::new()
+            .with_exe(UpdateKind::OnlyIfNotSet)
+            .with_cmd(UpdateKind::OnlyIfNotSet)
+            .with_cwd(UpdateKind::OnlyIfNotSet),
+    );
     
     let processes: Vec<RunningProcess> = sys.processes()
         .iter()
@@ -80,12 +87,13 @@ pub fn pick_owned_process<'a>(
     None
 }
 
-/// 다른 인스턴스 폴더가 이 인스턴스 폴더 안에 있을 때(겹친 경로) 더 깊은 쪽이 주인이다
+/// 프로세스가 다른 인스턴스 폴더에도 들어맞고 그쪽이 같거나 더 깊으면 이 인스턴스 것이 아니다
+/// (여러 인스턴스가 같은 실행 파일 폴더를 쓰면 그 폴더로는 주인을 가릴 수 없다)
 fn process_under_any_more_specific(process: &RunningProcess, own_roots: &[String], other_roots: &[String]) -> bool {
     let deepest_own = own_roots.iter().filter(|r| process_under_any(process, std::slice::from_ref(*r))).map(|r| normalize_path(r).len()).max().unwrap_or(0);
     other_roots
         .iter()
-        .any(|r| process_under_any(process, std::slice::from_ref(r)) && normalize_path(r).len() > deepest_own)
+        .any(|r| process_under_any(process, std::slice::from_ref(r)) && normalize_path(r).len() >= deepest_own)
 }
 // 프로세스 목록을 한 번 스캔한 후, 그 snapshot으로 여러 검색을 수행합니다.
 // RwLock write lock 밖에서 스캔하여 lock 점유 시간을 최소화합니다.
@@ -165,6 +173,19 @@ mod tests {
         assert!(pick_owned_process(&[&a], &taken, &roots_a, &[], true).is_none());
         // 같은 모듈 인스턴스가 하나뿐이면 폴더를 몰라도 예전처럼 첫 후보
         assert_eq!(pick_owned_process(&[&a], &none, &[], &[], true).map(|p| p.pid), Some(10));
+        // 같은 실행 파일 폴더를 함께 쓰면 그 폴더로는 고르지 않고 작업 폴더로 가린다
+        let shared = |pid: u32, cwd: &str| RunningProcess {
+            pid,
+            name: "server.exe".into(),
+            executable_path: Some(r"C:\Games\bin\server.exe".into()),
+            cmd: vec![],
+            cwd: Some(cwd.into()),
+        };
+        let (sa, sb) = (shared(40, r"C:\Saba\instances\a"), shared(50, r"C:\Saba\instances\b"));
+        let own_a = vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\a".to_string()];
+        let own_b = vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\b".to_string()];
+        assert_eq!(pick_owned_process(&[&sb, &sa], &none, &own_a, &own_b, false).map(|p| p.pid), Some(40));
+        assert!(pick_owned_process(&[&sb], &none, &own_a, &own_b, false).is_none());
         // "a"가 "ab"의 접두어여도 섞이지 않는다
         let ab = proc(30, r"C:\Saba\instances\ab");
         assert!(pick_owned_process(&[&ab], &none, &roots_a, &[], false).is_none());
