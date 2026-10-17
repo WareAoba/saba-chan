@@ -101,6 +101,9 @@ contextBridge.exposeInMainWorld('api', {
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
     deleteNodeToken: () => ipcRenderer.invoke('nodeToken:delete'),
+    // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
+    dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
+    dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),
     // Relay server proxy (cloud mode) — all relay comms go through daemon
     relayCheckHostStatus: (hostId, relayUrl) => ipcRenderer.invoke('relay:checkHostStatus', hostId, relayUrl),
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),

@@ -616,6 +616,23 @@ pub enum ConfigCmd {
     Defaults,
     /// Back to the default values (all settings when no key is named)
     Reset { keys: Vec<String> },
+    /// Save settings and the server list to a zip, to move to another PC (game files not included)
+    Export {
+        file: std::path::PathBuf,
+        /// Also save passwords, the chatbot API key and the bot pairing
+        #[arg(long)]
+        secrets: bool,
+    },
+    /// Bring in settings and servers from an export zip
+    Import {
+        file: std::path::PathBuf,
+        /// Only show what would change
+        #[arg(long)]
+        dry_run: bool,
+        /// Replace servers that already exist (running ones are skipped)
+        #[arg(long)]
+        overwrite: bool,
+    },
 }
 
 /// 번역된 도움말을 끼운 clap 명령

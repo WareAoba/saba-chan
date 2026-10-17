@@ -2795,6 +2795,33 @@ ipcMain.handle('nodeToken:load', async () => {
 // 연결 해제: 데몬이 릴레이 에이전트를 멈추고 토큰을 지운다
 ipcMain.handle('nodeToken:delete', () => daemonCall('delete', '/api/config/node-token'));
 
+// 설정·서버 목록 내보내기/가져오기 (A9). 파일은 데몬이 읽고 쓴다: 여기서는 경로만 고른다.
+// 가져오기는 path 없이 부르면 파일을 고르게 하고, 결과에 path를 붙여 준다 (dryRun 미리보기 뒤 같은 path로 다시 부른다)
+ipcMain.handle('dataTransfer:export', async (_event, opts = {}) => {
+    const result = await dialog.showSaveDialog({
+        defaultPath: `saba-chan-export-${new Date().toISOString().slice(0, 10)}.zip`,
+        filters: [{ name: 'Zip', extensions: ['zip'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    return daemonCall('post', '/api/migration/export', { path: result.filePath, secrets: !!opts.secrets }, 120000);
+});
+
+ipcMain.handle('dataTransfer:import', async (_event, opts = {}) => {
+    let filePath = typeof opts.path === 'string' && opts.path ? opts.path : null;
+    if (!filePath) {
+        const result = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [{ name: 'Zip', extensions: ['zip'] }],
+        });
+        if (result.canceled || !result.filePaths[0]) return { canceled: true };
+        filePath = result.filePaths[0];
+    }
+    const body = await daemonCall('post', '/api/migration/import', {
+        path: filePath, dryRun: !!opts.dryRun, overwrite: !!opts.overwrite,
+    }, 120000);
+    return { ...body, path: filePath };
+});
+
 // 로그 파일 경로 반환
 ipcMain.handle('logs:getPath', async () => {
     return logFilePath || '로그 파일 없음';

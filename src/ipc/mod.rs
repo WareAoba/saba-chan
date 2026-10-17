@@ -671,6 +671,9 @@ impl IPCServer {
             .route("/api/config/client/:kind", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
             .route("/api/config/:kind/defaults", get(handlers::config::get_config_defaults))
             .route("/api/config/:kind/reset", post(handlers::config::reset_config))
+            // ── 설정·인스턴스 내보내기/가져오기 (A9) ──
+            .route("/api/migration/export", post(handlers::migration::export))
+            .route("/api/migration/import", post(handlers::migration::import))
             // ── Node token (cloud relay auth) ──
             .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──

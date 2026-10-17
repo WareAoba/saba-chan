@@ -458,6 +458,19 @@ impl Api {
     pub async fn save_app_config(&self, full: Value) -> Result<Value> {
         self.put("/api/config/gui", full).await
     }
+    /// POST /api/migration/export — 데몬이 `path`에 zip을 쓴다
+    pub async fn export_config(&self, path: &str, secrets: bool) -> Result<Value> {
+        self.post_long("/api/migration/export", json!({ "path": path, "secrets": secrets }))
+            .await
+    }
+    /// POST /api/migration/import — `{instances: {added, replaced, skipped}, missingModules, config, nodeToken}`
+    pub async fn import_config(&self, path: &str, dry_run: bool, overwrite: bool) -> Result<Value> {
+        self.post_long(
+            "/api/migration/import",
+            json!({ "path": path, "dryRun": dry_run, "overwrite": overwrite }),
+        )
+        .await
+    }
     /// GET/PUT /api/config/client/cli — CLI 전용 네임스페이스 (최상위 키 머지)
     pub async fn cli_config(&self) -> Result<Value> {
         self.get("/api/config/client/cli").await

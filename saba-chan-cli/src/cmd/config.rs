@@ -56,7 +56,73 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
             Ok(())
         }
         ConfigCmd::Reset { keys } => reset(ctx, &keys).await,
+        ConfigCmd::Export { file, secrets } => export(ctx, &file, secrets).await,
+        ConfigCmd::Import { file, dry_run, overwrite } => import(ctx, &file, dry_run, overwrite).await,
     }
+}
+
+/// 데몬은 절대 경로만 받는다 (CLI와 같은 PC)
+fn absolute(file: &std::path::Path) -> String {
+    std::path::absolute(file).unwrap_or_else(|_| file.to_path_buf()).to_string_lossy().into_owned()
+}
+
+async fn export(ctx: &Ctx, file: &std::path::Path, secrets: bool) -> Result<()> {
+    if secrets {
+        ctx.ask.ensure(&t!("config.confirm_export_secrets"))?;
+    }
+    let path = absolute(file);
+    let r = ctx.api.export_config(&path, secrets).await?;
+    let n = r.get("instances").and_then(Value::as_array).map_or(0, Vec::len);
+    ctx.out.done(&t!("config.exported", path = path, count = n), &r);
+    if !secrets {
+        ctx.out.hint(&t!("config.export_no_secrets"));
+    }
+    Ok(())
+}
+
+async fn import(ctx: &Ctx, file: &std::path::Path, dry_run: bool, overwrite: bool) -> Result<()> {
+    let path = absolute(file);
+    let r = ctx.api.import_config(&path, dry_run, overwrite).await?;
+    let names = |key: &str| -> Vec<String> {
+        r.pointer(&format!("/instances/{}", key))
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(|i| output::s(i, "name").to_string()).collect())
+            .unwrap_or_default()
+    };
+    let (added, replaced) = (names("added"), names("replaced"));
+    let msg = if dry_run { t!("config.import_preview") } else { t!("config.imported") };
+    ctx.out.done(&msg, &r);
+    if ctx.out.json {
+        return Ok(());
+    }
+    let mut rows = Vec::new();
+    if !added.is_empty() {
+        rows.push((t!("config.import_added"), added.join(", ")));
+    }
+    if !replaced.is_empty() {
+        rows.push((t!("config.import_replaced"), replaced.join(", ")));
+    }
+    let config: Vec<String> = r
+        .get("config")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default();
+    if !config.is_empty() {
+        rows.push((t!("config.import_settings"), config.join(", ")));
+    }
+    output::print_kv(&rows);
+    for skip in r.pointer("/instances/skipped").and_then(Value::as_array).into_iter().flatten() {
+        let reason = output::s(skip, "reason");
+        let why = crate::i18n::try_t(&format!("config.skip_reason.{}", reason)).unwrap_or_else(|| reason.to_string());
+        ctx.out.warn(&t!("config.import_skipped", name = output::s(skip, "name"), reason = why));
+    }
+    for m in r.get("missingModules").and_then(Value::as_array).into_iter().flatten() {
+        ctx.out.warn(&t!("config.import_missing_module", module = output::show(m)));
+    }
+    if added.iter().chain(&replaced).next().is_some() {
+        ctx.out.hint(&t!("config.import_move_files"));
+    }
+    Ok(())
 }
 
 async fn reset(ctx: &Ctx, keys: &[String]) -> Result<()> {

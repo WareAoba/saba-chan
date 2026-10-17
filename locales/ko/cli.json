@@ -100,7 +100,25 @@
     "saved": "저장했어요: {{keys}}",
     "confirm_reset_all": "모든 설정을 기본값으로 되돌릴까요?",
     "confirm_reset": "{{keys}}를 기본값으로 되돌릴까요?",
-    "all": "모든 설정"
+    "all": "모든 설정",
+    "confirm_export_secrets": "비밀번호·챗봇 API 키·봇 페어링도 파일에 그대로 들어가요. 계속할까요?",
+    "exported": "{{path}}에 설정과 서버 {{count}}개를 저장했어요.",
+    "export_no_secrets": "비밀번호·API 키·봇 페어링은 빠졌어요. 넣으려면 --secrets.",
+    "import_preview": "가져오면 이렇게 바뀌어요 (아직 바꾸지 않았어요).",
+    "imported": "가져왔어요.",
+    "import_added": "새 서버",
+    "import_replaced": "덮어쓴 서버",
+    "import_settings": "설정",
+    "import_skipped": "{{name}}: 건너뜀 ({{reason}})",
+    "import_missing_module": "{{module}} 모듈이 이 PC에 없어요. 모듈을 설치해야 그 서버를 켤 수 있어요.",
+    "import_move_files": "게임 서버 파일은 들어 있지 않아요. 서버 폴더를 같은 경로로 옮기거나 서버 설정에서 폴더를 바꾸세요.",
+    "skip_reason": {
+      "exists": "이미 있음, 덮어쓰려면 --overwrite",
+      "running": "켜져 있음",
+      "working_dir_in_use": "다른 서버가 같은 폴더를 씀",
+      "invalid_id": "잘못된 id",
+      "save_failed": "저장 실패"
+    }
   },
   "console": {
     "attach_help": "{{name}} 콘솔에 붙었어요. 명령을 입력하세요. 도움말 :help, 나가기 :q (서버는 계속 돌아요).",
@@ -520,7 +538,9 @@
       "chatbot.clear": "챗봇 설정과 키 모두 지우기",
       "chatbot.forget": "챗봇이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",
       "module.audit": "모듈의 Python 코드가 하는 일을 선언한 권한과 비교",
-      "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교"
+      "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교",
+      "config.export": "설정과 서버 목록을 zip으로 저장 (다른 PC로 옮길 때, 게임 파일은 빠짐)",
+      "config.import": "내보낸 zip에서 설정과 서버 가져오기"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -587,7 +607,11 @@
       "message": "공지할 말",
       "delete": "저장된 키를 지우기",
       "chatbot.set.guild": "이 디스코드 서버에만 (서버 id)",
-      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)"
+      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)",
+      "file": "zip 파일 경로",
+      "secrets": "비밀번호·챗봇 API 키·봇 페어링도 저장",
+      "dry_run": "바뀔 내용만 보기",
+      "overwrite": "이미 있는 서버를 덮어쓰기 (켜져 있는 서버는 건너뜀)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

@@ -94,6 +94,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | botConfigLoad (96) | botConfig:load | 2794 | GET /api/config/bot | ✓ 698 |
 | botConfigSave (97) | botConfig:save | 2857 | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 698 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (100-102) | nodeToken:* | 2799/2803/2808 | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 705 |
+| dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
 | instanceAcceptEula (108) | instance:acceptEula | 2358 | POST /api/instance/:id/accept-eula | ✓ 685 (미사용) |
 | instanceBackups…instanceScheduleSave (109-114) | instance:backup*/schedule* | 2359-2368 | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 688-691 (미사용) |
@@ -191,6 +192,8 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `slots.rs`: 익스텐션 manifest의 `cli.slots`(데이터만, 코드 실행 없음). 지원 자리는 `InstanceList.badge`, `InstanceDetail.status`, `CreateInstance.options`.
 - `i18n.rs`: 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 바이너리에 넣어 둔 en/ko를 쓴다(`:11-12, 36-45`). clap 도움말은 `help.cmd.*`·`help.arg.*` 키가 있으면 그 문구로 바꿔 끼운다(`cli.rs:617-645`).
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
+
+- `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 
 사용자 안내서는 `saba-chan-cli/README.md`에 있다.
 
