@@ -9,8 +9,8 @@
 
 | 저장소 | 브랜치 · 커밋 | 커밋 날짜 |
 |---|---|---|
-| WareAoba/saba-chan | `claude/project-thread-qcza9f` `97ec625` (CLI 절은 `claude/cli-remake-b1wszk`) | 2026-10-17 |
-| WareAoba/saba-chan-modules | `claude/project-thread-qcza9f` `1c63b6f` | 2026-10-17 |
+| WareAoba/saba-chan | `claude/project-thread-qcza9f` `1f0028a` (CLI 절은 `claude/cli-remake-b1wszk`) | 2026-10-17 |
+| WareAoba/saba-chan-modules | `claude/project-thread-qcza9f` `e1d7743` | 2026-10-17 |
 | WareAoba/saba-chan-extensions | `claude/project-thread-qcza9f` `359741f` | 2026-10-17 |
 | WareAoba/server-chan | `main` `4c423e8` (릴레이 쪽은 다시 만드는 중이라 갱신하지 않았다) | 2026-04-14 |
 
@@ -80,7 +80,7 @@
 | 설정 | 사용자 설정은 `<data_dir>/config.json` 하나(네임스페이스 `gui`, `relay`, `updates`, `boot`, `extensions`, `chatbot`, 클라이언트별 영역). 원자적 저장과 `.bak` 복구, 예전 개별 파일은 한 번 이관하고 `.migrated` 사본을 남긴다 | 01 §4.4 |
 | 데몬 → 모듈 | `python lifecycle.py <fn>`, stdin JSON(config) → stdout JSON(전체 또는 마지막 줄), stderr `PROGRESS:` 진행 보고. 데몬이 부르는 함수 17종. 환경변수 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`, `SABA_ENABLED_EXTENSIONS` | 02 §2 |
 | 모듈 정의 | `module.toml`: `[module]`(필수) `[protocols]` `[config]` `[detection]` `[launch]` `[backup]` `[errors]` `[extensions.<id>]` `[[settings.fields]]` `[[commands.fields]]` `[install]`. `schema_version = 1`이면 모르는 키와 잘못된 값에서 로드가 실패하고, 같은 구조체에서 JSON Schema를 내보낸다 | 02 §1.2 |
-| 게임 명령 | 모두 stdin(서버 콘솔). `/api/instance/:id/rcon`은 이름만 남은 호환 경로로 콘솔 출력을 잠깐 모아 돌려준다. 콘솔 없는 서버는 409 `no_command_path`. palworld는 REST(`/rest`)만 쓴다. 정지도 RCON 없이 콘솔 명령이나 REST로 한다 | 01 §5.4, 02 RCON 정책 |
+| 게임 명령 | 모두 stdin(서버 콘솔). 모듈의 콘솔 명령은 `method = "console"` + `console_template`(예전 이름 `rcon`은 별칭). `/api/instance/:id/rcon`은 이름만 남은 호환 경로로 콘솔 출력을 잠깐 모아 돌려준다. 콘솔 없는 서버는 409 `no_command_path`. palworld는 REST(`/rest`)만 쓴다. 정지도 RCON 없이 콘솔 명령이나 REST로 한다 | 01 §5.4, 02 RCON 정책 |
 | 데몬 → 플러그인 | 같은 실행기로 hook 함수 호출. `FIRED_HOOKS` 목록(`daemon.startup/shutdown`, `server.pre_start/stop/status/list_enrich/post_create/pre_delete/settings_changed/check_update`, 익스텐션 명령 `command.<name>`). 목록의 hook이 모두 발화되는지 테스트가 확인한다. 순서는 `priority`, id 순 | 03 §2 |
 | 플러그인 → GUI | GUI가 `/api/extensions/:id/gui` 번들을 로드, 전역 `window.SabaExt<Pascal>`의 `registerSlots()`로 slot에 컴포넌트 주입 | 03 §4 |
 | 데몬 ↔ relay | 데몬 안의 relay_agent가 바깥으로 롱폴링하고 HMAC 서명으로 요청한다. 페어링·봇 초대·노드 조회는 데몬 `/api/relay/*` 프록시 | 04 §4, 05 §4 |
@@ -116,7 +116,7 @@
 - ~~업데이터 무결성 검사가 항상 "Tampered"~~, ~~GUI `updater:setConfig` 405~~, ~~모듈 역호출 401~~, ~~`FUNCTIONS` 표 누락~~, ~~`SABA_ENABLED_EXTENSIONS` 경로~~, ~~크래시 감지 없음~~, ~~명령이 꺼진 RCON으로 감~~, ~~업데이트 직후 인스턴스 삭제 위험~~, ~~GUI 종료 시 봇 정지 오류~~ → 모두 해결(각 문서의 해결 표시 참고).
 - ~~`server.post_create`가 발화되지 않는다~~, ~~`auto_apply`가 동작하지 않는다~~(설정이 지워졌다), ~~CLI의 본문 없는 `apply`·`download` 요청이 거부된다~~ → 해결(03 §2.3, 05 §1.7).
 - 데몬은 `/api/servers`의 `managed`로 관리 모드 여부를 알려 주지만, GUI는 아직 `interaction_mode = "console"`일 때만 관리 모드로 본다. 그래서 palworld를 데몬은 관리 모드로, GUI는 비관리로 다룬다(02 §1.2).
-- 모듈 `stop()`의 콘솔 정지 경로는 데몬이 `instance_id`를 넘기지 않아 실행되지 않는다. 데몬이 `stop()`을 부르는 것도 콘솔이 없을 때뿐이다(02 §6.3 #8).
+- 정지: 콘솔이 있는 managed 서버는 데몬이 `stop_command`를 stdin으로 보내고 기다린다. 모듈 `stop()`은 콘솔이 없을 때만 불린다(02 §6.3 #8).
 
 ### 구조 정리 대상
 - ~~단일 인스턴스 보장 없음~~, ~~긴 Python 호출 동안 락 점유~~, ~~hook 순서 비결정~~, ~~발화되지 않는 hook·읽히지 않는 manifest 필드 대부분~~, ~~릴리즈 CI가 이전 릴리즈 삭제~~ → 해결.

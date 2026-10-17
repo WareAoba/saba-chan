@@ -53,9 +53,9 @@
 | `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/:1165,1240`). |
 | `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. 옛 이름 `server.post_stop`은 `server.stop`으로 바꿔 읽는다(`ext/:15-17,40-51`). |
 | `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:228-286`). |
-| `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. CLI TUI가 해석한다. |
+| `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. CLI가 `cli.slots`만 해석한다(7.4). |
 | `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:454-458,913-918`). |
-| `instance_fields` | `HashMap<String, FieldDef>` | `{}` | (a) disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`), (b) 목록 응답 → CLI가 자동 설정 슬롯을 만든다. **default 값을 인스턴스에 주입하는 코드는 없다.** |
+| `instance_fields` | `HashMap<String, FieldDef>` | `{}` | (a) disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`), (b) ~~목록 응답 → CLI가 자동 설정 슬롯을 만든다~~(PR #6 CLI는 쓰지 않는다). **default 값을 인스턴스에 주입하는 코드는 없다.** |
 | `config_fields` | `HashMap<String, FieldDef>` | `{}` | 목록 응답에만 실린다. 값 저장은 `config.json`의 `extensions.settings.<id>`. 스키마 검증은 없다. |
 | `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. locale은 한 단계 경로 이름이어야 한다(`ext/:1457-1469`). |
 | `priority` | `i32` | `100` | 같은 hook·명령을 여러 익스텐션이 가질 때의 순서. 작을수록 먼저, 같으면 id 순(`ext/:265-267,1116-1127`). |
@@ -252,7 +252,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 | `AddServer.options` | `AddInstanceNewServer.js:228` | `t` | 없음 |
 
 - `server` 객체는 `/api/servers`의 `ServerInfo`다. 여기서 `extension_data`와 `extension_status[<extension_id>]`(list_enrich 결과)를 컴포넌트가 읽는다.
-- 슬롯 이름은 호스트에 하드코딩되어 있고, 슬롯 목록을 문서화하거나 검증하는 장치가 없다. CLI 쪽 대응표는 `saba-chan-cli/src/tui/app.rs:270-279`에 주석으로만 있다.
+- 슬롯 이름은 호스트에 하드코딩되어 있고, 슬롯 목록을 문서화하거나 검증하는 장치가 없다. CLI 쪽 슬롯 목록(`InstanceList.badge`, `InstanceDetail.status`, `CreateInstance.options`)은 `saba-chan-cli/src/slots.rs:1-8` 모듈 주석으로만 있다(PR #6 기준).
 - ~~`AddServer.options`의 `use_container` 의미가 호스트와 daemon에 하드코딩된 docker 전용 계약이다.~~ → 해결: 슬롯은 `t`만 받고, daemon `create_instance`에 `use_container`가 없다.
 
 ### 4.3 i18n
@@ -262,7 +262,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 preload/main IPC 바인딩이 **없다**. CLI `client.rs:466-474`에만 있다.
+- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 preload/main IPC 바인딩이 **없다**. CLI `saba-chan-cli/src/client.rs:436-442`에만 있다(`extension config`, PR #6 기준).
 - `extension:icon` → SabaStorage(`SabaStorage.js:982`), `extension:initStatus` → `hooks/useExtensionInitStatus.js`.
 
 ---
@@ -337,7 +337,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.js:189`).
 17. ~~리포에 런타임 산출물(`dockerd.pid`, `.deps-resolved.json`, Go 바이너리)이 커밋되어 있다.~~ → 해결: 해당 익스텐션이 제거되었고, 저장소에는 소스·테스트·`icon.png`만 있다.
 18. ~~릴리즈 워크플로가 기존 릴리즈를 모두 삭제한다.~~ → 해결: 익스텐션 저장소의 릴리즈 워크플로가 없어졌다(extensions 301ff2c). 배포는 코어 릴리즈가 맡는다(3.4).
-19. CLI 도움말은 `extension [...|registry|...]`라고 하지만 실제 서브커맨드는 `manifest`다(`saba-chan-cli/src/tui/commands.rs:652` vs `:132,906`).
+19. ~~CLI 도움말은 `extension [...|registry|...]`라고 하지만 실제 서브커맨드는 `manifest`다~~ → 해결: PR #6 CLI의 하위 명령 목록과 도움말은 clap 정의에서 나오므로 어긋나지 않는다. 카탈로그 조회는 `extension available`이다(`saba-chan-cli/src/cli.rs:473-474`, `cmd/extension.rs:29,232`).
 20. ~~`server.post_create`가 `FIRED_HOOKS`에 있어 manifest 검증을 통과하지만 실제로는 발화되지 않는다~~ → 해결: 생성 시 발화한다(7.1-8, `handlers/instance.rs:244-257`).
 
 ### 7.3 "daemon이 주인 / 플러그인은 자유롭게 커스터마이즈" 원칙 위반 (하드코딩된 플러그인 지식)
@@ -362,10 +362,10 @@ Core(daemon/GUI/CLI)가 특정 익스텐션을 이름으로 아는 곳들이다.
 
 daemon을 우회하는 interface 동작:
 - ~~GUI가 봇 실행 command와 env를 조립해 `/api/ext-process/discord-bot/start`로 보낸다.~~ → 해결: ext_process와 로컬 봇이 없어졌다.
-- CLI는 `get_extensions_path()`(`saba-chan-cli/src/config.rs:289-300`)로 익스텐션 경로를 자체 해석한다(`config show` 표시 용도, `tui/commands.rs:324`).
+- ~~CLI는 `get_extensions_path()`로 익스텐션 경로를 자체 해석한다~~ → 해결: PR #6 CLI에는 경로 해석이 없고 익스텐션 목록은 `GET /api/extensions`로만 받는다(`saba-chan-cli/src/resolve.rs:212-220`).
 
 ### 7.4 GUI/CLI 슬롯 체계 비대칭
 
 - GUI: 번들의 `registerSlots()`가 기준이고 manifest의 `gui.slots`는 무시한다.
-- CLI: manifest의 `cli.slots`(데이터 기반)가 기준이다(`saba-chan-cli/src/tui/mod.rs:1087-1110`, `tui/app.rs:302-364`). instance_fields가 있으면 `InstanceSettings.fields` 슬롯을 자동 파생한다. CLI는 `/api/extensions` 결과를 내부 출력 버퍼의 `EXT_SLOTS_INIT:<json>` 라인 프로토콜로 전달해 슬롯을 만든다(`tui/mod.rs:147-151,996`, `tui/screens/extensions.rs:11`).
-- CLI badge의 `condition` 평가는 CLI 쪽 `evaluate_badge_condition`이 따로 구현한다(`tui/screens/servers.rs:7-15`). daemon의 `evaluate_condition`과 중복 구현이고, CLI 쪽은 bool만 참으로 보며 모르는 패턴은 표시한다(daemon은 숫자·문자열도 보고, 모르는 패턴은 false).
+- CLI: manifest의 `cli.slots`(데이터 기반)가 기준이다(PR #6 기준). `GET /api/extensions` 결과에서 켜진 익스텐션의 `cli.slots`를 모은다(`saba-chan-cli/src/slots.rs:24-52`, 호출 `cmd/server.rs:112-117`, `cmd/status.rs:42`). 지원 슬롯은 `InstanceList.badge`(목록 뱃지, `cmd/status.rs:189`), `InstanceDetail.status`(서버 정보 줄, `cmd/server.rs:228`), `CreateInstance.options`(서버 추가 때 물어볼 칸, `cmd/server.rs:402`) 셋이고 GUI 슬롯 이름(`ServerCard.*` 등)과 겹치지 않는다. 예전 `InstanceSettings.fields` 자동 파생과 `EXT_SLOTS_INIT` 라인 프로토콜은 없다.
+- CLI badge의 `condition` 평가는 CLI 쪽 `condition_holds`가 따로 구현한다(`slots.rs:87-99`). daemon `evaluate_condition`(`src/extension/mod.rs:1179-1195`)과 중복 구현이지만 판정은 같다(`instance.ext_data.<키>`만, bool·0이 아닌 수·비어 있지 않은 문자열이 참, 모르는 패턴은 false). ~~CLI는 bool만 참으로 보고 모르는 패턴은 표시한다~~ → 해결.
