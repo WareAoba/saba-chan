@@ -440,11 +440,12 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
         }
     }
 
-    // GUI·CLI에는 종료 API가 없다: 이 설치의 것만 끈다 (GUI는 Electron 자식까지)
+    // GUI·CLI에는 종료 API가 없다: 이 설치의 것만 끈다. 트리째가 아니다: 데몬이 남아 있으면
+    // GUI 아래에 데몬·게임 서버가 있을 수 있다 (Electron 렌더러는 본 프로세스가 끝나면 따라 끝난다)
     let gui: Vec<&str> = saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|n| n.trim_end_matches(".exe")).collect();
     for (pid, name) in filter_in(&list_named(&gui), &dirs, &gui) {
         tracing::info!("[Install] Closing {} (PID {})", name, pid);
-        kill_pid(pid, true);
+        kill_pid(pid, false);
     }
     for (pid, name) in filter_in(&list_named(&["saba-chan-cli"]), &dirs, &["saba-chan-cli"]) {
         tracing::info!("[Install] Closing {} (PID {})", name, pid);
