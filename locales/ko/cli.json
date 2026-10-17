@@ -57,7 +57,15 @@
     "invite": "이 링크로 디스코드 서버에 봇을 초대하세요:",
     "no_server_aliases": "정한 서버 별명이 없어요. 예: saba-chan-cli bot server-alias 이름 크리",
     "server_alias_set": "이제 채팅에서 {{name}}을(를) 이렇게 부를 수 있어요: {{aliases}}",
-    "server_alias_cleared": "{{name}}의 채팅 별명을 지웠어요."
+    "server_alias_cleared": "{{name}}의 채팅 별명을 지웠어요.",
+    "channel": "채널",
+    "channel_ambiguous": "이름이 {{name}}인 채널이 여럿이에요. id로 적어 주세요.",
+    "channel_none": "없음",
+    "chatbot_channels": "챗봇 채널",
+    "music_channel": "음악 채널",
+    "confirm_music_channel": "#{{name}}을(를) 음악 채널로 정하면 그 채널의 일반 메시지는 지워져요. 계속할까요?",
+    "channels_saved": "채널 배정을 바꿨어요.",
+    "channels_bot_missing": "봇이 이 디스코드 서버에 없어서 채널 목록을 볼 수 없어요. 초대: saba-chan-cli bot invite"
   },
   "col": {
     "aliases": "별명",
@@ -540,7 +548,8 @@
       "module.audit": "모듈의 Python 코드가 하는 일을 선언한 권한과 비교",
       "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교",
       "config.export": "설정과 서버 목록을 zip으로 저장 (다른 PC로 옮길 때, 게임 파일은 빠짐)",
-      "config.import": "내보낸 zip에서 설정과 서버 가져오기"
+      "config.import": "내보낸 zip에서 설정과 서버 가져오기",
+      "bot.channels": "디스코드 서버의 챗봇 채널(여러 개)·음악 채널(하나). 옵션이 없으면 보기만"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -611,7 +620,11 @@
       "file": "zip 파일 경로",
       "secrets": "비밀번호·챗봇 API 키·봇 페어링도 저장",
       "dry_run": "바뀔 내용만 보기",
-      "overwrite": "이미 있는 서버를 덮어쓰기 (켜져 있는 서버는 건너뜀)"
+      "overwrite": "이미 있는 서버를 덮어쓰기 (켜져 있는 서버는 건너뜀)",
+      "bot.channels.chatbot": "챗봇이 대화할 채널, 이름 또는 id (쉼표로 여러 개). 지금 목록을 바꿈",
+      "bot.channels.no_chatbot": "챗봇 채널 모두 해제",
+      "bot.channels.music": "음악 플레이어 채널, 이름 또는 id. 그 채널의 일반 메시지는 지워짐",
+      "bot.channels.no_music": "음악 채널 해제"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

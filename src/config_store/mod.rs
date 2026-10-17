@@ -160,7 +160,7 @@ pub struct ChatbotConfig {
     pub api_key: Option<String>,
     /// 모든 길드에 쓰는 설정 (ChatbotSettings 일부)
     pub settings: serde_json::Map<String, Value>,
-    /// 길드별로 덮어쓰는 설정 (예: channelIds)
+    /// 길드별로 덮어쓰는 설정 (예: memo). 채널 배정은 릴레이가 원본이라 두지 않는다
     pub guilds: HashMap<String, serde_json::Map<String, Value>>,
     /// 사용자가 지웠는데 릴레이 삭제를 아직 확인 못 함. 다음 연결 때 다시 지운다
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -168,13 +168,15 @@ pub struct ChatbotConfig {
 }
 
 impl ChatbotConfig {
-    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`)
+    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`; 챗봇 채널 `channelIds`는 릴레이가 원본이 되어 지운다)
     fn migrate(&mut self) {
         for map in std::iter::once(&mut self.settings).chain(self.guilds.values_mut()) {
             if let Some(persona) = map.remove("persona") {
                 map.entry("memo").or_insert(persona);
             }
+            map.remove("channelIds");
         }
+        self.guilds.retain(|_, over| !over.is_empty());
     }
 
     /// 한 길드에 보낼 설정 (공통 위에 길드 것)
@@ -521,6 +523,21 @@ mod tests {
         assert_eq!(cfg.settings.get("memo"), Some(&serde_json::json!("hi")));
         assert!(!cfg.settings.contains_key("persona"));
         assert_eq!(cfg.guilds["g"].get("memo"), Some(&serde_json::json!("keep")));
+    }
+
+    /// 챗봇 채널은 릴레이가 원본이다: 예전 `channelIds`는 읽을 때 지우고, 그것만 있던 길드도 지운다
+    #[test]
+    fn chatbot_channel_ids_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.file.set_section("chatbot", serde_json::json!({
+            "settings": {"channelIds": ["1"], "model": "m"},
+            "guilds": {"a": {"channelIds": ["2"]}, "b": {"channelIds": ["3"], "memo": "keep"}}
+        })).unwrap();
+        let cfg = store.get_chatbot();
+        assert!(!cfg.settings.contains_key("channelIds") && cfg.settings.contains_key("model"));
+        assert!(!cfg.guilds.contains_key("a"));
+        assert_eq!(cfg.guilds["b"].len(), 1);
     }
 
     #[test]

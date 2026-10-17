@@ -551,6 +551,25 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/relay/node/:guild/channels — `{chatbot: [id], music: id|null, botAvailable, channels: [{id, name, category}]}`
+    pub async fn node_channels(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/channels", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// PUT /api/relay/node/:guild/channels — `{chatbot?, music?}` 준 키만 바뀐다. 응답은 GET과 같다
+    pub async fn set_node_channels(&self, guild_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
+        self.put(
+            &with_query(
+                &format!("/api/relay/node/{}/channels", seg(guild_id)),
+                &[("relayUrl", relay_url.map(str::to_string))],
+            ),
+            body,
+        )
+        .await
+    }
     // ── 백업·예약 ──
 
     /// GET /api/instance/:id/backups — `{backups: [{name, kind, created, size}]}`

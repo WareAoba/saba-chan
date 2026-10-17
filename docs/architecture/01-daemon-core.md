@@ -345,6 +345,7 @@
 |---|---|---|---|
 | GET | `/api/relay/host/:host_id/status` | `relay.rs:211` | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명). 서명 요청의 `relayUrl`은 설정한 릴레이와 같거나 루프백일 때만 따른다(`signed_relay_url`, `relay.rs:45-67`) |
 | GET | `/api/relay/host/:host_id/nodes` | `relay.rs:223` | `/api/hosts/:id/nodes` |
+| GET/PUT | `/api/relay/node/:guild_id/channels` | `relay.rs:237/246` | `/api/nodes/:id/channels` 서명 프록시. 챗봇 채널(여럿)·음악 채널(하나) 배정의 원본은 릴레이다. 응답 `{guildId, chatbot:[id], music:id\|null, botAvailable, channels:[{id,name,category}]}`, PUT 본문 `{chatbot?, music?}`(준 키만). 오류 본문 `{error: CODE, channelId?}`는 그대로 전달(객체가 아닌 본문은 데몬이 400 `INVALID_BODY`). 데몬 config의 `chatbot.guilds.*.channelIds`는 `ChatbotConfig::migrate`가 지운다 |
 | GET | `/api/relay/node/:guild_id/members` | `relay.rs:236` | `/api/nodes/:id/discord-members`, 503이면 `/members`로 폴백 |
 | GET | `/api/relay/bot-invite` | `relay.rs:267-286` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 주소는 서명 요청과 같은 규칙(설정한 릴레이 또는 루프백)으로 정한다. 봇 초대 URL `{url}` |
 | POST | `/api/relay/pair/initiate` | `relay.rs:288` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |

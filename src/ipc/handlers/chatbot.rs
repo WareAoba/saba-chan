@@ -33,7 +33,6 @@ use crate::config_store::ChatbotConfig;
 fn relay_defaults() -> Map<String, Value> {
     let Value::Object(map) = json!({
         "enabled": false,
-        "channelIds": [],
         "provider": "openai",
         "model": "gpt-6-luna",
         "memo": "",
@@ -317,11 +316,13 @@ mod tests {
         assert_eq!(body["enabled"], json!(false));
         assert_eq!(body["confirmCommands"], json!(true));
         assert_eq!(body["apiKey"], Value::Null, "no key here means delete it there");
-        apply(&mut cfg, patch(json!({"settings": {"model": "m2"}, "guilds": {"g1": {"channelIds": ["7"]}}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"model": "m2"}, "guilds": {"g1": {"memo": "g1 only"}}}))).unwrap();
         let body = put_body(&cfg, "g1");
         assert_eq!(body["model"], json!("m2"));
-        assert_eq!(body["channelIds"], json!(["7"]));
-        assert_eq!(put_body(&cfg, "g2")["channelIds"], json!([]));
+        assert_eq!(body["memo"], json!("g1 only"));
+        assert_eq!(put_body(&cfg, "g2")["memo"], json!(""));
+        // 챗봇 채널은 릴레이가 원본: 데몬은 보내지 않는다
+        assert!(!body.contains_key("channelIds"));
     }
 
     #[test]
@@ -338,13 +339,13 @@ mod tests {
     #[test]
     fn patch_merges_removes_and_tracks_the_key() {
         let mut cfg = ChatbotConfig::default();
-        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "model": "m"}, "apiKey": "sk-1", "guilds": {"g1": {"channelIds": ["1"]}}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "model": "m"}, "apiKey": "sk-1", "guilds": {"g1": {"memo": "1"}}}))).unwrap();
         assert_eq!(cfg.api_key.as_deref(), Some("sk-1"));
         apply(&mut cfg, patch(json!({"settings": {"model": null}}))).unwrap();
         assert_eq!(cfg.api_key.as_deref(), Some("sk-1"), "a missing apiKey keeps the key");
         assert!(!cfg.settings.contains_key("model"));
-        assert_eq!(cfg.effective("g1")["channelIds"], json!(["1"]));
-        assert_eq!(cfg.effective("g2").get("channelIds"), None);
+        assert_eq!(cfg.effective("g1")["memo"], json!("1"));
+        assert_eq!(cfg.effective("g2").get("memo"), None);
         apply(&mut cfg, patch(json!({"apiKey": null, "guilds": {"g1": null}}))).unwrap();
         assert_eq!(cfg.api_key, None);
         assert!(cfg.guilds.is_empty());

@@ -109,6 +109,9 @@ contextBridge.exposeInMainWorld('api', {
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
     relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
     relayBotInvite: (relayUrl) => ipcRenderer.invoke('relay:botInvite', relayUrl),
+    // 채널 배정: {guildId, chatbot: [id], music: id|null, botAvailable, channels: [{id, name, category}]}. patch = {chatbot?, music?}
+    relayNodeChannels: (guildId) => ipcRenderer.invoke('relay:nodeChannels', guildId),
+    relayNodeChannelsSave: (guildId, patch) => ipcRenderer.invoke('relay:nodeChannelsSave', guildId, patch),
     instanceAcceptEula: (id) => ipcRenderer.invoke('instance:acceptEula', id),
     instanceBackups: (id) => ipcRenderer.invoke('instance:backups', id),
     instanceBackupCreate: (id) => ipcRenderer.invoke('instance:backupCreate', id),

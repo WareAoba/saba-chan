@@ -2316,6 +2316,13 @@ ipcMain.handle('relay:listNodeMembers', async (_event, guildId, relayUrl) => {
     }
 });
 
+// 챗봇 채널(여럿)·음악 채널(하나) 배정. 실패하면 데몬 본문({error, channelId?})을 그대로 돌려준다
+ipcMain.handle('relay:nodeChannels', (_event, guildId) =>
+    daemonCall('get', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, undefined, 15000));
+
+ipcMain.handle('relay:nodeChannelsSave', (_event, guildId, patch) =>
+    daemonCall('put', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, patch, 15000));
+
 ipcMain.handle('relay:botInvite', async (_event, relayUrl) => {
     try {
         const params = relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '';

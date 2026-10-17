@@ -57,7 +57,15 @@
     "invite": "Invite the bot to your Discord server with this link:",
     "no_server_aliases": "No server names set. Example: saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "In chat, {{name}} can now be called: {{aliases}}",
-    "server_alias_cleared": "Removed the chat names of {{name}}."
+    "server_alias_cleared": "Removed the chat names of {{name}}.",
+    "channel": "channel",
+    "channel_ambiguous": "More than one channel is named {{name}}. Use its id.",
+    "channel_none": "none",
+    "chatbot_channels": "Chatbot channels",
+    "music_channel": "Music channel",
+    "confirm_music_channel": "Making #{{name}} the music channel deletes ordinary messages in it. Continue?",
+    "channels_saved": "Channel assignment changed.",
+    "channels_bot_missing": "The bot is not in this Discord server, so its channels can't be listed. Invite it: saba-chan-cli bot invite"
   },
   "col": {
     "aliases": "Aliases",
@@ -418,7 +426,8 @@
       "bot.alias.add": "Add an alias",
       "bot.alias.remove": "Remove an alias",
       "config.export": "Save settings and the server list to a zip, to move to another PC (game files not included)",
-      "config.import": "Bring in settings and servers from an export zip"
+      "config.import": "Bring in settings and servers from an export zip",
+      "bot.channels": "Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show"
     },
     "arg": {
       "server": "Server name (a part is enough)",
@@ -426,7 +435,11 @@
       "file": "zip file path",
       "secrets": "Also save passwords, the chatbot API key and the bot pairing",
       "dry_run": "Only show what would change",
-      "overwrite": "Replace servers that already exist (running ones are skipped)"
+      "overwrite": "Replace servers that already exist (running ones are skipped)",
+      "bot.channels.chatbot": "Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list",
+      "bot.channels.no_chatbot": "Unassign every chatbot channel",
+      "bot.channels.music": "The music player channel, by name or id. Other messages in it get deleted",
+      "bot.channels.no_music": "Unassign the music channel"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
