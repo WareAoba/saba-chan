@@ -157,8 +157,9 @@ impl ServerInstance {
             let typed = coerce_setting_value(value, types.get(key).map(String::as_str));
             self.module_settings.insert(key.clone(), typed);
         }
+        // 인스턴스 필드는 이번에 읽은 키로만 맞춘다 (캐시에 남은 옛 값으로 되돌리지 않는다)
         let port = |key: &str| {
-            self.module_settings.get(key).and_then(|v| match v {
+            settings.get(key).and(self.module_settings.get(key)).and_then(|v| match v {
                 serde_json::Value::Number(n) => n.as_u64(),
                 serde_json::Value::String(s) => s.trim().parse().ok(),
                 _ => None,
@@ -474,7 +475,10 @@ mod tests {
             [("port", "number"), ("AdminPassword", "password")].map(|(k, t)| (k.to_string(), t.to_string())).into();
         inst.apply_imported_settings(settings.as_object().unwrap(), &map, &types);
         let raw = serde_json::json!({"AdminPassword": "000123"});
+        inst.port = Some(30000); // 사용자가 포트만 바꾼 뒤
         inst.apply_imported_settings(raw.as_object().unwrap(), &map, &types);
+        assert_eq!(inst.port, Some(30000), "a password-only import must not revert the port");
+        inst.port = Some(28015);
         assert_eq!(inst.module_settings.get("AdminPassword"), Some(&serde_json::json!("000123")));
         assert_eq!(inst.rest_password.as_deref(), Some("000123"));
         inst.apply_imported_settings(serde_json::json!({"AdminPassword": "pw"}).as_object().unwrap(), &map, &types);

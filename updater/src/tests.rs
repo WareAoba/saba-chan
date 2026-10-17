@@ -897,3 +897,45 @@ fn test_extract_zip_writes_nested_files() {
     assert_eq!(std::fs::read_to_string(target.join("a/b/c.txt")).unwrap(), "hello");
     assert_eq!(seen, vec![target.join("a/b/c.txt")]);
 }
+
+// C13: 모듈 폴더 교체가 실패하면 원래 내용으로 되돌린다
+#[test]
+fn replace_dir_restores_backup_when_extract_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    let bad = manager.staging_dir.join("module-game.zip");
+    std::fs::write(&bad, b"not a zip").unwrap();
+
+    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+}
+
+// C13: 받은 뒤 바뀐 파일은 적용하지 않는다
+#[test]
+fn staged_file_is_rechecked_before_apply() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("a.zip");
+    std::fs::write(&file, b"abc").unwrap();
+    let mut comp = crate::ComponentVersion {
+        component: Component::Locales,
+        current_version: "0.1.0".into(),
+        latest_version: Some("0.2.0".into()),
+        update_available: true,
+        download_url: None,
+        asset_name: None,
+        release_notes: None,
+        published_at: None,
+        downloaded: true,
+        downloaded_path: Some(file.to_string_lossy().to_string()),
+        staged_sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+        installed: true,
+    };
+    assert!(UpdateManager::verified_staged_path(&comp).is_ok());
+    comp.staged_sha256 = Some("0".repeat(64));
+    assert!(UpdateManager::verified_staged_path(&comp).is_err());
+}

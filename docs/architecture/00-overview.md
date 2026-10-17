@@ -21,7 +21,7 @@
 | [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표(약 95개)**, 인증, 인스턴스 모델·영속화, 전역 설정, RCON/REST, 내장 Python/Node, plugin 실행기 |
 | [02-modules.md](02-modules.md) | `module.toml` 전체 스키마(Rust 역직렬화 기준), `lifecycle.py` 호출 프로토콜과 함수 매트릭스, managed process, 게임별 기능, 모듈 배포 |
 | [03-extensions.md](03-extensions.md) | 플러그인(코드상 extension) `manifest.json` 스키마, hook 전수 목록과 hook×익스텐션 매트릭스, 설치·활성화 수명주기, GUI 컴포넌트 주입(UMD/slot) 계약 |
-| [04-clients.md](04-clients.md) | GUI(Electron) preload 채널 전수표, CLI(TUI), Discord 봇, 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
+| [04-clients.md](04-clients.md) | GUI(Electron) preload 채널 전수표, CLI(하위 명령·대화형 셸·`--json`), Discord 봇, 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
 | [05-updater-servers.md](05-updater-servers.md) | 업데이터·인스톨러·CI, server-chan relay API·DB·프로토콜 (운영 결함·비밀 파일은 server-chan 비공개 문서) |
 
 ---
@@ -33,7 +33,7 @@
 | 구성요소 | 오너 정의 | 코드상 실체 |
 |---|---|---|
 | **데몬** | 서비스 주체. 모든 기능은 여기로 작동 | `saba-chan/src` → 바이너리 `saba-core`. axum HTTP 서버, `127.0.0.1:57474`(`SABA_IPC_PORT`), 헤더 `X-Saba-Token` 인증 |
-| **인터페이스** | 데몬 조작 도구. 혼자서는 아무것도 못함. 파일 수정도 데몬 API로 | `saba-chan-gui`(Electron+React), `saba-chan-cli`(Rust TUI). 둘 다 데몬 HTTP API 클라이언트 |
+| **인터페이스** | 데몬 조작 도구. 혼자서는 아무것도 못함. 파일 수정도 데몬 API로 | `saba-chan-gui`(Electron+React), `saba-chan-cli`(Rust, 하위 명령 + 대화형 셸). 둘 다 데몬 HTTP API 클라이언트 |
 | **모듈** | 게임 서버 구동 "설명서", Python | `saba-chan-modules/<game>/{module.toml, lifecycle.py, locales/}`. 데몬이 `python lifecycle.py <함수명>`을 단발 실행(stdin JSON → stdout JSON) |
 | **플러그인** | 데몬 기능 추가·인터페이스 컴포넌트 주입, Python | 코드에서는 **extension**이라 부름. `saba-chan-extensions/<name>/{manifest.json, *.py, gui/dist/*.umd.js}`. 데몬이 hook 시점에 같은 Python 실행기로 호출, GUI가 UMD 번들을 slot에 주입 |
 | **서버쨩** | 데몬과 연계해 디스코드 봇 구동 + 봇 추가 기능 | 두 갈래로 나뉘어 있다(아래 §2). ① `saba-chan/discord_bot`(Node, 로컬 봇·relay agent) ② `server-chan/relay-server`(Fastify+PostgreSQL, 중앙 클라우드 봇 + 중계) |
@@ -49,7 +49,7 @@
 
 ```
                 ┌──────────────── 인터페이스 ────────────────┐
-                │  GUI (Electron)        CLI (TUI)           │
+                │  GUI (Electron)        CLI (셸)            │
                 └────────┬───────────────────┬───────────────┘
                          │ HTTP + X-Saba-Token (127.0.0.1:57474)
                          ▼
@@ -94,8 +94,8 @@
 3. 게임 명령 해석(rcon/rest 분기, 템플릿 치환, 기본 endpoint)을 GUI와 봇이 **각각** 구현한다. 데몬은 raw `/rcon`, `/rest`만 제공한다(02 §6.5 #1).
 4. managed/native 시작 경로 선택, 기존 폴더→모듈 판정을 인터페이스가 한다(02 §6.5 #2, #3).
 5. 디스코드 봇 실행 명령을 GUI와 데몬(`auto_start_discord_bot`)이 따로 조립하고, GUI가 Discord 토큰을 데몬으로 다시 넘긴다(01 §9.A-3).
-6. CLI: 데몬 미응답 시 로컬 fs 폴백, `module.toml` 직접 파싱, 자체 설정 파일 `cli-settings.json`(04 C3–C7, 02 §6.5 #4).
-7. 업데이트 3시간 타이머를 GUI가 돌리고, 업데이터 exe를 GUI/CLI가 직접 실행한다(05 §6.1).
+6. ~~CLI 로컬 fs 폴백·자체 설정 파일~~ CLI 리메이크(PR #6)에서 해결됨. 남은 것은 부트스트랩뿐이다(04 §7.3).
+7. 업데이트 3시간 타이머를 GUI가 돌리고, 업데이터 exe를 GUI가 직접 실행한다(CLI는 리메이크 뒤 데몬 API로 요청)(05 §6.1).
 8. 봇이 `bot-config.json`을 파일로 읽고, music 기능이 Python(`music_deps.py`)·yt-dlp·ffmpeg를 데몬 없이 직접 실행한다(04 B5, B6).
 
 부트스트랩상 불가피한 것(토큰 파일 읽기, 최초 데몬 spawn)은 예외다. 데몬 **종료**는 `/api/daemon/shutdown`이 있으므로 OS kill 대신 API로 바꿀 수 있다.
@@ -114,7 +114,7 @@
 
 ### 기능이 깨져 있을 가능성이 큰 것
 - 업데이터 무결성 검사: CI는 zip 해시를 넣는데 검사기는 압축 해제된 파일을 해시한다. 해시가 있는 모든 컴포넌트가 "Tampered"로 나온다(05 §1.5). 모듈 업데이트는 릴리즈 태그를 버전으로 비교해 감지되지 않을 가능성이 크다(02 §5).
-- GUI `updater:setConfig`와 CLI가 `/api/updates/config`에 POST를 보내는데 데몬은 GET/PUT만 받는다 → 405. CLI의 `/api/install/*`는 데몬에 라우트가 없다(04 §6.1).
+- GUI `updater:setConfig`가 `/api/updates/config`에 POST를 보내는데 데몬은 GET/PUT만 받는다 → 405(04 §6.1). CLI 쪽 같은 문제는 리메이크에서 사라졌다.
 - 모듈 → 데몬 역호출(`daemon_rcon` 등)이 토큰을 안 보내서 인증이 켜진 환경에서 401. Zomboid stdin 호출은 페이로드 키도 틀림(`input` vs `command`)(02 §5 요약).
 - minecraft `import_settings`/`reset_properties`, palworld `import_settings`가 정의만 되고 `FUNCTIONS` 디스패치 표에 없어 항상 "Unknown function"(02 §2.4).
 - Linux/macOS에서 `SABA_ENABLED_EXTENSIONS` 경로가 틀려 플러그인 활성 여부를 모듈이 못 읽는다(`src/plugin/mod.rs:140`).

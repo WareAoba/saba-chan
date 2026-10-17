@@ -576,7 +576,24 @@ async fn launch_updater(
             .into_response();
     }
 
-    let mut args = vec!["--apply".to_string(), "--wait-pid".to_string(), std::process::id().to_string()];
+    // 이번 적용에만 쓰는 실행 표 (업데이터는 표 없이 --apply를 거절한다)
+    let ticket = match saba_chan_updater_lib::launch_ticket::issue(&saba_chan_updater_lib::constants::resolve_staging_dir()) {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "ok": false, "error": format!("Failed to prepare updater launch: {}", e) })),
+            )
+                .into_response()
+        }
+    };
+    let mut args = vec![
+        "--apply".to_string(),
+        "--wait-pid".to_string(),
+        std::process::id().to_string(),
+        "--launch-token".to_string(),
+        ticket,
+    ];
     if !body.relaunch.is_empty() {
         args.push("--relaunch".to_string());
         args.extend(body.relaunch);
@@ -703,6 +720,9 @@ async fn get_config(
     Json(json!({
         "ok": true,
         "config": config,
+        // 이 데몬이 모의 릴레이(scripts/mock-release-server.js)의 서명을 믿는 개발 빌드인가.
+        // 아니면 GUI는 MOCK 출처를 감추거나 막는다
+        "mock_relay": cfg!(feature = "mock-relay"),
     }))
 }
 
