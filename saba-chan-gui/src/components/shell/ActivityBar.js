@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { auditEntryOf, eventsAvailable, subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { Icon } from '../Icon';
 import { auditWhat } from '../servers/AuditTab';
 
@@ -10,6 +11,8 @@ export const activityAvailable = () => !!window.api?.auditList;
 export const daemonConsoleAvailable = () => !!window.api?.daemonConsole;
 
 export const ACTIVITY_POLL_MS = 3000;
+/** 이벤트 스트림이 있으면 놓친 것만 메우는 느린 폴링 */
+export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
 const CONSOLE_MAX = 2000;
 const RESTART_CHECK_EVERY = 5; // 새 줄 없는 폴링이 이만큼 이어지면 데몬 재시작을 확인한다
@@ -125,7 +128,7 @@ function DaemonConsole() {
 
 /**
  * 앱 맨 아래 한 줄: 데몬이 방금 실행한 서버 관련 명령 (감사 로그 최신 1건).
- * 누르면 펼쳐져 데몬 콘솔 전체를 보인다. 이벤트 스트림이 생기기 전까지는 폴링한다.
+ * 누르면 펼쳐져 데몬 콘솔 전체를 보인다. 이벤트 스트림(action.run)이 있으면 바로 바꾸고, 폴링은 느리게 메우기만 한다.
  */
 export function ActivityBar() {
     const { t, i18n } = useTranslation('gui');
@@ -137,22 +140,39 @@ export function ActivityBar() {
     useEffect(() => {
         let alive = true;
         let timer;
+        const live = eventsAvailable();
+        const fetchLast = async () => {
+            try {
+                const res = await window.api.auditList({ limit: 1 });
+                if (alive && Array.isArray(res?.entries)) setLast(res.entries[0] || null);
+            } catch {
+                // 데몬이 잠깐 안 받아도 마지막 줄은 그대로 둔다
+            }
+        };
         const poll = async () => {
             if (!document.hidden) {
-                try {
-                    const res = await window.api.auditList({ limit: 1 });
-                    if (alive && Array.isArray(res?.entries)) setLast(res.entries[0] || null);
-                } catch {
-                    // 데몬이 잠깐 안 받아도 마지막 줄은 그대로 둔다
-                }
+                await fetchLast();
                 if (alive) setNow(Date.now());
             }
-            if (alive) timer = setTimeout(poll, ACTIVITY_POLL_MS);
+            if (alive) timer = setTimeout(poll, live ? ACTIVITY_SLOW_POLL_MS : ACTIVITY_POLL_MS);
         };
+        const off = subscribeDaemonEvents((ev) => {
+            if (!alive) return;
+            if (ev.type === 'action.run') {
+                setLast(auditEntryOf(ev.data));
+                setNow(Date.now());
+            } else if (ev.type === 'resync') {
+                fetchLast();
+            }
+        });
+        // 이벤트로 줄이 바뀌지 않아도 "몇 초 전"은 흐르게 한다
+        const clock = live ? setInterval(() => !document.hidden && setNow(Date.now()), ACTIVITY_POLL_MS) : null;
         poll();
         return () => {
             alive = false;
             clearTimeout(timer);
+            clearInterval(clock);
+            off();
         };
     }, []);
 

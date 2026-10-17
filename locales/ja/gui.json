@@ -1175,5 +1175,11 @@
     "revoke_named": "{{component}} の同意を削除",
     "revoked": "{{component}} の隔離なし実行の同意を削除しました。",
     "failed": "同意の一覧を読み込めないか変更できませんでした。"
+  },
+  "events": {
+    "remote_action": "Discordから実行: {{text}}",
+    "instance_exit": "{{name}} が停止しました（{{kind}}）。",
+    "backup_done": "{{name}} のバックアップが完了しました（{{kind}}）。",
+    "backup_failed": "{{name}} のバックアップに失敗しました。{{error}}"
   }
 }

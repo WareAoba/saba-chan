@@ -786,6 +786,10 @@
 }
 
 /* ── 맨 아래 활동 줄: 방금 실행된 서버 명령 한 줄, 펼치면 데몬 콘솔 ── */
+/* 토스트가 맨 아래 활동 줄을 가리지 않게 그 위로 올린다 */
+body:has(.activity-bar) .toast-container {
+    bottom: 52px;
+}
 .activity-bar {
     flex-shrink: 0;
     display: flex;

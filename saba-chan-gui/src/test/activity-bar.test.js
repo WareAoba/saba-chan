@@ -18,9 +18,13 @@ const entry = (over) => ({
 const flush = () => act(async () => {});
 
 describe('ActivityBar', () => {
-    beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+    beforeEach(() => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        window.api.onDaemonEvent = undefined; // 이벤트 스트림이 없을 때의 폴링
+    });
     afterEach(() => {
         vi.useRealTimers();
+        delete window.api.onDaemonEvent;
         delete window.api.auditList;
         delete window.api.daemonConsole;
     });

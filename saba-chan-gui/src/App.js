@@ -16,6 +16,7 @@ import {
 import { DiscordPage } from './components/discord/DiscordPage';
 import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
+import { DaemonEvents } from './components/shell/DaemonEvents';
 import { AppBar } from './components/shell/AppBar';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
@@ -30,6 +31,7 @@ import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
+import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, isManaged } from './utils/serverView';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
@@ -782,6 +784,7 @@ function App() {
 
                     {activityAvailable() && <ActivityBar />}
                     {paletteAvailable() && <CommandPalette />}
+                    {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
 
                     {/* Context Menu */}
                     {contextMenu && (

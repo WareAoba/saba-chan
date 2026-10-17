@@ -1175,5 +1175,11 @@
     "revoke_named": "删除 {{component}} 的同意",
     "revoked": "已删除 {{component}} 不隔离运行的同意。",
     "failed": "无法加载或更改同意列表。"
+  },
+  "events": {
+    "remote_action": "从 Discord 执行：{{text}}",
+    "instance_exit": "{{name}} 已停止（{{kind}}）。",
+    "backup_done": "{{name}} 已完成备份（{{kind}}）。",
+    "backup_failed": "{{name}} 备份失败。{{error}}"
   }
 }

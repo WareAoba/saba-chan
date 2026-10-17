@@ -466,6 +466,29 @@ const impl = {
         Object.assign(mockChannels, patch);
         return ok({ guildId, ...mockChannels });
     },
+    // 데몬 이벤트 스트림 (P4): 잠시 뒤 디스코드에서 실행한 명령 한 건
+    onDaemonEvent: (cb) => {
+        const timer = setTimeout(
+            () =>
+                cb({
+                    id: 1,
+                    type: 'action.run',
+                    data: {
+                        at: Math.floor(Date.now() / 1000),
+                        source: 'discord',
+                        userName: '김치',
+                        guildName: '사바 마을',
+                        action: 'stop',
+                        instanceId: 'srv-1',
+                        instance: '야생 서버',
+                        ok: true,
+                        status: 200,
+                    },
+                }),
+            2500,
+        );
+        return () => clearTimeout(timer);
+    },
     // 디스코드 봇 취향 설정 (I2: GET/PATCH /api/discord/:guild/settings)
     discordSettingsGet: (guildId) => ok({ guildId, ...mockBotSettings, sync: { ok: true } }),
     discordSettingsSet: (guildId, patch) => {
