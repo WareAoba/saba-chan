@@ -119,6 +119,9 @@ async fn import(ctx: &Ctx, file: &std::path::Path, dry_run: bool, overwrite: boo
     for m in r.get("missingModules").and_then(Value::as_array).into_iter().flatten() {
         ctx.out.warn(&t!("config.import_missing_module", module = output::show(m)));
     }
+    if r.get("nodeToken").and_then(Value::as_str) == Some("imported") {
+        ctx.out.warn(&t!("config.import_token_moved"));
+    }
     if added.iter().chain(&replaced).next().is_some() {
         ctx.out.hint(&t!("config.import_move_files"));
     }

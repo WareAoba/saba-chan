@@ -126,6 +126,17 @@ pub(crate) fn read_bundle(path: &Path) -> anyhow::Result<Bundle> {
     Ok(Bundle { meta, config, instances, node_token })
 }
 
+/// 릴레이 연결 정보(`relay.cloud`의 relayUrl·hostId, 노드 캐시)는 노드 토큰과 한 묶음이다.
+/// 토큰을 가져오지 않을 때는 이 PC 것을 둔다: 이 PC 토큰에 옛 PC hostId가 붙거나, 낯선 zip이
+/// relayUrl을 바꿔 이 PC 토큰을 다른 곳으로 보내지 않게
+pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
+    if let Some(Value::Object(relay)) = sections.get_mut("relay") {
+        for key in ["cloud", "cloudNodes", "cloudMembers"] {
+            relay.remove(key);
+        }
+    }
+}
+
 /// 가져올 인스턴스마다 넣을지 건너뛸지
 #[derive(Debug, PartialEq)]
 pub(crate) enum Verdict {
@@ -264,7 +275,13 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     {
         let mut sup = state.supervisor.write().await;
         for inst in bundle.instances {
-            let entry = json!({ "id": inst.id, "name": inst.name });
+            // 남이 준 zip이면 이 경로의 프로그램이 실행된다: 미리보기에서 보이게
+            let entry = json!({
+                "id": inst.id,
+                "name": inst.name,
+                "working_dir": inst.working_dir,
+                "executable_path": inst.executable_path,
+            });
             let verdict = judge(&inst, sup.instance_store.list(), &running, req.overwrite);
             let applied = match verdict {
                 Verdict::Skip(reason) => {
@@ -287,17 +304,6 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         }
     }
 
-    let config: Vec<String> = if req.dry_run {
-        let mut keys: Vec<String> = bundle.config.keys().cloned().collect();
-        keys.retain(|k| matches!(k.as_str(), "gui" | "relay" | "chatbot") || crate::config_store::ConfigStore::is_client_section(k));
-        keys
-    } else {
-        match state.config_store.import_sections(bundle.config).await {
-            Ok(keys) => keys,
-            Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string()),
-        }
-    };
-
     // 이 PC가 이미 페어링돼 있으면 그 토큰을 둔다
     let node_token = match bundle.node_token {
         None => Value::Null,
@@ -310,6 +316,21 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 Value::Null
             }
         },
+    };
+
+    let mut sections = bundle.config;
+    if node_token != json!("imported") {
+        keep_local_pairing(&mut sections);
+    }
+    let config: Vec<String> = if req.dry_run {
+        let mut keys: Vec<String> = sections.keys().cloned().collect();
+        keys.retain(|k| matches!(k.as_str(), "gui" | "relay" | "chatbot") || crate::config_store::ConfigStore::is_client_section(k));
+        keys
+    } else {
+        match state.config_store.import_sections(sections).await {
+            Ok(keys) => keys,
+            Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string()),
+        }
     };
 
     Json(json!({
@@ -379,6 +400,17 @@ mod tests {
         zip.write_all(br#"{"format":"something-else","formatVersion":1}"#).unwrap();
         zip.finish().unwrap();
         assert!(read_bundle(&path).is_err());
+    }
+
+    #[test]
+    fn pairing_fields_stay_local_unless_the_token_comes_along() {
+        let mut sections = Map::new();
+        sections.insert(
+            "relay".into(),
+            json!({ "prefix": "!s", "cloud": { "hostId": "old", "relayUrl": "https://x" }, "cloudNodes": [1], "cloudMembers": {} }),
+        );
+        keep_local_pairing(&mut sections);
+        assert_eq!(sections["relay"], json!({ "prefix": "!s" }));
     }
 
     #[test]
