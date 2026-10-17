@@ -209,11 +209,7 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         if let Some(pid) = rt.get("pid").and_then(Value::as_u64) {
             rows.push(("PID".into(), pid.to_string()));
         }
-        for (key, label) in [
-            ("port", "col.port"),
-            ("rcon_port", "col.rcon_port"),
-            ("rest_port", "col.rest_port"),
-        ] {
+        for (key, label) in [("port", "col.port"), ("rest_port", "col.rest_port")] {
             if let Some(p) = sv.raw.get(key).filter(|p| !p.is_null()) {
                 rows.push((t!(label), show(p)));
             }
@@ -1002,8 +998,6 @@ fn setting_fields(module: &Value) -> Vec<Value> {
 /// 인스턴스 최상위에 있는 공통 칸과 그 형식 (데몬 `update_instance_settings`의 known_fields)
 const COMMON: &[(&str, &str)] = &[
     ("port", "number"),
-    ("rcon_port", "number"),
-    ("rcon_password", "password"),
     ("rest_host", "text"),
     ("rest_port", "number"),
     ("rest_username", "text"),
