@@ -247,7 +247,7 @@
 | Method | Path | Handler | Auth | 요청 | 응답 |
 |---|---|---|---|---|---|
 | POST | `/api/instance/:id/command` | `command.rs:12` | ✅ | `{command*, args?}` | `{success:true, message}` / 404 / 400 `{error}` |
-| POST | `/api/instance/:id/rcon` | `command.rs:58` | ✅ | `{command*}` | `{success, data:{response,executed}, error:null, command, host, port, protocol:"rcon"}` / 400 / 500 |
+| POST | `/api/instance/:id/rcon` | `command.rs:263` | ✅ | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) |
 | POST | `/api/instance/:id/rest` | `command.rs:217` | ✅ | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}` / 400 / 500 |
 
 #### Managed 프로세스와 모듈 기능 (handlers/managed.rs)
@@ -434,7 +434,7 @@ Relay 서명 방식(`relay.rs:78-113`):
    - `/api/server/:name/start`: native/supervisor `start_server`
    - `/api/instance/:id/managed/start`: stdio를 캡처하는 managed 방식
 4. **모니터링**: 2초 루프(`main.rs:221`)가 PID와 패턴을 매칭해 auto-detect한다. 세부는 supervisor 담당 문서에 있다.
-5. **정지**: `/api/server/:name/stop`. 성공하면 RCON 풀에서 연결을 지우고 tracker에서 untrack한다. 단, `docker_enabled`인 인스턴스는 untrack을 건너뛴다(`server.rs:683`).
+5. **정지**: `/api/server/:name/stop`. 성공하면 tracker에서 untrack한다(`server.rs:878`).
 6. **삭제**: 실행 중이면 force kill(2초 대기), `server.pre_delete` 훅, 디렉토리 삭제(최대 3회 재시도) 순으로 진행한다(`instance.rs:779-866`).
 
 ### 4.4 config_store와 전역 설정 스키마 (`src/config_store/mod.rs`)
@@ -471,40 +471,28 @@ Relay 서명 방식(`relay.rs:78-113`):
 
 ## 5. 프로토콜 계층 (`src/protocol/**`)과 명령 라우팅
 
-### 5.1 RCON (`protocol/rcon.rs`)
+### 5.1 RCON은 없다
 
-- Source RCON 방식을 동기 `std::net::TcpStream`으로 구현했다.
-- 패킷 구조: `[size][id][type][payload\0\0]`. 전체를 한 번의 write로 보낸다(`rcon.rs:143-173`).
-- 인증 응답 처리
-  - 1개 또는 2개 응답을 모두 받는다. 두 번째 응답은 500ms 타임아웃으로 기다린다.
-  - 인증 후 소켓이 살아 있는지 peek로 확인한다(`rcon.rs:64-131`).
-- 제약
-  - 응답이 4096바이트를 넘으면 에러로 처리한다(`rcon.rs:200`). 여러 패킷으로 나뉜 응답은 지원하지 않는다.
-  - `TcpStream::connect`에 연결 타임아웃이 없다(`rcon.rs:37`).
+- 데몬은 RCON을 쓰지 않는다. 예전 `protocol/rcon.rs`와 `rcon_pool.rs`는 지워졌다. 게임 명령은 모두 stdin으로 간다(§5.4, 02 RCON 정책).
+- 인스턴스의 `rcon_port`, `rcon_password` 필드와 모듈 config에 넘기는 같은 이름의 키는 남아 있지만 데몬이 RCON 연결에 쓰지는 않는다.
 
-### 5.2 RconPool (`protocol/rcon_pool.rs`)
-
-- instance_id마다 연결 하나를 재사용한다. host, port, password가 바뀌거나 연결이 끊기거나 명령이 실패하면 재연결한다.
-- `std::sync::Mutex`를 **명령 실행 I/O(최대 5초)가 끝날 때까지** 잡는다(`rcon_pool.rs:52-91`). 그래서 모든 인스턴스의 RCON 요청이 직렬화된다. 호출 쪽은 `spawn_blocking`으로 감싼다(`command.rs:166`).
-
-### 5.3 REST (`protocol/rest.rs`)
+### 5.2 REST (`protocol/rest.rs`)
 
 - `ureq`(동기)를 쓰고 timeout은 10초다. Basic Auth를 지원한다.
 - 연결이 EOF나 reset으로 끊기면 성공으로 간주한다. Palworld 대응 코드다(`rest.rs:110-127`).
 - `verify_connection`은 실제 연결 없이 host와 port 유효성만 본다(`rest.rs:50-56`).
 - Basic 토큰 앞 8자와 비밀번호 길이를 **info 레벨로 로그에 남긴다**(`rest.rs:94`).
 
-### 5.4 ProtocolClient (`protocol/client.rs`)
+### 5.3 ProtocolClient (`protocol/client.rs`)
 
-- `Rcon`, `Rest`, `Both`(RCON 실패 시 REST로 폴백) 세 모드를 지원한다.
-- 실제로는 `new_rest`만 쓰인다(`command.rs:323`). `new_rcon`, `new_both`, `connect_all`은 `#[allow(dead_code)]`다.
+- REST 한 가지만 남았다(`CommandType::Rest`). `/rest` 핸들러가 `new_rest`로 만든다(`command.rs:442`).
 
-### 5.5 명령 라우팅
+### 5.4 명령 라우팅
 
 | 경로 | 동작 |
 |---|---|
 | `POST /api/instance/:id/command` | `Supervisor::execute_command`(`supervisor/mod.rs:865`)가 `lifecycle.py command`를 config `{command,args,protocol_mode,working_dir,rcon_host:"127.0.0.1",rcon_port,rest_host,rest_port,pid,instance_id}`로 실행한다. **실제 RCON/REST 호출은 Python 모듈이 한다.** `docker_enabled` 인스턴스는 거부한다(`:884`) |
-| `POST /api/instance/:id/rcon` | `lifecycle.py get_credentials`(working_dir)로 **게임 설정 파일에서** `rcon_port`, `rcon_password`를 읽고, `127.0.0.1`로 RconPool을 실행한다. 인스턴스에 저장된 `rcon_password`는 무시하며, 포트만 폴백으로 쓴다(`command.rs:137-157`) |
+| `POST /api/instance/:id/rcon` | 이름은 호환용이고 **언제나 stdin으로 보낸다.** `routes_commands_to_stdin`(`supervisor/mod.rs:1515`)이 콘솔 있는 서버(관리 모드, 재접속 후에도 saba-runner가 stdin 유지)를 확인하면 `via_stdin`(`command.rs:303`)이 한 줄을 쓰고 콘솔 출력을 최대 약 1.5초 모아 `data.response`로 돌려준다. 콘솔이 없으면 409 `no_command_path`(`command.rs:263-307`) |
 | `POST /api/instance/:id/rest` | `get_credentials`로 `rest_username`, `rest_password`를 얻는다. host와 port는 payload, instance, 모듈 기본값 순으로 정하고 ProtocolClient REST로 실행한다. **동기 ureq를 async 핸들러 안에서 직접 호출하므로**(`command.rs:371`) tokio 워커 스레드를 최대 10초 막는다 |
 | `POST /api/instance/:id/stdin` | managed 프로세스의 stdin에 쓴다(supervisor) |
 
@@ -656,7 +644,7 @@ Relay 서명 방식(`relay.rs:78-113`):
 
 - `src/config/mod.rs`의 `GlobalConfig`(`ipc.sock` 언급 포함)는 미사용이다(`main.rs:114-115`).
 - `handlers/python_env.rs`의 세 핸들러는 라우트가 없다. `python_env::pip_install`, `pip_install_requirements`도 `#[allow(dead_code)]`다.
-- `plugin::run_extension*`, `ProtocolClient::new_rcon/new_both/connect_all/connect_rcon`, `RestClient::with_basic_auth`, `ServerResponse::success/error`, `CommandResponse`, `BotConfig`(ipc/mod.rs:188), `ExtensionInitTracker::is_initializing`, `InstanceStore::save`, `ServerInstance::ext_f64/ext_str` 일부, `process_monitor::find_by_name*` 동기 버전은 모두 미사용이다.
+- `plugin::run_extension*`, `RestClient::with_basic_auth`, `ServerResponse::success/error`, `CommandResponse`, `BotConfig`(ipc/mod.rs:188), `ExtensionInitTracker::is_initializing`, `InstanceStore::save`, `ServerInstance::ext_f64/ext_str` 일부, `process_monitor::find_by_name*` 동기 버전은 모두 미사용이다.
 - 업데이트 설정의 `check_interval_hours`, `auto_download`, `auto_apply`는 저장만 되고 아무 동작이 없다. 설정도 재시작하면 사라진다.
 - `skip_port_check` 계열이 따로 논다.
   - GUI 설정은 `Supervisor.skip_port_check` 원자 변수로 가는데, 이 변수는 모니터만 읽는다.

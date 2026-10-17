@@ -102,10 +102,12 @@ impl ProcessTracker {
 
     /// Track a server process by name
     pub fn track(&self, server_name: &str, pid: u32) -> Result<()> {
-        let info = ProcessInfo {
-            pid,
-            start_time: current_timestamp(),
-        };
+        self.track_since(server_name, pid, current_timestamp())
+    }
+
+    /// 이미 돌던 서버를 다시 붙일 때: 실제로 시작한 시각(유닉스 초)을 그대로 쓴다
+    pub fn track_since(&self, server_name: &str, pid: u32, start_time: u64) -> Result<()> {
+        let info = ProcessInfo { pid, start_time };
         let mut processes = self.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
         processes.insert(server_name.to_string(), info);
         tracing::info!("Now tracking server '{}' with pid: {}", server_name, pid);
@@ -184,6 +186,13 @@ mod tests {
         tracker.track("srv", 1234).unwrap();
         let start_time = tracker.get_start_time("srv").unwrap();
         assert!(start_time > 0, "Start time should be a valid Unix timestamp, got: {}", start_time);
+    }
+
+    #[test]
+    fn reattached_server_keeps_its_real_start_time() {
+        let tracker = ProcessTracker::new();
+        tracker.track_since("srv", 1234, 1_000).unwrap();
+        assert_eq!(tracker.get_start_time("srv").unwrap(), 1_000);
     }
 
     #[test]

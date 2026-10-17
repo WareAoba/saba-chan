@@ -191,8 +191,6 @@ pub struct ServerInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
     pub port: Option<u16>,
-    pub rcon_port: Option<u16>,
-    pub rcon_password: Option<String>,
     pub rest_host: Option<String>,
     pub rest_port: Option<u16>,
     pub rest_username: Option<String>,

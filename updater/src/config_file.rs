@@ -19,7 +19,8 @@
 //! - 로드: `config.json`이 깨졌으면 `.bak`에서 복구하고, 깨진 파일은
 //!   `config.json.corrupt-<시각>`으로 옮겨 둔다(덮어쓰지 않는다).
 //! - 이관: 예전 개별 파일(`settings.json` 등)이 있고 해당 키가 아직 없으면 읽어 넣고,
-//!   예전 파일은 `.migrated`로 이름을 바꾼다.
+//!   예전 파일은 그대로 두고 `.migrated` 사본을 남긴다. 예전 판(다운그레이드·다른 설치본)이 계속 읽을 수 있고,
+//!   사본이 있는 파일은 다시 이관하지 않는다.
 //!
 //! 같은 프로세스 안의 쓰기는 전역 잠금으로 직렬화한다. 데몬이 떠 있는 동안 다른
 //! 프로세스(GUI·CLI·설치기)는 데몬 API로만 쓴다. 데몬이 없을 때의 부트스트랩
@@ -139,8 +140,9 @@ impl ConfigFile {
             }
             for (name, _) in LEGACY_FILES {
                 let legacy = self.dir.join(name);
-                if legacy.is_file() {
-                    let _ = std::fs::rename(&legacy, self.dir.join(format!("{}.migrated", name)));
+                let marker = self.dir.join(format!("{}.migrated", name));
+                if legacy.is_file() && !marker.exists() {
+                    let _ = std::fs::copy(&legacy, &marker);
                 }
             }
         }
@@ -152,7 +154,8 @@ impl ConfigFile {
         let mut found = false;
         for (name, target) in LEGACY_FILES {
             let legacy = self.dir.join(name);
-            if !legacy.is_file() {
+            // `.migrated` 사본이 있으면 이미 이관했다: 그 뒤 config.json에서 지운 값을 되살리지 않는다
+            if !legacy.is_file() || self.dir.join(format!("{}.migrated", name)).exists() {
                 continue;
             }
             found = true;
@@ -270,9 +273,13 @@ mod tests {
         assert_eq!(doc["relay"]["prefix"], "!s");
         assert_eq!(doc["extensions"]["enabled"], json!(["docker"]));
         assert_eq!(doc["extensions"]["settings"]["docker"]["mem"], "2g");
-        assert!(!d.path().join("settings.json").exists());
+        assert!(d.path().join("settings.json").exists(), "older versions still read the original");
         assert!(d.path().join("settings.json.migrated").exists());
         assert!(cfg.path().exists());
+
+        // 이관한 뒤 지운 값은 남은 예전 파일에서 되살아나지 않는다
+        cfg.set_section("relay", json!({})).unwrap();
+        assert!(cfg.load()["relay"].get("prefix").is_none());
     }
 
     #[test]
@@ -281,6 +288,6 @@ mod tests {
         cfg.set_section("gui", json!({ "language": "ko" })).unwrap();
         std::fs::write(d.path().join("settings.json"), r#"{"language":"en"}"#).unwrap();
         assert_eq!(cfg.section("gui")["language"], "ko");
-        assert!(!d.path().join("settings.json").exists());
+        assert!(d.path().join("settings.json.migrated").exists());
     }
 }

@@ -114,6 +114,11 @@ pub async fn latest_catalog(relay_url: Option<&str>) -> Result<Option<ReleaseMan
     Ok(release.map(|r| r.manifest))
 }
 
+/// 릴레이는 `current`가 semver가 아니면 400 INVALID_CURRENT_VERSION 이다. 아무것도 안 깔린 상태(설치기, 카탈로그)는 0.0.0
+fn current_param(current: &str) -> &str {
+    if current.trim().is_empty() { "0.0.0" } else { current }
+}
+
 /// 확인 결과
 #[derive(Debug, Clone)]
 pub struct VerifiedRelease {
@@ -166,7 +171,7 @@ impl RelayClient {
         let resp = self
             .http
             .get(&url)
-            .query(&[("channel", channel), ("platform", platform), ("current", current), ("client_id", client_id)])
+            .query(&[("channel", channel), ("platform", platform), ("current", current_param(current)), ("client_id", client_id)])
             .send()
             .await
             .map_err(|e| RelayError::Http(e.to_string()))?;
@@ -288,6 +293,13 @@ pub fn anon_client_id() -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn empty_current_is_sent_as_zero_version() {
+        assert_eq!(super::current_param(""), "0.0.0");
+        assert_eq!(super::current_param("  "), "0.0.0");
+        assert_eq!(super::current_param("0.1.2"), "0.1.2");
+    }
+
     use super::*;
     use serde_json::json;
 

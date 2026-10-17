@@ -168,18 +168,20 @@ fn cleanup_dirs(modules_dir: &std::path::Path, instances_dir: &std::path::Path, 
 
 /// 인스턴스 생성 시 비동기 프로비저닝(mock 모듈은 최신 2.0.0 설치)이 같은
 /// working_dir에 version.txt를 쓴다. 테스트가 직접 파일을 쓰기 전에 끝날 때까지 기다린다.
+/// Windows 러너에서 다른 테스트와 함께 돌면 Python 기동이 느려 30초를 넘길 때가 있다: 넉넉히 2분
 async fn wait_for_provision(base_url: &str, client: &reqwest::Client, name: &str) {
-    for _ in 0..300 {
-        let p: Value = client
+    let mut last = Value::Null;
+    for _ in 0..1200 {
+        last = client
             .get(format!("{}/api/provision-progress/{}", base_url, name))
             .send().await.unwrap()
             .json().await.unwrap();
-        if !p["active"].as_bool().unwrap_or(false) || p["done"].as_bool().unwrap_or(false) {
+        if !last["active"].as_bool().unwrap_or(false) || last["done"].as_bool().unwrap_or(false) {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    panic!("provisioning of {} did not finish", name);
+    panic!("provisioning of {} did not finish: {}", name, last);
 }
 
 /// Python 실행 파일 경로를 찾습니다 (시스템 Python 또는 saba-chan venv)

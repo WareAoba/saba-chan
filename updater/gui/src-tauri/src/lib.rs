@@ -268,12 +268,9 @@ fn resolve_install_root_from_exe() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
 }
 
-/// GUI exe 경로 추론 (install_root/saba-chan-gui.exe)
+/// GUI exe 경로 추론 (install_root 바로 안)
 fn resolve_gui_exe() -> Option<PathBuf> {
-    let root = resolve_install_root_from_exe()?;
-    let name = if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" };
-    let path = root.join(name);
-    if path.exists() { Some(path) } else { None }
+    saba_chan_updater_lib::find_gui_exe(&resolve_install_root_from_exe()?)
 }
 
 fn resolve_modules_dir() -> String {
@@ -321,21 +318,32 @@ fn spawn_detached(cmd: &str, extra_args: &[String]) -> Result<(), String> {
     }
     command.arg("--after-update");
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP
-        command.creation_flags(0x00000008 | 0x01000000 | 0x00000200);
-    }
-
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn: {}", e))?;
+        .stderr(std::process::Stdio::null());
 
-    Ok(())
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        // 업데이터를 띄운 쪽의 Job Object에서 빠져나온다. 탈출을 허용하지 않는 Job이면 (os error 5) 그냥 띄운다
+        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+        match command.spawn() {
+            Err(e) if e.raw_os_error() == Some(5) => {
+                tracing::warn!("[Apply] Job breakaway denied; spawning inside the job");
+                command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+                command.spawn().map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e))
+            }
+            other => other.map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e)),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        command.spawn().map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e))
+    }
 }
 
 // ═══════════════════════════════════════════════════════

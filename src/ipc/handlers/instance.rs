@@ -95,11 +95,8 @@ pub async fn create_instance(
             if instance.port.is_none() {
                 instance.port = loaded_module.metadata.default_port;
             }
-            // rcon_port / rest_port 기본값을 모듈이 해당 프로토콜을 지원할 때만 설정
+            // rest_port 기본값은 모듈이 REST를 지원할 때만 설정
             let supported = loaded_module.metadata.protocols_supported.as_deref().unwrap_or(&[]);
-            if instance.rcon_port.is_none() && supported.iter().any(|s| s == "rcon") {
-                instance.rcon_port = Some(loaded_module.metadata.default_rcon_port());
-            }
             if instance.rest_port.is_none() && supported.iter().any(|s| s == "rest") {
                 instance.rest_port = Some(loaded_module.metadata.default_rest_port());
             }
@@ -812,8 +809,10 @@ pub async fn update_instance_settings(
     // 하드코딩된 공통 필드 목록
     let known_fields: std::collections::HashSet<&str> = [
         "port",
+        // RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
         "rcon_port",
         "rcon_password",
+        "enable_rcon",
         "rest_host",
         "rest_port",
         "rest_username",
@@ -845,49 +844,7 @@ pub async fn update_instance_settings(
         }
     }
 
-    // rcon_port: 숫자 또는 문자열 수용
-    if let Some(rcon_port_value) = settings.get("rcon_port") {
-        match rcon_port_value {
-            serde_json::Value::Number(n) => {
-                if let Some(rcon_port) = n.as_u64() {
-                    updated.rcon_port = Some(rcon_port as u16);
-                }
-            }
-            serde_json::Value::String(s) => {
-                if let Ok(rcon_port) = s.parse::<u16>() {
-                    updated.rcon_port = Some(rcon_port);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(rcon_password) = settings.get("rcon_password").and_then(|v| v.as_str()) {
-        updated.rcon_password = Some(rcon_password.to_string());
-    }
-
-    // managed_start ↔ RCON 연동:
-    //   managed=true  → enable_rcon=false (stdin으로 제어, RCON 불필요)
-    //   managed=false → enable_rcon=true  (RCON이 유일한 제어 수단)
-    let managed_start = settings.get("managed_start").and_then(|v| match v {
-        serde_json::Value::Bool(b) => Some(*b),
-        serde_json::Value::String(s) => Some(s == "true"),
-        _ => None,
-    });
-    let enable_rcon = match managed_start {
-        Some(true) => Some(false),  // managed → RCON 비활성화
-        Some(false) => Some(true),  // native → RCON 강제 활성화
-        None => {
-            // managed_start가 전송되지 않은 경우: 기존 enable_rcon 값 유지
-            settings.get("enable_rcon").and_then(|v| match v {
-                serde_json::Value::Bool(b) => Some(*b),
-                serde_json::Value::String(s) => Some(s == "true"),
-                _ => None,
-            })
-        }
-    };
-
-    // NOTE: RCON/REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
+    // NOTE: REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
 
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
@@ -937,9 +894,6 @@ pub async fn update_instance_settings(
                     match daemon_key.as_str() {
                         "rest_password" if updated.rest_password.as_deref().unwrap_or("").is_empty() => {
                             updated.rest_password = Some(pwd.to_string());
-                        }
-                        "rcon_password" if updated.rcon_password.as_deref().unwrap_or("").is_empty() => {
-                            updated.rcon_password = Some(pwd.to_string());
                         }
                         _ => {}
                     }
@@ -1013,10 +967,9 @@ pub async fn update_instance_settings(
     }
 
     tracing::info!(
-        "Updating instance {} with settings: port={:?}, rcon_port={:?}, executable_path={:?}, protocol_mode={}, module_settings_count={}",
+        "Updating instance {} with settings: port={:?}, executable_path={:?}, protocol_mode={}, module_settings_count={}",
         id,
         updated.port,
-        updated.rcon_port,
         updated.executable_path,
         updated.protocol_mode,
         updated.module_settings.len()
@@ -1040,21 +993,13 @@ pub async fn update_instance_settings(
                 || key == "managed_start"
                 || key == "graceful_stop"
                 || key == "extension_data"
+                || key == "rcon_port"
+                || key == "rcon_password"
+                || key == "enable_rcon"
             {
                 continue;
             }
             props_sync.insert(key.clone(), value.clone());
-        }
-    }
-
-    // managed_start ↔ RCON: enable_rcon을 props_sync에 주입
-    if let Some(rcon_on) = enable_rcon {
-        props_sync.insert("enable_rcon".to_string(), json!(rcon_on));
-    }
-    // 인스턴스에 저장된 RCON 비밀번호가 있으면 props_sync에도 반영
-    if let Some(pwd) = &updated.rcon_password {
-        if !props_sync.contains_key("rcon_password") {
-            props_sync.insert("rcon_password".to_string(), json!(pwd));
         }
     }
 

@@ -24,7 +24,10 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $ReleaseDir = Join-Path $ProjectRoot $OutputDir
-$DistDir = Join-Path $ReleaseDir "saba-chan-v0.1.1"
+# 릴리스 버전은 versions.toml [release] version 하나에서 읽는다
+$ReleaseVersion = (Select-String -Path (Join-Path $ProjectRoot "versions.toml") -Pattern '^version\s*=\s*"([^"]+)"' |
+    Select-Object -First 1).Matches[0].Groups[1].Value
+$DistDir = Join-Path $ReleaseDir "saba-chan-v$ReleaseVersion"
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -60,11 +63,13 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
     $env:CARGO_TERM_COLOR = "never"
 
     function Stop-BuildLockProcesses {
-        $names = @("saba-core", "saba-chan", "saba-chan-cli", "saba-chan-updater", "saba-chan-installer")
+        # 이 저장소의 target\ 에서 뜬 것만 끝낸다 (설치된 사바쨩 데몬·서버는 그대로)
+        $names = @("saba-core", "saba-runner", "saba-chan", "saba-chan-cli", "saba-chan-updater", "saba-chan-installer")
+        $targetDir = (Join-Path $root "target") + "\"
         foreach ($n in $names) {
-            Get-Process -Name $n -ErrorAction SilentlyContinue | ForEach-Object {
-                try { Stop-Process -Id $_.Id -Force -ErrorAction Stop } catch {}
-            }
+            Get-Process -Name $n -ErrorAction SilentlyContinue |
+                Where-Object { $_.Path -and $_.Path.StartsWith($targetDir, [System.StringComparison]::OrdinalIgnoreCase) } |
+                ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction Stop } catch {} }
         }
         Start-Sleep -Milliseconds 400
     }

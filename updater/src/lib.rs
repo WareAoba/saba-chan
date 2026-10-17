@@ -35,6 +35,7 @@ pub mod marker;
 pub mod process;
 pub mod relay;
 pub mod signature;
+pub mod uninstall_entry;
 pub mod version;
 pub mod versions;
 
@@ -280,6 +281,14 @@ fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
     Some((v.get("id")?.as_str()?.to_string(), v.get("version")?.as_str()?.to_string()))
 }
 
+/// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
+pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &["saba-chan-gui.exe", "Saba-chan.exe"] } else { &["saba-chan-gui"] };
+
+/// 설치 폴더 바로 안의 GUI 실행 파일
+pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
+    GUI_EXE_NAMES.iter().map(|n| install_root.join(n)).find(|p| p.is_file())
+}
+
 /// 같은 파일을 가리키는 경로인지. 구성 요소로 비교해 `./`는 무시하고,
 /// Windows 파일 이름은 대소문자를 가리지 않는다
 pub fn same_path(a: &Path, b: &Path) -> bool {
@@ -379,7 +388,7 @@ impl UpdateManager {
             let _ = std::fs::create_dir_all(&extensions_dir);
         }
 
-        Self {
+        let mgr = Self {
             config,
             status: UpdateStatus {
                 last_check: None,
@@ -394,7 +403,10 @@ impl UpdateManager {
             install_root,
             cached_manifest: None,
             download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
-        }
+        };
+        // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
+        mgr.cleanup_old_files();
+        mgr
     }
 
     fn resolve_staging_dir() -> PathBuf {
@@ -799,7 +811,7 @@ impl UpdateManager {
             .find(|c| matches!(c.component, Component::CoreDaemon))
         {
             let core_version = &core_comp.current_version;
-            if let Err(e) = Self::update_registry_display_version(core_version) {
+            if let Err(e) = self.update_registry_display_version(core_version) {
                 tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
             }
         }
@@ -883,46 +895,21 @@ impl UpdateManager {
 
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
 
-    /// 업데이트 적용 후 .old 백업 파일을 정리합니다.
-    ///
-    /// Windows에서 실행 중인 .exe를 교체할 때 기존 파일을 .exe.old로 rename하는데,
-    /// 업데이트 완료 후에는 이 파일들이 불필요합니다.
-    fn cleanup_old_files(&self) {
-        let old_patterns = [
-            "*.exe.old",
-        ];
-
-        for pattern in &old_patterns {
-            // install_root에서 .old 파일 탐색 (재귀 없이 루트만)
-            if let Ok(entries) = std::fs::read_dir(&self.install_root) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.ends_with(".exe.old") || name.ends_with(".old") {
-                            // saba-chan 관련 바이너리의 .old 파일만 삭제
-                            let is_saba_old = name.starts_with("saba-")
-                                || name.contains("cli")
-                                || name.contains("gui")
-                                || name.contains("core")
-                                || name.contains("updater")
-                                || name.contains("installer");
-                            if is_saba_old {
-                                match std::fs::remove_file(&path) {
-                                    Ok(()) => {
-                                        tracing::info!("[Updater] Cleaned up old file: {}", path.display());
-                                    }
-                                    Err(e) => {
-                                        // 파일이 아직 사용 중이면 다음 번에 정리
-                                        tracing::debug!("[Updater] Cannot remove old file {} (still in use?): {}", path.display(), e);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+    /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old` 백업을 지운다 (설치 폴더 바로 안만).
+    /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
+    pub fn cleanup_old_files(&self) {
+        let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
+        for path in entries.flatten().map(|e| e.path()) {
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            let Some(stem) = name.strip_suffix(".exe.old") else { continue };
+            let ours = stem.starts_with("saba-") || GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
+            if !ours {
+                continue;
             }
-
-            let _ = pattern; // suppress unused warning
+            match std::fs::remove_file(&path) {
+                Ok(()) => tracing::info!("[Updater] Cleaned up old file: {}", path.display()),
+                Err(e) => tracing::debug!("[Updater] Cannot remove old file {} (still in use?): {}", path.display(), e),
+            }
         }
     }
 
@@ -983,7 +970,7 @@ impl UpdateManager {
         Ok(count)
     }
 
-    /// pending 매니페스트 파일 삭제 (적용 완료 후)
+    /// pending 매니페스트와 받아 둔 압축 파일 삭제 (적용이 끝난 뒤, 성공·실패 모두)
     pub fn clear_pending_manifest(&self) {
         let manifest_path = self.staging_dir.join("pending.json");
         if manifest_path.exists() {
@@ -992,6 +979,15 @@ impl UpdateManager {
         let targets_path = self.staging_dir.join("apply-targets.json");
         if targets_path.exists() {
             let _ = std::fs::remove_file(&targets_path);
+        }
+        // pending이 없으면 받아 둔 압축 파일도 쓸모없다 (적용에 실패한 것까지). 다음 확인 때 다시 받는다
+        if let Ok(entries) = std::fs::read_dir(&self.staging_dir) {
+            for path in entries.flatten().map(|e| e.path()).filter(|p| p.is_file()) {
+                let name = path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                if name.ends_with(".zip") || name.ends_with(".tar.gz") || name.ends_with(".part") || name.ends_with(".partial") {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
         }
     }
 
@@ -1088,41 +1084,13 @@ impl UpdateManager {
     // 레지스트리 버전 갱신 (Windows "설치된 앱" 표시)
     // ══════════════════════════════════════════════════════
 
-    /// Windows 레지스트리의 DisplayVersion을 코어 버전으로 갱신합니다.
-    /// "설정 > 앱 > 설치된 앱"에 표시되는 버전 번호를 업데이트합니다.
-    #[cfg(target_os = "windows")]
-    pub fn update_registry_display_version(version: &str) -> Result<()> {
-        use winreg::enums::*;
-        use winreg::RegKey;
-
-        const UNINSTALL_KEY: &str =
-            r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan";
-
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        match hkcu.open_subkey_with_flags(UNINSTALL_KEY, KEY_WRITE) {
-            Ok(key) => {
-                let clean_version = version.trim_start_matches('v');
-                key.set_value("DisplayVersion", &clean_version)?;
-                tracing::info!(
-                    "[UpdateManager] Registry DisplayVersion updated to {}",
-                    clean_version
-                );
-                Ok(())
-            }
-            Err(e) => {
-                // 레지스트리 키가 없으면 (인스톨러 없이 설치된 경우) 무시
-                tracing::debug!(
-                    "[UpdateManager] Registry key not found, skipping DisplayVersion update: {}",
-                    e
-                );
-                Ok(())
-            }
+    /// 이 설치본의 Windows "설치된 앱" DisplayVersion을 코어 버전으로 갱신한다 (다른 설치본 항목은 건드리지 않는다)
+    pub fn update_registry_display_version(&self, version: &str) -> Result<()> {
+        match uninstall_entry::set_display_version(&self.install_root, version) {
+            Ok(true) => tracing::info!("[UpdateManager] Registry DisplayVersion updated to {}", version),
+            Ok(false) => tracing::debug!("[UpdateManager] No uninstall entry for {}; DisplayVersion left alone", self.install_root.display()),
+            Err(e) => tracing::warn!("[UpdateManager] DisplayVersion update failed: {}", e),
         }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn update_registry_display_version(_version: &str) -> Result<()> {
-        // Non-Windows: 레지스트리 없음, no-op
         Ok(())
     }
 
@@ -1237,7 +1205,7 @@ impl UpdateManager {
                 if let Some(core_comp) = self.status.components.iter()
                     .find(|c| matches!(c.component, Component::CoreDaemon))
                 {
-                    if let Err(e) = Self::update_registry_display_version(&core_comp.current_version) {
+                    if let Err(e) = self.update_registry_display_version(&core_comp.current_version) {
                         tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
                     }
                 }
@@ -1432,7 +1400,7 @@ impl UpdateManager {
             let process_names: Vec<&str> = match binary_name {
                 n if n.contains("daemon") || n.contains("core") => vec!["saba-core.exe"],
                 n if n.contains("cli") => vec!["saba-chan-cli.exe"],
-                n if n.contains("gui") => vec!["saba-chan-gui.exe"],
+                n if n.contains("gui") => GUI_EXE_NAMES.to_vec(),
                 _ => vec![],
             };
             for proc in &process_names {
@@ -1514,14 +1482,8 @@ impl UpdateManager {
     async fn apply_gui_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
 
-        // Portable exe mode: install_root/saba-chan-gui(.exe)
-        let gui_exe_name = if cfg!(target_os = "windows") {
-            "saba-chan-gui.exe"
-        } else {
-            "saba-chan-gui"
-        };
-        let portable_exe = self.install_root.join(gui_exe_name);
-        if portable_exe.exists() {
+        // 설치 폴더 바로 안에 GUI exe가 있으면 (portable exe, 또는 0.1.1의 Electron 폴더) 그 자리에 푼다
+        if let Some(portable_exe) = find_gui_exe(&self.install_root) {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
             let mut files = Vec::new();
             if staged.extension().map(|e| e == "zip").unwrap_or(false) {
@@ -1568,17 +1530,16 @@ impl UpdateManager {
     // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────
 
     fn find_gui_directory(&self) -> Result<PathBuf> {
-        // 1) Portable exe: install_root/saba-chan-gui.exe (배포 환경 기본)
-        let gui_exe_name = if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" };
-        if self.install_root.join(gui_exe_name).exists() {
-            tracing::info!("[Updater] GUI portable exe found at install_root");
+        // 1) 설치 폴더 바로 안 (배포 환경 기본)
+        if find_gui_exe(&self.install_root).is_some() {
+            tracing::info!("[Updater] GUI exe found at install_root");
             return Ok(self.install_root.clone());
         }
 
         // 2) exe 기준 (exe가 install_root와 다른 위치일 때)
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
-                if dir.join(gui_exe_name).exists() {
+                if find_gui_exe(dir).is_some() {
                     return Ok(dir.to_path_buf());
                 }
             }
@@ -1649,8 +1610,7 @@ impl UpdateManager {
             }
             Component::Gui => {
                 // Portable exe OR directory
-                let exe_name = if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" };
-                if self.install_root.join(exe_name).exists() {
+                if find_gui_exe(&self.install_root).is_some() {
                     return true;
                 }
                 self.find_gui_directory().ok().map(|d| d.exists()).unwrap_or(false)

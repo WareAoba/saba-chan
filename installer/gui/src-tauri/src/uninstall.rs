@@ -4,15 +4,16 @@
 //! `--uninstall` 인자로 실행됩니다.
 //!
 //! ## 제거 대상
-//! 1. 설치 디렉토리 (레지스트리의 InstallLocation에서 읽음)
+//! 1. 설치 디렉토리: 제거기 자신이 든 폴더 (설치기가 `saba-chan-installer.exe`를 설치 폴더에 복사해 둔다).
+//!    레지스트리 값은 다른 설치본을 가리킬 수 있어 쓰지 않는다
 //! 2. 사용자 데이터: `%APPDATA%/saba-chan` (settings.json, modules 등)
 //! 3. 임시 파일: `%TEMP%/saba-chan-*`
-//! 4. 레지스트리: `HKCU\...\Uninstall\Saba-chan`
+//! 4. 레지스트리: 이 설치 폴더의 `HKCU\...\Uninstall\Saba-chan*` 항목만
 //! 5. 바탕화면/시작메뉴 바로가기
 //! 6. 자기 자신 (cleanup 스크립트를 통해 프로세스 종료 후 삭제)
 use saba_chan_updater_lib::constants;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 #[cfg(target_os = "windows")]
@@ -70,34 +71,23 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     // Step 1: 설치 경로 확인
     emit("detect", "Detecting install location...", 5);
 
-    #[cfg(target_os = "windows")]
-    let install_location = registry::get_install_location();
-    #[cfg(not(target_os = "windows"))]
-    let install_location: Option<String> = None;
+    let install_dir = target_dir();
+    match &install_dir {
+        Some(dir) => tracing::info!("[Uninstall] Install location: {}", dir.display()),
+        None => tracing::warn!("[Uninstall] Not running from an install folder; install files are left alone"),
+    }
 
-    let install_dir = match &install_location {
-        Some(loc) if !loc.is_empty() => {
-            tracing::info!("[Uninstall] Install location: {}", loc);
-            Some(PathBuf::from(loc))
-        }
-        _ => {
-            tracing::warn!("[Uninstall] Install location not found in registry");
-            // 기본 경로 시도
-            let default = get_default_install_path();
-            if PathBuf::from(&default).exists() {
-                Some(PathBuf::from(&default))
-            } else {
-                None
-            }
-        }
-    };
-
-    // 레지스트리 값이 엉뚱한 폴더를 가리켜도 지우지 않는다: 사바쨩 실행 파일이 있어야 설치 폴더다
-    let install_dir = install_dir.filter(|d| looks_like_install_dir(d));
+    // 사용자 데이터는 설치본들이 함께 쓴다: 다른 설치본이 남아 있으면 지우지 않는다
+    let last_install = saba_chan_updater_lib::uninstall_entry::is_last_install(
+        &saba_chan_updater_lib::uninstall_entry::entries(),
+        install_dir.as_deref(),
+    );
 
     // Step 2: 프로세스 종료
     emit("stop", "Stopping saba-chan processes...", 10);
-    stop_saba_processes();
+    if let Some(dir) = &install_dir {
+        stop_saba_processes(dir);
+    }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Step 3: 바로가기 제거
@@ -126,7 +116,9 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
 
     // Step 5: 사용자 데이터 삭제 (%APPDATA%/saba-chan)
     // python-standalone, python-env, node-portable 등 런타임 디렉토리도 포함
-    if keep_settings {
+    if !last_install {
+        emit("data-shared", "Keeping user data: another Saba-chan install still uses it", 55);
+    } else if keep_settings {
         emit("data-keep", "Removing runtime environments (keeping settings)...", 55);
         remove_appdata_dir_keep_settings();
     } else {
@@ -140,7 +132,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
 
     // Step 7: 모듈 디렉토리 삭제 (%APPDATA%/saba-chan/modules)
     // (앞서 appdata 전체를 삭제하므로 포함됨 — 혹시 남아있을 경우 대비)
-    if !keep_settings {
+    if last_install && !keep_settings {
         emit("modules", "Cleaning modules directory...", 80);
         remove_modules_dir();
     } else {
@@ -150,8 +142,8 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     // Step 8: 레지스트리 삭제
     emit("registry", "Removing registry entries...", 90);
     #[cfg(target_os = "windows")]
-    {
-        if let Err(e) = registry::remove_uninstall_entry() {
+    if let Some(dir) = &install_dir {
+        if let Err(e) = registry::remove_uninstall_entry(dir) {
             tracing::warn!("Failed to remove registry entry: {}", e);
         }
     }
@@ -165,17 +157,24 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     }
 
     // 완료
-    emit_complete("Saba-chan has been completely removed.");
+    emit_complete(if last_install {
+        "Saba-chan has been completely removed."
+    } else {
+        "This Saba-chan install was removed. Your settings and servers were kept because another Saba-chan install still uses them."
+    });
     tracing::info!("[Uninstall] Complete");
 }
 
 /// 사일런트(GUI 없이) 제거
 pub async fn do_silent_uninstall() {
     eprintln!("Saba-chan Uninstaller (silent mode)");
+    let install_dir = target_dir();
 
     // 프로세스 종료
     eprintln!("  Stopping processes...");
-    stop_saba_processes();
+    if let Some(dir) = &install_dir {
+        stop_saba_processes(dir);
+    }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // 바로가기 제거
@@ -197,36 +196,38 @@ pub async fn do_silent_uninstall() {
     }
 
     // 설치 디렉토리 삭제
-    #[cfg(target_os = "windows")]
-    let install_location = registry::get_install_location();
-    #[cfg(not(target_os = "windows"))]
-    let install_location: Option<String> = None;
-    // 사바쨩 실행 파일이 있는 폴더만 설치 폴더로 본다 (엉뚱한 레지스트리 값이면 아무것도 안 지운다)
-    #[allow(clippy::unnecessary_literal_unwrap)] // Windows 밖에서는 레지스트리 값이 늘 None
-    let install_dir = Some(PathBuf::from(install_location.unwrap_or_else(get_default_install_path)))
-        .filter(|d| looks_like_install_dir(d));
     if let Some(dir) = &install_dir {
         eprintln!("  Removing install directory: {}", dir.display());
         let _ = remove_dir_robust(dir);
     }
 
-    // 사용자 데이터
-    eprintln!("  Removing user data and runtime environments...");
-    remove_appdata_dir();
+    // 사용자 데이터: 다른 설치본이 남아 있으면 그대로 둔다
+    let last_install = saba_chan_updater_lib::uninstall_entry::is_last_install(
+        &saba_chan_updater_lib::uninstall_entry::entries(),
+        install_dir.as_deref(),
+    );
+    if last_install {
+        eprintln!("  Removing user data and runtime environments...");
+        remove_appdata_dir();
+    } else {
+        eprintln!("  Keeping user data: another Saba-chan install still uses it");
+    }
 
     // 임시 파일
     eprintln!("  Cleaning temp files...");
     remove_temp_files();
 
     // 모듈
-    eprintln!("  Cleaning modules...");
-    remove_modules_dir();
+    if last_install {
+        eprintln!("  Cleaning modules...");
+        remove_modules_dir();
+    }
 
     // 레지스트리
     eprintln!("  Removing registry entries...");
     #[cfg(target_os = "windows")]
-    {
-        let _ = registry::remove_uninstall_entry();
+    if let Some(dir) = &install_dir {
+        let _ = registry::remove_uninstall_entry(dir);
     }
 
     // 자기 자신 삭제
@@ -235,77 +236,129 @@ pub async fn do_silent_uninstall() {
         schedule_self_delete(install_dir.as_ref());
     }
 
-    eprintln!("[OK] Saba-chan has been completely removed.");
+    if last_install {
+        eprintln!("[OK] Saba-chan has been completely removed.");
+    } else {
+        eprintln!("[OK] This install was removed; settings and servers were kept for the other install.");
+    }
 }
 
 // ═══════════════════════════════════════════════════════
 // 내부 헬퍼
 // ═══════════════════════════════════════════════════════
 
-fn stop_saba_processes() {
-    #[cfg(target_os = "windows")]
-    {
-        // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째(/T) 끝내 서버도 끝낸다.
-        // GUI·CLI는 /T 없이: GUI가 이 제거기를 자식으로 띄우므로 트리째 끝내면 제거기도 죽는다.
-        let targets: [(&str, bool); 5] = [
-            ("saba-core", true),
-            ("saba-runner", true),
-            ("saba-chan-cli", false),
-            ("Saba-chan", false), // Electron GUI
-            ("saba-chan-updater", false),
-        ];
-        for (name, tree) in targets {
-            let image = format!("{}.exe", name);
-            let mut args = vec!["/IM", image.as_str()];
-            if tree {
-                args.push("/T");
-            }
-            args.push("/F");
-            let _ = std::process::Command::new("taskkill")
-                .args(&args)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
-        }
-    }
+/// 제거할 설치 폴더: 제거기 자신이 든 폴더가 사바쨩 설치 폴더일 때만. 화면에 보이는 경로도 이것이다
+pub fn target_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?.to_path_buf();
+    looks_like_install_dir(&dir).then_some(dir)
+}
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let targets = [
-            "saba-core",
-            "saba-runner",
-            "saba-chan-cli",
-            "saba-chan",
-            "saba-chan-updater",
-        ];
-        // 게임 서버는 데몬(직접 띄운 비관리 서버)이나 러너의 자식이고, 그 아래 손자가 있을 수 있다
-        // (PTY로 띄운 서버는 따로 세션·그룹을 연다). 자식 트리를 맨 아래부터 끝내고(kt: 자식을 먼저 훑은 뒤
-        // 부모를 죽여 손자가 고아가 되기 전에 잡는다), 남은 그룹을 정리한다
-        let _ = std::process::Command::new("sh")
-            .args([
-                "-c",
-                "kt() { local c; for c in $(pgrep -P \"$1\"); do kt \"$c\"; done; kill -KILL \"$1\" 2>/dev/null; }; \
-                 for p in $(pgrep -x saba-runner) $(pgrep -x saba-core); do for c in $(pgrep -P \"$p\"); do kt \"$c\"; kill -KILL -- -\"$c\" 2>/dev/null; done; done",
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        for name in &targets {
-            let _ = std::process::Command::new("pkill")
-                .args(["-f", name])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
+/// 이 설치 폴더의 실행 파일로 떠 있는 사바쨩 프로세스만 끝낸다 (다른 설치본의 데몬·서버는 그대로)
+fn stop_saba_processes(install_dir: &Path) {
+    // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째 끝내 서버도 끝낸다.
+    // GUI·CLI는 트리 없이: GUI가 이 제거기를 자식으로 띄우므로 트리째 끝내면 제거기도 죽는다.
+    const TARGETS: [(&str, bool); 6] = [
+        ("saba-core", true),
+        ("saba-runner", true),
+        ("saba-chan-cli", false),
+        ("saba-chan-gui", false),
+        ("Saba-chan", false), // 0.1.1 Electron GUI
+        ("saba-chan-updater", false),
+    ];
+    for (pid, name) in processes_in(install_dir, &TARGETS.map(|(n, _)| n)) {
+        let tree = TARGETS.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
+        tracing::info!("[Uninstall] Stopping {} (PID {})", name, pid);
+        kill_pid(pid, tree);
+    }
+}
+
+/// `pid|name|exe` 줄들에서 `install_dir` 안의 실행 파일만 고른다. name은 확장자 뗀 이름
+fn filter_processes(listing: &str, install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
+    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    let root = norm(&install_dir.to_string_lossy());
+    listing
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.trim().splitn(3, '|');
+            let pid = parts.next()?.trim().parse::<u32>().ok()?;
+            let name = parts.next()?.trim();
+            let name = name.strip_suffix(".exe").unwrap_or(name).to_string();
+            let exe = norm(parts.next()?.trim());
+            let inside = exe.strip_prefix(&root).is_some_and(|rest| rest.starts_with('/'));
+            (inside && names.iter().any(|n| n.eq_ignore_ascii_case(&name))).then_some((pid, name))
+        })
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn processes_in(install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
+    let filter = names.iter().map(|n| format!("Name='{}.exe'", n)).collect::<Vec<_>>().join(" OR ");
+    let script = format!(
+        "Get-CimInstance Win32_Process -Filter \"{}\" | ForEach-Object {{ \"$($_.ProcessId)|$($_.Name)|$($_.ExecutablePath)\" }}",
+        filter
+    );
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    match out {
+        Ok(o) => filter_processes(&String::from_utf8_lossy(&o.stdout), install_dir, names),
+        Err(e) => {
+            tracing::warn!("[Uninstall] Cannot list processes: {}", e);
+            Vec::new()
         }
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+fn processes_in(install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
+    let mut listing = String::new();
+    for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
+        let Ok(exe) = std::fs::read_link(entry.path().join("exe")) else { continue };
+        let name = exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        listing.push_str(&format!("{}|{}|{}\n", pid, name, exe.display()));
+    }
+    filter_processes(&listing, install_dir, names)
+}
+
+#[cfg(target_os = "windows")]
+fn kill_pid(pid: u32, tree: bool) {
+    let pid = pid.to_string();
+    let mut args = vec!["/PID", pid.as_str()];
+    if tree {
+        args.push("/T");
+    }
+    args.push("/F");
+    let _ = std::process::Command::new("taskkill")
+        .args(&args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn kill_pid(pid: u32, tree: bool) {
+    // 게임 서버는 러너·데몬의 자식이고 그 아래 손자가 있을 수 있다: 자식 트리를 맨 아래부터 끝낸다
+    let script = if tree {
+        "kt() { local c; for c in $(pgrep -P \"$1\"); do kt \"$c\"; done; kill -KILL \"$1\" 2>/dev/null; }; kt \"$0\""
+    } else {
+        "kill -KILL \"$0\" 2>/dev/null"
+    };
+    let _ = std::process::Command::new("sh")
+        .args(["-c", script, &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
 /// 사바쨩이 설치한 폴더인지: 바로 안에 데몬이나 GUI 실행 파일이 있어야 한다
-fn looks_like_install_dir(dir: &std::path::Path) -> bool {
-    let ext = if cfg!(windows) { ".exe" } else { "" };
-    ["saba-core", "saba-chan-gui"]
-        .iter()
-        .any(|name| dir.join(format!("{}{}", name, ext)).is_file())
+fn looks_like_install_dir(dir: &Path) -> bool {
+    let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
+    dir.join(core).is_file() || saba_chan_updater_lib::find_gui_exe(dir).is_some()
 }
 
 /// 디렉토리 강제 삭제 (잠금 파일에 대한 재시도 포함)
@@ -525,30 +578,6 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>) {
     }
 }
 
-fn get_default_install_path() -> String {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            return PathBuf::from(local)
-                .join("saba-chan")
-                .to_string_lossy()
-                .to_string();
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home)
-                .join(".local")
-                .join("share")
-                .join("saba-chan")
-                .to_string_lossy()
-                .to_string();
-        }
-    }
-    "saba-chan".to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,5 +591,16 @@ mod tests {
         std::fs::write(dir.join(format!("saba-core{}", ext)), b"").unwrap();
         assert!(looks_like_install_dir(&dir));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_processes_running_from_this_install_are_stopped() {
+        let listing = "10|saba-core.exe|C:\\Saba\\saba-core.exe\n\
+                       11|saba-core.exe|C:\\Program Files\\Saba-chan\\saba-core.exe\n\
+                       12|saba-runner.exe|c:\\saba\\saba-runner.exe\n\
+                       13|saba-core.exe|C:\\Saba-old\\saba-core.exe\n\
+                       14|notepad.exe|C:\\Saba\\notepad.exe\n";
+        let found = filter_processes(listing, Path::new("C:\\Saba"), &["saba-core", "saba-runner"]);
+        assert_eq!(found, vec![(10, "saba-core".to_string()), (12, "saba-runner".to_string())]);
     }
 }

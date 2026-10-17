@@ -30,8 +30,6 @@ pub struct ServerInstance {
     pub auto_detect: bool,
     pub process_name: Option<String>,
     pub port: Option<u16>,
-    pub rcon_port: Option<u16>,
-    pub rcon_password: Option<String>,
     #[serde(default)]
     pub rest_host: Option<String>,
     #[serde(default)]
@@ -86,8 +84,6 @@ impl ServerInstance {
             auto_detect: true,
             process_name: None,
             port: None,
-            rcon_port: None,
-            rcon_password: None,
             rest_host: None,
             rest_port: None,
             rest_username: None,
@@ -151,9 +147,9 @@ impl ServerInstance {
     }
 
     /// 게임 설정 파일에서 읽어 온 값(`import_settings` 결과)을 반영한다: `module_settings`에 넣고,
-    /// 같은 값을 가리키는 인스턴스 필드(포트·RCON/REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
+    /// 같은 값을 가리키는 인스턴스 필드(포트·REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
     /// 옛 값으로 남아 다음 저장에서 파일을 되돌린다.
-    /// `credential_map`: 데몬 키(`rcon_password` 등) → 게임 키(`AdminPassword` 등)
+    /// `credential_map`: 데몬 키(`rest_password` 등) → 게임 키(`AdminPassword` 등)
     /// `types`: 설정 이름 → module.toml 필드 타입. 값은 그 타입으로 저장한다(문자열 필드는 문자열 그대로)
     pub fn apply_imported_settings(
         &mut self,
@@ -174,9 +170,9 @@ impl ServerInstance {
             }).and_then(|p| u16::try_from(p).ok())
         };
         if let Some(p) = port("port") { self.port = Some(p); }
-        if let Some(p) = port("rcon_port") { self.rcon_port = Some(p); }
         if let Some(p) = port("rest_port") { self.rest_port = Some(p); }
-        for daemon_key in ["rcon_password", "rest_password"] {
+        {
+            let daemon_key = "rest_password";
             let game_key = credential_map.get(daemon_key).map(String::as_str).unwrap_or(daemon_key);
             let value = self.module_settings.iter()
                 .find(|(k, _)| settings.contains_key(k.as_str()) && (k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key))
@@ -184,24 +180,15 @@ impl ServerInstance {
                 .map(str::to_string);
             // 파일이 비어 있으면 비어 있는 것이 사실이다: 옛 캐시 값을 남기지 않는다
             if let Some(pwd) = value {
-                match daemon_key {
-                    "rcon_password" => self.rcon_password = Some(pwd),
-                    _ => self.rest_password = Some(pwd),
-                }
+                self.rest_password = Some(pwd);
             }
         }
     }
 
-    /// RCON/REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
+    /// REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
     /// 변경이 발생하면 true를 반환합니다.
     pub fn ensure_passwords(&mut self) -> bool {
         let mut changed = false;
-        if self.rcon_password.as_deref().unwrap_or("").is_empty() {
-            let pw = generate_random_password();
-            tracing::info!("Auto-generated RCON password for instance {}", self.id);
-            self.rcon_password = Some(pw);
-            changed = true;
-        }
         if self.rest_password.as_deref().unwrap_or("").is_empty() {
             let pw = generate_random_password();
             tracing::info!("Auto-generated REST password for instance {}", self.id);
@@ -411,16 +398,16 @@ impl InstanceStore {
         let mut meta = instance.clone();
         let settings = std::mem::take(&mut meta.module_settings);
         let instance_json = serde_json::to_string_pretty(&meta)?;
-        fs::write(dir.join("instance.json"), &instance_json)?;
+        write_atomic(&dir.join("instance.json"), &instance_json)?;
 
         // settings.json — 모듈별 동적 설정 (비어있어도 저장)
         let settings_json = serde_json::to_string_pretty(&settings)?;
-        fs::write(dir.join("settings.json"), &settings_json)?;
+        write_atomic(&dir.join("settings.json"), &settings_json)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            // instance.json에 민감 데이터(RCON 비밀번호 등) 포함 가능
+            // instance.json·settings.json에 비밀번호가 들어 있을 수 있다
             let _ = fs::set_permissions(dir.join("instance.json"), fs::Permissions::from_mode(0o600));
             let _ = fs::set_permissions(dir.join("settings.json"), fs::Permissions::from_mode(0o600));
         }
@@ -435,14 +422,27 @@ impl InstanceStore {
             .with_context(|| format!("instance.json 읽기 실패: {}", instance_path.display()))?;
 
         let mut instance: ServerInstance = serde_json::from_str(&content)?;
+        let mut stale = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|v| v.as_object().map(|o| LEGACY_RCON_KEYS.iter().any(|k| o.contains_key(*k))))
+            .unwrap_or(false);
 
         // settings.json이 있으면 module_settings 머지
         let settings_path = dir.join("settings.json");
         if settings_path.exists() {
             let settings_content = fs::read_to_string(&settings_path)?;
-            let settings: HashMap<String, serde_json::Value> =
+            let mut settings: HashMap<String, serde_json::Value> =
                 serde_json::from_str(&settings_content).unwrap_or_default();
+            stale |= drop_legacy_rcon_keys(&mut settings);
             instance.module_settings = settings;
+        }
+
+        // RCON을 없애기 전에 만든 인스턴스: 남은 RCON 키를 한 번 지우고 다시 쓴다
+        if stale {
+            match self.save_instance(&instance) {
+                Ok(()) => tracing::info!("Removed leftover RCON settings from instance '{}'", instance.name),
+                Err(e) => tracing::warn!("Could not clean RCON settings of '{}': {}", instance.name, e),
+            }
         }
 
         Ok(instance)
@@ -459,6 +459,38 @@ impl InstanceStore {
 // ═══════════════════════════════════════════════════════════════
 //  Tests
 // ═══════════════════════════════════════════════════════════════
+
+/// RCON은 보안상 쓰지 않는다 (2026-10-17). 그 전에 만든 인스턴스 파일에 남은 키
+const LEGACY_RCON_KEYS: &[&str] = &[
+    "rcon_port",
+    "rcon_password",
+    "enable_rcon",
+    "broadcast_rcon_to_ops",
+    "rcon.port",
+    "rcon.password",
+    "enable-rcon",
+    "broadcast-rcon-to-ops",
+];
+
+/// 남은 RCON 키를 지운다. 하나라도 지웠으면 true
+fn drop_legacy_rcon_keys(settings: &mut HashMap<String, serde_json::Value>) -> bool {
+    let before = settings.len();
+    settings.retain(|k, _| !LEGACY_RCON_KEYS.contains(&k.as_str()));
+    settings.len() != before
+}
+
+/// 임시 파일에 쓰고 rename: 쓰는 도중 꺼져도 예전 파일이나 새 파일 중 하나가 온전히 남는다
+fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+    }
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
 
 /// 설정 파일에서 읽은 값을 module.toml 필드 타입에 맞춘다.
 /// number·boolean은 문자열이면 바꾸고, 그 밖의 알려진 타입(text, password, select…)은 문자열로 둔다
@@ -502,7 +534,7 @@ mod tests {
     fn imported_settings_refresh_instance_fields() {
         let mut inst = ServerInstance::new("a", "palworld");
         inst.port = Some(27015);
-        let settings = serde_json::json!({"port": "28015", "rcon_port": 25575, "AdminPassword": "pw", "Other": 1});
+        let settings = serde_json::json!({"port": "28015", "AdminPassword": "pw", "Other": 1});
         let map: std::collections::HashMap<String, String> = [("rest_password".to_string(), "adminpassword".to_string())].into();
         let types: std::collections::HashMap<String, String> =
             [("port", "number"), ("AdminPassword", "password")].map(|(k, t)| (k.to_string(), t.to_string())).into();
@@ -515,7 +547,7 @@ mod tests {
         assert_eq!(inst.module_settings.get("AdminPassword"), Some(&serde_json::json!("000123")));
         assert_eq!(inst.rest_password.as_deref(), Some("000123"));
         inst.apply_imported_settings(serde_json::json!({"AdminPassword": "pw"}).as_object().unwrap(), &map, &types);
-        assert_eq!((inst.port, inst.rcon_port), (Some(28015), Some(25575)));
+        assert_eq!(inst.port, Some(28015));
         assert_eq!(inst.rest_password.as_deref(), Some("pw"));
         assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));
     }
@@ -620,6 +652,39 @@ mod tests {
     }
 
     #[test]
+    fn leftover_rcon_keys_are_removed_once_on_load() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("old", "minecraft");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+
+        // RCON을 없애기 전의 파일처럼 만든다
+        let dir = store.instance_dir(&id);
+        let mut meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
+        meta["rcon_port"] = serde_json::json!(25575);
+        meta["rcon_password"] = serde_json::json!("pw");
+        fs::write(dir.join("instance.json"), meta.to_string()).unwrap();
+        fs::write(
+            dir.join("settings.json"),
+            r#"{"rcon_port":25575,"rcon.port":"25575","rcon.password":"pw","enable-rcon":"false","motd":"hi"}"#,
+        )
+        .unwrap();
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let loaded = store.get(&id).unwrap();
+        assert_eq!(loaded.module_settings.keys().collect::<Vec<_>>(), vec!["motd"]);
+        let settings: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings, serde_json::json!({ "motd": "hi" }));
+        let meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
+        assert!(meta.get("rcon_port").is_none() && meta.get("rcon_password").is_none());
+        assert!(!dir.join("settings.json.tmp").exists());
+    }
+
+    #[test]
     fn test_directory_structure() {
         let tmp = TempDir::new().unwrap();
         let instances_dir = tmp.path().join("instances");
@@ -629,7 +694,7 @@ mod tests {
 
         let mut inst = make_test_instance("struct-test", "minecraft");
         inst.module_settings.insert("ram".to_string(), serde_json::json!(4));
-        inst.rcon_password = Some("secret123".to_string());
+        inst.rest_password = Some("secret123".to_string());
         let id = inst.id.clone();
         store.add(inst).unwrap();
 

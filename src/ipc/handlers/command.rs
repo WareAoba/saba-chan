@@ -291,8 +291,8 @@ pub async fn execute_rcon_command(
     (
         StatusCode::CONFLICT,
         Json(json!({
-            "error": "no_command_path",
-            "message": format!("'{}' has no console to send commands to: start it from saba-chan (managed) to run commands", instance.name),
+            "error": format!("'{}' has no console to send commands to: start it from saba-chan (managed) to run commands", instance.name),
+            "error_code": "no_command_path",
         })),
     )
         .into_response()
@@ -306,8 +306,9 @@ pub(crate) async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json:
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
     };
     let proc = state.supervisor.read().await.managed_store.get(id).await;
+    // 보내기 직전의 커서: 그 뒤에 나온 줄만 답으로 모은다
     let before = match &proc {
-        Some(p) => p.get_recent_console(1).await.last().map(|l| l.id).unwrap_or(0),
+        Some(p) => p.console_cursor().await,
         None => 0,
     };
     let sent = state.supervisor.read().await.send_stdin_command(id, command).await;

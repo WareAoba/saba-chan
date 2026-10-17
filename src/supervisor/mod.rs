@@ -160,7 +160,8 @@ impl Supervisor {
                 .and_then(|m| m.metadata.log_pattern.clone());
             if let Some(proc) = managed_process::ManagedProcess::attach_runner(&inst_dir, log_pattern.as_deref()).await {
                 let pid = proc.pid;
-                if let Err(e) = self.tracker.track(&instance.id, pid) {
+                // 가동 시간은 데몬이 다시 붙은 때가 아니라 러너가 서버를 띄운 때부터
+                if let Err(e) = self.tracker.track_since(&instance.id, pid, proc.started_at) {
                     tracing::warn!("Failed to re-track '{}' (PID {}): {}", instance.name, pid, e);
                     continue;
                 }
@@ -286,8 +287,6 @@ impl Supervisor {
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
-        if let Some(v) = instance.rcon_port { put("rcon_port", json!(v)); }
-        if let Some(v) = &instance.rcon_password { put("rcon_password", json!(v)); }
         for (key, value) in &instance.module_settings {
             put(key, value.clone());
         }
@@ -873,10 +872,6 @@ impl Supervisor {
         let mut config_obj = stop_config;
         // Pass PID from tracker so the module can kill the actual process
         config_obj.insert("pid".to_string(), json!(pid));
-        // Pass RCON port for graceful shutdown (password is read from game config by Python)
-        if let Some(rcon_port) = instance.rcon_port {
-            config_obj.insert("rcon_port".to_string(), json!(rcon_port));
-        }
         config_obj.insert("force".to_string(), json!(force));
         // managed 서버는 위에서 데몬이 직접 멈춘다. 여기까지 오면 항상 non-managed.
         config_obj.insert("managed".to_string(), json!(false));
@@ -974,17 +969,11 @@ impl Supervisor {
             let module = s.module_loader.get_module(module_name)?;
             let module_path = module.entry_path();
 
-            // Build config — 실행 파일, PID, RCON 정보 등 Python status()에 필요한 값 포함
+            // Build config — 실행 파일, PID 등 Python status()에 필요한 값 포함
             let mut config_obj = serde_json::Map::new();
             s.insert_resolved_exe(&mut config_obj, &instance, module_name);
             if let Some(pid) = tracked_pid {
                 config_obj.insert("pid".to_string(), json!(pid));
-            }
-            if let Some(rcon_port) = instance.rcon_port {
-                config_obj.insert("rcon_port".to_string(), json!(rcon_port));
-            }
-            if let Some(rcon_pw) = &instance.rcon_password {
-                config_obj.insert("rcon_password".to_string(), json!(rcon_pw));
             }
             // module_settings 포함 (server_name 등 Python이 INI 경로 해석에 사용)
             for (key, value) in &instance.module_settings {
@@ -1057,11 +1046,10 @@ impl Supervisor {
             let module_path = module.entry_path();
 
             // 모듈의 기본값 가져오기 (하드코딩 대신 모듈 설정 사용)
-            let default_rcon_port = module.metadata.default_rcon_port();
             let default_rest_port = module.metadata.default_rest_port();
             let default_rest_host = module.metadata.default_rest_host();
 
-            // 명령어 config 구성 (RCON 설정 포함)
+            // 명령어 config 구성
             let pid = s.tracker.get_pid(&instance.id).ok();
             let instance_dir = s.instance_store.instance_dir(&instance.id);
             let working_dir = instance.working_dir.clone()
@@ -1069,10 +1057,8 @@ impl Supervisor {
             let config = json!({
                 "command": command,
                 "args": args,
-                "protocol_mode": &instance.protocol_mode,  // "rest" 또는 "rcon"
+                "protocol_mode": &instance.protocol_mode,
                 "working_dir": &working_dir,
-                "rcon_host": "127.0.0.1",
-                "rcon_port": instance.rcon_port.unwrap_or(default_rcon_port),
                 "rest_host": instance.rest_host.clone().unwrap_or(default_rest_host),
                 "rest_port": instance.rest_port.unwrap_or(default_rest_port),
                 "pid": pid,
@@ -1420,13 +1406,6 @@ impl Supervisor {
                                     tracing::info!("credential_map: synced {} -> {} for '{}'", game_key, daemon_key, instance.id);
                                 }
                             }
-                            "rcon_password" => {
-                                if instance.rcon_password.as_deref() != Some(val) {
-                                    instance.rcon_password = Some(val.to_string());
-                                    creds_changed = true;
-                                    tracing::info!("credential_map: synced {} -> {} for '{}'", game_key, daemon_key, instance.id);
-                                }
-                            }
                             _ => {
                                 tracing::debug!("credential_map: unknown daemon key '{}', skipping", daemon_key);
                             }
@@ -1441,7 +1420,6 @@ impl Supervisor {
                 if let Some(mut current) = s.instance_store.get(&instance.id).cloned() {
                     current.rest_username = instance.rest_username.clone();
                     current.rest_password = instance.rest_password.clone();
-                    current.rcon_password = instance.rcon_password.clone();
                     if let Err(e) = s.instance_store.update(&instance.id, current) {
                         tracing::warn!("Failed to persist synced credentials: {}", e);
                     }
@@ -2608,8 +2586,6 @@ mod tests {
             auto_detect: false,
             process_name: None,
             port: Some(25565),
-            rcon_port: Some(25575),
-            rcon_password: Some("test".to_string()),
             rest_host: None,
             rest_port: None,
             rest_username: None,
@@ -2666,8 +2642,6 @@ mod tests {
             auto_detect: false,
             process_name: None,
             port: Some(25566),
-            rcon_port: Some(25576),
-            rcon_password: Some("test".to_string()),
             rest_host: None,
             rest_port: None,
             rest_username: None,

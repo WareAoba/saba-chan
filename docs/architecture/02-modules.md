@@ -72,11 +72,11 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[protocols]` (`ProtocolsSection` `:306-314`)
 | 키 | 타입 | 사용처 |
 |---|---|---|
-| `supported` | Vec<String> | `rcon`/`rest`/`stdin`. 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:163-173`), 인스턴스 생성 시 rcon_port/rest_port 기본값 결정(`instance.rs:142-147`) |
+| `supported` | Vec<String> | `stdin`/`rest` (`rcon`도 문법상 받지만 데몬이 RCON을 쓰지 않는다). 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:163-173`), 인스턴스 생성 시 rcon_port/rest_port 기본값 결정(`instance.rs:142-147`) |
 | `default` | String | GUI로 전달만 함 (`ProtocolsInfo`) |
 | `interaction_mode` | String | `console` 또는 `commands`. GUI와 봇이 시작 방식·UI 결정에 사용 (데몬은 해석하지 않음) |
 
-> **RCON 정책**: 게임 명령은 stdin으로 보낸다. 기본인 관리 모드(saba-runner)에서는 RCON을 끈다(`enable_rcon=false`, `D:src/ipc/handlers/instance.rs:869-880`; 데몬이 시작 설정에 `managed: true`를 넣고 모듈이 그에 맞춘다, `D:src/supervisor/mod.rs:1336`). `method = "rcon"`인 명령도 관리 모드면 stdin으로 간다(`D:src/commands/mod.rs:13`, `D:src/ipc/handlers/command.rs:284-293, 400`). RCON은 관리하지 않는 모드(옵션)에서만 쓰는 예비 경로다.
+> **RCON 정책**: 보안상 saba-chan은 RCON을 쓰지 않는다. 데몬에는 RCON 클라이언트가 없고, 게임 명령은 모두 서버 콘솔(stdin)로 간다. `/api/instance/:id/rcon`은 이름만 남은 호환 경로로, 한 줄을 stdin에 쓰고 콘솔 출력을 약 1.5초 모아 `data.response`로 돌려준다(`D:src/ipc/handlers/command.rs:263-307`). 콘솔이 없는 서버(관리하지 않는 모드, runner 없이 붙은 프로세스)는 409 `no_command_path`를 받으므로 saba-chan에서 명령을 보낼 수 없다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목은 지워졌고 `supported = ["stdin"]`이다. palworld는 그대로다(RCON 끔, REST). `method = "rcon"`은 명령 정의에 남아 있지만 실제 전송은 stdin이다.
 
 #### `[config]` (`ConfigSection` `:316-334`, `#[serde(flatten)] _extra`로 나머지 키 흡수)
 | 키 | 타입 | 사용처 |
@@ -234,7 +234,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `stop` | non-managed 정지만 `mod.rs:717` | `server_executable`, `server_jar`, `working_dir`, `pid`, `rcon_port`, `force`. **`instance_id`, `managed`, `module_settings`, `rcon_password` 없음** |
 | `status` | non-managed 상태 조회 `mod.rs:830` | `server_executable`, `server_jar`, `working_dir`, `pid`, `rcon_port`, `rcon_password`, `module_settings`(펼침) |
 | `command` | `POST /api/instance/:id/command` → `mod.rs:919` | `command`, `args`, `protocol_mode`, `working_dir`, `rcon_host`, `rcon_port`, `rest_host`, `rest_port`, `pid`, `instance_id` |
-| `get_credentials` | `/rcon`, `/rest` 요청마다 1회씩 `command.rs:101, 260` | `working_dir` |
+| `get_credentials` | `/rest` 요청 시. 결과를 캐시하므로 캐시가 있으면 Python을 띄우지 않는다 (`command.rs:530-555`) | `working_dir` |
 | `validate` | `POST /api/instance/:id/validate` `mod.rs:1404` | `server_jar`(=executable_path), `working_dir`, `port`, `extension_data` |
 | `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 `mod.rs:1435-1447`, `instance.rs:1140-1200` | `working_dir`, `extension_data`, `settings{}` |
 | `read_properties` | `GET /properties` | `working_dir`, `extension_data` |
@@ -292,11 +292,11 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 ### 2.5 공용 Python 유틸 (`D:modules/`)
 
 - `i18n.py`: `I18n(module_dir)`가 `locales/<lang>.json`을 읽는다. 언어는 `SABA_LANG`으로 정하고 기본값은 `en`이다. 점 표기 키와 `{{var}}` 보간을 지원한다. `__example/i18n.py`는 같은 파일의 복사본이다.
-- `daemon_rcon.py`: 데몬 HTTP `/api/instance/:id/rcon`을 감싸는 래퍼다 (`:43-100`).
+- `daemon_rcon.py`: 데몬 HTTP `/api/instance/:id/rcon`(실제로는 stdin)을 감싸는 래퍼다. 이름만 RCON이고 RCON 소켓은 열지 않는다. stdin 전송, PID 확인, 설정값 조회 같은 공용 헬퍼도 들어 있다.
   - 기본 URL은 `DAEMON_API_URL`, 없으면 `http://127.0.0.1:57474`이다.
   - **`X-Saba-Token` 헤더를 보내지 않는다.** 데몬은 토큰 파일이 있으면 모든 요청에 토큰을 요구한다 (`D:src/ipc/auth.rs:77-115`). 따라서 정상 배포 환경에서 모듈→데몬 콜백은 **401로 실패**할 가능성이 높다. palworld의 `execute_rest_via_daemon`(`:1559-`)와 zomboid의 `_send_stdin_command`(`:1261-1269`)도 같은 문제가 있다.
-  - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 **무시**한다. 핸들러는 `get_credentials`의 값만 쓴다 (`command.rs:134-157`).
-  - `rcon_command(host,port,pw,cmd)`를 `instance_id` 없이 호출하면 **소켓으로 RCON에 직접 붙는다** (`:173-205`). minecraft와 zomboid는 instance_id를 넘기지 않으므로 사실상 직접 소켓 RCON을 쓴다. 문서 §6.1의 "데몬이 연결 관리"와 다르다.
+  - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다.
+  - 예전 호환 함수 `rcon_command(host,port,pw,cmd)`는 `instance_id`가 있으면 데몬 경로로 보내고, 없으면 `ConnectionError`를 낸다. 직접 소켓 RCON 폴백은 지워졌다.
 - 배포: 코어 패키저가 `modules/i18n.py`와 `modules/daemon_rcon.py`를 데이터 디렉터리의 `modules/`에 넣는다 (`D:.github/scripts/package-release.py:56-57`). installer도 같은 일을 한다 (`installer/gui/src-tauri/src/lib.rs:1171`). 모듈 리포의 zip에는 들어가지 않는다(예외: `__example/i18n.py`).
 
 ---
@@ -372,17 +372,12 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 - **non-managed stop**: Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 RCON, REST, kill을 직접 처리한다. `success=false`이면 Err가 된다.
 - **extension 위임**: `server.post_stop` hook이 `handled`를 돌려주면 그대로 반환한다. 이 hook은 이름과 달리 **정지 전에** dispatch된다 (`mod.rs:562-581`). 이름과 동작이 맞지 않는다.
 
-### 3.5 RCON/REST 연결
+### 3.5 명령 경로 (stdin/REST)
 
-- 데몬에는 `protocol/rcon.rs`, `rcon_pool.rs`, `rest.rs`가 있다.
-- **RCON 경로**: `/api/instance/:id/rcon`. 매 요청마다 Python `get_credentials`를 spawn해 게임 설정 파일(server.properties, servertest.ini 등)에서 포트와 비밀번호를 읽는다. 그다음 `rcon_pool.execute`를 `spawn_blocking`으로 실행하고 타임아웃은 5초다 (`command.rs:58-213`).
-  - RCON 명령 하나마다 Python 프로세스가 하나 뜬다.
-  - 비밀번호를 찾지 못하면 400을 돌려준다. 인스턴스에 저장된 `rcon_password`는 대체값으로 쓰지 않는다.
-- **REST 경로**: `/api/instance/:id/rest`도 같은 방식이다. Basic Auth의 username 기본값은 `"admin"`이다.
-- **managed와 RCON 정책 충돌**:
-  - minecraft는 managed 모드에서 `enable-rcon=false`를 강제한다 (`M:minecraft/lifecycle.py:971-1010`, `:1096-1097`).
-  - zomboid도 managed 모드에서는 RCON을 선택 사항(기본 비활성)으로 둔다 (`M:zomboid/lifecycle.py:784-830`).
-  - 두 모듈의 `[[commands.fields]]`는 `method = "rcon"`이지만, 관리 모드에서는 데몬 명령 경로가 stdin으로 보낸다(위 RCON 정책). 그래서 더 이상 실패하지 않는다.
+- 데몬의 프로토콜 계층에는 `rest.rs`만 남았다. RCON 코드는 지워졌다.
+- **명령 경로**: `/api/instance/:id/rcon`과 `/stdin`은 서버 콘솔(stdin)에 쓴다. `/rcon`은 콘솔 출력을 잠깐 모아 답으로 돌려준다. 콘솔이 없으면 409 `no_command_path` (위 RCON 정책).
+- **REST 경로**: `/api/instance/:id/rest`. `get_credentials`(캐시)로 게임 설정 파일의 계정을 읽는다. Basic Auth의 username 기본값은 `"admin"`이다.
+- **RCON 끄기**: minecraft는 모든 모드와 설치 때 `enable-rcon=false`를 강제한다 (`M:minecraft/lifecycle.py:532, 997-1001, 1719`). zomboid는 `RCONPassword`를 비운다 (`M:zomboid/lifecycle.py:825-832`).
 - `SupervisorError`(`error.rs`)는 HTTP 상태 코드 매핑을 갖추고 있지만 `#[allow(dead_code)]`이고 **쓰이지 않는다**. 모든 핸들러가 `anyhow` + 수동 JSON을 쓴다.
 
 ### 3.6 크래시 감지와 자동 재시작
@@ -410,11 +405,11 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 
 | 항목 | 내용 |
 |---|---|
-| protocols | `supported=["rcon","stdin"]`, default rcon, `interaction_mode=console` |
+| protocols | `supported=["stdin"]`, default stdin, `interaction_mode=console` |
 | 설치 | `install.method="download"`. `ServerInstaller`(`:1597-1870`)가 Mojang `version_manifest_v2`(`:1594`)에서 버전 목록을 받아 jar를 내려받는다. Java는 `JavaDetector`와 `JavaDownloader`(Adoptium API `:278`)로 감지하거나 `<working_dir>/java/`에 번들로 받는다 |
-| 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, `-jar server.jar nogui`를 만든다. 시작 전에 RCON 정책을 강제한다 (managed면 RCON 끔, native면 켜고 비밀번호를 동기화) |
+| 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, `-jar server.jar nogui`를 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:501`). settings 69개(saba-chan 5 / advanced 43 / basic 21) |
-| 명령 | 17개, 전부 `method="rcon"`: say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
+| 명령 | 17개, 정의는 `method="rcon"`이지만 전송은 stdin: say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
 | 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 28개 |
 | 미등록 | `import_settings`, `reset_properties`, `reset_server` |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`(zip에서 제외), `__pycache__`가 리포에 커밋돼 있음 |
@@ -436,11 +431,11 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 
 | 항목 | 내용 |
 |---|---|
-| protocols | `supported=["rcon","stdin"]`, console, `stop_command="quit"` |
+| protocols | `supported=["stdin"]`, console, `stop_command="quit"`. `RCONPassword`를 비워 RCON을 끈다 |
 | 설치 | `steamcmd`, app_id 380870. `beta_branch="unstable"`은 로더가 무시한다(§1.2). steamcmd 익스텐션을 쓰고, 없으면 시스템 steamcmd(`_find_steamcmd`)로 대체한다 |
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:544-707`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 `Zomboid/Server/<servername>.ini`를 다룬다. `_INI_KEY_MAP`(saba 키 → INI 키). settings 118개 |
-| 명령 | 23개, 전부 rcon: servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
+| 명령 | 23개, 정의는 rcon이지만 전송은 stdin: servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
 | 버그 | `stop()`이 `config["managed"]` 기본값을 True로 보고 daemon `/stdin`을 호출한다. 그런데 (1) 데몬은 `stop`을 non-managed에서만 호출하고 `managed`나 `instance_id` 키를 넘기지 않는다. (2) payload 키가 `{"input": ...}`인데 데몬은 `command`를 요구한다(`managed.rs:101`) → 400. (3) 토큰 헤더가 없다 |
 | 미구현 | `accept_eula`, `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
@@ -450,7 +445,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 - `name = "mygame"`인데 폴더명은 `__example`이다. toml 주석은 "폴더명과 동일"을 요구한다(예시 값).
 - 템플릿 주석에 있는 "데몬 호출 시점" 설명(`:38-47`)과 config 키 설명(`:58-80`)은 §2.3과 같은 이유로 **사실과 다르다**.
 - `install_server`가 `from extensions.steamcmd import install_game`을 쓰는데, 실제 모듈들은 `SteamCMD` 클래스를 쓴다. 이 API가 존재하는지 **확인되지 않았다**.
-- `get_credentials`, `read_properties`가 없다. 그래서 이 템플릿으로 만든 RCON 모듈은 `/rcon` 명령이 항상 "RCON password not configured"로 실패한다 (`command.rs:145-156`).
+- `get_credentials`, `read_properties`가 없다. 명령은 stdin으로 가므로 콘솔 모듈에는 지장이 없지만, REST 모듈을 만들면 `get_credentials`를 직접 추가해야 한다.
 - settings에 `managed_start`와 `graceful_stop`이 있다. `managed_start`는 GUI와 봇이 시작 경로를 고르는 데 쓴다. `graceful_stop`은 데몬 어디에서도 읽지 않는다(문서는 stop config에 들어간다고 주장).
 
 ### 4.5 i18n과 locales
@@ -526,8 +521,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 4. non-managed는 이름으로, 나머지는 ID로 추적한다 (`mod.rs:540`).
 5. `managed/start`가 write lock을 잡은 채로 Python을 호출한다 (`managed.rs:61`).
 6. `server.post_stop` hook을 정지 전에 dispatch한다.
-7. managed 모드에서는 RCON을 끄는데, 명령은 RCON으로 라우팅된다 (§3.5).
-8. RCON/REST 명령 하나마다 `get_credentials` Python 프로세스를 띄운다.
+7. ~~managed 모드에서는 RCON을 끄는데, 명령은 RCON으로 라우팅된다~~ → 해결: 데몬은 RCON을 쓰지 않고 명령은 모두 stdin으로 간다(RCON 정책).
+8. ~~RCON/REST 명령 하나마다 `get_credentials` Python 프로세스를 띄운다~~ → 해결: REST만 쓰고 결과를 캐시한다(`command.rs:530-555`).
 9. 모듈 설치에 sha256 검증, 경로 검증, 클린 설치가 없다. 업데이터의 태그→semver 판정은 실패하고, 무결성 해시 대상도 맞지 않는다.
 
 ### 6.5 [원칙 위반] 모듈 지식이 데몬 바깥이나 데몬 하드코딩에 있는 곳
