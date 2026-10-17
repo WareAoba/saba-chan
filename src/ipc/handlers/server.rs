@@ -600,7 +600,8 @@ pub async fn start_instance_handler(
         .await
     } else {
         let req = ServerStartRequest { module: instance.module_name.clone(), config: json!({}) };
-        crate::ipc::internal::into_internal(start_server_handler(Path(instance.name.clone()), State(state.clone()), Json(req)).await)
+        // id로 넘긴다 (이름은 겹칠 수 있다)
+        crate::ipc::internal::into_internal(start_server_handler(Path(instance.id.clone()), State(state.clone()), Json(req)).await)
             .await
     };
     let mut body = match resp.body {
@@ -615,14 +616,14 @@ pub async fn start_instance_handler(
     (resp.status, Json(Value::Object(body))).into_response()
 }
 
-/// id(또는 이름)로 인스턴스 이름을 찾는다
-async fn instance_name_of(state: &IPCServer, id: &str) -> Option<String> {
+/// id(또는 고유한 이름)로 인스턴스를 찾아 (id, 이름)을 돌려준다
+async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String)> {
     let supervisor = state.supervisor.read().await;
     supervisor
         .instance_store
-        .get(id)
-        .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
-        .map(|i| i.name.clone())
+        .get(key)
+        .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key))
+        .map(|i| (i.id.clone(), i.name.clone()))
 }
 
 fn instance_not_found(id: &str) -> axum::response::Response {
@@ -661,24 +662,25 @@ pub async fn restart_instance_handler(
             Some(i) => {
                 let tracked = supervisor.tracker.get_pid(&i.id).is_ok()
                     || supervisor.managed_store.running_instance_ids().await.contains(&i.id);
-                Some((i.id.clone(), tracked, !i.extension_data.is_empty()))
+                Some((i.id.clone(), tracked))
             }
             None => None,
         }
     };
-    let Some((inst_id, tracked, ext_managed)) = picked else {
+    let Some((inst_id, tracked)) = picked else {
         return instance_not_found(&id);
     };
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
-    let mut running = tracked;
-    if tracked || ext_managed {
-        // 익스텐션이 맡은 서버는 데몬 추적표에 없을 수 있다: 정지를 맡겨 보고, 꺼져 있었으면 시작만 한다
+    let running;
+    {
+        // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
         let stop = crate::ipc::internal::into_internal(stop_instance(state.clone(), &inst_id, force).await).await;
-        let stopped = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
-        if tracked && !stopped {
+        let ok = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
+        let handled = stop.body.get("handled").and_then(Value::as_bool) == Some(true);
+        if (tracked || handled) && !ok {
             return (stop.status, Json(stop.body)).into_response();
         }
-        running = stopped;
+        running = tracked || handled;
         // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
         for _ in 0..240 {
             let alive = {
@@ -737,7 +739,7 @@ pub async fn start_server_handler(
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
     {
         let sup = state.supervisor.read().await;
-        if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
+        if let Some(inst) = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)) {
             state.extension_status_cache.invalidate(&inst.id);
         }
     }
@@ -745,8 +747,8 @@ pub async fn start_server_handler(
     // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
     {
         let mut supervisor = state.supervisor.write().await;
-        let inst_opt = supervisor.instance_store.list().iter()
-            .find(|i| i.name == name)
+        let inst_opt = supervisor.instance_store.get(&name)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == name))
             .cloned();
         if let Some(mut inst) = inst_opt {
             let changed = inst.ensure_passwords();
@@ -803,11 +805,12 @@ pub async fn stop_server_handler(
 }
 
 /// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다
-pub async fn stop_instance(state: IPCServer, id: &str, force: bool) -> axum::response::Response {
+pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::response::Response {
     let payload = ServerStopRequest { force };
-    let Some(name) = instance_name_of(&state, id).await else {
-        return instance_not_found(id);
+    let Some((id, name)) = instance_key_of(&state, key).await else {
+        return instance_not_found(key);
     };
+    let id = id.as_str();
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
