@@ -1205,5 +1205,11 @@
     "revoke_named": "{{component}}의 동의 지우기",
     "revoked": "{{component}}의 격리 없이 돌리기 동의를 지웠어요.",
     "failed": "동의 목록을 불러오거나 바꾸지 못했어요."
+  },
+  "events": {
+    "remote_action": "디스코드에서 실행: {{text}}",
+    "instance_exit": "{{name}} 서버가 꺼졌어요 ({{kind}}).",
+    "backup_done": "{{name}} 백업을 마쳤어요 ({{kind}}).",
+    "backup_failed": "{{name}} 백업에 실패했어요. {{error}}"
   }
 }

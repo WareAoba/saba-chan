@@ -1205,5 +1205,11 @@
     "revoke_named": "Remove consent for {{component}}",
     "revoked": "Removed the consent to run {{component}} without isolation.",
     "failed": "Couldn't load or change the consent list."
+  },
+  "events": {
+    "remote_action": "Run from Discord: {{text}}",
+    "instance_exit": "{{name}} stopped ({{kind}}).",
+    "backup_done": "Backed up {{name}} ({{kind}}).",
+    "backup_failed": "Backup of {{name}} failed. {{error}}"
   }
 }

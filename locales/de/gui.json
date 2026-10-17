@@ -1175,5 +1175,11 @@
     "revoke_named": "Zustimmung für {{component}} entfernen",
     "revoked": "Zustimmung, {{component}} ohne Isolation auszuführen, entfernt.",
     "failed": "Die Liste konnte nicht geladen oder geändert werden."
+  },
+  "events": {
+    "remote_action": "Über Discord ausgeführt: {{text}}",
+    "instance_exit": "{{name}} wurde beendet ({{kind}}).",
+    "backup_done": "Sicherung von {{name}} abgeschlossen ({{kind}}).",
+    "backup_failed": "Sicherung von {{name}} fehlgeschlagen. {{error}}"
   }
 }

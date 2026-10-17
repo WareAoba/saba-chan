@@ -1175,5 +1175,11 @@
     "revoke_named": "Убрать согласие для {{component}}",
     "revoked": "Согласие на запуск {{component}} без изоляции удалено.",
     "failed": "Не удалось загрузить или изменить список."
+  },
+  "events": {
+    "remote_action": "Выполнено из Discord: {{text}}",
+    "instance_exit": "{{name}} остановлен ({{kind}}).",
+    "backup_done": "Резервная копия {{name}} готова ({{kind}}).",
+    "backup_failed": "Не удалось создать резервную копию {{name}}. {{error}}"
   }
 }
