@@ -1074,5 +1074,13 @@
     "extra_placeholder": "e.g. -players=16 -useperfthreads",
     "unknown_args": "Arguments without a matching setting are passed as is: {{args}}",
     "invalid_format": "Invalid format."
+  },
+  "activity": {
+    "empty": "No server commands have run yet.",
+    "expand": "Show daemon console",
+    "collapse": "Hide daemon console",
+    "console_title": "Daemon console",
+    "console_empty": "No daemon logs yet.",
+    "console_failed": "Couldn't load daemon logs."
   }
 }

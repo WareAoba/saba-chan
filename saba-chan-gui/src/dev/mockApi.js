@@ -335,6 +335,7 @@ const impl = {
                     ts: now() - 30,
                     source: 'discord',
                     user: '284019384710293847',
+                    userName: '김치',
                     guild: '1029384756102938475',
                     action: 'command',
                     instanceId: 'mc-1',
@@ -373,6 +374,24 @@ const impl = {
                 },
             ].filter((e) => !instance || e.instanceId === instance),
         }),
+    daemonConsole: ({ since } = {}) => {
+        const msgs = [
+            ['info', 'IPC server listening on 127.0.0.1:57474'],
+            ['info', '[Relay] heartbeat ok (2 guilds)'],
+            ['info', '[Audit] discord 김치 → 마크 서버 command say'],
+            ['warn', '[Monitor] PDH counter "Disk Bytes/sec" not ready, retrying'],
+            ['info', '[Supervisor] 마크 서버 stdin: say 안녕'],
+            ['error', '[Schedule] 팰월드 stop failed: process not running'],
+        ];
+        const all = msgs.map(([level, message], i) => ({
+            id: i + 1,
+            timestamp: Date.now() - (msgs.length - i) * 4000,
+            level,
+            target: 'saba_core',
+            message,
+        }));
+        return ok({ lines: since === undefined ? all : all.filter((l) => l.id >= since) });
+    },
     instanceLaunchPreview: (id, draft = {}, extra = '') => {
         if (id !== 'srv-2') return ok({ success: true, has_launch_args: false });
         const args = String(extra).split(/\s+/).filter(Boolean);

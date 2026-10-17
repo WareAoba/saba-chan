@@ -1045,5 +1045,13 @@
     "extra_placeholder": "ex.: -players=16 -useperfthreads",
     "unknown_args": "Argumentos sem configuração correspondente são passados como estão: {{args}}",
     "invalid_format": "Formato inválido."
+  },
+  "activity": {
+    "empty": "Nenhum comando de servidor foi executado ainda.",
+    "expand": "Mostrar console do daemon",
+    "collapse": "Ocultar console do daemon",
+    "console_title": "Console do daemon",
+    "console_empty": "Ainda não há logs do daemon.",
+    "console_failed": "Não foi possível carregar os logs do daemon."
   }
 }

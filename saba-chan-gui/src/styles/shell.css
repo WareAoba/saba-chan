@@ -722,6 +722,95 @@
     box-shadow: none;
 }
 
+/* ── 맨 아래 활동 줄: 방금 실행된 서버 명령 한 줄, 펼치면 데몬 콘솔 ── */
+.activity-bar {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--line);
+    background: var(--bg-0);
+}
+.activity-line {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-width: 0;
+    padding: 4px var(--sp-4);
+    border: none;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-xs);
+    text-align: left;
+}
+button.activity-line {
+    cursor: pointer;
+}
+button.activity-line:hover {
+    color: var(--text-1);
+    background: var(--inset);
+}
+.activity-text {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.activity-result.ok {
+    color: var(--ok);
+}
+.activity-result.fail {
+    color: var(--warn);
+}
+.activity-time {
+    color: var(--text-3);
+    white-space: nowrap;
+}
+.activity-console {
+    height: min(40vh, 360px);
+    overflow-y: auto;
+    padding: var(--sp-2) var(--sp-4);
+    background: var(--console-custom-bg);
+    color: var(--console-custom-text);
+    font-family: var(--font-mono);
+    font-size: calc(12px * var(--console-font-scale));
+    line-height: 1.55;
+    -webkit-user-select: text;
+    user-select: text;
+}
+.activity-console * {
+    font-family: var(--font-mono);
+}
+.activity-console-line {
+    display: flex;
+    gap: var(--sp-2);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.activity-console-time,
+.activity-console-level {
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--console-custom-text) 50%, transparent);
+}
+.activity-console-level {
+    width: 5ch;
+}
+.activity-console-line.level-warn .activity-console-level {
+    color: var(--console-warn);
+}
+.activity-console-line.level-error .activity-console-level,
+.activity-console-line.level-error .activity-console-msg {
+    color: var(--console-error);
+}
+.activity-console-empty,
+.activity-console-error {
+    padding: var(--sp-3) 0;
+    color: color-mix(in srgb, var(--console-custom-text) 55%, transparent);
+    font-family: var(--font-sans);
+}
+
 /* ── 정보 탭 ── */
 .info-tab {
     display: flex;
