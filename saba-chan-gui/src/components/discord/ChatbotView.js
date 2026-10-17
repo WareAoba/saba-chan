@@ -229,10 +229,11 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
     const savedGuilds = data.guilds || {};
     const guildIds = [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(savedGuilds)])];
 
-    const resetKey = `${JSON.stringify([data.settings, data.guilds])}|${guildIds.join(',')}`;
+    // 초안에는 저장된 길드만 넣는다. 노드 목록은 나중에 올 수 있으니(릴레이 응답) 없는 길드는 그때그때 빈 초안으로 본다
+    const resetKey = JSON.stringify([data.settings, data.guilds]);
     const fresh = () => ({
         settings: settingsDraft(data.settings),
-        guilds: Object.fromEntries(guildIds.map((id) => [id, guildDraft(savedGuilds[id])])),
+        guilds: Object.fromEntries(Object.keys(savedGuilds).map((id) => [id, guildDraft(savedGuilds[id])])),
     });
     const [base, setBase] = useState(fresh);
     const [draft, setDraft] = useState(fresh);
@@ -250,13 +251,18 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
 
     const s = draft.settings;
     const set = (k, v) => setDraft((d) => ({ ...d, settings: { ...d.settings, [k]: v } }));
+    const baseGuild = (id) => base.guilds[id] ?? guildDraft(savedGuilds[id]);
+    const draftGuild = (id) => draft.guilds[id] ?? baseGuild(id);
     const setGuild = (id, change) =>
-        setDraft((d) => ({ ...d, guilds: { ...d.guilds, [id]: { ...d.guilds[id], ...change } } }));
+        setDraft((d) => ({
+            ...d,
+            guilds: { ...d.guilds, [id]: { ...(d.guilds[id] ?? baseGuild(id)), ...change } },
+        }));
 
     const problems = settingsProblems(s, t);
-    const badChannels = Object.values(draft.guilds).some((g) => g.channelIds.length > CHANNEL_MAX);
-    const badMemo = Object.values(draft.guilds).some((g) => g.memo.length > MEMO_MAX);
-    const dirty = !same(base, draft);
+    const badChannels = guildIds.some((id) => draftGuild(id).channelIds.length > CHANNEL_MAX);
+    const badMemo = guildIds.some((id) => draftGuild(id).memo.length > MEMO_MAX);
+    const dirty = !same(base.settings, draft.settings) || guildIds.some((id) => !same(baseGuild(id), draftGuild(id)));
 
     const save = async () => {
         setSaving(true);
@@ -268,7 +274,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
             }
             const guilds = {};
             for (const id of guildIds) {
-                if (!same(base.guilds[id], draft.guilds[id])) guilds[id] = guildPatch(draft.guilds[id]);
+                if (!same(baseGuild(id), draftGuild(id))) guilds[id] = guildPatch(draftGuild(id));
             }
             if (Object.keys(guilds).length) patch.guilds = guilds;
             const res = await window.api.chatbotSave(patch);
@@ -413,7 +419,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                     <ul className="dc-list">
                         {guildIds.map((id) => {
                             const node = nodes.find((n) => n.guildId === id);
-                            const g = draft.guilds[id];
+                            const g = draftGuild(id);
                             const name = nameOf(id);
                             return (
                                 <li key={id} className="cb-guild">

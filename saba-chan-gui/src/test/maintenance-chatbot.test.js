@@ -144,6 +144,25 @@ describe('챗봇 설정 변환', () => {
 describe('ChatbotView', () => {
     const nodes = [{ guildId: 'g1', guildName: 'My Guild' }];
 
+    it('노드 목록이 설정보다 늦게 와도 깨지지 않고, 그 전에 바꾼 값은 남는다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotSave = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        const { rerender } = render(<ChatbotView nodes={[]} />);
+        await screen.findByText('No Discord servers connected.');
+        fireEvent.click(screen.getByLabelText('Image generation'));
+        rerender(<ChatbotView nodes={nodes} />);
+        const sel = await screen.findByLabelText('Chatbot in My Guild');
+        expect(screen.getByLabelText('Image generation').checked).toBe(false);
+        fireEvent.change(sel, { target: { value: 'off' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
+        const patch = window.api.chatbotSave.mock.calls[0][0];
+        expect(patch.guilds).toEqual({ g1: { enabled: false, channelIds: null, memo: null } });
+        expect(patch.settings.disabledTools).toEqual(['images']);
+    });
+
     it('노드 메모는 길드별로, 글자 수를 세고 넘으면 저장을 막는다; 도구 끄기는 disabledTools', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({
             success: true,
