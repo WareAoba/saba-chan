@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as L from '../components/discord/levels';
 import { NodeView } from '../components/discord/NodeView';
-import { PermissionPanel } from '../components/discord/PermissionsTab';
+import { OWNER_CONFIRM_MS, PermissionPanel } from '../components/discord/PermissionsTab';
 
 const API = ['permissionsGet', 'permissionsUpdate', 'permissionsSetMember', 'permissionsRemoveMember'];
 const node = { guildId: 'g1', guildName: 'Guild' };
@@ -132,9 +132,17 @@ describe('권한 화면', () => {
         expect(screen.getByRole('alert')).toHaveTextContent(
             'The relay reported a different owner (Mint). The owner here stays Aoba.',
         );
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         fireEvent.click(screen.getByRole('button', { name: 'Use this owner' }));
         await flush();
         expect(window.api.permissionsUpdate).not.toHaveBeenCalled(); // 한 번 더 눌러야 바꾼다
+        // 확인 상태는 잠깐 뒤 풀린다
+        await act(async () => {
+            vi.advanceTimersByTime(OWNER_CONFIRM_MS);
+        });
+        vi.useRealTimers();
+        fireEvent.click(screen.getByRole('button', { name: 'Use this owner' }));
+        await flush();
         fireEvent.click(screen.getByRole('button', { name: 'Really make Mint (1002) the owner' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { ownerDiscordId: '1002' });

@@ -16,6 +16,8 @@ export const permissionsAvailable = () =>
             window.api?.permissionsRemoveMember,
     );
 
+export const OWNER_CONFIRM_MS = 5000;
+
 const failed = (res) => !res || res.success === false || Boolean(res.error || res.error_code);
 
 export function permissionsErrorText(res, t) {
@@ -143,6 +145,13 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
 
     const byId = useMemo(() => new Map((members || []).map((m) => [String(m.id), m])), [members]);
     const candidates = useMemo(() => L.importCandidates(perm, members), [perm, members]);
+
+    // 확인 상태는 잠깐만 둔다 (나중에 무심코 한 번 눌러 바뀌지 않게)
+    useEffect(() => {
+        if (!ownerArmed) return undefined;
+        const timer = setTimeout(() => setOwnerArmed(false), OWNER_CONFIRM_MS);
+        return () => clearTimeout(timer);
+    }, [ownerArmed]);
 
     if (!perm) return <PermState loading={loading} error={error} onRetry={load} />;
 
