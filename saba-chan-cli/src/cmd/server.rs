@@ -438,9 +438,29 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             later_set.push((k, v));
         }
     }
+    // 5-1-a) 추천 설정 묶음 (`[[presets]]`). --preset으로 주지 않았으면 새 서버일 때 묻는다.
+    // 설치 설정보다 먼저 고른다: 프리셋이 정한 설치 설정은 다시 묻지 않는다
+    let mut preset = a.preset.clone();
+    let presets: Vec<&Value> = module.get("presets").and_then(Value::as_array).map(|p| p.iter().collect()).unwrap_or_default();
+    if preset.is_none() && from.is_none() && ctx.ask.enabled && !presets.is_empty() {
+        let locales = module_locales(ctx, &module_name).await;
+        let label = |p: &Value| {
+            let id = s(p, "id");
+            let localized = locales.as_ref().and_then(|l| l.pointer(&format!("/presets/{}/label", id))).and_then(Value::as_str);
+            localized.filter(|l| !l.is_empty()).unwrap_or(if s(p, "label").is_empty() { id } else { s(p, "label") }).to_string()
+        };
+        let mut choices = vec![t!("add.no_preset")];
+        choices.extend(presets.iter().map(|p| label(p)));
+        if let Some(i) = ctx.ask.select(&t!("add.ask_preset"), &choices, 0)?.filter(|i| *i > 0) {
+            preset = Some(s(presets[i - 1], "id").to_string());
+        }
+    }
+    let preset_sets = |key: &str| {
+        presets.iter().any(|p| Some(s(p, "id")) == preset.as_deref() && p.pointer(&format!("/settings/{}", key)).is_some())
+    };
     if from.is_none() && ctx.ask.enabled {
         for f in fields.iter().filter(|f| is_install(s(f, "name"))) {
-            if module_settings.contains_key(s(f, "name")) {
+            if module_settings.contains_key(s(f, "name")) || preset_sets(s(f, "name")) {
                 continue;
             }
             let options: Vec<String> = f
@@ -456,17 +476,6 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             if let Some(i) = ctx.ask.select(label, &options, default.unwrap_or(0))? {
                 module_settings.insert(s(f, "name").to_string(), json!(options[i]));
             }
-        }
-    }
-
-    // 5-2) 추천 설정 묶음 (`[[presets]]`). --preset으로 주지 않았으면 새 서버일 때 묻는다
-    let mut preset = a.preset.clone();
-    let presets: Vec<&Value> = module.get("presets").and_then(Value::as_array).map(|p| p.iter().collect()).unwrap_or_default();
-    if preset.is_none() && from.is_none() && ctx.ask.enabled && !presets.is_empty() {
-        let mut choices = vec![t!("add.no_preset")];
-        choices.extend(presets.iter().map(|p| if s(p, "label").is_empty() { s(p, "id").to_string() } else { s(p, "label").to_string() }));
-        if let Some(i) = ctx.ask.select(&t!("add.ask_preset"), &choices, 0)?.filter(|i| *i > 0) {
-            preset = Some(s(presets[i - 1], "id").to_string());
         }
     }
 
