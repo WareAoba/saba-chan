@@ -291,7 +291,7 @@
 | GET/POST | `/api/instance/:id/backups` | `backup.rs:183/190` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
 | DELETE | `/api/instance/:id/backups/:name` | `backup.rs:198` | - | `{success}` / 404 `backup_not_found` |
 | POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:209` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:221-222`) |
-| GET/PUT | `/api/instance/:id/schedule` | `backup.rs:242/258` | `{schedule:[...], backup_keep}` | 400 `validation_failed` |
+| GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
 
 #### 설정 (handlers/bot.rs, handlers/config.rs)
 
@@ -511,7 +511,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - `nodeSettings[guildId]`의 디스코드 명령 권한 (P1, `chat/permissions.rs`). 원본은 이것 하나다.
   - 키: `ownerDiscordId`(고정된 주인), `relayOwnerDiscordId`(릴레이가 알려 온 다른 주인, 경고용), `defaultLevel`(1), `members{discordId: -1..2}`, `preset`("default"·"loose"·"strict"), `commandLevels{"<instanceId>/<command>": 0..3}`, `chatbotCap`(0), 예전 금지 목록 `memberPermissions`(읽기만).
   - 레벨: 소유자 3, 관리자 2, 유저 1, 챗봇 0, 금지 -1. 요구 레벨은 `commandLevels` 덮어쓰기, 없으면 프리셋표[risk]다. default 프리셋은 safe 0, caution 1, danger 2이고, loose는 0/0/1, strict는 1/2/3이다. 내장 명령의 risk는 `status` safe, `start`·`stop` caution, 모듈 명령은 선언값(없으면 caution).
-  - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 액션은 `<action id>`·`<instanceId>/<action id>`로 덮어쓴다. 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
+  - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 액션은 `<action id>`·`<instanceId>/<action id>`로 덮어쓴다. 내장 `server.start`·`server.stop`·`server.restart`·`server.status`는 명령 경로·GUI 권한 편집기와 같은 `<instanceId>/start|stop|restart|status`를 먼저 보고, 없으면 `<instanceId>/<action id>`를 본다. `PATCH /api/permissions/:guildId`의 `commandLevels`는 `/`가 없는 키를 디스코드·챗봇에서 부를 수 있고 레벨이 코드에 고정되지 않은 액션 id일 때만 받는다(아니면 `invalid_command`, `actions::overridable`). 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
   - 판정: 릴레이에서 온 요청(`ChatRequest.remote`)만 판정한다. GUI·CLI 요청은 하지 않는다. 금지는 help·list도 못 쓴다. 챗봇 경로는 `min(작성자 레벨, chatbotCap)`이다. 거부는 `PERMISSION_DENIED {need, level, via?}`.
   - 설정이 없는 길드도 같은 기본값으로 판정한다(제한 없음이 아니다).
   - 이 키들은 권한 API로만 바뀐다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 이전 값으로 되돌린다(`config_store::keep_permission_keys`).

@@ -499,3 +499,58 @@ async fn every_action_says_how_to_do_it_from_the_cli() {
     assert_eq!(restore["cli"], "saba-chan-cli do backup.restore --server <server> name=<name>");
     assert!(per_server["actions"].as_array().unwrap().iter().all(|a| a["cli"].as_str().is_some_and(|c| c.starts_with("saba-chan-cli do "))));
 }
+
+#[tokio::test]
+async fn built_in_server_actions_use_the_levels_set_for_their_commands() {
+    let (state, id, _tmp) = server().await;
+    // GUI 권한 편집기는 내장 명령을 `<instance>/stop`처럼 쓴다
+    let levels = json!({ format!("{}/stop", id): 3, format!("{}/start", id): 3, format!("{}/restart", id): 3, format!("{}/status", id): 3 });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "defaultLevel": 2, "commandLevels": levels })).await;
+    let admin = relay("someone", false);
+    for action in ["server.stop", "server.start", "server.restart"] {
+        assert_eq!(plan(&state, action, Some(&id), &json!({}), &admin).await.unwrap_err().code, "PERMISSION_DENIED", "{}", action);
+    }
+    assert_eq!(query(&state, "server.status", Some(&id), &json!({}), &admin).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", false)).await.is_ok());
+}
+
+#[test]
+fn remote_results_keep_paths_console_lines_and_raw_errors_on_the_pc() {
+    let mut v = json!({
+        "servers": [{ "id": "a", "name": "srv", "working_dir": "C:\\Games\\srv", "executable_path": "C:\\Games\\srv\\run.exe", "extra_args": "-x", "status": "running" }],
+        "events": [
+            { "kind": "crash", "evidence": "crash file C:\\Games\\srv\\crash.txt" },
+            { "kind": "start_failed", "evidence": "ended 3s after start: Player Steve joined from 1.2.3.4" },
+            { "kind": "in_game_stop", "evidence": "console: Stopping server" },
+            { "kind": "crash", "evidence": "exit code 0xC0000005", "note_code": "restart_failed", "note_args": { "reason": "create /home/me/srv failed" } },
+        ],
+        "restored": "/home/me/.config/saba-chan/backups/x.zip",
+        "error": "Traceback (most recent call last):\n  File \"C:\\Users\\me\\modules\\mc\\lifecycle.py\", line 3, in <module>\nValueError: bad value in C:\\Users\\me\\x.txt",
+        "url": "https://example.com/a/b/c",
+        "spaced": "copy C:\\Program Files\\Saba-chan\\a.txt (os error 5)",
+        "quoted": "open '/home/me/Game Server/b.txt' failed",
+        "glued": "failed:/opt/srv1/run.sh [/opt/srv2/run.sh] ~/srv3/world",
+    });
+    strip_local_details(&mut v);
+    let text = v.to_string();
+    for leak in ["Games", "crash.txt", "Steve", "Stopping", "/home/me", "Users", "lifecycle.py", "-x", "Files", "Saba-chan", "Server", "srv1", "srv2", "srv3"] {
+        assert!(!text.contains(leak), "{} leaked: {}", leak, text);
+    }
+    assert_eq!(v["servers"][0], json!({ "id": "a", "name": "srv", "status": "running" }));
+    assert_eq!(v["events"][3]["evidence"], "exit code 0xC0000005");
+    assert_eq!(v["events"][3]["note_code"], "restart_failed");
+    assert_eq!(v["error"], "ValueError: bad value in <path>");
+    assert_eq!(v["url"], "https://example.com/a/b/c");
+    assert_eq!(v["quoted"], "open '<path>' failed");
+}
+
+#[tokio::test]
+async fn guilds_only_see_their_allowed_instances_in_any_listing() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "allowedInstances": ["other"] })).await;
+    let summary = query(&state, "monitor.summary", None, &json!({}), &relay("owner", false)).await.unwrap();
+    assert!(!summary.to_string().contains(&id), "{}", summary);
+    let mut nested = json!({ "instances": [{ "id": id.clone() }, { "id": "other" }], "disks": [{ "instances": [{ "id": id.clone(), "bytes": 1 }] }] });
+    retain_allowed(&mut nested, &["other".to_string()]);
+    assert_eq!(nested, json!({ "instances": [{ "id": "other" }], "disks": [{ "instances": [] }] }));
+}
