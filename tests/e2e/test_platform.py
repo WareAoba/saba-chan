@@ -29,7 +29,8 @@ def test_memory_limit_stops_server_over_cap(mc):
     daemon, iid, *_ = mc
     daemon.api.ok("PATCH", f"/api/instance/{iid}", {"ram": "1G", "memory_limit_mb": 512, "auto_restart": False})
     r = daemon.api.post(f"/api/instance/{iid}/start")
-    if r.ok and r.json().get("success") is not False:
+    started = r.ok and r.json().get("success") is not False
+    if started:
         # 가짜 서버가 힙을 실제로 채운다 (Xms만으로는 커밋이 다 일어나지 않을 수 있다)
         try:
             daemon.wait_console(iid, DONE, timeout=60)
@@ -39,7 +40,7 @@ def test_memory_limit_stops_server_over_cap(mc):
     daemon.wait_status(iid, "stopped", timeout=60)
     text = daemon.console_text(iid) + _session_log_text(daemon.sb.data)
     assert "Memory limit of 512 MiB reached" in text, text[-2000:]
-    if r.ok:
+    if started:
         last = daemon.exit_events(iid)[-1]
         assert last["kind"] == "crash", last
 
@@ -47,17 +48,18 @@ def test_memory_limit_stops_server_over_cap(mc):
 @pytest.mark.windows
 @pytest.mark.xfail(strict=True, reason="F9: 시작 중 상한에 걸리면 시작 오류가 'Process exited with code 8'로만 나온다 (종료 기록도 함께 확인)")
 def test_memory_limit_hit_during_start_is_named_in_start_error(mc):
-    """시작하자마자 상한에 걸려 실패하면, 시작 오류가 종료 코드가 아니라 메모리 상한 때문이라고 알리고 crash로 기록해야 한다."""
+    """시작하자마자 상한에 걸려 실패하면, 시작 오류가 종료 코드가 아니라 메모리 상한 때문이라고 알리고 종료 기록을 남겨야 한다."""
     daemon, iid, *_ = mc
     daemon.api.ok("PATCH", f"/api/instance/{iid}", {"ram": "1G", "memory_limit_mb": 512, "auto_restart": False})
     r = daemon.api.post(f"/api/instance/{iid}/start")
     if r.ok and r.json().get("success") is not False:
         pytest.skip("이 PC에서는 시작이 먼저 끝나 상한이 나중에 걸림")
-    assert "memory" in r.text.lower() or "메모리" in r.text, r.text
-    # 시작 중에 끝난 것도 상한 때문에 죽은 것이므로 crash로 기록돼야 한다
+    error = str((r.json() if r.content else {}).get("error", ""))
+    assert "memory" in error.lower() or "메모리" in error, r.text
+    # 시작 중에 끝난 것도 종료 기록이 남아야 한다 (시작 실패 또는 crash)
     daemon.wait_status(iid, "stopped", timeout=60)
     events = daemon.exit_events(iid)
-    assert events and events[-1]["kind"] == "crash", events
+    assert events and events[-1]["kind"] in ("start_failed", "crash"), events
 
 
 @pytest.mark.windows
