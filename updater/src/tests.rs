@@ -762,7 +762,7 @@ fn finished_update_leaves_no_staged_archives_or_old_binaries() {
     for f in ["pending.json", "saba-chan-gui-windows-x64.zip", "locales.zip.part"] {
         std::fs::write(manager.staging_dir.join(f), b"x").unwrap();
     }
-    for f in ["saba-core.exe.old", "saba-chan-gui.exe.old", "notepad.exe.old", "saba-core.exe"] {
+    for f in ["saba-core.exe.old", "saba-runner.exe.old.2", "saba-chan-gui.exe.old", "notepad.exe.old", "saba-core.exe.oldx", "saba-core.exe"] {
         std::fs::write(manager.install_root.join(f), b"x").unwrap();
     }
 
@@ -773,7 +773,7 @@ fn finished_update_leaves_no_staged_archives_or_old_binaries() {
     let mut left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
     left.sort();
-    assert_eq!(left, vec!["notepad.exe.old", "saba-core.exe"]);
+    assert_eq!(left, vec!["notepad.exe.old", "saba-core.exe", "saba-core.exe.oldx"]);
 }
 
 // GUI exe 이름이 바뀐 업데이트(0.1.1 `Saba-chan.exe` → `saba-chan-gui.exe`)는 예전 exe를 남기지 않는다
@@ -830,4 +830,57 @@ fn downloaded_release_notes_reach_the_completion_marker() {
 
     manager.clear_pending_manifest();
     assert!(manager.pending_release().is_none());
+}
+
+// 받아 둔 파일은 다시 확인해도 그대로 적용 대기로 남는다(같은 버전이고 파일이 있을 때만)
+#[test]
+fn recheck_keeps_downloads_of_the_same_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("locales.zip");
+    std::fs::write(&file, b"x").unwrap();
+    let staged = |latest: &str, path: &std::path::Path| crate::ComponentVersion {
+        component: Component::Locales,
+        current_version: "0.1.5".into(),
+        latest_version: Some(latest.into()),
+        update_available: true,
+        download_url: None,
+        asset_name: None,
+        release_notes: None,
+        published_at: None,
+        downloaded: true,
+        downloaded_path: Some(path.to_string_lossy().to_string()),
+        staged_sha256: Some("ab".into()),
+        installed: true,
+    };
+    let fresh = |latest: &str| crate::ComponentVersion { downloaded: false, downloaded_path: None, staged_sha256: None, ..staged(latest, &file) };
+
+    let mut same = fresh("0.1.6");
+    UpdateManager::keep_staged(&[staged("0.1.6", &file)], &mut same);
+    assert!(same.downloaded);
+    assert_eq!(same.staged_sha256.as_deref(), Some("ab"));
+
+    let mut newer = fresh("0.1.7");
+    UpdateManager::keep_staged(&[staged("0.1.6", &file)], &mut newer);
+    assert!(!newer.downloaded && newer.downloaded_path.is_none());
+
+    let mut gone = fresh("0.1.6");
+    UpdateManager::keep_staged(&[staged("0.1.6", &tmp.path().join("missing.zip"))], &mut gone);
+    assert!(!gone.downloaded);
+}
+
+// 지난 업데이트의 `.exe.old`가 아직 잡혀 있어도(떠 있는 서버의 saba-runner) 다음 업데이트가 막히지 않는다
+#[test]
+fn a_held_old_backup_does_not_block_the_next_replace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let exe = tmp.path().join("saba-runner.exe");
+    std::fs::write(&exe, b"new").unwrap();
+    // 지울 수 없는 .exe.old 흉내: 비어 있지 않은 폴더는 remove_file도 덮어쓰는 rename도 실패한다
+    let held = tmp.path().join("saba-runner.exe.old");
+    std::fs::create_dir(&held).unwrap();
+    std::fs::write(held.join("x"), b"x").unwrap();
+
+    let backup = UpdateManager::move_aside(&exe).unwrap();
+
+    assert_eq!(backup, Some(tmp.path().join("saba-runner.exe.old.1")));
+    assert!(!exe.exists() && held.is_dir());
 }

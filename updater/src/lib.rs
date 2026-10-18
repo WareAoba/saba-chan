@@ -501,6 +501,7 @@ impl UpdateManager {
             }
         };
 
+        let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
         if let Some(release) = release {
             let notes = release.latest.notes.as_ref().and_then(|n| n.get("ko").or_else(|| n.get("en")).cloned());
@@ -536,6 +537,7 @@ impl UpdateManager {
                     staged_sha256: None,
                     installed,
                 });
+                Self::keep_staged(&previous, components.last_mut().expect("just pushed"));
             }
             // 무결성 검사·의존성 검사·다운로드가 같은 manifest를 보게 한다
             self.cached_manifest = Some(release.manifest);
@@ -552,6 +554,18 @@ impl UpdateManager {
             error: None,
         };
         Ok(self.status.clone())
+    }
+
+    /// 다시 확인해도 같은 버전을 받아 둔 파일이 남아 있으면 적용 대기를 유지한다.
+    /// 다운로드 사이에 예약 확인이 끼어들면 적용할 것이 없어지던 문제.
+    fn keep_staged(previous: &[ComponentVersion], comp: &mut ComponentVersion) {
+        let Some(prev) = previous.iter().find(|p| p.component == comp.component) else { return };
+        let still_there = prev.downloaded_path.as_deref().is_some_and(|p| Path::new(p).is_file());
+        if prev.downloaded && still_there && prev.latest_version == comp.latest_version {
+            comp.downloaded = true;
+            comp.downloaded_path = prev.downloaded_path.clone();
+            comp.staged_sha256 = prev.staged_sha256.clone();
+        }
     }
 
     fn compare_versions(&self, latest: &str, current: &str) -> bool {
@@ -902,13 +916,17 @@ impl UpdateManager {
 
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
 
-    /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old` 백업을 지운다 (설치 폴더 바로 안만).
+    /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old`(`.exe.old.<n>` 포함) 백업을 지운다 (설치 폴더 바로 안만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
     pub fn cleanup_old_files(&self) {
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
-            let Some(stem) = name.strip_suffix(".exe.old") else { continue };
+            // `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`)
+            let Some((stem, tail)) = name.split_once(".exe.old") else { continue };
+            if !(tail.is_empty() || tail.strip_prefix('.').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))) {
+                continue;
+            }
             let ours = stem.starts_with("saba-") || GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
             if !ours {
                 continue;
