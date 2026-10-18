@@ -682,6 +682,12 @@ pub enum BotCmd {
         #[arg(long)]
         clear: bool,
     },
+    /// Connection requests sent from Discord with `/사바쨩 연결` and no code. No id: show. ID: accept, `--decline`: refuse
+    Link {
+        id: Option<String>,
+        #[arg(long, requires = "id")]
+        decline: bool,
+    },
     /// Servers a Discord server can see and run. No servers: show. `--all`: every server
     Allow {
         guild: String,

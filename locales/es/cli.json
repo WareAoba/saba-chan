@@ -67,7 +67,10 @@
     "allow_saved": "{{guild}} ahora solo ve: {{servers}}",
     "no_words": "Aún no hay palabras de comando. Ejemplo: saba-chan-cli bot word minecraft start ya",
     "words_set": "En el chat, {{module}} {{command}} ahora también se llama: {{words}}",
-    "words_cleared": "Se quitaron las palabras de chat de {{module}} {{command}}."
+    "words_cleared": "Se quitaron las palabras de chat de {{module}} {{command}}.",
+    "link_accepted": "{{guild}} está conectado a este PC.",
+    "link_declined": "Solicitud de conexión rechazada.",
+    "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI."
   },
   "col": {
     "aliases": "Alias",

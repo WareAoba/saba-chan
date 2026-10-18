@@ -67,7 +67,10 @@
     "allow_saved": "{{guild}} sieht jetzt nur: {{servers}}",
     "no_words": "Noch keine Befehlswörter. Beispiel: saba-chan-cli bot word minecraft start los",
     "words_set": "Im Chat heißt {{module}} {{command}} jetzt auch: {{words}}",
-    "words_cleared": "Chatwörter von {{module}} {{command}} entfernt."
+    "words_cleared": "Chatwörter von {{module}} {{command}} entfernt.",
+    "link_accepted": "{{guild}} ist jetzt mit diesem PC verbunden.",
+    "link_declined": "Verbindungsanfrage abgelehnt.",
+    "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI."
   },
   "col": {
     "aliases": "Aliase",

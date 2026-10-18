@@ -105,6 +105,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             Ok(())
         }
         BotCmd::ServerAlias { server, names, clear } => server_alias(ctx, server.as_deref(), &names, clear).await,
+        BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &guild, &servers, all).await,
         BotCmd::Word { module, command, words, clear } => word(ctx, module.as_deref(), command.as_deref(), &words, clear).await,
         BotCmd::Reset { keys } => {
@@ -226,6 +227,7 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
         o.remove("nodeToken");
     }
     ctx.out.done(&t!("bot.paired"), &out);
+    ctx.out.hint(&t!("bot.pair_gui_hint"));
     let agent = ctx.api.agent().await.unwrap_or(Value::Null);
     if agent.get("running").and_then(Value::as_bool) != Some(true)
         && ctx.ask.confirm(&t!("bot.offer_start"), true).unwrap_or(false)
@@ -563,6 +565,24 @@ fn print_channels(r: &Value) {
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
         eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
     }
+}
+
+/// 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 (J1-b). 수락하면 릴레이가 그 길드를 이 PC에 묶는다
+async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
+    let cfg = ctx.api.bot_config().await?;
+    let Some(id) = id else {
+        let r = ctx.api.link_requests(relay_of(&cfg)).await?;
+        ctx.out.data(&r, |r| print_list(r, "requests"));
+        return Ok(());
+    };
+    let r = ctx.api.answer_link_request(id, !decline, relay_of(&cfg)).await?;
+    if decline {
+        ctx.out.done(&t!("bot.link_declined"), &r);
+    } else {
+        let guild = [s(&r, "guildName"), s(&r, "guildId"), id].into_iter().find(|g| !g.is_empty()).unwrap_or(id);
+        ctx.out.done(&t!("bot.link_accepted", guild = guild), &r);
+    }
+    Ok(())
 }
 
 async fn nodes(ctx: &Ctx) -> Result<()> {

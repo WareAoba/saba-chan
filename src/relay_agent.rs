@@ -447,6 +447,14 @@ impl Session {
                 let result = crate::audit::with_origin(origin, action_request(&self.server, action, &payload, &caller)).await;
                 action_result(result)
             }
+            // 디스코드에서 코드 없이 `/사바쨩 연결` (J1-b): PC 화면에 알리기만 한다. 수락은 PC에서 사람이 누른다
+            "link_request" => match link_request_event(cmd, &payload) {
+                Some(data) => {
+                    crate::events::emit("relay.link_request", data);
+                    json!({ "success": true, "data": { "notified": true } })
+                }
+                None => json!({ "success": false, "data": { "error": "invalid link_request" } }),
+            },
             other => json!({ "success": false, "data": { "error": format!("Unknown action: {}", other) } }),
         }
     }
@@ -621,6 +629,21 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         _ => return None,
     };
     Some(json!({ "id": event.id, "type": event.kind, "data": data }))
+}
+
+/// `link_request` → 데몬 이벤트 `relay.link_request` 본문. 요청 id와 길드가 없으면 None
+fn link_request_event(cmd: &Value, payload: &Value) -> Option<Value> {
+    let text = |v: Option<&Value>| v.and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+    let request_id = text(payload.get("requestId"))?;
+    let guild_id = text(payload.get("guildId").or(cmd.get("guildId")))?;
+    Some(json!({
+        "requestId": request_id,
+        "guildId": guild_id,
+        "guildName": text(payload.get("guildName")),
+        "requestedBy": text(cmd.get("requestedBy")),
+        "userName": text(payload.get("userName")),
+        "expiresAt": payload.get("expiresAt").filter(|v| v.is_string() || v.is_number()),
+    }))
 }
 
 /// poll 응답 본문. 릴레이가 이모지를 반으로 잘라 짝 없는 서로게이트(`\ud83d`)가 오면 serde_json이
@@ -867,6 +890,18 @@ mod tests {
         assert_eq!(entry["name"], "kick");
         assert_eq!(entry["inputs"][0]["name"], "player");
         assert!(entry.get("console_template").is_none() && entry.get("endpoint_template").is_none() && entry.get("method").is_none());
+    }
+
+    #[test]
+    fn a_link_request_from_discord_only_reaches_the_pc_screen() {
+        let cmd = json!({ "guildId": "g1", "requestedBy": "u1" });
+        let payload = json!({ "action": "link_request", "requestId": "r1", "guildName": "길드", "userName": "주인", "expiresAt": 1700 });
+        let data = link_request_event(&cmd, &payload).unwrap();
+        assert_eq!(data, json!({ "requestId": "r1", "guildId": "g1", "guildName": "길드", "requestedBy": "u1", "userName": "주인", "expiresAt": 1700 }));
+        assert!(link_request_event(&cmd, &json!({ "action": "link_request" })).is_none(), "no request id");
+        assert!(link_request_event(&json!({}), &json!({ "requestId": "r1" })).is_none(), "no guild");
+        let event = crate::events::Event { id: 1, kind: "relay.link_request".into(), data, replay: true };
+        assert!(relay_event(&event).is_none(), "never sent back to the relay");
     }
 
     #[test]

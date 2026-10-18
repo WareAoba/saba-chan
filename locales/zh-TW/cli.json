@@ -67,7 +67,10 @@
     "allow_saved": "{{guild}} 現在只能看到：{{servers}}",
     "no_words": "還沒有指令別稱。例：saba-chan-cli bot word minecraft start 開",
     "words_set": "現在可以在聊天中這樣呼叫 {{module}} {{command}}：{{words}}",
-    "words_cleared": "已刪除 {{module}} {{command}} 的聊天別稱。"
+    "words_cleared": "已刪除 {{module}} {{command}} 的聊天別稱。",
+    "link_accepted": "已將 {{guild}} 連接到這台電腦。",
+    "link_declined": "已拒絕連接請求。",
+    "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。"
   },
   "col": {
     "aliases": "別名",

@@ -88,7 +88,10 @@
     "allow_saved": "{{guild}} can now see only: {{servers}}",
     "no_words": "No command words yet. Example: saba-chan-cli bot word minecraft start go",
     "words_set": "In chat, {{module}} {{command}} can now also be called: {{words}}",
-    "words_cleared": "Removed the chat words of {{module}} {{command}}."
+    "words_cleared": "Removed the chat words of {{module}} {{command}}.",
+    "link_accepted": "Connected {{guild}} to this PC.",
+    "link_declined": "Declined the connection request.",
+    "pair_gui_hint": "You can also see the Discord connection in the GUI's Discord screen."
   },
   "col": {
     "aliases": "Aliases",
@@ -478,7 +481,8 @@
       "bot.wake": "Wake the bot on a Discord server",
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
-      "bot.word": "Chat words for one command of a game (e.g. \"go\" for start). No arguments: show"
+      "bot.word": "Chat words for one command of a game (e.g. \"go\" for start). No arguments: show",
+      "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse"
     },
     "arg": {
       "member": "Discord user ID",

@@ -67,7 +67,10 @@
     "allow_saved": "{{guild}} теперь видит только: {{servers}}",
     "no_words": "Слов для команд пока нет. Пример: saba-chan-cli bot word minecraft start старт",
     "words_set": "В чате {{module}} {{command}} теперь можно вызвать так: {{words}}",
-    "words_cleared": "Слова чата для {{module}} {{command}} удалены."
+    "words_cleared": "Слова чата для {{module}} {{command}} удалены.",
+    "link_accepted": "{{guild}} подключён к этому ПК.",
+    "link_declined": "Запрос на подключение отклонён.",
+    "pair_gui_hint": "Подключение к Discord также видно на экране Discord в GUI."
   },
   "col": {
     "aliases": "Псевдонимы",
