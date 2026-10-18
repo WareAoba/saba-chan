@@ -29,6 +29,8 @@ const EVENT_GATHER: Duration = Duration::from_secs(2);
 const EVENT_BATCH: usize = 20;
 /// relay에 닿지 못하는 동안 들고 있는 최근 이벤트 수 (알림은 기록이 아니다)
 const EVENT_PENDING: usize = 50;
+/// relay에 `/events`가 없을 때(404) 다시 알아보기까지 쉬는 시간. 그동안의 이벤트는 버린다
+const EVENT_PROBE: Duration = Duration::from_secs(600);
 
 /// 에이전트 상태 (GET /api/relay/agent)
 #[derive(Debug, Clone, Default, Serialize)]
@@ -491,7 +493,7 @@ impl Session {
     }
 
     /// 데몬 이벤트 중 알림 채널에 띄울 것(`relay_event`)을 모아 `POST /events`로 올린다.
-    /// relay가 404면(아직 그 경로가 없음) 이 연결 동안은 올리지 않는다
+    /// relay가 404면(아직 그 경로가 없음) `EVENT_PROBE` 동안 올리지 않는다
     async fn events_loop(&self) {
         use tokio::sync::broadcast::error::{RecvError, TryRecvError};
         let mut rx = crate::events::bus().subscribe(None).rx;
@@ -539,9 +541,15 @@ impl Session {
                 r = sent => r,
             };
             match resp {
+                // relay에 경로가 아직 없다: 잠시 쉬었다가 그 뒤 이벤트로 다시 알아본다 (relay가 나중에 배포될 수 있다)
                 Ok(r) if r.status().as_u16() == 404 => {
-                    tracing::info!("[RelayAgent] relay has no /events yet — not sending notifications on this connection");
-                    return;
+                    tracing::info!("[RelayAgent] relay has no /events yet — retrying in {}s", EVENT_PROBE.as_secs());
+                    pending.clear();
+                    self.pause(EVENT_PROBE).await;
+                    if self.cancel.is_cancelled() {
+                        return;
+                    }
+                    rx = rx.resubscribe();
                 }
                 // 4xx는 다시 보내도 같다: 그 묶음을 버린다
                 Ok(r) if r.status().is_success() || r.status().is_client_error() => {
