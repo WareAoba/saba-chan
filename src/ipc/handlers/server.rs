@@ -586,7 +586,7 @@ pub async fn install_module_from_manifest(
 /// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
 fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
     crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
-    // 점으로 시작해 모듈 탐색이 건너뛴다. 지우다 실패하거나 데몬이 끝나 남으면 다음 기동이 지운다
+    // 점으로 시작해 모듈 탐색이 건너뛴다. 남으면 다음 기동이 지운다 (제자리가 비었으면 되돌린다)
     let mut old_name = std::ffi::OsString::from(".old-");
     old_name.push(target_dir.file_name().unwrap_or_default());
     let old = target_dir.with_file_name(old_name);
