@@ -1,4 +1,5 @@
 {
+  "default_prefix": "Saba-chan",
   "commands": {
     "start": "Start server",
     "stop": "Stop server",
@@ -286,11 +287,8 @@
       "music": "Music",
       "enabled": "On",
       "model": "Model",
-      "memo": "Node memo",
-      "triggerWords": "Wake words",
+      "memo": "Server prompt",
       "confirmCommands": "Confirm commands",
-      "ambientSeconds": "Chime-in interval (s)",
-      "sessionSeconds": "Follow-up window (s)",
       "memory": "Memory",
       "webSearch": "Web search",
       "disabledTools": "Disabled tool sets",

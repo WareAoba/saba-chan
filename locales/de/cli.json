@@ -51,6 +51,8 @@
     "paired": "Mit Discord gekoppelt.",
     "prefix": "Präfix",
     "prefix_set": "Das Chat-Präfix ist jetzt {{prefix}}.",
+    "prefix_default": "Standard (Saba-chan)",
+    "prefix_reset": "Das Chat-Präfix ist wieder der Standard.",
     "relay": "Relay",
     "started": "Mit dem Discord-Bot-Relay verbunden.",
     "stopped": "Vom Relay getrennt.",

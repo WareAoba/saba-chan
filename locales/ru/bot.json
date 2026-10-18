@@ -1,4 +1,5 @@
 {
+  "default_prefix": "Saba-chan",
   "commands": {
     "start": "Запустить сервер",
     "stop": "Остановить сервер",
@@ -286,11 +287,8 @@
       "music": "Музыка",
       "enabled": "Включён",
       "model": "Модель",
-      "memo": "Заметка узла",
-      "triggerWords": "Слова вызова",
+      "memo": "Промпт сервера",
       "confirmCommands": "Подтверждать команды",
-      "ambientSeconds": "Интервал вмешательства (с)",
-      "sessionSeconds": "Окно продолжения (с)",
       "memory": "Память",
       "webSearch": "Веб-поиск",
       "disabledTools": "Отключённые инструменты",

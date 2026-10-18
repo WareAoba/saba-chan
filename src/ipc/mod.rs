@@ -788,6 +788,7 @@ impl IPCServer {
                 "/api/relay/node/:guild_id/channels",
                 get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),
             )
+            .route("/api/relay/node/:guild_id/chatbot/models", get(handlers::relay::get_node_chatbot_models))
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))

@@ -457,10 +457,12 @@ impl Supervisor {
             runtimes.extend(crate::sandbox::daemon_runtimes());
             (module.entry_path(), crate::sandbox::LaunchRoots { dirs, runtimes })
         };
-        crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {
+        let program = crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {
             tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
             blocked.to_json(crate::sandbox::message(&blocked))
-        })
+        })?;
+        tracing::info!("Starting '{}': program '{}' in '{}'", instance.name, program, working_dir);
+        Ok(program)
     }
 
     /// 해석된 실행 파일 경로를 config map에 삽입합니다.
@@ -2536,7 +2538,7 @@ impl Supervisor {
                         self.instance_roots(&instance),
                         siblings.iter().flat_map(|i| self.instance_roots(i)).collect(),
                     );
-                    let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots, siblings.is_empty());
+                    let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots);
 
                     if let Some(process) = picked {
                                 auto_detected_count += 1;

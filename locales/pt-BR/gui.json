@@ -754,6 +754,8 @@
     "agent_stopped": "Desligado",
     "agent_start": "Ligar",
     "agent_stop": "Pôr para dormir",
+    "agent_wake": "Acordar",
+    "sleep_failed": "Não foi possível alterar o modo de sono em {{count}} servidor(es).",
     "add_server_title": "Adicionar outro servidor do Discord",
     "add_server_desc": "Gere um novo código e digite-o em outro servidor do Discord para conectá-lo também a este PC.",
     "connection_info": "Detalhes da conexão",

@@ -415,7 +415,7 @@ async fn e2e_config_roundtrip() {
 
     // ── Bot 설정 저장
     let bot_config = json!({
-        "prefix": "!test",
+        "prefixes": ["!test"],
         "mode": "local",
         "moduleAliases": {"e2e-mock": "mock"},
         "commandAliases": {},
@@ -431,7 +431,7 @@ async fn e2e_config_roundtrip() {
             .send().await.unwrap();
         if load_bot.status().is_success() {
             let loaded_bot: Value = load_bot.json().await.unwrap();
-            assert_eq!(loaded_bot["prefix"].as_str(), Some("!test"));
+            assert_eq!(loaded_bot["prefixes"], json!(["!test"]));
         }
     }
 

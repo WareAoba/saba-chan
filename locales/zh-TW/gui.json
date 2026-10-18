@@ -754,6 +754,8 @@
     "agent_stopped": "已關閉",
     "agent_start": "開啟",
     "agent_stop": "讓它睡覺",
+    "agent_wake": "喚醒",
+    "sleep_failed": "有 {{count}} 個伺服器無法切換睡眠狀態。",
     "add_server_title": "新增其他 Discord 伺服器",
     "add_server_desc": "取得新代碼並在其他 Discord 伺服器中輸入，即可將該伺服器也連線到這台電腦。",
     "connection_info": "連線資訊",

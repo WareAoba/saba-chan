@@ -757,6 +757,8 @@
     "agent_stopped": "꺼짐",
     "agent_start": "켜기",
     "agent_stop": "재우기",
+    "agent_wake": "깨우기",
+    "sleep_failed": "{{count}}개 서버의 잠자기를 바꾸지 못했어요.",
     "add_server_title": "다른 디스코드 서버 추가",
     "add_server_desc": "새 코드를 받아 다른 디스코드 서버에 입력하면 그 서버도 이 PC에 연결돼요.",
     "connection_info": "연결 정보",
