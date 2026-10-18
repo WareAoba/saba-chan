@@ -71,7 +71,9 @@ pub fn normalize_language(requested: &str) -> String {
     // zh는 번체 쓰는 곳(Hant·홍콩·마카오)이면 번체, 그 밖은 간체로 본다
     if base == "zh" {
         let tags = req.to_ascii_lowercase();
-        let traditional = tags.split('-').skip(1).any(|t| ["hant", "tw", "hk", "mo"].contains(&t));
+        let subtags: Vec<&str> = tags.split('-').skip(1).collect();
+        // 스크립트 태그(Hans·Hant)가 지역보다 먼저다: zh-Hans-HK는 간체
+        let traditional = !subtags.contains(&"hans") && subtags.iter().any(|t| ["hant", "tw", "hk", "mo"].contains(t));
         return if traditional { "zh-TW" } else { "zh-CN" }.into();
     }
     if base == "pt" {
@@ -153,6 +155,7 @@ mod tests {
         assert_eq!(normalize_language("zh-HK"), "zh-TW");
         assert_eq!(normalize_language("zh-Hant-TW"), "zh-TW");
         assert_eq!(normalize_language("zh-Hans-SG"), "zh-CN");
+        assert_eq!(normalize_language("zh-Hans-HK"), "zh-CN");
         assert_eq!(normalize_language("pt"), "pt-BR");
         assert_eq!(normalize_language("xx"), "en");
     }
