@@ -840,12 +840,21 @@ pub async fn launch_preview(
 /// 이보다 작은 메모리 상한은 서버가 뜨지도 못하므로 받지 않는다
 const MIN_MEMORY_LIMIT_MB: u64 = 256;
 
-/// PATCH의 `memory_limit_mb`: 비움(null·""·0)은 제한 없음, 아니면 `MIN_MEMORY_LIMIT_MB` 이상의 정수(숫자나 숫자 글자)
+/// PATCH의 `memory_limit_mb`: 비움(null·""·0)은 제한 없음, 아니면 `MIN_MEMORY_LIMIT_MB` 이상의 MiB 정수.
+/// 글자는 숫자(MiB)나 `4G`·`4096M`(`GB`·`MB`도, 대소문자 무관)
 fn memory_limit_from(value: &Value) -> Result<Option<u64>, ()> {
     let n = match value {
         Value::Null => return Ok(None),
         Value::String(s) if s.trim().is_empty() => return Ok(None),
-        Value::String(s) => s.trim().parse::<u64>().map_err(|_| ())?,
+        Value::String(s) => {
+            let t = s.trim().to_ascii_uppercase();
+            let t = t.strip_suffix('B').unwrap_or(&t);
+            let (digits, scale) = match t.strip_suffix('G') {
+                Some(d) => (d, 1024),
+                None => (t.strip_suffix('M').unwrap_or(t), 1),
+            };
+            digits.trim().parse::<u64>().ok().and_then(|n| n.checked_mul(scale)).ok_or(())?
+        }
         Value::Number(n) => n.as_u64().ok_or(())?,
         _ => return Err(()),
     };
@@ -1605,7 +1614,11 @@ mod tests {
         assert!(memory_limit_from(&json!(100)).is_err());
         assert!(memory_limit_from(&json!(4.5)).is_err());
         assert!(memory_limit_from(&json!(-1)).is_err());
-        assert!(memory_limit_from(&json!("4G")).is_err());
+        assert_eq!(memory_limit_from(&json!("4G")), Ok(Some(4096)));
+        assert_eq!(memory_limit_from(&json!("6gb")), Ok(Some(6144)));
+        assert_eq!(memory_limit_from(&json!("1024M")), Ok(Some(1024)));
+        assert!(memory_limit_from(&json!("4T")).is_err());
+        assert!(memory_limit_from(&json!("B")).is_err());
         assert!(memory_limit_from(&json!(true)).is_err());
     }
 }
