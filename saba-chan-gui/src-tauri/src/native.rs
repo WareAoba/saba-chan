@@ -360,10 +360,18 @@ pub fn shell_open_path(app: AppHandle, path: Option<String>) -> Value {
     let Some(path) = path.filter(|p| !p.is_empty()) else {
         return json!({ "error": state.t("errors.path_missing", &[]) });
     };
+    // 폴더만 연다: 파일 경로를 셸에 넘기면 그 파일이 실행된다
+    if !is_folder(&path) {
+        return json!({ "error": state.t("errors.path_not_folder", &[]) });
+    }
     match app.opener().open_path(path, None::<&str>) {
         Ok(()) => json!({ "success": true }),
         Err(e) => json!({ "error": e.to_string() }),
     }
+}
+
+fn is_folder(path: &str) -> bool {
+    std::path::Path::new(path).is_dir()
 }
 
 #[tauri::command]
@@ -446,4 +454,19 @@ pub fn window_maximize(window: WebviewWindow) {
 #[tauri::command]
 pub fn window_close(window: WebviewWindow) {
     let _ = window.close();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_path_accepts_only_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("run.bat");
+        std::fs::write(&file, "echo").unwrap();
+        assert!(is_folder(dir.path().to_str().unwrap()));
+        assert!(!is_folder(file.to_str().unwrap()));
+        assert!(!is_folder(dir.path().join("missing").to_str().unwrap()));
+    }
 }

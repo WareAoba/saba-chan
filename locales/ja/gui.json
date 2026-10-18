@@ -356,6 +356,7 @@
     "multiple_instances_warning": "同じモジュール ‘{{module}}’ を使用するインスタンスが複数あります ({{names}})。Discord ボットでモジュール別名で呼び出す際に区別できないため、インスタンス名を使用してください。",
     "alias_ambiguity_card": "‘{{module}}’ モジュールのインスタンスが {{count}} 個 — Discord 別名が不明療です",
     "sync_failed": "設定は保存しましたが、ゲームの設定ファイルに書き込めませんでした。{{error}}",
+    "ignored": "saba-chanが使わない設定のため無視しました: {{keys}}",
     "unknown_setting": "このモジュールにない設定です: {{fields}}"
   },
   "buttons": {

@@ -412,6 +412,7 @@
     "multiple_instances_warning": "Há várias instâncias usando o mesmo módulo '{{module}}' ({{names}}). Para chamadas do bot Discord, use nomes de instância em vez de aliases de módulo para diferenciá-las.",
     "alias_ambiguity_card": "{{count}} instâncias do módulo '{{module}}' — aliases Discord são ambíguos",
     "sync_failed": "As configurações foram salvas, mas o arquivo de configuração do jogo não pôde ser atualizado. {{error}}",
+    "ignored": "Ignorado porque o saba-chan não usa estas configurações: {{keys}}",
     "unknown_setting": "Este módulo não tem estas configurações: {{fields}}"
   },
   "buttons": {

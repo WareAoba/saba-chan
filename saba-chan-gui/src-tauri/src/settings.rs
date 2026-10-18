@@ -4,6 +4,7 @@
 //! 데몬이 응답하지 않을 때(부트스트랩) 쓰기뿐이다.
 
 use crate::i18n::strip_bom;
+use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants::{DEFAULT_IPC_PORT, SUPPORTED_LANGUAGES};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
@@ -43,21 +44,10 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// 데몬 기동 전 GUI 설정 저장 — 다른 네임스페이스는 보존, tmp → rename, 이전 파일은 .bak
+/// 데몬 기동 전 GUI 설정 저장 — 데몬과 같은 writer(config_file)를 쓴다:
+/// 다른 네임스페이스 보존, tmp → fsync → rename, 깨진 파일은 .bak이 아니라 .corrupt-<시각>으로
 pub fn write_gui_section(data_dir: &Path, gui: &Value) -> std::io::Result<()> {
-    let path = config_path(data_dir);
-    std::fs::create_dir_all(data_dir)?;
-    let mut doc = read_config_document(data_dir);
-    doc.insert("gui".into(), gui.clone());
-    if doc.get("schemaVersion").is_none_or(|v| v.is_null()) {
-        doc.insert("schemaVersion".into(), json!(1));
-    }
-    let tmp = with_suffix(&path, ".tmp");
-    std::fs::write(&tmp, serde_json::to_string_pretty(&Value::Object(doc))?)?;
-    if path.exists() {
-        std::fs::copy(&path, with_suffix(&path, ".bak"))?;
-    }
-    std::fs::rename(&tmp, &path)
+    ConfigFile::at(data_dir).set_section("gui", gui.clone())
 }
 
 pub fn default_settings() -> Map<String, Value> {
@@ -170,7 +160,7 @@ mod tests {
         // 데몬이 쓴 BOM 붙은 파일
         std::fs::write(
             &path,
-            "\u{feff}{\"schemaVersion\":3,\"daemon\":{\"x\":1},\"gui\":{\"ipcPort\":1}}",
+            "\u{feff}{\"schemaVersion\":1,\"daemon\":{\"x\":1},\"gui\":{\"ipcPort\":1}}",
         )
         .unwrap();
 
@@ -178,7 +168,7 @@ mod tests {
 
         let doc = read_json_file(&path).unwrap().unwrap();
         assert_eq!(doc["daemon"]["x"], 1);
-        assert_eq!(doc["schemaVersion"], 3);
+        assert_eq!(doc["schemaVersion"], 1);
         assert_eq!(doc["gui"]["ipcPort"], 60000);
         let bak = read_json_file(&with_suffix(&path, ".bak")).unwrap().unwrap();
         assert_eq!(bak["gui"]["ipcPort"], 1);
@@ -208,6 +198,23 @@ mod tests {
             read_json_file(&config_path(dir.path())).unwrap().unwrap()["schemaVersion"],
             1
         );
+    }
+
+    #[test]
+    fn local_save_never_backs_up_a_broken_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = config_path(dir.path());
+        std::fs::write(&path, "{broken").unwrap();
+        std::fs::write(with_suffix(&path, ".bak"), "{\"relay\":{\"guild\":7}}").unwrap();
+
+        write_gui_section(dir.path(), &json!({"ipcPort": 60000})).unwrap();
+
+        // 직전 정상본(.bak)의 다른 네임스페이스를 잃지 않는다
+        let doc = read_json_file(&path).unwrap().unwrap();
+        assert_eq!(doc["relay"]["guild"], 7);
+        assert_eq!(doc["gui"]["ipcPort"], 60000);
+        // 깨진 파일은 .bak을 덮어쓰지 않는다
+        assert!(read_json_file(&with_suffix(&path, ".bak")).is_ok());
     }
 
     #[test]

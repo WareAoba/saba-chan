@@ -95,6 +95,7 @@
     "url_missing": "未指定網址",
     "url_not_web": "只能開啟 http(s) 位址",
     "path_missing": "未指定路徑",
+    "path_not_folder": "不是資料夾",
     "no_log_folder": "沒有記錄資料夾"
   }
 }

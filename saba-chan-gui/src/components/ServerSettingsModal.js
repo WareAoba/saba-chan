@@ -110,6 +110,22 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
     );
 }
 
+/** 프로토콜 이름은 모듈(미검증일 수 있음)이 준 값이라 HTML로 넣지 않고 글자로만 그린다 */
+export function ProtocolNotice({ protocol }) {
+    const { t } = useTranslation('gui');
+    const MARK = '\u0001';
+    const [before = '', after = ''] = t('server_settings.protocol_single_only', { protocol: MARK })
+        .replace(/<\/?strong>/g, '')
+        .split(MARK);
+    return (
+        <p className="protocol-mode-description">
+            {before}
+            <strong>{String(protocol).toUpperCase()}</strong>
+            {after}
+        </p>
+    );
+}
+
 /**
  * GeneralTab — The "General" settings tab content.
  */
@@ -146,14 +162,7 @@ function GeneralTab({
                             <Icon name="plug" size="sm" /> {t('server_settings.protocol_title')}
                         </span>
                     </div>
-                    <p
-                        className="protocol-mode-description"
-                        dangerouslySetInnerHTML={{
-                            __html: t('server_settings.protocol_single_only', {
-                                protocol: supportedProtocols[0].toUpperCase(),
-                            }),
-                        }}
-                    />
+                    <ProtocolNotice protocol={supportedProtocols[0]} />
                 </div>
             )}
 

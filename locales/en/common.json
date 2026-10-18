@@ -95,6 +95,7 @@
     "url_missing": "No URL given",
     "url_not_web": "Only http(s) addresses can be opened",
     "path_missing": "No path given",
+    "path_not_folder": "Not a folder",
     "no_log_folder": "No log folder"
   }
 }

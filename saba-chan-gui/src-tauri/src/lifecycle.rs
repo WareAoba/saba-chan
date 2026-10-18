@@ -480,6 +480,8 @@ fn start_heartbeat(app: &AppHandle) {
             tick.tick().await;
             let state = app2.state::<AppState>();
             let Some(id) = state.life.client_id.lock().unwrap().clone() else {
+                // 처음 등록이 실패했으면(데몬이 늦게 뜸 등) 주기마다 다시 시도한다
+                register_with_daemon(&app2).await;
                 continue;
             };
             if let Err(e) = state
