@@ -240,7 +240,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
    - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:149-156`).
 3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.js:15-16`), 번들은 `window.React`를 참조한다(external 처리). 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
 4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`·`window.electron`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 즉 번들은 AppContainer 밖에서 데몬 API 전체를 부른다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, 셸이 직접 정하는 `/api/updates/launch-updater`·`/api/client/*`·`/api/daemon/shutdown`은 거부, 04 문서 §1.1)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다.
-   - 그래서 데몬은 번들(`/gui`)과 스타일(`/gui/styles`)을 **확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 익스텐션에만** 서빙한다(`extension::gui_allowed`, 플랫폼과 무관). 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}`.
+   - 그래서 데몬은 번들(`/gui`)과 스타일(`/gui/styles`)을 **확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 익스텐션에만** 서빙한다(`extension::gui_allowed`, 플랫폼과 무관). 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}`. manifest의 `gui.bundle`·`gui.styles`는 익스텐션 폴더 기준 상대 경로(`..`·절대 경로 없음)이고, 링크를 거치지 않는 일반 파일이어야 한다. 아니면 404(허락은 폴더 안 파일의 지문에 묶이기 때문이다).
    - `GET /api/extensions` 항목에 GUI 번들이 있으면 `gui_allowed: bool`이 실린다. false면 GUI는 번들을 요청하지 말고 사용자에게 물은 뒤 `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다(원격 출처는 403 `consent_local_only`). 동의는 `config.json` `sandbox.extension_gui`에 익스텐션 폴더 전체의 파일 지문으로 남아, 파일이 하나라도 바뀌면 다시 묻는다. 철회는 `DELETE` 같은 경로.
    - 받아들인 위험: 허락한 번들은 데몬 API 전체(동의 라우트 포함)를 부를 수 있다. 허락은 그 익스텐션을 GUI에서 믿는다는 뜻이다.
 

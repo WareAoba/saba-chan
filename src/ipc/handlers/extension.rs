@@ -260,17 +260,32 @@ pub async fn serve_gui_bundle(
         None => return Err(StatusCode::NOT_FOUND), // 내장 익스텐션: 번들 없음
     };
 
-    let bundle_path = match mgr.extension_file_path(&ext_id, bundle_rel) {
-        Some(p) => p,
-        None => return Err(StatusCode::NOT_FOUND),
-    };
     let dir = mgr.discovered(&ext_id).map(|ext| ext.dir.clone()).ok_or(StatusCode::NOT_FOUND)?;
+    let bundle_path = gui_file(&dir, bundle_rel).ok_or(StatusCode::NOT_FOUND)?;
     drop(mgr);
     if let Some(refused) = unapproved_gui(&ext_id, dir).await {
         return Ok(refused);
     }
 
     serve_static_file(&bundle_path, "application/javascript").await
+}
+
+/// manifest의 GUI 파일 경로를 익스텐션 폴더 안의 실제 파일로 푼다. 허락은 폴더 안 파일의 지문에 묶이므로
+/// 폴더 밖(`..`·절대 경로)이나 링크(파일이든 거쳐 가는 폴더든)를 가리키면 서빙하지 않는다
+fn gui_file(dir: &std::path::Path, relative: &str) -> Option<std::path::PathBuf> {
+    let rel = std::path::Path::new(relative);
+    if relative.is_empty() || !rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+        return None;
+    }
+    let mut path = dir.to_path_buf();
+    for part in rel.components() {
+        path.push(part);
+        let meta = std::fs::symlink_metadata(&path).ok()?;
+        if meta.file_type().is_symlink() {
+            return None;
+        }
+    }
+    std::fs::symlink_metadata(&path).ok()?.is_file().then_some(path)
 }
 
 /// 번들은 GUI 웹뷰에서 데몬 API 전체를 부를 수 있다. 확인된 익스텐션이 아니면 사용자가 이 PC에서
@@ -308,14 +323,8 @@ pub async fn serve_gui_styles(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    let styles_path = match gui.styles.as_deref() {
-        Some(s) => match mgr.extension_file_path(&ext_id, s) {
-            Some(p) => p,
-            None => return Err(StatusCode::NOT_FOUND),
-        },
-        None => return Err(StatusCode::NOT_FOUND),
-    };
     let dir = mgr.discovered(&ext_id).map(|ext| ext.dir.clone()).ok_or(StatusCode::NOT_FOUND)?;
+    let styles_path = gui.styles.as_deref().and_then(|s| gui_file(&dir, s)).ok_or(StatusCode::NOT_FOUND)?;
     drop(mgr);
     if let Some(refused) = unapproved_gui(&ext_id, dir).await {
         return Ok(refused);
@@ -662,5 +671,26 @@ mod tests {
         std::fs::write(ext.path().join("gui.js"), "window.x = 2").unwrap();
         assert_eq!(status(serve_gui_bundle(State(state.clone()), Path(id.clone())).await), StatusCode::FORBIDDEN);
         let _ = super::super::sandbox::revoke_extension_gui(Path(key)).await;
+    }
+
+    #[test]
+    fn gui_files_must_be_plain_files_inside_the_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("ext");
+        std::fs::create_dir_all(dir.join("gui")).unwrap();
+        std::fs::write(dir.join("gui").join("a.js"), "x").unwrap();
+        std::fs::write(tmp.path().join("outside.js"), "x").unwrap();
+        assert_eq!(gui_file(&dir, "gui/a.js"), Some(dir.join("gui").join("a.js")));
+        let outside = tmp.path().join("outside.js");
+        for bad in ["../outside.js", "gui/../../outside.js", "", "gui", "missing.js", outside.to_str().unwrap()] {
+            assert_eq!(gui_file(&dir, bad), None, "{}", bad);
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(tmp.path().join("outside.js"), dir.join("link.js")).unwrap();
+            std::os::unix::fs::symlink(tmp.path(), dir.join("linked")).unwrap();
+            assert_eq!(gui_file(&dir, "link.js"), None);
+            assert_eq!(gui_file(&dir, "linked/outside.js"), None);
+        }
     }
 }
