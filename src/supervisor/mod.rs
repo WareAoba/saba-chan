@@ -2536,7 +2536,7 @@ impl Supervisor {
                         self.instance_roots(&instance),
                         siblings.iter().flat_map(|i| self.instance_roots(i)).collect(),
                     );
-                    let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots, siblings.is_empty());
+                    let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots);
 
                     if let Some(process) = picked {
                                 auto_detected_count += 1;
