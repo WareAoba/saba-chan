@@ -824,7 +824,7 @@
     "channels_reload": "Actualizar",
     "channels_save": "Guardar",
     "channels_save_confirm": "Guardar y borrar mensajes",
-    "channels_err_conflict": "El mismo canal no puede ser del chatbot y de música a la vez.",
+    "channels_err_conflict": "No se puede asignar el mismo canal a dos tipos a la vez.",
     "channels_err_unknown": "{{channel}} no es un canal de texto que el bot pueda usar en este servidor.",
     "channels_err_bot": "No se pudo comprobar el bot, así que no cambió nada. Quitar asignaciones sigue funcionando.",
     "channels_err_generic": "No se pudieron guardar las asignaciones de canales.",
@@ -902,7 +902,10 @@
       "err_not_paired": "Este servidor no está emparejado.",
       "err_invalid": "Valor no válido: {{field}}",
       "err_generic": "No se pudieron cambiar los ajustes del bot."
-    }
+    },
+    "channels_notify": "Canal de avisos",
+    "channels_notify_hint": "Aquí se publican caídas, reinicios automáticos, actualizaciones, copias terminadas y avisos de reinicios programados.",
+    "channels_is_notify": "Usado como canal de avisos"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",
@@ -1180,7 +1183,9 @@
     "remote_action": "Ejecutado desde Discord: {{text}}",
     "instance_exit": "{{name}} se detuvo ({{kind}}).",
     "backup_done": "Copia de seguridad de {{name}} completada ({{kind}}).",
-    "backup_failed": "Falló la copia de seguridad de {{name}}. {{error}}"
+    "backup_failed": "Falló la copia de seguridad de {{name}}. {{error}}",
+    "schedule_restart": "{{name}} se reiniciará según lo programado en {{minutes}} min.",
+    "schedule_update": "{{name}} se actualizará según lo programado en {{minutes}} min."
   },
   "terminal": {
     "open": "Abrir en terminal",

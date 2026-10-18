@@ -824,7 +824,7 @@
     "channels_reload": "Atualizar",
     "channels_save": "Salvar",
     "channels_save_confirm": "Salvar e apagar mensagens",
-    "channels_err_conflict": "O mesmo canal não pode ser do chatbot e de música ao mesmo tempo.",
+    "channels_err_conflict": "O mesmo canal não pode ser atribuído a dois tipos ao mesmo tempo.",
     "channels_err_unknown": "{{channel}} não é um canal de texto que o bot pode usar neste servidor.",
     "channels_err_bot": "Não foi possível verificar o bot, então nada mudou. Remover ainda funciona.",
     "channels_err_generic": "Não foi possível salvar as atribuições de canais.",
@@ -902,7 +902,10 @@
       "err_not_paired": "Este servidor não está pareado.",
       "err_invalid": "Valor inválido: {{field}}",
       "err_generic": "Não foi possível alterar as configurações do bot."
-    }
+    },
+    "channels_notify": "Canal de alertas",
+    "channels_notify_hint": "Falhas, reinícios automáticos, atualizações, backups concluídos e avisos de reinício agendado são publicados aqui.",
+    "channels_is_notify": "Usado como canal de alertas"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
@@ -1180,7 +1183,9 @@
     "remote_action": "Executado pelo Discord: {{text}}",
     "instance_exit": "{{name}} parou ({{kind}}).",
     "backup_done": "Backup de {{name}} concluído ({{kind}}).",
-    "backup_failed": "O backup de {{name}} falhou. {{error}}"
+    "backup_failed": "O backup de {{name}} falhou. {{error}}",
+    "schedule_restart": "{{name}} vai reiniciar conforme agendado em {{minutes}} min.",
+    "schedule_update": "{{name}} vai atualizar conforme agendado em {{minutes}} min."
   },
   "terminal": {
     "open": "Abrir no terminal",

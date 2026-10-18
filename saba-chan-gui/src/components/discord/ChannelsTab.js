@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 
-/** 릴레이 계약: 길드당 챗봇 채널 최대 20개, 음악 채널 1개 (assign/contract.md) */
+/** 릴레이 계약: 길드당 챗봇 채널 최대 20개, 음악·알림 채널 각 1개 (assign/contract.md, I3) */
 export const CHATBOT_MAX = 20;
 
 export const channelsAvailable = () => Boolean(window.api?.relayNodeChannels && window.api?.relayNodeChannelsSave);
@@ -16,6 +16,7 @@ export function channelsPatch(saved, draft) {
     const patch = {};
     if (!sameSet(saved.chatbot, draft.chatbot)) patch.chatbot = draft.chatbot;
     if ((saved.music || null) !== (draft.music || null)) patch.music = draft.music || null;
+    if ((saved.notify || null) !== (draft.notify || null)) patch.notify = draft.notify || null;
     return patch;
 }
 
@@ -40,17 +41,18 @@ export function channelsErrorText(res, t, nameOf) {
 const fromResponse = (res) => ({
     chatbot: Array.isArray(res?.chatbot) ? res.chatbot.map(String) : [],
     music: res?.music ? String(res.music) : null,
+    notify: res?.notify ? String(res.notify) : null,
 });
 
 /**
- * 디스코드 서버 하나의 채널 배정: 챗봇 채널(여러 개)·음악 채널(하나).
+ * 디스코드 서버 하나의 채널 배정: 챗봇 채널(여러 개)·음악 채널(하나)·알림 채널(하나).
  * 원본은 릴레이다 (GET/PUT /api/relay/node/:guild_id/channels). 한 채널은 한 종류만 맡는다.
  */
 export function ChannelsTab({ node }) {
     const { t } = useTranslation('gui');
     const guildId = node.guildId;
     const [data, setData] = useState(null); // 마지막 응답
-    const [draft, setDraft] = useState({ chatbot: [], music: null });
+    const [draft, setDraft] = useState({ chatbot: [], music: null, notify: null });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -114,10 +116,17 @@ export function ChannelsTab({ node }) {
         // 경고를 확인한 채널이 바뀌면 다시 확인받는다
         setArmed(false);
         setDraft((d) => ({
+            ...d,
             chatbot: id ? d.chatbot.filter((x) => x !== id) : d.chatbot,
             music: id || null,
         }));
     };
+    const setNotify = (id) =>
+        setDraft((d) => ({
+            ...d,
+            chatbot: id ? d.chatbot.filter((x) => x !== id) : d.chatbot,
+            notify: id || null,
+        }));
 
     const save = async () => {
         if (newMusic && !armed) {
@@ -167,9 +176,10 @@ export function ChannelsTab({ node }) {
                         {g.items.map((c) => {
                             const id = String(c.id);
                             const isMusic = draft.music === id;
+                            const isNotify = draft.notify === id;
                             const checked = draft.chatbot.includes(id);
                             // 봇이 없으면 새로 배정할 수 없다 (503 BOT_UNAVAILABLE). 해제만 된다
-                            const locked = isMusic || (!botAvailable && !checked);
+                            const locked = isMusic || isNotify || (!botAvailable && !checked);
                             return (
                                 <div key={id} className={clsx('dc-channel-row', { disabled: locked })}>
                                     <SabaCheckbox
@@ -180,6 +190,7 @@ export function ChannelsTab({ node }) {
                                     />
                                     <span>#{c.name}</span>
                                     {isMusic && <span className="muted">{t('discord.channels_is_music')}</span>}
+                                    {isNotify && <span className="muted">{t('discord.channels_is_notify')}</span>}
                                 </div>
                             );
                         })}
@@ -220,7 +231,7 @@ export function ChannelsTab({ node }) {
                         <option
                             key={c.id}
                             value={String(c.id)}
-                            disabled={!botAvailable && String(c.id) !== draft.music}
+                            disabled={String(c.id) === draft.notify || (!botAvailable && String(c.id) !== draft.music)}
                         >
                             {c.category ? `${c.category} / ` : ''}#{c.name}
                         </option>
@@ -232,6 +243,31 @@ export function ChannelsTab({ node }) {
                         <span>{t('discord.channels_music_warn', { channel: nameOf(draft.music) })}</span>
                     </div>
                 )}
+            </section>
+
+            <section className="dc-card">
+                <h3>{t('discord.channels_notify')}</h3>
+                <p className="dc-hint">{t('discord.channels_notify_hint')}</p>
+                <select
+                    className="input"
+                    value={draft.notify || ''}
+                    aria-label={t('discord.channels_notify')}
+                    onChange={(e) => setNotify(e.target.value)}
+                >
+                    <option value="">{t('discord.channels_music_none')}</option>
+                    {draft.notify && !channels.some((c) => String(c.id) === draft.notify) && (
+                        <option value={draft.notify}>{draft.notify}</option>
+                    )}
+                    {channels.map((c) => (
+                        <option
+                            key={c.id}
+                            value={String(c.id)}
+                            disabled={String(c.id) === draft.music || (!botAvailable && String(c.id) !== draft.notify)}
+                        >
+                            {c.category ? `${c.category} / ` : ''}#{c.name}
+                        </option>
+                    ))}
+                </select>
             </section>
 
             {error && (

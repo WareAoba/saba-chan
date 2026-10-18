@@ -57,6 +57,22 @@ describe('ChannelsTab', () => {
         );
     });
 
+    it('알림 채널은 바로 저장되고, 챗봇에서 빠지며 음악 채널과 겹칠 수 없다', async () => {
+        window.api.relayNodeChannels = vi.fn().mockResolvedValue({ ...base, music: '222' });
+        window.api.relayNodeChannelsSave = vi
+            .fn()
+            .mockResolvedValue({ ...base, chatbot: [], music: '222', notify: '111' });
+        render(<ChannelsTab node={node} />);
+        const select = await screen.findByLabelText('Alert channel');
+        expect(select.querySelector('option[value="222"]').disabled).toBe(true);
+        fireEvent.change(select, { target: { value: '111' } });
+        expect(screen.getByText('Used as the alert channel')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+        await waitFor(() =>
+            expect(window.api.relayNodeChannelsSave).toHaveBeenCalledWith('g1', { chatbot: [], notify: '111' }),
+        );
+    });
+
     it('봇이 없으면 알리고, 챗봇 해제와 릴레이 오류를 보여 준다', async () => {
         window.api.relayNodeChannels = vi.fn().mockResolvedValue({
             ...base,
@@ -69,7 +85,7 @@ describe('ChannelsTab', () => {
         render(<ChannelsTab node={node} />);
         expect(await screen.findByText(/You can only unassign/)).toBeTruthy();
         expect(screen.getByLabelText('Use #music as a chatbot channel').disabled).toBe(true);
-        expect(screen.getByRole('option', { name: '#music' }).disabled).toBe(true);
+        for (const option of screen.getAllByRole('option', { name: '#music' })) expect(option.disabled).toBe(true);
         fireEvent.click(screen.getByLabelText('Use #111 as a chatbot channel'));
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
         await waitFor(() => expect(window.api.relayNodeChannelsSave).toHaveBeenCalledWith('g1', { chatbot: [] }));

@@ -5,6 +5,7 @@
 const mockChannels = {
     chatbot: ['111'],
     music: null,
+    notify: null,
     botAvailable: true,
     channels: [
         { id: '111', name: '잡담', category: '채팅' },

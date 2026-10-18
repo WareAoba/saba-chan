@@ -824,7 +824,7 @@
     "channels_reload": "Actualiser",
     "channels_save": "Enregistrer",
     "channels_save_confirm": "Enregistrer et supprimer les messages",
-    "channels_err_conflict": "Un même salon ne peut pas être à la fois salon du chatbot et salon musique.",
+    "channels_err_conflict": "Un même salon ne peut pas être attribué à deux types à la fois.",
     "channels_err_unknown": "{{channel}} n'est pas un salon textuel utilisable par le bot sur ce serveur.",
     "channels_err_bot": "Le bot n'a pas pu être vérifié, rien n'a changé. Le retrait fonctionne toujours.",
     "channels_err_generic": "Impossible d'enregistrer les attributions de salons.",
@@ -902,7 +902,10 @@
       "err_not_paired": "Ce serveur n'est pas appairé.",
       "err_invalid": "Valeur non valide : {{field}}",
       "err_generic": "Impossible de modifier les paramètres du bot."
-    }
+    },
+    "channels_notify": "Salon d'alertes",
+    "channels_notify_hint": "Plantages, redémarrages automatiques, mises à jour, sauvegardes terminées et avertissements de redémarrage programmé y sont publiés.",
+    "channels_is_notify": "Utilisé comme salon d'alertes"
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
@@ -1180,7 +1183,9 @@
     "remote_action": "Exécuté depuis Discord : {{text}}",
     "instance_exit": "{{name}} s'est arrêté ({{kind}}).",
     "backup_done": "Sauvegarde de {{name}} terminée ({{kind}}).",
-    "backup_failed": "La sauvegarde de {{name}} a échoué. {{error}}"
+    "backup_failed": "La sauvegarde de {{name}} a échoué. {{error}}",
+    "schedule_restart": "{{name}} redémarrera comme prévu dans {{minutes}} min.",
+    "schedule_update": "{{name}} sera mis à jour comme prévu dans {{minutes}} min."
   },
   "terminal": {
     "open": "Ouvrir dans le terminal",
