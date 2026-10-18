@@ -129,6 +129,19 @@ describe('권한 화면', () => {
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1003', 0);
     });
 
+    it('새로고침하면 릴레이에 남은 부여값도 다시 읽는다', async () => {
+        window.api.relayListLegacyMembers = vi.fn(async () => relayMembers);
+        renderPanel('members', { members: relayMembers.map(({ level, ...m }) => m), onRefreshMembers: vi.fn() });
+        await flush();
+        expect(screen.getByRole('checkbox', { name: 'Newbie' })).toBeInTheDocument();
+
+        window.api.relayListLegacyMembers.mockResolvedValue([]);
+        fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+        await flush();
+        expect(window.api.relayListLegacyMembers).toHaveBeenCalledTimes(2);
+        expect(screen.queryByRole('checkbox', { name: 'Newbie' })).toBeNull();
+    });
+
     it('소유자 불일치를 알리고, 고르면 소유자를 바꾼다', async () => {
         perm = base({ relayOwnerDiscordId: '1002' });
         renderPanel();
