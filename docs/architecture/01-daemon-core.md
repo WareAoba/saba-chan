@@ -190,6 +190,7 @@
 - 기본: `id, name, module, status, pid, start_time, executable_path, working_dir?, port`
 - 접속 정보: `rest_host, rest_port, rest_username, rest_password, protocol_mode`
 - 설정과 상태: `module_settings, server_version, last_api_action?, provisioning, managed, extension_status?, extension_data, port_conflicts?`
+- `slots?`: 익스텐션 데이터 slot을 데몬이 판정한 결과(`{"ServerCard.badge":[{extension,text}], "ServerDetail.status":[{extension,label,value}]}`, 없으면 키가 없다). 규칙은 03-extensions 4.3.
 - `managed`는 saba-runner가 맡아 실행하는지다. 판정은 데몬의 `Supervisor::uses_managed_start` 하나이고(`server.rs:81`), 클라이언트는 이 값을 그대로 쓴다.
 - **REST 비밀번호가 평문으로 포함된다.**
 
@@ -227,7 +228,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/instances` | `instance.rs:12` | - | `[ServerInstance]` (§4.1, REST 비밀번호 평문 포함) |
-| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?, accept_agreements?:[id]}` (`accept_agreements`: 동의한 모듈 약관. 선언 안 된 id는 400 `invalid_format`, 원격이면 403 `agreement_local_only`. 가져오기(`migration_source`)면 만든 직후 lifecycle `accept_agreements`를 불러 모듈이 반영하게 한다) | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
+| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?, accept_agreements?:[id], extension_data?:{}}` (`accept_agreements`: 동의한 모듈 약관. 선언 안 된 id는 400 `invalid_format`, 원격이면 403 `agreement_local_only`. 가져오기(`migration_source`)면 만든 직후 lifecycle `accept_agreements`를 불러 모듈이 반영하게 한다. `extension_data`: 익스텐션 `AddServer.options`의 답. null이 아닌 값을 새 인스턴스에 넣고, 객체가 아니면 400 `invalid_format`) | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` + `agreements:[{id, label, url, accepted, accepted_at}]`(모듈 약관, 이름은 데몬 언어) / 404 `{error, error_code}` |
 | DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |

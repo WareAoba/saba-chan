@@ -176,6 +176,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     extra_args: instance.extra_args.clone(),
                     memory_limit_mb: instance.memory_limit_mb,
                     port_conflicts: vec![],
+                    slots: Default::default(),
                 });
                 ext_handled = true;
             }
@@ -228,7 +229,16 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             extra_args: instance.extra_args.clone(),
             memory_limit_mb: instance.memory_limit_mb,
             port_conflicts: vec![],
+            slots: Default::default(),
         });
+    }
+
+    // ── 데이터 slot (Q-7): 조건 판정과 값 찾기는 여기서 한 번만 ──
+    {
+        let ext_mgr = state.extension_manager.read().await;
+        for srv in servers.iter_mut() {
+            srv.slots = ext_mgr.server_slots(&srv.extension_data, &srv.extension_status);
+        }
     }
 
     // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──

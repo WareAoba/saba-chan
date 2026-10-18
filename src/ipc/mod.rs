@@ -200,6 +200,9 @@ pub struct ServerInfo {
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
+    /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub slots: serde_json::Map<String, serde_json::Value>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)

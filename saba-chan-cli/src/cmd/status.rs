@@ -3,7 +3,6 @@
 use crate::ctx::Ctx;
 use crate::error::{CliError, Result};
 use crate::output::{self, s};
-use crate::slots::Slots;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -25,22 +24,16 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         Err(e) => return Err(e),
     };
 
-    let (servers, modules, agent, updates, exts, preflight) = tokio::join!(
+    let (servers, modules, agent, updates, preflight) = tokio::join!(
         ctx.api.servers(),
         ctx.api.modules(),
         ctx.api.agent(),
         ctx.api.update_status(),
-        ctx.api.extensions(),
         ctx.api.preflight()
     );
     let preflight = preflight.ok();
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
-    let slots = exts
-        .ok()
-        .and_then(|e| e.get("extensions").and_then(Value::as_array).cloned())
-        .map(|l| Slots::from_extensions(&l))
-        .unwrap_or_default();
 
     let v = json!({
         "daemon": { "running": true, "version": health.get("version"), "pid": health.get("pid"), "url": ctx.api.base_url() },
@@ -70,7 +63,6 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 .map(Vec::as_slice)
                 .unwrap_or(&[]),
             &modules,
-            &slots,
         );
         for stop in servers
             .get("port_conflict_stops")
@@ -169,7 +161,7 @@ pub fn module_display(modules: &Value) -> HashMap<String, String> {
         .collect()
 }
 
-pub fn print_server_table(servers: &[Value], modules: &Value, slots: &Slots) {
+pub fn print_server_table(servers: &[Value], modules: &Value) {
     if servers.is_empty() {
         println!("{}", output::dim(&t!("server.none_yet")));
         return;
@@ -184,7 +176,7 @@ pub fn print_server_table(servers: &[Value], modules: &Value, slots: &Slots) {
     ]);
     for sv in servers {
         let mut name = s(sv, "name").to_string();
-        for b in slots.badges(sv) {
+        for b in crate::slots::badges(sv) {
             name.push(' ');
             name.push_str(&b);
         }
