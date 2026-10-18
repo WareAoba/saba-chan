@@ -113,7 +113,7 @@ pub fn validate(
     }
 
     for (cmd, list) in &want.commands {
-        let known = BUILTIN_COMMANDS.contains(&cmd.as_str()) || cmd == "restart" || module.is_some_and(|m| m.command(cmd).is_some());
+        let known = BUILTIN_COMMANDS.contains(&cmd.as_str()) || module.is_some_and(|m| m.command(cmd).is_some());
         if !known {
             out.push(Problem { field: format!("commands.{}", cmd), reason: "unknown_command", word: None, conflict_with: None });
             continue;
@@ -187,16 +187,16 @@ pub fn migrate(
                 }
             }
         }
-        // 다른 서버 이름·낱말과 겹치는 낱말은 버린다 (먼저 온 서버가 갖는다)
-        let mut taken: Vec<String> = servers.iter().map(|s| s.name.clone()).collect();
+        // 다른 서버 이름·id·낱말과 겹치는 낱말은 버린다 (낱말끼리는 먼저 온 서버가 갖는다)
+        let mut taken: Vec<String> = Vec::new();
         let mut ids: Vec<&String> = table.keys().collect();
         ids.sort();
         let mut cleaned: HashMap<String, InstanceWords> = HashMap::new();
         for id in ids {
             let mut w = table[id].clone();
-            let own = servers.iter().find(|s| &s.id == id).map(|s| s.name.clone());
             w.words.retain(|word| {
-                let free = !RESERVED.iter().any(|r| same(r, word)) && !taken.iter().any(|t| same(t, word) && Some(t) != own.as_ref());
+                let other_server = servers.iter().filter(|s| &s.id != id).any(|s| same(&s.name, word) || same(&s.id, word));
+                let free = !RESERVED.iter().any(|r| same(r, word)) && !other_server && !taken.iter().any(|t| same(t, word));
                 if !free {
                     tracing::info!("[Chat] guild {}: word '{}' of instance {} dropped (conflict)", guild, word, id);
                 }
@@ -252,7 +252,7 @@ mod tests {
         let others = HashMap::from([("b".to_string(), InstanceWords { words: vec!["크리".into()], ..Default::default() })]);
         let want = InstanceWords {
             words: vec!["서바".into(), "creative".into(), "크리".into(), "mc".into(), "도움".into(), "두 낱말".into()],
-            commands: BTreeMap::from([("start".to_string(), vec!["켜".into(), "추방".into()]), ("nope".to_string(), vec!["x".into()])]),
+            commands: BTreeMap::from([("start".to_string(), vec!["켜".into(), "추방".into()]), ("nope".to_string(), vec!["x".into()]), ("restart".to_string(), vec!["재시작".into()])]),
         };
         let problems = validate(&servers[0], Some(&mc), &want, &servers, std::slice::from_ref(&mc), &others);
         let got: Vec<(&str, &str)> = problems.iter().map(|p| (p.field.as_str(), p.reason)).collect();
@@ -265,6 +265,7 @@ mod tests {
                 ("words[4]", "reserved"),
                 ("words[5]", "invalid"),
                 ("commands.nope", "unknown_command"),
+                ("commands.restart", "unknown_command"),
                 ("commands.start[1]", "conflict"),
             ]
         );
@@ -278,12 +279,13 @@ mod tests {
             &json!({ "g1": { "defaultLevel": 1 } }),
             &guilds,
             |_| servers.clone(),
-            &HashMap::from([("b".to_string(), "크리, cr".to_string())]),
+            &HashMap::from([("b".to_string(), "크리, cr, p".to_string())]),
             &HashMap::from([("minecraft".to_string(), "마크".to_string()), ("palworld".to_string(), "팰".to_string())]),
             &HashMap::from([("minecraft".to_string(), json!({ "kick": "추방, 킥" }))]),
         )
         .unwrap();
         let table = of_guild(&moved, "g1");
+        // 다른 서버의 id("p")와 같은 낱말은 버린다: 옮긴 뒤 그 서버를 가리키게 되므로
         assert_eq!(table["b"].words, vec!["크리", "cr"]);
         // 인스턴스가 둘인 모듈의 별명은 어느 쪽 것인지 몰라 버린다
         assert!(table["a"].words.is_empty());

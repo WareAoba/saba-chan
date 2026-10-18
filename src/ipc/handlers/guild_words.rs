@@ -83,22 +83,22 @@ pub async fn put(State(state): State<IPCServer>, Path((guild, id)): Path<(String
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e }))).into_response(),
     };
     let modules = state.modules().await;
-    let bot = state.config_store.get_bot_config().await;
-    let in_guild = guild_servers(&bot.node_settings, &guild, &servers);
-    let Some(instance) = in_guild.iter().find(|s| s.id == id) else {
-        return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": "instance not used in this guild", "error_code": "not_found" }))).into_response();
-    };
-    let module = modules.iter().find(|m| m.name == instance.module);
-    let others: HashMap<String, InstanceWords> = words::of_guild(&bot.node_settings, &guild).into_iter().filter(|(k, _)| k != &id).collect();
-    let problems = words::validate(instance, module, &want, &in_guild, &modules, &others);
-    if !problems.is_empty() {
-        return validation(problems.into_iter().map(|p| serde_json::to_value(p).unwrap_or_default()).collect());
-    }
-
     let value = serde_json::to_value(&want).unwrap_or_default();
+    // 검사와 저장을 설정 잠금 안에서 한다: 동시에 온 두 요청이 같은 낱말을 둘 다 통과시키지 않게
     let saved = state
         .config_store
         .update_node_settings(&guild, |node| {
+            let node_settings = json!({ guild.as_str(): Value::Object(node.clone()) });
+            let in_guild = guild_servers(&node_settings, &guild, &servers);
+            let Some(instance) = in_guild.iter().find(|s| s.id == id) else {
+                return (Err(None), false);
+            };
+            let module = modules.iter().find(|m| m.name == instance.module);
+            let others: HashMap<String, InstanceWords> = words::of_guild(&node_settings, &guild).into_iter().filter(|(k, _)| k != &id).collect();
+            let problems = words::validate(instance, module, &want, &in_guild, &modules, &others);
+            if !problems.is_empty() {
+                return (Err(Some(problems)), false);
+            }
             let table = node.entry(INSTANCES_KEY).or_insert_with(|| json!({}));
             if !table.is_object() {
                 *table = json!({});
@@ -108,9 +108,17 @@ pub async fn put(State(state): State<IPCServer>, Path((guild, id)): Path<(String
             if table.is_empty() {
                 node.remove(INSTANCES_KEY);
             }
-            ((), changed)
+            (Ok(()), changed)
         })
         .await;
+    let saved = match saved {
+        Ok(Err(None)) => {
+            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": "instance not used in this guild", "error_code": "not_found" }))).into_response();
+        }
+        Ok(Err(Some(problems))) => return validation(problems.into_iter().map(|p| serde_json::to_value(p).unwrap_or_default()).collect()),
+        Ok(Ok(())) => Ok(()),
+        Err(e) => Err(e),
+    };
     match saved {
         Ok(()) => Json(json!({ "success": true, "id": id, "words": want.words, "commands": want.commands })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "save_failed" }))).into_response(),
