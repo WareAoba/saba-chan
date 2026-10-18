@@ -422,6 +422,16 @@
       "bot.alias.remove": "移除别名"
     },
     "arg": {
+      "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
+      "bot.channels.no_notify": "取消通知频道",
+      "bot.link.decline": "拒绝此连接请求",
+      "bot.allow.all": "不限制: 此电脑上的所有服务器",
+      "bot.word.words": "新词语 (替换原有词语)",
+      "bot.word.clear": "删除此命令的词语",
+      "sandbox.allow.component": "不隔离运行的组件",
+      "sandbox.revoke.component": "撤销许可的组件",
+      "do.plan": "只检查输入并显示将会发生什么",
+      "do.input": "输入 key=value (可按 JSON 读取的值保持为 JSON)",
       "server": "服务器名称（部分即可）",
       "ids": "一个或多个扩展 ID"
     },

@@ -931,4 +931,27 @@ mod tests {
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.cmd keys missing: {:?}", missing);
     }
+    #[test]
+    fn every_argument_has_a_korean_help_line() {
+        crate::i18n::init("ko");
+        fn walk(cmd: &clap::Command, path: &str, missing: &mut Vec<String>) {
+            for a in cmd.get_arguments() {
+                let id = a.get_id().as_str();
+                if matches!(id, "help" | "version") || a.is_hide_set() {
+                    continue;
+                }
+                let found = crate::i18n::try_t(&format!("help.arg.{}.{}", path, id)).or_else(|| crate::i18n::try_t(&format!("help.arg.{}", id)));
+                if found.is_none() {
+                    missing.push(format!("{} --{}", path, id));
+                }
+            }
+            for s in cmd.get_subcommands().filter(|s| s.get_name() != "help") {
+                let p = if path.is_empty() { s.get_name().to_string() } else { format!("{}.{}", path, s.get_name()) };
+                walk(s, &p, missing);
+            }
+        }
+        let mut missing = Vec::new();
+        walk(&Cli::command(), "", &mut missing);
+        assert!(missing.is_empty(), "help.arg keys missing: {:?}", missing);
+    }
 }

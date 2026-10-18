@@ -422,6 +422,16 @@
       "bot.alias.remove": "エイリアスを削除"
     },
     "arg": {
+      "bot.channels.notify": "通知チャンネル(クラッシュ・バックアップ・更新・予約再起動)、名前またはID",
+      "bot.channels.no_notify": "通知チャンネルを解除",
+      "bot.link.decline": "この接続リクエストを拒否",
+      "bot.allow.all": "制限なし: このPCのすべてのサーバー",
+      "bot.word.words": "新しい言葉 (既存の言葉を置き換え)",
+      "bot.word.clear": "このコマンドの言葉を削除",
+      "sandbox.allow.component": "分離せずに実行するコンポーネント",
+      "sandbox.revoke.component": "許可を取り消すコンポーネント",
+      "do.plan": "入力だけを確認し、何が起きるかを表示",
+      "do.input": "入力 key=value (JSONとして読める値はJSON)",
       "server": "サーバー名（一部だけでも可）",
       "ids": "1 つ以上の拡張機能 ID"
     },

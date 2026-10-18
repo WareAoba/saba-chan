@@ -422,6 +422,16 @@
       "bot.alias.remove": "Eliminar un alias"
     },
     "arg": {
+      "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
+      "bot.channels.no_notify": "Quitar el canal de avisos",
+      "bot.link.decline": "Rechazar esta solicitud de conexión",
+      "bot.allow.all": "Sin límite: todos los servidores de este PC",
+      "bot.word.words": "Palabras nuevas (sustituyen a las anteriores)",
+      "bot.word.clear": "Quitar las palabras de este comando",
+      "sandbox.allow.component": "Componente que se ejecuta sin aislamiento",
+      "sandbox.revoke.component": "Componente al que se retira el permiso",
+      "do.plan": "Solo comprobar la entrada y mostrar lo que pasaría",
+      "do.input": "Entrada como key=value (los valores que se leen como JSON siguen siendo JSON)",
       "server": "Nombre del servidor (basta con una parte)",
       "ids": "Uno o más ID de extensión"
     },

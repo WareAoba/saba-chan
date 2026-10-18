@@ -422,6 +422,16 @@
       "bot.alias.remove": "Supprimer un alias"
     },
     "arg": {
+      "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
+      "bot.channels.no_notify": "Retirer le salon des notifications",
+      "bot.link.decline": "Refuser cette demande de connexion",
+      "bot.allow.all": "Sans limite : tous les serveurs de ce PC",
+      "bot.word.words": "Nouveaux mots (remplacent les anciens)",
+      "bot.word.clear": "Supprimer les mots de cette commande",
+      "sandbox.allow.component": "Composant à lancer sans isolation",
+      "sandbox.revoke.component": "Composant dont on retire l'autorisation",
+      "do.plan": "Vérifier seulement l'entrée et montrer ce qui se passerait",
+      "do.input": "Entrée sous la forme key=value (les valeurs lisibles en JSON restent du JSON)",
       "server": "Nom du serveur (une partie suffit)",
       "ids": "Un ou plusieurs ID d'extension"
     },
