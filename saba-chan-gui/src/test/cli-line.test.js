@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CliLine, changedForCli, commandCli, fillCli, resetCliCache } from '../components/CliLine';
+import { CliLine, changedForCli, commandCli, fillCli, resetCliCache, splitQuoted } from '../components/CliLine';
 import { summaryValue } from '../components/shell/CommandPalette';
 
 const t = (k) => (k === 'palette.none' ? 'none' : k);
@@ -75,18 +75,30 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
 });
 
 describe('명령 화면의 CLI 줄', () => {
-    const commands = [{ name: 'say' }, { name: 'kick' }];
+    const commands = [{ name: 'say' }, { name: 'tellraw' }, { name: 'kick', aliases: ['추방'] }];
 
-    it('아는 명령이면 server run 한 줄을 만든다 (서버 이름은 필요하면 따옴표)', () => {
-        expect(commandCli('My Server', 'say hello world', commands)).toBe(
-            "saba-chan-cli server run 'My Server' say hello world",
-        );
-        expect(commandCli('wild', 'kick', commands)).toBe('saba-chan-cli server run wild kick');
+    it('데몬 split_quoted와 같이 나눈다', () => {
+        expect(splitQuoted('say "hello world" x')).toEqual(['say', 'hello world', 'x']);
+        expect(splitQuoted('tellraw @a {"text":"hi"}')).toEqual(['tellraw', '@a', '{"text":"hi"}']);
+        expect(splitQuoted('say "a"b c"')).toEqual(['say', 'a"b c']);
     });
 
-    it('모르는 명령은 콘솔에 그대로 보내는 server send, 비었으면 줄이 없다', () => {
-        expect(commandCli('wild', 'gamemode creative', commands)).toBe(
-            'saba-chan-cli server send wild gamemode creative',
+    it('아는 명령은 server run, 칸마다 셸 따옴표로 지킨다', () => {
+        expect(commandCli('My Server', 'say "hello world"', commands)).toBe(
+            "saba-chan-cli server run 'My Server' say 'hello world'",
+        );
+        expect(commandCli('wild', 'tellraw @a {"text":"hi"}', commands)).toBe(
+            `saba-chan-cli server run wild tellraw @a '{"text":"hi"}'`,
+        );
+        expect(commandCli('wild', 'say hi; rm -rf ~', commands)).toBe(
+            "saba-chan-cli server run wild say 'hi;' rm -rf '~'",
+        );
+        expect(commandCli('wild', '추방 steve', commands)).toBe("saba-chan-cli server run wild '추방' steve");
+    });
+
+    it('모르는 명령은 줄 전체를 한 인자로 server send, 비었으면 줄이 없다', () => {
+        expect(commandCli('wild', 'gamemode creative $HOME', commands)).toBe(
+            "saba-chan-cli server send wild 'gamemode creative $HOME'",
         );
         expect(commandCli('wild', '  ', commands)).toBeNull();
     });
