@@ -658,20 +658,22 @@ pub async fn clean_quit(app: &AppHandle) {
 }
 
 /// 이벤트 루프에 종료를 요청한다. 웹뷰가 이미 죽어 요청이 닿지 않으면(Tauri가
-/// "failed to exit"만 남기고 돌아온다) 창만 남은 채 멈추므로, 잠시 뒤에도 살아 있으면
+/// "failed to exit"만 남기고 돌아온다) 창만 남은 채 멈추므로, 1초 뒤에도 살아 있으면
 /// 정리(on_exit)를 직접 하고 프로세스를 끝낸다
 fn exit_app(app: &AppHandle) {
     app.exit(0);
     let app = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(EXIT_WATCHDOG_SECS));
+        std::thread::sleep(EXIT_WATCHDOG);
         tracing::warn!("Event loop did not exit; forcing process exit");
         on_exit(&app);
         std::process::exit(0);
     });
 }
 
-const EXIT_WATCHDOG_SECS: u64 = 3;
+/// 업데이터는 GUI 종료를 기다리지 않고 2초 뒤 새 GUI를 띄우는 경우가 있다. 그보다 먼저 끝나야
+/// 새 GUI가 단일 인스턴스에 걸려 그냥 꺼지지 않는다
+const EXIT_WATCHDOG: Duration = Duration::from_millis(1000);
 
 pub fn spawn_clean_quit(app: &AppHandle, delay_ms: u64) {
     let app = app.clone();
