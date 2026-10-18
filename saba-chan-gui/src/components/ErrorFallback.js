@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WindowControls } from './shell/AppBar';
+import { SabaArt } from './ui/SabaArt';
 
 /**
  * Fallback UI rendered when an uncaught error is caught by ErrorBoundary.
@@ -23,6 +24,7 @@ export function ErrorFallback({ error, resetErrorBoundary }) {
                 <WindowControls />
             </div>
             <div className="error-fallback-content">
+                <SabaArt kind="stopped" size={180} />
                 <h2>{t('errors.unexpected_crash')}</h2>
                 <pre className="error-fallback-details">{error.message}</pre>
                 <button type="button" className="btn btn-primary" onClick={resetErrorBoundary}>

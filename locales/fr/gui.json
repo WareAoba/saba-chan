@@ -1193,6 +1193,18 @@
     "invalid_format": "Format invalide.",
     "unchecked": "Impossible de vérifier les arguments de lancement supplémentaires, rien n'a été enregistré"
   },
+  "saba": {
+    "sleep_title": "Chut ! Elle dort encore…!",
+    "sleep_body": "Saba-chan dort, les serveurs ne peuvent donc pas s'afficher. Réveille-la et elle arrive tout de suite.",
+    "wake": "Réveiller",
+    "waking": "Réveil en cours…",
+    "sleepy": "Aaah… Je suis réveillée. Que se passe-t-il… ?",
+    "empty_title": "Rien ajouté pour le moment",
+    "fail_title": "Oups, impossible de charger",
+    "retry": "Réessayer",
+    "recovering": "{{name}} est tombé ! Remise sur pied en cours…",
+    "stopped": "Impossible de relever {{name}}… Vérifie son état."
+  },
   "activity": {
     "idle": "Cliquez pour voir le journal de la console du daemon",
     "empty": "Aucune commande serveur n'a encore été exécutée.",

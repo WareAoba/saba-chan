@@ -5,6 +5,7 @@ import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SabaFail } from '../ui/SabaArt';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 
 const KIND_TONE = { manual: 'info', scheduled: 'idle', 'pre-update': 'warn', 'pre-restore': 'warn' };
@@ -108,15 +109,7 @@ export function MaintenanceTab({ server }) {
     }, [load]);
 
     if (loadError) {
-        return (
-            <div className="notice tone-warn" role="alert">
-                <Icon name="alertTriangle" size="sm" />
-                <span className="mt-pre">{loadError}</span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={load}>
-                    {t('maintenance.retry')}
-                </button>
-            </div>
-        );
+        return <SabaFail message={loadError} onRetry={load} retryLabel={t('maintenance.retry')} />;
     }
     if (!info) {
         return (

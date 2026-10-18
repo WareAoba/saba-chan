@@ -20,6 +20,7 @@ import {
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OklchPicker } from '../ui/OklchPicker';
+import { SabaEmpty } from '../ui/SabaArt';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
@@ -728,11 +729,10 @@ function SettingsModal({
                             </p>
 
                             {extensions.length === 0 ? (
-                                <div className="setting-item" style={{ opacity: 0.6 }}>
-                                    <span className="setting-description">
-                                        {t('gui:settings_modal.extensions_none', '설치된 익스텐션이 없습니다.')}
-                                    </span>
-                                </div>
+                                <SabaEmpty
+                                    compact
+                                    body={t('gui:settings_modal.extensions_none', '설치된 익스텐션이 없습니다.')}
+                                />
                             ) : (
                                 extensions.map((ext) => (
                                     <Fragment key={ext.id}>

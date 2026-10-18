@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
+import '../ui/SabaArt.css';
 import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 
@@ -266,33 +267,42 @@ export function ConnectionView({
                 </div>
             )}
 
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('discord.agent_title')}</h2>
-                    <StatusChip
-                        tone={botStatus === 'running' ? 'ok' : botStatus === 'connecting' ? 'warn' : 'idle'}
-                        pulse={botStatus === 'connecting'}
-                        label={t(
-                            `discord.agent_${botStatus === 'running' || botStatus === 'connecting' ? botStatus : 'stopped'}`,
-                        )}
-                    />
-                </div>
-                <p className="dc-card-desc">{t('discord.agent_desc')}</p>
-                {agentReplaced && !agentRunning && (
-                    <div className="notice tone-warn">
-                        <Icon name="alertTriangle" size="sm" />
-                        <span>{t('discord.agent_replaced')}</span>
+            <section className={clsx('dc-card dc-relay-card', { off: !agentRunning })}>
+                <div className="dc-relay-body">
+                    <div className="dc-card-head">
+                        <h2>{t('discord.agent_title')}</h2>
+                        <StatusChip
+                            tone={botStatus === 'running' ? 'ok' : botStatus === 'connecting' ? 'warn' : 'idle'}
+                            pulse={botStatus === 'connecting'}
+                            label={t(
+                                `discord.agent_${botStatus === 'running' || botStatus === 'connecting' ? botStatus : 'stopped'}`,
+                            )}
+                        />
                     </div>
-                )}
-                <div className="dc-row-actions">
-                    {agentRunning ? (
-                        <SleepAllButton nodes={nodes} />
-                    ) : (
-                        <button type="button" className="btn btn-primary" onClick={onStartAgent} disabled={!connected}>
-                            <Icon name="play" size="sm" /> {t('discord.agent_start')}
-                        </button>
+                    <p className="dc-card-desc">{t('discord.agent_desc')}</p>
+                    {agentReplaced && !agentRunning && (
+                        <div className="notice tone-warn">
+                            <Icon name="alertTriangle" size="sm" />
+                            <span>{t('discord.agent_replaced')}</span>
+                        </div>
                     )}
+                    <div className="dc-row-actions">
+                        {agentRunning ? (
+                            <SleepAllButton nodes={nodes} />
+                        ) : (
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={onStartAgent}
+                                disabled={!connected}
+                            >
+                                <Icon name="play" size="sm" /> {t('discord.agent_start')}
+                            </button>
+                        )}
+                    </div>
                 </div>
+                {/* 릴레이(명령 전달) 그림: 글과 칸을 나눠 겹치지 않는다. 꺼져 있으면 채도를 크게 낮춘다 */}
+                <img src="./saba/relay.webp" alt="" className="dc-relay-art" draggable={false} decoding="async" />
             </section>
 
             <section className="dc-card">

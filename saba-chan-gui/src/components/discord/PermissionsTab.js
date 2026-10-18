@@ -5,6 +5,7 @@ import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
+import { SabaFail } from '../ui/SabaArt';
 import { Segmented } from '../ui/StatusChip';
 import * as L from './levels';
 
@@ -118,15 +119,7 @@ function PermState({ loading, error, onRetry }) {
             </div>
         );
     }
-    return (
-        <div className="notice tone-warn" role="alert">
-            <Icon name="alertTriangle" size="sm" />
-            <span>{permissionsErrorText(error, t)}</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onRetry}>
-                {t('discord.reload')}
-            </button>
-        </div>
-    );
+    return <SabaFail message={permissionsErrorText(error, t)} onRetry={onRetry} retryLabel={t('discord.reload')} />;
 }
 
 // ── 멤버: 길드 기본값 + 레벨별 멤버 ──

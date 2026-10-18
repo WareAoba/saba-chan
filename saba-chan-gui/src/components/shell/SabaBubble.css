@@ -1,0 +1,106 @@
+/* ===== 사바쨩 말풍선: 좌상단 아이콘에서 늘어져 나온다 ===== */
+.saba-bubble {
+    position: fixed;
+    top: calc(var(--appbar-h) + var(--sp-2));
+    left: var(--sp-3);
+    z-index: 3000;
+    max-width: min(360px, calc(100vw - var(--sp-6)));
+
+    transform-origin: var(--sp-4) calc(-1 * var(--sp-2));
+    animation:
+        saba-bubble-stretch 560ms cubic-bezier(0.34, 1.36, 0.64, 1) backwards,
+        saba-bubble-float 2.8s ease-in-out 560ms infinite;
+}
+.saba-bubble.leaving {
+    animation: saba-bubble-shrink 320ms cubic-bezier(0.5, 0, 0.75, 0) forwards;
+    pointer-events: none;
+}
+
+.saba-bubble-body {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line-strong);
+    background: var(--bg-3);
+    box-shadow: var(--shadow-float);
+}
+/* 꼬리: 아이콘 쪽(위 왼쪽)을 가리킨다 */
+.saba-bubble-body::before {
+    content: "";
+    position: absolute;
+    top: -7px;
+    left: var(--sp-4);
+    width: 12px;
+    height: 12px;
+    background: var(--bg-3);
+    border-left: 1px solid var(--line-strong);
+    border-top: 1px solid var(--line-strong);
+    transform: rotate(45deg);
+}
+.saba-bubble .saba-art {
+    flex-shrink: 0;
+    animation: saba-bubble-art 700ms var(--ease) 120ms backwards;
+}
+
+/* 아이콘에서 실처럼 늘어나 부풀었다가 자리를 잡는다 */
+@keyframes saba-bubble-stretch {
+    0% {
+        opacity: 0;
+        transform: scale(0.08, 0.04);
+        clip-path: inset(0 92% 92% 0 round var(--r-lg));
+    }
+    35% {
+        opacity: 1;
+        transform: scale(0.35, 1.1);
+        clip-path: inset(0 40% 0 0 round var(--r-lg));
+    }
+    70% {
+        transform: scale(1.04, 0.97);
+        clip-path: inset(-20% -20% -20% -20% round var(--r-lg));
+    }
+    100% {
+        transform: scale(1, 1);
+        clip-path: inset(-20% -20% -20% -20% round var(--r-lg));
+    }
+}
+@keyframes saba-bubble-float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-4px);
+    }
+}
+@keyframes saba-bubble-shrink {
+    to {
+        opacity: 0;
+        transform: scale(0.1, 0.05);
+    }
+}
+@keyframes saba-bubble-art {
+    from {
+        opacity: 0;
+        transform: translateY(6px) rotate(-6deg) scale(0.9);
+    }
+}
+
+/* 움직임 줄이기: 늘어나기·둥실은 빼고 조용히 나타났다 사라진다 */
+@media (prefers-reduced-motion: reduce) {
+    .saba-bubble,
+    .saba-bubble.leaving,
+    .saba-bubble .saba-art,
+    .saba-bubble-text {
+        animation: none;
+    }
+}
+
+/* 대사 없이 그림만 크게. 그림마다 가로세로가 달라 상자 크기로 맞춘다 */
+.saba-bubble .saba-art {
+    width: 200px;
+    height: 180px;
+    object-fit: contain;
+}

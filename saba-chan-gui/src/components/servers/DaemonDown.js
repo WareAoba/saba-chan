@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../stores/useUIStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { SabaArt } from '../ui/SabaArt';
 
 /** 상단바가 확인한 데몬 상태가 꺼짐·오류인지 ('checking'은 아직 모름) */
 export const daemonDown = (status) => status === 'stopped' || status === 'error';
 
 /** 데몬 다시 시작 버튼. 실패하면 이유를 토스트로 알린다 */
-export function DaemonRestartButton({ className = 'btn btn-primary' }) {
+export function DaemonRestartButton({ className = 'btn btn-primary', wake = false }) {
     const { t } = useTranslation('gui');
     const [restarting, setRestarting] = useState(false);
     const restart = async () => {
@@ -27,8 +28,14 @@ export function DaemonRestartButton({ className = 'btn btn-primary' }) {
     };
     return (
         <button type="button" className={className} onClick={restart} disabled={restarting}>
-            <Icon name="refresh" size="sm" className={restarting ? 'spin' : undefined} />{' '}
-            {restarting ? t('shell.daemon_restarting') : t('shell.daemon_restart')}
+            <Icon name={wake ? 'sun' : 'refresh'} size="sm" className={restarting ? 'spin' : undefined} />{' '}
+            {wake
+                ? restarting
+                    ? t('saba.waking')
+                    : t('saba.wake')
+                : restarting
+                  ? t('shell.daemon_restarting')
+                  : t('shell.daemon_restart')}
         </button>
     );
 }
@@ -38,11 +45,11 @@ export function DaemonDownState() {
     const { t } = useTranslation('gui');
     return (
         <div className="page page-empty">
-            <div className="empty-state">
-                <Icon name="alertTriangle" size="lg" />
-                <h2>{t('shell.daemon_down_title')}</h2>
-                <p>{t('shell.daemon_down_body')}</p>
-                <DaemonRestartButton className="btn btn-primary btn-lg" />
+            <div className="empty-state daemon-sleep">
+                <SabaArt kind="sleep" size={300} />
+                <h2>{t('saba.sleep_title')}</h2>
+                <p>{t('saba.sleep_body')}</p>
+                <DaemonRestartButton className="btn btn-primary btn-lg" wake />
             </div>
         </div>
     );
@@ -55,7 +62,7 @@ export function DaemonDownNotice() {
         <div className="notice tone-warn daemon-down-notice" role="alert">
             <Icon name="alertTriangle" size="sm" />
             <span>{t('shell.daemon_down_stale')}</span>
-            <DaemonRestartButton className="btn btn-ghost btn-sm" />
+            <DaemonRestartButton className="btn btn-ghost btn-sm" wake />
         </div>
     );
 }

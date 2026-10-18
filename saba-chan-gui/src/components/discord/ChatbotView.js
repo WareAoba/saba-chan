@@ -5,6 +5,7 @@ import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { StatusChip } from '../ui/StatusChip';
 import { Avatar } from './NodeView';
 
@@ -110,15 +111,7 @@ export function ChatbotView({ nodes = [] }) {
                 <h1>{t('chatbot.title')}</h1>
                 <p className="muted">{t('chatbot.desc')}</p>
             </header>
-            {loadError && (
-                <div className="notice tone-warn" role="alert">
-                    <Icon name="alertTriangle" size="sm" />
-                    <span className="mt-pre">{loadError}</span>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={load}>
-                        {t('maintenance.retry')}
-                    </button>
-                </div>
-            )}
+            {loadError && <SabaFail message={loadError} onRetry={load} retryLabel={t('maintenance.retry')} />}
             {!data && !loadError && <SabaSpinner />}
             {data && (
                 <>
@@ -353,7 +346,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                 </div>
                 <p className="dc-card-desc">{t('chatbot.guilds_desc')}</p>
                 {guildIds.length === 0 ? (
-                    <p className="muted">{t('chatbot.guilds_empty')}</p>
+                    <SabaEmpty compact body={t('chatbot.guilds_empty')} />
                 ) : (
                     <ul className="dc-list">
                         {guildIds.map((id) => {

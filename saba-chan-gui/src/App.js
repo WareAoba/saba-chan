@@ -16,6 +16,7 @@ import {
 import { AgreementDialog } from './components/AgreementList';
 import { DiscordPage } from './components/discord/DiscordPage';
 import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
+import { SabaBubble } from './components/shell/SabaBubble';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
@@ -833,6 +834,7 @@ function App() {
                     </div>
 
                     {activityAvailable() && <ActivityBar />}
+                    <SabaBubble />
                     {paletteAvailable() && <CommandPalette />}
                     {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
                     {linkRequestsAvailable() && <LinkRequests />}

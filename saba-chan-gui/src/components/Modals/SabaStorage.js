@@ -7,6 +7,7 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 import { localizedDescription } from '../../utils/localizedText';
 import { clearModuleAuditCache, ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
+import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
 
 // ─────────────────────────────────────────────────────────────
@@ -830,7 +831,7 @@ function ModulesTab() {
                 </button>
             </div>
             {installedModules.length === 0 ? (
-                <p className="ss-empty">{t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')}</p>
+                <SabaEmpty compact body={t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
                     {installedModules.map((m, idx) => {
@@ -893,11 +894,7 @@ function ModulesTab() {
                     {manifestLoading && (
                         <p className="ss-empty">{t('saba_storage.loading_manifest', '매니페스트 로드 중...')}</p>
                     )}
-                    {manifestError && (
-                        <div className="update-modal-status-bar error">
-                            <Icon name="xCircle" size="sm" /> {manifestError}
-                        </div>
-                    )}
+                    {manifestError && <SabaFail message={manifestError} />}
                     {!manifestLoading &&
                         manifestModules !== null &&
                         uninstalledModules.length === 0 &&
@@ -1071,7 +1068,7 @@ function ExtensionsTab() {
                 </button>
             </div>
             {extensions.length === 0 ? (
-                <p className="ss-empty">{t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')}</p>
+                <SabaEmpty compact body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
                     {extensions.map((ext) => {
