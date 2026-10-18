@@ -253,7 +253,7 @@
 
 `PATCH /api/instance/:id` 동작 세부:
 
-- 알려진 키(`port, rest_*, executable_path, protocol_mode, server_version, extension_data`)는 일급 필드로 반영한다. 예전 RCON 키(`rcon_port, rcon_password, enable_rcon`)는 받아도 어디에도 반영하지 않는다(`instance.rs:979-1000`).
+- 알려진 키(`port, rest_*, executable_path, protocol_mode, server_version, extension_data`)는 일급 필드로 반영한다. 예전 RCON 키(`rcon_port, rcon_password, enable_rcon`)는 받아도 어디에도 반영하지 않는다(`instance.rs:979-1000`). `rest_*`·`executable_path`에 null을 보내면 지정을 지워 기본값(모듈 실행 파일 해석, REST 기본값·실행 때 만드는 비밀번호)으로 되돌린다.
 - 나머지 키는 전부 `module_settings`로 들어간다.
 - 이후 락을 놓고 `manage_properties("write")`로 게임 설정 파일과 동기화하고, `extension_data`가 비어 있지 않으면 `server.settings_changed` 훅을 보낸다.
 

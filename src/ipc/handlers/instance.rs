@@ -1130,6 +1130,20 @@ pub async fn update_instance_settings(
     }
 
     // NOTE: REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
+    // REST 설정과 executable_path는 null이면 지정을 지워 기본값으로 되돌린다
+    let cleared = |key: &str| settings.get(key).is_some_and(Value::is_null);
+    if cleared("rest_host") {
+        updated.rest_host = None;
+    }
+    if cleared("rest_port") {
+        updated.rest_port = None;
+    }
+    if cleared("rest_username") {
+        updated.rest_username = None;
+    }
+    if cleared("rest_password") {
+        updated.rest_password = None;
+    }
 
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
@@ -1207,6 +1221,9 @@ pub async fn update_instance_settings(
         }
     }
 
+    if cleared("executable_path") {
+        updated.executable_path = None;
+    }
     if let Some(executable_path) = settings.get("executable_path").and_then(|v| v.as_str()) {
         // executable_path는 보통 모듈의 server_executable + working_dir에서 자동 해석되지만,
         // 명시적으로 설정하면 override로 저장합니다.
@@ -1994,6 +2011,39 @@ mod tests {
         assert!(user_settings(id.clone()).await.is_empty());
         assert!(patch(json!({ "java_path": "/opt/jdk/bin/java" })).await.status.is_success());
         assert!(user_settings(id.clone()).await.contains("java_path"));
+    }
+
+    #[tokio::test]
+    async fn null_clears_the_executable_and_rest_overrides() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        let exe = tmp.path().join("server").join("run.sh");
+        let set = json!({ "executable_path": exe.to_str().unwrap(), "rest_host": "10.0.0.2", "rest_port": 9000, "rest_username": "admin", "rest_password": "hunter22" });
+        assert!(patch(set).await.status.is_success());
+        let cleared = json!({ "executable_path": null, "rest_host": null, "rest_port": null, "rest_username": null, "rest_password": null });
+        assert!(patch(cleared).await.status.is_success());
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.executable_path, None);
+        assert_eq!((inst.rest_host, inst.rest_port, inst.rest_username, inst.rest_password), (None, None, None, None));
+        assert!(!inst.module_settings.contains_key("executable_path"));
     }
 
     #[test]
