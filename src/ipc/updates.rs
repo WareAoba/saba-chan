@@ -961,7 +961,16 @@ mod tests {
         let gui_exe = tmp.path().join("saba-chan-gui");
         std::fs::copy("/bin/sleep", &gui_exe).unwrap();
         let spawn = |exe: &std::path::Path| {
-            let mut child = std::process::Command::new(exe).arg("30").spawn().unwrap();
+            // 방금 복사한 파일은 다른 테스트가 fork하는 동안 쓰기 핸들이 남아 ETXTBSY가 날 수 있다
+            let mut child = (0..50)
+                .find_map(|_| match std::process::Command::new(exe).arg("30").spawn() {
+                    Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        None
+                    }
+                    other => Some(other.unwrap()),
+                })
+                .expect("executable stayed busy");
             let pid = child.id();
             std::thread::spawn(move || child.wait()); // 끝나면 바로 거둬 좀비로 남지 않게
             pid
