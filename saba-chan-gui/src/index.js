@@ -6,7 +6,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
 import { installMockApi } from './dev/mockApi';
-import './i18n'; // Initialize i18n
+import { i18nReady } from './i18n'; // Initialize i18n
 import './styles/tokens.css'; // 디자인 토큰 (다른 CSS보다 먼저)
 import './styles/base.css';
 import { initTheme } from './utils/themeManager';
@@ -26,9 +26,12 @@ const handleGlobalError = (error, info) => {
     console.error('[ErrorBoundary] Component stack:', info.componentStack);
 };
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-    <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleGlobalError}>
-        <App />
-    </ErrorBoundary>,
-);
+// 고른 언어 파일을 읽은 뒤 그린다 (실패해도 영어로 그린다)
+i18nReady.finally(() => {
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+        <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleGlobalError}>
+            <App />
+        </ErrorBoundary>,
+    );
+});
