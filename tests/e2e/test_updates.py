@@ -1,16 +1,22 @@
 """L4 업데이트 확인·내려받기: 서명 검증, 변조·다운그레이드·해시 불일치 거부.
 
 `--features mock-relay`로 빌드한 데몬이 필요하다 (공개 시험 키를 믿는 빌드). 위치: SABA_E2E_MOCK_CORE,
-기본 target/e2e-mock/debug/saba-core. 적용(apply)은 업데이터 GUI를 띄우므로 PC 층(run-pc.ps1)에서 본다.
+기본 target/e2e-mock/debug/saba-core. 적용은 같은 키를 믿는 업데이터(SABA_E2E_MOCK_UPDATER, 기본 target/e2e-mock/debug/saba-chan-updater,
+`cargo build -p saba-chan-updater --features saba-chan-updater-lib/mock-relay`)와 GUI(SABA_E2E_GUI_EXE)가 있어야 본다.
+릴리스 업데이터는 시험 키 서명을 거부하므로 쓰지 않는다.
 """
 
 import os
 import platform
+import re
 import shutil
+import subprocess
+import time
 from pathlib import Path
 
 import pytest
 
+from harness import procs
 from harness.daemon import wait_until
 from harness.fake_updates import FakeUpdates
 from harness.paths import EXE, REPO
@@ -18,6 +24,8 @@ from harness.paths import EXE, REPO
 pytestmark = pytest.mark.mock_relay
 
 MOCK_CORE = Path(os.environ.get("SABA_E2E_MOCK_CORE", REPO / "target" / "e2e-mock" / "debug" / f"saba-core{EXE}"))
+MOCK_UPDATER = Path(os.environ.get("SABA_E2E_MOCK_UPDATER", MOCK_CORE.parent / f"saba-chan-updater{EXE}"))
+GUI_EXE = Path(os.environ.get("SABA_E2E_GUI_EXE", REPO / "target" / "debug" / f"saba-chan-gui{EXE}"))
 
 
 def _platform() -> str:
@@ -111,3 +119,59 @@ def test_release_build_does_not_trust_mock_key(sandbox, updates, daemon_factory)
     d = daemon_factory()
     body = _check(d)
     assert not body["ok"], f"일반 빌드가 mock 키 서명을 믿음: {body}"
+
+
+def test_daemon_started_update_relaunches_the_open_gui_once(sandbox, updates, daemon_factory, xdisplay):
+    """CLI·자동 업데이트처럼 GUI가 아닌 쪽이 업데이터를 띄우면, 데몬이 떠 있는 GUI를 끄고 업데이터가 그 GUI를 한 번만 다시 띄운다 (#141)."""
+    for exe in (MOCK_UPDATER, GUI_EXE):
+        if not exe.exists():
+            pytest.skip(f"없습니다: {exe}")
+    install = sandbox.root / "install"
+    install.mkdir()
+    core = Path(shutil.copy2(MOCK_CORE, install / MOCK_CORE.name))
+    shutil.copy2(MOCK_UPDATER, install / MOCK_UPDATER.name)
+    gui_exe = Path(shutil.copy2(GUI_EXE, install / f"saba-chan-gui{EXE}"))
+    # 다시 뜬 GUI는 설정의 포트로 데몬을 띄운다: 기본 57474면 실제 데몬과 부딪힌다
+    sandbox.write_config({"updates": {"relay_url": updates.url, "auto_download": False, "auto_check": False}, "gui": {"ipcPort": sandbox.ipc_port}})
+    display = {"DISPLAY": xdisplay} if xdisplay else {}
+    d = daemon_factory(core=core, extra_env=display)
+    env = sandbox.env(IPC_BASE=f"http://127.0.0.1:{sandbox.ipc_port}", **display)
+    gui_log = open(sandbox.root / "gui.log", "w", encoding="utf-8")
+    gui = subprocess.Popen([str(gui_exe)], env=env, stdout=gui_log, stderr=subprocess.STDOUT, start_new_session=True)
+    relaunched: list[int] = []
+    try:
+        wait_until(lambda: any(c.get("kind") == "gui" and c.get("pid") == gui.pid for c in d.api.ok("GET", "/api/clients")["clients"]), 60, "GUI가 데몬에 등록")
+        _check(d)
+        d.api.ok("POST", "/api/updates/download", {"components": ["saba-core"]}, timeout=120)
+        wait_until(lambda: _component(d.api.ok("GET", "/api/updates/status"), "saba-core").get("downloaded"), 60, "saba-core 내려받음")
+        applied = d.api.ok("POST", "/api/updates/apply", {"components": ["saba-core"]}, timeout=60)
+        assert applied.get("requires_updater"), applied
+        # CLI처럼 GUI가 아닌 것을 다시 띄우라고 부른다: 데몬이 떠 있는 GUI로 바꿔야 한다
+        assert d.api.ok("POST", "/api/updates/launch-updater", {"relaunch": [str(core), "--spawned"]})["updater_launched"]
+        wait_until(lambda: gui.poll() is not None, 30, "데몬이 원래 GUI를 끔")
+        wait_until(lambda: not d.alive(), 30, "데몬 종료")
+        log = sandbox.tmp / "saba-updater.log"
+        wait_until(lambda: log.exists() and "Relaunch succeeded" in log.read_text(encoding="utf-8", errors="replace"), 90, "업데이터가 GUI를 다시 띄움")
+        time.sleep(8)  # 두 번째로 띄우는지 지켜본다
+        text = log.read_text(encoding="utf-8", errors="replace")
+        spawns = re.findall(r"\[Apply\] Spawning: (.*)", text)
+        assert len(spawns) == 1 and str(gui_exe) in spawns[0], text[-3000:]
+        relaunched = [pid for pid, cmd in procs.processes_mentioning(str(gui_exe)) if pid != gui.pid]
+        assert len(relaunched) == 1, f"다시 뜬 GUI가 하나가 아님: {relaunched}"
+        assert (install / core.name).read_bytes() == b"new core", "업데이터가 코어를 바꾸지 않음"
+    finally:
+        if (sandbox.tmp / "saba-updater.log").exists():
+            sandbox.artifacts.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(sandbox.tmp / "saba-updater.log", sandbox.artifacts / "saba-updater.log")
+        for pid in relaunched:
+            procs.kill_pid(pid)
+        if gui.poll() is None:
+            gui.kill()
+        gui_log.close()
+        # 다시 뜬 GUI가 띄운 데몬도 끈다 (같은 시험 포트, 뜨는 데 시간이 걸릴 수 있다)
+        for _ in range(20):
+            try:
+                procs.kill_pid(d.api.get("/health", token=False, timeout=2).json()["pid"])
+                break
+            except Exception:
+                time.sleep(0.5)
