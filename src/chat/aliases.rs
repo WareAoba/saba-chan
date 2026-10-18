@@ -1,12 +1,11 @@
 //! 모듈/명령어 별명 해석
 //!
-//! 모듈 별명: 모듈 이름 → module.toml [aliases].module_aliases → 사용자 설정 순으로
+//! 모듈 별명: 모듈 이름 → module.toml [aliases].module_aliases 순으로
 //! 등록하고, 같은 별명을 두 모듈이 가지면 먼저 등록한 쪽을 쓰되 충돌로 기록합니다.
 //! 명령어 별명은 모듈 단위로 해석합니다 (다른 모듈의 별명과 섞이지 않음).
+//! 사용자가 정하는 낱말은 길드·인스턴스별이다 (`words`).
 
 use super::api::ModuleView;
-use serde_json::Value;
-use std::collections::HashMap;
 
 /// 모든 모듈에 공통인 내장 명령어
 pub const BUILTIN_COMMANDS: &[&str] = &["start", "stop", "status"];
@@ -20,7 +19,7 @@ pub struct ModuleAliases {
 }
 
 impl ModuleAliases {
-    pub fn build(modules: &[ModuleView], custom: &HashMap<String, String>) -> Self {
+    pub fn build(modules: &[ModuleView]) -> Self {
         let mut me = Self::default();
         for m in modules {
             me.register(&m.name, &m.name);
@@ -28,14 +27,6 @@ impl ModuleAliases {
         for m in modules {
             for alias in &m.module_aliases {
                 me.register(alias, &m.name);
-            }
-        }
-        // 사용자 별명: "a, b, c" 콤마 구분. 결정적인 순서를 위해 모듈 이름순.
-        let mut custom_sorted: Vec<_> = custom.iter().collect();
-        custom_sorted.sort_by(|a, b| a.0.cmp(b.0));
-        for (module, aliases) in custom_sorted {
-            for alias in split_aliases(aliases) {
-                me.register(alias, module);
             }
         }
         me
@@ -90,19 +81,11 @@ impl ModuleAliases {
     }
 }
 
-/// 명령어 별명 → 명령어 이름 (모듈 범위). 우선순위: 사용자 설정 → module.toml → 내장/정의 명령 이름.
-pub fn resolve_command(module: Option<&ModuleView>, custom: &HashMap<String, Value>, input: &str) -> String {
+/// 명령어 별명 → 명령어 이름 (모듈 범위). 우선순위: module.toml → 내장/정의 명령 이름.
+/// 길드·인스턴스별 사용자 낱말은 호출하는 쪽이 먼저 본다 (`words::command_for`)
+pub fn resolve_command(module: Option<&ModuleView>, input: &str) -> String {
     let mut table: Vec<(String, String)> = Vec::new();
     if let Some(m) = module {
-        if let Some(Value::Object(cmds)) = custom.get(&m.name) {
-            for (cmd, aliases) in cmds {
-                if let Some(s) = aliases.as_str() {
-                    for alias in split_aliases(s) {
-                        table.push((alias.to_string(), cmd.clone()));
-                    }
-                }
-            }
-        }
         for (cmd, aliases) in &m.command_aliases {
             for alias in aliases {
                 table.push((alias.clone(), cmd.clone()));
@@ -122,15 +105,6 @@ pub fn resolve_command(module: Option<&ModuleView>, custom: &HashMap<String, Val
         .unwrap_or_else(|| input.to_string())
 }
 
-fn split_aliases(s: &str) -> impl Iterator<Item = &str> {
-    s.split(',').map(str::trim).filter(|a| !a.is_empty())
-}
-
-/// "a, b, c" 목록에 `input`이 있는지 (대소문자 무시)
-pub fn alias_listed(list: &str, input: &str) -> bool {
-    split_aliases(list).any(|a| a.to_string().eq_ignore_ascii_case_unicode(input))
-}
-
 /// 대소문자 무시 비교 (ASCII 밖 문자도 소문자화). 한글 별명은 그대로 비교된다.
 trait CaseInsensitive {
     fn eq_ignore_ascii_case_unicode(&self, other: &str) -> bool;
@@ -145,7 +119,6 @@ impl CaseInsensitive for String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     fn module(name: &str, aliases: &[&str]) -> ModuleView {
         ModuleView {
@@ -157,11 +130,10 @@ mod tests {
 
     #[test]
     fn resolves_and_records_conflicts() {
-        let mods = vec![module("palworld", &["팰월드", "pw"]), module("minecraft", &["mc", "pw"])];
-        let custom = HashMap::from([("minecraft".to_string(), "마크, MC2".to_string())]);
-        let a = ModuleAliases::build(&mods, &custom);
+        let mods = vec![module("palworld", &["팰월드", "pw"]), module("minecraft", &["mc", "pw", "마크"])];
+        let a = ModuleAliases::build(&mods);
         assert_eq!(a.resolve("PW"), "palworld");
-        assert_eq!(a.resolve("mc2"), "minecraft");
+        assert_eq!(a.resolve("MC"), "minecraft");
         assert_eq!(a.resolve("마크"), "minecraft");
         assert_eq!(a.resolve("unknown"), "unknown");
         assert_eq!(a.conflict("pw").unwrap(), &["palworld".to_string(), "minecraft".to_string()]);
@@ -172,11 +144,10 @@ mod tests {
     #[test]
     fn command_aliases_are_module_scoped() {
         let mut pal = module("palworld", &[]);
-        pal.command_aliases = vec![("start".into(), vec!["시작".into()])];
-        let custom = HashMap::from([("palworld".to_string(), json!({"players": "접속자, who"}))]);
-        assert_eq!(resolve_command(Some(&pal), &custom, "시작"), "start");
-        assert_eq!(resolve_command(Some(&pal), &custom, "WHO"), "players");
-        assert_eq!(resolve_command(None, &custom, "who"), "who");
-        assert_eq!(resolve_command(None, &custom, "Stop"), "stop");
+        pal.command_aliases = vec![("start".into(), vec!["시작".into()]), ("players".into(), vec!["who".into()])];
+        assert_eq!(resolve_command(Some(&pal), "시작"), "start");
+        assert_eq!(resolve_command(Some(&pal), "WHO"), "players");
+        assert_eq!(resolve_command(None, "who"), "who");
+        assert_eq!(resolve_command(None, "Stop"), "stop");
     }
 }

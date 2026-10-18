@@ -397,6 +397,10 @@ impl Session {
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
         }
+        // 길드·인스턴스별로 서버와 명령을 부르는 낱말. 항목이 있는 길드만 (릴레이는 찾기·위험 확인에 쓴다)
+        if let Some(words) = crate::chat::words::heartbeat(&bot.node_settings) {
+            meta["instanceWords"] = words;
+        }
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)

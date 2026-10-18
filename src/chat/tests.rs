@@ -342,17 +342,22 @@ async fn two_instances_of_one_module_need_instance_name() {
 }
 
 #[tokio::test]
-async fn instance_aliases_pick_one_of_several_instances() {
+async fn guild_words_pick_one_of_several_instances() {
     let mut api = fixture();
     api.servers.push(server("i-mc2", "creative", "minecraft", "running"));
     let mut s = settings();
-    s.instance_aliases = HashMap::from([("i-mc2".to_string(), "크리, cr".to_string())]);
+    s.node_settings = serde_json::json!({ "g1": { "instances": { "i-mc2": { "words": ["크리", "cr"], "commands": { "kick": ["내보내"] } } } } });
     run(&api, &s, "CR start").await;
     run(&api, &s, "크리 start").await;
     assert_eq!(api.calls(), vec!["start i-mc2", "start i-mc2"]);
-    // 두 인스턴스가 같은 별명을 쓰면 고르지 않는다
-    let first = api.servers[0].id.clone();
-    s.instance_aliases.insert(first, "cr".into());
+    // 그 길드·서버에서 정한 명령 낱말
+    run(&api, &s, "크리 내보내 steve").await;
+    assert_eq!(api.calls()[2], "command i-mc2 kick [\"steve\"]");
+    // 다른 길드에서는 그 낱말을 모른다
+    let req = ChatRequest { text: "크리 start".into(), guild_id: Some("g2".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() };
+    assert_eq!(process(&api, &s, &Catalog::for_language("en"), &req).await.code, Some("INSTANCE_NOT_FOUND"));
+    // 두 인스턴스가 같은 낱말을 쓰면 고르지 않는다
+    s.node_settings["g1"]["instances"]["i-mc"] = serde_json::json!({ "words": ["cr"] });
     let cat = Catalog::for_language("en");
     assert_eq!(run(&api, &s, "cr start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
 }

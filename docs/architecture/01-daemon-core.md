@@ -385,6 +385,8 @@
 | POST | `/api/chat/command` | `chat.rs:10` | `{text, guild_id?, user_id?, locale?}` → `{reply, code, args}`. 답 문구는 `locale`, 없으면 GUI 언어. `code`는 입력을 알아보지 못했을 때만(`UNKNOWN_COMMAND`·`INSTANCE_NOT_FOUND`), 아니면 null |
 | GET/PUT/DELETE | `/api/chatbot` | `chatbot.rs:70/245/267` | AI 챗봇 설정 (`config.json`의 `chatbot`). 바뀔 때마다 릴레이에 동기화, 클라이언트에는 `hasApiKey`·`pendingRelayDelete`만. PUT은 릴레이 기본값 위에 전체 설정을 얹어 보낸다(`chatbot.rs:33-59`). DELETE가 릴레이에 닿지 못하면 `pendingRelayDelete:true`로 남기고 다음 연결 때 다시 지운다(`:199-243`) |
 | DELETE | `/api/chatbot/memory` | `chatbot.rs:283` | query `guildId?` |
+| GET | `/api/guilds/:guild/instances` | `guild_words.rs` `list` | - | 그 길드가 쓰는 서버(`allowedInstances`, 없으면 전부)마다 `{id, name, module, words, commands:[{name, label, risk, builtin, moduleAliases, aliases}]}`. `{guildId, instances}` |
+| PUT | `/api/guilds/:guild/instances/:id/words` | `guild_words.rs` `put` | `{words, commands:{<명령>:[..]}}` | `{success, id, words, commands}`. 규칙 위반은 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`(`field`: `words[i]`·`commands.<명령>[i]`·`words`·`commands.<명령>`·`input`, `reason`: `invalid`·`reserved`·`conflict`(같은 서버 안에서 겹치면 `conflictWith`가 그 서버 이름)·`unknown_command`·`too_many`, `word`는 문제가 된 낱말), 그 길드가 쓰지 않는 서버는 404. 빈 값이면 항목을 지운다. 로컬 전용(릴레이 에이전트는 부르지 않고 액션 카탈로그에도 없다) |
 | GET·PATCH | `/api/chatbot/guilds/:guild` | `chatbot.rs` `get_guild`·`patch_guild` | PATCH `{설정 키: 값\|null}` | 길드 하나의 챗봇 설정(I2-b): `{success, guildId, settings, hasApiKey}`(`settings`는 릴레이 기본값 위에 실제 값). PATCH는 그 길드 값만 합쳐 `PUT /api/chatbot`과 같이 저장·동기화한다. 릴레이 기본값 표에 없는 키(`apiKey` 포함)는 400 `validation_failed`. 액션 `chatbot.settings.get`(safe, 디스코드는 소유자)·`chatbot.settings.set`(admin, 디스코드는 소유자, 챗봇 표면 없음: 챗봇이 자기 확인을 끄지 못하게). 원격은 자기 길드만 |
 
 
@@ -507,8 +509,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 **BotConfig** (camelCase, `config.json`의 `relay`, `config_store/mod.rs:115-125`). 로컬 봇용 필드(`token`, `autoStart`, `mode`, `music*`)는 지워졌고, 옛 파일에 남아 있어도 무시된다.
 
 - `prefixes`(문자열 목록, 기본 `[]`: 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다. ko `사바쨩`, ja `サバちゃん`, 그 밖 `Saba-chan`). 각각 공백 없는 1~32자, 10개까지이고 어기면 `PUT /api/config/bot`이 400이다. 예전 `prefix` 문자열은 읽을 때 옮긴다(`"!saba"`·빈 값 → `[]`, 그 밖 → `[값]`, `BotConfig::normalize`). `cloud{relayUrl,hostId}` (hostId는 노드 토큰 `sbn_<hostId>.…`을 따른다: 페어링 완료·`PUT`·`DELETE /api/config/node-token`이 같이 맞춘다)
-- `moduleAliases`, `commandAliases`
-- `instanceAliases`: 인스턴스 ID → 그 서버를 부르는 별명 목록(`"크리, cr"`). 같은 게임 서버가 여럿일 때 하나를 고른다. 채팅 처리기는 인스턴스 이름 → 인스턴스 별명 → 모듈 별명 순으로 찾고, 여러 서버가 걸리면 `errors.multiple_instances`로 답한다(`src/chat/mod.rs:256-285`)
+- `moduleAliases`, `commandAliases`, `instanceAliases`: 예전 전역 별명. 데몬이 시작할 때 길드를 하나라도 알면(`nodeSettings` 키, `cloudNodes[].guildId`) 아래 `nodeSettings[guild].instances`로 옮기고 비운다(`guild_words::migrate_on_start`, `chat::words::migrate`). `instanceAliases[id]`는 그 서버를 쓰는 길드마다 `words`로, 모듈 별명은 그 길드에 그 모듈 서버가 하나뿐일 때만 그 서버 `words`로(여럿이면 버리고 로그), `commandAliases[모듈]`은 그 모듈 서버마다 `commands`로 간다. 다른 서버 이름·낱말과 겹치는 낱말은 버린다
 - `nodeSettings`, `cloudNodes`, `cloudMembers`
 - `nodeSettings[guildId]`의 디스코드 명령 권한 (P1, `chat/permissions.rs`). 원본은 이것 하나다.
   - 키: `ownerDiscordId`(고정된 주인), `relayOwnerDiscordId`(릴레이가 알려 온 다른 주인, 경고용), `defaultLevel`(1), `members{discordId: -1..2}`, `preset`("default"·"loose"·"strict"), `commandLevels{"<instanceId>/<command>": 0..3}`, `chatbotCap`(0), 예전 금지 목록 `memberPermissions`(읽기만).
@@ -522,6 +523,8 @@ Relay 서명 방식(`relay.rs:100-137`):
   - `/api/discord/:guild/settings`로만 바뀐다. 봇 설정 저장은 이 블록도 되돌린다(`PERMISSION_KEYS`).
   - 데몬에 값이 없는 길드는 릴레이 값을 읽는다(릴레이에 없으면 기본값). 페어링했는데 릴레이를 읽지 못하면 GET은 기본값에 `loaded:false`를 붙여 답하고, PATCH는 503 `relay_unavailable`로 거절한다(기본값을 저장해 릴레이 값을 덮지 않게).
   - 릴레이에 닿지 않거나 5xx로 보내지 못한 설정은 저장해 두고, 다음에 하트비트가 성공하면 `sync_on_connect`로 다시 보낸다(`discord::take_pending_sync`).
+- `nodeSettings[guildId].instances[instanceId]`: 그 길드에서 그 서버를 부르는 낱말 `{words:[..], commands:{<명령 정식 이름>:[..]}}`(`chat/words.rs`). `/api/guilds/:guild/instances*`로만 바뀐다(`PERMISSION_KEYS`). 낱말은 공백 없는 1~32자, 항목마다 10개까지이고, 같은 길드의 다른 서버 이름·id·낱말, 모듈 이름·module.toml 별명, `help`·`도움`·`도움말`·`list`·`목록`과 겹치면 안 된다. 명령 낱말은 같은 서버의 다른 명령 이름·별명과 겹치면 안 되고, 명령은 내장(start·stop·status)이거나 모듈 정의에 있어야 한다.
+  - 채팅 처리기(릴레이에서 온 길드 요청만): 대상은 인스턴스 이름·id → 그 길드 `words` → 모듈 이름·module.toml 별명 순, 명령은 그 길드·서버의 `commands` → module.toml 별명 → 명령 이름 → 내장 순이다. 여러 서버가 걸리면 `errors.multiple_instances`로 답한다. 로컬 요청(GUI·CLI)은 사용자 낱말을 쓰지 않는다. 권한 키는 언제나 정식 이름(`<instance>/<command>`)이다.
 
 **데몬이 실제로 쓰는 설정값은 일부뿐이다.**
 
