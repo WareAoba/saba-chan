@@ -704,7 +704,7 @@ mod imp {
     }
 
     /// 기록된 런타임 읽기 권한 중 `daemon`·`keep`에 없는 것을 거둔다 (`super::stale_runtimes`).
-    /// 거두지 못한 폴더(지워진 폴더 등)는 기록에서 빼고 경고만 남긴다
+    /// 폴더가 남아 있는데 거두지 못한 것은 기록에 두고 다음 시작 때 다시 시도한다
     pub fn revoke_stale_runtimes(daemon: &BTreeSet<PathBuf>, keep: &BTreeMap<String, BTreeSet<PathBuf>>) {
         let _guard = acl_lock();
         let file = super::runtime_record_path();
@@ -722,10 +722,16 @@ mod imp {
                 }
             };
             for path in paths {
-                if let Err(e) = remove_ace(path, sid) {
-                    tracing::warn!("[Sandbox] could not revoke {} from {}: {}", path.display(), profile, e);
-                }
-                if let Some(known) = record.get_mut(profile) {
+                // 거뒀거나 폴더가 없어졌으면(ACE도 함께 사라짐) 기록에서 빼고, 아니면 다음 시작 때 다시 시도한다
+                let done = match remove_ace(path, sid) {
+                    Ok(()) => true,
+                    Err(_) if !path.exists() => true,
+                    Err(e) => {
+                        tracing::warn!("[Sandbox] could not revoke {} from {}: {}", path.display(), profile, e);
+                        false
+                    }
+                };
+                if let (true, Some(known)) = (done, record.get_mut(profile)) {
                     known.remove(path);
                 }
             }
