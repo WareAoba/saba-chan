@@ -268,7 +268,8 @@
     "console": "콘솔",
     "command": "명령어",
     "click_to_stop": "정지하려면 클릭",
-    "click_to_start": "시작하려면 클릭"
+    "click_to_start": "시작하려면 클릭",
+    "delete_still_running": "'{{name}}' 서버를 아직 지우고 있어요. 잠시 뒤 서버 목록을 다시 확인해 주세요."
   },
   "server_settings": {
     "title": "설정",

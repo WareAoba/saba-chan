@@ -415,7 +415,8 @@ export function createApi({ invoke, hub }) {
                     }
                 }
                 if (error.code === 'ECONNREFUSED') return { error: t('network.connection_refused') };
-                return { error: t('server.delete_failed', { error: error.message }) };
+                // 시간이 다 돼도 데몬은 계속 지우고 있을 수 있다: 화면이 목록으로 다시 확인한다
+                return { error: t('server.delete_failed', { error: error.message }), error_code: error.code };
             }
         },
         instanceReorder: async (orderedIds) => {

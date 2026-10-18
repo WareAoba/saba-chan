@@ -265,7 +265,8 @@
     "console": "Console",
     "command": "Command",
     "click_to_stop": "Click to stop",
-    "click_to_start": "Click to start"
+    "click_to_start": "Click to start",
+    "delete_still_running": "«{{name}}» ещё удаляется. Проверьте список серверов чуть позже."
   },
   "server_settings": {
     "title": "Параметры",

@@ -265,7 +265,8 @@
     "console": "Console",
     "command": "Commande",
     "click_to_stop": "Cliquer pour arrêter",
-    "click_to_start": "Cliquer pour démarrer"
+    "click_to_start": "Cliquer pour démarrer",
+    "delete_still_running": "'{{name}}' est encore en cours de suppression. Revérifiez la liste des serveurs dans un instant."
   },
   "server_settings": {
     "title": "Paramètres",

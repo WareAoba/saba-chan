@@ -265,7 +265,8 @@
     "console": "Console",
     "command": "Command",
     "click_to_stop": "Click to stop",
-    "click_to_start": "Click to start"
+    "click_to_start": "Click to start",
+    "delete_still_running": "'{{name}}' todavía se está eliminando. Vuelve a revisar la lista de servidores en un momento."
   },
   "server_settings": {
     "title": "Configuración",

@@ -265,7 +265,8 @@
     "console": "控制台",
     "command": "命令",
     "click_to_stop": "点击停止",
-    "click_to_start": "点击启动"
+    "click_to_start": "点击启动",
+    "delete_still_running": "仍在删除“{{name}}”。请稍后再查看服务器列表。"
   },
   "server_settings": {
     "title": "设置",

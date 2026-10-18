@@ -209,7 +209,8 @@
     "console": "コンソール",
     "command": "コマンド",
     "click_to_stop": "停止するにはクリック",
-    "click_to_start": "開始するにはクリック"
+    "click_to_start": "開始するにはクリック",
+    "delete_still_running": "'{{name}}' はまだ削除中です。しばらくしてからサーバー一覧をもう一度確認してください。"
   },
   "server_settings": {
     "title": "設定",
