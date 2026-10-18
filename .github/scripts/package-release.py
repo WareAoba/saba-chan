@@ -89,7 +89,8 @@ COMPONENTS = [
     {
         "key": "installer",
         "raw_patterns": [r"saba-chan-installer\.exe$", r"saba-chan-installer.*\.zip$"],
-        "output_name": "saba-chan-installer-windows-x64.zip",
+        # zip이 아닌 exe 그대로 싣는다: 소개 페이지 다운로드가 이 에셋을 가리킨다. 업데이터는 받지 않는다
+        "output_name": "saba-chan-installer.exe",
         "install_dir": ".",
         "exe_name": "saba-chan-installer.exe",
     },
@@ -185,8 +186,20 @@ def repack_zip(raw_file: Path, output_zip: Path, exe_name: str | None,
 
 def copy_or_repackage(raw_file: Path, output_zip: Path, exe_name: str | None,
                       extra_files: list[str] | None = None, bundles: list[str] | None = None):
-    """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 형태로 다시 담는다"""
-    if raw_file.suffix.lower() == ".zip":
+    """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 형태로 다시 담는다.
+    출력이 exe면 감싸지 않는다 (zip으로 받았으면 그 안의 `exe_name`을 꺼낸다)"""
+    if output_zip.suffix.lower() == ".exe":
+        if raw_file.suffix.lower() == ".zip":
+            with zipfile.ZipFile(raw_file) as src:
+                member = next((i for i in src.infolist()
+                               if i.filename.replace("\\", "/").lower() == (exe_name or "").lower()), None)
+                if member is None:
+                    sys.exit(f"  ✗ {raw_file.name} has no {exe_name} at its root")
+                output_zip.write_bytes(src.read(member))
+        else:
+            shutil.copy2(raw_file, output_zip)
+        print(f"    → {output_zip.name} (raw exe)")
+    elif raw_file.suffix.lower() == ".zip":
         repack_zip(raw_file, output_zip, exe_name, extra_files, bundles)
     elif raw_file.suffix.lower() == ".exe" and exe_name:
         create_exe_zip(raw_file, output_zip, exe_name, extra_files)

@@ -105,6 +105,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 ```
 
 - 컴포넌트 키는 `saba-core`, `cli`, `gui`, `updater`, `locales`, `module-<name>`, `ext-<id>`다. 업데이터가 모르는 키(예: `installer`)는 건너뛴다.
+- `installer`는 0.1.5부터 zip이 아닌 `saba-chan-installer.exe` 그대로다(`versions.toml`, `.github/scripts/package-release.py`). 소개 페이지 다운로드(relay `/v1/updates/download/installer`)가 최신 stable manifest의 이 `url`로 보낸다. 설치기는 이 항목의 `version`만 읽는다(2.5단계). 0.1.4 이전 릴리스는 zip 그대로 둔다.
 - `requires`(다른 컴포넌트 최소 버전)와 `meta`(목록 화면용)는 선택이다.
 - 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이 다르거나, 현재보다 낮은 버전이면 거부한다(`relay.rs:233-251`).
 
@@ -186,6 +187,8 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 **설치 위치**
 - 기본 경로는 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`installer/gui/src-tauri/src/lib.rs:752-769`).
+- 고른 폴더가 비어 있지 않고 사바쨩 설치(`saba-core`나 GUI exe)도 아니면 그 아래 `Saba-chan` 폴더에 설치한다. 찾아보기·직접 입력 모두 `set_install_path`가 바꾼 경로를 돌려줘 화면에 보인다(`lib.rs` `dedicated_install_dir`).
+- 설치기가 새로 만들었거나 비어 있던 폴더에는 `.saba-chan-install` 표시 파일을 둔다. 제거기는 이 표시가 있을 때만 폴더를 통째로 지우고, 없으면(0.1.4 이전 설치, 사용자 파일이 있던 기존 설치 폴더) 사바쨩 실행 파일·`locales`·공유 모듈 파일만 지운 뒤 폴더가 비었을 때만 지운다(`uninstall.rs` `remove_install_dir`).
 - 쓰기에 실패하면 UAC로 권한을 올려 디렉터리를 만든다(`elevate_create_dir`, `lib.rs:607-700`).
 - 데이터는 `%APPDATA%/saba-chan`에 둔다(updater constants와 같다).
 - 로그는 `%TEMP%/saba-chan-installer.log`에 남는다(`lib.rs:954-969`).
@@ -208,11 +211,13 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | 10 | 바탕화면·시작 메뉴 바로가기. 대상은 설치 폴더의 GUI exe(`saba-chan-gui.exe` 또는 0.1.1의 `Saba-chan.exe`)다. 만들기 전에 언어별 옛 이름(`shortcuts::ALL_SHORTCUT_NAMES`)의 바로가기를 지우되, `.lnk` 대상이 이 설치 폴더 안인 것만 지우고 시작 메뉴 폴더는 비었을 때만 지운다(`shortcuts::remove_shortcuts_into`). 제거(uninstall)도 같은 함수를 쓴다 |
 | 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`lib.rs:517-521`) |
 
-레지스트리·바로가기처럼 실패해도 계속하는 단계는 완료 화면에 실패 목록과 로그 경로로 보여 준다(`lib.rs:277-284, 523-546`).
+레지스트리·바로가기·모듈·익스텐션처럼 실패해도 계속하는 단계는 완료 이벤트의 `warnings`·`log_path`로 보내고, 완료 화면이 목록과 로그 경로를 남겨 보여 준다(`installer.js` `enterComplete`).
+
+코어 zip을 풀 때 덮어쓸 exe가 잠겨 있으면(켜진 서버의 `saba-runner` 등) 업데이터와 같은 `move_aside_binary`로 `.exe.old`로 비켜 두고 계속한다.
 
 Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(같은 manifest의 `module-*`, 폴백 없음), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/main.js:2653`).
 
-**제거** (`uninstall.rs`): 대상은 제거기 자신이 든 설치 폴더 하나다(`uninstall.rs:251-256`). 그 폴더에서 실행 중인 사바쨩 프로세스만 끝내고(`uninstall.rs` `stop_saba_processes`), 포터블 GUI 실행기가 임시 폴더에 풀어 띄운 실제 GUI(실행기의 자손, 제거기 자신은 뺀다, `descendants_in`)와 데몬에 이 설치로 등록된 GUI(`GET /api/clients`)도 끝낸 뒤, 그 폴더의 레지스트리 항목만 지운다(`registry.rs:78-93`). `%APPDATA%/saba-chan`과 모듈 폴더는 설치본들이 함께 쓰므로 다른 설치본 항목이 남아 있으면 지우지 않는다(`uninstall.rs:79-84, 117-142`, `uninstall_entry.rs:42-48`). `keep_settings`이면 `config.json`·`instances`·이관 전 설정 파일만 남긴다(`uninstall.rs:407-449`).
+**제거** (`uninstall.rs`): 대상은 제거기 자신이 든 설치 폴더 하나다(`uninstall.rs:251-256`). 설정된 포트의 데몬이 이 폴더의 것이면 먼저 `GET /api/servers`에서 꺼져 있지 않은 서버마다 `POST /api/instance/:id/stop`으로 정상 종료를 요청해 기다린다(서버마다 최대 90초). 그다음 그 폴더에서 실행 중인 사바쨩 프로세스만 끝내고(`uninstall.rs` `stop_saba_processes`), 포터블 GUI 실행기가 임시 폴더에 풀어 띄운 실제 GUI(실행기의 자손, 제거기 자신은 뺀다, `descendants_in`)와 데몬에 이 설치로 등록된 GUI(`GET /api/clients`)도 끝낸 뒤, 그 폴더의 레지스트리 항목만 지운다(`registry.rs:78-93`). `%APPDATA%/saba-chan`과 모듈 폴더는 설치본들이 함께 쓰므로 다른 설치본 항목이 남아 있으면 지우지 않는다(`uninstall.rs:79-84, 117-142`, `uninstall_entry.rs:42-48`). `keep_settings`(화면 문구 "게임 서버와 설정 남기기")이면 `config.json`·`instances`(서버 파일·월드·백업)·`.node_token`(디스코드 연결)·`extension-data`·이관 전 설정 파일만 남기고, 모듈·런타임은 지운다(`remove_appdata_dir_keep_settings`).
 
 **문제점**
 - 기본 설치 경로가 `Program Files`(관리자 권한 필요)인데 레지스트리는 HKCU에 쓴다. 더 큰 문제는 updater exe와 daemon이 **권한 상승 없이** `install_root`에 쓴다는 점이다. 기본 경로에 설치하면 업데이트 적용이 권한 문제로 실패할 수 있다(추정, 매니페스트의 requestedExecutionLevel은 확인하지 않음).
