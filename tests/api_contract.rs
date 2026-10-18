@@ -92,7 +92,7 @@ fn client_calls() -> Vec<(String, String, String)> {
     }
     // 액션 카탈로그도 같은 표의 라우트를 부른다 (디스코드·챗봇·`saba-chan-cli do`)
     for def in saba_core::actions::ACTIONS {
-        let path: Vec<String> = def.path.split('/').map(|seg| if seg.starts_with(':') { format!("{{{}}}", &seg[1..]) } else { seg.to_string() }).collect();
+        let path: Vec<String> = def.path.split('/').map(|seg| seg.strip_prefix(':').map_or_else(|| seg.to_string(), |name| format!("{{{}}}", name))).collect();
         calls.push((format!("actions/{}", def.id), def.method.to_lowercase(), path.join("/")));
     }
     calls
