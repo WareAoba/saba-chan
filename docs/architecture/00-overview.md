@@ -25,7 +25,7 @@
 | [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표(약 95개)**, 인증, 인스턴스 모델·영속화, 전역 설정(`config.json`), 명령 경로(stdin/REST), 내장 Python, plugin 실행기 |
 | [02-modules.md](02-modules.md) | `module.toml` 전체 스키마(Rust 역직렬화 기준), `lifecycle.py` 호출 프로토콜과 함수 매트릭스, managed process, 게임별 기능, 모듈 배포 |
 | [03-extensions.md](03-extensions.md) | 플러그인(코드상 extension) `manifest.json` 스키마, hook 전수 목록과 hook×익스텐션 매트릭스, 설치·활성화 수명주기, GUI 컴포넌트 주입(UMD/slot) 계약 |
-| [04-clients.md](04-clients.md) | GUI(Electron) preload 채널 전수표, CLI(하위 명령·대화형 셸·`--json`), 디스코드 연동(데몬 쪽), 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
+| [04-clients.md](04-clients.md) | GUI(Tauri 셸 + `window.api` 브리지) 전수표, CLI(하위 명령·대화형 셸·`--json`), 디스코드 연동(데몬 쪽), 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
 | [05-updater-servers.md](05-updater-servers.md) | 업데이터·인스톨러·언인스톨러·CI, server-chan relay API·DB·프로토콜 (운영 결함·비밀 파일은 server-chan 비공개 문서) |
 
 ---
@@ -37,7 +37,7 @@
 | 구성요소 | 오너 정의 | 코드상 실체 |
 |---|---|---|
 | **데몬** | 서비스 주체. 모든 기능은 여기로 작동 | `saba-chan/src` → 바이너리 `saba-core`. axum HTTP 서버, `127.0.0.1:57474`(`SABA_IPC_PORT`), 헤더 `X-Saba-Token` 인증 |
-| **인터페이스** | 데몬 조작 도구. 혼자서는 아무것도 못함. 파일 수정도 데몬 API로 | `saba-chan-gui`(Electron+React), `saba-chan-cli`(Rust, 하위 명령 + 대화형 셸). 둘 다 데몬 HTTP API 클라이언트 |
+| **인터페이스** | 데몬 조작 도구. 혼자서는 아무것도 못함. 파일 수정도 데몬 API로 | `saba-chan-gui`(Tauri+React), `saba-chan-cli`(Rust, 하위 명령 + 대화형 셸). 둘 다 데몬 HTTP API 클라이언트 |
 | **모듈** | 게임 서버 구동 "설명서", Python | `saba-chan-modules/<game>/{module.toml, lifecycle.py, locales/}`. 데몬이 `python lifecycle.py <함수명>`을 단발 실행(stdin JSON → stdout JSON) |
 | **플러그인** | 데몬 기능 추가·인터페이스 컴포넌트 주입, Python | 코드에서는 **extension**이라 부름. `saba-chan-extensions/<name>/{manifest.json, *.py, gui/dist/*.umd.js}`. 데몬이 hook 시점에 같은 Python 실행기로 호출, GUI가 UMD 번들을 slot에 주입 |
 | **서버쨩** | 데몬과 연계해 디스코드 봇 구동 + 봇 추가 기능 | 클라우드 릴레이에서만 돈다. 데몬은 relay_agent로 바깥으로 연결한다(04 §4). 로컬 봇(`saba-chan/discord_bot`)은 L1에서 지웠다 |
@@ -52,7 +52,7 @@
 
 ```
                 ┌──────────────── 인터페이스 ────────────────┐
-                │  GUI (Electron)        CLI (셸)            │
+                │  GUI (Tauri)           CLI (셸)            │
                 └────────┬───────────────────┬───────────────┘
                          │ HTTP + X-Saba-Token (127.0.0.1:57474)
                          ▼

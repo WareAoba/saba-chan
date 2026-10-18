@@ -270,7 +270,7 @@ export function ServerDetail({
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
                                 poppedOut={consoleProps.consolePopoutIds.includes(server.id)}
                                 onPopout={async () => {
-                                    // 창이 열리면 main.js가 console:popoutOpened로 알려 준다
+                                    // 창이 열리면 셸이 console:popoutOpened로 알려 준다
                                     try {
                                         await window.api.consolePopout(server.id, server.name);
                                     } catch (err) {

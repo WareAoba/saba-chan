@@ -25,7 +25,7 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 모듈 루트 | `SABA_MODULES_PATH` 환경변수. 없으면 `resolve_data_dir()/modules`, 즉 Windows는 `%APPDATA%/saba-chan/modules`, Linux/macOS는 `$HOME/.config/saba-chan/modules` (`SABA_DATA_DIR`로 override 가능) | `D:updater/src/constants.rs:55-101`, `D:src/plugin/mod.rs:76-82` |
-| GUI가 데몬을 띄울 때 | GUI가 `SABA_MODULES_PATH`를 명시적으로 주입 | `D:saba-chan-gui/main.js:593-602` |
+| GUI가 데몬을 띄울 때 | GUI(Tauri 셸)가 `SABA_MODULES_PATH`를 명시적으로 주입(값은 `constants::resolve_modules_dir()`) | `D:saba-chan-gui/src-tauri/src/lifecycle.rs:173-183` |
 | 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/mod.rs:2272-` |
 
 `ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader.rs:1086-1153`)의 동작은 다음과 같다.
@@ -96,7 +96,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 |---|---|---|
 | `process_patterns` | Vec<String> | extension hook `server.status` 컨텍스트로만 전달 (`mod.rs:919-930`). 네이티브 auto-detect에는 **미사용** |
 | `cmd_patterns` | Vec<String> | auto-detect 때 커맨드라인 필터 (`mod.rs:2155-2164`) |
-| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 전부 있어야 함). GUI 마이그레이션 화면도 이 결과만 쓴다: `migration:scanDir`가 이 API를 부르고(`saba-chan-gui/main.js:2735-2745`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.js:73-74`) |
+| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 전부 있어야 함). GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.js:782-790`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.js:73-74`) |
 | `graceful_exit_patterns` | Vec<String> | 정상 종료 문구(정규식). 종료 판정에 쓴다 (§3.6) |
 | `crash_artifacts` | Vec<String> | 크래시 때 생기는 파일. 종료 판정에 쓴다 (§3.6) |
 
@@ -366,7 +366,7 @@ url = "https://aka.ms/MinecraftEULA"
 
 ### 3.1 두 가지 실행 경로
 
-시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:563-616`, `D:src/supervisor/mod.rs:1479-1489`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/main.js:1455`).
+시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:563-616`, `D:src/supervisor/mod.rs:1479-1489`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.js:119-121`).
 
 | | managed (`POST /api/instance/:id/managed/start`) | non-managed (`POST /api/server/:name/start`) |
 |---|---|---|
@@ -596,9 +596,9 @@ url = "https://aka.ms/MinecraftEULA"
 
 | # | 위치 | 내용 | 원칙 |
 |---|---|---|---|
-| 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/main.js:2014-2020`). 로컬 Discord 봇은 지워졌다 | — |
-| 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:563-616`, `saba-chan-gui/main.js:1455`) | — |
-| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migration:scanDir`가 데몬 `POST /api/modules/detect`(`server.rs:370-390`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/main.js:2735-2745`, `AddInstanceMigration.js:73-74`) | |
+| 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/src/api/createApi.js:465-471`). 로컬 Discord 봇은 지워졌다 | — |
+| 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:563-616`, `saba-chan-gui/src/api/createApi.js:119-121`) | — |
+| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migrationScanDir`가 데몬 `POST /api/modules/detect`(`server.rs:370-390`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/src/api/createApi.js:782-790`, `AddInstanceMigration.js:73-74`) | |
 | 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:184-193`, `cmd/module.rs:99-100`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:394-414`) | — |
 | 6 | `D:src/ipc/handlers/instance.rs:991-1017` | 설정 동기화 제외 목록에 `java_path`, `ram`, `use_aikar_flags`(Minecraft 전용 키)와 `managed_start`, `graceful_stop`이 **데몬에 하드코딩**돼 있다. `rcon_port`·`rcon_password`·`enable_rcon`은 게임 파일로 넘기지 않으려고 뺀다. 주석·로그는 "server.properties"(Minecraft 파일명) | 게임별 지식이 데몬에 있음 (모듈 매뉴얼 소관) |

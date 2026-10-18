@@ -89,7 +89,7 @@
 **데몬이 자식 프로세스에 넘기는 환경변수**
 
 - Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`config.json`의 `gui.language`, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-37, 187-205`). 토큰 값 자체는 넘기지 않는다. 공용 `modules/daemon_rcon.py`는 `SABA_TOKEN_PATH` 파일을 읽어 `X-Saba-Token`을 붙인다(`modules/daemon_rcon.py:65-71`).
-- `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/main.js:598`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 `config.json`의 `gui.language`에서 읽는다(`plugin/mod.rs:28-35`, `chat/api.rs:119`).
+- `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 `config.json`의 `gui.language`에서 읽는다(`plugin/mod.rs:28-35`, `chat/api.rs:119`).
 
 ### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)
 
@@ -422,7 +422,7 @@ Relay 서명 방식(`relay.rs:100-137`):
   - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:103-106`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
   - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed).
   - `/health`는 루프백 검사 뒤 토큰 검사 없이 통과한다(A6).
-- **토큰을 쓰는 클라이언트**: GUI(`saba-chan-gui/main.js:69,180`, 파일 재읽기 포함), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-103`. PR #6 기준), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
+- **토큰을 쓰는 클라이언트**: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src/daemon.rs:152-179`, 401이면 파일을 다시 읽고 한 번 재시도 `:213-229`), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-103`. PR #6 기준), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
 - **CORS 레이어가 없다.** 브라우저에서 오는 교차 출처 요청은 사전 요청(preflight)에서 막히고, 단순 요청도 토큰이 없으면 401이다. 모든 라우트가 인증을 거치므로 바디 없는 POST를 CSRF로 부를 수 있던 예전 `/api/updates/*` 경로도 막혔다.
 
 ---
@@ -658,10 +658,10 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 ### 9.A 오너 원칙 위반 (인터페이스가 데몬을 우회하는 곳)
 
-1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(`saba-chan-gui/main.js:510-521`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`main.js:526-545`, `writeGuiSection` `:485-496`).
-2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: `main.js`에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
+1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(Tauri 셸 `saba-chan-gui/src-tauri/src/settings.rs:81-94`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`saba-chan-gui/src/api/createApi.js:57-74`, `src-tauri/src/native.rs:189-212`, `write_gui_section` `settings.rs:47-61`).
+2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src`, 브리지 `saba-chan-gui/src/api`)에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
 3. ~~**봇 실행 로직이 GUI에 중복돼 있다.**~~ → 해결: 로컬 봇과 범용 `/api/ext-process/*`가 지워졌다(L1). 디스코드 연동은 데몬의 `relay_agent.rs` 하나뿐이다.
-4. **GUI가 데몬의 경로 정책을 결정한다.** `main.js:596-603`에서 `SABA_INSTANCES_PATH`, `SABA_MODULES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다.
+4. **GUI가 데몬의 경로 정책을 결정한다.** `saba-chan-gui/src-tauri/src/lifecycle.rs:173-183`에서 `SABA_INSTANCES_PATH`, `SABA_MODULES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다.
 5. **CLI가 로컬 파일을 직접 읽는다.** (CLI 참조는 PR #6 리메이크 기준)
    - 데몬을 찾고 띄우는 `saba-chan-cli/src/bootstrap.rs`만 `config.json`의 `gui` 섹션을 직접 읽는다(`ipcPort`, `language`, `:14-46`). 파일 머리 주석이 이를 유일한 예외로 적어 둔다(`:1-6`).
    - ~~데몬은 `SABA_IPC_PORT`를 먼저 보므로 포트가 다를 수 있다~~ → 해결: CLI도 `SABA_IPC_PORT` > `gui.ipcPort` > 기본값 순으로 읽어 데몬(`main.rs:225-236`)과 같다(`bootstrap.rs:18-25`). 다만 GUI가 데몬에만 넣어 준 환경변수는 따로 띄운 CLI가 보지 못한다.

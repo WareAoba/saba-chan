@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-console-popin"
+description = "Enables the console_popin command without any pre-configured scope."
+commands.allow = ["console_popin"]
+
+[[permission]]
+identifier = "deny-console-popin"
+description = "Denies the console_popin command without any pre-configured scope."
+commands.deny = ["console_popin"]

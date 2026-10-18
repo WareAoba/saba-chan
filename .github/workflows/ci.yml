@@ -4,7 +4,7 @@
 #
 # 구조:
 #   1) rust      — Clippy + build + test  (Windows / Ubuntu)
-#   2) js-tests  — Electron GUI (Vitest + build), 업데이터/설치기 스크립트 문법
+#   2) js-tests  — GUI 화면 (Vitest + build), 업데이터/설치기 스크립트 문법
 #   3) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
 #
 # release.yml:   릴리즈 패키징 & manifest 생성
@@ -112,7 +112,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: saba-chan-gui/package-lock.json
 
-      - name: Install & Test — Electron GUI
+      - name: Install & Test — GUI
         working-directory: saba-chan-gui
         run: |
           npm ci
@@ -120,5 +120,5 @@ jobs:
           npx vite build
 
       # 번들러 없이 그대로 실리는 스크립트는 문법만 확인한다
-      - name: Syntax check — main/preload, updater, installer
-        run: node --check saba-chan-gui/main.js && node --check saba-chan-gui/preload.js && node --check updater/gui/src/updater.js && node --check installer/gui/src/installer.js
+      - name: Syntax check — updater, installer
+        run: node --check updater/gui/src/updater.js && node --check installer/gui/src/installer.js
