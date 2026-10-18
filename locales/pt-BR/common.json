@@ -95,6 +95,7 @@
     "url_missing": "Nenhuma URL informada",
     "url_not_web": "Só é possível abrir endereços http(s)",
     "path_missing": "Nenhum caminho informado",
+    "path_not_folder": "Não é uma pasta",
     "no_log_folder": "Nenhuma pasta de logs"
   }
 }

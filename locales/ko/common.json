@@ -95,6 +95,7 @@
     "url_missing": "주소가 없어요",
     "url_not_web": "http(s) 주소만 열 수 있어요",
     "path_missing": "경로가 없어요",
+    "path_not_folder": "폴더가 아니에요",
     "no_log_folder": "로그 폴더가 없어요"
   }
 }

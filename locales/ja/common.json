@@ -95,6 +95,7 @@
     "url_missing": "URLが指定されていません",
     "url_not_web": "http(s)のアドレスのみ開けます",
     "path_missing": "パスが指定されていません",
+    "path_not_folder": "フォルダーではありません",
     "no_log_folder": "ログフォルダーがありません"
   }
 }
