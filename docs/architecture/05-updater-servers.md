@@ -312,7 +312,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 | `command_queue` | id PK, host_id, guild_id, payload jsonb, requested_by, channel_id, status(pending→delivered→completed / timeout / error), created/delivered/completed/expires_at(+60s), result jsonb |
 | `pairing_codes` | code PK, expires_at(+5분), status, attempts, relay_url, claimed_by, host_id, node_token(수령하면 NULL), claimed_at, poll_secret_hash |
 | `announcement_settings` | guild_id PK, channel_id, subscribed_at |
-| `audit_logs` | serial id, timestamp, user_discord_id, host_id, guild_id, action, detail, result. action `relay`(큐에 넣은 명령: `requestId`, `kind`, 명령은 서버·명령 이름과 인자 개수만, 액션은 id·instance·입력 키(참·거짓·숫자만 값, 여러 단계 계획은 단계마다 id·입력 키), 결과는 `queued` → `/result`가 성공이면 `success`, 실패면 데몬 코드로 바꾼다)·`confirm`(확인 버튼 실행·취소)·`assign`(채널 배정, 앱에서 바꾸면 user `app`)·권한·페어링. 인자 값과 비밀은 남기지 않는다(`services/audit.ts`) |
+| `audit_logs` | serial id, timestamp, user_discord_id, host_id, guild_id, action, detail, result. action `relay`(큐에 넣은 명령: `requestId`, `kind`, 명령은 서버·명령 이름과 인자 개수만, 액션은 id·instance·입력 키(참·거짓·숫자만 값, 여러 단계 계획은 단계마다 id·입력 키), 결과는 `queued` → `/result`가 성공이면 `success`, 실패면 데몬 코드로 바꾼다. 늦은 결과는 7일 안의 행에만 적는다)·`confirm`(확인 버튼 실행·취소)·`assign`(채널 배정, 앱에서 바꾸면 user `app`)·권한·페어링. 인자 값과 비밀은 남기지 않는다(`services/audit.ts`) |
 | `releases` / `release_assets` | 버전·채널·롤아웃·isCritical·minSupported·signed_manifest·notes·yanked / 컴포넌트·플랫폼·파일·크기·sha256 (§1.3) |
 | `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
 | `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
