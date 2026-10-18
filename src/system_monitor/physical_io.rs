@@ -41,6 +41,13 @@ fn parse_diskstats(text: &str, is_disk: impl Fn(&str) -> bool) -> (u64, u64) {
     (read, written)
 }
 
+/// `/sys/block`에 있는 디스크 전체인지 (파티션은 그 아래에 있다).
+/// 이름의 `/`는 `/sys/block`에서 `!`다 (`cciss/c0d0` → `cciss!c0d0`)
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn is_whole_disk(sys_block: &std::path::Path, name: &str) -> bool {
+    !is_layered(name) && sys_block.join(name.replace('/', "!")).exists()
+}
+
 /// 다른 장치 위에 얹힌 가상 장치 (같은 IO를 두 번 센다)
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn is_layered(name: &str) -> bool {
@@ -62,10 +69,8 @@ mod imp {
 
         pub fn refresh(&mut self) -> Option<(u64, u64)> {
             let text = std::fs::read_to_string("/proc/diskstats").ok()?;
-            // /sys/block에 있는 이름만 디스크 전체다 (파티션은 그 아래에 있다)
-            let (read, written) = super::parse_diskstats(&text, |name| {
-                !super::is_layered(name) && std::path::Path::new("/sys/block").join(name).exists()
-            });
+            let sys_block = std::path::Path::new("/sys/block");
+            let (read, written) = super::parse_diskstats(&text, |name| super::is_whole_disk(sys_block, name));
             let now = Instant::now();
             let prev = self.last.replace((now, read, written));
             let (t, r, w) = prev?;
@@ -186,6 +191,16 @@ mod tests {
         let disks = ["sda", "loop0", "dm-0", "nvme0n1"];
         let (r, w) = parse_diskstats(text, |n| disks.contains(&n) && !is_layered(n));
         assert_eq!((r, w), ((2000 + 100) * 512, (4000 + 60) * 512));
+    }
+
+    #[test]
+    fn names_with_slash_match_their_sys_block_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("cciss!c0d0")).unwrap();
+        std::fs::create_dir(tmp.path().join("loop0")).unwrap();
+        assert!(is_whole_disk(tmp.path(), "cciss/c0d0"));
+        assert!(!is_whole_disk(tmp.path(), "cciss/c0d0p1"));
+        assert!(!is_whole_disk(tmp.path(), "loop0"));
     }
 
     #[test]
