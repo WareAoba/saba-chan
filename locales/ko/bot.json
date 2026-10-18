@@ -134,6 +134,17 @@
     "restart_warning": "{{minutes}}분 뒤 서버가 다시 시작됩니다.",
     "update_warning": "{{minutes}}분 뒤 업데이트를 위해 서버가 다시 시작됩니다."
   },
+  "provision": {
+    "installing": "서버를 설치하는 중…",
+    "install_failed": "설치하지 못했어요",
+    "installed": "서버를 설치했어요",
+    "updating": "서버를 업데이트하는 중…",
+    "update_failed": "업데이트하지 못했어요",
+    "updated": "서버를 업데이트했어요",
+    "module_missing": "모듈을 찾지 못했어요: {{error}}",
+    "no_latest_version": "최신 서버 버전을 알아내지 못했어요",
+    "backup_failed": "업데이트 전 백업에 실패했어요: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {

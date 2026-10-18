@@ -134,6 +134,17 @@
     "restart_warning": "Сервер перезапустится через {{minutes}} мин.",
     "update_warning": "Сервер перезапустится для обновления через {{minutes}} мин."
   },
+  "provision": {
+    "installing": "Установка сервера…",
+    "install_failed": "Не удалось установить",
+    "installed": "Сервер установлен",
+    "updating": "Обновление сервера…",
+    "update_failed": "Не удалось обновить",
+    "updated": "Сервер обновлён",
+    "module_missing": "Модуль не найден: {{error}}",
+    "no_latest_version": "Не удалось узнать последнюю версию сервера",
+    "backup_failed": "Не удалось сделать резервную копию перед обновлением: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {

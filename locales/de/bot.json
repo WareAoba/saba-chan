@@ -134,6 +134,17 @@
     "restart_warning": "Der Server startet in {{minutes}} Min. neu.",
     "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu."
   },
+  "provision": {
+    "installing": "Server wird installiert…",
+    "install_failed": "Installation fehlgeschlagen",
+    "installed": "Server installiert",
+    "updating": "Server wird aktualisiert…",
+    "update_failed": "Aktualisierung fehlgeschlagen",
+    "updated": "Server aktualisiert",
+    "module_missing": "Modul nicht gefunden: {{error}}",
+    "no_latest_version": "Die neueste Serverversion konnte nicht ermittelt werden",
+    "backup_failed": "Sicherung vor dem Update fehlgeschlagen: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {

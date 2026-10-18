@@ -56,6 +56,45 @@
     "start": "Iniciando...",
     "modules": "Preparando módulos...",
     "instances": "Preparando servidores...",
-    "ready": "Pronto"
+    "ready": "Pronto",
+    "ui_loaded": "Interface pronta"
+  },
+  "tray": {
+    "tooltip": "Saba-chan - Gerenciador de servidores de jogos",
+    "open_window": "🖥️ Abrir janela",
+    "open_terminal": "💻 Abrir terminal",
+    "daemon_running": "🟢 Daemon em execução",
+    "daemon_stopped": "⚪ Daemon parado",
+    "stop_daemon": "🛑 Parar daemon",
+    "start_daemon": "▶️ Iniciar daemon",
+    "quit_interface": "🔌 Sair só da interface",
+    "quit_all": "❌ Sair completamente"
+  },
+  "updates": {
+    "notification_title": "Saba-chan — Atualizações",
+    "notification_body": "{{count}} atualizações: {{names}}",
+    "completed": "Atualização concluída!"
+  },
+  "errors": {
+    "invalid_input": "Solicitação inválida. Verifique os dados",
+    "instance_name_taken": "Já existe um servidor com esse nome",
+    "internal": "erro interno",
+    "create_error": "Não foi possível criar o servidor: {{error}}",
+    "create_http": "Não foi possível criar o servidor (HTTP {{status}}): {{error}}",
+    "instance_not_found": "Servidor não encontrado",
+    "instance_running": "Não é possível excluir um servidor em execução. Pare-o primeiro",
+    "delete_error": "Não foi possível excluir o servidor: {{error}}",
+    "delete_http": "Não foi possível excluir o servidor (HTTP {{status}}): {{error}}",
+    "reorder_failed": "Não foi possível reordenar: {{error}}",
+    "settings_invalid": "Valor de configuração inválido: {{error}}",
+    "settings_error": "Não foi possível salvar as configurações: {{error}}",
+    "settings_http": "Não foi possível salvar as configurações (HTTP {{status}}): {{error}}",
+    "http": "Erro (HTTP {{status}})",
+    "command_failed": "Não foi possível executar o comando: {{error}}",
+    "no_log_file": "Nenhum arquivo de log",
+    "url_missing": "Nenhuma URL informada",
+    "url_not_web": "Só é possível abrir endereços http(s)",
+    "path_missing": "Nenhum caminho informado",
+    "no_log_folder": "Nenhuma pasta de logs"
   }
 }

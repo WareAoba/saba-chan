@@ -134,6 +134,17 @@
     "restart_warning": "El servidor se reiniciará en {{minutes}} min.",
     "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min."
   },
+  "provision": {
+    "installing": "Instalando el servidor…",
+    "install_failed": "La instalación falló",
+    "installed": "Servidor instalado",
+    "updating": "Actualizando el servidor…",
+    "update_failed": "La actualización falló",
+    "updated": "Servidor actualizado",
+    "module_missing": "Módulo no encontrado: {{error}}",
+    "no_latest_version": "No se pudo obtener la última versión del servidor",
+    "backup_failed": "Falló la copia de seguridad previa a la actualización: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {

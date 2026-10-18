@@ -134,6 +134,17 @@
     "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
     "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。"
   },
+  "provision": {
+    "installing": "サーバーをインストール中…",
+    "install_failed": "インストールに失敗しました",
+    "installed": "サーバーをインストールしました",
+    "updating": "サーバーを更新中…",
+    "update_failed": "更新に失敗しました",
+    "updated": "サーバーを更新しました",
+    "module_missing": "モジュールが見つかりません: {{error}}",
+    "no_latest_version": "最新のサーバーバージョンを取得できませんでした",
+    "backup_failed": "更新前のバックアップに失敗しました: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {
