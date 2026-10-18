@@ -141,6 +141,12 @@ pub fn next_restart_delay(history: &mut VecDeque<Instant>, now: Instant) -> Opti
     Some(delay)
 }
 
+/// PC 밖(디스코드 알림·원격 조회)으로 보내도 되는 종료 근거: 종료 코드·신호·메모리 상한만.
+/// 콘솔 줄(`console: …`, `ended …: <줄>`)과 크래시 파일 경로는 PC에 남긴다 (I3)
+pub fn shareable_evidence(evidence: &str) -> bool {
+    ["exit code", "signal", "memory limit"].iter().any(|p| evidence.starts_with(p))
+}
+
 /// GET /api/instance/:id/events 한 줄. 인스턴스 폴더 `exit-events.json`에 남아 데몬을 다시 켜도 보인다
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExitEvent {

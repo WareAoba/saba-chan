@@ -23,6 +23,9 @@ use crate::backup::{self, BackupInfo, BackupKind};
 use crate::scheduler::{Clock, ScheduledTask, TaskAction};
 
 const DEFAULT_KEEP: usize = 10;
+/// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
+const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
+const REMOTE_MAX_BACKUP_KEEP: u32 = 30;
 
 /// 백업·복원 중인 인스턴스 (같은 인스턴스에서 둘이 겹치지 않게)
 static BUSY: Mutex<Option<HashSet<String>>> = Mutex::new(None);
@@ -279,6 +282,23 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             p.push("this module has no announce command".into());
         }
         problems.extend(p.into_iter().map(|m| format!("schedule[{}]: {}", i, m)));
+    }
+    // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
+    if crate::audit::current().source == "discord" {
+        for (i, task) in body.schedule.iter().enumerate() {
+            if instance.schedule.contains(task) {
+                continue;
+            }
+            if task.action == TaskAction::Update {
+                problems.push(format!("schedule[{}]: updates can only be scheduled on this PC", i));
+            }
+            if task.every_minutes.is_some_and(|m| m < REMOTE_MIN_EVERY_MINUTES) {
+                problems.push(format!("schedule[{}]: every_minutes must be at least {} from Discord", i, REMOTE_MIN_EVERY_MINUTES));
+            }
+        }
+        if body.backup_keep.is_some_and(|k| k > REMOTE_MAX_BACKUP_KEEP && Some(k) != instance.backup_keep) {
+            problems.push(format!("backup_keep must be at most {} from Discord", REMOTE_MAX_BACKUP_KEEP));
+        }
     }
     if !problems.is_empty() {
         return (
@@ -566,5 +586,29 @@ mod tests {
         let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
         let err = take_backup(&state, &id, BackupKind::PreUpdate).await.err().expect("hook failure must not mean 'nothing to back up'");
         assert_eq!(code(err).await, "backup_failed");
+    }
+
+    #[tokio::test]
+    async fn schedules_from_discord_cannot_add_updates_or_run_too_often() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let put = |body: Value| {
+            let state = state.clone();
+            let id = id.clone();
+            async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            }
+        };
+        let remote = |body: Value| crate::audit::with_origin(crate::audit::Origin::new("discord"), put(body));
+        let update = json!({ "action": "update", "at": "04:00" });
+        let restart = |m: u32| json!({ "action": "restart", "every_minutes": m });
+
+        assert_eq!(remote(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(remote(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 1000 })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 5 })).await, StatusCode::OK);
+        // 이 PC에서 정한 작업은 디스코드에서 그대로 다시 보내도 된다
+        assert_eq!(put(json!({ "schedule": [update, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
+        assert_eq!(remote(json!({ "schedule": [update, restart(1), restart(60)], "backup_keep": 100 })).await, StatusCode::OK);
     }
 }

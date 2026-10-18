@@ -665,7 +665,7 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
             }
             let mut v = pick(&["at", "instanceId", "instance", "kind", "exitCode", "signal", "restartInSecs", "note"]);
             // 종료 코드·신호·메모리 상한만. 콘솔 줄(`console: …`)과 크래시 파일 경로는 뺀다
-            if let Some(evidence) = d.get("evidence").and_then(Value::as_str).filter(|e| ["exit code", "signal", "memory limit"].iter().any(|p| e.starts_with(p))) {
+            if let Some(evidence) = d.get("evidence").and_then(Value::as_str).filter(|e| crate::supervisor::crash::shareable_evidence(e)) {
                 v.insert("evidence".into(), Value::from(evidence));
             }
             v
