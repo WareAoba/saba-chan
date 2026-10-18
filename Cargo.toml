@@ -53,7 +53,7 @@ saba-chan-updater-lib = { path = "updater" }
 saba-runner = { path = "runner", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi", "pdh", "libloaderapi", "userenv", "aclapi", "accctrl", "securitybaseapi", "jobapi2", "namedpipeapi", "synchapi", "minwinbase", "winbase"] }
+winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi", "pdh", "libloaderapi", "userenv", "aclapi", "accctrl", "securitybaseapi", "jobapi2", "namedpipeapi", "synchapi", "minwinbase", "winbase", "fileapi"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.27", features = ["signal"] }

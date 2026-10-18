@@ -56,6 +56,11 @@ fn root_or_home(path: &Path, home: Option<&Path>) -> bool {
     normal == 0 || home.is_some_and(|h| h.starts_with(path))
 }
 
+/// 경로 자신이나 그 위 폴더 중 하나가 심볼릭 링크·정션인가
+fn through_link(path: &Path) -> bool {
+    path.ancestors().any(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()))
+}
+
 impl Grants {
     /// 넣으려는 폴더를 실제 경로로 바꾸고, 줄 수 없는 위치는 버린다
     pub fn push(&mut self, path: &Path, access: Access, data_dir: &Path, home: Option<&Path>) {
@@ -63,8 +68,14 @@ impl Grants {
         if !real.is_dir() {
             return;
         }
-        // List는 목록만이라 데이터 폴더 자신에도 줄 수 있다 (안의 파일은 상속받지 않는다)
-        let blocked = if access == Access::List { root_or_home(&real, home) } else { forbidden(&real, data_dir, home) };
+        // List는 목록만이라 데이터 폴더 자신에도 줄 수 있다 (안의 파일은 상속받지 않는다).
+        // 읽기·쓰기는 하위까지 상속되므로 링크를 거친 경로에는 주지 않는다: 격리된 구성요소가 쓰기를 받은 폴더 안에
+        // 정션을 만들어 두면, 다음 실행 때 그 경로의 권한이 정션이 가리키는 다른 폴더로 간다
+        let blocked = if access == Access::List {
+            root_or_home(&real, home)
+        } else {
+            forbidden(&real, data_dir, home) || through_link(path)
+        };
         if blocked {
             tracing::warn!("[Sandbox] not granting {:?} on {}", access, real.display());
             return;
@@ -140,7 +151,7 @@ mod imp {
     use super::{Access, Grants};
     use std::ffi::{OsStr, OsString};
     use winapi::ctypes::c_void;
-    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
     use std::os::windows::io::{FromRawHandle, OwnedHandle, RawHandle};
     use std::path::Path;
     use std::ptr::null_mut;
@@ -149,7 +160,8 @@ mod imp {
         EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_INHERITANCE, SE_FILE_OBJECT, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TRUSTEE_IS_SID,
         TRUSTEE_IS_WELL_KNOWN_GROUP,
     };
-    use winapi::um::aclapi::{GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW};
+    use winapi::um::aclapi::{GetSecurityInfo, SetEntriesInAclW, SetSecurityInfo};
+    use winapi::um::fileapi::{CreateFileW, GetFileInformationByHandle, GetFinalPathNameByHandleW, BY_HANDLE_FILE_INFORMATION, OPEN_EXISTING};
     use winapi::um::handleapi::SetHandleInformation;
     use winapi::um::jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject, TerminateJobObject};
     use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryW};
@@ -163,7 +175,7 @@ mod imp {
     use winapi::um::synchapi::WaitForSingleObject;
     use winapi::um::winbase::{
         LocalFree, CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, HANDLE_FLAG_INHERIT,
-        INFINITE, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+        INFINITE, STARTF_USESTDHANDLES, STARTUPINFOEXW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
     };
     use winapi::um::winnt::{
         AclSizeInformation, JobObjectExtendedLimitInformation, ACCESS_ALLOWED_ACE, ACCESS_ALLOWED_ACE_TYPE, ACE_HEADER,
@@ -172,7 +184,8 @@ mod imp {
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, OBJECT_INHERIT_ACE, PACL, PSECURITY_DESCRIPTOR,
         PSID, SECURITY_CAPABILITIES, SE_GROUP_ENABLED, SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SYNCHRONIZE, ACL, ACL_REVISION,
         LABEL_SECURITY_INFORMATION, SECURITY_MANDATORY_LABEL_AUTHORITY, SECURITY_MANDATORY_LOW_RID, SYSTEM_MANDATORY_LABEL_ACE,
-        SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+        SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, FILE_ATTRIBUTE_REPARSE_POINT, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, WRITE_DAC, WRITE_OWNER,
     };
 
     const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
@@ -289,13 +302,54 @@ mod imp {
         false
     }
 
-    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<(), String> {
-        let (mask, inherit) = rights(access);
-        let mut name = wide(path.as_os_str());
+    /// ACL을 읽거나 고칠 폴더를 연다. 경로 마지막이 링크면 따라가지 않고, 연 폴더의 실제 경로가 `push`가 정한
+    /// 경로와 다르면(그 사이 위 폴더가 정션으로 바뀜) 거절한다. 이후 읽기·쓰기는 이 핸들로 해서 이름이 바뀌어도
+    /// 같은 폴더다. 고칠 권한(`WRITE_DAC` 등)은 고쳐야 할 때만 청한다 (이미 허용된 시스템 Python 폴더처럼 고칠 수
+    /// 없는 곳도 읽기만으로 지나간다)
+    fn open_checked(path: &Path, access: DWORD) -> Result<OwnedHandle, String> {
+        let name = wide(path.as_os_str());
         unsafe {
+            let h = CreateFileW(
+                name.as_ptr(),
+                READ_CONTROL | access,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                null_mut(),
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                null_mut(),
+            );
+            if h == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+                return Err(last_error(&format!("open {}", path.display())));
+            }
+            let handle = OwnedHandle::from_raw_handle(h as RawHandle);
+            let mut info: BY_HANDLE_FILE_INFORMATION = std::mem::zeroed();
+            if GetFileInformationByHandle(h, &mut info) == 0 {
+                return Err(last_error(&format!("inspect {}", path.display())));
+            }
+            if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err(format!("{} is a link", path.display()));
+            }
+            let mut buf = vec![0u16; 1024];
+            let n = GetFinalPathNameByHandleW(h, buf.as_mut_ptr(), buf.len() as DWORD, 0) as usize;
+            if n == 0 || n >= buf.len() {
+                return Err(last_error(&format!("resolve {}", path.display())));
+            }
+            let real = OsString::from_wide(&buf[..n]);
+            if !real.to_string_lossy().eq_ignore_ascii_case(&path.to_string_lossy()) {
+                return Err(format!("{} now resolves to {}", path.display(), real.to_string_lossy()));
+            }
+            Ok(handle)
+        }
+    }
+
+    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
+        let (mask, inherit) = rights(access);
+        unsafe {
+            let read = open_checked(path, 0)?;
             let mut dacl: PACL = null_mut();
             let mut sd: PSECURITY_DESCRIPTOR = null_mut();
-            let rc = GetNamedSecurityInfoW(name.as_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), &mut dacl, null_mut(), &mut sd);
+            let rc = GetSecurityInfo(read.as_raw_handle() as HANDLE, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), &mut dacl, null_mut(), &mut sd);
             if rc != 0 {
                 return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }
@@ -303,6 +357,14 @@ mod imp {
                 LocalFree(sd);
                 return Ok(());
             }
+            let dir = match open_checked(path, WRITE_DAC) {
+                Ok(d) => d,
+                Err(e) => {
+                    LocalFree(sd);
+                    return Err(e);
+                }
+            };
+            let h = dir.as_raw_handle() as HANDLE;
             let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
             ea.grfAccessPermissions = mask;
             ea.grfAccessMode = GRANT_ACCESS;
@@ -316,7 +378,7 @@ mod imp {
                 LocalFree(sd);
                 return Err(format!("build ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }
-            let rc = SetNamedSecurityInfoW(name.as_mut_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), new_dacl, null_mut());
+            let rc = SetSecurityInfo(h, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), new_dacl, null_mut());
             LocalFree(new_dacl as *mut c_void);
             LocalFree(sd);
             if rc != 0 {
@@ -345,13 +407,14 @@ mod imp {
     /// AppContainer 프로세스는 낮은 무결성 수준으로 돈다. 보통 폴더는 표시가 없어 중간 수준(쓰기 금지)으로 보므로
     /// DACL이 허용해도 쓰기가 막힌다: 쓰기를 준 폴더에는 낮은 수준 표시를 하위까지 상속되게 붙인다
     fn label_low(path: &Path) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
         let low = low_integrity()?;
         let flags = (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE) as DWORD;
-        let mut name = wide(path.as_os_str());
         unsafe {
+            let read = open_checked(path, 0)?;
             let mut sacl: PACL = null_mut();
             let mut sd: PSECURITY_DESCRIPTOR = null_mut();
-            let rc = GetNamedSecurityInfoW(name.as_ptr(), SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), &mut sacl, &mut sd);
+            let rc = GetSecurityInfo(read.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), &mut sacl, &mut sd);
             if rc != 0 {
                 return Err(format!("read label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }
@@ -382,7 +445,8 @@ mod imp {
             {
                 return Err(last_error("AddMandatoryAce"));
             }
-            let rc = SetNamedSecurityInfoW(name.as_mut_ptr(), SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl);
+            let dir = open_checked(path, WRITE_OWNER)?;
+            let rc = SetSecurityInfo(dir.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl);
             if rc != 0 {
                 return Err(format!("write label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }

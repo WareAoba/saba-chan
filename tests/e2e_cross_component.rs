@@ -50,8 +50,15 @@ async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
 
 /// E2E 테스트 전용 fixture 모듈 디렉토리를 임시 위치에 세팅합니다.
 /// 기존 test-module 외에 e2e-mock-module도 복사합니다.
+/// 데몬은 `SABA_MODULES_PATH` 아래 폴더만 모듈로 본다(그 밖은 격리 실행에서 인스턴스 폴더 쓰기를 받지 못한다).
+/// 환경 변수가 프로세스 전역이라 데이터 폴더처럼 프로세스당 하나만 만들고 지우지 않는다.
 fn setup_e2e_modules_dir() -> std::path::PathBuf {
-    let tmp = std::env::temp_dir().join(format!("saba-e2e-modules-{}", pick_free_port()));
+    static MODULES_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    MODULES_DIR.get_or_init(create_e2e_modules_dir).clone()
+}
+
+fn create_e2e_modules_dir() -> std::path::PathBuf {
+    let tmp = std::env::temp_dir().join(format!("saba-e2e-modules-{}", std::process::id()));
     fs::create_dir_all(&tmp).expect("create e2e modules dir");
 
     // e2e-mock-module fixture 복사
@@ -99,6 +106,7 @@ server_not_running = "The test server is off"
     fs::write(test_mod.join("lifecycle.py"), "# minimal\n")
         .expect("write test lifecycle.py");
 
+    std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap());
     tmp
 }
 
@@ -160,10 +168,9 @@ async fn boot_e2e_ipc() -> (
 }
 
 fn cleanup_dirs(modules_dir: &std::path::Path, instances_dir: &std::path::Path, data_dir: &std::path::Path) {
-    let _ = fs::remove_dir_all(modules_dir);
     let _ = fs::remove_dir_all(instances_dir);
-    // data_dir는 프로세스 내 모든 테스트가 공유하므로 지우지 않는다 (boot_e2e_ipc 참고)
-    let _ = data_dir;
+    // modules_dir·data_dir는 프로세스 내 모든 테스트가 공유하므로 지우지 않는다 (boot_e2e_ipc 참고)
+    let _ = (modules_dir, data_dir);
 }
 
 /// 인스턴스 생성 시 비동기 프로비저닝(mock 모듈은 최신 2.0.0 설치)이 같은
