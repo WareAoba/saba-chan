@@ -226,7 +226,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/instances` | `instance.rs:12` | - | `[ServerInstance]` (§4.1, REST 비밀번호 평문 포함) |
-| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?, accept_agreements?:[id]}` (`accept_agreements`: 동의한 모듈 약관. 선언 안 된 id는 400 `invalid_format`, 원격이면 403 `agreement_local_only`) | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
+| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?, accept_agreements?:[id]}` (`accept_agreements`: 동의한 모듈 약관. 선언 안 된 id는 400 `invalid_format`, 원격이면 403 `agreement_local_only`. 가져오기(`migration_source`)면 만든 직후 lifecycle `accept_agreements`를 불러 모듈이 반영하게 한다) | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` + `agreements:[{id, label, url, accepted, accepted_at}]`(모듈 약관, 이름은 데몬 언어) / 404 `{error, error_code}` |
 | DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |

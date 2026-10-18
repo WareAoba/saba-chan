@@ -1085,6 +1085,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn imported_server_applies_the_agreements_accepted_at_creation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/eula\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\ncfg = json.load(sys.stdin)\nif sys.argv[1] == 'accept_agreements':\n    open(os.path.join(cfg['working_dir'], 'agreed.txt'), 'w').write(','.join(cfg['accepted_agreements']))\nprint(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let existing = tmp.path().join("existing");
+        std::fs::create_dir_all(&existing).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let req = json!({ "name": "old", "module_name": "game", "migration_source": existing, "accept_agreements": ["eula"] });
+        let resp = super::super::instance::create_instance(State(state.clone()), Json(req)).await.into_response();
+        assert!(resp.status().is_success());
+        assert_eq!(std::fs::read_to_string(existing.join("agreed.txt")).unwrap(), "eula");
+    }
+
+    #[tokio::test]
     async fn server_list_says_which_servers_the_runner_manages() {
         let tmp = tempfile::tempdir().unwrap();
         let modules = tmp.path().join("modules");

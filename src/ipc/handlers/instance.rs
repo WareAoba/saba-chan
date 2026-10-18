@@ -627,6 +627,14 @@ pub async fn create_instance(
                     }
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
                     let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
+                    // 가져온 서버는 설치를 거치지 않으므로, 만들 때 동의한 약관을 모듈이 지금 반영한다 (예: eula.txt)
+                    if !instance.accepted_agreements.is_empty() {
+                        let ids: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+                        match crate::supervisor::Supervisor::accept_agreements(&state.supervisor, &id, &ids).await {
+                            Ok(Ok(result)) if result.get("success").and_then(|v| v.as_bool()) != Some(false) => {}
+                            other => tracing::warn!("Migration: module did not apply agreements for '{}': {:?}", instance_name, other),
+                        }
+                    }
                     // 모듈이 판정한 것(서버 종류, 설치된 플러그인 등)을 그대로 돌려준다
                     let mut response = json!({ "success": true, "id": id });
                     if let Some(detected) = detected {
