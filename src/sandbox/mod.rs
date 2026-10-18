@@ -14,6 +14,7 @@
 use saba_chan_updater_lib::integrity::Trust;
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub mod appcontainer;
@@ -48,6 +49,23 @@ pub fn trust_of_entry(entry: &Path) -> Trust {
 /// 제한을 거는가 (Windows이고 공식·그대로가 아닌 것)
 pub fn restricted(trust: Trust) -> bool {
     ENFORCED && trust != Trust::Verified
+}
+
+/// 확인되지 않은 모듈이 돌려준 폴더(설치 결과 `install_path` 등)를 받아들이는가. 그 폴더는 인스턴스 폴더 키로
+/// 저장되어 다음 격리 실행에 쓰기를 받으므로, 데몬이 정한 `root`(인스턴스 폴더) 안일 때만 받는다
+pub fn accepts_module_dir(entry: &Path, dir: &str, root: &Path) -> bool {
+    !restricted(trust_of_entry(entry)) || inside(Path::new(dir), root)
+}
+
+/// 링크·`..`를 푼 실제 경로로 `path`가 `root` 안인가 (없는 경로는 아니다)
+fn inside(path: &Path, root: &Path) -> bool {
+    if !plain_local_path(path) {
+        return false;
+    }
+    match (std::fs::canonicalize(path), std::fs::canonicalize(root)) {
+        (Ok(p), Ok(r)) => p.starts_with(r),
+        _ => false,
+    }
 }
 
 /// 어디 있든 실행하지 않는 프로그램 (셸·스크립트 호스트). 파일 이름(확장자 뺀 것)을 소문자로 본다
@@ -102,6 +120,10 @@ pub fn check_launch(program: &str, roots: &LaunchRoots) -> Result<(), &'static s
     if path.components().count() == 1 && !path.is_absolute() {
         return if RUNTIME_NAMES.contains(&name.as_str()) { Ok(()) } else { Err(OUTSIDE) };
     }
+    // 모듈이 준 경로는 파일 시스템에 묻기 전에 거른다 (UNC 등)
+    if !plain_local_path(path) {
+        return Err(OUTSIDE);
+    }
     // 링크·`..`로 빠져나가지 않게 실제 경로로 비교한다. 없는 파일은 거부
     let Ok(real) = std::fs::canonicalize(path) else { return Err(OUTSIDE) };
     let inside = roots.dirs.iter().filter_map(|d| std::fs::canonicalize(d).ok()).any(|d| real.starts_with(d));
@@ -139,7 +161,7 @@ pub fn message(blocked: &Blocked) -> String {
     let file = blocked.file.as_deref().unwrap_or("");
     match blocked.code {
         "malware_detected" => format!("Antivirus flagged a file of this unverified component: {}", file),
-        "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}", file),
+        "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
         "unscannable_file" => format!("This unverified component contains compiled code without source that cannot be scanned: {}", file),
         "scan_failed" => format!("Could not scan a file of this unverified component, so it was not run: {}", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
@@ -280,7 +302,10 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     }
     // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
     let mut files: Vec<PathBuf> = Some(PathBuf::from(&program)).filter(|p| p.is_absolute()).into_iter().collect();
-    files.extend(argument_files(args, cwd));
+    match argument_files(args, cwd) {
+        Ok(found) => files.extend(found),
+        Err(arg) => return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None }),
+    }
     tokio::task::spawn_blocking(move || {
         let mut cache = VerdictCache::load();
         let result = files.iter().try_for_each(|f| scan::scan_executable(f, &scan::SystemScanner, &mut cache));
@@ -292,8 +317,27 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     Ok(program)
 }
 
-/// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준)
-fn argument_files(args: &[String], cwd: &Path) -> Vec<PathBuf> {
+/// `.`·`..`를 글자로만 푼 경로 (파일 시스템에 묻지 않는다)
+fn lexical(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                    out.pop();
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준).
+/// 로컬 드라이브가 아닌 경로(UNC 등)를 가리키는 인자는 묻지 않고 그 인자를 돌려준다 (`Err`)
+fn argument_files(args: &[String], cwd: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out: Vec<PathBuf> = Vec::new();
     for arg in args {
         let mut candidates = vec![arg.as_str(), arg.trim_start_matches('@')];
@@ -302,13 +346,16 @@ fn argument_files(args: &[String], cwd: &Path) -> Vec<PathBuf> {
             candidates.extend(arg.split_once(':').map(|(_, v)| v));
         }
         for c in candidates.into_iter().filter(|c| !c.is_empty()) {
-            let path = cwd.join(c);
+            let path = lexical(&cwd.join(c));
+            if !plain_local_path(&path) {
+                return Err(arg.clone());
+            }
             if path.is_file() && !out.contains(&path) {
                 out.push(path);
             }
         }
     }
-    out
+    Ok(out)
 }
 
 /// 격리해서 돌릴 Python 실행 하나
@@ -347,6 +394,104 @@ fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
         return None;
     }
     Some(data_dir.join("extension-data").join(name))
+}
+
+/// PATH에서 런타임 실행 파일을 찾는다
+fn find_on_path(name: &str, path: Option<&OsStr>) -> Option<PathBuf> {
+    std::env::split_paths(path?).find_map(|dir| [format!("{name}.exe"), name.to_string()].into_iter().map(|f| dir.join(f)).find(|p| p.is_file()))
+}
+
+/// 런타임 실행 파일의 설치 폴더 (`<home>/bin/java`). 링크는 따라간 실제 위치로 보고,
+/// `release` 파일이 있는 JDK·JRE 폴더만 인정한다 (`bin`이 있는 아무 도구 폴더를 통째로 열지 않는다)
+fn runtime_home(exe: &Path) -> Option<PathBuf> {
+    let real = std::fs::canonicalize(exe).ok()?;
+    if !real.is_file() || !RUNTIME_NAMES.contains(&stem(&real).as_str()) {
+        return None;
+    }
+    let bin = real.parent()?;
+    let home = bin.parent()?;
+    (bin.file_name()?.eq_ignore_ascii_case("bin") && home.join("release").is_file()).then(|| home.to_path_buf())
+}
+
+/// 파일 시스템에 묻기 전에 걸러 낼 경로: 로컬 드라이브의 절대 경로이고 `..`가 없어야 한다
+/// (UNC 경로는 묻는 것만으로 다른 PC에 사용자 자격을 보낼 수 있다)
+pub fn plain_local_path(path: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    if !path.is_absolute() || path.components().any(|c| c == Component::ParentDir) {
+        return false;
+    }
+    match path.components().next() {
+        // `\\?\C:\`도 로컬 드라이브다 (Windows canonicalize가 돌려주는 모양)
+        Some(Component::Prefix(p)) => matches!(p.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)),
+        _ => cfg!(not(windows)),
+    }
+}
+
+/// 사용자가 설정에서 정한 런타임(`java_path`)을 그 구성요소의 격리 실행에 연다 (Windows, 확인되지 않은 것만).
+/// 설정을 저장할 때 데몬이 부른다: 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없다
+pub fn open_user_runtime(entry: &Path, java_path: &str) {
+    if !ENFORCED || !restricted(trust_of_entry(entry)) {
+        return;
+    }
+    let Some((key, _)) = component_of(entry) else { return };
+    let raw_data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+    let data_dir = std::fs::canonicalize(&raw_data_dir).unwrap_or(raw_data_dir);
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).and_then(|h| std::fs::canonicalize(h).ok());
+    let mut grants = appcontainer::Grants::default();
+    for runtime in runtime_homes(Some(java_path), None, std::env::var_os("PATH").as_deref()) {
+        grants.push_optional(&runtime, appcontainer::Access::Read, &data_dir, home.as_deref());
+    }
+    if grants.entries.is_empty() {
+        return;
+    }
+    #[cfg(windows)]
+    if let Err(e) = appcontainer::grant(&appcontainer::profile_for(&key), &grants) {
+        tracing::warn!("[Sandbox] could not open runtime {} to {}: {}", java_path, key, e);
+    }
+    #[cfg(not(windows))]
+    let _ = key;
+}
+
+/// 격리된 모듈이 확인하고 띄울 런타임의 설치 폴더: 사용자가 정한 `java_path`(경로 없는 이름이면 PATH에서),
+/// `JAVA_HOME`, PATH의 `java`. 모듈은 `java -version`으로 런타임을 확인하는데, AppContainer는 Program Files 밖 폴더를 읽지 못한다
+pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: Option<&OsStr>) -> Vec<PathBuf> {
+    let mut exes = Vec::new();
+    if let Some(java) = java_path.map(str::trim).filter(|p| !p.is_empty()) {
+        let java = Path::new(java);
+        if java.is_absolute() {
+            if !plain_local_path(java) {
+                return Vec::new();
+            }
+            exes.push(java.to_path_buf());
+        } else if java.components().count() == 1 && RUNTIME_NAMES.contains(&stem(java).as_str()) {
+            exes.extend(find_on_path(&stem(java), path));
+        }
+    }
+    if let Some(home) = java_home.filter(|h| !h.is_empty()) {
+        let bin = Path::new(home).join("bin");
+        exes.extend(["java.exe", "java"].into_iter().map(|f| bin.join(f)).find(|p| p.is_file()));
+    }
+    exes.extend(find_on_path("java", path));
+    let mut homes: Vec<PathBuf> = Vec::new();
+    for home in exes.iter().filter_map(|e| runtime_home(e)) {
+        if !homes.contains(&home) {
+            homes.push(home);
+        }
+    }
+    homes
+}
+
+/// 데몬 환경(`JAVA_HOME`, PATH)이 가리키는 런타임 실행 파일. 격리 실행에 읽기를 준 그 런타임을 실행 대상 검사도 인정한다
+pub fn daemon_runtimes() -> Vec<PathBuf> {
+    runtime_executables(runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()))
+}
+
+fn runtime_executables(homes: Vec<PathBuf>) -> Vec<PathBuf> {
+    homes
+        .into_iter()
+        .flat_map(|home| ["java.exe", "javaw.exe", "java", "javaw"].map(|f| home.join("bin").join(f)))
+        .filter(|p| p.is_file())
+        .collect()
 }
 
 /// 확인되지 않은 구성요소의 Python 실행이면 격리 계획을 만든다. `config`의 `instance_dir`·`working_dir`에
@@ -414,6 +559,10 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     if let Some(d) = &data {
         let _ = std::fs::create_dir_all(d);
         add(d, Access::Write);
+    }
+    // 런타임은 없어도 되는 권한: 주지 못하면 그 폴더만 빼고 띄운다 (Java를 쓰지 않는 구성요소까지 막지 않게)
+    for runtime in runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
+        grants.push_optional(&runtime, Access::Read, &data_dir, home);
     }
     let profile = appcontainer::profile_for(&key);
     Some(Isolation { key, dir, profile, grants, pycache, temp, data })
@@ -564,6 +713,68 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_runtimes_the_daemon_knows_are_opened_to_the_sandbox() {
+        let tmp = tempfile::tempdir().unwrap();
+        let jdk = |name: &str, release: bool| {
+            let home = tmp.path().join(name);
+            std::fs::create_dir_all(home.join("bin")).unwrap();
+            std::fs::write(home.join("bin").join("java"), b"x").unwrap();
+            if release {
+                std::fs::write(home.join("release"), b"JAVA_VERSION=\"21\"").unwrap();
+            }
+            home
+        };
+        // 입력은 사용자가 쓰는 모양 그대로 (Windows의 canonicalize는 `\\?\` 경로를 돌려준다), 결과는 실제 경로
+        let real = |p: &PathBuf| std::fs::canonicalize(p).unwrap();
+        let (set, env_home, on_path, tools) = (jdk("set", true), jdk("env", true), jdk("path", true), jdk("tools", false));
+        let path = std::env::join_paths([on_path.join("bin"), tools.join("bin")]).unwrap();
+        let java = set.join("bin").join("java");
+
+        let homes = runtime_homes(java.to_str(), Some(env_home.as_os_str()), Some(&path));
+        assert_eq!(homes, vec![real(&set), real(&env_home), real(&on_path)]);
+        // 경로 없는 이름은 PATH에서 찾고, 같은 폴더는 한 번만
+        assert_eq!(runtime_homes(Some("java"), None, Some(&path)), vec![real(&on_path)]);
+        // `release` 없는 도구 폴더는 열지 않는다
+        let tools_path = std::env::join_paths([tools.join("bin")]).unwrap();
+        assert_eq!(runtime_homes(None, None, Some(&tools_path)), Vec::<PathBuf>::new());
+        // 이름이 java가 아닌 실행 파일, 없는 파일은 런타임이 아니다
+        std::fs::write(set.join("bin").join("evil"), b"x").unwrap();
+        for bad in [set.join("bin").join("evil"), set.join("bin").join("missing")] {
+            assert_eq!(runtime_homes(bad.to_str(), None, None), Vec::<PathBuf>::new());
+        }
+        // 그 JDK의 java는 실행 대상 검사도 통과한다
+        let roots = LaunchRoots { dirs: vec![], runtimes: runtime_executables(vec![env_home.clone()]) };
+        assert_eq!(check_launch(&env_home.join("bin").join("java").to_string_lossy(), &roots), Ok(()));
+        assert_eq!(check_launch(&tools.join("bin").join("java").to_string_lossy(), &roots), Err("launch_outside_instance"));
+    }
+
+    #[test]
+    fn a_folder_an_unverified_module_returns_must_stay_in_the_instance() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path().join("inst");
+        std::fs::create_dir_all(inst.join("server")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("Games")).unwrap();
+        assert!(inside(&inst.join("server"), &inst));
+        assert!(!inside(&tmp.path().join("Games"), &inst));
+        assert!(!inside(&inst.join("server").join("..").join("..").join("Games"), &inst));
+        assert!(!inside(&inst.join("missing"), &inst));
+    }
+
+    #[test]
+    fn only_plain_local_paths_reach_the_file_system() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(plain_local_path(tmp.path()));
+        assert!(!plain_local_path(&tmp.path().join("..").join("x")));
+        assert!(!plain_local_path(Path::new("bin/java")));
+        #[cfg(windows)]
+        for bad in [r"\\host\share\bin\java.exe", r"\\?\UNC\host\share\java.exe", r"\\.\C:\jdk\bin\java.exe"] {
+            assert!(!plain_local_path(Path::new(bad)), "{bad}");
+        }
+        #[cfg(windows)]
+        assert!(plain_local_path(Path::new(r"\\?\C:\jdk\bin\java.exe")));
+    }
+
+    #[test]
     fn launch_targets_must_stay_inside_the_instance() {
         let tmp = tempfile::tempdir().unwrap();
         let inst = tmp.path().join("inst");
@@ -671,9 +882,15 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let found = argument_files(&args, tmp.path());
+        let found = argument_files(&args, tmp.path()).unwrap();
         let names: Vec<_> = found.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
         assert_eq!(names, ["agent.jar", "args.txt", "extra.jar", "server.jar"]);
+        // `..`가 든 인자도 글자로 푼 경로로 검사 목록에 든다
+        std::fs::create_dir_all(tmp.path().join("sub")).unwrap();
+        let up = argument_files(&["-jar".to_string(), "sub/../server.jar".to_string()], tmp.path()).unwrap();
+        assert_eq!(up, vec![tmp.path().join("server.jar")]);
+        #[cfg(windows)]
+        assert_eq!(argument_files(&[r"\\host\share\x.jar".to_string()], tmp.path()), Err(r"\\host\share\x.jar".to_string()));
     }
 
     /// 익스텐션 hook은 확인된 모듈의 인스턴스에도 불린다: 인스턴스 폴더는 읽기만, 쓰기는 전용 폴더에만

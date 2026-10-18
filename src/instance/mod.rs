@@ -69,6 +69,10 @@ pub struct ServerInstance {
     /// 동의한 모듈 약관 (`[[agreements]]` id → 동의 시각 RFC3339). 선언된 약관을 모두 동의해야 켠다
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub accepted_agreements: std::collections::BTreeMap<String, String>,
+    /// 사용자가 직접 정한 `module_settings` 키 (모듈 기본값·프리셋·게임 파일에서 읽은 값이 아닌 것).
+    /// 실행 대상 검사·격리 실행이 사용자가 고른 런타임(`java_path`)만 인정하는 데 쓴다
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub user_settings: std::collections::BTreeSet<String>,
 }
 
 fn default_protocol_mode() -> String {
@@ -108,6 +112,7 @@ impl ServerInstance {
             extra_args: Vec::new(),
             memory_limit_mb: None,
             accepted_agreements: Default::default(),
+            user_settings: Default::default(),
         }
     }
 
@@ -173,6 +178,8 @@ impl ServerInstance {
         for (key, value) in settings {
             let typed = coerce_setting_value(value, types.get(key).map(String::as_str));
             self.module_settings.insert(key.clone(), typed);
+            // 모듈이 게임 파일에서 읽어 온 값이다
+            self.user_settings.remove(key);
         }
         // 인스턴스 필드는 이번에 읽은 키로만 맞춘다 (캐시에 남은 옛 값으로 되돌리지 않는다)
         let port = |key: &str| {

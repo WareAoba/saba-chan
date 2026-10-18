@@ -1076,7 +1076,7 @@
     },
     "start_blocked": {
       "malware_detected": "El antivirus marcó un archivo de este componente no verificado: {{file}}",
-      "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}}",
+      "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}} Si configuraste la ruta de Java tú mismo, vuelve a elegirla en la configuración del servidor.",
       "unscannable_file": "Este componente no verificado tiene archivos compilados sin su código fuente y no se puede analizar: {{file}}",
       "scan_failed": "No se pudo analizar un archivo de este componente no verificado, así que no se ejecutó: {{file}}",
       "sandbox_unavailable": "No se pudo preparar un entorno aislado para {{component}}, así que no se ejecutó."
