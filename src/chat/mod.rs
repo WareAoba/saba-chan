@@ -64,6 +64,9 @@ pub struct ChatRequest {
     pub user_name: Option<String>,
     #[serde(default, alias = "guildName")]
     pub guild_name: Option<String>,
+    /// 답을 쓸 언어 (릴레이가 실어 보낸 디스코드 길드 언어). 없으면 데몬 GUI 언어
+    #[serde(default)]
+    pub locale: Option<String>,
     /// 디스코드(릴레이)에서 온 요청이면 판정에 쓸 출처. None이면 로컬(GUI·CLI)이라 판정하지 않는다.
     /// HTTP 본문으로는 채울 수 없다 (릴레이 경로만 채운다)
     #[serde(skip)]
