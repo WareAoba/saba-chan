@@ -11,6 +11,7 @@ pub mod chat;
 pub mod backup;
 pub mod chatbot;
 pub mod discord;
+pub mod guild_words;
 pub mod events;
 pub mod migration;
 pub mod diagnostics;
