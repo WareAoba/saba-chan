@@ -99,19 +99,23 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             let sinceId = 0;
             let diskLoaded = false;
             let polling = false;
+            // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
+            const myRef = { active: true, timer: null };
+            const isMine = () => pollingRefs.current[instanceId] === myRef && myRef.active;
             const schedulePoll = () => {
-                if (!pollingRefs.current[instanceId]?.active) return;
+                if (!isMine()) return;
                 const servers = useServerStore.getState().servers;
                 const server = servers.find((s) => s.id === instanceId);
                 const isRunning = server && server.pid > 0;
                 const interval = isRunning ? POLL_ACTIVE_MS : POLL_IDLE_MS;
-                pollingRefs.current[instanceId].timer = setTimeout(async () => {
+                myRef.timer = setTimeout(async () => {
                     if (polling) { schedulePoll(); return; }
                     polling = true;
                     try {
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
                         const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
                         const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
+                        if (!isMine()) return;
                         // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
                         // 이미 한 번 로드했으면 다시 append하지 않음
                         if (data?.source === 'disk') {
@@ -169,7 +173,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     schedulePoll();
                 }, interval);
             };
-            pollingRefs.current[instanceId] = { active: true, timer: null };
+            pollingRefs.current[instanceId] = myRef;
             schedulePoll();
         }
     }, [consoleBufferRef, getDefaultPosition, getDefaultSize]);
