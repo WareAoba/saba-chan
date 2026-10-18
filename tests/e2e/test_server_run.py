@@ -3,13 +3,16 @@
 가짜 마인크래프트 서버(fixtures/fake-minecraft)를 실제 minecraft 모듈·saba-runner로 돌린다.
 """
 
+import os
 import socket
 import time
+from pathlib import Path
 
 import pytest
 
 from harness import procs
 from harness.daemon import E2EError, EventStream, wait_until
+from harness.paths import IS_WINDOWS
 
 DONE = r"Done \([^)]+\)!"
 
@@ -301,6 +304,42 @@ def test_launch_preview_matches_actual_command(mc):
     daemon.wait_console(iid, DONE)
     java = [cmd for _, cmd in procs.processes_mentioning(str(folder)) if "java" in cmd]
     assert java and "-Xmx300M" in java[0], java
+
+
+# Oracle Java 8 설치기가 PATH 맨 앞에 넣는 shim 폴더 (32비트 Java 8을 띄운다)
+ORACLE_SHIM = Path(r"C:\Program Files (x86)\Common Files\Oracle\Java\java8path")
+OLD_JAVA = """#!/bin/sh
+if [ "$1" = "-version" ]; then echo 'java version "1.8.0_401"' >&2; exit 0; fi
+echo "java8path: could not load the JVM" >&2
+exit 127
+"""
+
+
+def _old_java_first_on_path(sandbox) -> str:
+    """PATH 맨 앞에 Java 8 shim을 둔 PATH. Windows는 이 PC의 Oracle shim, 그 밖에는 Java 8이라고만 답하는 가짜."""
+    if IS_WINDOWS:
+        if not (ORACLE_SHIM / "java.exe").is_file():
+            pytest.skip("이 PC에 Oracle java8path shim이 없습니다")
+        shim = ORACLE_SHIM
+    else:
+        shim = sandbox.root / "java8path"
+        shim.mkdir()
+        (shim / "java").write_text(OLD_JAVA)
+        (shim / "java").chmod(0o755)
+    return os.pathsep.join([str(shim), os.environ.get("PATH", "")])
+
+
+@pytest.mark.xfail(strict=True, reason="F11: PATH 뒤쪽의 새 JDK를 두고 맨 앞의 Java 8 shim을 고른다 (리눅스: preflight JAVA_VERSION_TOO_OLD, Windows: 0xC0000135로 곧바로 끝남)")
+def test_server_starts_with_old_java_shim_first_on_path(daemon_factory, sandbox, fake_server):
+    """사용자 PC처럼 Oracle Java 8 shim이 PATH 맨 앞에 있고 java_path가 기본값("java")이어도,
+    시작 요청이 늦지 않게 답하고 1.21 서버가 뜰 수 있는 Java로 뜬다."""
+    daemon = daemon_factory(extra_env={"PATH": _old_java_first_on_path(sandbox), "JAVA_HOME": ""})
+    folder, _ = fake_server("mc1")
+    iid = daemon.import_server("mc1", folder, module_settings={"ram": "256M", "server_version": "1.21.1"})
+    started = time.monotonic()
+    daemon.start_instance(iid)
+    assert time.monotonic() - started < 20, "시작 요청이 Java를 찾느라 오래 걸림"
+    daemon.wait_console(iid, DONE, timeout=120)
 
 
 def _ensure_error_text(exc: E2EError) -> str:
