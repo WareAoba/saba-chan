@@ -210,34 +210,43 @@ pub fn prune(dir: &Path, keep: usize, protect: Option<&str>) -> Vec<String> {
 }
 
 /// 백업을 원래 자리로 돌려놓는다. 서버는 꺼져 있어야 한다 (호출자가 확인).
-/// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣은 뒤 지운다. 도중에 실패하면 치워 둔 것을 되돌린다
+/// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣는다. 치워 둔 것은 모두 성공한 뒤에 지우고,
+/// 도중에 실패하면 이미 풀어 넣은 경로까지 거꾸로 모두 되돌린다
 pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
     let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
     let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
-    let mut restored = Vec::new();
+    // (경로, 기존 것을 치워 뒀는가). 실패하면 이 목록을 거꾸로 되돌린다
+    let mut touched: Vec<(&Path, bool)> = Vec::new();
+    let mut failed = None;
     for entry in &manifest.paths {
-        let aside = aside_path(&entry.path);
         let had_old = entry.path.exists();
         if had_old {
-            fs::rename(&entry.path, &aside).with_context(|| format!("move aside {}", entry.path.display()))?;
+            if let Err(e) = fs::rename(&entry.path, aside_path(&entry.path)) {
+                failed = Some(anyhow::Error::from(e).context(format!("move aside {}", entry.path.display())));
+                break;
+            }
         }
-        match extract_entry(&mut zip, entry) {
-            Ok(()) => {
-                if had_old {
-                    remove_any(&aside);
-                }
-                restored.push(entry.path.clone());
-            }
-            Err(e) => {
-                remove_any(&entry.path);
-                if had_old {
-                    let _ = fs::rename(&aside, &entry.path);
-                }
-                return Err(e.context(format!("restore {}", entry.path.display())));
-            }
+        touched.push((&entry.path, had_old));
+        if let Err(e) = extract_entry(&mut zip, entry) {
+            failed = Some(e.context(format!("restore {}", entry.path.display())));
+            break;
         }
     }
-    Ok(restored)
+    if let Some(e) = failed {
+        for (path, had_old) in touched.into_iter().rev() {
+            remove_any(path);
+            if had_old {
+                let _ = fs::rename(aside_path(path), path);
+            }
+        }
+        return Err(e);
+    }
+    for (path, had_old) in &touched {
+        if *had_old {
+            remove_any(&aside_path(path));
+        }
+    }
+    Ok(touched.into_iter().map(|(p, _)| p.to_path_buf()).collect())
 }
 
 fn aside_path(path: &Path) -> PathBuf {
@@ -320,6 +329,35 @@ mod tests {
         assert!(!w.join("new.dat").exists(), "restore replaces the folder, not merges");
         assert_eq!(fs::read(&props).unwrap(), b"a=1");
         assert!(!aside_path(&w).exists());
+    }
+
+    #[test]
+    fn a_failed_restore_puts_every_path_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let props = tmp.path().join("server.properties");
+        fs::write(&props, b"a=1").unwrap();
+        let dir = tmp.path().join("backups");
+        let b = create(&dir, BackupKind::Manual, &[w.clone(), props.clone()]).unwrap();
+        // 두 번째 항목의 파일이 빠진 백업: 첫 경로는 풀리고 두 번째에서 실패한다
+        let broken = dir.join("20000101-000000-000-manual.zip");
+        {
+            let mut src = zip::ZipArchive::new(File::open(dir.join(&b.name)).unwrap()).unwrap();
+            let mut out = zip::ZipWriter::new(File::create(&broken).unwrap());
+            for i in 0..src.len() {
+                let f = src.by_index(i).unwrap();
+                if f.name() != "1" {
+                    out.raw_copy_file(f).unwrap();
+                }
+            }
+            out.finish().unwrap();
+        }
+        fs::write(w.join("level.dat"), b"current").unwrap();
+        fs::write(&props, b"a=2").unwrap();
+        assert!(restore(&dir, "20000101-000000-000-manual.zip").is_err());
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"current", "the first path must be rolled back too");
+        assert_eq!(fs::read(&props).unwrap(), b"a=2");
+        assert!(!aside_path(&w).exists() && !aside_path(&props).exists());
     }
 
     #[test]
