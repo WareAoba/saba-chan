@@ -159,7 +159,7 @@ mod imp {
         CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess, InitializeProcThreadAttributeList, ResumeThread,
         TerminateProcess, UpdateProcThreadAttribute, PROCESS_INFORMATION,
     };
-    use winapi::um::securitybaseapi::{AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation};
+    use winapi::um::securitybaseapi::{AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, InitializeAcl};
     use winapi::um::synchapi::WaitForSingleObject;
     use winapi::um::winbase::{
         LocalFree, CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, HANDLE_FLAG_INHERIT,
@@ -170,7 +170,9 @@ mod imp {
         ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION, DELETE, FILE_DELETE_CHILD, FILE_GENERIC_EXECUTE,
         FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_TRAVERSE, HANDLE,
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, OBJECT_INHERIT_ACE, PACL, PSECURITY_DESCRIPTOR,
-        PSID, SECURITY_CAPABILITIES, SE_GROUP_ENABLED, SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SYNCHRONIZE,
+        PSID, SECURITY_CAPABILITIES, SE_GROUP_ENABLED, SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SYNCHRONIZE, ACL, ACL_REVISION,
+        LABEL_SECURITY_INFORMATION, SECURITY_MANDATORY_LABEL_AUTHORITY, SECURITY_MANDATORY_LOW_RID, SYSTEM_MANDATORY_LABEL_ACE,
+        SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
     };
 
     const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
@@ -324,6 +326,70 @@ mod imp {
         Ok(())
     }
 
+    /// 낮은 무결성 수준 S-1-16-4096
+    fn low_integrity() -> Result<PSID, String> {
+        static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
+        SID.get_or_init(|| {
+            let mut auth = SID_IDENTIFIER_AUTHORITY { Value: SECURITY_MANDATORY_LABEL_AUTHORITY };
+            let mut sid: PSID = null_mut();
+            if unsafe { AllocateAndInitializeSid(&mut auth, 1, SECURITY_MANDATORY_LOW_RID, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
+                return Err(last_error("AllocateAndInitializeSid"));
+            }
+            Ok(Sid(sid))
+        })
+        .as_ref()
+        .map(|s| s.0)
+        .map_err(Clone::clone)
+    }
+
+    /// AppContainer 프로세스는 낮은 무결성 수준으로 돈다. 보통 폴더는 표시가 없어 중간 수준(쓰기 금지)으로 보므로
+    /// DACL이 허용해도 쓰기가 막힌다: 쓰기를 준 폴더에는 낮은 수준 표시를 하위까지 상속되게 붙인다
+    fn label_low(path: &Path) -> Result<(), String> {
+        let low = low_integrity()?;
+        let flags = (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE) as DWORD;
+        let mut name = wide(path.as_os_str());
+        unsafe {
+            let mut sacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetNamedSecurityInfoW(name.as_ptr(), SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), &mut sacl, &mut sd);
+            if rc != 0 {
+                return Err(format!("read label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            let already = !sacl.is_null() && {
+                let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+                GetAclInformation(sacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) != 0
+                    && (0..info.AceCount).any(|i| {
+                        let mut ace: *mut c_void = null_mut();
+                        if GetAce(sacl, i, &mut ace) == 0 || ace.is_null() {
+                            return false;
+                        }
+                        let header = &*(ace as *const ACE_HEADER);
+                        let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
+                        header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE
+                            && DWORD::from(header.AceFlags) & flags == flags
+                            && EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0
+                    })
+            };
+            LocalFree(sd);
+            if already {
+                return Ok(());
+            }
+            // ACL 머리 + 표시 ACE 하나 + SID(하위 권한 1개)
+            let mut buf = [0u32; 16];
+            let acl = buf.as_mut_ptr() as *mut ACL;
+            if InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) == 0
+                || AddMandatoryAce(acl, DWORD::from(ACL_REVISION), flags, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, low) == 0
+            {
+                return Err(last_error("AddMandatoryAce"));
+            }
+            let rc = SetNamedSecurityInfoW(name.as_mut_ptr(), SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl);
+            if rc != 0 {
+                return Err(format!("write label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+        }
+        Ok(())
+    }
+
     fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
         // ACL 고치기는 읽고-바꾸고-쓰기라, 두 실행이 같은 폴더(Python 설치 등)에 동시에 주면 한쪽 ACE가 사라진다.
         // 프로필이 구성요소마다 달라 겹칠 수 있으므로 데몬 안에서 한 번에 하나씩
@@ -333,6 +399,9 @@ mod imp {
         let everyone = all_app_packages()?;
         for (path, access) in &grants.entries {
             grant_one(path, sid, everyone, *access)?;
+            if *access == Access::Write {
+                label_low(path)?;
+            }
         }
         Ok(sid)
     }
