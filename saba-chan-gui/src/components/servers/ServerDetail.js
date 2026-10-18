@@ -40,7 +40,6 @@ export function ServerDetail({
     modules,
     servers,
     setServers,
-    formatUptime,
     onStart,
     onStop,
     onRestart,
@@ -108,9 +107,7 @@ export function ServerDetail({
     const activeTab = tabs.some((x) => x.id === tab) ? tab : defaultTab;
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
-    // 가동 시간은 1초마다 바뀐다: 앱 전체가 아니라 실행 중인 서버의 상세만 다시 그린다
-    useServerStore((st) => (status === 'running' ? st.nowEpoch : 0));
-    const uptime = status === 'running' && server.start_time ? formatUptime(server.start_time) : null;
+    const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
     const players = playersText(server);
 
     const primaryButton = (() => {
@@ -425,6 +422,11 @@ function SettingsTab({ server, settingsProps, modules, servers }) {
         );
     }
     return <ServerSettingsModal {...settingsProps} modules={modules} servers={servers} embedded onClose={() => {}} />;
+}
+
+/** 가동 시간은 1초마다 바뀐다: 상세 전체가 아니라 이 글자만 다시 그린다 */
+function Uptime({ startTime }) {
+    return useServerStore((st) => st.formatUptime(startTime));
 }
 
 /** 정보 탭: 숫자·주소·관리 동작 */
