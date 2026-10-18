@@ -13,7 +13,28 @@ function Toast() {
             fn();
         }, ms);
         timers.current.add(id);
+        return id;
     }, []);
+    // 토스트마다 걸린 자동 사라짐 타이머 (갱신할 때 이전 것을 지운다)
+    const durationTimers = useRef(new Map());
+    const scheduleRemoval = useCallback(
+        (toastId, duration, remove) => {
+            const prev = durationTimers.current.get(toastId);
+            if (prev !== undefined) {
+                clearTimeout(prev);
+                timers.current.delete(prev);
+                durationTimers.current.delete(toastId);
+            }
+            if (duration > 0) {
+                const timer = later(() => {
+                    durationTimers.current.delete(toastId);
+                    remove(toastId);
+                }, duration);
+                durationTimers.current.set(toastId, timer);
+            }
+        },
+        [later],
+    );
     useEffect(() => {
         const pending = timers.current;
         return () => {
@@ -56,11 +77,7 @@ function Toast() {
             }
 
             // 모든 토스트는 자동으로 사라짐
-            if (duration > 0) {
-                later(() => {
-                    removeToast(id);
-                }, duration);
-            }
+            scheduleRemoval(id, duration, removeToast);
 
             return id; // ID 반환하여 나중에 업데이트 가능
         };
@@ -70,11 +87,7 @@ function Toast() {
             setToasts((prev) => prev.map((toast) => (toast.id === id ? { ...toast, message, type } : toast)));
 
             // 기존 타이머 취소하고 새 타이머 설정
-            if (duration > 0) {
-                later(() => {
-                    removeToast(id);
-                }, duration);
-            }
+            scheduleRemoval(id, duration, removeToast);
         };
 
         // 상태 업데이트는 콘솔 로그로만 기록 (토스트 표시 안 함)
@@ -95,7 +108,7 @@ function Toast() {
             delete window.updateToast;
             delete window.showStatus;
         };
-    }, [removeToast, later]);
+    }, [removeToast, scheduleRemoval]);
 
     return (
         <div className="toast-container">
