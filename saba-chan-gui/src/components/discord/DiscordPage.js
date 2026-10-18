@@ -233,8 +233,9 @@ export function DiscordPage({
             setSaveState('saving');
             clearTimeout(saveTimer.current);
             saveTimer.current = setTimeout(async () => {
-                await saveCurrentSettings();
-                setSaveState('saved');
+                // 실패는 저장 쪽이 알린다. 저장됨 표시만 띄우지 않는다
+                const ok = await saveCurrentSettings();
+                setSaveState(ok === false ? null : 'saved');
             }, AUTOSAVE_MS);
         },
         [setNodeSettings, saveCurrentSettings],

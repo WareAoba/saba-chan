@@ -122,3 +122,28 @@ describe('useMultiConsole 닫았다 다시 열기', () => {
         expect(pending).toHaveLength(3);
     });
 });
+
+describe('useMultiConsole 콘솔 입력', () => {
+    afterEach(() => {
+        useConsoleStore.setState({ consoles: {} });
+        delete window.api.managedStdin;
+        delete window.api.executeCommand;
+    });
+
+    it('콘솔 입력의 답이 시간 안에 안 오면 명령 API로 다시 보내지 않는다 (명령이 두 번 실행되지 않게)', async () => {
+        window.showToast = vi.fn();
+        window.api.managedStdin = vi.fn().mockResolvedValue({ error: 'timed out', error_code: 'ETIMEDOUT' });
+        window.api.executeCommand = vi.fn().mockResolvedValue({ success: true });
+        const { result } = renderHook(() =>
+            useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
+        );
+        act(() => result.current.openConsole('f', 'F'));
+        act(() => result.current.setConsoleInput('f', 'ban griefer'));
+        await act(async () => result.current.sendConsoleCommand('f'));
+        expect(window.api.executeCommand).not.toHaveBeenCalled();
+        expect(window.showToast.mock.calls.map((c) => c[0])).toEqual([
+            "Couldn't confirm the command was sent. Check the console before trying again.",
+        ]);
+        act(() => result.current.closeConsole('f'));
+    });
+});

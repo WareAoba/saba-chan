@@ -552,13 +552,13 @@ pub async fn install_module_from_manifest(
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
     };
-    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
+    let zip_path = modules_dir.join(format!(".tmp-module-{}.zip", module_id));
     let staging = modules_dir.join(format!(".staging-{}", module_id));
     let target_dir = modules_dir.join(&module_id);
 
     let result: anyhow::Result<()> = async {
         let http = reqwest::Client::new();
-        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), None).await?;
+        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), comp.size_bytes, None).await?;
         let _ = std::fs::remove_dir_all(&staging);
         saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
         install_staged_module(&staging, &target_dir)?;
@@ -586,8 +586,9 @@ pub async fn install_module_from_manifest(
 /// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
 fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
     crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
-    let mut old_name = target_dir.file_name().unwrap_or_default().to_os_string();
-    old_name.push(".saba-old");
+    // 점으로 시작해 모듈 탐색이 건너뛴다. 남으면 다음 기동이 지운다 (제자리가 비었으면 되돌린다)
+    let mut old_name = std::ffi::OsString::from(".old-");
+    old_name.push(target_dir.file_name().unwrap_or_default());
     let old = target_dir.with_file_name(old_name);
     let _ = std::fs::remove_dir_all(&old);
     let had_old = target_dir.exists();

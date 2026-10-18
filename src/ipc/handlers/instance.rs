@@ -796,9 +796,22 @@ pub async fn delete_instance(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
-    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+    let Some(guard) = super::backup::BusyGuard::take(&id) else {
         return super::backup::instance_busy();
     };
+    // 요청이 끊겨도 정지·삭제를 끝까지 한다: 추적을 뺀 채 멈추면 돌던 서버가 추적 밖에 남는다
+    let work = crate::audit::spawn(async move {
+        let _guard = guard;
+        delete_instance_held(state, id).await
+    });
+    work.await.unwrap_or_else(|e| {
+        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+    })
+}
+
+/// 작업 잠금을 잡은 뒤의 인스턴스 삭제
+async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::Response {
     let supervisor = state.supervisor.write().await;
 
     // ── 인스턴스 존재 확인 ──
@@ -1106,8 +1119,8 @@ pub async fn update_instance_settings(
     // 설정값 업데이트
     let mut updated = instance.clone();
 
-    // working_dir이 null인데 executable_path가 있으면 자동 보정
-    if updated.working_dir.is_none() {
+    // working_dir이 null인데 executable_path가 있으면 자동 보정 (이번 요청이 executable_path를 지우면 하지 않는다)
+    if updated.working_dir.is_none() && !settings.get("executable_path").is_some_and(Value::is_null) {
         if let Some(ref exe_path) = updated.executable_path {
             if let Some(parent) = std::path::Path::new(exe_path).parent() {
                 updated.working_dir = Some(parent.to_string_lossy().to_string());
@@ -2061,6 +2074,18 @@ mod tests {
         assert_eq!(inst.executable_path, None);
         assert_eq!((inst.rest_host, inst.rest_port, inst.rest_username, inst.rest_password), (None, None, None, None));
         assert!(!inst.module_settings.contains_key("executable_path"));
+
+        // 작업 폴더 없이 실행 파일만 정했던 인스턴스: 지울 때 옛 실행 파일 폴더로 작업 폴더를 채우지 않는다
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut legacy = sup.instance_store.get(&id).cloned().unwrap();
+            legacy.executable_path = Some(exe.to_string_lossy().into_owned());
+            legacy.working_dir = None;
+            sup.instance_store.update(&id, legacy).unwrap();
+        }
+        assert!(patch(json!({ "executable_path": null })).await.status.is_success());
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!((inst.executable_path, inst.working_dir), (None, None));
     }
 
     #[test]

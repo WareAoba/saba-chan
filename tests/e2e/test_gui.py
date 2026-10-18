@@ -331,8 +331,16 @@ def test_gui_asks_before_loading_unverified_extension_gui(sandbox, daemon_factor
     gui.snap(art, "asked")
     assert not gui.js("return !!window.__e2eGuiLoaded"), "허락 전에 번들이 실행됨"
 
+    # 허락은 셸의 OS 확인 창(sandbox_consent_allow)을 거친다. 웹뷰 버튼만으로는 기록되지 않는다 (G12)
     gui.click(L["ext_gui_allow"])
-    gui.wait(lambda: gui.js("return !!window.__e2eGuiLoaded"), 30, "허락 뒤 번들 로드")
-    gui.snap(art, "allowed")
+    time.sleep(3)
+    assert not gui.js("return !!window.__e2eGuiLoaded"), "OS 확인 창 없이 번들이 실행됨"
     consents = daemon.api.ok("GET", "/api/sandbox/extension-gui")["components"]
-    assert any(c["component"] == "ext-e2e-gui" and c.get("current") for c in consents), consents
+    assert not any(c["component"] == "ext-e2e-gui" and c.get("current") for c in consents), consents
+    gui.close()
+
+    # 확인 창의 '허락'은 드라이버가 누를 수 없어, 셸이 그다음 보내는 요청을 그대로 보낸다
+    daemon.api.ok("POST", "/api/sandbox/extension-gui/ext-e2e-gui", {})
+    gui = open_gui(daemon, "extConsentAllowed")
+    gui.wait(lambda: gui.js("return !!window.__e2eGuiLoaded"), 60, "허락 뒤 번들 로드")
+    gui.snap(art, "allowed")

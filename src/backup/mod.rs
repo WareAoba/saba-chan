@@ -233,11 +233,19 @@ pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
         }
     }
     if let Some(e) = failed {
+        // 되돌리지 못한 경로는 오류에 붙인다 (원래 내용은 `.saba-restore-old`와 복원 전 안전 백업에 남아 있다)
+        let mut stuck = Vec::new();
         for (path, had_old) in touched.into_iter().rev() {
             remove_any(path);
             if had_old {
-                let _ = fs::rename(aside_path(path), path);
+                if let Err(r) = fs::rename(aside_path(path), path) {
+                    tracing::warn!("Could not put {} back after a failed restore: {}", path.display(), r);
+                    stuck.push(aside_path(path).display().to_string());
+                }
             }
+        }
+        if !stuck.is_empty() {
+            return Err(e.context(format!("could not undo the restore; the original files are kept at {}", stuck.join(", "))));
         }
         return Err(e);
     }

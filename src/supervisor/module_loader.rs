@@ -1496,6 +1496,10 @@ impl ModuleLoader {
         for entry in fs::read_dir(&self.modules_dir)? {
             let entry = entry?;
             let path = entry.path();
+            // 점으로 시작하는 것은 설치 중인 준비 폴더·옛 폴더·받는 중인 파일이다
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
 
             // ZIP 파일 체크
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("zip") {
@@ -1648,6 +1652,21 @@ mod tests {
         let rules = &meta.syntax_highlight.unwrap().rules;
         assert_eq!((rules[0].underline, rules[0].priority, rules[0].background.as_deref()), (false, 0, None));
         assert_eq!((rules[1].underline, rules[1].priority, rules[1].background.as_deref()), (true, 5, Some("dim")));
+    }
+
+    #[test]
+    fn folders_and_files_starting_with_a_dot_are_not_modules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let toml = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+        for dir in ["plain", ".old-plain"] {
+            std::fs::create_dir_all(tmp.path().join(dir)).unwrap();
+            std::fs::write(tmp.path().join(dir).join("module.toml"), toml).unwrap();
+            std::fs::write(tmp.path().join(dir).join("lifecycle.py"), "").unwrap();
+        }
+        std::fs::write(tmp.path().join(".tmp-module-plain.zip"), "partial").unwrap();
+        let loader = ModuleLoader::new(tmp.path().to_str().unwrap());
+        assert_eq!(loader.discover_modules().unwrap().len(), 1);
+        assert!(loader.load_errors().is_empty(), "{:?}", loader.load_errors());
     }
 
     #[test]

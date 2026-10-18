@@ -223,6 +223,20 @@ describe('데몬 응답 가공', () => {
         expect(seen[0]).toMatchObject({ method: 'DELETE', path: '/api/sandbox/extension-gui/ext-y' });
     });
 
+    it('instanceDelete가 시간 안에 답을 못 받으면 error_code ETIMEDOUT을 함께 돌려준다', async () => {
+        const { api } = await install({
+            daemon_request: () => ({ status: 0, error: 'operation timed out', code: 'ETIMEDOUT' }),
+        });
+        expect((await api.instanceDelete('i1')).error_code).toBe('ETIMEDOUT');
+    });
+
+    it('managedStdin이 답을 못 받으면(연결 오류) error_code를 함께 돌려준다', async () => {
+        const { api } = await install({
+            daemon_request: () => ({ status: 0, error: 'operation timed out', code: 'ETIMEDOUT' }),
+        });
+        expect(await api.managedStdin('i1', 'list')).toMatchObject({ error_code: 'ETIMEDOUT' });
+    });
+
     it('executeCommand는 HTTP 오류에서 데몬 문구와 error_code·field를 넘긴다', async () => {
         const { api } = await install({
             daemon_request: () => ({

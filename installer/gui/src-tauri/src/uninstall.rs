@@ -151,7 +151,9 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     schedule_self_delete(install_dir.as_ref(), dedicated);
 
     // 완료
-    emit_complete(if last_install {
+    emit_complete(if install_dir.is_none() {
+        "No Saba-chan install was found next to this uninstaller, so your settings and servers were kept."
+    } else if last_install {
         "Saba-chan has been completely removed."
     } else {
         "This Saba-chan install was removed. Your settings and servers were kept because another Saba-chan install still uses them."
@@ -204,6 +206,8 @@ pub async fn do_silent_uninstall() {
     if last_install {
         eprintln!("  Removing user data and runtime environments...");
         remove_appdata_dir();
+    } else if install_dir.is_none() {
+        eprintln!("  Keeping user data: no Saba-chan install was found next to this uninstaller");
     } else {
         eprintln!("  Keeping user data: another Saba-chan install still uses it");
     }
@@ -835,59 +839,51 @@ fn remove_dir_robust(dir: &PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove_appdata_dir() {
-    let saba_dir = constants::resolve_data_dir();
-    if saba_dir.exists() {
-        tracing::info!("[Uninstall] Removing appdata: {:?}", saba_dir);
-        let _ = remove_dir_robust(&saba_dir);
+/// 제거기가 지울 사용자 데이터 폴더. 환경 변수로 다른 폴더를 가리키게 했으면 None
+/// (개발 체크아웃 같은 남의 폴더일 수 있다)
+fn owned_data_dir() -> Option<PathBuf> {
+    let overridden = ["SABA_DATA_DIR", "SABA_MODULES_PATH", "SABA_EXTENSIONS_DIR"]
+        .iter()
+        .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()));
+    if overridden {
+        tracing::warn!("[Uninstall] Data folder is overridden by environment; leaving user data alone");
+        return None;
     }
+    Some(constants::resolve_data_dir())
+}
+
+/// 사용자 데이터 폴더를 지운다. `keep_settings`면 런타임·캐시만 지운다.
+/// 앱이 만들지 않는 항목(업데이트 서명 키 등)은 어느 쪽이든 남는다
+fn remove_appdata_entries(keep_settings: bool) {
+    let Some(saba_dir) = owned_data_dir() else { return };
+    let Ok(entries) = std::fs::read_dir(&saba_dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        let path = entry.path();
+        if !saba_chan_updater_lib::uninstall_entry::removable_data_entry(&name_str, keep_settings) {
+            tracing::info!("[Uninstall] Keeping: {:?}", path);
+            continue;
+        }
+        if path.is_dir() {
+            tracing::info!("[Uninstall] Removing dir: {:?}", path);
+            let _ = remove_dir_robust(&path);
+        } else {
+            tracing::info!("[Uninstall] Removing file: {:?}", path);
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    // 남긴 것이 없으면 폴더도 지운다
+    let _ = std::fs::remove_dir(&saba_dir);
+}
+
+fn remove_appdata_dir() {
+    remove_appdata_entries(false);
 }
 
 /// 설정 파일만 남기고 나머지 삭제 (바이너리, 런타임, 캐시 등)
 fn remove_appdata_dir_keep_settings() {
-    let saba_dir = constants::resolve_data_dir();
-    if !saba_dir.exists() {
-        return;
-    }
-
-    // 보존할 파일/폴더 패턴 (config, settings, 인스턴스 설정)
-    let keep_names: &[&str] = &[
-        "config.json",       // 모든 사용자 설정 (config_file)
-        "config.json.bak",   // 직전 설정 백업
-        "instances",         // 서버 파일·월드·백업과 인스턴스 설정
-        ".node_token",       // 디스코드 연결 (재설치 뒤 다시 페어링하지 않게)
-        "extension-data",    // 익스텐션 설정
-        // 아직 이관되지 않은 예전 설정 파일 (다음 실행 때 config.json으로 이관)
-        "settings.json",
-        "bot-config.json",
-        "cli-settings.json",
-        "update-config.json",
-        "boot-config.json",
-        "extensions_state.json",
-        "extensionConfig.json",
-    ];
-
-    // 삭제 대상: 보존 대상을 제외한 모든 파일/폴더
-    if let Ok(entries) = std::fs::read_dir(&saba_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-
-            if keep_names.iter().any(|k| name_str == *k) {
-                tracing::info!("[Uninstall] Keeping: {:?}", entry.path());
-                continue;
-            }
-
-            let path = entry.path();
-            if path.is_dir() {
-                tracing::info!("[Uninstall] Removing dir: {:?}", path);
-                let _ = remove_dir_robust(&path);
-            } else {
-                tracing::info!("[Uninstall] Removing file: {:?}", path);
-                let _ = std::fs::remove_file(&path);
-            }
-        }
-    }
+    remove_appdata_entries(true);
 }
 
 fn remove_temp_files() {
@@ -905,6 +901,9 @@ fn remove_temp_files() {
 }
 
 fn remove_modules_dir() {
+    if owned_data_dir().is_none() {
+        return;
+    }
     let modules_dir = constants::resolve_modules_dir();
     if modules_dir.exists() {
         tracing::info!("[Uninstall] Removing modules: {:?}", modules_dir);

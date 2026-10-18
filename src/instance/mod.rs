@@ -420,15 +420,23 @@ impl InstanceStore {
         let instance_json = serde_json::to_string_pretty(&meta)?;
         let settings_json = serde_json::to_string_pretty(&settings)?;
         let instance_path = dir.join("instance.json");
-        let previous = fs::read_to_string(&instance_path).ok();
+        // 없을 때만 새 파일이다: 못 읽은 것을 없는 것으로 보면 되돌릴 때 기존 파일을 지운다
+        let previous = match fs::read(&instance_path) {
+            Ok(bytes) => Some(bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(anyhow::Error::from(e).context(format!("read {} before saving", instance_path.display()))),
+        };
         write_atomic(&instance_path, &instance_json)?;
 
         // settings.json — 모듈별 동적 설정 (비어있어도 저장). 못 쓰면 instance.json도 되돌려 반쪽 저장을 남기지 않는다
         if let Err(e) = write_atomic(&dir.join("settings.json"), &settings_json) {
-            let _ = match &previous {
-                Some(old) => write_atomic(&instance_path, old),
+            let undone = match &previous {
+                Some(old) => write_atomic_bytes(&instance_path, old),
                 None => fs::remove_file(&instance_path).map_err(Into::into),
             };
+            if let Err(u) = undone {
+                return Err(e.context(format!("instance.json could not be put back either: {:#}", u)));
+            }
             return Err(e);
         }
 
@@ -509,11 +517,15 @@ fn drop_legacy_rcon_keys(settings: &mut HashMap<String, serde_json::Value>) -> b
 
 /// 임시 파일에 쓰고 rename: 쓰는 도중 꺼져도 예전 파일이나 새 파일 중 하나가 온전히 남는다
 fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    write_atomic_bytes(path, content.as_bytes())
+}
+
+fn write_atomic_bytes(path: &Path, content: &[u8]) -> Result<()> {
     use std::io::Write;
     let tmp = path.with_extension("json.tmp");
     {
         let mut f = fs::File::create(&tmp)?;
-        f.write_all(content.as_bytes())?;
+        f.write_all(content)?;
         f.sync_all()?;
     }
     fs::rename(&tmp, path)?;

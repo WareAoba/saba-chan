@@ -265,7 +265,9 @@
     "console": "Console",
     "command": "Commande",
     "click_to_stop": "Cliquer pour arrêter",
-    "click_to_start": "Cliquer pour démarrer"
+    "click_to_start": "Cliquer pour démarrer",
+    "delete_still_running": "'{{name}}' est encore en cours de suppression. Revérifiez la liste des serveurs dans un instant.",
+    "delete_unconfirmed": "Impossible de confirmer la suppression de '{{name}}'. Vérifiez la liste des serveurs dès que le daemon répond."
   },
   "server_settings": {
     "title": "Paramètres",
@@ -397,7 +399,8 @@
     "dependency_unmet_message": "Le module de « {{name}} » nécessite les versions ci-dessous. Mettez à jour, ou installez et activez l'extension, puis relancez.",
     "preflight_failed_title": "La vérification avant démarrage de '{{name}}' a trouvé un problème",
     "working_dir_in_use": "Le serveur '{{instance}}' utilise déjà ce dossier. Deux serveurs dans un même dossier écrasent le monde et les réglages l'un de l'autre. Choisissez un autre dossier.",
-    "no_command_path": "Ce serveur n'a pas de console pour recevoir des commandes. Démarrez-le depuis Saba-chan pour envoyer des commandes."
+    "no_command_path": "Ce serveur n'a pas de console pour recevoir des commandes. Démarrez-le depuis Saba-chan pour envoyer des commandes.",
+    "stdin_unconfirmed": "Impossible de confirmer l'envoi de la commande. Vérifiez la console avant de réessayer."
   },
   "settings": {
     "save_failed_title": "Échec de l'enregistrement des paramètres",
@@ -1186,7 +1189,8 @@
     "extra_label": "Arguments supplémentaires",
     "extra_placeholder": "ex. -players=16 -useperfthreads",
     "unknown_args": "Les arguments sans paramètre correspondant sont transmis tels quels : {{args}}",
-    "invalid_format": "Format invalide."
+    "invalid_format": "Format invalide.",
+    "unchecked": "Impossible de vérifier les arguments de lancement supplémentaires, rien n'a été enregistré"
   },
   "activity": {
     "idle": "Cliquez pour voir le journal de la console du daemon",

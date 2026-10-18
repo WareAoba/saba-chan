@@ -7,12 +7,15 @@ import base64
 import hashlib
 import io
 import json
+import re
 import threading
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from harness.paths import REPO
 
 MOCK_KEY_ID = "saba-updater-mock"
 MOCK_SEED = b"saba-mock-relay-not-for-release!"
@@ -41,10 +44,21 @@ def make_zip(files: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
+def next_release() -> str:
+    """지금 빌드(`versions.toml` release)보다 한 단계 높은 버전: 고정해 두면 버전을 올릴 때마다 '업데이트 없음'이 된다"""
+    text = (REPO / "versions.toml").read_text(encoding="utf-8")
+    current = re.search(r'^\[release\]\s*\nversion\s*=\s*"(\d+)\.(\d+)\.(\d+)', text, re.M)
+    major, minor, patch = (int(x) for x in current.groups())
+    return f"{major}.{minor}.{patch + 1}"
+
+
+NEXT = next_release()
+
+
 class FakeUpdates:
     def __init__(self, platform: str):
         self.platform = platform
-        self.version = "0.1.6"
+        self.version = NEXT
         self.assets: dict[str, bytes] = {}
         self.components: dict[str, dict] = {}
         self.tamper = False  # 서명한 뒤 manifest를 바꾼다

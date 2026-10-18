@@ -1050,6 +1050,8 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     try {
         await invoke('start_install');
     } catch (e) {
+        // 이미 도는 설치가 있으면(두 번 누름) 그 진행 화면을 그대로 둔다
+        if (String(e) === 'busy') return;
         enterError({ message: String(e) });
     }
 });
@@ -1163,6 +1165,7 @@ document.getElementById('btn-uninstall')?.addEventListener('click', async () => 
 
     const keepSettings = document.getElementById('chk-keep-settings')?.checked ?? false;
     try { await invoke('start_uninstall', { keepSettings }); } catch (e) {
+        if (String(e) === 'busy') return;
         enterError({ message: String(e) }, 'uninstallFailed', false);
     }
 });

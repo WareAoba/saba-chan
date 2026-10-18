@@ -209,7 +209,9 @@
     "console": "コンソール",
     "command": "コマンド",
     "click_to_stop": "停止するにはクリック",
-    "click_to_start": "開始するにはクリック"
+    "click_to_start": "開始するにはクリック",
+    "delete_still_running": "'{{name}}' はまだ削除中です。しばらくしてからサーバー一覧をもう一度確認してください。",
+    "delete_unconfirmed": "'{{name}}' が削除されたか確認できませんでした。デーモンが応答したらサーバー一覧を確認してください。"
   },
   "server_settings": {
     "title": "設定",
@@ -341,7 +343,8 @@
     "dependency_unmet_message": "'{{name}}' のモジュールには以下のバージョンが必要です。アップデートするか、拡張機能をインストールして有効にしてから、もう一度起動してください。",
     "preflight_failed_title": "'{{name}}' の起動前チェックで問題が見つかりました",
     "working_dir_in_use": "サーバー '{{instance}}' がすでにこのフォルダーを使っています。1つのフォルダーに2つのサーバーを作ると、ワールドと設定を互いに上書きします。別のフォルダーを選んでください。",
-    "no_command_path": "このサーバーにはコマンドを送るコンソールがありません。サバちゃんから起動するとコマンドを送れます。"
+    "no_command_path": "このサーバーにはコマンドを送るコンソールがありません。サバちゃんから起動するとコマンドを送れます。",
+    "stdin_unconfirmed": "コマンドが送信されたか確認できませんでした。再送する前にコンソールを確認してください。"
   },
   "settings": {
     "save_failed_title": "設定保存失敗",
@@ -1186,7 +1189,8 @@
     "extra_label": "追加の引数",
     "extra_placeholder": "例: -players=16 -useperfthreads",
     "unknown_args": "設定にない引数はそのまま渡します: {{args}}",
-    "invalid_format": "形式が正しくありません。"
+    "invalid_format": "形式が正しくありません。",
+    "unchecked": "追加の起動引数を確認できなかったため、保存しませんでした"
   },
   "activity": {
     "idle": "クリックしてデーモンコンソールの記録を見る",
