@@ -266,8 +266,9 @@ export function DiscordPage({
         relayUrl,
         beforeStart: saveRelayUrl,
         onClaimed: async (s) => {
-            if (s.hostId) setDiscordCloudHostId(s.hostId);
+            // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
             if (s.nodeToken && window.api?.saveNodeToken && !(await persistNodeToken(s.nodeToken))) return false;
+            if (s.hostId) setDiscordCloudHostId(s.hostId);
             await saveCurrentSettings();
             loadNodes();
         },
