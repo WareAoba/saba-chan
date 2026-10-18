@@ -193,7 +193,7 @@ pub enum Existing {
 const ACE_OBJECT_INHERIT: u8 = 0x1;
 #[cfg_attr(not(windows), allow(dead_code))]
 const ACE_CONTAINER_INHERIT: u8 = 0x2;
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg(test)]
 const ACE_INHERITED: u8 = 0x10;
 
 #[cfg_attr(not(windows), allow(dead_code))]
