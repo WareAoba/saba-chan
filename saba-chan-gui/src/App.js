@@ -29,6 +29,7 @@ import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
+import { useConsoleStore } from './stores/useConsoleStore';
 import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
@@ -134,7 +135,6 @@ function App() {
     // ══════════════════════════════════════════════════════════
 
     const {
-        consoles,
         consolePopoutIds,
         openConsole,
         closeConsole,
@@ -611,10 +611,9 @@ function App() {
         const srv = servers.find((s) => s.id === popoutParams.instanceId);
         const mod = srv && modules.find((m) => m.name === srv.module);
         return (
-            <PopoutConsole
+            <PopoutConsoleView
                 popoutParams={popoutParams}
                 server={srv}
-                state={consoles[popoutParams.instanceId]}
                 highlightRules={mod?.syntax_highlight?.rules || null}
                 quickCommands={consoleQuickCommands(mod?.commands?.fields)}
                 openConsole={openConsole}
@@ -687,7 +686,6 @@ function App() {
 
     // ── 서버 페이지에 넘기는 묶음 ──
     const consoleProps = {
-        consoles,
         openConsole,
         setConsoleInput,
         sendConsoleCommand,
@@ -938,6 +936,12 @@ function App() {
             </TooltipProvider>
         </ExtensionProvider>
     );
+}
+
+/** 따로 띄운 콘솔 창: 콘솔 줄은 여기서만 구독해 App 전체가 줄마다 다시 그려지지 않게 한다 */
+function PopoutConsoleView(props) {
+    const state = useConsoleStore((s) => s.consoles[props.popoutParams.instanceId]);
+    return <PopoutConsole {...props} state={state} />;
 }
 
 export default App;
