@@ -72,6 +72,8 @@ struct Inner {
 #[derive(Clone, Default)]
 pub struct RelayAgent {
     inner: Arc<Mutex<Inner>>,
+    /// 받은 명령 id. 다시 연결해도(토큰·주소 교체, 연결 해제 뒤 연결) 이어서 쓴다: 대기열에 남은 명령이 다시 와도 두 번 실행하지 않게
+    seen: Arc<Mutex<SeenCommands>>,
 }
 
 impl RelayAgent {
@@ -127,7 +129,7 @@ impl RelayAgent {
                 token: node_token,
                 cancel: cancel.clone(),
                 generation,
-                seen: Mutex::new(SeenCommands::default()),
+                seen: agent.seen.clone(),
                 ack_supported: std::sync::atomic::AtomicBool::new(true),
             };
             if let Err(e) = session.check_version().await {
@@ -224,7 +226,7 @@ struct Session {
     token: String,
     cancel: CancellationToken,
     generation: u64,
-    seen: Mutex<SeenCommands>,
+    seen: Arc<Mutex<SeenCommands>>,
     /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
     ack_supported: std::sync::atomic::AtomicBool,
 }
@@ -240,31 +242,44 @@ enum Received {
 /// 최근에 받은 명령 id (`SEEN_FOR` 동안, 최대 `SEEN_MAX`개). 끝난 명령은 결과도 기억해 다시 보낼 수 있게 한다
 #[derive(Default)]
 struct SeenCommands {
-    entries: std::collections::VecDeque<(String, std::time::Instant, Option<Value>)>,
+    entries: std::collections::VecDeque<Seen>,
+}
+
+struct Seen {
+    id: String,
+    at: std::time::Instant,
+    /// 받은 세션 (`Session::generation`)
+    session: u64,
+    result: Option<Value>,
 }
 
 impl SeenCommands {
     /// 받은 id를 기록하고, 이 명령을 어떻게 다룰지 돌려준다. 처음 본 id는 처리 중으로 기록한다
-    fn receive(&mut self, id: &str, now: std::time::Instant) -> Received {
-        while self.entries.front().is_some_and(|(_, at, _)| now.saturating_duration_since(*at) >= SEEN_FOR) {
+    fn receive(&mut self, id: &str, now: std::time::Instant, session: u64) -> Received {
+        while self.entries.front().is_some_and(|e| now.saturating_duration_since(e.at) >= SEEN_FOR) {
             self.entries.pop_front();
         }
-        if let Some((_, _, result)) = self.entries.iter().find(|(seen, _, _)| seen == id) {
-            return match result {
+        if let Some(e) = self.entries.iter().find(|e| e.id == id) {
+            return match &e.result {
                 Some(r) => Received::Done(r.clone()),
                 None => Received::Running,
             };
         }
-        self.entries.push_back((id.to_string(), now, None));
+        self.entries.push_back(Seen { id: id.to_string(), at: now, session, result: None });
         while self.entries.len() > SEEN_MAX {
             self.entries.pop_front();
         }
         Received::New
     }
 
+    /// 세션이 끝날 때: 그 세션이 받고 끝내지 못한 명령(받아 두고 시작하지 않은 것)은 잊는다. 다시 오면 다음 세션이 실행한다
+    fn forget_unfinished(&mut self, session: u64) {
+        self.entries.retain(|e| e.session != session || e.result.is_some());
+    }
+
     fn finish(&mut self, id: &str, result: &Value) {
-        if let Some((_, _, slot)) = self.entries.iter_mut().find(|(seen, _, _)| seen == id) {
-            *slot = Some(result.clone());
+        if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
+            e.result = Some(result.clone());
         }
     }
 }
@@ -516,7 +531,7 @@ impl Session {
                             let now = std::time::Instant::now();
                             for cmd in commands {
                                 let Some(id) = cmd.get("id").and_then(Value::as_str).map(str::to_string) else { continue };
-                                let received = self.seen.lock().unwrap_or_else(|e| e.into_inner()).receive(&id, now);
+                                let received = self.seen.lock().unwrap_or_else(|e| e.into_inner()).receive(&id, now, self.generation);
                                 match received {
                                     Received::New => waiting.push(cmd),
                                     // 같은 명령을 다시 받았다: 실행하지 않는다. 끝난 것이면 결과만 다시 보낸다
@@ -544,6 +559,7 @@ impl Session {
         }
         // 연결 해제(취소) 뒤에는 받아 두고 시작하지 않은 명령은 버리고, 이미 시작한 것은 끝까지 마친다
         while running.next().await.is_some() {}
+        self.seen.lock().unwrap_or_else(|e| e.into_inner()).forget_unfinished(self.generation);
     }
 
     async fn run_command(&self, cmd: Value) {
@@ -1283,28 +1299,44 @@ mod tests {
     fn a_redelivered_command_runs_once_and_gets_its_result_again() {
         let mut seen = SeenCommands::default();
         let t = std::time::Instant::now();
-        assert_eq!(seen.receive("c1", t), Received::New);
+        assert_eq!(seen.receive("c1", t, 1), Received::New);
         // 처리 중에 다시 오면 아무것도 하지 않는다 (끝날 때 결과가 한 번 나간다)
-        assert_eq!(seen.receive("c1", t + Duration::from_secs(15)), Received::Running);
+        assert_eq!(seen.receive("c1", t + Duration::from_secs(15), 1), Received::Running);
         seen.finish("c1", &json!({"ok": true}));
-        assert_eq!(seen.receive("c1", t + Duration::from_secs(30)), Received::Done(json!({"ok": true})));
-        assert_eq!(seen.receive("c2", t + Duration::from_secs(30)), Received::New);
+        assert_eq!(seen.receive("c1", t + Duration::from_secs(30), 1), Received::Done(json!({"ok": true})));
+        assert_eq!(seen.receive("c2", t + Duration::from_secs(30), 1), Received::New);
+    }
+
+    /// 연결을 다시 맺어도 끝난 명령은 기억한다. 끝나지 못한 명령(받아 두고 시작하지 않은 것)은 잊어서 다시 오면 실행한다
+    #[test]
+    fn a_reconnect_keeps_finished_commands_and_forgets_unfinished_ones() {
+        let mut seen = SeenCommands::default();
+        let t = std::time::Instant::now();
+        seen.receive("done", t, 1);
+        seen.finish("done", &json!({"ok": true}));
+        seen.receive("dropped", t, 1);
+        // 겹쳐 돈 새 세션이 받아 처리 중인 명령은 남는다
+        seen.receive("newer", t, 2);
+        seen.forget_unfinished(1);
+        assert_eq!(seen.receive("done", t, 2), Received::Done(json!({"ok": true})));
+        assert_eq!(seen.receive("dropped", t, 2), Received::New);
+        assert_eq!(seen.receive("newer", t, 2), Received::Running);
     }
 
     #[test]
     fn remembered_commands_are_forgotten_after_ten_minutes_or_past_the_cap() {
         let mut seen = SeenCommands::default();
         let t = std::time::Instant::now();
-        seen.receive("old", t);
-        assert_eq!(seen.receive("old", t + SEEN_FOR), Received::New);
+        seen.receive("old", t, 1);
+        assert_eq!(seen.receive("old", t + SEEN_FOR, 1), Received::New);
 
         let mut seen = SeenCommands::default();
         for i in 0..=SEEN_MAX {
-            seen.receive(&format!("c{i}"), t);
+            seen.receive(&format!("c{i}"), t, 1);
         }
         assert_eq!(seen.entries.len(), SEEN_MAX);
-        assert_eq!(seen.receive("c0", t), Received::New);
-        assert_eq!(seen.receive(&format!("c{SEEN_MAX}"), t), Received::Running);
+        assert_eq!(seen.receive("c0", t, 1), Received::New);
+        assert_eq!(seen.receive(&format!("c{SEEN_MAX}"), t, 1), Received::Running);
     }
 
     #[test]
