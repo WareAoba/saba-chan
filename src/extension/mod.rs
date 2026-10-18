@@ -1588,13 +1588,17 @@ impl ExtensionManager {
     }
 
     /// 특정 익스텐션의 글로벌 설정을 업데이트합니다.
-    /// 기존 키를 머지(덮어쓰기)하며, 디스크에 즉시 영속화합니다.
+    /// 기존 키를 머지(덮어쓰기)하며, 디스크에 즉시 영속화합니다. 값이 null인 키는 지워 기본값으로 돌린다.
     pub fn set_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
         let entry = self.extension_config
             .entry(ext_id.to_string())
             .or_default();
         for (k, v) in values {
-            entry.insert(k, v);
+            if v.is_null() {
+                entry.remove(&k);
+            } else {
+                entry.insert(k, v);
+            }
         }
         self.save_extension_config();
     }
@@ -2123,6 +2127,16 @@ mod tests {
             let order: Vec<&str> = mgr.hooks_for("daemon.startup").iter().map(|(e, _)| e.manifest.id.as_str()).collect();
             assert_eq!(order, ["zeta", "alpha", "beta"], "disabled 'off' is skipped, priority 10 before default 100");
         }
+    }
+
+    #[test]
+    fn a_null_setting_removes_the_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        let set = |pairs: &[(&str, Value)]| pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<HashMap<_, _>>();
+        mgr.set_extension_config("box", set(&[("a", json!(1)), ("b", json!("x"))]));
+        mgr.set_extension_config("box", set(&[("a", Value::Null)]));
+        assert_eq!(mgr.get_extension_config("box"), set(&[("b", json!("x"))]));
     }
 
     #[test]
