@@ -104,10 +104,12 @@ export function MetricRing({ ring, t, size = 112, inlineNote = true }) {
             {sub && (
                 // 좁을 때는 "·" 뒤에서만 줄을 바꾼다 ("· 쓰기"가 다음 줄 맨 앞에 오지 않게): 조각 안의 띄어쓰기는 붙인다
                 <div className="monitor-ring-sub">
-                    {String(sub)
-                        .split(' · ')
-                        .map((part) => part.replaceAll(' ', '\u00a0'))
-                        .join('\u00a0· ')}
+                    {(() => {
+                        const parts = String(sub).split(' · ');
+                        return parts.length > 1
+                            ? parts.map((part) => part.replaceAll(' ', '\u00a0')).join('\u00a0· ')
+                            : parts[0];
+                    })()}
                 </div>
             )}
             {ring.noteKey && inlineNote && <div className="monitor-ring-note">{t(ring.noteKey)}</div>}

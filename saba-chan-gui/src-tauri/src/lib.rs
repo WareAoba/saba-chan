@@ -105,6 +105,12 @@ pub fn run() {
     };
 
     let app = tauri::Builder::default()
+        // 두 번째 실행은 창을 새로 띄우지 않고 떠 있는 창을 앞으로 가져온다.
+        // 여러 GUI가 한 데몬을 함께 쓰다 한쪽의 완전히 종료가 다른 쪽의 데몬을 꺼뜨리던 것을 막는다
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tracing::info!("Second instance launched; focusing the existing window");
+            window::show_main(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())

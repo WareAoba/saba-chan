@@ -136,10 +136,10 @@ pub fn system_language() -> String {
 /// OS 로케일 → 지원 언어 (정확히 같으면 그것, 아니면 언어 코드로, 없으면 en)
 pub fn match_language(locale: &str) -> String {
     let locale = locale.replace('_', "-");
-    if let Some(l) = SUPPORTED_LANGUAGES.iter().find(|l| **l == locale) {
+    if let Some(l) = SUPPORTED_LANGUAGES.iter().find(|l| l.eq_ignore_ascii_case(&locale)) {
         return l.to_string();
     }
-    let base = locale.split('-').next().unwrap_or("");
+    let base = locale.split('-').next().unwrap_or("").to_ascii_lowercase();
     // 데몬과 같은 규칙: 스크립트 태그가 지역보다 우선 (zh-Hans-HK → 간체, zh-HK·zh-MO·zh-Hant → 번체)
     if base.eq_ignore_ascii_case("zh") {
         let subtags: Vec<String> = locale.split('-').skip(1).map(|t| t.to_ascii_lowercase()).collect();
@@ -213,6 +213,8 @@ mod tests {
     #[test]
     fn matches_system_locale() {
         assert_eq!(match_language("ko-KR"), "ko");
+        assert_eq!(match_language("KO-kr"), "ko");
+        assert_eq!(match_language("ZH-tw"), "zh-TW");
         assert_eq!(match_language("zh-TW"), "zh-TW");
         assert_eq!(match_language("zh-HK"), "zh-TW");
         assert_eq!(match_language("zh_MO"), "zh-TW");

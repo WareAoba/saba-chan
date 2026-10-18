@@ -638,7 +638,7 @@ pub async fn interface_only_quit(app: &AppHandle) {
     state.life.child.lock().unwrap().take();
     tray::remove(app);
     tracing::info!("Interface-only quit sequence completed (daemon kept alive)");
-    app.exit(0);
+    exit_app(app);
 }
 
 /// 완전히 종료 — 클라이언트 해제·데몬 종료 요청 후 데몬이 끝나길 기다린다
@@ -654,8 +654,24 @@ pub async fn clean_quit(app: &AppHandle) {
     stop_daemon(app).await;
     tray::remove(app);
     tracing::info!("Clean quit sequence completed");
-    app.exit(0);
+    exit_app(app);
 }
+
+/// 이벤트 루프에 종료를 요청한다. 웹뷰가 이미 죽어 요청이 닿지 않으면(Tauri가
+/// "failed to exit"만 남기고 돌아온다) 창만 남은 채 멈추므로, 잠시 뒤에도 살아 있으면
+/// 정리(on_exit)를 직접 하고 프로세스를 끝낸다
+fn exit_app(app: &AppHandle) {
+    app.exit(0);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(EXIT_WATCHDOG_SECS));
+        tracing::warn!("Event loop did not exit; forcing process exit");
+        on_exit(&app);
+        std::process::exit(0);
+    });
+}
+
+const EXIT_WATCHDOG_SECS: u64 = 3;
 
 pub fn spawn_clean_quit(app: &AppHandle, delay_ms: u64) {
     let app = app.clone();
