@@ -77,6 +77,11 @@ try {
     $env:CARGO_TARGET_DIR = Join-Path $Repo "target\e2e-mock"
     cargo build -p saba-core --features mock-relay
     $mockExit = $LASTEXITCODE
+    # 적용 시험용 업데이터도 같은 키를 믿게 (릴리스 업데이터는 시험 키 서명을 거부한다)
+    if (-not $mockExit) {
+        cargo build -p saba-chan-updater --features saba-chan-updater-lib/mock-relay
+        $mockExit = $LASTEXITCODE
+    }
     Remove-Item Env:CARGO_TARGET_DIR
     if ($mockExit) { throw "mock-relay 빌드 실패" }
 } finally { Pop-Location }
@@ -143,6 +148,7 @@ if ($LASTEXITCODE) { throw "pip install 실패" }
 $env:SABA_E2E_ROOT = $Root
 $env:SABA_E2E_BIN_DIR = Join-Path $Repo "target\$profileDir"
 $env:SABA_E2E_MOCK_CORE = Join-Path $Repo "target\e2e-mock\debug\saba-core.exe"
+$env:SABA_E2E_MOCK_UPDATER = Join-Path $Repo "target\e2e-mock\debug\saba-chan-updater.exe"
 $env:SABA_E2E_MODULES_REPO = Join-Path $Git "saba-chan-modules"
 $env:SABA_E2E_EXTENSIONS_REPO = Join-Path $Git "saba-chan-extensions"
 $env:SABA_E2E_SERVER_CHAN_REPO = Join-Path $Git "server-chan"

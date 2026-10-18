@@ -9,8 +9,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -31,26 +29,10 @@ RELEASE_GUI_EXE = None if _release.lower() in ("", "none") else Path(_release)
 
 
 @pytest.fixture(scope="module")
-def display():
-    """리눅스에서 화면이 없으면 Xvfb를 하나 띄워 DISPLAY를 준다."""
+def display(xdisplay):
     if tauri_driver() is None:
         pytest.skip("tauri-driver가 없습니다 (cargo install tauri-driver --locked)")
-    if IS_WINDOWS or sys.platform == "darwin" or os.environ.get("DISPLAY"):
-        yield os.environ.get("DISPLAY")
-        return
-    if not shutil.which("Xvfb"):
-        pytest.skip("화면이 없고 Xvfb도 없습니다")
-    r, w = os.pipe()
-    proc = subprocess.Popen(["Xvfb", "-displayfd", str(w), "-screen", "0", "1440x900x24", "-nolisten", "tcp"], pass_fds=(w,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    os.close(w)
-    with os.fdopen(r) as f:
-        num = f.readline().strip()
-    if not num:
-        proc.kill()
-        pytest.skip("Xvfb를 띄우지 못했습니다")
-    yield f":{num}"
-    proc.kill()
-    proc.wait(10)
+    return xdisplay
 
 
 def labels(lang: str = "ko") -> dict:
