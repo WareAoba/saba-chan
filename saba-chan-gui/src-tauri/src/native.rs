@@ -283,6 +283,10 @@ fn with_filters<R: tauri::Runtime>(
     filters: &[FileFilter],
 ) -> tauri_plugin_dialog::FileDialogBuilder<R> {
     for f in filters {
+        // 리눅스(GTK)는 "*"를 "*.*"로 바꿔 확장자 없는 파일을 숨긴다. 필터가 없으면 모든 파일이 보인다
+        if cfg!(target_os = "linux") && f.extensions.iter().all(|e| e == "*") {
+            continue;
+        }
         let exts: Vec<&str> = f.extensions.iter().map(String::as_str).collect();
         b = b.add_filter(&f.name, &exts);
     }
