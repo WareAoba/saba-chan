@@ -330,7 +330,7 @@ impl Session {
                 json!({
                     "name": m.name,
                     "module_aliases": m.module_aliases,
-                    "commands": { "fields": m.commands.iter().map(relay_command_entry).collect::<Vec<_>>() },
+                    "commands": { "fields": m.commands.iter().map(|c| relay_command_entry(c, m.aliases_of(&c.name))).collect::<Vec<_>>() },
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
                 })
             })
@@ -902,14 +902,19 @@ fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
-/// 하트비트의 모듈 명령 한 줄: relay가 슬래시·챗봇 도구를 만드는 데 쓰는 필드만 (템플릿·엔드포인트는 PC 안에서만 쓴다)
-fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField) -> Value {
+/// 하트비트의 모듈 명령 한 줄: relay가 슬래시·챗봇 도구를 만드는 데 쓰는 필드만 (템플릿·엔드포인트는 PC 안에서만 쓴다).
+/// `aliases`는 module.toml `[aliases.commands]`의 별칭 — 별칭으로 친 명령도 relay가 위험도 확인을 거치게 한다
+fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String]) -> Value {
     let inputs: Vec<Value> = c
         .inputs
         .iter()
         .map(|i| json!({ "name": i.name, "label": i.label, "type": i.input_type, "required": i.required, "min": i.min, "max": i.max, "options": i.options }))
         .collect();
-    json!({ "name": c.name, "label": c.label, "description": c.description, "risk": c.risk, "inputs": inputs })
+    let mut entry = json!({ "name": c.name, "label": c.label, "description": c.description, "risk": c.risk, "inputs": inputs });
+    if !aliases.is_empty() {
+        entry["aliases"] = json!(aliases);
+    }
+    entry
 }
 
 /// 익스텐션 상태 줄 길이 상한 (글자)
@@ -959,8 +964,10 @@ mod tests {
             "inputs": [{ "name": "player", "type": "text", "required": true }]
         }))
         .unwrap();
-        let entry = relay_command_entry(&field);
+        let entry = relay_command_entry(&field, &["추방".to_string()]);
         assert_eq!(entry["name"], "kick");
+        assert_eq!(entry["aliases"], json!(["추방"]));
+        assert!(relay_command_entry(&field, &[]).get("aliases").is_none());
         assert_eq!(entry["inputs"][0]["name"], "player");
         assert!(entry.get("console_template").is_none() && entry.get("endpoint_template").is_none() && entry.get("method").is_none());
     }
