@@ -2448,6 +2448,16 @@ impl Supervisor {
         self.save_exit_events(instance_id);
     }
 
+    /// 자동 재시작 대기가 끝났을 때 알린다: 다시 켜졌으면 `instance.restarted`,
+    /// 대기 중에 정지·시작·삭제돼 그만뒀으면 `instance.restart_cancelled` (실패는 `record_restart_failure`)
+    pub fn record_restart_outcome(&self, instance_id: &str, restarted: bool) {
+        let kind = if restarted { "instance.restarted" } else { "instance.restart_cancelled" };
+        crate::events::emit(kind, serde_json::json!({
+            "instanceId": instance_id,
+            "instance": self.instance_store.get(instance_id).map(|i| i.name.clone()).unwrap_or_default(),
+        }));
+    }
+
     /// 최근 종료 이력, 오래된 것부터
     pub fn exit_events(&self, instance_id: &str) -> Vec<crash::ExitEvent> {
         match self.exit_events.get(instance_id) {
@@ -2937,6 +2947,14 @@ mod tests {
             told |= e.kind == "instance.restart_failed" && e.data["noteArgs"]["reason"] == "no java";
         }
         assert!(told, "restart failure was not announced on the event stream");
+        // 복구 시도의 끝도 알린다: 다시 켜졌거나, 대기 중에 정지·시작해서 그만뒀거나
+        supervisor.record_restart_outcome("crash", true);
+        supervisor.record_restart_outcome("crash", false);
+        let kinds: Vec<String> = std::iter::from_fn(|| sub.rx.try_recv().ok())
+            .filter(|e| e.data["instanceId"] == "crash")
+            .map(|e| e.kind.clone())
+            .collect();
+        assert_eq!(kinds, vec!["instance.restarted", "instance.restart_cancelled"]);
         assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5), 0)]);
         assert!(supervisor.restart_still_wanted("crash", 0).await);
         supervisor.stop_requested.insert("crash".into());
