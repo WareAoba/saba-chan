@@ -50,10 +50,14 @@ fn node_token_path() -> PathBuf {
     saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token")
 }
 
-/// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정
-pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: &HashMap<String, String>) {
+/// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정.
+/// 모듈을 읽지 못해 설정 종류를 모르면(`types`가 None) 모듈 설정을 모두 뺀다
+pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: Option<&HashMap<String, String>>) {
     instance.rest_password = None;
-    instance.module_settings.retain(|k, _| types.get(k).map(String::as_str) != Some("password"));
+    match types {
+        Some(types) => instance.module_settings.retain(|k, _| types.get(k).map(String::as_str) != Some("password")),
+        None => instance.module_settings.clear(),
+    }
 }
 
 /// 내보낼 묶음
@@ -194,12 +198,8 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
             .cloned()
             .map(|mut inst| {
                 if !req.secrets {
-                    let types = sup
-                        .module_loader
-                        .get_module(&inst.module_name)
-                        .map(|m| m.metadata.setting_types())
-                        .unwrap_or_default();
-                    strip_instance_secrets(&mut inst, &types);
+                    let types = sup.module_loader.get_module(&inst.module_name).ok().map(|m| m.metadata.setting_types());
+                    strip_instance_secrets(&mut inst, types.as_ref());
                 }
                 inst
             })
@@ -367,10 +367,19 @@ mod tests {
         i.module_settings.insert("AdminPassword".into(), json!("secret"));
         i.module_settings.insert("port".into(), json!(25565));
         let types = HashMap::from([("AdminPassword".to_string(), "password".to_string()), ("port".to_string(), "number".to_string())]);
-        strip_instance_secrets(&mut i, &types);
+        strip_instance_secrets(&mut i, Some(&types));
         assert_eq!(i.rest_password, None);
         assert!(!i.module_settings.contains_key("AdminPassword"));
         assert_eq!(i.module_settings.get("port"), Some(&json!(25565)));
+    }
+
+    #[test]
+    fn export_without_secrets_drops_module_settings_when_the_module_is_missing() {
+        let mut i = inst("a", None);
+        i.module_settings.insert("AdminPassword".into(), json!("secret"));
+        // 모듈을 읽지 못하면 어느 설정이 비밀번호인지 모른다
+        strip_instance_secrets(&mut i, None);
+        assert!(i.module_settings.is_empty());
     }
 
     #[test]
