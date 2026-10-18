@@ -14,6 +14,7 @@ import threading
 
 import pytest
 
+from harness import procs
 from harness.daemon import wait_until
 from harness.paths import E2E_DIR, IS_WINDOWS, REPO
 
@@ -120,7 +121,8 @@ def test_gui_shows_daemon_down_and_reconnects_to_new_daemon(ko_mc, renderer, dae
     """데몬이 꺼지면 알림을 띄우고, 새 데몬(새 토큰)이 같은 포트에 뜨면 다시 조작된다. GUI의 '다시 시작' 버튼은 누르지 않는다."""
     daemon, iid, *_ = ko_mc
     cmd, env, art = gui_command(daemon, renderer, "reconnect", serverName="mc1", l=labels("ko"))
-    proc = subprocess.Popen(cmd, cwd=E2E_DIR / "gui", env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+    # xvfb-run → node → Electron 트리 전체를 끝낼 수 있게 새 세션으로 띄운다
+    proc = subprocess.Popen(cmd, cwd=E2E_DIR / "gui", env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", start_new_session=not IS_WINDOWS)
     try:
         wait_until(lambda: (art / "attached").exists() or proc.poll() is not None, 120, "GUI가 데몬에 붙음")
         old_token = daemon.sb.token_path.read_text()
@@ -131,7 +133,7 @@ def test_gui_shows_daemon_down_and_reconnects_to_new_daemon(ko_mc, renderer, dae
         out, err = proc.communicate(timeout=240)
     finally:
         if proc.poll() is None:
-            proc.kill()
-            out, err = proc.communicate()
+            procs.kill_group(proc.pid)
+            out, err = proc.communicate(timeout=30)
     gui_result(art, out, err, proc.returncode, "reconnect")
     assert new.server_status(iid) == "running"
