@@ -242,9 +242,10 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
-/// 길드·인스턴스 낱말 API(`instances`)
+/// 길드·인스턴스 낱말 API(`instances`), 길드가 쓸 서버 API(`allowedInstances`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
+    "allowedInstances",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",
@@ -1149,15 +1150,19 @@ mod tests {
     fn saving_the_bot_config_keeps_permission_keys() {
         let current = serde_json::json!({ "nodeSettings": {
             "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["x"] },
-            "h": { "defaultLevel": -1 }
+            "h": { "defaultLevel": -1 },
+            "k": { "allowedInstances": ["x"] }
         } });
+        // 옛 스냅샷: k의 제한이 없던 때 것이라도 제한이 풀리면 안 된다
         let mut merged = merge_json(current.clone(), serde_json::json!({ "nodeSettings": {
-            "g": { "ownerDiscordId": "evil", "members": { "evil": 2 }, "allowedInstances": ["y"], "preset": "loose" }
+            "g": { "ownerDiscordId": "evil", "members": { "evil": 2 }, "allowedInstances": ["y"], "preset": "loose" },
+            "k": {}
         } }));
         keep_permission_keys(&mut merged, &current);
         assert_eq!(merged["nodeSettings"], serde_json::json!({
-            "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["y"] },
-            "h": { "defaultLevel": -1 }
+            "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["x"] },
+            "h": { "defaultLevel": -1 },
+            "k": { "allowedInstances": ["x"] }
         }));
     }
 
