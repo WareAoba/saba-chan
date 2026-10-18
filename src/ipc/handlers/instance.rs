@@ -303,10 +303,13 @@ pub async fn create_instance(
                 return (StatusCode::CONFLICT, Json(error)).into_response();
             }
         }
-        if let Some(port) = payload.get("port").and_then(|v| v.as_u64()) {
-            instance.port = Some(port as u16);
-            // 같은 이름의 모듈 설정도 맞춘다 (설치가 module_settings로 게임 설정 파일을 쓴다)
-            if instance.module_settings.contains_key("port") {
+        if let Some(port) = payload.get("port").and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()) {
+            instance.port = Some(port);
+            // 모듈이 `port` 설정을 선언했으면 그것도 맞춘다 (설치가 module_settings로 게임 설정 파일을 쓴다)
+            let declared = supervisor.module_loader.get_module(module).ok()
+                .and_then(|m| m.metadata.settings.as_ref().map(|s| s.fields.iter().any(|f| f.name == "port")))
+                .unwrap_or(false);
+            if declared {
                 instance.module_settings.insert("port".to_string(), json!(port));
             }
         } else if !migration_mode {
@@ -1810,7 +1813,7 @@ mod tests {
         std::fs::write(
             dir.join("module.toml"),
             "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
-             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\ndefault = 25565\n",
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\n",
         )
         .unwrap();
         std::fs::write(dir.join("lifecycle.py"), "").unwrap();
@@ -1827,6 +1830,14 @@ mod tests {
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         // 설치는 module_settings로 게임 설정 파일을 쓴다: 두 값이 같아야 한다
         assert_eq!((instance.port, &instance.module_settings["port"]), (Some(25570), &json!(25570)));
+
+        // u16 밖의 값은 포트로 쓰지 않는다
+        let body = json!({ "name": "b", "module_name": "game", "port": 70000 });
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(body)).await).await;
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_ne!(instance.module_settings.get("port"), Some(&json!(70000)));
+        assert_ne!(instance.port, Some(70000u32 as u16));
     }
 
     #[tokio::test]
