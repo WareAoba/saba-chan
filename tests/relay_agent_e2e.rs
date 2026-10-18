@@ -162,7 +162,7 @@ async fn agent_round_trips_a_relay_command() {
     let en: Value = serde_json::from_str(include_str!("../locales/en/bot.json")).unwrap();
     assert_eq!(body["data"]["text"], en["list"]["empty"], "{}", body);
 
-    // 하트비트는 서버별 CPU·RAM 표본을 뜬 뒤에 나가므로 명령 결과보다 늦을 수 있다
+    // 하트비트는 명령 폴링과 따로 돈다 (서버 CPU·RAM을 재느라 결과보다 늦게 올 수 있다)
     for _ in 0..100 {
         if !relay_state.lock().unwrap().heartbeats.is_empty() {
             break;
