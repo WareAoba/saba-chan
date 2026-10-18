@@ -110,6 +110,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | actionsRun | actions:run | - | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | - |
 | discordSettingsGet | discord:settings:get | - | GET /api/discord/:guild/settings (I2) | - |
 | discordSettingsSet | discord:settings:set | - | PATCH /api/discord/:guild/settings `{locale?, sleeping?, music?}` | - |
+| openInTerminal | clients:launch | - | POST /api/clients/launch `{kind:'cli', view, instance?}` (I4). 데몬이 새 콘솔 창에 CLI 콘솔·셸을 띄운다. 실패하면 데몬 본문(`error_code`)을 그대로 돌려준다. 트레이 메뉴 "터미널 열기"(Windows만)도 같은 라우트를 `view:'shell'`로 부른다 | - |
+| onDaemonEvent | events:message (main → 창) | - | main.js가 GET /api/events(SSE) 연결 하나를 유지하고 받은 이벤트를 `{id, type, data}`로 보낸다. 끊기면 3초 뒤 마지막 번호로 다시 붙는다. `type: 'resync'`면 목록을 다시 읽는다. 돌려주는 함수로 해제 (P4) | - |
 | dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
 | relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels. 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
@@ -215,7 +217,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
 - `bot lang GUILD [auto|코드]`, `bot sleep GUILD`, `bot wake GUILD`, `bot music GUILD [--on|--off] [--ui on|off] [--queue-lines N] [--refresh MS] [--normalize on|off]`: 디스코드 길드 설정(I2) `GET/PATCH /api/discord/:guild/settings`. 값이 없으면 보기만 한다. 봇에 닿지 않아 `sync.ok:false`면 다음 연결 때 보낸다고 알린다.
 - `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.
-- `audit [SERVER] [--limit N]`(A10): `GET /api/audit`를 표로 보여 준다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
+- `audit [SERVER] [--limit N] [-f]`(A10, 별명 `activity`): `GET /api/audit`를 표로 보여 준다. `-f`는 목록을 읽기 전에 `GET /api/events`에 붙고, 이어서 `action.run`을 한 줄씩 따라간다(서버를 주면 그 서버 것만, `--json`이면 data 한 줄씩). 끊기면 2초 뒤 마지막 번호로 다시 붙는다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
 - `do [ACTION] [--server S] [--plan] [KEY=VALUE…]`(P2): 액션 카탈로그. 액션 없이 부르면 `GET /api/actions?surface=cli` 표. 있으면 `plan`을 부르고, `needsConfirm`이면 요약을 보이고 묻은 뒤 `planId`로 `run`한다. `--plan`은 요약만. 값이 JSON으로 읽히면(숫자·참거짓·배열·객체) 그대로 보낸다.
 - `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 

@@ -1211,5 +1211,12 @@
     "instance_exit": "{{name}} stopped ({{kind}}).",
     "backup_done": "Backed up {{name}} ({{kind}}).",
     "backup_failed": "Backup of {{name}} failed. {{error}}"
+  },
+  "terminal": {
+    "open": "Open in terminal",
+    "err_unsupported_platform": "Opening a terminal isn't supported on this OS yet.",
+    "err_cli_not_found": "Couldn't find the CLI program, so the terminal can't be opened.",
+    "err_not_found": "The daemon couldn't find this server.",
+    "err_generic": "Couldn't open the terminal."
   }
 }

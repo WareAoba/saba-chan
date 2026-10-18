@@ -793,6 +793,52 @@ async fn e2e_api_error_schema_consistency() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
+#[tokio::test]
+async fn event_stream_reports_who_ran_what_and_replays_after_reconnect() {
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = reqwest::Client::new();
+
+    // 다른 테스트도 같은 버스에 내므로 이 테스트의 인스턴스 id로 골라 본다
+    async fn find(resp: &mut reqwest::Response, needle: &str) -> String {
+        let mut text = String::new();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            if let Some(block) = text.split("\n\n").find(|b| b.contains(needle)) {
+                return block.to_string();
+            }
+            let chunk = tokio::time::timeout_at(deadline, resp.chunk()).await.expect("event arrives").unwrap().expect("stream open");
+            text.push_str(&String::from_utf8_lossy(&chunk));
+        }
+    }
+
+    let mut live = client.get(format!("{}/api/events", base_url)).send().await.unwrap();
+    assert_eq!(live.headers()["content-type"], "text/event-stream");
+    client
+        .post(format!("{}/api/instance/event-probe/start", base_url))
+        .header("X-Saba-Client", "cli")
+        .send()
+        .await
+        .unwrap();
+    let block = find(&mut live, "event-probe").await;
+    assert!(block.contains("event: action.run"), "{}", block);
+    let data: Value = serde_json::from_str(block.lines().find_map(|l| l.strip_prefix("data: ")).unwrap()).unwrap();
+    assert_eq!((data["source"].as_str(), data["action"].as_str(), data["ok"].as_bool()), (Some("cli"), Some("start"), Some(false)));
+    assert!(data["at"].is_u64());
+
+    // 놓친 건은 다시 붙을 때 마지막 번호 뒤부터 받는다
+    let id: u64 = block.lines().find_map(|l| l.strip_prefix("id: ")).unwrap().parse().unwrap();
+    let mut again = client
+        .get(format!("{}/api/events", base_url))
+        .header("Last-Event-ID", (id - 1).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert!(find(&mut again, "event-probe").await.contains(&format!("id: {}", id)));
+
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
 // ═══════════════════════════════════════════════════════
 // 9. 버전 관리 — 자동 감지·저장·백업·복원 (E2E)
 // ═══════════════════════════════════════════════════════

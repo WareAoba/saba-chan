@@ -1181,5 +1181,12 @@
     "instance_exit": "{{name}} 已停止（{{kind}}）。",
     "backup_done": "{{name}} 已完成备份（{{kind}}）。",
     "backup_failed": "{{name}} 备份失败。{{error}}"
+  },
+  "terminal": {
+    "open": "在终端中打开",
+    "err_unsupported_platform": "此操作系统暂不支持在终端中打开。",
+    "err_cli_not_found": "找不到 CLI 程序，无法打开终端。",
+    "err_not_found": "守护进程中找不到此服务器。",
+    "err_generic": "无法打开终端。"
   }
 }

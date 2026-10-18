@@ -669,6 +669,7 @@
       "monitor.watch": "Ctrl+C까지 계속 새로 고침",
       "monitor.interval": "--watch 새로 고침 간격 (초)",
       "audit.limit": "보여 줄 기록 수",
+      "audit.follow": "새 기록을 생기는 대로 이어서 보여 주기 (Ctrl+C로 멈춤)",
       "bot.lang.value": "auto 또는 언어 코드 (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.music.on": "음악 켜기",
       "bot.music.off": "음악 끄기",

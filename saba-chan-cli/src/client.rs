@@ -481,6 +481,42 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/events — 데몬 이벤트 스트림 (P4, SSE). `since`는 마지막으로 받은 번호
+    pub async fn events(&self, since: Option<u64>) -> Result<Events> {
+        let mut resp = self.open_events(since).await?;
+        // 데몬이 다시 뜨면 토큰이 바뀐다 → 한 번 다시 읽고 재시도 (`call`과 같다)
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            let fresh = read_token();
+            if let Ok(mut t) = self.token.write() {
+                *t = fresh;
+            }
+            resp = self.open_events(since).await?;
+        }
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let value = resp.json().await.unwrap_or(Value::Null);
+            check(status, value)?;
+            return Err(anyhow::anyhow!("GET /api/events: {}", status));
+        }
+        Ok(Events { resp, buf: String::new() })
+    }
+
+    async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
+        let mut req = self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli");
+        if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
+            req = req.header("X-Saba-Token", t);
+        }
+        if let Some(n) = since {
+            req = req.header("Last-Event-ID", n.to_string());
+        }
+        req.send().await.map_err(|e| -> anyhow::Error {
+            if e.is_connect() {
+                CliError::DaemonDown { url: self.base.clone() }.into()
+            } else {
+                anyhow::anyhow!(e)
+            }
+        })
+    }
     /// GET /api/permissions/:guildId
     pub async fn permissions(&self, guild: &str) -> Result<Value> {
         self.get(&format!("/api/permissions/{}", seg(guild))).await
@@ -851,5 +887,69 @@ mod tests {
     fn encodes_path_segments_and_queries() {
         assert_eq!(seg("내 서버/1"), "%EB%82%B4%20%EC%84%9C%EB%B2%84%2F1");
         assert_eq!(with_query("/x", &[("a", Some("1".into())), ("b", None)]), "/x?a=1");
+    }
+}
+
+/// 이벤트 한 건 (`GET /api/events`)
+#[derive(Debug, Clone, PartialEq)]
+pub struct DaemonEvent {
+    pub id: Option<u64>,
+    pub kind: String,
+    pub data: Value,
+}
+
+/// 열린 이벤트 스트림
+pub struct Events {
+    resp: reqwest::Response,
+    buf: String,
+}
+
+impl Events {
+    /// 다음 이벤트. 데몬이 연결을 닫으면 None
+    pub async fn next(&mut self) -> Result<Option<DaemonEvent>> {
+        loop {
+            while let Some(end) = self.buf.find("\n\n") {
+                let block: String = self.buf.drain(..end + 2).collect();
+                if let Some(event) = parse_sse(&block) {
+                    return Ok(Some(event));
+                }
+            }
+            match self.resp.chunk().await? {
+                Some(chunk) => self.buf.push_str(&String::from_utf8_lossy(&chunk)),
+                None => return Ok(None),
+            }
+        }
+    }
+}
+
+/// SSE 한 덩어리 → 이벤트. 주석(ping)뿐이거나 data가 JSON이 아니면 None
+fn parse_sse(block: &str) -> Option<DaemonEvent> {
+    let (mut id, mut kind, mut data) = (None, "message".to_string(), Vec::new());
+    for line in block.lines().filter(|l| !l.is_empty() && !l.starts_with(':')) {
+        let (field, value) = line.split_once(':').map_or((line, ""), |(f, v)| (f, v.strip_prefix(' ').unwrap_or(v)));
+        match field {
+            "id" => id = value.parse().ok(),
+            "event" => kind = value.to_string(),
+            "data" => data.push(value),
+            _ => {}
+        }
+    }
+    if data.is_empty() {
+        return None;
+    }
+    let data = serde_json::from_str(&data.join("\n")).ok()?;
+    Some(DaemonEvent { id, kind, data })
+}
+
+#[cfg(test)]
+mod sse_tests {
+    use super::*;
+
+    #[test]
+    fn blocks_become_events_and_pings_are_skipped() {
+        let e = parse_sse("id: 7\nevent: action.run\ndata: {\"ok\":true}\n\n").unwrap();
+        assert_eq!(e, DaemonEvent { id: Some(7), kind: "action.run".into(), data: serde_json::json!({ "ok": true }) });
+        assert_eq!(parse_sse(":ping\n\n"), None);
+        assert_eq!(parse_sse("event: resync\ndata: {}\n\n").map(|e| (e.id, e.kind)), Some((None, "resync".into())));
     }
 }

@@ -1211,5 +1211,12 @@
     "instance_exit": "{{name}} 서버가 꺼졌어요 ({{kind}}).",
     "backup_done": "{{name}} 백업을 마쳤어요 ({{kind}}).",
     "backup_failed": "{{name}} 백업에 실패했어요. {{error}}"
+  },
+  "terminal": {
+    "open": "터미널로 열기",
+    "err_unsupported_platform": "이 운영체제에서는 아직 터미널로 열 수 없어요.",
+    "err_cli_not_found": "CLI 실행 파일을 찾지 못해 터미널로 열 수 없어요.",
+    "err_not_found": "이 서버를 데몬에서 찾지 못했어요.",
+    "err_generic": "터미널을 열지 못했어요."
   }
 }

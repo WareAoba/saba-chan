@@ -1181,5 +1181,12 @@
     "instance_exit": "{{name}} parou ({{kind}}).",
     "backup_done": "Backup de {{name}} concluído ({{kind}}).",
     "backup_failed": "O backup de {{name}} falhou. {{error}}"
+  },
+  "terminal": {
+    "open": "Abrir no terminal",
+    "err_unsupported_platform": "Abrir um terminal ainda não é compatível com este sistema.",
+    "err_cli_not_found": "O programa CLI não foi encontrado, então o terminal não pode ser aberto.",
+    "err_not_found": "O daemon não encontrou este servidor.",
+    "err_generic": "Não foi possível abrir o terminal."
   }
 }
