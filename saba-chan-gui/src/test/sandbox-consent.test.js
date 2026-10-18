@@ -55,6 +55,16 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         expect(window.api.instanceStart).toHaveBeenCalledTimes(2);
     });
 
+    it('확인 창에서 취소하면 오류 없이 다시 시작하지 않는다', async () => {
+        window.api.instanceStart = vi.fn().mockResolvedValue(unavailable);
+        window.api.sandboxAllowUnisolated = vi.fn().mockResolvedValue({ success: false, error_code: 'canceled' });
+        const { result, setModal } = setup();
+        await act(async () => result.current.handleStart('Pal', 'palworld'));
+        await act(async () => setModal.mock.calls.at(-1)[0].buttons[0].action());
+        expect(window.showToast.mock.calls.filter((c) => c[1] === 'error')).toEqual([]);
+        expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
+    });
+
     it('취소하면 아무것도 저장하지 않는다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(unavailable);
         window.api.sandboxAllowUnisolated = vi.fn();

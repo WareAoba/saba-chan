@@ -308,6 +308,7 @@ export function ExtensionProvider({ children }) {
         async (extId) => {
             try {
                 const res = await window.api.sandboxAllowExtensionGui(`ext-${extId}`);
+                if (res?.error_code === 'canceled') return false;
                 if (!res || res.success === false || res.error) {
                     safeShowToast(t('trust.extension_gui.allow_failed', { error: res?.error || '' }), 'error', 5000);
                     return false;

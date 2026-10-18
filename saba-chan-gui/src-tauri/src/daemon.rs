@@ -114,6 +114,20 @@ pub fn is_allowed_path(path: &str) -> bool {
         .any(|r| lowered == *r || lowered.starts_with(&format!("{r}/")))
 }
 
+/// 렌더러의 데몬 요청을 받을지. 경로 검사에 더해, 동의 기록은 셸 명령만 보낸다
+pub fn is_allowed_request(method: &reqwest::Method, path: &str) -> bool {
+    if !is_allowed_path(path) {
+        return false;
+    }
+    // 목록(GET)과 철회(DELETE)는 렌더러에 남긴다. 기록하는 쪽만 막는다
+    let route = path.split('?').next().unwrap_or("").to_ascii_lowercase();
+    let grants = CONSENT_ROUTES.iter().any(|r| route.starts_with(&format!("{r}/")));
+    !(grants && *method != reqwest::Method::DELETE && *method != reqwest::Method::GET)
+}
+
+/// 확인되지 않은 구성요소 동의 기록 (native::sandbox_consent_allow가 확인 창을 띄운 뒤 보낸다)
+const CONSENT_ROUTES: &[&str] = &["/api/sandbox/unisolated", "/api/sandbox/extension-gui"];
+
 /// 업데이터 실행(relaunch 대상), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
 const RESERVED_ROUTES: &[&str] = &["/api/updates/launch-updater", "/api/client", "/api/daemon/shutdown"];
 
@@ -337,6 +351,30 @@ mod tests {
         ] {
             assert!(!is_allowed_path(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn consent_grants_go_through_the_shell_only() {
+        use reqwest::Method;
+        for (m, p) in [
+            (Method::POST, "/api/sandbox/unisolated/module-x"),
+            (Method::POST, "/api/sandbox/extension-gui/ext-x"),
+            (Method::PUT, "/api/sandbox/extension-gui/ext-x"),
+            (Method::POST, "/api/Sandbox/Extension-GUI/ext-x?y=1"),
+        ] {
+            assert!(!is_allowed_request(&m, p), "{m} {p}");
+        }
+        // 목록과 철회(권한을 줄이는 쪽)는 렌더러에 남긴다
+        for (m, p) in [
+            (Method::GET, "/api/sandbox/unisolated"),
+            (Method::GET, "/api/sandbox/extension-gui"),
+            (Method::DELETE, "/api/sandbox/unisolated/module-x"),
+            (Method::DELETE, "/api/sandbox/extension-gui/ext-x"),
+            (Method::POST, "/api/servers"),
+        ] {
+            assert!(is_allowed_request(&m, p), "{m} {p}");
+        }
+        assert!(!is_allowed_request(&Method::GET, "/api/updates/launch-updater"));
     }
 
     #[test]

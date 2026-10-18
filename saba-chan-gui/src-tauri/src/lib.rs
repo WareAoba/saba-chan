@@ -146,6 +146,7 @@ pub fn run() {
             native::window_minimize,
             native::window_maximize,
             native::window_close,
+            native::sandbox_consent_allow,
         ])
         .setup(|app| {
             let handle = app.handle();
