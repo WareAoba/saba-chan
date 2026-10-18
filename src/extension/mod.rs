@@ -1247,6 +1247,11 @@ impl ExtensionManager {
             }
             for item in slots.get(SLOT_STATUS).and_then(Value::as_array).into_iter().flatten() {
                 let (Some(label), Some(key)) = (item.get("label").and_then(Value::as_str), item.get("value_from").and_then(Value::as_str)) else { continue };
+                // 비밀값처럼 보이는 키는 보이지 않는다 (목록은 원격으로도 나간다)
+                let lower = key.to_ascii_lowercase();
+                if ["password", "token", "secret"].iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s))) {
+                    continue;
+                }
                 let found = ext_status
                     .get(id)
                     .and_then(|s| s.get(key))
@@ -1889,7 +1894,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         write_ext(tmp.path(), "box", json!({ "id": "box", "name": "box", "version": "0.1.0", "cli": { "slots": {
             "InstanceList.badge": { "text": "📦", "condition": "instance.ext_data.boxed" },
-            "ServerDetail.status": [{ "label": "Box", "value_from": "box_state" }, { "label": "Missing", "value_from": "nope" }],
+            "ServerDetail.status": [{ "label": "Box", "value_from": "box_state" }, { "label": "Missing", "value_from": "nope" }, { "label": "Key", "value_from": "api_token" }],
             "CreateInstance.options": [{ "field": "boxed", "type": "boolean", "label": "Box" }]
         } } }));
         write_ext(tmp.path(), "off", json!({ "id": "off", "name": "off", "version": "0.1.0", "cli": { "slots": {
@@ -1905,7 +1910,7 @@ mod tests {
         assert_eq!(slots[SLOT_BADGE].as_array().unwrap().len(), 1, "old name lands under the new one as an array");
 
         let mut data = HashMap::new();
-        let status = HashMap::from([("box".to_string(), json!({ "box_state": "up" }))]);
+        let status = HashMap::from([("box".to_string(), json!({ "box_state": "up", "api_token": "T0KEN" }))]);
         let shown = mgr.server_slots(&data, &status);
         assert!(shown.get(SLOT_BADGE).is_none(), "condition false, disabled extension skipped");
         assert_eq!(shown[SLOT_STATUS], json!([{ "extension": "box", "label": "Box", "value": "up" }]));

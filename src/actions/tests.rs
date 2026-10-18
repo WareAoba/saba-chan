@@ -405,7 +405,8 @@ async fn remote_settings_show_the_old_value_and_can_be_undone() {
 async fn plan_summaries_never_show_stored_or_new_secrets() {
     let (state, id, _tmp) = server().await;
     set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
-    run(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "OLD-PW", "admin_password": "OLD-MOD", "players": 2 }), None, &gui()).await.unwrap();
+    run(&state, "instance.settings.set", Some(&id), &json!({ "players": 2 }), None, &gui()).await.unwrap();
+    assert_eq!(run(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "OLD-PW" }), None, &gui()).await.unwrap()["success"], true);
     let row = |planned: &Value, key: &str| planned["summary"].as_array().unwrap().iter().find(|r| r["labelKey"] == format!("actions.field.{}", key)).cloned().unwrap();
     // 로컬도 요약에는 가린 값만
     let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "NEW-PW" }), &gui()).await.unwrap();

@@ -267,7 +267,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 | `ServerDetail.status` | `InstanceDetail.status` | `[{label, value_from}]` | 같은 곳 `slots["ServerDetail.status"]` = `[{extension, label, value}]` |
 | `AddServer.options` | `CreateInstance.options` | `[{field, type, label, default?}]` | `GET /api/extensions` 각 익스텐션 `slots["AddServer.options"]` |
 
-- 판정은 데몬이 한 번만 한다(`ExtensionManager::server_slots`, `src/extension/mod.rs`). 켜진 익스텐션만, priority·id 순. `condition`은 `evaluate_condition`(`instance.ext_data.<키>`가 참). `value`는 `extension_status[<ext>][value_from]` → `extension_status.default[value_from]` → `extension_data[value_from]` 순으로 찾고, 없으면 그 줄을 뺀다. 문자열이 아니면 JSON 문자열로 바꾼다. 항목이 없으면 `slots` 키 자체가 없다.
+- 판정은 데몬이 한 번만 한다(`ExtensionManager::server_slots`, `src/extension/mod.rs`). 켜진 익스텐션만, priority·id 순. `condition`은 `evaluate_condition`(`instance.ext_data.<키>`가 참). `value`는 `extension_status[<ext>][value_from]` → `extension_status.default[value_from]` → `extension_data[value_from]` 순으로 찾고, 없거나 `value_from`이 비밀값 이름(`password`·`token`·`secret`이거나 `_password` 등으로 끝남)이면 그 줄을 뺀다(목록은 원격으로도 나간다). 문자열이 아니면 JSON 문자열로 바꾼다. 항목이 없으면 `slots` 키 자체가 없다.
 - `/api/extensions`의 `slots`는 `normalized_slots(cli)`: 통일 이름 키, 값은 늘 배열. 옛 이름과 새 이름을 함께 쓰면 이어 붙인다.
 - `AddServer.options`의 답은 `POST /api/instances` 본문 `extension_data: {field: value}`로 보낸다. 데몬이 null이 아닌 값을 새 인스턴스 `extension_data`에 넣는다(객체가 아니면 400 `invalid_format`). 설치 방식이 주는 값이 뒤에서 덮는다.
 - CLI(`saba-chan-cli/src/slots.rs`)는 이 결과를 그대로 출력한다. GUI는 같은 자리에서 번들 컴포넌트와 데이터 slot을 함께 그린다.
