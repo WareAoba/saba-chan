@@ -122,7 +122,7 @@
 - **확인되지 않은 익스텐션 (Windows)**: 신뢰 표시가 `verified`가 아니면 모듈과 같은 규칙을 따른다(02 문서 §2.1). hook 전에 폴더를 검사하고(`malware_detected`·`unscannable_file`·`scan_failed`), Python은 AppContainer 안에서 돈다(준비하지 못하면 `sandbox_unavailable`과 `component`).
   - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다.
   - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
-- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 초과하면 `child.kill()` 후 Err(`plg/:307-315`).
+- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 `taskkill /T`·AppContainer job)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plg/:421-488`).
 
 ### 2.2 디스패처 (`ext/:1213-1256`, `ext/:1557-1628`)
 
