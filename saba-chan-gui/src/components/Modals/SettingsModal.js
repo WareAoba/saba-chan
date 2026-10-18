@@ -19,6 +19,7 @@ import {
     applyCustomTheme,
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import { OklchPicker } from '../ui/OklchPicker';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
@@ -50,6 +51,8 @@ function SettingsModal({
     const [activeTab, setActiveTab] = useState('general');
     const [showUpdatePanel, setShowUpdatePanel] = useState(false);
     const [updatePanelExiting, setUpdatePanelExiting] = useState(false);
+    // 사바 스토리지에서 돌아갈 탭 (들어온 탭으로 돌아간다)
+    const storageReturnTab = useRef('general');
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
@@ -153,12 +156,19 @@ function SettingsModal({
         setActiveTab(newTab);
     };
 
-    // 업데이트 패널 뒤로가기 (나가기 애니메이션 후 전환)
+    // 사바 스토리지 열기: 탭을 바꾸지 않고 바로 들어간다
+    const openStorage = useCallback(() => {
+        storageReturnTab.current = activeTab;
+        setShowUpdatePanel(true);
+    }, [activeTab]);
+
+    // 업데이트 패널 뒤로가기 (나가기 애니메이션 후 들어온 탭으로)
     const handleUpdatePanelBack = useCallback(() => {
         setUpdatePanelExiting(true);
         setTimeout(() => {
             setUpdatePanelExiting(false);
             setShowUpdatePanel(false);
+            setActiveTab(storageReturnTab.current);
             setSlideDirection('slide-right');
         }, 150);
     }, []);
@@ -427,7 +437,7 @@ function SettingsModal({
                             {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
                             <div
                                 className="setting-item setting-item-clickable"
-                                onClick={() => setShowUpdatePanel(true)}
+                                onClick={openStorage}
                             >
                                 <label className="setting-label">
                                     <span className="setting-title">
@@ -442,7 +452,7 @@ function SettingsModal({
                         </div>
                     )}
 
-                    {activeTab === 'general' && showUpdatePanel && (
+                    {showUpdatePanel && (
                         <div className="settings-tab-content" key="update-panel">
                             <SabaStorage
                                 onBack={handleUpdatePanelBack}
@@ -452,7 +462,7 @@ function SettingsModal({
                         </div>
                     )}
 
-                    {activeTab === 'appearance' && (
+                    {activeTab === 'appearance' && !showUpdatePanel && (
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
                             key="appearance"
@@ -511,19 +521,15 @@ function SettingsModal({
                                             title={t(`gui:settings_modal.accent_${preset.name}`, preset.name)}
                                         />
                                     ))}
-                                    <label className="accent-preset-btn accent-preset-custom" title={t('gui:settings_modal.accent_custom', 'Custom')}>
-                                        <input
-                                            type="color"
-                                            value={customTheme.accentColor}
-                                            onChange={(e) =>
-                                                handleCustomThemeChange({
-                                                    accentColor: e.target.value,
-                                                    accentSecondary: e.target.value,
-                                                })
-                                            }
-                                        />
-                                        <Icon name="edit" size="sm" />
-                                    </label>
+                                    <OklchPicker
+                                        variant="swatch"
+                                        className="accent-preset-btn accent-preset-custom"
+                                        label={t('gui:settings_modal.accent_custom', 'Custom')}
+                                        value={customTheme.accentColor}
+                                        onChange={(hex) =>
+                                            handleCustomThemeChange({ accentColor: hex, accentSecondary: hex })
+                                        }
+                                    />
                                 </div>
                             </div>
 
@@ -612,15 +618,11 @@ function SettingsModal({
                                         {t('gui:settings_modal.console_bg_description', 'Background color of the console panel')}
                                     </span>
                                 </label>
-                                <label className="color-input-wrapper">
-                                    <input
-                                        type="color"
-                                        value={customTheme.consoleBgColor}
-                                        onChange={(e) => handleCustomThemeChange({ consoleBgColor: e.target.value })}
-                                    />
-                                    <span className="color-input-preview" style={{ background: customTheme.consoleBgColor }} />
-                                    <span className="color-input-hex">{customTheme.consoleBgColor}</span>
-                                </label>
+                                <OklchPicker
+                                    label={t('gui:settings_modal.console_bg_label', 'Console Background')}
+                                    value={customTheme.consoleBgColor}
+                                    onChange={(hex) => handleCustomThemeChange({ consoleBgColor: hex })}
+                                />
                             </div>
 
                             {/* ── 5-3. 콘솔 기본 폰트 컬러 ── */}
@@ -633,15 +635,11 @@ function SettingsModal({
                                         {t('gui:settings_modal.console_text_description', 'Default text color in the console output')}
                                     </span>
                                 </label>
-                                <label className="color-input-wrapper">
-                                    <input
-                                        type="color"
-                                        value={customTheme.consoleTextColor}
-                                        onChange={(e) => handleCustomThemeChange({ consoleTextColor: e.target.value })}
-                                    />
-                                    <span className="color-input-preview" style={{ background: customTheme.consoleTextColor }} />
-                                    <span className="color-input-hex">{customTheme.consoleTextColor}</span>
-                                </label>
+                                <OklchPicker
+                                    label={t('gui:settings_modal.console_text_label', 'Console Text Color')}
+                                    value={customTheme.consoleTextColor}
+                                    onChange={(hex) => handleCustomThemeChange({ consoleTextColor: hex })}
+                                />
                             </div>
 
                             {/* ── 5-4. 콘솔 텍스트 크기 ── */}
@@ -714,7 +712,7 @@ function SettingsModal({
                         </div>
                     )}
 
-                    {activeTab === 'extensions' && (
+                    {activeTab === 'extensions' && !showUpdatePanel && (
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
                             key="extensions"
@@ -767,10 +765,7 @@ function SettingsModal({
                             <div
                                 className="setting-item setting-item-clickable"
                                 style={{ marginTop: 8 }}
-                                onClick={() => {
-                                    handleTabChange('general');
-                                    setTimeout(() => setShowUpdatePanel(true), 50);
-                                }}
+                                onClick={openStorage}
                             >
                                 <label className="setting-label" style={{ cursor: 'pointer' }}>
                                     <span className="setting-title">
@@ -785,7 +780,7 @@ function SettingsModal({
                         </div>
                     )}
 
-                    {activeTab === 'advanced' && (
+                    {activeTab === 'advanced' && !showUpdatePanel && (
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
                             key="advanced"

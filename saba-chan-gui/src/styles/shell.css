@@ -201,6 +201,10 @@
     left: auto;
     z-index: 1100;
 }
+/* 알림 말풍선 꼬리: 종 버튼(32px) 가운데 아래 (패널 오른쪽 끝 = 버튼 오른쪽 끝) */
+.popover-anchor .notice-modal-container::before {
+    right: calc(16px - 8px);
+}
 .popover-backdrop {
     position: fixed;
     inset: 0;
@@ -452,9 +456,7 @@
     flex: 1;
     min-width: 0;
     overflow-y: auto;
-    background:
-        radial-gradient(1200px 400px at 70% -10%, var(--brand-shadow-subtle), transparent 60%),
-        var(--bg-0);
+    background: var(--bg-0);
 }
 .server-detail {
     max-width: 1080px;
@@ -489,6 +491,25 @@
     box-shadow: var(--shadow-inset);
     border: 1px solid var(--line);
     flex: none;
+}
+/* 디스코드 연결: 연결되면 공식 로고(브랜드색), 끊기면 선만 있는 흑백 */
+.dc-brand-icon,
+.dc-brand-mark {
+    color: var(--text-3);
+    transition:
+        color var(--dur) var(--ease),
+        background-color var(--dur) var(--ease);
+}
+.dc-brand-icon.on {
+    color: var(--knob);
+    background: var(--discord);
+    box-shadow: none;
+}
+.dc-brand-mark {
+    display: inline-flex;
+}
+.dc-brand-mark.on {
+    color: var(--discord);
 }
 .detail-icon img {
     width: 100%;
@@ -817,6 +838,8 @@ body:has(.activity-bar) .toast-container {
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 60;
     border-top: 1px solid var(--line);
     background: var(--bg-0);
 }
@@ -847,6 +870,106 @@ button.activity-line:hover {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+/* 바뀌는 글줄: 위로 밀려 올라가며 바뀐다 */
+.activity-ticker {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    overflow: hidden;
+}
+.activity-slide {
+    grid-area: 1 / 1;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.activity-slide.entering {
+    animation: activity-slide-in 360ms var(--ease) both;
+}
+.activity-slide.leaving {
+    animation: activity-slide-out 360ms var(--ease) both;
+}
+@keyframes activity-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+}
+@keyframes activity-slide-out {
+    to {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+}
+/* 새 글자 위로 빛이 한 번 지나간다 */
+.activity-slide.entering .activity-shine {
+    background-image: linear-gradient(
+        100deg,
+        currentColor 0%,
+        currentColor 40%,
+        var(--text-1) 50%,
+        currentColor 60%,
+        currentColor 100%
+    );
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: activity-shine 1100ms var(--ease) 120ms both;
+}
+@keyframes activity-shine {
+    from {
+        background-position: 100% 0;
+    }
+    to {
+        background-position: 0% 0;
+    }
+}
+.activity-chevron {
+    display: inline-flex;
+    transition: transform var(--dur) var(--ease);
+}
+.activity-chevron.flipped {
+    transform: rotate(180deg);
+}
+/* 데몬 콘솔: 줄 위로 튀어나와 다른 화면을 밀지 않고 덮는다 */
+.activity-console-pop {
+    position: absolute;
+    left: var(--sp-3);
+    right: var(--sp-3);
+    bottom: calc(100% + var(--sp-2));
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-float);
+    overflow: hidden;
+    transform-origin: 50% 100%;
+    animation: activity-pop-in 460ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+.activity-console-pop.closing {
+    animation: activity-pop-out 180ms ease-in both;
+    pointer-events: none;
+}
+@keyframes activity-pop-in {
+    0% {
+        opacity: 0;
+        transform: translateY(16px) scale(0.92);
+    }
+    40% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(0) scale(1);
+    }
+}
+@keyframes activity-pop-out {
+    to {
+        opacity: 0;
+        transform: translateY(10px) scale(0.96);
+    }
 }
 .activity-result.ok {
     color: var(--ok);
@@ -1007,26 +1130,41 @@ button.activity-line:hover {
     padding: var(--sp-3) 0 var(--sp-2);
 }
 
+/* 설정은 높이를 고정한 상자 안에서만 스크롤한다 (탭을 바꿔도 상자가 흔들리지 않게) */
+.page-settings {
+    overflow: hidden;
+    align-items: stretch;
+}
 .settings-page {
     width: 100%;
     max-width: 880px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 .settings-page .settings-modal-container {
     width: 100%;
     max-width: none;
     max-height: none;
-    height: auto;
+    height: 100%;
+    min-height: 0;
     animation: none;
-    position: static;
+    position: relative;
     transform: none;
     background: var(--sheen), var(--surface-gradient);
     border: 1px solid var(--line);
     box-shadow: var(--shadow-raised);
     border-radius: var(--r-lg);
 }
+.settings-page .about-page-reveal {
+    border-radius: var(--r-lg);
+}
 .settings-page .settings-modal-content {
+    flex: 1;
+    min-height: 0;
     max-height: none;
-    overflow: visible;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 /* ── 좁은 창 ── */
@@ -1847,7 +1985,7 @@ button.activity-line:hover {
     font-size: var(--fs-xs);
     color: var(--text-3);
 }
-.dc-level-select.input {
+.dc-level-select {
     flex: none;
     width: auto;
     min-width: 128px;
@@ -1882,7 +2020,7 @@ button.activity-line:hover {
 .dc-level-title.level-banned {
     color: var(--stop);
 }
-.dc-overridden .dc-level-select {
+.dc-overridden .dc-level-select .custom-dropdown-trigger {
     border-color: var(--accent);
 }
 .dc-mini-actions {
@@ -2404,7 +2542,7 @@ button.appbar-preflight {
     white-space: nowrap;
 }
 .mt-field .input.mt-select,
-.mt-when select.input {
+.mt-when .custom-dropdown {
     width: auto;
 }
 .mt-field .input.mt-num {
@@ -2474,7 +2612,7 @@ button.appbar-preflight {
 .cb-guild .dc-list-row > :not(.dc-list-text) {
     flex-shrink: 0;
 }
-.cb-guild .input.cb-select {
+.cb-guild .cb-select {
     width: auto;
 }
 .cb-guild-channels {
@@ -2490,11 +2628,16 @@ button.appbar-preflight {
 .cb-key-row .input:placeholder-shown {
     font-family: inherit;
 }
+/* 안내·서버 프롬프트는 서버 이름 글줄에 맞춘다 (행 안쪽 여백 + 아바타 + 간격) */
+.cb-guild > .dc-hint {
+    margin: 0;
+    padding: 0 var(--sp-4) var(--sp-2) calc(var(--sp-4) + var(--sp-8) + var(--sp-3));
+}
 .cb-guild-memo {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1);
-    padding: 0 var(--sp-4) var(--sp-3);
+    gap: var(--sp-1-5);
+    padding: 0 var(--sp-4) var(--sp-3) calc(var(--sp-4) + var(--sp-8) + var(--sp-3));
 }
 .cb-memo-head {
     display: flex;

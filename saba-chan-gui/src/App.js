@@ -39,6 +39,7 @@ import { consoleQuickCommands, isManaged } from './utils/serverView';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
+import './styles/motion.css';
 function App() {
     const { t, i18n } = useTranslation('gui');
 
@@ -792,7 +793,7 @@ function App() {
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} initialView={discordView} />}
                         {page === 'settings' && (
-                            <div className="page page-scroll">
+                            <div className="page page-scroll page-settings">
                                 <SettingsModal
                                     variant="page"
                                     isOpen

@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSwapAnimation } from '../../hooks/useSwapAnimation';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -65,6 +66,8 @@ export function ServersPage({
         ? servers.filter((s) => `${s.name} ${s.module}`.toLowerCase().includes(query.trim().toLowerCase()))
         : servers;
     const selected = servers.find((s) => s.id === selectedId) || null;
+    // 다른 서버를 고르면 상세가 살짝 떠오르며 바뀐다
+    const detailRef = useSwapAnimation(selectedId);
 
     // 데몬이 꺼져 있으면 목록이 비어 보여도 서버가 없는 게 아니다
     if (servers.length === 0 && isDaemonDown) return <DaemonDownState />;
@@ -163,22 +166,24 @@ export function ServersPage({
                             <SystemMonitor layout="top" servers={servers} />
                         </div>
                     )}
-                    <ServerDetail
-                        server={selected}
-                        moduleData={moduleOf(selected.module)}
-                        modules={modules}
-                        servers={servers}
-                        setServers={setServers}
-                        onStart={onStart}
-                        onStop={onStop}
-                        onRestart={onRestart}
-                        onRename={onRename}
-                        onDelete={onDelete}
-                        onBack={singleColumn ? () => setShowDetailNarrow(false) : null}
-                        setModal={setModal}
-                        consoleProps={consoleProps}
-                        settingsProps={settingsProps}
-                    />
+                    <div ref={detailRef}>
+                        <ServerDetail
+                            server={selected}
+                            moduleData={moduleOf(selected.module)}
+                            modules={modules}
+                            servers={servers}
+                            setServers={setServers}
+                            onStart={onStart}
+                            onStop={onStop}
+                            onRestart={onRestart}
+                            onRename={onRename}
+                            onDelete={onDelete}
+                            onBack={singleColumn ? () => setShowDetailNarrow(false) : null}
+                            setModal={setModal}
+                            consoleProps={consoleProps}
+                            settingsProps={settingsProps}
+                        />
+                    </div>
                 </main>
             )}
             {!detailHidden && selected && monitorSide && (

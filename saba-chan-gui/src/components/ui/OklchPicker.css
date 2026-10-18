@@ -1,0 +1,138 @@
+/* ===== OKLCH 컬러 피커 ===== */
+.oklch-trigger {
+    font: inherit;
+    cursor: pointer;
+}
+.oklch-trigger-field {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: auto;
+    padding: var(--sp-1) var(--sp-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
+}
+.oklch-trigger-field:hover,
+.oklch-trigger-field.open {
+    border-color: var(--line);
+    background: var(--inset);
+}
+.oklch-trigger-field.open .color-input-preview {
+    border-color: var(--accent);
+}
+
+.oklch-pop {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2-5);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--bg-3);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-float);
+    transform-origin: top right;
+    animation: oklch-pop-in var(--dur) var(--ease);
+}
+.oklch-pop.up {
+    transform-origin: bottom right;
+}
+.oklch-pop.closing {
+    animation: oklch-pop-out 140ms ease-in forwards;
+    pointer-events: none;
+}
+@keyframes oklch-pop-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+@keyframes oklch-pop-out {
+    to {
+        opacity: 0;
+        transform: scale(0.97);
+    }
+}
+
+.oklch-area-wrap,
+.oklch-hue-wrap {
+    position: relative;
+    touch-action: none;
+}
+.oklch-area {
+    display: block;
+    width: 100%;
+    height: 152px;
+    border-radius: var(--r-xs);
+    background: var(--inset);
+    box-shadow: inset 0 0 0 1px var(--line);
+    cursor: crosshair;
+}
+.oklch-hue {
+    display: block;
+    width: 100%;
+    height: 14px;
+    border-radius: var(--r-pill);
+    cursor: ew-resize;
+}
+.oklch-area:focus-visible,
+.oklch-hue:focus-visible {
+    outline: none;
+    box-shadow: var(--accent-ring);
+}
+.oklch-thumb,
+.oklch-hue-thumb {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--knob);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--shadow-ink) 45%, transparent),
+        0 1px 3px color-mix(in srgb, var(--shadow-ink) 40%, transparent);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    transition:
+        left 60ms linear,
+        top 60ms linear;
+}
+.oklch-hue-thumb {
+    top: 50%;
+    background: transparent;
+    width: 16px;
+    height: 16px;
+}
+
+.oklch-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.oklch-preview {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: var(--r-xs);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.oklch-hex.input {
+    width: 88px;
+    height: 28px;
+    padding: 0 var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+}
+.oklch-readout {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

@@ -173,8 +173,8 @@ export function ConnectionView({
     return (
         <div className="dc-view">
             <header className="detail-head">
-                <div className="detail-icon">
-                    <Icon name={connected ? 'cloud' : 'cloudOff'} size="lg" />
+                <div className={clsx('detail-icon dc-brand-icon', { on: connected })}>
+                    <Icon name={connected ? 'discordLogo' : 'discord'} size="lg" />
                 </div>
                 <div className="detail-title">
                     <h1>{t('discord.connection_title')}</h1>
@@ -228,7 +228,7 @@ export function ConnectionView({
                 <div className="dc-row-actions">
                     {agentRunning ? (
                         <button type="button" className="btn btn-secondary" onClick={onStopAgent}>
-                            <Icon name="stop" size="sm" /> {t('discord.agent_stop')}
+                            <Icon name="zzz" size="sm" /> {t('discord.agent_stop')}
                         </button>
                     ) : (
                         <button type="button" className="btn btn-primary" onClick={onStartAgent} disabled={!connected}>

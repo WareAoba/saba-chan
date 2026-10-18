@@ -110,7 +110,8 @@ describe('데몬 이벤트 스트림', () => {
         window.api.auditList = vi.fn().mockResolvedValue({ entries: [] });
         render(<ActivityBar />);
         await flush();
-        expect(screen.getByText('No server commands have run yet.')).toBeInTheDocument();
+        // 콘솔을 펼칠 수 있으면 평소엔 안내 문구를 보인다
+        expect(screen.getByText('Click to view the daemon console log')).toBeInTheDocument();
         await stream.emit({ id: 1, type: 'action.run', data: { ...discordStop, at: Math.floor(Date.now() / 1000) } });
         expect(screen.getByText('Discord · Kimchi · Survival · Stop')).toBeInTheDocument();
         expect(window.api.auditList).toHaveBeenCalledTimes(1);

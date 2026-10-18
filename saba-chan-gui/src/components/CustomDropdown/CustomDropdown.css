@@ -16,26 +16,32 @@
     gap: var(--sp-2);
     width: 100%;
     padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--input-border);
-    border-radius: 8px;
-    background: var(--input-bg);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
     color: var(--text-primary);
-    font-size: 14px;
+    font: inherit;
+    font-size: var(--fs-md);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease);
     height: auto;
-    min-height: 38px;
+    min-height: 36px;
     text-align: left;
 }
 
 .custom-dropdown-trigger:hover {
-    border-color: var(--border-hover);
-    background: var(--bg-surface-hover);
+    border-color: var(--line-strong);
 }
 
+.custom-dropdown-trigger:focus-visible,
 .custom-dropdown.open .custom-dropdown-trigger {
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px var(--brand-shadow-subtle);
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--shadow-inset), var(--accent-ring);
 }
 
 .custom-dropdown-value {
@@ -45,8 +51,12 @@
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.custom-dropdown-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .custom-dropdown-placeholder {
@@ -57,7 +67,7 @@
     display: flex;
     align-items: center;
     color: var(--text-muted);
-    transition: transform 0.2s ease;
+    transition: transform var(--dur) var(--ease);
     flex-shrink: 0;
 }
 
@@ -65,31 +75,53 @@
     transform: rotate(180deg);
 }
 
-/* --- 드롭다운 메뉴 (Portal로 body에 렌더링됨) --- */
+/* --- 팝업 메뉴 (Portal로 body에 그린다) --- */
 .custom-dropdown-menu {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    box-shadow:
-        0 8px 24px var(--shadow-lg),
-        0 2px 8px var(--shadow-sm);
+    background: var(--bg-3);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
+    box-shadow: var(--shadow-float);
     overflow: hidden;
-    animation: dropdownSlideIn 0.15s ease-out;
+    transform-origin: top center;
+    animation: dropdownPopIn var(--dur) var(--ease);
 }
 
-@keyframes dropdownSlideIn {
+.custom-dropdown-menu.placement-top {
+    transform-origin: bottom center;
+}
+
+.custom-dropdown-menu.closing {
+    animation: dropdownPopOut 120ms ease-in forwards;
+    pointer-events: none;
+}
+
+@keyframes dropdownPopIn {
     from {
         opacity: 0;
-        transform: translateY(-4px);
+        transform: scale(0.96) translateY(-4px);
     }
+}
+
+.custom-dropdown-menu.placement-top:not(.closing) {
+    animation-name: dropdownPopInUp;
+}
+
+@keyframes dropdownPopInUp {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(4px);
+    }
+}
+
+@keyframes dropdownPopOut {
     to {
-        opacity: 1;
-        transform: translateY(0);
+        opacity: 0;
+        transform: scale(0.97);
     }
 }
 
 .custom-dropdown-scroll {
-    max-height: 240px;
+    max-height: var(--dropdown-max, 240px);
     overflow-y: auto;
     padding: var(--sp-1);
 }
@@ -111,28 +143,38 @@
     background: var(--scrollbar-thumb-hover);
 }
 
-/* --- 드롭다운 아이템 --- */
+/* --- 항목 --- */
 .custom-dropdown-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: var(--sp-2) var(--sp-3);
-    border-radius: 6px;
+    border-radius: var(--r-xs);
     cursor: pointer;
-    font-size: 14px;
+    font-size: var(--fs-md);
     color: var(--text-primary);
-    transition: all 0.12s ease;
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
     gap: var(--sp-2);
 }
 
-.custom-dropdown-item:hover {
-    background: var(--bg-surface-hover);
+.custom-dropdown-item.active {
+    background: var(--bg-4);
 }
 
 .custom-dropdown-item.selected {
-    background: var(--brand-bg-light);
     color: var(--brand-primary);
     font-weight: 600;
+}
+
+.custom-dropdown-item.selected:not(.active) {
+    background: var(--accent-soft);
+}
+
+.custom-dropdown-item.disabled {
+    color: var(--text-3);
+    cursor: not-allowed;
 }
 
 .custom-dropdown-item-content {

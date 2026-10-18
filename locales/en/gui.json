@@ -24,6 +24,8 @@
     "cancel": "Cancel"
   },
   "settings_modal": {
+    "color_picker_area": "Lightness and chroma",
+    "color_picker_hue": "Hue",
     "title": "Settings",
     "general": "General",
     "appearance": "Appearance",
@@ -754,7 +756,7 @@
     "agent_connecting": "Starting",
     "agent_stopped": "Off",
     "agent_start": "Turn on",
-    "agent_stop": "Turn off",
+    "agent_stop": "Put to sleep",
     "add_server_title": "Add another Discord server",
     "add_server_desc": "Get a new code and type it in another Discord server to connect it to this PC as well.",
     "connection_info": "Connection details",
@@ -1029,10 +1031,10 @@
     "err_ambientSeconds": "Chime-in interval must be {{min}}–{{max}} seconds.",
     "err_sessionSeconds": "Conversation window must be {{min}}–{{max}} seconds.",
     "err_triggers": "Up to {{max}} trigger words.",
-    "memo": "Node memo",
-    "memo_aria": "Node memo for {{name}}",
+    "memo": "Server prompt",
+    "memo_aria": "Server prompt for {{name}}",
     "memo_placeholder": "What Saba-chan should know about this server: tone, how to address people, mood, interests. Added after the default instructions.",
-    "err_memo": "The node memo can be up to {{max}} characters.",
+    "err_memo": "The server prompt can be up to {{max}} characters.",
     "tool_research": "Everyday info",
     "tool_research_hint": "Looks up web pages, weather, exchange rates and stocks.",
     "tool_lol": "LoL stats",
@@ -1201,6 +1203,7 @@
     "invalid_format": "Invalid format."
   },
   "activity": {
+    "idle": "Click to view the daemon console log",
     "empty": "No server commands have run yet.",
     "expand": "Show daemon console",
     "collapse": "Hide daemon console",

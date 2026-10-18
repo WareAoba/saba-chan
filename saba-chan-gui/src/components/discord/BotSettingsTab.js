@@ -157,12 +157,6 @@ export function BotSettingsTab({ node }) {
                         ]}
                     />
                 </div>
-                {toggleRow(
-                    t('discord.bot_settings.sleeping'),
-                    t('discord.bot_settings.sleeping_hint'),
-                    settings.sleeping,
-                    (sleeping) => save({ sleeping }),
-                )}
             </section>
 
             <section className="dc-card">

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
@@ -430,20 +431,22 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                                         <span className="dc-list-text">
                                             <span className="dc-list-name">{name}</span>
                                         </span>
-                                        <select
-                                            className="input cb-select"
+                                        <CustomDropdown
+                                            className="cb-select"
                                             value={g.enabled}
-                                            aria-label={t('chatbot.guild_enabled_aria', { name })}
-                                            onChange={(e) => setGuild(id, { enabled: e.target.value })}
-                                        >
-                                            <option value="inherit">
-                                                {t('chatbot.guild_inherit', {
-                                                    state: s.enabled ? t('chatbot.on') : t('chatbot.off'),
-                                                })}
-                                            </option>
-                                            <option value="on">{t('chatbot.on')}</option>
-                                            <option value="off">{t('chatbot.off')}</option>
-                                        </select>
+                                            ariaLabel={t('chatbot.guild_enabled_aria', { name })}
+                                            onChange={(v) => setGuild(id, { enabled: v })}
+                                            options={[
+                                                {
+                                                    value: 'inherit',
+                                                    label: t('chatbot.guild_inherit', {
+                                                        state: s.enabled ? t('chatbot.on') : t('chatbot.off'),
+                                                    }),
+                                                },
+                                                { value: 'on', label: t('chatbot.on') },
+                                                { value: 'off', label: t('chatbot.off') },
+                                            ]}
+                                        />
                                         {window.api?.chatbotClearMemory && (
                                             <button
                                                 type="button"

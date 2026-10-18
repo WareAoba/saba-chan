@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
@@ -387,15 +388,15 @@ function ScheduleCard({ server, info, onSaved }) {
                                     <label className="mt-field">
                                         <span>{t('maintenance.when')}</span>
                                         <span className="mt-when">
-                                            <select
-                                                className="input"
+                                            <CustomDropdown
                                                 value={d.mode}
-                                                aria-label={t('maintenance.when')}
-                                                onChange={(e) => patch(d.key, { mode: e.target.value })}
-                                            >
-                                                <option value="every">{t('maintenance.mode_every')}</option>
-                                                <option value="at">{t('maintenance.mode_at')}</option>
-                                            </select>
+                                                ariaLabel={t('maintenance.when')}
+                                                onChange={(v) => patch(d.key, { mode: v })}
+                                                options={[
+                                                    { value: 'every', label: t('maintenance.mode_every') },
+                                                    { value: 'at', label: t('maintenance.mode_at') },
+                                                ]}
+                                            />
                                             {d.mode === 'every' ? (
                                                 <span className="mt-inline">
                                                     <input

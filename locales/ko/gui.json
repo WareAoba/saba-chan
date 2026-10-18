@@ -24,6 +24,8 @@
     "cancel": "취소"
   },
   "settings_modal": {
+    "color_picker_area": "밝기와 채도",
+    "color_picker_hue": "색상",
     "title": "설정",
     "general": "일반",
     "appearance": "외관",
@@ -754,7 +756,7 @@
     "agent_connecting": "켜는 중",
     "agent_stopped": "꺼짐",
     "agent_start": "켜기",
-    "agent_stop": "끄기",
+    "agent_stop": "재우기",
     "add_server_title": "다른 디스코드 서버 추가",
     "add_server_desc": "새 코드를 받아 다른 디스코드 서버에 입력하면 그 서버도 이 PC에 연결돼요.",
     "connection_info": "연결 정보",
@@ -1029,10 +1031,10 @@
     "err_ambientSeconds": "자발적 대화 간격은 {{min}}~{{max}}초 사이여야 해요.",
     "err_sessionSeconds": "대화 유지 시간은 {{min}}~{{max}}초 사이여야 해요.",
     "err_triggers": "부르는 말은 {{max}}개까지예요.",
-    "memo": "노드 메모",
-    "memo_aria": "{{name}} 노드 메모",
+    "memo": "서버 프롬프트",
+    "memo_aria": "{{name}} 서버 프롬프트",
     "memo_placeholder": "이 서버에서 사바쨩이 알아 둘 것: 말투, 호칭, 방 분위기, 관심사 등. 사바쨩 기본 지침 뒤에 붙어요.",
-    "err_memo": "노드 메모는 {{max}}자까지 쓸 수 있어요.",
+    "err_memo": "서버 프롬프트는 {{max}}자까지 쓸 수 있어요.",
     "tool_research": "생활 정보",
     "tool_research_hint": "웹 문서, 날씨, 환율, 주식을 찾아봐요.",
     "tool_lol": "롤 전적",
@@ -1201,6 +1203,7 @@
     "invalid_format": "잘못된 형식입니다."
   },
   "activity": {
+    "idle": "눌러서 데몬 콘솔 기록 보기",
     "empty": "아직 실행된 서버 명령이 없어요.",
     "expand": "데몬 콘솔 펼치기",
     "collapse": "데몬 콘솔 접기",
