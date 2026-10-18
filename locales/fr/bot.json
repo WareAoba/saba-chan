@@ -134,6 +134,17 @@
     "restart_warning": "Le serveur redémarre dans {{minutes}} min.",
     "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min."
   },
+  "provision": {
+    "installing": "Installation du serveur…",
+    "install_failed": "Échec de l'installation",
+    "installed": "Serveur installé",
+    "updating": "Mise à jour du serveur…",
+    "update_failed": "Échec de la mise à jour",
+    "updated": "Serveur mis à jour",
+    "module_missing": "Module introuvable : {{error}}",
+    "no_latest_version": "Impossible de trouver la dernière version du serveur",
+    "backup_failed": "Échec de la sauvegarde avant mise à jour : {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {
@@ -235,6 +246,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "Voir les réglages du chatbot",
+          "description": "Activation, mots d'appel, confirmation, outils"
+        },
+        "set": {
+          "title": "Modifier les réglages du chatbot",
+          "description": "Activation, mots d'appel, confirmation, outils"
+        }
+      }
+    },
     "field": {
       "action": "Action",
       "instance": "Serveur",
@@ -256,7 +279,18 @@
       "guild": "Serveur Discord",
       "locale": "Langue",
       "sleeping": "Veille",
-      "music": "Musique"
+      "music": "Musique",
+      "enabled": "Activé",
+      "model": "Modèle",
+      "memo": "Note du nœud",
+      "triggerWords": "Mots d'appel",
+      "confirmCommands": "Confirmer les commandes",
+      "ambientSeconds": "Intervalle d'intervention (s)",
+      "sessionSeconds": "Fenêtre de suivi (s)",
+      "memory": "Mémoire",
+      "webSearch": "Recherche web",
+      "disabledTools": "Outils désactivés",
+      "step": "Étape"
     }
   }
 }

@@ -12,6 +12,11 @@ import pytest
 
 from harness.daemon import Daemon, wait_until
 from harness.mirror import Mirror
+from harness.paths import IS_WINDOWS
+
+# Windows에서 시험 폴더의 모듈은 확인되지 않은 구성요소라 AppContainer로 돈다. AppContainer는 루프백에 닿지 못해
+# 127.0.0.1의 가로채기 프록시를 쓸 수 없다. 설치 경로 자체는 리눅스(클라우드)에서 본다
+pytestmark = pytest.mark.skipif(IS_WINDOWS, reason="AppContainer는 루프백 프록시에 닿지 못함")
 
 DONE = r"Done \([^)]+\)!"
 MC = "1.21.1"
@@ -62,7 +67,7 @@ def mdaemon(sandbox, mirror, daemon_factory) -> Daemon:
 
 
 def _provision(daemon: Daemon, name: str, port: int, timeout: float = 300, **settings) -> tuple[str, dict]:
-    body = {"name": name, "module_name": "minecraft", "port": port, "module_settings": {"ram": "256M", **settings}}
+    body = {"name": name, "module_name": "minecraft", "port": port, "module_settings": {"ram": "256M", **settings}, "accept_agreements": daemon.agreement_ids("minecraft")}
     iid = daemon.api.ok("POST", "/api/instances", body)["id"]
     last: dict = {}
 

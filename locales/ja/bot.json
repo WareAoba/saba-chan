@@ -134,6 +134,17 @@
     "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
     "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。"
   },
+  "provision": {
+    "installing": "サーバーをインストール中…",
+    "install_failed": "インストールに失敗しました",
+    "installed": "サーバーをインストールしました",
+    "updating": "サーバーを更新中…",
+    "update_failed": "更新に失敗しました",
+    "updated": "サーバーを更新しました",
+    "module_missing": "モジュールが見つかりません: {{error}}",
+    "no_latest_version": "最新のサーバーバージョンを取得できませんでした",
+    "backup_failed": "更新前のバックアップに失敗しました: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {
@@ -235,6 +246,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "チャットボット設定を見る",
+          "description": "オン/オフ・呼び出し語・確認・ツール"
+        },
+        "set": {
+          "title": "チャットボット設定を変更",
+          "description": "オン/オフ・呼び出し語・確認・ツール"
+        }
+      }
+    },
     "field": {
       "action": "操作",
       "instance": "サーバー",
@@ -256,7 +279,18 @@
       "guild": "Discordサーバー",
       "locale": "言語",
       "sleeping": "スリープ",
-      "music": "音楽"
+      "music": "音楽",
+      "enabled": "オン",
+      "model": "モデル",
+      "memo": "ノードメモ",
+      "triggerWords": "呼び出し語",
+      "confirmCommands": "コマンド確認",
+      "ambientSeconds": "割り込み間隔(秒)",
+      "sessionSeconds": "続きの会話時間(秒)",
+      "memory": "記憶",
+      "webSearch": "ウェブ検索",
+      "disabledTools": "無効なツール",
+      "step": "ステップ"
     }
   }
 }

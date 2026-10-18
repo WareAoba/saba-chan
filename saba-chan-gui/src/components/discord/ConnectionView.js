@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
@@ -106,6 +107,8 @@ export function PairingCard({ pairing, onCancel }) {
                 </li>
             </ol>
             <div className="dc-row-actions">
+                {/* 같은 일을 하는 CLI (J1-c) */}
+                <CliText line="saba-chan-cli bot pair" />
                 <button type="button" className="btn btn-ghost" onClick={onCancel}>
                     {t('discord.cancel')}
                 </button>

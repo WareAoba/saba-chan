@@ -74,13 +74,18 @@ pub async fn audit(axum::extract::Query(q): axum::extract::Query<AuditQuery>) ->
 /// GET /api/onboarding — 처음 쓰는 사람의 다음 할 일 (J1-a). GUI 첫 화면과 CLI가 같은 단계를 보인다.
 /// 문구는 클라이언트가 단계 `id`로 고른다
 pub async fn onboarding(State(state): State<IPCServer>) -> impl IntoResponse {
+    Json(onboarding_now(&state).await)
+}
+
+/// 지금의 온보딩 단계 (`GET /api/onboarding`과 relay 하트비트가 같이 쓴다)
+pub(crate) async fn onboarding_now(state: &IPCServer) -> serde_json::Value {
     let (modules, servers) = {
         let sup = state.supervisor.read().await;
         (sup.list_modules().map(|m| m.len()).unwrap_or(0), sup.instance_store.list().len())
     };
     let paired = state.relay_agent.status().has_token;
     let chatbot = state.config_store.get_chatbot().api_key.is_some_and(|k| !k.trim().is_empty());
-    Json(onboarding_steps(modules, servers, paired, chatbot))
+    onboarding_steps(modules, servers, paired, chatbot)
 }
 
 /// `{steps:[{id, done, optional}], next}`: `next`는 아직 안 한 첫 필수 단계 (다 했으면 null)

@@ -56,6 +56,45 @@
     "start": "Запуск...",
     "modules": "Подготовка модулей...",
     "instances": "Подготовка серверов...",
-    "ready": "Готово"
+    "ready": "Готово",
+    "ui_loaded": "Интерфейс готов"
+  },
+  "tray": {
+    "tooltip": "Saba-chan - управление игровыми серверами",
+    "open_window": "🖥️ Открыть окно",
+    "open_terminal": "💻 Открыть терминал",
+    "daemon_running": "🟢 Демон работает",
+    "daemon_stopped": "⚪ Демон остановлен",
+    "stop_daemon": "🛑 Остановить демон",
+    "start_daemon": "▶️ Запустить демон",
+    "quit_interface": "🔌 Закрыть только интерфейс",
+    "quit_all": "❌ Выйти полностью"
+  },
+  "updates": {
+    "notification_title": "Saba-chan — Обновления",
+    "notification_body": "Обновлений: {{count}}: {{names}}",
+    "completed": "Обновление завершено!"
+  },
+  "errors": {
+    "invalid_input": "Неверный запрос. Проверьте введённые данные",
+    "instance_name_taken": "Сервер с таким именем уже есть",
+    "internal": "внутренняя ошибка",
+    "create_error": "Не удалось создать сервер: {{error}}",
+    "create_http": "Не удалось создать сервер (HTTP {{status}}): {{error}}",
+    "instance_not_found": "Сервер не найден",
+    "instance_running": "Нельзя удалить запущенный сервер. Сначала остановите его",
+    "delete_error": "Не удалось удалить сервер: {{error}}",
+    "delete_http": "Не удалось удалить сервер (HTTP {{status}}): {{error}}",
+    "reorder_failed": "Не удалось изменить порядок: {{error}}",
+    "settings_invalid": "Неверное значение настройки: {{error}}",
+    "settings_error": "Не удалось сохранить настройки: {{error}}",
+    "settings_http": "Не удалось сохранить настройки (HTTP {{status}}): {{error}}",
+    "http": "Ошибка (HTTP {{status}})",
+    "command_failed": "Не удалось выполнить команду: {{error}}",
+    "no_log_file": "Нет файла журнала",
+    "url_missing": "URL не указан",
+    "url_not_web": "Открывать можно только адреса http(s)",
+    "path_missing": "Путь не указан",
+    "no_log_folder": "Нет папки журналов"
   }
 }

@@ -59,7 +59,18 @@
     "invite": "Convide o bot para o seu servidor do Discord com este link:",
     "no_server_aliases": "Nenhum nome de servidor definido. Exemplo: saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "No chat, {{name}} agora pode ser chamado de: {{aliases}}",
-    "server_alias_cleared": "Os nomes de chat de {{name}} foram removidos."
+    "server_alias_cleared": "Os nomes de chat de {{name}} foram removidos.",
+    "allow_all": "Este servidor do Discord vê todos os servidores deste PC.",
+    "allow_none": "Nenhum servidor liberado.",
+    "allow_bad_node": "As configurações de {{guild}} não são um objeto. Verifique com saba-chan-cli bot config.",
+    "allow_all_saved": "{{guild}} agora vê todos os servidores.",
+    "allow_saved": "{{guild}} agora vê apenas: {{servers}}",
+    "no_words": "Ainda não há palavras de comando. Exemplo: saba-chan-cli bot word minecraft start vai",
+    "words_set": "No chat, {{module}} {{command}} agora também se chama: {{words}}",
+    "words_cleared": "Palavras de chat de {{module}} {{command}} removidas.",
+    "link_accepted": "{{guild}} foi conectado a este PC.",
+    "link_declined": "Pedido de conexão recusado.",
+    "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI."
   },
   "col": {
     "aliases": "Apelidos",
