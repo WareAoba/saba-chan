@@ -28,10 +28,6 @@
     "folder_in_use": "{{dir}} wird bereits von {{name}} verwendet. Zwei Server in einem Ordner würden sich gegenseitig überschreiben."
   },
   "bot": {
-    "alias": "Alias",
-    "alias_added": "{{alias}} steht jetzt für {{module}}.",
-    "alias_removed": "Alias {{alias}} entfernt.",
-    "aliases": "Aliase",
     "ask_token": "Node-Token",
     "config_saved": "Bot-Einstellungen gespeichert.",
     "confirm_unpair": "Diesen PC vom Discord-Bot trennen und die Kopplung vergessen?",
@@ -40,7 +36,6 @@
     "token_replaced": "Die PC-Verbindung dieses Discord-Kontos wurde auf einen anderen PC verschoben. Um diesen PC wieder zu nutzen, kopple ihn erneut mit `saba-chan-cli bot pair`.",
     "last_heartbeat": "Letzter Heartbeat",
     "list_empty": "Noch nichts vorhanden.",
-    "no_aliases": "Noch keine Aliase. Füge einen hinzu: saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "Dieser PC ist noch nicht gekoppelt. Führe aus: saba-chan-cli bot pair",
     "offer_start": "Jetzt mit dem Bot verbinden?",
     "pair_enter": "Führe in Discord `/saba connect` aus und gib diesen Code ein:",
@@ -60,17 +55,11 @@
     "token_saved": "Node-Token gespeichert.",
     "unpaired": "Kopplung entfernt.",
     "invite": "Lade den Bot mit diesem Link auf deinen Discord-Server ein:",
-    "no_server_aliases": "Keine Servernamen festgelegt. Beispiel: saba-chan-cli bot server-alias NAME 크리",
-    "server_alias_set": "Im Chat kann {{name}} jetzt so genannt werden: {{aliases}}",
-    "server_alias_cleared": "Die Chat-Namen von {{name}} wurden entfernt.",
     "allow_all": "Dieser Discord-Server sieht alle Server dieses PCs.",
     "allow_none": "Keine Server freigegeben.",
     "allow_bad_node": "Die Einstellungen von {{guild}} sind kein Objekt. Prüfe sie mit saba-chan-cli bot config.",
     "allow_all_saved": "{{guild}} sieht jetzt alle Server.",
     "allow_saved": "{{guild}} sieht jetzt nur: {{servers}}",
-    "no_words": "Noch keine Befehlswörter. Beispiel: saba-chan-cli bot word minecraft start los",
-    "words_set": "Im Chat heißt {{module}} {{command}} jetzt auch: {{words}}",
-    "words_cleared": "Chatwörter von {{module}} {{command}} entfernt.",
     "link_accepted": "{{guild}} ist jetzt mit diesem PC verbunden.",
     "link_declined": "Verbindungsanfrage abgelehnt.",
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI."
@@ -436,18 +425,12 @@
     "ok": "{{name}} sieht startbereit aus."
   },
   "help": {
-    "cmd": {
-      "bot.alias.list": "Aliase auflisten",
-      "bot.alias.add": "Alias hinzufügen",
-      "bot.alias.remove": "Alias entfernen"
-    },
+    "cmd": {},
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
       "bot.channels.no_notify": "Benachrichtigungskanal entfernen",
       "bot.link.decline": "Diese Verbindungsanfrage ablehnen",
       "bot.allow.all": "Keine Grenze: alle Server dieses PCs",
-      "bot.word.words": "Neue Wörter (ersetzen die alten)",
-      "bot.word.clear": "Die Wörter dieses Befehls entfernen",
       "sandbox.allow.component": "Komponente, die ohne Isolation läuft",
       "sandbox.revoke.component": "Komponente, der die Erlaubnis entzogen wird",
       "do.plan": "Nur die Eingabe prüfen und zeigen, was passieren würde",

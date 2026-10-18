@@ -28,10 +28,6 @@
     "folder_in_use": "{{dir}} はすでに {{name}} が使っています。同じフォルダーに 2 つのサーバーを置くと互いに上書きしてしまいます。"
   },
   "bot": {
-    "alias": "エイリアス",
-    "alias_added": "{{alias}} は {{module}} を指すようになりました。",
-    "alias_removed": "エイリアス {{alias}} を削除しました。",
-    "aliases": "エイリアス",
     "ask_token": "ノードトークン",
     "config_saved": "ボットの設定を保存しました。",
     "confirm_unpair": "この PC を Discord ボットから切断し、ペアリングを解除しますか？",
@@ -40,7 +36,6 @@
     "token_replaced": "このDiscordアカウントのPC接続は別のPCに移りました。このPCを再び使うには `saba-chan-cli bot pair` で接続し直してください。",
     "last_heartbeat": "最後のハートビート",
     "list_empty": "まだ何もありません。",
-    "no_aliases": "エイリアスはまだありません。追加するには: saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "この PC はまだペアリングされていません。実行: saba-chan-cli bot pair",
     "offer_start": "今すぐボットに接続しますか？",
     "pair_enter": "Discordで `/saba connect` を実行し、このコードを入力してください:",
@@ -60,17 +55,11 @@
     "token_saved": "ノードトークンを保存しました。",
     "unpaired": "ペアリングを解除しました。",
     "invite": "次のリンクからボットを Discord サーバーに招待してください:",
-    "no_server_aliases": "サーバーの呼び名が設定されていません。例: saba-chan-cli bot server-alias NAME 크리",
-    "server_alias_set": "チャットで {{name}} を次の名前で呼べるようになりました: {{aliases}}",
-    "server_alias_cleared": "{{name}} のチャット用の名前を削除しました。",
     "allow_all": "このDiscordサーバーはこのPCのすべてのサーバーを見られます。",
     "allow_none": "開いているサーバーがありません。",
     "allow_bad_node": "{{guild}} の設定がオブジェクトではありません。saba-chan-cli bot config で確認してください。",
     "allow_all_saved": "{{guild}} はすべてのサーバーを見られるようになりました。",
     "allow_saved": "{{guild}} で見られるのは次のサーバーだけです: {{servers}}",
-    "no_words": "コマンドの呼び名がまだありません。例: saba-chan-cli bot word minecraft start 起動",
-    "words_set": "チャットで {{module}} {{command}} をこう呼べます: {{words}}",
-    "words_cleared": "{{module}} {{command}} の呼び名を消しました。",
     "link_accepted": "{{guild}} をこのPCに接続しました。",
     "link_declined": "接続リクエストを拒否しました。",
     "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。"
@@ -436,18 +425,12 @@
     "ok": "{{name}} は起動できる状態のようです。"
   },
   "help": {
-    "cmd": {
-      "bot.alias.list": "エイリアスを一覧表示",
-      "bot.alias.add": "エイリアスを追加",
-      "bot.alias.remove": "エイリアスを削除"
-    },
+    "cmd": {},
     "arg": {
       "bot.channels.notify": "通知チャンネル(クラッシュ・バックアップ・更新・予約再起動)、名前またはID",
       "bot.channels.no_notify": "通知チャンネルを解除",
       "bot.link.decline": "この接続リクエストを拒否",
       "bot.allow.all": "制限なし: このPCのすべてのサーバー",
-      "bot.word.words": "新しい言葉 (既存の言葉を置き換え)",
-      "bot.word.clear": "このコマンドの言葉を削除",
       "sandbox.allow.component": "分離せずに実行するコンポーネント",
       "sandbox.revoke.component": "許可を取り消すコンポーネント",
       "do.plan": "入力だけを確認し、何が起きるかを表示",

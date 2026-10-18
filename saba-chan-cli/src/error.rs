@@ -146,7 +146,30 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "nothing_to_back_up" => Some(t!("err.hint.nothing_to_back_up")),
         "backup_busy" => Some(t!("err.hint.backup_busy")),
         "no_command_path" => Some(t!("err.hint.no_command_path")),
-        "validation_failed" => None,
+        // `details: [{field, reason, word?, conflictWith?}]` — 칸마다 한 줄
+        "validation_failed" => {
+            let lines: Vec<String> = body
+                .get("details")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|d| {
+                    let get = |k: &str| d.get(k).and_then(Value::as_str);
+                    let field = get("field")?;
+                    let reason = get("reason").unwrap_or_default();
+                    let text = crate::i18n::try_t(&format!("err.hint.word.{}", reason)).unwrap_or_else(|| reason.to_string());
+                    let mut line = match get("word") {
+                        Some(w) => format!("{} \"{}\": {}", field, w, text),
+                        None => format!("{}: {}", field, text),
+                    };
+                    if let Some(w) = get("conflictWith") {
+                        line = format!("{} ({})", line, t!("err.hint.conflict_with", name = w));
+                    }
+                    Some(line)
+                })
+                .collect();
+            (!lines.is_empty()).then(|| lines.join("\n  "))
+        }
         _ => None,
     }
 }
@@ -181,5 +204,27 @@ pub fn classify(err: &anyhow::Error) -> std::borrow::Cow<'_, CliError> {
     match err.downcast_ref::<CliError>() {
         Some(e) => std::borrow::Cow::Borrowed(e),
         None => std::borrow::Cow::Owned(CliError::Failed(format!("{:#}", err))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_details_become_one_line_per_field() {
+        crate::i18n::init("en");
+        let body = json!({ "details": [
+            { "field": "words[0]", "reason": "conflict", "word": "크리", "conflictWith": "survival" },
+            { "field": "commands.kick", "reason": "too_many" },
+            { "field": "input", "reason": "something_new" }
+        ] });
+        let hint = api_hint("validation_failed", &body).unwrap();
+        let lines: Vec<&str> = hint.split("\n  ").collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].starts_with("words[0] \"크리\": ") && lines[0].contains("survival"), "{}", lines[0]);
+        assert!(lines[1].starts_with("commands.kick: ") && !lines[1].ends_with("too_many"), "reason is localized: {}", lines[1]);
+        assert_eq!(lines[2], "input: something_new");
+        assert_eq!(api_hint("validation_failed", &json!({})), None);
     }
 }

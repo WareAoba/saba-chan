@@ -616,11 +616,6 @@ pub enum BotCmd {
         #[arg(long, conflicts_with = "values")]
         default: bool,
     },
-    /// Short names for games in chat: `alias`, `alias add NAME MODULE`, `alias remove NAME`
-    Alias {
-        #[command(subcommand)]
-        action: Option<AliasCmd>,
-    },
     /// Discord servers paired with this PC
     Nodes,
     /// Members of a paired Discord server
@@ -677,16 +672,6 @@ pub enum BotCmd {
     },
     /// Link to invite the Saba-chan bot to a Discord server
     Invite,
-    /// Chat names for one server (e.g. "크리" for a second Minecraft server). No names: show
-    #[command(name = "server-alias")]
-    ServerAlias {
-        server: Option<String>,
-        /// New names (replace the old ones)
-        names: Vec<String>,
-        /// Remove this server's names
-        #[arg(long)]
-        clear: bool,
-    },
     /// Connection requests sent from Discord with `/사바쨩 연결` and no code. No id: show. ID: accept, `--decline`: refuse
     Link {
         id: Option<String>,
@@ -703,14 +688,18 @@ pub enum BotCmd {
         #[arg(long)]
         all: bool,
     },
-    /// Chat words for one command of a game (e.g. "켜" for start): `word`, `word MODULE COMMAND WORDS…`, `word MODULE COMMAND --clear`
-    Word {
-        module: Option<String>,
-        command: Option<String>,
-        /// New words (replace the old ones)
-        words: Vec<String>,
-        /// Remove this command's words
-        #[arg(long)]
+    /// What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show
+    Words {
+        guild: String,
+        server: Option<String>,
+        /// Words for the server, comma-separated or repeated (replace the current ones). `--word ""` removes them
+        #[arg(long, value_delimiter = ',', requires = "server", conflicts_with = "clear")]
+        word: Option<Vec<String>>,
+        /// Words for one command: COMMAND=WORD,WORD (replace that command's words, `COMMAND=` removes them). Repeatable
+        #[arg(long, value_name = "COMMAND=WORDS", requires = "server", conflicts_with = "clear")]
+        command: Vec<String>,
+        /// Remove every word of this server
+        #[arg(long, requires = "server")]
         clear: bool,
     },
     /// Bot settings back to their defaults (all when no key is named)
@@ -730,19 +719,6 @@ fn on_off(s: &str) -> Result<bool, String> {
         "off" | "false" => Ok(false),
         _ => Err("on or off".into()),
     }
-}
-
-#[derive(Subcommand, Debug)]
-pub enum AliasCmd {
-    List,
-    Add {
-        alias: String,
-        module: String,
-    },
-    #[command(visible_alias = "rm")]
-    Remove {
-        alias: String,
-    },
 }
 
 // ── update ──
@@ -909,6 +885,16 @@ mod tests {
             }
             _ => panic!("run did not parse"),
         }
+        match p(&["bot", "words", "123", "mc", "--word", "크리,크", "--command", "start=켜,on", "--command", "stop="]).unwrap().cmd {
+            Some(Cmd::Bot(BotCmd::Words { server, word, command, .. })) => {
+                assert_eq!(server.as_deref(), Some("mc"));
+                assert_eq!(word, Some(vec!["크리".to_string(), "크".to_string()]));
+                assert_eq!(command, vec!["start=켜,on", "stop="]);
+            }
+            _ => panic!("bot words did not parse"),
+        }
+        assert!(p(&["bot", "words", "123", "--word", "크리"]).is_err(), "--word needs a server");
+        assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
     }

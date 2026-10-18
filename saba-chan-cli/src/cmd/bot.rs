@@ -2,9 +2,9 @@
 //!
 //! 봇은 클라우드에서만 돈다. 이 PC는 릴레이 에이전트로 붙는다:
 //! 페어링 → 노드 토큰 저장(데몬이 함) → 에이전트 시작.
-//! 봇 설정(`/api/config/bot`)은 최상위 키 단위로 머지되므로, 맵(`moduleAliases`)은 통째로 보낸다.
+//! 봇 설정(`/api/config/bot`)은 최상위 키 단위로 머지되므로, 맵(`nodeSettings`)은 통째로 보낸다.
 
-use crate::cli::{AliasCmd, BotCmd};
+use crate::cli::BotCmd;
 use crate::cmd::{flatten, get_path, guess, set_path, split_pairs};
 use crate::ctx::Ctx;
 use crate::error::{failed, usage, Result};
@@ -61,7 +61,6 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.done(&msg, &r);
             Ok(())
         }
-        BotCmd::Alias { action } => alias(ctx, action.unwrap_or(AliasCmd::List)).await,
         BotCmd::Nodes => nodes(ctx).await,
         BotCmd::Members { guild } => {
             let cfg = ctx.api.bot_config().await?;
@@ -100,10 +99,9 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             });
             Ok(())
         }
-        BotCmd::ServerAlias { server, names, clear } => server_alias(ctx, server.as_deref(), &names, clear).await,
         BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &guild, &servers, all).await,
-        BotCmd::Word { module, command, words, clear } => word(ctx, module.as_deref(), command.as_deref(), &words, clear).await,
+        BotCmd::Words { guild, server, word, command, clear } => words(ctx, &guild, server.as_deref(), WordsChange { words: word, commands: command, clear }).await,
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -166,13 +164,6 @@ async fn status(ctx: &Ctx) -> Result<()> {
     };
     if !err.is_empty() {
         rows.push((t!("bot.last_error"), console::style(err).red().to_string()));
-    }
-    let n = cfg
-        .get("moduleAliases")
-        .and_then(Value::as_object)
-        .map_or(0, |m| m.len());
-    if n > 0 {
-        rows.push((t!("bot.aliases"), n.to_string()));
     }
     output::print_kv(&rows);
     Ok(())
@@ -271,112 +262,6 @@ async fn finish_pair(ctx: &Ctx, result: Value, mut cloud: Value) -> Result<()> {
     Ok(())
 }
 
-async fn alias(ctx: &Ctx, action: AliasCmd) -> Result<()> {
-    let cfg = ctx.api.bot_config().await?;
-    let mut map: Map<String, Value> = cfg
-        .get("moduleAliases")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    match action {
-        AliasCmd::List => {
-            let v = Value::Object(map.clone());
-            ctx.out.data(&v, |_| {
-                if map.is_empty() {
-                    println!("{}", output::dim(&t!("bot.no_aliases")));
-                    return;
-                }
-                let mut t = output::table(&[t!("bot.alias"), t!("noun.module")]);
-                for (k, v) in &map {
-                    t.add_row(vec![k.clone(), output::show(v)]);
-                }
-                output::print_table(t);
-            });
-            return Ok(());
-        }
-        AliasCmd::Add { alias, module } => {
-            let m = crate::resolve::module(ctx, Some(&module)).await?;
-            let name = s(&m, "name").to_string();
-            map.insert(alias.clone(), Value::String(name.clone()));
-            let r = ctx.api.save_bot_config(json!({ "moduleAliases": map })).await?;
-            ctx.out.done(&t!("bot.alias_added", alias = alias, module = name), &r);
-        }
-        AliasCmd::Remove { alias } => {
-            if map.remove(&alias).is_none() {
-                return Err(crate::error::CliError::NotFound {
-                    what: t!("bot.alias"),
-                    query: alias,
-                    suggestions: map.keys().take(3).cloned().collect(),
-                }
-                .into());
-            }
-            let r = ctx.api.save_bot_config(json!({ "moduleAliases": map })).await?;
-            ctx.out.done(&t!("bot.alias_removed", alias = alias), &r);
-        }
-    }
-    Ok(())
-}
-
-/// `instanceAliases`: 서버 id → "별명1, 별명2" (같은 게임 서버가 여럿일 때 채팅에서 고르는 이름)
-async fn server_alias(ctx: &Ctx, query: Option<&str>, names: &[String], clear: bool) -> Result<()> {
-    let cfg = ctx.api.bot_config().await?;
-    let mut map: Map<String, Value> = cfg
-        .get("instanceAliases")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    let Some(q) = query else {
-        // 목록: id 대신 서버 이름으로
-        let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
-        let rows: Vec<(String, String)> = map
-            .iter()
-            .map(|(id, v)| {
-                let name = servers
-                    .iter()
-                    .find(|s| &s.id == id)
-                    .map_or(id.clone(), |s| s.name.clone());
-                (name, output::show(v))
-            })
-            .collect();
-        ctx.out.data(&Value::Object(map.clone()), |_| {
-            if rows.is_empty() {
-                println!("{}", output::dim(&t!("bot.no_server_aliases")));
-            } else {
-                output::print_kv(&rows);
-            }
-        });
-        return Ok(());
-    };
-    let sv = crate::resolve::server(ctx, Some(q)).await?;
-    if names.is_empty() && !clear {
-        let v = map.get(&sv.id).cloned().unwrap_or(Value::Null);
-        ctx.out.data(&json!({ "server": sv.name, "aliases": v }), |_| {
-            println!("{}", output::show(&v))
-        });
-        return Ok(());
-    }
-    if clear {
-        map.remove(&sv.id);
-    } else {
-        let joined = names
-            .iter()
-            .flat_map(|n| n.split(','))
-            .map(str::trim)
-            .filter(|n| !n.is_empty())
-            .collect::<Vec<_>>()
-            .join(", ");
-        map.insert(sv.id.clone(), Value::String(joined));
-    }
-    let r = ctx.api.save_bot_config(json!({ "instanceAliases": map })).await?;
-    let msg = if clear {
-        t!("bot.server_alias_cleared", name = sv.name)
-    } else {
-        t!("bot.server_alias_set", name = sv.name, aliases = names.join(", "))
-    };
-    ctx.out.done(&msg, &r);
-    Ok(())
-}
-
 /// `nodeSettings[guild].allowedInstances`: 그 디스코드 서버가 보고 부를 수 있는 서버 (키가 없으면 전부)
 async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
@@ -414,51 +299,127 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
     Ok(())
 }
 
-/// `commandAliases`: 모듈 → (명령 → "말1, 말2"). 채팅에서 명령 대신 쓰는 말
-async fn word(ctx: &Ctx, module: Option<&str>, command: Option<&str>, words: &[String], clear: bool) -> Result<()> {
-    let cfg = ctx.api.bot_config().await?;
-    let mut map: Map<String, Value> = cfg.get("commandAliases").and_then(Value::as_object).cloned().unwrap_or_default();
-    let (Some(module), Some(command)) = (module, command) else {
-        let rows: Vec<(String, String)> = map
-            .iter()
-            .filter(|(m, _)| module.is_none_or(|q| q == m.as_str()))
-            .flat_map(|(m, cmds)| cmds.as_object().into_iter().flatten().map(move |(c, w)| (format!("{} {}", m, c), output::show(w))))
-            .collect();
-        ctx.out.data(&Value::Object(map.clone()), |_| {
-            if rows.is_empty() {
-                println!("{}", output::dim(&t!("bot.no_words")));
-            } else {
-                output::print_kv(&rows);
+struct WordsChange {
+    /// `Some`: 서버 낱말을 이것으로 바꾼다 (빈 값만 있으면 지운다)
+    words: Option<Vec<String>>,
+    /// `명령=낱말,낱말`: 그 명령만 바꾼다 (`명령=`은 지운다)
+    commands: Vec<String>,
+    clear: bool,
+}
+
+impl WordsChange {
+    fn is_empty(&self) -> bool {
+        self.words.is_none() && self.commands.is_empty() && !self.clear
+    }
+}
+
+fn str_list(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect()
+}
+
+fn clean_words<'a>(raw: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    raw.into_iter().map(str::trim).filter(|w| !w.is_empty()).map(str::to_string).collect()
+}
+
+/// PUT 본문 `{words, commands}`. 지금 값에서 시작해 준 것만 바꾼다. 낱말 규칙·충돌은 데몬이 검사한다
+fn words_body(entry: &Value, change: &WordsChange) -> Result<Value> {
+    if change.clear {
+        return Ok(json!({ "words": [], "commands": {} }));
+    }
+    let words = match &change.words {
+        Some(w) => clean_words(w.iter().map(String::as_str)),
+        None => str_list(entry.get("words")),
+    };
+    let known: Vec<Value> = entry.get("commands").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut commands = Map::new();
+    for c in &known {
+        let aliases = str_list(c.get("aliases"));
+        if !aliases.is_empty() {
+            commands.insert(s(c, "name").to_string(), json!(aliases));
+        }
+    }
+    for spec in &change.commands {
+        let (name, list) = spec.split_once('=').ok_or_else(|| usage(t!("bot.words_bad_command", spec = spec)))?;
+        let name = name.trim();
+        let canonical = match known.iter().find(|c| s(c, "name").eq_ignore_ascii_case(name)) {
+            Some(c) => s(c, "name").to_string(),
+            None => {
+                let suggestions = match crate::resolve::find(&known, name, |c| vec![s(c, "name").to_string()], |c| s(c, "name").to_string()) {
+                    crate::resolve::Found::None(close) => close,
+                    crate::resolve::Found::One(c) => vec![s(&c, "name").to_string()],
+                    crate::resolve::Found::Many(list) => list.iter().take(3).map(|c| s(c, "name").to_string()).collect(),
+                };
+                return Err(crate::error::CliError::NotFound { what: t!("noun.command"), query: name.to_string(), suggestions }.into());
             }
+        };
+        let list = clean_words(list.split(','));
+        if list.is_empty() {
+            commands.remove(&canonical);
+        } else {
+            commands.insert(canonical, json!(list));
+        }
+    }
+    Ok(json!({ "words": words, "commands": commands }))
+}
+
+/// 목록은 배열 그대로이거나 `{instances: [...]}`
+fn instance_list(r: &Value) -> Vec<Value> {
+    r.get("instances").or(Some(r)).and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+/// `명령: 낱말, 낱말` — 사용자 낱말만 (module.toml 별명은 기본값이라 뺀다)
+fn command_words_line(entry: &Value) -> String {
+    entry
+        .get("commands")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let a = str_list(c.get("aliases"));
+            (!a.is_empty()).then(|| format!("{}: {}", s(c, "name"), a.join(", ")))
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// `nodeSettings[guild].instances[id]`: 그 디스코드 서버에서 이 PC의 서버와 명령을 부르는 낱말 (`/api/guilds/:guild/instances`)
+async fn words(ctx: &Ctx, guild: &str, query: Option<&str>, change: WordsChange) -> Result<()> {
+    let list = instance_list(&ctx.api.guild_instances(guild).await?);
+    let Some(q) = query else {
+        ctx.out.data(&Value::Array(list.clone()), |_| {
+            if list.is_empty() {
+                println!("{}", output::dim(&t!("bot.list_empty")));
+                return;
+            }
+            let mut t = output::table(&[t!("noun.server"), t!("bot.words"), t!("bot.command_words")]);
+            for i in &list {
+                t.add_row(vec![s(i, "name").to_string(), str_list(i.get("words")).join(", "), command_words_line(i)]);
+            }
+            output::print_table(t);
         });
         return Ok(());
     };
-    if words.is_empty() && !clear {
-        let v = map.get(module).and_then(|m| m.get(command)).cloned().unwrap_or(Value::Null);
-        ctx.out.data(&json!({ "module": module, "command": command, "words": v }), |_| println!("{}", output::show(&v)));
+    let what = t!("noun.server");
+    let found = crate::resolve::find(&list, q, |i| vec![s(i, "name").to_string(), s(i, "id").to_string()], |i| s(i, "name").to_string());
+    let entry = crate::resolve::settle(ctx, &what, q, found, |i| s(i, "name").to_string())?;
+    if change.is_empty() {
+        ctx.out.data(&entry, |e| {
+            let mut rows = vec![(t!("bot.words"), str_list(e.get("words")).join(", "))];
+            for c in e.get("commands").and_then(Value::as_array).into_iter().flatten() {
+                let mut line = str_list(c.get("aliases")).join(", ");
+                let defaults = str_list(c.get("moduleAliases"));
+                if !defaults.is_empty() {
+                    line = format!("{} {}", line, output::dim(&format!("({})", defaults.join(", ")))).trim().to_string();
+                }
+                rows.push((s(c, "name").to_string(), line));
+            }
+            output::print_kv(&rows);
+        });
         return Ok(());
     }
-    let entry = map.entry(module.to_string()).or_insert_with(|| json!({}));
-    if !entry.is_object() {
-        *entry = json!({});
-    }
-    let cmds = entry.as_object_mut().expect("object");
-    let joined = words.iter().flat_map(|w| w.split(',')).map(str::trim).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(", ");
-    if clear || joined.is_empty() {
-        cmds.remove(command);
-    } else {
-        cmds.insert(command.to_string(), Value::String(joined.clone()));
-    }
-    if cmds.is_empty() {
-        map.remove(module);
-    }
-    let r = ctx.api.save_bot_config(json!({ "commandAliases": map })).await?;
-    let msg = if clear || joined.is_empty() {
-        t!("bot.words_cleared", module = module, command = command)
-    } else {
-        t!("bot.words_set", module = module, command = command, words = joined)
-    };
-    ctx.out.done(&msg, &r);
+    let body = words_body(&entry, &change)?;
+    let r = ctx.api.save_instance_words(guild, s(&entry, "id"), body).await?;
+    ctx.out.done(&t!("bot.words_saved", server = s(&entry, "name")), &r);
     Ok(())
 }
 
@@ -697,5 +658,59 @@ mod tests {
         assert!(channel_id(&list, "music").is_err());
         assert_eq!(channel_id(&list, "3").unwrap(), "3");
         assert!(channel_id(&list, "공지").is_err());
+    }
+
+    fn entry() -> Value {
+        json!({
+            "id": "i1", "name": "크리에이티브", "module": "minecraft", "words": ["크리"],
+            "commands": [
+                { "name": "start", "builtin": true, "moduleAliases": [], "aliases": ["켜"] },
+                { "name": "stop", "builtin": true, "moduleAliases": [], "aliases": ["꺼"] },
+                { "name": "kick", "builtin": false, "moduleAliases": ["추방"], "aliases": [] }
+            ]
+        })
+    }
+
+    fn change(words: Option<&[&str]>, commands: &[&str], clear: bool) -> WordsChange {
+        WordsChange {
+            words: words.map(|w| w.iter().map(|s| s.to_string()).collect()),
+            commands: commands.iter().map(|s| s.to_string()).collect(),
+            clear,
+        }
+    }
+
+    #[test]
+    fn a_command_change_keeps_the_other_words() {
+        let body = words_body(&entry(), &change(None, &["KICK=내보내, 쫓아내", "stop="], false)).unwrap();
+        assert_eq!(body, json!({ "words": ["크리"], "commands": { "start": ["켜"], "kick": ["내보내", "쫓아내"] } }));
+    }
+
+    #[test]
+    fn server_words_are_replaced_and_an_empty_word_clears_them() {
+        let body = words_body(&entry(), &change(Some(&["크", " 크2 "]), &[], false)).unwrap();
+        assert_eq!(body["words"], json!(["크", "크2"]));
+        assert_eq!(body["commands"], json!({ "start": ["켜"], "stop": ["꺼"] }));
+        assert_eq!(words_body(&entry(), &change(Some(&[""]), &[], false)).unwrap()["words"], json!([]));
+    }
+
+    #[test]
+    fn clear_empties_everything() {
+        assert_eq!(words_body(&entry(), &change(None, &[], true)).unwrap(), json!({ "words": [], "commands": {} }));
+    }
+
+    #[test]
+    fn an_unknown_command_or_a_spec_without_equals_is_refused() {
+        let e = words_body(&entry(), &change(None, &["kik=추방"], false)).unwrap_err();
+        match e.downcast_ref::<crate::error::CliError>() {
+            Some(crate::error::CliError::NotFound { suggestions, .. }) => assert_eq!(suggestions, &vec!["kick".to_string()]),
+            other => panic!("expected NotFound, got {:?}", other),
+        }
+        assert!(words_body(&entry(), &change(None, &["kick"], false)).is_err());
+    }
+
+    #[test]
+    fn the_list_comes_bare_or_wrapped() {
+        assert_eq!(instance_list(&json!([entry()])).len(), 1);
+        assert_eq!(instance_list(&json!({ "instances": [entry()] })).len(), 1);
     }
 }
