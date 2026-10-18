@@ -297,6 +297,7 @@ fn server_running() -> axum::response::Response {
 
 /// `dir`을 쓰는 인스턴스(working_dir 또는 인스턴스 폴더)의 작업 잠금을 모두 잡는다.
 /// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
+#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 async fn hold_instances_using(state: &IPCServer, dir: &str) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
     let ids: Vec<String> = {
         let supervisor = state.supervisor.read().await;
