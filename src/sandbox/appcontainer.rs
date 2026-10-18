@@ -69,12 +69,13 @@ impl Grants {
             return;
         }
         // List는 목록만이라 데이터 폴더 자신에도 줄 수 있다 (안의 파일은 상속받지 않는다).
-        // 읽기·쓰기는 하위까지 상속되므로 링크를 거친 경로에는 주지 않는다: 격리된 구성요소가 쓰기를 받은 폴더 안에
-        // 정션을 만들어 두면, 다음 실행 때 그 경로의 권한이 정션이 가리키는 다른 폴더로 간다
-        let blocked = if access == Access::List {
-            root_or_home(&real, home)
-        } else {
-            forbidden(&real, data_dir, home) || through_link(path)
+        // 쓰기는 링크를 거친 경로에 주지 않는다: 격리된 구성요소가 쓰기를 받은 폴더 안에 정션을 만들어 두면,
+        // 다음 실행 때 그 경로의 쓰기 권한과 낮은 수준 표시가 정션이 가리키는 다른 폴더로 간다.
+        // 읽기는 정션 아래 Python 설치(scoop 등)도 쓰므로 막지 않는다
+        let blocked = match access {
+            Access::List => root_or_home(&real, home),
+            Access::Read => forbidden(&real, data_dir, home),
+            Access::Write => forbidden(&real, data_dir, home) || through_link(path),
         };
         if blocked {
             tracing::warn!("[Sandbox] not granting {:?} on {}", access, real.display());
@@ -329,8 +330,13 @@ mod imp {
             if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
                 return Err(format!("{} is a link", path.display()));
             }
+            // 버퍼가 작으면 필요한 길이(끝 NUL 포함)를 돌려준다: 그만큼 늘려 한 번 더
             let mut buf = vec![0u16; 1024];
-            let n = GetFinalPathNameByHandleW(h, buf.as_mut_ptr(), buf.len() as DWORD, 0) as usize;
+            let mut n = GetFinalPathNameByHandleW(h, buf.as_mut_ptr(), buf.len() as DWORD, 0) as usize;
+            if n >= buf.len() {
+                buf.resize(n, 0);
+                n = GetFinalPathNameByHandleW(h, buf.as_mut_ptr(), buf.len() as DWORD, 0) as usize;
+            }
             if n == 0 || n >= buf.len() {
                 return Err(last_error(&format!("resolve {}", path.display())));
             }
