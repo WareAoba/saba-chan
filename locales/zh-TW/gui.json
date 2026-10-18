@@ -63,9 +63,9 @@
     "port_conflict_check_label": "連接埠衝突偵測",
     "port_conflict_check_description": "當多個伺服器實例使用相同連接埠時顯示警告。",
     "uninstall_label": "解除安裝 Saba-chan",
-    "uninstall_description": "從此電腦完全移除 Saba-chan。所有程序將被停止，安裝程式將以解除安裝模式執行。",
+    "uninstall_description": "從此電腦完全移除 Saba-chan。會先正常關閉執行中的伺服器，然後安裝程式以解除安裝模式執行。",
     "uninstall_confirm_title": "解除安裝 Saba-chan",
-    "uninstall_confirm_message": "確定要解除安裝 Saba-chan 嗎？所有程序（GUI 和守護程序）將被停止。",
+    "uninstall_confirm_message": "確定要解除安裝 Saba-chan 嗎？會先正常關閉執行中的伺服器，然後關閉 Saba-chan（GUI 和守護程序）。",
     "uninstall_confirm_yes": "解除安裝",
     "uninstall_confirm_no": "取消",
     "about_title": "關於",
@@ -1067,6 +1067,7 @@
       "malware_detected": "防毒軟體將此未驗證元件的檔案標記為惡意：{{file}}",
       "launch_outside_instance": "此未驗證模組試圖執行伺服器資料夾之外的程式：{{file}}",
       "unscannable_file": "此未驗證元件含有沒有原始檔的編譯檔案，無法掃描：{{file}}",
+      "scan_failed": "無法掃描此未驗證元件的檔案，因此未執行：{{file}}",
       "sandbox_unavailable": "無法為 {{component}} 準備隔離環境，因此未執行。"
     },
     "sandbox": {

@@ -63,9 +63,9 @@
     "port_conflict_check_label": "Detección de conflicto de puertos",
     "port_conflict_check_description": "Muestra advertencias cuando múltiples instancias de servidor utilizan el mismo puerto.",
     "uninstall_label": "Desinstalar Saba-chan",
-    "uninstall_description": "Eliminar completamente Saba-chan de este equipo. Todos los procesos se detendrán y el instalador se ejecutará en modo de desinstalación.",
+    "uninstall_description": "Eliminar completamente Saba-chan de este equipo. Primero se apagan correctamente los servidores en ejecución y luego el instalador se ejecuta en modo de desinstalación.",
     "uninstall_confirm_title": "Desinstalar Saba-chan",
-    "uninstall_confirm_message": "¿Está seguro de que desea desinstalar Saba-chan? Todos los procesos (GUI y daemon) se detendrán.",
+    "uninstall_confirm_message": "¿Está seguro de que desea desinstalar Saba-chan? Primero se apagarán correctamente los servidores en ejecución y luego se cerrará Saba-chan (GUI y daemon).",
     "uninstall_confirm_yes": "Desinstalar",
     "uninstall_confirm_no": "Cancelar",
     "about_title": "Acerca de",
@@ -1067,6 +1067,7 @@
       "malware_detected": "El antivirus marcó un archivo de este componente no verificado: {{file}}",
       "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}}",
       "unscannable_file": "Este componente no verificado tiene archivos compilados sin su código fuente y no se puede analizar: {{file}}",
+      "scan_failed": "No se pudo analizar un archivo de este componente no verificado, así que no se ejecutó: {{file}}",
       "sandbox_unavailable": "No se pudo preparar un entorno aislado para {{component}}, así que no se ejecutó."
     },
     "sandbox": {

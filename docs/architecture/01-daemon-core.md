@@ -95,7 +95,7 @@
 
 로컬 Discord 봇 실행 경로(`node_env`, `discord_bot` ext-process)는 L1(7b5102f)에서 지웠다. 디스코드 봇은 클라우드 릴레이에서만 돌고, 데몬은 릴레이 에이전트로 붙는다.
 
-1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:787-789`). 수동 제어는 `/api/relay/agent{,/start,/stop}`.
+1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:787-789`). 수동 제어는 `/api/relay/agent{,/start,/stop}`. 페어링 완료(`/api/relay/pair/:code/status`가 `claimed`로 토큰을 저장)나 `PUT /api/config/node-token`(저장된 토큰과 다를 때만) 뒤에는 `relay_agent::restart`가 돌던 세션을 멈추고 새 토큰으로 바로 다시 연결한다.
 2. `GET /info`로 최소 에이전트 버전을 확인하고, 60초마다 `POST /heartbeat`로 서버·모듈·봇 설정 메타데이터를 올린다(`relay_agent.rs:22`).
 3. `GET /poll`(롱폴링)로 디스코드 명령을 받아 채팅 처리기(`crate::chat`)로 실행하고 `POST /result/:id`로 돌려준다.
    - 같은 연결에서 `POST /events {events:[{id, type, data}]}`로 디스코드 알림 채널(I3)에 띄울 이벤트를 올린다(`relay_agent.rs` `events_loop`·`relay_event`). 올리는 것은 `instance.exit`(`crash`·`unknown_exit`만), `backup.done`, `update.available`, `schedule.warn`뿐이다. 원격으로 나가므로 경로·콘솔 줄·오류 원문은 뺀다(`evidence`는 `exit code …`·`signal …`일 때만, `backup.done`의 `error`는 빼고 `ok`만). 첫 건이 오면 2초 모아 20건씩 보내고, 닿지 못하면 백오프하며 최근 50건만 들고 있는다. 4xx(429 말고)는 그 묶음을 버리고 429·5xx·네트워크 오류는 백오프 뒤 다시 보내며, 404면(relay에 경로가 아직 없음) 그 묶음을 버리고 10분 동안 올리지 않은 뒤 다음 이벤트로 다시 알아본다.
@@ -269,7 +269,7 @@
 |---|---|---|---|---|
 | POST | `/api/instance/:id/managed/start` | `managed.rs:14` | 선택 `{config?}` | supervisor 결과 / 404 / 500 |
 | GET | `/api/instance/:id/console` | `managed.rs:69` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
-| POST | `/api/instance/:id/stdin` | `managed.rs:90` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 500 |
+| POST | `/api/instance/:id/stdin` | `managed.rs:90` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:100` | - | supervisor 결과 |
 | POST | `/api/instance/:id/query/:name` | `managed.rs` `query_instance_handler` | `{args?: {입력: 값}}` | 모듈 `[[queries]]` 조회(X-2, 02 §`[[queries]]`): lifecycle `function`을 `validate`와 같은 config + `args`로 부른다. `{success, data}`(실패면 `success:false, error, error_code:"query_failed"`, Python이 실패하면 500). 404 `not_found`(인스턴스)·`unknown_query`, 400 `invalid_argument {field}`(선언에 없는 입력, 명령 입력과 같은 검사). 읽기 전용이라 감사에 남기지 않는다 |
 | GET | `/api/instance/:id/properties` | `managed.rs:115` | - | `manage_properties("read")` |
@@ -302,7 +302,7 @@
 | POST | `/api/config/:kind/reset` | `config.rs:60` | 선택 `{keys?}` | `{ok, config}` / 400 |
 | GET/PUT | `/api/config/client/:kind` | `config.rs:107/118` | 부분 객체(최상위 키 머지) | 그 네임스페이스 JSON (예: `cli`). 예약 이름은 400 |
 | GET | `/api/config/node-token` | `config.rs:135` | - | `{token}` (없으면 `""`) |
-| PUT | `/api/config/node-token` | `config.rs:145` | `{token}` | `{ok}` |
+| PUT | `/api/config/node-token` | `config.rs:145` | `{token}` | `{ok}`. 저장 뒤 릴레이 에이전트를 새 토큰으로 다시 시작한다 |
 | DELETE | `/api/config/node-token` | `config.rs:173` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다 |
 | POST | `/api/migration/export` | `migration.rs:173` | `{path(절대 경로), secrets?}` | `{success, path, secrets, instances:[{id,name}], config:[네임스페이스]}` / 400 `INVALID_PATH` / 500 `WRITE_FAILED`. A9: 데몬이 `path`에 zip(`saba-export.json`, `config.json`, `instances.json`, `secrets`면 `node_token`)을 쓴다. `updates`·`boot`·`extensions`·`schemaVersion`은 이 PC 것이라 뺀다. `secrets`가 아니면 챗봇 API 키, REST 비밀번호, 모듈이 `password`로 선언한 설정을 뺀다. 게임 서버 파일은 넣지 않는다 |
 | POST | `/api/migration/import` | `migration.rs:246` | `{path, dryRun?, overwrite?}` | `{success, dryRun, appVersion, secrets, instances:{added, replaced, skipped:[{id,name,reason}]}, missingModules, config:[네임스페이스], nodeToken:"imported"\|"kept"\|null}` / 400 `INVALID_PATH`·`INVALID_ARCHIVE`·`INVALID_CONFIG`. 인스턴스는 같은 id가 있으면 `exists`(`overwrite`면 덮어씀, 켜져 있으면 `running`), 다른 인스턴스와 폴더가 같으면 `working_dir_in_use`로 건너뛴다. 설정은 지금 값 위에 최상위 키 머지(파일에 없는 API 키는 남는다). 설정은 다른 것을 바꾸기 전에 먼저 검사한다(`check_sections`, 잘못되면 아무것도 바꾸지 않고 `INVALID_CONFIG`). 노드 토큰은 이 PC에 없을 때만 쓰고, 토큰을 실제로 가져올 때만 `relay.cloud`(relayUrl·hostId)·`cloudNodes`·`cloudMembers`도 바꾼다(아니면 이 PC 값 유지). `added`·`replaced` 항목에는 `working_dir`·`executable_path`가 붙는다 |
@@ -323,7 +323,7 @@
 | GET | `/api/sandbox/unisolated` | `sandbox.rs` `list_unisolated` | - | `{components:[{component, fingerprint, current}]}`. `current`가 false면 파일이 바뀌어 동의가 쓰이지 않는다. 릴레이로는 열지 않는다 |
 | POST·DELETE | `/api/sandbox/unisolated/:component` | `sandbox.rs` `allow_unisolated`·`revoke_unisolated` | - | `{success, component, fingerprint}`(DELETE는 `fingerprint:null`). `component`는 `module-<이름>`·`ext-<이름>`. 없으면 404 `unknown_component`. 확인되지 않은 구성요소를 격리 없이 돌리기 동의(02 문서 §2.1) |
 | GET | `/api/actions` | `actions.rs` `list_actions` | query `surface?`(gui·cli·discord·chatbot), `instance?`, `locale?` | `{actions:[{id, kind, risk, surfaces, scope, input, titleKey, title, description?, route}], locale}`. `instance`를 주면 그 서버 명령이 `server.command:<이름>`으로, 모듈 `[[queries]]`가 `server.query:<이름>`(`kind=query`, risk `safe`, 모든 표면, 제목·설명은 모듈 locales `queries.<이름>.*` → module.toml 값 → 이름, route `POST /api/instance/:id/query/:name`)으로 펼쳐진다. 조회 입력은 선언에 없는 키·범위·형식을 `invalid_input`으로 거부하고, 릴레이 `query`도 받는다. 챗봇으로 나가는 조회 결과는 콘솔과 같이 IP·비밀처럼 보이는 값을 가린다. 선언은 `src/actions/mod.rs` `ACTIONS` 하나(P2) |
-| POST | `/api/actions/:id/plan` | `actions.rs` `plan_action` | `{input, instance?, locale?}` | `{success, planId, actionId, instance, summary:[{labelKey, label, value}], risk, needsConfirm, expiresAt}`. 부작용 없음. 400 `invalid_input {field, reason}`, 403 `action_not_allowed`·`PERMISSION_DENIED {args}`·`NODE_NOT_ALLOWED {args:{instance}}`(이 길드의 `allowedInstances`에 없는 인스턴스), 404 `unknown_action` |
+| POST | `/api/actions/:id/plan` | `actions.rs` `plan_action` | `{input, instance?, locale?}` | `{success, planId, actionId, instance, summary:[{labelKey, label, value}], risk, needsConfirm, expiresAt}`. 부작용 없음. `needsConfirm`은 `danger`이거나, 챗봇 경로(`via_chatbot`)의 관리(admin) 액션일 때 true. 사람이 직접 친 caution 관리 명령은 false라 바로 `run`한다. 400 `invalid_input {field, reason}`, 403 `action_not_allowed`·`PERMISSION_DENIED {args}`·`NODE_NOT_ALLOWED {args:{instance}}`(이 길드의 `allowedInstances`에 없는 인스턴스), 404 `unknown_action` |
 | POST | `/api/actions/:id/run` | `actions.rs` `run_action` | `{input, instance?}` 또는 `{planId}` | `{success, actionId, status, result}`(`result`는 밑 라우트 응답 그대로). 404 `plan_expired`, 403 `plan_not_yours`. 데몬 라우터를 안에서 부르므로 감사 기록은 원래 요청의 출처로 남는다 |
 | POST | `/api/client/:id/heartbeat` | `client.rs:51` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:69` | query `shutdown=true\|false` | `{ok}` / 404 |

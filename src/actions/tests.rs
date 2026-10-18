@@ -111,6 +111,19 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
 }
 
 #[tokio::test]
+async fn direct_admin_commands_skip_confirmation_but_chatbot_and_danger_do_not() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let sleep = json!({ "guild": "g", "sleeping": true });
+    let direct = plan(&state, "discord.settings.set", None, &sleep, &relay("owner", false)).await.unwrap();
+    assert_eq!(direct["needsConfirm"], false);
+    let by_bot = plan(&state, "instance.settings.set", Some(&id), &json!({ "max_players": 4 }), &relay("owner", true)).await.unwrap();
+    assert_eq!(by_bot["needsConfirm"], true);
+    let restore = plan(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("owner", true)).await.unwrap();
+    assert_eq!(restore["needsConfirm"], true);
+}
+
+#[tokio::test]
 async fn inputs_are_checked_and_actions_run_through_the_real_routes() {
     let (state, id, _tmp) = server().await;
     let err = plan(&state, "backup.restore", Some(&id), &json!({ "nme": "b" }), &gui()).await.unwrap_err();
@@ -228,6 +241,22 @@ async fn discord_settings_stay_in_the_guild_that_asked_and_need_its_owner() {
     // GUI·CLI는 길드를 직접 고른다
     assert_eq!(plan(&state, "discord.settings.set", None, &input, &gui()).await.unwrap_err().code, "invalid_input");
     assert!(plan(&state, "discord.settings.set", None, &other, &gui()).await.is_ok());
+}
+
+#[tokio::test]
+async fn console_input_to_a_module_without_stdin_is_refused() {
+    use axum::response::IntoResponse;
+    let (state, id, _tmp) = server().await;
+    let resp = crate::ipc::handlers::managed::send_stdin_handler(
+        axum::extract::Path(id),
+        axum::extract::State(state),
+        axum::Json(json!({ "command": "say hi" })),
+    )
+    .await
+    .into_response();
+    assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["error_code"], "stdin_not_supported");
 }
 
 #[test]

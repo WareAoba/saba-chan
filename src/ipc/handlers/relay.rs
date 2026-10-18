@@ -393,6 +393,7 @@ pub async fn poll_pairing_status(
                 tracing::warn!("Failed to auto-save node token: {}", e);
             } else {
                 tracing::info!("Node token saved via pairing completion");
+                crate::relay_agent::restart(&state).await;
             }
         }
     }

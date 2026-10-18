@@ -469,8 +469,11 @@ mod imp {
         let everyone = all_app_packages()?;
         for (path, access) in &grants.entries {
             grant_one(path, sid, everyone, *access)?;
+            // 표시를 지원하지 않는 볼륨(FAT·일부 네트워크 드라이브 등)도 있다: 실행은 막지 않고, 그 폴더 쓰기만 안 될 수 있다
             if *access == Access::Write {
-                label_low(path)?;
+                if let Err(e) = label_low(path) {
+                    tracing::warn!("[Sandbox] could not mark {} writable for low integrity: {}", path.display(), e);
+                }
             }
         }
         Ok(sid)

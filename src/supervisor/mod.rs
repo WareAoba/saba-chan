@@ -389,7 +389,7 @@ impl Supervisor {
         Ok(out)
     }
 
-    /// 확인되지 않은 모듈의 실행 대상 검사 (Windows). 막으면 `action_required` 응답
+    /// 확인되지 않은 모듈의 실행 대상 검사 (Windows). 띄울 프로그램 경로를 돌려주고, 막으면 `action_required` 응답
     async fn guard_launch(
         sup: &tokio::sync::RwLock<Self>,
         instance: &crate::instance::ServerInstance,
@@ -398,10 +398,10 @@ impl Supervisor {
         args: &[String],
         working_dir: &str,
         env_vars: &mut Vec<(String, String)>,
-    ) -> Option<Value> {
+    ) -> Result<String, Value> {
         let (entry, roots) = {
             let s = sup.read().await;
-            let module = s.module_loader.get_module(module_name).ok()?;
+            let Ok(module) = s.module_loader.get_module(module_name) else { return Ok(program.to_string()) };
             let mut dirs = vec![s.instance_store.instance_dir(&instance.id)];
             // 사용자가 정한 서버 폴더 (모듈이 돌려준 working_dir은 믿지 않는다)
             dirs.extend(instance.working_dir.iter().map(std::path::PathBuf::from));
@@ -416,13 +416,10 @@ impl Supervisor {
                 .map(std::path::PathBuf::from).into_iter().collect();
             (module.entry_path(), crate::sandbox::LaunchRoots { dirs, runtimes })
         };
-        match crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await {
-            Ok(()) => None,
-            Err(blocked) => {
-                tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
-                Some(blocked.to_json(crate::sandbox::message(&blocked)))
-            }
-        }
+        crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {
+            tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
+            blocked.to_json(crate::sandbox::message(&blocked))
+        })
     }
 
     /// 해석된 실행 파일 경로를 config map에 삽입합니다.
@@ -693,10 +690,14 @@ impl Supervisor {
                                     dirs: std::iter::once(instance_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
                                     runtimes: Vec::new(),
                                 };
-                                if let Err(blocked) = crate::sandbox::guard_launch_for(crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
-                                    return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-                                }
+                                let program = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
+                                    Ok(program) => program,
+                                    Err(blocked) => {
+                                        tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
+                                        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
+                                    }
+                                };
+                                let program = program.as_str();
                                 let spawn_result = if interactive {
                                     tracing::info!("Spawning interactive IO bridge for '{}'", server_name);
                                     managed_process::ManagedProcess::spawn(
@@ -792,9 +793,11 @@ impl Supervisor {
             .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
             .unwrap_or_default();
 
-        if let Some(blocked) = Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
-            return Ok(blocked);
-        }
+        let program = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+            Ok(program) => program,
+            Err(blocked) => return Ok(blocked),
+        };
+        let program = program.as_str();
 
         // Spawn detached process (no stdin/stdout capture)
         let mut cmd = TokioCommand::new(program);
@@ -1432,10 +1435,14 @@ impl Supervisor {
                                     dirs: std::iter::once(inst_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
                                     runtimes: Vec::new(),
                                 };
-                                if let Err(blocked) = crate::sandbox::guard_launch_for(crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
-                                    return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-                                }
+                                let program = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
+                                    Ok(program) => program,
+                                    Err(blocked) => {
+                                        tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
+                                        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
+                                    }
+                                };
+                                let program = program.as_str();
                                 let spawn_result = if interactive {
                                     tracing::info!("Spawning interactive IO bridge for '{}'", instance.name);
                                     managed_process::ManagedProcess::spawn(
@@ -1532,9 +1539,11 @@ impl Supervisor {
             .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
             .unwrap_or_default();
 
-        if let Some(blocked) = Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
-            return Ok(blocked);
-        }
+        let program = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+            Ok(program) => program,
+            Err(blocked) => return Ok(blocked),
+        };
+        let program = program.as_str();
 
         // Sync REST credentials from module via credential_map or rest_credentials
         {
@@ -1675,20 +1684,23 @@ impl Supervisor {
     /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
     /// (RCON은 보안상 늘 꺼져 있다).
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
-        let Some(instance) = self.instance_store.get(instance_id) else { return false };
-        let module_has_stdin = self
-            .module_loader
-            .get_module(&instance.module_name)
-            .ok()
-            .and_then(|m| m.metadata.protocols_supported)
-            .is_some_and(|p| p.iter().any(|s| s == "stdin"));
-        if !module_has_stdin {
+        if !self.module_accepts_stdin(instance_id) {
             return false;
         }
         match self.managed_store.get(instance_id).await {
             Some(proc) => proc.is_running() && proc.is_stdin_available(),
             None => false,
         }
+    }
+
+    /// 인스턴스의 모듈이 콘솔 입력(`protocols.supported`에 "stdin")을 받는가
+    pub fn module_accepts_stdin(&self, instance_id: &str) -> bool {
+        let Some(instance) = self.instance_store.get(instance_id) else { return false };
+        self.module_loader
+            .get_module(&instance.module_name)
+            .ok()
+            .and_then(|m| m.metadata.protocols_supported)
+            .is_some_and(|p| p.iter().any(|s| s == "stdin"))
     }
 
     /// Send a command to a managed process's stdin
