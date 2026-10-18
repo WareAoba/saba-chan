@@ -133,6 +133,10 @@ pub fn scan_component(dir: &Path, scanner: &dyn Scanner, cache: &mut VerdictCach
                         continue;
                     }
                 };
+                // 빈 파일(빈 __init__.py 등)은 검사할 내용이 없다. AMSI는 길이 0을 인자 오류로 돌려준다
+                if bytes.is_empty() {
+                    continue;
+                }
                 let sha = sha256_of(&bytes);
                 match scanner.scan_buffer(&file.to_string_lossy(), &bytes) {
                     Verdict::Clean => {
@@ -363,6 +367,23 @@ mod tests {
         assert_eq!(blocked.code, "scan_failed");
         assert!(blocked.file.unwrap().ends_with("a.py"));
         assert_eq!(scanner.0.get(), 3);
+    }
+
+    #[test]
+    fn empty_scripts_are_not_sent_to_the_scanner() {
+        struct FailsOnEmpty;
+        impl Scanner for FailsOnEmpty {
+            fn scan_buffer(&self, _name: &str, content: &[u8]) -> Verdict {
+                if content.is_empty() { Verdict::Failed("E_INVALIDARG".into()) } else { Verdict::Clean }
+            }
+            fn scan_file(&self, _path: &Path) -> Verdict {
+                Verdict::Clean
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("__init__.py"), b"").unwrap();
+        std::fs::write(tmp.path().join("lifecycle.py"), b"print(1)").unwrap();
+        assert!(scan_component(tmp.path(), &FailsOnEmpty, &mut VerdictCache::in_memory()).is_ok());
     }
 
     /// 읽지 못하는 실행 파일은 통과시키지 않는다

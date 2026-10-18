@@ -172,6 +172,7 @@ pub struct VerdictCache {
 impl VerdictCache {
     pub fn load() -> Self {
         let path = saba_chan_updater_lib::constants::resolve_data_dir().join("scan-verdicts.json");
+        // 옛 형식({sha: bool})이나 깨진 파일은 비우고 다시 검사한다 (찾음은 다시 찾는다)
         let entries = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         Self { path: Some(path), entries }
     }

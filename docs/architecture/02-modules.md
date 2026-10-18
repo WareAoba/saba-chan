@@ -211,7 +211,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
   - 스크립트(`.py`·`.pth`·`.ps1`·`.bat` 등)는 AMSI(등록된 백신)로, 네이티브 코드와 묶음(`.pyd`·`.dll`·`.so`·`.exe`·`.zip`·`.egg`·`.whl`)은 Defender `MpCmdRun`으로 본다. `__pycache__`는 건너뛴다.
   - 찾으면 실행하지 않고 `{success:false, action_required:"malware_detected", message, file}`를 돌려준다.
   - `__pycache__` 밖에 `.pyc`·`.pyo`가 있으면 원본 없이 실행될 수 있어 `action_required:"unscannable_file"`로 막는다.
-  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다. 깨끗하다는 결과는 7일이 지나면 다시 검사한다(찾았다는 결과는 그대로 둔다). 파일 sha256은 데몬 실행 동안 경로·크기·수정 시각으로 기억해, 셋이 같으면 다시 읽지 않는다(설치 기록과 비교하는 신뢰 표시도 같다).
+  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다. 깨끗하다는 결과는 7일이 지나면 다시 검사한다(찾았다는 결과는 그대로 둔다). 파일 sha256은 데몬 실행 동안 경로·크기·수정 시각으로 기억해, 셋이 같으면 다시 읽지 않는다(설치 기록과 비교하는 신뢰 표시도 같다). 같은 사용자 권한으로 내용을 바꾸고 크기·수정 시각을 되돌리면 데몬을 다시 켤 때까지 알아채지 못한다(같은 권한이면 다른 길도 있어 성능과 맞바꿨다). 빈 파일은 검사할 내용이 없어 넘긴다.
   - 검사기가 없으면(AMSI 공급자, `MpCmdRun`) 그 검사를 건너뛰고 데몬 실행마다 한 번 경고를 남긴다.
   - 파일을 읽지 못하거나 한 파일의 검사가 실패하면(검사 스레드가 죽은 경우 포함) 실행하지 않고 `action_required:"scan_failed"`(`file`, `detail`)를 돌려준다. 나머지 파일 검사는 계속한다.
   - 검사를 통과하면 Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
