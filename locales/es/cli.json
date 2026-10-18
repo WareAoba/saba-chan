@@ -162,9 +162,10 @@
     "pair_expected": "Se esperaba KEY=VALUE, se recibió «{{got}}».",
     "timeout": "El daemon tardó demasiado en responder ({{path}})."
   },
-  "eula": {
-    "confirm": "¿Aceptar el EULA de {{name}}? Aceptas los términos de licencia del juego.",
-    "done": "EULA aceptado para {{name}}."
+  "agree": {
+    "none": "{{name}} no tiene acuerdos que aceptar.",
+    "confirm": "{{name}}: ¿aceptar {{names}}? Aceptas los términos de los enlaces de arriba.",
+    "done": "Acuerdos aceptados para {{name}}."
   },
   "exit": {
     "crash": "se bloqueó",

@@ -162,9 +162,10 @@
     "pair_expected": "KEY=VALUE attendu, reçu « {{got}} ».",
     "timeout": "Le daemon a mis trop de temps à répondre ({{path}})."
   },
-  "eula": {
-    "confirm": "Accepter le CLUF de {{name}} ? Vous acceptez les conditions de licence du jeu.",
-    "done": "CLUF accepté pour {{name}}."
+  "agree": {
+    "none": "{{name}} n'a aucun accord à accepter.",
+    "confirm": "{{name}} : accepter {{names}} ? Vous acceptez les conditions des liens ci-dessus.",
+    "done": "Accords acceptés pour {{name}}."
   },
   "exit": {
     "crash": "planté",

@@ -35,10 +35,11 @@ def test_eula_not_accepted_blocks_start_until_accepted(daemon, fake_server):
     r = daemon.api.post(f"/api/instance/{iid}/start")
     assert r.status_code == 409, r.text
     body = r.json()
-    assert body["error_code"] == "preflight_failed" and body["issue_code"] == "EULA_NOT_ACCEPTED"
+    assert body["error_code"] == "agreement_required" and body["agreements"][0]["id"] == "eula"
+    assert body["agreements"][0]["url"].startswith("https://")
     assert daemon.server_status(iid) == "stopped"
 
-    daemon.api.ok("POST", f"/api/instance/{iid}/accept-eula")
+    daemon.api.ok("POST", f"/api/instance/{iid}/agreements", {"accept": ["eula"]})
     assert "eula=true" in (folder / "eula.txt").read_text()
     daemon.start_instance(iid)
     daemon.wait_console(iid, DONE)

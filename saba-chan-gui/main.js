@@ -2565,7 +2565,7 @@ async function daemonJson(method, path, data, timeout = 15000) {
 // 큰 월드는 묶고 푸는 데 몇 분 걸린다
 const BACKUP_TIMEOUT = 10 * 60 * 1000;
 const instancePath = (id, rest = '') => `/api/instance/${encodeURIComponent(id)}${rest}`;
-ipcMain.handle('instance:acceptEula', (_e, id) => daemonJson('post', instancePath(id, '/accept-eula')));
+ipcMain.handle('instance:agreements', (_e, id, accept) => daemonJson('post', instancePath(id, '/agreements'), { accept }));
 ipcMain.handle('instance:backups', (_e, id) => daemonJson('get', instancePath(id, '/backups')));
 ipcMain.handle('instance:backupCreate', (_e, id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT));
 ipcMain.handle('instance:backupDelete', (_e, id, name) =>

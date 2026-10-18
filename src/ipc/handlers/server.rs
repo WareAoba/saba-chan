@@ -359,6 +359,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         command_aliases: meta.command_aliases,
         presets: meta.presets,
         queries: meta.queries,
+        agreements: meta.agreements,
     }
 }
 
@@ -692,7 +693,7 @@ async fn start_instance(
     (resp.status, Json(Value::Object(body))).into_response()
 }
 
-/// 켜기 전 점검: 모듈 validate가 critical 문제(EULA 미동의, 서버 파일 없음 등)를 내면 켜지 않는다.
+/// 켜기 전 점검: 동의하지 않은 모듈 약관이 있거나, 모듈 validate가 critical 문제(EULA 미동의, 서버 파일 없음 등)를 내면 켜지 않는다.
 /// 이미 켜져 있거나, 모듈에 validate가 없거나, 점검 자체가 실패하면 막지 않는다
 async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Response> {
     {
@@ -700,6 +701,21 @@ async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Respon
         if supervisor.tracker.get_pid(id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id.to_string()) {
             return None;
         }
+    }
+    // 모듈 약관(`[[agreements]]`)을 모두 동의해야 켠다. 파이썬을 부르지 않는 검사라 validate보다 먼저
+    let language = state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
+    let missing = state.supervisor.read().await.missing_agreements(id, &language);
+    if !missing.is_empty() {
+        let names: Vec<&str> = missing.iter().filter_map(|a| a["label"].as_str()).collect();
+        let message = crate::chat::i18n::Catalog::for_language(&language).t("errors.agreement_required", &[("names", &names.join(", "))]);
+        tracing::info!("Start of '{}' blocked: agreements not accepted", id);
+        return Some(
+            (
+                StatusCode::CONFLICT,
+                Json(json!({ "success": false, "error": message, "error_code": "agreement_required", "agreements": missing })),
+            )
+                .into_response(),
+        );
     }
     let result = match crate::supervisor::Supervisor::validate_instance(&state.supervisor, id).await {
         Ok(v) => v,
@@ -1007,6 +1023,95 @@ mod tests {
         assert!(trust_warnings("module", "m", Trust::Verified).is_empty());
         assert_eq!(trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m", "isolated": cfg!(windows)})]);
         assert_eq!(trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e", "isolated": cfg!(windows)})]);
+    }
+
+    #[tokio::test]
+    async fn start_waits_for_module_agreements_and_only_this_pc_can_accept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/eula\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("locales").join("en.json"), r#"{ "agreements": { "eula": "Game EULA" } }"#).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let body = |resp: axum::response::Response| async move {
+            let status = resp.status();
+            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            (status, serde_json::from_slice::<Value>(&bytes).unwrap())
+        };
+
+        // 만들 때 동의하지 않았으면 켜지 않는다
+        let created = super::super::instance::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await.into_response();
+        let (status, created) = body(created).await;
+        assert!(status.is_success(), "{created}");
+        let id = created["id"].as_str().unwrap().to_string();
+        let (status, refused) = body(start_instance(Path(id.clone()), State(state.clone())).await).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(refused["error_code"], "agreement_required");
+        assert_eq!(refused["agreements"][0]["id"], "eula");
+        assert_eq!(refused["agreements"][0]["url"], "https://example.com/eula");
+        assert!(refused["error"].as_str().unwrap().contains(refused["agreements"][0]["label"].as_str().unwrap()));
+
+        // 만들 때 동의하면 기록된다. 모르는 약관은 400
+        let ok = super::super::instance::create_instance(State(state.clone()), Json(json!({ "name": "b", "module_name": "game", "accept_agreements": ["eula"] }))).await.into_response();
+        let (_, ok) = body(ok).await;
+        let b = ok["id"].as_str().unwrap().to_string();
+        assert!(state.supervisor.read().await.missing_agreements(&b, "en").is_empty());
+        let bad = super::super::instance::create_instance(State(state.clone()), Json(json!({ "name": "c", "module_name": "game", "accept_agreements": ["tos"] }))).await.into_response();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        let install = json!({ "version": "1", "install_dir": tmp.path().join("files"), "accept_agreements": ["tos"] });
+        let bad = super::super::managed::install_server_handler(Path("game".into()), State(state.clone()), Json(install)).await.into_response();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+        // 원격(디스코드·챗봇)에서는 동의를 받지 않는다
+        let remote = crate::audit::with_origin(
+            crate::audit::Origin::new("discord"),
+            super::super::managed::accept_agreements_handler(Path(id.clone()), State(state.clone()), Json(json!({ "accept": ["eula"] }))),
+        )
+        .await;
+        let (status, remote) = body(remote).await;
+        assert_eq!((status, remote["error_code"].as_str()), (StatusCode::FORBIDDEN, Some("agreement_local_only")));
+        assert_eq!(state.supervisor.read().await.missing_agreements(&id, "en").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn imported_server_applies_the_agreements_accepted_at_creation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/eula\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\ncfg = json.load(sys.stdin)\nif sys.argv[1] == 'accept_agreements':\n    open(os.path.join(cfg['working_dir'], 'agreed.txt'), 'w').write(','.join(cfg['accepted_agreements']))\nprint(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let existing = tmp.path().join("existing");
+        std::fs::create_dir_all(&existing).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let req = json!({ "name": "old", "module_name": "game", "migration_source": existing, "accept_agreements": ["eula"] });
+        let resp = super::super::instance::create_instance(State(state.clone()), Json(req)).await.into_response();
+        assert!(resp.status().is_success());
+        assert_eq!(std::fs::read_to_string(existing.join("agreed.txt")).unwrap(), "eula");
     }
 
     #[tokio::test]

@@ -78,6 +78,8 @@
   "errors": {
     "error_title": "명령어 실행 오류",
     "unknown": "알 수 없는 오류",
+    "agreement_required": "{{names}}에 동의해야 서버를 켤 수 있습니다. PC의 사바쨩에서 동의해 주세요.",
+    "agreement_local_only": "약관 동의는 이 PC의 사바쨩에서만 할 수 있습니다.",
     "alias_conflict": "❌ 별명 '{{alias}}'이(가) 여러 모듈에 중복 등록되어 있습니다: {{modules}}. 더 구체적인 별명을 사용해주세요.",
     "multiple_instances": "⚠️ '{{module}}' 모듈이 여러 개라 별명으로 구분이 안 돼요. 인스턴스 이름을 사용해주세요.",
     "auth_failed": "인증 실패",

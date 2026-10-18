@@ -162,9 +162,10 @@
     "pair_expected": "應為 KEY=VALUE，實際為「{{got}}」。",
     "timeout": "常駐程式回應時間過長（{{path}}）。"
   },
-  "eula": {
-    "confirm": "要接受 {{name}} 的 EULA 嗎？這表示你同意遊戲的授權條款。",
-    "done": "已接受 {{name}} 的 EULA。"
+  "agree": {
+    "none": "{{name}} 沒有需要同意的協議。",
+    "confirm": "{{name}}：同意{{names}}嗎？這表示你同意上面連結中的條款。",
+    "done": "已同意 {{name}} 的協議。"
   },
   "exit": {
     "crash": "當機",

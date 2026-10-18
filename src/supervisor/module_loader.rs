@@ -114,6 +114,9 @@ pub struct ModuleMetadata {
     /// [[queries]] 읽기 전용 조회 (X-2). 액션 `server.query:<name>`이 된다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queries: Vec<ModuleQuery>,
+    /// [[agreements]] 서버를 켜기 전에 사용자가 동의해야 하는 약관 (예: 게임 EULA)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agreements: Vec<ModuleAgreement>,
     /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
@@ -152,6 +155,17 @@ pub struct ModuleQuery {
     /// 명령 입력과 같은 모양·검사 (`crate::commands::bind`)
     #[serde(default)]
     pub inputs: Vec<CommandInput>,
+}
+
+/// `[[agreements]]` — 사용자가 원문을 읽고 동의해야 서버를 켤 수 있는 약관.
+/// 이름은 모듈 locales의 `agreements.<id>`, 동의는 인스턴스 레코드 `accepted_agreements`에 남는다
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct ModuleAgreement {
+    /// 소문자·숫자·`-`·`_` (모듈 안에서 겹치지 않음, 예: "eula")
+    pub id: String,
+    /// 사용자가 읽을 원문 (https)
+    pub url: String,
 }
 
 /// `[permissions]` — 모듈 Python 코드가 쓰는 능력 (M12). 선언하지 않은 능력을 코드에서 찾으면
@@ -591,6 +605,9 @@ struct ModuleToml {
     /// [[queries]] 읽기 전용 조회 (X-2)
     #[serde(default)]
     queries: Vec<QueryToml>,
+    /// [[agreements]] 켜기 전에 동의할 약관
+    #[serde(default)]
+    agreements: Vec<ModuleAgreement>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1128,6 +1145,7 @@ impl ModuleToml {
                 function: q.function,
                 inputs: q.inputs.into_iter().map(CommandInput::from).collect(),
             }).collect(),
+            agreements: self.agreements,
             warnings: Vec::new(),
         }
     }
@@ -1160,6 +1178,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         meta.queries.clear();
     }
     problems.extend(bad_queries);
+    problems.extend(agreement_problems(&meta));
     match meta.schema_version {
         0 => {
             for p in &problems {
@@ -1278,7 +1297,7 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
 /// 데몬이 정해진 뜻으로 부르는 lifecycle 함수 중 상태를 바꾸는 것: 조회(`[[queries]]`)의 함수가 될 수 없다
 const NON_QUERY_FUNCTIONS: &[&str] = &[
     "start", "stop", "command", "configure", "get_launch_command", "import_settings", "install_server",
-    "reset_properties", "reset_server", "accept_eula",
+    "reset_properties", "reset_server", "accept_agreements",
 ];
 /// 조회 입력으로 쓸 수 있는 형식 (없으면 text)
 const QUERY_INPUT_TYPES: &[&str] = &["text", "number", "select"];
@@ -1287,6 +1306,24 @@ const QUERY_INPUT_TYPES: &[&str] = &["text", "number", "select"];
 fn is_slug(s: &str) -> bool {
     s.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+/// 약관 선언이 계약을 벗어난 곳: id 형식·중복, https가 아닌 원문 주소
+fn agreement_problems(meta: &ModuleMetadata) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for a in &meta.agreements {
+        if !is_slug(&a.id) {
+            problems.push(format!("agreements '{}': id must be lowercase letters, digits, '-' or '_'", a.id));
+        }
+        if !seen.insert(a.id.as_str()) {
+            problems.push(format!("agreements '{}': duplicate id", a.id));
+        }
+        if !a.url.starts_with("https://") {
+            problems.push(format!("agreements '{}': url must start with https://", a.id));
+        }
+    }
+    problems
 }
 
 /// 조회가 계약을 벗어난 곳: 이름 형식·중복, Python 식별자가 아니거나 상태를 바꾸는 함수, 입력 이름·형식·범위
@@ -2102,6 +2139,18 @@ entry = "lifecycle.py"
         assert_ne!(legacy, toml);
         let meta = parse_module_toml(&legacy).unwrap();
         assert!(meta.queries.is_empty(), "a module without a schema keeps no queries when one is wrong");
+    }
+
+    #[test]
+    fn schema_v1_reads_agreements_and_rejects_bad_ones() {
+        let toml = format!("{V1}\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/eula\"\n");
+        let meta = parse_module_toml(&toml).unwrap();
+        assert_eq!(meta.agreements, vec![ModuleAgreement { id: "eula".into(), url: "https://example.com/eula".into() }]);
+        for (bad, why) in [("id = \"eula\"", "id = \"EULA\""), ("https://", "http://"), ("url = ", "title = \"x\"\nurl = ")] {
+            assert!(parse_module_toml(&toml.replacen(bad, why, 1)).is_err(), "{why}");
+        }
+        let twice = format!("{toml}\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/2\"\n");
+        assert!(parse_module_toml(&twice).unwrap_err().to_string().contains("duplicate"));
     }
 
     #[test]

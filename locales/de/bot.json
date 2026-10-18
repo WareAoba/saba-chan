@@ -78,6 +78,8 @@
   "errors": {
     "error_title": "Fehler beim Ausführen des Befehls",
     "unknown": "Unbekannter Fehler",
+    "agreement_required": "Du musst {{names}} zustimmen, bevor dieser Server starten kann. Stimme in Saba-chan auf dem PC zu.",
+    "agreement_local_only": "Vereinbarungen können nur in Saba-chan auf diesem PC angenommen werden.",
     "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig — er passt auf mehrere Module: {{modules}}. Bitte verwende einen spezifischeren Alias.",
     "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias.",
     "auth_failed": "Authentifizierung fehlgeschlagen",

@@ -162,9 +162,10 @@
     "pair_expected": "应为 KEY=VALUE，实际为“{{got}}”。",
     "timeout": "守护进程响应时间过长（{{path}}）。"
   },
-  "eula": {
-    "confirm": "要接受 {{name}} 的 EULA 吗？这表示你同意游戏的许可条款。",
-    "done": "已接受 {{name}} 的 EULA。"
+  "agree": {
+    "none": "{{name}} 没有需要同意的协议。",
+    "confirm": "{{name}}：同意{{names}}吗？这表示你同意上面链接中的条款。",
+    "done": "已同意 {{name}} 的协议。"
   },
   "exit": {
     "crash": "崩溃",

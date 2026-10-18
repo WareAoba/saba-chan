@@ -103,7 +103,7 @@
 ### 4.2 데몬이 게임·플러그인 지식을 하드코딩 ("모듈=설명서, 플러그인=자유 교체" 위반)
 
 - ~~플러그인 이름 하드코딩(`docker`, `steamcmd_*`, `music`)~~ → 해결: docker·music은 지워졌고, 설치 방식 필드는 `install_method_<방식>`, `<방식>_<이름>` 범용 규칙이 됐다(03 §7.3).
-- 게임 지식 하드코딩: `java_path`, `ram`, `server.jar`, `accept_eula`(Minecraft) 등이 데몬 공용 코드에 남아 있다. GUI도 `module === 'palworld'`로 분기한다(02 §6.5 #6–#8).
+- 게임 지식 하드코딩: `java_path`, `ram`, `server.jar` 등이 데몬 공용 코드에 남아 있다. GUI도 `module === 'palworld'`로 분기한다(02 §6.5 #6–#8).
 - 모듈이 플러그인을 `from extensions.x import`로 직접 import한다. 비활성 익스텐션 import는 실행기의 import 가드가 막는다. 모듈→데몬 역호출은 이제 토큰을 보낸다(02 §6.5 #9, #10).
 
 ## 5. 남은 문제 (판독 기준, 재현 전)

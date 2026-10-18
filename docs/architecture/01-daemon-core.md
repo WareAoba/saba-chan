@@ -179,7 +179,7 @@
 | GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
 | POST | `/api/server/:name/start` | `server.rs:762` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed} |
 | POST | `/api/server/:name/stop` | `server.rs:818` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
-| POST | `/api/instance/:id/start` | `server.rs:568` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `preflight_failed`(모듈 validate의 critical 문제) |
+| POST | `/api/instance/:id/start` | `server.rs:568` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제) |
 | POST | `/api/instance/:id/stop` | `server.rs:676` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
 | POST | `/api/instance/:id/restart` | `server.rs:687` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped` |
 | GET | `/api/instance/:id/events` | `server.rs:753` | - | `{events:[...]}` 최근 종료 이력 / 404 |
@@ -214,7 +214,7 @@
 | GET | `/api/module/:name` | `server.rs:394` | - | `{name, version, description, path, metadata}` / 404 |
 | GET | `/api/module/:name/versions` | `managed.rs:242` | query `include_snapshots, page=1, per_page=25` | supervisor 결과 |
 | GET | `/api/module/:name/version/:version` | `managed.rs:271` | - | supervisor 결과 |
-| POST | `/api/module/:name/install` | `managed.rs:342` | `{version*, install_dir*, jar_name?, accept_eula?, initial_settings?}` | 200(success) / 422 / 404 / 400 / 500 |
+| POST | `/api/module/:name/install` | `managed.rs:342` | `{version*, install_dir*, jar_name?, accept_agreements?:[id], initial_settings?}` (`accept_agreements`는 원격이면 403 `agreement_local_only`, 모듈이 선언하지 않은 id면 400 `invalid_format`) | 200(success) / 422 / 404 / 400 / 500 |
 | GET | `/api/module/:name/locales` | `config.rs:193` | - | `{<lang>: <json>}` |
 
 - `ExtensionInfo`(이름과 달리 모듈 정보다, `ipc/mod.rs:248-287`) 필드: `name, version, description, schema_version, display_name?, game_name?, author?, warnings?, unmet_dependencies?, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
@@ -226,9 +226,9 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/instances` | `instance.rs:12` | - | `[ServerInstance]` (§4.1, REST 비밀번호 평문 포함) |
-| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?}` | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
+| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?, accept_agreements?:[id]}` (`accept_agreements`: 동의한 모듈 약관. 선언 안 된 id는 400 `invalid_format`, 원격이면 403 `agreement_local_only`. 가져오기(`migration_source`)면 만든 직후 lifecycle `accept_agreements`를 불러 모듈이 반영하게 한다) | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
-| GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` / 404 `{error, error_code}` |
+| GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` + `agreements:[{id, label, url, accepted, accepted_at}]`(모듈 약관, 이름은 데몬 언어) / 404 `{error, error_code}` |
 | DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |
 | PATCH | `/api/instance/:id` | `instance.rs` `update_instance_settings` | 임의 키-값 객체. `extra_args`(문자열은 `chat::split_quoted`로 나눔, 또는 문자열 배열, null은 비우기)는 인스턴스의 추가 실행 인자로. `memory_limit_mb`(MiB 정수 256 이상. 글자는 숫자나 `4G`·`4096M`(`GB`·`MB`, 대소문자 무관). null·""·0은 제한 없음)는 메모리 상한(02 문서 §3.6), 그 밖이면 400 `invalid_format`(`fields:[{field:"memory_limit_mb"}]`) | `{success:true}` / 400 `validation_failed`·`invalid_format`(모듈 `format`·`pattern`과 다름)`{details, fields}` / 404 / 500 |
 | POST | `/api/instance/:id/launch-preview` | `instance.rs` `launch_preview` → `Supervisor::launch_preview` | `{settings?:{필드:값}, extra_args?: string\|string[]}` (extra_args가 없으면 저장된 것) | 실행 인자 미리보기. 서버를 띄우지 않고 익스텐션 hook도 부르지 않는다. 저장된 설정 위에 초안, 그 위에 추가 인자를 필드 `arg` 모양으로 읽은 값을 얹어 `get_launch_command`(`preview:true`)를 부른다. 필드에 `arg`를 선언하지 않은 모듈이면 모듈을 부르지 않고 `{success:true, has_launch_args:false, ...}`(command_line 없음)를 돌려준다. 성공 `{success:true, has_launch_args, command_line, program, args[], settings_from_args{}, extra_args[], extra_args_text(큰따옴표가 든 인자가 있으면 null: 배열로 저장), errors[{arg\|null, field, expected, got}]}`. password 필드 값과 인스턴스 `rest_password`는 `***`. 모듈 실패 `{success:false, error:"launch_command_failed"\|action_required, message?, ...같은 키}` / 404 / 500 `preview_failed`. `expected`는 `validator::expected_of` 코드(`memory_size`·`port`·`integer`·`path`·`pattern`·`number`·`boolean`·`enum`·`text`) |
@@ -277,7 +277,7 @@
 | GET | `/api/instance/:id/settings/live` | `managed.rs:151` | - | `manage_properties("import")`. 성공하면 인스턴스 필드도 파일 값으로 맞춘다 |
 | POST | `/api/instance/:id/properties/reset` | `managed.rs:179` | - | `"reset"` |
 | POST | `/api/instance/:id/server/reset` | `managed.rs:194` | - | `"reset_server"` (월드, 설정 삭제) |
-| POST | `/api/instance/:id/accept-eula` | `managed.rs:209` | - | supervisor 결과 |
+| POST | `/api/instance/:id/agreements` | `managed.rs` `accept_agreements_handler` | `{accept:[id]}` | `{success, agreements:[{id, label, url, accepted, accepted_at}]}`. 모듈 `[[agreements]]` 동의를 기록하고 lifecycle `accept_agreements`를 부른다(02 문서). 400 `invalid_format`(선언 안 된 id), 403 `agreement_local_only`(원격), 404 `not_found` |
 | POST | `/api/instance/:id/diagnose` | `managed.rs:224` | - | supervisor 결과 |
 | GET | `/api/instance/:id/installed-version` | `managed.rs:287` | - | 결과. 감지에 성공하면 `server_version`에 자동 저장 |
 

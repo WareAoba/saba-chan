@@ -1897,25 +1897,52 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// Accept EULA for an instance
-    pub async fn accept_eula(sup: &tokio::sync::RwLock<Self>, instance_id: &str) -> Result<Value> {
+    /// 모듈이 선언한 약관(`[[agreements]]`)과 이 인스턴스의 동의 여부. 이름은 모듈 locales `agreements.<id>` (없으면 id)
+    pub fn agreement_views(&self, instance: &crate::instance::ServerInstance, lang: &str) -> Vec<Value> {
+        let Ok(module) = self.module_loader.get_module(&instance.module_name) else { return Vec::new() };
+        if module.metadata.agreements.is_empty() {
+            return Vec::new();
+        }
+        let lang = crate::chat::i18n::normalize_language(lang);
+        let locales = [crate::actions::module_locale(&module, &lang), crate::actions::module_locale(&module, "en")];
+        module.metadata.agreements.iter().map(|a| {
+            let pointer = format!("/agreements/{}", a.id);
+            let label = locales.iter().find_map(|l| l.pointer(&pointer).and_then(Value::as_str)).unwrap_or(&a.id);
+            let at = instance.accepted_agreements.get(&a.id);
+            json!({ "id": a.id, "label": label, "url": a.url, "accepted": at.is_some(), "accepted_at": at })
+        }).collect()
+    }
+
+    /// 아직 동의하지 않은 약관 (켜기 전 점검)
+    pub fn missing_agreements(&self, instance_id: &str, lang: &str) -> Vec<Value> {
+        let Some(instance) = self.instance_store.get(instance_id) else { return Vec::new() };
+        self.agreement_views(instance, lang).into_iter().filter(|v| v["accepted"] == json!(false)).collect()
+    }
+
+    /// 약관 동의를 기록하고 모듈 `accept_agreements`(`accepted_agreements: [id]`)로 모듈 파일(eula.txt 등)을 쓰게 한다.
+    /// 모듈이 선언하지 않은 id면 Err(그 id)
+    pub async fn accept_agreements(sup: &tokio::sync::RwLock<Self>, instance_id: &str, ids: &[String]) -> Result<std::result::Result<Value, String>> {
         let call = {
-            let s = sup.read().await;
-            let instance = s.instance_store.get(instance_id)
+            let mut s = sup.write().await;
+            let mut instance = s.instance_store.get(instance_id).cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
-
             let module = s.module_loader.get_module(&instance.module_name)?;
-            let module_path = module.entry_path();
-
-            let mut cfg = serde_json::Map::new();
-            if let Some(work_dir) = &instance.working_dir {
-                cfg.insert("working_dir".to_string(), json!(work_dir));
+            if let Some(unknown) = ids.iter().find(|id| !module.metadata.agreements.iter().any(|a| &a.id == *id)) {
+                return Ok(Err(unknown.clone()));
             }
-
-            crate::plugin::PluginCall::new(module_path, "accept_eula", Value::Object(cfg))
+            let now = chrono::Utc::now().to_rfc3339();
+            for id in ids {
+                instance.accepted_agreements.entry(id.clone()).or_insert_with(|| now.clone());
+            }
+            let accepted: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+            s.instance_store.update(instance_id, instance)?;
+            let mut call = s.instance_call(instance_id, "accept_agreements")?;
+            if let Value::Object(cfg) = &mut call.config {
+                cfg.insert("accepted_agreements".to_string(), json!(accepted));
+            }
+            call
         };
-        let result = call.run().await?;
-        Ok(result)
+        Ok(Ok(call.run().await?))
     }
 
     /// Diagnose errors from instance logs
@@ -2004,7 +2031,7 @@ impl Supervisor {
         version: &str,
         install_dir: &str,
         jar_name: Option<&str>,
-        accept_eula: bool,
+        accepted_agreements: &[String],
         initial_settings: Option<Value>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
@@ -2042,7 +2069,7 @@ impl Supervisor {
         let mut config = json!({
             "version": version,
             "install_dir": install_dir,
-            "accept_eula": accept_eula,
+            "accepted_agreements": accepted_agreements,
         });
 
         if let Some(ref name) = effective_jar {
@@ -2923,6 +2950,7 @@ mod tests {
             backup_keep: None,
             extra_args: Vec::new(),
             memory_limit_mb: None,
+            accepted_agreements: Default::default(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -2981,6 +3009,7 @@ mod tests {
             backup_keep: None,
             extra_args: Vec::new(),
             memory_limit_mb: None,
+            accepted_agreements: Default::default(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

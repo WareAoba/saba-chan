@@ -115,7 +115,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
 | relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels(`notify` 알림 채널 포함). 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
-| instanceAcceptEula (108) | instance:acceptEula | 2358 | POST /api/instance/:id/accept-eula | ✓ 685 (미사용) |
+| instanceAgreements (108) | instance:agreements | 2568 | POST /api/instance/:id/agreements `{accept:[id]}` | 모듈 약관 동의 |
 | instanceBackups…instanceScheduleSave (109-114) | instance:backup*/schedule* | 2359-2368 | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 688-691 (미사용) |
 | chatbotGet/Save/Clear/ClearMemory (115-118) | chatbot:* | 2370-2375 | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 753-754 (미사용) |
 | relayInitiatePairing / relayPollPairingStatus (119-120) | relay:* | 2377/2388 | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 744-745 |
@@ -200,7 +200,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계 `{st
 > 이 절은 CLI 리메이크(PR #6, 브랜치 `claude/cli-remake-b1wszk`) 기준이다. 예전 TUI(`tui/`, `process.rs`, `config.rs`, `gui_config.rs`, `cli_config.rs`, `module_registry.rs`)는 이 리메이크에서 모두 지워졌다.
 
 ### 3.1 쓰는 방법 세 가지
-- **한 번 실행하는 하위 명령**: clap 기반(`cli.rs`). `status`, `start|stop|restart <서버>`, `console`, `run <서버> <게임 명령>`, `server …`(list, info, add, remove, commands, send, settings, set, properties, rest, update, history, validate, diagnose, accept-eula, reset, rename, reorder 등), `daemon …`, `module …`, `extension …`, `bot …`, `backup …`, `schedule …`, `chatbot …`, `update …`, `config …`, `chat <문장>`, `monitor [--watch] [--interval 초]`, `version`, `shell`, `completions <셸>` (`cli.rs:41-105`). 콘솔에 한 줄을 그대로 보내는 명령은 `server send`다(`rcon` 하위 명령은 없다).
+- **한 번 실행하는 하위 명령**: clap 기반(`cli.rs`). `status`, `start|stop|restart <서버>`, `console`, `run <서버> <게임 명령>`, `server …`(list, info, add, remove, commands, send, settings, set, properties, rest, update, history, validate, diagnose, agree, reset, rename, reorder 등), `daemon …`, `module …`, `extension …`, `bot …`, `backup …`, `schedule …`, `chatbot …`, `update …`, `config …`, `chat <문장>`, `monitor [--watch] [--interval 초]`, `version`, `shell`, `completions <셸>` (`cli.rs:41-105`). 콘솔에 한 줄을 그대로 보내는 명령은 `server send`다(`rcon` 하위 명령은 없다).
 - **대화형 셸**: 인자 없이 터미널에서 실행하면 열린다(`main.rs:67`, `shell.rs`). 한 줄이 명령 하나이고 Tab으로 명령·서버 이름·게임 명령을 채운다(게임 명령은 `catalog`에서, `shell.rs:109`). 첫 단어가 명령이 아니면 디스코드와 같은 채팅 처리기로 보낸다(`shell.rs:1-5, 187`). 셸을 닫아도 데몬과 서버는 계속 돈다.
 - **스크립트용 `--json`**: stdout에는 JSON 문서 하나만 나가고, 안내와 진행 표시는 stderr로 간다(`output.rs:1-6`). 종료 코드: 0 성공, 1 실패, 2 사용법·모호함, 3 데몬 응답 없음, 4 대상 없음, 130 취소(`error.rs:39-47`). 전역 옵션은 `--json`, `--yes`, `--lang`, `--port`, `--no-color`.
 

@@ -156,7 +156,7 @@ def test_list_versions_through_daemon(mdaemon, mirror):
 
 def test_pinned_version_install_route(mdaemon, mirror, sandbox):
     target = sandbox.root / "pinned"
-    r = mdaemon.api.post("/api/module/minecraft/install", {"version": "1.20.4", "install_dir": str(target), "accept_eula": True}, timeout=180)
+    r = mdaemon.api.post("/api/module/minecraft/install", {"version": "1.20.4", "install_dir": str(target), "accept_agreements": ["eula"]}, timeout=180)
     assert r.status_code == 200 and r.json().get("success") is not False, r.text
     assert (target / "server.jar").read_bytes() == mirror.jar
     assert "eula=true" in (target / "eula.txt").read_text()
