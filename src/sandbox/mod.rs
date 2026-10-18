@@ -367,11 +367,22 @@ fn runtime_home(exe: &Path) -> Option<PathBuf> {
     (bin.file_name()?.eq_ignore_ascii_case("bin") && home.join("release").is_file()).then(|| home.to_path_buf())
 }
 
-/// 격리된 모듈이 확인하고 띄울 런타임의 설치 폴더: 설정 `java_path`(경로 없는 이름이면 PATH에서), `JAVA_HOME`,
-/// PATH의 `java`. 모듈은 `java -version`으로 런타임을 확인하는데, AppContainer는 Program Files 밖 폴더를 읽지 못한다
-pub fn runtime_homes(config: &Value, java_home: Option<&OsStr>, path: Option<&OsStr>) -> Vec<PathBuf> {
+/// 설정 `java_path` 중 사용자가 정한 값. 모듈이 `module.toml` 기본값·프리셋으로 넣은 값은 모듈이 고른 경로라
+/// 인정하지 않는다 (`Supervisor::guard_launch`와 같은 규칙). module.toml을 읽지 못하면 인정하지 않는다
+fn user_java_path<'a>(config: &'a Value, component_dir: &Path) -> Option<&'a str> {
+    let java = config.get("java_path").and_then(Value::as_str)?;
+    let module = crate::supervisor::module_loader::load_module_dir(component_dir).ok()?.metadata;
+    let default = module.settings.iter().flat_map(|s| &s.fields).filter(|f| f.name == "java_path").filter_map(|f| f.default.as_ref()?.as_str());
+    let presets = module.presets.iter().filter_map(|p| p.settings.get("java_path")?.as_str());
+    let declared: Vec<&str> = default.chain(presets).collect();
+    (!declared.contains(&java)).then_some(java)
+}
+
+/// 격리된 모듈이 확인하고 띄울 런타임의 설치 폴더: 사용자가 정한 `java_path`(경로 없는 이름이면 PATH에서),
+/// `JAVA_HOME`, PATH의 `java`. 모듈은 `java -version`으로 런타임을 확인하는데, AppContainer는 Program Files 밖 폴더를 읽지 못한다
+pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: Option<&OsStr>) -> Vec<PathBuf> {
     let mut exes = Vec::new();
-    if let Some(java) = config.get("java_path").and_then(Value::as_str).map(str::trim).filter(|p| !p.is_empty()) {
+    if let Some(java) = java_path.map(str::trim).filter(|p| !p.is_empty()) {
         let java = Path::new(java);
         if java.is_absolute() {
             exes.push(java.to_path_buf());
@@ -435,7 +446,7 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         add(parent, Access::List);
     }
     add(&data_dir.join("python-guard"), Access::Read);
-    for home in runtime_homes(config, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
+    for home in runtime_homes(user_java_path(config, &dir), std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
         add(&home, Access::Read);
     }
     add(&pycache, Access::Write);
@@ -626,18 +637,35 @@ mod tests {
         let path = std::env::join_paths([on_path.join("bin"), tools.join("bin")]).unwrap();
         let java = set.join("bin").join("java");
 
-        let homes = runtime_homes(&serde_json::json!({ "java_path": java }), Some(env_home.as_os_str()), Some(&path));
+        let homes = runtime_homes(java.to_str(), Some(env_home.as_os_str()), Some(&path));
         assert_eq!(homes, vec![set.clone(), env_home.clone(), on_path.clone()]);
         // 경로 없는 이름은 PATH에서 찾고, 같은 폴더는 한 번만
-        assert_eq!(runtime_homes(&serde_json::json!({ "java_path": "java" }), None, Some(&path)), vec![on_path.clone()]);
+        assert_eq!(runtime_homes(Some("java"), None, Some(&path)), vec![on_path.clone()]);
         // `release` 없는 도구 폴더는 열지 않는다
         let tools_path = std::env::join_paths([tools.join("bin")]).unwrap();
-        assert_eq!(runtime_homes(&serde_json::json!({}), None, Some(&tools_path)), Vec::<PathBuf>::new());
+        assert_eq!(runtime_homes(None, None, Some(&tools_path)), Vec::<PathBuf>::new());
         // 이름이 java가 아닌 실행 파일, 없는 파일은 런타임이 아니다
         std::fs::write(set.join("bin").join("evil"), b"x").unwrap();
         for bad in [set.join("bin").join("evil"), set.join("bin").join("missing")] {
-            assert_eq!(runtime_homes(&serde_json::json!({ "java_path": bad }), None, None), Vec::<PathBuf>::new());
+            assert_eq!(runtime_homes(bad.to_str(), None, None), Vec::<PathBuf>::new());
         }
+    }
+
+    #[test]
+    fn a_java_path_the_module_chose_is_not_opened() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("lifecycle.py"), b"").unwrap();
+        std::fs::write(
+            tmp.path().join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"m\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"java_path\"\ntype = \"text\"\nlabel = \"java\"\ndefault = \"C:/Users/me/jdk/bin/java.exe\"\n\n[[presets]]\nid = \"p\"\nsettings = { java_path = \"C:/other/bin/java.exe\" }\n",
+        )
+        .unwrap();
+        let of = |v: &str| user_java_path(&serde_json::json!({ "java_path": v }), tmp.path()).map(str::to_string);
+        assert_eq!(of("C:/Users/me/jdk/bin/java.exe"), None, "module default");
+        assert_eq!(of("C:/other/bin/java.exe"), None, "module preset");
+        assert_eq!(of("D:/jdk21/bin/java.exe").as_deref(), Some("D:/jdk21/bin/java.exe"));
+        // module.toml이 없는 구성요소(익스텐션 등)는 인정하지 않는다
+        assert_eq!(user_java_path(&serde_json::json!({ "java_path": "D:/jdk21/bin/java.exe" }), &tmp.path().join("none")), None);
     }
 
     #[test]
