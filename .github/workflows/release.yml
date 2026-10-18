@@ -77,7 +77,18 @@ jobs:
       # release 이벤트와 workflow_dispatch 모두 지원
       TARGET_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag_name }}
 
+    # bash -eo pipefail: 파이프 앞쪽 명령의 실패도 단계 실패로 친다
+    defaults:
+      run:
+        shell: bash
+
     steps:
+      - name: Validate tag
+        run: |
+          if ! [[ "$TARGET_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag must look like v1.2.3 or v1.2.3-beta.1"; exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -107,9 +118,18 @@ jobs:
           gh release download "${{ env.TARGET_TAG }}" \
             --repo "${{ github.repository }}" \
             --dir staging \
-            --skip-existing || true
+            --skip-existing
           echo "=== Downloaded assets ==="
           ls -la staging/
+          # 받다 끊긴 에셋을 이전 릴리즈 것으로 채워 서명하지 않게, 릴리즈의 에셋이 모두 왔는지 본다
+          gh release view "$TARGET_TAG" --repo "${{ github.repository }}" \
+            --json assets --jq '.assets[] | "\(.name)\t\(.size)"' > expected-assets.tsv
+          while IFS=$'\t' read -r name size; do
+            actual=$(stat -c %s "staging/$name" 2>/dev/null || echo missing)
+            if [ "$actual" != "$size" ]; then
+              echo "::error::Release asset $name did not download completely ($actual of $size bytes)"; exit 1
+            fi
+          done < expected-assets.tsv
 
       - name: Package & generate manifest
         env:
@@ -123,7 +143,8 @@ jobs:
       - name: Check R2 publish settings
         id: r2
         env:
-          HAS_KEY: ${{ secrets.UPDATER_SIGNING_KEY != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.RELAY_INTERNAL_SECRET != '' }}
+          HAS_KEY: ${{ secrets.UPDATER_SIGNING_KEY != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.RELAY_INTERNAL_SECRET != '' }}
+          PRERELEASE: ${{ github.event.release.prerelease || false }}
           HAS_VARS: ${{ vars.R2_ENDPOINT != '' && vars.R2_BUCKET != '' && vars.R2_PUBLIC_BASE != '' && vars.RELAY_URL != '' }}
         run: |
           if [ "$HAS_KEY" = "true" ] && [ "$HAS_VARS" = "true" ]; then
@@ -136,6 +157,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [ "${TARGET_TAG#v}" != "$VERSION" ]; then
             echo "::error::Tag $TARGET_TAG does not match versions.toml release $VERSION"
+            exit 1
+          fi
+          # GitHub에서 prerelease로 표시한 릴리즈가 stable 채널로 나가지 않게 한다
+          CHANNEL=$(python -c "import tomllib;print(tomllib.load(open('versions.toml','rb'))['release'].get('channel','stable'))")
+          if [ "$PRERELEASE" = "true" ] && [ "$CHANNEL" = "stable" ]; then
+            echo "::error::Release is marked prerelease but versions.toml channel is stable"
             exit 1
           fi
 
@@ -204,6 +231,11 @@ jobs:
           ./target/debug/saba-core module audit $mods
           ./target/debug/saba-core extension audit $exts
 
+      # 서명 도구는 키 없이 먼저 빌드한다: 의존성 빌드 스크립트가 키를 환경에서 읽지 못하게
+      - name: Build signing tool
+        if: steps.guard.outputs.publish == 'true'
+        run: cargo build --quiet -p saba-chan-updater-lib --example release_signing
+
       - name: Build and sign manifest
         if: steps.guard.outputs.publish == 'true'
         env:
@@ -215,7 +247,7 @@ jobs:
             --addons-ref "$(git -C addons/modules rev-parse HEAD)" \
             --out release-manifest.unsigned.json
           # 번들된 공개키로 검증까지 통과해야 출력된다
-          cargo run --quiet -p saba-chan-updater-lib --example release_signing -- \
+          ./target/debug/examples/release_signing \
             sign release-manifest.unsigned.json saba-updater-v1 > release-manifest.signed.json
           python scripts/versions.py registration --signed release-manifest.signed.json \
             --out release-registration.json
@@ -254,7 +286,10 @@ jobs:
             "${{ vars.RELAY_URL }}/v1/updates/manifest/${{ steps.r2.outputs.version }}" > /dev/null
           echo "✓ Registered ${{ steps.r2.outputs.version }}"
 
+      # 릴레이에 이미 있는 버전(edited 재실행)이면 GitHub 에셋도 그대로 둔다:
+      # 바꾸면 같은 버전 번호에 R2와 다른 파일이 붙고, 다음 부분 릴리즈가 그 파일을 가져간다
       - name: Upload packaged assets to release
+        if: steps.guard.outputs.publish != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -269,6 +304,7 @@ jobs:
           echo "✓ All assets uploaded"
 
       - name: Clean up original raw assets
+        if: steps.guard.outputs.publish != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
