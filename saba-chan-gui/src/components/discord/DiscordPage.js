@@ -12,6 +12,8 @@ import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
 import { permissionsAvailable } from './PermissionsTab';
+import { defaultPrefix, prefixProblems, primaryPrefix } from './prefixes';
+import { TagInput } from './TagInput';
 import { usePairing } from './usePairing';
 import { WordsView } from './WordsView';
 
@@ -29,20 +31,18 @@ export function cloudStateOf({ hostId, connected, connecting, error }) {
     return 'connecting';
 }
 
-function BotSettingsView({ prefix, setPrefix, onSave, sampleModuleWord }) {
+function BotSettingsView({ prefixes, setPrefixes, nodes, sampleModuleWord }) {
     const { t } = useTranslation('gui');
-    const [value, setValue] = useState(prefix);
-    useEffect(() => setValue(prefix), [prefix]);
-    const commit = () => {
-        const v = value.trim();
-        if (!v || v === prefix) {
-            setValue(prefix);
-            return;
-        }
-        setPrefix(v);
-        onSave();
+    const fallback = defaultPrefix(t, nodes);
+    // 고치는 즉시 스토어에 넣으면 자동 저장된다. 저장할 수 없는 목록은 넣지 않고 화면에만 둔다
+    const [draft, setDraft] = useState(prefixes);
+    useEffect(() => setDraft(prefixes), [prefixes]);
+    const draftProblems = prefixProblems(draft, t);
+    const change = (next) => {
+        setDraft(next);
+        if (prefixProblems(next, t).length === 0) setPrefixes(next);
     };
-    const p = value.trim() || prefix || '!saba';
+    const p = draft[0] || fallback;
     return (
         <div className="dc-view">
             <header className="dc-view-head">
@@ -54,16 +54,20 @@ function BotSettingsView({ prefix, setPrefix, onSave, sampleModuleWord }) {
                     <h2>{t('discord.prefix_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('discord.prefix_desc')}</p>
-                <input
-                    className="input dc-prefix-input"
-                    value={value}
-                    aria-label={t('discord.prefix_title')}
-                    placeholder="!saba"
-                    onChange={(e) => setValue(e.target.value.replace(/\s/g, ''))}
-                    onBlur={commit}
-                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                <TagInput
+                    value={draft}
+                    onChange={change}
+                    placeholder={t('discord.prefix_default_placeholder', { prefix: fallback })}
+                    ariaLabel={t('discord.prefix_title')}
                 />
-                {!value.trim() && <p className="dc-field-error">{t('discord.prefix_required')}</p>}
+                {draft.length === 0 && (
+                    <p className="dc-hint">{t('discord.prefix_default_hint', { prefix: fallback })}</p>
+                )}
+                {draftProblems.length > 0 && (
+                    <p className="dc-field-error">
+                        <Icon name="alertTriangle" size="xs" /> {draftProblems.join(' · ')}
+                    </p>
+                )}
             </section>
             <section className="dc-card">
                 <div className="dc-card-head">
@@ -95,8 +99,8 @@ function BotSettingsView({ prefix, setPrefix, onSave, sampleModuleWord }) {
  */
 export function DiscordPage({
     discordBotStatus,
-    discordPrefix,
-    setDiscordPrefix,
+    discordPrefixes = [],
+    setDiscordPrefixes,
     discordCloudRelayUrl,
     discordCloudHostId,
     setDiscordCloudHostId,
@@ -292,7 +296,6 @@ export function DiscordPage({
             const instanceAliases = { ...(current.instanceAliases || {}) };
             mutate(moduleAliases, commandAliases, instanceAliases);
             const res = await window.api.botConfigSave({
-                prefix: current.prefix || discordPrefix || '!saba',
                 moduleAliases,
                 commandAliases,
                 instanceAliases,
@@ -460,7 +463,13 @@ export function DiscordPage({
                             () => go({ kind: 'bot' }),
                             <Icon name="settings" size="sm" />,
                             t('discord.nav_settings'),
-                            <span>{t('discord.nav_settings_sub', { prefix: discordPrefix || '—' })}</span>,
+                            <span>
+                                {t('discord.nav_settings_sub', {
+                                    prefix: discordPrefixes.length
+                                        ? discordPrefixes.join(', ')
+                                        : t('discord.prefix_default_label', { prefix: defaultPrefix(t, cloudNodes) }),
+                                })}
+                            </span>,
                         )}
                         {chatbotAvailable() &&
                             navItem(
@@ -525,7 +534,7 @@ export function DiscordPage({
                                 modules={modules}
                                 moduleName={view.module}
                                 onSelectModule={(m) => setView({ kind: 'words', module: m })}
-                                prefix={discordPrefix}
+                                prefix={primaryPrefix(discordPrefixes, t, cloudNodes)}
                                 moduleAliasesPerModule={moduleAliasesPerModule}
                                 savedModuleAliases={discordModuleAliases}
                                 savedCommandAliases={discordCommandAliases}
@@ -537,9 +546,9 @@ export function DiscordPage({
                         )}
                         {view.kind === 'bot' && (
                             <BotSettingsView
-                                prefix={discordPrefix}
-                                setPrefix={setDiscordPrefix}
-                                onSave={saveCurrentSettings}
+                                prefixes={discordPrefixes}
+                                setPrefixes={setDiscordPrefixes}
+                                nodes={cloudNodes}
                                 sampleModuleWord={sampleModuleWord}
                             />
                         )}

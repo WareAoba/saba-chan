@@ -257,8 +257,6 @@
     "stored_values_notice": "サーバーの設定ファイルを読み込めなかったため、最後に保存された値を表示しています。保存すると変更した項目だけが反映されます。"
   },
   "discord_bot": {
-    "prefix_missing_title": "プレフィックスがありません",
-    "prefix_missing_message": "ボットのプレフィックスを設定してください。例: !pal, !mc",
     "start_failed_toast": "Discordボット起動失敗: {{error}}",
     "started_toast": "Discordボットが起動しました",
     "start_error_toast": "Discordボット起動例外: {{error}}",
@@ -816,8 +814,7 @@
     "bot_title": "基本設定",
     "bot_desc": "Discordボット全体に適用される設定です。",
     "prefix_title": "コマンドプレフィックス",
-    "prefix_desc": "この単語で始まるメッセージにだけボットが反応します。スペースは使えません。",
-    "prefix_required": "プレフィックスが空だと保存されません",
+    "prefix_desc": "この言葉で始まるメッセージにボットが反応し、AIチャットボットもこの言葉で呼び出します。複数設定できます。",
     "usage_title": "使い方",
     "usage_help": "ヘルプ",
     "usage_list_word": "list",
@@ -929,7 +926,13 @@
     },
     "channels_notify": "通知チャンネル",
     "channels_notify_hint": "クラッシュ、自動再起動、アップデート、バックアップ完了、予約再起動の予告をこのチャンネルに投稿します。",
-    "channels_is_notify": "通知チャンネルとして使用中"
+    "channels_is_notify": "通知チャンネルとして使用中",
+    "default_prefix": "サバちゃん",
+    "prefix_default_label": "既定 ({{prefix}})",
+    "prefix_default_placeholder": "空欄なら既定の {{prefix}}",
+    "prefix_default_hint": "今は既定の {{prefix}} を使っています。アプリの言語を変えると既定値もその言語になります。",
+    "prefix_err_count": "接頭辞は{{max}}個までです。",
+    "prefix_err_length": "接頭辞は{{max}}文字までです: {{words}}"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",
@@ -1005,11 +1008,7 @@
     "enabled": "チャットボットを有効にする",
     "enabled_hint": "サーバーごとに個別にオン・オフもできます。",
     "model": "モデル",
-    "session_seconds": "会話の継続時間",
-    "ambient_seconds": "自発的な発言の間隔",
     "seconds": "秒",
-    "ambient_hint": "秒（0でオフ）",
-    "triggers": "呼びかけの言葉",
     "confirm_commands": "コマンド実行前に確認",
     "confirm_commands_hint": "AIが選んだコマンドは、Discordで確認を受けてから実行します。",
     "memory": "長期記憶",
@@ -1026,9 +1025,6 @@
     "memory_clear": "記憶を消去",
     "memory_clear_confirm": "クリックして消去",
     "memory_cleared": "{{name}} の記憶を消去しました。",
-    "err_ambientSeconds": "自発的な発言の間隔は{{min}}〜{{max}}秒にしてください。",
-    "err_sessionSeconds": "会話の継続時間は{{min}}〜{{max}}秒にしてください。",
-    "err_triggers": "呼びかけの言葉は{{max}}個までです。",
     "memo": "ノードメモ",
     "memo_aria": "{{name}} のノードメモ",
     "memo_placeholder": "このサーバーについてサバちゃんが知っておくこと：口調、呼び方、雰囲気、興味など。基本の指示の後ろに付きます。",
@@ -1042,7 +1038,16 @@
     "tool_social_notes": "空気読みメモ",
     "tool_social_notes_hint": "雰囲気や人について自分だけのメモを残します。アプリには表示されません。",
     "relay_delete_pending": "以前のチャットボット設定をまだリレーから削除できていません。次の接続時にもう一度削除します。",
-    "channels_moved": "チャットボットが話すチャンネルは、各 Discord サーバー画面の「チャンネル」タブで選びます。"
+    "channels_moved": "チャットボットが話すチャンネルは、各 Discord サーバー画面の「チャンネル」タブで選びます。",
+    "prefix_calls": "Discord › 基本設定のコマンド接頭辞で呼ぶと答えます。",
+    "models_need_key": "APIキーを保存すると使えるモデルを読み込みます。",
+    "models_need_guild": "Discordサーバーをつなぐと使えるモデルを読み込みます。",
+    "models_err_NO_API_KEY": "APIキーがまだサーバーに届いていません。少ししてからもう一度試してください。",
+    "models_err_INVALID_API_KEY": "APIキーが正しくありません。キーを確認してください。",
+    "models_err_QUOTA_EXCEEDED": "APIキーの利用上限を超えています。",
+    "models_err_PROVIDER_UNAVAILABLE": "モデル提供元に接続できませんでした。少ししてからもう一度試してください。",
+    "models_err_FAILED": "モデル一覧を読み込めませんでした。",
+    "model_fallback": "選んだモデル（{{model}}）が使えないため、{{fallback}} で代わりに答えています。保存すると {{fallback}} が新しいモデルになります。"
   },
   "module_audit": {
     "title": "モジュール '{{module}}' が宣言していない機能を使っています。",

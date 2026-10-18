@@ -19,7 +19,7 @@ function isDirty(draft, base) {
 }
 
 /**
- * 모듈별 디스코드 명령어 단어: `!saba <모듈 단어> <명령 단어>`의 두 칸을 모듈마다 고친다.
+ * 모듈별 디스코드 명령어 단어: `<접두사> <모듈 단어> <명령 단어>`의 두 칸을 모듈마다 고친다.
  * 같은 게임 서버가 여럿이면 모듈 단어 자리에 서버마다 별명을 줄 수 있다 (instanceAliases).
  */
 export function WordsView({
@@ -86,8 +86,7 @@ export function WordsView({
     const firstModuleWord = draft?.moduleAliases[0] || current;
     const commandEntries = Object.entries(draft?.commands || {});
     const firstCmd = commandEntries[0];
-    const example =
-        `${prefix || '!saba'} ${firstModuleWord} ${firstCmd ? firstCmd[1].aliases[0] || firstCmd[0] : ''}`.trim();
+    const example = `${prefix} ${firstModuleWord} ${firstCmd ? firstCmd[1].aliases[0] || firstCmd[0] : ''}`.trim();
 
     const run = async (fn) => {
         setBusy(true);

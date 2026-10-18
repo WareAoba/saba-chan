@@ -313,8 +313,6 @@
     "stored_values_notice": "Die Einstellungsdatei des Servers konnte nicht gelesen werden, daher werden die zuletzt gespeicherten Werte angezeigt. Beim Speichern werden nur geänderte Felder übernommen."
   },
   "discord_bot": {
-    "prefix_missing_title": "Präfix fehlt",
-    "prefix_missing_message": "Bitte legen Sie das Bot-Präfix fest. Beispiel: !pal, !mc",
     "start_failed_toast": "Discord-Bot-Start fehlgeschlagen: {{error}}",
     "started_toast": "Discord-Bot wurde gestartet",
     "start_error_toast": "Discord-Bot-Start-Ausnahme: {{error}}",
@@ -816,8 +814,7 @@
     "bot_title": "Allgemein",
     "bot_desc": "Einstellungen, die für den gesamten Discord-Bot gelten.",
     "prefix_title": "Befehlspräfix",
-    "prefix_desc": "Der Bot antwortet nur auf Nachrichten, die mit diesem Wort beginnen. Keine Leerzeichen.",
-    "prefix_required": "Ein leeres Präfix wird nicht gespeichert",
+    "prefix_desc": "Der Bot reagiert auf Nachrichten, die mit einem dieser Wörter beginnen, und auch der KI-Chatbot wird damit gerufen. Du kannst mehrere angeben.",
     "usage_title": "So funktioniert's",
     "usage_help": "Hilfe",
     "usage_list_word": "list",
@@ -929,7 +926,13 @@
     },
     "channels_notify": "Benachrichtigungskanal",
     "channels_notify_hint": "Abstürze, automatische Neustarts, Updates, fertige Sicherungen und Hinweise auf geplante Neustarts erscheinen hier.",
-    "channels_is_notify": "Als Benachrichtigungskanal verwendet"
+    "channels_is_notify": "Als Benachrichtigungskanal verwendet",
+    "default_prefix": "Saba-chan",
+    "prefix_default_label": "Standard ({{prefix}})",
+    "prefix_default_placeholder": "Leer lassen für {{prefix}}",
+    "prefix_default_hint": "Derzeit wird der Standard {{prefix}} verwendet. Er folgt der App-Sprache.",
+    "prefix_err_count": "Höchstens {{max}} Präfixe.",
+    "prefix_err_length": "Präfixe dürfen höchstens {{max}} Zeichen haben: {{words}}"
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",
@@ -1005,11 +1008,7 @@
     "enabled": "Chatbot aktivieren",
     "enabled_hint": "Du kannst ihn auch pro Server ein- oder ausschalten.",
     "model": "Modell",
-    "session_seconds": "Gesprächsfenster",
-    "ambient_seconds": "Intervall für Einwürfe",
     "seconds": "Sekunden",
-    "ambient_hint": "Sekunden (0 = aus)",
-    "triggers": "Auslösewörter",
     "confirm_commands": "Vor dem Ausführen von Befehlen bestätigen",
     "confirm_commands_hint": "Von der KI gewählte Befehle werden erst nach Bestätigung auf Discord ausgeführt.",
     "memory": "Langzeitgedächtnis",
@@ -1026,9 +1025,6 @@
     "memory_clear": "Gedächtnis löschen",
     "memory_clear_confirm": "Zum Löschen klicken",
     "memory_cleared": "Gedächtnis für {{name}} gelöscht.",
-    "err_ambientSeconds": "Das Intervall für Einwürfe muss {{min}}–{{max}} Sekunden betragen.",
-    "err_sessionSeconds": "Das Gesprächsfenster muss {{min}}–{{max}} Sekunden betragen.",
-    "err_triggers": "Bis zu {{max}} Auslösewörter.",
     "memo": "Knotennotiz",
     "memo_aria": "Knotennotiz für {{name}}",
     "memo_placeholder": "Was Saba-chan über diesen Server wissen soll: Tonfall, Anrede, Stimmung, Interessen. Wird nach den Standardanweisungen angehängt.",
@@ -1042,7 +1038,16 @@
     "tool_social_notes": "Soziale Notizen",
     "tool_social_notes_hint": "Führt private Notizen über Stimmung und Leute. Werden in der App nie angezeigt.",
     "relay_delete_pending": "Die alten Chatbot-Einstellungen wurden noch nicht vom Relay entfernt. Beim nächsten Verbinden wird es erneut versucht.",
-    "channels_moved": "Die Kanäle des Chatbots wählst du im Tab „Kanäle“ des jeweiligen Discord-Servers."
+    "channels_moved": "Die Kanäle des Chatbots wählst du im Tab „Kanäle“ des jeweiligen Discord-Servers.",
+    "prefix_calls": "Er antwortet, wenn er mit einem Befehlspräfix aus Discord › Einstellungen gerufen wird.",
+    "models_need_key": "Speichere einen API-Schlüssel, um die verfügbaren Modelle zu laden.",
+    "models_need_guild": "Verbinde einen Discord-Server, um die verfügbaren Modelle zu laden.",
+    "models_err_NO_API_KEY": "Der API-Schlüssel ist noch nicht beim Server angekommen. Versuche es gleich noch einmal.",
+    "models_err_INVALID_API_KEY": "Der API-Schlüssel wurde abgelehnt. Prüfe den Schlüssel.",
+    "models_err_QUOTA_EXCEEDED": "Das Kontingent des API-Schlüssels ist aufgebraucht.",
+    "models_err_PROVIDER_UNAVAILABLE": "Der Modellanbieter ist nicht erreichbar. Versuche es gleich noch einmal.",
+    "models_err_FAILED": "Die Modellliste konnte nicht geladen werden.",
+    "model_fallback": "Das gewählte Modell ({{model}}) ist nicht verfügbar, daher wird {{fallback}} verwendet. Speichere, um {{fallback}} zu übernehmen."
   },
   "module_audit": {
     "title": "Modul '{{module}}' nutzt nicht deklarierte Fähigkeiten.",

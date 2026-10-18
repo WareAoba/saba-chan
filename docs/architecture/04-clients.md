@@ -134,6 +134,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | onboarding (957) | GET /api/onboarding (J1-a 다음 할 일) | ✓ 639 |
 | instanceBackups…instanceScheduleSave (958-970) | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 690-693 (미사용) |
 | chatbotGet/Save/Clear/ClearMemory (971-975) | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 793-794 (미사용) |
+| chatbotModels | GET /api/relay/node/:guildId/chatbot/models (릴레이 답 그대로: `{models, selected, effectiveModel}`, 409 NO_API_KEY·422·503) | ✓ 챗봇 화면 모델 드롭다운. 고른 모델을 대신 쓰는 중이면(`effectiveModel`≠`model`) 알리고 그 모델을 고른 상태로 둔다 |
 | relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 782-783 |
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | shellOpenPath (997) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |

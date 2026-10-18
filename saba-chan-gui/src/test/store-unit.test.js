@@ -472,7 +472,7 @@ describe('useServerStore', () => {
 describe('useDiscordStore', () => {
     it('초기 상태 검증', () => {
         const state = useDiscordStore.getState();
-        expect(state.discordPrefix).toBe('!saba');
+        expect(state.discordPrefixes).toEqual([]);
         expect(state.discordBotStatus).toBe('stopped');
         expect(state.botStatusReady).toBe(false);
         // 로컬 봇 시절 필드는 더 이상 없다
@@ -481,9 +481,9 @@ describe('useDiscordStore', () => {
     });
 
     it('update() — 부분 업데이트', () => {
-        useDiscordStore.getState().update({ discordPrefix: '!s' });
+        useDiscordStore.getState().update({ discordPrefixes: ['!s'] });
         const state = useDiscordStore.getState();
-        expect(state.discordPrefix).toBe('!s');
+        expect(state.discordPrefixes).toEqual(['!s']);
         expect(state.discordCloudHostId).toBe(''); // 미변경
     });
 
@@ -501,7 +501,7 @@ describe('useDiscordStore', () => {
         await useDiscordStore.getState().loadConfig();
 
         const state = useDiscordStore.getState();
-        expect(state.discordPrefix).toBe('!bot');
+        expect(state.discordPrefixes).toEqual(['!bot']);
         expect(state.discordCloudRelayUrl).toBe('https://relay.example.com');
         expect(state.discordCloudHostId).toBe('h123');
         expect(state.discordModuleAliases).toEqual({ palworld: 'pw' });
@@ -518,7 +518,7 @@ describe('useDiscordStore', () => {
         await useDiscordStore.getState().loadConfig();
 
         const state = useDiscordStore.getState();
-        expect(state.discordPrefix).toBe('!saba');
+        expect(state.discordPrefixes).toEqual([]);
         expect(state.discordCloudRelayUrl).toBe('');
     });
 
@@ -530,12 +530,12 @@ describe('useDiscordStore', () => {
         // 패닉이나 unhandled rejection 없어야 함
         await useDiscordStore.getState().loadConfig();
         // 상태는 기본값 그대로
-        expect(useDiscordStore.getState().discordPrefix).toBe('!saba');
+        expect(useDiscordStore.getState().discordPrefixes).toEqual([]);
     });
 
     it('_resetForTest() — 완전 리셋', () => {
         useDiscordStore.setState({
-            discordPrefix: '!!',
+            discordPrefixes: ['!!'],
             discordBotStatus: 'running',
             botStatusReady: true,
         });
@@ -543,7 +543,7 @@ describe('useDiscordStore', () => {
         useDiscordStore.getState()._resetForTest();
 
         const state = useDiscordStore.getState();
-        expect(state.discordPrefix).toBe('!saba');
+        expect(state.discordPrefixes).toEqual([]);
         expect(state.discordBotStatus).toBe('stopped');
         expect(state.botStatusReady).toBe(false);
     });
@@ -564,12 +564,12 @@ describe('bot-config 저장 계약', () => {
     });
 
     it('bot-config save payload에는 로컬 봇 필드(token/autoStart/mode/music)가 없다', async () => {
-        useDiscordStore.setState({ discordPrefix: '!x', discordCloudHostId: 'h1' });
+        useDiscordStore.setState({ discordPrefixes: ['!x'], discordCloudHostId: 'h1' });
 
         await useDiscordStore.getState().saveConfig();
 
         const payload = window.api.botConfigSave.mock.calls[0][0];
-        expect(payload.prefix).toBe('!x');
+        expect(payload.prefixes).toEqual(['!x']);
         expect(payload.cloud).toEqual({ relayUrl: '', hostId: 'h1' });
         for (const legacy of ['token', 'autoStart', 'mode', 'musicEnabled', 'musicChannelId', 'musicUISettings']) {
             expect(payload).not.toHaveProperty(legacy);

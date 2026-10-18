@@ -1,12 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-    ChatbotView,
-    relayErrorLines,
-    settingsDraft,
-    settingsPatch,
-    settingsProblems,
-} from '../components/discord/ChatbotView';
+import { ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
 
 const t = (k) => k;
@@ -121,15 +115,16 @@ describe('MaintenanceTab', () => {
 });
 
 describe('챗봇 설정 변환', () => {
-    it('기본값과 같은 값은 null로 보내 릴레이 기본을 따른다', () => {
-        const d = settingsDraft({ model: 'gpt-x', ambientSeconds: 30 });
-        expect(d.sessionSeconds).toBe('180');
+    it('기본값과 같은 값은 null로 보내 릴레이 기본을 따른다; 계약에서 빠진 키는 보내지 않는다', () => {
+        const d = settingsDraft({ model: 'gpt-x', ambientSeconds: 30, sessionSeconds: 60, triggerWords: ['a'] });
+        expect(d).not.toHaveProperty('ambientSeconds');
+        expect(d).not.toHaveProperty('triggerWords');
         const p = settingsPatch({ ...d, enabled: true, disabledTools: ['images', 'lol'] });
-        expect(p).toMatchObject({ model: 'gpt-x', ambientSeconds: 30, enabled: true, persona: null, memory: null });
+        expect(p).toMatchObject({ model: 'gpt-x', enabled: true, persona: null, memory: null });
+        expect(Object.keys(p)).not.toContain('sessionSeconds');
         // 계약 순서로 정리, 비면 null
         expect(p.disabledTools).toEqual(['lol', 'images']);
         expect(settingsPatch(d).disabledTools).toBeNull();
-        expect(settingsProblems({ ...d, sessionSeconds: '601' }, t)).toEqual(['chatbot.err_sessionSeconds']);
     });
 
     it('릴레이 400을 읽을 수 있는 줄로', () => {

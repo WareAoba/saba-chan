@@ -106,8 +106,8 @@ function Harness({ save, initialView, botConfigSave }) {
     return (
         <DiscordPage
             discordBotStatus="running"
-            discordPrefix="!saba"
-            setDiscordPrefix={() => {}}
+            discordPrefixes={[]}
+            setDiscordPrefixes={() => {}}
             discordCloudHostId="host-1"
             setDiscordCloudHostId={() => {}}
             relayConnected

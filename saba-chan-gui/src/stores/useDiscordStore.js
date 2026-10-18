@@ -1,6 +1,6 @@
 import { create } from 'zustand';
+import { readPrefixes } from '../components/discord/prefixes';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
-import { useUIStore } from './useUIStore';
 
 // i18n translate function — set after store creation
 let _t = (key, fallback) => fallback || key;
@@ -20,7 +20,8 @@ let statusGeneration = 0;
 // 에이전트/릴레이 상태만 다룬다. 에이전트는 노드 토큰이 있으면 데몬이 자동 시작한다.
 const initialState = () => ({
     // ── Bot config (bot-config.json, 데몬이 SSOT) ──
-    discordPrefix: '!saba',
+    // 비어 있으면 릴레이가 언어별 기본 접두사를 쓴다
+    discordPrefixes: [],
     discordModuleAliases: {},
     discordCommandAliases: {},
     discordCloudRelayUrl: '',
@@ -71,7 +72,7 @@ export const useDiscordStore = create((set, get) => ({
                 if (!botCfg) continue;
 
                 const patch = {
-                    discordPrefix: botCfg.prefix || '!saba',
+                    discordPrefixes: readPrefixes(botCfg),
                     discordModuleAliases: botCfg.moduleAliases || {},
                     discordCommandAliases: botCfg.commandAliases || {},
                     discordCloudRelayUrl: botCfg.cloud?.relayUrl || '',
@@ -98,7 +99,7 @@ export const useDiscordStore = create((set, get) => ({
         }
     },
 
-    saveConfig: async (newPrefix) => {
+    saveConfig: async () => {
         const state = get();
         try {
             // 처음 로드에 실패했다면 스토어 값은 기본값이다. 그대로 보내면 디스크의
@@ -115,11 +116,7 @@ export const useDiscordStore = create((set, get) => ({
 
             // 데몬은 최상위 키 단위로 병합하므로 이 스토어가 아는 키만 보낸다.
             const payload = {
-                prefix:
-                    newPrefix ||
-                    (base && state.discordPrefix === '!saba' && base.prefix) ||
-                    state.discordPrefix ||
-                    '!saba',
+                prefixes: base && state.discordPrefixes.length === 0 ? readPrefixes(base) : state.discordPrefixes,
                 cloud: {
                     relayUrl: pick(state.discordCloudRelayUrl, base?.cloud?.relayUrl, ''),
                     hostId: pick(state.discordCloudHostId, base?.cloud?.hostId, ''),
@@ -136,7 +133,6 @@ export const useDiscordStore = create((set, get) => ({
                 safeShowToast(_t('settings.save_error'), 'error');
                 return false;
             }
-            console.log('[Settings] Bot config saved, prefix:', payload.prefix);
             return true;
         } catch (error) {
             console.error('[Settings] Failed to save bot config:', error);
@@ -146,15 +142,6 @@ export const useDiscordStore = create((set, get) => ({
     },
 
     startBot: async () => {
-        const state = get();
-        if (!state.discordPrefix) {
-            useUIStore.getState().openModal({
-                type: 'failure',
-                title: _t('discord_bot.prefix_missing_title'),
-                message: _t('discord_bot.prefix_missing_message'),
-            });
-            return;
-        }
         try {
             const result = await window.api.discordBotStart();
             if (result?.error) {
@@ -262,7 +249,7 @@ export const useDiscordStore = create((set, get) => ({
 // ── Auto-save subscription (Zustand v5 single-listener) ──
 let botConfigSaveTimer = null;
 const _discordSaveKeys = [
-    'discordPrefix',
+    'discordPrefixes',
     'discordCloudRelayUrl',
     'discordCloudHostId',
     'nodeSettings',
@@ -291,7 +278,7 @@ if (import.meta.hot) {
     import.meta.hot.dispose((data) => {
         const s = useDiscordStore.getState();
         data.prevState = {
-            discordPrefix: s.discordPrefix,
+            discordPrefixes: s.discordPrefixes,
             discordModuleAliases: s.discordModuleAliases,
             discordCommandAliases: s.discordCommandAliases,
             discordCloudRelayUrl: s.discordCloudRelayUrl,

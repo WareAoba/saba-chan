@@ -313,8 +313,6 @@
     "stored_values_notice": "無法讀取伺服器的設定檔，目前顯示的是上次儲存的值。儲存時只會套用您變更過的欄位。"
   },
   "discord_bot": {
-    "prefix_missing_title": "缺少前置詞",
-    "prefix_missing_message": "請設定機器人前置詞。範例：!pal、!mc",
     "start_failed_toast": "Discord 機器人啟動失敗：{{error}}",
     "started_toast": "Discord 機器人已啟動",
     "start_error_toast": "Discord 機器人啟動例外：{{error}}",
@@ -816,8 +814,7 @@
     "bot_title": "基本設定",
     "bot_desc": "套用於整個 Discord 機器人的設定。",
     "prefix_title": "命令前置詞",
-    "prefix_desc": "機器人只回應以此詞開頭的訊息。不可包含空格。",
-    "prefix_required": "前置詞為空時無法儲存",
+    "prefix_desc": "機器人會回應以這些詞開頭的訊息，AI 聊天機器人也用這些詞呼叫。可以設定多個。",
     "usage_title": "使用方式",
     "usage_help": "說明",
     "usage_list_word": "list",
@@ -929,7 +926,13 @@
     },
     "channels_notify": "通知頻道",
     "channels_notify_hint": "當機、自動重啟、更新、備份完成和排程重啟預告會發到這個頻道。",
-    "channels_is_notify": "用作通知頻道"
+    "channels_is_notify": "用作通知頻道",
+    "default_prefix": "Saba-chan",
+    "prefix_default_label": "預設（{{prefix}}）",
+    "prefix_default_placeholder": "留空則使用預設的 {{prefix}}",
+    "prefix_default_hint": "目前使用預設的 {{prefix}}。變更應用程式語言後預設值也會跟著變。",
+    "prefix_err_count": "前綴最多 {{max}} 個。",
+    "prefix_err_length": "前綴最多 {{max}} 個字元：{{words}}"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
@@ -1005,11 +1008,7 @@
     "enabled": "啟用聊天機器人",
     "enabled_hint": "也可以依伺服器個別開啟或關閉。",
     "model": "模型",
-    "session_seconds": "對話維持時間",
-    "ambient_seconds": "主動發言間隔",
     "seconds": "秒",
-    "ambient_hint": "秒（0 為關閉）",
-    "triggers": "呼叫詞",
     "confirm_commands": "執行指令前確認",
     "confirm_commands_hint": "AI 選擇的指令需在 Discord 上確認後才會執行。",
     "memory": "長期記憶",
@@ -1026,9 +1025,6 @@
     "memory_clear": "清除記憶",
     "memory_clear_confirm": "點擊清除",
     "memory_cleared": "已清除 {{name}} 的記憶。",
-    "err_ambientSeconds": "主動發言間隔須介於 {{min}}–{{max}} 秒。",
-    "err_sessionSeconds": "對話維持時間須介於 {{min}}–{{max}} 秒。",
-    "err_triggers": "呼叫詞最多 {{max}} 個。",
     "memo": "節點備忘",
     "memo_aria": "{{name}} 的節點備忘",
     "memo_placeholder": "薩巴醬需要了解的這個伺服器的情況：語氣、稱呼、氣氛、興趣等。附加在預設指令之後。",
@@ -1042,7 +1038,16 @@
     "tool_social_notes": "察言觀色備忘",
     "tool_social_notes_hint": "記錄關於氣氛和成員的私人備忘，不會在應用程式中顯示。",
     "relay_delete_pending": "舊的聊天機器人設定尚未從中繼刪除，下次連線時會再次刪除。",
-    "channels_moved": "聊天機器人對話的頻道在各 Discord 伺服器的「頻道」分頁中選擇。"
+    "channels_moved": "聊天機器人對話的頻道在各 Discord 伺服器的「頻道」分頁中選擇。",
+    "prefix_calls": "用 Discord › 基本設定 中的命令前綴呼叫時回答。",
+    "models_need_key": "儲存 API 金鑰後會載入可用的模型。",
+    "models_need_guild": "連接 Discord 伺服器後會載入可用的模型。",
+    "models_err_NO_API_KEY": "API 金鑰尚未傳到伺服器。請稍後再試。",
+    "models_err_INVALID_API_KEY": "API 金鑰無效。請檢查金鑰。",
+    "models_err_QUOTA_EXCEEDED": "API 金鑰已超出使用額度。",
+    "models_err_PROVIDER_UNAVAILABLE": "無法連線模型提供者。請稍後再試。",
+    "models_err_FAILED": "無法載入模型清單。",
+    "model_fallback": "所選模型（{{model}}）無法使用，正在改用 {{fallback}}。儲存後 {{fallback}} 會成為新模型。"
   },
   "module_audit": {
     "title": "模組 '{{module}}' 使用了未宣告的功能。",
