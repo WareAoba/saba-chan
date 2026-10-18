@@ -1040,7 +1040,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     try {
         await invoke('fetch_latest_release');
     } catch (e) {
-        enterError(String(e));
+        enterError({ error_code: 'fetch_failed', message: String(e) });
         return;
     }
 
@@ -1050,7 +1050,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     try {
         await invoke('start_install');
     } catch (e) {
-        enterError(String(e));
+        enterError({ message: String(e) });
     }
 });
 
@@ -1163,7 +1163,7 @@ document.getElementById('btn-uninstall')?.addEventListener('click', async () => 
 
     const keepSettings = document.getElementById('chk-keep-settings')?.checked ?? false;
     try { await invoke('start_uninstall', { keepSettings }); } catch (e) {
-        enterError(String(e));
+        enterError({ message: String(e) }, 'uninstallFailed', false);
     }
 });
 
