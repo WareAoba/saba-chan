@@ -13,7 +13,7 @@ from pathlib import Path
 from .paths import EXTENSIONS_REPO, IS_WINDOWS, MODULES_REPO
 
 # 시험 환경에 새면 결과가 흔들리는 변수 (예: 클라우드 프록시의 JAVA_TOOL_OPTIONS는 콘솔 첫 줄을 더럽힌다)
-_DROP_ENV = ("JAVA_TOOL_OPTIONS", "SABA_IPC_URL", "SABA_PYTHON", "IPC_BASE", "RUST_LOG")
+_DROP_ENV = ("JAVA_TOOL_OPTIONS", "SABA_IPC_URL", "SABA_PYTHON", "IPC_BASE", "RUST_LOG", "PYTHONDONTWRITEBYTECODE")  # 마지막은 run-pc.ps1이 하네스에만 준다
 
 
 def free_port() -> int:

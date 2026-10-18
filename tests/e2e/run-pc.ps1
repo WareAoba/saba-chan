@@ -146,6 +146,9 @@ if (-not (Test-Path "$venv\Scripts\python.exe")) { & $py.Source -m venv $venv }
 if ($LASTEXITCODE) { throw "pip install 실패" }
 
 $env:SABA_E2E_ROOT = $Root
+# .pyc를 남기지 않는다 (AMSI 시험 표본이 든 옛 .pyc는 백신 알림을 띄웠다)
+$env:PYTHONDONTWRITEBYTECODE = "1"
+Get-ChildItem -Path $E2E -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 $env:SABA_E2E_BIN_DIR = Join-Path $Repo "target\$profileDir"
 $env:SABA_E2E_MOCK_CORE = Join-Path $Repo "target\e2e-mock\debug\saba-core.exe"
 $env:SABA_E2E_MOCK_UPDATER = Join-Path $Repo "target\e2e-mock\debug\saba-chan-updater.exe"
