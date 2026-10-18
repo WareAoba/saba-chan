@@ -139,7 +139,7 @@ fn runs() -> &'static Mutex<HashMap<String, Arc<Mutex<Record>>>> {
 }
 
 /// 길드(로컬이면 출처)당 여러 단계 실행은 하나씩
-struct Lane(String);
+pub(super) struct Lane(String);
 
 fn lanes() -> &'static Mutex<std::collections::HashSet<String>> {
     static LANES: std::sync::OnceLock<Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
@@ -153,7 +153,7 @@ pub(super) fn lane_free(caller: &Caller) -> Result<(), ActionError> {
 }
 
 impl Lane {
-    fn take(caller: &Caller) -> Result<Self, ActionError> {
+    pub(super) fn take(caller: &Caller) -> Result<Self, ActionError> {
         let key = match &caller.remote {
             Some(r) => format!("relay|{}", r.guild_id.as_deref().unwrap_or("")),
             None => format!("local|{}", caller.origin.source),
