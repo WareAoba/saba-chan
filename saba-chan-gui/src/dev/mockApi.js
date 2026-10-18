@@ -650,6 +650,16 @@ const impl = {
                       },
         }),
     extensionList: () => ok({ extensions: [] }),
+    onboarding: () =>
+        ok({
+            steps: [
+                { id: 'module', done: true, optional: false },
+                { id: 'server', done: true, optional: false },
+                { id: 'discord', done: false, optional: false },
+                { id: 'chatbot', done: false, optional: true },
+            ],
+            next: 'discord',
+        }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
     // spans를 달라고 하면(하이라이트 켬) 데몬처럼 조각 토큰을 붙인다: 시각·스레드/레벨·따옴표·숫자·플레이어

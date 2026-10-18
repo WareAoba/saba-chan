@@ -1268,5 +1268,20 @@
     "saved": "已儲存",
     "load_failed": "無法載入設定：{{error}}",
     "save_failed": "無法儲存：{{error}}"
+  },
+  "onboarding": {
+    "title": "下一步",
+    "step_module": "安裝遊戲模組",
+    "desc_module": "先安裝要架設的遊戲模組。",
+    "go_module": "新增遊戲",
+    "step_server": "建立第一個伺服器",
+    "desc_server": "用已安裝的遊戲建立一個伺服器。",
+    "go_server": "新增伺服器",
+    "step_discord": "連接 Discord",
+    "desc_discord": "連接 Discord 機器人後即可在聊天中管理伺服器。",
+    "go_discord": "連接 Discord",
+    "step_chatbot": "開啟聊天機器人",
+    "desc_chatbot": "填入 AI 金鑰即可用自然語言管理伺服器。",
+    "go_chatbot": "聊天機器人設定"
   }
 }

@@ -1298,5 +1298,20 @@
     "saved": "Saved",
     "load_failed": "Couldn't load settings: {{error}}",
     "save_failed": "Couldn't save: {{error}}"
+  },
+  "onboarding": {
+    "title": "Next step",
+    "step_module": "Install a game module",
+    "desc_module": "Install the module for the game you want to host first.",
+    "go_module": "Add a game",
+    "step_server": "Create your first server",
+    "desc_server": "Create a server with the game you installed.",
+    "go_server": "Add server",
+    "step_discord": "Connect Discord",
+    "desc_discord": "Connect the Discord bot to manage servers from chat.",
+    "go_discord": "Connect Discord",
+    "step_chatbot": "Turn on the chatbot",
+    "desc_chatbot": "Add an AI key to manage servers in plain words.",
+    "go_chatbot": "Chatbot settings"
   }
 }

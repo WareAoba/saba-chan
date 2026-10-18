@@ -1268,5 +1268,20 @@
     "saved": "保存しました",
     "load_failed": "設定を読み込めませんでした: {{error}}",
     "save_failed": "保存できませんでした: {{error}}"
+  },
+  "onboarding": {
+    "title": "次にやること",
+    "step_module": "ゲームモジュールをインストール",
+    "desc_module": "まずホストしたいゲームのモジュールをインストールします。",
+    "go_module": "ゲームを追加",
+    "step_server": "最初のサーバーを作成",
+    "desc_server": "インストールしたゲームでサーバーを作ります。",
+    "go_server": "サーバーを追加",
+    "step_discord": "Discordを接続",
+    "desc_discord": "Discordボットと接続するとチャットでサーバーを操作できます。",
+    "go_discord": "Discordを接続",
+    "step_chatbot": "チャットボットを有効化",
+    "desc_chatbot": "AIキーを入れると言葉でサーバーを操作できます。",
+    "go_chatbot": "チャットボット設定"
   }
 }

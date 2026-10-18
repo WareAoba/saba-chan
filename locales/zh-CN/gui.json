@@ -1268,5 +1268,20 @@
     "saved": "已保存",
     "load_failed": "无法加载设置：{{error}}",
     "save_failed": "无法保存：{{error}}"
+  },
+  "onboarding": {
+    "title": "下一步",
+    "step_module": "安装游戏模块",
+    "desc_module": "先安装要托管的游戏模块。",
+    "go_module": "添加游戏",
+    "step_server": "创建第一个服务器",
+    "desc_server": "用已安装的游戏创建一个服务器。",
+    "go_server": "添加服务器",
+    "step_discord": "连接 Discord",
+    "desc_discord": "连接 Discord 机器人后即可在聊天中管理服务器。",
+    "go_discord": "连接 Discord",
+    "step_chatbot": "开启聊天机器人",
+    "desc_chatbot": "填入 AI 密钥即可用自然语言管理服务器。",
+    "go_chatbot": "聊天机器人设置"
   }
 }

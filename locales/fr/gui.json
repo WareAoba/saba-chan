@@ -1268,5 +1268,20 @@
     "saved": "Enregistré",
     "load_failed": "Impossible de charger les paramètres : {{error}}",
     "save_failed": "Impossible d'enregistrer : {{error}}"
+  },
+  "onboarding": {
+    "title": "Étape suivante",
+    "step_module": "Installer un module de jeu",
+    "desc_module": "Installez d'abord le module du jeu à héberger.",
+    "go_module": "Ajouter un jeu",
+    "step_server": "Créer votre premier serveur",
+    "desc_server": "Créez un serveur avec le jeu installé.",
+    "go_server": "Ajouter un serveur",
+    "step_discord": "Connecter Discord",
+    "desc_discord": "Connectez le bot Discord pour gérer les serveurs depuis le chat.",
+    "go_discord": "Connecter Discord",
+    "step_chatbot": "Activer le chatbot",
+    "desc_chatbot": "Ajoutez une clé IA pour gérer les serveurs en langage naturel.",
+    "go_chatbot": "Paramètres du chatbot"
   }
 }

@@ -1268,5 +1268,20 @@
     "saved": "Guardado",
     "load_failed": "No se pudieron cargar los ajustes: {{error}}",
     "save_failed": "No se pudo guardar: {{error}}"
+  },
+  "onboarding": {
+    "title": "Siguiente paso",
+    "step_module": "Instalar un módulo de juego",
+    "desc_module": "Primero instala el módulo del juego que quieres alojar.",
+    "go_module": "Añadir juego",
+    "step_server": "Crear tu primer servidor",
+    "desc_server": "Crea un servidor con el juego instalado.",
+    "go_server": "Añadir servidor",
+    "step_discord": "Conectar Discord",
+    "desc_discord": "Conecta el bot de Discord para gestionar servidores desde el chat.",
+    "go_discord": "Conectar Discord",
+    "step_chatbot": "Activar el chatbot",
+    "desc_chatbot": "Añade una clave de IA para gestionar servidores con lenguaje natural.",
+    "go_chatbot": "Ajustes del chatbot"
   }
 }

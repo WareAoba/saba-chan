@@ -1298,5 +1298,20 @@
     "saved": "저장했습니다",
     "load_failed": "설정을 불러오지 못했습니다: {{error}}",
     "save_failed": "저장하지 못했습니다: {{error}}"
+  },
+  "onboarding": {
+    "title": "다음 할 일",
+    "step_module": "게임 모듈 설치",
+    "desc_module": "서버로 돌릴 게임의 모듈을 먼저 설치해요.",
+    "go_module": "게임 추가",
+    "step_server": "첫 서버 만들기",
+    "desc_server": "설치한 게임으로 서버를 하나 만들어요.",
+    "go_server": "서버 추가",
+    "step_discord": "디스코드 연결",
+    "desc_discord": "디스코드 봇과 연결하면 채팅으로 서버를 다룰 수 있어요.",
+    "go_discord": "디스코드 연결",
+    "step_chatbot": "챗봇 켜기",
+    "desc_chatbot": "AI 키를 넣으면 말로 서버를 다룰 수 있어요.",
+    "go_chatbot": "챗봇 설정"
   }
 }

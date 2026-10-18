@@ -1268,5 +1268,20 @@
     "saved": "Gespeichert",
     "load_failed": "Einstellungen konnten nicht geladen werden: {{error}}",
     "save_failed": "Speichern fehlgeschlagen: {{error}}"
+  },
+  "onboarding": {
+    "title": "Nächster Schritt",
+    "step_module": "Spielmodul installieren",
+    "desc_module": "Installiere zuerst das Modul für das Spiel, das du hosten willst.",
+    "go_module": "Spiel hinzufügen",
+    "step_server": "Ersten Server erstellen",
+    "desc_server": "Erstelle einen Server mit dem installierten Spiel.",
+    "go_server": "Server hinzufügen",
+    "step_discord": "Discord verbinden",
+    "desc_discord": "Verbinde den Discord-Bot, um Server im Chat zu steuern.",
+    "go_discord": "Discord verbinden",
+    "step_chatbot": "Chatbot einschalten",
+    "desc_chatbot": "Mit einem KI-Schlüssel steuerst du Server in normaler Sprache.",
+    "go_chatbot": "Chatbot-Einstellungen"
   }
 }
