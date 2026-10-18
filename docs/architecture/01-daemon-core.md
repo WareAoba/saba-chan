@@ -352,7 +352,7 @@
 | POST | `/api/extensions/:id/disable` | `extension.rs:162` | 실행 중인 managed 인스턴스 참조 검사 |
 | POST | `/api/extensions/:id/mount` | `extension.rs:199` | |
 | POST | `/api/extensions/:id/unmount` | `extension.rs:211` | |
-| POST | `/api/extensions/:id/install` | `extension.rs:400` | 선택 `{download_url, sha256}`. 없으면 manifest에서 찾는다. 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
+| POST | `/api/extensions/:id/install` | `extension.rs:425` | 선택 `{download_url, sha256}`. 비어 있으면(`{}`) manifest의 URL과 sha256을 쓴다. `download_url`만 주면 manifest의 URL과 같을 때만 manifest의 sha256으로 받고, 다르면 `sha256_required`로 거부한다(`extension.rs:396-422`). 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
 | DELETE | `/api/extensions/:id` | `extension.rs:490` | |
 | GET/PUT | `/api/extensions/:id/config` | `extension.rs:574/587` | `{config}` / 객체 머지(null이면 키 삭제) |
 | GET | `/api/extensions/:id/gui` | `extension.rs` `serve_gui_bundle` | UMD JS 번들 (application/javascript). 확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 것만(`sandbox.extension_gui`), 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}` |

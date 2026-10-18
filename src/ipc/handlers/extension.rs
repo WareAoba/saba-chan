@@ -393,7 +393,32 @@ async fn instance_ext_data(state: &IPCServer, running_only: bool) -> Vec<(String
         .collect()
 }
 
-/// POST /api/extensions/:id/install — 익스텐션 설치·업데이트 (`{download_url?, sha256?}`)
+/// 받을 주소와 sha256을 정한다. 주소를 주지 않으면 서명된 카탈로그의 것을 쓴다.
+/// 주소만 주면 카탈로그의 주소와 같을 때 카탈로그 해시를 쓰고, 다르면 해시 없이 받지 않는다 (`sha256_required`).
+/// 주소와 해시를 함께 주면 그대로 쓴다 (카탈로그와 다르면 공식 설치로 기록하지 않는다).
+fn install_source(
+    id: &str,
+    url: Option<String>,
+    sha: Option<String>,
+    remote: &anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>>,
+) -> Result<(String, Option<String>), (String, &'static str)> {
+    let entry = remote.as_ref().ok().and_then(|r| r.iter().find(|e| e.id == id));
+    let sha = sha.filter(|s| !s.is_empty());
+    match (url.filter(|u| !u.is_empty()), sha) {
+        (Some(url), Some(sha)) => Ok((url, Some(sha))),
+        (Some(url), None) => match entry.filter(|e| e.download_url == url).and_then(|e| e.sha256.clone()) {
+            Some(sha) => Ok((url, Some(sha))),
+            None => Err((format!("Extension '{}': a download_url outside the catalog needs a sha256", id), "sha256_required")),
+        },
+        (None, _) => match (entry, remote) {
+            (Some(e), _) => Ok((e.download_url.clone(), e.sha256.clone())),
+            (None, Ok(_)) => Err((format!("Extension '{}' not found in manifest", id), "not_in_manifest")),
+            (None, Err(e)) => Err((format!("Manifest fetch failed: {}", e), "manifest_fetch_failed")),
+        },
+    }
+}
+
+/// POST /api/extensions/:id/install — 익스텐션 설치·업데이트 (`{download_url?, sha256?}`, `install_source` 참고)
 ///
 /// 받기·검사·압축 해제는 락 없이 하고, 폴더 교체만 write 락 안에서 한다.
 /// 실행 중인 인스턴스가 쓰는 익스텐션은 교체하지 않는다. 의존 익스텐션이 없으면 원격 목록에서 같이 설치한다.
@@ -416,16 +441,10 @@ pub async fn install_extension(
             continue;
         }
         let entry = remote.as_ref().ok().and_then(|r| r.iter().find(|e| e.id == id).cloned());
-        let (url, sha) = if id == ext_id && explicit_url.is_some() {
-            (explicit_url.clone().unwrap_or_default(), explicit_sha.clone())
-        } else {
-            match (&entry, &remote) {
-                (Some(e), _) => (e.download_url.clone(), e.sha256.clone()),
-                (None, Ok(_)) => {
-                    return fail(format!("Extension '{}' not found in manifest", id), "not_in_manifest");
-                }
-                (None, Err(e)) => return fail(format!("Manifest fetch failed: {}", e), "manifest_fetch_failed"),
-            }
+        let explicit = if id == ext_id { (explicit_url.clone(), explicit_sha.clone()) } else { (None, None) };
+        let (url, sha) = match install_source(&id, explicit.0, explicit.1, &remote) {
+            Ok(source) => source,
+            Err((error, code)) => return fail(error, code),
         };
 
         // 카탈로그가 설치된 것보다 낮은 버전을 주면 받지 않는다
@@ -616,6 +635,23 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    #[test]
+    fn an_install_url_without_a_hash_takes_the_catalog_hash_or_is_refused() {
+        let remote: anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>> = Ok(serde_json::from_value(json!([
+            {"id": "box", "name": "B", "version": "0.2.0", "download_url": "https://cdn/box.zip", "sha256": "ab"}
+        ])).unwrap());
+        let s = |v: &str| Some(v.to_string());
+        let source = |url: Option<String>, sha: Option<String>| install_source("box", url, sha, &remote).map_err(|(_, code)| code);
+        assert_eq!(source(None, None), Ok(("https://cdn/box.zip".into(), s("ab"))));
+        assert_eq!(source(s("https://cdn/box.zip"), None), Ok(("https://cdn/box.zip".into(), s("ab"))));
+        assert_eq!(source(s("https://cdn/box.zip"), s("")), Ok(("https://cdn/box.zip".into(), s("ab"))));
+        assert_eq!(source(s("https://elsewhere/box.zip"), s("cd")), Ok(("https://elsewhere/box.zip".into(), s("cd"))));
+        assert_eq!(source(s("https://elsewhere/box.zip"), None), Err("sha256_required"));
+        let offline: anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>> = Err(anyhow::anyhow!("offline"));
+        assert_eq!(install_source("box", s("https://cdn/box.zip"), None, &offline).map_err(|(_, c)| c), Err("sha256_required"));
+        assert_eq!(install_source("nope", None, None, &remote).map_err(|(_, c)| c), Err("not_in_manifest"));
+    }
 
     #[tokio::test]
     async fn an_unverified_extension_gui_is_served_only_after_local_approval() {
