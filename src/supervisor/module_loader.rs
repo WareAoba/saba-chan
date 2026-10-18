@@ -1154,7 +1154,12 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 
     let mut meta = toml_data.into_metadata();
     problems.extend(preset_problems(&meta));
-    problems.extend(query_problems(&meta));
+    let bad_queries = query_problems(&meta);
+    // 스키마 이전 모듈도 잘못된 조회는 켜지 않는다: 조회는 확인 없이 모든 표면에 열린다
+    if meta.schema_version == 0 && !bad_queries.is_empty() {
+        meta.queries.clear();
+    }
+    problems.extend(bad_queries);
     match meta.schema_version {
         0 => {
             for p in &problems {
@@ -2093,6 +2098,10 @@ entry = "lifecycle.py"
         }
         let err = parse_module_toml(&format!("{V1}\n[[queries]]\nname = \"p\"\nfunction = \"f\"\nrisk = \"safe\"\n")).unwrap_err().to_string();
         assert!(err.contains("risk"), "{err}");
+        let legacy = toml.replacen("schema_version = 1\n", "", 1).replacen("function = \"list_players\"", "function = \"reset_server\"", 1);
+        assert_ne!(legacy, toml);
+        let meta = parse_module_toml(&legacy).unwrap();
+        assert!(meta.queries.is_empty(), "a module without a schema keeps no queries when one is wrong");
     }
 
     #[test]

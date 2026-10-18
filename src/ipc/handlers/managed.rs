@@ -184,7 +184,12 @@ pub async fn query_instance_handler(
             (StatusCode::OK, Json(body)).into_response()
         }
         Ok(other) => (StatusCode::OK, Json(json!({ "success": true, "data": other }))).into_response(),
-        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, "query_failed", e.to_string(), None),
+        Err(e) => {
+            // 원문에는 PC 경로나 모듈이 받은 설정값이 섞일 수 있어 원격에는 내보내지 않는다
+            tracing::warn!("Query '{}' on '{}' failed: {}", name, id, e);
+            let message = if crate::audit::current().source == "discord" { "Query failed".to_string() } else { e.to_string() };
+            fail(StatusCode::INTERNAL_SERVER_ERROR, "query_failed", message, None)
+        }
     }
 }
 
