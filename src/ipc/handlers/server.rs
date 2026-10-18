@@ -1105,13 +1105,14 @@ mod tests {
     async fn imported_server_applies_the_agreements_accepted_at_creation() {
         let tmp = tempfile::tempdir().unwrap();
         // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 인스턴스 폴더 쓰기를 받지 못한다
+        // 이름이 겹치지 않는 폴더를 새로 만들어 쓰고 지운다 (`SABA_MODULES_PATH`의 기존 모듈을 건드리지 않게)
         let modules = crate::plugin::resolve_modules_dir();
-        let dir = modules.join("import-agreement");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let module = tempfile::Builder::new().prefix("import-agreement-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
         std::fs::write(
             dir.join("module.toml"),
-            "[module]\nschema_version = 1\nname = \"import-agreement\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/eula\"\n",
+            format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/eula\"\n"),
         )
         .unwrap();
         std::fs::write(
@@ -1127,12 +1128,10 @@ mod tests {
         );
         sup.initialize().await.unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let req = json!({ "name": "old", "module_name": "import-agreement", "migration_source": existing, "accept_agreements": ["eula"] });
+        let req = json!({ "name": "old", "module_name": name, "migration_source": existing, "accept_agreements": ["eula"] });
         let resp = super::super::instance::create_instance(State(state.clone()), Json(req)).await.into_response();
-        let agreed = std::fs::read_to_string(existing.join("agreed.txt"));
-        let _ = std::fs::remove_dir_all(&dir);
         assert!(resp.status().is_success());
-        assert_eq!(agreed.unwrap(), "eula");
+        assert_eq!(std::fs::read_to_string(existing.join("agreed.txt")).unwrap(), "eula");
     }
 
     #[tokio::test]
