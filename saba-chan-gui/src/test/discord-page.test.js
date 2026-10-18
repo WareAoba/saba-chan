@@ -139,6 +139,14 @@ describe('DiscordPage', () => {
         await waitFor(() => expect(save).toHaveBeenCalled(), { timeout: 2000 });
     });
 
+    it('서버 설정의 명령어 단어 링크는 그 서버를 쓰는 길드의 부르는 말 탭을 연다', async () => {
+        window.api.guildInstances = vi.fn().mockResolvedValue([]);
+        window.api.guildInstanceWordsSave = vi.fn();
+        await act(async () => render(<Harness save={vi.fn()} initialView={{ kind: 'words', server: 's1' }} />));
+        await waitFor(() => expect(window.api.guildInstances).toHaveBeenCalledWith('g1'));
+        expect(document.querySelector('.detail-head h1').textContent).toBe('사바 마을');
+    });
+
     it('멤버 목록을 다시 받다 실패하면 받아 둔 목록을 지우지 않고 알린다', async () => {
         await act(async () => render(<Harness save={vi.fn()} />));
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));

@@ -712,8 +712,8 @@ function App() {
         handleResetServer,
         resettingServer,
         isClosing: isSettingsClosing,
-        onOpenDiscordWords: (module) => {
-            setDiscordView({ kind: 'words', module });
+        onOpenDiscordWords: (server) => {
+            setDiscordView({ kind: 'words', server });
             setPage('discord');
         },
     };

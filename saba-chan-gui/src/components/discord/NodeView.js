@@ -325,6 +325,7 @@ export function NodeView({
     membersLoading,
     membersFailed,
     membersPartial,
+    initialTab,
     onRefreshMembers,
     memberId,
     onOpenMember,
@@ -333,7 +334,9 @@ export function NodeView({
     saveState,
 }) {
     const { t } = useTranslation('gui');
-    const [tab, setTab] = useState('instances');
+    const [tab, setTab] = useState(
+        initialTab === 'words' && !instanceWordsAvailable() ? 'instances' : initialTab || 'instances',
+    );
     const member = useMemo(() => (members || []).find((m) => m.id === memberId), [members, memberId]);
     const mode = P.instanceMode(settings, node.guildId);
     const visibleCount = visibleServers(settings, node.guildId, servers).length;
