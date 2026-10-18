@@ -71,15 +71,19 @@ export function ServerRow({
                 <div className="server-row-sub">
                     <span>{gameName}</span>
                     <span className="sep">·</span>
-                    <StatusChip tone={STATUS_TONE[status]} label={statusLabel} className="bare" />
-                    {players && (
-                        <>
-                            <span className="sep">·</span>
-                            <span className="server-row-players" title={t('shell.players')}>
-                                <Icon name="user" size={12} />
-                                {players}
-                            </span>
-                        </>
+                    {/* 접속자 수는 실행 중일 때만 있다: 좁은 목록에서는 "실행 중" 대신 접속자 수를 보여 준다 (초록 점·끄기 버튼이 실행 중을 알린다) */}
+                    {players ? (
+                        <span
+                            className="server-row-players"
+                            title={`${statusLabel} · ${t('shell.players')} ${players}`}
+                            role="img"
+                            aria-label={`${statusLabel}, ${t('shell.players')} ${players}`}
+                        >
+                            <Icon name="user" size={12} />
+                            {players}
+                        </span>
+                    ) : (
+                        <StatusChip tone={STATUS_TONE[status]} label={statusLabel} className="bare" />
                     )}
                 </div>
             </div>

@@ -15,7 +15,6 @@ import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trust
  * @param {Function} params.setLoading - Loading state setter
  * @param {Function} params.setModal - Modal state setter
  * @param {Function} params.setProgressBar - Progress bar state setter
- * @param {Object|null} params.consoleServer - Currently open console server
  * @param {Function} params.openConsole - Open console for a server
  * @param {Function} params.closeConsole - Close the console panel
  * @param {Function} params.setShowModuleManager - Module manager visibility setter

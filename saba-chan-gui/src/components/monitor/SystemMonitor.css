@@ -56,7 +56,8 @@
 
 .monitor-rings {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+    /* 링(88px)이 한 줄에 다 들어가는 가장 좁은 칸: 창이 좁아도 링 하나만 다음 줄로 떨어지지 않게 */
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: var(--sp-3);
     padding: var(--sp-2) var(--sp-4) var(--sp-3);
 }
