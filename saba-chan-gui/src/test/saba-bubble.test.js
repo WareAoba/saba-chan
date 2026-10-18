@@ -129,4 +129,26 @@ describe('사바쨩 말풍선', () => {
         await emit({ type, data: { instanceId: 'mc-1', instance: 'Survival' } });
         expect(useSabaBubble.getState().bubble?.released).toBe(true);
     });
+    it('이전 시도의 늦은 이벤트는 새 복구 중 표시를 놓지 않는다', async () => {
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        const crash = { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 };
+        await emit({ type: 'instance.exit', data: { ...crash, restartAttempt: 2 } });
+        await emit({ type: 'instance.restarted', data: { instanceId: 'mc-1', restartAttempt: 1 } });
+        await emit({ type: 'instance.restart_failed', data: { instanceId: 'mc-1', restartAttempt: 1 } });
+        expect(useSabaBubble.getState().bubble).toMatchObject({ kind: 'recovering', released: false });
+
+        await emit({ type: 'instance.restarted', data: { instanceId: 'mc-1', restartAttempt: 2 } });
+        expect(useSabaBubble.getState().bubble?.released).toBe(true);
+    });
+
+    it('알 수 없는 종료도 다시 띄우면 복구 중이다', async () => {
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        await emit({
+            type: 'instance.exit',
+            data: { instanceId: 'mc-1', kind: 'unknown_exit', restartInSecs: 5, restartAttempt: 1 },
+        });
+        expect(useSabaBubble.getState().bubble?.kind).toBe('recovering');
+    });
 });
