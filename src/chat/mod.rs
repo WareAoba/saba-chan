@@ -521,6 +521,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
                 let error = module_text.unwrap_or_else(|| self.t("server.not_running_default", &[]));
                 self.t("server.not_running", &[("name", &server.name), ("error", &error)])
             }
+            "no_command_path" => format!("❌ {}", self.t("errors.no_command_path", &[("name", &server.name)])),
             "invalid_argument" => error_line(&self.t("errors.error_title", &[]), resp.str_field("error").unwrap_or_default()),
             "auth_failed" => format!("❌ {}: {}", self.t("errors.error_title", &[]), module_text.unwrap_or_else(|| self.t("errors.auth_failed", &[]))),
             "not_found" => format!(

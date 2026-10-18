@@ -168,6 +168,18 @@ async fn not_running_reply_uses_the_module_text() {
 }
 
 #[tokio::test]
+async fn command_to_a_server_without_console_says_why() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::CONFLICT,
+        body: json!({"error": "no console", "error_code": "no_command_path"}),
+    });
+    let out = run(&api, &settings(), "mc say hi").await;
+    assert!(out.contains("survival") && out.contains("managed mode") && !out.contains("no console"), "{}", out);
+    assert!(!out.contains("Internal server error"), "{}", out);
+}
+
+#[tokio::test]
 async fn module_error_text_is_used_for_failures() {
     let mut api = fixture();
     api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({"success": false, "error": "raw", "error_code": "server_not_running"}) });
