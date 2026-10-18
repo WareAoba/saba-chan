@@ -7,34 +7,30 @@ import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 import { Avatar } from './NodeView';
-import { TagInput } from './TagInput';
 
-/** 릴레이 계약 기본값 (/mnt/project-files/chatbot/contract.md). 기본값과 같으면 null로 보내 릴레이 기본을 따른다 */
+/**
+ * 릴레이 계약 기본값 (/mnt/project-files/chatbot/contract.md). 기본값과 같으면 null로 보내 릴레이 기본을 따른다.
+ * 호출어는 디스코드 접두사가, 대화 유지시간·끼어들기는 릴레이 고정값이 맡는다 (chatbot-settings-v2 §2·§4)
+ */
 export const CHATBOT_DEFAULTS = {
     enabled: false,
     model: 'gpt-6-luna',
-    triggerWords: ['사바쨩', '사바'],
     confirmCommands: true,
-    ambientSeconds: 0,
-    sessionSeconds: 180,
     memory: true,
     webSearch: true,
     disabledTools: [],
 };
 /** 끌 수 있는 도구 묶음 (계약 disabledTools) */
 export const CHATBOT_TOOLS = ['research', 'lol', 'images', 'social_notes'];
-const LIMITS = { ambientSeconds: [0, 86400], sessionSeconds: [0, 600] };
 export const MEMO_MAX = 8000;
-const TRIGGER_MAX = 10;
 
 export const chatbotAvailable = () => !!window.api?.chatbotGet;
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-/** 저장된 settings → 화면 초안 (숫자 칸은 문자열) */
+/** 저장된 settings → 화면 초안 (계약에서 빠진 키는 버린다) */
 export function settingsDraft(saved = {}) {
-    const v = { ...CHATBOT_DEFAULTS, ...saved };
-    return { ...v, ambientSeconds: String(v.ambientSeconds), sessionSeconds: String(v.sessionSeconds) };
+    return Object.fromEntries(Object.entries(CHATBOT_DEFAULTS).map(([k, def]) => [k, saved[k] ?? def]));
 }
 
 /** 초안 → PUT settings 패치: 기본값과 같으면 null(키 지움) */
@@ -42,7 +38,6 @@ export function settingsPatch(draft) {
     const out = {};
     for (const [k, def] of Object.entries(CHATBOT_DEFAULTS)) {
         let v = draft[k];
-        if (k in LIMITS) v = Number(v);
         if (k === 'model') v = String(v ?? '').trim();
         if (k === 'disabledTools') v = CHATBOT_TOOLS.filter((x) => (v || []).includes(x));
         if (k === 'model' && !v) v = def;
@@ -50,18 +45,6 @@ export function settingsPatch(draft) {
     }
     // 예전 계약의 persona는 memo(길드별)로 바뀌었다: 남아 있으면 지운다
     out.persona = null;
-    return out;
-}
-
-export function settingsProblems(draft, t) {
-    const out = [];
-    for (const [k, [min, max]] of Object.entries(LIMITS)) {
-        const n = Number(draft[k]);
-        if (draft[k] === '' || !Number.isInteger(n) || n < min || n > max) {
-            out.push(t(`chatbot.err_${k}`, { min, max }));
-        }
-    }
-    if ((draft.triggerWords || []).length > TRIGGER_MAX) out.push(t('chatbot.err_triggers', { max: TRIGGER_MAX }));
     return out;
 }
 
@@ -263,7 +246,6 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
             guilds: { ...d.guilds, [id]: { ...(d.guilds[id] ?? baseGuild(id)), ...change } },
         }));
 
-    const problems = settingsProblems(s, t);
     const badMemo = guildIds.some((id) => draftGuild(id).memo.length > MEMO_MAX);
     const dirty = !same(base.settings, draft.settings) || guildIds.some((id) => !same(baseGuild(id), draftGuild(id)));
 
@@ -326,55 +308,14 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                 </div>
                 <p className="dc-card-desc">{t('chatbot.basic_desc')}</p>
                 {toggleRow('enabled', t('chatbot.enabled'), t('chatbot.enabled_hint'))}
-                <div className="cb-fields">
-                    <label className="mt-field">
-                        <span>{t('chatbot.model')}</span>
-                        <input
-                            className="input"
-                            value={s.model}
-                            spellCheck={false}
-                            placeholder={CHATBOT_DEFAULTS.model}
-                            onChange={(e) => set('model', e.target.value)}
-                        />
-                    </label>
-                    <label className="mt-field">
-                        <span>{t('chatbot.session_seconds')}</span>
-                        <span className="mt-inline">
-                            <input
-                                className="input mt-num"
-                                type="number"
-                                min="0"
-                                max="600"
-                                value={s.sessionSeconds}
-                                onChange={(e) => set('sessionSeconds', e.target.value)}
-                            />
-                            <span className="muted">{t('chatbot.seconds')}</span>
-                        </span>
-                    </label>
-                    <label className="mt-field">
-                        <span>{t('chatbot.ambient_seconds')}</span>
-                        <span className="mt-inline">
-                            <input
-                                className="input mt-num"
-                                type="number"
-                                min="0"
-                                max="86400"
-                                value={s.ambientSeconds}
-                                onChange={(e) => set('ambientSeconds', e.target.value)}
-                            />
-                            <span className="muted">{t('chatbot.ambient_hint')}</span>
-                        </span>
-                    </label>
-                </div>
-                <div className="mt-field">
-                    <span>{t('chatbot.triggers')}</span>
-                    <TagInput
-                        value={s.triggerWords}
-                        onChange={(v) => set('triggerWords', v)}
-                        placeholder={t('discord.words_add_placeholder')}
-                        ariaLabel={t('chatbot.triggers')}
-                    />
-                </div>
+                <ModelField
+                    value={s.model}
+                    saved={base.settings.model}
+                    onChange={(v) => set('model', v)}
+                    guildId={guildIds[0]}
+                    hasApiKey={!!data.hasApiKey}
+                />
+                <p className="dc-hint">{t('chatbot.prefix_calls')}</p>
                 <div className="cb-toggles">
                     {toggleRow('confirmCommands', t('chatbot.confirm_commands'), t('chatbot.confirm_commands_hint'))}
                     {toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}
@@ -404,11 +345,6 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                         );
                     })}
                 </div>
-                {problems.length > 0 && (
-                    <p className="dc-field-error">
-                        <Icon name="alertTriangle" size="xs" /> {problems.join(' · ')}
-                    </p>
-                )}
             </section>
 
             <section className="dc-card">
@@ -519,15 +455,82 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                         {t('discord.revert')}
                     </button>
                 )}
-                <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={!dirty || saving || problems.length > 0 || badMemo}
-                    onClick={save}
-                >
+                <button type="button" className="btn btn-primary" disabled={!dirty || saving || badMemo} onClick={save}>
                     <Icon name="save" size="sm" /> {t('discord.save')}
                 </button>
             </div>
         </>
+    );
+}
+
+/**
+ * 모델 고르기: 릴레이가 사용자 키로 물은 목록에서 고른다 (chatbot-settings-v2 §1).
+ * 고른 모델을 쓸 수 없어 릴레이가 다른 모델로 대신 쓰고 있으면 알리고, 그 모델을 고른 상태로 둔다
+ * (저장하면 그 모델이 새 설정이 된다).
+ */
+export function ModelField({ value, saved, onChange, guildId, hasApiKey }) {
+    const { t } = useTranslation('gui');
+    const [res, setRes] = useState(null);
+    const canAsk = !!(guildId && hasApiKey && window.api?.chatbotModels);
+
+    const load = useCallback(async () => {
+        if (!canAsk) return;
+        setRes({ loading: true });
+        try {
+            const r = await window.api.chatbotModels(guildId);
+            setRes(r?.error || r?.success === false || !Array.isArray(r?.models) ? { error: r?.error || 'FAILED' } : r);
+        } catch (err) {
+            setRes({ error: err.message || 'FAILED' });
+        }
+    }, [canAsk, guildId]);
+
+    useEffect(() => {
+        setRes(null);
+        load();
+    }, [load]);
+
+    const fallback = res?.effectiveModel && res.effectiveModel !== saved ? res.effectiveModel : null;
+    // 대신 쓰는 모델이 있으면 처음 한 번 그쪽을 고른다 (저장 전까지는 되돌릴 수 있다)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 목록을 새로 받았을 때만
+    useEffect(() => {
+        if (fallback && value === saved) onChange(fallback);
+    }, [fallback]);
+
+    const models = res?.models || [];
+    const options = value && !models.includes(value) ? [value, ...models] : models;
+    const errorKey = !hasApiKey
+        ? 'chatbot.models_need_key'
+        : !guildId
+          ? 'chatbot.models_need_guild'
+          : res?.error
+            ? `chatbot.models_err_${['NO_API_KEY', 'INVALID_API_KEY', 'QUOTA_EXCEEDED', 'PROVIDER_UNAVAILABLE'].includes(res.error) ? res.error : 'FAILED'}`
+            : null;
+
+    return (
+        <div className="mt-field">
+            <span>{t('chatbot.model')}</span>
+            <span className="mt-inline">
+                <CustomDropdown
+                    className="cb-select"
+                    value={value}
+                    ariaLabel={t('chatbot.model')}
+                    disabled={!res || res.loading || !!res.error}
+                    onChange={onChange}
+                    options={(options.length ? options : [value]).map((m) => ({ value: m, label: m }))}
+                />
+                {res?.loading && <SabaSpinner size="sm" />}
+                {res?.error && canAsk && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={load}>
+                        {t('maintenance.retry')}
+                    </button>
+                )}
+            </span>
+            {errorKey && (
+                <p className="dc-field-error">
+                    <Icon name="info" size="xs" /> {t(errorKey)}
+                </p>
+            )}
+            {fallback && <p className="dc-hint">{t('chatbot.model_fallback', { model: saved, fallback })}</p>}
+        </div>
     );
 }

@@ -234,7 +234,7 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
     it('saveConfig() payload = 데몬 BotConfig 키 전부, 로컬 봇 키 없음', async () => {
         mockApi();
         useDiscordStore.setState({
-            discordPrefix: '!test',
+            discordPrefixes: ['!test'],
             discordCloudRelayUrl: 'https://relay.test',
             discordCloudHostId: 'host-xyz',
             discordModuleAliases: { mc: 'minecraft' },
@@ -248,7 +248,7 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
 
         const payload = window.api.botConfigSave.mock.calls[0][0];
         expect(payload).toEqual({
-            prefix: '!test',
+            prefixes: ['!test'],
             cloud: { relayUrl: 'https://relay.test', hostId: 'host-xyz' },
             moduleAliases: { mc: 'minecraft' },
             commandAliases: { mc: { start: 'go' } },
@@ -262,11 +262,11 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
 
     const simpleBotFields = [
         {
-            field: 'discordPrefix',
-            botKey: 'prefix',
-            saved: '!mybot',
-            defaultVal: '!saba',
-            makeBotCfg: (v) => ({ prefix: v }),
+            field: 'discordPrefixes',
+            botKey: 'prefixes',
+            saved: ['!mybot', '사바'],
+            defaultVal: [],
+            makeBotCfg: (v) => ({ prefixes: v }),
         },
         {
             field: 'discordModuleAliases',
@@ -379,7 +379,7 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
 
     it('전체 필드 동시 라운드트립 (bot-config): 커스텀 → save → reset → load → 전부 복원', async () => {
         const custom = {
-            discordPrefix: '!full',
+            discordPrefixes: ['!full'],
             discordCloudRelayUrl: 'https://full.relay',
             discordCloudHostId: 'full-host-id',
             discordModuleAliases: { a: 'alpha', b: 'beta' },
@@ -400,7 +400,7 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
         await useDiscordStore.getState().saveConfig();
 
         // Verify save payload shape
-        expect(captured.prefix).toBe('!full');
+        expect(captured.prefixes).toEqual(['!full']);
         expect(captured.cloud).toEqual({ relayUrl: 'https://full.relay', hostId: 'full-host-id' });
         expect(captured.moduleAliases).toEqual({ a: 'alpha', b: 'beta' });
         expect(captured.commandAliases).toEqual({ a: { x: 'ex' } });
@@ -414,7 +414,7 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
         await useDiscordStore.getState().loadConfig();
 
         const d = useDiscordStore.getState();
-        expect(d.discordPrefix).toBe(custom.discordPrefix);
+        expect(d.discordPrefixes).toEqual(custom.discordPrefixes);
         expect(d.discordCloudRelayUrl).toBe(custom.discordCloudRelayUrl);
         expect(d.discordCloudHostId).toBe(custom.discordCloudHostId);
         expect(d.discordModuleAliases).toEqual(custom.discordModuleAliases);
@@ -431,7 +431,7 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
         await useDiscordStore.getState().loadConfig();
 
         const d = useDiscordStore.getState();
-        expect(d.discordPrefix).toBe('!saba');
+        expect(d.discordPrefixes).toEqual([]);
         expect(d.discordCloudRelayUrl).toBe('');
         expect(d.discordCloudHostId).toBe('');
         expect(d.discordModuleAliases).toEqual({});
@@ -465,7 +465,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             consoleBufferSize: 1000,
         });
         useDiscordStore.setState({
-            discordPrefix: '!go',
+            discordPrefixes: ['!go'],
             discordCloudRelayUrl: 'https://r.io',
             discordCloudHostId: 'h1',
             discordModuleAliases: { x: 'y' },
@@ -506,7 +506,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
         // Check bot config file
         const botPayload = window.api.botConfigSave.mock.calls[0][0];
         expect(botPayload).toEqual({
-            prefix: '!go',
+            prefixes: ['!go'],
             cloud: { relayUrl: 'https://r.io', hostId: 'h1' },
             moduleAliases: { x: 'y' },
             commandAliases: { x: { a: 'b' } },
@@ -538,7 +538,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             consoleBufferSize: 6000,
         });
         useDiscordStore.setState({
-            discordPrefix: '!rt',
+            discordPrefixes: ['!rt'],
             discordCloudRelayUrl: 'https://rt.relay',
             discordCloudHostId: 'rt-host',
             discordModuleAliases: { rt: 'roundtrip' },
@@ -576,7 +576,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
 
         // Verify discord fields (13 — all from bot-config)
         const d = useDiscordStore.getState();
-        expect(d.discordPrefix).toBe('!rt');
+        expect(d.discordPrefixes).toEqual(['!rt']);
         expect(d.discordCloudRelayUrl).toBe('https://rt.relay');
         expect(d.discordCloudHostId).toBe('rt-host');
         expect(d.discordModuleAliases).toEqual({ rt: 'roundtrip' });
@@ -621,15 +621,15 @@ describe('자동저장 감시키 완전성', () => {
     it('discord auto-save: 10필드 중 하나(prefix) 변경 시 botConfigSave 호출', async () => {
         vi.useFakeTimers();
         mockApi();
-        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true, discordPrefix: '!saba' });
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true, discordPrefixes: [] });
 
-        useDiscordStore.getState().update({ discordPrefix: '!changed' });
+        useDiscordStore.getState().update({ discordPrefixes: ['!changed'] });
 
         await vi.advanceTimersByTimeAsync(600);
 
         expect(window.api.botConfigSave).toHaveBeenCalled();
         const payload = window.api.botConfigSave.mock.calls[0][0];
-        expect(payload.prefix).toBe('!changed');
+        expect(payload.prefixes).toEqual(['!changed']);
 
         vi.useRealTimers();
     });
@@ -652,7 +652,7 @@ describe('자동저장 감시키 완전성', () => {
         mockApi();
         useDiscordStore.setState({ _settingsReady: false });
 
-        useDiscordStore.getState().update({ discordPrefix: '!blocked' });
+        useDiscordStore.getState().update({ discordPrefixes: ['!blocked'] });
 
         await vi.advanceTimersByTimeAsync(600);
 
@@ -685,7 +685,7 @@ describe('설정 에러 핸들링', () => {
 
         await useDiscordStore.getState().loadConfig();
 
-        expect(useDiscordStore.getState().discordPrefix).toBe('!saba'); // default
+        expect(useDiscordStore.getState().discordPrefixes).toEqual([]); // default
     });
 
     it('settingsSave 실패 → 에러 로그 (크래시 없음)', async () => {

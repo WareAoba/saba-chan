@@ -63,7 +63,7 @@ describe('봇 설정 로드 실패 시 저장', () => {
         useDiscordStore.setState({ nodeSettings: { g1: { allowedInstances: [] } } });
         expect(await useDiscordStore.getState().saveConfig()).toBe(true);
         const payload = window.api.botConfigSave.mock.calls[0][0];
-        expect(payload.prefix).toBe('!custom');
+        expect(payload.prefixes).toEqual(['!custom']);
         expect(payload.cloud).toEqual({ relayUrl: 'https://r', hostId: 'host' });
         expect(payload.moduleAliases).toEqual({ minecraft: 'mc' });
         expect(payload.nodeSettings).toEqual({ g1: { allowedInstances: [] } });

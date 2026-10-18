@@ -227,6 +227,13 @@ const impl = {
     chatbotSave: (patch) =>
         ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
     chatbotClearMemory: () => ok({ success: true }),
+    chatbotModels: () =>
+        ok({
+            provider: 'openai',
+            models: ['gpt-6-luna', 'gpt-6-mini'],
+            selected: 'gpt-6-luna',
+            effectiveModel: 'gpt-6-luna',
+        }),
     instanceValidate: () =>
         ok({
             success: false,
@@ -276,7 +283,7 @@ const impl = {
     settingsGetPath: () => ok('C:/Users/me/AppData/Roaming/saba-chan/config.json'),
     botConfigLoad: () =>
         ok({
-            prefix: '!saba',
+            prefixes: [],
             cloud: { relayUrl: 'https://relay.example', hostId: mockBot === 'stopped' ? '' : 'mock-host' },
             moduleAliases: { minecraft: '마크,mc' },
             commandAliases: {},
@@ -671,7 +678,8 @@ const impl = {
                 },
             ],
         }),
-    relayLinkRequestRespond: (id, accept) => ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
+    relayLinkRequestRespond: (id, accept) =>
+        ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
     onboarding: () =>
         ok({
             steps: [

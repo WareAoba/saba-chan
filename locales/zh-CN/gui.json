@@ -313,8 +313,6 @@
     "stored_values_notice": "无法读取服务器的设置文件，当前显示的是上次保存的值。保存时只会应用你修改过的字段。"
   },
   "discord_bot": {
-    "prefix_missing_title": "缺少前缀",
-    "prefix_missing_message": "请设置机器人前缀。示例：!pal、!mc",
     "start_failed_toast": "Discord 机器人启动失败：{{error}}",
     "started_toast": "Discord 机器人已启动",
     "start_error_toast": "Discord 机器人启动异常：{{error}}",
@@ -820,8 +818,7 @@
     "bot_title": "基本设置",
     "bot_desc": "应用于整个 Discord 机器人的设置。",
     "prefix_title": "命令前缀",
-    "prefix_desc": "机器人只回应以此词开头的消息。不能包含空格。",
-    "prefix_required": "前缀为空时无法保存",
+    "prefix_desc": "机器人会回应以这些词开头的消息，AI 聊天机器人也用这些词呼叫。可以设置多个。",
     "usage_title": "使用方法",
     "usage_help": "帮助",
     "usage_list_word": "list",
@@ -933,7 +930,13 @@
     },
     "channels_notify": "通知频道",
     "channels_notify_hint": "崩溃、自动重启、更新、备份完成和计划重启预告会发到这个频道。",
-    "channels_is_notify": "用作通知频道"
+    "channels_is_notify": "用作通知频道",
+    "default_prefix": "Saba-chan",
+    "prefix_default_label": "默认（{{prefix}}）",
+    "prefix_default_placeholder": "留空则使用默认的 {{prefix}}",
+    "prefix_default_hint": "当前使用默认的 {{prefix}}。更改应用语言后默认值也会跟着变。",
+    "prefix_err_count": "前缀最多 {{max}} 个。",
+    "prefix_err_length": "前缀最多 {{max}} 个字符：{{words}}"
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",
@@ -1009,11 +1012,7 @@
     "enabled": "启用聊天机器人",
     "enabled_hint": "也可以按服务器单独开启或关闭。",
     "model": "模型",
-    "session_seconds": "对话保持时间",
-    "ambient_seconds": "主动发言间隔",
     "seconds": "秒",
-    "ambient_hint": "秒（0 为关闭）",
-    "triggers": "呼叫词",
     "confirm_commands": "执行命令前确认",
     "confirm_commands_hint": "AI 选择的命令需在 Discord 上确认后才会执行。",
     "memory": "长期记忆",
@@ -1030,9 +1029,6 @@
     "memory_clear": "清除记忆",
     "memory_clear_confirm": "点击清除",
     "memory_cleared": "已清除 {{name}} 的记忆。",
-    "err_ambientSeconds": "主动发言间隔须在 {{min}}–{{max}} 秒之间。",
-    "err_sessionSeconds": "对话保持时间须在 {{min}}–{{max}} 秒之间。",
-    "err_triggers": "呼叫词最多 {{max}} 个。",
     "memo": "服务器提示词",
     "memo_aria": "{{name}} 的服务器提示词",
     "memo_placeholder": "萨巴酱需要了解的这个服务器的情况：语气、称呼、氛围、兴趣等。附加在默认指令之后。",
@@ -1046,7 +1042,16 @@
     "tool_social_notes": "察言观色备忘",
     "tool_social_notes_hint": "记录关于氛围和成员的私人备忘，不会在应用中显示。",
     "relay_delete_pending": "旧的聊天机器人设置尚未从中继删除，下次连接时会再次删除。",
-    "channels_moved": "聊天机器人对话的频道在各 Discord 服务器的「频道」标签页中选择。"
+    "channels_moved": "聊天机器人对话的频道在各 Discord 服务器的「频道」标签页中选择。",
+    "prefix_calls": "用 Discord › 基本设置 中的命令前缀呼叫时回答。",
+    "models_need_key": "保存 API 密钥后会加载可用的模型。",
+    "models_need_guild": "连接 Discord 服务器后会加载可用的模型。",
+    "models_err_NO_API_KEY": "API 密钥尚未传到服务器。请稍后再试。",
+    "models_err_INVALID_API_KEY": "API 密钥无效。请检查密钥。",
+    "models_err_QUOTA_EXCEEDED": "API 密钥已超出使用额度。",
+    "models_err_PROVIDER_UNAVAILABLE": "无法连接模型提供方。请稍后再试。",
+    "models_err_FAILED": "无法加载模型列表。",
+    "model_fallback": "所选模型（{{model}}）不可用，正在改用 {{fallback}}。保存后 {{fallback}} 将成为新模型。"
   },
   "module_audit": {
     "title": "模块 '{{module}}' 使用了未声明的功能。",

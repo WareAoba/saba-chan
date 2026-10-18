@@ -316,8 +316,6 @@
     "stored_values_notice": "Couldn't read the server's settings file, so these are the last saved values. Saving only applies the fields you change."
   },
   "discord_bot": {
-    "prefix_missing_title": "Prefix Missing",
-    "prefix_missing_message": "Please set bot prefix. Example: !pal, !mc",
     "start_failed_toast": "Discord bot start failed: {{error}}",
     "started_toast": "Discord bot has been started",
     "start_error_toast": "Discord bot start exception: {{error}}",
@@ -823,8 +821,7 @@
     "bot_title": "General",
     "bot_desc": "Settings that apply to the whole Discord bot.",
     "prefix_title": "Command prefix",
-    "prefix_desc": "The bot only answers messages that start with this word. No spaces.",
-    "prefix_required": "An empty prefix won't be saved",
+    "prefix_desc": "The bot answers messages that start with one of these words, and the AI chatbot is called by them too. You can add several.",
     "usage_title": "How to use",
     "usage_help": "Help",
     "usage_list_word": "list",
@@ -936,7 +933,13 @@
     },
     "channels_notify": "Alert channel",
     "channels_notify_hint": "Crashes, auto restarts, updates, finished backups and scheduled restart warnings are posted here.",
-    "channels_is_notify": "Used as the alert channel"
+    "channels_is_notify": "Used as the alert channel",
+    "default_prefix": "Saba-chan",
+    "prefix_default_label": "default ({{prefix}})",
+    "prefix_default_placeholder": "Leave empty to use {{prefix}}",
+    "prefix_default_hint": "Using the default {{prefix}}. It follows the app language when you change it.",
+    "prefix_err_count": "Up to {{max}} prefixes.",
+    "prefix_err_length": "Prefixes can be up to {{max}} characters: {{words}}"
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",
@@ -1012,11 +1015,7 @@
     "enabled": "Enable chatbot",
     "enabled_hint": "You can also turn it on or off per server.",
     "model": "Model",
-    "session_seconds": "Conversation window",
-    "ambient_seconds": "Chime-in interval",
     "seconds": "seconds",
-    "ambient_hint": "seconds (0 = off)",
-    "triggers": "Trigger words",
     "confirm_commands": "Confirm before running commands",
     "confirm_commands_hint": "Commands the AI picks run only after confirmation on Discord.",
     "memory": "Long-term memory",
@@ -1033,9 +1032,6 @@
     "memory_clear": "Clear memory",
     "memory_clear_confirm": "Click to clear",
     "memory_cleared": "Cleared memory for {{name}}.",
-    "err_ambientSeconds": "Chime-in interval must be {{min}}–{{max}} seconds.",
-    "err_sessionSeconds": "Conversation window must be {{min}}–{{max}} seconds.",
-    "err_triggers": "Up to {{max}} trigger words.",
     "memo": "Server prompt",
     "memo_aria": "Server prompt for {{name}}",
     "memo_placeholder": "What Saba-chan should know about this server: tone, how to address people, mood, interests. Added after the default instructions.",
@@ -1049,7 +1045,16 @@
     "tool_social_notes": "Social notes",
     "tool_social_notes_hint": "Keeps private notes about the mood and people. Never shown in the app.",
     "relay_delete_pending": "The old chatbot settings haven't been removed from the relay yet. It will retry on the next connection.",
-    "channels_moved": "Pick the channels the chatbot talks in from the Channels tab of each Discord server."
+    "channels_moved": "Pick the channels the chatbot talks in from the Channels tab of each Discord server.",
+    "prefix_calls": "It answers when called with a command prefix from Discord › Settings.",
+    "models_need_key": "Save an API key to load the available models.",
+    "models_need_guild": "Connect a Discord server to load the available models.",
+    "models_err_NO_API_KEY": "The API key has not reached the server yet. Try again shortly.",
+    "models_err_INVALID_API_KEY": "The API key was rejected. Check the key.",
+    "models_err_QUOTA_EXCEEDED": "The API key is over its usage quota.",
+    "models_err_PROVIDER_UNAVAILABLE": "Could not reach the model provider. Try again shortly.",
+    "models_err_FAILED": "Could not load the model list.",
+    "model_fallback": "The chosen model ({{model}}) is unavailable, so {{fallback}} is used instead. Save to make {{fallback}} the new model."
   },
   "module_audit": {
     "title": "Module '{{module}}' uses capabilities it doesn't declare.",

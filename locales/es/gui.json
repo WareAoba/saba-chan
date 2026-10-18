@@ -313,8 +313,6 @@
     "stored_values_notice": "No se pudo leer el archivo de ajustes del servidor, así que se muestran los últimos valores guardados. Al guardar solo se aplican los campos que cambies."
   },
   "discord_bot": {
-    "prefix_missing_title": "Prefijo Faltante",
-    "prefix_missing_message": "Por favor configure el prefijo del bot. Ejemplo: !pal, !mc",
     "start_failed_toast": "Falló el inicio del bot de Discord: {{error}}",
     "started_toast": "El bot de Discord ha sido iniciado",
     "start_error_toast": "Excepción al iniciar el bot de Discord: {{error}}",
@@ -820,8 +818,7 @@
     "bot_title": "General",
     "bot_desc": "Ajustes que se aplican a todo el bot de Discord.",
     "prefix_title": "Prefijo de comandos",
-    "prefix_desc": "El bot solo responde a mensajes que empiecen por esta palabra. Sin espacios.",
-    "prefix_required": "Un prefijo vacío no se guardará",
+    "prefix_desc": "El bot responde a los mensajes que empiezan con una de estas palabras, y el chatbot de IA también se llama con ellas. Puedes añadir varias.",
     "usage_title": "Cómo se usa",
     "usage_help": "Ayuda",
     "usage_list_word": "list",
@@ -933,7 +930,13 @@
     },
     "channels_notify": "Canal de avisos",
     "channels_notify_hint": "Aquí se publican caídas, reinicios automáticos, actualizaciones, copias terminadas y avisos de reinicios programados.",
-    "channels_is_notify": "Usado como canal de avisos"
+    "channels_is_notify": "Usado como canal de avisos",
+    "default_prefix": "Saba-chan",
+    "prefix_default_label": "predeterminado ({{prefix}})",
+    "prefix_default_placeholder": "Déjalo vacío para usar {{prefix}}",
+    "prefix_default_hint": "Ahora se usa el predeterminado {{prefix}}. Cambia con el idioma de la app.",
+    "prefix_err_count": "Hasta {{max}} prefijos.",
+    "prefix_err_length": "Los prefijos tienen como máximo {{max}} caracteres: {{words}}"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",
@@ -1009,11 +1012,7 @@
     "enabled": "Activar chatbot",
     "enabled_hint": "También puedes activarlo o desactivarlo por servidor.",
     "model": "Modelo",
-    "session_seconds": "Duración de la conversación",
-    "ambient_seconds": "Intervalo de intervenciones",
     "seconds": "segundos",
-    "ambient_hint": "segundos (0 = desactivado)",
-    "triggers": "Palabras de activación",
     "confirm_commands": "Confirmar antes de ejecutar comandos",
     "confirm_commands_hint": "Los comandos que elija la IA solo se ejecutan tras confirmarlos en Discord.",
     "memory": "Memoria a largo plazo",
@@ -1030,9 +1029,6 @@
     "memory_clear": "Borrar memoria",
     "memory_clear_confirm": "Haz clic para borrar",
     "memory_cleared": "Memoria de {{name}} borrada.",
-    "err_ambientSeconds": "El intervalo de intervenciones debe ser de {{min}}–{{max}} segundos.",
-    "err_sessionSeconds": "La duración de la conversación debe ser de {{min}}–{{max}} segundos.",
-    "err_triggers": "Hasta {{max}} palabras de activación.",
     "memo": "Prompt del servidor",
     "memo_aria": "Prompt del servidor de {{name}}",
     "memo_placeholder": "Lo que Saba-chan debe saber de este servidor: tono, cómo llamar a la gente, ambiente, intereses. Se añade tras las instrucciones por defecto.",
@@ -1046,7 +1042,16 @@
     "tool_social_notes": "Notas sociales",
     "tool_social_notes_hint": "Guarda notas privadas sobre el ambiente y las personas. Nunca se muestran en la app.",
     "relay_delete_pending": "Los ajustes antiguos del chatbot aún no se han borrado del relay. Se reintentará en la próxima conexión.",
-    "channels_moved": "Elige los canales del chatbot en la pestaña Canales de cada servidor de Discord."
+    "channels_moved": "Elige los canales del chatbot en la pestaña Canales de cada servidor de Discord.",
+    "prefix_calls": "Responde cuando se le llama con un prefijo de Discord › Ajustes.",
+    "models_need_key": "Guarda una clave de API para cargar los modelos disponibles.",
+    "models_need_guild": "Conecta un servidor de Discord para cargar los modelos disponibles.",
+    "models_err_NO_API_KEY": "La clave de API aún no llegó al servidor. Inténtalo de nuevo en un momento.",
+    "models_err_INVALID_API_KEY": "La clave de API fue rechazada. Revísala.",
+    "models_err_QUOTA_EXCEEDED": "La clave de API superó su cuota de uso.",
+    "models_err_PROVIDER_UNAVAILABLE": "No se pudo contactar con el proveedor de modelos. Inténtalo de nuevo en un momento.",
+    "models_err_FAILED": "No se pudo cargar la lista de modelos.",
+    "model_fallback": "El modelo elegido ({{model}}) no está disponible, así que se usa {{fallback}}. Guarda para que {{fallback}} sea el nuevo modelo."
   },
   "module_audit": {
     "title": "El módulo '{{module}}' usa capacidades que no declara.",

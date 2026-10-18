@@ -975,7 +975,8 @@ export function createApi({ invoke, hub }) {
             try {
                 return (
                     await get(`/api/relay/node/${encodeURIComponent(guildId)}/members${relayQs(relayUrl)}`, {
-                        timeout: 8000,
+                        // 릴레이가 디스코드에 전체 목록을 물을 때 8초까지 기다린다
+                        timeout: 15000,
                     })
                 ).data;
             } catch (err) {
@@ -1012,6 +1013,9 @@ export function createApi({ invoke, hub }) {
         instanceScheduleSave: (id, body) => daemonJson('put', instancePath(id, '/schedule'), body),
         chatbotGet: () => daemonJson('get', '/api/chatbot'),
         chatbotSave: (patch) => daemonJson('put', '/api/chatbot', patch),
+        // 길드에 저장된 사용자 키로 릴레이가 제공자에게 묻는다 (chatbot-settings-v2 §1)
+        chatbotModels: (guildId) =>
+            daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/models`, undefined, 20000),
         chatbotClear: () => daemonJson('delete', '/api/chatbot'),
         chatbotClearMemory: (guildId) =>
             daemonJson('delete', `/api/chatbot/memory${guildId ? `?guildId=${encodeURIComponent(guildId)}` : ''}`),

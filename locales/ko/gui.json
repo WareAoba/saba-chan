@@ -316,8 +316,6 @@
     "stored_values_notice": "설정 파일을 읽지 못해 마지막으로 저장된 값을 보여 주고 있어요. 저장하면 직접 바꾼 칸만 반영됩니다."
   },
   "discord_bot": {
-    "prefix_missing_title": "Prefix 없음",
-    "prefix_missing_message": "봇 별명(Prefix)을 설정하세요. 예: !pal, !mc",
     "start_failed_toast": "Discord 봇 시작 실패: {{error}}",
     "started_toast": "Discord 봇이 시작되었습니다",
     "start_error_toast": "Discord 봇 시작 예외: {{error}}",
@@ -823,8 +821,7 @@
     "bot_title": "기본 설정",
     "bot_desc": "디스코드 봇 전체에 적용되는 설정이에요.",
     "prefix_title": "명령 접두사",
-    "prefix_desc": "디스코드에서 이 단어로 시작하는 메시지에만 봇이 반응해요. 공백 없이 입력하세요.",
-    "prefix_required": "접두사가 비어 있으면 저장되지 않아요",
+    "prefix_desc": "디스코드에서 이 단어로 시작하는 메시지에 봇이 반응하고, AI 챗봇도 이 단어로 불러요. 여러 개 둘 수 있어요.",
     "usage_title": "이렇게 써요",
     "usage_help": "도움말",
     "usage_list_word": "목록",
@@ -936,7 +933,13 @@
     },
     "channels_notify": "알림 채널",
     "channels_notify_hint": "크래시, 자동 재시작, 업데이트, 백업 완료, 예약 재시작 예고를 이 채널에 올려요.",
-    "channels_is_notify": "알림 채널로 쓰는 중"
+    "channels_is_notify": "알림 채널로 쓰는 중",
+    "default_prefix": "사바쨩",
+    "prefix_default_label": "기본값 ({{prefix}})",
+    "prefix_default_placeholder": "비워 두면 기본값 {{prefix}}",
+    "prefix_default_hint": "지금은 기본값 {{prefix}}을(를) 써요. 앱 언어를 바꾸면 기본값도 그 언어로 바뀌어요.",
+    "prefix_err_count": "접두사는 {{max}}개까지예요.",
+    "prefix_err_length": "접두사는 {{max}}자까지예요: {{words}}"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",
@@ -1012,11 +1015,7 @@
     "enabled": "챗봇 켜기",
     "enabled_hint": "서버별로 따로 켜고 끌 수도 있어요.",
     "model": "모델",
-    "session_seconds": "대화 유지 시간",
-    "ambient_seconds": "자발적 대화 간격",
     "seconds": "초",
-    "ambient_hint": "초 (0이면 끔)",
-    "triggers": "부르는 말",
     "confirm_commands": "명령 실행 전에 확인",
     "confirm_commands_hint": "AI가 고른 명령은 디스코드에서 확인을 받은 뒤 실행해요.",
     "memory": "장기 기억",
@@ -1033,9 +1032,6 @@
     "memory_clear": "기억 지우기",
     "memory_clear_confirm": "눌러서 지우기",
     "memory_cleared": "{{name}}의 기억을 지웠어요.",
-    "err_ambientSeconds": "자발적 대화 간격은 {{min}}~{{max}}초 사이여야 해요.",
-    "err_sessionSeconds": "대화 유지 시간은 {{min}}~{{max}}초 사이여야 해요.",
-    "err_triggers": "부르는 말은 {{max}}개까지예요.",
     "memo": "서버 프롬프트",
     "memo_aria": "{{name}} 서버 프롬프트",
     "memo_placeholder": "이 서버에서 사바쨩이 알아 둘 것: 말투, 호칭, 방 분위기, 관심사 등. 사바쨩 기본 지침 뒤에 붙어요.",
@@ -1049,7 +1045,16 @@
     "tool_social_notes": "눈치 메모",
     "tool_social_notes_hint": "분위기와 사람들에 대해 혼자만 보는 메모를 남겨요. 내용은 앱에 보이지 않아요.",
     "relay_delete_pending": "예전 챗봇 설정을 릴레이에서 아직 지우지 못했어요. 다음에 연결될 때 다시 지웁니다.",
-    "channels_moved": "챗봇이 대화할 채널은 디스코드 서버 화면의 '채널' 탭에서 골라요."
+    "channels_moved": "챗봇이 대화할 채널은 디스코드 서버 화면의 '채널' 탭에서 골라요.",
+    "prefix_calls": "디스코드 › 기본 설정의 명령 접두사로 부르면 답해요.",
+    "models_need_key": "API 키를 저장하면 쓸 수 있는 모델을 불러와요.",
+    "models_need_guild": "디스코드 서버를 연결하면 쓸 수 있는 모델을 불러와요.",
+    "models_err_NO_API_KEY": "서버에 API 키가 아직 전달되지 않았어요. 잠시 뒤 다시 시도해 주세요.",
+    "models_err_INVALID_API_KEY": "API 키가 맞지 않아요. 키를 다시 확인해 주세요.",
+    "models_err_QUOTA_EXCEEDED": "API 키의 사용 한도를 넘었어요.",
+    "models_err_PROVIDER_UNAVAILABLE": "모델 제공자에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.",
+    "models_err_FAILED": "모델 목록을 불러오지 못했어요.",
+    "model_fallback": "고른 모델({{model}})을 쓸 수 없어 {{fallback}}로 대신 쓰고 있어요. 저장하면 {{fallback}}이(가) 새 모델이 돼요."
   },
   "module_audit": {
     "title": "'{{module}}' 모듈이 선언하지 않은 기능을 써요.",
