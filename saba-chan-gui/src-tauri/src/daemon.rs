@@ -109,7 +109,9 @@ pub fn is_allowed_path(path: &str) -> bool {
     }
     // Rust 셸이 직접 정하는 경로는 렌더러(확장 GUI 스크립트 포함)에 열지 않는다
     let lowered = route.to_ascii_lowercase();
-    !RESERVED_ROUTES.iter().any(|r| lowered == *r || lowered.starts_with(&format!("{r}/")))
+    !RESERVED_ROUTES
+        .iter()
+        .any(|r| lowered == *r || lowered.starts_with(&format!("{r}/")))
 }
 
 /// 업데이터 실행(relaunch 대상), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
@@ -193,11 +195,24 @@ impl DaemonClient {
             .http
             .request(method, format!("{}{}", self.base(), path))
             .header("X-Saba-Client", "gui");
+        // 토큰은 이 PC의 데몬에만 보낸다 (IPC_BASE가 다른 호스트를 가리켜도)
         let token = self.token();
-        if !token.is_empty() {
+        if !token.is_empty() && self.base_is_loopback() {
             req = req.header("X-Saba-Token", token);
         }
         req
+    }
+
+    fn base_is_loopback(&self) -> bool {
+        let Ok(url) = reqwest::Url::parse(&self.base()) else {
+            return false;
+        };
+        let host = url
+            .host_str()
+            .unwrap_or("")
+            .trim_start_matches('[')
+            .trim_end_matches(']');
+        host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
     }
 
     async fn send_once(
@@ -417,6 +432,23 @@ mod tests {
             .unwrap();
         assert_eq!(res.status, 401);
         assert_eq!(seen.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn token_goes_only_to_loopback() {
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join(".ipc_token");
+        std::fs::write(&token_path, "secret").unwrap();
+        let has_token = |base: &str| {
+            let client = DaemonClient::new(base.into(), token_path.clone());
+            let req = client.builder(reqwest::Method::GET, "/health").build().unwrap();
+            req.headers().contains_key("X-Saba-Token")
+        };
+        assert!(has_token("http://127.0.0.1:57474"));
+        assert!(has_token("http://localhost:57474"));
+        assert!(has_token("http://[::1]:57474"));
+        assert!(!has_token("http://192.168.0.10:57474"));
+        assert!(!has_token("http://example.com:57474"));
     }
 
     #[tokio::test]

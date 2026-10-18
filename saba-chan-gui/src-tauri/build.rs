@@ -34,10 +34,17 @@ const COMMANDS: &[&str] = &[
     "window_close",
 ];
 
+/// 자리표시 index.html에만 있는 문구
+const PLACEHOLDER_MARK: &str = "프런트가 빌드되지 않았습니다";
+
 fn main() {
     // 프런트를 빌드하지 않아도 cargo test --workspace가 돌게 자리표시 파일을 둔다 (있으면 건드리지 않는다)
     let index = Path::new("../build/index.html");
     println!("cargo:rerun-if-changed=../build/index.html");
+    let placeholder = !index.exists() || std::fs::read_to_string(index).is_ok_and(|s| s.contains(PLACEHOLDER_MARK));
+    if placeholder && std::env::var("PROFILE").as_deref() == Ok("release") {
+        println!("cargo:warning=프런트가 빌드되지 않아 안내 화면만 든 GUI가 만들어집니다. 먼저 saba-chan-gui에서 npm run build를 실행하세요.");
+    }
     if !index.exists() {
         let _ = std::fs::create_dir_all("../build");
         let _ = std::fs::write(
