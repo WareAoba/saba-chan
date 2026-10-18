@@ -175,7 +175,7 @@ async fn command_to_a_server_without_console_says_why() {
         body: json!({"error": "no console", "error_code": "no_command_path"}),
     });
     let out = run(&api, &settings(), "mc say hi").await;
-    assert!(out.contains("survival") && !out.contains("managed"), "{}", out);
+    assert!(out.contains("survival") && out.contains("managed mode") && !out.contains("no console"), "{}", out);
     assert!(!out.contains("Internal server error"), "{}", out);
 }
 

@@ -80,7 +80,7 @@
     "unknown": "Unknown error",
     "agreement_required": "You need to accept {{names}} before this server can start. Accept it in Saba-chan on the PC.",
     "agreement_local_only": "Agreements can only be accepted in Saba-chan on this PC.",
-    "no_command_path": "'{{name}}' was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan on the PC.",
+    "no_command_path": "'{{name}}' has no saba-chan console attached, so it can't take commands. Restart it in managed mode from saba-chan on the PC.",
     "alias_conflict": "❌ Alias '{{alias}}' is ambiguous — it matches multiple modules: {{modules}}. Please use a more specific alias.",
     "multiple_instances": "⚠️ Multiple '{{module}}' instances exist. Use an instance name instead of the module alias.",
     "auth_failed": "Authentication failed",
