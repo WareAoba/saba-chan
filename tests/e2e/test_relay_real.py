@@ -89,3 +89,15 @@ def test_relay_rejects_agent_after_token_rotation(paired, relay, sandbox):
     # heartbeat가 먼저 맞으면 "node token rejected", poll이 먼저면 "poll 401 … INVALID_TOKEN"
     err = status["lastError"].lower()
     assert "reject" in err or "401" in err, status
+
+
+def test_owner_discord_setting_runs_without_confirm_button(paired, relay):
+    """서버 주인이 직접 친 디스코드 설정 명령(caution 관리 액션)은 확인 버튼 없이 바로 실행된다 (프리뷰 P1, 데몬 #74·relay #44)."""
+    reply = relay.action(GUILD, OWNER, {"action": "plan", "id": "discord.settings.set", "input": {"guild": GUILD, "sleeping": True}})
+    assert reply.get("ok"), reply
+    data = reply["reply"]["data"]
+    assert data.get("needsConfirm") is False, f"주인이 직접 친 설정 명령에 확인을 요구함: {reply}"
+    ran = relay.action(GUILD, OWNER, {"action": "run_plan", "planId": data["planId"]})
+    assert ran.get("ok") and ran["reply"].get("ok"), ran
+    settings = paired.api.ok("GET", f"/api/discord/{GUILD}/settings")
+    assert settings.get("sleeping") is True or settings.get("settings", {}).get("sleeping") is True, settings

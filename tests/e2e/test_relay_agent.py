@@ -159,3 +159,27 @@ def test_pairing_flow_saves_token_and_starts_agent(sandbox, relay, daemon_factor
     assert (sandbox.data / ".node_token").read_text().strip() == relay.node_token
     secret_in_query = [r for r in relay.requests if "/status" in r["path"] and poll_secret in r["query"]]
     assert not secret_in_query, "poll secret이 URL 쿼리로 나감 (relay 로그에 남는다)"
+    # 페어링을 마치면 데몬을 다시 켜지 않아도 바로 디스코드 명령을 받는다 (프리뷰 P1, #74)
+    wait_until(lambda: relay.heartbeats, 30, "페어링 직후 heartbeat")
+    assert d.api.ok("GET", "/api/relay/agent")["running"]
+
+
+def test_saving_node_token_starts_agent_without_restart(sandbox, relay, daemon_factory):
+    """다른 곳에서 페어링한 토큰을 손으로 넣어도(`saba bot token`) 데몬 재시작 없이 연결된다."""
+    sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
+    d = daemon_factory()
+    assert not d.api.ok("GET", "/api/relay/agent")["running"]
+    d.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
+    wait_until(lambda: relay.heartbeats, 30, "토큰 저장 뒤 heartbeat")
+    cid = relay.push_command({"action": "e2e-no-such-action"}, ownerDiscordId="1")
+    assert relay.wait_result(cid, 30)["success"] is False
+
+
+def test_replacing_node_token_drops_the_old_session(sandbox, relay, daemon_factory):
+    """틀린 토큰으로 돌던 에이전트가 맞는 토큰을 저장하면 그 토큰으로 다시 붙는다."""
+    sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
+    (sandbox.data / ".node_token").write_text(f"sbn_{relay.node_id}.wrongsecret")
+    d = daemon_factory()
+    wait_until(lambda: d.api.ok("GET", "/api/relay/agent").get("lastError"), 30, "틀린 토큰 오류")
+    d.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
+    wait_until(lambda: relay.heartbeats, 30, "맞는 토큰으로 heartbeat")

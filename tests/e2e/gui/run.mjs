@@ -78,6 +78,21 @@ const scenarios = {
         await snap(page, 'reconnected');
         return {};
     },
+    // 데몬이 안 뜨면 진행 화면에서 멈추고 [다시 시도]·[그대로 열기]를 보인다(메인으로 넘어가지 않는다).
+    // 다시 시도가 실패하면 이유를 보이고, 그대로 열면 "연결되지 않았어요" 화면이 된다.
+    async daemonFailed(page) {
+        const L = ARGS.l;
+        await page.getByText(L.failed_hint).first().waitFor({ timeout: 60_000 });
+        await snap(page, 'daemon-failed');
+        await page.getByRole('button', { name: L.retry, exact: true }).click();
+        await page.getByRole('button', { name: L.retry, exact: true }).and(page.locator(':enabled')).waitFor({ timeout: 90_000 });
+        await page.getByText(L.failed_hint).first().waitFor({ timeout: 5_000 });
+        await snap(page, 'retry-failed');
+        await page.getByRole('button', { name: L.continue, exact: true }).click();
+        await page.getByText(L.daemon_down_title).first().waitFor({ timeout: 30_000 });
+        await snap(page, 'opened-without-daemon');
+        return {};
+    },
     async explore(page) {
         await page.waitForTimeout(ARGS.waitMs ?? 8000);
         await snap(page, 'explore');

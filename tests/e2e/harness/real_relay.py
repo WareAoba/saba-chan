@@ -126,6 +126,10 @@ class RealRelay:
         """디스코드 명령 대신 raw_command. 데몬 결과까지 기다린다 → {ok, result:{success,data}}"""
         return self.call("command", timeout=timeout, guildId=guild_id, text=text, requestedBy=requested_by)
 
+    def action(self, guild_id: str, requested_by: str, call: dict, timeout: float = 90) -> dict:
+        """디스코드 액션 명령 대신: plan·run_plan·query를 relay의 sendAction으로 데몬에 보낸다 (via direct)."""
+        return self.call("action", timeout=timeout, guildId=guild_id, requestedBy=requested_by, call=call)
+
     def host(self, host_id: str) -> dict:
         return self.call("host", hostId=host_id)
 

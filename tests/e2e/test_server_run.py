@@ -302,3 +302,15 @@ def test_launch_preview_matches_actual_command(mc):
 
 def _ensure_error_text(exc: E2EError) -> str:
     return str(exc)
+
+
+def test_console_input_to_rest_only_server_is_refused(daemon, sandbox):
+    """콘솔 입력을 받지 않는 모듈(Palworld, REST 전용)에 /stdin을 보내면 보낸 척하지 않고 409 (프리뷰 P1, #74).
+    GUI는 이 답을 보고 명령 API로 넘어간다."""
+    folder = sandbox.servers / "pal"
+    folder.mkdir()
+    for ext in ("steamcmd", "ue4-ini"):
+        daemon.api.ok("POST", f"/api/extensions/{ext}/enable")
+    iid = daemon.api.ok("POST", "/api/instances", {"name": "pal", "module_name": "palworld", "working_dir": str(folder)})["id"]
+    r = daemon.api.post(f"/api/instance/{iid}/stdin", {"command": "say hi"})
+    assert r.status_code == 409 and r.json().get("error_code") == "stdin_not_supported", f"{r.status_code} {r.text}"
