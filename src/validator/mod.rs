@@ -458,7 +458,9 @@ fn ports_held_by_binding(ports: &[(String, u16)]) -> Vec<(String, u16)> {
         .collect()
 }
 
-/// TCP는 듣고 있는 포트, UDP는 묶인 포트 (IPv4·IPv6). 목록을 못 읽으면 빈 집합 (검사를 건너뛴다)
+/// TCP는 듣고 있는 포트, UDP는 묶인 포트. 목록을 못 읽으면 빈 집합 (검사를 건너뛴다).
+/// IPv4는 주소와 상관없이 센다(예전 0.0.0.0 바인딩 검사도 막혔다). IPv6는 `[::]`에 묶인 것만 센다:
+/// 자바 서버처럼 dual-stack으로 듣는 소켓은 IPv6 표에만 나오고, 특정 IPv6 주소만 쓰는 소켓은 IPv4 포트와 겹치지 않는다
 #[cfg(windows)]
 mod held_ports {
     use std::collections::HashSet;
@@ -504,7 +506,7 @@ mod held_ports {
             }
             if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET6 as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
                 let t = buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
-                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().map(|r| port(r.dwLocalPort)));
+                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| r.ucLocalAddr == [0; 16]).map(|r| port(r.dwLocalPort)));
             }
             if let Some(buf) = table(|p, n| GetExtendedUdpTable(p, n, 0, AF_INET as u32, UDP_TABLE_OWNER_PID, 0)) {
                 let t = buf.as_ptr() as *const MIB_UDPTABLE_OWNER_PID;
@@ -512,7 +514,7 @@ mod held_ports {
             }
             if let Some(buf) = table(|p, n| GetExtendedUdpTable(p, n, 0, AF_INET6 as u32, UDP_TABLE_OWNER_PID, 0)) {
                 let t = buf.as_ptr() as *const MIB_UDP6TABLE_OWNER_PID;
-                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().map(|r| port(r.dwLocalPort)));
+                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| r.ucLocalAddr == [0; 16]).map(|r| port(r.dwLocalPort)));
             }
         }
         held
