@@ -132,6 +132,18 @@ def test_wrong_node_token_reports_rejection(sandbox, relay, daemon_factory):
     assert "reject" in err or "401" in err, status
 
 
+def test_token_replaced_by_another_pc_stops_the_agent(paired, relay):
+    """같은 디스코드 계정으로 다른 PC를 페어링하면 이 PC는 멈추고, 끊긴 이유를 상태에 남긴다 (프리뷰 P2 #19)."""
+    relay.token_replaced = True
+    status = wait_until(lambda: (s := paired.api.ok("GET", "/api/relay/agent")) and not s["running"] and s, 90, "에이전트 정지")
+    assert status["lastErrorCode"] == "token_replaced", status
+    seen = len(relay.requests)
+    import time
+
+    time.sleep(3)
+    assert len(relay.requests) == seen, "대체된 토큰으로 계속 요청함"
+
+
 def test_no_token_means_no_agent(sandbox, relay, daemon_factory):
     sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
     d = daemon_factory()
