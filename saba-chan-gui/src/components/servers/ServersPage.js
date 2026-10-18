@@ -26,7 +26,6 @@ export function ServersPage({
     servers,
     setServers,
     modules,
-    formatUptime,
     onAddServer,
     onStart,
     onStop,
@@ -170,7 +169,6 @@ export function ServersPage({
                         modules={modules}
                         servers={servers}
                         setServers={setServers}
-                        formatUptime={formatUptime}
                         onStart={onStart}
                         onStop={onStop}
                         onRestart={onRestart}

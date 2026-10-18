@@ -780,7 +780,6 @@ function App() {
                                 servers={servers}
                                 setServers={setServers}
                                 modules={modules}
-                                formatUptime={formatUptime}
                                 onAddServer={() => setShowModuleManager(true)}
                                 onStart={handleStart}
                                 onStop={handleStop}
