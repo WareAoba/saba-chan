@@ -76,6 +76,8 @@ export function ServerRow({
                         <span
                             className="server-row-players"
                             title={`${statusLabel} · ${t('shell.players')} ${players}`}
+                            role="img"
+                            aria-label={`${statusLabel}, ${t('shell.players')} ${players}`}
                         >
                             <Icon name="user" size={12} />
                             {players}

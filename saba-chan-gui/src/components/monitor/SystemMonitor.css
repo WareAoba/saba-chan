@@ -119,9 +119,6 @@
 .monitor-ring-note {
     color: var(--text-3);
 }
-.monitor-ring-part {
-    display: inline-block;
-}
 .monitor-footnote {
     margin: 0;
     padding: 0 var(--sp-4) var(--sp-4);
