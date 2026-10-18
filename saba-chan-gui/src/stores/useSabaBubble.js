@@ -13,12 +13,12 @@ const RANK = { sleepy: 1, recovering: 2, stopped: 3 };
 /**
  * 좌상단 사바쨩 아이콘에서 늘어져 나오는 말풍선 (한 번에 하나).
  * show({ kind, text, minMs?, holdKey? }): holdKey가 있으면 release(holdKey) 전까지 닫지 않는다 (최소 minMs).
- * markWoken(): 사용자가 데몬을 손으로 깨웠다 (졸린 사바쨩은 이 뒤에만 뜬다).
+ * markWoken(on?): 사용자가 데몬을 손으로 깨웠다 (졸린 사바쨩은 이 뒤에만 뜬다). false면 표시를 지운다.
  */
 export const useSabaBubble = create((set, get) => ({
     bubble: null,
     wokeAt: 0,
-    markWoken: () => set({ wokeAt: Date.now() }),
+    markWoken: (on = true) => set({ wokeAt: on ? Date.now() : 0 }),
     show: (b) => {
         const cur = get().bubble;
         if (cur && (RANK[cur.kind] ?? 0) > (RANK[b.kind] ?? 0)) return;

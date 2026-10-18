@@ -20,8 +20,8 @@ function useBubbleTriggers() {
     const { t } = useTranslation('gui');
     const tRef = useRef(t);
     tRef.current = t;
-    // 다시 연결됨(resync): 끊긴 사이 끝 이벤트를 놓쳤을 수 있어, 다음 목록에서 꺼져 있으면 놓는다
-    const resyncRef = useRef(false);
+    // 다시 연결됨(resync): 끊긴 사이 끝 이벤트를 놓쳤을 수 있어, 다음 목록에서 꺼져 있으면 놓는다 (그때의 말풍선 id)
+    const resyncRef = useRef(null);
 
     // 데몬 깨우기
     useEffect(() => {
@@ -34,8 +34,11 @@ function useBubbleTriggers() {
             else if (now === 'running' && wasDown) {
                 wasDown = false;
                 // 상태 확인이 잠깐 끊겼다 돌아온 것은 깨운 것이 아니다
-                const { wokeAt, show } = useSabaBubble.getState();
-                if (Date.now() - wokeAt < WAKE_WINDOW_MS) show({ kind: 'sleepy', text: tRef.current('saba.sleepy') });
+                const { wokeAt, show, markWoken } = useSabaBubble.getState();
+                if (Date.now() - wokeAt < WAKE_WINDOW_MS) {
+                    markWoken(false);
+                    show({ kind: 'sleepy', text: tRef.current('saba.sleepy') });
+                }
             }
         });
     }, []);
@@ -59,7 +62,9 @@ function useBubbleTriggers() {
             const d = ev.data;
             const bubble = useSabaBubble.getState();
             if (ev.type === 'resync') {
-                resyncRef.current = Boolean(bubble.bubble?.holdKey && !bubble.bubble.released);
+                // 그때 떠 있던 복구 중 말풍선에만 쓴다
+                const held = bubble.bubble?.holdKey && !bubble.bubble.released;
+                resyncRef.current = held ? bubble.bubble.id : null;
             } else if (ev.type === 'instance.exit' && d.restartInSecs != null) {
                 const srv = useServerStore.getState().servers.find((s) => s.id === d.instanceId);
                 bubble.show({
@@ -68,6 +73,7 @@ function useBubbleTriggers() {
                     text: tRef.current('saba.recovering', { name: nameOf(d) || '' }),
                     holdKey: d.instanceId,
                     restartAttempt: d.restartAttempt,
+                    restartAt: Date.now() + d.restartInSecs * 1000,
                 });
             } else if (ev.type === 'instance.exit' && (d.kind === 'crash' || d.noteCode === 'gave_up')) {
                 bubble.show({
@@ -95,11 +101,13 @@ function useBubbleTriggers() {
         return useServerStore.subscribe((s, prev) => {
             const b = useSabaBubble.getState().bubble;
             // 시계 같은 다른 갱신은 건너뛰고, 목록을 새로 받은 갱신에서만 resync 표시를 쓴다
-            const afterResync = resyncRef.current && s.servers !== prev.servers;
-            if (afterResync) resyncRef.current = false;
+            const resyncId = s.servers !== prev.servers ? resyncRef.current : null;
+            if (resyncId) resyncRef.current = null;
             if (!b?.holdKey || b.released) return;
             const srv = s.servers.find((x) => x.id === b.holdKey);
-            if (afterResync && srv?.status !== 'running') {
+            // 재시작 예정 시각 전이면 아직 기다리는 중이라 꺼져 있는 것이 맞다
+            const restartDue = !(b.restartAt > Date.now());
+            if (resyncId === b.id && restartDue && srv?.status !== 'running') {
                 useSabaBubble.getState().release(b.holdKey);
                 return;
             }
