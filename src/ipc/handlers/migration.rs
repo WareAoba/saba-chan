@@ -168,6 +168,10 @@ pub(crate) fn judge(
             return Verdict::Skip("working_dir_in_use");
         }
     }
+    // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다
+    if existing.iter().any(|e| e.id != incoming.id && e.name == incoming.name) {
+        return Verdict::Skip("name_taken");
+    }
     match same {
         None => Verdict::Add,
         Some(_) if !overwrite => Verdict::Skip("exists"),
@@ -435,5 +439,8 @@ mod tests {
         assert_eq!(judge(&inst("b", Some("/srv/b")), &existing, &running, true), Verdict::Skip("running"));
         assert_eq!(judge(&inst("c", Some("/srv/a")), &existing, &running, false), Verdict::Skip("working_dir_in_use"));
         assert_eq!(judge(&inst("../x", None), &existing, &running, false), Verdict::Skip("invalid_id"));
+        let mut same_name = inst("d", Some("/srv/d"));
+        same_name.name = "a".into();
+        assert_eq!(judge(&same_name, &existing, &running, false), Verdict::Skip("name_taken"), "two servers with one name are told apart by name");
     }
 }

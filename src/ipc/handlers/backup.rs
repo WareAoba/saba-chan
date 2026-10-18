@@ -54,7 +54,7 @@ fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response
     (status, Json(json!({ "success": false, "error": message.into(), "error_code": code }))).into_response()
 }
 
-async fn is_running(state: &IPCServer, id: &str) -> bool {
+pub(crate) async fn is_running(state: &IPCServer, id: &str) -> bool {
     let supervisor = state.supervisor.read().await;
     supervisor.tracker.get_pid(id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id.to_string())
 }
@@ -693,6 +693,34 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         assert!(freed, "the lock is released when the work ends");
+    }
+
+    #[tokio::test]
+    async fn version_install_and_reset_wait_for_other_work_and_refuse_a_running_server() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let dir = state.supervisor.read().await.instance_store.get(&id).unwrap().working_dir.clone().unwrap();
+        let install = || {
+            let state = state.clone();
+            let dir = dir.clone();
+            async move {
+                let body = json!({ "version": "1.0", "install_dir": dir });
+                code(super::super::managed::install_server_handler(Path("plain".into()), State(state), Json(body)).await.into_response()).await
+            }
+        };
+        let reset = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { code(super::super::managed::reset_server_handler(Path(id), State(state)).await.into_response()).await }
+        };
+
+        let guard = BusyGuard::take(&id).expect("free");
+        assert_eq!(install().await, "instance_busy");
+        assert_eq!(reset().await, "instance_busy");
+        drop(guard);
+
+        state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        assert_eq!(install().await, "server_running");
+        assert_eq!(reset().await, "server_running");
+        assert!(BusyGuard::take(&id).is_some(), "refused calls must not keep the lock");
     }
 
     #[tokio::test]

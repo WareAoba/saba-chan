@@ -100,6 +100,11 @@ pub async fn create_instance(
         .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))));
 
     if let (Ok(name), Ok(module)) = (name, module_name) {
+        // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다 (rename과 같은 409)
+        if supervisor.instance_store.list().iter().any(|i| i.name == name) {
+            let error = json!({ "success": false, "error": format!("An instance named '{}' already exists", name), "error_code": "name_taken" });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
+        }
         let mut instance = crate::instance::ServerInstance::new(name, module);
 
         // 모듈 정보에서 process_name, default_port, install 설정 가져오기
@@ -1850,6 +1855,9 @@ mod tests {
         let unknown = create(json!({ "name": "b", "module_name": "game", "preset": "nope" })).await;
         assert_eq!(unknown.status.as_u16(), 400);
         assert_eq!(unknown.body["error_code"], "preset_not_found");
+        let twin = create(json!({ "name": "a", "module_name": "game" })).await;
+        assert_eq!((twin.status.as_u16(), twin.body["error_code"].as_str()), (409, Some("name_taken")));
+        assert_eq!(state.supervisor.read().await.instance_store.list().len(), 1, "the second server is not made");
     }
 
     #[tokio::test]
