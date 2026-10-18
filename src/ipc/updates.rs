@@ -276,20 +276,20 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
 
 /// 사용자에게 보이는 업데이트가 지난번 알린 것과 달라졌을 때만 `update.available` (P4)
 fn announce_new_updates(status: &saba_chan_updater_lib::UpdateStatus) {
-    static LAST: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
-    let found: Vec<(String, String)> = status.components.iter()
+    // 같은 구성요소라도 더 새 버전이 나오면 다시 알린다
+    static LAST: std::sync::Mutex<Vec<(String, Option<String>)>> = std::sync::Mutex::new(Vec::new());
+    let visible: Vec<_> = status.components.iter()
         .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
-        .map(|c| (c.component.manifest_key(), c.latest_version.clone().unwrap_or_default()))
+        .collect();
+    let found: Vec<(String, Option<String>)> = visible.iter()
+        .map(|c| (c.component.manifest_key(), c.latest_version.clone()))
         .collect();
     let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-    if found.is_empty() || *last == found {
-        *last = found;
-        return;
+    if !found.is_empty() && *last != found {
+        // `/api/updates/check`의 `update_names`와 같은 표시 이름
+        let names: Vec<String> = visible.iter().map(|c| c.component.display_name()).collect();
+        crate::events::emit("update.available", json!({ "components": names }));
     }
-    let components: Vec<Value> = found.iter()
-        .map(|(component, version)| json!({ "component": component, "latestVersion": version }))
-        .collect();
-    crate::events::emit("update.available", json!({ "components": components }));
     *last = found;
 }
 

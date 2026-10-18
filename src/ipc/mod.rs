@@ -394,7 +394,7 @@ impl ProvisionTracker {
     pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
         if let Ok(serde_json::Value::Object(mut data)) = serde_json::to_value(&progress) {
             data.insert("instance".into(), instance_id.into());
-            crate::events::emit("provision.progress", data.into());
+            crate::events::emit_live("provision.progress", data.into());
         }
         if let Ok(mut map) = self.inner.lock() {
             map.insert(instance_id.to_string(), progress);

@@ -483,20 +483,15 @@ impl Api {
     }
     /// GET /api/events — 데몬 이벤트 스트림 (P4, SSE). `since`는 마지막으로 받은 번호
     pub async fn events(&self, since: Option<u64>) -> Result<Events> {
-        let mut req = self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli");
-        if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
-            req = req.header("X-Saba-Token", t);
-        }
-        if let Some(n) = since {
-            req = req.header("Last-Event-ID", n.to_string());
-        }
-        let resp = req.send().await.map_err(|e| -> anyhow::Error {
-            if e.is_connect() {
-                CliError::DaemonDown { url: self.base.clone() }.into()
-            } else {
-                anyhow::anyhow!(e)
+        let mut resp = self.open_events(since).await?;
+        // 데몬이 다시 뜨면 토큰이 바뀐다 → 한 번 다시 읽고 재시도 (`call`과 같다)
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            let fresh = read_token();
+            if let Ok(mut t) = self.token.write() {
+                *t = fresh;
             }
-        })?;
+            resp = self.open_events(since).await?;
+        }
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let value = resp.json().await.unwrap_or(Value::Null);
@@ -504,6 +499,23 @@ impl Api {
             return Err(anyhow::anyhow!("GET /api/events: {}", status));
         }
         Ok(Events { resp, buf: String::new() })
+    }
+
+    async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
+        let mut req = self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli");
+        if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
+            req = req.header("X-Saba-Token", t);
+        }
+        if let Some(n) = since {
+            req = req.header("Last-Event-ID", n.to_string());
+        }
+        req.send().await.map_err(|e| -> anyhow::Error {
+            if e.is_connect() {
+                CliError::DaemonDown { url: self.base.clone() }.into()
+            } else {
+                anyhow::anyhow!(e)
+            }
+        })
     }
     /// GET /api/permissions/:guildId
     pub async fn permissions(&self, guild: &str) -> Result<Value> {

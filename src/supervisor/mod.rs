@@ -2225,12 +2225,16 @@ impl Supervisor {
         }
 
         let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note };
-        if let Ok(serde_json::Value::Object(mut data)) = serde_json::to_value(&event) {
-            data.remove("at");
-            data.insert("instanceId".into(), instance_id.into());
-            data.insert("instance".into(), instance.name.clone().into());
-            crate::events::emit("instance.exit", data.into());
-        }
+        crate::events::emit("instance.exit", serde_json::json!({
+            "instanceId": instance_id,
+            "instance": instance.name,
+            "kind": event.verdict.kind,
+            "exitCode": event.verdict.exit_code,
+            "signal": event.verdict.signal,
+            "evidence": event.verdict.evidence,
+            "restartInSecs": event.restart_in_secs,
+            "note": event.note,
+        }));
         let events = self.exit_events.entry(instance_id.to_string()).or_default();
         events.push_back(event);
         while events.len() > crash::EVENTS_KEPT {

@@ -1,7 +1,7 @@
 //! GET /api/events — 데몬 이벤트 스트림 (P4, SSE). 버스는 `crate::events`
 
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     http::HeaderMap,
     response::sse::{Event, KeepAlive, Sse},
 };
@@ -19,15 +19,22 @@ pub struct EventsQuery {
 }
 
 fn sse(event: &crate::events::Event) -> Event {
-    Event::default().id(event.id.to_string()).event(&event.kind).data(event.data.to_string())
+    let out = Event::default().event(&event.kind).data(event.data.to_string());
+    // 다시 보내지 않는 건(진행률)은 번호가 없다: 클라이언트의 마지막 번호를 바꾸지 않는다
+    if event.replay { out.id(event.id.to_string()) } else { out }
 }
 
 fn resync() -> Event {
     Event::default().event("resync").data("{}")
 }
 
-/// `Last-Event-ID`(브라우저·EventSource 재연결) 또는 `?since=`
-pub async fn stream(headers: HeaderMap, Query(q): Query<EventsQuery>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+/// `Last-Event-ID`(브라우저·EventSource 재연결) 또는 `?since=`. 데몬이 꺼질 때 스트림도 끝난다
+/// (열린 연결이 정상 종료를 붙잡지 않게)
+pub async fn stream(
+    State(state): State<super::super::IPCServer>,
+    headers: HeaderMap,
+    Query(q): Query<EventsQuery>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let since = headers
         .get("Last-Event-ID")
         .and_then(|v| v.to_str().ok())
@@ -42,16 +49,22 @@ pub async fn stream(headers: HeaderMap, Query(q): Query<EventsQuery>) -> Sse<imp
     first.extend(sub.backlog.iter().map(|e| sse(e)));
     let last = sub.backlog.last().map_or(0, |e| e.id);
 
-    let live = stream::unfold((sub.rx, last), |(mut rx, mut last)| async move {
+    let stop = state.shutdown_token.clone();
+    let live = stream::unfold((sub.rx, last, stop), |(mut rx, mut last, stop)| async move {
         loop {
-            match rx.recv().await {
-                Ok(event) if event.id <= last => continue,
+            let next = tokio::select! {
+                _ = stop.cancelled() => return None,
+                next = rx.recv() => next,
+            };
+            match next {
+                Ok(event) if event.replay && event.id <= last => continue,
+                Ok(event) if !event.replay => return Some((Ok(sse(&event)), (rx, last, stop))),
                 Ok(event) => {
                     last = event.id;
-                    return Some((Ok(sse(&event)), (rx, last)));
+                    return Some((Ok(sse(&event)), (rx, last, stop)));
                 }
                 // 뒤처져 놓친 건이 있다: 목록을 다시 읽게 한다
-                Err(RecvError::Lagged(_)) => return Some((Ok(resync()), (rx, last))),
+                Err(RecvError::Lagged(_)) => return Some((Ok(resync()), (rx, last, stop))),
                 Err(RecvError::Closed) => return None,
             }
         }

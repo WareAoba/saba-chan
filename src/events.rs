@@ -20,6 +20,8 @@ pub struct Event {
     pub kind: String,
     /// `{at, ...}`
     pub data: Value,
+    /// 버퍼에 남아 다시 붙는 클라이언트에게 다시 보내는 건인가. 아니면(`emit_live`) 번호도 없다
+    pub replay: bool,
 }
 
 /// 구독을 시작할 때 받는 것: 먼저 보낼 것들과 이어서 받을 채널
@@ -52,12 +54,26 @@ impl Bus {
     }
 
     /// 한 건 낸다. `data`가 객체이면 `at`(unix 초)을 붙인다
-    pub fn emit(&self, kind: &str, mut data: Value) {
+    pub fn emit(&self, kind: &str, data: Value) {
+        self.publish(kind, data, true);
+    }
+
+    /// 지금 붙어 있는 클라이언트에게만 보낸다 (진행률처럼 자주 나오고 지나면 쓸모없는 것).
+    /// 버퍼를 밀어내지 않으므로 다시 붙을 때 놓친 기록을 잃지 않는다
+    pub fn emit_live(&self, kind: &str, data: Value) {
+        self.publish(kind, data, false);
+    }
+
+    fn publish(&self, kind: &str, mut data: Value, replay: bool) {
         if let Some(obj) = data.as_object_mut() {
             obj.insert("at".into(), Value::from(saba_runner::now()));
         }
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let event = Arc::new(Event { id: inner.next, kind: kind.to_string(), data });
+        if !replay {
+            let _ = self.tx.send(Arc::new(Event { id: inner.next - 1, kind: kind.to_string(), data, replay }));
+            return;
+        }
+        let event = Arc::new(Event { id: inner.next, kind: kind.to_string(), data, replay });
         inner.next += 1;
         inner.recent.push_back(event.clone());
         while inner.recent.len() > KEPT {
@@ -98,6 +114,11 @@ pub fn bus() -> &'static Bus {
 /// 데몬 버스로 한 건 낸다
 pub fn emit(kind: &str, data: Value) {
     bus().emit(kind, data);
+}
+
+/// 데몬 버스로 지금 붙어 있는 클라이언트에게만 (`Bus::emit_live`)
+pub fn emit_live(kind: &str, data: Value) {
+    bus().emit_live(kind, data);
 }
 
 #[cfg(test)]
@@ -141,6 +162,21 @@ mod tests {
         let sub = restarted.subscribe(Some(50));
         assert!(sub.resync, "a number from before a daemon restart");
         assert_eq!(ids(&sub.backlog), vec![1]);
+    }
+
+    #[tokio::test]
+    async fn live_only_events_never_push_records_out_of_the_buffer() {
+        let bus = Bus::new();
+        bus.emit("action.run", json!({}));
+        let mut sub = bus.subscribe(Some(0));
+        for _ in 0..KEPT + 5 {
+            bus.emit_live("provision.progress", json!({}));
+        }
+        let again = bus.subscribe(Some(0));
+        assert!(!again.resync);
+        assert_eq!(ids(&again.backlog), vec![1], "progress is not replayed and did not evict the record");
+        let live = sub.rx.recv().await.unwrap();
+        assert!(!live.replay && live.kind == "provision.progress", "but connected clients still get it");
     }
 
     #[tokio::test]
