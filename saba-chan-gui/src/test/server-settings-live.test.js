@@ -182,4 +182,60 @@ describe('서버 설정 창: 실제 설정', () => {
         });
         expect(result.current.settingsServer.id).toBe('b');
     });
+
+    it('고친 추가 인자를 데몬이 나누지 못하면 저장하지 않고 알린다 (인자가 조용히 빠지지 않게)', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: {} });
+        window.api.instanceLaunchPreview = vi
+            .fn()
+            .mockResolvedValueOnce({ success: false, error: 'bad quote', error_code: 'invalid_format' })
+            .mockRejectedValueOnce(new Error('daemon down'));
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        act(() => result.current.handleSettingChange('_launch_extra_args', '-Xmx6G "oops'));
+        await act(async () => result.current.handleSaveSettings());
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
+        const warned = window.showToast.mock.calls.map((c) => c[0]);
+        expect(warned).toEqual(['Invalid format.', "Couldn't check the extra launch arguments, so nothing was saved"]);
+        delete window.api.instanceLaunchPreview;
+    });
+
+    it('실행 명령은 못 만들었어도 추가 인자는 나눴으면 저장한다 (아직 설치 안 한 서버)', async () => {
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: {} });
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'launch_command_failed',
+            error_code: 'launch_command_failed',
+            has_launch_args: true,
+            extra_args: ['-x'],
+            settings_from_args: {},
+        });
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        act(() => result.current.handleSettingChange('_launch_extra_args', '-x'));
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.api.instanceUpdateSettings).toHaveBeenCalled();
+        expect(window.api.instanceUpdateSettings.mock.calls[0][1].extra_args).toEqual(['-x']);
+        delete window.api.instanceLaunchPreview;
+    });
+
+    it('고친 추가 인자 중 설정 형식에 맞지 않는 것이 있으면 저장하지 않는다 (그 인자가 빠지지 않게)', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: {} });
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: true,
+            has_launch_args: true,
+            extra_args: [],
+            settings_from_args: {},
+            errors: [{ arg: '-Xmx4096', field: 'memory_size', expected: 'size', got: '4096' }],
+        });
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        act(() => result.current.handleSettingChange('_launch_extra_args', '-Xmx4096'));
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
+        expect(window.showToast.mock.calls.map((c) => c[0])).toEqual(['Invalid format.']);
+        delete window.api.instanceLaunchPreview;
+    });
 });

@@ -268,7 +268,9 @@
     "console": "콘솔",
     "command": "명령어",
     "click_to_stop": "정지하려면 클릭",
-    "click_to_start": "시작하려면 클릭"
+    "click_to_start": "시작하려면 클릭",
+    "delete_still_running": "'{{name}}' 서버를 아직 지우고 있어요. 잠시 뒤 서버 목록을 다시 확인해 주세요.",
+    "delete_unconfirmed": "'{{name}}'이(가) 삭제됐는지 확인하지 못했어요. 데몬이 응답하면 서버 목록을 다시 확인해 주세요."
   },
   "server_settings": {
     "title": "설정",
@@ -400,7 +402,8 @@
     "dependency_unmet_message": "'{{name}}' 서버의 모듈이 아래 버전을 필요로 해요. 업데이트하거나 확장 기능을 설치·켠 뒤 다시 시작하세요.",
     "preflight_failed_title": "'{{name}}' 서버를 켜기 전 점검에서 문제가 있어요",
     "working_dir_in_use": "'{{instance}}' 서버가 이미 이 폴더를 쓰고 있어요. 한 폴더에 서버를 둘 만들면 월드와 설정을 서로 덮어씁니다. 다른 폴더를 골라 주세요.",
-    "no_command_path": "이 서버는 명령을 보낼 콘솔이 없어요. 사바쨩에서 서버를 켜야 명령을 보낼 수 있어요."
+    "no_command_path": "이 서버는 명령을 보낼 콘솔이 없어요. 사바쨩에서 서버를 켜야 명령을 보낼 수 있어요.",
+    "stdin_unconfirmed": "명령을 보냈는지 확인하지 못했어요. 다시 보내기 전에 콘솔을 확인해 주세요."
   },
   "settings": {
     "save_failed_title": "설정 저장 실패",
@@ -1218,7 +1221,8 @@
     "extra_label": "추가 인자",
     "extra_placeholder": "예: -players=16 -useperfthreads",
     "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}",
-    "invalid_format": "잘못된 형식입니다."
+    "invalid_format": "잘못된 형식입니다.",
+    "unchecked": "추가 인자를 확인하지 못해 저장하지 않았어요"
   },
   "activity": {
     "idle": "눌러서 데몬 콘솔 기록 보기",

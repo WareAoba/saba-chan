@@ -265,7 +265,9 @@
     "console": "Console",
     "command": "Command",
     "click_to_stop": "Click to stop",
-    "click_to_start": "Click to start"
+    "click_to_start": "Click to start",
+    "delete_still_running": "'{{name}}' todavía se está eliminando. Vuelve a revisar la lista de servidores en un momento.",
+    "delete_unconfirmed": "No se pudo confirmar si '{{name}}' se eliminó. Revisa la lista de servidores cuando el daemon responda."
   },
   "server_settings": {
     "title": "Configuración",
@@ -397,7 +399,8 @@
     "dependency_unmet_message": "El módulo de '{{name}}' necesita las versiones siguientes. Actualiza, o instala y activa la extensión, y vuelve a iniciar.",
     "preflight_failed_title": "La comprobación previa de '{{name}}' encontró un problema",
     "working_dir_in_use": "El servidor '{{instance}}' ya usa esta carpeta. Dos servidores en una carpeta sobrescriben el mundo y los ajustes del otro. Elige otra carpeta.",
-    "no_command_path": "Este servidor no tiene consola para enviar comandos. Inícialo desde Saba-chan para enviar comandos."
+    "no_command_path": "Este servidor no tiene consola para enviar comandos. Inícialo desde Saba-chan para enviar comandos.",
+    "stdin_unconfirmed": "No se pudo confirmar que el comando se envió. Revisa la consola antes de volver a intentarlo."
   },
   "settings": {
     "save_failed_title": "Falló guardar configuración",
@@ -1186,7 +1189,8 @@
     "extra_label": "Argumentos adicionales",
     "extra_placeholder": "p. ej. -players=16 -useperfthreads",
     "unknown_args": "Los argumentos sin ajuste correspondiente se pasan tal cual: {{args}}",
-    "invalid_format": "Formato no válido."
+    "invalid_format": "Formato no válido.",
+    "unchecked": "No se pudieron comprobar los argumentos de inicio adicionales, así que no se guardó nada"
   },
   "activity": {
     "idle": "Haz clic para ver el registro de la consola del daemon",

@@ -265,7 +265,9 @@
     "console": "Console",
     "command": "Command",
     "click_to_stop": "Click to stop",
-    "click_to_start": "Click to start"
+    "click_to_start": "Click to start",
+    "delete_still_running": "'{{name}}' wird noch gelöscht. Prüfen Sie die Serverliste gleich noch einmal.",
+    "delete_unconfirmed": "Es konnte nicht bestätigt werden, ob '{{name}}' gelöscht wurde. Prüfen Sie die Serverliste, sobald der Daemon antwortet."
   },
   "server_settings": {
     "title": "Einstellungen",
@@ -397,7 +399,8 @@
     "dependency_unmet_message": "Das Modul für '{{name}}' benötigt die unten stehenden Versionen. Aktualisiere oder installiere und aktiviere die Erweiterung und starte dann erneut.",
     "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",
     "working_dir_in_use": "Der Server '{{instance}}' verwendet diesen Ordner bereits. Zwei Server in einem Ordner überschreiben gegenseitig Welt und Einstellungen. Wähle einen anderen Ordner.",
-    "no_command_path": "Dieser Server hat keine Konsole für Befehle. Starte ihn über Saba-chan, um Befehle zu senden."
+    "no_command_path": "Dieser Server hat keine Konsole für Befehle. Starte ihn über Saba-chan, um Befehle zu senden.",
+    "stdin_unconfirmed": "Es konnte nicht bestätigt werden, dass der Befehl gesendet wurde. Prüfen Sie die Konsole, bevor Sie es erneut versuchen."
   },
   "settings": {
     "save_failed_title": "Einstellungsspeicherung fehlgeschlagen",
@@ -1186,7 +1189,8 @@
     "extra_label": "Zusätzliche Argumente",
     "extra_placeholder": "z. B. -players=16 -useperfthreads",
     "unknown_args": "Argumente ohne passende Einstellung werden unverändert übergeben: {{args}}",
-    "invalid_format": "Ungültiges Format."
+    "invalid_format": "Ungültiges Format.",
+    "unchecked": "Die zusätzlichen Startargumente konnten nicht geprüft werden, daher wurde nichts gespeichert"
   },
   "activity": {
     "idle": "Klicken, um das Daemon-Konsolenprotokoll anzuzeigen",

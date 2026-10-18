@@ -268,7 +268,9 @@
     "console": "Console",
     "command": "Command",
     "click_to_stop": "Click to stop",
-    "click_to_start": "Click to start"
+    "click_to_start": "Click to start",
+    "delete_still_running": "'{{name}}' is still being deleted. Check the server list again in a moment.",
+    "delete_unconfirmed": "Couldn't confirm whether '{{name}}' was deleted. Check the server list once the daemon responds."
   },
   "server_settings": {
     "title": "Settings",
@@ -400,7 +402,8 @@
     "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again.",
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
     "working_dir_in_use": "Server '{{instance}}' already uses this folder. Two servers in one folder overwrite each other's world and settings. Pick another folder.",
-    "no_command_path": "This server has no console to send commands to. Start it from Saba-chan to send commands."
+    "no_command_path": "This server has no console to send commands to. Start it from Saba-chan to send commands.",
+    "stdin_unconfirmed": "Couldn't confirm the command was sent. Check the console before trying again."
   },
   "settings": {
     "save_failed_title": "Settings save failed",
@@ -1218,7 +1221,8 @@
     "extra_label": "Extra arguments",
     "extra_placeholder": "e.g. -players=16 -useperfthreads",
     "unknown_args": "Arguments without a matching setting are passed as is: {{args}}",
-    "invalid_format": "Invalid format."
+    "invalid_format": "Invalid format.",
+    "unchecked": "Couldn't check the extra launch arguments, so nothing was saved"
   },
   "activity": {
     "idle": "Click to view the daemon console log",

@@ -978,6 +978,33 @@ export function useServerActions({
         setModal(null);
         try {
             const result = await window.api.instanceDelete(server.id);
+            if (result.error_code === 'ETIMEDOUT') {
+                // 답이 늦었을 뿐 데몬은 계속 지우고 있을 수 있다: 목록에 남았는지로 판단한다
+                const list = await window.api.serverList().catch(() => null);
+                const checked = Array.isArray(list?.servers);
+                const gone = checked && !list.servers.some((s) => s.id === server.id);
+                setModal(
+                    !checked
+                        ? {
+                              type: 'failure',
+                              title: t('server_actions.delete_confirm_title'),
+                              message: t('server_actions.delete_unconfirmed', { name: server.name }),
+                          }
+                        : gone
+                          ? {
+                                type: 'success',
+                                title: t('command_modal.success'),
+                                message: t('server_actions.server_deleted', { name: server.name }),
+                            }
+                          : {
+                                type: 'notification',
+                                title: t('server_actions.delete_confirm_title'),
+                                message: t('server_actions.delete_still_running', { name: server.name }),
+                            },
+                );
+                fetchServers();
+                return;
+            }
             if (result.error) {
                 const errorMsg = translateError(result.error);
                 setModal({ type: 'failure', title: t('servers.delete_failed_title'), message: errorMsg });

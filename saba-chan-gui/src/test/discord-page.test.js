@@ -139,6 +139,23 @@ describe('DiscordPage', () => {
         await waitFor(() => expect(save).toHaveBeenCalled(), { timeout: 2000 });
     });
 
+    it('자동 저장이 실패하면 저장됨을 띄우지 않는다', async () => {
+        const save = vi.fn().mockResolvedValue(false);
+        await act(async () => render(<Harness save={save} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
+        await act(async () => fireEvent.click(nodeRow));
+        await act(async () => fireEvent.click(document.querySelectorAll('.segmented-item')[1]));
+        await waitFor(() => expect(document.querySelector('.dc-list-btn')).not.toBeNull());
+        await act(async () => fireEvent.click(document.querySelector('.dc-list-btn')));
+        await act(async () => fireEvent.click(document.querySelectorAll('.dc-radio-input')[1]));
+        const stop = [...document.querySelectorAll('.dc-cmd')].find((b) => b.textContent.includes('정지'));
+        await act(async () => fireEvent.click(stop));
+        await waitFor(() => expect(save).toHaveBeenCalled(), { timeout: 2000 });
+        await act(async () => {});
+        expect(document.querySelector('.dc-save-state')).toBeNull();
+    });
+
     it('서버 설정의 명령어 단어 링크는 그 서버를 쓰는 길드의 부르는 말 탭을 연다', async () => {
         window.api.guildInstances = vi.fn().mockResolvedValue([]);
         window.api.guildInstanceWordsSave = vi.fn();
