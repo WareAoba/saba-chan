@@ -322,7 +322,7 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 6. agent의 재시도 백오프는 3초에서 시작해 최대 60초다(`relay_agent.rs:22-25`).
 7. 알림 채널(I3): agent가 데몬 이벤트 버스 중 `instance.exit`(크래시·원인 모를 종료), `backup.done`, `update.available`, `schedule.warn`을 `POST /events {events:[{id, type, data}]}`로 올린다(노드 서명, 20건씩). 경로·콘솔 줄·오류 원문은 데몬이 뺀다. relay가 404면 10분 쉬고 다시 알아본다. relay는 노드당 분당 60건까지 받고(넘으면 429, agent는 백오프 뒤 다시 보낸다), 잠든 길드에는 보내지 않는다. 배정 종류 `알림`과 길드별 전달은 relay가 한다.
 
-**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}, allowedInstances?:{<guildId>:[instance id]}, permissions:{<guildId>:{defaultLevel, members}}, actions:[{id, kind, risk, surfaces, scope, title:{<locale>:…}, input}], actionsTruncated?, language?}`이고(`language`는 GUI 언어, 10자까지. 언어가 `auto`인 길드가 따른다)(`actions`는 디스코드·챗봇 표면의 액션만, 64개·32768바이트까지, 넘으면 `actionsTruncated:true`)(`allowedInstances`는 `bot.node_settings[guild].allowedInstances` 목록이 있는 길드만, 없으면 제한 없음. `permissions`는 `nodeSettings`에 있는 모든 길드(값이 없으면 `{defaultLevel:1, members:{}}`)이고, 릴레이는 이 값으로 자기 캐시의 데몬 행을 맞춘다), 서버 목록에서 `rcon_password`/`rest_password`는 뺀다(`relay_agent.rs:262-324`). 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
+**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}, allowedInstances?:{<guildId>:[instance id]}, permissions:{<guildId>:{defaultLevel, members}}, actions:[{id, kind, risk, surfaces, scope, title:{<locale>:…}, input}], actionsTruncated?, language?}`이고(`language`는 GUI 언어, 10자까지. 언어가 `auto`인 길드가 따른다)(`actions`는 디스코드·챗봇 표면의 액션만, 64개·32768바이트까지, 넘으면 `actionsTruncated:true`)(`allowedInstances`는 `bot.node_settings[guild].allowedInstances` 목록이 있는 길드만, 없으면 제한 없음. `permissions`는 `nodeSettings`에 있는 모든 길드(값이 없으면 `{defaultLevel:1, members:{}}`)이고, 릴레이는 이 값으로 자기 캐시의 데몬 행을 맞춘다), 서버 목록의 각 줄은 relay가 읽는 `{id, name, module, status}`만 싣는다(설정값·경로·비밀번호는 싣지 않는다, `relay_agent.rs` `relay_server_entry`). 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
 
 **(d) Sleep/Wake**: 슬래시 `/사바쨩 코코낸내`/`기상`이 메모리의 `_pausedHosts`/`_pausedGuilds` Set을 토글한다(`bot/index.ts:76-81,647-720`).
 
@@ -334,7 +334,7 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 | GET `/api/relay/host/:id/nodes` | GET `/api/hosts/:id/nodes` | HMAC | ✓ |
 | GET `/api/relay/node/:guild/members` | GET `/api/nodes/:g/discord-members`, 503이면 `/api/nodes/:g/members` | HMAC | ✓ (discord-members는 rate limit 5/min) |
 | POST `/api/relay/pair/initiate` | POST `/api/pair/initiate` | 없음 | ✓ |
-| GET `/api/relay/pair/:code/status` | GET `/api/pair/:code/status?secret=` | 없음 | ✓. 하위호환 query 방식이라 pollSecret이 nginx access log에 남는다. 헤더 방식으로 바꾸는 편이 낫다 |
+| GET `/api/relay/pair/:code/status` | GET `/api/pair/:code/status` (`X-Poll-Secret` 헤더) | 없음 | ✓. GUI가 데몬에 주는 `?secret=`을 데몬이 헤더로 옮겨 보낸다 |
 | GET `/api/relay/bot-invite` | GET `/api/bot-invite` | 없음 | ✗ git HEAD의 relay에는 이 라우트가 없다(`relay.rs:265-284`) |
 | GET `/api/relay/agent`, POST `.../agent/start`·`stop` | — (daemon 안의 relay agent 상태·제어) | — | — |
 
