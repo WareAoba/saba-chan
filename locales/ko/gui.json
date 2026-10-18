@@ -1223,5 +1223,13 @@
     "err_cli_not_found": "CLI 실행 파일을 찾지 못해 터미널로 열 수 없어요.",
     "err_not_found": "이 서버를 데몬에서 찾지 못했어요.",
     "err_generic": "터미널을 열지 못했어요."
+  },
+  "memory_limit": {
+    "title": "메모리 상한",
+    "desc": "서버와 그 하위 프로세스가 함께 쓸 수 있는 메모리를 제한해요. 넘으면 서버를 멈춰요.",
+    "label": "메모리 상한 (MB)",
+    "hint": "비우면 제한 없음. Java 서버는 -Xmx보다 1~2GB 크게 잡으세요. Windows에서만 적용돼요.",
+    "placeholder": "제한 없음",
+    "restart_note": "다시 시작하면 적용돼요."
   }
 }

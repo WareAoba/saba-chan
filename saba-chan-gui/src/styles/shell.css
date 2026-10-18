@@ -1319,6 +1319,10 @@ button.activity-line:hover {
 .restart-row.disabled {
     opacity: 0.5;
 }
+.memory-limit-input {
+    width: 120px;
+    text-align: right;
+}
 
 /* ════════════════════════════════════════════════════════════════
    디스코드 페이지: 왼쪽 메뉴(연결 · 디스코드 서버 · 봇) | 오른쪽 화면

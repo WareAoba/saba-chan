@@ -1193,5 +1193,13 @@
     "err_cli_not_found": "找不到 CLI 程序，无法打开终端。",
     "err_not_found": "守护进程中找不到此服务器。",
     "err_generic": "无法打开终端。"
+  },
+  "memory_limit": {
+    "title": "内存上限",
+    "desc": "限制服务器及其子进程合计可用的内存。超过时会停止服务器。",
+    "label": "内存上限 (MB)",
+    "hint": "留空表示不限制。Java 服务器请设为比 -Xmx 大 1~2GB。仅在 Windows 上生效。",
+    "placeholder": "不限制",
+    "restart_note": "重启后生效。"
   }
 }

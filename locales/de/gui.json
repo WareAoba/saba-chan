@@ -1193,5 +1193,13 @@
     "err_cli_not_found": "Das CLI-Programm wurde nicht gefunden, daher kann das Terminal nicht geöffnet werden.",
     "err_not_found": "Der Daemon hat diesen Server nicht gefunden.",
     "err_generic": "Das Terminal konnte nicht geöffnet werden."
+  },
+  "memory_limit": {
+    "title": "Speicherlimit",
+    "desc": "Begrenzt den Speicher, den der Server und seine Unterprozesse zusammen nutzen dürfen. Bei Überschreitung wird der Server gestoppt.",
+    "label": "Speicherlimit (MB)",
+    "hint": "Leer lassen für kein Limit. Bei Java-Servern 1–2 GB über -Xmx setzen. Gilt nur unter Windows.",
+    "placeholder": "Kein Limit",
+    "restart_note": "Gilt nach einem Neustart."
   }
 }

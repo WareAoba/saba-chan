@@ -1223,5 +1223,13 @@
     "err_cli_not_found": "Couldn't find the CLI program, so the terminal can't be opened.",
     "err_not_found": "The daemon couldn't find this server.",
     "err_generic": "Couldn't open the terminal."
+  },
+  "memory_limit": {
+    "title": "Memory limit",
+    "desc": "Limits the memory the server and its child processes can use together. The server is stopped if it goes over.",
+    "label": "Memory limit (MB)",
+    "hint": "Leave empty for no limit. For Java servers, set it 1–2 GB above -Xmx. Applies on Windows only.",
+    "placeholder": "No limit",
+    "restart_note": "Takes effect after a restart."
   }
 }

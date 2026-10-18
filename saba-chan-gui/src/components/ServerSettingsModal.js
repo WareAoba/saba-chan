@@ -170,21 +170,51 @@ function GeneralTab({
                         <small>{t('shell.restart_on_crash_hint')}</small>
                     </span>
                     <SabaToggle
-                        checked={settingsValues.auto_restart !== false}
+                        checked={String(settingsValues.auto_restart) !== 'false'}
                         onChange={(checked) => handleSettingChange('auto_restart', checked)}
                     />
                 </div>
-                <div className={clsx('restart-row', { disabled: settingsValues.auto_restart === false })}>
+                <div className={clsx('restart-row', { disabled: String(settingsValues.auto_restart) === 'false' })}>
                     <span>
                         <strong>{t('shell.restart_on_unknown')}</strong>
                         <small>{t('shell.restart_on_unknown_hint')}</small>
                     </span>
                     <SabaToggle
-                        checked={settingsValues.restart_on_unknown_exit === true}
-                        disabled={settingsValues.auto_restart === false}
+                        checked={String(settingsValues.restart_on_unknown_exit) === 'true'}
+                        disabled={String(settingsValues.auto_restart) === 'false'}
                         onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
                     />
                 </div>
+            </div>
+
+            {/* 램 상한 (데몬 인스턴스 memory_limit_mb, MiB). 비우면 제한 없음, 다음 시작부터 적용 */}
+            <div className="protocol-mode-section memory-limit-section">
+                <div className="protocol-mode-header">
+                    <span className="protocol-mode-title">
+                        <Icon name="monitor" size="sm" /> {t('memory_limit.title')}
+                    </span>
+                </div>
+                <p className="protocol-mode-description">{t('memory_limit.desc')}</p>
+                <div className="restart-row">
+                    <span>
+                        <strong>{t('memory_limit.label')}</strong>
+                        <small>{t('memory_limit.hint')}</small>
+                    </span>
+                    <input
+                        type="text"
+                        inputMode="numeric"
+                        className="input memory-limit-input"
+                        value={settingsValues.memory_limit_mb ?? ''}
+                        placeholder={t('memory_limit.placeholder')}
+                        aria-label={t('memory_limit.label')}
+                        onChange={(e) => handleSettingChange('memory_limit_mb', e.target.value)}
+                    />
+                </div>
+                {settingsServer.status === 'running' &&
+                    String(settingsValues.memory_limit_mb ?? '').trim() !==
+                        (settingsServer.memory_limit_mb == null ? '' : String(settingsServer.memory_limit_mb)) && (
+                        <p className="protocol-mode-description">{t('memory_limit.restart_note')}</p>
+                    )}
             </div>
 
             {/* Module settings fields grouped */}

@@ -25,6 +25,9 @@ const restartFlagsOf = (server) => ({
     restart_on_unknown_exit: asFlag(server?.module_settings?.restart_on_unknown_exit, false),
 });
 
+/** 램 상한 칸 값 (MiB, 비면 제한 없음): 데몬 인스턴스 최상위 memory_limit_mb */
+const memoryLimitOf = (server) => (server?.memory_limit_mb == null ? '' : String(server.memory_limit_mb));
+
 /** 문자열 칸 값으로 (없으면 null) */
 const fieldValue = (v) => (v === undefined || v === null ? null : String(v));
 
@@ -151,6 +154,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             }
 
             Object.assign(initial, restartFlagsOf(latestServer));
+            initial.memory_limit_mb = memoryLimitOf(latestServer);
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -168,6 +172,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                       }
                     : {}),
                 ...restartFlagsOf(latestServer),
+                memory_limit_mb: memoryLimitOf(latestServer),
             });
         }
 
@@ -472,9 +477,17 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 convertedSettings.server_version = settingsValues.server_version;
             }
 
+            // 램 상한: 바꿨을 때만 보낸다. 비우면 제한 없음(null), 형식 검사는 데몬이 한다 (invalid_format)
+            const memoryLimit = String(settingsValues.memory_limit_mb ?? '').trim();
+            if (settingsValues.memory_limit_mb !== undefined && memoryLimit !== memoryLimitOf(settingsServer)) {
+                convertedSettings.memory_limit_mb = memoryLimit === '' ? null : memoryLimit;
+            }
+
             // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)
+            // 토글은 handleSettingChange를 거쳐 'true'·'false' 글자로 올 수 있다
             for (const key of ['auto_restart', 'restart_on_unknown_exit']) {
-                if (typeof settingsValues[key] === 'boolean') convertedSettings[key] = settingsValues[key];
+                const flag = asFlag(settingsValues[key], null);
+                if (flag !== null) convertedSettings[key] = flag;
             }
 
             const protocols = module?.protocols || {};
