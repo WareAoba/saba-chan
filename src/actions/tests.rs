@@ -3,7 +3,8 @@ use crate::chat::permissions::Requester;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\nlabel = \"pw\"\n\n[[settings.fields]]\nname = \"java_path\"\ntype = \"file\"\nlabel = \"java\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\nlabel = \"motd\"\narg = \"-motd={value}\"\n\n[[settings.fields]]\nname = \"players\"\ntype = \"number\"\nlabel = \"players\"\narg = \"-players={value}\"\n";
+const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\nlabel = \"pw\"\n\n[[settings.fields]]\nname = \"java_path\"\ntype = \"file\"\nlabel = \"java\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\nlabel = \"motd\"\narg = \"-motd={value}\"\n\n[[settings.fields]]\nname = \"players\"\ntype = \"number\"\nlabel = \"players\"\narg = \"-players={value}\"\n\n[[queries]]\nname = \"players\"\nlabel = \"Players\"\nfunction = \"list_players\"\ninputs = [{ name = \"limit\", type = \"number\", min = 1, max = 10 }]\n";
+const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람" } } }"#;
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
     // 토큰은 한 번만 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
@@ -17,6 +18,8 @@ async fn server() -> (IPCServer, String, tempfile::TempDir) {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("module.toml"), MODULE).unwrap();
     std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+    std::fs::create_dir_all(dir.join("locales")).unwrap();
+    std::fs::write(dir.join("locales").join("ko.json"), MODULE_KO).unwrap();
     let instances = tmp.path().join("instances");
     let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
     sup.initialize().await.unwrap();
@@ -140,7 +143,7 @@ async fn inputs_are_checked_and_actions_run_through_the_real_routes() {
 
 #[test]
 fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
-    let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages());
+    let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
     assert!(!truncated);
     assert!(actions.len() <= HEARTBEAT_MAX_ACTIONS);
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
@@ -272,4 +275,46 @@ fn chatbot_console_hides_addresses_and_secret_looking_values() {
     assert_eq!(lines[2], "rcon password=*** token: ***");
     assert_eq!(lines[3], "key ***");
     assert_eq!(lines[4], "Done (12.3s)! For help, type \"help\"");
+}
+
+#[tokio::test]
+async fn module_queries_are_safe_read_actions_on_every_surface() {
+    let (state, id, tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
+    let action = "server.query:players";
+
+    // 인스턴스를 주면 모듈 locales 문구로 펼쳐진다 (없는 언어는 module.toml label)
+    let listed = list(&state, Some(Chatbot), Some(&id), "ko").await;
+    let q = listed["actions"].as_array().unwrap().iter().find(|a| a["id"] == action).cloned().unwrap();
+    assert_eq!((q["kind"].as_str(), q["risk"].as_str(), q["title"].as_str()), (Some("query"), Some("safe"), Some("접속자 목록")));
+    assert_eq!(q["surfaces"], json!(["gui", "cli", "discord", "chatbot"]));
+    assert_eq!(q["input"]["properties"]["limit"]["type"], "number");
+    let en = list(&state, None, Some(&id), "en").await;
+    assert_eq!(en["actions"].as_array().unwrap().iter().find(|a| a["id"] == action).unwrap()["title"], "Players");
+
+    // 챗봇·일반 사용자도 계획 없이 부를 수 있는 조회다
+    let planned = plan(&state, action, Some(&id), &json!({ "limit": 5 }), &relay("someone", true)).await.unwrap();
+    assert_eq!(planned["needsConfirm"], false);
+    // 입력은 선언대로
+    for bad in [json!({ "limit": 50 }), json!({ "limit": "x" }), json!({ "lmit": 5 })] {
+        assert_eq!(plan(&state, action, Some(&id), &bad, &gui()).await.unwrap_err().code, "invalid_input", "{}", bad);
+    }
+    assert_eq!(plan(&state, action, None, &json!({}), &gui()).await.unwrap_err().data["field"], "instance");
+    assert_eq!(query(&state, "server.query:nope", Some(&id), &json!({}), &relay("owner", false)).await.unwrap_err().code, "unknown_action");
+
+    // 라우트: 모르는 조회는 404, 입력 검사는 라우트도 한다
+    let resp = call(&state, "POST", &format!("/api/instance/{}/query/nope", id), None).await;
+    assert_eq!((resp.status.as_u16(), resp.body["error_code"].as_str()), (404, Some("unknown_query")));
+    let resp = call(&state, "POST", &format!("/api/instance/{}/query/players", id), Some(json!({ "args": { "limit": 99 } }))).await;
+    assert_eq!((resp.status.as_u16(), resp.body["error_code"].as_str()), (400, Some("invalid_argument")));
+
+    // heartbeat: 고정 액션 뒤에 모듈 조회가 모듈 이름과 함께 실린다
+    let modules = vec![crate::supervisor::module_loader::load_module_dir(&tmp.path().join("modules").join("plain")).unwrap()];
+    let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
+    assert!(!truncated);
+    let q = actions.iter().find(|a| a["id"] == action).unwrap();
+    assert_eq!((q["module"].as_str(), q["kind"].as_str()), (Some("plain"), Some("query")));
+    assert_eq!((q["title"]["ko"].as_str(), q["title"]["en"].as_str()), (Some("접속자 목록"), Some("Players")));
+    assert_eq!(q["description"]["ko"], "지금 접속한 사람");
+    assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
 }

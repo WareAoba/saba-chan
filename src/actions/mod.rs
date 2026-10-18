@@ -1,7 +1,8 @@
 //! 데몬 액션 카탈로그 (P2): 데몬이 할 수 있는 일을 한 곳에 선언하고 모든 표면(GUI·CLI·디스코드·챗봇)이 읽는다
 //!
 //! 액션은 기존 HTTP 라우트를 데몬 안에서 부르는 얇은 층이다 (`IPCServer::router`를 직접 부른다. 새 로직은 없다).
-//! - 목록: [`list`]. 인스턴스를 주면 모듈·익스텐션 명령이 `server.command:<이름>`으로 펼쳐진다.
+//! - 목록: [`list`]. 인스턴스를 주면 모듈·익스텐션 명령이 `server.command:<이름>`으로, 모듈 `[[queries]]`가
+//!   `server.query:<이름>`(읽기 전용, 모든 표면)으로 펼쳐진다.
 //! - 계획: [`plan`]은 입력을 검증하고 요약만 만든다(부작용 없음). planId는 요청자·길드·via에 묶이고 10분 산다.
 //! - 실행: [`run`]은 밑 라우트를 불러 `{success, result}`로 감싼다.
 //! - 표면: `surfaces`는 코드 상수다. 챗봇 경로는 여기 없는 액션을 레벨 판정 전에 거부한다(설정으로 풀 수 없다).
@@ -10,6 +11,7 @@
 use crate::chat::permissions::{NodePermissions, Requester};
 use crate::ipc::internal::{into_internal, InternalResponse};
 use crate::ipc::IPCServer;
+use crate::supervisor::module_loader::{LoadedModule, ModuleQuery};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -145,6 +147,9 @@ const GUILD_FIELD: &str = "guild";
 
 /// 모듈·익스텐션 명령 액션의 접두어 (`server.command:<이름>`)
 pub const COMMAND_PREFIX: &str = "server.command:";
+
+/// 모듈 조회 액션의 접두어 (`server.query:<이름>`, module.toml `[[queries]]`)
+pub const QUERY_PREFIX: &str = "server.query:";
 
 /// 챗봇에 넣지 않는 설정 키 (비밀값). 모듈 설정의 password 형식 필드도 뺀다
 const SECRET_KEYS: &[&str] = &["rest_password", "rcon_password", "password", "token", "secret"];
@@ -305,6 +310,47 @@ fn input_type(input: &Value) -> &'static str {
     }
 }
 
+/// 모듈 locales 한 언어 (`<모듈>/locales/<lang>.json`). 없거나 못 읽으면 Null
+fn module_locale(module: &LoadedModule, lang: &str) -> Value {
+    let path = std::path::Path::new(&module.path).join("locales").join(format!("{}.json", lang));
+    std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null)
+}
+
+/// 조회 문구: 모듈 locales `queries.<name>.<key>` → module.toml 값
+fn query_text(locale: &Value, query: &ModuleQuery, key: &str) -> Option<String> {
+    let declared = if key == "label" { &query.label } else { &query.description };
+    locale.pointer(&format!("/queries/{}/{}", query.name, key)).and_then(Value::as_str).map(str::to_string).or_else(|| declared.clone())
+}
+
+fn query_input_schema(query: &ModuleQuery) -> Value {
+    let props: Map<String, Value> = query.inputs.iter().map(|i| (i.name.clone(), json!({ "type": if i.input_type.as_deref() == Some("number") { "number" } else { "string" } }))).collect();
+    let required: Vec<&str> = query.inputs.iter().filter(|i| i.required == Some(true)).map(|i| i.name.as_str()).collect();
+    json!({ "type": "object", "properties": props, "required": required })
+}
+
+/// 모듈 조회 한 개 → 액션 (`locale`은 그 모듈의 locales 한 언어)
+fn query_view(query: &ModuleQuery, locale: &Value) -> Value {
+    json!({
+        "id": format!("{}{}", QUERY_PREFIX, query.name),
+        "kind": "query",
+        "risk": "safe",
+        "surfaces": ALL.iter().map(|s| s.name()).collect::<Vec<_>>(),
+        "scope": "instance",
+        "input": query_input_schema(query),
+        "titleKey": Value::Null,
+        "title": query_text(locale, query, "label").unwrap_or_else(|| query.name.clone()),
+        "description": query_text(locale, query, "description"),
+        "route": "POST /api/instance/:id/query/:name",
+    })
+}
+
+/// 인스턴스의 모듈
+async fn instance_module(server: &IPCServer, instance: &str) -> Option<LoadedModule> {
+    let sup = server.supervisor.read().await;
+    let module = sup.instance_store.get(instance)?.module_name.clone();
+    sup.module_loader.get_module(&module).ok()
+}
+
 /// `GET /api/actions` 본문
 pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option<&str>, locale: &str) -> Value {
     let cat = catalog(locale);
@@ -315,6 +361,11 @@ pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option
         .map(|d| view(d, &cat))
         .collect();
     if let Some(id) = instance {
+        // 조회는 모든 표면에 열려 있다
+        if let Some(module) = instance_module(server, id).await {
+            let locale = module_locale(&module, &crate::chat::i18n::normalize_language(locale));
+            actions.extend(module.metadata.queries.iter().map(|q| query_view(q, &locale)));
+        }
         let resp = call(server, "GET", &format!("/api/instance/{}/commands", seg(id)), None).await;
         for cmd in resp.body.get("commands").and_then(Value::as_array).into_iter().flatten() {
             if let Some(v) = command_view(cmd) {
@@ -328,23 +379,25 @@ pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option
     json!({ "actions": actions, "locale": crate::chat::i18n::normalize_language(locale) })
 }
 
-/// heartbeat `metadata.actions` (디스코드·챗봇 표면만, 인스턴스 펼침 없이). 상한: 64개, 32768바이트
+/// heartbeat `metadata.actions` (디스코드·챗봇 표면만, 인스턴스 펼침 없이). 상한: 64개, 32768바이트.
+/// 고정 액션 뒤에 모듈 조회(`server.query:<이름>`, `module` 필드로 어느 모듈의 것인지)를 모듈·이름 순으로 붙인다
 pub const HEARTBEAT_MAX_ACTIONS: usize = 64;
 pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 
-pub fn heartbeat_actions(locales: &[&str]) -> (Vec<Value>, bool) {
+pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Value>, bool) {
     let cats: Vec<(&str, crate::chat::i18n::Catalog)> = locales.iter().map(|l| (*l, catalog(l))).collect();
     let mut defs: Vec<&Def> = ACTIONS.iter().filter(|d| d.surfaces.contains(&Discord) || d.surfaces.contains(&Chatbot)).collect();
     defs.sort_by_key(|d| d.id);
     let mut out = Vec::new();
     let mut size = 2usize;
     let mut truncated = false;
+    let mut items = Vec::new();
     for d in defs {
         let title: Map<String, Value> = cats
             .iter()
             .map(|(l, c)| (l.to_string(), json!(translated(c, &format!("actions.{}.title", d.id)).unwrap_or_else(|| d.id.to_string()))))
             .collect();
-        let item = json!({
+        items.push(json!({
             "id": d.id,
             "kind": d.kind.name(),
             "risk": d.risk,
@@ -352,7 +405,40 @@ pub fn heartbeat_actions(locales: &[&str]) -> (Vec<Value>, bool) {
             "scope": if d.instance { "instance" } else { "none" },
             "title": title,
             "input": schema(d),
-        });
+        }));
+    }
+    let mut modules: Vec<&LoadedModule> = modules.iter().filter(|m| !m.metadata.queries.is_empty()).collect();
+    modules.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
+    for m in modules {
+        let module_locales: Vec<(&str, Value)> = locales.iter().map(|l| (*l, module_locale(m, l))).collect();
+        let mut queries: Vec<&ModuleQuery> = m.metadata.queries.iter().collect();
+        queries.sort_by(|a, b| a.name.cmp(&b.name));
+        for q in queries {
+            let text = |key: &str| -> Map<String, Value> {
+                module_locales.iter().filter_map(|(l, loc)| Some((l.to_string(), json!(query_text(loc, q, key)?)))).collect()
+            };
+            let mut title = text("label");
+            for l in locales {
+                title.entry(l.to_string()).or_insert_with(|| json!(q.name));
+            }
+            let mut item = json!({
+                "id": format!("{}{}", QUERY_PREFIX, q.name),
+                "kind": "query",
+                "risk": "safe",
+                "surfaces": ["discord", "chatbot"],
+                "scope": "instance",
+                "module": m.metadata.name,
+                "title": title,
+                "input": query_input_schema(q),
+            });
+            let description = text("description");
+            if !description.is_empty() {
+                item["description"] = Value::Object(description);
+            }
+            items.push(item);
+        }
+    }
+    for item in items {
         let len = item.to_string().len() + 1;
         if out.len() >= HEARTBEAT_MAX_ACTIONS || size + len > HEARTBEAT_MAX_BYTES {
             truncated = true;
@@ -469,6 +555,32 @@ async fn resolve(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
         Value::Object(m) => m.clone(),
         _ => return Err(bad_input("input", "must be an object")),
     };
+    if let Some(name) = id.strip_prefix(QUERY_PREFIX) {
+        let Some(instance) = instance else { return Err(bad_input("instance", "required")) };
+        if server.supervisor.read().await.instance_store.get(instance).is_none() {
+            return Err(ActionError::new(404, "not_found", format!("Instance not found: {}", instance)));
+        }
+        let query = instance_module(server, instance).await.and_then(|m| m.metadata.queries.into_iter().find(|q| q.name == name));
+        let Some(query) = query else { return Err(ActionError::new(404, "unknown_action", format!("Unknown action: {}", id))) };
+        if let Some(key) = input.keys().find(|k| !query.inputs.iter().any(|i| &i.name == *k)) {
+            return Err(bad_input(key, "unknown field"));
+        }
+        let args = crate::commands::bind(&query.inputs, &crate::commands::Args::Named(input.clone()))
+            .map_err(|e| bad_input(e.field.as_deref().unwrap_or("input"), &e.message))?;
+        return Ok(Resolved {
+            id: id.to_string(),
+            kind: Kind::Query,
+            risk: "safe".into(),
+            surfaces: ALL.to_vec(),
+            discord_level: None,
+            method: "POST",
+            uri: format!("/api/instance/{}/query/{}", seg(instance), seg(name)),
+            body: Some(json!({ "args": Value::Object(args) })),
+            instance: Some(instance.to_string()),
+            command: None,
+            input,
+        });
+    }
     if let Some(name) = id.strip_prefix(COMMAND_PREFIX) {
         let Some(instance) = instance else { return Err(bad_input("instance", "required")) };
         let resp = call(server, "GET", &format!("/api/instance/{}/commands", seg(instance)), None).await;
@@ -769,7 +881,8 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
     };
     let resp = crate::audit::with_origin(caller.origin.clone(), call_as(server, r.method, &r.uri, r.body.clone(), Some(caller.origin.clone()))).await;
     let mut result = resp.body;
-    if r.id == "server.console.tail" && caller.surface == Chatbot {
+    // 콘솔과 모듈 조회 결과(접속자 목록 등)는 챗봇에 IP·비밀처럼 보이는 값을 가려 보낸다
+    if (r.id == "server.console.tail" || r.id.starts_with(QUERY_PREFIX)) && caller.surface == Chatbot {
         mask_console(&mut result);
     }
     if caller.remote.is_some() {
@@ -811,9 +924,12 @@ async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: boo
 
 /// 읽기 전용 조회 (릴레이 `query`): `kind=query`인 액션만 계획 없이
 pub async fn query(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller) -> Result<Value, ActionError> {
-    let is_query = match id.strip_prefix(COMMAND_PREFIX) {
-        Some(_) => false,
-        None => find(id).is_some_and(|d| d.kind == Kind::Query),
+    let is_query = if id.starts_with(QUERY_PREFIX) {
+        true
+    } else if id.starts_with(COMMAND_PREFIX) {
+        false
+    } else {
+        find(id).is_some_and(|d| d.kind == Kind::Query)
     };
     if !is_query {
         return Err(ActionError::new(400, "not_a_query", format!("'{}' is not a read-only action", id)));
