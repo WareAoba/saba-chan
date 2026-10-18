@@ -670,7 +670,7 @@ impl UpdateManager {
         for (key, rc) in &to_download {
             let dest = self.staging_dir.join(&rc.filename);
             tracing::info!("[Updater] Downloading {}", key);
-            download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), None).await?;
+            download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), rc.size_bytes, None).await?;
             tracing::info!("[Updater] Downloaded {}", rc.filename);
             downloaded.push(rc.filename.clone());
         }
@@ -729,6 +729,7 @@ impl UpdateManager {
             &rc.url,
             &dest,
             Some(&rc.sha256),
+            rc.size_bytes,
             Some(&self.download_progress),
         )
         .await;
