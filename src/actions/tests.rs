@@ -318,3 +318,163 @@ async fn module_queries_are_safe_read_actions_on_every_surface() {
     assert_eq!(q["description"]["ko"], "지금 접속한 사람");
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
 }
+
+#[tokio::test]
+async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
+    let (state, _id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2, "allowedInstances": ["other"] })).await;
+    let steps = json!([
+        { "id": "instance.create", "input": { "name": "new-srv", "module_name": "plain" } },
+        { "id": "instance.settings.set", "instance": "@1", "input": { "players": 6 } },
+    ]);
+    let owner_bot = relay("owner", true);
+    let planned = plan_steps(&state, &steps, &owner_bot).await.unwrap();
+    assert_eq!((planned["actionId"].as_str(), planned["needsConfirm"].as_bool()), (Some(steps::PLAN_ID), Some(true)));
+    let summary = planned["summary"].to_string();
+    assert!(summary.contains("1. ") && summary.contains("2. ") && summary.contains("new-srv"), "{}", summary);
+
+    // 새 서버를 쓰는 단계도 원격 검사를 그 모듈로 한다
+    let sneaky = json!([steps[0].clone(), { "id": "instance.settings.set", "instance": "@1", "input": { "java_path": "x" } }]);
+    let err = plan_steps(&state, &sneaky, &owner_bot).await.unwrap_err();
+    assert_eq!((err.code, err.data["field"].as_str(), err.data["step"].as_i64()), ("invalid_input", Some("steps[1].java_path"), Some(2)));
+    // 앞의 생성 단계만 가리킬 수 있고, 이름으로 찾는 액션은 안 된다
+    let wrong = json!([{ "id": "server.start", "instance": "@1", "input": {} }]);
+    assert_eq!(plan_steps(&state, &wrong, &owner_bot).await.unwrap_err().data["field"], "steps[0].instance");
+    let by_name = json!([steps[0].clone(), { "id": "server.status", "instance": "@1", "input": {} }]);
+    assert_eq!(plan_steps(&state, &by_name, &owner_bot).await.unwrap_err().data["field"], "steps[1].id");
+
+    // 다른 사람은 실행하지 못하고, 요청자가 누르면 순서대로 한 번에
+    let plan_id = planned["planId"].as_str().unwrap();
+    assert_eq!(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("someone", false)).await.unwrap_err().code, "plan_not_yours");
+    let done = run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("owner", false)).await.unwrap();
+    assert_eq!(done["success"], true, "{}", done);
+    let new_id = done["steps"][0]["instance"].as_str().unwrap().to_string();
+    assert_eq!(done["steps"][1]["status"], "done");
+    // 만든 길드의 허용 목록에 들어가 바로 쓸 수 있다
+    assert!(query(&state, "server.status", Some(&new_id), &json!({}), &relay("owner", false)).await.is_ok());
+    let made = state.supervisor.read().await.instance_store.get(&new_id).cloned().unwrap();
+    assert_eq!(made.module_settings.get("players"), Some(&json!(6)));
+}
+
+#[tokio::test]
+async fn a_failed_step_stops_the_plan_and_the_rest_is_skipped() {
+    let (state, _id, _tmp) = server().await;
+    let steps = json!([
+        { "id": "instance.create", "input": { "name": "srv2", "module_name": "plain" } },
+        { "id": "server.start", "instance": "@1", "input": {} },
+        { "id": "backup.create", "instance": "@1", "input": {} },
+    ]);
+    let planned = plan_steps(&state, &steps, &gui()).await.unwrap();
+    // 빈 lifecycle.py라 시작이 실패한다
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap();
+    assert_eq!((done["success"].as_bool(), done["stoppedAt"].as_i64()), (Some(false), Some(2)), "{}", done);
+    let statuses: Vec<&str> = done["steps"].as_array().unwrap().iter().map(|s| s["status"].as_str().unwrap()).collect();
+    assert_eq!(statuses, ["done", "failed", "skipped"]);
+    // 로컬은 오류 원문도 보인다
+    assert!(done["steps"][1]["error"].is_string());
+
+}
+
+#[tokio::test]
+async fn remote_settings_show_the_old_value_and_can_be_undone() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
+    run(&state, "instance.settings.set", Some(&id), &json!({ "players": 2 }), None, &gui()).await.unwrap();
+    let owner_bot = relay("owner", true);
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &owner_bot).await.unwrap();
+    let row = planned["summary"].as_array().unwrap().iter().find(|r| r["labelKey"] == "actions.field.players").cloned().unwrap();
+    assert_eq!((row["before"].clone(), row["value"].clone()), (json!(2), json!(4)));
+
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &relay("owner", false)).await.unwrap();
+    let players = |state: &IPCServer| {
+        let state = state.clone();
+        let id = id.clone();
+        async move { state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings.get("players").cloned() }
+    };
+    assert_eq!(players(&state).await, Some(json!(4)));
+    // 되돌리기는 같은 요청자만, 한 번
+    let undo = done["undoPlanId"].as_str().unwrap();
+    assert_eq!(run(&state, "", None, &Value::Null, Some(undo), &relay("admin", false)).await.unwrap_err().code, "plan_not_yours");
+    assert_eq!(run(&state, "", None, &Value::Null, Some(undo), &relay("owner", false)).await.unwrap()["success"], true);
+    assert_eq!(players(&state).await, Some(json!(2)));
+    // GUI·CLI는 되돌리기 계획을 만들지 않는다 (자기 화면이 있다)
+    assert!(run(&state, "instance.settings.set", Some(&id), &json!({ "players": 3 }), None, &gui()).await.unwrap().get("undoPlanId").is_none());
+}
+
+#[tokio::test]
+async fn plan_summaries_never_show_stored_or_new_secrets() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
+    run(&state, "instance.settings.set", Some(&id), &json!({ "players": 2 }), None, &gui()).await.unwrap();
+    assert_eq!(run(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "OLD-PW" }), None, &gui()).await.unwrap()["success"], true);
+    let row = |planned: &Value, key: &str| planned["summary"].as_array().unwrap().iter().find(|r| r["labelKey"] == format!("actions.field.{}", key)).cloned().unwrap();
+    // 로컬도 요약에는 가린 값만
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "NEW-PW" }), &gui()).await.unwrap();
+    assert_eq!((row(&planned, "rest_password")["before"].clone(), row(&planned, "rest_password")["value"].clone()), (json!("***"), json!("***")));
+    // 묶음 값의 이전 값은 바꾸는 칸만
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "module_settings": { "players": 4 } }), &gui()).await.unwrap();
+    assert_eq!(row(&planned, "module_settings")["before"], json!({ "players": 2 }));
+    assert!(!planned.to_string().contains("OLD-"), "{planned}");
+    // 원격은 묶음 값을 받지 않는다
+    let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "module_settings": { "players": 4 } }), &relay("owner", true)).await.unwrap_err();
+    assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("module_settings")));
+}
+
+#[tokio::test]
+async fn remote_admin_runs_are_limited_per_guild_and_hour() {
+    let (state, id, _tmp) = server().await;
+    state
+        .config_store
+        .update_node_settings("limited", |n| {
+            *n = json!({ "ownerDiscordId": "owner", "adminRunsPerHour": 1 }).as_object().cloned().unwrap();
+            ((), true)
+        })
+        .await
+        .unwrap();
+    let who = Requester { guild_id: Some("limited".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: false };
+    let owner = Caller { surface: Discord, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
+    let input = json!({ "guild": "limited", "sleeping": false });
+    assert!(run(&state, "discord.settings.set", None, &input, None, &owner).await.is_ok());
+    let err = run(&state, "discord.settings.set", None, &input, None, &owner).await.unwrap_err();
+    assert_eq!((err.code, err.data["args"]["perHour"].as_i64()), ("rate_limited", Some(1)));
+    // 읽기와 로컬은 세지 않는다
+    assert!(query(&state, "server.status", Some(&id), &json!({}), &owner).await.is_ok());
+    assert!(run(&state, "discord.settings.set", None, &input, None, &gui()).await.is_ok());
+}
+
+#[tokio::test]
+async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let input = json!({ "enabled": true, "triggerWords": ["사바"] });
+    let planned = plan(&state, "chatbot.settings.set", None, &input, &relay("owner", false)).await.unwrap();
+    assert_eq!(planned["needsConfirm"], false);
+    assert_eq!(plan(&state, "chatbot.settings.set", None, &input, &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert_eq!(plan(&state, "chatbot.settings.set", None, &input, &relay("owner", true)).await.unwrap_err().code, "action_not_allowed");
+    // 키는 액션으로 다루지 않는다
+    let key = json!({ "apiKey": "sk-x" });
+    assert_eq!(plan(&state, "chatbot.settings.set", None, &key, &relay("owner", false)).await.unwrap_err().code, "invalid_input");
+
+    let local = json!({ "guild": "g", "confirmCommands": false });
+    assert_eq!(run(&state, "chatbot.settings.set", None, &local, None, &gui()).await.unwrap()["success"], true);
+    let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
+    assert_eq!((read["result"]["settings"]["confirmCommands"].as_bool(), read["result"]["settings"]["sessionSeconds"].as_i64()), (Some(false), Some(180)));
+    // null은 그 길드의 값을 지워 기본값으로 되돌린다
+    run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmCommands": null }), None, &gui()).await.unwrap();
+    let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
+    assert_ne!(read["result"]["settings"]["confirmCommands"].as_bool(), Some(false));
+    // 메모·호출어도 소유자만 읽는다
+    assert_eq!(plan(&state, "chatbot.settings.get", None, &json!({}), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+}
+
+#[tokio::test]
+async fn every_action_says_how_to_do_it_from_the_cli() {
+    let (state, id, _tmp) = server().await;
+    let listed = list(&state, None, None, "en").await;
+    let create = listed["actions"].as_array().unwrap().iter().find(|a| a["id"] == "instance.create").cloned().unwrap();
+    assert_eq!(create["cli"], "saba-chan-cli do instance.create name=<name> module_name=<module_name>");
+    let per_server = list(&state, None, Some(&id), "en").await;
+    let restore = per_server["actions"].as_array().unwrap().iter().find(|a| a["id"] == "backup.restore").cloned().unwrap();
+    assert_eq!(restore["cli"], "saba-chan-cli do backup.restore --server <server> name=<name>");
+    assert!(per_server["actions"].as_array().unwrap().iter().all(|a| a["cli"].as_str().is_some_and(|c| c.starts_with("saba-chan-cli do "))));
+}

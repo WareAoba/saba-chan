@@ -56,6 +56,45 @@
     "start": "Iniciando...",
     "modules": "Preparando módulos...",
     "instances": "Preparando servidores...",
-    "ready": "Listo"
+    "ready": "Listo",
+    "ui_loaded": "Interfaz lista"
+  },
+  "tray": {
+    "tooltip": "Saba-chan - Gestor de servidores de juegos",
+    "open_window": "🖥️ Abrir ventana",
+    "open_terminal": "💻 Abrir terminal",
+    "daemon_running": "🟢 Daemon en ejecución",
+    "daemon_stopped": "⚪ Daemon detenido",
+    "stop_daemon": "🛑 Detener daemon",
+    "start_daemon": "▶️ Iniciar daemon",
+    "quit_interface": "🔌 Salir solo de la interfaz",
+    "quit_all": "❌ Salir por completo"
+  },
+  "updates": {
+    "notification_title": "Saba-chan — Actualizaciones",
+    "notification_body": "{{count}} actualizaciones: {{names}}",
+    "completed": "¡Actualización completada!"
+  },
+  "errors": {
+    "invalid_input": "Solicitud no válida. Revisa los datos",
+    "instance_name_taken": "Ya existe un servidor con ese nombre",
+    "internal": "error interno",
+    "create_error": "No se pudo crear el servidor: {{error}}",
+    "create_http": "No se pudo crear el servidor (HTTP {{status}}): {{error}}",
+    "instance_not_found": "Servidor no encontrado",
+    "instance_running": "No se puede eliminar un servidor en ejecución. Detenlo primero",
+    "delete_error": "No se pudo eliminar el servidor: {{error}}",
+    "delete_http": "No se pudo eliminar el servidor (HTTP {{status}}): {{error}}",
+    "reorder_failed": "No se pudo reordenar: {{error}}",
+    "settings_invalid": "Valor de ajuste no válido: {{error}}",
+    "settings_error": "No se pudieron guardar los ajustes: {{error}}",
+    "settings_http": "No se pudieron guardar los ajustes (HTTP {{status}}): {{error}}",
+    "http": "Error (HTTP {{status}})",
+    "command_failed": "No se pudo ejecutar el comando: {{error}}",
+    "no_log_file": "No hay archivo de registro",
+    "url_missing": "No se indicó la URL",
+    "url_not_web": "Solo se pueden abrir direcciones http(s)",
+    "path_missing": "No se indicó la ruta",
+    "no_log_folder": "No hay carpeta de registros"
   }
 }

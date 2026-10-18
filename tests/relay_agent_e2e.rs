@@ -162,11 +162,19 @@ async fn agent_round_trips_a_relay_command() {
     let en: Value = serde_json::from_str(include_str!("../locales/en/bot.json")).unwrap();
     assert_eq!(body["data"]["text"], en["list"]["empty"], "{}", body);
 
+    // 하트비트는 명령 폴링과 따로 돈다 (서버 CPU·RAM을 재느라 결과보다 늦게 올 수 있다)
+    for _ in 0..100 {
+        if !relay_state.lock().unwrap().heartbeats.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     {
         let s = relay_state.lock().unwrap();
         assert_eq!(s.bad_signatures, 0);
         let hb = s.heartbeats.first().expect("no heartbeat");
         assert_eq!(hb["metadata"]["botConfig"]["prefix"], "!saba");
+        assert!(hb["metadata"]["onboarding"]["steps"].is_array(), "the Discord status view shows the same next step");
         assert!(hb["agentVersion"].is_string());
     }
 

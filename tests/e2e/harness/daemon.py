@@ -160,7 +160,15 @@ class Daemon:
                 return inst
         raise E2EError(f"인스턴스 없음: {iid}")
 
-    def import_server(self, name: str, folder: Path, module: str = "minecraft", **extra) -> str:
+    def agreement_ids(self, module: str) -> list[str]:
+        """모듈이 선언한 약관(module.toml [[agreements]]) id"""
+        meta = self.api.ok("GET", f"/api/module/{module}").get("metadata") or {}
+        return [a["id"] for a in meta.get("agreements") or []]
+
+    def import_server(self, name: str, folder: Path, module: str = "minecraft", agree: bool = True, **extra) -> str:
+        """기존 폴더를 가져온다. agree면 모듈 약관에 이 PC에서 동의한 것으로 만든다 (사람이 GUI·CLI에서 체크하는 대신)."""
+        if agree and "accept_agreements" not in extra:
+            extra["accept_agreements"] = self.agreement_ids(module)
         body = {"name": name, "module_name": module, "migration_source": str(folder), **extra}
         data = self.api.ok("POST", "/api/instances", body)
         return data["id"]

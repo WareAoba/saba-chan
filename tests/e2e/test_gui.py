@@ -53,6 +53,8 @@ def labels(lang: str = "ko") -> dict:
         "failed_hint": gui["loading"].get("failed_hint", ""),
         "retry": gui["loading"].get("retry", ""),
         "continue": gui["loading"].get("continue", ""),
+        "agreement_title": gui.get("agreements", {}).get("start_title", ""),
+        "accept_and_start": gui.get("agreements", {}).get("accept_and_start", ""),
     }
 
 
@@ -158,3 +160,18 @@ def test_gui_stops_on_daemon_start_failure_and_offers_retry(sandbox, daemon_fact
     daemon = daemon_factory(start=False)
     run_gui(daemon, renderer, "daemonFailed", timeout=300, l=labels("ko"))
     assert not daemon.alive()
+
+
+def test_gui_asks_for_agreement_before_first_start(sandbox, daemon_factory, fake_server, renderer):
+    """EULA에 동의하지 않은 서버를 켜면 GUI가 약관 창을 띄우고, 사람이 체크해야 켠다 (GUI #77, 데몬 #81)."""
+    if not labels("ko")["agreement_title"]:
+        pytest.skip("이 GUI에는 약관 동의 창이 없음")
+    sandbox.write_config({"gui": {"language": "ko"}})
+    daemon = daemon_factory()
+    folder, _ = fake_server("mc1", eula=False)
+    iid = daemon.import_server("mc1", folder, module_settings={"ram": "256M"}, agree=False)
+    run_gui(daemon, renderer, "agreeAndStart", serverName="mc1", l=labels("ko"))
+    assert daemon.server_status(iid) == "running"
+    assert "eula=true" in (folder / "eula.txt").read_text()
+    eula = next(a for a in daemon.api.ok("GET", f"/api/instance/{iid}")["agreements"] if a["id"] == "eula")
+    assert eula["accepted"], eula

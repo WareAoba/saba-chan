@@ -59,7 +59,18 @@
     "invite": "Пригласите бота на свой сервер Discord по этой ссылке:",
     "no_server_aliases": "Имена серверов не заданы. Пример: saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "Теперь в чате {{name}} можно называть: {{aliases}}",
-    "server_alias_cleared": "Имена {{name}} для чата удалены."
+    "server_alias_cleared": "Имена {{name}} для чата удалены.",
+    "allow_all": "Этот сервер Discord видит все серверы этого ПК.",
+    "allow_none": "Нет открытых серверов.",
+    "allow_bad_node": "Настройки {{guild}} — не объект. Проверьте через saba-chan-cli bot config.",
+    "allow_all_saved": "{{guild}} теперь видит все серверы.",
+    "allow_saved": "{{guild}} теперь видит только: {{servers}}",
+    "no_words": "Слов для команд пока нет. Пример: saba-chan-cli bot word minecraft start старт",
+    "words_set": "В чате {{module}} {{command}} теперь можно вызвать так: {{words}}",
+    "words_cleared": "Слова чата для {{module}} {{command}} удалены.",
+    "link_accepted": "{{guild}} подключён к этому ПК.",
+    "link_declined": "Запрос на подключение отклонён.",
+    "pair_gui_hint": "Подключение к Discord также видно на экране Discord в GUI."
   },
   "col": {
     "aliases": "Псевдонимы",
@@ -308,6 +319,7 @@
     },
     "must_be_one_of": "{{key}} должно быть одним из: {{options}}",
     "restart_hint": "Перезапустите {{name}}, чтобы применить: saba-chan-cli restart {{name}}",
+    "sync_failed": "Сохранено, но не удалось записать файл настроек игры: {{error}}",
     "unknown_key": "{{key}} — новый ключ."
   },
   "shell": {

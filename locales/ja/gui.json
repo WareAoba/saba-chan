@@ -1146,6 +1146,8 @@
     "action_restart": "再起動",
     "action_command": "コマンド",
     "action_stdin": "コンソール入力",
+    "action_backup": "バックアップ",
+    "skipped_stopped": "スキップ (サーバー停止中)",
     "source_gui": "アプリ",
     "source_cli": "CLI",
     "source_api": "API",

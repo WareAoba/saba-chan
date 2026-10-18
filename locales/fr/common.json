@@ -56,6 +56,45 @@
     "start": "Démarrage...",
     "modules": "Préparation des modules...",
     "instances": "Préparation des serveurs...",
-    "ready": "Prêt"
+    "ready": "Prêt",
+    "ui_loaded": "Interface prête"
+  },
+  "tray": {
+    "tooltip": "Saba-chan - Gestion de serveurs de jeu",
+    "open_window": "🖥️ Ouvrir la fenêtre",
+    "open_terminal": "💻 Ouvrir le terminal",
+    "daemon_running": "🟢 Démon en cours d'exécution",
+    "daemon_stopped": "⚪ Démon arrêté",
+    "stop_daemon": "🛑 Arrêter le démon",
+    "start_daemon": "▶️ Démarrer le démon",
+    "quit_interface": "🔌 Quitter l'interface seulement",
+    "quit_all": "❌ Quitter complètement"
+  },
+  "updates": {
+    "notification_title": "Saba-chan — Mises à jour",
+    "notification_body": "{{count}} mises à jour : {{names}}",
+    "completed": "Mise à jour terminée !"
+  },
+  "errors": {
+    "invalid_input": "Requête invalide. Vérifiez la saisie",
+    "instance_name_taken": "Un serveur porte déjà ce nom",
+    "internal": "erreur interne",
+    "create_error": "Impossible de créer le serveur : {{error}}",
+    "create_http": "Impossible de créer le serveur (HTTP {{status}}) : {{error}}",
+    "instance_not_found": "Serveur introuvable",
+    "instance_running": "Impossible de supprimer un serveur en cours d'exécution. Arrêtez-le d'abord",
+    "delete_error": "Impossible de supprimer le serveur : {{error}}",
+    "delete_http": "Impossible de supprimer le serveur (HTTP {{status}}) : {{error}}",
+    "reorder_failed": "Impossible de réordonner : {{error}}",
+    "settings_invalid": "Valeur de paramètre invalide : {{error}}",
+    "settings_error": "Impossible d'enregistrer les paramètres : {{error}}",
+    "settings_http": "Impossible d'enregistrer les paramètres (HTTP {{status}}) : {{error}}",
+    "http": "Erreur (HTTP {{status}})",
+    "command_failed": "Impossible d'exécuter la commande : {{error}}",
+    "no_log_file": "Aucun fichier journal",
+    "url_missing": "Aucune URL indiquée",
+    "url_not_web": "Seules les adresses http(s) peuvent être ouvertes",
+    "path_missing": "Aucun chemin indiqué",
+    "no_log_folder": "Aucun dossier de journaux"
   }
 }
