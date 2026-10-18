@@ -807,7 +807,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload) => {
-        // payload = { name, module_name, accept_agreements?, preset?, migration_source?, module_settings? }
+        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
@@ -840,6 +840,16 @@ export function useServerActions({
             // 만들 때 고른 모듈 설정 (예: 서버 종류)
             if (payload?.module_settings && Object.keys(payload.module_settings).length > 0) {
                 instanceData.module_settings = payload.module_settings;
+            }
+
+            // 만들 때 동의한 약관 id (module.toml [[agreements]])
+            if (payload?.accept_agreements?.length) {
+                instanceData.accept_agreements = payload.accept_agreements;
+            }
+
+            // 익스텐션이 물은 칸 (AddServer.options → extension_data)
+            if (payload?.extension_data) {
+                instanceData.extension_data = payload.extension_data;
             }
 
             // 모듈 추천 프리셋 id (값은 데몬이 푼다)

@@ -411,7 +411,9 @@
     "alias_conflict_title": "Alias Conflict",
     "alias_conflict_detail": "Alias '{{alias}}' is already registered to module '{{module}}'",
     "multiple_instances_warning": "Multiple instances use the same module '{{module}}' ({{names}}). Discord bot commands using module aliases will be ambiguous — use instance names instead.",
-    "alias_ambiguity_card": "Module '{{module}}' has {{count}} instances — Discord alias is ambiguous"
+    "alias_ambiguity_card": "Module '{{module}}' has {{count}} instances — Discord alias is ambiguous",
+    "sync_failed": "Settings were saved, but the game's config file couldn't be updated. {{error}}",
+    "unknown_setting": "This module doesn't have these settings: {{fields}}"
   },
   "buttons": {
     "add_server": "Add Server",
@@ -696,7 +698,12 @@
     "daemon_down_stale": "Not connected to the daemon. Showing the last known state.",
     "daemon_restart": "Restart daemon",
     "daemon_restarting": "Restarting…",
-    "daemon_restart_failed": "Couldn't restart the daemon. {{error}}"
+    "daemon_restart_failed": "Couldn't restart the daemon. {{error}}",
+    "check_validate": "Check server",
+    "check_diagnose": "Diagnose log",
+    "check_ok": "No problems found. Ready to start.",
+    "check_log_ok": "No known problems found in the recent log.",
+    "check_failed": "Couldn't run the check: {{error}}"
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1207,7 +1214,8 @@
     "confirm_title": "Run {{action}}?",
     "confirm_run": "Run",
     "done": "Done: {{action}}",
-    "hint": "↑↓ to move · Enter to run · Esc to close"
+    "hint": "↑↓ to move · Enter to run · Esc to close",
+    "none": "none"
   },
   "unisolated": {
     "title": "Run without isolation",
@@ -1263,5 +1271,54 @@
     "start_title": "Agreement required",
     "start_message": "To start '{{name}}', you need to agree to the terms below. Read them and check each one.",
     "accept_and_start": "Agree and start"
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "description": "See the daemon's state and recent warnings. Copy it when asking for help. Passwords and tokens aren't included.",
+    "show": "Show diagnostics",
+    "refresh": "Refresh",
+    "copy": "Copy",
+    "copied": "Copied",
+    "failed": "Couldn't load diagnostics",
+    "version": "Version",
+    "uptime": "Uptime",
+    "uptime_value": "{{h}}h {{m}}m",
+    "listen": "Listen address",
+    "data_dir": "Data folder",
+    "token": "Auth token",
+    "token_ok": "Present",
+    "token_missing": "Missing",
+    "modules": "Modules",
+    "modules_error": "Failed to load: {{error}}",
+    "extensions": "Enabled extensions",
+    "extensions_missing": "Enabled but not installed: {{list}}",
+    "recent_problems": "Recent warnings and errors",
+    "no_problems": "No recent warnings or errors."
+  },
+  "extension_config": {
+    "toggle": "Settings",
+    "save": "Save",
+    "saved": "Saved",
+    "load_failed": "Couldn't load settings: {{error}}",
+    "save_failed": "Couldn't save: {{error}}"
+  },
+  "onboarding": {
+    "title": "Next step",
+    "step_module": "Install a game module",
+    "desc_module": "Install the module for the game you want to host first.",
+    "go_module": "Add a game",
+    "step_server": "Create your first server",
+    "desc_server": "Create a server with the game you installed.",
+    "go_server": "Add server",
+    "step_discord": "Connect Discord",
+    "desc_discord": "Connect the Discord bot to manage servers from chat.",
+    "go_discord": "Connect Discord",
+    "step_chatbot": "Turn on the chatbot",
+    "desc_chatbot": "Add an AI key to manage servers in plain words.",
+    "go_chatbot": "Chatbot settings"
+  },
+  "cli_line": {
+    "copy": "Copy CLI command",
+    "copied": "Copied"
   }
 }
