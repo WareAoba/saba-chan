@@ -513,6 +513,13 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let provisioning = created.get("provisioning").and_then(Value::as_bool) == Some(true);
     if provisioning {
         if a.no_wait {
+            if let Some(error) = settings_error {
+                return Err(CliError::Partial {
+                    message: t!("add.created_settings_failed", name = name, error = error),
+                    data: json!({ "id": id, "name": name, "module": module_name, "provisioning": true }),
+                }
+                .into());
+            }
             ctx.out.done(&t!("add.created_installing", name = name), &created);
             ctx.out.hint(&format!("saba-chan-cli server progress {}", name));
             return Ok(());
@@ -532,7 +539,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if let Some(error) = settings_error {
         return Err(CliError::Partial {
             message: t!("add.created_settings_failed", name = name, error = error),
-            data: out,
+            data: json!({ "id": id, "name": name, "module": module_name, "provisioned": provisioning }),
         }
         .into());
     }
@@ -845,13 +852,13 @@ pub async fn run_command(ctx: &Ctx, a: RunArgs) -> Result<()> {
 /// 콘솔에 친 한 줄. 정의된 명령이면 인자를 나눠 묶고, 아니면 친 그대로 보낸다
 /// (따옴표·JSON이 든 게임 명령을 다시 이어 붙이면 모양이 바뀐다)
 pub async fn exec_line(ctx: &Ctx, sv: &Server, cat: &Catalog, text: &str) -> Result<()> {
-    let name = text.split_whitespace().next().unwrap_or_default();
+    let words = shlex::split(text).unwrap_or_else(|| text.split_whitespace().map(str::to_string).collect());
+    let name = words.first().map(String::as_str).unwrap_or_default();
     if cat.find(name).is_none() && cat.accepts_raw() {
         let r = ctx.api.command(&sv.id, text, Value::Null).await?;
         print_result(ctx, &r);
         return Ok(());
     }
-    let words = shlex::split(text).unwrap_or_else(|| text.split_whitespace().map(str::to_string).collect());
     let (name, rest) = words.split_first().map(|(n, r)| (n.clone(), r.to_vec())).unwrap_or_default();
     exec(ctx, sv, cat, &name, &rest).await
 }

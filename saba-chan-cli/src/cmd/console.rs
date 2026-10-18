@@ -49,10 +49,8 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     let mut cursor = Cursor::from(&first);
     // `--lines 0`이면 보인 줄이 없어도 지금까지의 줄은 건너뛴다: 마지막 순번만 알아 둔다
     if a.lines == 0 && cursor.running && !cursor.disk {
-        if let Ok(last) = ctx.api.console(&sv.id, None, Some(1)).await {
-            let last = Cursor::from(&last);
-            cursor.next = last.next.or(Some(0));
-        }
+        let last = Cursor::from(&ctx.api.console(&sv.id, None, Some(1)).await?);
+        cursor.next = last.next.or(Some(0));
     }
 
     let interactive = !a.follow && !a.print && ctx.ask.enabled;
