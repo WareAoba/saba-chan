@@ -309,7 +309,7 @@ pub fn apply(node: &mut Map<String, Value>, change: &Change, owner_id: Option<&s
             // `<instance>/<명령·액션 id>` 또는 전역 액션 덮어쓰기 `<action id>`
             let well_formed = match key.split_once('/') {
                 Some((i, c)) => !i.is_empty() && !c.is_empty(),
-                None => crate::actions::find(key).is_some(),
+                None => crate::actions::overridable(key),
             };
             if !well_formed {
                 return Err("invalid_command");
@@ -429,7 +429,10 @@ mod tests {
         assert_eq!(apply(&mut node, &Change::Preset("open".into()), owner), Err("invalid_preset"));
         assert_eq!(apply(&mut node, &Change::CommandLevel { key: "kick".into(), level: Some(1) }, owner), Err("invalid_command"));
         apply(&mut node, &Change::CommandLevel { key: "i/kick".into(), level: Some(3) }, owner).unwrap();
-        // 전역 액션 덮어쓰기는 아는 액션 id만
+        // 전역 액션 덮어쓰기는 원격에서 부를 수 있고 레벨이 고정되지 않은 액션 id만
+        for fixed in ["update.apply", "instance.delete"] {
+            assert_eq!(apply(&mut node, &Change::CommandLevel { key: fixed.into(), level: Some(0) }, owner), Err("invalid_command"));
+        }
         apply(&mut node, &Change::CommandLevel { key: "instance.create".into(), level: Some(3) }, owner).unwrap();
         apply(&mut node, &Change::CommandLevel { key: "instance.create".into(), level: None }, owner).unwrap();
         let p = NodePermissions::from_node(Some(&Value::Object(node.clone())));

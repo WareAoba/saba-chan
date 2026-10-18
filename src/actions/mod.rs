@@ -274,19 +274,34 @@ fn strip_local_details(v: &mut Value) {
     }
 }
 
+/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것
+pub fn overridable(id: &str) -> bool {
+    find(id).is_some_and(|d| d.discord_level.is_none() && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
+}
+
 /// 문자열의 절대 경로를 `<path>`로 바꾸고, Python traceback은 마지막 줄(예외 문구)만 남긴다. 바뀐 것이 없으면 None
 fn mask_local_text(text: &str) -> Option<String> {
+    static QUOTED: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static PATHS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    // Windows 드라이브·UNC 경로, 그리고 둘 이상의 조각으로 된 Unix 절대 경로 (URL의 `//`는 앞이 `:`라 걸리지 않는다)
+    // 따옴표로 시작하는 경로는 닫는 따옴표까지 (공백 포함)
+    let quoted = QUOTED.get_or_init(|| {
+        regex::Regex::new(r#""(?:\\\\|[A-Za-z]:[\\/]|/[^\s/"]+/)[^"\r\n]*"|'(?:\\\\|[A-Za-z]:[\\/]|/[^\s/']+/)[^'\r\n]*'"#).unwrap()
+    });
+    // Windows 드라이브·UNC 경로, 그리고 둘 이상의 조각으로 된 Unix 절대 경로 (URL의 `//`는 앞이 `:`라 걸리지 않는다).
+    // 경로에 공백이 있을 수 있어 그 줄의 끝(또는 따옴표)까지 가린다
     let paths = PATHS.get_or_init(|| {
-        regex::Regex::new(r#"\\\\[^\\\s"'<>|]+\\[^\s"'<>|]*|\b[A-Za-z]:[\\/][^\s"'<>|]*|(?P<pre>^|[\s"'(=])/(?:[^\s/"'<>|]+/)+[^\s"'<>|]*"#).unwrap()
+        regex::Regex::new(r#"\\\\[^\\\s"'<>|]+\\[^\r\n"'<>|]*|\b[A-Za-z]:[\\/][^\r\n"'<>|]*|(?P<pre>^|[\s"'(=])/(?:[^\s/"'<>|]+/)+[^\r\n"'<>|]*"#).unwrap()
     });
     let base = if text.contains("Traceback (most recent call last)") {
         text.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("")
     } else {
         text
     };
-    let masked = paths.replace_all(base, "${pre}<path>");
+    let base = quoted.replace_all(base, |c: &regex::Captures| {
+        let q = &c[0][..1];
+        format!("{q}<path>{q}")
+    });
+    let masked = paths.replace_all(&base, "${pre}<path>");
     (masked != text).then(|| masked.into_owned())
 }
 

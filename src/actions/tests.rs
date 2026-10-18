@@ -527,10 +527,12 @@ fn remote_results_keep_paths_console_lines_and_raw_errors_on_the_pc() {
         "restored": "/home/me/.config/saba-chan/backups/x.zip",
         "error": "Traceback (most recent call last):\n  File \"C:\\Users\\me\\modules\\mc\\lifecycle.py\", line 3, in <module>\nValueError: bad value in C:\\Users\\me\\x.txt",
         "url": "https://example.com/a/b/c",
+        "spaced": "copy C:\\Program Files\\Saba-chan\\a.txt (os error 5)",
+        "quoted": "open '/home/me/Game Server/b.txt' failed",
     });
     strip_local_details(&mut v);
     let text = v.to_string();
-    for leak in ["Games", "crash.txt", "Steve", "Stopping", "/home/me", "Users", "lifecycle.py", "-x"] {
+    for leak in ["Games", "crash.txt", "Steve", "Stopping", "/home/me", "Users", "lifecycle.py", "-x", "Files", "Saba-chan", "Server"] {
         assert!(!text.contains(leak), "{} leaked: {}", leak, text);
     }
     assert_eq!(v["servers"][0], json!({ "id": "a", "name": "srv", "status": "running" }));
@@ -538,6 +540,7 @@ fn remote_results_keep_paths_console_lines_and_raw_errors_on_the_pc() {
     assert_eq!(v["events"][3]["note_code"], "restart_failed");
     assert_eq!(v["error"], "ValueError: bad value in <path>");
     assert_eq!(v["url"], "https://example.com/a/b/c");
+    assert_eq!(v["quoted"], "open '<path>' failed");
 }
 
 #[tokio::test]
