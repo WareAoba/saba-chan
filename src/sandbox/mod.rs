@@ -404,6 +404,19 @@ pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: O
     homes
 }
 
+/// 데몬 환경(`JAVA_HOME`, PATH)이 가리키는 런타임 실행 파일. 격리 실행에 읽기를 준 그 런타임을 실행 대상 검사도 인정한다
+pub fn daemon_runtimes() -> Vec<PathBuf> {
+    runtime_executables(runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()))
+}
+
+fn runtime_executables(homes: Vec<PathBuf>) -> Vec<PathBuf> {
+    homes
+        .into_iter()
+        .flat_map(|home| ["java.exe", "javaw.exe", "java", "javaw"].map(|f| home.join("bin").join(f)))
+        .filter(|p| p.is_file())
+        .collect()
+}
+
 /// 확인되지 않은 구성요소의 Python 실행이면 격리 계획을 만든다. `config`의 `instance_dir`·`working_dir`에
 /// 쓰기를 준다 (데몬이 넣는 값. 데이터 폴더 자체와 그 위는 `Grants::push`가 버린다)
 pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<Isolation> {
@@ -649,6 +662,10 @@ mod tests {
         for bad in [set.join("bin").join("evil"), set.join("bin").join("missing")] {
             assert_eq!(runtime_homes(bad.to_str(), None, None), Vec::<PathBuf>::new());
         }
+        // 그 JDK의 java는 실행 대상 검사도 통과한다
+        let roots = LaunchRoots { dirs: vec![], runtimes: runtime_executables(vec![env_home.clone()]) };
+        assert_eq!(check_launch(&env_home.join("bin").join("java").to_string_lossy(), &roots), Ok(()));
+        assert_eq!(check_launch(&tools.join("bin").join("java").to_string_lossy(), &roots), Err("launch_outside_instance"));
     }
 
     #[test]

@@ -452,9 +452,11 @@ impl Supervisor {
                 .and_then(|s| s.fields.iter().find(|f| f.name == "java_path"))
                 .and_then(|f| f.default.as_ref())
                 .and_then(|d| d.as_str().map(str::to_string));
-            let runtimes = instance.module_settings.get("java_path").and_then(Value::as_str)
+            let mut runtimes: Vec<_> = instance.module_settings.get("java_path").and_then(Value::as_str)
                 .filter(|p| module_default.as_deref() != Some(*p))
                 .map(std::path::PathBuf::from).into_iter().collect();
+            // 데몬의 JAVA_HOME·PATH가 가리키는 JDK (격리 실행에 읽기를 준 런타임과 같다)
+            runtimes.extend(crate::sandbox::daemon_runtimes());
             (module.entry_path(), crate::sandbox::LaunchRoots { dirs, runtimes })
         };
         crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {

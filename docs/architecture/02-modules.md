@@ -391,7 +391,7 @@ players = "player_count"
 - **확인되지 않은 모듈의 실행 대상 (Windows)**: `get_launch_command`가 돌려준 `program`은 두 경로 모두 띄우기 전에 검사한다(`Supervisor::guard_launch`, `sandbox::check_launch`). 신뢰 표시가 `verified`인 모듈은 검사하지 않는다.
   - 허용: 실제 경로(링크·`..`를 푼 것)가 인스턴스 폴더나 사용자가 정한 서버 폴더(`working_dir`) 안에 있는 파일. 모듈이 돌려준 `working_dir`은 허용 위치로 쓰지 않는다.
   - 경로가 있는 상대 `program`은 데몬 폴더가 아니라 모듈이 돌려준 `working_dir` 기준으로 풀어 검사하고, 검사한 그 절대 경로로 띄운다.
-  - 허용: 경로 없는 `java`·`javaw`, 그리고 설정 `java_path`가 가리키는 java. `java_path`가 모듈 `module.toml`의 기본값과 같으면 사용자가 정한 것이 아니므로 인정하지 않는다.
+  - 허용: 경로 없는 `java`·`javaw`, 그리고 설정 `java_path`가 가리키는 java. `java_path`가 모듈 `module.toml`의 기본값과 같으면 사용자가 정한 것이 아니므로 인정하지 않는다. 데몬의 `JAVA_HOME`·PATH가 가리키는 JDK의 `bin/java(w)`도 인정한다(§2.1의 읽기를 주는 런타임과 같은 판정, `sandbox::daemon_runtimes`).
   - 모듈이 돌려준 `env_vars`의 `PATH`·`PATHEXT`(대소문자 무시)는 버린다. 경로 없는 `java`는 데몬의 PATH로 찾는다.
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
