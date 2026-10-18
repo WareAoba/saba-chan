@@ -286,7 +286,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 | GET | `/v1/updates/check` | — | `channel`(stable·beta·nightly), `platform`, `current`, `client_id` | `{upToDate:true}` / `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` | `routes/updates.ts`, §1.4 |
 | GET | `/v1/updates/manifest/:version` | — | `release?` | 서명된 manifest 원문 | `updates.ts` |
 | POST | `/v1/updates/event` | —, 4KB | `{anonId, phase, hostId?, fromVersion?, toVersion?, errorCode?, platform?}` | 204(익명 업데이트 텔레메트리) | `updates.ts` |
-| GET | `/v1/updates/download/installer` | — (브라우저, 게이트 예외) | 없음 | 302 → 가장 높은 stable(전원 롤아웃, yanked 제외) manifest의 `components.installer.url`(https만). 없으면 302 → `/not-found.html`. `cache-control: no-store`. 웹사이트 다운로드 버튼이 쓴다 | `updates.ts` |
+| GET | `/v1/updates/download/installer` | — (브라우저, 게이트 예외) | 없음 | 302 → 가장 높은 stable(전원 롤아웃, yanked 제외, manifest `platform`이 없거나 `windows-x64`) manifest의 `components.installer.url`(https만). 없으면 302 → `/not-found.html`. `cache-control: no-store`. 웹사이트 다운로드 버튼이 쓴다 | `updates.ts` |
 | POST | `/admin/releases` | 내부, 256KB | `{version, channel, signedManifest, notes?, rolloutPercent?, isCritical?, minSupported?, assets[]}` | 201 `{id, version, channel, assets}` / 409 `RELEASE_ALREADY_EXISTS` | `updates.ts` |
 | PATCH | `/admin/releases/:id` | 내부 | `{rolloutPercent?, yanked?, isCritical?, notes?}` | 바뀐 릴리즈 | `updates.ts` |
 | GET | `/admin/api/service` | 관리자 키 | — | `{bot, connections, hosts, nodes, db}` | `routes/admin.ts` |
