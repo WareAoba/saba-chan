@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { CliText } from '../CliLine';
@@ -11,26 +11,37 @@ const failedRes = (res) => !res || res.success === false || Boolean(res.error_co
 
 /**
  * 재우기: 연결은 그대로 두고 모든 디스코드 서버의 잠자기(데몬 discord settings `sleeping`)를 켠다.
- * 모두 잠들어 있으면 깨우기로 바뀐다.
+ * 모두 잠들어 있으면 깨우기로 바뀐다. 일부만 바뀐 채 실패하면 방금 하려던 쪽을 다시 누를 수 있게 둔다.
  */
 function SleepAllButton({ nodes }) {
     const { t } = useTranslation('gui');
     const ids = (nodes || []).map((n) => n.guildId).join(',');
     const [asleep, setAsleep] = useState(null); // null = 아직 모름
     const [busy, setBusy] = useState(false);
+    // 늦게 온 옛 길드 목록의 응답은 버린다
+    const generation = useRef(0);
+    // 일부만 잠든 상태에서 보여줄 쪽: 마지막으로 시도한 동작 (없으면 재우기)
+    const lastAttempt = useRef(null);
 
     const load = useCallback(async () => {
+        const gen = ++generation.current;
         const list = ids ? ids.split(',') : [];
         if (!list.length || !window.api?.discordSettingsGet) return setAsleep(false);
         const res = await Promise.all(list.map((g) => window.api.discordSettingsGet(g).catch(() => null)));
-        setAsleep(res.every((r) => !failedRes(r) && r.sleeping === true));
+        if (gen !== generation.current) return;
+        const sleepingCount = res.filter((r) => !failedRes(r) && r.sleeping === true).length;
+        if (sleepingCount === list.length) setAsleep(true);
+        else if (sleepingCount === 0) setAsleep(false);
+        else setAsleep(lastAttempt.current === 'wake');
     }, [ids]);
     useEffect(() => {
+        lastAttempt.current = null;
         load();
     }, [load]);
 
     const toggle = async () => {
         const sleeping = !asleep;
+        lastAttempt.current = sleeping ? 'sleep' : 'wake';
         setBusy(true);
         const list = ids.split(',');
         const res = await Promise.all(
