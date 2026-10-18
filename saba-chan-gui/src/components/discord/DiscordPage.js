@@ -132,6 +132,8 @@ export function DiscordPage({
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
     const [membersLoading, setMembersLoading] = useState(null);
     const [membersFailed, setMembersFailed] = useState({});
+    // 길드별 일부 목록 사유 (권한을 등록한 멤버만 받았을 때)
+    const [membersPartial, setMembersPartial] = useState({});
     const [saveState, setSaveState] = useState(null);
     const saveTimer = useRef(null);
 
@@ -197,6 +199,7 @@ export function DiscordPage({
                 const members = Array.isArray(data) ? data : data?.members || [];
                 setters.current.setCloudMembers((prev) => ({ ...prev, [guildId]: members }));
                 setMembersFailed((prev) => ({ ...prev, [guildId]: false }));
+                setMembersPartial((prev) => ({ ...prev, [guildId]: data?.partial ? data.reason || 'partial' : null }));
             } catch (e) {
                 // 받아 둔 목록은 그대로 둔다 (실패를 빈 목록으로 덮지 않는다)
                 console.warn('[Discord] members fetch failed:', e);
@@ -485,6 +488,7 @@ export function DiscordPage({
                                 members={cloudMembers[currentNode.guildId]}
                                 membersLoading={membersLoading === currentNode.guildId}
                                 membersFailed={!!membersFailed[currentNode.guildId]}
+                                membersPartial={membersPartial[currentNode.guildId] || null}
                                 onRefreshMembers={() => loadMembers(currentNode.guildId)}
                                 memberId={view.member || null}
                                 onOpenMember={(id) => setView({ kind: 'node', id: currentNode.guildId, member: id })}

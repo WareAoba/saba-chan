@@ -31,10 +31,12 @@ describe('InstanceWordsTab', () => {
         window.showToast = vi.fn();
         window.api = {
             guildInstances: vi.fn().mockResolvedValue(items()),
-            guildInstanceWordsSave: vi.fn(async (_g, _id, body) => ({
-                ...items()[0],
-                ...body,
-                commands: items()[0].commands,
+            // 데몬 응답 모양: 빈 명령 목록은 빠진다
+            guildInstanceWordsSave: vi.fn(async (_g, id, body) => ({
+                success: true,
+                id,
+                words: body.words,
+                commands: Object.fromEntries(Object.entries(body.commands).filter(([, l]) => l.length)),
             })),
         };
     });
@@ -50,6 +52,9 @@ describe('InstanceWordsTab', () => {
             words: ['크리', '야섭'],
             commands: { start: [], kick: ['추방', '킥'] },
         });
+        // 저장한 값이 화면의 기준이 되어 더 고칠 것이 없다
+        await waitFor(() => expect(screen.queryByRole('button', { name: /Save/ })).toBeNull());
+        expect(screen.getByText('킥')).toBeTruthy();
     });
 
     it('검증 오류는 그 칸 아래에 겹치는 대상과 함께 보인다', async () => {

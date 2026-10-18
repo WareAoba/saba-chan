@@ -86,11 +86,24 @@ describe('데몬 응답 가공', () => {
         const { api } = await install({
             daemon_request: daemon({
                 'GET /api/relay/host/h1/nodes': { status: 401, data: { error: 'unauthorized' } },
-                'GET /api/relay/node/g1/members': { status: 0, error: 'timeout', code: 'ETIMEDOUT' },
+                'GET /api/relay/node/g1/members?withStatus=1': { status: 0, error: 'timeout', code: 'ETIMEDOUT' },
+                'GET /api/relay/node/g1/legacy-members': { status: 502, data: { error: 'relay_error' } },
             }),
         });
         expect(await api.relayListHostNodes('h1')).toMatchObject({ error: 'unauthorized' });
         expect(await api.relayListNodeMembers('g1')).toMatchObject({ error: expect.any(String) });
+        expect(await api.relayListLegacyMembers('g1')).toMatchObject({ error: 'relay_error' });
+    });
+
+    it('길드 인스턴스 목록은 데몬 `{guildId, instances}`에서 목록만 돌려준다', async () => {
+        const { api } = await install({
+            daemon_request: daemon({
+                'GET /api/guilds/g1/instances': { status: 200, data: { guildId: 'g1', instances: [{ id: 's1' }] } },
+                'GET /api/guilds/g2/instances': { status: 500, data: { success: false, error: 'boom' } },
+            }),
+        });
+        expect(await api.guildInstances('g1')).toEqual([{ id: 's1' }]);
+        expect(await api.guildInstances('g2')).toMatchObject({ error: 'boom' });
     });
 
     it('경로에 넣는 이름은 인코딩한다 (공백·빗금이 든 서버 이름)', async () => {

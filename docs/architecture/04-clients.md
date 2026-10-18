@@ -123,14 +123,15 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | actionsList (867) | GET /api/actions?surface=gui&instance?&locale? (P2) | ✓ 743 |
 | actionsPlan (872) | POST /api/actions/:id/plan `{input, instance?}` | ✓ 746 |
 | actionsRun (873) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |
-| guildInstances | GET /api/guilds/:guild/instances (길드·인스턴스별 부르는 말, `integration/discord-instance-commands.md`) | 데몬 PR 대기 |
-| guildInstanceWordsSave | PUT /api/guilds/:guild/instances/:id/words `{words, commands}`. 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`를 그대로 넘긴다 | 데몬 PR 대기 |
-| discordSettingsGet (874) | GET /api/discord/:guild/settings (I2) | ✓ 732-735 |
+| guildInstances | GET /api/guilds/:guild/instances (길드·인스턴스별 부르는 말). `{guildId, instances:[{id, name, module, words, commands:[…]}]}`에서 `instances`만 돌려준다 | ✓ |
+| guildInstanceWordsSave | PUT /api/guilds/:guild/instances/:id/words `{words, commands}`. 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`를 그대로 넘긴다. 성공하면 `{success, id, words, commands:{<명령>:[..]}}` | ✓ |
+| discordSettingsGet (874) | GET /api/discord/:guild/settings (I2). `loaded:false`면 릴레이 값을 못 읽은 기본값이라 GUI는 편집을 막는다 | ✓ 732-735 |
 | discordSettingsSet (875) | PATCH /api/discord/:guild/settings `{locale?, sleeping?, music?}` | ✓ 732-735 |
 | openInTerminal (877) | POST /api/clients/launch `{kind:'cli', view, instance?}` (I4). 데몬이 새 콘솔 창에 CLI 콘솔·셸을 띄운다. 실패하면 데몬 본문(`error_code`)을 그대로 돌려준다. 트레이 메뉴 "터미널 열기"(Windows만)도 같은 라우트를 `view:'shell'`로 부른다(`tray.rs:433-446`) | ✓ 721 |
 | onDaemonEvent (882) | 셸의 `events:message`(§1.1 이벤트 스트림)를 받는다. `type: 'resync'`면 목록을 다시 읽는다. 돌려주는 함수로 해제 (P4) | ✓ 641 |
 | dataExport / dataImport (885-907) | Rust `dialog_save_file` / `dialog_open_file`로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ 707-708 (A9) |
-| relayCheckHostStatus… relayBotInvite (910-949) | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 774-776, 781 |
+| relayCheckHostStatus… relayBotInvite (910-949) | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members?withStatus=1(`{members, partial, reason?}`, 20초 제한), GET /api/relay/bot-invite | ✓ 774-776, 781 |
+| relayListLegacyMembers | GET /api/relay/node/:guild/legacy-members(릴레이에 남은 부여값 `[{id, username, displayName, level}]`, 권한 가져오기 후보). 실패하면 오류 본문 | ✓ |
 | relayNodeChannels / relayNodeChannelsSave (950-953) | GET/PUT /api/relay/node/:guild/channels(`notify` 알림 채널 포함). 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ 777-780 |
 | instanceAgreements (956) | POST /api/instance/:id/agreements `{accept:[id]}` (모듈 약관 동의) | ✓ 687 |
 | onboarding (957) | GET /api/onboarding (J1-a 다음 할 일) | ✓ 639 |

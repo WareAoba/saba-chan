@@ -119,8 +119,17 @@ pub(crate) fn signed_headers(
     url_path: &str,
     body: Option<&str>,
 ) -> Option<Vec<(String, String)>> {
-    let token = load_node_token()?;
-    let (_, secret) = parse_node_token(&token)?;
+    signed_headers_with(&load_node_token()?, method, url_path, body)
+}
+
+/// 정해 둔 토큰으로 서명한다 (릴레이 에이전트 세션은 시작할 때의 주소·토큰 쌍을 끝까지 쓴다)
+pub(crate) fn signed_headers_with(
+    token: &str,
+    method: &str,
+    url_path: &str,
+    body: Option<&str>,
+) -> Option<Vec<(String, String)>> {
+    let (_, secret) = parse_node_token(token)?;
 
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -341,12 +350,25 @@ async fn signed_post(base: &str, api_path: &str, body: &Value) -> Response {
 // ── GET /api/relay/node/:guild_id/members ──
 // Try discord-members first; fall back to permission-based members on 503
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MembersQuery {
+    pub relay_url: Option<String>,
+    /// `1`이면 `{members, partial, reason?}`로 답한다. 없으면 예전처럼 배열만
+    #[serde(default)]
+    pub with_status: Option<String>,
+}
+
+/// 길드 전체 멤버 요청: 릴레이는 디스코드에 8초까지 기다린다(그 뒤에는 캐시로 답한다)
+const DISCORD_MEMBERS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 pub async fn list_node_members(
     Path(guild_id): Path<String>,
-    Query(params): Query<RelayQueryParams>,
+    Query(params): Query<MembersQuery>,
     State(state): State<IPCServer>,
 ) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let with_status = params.with_status.as_deref() == Some("1");
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
@@ -356,17 +378,50 @@ pub async fn list_node_members(
     // Primary: real-time discord members
     let discord_path = format!("/api/nodes/{}/discord-members", encoded);
     let discord_url = format!("{}{}", base, discord_path);
-    match send(apply_signed_headers(client.get(&discord_url), "GET", &discord_path, None)).await {
-        Ok((code, Some(data))) if code.is_success() => return (StatusCode::OK, Json(data)).into_response(),
-        Ok((StatusCode::SERVICE_UNAVAILABLE, _)) => tracing::debug!(
-            "Discord bot unavailable for guild {}, falling back to permission-based members",
-            guild_id
-        ),
-        _ => {}
-    }
+    let reason = match send(apply_signed_headers(client.get(&discord_url).timeout(DISCORD_MEMBERS_TIMEOUT), "GET", &discord_path, None)).await {
+        Ok((code, Some(data))) if code.is_success() => {
+            let body = if with_status { json!({ "members": data, "partial": false }) } else { data };
+            return (StatusCode::OK, Json(body)).into_response();
+        }
+        Ok((StatusCode::SERVICE_UNAVAILABLE, _)) => "bot_unavailable",
+        Ok((code, _)) => {
+            tracing::warn!("Discord members of guild {} failed ({}), falling back to permission-based members", guild_id, code);
+            "relay_error"
+        }
+        Err(_) => "relay_unreachable",
+    };
 
-    // Fallback: permission-based members
-    signed_get(&base, &format!("/api/nodes/{}/members", encoded), empty_list).await
+    // Fallback: permission-based members (권한을 등록한 사람만이라 전체 목록이 아니다)
+    let fallback_path = format!("/api/nodes/{}/members", encoded);
+    if !with_status {
+        return signed_get(&base, &fallback_path, empty_list).await;
+    }
+    match send(apply_signed_headers(client.get(format!("{}{}", base, fallback_path)), "GET", &fallback_path, None)).await {
+        Ok((code, Some(data))) if code.is_success() => Json(json!({ "members": data, "partial": true, "reason": reason })).into_response(),
+        _ => (StatusCode::BAD_GATEWAY, Json(json!({ "members": [], "partial": true, "reason": reason }))).into_response(),
+    }
+}
+
+// ── GET /api/relay/node/:guild_id/legacy-members ──
+// 권한을 등록한 멤버 목록(`/api/nodes/:id/members`, `[{id, username, displayName, level}]`) 그대로. 실패하면 오류로 답한다(빈 목록을 돌려주지 않는다)
+
+pub async fn list_node_legacy_members(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let path = format!("/api/nodes/{}/members", encode_path_segment(&guild_id));
+    match send(apply_signed_headers(client.get(format!("{}{}", base, path)), "GET", &path, None)).await {
+        Ok((code, Some(data))) if code.is_success() && data.is_array() => (StatusCode::OK, Json(data)).into_response(),
+        Ok((code, Some(data))) if !code.is_success() => (code, Json(data)).into_response(),
+        Ok(_) => invalid_response(StatusCode::BAD_GATEWAY),
+        Err(r) => r,
+    }
 }
 
 // ── GET /api/relay/bot-invite ──
@@ -472,6 +527,13 @@ pub async fn poll_pairing_status(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn signing_uses_the_token_it_is_given() {
+        let headers = signed_headers_with("sbn_node1.secret", "GET", "/poll", None).unwrap();
+        assert!(headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer sbn_node1.secret"));
+        assert!(signed_headers_with("not-a-token", "GET", "/poll", None).is_none());
+    }
+
     #[test]
     fn signed_requests_never_follow_an_arbitrary_relay_url() {
         let cfg = "https://saba-chan.online/";

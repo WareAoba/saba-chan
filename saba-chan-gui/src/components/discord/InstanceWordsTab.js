@@ -78,7 +78,9 @@ function InstanceCard({ guildId, inst, onSaved }) {
                 safeShowToast(t('discord.iw_save_failed', { error: res?.error || '-' }), 'error', 5000);
             else {
                 setErrors({});
-                onSaved({ ...inst, ...(res?.words ? res : draftToItem(inst, draft)) });
+                // 데몬은 저장한 `{words, commands:{명령:[..]}}`를 돌려준다 (빈 명령은 빠진다)
+                const saved = res?.words ? { words: res.words, commands: res.commands || {} } : draft;
+                onSaved({ ...inst, ...draftToItem(inst, saved) });
                 safeShowToast(t('discord.iw_saved', { name: inst.name }), 'success', 2500);
             }
         } catch (e) {

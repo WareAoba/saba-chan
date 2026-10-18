@@ -324,6 +324,7 @@ export function NodeView({
     members,
     membersLoading,
     membersFailed,
+    membersPartial,
     onRefreshMembers,
     memberId,
     onOpenMember,
@@ -412,6 +413,14 @@ export function NodeView({
                 (activeTab === 'members' || activeTab === 'commands') && (
                     <p className="dc-field-error">
                         <Icon name="info" size="xs" /> {t('discord.members_refresh_failed')}
+                    </p>
+                )}
+            {membersPartial &&
+                !membersFailed &&
+                !membersLoading &&
+                (activeTab === 'members' || activeTab === 'commands') && (
+                    <p className="dc-field-error">
+                        <Icon name="info" size="xs" /> {t('discord.members_partial')}
                     </p>
                 )}
             {activeTab === 'instances' && (

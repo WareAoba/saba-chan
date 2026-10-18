@@ -184,6 +184,23 @@ async fn agent_round_trips_a_relay_command() {
     assert_eq!(status["running"], true, "{}", status);
     assert!(status["commandsHandled"].as_u64().unwrap() >= 1);
 
+    // 릴레이 주소를 바꿔 저장하면 에이전트가 새 주소로 다시 붙는다 (GUI 프록시와 하트비트가 같은 릴레이를 본다)
+    let second_state: Shared = Arc::default();
+    let second_url = start_mock_relay(second_state.clone()).await;
+    let saved = client.put(format!("{}/api/config/bot", base)).json(&json!({ "cloud": { "relayUrl": second_url } })).send().await.unwrap();
+    assert!(saved.status().is_success());
+    let mut moved = false;
+    for _ in 0..100 {
+        if !second_state.lock().unwrap().heartbeats.is_empty() {
+            moved = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(moved, "agent kept the old relay after the relay URL changed");
+    let status: Value = client.get(format!("{}/api/relay/agent", base)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(status["relayUrl"], json!(second_url), "{}", status);
+
     client.post(format!("{}/api/relay/agent/stop", base)).send().await.unwrap();
     let mut stopped = false;
     for _ in 0..50 {

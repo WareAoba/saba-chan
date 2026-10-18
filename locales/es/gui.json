@@ -795,6 +795,7 @@
     "members_loading": "Cargando miembros…",
     "members_empty": "No se pudieron cargar los miembros. Asegúrate de que la retransmisión de comandos esté activada y actualiza.",
     "members_refresh_failed": "No se pudo actualizar la lista de miembros. La lista mostrada es anterior.",
+    "members_partial": "No se pudo obtener la lista completa de miembros de Discord; solo se muestran los miembros con permisos.",
     "member_all": "Todos los comandos",
     "member_restricted": "Restringido · {{count}} bloqueados",
     "back_to_members": "Miembros",
@@ -917,6 +918,7 @@
       "refresh": "Intervalo de actualización del reproductor",
       "range": "Introduce un número entero de {{min}} a {{max}}.",
       "not_synced": "Guardado, pero aún no aplicado en Discord. Se aplicará en la próxima conexión.",
+      "not_loaded": "No se pudo leer la configuración de este servidor desde el relé. Los valores mostrados son predeterminados y no se pueden cambiar. Vuelve a cargar cuando haya conexión.",
       "err_not_paired": "Este servidor no está emparejado.",
       "err_invalid": "Valor no válido: {{field}}",
       "err_generic": "No se pudieron cambiar los ajustes del bot."

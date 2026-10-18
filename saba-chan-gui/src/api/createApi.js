@@ -914,7 +914,11 @@ export function createApi({ invoke, hub }) {
         actionsPlan: (id, body) => daemonCall('post', `/api/actions/${encodeURIComponent(id)}/plan`, body || {}),
         actionsRun: (id, body) => daemonCall('post', `/api/actions/${encodeURIComponent(id)}/run`, body || {}),
         // 길드·인스턴스별 디스코드 부르는 말 (계약 integration/discord-instance-commands.md)
-        guildInstances: (guild) => daemonCall('get', `/api/guilds/${encodeURIComponent(guild)}/instances`),
+        // 데몬 `{guildId, instances}` → 목록 (실패하면 데몬 본문 그대로)
+        guildInstances: async (guild) => {
+            const res = await daemonCall('get', `/api/guilds/${encodeURIComponent(guild)}/instances`);
+            return Array.isArray(res?.instances) ? res.instances : res;
+        },
         guildInstanceWordsSave: (guild, id, body) =>
             daemonCall(
                 'put',
@@ -979,14 +983,25 @@ export function createApi({ invoke, hub }) {
                 return errorBody(err);
             }
         },
+        // `{members, partial, reason?}`: 디스코드 전체 목록을 못 받으면 권한을 등록한 멤버만 (partial)
         relayListNodeMembers: async (guildId, relayUrl) => {
+            const qs = relayUrl ? `&relayUrl=${encodeURIComponent(relayUrl)}` : '';
             try {
                 return (
-                    await get(`/api/relay/node/${encodeURIComponent(guildId)}/members${relayQs(relayUrl)}`, {
-                        // 릴레이가 디스코드에 전체 목록을 물을 때 8초까지 기다린다
-                        timeout: 15000,
+                    await get(`/api/relay/node/${encodeURIComponent(guildId)}/members?withStatus=1${qs}`, {
+                        // 데몬이 디스코드 전체 목록을 15초까지 기다린 뒤 폴백한다
+                        timeout: 20000,
                     })
                 ).data;
+            } catch (err) {
+                return errorBody(err);
+            }
+        },
+        // 릴레이에 남은 권한 부여값 `[{id, username, displayName, level}]` (가져오기 후보)
+        relayListLegacyMembers: async (guildId) => {
+            try {
+                return (await get(`/api/relay/node/${encodeURIComponent(guildId)}/legacy-members`, { timeout: 15000 }))
+                    .data;
             } catch (err) {
                 return errorBody(err);
             }

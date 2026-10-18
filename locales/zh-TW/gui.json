@@ -795,6 +795,7 @@
     "members_loading": "正在載入成員…",
     "members_empty": "無法載入成員。請確認命令轉送已開啟，然後重新整理。",
     "members_refresh_failed": "無法重新整理成員列表。目前顯示的是先前取得的列表。",
+    "members_partial": "無法取得完整的 Discord 成員清單，僅顯示擁有權限的成員。",
     "member_all": "所有命令",
     "member_restricted": "受限 · 已封鎖 {{count}} 個",
     "back_to_members": "成員",
@@ -917,6 +918,7 @@
       "refresh": "播放器重新整理間隔",
       "range": "請輸入 {{min}} 到 {{max}} 之間的整數。",
       "not_synced": "已儲存，但尚未同步到 Discord。下次連線時會同步。",
+      "not_loaded": "無法從中繼讀取此伺服器的設定。目前顯示的是預設值，無法修改。連線後請重新載入。",
       "err_not_paired": "此伺服器尚未配對。",
       "err_invalid": "無效的值：{{field}}",
       "err_generic": "無法變更機器人設定。"

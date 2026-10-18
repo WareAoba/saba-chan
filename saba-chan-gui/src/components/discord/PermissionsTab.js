@@ -141,8 +141,23 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     const [ownerDraft, setOwnerDraft] = useState(null); // null = 편집 안 함
     const [ownerArmed, setOwnerArmed] = useState(false); // 릴레이 값은 덜 믿으므로 한 번 더 누르게 한다
 
-    const byId = useMemo(() => new Map((members || []).map((m) => [String(m.id), m])), [members]);
-    const candidates = useMemo(() => L.importCandidates(perm, members), [perm, members]);
+    // 가져오기 후보는 릴레이에 남은 부여값(legacy-members)에서 고른다. 디스코드 멤버 목록에는 레벨이 없다
+    const [legacy, setLegacy] = useState([]);
+    useEffect(() => {
+        if (!window.api?.relayListLegacyMembers) return undefined;
+        let alive = true;
+        Promise.resolve(window.api.relayListLegacyMembers(guildId))
+            .then((res) => alive && setLegacy(Array.isArray(res) ? res : []))
+            .catch(() => alive && setLegacy([]));
+        return () => {
+            alive = false;
+        };
+    }, [guildId]);
+    const byId = useMemo(
+        () => new Map([...legacy, ...(members || [])].map((m) => [String(m.id), m])),
+        [legacy, members],
+    );
+    const candidates = useMemo(() => L.importCandidates(perm, legacy), [perm, legacy]);
 
     // 확인 상태는 잠깐만 둔다 (나중에 무심코 한 번 눌러 바뀌지 않게)
     useEffect(() => {
