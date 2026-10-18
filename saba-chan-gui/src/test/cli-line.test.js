@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CliLine, fillCli, resetCliCache } from '../components/CliLine';
+import { CliLine, changedForCli, fillCli, resetCliCache } from '../components/CliLine';
 import { summaryValue } from '../components/shell/CommandPalette';
 
 const t = (k) => (k === 'palette.none' ? 'none' : k);
@@ -25,13 +25,35 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
                 server: 'My Server',
                 values: { name: 'b1' },
             }),
-        ).toBe('saba do backup.restore --server "My Server" name=b1');
+        ).toBe("saba do backup.restore --server 'My Server' name=b1");
         expect(
             fillCli('saba do instance.settings.set --server <server>', {
                 server: 'mc',
                 extra: { max_players: 20, motd: 'hello world', tags: ['a'] },
             }),
-        ).toBe(`saba do instance.settings.set --server mc max_players=20 motd="hello world" tags='["a"]'`);
+        ).toBe(`saba do instance.settings.set --server mc max_players=20 motd='hello world' tags='["a"]'`);
+        // 셸이 풀어 버리는 글자는 작은따옴표 안에 두고, 안의 작은따옴표는 '\''로
+        expect(fillCli('saba do x --server <server>', { server: "it's $HOME `x`" })).toBe(
+            `saba do x --server 'it'\\''s $HOME \`x\`'`,
+        );
+    });
+
+    it('비밀번호 칸과 *_password·*_token·*_secret 키는 값 대신 <이름>을 둔다', () => {
+        const fields = [{ name: 'admin_pw', field_type: 'password' }];
+        const changed = changedForCli(
+            { admin_pw: 'hunter2', rcon_password: 'p', api_token: 't', max_players: 20, _launch_extra_args: 'x' },
+            { max_players: 10 },
+            fields,
+        );
+        expect(changed).toEqual({
+            admin_pw: '<admin_pw>',
+            rcon_password: '<rcon_password>',
+            api_token: '<api_token>',
+            max_players: 20,
+        });
+        expect(
+            fillCli('saba do instance.settings.set --server <server>', { server: 'mc', extra: changed }),
+        ).not.toMatch(/hunter2/);
     });
 
     it('카탈로그에 그 액션의 cli가 있으면 한 줄과 복사 버튼을 보이고, 채널이 없으면 숨긴다', async () => {

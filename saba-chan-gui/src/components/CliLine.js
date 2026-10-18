@@ -27,11 +27,29 @@ function loadCatalog() {
     return catalog;
 }
 
-/** 셸 한 칸: 객체·배열은 JSON을 작은따옴표로, 공백·따옴표가 있는 글은 큰따옴표로 */
+/** `<이름>` 자리 표시는 그대로 둔다 (비밀 값 대신, 사용자가 채운다) */
+const PLACEHOLDER = /^<[A-Za-z0-9_.-]+>$/;
+
+/** 셸 한 칸: 안전한 글자만 있으면 그대로, 아니면 작은따옴표로 (POSIX: 안의 '는 '\''). 객체·배열은 JSON */
 function arg(value) {
-    if (value !== null && typeof value === 'object') return `'${JSON.stringify(value)}'`;
-    const s = String(value ?? '');
-    return /[\s"']/.test(s) || s === '' ? `"${s.replace(/"/g, '\\"')}"` : s;
+    const s = value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+    if (PLACEHOLDER.test(s) || /^[A-Za-z0-9_./:@%+=,-]+$/.test(s)) return s;
+    return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+const SECRET_KEY = /(password|passwd|token|secret)$/i;
+
+/**
+ * 설정 화면에서 CLI 줄에 덧붙일 값: 화면을 연 뒤 바꾼 것만 (`_`로 시작하는 GUI 내부 값 제외).
+ * 비밀번호 칸(field_type 'password')과 *_password·*_token·*_secret 키는 값 대신 `<이름>`을 둔다.
+ */
+export function changedForCli(values, openedWith, fields = []) {
+    const secret = new Set(fields.filter((f) => f.field_type === 'password').map((f) => f.name));
+    return Object.fromEntries(
+        Object.entries(values)
+            .filter(([k, v]) => !k.startsWith('_') && String(v ?? '') !== String(openedWith[k] ?? ''))
+            .map(([k, v]) => [k, secret.has(k) || SECRET_KEY.test(k) ? `<${k}>` : v]),
+    );
 }
 
 export function fillCli(template, { server, values = {}, extra = {} }) {
