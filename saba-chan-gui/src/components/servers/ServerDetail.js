@@ -10,6 +10,7 @@ import {
     consoleQuickCommands,
     initials,
     interactionOf,
+    playersText,
     primaryAction,
     protocolLabel,
     viewStatus,
@@ -110,6 +111,7 @@ export function ServerDetail({
     // 가동 시간은 1초마다 바뀐다: 앱 전체가 아니라 실행 중인 서버의 상세만 다시 그린다
     useServerStore((st) => (status === 'running' ? st.nowEpoch : 0));
     const uptime = status === 'running' && server.start_time ? formatUptime(server.start_time) : null;
+    const players = playersText(server);
 
     const primaryButton = (() => {
         if (status === 'missing') return null;
@@ -189,6 +191,11 @@ export function ServerDetail({
                         {server.port && (
                             <span className="muted">
                                 {t('shell.info_port')} {server.port}
+                            </span>
+                        )}
+                        {players && (
+                            <span className="muted">
+                                {t('shell.players')} {players}
                             </span>
                         )}
                     </div>

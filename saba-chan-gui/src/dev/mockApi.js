@@ -77,6 +77,7 @@ let servers = [
         pid: 1234,
         server_version: '1.21.1',
         module_settings: { port: 25565 },
+        players: { online: 3, max: 20 },
         // 데몬이 판정한 익스텐션 데이터 slot (Q-7)
         slots: {
             'ServerCard.badge': [{ extension: 'backup', text: '💾' }],

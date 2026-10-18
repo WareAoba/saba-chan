@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useInstanceMaintenance, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
 import { useServerStore } from '../../stores/useServerStore';
-import { STATUS_TONE, initials, primaryAction, viewStatus } from '../../utils/serverView';
+import { STATUS_TONE, initials, playersText, primaryAction, viewStatus } from '../../utils/serverView';
 import { DataBadges } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
@@ -35,6 +35,7 @@ export function ServerRow({
         defaultValue: moduleData?.game_name || server.module,
     });
     const statusLabel = t(`shell.status_${status}`);
+    const players = playersText(server);
 
     return (
         <div
@@ -71,6 +72,15 @@ export function ServerRow({
                     <span>{gameName}</span>
                     <span className="sep">·</span>
                     <StatusChip tone={STATUS_TONE[status]} label={statusLabel} className="bare" />
+                    {players && (
+                        <>
+                            <span className="sep">·</span>
+                            <span className="server-row-players" title={t('shell.players')}>
+                                <Icon name="user" size={12} />
+                                {players}
+                            </span>
+                        </>
+                    )}
                 </div>
             </div>
             {updateInfo && status === 'stopped' && (

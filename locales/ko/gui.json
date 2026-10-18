@@ -638,6 +638,7 @@
     "info_version": "버전",
     "info_uptime": "가동 시간",
     "info_port": "포트",
+    "players": "접속자",
     "info_protocol": "통신 방식",
     "info_id": "인스턴스 ID",
     "open_folder": "서버 폴더 열기",

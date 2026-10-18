@@ -638,6 +638,7 @@
     "info_version": "Version",
     "info_uptime": "Uptime",
     "info_port": "Port",
+    "players": "Players",
     "info_protocol": "Protocol",
     "info_id": "Instance ID",
     "open_folder": "Open server folder",

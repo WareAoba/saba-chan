@@ -637,6 +637,7 @@
     "info_version": "バージョン",
     "info_uptime": "稼働時間",
     "info_port": "ポート",
+    "players": "接続者",
     "info_protocol": "通信方式",
     "info_id": "インスタンスID",
     "open_folder": "サーバーフォルダーを開く",

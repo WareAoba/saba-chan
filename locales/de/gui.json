@@ -637,6 +637,7 @@
     "info_version": "Version",
     "info_uptime": "Laufzeit",
     "info_port": "Port",
+    "players": "Spieler",
     "info_protocol": "Protokoll",
     "info_id": "Instanz-ID",
     "open_folder": "Serverordner öffnen",

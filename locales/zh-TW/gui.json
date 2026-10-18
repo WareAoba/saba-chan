@@ -637,6 +637,7 @@
     "info_version": "版本",
     "info_uptime": "運作時間",
     "info_port": "連接埠",
+    "players": "線上玩家",
     "info_protocol": "協定",
     "info_id": "實例 ID",
     "open_folder": "開啟伺服器資料夾",

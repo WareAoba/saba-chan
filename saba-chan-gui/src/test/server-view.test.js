@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reuseUnchanged, viewStatus } from '../utils/serverView';
+import { playersText, reuseUnchanged, viewStatus } from '../utils/serverView';
 
 describe('모듈 없음 표시', () => {
     const server = { id: 'a', module: 'minecraft', status: 'running' };
@@ -35,5 +35,18 @@ describe('폴링 결과 합치기', () => {
         const next = reuseUnchanged(prev, [{ ...b }, { ...a }]);
         expect(next).not.toBe(prev);
         expect(next).toEqual([b, a]);
+    });
+});
+
+describe('접속자 수', () => {
+    it('실행 중이고 모듈이 알려 줄 때만 online/max로 보인다', () => {
+        expect(playersText({ status: 'running', players: { online: 3, max: 20 } })).toBe('3/20');
+        expect(playersText({ status: 'running', players: { online: 3 } })).toBe('3');
+        expect(playersText({ status: 'running', players: { online: 0, max: 8 } })).toBe('0/8');
+    });
+
+    it('키가 없거나 꺼져 있으면 아무것도 보이지 않는다 (모름을 0으로 보이지 않는다)', () => {
+        expect(playersText({ status: 'running' })).toBeNull();
+        expect(playersText({ status: 'stopped', players: { online: 2, max: 8 } })).toBeNull();
     });
 });
