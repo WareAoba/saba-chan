@@ -6,7 +6,7 @@ Saba-chan Windows Release Build (Parallel)
 배포물:
   saba-core.exe              - Rust IPC 데몬
   saba-chan-cli.exe           - Rust TUI 클라이언트
-  saba-chan-gui.exe           - Electron GUI
+  saba-chan-gui.exe           - GUI (Tauri)
   saba-chan-updater.exe       - 업데이터 (GUI + CLI 모드)
   saba-chan-installer.exe     - 인스톨러/언인스톨러 (Tauri)
   locales/                   - 다국어 리소스
@@ -51,12 +51,27 @@ if (Test-Path $ReleaseDir) {
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 Write-Host "  [OK]" -ForegroundColor Green
 
-# --- 2. Parallel Builds ---
-Write-Host "[2/5] Starting parallel builds..." -ForegroundColor Yellow
-Write-Host "  Rust (daemon+cli+updater) | GUI (vite+electron)" -ForegroundColor DarkGray
+# --- 2. Builds ---
+Write-Host "[2/5] Building..." -ForegroundColor Yellow
+Write-Host "  GUI frontend (vite) -> Rust workspace (daemon+cli+updater+installer+gui)" -ForegroundColor DarkGray
 Write-Host ""
 
-# 2a. Rust workspace build (all 3 binaries at once)
+# 2a. GUI 화면 빌드: Tauri GUI가 build/를 exe에 넣으므로 cargo보다 먼저 끝나야 한다
+$guiDir = Join-Path $ProjectRoot "saba-chan-gui"
+Push-Location $guiDir
+try {
+    if (Test-Path "build") { Remove-Item "build" -Recurse -Force -ErrorAction SilentlyContinue }
+    $ErrorActionPreference = "Continue"
+    if (-not (Test-Path "node_modules")) { & npm ci --quiet 2>&1 | Out-Null }
+    $buildOut = & npm run build --silent 2>&1
+    $ec = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($ec -ne 0) { throw "npm run build failed (exit $ec):`n$($buildOut | Out-String)" }
+    Write-Host "  [GUI] build/ ready" -ForegroundColor Green
+}
+finally { Pop-Location }
+
+# 2b. Rust workspace build (모든 바이너리를 한 번에)
 $jobRust = Start-Job -Name "Rust" -ScriptBlock {
     param($root)
     Set-Location $root
@@ -108,7 +123,8 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
         @{ Name = "saba-runner.exe";     Path = (Join-Path $root "target\release\saba-runner.exe") },
         @{ Name = "saba-chan-cli.exe";      Path = (Join-Path $root "target\release\saba-chan-cli.exe") },
         @{ Name = "saba-chan-updater.exe";  Path = (Join-Path $root "target\release\saba-chan-updater.exe") },
-        @{ Name = "saba-chan-installer.exe"; Path = (Join-Path $root "target\release\saba-chan-installer.exe") }
+        @{ Name = "saba-chan-installer.exe"; Path = (Join-Path $root "target\release\saba-chan-installer.exe") },
+        @{ Name = "saba-chan-gui.exe";      Path = (Join-Path $root "target\release\saba-chan-gui.exe") }
     )
     $info = @()
     foreach ($t in $targets) {
@@ -119,48 +135,10 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
     return @{ Targets = $targets; Info = $info }
 } -ArgumentList $ProjectRoot
 
-# 2b. Electron GUI (npm install + vite build + electron-builder)
-$jobGUI = Start-Job -Name "GUI" -ScriptBlock {
-    param($root)
-    $guiDir = Join-Path $root "saba-chan-gui"
-    Set-Location $guiDir
-
-    @("dist", "build", "electron-dist") | ForEach-Object {
-        if (Test-Path $_) { Remove-Item $_ -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-    Start-Sleep -Milliseconds 300
-
-    $ErrorActionPreference = "Continue"
-    if (-not (Test-Path "node_modules")) {
-        & npm install --quiet --no-save 2>&1 | Out-Null
-    }
-    & npm install --save-dev terser --quiet --no-save 2>&1 | Out-Null
-
-    $buildOut = & npm run build --silent 2>&1
-    $ec = $LASTEXITCODE
-    if ($ec -ne 0) { throw "npm run build failed (exit $ec):`n$($buildOut | Out-String)" }
-
-    $pkgOut = & npm run package --silent 2>&1
-    $ec = $LASTEXITCODE
-    if ($ec -ne 0) { throw "npm run package failed (exit $ec):`n$($pkgOut | Out-String)" }
-    $ErrorActionPreference = "Stop"
-
-    $exe = Get-ChildItem -Path "electron-dist" -Filter "Saba-chan.exe" -ErrorAction SilentlyContinue |
-           Select-Object -First 1
-    if (-not $exe) {
-        $exe = Get-ChildItem -Path "electron-dist" -Filter "*.exe" -ErrorAction SilentlyContinue |
-               Select-Object -First 1
-    }
-    if (-not $exe) { throw "GUI exe not found in electron-dist/" }
-    $mb = [Math]::Round($exe.Length / 1MB, 2)
-    return @{ Path = $exe.FullName; Info = "saba-chan-gui.exe ($mb MB)" }
-} -ArgumentList $ProjectRoot
-
 # Wait for all jobs
-$allJobs = @($jobRust, $jobGUI)
+$allJobs = @($jobRust)
 $failedJobs = @()
 $rustResult = $null
-$guiResult = $null
 
 foreach ($job in $allJobs) {
     $result = $null
@@ -178,10 +156,6 @@ foreach ($job in $allJobs) {
         "Rust" {
             $rustResult = $result
             foreach ($i in $result.Info) { Write-Host "  [Rust] $i" -ForegroundColor Green }
-        }
-        "GUI" {
-            $guiResult = $result
-            Write-Host "  [GUI] $($result.Info)" -ForegroundColor Green
         }
     }
     Remove-Job $job -Force
@@ -206,8 +180,6 @@ foreach ($t in $rustResult.Targets) {
     }
     Copy-Item -Path $t.Path -Destination $dest -Force
 }
-
-Copy-Item -Path $guiResult.Path -Destination (Join-Path $DistDir "saba-chan-gui.exe") -Force
 
 Write-Host "  [OK]" -ForegroundColor Green
 

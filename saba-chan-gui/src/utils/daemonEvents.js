@@ -1,7 +1,7 @@
 import { auditWhat } from '../components/servers/AuditTab';
 import { safeShowToast } from './helpers';
 
-/** 데몬 이벤트 스트림 (P4: GET /api/events → main.js → preload onDaemonEvent) */
+/** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
 export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'function';
 
 /** 서버 목록을 다시 읽어야 하는 이벤트 (상태는 이벤트로 오지 않는다) */
