@@ -477,7 +477,8 @@ export function useServerActions({
                     .join('\n\n');
                 const title = t('servers.preflight_failed_title', { name });
                 // 동의 기록은 있는데 파일(eula.txt 등)이 지워진 경우: 다시 동의하면 모듈이 파일을 다시 쓴다
-                const srvAgreements = srv?.agreements || [];
+                // 서버 목록에는 agreements가 없어 모듈 목록의 선언을 쓴다
+                const srvAgreements = modules.find((m) => m.name === (srv?.module || module))?.agreements || [];
                 if (
                     result.issue_code === 'EULA_NOT_ACCEPTED' &&
                     srvAgreements.length &&

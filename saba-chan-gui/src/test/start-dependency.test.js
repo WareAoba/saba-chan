@@ -11,12 +11,13 @@ const blocked = (missing) => ({
 });
 
 function setup(openSettingsToExtensions, agreements) {
+    const modules = agreements ? [{ name: 'game', agreements }] : [];
     const setModal = vi.fn();
     const { result } = renderHook(() =>
         useServerActions({
-            servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped', agreements }],
+            servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }],
             setServers: vi.fn(),
-            modules: [],
+            modules,
             loading: false,
             setLoading: vi.fn(),
             setModal,
@@ -80,7 +81,7 @@ describe('시작: 켜기 전 점검(preflight_failed)', () => {
         window.api.instanceStart = vi.fn().mockResolvedValueOnce(eula).mockResolvedValueOnce({ success: true });
         window.api.instanceAgreements = vi.fn().mockResolvedValue({ success: true });
         window.api.serverStatus = vi.fn().mockResolvedValue({ status: 'running' });
-        const { result, setModal } = setup(vi.fn(), [{ id: 'eula', url: 'https://aka.ms/MinecraftEULA', accepted: true }]);
+        const { result, setModal } = setup(vi.fn(), [{ id: 'eula', url: 'https://aka.ms/MinecraftEULA' }]);
         await act(async () => result.current.handleStart('A', 'game'));
         const modal = setModal.mock.calls.at(-1)[0];
         expect(modal.type).toBe('agreements');
