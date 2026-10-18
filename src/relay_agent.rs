@@ -228,6 +228,15 @@ impl Session {
         Ok(req)
     }
 
+    /// 서명된 요청을 보낸다. 보내는 중에 세션이 끝나면 그만둔다
+    async fn send_signed(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<reqwest::Response, String> {
+        let req = self.signed(method, path, body)?;
+        tokio::select! {
+            _ = self.cancel.cancelled() => Err("relay session ended".into()),
+            r = req.send() => r.map_err(|e| e.to_string()),
+        }
+    }
+
     /// 이 PC의 토큰이 다른 PC 페어링으로 대체됐다: 같은 토큰으로 다시 시도해도 소용없으니 멈춘다.
     /// 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄운다
     fn give_up_replaced(&self) {
@@ -276,7 +285,7 @@ impl Session {
             "metadata": self.metadata().await,
         });
         let result = async {
-            let resp = self.signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string()))?.send().await.map_err(|e| e.to_string())?;
+            let resp = self.send_signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string())).await?;
             let status = resp.status();
             let data: Value = resp.json().await.unwrap_or(Value::Null);
             if token_replaced(status, &data) {
@@ -634,7 +643,7 @@ impl Session {
             let batch: Vec<Value> = pending.iter().take(EVENT_BATCH).cloned().collect();
             let sent = async {
                 let body = json!({ "events": batch }).to_string();
-                self.signed(reqwest::Method::POST, "/events", Some(body))?.send().await.map_err(|e| e.to_string())
+                self.send_signed(reqwest::Method::POST, "/events", Some(body)).await
             };
             let resp = tokio::select! {
                 _ = self.cancel.cancelled() => return,
@@ -677,7 +686,7 @@ impl Session {
 
     async fn post_result(&self, id: &str, result: &Value) {
         let path = format!("/result/{}", encode_segment(id));
-        let sent = async { self.signed(reqwest::Method::POST, &path, Some(result.to_string()))?.send().await.map_err(|e| e.to_string()) }.await;
+        let sent = self.send_signed(reqwest::Method::POST, &path, Some(result.to_string())).await;
         match sent {
             Ok(r) if r.status().is_success() => {}
             Ok(r) => tracing::warn!("[RelayAgent] result {} rejected: {}", id, r.status()),
