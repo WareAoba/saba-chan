@@ -355,6 +355,21 @@ fn command_reply(
     (resp.status, Json(Value::Object(body))).into_response()
 }
 
+/// POST /api/instance/:id/rcon 라우트: 콘솔 명령을 감사에 남긴다 (안에서 부르는 `execute_rcon_command`는 부른 쪽이 남긴다)
+pub async fn rcon_route(Path(id): Path<String>, State(state): State<IPCServer>, Json(payload): Json<Value>) -> axum::response::Response {
+    let command = payload.get("command").and_then(Value::as_str).map(str::to_string);
+    let resp = execute_rcon_command(Path(id.clone()), State(state.clone()), Json(payload)).await.into_response();
+    super::audited(&state, "command", &id, command.as_deref(), None, resp).await
+}
+
+/// POST /api/instance/:id/rest 라우트: REST 명령을 감사에 남긴다
+pub async fn rest_route(Path(id): Path<String>, State(state): State<IPCServer>, Json(payload): Json<Value>) -> axum::response::Response {
+    let endpoint = payload.get("endpoint").and_then(Value::as_str).map(str::to_string);
+    let body = payload.get("body").cloned();
+    let resp = execute_rest_command(Path(id.clone()), State(state.clone()), Json(payload)).await.into_response();
+    super::audited(&state, "command", &id, endpoint.as_deref(), body.as_ref(), resp).await
+}
+
 /// POST /api/instance/:id/rcon - RCON 명령어 실행
 pub async fn execute_rcon_command(
     Path(id): Path<String>,

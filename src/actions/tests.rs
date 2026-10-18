@@ -209,8 +209,8 @@ async fn guilds_only_reach_their_allowed_instances() {
     set_node(&state, json!({ "ownerDiscordId": "owner", "allowedInstances": ["other"] })).await;
     let owner = relay("owner", false);
     let err = query(&state, "server.status", Some(&id), &json!({}), &owner).await.unwrap_err();
-    assert_eq!(err.code, "PERMISSION_DENIED");
-    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &owner).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert_eq!(err.code, "NODE_NOT_ALLOWED");
+    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &owner).await.unwrap_err().code, "NODE_NOT_ALLOWED");
     let listed = query(&state, "instance.list", None, &json!({}), &owner).await.unwrap();
     assert_eq!(listed["result"]["servers"], json!([]));
 
@@ -254,4 +254,22 @@ async fn console_input_to_a_module_without_stdin_is_refused() {
     assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["error_code"], "stdin_not_supported");
+}
+
+#[test]
+fn chatbot_console_hides_addresses_and_secret_looking_values() {
+    let mut v = json!({ "lines": [
+        "[12:34:56 INFO]: Player joined from 203.0.113.7:51234",
+        "[12:34:57 INFO]: peer 2001:db8::1 and fe80::1ff:fe23:4567:890a",
+        "rcon password=hunter2 token: abc",
+        "key a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8",
+        "Done (12.3s)! For help, type \"help\"",
+    ]});
+    mask_console(&mut v);
+    let lines: Vec<&str> = v["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
+    assert_eq!(lines[0], "[12:34:56 INFO]: Player joined from x.x.x.x:51234");
+    assert_eq!(lines[1], "[12:34:57 INFO]: peer x:x::x and x:x::x");
+    assert_eq!(lines[2], "rcon password=*** token: ***");
+    assert_eq!(lines[3], "key ***");
+    assert_eq!(lines[4], "Done (12.3s)! For help, type \"help\"");
 }

@@ -288,7 +288,7 @@ impl Session {
                 json!({
                     "name": m.name,
                     "module_aliases": m.module_aliases,
-                    "commands": { "fields": m.commands },
+                    "commands": { "fields": m.commands.iter().map(relay_command_entry).collect::<Vec<_>>() },
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
                 })
             })
@@ -620,7 +620,6 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
     Some(json!({ "id": event.id, "type": event.kind, "data": data }))
 }
 
-/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다
 /// poll 응답 본문. 릴레이가 이모지를 반으로 잘라 짝 없는 서로게이트(`\ud83d`)가 오면 serde_json이
 /// 본문 전체를 거부해 그 묶음의 명령이 다 사라진다: 짝 없는 서로게이트만 U+FFFD로 바꿔 다시 읽는다
 fn decode_poll(text: &str) -> Value {
@@ -709,6 +708,7 @@ fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
     }
 }
 
+/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다
 fn raw_command_result(reply: crate::chat::Reply) -> Value {
     match reply.code {
         Some(code) => json!({ "success": false, "data": { "code": code, "error": reply.text, "args": reply.args } }),
@@ -825,6 +825,16 @@ fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
+/// 하트비트의 모듈 명령 한 줄: relay가 슬래시·챗봇 도구를 만드는 데 쓰는 필드만 (템플릿·엔드포인트는 PC 안에서만 쓴다)
+fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField) -> Value {
+    let inputs: Vec<Value> = c
+        .inputs
+        .iter()
+        .map(|i| json!({ "name": i.name, "label": i.label, "type": i.input_type, "required": i.required, "min": i.min, "max": i.max, "options": i.options }))
+        .collect();
+    json!({ "name": c.name, "label": c.label, "description": c.description, "risk": c.risk, "inputs": inputs })
+}
+
 /// 하트비트의 서버 한 줄: relay가 읽는 필드만 싣는다. 설정값·경로·비밀번호는 PC 밖으로 나가지 않는다
 fn relay_server_entry(server: &Value) -> Value {
     let mut entry = serde_json::Map::new();
@@ -839,6 +849,20 @@ fn relay_server_entry(server: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heartbeat_commands_leave_templates_on_the_pc() {
+        let field: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
+            "name": "kick", "label": "Kick", "method": "console", "console_template": "kick {player}",
+            "endpoint_template": "/v1/kick", "risk": "caution",
+            "inputs": [{ "name": "player", "type": "text", "required": true }]
+        }))
+        .unwrap();
+        let entry = relay_command_entry(&field);
+        assert_eq!(entry["name"], "kick");
+        assert_eq!(entry["inputs"][0]["name"], "player");
+        assert!(entry.get("console_template").is_none() && entry.get("endpoint_template").is_none() && entry.get("method").is_none());
+    }
 
     #[test]
     fn heartbeat_servers_carry_only_what_the_relay_reads() {
