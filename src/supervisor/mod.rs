@@ -1684,20 +1684,23 @@ impl Supervisor {
     /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
     /// (RCON은 보안상 늘 꺼져 있다).
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
-        let Some(instance) = self.instance_store.get(instance_id) else { return false };
-        let module_has_stdin = self
-            .module_loader
-            .get_module(&instance.module_name)
-            .ok()
-            .and_then(|m| m.metadata.protocols_supported)
-            .is_some_and(|p| p.iter().any(|s| s == "stdin"));
-        if !module_has_stdin {
+        if !self.module_accepts_stdin(instance_id) {
             return false;
         }
         match self.managed_store.get(instance_id).await {
             Some(proc) => proc.is_running() && proc.is_stdin_available(),
             None => false,
         }
+    }
+
+    /// 인스턴스의 모듈이 콘솔 입력(`protocols.supported`에 "stdin")을 받는가
+    pub fn module_accepts_stdin(&self, instance_id: &str) -> bool {
+        let Some(instance) = self.instance_store.get(instance_id) else { return false };
+        self.module_loader
+            .get_module(&instance.module_name)
+            .ok()
+            .and_then(|m| m.metadata.protocols_supported)
+            .is_some_and(|p| p.iter().any(|s| s == "stdin"))
     }
 
     /// Send a command to a managed process's stdin
@@ -2642,7 +2645,6 @@ mod tests {
         assert!(supervisor.unmet_module_dependencies("game").await.is_none());
     }
 
-    /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
     #[test]
     fn a_module_failure_says_why_instead_of_unknown_error() {
         assert_eq!(module_failure(&json!({"success": false, "message": "jar missing"}), "mc", "get_launch_command"), "jar missing");
@@ -2652,6 +2654,7 @@ mod tests {
         assert!(module_failure(&Value::Null, "m", "f").contains("nothing"));
     }
 
+    /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
     #[test]
     fn managed_start_policy() {
         let tmp = tempfile::tempdir().unwrap();

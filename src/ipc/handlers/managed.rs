@@ -10,6 +10,16 @@ use std::collections::HashMap;
 use super::super::IPCServer;
 use crate::supervisor::Supervisor;
 
+/// POST /api/instance/:id/managed/start 라우트: 시작을 감사에 남긴다 (서버 시작 경로가 안에서 부를 때는 그쪽이 남긴다)
+pub async fn start_managed_route(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    payload: Option<Json<serde_json::Value>>,
+) -> axum::response::Response {
+    let resp = start_managed_handler(Path(id.clone()), State(state.clone()), payload).await.into_response();
+    super::audited(&state, "start", &id, None, None, resp).await
+}
+
 /// POST /api/instance/:id/managed/start — Start with managed process (stdin/stdout capture)
 pub async fn start_managed_handler(
     Path(id): Path<String>,
@@ -98,8 +108,17 @@ pub async fn send_stdin_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
-    let resp = super::command::via_stdin(&state, &id, &payload).await.into_response();
+    // 콘솔 입력을 받지 않는 모듈(예: REST 전용)은 보낸 척하지 않는다: 클라이언트가 명령 API로 넘어가게
+    let resp = if !state.supervisor.read().await.module_accepts_stdin(&id) {
+        (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "This server does not take console input; use its commands instead", "error_code": "stdin_not_supported" })),
+        )
+            .into_response()
+    } else {
+        // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
+        super::command::via_stdin(&state, &id, &payload).await.into_response()
+    };
     let line = payload.get("command").or_else(|| payload.get("line")).and_then(|v| v.as_str()).map(str::to_string);
     super::audited(&state, "stdin", &id, line.as_deref(), None, resp).await
 }
@@ -141,14 +160,15 @@ pub async fn write_properties_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let settings = payload.get("settings").cloned();
-    match Supervisor::manage_properties(&state.supervisor, &id, "write", settings).await {
+    let resp = match Supervisor::manage_properties(&state.supervisor, &id, "write", settings.clone()).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),
         )
             .into_response(),
-    }
+    };
+    super::audited(&state, "properties", &id, None, settings.as_ref(), resp).await
 }
 
 /// GET /api/instance/:id/settings/live — 디스크의 실제 설정을 모듈 `import_settings`로 읽어 돌려준다.
@@ -203,14 +223,15 @@ pub async fn reset_server_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    match Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await {
+    let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),
         )
             .into_response(),
-    }
+    };
+    super::audited(&state, "reset", &id, None, None, resp).await
 }
 
 /// POST /api/instance/:id/accept-eula — Accept Minecraft EULA

@@ -13,17 +13,20 @@ export const setServerI18n = (t, i18n) => {
     _i18n = i18n;
 };
 
+let modulesFetch = null;
+
 export const useServerStore = create((set, get) => ({
     // ── State ──
     servers: [],
     modules: [],
     failedModules: [], // 데몬이 불러오지 못한 모듈 [{ path, error }]
+    modulesLoaded: false, // 모듈 목록을 한 번이라도 받았는지
     loading: true,
     moduleAliasesPerModule: {},
 
     // ── Init state ──
     daemonReady: false,
-    initStatus: 'Initialize...',
+    initStatus: '', // 비어 있으면 로딩 화면이 첫 단계 문구를 쓴다
     initProgress: 0,
     serversInitializing: true,
 
@@ -46,10 +49,11 @@ export const useServerStore = create((set, get) => ({
             servers: [],
             modules: [],
             failedModules: [], // 데몬이 불러오지 못한 모듈 [{ path, error }]
+            modulesLoaded: false,
             loading: true,
             moduleAliasesPerModule: {},
             daemonReady: false,
-            initStatus: 'Initialize...',
+            initStatus: '', // 비어 있으면 로딩 화면이 첫 단계 문구를 쓴다
             initProgress: 0,
             serversInitializing: true,
             nowEpoch: Math.floor(Date.now() / 1000),
@@ -115,7 +119,18 @@ export const useServerStore = create((set, get) => ({
     // fetchServers is managed by useServerActions hook (single source of truth)
     // to avoid duplicating change-detection + optimistic status logic.
 
-    fetchModules: async () => {
+    // 데몬이 늦게 뜨거나 다시 켜지면 여러 곳에서 부를 수 있다: 이미 받는 중이면 그걸 기다린다
+    fetchModules: () => {
+        if (!modulesFetch)
+            modulesFetch = get()
+                ._fetchModulesOnce()
+                .finally(() => {
+                    modulesFetch = null;
+                });
+        return modulesFetch;
+    },
+
+    _fetchModulesOnce: async () => {
         try {
             console.log('Fetching modules...');
             try {
@@ -129,7 +144,7 @@ export const useServerStore = create((set, get) => ({
 
             if (data && data.modules) {
                 console.log('Setting modules:', data.modules.length, 'modules');
-                set({ modules: data.modules, failedModules: data.failed || [] });
+                set({ modules: data.modules, failedModules: data.failed || [], modulesLoaded: true });
 
                 // Register module locales
                 if (_i18n) {

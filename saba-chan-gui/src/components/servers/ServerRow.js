@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useInstanceMaintenance, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
+import { useServerStore } from '../../stores/useServerStore';
 import { STATUS_TONE, initials, primaryAction, viewStatus } from '../../utils/serverView';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
@@ -26,7 +27,8 @@ export function ServerRow({
     const { t } = useTranslation('gui');
     useInstanceMaintenance(server, moduleData);
     const { updateInfo } = useMaintenanceOf(server.id);
-    const status = viewStatus(server, moduleData);
+    const modulesLoaded = useServerStore((s) => s.modulesLoaded);
+    const status = viewStatus(server, moduleData, modulesLoaded);
     const action = primaryAction(status);
     const gameName = t(`mod_${server.module}:module.display_name`, {
         defaultValue: moduleData?.game_name || server.module,

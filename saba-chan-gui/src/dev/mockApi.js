@@ -162,13 +162,14 @@ const params = new URLSearchParams(globalThis.location?.search || '');
 const mockBot = params.get('bot') || 'stopped';
 const mockDaemonUp = params.get('daemon') !== 'stopped';
 const mockUpdate = params.get('update'); // ok | fail
+const mockNoServers = params.get('servers') === '0'; // 빈 화면 보기
 const mockFailed = params.get('failed') // 불러오지 못한 모듈 보기
     ? [{ path: 'modules/terraria', error: "module.toml: unknown field 'protocl' (did you mean 'protocol'?)" }]
     : [];
 const settings = {};
 
 const impl = {
-    serverList: () => ok({ servers: servers.map((s) => ({ ...s })) }),
+    serverList: () => ok({ servers: mockNoServers ? [] : servers.map((s) => ({ ...s })) }),
     moduleList: () => ok({ modules, failed: mockFailed }),
     instanceEvents: () =>
         ok({

@@ -4,9 +4,12 @@
 //! 인스턴스 몫은 추적 중인 PID와 그 자손 프로세스를 합친 값이다.
 //! - 디스크 IO: 전체는 OS의 물리 디스크 카운터로 잰다(`physical_io`). 프로세스 IO 카운터는 캐시에서
 //!   읽은 것까지 세서 실제 디스크와 수십 배 어긋나므로 전체를 인스턴스별로 나누지 않는다.
-//!   인스턴스의 `disk_*_bps`는 그 프로세스들이 요청한 IO(캐시 포함)다.
+//!   인스턴스의 `disk_*_bps`는 그 프로세스들이 요청한 IO(캐시 포함)다. 요약 요청은 물리 카운터가 있으면
+//!   프로세스 IO 카운터를 읽지 않아 이 값이 0이다.
+//! - 물리 카운터를 한 번 못 읽으면 직전 값을 다시 쓴다(`STALE_AFTER`까지). 프로세스 합으로 바꾸면 그래프가 튄다.
 //! - 네트워크: 프로세스별 값을 싸게 얻을 길이 없어(Windows는 ETW·관리자 권한 필요) 기계 전체만 준다.
 //! - 디스크 용량의 인스턴스 몫은 폴더 크기를 따로 훑어 10분 동안 재사용한다. 요약만 보는 요청은 훑지 않는다.
+//! - 요청이 `IDLE_DROP_AFTER` 동안 없으면 표본기(프로세스 목록 포함)를 버린다. 다음 요청 때 새로 만든다.
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -26,6 +29,8 @@ const STALE_AFTER: Duration = Duration::from_secs(10);
 const DIR_SIZE_TTL: Duration = Duration::from_secs(600);
 /// 디스크 목록 갱신 간격
 const DISK_LIST_TTL: Duration = Duration::from_secs(60);
+/// 요청이 이만큼 없으면 표본기를 버린다 (아무도 안 보는데 프로세스 목록을 들고 있지 않게)
+const IDLE_DROP_AFTER: Duration = Duration::from_secs(180);
 
 /// 핸들러가 supervisor에서 복사해 넘기는 인스턴스 정보
 #[derive(Debug, Clone)]
@@ -252,8 +257,34 @@ struct Sampler {
     last_refresh: Option<Instant>,
     last: Option<(Instant, MetricsSnapshot)>,
     physical_io: PhysicalIo,
-    /// 마지막으로 잰 실제 디스크 (읽기, 쓰기) 초당 바이트
-    physical_rates: Option<(u64, u64)>,
+    /// 마지막으로 잰 실제 디스크 (잰 시각, (읽기, 쓰기) 초당 바이트)
+    physical_rates: Option<(Instant, (u64, u64))>,
+    /// 마지막 갱신이 프로세스 IO 카운터를 읽었는지
+    proc_io: bool,
+    last_request: Instant,
+}
+
+/// 물리 카운터를 못 읽으면 직전 값을 다시 쓴다. 마지막으로 읽은 지 `STALE_AFTER`가 지났으면 없는 것으로 본다
+fn carry_physical(
+    prev: Option<(Instant, (u64, u64))>,
+    new: Option<(u64, u64)>,
+    now: Instant,
+) -> Option<(Instant, (u64, u64))> {
+    match new {
+        Some(rates) => Some((now, rates)),
+        None => prev.filter(|(at, _)| now.duration_since(*at) <= STALE_AFTER),
+    }
+}
+
+/// 마지막 요청 뒤 `idle`이 지났으면 표본기를 버린다. 남겼으면 다시 볼 때까지 기다릴 시간을 준다
+fn drop_if_idle(sampler: &Mutex<Option<Sampler>>, idle: Duration) -> Option<Duration> {
+    let mut guard = sampler.lock().unwrap_or_else(|e| e.into_inner());
+    let since = guard.as_ref()?.last_request.elapsed();
+    if since >= idle {
+        *guard = None;
+        return None;
+    }
+    Some(idle - since)
 }
 
 #[derive(Default)]
@@ -290,6 +321,9 @@ impl SystemMonitor {
             self.refresh_dir_sizes_if_stale(roots);
         }
         let mut guard = self.sampler.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            self.spawn_idle_reaper();
+        }
         let sampler = guard.get_or_insert_with(|| Sampler {
             system: System::new(),
             networks: Networks::new_with_refreshed_list(),
@@ -297,22 +331,28 @@ impl SystemMonitor {
             disks_listed_at: None,
             physical_io: PhysicalIo::new(),
             physical_rates: None,
+            proc_io: false,
+            last_request: Instant::now(),
             last_refresh: None,
             last: None,
         });
+        sampler.last_request = Instant::now();
+        // 인스턴스 IO 몫은 펼친 화면에서만, 전체 디스크 IO를 프로세스 합으로 낼 때는 늘 필요하다
+        let want_io = measure_dirs || sampler.physical_rates.is_none();
         if let Some((at, snap)) = &sampler.last {
-            if at.elapsed() < MIN_SAMPLE_INTERVAL {
+            if at.elapsed() < MIN_SAMPLE_INTERVAL && (sampler.proc_io || !want_io) {
                 return snap.clone();
             }
         }
-        let fresh = sampler.last_refresh.is_none_or(|t| t.elapsed() > STALE_AFTER);
+        // 프로세스 IO는 직전에 읽은 때부터의 차이라, 건너뛴 뒤 처음 읽을 때도 구간을 새로 만든다
+        let fresh = sampler.last_refresh.is_none_or(|t| t.elapsed() > STALE_AFTER) || (want_io && !sampler.proc_io);
         if fresh {
             // 비율은 두 번 뜬 차이로 구한다: 오래 쉬었으면 짧은 구간을 새로 만든다
-            Self::refresh(sampler);
+            Self::refresh(sampler, want_io);
             std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL.max(Duration::from_millis(250)));
         }
         let window = sampler.last_refresh.map(|t| t.elapsed()).unwrap_or_default();
-        Self::refresh(sampler);
+        Self::refresh(sampler, want_io);
         if sampler.disks_listed_at.is_none_or(|t| t.elapsed() > DISK_LIST_TTL) {
             sampler.disks.refresh_list();
             sampler.disks_listed_at = Some(Instant::now());
@@ -326,15 +366,28 @@ impl SystemMonitor {
         snap
     }
 
-    fn refresh(sampler: &mut Sampler) {
+    fn refresh(sampler: &mut Sampler, want_io: bool) {
         sampler.system.refresh_cpu_usage();
         sampler.system.refresh_memory();
-        sampler
-            .system
-            .refresh_processes_specifics(ProcessRefreshKind::new().with_cpu().with_memory().with_disk_usage());
+        sampler.physical_rates = carry_physical(sampler.physical_rates, sampler.physical_io.refresh(), Instant::now());
+        // 프로세스 IO 카운터는 프로세스마다 따로 읽는다: 쓸 데가 없으면 건너뛴다
+        let with_io = want_io || sampler.physical_rates.is_none();
+        let kind = ProcessRefreshKind::new().with_cpu().with_memory();
+        sampler.system.refresh_processes_specifics(if with_io { kind.with_disk_usage() } else { kind });
+        sampler.proc_io = with_io;
         sampler.networks.refresh();
-        sampler.physical_rates = sampler.physical_io.refresh();
         sampler.last_refresh = Some(Instant::now());
+    }
+
+    /// 표본기를 만들 때 하나 띄운다. 표본기를 버리거나 모니터가 사라지면 끝난다
+    fn spawn_idle_reaper(&self) {
+        let weak = Arc::downgrade(&self.sampler);
+        std::thread::spawn(move || loop {
+            let Some(shared) = weak.upgrade() else { return };
+            let Some(wait) = drop_if_idle(&shared, IDLE_DROP_AFTER) else { return };
+            drop(shared);
+            std::thread::sleep(wait);
+        });
     }
 
     /// 폴더 크기가 오래됐으면 별도 스레드에서 다시 잰다 (응답은 기다리지 않는다)
@@ -381,15 +434,17 @@ fn build_snapshot(
         .processes()
         .iter()
         .map(|(pid, p)| {
+            // 이번에 IO 카운터를 안 읽었으면 sysinfo는 지난번 차이를 그대로 준다
             let io = p.disk_usage();
+            let (read, written) = if sampler.proc_io { (io.read_bytes, io.written_bytes) } else { (0, 0) };
             (
                 pid.as_u32(),
                 ProcSample {
                     parent: p.parent().map(Pid::as_u32),
                     cpu: p.cpu_usage(),
                     memory: p.memory(),
-                    read: io.read_bytes,
-                    written: io.written_bytes,
+                    read,
+                    written,
                 },
             )
         })
@@ -425,7 +480,7 @@ fn build_snapshot(
     let used_mem = total_mem.saturating_sub(sys.available_memory()).max(inst_mem.min(total_mem));
 
     let disk_io = match sampler.physical_rates {
-        Some((read, write)) => DiskIoMetrics { read_bps: read, write_bps: write, source: "physical", per_instance: false },
+        Some((_, (read, write))) => DiskIoMetrics { read_bps: read, write_bps: write, source: "physical", per_instance: false },
         // 물리 카운터가 없는 OS: 프로세스 IO 합 (캐시 포함이라 실제보다 크다)
         None => DiskIoMetrics {
             read_bps: per_sec(others.read, window) + instances.iter().map(|i| i.disk_read_bps).sum::<u64>(),
@@ -596,5 +651,46 @@ mod tests {
         assert_eq!(monitor.sample(&roots, &[], false).sampled_at_ms, snap.sampled_at_ms);
         // 요약 요청은 폴더 크기를 재지 않는다
         assert!(monitor.dir_sizes.lock().unwrap().measured_at.is_none() && !monitor.dir_sizes.lock().unwrap().running);
+    }
+
+    #[test]
+    fn missed_physical_reading_reuses_the_last_one_until_stale() {
+        let t0 = Instant::now();
+        let prev = carry_physical(None, Some((10, 20)), t0);
+        assert_eq!(prev, Some((t0, (10, 20))));
+        assert_eq!(carry_physical(prev, None, t0 + Duration::from_secs(2)), prev);
+        assert_eq!(carry_physical(prev, None, t0 + STALE_AFTER + Duration::from_secs(1)), None);
+        let t1 = t0 + Duration::from_secs(3);
+        assert_eq!(carry_physical(prev, Some((1, 2)), t1), Some((t1, (1, 2))));
+    }
+
+    #[test]
+    fn idle_sampler_is_dropped_and_rebuilt_on_next_request() {
+        let monitor = SystemMonitor::new();
+        monitor.sample(&[], &[], false);
+        assert!(drop_if_idle(&monitor.sampler, Duration::from_secs(3600)).is_some());
+        assert!(monitor.sampler.lock().unwrap().is_some());
+        assert!(drop_if_idle(&monitor.sampler, Duration::ZERO).is_none());
+        assert!(monitor.sampler.lock().unwrap().is_none());
+        assert!(monitor.sample(&[], &[], false).memory.total_bytes > 0);
+        assert!(monitor.sampler.lock().unwrap().is_some());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn summary_skips_process_io_and_full_view_measures_a_fresh_window() {
+        let monitor = SystemMonitor::new();
+        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![] }];
+        // 첫 표본은 물리 카운터를 아직 못 읽어 프로세스 IO도 읽는다
+        monitor.sample(&roots, &[], false);
+        std::thread::sleep(MIN_SAMPLE_INTERVAL);
+        let summary = monitor.sample(&roots, &[], false);
+        assert!(!monitor.sampler.lock().unwrap().as_ref().unwrap().proc_io);
+        assert_eq!(summary.instances[0].disk_read_bps + summary.instances[0].disk_write_bps, 0);
+        // 펼친 화면은 직전 요약 표본을 재사용하지 않고 프로세스 IO를 짧은 구간으로 새로 잰다
+        let full = monitor.sample(&roots, &[], true);
+        assert!(monitor.sampler.lock().unwrap().as_ref().unwrap().proc_io);
+        assert_ne!(full.sampled_at_ms, summary.sampled_at_ms);
+        assert!(full.window_ms >= 250);
     }
 }

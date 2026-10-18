@@ -63,9 +63,9 @@
     "port_conflict_check_label": "ポート競合チェック",
     "port_conflict_check_description": "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。",
     "uninstall_label": "サバちゃんをアンインストール",
-    "uninstall_description": "このコンピューターからサバちゃんを完全に削除します。すべてのプロセスが停止され、インストーラーがアンインストールモードで実行されます。",
+    "uninstall_description": "このコンピューターからサバちゃんを完全に削除します。起動中のサーバーを先に正常終了してから、インストーラーがアンインストールモードで実行されます。",
     "uninstall_confirm_title": "サバちゃんをアンインストール",
-    "uninstall_confirm_message": "本当にサバちゃんをアンインストールしますか？すべてのプロセス（GUIおよびデーモン）が停止されます。",
+    "uninstall_confirm_message": "本当にサバちゃんをアンインストールしますか？起動中のサーバーを先に正常終了してから、サバちゃん（GUIとデーモン）を閉じます。",
     "uninstall_confirm_yes": "アンインストール",
     "uninstall_confirm_no": "キャンセル",
     "about_title": "情報",
@@ -234,13 +234,13 @@
     "advanced_group": "詳細設定",
     "danger_zone": "危険ゾーン",
     "reset_server_label": "サーバーリセット",
-    "reset_server_desc": "すべてのワールド、設定、ログ、その他のデータを削除します。サーバーJARとeula.txtのみ保持されます。この操作は元に戻せません。",
+    "reset_server_desc": "このサーバーのデータを消去し、初期状態に戻します。消去される内容はゲームによって異なります。この操作は元に戻せません。",
     "reset_settings_label": "設定リセット",
     "reset_settings_desc": "すべてのサーバー設定を初期値にリセットします。ワールド・セーブデータは保持されます。この操作は元に戻せません。",
     "reset_button": "リセット",
     "resetting": "リセット中...",
     "reset_confirm_title": "サーバーリセット",
-    "reset_confirm": "サーバー '{{name}}' を完全にリセットしますか？\n\nすべてのワールド、設定、ログ、その他のデータが削除されます。\nサーバーJARとeula.txtのみ保持されます。\n\nこの操作は元に戻せません。",
+    "reset_confirm": "サーバー「{{name}}」を初期化しますか？\n\nサーバーのデータを消去し、初期状態に戻します。この操作は元に戻せません。",
     "reset_success": "サーバー '{{name}}' がリセットされました（{{count}}個のアイテムを削除）",
     "reset_failed": "リセット失敗: {{error}}",
     "reset_error": "リセットエラー: {{error}}",
@@ -387,7 +387,9 @@
     "generic_error": "予期しないエラーが発生しました。",
     "port_conflict": "ポート競合",
     "port_conflict_detail": "ポート {{port}} はインスタンス '{{name}}' で既に使用されています",
-    "port_conflict_force_stop_toast": "🚫 {{stopped}} が強制停止されました — ポート {{port}} が {{existing}} と競合しています"
+    "port_conflict_force_stop_toast": "🚫 {{stopped}} が強制停止されました — ポート {{port}} が {{existing}} と競合しています",
+    "unexpected_crash": "問題が発生して画面を表示できませんでした",
+    "retry": "再試行"
   },
   "background_modal": {
     "title": "バックグラウンドサービス",
@@ -689,7 +691,13 @@
     "preflight_failed": "Pythonの準備に失敗しました。次にサーバーを操作するときに再試行します。（{{error}}）",
     "module_needs": "必要なバージョンを満たしていません: {{deps}}",
     "tab_maintenance": "バックアップ・予約",
-    "tab_audit": "履歴"
+    "tab_audit": "履歴",
+    "daemon_down_title": "コアデーモンに接続していません",
+    "daemon_down_body": "サーバーを起動・管理するデーモンが停止しています。再起動するとサーバー一覧を読み込み直します。",
+    "daemon_down_stale": "デーモンに接続していないため、最後に受け取った状態を表示しています。",
+    "daemon_restart": "デーモンを再起動",
+    "daemon_restarting": "再起動中…",
+    "daemon_restart_failed": "デーモンを再起動できませんでした。{{error}}"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1206,5 +1214,17 @@
     "hint": "空欄なら無制限。Javaサーバーは-Xmxより1〜2GB大きくしてください。Windowsでのみ適用されます。",
     "placeholder": "制限なし",
     "restart_note": "再起動すると適用されます。"
+  },
+  "loading": {
+    "step_init": "初期化中…",
+    "step_ui": "画面を読み込みました",
+    "step_modules": "モジュールを読み込み中…",
+    "step_instances": "サーバー一覧を読み込み中…",
+    "step_ready": "サーバーの状態を確認中…",
+    "step_done": "準備完了",
+    "daemon_failed": "コアデーモンを起動できませんでした。",
+    "failed_hint": "このまま開くと画面だけが開きます。サーバーを操作するにはデーモンを再起動してください。",
+    "retry": "再試行",
+    "continue": "このまま開く"
   }
 }

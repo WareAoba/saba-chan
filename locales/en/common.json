@@ -21,7 +21,7 @@
     "starting": "Starting daemon...",
     "started": "Daemon started",
     "preparing": "Preparing daemon... (timeout)",
-    "failed_to_start": "Failed to start daemon - please run manually",
+    "failed_to_start": "Couldn't start the daemon",
     "check_warning": "Warning checking daemon: {{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "Port Conflict — {{name}} stopped",
     "force_stop_body": "{{stopped}} was force-stopped because port {{port}} conflicts with {{existing}}"
+  },
+  "init": {
+    "start": "Starting up...",
+    "modules": "Preparing modules...",
+    "instances": "Preparing servers...",
+    "ready": "Ready"
   }
 }

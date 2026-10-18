@@ -48,7 +48,7 @@ files = [
 
 [components.installer]
 version = "0.1.5"
-asset = "saba-chan-installer-{platform}.zip"
+asset = "saba-chan-installer.exe"
 install_dir = "."
 files = [
     "installer/gui/src-tauri/Cargo.toml",

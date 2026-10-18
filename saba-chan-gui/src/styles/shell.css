@@ -1181,6 +1181,19 @@ button.activity-line:hover {
     margin: 0 var(--sp-3) var(--sp-2);
     display: block;
 }
+/* 데몬이 꺼졌을 때: 마지막으로 받은 상태라는 안내 + 다시 시작 */
+.notice.daemon-down-notice {
+    margin: 0 var(--sp-3) var(--sp-2);
+    flex-wrap: wrap;
+    align-items: center;
+}
+.daemon-down-notice > span {
+    flex: 1;
+    min-width: 0;
+}
+.server-detail-pane > .daemon-down-notice {
+    margin: var(--sp-4) var(--sp-4) 0;
+}
 .module-failures summary {
     display: flex;
     align-items: center;
@@ -2236,6 +2249,8 @@ button.activity-line:hover {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
     height: 30px;
     padding: 0 10px 0 7px;
     border-radius: var(--r-pill);

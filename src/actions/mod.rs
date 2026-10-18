@@ -614,9 +614,10 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
     // 이 길드에 열리지 않은 인스턴스
     if let (Some(i), Some(allowed)) = (&r.instance, allowed_instances(server, caller).await) {
         if !allowed.contains(i) {
+            // 레벨 문제가 아니므로 PERMISSION_DENIED(레벨 안내)와 따로 둔다. relay 번역표의 NODE_NOT_ALLOWED
             return Err(ActionError {
-                data: json!({ "args": { "need": Value::Null, "level": perms.effective_level(who), "via": who.via_chatbot.then_some("chatbot"), "instance": i } }),
-                ..ActionError::new(403, "PERMISSION_DENIED", "Permission denied")
+                data: json!({ "args": { "instance": i } }),
+                ..ActionError::new(403, "NODE_NOT_ALLOWED", "This server is not available in this Discord server")
             });
         }
     }
@@ -638,9 +639,10 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
     Ok(())
 }
 
-/// 확인이 필요한가: danger이거나 관리 액션
-fn needs_confirm(r: &Resolved) -> bool {
-    r.risk == "danger" || r.kind == Kind::Admin
+/// 확인이 필요한가: danger이거나, 챗봇이 고른 관리 액션. 사람이 직접 친 caution 관리 명령은 바로 실행한다
+fn needs_confirm(r: &Resolved, caller: &Caller) -> bool {
+    let via_chatbot = caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot);
+    r.risk == "danger" || (r.kind == Kind::Admin && via_chatbot)
 }
 
 struct StoredPlan {
@@ -667,7 +669,7 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     authorize(server, &r, caller).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
-    let confirm = needs_confirm(&r);
+    let confirm = needs_confirm(&r, caller);
     let expires = std::time::SystemTime::now() + PLAN_TTL;
     let expires_at = chrono::DateTime::<chrono::Utc>::from(expires).to_rfc3339();
     let view = json!({
@@ -759,7 +761,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             let r = resolve(server, id, instance, input, caller).await?;
             authorize(server, &r, caller).await?;
             // 릴레이에서는 확인이 필요한 액션을 계획 없이 실행하지 않는다
-            if caller.remote.is_some() && needs_confirm(&r) {
+            if caller.remote.is_some() && needs_confirm(&r, caller) {
                 return Err(ActionError::new(409, "confirm_required", "This action needs a plan and a confirmation"));
             }
             r
@@ -777,7 +779,34 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
         }
     }
     let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
+    // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령은 라우트가 남긴다)
+    if r.kind == Kind::Admin {
+        record_admin(server, &r, caller, ok, resp.status.as_u16()).await;
+    }
     Ok(json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result }))
+}
+
+/// 관리 액션 감사 한 줄: `action`은 액션 id, 입력은 비밀을 가려 남긴다
+async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: bool, status: u16) {
+    let (name, args) = {
+        let sup = server.supervisor.read().await;
+        let instance = r.instance.as_deref().and_then(|i| sup.instance_store.get(i));
+        let module_name = instance.map(|i| i.module_name.clone()).or_else(|| r.input.get("module_name").and_then(Value::as_str).map(str::to_string));
+        let module = module_name.and_then(|m| sup.module_loader.get_module(&m).ok()).map(|m| m.metadata);
+        let input = Value::Object(r.input.clone());
+        let (_, args) = crate::audit::redact(module.as_ref(), instance, None, Some(&input));
+        (instance.map(|i| i.name.clone()), args)
+    };
+    let event = crate::audit::Event {
+        action: &r.id,
+        instance_id: r.instance.as_deref().unwrap_or(""),
+        instance: name.as_deref(),
+        command: None,
+        args: args.as_ref(),
+        ok,
+        status,
+    };
+    crate::audit::log().record(&caller.origin, &event);
 }
 
 /// 읽기 전용 조회 (릴레이 `query`): `kind=query`인 액션만 계획 없이
@@ -792,23 +821,52 @@ pub async fn query(server: &IPCServer, id: &str, instance: Option<&str>, input: 
     run(server, id, instance, input, None, caller).await
 }
 
-/// 챗봇에 보내는 콘솔에서 IPv4 주소를 가린다
+/// 챗봇에 보내는 콘솔에서 IP 주소(IPv4·IPv6)와 비밀처럼 보이는 값을 가린다
+/// (`password=…`·`token: …`의 값, 글자와 숫자가 섞인 32자 이상 문자열)
 fn mask_console(result: &mut Value) {
-    static IPV4: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = IPV4.get_or_init(|| regex::Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").expect("regex"));
-    fn walk(v: &mut Value, re: &regex::Regex) {
+    struct Masks {
+        ipv4: regex::Regex,
+        ipv6: regex::Regex,
+        keyed: regex::Regex,
+        token: regex::Regex,
+    }
+    static MASKS: std::sync::OnceLock<Masks> = std::sync::OnceLock::new();
+    let m = MASKS.get_or_init(|| Masks {
+        ipv4: regex::Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").expect("regex"),
+        // 후보만 넓게 잡고 실제 IPv6인지는 파싱으로 본다 (`12:34:56` 같은 시각은 남는다)
+        ipv6: regex::Regex::new(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}").expect("regex"),
+        keyed: regex::Regex::new(r"(?i)\b((?:pass(?:word|wd)?|token|secret|api[_-]?key|key)\s*[=:]\s*)\S+").expect("regex"),
+        token: regex::Regex::new(r"\b[A-Za-z0-9_\-]{32,}").expect("regex"),
+    });
+    fn mask(s: &str, m: &Masks) -> String {
+        let s = m.ipv4.replace_all(s, "x.x.x.x");
+        let s = m.ipv6.replace_all(&s, |c: &regex::Captures| {
+            let found = &c[0];
+            if found.parse::<std::net::Ipv6Addr>().is_ok() { "x:x::x".to_string() } else { found.to_string() }
+        });
+        let s = m.keyed.replace_all(&s, "${1}***");
+        m.token
+            .replace_all(&s, |c: &regex::Captures| {
+                let found = &c[0];
+                let mixed = found.chars().any(|ch| ch.is_ascii_alphabetic()) && found.chars().any(|ch| ch.is_ascii_digit());
+                if mixed { "***".to_string() } else { found.to_string() }
+            })
+            .into_owned()
+    }
+    fn walk(v: &mut Value, m: &Masks) {
         match v {
             Value::String(s) => {
-                if re.is_match(s) {
-                    *s = re.replace_all(s, "x.x.x.x").into_owned();
+                let masked = mask(s, m);
+                if masked != *s {
+                    *s = masked;
                 }
             }
-            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, re)),
-            Value::Object(m) => m.values_mut().for_each(|x| walk(x, re)),
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, m)),
+            Value::Object(o) => o.values_mut().for_each(|x| walk(x, m)),
             _ => {}
         }
     }
-    walk(result, re);
+    walk(result, m);
 }
 
 // ── 안에서 라우트 부르기 ─────────────────────────────────

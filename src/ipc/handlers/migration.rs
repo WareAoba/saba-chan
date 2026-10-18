@@ -268,16 +268,15 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
     }
 
-    let running: HashSet<String> = {
-        let sup = state.supervisor.read().await;
-        let mut ids: HashSet<String> = sup.managed_store.running_instance_ids().await.into_iter().collect();
-        ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_ok()).map(|i| i.id.clone()));
-        ids
-    };
-
     let (mut added, mut replaced, mut skipped, mut missing_modules) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     {
         let mut sup = state.supervisor.write().await;
+        // 쓰기 잠금 안에서 본다: 그 사이에 켜진 서버를 덮어쓰지 않게
+        let running: HashSet<String> = {
+            let mut ids: HashSet<String> = sup.managed_store.running_instance_ids().await.into_iter().collect();
+            ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_ok()).map(|i| i.id.clone()));
+            ids
+        };
         for inst in bundle.instances {
             // 남이 준 zip이면 이 경로의 프로그램이 실행된다: 미리보기에서 보이게
             let entry = json!({

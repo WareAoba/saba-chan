@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
+import { reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 
 /**
@@ -129,7 +130,7 @@ export function useServerActions({
                         }
                     }
 
-                    return data.servers.map((newServer) => {
+                    const merged = data.servers.map((newServer) => {
                         const existing = prev.find((s) => s.name === newServer.name);
 
                         // Optimistic status 보호: starting/stopping 상태를
@@ -155,6 +156,7 @@ export function useServerActions({
                             expanded: existing?.expanded || false,
                         };
                     });
+                    return reuseUnchanged(prev, merged);
                 });
 
                 // 포트 충돌로 강제 정지된 서버가 있으면 앱 내 토스트 표시

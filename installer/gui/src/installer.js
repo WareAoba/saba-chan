@@ -29,14 +29,16 @@ const T = {
         modulesUnavailable: 'Could not load the game module list. You can add modules in the app after installing.',
         completeTitle: 'Installation Complete!',
         completeSub: 'Saba-chan is ready.',
+        completeWarnings: 'Installed, but some steps had problems:',
+        completeLog: 'Details: {{path}}',
         btnClose: 'Close',
         btnLaunch: 'Launch Saba-chan',
         installFailed: 'Installation failed',
         fetchFailed: 'Failed to fetch releases',
         uninstallTitle: 'Uninstall Saba-chan',
-        uninstallDesc: 'This will completely remove Saba-chan, including all data, settings, and registry entries.',
-        uninstallKeepSettings: 'Keep configuration files',
-        uninstallKeepSettingsHint: 'Preserve settings.json, instance configs, and other configuration files for future reinstallation.',
+        uninstallDesc: 'This removes Saba-chan along with its data: game server files, worlds (saves), backups, settings and registry entries. Running servers are stopped first.',
+        uninstallKeepSettings: 'Keep game servers and settings',
+        uninstallKeepSettingsHint: 'Keeps server files, worlds, backups, settings and the Discord connection so a reinstall picks them up. Modules and runtimes are removed and downloaded again.',
         uninstallPath: 'Install location: {{path}}',
         btnCancel: 'Cancel',
         btnUninstall: 'Uninstall',
@@ -92,14 +94,16 @@ const T = {
         modulesUnavailable: '게임 모듈 목록을 불러오지 못했습니다. 설치한 뒤 앱에서 모듈을 추가할 수 있습니다.',
         completeTitle: '설치 완료!',
         completeSub: '사바쨩이 준비되었습니다.',
+        completeWarnings: '설치는 끝났지만 일부 단계에 문제가 있었습니다:',
+        completeLog: '자세한 기록: {{path}}',
         btnClose: '닫기',
         btnLaunch: '사바쨩 실행',
         installFailed: '설치 실패',
         fetchFailed: '릴리즈 정보를 가져올 수 없습니다',
         uninstallTitle: '사바쨩 제거',
-        uninstallDesc: '사바쨩을 완전히 제거합니다. 모든 데이터, 설정, 레지스트리 항목이 삭제됩니다.',
-        uninstallKeepSettings: '설정 정보 남기기',
-        uninstallKeepSettingsHint: 'settings.json, 인스턴스 설정 등 각종 설정 파일을 보존합니다. 재설치 시 기존 설정을 유지할 수 있습니다.',
+        uninstallDesc: '사바쨩과 데이터를 함께 제거합니다. 게임 서버 파일, 월드(세이브), 백업, 설정, 레지스트리 항목이 삭제됩니다. 켜져 있는 서버는 먼저 정상 종료합니다.',
+        uninstallKeepSettings: '게임 서버와 설정 남기기',
+        uninstallKeepSettingsHint: '서버 파일, 월드, 백업, 설정, 디스코드 연결을 남겨 다시 설치하면 그대로 이어집니다. 모듈과 런타임은 지우고 다시 받습니다.',
         uninstallPath: '설치 위치: {{path}}',
         btnCancel: '취소',
         btnUninstall: '제거',
@@ -154,14 +158,16 @@ const T = {
         fetchingRelease: '最新リリースを確認中...',
         completeTitle: 'インストール完了!',
         completeSub: 'サバちゃんの準備ができました。',
+        completeWarnings: 'インストールは完了しましたが、一部の手順で問題がありました:',
+        completeLog: '詳細: {{path}}',
         btnClose: '閉じる',
         btnLaunch: 'サバちゃんを起動',
         installFailed: 'インストール失敗',
         fetchFailed: 'リリース情報の取得に失敗',
         uninstallTitle: 'サバちゃん アンインストール',
-        uninstallDesc: 'サバちゃんを完全に削除します。すべてのデータ、設定、レジストリが削除されます。',
-        uninstallKeepSettings: '設定ファイルを保持',
-        uninstallKeepSettingsHint: 'settings.json、インスタンス設定などの構成ファイルを保存します。再インストール時に既存の設定を維持できます。',
+        uninstallDesc: 'サバちゃんとデータを削除します。ゲームサーバーのファイル、ワールド（セーブ）、バックアップ、設定、レジストリが削除されます。起動中のサーバーは先に正常終了します。',
+        uninstallKeepSettings: 'ゲームサーバーと設定を残す',
+        uninstallKeepSettingsHint: 'サーバーファイル、ワールド、バックアップ、設定、Discord 連携を残し、再インストール後もそのまま使えます。モジュールとランタイムは削除して再取得します。',
         uninstallPath: 'インストール先: {{path}}',
         btnCancel: 'キャンセル',
         btnUninstall: 'アンインストール',
@@ -216,14 +222,16 @@ const T = {
         fetchingRelease: '正在检查最新版本...',
         completeTitle: '安装完成！',
         completeSub: 'Saba-chan 已准备就绪。',
+        completeWarnings: '安装已完成，但部分步骤出现问题：',
+        completeLog: '详细记录：{{path}}',
         btnClose: '关闭',
         btnLaunch: '启动 Saba-chan',
         installFailed: '安装失败',
         fetchFailed: '无法获取版本信息',
         uninstallTitle: '卸载 Saba-chan',
-        uninstallDesc: '将完全删除 Saba-chan，包括所有数据、设置和注册表项。',
-        uninstallKeepSettings: '保留配置文件',
-        uninstallKeepSettingsHint: '保留 settings.json、实例配置等文件，以便重新安装时恢复设置。',
+        uninstallDesc: '将删除 Saba-chan 及其数据：游戏服务器文件、世界（存档）、备份、设置和注册表项。正在运行的服务器会先正常停止。',
+        uninstallKeepSettings: '保留游戏服务器和设置',
+        uninstallKeepSettingsHint: '保留服务器文件、世界、备份、设置和 Discord 连接，重新安装后可继续使用。模块和运行环境会删除并重新下载。',
         uninstallPath: '安装位置：{{path}}',
         btnCancel: '取消',
         btnUninstall: '卸载',
@@ -278,14 +286,16 @@ const T = {
         fetchingRelease: '正在檢查最新版本...',
         completeTitle: '安裝完成！',
         completeSub: 'Saba-chan 已準備就緒。',
+        completeWarnings: '安裝已完成，但部分步驟發生問題：',
+        completeLog: '詳細記錄：{{path}}',
         btnClose: '關閉',
         btnLaunch: '啟動 Saba-chan',
         installFailed: '安裝失敗',
         fetchFailed: '無法取得版本資訊',
         uninstallTitle: '解除安裝 Saba-chan',
-        uninstallDesc: '將完全移除 Saba-chan，包括所有資料、設定和登錄檔項目。',
-        uninstallKeepSettings: '保留設定檔案',
-        uninstallKeepSettingsHint: '保留 settings.json、實例設定等檔案，以便重新安裝時恢復設定。',
+        uninstallDesc: '將移除 Saba-chan 及其資料：遊戲伺服器檔案、世界（存檔）、備份、設定和登錄檔項目。執行中的伺服器會先正常停止。',
+        uninstallKeepSettings: '保留遊戲伺服器和設定',
+        uninstallKeepSettingsHint: '保留伺服器檔案、世界、備份、設定和 Discord 連線，重新安裝後可繼續使用。模組和執行環境會刪除並重新下載。',
         uninstallPath: '安裝位置：{{path}}',
         btnCancel: '取消',
         btnUninstall: '解除安裝',
@@ -340,14 +350,16 @@ const T = {
         fetchingRelease: 'Comprobando la última versión...',
         completeTitle: '¡Instalación completada!',
         completeSub: 'Saba-chan está listo.',
+        completeWarnings: 'Instalado, pero algunos pasos tuvieron problemas:',
+        completeLog: 'Detalles: {{path}}',
         btnClose: 'Cerrar',
         btnLaunch: 'Iniciar Saba-chan',
         installFailed: 'Error en la instalación',
         fetchFailed: 'No se pudieron obtener las versiones',
         uninstallTitle: 'Desinstalar Saba-chan',
-        uninstallDesc: 'Se eliminará completamente Saba-chan, incluyendo todos los datos, ajustes y entradas del registro.',
-        uninstallKeepSettings: 'Conservar archivos de configuración',
-        uninstallKeepSettingsHint: 'Conserva settings.json, configuraciones de instancia y otros archivos de configuración para futuras reinstalaciones.',
+        uninstallDesc: 'Se eliminará Saba-chan junto con sus datos: archivos de servidores, mundos (partidas guardadas), copias de seguridad, ajustes y entradas del registro. Los servidores en marcha se detienen antes.',
+        uninstallKeepSettings: 'Conservar servidores y ajustes',
+        uninstallKeepSettingsHint: 'Conserva los archivos de servidor, mundos, copias de seguridad, ajustes y la conexión con Discord para una reinstalación. Los módulos y entornos se eliminan y se descargan de nuevo.',
         uninstallPath: 'Ubicación de instalación: {{path}}',
         btnCancel: 'Cancelar',
         btnUninstall: 'Desinstalar',
@@ -402,14 +414,16 @@ const T = {
         fetchingRelease: 'Verificando a última versão...',
         completeTitle: 'Instalação concluída!',
         completeSub: 'Saba-chan está pronto.',
+        completeWarnings: 'Instalado, mas algumas etapas tiveram problemas:',
+        completeLog: 'Detalhes: {{path}}',
         btnClose: 'Fechar',
         btnLaunch: 'Iniciar Saba-chan',
         installFailed: 'Falha na instalação',
         fetchFailed: 'Não foi possível obter as versões',
         uninstallTitle: 'Desinstalar Saba-chan',
-        uninstallDesc: 'Isso removerá completamente o Saba-chan, incluindo todos os dados, configurações e entradas do registro.',
-        uninstallKeepSettings: 'Manter arquivos de configuração',
-        uninstallKeepSettingsHint: 'Preserva settings.json, configurações de instância e outros arquivos de configuração para futuras reinstalações.',
+        uninstallDesc: 'Isso remove o Saba-chan com seus dados: arquivos dos servidores, mundos (saves), backups, configurações e entradas do registro. Servidores em execução são parados antes.',
+        uninstallKeepSettings: 'Manter servidores e configurações',
+        uninstallKeepSettingsHint: 'Mantém arquivos dos servidores, mundos, backups, configurações e a conexão com o Discord para uma reinstalação. Módulos e ambientes são removidos e baixados de novo.',
         uninstallPath: 'Local de instalação: {{path}}',
         btnCancel: 'Cancelar',
         btnUninstall: 'Desinstalar',
@@ -464,14 +478,16 @@ const T = {
         fetchingRelease: 'Проверка последней версии...',
         completeTitle: 'Установка завершена!',
         completeSub: 'Saba-chan готов к работе.',
+        completeWarnings: 'Установка завершена, но на некоторых шагах возникли проблемы:',
+        completeLog: 'Подробности: {{path}}',
         btnClose: 'Закрыть',
         btnLaunch: 'Запустить Saba-chan',
         installFailed: 'Ошибка установки',
         fetchFailed: 'Не удалось получить информацию о версиях',
         uninstallTitle: 'Удаление Saba-chan',
-        uninstallDesc: 'Saba-chan будет полностью удалён, включая все данные, настройки и записи реестра.',
-        uninstallKeepSettings: 'Сохранить файлы конфигурации',
-        uninstallKeepSettingsHint: 'Сохраняет settings.json, настройки экземпляров и другие файлы конфигурации для будущей переустановки.',
+        uninstallDesc: 'Saba-chan будет удалён вместе с данными: файлами серверов, мирами (сохранениями), резервными копиями, настройками и записями реестра. Запущенные серверы сначала будут корректно остановлены.',
+        uninstallKeepSettings: 'Сохранить серверы и настройки',
+        uninstallKeepSettingsHint: 'Сохраняет файлы серверов, миры, резервные копии, настройки и подключение к Discord для переустановки. Модули и среды выполнения удаляются и загружаются заново.',
         uninstallPath: 'Путь установки: {{path}}',
         btnCancel: 'Отмена',
         btnUninstall: 'Удалить',
@@ -526,14 +542,16 @@ const T = {
         fetchingRelease: 'Neueste Version wird geprüft...',
         completeTitle: 'Installation abgeschlossen!',
         completeSub: 'Saba-chan ist bereit.',
+        completeWarnings: 'Installiert, aber bei einigen Schritten gab es Probleme:',
+        completeLog: 'Details: {{path}}',
         btnClose: 'Schließen',
         btnLaunch: 'Saba-chan starten',
         installFailed: 'Installation fehlgeschlagen',
         fetchFailed: 'Versionsinformationen konnten nicht abgerufen werden',
         uninstallTitle: 'Saba-chan deinstallieren',
-        uninstallDesc: 'Saba-chan wird vollständig entfernt, einschließlich aller Daten, Einstellungen und Registrierungseinträge.',
-        uninstallKeepSettings: 'Konfigurationsdateien behalten',
-        uninstallKeepSettingsHint: 'Bewahrt settings.json, Instanz-Konfigurationen und andere Konfigurationsdateien für eine zukünftige Neuinstallation auf.',
+        uninstallDesc: 'Saba-chan wird mit seinen Daten entfernt: Serverdateien, Welten (Spielstände), Backups, Einstellungen und Registrierungseinträge. Laufende Server werden vorher ordnungsgemäß beendet.',
+        uninstallKeepSettings: 'Server und Einstellungen behalten',
+        uninstallKeepSettingsHint: 'Behält Serverdateien, Welten, Backups, Einstellungen und die Discord-Verbindung für eine Neuinstallation. Module und Laufzeitumgebungen werden entfernt und neu geladen.',
         uninstallPath: 'Installationsort: {{path}}',
         btnCancel: 'Abbrechen',
         btnUninstall: 'Deinstallieren',
@@ -588,14 +606,16 @@ const T = {
         fetchingRelease: 'Vérification de la dernière version...',
         completeTitle: 'Installation terminée !',
         completeSub: 'Saba-chan est prêt.',
+        completeWarnings: 'Installé, mais certaines étapes ont rencontré des problèmes :',
+        completeLog: 'Détails : {{path}}',
         btnClose: 'Fermer',
         btnLaunch: 'Lancer Saba-chan',
         installFailed: 'Échec de l\'installation',
         fetchFailed: 'Impossible de récupérer les versions',
         uninstallTitle: 'Désinstaller Saba-chan',
-        uninstallDesc: 'Saba-chan sera complètement supprimé, y compris toutes les données, paramètres et entrées de registre.',
-        uninstallKeepSettings: 'Conserver les fichiers de configuration',
-        uninstallKeepSettingsHint: 'Préserve settings.json, les configurations d\'instance et d\'autres fichiers de configuration pour une réinstallation future.',
+        uninstallDesc: 'Saba-chan sera supprimé avec ses données : fichiers des serveurs, mondes (sauvegardes), copies de sécurité, paramètres et entrées de registre. Les serveurs en cours sont d\'abord arrêtés proprement.',
+        uninstallKeepSettings: 'Conserver les serveurs et les paramètres',
+        uninstallKeepSettingsHint: 'Conserve les fichiers des serveurs, les mondes, les copies de sécurité, les paramètres et la connexion Discord pour une réinstallation. Les modules et environnements sont supprimés puis retéléchargés.',
         uninstallPath: 'Emplacement d\'installation : {{path}}',
         btnCancel: 'Annuler',
         btnUninstall: 'Désinstaller',
@@ -803,8 +823,18 @@ function enterInstalling() {
     $completeActions.style.display = 'none';
 }
 
-function enterComplete(components) {
+function enterComplete(p) {
     currentState = 'complete';
+    const $warn = document.getElementById('complete-warnings');
+    const warnings = (p && p.warnings) || [];
+    $warn.replaceChildren();
+    if (warnings.length) {
+        const head = document.createElement('strong');
+        head.textContent = tr('completeWarnings');
+        $warn.append(head, warnings.join('\n'));
+        if (p.log_path) $warn.append('\n' + tr('completeLog').replace('{{path}}', p.log_path));
+    }
+    $warn.style.display = warnings.length ? '' : 'none';
     $glowRing.className = 'loading-logo-container complete';
     $logoArea.className = 'logo-area state-complete';
     $statusText.textContent = tr('completeTitle');
@@ -837,12 +867,13 @@ $btnNext.addEventListener('click', () => enterSettings());
 document.getElementById('btn-browse')?.addEventListener('click', async () => {
     try {
         const r = await invoke('browse_folder');
-        if (r) { $installPath.value = r; await invoke('set_install_path', { path: r }); }
+        if (r) { $installPath.value = await invoke('set_install_path', { path: r }); }
     } catch (_) {}
 });
 
+// 비어 있지 않은 폴더를 고르면 설치기가 그 아래 Saba-chan 폴더로 바꿔 돌려준다
 $installPath?.addEventListener('change', async () => {
-    await invoke('set_install_path', { path: $installPath.value });
+    $installPath.value = await invoke('set_install_path', { path: $installPath.value });
 });
 
 // 모듈
@@ -910,7 +941,7 @@ function toggleMod(id, on) {
 // 설치 버튼
 document.getElementById('btn-install')?.addEventListener('click', async () => {
     // 옵션 저장
-    await invoke('set_install_path', { path: $installPath.value });
+    $installPath.value = await invoke('set_install_path', { path: $installPath.value });
     await invoke('set_language', { language: lang }); // 설치 직전 최종 동기화
     await invoke('set_shortcut_options', {
         desktop: document.getElementById('chk-desktop').checked,
@@ -962,7 +993,7 @@ listen('install:progress', (ev) => {
         $fill.classList.add('complete-fill');
         $msg.textContent = p.message;
         $pct.textContent = '100%';
-        setTimeout(() => enterComplete(p.installed_components), 600);
+        setTimeout(() => enterComplete(p), 600);
         return;
     }
 

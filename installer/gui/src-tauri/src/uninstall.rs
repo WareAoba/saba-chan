@@ -102,9 +102,10 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
 
     // Step 4: 설치 디렉토리 삭제
     emit("files", "Removing installation files...", 35);
+    let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
     if let Some(ref dir) = install_dir {
         if dir.exists() {
-            match remove_dir_robust(dir) {
+            match remove_install_dir(dir) {
                 Ok(_) => tracing::info!("[Uninstall] Removed install dir: {:?}", dir),
                 Err(e) => {
                     tracing::warn!("[Uninstall] Partial removal of install dir: {}", e);
@@ -134,8 +135,6 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     if last_install && !keep_settings {
         emit("modules", "Cleaning modules directory...", 80);
         remove_modules_dir();
-    } else {
-        emit("modules-keep", "Keeping module settings...", 80);
     }
 
     // Step 8: 레지스트리 삭제
@@ -149,11 +148,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
 
     // Step 9: 자기 자신 삭제 (cleanup 스크립트)
     emit("self-delete", "Scheduling self-deletion...", 95);
-    if let Some(ref dir) = install_dir {
-        schedule_self_delete(Some(dir));
-    } else {
-        schedule_self_delete(None);
-    }
+    schedule_self_delete(install_dir.as_ref(), dedicated);
 
     // 완료
     emit_complete(if last_install {
@@ -195,9 +190,10 @@ pub async fn do_silent_uninstall() {
     }
 
     // 설치 디렉토리 삭제
+    let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
     if let Some(dir) = &install_dir {
         eprintln!("  Removing install directory: {}", dir.display());
-        let _ = remove_dir_robust(dir);
+        let _ = remove_install_dir(dir);
     }
 
     // 사용자 데이터: 다른 설치본이 남아 있으면 그대로 둔다
@@ -232,7 +228,7 @@ pub async fn do_silent_uninstall() {
     // 자기 자신 삭제
     eprintln!("  Scheduling self-deletion...");
     {
-        schedule_self_delete(install_dir.as_ref());
+        schedule_self_delete(install_dir.as_ref(), dedicated);
     }
 
     if last_install {
@@ -258,7 +254,13 @@ async fn stop_saba_processes(install_dir: &Path) {
     // 데몬을 끄기 전에 데몬에 등록된 이 설치의 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
     let dirs = [install_dir.to_path_buf(), comparable_dir(install_dir)];
     let registered = match DaemonApi::from_config() {
-        Some(api) => api.registered_guis(&dirs).await,
+        Some(api) => {
+            // 프로세스를 끊기 전에 이 설치의 데몬에게 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
+            if api.daemon_is_in(&dirs).await {
+                api.stop_running_servers().await;
+            }
+            api.registered_guis(&dirs).await
+        }
         None => Vec::new(),
     };
     // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째 끝내 서버도 끝낸다.
@@ -311,6 +313,45 @@ impl DaemonApi {
 
     fn url(&self, path: &str) -> String {
         format!("http://127.0.0.1:{}{}", self.port, path)
+    }
+
+    /// 설정된 포트의 데몬이 이 설치 폴더의 것인지 (경로를 모르면 아니라고 본다)
+    async fn daemon_is_in(&self, dirs: &[PathBuf]) -> bool {
+        let health = self.client.get(self.url("/health")).header("X-Saba-Token", &self.token).send().await;
+        let Ok(r) = health else { return false };
+        let pid = r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
+        pid.and_then(|p| u32::try_from(p).ok())
+            .is_some_and(|pid| daemon_owner(&list_named(&["saba-core"]), pid, dirs) == Owner::Here)
+    }
+
+    /// 꺼져 있지 않은 서버마다 정상 종료를 요청하고 끝날 때까지 기다린다 (서버마다 최대 90초)
+    async fn stop_running_servers(&self) {
+        let list = self.client.get(self.url("/api/servers")).header("X-Saba-Token", &self.token).send().await;
+        let Ok(r) = list else { return };
+        let Ok(v) = r.json::<serde_json::Value>().await else { return };
+        let ids: Vec<String> = v
+            .get("servers")
+            .and_then(|s| s.as_array())
+            .into_iter()
+            .flatten()
+            .filter(|s| s.get("status").and_then(|st| st.as_str()).is_some_and(|st| st != "stopped"))
+            .filter_map(|s| s.get("id").and_then(|id| id.as_str()).map(String::from))
+            .collect();
+        let stops = ids.iter().map(|id| {
+            tracing::info!("[Uninstall] Stopping server {} before removal", id);
+            self.client
+                .post(self.url(&format!("/api/instance/{}/stop", id)))
+                .header("X-Saba-Token", &self.token)
+                .timeout(std::time::Duration::from_secs(90))
+                .json(&serde_json::json!({}))
+                .send()
+        });
+        for (id, r) in ids.iter().zip(futures_util::future::join_all(stops).await) {
+            match r {
+                Ok(r) => tracing::info!("[Uninstall] Stop {} answered {}", id, r.status()),
+                Err(e) => tracing::warn!("[Uninstall] Stop {} failed: {}", id, e),
+            }
+        }
     }
 
     /// 데몬에 등록된 GUI 중 이 설치 폴더에서 띄운 것의 PID. 데몬이 없거나 옛 버전이면 비어 있다
@@ -701,8 +742,61 @@ fn kill_pid(pid: u32, tree: bool) {
         .status();
 }
 
+/// 설치기가 새로 만들었거나 빈 폴더에 설치했다는 표시. 이 파일이 있을 때만 설치 폴더를 통째로 지운다
+pub const INSTALL_MARKER: &str = ".saba-chan-install";
+
+/// 표시가 없는 설치(0.1.4 이전, 또는 사용자 파일이 있던 폴더)에서 지울 바로 안의 항목 (확장자·`.old` 제외한 이름)
+const INSTALLED_ENTRIES: &[&str] = &[
+    "saba-core",
+    "saba-runner",
+    "saba-chan-cli",
+    "saba-chan-gui",
+    "Saba-chan", // 0.1.1 Electron GUI
+    "saba-chan-updater",
+    "saba-chan-installer",
+    "locales",
+    "i18n.py",
+    "daemon_rcon.py",
+    INSTALL_MARKER,
+];
+
+fn is_dedicated(dir: &Path) -> bool {
+    dir.join(INSTALL_MARKER).is_file()
+}
+
+fn is_installed_entry(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let base = lower.strip_suffix(".old").unwrap_or(&lower);
+    let base = base.strip_suffix(".exe").unwrap_or(base);
+    INSTALLED_ENTRIES.iter().any(|e| e.eq_ignore_ascii_case(base))
+}
+
+/// 설치 폴더 정리: 전용 폴더면 통째로, 아니면 사바쨩이 설치한 항목만 지우고 폴더는 비었을 때만 지운다
+fn remove_install_dir(dir: &PathBuf) -> anyhow::Result<()> {
+    if is_dedicated(dir) {
+        return remove_dir_robust(dir);
+    }
+    tracing::info!("[Uninstall] {:?} is not a dedicated install folder: removing Saba-chan files only", dir);
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // 폴더는 locales만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
+        let ours = if path.is_dir() { name.eq_ignore_ascii_case("locales") } else { is_installed_entry(&name) };
+        if !ours {
+            continue;
+        }
+        if path.is_dir() {
+            let _ = remove_dir_robust(&path);
+        } else {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    let _ = std::fs::remove_dir(dir);
+    Ok(())
+}
+
 /// 사바쨩이 설치한 폴더인지: 바로 안에 데몬이나 GUI 실행 파일이 있어야 한다
-fn looks_like_install_dir(dir: &Path) -> bool {
+pub(crate) fn looks_like_install_dir(dir: &Path) -> bool {
     let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
     dir.join(core).is_file() || saba_chan_updater_lib::find_gui_exe(dir).is_some()
 }
@@ -760,7 +854,9 @@ fn remove_appdata_dir_keep_settings() {
     let keep_names: &[&str] = &[
         "config.json",       // 모든 사용자 설정 (config_file)
         "config.json.bak",   // 직전 설정 백업
-        "instances",         // 인스턴스별 설정 저장
+        "instances",         // 서버 파일·월드·백업과 인스턴스 설정
+        ".node_token",       // 디스코드 연결 (재설치 뒤 다시 페어링하지 않게)
+        "extension-data",    // 익스텐션 설정
         // 아직 이관되지 않은 예전 설정 파일 (다음 실행 때 config.json으로 이관)
         "settings.json",
         "bot-config.json",
@@ -820,7 +916,7 @@ fn remove_modules_dir() {
 ///
 /// Windows에서는 실행 중인 .exe를 직접 삭제할 수 없으므로,
 /// 별도 cmd 스크립트를 spawn하여 프로세스 종료를 대기한 뒤 삭제한다.
-fn schedule_self_delete(install_dir: Option<&PathBuf>) {
+fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
     #[cfg(target_os = "windows")]
     {
         use std::io::Write;
@@ -837,12 +933,14 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>) {
         let script_path = std::env::temp_dir().join("saba-chan-cleanup.cmd");
 
         // 설치 디렉토리 삭제 명령 (있으면)
+        // 전용 폴더가 아니면 비었을 때만 지운다 (사용자 파일이 남아 있을 수 있다)
         let rmdir_line = match install_dir {
-            Some(dir) => format!(
+            Some(dir) if dedicated => format!(
                 "if exist \"{}\" rmdir /s /q \"{}\"",
                 dir.display(),
                 dir.display()
             ),
+            Some(dir) => format!("rmdir \"{}\" 2>nul", dir.display()),
             None => String::new(),
         };
 
@@ -919,7 +1017,11 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>) {
             let _ = std::fs::remove_file(&self_exe);
         }
         if let Some(dir) = install_dir {
-            let _ = remove_dir_robust(dir);
+            if dedicated {
+                let _ = remove_dir_robust(dir);
+            } else {
+                let _ = std::fs::remove_dir(dir);
+            }
         }
     }
 }
@@ -972,6 +1074,27 @@ mod tests {
         std::fs::write(dir.join(format!("saba-core{}", ext)), b"").unwrap();
         assert!(looks_like_install_dir(&dir));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_folder_without_the_install_marker_keeps_the_users_files() {
+        let dir = std::env::temp_dir().join(format!("saba-uninstall-shared-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        std::fs::create_dir_all(dir.join("MyGame")).unwrap();
+        std::fs::create_dir_all(dir.join("Saba-chan")).unwrap();
+        for f in ["saba-core.exe", "saba-chan-gui.exe.old", "i18n.py", "notes.txt"] {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+        remove_install_dir(&dir).unwrap();
+        let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        left.sort();
+        assert_eq!(left, ["MyGame", "Saba-chan", "notes.txt"]);
+
+        // 전용 표시가 있으면 폴더째 지운다
+        std::fs::write(dir.join(INSTALL_MARKER), b"").unwrap();
+        remove_install_dir(&dir).unwrap();
+        assert!(!dir.exists());
     }
 
     #[test]

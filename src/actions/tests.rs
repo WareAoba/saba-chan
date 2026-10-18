@@ -108,6 +108,19 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
 }
 
 #[tokio::test]
+async fn direct_admin_commands_skip_confirmation_but_chatbot_and_danger_do_not() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let sleep = json!({ "guild": "g", "sleeping": true });
+    let direct = plan(&state, "discord.settings.set", None, &sleep, &relay("owner", false)).await.unwrap();
+    assert_eq!(direct["needsConfirm"], false);
+    let by_bot = plan(&state, "instance.settings.set", Some(&id), &json!({ "max_players": 4 }), &relay("owner", true)).await.unwrap();
+    assert_eq!(by_bot["needsConfirm"], true);
+    let restore = plan(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("owner", true)).await.unwrap();
+    assert_eq!(restore["needsConfirm"], true);
+}
+
+#[tokio::test]
 async fn inputs_are_checked_and_actions_run_through_the_real_routes() {
     let (state, id, _tmp) = server().await;
     let err = plan(&state, "backup.restore", Some(&id), &json!({ "nme": "b" }), &gui()).await.unwrap_err();
@@ -196,8 +209,8 @@ async fn guilds_only_reach_their_allowed_instances() {
     set_node(&state, json!({ "ownerDiscordId": "owner", "allowedInstances": ["other"] })).await;
     let owner = relay("owner", false);
     let err = query(&state, "server.status", Some(&id), &json!({}), &owner).await.unwrap_err();
-    assert_eq!(err.code, "PERMISSION_DENIED");
-    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &owner).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert_eq!(err.code, "NODE_NOT_ALLOWED");
+    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &owner).await.unwrap_err().code, "NODE_NOT_ALLOWED");
     let listed = query(&state, "instance.list", None, &json!({}), &owner).await.unwrap();
     assert_eq!(listed["result"]["servers"], json!([]));
 
@@ -225,4 +238,38 @@ async fn discord_settings_stay_in_the_guild_that_asked_and_need_its_owner() {
     // GUI·CLI는 길드를 직접 고른다
     assert_eq!(plan(&state, "discord.settings.set", None, &input, &gui()).await.unwrap_err().code, "invalid_input");
     assert!(plan(&state, "discord.settings.set", None, &other, &gui()).await.is_ok());
+}
+
+#[tokio::test]
+async fn console_input_to_a_module_without_stdin_is_refused() {
+    use axum::response::IntoResponse;
+    let (state, id, _tmp) = server().await;
+    let resp = crate::ipc::handlers::managed::send_stdin_handler(
+        axum::extract::Path(id),
+        axum::extract::State(state),
+        axum::Json(json!({ "command": "say hi" })),
+    )
+    .await
+    .into_response();
+    assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["error_code"], "stdin_not_supported");
+}
+
+#[test]
+fn chatbot_console_hides_addresses_and_secret_looking_values() {
+    let mut v = json!({ "lines": [
+        "[12:34:56 INFO]: Player joined from 203.0.113.7:51234",
+        "[12:34:57 INFO]: peer 2001:db8::1 and fe80::1ff:fe23:4567:890a",
+        "rcon password=hunter2 token: abc",
+        "key a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8",
+        "Done (12.3s)! For help, type \"help\"",
+    ]});
+    mask_console(&mut v);
+    let lines: Vec<&str> = v["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
+    assert_eq!(lines[0], "[12:34:56 INFO]: Player joined from x.x.x.x:51234");
+    assert_eq!(lines[1], "[12:34:57 INFO]: peer x:x::x and x:x::x");
+    assert_eq!(lines[2], "rcon password=*** token: ***");
+    assert_eq!(lines[3], "key ***");
+    assert_eq!(lines[4], "Done (12.3s)! For help, type \"help\"");
 }

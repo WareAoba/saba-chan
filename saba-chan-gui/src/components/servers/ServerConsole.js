@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { needsConfirm } from '../../utils/commandRisk';
@@ -14,6 +14,35 @@ const historyOf = (id) => {
     if (!histories.has(id)) histories.set(id, []);
     return histories.get(id);
 };
+
+/**
+ * 콘솔 한 줄. 줄 객체는 받은 뒤 바뀌지 않으므로, 새 줄이 붙거나 입력칸을 칠 때
+ * 이미 그린 줄(최대 수천 개)을 다시 그리지 않는다.
+ */
+const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRules }) {
+    return (
+        <div
+            className={clsx(
+                'console-line',
+                `console-${line.source?.toLowerCase() || 'stdout'}`,
+                `console-level-${line.level?.toLowerCase() || 'info'}`,
+            )}
+        >
+            <HighlightedContent
+                text={line.content}
+                spans={syntaxEnabled ? line.spans : undefined}
+                compiledRules={compiledRules}
+            />
+        </div>
+    );
+});
+
+/** 줄 목록. 입력칸을 칠 때는 줄 배열이 그대로라 통째로 건너뛴다 */
+const ConsoleLines = memo(function ConsoleLines({ lines, syntaxEnabled, compiledRules }) {
+    return lines.map((line) => (
+        <ConsoleLine key={line.id} line={line} syntaxEnabled={syntaxEnabled} compiledRules={compiledRules} />
+    ));
+});
 
 /**
  * 상세 화면에 박힌 콘솔. 창을 따로 열지 않아도 로그를 보고 명령을 보낼 수 있다(L).
@@ -97,22 +126,7 @@ export function ServerConsole({
                         {server.status === 'running' ? t('console.waiting') : t('shell.console_offline')}
                     </div>
                 )}
-                {lines.map((line) => (
-                    <div
-                        key={line.id}
-                        className={clsx(
-                            'console-line',
-                            `console-${line.source?.toLowerCase() || 'stdout'}`,
-                            `console-level-${line.level?.toLowerCase() || 'info'}`,
-                        )}
-                    >
-                        <HighlightedContent
-                            text={line.content}
-                            spans={syntaxEnabled ? line.spans : undefined}
-                            compiledRules={compiledRules}
-                        />
-                    </div>
-                ))}
+                <ConsoleLines lines={lines} syntaxEnabled={syntaxEnabled} compiledRules={compiledRules} />
             </div>
             {!stdinDisabled && quickCommands.length > 0 && (
                 <div className="term-quick" role="group" aria-label={t('shell.console_quick')}>

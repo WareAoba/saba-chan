@@ -78,6 +78,12 @@ pub struct InstallProgress {
     /// 현재 다운로드 전체 바이트 (Content-Length)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download_total: Option<u64>,
+    /// 설치는 끝났지만 실패한 단계 (완료 때만)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    /// 설치 로그 경로 (경고가 있을 때만)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_path: Option<String>,
 }
 
 /// 사용 가능한 모듈 정보
@@ -120,9 +126,10 @@ async fn get_installer_state(state: State<'_, SharedState>) -> Result<serde_json
 }
 
 #[tauri::command]
-async fn set_install_path(state: State<'_, SharedState>, path: String) -> Result<(), String> {
-    state.write().await.install_path = path;
-    Ok(())
+async fn set_install_path(state: State<'_, SharedState>, path: String) -> Result<String, String> {
+    let path = dedicated_install_dir(Path::new(&path)).to_string_lossy().into_owned();
+    state.write().await.install_path = path.clone();
+    Ok(path)
 }
 
 #[tauri::command]
@@ -254,6 +261,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             download_file: None,
             download_received: None,
             download_total: None,
+            warnings: Vec::new(),
+            log_path: None,
         };
         app.emit("install:progress", &p).ok();
     };
@@ -270,6 +279,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             download_file: Some(file.to_string()),
             download_received: Some(received),
             download_total: total,
+            warnings: Vec::new(),
+            log_path: None,
         };
         app.emit("install:progress", &p).ok();
     };
@@ -286,6 +297,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = PathBuf::from(&config.install_path);
+    // 설치기가 새로 만든 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳).
+    // 원래 있던 빈 폴더(드라이브 루트, 문서 폴더 등)는 나중에 다른 파일이 생길 수 있어 표시하지 않는다
+    let dedicated = !install_dir.is_dir() || install_dir.join(uninstall::INSTALL_MARKER).is_file();
     let _ = std::fs::create_dir_all(&install_dir); // 이미 있어도 OK
 
     // 실제 쓰기 가능 여부 테스트
@@ -403,6 +417,12 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         installed.push(key.to_string());
     }
 
+    if dedicated {
+        if let Err(e) = std::fs::write(install_dir.join(uninstall::INSTALL_MARKER), b"") {
+            warn(format!("Failed to mark the install folder: {}", e));
+        }
+    }
+
     // Step 3.5: 공유 모듈 유틸리티(i18n.py, daemon_rcon.py)를 APPDATA/modules/로 설치
     emit("modules-shared", "Installing shared module utilities...", 46);
     install_shared_modules(&install_dir);
@@ -438,16 +458,12 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
                 required_extensions
             );
 
-            match install_required_extensions(&app, &manifest, &required_extensions).await
-            {
-                Ok(ext_names) => {
-                    for name in ext_names {
-                        installed.push(format!("extension:{}", name));
-                    }
-                }
-                Err(e) => {
-                    warn(format!("Some required extensions failed to install: {}", e));
-                }
+            let (ext_names, failed) = install_required_extensions(&app, &manifest, &required_extensions).await;
+            for name in ext_names {
+                installed.push(format!("extension:{}", name));
+            }
+            for e in failed {
+                warn(e);
             }
         }
     }
@@ -541,6 +557,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         download_file: None,
         download_received: None,
         download_total: None,
+        log_path: (!warnings.is_empty()).then(|| log_file_path().display().to_string()),
+        warnings,
     };
     state.write().await.progress = final_progress.clone();
     app.emit("install:progress", &final_progress).ok();
@@ -560,6 +578,8 @@ async fn emit_error(app: &AppHandle, state: &SharedState, msg: &str) {
         download_file: None,
         download_received: None,
         download_total: None,
+        warnings: Vec::new(),
+        log_path: None,
     };
     state.write().await.progress = p.clone();
     app.emit("install:progress", &p).ok();
@@ -726,7 +746,21 @@ async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
         .file()
         .set_title("Select install directory")
         .blocking_pick_folder();
-    Ok(path.map(|p| p.to_string()))
+    Ok(path.map(|p| dedicated_install_dir(Path::new(&p.to_string())).to_string_lossy().into_owned()))
+}
+
+/// 설치에 쓸 폴더: 고른 폴더가 비어 있지 않고 사바쨩 설치도 아니면 그 아래 `Saba-chan` 폴더.
+/// 제거기가 설치 폴더를 지우므로 사용자 파일이 든 폴더에 바로 풀지 않는다
+fn dedicated_install_dir(chosen: &Path) -> PathBuf {
+    if chosen.as_os_str().is_empty() || !chosen.is_dir() || is_empty_dir(chosen) || uninstall::looks_like_install_dir(chosen) {
+        chosen.to_path_buf()
+    } else {
+        chosen.join("Saba-chan")
+    }
+}
+
+fn is_empty_dir(dir: &Path) -> bool {
+    std::fs::read_dir(dir).map(|mut it| it.next().is_none()).unwrap_or(false)
 }
 
 // ═══════════════════════════════════════════════════════
@@ -804,7 +838,8 @@ fn normalize_language_tag(input: &str) -> Option<String> {
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(target_dir)?;
-    saba_chan_updater_lib::extract_zip(zip_path, target_dir, |_| Ok(())).map(|_| ())
+    // 덮어쓰기 설치 때 켜진 서버의 saba-runner처럼 잠긴 exe는 업데이터처럼 비켜 둔다
+    saba_chan_updater_lib::extract_zip(zip_path, target_dir, saba_chan_updater_lib::move_aside_binary).map(|_| ())
 }
 
 /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
@@ -917,12 +952,13 @@ async fn install_required_extensions(
     app: &AppHandle,
     manifest: &ReleaseManifest,
     required_extensions: &[String],
-) -> Result<Vec<String>, String> {
+) -> (Vec<String>, Vec<String>) {
     let data_dir = resolve_data_dir();
     let mut installed = Vec::new();
+    let mut failed = Vec::new();
     for ext_id in required_extensions {
         let Some(info) = manifest.components.get(&format!("{}{}", relay::EXTENSION_PREFIX, ext_id)) else {
-            tracing::warn!("익스텐션 '{}' 이 릴리즈에 없습니다", ext_id);
+            failed.push(format!("Extension {} is not in this release", ext_id));
             continue;
         };
         let p = InstallProgress {
@@ -941,10 +977,10 @@ async fn install_required_extensions(
                 tracing::info!("익스텐션 '{}' 설치 완료: {}", ext_id, target_dir.display());
                 installed.push(ext_id.clone());
             }
-            Err(e) => tracing::warn!("익스텐션 '{}' 설치 실패: {}", ext_id, e),
+            Err(e) => failed.push(format!("Failed to install extension {}: {}", ext_id, e)),
         }
     }
-    Ok(installed)
+    (installed, failed)
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1091,4 +1127,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_with_other_files_gets_its_own_saba_chan_subfolder() {
+        let root = std::env::temp_dir().join(format!("saba-install-dir-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(dedicated_install_dir(&root), root, "an empty folder is used as is");
+        assert_eq!(dedicated_install_dir(&root.join("new")), root.join("new"), "a new folder is used as is");
+
+        std::fs::write(root.join("notes.txt"), b"").unwrap();
+        assert_eq!(dedicated_install_dir(&root), root.join("Saba-chan"));
+
+        let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
+        std::fs::write(root.join(core), b"").unwrap();
+        assert_eq!(dedicated_install_dir(&root), root, "an existing install is updated in place");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }
