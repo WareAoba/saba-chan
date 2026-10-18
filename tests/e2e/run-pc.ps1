@@ -34,6 +34,7 @@ function Need($cmd, $hint) {
 }
 
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
+$Root = (Resolve-Path $Root).Path.TrimEnd('\')
 $Tools = Join-Path $Root "tools"
 New-Item -ItemType Directory -Force -Path $Tools | Out-Null
 
@@ -64,7 +65,7 @@ if (-not (Get-Command javac -ErrorAction SilentlyContinue)) {
 }
 # 시험 폴더의 모듈은 확인되지 않은 구성요소라 AppContainer로 돈다. Program Files의 JDK처럼 앱 컨테이너가 읽을 수 있게
 # 시험 폴더 안 JDK에 ALL APPLICATION PACKAGES 읽기·실행을 준다
-if ($env:JAVA_HOME -and $env:JAVA_HOME.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) {
+if ($env:JAVA_HOME -and ([IO.Path]::GetFullPath($env:JAVA_HOME) + '\').StartsWith($Root + '\', [StringComparison]::OrdinalIgnoreCase)) {
     icacls $env:JAVA_HOME /grant "*S-1-15-2-1:(OI)(CI)RX" /T /Q | Out-Null
     if ($LASTEXITCODE) { throw "JDK 폴더 권한 설정 실패" }
 }
