@@ -71,4 +71,18 @@ describe('디스코드 봇 설정 탭', () => {
         await flush();
         expect(window.showToast).toHaveBeenCalledWith("This server isn't paired.", 'error', 6000, undefined);
     });
+
+    it('릴레이에서 설정을 못 읽었으면(loaded:false) 알리고 바꾸지 못하게 한다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, loaded: false });
+        window.api.discordSettingsSet = vi.fn();
+        render(<BotSettingsTab node={node} />);
+        await flush();
+        expect(screen.getByText(/Couldn't read this server's settings from the relay/)).toBeTruthy();
+        expect(screen.getByRole('checkbox', { name: 'Volume normalization' })).toBeDisabled();
+
+        window.api.discordSettingsGet.mockResolvedValue(base);
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        await flush();
+        expect(screen.getByRole('checkbox', { name: 'Volume normalization' })).not.toBeDisabled();
+    });
 });

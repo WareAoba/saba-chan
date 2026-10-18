@@ -783,6 +783,7 @@
     "members_loading": "正在加载成员…",
     "members_empty": "无法加载成员。请确认命令转发已开启，然后刷新。",
     "members_refresh_failed": "无法刷新成员列表。当前显示的是之前获取的列表。",
+    "members_partial": "无法获取完整的 Discord 成员列表，仅显示拥有权限的成员。",
     "member_all": "所有命令",
     "member_restricted": "受限 · 已屏蔽 {{count}} 个",
     "back_to_members": "成员",
@@ -924,6 +925,7 @@
       "refresh": "播放器刷新间隔",
       "range": "请输入 {{min}} 到 {{max}} 之间的整数。",
       "not_synced": "已保存，但尚未同步到 Discord。下次连接时会同步。",
+      "not_loaded": "无法从中继读取此服务器的设置。当前显示的是默认值，无法修改。连接后请重新加载。",
       "err_not_paired": "此服务器尚未配对。",
       "err_invalid": "无效的值：{{field}}",
       "err_generic": "无法更改机器人设置。"

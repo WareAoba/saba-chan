@@ -786,6 +786,7 @@
     "members_loading": "멤버 목록을 불러오는 중…",
     "members_empty": "멤버를 불러오지 못했어요. 명령 전달이 켜져 있는지 확인하고 새로고침하세요.",
     "members_refresh_failed": "멤버 목록을 새로 받지 못했어요. 지금 보이는 목록은 전에 받은 것이에요.",
+    "members_partial": "디스코드 전체 멤버 목록을 받지 못해 권한을 받은 멤버만 보여요.",
     "member_all": "모든 명령",
     "member_restricted": "제한 · {{count}}개 막힘",
     "back_to_members": "멤버 목록",
@@ -927,6 +928,7 @@
       "refresh": "플레이어 새로고침 간격",
       "range": "{{min}}에서 {{max}} 사이의 정수를 넣어 주세요.",
       "not_synced": "저장했지만 아직 디스코드에 반영되지 않았어요. 다음에 연결되면 반영돼요.",
+      "not_loaded": "릴레이에서 이 서버의 설정을 읽지 못했어요. 지금 보이는 값은 기본값이라 바꿀 수 없어요. 연결된 뒤 다시 불러오세요.",
       "err_not_paired": "이 서버와 페어링되어 있지 않아요.",
       "err_invalid": "잘못된 값이에요: {{field}}",
       "err_generic": "봇 설정을 바꾸지 못했어요."

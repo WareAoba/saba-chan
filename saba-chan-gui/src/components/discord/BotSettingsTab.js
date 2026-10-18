@@ -121,18 +121,30 @@ export function BotSettingsTab({ node }) {
     }
 
     const music = settings.music || {};
+    // 릴레이에서 설정을 못 읽었으면 기본값만 보인다. 그대로 저장하면 릴레이 값을 덮으므로 막는다
+    const unloaded = settings.loaded === false;
+    const locked = saving || unloaded;
     const toggleRow = (label, hint, checked, onChange) => (
         <div className="cb-toggle-row">
             <span className="dc-list-text">
                 <span className="dc-list-name">{label}</span>
                 {hint && <span className="cb-hint">{hint}</span>}
             </span>
-            <SabaToggle checked={!!checked} disabled={saving} aria-label={label} onChange={onChange} />
+            <SabaToggle checked={!!checked} disabled={locked} aria-label={label} onChange={onChange} />
         </div>
     );
 
     return (
         <div className="dc-bot-settings">
+            {unloaded && (
+                <output className="notice tone-warn">
+                    <Icon name="alertTriangle" size="sm" />
+                    <span>{t('discord.bot_settings.not_loaded')}</span>
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={load}>
+                        {t('maintenance.retry')}
+                    </button>
+                </output>
+            )}
             {sync && sync.ok === false && (
                 <output className="notice tone-warn">
                     <Icon name="alertTriangle" size="sm" />
@@ -149,7 +161,7 @@ export function BotSettingsTab({ node }) {
                     <CustomDropdown
                         className="setting-select"
                         value={settings.locale || 'auto'}
-                        disabled={saving}
+                        disabled={locked}
                         onChange={(locale) => locale !== settings.locale && save({ locale })}
                         options={[
                             { value: 'auto', label: t('discord.bot_settings.language_auto') },
@@ -184,7 +196,7 @@ export function BotSettingsTab({ node }) {
                         unit={t('discord.bot_settings.lines')}
                         value={music.queueLines ?? 10}
                         range={QUEUE_LINES}
-                        disabled={saving}
+                        disabled={locked}
                         onCommit={(queueLines) => save({ music: { queueLines } })}
                     />
                     <NumberField
@@ -192,7 +204,7 @@ export function BotSettingsTab({ node }) {
                         unit={t('chatbot.seconds')}
                         value={Math.round((music.refreshInterval ?? 5000) / 1000)}
                         range={REFRESH_SECONDS}
-                        disabled={saving}
+                        disabled={locked}
                         onCommit={(s) => save({ music: { refreshInterval: s * 1000 } })}
                     />
                 </div>

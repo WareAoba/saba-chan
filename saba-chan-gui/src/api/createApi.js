@@ -971,14 +971,25 @@ export function createApi({ invoke, hub }) {
                 return errorBody(err);
             }
         },
+        // `{members, partial, reason?}`: 디스코드 전체 목록을 못 받으면 권한을 등록한 멤버만 (partial)
         relayListNodeMembers: async (guildId, relayUrl) => {
+            const qs = relayUrl ? `&relayUrl=${encodeURIComponent(relayUrl)}` : '';
             try {
                 return (
-                    await get(`/api/relay/node/${encodeURIComponent(guildId)}/members${relayQs(relayUrl)}`, {
-                        // 릴레이가 디스코드에 전체 목록을 물을 때 8초까지 기다린다
-                        timeout: 15000,
+                    await get(`/api/relay/node/${encodeURIComponent(guildId)}/members?withStatus=1${qs}`, {
+                        // 데몬이 디스코드 전체 목록을 15초까지 기다린 뒤 폴백한다
+                        timeout: 20000,
                     })
                 ).data;
+            } catch (err) {
+                return errorBody(err);
+            }
+        },
+        // 릴레이에 남은 권한 부여값 `[{id, username, displayName, level}]` (가져오기 후보)
+        relayListLegacyMembers: async (guildId) => {
+            try {
+                return (await get(`/api/relay/node/${encodeURIComponent(guildId)}/legacy-members`, { timeout: 15000 }))
+                    .data;
             } catch (err) {
                 return errorBody(err);
             }

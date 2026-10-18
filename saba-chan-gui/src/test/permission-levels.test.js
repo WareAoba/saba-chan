@@ -80,6 +80,7 @@ describe('권한 화면', () => {
     });
     afterEach(() => {
         for (const k of API) delete window.api[k];
+        delete window.api.relayListLegacyMembers;
         window.showToast = undefined;
     });
 
@@ -117,9 +118,11 @@ describe('권한 화면', () => {
         expect(screen.getByLabelText('Level for Mint')).toHaveTextContent('Admin');
     });
 
-    it('릴레이에 남은 부여값을 골라 가져온다', async () => {
-        renderPanel();
+    it('릴레이에 남은 부여값(legacy-members)을 골라 가져온다: 디스코드 멤버 목록에는 레벨이 없다', async () => {
+        window.api.relayListLegacyMembers = vi.fn(async () => relayMembers);
+        renderPanel('members', { members: relayMembers.map(({ level, ...m }) => m) });
         await flush();
+        expect(window.api.relayListLegacyMembers).toHaveBeenCalledWith('g1');
         fireEvent.click(screen.getByRole('checkbox', { name: 'Newbie' }));
         fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
         await flush();

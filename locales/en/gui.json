@@ -786,6 +786,7 @@
     "members_loading": "Loading members…",
     "members_empty": "Couldn't load members. Make sure the command relay is on, then refresh.",
     "members_refresh_failed": "Couldn't refresh the member list. The list shown is from earlier.",
+    "members_partial": "Couldn't get the full Discord member list, so only members with permissions are shown.",
     "member_all": "All commands",
     "member_restricted": "Restricted · {{count}} blocked",
     "back_to_members": "Members",
@@ -927,6 +928,7 @@
       "refresh": "Player refresh interval",
       "range": "Enter a whole number from {{min}} to {{max}}.",
       "not_synced": "Saved, but not applied to Discord yet. It will be applied on the next connection.",
+      "not_loaded": "Couldn't read this server's settings from the relay. The values shown are defaults and can't be changed. Reload once connected.",
       "err_not_paired": "This server isn't paired.",
       "err_invalid": "Invalid value: {{field}}",
       "err_generic": "Couldn't change bot settings."
