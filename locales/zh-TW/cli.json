@@ -37,6 +37,7 @@
     "confirm_unpair": "要中斷這台電腦與 Discord 機器人的連線並取消配對嗎？",
     "connection": "連線",
     "last_error": "最近錯誤",
+    "token_replaced": "此 Discord 帳號的電腦連線已移到另一台電腦。若要再次使用這台電腦,請用 `saba-chan-cli bot pair` 重新連線。",
     "last_heartbeat": "最近心跳",
     "list_empty": "目前沒有內容。",
     "no_aliases": "還沒有別名。新增一個：saba-chan-cli bot alias add NAME MODULE",
@@ -182,6 +183,7 @@
   "exit": {
     "crash": "當機",
     "in_game_stop": "從遊戲內停止",
+    "start_failed": "啟動失敗",
     "restarting_in": "{{secs}} 秒後重新啟動",
     "unknown_exit": "已結束（被關閉或被終止）",
     "user_stop": "由你停止"

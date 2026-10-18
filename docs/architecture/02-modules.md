@@ -25,7 +25,7 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 모듈 루트 | `SABA_MODULES_PATH` 환경변수. 없으면 `resolve_data_dir()/modules`, 즉 Windows는 `%APPDATA%/saba-chan/modules`, Linux/macOS는 `$HOME/.config/saba-chan/modules` (`SABA_DATA_DIR`로 override 가능) | `D:updater/src/constants.rs:55-101`, `D:src/plugin/mod.rs:76-82` |
-| GUI가 데몬을 띄울 때 | GUI가 `SABA_MODULES_PATH`를 명시적으로 주입 | `D:saba-chan-gui/main.js:593-602` |
+| GUI가 데몬을 띄울 때 | GUI(Tauri 셸)가 `SABA_MODULES_PATH`를 명시적으로 주입(값은 `constants::resolve_modules_dir()`) | `D:saba-chan-gui/src-tauri/src/lifecycle.rs:173-183` |
 | 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/mod.rs:2272-` |
 
 `ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader.rs:1086-1153`)의 동작은 다음과 같다.
@@ -96,7 +96,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 |---|---|---|
 | `process_patterns` | Vec<String> | extension hook `server.status` 컨텍스트로만 전달 (`mod.rs:919-930`). 네이티브 auto-detect에는 **미사용** |
 | `cmd_patterns` | Vec<String> | auto-detect 때 커맨드라인 필터 (`mod.rs:2155-2164`) |
-| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 전부 있어야 함). GUI 마이그레이션 화면도 이 결과만 쓴다: `migration:scanDir`가 이 API를 부르고(`saba-chan-gui/main.js:2735-2745`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.js:73-74`) |
+| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 전부 있어야 함). GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.js:782-790`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.js:73-74`) |
 | `graceful_exit_patterns` | Vec<String> | 정상 종료 문구(정규식). 종료 판정에 쓴다 (§3.6) |
 | `crash_artifacts` | Vec<String> | 크래시 때 생기는 파일. 종료 판정에 쓴다 (§3.6) |
 
@@ -184,7 +184,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 `module_aliases: Vec<String>`, `[aliases.commands.<cmd>] = { aliases = [...], description = "..." }`.
 
 #### `[errors]`
-오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고(`:91-94`), `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs:11-15`).
+오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고(`:91-94`), `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs:11-15`). 문구는 GUI 언어의 모듈 locales `errors.<code>`가 있으면 그것을, 없으면 module.toml 값을 쓴다 (`module_errors`).
 
 
 #### `[[presets]]` (`ModulePreset`)
@@ -375,7 +375,7 @@ players = "player_count"
 
 ### 3.1 두 가지 실행 경로
 
-시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:563-616`, `D:src/supervisor/mod.rs:1479-1489`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/main.js:1455`).
+시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:563-616`, `D:src/supervisor/mod.rs:1479-1489`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.js:119-121`).
 
 | | managed (`POST /api/instance/:id/managed/start`) | non-managed (`POST /api/server/:name/start`) |
 |---|---|---|
@@ -406,7 +406,7 @@ players = "player_count"
   - managed: `running`/`stopped` 두 값이다. `watch::channel<bool>`의 `is_running()`으로 정한다 (`mod.rs:950-962`).
   - non-managed: 모듈 `status()`가 돌려준 문자열을 그대로 쓴다. Python이 실패하면 `"unknown"`이다.
   - extension hook `server.status`가 `handled: true`를 돌려주면 그 결과가 우선한다.
-- managed 서버가 끝나면 `judge_exit`가 `user_stop` / `crash` / `in_game_stop` / `unknown_exit`로 가르고 기록한다 (`mod.rs:1961-2029`, `D:src/supervisor/crash.rs:1-13`). 이력은 `GET /api/instance/:id/events`로 본다.
+- managed 서버가 끝나면 `judge_exit`가 `user_stop` / `crash` / `start_failed` / `in_game_stop` / `unknown_exit`로 가르고 기록한다 (`D:src/supervisor/crash.rs`). 이력은 `GET /api/instance/:id/events`로 본다. 이력은 인스턴스 폴더의 `exit-events.json`에도 저장해서 데몬을 다시 켜도 남는다.
 - `ProcessTracker`(`D:src/supervisor/process.rs`)는 PID와 시작 시각만 기록한다(`track`, `track_since`, `replace_pid`, `untrack`). 예전의 `ProcessStatus`, `get_status`, `mark_crashed`, `terminate`는 지워졌다. 강제 종료는 `ManagedProcess::force_kill`(`force_kill_pid`로 서버와 runner를 함께 죽인다, `managed_process.rs:230-235`)이다.
 
 ### 3.3 콘솔 캡처와 로그 파싱 (`managed_process.rs`)
@@ -450,8 +450,8 @@ players = "player_count"
 
 ### 3.6 크래시 감지와 자동 재시작
 
-- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 콘솔 끝 50줄에 `graceful_exit_patterns`가 있거나 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
-- **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다 (`crash.rs:109-111`). 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:21-30`, `mod.rs:1993-2009`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:391-396`, `server.rs:735-751`). 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
+- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 콘솔 끝 50줄에 `graceful_exit_patterns`가 있으면 `in_game_stop`, 시작 뒤 30초(`STARTUP_GRACE`) 안에 끝나면 `start_failed`(근거는 걸린 시간과 콘솔 마지막 줄, 포트 충돌 같은 시작 실패. 데몬 재시작 뒤 PID로 다시 붙은 서버는 시작 시각을 모르므로 빼고, 러너로 다시 붙은 서버는 러너가 띄운 시각을 쓴다), 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
+- **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다. `start_failed`는 다시 켜도 같은 이유로 실패하므로 재시작하지 않는다. 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:21-30`, `mod.rs:1993-2009`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:391-396`, `server.rs:735-751`). 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
 - `monitor_processes`(`mod.rs:2074-2254`)가 하는 일은 다음과 같다.
   1. `managed_store.cleanup_dead()`로 죽은 항목을 꺼내 종료를 판정하고, `managed.pid`를 삭제한 뒤 cooldown을 등록한다.
   2. 추적 중인 PID가 스냅샷에 없으면 untrack한다. saba-runner가 아직 서버를 돌리면(런처가 끝나고 실제 서버가 남은 경우) runner가 보는 PID로 옮긴다.
@@ -523,7 +523,7 @@ players = "player_count"
 
 ### 4.5 i18n과 locales
 
-- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `settings`, `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`은 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
+- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `settings`, `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
 - 인터페이스 측: `GET /api/module/:name/locales`가 `<modules_dir>/<name>/locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs:192-226`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다. 이 경로 계산은 `module.path`가 아니라 **모듈 이름으로 만든 경로**라서, ZIP 모듈(`.extracted/<name>`)이나 폴더명이 name과 다른 모듈에서는 locales가 비어 나온다.
 
 ---
@@ -605,9 +605,9 @@ players = "player_count"
 
 | # | 위치 | 내용 | 원칙 |
 |---|---|---|---|
-| 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/main.js:2014-2020`). 로컬 Discord 봇은 지워졌다 | — |
-| 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:563-616`, `saba-chan-gui/main.js:1455`) | — |
-| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migration:scanDir`가 데몬 `POST /api/modules/detect`(`server.rs:370-390`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/main.js:2735-2745`, `AddInstanceMigration.js:73-74`) | |
+| 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/src/api/createApi.js:465-471`). 로컬 Discord 봇은 지워졌다 | — |
+| 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:563-616`, `saba-chan-gui/src/api/createApi.js:119-121`) | — |
+| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migrationScanDir`가 데몬 `POST /api/modules/detect`(`server.rs:370-390`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/src/api/createApi.js:782-790`, `AddInstanceMigration.js:73-74`) | |
 | 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:184-193`, `cmd/module.rs:99-100`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:394-414`) | — |
 | 6 | `D:src/ipc/handlers/instance.rs:991-1017` | 설정 동기화 제외 목록에 `java_path`, `ram`, `use_aikar_flags`(Minecraft 전용 키)와 `managed_start`, `graceful_stop`이 **데몬에 하드코딩**돼 있다. `rcon_port`·`rcon_password`·`enable_rcon`은 게임 파일로 넘기지 않으려고 뺀다. 주석·로그는 "server.properties"(Minecraft 파일명) | 게임별 지식이 데몬에 있음 (모듈 매뉴얼 소관) |

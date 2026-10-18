@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-launch-uninstaller"
+description = "Enables the launch_uninstaller command without any pre-configured scope."
+commands.allow = ["launch_uninstaller"]
+
+[[permission]]
+identifier = "deny-launch-uninstaller"
+description = "Denies the launch_uninstaller command without any pre-configured scope."
+commands.deny = ["launch_uninstaller"]

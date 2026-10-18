@@ -37,6 +37,7 @@
     "confirm_unpair": "이 PC를 디스코드 봇에서 끊고 페어링을 잊을까요?",
     "connection": "연결",
     "last_error": "마지막 오류",
+    "token_replaced": "이 디스코드 계정의 PC 연결이 다른 PC로 옮겨졌어요. 이 PC를 다시 쓰려면 `saba-chan-cli bot pair`로 다시 연결하세요.",
     "last_heartbeat": "마지막 응답",
     "list_empty": "아직 없어요.",
     "no_aliases": "별명이 아직 없어요. 추가: saba-chan-cli bot alias add 이름 모듈",
@@ -222,6 +223,7 @@
   "exit": {
     "crash": "크래시",
     "in_game_stop": "게임 안에서 정지",
+    "start_failed": "시작 실패",
     "restarting_in": "{{secs}}초 뒤 다시 시작",
     "unknown_exit": "종료됨 (창 닫기·강제 종료)",
     "user_stop": "직접 정지"

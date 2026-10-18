@@ -37,6 +37,7 @@
     "confirm_unpair": "この PC を Discord ボットから切断し、ペアリングを解除しますか？",
     "connection": "接続",
     "last_error": "最後のエラー",
+    "token_replaced": "このDiscordアカウントのPC接続は別のPCに移りました。このPCを再び使うには `saba-chan-cli bot pair` で接続し直してください。",
     "last_heartbeat": "最後のハートビート",
     "list_empty": "まだ何もありません。",
     "no_aliases": "エイリアスはまだありません。追加するには: saba-chan-cli bot alias add NAME MODULE",
@@ -182,6 +183,7 @@
   "exit": {
     "crash": "クラッシュ",
     "in_game_stop": "ゲーム内から停止",
+    "start_failed": "起動に失敗",
     "restarting_in": "{{secs}} 秒後に再起動",
     "unknown_exit": "終了（閉じられたか強制終了）",
     "user_stop": "ユーザーが停止"

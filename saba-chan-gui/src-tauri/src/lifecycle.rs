@@ -1,0 +1,678 @@
+//! 데몬 수명 — 기동·재사용·종료, 클라이언트 등록·heartbeat, 백그라운드 초기화, 앱 종료 경로
+
+use crate::events::{self, SseEvent};
+use crate::{emit_main, settings, tray, AppState};
+use serde_json::{json, Value};
+use std::io::BufRead;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tauri::async_runtime::JoinHandle;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_notification::NotificationExt;
+
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+const STOP_TIMEOUT: Duration = Duration::from_secs(15);
+
+#[derive(Default)]
+pub struct Lifecycle {
+    /// 이 GUI가 띄운 데몬. 강제 종료는 이 PID에만 한다
+    child: Mutex<Option<Child>>,
+    /// 인터페이스만 종료: 데몬을 남긴다
+    keep_daemon_alive: AtomicBool,
+    init_started: AtomicBool,
+    /// 데몬 기동에 실패해 초기화를 멈췄는가 (daemon_restart가 성공하면 나머지를 이어서 한다)
+    init_pending_daemon: AtomicBool,
+    ready_sent: AtomicBool,
+    quitting: AtomicBool,
+    client_id: Mutex<Option<String>>,
+    last_status: Mutex<Option<Value>>,
+    last_update_key: Mutex<Option<String>>,
+    events_stop: Arc<AtomicBool>,
+    heartbeat_task: Mutex<Option<JoinHandle<()>>>,
+    events_task: Mutex<Option<JoinHandle<()>>>,
+    update_task: Mutex<Option<JoinHandle<()>>>,
+}
+
+fn sleep(ms: u64) -> tokio::time::Sleep {
+    tokio::time::sleep(Duration::from_millis(ms))
+}
+
+fn replace_task(slot: &Mutex<Option<JoinHandle<()>>>, task: Option<JoinHandle<()>>) {
+    if let Some(old) = std::mem::replace(&mut *slot.lock().unwrap(), task) {
+        old.abort();
+    }
+}
+
+// ── 상태 표시 ──
+
+/// 렌더러에 초기화 단계 전달. 새로고침한 렌더러에 다시 보내려고 마지막 값을 기억한다
+pub fn send_status(app: &AppHandle, step: &str, message: &str) {
+    let payload = json!({ "step": step, "message": message, "ts": chrono::Utc::now().timestamp_millis() });
+    *app.state::<AppState>().life.last_status.lock().unwrap() = Some(payload.clone());
+    emit_main(app, "status:update", payload);
+}
+
+fn status_t(app: &AppHandle, step: &str, key: &str) {
+    let msg = app.state::<AppState>().t(key, &[]);
+    send_status(app, step, &msg);
+}
+
+/// 렌더러가 리스너를 단 뒤 부른다. 처음이면 초기화 시작, 다시 부르면(새로고침) 마지막 상태를 다시 보낸다
+pub fn app_ready(app: &AppHandle) {
+    let life = &app.state::<AppState>().life;
+    if life.init_started.swap(true, Ordering::SeqCst) {
+        if let Some(last) = life.last_status.lock().unwrap().clone() {
+            emit_main(app, "status:update", last);
+        }
+        return;
+    }
+    status_t(app, "ui", "init.ui_loaded");
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move { run_background_init(&app).await });
+}
+
+async fn run_background_init(app: &AppHandle) {
+    status_t(app, "init", "init.start");
+    let up = ensure_daemon(app).await;
+    tray::update_menu(app);
+    if !up {
+        // ready를 보내지 않는다: 렌더러가 다시 시도 / 그대로 열기를 고른다
+        app.state::<AppState>()
+            .life
+            .init_pending_daemon
+            .store(true, Ordering::SeqCst);
+        status_t(app, "daemon_failed", "daemon.failed_to_start");
+        return;
+    }
+    finish_background_init(app).await;
+}
+
+async fn finish_background_init(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    state.life.init_pending_daemon.store(false, Ordering::SeqCst);
+    // 실제 데이터는 렌더러가 가져온다. 여기서는 로딩 표시만 넘긴다
+    status_t(app, "modules", "init.modules");
+    status_t(app, "instances", "init.instances");
+
+    register_with_daemon(app).await;
+    start_heartbeat(app);
+    start_events(app);
+    start_update_checker(app);
+
+    status_t(app, "ready", "init.ready");
+
+    // 업데이터가 다시 띄웠으면 첫 ready 뒤 한 번 알린다
+    if state.after_update && !state.life.ready_sent.swap(true, Ordering::SeqCst) {
+        tracing::info!("[Updater] Detected --after-update flag, notifying renderer");
+        emit_main(
+            app,
+            "updates:completed",
+            json!({ "message": state.t("updates.completed", &[]), "timestamp": chrono::Utc::now().to_rfc3339() }),
+        );
+    }
+}
+
+// ── 데몬 기동 ──
+
+pub fn daemon_file_name() -> &'static str {
+    if cfg!(windows) {
+        "saba-core.exe"
+    } else {
+        "saba-core"
+    }
+}
+
+/// 개발: 저장소의 target/release(없으면 debug), 배포: 설치 루트
+fn daemon_path(install_root: &Path) -> PathBuf {
+    if cfg!(debug_assertions) {
+        let release = install_root.join("target").join("release").join(daemon_file_name());
+        if release.exists() {
+            return release;
+        }
+        return install_root.join("target").join("debug").join(daemon_file_name());
+    }
+    install_root.join(daemon_file_name())
+}
+
+/// 이 GUI가 띄운 데몬이 아직 살아 있는가 (끝났으면 놓는다)
+pub fn own_daemon_alive(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    let mut guard = state.life.child.lock().unwrap();
+    match guard.as_mut().map(|c| c.try_wait()) {
+        Some(Ok(None)) => true,
+        Some(Ok(Some(status))) => {
+            tracing::info!("Core Daemon exited with {}", status);
+            *guard = None;
+            false
+        }
+        Some(Err(_)) | None => {
+            *guard = None;
+            false
+        }
+    }
+}
+
+pub fn start_daemon(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let root = state.install_root.clone();
+    let path = daemon_path(&root);
+    tracing::info!(
+        "[Daemon] rootDir: {} daemonPath: {} exists: {}",
+        root.display(),
+        path.display(),
+        path.exists()
+    );
+    if !path.exists() {
+        tracing::error!("[Daemon] NOT FOUND: {}", path.display());
+        return;
+    }
+    let s = state.settings();
+    let mut cmd = Command::new(&path);
+    cmd.arg("--spawned")
+        .current_dir(&root)
+        .env("RUST_LOG", "info")
+        .env("SABA_LANG", settings::language(&s))
+        .env("SABA_IPC_PORT", settings::ipc_port(&s).to_string())
+        .env("SABA_INSTANCES_PATH", state.data_dir.join("instances"))
+        .env(
+            "SABA_MODULES_PATH",
+            saba_chan_updater_lib::constants::resolve_modules_dir(),
+        )
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    detach(&mut cmd, true);
+    let spawned = cmd.spawn().or_else(|e| {
+        // GUI를 띄운 쪽의 job이 breakaway를 막으면 CreateProcess가 거부된다: 그때는 떼지 않고 띄운다
+        if cfg!(windows) {
+            tracing::warn!("[Daemon] spawn with job breakaway failed ({}), retrying without", e);
+            detach(&mut cmd, false);
+            cmd.spawn()
+        } else {
+            Err(e)
+        }
+    });
+
+    match spawned {
+        Ok(mut child) => {
+            let pid = child.id();
+            tracing::info!("[Daemon] spawned with PID: {}", pid);
+            // 로그는 GUI가 살아 있는 동안 받고, 그 뒤에는 데몬 버퍼(/api/daemon/console)에 남는다
+            if let Some(out) = child.stdout.take() {
+                pipe_log(out);
+            }
+            if let Some(err) = child.stderr.take() {
+                pipe_log(err);
+            }
+            *state.life.child.lock().unwrap() = Some(child);
+            watch_daemon_exit(app.clone(), pid);
+        }
+        Err(e) => tracing::error!("Failed to start Core Daemon: {}", e),
+    }
+}
+
+/// GUI가 꺼져도 데몬이 살아 있게 떼어 놓는다. 콘솔 창은 띄우지 않는다.
+/// `breakaway`: GUI를 띄운 쪽이 kill-on-close job에 넣었어도 데몬은 빠져나온다 (C14)
+fn detach(cmd: &mut Command, breakaway: bool) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        let flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
+        cmd.creation_flags(if breakaway {
+            flags | CREATE_BREAKAWAY_FROM_JOB
+        } else {
+            flags
+        });
+    }
+    #[cfg(not(windows))]
+    let _ = breakaway;
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // 터미널의 Ctrl+C가 데몬까지 가지 않게 프로세스 그룹을 나눈다
+        cmd.process_group(0);
+    }
+}
+
+/// 데몬 출력 → GUI 로그 (tracing WARN/ERROR는 warn으로)
+fn pipe_log<R: std::io::Read + Send + 'static>(r: R) {
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(r).lines() {
+            let Ok(line) = line else { break };
+            let text = line.trim();
+            if text.is_empty() {
+                continue;
+            }
+            if text
+                .split_whitespace()
+                .any(|w| w.contains("WARN") || w.contains("ERROR"))
+            {
+                tracing::warn!("[Daemon] {}", text);
+            } else {
+                tracing::info!("[Daemon] {}", text);
+            }
+        }
+    });
+}
+
+/// 데몬이 끝나면 놓고 트레이를 갱신한다
+fn watch_daemon_exit(app: AppHandle, pid: u32) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            sleep(1000).await;
+            let same = app
+                .state::<AppState>()
+                .life
+                .child
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|c| c.id())
+                == Some(pid);
+            if !same {
+                return;
+            }
+            if !own_daemon_alive(&app) {
+                tray::update_menu(&app);
+                return;
+            }
+        }
+    });
+}
+
+fn force_kill(child: &mut Child) {
+    #[cfg(windows)]
+    {
+        // /T 없이: 서버는 saba-runner가 쥐고 있어 데몬만 끊고, 다음 기동 때 다시 붙는다
+        let _ = saba_chan_updater_lib::process::hide_console(&mut Command::new("taskkill"))
+            .args(["/PID", &child.id().to_string(), "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = child.kill();
+    }
+    let _ = child.try_wait();
+}
+
+/// API로 정상 종료를 요청하고, 시간 안에 안 끝나면 이 GUI가 띄운 PID만 강제 종료한다.
+/// 이름 기반 kill은 다른 사용자의 데몬까지 죽일 수 있어 쓰지 않는다
+pub async fn stop_daemon(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
+        Ok(_) => tracing::info!("Daemon shutdown requested via API"),
+        Err(e) => tracing::warn!("Daemon shutdown API failed: {}", e.message),
+    }
+    if state.life.child.lock().unwrap().is_none() {
+        return;
+    }
+    let start = Instant::now();
+    while own_daemon_alive(app) {
+        if start.elapsed() >= STOP_TIMEOUT {
+            let mut guard = state.life.child.lock().unwrap();
+            if let Some(child) = guard.as_mut() {
+                tracing::warn!(
+                    "Daemon did not exit in {:?}, force killing PID {}",
+                    STOP_TIMEOUT,
+                    child.id()
+                );
+                force_kill(child);
+            }
+            *guard = None;
+            break;
+        }
+        sleep(200).await;
+    }
+    tracing::info!("Daemon stopped");
+}
+
+async fn health_ok(app: &AppHandle, timeout_ms: u64) -> bool {
+    app.state::<AppState>().client.get("/health", timeout_ms).await.is_ok()
+}
+
+/// 토큰 재로드 후 검증 (최대 3회, 500ms 간격). 실패해도 진행한다 (이후 401 재시도에 맡김)
+async fn reload_token_until_valid(app: &AppHandle) -> bool {
+    let client = app.state::<AppState>().client.clone();
+    for retry in 0..3 {
+        client.load_token();
+        match client.get("/health", 1000).await {
+            // 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
+            Ok(v) if v.get("token").and_then(Value::as_str).unwrap_or("valid") == "valid" => {
+                tracing::info!("Token refreshed and verified");
+                return true;
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("[Auth] Token verify attempt {} failed: {}", retry + 1, e.message),
+        }
+        sleep(500).await;
+    }
+    tracing::warn!("[Auth] Token verification failed after 3 retries, proceeding anyway");
+    false
+}
+
+/// 데몬이 새로 뜨는 동안 기다린다 (새 토큰을 만들므로 매번 다시 읽는다)
+async fn wait_for_new_daemon(app: &AppHandle) -> bool {
+    let client = app.state::<AppState>().client.clone();
+    for _ in 0..20 {
+        sleep(500).await;
+        client.load_token();
+        if client.get("/health", 800).await.is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
+/// 떠 있는 데몬이 있으면 재사용하고, 없으면 띄운다. 데몬이 응답하지 않으면 false
+async fn ensure_daemon(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    state.client.load_token();
+    status_t(app, "daemon", "daemon.checking");
+    match state.client.get("/health", 1000).await {
+        Ok(v) => {
+            // /health는 토큰 없이 답하고 보낸 토큰 상태를 알려 준다 (A6)
+            if v.get("token").and_then(Value::as_str).is_some_and(|t| t != "valid") {
+                tracing::info!("Existing daemon detected (stale token). Reloading token...");
+                reload_token_until_valid(app).await;
+            } else {
+                tracing::info!("Existing daemon detected on IPC port. Skipping launch.");
+            }
+            status_t(app, "daemon", "daemon.existing_running");
+            sync_install_root(app).await;
+            true
+        }
+        // 401 = 예전 데몬이 떠 있지만 토큰이 맞지 않음 (이전 세션 토큰)
+        Err(e) if e.status == Some(401) => {
+            tracing::info!("Existing daemon detected (auth failed — stale token). Reloading token...");
+            reload_token_until_valid(app).await;
+            status_t(app, "daemon", "daemon.existing_running");
+            sync_install_root(app).await;
+            true
+        }
+        Err(e) if e.status.is_none() && (e.code == "ECONNREFUSED" || e.code == "ETIMEDOUT") => {
+            tracing::info!("No daemon detected, attempting to launch new one...");
+            status_t(app, "daemon", "daemon.starting");
+            start_daemon(app);
+            // 첫 실행은 데이터 폴더 준비로 느릴 수 있다 (최대 10초)
+            if wait_for_new_daemon(app).await {
+                tracing::info!("Daemon is now running");
+                status_t(app, "daemon", "daemon.started");
+                sync_install_root(app).await;
+                return true;
+            }
+            tracing::warn!("Daemon did not respond after startup");
+            false
+        }
+        Err(e) => {
+            // 데몬은 떠 있지만 다른 문제 — 경고만 하고 진행
+            tracing::warn!("Unexpected error checking daemon: {}", e.message);
+            let msg = state.t("daemon.check_warning", &[("error", &e.message)]);
+            send_status(app, "daemon", &msg);
+            true
+        }
+    }
+}
+
+/// 데몬에 install_root 동기화 (portable 모드에서도 실제 배포 경로를 알린다)
+async fn sync_install_root(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let root = state.install_root.to_string_lossy().to_string();
+    match state
+        .client
+        .put("/api/updates/config", &json!({ "install_root": root }), 3000)
+        .await
+    {
+        Ok(_) => tracing::info!("[InstallRoot] Synced to daemon: {}", root),
+        Err(e) => tracing::warn!("[InstallRoot] Failed to sync: {}", e.message),
+    }
+}
+
+// ── 클라이언트 등록·heartbeat (데몬이 GUI 생존 여부를 추적) ──
+
+async fn register_with_daemon(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    // PID·설치 폴더: 인스톨러가 이 설치의 GUI를 찾아 끌 수 있게
+    let body = json!({ "kind": "gui", "pid": std::process::id(), "installRoot": state.install_root.to_string_lossy() });
+    match state.client.post("/api/client/register", &body, 3000).await {
+        Ok(v) => {
+            let id = v
+                .get("client_id")
+                .and_then(|i| i.as_str().map(String::from).or_else(|| Some(i.to_string())));
+            tracing::info!("[Heartbeat] Registered with daemon as client: {:?}", id);
+            *state.life.client_id.lock().unwrap() = id;
+            true
+        }
+        Err(e) => {
+            tracing::warn!("[Heartbeat] Failed to register with daemon: {}", e.message);
+            false
+        }
+    }
+}
+
+fn start_heartbeat(app: &AppHandle) {
+    let app2 = app.clone();
+    let task = tauri::async_runtime::spawn(async move {
+        let mut tick = tokio::time::interval(HEARTBEAT_INTERVAL);
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            let state = app2.state::<AppState>();
+            let Some(id) = state.life.client_id.lock().unwrap().clone() else {
+                continue;
+            };
+            if let Err(e) = state
+                .client
+                .post(&format!("/api/client/{id}/heartbeat"), &json!({}), 3000)
+                .await
+            {
+                // 데몬이 재시작되었을 수 있으므로 재등록
+                if e.status == Some(404) || e.code == "ECONNREFUSED" {
+                    tracing::warn!("[Heartbeat] Lost registration, re-registering...");
+                    register_with_daemon(&app2).await;
+                }
+            }
+        }
+    });
+    replace_task(&app.state::<AppState>().life.heartbeat_task, Some(task));
+}
+
+/// 클라이언트 해제. shutdown이면 데몬에 종료도 요청한다
+async fn unregister_from_daemon(app: &AppHandle, shutdown: bool) {
+    let state = app.state::<AppState>();
+    replace_task(&state.life.heartbeat_task, None);
+    let Some(id) = state.life.client_id.lock().unwrap().take() else {
+        return;
+    };
+    let qs = if shutdown { "?shutdown=true" } else { "" };
+    match state
+        .client
+        .delete(&format!("/api/client/{id}/unregister{qs}"), 2000)
+        .await
+    {
+        Ok(_) => tracing::info!(
+            "[Heartbeat] Unregistered from daemon{}",
+            if shutdown { " (with shutdown request)" } else { "" }
+        ),
+        Err(e) => tracing::warn!("[Heartbeat] Failed to unregister: {}", e.message),
+    }
+}
+
+// ── 이벤트 스트림·업데이트 알림 ──
+
+fn start_events(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    state.life.events_stop.store(false, Ordering::SeqCst);
+    let (client, stop, app2) = (state.client.clone(), state.life.events_stop.clone(), app.clone());
+    let task = tauri::async_runtime::spawn(async move {
+        events::run_event_stream(client, stop, move |ev: SseEvent| {
+            emit_main(&app2, "events:message", &ev)
+        })
+        .await;
+    });
+    replace_task(&state.life.events_task, Some(task));
+}
+
+fn start_update_checker(app: &AppHandle) {
+    let app2 = app.clone();
+    let task = tauri::async_runtime::spawn(async move {
+        let mut tick = tokio::time::interval(events::UPDATE_STATUS_POLL);
+        loop {
+            tick.tick().await;
+            check_for_updates(&app2).await;
+        }
+    });
+    replace_task(&app.state::<AppState>().life.update_task, Some(task));
+}
+
+/// 데몬이 마지막으로 확인한 결과를 읽어 새 업데이트가 생겼을 때만 알린다
+async fn check_for_updates(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let data = match state.client.get("/api/updates/status", 5000).await {
+        Ok(d) => d,
+        Err(e) => return tracing::warn!("[UpdateChecker] Check failed: {}", e.message),
+    };
+    let Some(notice) = events::update_notice(&data) else {
+        return;
+    };
+    tracing::info!(
+        "[UpdateChecker] {} update(s) available: {}",
+        notice.names.len(),
+        notice.names.join(", ")
+    );
+    let is_new = state.life.last_update_key.lock().unwrap().as_deref() != Some(notice.key.as_str());
+    if is_new {
+        let count = notice.names.len().to_string();
+        let names = notice.names.join(", ");
+        show_notification(
+            app,
+            &state.t("updates.notification_title", &[]),
+            &state.t("updates.notification_body", &[("count", &count), ("names", &names)]),
+        );
+        *state.life.last_update_key.lock().unwrap() = Some(notice.key.clone());
+    } else {
+        tracing::info!("[UpdateChecker] Skipping OS notification — same updates already notified");
+    }
+    // 적용은 사용자가 업데이트 센터에서 고른다
+    emit_main(app, "updates:available", notice.payload);
+}
+
+pub fn show_notification(app: &AppHandle, title: &str, body: &str) {
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+        tracing::warn!("[Notify] Failed to show notification: {}", e);
+    }
+}
+
+// ── 재시작 ──
+
+/// main.js daemon:restart
+pub async fn daemon_restart(app: &AppHandle) -> Value {
+    let state = app.state::<AppState>();
+    stop_daemon(app).await;
+    // 이 GUI가 띄우지 않은 데몬이면 프로세스를 기다릴 수 없으니, 응답이 멎을 때까지 기다린다
+    for _ in 0..30 {
+        if !health_ok(app, 500).await {
+            break;
+        }
+        sleep(500).await;
+    }
+    tracing::info!("Starting daemon...");
+    state.refresh_ipc_base(); // 포트 변경 반영
+    start_daemon(app);
+    if !wait_for_new_daemon(app).await {
+        state.client.load_token();
+        return json!({ "success": false, "error": state.t("daemon.failed_to_start", &[]) });
+    }
+    // 기동 실패로 멈춘 초기화가 있으면 이어서 끝낸다 (렌더러는 ready를 받고 메인 화면으로 간다)
+    if state.life.init_pending_daemon.load(Ordering::SeqCst) {
+        sync_install_root(app).await;
+        tray::update_menu(app);
+        let app2 = app.clone();
+        tauri::async_runtime::spawn(async move { finish_background_init(&app2).await });
+    }
+    tray::update_menu(app);
+    json!({ "success": true, "message": "Daemon restarted successfully" })
+}
+
+// ── 종료 ──
+
+fn stop_background(state: &AppState) {
+    state.life.events_stop.store(true, Ordering::SeqCst);
+    replace_task(&state.life.events_task, None);
+    replace_task(&state.life.update_task, None);
+    replace_task(&state.life.heartbeat_task, None);
+}
+
+/// 인터페이스만 종료 — 클라이언트만 해제(shutdown=false)하고 데몬은 그대로 둔다
+pub async fn interface_only_quit(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if state.life.quitting.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tracing::info!("Starting interface-only quit sequence...");
+    state.life.keep_daemon_alive.store(true, Ordering::SeqCst);
+    unregister_from_daemon(app, false).await;
+    stop_background(&state);
+    // 자식 핸들만 놓는다 (Child를 버려도 프로세스는 끝나지 않는다)
+    state.life.child.lock().unwrap().take();
+    tray::remove(app);
+    tracing::info!("Interface-only quit sequence completed (daemon kept alive)");
+    app.exit(0);
+}
+
+/// 완전히 종료 — 클라이언트 해제·데몬 종료 요청 후 데몬이 끝나길 기다린다
+pub async fn clean_quit(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if state.life.quitting.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tracing::info!("Starting clean quit sequence...");
+    // 데몬이 종료되면서 관리 중인 봇 프로세스도 함께 정리된다
+    unregister_from_daemon(app, true).await;
+    stop_background(&state);
+    stop_daemon(app).await;
+    tray::remove(app);
+    tracing::info!("Clean quit sequence completed");
+    app.exit(0);
+}
+
+pub fn spawn_clean_quit(app: &AppHandle, delay_ms: u64) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        sleep(delay_ms).await;
+        clean_quit(&app).await;
+    });
+}
+
+/// 프로세스가 끝나기 직전 (RunEvent::Exit). 위 종료 경로를 거치지 않았으면
+/// 기다릴 수 없으니 클라이언트를 짧게 해제하고 자기가 띄운 데몬만 정리한다
+pub fn on_exit(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    stop_background(&state);
+    if let Some(id) = state.life.client_id.lock().unwrap().take() {
+        let client = state.client.clone();
+        let _ = tauri::async_runtime::block_on(async move {
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                client.delete(&format!("/api/client/{id}/unregister"), 1000),
+            )
+            .await
+        });
+    }
+    if !state.life.keep_daemon_alive.load(Ordering::SeqCst) {
+        if let Some(mut child) = state.life.child.lock().unwrap().take() {
+            if matches!(child.try_wait(), Ok(None)) {
+                tracing::info!("Force killing own daemon process at exit");
+                force_kill(&mut child);
+            }
+        }
+    }
+    tracing::info!("Cleanup completed");
+}

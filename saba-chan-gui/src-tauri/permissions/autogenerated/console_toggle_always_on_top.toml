@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-console-toggle-always-on-top"
+description = "Enables the console_toggle_always_on_top command without any pre-configured scope."
+commands.allow = ["console_toggle_always_on_top"]
+
+[[permission]]
+identifier = "deny-console-toggle-always-on-top"
+description = "Denies the console_toggle_always_on_top command without any pre-configured scope."
+commands.deny = ["console_toggle_always_on_top"]

@@ -18,7 +18,7 @@ export function PopoutConsole({
     sendConsoleCommand,
 }) {
     const { t } = useTranslation('gui');
-    const [pinned, setPinned] = useState(true); // 처음엔 항상 위 (main.js alwaysOnTop)
+    const [pinned, setPinned] = useState(true); // 처음엔 항상 위 (셸이 항상 위로 연다)
 
     const handlePopin = useCallback(async () => {
         try {

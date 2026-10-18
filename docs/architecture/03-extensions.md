@@ -229,17 +229,17 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ## 4. GUI 익스텐션 계약
 
-### 4.1 로딩 경로 (Electron)
+### 4.1 로딩 경로 (Tauri)
 
-1. Renderer `window.api.extensionList()` → main.js `ipcMain.handle('extension:list')` → `GET /api/extensions`(`saba-chan-gui/main.js:2084`, `preload.js:39-53`). 모든 호출은 main 프로세스가 axios로 대행한다(토큰 인증 포함).
+1. Renderer `window.api.extensionList()` → JS 브리지 `saba-chan-gui/src/api/createApi.js:510-517` → Tauri 명령 `daemon_request` → `GET /api/extensions`. 확장 관련 메서드는 `createApi.js:510-630`에 있다. 데몬 요청은 Tauri 셸이 대행한다(토큰 인증 포함, `src-tauri/src/native.rs:17-42`, `daemon.rs:213-229`).
 2. `ExtensionProvider`(`src/contexts/ExtensionContext.js:93-189`)가 enabled 익스텐션마다:
-   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:23-57`). `ext.gui`가 없으면 요청하지 않는다(`:32-34`).
+   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`(`responseType:'text'`, `createApi.js:551-561`)로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:23-57`). `ext.gui`가 없으면 요청하지 않는다(`:32-34`).
    - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:75-77`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
    - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:59-66`).
    - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. manifest의 `gui.slots`는 쓰지 않는다.
    - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:149-156`).
-3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.js:11-13`), 번들은 `window.React`를 참조한다(external 처리). 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
-4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`(preload가 노출한 모든 IPC)에 접근할 수 있다. 패키지 설치 때는 sha256을 확인하지만, 번들을 로드할 때는 검증하지 않는다.
+3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.js:15-16`), 번들은 `window.React`를 참조한다(external 처리). 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
+4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`·`window.electron`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, `daemon.rs:93-107`)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다. 패키지 설치 때는 sha256을 확인하지만, 번들을 로드할 때는 검증하지 않는다.
 
 현재 `gui`를 가진 익스텐션은 없으므로 이 경로는 실제로 쓰이지 않는다.
 
@@ -280,7 +280,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 preload/main IPC 바인딩이 **없다**. CLI `saba-chan-cli/src/client.rs:436-442`에만 있다(`extension config`, PR #6 기준).
+- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드(`createApi.js`)가 **없다**. CLI `saba-chan-cli/src/client.rs:436-442`에만 있다(`extension config`, PR #6 기준).
 - `extension:icon` → SabaStorage(`SabaStorage.js:982`), `extension:initStatus` → `hooks/useExtensionInitStatus.js`.
 
 ---

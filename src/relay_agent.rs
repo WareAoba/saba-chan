@@ -32,6 +32,9 @@ const EVENT_PENDING: usize = 50;
 /// relay에 `/events`가 없을 때(404) 다시 알아보기까지 쉬는 시간. 그동안의 이벤트는 버린다
 const EVENT_PROBE: Duration = Duration::from_secs(600);
 
+/// 세션 안에서 토큰 대체를 알리는 오류 표시 (밖으로 나가지 않는다)
+const REPLACED: &str = "token_replaced";
+
 /// 에이전트 상태 (GET /api/relay/agent)
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +46,9 @@ pub struct AgentStatus {
     /// 마지막 하트비트 성공 시각 (epoch ms)
     pub last_heartbeat_at: Option<u64>,
     pub last_error: Option<String>,
+    /// 끊긴 이유를 클라이언트가 현지화할 수 있게 주는 코드. `token_replaced`: 같은 디스코드 계정이 다른 PC를 페어링했다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error_code: Option<&'static str>,
     pub commands_handled: u64,
 }
 
@@ -172,6 +178,12 @@ pub async fn auto_start(server: &IPCServer) {
     }
 }
 
+/// relay가 이 노드 토큰을 같은 계정의 새 페어링으로 대체했다고 답했는가
+fn token_replaced(status: reqwest::StatusCode, body: &Value) -> bool {
+    status == reqwest::StatusCode::UNAUTHORIZED
+        && body.get("error").and_then(|v| v.as_str()).is_some_and(|e| e.eq_ignore_ascii_case("TOKEN_REPLACED"))
+}
+
 fn http_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
@@ -199,6 +211,17 @@ impl Session {
             req = req.header("Content-Type", "application/json").body(b);
         }
         Ok(req)
+    }
+
+    /// 이 PC의 토큰이 다른 PC 페어링으로 대체됐다: 같은 토큰으로 다시 시도해도 소용없으니 멈춘다.
+    /// 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄운다
+    fn give_up_replaced(&self) {
+        tracing::warn!("[RelayAgent] node token was replaced by a newer pairing of the same Discord account; stopping");
+        self.agent.update(self.generation, |s| {
+            s.last_error = Some("node token replaced by a newer pairing".into());
+            s.last_error_code = Some("token_replaced");
+        });
+        self.cancel.cancel();
     }
 
     async fn check_version(&self) -> Result<(), String> {
@@ -241,6 +264,9 @@ impl Session {
             let resp = self.signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string()))?.send().await.map_err(|e| e.to_string())?;
             let status = resp.status();
             let data: Value = resp.json().await.unwrap_or(Value::Null);
+            if token_replaced(status, &data) {
+                return Err(REPLACED.to_string());
+            }
             if !status.is_success() {
                 let hint = if status.as_u16() == 401 || status.as_u16() == 403 { " (node token rejected)" } else { "" };
                 return Err(format!("heartbeat {}{}: {}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or("")));
@@ -259,6 +285,7 @@ impl Session {
                     s.last_error = None;
                 });
             }
+            Err(e) if e == REPLACED => self.give_up_replaced(),
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
                 self.agent.update(self.generation, |s| s.last_error = Some(e));
@@ -355,6 +382,7 @@ impl Session {
         while !self.cancel.is_cancelled() {
             match self.poll_once().await {
                 Ok(()) => failures = 0,
+                Err(e) if e == REPLACED => self.give_up_replaced(),
                 Err(e) => {
                     failures += 1;
                     let backoff = backoff(failures);
@@ -388,6 +416,9 @@ impl Session {
             b = resp.text() => b.unwrap_or_default(),
         };
         let body = decode_poll(&text);
+        if token_replaced(status, &body) {
+            return Err(REPLACED.to_string());
+        }
         if !status.is_success() {
             return Err(format!("poll {}: {}", status, body.get("error").and_then(|v| v.as_str()).unwrap_or("")));
         }
@@ -621,7 +652,7 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
     let data = match event.kind.as_str() {
         "instance.exit" => {
             let kind = d.get("kind").and_then(Value::as_str)?;
-            if kind != "crash" && kind != "unknown_exit" {
+            if !["crash", "start_failed", "unknown_exit"].contains(&kind) {
                 return None;
             }
             let mut v = pick(&["at", "instanceId", "instance", "kind", "exitCode", "signal", "restartInSecs", "note"]);
@@ -631,7 +662,7 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
             }
             v
         }
-        "backup.done" => pick(&["at", "instanceId", "kind", "ok", "name"]),
+        "backup.done" => pick(&["at", "instanceId", "instance", "kind", "ok", "name"]),
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
@@ -1064,8 +1095,8 @@ mod tests {
         assert!(relay_event(&console).unwrap()["data"].get("evidence").is_none());
         assert!(relay_event(&ev("instance.exit", json!({"kind": "user_stop"}))).is_none());
 
-        let failed = ev("backup.done", json!({"instanceId": "i", "kind": "manual", "ok": false, "error": "D:\\saves locked"}));
-        assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "kind": "manual", "ok": false}));
+        let failed = ev("backup.done", json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false, "error": "D:\\saves locked"}));
+        assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
         // 여러 단계 실행은 디스코드에서 시작한 것만

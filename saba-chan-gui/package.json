@@ -3,7 +3,6 @@
   "version": "0.1.5",
   "description": "Saba-chan - Modular Game Server Management GUI",
   "author": "WareAoba",
-  "main": "main.js",
   "engines": {
     "node": ">=22.12"
   },
@@ -11,19 +10,17 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron-start": "wait-on http://localhost:5173 && electron .",
-    "start": "concurrently --kill-others --raw \"npm run dev\" \"npm run electron-start\"",
-    "package": "npm run build && electron-builder",
+    "start": "concurrently --kill-others --raw \"npm run dev\" \"wait-on http://localhost:5173 && cargo run -p saba-chan-gui --no-default-features\"",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "lint": "biome lint ./src ./main.js",
-    "lint:fix": "biome lint --write ./src ./main.js",
-    "format": "biome format --write ./src ./main.js",
-    "check": "biome check ./src ./main.js"
+    "lint": "biome lint ./src",
+    "lint:fix": "biome lint --write ./src",
+    "format": "biome format --write ./src",
+    "check": "biome check ./src",
+    "package": "npm run build && cargo build --release -p saba-chan-gui"
   },
   "dependencies": {
-    "axios": "^1.4.0",
     "clsx": "^2.1.1",
     "i18next": "^25.8.4",
     "i18next-browser-languagedetector": "^8.2.0",
@@ -41,9 +38,6 @@
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/ui": "^5.0.5",
     "concurrently": "^8.2.0",
-    "cross-env": "^7.0.3",
-    "electron": "^44.8.0",
-    "electron-builder": "^26.15.3",
     "jsdom": "^25.0.1",
     "terser": "^5.46.0",
     "vite": "^6.4.4",
@@ -61,75 +55,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "build": {
-    "appId": "com.saba-chan.app",
-    "productName": "Saba-chan",
-    "directories": {
-      "output": "electron-dist"
-    },
-    "files": [
-      "build/**/*",
-      "main.js",
-      "preload.js",
-      "package.json",
-      "!**/node_modules/*/{CHANGELOG.md,README.md,*.map,test,tests,coverage,*.ts,*.d.ts,*.test.js,*.spec.js}",
-      "!**/node_modules/**/*.{md,map,test.js,spec.js}",
-      "!**/node_modules/.bin",
-      "!build/**/*.{map,test.js,spec.js}"
-    ],
-    "extraFiles": [
-      {
-        "from": "../shared",
-        "to": "shared"
-      },
-      {
-        "from": "../config",
-        "to": "config"
-      },
-      {
-        "from": "../locales",
-        "to": "locales"
-      }
-    ],
-    "extraResources": [
-      {
-        "from": "../shared",
-        "to": "shared"
-      }
-    ],
-    "electronLanguages": [
-      "en-US"
-    ],
-    "compression": "normal",
-    "asar": true,
-    "asarUnpack": [],
-    "win": {
-      "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "build/icon.png"
-    },
-    "linux": {
-      "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "tar.gz", "arch": ["x64"] }
-      ],
-      "icon": "build/icon.png",
-      "category": "Game",
-      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
-    },
-    "portable": {
-      "artifactName": "saba-chan-gui.exe"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
   }
 }

@@ -30,6 +30,8 @@ class FakeRelay:
         self.events: list[dict] = []
         self.signature_failures: list[str] = []
         self.pairings: dict[str, dict] = {}
+        # True면 같은 계정의 다른 PC가 페어링해서 이 노드 토큰이 대체된 것처럼 401 TOKEN_REPLACED로 답한다
+        self.token_replaced = False
         self._commands: "queue.Queue[dict]" = queue.Queue()
         self._lock = threading.Lock()
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -139,6 +141,8 @@ class FakeRelay:
 
                 if not relay._verify(method, path, self.headers, body):
                     return self._send(401, {"error": "INVALID_SIGNATURE"})
+                if relay.token_replaced:
+                    return self._send(401, {"error": "TOKEN_REPLACED"})
                 if method == "POST" and path == "/heartbeat":
                     with relay._lock:
                         relay.heartbeats.append(parsed)

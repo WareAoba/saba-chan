@@ -107,7 +107,7 @@
 | 구성요소 | 위치 | 역할 |
 |---|---|---|
 | **데몬** (`saba-core`) | `src/` (Rust) | 서비스 본체. 모든 기능은 데몬을 통해 동작하고, 디스코드 릴레이 연결도 데몬이 맡습니다 |
-| **GUI** | `saba-chan-gui/` (Electron + React) | 데몬을 조작하는 데스크톱 앱 |
+| **GUI** | `saba-chan-gui/` (Tauri + React) | 데몬을 조작하는 데스크톱 앱 |
 | **CLI** | `saba-chan-cli/` (Rust, clap) | 명령줄 도구 + 대화형 셸 |
 | **러너** (`saba-runner`) | `runner/` (Rust) | 서버마다 붙는 감시 프로세스. 데몬이 다시 켜져도 콘솔·로그·종료 코드를 이어 줍니다 |
 | **업데이터 / 인스톨러** | `updater/`, `installer/` (Rust, Tauri) | 서명된 릴리즈로 설치·업데이트 |

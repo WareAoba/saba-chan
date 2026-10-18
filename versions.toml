@@ -34,7 +34,12 @@ files = ["saba-chan-cli/Cargo.toml"]
 version = "0.1.5"
 asset = "saba-chan-gui-{platform}.zip"
 install_dir = "."
-files = ["saba-chan-gui/package.json", "saba-chan-gui/package-lock.json"]
+files = [
+    "saba-chan-gui/package.json",
+    "saba-chan-gui/package-lock.json",
+    "saba-chan-gui/src-tauri/Cargo.toml",
+    "saba-chan-gui/src-tauri/tauri.conf.json",
+]
 
 [components.updater]
 version = "0.1.5"

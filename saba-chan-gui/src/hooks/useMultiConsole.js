@@ -290,7 +290,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     const popinConsole = useCallback(async (instanceId) => {
         try {
             await window.api.consolePopin(instanceId);
-            // main.js will send console:popinRequest event → handled in useEffect below
+            // the shell sends console:popinRequest → handled in useEffect below
         } catch (err) {
             console.error('Popin failed:', err);
         }

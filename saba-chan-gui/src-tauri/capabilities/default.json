@@ -1,0 +1,42 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "메인 창과 콘솔 팝아웃: 셸 명령과 이벤트 수신",
+  "windows": [
+    "main",
+    "popout-*"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-daemon-request",
+    "allow-app-ready",
+    "allow-daemon-status",
+    "allow-daemon-restart",
+    "allow-app-close-response",
+    "allow-updater-launch-apply",
+    "allow-launch-uninstaller",
+    "allow-settings-local-load",
+    "allow-settings-local-save",
+    "allow-settings-get-path",
+    "allow-refresh-ipc-base",
+    "allow-language-get",
+    "allow-language-set",
+    "allow-dialog-open-file",
+    "allow-dialog-open-folder",
+    "allow-dialog-save-file",
+    "allow-shell-open-external",
+    "allow-shell-open-path",
+    "allow-logs-get-path",
+    "allow-logs-open-folder",
+    "allow-app-get-version",
+    "allow-notify",
+    "allow-console-popout",
+    "allow-console-popout-list",
+    "allow-console-focus-popout",
+    "allow-console-popin",
+    "allow-console-toggle-always-on-top",
+    "allow-window-minimize",
+    "allow-window-maximize",
+    "allow-window-close"
+  ]
+}

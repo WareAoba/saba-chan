@@ -101,3 +101,38 @@ def test_owner_discord_setting_runs_without_confirm_button(paired, relay):
     assert ran.get("ok") and ran["reply"].get("ok"), ran
     settings = paired.api.ok("GET", f"/api/discord/{GUILD}/settings")
     assert settings.get("sleeping") is True or settings.get("settings", {}).get("sleeping") is True, settings
+
+
+def test_heartbeat_cpu_ram_is_stored_by_real_relay(paired, relay, fake_server):
+    """데몬 heartbeat의 서버별 CPU·RAM(#86)이 relay 스키마를 지나 호스트 기록에 남는다 (/사바쨩 상태가 읽는 곳, relay 1605932)."""
+    folder, _ = fake_server("mc1")
+    iid = paired.import_server("mc1", folder, module_settings={"ram": "256M"})
+    paired.start_instance(iid)
+    paired.wait_console(iid, DONE)
+    paired.api.ok("POST", "/api/relay/agent/stop")
+    paired.api.ok("POST", "/api/relay/agent/start")
+
+    def mc1():
+        servers = (relay.host(paired.host_id).get("host") or {}).get("metadata", {}).get("servers") or []
+        return next((s for s in servers if s.get("name") == "mc1" and s.get("usage")), None)
+
+    entry = wait_until(mc1, 60, "relay 호스트 기록에 mc1의 CPU·RAM")
+    usage = entry["usage"]
+    assert isinstance(usage.get("cpu"), (int, float)) and usage["cpu"] >= 0, entry
+    assert isinstance(usage.get("memMb"), (int, float)) and usage["memMb"] > 0, entry
+    assert str(folder) not in str(entry), entry
+
+
+def test_discord_start_of_unagreed_server_asks_to_agree_on_pc(paired, relay, fake_server):
+    """약관에 동의하지 않은 서버를 디스코드에서 켜면 relay가 'PC에서 동의하세요' 안내로 바꿔 답한다 (#83, 데몬 #81)."""
+    folder, _ = fake_server("mc1", eula=False)
+    iid = paired.import_server("mc1", folder, module_settings={"ram": "256M"}, agree=False)
+    call = {"id": "server.start", "instance": iid, "input": {}}
+    reply = relay.action(GUILD, OWNER, {"action": "plan", **call})["reply"]
+    if reply.get("ok") and reply["data"].get("planId"):
+        reply = relay.action(GUILD, OWNER, {"action": "run_plan", **call, "planId": reply["data"]["planId"]})["reply"]
+    assert reply.get("ok") is False and reply.get("code") == "agreement_required", reply
+    # ko 문구 "PC의 사바쨩에서 …에 동의해야 켤 수 있어요"와 약관 원문 링크
+    text = reply.get("text", "")
+    assert "PC" in text and "동의" in text and "<https://" in text, reply
+    assert paired.server_status(iid) == "stopped"

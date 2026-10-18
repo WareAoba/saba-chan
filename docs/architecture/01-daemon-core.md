@@ -89,7 +89,7 @@
 **데몬이 자식 프로세스에 넘기는 환경변수**
 
 - Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`config.json`의 `gui.language`, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-37, 187-205`). 토큰 값 자체는 넘기지 않는다. 공용 `modules/daemon_rcon.py`는 `SABA_TOKEN_PATH` 파일을 읽어 `X-Saba-Token`을 붙인다(`modules/daemon_rcon.py:65-71`).
-- `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/main.js:598`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 `config.json`의 `gui.language`에서 읽는다(`plugin/mod.rs:28-35`, `chat/api.rs:119`).
+- `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 `config.json`의 `gui.language`에서 읽는다(`plugin/mod.rs:28-35`, `chat/api.rs:119`).
 
 ### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)
 
@@ -174,7 +174,7 @@
 | GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, audit_log, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
 | GET | `/api/onboarding` | `diagnostics.rs` `onboarding` | - | J1-a 다음 할 일. `{steps:[{id, done, optional}], next}`. 단계 `module`(모듈 있음)·`server`(서버 있음)·`discord`(노드 토큰 있음)·`chatbot`(챗봇 API 키, 선택). `next`는 안 한 첫 필수 단계 id, 다 했으면 null. 문구는 클라이언트가 id로 고른다. relay 하트비트 `metadata.onboarding`에도 같은 값이 실린다 |
 | GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, userName?, guild?, guildName?, action, instanceId, instance?, command?, args?, ok, status}]}`. 비밀은 `***`로 가린다(아래 `audit.rs`). `action`은 `start`·`stop`·`restart`·`command`(`/command`·`/rcon`·`/rest`)·`stdin`·`properties`·`reset`, 예약 백업은 `backup`(출처 `schedule`, `status` 200 만듦·204 백업할 것 없음·409 서버가 꺼져 있어 건너뜀·그 밖은 실패), 액션 카탈로그의 관리 액션은 그 액션 id(예 `instance.settings.set`) |
-| GET | `/api/events` | `events.rs` `stream` | 헤더 `Last-Event-ID` 또는 `?since=<n>` | P4 이벤트 스트림(SSE). 한 건은 `id`(데몬이 켜진 뒤 1부터)·`event`(종류)·`data`(`{at, ...}` JSON). 최근 200건을 메모리에 두고 `since` 뒤 것을 먼저 보낸다. 번호가 버퍼보다 오래됐거나 데몬 재시작으로 커졌거나 느려서 놓친 건이 있으면 `event: resync`. 15초마다 `:ping`. 종류: `action.run`(감사 로그 한 줄과 같은 모양, `ts` 대신 `at`), `instance.exit`(`instanceId, instance, kind, exitCode, signal, evidence, restartInSecs, note`), `provision.progress`(`instance` + `/api/provision-progress` 필드. 지금 붙은 클라이언트에게만 보내고 `id`가 없다: 버퍼에 남지 않아 다시 붙을 때의 기록을 밀어내지 않는다), `backup.done`(`instanceId, kind, name?, ok, error?`), `update.available`(`components:[표시 이름]`, `/api/updates/check`의 `update_names`와 같다. 보이는 업데이트(구성요소·최신 버전)가 지난번과 달라졌을 때만), `schedule.warn`(`instanceId, instance, action:"restart"|"update", minutesLeft`, 예약 재시작·업데이트 예고 시각마다), `plan.done`(`runId, guildId?, ok, steps, stoppedAt`, 40초 안에 끝나지 않아 뒤에서 마친 여러 단계 실행), `relay.link_request`(`requestId, guildId, guildName?, requestedBy?, userName?, expiresAt?`(ISO 8601 UTC 문자열), 디스코드에서 코드 없이 온 연결 요청. relay로 다시 올리지 않는다). 데몬 종료(`shutdown_token`)에 스트림도 끝난다 |
+| GET | `/api/events` | `events.rs` `stream` | 헤더 `Last-Event-ID` 또는 `?since=<n>` | P4 이벤트 스트림(SSE). 한 건은 `id`(데몬이 켜진 뒤 1부터)·`event`(종류)·`data`(`{at, ...}` JSON). 최근 200건을 메모리에 두고 `since` 뒤 것을 먼저 보낸다. 번호가 버퍼보다 오래됐거나 데몬 재시작으로 커졌거나 느려서 놓친 건이 있으면 `event: resync`. 15초마다 `:ping`. 종류: `action.run`(감사 로그 한 줄과 같은 모양, `ts` 대신 `at`), `instance.exit`(`instanceId, instance, kind, exitCode, signal, evidence, restartInSecs, note`), `provision.progress`(`instance` + `/api/provision-progress` 필드. 지금 붙은 클라이언트에게만 보내고 `id`가 없다: 버퍼에 남지 않아 다시 붙을 때의 기록을 밀어내지 않는다), `backup.done`(`instanceId, instance, kind, name?, ok, error?`, `name`은 백업 파일 이름), `update.available`(`components:[표시 이름]`, `/api/updates/check`의 `update_names`와 같다. 보이는 업데이트(구성요소·최신 버전)가 지난번과 달라졌을 때만), `schedule.warn`(`instanceId, instance, action:"restart"|"update", minutesLeft`, 예약 재시작·업데이트 예고 시각마다), `plan.done`(`runId, guildId?, ok, steps, stoppedAt`, 40초 안에 끝나지 않아 뒤에서 마친 여러 단계 실행), `relay.link_request`(`requestId, guildId, guildName?, requestedBy?, userName?, expiresAt?`(ISO 8601 UTC 문자열), 디스코드에서 코드 없이 온 연결 요청. relay로 다시 올리지 않는다). 데몬 종료(`shutdown_token`)에 스트림도 끝난다 |
 | GET | `/api/version` | `server.rs:279` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:24` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
@@ -375,7 +375,7 @@
 | GET | `/api/relay/pair/:code/status` | `relay.rs:321` | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
 | GET | `/api/relay/link-requests` | `relay.rs` `list_link_requests` | relay `GET /api/link-requests` 서명 프록시. 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 중 이 PC에 온 것(J1-b) |
 | POST | `/api/relay/link-requests/:request_id` | `relay.rs` `answer_link_request` | `{accept:bool}` → relay `POST /api/link-requests/:id` 서명 프록시. 수락하면 relay가 그 길드를 이 PC에 묶는다. 응답은 relay 것 그대로 |
-| GET | `/api/relay/agent` | `chat.rs:16` | 에이전트 상태 `{running, relayUrl, hasToken, ...}` |
+| GET | `/api/relay/agent` | `chat.rs:16` | 에이전트 상태 `{running, relayUrl, hasToken, agentVersion, lastHeartbeatAt, lastError, lastErrorCode?, commandsHandled}`. `lastErrorCode` `token_replaced`: relay가 401 `TOKEN_REPLACED`(같은 디스코드 계정이 다른 PC를 페어링)로 답해서 에이전트가 멈췄다. 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄운다 |
 | GET·PATCH | `/api/discord/:guild_id/settings` | `discord.rs` `get_settings`·`patch_settings` | 디스코드 길드 설정(I2) `{guildId, locale, sleeping, music}`. PATCH는 바꿀 키만(`music` 안도 부분) → `{success, settings, sync:{guildId, ok, status?, error?}}`. 틀린 값 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`. 저장 전에 릴레이 `PATCH /api/nodes/:g/settings`로 보내고, 릴레이 값과 다른 키만 보낸다(같으면 보내지 않는다). 자동 언어로 바꿀 때는 지금 GUI 언어 `language`도 싣는다. 릴레이가 400이면 저장하지 않고, 닿지 않으면 저장한 뒤 `sync.ok:false`. 에이전트가 연결되면 길드마다 같은 방식으로 맞추고, 블록이 없는 길드는 릴레이 값을 한 번 가져와 원본으로 삼는다(`discord::sync_on_connect`). 그 전에 온 GET·PATCH도 블록이 없으면 릴레이 값에서 출발한다(못 읽으면 기본값). 읽고-바꾸고-저장하기는 한 번에 하나씩 한다. 액션 `discord.settings.get`(safe)·`discord.settings.set`(admin, 디스코드는 소유자, 챗봇 없음). 원격 요청은 자기 길드만 다룬다(`guild`를 그 길드로 고정, 다르면 `invalid_input`) |
 | POST | `/api/relay/agent/start`, `/stop` | `chat.rs:21/33` | 토큰이 없으면 409 `node_token_missing` |
 | POST | `/api/chat/command` | `chat.rs:10` | `{text, guild_id?, user_id?}` → `{reply, code, args}`. `code`는 입력을 알아보지 못했을 때만(`UNKNOWN_COMMAND`·`INSTANCE_NOT_FOUND`), 아니면 null |
@@ -423,7 +423,7 @@ Relay 서명 방식(`relay.rs:100-137`):
   - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:103-106`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
   - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed).
   - `/health`는 루프백 검사 뒤 토큰 검사 없이 통과한다(A6).
-- **토큰을 쓰는 클라이언트**: GUI(`saba-chan-gui/main.js:69,180`, 파일 재읽기 포함), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-103`. PR #6 기준), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
+- **토큰을 쓰는 클라이언트**: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src/daemon.rs:152-179`, 401이면 파일을 다시 읽고 한 번 재시도 `:213-229`), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-103`. PR #6 기준), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
 - **CORS 레이어가 없다.** 브라우저에서 오는 교차 출처 요청은 사전 요청(preflight)에서 막히고, 단순 요청도 토큰이 없으면 401이다. 모든 라우트가 인증을 거치므로 바디 없는 POST를 CSRF로 부를 수 있던 예전 `/api/updates/*` 경로도 막혔다.
 
 ---
@@ -659,10 +659,10 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 ### 9.A 오너 원칙 위반 (인터페이스가 데몬을 우회하는 곳)
 
-1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(`saba-chan-gui/main.js:510-521`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`main.js:526-545`, `writeGuiSection` `:485-496`).
-2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: `main.js`에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
+1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(Tauri 셸 `saba-chan-gui/src-tauri/src/settings.rs:81-94`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`saba-chan-gui/src/api/createApi.js:57-74`, `src-tauri/src/native.rs:189-212`, `write_gui_section` `settings.rs:47-61`).
+2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src`, 브리지 `saba-chan-gui/src/api`)에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
 3. ~~**봇 실행 로직이 GUI에 중복돼 있다.**~~ → 해결: 로컬 봇과 범용 `/api/ext-process/*`가 지워졌다(L1). 디스코드 연동은 데몬의 `relay_agent.rs` 하나뿐이다.
-4. **GUI가 데몬의 경로 정책을 결정한다.** `main.js:596-603`에서 `SABA_INSTANCES_PATH`, `SABA_MODULES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다.
+4. **GUI가 데몬의 경로 정책을 결정한다.** `saba-chan-gui/src-tauri/src/lifecycle.rs:173-183`에서 `SABA_INSTANCES_PATH`, `SABA_MODULES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다.
 5. **CLI가 로컬 파일을 직접 읽는다.** (CLI 참조는 PR #6 리메이크 기준)
    - 데몬을 찾고 띄우는 `saba-chan-cli/src/bootstrap.rs`만 `config.json`의 `gui` 섹션을 직접 읽는다(`ipcPort`, `language`, `:14-46`). 파일 머리 주석이 이를 유일한 예외로 적어 둔다(`:1-6`).
    - ~~데몬은 `SABA_IPC_PORT`를 먼저 보므로 포트가 다를 수 있다~~ → 해결: CLI도 `SABA_IPC_PORT` > `gui.ipcPort` > 기본값 순으로 읽어 데몬(`main.rs:225-236`)과 같다(`bootstrap.rs:18-25`). 다만 GUI가 데몬에만 넣어 준 환경변수는 따로 띄운 CLI가 보지 못한다.

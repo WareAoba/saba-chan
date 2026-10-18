@@ -38,7 +38,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         );
     }
 
-    let (instance, metadata, running, stdin_route) = {
+    let (instance, module, running, stdin_route) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
             return command_reply(
@@ -50,11 +50,16 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
                 &Default::default(),
             );
         };
-        let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+        let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let running = supervisor.tracker.get_pid(&instance.id).is_ok();
         let stdin_route = supervisor.routes_commands_to_stdin(&instance.id).await;
-        (instance, metadata, running, stdin_route)
+        (instance, module, running, stdin_route)
     };
+    let errors = match &module {
+        Some(module) => module_errors(module, &state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into())),
+        None => Default::default(),
+    };
+    let metadata = module.map(|m| m.metadata);
     // module.toml에 없는 이름이면 인스턴스별 명령(설치된 플러그인 명령 등)에서도 찾는다
     let metadata = match metadata {
         Some(meta)
@@ -65,7 +70,6 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         }
         other => other,
     };
-    let errors = metadata.as_ref().map(|m| m.errors.clone()).unwrap_or_default();
     // 응답의 command는 별명이 아니라 정의된 이름 (정의에 없으면 입력 그대로)
     let name = metadata
         .as_ref()
@@ -326,6 +330,20 @@ async fn run_module_command(
         },
         Err(e) => InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e.to_string() }) },
     }
+}
+
+/// 모듈 `[errors]` 문구: 코드마다 모듈 locales `errors.<code>`(GUI 언어)가 있으면 그 문구, 없으면 module.toml 값
+fn module_errors(module: &crate::supervisor::module_loader::LoadedModule, lang: &str) -> std::collections::HashMap<String, String> {
+    let locale = crate::actions::module_locale(module, lang);
+    module
+        .metadata
+        .errors
+        .iter()
+        .map(|(code, declared)| {
+            let text = locale.pointer(&format!("/errors/{}", code)).and_then(Value::as_str).unwrap_or(declared);
+            (code.clone(), text.to_string())
+        })
+        .collect()
 }
 
 /// 실행 결과에 명령 이름과(실패 시) 오류 코드·모듈 문구를 붙인다
@@ -667,5 +685,28 @@ async fn instance_credentials(
             tracing::warn!("get_credentials call failed for {}: {}", instance_id, e);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn module_error_text_follows_the_gui_language() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("locales")).unwrap();
+        std::fs::write(dir.path().join("locales/ko.json"), r#"{"errors": {"server_not_running": "서버가 꺼져 있어요", "timeout": {"detail": "x"}}}"#).unwrap();
+        let metadata = crate::supervisor::module_loader::parse_module_toml(
+            "[module]\nname = \"m\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[errors]\nserver_not_running = \"Server is off\"\ntimeout = \"Timed out\"\n",
+        )
+        .unwrap();
+        let module = crate::supervisor::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into() };
+
+        let ko = module_errors(&module, "ko");
+        assert_eq!(ko["server_not_running"], "서버가 꺼져 있어요");
+        // 번역이 없거나 문자열이 아니면 module.toml 문구
+        assert_eq!(ko["timeout"], "Timed out");
+        assert_eq!(module_errors(&module, "ja")["server_not_running"], "Server is off");
     }
 }

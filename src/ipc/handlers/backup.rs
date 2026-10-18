@@ -170,9 +170,10 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         Ok(Err(e)) => Err(format!("{:#}", e)),
         Err(e) => Err(e.to_string()),
     };
+    let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
     crate::events::emit("backup.done", match &result {
-        Ok(made) => json!({ "instanceId": id, "kind": kind, "name": made.name, "ok": true }),
-        Err(e) => json!({ "instanceId": id, "kind": kind, "ok": false, "error": e }),
+        Ok(made) => json!({ "instanceId": id, "instance": instance, "kind": kind, "name": made.name, "ok": true }),
+        Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "error": e }),
     });
     result.map(Some).map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e))
 }

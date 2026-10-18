@@ -1,7 +1,7 @@
 /**
  * 공유 상수 — JS 전체에서 사용하는 Single Source of Truth
  *
- * saba-chan-gui/main.js, renderer (i18n.js, useSettingsStore.js),
+ * renderer (i18n.js, useSettingsStore.js),
  * updater GUI 등에서 이 파일을 import하여 사용합니다.
  *
  * Rust 측 SSOT: updater/src/constants.rs

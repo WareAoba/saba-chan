@@ -17,7 +17,8 @@ MC_DONE = r"Done \([^)]+\)!"
 
 
 def _provision(daemon: Daemon, name: str, module: str, port: int, timeout: float, **settings) -> str:
-    body = {"name": name, "module_name": module, "port": port, "module_settings": settings}
+    # 사람이 약관(EULA 등)을 읽고 체크하는 대신 만들 때 동의한다
+    body = {"name": name, "module_name": module, "port": port, "module_settings": settings, "accept_agreements": daemon.agreement_ids(module)}
     iid = daemon.api.ok("POST", "/api/instances", body, timeout=60)["id"]
     last: dict = {}
 

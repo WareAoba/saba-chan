@@ -37,6 +37,7 @@
     "confirm_unpair": "Desconectar este PC do bot do Discord e esquecer o pareamento?",
     "connection": "Conexão",
     "last_error": "Último erro",
+    "token_replaced": "A conexão de PC desta conta do Discord foi movida para outro PC. Para usar este PC de novo, pareie-o novamente com `saba-chan-cli bot pair`.",
     "last_heartbeat": "Último sinal",
     "list_empty": "Nada ainda.",
     "no_aliases": "Nenhum apelido ainda. Adicione um: saba-chan-cli bot alias add NAME MODULE",
@@ -182,6 +183,7 @@
   "exit": {
     "crash": "travou",
     "in_game_stop": "parado de dentro do jogo",
+    "start_failed": "falha ao iniciar",
     "restarting_in": "reiniciando em {{secs}}s",
     "unknown_exit": "encerrado (fechado ou finalizado)",
     "user_stop": "parado por você"

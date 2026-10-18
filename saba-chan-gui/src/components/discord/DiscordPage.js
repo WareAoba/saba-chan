@@ -127,6 +127,7 @@ export function DiscordPage({
     const [view, setView] = useState(initialView || { kind: 'connection' });
     const [showMainNarrow, setShowMainNarrow] = useState(!!initialView);
     const [cloudError, setCloudError] = useState('');
+    const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
     const [membersLoading, setMembersLoading] = useState(null);
     const [saveState, setSaveState] = useState(null);
     const saveTimer = useRef(null);
@@ -490,6 +491,7 @@ export function DiscordPage({
                                 cloudError={cloudError}
                                 nodeCount={cloudNodes.length}
                                 botStatus={discordBotStatus}
+                                agentReplaced={agentReplaced}
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}

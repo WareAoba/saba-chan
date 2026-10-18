@@ -22,6 +22,8 @@ def test_last_event_id_resumes_without_repeating(mc):
     finally:
         first_stream.close()
     assert first["id"], f"backup.done에 id가 없어 이어 받을 수 없음: {first}"
+    # 디스코드 알림이 ID 대신 서버 이름을 보이도록 이름을 싣는다
+    assert first["data"].get("instance") and first["data"]["instance"] != iid, first
 
     # 끊긴 사이에 일어난 일
     daemon.api.ok("POST", f"/api/instance/{iid}/backups", timeout=120)
