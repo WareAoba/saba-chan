@@ -32,7 +32,7 @@
 .appbar-brand {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--sp-2-5);
     padding-right: var(--sp-2);
 }
 .appbar-logo {
@@ -50,8 +50,8 @@
 }
 .appbar-tabs {
     display: flex;
-    gap: 4px;
-    padding: 3px;
+    gap: var(--sp-1);
+    padding: var(--sp-1);
     border-radius: var(--r-sm);
     background: var(--inset);
     box-shadow: var(--shadow-inset);
@@ -92,7 +92,7 @@
     display: inline-flex;
     align-items: center;
     height: 30px;
-    padding: 0 3px;
+    padding: 0 var(--sp-1);
     border-radius: var(--r-pill);
     border: 1px solid var(--line);
     background: var(--inset);
@@ -102,7 +102,7 @@
     --btn-height: 24px;
     --btn-padding: 0 9px;
     --btn-font-size: var(--fs-sm);
-    gap: 7px;
+    gap: var(--sp-2);
     border: none;
     border-radius: var(--r-pill);
     background: transparent;
@@ -306,7 +306,7 @@
     padding: 0 var(--sp-3) var(--sp-4);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 
 .server-row {
@@ -314,7 +314,7 @@
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    padding: 10px 10px 10px 12px;
+    padding: var(--sp-2-5) var(--sp-2-5) var(--sp-2-5) var(--sp-3);
     border-radius: var(--r-md);
     border: 1px solid transparent;
     cursor: pointer;
@@ -392,7 +392,7 @@
 }
 /* 익스텐션 데이터 slot 뱃지 (ServerCard.badge) */
 .data-slot-badge {
-    margin-left: 6px;
+    margin-left: var(--sp-1-5);
     font-weight: 400;
     font-size: 12px;
     color: var(--text-secondary);
@@ -400,7 +400,7 @@
 .server-row-sub {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: var(--fs-xs);
     color: var(--text-3);
     white-space: nowrap;
@@ -496,7 +496,7 @@
     gap: var(--sp-2);
     color: var(--text-2);
     font-size: var(--fs-sm);
-    margin-top: 4px;
+    margin-top: var(--sp-1);
     flex-wrap: wrap;
 }
 .detail-actions {
@@ -505,7 +505,7 @@
     gap: var(--sp-3);
 }
 .detail-back {
-    margin-right: -4px;
+    margin-right: calc(-1 * var(--sp-1));
 }
 .server-detail > .segmented {
     align-self: flex-start;
@@ -561,7 +561,7 @@
 .term-quick {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--sp-1-5);
     padding: 0 var(--sp-3) var(--sp-2);
 }
 .term-chip {
@@ -584,7 +584,7 @@
     align-items: center;
     gap: var(--sp-2);
     margin: 0 var(--sp-3) var(--sp-3);
-    padding: 0 6px 0 12px;
+    padding: 0 var(--sp-1-5) 0 var(--sp-3);
     height: 44px;
     border-radius: var(--r-md);
     border: 1px solid color-mix(in srgb, var(--console-custom-text) 14%, transparent);
@@ -752,7 +752,7 @@
 }
 .console-popout-titlebar-controls {
     display: flex;
-    gap: 2px;
+    gap: var(--sp-0-5);
     -webkit-app-region: no-drag;
 }
 .console-popout-titlebar-btn {
@@ -810,7 +810,7 @@ body:has(.activity-bar) .toast-container {
     gap: var(--sp-2);
     width: 100%;
     min-width: 0;
-    padding: 4px var(--sp-4);
+    padding: var(--sp-1) var(--sp-4);
     border: none;
     background: none;
     color: var(--text-2);
@@ -907,7 +907,7 @@ button.activity-line:hover {
     font-size: var(--fs-xs);
     color: var(--text-3);
     font-weight: 600;
-    margin-bottom: 2px;
+    margin-bottom: var(--sp-0-5);
 }
 .info-cell dd {
     font-size: var(--fs-lg);
@@ -959,7 +959,7 @@ button.activity-line:hover {
     border: 1px solid var(--line);
     border-radius: var(--r-sm);
     box-shadow: var(--shadow-inset);
-    padding-right: 4px;
+    padding-right: var(--sp-1);
 }
 .command-embedded .cli-input-wrapper:focus-within {
     border-color: var(--accent);
@@ -1044,8 +1044,8 @@ button.activity-line:hover {
 .settings-page .settings-modal-tabs {
     display: inline-flex;
     width: auto;
-    gap: 4px;
-    padding: 4px;
+    gap: var(--sp-1);
+    padding: var(--sp-1);
     margin: var(--sp-3) 0 0;
     border-radius: var(--r-md);
     background: var(--inset);
@@ -1054,7 +1054,7 @@ button.activity-line:hover {
 }
 .settings-page .settings-modal-tabs {
     height: auto;
-    margin: 0 24px;
+    margin: 0 var(--sp-6);
     align-self: flex-start;
 }
 .server-settings-embedded .settings-tab-indicator,
@@ -1064,7 +1064,7 @@ button.activity-line:hover {
 .server-settings-embedded .settings-tab,
 .settings-page .settings-tab {
     height: 32px;
-    padding: 0 14px;
+    padding: 0 var(--sp-4);
     font-size: var(--fs-sm);
     flex: none;
     background: transparent;
@@ -1129,7 +1129,7 @@ button.activity-line:hover {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
 }
 .bg-pop-title strong {
     font-size: var(--fs-md);
@@ -1165,7 +1165,7 @@ button.activity-line:hover {
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-1);
     font-size: 13px;
     color: var(--text-1);
 }
@@ -1196,8 +1196,10 @@ button.activity-line:hover {
     align-items: center;
 }
 .daemon-down-notice > span {
-    flex: 1;
+    /* 좁은 목록 칸에서는 버튼을 다음 줄로 보내고 글은 한 줄 너비를 쓴다 */
+    flex: 1 1 160px;
     min-width: 0;
+    word-break: keep-all;
 }
 .server-detail-pane > .daemon-down-notice {
     margin: var(--sp-4) var(--sp-4) 0;
@@ -1205,7 +1207,7 @@ button.activity-line:hover {
 .module-failures summary {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     cursor: pointer;
     font-weight: 600;
     list-style: none;
@@ -1216,12 +1218,12 @@ button.activity-line:hover {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 .module-failures li {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     font-size: 12px;
 }
 .module-failures li span,
@@ -1235,9 +1237,9 @@ button.activity-line:hover {
 .cmd-risk {
     font-size: 10.5px;
     font-weight: 700;
-    padding: 1px 6px;
+    padding: 1px var(--sp-1-5);
     border-radius: var(--r-pill);
-    margin-left: 6px;
+    margin-left: var(--sp-1-5);
 }
 .cmd-risk.risk-caution {
     color: var(--warn);
@@ -1286,7 +1288,7 @@ button.activity-line:hover {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    padding: 8px var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
     font-size: 13px;
 }
 .exit-history li + li {
@@ -1304,7 +1306,7 @@ button.activity-line:hover {
     min-width: 0;
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 10px;
+    gap: var(--sp-1) var(--sp-2-5);
     align-items: center;
 }
 .exit-detail code {
@@ -1323,7 +1325,7 @@ button.activity-line:hover {
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-4);
-    padding: 10px 0;
+    padding: var(--sp-2-5) 0;
 }
 .restart-row + .restart-row {
     border-top: 1px solid var(--line);
@@ -1331,7 +1333,7 @@ button.activity-line:hover {
 .restart-row > span {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
 }
 .restart-row small {
     color: var(--text-2);
@@ -1369,7 +1371,7 @@ button.activity-line:hover {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin: var(--sp-4) 4px 2px 12px;
+    margin: var(--sp-4) var(--sp-1) var(--sp-0-5) var(--sp-3);
     font-size: var(--fs-xs);
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -1381,7 +1383,7 @@ button.activity-line:hover {
     height: 28px;
 }
 .dc-nav-empty {
-    margin: 2px 12px 4px;
+    margin: var(--sp-0-5) var(--sp-3) var(--sp-1);
     font-size: var(--fs-sm);
     color: var(--text-3);
 }
@@ -1401,14 +1403,14 @@ button.activity-line:hover {
     letter-spacing: -0.02em;
 }
 .dc-view-head p {
-    margin-top: 4px;
+    margin-top: var(--sp-1);
 }
 .dc-crumb {
     align-self: flex-start;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px 4px 4px;
+    gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-1);
     border-radius: var(--r-xs);
     background: none;
     border: none;
@@ -1451,7 +1453,7 @@ button.activity-line:hover {
 .dc-card-desc {
     color: var(--text-2);
     font-size: var(--fs-sm);
-    margin-top: -6px;
+    margin-top: calc(-1 * var(--sp-1-5));
 }
 .dc-row-actions {
     display: flex;
@@ -1469,7 +1471,7 @@ button.activity-line:hover {
 .dc-facts {
     display: grid;
     grid-template-columns: max-content 1fr;
-    gap: 10px var(--sp-4);
+    gap: var(--sp-2-5) var(--sp-4);
     align-items: center;
     font-size: var(--fs-sm);
 }
@@ -1569,7 +1571,7 @@ button.activity-line:hover {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 .dc-step-title {
     font-weight: 600;
@@ -1577,7 +1579,7 @@ button.activity-line:hover {
 }
 .dc-code {
     display: inline-block;
-    padding: 8px 16px;
+    padding: var(--sp-2) var(--sp-4);
     border-radius: var(--r-sm);
     background: var(--inset);
     box-shadow: var(--shadow-inset);
@@ -1595,7 +1597,7 @@ button.activity-line:hover {
     flex-wrap: wrap;
 }
 .dc-command-row code {
-    padding: 6px 10px;
+    padding: var(--sp-1-5) var(--sp-2-5);
     border-radius: var(--r-xs);
     background: var(--inset);
     border: 1px solid var(--line);
@@ -1660,7 +1662,7 @@ button.activity-line:hover {
     width: 18px;
     height: 18px;
     flex: none;
-    margin-top: 2px;
+    margin-top: var(--sp-0-5);
     border-radius: 50%;
     border: 2px solid var(--line-strong);
     display: grid;
@@ -1679,7 +1681,7 @@ button.activity-line:hover {
 .dc-choice-text {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
 }
 .dc-choice-text small {
     color: var(--text-3);
@@ -1703,7 +1705,7 @@ button.activity-line:hover {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    padding: 10px var(--sp-4);
+    padding: var(--sp-2-5) var(--sp-4);
     width: 100%;
     transition: opacity var(--dur-fast) var(--ease);
 }
@@ -1777,7 +1779,7 @@ button.activity-line:hover {
 }
 .dc-badge {
     flex: none;
-    padding: 2px 10px;
+    padding: var(--sp-0-5) var(--sp-2-5);
     border-radius: var(--r-pill);
     font-size: var(--fs-xs);
     font-weight: 600;
@@ -1794,7 +1796,7 @@ button.activity-line:hover {
 .dc-hint {
     font-size: var(--fs-xs);
     color: var(--text-3);
-    margin-top: -4px;
+    margin-top: calc(-1 * var(--sp-1));
 }
 
 /* 멤버 한 명 */
@@ -1821,7 +1823,7 @@ button.activity-line:hover {
 .dc-field-label {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     min-width: 0;
     flex: 1 1 220px;
 }
@@ -1850,7 +1852,7 @@ button.activity-line:hover {
 .dc-level-title {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: var(--fs-sm);
     font-weight: 700;
     color: var(--text-2);
@@ -1869,19 +1871,19 @@ button.activity-line:hover {
 }
 .dc-mini-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--sp-1);
 }
 .dc-cmd-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 .dc-cmd {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     height: 32px;
-    padding: 0 12px;
+    padding: 0 var(--sp-3);
     border-radius: var(--r-pill);
     border: 1px dashed var(--line-strong);
     background: transparent;
@@ -1915,12 +1917,12 @@ button.activity-line:hover {
 /* 명령어 단어 */
 .dc-module-pills {
     display: flex;
-    gap: 6px;
+    gap: var(--sp-1-5);
     flex-wrap: wrap;
 }
 .dc-pill {
     height: 32px;
-    padding: 0 14px;
+    padding: 0 var(--sp-4);
     border-radius: var(--r-pill);
     border: 1px solid var(--line);
     background: var(--bg-1);
@@ -1942,7 +1944,7 @@ button.activity-line:hover {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    padding: 10px 14px;
+    padding: var(--sp-2-5) var(--sp-4);
     border-radius: var(--r-sm);
     background: var(--inset);
     border: 1px solid var(--line);
@@ -1963,7 +1965,7 @@ button.activity-line:hover {
 .dc-field-error {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     color: var(--warn);
     font-size: var(--fs-xs);
 }
@@ -1976,7 +1978,7 @@ button.activity-line:hover {
     grid-template-columns: 180px 1fr;
     gap: var(--sp-3);
     align-items: center;
-    padding: 10px 0;
+    padding: var(--sp-2-5) 0;
 }
 .dc-word-row + .dc-word-row {
     border-top: 1px solid var(--line);
@@ -2018,9 +2020,9 @@ button.activity-line:hover {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     min-height: 40px;
-    padding: 5px 8px;
+    padding: var(--sp-1) var(--sp-2);
     border-radius: var(--r-sm);
     background: var(--inset);
     border: 1px solid var(--line);
@@ -2045,9 +2047,9 @@ button.activity-line:hover {
 .word-chip {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: var(--sp-0-5);
     height: 26px;
-    padding: 0 4px 0 10px;
+    padding: 0 var(--sp-1) 0 var(--sp-2-5);
     border-radius: var(--r-pill);
     background: var(--bg-3);
     border: 1px solid var(--line);
@@ -2093,7 +2095,7 @@ button.activity-line:hover {
 }
 .dc-usage code {
     min-width: 200px;
-    padding: 4px 10px;
+    padding: var(--sp-1) var(--sp-2-5);
     border-radius: var(--r-xs);
     background: var(--inset);
     border: 1px solid var(--line);
@@ -2111,7 +2113,7 @@ button.activity-line:hover {
 @media (max-width: 640px) {
     .dc-word-row {
         grid-template-columns: 1fr;
-        gap: 6px;
+        gap: var(--sp-1-5);
     }
     .dc-usage li {
         flex-direction: column;
@@ -2138,7 +2140,7 @@ button.activity-line:hover {
 }
 .dc-nav-row .server-row-text {
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
 }
 .dc-nav-row .server-row-sub .status-chip {
     padding: 0;
@@ -2176,9 +2178,9 @@ button.activity-line:hover {
 .cmd-source {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    margin-left: 6px;
-    padding: 1px 6px;
+    gap: var(--sp-1);
+    margin-left: var(--sp-1-5);
+    padding: 1px var(--sp-1-5);
     border-radius: var(--r-pill);
     font-size: 10.5px;
     font-weight: 600;
@@ -2189,7 +2191,7 @@ button.activity-line:hover {
 .detail-name {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 .detail-rename {
     width: 30px;
@@ -2213,7 +2215,7 @@ button.activity-line:hover {
     position: fixed;
     z-index: 3000;
     max-width: 280px;
-    padding: 6px 10px;
+    padding: var(--sp-1-5) var(--sp-2-5);
     border-radius: var(--r-xs);
     background: var(--bg-4);
     color: var(--text-1);
@@ -2230,7 +2232,7 @@ button.activity-line:hover {
     position: absolute;
     width: 8px;
     height: 8px;
-    margin-left: -4px;
+    margin-left: calc(-1 * var(--sp-1));
     background: inherit;
     border: inherit;
     transform: rotate(45deg);
@@ -2256,11 +2258,11 @@ button.activity-line:hover {
 .appbar-preflight {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     flex-shrink: 0;
     white-space: nowrap;
     height: 30px;
-    padding: 0 10px 0 7px;
+    padding: 0 var(--sp-2-5) 0 var(--sp-2);
     border-radius: var(--r-pill);
     border: 1px solid var(--line);
     background: var(--inset);
@@ -2363,7 +2365,7 @@ button.appbar-preflight {
 .mt-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--sp-1);
     font-size: var(--fs-sm);
 }
 .mt-field > span:first-child {
@@ -2437,7 +2439,7 @@ button.appbar-preflight {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    padding: 10px 0;
+    padding: var(--sp-2-5) 0;
 }
 .cb-toggles .cb-toggle-row + .cb-toggle-row {
     border-top: 1px solid var(--line);
@@ -2464,7 +2466,7 @@ button.appbar-preflight {
     grid-template-columns: 120px 1fr;
     align-items: center;
     gap: var(--sp-3);
-    padding: 0 var(--sp-4) 12px;
+    padding: 0 var(--sp-4) var(--sp-3);
     font-size: var(--fs-xs);
     color: var(--text-3);
     font-weight: 600;
@@ -2475,8 +2477,8 @@ button.appbar-preflight {
 .cb-guild-memo {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 0 var(--sp-4) 12px;
+    gap: var(--sp-1);
+    padding: 0 var(--sp-4) var(--sp-3);
 }
 .cb-memo-head {
     display: flex;
@@ -2499,7 +2501,7 @@ button.appbar-preflight {
     min-width: 0;
 }
 .module-audit .btn-link {
-    margin-left: 6px;
+    margin-left: var(--sp-1-5);
     padding: 0;
     height: auto;
     border: none;
@@ -2511,15 +2513,15 @@ button.appbar-preflight {
 }
 .module-audit-list {
     list-style: none;
-    margin-top: 6px;
+    margin-top: var(--sp-1-5);
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     font-size: var(--fs-xs);
 }
 .module-audit-list li {
     display: flex;
-    gap: 8px;
+    gap: var(--sp-2);
     flex-wrap: wrap;
 }
 .module-audit-list code {
@@ -2549,7 +2551,7 @@ button.appbar-preflight {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    padding: 2px 0;
+    padding: var(--sp-0-5) 0;
 }
 .dc-channel-row.disabled {
     opacity: 0.55;
@@ -2567,16 +2569,16 @@ button.appbar-preflight {
     align-self: center;
 }
 .settings-audit {
-    margin-top: 20px;
+    margin-top: var(--sp-5);
 }
 
 /* 서버 설정 맨 위: 최종 실행 인자 미리보기 (읽기 전용) */
 .launch-preview {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 12px;
-    margin-bottom: 12px;
+    gap: var(--sp-1-5);
+    padding: var(--sp-2-5) var(--sp-3);
+    margin-bottom: var(--sp-3);
     border-radius: var(--r-md);
     background: var(--inset);
     box-shadow: var(--shadow-inset);
@@ -2585,7 +2587,7 @@ button.appbar-preflight {
 .launch-preview-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: var(--fs-sm);
     font-weight: 600;
     color: var(--text-2);
@@ -2606,7 +2608,7 @@ button.appbar-preflight {
 .launch-preview-extra {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--sp-1);
     font-size: var(--fs-sm);
     color: var(--text-2);
 }
@@ -2661,7 +2663,7 @@ button.appbar-preflight {
 }
 .palette-scope {
     flex: none;
-    padding: 2px 10px;
+    padding: var(--sp-0-5) var(--sp-2-5);
     border-radius: var(--r-pill);
     font-size: var(--fs-xs);
     color: var(--text-2);
@@ -2677,7 +2679,7 @@ button.appbar-preflight {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    padding: 8px var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--r-sm);
     cursor: pointer;
 }
@@ -2726,7 +2728,7 @@ button.appbar-preflight {
 .palette-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--sp-1);
     font-size: var(--fs-sm);
     color: var(--text-2);
 }
@@ -2735,7 +2737,7 @@ button.appbar-preflight {
 }
 .palette-summary {
     display: grid;
-    gap: 6px;
+    gap: var(--sp-1-5);
     margin: 0;
 }
 .palette-summary div {
@@ -2769,7 +2771,7 @@ button.appbar-preflight {
     gap: var(--sp-2);
 }
 .palette-foot {
-    padding: 6px var(--sp-4);
+    padding: var(--sp-1-5) var(--sp-4);
     border-top: 1px solid var(--line);
     font-size: var(--fs-xs);
     color: var(--text-3);
@@ -2782,18 +2784,18 @@ button.appbar-preflight {
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 .agreement-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--sp-3);
 }
 .agreement-check {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     cursor: pointer;
     text-align: left;
 }
@@ -2805,7 +2807,7 @@ button.appbar-preflight {
     flex-shrink: 0;
 }
 .agreement-modal .agreement-list {
-    margin: 4px 0 16px;
+    margin: var(--sp-1) 0 var(--sp-4);
     width: 100%;
 }
 .modal-button:disabled {
@@ -2817,18 +2819,18 @@ button.appbar-preflight {
 .server-check {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-top: 12px;
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
 }
 .server-check-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 .server-check-ok {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     margin: 0;
     color: var(--text-secondary);
 }
@@ -2838,13 +2840,13 @@ button.appbar-preflight {
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 .server-check-issue {
     display: flex;
-    gap: 8px;
+    gap: var(--sp-2);
     align-items: flex-start;
-    padding: 8px 10px;
+    padding: var(--sp-2) var(--sp-2-5);
     border-radius: 8px;
     background: var(--bg-2);
 }
@@ -2860,7 +2862,7 @@ button.appbar-preflight {
     font-weight: 500;
 }
 .server-check-solution {
-    margin: 2px 0 0;
+    margin: var(--sp-0-5) 0 0;
     color: var(--text-secondary);
     font-size: 0.92em;
 }
@@ -2869,21 +2871,21 @@ button.appbar-preflight {
 .setting-item.setting-item-stack {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: var(--sp-2-5);
 }
 .diagnostics-panel {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--sp-2-5);
 }
 .diagnostics-actions {
     display: flex;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 .diagnostics-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 8px 16px;
+    gap: var(--sp-2) var(--sp-4);
     margin: 0;
 }
 .diagnostics-row dt {
@@ -2891,11 +2893,11 @@ button.appbar-preflight {
     font-size: 0.85em;
 }
 .diagnostics-row dd {
-    margin: 2px 0 0;
+    margin: var(--sp-0-5) 0 0;
     word-break: break-all;
 }
 .diagnostics-subtitle {
-    margin: 4px 0 0;
+    margin: var(--sp-1) 0 0;
     font-size: 0.95em;
 }
 .diagnostics-empty {
@@ -2912,7 +2914,7 @@ button.appbar-preflight {
     font-size: 0.85em;
 }
 .diagnostics-problems li {
-    padding: 2px 0;
+    padding: var(--sp-0-5) 0;
 }
 .diagnostics-problems .level-error {
     color: var(--danger);
@@ -2926,26 +2928,26 @@ button.appbar-preflight {
 
 /* 익스텐션 전역 설정 (config_fields) */
 .extension-config {
-    padding: 0 16px 12px;
+    padding: 0 var(--sp-4) var(--sp-3);
 }
 .extension-config-form {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-top: 8px;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
 }
 .extension-config-field {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--sp-3);
 }
 .extension-config-field .setting-input-text {
     width: 280px;
     max-width: 60%;
 }
 .extension-config-message {
-    margin: 6px 0 0;
+    margin: var(--sp-1-5) 0 0;
     font-size: 0.9em;
 }
 .extension-config-message.tone-stop {
@@ -2960,9 +2962,9 @@ button.appbar-preflight {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: var(--sp-1-5);
     margin: 0 var(--sp-3) var(--sp-3);
-    padding: 12px;
+    padding: var(--sp-3);
     border-radius: var(--r-md);
     background: var(--bg-2);
 }
@@ -2975,7 +2977,7 @@ button.appbar-preflight {
 .onboarding-title {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: 12px;
     color: var(--text-secondary);
 }
@@ -2993,7 +2995,7 @@ button.appbar-preflight {
 .cli-line {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     min-width: 0;
     margin-right: auto;
     color: var(--text-secondary);
@@ -3014,14 +3016,14 @@ button.appbar-preflight {
     z-index: 900;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-2);
     max-width: min(420px, calc(100vw - 2 * var(--sp-4)));
 }
 .link-request {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: var(--sp-2);
+    padding: var(--sp-2-5) var(--sp-3);
     border-radius: var(--r-md);
     background: var(--surface-gradient);
     border: 1px solid var(--line);
