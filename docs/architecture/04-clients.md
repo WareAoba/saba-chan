@@ -162,7 +162,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | node token | `/api/config/node-token` | API | `{token: "sbn_<nodeId>.<secret>"}` |
 | .ipc_token | `<dataDir>/.ipc_token` 또는 `SABA_TOKEN_PATH` | 직접 읽기(필수 부트스트랩) | 평문 UUID |
 | logs | `<dataDir>/logs/*.log` | 직접 쓰기 | — |
-| renderer localStorage | WebView 저장소(Windows WebView2) | 직접 | `i18nextLng`(i18n.js:100-139, SettingsModal.js:249), 테마 키(themeManager.js:50-120), 공지 목록(NoticeModal.js:15-25) |
+| renderer localStorage | WebView 저장소(Windows WebView2) | 직접 | `i18nextLng`(i18n.js `getInitialLanguage`·`getCachedLanguage`, SettingsModal.js:249), 테마 키(themeManager.js:50-120), 공지 목록(NoticeModal.js:15-25) |
 
 **쓰기 분기(해결됨).** 예전에는 `settings:load/save`와 `saveSettings`가 "이 GUI가 daemon을 spawn했는가"(`daemonProcess !== null`)로 분기해서, 이미 떠 있던 daemon에 붙으면 settings.json을 직접 썼다. 지금은 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.js:57-74, 747-774`, `native.rs:189-199`). Tauri로 옮기면서도 이 규칙은 그대로다. 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
 
@@ -200,7 +200,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | APP_NAME | `saba-chan` | dataDir 이름(`constants.rs:22`) |
 | DEFAULT_IPC_PORT | `57474` | `constants.rs:32`. 셸 `settings.rs:7, 108-115`, CLI. renderer는 사본을 둔다(`useSettingsStore.js:4`) |
 | DEFAULT_DAEMON_URL | `http://127.0.0.1:57474` | shared/constants.js에만 있고 쓰는 곳이 없다 |
-| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | `constants.rs:42`. 셸은 OS 로캘을 이 목록에 맞춘다(`settings.rs:137-148`). **중복 정의 위치**: `saba-chan-gui/src/i18n.js:36`, `updater/gui/src/updater.js:10` |
+| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | `constants.rs:42`. 셸은 OS 로캘을 이 목록에 맞춘다(`settings.rs:137-148`). **중복 정의 위치**: `saba-chan-gui/src/i18n.js:9`, `updater/gui/src/updater.js:10` |
 | resolve_data_dir() (JS `getSabaDataDir()`) | `SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, 그 외는 `$HOME/.config/saba-chan` | `constants.rs:55`. 셸 `lib.rs:79` |
 
 - 그 밖의 포트:
@@ -289,7 +289,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | bot.json | 채팅 응답 문구 | 데몬 채팅 처리기(`src/chat/i18n.rs`, 빌드 때 포함). GUI renderer도 import한다 |
 | cli.json (PR #6 기준 en leaf 402개) | server, daemon, module, ext, bot, backup, schedule, chatbot, err, prompt 등 39개 | CLI `i18n.rs`. 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 내장 en/ko를 쓴다(`i18n.rs:11-12, 36-45`). ko만 도움말 번역 `help`(leaf 183개)가 더 있어 585개다. 나머지 언어의 도움말은 clap 기본 영어다. qcza9f에는 아직 예전 TUI용 cli.json(en 200개, `screen`·`menu` 등 16개)이 있다 |
 
-- GUI renderer는 10개 언어의 common, gui, bot JSON을 **빌드 시 정적으로 import**한다(i18n.js:3-33). 언어 소스는 `window.electron.getLanguage()`가 1순위, localStorage `i18nextLng`가 2순위다(92-139). 확장 i18n은 daemon `/api/extensions/:id/i18n/:locale`에서 받는다.
+- GUI renderer는 영어 common, gui, bot JSON만 번들에 넣고, 다른 언어는 그 언어로 바꿀 때 `import.meta.glob` 청크로 불러온다(i18n.js의 `localeBackend`). 첫 렌더는 캐시된 언어 파일을 읽은 뒤로 미룬다(`i18nReady`, index.js). 언어 소스는 `window.electron.getLanguage()`가 1순위, localStorage `i18nextLng`가 2순위다. 확장 i18n은 daemon `/api/extensions/:id/i18n/:locale`에서 받는다.
 - **번역 누락**(en 기준 diff):
   - gui.json: de, es, fr, pt-BR, ru, zh-CN, zh-TW는 661개로 **16개가 빠져 있다**(`console.dock_focus/dock_restore/minimize/pin/popin/unpin`, `discord_modal.music_channel_*`, `discord_modal.music_normalize`). ja는 667개로 `discord_modal.music_*` 10개가 빠져 있다.
   - cli.json: qcza9f의 예전 파일은 ko를 제외한 8개 언어가 168개로 33개가 빠져 있다(`screen.bot_*` 등). PR #6의 새 파일은 10개 언어 모두 en 키가 빠짐없이 있다.
