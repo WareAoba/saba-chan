@@ -264,6 +264,13 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         setSettingsValues((prev) => ({ ...prev, [fieldName]: String(value) }));
     };
 
+    // 데몬이 켜져 있거나(server_running) 다른 작업 중이라(instance_busy) 거절한 이유
+    const busyMessage = (code, runningKey) => {
+        if (code === 'server_running') return t(`server_settings.${runningKey}`);
+        if (code === 'instance_busy') return t('server_settings.instance_busy');
+        return null;
+    };
+
     // ── handleInstallVersion ────────────────────────────────
     const handleInstallVersion = async () => {
         if (!settingsServer || !settingsValues.server_version) return;
@@ -327,7 +334,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             if (installResult.error || installResult.success === false) {
                                 setProgressBar(null);
                                 safeShowToast(
-                                    translateError(installResult.error || installResult.message),
+                                    busyMessage(installResult.error_code, 'install_server_running') ||
+                                        translateError(installResult.error || installResult.message),
                                     'error',
                                     4000,
                                 );
@@ -339,10 +347,22 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
                                 const installDir =
                                     installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
-                                await window.api.instanceUpdateSettings(settingsServer.id, {
+                                const saved = await window.api.instanceUpdateSettings(settingsServer.id, {
                                     working_dir: installDir,
                                     server_version: version,
                                 });
+                                if (!saved || saved.error || saved.success === false) {
+                                    setProgressBar(null);
+                                    safeShowToast(
+                                        t('server_settings.install_settings_failed', {
+                                            error: translateError(saved?.error || saved?.message || ''),
+                                        }),
+                                        'error',
+                                        6000,
+                                    );
+                                    await fetchServers();
+                                    return;
+                                }
                                 handleSettingChange('server_version', version);
                             }
 
@@ -396,10 +416,13 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         setResettingServer(true);
                         try {
                             const result = await window.api.instanceResetServer(settingsServer.id);
-                            if (result?.error) {
+                            // 모듈은 200으로 {success:false}를 돌려줄 수 있다
+                            if (!result || result.error || result.success === false) {
                                 safeShowToast(
                                     t('server_settings.reset_failed', {
-                                        error: translateError(result.error),
+                                        error:
+                                            busyMessage(result?.error_code, 'reset_server_running') ||
+                                            translateError(result?.error || result?.message || ''),
                                         defaultValue: 'Reset failed',
                                     }),
                                     'error',

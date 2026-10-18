@@ -254,7 +254,11 @@
     "install_version_confirm_title": "サーバーバージョンのインストール",
     "install_version_confirm": "'{{name}}' サーバーに Minecraft {{version}} をインストールしますか？\n\nサーバーJARファイルがダウンロードされます。",
     "installing": "インストール中...",
-    "stored_values_notice": "サーバーの設定ファイルを読み込めなかったため、最後に保存された値を表示しています。保存すると変更した項目だけが反映されます。"
+    "stored_values_notice": "サーバーの設定ファイルを読み込めなかったため、最後に保存された値を表示しています。保存すると変更した項目だけが反映されます。",
+    "install_server_running": "起動中のサーバーにはバージョンをインストールできません。先に停止してください",
+    "reset_server_running": "起動中のサーバーは初期化できません。先に停止してください",
+    "instance_busy": "このサーバーで別の作業（バックアップまたは復元）が実行中です。終わってからもう一度お試しください",
+    "install_settings_failed": "バージョンはインストールしましたが、設定を保存できませんでした: {{error}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discordボット起動失敗: {{error}}",

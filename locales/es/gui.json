@@ -310,7 +310,11 @@
     "reset_success": "El servidor '{{name}}' ha sido restablecido ({{count}} elementos eliminados)",
     "reset_failed": "Error al restablecer: {{error}}",
     "reset_error": "Error de restablecimiento: {{error}}",
-    "stored_values_notice": "No se pudo leer el archivo de ajustes del servidor, así que se muestran los últimos valores guardados. Al guardar solo se aplican los campos que cambies."
+    "stored_values_notice": "No se pudo leer el archivo de ajustes del servidor, así que se muestran los últimos valores guardados. Al guardar solo se aplican los campos que cambies.",
+    "install_server_running": "Detén el servidor antes de instalar una versión",
+    "reset_server_running": "Detén el servidor antes de restablecerlo",
+    "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",
+    "install_settings_failed": "La versión se instaló, pero no se pudo guardar la configuración: {{error}}"
   },
   "discord_bot": {
     "start_failed_toast": "Falló el inicio del bot de Discord: {{error}}",

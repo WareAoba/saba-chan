@@ -144,6 +144,7 @@ function GeneralTab({
     resettingServer,
     validationErrors,
     portConflicts,
+    serverRunning,
 }) {
     const { t } = useTranslation('gui');
     const module = modules.find((m) => m.name === settingsServer.module);
@@ -292,10 +293,18 @@ function GeneralTab({
                                                     <button
                                                         className="btn btn-sm btn-primary version-install-btn"
                                                         onClick={handleInstallVersion}
-                                                        disabled={!settingsValues.server_version || versionInstalling}
-                                                        title={t('server_settings.install_version_tooltip', {
-                                                            defaultValue: 'Download and install this version',
-                                                        })}
+                                                        disabled={
+                                                            !settingsValues.server_version ||
+                                                            versionInstalling ||
+                                                            serverRunning
+                                                        }
+                                                        title={
+                                                            serverRunning
+                                                                ? t('server_settings.install_server_running')
+                                                                : t('server_settings.install_version_tooltip', {
+                                                                      defaultValue: 'Download and install this version',
+                                                                  })
+                                                        }
                                                     >
                                                         {versionInstalling ? (
                                                             <>
@@ -405,7 +414,10 @@ function GeneralTab({
                                         <button
                                             className="danger-zone-btn"
                                             onClick={handleResetServer}
-                                            disabled={resettingServer}
+                                            disabled={resettingServer || serverRunning}
+                                            title={
+                                                serverRunning ? t('server_settings.reset_server_running') : undefined
+                                            }
                                         >
                                             {resettingServer
                                                 ? t('server_settings.resetting', { defaultValue: 'Resetting...' })
@@ -460,6 +472,10 @@ export function ServerSettingsModal({
     if (openedWith.current.id !== settingsServer.id && Object.keys(settingsValues).length) {
         openedWith.current = { id: settingsServer.id, values: settingsValues };
     }
+
+    // 창을 연 뒤에 켜질 수 있으니 지금 상태는 servers 목록에서 본다 (데몬도 켜진 서버의 설치·초기화를 거절한다)
+    const liveStatus = (servers || []).find((s) => s.id === settingsServer.id)?.status ?? settingsServer.status;
+    const serverRunning = ['running', 'starting', 'stopping'].includes(liveStatus);
 
     // ── Validation: 설정값 타입 검증 ──
     const module = modules.find((m) => m.name === settingsServer.module);
@@ -583,6 +599,7 @@ export function ServerSettingsModal({
                         resettingServer={resettingServer}
                         validationErrors={validationErrors}
                         portConflicts={portConflicts}
+                        serverRunning={serverRunning}
                     />
                 )}
                 <ExtensionSlot

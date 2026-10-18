@@ -310,7 +310,11 @@
     "reset_success": "Le serveur '{{name}}' a été réinitialisé ({{count}} éléments supprimés)",
     "reset_failed": "Échec de la réinitialisation : {{error}}",
     "reset_error": "Erreur de réinitialisation : {{error}}",
-    "stored_values_notice": "Impossible de lire le fichier de paramètres du serveur : voici les dernières valeurs enregistrées. Seuls les champs modifiés seront appliqués."
+    "stored_values_notice": "Impossible de lire le fichier de paramètres du serveur : voici les dernières valeurs enregistrées. Seuls les champs modifiés seront appliqués.",
+    "install_server_running": "Arrêtez le serveur avant d'installer une version",
+    "reset_server_running": "Arrêtez le serveur avant de le réinitialiser",
+    "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours sur ce serveur. Réessayez quand elle sera terminée",
+    "install_settings_failed": "La version a été installée, mais l'enregistrement des paramètres a échoué : {{error}}"
   },
   "discord_bot": {
     "start_failed_toast": "Échec du démarrage du bot Discord: {{error}}",
