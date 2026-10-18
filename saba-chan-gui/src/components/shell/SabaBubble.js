@@ -45,7 +45,9 @@ function useBubbleTriggers() {
             if (ev.type === 'instance.exit' && d.kind === 'crash') {
                 const name = nameOf(d) || '';
                 if (d.restartInSecs != null) {
+                    const srv = useServerStore.getState().servers.find((s) => s.id === d.instanceId);
                     bubble.show({
+                        heldFrom: { status: srv?.status, startTime: srv?.start_time },
                         kind: 'recovering',
                         text: tRef.current('saba.recovering', { name }),
                         holdKey: d.instanceId,
@@ -63,17 +65,22 @@ function useBubbleTriggers() {
         });
     }, []);
 
-    // 복구 중인 서버가 다시 켜지면 말풍선을 놓는다
-    useEffect(
-        () =>
-            useServerStore.subscribe((s) => {
-                const b = useSabaBubble.getState().bubble;
-                if (!b?.holdKey || b.released) return;
-                const srv = s.servers.find((x) => x.id === b.holdKey);
-                if (srv?.status === 'running') useSabaBubble.getState().release(b.holdKey);
-            }),
-        [],
-    );
+    // 복구 중인 서버가 다시 켜지면 말풍선을 놓는다.
+    // 넘어지기 전 목록이 남아 있을 수 있어, 꺼진 모습을 봤거나 시작 시각이 바뀐 뒤의 실행만 믿는다
+    useEffect(() => {
+        let watch = null;
+        return useServerStore.subscribe((s) => {
+            const b = useSabaBubble.getState().bubble;
+            if (!b?.holdKey || b.released) return;
+            const srv = s.servers.find((x) => x.id === b.holdKey);
+            if (watch?.id !== b.id) {
+                const from = b.heldFrom ?? {};
+                watch = { id: b.id, startTime: from.startTime, sawDown: from.status !== 'running' };
+            }
+            if (srv?.status !== 'running') watch.sawDown = true;
+            else if (watch.sawDown || srv.start_time !== watch.startTime) useSabaBubble.getState().release(b.holdKey);
+        });
+    }, []);
 }
 
 /** 좌상단 아이콘에서 늘어져 나와 둥실 떠 있다가 다시 아이콘으로 들어간다 */
