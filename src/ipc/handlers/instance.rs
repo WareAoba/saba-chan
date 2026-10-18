@@ -192,6 +192,20 @@ pub async fn create_instance(
             None
         };
 
+        // ── 익스텐션이 만들 때 물은 칸 (`AddServer.options` → `extension_data`, Q-7). 설치 방식 값은 뒤에서 덮는다 ──
+        match payload.get("extension_data") {
+            None | Some(Value::Null) => {}
+            Some(Value::Object(given)) => {
+                for (key, value) in given.iter().filter(|(_, v)| !v.is_null()) {
+                    instance.extension_data.insert(key.clone(), value.clone());
+                }
+            }
+            Some(_) => {
+                let error = json!({ "error": "extension_data must be an object", "error_code": "invalid_format", "fields": [{"field": "extension_data"}] });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
+        }
+
         // ── 모듈의 install.requires_extensions → 인스턴스 required_extensions 자동 채우기 ──
         if let Some((Some(ref install), _, _)) = module_install {
             for ext_id in &install.requires_extensions {

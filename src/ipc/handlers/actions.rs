@@ -74,3 +74,23 @@ pub async fn run_action(State(state): State<IPCServer>, Path(id): Path<String>, 
     let caller = caller(&headers, locale(&state, body.locale).await);
     reply(actions::run(&state, &id, body.instance.as_deref(), &body.input, body.plan_id.as_deref(), &caller).await)
 }
+
+#[derive(Debug, Deserialize, Default)]
+pub struct StepsBody {
+    #[serde(default)]
+    steps: Value,
+    locale: Option<String>,
+}
+
+/// POST /api/actions/plan `{steps:[{id, instance?, input}], locale?}`: 여러 단계 계획 (실행은 `/api/actions/plan/run {planId}`)
+pub async fn plan_steps(State(state): State<IPCServer>, headers: HeaderMap, body: Option<Json<StepsBody>>) -> Response {
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let caller = caller(&headers, locale(&state, body.locale).await);
+    reply(actions::plan_steps(&state, &body.steps, &caller).await)
+}
+
+/// GET /api/actions/runs/:runId: 여러 단계 실행의 진행
+pub async fn run_status(State(state): State<IPCServer>, Path(run_id): Path<String>, headers: HeaderMap) -> Response {
+    let caller = caller(&headers, locale(&state, None).await);
+    reply(actions::run_status(&run_id, &caller))
+}

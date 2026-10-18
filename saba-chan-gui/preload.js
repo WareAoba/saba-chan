@@ -167,6 +167,8 @@ contextBridge.exposeInMainWorld('api', {
     chatbotClearMemory: (guildId) => ipcRenderer.invoke('chatbot:clearMemory', guildId),
     relayInitiatePairing: (payload) => ipcRenderer.invoke('relay:initiatePairing', payload),
     relayPollPairingStatus: (code, secret, relayUrl) => ipcRenderer.invoke('relay:pollPairingStatus', code, secret, relayUrl),
+    relayLinkRequests: () => ipcRenderer.invoke('relay:linkRequests'),
+    relayLinkRequestRespond: (requestId, accept) => ipcRenderer.invoke('relay:linkRequestRespond', requestId, accept),
     // Shell API
     shellOpenPath: (folderPath) => ipcRenderer.invoke('shell:openPath', folderPath),
     // Logs API

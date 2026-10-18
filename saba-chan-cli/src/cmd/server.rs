@@ -7,7 +7,6 @@ use crate::ctx::Ctx;
 use crate::error::{failed, usage, CliError, Result};
 use crate::output::{self, dim, s, show};
 use crate::resolve::{self, Server};
-use crate::slots::Slots;
 use serde_json::{json, Map, Value};
 use std::time::{Duration, Instant};
 
@@ -110,13 +109,6 @@ pub async fn catalog_for_server(ctx: &Ctx, sv: &Server) -> Result<Catalog> {
     Ok(cat)
 }
 
-async fn slots(ctx: &Ctx) -> Slots {
-    resolve::extensions(ctx)
-        .await
-        .map(|l| Slots::from_extensions(&l))
-        .unwrap_or_default()
-}
-
 /// 서버 상태가 원하는 값이 될 때까지 기다린다. 시간이 넘으면 마지막 상태를 돌려준다.
 async fn wait_status(ctx: &Ctx, sv: &Server, want: &[&str], timeout: Duration, msg: &str) -> Result<String> {
     let spin = crate::progress::spinner(msg);
@@ -159,22 +151,21 @@ async fn settle(ctx: &Ctx, sv: &Server, window: Duration) -> String {
 // ── 목록·정보 ──
 
 async fn list(ctx: &Ctx) -> Result<()> {
-    let (servers, modules, slots) = tokio::join!(ctx.api.servers(), ctx.api.modules(), slots(ctx));
+    let (servers, modules) = tokio::join!(ctx.api.servers(), ctx.api.modules());
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
     ctx.out.data(servers.get("servers").unwrap_or(&json!([])), |list| {
-        crate::cmd::status::print_server_table(list.as_array().map(Vec::as_slice).unwrap_or(&[]), &modules, &slots);
+        crate::cmd::status::print_server_table(list.as_array().map(Vec::as_slice).unwrap_or(&[]), &modules);
     });
     Ok(())
 }
 
 async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
-    let (rt, module, events, slots, progress) = tokio::join!(
+    let (rt, module, events, progress) = tokio::join!(
         runtime(ctx, &sv),
         module_info(ctx, &sv.module),
         ctx.api.exit_events(&sv.id),
-        slots(ctx),
         ctx.api.provision_progress(&sv.name)
     );
     let rt = rt?;
@@ -226,7 +217,7 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         if let Some(dir) = sv.raw.get("working_dir").and_then(Value::as_str) {
             rows.push((t!("col.folder"), dir.to_string()));
         }
-        rows.extend(slots.detail_rows(&rt));
+        rows.extend(crate::slots::detail_rows(&rt));
         for c in rt.get("port_conflicts").and_then(Value::as_array).into_iter().flatten() {
             rows.push((
                 t!("server.port_conflict"),
@@ -398,10 +389,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     // 4) 필요한 익스텐션
     ensure_extensions(ctx, &module).await?;
 
-    // 5) 익스텐션이 묻는 칸 (CreateInstance.options)
+    // 5) 익스텐션이 묻는 칸 (AddServer.options). 답은 만들 때 `extension_data`로 보낸다
     let mut ext_data = Map::new();
-    for opt in slots(ctx).await.create_options() {
-        let d = &opt.data;
+    for d in &crate::slots::create_options(&resolve::extensions(ctx).await.unwrap_or_default()) {
         let Some(field) = d.get("field").and_then(Value::as_str) else {
             continue;
         };
@@ -493,23 +483,18 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if let Some(dir) = &from {
         body["migration_source"] = json!(dir);
     }
+    if !ext_data.is_empty() {
+        body["extension_data"] = Value::Object(ext_data);
+    }
     let created = ctx.api.create_instance(body).await?;
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
 
-    // 7) 설정 (--set, 익스텐션 칸)
+    // 7) 설정 (--set)
     let mut patch = Map::new();
     for (k, v) in later_set {
         let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
         insert_patch(&mut patch, &key, value);
-    }
-    if !ext_data.is_empty() {
-        patch
-            .entry("extension_data")
-            .or_insert_with(|| json!({}))
-            .as_object_mut()
-            .unwrap()
-            .extend(ext_data);
     }
     if !patch.is_empty() {
         if let Err(e) = ctx.api.update_instance(&id, Value::Object(patch)).await {

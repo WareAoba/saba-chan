@@ -174,6 +174,7 @@ async fn agent_round_trips_a_relay_command() {
         assert_eq!(s.bad_signatures, 0);
         let hb = s.heartbeats.first().expect("no heartbeat");
         assert_eq!(hb["metadata"]["botConfig"]["prefix"], "!saba");
+        assert!(hb["metadata"]["onboarding"]["steps"].is_array(), "the Discord status view shows the same next step");
         assert!(hb["agentVersion"].is_string());
     }
 
