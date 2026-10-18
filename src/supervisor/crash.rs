@@ -150,8 +150,13 @@ pub struct ExitEvent {
     pub verdict: ExitVerdict,
     /// 다시 띄우기로 했으면 대기 초
     pub restart_in_secs: Option<u64>,
-    /// 다시 띄우지 않은 이유 (자동 재시작 꺼짐, 한도 초과 등)
+    /// 다시 띄우지 않은 이유 (자동 재시작 꺼짐, 한도 초과 등). 영어 문장, 화면 문구는 `note_code`로 고른다
     pub note: Option<String>,
+    /// `note`의 종류: `auto_restart_off` · `gave_up`(`note_args.count`) · `restart_failed`(`note_args.reason`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_args: Option<serde_json::Value>,
 }
 
 #[cfg(test)]
