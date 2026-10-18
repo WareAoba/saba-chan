@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { useInstanceCommands } from '../../hooks/useInstanceCommands';
 import { useModalClose } from '../../hooks/useModalClose';
-import { needsConfirm } from '../../utils/commandRisk';
+import { needsConfirm, withCommandAliases } from '../../utils/commandRisk';
 import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { CliText, commandCli } from '../CliLine';
@@ -27,7 +27,10 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
 
     // 모듈 명령 + 켜진 익스텐션이 주는 명령
     const currentModule = modules.find((m) => m.name === server.module);
-    const commands = useInstanceCommands(server, currentModule?.commands?.fields || []);
+    const commands = useInstanceCommands(
+        server,
+        withCommandAliases(currentModule?.commands?.fields, currentModule?.command_aliases),
+    );
 
     const cliLine = commandCli(server.name, commandInput, commands);
 
@@ -157,7 +160,8 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
             }
 
             // 서버가 돌려준 답(명령 뒤 콘솔 줄)은 펼치지 않아도 보인다
-            const reply = !isError && displayMsg !== result.message && typeof displayMsg === 'string' ? displayMsg : null;
+            const reply =
+                !isError && displayMsg !== result.message && typeof displayMsg === 'string' ? displayMsg : null;
             const entry = {
                 id: Date.now(),
                 command: cmdText,

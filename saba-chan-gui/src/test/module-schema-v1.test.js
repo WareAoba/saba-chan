@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { needsConfirm, riskOf } from '../utils/commandRisk';
+import { needsConfirm, riskOf, withCommandAliases } from '../utils/commandRisk';
 import { failedModuleName, failureForModule } from '../utils/failedModules';
 
 const commands = [
@@ -13,6 +13,11 @@ describe('명령 위험도', () => {
     it('첫 단어로 명령을 찾고, 대소문자는 가리지 않는다', () => {
         expect(riskOf(commands, 'STOP now')).toBe('danger');
         expect(riskOf(commands, '  kick Steve')).toBe('caution');
+    });
+    it('module.toml 별명으로 친 위험 명령도 확인한다 (데몬이 별명을 원래 명령으로 푼다)', () => {
+        const withAlias = withCommandAliases([{ name: 'ban', risk: 'danger' }], { ban: { aliases: ['밴', 'Block'] } });
+        expect(needsConfirm(withAlias, '밴 Steve')).toBe(true);
+        expect(riskOf(withAlias, 'block Steve')).toBe('danger');
     });
     it('risk가 없거나 모르는 명령은 safe', () => {
         expect(riskOf(commands, 'say hi')).toBe('safe');

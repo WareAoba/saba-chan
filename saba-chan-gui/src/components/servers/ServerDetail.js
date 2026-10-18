@@ -268,7 +268,7 @@ export function ServerDetail({
                             <LiveServerConsole
                                 server={server}
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
-                                quickCommands={consoleQuickCommands(moduleData?.commands?.fields)}
+                                quickCommands={consoleQuickCommands(moduleData?.commands?.fields, moduleData?.command_aliases)}
                                 openConsole={consoleProps.openConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
