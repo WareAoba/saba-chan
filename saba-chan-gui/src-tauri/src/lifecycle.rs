@@ -155,6 +155,13 @@ impl Lifecycle {
     }
 }
 
+/// 연결이 거부된 것만 데몬이 없다고 본다. 시간 초과는 바쁜 데몬일 수 있다
+fn heartbeat_reached<T>(res: &Result<T, crate::daemon::CallError>) -> bool {
+    res.as_ref()
+        .err()
+        .is_none_or(|e| e.status.is_some() || e.code != "ECONNREFUSED")
+}
+
 /// 트레이에 보일 데몬 상태: 이 GUI가 띄운 데몬이 살아 있거나, 이미 떠 있던 데몬에 붙었다
 pub fn daemon_running(app: &AppHandle) -> bool {
     let alive = own_daemon_alive(app);
@@ -521,8 +528,7 @@ fn start_heartbeat(app: &AppHandle) {
                 .post(&format!("/api/client/{id}/heartbeat"), &json!({}), 3000)
                 .await;
             // 연결이 안 되면 데몬이 없다: 이 GUI 밖에서 꺼진 데몬을 트레이가 실행 중으로 보이지 않게
-            let reachable = res.as_ref().err().is_none_or(|e| e.status.is_some());
-            if state.life.note_reachable(reachable) {
+            if state.life.note_reachable(heartbeat_reached(&res)) {
                 tray::update_menu(&app2);
             }
             if let Err(e) = res {
@@ -779,6 +785,21 @@ mod tests {
         );
         assert!(life.note_reachable(true));
         assert!(life.shows_running(false));
+    }
+
+    #[test]
+    fn only_a_refused_connection_means_the_daemon_is_gone() {
+        let err = |status, code| crate::daemon::CallError {
+            status,
+            body: None,
+            message: String::new(),
+            code,
+        };
+        // 바쁜 데몬이 3초 안에 답하지 못한 것은 꺼진 것이 아니다 (트레이가 깜빡이지 않게)
+        assert!(heartbeat_reached::<()>(&Err(err(None, "ETIMEDOUT"))));
+        assert!(heartbeat_reached::<()>(&Err(err(Some(404), ""))));
+        assert!(heartbeat_reached::<()>(&Ok(())));
+        assert!(!heartbeat_reached::<()>(&Err(err(None, "ECONNREFUSED"))));
     }
 
     #[test]
