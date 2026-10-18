@@ -32,6 +32,7 @@ const COMMANDS: &[&str] = &[
     "window_minimize",
     "window_maximize",
     "window_close",
+    "sandbox_consent_allow",
 ];
 
 /// 자리표시 index.html에만 있는 문구

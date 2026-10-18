@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sandbox-consent-allow"
+description = "Enables the sandbox_consent_allow command without any pre-configured scope."
+commands.allow = ["sandbox_consent_allow"]
+
+[[permission]]
+identifier = "deny-sandbox-consent-allow"
+description = "Denies the sandbox_consent_allow command without any pre-configured scope."
+commands.deny = ["sandbox_consent_allow"]

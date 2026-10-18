@@ -213,6 +213,7 @@ export function useServerActions({
                         setModal(null);
                         try {
                             const res = await window.api.sandboxAllowUnisolated(component);
+                            if (res?.error_code === 'canceled') return;
                             if (!res || res.success === false || res.error) {
                                 safeShowToast(
                                     t('trust.sandbox.allow_failed', { error: translateError(res?.error || '') }),

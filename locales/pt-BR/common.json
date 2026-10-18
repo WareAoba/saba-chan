@@ -97,5 +97,16 @@
     "path_missing": "Nenhum caminho informado",
     "path_not_folder": "Não é uma pasta",
     "no_log_folder": "Nenhuma pasta de logs"
+  },
+  "consent": {
+    "allow": "Permitir",
+    "unisolated": {
+      "title": "Executar sem isolamento?",
+      "message": "{{component}} não foi verificado. Sem isolamento, ele pode acessar arquivos e programas deste PC sem limites. Permita apenas se confiar nele."
+    },
+    "extension_gui": {
+      "title": "Carregar a tela da extensão?",
+      "message": "O código de tela de {{component}} não foi verificado. Se carregado, ele roda dentro da janela do Saba-chan. Permita apenas se confiar nele."
+    }
   }
 }

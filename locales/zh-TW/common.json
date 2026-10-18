@@ -97,5 +97,16 @@
     "path_missing": "未指定路徑",
     "path_not_folder": "不是資料夾",
     "no_log_folder": "沒有記錄資料夾"
+  },
+  "consent": {
+    "allow": "允許",
+    "unisolated": {
+      "title": "要在不隔離的情況下執行嗎？",
+      "message": "{{component}} 未經驗證。不隔離執行時，它可以不受限制地存取此電腦上的檔案與程式。僅在信任時允許。"
+    },
+    "extension_gui": {
+      "title": "要載入擴充功能畫面嗎？",
+      "message": "{{component}} 的畫面程式碼未經驗證。載入後它會在 Saba-chan 視窗內執行。僅在信任時允許。"
+    }
   }
 }

@@ -1,6 +1,6 @@
 //! 렌더러가 부르는 Rust 명령 (계약 §2). 결과 모양은 main.js 각 핸들러와 같다
 
-use crate::daemon::{is_allowed_path, parse_method};
+use crate::daemon::{is_allowed_request, parse_method};
 use crate::{lifecycle, settings, tray, window, AppState};
 use base64::Engine;
 use serde::Deserialize;
@@ -23,7 +23,7 @@ pub async fn daemon_request(
     timeout_ms: Option<u64>,
     response_type: Option<String>,
 ) -> Value {
-    let Some(method) = parse_method(&method).filter(|_| is_allowed_path(&path)) else {
+    let Some(method) = parse_method(&method).filter(|m| is_allowed_request(m, &path)) else {
         return json!({ "status": 0, "error": format!("Invalid daemon request: {path}"), "code": "EINVAL" });
     };
     let client = app.state::<AppState>().client.clone();
@@ -38,6 +38,57 @@ pub async fn daemon_request(
             json!({ "status": res.status, "data": data })
         }
         Err(e) => json!({ "status": 0, "error": e.message, "code": e.code }),
+    }
+}
+
+/// 동의 종류 → (데몬 경로 머리, 확인 창 문구 키). 렌더러는 이 경로에 직접 POST할 수 없다 (daemon::is_allowed_request)
+fn consent_kind(kind: &str) -> Option<(&'static str, &'static str)> {
+    match kind {
+        "unisolated" => Some(("/api/sandbox/unisolated", "consent.unisolated")),
+        "extension-gui" => Some(("/api/sandbox/extension-gui", "consent.extension_gui")),
+        _ => None,
+    }
+}
+
+/// 구성요소 이름은 `module-<이름>`·`ext-<id>` 꼴만 받는다 (경로·창 문구에 그대로 넣는다)
+fn consent_path(kind: &str, component: &str) -> Option<(String, &'static str)> {
+    let (base, key) = consent_kind(kind)?;
+    let ok = !component.is_empty()
+        && component.len() <= 128
+        && component.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        && component != "."
+        && component != "..";
+    ok.then(|| (format!("{base}/{component}"), key))
+}
+
+/// 확인되지 않은 구성요소 동의: 네이티브 확인 창에서 사용자가 허락했을 때만 데몬에 기록한다.
+/// 취소하면 {success:false, error_code:"canceled"}
+#[tauri::command]
+pub async fn sandbox_consent_allow(app: AppHandle, window: WebviewWindow, kind: String, component: String) -> Value {
+    let Some((path, key)) = consent_path(&kind, &component) else {
+        return json!({ "success": false, "error": "Invalid consent request", "error_code": "invalid_request" });
+    };
+    let state = app.state::<AppState>();
+    let vars = [("component", component.as_str())];
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .message(state.t(&format!("{key}.message"), &vars))
+        .title(state.t(&format!("{key}.title"), &vars))
+        .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            state.t("consent.allow", &[]),
+            state.t("cancel", &[]),
+        ))
+        .parent(&window)
+        .show(move |ok| {
+            let _ = tx.send(ok);
+        });
+    if !rx.await.unwrap_or(false) {
+        return json!({ "success": false, "error_code": "canceled" });
+    }
+    match state.client.post(&path, &json!({}), 10000).await {
+        Ok(data) => data,
+        Err(e) => e.error_body(json!({ "success": false })),
     }
 }
 
@@ -459,6 +510,26 @@ pub fn window_close(window: WebviewWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consent_path_takes_only_known_kinds_and_plain_names() {
+        assert_eq!(
+            consent_path("extension-gui", "ext-docker"),
+            Some(("/api/sandbox/extension-gui/ext-docker".into(), "consent.extension_gui"))
+        );
+        assert_eq!(consent_path("unisolated", "module-palworld").unwrap().0, "/api/sandbox/unisolated/module-palworld");
+        for (kind, component) in [
+            ("other", "ext-x"),
+            ("unisolated", ""),
+            ("unisolated", ".."),
+            ("unisolated", "a/b"),
+            ("unisolated", "a%2fb"),
+            ("extension-gui", "ext-x?y=1"),
+            ("extension-gui", "ext x"),
+        ] {
+            assert!(consent_path(kind, component).is_none(), "{kind} {component:?}");
+        }
+    }
 
     #[test]
     fn open_path_accepts_only_folders() {
