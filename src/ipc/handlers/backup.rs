@@ -172,7 +172,10 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     let Plan { dir, paths, keep, .. } = plan;
     let result = tokio::task::spawn_blocking(move || {
         let made = backup::create(&dir, kind, &paths)?;
-        let pruned = backup::prune(&dir, keep, protect.as_deref());
+        // 방금 만든 백업은 보관 개수와 상관없이 남긴다
+        let mut keep_names = vec![made.name.as_str()];
+        keep_names.extend(protect.as_deref());
+        let pruned = backup::prune(&dir, keep, &keep_names);
         anyhow::Ok((made, pruned))
     })
     .await;
@@ -297,6 +300,9 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             p.push("this module has no announce command".into());
         }
         problems.extend(p.into_iter().map(|m| format!("schedule[{}]: {}", i, m)));
+    }
+    if body.backup_keep == Some(0) {
+        problems.push("backup_keep must be at least 1".into());
     }
     // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
     if crate::audit::current().source == "discord" {
@@ -640,6 +646,8 @@ mod tests {
         assert_eq!(remote(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 1000 })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 5 })).await, StatusCode::OK);
+        // 0개 보관이면 방금 만든 안전 백업까지 지워진다
+        assert_eq!(put(json!({ "schedule": [], "backup_keep": 0 })).await, StatusCode::BAD_REQUEST);
         // 이 PC에서 정한 작업은 디스코드에서 그대로 다시 보내도 된다
         assert_eq!(put(json!({ "schedule": [update, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
         assert_eq!(remote(json!({ "schedule": [update, restart(1), restart(60)], "backup_keep": 100 })).await, StatusCode::OK);

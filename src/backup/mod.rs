@@ -197,13 +197,13 @@ pub fn delete(dir: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// 자동 백업(수동 제외)을 새것 `keep`개만 남긴다. `protect`는 넘쳐도 지우지 않는다 (복원 중인 백업). 지운 이름을 돌려준다
-pub fn prune(dir: &Path, keep: usize, protect: Option<&str>) -> Vec<String> {
+/// 자동 백업(수동 제외)을 새것 `keep`개만 남긴다. `protect`는 넘쳐도 지우지 않는다 (방금 만든 백업, 복원 중인 백업). 지운 이름을 돌려준다
+pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
     list(dir)
         .into_iter()
         .filter(|b| b.kind != BackupKind::Manual)
         .skip(keep)
-        .filter(|b| Some(b.name.as_str()) != protect)
+        .filter(|b| !protect.contains(&b.name.as_str()))
         .filter(|b| fs::remove_file(dir.join(&b.name)).is_ok())
         .map(|b| b.name)
         .collect()
@@ -367,7 +367,7 @@ mod tests {
         let dir = tmp.path().join("backups");
         let manual = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap();
         let autos: Vec<_> = (0..3).map(|_| create(&dir, BackupKind::Scheduled, &[w.clone()]).unwrap().name).collect();
-        let removed = prune(&dir, 1, None);
+        let removed = prune(&dir, 1, &[]);
         assert_eq!(removed.len(), 2);
         let left: Vec<_> = list(&dir).into_iter().map(|b| b.name).collect();
         assert!(left.contains(&manual.name));
@@ -381,11 +381,22 @@ mod tests {
         let dir = tmp.path().join("backups");
         let oldest = create(&dir, BackupKind::Scheduled, &[w.clone()]).unwrap().name;
         let safety = create(&dir, BackupKind::PreRestore, &[w.clone()]).unwrap().name;
-        let removed = prune(&dir, 1, Some(&oldest));
+        let removed = prune(&dir, 1, &[&oldest]);
         assert!(removed.is_empty(), "keep=1 would drop the oldest auto backup, but it is the restore target");
         let left: Vec<_> = list(&dir).into_iter().map(|b| b.name).collect();
         assert!(left.contains(&oldest) && left.contains(&safety));
         assert!(restore(&dir, &oldest).is_ok());
+    }
+
+    #[test]
+    fn prune_with_keep_zero_still_keeps_the_new_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let old = create(&dir, BackupKind::Scheduled, &[w.clone()]).unwrap().name;
+        let safety = create(&dir, BackupKind::PreRestore, &[w.clone()]).unwrap().name;
+        assert_eq!(prune(&dir, 0, &[&safety]), vec![old]);
+        assert!(dir.join(&safety).exists());
     }
 
     #[test]
