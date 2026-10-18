@@ -188,7 +188,10 @@ pub fn start_daemon(app: &AppHandle) {
     let spawned = cmd.spawn().or_else(|e| {
         // GUI를 띄운 쪽의 job이 breakaway를 막으면 CreateProcess가 거부된다: 그때는 떼지 않고 띄운다
         if cfg!(windows) {
-            tracing::warn!("[Daemon] spawn with job breakaway failed ({}), retrying without", e);
+            tracing::info!(
+                "[Daemon] spawn with job breakaway failed ({}), retrying without (this job does not allow breakaway)",
+                e
+            );
             detach(&mut cmd, false);
             cmd.spawn()
         } else {
@@ -344,8 +347,7 @@ async fn reload_token_until_valid(app: &AppHandle) -> bool {
     for retry in 0..3 {
         client.load_token();
         match client.get("/health", 1000).await {
-            // 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
-            Ok(v) if v.get("token").and_then(Value::as_str).unwrap_or("valid") == "valid" => {
+            Ok(v) if token_valid(&v) => {
                 tracing::info!("Token refreshed and verified");
                 return true;
             }
@@ -358,17 +360,29 @@ async fn reload_token_until_valid(app: &AppHandle) -> bool {
     false
 }
 
-/// 데몬이 새로 뜨는 동안 기다린다 (새 토큰을 만들므로 매번 다시 읽는다)
+/// /health가 보낸 토큰을 맞다고 했는가. 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
+fn token_valid(health: &Value) -> bool {
+    health.get("token").and_then(Value::as_str).unwrap_or("valid") == "valid"
+}
+
+/// 데몬이 새로 뜨는 동안 기다린다. 새 토큰을 만들므로 매번 다시 읽고, 토큰이 맞을 때까지 기다린다
+/// (/health는 토큰 없이도 답하므로, 응답만 보고 끝내면 렌더러 첫 요청이 옛 토큰으로 401을 받는다)
 async fn wait_for_new_daemon(app: &AppHandle) -> bool {
     let client = app.state::<AppState>().client.clone();
+    let mut alive = false;
     for _ in 0..20 {
         sleep(500).await;
         client.load_token();
-        if client.get("/health", 800).await.is_ok() {
-            return true;
+        match client.get("/health", 800).await {
+            Ok(v) if token_valid(&v) => return true,
+            Ok(_) => alive = true,
+            Err(_) => {}
         }
     }
-    false
+    if alive {
+        tracing::warn!("[Auth] New daemon is up but the token file did not match yet");
+    }
+    alive
 }
 
 /// 떠 있는 데몬이 있으면 재사용하고, 없으면 띄운다. 데몬이 응답하지 않으면 false
@@ -379,7 +393,7 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
     match state.client.get("/health", 1000).await {
         Ok(v) => {
             // /health는 토큰 없이 답하고 보낸 토큰 상태를 알려 준다 (A6)
-            if v.get("token").and_then(Value::as_str).is_some_and(|t| t != "valid") {
+            if !token_valid(&v) {
                 tracing::info!("Existing daemon detected (stale token). Reloading token...");
                 reload_token_until_valid(app).await;
             } else {
