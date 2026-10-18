@@ -3,13 +3,20 @@
 :root,
 [data-theme="dark"] {
     --art-shadow: drop-shadow(0 6px 16px color-mix(in srgb, var(--shadow-ink) 55%, transparent));
+    /* 상태 그림(자는·청소·갸웃)을 어두운 바탕에 녹이는 정도 */
+    --art-tone: saturate(0.45) brightness(0.86);
+    --art-blend: 0.7;
 }
 [data-theme="light"] {
     --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
+    --art-tone: saturate(0.5);
+    --art-blend: 0.72;
 }
 @media (prefers-color-scheme: light) {
     [data-theme="auto"] {
         --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
+        --art-tone: saturate(0.5);
+        --art-blend: 0.72;
     }
 }
 
@@ -20,7 +27,6 @@
     max-width: 100%;
     object-fit: contain;
     filter: var(--art-shadow);
-    --art-tone: saturate(0.45);
     -webkit-user-drag: none;
     user-select: none;
     pointer-events: none;
@@ -29,7 +35,8 @@
 .saba-art-sleep,
 .saba-art-cleaning,
 .saba-art-undefined {
-    filter: var(--art-tone) var(--art-shadow);
+    filter: var(--art-tone);
+    opacity: var(--art-blend);
 }
 
 /* 빈 목록 */
@@ -89,37 +96,35 @@
     word-break: break-word;
 }
 
-/* 디스코드 릴레이(명령 전달) 카드: 글은 왼쪽 칸, 그림은 오른쪽 칸을 따로 차지한다 (겹치지 않는다) */
+/* 디스코드 릴레이(명령 전달) 카드: 왼쪽은 글, 오른쪽은 정사각 그림 칸 (겹치지 않는다) */
 .dc-card.dc-relay-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 200px;
-    column-gap: var(--sp-5);
-    align-content: start;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-5);
 }
-.dc-relay-card > :not(.dc-relay-art) {
-    grid-column: 1;
+.dc-relay-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
 }
 .dc-relay-art {
-    grid-column: 2;
-    grid-row: 1 / span 6;
-    align-self: center;
-    justify-self: center;
-    width: 200px;
-    height: auto;
+    flex-shrink: 0;
+    width: 148px;
+    height: 148px;
+    object-fit: contain;
     pointer-events: none;
     user-select: none;
-    filter: var(--art-shadow);
     transition: filter 600ms var(--ease);
 }
 .dc-relay-card.off .dc-relay-art {
-    filter: saturate(0.12) var(--art-shadow);
+    filter: saturate(0.12);
 }
 @media (max-width: 720px) {
-    .dc-card.dc-relay-card {
-        grid-template-columns: minmax(0, 1fr) 120px;
-    }
     .dc-relay-art {
-        width: 120px;
+        width: 96px;
+        height: 96px;
     }
 }
 
