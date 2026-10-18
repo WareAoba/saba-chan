@@ -134,7 +134,11 @@
     "provisioning": "正在配置…",
     "step_compose": "创建配置",
     "migrate_existing": "迁移现有服务器…",
-    "migrate_existing_hint": "将现有游戏服务器目录导入 saba-chan。"
+    "migrate_existing_hint": "将现有游戏服务器目录导入 saba-chan。",
+    "preset_title": "推荐配置",
+    "preset_none": "默认",
+    "preset_none_hint": "使用模块默认值创建。",
+    "preset_not_found": "该模块没有这个推荐配置。请刷新模块后重试。"
   },
   "add_instance_modal": {
     "title": "添加实例",

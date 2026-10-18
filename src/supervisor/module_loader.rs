@@ -108,9 +108,29 @@ pub struct ModuleMetadata {
     /// [detection] crash_artifacts — 크래시 때 생기는 파일 (작업 디렉터리 기준, 마지막 칸만 `*` `?`). A1용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crash_artifacts: Vec<String>,
+    /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<ModulePreset>,
     /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+}
+
+/// `[[presets]]` — 서버를 만들 때 고르는 추천 설정 묶음 (예: "친구용 소규모", "하드코어").
+/// 표시 문구는 모듈 locales의 `presets.<id>.label`·`description`이 덮는다
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct ModulePreset {
+    /// 소문자·숫자·`-`·`_` (예: "friends")
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// `[[settings.fields]]` 이름 → 값. 비밀번호·파일·경로 설정은 넣지 못한다
+    #[serde(default)]
+    #[schemars(with = "serde_json::Map<String, serde_json::Value>")]
+    pub settings: serde_json::Map<String, serde_json::Value>,
 }
 
 /// `[permissions]` — 모듈 Python 코드가 쓰는 능력 (M12). 선언하지 않은 능력을 코드에서 찾으면
@@ -544,6 +564,9 @@ struct ModuleToml {
     #[serde(default)]
     #[schemars(with = "std::collections::HashMap<String, serde_json::Map<String, serde_json::Value>>")]
     extensions: std::collections::HashMap<String, toml::Value>,
+    /// [[presets]] 추천 설정 묶음 (I1-b)
+    #[serde(default)]
+    presets: Vec<ModulePreset>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1051,6 +1074,7 @@ impl ModuleToml {
                 }).collect()
             }).unwrap_or_default(),
             errors: self.errors,
+            presets: self.presets,
             warnings: Vec::new(),
         }
     }
@@ -1076,6 +1100,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     problems.extend(toml_data.value_problems());
 
     let mut meta = toml_data.into_metadata();
+    problems.extend(preset_problems(&meta));
     match meta.schema_version {
         0 => {
             for p in &problems {
@@ -1155,6 +1180,42 @@ impl ModuleToml {
         }
         problems
     }
+}
+
+/// 프리셋이 계약을 벗어난 곳: id 형식·중복, 없는 설정 이름, 비밀번호·파일·경로 설정, 설정 규칙에 안 맞는 값
+fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
+    let mut problems = Vec::new();
+    let fields = meta.settings.as_ref().map(|s| s.fields.as_slice()).unwrap_or(&[]);
+    let mut seen = std::collections::HashSet::new();
+    for preset in &meta.presets {
+        let id_ok = preset.id.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && preset.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
+        if !id_ok {
+            problems.push(format!("presets '{}': id must be lowercase letters, digits, '-' or '_'", preset.id));
+        }
+        if !seen.insert(preset.id.as_str()) {
+            problems.push(format!("presets '{}': duplicate id", preset.id));
+        }
+        for (key, value) in &preset.settings {
+            let Some(field) = fields.iter().find(|f| &f.name == key) else {
+                problems.push(format!("presets '{}': '{}' is not a [[settings.fields]] name", preset.id, key));
+                continue;
+            };
+            if field.field_type == "password" || field.field_type == "file" || field.format.as_deref() == Some("path") {
+                problems.push(format!("presets '{}': '{}' cannot be set by a preset", preset.id, key));
+                continue;
+            }
+            let option_ok = match (&field.options, value.as_str()) {
+                (Some(options), Some(v)) => options.iter().any(|o| o == v),
+                (Some(_), None) => false,
+                (None, _) => !value.is_object() && !value.is_array(),
+            };
+            if !option_ok || crate::validator::validate_setting_value(field, Some(value)).is_err() {
+                problems.push(format!("presets '{}': '{}' value is not allowed for this setting", preset.id, key));
+            }
+        }
+    }
+    problems
 }
 
 /// 모듈 폴더 하나를 데몬과 같은 규칙으로 읽는다 (`saba-core module validate`)
@@ -1875,6 +1936,27 @@ entry = "lifecycle.py"
         assert_eq!(meta.announce_command.as_deref(), Some("say"));
         let typo = toml.replace("save_command = \"save-all\"", "save_command = \"save_all\"");
         assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("backup.save_command"));
+    }
+
+    #[test]
+    fn schema_v1_reads_presets_and_rejects_bad_ones() {
+        let toml = format!(
+            "{V1}\n[[settings.fields]]\nname = \"max_players\"\ntype = \"number\"\nmin = 1\nmax = 100\n\n[[settings.fields]]\nname = \"difficulty\"\ntype = \"select\"\noptions = [\"easy\", \"hard\"]\n\n[[settings.fields]]\nname = \"secret\"\ntype = \"password\"\n\n[[presets]]\nid = \"friends\"\nlabel = \"Friends\"\n[presets.settings]\nmax_players = 10\ndifficulty = \"easy\"\n"
+        );
+        let meta = parse_module_toml(&toml).unwrap();
+        assert_eq!(meta.presets.len(), 1);
+        assert_eq!(meta.presets[0].id, "friends");
+        assert_eq!(meta.presets[0].settings["max_players"], 10);
+        for (bad, why) in [
+            ("max_players = 10", "max_players = 500"),
+            ("difficulty = \"easy\"", "difficulty = \"peaceful\""),
+            ("difficulty = \"easy\"", "secret = \"x\""),
+            ("difficulty = \"easy\"", "nope = 1"),
+            ("id = \"friends\"", "id = \"Friends!\""),
+        ] {
+            let broken = toml.replace(bad, why);
+            assert!(parse_module_toml(&broken).unwrap_err().to_string().contains("presets"), "{why}");
+        }
     }
 
     #[test]

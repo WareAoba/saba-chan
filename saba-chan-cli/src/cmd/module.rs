@@ -208,6 +208,10 @@ async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {
             .map(Vec::len)
             .unwrap_or(0);
         rows.push((t!("col.commands"), ncmd.to_string()));
+        let presets: Vec<&str> = m.get("presets").and_then(Value::as_array).into_iter().flatten().map(|p| s(p, "id")).collect();
+        if !presets.is_empty() {
+            rows.push((t!("col.presets"), presets.join(", ")));
+        }
         output::print_kv(&rows);
         for w in m.get("warnings").and_then(Value::as_array).into_iter().flatten() {
             ctx.out.warn(&show(w));

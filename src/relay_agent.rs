@@ -270,18 +270,7 @@ impl Session {
         .body
         .get("servers")
         {
-            Some(Value::Array(list)) => list
-                .iter()
-                .map(|s| {
-                    let mut s = s.clone();
-                    if let Some(obj) = s.as_object_mut() {
-                        // 게임 서버 비밀번호는 릴레이에 보낼 이유가 없다
-                        obj.remove("rcon_password");
-                        obj.remove("rest_password");
-                    }
-                    s
-                })
-                .collect(),
+            Some(Value::Array(list)) => list.iter().map(relay_server_entry).collect(),
             _ => Vec::new(),
         };
         let modules: Vec<Value> = self
@@ -294,6 +283,7 @@ impl Session {
                     "name": m.name,
                     "module_aliases": m.module_aliases,
                     "commands": { "fields": m.commands },
+                    "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
                 })
             })
             .collect();
@@ -829,9 +819,30 @@ fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
+/// 하트비트의 서버 한 줄: relay가 읽는 필드만 싣는다. 설정값·경로·비밀번호는 PC 밖으로 나가지 않는다
+fn relay_server_entry(server: &Value) -> Value {
+    let mut entry = serde_json::Map::new();
+    for key in ["id", "name", "module", "status"] {
+        if let Some(v) = server.get(key) {
+            entry.insert(key.to_string(), v.clone());
+        }
+    }
+    Value::Object(entry)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heartbeat_servers_carry_only_what_the_relay_reads() {
+        let server = json!({
+            "id": "i1", "name": "마크", "module": "minecraft", "status": "running",
+            "executable_path": "C:/srv/java.exe", "working_dir": "C:/srv",
+            "module_settings": { "rcon_secret": "x" }, "rest_password": "y"
+        });
+        assert_eq!(relay_server_entry(&server), json!({ "id": "i1", "name": "마크", "module": "minecraft", "status": "running" }));
+    }
 
     #[test]
     fn heartbeat_carries_permissions_for_every_known_guild() {

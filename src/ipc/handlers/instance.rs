@@ -103,12 +103,24 @@ pub async fn create_instance(
                 instance.rest_port = Some(loaded_module.metadata.default_rest_port());
             }
 
+            // 고른 프리셋(`[[presets]]`)의 설정이 바탕이 되고, 따로 보낸 설정이 그 위를 덮는다
+            let mut chosen = serde_json::Map::new();
+            if let Some(id) = payload.get("preset").and_then(|v| v.as_str()).filter(|p| !p.is_empty()) {
+                match loaded_module.metadata.presets.iter().find(|p| p.id == id) {
+                    Some(preset) => chosen.extend(preset.settings.clone()),
+                    None => {
+                        let error = json!({ "error": format!("Module '{}' has no preset '{}'", module, id), "error_code": "preset_not_found" });
+                        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                    }
+                }
+            }
+            if let Some(given) = payload.get("module_settings").and_then(|v| v.as_object()) {
+                chosen.extend(given.clone());
+            }
+
             // 만들 때 고른 설정 (예: 마인크래프트 서버 종류 — 설치할 jar가 달라진다).
             // 모듈이 선언한 이름만, select는 고를 수 있는 값만 받는다
-            if let (Some(chosen), Some(settings)) = (
-                payload.get("module_settings").and_then(|v| v.as_object()),
-                loaded_module.metadata.settings.as_ref(),
-            ) {
+            if let Some(settings) = loaded_module.metadata.settings.as_ref() {
                 for field in &settings.fields {
                     let Some(value) = chosen.get(&field.name) else { continue };
                     let allowed = match (&field.options, value.as_str()) {
@@ -1603,6 +1615,46 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
 mod tests {
     use super::memory_limit_from;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn create_applies_the_chosen_preset_under_explicit_settings() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"max_players\"\ntype = \"number\"\ndefault = 20\n\n\
+             [[settings.fields]]\nname = \"pvp\"\ntype = \"boolean\"\ndefault = true\n\n\
+             [[presets]]\nid = \"friends\"\n[presets.settings]\nmax_players = 10\npvp = false\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+
+        let made = create(json!({ "name": "a", "module_name": "game", "preset": "friends", "module_settings": { "pvp": true } })).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(instance.module_settings["max_players"], json!(10), "preset value");
+        assert_eq!(instance.module_settings["pvp"], json!(true), "explicit setting wins");
+
+        let unknown = create(json!({ "name": "b", "module_name": "game", "preset": "nope" })).await;
+        assert_eq!(unknown.status.as_u16(), 400);
+        assert_eq!(unknown.body["error_code"], "preset_not_found");
+    }
 
     #[test]
     fn memory_limit_is_empty_or_a_whole_number_of_mib() {

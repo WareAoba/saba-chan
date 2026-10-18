@@ -226,7 +226,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/instances` | `instance.rs:12` | - | `[ServerInstance]` (§4.1, REST 비밀번호 평문 포함) |
-| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?}` | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400/500 |
+| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?}` | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` / 404 `{error, error_code}` |
 | DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |
@@ -242,6 +242,7 @@
 
 - 모듈의 `install.requires_extensions`가 활성·설치돼 있지 않으면 422 `extension_required`다(`instance.rs:141-180`).
 - 다른 인스턴스가 같은 `working_dir`를 쓰면 409다(`instance.rs:200-213`). 포트를 주지 않으면 다른 인스턴스와 겹치지 않게 기본 포트를 옮긴다(`:217-234`).
+- `preset`을 주면 모듈 `[[presets]]`에서 그 id의 `settings`를 바탕으로 깔고, 따로 보낸 `module_settings`가 그 위를 덮는다. 없는 id는 400 `preset_not_found`다. 원격(디스코드·챗봇)도 `instance.create`의 `preset`으로 고를 수 있다(프리셋에는 비밀번호·파일·경로 설정이 없다).
 - `module_settings{}`를 주면 모듈이 선언한 설정 이름만, select는 고를 수 있는 값만 받아 기본값보다 먼저 넣는다(`instance.rs` "만들 때 고른 설정"). GUI·CLI는 `install = true`인 설정(예: 마인크래프트 서버 종류)을 만들 때 묻는다. 프로비저닝 `install_server`는 이 인스턴스 설정을 `settings{}`로 받는다(업데이트 경로도 같다).
 - `migration_source`가 있으면 데몬 락을 놓은 뒤 `import_settings`를 **동기로** 호출한다(`instance.rs:523-547`). 결과의 `executable_path`(작업 폴더 기준, 폴더 안의 파일일 때만)를 실행 파일로 쓰고, `detected`는 응답에 그대로 붙인다(`{success, id, detected?}`).
 - 인스턴스를 저장한 직후 `server.post_create` 훅을 백그라운드로 보내고 결과를 기다리지 않는다(`instance.rs:244-257`). ctx는 `{instance_id, instance_dir, instance, module, migration}`이다.

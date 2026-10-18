@@ -117,7 +117,7 @@ pub static ACTIONS: &[Def] = &[
     def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups"),
     Def { fields: &[path_field("name")], ..def("backup.restore", Kind::Admin, "danger", LOCAL_AND_CHATBOT, true, "POST", "/api/instance/:id/backups/:name/restore") },
     Def {
-        fields: &[field("name", "string", true), field("module_name", "string", true), field("module_settings", "object", false)],
+        fields: &[field("name", "string", true), field("module_name", "string", true), field("preset", "string", false), field("module_settings", "object", false)],
         ..def("instance.create", Kind::Admin, "caution", LOCAL_AND_CHATBOT, false, "POST", "/api/instances")
     },
     Def { open_input: true, ..def("instance.settings.set", Kind::Admin, "caution", LOCAL_AND_CHATBOT, true, "PATCH", "/api/instance/:id") },
