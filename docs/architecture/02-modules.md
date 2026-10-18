@@ -284,7 +284,7 @@ players = "player_count"
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:100-117`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:198-205`). 목록이 없으면 빈 값이다.
   - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-37`).
-  - `SABA_JAVA_RUNTIMES` = 데몬이 찾은 Java 런타임의 JSON 배열 `[{java, home, version, major}]`(`sandbox::java_runtimes`). 순서는 데몬 환경의 `JAVA_HOME`, PATH의 모든 `java`, 알려진 설치 위치(Windows는 Program Files 두 곳, 그 밖은 `/usr/lib`의 `<공급자>/<jdk>`, 공급자 폴더는 `JAVA_VENDOR_DIRS`)다. `release` 파일이 있는 실제 JDK·JRE만 들고(Oracle `javapath` 같은 바로가기는 빠진다), `version`은 그 `JAVA_VERSION`, `major`는 주 버전(`1.8.0_381`→8)이다. 모듈은 필요한 주 버전을 여기서 고르고, 격리 실행에서도 이 폴더들은 읽을 수 있다. 사용자가 정한 `java_path`는 따로 config로 온다.
+  - `SABA_JAVA_RUNTIMES` = 데몬이 찾은 Java 런타임의 JSON 배열 `[{java, home, version, major, arch}]`(`sandbox::java_runtimes`). 순서는 데몬 환경의 `JAVA_HOME`, PATH의 모든 `java`, 알려진 설치 위치(Windows는 Program Files 두 곳, 그 밖은 `/usr/lib`의 `<공급자>/<jdk>`, 공급자 폴더는 `JAVA_VENDOR_DIRS`)다. `release` 파일이 있는 실제 JDK·JRE만 들고(Oracle `javapath` 같은 바로가기는 빠진다), `version`은 그 `JAVA_VERSION`, `major`는 주 버전(`1.8.0_381`→8), `arch`는 `release`의 `OS_ARCH`(`amd64`·`x86` 등, 없으면 빈 문자열)다. 모듈은 필요한 주 버전 이상의 64비트 런타임을 여기서 고르고, 격리 실행에서도 이 폴더들은 읽을 수 있다. 사용자가 정한 `java_path`는 따로 config로 온다.
     - ~~문서는 `DAEMON_API_URL`을 주입한다고 한다~~ → 해결: 다시 쓴 개발 가이드는 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`이라고 적는다(`M:docs/module-development-guide.md:31`). `daemon_rcon.py`는 `DAEMON_API_URL`이 있으면 그것을, 없으면 `SABA_IPC_URL`을, 둘 다 없으면 `http://127.0.0.1:57474`를 쓴다 (`D:modules/daemon_rcon.py:53-59`).
 
 ### 2.2 모듈 측 디스패치 관례
@@ -477,7 +477,7 @@ players = "player_count"
 - `monitor_processes`(`mod.rs:2074-2254`)가 하는 일은 다음과 같다.
   1. `managed_store.cleanup_dead()`로 죽은 항목을 꺼내 종료를 판정하고, `managed.pid`를 삭제한 뒤 cooldown을 등록한다.
   2. 추적 중인 PID가 스냅샷에 없으면 untrack한다. saba-runner가 아직 서버를 돌리면(런처가 끝나고 실제 서버가 남은 경우) runner가 보는 PID로 옮긴다.
-  3. `auto_detect`가 켜진 인스턴스는 `process_name`(+`cmd_patterns`)으로 외부 프로세스를 찾고, 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가려 추적한다. 포트가 충돌하면 그 프로세스를 **강제 kill**하고 `PortConflictStopEvent`를 쌓는다.
+  3. `auto_detect`가 켜진 인스턴스는 `process_name`(+`cmd_patterns`)으로 외부 프로세스를 찾고, 실행 파일·작업 폴더·명령줄 경로가 이 인스턴스 폴더(사용자 서버 폴더, 실행 파일 폴더, 인스턴스 폴더) 아래에 있는 것만 추적한다. 같은 모듈 인스턴스가 하나뿐이어도 폴더가 맞지 않는 같은 이름 프로세스(다른 데이터 폴더의 `java.exe` 등)는 잡지 않고, 여럿이면 더 깊은 폴더 쪽이 주인이다(`process_monitor::pick_owned_process`). 포트가 충돌하면 그 프로세스를 **강제 kill**하고 `PortConflictStopEvent`를 쌓는다.
 - **메모리 상한** (`memory_limit_mb`, 인스턴스 레코드, MiB): 비우면 제한 없음. 데몬이 saba-runner에 `--memory-limit <MiB>`로 넘기고, 러너는 Windows Job에 `JOB_OBJECT_LIMIT_JOB_MEMORY`를 건다(서버와 그 자식의 커밋 메모리 합, `runner/src/job.rs`). 넘으면 할당이 실패하고 Job이 완료 포트로 알린다. 러너는 그때 Job을 끝내고(종료 코드 8) `exit.json`에 `memory_limit_mb`를 남긴다. 데몬은 이것을 `crash`로 판정하므로 `auto_restart`면 다시 켠다. Java 서버면 상한을 `-Xmx`보다 1~2GB 크게 잡는다(힙 밖 메모리). Windows만 적용하고, 다른 OS나 러너 없이 띄운 서버는 로그에 한 줄 남기고 제한 없이 돈다. 원격(디스코드·챗봇) 설정 변경으로는 바꿀 수 없다.
 - `Supervisor::monitor()` stub은 지워졌다.
 - `process_name`은 Windows 값(`java.exe`)이고 Linux용 override가 없다. 이름 비교는 부분 문자열(`"java".contains("java.exe")`는 거짓)이라 **Linux에서 minecraft와 zomboid의 auto-detect는 매치에 실패한다** (`D:src/process_monitor.rs:125-130`).

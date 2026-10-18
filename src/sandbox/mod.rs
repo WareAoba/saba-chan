@@ -305,6 +305,7 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     if let Err(code) = check_launch(&program, &roots) {
         return Err(Blocked { code, file: Some(program), detail: None });
     }
+    tracing::info!("[Sandbox] checking launch of unverified module program '{}'", program);
     // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
     let mut files: Vec<PathBuf> = Some(PathBuf::from(&program)).filter(|p| p.is_absolute()).into_iter().collect();
     match argument_files(args, cwd) {
@@ -453,10 +454,11 @@ fn installed_runtimes(roots: &[PathBuf]) -> Vec<PathBuf> {
     found
 }
 
-/// JDK·JRE의 `release` 파일에 적힌 버전 (`JAVA_VERSION="21.0.5"`)
-fn release_version(home: &Path) -> Option<String> {
+/// JDK·JRE의 `release` 파일에 적힌 값 (`JAVA_VERSION="21.0.5"`, `OS_ARCH="amd64"`)
+fn release_value(home: &Path, key: &str) -> Option<String> {
     let text = std::fs::read_to_string(home.join("release")).ok()?;
-    text.lines().find_map(|l| l.strip_prefix("JAVA_VERSION=")).map(|v| v.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty())
+    let prefix = format!("{key}=");
+    text.lines().find_map(|l| l.strip_prefix(prefix.as_str())).map(|v| v.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty())
 }
 
 /// 주 버전: `1.8.0_381` → 8, `21.0.5` → 21
@@ -583,6 +585,8 @@ pub struct JavaRuntime {
     pub home: PathBuf,
     pub version: String,
     pub major: u32,
+    /// `release`의 `OS_ARCH` (`amd64`, `x86`, `aarch64` …). 적혀 있지 않으면 빈 문자열
+    pub arch: String,
 }
 
 /// 데몬 환경(`JAVA_HOME`, PATH)과 알려진 설치 위치의 Java 런타임. 순서는 `JAVA_HOME`, PATH, 설치 위치다
@@ -594,10 +598,11 @@ fn java_runtimes_in(java_home: Option<&OsStr>, path: Option<&OsStr>, roots: &[Pa
     runtime_homes_in(None, java_home, path, roots)
         .into_iter()
         .filter_map(|home| {
-            let version = release_version(&home)?;
+            let version = release_value(&home, "JAVA_VERSION")?;
             let major = java_major(&version)?;
+            let arch = release_value(&home, "OS_ARCH").unwrap_or_default();
             let java = ["java.exe", "java"].into_iter().map(|f| home.join("bin").join(f)).find(|p| p.is_file())?;
-            Some(JavaRuntime { java, home, version, major })
+            Some(JavaRuntime { java, home, version, major, arch })
         })
         .collect()
 }
@@ -898,7 +903,8 @@ mod tests {
         let jdk = |dir: &Path, version: &str| {
             std::fs::create_dir_all(dir.join("bin")).unwrap();
             std::fs::write(dir.join("bin").join("java"), b"x").unwrap();
-            std::fs::write(dir.join("release"), format!("IMPLEMENTOR=\"x\"\nJAVA_VERSION=\"{version}\"\n")).unwrap();
+            let arch = if version.starts_with("1.8") { "x86" } else { "amd64" };
+            std::fs::write(dir.join("release"), format!("IMPLEMENTOR=\"x\"\nJAVA_VERSION=\"{version}\"\nOS_ARCH=\"{arch}\"\n")).unwrap();
             std::fs::canonicalize(dir).unwrap()
         };
         // PATH 앞쪽의 바로가기(shim): `bin`·`release`가 없는 폴더의 java
@@ -917,9 +923,9 @@ mod tests {
         assert_eq!(homes[0], on_path, "PATH 순서가 먼저");
         assert!(homes.contains(&installed) && homes.contains(&old));
         let runtimes = java_runtimes_in(None, Some(&path), &roots);
-        let majors: Vec<(u32, &str)> = runtimes.iter().map(|r| (r.major, r.version.as_str())).collect();
-        assert_eq!(majors[0], (17, "17.0.9"));
-        assert!(majors.contains(&(21, "21.0.5")) && majors.contains(&(8, "1.8.0_381")));
+        let majors: Vec<(u32, &str, &str)> = runtimes.iter().map(|r| (r.major, r.version.as_str(), r.arch.as_str())).collect();
+        assert_eq!(majors[0], (17, "17.0.9", "amd64"));
+        assert!(majors.contains(&(21, "21.0.5", "amd64")) && majors.contains(&(8, "1.8.0_381", "x86")));
         assert!(runtimes.iter().all(|r| r.java.starts_with(&r.home)));
     }
 
