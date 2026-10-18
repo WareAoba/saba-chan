@@ -6,6 +6,7 @@
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -128,6 +129,12 @@ def test_checksum_mismatch_is_refused(mdaemon, mirror, game_ports):
     assert "mismatch" in json.dumps(progress).lower() or "sha1" in json.dumps(progress).lower(), progress
     inst = mdaemon.instance(iid)
     assert not (inst.get("executable_path") or "").endswith("server.jar") or not __import__("os").path.exists(inst["executable_path"]), "틀린 jar가 남음"
+    # 반쯤 받은 파일이 서버 폴더에 남지 않는다 (인스턴스 기록은 남아 사용자가 다시 시도하거나 지울 수 있다)
+    leftovers = [p.name for p in Path(inst["working_dir"]).rglob("*") if p.is_file()] if Path(inst["working_dir"]).exists() else []
+    assert leftovers == [], f"설치 실패 뒤 남은 파일: {leftovers}"
+    # 설치가 안 된 서버를 켜면 서버 오류(5xx)가 아니라 이유가 있는 거절
+    r = mdaemon.api.post(f"/api/instance/{iid}/start")
+    assert r.status_code == 409 and r.json().get("issue_code") == "NO_SERVER_JAR", f"{r.status_code} {r.text}"
 
 
 def test_mojang_unreachable_gives_clear_error(mdaemon, mirror, game_ports):
