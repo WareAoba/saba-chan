@@ -369,12 +369,14 @@ pub async fn poll_pairing_status(
         Err(r) => return r,
     };
 
-    let mut url = format!("{}/api/pair/{}/status", base, encode_path_segment(&code));
+    let url = format!("{}/api/pair/{}/status", base, encode_path_segment(&code));
+    // relay는 poll secret을 헤더로 받는다 (쿼리에 두면 접근 로그에도 남는다)
+    let mut request = client.get(&url);
     if let Some(ref secret) = params.secret {
-        url = format!("{}?secret={}", url, encode_path_segment(secret));
+        request = request.header("x-poll-secret", secret);
     }
 
-    let (code_status, data) = match send(client.get(&url)).await {
+    let (code_status, data) = match send(request).await {
         Ok((code, Some(data))) => (code, data),
         Ok((code, None)) => return invalid_response(code),
         Err(r) => return r,
