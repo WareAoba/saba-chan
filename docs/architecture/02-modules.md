@@ -72,8 +72,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[protocols]` (`ProtocolsSection` `:524-534`)
 | 키 | 타입 | 사용처 |
 |---|---|---|
-| `supported` | Vec<String> | `stdin`/`rest` (`rcon`도 문법상 받지만 데몬이 RCON을 쓰지 않는다). 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:224-235`), 인스턴스 생성 시 rest_port 기본값 결정(`instance.rs:97-101`), 명령·정지를 stdin으로 보낼지 판단(`mod.rs:762-764, 1493-1508`) |
-| `default` | String | GUI로 전달만 함 (`ProtocolsInfo`) |
+| `supported` | Vec<String> | `stdin`/`rest` (`rcon`도 문법상 받지만 데몬이 RCON을 쓰지 않는다). 이 셋 밖의 값은 로드 때 거부한다(`PROTOCOLS`, `value_problems`). 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:224-235`), 인스턴스 생성 시 rest_port 기본값 결정(`instance.rs:97-101`), 명령·정지를 stdin으로 보낼지 판단(`mod.rs:762-764, 1493-1508`) |
+| `default` | String | GUI로 전달만 함 (`ProtocolsInfo`). `supported`와 같은 값만 받는다 |
 | `interaction_mode` | String | `console` 또는 `commands`. GUI가 콘솔 버튼 같은 UI를 고르는 데 쓴다 (`saba-chan-gui/src/components/ServerCard.js:417-421`, `App.js:494-500`). 데몬은 해석하지 않는다. 데몬은 모든 모듈을 기본 managed로 시작하고(`mod.rs:1479-1489`), 그 판정을 `GET /api/servers`의 `ServerInfo.managed`로 알려 준다(`D:src/ipc/mod.rs:208-210`, `server.rs:81`). 그런데 GUI는 이 값을 쓰지 않고 아직 `managed_start`가 없으면 `console`만 managed로 본다(`ServerCard.js:418-421`, `App.js:494-500`). 그래서 palworld 같은 `commands` 모듈은 데몬은 managed로, GUI(콘솔 버튼·종료 확인)는 non-managed로 다룬다 |
 
 > **RCON 정책**: 보안상 saba-chan은 RCON을 쓰지 않는다. 데몬에는 RCON 클라이언트가 없고, 게임 명령은 모두 서버 콘솔(stdin)로 간다. `/api/instance/:id/rcon`은 이름만 남은 호환 경로로, 한 줄을 stdin에 쓰고 콘솔 출력을 약 1.5초 모아 `data.response`로 돌려준다(`D:src/ipc/handlers/command.rs:263-307`). 콘솔이 없는 서버(관리하지 않는 모드, runner 없이 붙은 프로세스)는 409 `no_command_path`를 받으므로 saba-chan에서 명령을 보낼 수 없다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목, RCON 폴백(stop·status·command), `get_credentials`는 지워졌고 `supported = ["stdin"]`이다. palworld도 RCON 명령 경로(RCON 클라이언트, `protocol_mode=rcon` 분기, `rcon_enabled`·`rcon_port` 키 매핑, `rcon_password` 반환)를 지웠다. 명령은 늘 데몬 REST 경로로 가고, `configure()`는 저장할 때마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:933, 1224-`). 콘솔 명령은 `method = "console"` + `console_template`이다(예전 이름 `rcon`·`rcon_template`도 별칭으로 읽힌다).
@@ -215,6 +215,27 @@ url = "https://aka.ms/MinecraftEULA"
 - 선언된 약관을 다 동의하지 않으면 켜기 전 점검이 409 `agreement_required`(`agreements:[{id, label, url, accepted, accepted_at}]`)로 막는다(01 문서 시작 라우트). 파일 내용(예: eula.txt)으로 동의를 추정하지 않는다.
 - 설치·재설치·업데이트 때 모듈은 `accepted_agreements:[id]`를 받고, 그 안에 자기 id가 있을 때만 자기 파일에 동의를 쓴다. 동의를 받으면 데몬이 lifecycle `accept_agreements`를 부른다(§2.3).
 
+#### `[permissions]` (`ModulePermissions`)
+모듈 Python 코드가 쓰는 위험한 능력의 선언(M12). 모두 bool, 기본 false. 선언은 실행을 막거나 풀지 않는다: 격리(§2.1)는 신뢰 표시로만 정해진다. 검사기가 코드에서 찾은 능력 중 선언하지 않은 것을 알린다.
+
+| 키 | 뜻 |
+|---|---|
+| `network` | 네트워크 접속(socket, urllib, requests 등). 데몬 API 호출(`daemon_rcon`)은 들지 않는다 |
+| `spawn_process` | 다른 프로그램 실행·프로세스 신호(subprocess, os.system, os.kill 등) |
+| `native_code` | 네이티브 코드(ctypes, cffi, winreg) |
+| `dynamic_code` | 실행 중에 만든 코드 실행(eval, exec, compile, 동적 `__import__`, pickle, importlib) |
+| `env_secrets` | 환경 변수 전체 읽기(`dict(os.environ)` 등) |
+| `fs_outside_instance` | 서버 작업 폴더 밖 파일 쓰기(정적 검사로 찾지 못한다: 선언만) |
+
+- 검사: `GET /api/module/:name/audit` → `{success, declared, findings, undeclared}`(실패 500 `audit_failed`), CLI 도구 `saba-core module audit <모듈 폴더>...`. 검사기는 데몬이 modules 폴더에 쓰는 `saba_audit.py`(`module_audit::SCRIPT`)다. 모르는 권한 이름은 `declares`가 None을 돌려 선언 없음으로 세지 않는다.
+- 새 권한은 `ModulePermissions`, `PERMISSIONS`, `saba_audit.py` 표에 한 줄씩 더한다.
+
+```toml
+[permissions]
+network = true
+spawn_process = true
+```
+
 #### `[status]` (`StatusSection`)
 켜진 서버의 상태를 더 알려 주는 함수(Q-5). 지금 키는 `players` 하나다: 접속자 수를 돌려주는 lifecycle 함수 이름(`[[queries]]`의 `function`과 같은 검사: Python 식별자, 상태를 바꾸는 함수가 아님. 어기면 스키마 v1은 로드 실패, 스키마 이전 모듈은 경고만 남기고 부르지 않는다). 데몬은 켜진(트래커에 PID가 있는) 서버마다 1분에 한 번, 10초 제한으로 부르고 마지막 값을 기억한다(`supervisor/players.rs`). 실패하거나 서버가 꺼지면 값을 지운다. 값은 `GET /api/servers`의 `players`와 relay 하트비트 `servers[].players`(05 §4)로 나간다. 함수 계약은 §2.3.
 
@@ -249,7 +270,7 @@ players = "player_count"
   - 파일을 읽지 못하거나 한 파일의 검사가 실패하면(검사 스레드가 죽은 경우 포함) 실행하지 않고 `action_required:"scan_failed"`(`file`, `detail`)를 돌려준다. 나머지 파일 검사는 계속한다.
   - 검사를 통과하면 Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만. 루프백 예외를 주지 않으므로 같은 PC의 데몬 API·로컬 프록시에는 닿지 못한다) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
-    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`, 그리고 데몬이 아는 Java 런타임 설치 폴더(`sandbox::runtime_homes`: 데몬 환경의 `JAVA_HOME`, 데몬 PATH의 `java`. 링크를 따라간 실제 실행 파일이 `<폴더>/bin/java(w)`이고 그 폴더에 `release` 파일이 있을 때만. 모듈은 `java -version`으로 런타임을 확인하는데 AppContainer는 Program Files 밖 폴더를 읽지 못한다). 이 런타임 폴더는 권한을 주지 못하면(관리자가 설치한 폴더 등) 경고만 하고 빼고 띄운다. 사용자가 정한 `java_path`(인스턴스 `user_settings`에 있는 것, 아래)는 설정을 저장할 때 같은 판정으로 그 구성요소 프로필에 읽기를 준다(`sandbox::open_user_runtime`. 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없어 쓰지 않는다). `java_path`는 파일 시스템에 묻기 전에 로컬 드라이브의 절대 경로이고 `..`가 없는지 본다(UNC·장치 경로는 거부, `\\?\C:\` 같은 로컬 드라이브 경로는 받는다, `sandbox::plain_local_path`). 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 표시를 바꾸려면 그 폴더의 WRITE_OWNER가 있어야 하는데, 사용자가 `C:\` 바로 아래 만든 폴더(`C:\Games` 등)는 상속받은 "수정" 권한뿐이라 소유자에게도 없다. 이때는 소유자가 데몬 사용자일 때만, 소유자가 원래 가진 DACL 고치기 권한으로 그 폴더에 OWNER RIGHTS(`S-1-3-4`) `READ_CONTROL`·`WRITE_DAC`·`WRITE_OWNER` ACE를 잠깐 더해 핸들을 열고, 표시를 붙이기 전에 원래 DACL로 되돌린다(ACE는 남지 않는다). 그래서 사용자가 서버 폴더로 고른 `C:\` 바로 아래 폴더도 그 구성요소가 실제로 쓸 수 있게 된다(쓰기를 준 다른 폴더와 같다). 표시를 지원하지 않는 볼륨이라 붙이지 못하면 경고만 남기고 계속한다(그 폴더 쓰기가 안 될 수 있다). 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다). 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 재분석 지점이면 실행을 멈춘다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
+    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`, 그리고 데몬이 아는 Java 런타임 설치 폴더(`sandbox::runtime_homes`: 데몬 환경의 `JAVA_HOME`, 데몬 PATH의 `java`. 링크를 따라간 실제 실행 파일이 `<폴더>/bin/java(w)`이고 그 폴더에 `release` 파일이 있을 때만. 모듈은 `java -version`으로 런타임을 확인하는데 AppContainer는 Program Files 밖 폴더를 읽지 못한다). 이 런타임 폴더는 권한을 주지 못하면(관리자가 설치한 폴더 등) 경고만 하고 빼고 띄운다. 사용자가 정한 `java_path`(인스턴스 `user_settings`에 있는 것, 아래)는 설정을 저장할 때 같은 판정으로 그 구성요소 프로필에 읽기를 준다(`sandbox::open_user_runtime`. 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없어 쓰지 않는다). `java_path`는 파일 시스템에 묻기 전에 로컬 드라이브의 절대 경로이고 `..`가 없는지 본다(UNC·장치 경로는 거부, `\\?\C:\` 같은 로컬 드라이브 경로는 받는다, `sandbox::plain_local_path`). 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 표시를 바꾸려면 그 폴더의 WRITE_OWNER가 있어야 하는데, 사용자가 `C:\` 바로 아래 만든 폴더(`C:\Games` 등)는 상속받은 "수정" 권한뿐이라 소유자에게도 없다. 이때는 소유자가 데몬 사용자일 때만, 소유자가 원래 가진 DACL 고치기 권한으로 그 폴더에 OWNER RIGHTS(`S-1-3-4`) `READ_CONTROL`·`WRITE_DAC`·`WRITE_OWNER` ACE를 잠깐 더해 핸들을 열고, 표시를 붙이기 전에 원래 DACL로 되돌린다(ACE는 남지 않는다). 그래서 사용자가 서버 폴더로 고른 `C:\` 바로 아래 폴더도 그 구성요소가 실제로 쓸 수 있게 된다(쓰기를 준 다른 폴더와 같다). 표시를 지원하지 않는 볼륨이라 붙이지 못하면 경고만 남기고 계속한다(그 폴더 쓰기가 안 될 수 있다). 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다). 런타임 폴더 읽기 권한(데몬 런타임, 사용자 `java_path`) 중 실제로 ACE를 더한 것(이미 읽을 수 있던 폴더는 빼고)은 `<data_dir>/sandbox-grants.json`(프로필 → 폴더)에 기록하고, 데몬이 시작할 때 지금 데몬이 아는 런타임도 아니고 그 프로필 모듈의 인스턴스가 쓰는 사용자 `java_path`도 아닌 것은 거둔다(`sandbox::reconcile_runtimes`, 그 SID의 명시 ACE를 뺀다). 폴더가 남아 있는데 거두지 못한 것은 기록에 두고 다음 시작 때 다시 시도한다. 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 재분석 지점이면 실행을 멈춘다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
     - 환경: `SABA_TOKEN_PATH`를 뺀다. `PYTHONPYCACHEPREFIX`는 `pycache-sandbox/<꼬리표>`, `TEMP`·`TMP`는 `sandbox-temp/<꼬리표>`.
     - 시간 초과면 Job째 끝낸다.
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.
@@ -285,7 +306,7 @@ players = "player_count"
 - `get_launch_command` 사용자 조치 필요: `action_required: "<code>"`를 넣으면 데몬이 결과를 그대로 GUI에 넘긴다 (`mod.rs:602-606, 1334-1337`). minecraft는 `server_jar_not_found` + `options:["update_path","install_new"]`를 쓴다.
 - 익스텐션 누락: `error_code: "extension_required"`, `missing_extensions[]`.
 - `status`: `status` 문자열과 `pid`를 데몬이 읽는다. 나머지 키는 버린다 (`mod.rs:986-1001`).
-- `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance.rs:415-433`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안일 때만 받는다(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
+- `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance.rs:415-433`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
 - `list_versions`: 데몬은 `latest.release` 또는 `latest_release`만 읽는다 (`instance.rs:343-358`).
 - `get_installed_version`: `version`.
 - `get_credentials`: `success`, `rest_username`, `rest_password`. 데몬은 REST 자격증명만 쓴다 (`command.rs:450-452, 531-558`). 지금은 palworld만 구현한다. minecraft·zomboid는 RCON 값만 돌려주던 이 함수를 지웠다.

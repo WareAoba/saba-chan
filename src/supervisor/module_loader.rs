@@ -557,6 +557,8 @@ pub const CORE_COMPONENT: &str = "saba-core";
 /// 이 데몬의 버전 (모듈 호환 검사 기준)
 pub const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
+/// `[protocols] supported`·`default`가 받는 값
+pub const PROTOCOLS: [&str; 3] = ["rcon", "rest", "stdin"];
 
 /// JSON 스키마에서도 로더와 같은 값만 받게 한다 (적합성 검사가 데몬과 어긋나지 않게)
 fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
@@ -1279,6 +1281,13 @@ impl ModuleToml {
                         risk,
                         COMMAND_RISKS.join(", ")
                     ));
+                }
+            }
+        }
+        if let Some(p) = &self.protocols {
+            for value in p.supported.iter().flatten().chain(&p.default) {
+                if !PROTOCOLS.contains(&value.as_str()) {
+                    problems.push(format!("protocols: '{}' must be one of {}", value, PROTOCOLS.join(", ")));
                 }
             }
         }
@@ -2108,6 +2117,11 @@ entry = "lifecycle.py"
         assert_eq!(meta.commands.unwrap().fields[0].risk.as_deref(), Some("danger"));
         let escape = V1.replace("lifecycle.py", "../evil.py");
         assert!(parse_module_toml(&escape).unwrap_err().to_string().contains("module.entry"));
+        for bad in ["supported = [\"stdin\", \"x</b>\"]", "supported = [\"stdin\"]\ndefault = \"telnet\""] {
+            let err = parse_module_toml(&format!("{V1}\n[protocols]\n{bad}\n")).unwrap_err().to_string();
+            assert!(err.contains("protocols"), "{err}");
+        }
+        assert!(parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"rest\", \"stdin\"]\ndefault = \"rest\"\n")).is_ok());
     }
 
     #[test]

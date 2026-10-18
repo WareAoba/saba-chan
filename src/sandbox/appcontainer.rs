@@ -10,6 +10,7 @@
 //! 준비가 하나라도 실패하면 격리 없이 돌리지 않고 `sandbox_unavailable`을 돌려준다
 //! (사용자가 그 구성요소를 격리 없이 돌리기로 한 경우만 예외, `super::consent`).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -156,12 +157,55 @@ pub fn merge_env(base: Vec<(OsString, OsString)>, changes: Vec<(OsString, Option
     env
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+/// 지금 쓰지 않는 런타임 읽기 권한: 기록된 것 중 `daemon`(모든 프로필이 쓰는 데몬 런타임)과 그 프로필의 `keep`에 없는 것
+pub fn stale_runtimes(
+    record: &BTreeMap<String, BTreeSet<PathBuf>>,
+    daemon: &BTreeSet<PathBuf>,
+    keep: &BTreeMap<String, BTreeSet<PathBuf>>,
+) -> BTreeMap<String, Vec<PathBuf>> {
+    let none = BTreeSet::new();
+    record
+        .iter()
+        .map(|(profile, paths)| {
+            let kept = keep.get(profile).unwrap_or(&none);
+            (profile.clone(), paths.iter().filter(|p| !daemon.contains(*p) && !kept.contains(*p)).cloned().collect::<Vec<_>>())
+        })
+        .filter(|(_, stale)| !stale.is_empty())
+        .collect()
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+/// 런타임 읽기 권한 기록 (`<data_dir>/sandbox-grants.json`: 프로필 → 폴더)
+fn runtime_record_path() -> PathBuf {
+    saba_chan_updater_lib::constants::resolve_data_dir().join("sandbox-grants.json")
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn read_runtime_record(path: &Path) -> BTreeMap<String, BTreeSet<PathBuf>> {
+    std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn write_runtime_record(path: &Path, record: &BTreeMap<String, BTreeSet<PathBuf>>) {
+    let tmp = path.with_extension("json.tmp");
+    let saved = serde_json::to_vec_pretty(record)
+        .map_err(std::io::Error::other)
+        .and_then(|bytes| std::fs::write(&tmp, bytes))
+        .and_then(|()| std::fs::rename(&tmp, path));
+    if let Err(e) = saved {
+        tracing::warn!("[Sandbox] could not save {}: {}", path.display(), e);
+    }
+}
+
 #[cfg(windows)]
-pub use imp::{grant, spawn, Contained};
+pub use imp::{grant, revoke_stale_runtimes, spawn, Contained};
 
 #[cfg(windows)]
 mod imp {
     use super::{Access, Grants};
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::PathBuf;
     use std::ffi::{OsStr, OsString};
     use winapi::ctypes::c_void;
     use std::os::windows::ffi::{OsStrExt, OsStringExt};
@@ -170,7 +214,7 @@ mod imp {
     use std::ptr::null_mut;
     use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
     use winapi::um::accctrl::{
-        EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_INHERITANCE, SE_FILE_OBJECT, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TRUSTEE_IS_SID,
+        EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_INHERITANCE, REVOKE_ACCESS, SE_FILE_OBJECT, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TRUSTEE_IS_SID,
         TRUSTEE_IS_WELL_KNOWN_GROUP,
     };
     use winapi::um::aclapi::{GetSecurityInfo, SetEntriesInAclW, SetSecurityInfo};
@@ -361,7 +405,8 @@ mod imp {
         }
     }
 
-    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<(), String> {
+    /// 이미 읽을 수 있으면(이 SID나 ALL APPLICATION PACKAGES) 그대로 두고 false, ACE를 더했으면 true
+    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<bool, String> {
         use std::os::windows::io::AsRawHandle;
         let (mask, inherit) = rights(access);
         unsafe {
@@ -375,10 +420,43 @@ mod imp {
             let already = already_granted(dacl, &[sid, everyone], mask, inherit);
             LocalFree(sd);
             if already {
-                return Ok(());
+                return Ok(false);
             }
         }
-        allow(path, sid, mask, inherit)
+        allow(path, sid, mask, inherit).map(|()| true)
+    }
+
+    /// 폴더 DACL에서 `sid`의 ACE를 모두 뺀다 (하위로 상속된 것도 함께 빠진다)
+    fn remove_ace(path: &Path, sid: PSID) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
+        unsafe {
+            let dir = open_checked(path, WRITE_DAC)?;
+            let h = dir.as_raw_handle() as HANDLE;
+            let mut dacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetSecurityInfo(h, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), &mut dacl, null_mut(), &mut sd);
+            if rc != 0 {
+                return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea.grfAccessMode = REVOKE_ACCESS;
+            ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+            ea.Trustee.ptstrName = sid as *mut u16;
+            let mut new_dacl: PACL = null_mut();
+            let rc = SetEntriesInAclW(1, &mut ea, dacl, &mut new_dacl);
+            if rc != 0 {
+                LocalFree(sd);
+                return Err(format!("build ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            let rc = SetSecurityInfo(h, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), new_dacl, null_mut());
+            LocalFree(new_dacl as *mut c_void);
+            LocalFree(sd);
+            if rc != 0 {
+                return Err(format!("write ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+        }
+        Ok(())
     }
 
     /// 폴더 DACL에 `sid` 허용 ACE를 더한다
@@ -581,20 +659,31 @@ mod imp {
         apply(profile, grants).map(|_| ())
     }
 
-    fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
-        // ACL 고치기는 읽고-바꾸고-쓰기라, 두 실행이 같은 폴더(Python 설치 등)에 동시에 주면 한쪽 ACE가 사라진다.
-        // 프로필이 구성요소마다 달라 겹칠 수 있으므로 데몬 안에서 한 번에 하나씩
+    /// ACL 고치기는 읽고-바꾸고-쓰기라, 두 실행이 같은 폴더(Python 설치 등)에 동시에 주면 한쪽 ACE가 사라진다.
+    /// 프로필이 구성요소마다 달라 겹칠 수 있으므로 데몬 안에서 한 번에 하나씩 (런타임 기록도 이 잠금 안에서)
+    fn acl_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
+        let _guard = acl_lock();
         let sid = container_sid(profile)?;
         let everyone = all_app_packages()?;
+        let mut runtimes = Vec::new();
         for (path, access) in &grants.entries {
-            if let Err(e) = grant_one(path, sid, everyone, *access) {
-                if grants.optional.contains(&(path.clone(), *access)) {
+            let optional = grants.optional.contains(&(path.clone(), *access));
+            let added = match grant_one(path, sid, everyone, *access) {
+                Ok(added) => added,
+                Err(e) if optional => {
                     tracing::warn!("[Sandbox] skipping {}: {}", path.display(), e);
                     continue;
                 }
-                return Err(e);
+                Err(e) => return Err(e),
+            };
+            // 없어도 되는 읽기 권한(런타임 폴더)은 실제로 더한 것만 기록해 두었다가 쓰지 않게 되면 거둔다
+            if added && optional && *access == Access::Read {
+                runtimes.push(path.clone());
             }
             // 표시를 지원하지 않는 볼륨(FAT·일부 네트워크 드라이브 등)도 있다: 실행은 막지 않고, 그 폴더 쓰기만 안 될 수 있다
             if *access == Access::Write {
@@ -603,7 +692,54 @@ mod imp {
                 }
             }
         }
+        if !runtimes.is_empty() {
+            let file = super::runtime_record_path();
+            let mut record = super::read_runtime_record(&file);
+            let known = record.entry(profile.to_string()).or_default();
+            let before = known.len();
+            known.extend(runtimes);
+            if known.len() != before {
+                super::write_runtime_record(&file, &record);
+            }
+        }
         Ok(sid)
+    }
+
+    /// 기록된 런타임 읽기 권한 중 `daemon`·`keep`에 없는 것을 거둔다 (`super::stale_runtimes`).
+    /// 폴더가 남아 있는데 거두지 못한 것은 기록에 두고 다음 시작 때 다시 시도한다
+    pub fn revoke_stale_runtimes(daemon: &BTreeSet<PathBuf>, keep: &BTreeMap<String, BTreeSet<PathBuf>>) {
+        let _guard = acl_lock();
+        let file = super::runtime_record_path();
+        let mut record = super::read_runtime_record(&file);
+        let stale = super::stale_runtimes(&record, daemon, keep);
+        if stale.is_empty() {
+            return;
+        }
+        for (profile, paths) in &stale {
+            let sid = match container_sid(profile) {
+                Ok(sid) => sid,
+                Err(e) => {
+                    tracing::warn!("[Sandbox] could not revoke runtimes of {}: {}", profile, e);
+                    continue;
+                }
+            };
+            for path in paths {
+                // 거뒀거나 폴더가 없어졌으면(ACE도 함께 사라짐) 기록에서 빼고, 아니면 다음 시작 때 다시 시도한다
+                let done = match remove_ace(path, sid) {
+                    Ok(()) => true,
+                    Err(_) if !path.exists() => true,
+                    Err(e) => {
+                        tracing::warn!("[Sandbox] could not revoke {} from {}: {}", path.display(), profile, e);
+                        false
+                    }
+                };
+                if let (true, Some(known)) = (done, record.get_mut(profile)) {
+                    known.remove(path);
+                }
+            }
+        }
+        record.retain(|_, paths| !paths.is_empty());
+        super::write_runtime_record(&file, &record);
     }
 
     fn pipe() -> Result<(OwnedHandle, OwnedHandle), String> {
@@ -805,6 +941,17 @@ pub use imp::wait;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtimes_no_one_uses_any_more_are_the_stale_ones() {
+        let set = |ps: &[&str]| ps.iter().map(PathBuf::from).collect::<BTreeSet<_>>();
+        let record = BTreeMap::from([("a".to_string(), set(&["/jdk17", "/jdk21", "/mine"])), ("b".to_string(), set(&["/jdk21"]))]);
+        let daemon = set(&["/jdk21"]);
+        let keep = BTreeMap::from([("a".to_string(), set(&["/mine"]))]);
+        assert_eq!(stale_runtimes(&record, &daemon, &keep), BTreeMap::from([("a".to_string(), vec![PathBuf::from("/jdk17")])]));
+        // 사용자가 정한 런타임을 더 쓰지 않으면 그것도 거둔다
+        assert_eq!(stale_runtimes(&record, &daemon, &BTreeMap::new())["a"], vec![PathBuf::from("/jdk17"), PathBuf::from("/mine")]);
+    }
 
     fn line(args: &[&str]) -> String {
         let mut out = Vec::new();

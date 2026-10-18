@@ -60,6 +60,7 @@
 | `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. locale은 한 단계 경로 이름이어야 한다(`ext/:1457-1469`). |
 | `priority` | `i32` | `100` | 같은 hook·명령을 여러 익스텐션이 가질 때의 순서. 작을수록 먼저, 같으면 id 순(`ext/:265-267,1116-1127`). |
 | `commands` | `Vec<ExtensionCommand>` | `[]` | 인스턴스 명령 카탈로그에 더하는 명령(`ext/:273-293`). `GET /api/instance/:id/commands`에 실리고(모듈 명령이 우선, `handlers/command.rs:200-204`), `POST /api/instance/:id/command`가 `plan_command`로 실행한다(`handlers/command.rs:68-80`, `ext/:1143-1176`). |
+| `permissions` | `ModulePermissions` | 모두 false | 코드가 쓰는 위험한 능력 선언. 모듈 `[permissions]`와 같은 표다(02 문서 §1). 실행을 막거나 풀지 않고, `GET /api/extensions/:id/audit`(모듈 audit과 같은 모양)와 CLI 도구 `saba-core extension audit <폴더>...`가 코드와 대조해 선언하지 않은 능력을 알린다. |
 
 ### 1.2 하위 구조체
 
