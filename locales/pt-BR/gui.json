@@ -300,13 +300,13 @@
     "advanced_group": "Advanced Settings",
     "danger_zone": "Zona de Perigo",
     "reset_server_label": "Resetar Servidor",
-    "reset_server_desc": "Excluir todos os mundos, configurações, logs e outros dados. Apenas o JAR do servidor e eula.txt serão mantidos. Isso não pode ser desfeito.",
+    "reset_server_desc": "Apaga os dados deste servidor e o retorna ao estado inicial. O que é apagado depende do jogo. Não é possível desfazer.",
     "reset_settings_label": "Redefinir Configurações",
     "reset_settings_desc": "Redefinir todas as configurações do servidor para os padrões de fábrica. Os dados do mundo e salvamentos serão preservados. Isso não pode ser desfeito.",
     "reset_button": "Resetar",
     "resetting": "Resetando...",
     "reset_confirm_title": "Resetar Servidor",
-    "reset_confirm": "Resetar completamente o servidor '{{name}}'?\n\nTodos os mundos, configurações, logs e outros dados serão excluídos.\nApenas o JAR do servidor e eula.txt serão mantidos.\n\nEsta ação não pode ser desfeita.",
+    "reset_confirm": "Redefinir o servidor '{{name}}'?\n\nOs dados do servidor serão apagados e ele voltará ao estado inicial. Não é possível desfazer.",
     "reset_success": "O servidor '{{name}}' foi resetado ({{count}} itens excluídos)",
     "reset_failed": "Falha ao resetar: {{error}}",
     "reset_error": "Erro ao resetar: {{error}}",
@@ -443,7 +443,9 @@
     "generic_error": "Ocorreu um erro inesperado.",
     "port_conflict": "Conflito de porta",
     "port_conflict_detail": "A porta {{port}} já está em uso pela instância '{{name}}'",
-    "port_conflict_force_stop_toast": "🚫 {{stopped}} foi parado forçosamente — a porta {{port}} conflita com {{existing}}"
+    "port_conflict_force_stop_toast": "🚫 {{stopped}} foi parado forçosamente — a porta {{port}} conflita com {{existing}}",
+    "unexpected_crash": "Algo deu errado",
+    "retry": "Tentar de novo"
   },
   "background_modal": {
     "title": "Serviços em Background",
@@ -689,7 +691,13 @@
     "preflight_failed": "A preparação do Python falhou. Será tentada de novo na próxima ação de servidor. ({{error}})",
     "module_needs": "Requisitos não atendidos: {{deps}}",
     "tab_maintenance": "Backups",
-    "tab_audit": "Registro"
+    "tab_audit": "Registro",
+    "daemon_down_title": "Sem conexão com o daemon principal",
+    "daemon_down_body": "O daemon que inicia e gerencia seus servidores não está em execução. Reinicie-o para carregar seus servidores de novo.",
+    "daemon_down_stale": "Sem conexão com o daemon. Mostrando o último estado conhecido.",
+    "daemon_restart": "Reiniciar daemon",
+    "daemon_restarting": "Reiniciando…",
+    "daemon_restart_failed": "Não foi possível reiniciar o daemon. {{error}}"
   },
   "discord": {
     "nav_connection": "Conexão",
@@ -1205,5 +1213,17 @@
     "hint": "Deixe vazio para não limitar. Em servidores Java, defina 1–2 GB acima do -Xmx. Só vale no Windows.",
     "placeholder": "Sem limite",
     "restart_note": "Vale após reiniciar."
+  },
+  "loading": {
+    "step_init": "Inicializando…",
+    "step_ui": "Interface carregada",
+    "step_modules": "Carregando módulos…",
+    "step_instances": "Carregando servidores…",
+    "step_ready": "Verificando servidores…",
+    "step_done": "Pronto",
+    "daemon_failed": "Não foi possível iniciar o daemon principal.",
+    "failed_hint": "Se abrir mesmo assim, só a interface abre. Reinicie o daemon para gerenciar servidores.",
+    "retry": "Tentar de novo",
+    "continue": "Abrir mesmo assim"
   }
 }
