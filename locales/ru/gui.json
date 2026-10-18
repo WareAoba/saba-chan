@@ -637,6 +637,7 @@
     "info_version": "Версия",
     "info_uptime": "Время работы",
     "info_port": "Порт",
+    "players": "Игроки",
     "info_protocol": "Протокол",
     "info_id": "ID экземпляра",
     "open_folder": "Открыть папку сервера",

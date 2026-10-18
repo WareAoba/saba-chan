@@ -7,6 +7,7 @@ import { useModalClose } from '../../hooks/useModalClose';
 import { needsConfirm } from '../../utils/commandRisk';
 import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { CliText, commandCli } from '../CliLine';
 import { useUIStore } from '../../stores/useUIStore';
 import { isNoCommandPath } from '../../utils/commandReply';
 
@@ -27,6 +28,8 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
     // 모듈 명령 + 켜진 익스텐션이 주는 명령
     const currentModule = modules.find((m) => m.name === server.module);
     const commands = useInstanceCommands(server, currentModule?.commands?.fields || []);
+
+    const cliLine = commandCli(server.name, commandInput, commands);
 
     // 입력값 기준 필터링된 힌트
     const filteredHints = commandInput.trim()
@@ -271,6 +274,7 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                             {loading ? '…' : t('console.send')}
                         </button>
                     </div>
+                    {cliLine && <CliText line={cliLine} />}
                     <div className="cmd-input-meta">
                         <span className="cmd-tab-hint">
                             Tab ↹ {t('command_modal.autocomplete', { defaultValue: 'autocomplete' })}

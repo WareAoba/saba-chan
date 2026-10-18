@@ -59,6 +59,54 @@ export function fillCli(template, { server, values = {}, extra = {} }) {
     return rest.length ? `${line} ${rest.join(' ')}` : line;
 }
 
+/**
+ * 데몬 split_quoted(src/chat/mod.rs)와 같은 규칙으로 나눈다: 공백으로 나누되, `"`로 시작한 낱말은
+ * 뒤에 공백(또는 끝)이 오는 닫는 `"`까지를 한 칸으로 (따옴표는 뗀다)
+ */
+export function splitQuoted(text) {
+    const out = [];
+    let rest = text.trimStart();
+    while (rest) {
+        const ws = rest.search(/\s/);
+        const end = ws < 0 ? rest.length : ws;
+        const word = rest.slice(0, end);
+        if (word.length > 1 && word.startsWith('"') && word.endsWith('"')) {
+            out.push(word.slice(1, -1));
+            rest = rest.slice(end).trimStart();
+            continue;
+        }
+        if (word.startsWith('"')) {
+            const body = rest.slice(1);
+            const close = [...body.matchAll(/"(?=\s|$)/g)][0];
+            if (close) {
+                out.push(body.slice(0, close.index));
+                rest = body.slice(close.index + 1).trimStart();
+                continue;
+            }
+        }
+        out.push(word);
+        rest = rest.slice(end).trimStart();
+    }
+    return out;
+}
+
+/**
+ * 명령 화면 입력 한 줄의 CLI 등가. 셸이 먼저 읽으므로 모든 칸을 따옴표로 지킨다.
+ * 아는 명령이면 `server run`: 데몬과 같은 규칙으로 나눈 칸마다 한 인자.
+ * 아니면 콘솔에 그대로 보내는 `server send`: 줄 전체를 한 인자 (CLI가 공백으로 다시 잇는다).
+ */
+export function commandCli(serverName, line, commands = []) {
+    const text = line.trim();
+    if (!text) return null;
+    const words = splitQuoted(text);
+    const name = (words[0] || '').toLowerCase();
+    const known = commands.some(
+        (c) => c.name.toLowerCase() === name || (c.aliases || []).some((a) => String(a).toLowerCase() === name),
+    );
+    const prefix = `saba-chan-cli server ${known ? 'run' : 'send'} ${arg(serverName)}`;
+    return known ? `${prefix} ${words.map(arg).join(' ')}` : `${prefix} ${arg(text)}`;
+}
+
 /** 명령 한 줄과 복사 버튼 */
 export function CliText({ line }) {
     const { t } = useTranslation('gui');

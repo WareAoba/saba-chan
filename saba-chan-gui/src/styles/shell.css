@@ -412,6 +412,22 @@
 .server-row-sub .status-chip-dot {
     display: none;
 }
+/* 좁은 목록에서는 게임 이름이 먼저 줄어들고 상태·접속자 수는 잘리지 않는다 */
+.server-row-sub > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.server-row-sub > .status-chip,
+.server-row-players {
+    flex: none;
+}
+.server-row-players {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-0-5);
+    font-variant-numeric: tabular-nums;
+}
 .server-row-sub .sep {
     opacity: 0.6;
 }

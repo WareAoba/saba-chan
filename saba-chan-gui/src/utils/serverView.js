@@ -45,6 +45,13 @@ export const STATUS_TONE = {
     missing: 'warn',
 };
 
+/** 접속자 수 글자 ("3/20", 최대를 모르면 "3"). 데몬이 모르면(`players` 없음) null — 0으로 보이지 않는다 */
+export function playersText(server) {
+    const p = server.status === 'running' ? server.players : null;
+    if (!p || !Number.isInteger(p.online)) return null;
+    return Number.isInteger(p.max) ? `${p.online}/${p.max}` : `${p.online}`;
+}
+
 /** 켜기/끄기 버튼이 지금 무엇을 해야 하는지 */
 export function primaryAction(status) {
     if (status === 'running') return 'stop';
