@@ -1,9 +1,9 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { Icon } from '../Icon';
-import { buildRings, colorSlots, IDLE_COLOR, OTHERS_COLOR, PEAK_WINDOW, peaksOf } from './systemMetrics';
+import { buildRings, colorSlots, IDLE_COLOR, nextPeaks, OTHERS_COLOR } from './systemMetrics';
 import './SystemMonitor.css';
 
 /** 펼쳤을 때와 접었을 때(요약 한 줄)의 표본 간격 */
@@ -12,11 +12,16 @@ const SUMMARY_INTERVAL_MS = 5000;
 
 export const systemMonitorAvailable = () => !!window.api?.systemMetrics;
 
+/** 앱을 켠 뒤 본 디스크 IO·네트워크 최고값 (화면을 오가도 이어진다) */
+let sessionPeaks = { diskIo: 0, network: 0 };
+export const resetSessionPeaks = () => {
+    sessionPeaks = { diskIo: 0, network: 0 };
+};
+
 /** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. */
 export function useSystemMetrics(intervalMs, sizes = true) {
-    const [state, setState] = useState({ snapshot: null, peaks: peaksOf([]) });
+    const [state, setState] = useState({ snapshot: null, peaks: sessionPeaks });
     const [error, setError] = useState(false);
-    const history = useRef([]);
 
     useEffect(() => {
         if (!systemMonitorAvailable()) return undefined;
@@ -27,9 +32,9 @@ export function useSystemMetrics(intervalMs, sizes = true) {
                 try {
                     const snap = await window.api.systemMetrics({ sizes });
                     if (!alive) return;
-                    if (snap && snap.cpu) {
-                        history.current = [...history.current, snap].slice(-PEAK_WINDOW);
-                        setState({ snapshot: snap, peaks: peaksOf(history.current) });
+                    if (snap?.cpu) {
+                        sessionPeaks = nextPeaks(sessionPeaks, snap);
+                        setState({ snapshot: snap, peaks: sessionPeaks });
                         setError(false);
                     } else {
                         setError(true);

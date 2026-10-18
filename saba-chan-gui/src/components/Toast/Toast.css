@@ -4,9 +4,9 @@
     left: 20px;
     display: flex;
     flex-direction: column-reverse;
-    gap: var(--sp-3);
+    gap: var(--sp-2);
     z-index: 10000;
-    max-width: 350px;
+    max-width: 320px;
     pointer-events: none;
     align-items: flex-start;
 }
@@ -18,17 +18,17 @@
 .toast {
     background: var(--bg-surface);
     color: var(--text-primary);
-    padding: 0 var(--sp-4);
-    min-height: 44px;
+    padding: var(--sp-1-5) var(--sp-3);
+    min-height: 32px;
     height: auto;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px var(--toast-shadow);
-    border: 1px solid var(--border-medium);
+    border-radius: var(--r-sm);
+    box-shadow: var(--shadow-float);
+    border: 1px solid var(--line-strong);
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: var(--sp-3);
-    font-size: 14px;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
     font-weight: 500;
     animation: toastSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     white-space: normal;
@@ -41,6 +41,8 @@
 
 .toast-icon {
     display: flex;
+    font-size: var(--fs-sm);
+    line-height: 1;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
@@ -103,7 +105,7 @@
 .toast-message {
     flex: 1;
     word-break: break-word;
-    line-height: 1.5;
+    line-height: 1.4;
     overflow-wrap: break-word;
     white-space: pre-line; /* 문구 안의 줄바꿈(\n)만 살린다 */
 }

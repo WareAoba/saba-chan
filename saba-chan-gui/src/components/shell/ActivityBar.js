@@ -126,16 +126,54 @@ function DaemonConsole() {
     );
 }
 
+/** 방금 실행된 명령을 줄에 보여 주는 시간. 지나면 기본 문구로 돌아간다 */
+export const RECENT_SHOW_MS = 6000;
+const SLIDE_MS = 360;
+const CONSOLE_CLOSE_MS = 180;
+
+/** 내용이 바뀔 때 위로 밀려 올라가며 바뀌고, 새 글자 위로 빛이 한 번 지나간다 */
+function Ticker({ id, children }) {
+    const [items, setItems] = useState([{ id, node: children, state: 'still' }]);
+    useEffect(() => {
+        setItems((prev) => {
+            const cur = prev[prev.length - 1];
+            if (cur.id === id) return [...prev.slice(0, -1), { ...cur, node: children }];
+            return [{ ...cur, state: 'leaving' }, { id, node: children, state: 'entering' }];
+        });
+    }, [id, children]);
+    useEffect(() => {
+        if (!items.some((it) => it.state !== 'still')) return;
+        const timer = setTimeout(
+            () => setItems((prev) => prev.filter((it) => it.state !== 'leaving').map((it) => ({ ...it, state: 'still' }))),
+            SLIDE_MS,
+        );
+        return () => clearTimeout(timer);
+    }, [items]);
+    return (
+        <span className="activity-ticker">
+            {items.map((it) => (
+                <span key={it.id} className={clsx('activity-slide', it.state)} aria-hidden={it.state === 'leaving'}>
+                    {it.node}
+                </span>
+            ))}
+        </span>
+    );
+}
+
 /**
- * 앱 맨 아래 한 줄: 데몬이 방금 실행한 서버 관련 명령 (감사 로그 최신 1건).
- * 누르면 펼쳐져 데몬 콘솔 전체를 보인다. 이벤트 스트림(action.run)이 있으면 바로 바꾸고, 폴링은 느리게 메우기만 한다.
+ * 앱 맨 아래 한 줄: 데몬이 방금 실행한 서버 관련 명령을 잠깐 보이고 기본 문구로 돌아간다.
+ * 누르면 데몬 콘솔 전체가 줄 위로 튀어나오듯 떠서 다른 화면을 밀지 않고 덮는다.
+ * 이벤트 스트림(action.run)이 있으면 바로 바꾸고, 폴링은 느리게 메우기만 한다.
  */
 export function ActivityBar() {
     const { t, i18n } = useTranslation('gui');
     const [last, setLast] = useState(undefined); // undefined = 아직 모름, null = 기록 없음
     const [now, setNow] = useState(() => Date.now());
     const [open, setOpen] = useState(false);
+    const [closing, setClosing] = useState(false);
+    const [recent, setRecent] = useState(false);
     const canExpand = daemonConsoleAvailable();
+    const barRef = useRef(null);
 
     useEffect(() => {
         let alive = true;
@@ -176,34 +214,83 @@ export function ActivityBar() {
         };
     }, []);
 
+    // 새 명령이 방금 실행됐으면 잠깐 보여 주고 기본 문구로 돌아간다
+    const lastKey = last ? `${last.ts}|${last.action}|${last.instanceId}|${last.source}` : '';
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 명령이 바뀔 때(lastKey)만 다시 잰다
+    useEffect(() => {
+        if (!last) return setRecent(false);
+        const left = RECENT_SHOW_MS - (Date.now() - last.ts * 1000);
+        if (left <= 0) return setRecent(false);
+        setRecent(true);
+        const timer = setTimeout(() => setRecent(false), Math.min(left, RECENT_SHOW_MS));
+        return () => clearTimeout(timer);
+    }, [lastKey]);
+
+    const closeConsole = () => {
+        setClosing(true);
+        setTimeout(() => {
+            setOpen(false);
+            setClosing(false);
+        }, CONSOLE_CLOSE_MS);
+    };
+    const toggle = () => (open && !closing ? closeConsole() : setOpen(true));
+
+    // 콘솔이 떠 있으면 Esc나 바깥 누르기로 닫는다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 열림 상태가 바뀔 때만 건다
+    useEffect(() => {
+        if (!open || closing) return;
+        const onKey = (e) => e.key === 'Escape' && closeConsole();
+        const onDown = (e) => barRef.current && !barRef.current.contains(e.target) && closeConsole();
+        document.addEventListener('keydown', onKey);
+        document.addEventListener('mousedown', onDown);
+        return () => {
+            document.removeEventListener('keydown', onKey);
+            document.removeEventListener('mousedown', onDown);
+        };
+    }, [open, closing]);
+
     if (last === undefined) return null;
 
-    const summary = last ? (
-        <>
-            <span className="activity-text">{activityText(last, t)}</span>
+    // 펼칠 수 있으면 평소엔 안내 문구, 방금 실행된 명령이 있을 때만 그 명령을 보인다
+    const showCommand = last && (recent || !canExpand);
+    const summary = showCommand ? (
+        <Ticker id={`cmd:${lastKey}`}>
+            <span className="activity-text activity-shine">{activityText(last, t)}</span>
             <span className={clsx('activity-result', last.ok ? 'ok' : 'fail')}>
                 {last.ok ? t('audit.ok') : t('audit.failed', { status: last.status })}
             </span>
             <span className="activity-time">{ago(last.ts, now, i18n.language)}</span>
-        </>
+        </Ticker>
     ) : (
-        <span className="activity-text muted">{t('activity.empty')}</span>
+        <Ticker id={canExpand ? 'idle' : 'empty'}>
+            <span className="activity-text activity-shine muted">
+                {canExpand ? t('activity.idle') : t('activity.empty')}
+            </span>
+        </Ticker>
     );
 
+    const shown = open && !closing;
+
     return (
-        <footer className={clsx('activity-bar', open && 'open')}>
-            {open && <DaemonConsole />}
+        <footer className={clsx('activity-bar', shown && 'open')} ref={barRef}>
+            {open && (
+                <div className={clsx('activity-console-pop', { closing })}>
+                    <DaemonConsole />
+                </div>
+            )}
             {canExpand ? (
                 <button
                     type="button"
                     className="activity-line"
-                    onClick={() => setOpen((o) => !o)}
-                    aria-expanded={open}
-                    title={open ? t('activity.collapse') : t('activity.expand')}
+                    onClick={toggle}
+                    aria-expanded={shown}
+                    title={shown ? t('activity.collapse') : t('activity.expand')}
                 >
                     <Icon name="terminal" size="xs" />
                     {summary}
-                    <Icon name={open ? 'chevronDown' : 'chevronUp'} size="xs" />
+                    <span className={clsx('activity-chevron', { flipped: shown })}>
+                        <Icon name="chevronUp" size="xs" />
+                    </span>
                 </button>
             ) : (
                 <div className="activity-line">

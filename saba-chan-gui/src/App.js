@@ -39,6 +39,7 @@ import { consoleQuickCommands, isManaged } from './utils/serverView';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
+import './styles/motion.css';
 function App() {
     const { t, i18n } = useTranslation('gui');
 
@@ -792,7 +793,7 @@ function App() {
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} initialView={discordView} />}
                         {page === 'settings' && (
-                            <div className="page page-scroll">
+                            <div className="page page-scroll page-settings">
                                 <SettingsModal
                                     variant="page"
                                     isOpen
@@ -915,23 +916,7 @@ function App() {
                         </div>
                     )}
 
-                    {/* 글로벌 프로그레스바 */}
-                    {progressBar && (
-                        <div className="global-progress-bar">
-                            <div className="global-progress-content">
-                                <span className="global-progress-message">{progressBar.message}</span>
-                                {progressBar.percent != null && !progressBar.indeterminate && (
-                                    <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
-                                )}
-                            </div>
-                            <div className="global-progress-track">
-                                <div
-                                    className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
-                                    style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
-                                />
-                            </div>
-                        </div>
-                    )}
+                    {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                 </div>
             </TooltipProvider>
         </ExtensionProvider>

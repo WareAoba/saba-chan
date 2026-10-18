@@ -14,6 +14,52 @@
     scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
+/* 화면에는 안 보이고 읽기 프로그램에만 읽히는 글자 */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* 오버레이 스크롤바를 켜면 (utils/overlayScrollbar) 기본 스크롤바는 숨긴다: 자리를 차지하지 않는다 */
+[data-overlay-scroll='on'] *,
+[data-overlay-scroll='on'] {
+    scrollbar-width: none;
+}
+.ovs-thumb {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100000;
+    border-radius: var(--r-pill);
+    background: var(--scrollbar-thumb-hover);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        opacity var(--dur) var(--ease),
+        background-color var(--dur-fast) var(--ease);
+}
+.ovs-thumb.ovs-y {
+    width: 6px;
+    margin-left: calc(-1 * var(--sp-1-5));
+}
+.ovs-thumb.ovs-x {
+    height: 6px;
+    margin-top: calc(-1 * var(--sp-1-5));
+}
+.ovs-thumb.show {
+    opacity: 0.7;
+    pointer-events: auto;
+}
+.ovs-thumb.show:hover,
+.ovs-thumb.drag {
+    opacity: 1;
+    background: var(--scrollbar-thumb-active);
+}
+
 input,
 textarea,
 [contenteditable="true"],
@@ -205,8 +251,8 @@ button:disabled {
     width: 100%;
     padding: 0 var(--sp-3);
     border-radius: var(--r-sm);
-    border: 1px solid var(--line);
-    background: var(--inset);
+    border: 1px solid var(--line-strong);
+    background: var(--field);
     box-shadow: var(--shadow-inset);
     color: var(--text-1);
     font-size: var(--fs-md);

@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 
@@ -217,26 +218,23 @@ export function ChannelsTab({ node }) {
             <section className="dc-card">
                 <h3>{t('discord.channels_music')}</h3>
                 <p className="dc-hint">{t('discord.channels_music_hint')}</p>
-                <select
-                    className="input"
+                <CustomDropdown
                     value={draft.music || ''}
-                    aria-label={t('discord.channels_music')}
-                    onChange={(e) => setMusic(e.target.value)}
-                >
-                    <option value="">{t('discord.channels_music_none')}</option>
-                    {draft.music && !channels.some((c) => String(c.id) === draft.music) && (
-                        <option value={draft.music}>{draft.music}</option>
-                    )}
-                    {channels.map((c) => (
-                        <option
-                            key={c.id}
-                            value={String(c.id)}
-                            disabled={String(c.id) === draft.notify || (!botAvailable && String(c.id) !== draft.music)}
-                        >
-                            {c.category ? `${c.category} / ` : ''}#{c.name}
-                        </option>
-                    ))}
-                </select>
+                    ariaLabel={t('discord.channels_music')}
+                    onChange={(v) => setMusic(String(v))}
+                    options={[
+                        { value: '', label: t('discord.channels_music_none') },
+                        ...(draft.music && !channels.some((c) => String(c.id) === draft.music)
+                            ? [{ value: draft.music, label: draft.music }]
+                            : []),
+                        ...channels.map((c) => ({
+                            value: String(c.id),
+                            label: `${c.category ? `${c.category} / ` : ''}#${c.name}`,
+                            disabled:
+                                String(c.id) === draft.notify || (!botAvailable && String(c.id) !== draft.music),
+                        })),
+                    ]}
+                />
                 {newMusic && (
                     <div className="notice tone-warn" role="alert">
                         <Icon name="alertTriangle" size="sm" />
@@ -248,26 +246,23 @@ export function ChannelsTab({ node }) {
             <section className="dc-card">
                 <h3>{t('discord.channels_notify')}</h3>
                 <p className="dc-hint">{t('discord.channels_notify_hint')}</p>
-                <select
-                    className="input"
+                <CustomDropdown
                     value={draft.notify || ''}
-                    aria-label={t('discord.channels_notify')}
-                    onChange={(e) => setNotify(e.target.value)}
-                >
-                    <option value="">{t('discord.channels_music_none')}</option>
-                    {draft.notify && !channels.some((c) => String(c.id) === draft.notify) && (
-                        <option value={draft.notify}>{draft.notify}</option>
-                    )}
-                    {channels.map((c) => (
-                        <option
-                            key={c.id}
-                            value={String(c.id)}
-                            disabled={String(c.id) === draft.music || (!botAvailable && String(c.id) !== draft.notify)}
-                        >
-                            {c.category ? `${c.category} / ` : ''}#{c.name}
-                        </option>
-                    ))}
-                </select>
+                    ariaLabel={t('discord.channels_notify')}
+                    onChange={(v) => setNotify(String(v))}
+                    options={[
+                        { value: '', label: t('discord.channels_music_none') },
+                        ...(draft.notify && !channels.some((c) => String(c.id) === draft.notify)
+                            ? [{ value: draft.notify, label: draft.notify }]
+                            : []),
+                        ...channels.map((c) => ({
+                            value: String(c.id),
+                            label: `${c.category ? `${c.category} / ` : ''}#${c.name}`,
+                            disabled:
+                                String(c.id) === draft.music || (!botAvailable && String(c.id) !== draft.notify),
+                        })),
+                    ]}
+                />
             </section>
 
             {error && (

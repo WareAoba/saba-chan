@@ -1,34 +1,73 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Icon } from '../Icon';
 import './CustomDropdown.css';
 
+const MENU_GAP = 4;
+const MENU_MAX = 280;
+const CLOSE_MS = 120;
+
 /**
- * 커스텀 드롭다운 컴포넌트 (네이티브 select 대체)
- * Portal을 사용하여 메뉴가 모달 DOM을 벗어나서도 렌더링됨
+ * 커스텀 드롭다운 (OS 기본 select 대체)
+ * 메뉴는 Portal 팝업으로 띄운다. 아래 자리가 모자라면 위로 연다.
+ * options: [{ value, label, icon?, disabled? }]
  */
-function CustomDropdown({ value, onChange, options = [], placeholder, className, disabled }) {
+function CustomDropdown({ value, onChange, options = [], placeholder, className, disabled, id, ariaLabel }) {
     const [isOpen, setIsOpen] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
     const [menuStyle, setMenuStyle] = useState({});
+    const [placement, setPlacement] = useState('bottom');
+    const [active, setActive] = useState(-1);
     const triggerRef = useRef(null);
     const menuRef = useRef(null);
+    const closeTimer = useRef(null);
+    const autoId = useId();
+    const triggerId = id || `dropdown-${autoId}`;
+    const listId = `${triggerId}-list`;
 
-    // 트리거 위치 기반으로 메뉴 좌표 계산
+    const selectedIndex = options.findIndex((o) => String(o.value) === String(value));
+    const selectedOption = options[selectedIndex];
+
+    // 트리거 위치로 메뉴 좌표를 정한다 (아래가 좁으면 위로)
     const updateMenuPosition = useCallback(() => {
         if (!triggerRef.current) return;
         const rect = triggerRef.current.getBoundingClientRect();
+        const below = window.innerHeight - rect.bottom - MENU_GAP;
+        const above = rect.top - MENU_GAP;
+        const up = below < Math.min(MENU_MAX, options.length * 36 + 8) && above > below;
+        setPlacement(up ? 'top' : 'bottom');
         setMenuStyle({
             position: 'fixed',
-            top: rect.bottom + 4,
             left: rect.left,
             minWidth: rect.width,
             zIndex: 10000,
+            ...(up ? { bottom: window.innerHeight - rect.top + MENU_GAP } : { top: rect.bottom + MENU_GAP }),
+            '--dropdown-max': `${Math.max(120, Math.min(MENU_MAX, up ? above : below) - 8)}px`,
         });
+    }, [options.length]);
+
+    const open = useCallback(() => {
+        if (disabled) return;
+        clearTimeout(closeTimer.current);
+        setIsClosing(false);
+        setActive(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
+        setIsOpen(true);
+    }, [disabled, selectedIndex, options]);
+
+    const close = useCallback(() => {
+        setIsClosing(true);
+        clearTimeout(closeTimer.current);
+        closeTimer.current = setTimeout(() => {
+            setIsOpen(false);
+            setIsClosing(false);
+        }, CLOSE_MS);
     }, []);
 
+    useEffect(() => () => clearTimeout(closeTimer.current), []);
+
     // 열릴 때 위치 계산 + 스크롤/리사이즈 추적
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!isOpen) return;
         updateMenuPosition();
         window.addEventListener('scroll', updateMenuPosition, true);
@@ -39,59 +78,87 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
         };
     }, [isOpen, updateMenuPosition]);
 
-    // 외부 클릭 시 닫기 (트리거 + 포탈 메뉴 둘 다 체크)
+    // 고른 항목이 보이게 스크롤
     useEffect(() => {
+        if (!isOpen || active < 0) return;
+        menuRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView?.({ block: 'nearest' });
+    }, [isOpen, active]);
+
+    // 바깥을 누르면 닫는다 (트리거 + 포탈 메뉴 둘 다 확인)
+    useEffect(() => {
+        if (!isOpen || isClosing) return;
         const handleClickOutside = (e) => {
-            if (
-                triggerRef.current &&
-                !triggerRef.current.contains(e.target) &&
-                menuRef.current &&
-                !menuRef.current.contains(e.target)
-            ) {
-                setIsOpen(false);
-            }
+            if (triggerRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
+            close();
         };
-        if (isOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-            return () => document.removeEventListener('mousedown', handleClickOutside);
-        }
-    }, [isOpen]);
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen, isClosing, close]);
 
-    // ESC 키로 닫기
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape') setIsOpen(false);
-        };
-        if (isOpen) {
-            document.addEventListener('keydown', handleKeyDown);
-            return () => document.removeEventListener('keydown', handleKeyDown);
-        }
-    }, [isOpen]);
-
-    const selectedOption = options.find((o) => String(o.value) === String(value));
-
-    const handleSelect = (optionValue) => {
-        onChange(optionValue);
-        setIsOpen(false);
+    const handleSelect = (option) => {
+        if (option.disabled) return;
+        if (String(option.value) !== String(value)) onChange(option.value);
+        close();
+        triggerRef.current?.focus();
     };
 
-    const handleToggle = () => {
-        if (disabled) return;
-        setIsOpen((prev) => !prev);
+    const move = (dir) => {
+        if (!options.length) return;
+        let i = active;
+        for (let n = 0; n < options.length; n++) {
+            i = (i + dir + options.length) % options.length;
+            if (!options[i].disabled) break;
+        }
+        setActive(i);
     };
 
-    // Portal로 body에 렌더링되는 메뉴
+    const shown = isOpen && !isClosing;
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!shown) open();
+            else move(e.key === 'ArrowDown' ? 1 : -1);
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!shown) open();
+            else if (options[active]) handleSelect(options[active]);
+        } else if (e.key === 'Escape' && shown) {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+        } else if (e.key === 'Tab' && shown) {
+            close();
+        }
+    };
+
+    // Portal로 body에 그리는 팝업
     const menu = isOpen
         ? ReactDOM.createPortal(
-              <div className="custom-dropdown-menu" ref={menuRef} style={menuStyle}>
-                  <div className="custom-dropdown-scroll">
-                      {options.map((option) => {
-                          const isSelected = String(option.value) === String(value);
+              <div
+                  className={clsx('custom-dropdown-menu', `placement-${placement}`, { closing: isClosing })}
+                  ref={menuRef}
+                  style={menuStyle}
+              >
+                  <div className="custom-dropdown-scroll" role="listbox" id={listId} aria-labelledby={triggerId}>
+                      {options.map((option, i) => {
+                          const isSelected = i === selectedIndex;
                           return (
+                              // biome-ignore lint/a11y/useKeyWithClickEvents: 키보드는 트리거(combobox)가 받는다
                               <div
-                                  key={option.value}
-                                  className={clsx('custom-dropdown-item', { selected: isSelected })}
-                                  onClick={() => handleSelect(option.value)}
+                                  key={String(option.value)}
+                                  data-index={i}
+                                  role="option"
+                                  tabIndex={-1}
+                                  aria-selected={isSelected}
+                                  aria-disabled={option.disabled || undefined}
+                                  className={clsx('custom-dropdown-item', {
+                                      selected: isSelected,
+                                      active: i === active,
+                                      disabled: option.disabled,
+                                  })}
+                                  onMouseEnter={() => !option.disabled && setActive(i)}
+                                  onClick={() => handleSelect(option)}
                               >
                                   <span className="custom-dropdown-item-content">
                                       {option.icon && <Icon name={option.icon} size="sm" />}
@@ -112,25 +179,32 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
         : null;
 
     return (
-        <div className={clsx('custom-dropdown', className, { open: isOpen, disabled })}>
+        <div className={clsx('custom-dropdown', className, { open: shown, disabled })}>
             <button
+                id={triggerId}
                 className="custom-dropdown-trigger"
-                onClick={handleToggle}
+                onClick={() => (shown ? close() : open())}
+                onKeyDown={handleKeyDown}
                 ref={triggerRef}
                 type="button"
-                tabIndex={0}
+                role="combobox"
+                aria-label={ariaLabel}
+                aria-haspopup="listbox"
+                aria-expanded={shown}
+                aria-controls={listId}
+                disabled={disabled}
             >
                 <span className="custom-dropdown-value">
                     {selectedOption ? (
                         <>
                             {selectedOption.icon && <Icon name={selectedOption.icon} size="sm" />}
-                            <span>{selectedOption.label}</span>
+                            <span className="custom-dropdown-label">{selectedOption.label}</span>
                         </>
                     ) : (
                         <span className="custom-dropdown-placeholder">{placeholder || 'Select...'}</span>
                     )}
                 </span>
-                <span className={clsx('custom-dropdown-arrow', { rotated: isOpen })}>
+                <span className={clsx('custom-dropdown-arrow', { rotated: shown })}>
                     <Icon name="chevronDown" size="sm" />
                 </span>
             </button>

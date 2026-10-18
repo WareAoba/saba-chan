@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
@@ -94,20 +95,17 @@ const memberName = (m) => m?.displayName || m?.globalName || m?.username;
 function LevelSelect({ value, levels, onChange, label, disabled, presetLabel }) {
     const { t } = useTranslation('gui');
     return (
-        <select
-            className="input dc-level-select"
+        <CustomDropdown
+            className="dc-level-select"
             value={value === null ? '' : String(value)}
-            aria-label={label}
+            ariaLabel={label}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
-        >
-            {presetLabel && <option value="">{presetLabel}</option>}
-            {levels.map((l) => (
-                <option key={l} value={String(l)}>
-                    {t(`discord.level_${L.levelKey(l)}`)}
-                </option>
-            ))}
-        </select>
+            onChange={(v) => onChange(v === '' ? null : Number(v))}
+            options={[
+                ...(presetLabel ? [{ value: '', label: presetLabel }] : []),
+                ...levels.map((l) => ({ value: String(l), label: t(`discord.level_${L.levelKey(l)}`) })),
+            ]}
+        />
     );
 }
 

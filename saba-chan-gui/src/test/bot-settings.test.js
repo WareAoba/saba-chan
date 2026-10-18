@@ -28,18 +28,17 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base);
         window.api.discordSettingsSet = vi.fn().mockResolvedValue({
             success: true,
-            settings: { ...base, sleeping: true },
+            settings: base,
             sync: { ok: true },
         });
         render(<BotSettingsTab node={node} />);
         await flush();
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Sleep' }));
-        await flush();
-        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { sleeping: true });
+        // 잠자기는 연결 화면의 재우기와 겹쳐서 여기 두지 않는다
+        expect(screen.queryByRole('checkbox', { name: 'Sleep' })).toBeNull();
 
         fireEvent.click(screen.getByRole('checkbox', { name: 'Volume normalization' }));
         await flush();
-        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { music: { normalize: false } });
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { music: { normalize: false } });
     });
 
     it('범위 밖 숫자는 보내지 않고, 새로고침 간격은 ms로 보낸다', async () => {

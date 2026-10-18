@@ -20,6 +20,8 @@
     --bg-3: #24262b;
     --bg-4: #2e3036;
     --inset: #0a0b0d;
+    /* 입력 칸·드롭다운 면: 카드(bg-2)보다 한 단 밝게 */
+    --field: #222429;
     /* 면은 단색이 기본이다. 그라데이션 변수 이름은 슬롯으로 남겨 둔다 */
     --surface-gradient: #191a1e;
     --surface-gradient-hover: #1f2025;
@@ -81,6 +83,7 @@
     --bg-3: #ffffff;
     --bg-4: #ffffff;
     --inset: #e2e5eb;
+    --field: #e2e5eb;
     --surface-gradient: #ffffff;
     --surface-gradient-hover: #fafbfc;
     --panel-gradient: #f3f4f7;
@@ -136,6 +139,7 @@
         --bg-3: #ffffff;
         --bg-4: #ffffff;
         --inset: #e2e5eb;
+        --field: #e2e5eb;
         --surface-gradient: #ffffff;
         --surface-gradient-hover: #fafbfc;
         --panel-gradient: #f3f4f7;
@@ -273,8 +277,8 @@
     --bg-surface-alt: var(--bg-2);
     --bg-surface-secondary: var(--bg-1);
     --bg-surface-tertiary: var(--bg-3);
-    --bg-surface-input: var(--inset);
-    --bg-surface-input-focus: var(--inset);
+    --bg-surface-input: var(--field);
+    --bg-surface-input-focus: var(--field);
     --bg-overlay: var(--scrim);
     --bg-initializing-overlay: var(--scrim);
 
@@ -297,7 +301,7 @@
     --border-medium: var(--line-strong);
     --border-strong: var(--line-strong);
     --border-hover: var(--line-strong);
-    --border-input: var(--line);
+    --border-input: var(--line-strong);
     --border-separator: var(--line);
 
     --shadow-xs: rgba(0, 0, 0, 0.15);
@@ -365,8 +369,8 @@
     --settings-tab-active-bg: var(--bg-3);
     --settings-item-bg: var(--bg-2);
 
-    --input-bg: var(--inset);
-    --input-border: var(--line);
+    --input-bg: var(--field);
+    --input-border: var(--line-strong);
     --input-focus-border: var(--brand-primary);
     --input-focus-shadow: var(--brand-shadow-light);
 
@@ -421,7 +425,7 @@
     --bg-tertiary: var(--bg-3);
     --bg-hover: var(--bg-3);
     --hover-bg: var(--bg-3);
-    --bg-input: var(--inset);
+    --bg-input: var(--field);
     --bg-success-subtle: var(--ok-soft);
     --bg-warning-subtle: var(--warn-soft);
     --border-color: var(--line);

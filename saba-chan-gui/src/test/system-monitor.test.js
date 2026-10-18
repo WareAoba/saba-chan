@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildRings, colorSlots } from '../components/monitor/systemMetrics';
+import { buildRings, colorSlots, nextPeaks } from '../components/monitor/systemMetrics';
 import { SystemMonitor } from '../components/monitor/SystemMonitor';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
@@ -62,7 +62,8 @@ describe('시스템 모니터 원형 그래프 계산', () => {
         expect(cpu.__more).toBe(2);
     });
 
-    it('네트워크는 인스턴스로 나누지 않고, 비율 그래프는 최근 최대값을 눈금으로 쓴다', () => {
+    it('네트워크는 인스턴스로 나누지 않고, 비율 그래프는 앱을 켠 뒤 최고값을 눈금으로 쓴다', () => {
+        expect(nextPeaks({ diskIo: 8 * MB, network: 1 * MB }, snapshot())).toEqual({ diskIo: 8 * MB, network: 2 * MB });
         const rings = buildRings(snapshot(), colorSlots(['a']), { diskIo: 8 * MB, network: 4 * MB });
         expect(values(ring(rings, 'network'))).toEqual({ __all: 2 * MB, __idle: 2 * MB });
         expect(ring(rings, 'network').noteKey).toBe('monitor.network_note');
