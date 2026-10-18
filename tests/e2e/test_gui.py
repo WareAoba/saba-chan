@@ -58,6 +58,9 @@ def labels(lang: str = "ko") -> dict:
         "popin": gui["shell"]["console_popin"],
         "open_terminal": gui["terminal"]["open"],
         "terminal_unsupported": gui["terminal"]["err_unsupported_platform"],
+        "ext_gui_title": gui["trust"]["extension_gui"]["title"],
+        "ext_gui_allow": gui["trust"]["extension_gui"]["allow"],
+        "ext_gui_deny": gui["trust"]["extension_gui"]["deny"],
     }
 
 
@@ -286,3 +289,50 @@ def test_gui_open_server_in_terminal(ko_mc, open_gui):
         assert procs.pid_alive(pid), "터미널 창의 CLI가 바로 끝남"
     finally:
         procs.kill_pid(pid)
+
+
+def write_gui_extension(sandbox, ext_id: str = "e2e-gui") -> None:
+    """GUI 번들만 있는 확인되지 않은 익스텐션 (카탈로그에서 받지 않았으니 trust=unverified). 번들은 로드되면 전역 표시를 남긴다."""
+    root = sandbox.extensions / ext_id
+    (root / "gui").mkdir(parents=True, exist_ok=True)
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": ext_id,
+                "name": "E2E GUI",
+                "version": "0.0.1",
+                "description": "E2E consent fixture",
+                "author": "e2e",
+                "min_app_version": "0.1.0",
+                "gui": {"bundle": "gui/bundle.js"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "gui" / "bundle.js").write_text(
+        "window.__e2eGuiLoaded = true; window.SabaExtE2eGui = { registerSlots: function () { return {}; } };",
+        encoding="utf-8",
+    )
+
+
+def test_gui_asks_before_loading_unverified_extension_gui(sandbox, daemon_factory, open_gui):
+    """확인되지 않은 익스텐션의 화면은 묻기 전에 받지 않고, 허락하면 데몬에 기록한 뒤 불러온다."""
+    sandbox.write_config({"gui": {"language": "ko"}})
+    write_gui_extension(sandbox)
+    daemon = daemon_factory()
+    daemon.api.ok("POST", "/api/extensions/e2e-gui/enable")
+    listed = next(e for e in daemon.api.ok("GET", "/api/extensions")["extensions"] if e["id"] == "e2e-gui")
+    assert listed.get("gui_allowed") is False, listed
+    assert daemon.api.get("/api/extensions/e2e-gui/gui").status_code == 403
+
+    art = daemon.sb.artifacts / "gui-extConsent"
+    gui = open_gui(daemon, "extConsent")
+    gui.wait_text(L["ext_gui_title"], timeout=60)
+    gui.snap(art, "asked")
+    assert not gui.js("return !!window.__e2eGuiLoaded"), "허락 전에 번들이 실행됨"
+
+    gui.click(L["ext_gui_allow"])
+    gui.wait(lambda: gui.js("return !!window.__e2eGuiLoaded"), 30, "허락 뒤 번들 로드")
+    gui.snap(art, "allowed")
+    consents = daemon.api.ok("GET", "/api/sandbox/extension-gui")["components"]
+    assert any(c["component"] == "ext-e2e-gui" and c.get("current") for c in consents), consents

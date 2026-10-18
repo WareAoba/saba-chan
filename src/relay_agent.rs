@@ -34,6 +34,8 @@ const EVENT_PROBE: Duration = Duration::from_secs(600);
 
 /// 세션 안에서 토큰 대체를 알리는 오류 표시 (밖으로 나가지 않는다)
 const REPLACED: &str = "token_replaced";
+/// 동시에 처리하는 릴레이 명령 수 (넘으면 끝나기를 기다렸다가 더 받는다)
+const COMMANDS_IN_FLIGHT: usize = 4;
 
 /// 에이전트 상태 (GET /api/relay/agent)
 #[derive(Debug, Clone, Default, Serialize)]
@@ -384,21 +386,55 @@ impl Session {
         meta
     }
 
+    /// 받은 명령은 동시에 처리하고 그동안에도 계속 받는다: 오래 걸리는 명령(재시작·백업 등) 하나가
+    /// 뒤의 명령을 릴레이 대기 시간 너머로 붙잡지 않게 (한 번에 `COMMANDS_IN_FLIGHT`개까지)
     async fn poll_loop(&self) {
+        use futures_util::StreamExt;
+        type Poll<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Value>, String>> + Send + 'a>>;
         let mut failures: u32 = 0;
+        let mut running = futures_util::stream::FuturesUnordered::new();
+        let mut waiting: Vec<Value> = Vec::new();
+        let mut next: Option<Poll<'_>> = Some(Box::pin(self.poll_once()));
         while !self.cancel.is_cancelled() {
-            match self.poll_once().await {
-                Ok(()) => failures = 0,
-                Err(e) if e == REPLACED => self.give_up_replaced(),
-                Err(e) => {
-                    failures += 1;
-                    let backoff = backoff(failures);
-                    tracing::warn!("[RelayAgent] poll failed ({}), retry in {}s", e, backoff.as_secs());
-                    self.agent.update(self.generation, |s| s.last_error = Some(e));
-                    self.pause(backoff).await;
+            while running.len() < COMMANDS_IN_FLIGHT && !waiting.is_empty() {
+                running.push(self.run_command(waiting.remove(0)));
+            }
+            if next.is_none() && waiting.is_empty() && running.len() < COMMANDS_IN_FLIGHT {
+                next = Some(Box::pin(self.poll_once()));
+            }
+            tokio::select! {
+                polled = async { next.as_mut().expect("poll").await }, if next.is_some() => {
+                    next = None;
+                    match polled {
+                        Ok(commands) => {
+                            failures = 0;
+                            waiting.extend(commands);
+                        }
+                        Err(e) if e == REPLACED => self.give_up_replaced(),
+                        Err(e) => {
+                            failures += 1;
+                            let backoff = backoff(failures);
+                            tracing::warn!("[RelayAgent] poll failed ({}), retry in {}s", e, backoff.as_secs());
+                            self.agent.update(self.generation, |s| s.last_error = Some(e));
+                            next = Some(Box::pin(async move {
+                                self.pause(backoff).await;
+                                self.poll_once().await
+                            }));
+                        }
+                    }
                 }
+                Some(()) = running.next(), if !running.is_empty() => {}
             }
         }
+        // 연결 해제(취소) 뒤에는 받아 두고 시작하지 않은 명령은 버리고, 이미 시작한 것은 끝까지 마친다
+        while running.next().await.is_some() {}
+    }
+
+    async fn run_command(&self, cmd: Value) {
+        let Some(id) = cmd.get("id").and_then(Value::as_str).map(str::to_string) else { return };
+        let result = self.handle_payload(&cmd).await;
+        self.post_result(&id, &result).await;
+        self.agent.update(self.generation, |s| s.commands_handled += 1);
     }
 
     async fn pause(&self, d: Duration) {
@@ -408,18 +444,18 @@ impl Session {
         }
     }
 
-    async fn poll_once(&self) -> Result<(), String> {
+    async fn poll_once(&self) -> Result<Vec<Value>, String> {
         let req = self.signed(reqwest::Method::GET, "/poll", None)?;
         let resp = tokio::select! {
-            _ = self.cancel.cancelled() => return Ok(()),
+            _ = self.cancel.cancelled() => return Ok(Vec::new()),
             r = req.send() => r.map_err(|e| e.to_string())?,
         };
         let status = resp.status();
         if status.as_u16() == 204 {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let text = tokio::select! {
-            _ = self.cancel.cancelled() => return Ok(()),
+            _ = self.cancel.cancelled() => return Ok(Vec::new()),
             b = resp.text() => b.unwrap_or_default(),
         };
         let body = decode_poll(&text);
@@ -429,18 +465,7 @@ impl Session {
         if !status.is_success() {
             return Err(format!("poll {}: {}", status, body.get("error").and_then(|v| v.as_str()).unwrap_or("")));
         }
-        let commands = body.get("commands").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-        for cmd in commands {
-            // 연결 해제(취소) 뒤에는 이미 받은 명령도 실행하지 않는다
-            if self.cancel.is_cancelled() {
-                break;
-            }
-            let Some(id) = cmd.get("id").and_then(|v| v.as_str()) else { continue };
-            let result = self.handle_payload(&cmd).await;
-            self.post_result(id, &result).await;
-            self.agent.update(self.generation, |s| s.commands_handled += 1);
-        }
-        Ok(())
+        Ok(body.get("commands").and_then(|v| v.as_array()).cloned().unwrap_or_default())
     }
 
     async fn handle_payload(&self, cmd: &Value) -> Value {
