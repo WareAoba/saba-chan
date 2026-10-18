@@ -266,7 +266,8 @@
     "command": "命令",
     "click_to_stop": "点击停止",
     "click_to_start": "点击启动",
-    "delete_still_running": "仍在删除“{{name}}”。请稍后再查看服务器列表。"
+    "delete_still_running": "仍在删除“{{name}}”。请稍后再查看服务器列表。",
+    "delete_unconfirmed": "无法确认 '{{name}}' 是否已删除。守护进程响应后请再查看服务器列表。"
   },
   "server_settings": {
     "title": "设置",

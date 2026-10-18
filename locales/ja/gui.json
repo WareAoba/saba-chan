@@ -210,7 +210,8 @@
     "command": "コマンド",
     "click_to_stop": "停止するにはクリック",
     "click_to_start": "開始するにはクリック",
-    "delete_still_running": "'{{name}}' はまだ削除中です。しばらくしてからサーバー一覧をもう一度確認してください。"
+    "delete_still_running": "'{{name}}' はまだ削除中です。しばらくしてからサーバー一覧をもう一度確認してください。",
+    "delete_unconfirmed": "'{{name}}' が削除されたか確認できませんでした。デーモンが応答したらサーバー一覧を確認してください。"
   },
   "server_settings": {
     "title": "設定",

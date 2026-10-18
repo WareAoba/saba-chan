@@ -266,7 +266,8 @@
     "command": "Commande",
     "click_to_stop": "Cliquer pour arrêter",
     "click_to_start": "Cliquer pour démarrer",
-    "delete_still_running": "'{{name}}' est encore en cours de suppression. Revérifiez la liste des serveurs dans un instant."
+    "delete_still_running": "'{{name}}' est encore en cours de suppression. Revérifiez la liste des serveurs dans un instant.",
+    "delete_unconfirmed": "Impossible de confirmer la suppression de '{{name}}'. Vérifiez la liste des serveurs dès que le daemon répond."
   },
   "server_settings": {
     "title": "Paramètres",

@@ -219,4 +219,23 @@ describe('서버 설정 창: 실제 설정', () => {
         expect(window.api.instanceUpdateSettings.mock.calls[0][1].extra_args).toEqual(['-x']);
         delete window.api.instanceLaunchPreview;
     });
+
+    it('고친 추가 인자 중 설정 형식에 맞지 않는 것이 있으면 저장하지 않는다 (그 인자가 빠지지 않게)', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: {} });
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: true,
+            has_launch_args: true,
+            extra_args: [],
+            settings_from_args: {},
+            errors: [{ arg: '-Xmx4096', field: 'memory_size', expected: 'size', got: '4096' }],
+        });
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        act(() => result.current.handleSettingChange('_launch_extra_args', '-Xmx4096'));
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
+        expect(window.showToast.mock.calls.map((c) => c[0])).toEqual(['Invalid format.']);
+        delete window.api.instanceLaunchPreview;
+    });
 });

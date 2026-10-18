@@ -266,7 +266,8 @@
     "command": "Command",
     "click_to_stop": "Click to stop",
     "click_to_start": "Click to start",
-    "delete_still_running": "«{{name}}» ещё удаляется. Проверьте список серверов чуть позже."
+    "delete_still_running": "«{{name}}» ещё удаляется. Проверьте список серверов чуть позже.",
+    "delete_unconfirmed": "Не удалось подтвердить, удалён ли '{{name}}'. Проверьте список серверов, когда демон ответит."
   },
   "server_settings": {
     "title": "Параметры",

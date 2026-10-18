@@ -266,7 +266,8 @@
     "command": "命令",
     "click_to_stop": "點擊以停止",
     "click_to_start": "點擊以啟動",
-    "delete_still_running": "仍在刪除「{{name}}」。請稍後再查看伺服器列表。"
+    "delete_still_running": "仍在刪除「{{name}}」。請稍後再查看伺服器列表。",
+    "delete_unconfirmed": "無法確認 '{{name}}' 是否已刪除。守護程式回應後請再查看伺服器清單。"
   },
   "server_settings": {
     "title": "設定",

@@ -644,6 +644,9 @@ export async function settleLaunchArgs(id, fields, values) {
         // 실행 명령만 못 만든 경우(아직 설치 전 등)는 extra_args가 오므로 저장한다
         if (res?.error && !Array.isArray(res.extra_args) && values._launch_extra_args !== undefined)
             return { failed: true, error_code: res.error_code };
+        // 나눴어도 설정 형식에 맞지 않은 인자는 extra_args와 설정 양쪽에서 빠진다
+        if (values._launch_extra_args !== undefined && res?.errors?.some((e) => e.arg))
+            return { failed: true, error_code: 'invalid_format' };
         if (!res?.has_launch_args || !Array.isArray(res.extra_args)) return null;
         const settings = {};
         for (const [k, v] of Object.entries(res.settings_from_args || {})) settings[k] = String(v);

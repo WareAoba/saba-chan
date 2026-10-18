@@ -266,7 +266,8 @@
     "command": "Command",
     "click_to_stop": "Click to stop",
     "click_to_start": "Click to start",
-    "delete_still_running": "'{{name}}' todavía se está eliminando. Vuelve a revisar la lista de servidores en un momento."
+    "delete_still_running": "'{{name}}' todavía se está eliminando. Vuelve a revisar la lista de servidores en un momento.",
+    "delete_unconfirmed": "No se pudo confirmar si '{{name}}' se eliminó. Revisa la lista de servidores cuando el daemon responda."
   },
   "server_settings": {
     "title": "Configuración",

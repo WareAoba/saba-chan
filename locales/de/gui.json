@@ -266,7 +266,8 @@
     "command": "Command",
     "click_to_stop": "Click to stop",
     "click_to_start": "Click to start",
-    "delete_still_running": "'{{name}}' wird noch gelöscht. Prüfen Sie die Serverliste gleich noch einmal."
+    "delete_still_running": "'{{name}}' wird noch gelöscht. Prüfen Sie die Serverliste gleich noch einmal.",
+    "delete_unconfirmed": "Es konnte nicht bestätigt werden, ob '{{name}}' gelöscht wurde. Prüfen Sie die Serverliste, sobald der Daemon antwortet."
   },
   "server_settings": {
     "title": "Einstellungen",
