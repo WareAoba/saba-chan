@@ -695,7 +695,12 @@
     "daemon_down_stale": "未连接到守护进程，正在显示最后一次收到的状态。",
     "daemon_restart": "重启守护进程",
     "daemon_restarting": "正在重启…",
-    "daemon_restart_failed": "无法重启守护进程。{{error}}"
+    "daemon_restart_failed": "无法重启守护进程。{{error}}",
+    "check_validate": "检查服务器",
+    "check_diagnose": "诊断日志",
+    "check_ok": "未发现问题，可以启动。",
+    "check_log_ok": "最近的日志中未发现已知问题。",
+    "check_failed": "无法检查：{{error}}"
   },
   "discord": {
     "nav_connection": "连接",
@@ -1233,5 +1238,35 @@
     "start_title": "需要同意协议",
     "start_message": "要启动服务器“{{name}}”，需要同意以下协议。请阅读原文并勾选。",
     "accept_and_start": "同意并启动"
+  },
+  "diagnostics": {
+    "title": "诊断信息",
+    "description": "查看守护进程状态和最近的警告。求助时请复制粘贴。不包含密码和令牌。",
+    "show": "显示诊断信息",
+    "refresh": "刷新",
+    "copy": "复制",
+    "copied": "已复制",
+    "failed": "无法加载诊断信息",
+    "version": "版本",
+    "uptime": "运行时间",
+    "uptime_value": "{{h}}小时{{m}}分",
+    "listen": "监听地址",
+    "data_dir": "数据文件夹",
+    "token": "认证令牌",
+    "token_ok": "存在",
+    "token_missing": "缺失",
+    "modules": "模块",
+    "modules_error": "加载失败：{{error}}",
+    "extensions": "已启用的扩展",
+    "extensions_missing": "已启用但未安装的扩展：{{list}}",
+    "recent_problems": "最近的警告和错误",
+    "no_problems": "最近没有警告或错误。"
+  },
+  "extension_config": {
+    "toggle": "设置",
+    "save": "保存",
+    "saved": "已保存",
+    "load_failed": "无法加载设置：{{error}}",
+    "save_failed": "无法保存：{{error}}"
   }
 }

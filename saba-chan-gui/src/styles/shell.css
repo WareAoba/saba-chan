@@ -2804,3 +2804,145 @@ button.appbar-preflight {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* 서버 점검 (validate·diagnose) 결과: 정보 탭 */
+.server-check {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+.server-check-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.server-check-ok {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--text-secondary);
+}
+.server-check-issues {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.server-check-issue {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--bg-2);
+}
+.server-check-issue.sev-critical,
+.server-check-issue.sev-error {
+    color: var(--danger);
+}
+.server-check-issue.sev-warning {
+    color: var(--warning);
+}
+.server-check-message {
+    margin: 0;
+    font-weight: 500;
+}
+.server-check-solution {
+    margin: 2px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.92em;
+}
+
+/* 진단 정보 (설정 > 고급) */
+.setting-item.setting-item-stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+}
+.diagnostics-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.diagnostics-actions {
+    display: flex;
+    gap: 8px;
+}
+.diagnostics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px 16px;
+    margin: 0;
+}
+.diagnostics-row dt {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+.diagnostics-row dd {
+    margin: 2px 0 0;
+    word-break: break-all;
+}
+.diagnostics-subtitle {
+    margin: 4px 0 0;
+    font-size: 0.95em;
+}
+.diagnostics-empty {
+    margin: 0;
+    color: var(--text-secondary);
+}
+.diagnostics-problems {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 200px;
+    overflow: auto;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+}
+.diagnostics-problems li {
+    padding: 2px 0;
+}
+.diagnostics-problems .level-error {
+    color: var(--danger);
+}
+.diagnostics-problems .level-warn {
+    color: var(--warning);
+}
+.diagnostics-time {
+    color: var(--text-secondary);
+}
+
+/* 익스텐션 전역 설정 (config_fields) */
+.extension-config {
+    padding: 0 16px 12px;
+}
+.extension-config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+.extension-config-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.extension-config-field .setting-input-text {
+    width: 280px;
+    max-width: 60%;
+}
+.extension-config-message {
+    margin: 6px 0 0;
+    font-size: 0.9em;
+}
+.extension-config-message.tone-stop {
+    color: var(--danger);
+}
+.extension-config-message.tone-ok {
+    color: var(--text-secondary);
+}

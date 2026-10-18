@@ -695,7 +695,12 @@
     "daemon_down_stale": "Sem conexão com o daemon. Mostrando o último estado conhecido.",
     "daemon_restart": "Reiniciar daemon",
     "daemon_restarting": "Reiniciando…",
-    "daemon_restart_failed": "Não foi possível reiniciar o daemon. {{error}}"
+    "daemon_restart_failed": "Não foi possível reiniciar o daemon. {{error}}",
+    "check_validate": "Verificar servidor",
+    "check_diagnose": "Diagnosticar log",
+    "check_ok": "Nenhum problema encontrado. Pronto para iniciar.",
+    "check_log_ok": "Nenhum problema conhecido no log recente.",
+    "check_failed": "Não foi possível verificar: {{error}}"
   },
   "discord": {
     "nav_connection": "Conexão",
@@ -1233,5 +1238,35 @@
     "start_title": "Concordância necessária",
     "start_message": "Para iniciar '{{name}}', você precisa concordar com os termos abaixo. Leia-os e marque cada um.",
     "accept_and_start": "Concordar e iniciar"
+  },
+  "diagnostics": {
+    "title": "Diagnóstico",
+    "description": "Mostra o estado do daemon e avisos recentes. Copie ao pedir ajuda. Senhas e tokens não são incluídos.",
+    "show": "Mostrar diagnóstico",
+    "refresh": "Atualizar",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "failed": "Não foi possível carregar o diagnóstico",
+    "version": "Versão",
+    "uptime": "Tempo ativo",
+    "uptime_value": "{{h}} h {{m}} min",
+    "listen": "Endereço",
+    "data_dir": "Pasta de dados",
+    "token": "Token de autenticação",
+    "token_ok": "Presente",
+    "token_missing": "Ausente",
+    "modules": "Módulos",
+    "modules_error": "Falha ao carregar: {{error}}",
+    "extensions": "Extensões ativadas",
+    "extensions_missing": "Ativadas mas não instaladas: {{list}}",
+    "recent_problems": "Avisos e erros recentes",
+    "no_problems": "Nenhum aviso ou erro recente."
+  },
+  "extension_config": {
+    "toggle": "Configurações",
+    "save": "Salvar",
+    "saved": "Salvo",
+    "load_failed": "Não foi possível carregar as configurações: {{error}}",
+    "save_failed": "Não foi possível salvar: {{error}}"
   }
 }

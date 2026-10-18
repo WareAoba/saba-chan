@@ -695,7 +695,12 @@
     "daemon_down_stale": "デーモンに接続していないため、最後に受け取った状態を表示しています。",
     "daemon_restart": "デーモンを再起動",
     "daemon_restarting": "再起動中…",
-    "daemon_restart_failed": "デーモンを再起動できませんでした。{{error}}"
+    "daemon_restart_failed": "デーモンを再起動できませんでした。{{error}}",
+    "check_validate": "サーバー点検",
+    "check_diagnose": "ログ診断",
+    "check_ok": "問題は見つかりませんでした。起動できます。",
+    "check_log_ok": "最近のログに既知の問題は見つかりませんでした。",
+    "check_failed": "点検できませんでした: {{error}}"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1233,5 +1238,35 @@
     "start_title": "規約への同意が必要です",
     "start_message": "サーバー「{{name}}」を起動するには、以下の規約に同意する必要があります。原文を読んでチェックしてください。",
     "accept_and_start": "同意して起動"
+  },
+  "diagnostics": {
+    "title": "診断情報",
+    "description": "デーモンの状態と最近の警告を表示します。問い合わせの際はコピーして貼り付けてください。パスワードやトークンは含まれません。",
+    "show": "診断情報を表示",
+    "refresh": "更新",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "failed": "診断情報を読み込めませんでした",
+    "version": "バージョン",
+    "uptime": "稼働時間",
+    "uptime_value": "{{h}}時間{{m}}分",
+    "listen": "接続アドレス",
+    "data_dir": "データフォルダー",
+    "token": "認証トークン",
+    "token_ok": "あり",
+    "token_missing": "なし",
+    "modules": "モジュール",
+    "modules_error": "読み込み失敗: {{error}}",
+    "extensions": "有効な拡張機能",
+    "extensions_missing": "有効だが未インストールの拡張機能: {{list}}",
+    "recent_problems": "最近の警告とエラー",
+    "no_problems": "最近の警告やエラーはありません。"
+  },
+  "extension_config": {
+    "toggle": "設定",
+    "save": "保存",
+    "saved": "保存しました",
+    "load_failed": "設定を読み込めませんでした: {{error}}",
+    "save_failed": "保存できませんでした: {{error}}"
   }
 }

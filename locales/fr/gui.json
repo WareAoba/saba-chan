@@ -695,7 +695,12 @@
     "daemon_down_stale": "Pas de connexion au démon. Affichage du dernier état connu.",
     "daemon_restart": "Redémarrer le démon",
     "daemon_restarting": "Redémarrage…",
-    "daemon_restart_failed": "Impossible de redémarrer le démon. {{error}}"
+    "daemon_restart_failed": "Impossible de redémarrer le démon. {{error}}",
+    "check_validate": "Vérifier le serveur",
+    "check_diagnose": "Diagnostiquer le journal",
+    "check_ok": "Aucun problème trouvé. Prêt à démarrer.",
+    "check_log_ok": "Aucun problème connu dans le journal récent.",
+    "check_failed": "Vérification impossible : {{error}}"
   },
   "discord": {
     "nav_connection": "Connexion",
@@ -1233,5 +1238,35 @@
     "start_title": "Accord requis",
     "start_message": "Pour démarrer « {{name}} », vous devez accepter les conditions ci-dessous. Lisez-les et cochez chacune.",
     "accept_and_start": "Accepter et démarrer"
+  },
+  "diagnostics": {
+    "title": "Diagnostic",
+    "description": "Affiche l'état du daemon et les avertissements récents. Copiez-le pour demander de l'aide. Les mots de passe et jetons ne sont pas inclus.",
+    "show": "Afficher le diagnostic",
+    "refresh": "Actualiser",
+    "copy": "Copier",
+    "copied": "Copié",
+    "failed": "Impossible de charger le diagnostic",
+    "version": "Version",
+    "uptime": "Durée de fonctionnement",
+    "uptime_value": "{{h}} h {{m}} min",
+    "listen": "Adresse d'écoute",
+    "data_dir": "Dossier de données",
+    "token": "Jeton d'authentification",
+    "token_ok": "Présent",
+    "token_missing": "Absent",
+    "modules": "Modules",
+    "modules_error": "Échec du chargement : {{error}}",
+    "extensions": "Extensions activées",
+    "extensions_missing": "Activées mais non installées : {{list}}",
+    "recent_problems": "Avertissements et erreurs récents",
+    "no_problems": "Aucun avertissement ni erreur récent."
+  },
+  "extension_config": {
+    "toggle": "Paramètres",
+    "save": "Enregistrer",
+    "saved": "Enregistré",
+    "load_failed": "Impossible de charger les paramètres : {{error}}",
+    "save_failed": "Impossible d'enregistrer : {{error}}"
   }
 }

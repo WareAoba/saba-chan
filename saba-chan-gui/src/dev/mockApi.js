@@ -222,6 +222,46 @@ const impl = {
     chatbotSave: (patch) =>
         ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
     chatbotClearMemory: () => ok({ success: true }),
+    instanceValidate: () =>
+        ok({
+            success: false,
+            issues: [
+                {
+                    code: 'JAVA_VERSION_TOO_OLD',
+                    severity: 'critical',
+                    message: 'Java 17은 이 버전에 너무 오래됐습니다',
+                    solution: 'Java 21을 설치하세요',
+                },
+                {
+                    code: 'LOW_RAM',
+                    severity: 'warning',
+                    message: '할당 메모리가 적습니다',
+                    solution: '2GB 이상을 권장합니다',
+                },
+            ],
+        }),
+    instanceDiagnose: () => ok({ success: true, issues: [] }),
+    daemonDiagnostics: () =>
+        ok({
+            ok: true,
+            version: '0.1.5',
+            pid: 4242,
+            uptime_secs: 3725,
+            listen_addr: '127.0.0.1:57474',
+            data_dir: 'C:/Users/me/AppData/Roaming/saba-chan',
+            token_file: { path: 'C:/Users/me/AppData/Roaming/saba-chan/.ipc_token', exists: true },
+            extensions: { enabled: ['steamcmd'], enabled_but_missing: [] },
+            modules: { count: 3 },
+            recent_problems: [
+                {
+                    id: 1,
+                    timestamp: Date.now() - 60000,
+                    level: 'warn',
+                    target: 'saba',
+                    message: '디스크 응답이 느립니다',
+                },
+            ],
+        }),
     migrationScanDir: () => ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {

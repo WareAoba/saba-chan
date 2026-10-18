@@ -695,7 +695,12 @@
     "daemon_down_stale": "Sin conexión con el daemon. Se muestra el último estado conocido.",
     "daemon_restart": "Reiniciar daemon",
     "daemon_restarting": "Reiniciando…",
-    "daemon_restart_failed": "No se pudo reiniciar el daemon. {{error}}"
+    "daemon_restart_failed": "No se pudo reiniciar el daemon. {{error}}",
+    "check_validate": "Revisar servidor",
+    "check_diagnose": "Diagnosticar registro",
+    "check_ok": "No se encontraron problemas. Listo para iniciar.",
+    "check_log_ok": "No se encontraron problemas conocidos en el registro reciente.",
+    "check_failed": "No se pudo revisar: {{error}}"
   },
   "discord": {
     "nav_connection": "Conexión",
@@ -1233,5 +1238,35 @@
     "start_title": "Se requiere aceptación",
     "start_message": "Para iniciar '{{name}}', debe aceptar los términos siguientes. Léalos y marque cada uno.",
     "accept_and_start": "Aceptar e iniciar"
+  },
+  "diagnostics": {
+    "title": "Diagnóstico",
+    "description": "Muestra el estado del daemon y las advertencias recientes. Cópialo al pedir ayuda. No incluye contraseñas ni tokens.",
+    "show": "Mostrar diagnóstico",
+    "refresh": "Actualizar",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "failed": "No se pudo cargar el diagnóstico",
+    "version": "Versión",
+    "uptime": "Tiempo activo",
+    "uptime_value": "{{h}} h {{m}} min",
+    "listen": "Dirección",
+    "data_dir": "Carpeta de datos",
+    "token": "Token de autenticación",
+    "token_ok": "Presente",
+    "token_missing": "Falta",
+    "modules": "Módulos",
+    "modules_error": "Error al cargar: {{error}}",
+    "extensions": "Extensiones activadas",
+    "extensions_missing": "Activadas pero no instaladas: {{list}}",
+    "recent_problems": "Advertencias y errores recientes",
+    "no_problems": "No hay advertencias ni errores recientes."
+  },
+  "extension_config": {
+    "toggle": "Ajustes",
+    "save": "Guardar",
+    "saved": "Guardado",
+    "load_failed": "No se pudieron cargar los ajustes: {{error}}",
+    "save_failed": "No se pudo guardar: {{error}}"
   }
 }

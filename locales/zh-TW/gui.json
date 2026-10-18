@@ -695,7 +695,12 @@
     "daemon_down_stale": "未連線到常駐程式，正在顯示最後一次收到的狀態。",
     "daemon_restart": "重新啟動常駐程式",
     "daemon_restarting": "正在重新啟動…",
-    "daemon_restart_failed": "無法重新啟動常駐程式。{{error}}"
+    "daemon_restart_failed": "無法重新啟動常駐程式。{{error}}",
+    "check_validate": "檢查伺服器",
+    "check_diagnose": "診斷日誌",
+    "check_ok": "未發現問題，可以啟動。",
+    "check_log_ok": "最近的日誌中未發現已知問題。",
+    "check_failed": "無法檢查：{{error}}"
   },
   "discord": {
     "nav_connection": "連線",
@@ -1233,5 +1238,35 @@
     "start_title": "需要同意條款",
     "start_message": "要啟動伺服器「{{name}}」，需要同意以下條款。請閱讀原文並勾選。",
     "accept_and_start": "同意並啟動"
+  },
+  "diagnostics": {
+    "title": "診斷資訊",
+    "description": "查看守護程序狀態和最近的警告。求助時請複製貼上。不包含密碼和權杖。",
+    "show": "顯示診斷資訊",
+    "refresh": "重新整理",
+    "copy": "複製",
+    "copied": "已複製",
+    "failed": "無法載入診斷資訊",
+    "version": "版本",
+    "uptime": "執行時間",
+    "uptime_value": "{{h}}小時{{m}}分",
+    "listen": "監聽位址",
+    "data_dir": "資料資料夾",
+    "token": "驗證權杖",
+    "token_ok": "存在",
+    "token_missing": "缺少",
+    "modules": "模組",
+    "modules_error": "載入失敗：{{error}}",
+    "extensions": "已啟用的擴充功能",
+    "extensions_missing": "已啟用但未安裝的擴充功能：{{list}}",
+    "recent_problems": "最近的警告與錯誤",
+    "no_problems": "最近沒有警告或錯誤。"
+  },
+  "extension_config": {
+    "toggle": "設定",
+    "save": "儲存",
+    "saved": "已儲存",
+    "load_failed": "無法載入設定：{{error}}",
+    "save_failed": "無法儲存：{{error}}"
   }
 }

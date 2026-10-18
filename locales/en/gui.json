@@ -696,7 +696,12 @@
     "daemon_down_stale": "Not connected to the daemon. Showing the last known state.",
     "daemon_restart": "Restart daemon",
     "daemon_restarting": "Restarting…",
-    "daemon_restart_failed": "Couldn't restart the daemon. {{error}}"
+    "daemon_restart_failed": "Couldn't restart the daemon. {{error}}",
+    "check_validate": "Check server",
+    "check_diagnose": "Diagnose log",
+    "check_ok": "No problems found. Ready to start.",
+    "check_log_ok": "No known problems found in the recent log.",
+    "check_failed": "Couldn't run the check: {{error}}"
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1263,5 +1268,35 @@
     "start_title": "Agreement required",
     "start_message": "To start '{{name}}', you need to agree to the terms below. Read them and check each one.",
     "accept_and_start": "Agree and start"
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "description": "See the daemon's state and recent warnings. Copy it when asking for help. Passwords and tokens aren't included.",
+    "show": "Show diagnostics",
+    "refresh": "Refresh",
+    "copy": "Copy",
+    "copied": "Copied",
+    "failed": "Couldn't load diagnostics",
+    "version": "Version",
+    "uptime": "Uptime",
+    "uptime_value": "{{h}}h {{m}}m",
+    "listen": "Listen address",
+    "data_dir": "Data folder",
+    "token": "Auth token",
+    "token_ok": "Present",
+    "token_missing": "Missing",
+    "modules": "Modules",
+    "modules_error": "Failed to load: {{error}}",
+    "extensions": "Enabled extensions",
+    "extensions_missing": "Enabled but not installed: {{list}}",
+    "recent_problems": "Recent warnings and errors",
+    "no_problems": "No recent warnings or errors."
+  },
+  "extension_config": {
+    "toggle": "Settings",
+    "save": "Save",
+    "saved": "Saved",
+    "load_failed": "Couldn't load settings: {{error}}",
+    "save_failed": "Couldn't save: {{error}}"
   }
 }

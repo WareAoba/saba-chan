@@ -16,6 +16,7 @@ import {
 } from '../../utils/serverView';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
@@ -448,6 +449,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
             <ExitHistory server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
+            <ServerCheck server={server} />
             <div className="info-actions">
                 {workingDir && (
                     <button
