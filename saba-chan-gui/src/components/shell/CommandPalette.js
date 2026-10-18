@@ -20,6 +20,12 @@ const listOf = (res) => (Array.isArray(res) ? res : Array.isArray(res?.actions) 
 
 export const actionTitle = (a) => a.title || a.titleKey || a.id;
 
+/** 계획 요약 값. 설정 변경은 `before`가 붙어 "이전 → 새 값"으로 보인다 (null이면 없음) */
+export const summaryValue = (s, t) =>
+    'before' in s
+        ? `${s.before == null ? t('palette.none') : String(s.before)} → ${String(s.value ?? '')}`
+        : String(s.value ?? '');
+
 /** 검색: 제목·id에 검색어 조각이 모두 들어 있는 것 (순서 무관) */
 export function filterActions(actions, query) {
     const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -372,7 +378,7 @@ function Palette({ onClose }) {
                             {(plan.summary || []).map((s, i) => (
                                 <div key={`${s.labelKey || s.label}-${i}`}>
                                     <dt>{s.label || s.labelKey}</dt>
-                                    <dd>{String(s.value ?? '')}</dd>
+                                    <dd>{summaryValue(s, t)}</dd>
                                 </div>
                             ))}
                         </dl>

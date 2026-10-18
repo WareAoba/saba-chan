@@ -985,9 +985,10 @@ button.activity-line:hover {
 .server-settings-embedded .modal-footer {
     position: sticky;
     bottom: 0;
-    background: transparent;
+    /* 스크롤되는 설정 칸이 저장 줄 밑으로 비치지 않게 */
+    background: var(--surface-gradient);
     border-top: 1px solid var(--line);
-    padding: var(--sp-3) 0 0;
+    padding: var(--sp-3) 0 var(--sp-2);
 }
 
 .settings-page {
@@ -2986,4 +2987,21 @@ button.appbar-preflight {
 .onboarding-desc {
     font-size: 12px;
     color: var(--text-secondary);
+}
+
+/* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄 */
+.cli-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin-right: auto;
+    color: var(--text-secondary);
+}
+.cli-line code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 12px;
 }

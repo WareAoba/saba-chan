@@ -1182,7 +1182,8 @@
     "confirm_title": "執行 {{action}}？",
     "confirm_run": "執行",
     "done": "完成：{{action}}",
-    "hint": "↑↓ 移動 · Enter 執行 · Esc 關閉"
+    "hint": "↑↓ 移動 · Enter 執行 · Esc 關閉",
+    "none": "無"
   },
   "unisolated": {
     "title": "不隔離執行",
@@ -1283,5 +1284,9 @@
     "step_chatbot": "開啟聊天機器人",
     "desc_chatbot": "填入 AI 金鑰即可用自然語言管理伺服器。",
     "go_chatbot": "聊天機器人設定"
+  },
+  "cli_line": {
+    "copy": "複製 CLI 指令",
+    "copied": "已複製"
   }
 }

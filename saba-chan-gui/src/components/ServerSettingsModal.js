@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { checkPortConflicts, validateAllSettings } from '../utils/validation';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { CliLine } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 
@@ -445,6 +446,17 @@ export function ServerSettingsModal({
 }) {
     const { t } = useTranslation('gui');
 
+    // "CLI로 보기"에 덧붙일 값: 이 화면을 연 뒤 바꾼 설정만 (`_`로 시작하는 GUI 내부 값 제외)
+    const openedWith = useRef({ id: null, values: {} });
+    if (openedWith.current.id !== settingsServer.id && Object.keys(settingsValues).length) {
+        openedWith.current = { id: settingsServer.id, values: settingsValues };
+    }
+    const changedSettings = Object.fromEntries(
+        Object.entries(settingsValues).filter(
+            ([k, v]) => !k.startsWith('_') && String(v ?? '') !== String(openedWith.current.values[k] ?? ''),
+        ),
+    );
+
     // ── Validation: 설정값 타입 검증 ──
     const module = modules.find((m) => m.name === settingsServer.module);
     const { valid: _settingsValid, errors: validationErrors } = React.useMemo(() => {
@@ -580,6 +592,7 @@ export function ServerSettingsModal({
             </div>
 
             <div className="modal-footer">
+                <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
                 <button className="btn btn-confirm" onClick={handleSaveSettings}>
                     <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                 </button>

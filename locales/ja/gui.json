@@ -1182,7 +1182,8 @@
     "confirm_title": "{{action}} を実行しますか？",
     "confirm_run": "実行",
     "done": "完了: {{action}}",
-    "hint": "↑↓ 移動 · Enter 実行 · Esc 閉じる"
+    "hint": "↑↓ 移動 · Enter 実行 · Esc 閉じる",
+    "none": "なし"
   },
   "unisolated": {
     "title": "隔離せずに実行",
@@ -1283,5 +1284,9 @@
     "step_chatbot": "チャットボットを有効化",
     "desc_chatbot": "AIキーを入れると言葉でサーバーを操作できます。",
     "go_chatbot": "チャットボット設定"
+  },
+  "cli_line": {
+    "copy": "CLIコマンドをコピー",
+    "copied": "コピーしました"
   }
 }

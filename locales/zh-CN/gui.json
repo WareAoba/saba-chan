@@ -1182,7 +1182,8 @@
     "confirm_title": "执行 {{action}}？",
     "confirm_run": "执行",
     "done": "完成：{{action}}",
-    "hint": "↑↓ 移动 · Enter 执行 · Esc 关闭"
+    "hint": "↑↓ 移动 · Enter 执行 · Esc 关闭",
+    "none": "无"
   },
   "unisolated": {
     "title": "不隔离运行",
@@ -1283,5 +1284,9 @@
     "step_chatbot": "开启聊天机器人",
     "desc_chatbot": "填入 AI 密钥即可用自然语言管理服务器。",
     "go_chatbot": "聊天机器人设置"
+  },
+  "cli_line": {
+    "copy": "复制 CLI 命令",
+    "copied": "已复制"
   }
 }

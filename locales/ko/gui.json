@@ -1212,7 +1212,8 @@
     "confirm_title": "‘{{action}}’ 실행할까요?",
     "confirm_run": "실행",
     "done": "완료: {{action}}",
-    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기"
+    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기",
+    "none": "없음"
   },
   "unisolated": {
     "title": "격리 없이 돌리기",
@@ -1313,5 +1314,9 @@
     "step_chatbot": "챗봇 켜기",
     "desc_chatbot": "AI 키를 넣으면 말로 서버를 다룰 수 있어요.",
     "go_chatbot": "챗봇 설정"
+  },
+  "cli_line": {
+    "copy": "CLI 명령 복사",
+    "copied": "복사했어요"
   }
 }

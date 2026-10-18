@@ -574,6 +574,14 @@ const impl = {
                     : []),
                 { id: 'backup.create', kind: 'command', risk: 'caution', scope: 'instance', title: '백업 만들기' },
                 { id: 'instance.delete', kind: 'admin', risk: 'danger', scope: 'instance', title: '서버 삭제' },
+                {
+                    id: 'instance.settings.set',
+                    kind: 'admin',
+                    risk: 'caution',
+                    scope: 'instance',
+                    title: '서버 설정 바꾸기',
+                    cli: 'saba do instance.settings.set --server <server>',
+                },
             ],
         }),
     actionsPlan: (id, { instance } = {}) =>

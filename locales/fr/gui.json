@@ -1182,7 +1182,8 @@
     "confirm_title": "Exécuter {{action}} ?",
     "confirm_run": "Exécuter",
     "done": "Terminé : {{action}}",
-    "hint": "↑↓ déplacer · Entrée exécuter · Échap fermer"
+    "hint": "↑↓ déplacer · Entrée exécuter · Échap fermer",
+    "none": "aucun"
   },
   "unisolated": {
     "title": "Exécuter sans isolation",
@@ -1283,5 +1284,9 @@
     "step_chatbot": "Activer le chatbot",
     "desc_chatbot": "Ajoutez une clé IA pour gérer les serveurs en langage naturel.",
     "go_chatbot": "Paramètres du chatbot"
+  },
+  "cli_line": {
+    "copy": "Copier la commande CLI",
+    "copied": "Copié"
   }
 }

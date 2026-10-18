@@ -1182,7 +1182,8 @@
     "confirm_title": "{{action}} ausführen?",
     "confirm_run": "Ausführen",
     "done": "Erledigt: {{action}}",
-    "hint": "↑↓ bewegen · Enter ausführen · Esc schließen"
+    "hint": "↑↓ bewegen · Enter ausführen · Esc schließen",
+    "none": "keiner"
   },
   "unisolated": {
     "title": "Ohne Isolation ausführen",
@@ -1283,5 +1284,9 @@
     "step_chatbot": "Chatbot einschalten",
     "desc_chatbot": "Mit einem KI-Schlüssel steuerst du Server in normaler Sprache.",
     "go_chatbot": "Chatbot-Einstellungen"
+  },
+  "cli_line": {
+    "copy": "CLI-Befehl kopieren",
+    "copied": "Kopiert"
   }
 }

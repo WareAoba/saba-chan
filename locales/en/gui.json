@@ -1212,7 +1212,8 @@
     "confirm_title": "Run {{action}}?",
     "confirm_run": "Run",
     "done": "Done: {{action}}",
-    "hint": "↑↓ to move · Enter to run · Esc to close"
+    "hint": "↑↓ to move · Enter to run · Esc to close",
+    "none": "none"
   },
   "unisolated": {
     "title": "Run without isolation",
@@ -1313,5 +1314,9 @@
     "step_chatbot": "Turn on the chatbot",
     "desc_chatbot": "Add an AI key to manage servers in plain words.",
     "go_chatbot": "Chatbot settings"
+  },
+  "cli_line": {
+    "copy": "Copy CLI command",
+    "copied": "Copied"
   }
 }
