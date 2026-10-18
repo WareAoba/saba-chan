@@ -388,6 +388,9 @@
     "updates": "Updates",
     "updates_ready": "{{count}} available",
     "preflight_running": "Preparing the runtime for game modules ({{percent}}%). Server actions may wait until it is done.",
+    "next_module": "Next: install a game module.",
+    "next_server": "Next: create your first server.",
+    "next_discord": "Next: connect this PC to a Discord server.",
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. It is retried on the next server action."
   },
   "stop": {

@@ -14,8 +14,10 @@ import {
     protocolLabel,
     viewStatus,
 } from '../../utils/serverView';
+import { dataStatusRows } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
@@ -432,6 +434,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
         server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
         moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
         server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],
+        ...dataStatusRows(server),
     ].filter(Boolean);
     const busy = server.status === 'running' || server.status === 'starting' || server.status === 'stopping';
 
@@ -448,6 +451,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
             <ExitHistory server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
+            <ServerCheck server={server} />
             <div className="info-actions">
                 {workingDir && (
                     <button

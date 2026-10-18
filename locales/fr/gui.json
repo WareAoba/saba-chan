@@ -410,7 +410,9 @@
     "alias_conflict_title": "Conflit d'alias",
     "alias_conflict_detail": "L'alias '{{alias}}' est déjà enregistré pour le module '{{module}}'",
     "multiple_instances_warning": "Il y a plusieurs instances qui utilisent le même module '{{module}}' ({{names}}). Pour les appels du bot Discord, veuillez utiliser les noms d'instance au lieu des alias de module pour les distinguer.",
-    "alias_ambiguity_card": "Instances du module '{{module}}' {{count}} — les alias Discord sont ambigus"
+    "alias_ambiguity_card": "Instances du module '{{module}}' {{count}} — les alias Discord sont ambigus",
+    "sync_failed": "Paramètres enregistrés, mais le fichier de configuration du jeu n'a pas pu être mis à jour. {{error}}",
+    "unknown_setting": "Ce module n'a pas ces paramètres : {{fields}}"
   },
   "buttons": {
     "add_server": "Ajouter un serveur",
@@ -695,7 +697,12 @@
     "daemon_down_stale": "Pas de connexion au démon. Affichage du dernier état connu.",
     "daemon_restart": "Redémarrer le démon",
     "daemon_restarting": "Redémarrage…",
-    "daemon_restart_failed": "Impossible de redémarrer le démon. {{error}}"
+    "daemon_restart_failed": "Impossible de redémarrer le démon. {{error}}",
+    "check_validate": "Vérifier le serveur",
+    "check_diagnose": "Diagnostiquer le journal",
+    "check_ok": "Aucun problème trouvé. Prêt à démarrer.",
+    "check_log_ok": "Aucun problème connu dans le journal récent.",
+    "check_failed": "Vérification impossible : {{error}}"
   },
   "discord": {
     "nav_connection": "Connexion",
@@ -1177,7 +1184,8 @@
     "confirm_title": "Exécuter {{action}} ?",
     "confirm_run": "Exécuter",
     "done": "Terminé : {{action}}",
-    "hint": "↑↓ déplacer · Entrée exécuter · Échap fermer"
+    "hint": "↑↓ déplacer · Entrée exécuter · Échap fermer",
+    "none": "aucun"
   },
   "unisolated": {
     "title": "Exécuter sans isolation",
@@ -1233,5 +1241,54 @@
     "start_title": "Accord requis",
     "start_message": "Pour démarrer « {{name}} », vous devez accepter les conditions ci-dessous. Lisez-les et cochez chacune.",
     "accept_and_start": "Accepter et démarrer"
+  },
+  "diagnostics": {
+    "title": "Diagnostic",
+    "description": "Affiche l'état du daemon et les avertissements récents. Copiez-le pour demander de l'aide. Les mots de passe et jetons ne sont pas inclus.",
+    "show": "Afficher le diagnostic",
+    "refresh": "Actualiser",
+    "copy": "Copier",
+    "copied": "Copié",
+    "failed": "Impossible de charger le diagnostic",
+    "version": "Version",
+    "uptime": "Durée de fonctionnement",
+    "uptime_value": "{{h}} h {{m}} min",
+    "listen": "Adresse d'écoute",
+    "data_dir": "Dossier de données",
+    "token": "Jeton d'authentification",
+    "token_ok": "Présent",
+    "token_missing": "Absent",
+    "modules": "Modules",
+    "modules_error": "Échec du chargement : {{error}}",
+    "extensions": "Extensions activées",
+    "extensions_missing": "Activées mais non installées : {{list}}",
+    "recent_problems": "Avertissements et erreurs récents",
+    "no_problems": "Aucun avertissement ni erreur récent."
+  },
+  "extension_config": {
+    "toggle": "Paramètres",
+    "save": "Enregistrer",
+    "saved": "Enregistré",
+    "load_failed": "Impossible de charger les paramètres : {{error}}",
+    "save_failed": "Impossible d'enregistrer : {{error}}"
+  },
+  "onboarding": {
+    "title": "Étape suivante",
+    "step_module": "Installer un module de jeu",
+    "desc_module": "Installez d'abord le module du jeu à héberger.",
+    "go_module": "Ajouter un jeu",
+    "step_server": "Créer votre premier serveur",
+    "desc_server": "Créez un serveur avec le jeu installé.",
+    "go_server": "Ajouter un serveur",
+    "step_discord": "Connecter Discord",
+    "desc_discord": "Connectez le bot Discord pour gérer les serveurs depuis le chat.",
+    "go_discord": "Connecter Discord",
+    "step_chatbot": "Activer le chatbot",
+    "desc_chatbot": "Ajoutez une clé IA pour gérer les serveurs en langage naturel.",
+    "go_chatbot": "Paramètres du chatbot"
+  },
+  "cli_line": {
+    "copy": "Copier la commande CLI",
+    "copied": "Copié"
   }
 }

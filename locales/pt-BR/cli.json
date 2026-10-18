@@ -348,6 +348,9 @@
     "updates": "Atualizações",
     "updates_ready": "{{count}} disponíveis",
     "preflight_running": "Preparando o ambiente de execução dos módulos de jogo ({{percent}}%). As ações do servidor podem aguardar até terminar.",
+    "next_module": "Próximo passo: instale um módulo de jogo.",
+    "next_server": "Próximo passo: crie seu primeiro servidor.",
+    "next_discord": "Próximo passo: conecte este PC a um servidor do Discord.",
     "preflight_failed": "Falha ao preparar o ambiente de execução dos módulos de jogo: {{error}}. Será tentado de novo na próxima ação do servidor."
   },
   "stop": {

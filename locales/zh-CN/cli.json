@@ -348,6 +348,9 @@
     "updates": "更新",
     "updates_ready": "{{count}} 个可用",
     "preflight_running": "正在为游戏模块准备运行环境（{{percent}}%）。服务器操作可能需要等待其完成。",
+    "next_module": "下一步：安装一个游戏模块。",
+    "next_server": "下一步：创建你的第一个服务器。",
+    "next_discord": "下一步：将这台电脑连接到 Discord 服务器。",
     "preflight_failed": "游戏模块运行环境准备失败：{{error}}。将在下次服务器操作时重试。"
   },
   "stop": {
