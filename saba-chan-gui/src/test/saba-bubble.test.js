@@ -171,10 +171,13 @@ describe('사바쨩 말풍선', () => {
     });
 
     it('다시 연결했을 때 복구 중인 서버가 꺼져 있으면 복구 중을 놓는다', async () => {
+        useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'running', start_time: 100 }] });
         const emit = fakeStream();
         render(<SabaBubble />);
         await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 } });
         await emit({ type: 'resync', data: {} });
+        // 목록을 다시 받기 전의 다른 갱신(시계 등)은 표시를 쓰지 않는다
+        await act(async () => useServerStore.setState({ nowEpoch: 123 }));
         await act(async () => {
             useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
         });

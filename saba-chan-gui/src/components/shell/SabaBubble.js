@@ -92,10 +92,11 @@ function useBubbleTriggers() {
     // 넘어지기 전 목록이 남아 있을 수 있어, 꺼진 모습을 봤거나 시작 시각이 바뀐 뒤의 실행만 믿는다
     useEffect(() => {
         let watch = null;
-        return useServerStore.subscribe((s) => {
+        return useServerStore.subscribe((s, prev) => {
             const b = useSabaBubble.getState().bubble;
-            const afterResync = resyncRef.current;
-            resyncRef.current = false;
+            // 시계 같은 다른 갱신은 건너뛰고, 목록을 새로 받은 갱신에서만 resync 표시를 쓴다
+            const afterResync = resyncRef.current && s.servers !== prev.servers;
+            if (afterResync) resyncRef.current = false;
             if (!b?.holdKey || b.released) return;
             const srv = s.servers.find((x) => x.id === b.holdKey);
             if (afterResync && srv?.status !== 'running') {
