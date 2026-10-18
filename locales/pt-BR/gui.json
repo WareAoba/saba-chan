@@ -394,8 +394,6 @@
     "dependency_unmet_title": "Requisitos ausentes",
     "dependency_unmet_message": "O módulo de '{{name}}' precisa das versões abaixo. Atualize, ou instale e ative a extensão, e inicie de novo.",
     "preflight_failed_title": "A verificação antes de iniciar '{{name}}' encontrou um problema",
-    "eula_notice": "EULA do Minecraft: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "Aceitar a EULA e iniciar",
     "working_dir_in_use": "O servidor '{{instance}}' já usa esta pasta. Dois servidores na mesma pasta sobrescrevem o mundo e as configurações um do outro. Escolha outra pasta.",
     "no_command_path": "Este servidor não tem console para enviar comandos. Inicie-o pela Saba-chan para enviar comandos."
   },
@@ -412,7 +410,9 @@
     "alias_conflict_title": "Conflito de alias",
     "alias_conflict_detail": "O alias '{{alias}}' já está registrado no módulo '{{module}}'",
     "multiple_instances_warning": "Há várias instâncias usando o mesmo módulo '{{module}}' ({{names}}). Para chamadas do bot Discord, use nomes de instância em vez de aliases de módulo para diferenciá-las.",
-    "alias_ambiguity_card": "{{count}} instâncias do módulo '{{module}}' — aliases Discord são ambíguos"
+    "alias_ambiguity_card": "{{count}} instâncias do módulo '{{module}}' — aliases Discord são ambíguos",
+    "sync_failed": "As configurações foram salvas, mas o arquivo de configuração do jogo não pôde ser atualizado. {{error}}",
+    "unknown_setting": "Este módulo não tem estas configurações: {{fields}}"
   },
   "buttons": {
     "add_server": "Adicionar Servidor",
@@ -697,7 +697,12 @@
     "daemon_down_stale": "Sem conexão com o daemon. Mostrando o último estado conhecido.",
     "daemon_restart": "Reiniciar daemon",
     "daemon_restarting": "Reiniciando…",
-    "daemon_restart_failed": "Não foi possível reiniciar o daemon. {{error}}"
+    "daemon_restart_failed": "Não foi possível reiniciar o daemon. {{error}}",
+    "check_validate": "Verificar servidor",
+    "check_diagnose": "Diagnosticar log",
+    "check_ok": "Nenhum problema encontrado. Pronto para iniciar.",
+    "check_log_ok": "Nenhum problema conhecido no log recente.",
+    "check_failed": "Não foi possível verificar: {{error}}"
   },
   "discord": {
     "nav_connection": "Conexão",
@@ -1179,7 +1184,8 @@
     "confirm_title": "Executar {{action}}?",
     "confirm_run": "Executar",
     "done": "Concluído: {{action}}",
-    "hint": "↑↓ mover · Enter executar · Esc fechar"
+    "hint": "↑↓ mover · Enter executar · Esc fechar",
+    "none": "nenhum"
   },
   "unisolated": {
     "title": "Executar sem isolamento",
@@ -1226,5 +1232,63 @@
     "failed_hint": "Se abrir mesmo assim, só a interface abre. Reinicie o daemon para gerenciar servidores.",
     "retry": "Tentar de novo",
     "continue": "Abrir mesmo assim"
+  },
+  "agreements": {
+    "title": "Acordos",
+    "accept": "Concordo com {{name}}",
+    "read": "Ler {{name}}",
+    "read_short": "Ler",
+    "start_title": "Concordância necessária",
+    "start_message": "Para iniciar '{{name}}', você precisa concordar com os termos abaixo. Leia-os e marque cada um.",
+    "accept_and_start": "Concordar e iniciar"
+  },
+  "diagnostics": {
+    "title": "Diagnóstico",
+    "description": "Mostra o estado do daemon e avisos recentes. Copie ao pedir ajuda. Senhas e tokens não são incluídos.",
+    "show": "Mostrar diagnóstico",
+    "refresh": "Atualizar",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "failed": "Não foi possível carregar o diagnóstico",
+    "version": "Versão",
+    "uptime": "Tempo ativo",
+    "uptime_value": "{{h}} h {{m}} min",
+    "listen": "Endereço",
+    "data_dir": "Pasta de dados",
+    "token": "Token de autenticação",
+    "token_ok": "Presente",
+    "token_missing": "Ausente",
+    "modules": "Módulos",
+    "modules_error": "Falha ao carregar: {{error}}",
+    "extensions": "Extensões ativadas",
+    "extensions_missing": "Ativadas mas não instaladas: {{list}}",
+    "recent_problems": "Avisos e erros recentes",
+    "no_problems": "Nenhum aviso ou erro recente."
+  },
+  "extension_config": {
+    "toggle": "Configurações",
+    "save": "Salvar",
+    "saved": "Salvo",
+    "load_failed": "Não foi possível carregar as configurações: {{error}}",
+    "save_failed": "Não foi possível salvar: {{error}}"
+  },
+  "onboarding": {
+    "title": "Próximo passo",
+    "step_module": "Instalar um módulo de jogo",
+    "desc_module": "Primeiro instale o módulo do jogo que você quer hospedar.",
+    "go_module": "Adicionar jogo",
+    "step_server": "Criar seu primeiro servidor",
+    "desc_server": "Crie um servidor com o jogo instalado.",
+    "go_server": "Adicionar servidor",
+    "step_discord": "Conectar Discord",
+    "desc_discord": "Conecte o bot do Discord para gerenciar servidores pelo chat.",
+    "go_discord": "Conectar Discord",
+    "step_chatbot": "Ativar o chatbot",
+    "desc_chatbot": "Adicione uma chave de IA para gerenciar servidores com linguagem natural.",
+    "go_chatbot": "Configurações do chatbot"
+  },
+  "cli_line": {
+    "copy": "Copiar comando da CLI",
+    "copied": "Copiado"
   }
 }

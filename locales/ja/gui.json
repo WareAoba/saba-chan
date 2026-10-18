@@ -338,8 +338,6 @@
     "dependency_unmet_title": "必要な要件を満たしていません",
     "dependency_unmet_message": "'{{name}}' のモジュールには以下のバージョンが必要です。アップデートするか、拡張機能をインストールして有効にしてから、もう一度起動してください。",
     "preflight_failed_title": "'{{name}}' の起動前チェックで問題が見つかりました",
-    "eula_notice": "Minecraft EULA: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "EULA に同意して起動",
     "working_dir_in_use": "サーバー '{{instance}}' がすでにこのフォルダーを使っています。1つのフォルダーに2つのサーバーを作ると、ワールドと設定を互いに上書きします。別のフォルダーを選んでください。",
     "no_command_path": "このサーバーにはコマンドを送るコンソールがありません。サバちゃんから起動するとコマンドを送れます。"
   },
@@ -356,7 +354,9 @@
     "alias_conflict_title": "エイリアス競合",
     "alias_conflict_detail": "エイリアス '{{alias}}' はモジュール '{{module}}' に既に登録されています",
     "multiple_instances_warning": "同じモジュール ‘{{module}}’ を使用するインスタンスが複数あります ({{names}})。Discord ボットでモジュール別名で呼び出す際に区別できないため、インスタンス名を使用してください。",
-    "alias_ambiguity_card": "‘{{module}}’ モジュールのインスタンスが {{count}} 個 — Discord 別名が不明療です"
+    "alias_ambiguity_card": "‘{{module}}’ モジュールのインスタンスが {{count}} 個 — Discord 別名が不明療です",
+    "sync_failed": "設定は保存しましたが、ゲームの設定ファイルに書き込めませんでした。{{error}}",
+    "unknown_setting": "このモジュールにない設定です: {{fields}}"
   },
   "buttons": {
     "add_server": "サーバーを追加",
@@ -697,7 +697,12 @@
     "daemon_down_stale": "デーモンに接続していないため、最後に受け取った状態を表示しています。",
     "daemon_restart": "デーモンを再起動",
     "daemon_restarting": "再起動中…",
-    "daemon_restart_failed": "デーモンを再起動できませんでした。{{error}}"
+    "daemon_restart_failed": "デーモンを再起動できませんでした。{{error}}",
+    "check_validate": "サーバー点検",
+    "check_diagnose": "ログ診断",
+    "check_ok": "問題は見つかりませんでした。起動できます。",
+    "check_log_ok": "最近のログに既知の問題は見つかりませんでした。",
+    "check_failed": "点検できませんでした: {{error}}"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1179,7 +1184,8 @@
     "confirm_title": "{{action}} を実行しますか？",
     "confirm_run": "実行",
     "done": "完了: {{action}}",
-    "hint": "↑↓ 移動 · Enter 実行 · Esc 閉じる"
+    "hint": "↑↓ 移動 · Enter 実行 · Esc 閉じる",
+    "none": "なし"
   },
   "unisolated": {
     "title": "隔離せずに実行",
@@ -1226,5 +1232,63 @@
     "failed_hint": "このまま開くと画面だけが開きます。サーバーを操作するにはデーモンを再起動してください。",
     "retry": "再試行",
     "continue": "このまま開く"
+  },
+  "agreements": {
+    "title": "規約への同意",
+    "accept": "{{name}}に同意します",
+    "read": "{{name}}の原文を読む",
+    "read_short": "原文を見る",
+    "start_title": "規約への同意が必要です",
+    "start_message": "サーバー「{{name}}」を起動するには、以下の規約に同意する必要があります。原文を読んでチェックしてください。",
+    "accept_and_start": "同意して起動"
+  },
+  "diagnostics": {
+    "title": "診断情報",
+    "description": "デーモンの状態と最近の警告を表示します。問い合わせの際はコピーして貼り付けてください。パスワードやトークンは含まれません。",
+    "show": "診断情報を表示",
+    "refresh": "更新",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "failed": "診断情報を読み込めませんでした",
+    "version": "バージョン",
+    "uptime": "稼働時間",
+    "uptime_value": "{{h}}時間{{m}}分",
+    "listen": "接続アドレス",
+    "data_dir": "データフォルダー",
+    "token": "認証トークン",
+    "token_ok": "あり",
+    "token_missing": "なし",
+    "modules": "モジュール",
+    "modules_error": "読み込み失敗: {{error}}",
+    "extensions": "有効な拡張機能",
+    "extensions_missing": "有効だが未インストールの拡張機能: {{list}}",
+    "recent_problems": "最近の警告とエラー",
+    "no_problems": "最近の警告やエラーはありません。"
+  },
+  "extension_config": {
+    "toggle": "設定",
+    "save": "保存",
+    "saved": "保存しました",
+    "load_failed": "設定を読み込めませんでした: {{error}}",
+    "save_failed": "保存できませんでした: {{error}}"
+  },
+  "onboarding": {
+    "title": "次にやること",
+    "step_module": "ゲームモジュールをインストール",
+    "desc_module": "まずホストしたいゲームのモジュールをインストールします。",
+    "go_module": "ゲームを追加",
+    "step_server": "最初のサーバーを作成",
+    "desc_server": "インストールしたゲームでサーバーを作ります。",
+    "go_server": "サーバーを追加",
+    "step_discord": "Discordを接続",
+    "desc_discord": "Discordボットと接続するとチャットでサーバーを操作できます。",
+    "go_discord": "Discordを接続",
+    "step_chatbot": "チャットボットを有効化",
+    "desc_chatbot": "AIキーを入れると言葉でサーバーを操作できます。",
+    "go_chatbot": "チャットボット設定"
+  },
+  "cli_line": {
+    "copy": "CLIコマンドをコピー",
+    "copied": "コピーしました"
   }
 }

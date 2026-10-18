@@ -636,6 +636,7 @@ impl IPCServer {
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
+            .route("/api/onboarding", get(handlers::diagnostics::onboarding))
             .route("/api/audit", get(handlers::diagnostics::audit))
             .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──

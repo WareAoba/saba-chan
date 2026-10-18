@@ -26,6 +26,7 @@ const modules = [
         description: 'Minecraft Java 서버',
         interaction_mode: 'console',
         protocols: { supported: ['stdin'], default: 'stdin' },
+        agreements: [{ id: 'eula', label: 'Minecraft EULA', url: 'https://aka.ms/MinecraftEULA' }],
         commands: {
             fields: [
                 {
@@ -76,6 +77,11 @@ let servers = [
         pid: 1234,
         server_version: '1.21.1',
         module_settings: { port: 25565 },
+        // 데몬이 판정한 익스텐션 데이터 slot (Q-7)
+        slots: {
+            'ServerCard.badge': [{ extension: 'backup', text: '💾' }],
+            'ServerDetail.status': [{ extension: 'backup', label: '마지막 백업', value: '2시간 전' }],
+        },
     },
     {
         id: 'srv-2',
@@ -221,6 +227,46 @@ const impl = {
     chatbotSave: (patch) =>
         ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
     chatbotClearMemory: () => ok({ success: true }),
+    instanceValidate: () =>
+        ok({
+            success: false,
+            issues: [
+                {
+                    code: 'JAVA_VERSION_TOO_OLD',
+                    severity: 'critical',
+                    message: 'Java 17은 이 버전에 너무 오래됐습니다',
+                    solution: 'Java 21을 설치하세요',
+                },
+                {
+                    code: 'LOW_RAM',
+                    severity: 'warning',
+                    message: '할당 메모리가 적습니다',
+                    solution: '2GB 이상을 권장합니다',
+                },
+            ],
+        }),
+    instanceDiagnose: () => ok({ success: true, issues: [] }),
+    daemonDiagnostics: () =>
+        ok({
+            ok: true,
+            version: '0.1.5',
+            pid: 4242,
+            uptime_secs: 3725,
+            listen_addr: '127.0.0.1:57474',
+            data_dir: 'C:/Users/me/AppData/Roaming/saba-chan',
+            token_file: { path: 'C:/Users/me/AppData/Roaming/saba-chan/.ipc_token', exists: true },
+            extensions: { enabled: ['steamcmd'], enabled_but_missing: [] },
+            modules: { count: 3 },
+            recent_problems: [
+                {
+                    id: 1,
+                    timestamp: Date.now() - 60000,
+                    level: 'warn',
+                    target: 'saba',
+                    message: '디스크 응답이 느립니다',
+                },
+            ],
+        }),
     migrationScanDir: () => ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
@@ -528,6 +574,14 @@ const impl = {
                     : []),
                 { id: 'backup.create', kind: 'command', risk: 'caution', scope: 'instance', title: '백업 만들기' },
                 { id: 'instance.delete', kind: 'admin', risk: 'danger', scope: 'instance', title: '서버 삭제' },
+                {
+                    id: 'instance.settings.set',
+                    kind: 'admin',
+                    risk: 'caution',
+                    scope: 'instance',
+                    title: '서버 설정 바꾸기',
+                    cli: 'saba do instance.settings.set --server <server>',
+                },
             ],
         }),
     actionsPlan: (id, { instance } = {}) =>
@@ -604,6 +658,16 @@ const impl = {
                       },
         }),
     extensionList: () => ok({ extensions: [] }),
+    onboarding: () =>
+        ok({
+            steps: [
+                { id: 'module', done: true, optional: false },
+                { id: 'server', done: true, optional: false },
+                { id: 'discord', done: false, optional: false },
+                { id: 'chatbot', done: false, optional: true },
+            ],
+            next: 'discord',
+        }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
     // spans를 달라고 하면(하이라이트 켬) 데몬처럼 조각 토큰을 붙인다: 시각·스레드/레벨·따옴표·숫자·플레이어

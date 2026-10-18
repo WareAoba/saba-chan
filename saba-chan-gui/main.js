@@ -2566,6 +2566,7 @@ async function daemonJson(method, path, data, timeout = 15000) {
 const BACKUP_TIMEOUT = 10 * 60 * 1000;
 const instancePath = (id, rest = '') => `/api/instance/${encodeURIComponent(id)}${rest}`;
 ipcMain.handle('instance:agreements', (_e, id, accept) => daemonJson('post', instancePath(id, '/agreements'), { accept }));
+ipcMain.handle('onboarding:get', () => daemonJson('get', '/api/onboarding'));
 ipcMain.handle('instance:backups', (_e, id) => daemonJson('get', instancePath(id, '/backups')));
 ipcMain.handle('instance:backupCreate', (_e, id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT));
 ipcMain.handle('instance:backupDelete', (_e, id, name) =>

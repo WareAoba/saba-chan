@@ -1,7 +1,10 @@
 import { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AgreementList, allChecked } from '../AgreementList';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import { AddServerOptions, addServerExtensionData } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
+import { useExtensions } from '../../contexts/ExtensionContext';
 import Icon from '../Icon';
 import { Segmented } from '../ui/StatusChip';
 
@@ -31,6 +34,9 @@ export function AddInstanceNewServer({
     const [submitting, setSubmitting] = useState(false);
     const [installValues, setInstallValues] = useState({});
     const [preset, setPreset] = useState('');
+    const [agreed, setAgreed] = useState({}); // 약관 id → 체크 여부
+    const [extValues, setExtValues] = useState({}); // AddServer.options 답 (field → 값)
+    const { extensions: daemonExtensions } = useExtensions();
     const nameInputRef = useRef(null);
 
     // 게임 카드를 눌렀을 때
@@ -43,6 +49,8 @@ export function AddInstanceNewServer({
         setNewServerName(`my-${extName}-${existingCount + 1}`);
         setInstallValues({});
         setPreset('');
+        setAgreed({});
+        setExtValues({});
 
         setStep('configure');
     };
@@ -68,18 +76,21 @@ export function AddInstanceNewServer({
     };
 
     const handleSubmit = async () => {
-        if (!newServerName.trim()) return;
-        if (!selectedExtension) return;
+        if (!canSubmit) return;
 
         setSubmitting(true);
+        const extensionData = addServerExtensionData(daemonExtensions, extValues);
         try {
             await onAddServer({
                 name: newServerName.trim(),
                 module_name: selectedExtension,
-                accept_eula: true,
                 module_settings: installValues,
+                // 사용자가 체크한 약관만 (module.toml [[agreements]])
+                ...(agreements.length ? { accept_agreements: agreements.map((a) => a.id) } : {}),
                 // 프리셋 값은 데몬이 푼다 (I1-b)
                 ...(preset ? { preset } : {}),
+                // 익스텐션이 물은 칸 (AddServer.options)
+                ...(extensionData ? { extension_data: extensionData } : {}),
             });
         } finally {
             setSubmitting(false);
@@ -91,7 +102,9 @@ export function AddInstanceNewServer({
         setStep('select-game');
     };
 
-    const canSubmit = newServerName.trim() && selectedExtension && !submitting;
+    const agreementModule = extensions.find((m) => m.name === selectedExtension);
+    const agreements = agreementModule?.agreements || [];
+    const canSubmit = newServerName.trim() && selectedExtension && !submitting && allChecked(agreements, agreed);
 
     // ──────────────────────────────────────────
     //  Step 1: 게임 선택 (아이콘 카드 그리드)
@@ -292,8 +305,30 @@ export function AddInstanceNewServer({
                         </div>
                     )}
 
+                    {/* 모듈이 선언한 약관: 모두 동의해야 만들 수 있다 */}
+                    {agreements.length > 0 && (
+                        <div className="as-section as-section-card">
+                            <span className="as-label">
+                                <Icon name="file" size="sm" />
+                                {t('agreements.title')}
+                            </span>
+                            <AgreementList
+                                module={selectedExtension}
+                                agreements={agreements}
+                                checked={agreed}
+                                onToggle={(id, on) => setAgreed((prev) => ({ ...prev, [id]: on }))}
+                                disabled={submitting}
+                            />
+                        </div>
+                    )}
+
                     {/* 익스텐션 슬롯 — 서버 생성 옵션 */}
                     <ExtensionSlot slotId="AddServer.options" t={t} />
+                    <AddServerOptions
+                        values={extValues}
+                        onChange={(field, value) => setExtValues((prev) => ({ ...prev, [field]: value }))}
+                        disabled={submitting}
+                    />
 
                     {/* 프로비저닝 안내 */}
                     <p className="as-provision-hint">

@@ -10,13 +10,14 @@ const blocked = (missing) => ({
     missing_dependencies: missing,
 });
 
-function setup(openSettingsToExtensions) {
+function setup(openSettingsToExtensions, agreements) {
+    const modules = agreements ? [{ name: 'game', agreements }] : [];
     const setModal = vi.fn();
     const { result } = renderHook(() =>
         useServerActions({
             servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }],
             setServers: vi.fn(),
-            modules: [],
+            modules,
             loading: false,
             setLoading: vi.fn(),
             setModal,
@@ -76,19 +77,19 @@ describe('시작: 켜기 전 점검(preflight_failed)', () => {
         ],
     };
 
-    it('문제와 해결 방법을 보여 주고, EULA는 동의 버튼으로 동의한 뒤 다시 켠다', async () => {
+    it('문제와 해결 방법을 보여 주고, 동의 기록이 있는데 EULA 파일이 없으면 약관 창으로 다시 동의받는다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValueOnce(eula).mockResolvedValueOnce({ success: true });
-        window.api.instanceAcceptEula = vi.fn().mockResolvedValue({ success: true });
+        window.api.instanceAgreements = vi.fn().mockResolvedValue({ success: true });
         window.api.serverStatus = vi.fn().mockResolvedValue({ status: 'running' });
-        const { result, setModal } = setup(vi.fn());
+        const { result, setModal } = setup(vi.fn(), [{ id: 'eula', url: 'https://aka.ms/MinecraftEULA' }]);
         await act(async () => result.current.handleStart('A', 'game'));
         const modal = setModal.mock.calls.at(-1)[0];
-        expect(modal.type).toBe('question');
+        expect(modal.type).toBe('agreements');
         expect(modal.message).toContain('Minecraft EULA not accepted');
         expect(modal.message).toContain('Accept the EULA');
         expect(modal.message).toContain('• Second');
-        await act(async () => modal.buttons[0].action());
-        expect(window.api.instanceAcceptEula).toHaveBeenCalledWith('a');
+        await act(async () => modal.onAccept(['eula']));
+        expect(window.api.instanceAgreements).toHaveBeenCalledWith('a', ['eula']);
         expect(window.api.instanceStart).toHaveBeenCalledTimes(2);
     });
 

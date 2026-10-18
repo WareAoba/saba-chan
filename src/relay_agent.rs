@@ -276,7 +276,15 @@ impl Session {
         .body
         .get("servers")
         {
-            Some(Value::Array(list)) => list.iter().map(relay_server_entry).collect(),
+            Some(Value::Array(list)) => {
+                // `/사바쨩 상태`의 CPU·RAM (폴더 크기는 재지 않는다)
+                let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
+                let monitor = self.server.system_monitor.clone();
+                let usage = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false).instances).await.unwrap_or_default();
+                list.iter()
+                    .map(|s| relay_server_entry(s, usage.iter().find(|u| s.get("id").and_then(|v| v.as_str()) == Some(u.id.as_str()))))
+                    .collect()
+            }
             _ => Vec::new(),
         };
         let modules: Vec<Value> = self
@@ -863,13 +871,33 @@ fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField) -> Va
     json!({ "name": c.name, "label": c.label, "description": c.description, "risk": c.risk, "inputs": inputs })
 }
 
-/// 하트비트의 서버 한 줄: relay가 읽는 필드만 싣는다. 설정값·경로·비밀번호는 PC 밖으로 나가지 않는다
-fn relay_server_entry(server: &Value) -> Value {
+/// 익스텐션 상태 줄 길이 상한 (글자)
+const STATUS_LINE_MAX: usize = 100;
+
+/// 하트비트의 서버 한 줄: relay가 읽는 필드만 싣는다. 설정값·경로·비밀번호는 PC 밖으로 나가지 않는다.
+/// 실행 중이면 `usage{cpu, memMb}`(Q-5), 익스텐션이 `server.list_enrich`에서 `status_line`을 주면 `statusLine`(X-1)
+fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::InstanceMetrics>) -> Value {
     let mut entry = serde_json::Map::new();
     for key in ["id", "name", "module", "status"] {
         if let Some(v) = server.get(key) {
             entry.insert(key.to_string(), v.clone());
         }
+    }
+    if let Some(u) = usage.filter(|u| u.running) {
+        let cpu = (f64::from(u.cpu_percent) * 10.0).round() / 10.0;
+        entry.insert("usage".into(), json!({ "cpu": cpu, "memMb": u.memory_bytes / (1024 * 1024) }));
+    }
+    // 익스텐션 id 순으로 첫 번째 상태 줄. 제어 문자를 빼고 한 줄로 자른다
+    let line = server.get("extension_status").and_then(|v| v.as_object()).and_then(|statuses| {
+        let mut ids: Vec<&String> = statuses.keys().collect();
+        ids.sort();
+        ids.into_iter().find_map(|id| {
+            let text: String = statuses[id].get("status_line")?.as_str()?.chars().filter(|c| !c.is_control()).take(STATUS_LINE_MAX).collect();
+            Some(text.trim().to_string()).filter(|t| !t.is_empty())
+        })
+    });
+    if let Some(line) = line {
+        entry.insert("statusLine".into(), json!(line));
     }
     Value::Object(entry)
 }
@@ -911,7 +939,25 @@ mod tests {
             "executable_path": "C:/srv/java.exe", "working_dir": "C:/srv",
             "module_settings": { "rcon_secret": "x" }, "rest_password": "y"
         });
-        assert_eq!(relay_server_entry(&server), json!({ "id": "i1", "name": "마크", "module": "minecraft", "status": "running" }));
+        assert_eq!(relay_server_entry(&server, None), json!({ "id": "i1", "name": "마크", "module": "minecraft", "status": "running" }));
+    }
+
+    #[test]
+    fn heartbeat_servers_add_usage_and_an_extension_status_line() {
+        let server = json!({
+            "id": "i1", "name": "마크", "module": "minecraft", "status": "running",
+            "extension_status": { "zz": { "status_line": "later" }, "docker": { "status_line": "  컨테이너 실행 중\n", "path": "C:/x" } }
+        });
+        let usage = crate::system_monitor::InstanceMetrics {
+            id: "i1".into(), name: "마크".into(), running: true, process_count: 1,
+            cpu_percent: 12.345, memory_bytes: 3 * 1024 * 1024 * 1024, disk_read_bps: 0, disk_write_bps: 0,
+        };
+        let entry = relay_server_entry(&server, Some(&usage));
+        assert_eq!(entry["usage"], json!({ "cpu": 12.3, "memMb": 3072 }));
+        assert_eq!(entry["statusLine"], "컨테이너 실행 중");
+        assert!(entry.get("extension_status").is_none());
+        let stopped = crate::system_monitor::InstanceMetrics { running: false, ..usage };
+        assert!(relay_server_entry(&server, Some(&stopped)).get("usage").is_none());
     }
 
     #[test]

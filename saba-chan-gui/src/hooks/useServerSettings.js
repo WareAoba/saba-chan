@@ -301,7 +301,6 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             const installResult = await window.api.moduleInstallServer(module, {
                                 version,
                                 install_dir: targetDir,
-                                accept_eula: true,
                             });
 
                             if (installResult.error_code === 'extension_required') {
@@ -518,6 +517,14 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             if (result.error && result.error_code === 'invalid_format') {
                 // 형식이 틀린 값: 칸마다 따로 알리지 않고 토스트 하나로 (미리보기와 같은 문구)
                 safeShowToast(t('launch_preview.invalid_format'), 'warning', 4000);
+            } else if (result.error && result.error_code === 'unknown_setting') {
+                // 모듈이 선언하지 않은 키
+                const keys = (result.fields || []).map((f) => f.field).join(', ');
+                setModal({
+                    type: 'failure',
+                    title: t('settings.save_failed_title'),
+                    message: t('settings.unknown_setting', { fields: keys }),
+                });
             } else if (result.error) {
                 // validation_failed: 상세 에러 목록 포함
                 if (result.error_code === 'validation_failed' && result.details) {
@@ -537,6 +544,10 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     title: t('command_modal.success'),
                     message: t('server_actions.settings_saved', { name: settingsServer.name }),
                 });
+                // 저장은 됐지만 모듈이 게임 설정 파일에 쓰지 못했다
+                if (result.synced === false) {
+                    safeShowToast(t('settings.sync_failed', { error: result.sync_error || '' }), 'warning', 6000);
+                }
                 if (stillOpen) setShowSettingsModal(false);
                 fetchServers();
             }

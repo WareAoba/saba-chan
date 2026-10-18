@@ -234,6 +234,30 @@ export function useServerActions({
         });
     };
 
+    // 약관 동의 창 (module.toml [[agreements]]). 동의하면 이 PC에서 기록하고 다시 켠다
+    const askAgreements = (srv, name, module, title, message, agreements) => {
+        setModal({
+            type: 'agreements',
+            title,
+            message,
+            module: srv?.module || module,
+            agreements,
+            onAccept: async (ids) => {
+                setModal(null);
+                try {
+                    const res = await window.api.instanceAgreements(srv.id, ids);
+                    if (!res || res.success === false || res.error) {
+                        safeShowToast(translateError(res?.error || ''), 'error', 5000);
+                        return;
+                    }
+                    handleStart(name, module);
+                } catch (err) {
+                    safeShowToast(translateError(err.message), 'error', 5000);
+                }
+            },
+        });
+    };
+
     // ── handleStart ─────────────────────────────────────────
     const handleStart = async (name, module) => {
         try {
@@ -316,7 +340,6 @@ export function useServerActions({
                                     const installResult = await window.api.moduleInstallServer(module, {
                                         version: latestVersion,
                                         install_dir: installDir,
-                                        accept_eula: true,
                                     });
 
                                     if (installResult.error || installResult.success === false) {
@@ -424,6 +447,26 @@ export function useServerActions({
                 return;
             }
 
+            // ── error_code: agreement_required — 모듈이 선언한 약관(EULA 등)에 아직 동의하지 않음 ──
+            if (result.error_code === 'agreement_required') {
+                revertOptimistic(name);
+                const pending = Array.isArray(result.agreements) ? result.agreements : [];
+                if (pending.length && window.api.instanceAgreements) {
+                    askAgreements(
+                        srv,
+                        name,
+                        module,
+                        t('agreements.start_title'),
+                        t('agreements.start_message', { name }),
+                        pending,
+                    );
+                } else {
+                    // 데몬 문구는 이미 현지화돼 있다
+                    setModal({ type: 'failure', title: t('agreements.start_title'), message: result.error || '' });
+                }
+                return;
+            }
+
             // ── error_code: preflight_failed — 켜기 전 점검(모듈 validate)이 critical 문제를 냈다 ──
             if (result.error_code === 'preflight_failed') {
                 revertOptimistic(name);
@@ -433,31 +476,15 @@ export function useServerActions({
                     .filter(Boolean)
                     .join('\n\n');
                 const title = t('servers.preflight_failed_title', { name });
-                if (result.issue_code === 'EULA_NOT_ACCEPTED' && window.api.instanceAcceptEula) {
-                    setModal({
-                        type: 'question',
-                        title,
-                        message: `${message}\n\n${t('servers.eula_notice')}`,
-                        buttons: [
-                            {
-                                label: t('servers.eula_accept_and_start'),
-                                action: async () => {
-                                    setModal(null);
-                                    const accepted = await window.api.instanceAcceptEula(srv.id);
-                                    if (accepted?.success === false || accepted?.error) {
-                                        safeShowToast(
-                                            translateError(accepted.error || accepted.message || ''),
-                                            'error',
-                                            5000,
-                                        );
-                                        return;
-                                    }
-                                    handleStart(name, module);
-                                },
-                            },
-                            { label: t('modals.cancel'), action: () => setModal(null) },
-                        ],
-                    });
+                // 동의 기록은 있는데 파일(eula.txt 등)이 지워진 경우: 다시 동의하면 모듈이 파일을 다시 쓴다
+                // 서버 목록에는 agreements가 없어 모듈 목록의 선언을 쓴다
+                const srvAgreements = modules.find((m) => m.name === (srv?.module || module))?.agreements || [];
+                if (
+                    result.issue_code === 'EULA_NOT_ACCEPTED' &&
+                    srvAgreements.length &&
+                    window.api.instanceAgreements
+                ) {
+                    askAgreements(srv, name, module, title, message, srvAgreements);
                 } else {
                     setModal({ type: 'failure', title, message });
                 }
@@ -780,7 +807,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload) => {
-        // payload = { name, module_name, accept_eula?, migration_source?, module_settings? }
+        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
@@ -813,6 +840,16 @@ export function useServerActions({
             // 만들 때 고른 모듈 설정 (예: 서버 종류)
             if (payload?.module_settings && Object.keys(payload.module_settings).length > 0) {
                 instanceData.module_settings = payload.module_settings;
+            }
+
+            // 만들 때 동의한 약관 id (module.toml [[agreements]])
+            if (payload?.accept_agreements?.length) {
+                instanceData.accept_agreements = payload.accept_agreements;
+            }
+
+            // 익스텐션이 물은 칸 (AddServer.options → extension_data)
+            if (payload?.extension_data) {
+                instanceData.extension_data = payload.extension_data;
             }
 
             // 모듈 추천 프리셋 id (값은 데몬이 푼다)

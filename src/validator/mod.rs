@@ -408,6 +408,44 @@ pub fn shift_ports_clear_of(instance: &mut ServerInstance, port_fields: &[&str],
     Some(delta)
 }
 
+/// 시작 전 검사에 쓰는 포트 `(설정 이름, 값)`: 인스턴스 간 검사와 같은 포트에
+/// 모듈 설정 중 `port = true`로 표시된 값을 더한다
+pub fn start_check_ports(
+    instance: &ServerInstance,
+    module_protocols: Option<&std::collections::HashMap<String, Vec<String>>>,
+    port_fields: &[&str],
+) -> Vec<(String, u16)> {
+    let mut ports: Vec<(String, u16)> = collect_active_ports(instance, module_protocols)
+        .into_iter()
+        .map(|(port, name)| (name.to_string(), port))
+        .collect();
+    for (name, port) in instance_ports(instance, port_fields) {
+        if !crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&name.as_str()) && !ports.iter().any(|(_, p)| *p == port) {
+            ports.push((name, port));
+        }
+    }
+    ports
+}
+
+/// 다른 프로그램이 이미 잡고 있는 포트를 찾는다. 게임마다 TCP·UDP가 달라 둘 다 묶어 보고,
+/// 어느 쪽이든 사용 중이면 그 포트를 돌려준다
+pub fn ports_held_elsewhere(ports: &[(String, u16)]) -> Vec<(String, u16)> {
+    let in_use = |e: std::io::Error| {
+        // Windows는 다른 프로그램이 독점(SO_EXCLUSIVEADDRUSE)으로 잡은 포트나 예약 범위에 PermissionDenied를 준다
+        e.kind() == std::io::ErrorKind::AddrInUse || (cfg!(windows) && e.kind() == std::io::ErrorKind::PermissionDenied)
+    };
+    ports
+        .iter()
+        .filter(|(_, port)| *port != 0)
+        .filter(|(_, port)| {
+            let addr = (std::net::Ipv4Addr::UNSPECIFIED, *port);
+            std::net::TcpListener::bind(addr).err().is_some_and(in_use)
+                || std::net::UdpSocket::bind(addr).err().is_some_and(in_use)
+        })
+        .cloned()
+        .collect()
+}
+
 /// 인스턴스에서 모듈이 실제 사용하는 포트만 수집합니다.
 ///
 /// `module_protocols`가 제공되면 해당 모듈의 `protocols_supported`를 참조하여
@@ -878,6 +916,30 @@ mod tests {
         };
         let display = format!("{}", err);
         assert_eq!(display, "port: Required field 'port' is missing");
+    }
+
+    #[test]
+    fn ports_held_by_another_program_are_found_over_tcp_and_udp() {
+        let tcp = std::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let udp = std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let (tcp_port, udp_port) = (tcp.local_addr().unwrap().port(), udp.local_addr().unwrap().port());
+        let ports = vec![("port".to_string(), tcp_port), ("query_port".to_string(), udp_port)];
+        assert_eq!(ports_held_elsewhere(&ports), ports);
+        drop((tcp, udp));
+        assert!(ports_held_elsewhere(&ports).is_empty(), "released ports are free again");
+    }
+
+    #[test]
+    fn start_check_ports_add_declared_module_ports_once() {
+        let mut inst = ServerInstance::new("s", "zomboid");
+        inst.port = Some(16261);
+        inst.rest_port = Some(27015);
+        inst.module_settings.insert("port".into(), serde_json::json!(16261));
+        inst.module_settings.insert("steam_port1".into(), serde_json::json!(8766));
+        inst.module_settings.insert("dup".into(), serde_json::json!(16261));
+        let protocols: std::collections::HashMap<String, Vec<String>> = [("zomboid".to_string(), vec![])].into();
+        let ports = start_check_ports(&inst, Some(&protocols), &["port", "steam_port1", "dup"]);
+        assert_eq!(ports, vec![("port".to_string(), 16261), ("steam_port1".to_string(), 8766)], "rest port is skipped without rest support");
     }
 
     /// PortConflict — Display trait 출력 포맷

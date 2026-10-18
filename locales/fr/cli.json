@@ -358,6 +358,9 @@
     "updates": "Mises à jour",
     "updates_ready": "{{count}} disponible(s)",
     "preflight_running": "Préparation de l'environnement d'exécution des modules de jeu ({{percent}} %). Les actions sur les serveurs peuvent attendre la fin.",
+    "next_module": "Ensuite : installez un module de jeu.",
+    "next_server": "Ensuite : créez votre premier serveur.",
+    "next_discord": "Ensuite : connectez ce PC à un serveur Discord.",
     "preflight_failed": "Échec de la préparation de l'environnement d'exécution des modules de jeu : {{error}}. Nouvel essai à la prochaine action sur un serveur."
   },
   "stop": {

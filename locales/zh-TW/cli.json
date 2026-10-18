@@ -358,6 +358,9 @@
     "updates": "更新",
     "updates_ready": "{{count}} 個可用",
     "preflight_running": "正在為遊戲模組準備執行環境（{{percent}}%）。伺服器操作可能需要等到完成。",
+    "next_module": "下一步：安裝一個遊戲模組。",
+    "next_server": "下一步：建立你的第一個伺服器。",
+    "next_discord": "下一步：將這台電腦連接到 Discord 伺服器。",
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。將在下次伺服器操作時重試。"
   },
   "stop": {
