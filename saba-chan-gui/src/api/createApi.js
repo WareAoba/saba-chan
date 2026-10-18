@@ -73,6 +73,29 @@ export function createApi({ invoke, hub }) {
         }
     }
 
+    // GET으로 합친 뒤 통째로 PUT한다: 겹치면 늦게 끝난 앞 저장이 뒤 저장을 덮으므로 차례로 한다
+    let settingsQueue = Promise.resolve();
+    async function mergeAndSaveSettings(settings) {
+        // 데몬이 응답하면 merge base도 API에서 읽는다 (단일 원천)
+        let existing;
+        try {
+            existing = (await get('/api/config/gui', { timeout: 5000 })).data || {};
+        } catch (err) {
+            if (err.response) {
+                console.warn('[settings:save] Daemon API failed:', err.message);
+                return false;
+            }
+            existing = await loadLocalSettings(); // 데몬 없음 — 부트스트랩
+        }
+        const result = await saveSettings({ ...existing, ...settings });
+        try {
+            await invoke('refresh_ipc_base');
+        } catch (e) {
+            console.warn('[settings:save] refresh_ipc_base failed:', e);
+        }
+        return result;
+    }
+
     const permPath = (guildId, discordId) =>
         `/api/permissions/${encodeURIComponent(guildId)}${discordId === undefined ? '' : `/members/${encodeURIComponent(discordId)}`}`;
     const unisolatedPath = (component) => `/api/sandbox/unisolated/${encodeURIComponent(component)}`;
@@ -796,25 +819,10 @@ export function createApi({ invoke, hub }) {
             }
             return loadLocalSettings();
         },
-        settingsSave: async (settings) => {
-            // 데몬이 응답하면 merge base도 API에서 읽는다 (단일 원천)
-            let existing;
-            try {
-                existing = (await get('/api/config/gui', { timeout: 5000 })).data || {};
-            } catch (err) {
-                if (err.response) {
-                    console.warn('[settings:save] Daemon API failed:', err.message);
-                    return false;
-                }
-                existing = await loadLocalSettings(); // 데몬 없음 — 부트스트랩
-            }
-            const result = await saveSettings({ ...existing, ...settings });
-            try {
-                await invoke('refresh_ipc_base');
-            } catch (e) {
-                console.warn('[settings:save] refresh_ipc_base failed:', e);
-            }
-            return result;
+        settingsSave: (settings) => {
+            const run = settingsQueue.then(() => mergeAndSaveSettings(settings));
+            settingsQueue = run.catch(() => {});
+            return run;
         },
         settingsGetPath: () => invoke('settings_get_path'),
 

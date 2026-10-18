@@ -1,7 +1,7 @@
 /**
  * 확장 GUI 하나의 오류가 다른 확장이나 앱 전체로 번지지 않는다.
  */
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ExtensionSlot from '../components/ExtensionSlot';
 import { ExtensionProvider, useExtensions } from '../contexts/ExtensionContext';
@@ -49,5 +49,21 @@ describe('확장 슬롯 오류 격리', () => {
             </ExtensionProvider>,
         );
         expect(await screen.findByText('good slot')).toBeTruthy();
+    });
+
+    it('목록이 바뀐 뒤 끝난 옛 로드가 새 슬롯을 덮지 않는다 (끈 확장이 다시 나타나지 않게)', async () => {
+        let finishI18n;
+        window.api.extensionI18n = vi.fn(() => new Promise((r) => (finishI18n = r)));
+        window.api.extensionList = vi
+            .fn()
+            .mockResolvedValueOnce({ extensions: [ext('good')] })
+            .mockResolvedValue({ extensions: [] });
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(window.api.extensionI18n).toHaveBeenCalled());
+        await act(async () => result.current.refreshExtensions());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        await act(async () => finishI18n(null));
+        await act(async () => {});
+        expect(result.current.slots['test.slot']).toBeUndefined();
     });
 });

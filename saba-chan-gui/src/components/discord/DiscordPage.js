@@ -15,7 +15,7 @@ import * as P from './nodePermissions';
 import { permissionsAvailable } from './PermissionsTab';
 import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
-import { usePairing } from './usePairing';
+import { persistNodeToken, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 const AUTOSAVE_MS = 600;
@@ -267,13 +267,7 @@ export function DiscordPage({
         beforeStart: saveRelayUrl,
         onClaimed: async (s) => {
             if (s.hostId) setDiscordCloudHostId(s.hostId);
-            if (s.nodeToken && window.api?.saveNodeToken) {
-                try {
-                    await window.api.saveNodeToken(s.nodeToken);
-                } catch (e) {
-                    console.error('[Pairing] node token save failed:', e);
-                }
-            }
+            if (s.nodeToken && window.api?.saveNodeToken && !(await persistNodeToken(s.nodeToken))) return false;
             await saveCurrentSettings();
             loadNodes();
         },

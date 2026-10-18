@@ -106,6 +106,32 @@ describe('데몬 응답 가공', () => {
         expect(await api.guildInstances('g2')).toMatchObject({ error: 'boom' });
     });
 
+    it('GUI 설정 저장은 부른 순서대로 한다 (앞 저장이 늦게 끝나 뒤 저장을 덮지 않게)', async () => {
+        let releaseFirst;
+        let gets = 0;
+        const puts = [];
+        const { api } = await install({
+            daemon_request: daemon({
+                'GET /api/config/gui': () => {
+                    gets += 1;
+                    if (gets === 1) return new Promise((r) => (releaseFirst = () => r({ status: 200, data: {} })));
+                    return { status: 200, data: {} };
+                },
+                'PUT /api/config/gui': (args) => {
+                    puts.push(args.body.theme);
+                    return { status: 200, data: { success: true } };
+                },
+            }),
+            refresh_ipc_base: null,
+        });
+        const first = api.settingsSave({ theme: 'old' });
+        const second = api.settingsSave({ theme: 'new' });
+        await flush();
+        releaseFirst();
+        await Promise.all([first, second]);
+        expect(puts).toEqual(['old', 'new']);
+    });
+
     it('경로에 넣는 이름은 인코딩한다 (공백·빗금이 든 서버 이름)', async () => {
         const { api } = await install({
             daemon_request: daemon({
