@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { applyInstanceUpdate, dismissInstanceProvision, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
+import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
@@ -264,9 +265,8 @@ export function ServerDetail({
                     <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
                     <div className="detail-body" key={`${server.id}-${activeTab}`}>
                         {activeTab === 'console' && (
-                            <ServerConsole
+                            <LiveServerConsole
                                 server={server}
-                                state={consoleProps.consoles[server.id]}
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
                                 quickCommands={consoleQuickCommands(moduleData?.commands?.fields)}
                                 openConsole={consoleProps.openConsole}
@@ -422,6 +422,12 @@ function SettingsTab({ server, settingsProps, modules, servers }) {
         );
     }
     return <ServerSettingsModal {...settingsProps} modules={modules} servers={servers} embedded onClose={() => {}} />;
+}
+
+/** 콘솔 줄은 0.5초마다 붙는다: 상세 전체가 아니라 콘솔만 다시 그린다 */
+function LiveServerConsole(props) {
+    const state = useConsoleStore((s) => s.consoles[props.server.id]);
+    return <ServerConsole {...props} state={state} />;
 }
 
 /** 가동 시간은 1초마다 바뀐다: 상세 전체가 아니라 이 글자만 다시 그린다 */

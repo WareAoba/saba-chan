@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TITLEBAR_HEIGHT } from '../constants/layout';
+import { useConsoleStore } from '../stores/useConsoleStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { commandReplyLines, isNoCommandPath } from '../utils/commandReply';
@@ -11,16 +12,8 @@ const POLL_ACTIVE_MS = 500;
 /** @constant 서버 비활성 시 polling 간격 (ms) */
 const POLL_IDLE_MS = 5000;
 
-/**
- * Ref-synced state: keeps a ref updated with the latest state for
- * synchronous reads inside memoized callbacks (avoids stale-closure
- * and React 18 batching issues).
- */
-function useStateRef(state) {
-    const ref = useRef(state);
-    ref.current = state;
-    return ref;
-}
+// Map of instanceId -> console state. 이 훅을 쓰는 App이 줄마다 다시 그려지지 않도록 구독하지 않고 쓰기만 한다
+const setConsoles = (consolesOrUpdater) => useConsoleStore.getState().setConsoles(consolesOrUpdater);
 
 /**
  * Manages multiple simultaneous console instances with individual state.
@@ -38,9 +31,6 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
 
-    // Map of instanceId -> console state
-    const [consoles, setConsoles] = useState({});
-    const consolesRef = useStateRef(consoles);
     // Global z-index counter for window stacking
     const zCounterRef = useRef(100);
     // Map of instanceId -> polling interval id
@@ -333,7 +323,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     // ── Send command ────────────────────────────────────────
 
     const sendConsoleCommand = useCallback(async (instanceId) => {
-        const state = consolesRef.current[instanceId];
+        const state = useConsoleStore.getState().consoles[instanceId];
 
         if (!state || !state.input.trim()) return;
 
@@ -377,28 +367,10 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         }
     }, [setConsoleInput, translateError, t]);
 
-    // ── Derived: for ServerCard backward compat ─────────────
-
-    // consoleServer → the currently focused (highest z) non-minimized console, or null
-    const consoleServer = (() => {
-        const entries = Object.entries(consoles);
-        if (entries.length === 0) return null;
-        // Find highest z-index non-minimized
-        let best = null;
-        let bestZ = -1;
-        for (const [, state] of entries) {
-            if (!state.minimized && state.zIndex > bestZ) {
-                best = state.server;
-                bestZ = state.zIndex;
-            }
-        }
-        return best;
-    })();
-
     // Check if an instance has an open console (for ServerCard active state)
     const isConsoleOpen = useCallback((instanceId) => {
-        return !!consoles[instanceId];
-    }, [consoles]);
+        return !!useConsoleStore.getState().consoles[instanceId];
+    }, []);
 
     // ── Cleanup on unmount ──────────────────────────────────
 
@@ -469,8 +441,6 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     }, [isPopoutMode, openConsole, closeConsole]);
 
     return {
-        consoles,
-        consoleServer,
         consolePopoutIds,
         openConsole,
         closeConsole,

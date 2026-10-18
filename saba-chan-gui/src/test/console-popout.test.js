@@ -2,6 +2,7 @@ import { act, fireEvent, render, renderHook, screen } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PopoutConsole } from '../components/servers/PopoutConsole';
 import { useMultiConsole } from '../hooks/useMultiConsole';
+import { useConsoleStore } from '../stores/useConsoleStore';
 
 const server = { id: 'mc-1', name: 'Survival', module: 'minecraft', status: 'running' };
 const state = { lines: [{ id: 1, content: 'Done (3.2s)!', source: 'stdout' }], input: '' };
@@ -51,7 +52,7 @@ describe('useMultiConsole 따로 띄운 창', () => {
         });
         expect(result.current.consolePopoutIds).toEqual(['a', 'b']);
         // 띄운 창이 따로 읽으니 메인 창의 콘솔은 닫힌다
-        expect(result.current.consoles.a).toBeUndefined();
+        expect(useConsoleStore.getState().consoles.a).toBeUndefined();
 
         act(() => closed('a'));
         expect(result.current.consolePopoutIds).toEqual(['b']);
@@ -65,5 +66,20 @@ describe('useMultiConsole 따로 띄운 창', () => {
         await act(async () => {});
         expect(result.current.consolePopoutIds).toEqual(['c']);
         delete window.api.consolePopoutList;
+    });
+
+    it('콘솔 입력과 새 줄은 훅을 쓰는 화면(App)을 다시 그리지 않는다', () => {
+        let renders = 0;
+        const { result } = renderHook(() => {
+            renders++;
+            return useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } });
+        });
+        act(() => result.current.openConsole('d', 'D'));
+        const before = renders;
+
+        act(() => result.current.setConsoleInput('d', 'list'));
+
+        expect(useConsoleStore.getState().consoles.d.input).toBe('list');
+        expect(renders).toBe(before);
     });
 });
