@@ -48,6 +48,8 @@ pub struct UpdateState {
     pub extension_manager: Option<Arc<RwLock<crate::extension::ExtensionManager>>>,
     /// 업데이터를 띄운 뒤 데몬을 끝내는 신호 (IPCServer::stop_requested)
     pub stop_requested: Option<tokio_util::sync::CancellationToken>,
+    /// 업데이터를 띄울 때 끌 GUI를 찾는 클라이언트 등록부 (IPCServer::client_registry)
+    pub clients: Option<crate::ipc::ClientRegistry>,
 }
 
 impl UpdateState {
@@ -64,6 +66,7 @@ impl UpdateState {
             supervisor: None,
             extension_manager: None,
             stop_requested: None,
+            clients: None,
         }
     }
 
@@ -80,6 +83,11 @@ impl UpdateState {
 
     pub fn with_stop_signal(mut self, stop_requested: tokio_util::sync::CancellationToken) -> Self {
         self.stop_requested = Some(stop_requested);
+        self
+    }
+
+    pub fn with_clients(mut self, clients: crate::ipc::ClientRegistry) -> Self {
+        self.clients = Some(clients);
         self
     }
 }
@@ -629,6 +637,13 @@ async fn launch_updater(
                 .into_response()
         }
     };
+    // 떠 있는 GUI는 실행 파일을 쥐고 있어 바꿀 수 없다. GUI가 부른 게 아니면(CLI·자동 업데이트) 데몬이 끄고
+    // 업데이터가 같은 GUI를 다시 띄우게 한다(GUI가 뜨면서 데몬도 띄운다). GUI가 불렀으면 그 GUI는 스스로 끝난다
+    let guis = match &state.clients {
+        Some(clients) => running_guis(&clients.list().await),
+        None => Vec::new(),
+    };
+    let relaunch = relaunch_target(body.relaunch, &guis);
     let mut args = vec![
         "--apply".to_string(),
         "--wait-pid".to_string(),
@@ -636,9 +651,9 @@ async fn launch_updater(
         "--launch-token".to_string(),
         ticket,
     ];
-    if !body.relaunch.is_empty() {
+    if !relaunch.is_empty() {
         args.push("--relaunch".to_string());
-        args.extend(body.relaunch);
+        args.extend(relaunch);
     }
     if let Err(e) = spawn_detached(&updater, &args) {
         return (
@@ -652,10 +667,80 @@ async fn launch_updater(
     if let Some(stop) = state.stop_requested.clone() {
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await; // 응답이 나가도록
+            close_guis(&guis).await;
             stop.cancel();
         });
     }
     Json(json!({ "ok": true, "updater_launched": true, "daemon_stopping": true })).into_response()
+}
+
+/// 등록된 GUI 중 지금도 GUI 실행 파일로 떠 있는 것의 PID와 실행 파일 (PID 재사용 대비)
+fn running_guis(clients: &[(String, crate::ipc::RegisteredClient)]) -> Vec<(u32, std::path::PathBuf)> {
+    let mut pids: Vec<u32> = clients
+        .iter()
+        .filter(|(_, c)| c.kind == crate::ipc::ClientKind::Gui)
+        .filter_map(|(_, c)| c.pid)
+        .filter(|&pid| pid != std::process::id())
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes();
+    pids.into_iter()
+        .filter_map(|pid| {
+            let proc = sys.process(sysinfo::Pid::from_u32(pid))?;
+            let exe = proc.exe()?.to_path_buf();
+            let name = exe.file_name()?.to_string_lossy().into_owned();
+            saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name)).then_some((pid, exe))
+        })
+        .collect()
+}
+
+/// 업데이터가 다시 띄울 것: 떠 있던 GUI가 있으면 그 GUI(요청이 이미 GUI면 그대로), 없으면 요청대로
+fn relaunch_target(requested: Vec<String>, guis: &[(u32, std::path::PathBuf)]) -> Vec<String> {
+    let is_gui = |exe: &str| {
+        let name = std::path::Path::new(exe).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name))
+    };
+    match guis.first() {
+        Some((_, exe)) if !requested.first().is_some_and(|r| is_gui(r)) => vec![exe.to_string_lossy().into_owned()],
+        _ => requested,
+    }
+}
+
+/// GUI가 스스로 끝날 틈(업데이트를 부른 GUI는 곧 끝난다)을 준 뒤 남은 것을 끈다
+async fn close_guis(guis: &[(u32, std::path::PathBuf)]) {
+    use crate::supervisor::process::{force_kill_pid, is_process_alive};
+    let alive = |pids: &[(u32, std::path::PathBuf)]| pids.iter().filter(|(pid, _)| is_process_alive(*pid)).cloned().collect::<Vec<_>>();
+    for _ in 0..10 {
+        if alive(guis).is_empty() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+    let left = running_guis_among(&alive(guis));
+    for (pid, exe) in &left {
+        tracing::info!("[Updates] Closing GUI (PID {}, {}) so the updater can replace it", pid, exe.display());
+        if let Err(e) = force_kill_pid(*pid) {
+            tracing::warn!("[Updates] Could not close GUI PID {}: {}", pid, e);
+        }
+    }
+    for _ in 0..20 {
+        if alive(&left).is_empty() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+}
+
+/// 기다리는 동안 PID가 다른 프로그램에 다시 쓰였으면 빼고, 같은 실행 파일인 것만 남긴다
+fn running_guis_among(guis: &[(u32, std::path::PathBuf)]) -> Vec<(u32, std::path::PathBuf)> {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes();
+    guis.iter()
+        .filter(|(pid, exe)| sys.process(sysinfo::Pid::from_u32(*pid)).and_then(|p| p.exe()) == Some(exe.as_path()))
+        .cloned()
+        .collect()
 }
 
 /// 업데이터 실행 파일. `SABA_UPDATER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
@@ -868,6 +953,48 @@ fn resolve_modules_dir() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// 등록된 GUI 중 GUI 실행 파일로 떠 있는 것만 고르고, 업데이터를 띄울 때 끈다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn launching_the_updater_closes_only_registered_gui_processes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gui_exe = tmp.path().join("saba-chan-gui");
+        std::fs::copy("/bin/sleep", &gui_exe).unwrap();
+        let spawn = |exe: &std::path::Path| {
+            let mut child = std::process::Command::new(exe).arg("30").spawn().unwrap();
+            let pid = child.id();
+            std::thread::spawn(move || child.wait()); // 끝나면 바로 거둬 좀비로 남지 않게
+            pid
+        };
+        let gui = spawn(&gui_exe);
+        let other = spawn(std::path::Path::new("/bin/sleep"));
+        let registry = crate::ipc::ClientRegistry::new();
+        registry.register(crate::ipc::ClientKind::Gui, Some(gui), None).await;
+        registry.register(crate::ipc::ClientKind::Gui, Some(other), None).await; // PID가 남의 프로그램에 다시 쓰인 경우
+        registry.register(crate::ipc::ClientKind::Cli, Some(other), None).await;
+
+        let guis = super::running_guis(&registry.list().await);
+        assert_eq!(guis, vec![(gui, std::fs::canonicalize(&gui_exe).unwrap())]);
+
+        super::close_guis(&guis).await;
+        assert!(!crate::supervisor::process::is_process_alive(gui), "the registered GUI is closed");
+        assert!(crate::supervisor::process::is_process_alive(other), "other programs are left alone");
+        let _ = crate::supervisor::process::force_kill_pid(other);
+    }
+
+    /// CLI가 데몬을 다시 띄우라고 해도 GUI가 떠 있었으면 GUI를 띄운다. GUI가 부른 요청은 그대로
+    #[test]
+    fn the_updater_relaunches_the_gui_that_was_open() {
+        let gui = std::path::PathBuf::from("/opt/saba/saba-chan-gui");
+        let guis = vec![(42, gui.clone())];
+        let daemon = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
+        assert_eq!(super::relaunch_target(daemon.clone(), &guis), vec![gui.to_string_lossy().into_owned()]);
+        assert_eq!(super::relaunch_target(Vec::new(), &guis), vec![gui.to_string_lossy().into_owned()]);
+        assert_eq!(super::relaunch_target(daemon.clone(), &[]), daemon);
+        let own = vec![format!("/other/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0])];
+        assert_eq!(super::relaunch_target(own.clone(), &guis), own);
+    }
+
     #[test]
     fn apply_and_download_accept_a_missing_body_but_not_a_broken_one() {
         let empty: super::ApplyRequest = super::body_or_default(b"").ok().unwrap();
