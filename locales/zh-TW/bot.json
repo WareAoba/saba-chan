@@ -80,6 +80,7 @@
     "unknown": "未知錯誤",
     "agreement_required": "必須同意{{names}}才能啟動伺服器。請在電腦上的 Saba-chan 中同意。",
     "memory_limit_at_start": "伺服器啟動時達到記憶體上限（{{limit}} MiB）並已停止。請把上限設得比記憶體設定高，或清空上限。",
+    "preflight_failed": "啟動前檢查發現問題，因此未啟動伺服器（{{code}}）。詳情請在電腦上的 Saba-chan 中查看。",
     "agreement_local_only": "只能在這台電腦上的 Saba-chan 中同意協議。",
     "no_command_path": "「{{name}}」沒有連接 saba-chan 主控台，無法接收指令。請在電腦上的 saba-chan 中以託管模式重新啟動伺服器。",
     "alias_conflict": "❌ 別名 '{{alias}}' 不明確 — 匹配多個模組：{{modules}}。請使用更具體的別名。",

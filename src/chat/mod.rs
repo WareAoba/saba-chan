@@ -444,6 +444,16 @@ impl<D: DaemonApi> Ctx<'_, D> {
         if !resp.is_success() {
             let detail = resp.str_field("error").unwrap_or_default();
             tracing::warn!("[Chat] 시작 실패 {}: {}", server.name, detail);
+            // 켜기 전 점검(preflight_failed)의 문제 문구에는 경로가 들어 있을 수 있어 PC 밖으로 내지 않는다.
+            // 점검 코드와 모듈이 준 해결 방법(경로 없는 문구)만 보인다
+            if resp.str_field("error_code") == Some("preflight_failed") {
+                let code = resp.str_field("issue_code").unwrap_or("preflight_failed");
+                let line = format!("❌ {}", self.t("errors.preflight_failed", &[("code", code)]));
+                return match resp.str_field("solution").filter(|s| !s.trim().is_empty()) {
+                    Some(solution) => format!("{}\n💡 {}", line, solution),
+                    None => line,
+                };
+            }
             return error_line(&self.t("errors.error_title", &[]), detail);
         }
         if resp.body.get("success").and_then(|v| v.as_bool()) == Some(false) {

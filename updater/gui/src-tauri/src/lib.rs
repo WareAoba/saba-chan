@@ -86,6 +86,7 @@ async fn start_apply(
                 let msg = format!("Failed to load manifest: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
                 UpdateCompletionMarker::failure(msg.clone()).save().ok();
+                relaunch(&app, &apply_config, false);
                 msg
             })?
     };
@@ -116,6 +117,7 @@ async fn start_apply(
                 let msg = format!("Apply failed: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
                 UpdateCompletionMarker::failure(msg.clone()).save().ok();
+                relaunch(&app, &apply_config, false);
                 return Err(msg);
             }
         }
@@ -162,17 +164,31 @@ async fn start_apply(
     marker.save().ok();
     mgr.clear_pending_manifest();
 
-    emit_progress(&app, "complete", &{
-        if applied.is_empty() {
-            "No updates to apply.".to_string()
-        } else {
-            format!("{} updates applied!", applied.len())
-        }
-    }, 100, &applied);
+    if failed.is_empty() {
+        emit_progress(&app, "complete", &{
+            if applied.is_empty() {
+                "No updates to apply.".to_string()
+            } else {
+                format!("{} updates applied!", applied.len())
+            }
+        }, 100, &applied);
+    } else {
+        emit_progress(&app, "error", &format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; ")), 0, &applied);
+    }
 
     drop(mgr);
 
-    // 5. GUI 재실행 → 업데이터 종료
+    // 5. GUI 재실행 → 업데이터 종료 (하나라도 실패했으면 완료 알림 없이 띄우고 오류 화면을 남긴다)
+    relaunch(&app, &apply_config, failed.is_empty());
+
+    Ok(applied)
+}
+
+/// 업데이트를 띄운 프로그램(없으면 GUI)을 다시 띄운다. 적용이 실패해도 띄운다:
+/// 업데이터가 뜰 때 데몬·GUI는 이미 끝났으니 그대로 두면 아무것도 남지 않는다.
+/// `applied`면 `--after-update`를 붙이고(받는 쪽이 완료 알림을 띄운다) 띄운 뒤 업데이터를 닫는다.
+/// 실패면 플래그 없이 띄우고 오류 화면을 남겨 둔다
+fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
     let relaunch_exe = apply_config.relaunch_exe.clone();
     let relaunch_extra = apply_config.relaunch_extra.clone();
     let app_handle = app.clone();
@@ -182,21 +198,21 @@ async fn start_apply(
 
         if let Some(ref cmd) = relaunch_exe {
             wait_for_exe(cmd).await;
-            launch_with_retry(cmd, &relaunch_extra).await;
+            launch_with_retry(cmd, &relaunch_extra, applied).await;
         } else {
             // --relaunch 미지정 시 GUI exe 자동 추론
             if let Some(gui_path) = resolve_gui_exe() {
                 let cmd = gui_path.to_string_lossy().to_string();
                 wait_for_exe(&cmd).await;
-                launch_with_retry(&cmd, &[]).await;
+                launch_with_retry(&cmd, &[], applied).await;
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        app_handle.exit(0);
+        if applied {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            app_handle.exit(0);
+        }
     });
-
-    Ok(applied)
 }
 
 /// 언어 설정 조회 — settings.json → 시스템 로케일 → "en"
@@ -294,9 +310,9 @@ async fn wait_for_exe(cmd: &str) {
 }
 
 /// 프로세스 재실행 (최대 3회 재시도)
-async fn launch_with_retry(cmd: &str, extra_args: &[String]) {
+async fn launch_with_retry(cmd: &str, extra_args: &[String], after_update: bool) {
     for attempt in 0..3 {
-        match spawn_detached(cmd, extra_args) {
+        match spawn_detached(cmd, extra_args, after_update) {
             Ok(()) => {
                 tracing::info!("[Apply] Relaunch succeeded (attempt {})", attempt + 1);
                 return;
@@ -311,14 +327,16 @@ async fn launch_with_retry(cmd: &str, extra_args: &[String]) {
 }
 
 /// 완전히 분리된 자식 프로세스 생성
-fn spawn_detached(cmd: &str, extra_args: &[String]) -> Result<(), String> {
+fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Result<(), String> {
     tracing::info!("[Apply] Spawning: {} {:?}", cmd, extra_args);
 
     let mut command = std::process::Command::new(cmd);
     for arg in extra_args {
         command.arg(arg);
     }
-    command.arg("--after-update");
+    if after_update {
+        command.arg("--after-update");
+    }
 
     command
         .stdin(std::process::Stdio::null())

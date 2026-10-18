@@ -339,6 +339,7 @@
     "must_be_one_of": "{{key}} debe ser uno de: {{options}}",
     "restart_hint": "Reinicia {{name}} para aplicarlo: saba-chan-cli restart {{name}}",
     "sync_failed": "Guardado, pero no se pudo escribir el archivo de configuración del juego: {{error}}",
+    "ignored": "Se ignoraron porque saba-chan no usa estos ajustes: {{keys}}",
     "unknown_key": "{{key}} es una clave nueva."
   },
   "shell": {

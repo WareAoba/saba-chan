@@ -80,6 +80,7 @@
     "unknown": "Erreur inconnue",
     "agreement_required": "Vous devez accepter {{names}} avant de pouvoir démarrer ce serveur. Acceptez dans Saba-chan sur le PC.",
     "memory_limit_at_start": "Le serveur a atteint sa limite de mémoire de {{limit}} Mio au démarrage et a été arrêté. Mettez la limite au-dessus de sa RAM ou videz-la.",
+    "preflight_failed": "La vérification avant démarrage a trouvé un problème, le serveur n'a donc pas été démarré ({{code}}). Voyez les détails dans Saba-chan sur le PC.",
     "agreement_local_only": "Les accords ne peuvent être acceptés que dans Saba-chan sur ce PC.",
     "no_command_path": "'{{name}}' n'a pas de console saba-chan connectée et ne peut pas recevoir de commandes. Redémarrez-le en mode géré depuis saba-chan sur le PC.",
     "alias_conflict": "❌ L'alias '{{alias}}' est ambigu — il correspond à plusieurs modules : {{modules}}. Utilisez un alias plus spécifique.",

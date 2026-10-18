@@ -80,6 +80,7 @@
     "unknown": "Unbekannter Fehler",
     "agreement_required": "Du musst {{names}} zustimmen, bevor dieser Server starten kann. Stimme in Saba-chan auf dem PC zu.",
     "memory_limit_at_start": "Der Server hat beim Start sein Speicherlimit von {{limit}} MiB erreicht und wurde gestoppt. Setze das Limit über die RAM-Einstellung oder leere es.",
+    "preflight_failed": "Die Prüfung vor dem Start hat ein Problem gefunden, daher wurde der Server nicht gestartet ({{code}}). Details siehst du in Saba-chan auf dem PC.",
     "agreement_local_only": "Vereinbarungen können nur in Saba-chan auf diesem PC angenommen werden.",
     "no_command_path": "'{{name}}' ist mit keiner saba-chan-Konsole verbunden und kann keine Befehle annehmen. Starte den Server in saba-chan auf dem PC im verwalteten Modus neu.",
     "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig — er passt auf mehrere Module: {{modules}}. Bitte verwende einen spezifischeren Alias.",
