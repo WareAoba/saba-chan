@@ -116,6 +116,15 @@ describe('약관 동의: 시작', () => {
         expect(window.api.instanceStart).toHaveBeenCalledTimes(2);
     });
 
+    it('서버를 만들 때 동의한 약관 id를 데몬 생성 요청에 싣는다', async () => {
+        window.api.instanceCreate = vi.fn().mockResolvedValue({ success: true, provisioning: true });
+        const { result } = setup();
+        await act(async () =>
+            result.current.handleAddServer({ name: 'B', module_name: 'game', accept_agreements: ['eula'] }),
+        );
+        expect(window.api.instanceCreate.mock.calls[0][0].accept_agreements).toEqual(['eula']);
+    });
+
     it('동의 채널이 없으면 데몬 문구를 실패 창으로 보인다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(required);
         const { result, setModal } = setup();

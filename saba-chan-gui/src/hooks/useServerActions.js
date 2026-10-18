@@ -842,6 +842,11 @@ export function useServerActions({
                 instanceData.module_settings = payload.module_settings;
             }
 
+            // 만들 때 동의한 약관 id (module.toml [[agreements]])
+            if (payload?.accept_agreements?.length) {
+                instanceData.accept_agreements = payload.accept_agreements;
+            }
+
             // 모듈 추천 프리셋 id (값은 데몬이 푼다)
             if (payload?.preset) {
                 instanceData.preset = payload.preset;
