@@ -411,7 +411,9 @@
     "alias_conflict_title": "Alias Conflict",
     "alias_conflict_detail": "Alias '{{alias}}' is already registered to module '{{module}}'",
     "multiple_instances_warning": "Multiple instances use the same module '{{module}}' ({{names}}). Discord bot commands using module aliases will be ambiguous — use instance names instead.",
-    "alias_ambiguity_card": "Module '{{module}}' has {{count}} instances — Discord alias is ambiguous"
+    "alias_ambiguity_card": "Module '{{module}}' has {{count}} instances — Discord alias is ambiguous",
+    "sync_failed": "Settings were saved, but the game's config file couldn't be updated. {{error}}",
+    "unknown_setting": "This module doesn't have these settings: {{fields}}"
   },
   "buttons": {
     "add_server": "Add Server",

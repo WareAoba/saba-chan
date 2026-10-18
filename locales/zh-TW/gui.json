@@ -410,7 +410,9 @@
     "alias_conflict_title": "別名衝突",
     "alias_conflict_detail": "別名 '{{alias}}' 已經註冊到模組 '{{module}}'",
     "multiple_instances_warning": "有多個實例使用相同的模組 '{{module}}'（{{names}}）。對於 Discord 機器人調用，請使用實例名稱而不是模組別名來區分。",
-    "alias_ambiguity_card": "'{{module}}' 模組實例 {{count}} 個 — Discord 別名不明確"
+    "alias_ambiguity_card": "'{{module}}' 模組實例 {{count}} 個 — Discord 別名不明確",
+    "sync_failed": "設定已儲存，但無法寫入遊戲設定檔。{{error}}",
+    "unknown_setting": "此模組沒有這些設定：{{fields}}"
   },
   "buttons": {
     "add_server": "新增伺服器",

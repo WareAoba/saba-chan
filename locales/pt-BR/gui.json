@@ -410,7 +410,9 @@
     "alias_conflict_title": "Conflito de alias",
     "alias_conflict_detail": "O alias '{{alias}}' já está registrado no módulo '{{module}}'",
     "multiple_instances_warning": "Há várias instâncias usando o mesmo módulo '{{module}}' ({{names}}). Para chamadas do bot Discord, use nomes de instância em vez de aliases de módulo para diferenciá-las.",
-    "alias_ambiguity_card": "{{count}} instâncias do módulo '{{module}}' — aliases Discord são ambíguos"
+    "alias_ambiguity_card": "{{count}} instâncias do módulo '{{module}}' — aliases Discord são ambíguos",
+    "sync_failed": "As configurações foram salvas, mas o arquivo de configuração do jogo não pôde ser atualizado. {{error}}",
+    "unknown_setting": "Este módulo não tem estas configurações: {{fields}}"
   },
   "buttons": {
     "add_server": "Adicionar Servidor",

@@ -411,7 +411,9 @@
     "alias_conflict_title": "별명 충돌",
     "alias_conflict_detail": "별명 '{{alias}}'는 '{{module}}' 모듈에 이미 등록되어 있습니다",
     "multiple_instances_warning": "같은 모듈 '{{module}}'을(를) 사용하는 인스턴스가 여러 개입니다 ({{names}}). 디스코드 봇에서 모듈 별명으로 호출 시 구분할 수 없으므로 인스턴스 이름을 사용해주세요.",
-    "alias_ambiguity_card": "'{{module}}' 모듈 인스턴스가 {{count}}개 — 디스코드 별명이 모호합니다"
+    "alias_ambiguity_card": "'{{module}}' 모듈 인스턴스가 {{count}}개 — 디스코드 별명이 모호합니다",
+    "sync_failed": "설정은 저장했지만 게임 설정 파일에 쓰지 못했어요. {{error}}",
+    "unknown_setting": "이 모듈에 없는 설정이에요: {{fields}}"
   },
   "buttons": {
     "add_server": "서버 추가",

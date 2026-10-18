@@ -410,7 +410,9 @@
     "alias_conflict_title": "Alias-Konflikt",
     "alias_conflict_detail": "Alias '{{alias}}' ist bereits für Modul '{{module}}' registriert",
     "multiple_instances_warning": "Es gibt mehrere Instanzen, die das gleiche Modul '{{module}}' verwenden ({{names}}). Für Discord-Bot-Aufrufe verwenden Sie bitte Instanznamen statt Modulaliase zum Unterscheiden.",
-    "alias_ambiguity_card": "'{{module}}' Modulinstanzen {{count}}er — Discord-Aliasse sind mehrdeutig"
+    "alias_ambiguity_card": "'{{module}}' Modulinstanzen {{count}}er — Discord-Aliasse sind mehrdeutig",
+    "sync_failed": "Einstellungen gespeichert, aber die Konfigurationsdatei des Spiels konnte nicht aktualisiert werden. {{error}}",
+    "unknown_setting": "Dieses Modul hat diese Einstellungen nicht: {{fields}}"
   },
   "buttons": {
     "add_server": "Server hinzufügen",
