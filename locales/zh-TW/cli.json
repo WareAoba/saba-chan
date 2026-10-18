@@ -74,6 +74,7 @@
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。"
   },
   "col": {
+    "players": "線上玩家",
     "aliases": "別名",
     "code": "代碼",
     "command": "指令",

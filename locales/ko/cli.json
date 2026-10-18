@@ -95,6 +95,7 @@
     "pair_gui_hint": "디스코드 연결 상태는 GUI의 디스코드 화면에서도 볼 수 있어요."
   },
   "col": {
+    "players": "접속자",
     "aliases": "별명",
     "code": "코드",
     "command": "명령",

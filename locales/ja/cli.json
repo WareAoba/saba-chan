@@ -74,6 +74,7 @@
     "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。"
   },
   "col": {
+    "players": "接続者",
     "aliases": "エイリアス",
     "code": "コード",
     "command": "コマンド",

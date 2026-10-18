@@ -3,6 +3,7 @@ pub mod module_loader;
 pub mod managed_process;
 pub mod crash;
 pub mod highlight;
+pub mod players;
 
 use anyhow::Result;
 use process::ProcessTracker;

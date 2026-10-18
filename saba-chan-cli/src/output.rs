@@ -237,6 +237,16 @@ pub fn duration(secs: u64) -> String {
     }
 }
 
+/// 데몬이 알려 준 접속자 수 → "3/20" (최대를 모르면 "3")
+pub fn players(server: &Value) -> Option<String> {
+    let p = server.get("players")?;
+    let online = p.get("online")?.as_u64()?;
+    Some(match p.get("max").and_then(Value::as_u64) {
+        Some(max) => format!("{online}/{max}"),
+        None => online.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +257,15 @@ mod tests {
         assert_eq!(mask("rcon_password", &json!("abc")), "••••••");
         assert_eq!(mask("server_name", &json!("abc")), "abc");
         assert_eq!(mask("admin_password", &json!("")), show(&json!("")));
+    }
+
+    #[test]
+    fn shows_players_only_when_the_daemon_knows_them() {
+        assert_eq!(
+            players(&json!({ "players": { "online": 3, "max": 20 } })).as_deref(),
+            Some("3/20")
+        );
+        assert_eq!(players(&json!({ "players": { "online": 0 } })).as_deref(), Some("0"));
+        assert_eq!(players(&json!({ "status": "running" })), None);
     }
 }

@@ -117,6 +117,9 @@ pub struct ModuleMetadata {
     /// [[agreements]] 서버를 켜기 전에 사용자가 동의해야 하는 약관 (예: 게임 EULA)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agreements: Vec<ModuleAgreement>,
+    /// [status] players — 켜진 서버의 접속자 수를 돌려주는 lifecycle 함수 (Q-5, `supervisor::players`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub players_function: Option<String>,
     /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
@@ -608,6 +611,18 @@ struct ModuleToml {
     /// [[agreements]] 켜기 전에 동의할 약관
     #[serde(default)]
     agreements: Vec<ModuleAgreement>,
+    /// [status] 켜진 서버의 상태를 더 알려 주는 함수
+    #[serde(default)]
+    status: Option<StatusSection>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+struct StatusSection {
+    /// 접속자 수를 돌려주는 lifecycle.py 함수 이름. 데몬이 켜진 서버마다 1분에 한 번 부른다.
+    /// `validate`와 같은 config를 받고 `{"success": true, "online": <정수>, "max": <정수>?}`를 돌려준다
+    #[serde(default)]
+    players: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1146,6 +1161,7 @@ impl ModuleToml {
                 inputs: q.inputs.into_iter().map(CommandInput::from).collect(),
             }).collect(),
             agreements: self.agreements,
+            players_function: self.status.and_then(|s| s.players),
             warnings: Vec::new(),
         }
     }
@@ -1179,6 +1195,11 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     }
     problems.extend(bad_queries);
     problems.extend(agreement_problems(&meta));
+    if let Some(problem) = meta.players_function.as_deref().and_then(|f| function_problem(f, "status.players")) {
+        // 잘못 선언한 함수는 부르지 않는다
+        meta.players_function = None;
+        problems.push(problem);
+    }
     match meta.schema_version {
         0 => {
             for p in &problems {
@@ -1294,7 +1315,7 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
     problems
 }
 
-/// 데몬이 정해진 뜻으로 부르는 lifecycle 함수 중 상태를 바꾸는 것: 조회(`[[queries]]`)의 함수가 될 수 없다
+/// 데몬이 정해진 뜻으로 부르는 lifecycle 함수 중 상태를 바꾸는 것: 조회(`[[queries]]`)·`[status] players`의 함수가 될 수 없다
 const NON_QUERY_FUNCTIONS: &[&str] = &[
     "start", "stop", "command", "configure", "get_launch_command", "import_settings", "install_server",
     "reset_properties", "reset_server", "accept_agreements",
@@ -1326,6 +1347,20 @@ fn agreement_problems(meta: &ModuleMetadata) -> Vec<String> {
     problems
 }
 
+/// 데몬이 읽기 용도로 부를 함수가 Python 식별자가 아니거나 상태를 바꾸는 함수면 그 문제 (`place`가 있으면 앞에 붙인다)
+fn function_problem(function: &str, place: &str) -> Option<String> {
+    let identifier = function.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && function.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let what = if !identifier {
+        format!("function '{}' is not a Python function name", function)
+    } else if NON_QUERY_FUNCTIONS.contains(&function) {
+        format!("function '{}' changes the server and cannot be a query", function)
+    } else {
+        return None;
+    };
+    Some(if place.is_empty() { what } else { format!("{}: {}", place, what) })
+}
+
 /// 조회가 계약을 벗어난 곳: 이름 형식·중복, Python 식별자가 아니거나 상태를 바꾸는 함수, 입력 이름·형식·범위
 fn query_problems(meta: &ModuleMetadata) -> Vec<String> {
     let mut problems = Vec::new();
@@ -1338,12 +1373,8 @@ fn query_problems(meta: &ModuleMetadata) -> Vec<String> {
         if !seen.insert(query.name.as_str()) {
             problem("duplicate name".into());
         }
-        let identifier = query.function.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-            && query.function.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-        if !identifier {
-            problem(format!("function '{}' is not a Python function name", query.function));
-        } else if NON_QUERY_FUNCTIONS.contains(&query.function.as_str()) {
-            problem(format!("function '{}' changes the server and cannot be a query", query.function));
+        if let Some(what) = function_problem(&query.function, "") {
+            problem(what);
         }
         let mut inputs = std::collections::HashSet::new();
         for input in &query.inputs {
@@ -2139,6 +2170,19 @@ entry = "lifecycle.py"
         assert_ne!(legacy, toml);
         let meta = parse_module_toml(&legacy).unwrap();
         assert!(meta.queries.is_empty(), "a module without a schema keeps no queries when one is wrong");
+    }
+
+    #[test]
+    fn a_module_names_the_function_that_counts_players() {
+        let toml = format!("{V1}\n[status]\nplayers = \"player_count\"\n");
+        assert_eq!(parse_module_toml(&toml).unwrap().players_function.as_deref(), Some("player_count"));
+        assert_eq!(parse_module_toml(V1).unwrap().players_function, None);
+        for bad in ["stop", "player-count"] {
+            let err = parse_module_toml(&toml.replace("player_count", bad)).unwrap_err().to_string();
+            assert!(err.contains("status.players"), "{err}");
+        }
+        let legacy = toml.replacen("schema_version = 1\n", "", 1).replace("player_count", "reset_server");
+        assert_eq!(parse_module_toml(&legacy).unwrap().players_function, None, "never call a function that changes the server");
     }
 
     #[test]

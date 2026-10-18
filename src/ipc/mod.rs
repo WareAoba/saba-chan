@@ -203,6 +203,9 @@ pub struct ServerInfo {
     /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,
+    /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub players: Option<crate::supervisor::players::PlayerCount>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
