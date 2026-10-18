@@ -1139,6 +1139,8 @@
     "action_restart": "重启",
     "action_command": "命令",
     "action_stdin": "控制台输入",
+    "action_backup": "备份",
+    "skipped_stopped": "已跳过 (服务器未运行)",
     "source_gui": "应用",
     "source_cli": "CLI",
     "source_api": "API",

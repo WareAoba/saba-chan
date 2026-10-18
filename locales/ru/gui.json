@@ -1139,6 +1139,8 @@
     "action_restart": "Перезапуск",
     "action_command": "Команда",
     "action_stdin": "Ввод в консоль",
+    "action_backup": "Резервная копия",
+    "skipped_stopped": "Пропущено (сервер выключен)",
     "source_gui": "Приложение",
     "source_cli": "CLI",
     "source_api": "API",

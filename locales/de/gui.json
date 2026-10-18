@@ -1139,6 +1139,8 @@
     "action_restart": "Neustart",
     "action_command": "Befehl",
     "action_stdin": "Konsoleneingabe",
+    "action_backup": "Sicherung",
+    "skipped_stopped": "Übersprungen (Server aus)",
     "source_gui": "App",
     "source_cli": "CLI",
     "source_api": "API",
