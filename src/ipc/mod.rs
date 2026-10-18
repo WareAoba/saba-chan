@@ -807,6 +807,7 @@ impl IPCServer {
             // 길드·인스턴스별 디스코드 낱말 (로컬 전용)
             .route("/api/guilds/:guild/instances", get(handlers::guild_words::list))
             .route("/api/guilds/:guild/instances/:id/words", put(handlers::guild_words::put))
+            .route("/api/guilds/:guild/allowed-instances", put(handlers::guild_words::put_allowed))
             .route("/api/chatbot/guilds/:guild", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
