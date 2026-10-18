@@ -13,6 +13,22 @@ pub enum Verdict {
     Detected(String),
     /// 검사기가 없다 (다른 백신, AMSI 공급자 없음 등). 건너뛴다
     Unavailable,
+    /// 검사기는 있는데 이 파일 검사가 실패했다. 그 파일을 막고 나머지는 계속 본다
+    Failed(String),
+}
+
+/// 검사기가 없다는 경고는 데몬 실행마다 한 번만
+fn warn_once(flag: &std::sync::atomic::AtomicBool, message: &str) {
+    if !flag.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        tracing::warn!("[Sandbox] {}", message);
+    }
+}
+
+static AMSI_MISSING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static DEFENDER_MISSING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn scan_failed(file: &Path, detail: impl Into<String>) -> Blocked {
+    Blocked { code: "scan_failed", file: Some(file.to_string_lossy().into_owned()), detail: Some(detail.into()) }
 }
 
 pub trait Scanner {
@@ -26,6 +42,22 @@ pub trait Scanner {
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn amsi_detected(result: u32) -> bool {
     result >= 32768
+}
+
+/// `AmsiScanBuffer` 결과: `E_NOTIMPL`·`ERROR_NOT_READY`(백신이 꺼져 있음)는 공급자가 없는 것, 그 밖의 실패는 이 파일 검사 실패
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn amsi_verdict(hr: i32, result: u32) -> Verdict {
+    const E_NOTIMPL: i32 = 0x8000_4001_u32 as i32;
+    const NOT_READY: i32 = 0x8007_0015_u32 as i32;
+    if hr == E_NOTIMPL || hr == NOT_READY {
+        Verdict::Unavailable
+    } else if hr < 0 {
+        Verdict::Failed(format!("AMSI error 0x{:08x}", hr as u32))
+    } else if amsi_detected(result) {
+        Verdict::Detected("AMSI".into())
+    } else {
+        Verdict::Clean
+    }
 }
 
 /// `MpCmdRun -Scan` 종료 코드: 2면 위협을 찾은 것
@@ -76,7 +108,7 @@ fn component_files(dir: &Path, out: &mut ComponentFiles) {
 }
 
 /// 구성요소 폴더를 검사한다. 스크립트는 AMSI, 네이티브 코드는 Defender로 보고 하나라도 찾으면
-/// `malware_detected`. 원본 없는 바이트코드가 있으면 `unscannable_file`
+/// `malware_detected`. 원본 없는 바이트코드가 있으면 `unscannable_file`, 읽지 못하거나 검사가 실패한 파일이 있으면 `scan_failed`
 pub fn scan_component(dir: &Path, scanner: &dyn Scanner, cache: &mut VerdictCache) -> Result<(), Blocked> {
     let mut files = ComponentFiles::default();
     component_files(dir, &mut files);
@@ -88,25 +120,48 @@ pub fn scan_component(dir: &Path, scanner: &dyn Scanner, cache: &mut VerdictCach
     files.native.sort();
     let mut result = Ok(());
     for file in files.scripts {
-        let Ok(bytes) = std::fs::read(&file) else { continue };
-        let sha = sha256_of(&bytes);
-        let detected = match cache.get(&sha) {
+        // 바뀌지 않은 파일은 다시 읽지 않고 저장한 결과를 쓴다
+        let cached = saba_chan_updater_lib::integrity::cached_sha256(&file).ok().and_then(|sha| cache.get(&sha));
+        let detected = match cached {
             Some(d) => d,
-            None => match scanner.scan_buffer(&file.to_string_lossy(), &bytes) {
-                Verdict::Clean => {
-                    cache.put(sha, false);
-                    false
+            None => {
+                let bytes = match std::fs::read(&file) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        if result.is_ok() {
+                            result = Err(scan_failed(&file, e.to_string()));
+                        }
+                        continue;
+                    }
+                };
+                // 빈 파일(빈 __init__.py 등)은 검사할 내용이 없다. AMSI는 길이 0을 인자 오류로 돌려준다
+                if bytes.is_empty() {
+                    continue;
                 }
-                Verdict::Detected(by) => {
-                    tracing::warn!("[Sandbox] {} flagged by {}", file.display(), by);
-                    cache.put(sha, true);
-                    true
+                let sha = sha256_of(&bytes);
+                match scanner.scan_buffer(&file.to_string_lossy(), &bytes) {
+                    Verdict::Clean => {
+                        cache.put(sha, false);
+                        false
+                    }
+                    Verdict::Detected(by) => {
+                        tracing::warn!("[Sandbox] {} flagged by {}", file.display(), by);
+                        cache.put(sha, true);
+                        true
+                    }
+                    Verdict::Unavailable => {
+                        warn_once(&AMSI_MISSING, "no AMSI provider; scripts of unverified components are not scanned");
+                        break;
+                    }
+                    Verdict::Failed(e) => {
+                        tracing::warn!("[Sandbox] could not scan {}: {}", file.display(), e);
+                        if result.is_ok() {
+                            result = Err(scan_failed(&file, e));
+                        }
+                        continue;
+                    }
                 }
-                Verdict::Unavailable => {
-                    tracing::info!("[Sandbox] no AMSI provider; skipping script scan");
-                    break;
-                }
-            },
+            }
         };
         if detected && result.is_ok() {
             result = Err(Blocked { code: "malware_detected", file: Some(file.to_string_lossy().into_owned()), detail: None });
@@ -123,8 +178,8 @@ pub fn scan_component(dir: &Path, scanner: &dyn Scanner, cache: &mut VerdictCach
 
 /// 서버 실행 파일 검사 (처음 실행 전, 바뀐 뒤)
 pub fn scan_executable(path: &Path, scanner: &dyn Scanner, cache: &mut VerdictCache) -> Result<(), Blocked> {
-    let Ok(bytes) = std::fs::read(path) else { return Ok(()) };
-    let sha = sha256_of(&bytes);
+    // 큰 서버 파일을 시작마다 해시하지 않게 크기·수정 시각이 같으면 지난 값을 쓴다
+    let sha = saba_chan_updater_lib::integrity::cached_sha256(path).map_err(|e| scan_failed(path, e))?;
     let detected = match cache.get(&sha) {
         Some(d) => d,
         None => match scanner.scan_file(path) {
@@ -137,7 +192,11 @@ pub fn scan_executable(path: &Path, scanner: &dyn Scanner, cache: &mut VerdictCa
                 cache.put(sha, true);
                 true
             }
-            Verdict::Unavailable => return Ok(()),
+            Verdict::Unavailable => {
+                warn_once(&DEFENDER_MISSING, "Windows Defender (MpCmdRun) is unavailable; executables of unverified components are not scanned");
+                return Ok(());
+            }
+            Verdict::Failed(e) => return Err(scan_failed(path, e)),
         },
     };
     if detected {
@@ -189,7 +248,7 @@ impl Scanner for SystemScanner {
 /// AMSI (amsi.dll을 실행 중에 불러온다: 없는 PC에서도 데몬이 뜬다)
 #[cfg(windows)]
 mod amsi {
-    use super::{amsi_detected, Verdict};
+    use super::{amsi_verdict, Verdict};
     use std::ffi::c_void;
     use std::os::windows::ffi::OsStrExt;
 
@@ -206,7 +265,7 @@ mod amsi {
 
     pub fn scan(name: &str, content: &[u8]) -> Verdict {
         use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryW};
-        let Ok(len) = u32::try_from(content.len()) else { return Verdict::Unavailable };
+        let Ok(len) = u32::try_from(content.len()) else { return Verdict::Failed("file too large for AMSI".into()) };
         unsafe {
             let lib = LoadLibraryW(wide("amsi.dll").as_ptr());
             if lib.is_null() {
@@ -241,15 +300,7 @@ mod amsi {
                 close(ctx, session);
             }
             uninit(ctx);
-            if hr < 0 {
-                // E_NOTIMPL 등: 공급자가 없다
-                return Verdict::Unavailable;
-            }
-            if amsi_detected(result) {
-                Verdict::Detected("AMSI".into())
-            } else {
-                Verdict::Clean
-            }
+            amsi_verdict(hr, result)
         }
     }
 }
@@ -289,6 +340,61 @@ mod tests {
         assert!(matches!(mpcmdrun_verdict(Some(2)), Verdict::Detected(_)));
         assert_eq!(mpcmdrun_verdict(Some(1)), Verdict::Unavailable);
         assert_eq!(mpcmdrun_verdict(None), Verdict::Unavailable);
+        assert_eq!(amsi_verdict(0, 1), Verdict::Clean);
+        assert!(matches!(amsi_verdict(0, 32768), Verdict::Detected(_)));
+        assert_eq!(amsi_verdict(0x8000_4001_u32 as i32, 0), Verdict::Unavailable);
+        assert_eq!(amsi_verdict(0x8007_0015_u32 as i32, 0), Verdict::Unavailable);
+        assert!(matches!(amsi_verdict(0x8007_0005_u32 as i32, 0), Verdict::Failed(_)));
+    }
+
+    /// 한 파일 검사가 실패해도 공급자가 없는 것으로 보지 않는다: 그 파일을 막고 나머지도 본다
+    #[test]
+    fn a_failed_file_blocks_and_the_rest_are_still_scanned() {
+        struct FailsOn(Cell<usize>);
+        impl Scanner for FailsOn {
+            fn scan_buffer(&self, name: &str, _content: &[u8]) -> Verdict {
+                self.0.set(self.0.get() + 1);
+                if name.ends_with("a.py") { Verdict::Failed("x".into()) } else { Verdict::Clean }
+            }
+            fn scan_file(&self, _path: &Path) -> Verdict {
+                Verdict::Clean
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        for f in ["a.py", "b.py", "c.py"] {
+            std::fs::write(tmp.path().join(f), f.as_bytes()).unwrap();
+        }
+        let scanner = FailsOn(Cell::new(0));
+        let blocked = scan_component(tmp.path(), &scanner, &mut VerdictCache::in_memory()).unwrap_err();
+        assert_eq!(blocked.code, "scan_failed");
+        assert!(blocked.file.unwrap().ends_with("a.py"));
+        assert_eq!(scanner.0.get(), 3);
+    }
+
+    #[test]
+    fn empty_scripts_are_not_sent_to_the_scanner() {
+        struct FailsOnEmpty;
+        impl Scanner for FailsOnEmpty {
+            fn scan_buffer(&self, _name: &str, content: &[u8]) -> Verdict {
+                if content.is_empty() { Verdict::Failed("E_INVALIDARG".into()) } else { Verdict::Clean }
+            }
+            fn scan_file(&self, _path: &Path) -> Verdict {
+                Verdict::Clean
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("__init__.py"), b"").unwrap();
+        std::fs::write(tmp.path().join("lifecycle.py"), b"print(1)").unwrap();
+        assert!(scan_component(tmp.path(), &FailsOnEmpty, &mut VerdictCache::in_memory()).is_ok());
+    }
+
+    /// 읽지 못하는 실행 파일은 통과시키지 않는다
+    #[test]
+    fn an_unreadable_executable_is_blocked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Fake { calls: Cell::new(0), available: true };
+        let blocked = scan_executable(&tmp.path().join("missing.exe"), &fake, &mut VerdictCache::in_memory()).unwrap_err();
+        assert_eq!(blocked.code, "scan_failed");
     }
 
     #[test]
