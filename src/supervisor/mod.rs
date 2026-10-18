@@ -2363,6 +2363,13 @@ impl Supervisor {
             last.note = Some(format!("restart failed: {}", reason));
             last.note_code = Some("restart_failed".into());
             last.note_args = Some(serde_json::json!({ "reason": reason }));
+            // `instance.exit`는 이미 나갔으므로 실패는 따로 알린다 (오류 원문이 있어 릴레이로는 올리지 않는다)
+            crate::events::emit("instance.restart_failed", serde_json::json!({
+                "instanceId": instance_id,
+                "instance": self.instance_store.get(instance_id).map(|i| i.name.clone()).unwrap_or_default(),
+                "noteCode": last.note_code,
+                "noteArgs": last.note_args,
+            }));
         }
         self.save_exit_events(instance_id);
     }
@@ -2846,9 +2853,16 @@ mod tests {
         assert_eq!(kind("reattached"), Some(crash::ExitKind::UnknownExit), "a server running before the daemon restart did not fail to start");
         assert_eq!(supervisor.exit_events("off")[0].note.as_deref(), Some("auto_restart is off"));
         assert_eq!(supervisor.exit_events("off")[0].note_code.as_deref(), Some("auto_restart_off"));
+        let mut sub = crate::events::bus().subscribe(None);
         supervisor.record_restart_failure("crash", "no java".into());
         let failed = supervisor.exit_events("crash").last().cloned().unwrap();
         assert_eq!((failed.note_code.as_deref(), failed.note_args), (Some("restart_failed"), Some(json!({"reason": "no java"}))));
+        // 이미 나간 instance.exit 뒤에 실패를 따로 알린다
+        let mut told = false;
+        while let Ok(e) = sub.rx.try_recv() {
+            told |= e.kind == "instance.restart_failed" && e.data["noteArgs"]["reason"] == "no java";
+        }
+        assert!(told, "restart failure was not announced on the event stream");
         assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5))]);
         assert!(supervisor.restart_still_wanted("crash").await);
         supervisor.stop_requested.insert("crash".into());
