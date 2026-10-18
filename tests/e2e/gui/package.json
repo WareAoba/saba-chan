@@ -1,9 +1,0 @@
-{
-  "name": "saba-e2e-gui",
-  "private": true,
-  "description": "E2E: Electron GUI를 Playwright로 조작한다 (tests/e2e/test_gui.py가 실행)",
-  "type": "module",
-  "dependencies": {
-    "playwright-core": "1.56.1"
-  }
-}

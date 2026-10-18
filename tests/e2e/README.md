@@ -1,6 +1,6 @@
 # E2E 하네스
 
-빌드한 바이너리(`saba-core`, `saba-runner`, `saba-chan-cli`)와 Electron GUI를 그대로 띄우고, 모듈·익스텐션 저장소 체크아웃을 그대로 써서 사용자가 하는 흐름을 밖에서 조작한다. 데몬 내부 함수는 부르지 않는다(그건 `cargo test`의 몫).
+빌드한 바이너리(`saba-core`, `saba-runner`, `saba-chan-cli`)와 Tauri GUI를 그대로 띄우고, 모듈·익스텐션 저장소 체크아웃을 그대로 써서 사용자가 하는 흐름을 밖에서 조작한다. 데몬 내부 함수는 부르지 않는다(그건 `cargo test`의 몫).
 
 ## 실행
 
@@ -36,12 +36,13 @@
 | `test_updates.py` | L4 | 업데이트 확인·내려받기: 서명·변조·플랫폼·다운그레이드·해시 (`--features mock-relay` 빌드) |
 | `test_platform.py` | L5 | 메모리 상한(Job), 격리 실행(AppContainer), 모니터, 터미널로 열기 |
 | `test_real_games.py` | L5 | 진짜 게임 설치·실행 (`network`, `steam`) |
-| `test_gui.py` | L6 | Electron GUI: 데몬에 붙기, 켜기·콘솔 명령·끄기 |
+| `test_gui.py` | L6 | Tauri GUI(tauri-driver WebDriver): 데몬에 붙기, 켜기·콘솔 명령·끄기, 데몬 끊김·재연결, 약관 동의, 데몬 기동 실패(배포 빌드) |
 
 고정 장치:
 
 - `fixtures/fake-minecraft/FakeMinecraft.java`: 바닐라 로그 형식·EULA·`server.properties`·포트 바인드·stdin 명령을 흉내 내는 가짜 서버. 시험 명령 `e2e-crash`, `e2e-hang`, `e2e-alloc <MB>`, `e2e-exit <코드>`, `e2e-spam <N>`. 하네스가 `javac`로 빌드해 캐시한다(JDK 17+).
 - `harness/mirror.py`: 시험용 CA와 HTTPS 가로채기 프록시. `HTTPS_PROXY`·`SSL_CERT_FILE`로 모듈 Python의 다운로드를 fixture로 돌리고, 등록하지 않은 주소는 거절·기록한다.
+- `harness/webdriver.py`: tauri-driver를 띄우고 W3C WebDriver로 GUI를 조작한다(접근성 이름·글자로 찾기). 리눅스는 WebKitWebDriver·Xvfb, Windows는 WebView2와 같은 버전의 msedgedriver가 필요하다(`run-pc.ps1`이 받는다). `SABA_E2E_GUI_EXE`로 다른 빌드를 시험한다.
 - `harness/fake_relay.py`, `harness/real_relay.py`(server-chan `relay-server/test/e2e/harness.ts`를 띄움), `harness/fake_updates.py`.
 
 ## 제품 버그를 찾으면
