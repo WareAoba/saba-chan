@@ -504,6 +504,17 @@ pub struct ExtensionListItem {
     pub warnings: Vec<String>,
     /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
     pub trust: saba_chan_updater_lib::integrity::Trust,
+    /// GUI 번들이 있을 때만: 데몬이 번들을 서빙하는가 (`gui_allowed`). false면 GUI가 사용자에게 묻고
+    /// `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui_allowed: Option<bool>,
+}
+
+/// GUI 번들을 서빙해도 되는가: 확인된 익스텐션이거나, 사용자가 이 PC에서 지금 파일 그대로 허락했다
+/// (`sandbox.extension_gui`). 번들은 GUI 웹뷰에서 데몬 API 전체를 부를 수 있어 AppContainer 밖이다
+pub fn gui_allowed(key: &str, dir: &std::path::Path) -> bool {
+    saba_chan_updater_lib::integrity::trust_of(key, dir) == saba_chan_updater_lib::integrity::Trust::Verified
+        || crate::sandbox::consented(crate::sandbox::Consent::ExtensionGui, key, dir)
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1151,6 +1162,11 @@ impl ExtensionManager {
                     incompatible: Self::incompatibility(m),
                     warnings: ext.warnings.clone(),
                     trust: saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", m.id), &ext.dir),
+                    gui_allowed: m
+                        .gui
+                        .as_ref()
+                        .and_then(|g| g.bundle.as_ref())
+                        .map(|_| gui_allowed(&format!("ext-{}", m.id), &ext.dir)),
                 }
             })
             .collect()

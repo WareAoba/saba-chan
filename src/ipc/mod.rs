@@ -744,6 +744,11 @@ impl IPCServer {
                 "/api/sandbox/unisolated/:component",
                 post(handlers::sandbox::allow_unisolated).delete(handlers::sandbox::revoke_unisolated),
             )
+            .route("/api/sandbox/extension-gui", get(handlers::sandbox::list_extension_gui))
+            .route(
+                "/api/sandbox/extension-gui/:component",
+                post(handlers::sandbox::allow_extension_gui).delete(handlers::sandbox::revoke_extension_gui),
+            )
             // ── 액션 카탈로그 (P2) ──
             .route("/api/actions", get(handlers::actions::list_actions))
             .route("/api/actions/plan", post(handlers::actions::plan_steps))
