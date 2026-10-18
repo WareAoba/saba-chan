@@ -34,6 +34,29 @@ pub fn runner_server_pid(instance_dir: &Path) -> Option<u32> {
     read_json::<RunnerInfo>(&runner_file(&run_dir(instance_dir))).map(|i| i.pid)
 }
 
+/// 시작 중 서버가 메모리 상한에 걸려 끝났다. 호출 쪽이 `downcast_ref`로 알아본다
+#[derive(Debug)]
+pub struct MemoryLimitAtStart {
+    pub limit_mb: u64,
+}
+
+impl std::fmt::Display for MemoryLimitAtStart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The server reached its memory limit of {} MiB while starting; set memory_limit_mb above its RAM setting or clear it", self.limit_mb)
+    }
+}
+
+impl std::error::Error for MemoryLimitAtStart {}
+
+/// runner.json 전에 exit.json이 생겼을 때의 시작 오류. 상한 때문이면 그렇다고, 아니면 로그 마지막 줄
+fn start_failure(run: &Path, log: &Path) -> anyhow::Error {
+    if let Some(limit_mb) = read_json::<ExitInfo>(&exit_file(run)).and_then(|e| e.memory_limit_mb) {
+        return MemoryLimitAtStart { limit_mb }.into();
+    }
+    let tail = std::fs::read_to_string(log).unwrap_or_default();
+    anyhow::anyhow!("{}", tail.lines().last().unwrap_or("saba-runner exited"))
+}
+
 /// `<instance>/logs/sessions/`
 pub fn sessions_dir(instance_dir: &Path) -> PathBuf {
     instance_dir.join("logs").join(SESSIONS_DIR)
@@ -162,9 +185,7 @@ impl ManagedProcess {
                 return Ok(Self::from_runner(info, token, run, log_pattern, Vec::new(), 0, None));
             }
             if exit_file(&run).exists() {
-                let tail = std::fs::read_to_string(&log).unwrap_or_default();
-                let reason = tail.lines().last().unwrap_or("saba-runner exited").to_string();
-                return Err(anyhow::anyhow!("{}", reason));
+                return Err(start_failure(&run, &log));
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
@@ -454,5 +475,27 @@ mod tests {
         left.sort();
         assert_eq!(left, ["20260102-000000.log", "20260103-000000.log"]);
         assert_eq!(latest_session_log(tmp.path()), Some(dir.join("20260103-000000.log")));
+    }
+}
+
+#[cfg(test)]
+mod start_failure_tests {
+    use super::*;
+
+    #[test]
+    fn start_failure_names_the_memory_limit_from_the_exit_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("console.log");
+        std::fs::write(&log, "[SYSTEM/INFO] Process exited with code 8\n").unwrap();
+        let exit = ExitInfo { code: Some(8), success: false, ended_at: 0, signal: None, memory_limit_mb: Some(512) };
+        saba_runner::write_json(&exit_file(tmp.path()), &exit).unwrap();
+        let err = start_failure(tmp.path(), &log);
+        assert_eq!(err.downcast_ref::<MemoryLimitAtStart>().map(|e| e.limit_mb), Some(512));
+
+        let exit = ExitInfo { memory_limit_mb: None, ..exit };
+        saba_runner::write_json(&exit_file(tmp.path()), &exit).unwrap();
+        let err = start_failure(tmp.path(), &log);
+        assert!(err.downcast_ref::<MemoryLimitAtStart>().is_none());
+        assert!(err.to_string().contains("code 8"), "{}", err);
     }
 }

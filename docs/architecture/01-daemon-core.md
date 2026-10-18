@@ -180,7 +180,7 @@
 | GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
 | POST | `/api/server/:name/start` | `server.rs:762` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed} |
 | POST | `/api/server/:name/stop` | `server.rs:818` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
-| POST | `/api/instance/:id/start` | `server.rs:568` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제) |
+| POST | `/api/instance/:id/start` | `server.rs:568` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음) |
 | POST | `/api/instance/:id/stop` | `server.rs:676` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
 | POST | `/api/instance/:id/restart` | `server.rs:687` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped` |
 | GET | `/api/instance/:id/events` | `server.rs:753` | - | `{events:[...]}` 최근 종료 이력 / 404. 한 건은 `at, kind, exit_code, signal, evidence, restart_in_secs, note`에 다시 띄우지 않은 이유가 있으면 `note_code`(`auto_restart_off` · `gave_up` + `note_args.count` · `restart_failed` + `note_args.reason`)·`note_args`. `note`는 영어 문장이라 화면 문구는 `note_code`로 고른다 |
@@ -270,7 +270,7 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/instance/:id/managed/start` | `managed.rs:14` | 선택 `{config?}` | supervisor 결과 / 404 / 500 |
+| POST | `/api/instance/:id/managed/start` | `managed.rs:14` | 선택 `{config?}` | supervisor 결과 / 404 / 422 `memory_limit_reached` / 500 |
 | GET | `/api/instance/:id/console` | `managed.rs:69` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
 | POST | `/api/instance/:id/stdin` | `managed.rs:90` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:100` | - | supervisor 결과 |

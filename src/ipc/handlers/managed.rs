@@ -67,11 +67,23 @@ pub async fn start_managed_handler(
     // 락은 start_managed_server가 단계마다 짧게 잡는다 (C12)
     match Supervisor::start_managed_server(&state.supervisor, &id, &module_name, config).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
+        Err(e) => match e.downcast_ref::<crate::supervisor::managed_process::MemoryLimitAtStart>() {
+            Some(hit) => {
+                let language = state.config_store.ui_language().await;
+                let message = crate::chat::i18n::Catalog::for_language(&language)
+                    .t("errors.memory_limit_at_start", &[("limit", &hit.limit_mb.to_string())]);
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(json!({ "success": false, "error": message, "error_code": "memory_limit_reached", "limit_mb": hit.limit_mb })),
+                )
+                    .into_response()
+            }
+            None => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response(),
+        },
     }
 }
 

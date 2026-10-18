@@ -79,6 +79,7 @@
     "error_title": "Error executing command",
     "unknown": "Unknown error",
     "agreement_required": "You need to accept {{names}} before this server can start. Accept it in Saba-chan on the PC.",
+    "memory_limit_at_start": "The server hit its memory limit of {{limit}} MiB while starting and was stopped. Set the limit above its RAM setting or clear it.",
     "agreement_local_only": "Agreements can only be accepted in Saba-chan on this PC.",
     "no_command_path": "'{{name}}' has no saba-chan console attached, so it can't take commands. Restart it in managed mode from saba-chan on the PC.",
     "alias_conflict": "❌ Alias '{{alias}}' is ambiguous — it matches multiple modules: {{modules}}. Please use a more specific alias.",

@@ -79,6 +79,7 @@
     "error_title": "コマンド実行エラー",
     "unknown": "不明なエラー",
     "agreement_required": "サーバーを起動するには{{names}}への同意が必要です。PCのSaba-chanで同意してください。",
+    "memory_limit_at_start": "起動中にメモリ上限({{limit}} MiB)に達したため、サーバーが停止しました。上限をRAM設定より高くするか、空にしてください。",
     "agreement_local_only": "規約への同意はこのPCのSaba-chanでのみ行えます。",
     "no_command_path": "「{{name}}」にはサバちゃんのコンソールが接続されていないため、コマンドを受け取れません。PCのサバちゃんから管理モードでサーバーを再起動してください。",
     "auth_failed": "認証失敗",
