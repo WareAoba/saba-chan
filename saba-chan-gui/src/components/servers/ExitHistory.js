@@ -5,8 +5,14 @@ import { StatusChip } from '../ui/StatusChip';
 const KIND_TONE = { crash: 'stop', start_failed: 'stop', unknown_exit: 'warn', in_game_stop: 'info', user_stop: 'idle' };
 const SHOW_MAX = 8;
 
-/** 데몬이 남기는 재시작 안 함 이유(영문 한 줄) → 현지화. 모르는 문구는 그대로 */
-export function exitNote(note, t) {
+/** 데몬이 남기는 재시작 안 함 이유 → 현지화. note_code를 먼저 보고, 없으면 영문 한 줄에서 고른다. 모르는 문구는 그대로 */
+export function exitNote(event, t) {
+    const args = event.note_args || {};
+    if (event.note_code === 'auto_restart_off') return t('shell.exit_note_auto_off');
+    if (event.note_code === 'gave_up') return t('shell.exit_note_gave_up', { count: args.count });
+    if (event.note_code === 'restart_failed') return t('shell.exit_note_restart_failed', { reason: args.reason });
+    // note_code가 없는 예전 데몬: 영어 문장에서 고른다
+    const note = event.note;
     if (note === 'auto_restart is off') return t('shell.exit_note_auto_off');
     const gaveUp = /^auto restart gave up after (\d+) restarts/.exec(note);
     if (gaveUp) return t('shell.exit_note_gave_up', { count: Number(gaveUp[1]) });
@@ -71,9 +77,9 @@ export function ExitHistory({ server }) {
                                         {t('shell.exit_restart_in', { secs: e.restart_in_secs })}
                                     </span>
                                 )}
-                                {(e.note || e.evidence) && (
+                                {(e.note || e.note_code || e.evidence) && (
                                     <span className="muted" title={e.evidence || undefined}>
-                                        {e.note ? exitNote(e.note, t) : e.evidence}
+                                        {e.note || e.note_code ? exitNote(e, t) : e.evidence}
                                     </span>
                                 )}
                             </span>
