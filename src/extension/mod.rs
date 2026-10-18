@@ -1248,8 +1248,7 @@ impl ExtensionManager {
             for item in slots.get(SLOT_STATUS).and_then(Value::as_array).into_iter().flatten() {
                 let (Some(label), Some(key)) = (item.get("label").and_then(Value::as_str), item.get("value_from").and_then(Value::as_str)) else { continue };
                 // 비밀값처럼 보이는 키는 보이지 않는다 (목록은 원격으로도 나간다)
-                let lower = key.to_ascii_lowercase();
-                if ["password", "token", "secret"].iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s))) {
+                if crate::actions::is_secret_key(key, &[]) {
                     continue;
                 }
                 let found = ext_status

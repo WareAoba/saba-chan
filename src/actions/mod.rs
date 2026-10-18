@@ -190,7 +190,7 @@ pub fn admin_level(preset: &str) -> i64 {
     }
 }
 
-fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
+pub(crate) fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
     let lower = key.to_ascii_lowercase();
     password_fields.iter().any(|f| f == key) || SECRET_KEYS.iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s)))
 }
@@ -969,7 +969,10 @@ async fn summarize(server: &IPCServer, r: &Resolved, locale: &str) -> Vec<Value>
 pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, plan_id: Option<&str>, caller: &Caller) -> Result<Value, ActionError> {
     let (r, caller) = match plan_id {
         Some(pid) => {
-            steps::lane_free(caller)?;
+            // 여러 단계 실행이 돌고 있으면 계획을 쓰기 전에 409 (한 액션·되돌리기 계획은 막지 않는다)
+            if is_steps_plan(pid) {
+                steps::lane_free(caller)?;
+            }
             let stored = take_plan(pid, id, caller)?;
             // 계획을 만든 경로의 상한을 쓴다 (챗봇이 만든 계획은 사람이 확인해도 챗봇 상한)
             let mut caller = caller.clone();
@@ -1015,6 +1018,10 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
 }
 
 /// planId를 꺼낸다 (1회용). 다른 요청자·다른 액션이면 `plan_not_yours`
+fn is_steps_plan(pid: &str) -> bool {
+    plans().lock().unwrap_or_else(|e| e.into_inner()).get(pid).is_some_and(|p| matches!(p.body, PlanBody::Steps(_)))
+}
+
 fn take_plan(pid: &str, id: &str, caller: &Caller) -> Result<StoredPlan, ActionError> {
     let mut store = plans().lock().unwrap_or_else(|e| e.into_inner());
     store.retain(|_, p| p.created.elapsed() < PLAN_TTL);

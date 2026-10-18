@@ -421,6 +421,25 @@ async fn plan_summaries_never_show_stored_or_new_secrets() {
 }
 
 #[tokio::test]
+async fn a_running_plan_does_not_block_single_confirmations_in_the_guild() {
+    let (state, id, _tmp) = server().await;
+    state
+        .config_store
+        .update_node_settings("lanes", |n| {
+            *n = json!({ "ownerDiscordId": "owner", "chatbotCap": 2 }).as_object().cloned().unwrap();
+            ((), true)
+        })
+        .await
+        .unwrap();
+    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &caller(true)).await.unwrap();
+    let _busy = steps::Lane::take(&caller(false)).unwrap();
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &caller(false)).await.unwrap();
+    assert_eq!(done["success"], true);
+}
+
+#[tokio::test]
 async fn remote_admin_runs_are_limited_per_guild_and_hour() {
     let (state, id, _tmp) = server().await;
     state
