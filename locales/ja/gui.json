@@ -134,7 +134,11 @@
     "change_game": "変更",
     "provision_hint": "モジュールがインスタンスに組み込まれ、サーバーバイナリのダウンロードが自動で行われます。",
     "migrate_existing": "既存サーバーの移行…",
-    "migrate_existing_hint": "既存のゲームサーバーディレクトリをsaba-chanにインポートします。"
+    "migrate_existing_hint": "既存のゲームサーバーディレクトリをsaba-chanにインポートします。",
+    "preset_title": "おすすめ設定",
+    "preset_none": "デフォルト",
+    "preset_none_hint": "モジュールの既定値で作成します。",
+    "preset_not_found": "このモジュールにはそのおすすめ設定がありません。モジュールを再読み込みしてもう一度お試しください。"
   },
   "command_modal": {
     "title": "コマンド実行 - {{name}}",

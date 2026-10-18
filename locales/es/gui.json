@@ -134,7 +134,11 @@
     "provisioning": "Provisionando…",
     "step_compose": "Crear configuración",
     "migrate_existing": "Migración de servidor existente…",
-    "migrate_existing_hint": "Importa un directorio de servidor de juegos existente en saba-chan."
+    "migrate_existing_hint": "Importa un directorio de servidor de juegos existente en saba-chan.",
+    "preset_title": "Configuración recomendada",
+    "preset_none": "Predeterminada",
+    "preset_none_hint": "Usa los valores predeterminados del módulo.",
+    "preset_not_found": "Este módulo no tiene esa configuración recomendada. Actualiza los módulos e inténtalo de nuevo."
   },
   "add_instance_modal": {
     "title": "Agregar instancia",

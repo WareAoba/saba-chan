@@ -134,7 +134,11 @@
     "provisioning": "正在配置…",
     "step_compose": "建立設定",
     "migrate_existing": "遷移現有伺服器…",
-    "migrate_existing_hint": "將現有遊戲伺服器目錄匯入 saba-chan。"
+    "migrate_existing_hint": "將現有遊戲伺服器目錄匯入 saba-chan。",
+    "preset_title": "推薦設定",
+    "preset_none": "預設",
+    "preset_none_hint": "使用模組預設值建立。",
+    "preset_not_found": "此模組沒有這個推薦設定。請重新整理模組後再試一次。"
   },
   "add_instance_modal": {
     "title": "新增實例",

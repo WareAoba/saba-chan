@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import ExtensionSlot from '../ExtensionSlot';
 import Icon from '../Icon';
+import { Segmented } from '../ui/StatusChip';
 
 /** 모듈이 만들 때 고르라고 한 설정 (`install = true`, 예: 마인크래프트 서버 종류) */
 const installFields = (module) => (module?.settings?.fields || []).filter((f) => f.install && f.field_type === 'select');
@@ -29,6 +30,7 @@ export function AddInstanceNewServer({
     const [newServerName, setNewServerName] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [installValues, setInstallValues] = useState({});
+    const [preset, setPreset] = useState('');
     const nameInputRef = useRef(null);
 
     // 게임 카드를 눌렀을 때
@@ -40,6 +42,7 @@ export function AddInstanceNewServer({
         const existingCount = servers.filter((s) => s.module === extName).length;
         setNewServerName(`my-${extName}-${existingCount + 1}`);
         setInstallValues({});
+        setPreset('');
 
         setStep('configure');
     };
@@ -75,6 +78,8 @@ export function AddInstanceNewServer({
                 module_name: selectedExtension,
                 accept_eula: true,
                 module_settings: installValues,
+                // 프리셋 값은 데몬이 푼다 (I1-b)
+                ...(preset ? { preset } : {}),
             });
         } finally {
             setSubmitting(false);
@@ -254,6 +259,38 @@ export function AddInstanceNewServer({
                             </div>
                         );
                     })}
+
+                    {/* 모듈 추천 프리셋 (module.toml [[presets]]) */}
+                    {selectedModule?.presets?.length > 0 && (
+                        <div className="as-section as-section-card">
+                            <span className="as-label">
+                                <Icon name="lightbulb" size="sm" />
+                                {t('add_server_modal.preset_title')}
+                            </span>
+                            <Segmented
+                                ariaLabel={t('add_server_modal.preset_title')}
+                                value={preset}
+                                onChange={setPreset}
+                                items={[
+                                    { id: '', label: t('add_server_modal.preset_none') },
+                                    ...selectedModule.presets.map((p) => ({
+                                        id: p.id,
+                                        label: t(`mod_${selectedModule.name}:presets.${p.id}.label`, {
+                                            defaultValue: p.label || p.id,
+                                        }),
+                                    })),
+                                ]}
+                            />
+                            <p className="as-provision-hint">
+                                {preset
+                                    ? t(`mod_${selectedModule.name}:presets.${preset}.description`, {
+                                          defaultValue:
+                                              selectedModule.presets.find((p) => p.id === preset)?.description || '',
+                                      })
+                                    : t('add_server_modal.preset_none_hint')}
+                            </p>
+                        </div>
+                    )}
 
                     {/* 익스텐션 슬롯 — 서버 생성 옵션 */}
                     <ExtensionSlot slotId="AddServer.options" t={t} />
