@@ -38,6 +38,7 @@ pub fn runner_server_pid(instance_dir: &Path) -> Option<u32> {
 #[derive(Debug)]
 pub struct MemoryLimitAtStart {
     pub limit_mb: u64,
+    pub exit_code: Option<i32>,
 }
 
 impl std::fmt::Display for MemoryLimitAtStart {
@@ -50,8 +51,10 @@ impl std::error::Error for MemoryLimitAtStart {}
 
 /// runner.json 전에 exit.json이 생겼을 때의 시작 오류. 상한 때문이면 그렇다고, 아니면 로그 마지막 줄
 fn start_failure(run: &Path, log: &Path) -> anyhow::Error {
-    if let Some(limit_mb) = read_json::<ExitInfo>(&exit_file(run)).and_then(|e| e.memory_limit_mb) {
-        return MemoryLimitAtStart { limit_mb }.into();
+    if let Some(exit) = read_json::<ExitInfo>(&exit_file(run)) {
+        if let Some(limit_mb) = exit.memory_limit_mb {
+            return MemoryLimitAtStart { limit_mb, exit_code: exit.code }.into();
+        }
     }
     let tail = std::fs::read_to_string(log).unwrap_or_default();
     anyhow::anyhow!("{}", tail.lines().last().unwrap_or("saba-runner exited"))
@@ -490,7 +493,7 @@ mod start_failure_tests {
         let exit = ExitInfo { code: Some(8), success: false, ended_at: 0, signal: None, memory_limit_mb: Some(512) };
         saba_runner::write_json(&exit_file(tmp.path()), &exit).unwrap();
         let err = start_failure(tmp.path(), &log);
-        assert_eq!(err.downcast_ref::<MemoryLimitAtStart>().map(|e| e.limit_mb), Some(512));
+        assert_eq!(err.downcast_ref::<MemoryLimitAtStart>().map(|e| (e.limit_mb, e.exit_code)), Some((512, Some(8))));
 
         let exit = ExitInfo { memory_limit_mb: None, ..exit };
         saba_runner::write_json(&exit_file(tmp.path()), &exit).unwrap();

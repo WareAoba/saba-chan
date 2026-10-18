@@ -1627,14 +1627,26 @@ impl Supervisor {
                     .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
                     .map(|n| n.max(1) as usize)
                     .unwrap_or(managed_process::DEFAULT_LOG_SESSIONS);
-                ManagedProcess::spawn_with_runner(
+                let spawned = ManagedProcess::spawn_with_runner(
                     &runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep,
                     managed_process::RunnerLaunch {
                         log_files: &module.metadata.log_files,
                         console: module.metadata.console,
                         memory_limit_mb: instance.memory_limit_mb,
                     },
-                ).await?
+                ).await;
+                // 시작 중 상한에 걸린 것도 종료 이력에 시작 실패로 남긴다
+                if let Some(hit) = spawned.as_ref().err().and_then(|e| e.downcast_ref::<managed_process::MemoryLimitAtStart>()) {
+                    let verdict = crash::ExitVerdict {
+                        kind: crash::ExitKind::StartFailed,
+                        exit_code: hit.exit_code,
+                        signal: None,
+                        evidence: format!("memory limit {} MiB reached while starting", hit.limit_mb),
+                    };
+                    let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
+                    sup.write().await.record_exit(&instance.id, &instance.name, event);
+                }
+                spawned?
             }
             None => {
                 tracing::warn!("saba-runner not found next to the daemon; '{}' is attached directly and will lose its console if the daemon restarts", instance.name);
@@ -2292,9 +2304,14 @@ impl Supervisor {
 
         let (note_code, note_args) = note_code.map(|(c, a)| (c.to_string(), a)).unzip();
         let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note, note_code, note_args };
+        self.record_exit(instance_id, &instance.name, event);
+    }
+
+    /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다
+    fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent) {
         crate::events::emit("instance.exit", serde_json::json!({
             "instanceId": instance_id,
-            "instance": instance.name,
+            "instance": instance_name,
             "kind": event.verdict.kind,
             "exitCode": event.verdict.exit_code,
             "signal": event.verdict.signal,
