@@ -31,6 +31,8 @@ const CONSOLE_LOG_ROTATIONS: usize = 2;
 
 /// Default maximum number of log lines to keep in the ring buffer.
 const DEFAULT_LOG_BUFFER: usize = 10_000;
+/// 디스크 로그에서 콘솔 기록을 되살릴 때 끝에서 읽는 최대 크기 (버퍼 한 벌에 넉넉한 양)
+const LOG_TAIL_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
 // ─── Log Types ───────────────────────────────────────────────
 
@@ -962,18 +964,32 @@ async fn rotate_log_files(log_path: &Path) {
 /// Used to restore console history when the daemon restarts.
 pub fn read_console_log_from_disk(instance_dir: &Path, count: usize) -> Vec<LogLine> {
     let log_path = latest_console_log(instance_dir);
-    let content = match std::fs::read_to_string(&log_path) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
+    let Some((lines, _)) = read_log_tail(&log_path, count, LOG_TAIL_MAX_BYTES) else {
+        return Vec::new();
     };
+    lines.iter().enumerate().map(|(i, raw)| parse_disk_log_line(i as u64, raw)).collect()
+}
 
-    let total_lines: Vec<&str> = content.lines().collect();
-    let start = total_lines.len().saturating_sub(count);
-    total_lines[start..]
-        .iter()
-        .enumerate()
-        .map(|(i, raw)| parse_disk_log_line(i as u64, raw))
-        .collect()
+/// 파일 끝에서 최대 `max_bytes`만 읽어 마지막 `count`줄과 파일 길이를 돌려준다.
+/// 로그 파일 전체를 메모리에 올리지 않는다. 중간에서 읽기 시작하면 잘린 첫 줄은 버린다
+fn read_log_tail(path: &Path, count: usize, max_bytes: u64) -> Option<(Vec<String>, u64)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    // 한 바이트 앞부터 읽어, 시작점이 줄 머리인지(앞 바이트가 줄바꿈인지) 가린다
+    let start = len.saturating_sub(max_bytes).saturating_sub(1);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut bytes = Vec::new();
+    file.take(len - start).read_to_end(&mut bytes).ok()?;
+    let body = if start == 0 {
+        &bytes[..]
+    } else {
+        bytes.iter().position(|b| *b == b'\n').map_or(&bytes[bytes.len()..], |i| &bytes[i + 1..])
+    };
+    let text = String::from_utf8_lossy(body);
+    let lines: Vec<&str> = text.lines().collect();
+    let first = lines.len().saturating_sub(count);
+    Some((lines[first..].iter().map(|l| l.to_string()).collect(), len))
 }
 
 /// Parse a disk log line back into a `LogLine`.
@@ -1056,6 +1072,22 @@ mod tests {
     // ═══════════════════════════════════════════════════════
 
     /// 명령 직전 커서로 읽으면 명령 뒤의 줄만 온다 (직전 줄이 답에 섞이지 않는다)
+    #[test]
+    fn log_tail_reads_only_the_end_of_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("log");
+        std::fs::write(&path, "first line\nsecond\nthird\nfourth\n").unwrap();
+        let tail = |count, max| read_log_tail(&path, count, max).unwrap();
+        // 끝 14바이트 안에서 잘린 줄은 버린다
+        assert_eq!(tail(10, 14), (vec!["third".to_string(), "fourth".to_string()], 31));
+        // 시작점이 줄 머리면 그 줄은 남긴다
+        assert_eq!(tail(10, 13).0, vec!["third", "fourth"]);
+        assert_eq!(tail(10, 12).0, vec!["fourth"]);
+        assert_eq!(tail(1, 1000).0, vec!["fourth"]);
+        assert_eq!(tail(10, 1000).0.len(), 4);
+        assert!(read_log_tail(&dir.path().join("missing"), 10, 1000).is_none());
+    }
+
     #[test]
     fn cursor_reads_only_lines_after_it() {
         let mut buffer = LogBuffer::new();

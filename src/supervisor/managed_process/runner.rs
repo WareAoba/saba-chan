@@ -56,8 +56,8 @@ fn start_failure(run: &Path, log: &Path) -> anyhow::Error {
             return MemoryLimitAtStart { limit_mb, exit_code: exit.code }.into();
         }
     }
-    let tail = std::fs::read_to_string(log).unwrap_or_default();
-    anyhow::anyhow!("{}", tail.lines().last().unwrap_or("saba-runner exited"))
+    let last = read_log_tail(log, 1, 64 * 1024).and_then(|(lines, _)| lines.into_iter().next());
+    anyhow::anyhow!("{}", last.as_deref().unwrap_or("saba-runner exited"))
 }
 
 /// `<instance>/logs/sessions/`
@@ -206,15 +206,10 @@ impl ManagedProcess {
 
         let path = info.log.clone();
         let (history, offset) = tokio::task::spawn_blocking(move || {
-            let content = std::fs::read_to_string(&path).unwrap_or_default();
-            let lines: Vec<&str> = content.lines().collect();
-            let start = lines.len().saturating_sub(DEFAULT_LOG_BUFFER);
-            let history: Vec<LogLine> = lines[start..]
-                .iter()
-                .enumerate()
-                .map(|(i, raw)| parse_disk_log_line(i as u64, raw))
-                .collect();
-            (history, content.len() as u64)
+            // 끝부분만 읽는다 (러너 로그는 서버가 도는 내내 자란다)
+            let (lines, len) = read_log_tail(&path, DEFAULT_LOG_BUFFER, LOG_TAIL_MAX_BYTES).unwrap_or_default();
+            let history: Vec<LogLine> = lines.iter().enumerate().map(|(i, raw)| parse_disk_log_line(i as u64, raw)).collect();
+            (history, len)
         })
         .await
         .ok()?;
