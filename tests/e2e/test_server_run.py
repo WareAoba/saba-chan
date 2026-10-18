@@ -146,7 +146,6 @@ def test_nonzero_exit_without_crash_report(mc):
 
 def test_hung_server_is_force_stopped(mc):
     daemon, iid, folder, port = mc
-    daemon.api.ok("PATCH", f"/api/instance/{iid}", {"stop_timeout": 5})
     daemon.start_instance(iid)
     daemon.wait_console(iid, DONE)
     daemon.stdin(iid, "e2e-hang")
