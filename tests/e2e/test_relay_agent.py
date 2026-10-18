@@ -127,7 +127,9 @@ def test_wrong_node_token_reports_rejection(sandbox, relay, daemon_factory):
     (sandbox.data / ".node_token").write_text(f"sbn_{relay.node_id}.wrongsecret")
     d = daemon_factory()
     status = wait_until(lambda: (s := d.api.ok("GET", "/api/relay/agent")).get("lastError") and s, 30, "lastError")
-    assert "reject" in status["lastError"].lower(), status
+    # heartbeat가 먼저 실패하면 "(node token rejected)", poll이 먼저면 "poll 401 … INVALID_SIGNATURE"
+    err = status["lastError"].lower()
+    assert "reject" in err or "401" in err, status
 
 
 def test_no_token_means_no_agent(sandbox, relay, daemon_factory):

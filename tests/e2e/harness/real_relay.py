@@ -11,6 +11,7 @@ import os
 import queue
 import shutil
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 
@@ -44,8 +45,11 @@ class _SystemPostgres:
         self.dir.mkdir(parents=True)
         shutil.chown(self.dir, "postgres", "postgres")
         self.port = free_port()
+        # Unix 소켓 경로는 107바이트 제한: 시험 폴더가 깊으면 PG가 뜨지 않으므로 소켓만 짧은 임시 폴더에 둔다
+        self.sock = Path(tempfile.mkdtemp(prefix="sbpg-"))
+        shutil.chown(self.sock, "postgres", "postgres")
         self._as_pg([str(self.bin / "initdb"), "-D", str(self.dir / "data"), "-U", "saba", "--auth=trust", "-E", "UTF8"])
-        self._as_pg([str(self.bin / "pg_ctl"), "-D", str(self.dir / "data"), "-o", f"-p {self.port} -k {self.dir} -h 127.0.0.1", "-l", str(self.dir / "log.txt"), "-w", "start"])
+        self._as_pg([str(self.bin / "pg_ctl"), "-D", str(self.dir / "data"), "-o", f"-p {self.port} -k {self.sock} -h 127.0.0.1", "-l", str(self.dir / "log.txt"), "-w", "start"])
         self._as_pg([str(self.bin / "createdb"), "-h", "127.0.0.1", "-p", str(self.port), "-U", "saba", "saba_relay_e2e"])
         self.url = f"postgresql://saba@127.0.0.1:{self.port}/saba_relay_e2e"
 
@@ -54,6 +58,7 @@ class _SystemPostgres:
 
     def stop(self) -> None:
         subprocess.run(["runuser", "-u", "postgres", "--", str(self.bin / "pg_ctl"), "-D", str(self.dir / "data"), "-m", "immediate", "stop"], capture_output=True, timeout=60)
+        shutil.rmtree(self.sock, ignore_errors=True)
 
 
 class RealRelay:
