@@ -160,7 +160,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | 파일 | 경로 | 접근 방식 | 스키마 |
 |---|---|---|---|
 | config.json `gui` | `<dataDir>/config.json` (`settings.rs:11-13`) | 셸 `load_settings()`(`settings.rs:81-94`, 명령 `settings_local_load`)는 **항상 파일을 직접 읽는다**(깨졌으면 `.bak`, `gui`가 아직 없으면 예전 `settings.json`, `:27-38`). 저장은 브리지 `saveSettings()`(`createApi.js:57-74`)와 셸 `save_settings()`(`native.rs:189-199`, 언어·창 크기)가 먼저 `PUT /api/config/gui`를 보내고, 데몬이 **응답하지 않을 때만** `write_gui_section()`(명령 `settings_local_save`)으로 `gui` 키만 바꾼다. 데몬과 같은 writer(`updater/src/config_file.rs` `ConfigFile::set_section`: tmp→fsync→rename, 직전 정상본은 `.bak`, 깨진 파일은 `.corrupt-<시각>`)를 쓴다 | 기본값(`settings.rs:63-78`): `autoRefresh, refreshInterval(2000), windowBounds{width,height,x,y}, language, ipcPort(57474), consoleBufferSize(2000), autoGeneratePasswords, portConflictCheck`. renderer가 추가로 저장하는 키(useSettingsStore.js:79-97): `accentColor, accentSecondary, useGradient, fontScale, enableTransitions, consoleSyntaxHighlight, consoleBgColor, consoleTextColor, sidebarCompact, consoleFontScale` |
-| config.json `relay` | daemon이 관리(`/api/config/bot`, `src/config_store/mod.rs:208, 282`) | GUI는 API만 사용 | `prefix, cloud{relayUrl,hostId}, moduleAliases, commandAliases, instanceAliases{<인스턴스ID>:"별명, 별명"}, nodeSettings, cloudNodes[], cloudMembers{}`. 로컬 봇 필드(`token`, `autoStart`, `mode`, `music*`)는 없다(01 §4 BotConfig) |
+| config.json `relay` | daemon이 관리(`/api/config/bot`, `src/config_store/mod.rs:208, 282`) | GUI는 API만 사용 | `prefixes[], cloud{relayUrl,hostId}, moduleAliases, commandAliases, instanceAliases{<인스턴스ID>:"별명, 별명"}, nodeSettings, cloudNodes[], cloudMembers{}`. 로컬 봇 필드(`token`, `autoStart`, `mode`, `music*`)는 없다(01 §4 BotConfig) |
 | config.json `chatbot` | daemon이 관리(`/api/chatbot`) | API | 응답에는 API 키 대신 `hasApiKey`만 온다(`src/ipc/handlers/chatbot.rs:1-15`) |
 | node token | `/api/config/node-token` | API | `{token: "sbn_<nodeId>.<secret>"}` |
 | .ipc_token | `<dataDir>/.ipc_token` 또는 `SABA_TOKEN_PATH` | 직접 읽기(필수 부트스트랩) | 평문 UUID |
@@ -277,7 +277,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 - 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply, code, args}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-13`).
 - 대상 서버 찾기: 인스턴스 이름 → `instanceAliases`(인스턴스 ID → `"별명, 별명"`) → 모듈 별명(`moduleAliases`) 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다(`chat/mod.rs:257-288`).
-- 명령 별명은 `commandAliases`, 접두사는 `prefix`(기본 `!saba`)다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
+- 명령 별명은 `commandAliases`, 접두사는 `prefixes`다. 맞춰 볼 때 대소문자를 가리지 않고 긴 것부터 보며, 접두사 뒤가 공백·쉼표·쌍점이거나 글 끝이어야 한다. 도움말에는 첫 접두사를, 비어 있으면 언어별 `default_prefix`(bot.json)를 쓴다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
 - 노드(디스코드 서버)별 허용 인스턴스와 멤버별 명령 권한은 `nodeSettings`에 있다.
 
 ### 4.4 봇 초대

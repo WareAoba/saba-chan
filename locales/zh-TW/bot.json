@@ -1,4 +1,5 @@
 {
+  "default_prefix": "Saba-chan",
   "commands": {
     "start": "啟動伺服器",
     "stop": "停止伺服器",
@@ -286,11 +287,8 @@
       "music": "音樂",
       "enabled": "開啟",
       "model": "模型",
-      "memo": "節點備註",
-      "triggerWords": "喚醒詞",
+      "memo": "伺服器提示詞",
       "confirmCommands": "確認指令",
-      "ambientSeconds": "插話間隔(秒)",
-      "sessionSeconds": "後續對話時間(秒)",
       "memory": "記憶",
       "webSearch": "網頁搜尋",
       "disabledTools": "已關閉的工具組",

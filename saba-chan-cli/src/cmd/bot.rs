@@ -49,21 +49,17 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.hint("saba-chan-cli bot start");
             Ok(())
         }
-        BotCmd::Prefix { value } => {
-            let cfg = ctx.api.bot_config().await?;
-            match value {
-                None => {
-                    let p = cfg.get("prefix").cloned().unwrap_or(Value::Null);
-                    ctx.out
-                        .data(&json!({ "prefix": p }), |_| println!("{}", output::show(&p)));
-                    Ok(())
-                }
-                Some(v) => {
-                    let r = ctx.api.save_bot_config(json!({ "prefix": v })).await?;
-                    ctx.out.done(&t!("bot.prefix_set", prefix = v), &r);
-                    Ok(())
-                }
+        BotCmd::Prefix { values, default } => {
+            if values.is_empty() && !default {
+                let cfg = ctx.api.bot_config().await?;
+                let p = cfg.get("prefixes").cloned().unwrap_or_else(|| json!([]));
+                ctx.out.data(&json!({ "prefixes": p }), |_| println!("{}", prefixes_line(&p)));
+                return Ok(());
             }
+            let r = ctx.api.save_bot_config(json!({ "prefixes": values })).await?;
+            let msg = if default { t!("bot.prefix_reset") } else { t!("bot.prefix_set", prefix = values.join(", ")) };
+            ctx.out.done(&msg, &r);
+            Ok(())
         }
         BotCmd::Alias { action } => alias(ctx, action.unwrap_or(AliasCmd::List)).await,
         BotCmd::Nodes => nodes(ctx).await,
@@ -134,6 +130,16 @@ fn relay_of(cfg: &Value) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
+/// 빈 목록은 앱 언어의 기본 접두사(릴레이가 고른다)
+fn prefixes_line(p: &Value) -> String {
+    let list: Vec<&str> = p.as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+    if list.is_empty() {
+        t!("bot.prefix_default")
+    } else {
+        list.join(", ")
+    }
+}
+
 async fn status(ctx: &Ctx) -> Result<()> {
     let (agent, cfg) = tokio::join!(ctx.api.agent(), ctx.api.bot_config());
     let agent = agent?;
@@ -143,10 +149,7 @@ async fn status(ctx: &Ctx) -> Result<()> {
         return Ok(());
     }
     let mut rows = vec![(t!("bot.connection"), crate::cmd::status::discord_line(&agent))];
-    rows.push((
-        t!("bot.prefix"),
-        output::show(cfg.get("prefix").unwrap_or(&Value::Null)),
-    ));
+    rows.push((t!("bot.prefix"), prefixes_line(cfg.get("prefixes").unwrap_or(&Value::Null))));
     let relay = s(&agent, "relayUrl");
     if !relay.is_empty() {
         rows.push((t!("bot.relay"), relay.to_string()));

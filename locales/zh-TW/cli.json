@@ -51,6 +51,8 @@
     "paired": "已與 Discord 配對。",
     "prefix": "前綴",
     "prefix_set": "聊天前綴已改為 {{prefix}}。",
+    "prefix_default": "預設 (Saba-chan)",
+    "prefix_reset": "聊天前綴已恢復為預設。",
     "relay": "中繼站",
     "started": "已連線到 Discord 機器人中繼站。",
     "stopped": "已中斷與中繼站的連線。",

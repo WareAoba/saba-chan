@@ -609,8 +609,13 @@ pub enum BotCmd {
     Unpair,
     /// Set the node token by hand (from a pairing done elsewhere)
     Token { token: Option<String> },
-    /// Show or change the chat prefix
-    Prefix { value: Option<String> },
+    /// Show or change the chat prefixes: `prefix`, `prefix A B`, `prefix --default`
+    Prefix {
+        values: Vec<String>,
+        /// Go back to the default prefix of the app language
+        #[arg(long, conflicts_with = "values")]
+        default: bool,
+    },
     /// Short names for games in chat: `alias`, `alias add NAME MODULE`, `alias remove NAME`
     Alias {
         #[command(subcommand)]

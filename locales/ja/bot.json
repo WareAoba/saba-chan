@@ -1,4 +1,5 @@
 {
+  "default_prefix": "サバちゃん",
   "commands": {
     "start": "サーバーを起動",
     "stop": "サーバーを停止",
@@ -286,11 +287,8 @@
       "music": "音楽",
       "enabled": "オン",
       "model": "モデル",
-      "memo": "ノードメモ",
-      "triggerWords": "呼び出し語",
+      "memo": "サーバープロンプト",
       "confirmCommands": "コマンド確認",
-      "ambientSeconds": "割り込み間隔(秒)",
-      "sessionSeconds": "続きの会話時間(秒)",
       "memory": "記憶",
       "webSearch": "ウェブ検索",
       "disabledTools": "無効なツール",
