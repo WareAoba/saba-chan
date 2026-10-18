@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
+import '../ui/SabaArt.css';
 import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 
@@ -266,7 +267,9 @@ export function ConnectionView({
                 </div>
             )}
 
-            <section className="dc-card">
+            <section className={clsx('dc-card dc-relay-card', { off: !agentRunning })}>
+                {/* 릴레이(명령 전달) 카드 배경: 꺼져 있으면 채도를 크게 낮춘다 */}
+                <img src="./saba/relay.webp" alt="" className="dc-relay-art" draggable={false} decoding="async" />
                 <div className="dc-card-head">
                     <h2>{t('discord.agent_title')}</h2>
                     <StatusChip

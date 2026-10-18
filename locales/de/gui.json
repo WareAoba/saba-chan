@@ -1192,6 +1192,18 @@
     "invalid_format": "Ungültiges Format.",
     "unchecked": "Die zusätzlichen Startargumente konnten nicht geprüft werden, daher wurde nichts gespeichert"
   },
+  "saba": {
+    "sleep_title": "Psst! Sie schläft noch…!",
+    "sleep_body": "Saba-chan schläft, deshalb können die Server nicht angezeigt werden. Weck sie auf, dann ist sie gleich da.",
+    "wake": "Aufwecken",
+    "waking": "Wird geweckt…",
+    "sleepy": "Gähn… Ich bin wach. Was ist los…?",
+    "empty_title": "Noch nichts hinzugefügt",
+    "fail_title": "Hoppla, das konnte nicht geladen werden",
+    "retry": "Erneut versuchen",
+    "recovering": "{{name}} ist umgefallen! Wird wieder aufgestellt…",
+    "stopped": "{{name}} konnte nicht wieder aufgestellt werden… Bitte prüfe den Zustand."
+  },
   "activity": {
     "idle": "Klicken, um das Daemon-Konsolenprotokoll anzuzeigen",
     "empty": "Es wurden noch keine Serverbefehle ausgeführt.",

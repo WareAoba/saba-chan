@@ -1192,6 +1192,18 @@
     "invalid_format": "Formato inválido.",
     "unchecked": "Não foi possível verificar os argumentos de inicialização extras, então nada foi salvo"
   },
+  "saba": {
+    "sleep_title": "Psiu! Ela ainda está dormindo…!",
+    "sleep_body": "A Saba-chan está dormindo, então os servidores não podem ser exibidos. Acorde-a e ela aparece na hora.",
+    "wake": "Acordar",
+    "waking": "Acordando…",
+    "sleepy": "Aaah… Acordei. O que aconteceu…?",
+    "empty_title": "Nada adicionado ainda",
+    "fail_title": "Ops, não foi possível carregar",
+    "retry": "Tentar de novo",
+    "recovering": "{{name}} caiu! Colocando de pé de novo…",
+    "stopped": "Não foi possível levantar {{name}}… Verifique o estado."
+  },
   "activity": {
     "idle": "Clique para ver o registro do console do daemon",
     "empty": "Nenhum comando de servidor foi executado ainda.",

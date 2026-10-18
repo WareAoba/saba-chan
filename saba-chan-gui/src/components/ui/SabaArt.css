@@ -1,0 +1,126 @@
+/* ===== 사바쨩 그림 =====
+ * 다크·라이트는 그림자만 다르다. 그림 자체 색은 손대지 않는다. */
+:root,
+[data-theme="dark"] {
+    --art-shadow: drop-shadow(0 6px 16px color-mix(in srgb, var(--shadow-ink) 55%, transparent));
+}
+[data-theme="light"] {
+    --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
+}
+@media (prefers-color-scheme: light) {
+    [data-theme="auto"] {
+        --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
+    }
+}
+
+.saba-art {
+    display: block;
+    width: auto;
+    height: var(--art-size, 120px);
+    max-width: 100%;
+    object-fit: contain;
+    filter: var(--art-shadow);
+    -webkit-user-drag: none;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* 빈 목록 */
+.saba-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--sp-1-5);
+    padding: var(--sp-5) var(--sp-4);
+}
+.saba-empty .saba-art {
+    margin-bottom: var(--sp-1);
+    animation: saba-art-in 420ms var(--ease) backwards;
+}
+.saba-empty-title {
+    font-size: var(--fs-md);
+    font-weight: 700;
+    color: var(--text-1);
+}
+.saba-empty-body {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    max-width: 360px;
+}
+.saba-empty.compact {
+    padding: var(--sp-3);
+}
+
+/* 가벼운 실패 */
+.saba-fail {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+}
+.saba-fail .saba-art {
+    flex-shrink: 0;
+    animation: saba-art-in 420ms var(--ease) backwards;
+}
+.saba-fail-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+.saba-fail-title {
+    font-weight: 700;
+    color: var(--text-1);
+}
+.saba-fail-body {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    word-break: break-word;
+}
+
+/* 디스코드 릴레이 카드 배경 */
+.dc-relay-card {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    min-height: 168px;
+}
+/* 글은 왼쪽, 그림은 오른쪽 배경. 그림 왼쪽 끝은 카드 면으로 스며든다 */
+.dc-relay-card > :not(.dc-relay-art) {
+    position: relative;
+    z-index: 1;
+    max-width: calc(100% - 200px);
+}
+.dc-relay-art {
+    position: absolute;
+    right: calc(-1 * var(--sp-2));
+    top: 50%;
+    translate: 0 -50%;
+    height: 230px;
+    width: auto;
+    z-index: 0;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28%);
+    mask-image: linear-gradient(to right, transparent 0, #000 28%);
+    filter: var(--art-shadow);
+    opacity: 0.95;
+    transition:
+        filter 600ms var(--ease),
+        opacity 600ms var(--ease);
+}
+.dc-relay-card.off .dc-relay-art {
+    filter: saturate(0.12) brightness(0.9);
+    opacity: 0.55;
+}
+
+@keyframes saba-art-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.96);
+    }
+}

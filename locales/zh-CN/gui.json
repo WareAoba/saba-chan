@@ -1192,6 +1192,18 @@
     "invalid_format": "格式无效。",
     "unchecked": "无法检查附加启动参数，因此未保存"
   },
+  "saba": {
+    "sleep_title": "嘘！她还在睡觉…！",
+    "sleep_body": "萨巴酱在睡觉，所以无法显示服务器。叫醒她就会马上起来。",
+    "wake": "叫醒",
+    "waking": "正在叫醒…",
+    "sleepy": "哈啊…我醒了。怎么了…？",
+    "empty_title": "还没有添加",
+    "fail_title": "啊，加载失败了",
+    "retry": "重试",
+    "recovering": "{{name}} 倒下了！正在重新扶起来…",
+    "stopped": "没能重新扶起 {{name}}…请检查状态。"
+  },
   "activity": {
     "idle": "点击查看守护进程控制台记录",
     "empty": "还没有执行过服务器命令。",

@@ -1192,6 +1192,18 @@
     "invalid_format": "格式無效。",
     "unchecked": "無法檢查額外啟動參數，因此未儲存"
   },
+  "saba": {
+    "sleep_title": "噓！她還在睡覺…！",
+    "sleep_body": "薩巴醬在睡覺，所以無法顯示伺服器。叫醒她就會馬上起來。",
+    "wake": "叫醒",
+    "waking": "正在叫醒…",
+    "sleepy": "哈啊…我醒了。怎麼了…？",
+    "empty_title": "還沒有新增",
+    "fail_title": "啊，載入失敗了",
+    "retry": "重試",
+    "recovering": "{{name}} 倒下了！正在重新扶起來…",
+    "stopped": "沒能重新扶起 {{name}}…請檢查狀態。"
+  },
   "activity": {
     "idle": "點擊查看常駐程式主控台記錄",
     "empty": "尚未執行任何伺服器指令。",

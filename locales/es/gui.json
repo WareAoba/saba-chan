@@ -1192,6 +1192,18 @@
     "invalid_format": "Formato no válido.",
     "unchecked": "No se pudieron comprobar los argumentos de inicio adicionales, así que no se guardó nada"
   },
+  "saba": {
+    "sleep_title": "¡Shh! Todavía está dormida…",
+    "sleep_body": "Saba-chan está dormida, así que no se pueden mostrar los servidores. Despiértala y estará lista enseguida.",
+    "wake": "Despertar",
+    "waking": "Despertando…",
+    "sleepy": "Uaaah… Ya estoy despierta. ¿Qué pasa…?",
+    "empty_title": "Aún no has añadido nada",
+    "fail_title": "Vaya, no se pudo cargar",
+    "retry": "Reintentar",
+    "recovering": "¡{{name}} se cayó! Volviendo a levantarlo…",
+    "stopped": "No se pudo volver a levantar {{name}}… Revisa su estado."
+  },
   "activity": {
     "idle": "Haz clic para ver el registro de la consola del daemon",
     "empty": "Todavía no se ha ejecutado ningún comando de servidor.",

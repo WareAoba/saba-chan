@@ -1224,6 +1224,18 @@
     "invalid_format": "Invalid format.",
     "unchecked": "Couldn't check the extra launch arguments, so nothing was saved"
   },
+  "saba": {
+    "sleep_title": "Shh! She's still asleep…!",
+    "sleep_body": "Saba-chan is asleep, so the servers can't be shown. Wake her up and she'll be right there.",
+    "wake": "Wake up",
+    "waking": "Waking up…",
+    "sleepy": "Yawn… I'm up. What's going on…?",
+    "empty_title": "Nothing added yet",
+    "fail_title": "Oops, couldn't load this",
+    "retry": "Try again",
+    "recovering": "{{name}} fell over! Getting it back on its feet…",
+    "stopped": "Couldn't get {{name}} back up… Please check on it."
+  },
   "activity": {
     "idle": "Click to view the daemon console log",
     "empty": "No server commands have run yet.",

@@ -8,6 +8,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
 import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
 import { Icon } from '../Icon';
+import { SabaArt } from '../ui/SabaArt';
 import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
 import { OnboardingCard } from './OnboardingCard';
@@ -76,8 +77,8 @@ export function ServersPage({
         return (
             <div className="page page-empty">
                 <div className="empty-state">
-                    <img src="./icon.png" alt="" className="empty-mascot" />
-                    <h2>{t('shell.empty_title')}</h2>
+                    <SabaArt kind="cleaning" size={200} />
+                    <h2>{t('saba.empty_title')}</h2>
                     <p>{t('shell.empty_body')}</p>
                     <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}

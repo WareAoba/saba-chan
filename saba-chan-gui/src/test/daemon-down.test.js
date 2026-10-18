@@ -14,7 +14,8 @@ describe('데몬이 꺼져 있을 때 서버 화면', () => {
         useUIStore.setState({ backgroundDaemonStatus: 'stopped' });
         render(page([]));
         expect(screen.queryByText(/No servers yet|아직 서버가/)).toBeNull();
-        expect(screen.getByText('Not connected to the core daemon')).toBeTruthy();
+        // 잠든 사바쨩 + 깨우기
+        expect(screen.getByText("Shh! She's still asleep…!")).toBeTruthy();
     });
 
     it('다시 시작 버튼이 데몬을 다시 띄운다', async () => {
@@ -22,7 +23,7 @@ describe('데몬이 꺼져 있을 때 서버 화면', () => {
         window.api.daemonRestart = vi.fn().mockResolvedValue({ success: true });
         render(page([]));
         await act(async () => {
-            fireEvent.click(screen.getByRole('button', { name: /Restart daemon/ }));
+            fireEvent.click(screen.getByRole('button', { name: /Wake up/ }));
         });
         expect(window.api.daemonRestart).toHaveBeenCalled();
     });
@@ -30,6 +31,6 @@ describe('데몬이 꺼져 있을 때 서버 화면', () => {
     it('데몬이 살아 있으면 원래 빈 화면이다', () => {
         useUIStore.setState({ backgroundDaemonStatus: 'running' });
         render(page([]));
-        expect(screen.getByText('No servers yet')).toBeTruthy();
+        expect(screen.getByText('Nothing added yet')).toBeTruthy();
     });
 });
