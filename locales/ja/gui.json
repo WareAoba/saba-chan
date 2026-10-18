@@ -747,6 +747,7 @@
     "node_count": "Discordサーバー {{count}}個",
     "agent_title": "コマンド中継",
     "agent_desc": "Discordから送られたコマンドをこのPCが受け取って実行します。オフの間はボットが応答しません。",
+    "agent_replaced": "このDiscordアカウントのPC接続が別のPCに移ったため、ここでは停止しました。このPCをまた使うには、このPCで再度ペアリングしてください。",
     "agent_running": "オン",
     "agent_connecting": "起動中",
     "agent_stopped": "オフ",

@@ -748,6 +748,7 @@
     "node_count": "디스코드 서버 {{count}}개",
     "agent_title": "명령 전달",
     "agent_desc": "디스코드에서 보낸 명령을 이 PC가 받아서 실행해요. 꺼 두면 봇이 대답하지 않아요.",
+    "agent_replaced": "이 디스코드 계정의 PC 연결이 다른 PC로 옮겨져서 여기서는 멈췄어요. 이 PC를 다시 쓰려면 이 PC에서 다시 페어링하세요.",
     "agent_running": "켜짐",
     "agent_connecting": "켜는 중",
     "agent_stopped": "꺼짐",

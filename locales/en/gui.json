@@ -748,6 +748,7 @@
     "node_count": "{{count}} Discord servers",
     "agent_title": "Command relay",
     "agent_desc": "This PC receives and runs the commands sent from Discord. While it is off, the bot won't answer.",
+    "agent_replaced": "This Discord account's PC connection moved to another PC, so it stopped here. To use this PC again, pair it again from this PC.",
     "agent_running": "On",
     "agent_connecting": "Starting",
     "agent_stopped": "Off",

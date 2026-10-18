@@ -32,6 +32,8 @@ const initialState = () => ({
     // ── Runtime status ──
     // stopped: 에이전트 정지 / connecting: 에이전트 실행 중, 릴레이 미확인 / running: 둘 다 OK
     discordBotStatus: 'stopped',
+    // 다른 PC가 같은 계정으로 페어링해서 이 PC의 에이전트가 멈췄다
+    discordAgentReplaced: false,
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
@@ -193,8 +195,11 @@ export const useDiscordStore = create((set, get) => ({
         const state = get();
         const generation = statusGeneration;
         let agentRunning = false;
+        let agentReplaced = false;
         try {
-            agentRunning = (await window.api.discordBotStatus()) === 'running';
+            const agent = await window.api.discordBotStatus();
+            agentRunning = agent === 'running';
+            agentReplaced = agent === 'replaced';
         } catch {
             /* stopped */
         }
@@ -217,6 +222,7 @@ export const useDiscordStore = create((set, get) => ({
         set({
             relayConnecting: false,
             relayConnected: relayOk,
+            discordAgentReplaced: agentReplaced,
             discordBotStatus: agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped',
         });
     },

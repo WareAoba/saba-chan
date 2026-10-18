@@ -747,6 +747,7 @@
     "node_count": "{{count}} servidores do Discord",
     "agent_title": "Retransmissão de comandos",
     "agent_desc": "Este PC recebe e executa os comandos enviados pelo Discord. Enquanto estiver desligado, o bot não responde.",
+    "agent_replaced": "A conexão de PC desta conta do Discord foi movida para outro PC, então parou aqui. Para usar este PC de novo, pareie-o novamente a partir deste PC.",
     "agent_running": "Ligado",
     "agent_connecting": "Iniciando",
     "agent_stopped": "Desligado",

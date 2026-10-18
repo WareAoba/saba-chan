@@ -127,6 +127,7 @@ export function ConnectionView({
     cloudError,
     nodeCount,
     botStatus,
+    agentReplaced,
     pairing,
     onStartPairing,
     onCancelPairing,
@@ -218,6 +219,12 @@ export function ConnectionView({
                     />
                 </div>
                 <p className="dc-card-desc">{t('discord.agent_desc')}</p>
+                {agentReplaced && !agentRunning && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('discord.agent_replaced')}</span>
+                    </div>
+                )}
                 <div className="dc-row-actions">
                     {agentRunning ? (
                         <button type="button" className="btn btn-secondary" onClick={onStopAgent}>
