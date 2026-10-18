@@ -38,6 +38,8 @@ describe('PopoutConsole', () => {
 });
 
 describe('useMultiConsole 따로 띄운 창', () => {
+    afterEach(() => useConsoleStore.setState({ consoles: {} }));
+
     it('여러 서버를 동시에 띄워도 각각 기억하고, 닫힌 것만 지운다', () => {
         const { result } = renderHook(() =>
             useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),

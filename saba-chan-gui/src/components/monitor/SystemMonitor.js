@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { Icon } from '../Icon';
@@ -101,7 +101,24 @@ export function MetricRing({ ring, t, size = 112, inlineNote = true }) {
                     <strong>{ring.center}</strong>
                 </div>
             </div>
-            {sub && <div className="monitor-ring-sub">{sub}</div>}
+            {sub && (
+                <div className="monitor-ring-sub">
+                    {/* 좁을 때는 "·" 뒤에서만 줄을 바꾼다 ("· 쓰기"가 다음 줄 맨 앞에 오지 않게) */}
+                    {String(sub)
+                        .split(' · ')
+                        .map((part, i, parts) =>
+                            i < parts.length - 1 ? (
+                                <Fragment key={part}>
+                                    <span className="monitor-ring-part">{part} ·</span>{' '}
+                                </Fragment>
+                            ) : (
+                                <span key={part} className="monitor-ring-part">
+                                    {part}
+                                </span>
+                            ),
+                        )}
+                </div>
+            )}
             {ring.noteKey && inlineNote && <div className="monitor-ring-note">{t(ring.noteKey)}</div>}
         </figure>
     );
