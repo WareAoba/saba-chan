@@ -5,7 +5,7 @@
  * No trivial single-function tests — every test exercises the full React tree through window.api mock boundary.
  */
 
-import { act, fireEvent, render, screen, waitFor, } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 
@@ -319,6 +319,44 @@ describe('로딩 스크린 상태 머신', () => {
             fireEvent.click(screen.getByRole('button', { name: /Open anyway/i }));
         });
         await waitFor(() => expect(screen.getByText('Saba-chan')).toBeInTheDocument(), { timeout: 3000 });
+    });
+
+    it('데몬 기동 실패 → [다시 시도]가 실패하면 그 이유를, 성공하면 ready를 기다려 메인 UI', async () => {
+        const daemonRestart = vi
+            .fn()
+            .mockResolvedValueOnce({ success: false, error: '포트가 사용 중입니다' })
+            .mockResolvedValueOnce({ success: true });
+        window.api = createApiMock({
+            daemonStatus: vi.fn().mockRejectedValue(new Error('not running')),
+            daemonRestart,
+            onStatusUpdate: vi.fn((cb) => {
+                statusCallback = cb;
+            }),
+        });
+
+        await act(async () => {
+            render(<App />);
+        });
+        await act(async () => {
+            statusCallback({ step: 'daemon_failed', message: '데몬 시작 실패' });
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Try again/i }));
+        });
+        await waitFor(() => expect(screen.getByText(/포트가 사용 중입니다/)).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Try again/i }));
+        });
+        // 성공하면 main이 멈춘 초기화를 마치고 ready를 보낸다: 그때까지는 진행 화면
+        await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+        expect(screen.queryByText('Saba-chan')).not.toBeInTheDocument();
+        await act(async () => {
+            statusCallback({ step: 'ready', message: 'Ready!' });
+        });
+        // 이후는 보통 기동과 같은 흐름 (위 테스트가 메인 UI까지 확인한다)
+        expect(screen.getByText(/Checking servers/i)).toBeInTheDocument();
     });
 
     it('로딩 중에 창을 닫으면 종료 질문이 뜬다', async () => {

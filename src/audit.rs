@@ -263,6 +263,12 @@ pub fn redact(
                     && f.console_template.as_deref().and_then(|t| t.split_whitespace().next()).is_some_and(|t| t.eq_ignore_ascii_case(word))
             }));
     let inputs = field.map(|f| f.inputs.as_slice()).unwrap_or(&[]);
+    // 이름이 비밀스럽거나 모듈이 password로 선언한 설정 이름 (액션 입력의 module_settings처럼 중첩돼도)
+    let password_settings: Vec<&str> = module
+        .and_then(|m| m.settings.as_ref())
+        .map(|s| s.fields.iter().filter(|f| f.field_type == "password").map(|f| f.name.as_str()).collect())
+        .unwrap_or_default();
+    let secret_key = |k: &str| sensitive(k) || password_settings.contains(&k);
     let secret_at = |i: usize| whole || inputs.get(i).is_some_and(secret_input);
 
     let text = text.map(|t| {
@@ -283,8 +289,8 @@ pub fn redact(
         Value::Object(map) => Value::Object(
             map.iter()
                 .map(|(k, v)| {
-                    let secret = whole || sensitive(k) || inputs.iter().any(|i| i.name == *k && secret_input(i));
-                    (k.clone(), if secret { json!(MASK) } else { v.clone() })
+                    let secret = whole || inputs.iter().any(|i| i.name == *k && secret_input(i)) || secret_key(k);
+                    (k.clone(), if secret { json!(MASK) } else { mask_keys(v, &secret_key) })
                 })
                 .collect(),
         ),
@@ -317,6 +323,17 @@ pub fn redact(
     }
     let args = args.map(|a| scrub_value(a, &scrub));
     (text, args)
+}
+
+/// 객체 안으로 내려가며 비밀 이름의 값을 가린다
+fn mask_keys(v: &Value, secret_key: &dyn Fn(&str) -> bool) -> Value {
+    match v {
+        Value::Object(map) => Value::Object(
+            map.iter().map(|(k, v)| (k.clone(), if secret_key(k) { json!(MASK) } else { mask_keys(v, secret_key) })).collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(|i| mask_keys(i, secret_key)).collect()),
+        other => other.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -418,5 +435,15 @@ inputs = [{ name = "message", type = "text" }]
         assert_eq!(Origin::from_headers(&h).source, "api");
         h.insert("X-Saba-Client", "discord".parse().unwrap());
         assert_eq!(Origin::from_headers(&h).source, "api");
+    }
+
+    #[test]
+    fn nested_setting_secrets_are_masked_too() {
+        let input = json!({ "name": "p", "module_name": "palworld", "module_settings": { "admin_password": "hunter2222", "port": 8211 } });
+        let (_, args) = redact(None, None, None, Some(&input));
+        let args = args.unwrap();
+        assert_eq!(args["module_settings"]["admin_password"], MASK);
+        assert_eq!(args["module_settings"]["port"], 8211);
+        assert_eq!(args["name"], "p");
     }
 }

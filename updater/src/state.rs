@@ -30,9 +30,15 @@ impl UpdateManager {
         let json = serde_json::to_string_pretty(&pending)?;
         std::fs::write(&manifest_path, json)?;
         // 적용 결과에 실을 릴리즈 버전·패치노트 (pending.json 형식은 예전 업데이터와 맞춰 그대로 둔다)
-        if let Some(release) = &self.latest_release {
-            let summary = crate::marker::ReleaseSummary::from(release);
-            std::fs::write(self.staging_dir.join(PENDING_RELEASE), serde_json::to_string_pretty(&summary)?)?;
+        match &self.latest_release {
+            Some(release) => {
+                let summary = crate::marker::ReleaseSummary::from(release);
+                std::fs::write(self.staging_dir.join(PENDING_RELEASE), serde_json::to_string_pretty(&summary)?)?;
+            }
+            // 예전 릴리즈 요약이 이번 대상에 붙지 않게
+            None => {
+                let _ = std::fs::remove_file(self.staging_dir.join(PENDING_RELEASE));
+            }
         }
         tracing::info!("[UpdateManager] Saved pending manifest: {} components → {:?}", pending.len(), manifest_path);
         Ok(())

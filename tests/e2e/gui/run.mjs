@@ -60,6 +60,24 @@ const scenarios = {
         await snap(page, 'stopped');
         return {};
     },
+    // 데몬이 꺼지면 "마지막으로 받은 상태" 알림 → 새 데몬(새 토큰)이 뜨면 알림이 걷히고 조작이 다시 된다.
+    // 데몬을 끄고 켜는 일은 test_gui.py가 한다. 신호는 E2E_ARTIFACTS의 파일로 주고받는다.
+    async reconnect(page) {
+        const L = ARGS.l;
+        const mark = (name) => fs.writeFileSync(path.join(ART, name), '');
+        fs.mkdirSync(ART, { recursive: true });
+        await page.getByText(ARGS.serverName, { exact: false }).first().waitFor({ timeout: 60_000 });
+        mark('attached');
+        await page.getByText(L.daemon_down_stale).first().waitFor({ timeout: 60_000 });
+        await snap(page, 'daemon-down');
+        mark('saw-down');
+        await page.locator('.daemon-down-notice').first().waitFor({ state: 'detached', timeout: 90_000 });
+        await page.getByRole('button', { name: `${ARGS.serverName} ${L.start}` }).click({ timeout: 30_000 });
+        await page.getByText(ARGS.serverName, { exact: true }).first().click();
+        await page.getByText(/Done \(/).first().waitFor({ timeout: 60_000 });
+        await snap(page, 'reconnected');
+        return {};
+    },
     async explore(page) {
         await page.waitForTimeout(ARGS.waitMs ?? 8000);
         await snap(page, 'explore');
