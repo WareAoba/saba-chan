@@ -13,8 +13,10 @@ done
 cd "$REPO"
 cargo build -p saba-core -p saba-chan-cli -p saba-runner
 CARGO_TARGET_DIR="$REPO/target/e2e-mock" cargo build -p saba-core --features mock-relay
-if [[ -d saba-chan-gui/node_modules/electron ]]; then (cd saba-chan-gui && npx vite build >/dev/null); fi
-if [[ ! -d "$E2E/gui/node_modules" ]]; then (cd "$E2E/gui" && npm install --no-audit --no-fund >/dev/null); fi
+# GUI: 화면(build/)이 실행 파일에 들어가므로 vite build 다음 Tauri 빌드. tauri-driver·WebKitWebDriver가 없으면 GUI 시험은 건너뛴다
+if [[ -d saba-chan-gui/node_modules/.bin ]] && command -v tauri-driver >/dev/null; then
+  (cd saba-chan-gui && npx vite build >/dev/null) && cargo build -p saba-chan-gui
+fi
 python3 -m pip install -q -r "$E2E/requirements.txt"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"

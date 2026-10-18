@@ -94,14 +94,31 @@ if ($NoRelay) { $markers += "not relay_real" }
 if (-not $Slow -and -not $Network) { $markers += "not slow" }
 
 if (-not $NoGui) {
-    Step "GUI 준비 (vite build, playwright-core)"
+    Step "GUI 준비 (vite build, Tauri 빌드, tauri-driver, msedgedriver)"
     Push-Location (Join-Path $Repo "saba-chan-gui")
     try {
-        if (-not (Test-Path node_modules\electron\path.txt)) { npm ci; if ($LASTEXITCODE) { throw "GUI npm ci 실패" } }
+        if (-not (Test-Path node_modules\.bin\vite.cmd)) { npm ci; if ($LASTEXITCODE) { throw "GUI npm ci 실패" } }
+        # 화면(build/)은 실행 파일에 들어가므로 Tauri 빌드보다 먼저
         npx vite build; if ($LASTEXITCODE) { throw "vite build 실패" }
     } finally { Pop-Location }
-    Push-Location (Join-Path $E2E "gui")
-    try { npm install --no-audit --no-fund; if ($LASTEXITCODE) { throw "gui 하네스 npm install 실패" } } finally { Pop-Location }
+    Push-Location $Repo
+    try { cargo build @profileArgs -p saba-chan-gui; if ($LASTEXITCODE) { throw "GUI 빌드 실패" } } finally { Pop-Location }
+    $env:SABA_E2E_GUI_EXE = Join-Path $Repo "target\$profileDir\saba-chan-gui.exe"
+    if (-not (Get-Command tauri-driver -ErrorAction SilentlyContinue)) {
+        cargo install tauri-driver --locked; if ($LASTEXITCODE) { throw "tauri-driver 설치 실패" }
+    }
+    # WebView2와 같은 버전의 msedgedriver를 시험 폴더에 받는다 (PATH는 이 실행에만)
+    $wv = (Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" -ErrorAction SilentlyContinue).pv
+    if (-not $wv) { $wv = (Get-Item "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" -ErrorAction SilentlyContinue).VersionInfo.ProductVersion }
+    if (-not $wv) { throw "WebView2 런타임 버전을 찾지 못했습니다." }
+    $edgeDir = Join-Path $Tools "msedgedriver-$wv"
+    if (-not (Test-Path (Join-Path $edgeDir "msedgedriver.exe"))) {
+        $zip = Join-Path $Tools "msedgedriver.zip"
+        Invoke-WebRequest -UseBasicParsing "https://msedgedriver.microsoft.com/$wv/edgedriver_win64.zip" -OutFile $zip
+        Expand-Archive $zip -DestinationPath $edgeDir -Force
+        Remove-Item $zip
+    }
+    $env:PATH = "$edgeDir;$env:PATH"
 }
 
 $relay = Join-Path $Git "server-chan\relay-server"
