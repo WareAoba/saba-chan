@@ -20,8 +20,12 @@ use windows_sys::Win32::System::JobObjects::{
 use windows_sys::Win32::System::IO::{CreateIoCompletionPort, GetQueuedCompletionStatus, OVERLAPPED};
 use windows_sys::Win32::System::Threading::{OpenProcess, INFINITE, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
-/// 잡 메모리 상한을 넘었다는 완료 포트 메시지 (winnt.h)
+/// 완료 포트 메시지 (winnt.h): 잡 안 프로세스가 모두 끝남, 잡 메모리 상한을 넘음.
+/// 메시지는 들어온 차례로 오므로 상한 알림은 "모두 끝남"보다 먼저 온다
+const JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO: u32 = 4;
 const JOB_OBJECT_MSG_JOB_MEMORY_LIMIT: u32 = 10;
+/// 서버가 끝난 뒤 남은 알림을 기다리는 최대 시간
+const DRAIN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 /// 상한을 넘어 잡을 끝낼 때의 종료 코드 (`ERROR_NOT_ENOUGH_MEMORY`)
 const MEMORY_LIMIT_EXIT_CODE: u32 = 8;
 
@@ -30,6 +34,8 @@ pub struct Job {
     /// 메모리 상한 알림을 받는 완료 포트 (상한이 없으면 null)
     port: HANDLE,
     memory_hit: Arc<AtomicBool>,
+    /// 감시 스레드가 "모두 끝남"까지 읽었다 (그 앞의 상한 알림도 처리됐다)
+    drained: Arc<AtomicBool>,
 }
 
 // 잡 핸들은 스레드 사이에 옮겨도 된다
@@ -46,7 +52,12 @@ impl Job {
             if handle.is_null() {
                 return Err(format!("CreateJobObject failed ({})", std::io::Error::last_os_error()));
             }
-            let mut job = Job { handle, port: std::ptr::null_mut(), memory_hit: Arc::new(AtomicBool::new(false)) };
+            let mut job = Job {
+                handle,
+                port: std::ptr::null_mut(),
+                memory_hit: Arc::new(AtomicBool::new(false)),
+                drained: Arc::new(AtomicBool::new(false)),
+            };
             if memory_limit.is_some() {
                 job.watch_memory()?;
             }
@@ -98,23 +109,35 @@ impl Job {
             return Err(format!("associate completion port failed ({})", std::io::Error::last_os_error()));
         }
         // 핸들은 스레드로 숫자로 넘긴다. 포트를 닫으면(Drop) 기다림이 실패해 스레드가 끝난다
-        let (job, port, hit) = (self.handle as usize, port as usize, self.memory_hit.clone());
+        let (job, port, hit, drained) = (self.handle as usize, port as usize, self.memory_hit.clone(), self.drained.clone());
         std::thread::spawn(move || loop {
             let (mut msg, mut key, mut overlapped): (u32, usize, *mut OVERLAPPED) = (0, 0, std::ptr::null_mut());
             if GetQueuedCompletionStatus(port as HANDLE, &mut msg, &mut key, &mut overlapped, INFINITE) == 0 {
+                drained.store(true, Ordering::SeqCst);
                 return;
             }
-            if msg == JOB_OBJECT_MSG_JOB_MEMORY_LIMIT {
-                hit.store(true, Ordering::SeqCst);
-                TerminateJobObject(job as HANDLE, MEMORY_LIMIT_EXIT_CODE);
-                return;
+            match msg {
+                JOB_OBJECT_MSG_JOB_MEMORY_LIMIT => {
+                    hit.store(true, Ordering::SeqCst);
+                    TerminateJobObject(job as HANDLE, MEMORY_LIMIT_EXIT_CODE);
+                }
+                JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO => {
+                    drained.store(true, Ordering::SeqCst);
+                    return;
+                }
+                _ => {}
             }
         });
         Ok(())
     }
 
-    /// 메모리 상한을 넘어 잡을 끝냈는가
+    /// 메모리 상한을 넘어 잡을 끝냈는가. 서버가 끝난 뒤에 부른다: 서버가 상한에 걸려 곧바로 끝나면
+    /// 알림이 아직 큐에 있을 수 있으므로 감시 스레드가 "모두 끝남"까지 읽기를 잠깐 기다린다
     pub fn memory_limit_hit(&self) -> bool {
+        let deadline = std::time::Instant::now() + DRAIN_WAIT;
+        while !self.port.is_null() && !self.drained.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         self.memory_hit.load(Ordering::SeqCst)
     }
 
