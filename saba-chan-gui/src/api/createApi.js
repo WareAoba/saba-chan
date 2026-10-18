@@ -688,6 +688,8 @@ export function createApi({ invoke, hub }) {
             try {
                 return (await post(`/api/instance/${encodeURIComponent(instanceId)}/stdin`, { command })).data;
             } catch (error) {
+                // 답을 못 받았으면 보냈는지 모른다: 화면이 다른 길로 다시 보내지 않게 연결 오류 코드를 넘긴다
+                if (!error.response) return { error: error.message, error_code: error.code };
                 return errorBody(error);
             }
         },

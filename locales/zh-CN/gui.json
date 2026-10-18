@@ -398,7 +398,8 @@
     "dependency_unmet_message": "'{{name}}' 的模块需要以下版本。请更新，或安装并启用扩展插件后再启动。",
     "preflight_failed_title": "'{{name}}' 的启动前检查发现了问题",
     "working_dir_in_use": "服务器 '{{instance}}' 已在使用此文件夹。同一文件夹中的两个服务器会互相覆盖世界和设置。请选择其他文件夹。",
-    "no_command_path": "此服务器没有可接收命令的控制台。请从萨巴酱启动服务器后再发送命令。"
+    "no_command_path": "此服务器没有可接收命令的控制台。请从萨巴酱启动服务器后再发送命令。",
+    "stdin_unconfirmed": "无法确认命令是否已发送。重试前请先查看控制台。"
   },
   "settings": {
     "save_failed_title": "设置保存失败",

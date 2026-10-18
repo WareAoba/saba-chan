@@ -401,7 +401,8 @@
     "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again.",
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
     "working_dir_in_use": "Server '{{instance}}' already uses this folder. Two servers in one folder overwrite each other's world and settings. Pick another folder.",
-    "no_command_path": "This server has no console to send commands to. Start it from Saba-chan to send commands."
+    "no_command_path": "This server has no console to send commands to. Start it from Saba-chan to send commands.",
+    "stdin_unconfirmed": "Couldn't confirm the command was sent. Check the console before trying again."
   },
   "settings": {
     "save_failed_title": "Settings save failed",

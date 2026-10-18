@@ -401,7 +401,8 @@
     "dependency_unmet_message": "'{{name}}' 서버의 모듈이 아래 버전을 필요로 해요. 업데이트하거나 확장 기능을 설치·켠 뒤 다시 시작하세요.",
     "preflight_failed_title": "'{{name}}' 서버를 켜기 전 점검에서 문제가 있어요",
     "working_dir_in_use": "'{{instance}}' 서버가 이미 이 폴더를 쓰고 있어요. 한 폴더에 서버를 둘 만들면 월드와 설정을 서로 덮어씁니다. 다른 폴더를 골라 주세요.",
-    "no_command_path": "이 서버는 명령을 보낼 콘솔이 없어요. 사바쨩에서 서버를 켜야 명령을 보낼 수 있어요."
+    "no_command_path": "이 서버는 명령을 보낼 콘솔이 없어요. 사바쨩에서 서버를 켜야 명령을 보낼 수 있어요.",
+    "stdin_unconfirmed": "명령을 보냈는지 확인하지 못했어요. 다시 보내기 전에 콘솔을 확인해 주세요."
   },
   "settings": {
     "save_failed_title": "설정 저장 실패",

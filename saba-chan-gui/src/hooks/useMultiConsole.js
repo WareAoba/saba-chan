@@ -336,6 +336,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         setConsoleInput(instanceId, '');
         try {
             const result = await window.api.managedStdin(instanceId, cmd);
+            if (result?.error_code === 'ETIMEDOUT') {
+                // 데몬이 이미 보냈을 수 있다: 명령 API로 다시 보내면 두 번 실행된다
+                safeShowToast(t('servers.stdin_unconfirmed'), 'warning', 5000);
+                return;
+            }
             if (result?.error) {
                 console.log('[Console] stdin failed, trying command API:', result.error);
                 const cmdResult = await window.api.executeCommand(instanceId, {

@@ -398,7 +398,8 @@
     "dependency_unmet_message": "O módulo de '{{name}}' precisa das versões abaixo. Atualize, ou instale e ative a extensão, e inicie de novo.",
     "preflight_failed_title": "A verificação antes de iniciar '{{name}}' encontrou um problema",
     "working_dir_in_use": "O servidor '{{instance}}' já usa esta pasta. Dois servidores na mesma pasta sobrescrevem o mundo e as configurações um do outro. Escolha outra pasta.",
-    "no_command_path": "Este servidor não tem console para enviar comandos. Inicie-o pela Saba-chan para enviar comandos."
+    "no_command_path": "Este servidor não tem console para enviar comandos. Inicie-o pela Saba-chan para enviar comandos.",
+    "stdin_unconfirmed": "Não foi possível confirmar se o comando foi enviado. Verifique o console antes de tentar de novo."
   },
   "settings": {
     "save_failed_title": "Falha ao salvar configurações",
