@@ -97,7 +97,7 @@
 
 1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:860-866`). 수동 제어는 `/api/relay/agent{,/start,/stop}`. 페어링 완료(`/api/relay/pair/:code/status`가 `claimed`로 토큰을 저장)나 `PUT /api/config/node-token`(저장된 토큰과 다를 때만) 뒤에는 `relay_agent::restart`가 돌던 세션을 멈추고 새 토큰으로 바로 다시 연결한다. 돌고 있는 에이전트의 릴레이 주소가 `PUT /api/config/bot`으로 바뀌어도 같다. 세션은 시작할 때 읽은 주소·토큰 쌍만 쓰고(`Session.token`, `signed_headers_with`), 끝난 세션은 요청을 보내지 않는다.
 2. `GET /info`로 최소 에이전트 버전을 확인하고, 60초마다 `POST /heartbeat`로 서버·모듈·봇 설정 메타데이터를 올린다(`relay_agent.rs:23`).
-3. `GET /poll`(롱폴링)로 디스코드 명령을 받아 채팅 처리기(`crate::chat`)로 실행하고 `POST /result/:id`로 돌려준다.
+3. `GET /poll`(롱폴링)로 디스코드 명령을 받아 채팅 처리기(`crate::chat`)로 실행하고 `POST /result/:id`로 돌려준다. 받은 묶음은 바로 `POST /ack`로 알리고(릴레이가 404면 그 세션에서는 생략), 명령 id를 10분·1,000개까지 기억해 다시 온 명령은 실행하지 않는다(끝난 명령이면 기억한 결과를 다시 보낸다).
    - 같은 연결에서 `POST /events {events:[{id, type, data}]}`로 디스코드 알림 채널(I3)에 띄울 이벤트를 올린다(`relay_agent.rs` `events_loop`·`relay_event`). 올리는 것은 `instance.exit`(`crash`·`unknown_exit`만), `backup.done`, `update.available`, `schedule.warn`, `plan.done`(뒤에서 마친 여러 단계 실행: `runId, guildId?, ok, steps, stoppedAt`, 단계 줄에는 원격이라 오류 코드만)뿐이다. 원격으로 나가므로 경로·콘솔 줄·오류 원문은 뺀다(`evidence`는 `exit code …`·`signal …`일 때만, `backup.done`의 `error`는 빼고 `ok`만). 첫 건이 오면 2초 모아 20건씩 보내고, 닿지 못하면 백오프하며 최근 50건만 들고 있는다. 4xx(429 말고)는 그 묶음을 버리고 429·5xx·네트워크 오류는 백오프 뒤 다시 보내며, 404면(relay에 경로가 아직 없음) 그 묶음을 버리고 10분 동안 올리지 않은 뒤 다음 이벤트로 다시 알아본다.
 4. 인증은 노드 토큰(`<data_dir>/.node_token`) HMAC 서명이다(`relay_agent.rs:1-11`).
 

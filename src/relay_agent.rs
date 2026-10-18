@@ -4,8 +4,9 @@
 //!   1. GET  /info              — 최소 에이전트 버전 확인
 //!   2. POST /heartbeat (60초)  — 온라인 유지 + 서버/모듈/봇 설정 메타데이터 동기화
 //!   3. GET  /poll (롱폴링)      — 디스코드에서 온 텍스트 명령 수신
-//!   4. POST /result/:id        — 채팅 처리기(`crate::chat`) 결과 반환
-//!   5. POST /events            — 디스코드 알림 채널(I3)에 띄울 이벤트 (`relay_event`)
+//!   4. POST /ack               — 받은 명령 id 알림 (릴레이는 ack한 호스트에만 답 없는 명령을 다시 보낸다)
+//!   5. POST /result/:id        — 채팅 처리기(`crate::chat`) 결과 반환
+//!   6. POST /events            — 디스코드 알림 채널(I3)에 띄울 이벤트 (`relay_event`)
 //!
 //! 인증은 노드 토큰(`<data_dir>/.node_token`, sbn_<id>.<secret>) HMAC 서명입니다.
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
@@ -36,6 +37,11 @@ const EVENT_PROBE: Duration = Duration::from_secs(600);
 const REPLACED: &str = "token_replaced";
 /// 동시에 처리하는 릴레이 명령 수 (넘으면 끝나기를 기다렸다가 더 받는다)
 const COMMANDS_IN_FLIGHT: usize = 4;
+/// 받은 명령 id를 기억하는 기간과 개수. 릴레이가 같은 명령을 다시 보내도 한 번만 실행한다
+const SEEN_FOR: Duration = Duration::from_secs(600);
+const SEEN_MAX: usize = 1000;
+/// `POST /ack` 한 번에 싣는 id 수 (릴레이 상한)
+const ACK_BATCH: usize = 50;
 
 /// 에이전트 상태 (GET /api/relay/agent)
 #[derive(Debug, Clone, Default, Serialize)]
@@ -113,7 +119,17 @@ impl RelayAgent {
                     return;
                 }
             };
-            let session = Session { agent: agent.clone(), server, client, base: relay_url, token: node_token, cancel: cancel.clone(), generation };
+            let session = Session {
+                agent: agent.clone(),
+                server,
+                client,
+                base: relay_url,
+                token: node_token,
+                cancel: cancel.clone(),
+                generation,
+                seen: Mutex::new(SeenCommands::default()),
+                ack_supported: std::sync::atomic::AtomicBool::new(true),
+            };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
                 agent.finish(generation, Some(e));
@@ -208,6 +224,55 @@ struct Session {
     token: String,
     cancel: CancellationToken,
     generation: u64,
+    seen: Mutex<SeenCommands>,
+    /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
+    ack_supported: std::sync::atomic::AtomicBool,
+}
+
+/// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
+#[derive(Debug, Clone, PartialEq)]
+enum Received {
+    New,
+    Running,
+    Done(Value),
+}
+
+/// 최근에 받은 명령 id (`SEEN_FOR` 동안, 최대 `SEEN_MAX`개). 끝난 명령은 결과도 기억해 다시 보낼 수 있게 한다
+#[derive(Default)]
+struct SeenCommands {
+    entries: std::collections::VecDeque<(String, std::time::Instant, Option<Value>)>,
+}
+
+impl SeenCommands {
+    /// 받은 id를 기록하고, 이 명령을 어떻게 다룰지 돌려준다. 처음 본 id는 처리 중으로 기록한다
+    fn receive(&mut self, id: &str, now: std::time::Instant) -> Received {
+        while self.entries.front().is_some_and(|(_, at, _)| now.saturating_duration_since(*at) >= SEEN_FOR) {
+            self.entries.pop_front();
+        }
+        if let Some((_, _, result)) = self.entries.iter().find(|(seen, _, _)| seen == id) {
+            return match result {
+                Some(r) => Received::Done(r.clone()),
+                None => Received::Running,
+            };
+        }
+        self.entries.push_back((id.to_string(), now, None));
+        while self.entries.len() > SEEN_MAX {
+            self.entries.pop_front();
+        }
+        Received::New
+    }
+
+    fn finish(&mut self, id: &str, result: &Value) {
+        if let Some((_, _, slot)) = self.entries.iter_mut().find(|(seen, _, _)| seen == id) {
+            *slot = Some(result.clone());
+        }
+    }
+}
+
+/// poll 묶음의 명령 id로 만든 `POST /ack` 본문들 (`ACK_BATCH`개씩)
+fn ack_bodies(commands: &[Value]) -> Vec<String> {
+    let ids: Vec<&str> = commands.iter().filter_map(|c| c.get("id").and_then(Value::as_str)).collect();
+    ids.chunks(ACK_BATCH).map(|chunk| json!({ "ids": chunk }).to_string()).collect()
 }
 
 impl Session {
@@ -426,7 +491,10 @@ impl Session {
         use futures_util::StreamExt;
         type Poll<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Value>, String>> + Send + 'a>>;
         let mut failures: u32 = 0;
+        type Side<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>>;
         let mut running = futures_util::stream::FuturesUnordered::new();
+        // ack와 다시 온 명령의 결과 재전송: 명령 자리를 차지하지 않고 따로 돈다
+        let mut side: futures_util::stream::FuturesUnordered<Side<'_>> = futures_util::stream::FuturesUnordered::new();
         let mut waiting: Vec<Value> = Vec::new();
         let mut next: Option<Poll<'_>> = Some(Box::pin(self.poll_once()));
         while !self.cancel.is_cancelled() {
@@ -442,7 +510,20 @@ impl Session {
                     match polled {
                         Ok(commands) => {
                             failures = 0;
-                            waiting.extend(commands);
+                            for body in ack_bodies(&commands) {
+                                side.push(Box::pin(self.post_ack(body)));
+                            }
+                            let now = std::time::Instant::now();
+                            for cmd in commands {
+                                let Some(id) = cmd.get("id").and_then(Value::as_str).map(str::to_string) else { continue };
+                                let received = self.seen.lock().unwrap_or_else(|e| e.into_inner()).receive(&id, now);
+                                match received {
+                                    Received::New => waiting.push(cmd),
+                                    // 같은 명령을 다시 받았다: 실행하지 않는다. 끝난 것이면 결과만 다시 보낸다
+                                    Received::Running => {}
+                                    Received::Done(result) => side.push(Box::pin(async move { self.post_result(&id, &result).await })),
+                                }
+                            }
                         }
                         Err(e) if e == REPLACED => self.give_up_replaced(),
                         Err(e) => {
@@ -458,6 +539,7 @@ impl Session {
                     }
                 }
                 Some(()) = running.next(), if !running.is_empty() => {}
+                Some(()) = side.next(), if !side.is_empty() => {}
             }
         }
         // 연결 해제(취소) 뒤에는 받아 두고 시작하지 않은 명령은 버리고, 이미 시작한 것은 끝까지 마친다
@@ -467,6 +549,8 @@ impl Session {
     async fn run_command(&self, cmd: Value) {
         let Some(id) = cmd.get("id").and_then(Value::as_str).map(str::to_string) else { return };
         let result = self.handle_payload(&cmd).await;
+        // 결과를 올리지 못해도 기억해 둔다: 릴레이가 명령을 다시 보내면 이 결과를 다시 올린다
+        self.seen.lock().unwrap_or_else(|e| e.into_inner()).finish(&id, &result);
         self.post_result(&id, &result).await;
         self.agent.update(self.generation, |s| s.commands_handled += 1);
     }
@@ -685,6 +769,23 @@ impl Session {
                     }
                 }
             }
+        }
+    }
+
+    /// 받은 명령을 알린다(`POST /ack`). 릴레이는 ack한 호스트에만 답 없는 명령을 다시 보낸다
+    async fn post_ack(&self, body: String) {
+        use std::sync::atomic::Ordering;
+        if !self.ack_supported.load(Ordering::Relaxed) {
+            return;
+        }
+        match self.send_signed(reqwest::Method::POST, "/ack", Some(body)).await {
+            Ok(r) if r.status().is_success() => {}
+            Ok(r) if r.status().as_u16() == 404 => {
+                tracing::info!("[RelayAgent] relay has no /ack; not acking in this session");
+                self.ack_supported.store(false, Ordering::Relaxed);
+            }
+            Ok(r) => tracing::warn!("[RelayAgent] ack rejected: {}", r.status()),
+            Err(e) => tracing::warn!("[RelayAgent] ack failed: {}", e),
         }
     }
 
@@ -1176,6 +1277,44 @@ mod tests {
         // 여러 단계 실행은 디스코드에서 시작한 것만
         assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
         assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");
+    }
+
+    #[test]
+    fn a_redelivered_command_runs_once_and_gets_its_result_again() {
+        let mut seen = SeenCommands::default();
+        let t = std::time::Instant::now();
+        assert_eq!(seen.receive("c1", t), Received::New);
+        // 처리 중에 다시 오면 아무것도 하지 않는다 (끝날 때 결과가 한 번 나간다)
+        assert_eq!(seen.receive("c1", t + Duration::from_secs(15)), Received::Running);
+        seen.finish("c1", &json!({"ok": true}));
+        assert_eq!(seen.receive("c1", t + Duration::from_secs(30)), Received::Done(json!({"ok": true})));
+        assert_eq!(seen.receive("c2", t + Duration::from_secs(30)), Received::New);
+    }
+
+    #[test]
+    fn remembered_commands_are_forgotten_after_ten_minutes_or_past_the_cap() {
+        let mut seen = SeenCommands::default();
+        let t = std::time::Instant::now();
+        seen.receive("old", t);
+        assert_eq!(seen.receive("old", t + SEEN_FOR), Received::New);
+
+        let mut seen = SeenCommands::default();
+        for i in 0..=SEEN_MAX {
+            seen.receive(&format!("c{i}"), t);
+        }
+        assert_eq!(seen.entries.len(), SEEN_MAX);
+        assert_eq!(seen.receive("c0", t), Received::New);
+        assert_eq!(seen.receive(&format!("c{SEEN_MAX}"), t), Received::Running);
+    }
+
+    #[test]
+    fn acks_carry_every_received_id_in_batches_the_relay_accepts() {
+        let commands: Vec<Value> = (0..120).map(|i| json!({"id": format!("c{i}")})).chain([json!({"payload": {}})]).collect();
+        let bodies = ack_bodies(&commands);
+        let ids: Vec<Vec<String>> = bodies.iter().map(|b| serde_json::from_str::<Value>(b).unwrap()["ids"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect()).collect();
+        assert_eq!(ids.iter().map(Vec::len).collect::<Vec<_>>(), vec![50, 50, 20]);
+        assert_eq!(ids.concat(), (0..120).map(|i| format!("c{i}")).collect::<Vec<_>>());
+        assert!(ack_bodies(&[]).is_empty());
     }
 
     #[test]
