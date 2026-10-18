@@ -53,7 +53,7 @@ describe('릴레이 상태 확인 수명', () => {
 });
 
 describe('봇 설정 로드 실패 시 저장', () => {
-    it('처음 로드 전에 저장하면 디스크의 접두사·호스트를 지키고 바꾼 값만 얹는다', async () => {
+    it('처음 로드 전에 저장하면 바꾼 키만 보내 디스크의 접두사·호스트를 건드리지 않는다', async () => {
         window.api.botConfigLoad = vi.fn().mockResolvedValue({
             prefix: '!custom',
             cloud: { hostId: 'host', relayUrl: 'https://r' },
@@ -62,11 +62,7 @@ describe('봇 설정 로드 실패 시 저장', () => {
         window.api.botConfigSave = vi.fn().mockResolvedValue({ success: true });
         useDiscordStore.setState({ nodeSettings: { g1: { allowedInstances: [] } } });
         expect(await useDiscordStore.getState().saveConfig()).toBe(true);
-        const payload = window.api.botConfigSave.mock.calls[0][0];
-        expect(payload.prefixes).toEqual(['!custom']);
-        expect(payload.cloud).toEqual({ relayUrl: 'https://r', hostId: 'host' });
-        expect(payload.moduleAliases).toEqual({ minecraft: 'mc' });
-        expect(payload.nodeSettings).toEqual({ g1: { allowedInstances: [] } });
+        expect(window.api.botConfigSave.mock.calls[0][0]).toEqual({ nodeSettings: { g1: { allowedInstances: [] } } });
     });
 
     it('데몬에서 설정을 못 읽으면 기본값으로 덮어쓰지 않는다', async () => {
@@ -76,12 +72,37 @@ describe('봇 설정 로드 실패 시 저장', () => {
         expect(window.api.botConfigSave).not.toHaveBeenCalled();
     });
 
-    it('정상 로드된 뒤에는 다시 읽지 않고 스토어 값을 그대로 보낸다', async () => {
-        window.api.botConfigLoad = vi.fn();
+    it('정상 로드된 뒤에는 바꾼 값만 보낸다', async () => {
+        window.api.botConfigLoad = vi.fn().mockResolvedValue({ cloud: { hostId: 'h1', relayUrl: 'https://r' } });
         window.api.botConfigSave = vi.fn().mockResolvedValue({ success: true });
-        useDiscordStore.setState({ _botConfigLoaded: true, discordCloudHostId: '' });
+        useDiscordStore.setState({ _botConfigLoaded: true, discordCloudHostId: 'h2' });
         await useDiscordStore.getState().saveConfig();
-        expect(window.api.botConfigLoad).not.toHaveBeenCalled();
-        expect(window.api.botConfigSave.mock.calls[0][0].cloud.hostId).toBe('');
+        // relayUrl은 바꾸지 않았으므로 데몬의 지금 값을 쓴다
+        expect(window.api.botConfigSave.mock.calls[0][0]).toEqual({ cloud: { relayUrl: 'https://r', hostId: 'h2' } });
+    });
+
+    it('노드 캐시만 바뀌면 앱 시작 때 읽은 nodeSettings·접두사를 다시 보내지 않는다 (CLI가 바꾼 값을 되돌리지 않게)', async () => {
+        window.api.botConfigLoad = vi.fn().mockResolvedValue({
+            prefixes: ['!a'],
+            cloud: { hostId: 'h1', relayUrl: 'https://r' },
+            nodeSettings: { g1: {} },
+            cloudNodes: [{ guildId: 'g1' }],
+        });
+        window.api.botConfigSave = vi.fn().mockResolvedValue({ success: true });
+        await useDiscordStore.getState().loadConfig();
+        // 같은 내용의 새 배열은 바뀐 것이 아니다
+        useDiscordStore.setState({ cloudNodes: [{ guildId: 'g1' }] });
+        await useDiscordStore.getState().saveConfig();
+        expect(window.api.botConfigSave).not.toHaveBeenCalled();
+
+        useDiscordStore.setState({ cloudNodes: [{ guildId: 'g1' }, { guildId: 'g2' }] });
+        await useDiscordStore.getState().saveConfig();
+        expect(window.api.botConfigSave.mock.calls[0][0]).toEqual({
+            cloudNodes: [{ guildId: 'g1' }, { guildId: 'g2' }],
+        });
+
+        // 저장한 값은 다시 보내지 않는다
+        await useDiscordStore.getState().saveConfig();
+        expect(window.api.botConfigSave).toHaveBeenCalledTimes(1);
     });
 });

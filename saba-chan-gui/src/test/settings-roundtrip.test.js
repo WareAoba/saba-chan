@@ -702,6 +702,7 @@ describe('설정 에러 핸들링', () => {
         mockApi({
             botConfigSave: vi.fn().mockRejectedValue(new Error('EPERM')),
         });
+        useDiscordStore.setState({ discordPrefixes: ['!x'] });
 
         await expect(useDiscordStore.getState().saveConfig()).resolves.toBe(false);
     });
@@ -710,6 +711,7 @@ describe('설정 에러 핸들링', () => {
         mockApi({
             botConfigSave: vi.fn().mockResolvedValue({ error: 'write failed' }),
         });
+        useDiscordStore.setState({ discordPrefixes: ['!x'] });
 
         await expect(useDiscordStore.getState().saveConfig()).resolves.toBe(false);
     });

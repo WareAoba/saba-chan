@@ -788,6 +788,7 @@
     "instances_all_desc": "Les nouvelles instances apparaissent immédiatement",
     "instances_pick": "Seulement celles que je choisis",
     "instances_pick_desc": "Seules les instances activées sont visibles sur Discord",
+    "allowed_save_failed": "Impossible d'enregistrer la restriction de serveurs : {{error}}",
     "instance_owned": "Utilisée par ‘{{node}}’",
     "no_instances": "Aucune instance pour l'instant. Ajoutez-en une d'abord dans la page Serveurs.",
     "members_search": "Rechercher par nom",

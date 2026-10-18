@@ -791,6 +791,7 @@
     "instances_all_desc": "New instances show up right away",
     "instances_pick": "Only the ones I pick",
     "instances_pick_desc": "Only instances you turn on are visible in Discord",
+    "allowed_save_failed": "Couldn't save the server restriction: {{error}}",
     "instance_owned": "Used by ‘{{node}}’",
     "no_instances": "No instances yet. Add one on the Servers page first.",
     "members_search": "Search by name",

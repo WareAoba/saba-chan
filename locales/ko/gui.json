@@ -791,6 +791,7 @@
     "instances_all_desc": "새로 만든 인스턴스도 바로 보여요",
     "instances_pick": "고른 인스턴스만",
     "instances_pick_desc": "켜 둔 것만 디스코드에서 보이고 조작돼요",
+    "allowed_save_failed": "서버 제한을 저장하지 못했어요: {{error}}",
     "instance_owned": "‘{{node}}’에서 사용 중",
     "no_instances": "아직 인스턴스가 없어요. 서버 화면에서 먼저 추가하세요.",
     "members_search": "이름으로 찾기",

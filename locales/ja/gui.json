@@ -788,6 +788,7 @@
     "instances_all_desc": "新しく作ったインスタンスもすぐに表示されます",
     "instances_pick": "選んだものだけ",
     "instances_pick_desc": "オンにしたインスタンスだけがDiscordに表示されます",
+    "allowed_save_failed": "サーバー制限を保存できませんでした: {{error}}",
     "instance_owned": "‘{{node}}’ で使用中",
     "no_instances": "まだインスタンスがありません。先にサーバー画面で追加してください。",
     "members_search": "名前で検索",

@@ -126,6 +126,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | actionsRun (873) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |
 | guildInstances | GET /api/guilds/:guild/instances (길드·인스턴스별 부르는 말). `{guildId, instances:[{id, name, module, words, commands:[…]}]}`에서 `instances`만 돌려준다 | ✓ |
 | guildInstanceWordsSave | PUT /api/guilds/:guild/instances/:id/words `{words, commands}`. 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`를 그대로 넘긴다. 성공하면 `{success, id, words, commands:{<명령>:[..]}}` | ✓ |
+| guildAllowedInstancesSave | PUT /api/guilds/:guild/allowed-instances `{instances: [id] \| null}`(null = 제한 없음) → `{guildId, allowedInstances}`. 디스코드 화면의 인스턴스 탭이 바로 부른다(bot-config 일괄 저장으로는 바뀌지 않는다) | ✓ |
 | discordSettingsGet (874) | GET /api/discord/:guild/settings (I2). `loaded:false`면 릴레이 값을 못 읽은 기본값이라 GUI는 편집을 막는다 | ✓ 732-735 |
 | discordSettingsSet (875) | PATCH /api/discord/:guild/settings `{locale?, sleeping?, music?}` | ✓ 732-735 |
 | openInTerminal (877) | POST /api/clients/launch `{kind:'cli', view, instance?}` (I4). 데몬이 새 콘솔 창에 CLI 콘솔·셸을 띄운다. 실패하면 데몬 본문(`error_code`)을 그대로 돌려준다. 트레이 메뉴 "터미널 열기"(Windows만)도 같은 라우트를 `view:'shell'`로 부른다(`tray.rs:114-127`) | ✓ 721 |

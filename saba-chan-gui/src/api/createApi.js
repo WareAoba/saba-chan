@@ -927,6 +927,9 @@ export function createApi({ invoke, hub }) {
                 `/api/guilds/${encodeURIComponent(guild)}/instances/${encodeURIComponent(id)}/words`,
                 body || {},
             ),
+        // 길드가 쓸 서버 제한 `{instances: [id] | null}` (null = 제한 없음) → `{guildId, allowedInstances}`
+        guildAllowedInstancesSave: (guild, instances) =>
+            daemonCall('put', `/api/guilds/${encodeURIComponent(guild)}/allowed-instances`, { instances }),
         discordSettingsGet: (guild) => daemonCall('get', discordSettingsPath(guild)),
         discordSettingsSet: (guild, patch) => daemonCall('patch', discordSettingsPath(guild), patch || {}),
         // 터미널로 열기: 데몬이 새 콘솔 창에 CLI를 띄운다

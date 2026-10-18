@@ -788,6 +788,7 @@
     "instances_all_desc": "Neue Instanzen erscheinen sofort",
     "instances_pick": "Nur die von mir gewählten",
     "instances_pick_desc": "Nur eingeschaltete Instanzen sind in Discord sichtbar",
+    "allowed_save_failed": "Die Serverbeschränkung konnte nicht gespeichert werden: {{error}}",
     "instance_owned": "Verwendet von ‘{{node}}’",
     "no_instances": "Noch keine Instanzen. Füge zuerst auf der Seite „Server“ eine hinzu.",
     "members_search": "Nach Namen suchen",

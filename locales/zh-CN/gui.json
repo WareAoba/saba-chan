@@ -788,6 +788,7 @@
     "instances_all_desc": "新建的实例也会立即显示",
     "instances_pick": "仅限选定的实例",
     "instances_pick_desc": "只有开启的实例会在 Discord 中显示和操作",
+    "allowed_save_failed": "无法保存服务器限制：{{error}}",
     "instance_owned": "已被 ‘{{node}}’ 使用",
     "no_instances": "还没有实例。请先在服务器页面添加。",
     "members_search": "按名称搜索",
