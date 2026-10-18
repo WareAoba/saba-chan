@@ -28,7 +28,7 @@ name: Release — Package & Manifest
 #   saba-chan-cli-windows-x64.zip
 #   saba-chan-gui-windows-x64.zip
 #   saba-chan-updater-windows-x64.zip
-#   saba-chan-installer-windows-x64.zip
+#   saba-chan-installer.exe  (zip 아님: 소개 페이지 다운로드용, 업데이터는 받지 않음)
 #   locales.zip
 #   manifest.json
 #
