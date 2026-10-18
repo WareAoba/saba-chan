@@ -294,6 +294,7 @@ impl Session {
                     "name": m.name,
                     "module_aliases": m.module_aliases,
                     "commands": { "fields": m.commands },
+                    "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
                 })
             })
             .collect();

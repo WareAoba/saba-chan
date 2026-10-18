@@ -269,6 +269,9 @@ pub struct ExtensionInfo {
     /// 명령어 별명
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub command_aliases: std::collections::HashMap<String, crate::supervisor::module_loader::CommandAliasInfo>,
+    /// `[[presets]]` 서버를 만들 때 고르는 추천 설정 묶음
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -913,6 +916,7 @@ mod tests {
             dir_signatures: vec!["PalServer.exe".to_string()],
             module_aliases: vec![],
             command_aliases: std::collections::HashMap::new(),
+            presets: Vec::new(),
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
                     crate::supervisor::module_loader::CommandField {
@@ -965,6 +969,7 @@ mod tests {
             dir_signatures: vec![],
             module_aliases: vec![],
             command_aliases: std::collections::HashMap::new(),
+            presets: Vec::new(),
             commands: None,
         };
 
@@ -1000,6 +1005,7 @@ mod tests {
                     dir_signatures: vec![],
                     module_aliases: vec![],
                     command_aliases: std::collections::HashMap::new(),
+                    presets: Vec::new(),
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![
                             crate::supervisor::module_loader::CommandField {

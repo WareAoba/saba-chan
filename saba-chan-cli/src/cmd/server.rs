@@ -459,8 +459,22 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
 
+    // 5-2) 추천 설정 묶음 (`[[presets]]`). --preset으로 주지 않았으면 새 서버일 때 묻는다
+    let mut preset = a.preset.clone();
+    let presets: Vec<&Value> = module.get("presets").and_then(Value::as_array).map(|p| p.iter().collect()).unwrap_or_default();
+    if preset.is_none() && from.is_none() && ctx.ask.enabled && !presets.is_empty() {
+        let mut choices = vec![t!("add.no_preset")];
+        choices.extend(presets.iter().map(|p| if s(p, "label").is_empty() { s(p, "id").to_string() } else { s(p, "label").to_string() }));
+        if let Some(i) = ctx.ask.select(&t!("add.ask_preset"), &choices, 0)?.filter(|i| *i > 0) {
+            preset = Some(s(presets[i - 1], "id").to_string());
+        }
+    }
+
     // 6) 만들기
     let mut body = json!({ "name": name, "module_name": module_name });
+    if let Some(p) = &preset {
+        body["preset"] = json!(p);
+    }
     if !module_settings.is_empty() {
         body["module_settings"] = Value::Object(module_settings);
     }
