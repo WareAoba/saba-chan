@@ -174,6 +174,15 @@ def test_cli_pair_with_another_relay_switches_before_pairing(sandbox, relay, dae
     assert d.api.ok("GET", "/api/config/bot")["cloud"]["relayUrl"] == relay.url
 
 
+def test_cli_pair_failure_keeps_the_configured_relay(sandbox, relay, daemon_factory, cli):
+    """닿지 않는 `--relay-url`로 페어링이 실패하면 설정한 릴레이는 그대로다 (다음 재시작에 토큰을 엉뚱한 곳으로 보내지 않게)."""
+    sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
+    d = daemon_factory()
+    r = cli.run("bot", "pair", "--relay-url", "http://127.0.0.1:9")
+    assert r.code != 0, r
+    assert d.api.ok("GET", "/api/config/bot")["cloud"]["relayUrl"] == relay.url
+
+
 def test_saving_node_token_starts_agent_without_restart(sandbox, relay, daemon_factory):
     """다른 곳에서 페어링한 토큰을 손으로 넣어도(`saba bot token`) 데몬 재시작 없이 연결된다."""
     sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})

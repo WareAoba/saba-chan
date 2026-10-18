@@ -172,12 +172,23 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
     // 데몬은 설정한 릴레이와만 페어링한다: 다른 릴레이를 주면 설정부터 바꾼다
     // (나중에 바꾸면 노드 토큰은 예전 릴레이 것이 된다)
-    let mut cloud = cfg.get("cloud").cloned().unwrap_or_else(|| json!({}));
-    if let Some(u) = relay_url.as_deref().filter(|u| relay_of(&cfg) != Some(*u)) {
-        cloud["relayUrl"] = Value::String(u.to_string());
+    let previous = cfg.get("cloud").cloned().unwrap_or_else(|| json!({}));
+    let mut cloud = previous.clone();
+    let switched = relay_url.as_deref().is_some_and(|u| relay_of(&cfg) != Some(u));
+    if switched {
+        cloud["relayUrl"] = Value::String(relay_url.clone().unwrap_or_default());
         ctx.api.save_bot_config(json!({ "cloud": cloud.clone() })).await?;
     }
     let relay = relay_url.or_else(|| relay_of(&cfg).map(str::to_string));
+    let result = pair_with(ctx, relay, cloud).await;
+    // 페어링이 끝나지 않았으면 예전 릴레이로 되돌린다 (그대로 두면 다음 재시작에 기존 토큰을 새 주소로 보낸다)
+    if result.is_err() && switched {
+        let _ = ctx.api.save_bot_config(json!({ "cloud": previous })).await;
+    }
+    result
+}
+
+async fn pair_with(ctx: &Ctx, relay: Option<String>, mut cloud: Value) -> Result<()> {
     let init = ctx.api.pair_initiate(relay.as_deref()).await?;
     let code = s(&init, "code").to_string();
     let secret = s(&init, "pollSecret").to_string();
