@@ -222,7 +222,7 @@
 
 - `ExtensionInfo`(이름과 달리 모듈 정보다, `ipc/mod.rs:237-287`) 필드: `name, version, description, schema_version, display_name?, game_name?, author?, warnings?, unmet_dependencies?, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
 - `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ...}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs:499-522`).
-- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 `module.toml`이 있을 때만 `modules/<id>`와 바꾸고 refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다.
+- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다.
 
 #### 인스턴스 (handlers/instance.rs)
 

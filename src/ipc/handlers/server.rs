@@ -561,14 +561,7 @@ pub async fn install_module_from_manifest(
         saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), None).await?;
         let _ = std::fs::remove_dir_all(&staging);
         saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
-        if !staging.join("module.toml").is_file() {
-            anyhow::bail!("package has no module.toml");
-        }
-        // 다 받은 뒤에만 기존 폴더를 바꾼다
-        if target_dir.exists() {
-            std::fs::remove_dir_all(&target_dir)?;
-        }
-        std::fs::rename(&staging, &target_dir)?;
+        install_staged_module(&staging, &target_dir)?;
         // 서명된 카탈로그에서 받은 것: 신뢰 표시가 "verified"가 된다 (파일이 그대로인 동안)
         let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
         if let Err(e) = saba_chan_updater_lib::integrity::record_dir(&key, &target_dir)
@@ -587,6 +580,30 @@ pub async fn install_module_from_manifest(
     let supervisor = state.supervisor.read().await;
     let _ = supervisor.refresh_modules();
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
+}
+
+/// 풀어 둔 모듈 패키지를 데몬과 같은 규칙으로 읽어 본 뒤 설치 폴더와 바꾼다.
+/// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
+fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
+    crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
+    let mut old_name = target_dir.file_name().unwrap_or_default().to_os_string();
+    old_name.push(".saba-old");
+    let old = target_dir.with_file_name(old_name);
+    let _ = std::fs::remove_dir_all(&old);
+    let had_old = target_dir.exists();
+    if had_old {
+        std::fs::rename(target_dir, &old)?;
+    }
+    if let Err(e) = std::fs::rename(staging, target_dir) {
+        if had_old {
+            let _ = std::fs::rename(&old, target_dir);
+        }
+        return Err(e.into());
+    }
+    if had_old {
+        let _ = std::fs::remove_dir_all(&old);
+    }
+    Ok(())
 }
 
 /// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)
@@ -1168,5 +1185,27 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    #[test]
+    fn a_module_package_that_does_not_load_keeps_the_installed_module() {
+        let tmp = tempfile::tempdir().unwrap();
+        let toml = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+        let target = tmp.path().join("plain");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("module.toml"), toml).unwrap();
+        std::fs::write(target.join("lifecycle.py"), "old").unwrap();
+        // 진입 파일이 빠진 패키지
+        let staging = tmp.path().join(".staging-plain");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("module.toml"), toml.replace("1.0.0", "2.0.0")).unwrap();
+        assert!(install_staged_module(&staging, &target).is_err());
+        assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "old");
+
+        std::fs::write(staging.join("lifecycle.py"), "new").unwrap();
+        install_staged_module(&staging, &target).unwrap();
+        assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "new");
+        assert!(!staging.exists());
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1, "the old folder is removed after the swap");
     }
 }
