@@ -414,14 +414,15 @@ fn runtime_home(exe: &Path) -> Option<PathBuf> {
 }
 
 /// 파일 시스템에 묻기 전에 걸러 낼 경로: 로컬 드라이브의 절대 경로이고 `..`가 없어야 한다
-/// (UNC·`\\?\` 경로는 묻는 것만으로 다른 PC에 사용자 자격을 보낼 수 있다)
+/// (UNC 경로는 묻는 것만으로 다른 PC에 사용자 자격을 보낼 수 있다)
 pub fn plain_local_path(path: &Path) -> bool {
     use std::path::{Component, Prefix};
     if !path.is_absolute() || path.components().any(|c| c == Component::ParentDir) {
         return false;
     }
     match path.components().next() {
-        Some(Component::Prefix(p)) => matches!(p.kind(), Prefix::Disk(_)),
+        // `\\?\C:\`도 로컬 드라이브다 (Windows canonicalize가 돌려주는 모양)
+        Some(Component::Prefix(p)) => matches!(p.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)),
         _ => cfg!(not(windows)),
     }
 }
@@ -721,16 +722,18 @@ mod tests {
             if release {
                 std::fs::write(home.join("release"), b"JAVA_VERSION=\"21\"").unwrap();
             }
-            std::fs::canonicalize(home).unwrap()
+            home
         };
+        // 입력은 사용자가 쓰는 모양 그대로 (Windows의 canonicalize는 `\\?\` 경로를 돌려준다), 결과는 실제 경로
+        let real = |p: &PathBuf| std::fs::canonicalize(p).unwrap();
         let (set, env_home, on_path, tools) = (jdk("set", true), jdk("env", true), jdk("path", true), jdk("tools", false));
         let path = std::env::join_paths([on_path.join("bin"), tools.join("bin")]).unwrap();
         let java = set.join("bin").join("java");
 
         let homes = runtime_homes(java.to_str(), Some(env_home.as_os_str()), Some(&path));
-        assert_eq!(homes, vec![set.clone(), env_home.clone(), on_path.clone()]);
+        assert_eq!(homes, vec![real(&set), real(&env_home), real(&on_path)]);
         // 경로 없는 이름은 PATH에서 찾고, 같은 폴더는 한 번만
-        assert_eq!(runtime_homes(Some("java"), None, Some(&path)), vec![on_path.clone()]);
+        assert_eq!(runtime_homes(Some("java"), None, Some(&path)), vec![real(&on_path)]);
         // `release` 없는 도구 폴더는 열지 않는다
         let tools_path = std::env::join_paths([tools.join("bin")]).unwrap();
         assert_eq!(runtime_homes(None, None, Some(&tools_path)), Vec::<PathBuf>::new());
@@ -764,9 +767,11 @@ mod tests {
         assert!(!plain_local_path(&tmp.path().join("..").join("x")));
         assert!(!plain_local_path(Path::new("bin/java")));
         #[cfg(windows)]
-        for bad in [r"\\host\share\bin\java.exe", r"\\?\C:\jdk\bin\java.exe", r"\\.\C:\jdk\bin\java.exe"] {
+        for bad in [r"\\host\share\bin\java.exe", r"\\?\UNC\host\share\java.exe", r"\\.\C:\jdk\bin\java.exe"] {
             assert!(!plain_local_path(Path::new(bad)), "{bad}");
         }
+        #[cfg(windows)]
+        assert!(plain_local_path(Path::new(r"\\?\C:\jdk\bin\java.exe")));
     }
 
     #[test]
