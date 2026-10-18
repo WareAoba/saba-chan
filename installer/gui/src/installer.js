@@ -837,12 +837,13 @@ $btnNext.addEventListener('click', () => enterSettings());
 document.getElementById('btn-browse')?.addEventListener('click', async () => {
     try {
         const r = await invoke('browse_folder');
-        if (r) { $installPath.value = r; await invoke('set_install_path', { path: r }); }
+        if (r) { $installPath.value = await invoke('set_install_path', { path: r }); }
     } catch (_) {}
 });
 
+// 비어 있지 않은 폴더를 고르면 설치기가 그 아래 Saba-chan 폴더로 바꿔 돌려준다
 $installPath?.addEventListener('change', async () => {
-    await invoke('set_install_path', { path: $installPath.value });
+    $installPath.value = await invoke('set_install_path', { path: $installPath.value });
 });
 
 // 모듈
@@ -910,7 +911,7 @@ function toggleMod(id, on) {
 // 설치 버튼
 document.getElementById('btn-install')?.addEventListener('click', async () => {
     // 옵션 저장
-    await invoke('set_install_path', { path: $installPath.value });
+    $installPath.value = await invoke('set_install_path', { path: $installPath.value });
     await invoke('set_language', { language: lang }); // 설치 직전 최종 동기화
     await invoke('set_shortcut_options', {
         desktop: document.getElementById('chk-desktop').checked,

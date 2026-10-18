@@ -120,9 +120,10 @@ async fn get_installer_state(state: State<'_, SharedState>) -> Result<serde_json
 }
 
 #[tauri::command]
-async fn set_install_path(state: State<'_, SharedState>, path: String) -> Result<(), String> {
-    state.write().await.install_path = path;
-    Ok(())
+async fn set_install_path(state: State<'_, SharedState>, path: String) -> Result<String, String> {
+    let path = dedicated_install_dir(Path::new(&path)).to_string_lossy().into_owned();
+    state.write().await.install_path = path.clone();
+    Ok(path)
 }
 
 #[tauri::command]
@@ -286,6 +287,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = PathBuf::from(&config.install_path);
+    // 설치기가 새로 만들었거나 비어 있던 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳)
+    let dedicated = !install_dir.is_dir() || is_empty_dir(&install_dir) || install_dir.join(uninstall::INSTALL_MARKER).is_file();
     let _ = std::fs::create_dir_all(&install_dir); // 이미 있어도 OK
 
     // 실제 쓰기 가능 여부 테스트
@@ -401,6 +404,12 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         let _ = std::fs::remove_file(&temp_file);
         installed_versions.insert(key.to_string(), info.version.clone());
         installed.push(key.to_string());
+    }
+
+    if dedicated {
+        if let Err(e) = std::fs::write(install_dir.join(uninstall::INSTALL_MARKER), b"") {
+            warn(format!("Failed to mark the install folder: {}", e));
+        }
     }
 
     // Step 3.5: 공유 모듈 유틸리티(i18n.py, daemon_rcon.py)를 APPDATA/modules/로 설치
@@ -726,7 +735,21 @@ async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
         .file()
         .set_title("Select install directory")
         .blocking_pick_folder();
-    Ok(path.map(|p| p.to_string()))
+    Ok(path.map(|p| dedicated_install_dir(Path::new(&p.to_string())).to_string_lossy().into_owned()))
+}
+
+/// 설치에 쓸 폴더: 고른 폴더가 비어 있지 않고 사바쨩 설치도 아니면 그 아래 `Saba-chan` 폴더.
+/// 제거기가 설치 폴더를 지우므로 사용자 파일이 든 폴더에 바로 풀지 않는다
+fn dedicated_install_dir(chosen: &Path) -> PathBuf {
+    if chosen.as_os_str().is_empty() || !chosen.is_dir() || is_empty_dir(chosen) || uninstall::looks_like_install_dir(chosen) {
+        chosen.to_path_buf()
+    } else {
+        chosen.join("Saba-chan")
+    }
+}
+
+fn is_empty_dir(dir: &Path) -> bool {
+    std::fs::read_dir(dir).map(|mut it| it.next().is_none()).unwrap_or(false)
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1091,4 +1114,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_with_other_files_gets_its_own_saba_chan_subfolder() {
+        let root = std::env::temp_dir().join(format!("saba-install-dir-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(dedicated_install_dir(&root), root, "an empty folder is used as is");
+        assert_eq!(dedicated_install_dir(&root.join("new")), root.join("new"), "a new folder is used as is");
+
+        std::fs::write(root.join("notes.txt"), b"").unwrap();
+        assert_eq!(dedicated_install_dir(&root), root.join("Saba-chan"));
+
+        let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
+        std::fs::write(root.join(core), b"").unwrap();
+        assert_eq!(dedicated_install_dir(&root), root, "an existing install is updated in place");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }
