@@ -558,7 +558,7 @@ pub async fn install_module_from_manifest(
 
     let result: anyhow::Result<()> = async {
         let http = reqwest::Client::new();
-        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), None).await?;
+        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), comp.size_bytes, None).await?;
         let _ = std::fs::remove_dir_all(&staging);
         saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
         install_staged_module(&staging, &target_dir)?;

@@ -209,11 +209,33 @@ async fn fetch_latest_release(
 // Tauri 커맨드 — 설치 실행
 // ═══════════════════════════════════════════════════════
 
+/// 설치와 제거는 한 번에 하나만 돈다 (두 번 누르면 같은 임시 폴더·설치 폴더를 함께 쓴다)
+static WORK_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+struct WorkGuard;
+
+impl WorkGuard {
+    fn try_begin() -> Option<WorkGuard> {
+        use std::sync::atomic::Ordering;
+        WORK_BUSY
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| WorkGuard)
+    }
+}
+
+impl Drop for WorkGuard {
+    fn drop(&mut self) {
+        WORK_BUSY.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
 #[tauri::command]
 async fn start_install(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<(), String> {
+    let guard = WorkGuard::try_begin().ok_or_else(|| "busy".to_string())?;
     let config = {
         let s = state.read().await;
         InstallConfig {
@@ -230,6 +252,7 @@ async fn start_install(
     let state_clone = state.inner().clone();
 
     tauri::async_runtime::spawn(async move {
+        let _guard = guard;
         do_install(app, state_clone, config).await;
     });
 
@@ -334,6 +357,13 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
+    // 폴더를 만든 바로 뒤에 표시한다: 내려받다 실패한 뒤 다시 시도해도 전용 폴더로 남는다
+    if dedicated {
+        if let Err(e) = std::fs::write(install_dir.join(uninstall::INSTALL_MARKER), b"") {
+            warn(format!("Failed to mark the install folder: {}", e));
+        }
+    }
+
     // 덮어쓰기 설치: 이 폴더의 데몬이 떠 있으면 먼저 끈다 (파일 잠금 방지)
     uninstall::stop_daemon_before_install(&install_dir).await;
 
@@ -424,15 +454,11 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         installed.push(key.to_string());
     }
 
-    if dedicated {
-        if let Err(e) = std::fs::write(install_dir.join(uninstall::INSTALL_MARKER), b"") {
-            warn(format!("Failed to mark the install folder: {}", e));
-        }
-    }
-
     // Step 3.5: 공유 모듈 유틸리티(i18n.py, daemon_rcon.py)를 APPDATA/modules/로 설치
     emit("modules-shared", "Installing shared module utilities...", 46);
-    install_shared_modules(&install_dir);
+    for failure in install_shared_modules(&install_dir) {
+        warn(failure);
+    }
 
     // Step 4: 모듈 다운로드 및 설치 (45-55%) — Fix 4: 스트리밍 진행률
     if !config.selected_modules.is_empty() {
@@ -487,8 +513,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             installed.push("runtime:python".to_string());
         }
         Err(e) => {
-            tracing::warn!("Python 환경 설정 실패 (비치명적): {}", e);
             // Python 설정 실패는 치명적이지 않음 — 메인 앱이 첫 실행 시 재시도
+            warn(format!("Python runtime was not prepared ({}); Saba-chan will retry on first start", e));
         }
     }
 
@@ -602,8 +628,10 @@ async fn emit_error(app: &AppHandle, state: &SharedState, code: &str, msg: &str)
 
 #[tauri::command]
 async fn start_uninstall(app: AppHandle, keep_settings: Option<bool>) -> Result<(), String> {
+    let guard = WorkGuard::try_begin().ok_or_else(|| "busy".to_string())?;
     let preserve = keep_settings.unwrap_or(false);
     tauri::async_runtime::spawn(async move {
+        let _guard = guard;
         uninstall::do_uninstall(&app, preserve).await;
     });
     Ok(())
@@ -856,12 +884,14 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
 /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
 /// %APPDATA%/saba-chan/modules/로 복사한다.
 /// 게임 모듈(minecraft, palworld 등)의 lifecycle.py가 이 유틸리티를 import 한다.
-fn install_shared_modules(install_dir: &Path) {
+/// 실패한 것마다 안내 문장을 돌려준다 (완료 화면 경고)
+fn install_shared_modules(install_dir: &Path) -> Vec<String> {
     const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py"];
 
     let data_dir = resolve_data_dir();
     let modules_dir = data_dir.join("modules");
     let _ = std::fs::create_dir_all(&modules_dir);
+    let mut failures = Vec::new();
 
     for name in SHARED_MODULES {
         let src = install_dir.join(name);
@@ -873,14 +903,13 @@ fn install_shared_modules(install_dir: &Path) {
                     // install_dir에 남아 있는 복사본 제거 (Program Files에 불필요)
                     let _ = std::fs::remove_file(&src);
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to install shared module {}: {}", name, e);
-                }
+                Err(e) => failures.push(format!("Failed to install shared module {}: {}", name, e)),
             }
         } else {
             tracing::debug!("Shared module not found in zip: {}", name);
         }
     }
+    failures
 }
 
 fn setup_config(install_dir: &Path, config: &InstallConfig) {
@@ -1143,6 +1172,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_one_install_or_uninstall_runs_at_a_time() {
+        let first = WorkGuard::try_begin().expect("nothing is running yet");
+        assert!(WorkGuard::try_begin().is_none(), "a second click must not start another run");
+        drop(first);
+        assert!(WorkGuard::try_begin().is_some(), "finishing frees the slot");
+    }
 
     #[test]
     fn a_folder_with_other_files_gets_its_own_saba_chan_subfolder() {

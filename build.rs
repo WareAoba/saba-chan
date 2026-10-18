@@ -18,14 +18,22 @@ fn main() {
             // 1) .rc 파일 생성 (버전 정보 + 아이콘)
             let rc_path = out_dir.join("saba-core.rc");
             let ico_escaped = ico_path.to_str().unwrap().replace('\\', "\\\\");
+            // 파일 속성의 버전은 Cargo.toml(versions.toml에서 sync)을 따른다
+            let version = env!("CARGO_PKG_VERSION");
+            let numeric = format!(
+                "{},{},{},0",
+                env!("CARGO_PKG_VERSION_MAJOR"),
+                env!("CARGO_PKG_VERSION_MINOR"),
+                env!("CARGO_PKG_VERSION_PATCH")
+            );
             let rc_content = format!(
                 r#"#pragma code_page(65001)
 1 VERSIONINFO
 FILETYPE 0x1
 FILEFLAGSMASK 0x3f
 FILEFLAGS 0x0
-PRODUCTVERSION 0,1,1,0
-FILEVERSION 0,1,1,0
+PRODUCTVERSION {numeric}
+FILEVERSION {numeric}
 FILEOS 0x40004
 FILESUBTYPE 0x0
 {{
@@ -35,8 +43,8 @@ BLOCK "000004b0"
 {{
 VALUE "ProductName", "Saba-chan Core Daemon"
 VALUE "CompanyName", "Saba-chan"
-VALUE "FileVersion", "0.1.1"
-VALUE "ProductVersion", "0.1.1"
+VALUE "FileVersion", "{version}"
+VALUE "ProductVersion", "{version}"
 VALUE "FileDescription", "Saba-chan Game Server Management Core"
 VALUE "LegalCopyright", "Copyright (c) 2025 Saba-chan Contributors"
 }}
@@ -47,7 +55,9 @@ VALUE "Translation", 0x0, 0x04b0
 }}
 1 ICON "{ico}"
 "#,
-                ico = ico_escaped
+                ico = ico_escaped,
+                numeric = numeric,
+                version = version
             );
             std::fs::write(&rc_path, &rc_content).expect("Failed to write .rc file");
 
@@ -142,8 +152,8 @@ fn compile_with_winres(ico_path: &std::path::Path) {
     res.set_icon(ico_path.to_str().unwrap());
     res.set("ProductName", "Saba-chan Core Daemon");
     res.set("CompanyName", "Saba-chan");
-    res.set("FileVersion", "0.1.1");
-    res.set("ProductVersion", "0.1.1");
+    res.set("FileVersion", env!("CARGO_PKG_VERSION"));
+    res.set("ProductVersion", env!("CARGO_PKG_VERSION"));
     res.set("FileDescription", "Saba-chan Game Server Management Core");
     res.set("LegalCopyright", "Copyright (c) 2025 Saba-chan Contributors");
     match res.compile() {

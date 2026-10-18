@@ -115,7 +115,7 @@ pub async fn download(
             }
         })
     };
-    let result = download_verified(&http, &info.url, dest, Some(&info.sha256), Some(&progress)).await;
+    let result = download_verified(&http, &info.url, dest, Some(&info.sha256), info.size_bytes, Some(&progress)).await;
     ticker.abort();
     result.map(|_| ()).map_err(|e| e.to_string())
 }

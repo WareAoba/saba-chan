@@ -259,6 +259,43 @@ def fetch_previous_releases() -> list[dict] | None:
         return None
 
 
+def parse_tag_version(tag: str) -> tuple | None:
+    """`v0.2.0-beta.10` → 비교용 키. beta 번호는 숫자로 비교하고, 정식판이 같은 번호의 prerelease보다 높다."""
+    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", tag)
+    if not m:
+        return None
+    core = tuple(int(x) for x in m.group(1, 2, 3))
+    if not m.group(4):
+        return core + ((1,),)
+    pre = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in m.group(4).split("."))
+    return core + ((0,) + pre,)
+
+
+def previous_release_candidates(releases: list[dict], current_tag: str) -> list[dict]:
+    """부분 릴리즈에서 에셋을 가져올 수 있는 이전 릴리즈: 현재보다 낮은 버전만, 높은 것부터.
+    정식판은 prerelease에서 가져오지 않는다 (API 순서는 만든 순서라 버전 순서가 아니다)."""
+    current = parse_tag_version(current_tag)
+    if current is None:
+        return []
+    current_is_pre = current[3] != (1,)
+    picked = []
+    for release in releases:
+        key = parse_tag_version(release.get("tag", ""))
+        if key is None or key >= current:
+            continue
+        # GitHub 표시가 빠졌어도 태그가 prerelease면 정식판에 쓰지 않는다
+        if (release.get("prerelease") or key[3] != (1,)) and not current_is_pre:
+            continue
+        picked.append((key, release))
+    return [r for _, r in sorted(picked, key=lambda kr: kr[0], reverse=True)]
+
+
+def zip_has_root_file(path: Path, name: str) -> bool:
+    """zip 루트에 `name`이 있는지 (대소문자 무시, `\\` 구분자도 허용)"""
+    with zipfile.ZipFile(path) as zf:
+        return any(i.filename.replace("\\", "/").lower() == name.lower() for i in zf.infolist())
+
+
 def download_from_previous_release(
     asset_name: str,
     current_tag: str,
@@ -273,10 +310,8 @@ def download_from_previous_release(
     if not repo:
         return None
 
-    for release in releases:
+    for release in previous_release_candidates(releases, current_tag):
         tag = release["tag"]
-        if tag == current_tag:
-            continue
 
         if asset_name not in release.get("assets", []) or "manifest.json" not in release.get("assets", []):
             continue
@@ -404,8 +439,12 @@ def main():
                     staged = find_raw_file([pattern])
                     if staged:
                         extra.append(str(staged))
+                    elif raw_file.suffix.lower() == ".zip" and all(
+                            zip_has_root_file(raw_file, b) for b in comp.get("bundles", [])):
+                        print(f"    {pattern} not in staging — using the copy bundled in {raw_file.name}")
                     else:
-                        print(f"    ⚠ {pattern} not in staging — component ships without it")
+                        # exe만 올리면 데몬 옆에 있어야 할 파일이 빠진 채 서명된다
+                        sys.exit(f"  ✗ {key}: {pattern} not in staging; upload it with {raw_file.name}")
                 copy_or_repackage(raw_file, output_path, comp.get("exe_name"), extra, comp.get("bundles"))
                 asset_source = "current"
             else:

@@ -884,3 +884,21 @@ fn a_held_old_backup_does_not_block_the_next_replace() {
     assert_eq!(backup, Some(tmp.path().join("saba-runner.exe.old.1")));
     assert!(!exe.exists() && held.is_dir());
 }
+
+// 모르는 압축 형식을 받아 두었으면 아무것도 풀지 않고 성공으로 끝내지 않는다
+#[tokio::test]
+async fn an_unknown_archive_format_is_not_applied_as_success() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    std::fs::write(manager.install_root.join(crate::GUI_EXE_NAMES[0]), b"old gui").unwrap();
+    for name in ["saba-chan-updater-linux-x64.tgz", "saba-chan-gui-linux-x64.7z"] {
+        std::fs::write(tmp.path().join(name), b"whatever").unwrap();
+    }
+
+    let core = tmp.path().join("saba-chan-updater-linux-x64.tgz");
+    assert!(manager.apply_binary_update("saba-chan-updater", &core.to_string_lossy()).await.is_err());
+    let gui = tmp.path().join("saba-chan-gui-linux-x64.7z");
+    assert!(manager.apply_gui_update(&gui.to_string_lossy()).await.is_err());
+}
