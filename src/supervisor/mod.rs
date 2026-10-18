@@ -2251,7 +2251,7 @@ impl Supervisor {
             console_tail: &tail,
             graceful_patterns: &graceful,
             new_crash_files: &crash_files,
-            ran_secs: saba_runner::now().saturating_sub(proc.started_at),
+            ran_secs: if proc.reattached { u64::MAX } else { saba_runner::now().saturating_sub(proc.started_at) },
         });
 
         let auto_restart = setting_flag(&instance, "auto_restart", true);
@@ -2794,6 +2794,7 @@ mod tests {
             ("killed", "exit 1", None),
             ("stopped", "touch hs_err_pid1.log; exit 1", None),
             ("off", "touch hs_err_pid1.log; exit 1", Some(false)),
+            ("reattached", "exit 1", None),
         ];
         for (id, script, auto_restart) in cases {
             let mut inst = crate::instance::ServerInstance::new(id, "game");
@@ -2807,8 +2808,13 @@ mod tests {
             let mut proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), script.into()], work.to_str().unwrap(), Vec::new(), None, None)
                 .await
                 .unwrap();
-            // 켜지자마자 끝난 것(start_failed)과 가르려고, 한동안 돌다 끝난 것으로 둔다
-            proc.started_at -= 600;
+            // 켜지자마자 끝난 것(start_failed)과 가르려고, 한동안 돌다 끝난 것으로 둔다.
+            // 다시 붙은 프로세스는 붙은 시각만 알므로 그대로 두어도 시작 실패가 아니다
+            if id == "reattached" {
+                proc.reattached = true;
+            } else {
+                proc.started_at -= 600;
+            }
             supervisor.managed_store.insert(id, proc).await;
         }
         supervisor.stop_requested.insert("stopped".into());
@@ -2827,6 +2833,7 @@ mod tests {
         assert_eq!(kind("killed"), Some(crash::ExitKind::UnknownExit));
         assert_eq!(kind("stopped"), Some(crash::ExitKind::UserStop));
         assert_eq!(kind("off"), Some(crash::ExitKind::Crash));
+        assert_eq!(kind("reattached"), Some(crash::ExitKind::UnknownExit), "a server running before the daemon restart did not fail to start");
         assert_eq!(supervisor.exit_events("off")[0].note.as_deref(), Some("auto_restart is off"));
         assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5))]);
         assert!(supervisor.restart_still_wanted("crash").await);

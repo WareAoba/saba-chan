@@ -7,7 +7,7 @@
 //!    - unix 크래시 시그널 (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL)
 //!    - 모듈 `[detection] crash_artifacts`에 맞는 파일이 이번 실행 중에 생겼다
 //! 3. 모듈 `[detection] graceful_exit_patterns`가 콘솔 끝부분에 있다 → `in_game_stop`
-//! 4. 시작하고 `STARTUP_GRACE` 안에 끝났다 (포트 충돌·설정 오류처럼 켜지다 실패) → `start_failed`. 다시 띄워도 같으므로 재시작하지 않는다
+//! 4. 시작하고 `STARTUP_GRACE` 안에 끝났다 (포트 충돌·설정 오류 같은 시작 실패) → `start_failed`. 다시 띄워도 같으므로 재시작하지 않는다
 //! 5. 종료 코드 0 → `in_game_stop`
 //! 6. 그 밖 (작업 관리자 강제 종료, 창 닫기, 원인 모를 종료) → `unknown_exit`
 //!
@@ -27,7 +27,7 @@ pub const MAX_RESTARTS: usize = 3;
 pub const FIRST_RESTART_DELAY: Duration = Duration::from_secs(5);
 /// 콘솔 끝에서 정상 종료 문구를 찾는 줄 수
 pub const CONSOLE_TAIL_LINES: usize = 50;
-/// 시작하고 이 안에 끝나면 켜지다 실패한 것으로 본다
+/// 시작하고 이 안에 끝나면 시작에 실패한 것으로 본다
 pub const STARTUP_GRACE: Duration = Duration::from_secs(30);
 /// 인스턴스마다 남기는 종료 이력 수
 pub const EVENTS_KEPT: usize = 20;

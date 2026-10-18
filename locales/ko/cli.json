@@ -210,7 +210,7 @@
   "exit": {
     "crash": "크래시",
     "in_game_stop": "게임 안에서 정지",
-    "start_failed": "켜지다 실패",
+    "start_failed": "시작 실패",
     "restarting_in": "{{secs}}초 뒤 다시 시작",
     "unknown_exit": "종료됨 (창 닫기·강제 종료)",
     "user_stop": "직접 정지"
