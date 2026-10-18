@@ -56,6 +56,9 @@ pub fn command_for<'a>(words: Option<&'a InstanceWords>, input: &str) -> Option<
 pub struct Problem {
     pub field: String,
     pub reason: &'static str,
+    /// 문제가 된 낱말 (목록 전체의 문제면 없음)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub word: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflict_with: Option<String>,
 }
@@ -72,18 +75,18 @@ pub fn validate(
     let mut out = Vec::new();
     let shape = |field: String, word: &str, out: &mut Vec<Problem>| {
         if word.is_empty() || word.chars().count() > WORD_MAX_CHARS || word.chars().any(char::is_whitespace) {
-            out.push(Problem { field, reason: "invalid_word", conflict_with: None });
+            out.push(Problem { field, reason: "invalid", word: Some(word.to_string()), conflict_with: None });
             return false;
         }
         if RESERVED.iter().any(|r| same(r, word)) {
-            out.push(Problem { field, reason: "reserved", conflict_with: Some(word.to_string()) });
+            out.push(Problem { field, reason: "reserved", word: Some(word.to_string()), conflict_with: None });
             return false;
         }
         true
     };
 
     if want.words.len() > WORDS_MAX {
-        out.push(Problem { field: "words".into(), reason: "too_many", conflict_with: None });
+        out.push(Problem { field: "words".into(), reason: "too_many", word: None, conflict_with: None });
     }
     for (i, word) in want.words.iter().enumerate() {
         let field = format!("words[{}]", i);
@@ -91,7 +94,8 @@ pub fn validate(
             continue;
         }
         if want.words[..i].iter().any(|w| same(w, word)) {
-            out.push(Problem { field, reason: "duplicate", conflict_with: Some(word.clone()) });
+            // 같은 서버의 낱말끼리 겹침
+            out.push(Problem { field, reason: "conflict", word: Some(word.clone()), conflict_with: Some(instance.name.clone()) });
             continue;
         }
         // 다른 서버의 이름·id·낱말, 모듈 이름·별명과 겹치면 어느 서버인지 알 수 없다
@@ -104,18 +108,18 @@ pub fn validate(
             })
             .or_else(|| modules.iter().find(|m| same(&m.name, word) || m.module_aliases.iter().any(|a| same(a, word))).map(|m| m.name.clone()));
         if let Some(with) = clash {
-            out.push(Problem { field, reason: "conflict", conflict_with: Some(with) });
+            out.push(Problem { field, reason: "conflict", word: Some(word.clone()), conflict_with: Some(with) });
         }
     }
 
     for (cmd, list) in &want.commands {
         let known = BUILTIN_COMMANDS.contains(&cmd.as_str()) || cmd == "restart" || module.is_some_and(|m| m.command(cmd).is_some());
         if !known {
-            out.push(Problem { field: format!("commands.{}", cmd), reason: "unknown_command", conflict_with: None });
+            out.push(Problem { field: format!("commands.{}", cmd), reason: "unknown_command", word: None, conflict_with: None });
             continue;
         }
         if list.len() > WORDS_MAX {
-            out.push(Problem { field: format!("commands.{}", cmd), reason: "too_many", conflict_with: None });
+            out.push(Problem { field: format!("commands.{}", cmd), reason: "too_many", word: None, conflict_with: None });
         }
         for (i, word) in list.iter().enumerate() {
             let field = format!("commands.{}[{}]", cmd, i);
@@ -135,7 +139,7 @@ pub fn validate(
                 })
                 .or_else(|| list[..i].iter().any(|w| same(w, word)).then(|| cmd.clone()));
             if let Some(with) = clash {
-                out.push(Problem { field, reason: "conflict", conflict_with: Some(with) });
+                out.push(Problem { field, reason: "conflict", word: Some(word.clone()), conflict_with: Some(with) });
             }
         }
     }
@@ -259,7 +263,7 @@ mod tests {
                 ("words[2]", "conflict"),
                 ("words[3]", "conflict"),
                 ("words[4]", "reserved"),
-                ("words[5]", "invalid_word"),
+                ("words[5]", "invalid"),
                 ("commands.nope", "unknown_command"),
                 ("commands.start[1]", "conflict"),
             ]

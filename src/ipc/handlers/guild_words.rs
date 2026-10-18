@@ -70,7 +70,7 @@ pub async fn list(State(state): State<IPCServer>, Path(guild): Path<String>) -> 
 /// `PUT /api/guilds/:guild/instances/:id/words` `{words, commands}`
 pub async fn put(State(state): State<IPCServer>, Path((guild, id)): Path<(String, String)>, Json(body): Json<Value>) -> Response {
     let Ok(mut want) = serde_json::from_value::<InstanceWords>(body) else {
-        return validation(vec![json!({ "field": "input", "reason": "invalid_shape" })]);
+        return validation(vec![json!({ "field": "input", "reason": "invalid" })]);
     };
     want.words = want.words.iter().map(|w| w.trim().to_string()).collect();
     for list in want.commands.values_mut() {
