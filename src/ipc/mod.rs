@@ -272,6 +272,9 @@ pub struct ExtensionInfo {
     /// `[[presets]]` 서버를 만들 때 고르는 추천 설정 묶음
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
+    /// `[[queries]]` 읽기 전용 조회 (액션 `server.query:<name>`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queries: Vec<crate::supervisor::module_loader::ModuleQuery>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -669,6 +672,7 @@ impl IPCServer {
             .route("/api/instance/:id/console", get(handlers::managed::get_console_handler))
             .route("/api/instance/:id/stdin", post(handlers::managed::send_stdin_handler))
             .route("/api/instance/:id/validate", post(handlers::managed::validate_instance_handler))
+            .route("/api/instance/:id/query/:name", post(handlers::managed::query_instance_handler))
             .route("/api/instance/:id/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
             .route("/api/instance/:id/properties/reset", post(handlers::managed::reset_properties_handler))
             .route("/api/instance/:id/settings/live", get(handlers::managed::read_live_settings_handler))
@@ -917,6 +921,7 @@ mod tests {
             module_aliases: vec![],
             command_aliases: std::collections::HashMap::new(),
             presets: Vec::new(),
+            queries: Vec::new(),
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
                     crate::supervisor::module_loader::CommandField {
@@ -970,6 +975,7 @@ mod tests {
             module_aliases: vec![],
             command_aliases: std::collections::HashMap::new(),
             presets: Vec::new(),
+            queries: Vec::new(),
             commands: None,
         };
 
@@ -1006,6 +1012,7 @@ mod tests {
                     module_aliases: vec![],
                     command_aliases: std::collections::HashMap::new(),
                     presets: Vec::new(),
+                    queries: Vec::new(),
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![
                             crate::supervisor::module_loader::CommandField {

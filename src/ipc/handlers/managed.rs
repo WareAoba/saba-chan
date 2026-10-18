@@ -129,6 +129,56 @@ pub async fn validate_instance_handler(
     }
 }
 
+/// POST /api/instance/:id/query/:name `{args?: {입력: 값}}` — 모듈 `[[queries]]` 읽기 전용 조회 (X-2).
+/// 입력은 명령 입력과 같은 규칙으로 검사한다. lifecycle 결과 `{success, data?, message?}` → `{success, data, error?}`
+/// (`data`가 없으면 `success`·`message`를 뺀 나머지). 읽기만 하므로 감사에 남기지 않는다
+pub async fn query_instance_handler(
+    Path((id, name)): Path<(String, String)>,
+    State(state): State<IPCServer>,
+    payload: Option<Json<serde_json::Value>>,
+) -> impl IntoResponse {
+    let fail = |status: StatusCode, code: &str, error: String, field: Option<&str>| {
+        (status, Json(json!({ "success": false, "error_code": code, "error": error, "field": field }))).into_response()
+    };
+    let query = {
+        let sup = state.supervisor.read().await;
+        let Some(instance) = sup.instance_store.get(&id) else {
+            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id), None);
+        };
+        sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.queries.into_iter().find(|q| q.name == name))
+    };
+    let Some(query) = query else {
+        return fail(StatusCode::NOT_FOUND, "unknown_query", format!("Unknown query: {}", name), None);
+    };
+    let args = match payload.as_ref().and_then(|p| p.get("args")) {
+        None | Some(serde_json::Value::Null) => serde_json::Map::new(),
+        Some(serde_json::Value::Object(m)) => m.clone(),
+        Some(_) => return fail(StatusCode::BAD_REQUEST, "invalid_argument", "'args' must be an object".into(), Some("args")),
+    };
+    if let Some(key) = args.keys().find(|k| !query.inputs.iter().any(|i| &i.name == *k)) {
+        return fail(StatusCode::BAD_REQUEST, "invalid_argument", format!("Unknown input '{}'", key), Some(key));
+    }
+    let args = match crate::commands::bind(&query.inputs, &crate::commands::Args::Named(args)) {
+        Ok(a) => a,
+        Err(e) => return fail(StatusCode::BAD_REQUEST, e.code, e.message, e.field.as_deref()),
+    };
+    match Supervisor::query_instance(&state.supervisor, &id, &query.function, args).await {
+        Ok(serde_json::Value::Object(mut result)) => {
+            let success = result.remove("success").and_then(|v| v.as_bool()).unwrap_or(true);
+            let message = result.remove("message");
+            let data = result.remove("data").unwrap_or(serde_json::Value::Object(result));
+            let mut body = json!({ "success": success, "data": data });
+            if !success {
+                body["error"] = message.unwrap_or_else(|| json!("Query failed"));
+                body["error_code"] = json!("query_failed");
+            }
+            (StatusCode::OK, Json(body)).into_response()
+        }
+        Ok(other) => (StatusCode::OK, Json(json!({ "success": true, "data": other }))).into_response(),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, "query_failed", e.to_string(), None),
+    }
+}
+
 /// GET /api/instance/:id/properties — Read server.properties
 pub async fn read_properties_handler(
     Path(id): Path<String>,

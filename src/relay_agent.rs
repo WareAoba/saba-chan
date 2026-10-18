@@ -325,7 +325,8 @@ impl Session {
             meta["language"] = Value::String(language);
         }
         // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
-        let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages());
+        let loaded = self.server.supervisor.read().await.list_modules().unwrap_or_default();
+        let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages(), &loaded);
         meta["actions"] = Value::Array(actions);
         if truncated {
             meta["actionsTruncated"] = Value::Bool(true);

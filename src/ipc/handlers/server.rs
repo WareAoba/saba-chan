@@ -358,6 +358,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         module_aliases: meta.module_aliases,
         command_aliases: meta.command_aliases,
         presets: meta.presets,
+        queries: meta.queries,
     }
 }
 

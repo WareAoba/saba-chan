@@ -1787,37 +1787,48 @@ impl Supervisor {
 
     /// Run validation on an instance (via module's validate function)
     pub async fn validate_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str) -> Result<Value> {
-        let call = {
-            let s = sup.read().await;
-            let instance = s.instance_store.get(instance_id)
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
-
-            let module = s.module_loader.get_module(&instance.module_name)?;
-            let module_path = module.entry_path();
-
-            let mut cfg = serde_json::Map::new();
-            if let Some(exe_path) = &instance.executable_path {
-                // 시작 때와 같은 두 키 (모듈마다 읽는 키가 다르다)
-                cfg.insert("server_executable".to_string(), json!(exe_path));
-                cfg.insert("server_jar".to_string(), json!(exe_path));
-            }
-            if let Some(work_dir) = &instance.working_dir {
-                cfg.insert("working_dir".to_string(), json!(work_dir));
-            }
-            if let Some(port) = instance.port {
-                cfg.insert("port".to_string(), json!(port));
-            }
-            // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
-            cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
-            // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
-            Self::insert_instance_fields(&mut cfg, instance);
-            // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
-            cfg.insert("running".to_string(), json!(s.tracker.get_pid(instance_id).is_ok()));
-
-            crate::plugin::PluginCall::new(module_path, "validate", Value::Object(cfg))
-        };
+        let call = sup.read().await.instance_call(instance_id, "validate")?;
         let result = call.run().await?;
         Ok(result)
+    }
+
+    /// 모듈 `[[queries]]` 조회 (X-2): `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다
+    pub async fn query_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str, function: &str, args: serde_json::Map<String, Value>) -> Result<Value> {
+        let mut call = sup.read().await.instance_call(instance_id, function)?;
+        if let Value::Object(cfg) = &mut call.config {
+            cfg.insert("args".to_string(), Value::Object(args));
+        }
+        call.run().await
+    }
+
+    /// 인스턴스를 알아보는 config로 lifecycle 함수 호출을 만든다 (`validate`·조회가 같은 값을 받는다)
+    fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
+        let instance = self.instance_store.get(instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        let module = self.module_loader.get_module(&instance.module_name)?;
+        let module_path = module.entry_path();
+
+        let mut cfg = serde_json::Map::new();
+        if let Some(exe_path) = &instance.executable_path {
+            // 시작 때와 같은 두 키 (모듈마다 읽는 키가 다르다)
+            cfg.insert("server_executable".to_string(), json!(exe_path));
+            cfg.insert("server_jar".to_string(), json!(exe_path));
+        }
+        if let Some(work_dir) = &instance.working_dir {
+            cfg.insert("working_dir".to_string(), json!(work_dir));
+        }
+        if let Some(port) = instance.port {
+            cfg.insert("port".to_string(), json!(port));
+        }
+        // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
+        cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
+        // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
+        Self::insert_instance_fields(&mut cfg, instance);
+        // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
+        cfg.insert("running".to_string(), json!(self.tracker.get_pid(instance_id).is_ok()));
+
+        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)))
     }
 
     /// Read or update server.properties (via module's configure/read_properties)

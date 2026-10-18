@@ -111,6 +111,9 @@ pub struct ModuleMetadata {
     /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<ModulePreset>,
+    /// [[queries]] 읽기 전용 조회 (X-2). 액션 `server.query:<name>`이 된다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queries: Vec<ModuleQuery>,
     /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
@@ -131,6 +134,24 @@ pub struct ModulePreset {
     #[serde(default)]
     #[schemars(with = "serde_json::Map<String, serde_json::Value>")]
     pub settings: serde_json::Map<String, serde_json::Value>,
+}
+
+/// `[[queries]]` — 읽기 전용 조회 (예: 접속자 목록). 액션 `server.query:<name>`이 되어 GUI·CLI·디스코드·챗봇이
+/// 부른다. 데몬은 `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다.
+/// 표시 문구는 모듈 locales의 `queries.<name>.label`·`description`이 덮는다
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleQuery {
+    /// 소문자·숫자·`-`·`_` (예: "players")
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// lifecycle.py `FUNCTIONS`의 함수 이름
+    pub function: String,
+    /// 명령 입력과 같은 모양·검사 (`crate::commands::bind`)
+    #[serde(default)]
+    pub inputs: Vec<CommandInput>,
 }
 
 /// `[permissions]` — 모듈 Python 코드가 쓰는 능력 (M12). 선언하지 않은 능력을 코드에서 찾으면
@@ -567,6 +588,25 @@ struct ModuleToml {
     /// [[presets]] 추천 설정 묶음 (I1-b)
     #[serde(default)]
     presets: Vec<ModulePreset>,
+    /// [[queries]] 읽기 전용 조회 (X-2)
+    #[serde(default)]
+    queries: Vec<QueryToml>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+struct QueryToml {
+    /// 소문자·숫자·`-`·`_` (모듈 안에서 겹치지 않음). 액션 id는 `server.query:<name>`
+    name: String,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    /// lifecycle.py `FUNCTIONS`의 함수 이름. 데몬이 따로 쓰는 함수(stop·command·configure 등)는 안 된다
+    function: String,
+    /// 입력 (명령 입력과 같은 모양). type은 text·number·select만
+    #[serde(default)]
+    inputs: Vec<CommandInputToml>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -881,6 +921,22 @@ struct CommandInputToml {
     options: Option<Vec<String>>,
 }
 
+impl From<CommandInputToml> for CommandInput {
+    fn from(i: CommandInputToml) -> Self {
+        CommandInput {
+            name: i.name,
+            label: i.label,
+            input_type: i.input_type,
+            required: i.required,
+            placeholder: i.placeholder,
+            default: i.default,
+            min: i.min,
+            max: i.max,
+            options: i.options,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields)]
 struct SyntaxHighlightSection {
@@ -963,17 +1019,7 @@ impl ModuleToml {
                 endpoint_template: f.endpoint_template,
                 console_template: f.console_template,
                 risk: f.risk,
-                inputs: f.inputs.into_iter().map(|i| CommandInput {
-                    name: i.name,
-                    label: i.label,
-                    input_type: i.input_type,
-                    required: i.required,
-                    placeholder: i.placeholder,
-                    default: i.default,
-                    min: i.min,
-                    max: i.max,
-                    options: i.options,
-                }).collect(),
+                inputs: f.inputs.into_iter().map(CommandInput::from).collect(),
             }).collect();
             if fields.is_empty() && !c.hook { None } else { Some(ModuleCommands { fields, hook: c.hook }) }
         } else {
@@ -1075,6 +1121,13 @@ impl ModuleToml {
             }).unwrap_or_default(),
             errors: self.errors,
             presets: self.presets,
+            queries: self.queries.into_iter().map(|q| ModuleQuery {
+                name: q.name,
+                label: q.label,
+                description: q.description,
+                function: q.function,
+                inputs: q.inputs.into_iter().map(CommandInput::from).collect(),
+            }).collect(),
             warnings: Vec::new(),
         }
     }
@@ -1101,6 +1154,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 
     let mut meta = toml_data.into_metadata();
     problems.extend(preset_problems(&meta));
+    problems.extend(query_problems(&meta));
     match meta.schema_version {
         0 => {
             for p in &problems {
@@ -1188,9 +1242,7 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
     let fields = meta.settings.as_ref().map(|s| s.fields.as_slice()).unwrap_or(&[]);
     let mut seen = std::collections::HashSet::new();
     for preset in &meta.presets {
-        let id_ok = preset.id.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-            && preset.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
-        if !id_ok {
+        if !is_slug(&preset.id) {
             problems.push(format!("presets '{}': id must be lowercase letters, digits, '-' or '_'", preset.id));
         }
         if !seen.insert(preset.id.as_str()) {
@@ -1212,6 +1264,65 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
             };
             if !option_ok || crate::validator::validate_setting_value(field, Some(value)).is_err() {
                 problems.push(format!("presets '{}': '{}' value is not allowed for this setting", preset.id, key));
+            }
+        }
+    }
+    problems
+}
+
+/// 데몬이 정해진 뜻으로 부르는 lifecycle 함수 중 상태를 바꾸는 것: 조회(`[[queries]]`)의 함수가 될 수 없다
+const NON_QUERY_FUNCTIONS: &[&str] = &[
+    "start", "stop", "command", "configure", "get_launch_command", "import_settings", "install_server",
+    "reset_properties", "reset_server", "accept_eula",
+];
+/// 조회 입력으로 쓸 수 있는 형식 (없으면 text)
+const QUERY_INPUT_TYPES: &[&str] = &["text", "number", "select"];
+
+/// 소문자·숫자로 시작하고 소문자·숫자·`-`·`_`만 (프리셋 id·조회 이름)
+fn is_slug(s: &str) -> bool {
+    s.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+/// 조회가 계약을 벗어난 곳: 이름 형식·중복, Python 식별자가 아니거나 상태를 바꾸는 함수, 입력 이름·형식·범위
+fn query_problems(meta: &ModuleMetadata) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for query in &meta.queries {
+        let mut problem = |what: String| problems.push(format!("queries '{}': {}", query.name, what));
+        if !is_slug(&query.name) {
+            problem("name must be lowercase letters, digits, '-' or '_'".into());
+        }
+        if !seen.insert(query.name.as_str()) {
+            problem("duplicate name".into());
+        }
+        let identifier = query.function.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && query.function.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !identifier {
+            problem(format!("function '{}' is not a Python function name", query.function));
+        } else if NON_QUERY_FUNCTIONS.contains(&query.function.as_str()) {
+            problem(format!("function '{}' changes the server and cannot be a query", query.function));
+        }
+        let mut inputs = std::collections::HashSet::new();
+        for input in &query.inputs {
+            let valid_name = !input.name.is_empty() && input.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            if !valid_name {
+                problem(format!("input '{}': name must be letters, digits, '-' or '_'", input.name));
+            }
+            if !inputs.insert(input.name.as_str()) {
+                problem(format!("input '{}': duplicate name", input.name));
+            }
+            let ty = input.input_type.as_deref().unwrap_or("text");
+            if !QUERY_INPUT_TYPES.contains(&ty) {
+                problem(format!("input '{}': type '{}' must be one of {}", input.name, ty, QUERY_INPUT_TYPES.join(", ")));
+            }
+            if ty == "select" && input.options.as_ref().is_none_or(|o| o.is_empty()) {
+                problem(format!("input '{}': select needs options", input.name));
+            }
+            if let (Some(min), Some(max)) = (input.min, input.max) {
+                if min > max {
+                    problem(format!("input '{}': min is greater than max", input.name));
+                }
             }
         }
     }
@@ -1957,6 +2068,31 @@ entry = "lifecycle.py"
             let broken = toml.replace(bad, why);
             assert!(parse_module_toml(&broken).unwrap_err().to_string().contains("presets"), "{why}");
         }
+    }
+
+    #[test]
+    fn schema_v1_reads_queries_and_rejects_bad_ones() {
+        let toml = format!(
+            "{V1}\n[[queries]]\nname = \"players\"\nlabel = \"Players\"\nfunction = \"list_players\"\n\n[[queries]]\nname = \"player-info\"\nfunction = \"player_info\"\ninputs = [{{ name = \"player\", type = \"text\", required = true }}, {{ name = \"limit\", type = \"number\", min = 1, max = 50 }}]\n"
+        );
+        let meta = parse_module_toml(&toml).unwrap();
+        assert_eq!(meta.queries.len(), 2);
+        assert_eq!((meta.queries[0].name.as_str(), meta.queries[0].function.as_str()), ("players", "list_players"));
+        assert_eq!(meta.queries[1].inputs[1].max, Some(50.0));
+        for (bad, why) in [
+            ("name = \"player-info\"", "name = \"players\""),
+            ("name = \"players\"", "name = \"Players!\""),
+            ("function = \"list_players\"", "function = \"list-players\""),
+            ("function = \"list_players\"", "function = \"stop\""),
+            ("type = \"text\"", "type = \"password\""),
+            ("name = \"limit\"", "name = \"player\""),
+            ("min = 1, max = 50", "min = 9, max = 2"),
+        ] {
+            let broken = toml.replacen(bad, why, 1);
+            assert!(parse_module_toml(&broken).unwrap_err().to_string().contains("queries"), "{why}");
+        }
+        let err = parse_module_toml(&format!("{V1}\n[[queries]]\nname = \"p\"\nfunction = \"f\"\nrisk = \"safe\"\n")).unwrap_err().to_string();
+        assert!(err.contains("risk"), "{err}");
     }
 
     #[test]
