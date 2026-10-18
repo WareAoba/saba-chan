@@ -886,12 +886,20 @@ pub async fn start_server_handler(
     // API 경유 시작 기록 (GUI 외부 시작 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
-    {
+    let inst_id = {
         let sup = state.supervisor.read().await;
-        if let Some(inst) = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)) {
-            state.extension_status_cache.invalidate(&inst.id);
+        let id = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)).map(|i| i.id.clone());
+        if let Some(id) = &id {
+            state.extension_status_cache.invalidate(id);
         }
-    }
+        id
+    };
+    // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
+    let _guard = match inst_id.as_deref().map(super::backup::BusyGuard::take) {
+        Some(None) => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
+        Some(guard) => guard,
+        None => None,
+    };
 
     // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
     {

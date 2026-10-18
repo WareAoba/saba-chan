@@ -178,9 +178,9 @@
 | GET | `/api/version` | `server.rs:306` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:26` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:620` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
-| POST | `/api/server/:name/start` | `server.rs:881` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed} |
+| POST | `/api/server/:name/start` | `server.rs:881` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed}, 409 `instance_busy`(같은 인스턴스의 백업·복원·업데이트 중) |
 | POST | `/api/server/:name/stop` | `server.rs:938` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
-| POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다) |
+| POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 409 `instance_busy`(백업·복원·업데이트 중), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다) |
 | POST | `/api/instance/:id/stop` | `server.rs:785` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
 | POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped` |
 | GET | `/api/instance/:id/events` | `server.rs:872` | - | `{events:[...]}` 최근 종료 이력 / 404. 한 건은 `at, kind, exit_code, signal, evidence, restart_in_secs, note`에 다시 띄우지 않은 이유가 있으면 `note_code`(`auto_restart_off` · `gave_up` + `note_args.count` · `restart_failed` + `note_args.reason`)·`note_args`. `note`는 영어 문장이라 화면 문구는 `note_code`로 고른다 |
@@ -232,14 +232,14 @@
 | POST | `/api/instances` | `instance.rs:84` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?, accept_agreements?:[id], extension_data?:{}}` (`accept_agreements`: 동의한 모듈 약관. 선언 안 된 id는 400 `invalid_format`, 원격이면 403 `agreement_local_only`. 가져오기(`migration_source`)면 만든 직후 lifecycle `accept_agreements`를 불러 모듈이 반영하게 한다. `extension_data`: 익스텐션 `AddServer.options`의 답. null이 아닌 값을 새 인스턴스에 넣고, 객체가 아니면 400 `invalid_format`) | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` + `agreements:[{id, label, url, accepted, accepted_at}]`(모듈 약관, 이름은 데몬 언어) / 404 `{error, error_code}` |
-| DELETE | `/api/instance/:id` | `instance.rs:789` | - | `{success}` / 404 / 409 `server_running`(돌던 서버를 끝내지 못함: 아무것도 지우지 않는다) / 500 |
+| DELETE | `/api/instance/:id` | `instance.rs:789` | - | `{success}` / 404 / 409 `instance_busy`(백업·복원·업데이트 중)·`server_running`(돌던 서버를 끝내지 못함: 아무것도 지우지 않는다) / 500 |
 | PATCH | `/api/instance/:id` | `instance.rs` `update_instance_settings` | 키-값 객체. `working_dir`는 작업 폴더로. `extra_args`(문자열은 `chat::split_quoted`로 나눔, 또는 문자열 배열, null은 비우기)는 인스턴스의 추가 실행 인자로. `memory_limit_mb`(MiB 정수 256 이상. 글자는 숫자나 `4G`·`4096M`(`GB`·`MB`, 대소문자 무관). null·""·0은 제한 없음)는 메모리 상한(02 문서 §3.6), 그 밖이면 400 `invalid_format`(`fields:[{field:"memory_limit_mb"}]`) | `{success:true, synced, sync_error?, ignored?}`(`synced:false`면 저장은 됐지만 모듈 `configure`가 게임 설정 파일에 쓰지 못함, `ignored`는 받고 쓰지 않은 RCON 키) / 400 `unknown_setting {fields}`(모듈이 설정 목록을 선언했는데 공통 필드·모듈 설정·데몬 설정 `auto_restart`·`restart_on_unknown_exit`·`managed_start`·`log_sessions_keep` 어디에도 없는 키) / 400 `validation_failed`·`invalid_format`(모듈 `format`·`pattern`과 다름)`{details, fields}` / 404 / 500 |
 | POST | `/api/instance/:id/launch-preview` | `instance.rs` `launch_preview` → `Supervisor::launch_preview` | `{settings?:{필드:값}, extra_args?: string\|string[]}` (extra_args가 없으면 저장된 것) | 실행 인자 미리보기. 서버를 띄우지 않고 익스텐션 hook도 부르지 않는다. 저장된 설정 위에 초안, 그 위에 추가 인자를 필드 `arg` 모양으로 읽은 값을 얹어 `get_launch_command`(`preview:true`)를 부른다. 필드에 `arg`를 선언하지 않은 모듈이면 모듈을 부르지 않고 `{success:true, has_launch_args:false, ...}`(command_line 없음)를 돌려준다. 성공 `{success:true, has_launch_args, command_line, program, args[], settings_from_args{}, extra_args[], extra_args_text(큰따옴표가 든 인자가 있으면 null: 배열로 저장), errors[{arg\|null, field, expected, got}]}`. password 필드 값과 인스턴스 `rest_password`는 `***`. 모듈 실패 `{success:false, error:"launch_command_failed"\|action_required, message?, ...같은 키}` / 404 / 500 `preview_failed`. `expected`는 `validator::expected_of` 코드(`memory_size`·`port`·`integer`·`path`·`pattern`·`number`·`boolean`·`enum`·`text`) |
 | POST | `/api/instance/:id/rename` | `instance.rs:878` | `{name}` | `{success, id, name, previous}` / 409 `name_taken`·`server_running` / 404 |
 | GET | `/api/provision-progress/:name` | `instance.rs:760` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}`. `error`는 모듈이 돌려준 `message`이거나, 스크립트가 비정상 종료·시간 초과면 `provision.script_failed` 문구다(스크립트 출력은 데몬 로그에만) |
 | DELETE | `/api/provision-progress/:name` | `instance.rs:719` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 인스턴스를 삭제한다 |
 | GET | `/api/instance/:id/check-update` | `instance.rs:1384` | - | 훅 결과 또는 `{update_available:false, reason}` |
-| POST | `/api/instance/:id/apply-update` | `instance.rs:1477` | - | `{success,id,provisioning:true}`. 409 `server_running`, 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
+| POST | `/api/instance/:id/apply-update` | `instance.rs:1481` | - | `{success,id,provisioning:true}`. 409 `server_running`·`instance_busy`(백업·복원·업데이트 중, 업데이트는 끝날 때까지 작업 잠금을 잡는다), 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
 
 `POST /api/instances` 동작 세부:
 
@@ -270,7 +270,7 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/instance/:id/managed/start` | `managed.rs:24` | 선택 `{config?}` | supervisor 결과 / 404 / 422 `memory_limit_reached` / 500 |
+| POST | `/api/instance/:id/managed/start` | `managed.rs:24` | 선택 `{config?}` | supervisor 결과 / 404 / 409 `instance_busy` / 422 `memory_limit_reached` / 500 |
 | GET | `/api/instance/:id/console` | `managed.rs:92` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
 | POST | `/api/instance/:id/stdin` | `managed.rs:118` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:139` | - | supervisor 결과 |
@@ -288,10 +288,12 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET/POST | `/api/instance/:id/backups` | `backup.rs:192/199` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
-| DELETE | `/api/instance/:id/backups/:name` | `backup.rs:207` | - | `{success}` / 404 `backup_not_found` |
-| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:218` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:230-231`) |
+| GET/POST | `/api/instance/:id/backups` | `backup.rs:203/210` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
+| DELETE | `/api/instance/:id/backups/:name` | `backup.rs:218` | - | `{success}` / 404 `backup_not_found` / 409 `backup_busy` |
+| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`) |
 | GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
+
+인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제가 함께 쓴다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다.
 
 #### 설정 (handlers/bot.rs, handlers/config.rs)
 

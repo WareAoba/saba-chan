@@ -27,13 +27,14 @@ const DEFAULT_KEEP: usize = 10;
 const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
 const REMOTE_MAX_BACKUP_KEEP: u32 = 30;
 
-/// 백업·복원 중인 인스턴스 (같은 인스턴스에서 둘이 겹치지 않게)
+/// 파일을 다루는 작업(백업·복원·업데이트·시작·삭제) 중인 인스턴스. 같은 인스턴스에서 둘이 겹치지 않게
 static BUSY: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-struct BusyGuard(String);
+/// 인스턴스 작업 잠금. 놓아질 때 풀린다
+pub(crate) struct BusyGuard(String);
 
 impl BusyGuard {
-    fn take(id: &str) -> Option<Self> {
+    pub(crate) fn take(id: &str) -> Option<Self> {
         let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
         busy.get_or_insert_with(HashSet::new).insert(id.to_string()).then(|| Self(id.to_string()))
     }
@@ -138,6 +139,16 @@ pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Resul
     take_backup_locked(state, id, kind, None).await
 }
 
+/// 이미 작업 잠금을 잡은 호출자(업데이트)용 `take_backup`
+pub(crate) async fn take_backup_held(state: &IPCServer, id: &str, kind: BackupKind, _guard: &BusyGuard) -> Result<Option<BackupInfo>, Response> {
+    take_backup_locked(state, id, kind, None).await
+}
+
+/// 다른 작업이 잡고 있을 때의 응답 (시작·업데이트·삭제)
+pub(crate) fn instance_busy() -> Response {
+    error(StatusCode::CONFLICT, "instance_busy", "A backup, restore or update is running for this instance")
+}
+
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
 async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>) -> Result<Option<BackupInfo>, Response> {
     let Some(plan) = plan(state, id).await? else {
@@ -209,6 +220,9 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
         Ok(d) => d,
         Err(r) => return r,
     };
+    let Some(_guard) = BusyGuard::take(&id) else {
+        return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
+    };
     match backup::delete(&dir, &name) {
         Ok(()) => Json(json!({ "success": true })).into_response(),
         Err(e) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
@@ -220,12 +234,13 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         Ok(d) => d,
         Err(r) => return r,
     };
-    if is_running(&state, &id).await {
-        return error(StatusCode::CONFLICT, "server_running", "Stop the server before restoring a backup");
-    }
+    // 잠금을 먼저 잡고 실행 여부를 본다: 시작도 같은 잠금을 잡으니 확인 뒤에 켜지지 않는다
     let Some(_guard) = BusyGuard::take(&id) else {
         return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
     };
+    if is_running(&state, &id).await {
+        return error(StatusCode::CONFLICT, "server_running", "Stop the server before restoring a backup");
+    }
     // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게
     // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
     let safety = match take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone())).await {
@@ -587,6 +602,23 @@ mod tests {
         let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
         let err = take_backup(&state, &id, BackupKind::PreUpdate).await.err().expect("hook failure must not mean 'nothing to back up'");
         assert_eq!(code(err).await, "backup_failed");
+    }
+
+    #[tokio::test]
+    async fn start_update_and_delete_wait_for_a_running_restore() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let guard = BusyGuard::take(&id).expect("free");
+        let start = super::super::server::start_instance_handler(Path(id.clone()), State(state.clone())).await;
+        assert_eq!(code(start).await, "instance_busy");
+        let managed = super::super::managed::start_managed_handler(Path(id.clone()), State(state.clone()), None).await.into_response();
+        assert_eq!(code(managed).await, "instance_busy");
+        let update = super::super::instance::begin_server_update(&state, &id).await.err().expect("update must wait");
+        assert_eq!(code(update).await, "instance_busy");
+        let removed = super::super::instance::delete_instance(Path(id.clone()), State(state.clone())).await.into_response();
+        assert_eq!(code(removed).await, "instance_busy");
+        assert!(state.supervisor.read().await.instance_store.get(&id).is_some());
+        drop(guard);
+        assert!(BusyGuard::take(&id).is_some(), "refused calls must not keep the lock");
     }
 
     #[tokio::test]

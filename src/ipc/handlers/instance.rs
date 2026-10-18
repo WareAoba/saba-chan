@@ -790,6 +790,10 @@ pub async fn delete_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
+    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+        return super::backup::instance_busy();
+    };
     let supervisor = state.supervisor.write().await;
 
     // ── 인스턴스 존재 확인 ──
@@ -1529,6 +1533,10 @@ pub async fn apply_server_update(
 /// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
 #[allow(clippy::result_large_err)]
 pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
+    // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
+    let Some(guard) = super::backup::BusyGuard::take(id) else {
+        return Err(super::backup::instance_busy());
+    };
     let supervisor = state.supervisor.read().await;
 
     let instance = match supervisor.instance_store.get(id) {
@@ -1634,8 +1642,9 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let backup_state = state.clone();
     let backup_id = id.to_string();
     Ok(tokio::spawn(async move {
+        let _guard = guard;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
-        if let Err(r) = super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate).await {
+        if let Err(r) = super::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
             let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
             tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
             tracker_done.update(
