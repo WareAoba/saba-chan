@@ -119,4 +119,14 @@ describe('사바쨩 말풍선', () => {
         await advance(400);
         expect(useSabaBubble.getState().bubble).toBeNull();
     });
+    it.each([
+        'instance.restarted',
+        'instance.restart_cancelled',
+    ])('%s가 오면 목록을 기다리지 않고 복구 중을 놓는다', async (type) => {
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 } });
+        await emit({ type, data: { instanceId: 'mc-1', instance: 'Survival' } });
+        expect(useSabaBubble.getState().bubble?.released).toBe(true);
+    });
 });
