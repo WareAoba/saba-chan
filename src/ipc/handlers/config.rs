@@ -155,10 +155,14 @@ pub async fn save_node_token(
     if let Some(parent) = token_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+    // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
+    let unchanged = std::fs::read_to_string(&token_path).is_ok_and(|t| t.trim() == token.trim());
 
     match std::fs::write(&token_path, token) {
         Ok(_) => {
-            crate::relay_agent::restart(&state).await;
+            if !unchanged {
+                crate::relay_agent::restart(&state).await;
+            }
             (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
         }
         Err(e) => (
