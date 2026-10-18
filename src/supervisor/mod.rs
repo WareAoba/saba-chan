@@ -859,8 +859,14 @@ impl Supervisor {
         let pid = child.id()
             .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))? ;
 
-        // 다른 경로(포트 충돌 검사·상태·정지)와 같은 키(인스턴스 id)로 추적한다
-        sup.read().await.tracker.track(&instance.id, pid)?;
+        // 다른 경로(포트 충돌 검사·상태·정지)와 같은 키(인스턴스 id)로 추적한다.
+        // managed 시작과 같이 정지 표시를 지우고 세대를 올린다 (기다리던 재시작이 이 시작 뒤에 또 켜지 않게)
+        {
+            let mut s = sup.write().await;
+            s.stop_requested.remove(&instance.id);
+            *s.run_generation.entry(instance.id.clone()).or_default() += 1;
+            s.tracker.track(&instance.id, pid)?;
+        }
         tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
 
         Ok(json!({
