@@ -150,13 +150,14 @@ export function ExtensionProvider({ children }) {
 
             /** 슬롯 맵을 newSlots에 병합하는 헬퍼 */
             const mergeSlots = (extSlots) => {
-                for (const [slotId, components] of Object.entries(extSlots)) {
+                for (const [slotId, components] of Object.entries(extSlots || {})) {
                     if (!newSlots[slotId]) newSlots[slotId] = [];
                     newSlots[slotId].push(...(Array.isArray(components) ? components : [components]));
                 }
             };
 
-            for (const ext of enabled) {
+            // 확장 하나가 throw해도 나머지 확장의 슬롯과 허락 대기 목록은 갱신한다
+            const loadOne = async (ext) => {
                 const globalName = `SabaExt${pascalCase(ext.id)}`;
                 const prevVersion = loadedVersionsRef.current[ext.id];
                 const versionChanged = prevVersion && ext.version && prevVersion !== ext.version;
@@ -176,20 +177,20 @@ export function ExtensionProvider({ children }) {
                     if (mod?.registerSlots) {
                         mergeSlots(mod.registerSlots());
                     }
-                    continue;
+                    return;
                 }
 
                 // 허락받지 않은 번들은 요청하지 않는다 (데몬이 gui_allowed로 알려 준다)
                 if (ext.gui && ext.gui_allowed === false) {
                     pending.push(ext);
-                    continue;
+                    return;
                 }
 
                 // ② UMD 번들 동적 로드
                 const mod = await loadExtensionBundle(ext);
                 if (mod === GUI_UNAPPROVED) {
                     pending.push(ext);
-                    continue;
+                    return;
                 }
                 loadedRef.current.add(ext.id);
                 loadedVersionsRef.current[ext.id] = ext.version;
@@ -203,6 +204,13 @@ export function ExtensionProvider({ children }) {
                 await loadExtensionI18n(ext, currentLang);
                 if (currentLang !== 'en') {
                     await loadExtensionI18n(ext, 'en');
+                }
+            };
+            for (const ext of enabled) {
+                try {
+                    await loadOne(ext);
+                } catch (e) {
+                    console.warn(`[Extension] '${ext.id}' failed to load its GUI:`, e);
                 }
             }
 
