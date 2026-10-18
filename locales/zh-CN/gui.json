@@ -1059,6 +1059,7 @@
       "malware_detected": "杀毒软件将此未验证组件的文件标记为恶意：{{file}}",
       "launch_outside_instance": "此未验证模块试图运行服务器文件夹之外的程序：{{file}}",
       "unscannable_file": "此未验证组件含有没有源文件的编译文件，无法扫描：{{file}}",
+      "scan_failed": "无法扫描此未验证组件的文件，因此未运行：{{file}}",
       "sandbox_unavailable": "无法为 {{component}} 准备隔离环境，因此未运行。"
     },
     "sandbox": {

@@ -211,11 +211,12 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
   - 스크립트(`.py`·`.pth`·`.ps1`·`.bat` 등)는 AMSI(등록된 백신)로, 네이티브 코드와 묶음(`.pyd`·`.dll`·`.so`·`.exe`·`.zip`·`.egg`·`.whl`)은 Defender `MpCmdRun`으로 본다. `__pycache__`는 건너뛴다.
   - 찾으면 실행하지 않고 `{success:false, action_required:"malware_detected", message, file}`를 돌려준다.
   - `__pycache__` 밖에 `.pyc`·`.pyo`가 있으면 원본 없이 실행될 수 있어 `action_required:"unscannable_file"`로 막는다.
-  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다.
-  - 검사기가 없으면 그 검사를 건너뛰고 로그만 남긴다.
+  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다. 깨끗하다는 결과는 7일이 지나면 다시 검사한다(찾았다는 결과는 그대로 둔다). 파일 sha256은 데몬 실행 동안 경로·크기·수정 시각으로 기억해, 셋이 같으면 다시 읽지 않는다(설치 기록과 비교하는 신뢰 표시도 같다).
+  - 검사기가 없으면(AMSI 공급자, `MpCmdRun`) 그 검사를 건너뛰고 데몬 실행마다 한 번 경고를 남긴다.
+  - 파일을 읽지 못하거나 한 파일의 검사가 실패하면(검사 스레드가 죽은 경우 포함) 실행하지 않고 `action_required:"scan_failed"`(`file`, `detail`)를 돌려준다. 나머지 파일 검사는 계속한다.
   - 검사를 통과하면 Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
-    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다). 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 재분석 지점이면 실행을 멈춘다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
+    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 표시를 지원하지 않는 볼륨이라 붙이지 못하면 경고만 남기고 계속한다(그 폴더 쓰기가 안 될 수 있다). 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다). 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 재분석 지점이면 실행을 멈춘다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
     - 환경: `SABA_TOKEN_PATH`를 뺀다. `PYTHONPYCACHEPREFIX`는 `pycache-sandbox/<꼬리표>`, `TEMP`·`TMP`는 `sandbox-temp/<꼬리표>`.
     - 시간 초과면 Job째 끝낸다.
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.
@@ -353,12 +354,13 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - `requires_extensions` 검증은 **non-managed 경로에만 있다** (`mod.rs:392-449`). managed 경로는 `[module.dependencies]`의 `ext-<id>` 검사만 한다.
 - 두 경로 모두 인스턴스 ID로 추적하므로 모니터·포트 충돌 검사·정지·상태가 같은 키를 쓴다.
 - **확인되지 않은 모듈의 실행 대상 (Windows)**: `get_launch_command`가 돌려준 `program`은 두 경로 모두 띄우기 전에 검사한다(`Supervisor::guard_launch`, `sandbox::check_launch`). 신뢰 표시가 `verified`인 모듈은 검사하지 않는다.
-  - 허용: 실제 경로(링크·`..`를 푼 것)가 인스턴스 폴더나 사용자가 정한 서버 폴더(`working_dir`) 안에 있는 파일. 모듈이 돌려준 `working_dir`은 기준으로 쓰지 않는다.
+  - 허용: 실제 경로(링크·`..`를 푼 것)가 인스턴스 폴더나 사용자가 정한 서버 폴더(`working_dir`) 안에 있는 파일. 모듈이 돌려준 `working_dir`은 허용 위치로 쓰지 않는다.
+  - 경로가 있는 상대 `program`은 데몬 폴더가 아니라 모듈이 돌려준 `working_dir` 기준으로 풀어 검사하고, 검사한 그 절대 경로로 띄운다.
   - 허용: 경로 없는 `java`·`javaw`, 그리고 설정 `java_path`가 가리키는 java. `java_path`가 모듈 `module.toml`의 기본값과 같으면 사용자가 정한 것이 아니므로 인정하지 않는다.
   - 모듈이 돌려준 `env_vars`의 `PATH`·`PATHEXT`(대소문자 무시)는 버린다. 경로 없는 `java`는 데몬의 PATH로 찾는다.
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
-  - 통과한 절대 경로 실행 파일과, 실행 인자가 가리키는 있는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준. 예: `-jar server.jar`)은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고, MpCmdRun이 없으면 건너뛴다.
+  - 통과한 절대 경로 실행 파일과, 실행 인자가 가리키는 있는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준. 예: `-jar server.jar`)은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고(위 §2.1과 같은 7일·크기·수정 시각 규칙), MpCmdRun이 없으면 건너뛴다. 파일을 읽지 못하면 `scan_failed`로 막는다.
 
 **잠금**: `start_managed_handler`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:19-58`, `mod.rs:1093-1101`, C12).
 

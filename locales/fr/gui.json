@@ -1059,6 +1059,7 @@
       "malware_detected": "L'antivirus a signalé un fichier de ce composant non vérifié : {{file}}",
       "launch_outside_instance": "Ce module non vérifié a tenté de lancer un programme hors du dossier du serveur : {{file}}",
       "unscannable_file": "Ce composant non vérifié contient des fichiers compilés sans leur source et ne peut pas être analysé : {{file}}",
+      "scan_failed": "Impossible d'analyser un fichier de ce composant non vérifié, il n'a donc pas été exécuté : {{file}}",
       "sandbox_unavailable": "Impossible de préparer un environnement isolé pour {{component}}, il n'a donc pas été lancé."
     },
     "sandbox": {

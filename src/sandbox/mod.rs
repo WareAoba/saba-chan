@@ -6,7 +6,8 @@
 //!   셸·스크립트 호스트(`cmd`, `powershell` 등)는 어디 있든 거부한다 (`launch_outside_instance`).
 //! - 악성 코드 검사: Python·스크립트 파일은 AMSI(등록된 백신)로, 서버 실행 파일은 처음 실행 전에
 //!   Defender `MpCmdRun`으로 본다. 찾으면 실행하지 않는다 (`malware_detected`). 결과는 sha256으로 저장해
-//!   바뀌지 않은 파일은 다시 보지 않는다. 검사기가 없으면 건너뛰고 로그만 남긴다.
+//!   바뀌지 않은 파일은 다시 보지 않는다(깨끗하다는 결과는 7일 동안). 검사기가 없으면 건너뛰고 경고를 남긴다.
+//!   파일을 읽지 못하거나 검사가 실패하면 실행하지 않는다 (`scan_failed`).
 //!
 //! Linux·macOS는 아직 지원 대상이 아니라 지금처럼 실행한다.
 
@@ -78,6 +79,17 @@ fn extension(path: &Path) -> String {
     path.extension().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default()
 }
 
+/// 실행할 프로그램 경로. 경로가 있는 상대 경로는 데몬 폴더가 아니라 작업 폴더(`cwd`) 기준으로 풀어
+/// 검사한 경로 그대로 띄운다. 경로 없는 이름(`java`)은 그대로 둔다
+pub fn resolve_program(program: &str, cwd: &Path) -> String {
+    let path = Path::new(program.trim());
+    if path.is_absolute() || path.components().count() <= 1 {
+        return program.trim().to_string();
+    }
+    let joined = cwd.join(path);
+    std::path::absolute(&joined).unwrap_or(joined).to_string_lossy().into_owned()
+}
+
 /// 확인되지 않은 모듈이 돌려준 실행 대상 검사. 통과하지 못하면 `launch_outside_instance`
 pub fn check_launch(program: &str, roots: &LaunchRoots) -> Result<(), &'static str> {
     const OUTSIDE: &str = "launch_outside_instance";
@@ -129,16 +141,32 @@ pub fn message(blocked: &Blocked) -> String {
         "malware_detected" => format!("Antivirus flagged a file of this unverified component: {}", file),
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}", file),
         "unscannable_file" => format!("This unverified component contains compiled code without source that cannot be scanned: {}", file),
+        "scan_failed" => format!("Could not scan a file of this unverified component, so it was not run: {}", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
+}
+
+/// 깨끗하다는 결과를 다시 쓰는 기간 (백신 정의가 바뀌므로 지나면 다시 본다)
+const CLEAN_VERDICT_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+struct StoredVerdict {
+    detected: bool,
+    /// 검사한 시각 (유닉스 초)
+    #[serde(default)]
+    at: u64,
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 /// sha256 → 검사 결과 (`<data dir>/scan-verdicts.json`). 깨끗하다/찾았다만 저장한다
 #[derive(Debug, Default)]
 pub struct VerdictCache {
     path: Option<PathBuf>,
-    entries: BTreeMap<String, bool>,
+    entries: BTreeMap<String, StoredVerdict>,
 }
 
 impl VerdictCache {
@@ -153,13 +181,18 @@ impl VerdictCache {
         Self::default()
     }
 
-    /// Some(true) = 찾았다, Some(false) = 깨끗하다
+    /// Some(true) = 찾았다, Some(false) = 깨끗하다 (7일이 지난 깨끗하다는 None: 다시 본다)
     pub fn get(&self, sha: &str) -> Option<bool> {
-        self.entries.get(sha).copied()
+        self.get_at(sha, now_secs())
+    }
+
+    fn get_at(&self, sha: &str, now: u64) -> Option<bool> {
+        let v = self.entries.get(sha)?;
+        (v.detected || now.saturating_sub(v.at) < CLEAN_VERDICT_TTL_SECS).then_some(v.detected)
     }
 
     pub fn put(&mut self, sha: String, detected: bool) {
-        self.entries.insert(sha, detected);
+        self.entries.insert(sha, StoredVerdict { detected, at: now_secs() });
     }
 
     pub fn save(&self) {
@@ -172,14 +205,22 @@ impl VerdictCache {
     }
 }
 
+/// 검사를 끝내지 못했다 (검사 스레드가 죽었다 등). 제한하는 구성요소는 실행하지 않는다
+fn scan_failed(detail: impl std::fmt::Display) -> Blocked {
+    Blocked { code: "scan_failed", file: None, detail: Some(detail.to_string()) }
+}
+
 /// Python 실행 전: 확인되지 않은 구성요소면 스크립트를 검사한다
 pub async fn guard_entry(entry: &str) -> Result<(), Blocked> {
-    let entry = PathBuf::from(entry);
-    let trust = trust_of_entry(&entry);
-    if !restricted(trust) {
+    // 신뢰 표시는 설치한 파일을 해시한다: 제한하지 않는 플랫폼에서는 구하지 않는다
+    if !ENFORCED {
         return Ok(());
     }
-    let Some(dir) = entry.parent().map(Path::to_path_buf) else { return Ok(()) };
+    let entry = PathBuf::from(entry);
+    if !restricted(trust_of_entry(&entry)) {
+        return Ok(());
+    }
+    let dir = entry.parent().map(Path::to_path_buf).ok_or_else(|| scan_failed("no component folder"))?;
     tokio::task::spawn_blocking(move || {
         let mut cache = VerdictCache::load();
         let result = scan::scan_component(&dir, &scan::SystemScanner, &mut cache);
@@ -187,12 +228,12 @@ pub async fn guard_entry(entry: &str) -> Result<(), Blocked> {
         result
     })
     .await
-    .unwrap_or(Ok(()))
+    .unwrap_or_else(|e| Err(scan_failed(e)))
 }
 
-/// 서버 실행 전: 확인되지 않은 모듈이면 실행 대상 위치를 보고 실행 파일을 검사한다
-pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
-    guard_launch_for(trust_of_entry(Path::new(entry)), program, args, cwd, roots, env).await
+/// 서버 실행 전: 확인되지 않은 모듈이면 실행 대상 위치를 보고 실행 파일을 검사한다. 띄울 프로그램 경로를 돌려준다
+pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<String, Blocked> {
+    guard_launch_for(|| trust_of_entry(Path::new(entry)), program, args, cwd, roots, env).await
 }
 
 /// 익스텐션 설치 기록의 신뢰 표시 (`extensions/<id>`)
@@ -209,17 +250,19 @@ pub fn strip_search_path(env: &mut Vec<(String, String)>) {
     env.retain(|(k, _)| !SEARCH_PATH_VARS.iter().any(|v| k.eq_ignore_ascii_case(v)));
 }
 
-/// `guard_launch`의 신뢰 표시를 받는 형태 (익스텐션이 띄우는 프로그램에도 쓴다)
-pub async fn guard_launch_for(trust: Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
-    if !restricted(trust) {
-        return Ok(());
+/// `guard_launch`의 신뢰 표시를 받는 형태 (익스텐션이 띄우는 프로그램에도 쓴다).
+/// `trust`는 제한하는 플랫폼에서만 부른다. 제한하면 상대 경로를 작업 폴더 기준으로 푼 경로를 돌려준다
+pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<String, Blocked> {
+    if !ENFORCED || !restricted(trust()) {
+        return Ok(program.to_string());
     }
     strip_search_path(env);
-    if let Err(code) = check_launch(program, &roots) {
-        return Err(Blocked { code, file: Some(program.to_string()), detail: None });
+    let program = resolve_program(program, cwd);
+    if let Err(code) = check_launch(&program, &roots) {
+        return Err(Blocked { code, file: Some(program), detail: None });
     }
     // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
-    let mut files: Vec<PathBuf> = Some(PathBuf::from(program)).filter(|p| p.is_absolute()).into_iter().collect();
+    let mut files: Vec<PathBuf> = Some(PathBuf::from(&program)).filter(|p| p.is_absolute()).into_iter().collect();
     files.extend(argument_files(args, cwd));
     tokio::task::spawn_blocking(move || {
         let mut cache = VerdictCache::load();
@@ -228,7 +271,8 @@ pub async fn guard_launch_for(trust: Trust, program: &str, args: &[String], cwd:
         result
     })
     .await
-    .unwrap_or(Ok(()))
+    .unwrap_or_else(|e| Err(scan_failed(e)))?;
+    Ok(program)
 }
 
 /// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준)
@@ -292,7 +336,7 @@ fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
 /// 쓰기를 준다 (데몬이 넣는 값. 데이터 폴더 자체와 그 위는 `Grants::push`가 버린다)
 pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<Isolation> {
     use appcontainer::Access;
-    if !restricted(trust_of_entry(entry)) {
+    if !ENFORCED || !restricted(trust_of_entry(entry)) {
         return None;
     }
     let (key, dir) = component_of(entry).unwrap_or_else(|| {
@@ -535,6 +579,35 @@ mod tests {
         }
         // 없는 파일
         assert_eq!(check_launch(&s(&inst.join("missing.exe")), &roots), Err("launch_outside_instance"));
+    }
+
+    /// 상대 경로는 데몬 폴더가 아니라 작업 폴더 기준으로 풀어, 검사한 그 경로를 띄운다
+    #[test]
+    fn relative_programs_resolve_against_the_working_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path().join("inst");
+        std::fs::create_dir_all(inst.join("bin")).unwrap();
+        std::fs::write(inst.join("bin").join("server.exe"), b"x").unwrap();
+        let resolved = resolve_program(&format!("bin{}server.exe", std::path::MAIN_SEPARATOR), &inst);
+        assert_eq!(Path::new(&resolved), inst.join("bin").join("server.exe"));
+        let roots = LaunchRoots { dirs: vec![inst.clone()], runtimes: vec![] };
+        assert_eq!(check_launch(&resolved, &roots), Ok(()));
+        // 경로 없는 이름과 절대 경로는 그대로
+        assert_eq!(resolve_program("java", &inst), "java");
+        let abs = inst.join("bin").join("server.exe").to_string_lossy().into_owned();
+        assert_eq!(resolve_program(&abs, tmp.path()), abs);
+    }
+
+    #[test]
+    fn clean_verdicts_expire_but_detections_do_not() {
+        let mut cache = VerdictCache::in_memory();
+        cache.put("clean".into(), false);
+        cache.put("bad".into(), true);
+        let now = now_secs();
+        assert_eq!(cache.get_at("clean", now), Some(false));
+        assert_eq!(cache.get_at("clean", now + CLEAN_VERDICT_TTL_SECS), None);
+        assert_eq!(cache.get_at("bad", now + CLEAN_VERDICT_TTL_SECS), Some(true));
+        assert_eq!(cache.get_at("none", now), None);
     }
 
     #[cfg(unix)]
