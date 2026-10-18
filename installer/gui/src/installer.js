@@ -33,6 +33,12 @@ const T = {
         completeLog: 'Details: {{path}}',
         btnClose: 'Close',
         btnLaunch: 'Launch Saba-chan',
+        btnRetry: 'Retry',
+        errElevation: 'Couldn\'t get administrator rights to create the install folder. Pick another folder or allow the prompt.',
+        errOutdated: 'This installer is too old for the current release. Download the latest installer from the website.',
+        errDownload: 'Download failed. Check your internet connection and try again.',
+        errExtract: 'Couldn\'t write the files. Close Saba-chan and any running servers, then try again.',
+        launchFailed: 'Couldn\'t start Saba-chan. Start it from the Start menu or desktop shortcut.',
         installFailed: 'Installation failed',
         fetchFailed: 'Failed to fetch releases',
         uninstallTitle: 'Uninstall Saba-chan',
@@ -98,6 +104,12 @@ const T = {
         completeLog: '자세한 기록: {{path}}',
         btnClose: '닫기',
         btnLaunch: '사바쨩 실행',
+        btnRetry: '다시 시도',
+        errElevation: '설치 폴더를 만들 관리자 권한을 얻지 못했습니다. 다른 폴더를 고르거나 권한 요청을 허용해 주세요.',
+        errOutdated: '이 설치기는 지금 릴리스보다 오래됐습니다. 웹사이트에서 최신 설치기를 받아 주세요.',
+        errDownload: '내려받지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.',
+        errExtract: '파일을 쓰지 못했습니다. 사바쨩과 켜져 있는 서버를 끄고 다시 시도해 주세요.',
+        launchFailed: '사바쨩을 실행하지 못했습니다. 시작 메뉴나 바탕화면 바로가기로 실행해 주세요.',
         installFailed: '설치 실패',
         fetchFailed: '릴리즈 정보를 가져올 수 없습니다',
         uninstallTitle: '사바쨩 제거',
@@ -162,6 +174,12 @@ const T = {
         completeLog: '詳細: {{path}}',
         btnClose: '閉じる',
         btnLaunch: 'サバちゃんを起動',
+        btnRetry: '再試行',
+        errElevation: 'インストール先フォルダーを作成する管理者権限を取得できませんでした。別のフォルダーを選ぶか、権限の確認を許可してください。',
+        errOutdated: 'このインストーラーは現在のリリースより古いです。ウェブサイトから最新のインストーラーを入手してください。',
+        errDownload: 'ダウンロードできませんでした。インターネット接続を確認して、もう一度お試しください。',
+        errExtract: 'ファイルを書き込めませんでした。サバちゃんと起動中のサーバーを終了してから、もう一度お試しください。',
+        launchFailed: 'サバちゃんを起動できませんでした。スタートメニューかデスクトップのショートカットから起動してください。',
         installFailed: 'インストール失敗',
         fetchFailed: 'リリース情報の取得に失敗',
         uninstallTitle: 'サバちゃん アンインストール',
@@ -226,6 +244,12 @@ const T = {
         completeLog: '详细记录：{{path}}',
         btnClose: '关闭',
         btnLaunch: '启动 Saba-chan',
+        btnRetry: '重试',
+        errElevation: '无法获得创建安装文件夹所需的管理员权限。请选择其他文件夹，或允许权限请求。',
+        errOutdated: '此安装程序比当前版本旧，请从网站下载最新的安装程序。',
+        errDownload: '下载失败。请检查网络连接后重试。',
+        errExtract: '无法写入文件。请关闭 Saba-chan 和正在运行的服务器后重试。',
+        launchFailed: '无法启动 Saba-chan。请从开始菜单或桌面快捷方式启动。',
         installFailed: '安装失败',
         fetchFailed: '无法获取版本信息',
         uninstallTitle: '卸载 Saba-chan',
@@ -290,6 +314,12 @@ const T = {
         completeLog: '詳細記錄：{{path}}',
         btnClose: '關閉',
         btnLaunch: '啟動 Saba-chan',
+        btnRetry: '重試',
+        errElevation: '無法取得建立安裝資料夾所需的系統管理員權限。請選擇其他資料夾，或允許權限要求。',
+        errOutdated: '此安裝程式比目前版本舊，請從網站下載最新的安裝程式。',
+        errDownload: '下載失敗。請檢查網路連線後重試。',
+        errExtract: '無法寫入檔案。請關閉 Saba-chan 和執行中的伺服器後重試。',
+        launchFailed: '無法啟動 Saba-chan。請從開始功能表或桌面捷徑啟動。',
         installFailed: '安裝失敗',
         fetchFailed: '無法取得版本資訊',
         uninstallTitle: '解除安裝 Saba-chan',
@@ -354,6 +384,12 @@ const T = {
         completeLog: 'Detalles: {{path}}',
         btnClose: 'Cerrar',
         btnLaunch: 'Iniciar Saba-chan',
+        btnRetry: 'Reintentar',
+        errElevation: 'No se obtuvieron permisos de administrador para crear la carpeta. Elige otra carpeta o acepta la solicitud.',
+        errOutdated: 'Este instalador es más antiguo que la versión actual. Descarga el instalador más reciente desde el sitio web.',
+        errDownload: 'No se pudo descargar. Revisa tu conexión a internet y vuelve a intentarlo.',
+        errExtract: 'No se pudieron escribir los archivos. Cierra Saba-chan y los servidores en marcha y vuelve a intentarlo.',
+        launchFailed: 'No se pudo iniciar Saba-chan. Ábrelo desde el menú Inicio o el acceso directo del escritorio.',
         installFailed: 'Error en la instalación',
         fetchFailed: 'No se pudieron obtener las versiones',
         uninstallTitle: 'Desinstalar Saba-chan',
@@ -418,6 +454,12 @@ const T = {
         completeLog: 'Detalhes: {{path}}',
         btnClose: 'Fechar',
         btnLaunch: 'Iniciar Saba-chan',
+        btnRetry: 'Tentar de novo',
+        errElevation: 'Não foi possível obter permissão de administrador para criar a pasta. Escolha outra pasta ou aceite o pedido.',
+        errOutdated: 'Este instalador é mais antigo que a versão atual. Baixe o instalador mais recente no site.',
+        errDownload: 'O download falhou. Verifique sua conexão com a internet e tente de novo.',
+        errExtract: 'Não foi possível gravar os arquivos. Feche o Saba-chan e os servidores em execução e tente de novo.',
+        launchFailed: 'Não foi possível iniciar o Saba-chan. Abra-o pelo menu Iniciar ou pelo atalho da área de trabalho.',
         installFailed: 'Falha na instalação',
         fetchFailed: 'Não foi possível obter as versões',
         uninstallTitle: 'Desinstalar Saba-chan',
@@ -482,6 +524,12 @@ const T = {
         completeLog: 'Подробности: {{path}}',
         btnClose: 'Закрыть',
         btnLaunch: 'Запустить Saba-chan',
+        btnRetry: 'Повторить',
+        errElevation: 'Не удалось получить права администратора для создания папки. Выберите другую папку или разрешите запрос.',
+        errOutdated: 'Этот установщик старее текущей версии. Скачайте новый установщик с сайта.',
+        errDownload: 'Не удалось скачать файлы. Проверьте подключение к интернету и попробуйте снова.',
+        errExtract: 'Не удалось записать файлы. Закройте Saba-chan и запущенные серверы и попробуйте снова.',
+        launchFailed: 'Не удалось запустить Saba-chan. Запустите его из меню «Пуск» или с ярлыка на рабочем столе.',
         installFailed: 'Ошибка установки',
         fetchFailed: 'Не удалось получить информацию о версиях',
         uninstallTitle: 'Удаление Saba-chan',
@@ -546,6 +594,12 @@ const T = {
         completeLog: 'Details: {{path}}',
         btnClose: 'Schließen',
         btnLaunch: 'Saba-chan starten',
+        btnRetry: 'Erneut versuchen',
+        errElevation: 'Für den Installationsordner fehlten Administratorrechte. Wähle einen anderen Ordner oder erlaube die Abfrage.',
+        errOutdated: 'Dieser Installer ist älter als die aktuelle Version. Lade den neuesten Installer von der Website.',
+        errDownload: 'Der Download ist fehlgeschlagen. Prüfe die Internetverbindung und versuche es erneut.',
+        errExtract: 'Die Dateien konnten nicht geschrieben werden. Beende Saba-chan und laufende Server und versuche es erneut.',
+        launchFailed: 'Saba-chan konnte nicht gestartet werden. Starte es über das Startmenü oder die Desktopverknüpfung.',
         installFailed: 'Installation fehlgeschlagen',
         fetchFailed: 'Versionsinformationen konnten nicht abgerufen werden',
         uninstallTitle: 'Saba-chan deinstallieren',
@@ -610,6 +664,12 @@ const T = {
         completeLog: 'Détails : {{path}}',
         btnClose: 'Fermer',
         btnLaunch: 'Lancer Saba-chan',
+        btnRetry: 'Réessayer',
+        errElevation: 'Impossible d\'obtenir les droits administrateur pour créer le dossier. Choisissez un autre dossier ou acceptez la demande.',
+        errOutdated: 'Ce programme d\'installation est plus ancien que la version actuelle. Téléchargez le plus récent sur le site.',
+        errDownload: 'Le téléchargement a échoué. Vérifiez votre connexion internet et réessayez.',
+        errExtract: 'Impossible d\'écrire les fichiers. Fermez Saba-chan et les serveurs en cours, puis réessayez.',
+        launchFailed: 'Impossible de démarrer Saba-chan. Lancez-le depuis le menu Démarrer ou le raccourci du bureau.',
         installFailed: 'Échec de l\'installation',
         fetchFailed: 'Impossible de récupérer les versions',
         uninstallTitle: 'Désinstaller Saba-chan',
@@ -718,6 +778,7 @@ function applyTranslations() {
     s('btn-install-text', 'btnInstall');
     s('btn-close-text', 'btnClose');
     s('btn-launch-text', 'btnLaunch');
+    s('btn-retry-text', 'btnRetry');
     s('uninstall-title', 'uninstallTitle');
     s('uninstall-desc', 'uninstallDesc');
     s('btn-cancel-text', 'btnCancel');
@@ -843,12 +904,32 @@ function enterComplete(p) {
     $completeActions.style.display = '';
 }
 
-function enterError(msg) {
+// 설치기가 알려 주는 실패 종류 → 번역 키 (원문은 아래 상자에 함께 보인다)
+const ERROR_KEYS = {
+    elevation_failed: 'errElevation',
+    fetch_failed: 'fetchFailed',
+    installer_outdated: 'errOutdated',
+    download_failed: 'errDownload',
+    extract_failed: 'errExtract',
+};
+
+function enterError(p, titleKey = 'installFailed', canRetry = true) {
     currentState = 'error';
     $glowRing.className = 'loading-logo-container error';
     $logoArea.className = 'logo-area state-installing';
-    $statusText.textContent = tr('installFailed');
-    $statusSub.textContent = msg;
+    $statusText.textContent = tr(titleKey);
+    const key = ERROR_KEYS[p.error_code];
+    $statusSub.textContent = key ? tr(key) : p.message;
+    const $warn = document.getElementById('complete-warnings');
+    $warn.replaceChildren();
+    if (key && p.message) $warn.append(p.message);
+    if (p.log_path) $warn.append('\n' + tr('completeLog').replace('{{path}}', p.log_path));
+    $warn.style.display = $warn.childNodes.length ? '' : 'none';
+    $progressBar.style.display = 'none';
+    $completeActions.style.display = '';
+    document.getElementById('btn-launch').style.display = 'none';
+    document.getElementById('btn-retry').style.display = canRetry ? '' : 'none';
+    document.getElementById('btn-close-text').textContent = tr('btnClose');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -959,7 +1040,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     try {
         await invoke('fetch_latest_release');
     } catch (e) {
-        enterError(String(e));
+        enterError({ error_code: 'fetch_failed', message: String(e) });
         return;
     }
 
@@ -969,7 +1050,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     try {
         await invoke('start_install');
     } catch (e) {
-        enterError(String(e));
+        enterError({ message: String(e) });
     }
 });
 
@@ -984,7 +1065,7 @@ listen('install:progress', (ev) => {
     const $fill = document.getElementById('progress-fill');
 
     if (p.step === 'error') {
-        enterError(p.message);
+        enterError(p);
         return;
     }
 
@@ -1029,8 +1110,24 @@ listen('install:progress', (ev) => {
 document.getElementById('btn-close-installer')?.addEventListener('click', () => appWindow.close());
 
 document.getElementById('btn-launch')?.addEventListener('click', async () => {
-    try { await invoke('launch_app'); } catch (_) {}
+    try {
+        await invoke('launch_app');
+    } catch (e) {
+        // 조용히 닫지 않는다: 어떻게 실행하면 되는지 알려 준다
+        $statusSub.textContent = tr('launchFailed');
+        console.error('launch_app failed:', e);
+        return;
+    }
     appWindow.close();
+});
+
+// 실패 화면: 설정 시트로 돌아가 다시 설치
+document.getElementById('btn-retry')?.addEventListener('click', () => {
+    $completeActions.style.display = 'none';
+    document.getElementById('complete-warnings').style.display = 'none';
+    document.getElementById('btn-launch').style.display = '';
+    document.getElementById('btn-retry').style.display = 'none';
+    enterSettings();
 });
 
 // ═══════════════════════════════════════════════════════
@@ -1066,7 +1163,7 @@ document.getElementById('btn-uninstall')?.addEventListener('click', async () => 
 
     const keepSettings = document.getElementById('chk-keep-settings')?.checked ?? false;
     try { await invoke('start_uninstall', { keepSettings }); } catch (e) {
-        enterError(String(e));
+        enterError({ message: String(e) }, 'uninstallFailed', false);
     }
 });
 
@@ -1077,7 +1174,7 @@ listen('uninstall:progress', (ev) => {
     const $fill = document.getElementById('progress-fill');
 
     if (p.step === 'error') {
-        enterError(p.message);
+        enterError(p, 'uninstallFailed', false);
         return;
     }
 
