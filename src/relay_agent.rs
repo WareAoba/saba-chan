@@ -423,6 +423,7 @@ impl Session {
                     user_id,
                     user_name: name("userName"),
                     guild_name: name("guildName"),
+                    locale: name("locale"),
                     remote: Some(remote),
                 };
                 // 감사 로그 (A10): 디스코드에서 누가 보냈는지 (이름은 릴레이가 payload에 실어 보낸 것)

@@ -204,3 +204,11 @@ def test_heartbeat_carries_cpu_and_ram_only_for_running_servers(paired, relay, f
     usage = servers["on1"]["usage"]
     assert usage and usage["memMb"] > 0 and usage["cpu"] >= 0, servers["on1"]
     assert "usage" not in servers["off1"], servers["off1"]
+
+
+def test_text_command_replies_in_the_guild_language(paired, relay):
+    """디스코드 텍스트 명령 답은 데몬 GUI 언어가 아니라 릴레이가 실어 보낸 길드 언어로 쓴다."""
+    ko = relay.wait_result(relay.push_command({"action": "raw_command", "text": "", "locale": "ko"}, ownerDiscordId="1"))
+    assert "<모듈>" in ko["data"]["text"], ko
+    en = relay.wait_result(relay.push_command({"action": "raw_command", "text": "", "locale": "en-US"}, ownerDiscordId="1"))
+    assert "<module>" in en["data"]["text"], en

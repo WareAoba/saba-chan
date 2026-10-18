@@ -116,10 +116,13 @@ impl DaemonApi for IPCServer {
     }
 }
 
-/// 데몬의 현재 봇 설정·언어로 채팅 명령 한 건을 처리합니다.
+/// 데몬의 현재 봇 설정으로 채팅 명령 한 건을 처리합니다. 언어는 요청의 `locale`, 없으면 GUI 언어.
 pub async fn run_with_daemon_settings(server: &IPCServer, req: &super::ChatRequest) -> super::Reply {
     let bot = server.config_store.get_bot_config().await;
-    let language = server.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
+    let language = match &req.locale {
+        Some(locale) => locale.clone(),
+        None => server.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into()),
+    };
     let catalog = super::i18n::Catalog::for_language(&language);
     super::process(server, &super::ChatSettings::from(&bot), &catalog, req).await
 }
