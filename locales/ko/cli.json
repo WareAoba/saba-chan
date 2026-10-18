@@ -25,7 +25,8 @@
     "use_existing": "기존 서버 폴더 쓰기",
     "folder_is": "{{dir}}은(는) {{game}} 서버로 보여요.",
     "pick_game": "--module로 게임을 골라 주세요.",
-    "folder_in_use": "{{dir}}는 이미 {{name}}이(가) 쓰고 있어요. 한 폴더에 서버 둘을 두면 서로 덮어써요."
+    "folder_in_use": "{{dir}}는 이미 {{name}}이(가) 쓰고 있어요. 한 폴더에 서버 둘을 두면 서로 덮어써요.",
+    "created_settings_failed": "{{name}} 서버는 만들었지만 설정을 저장하지 못했어요: {{error}}"
   },
   "bot": {
     "ask_token": "노드 토큰",
@@ -232,7 +233,8 @@
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
     "not_found": "찾을 수 없어요: {{what}} \"{{query}}\"",
     "pair_expected": "KEY=VALUE 형식이어야 해요: \"{{got}}\"",
-    "timeout": "데몬 응답이 너무 늦어요 ({{path}})."
+    "timeout": "데몬 응답이 너무 늦어요 ({{path}}).",
+    "body_read": "{{path}} 응답을 끝까지 받지 못했어요: {{error}}"
   },
   "agree": {
     "none": "{{name}}에 동의할 약관이 없어요.",
@@ -276,7 +278,8 @@
     "url_one_id": "--url과 --sha256은 익스텐션 하나에만 쓸 수 있어요.",
     "no_config": "{{id}}에는 설정이 없어요.",
     "status_busy": "준비 중: {{list}}",
-    "status_done": "준비 끝: {{list}}"
+    "status_done": "준비 끝: {{list}}",
+    "update_failed": "익스텐션 {{n}}개를 업데이트하지 못했어요."
   },
   "history": {
     "none": "아직 종료 기록이 없어요."
@@ -390,7 +393,8 @@
     "bye": "안녕히. 데몬과 서버는 계속 돌아요.",
     "ctrl_c": "(나가려면 Ctrl+C를 한 번 더 누르거나 exit)",
     "help_line": "명령을 입력하세요 (help, Tab으로 채우기). 디스코드처럼 말해도 돼요 (예: \"팰월드 시작\"). 나가기 exit.",
-    "welcome": "사바쨩 CLI {{version}}"
+    "welcome": "사바쨩 CLI {{version}}",
+    "lang_fixed": "셸 안에서는 언어를 바꿀 수 없어요. 지금 언어({{lang}})로 보여요."
   },
   "start": {
     "already": "{{name}}은(는) 이미 돌고 있어요.",
@@ -823,7 +827,8 @@
     "forgot": "챗봇의 기억을 지웠어요.",
     "not_synced": "이 PC에 저장했어요. 봇이 연결되면 디스코드에 반영돼요 (saba-chan-cli bot status).",
     "sync_failed": "디스코드 서버 {{guild}}에 반영하지 못했어요: {{error}}",
-    "read_failed": "{{path}}을(를) 읽지 못했어요: {{error}}"
+    "read_failed": "{{path}}을(를) 읽지 못했어요: {{error}}",
+    "cleared_pending": "이 PC의 챗봇 설정과 키를 지웠어요. 릴레이에는 아직 닿지 않아 다음 연결 때 지워요."
   },
   "trust": {
     "verified": "확인됨",

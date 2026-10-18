@@ -34,6 +34,11 @@ pub enum CliError {
     Usage(String),
     Cancelled,
     Failed(String),
+    /// 일부만 됐다. `data`는 JSON 출력에 그대로 싣는 결과 (`{updated, failed}` 등)
+    Partial {
+        message: String,
+        data: Value,
+    },
 }
 
 impl CliError {
@@ -43,7 +48,7 @@ impl CliError {
             CliError::NotFound { .. } => 4,
             CliError::Usage(_) | CliError::Ambiguous { .. } => 2,
             CliError::Cancelled => 130,
-            CliError::Api { .. } | CliError::Failed(_) => 1,
+            CliError::Api { .. } | CliError::Failed(_) | CliError::Partial { .. } => 1,
         }
     }
 
@@ -56,6 +61,7 @@ impl CliError {
             CliError::Usage(_) => "usage".into(),
             CliError::Cancelled => "cancelled".into(),
             CliError::Failed(_) => "failed".into(),
+            CliError::Partial { .. } => "partial".into(),
         }
     }
 
@@ -83,6 +89,11 @@ impl CliError {
             }
             CliError::NotFound { suggestions, .. } => v["suggestions"] = json!(suggestions),
             CliError::Ambiguous { candidates, .. } => v["candidates"] = json!(candidates),
+            CliError::Partial { data, .. } => {
+                for (k, x) in data.as_object().into_iter().flatten() {
+                    v[k] = x.clone();
+                }
+            }
             _ => {}
         }
         v
@@ -181,7 +192,7 @@ impl fmt::Display for CliError {
             CliError::Api { message, .. } => write!(f, "{}", message),
             CliError::NotFound { what, query, .. } => write!(f, "{}", t!("err.not_found", what = what, query = query)),
             CliError::Ambiguous { what, query, .. } => write!(f, "{}", t!("err.ambiguous", what = what, query = query)),
-            CliError::Usage(m) | CliError::Failed(m) => write!(f, "{}", m),
+            CliError::Usage(m) | CliError::Failed(m) | CliError::Partial { message: m, .. } => write!(f, "{}", m),
             CliError::Cancelled => write!(f, "{}", t!("err.cancelled")),
         }
     }

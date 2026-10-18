@@ -3,7 +3,7 @@
 use crate::cli::ExtCmd;
 use crate::cmd::{guess, split_pairs};
 use crate::ctx::Ctx;
-use crate::error::Result;
+use crate::error::{CliError, Result};
 use crate::output::{self, s};
 use crate::resolve;
 use serde_json::{json, Map, Value};
@@ -357,6 +357,7 @@ async fn update(ctx: &Ctx, q: Option<&str>) -> Result<()> {
     }
     ctx.ask.ensure(&t!("ext.confirm_update", n = updates.len()))?;
     let mut done = Vec::new();
+    let mut failures = Vec::new();
     for u in &updates {
         let id = s(u, "id");
         if !s(u, "incompatible").is_empty() {
@@ -365,10 +366,8 @@ async fn update(ctx: &Ctx, q: Option<&str>) -> Result<()> {
             continue;
         }
         let spin = crate::progress::spinner(&t!("ext.installing", id = id));
-        let r = ctx
-            .api
-            .install_extension(id, json!({ "download_url": s(u, "download_url") }))
-            .await;
+        // 주소·해시는 데몬이 서명된 카탈로그에서 고른다 (주소만 보내면 해시 검사와 공식 표시가 빠진다)
+        let r = ctx.api.install_extension(id, json!({})).await;
         spin.finish_and_clear();
         match r {
             Ok(_) => {
@@ -381,8 +380,21 @@ async fn update(ctx: &Ctx, q: Option<&str>) -> Result<()> {
                 }
                 done.push(id.to_string());
             }
-            Err(e) => ctx.out.error(&crate::error::classify(&e)),
+            Err(e) => {
+                let err = crate::error::classify(&e);
+                if !ctx.out.json {
+                    ctx.out.error(&err);
+                }
+                failures.push(json!({ "id": id, "error": err.to_string(), "error_code": err.code() }));
+            }
         }
+    }
+    if !failures.is_empty() {
+        return Err(CliError::Partial {
+            message: t!("ext.update_failed", n = failures.len()),
+            data: json!({ "updated": done, "failed": failures }),
+        }
+        .into());
     }
     if ctx.out.json {
         ctx.out.data(&json!({ "updated": done }), |_| {});

@@ -104,7 +104,7 @@ pub async fn catalog_for_server(ctx: &Ctx, sv: &Server) -> Result<Catalog> {
         .and_then(|v| v.get("commands"))
         .and_then(Value::as_array)
     {
-        cat.add_extension_commands(list);
+        cat.add_instance_commands(list);
     }
     Ok(cat)
 }
@@ -472,6 +472,13 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
 
+    // --set 값은 만들기 전에 검사한다 (틀리면 서버도 설치 작업도 남기지 않는다)
+    let mut patch = Map::new();
+    for (k, v) in later_set {
+        let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
+        insert_patch(&mut patch, &key, value);
+    }
+
     // 6) 만들기
     let mut body = json!({ "name": name, "module_name": module_name });
     if let Some(p) = &preset {
@@ -493,15 +500,12 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
 
-    // 7) 설정 (--set)
-    let mut patch = Map::new();
-    for (k, v) in later_set {
-        let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
-        insert_patch(&mut patch, &key, value);
-    }
+    // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
+    let mut settings_error = None;
     if !patch.is_empty() {
         if let Err(e) = ctx.api.update_instance(&id, Value::Object(patch)).await {
             ctx.out.warn(&t!("add.settings_failed", error = e));
+            settings_error = Some(e.to_string());
         }
     }
 
@@ -509,6 +513,13 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let provisioning = created.get("provisioning").and_then(Value::as_bool) == Some(true);
     if provisioning {
         if a.no_wait {
+            if let Some(error) = settings_error {
+                return Err(CliError::Partial {
+                    message: t!("add.created_settings_failed", name = name, error = error),
+                    data: json!({ "id": id, "name": name, "module": module_name, "provisioning": true }),
+                }
+                .into());
+            }
             ctx.out.done(&t!("add.created_installing", name = name), &created);
             ctx.out.hint(&format!("saba-chan-cli server progress {}", name));
             return Ok(());
@@ -525,6 +536,13 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
     let out = json!({ "success": true, "id": id, "name": name, "module": module_name, "provisioned": provisioning });
+    if let Some(error) = settings_error {
+        return Err(CliError::Partial {
+            message: t!("add.created_settings_failed", name = name, error = error),
+            data: json!({ "id": id, "name": name, "module": module_name, "provisioned": provisioning }),
+        }
+        .into());
+    }
     ctx.out.done(&t!("add.ready", name = name, game = display), &out);
     if a.start {
         return start(
@@ -831,6 +849,20 @@ pub async fn run_command(ctx: &Ctx, a: RunArgs) -> Result<()> {
 }
 
 /// 명령 하나 실행 (콘솔 입력에서도 쓴다)
+/// 콘솔에 친 한 줄. 정의된 명령이면 인자를 나눠 묶고, 아니면 친 그대로 보낸다
+/// (따옴표·JSON이 든 게임 명령을 다시 이어 붙이면 모양이 바뀐다)
+pub async fn exec_line(ctx: &Ctx, sv: &Server, cat: &Catalog, text: &str) -> Result<()> {
+    let words = shlex::split(text).unwrap_or_else(|| text.split_whitespace().map(str::to_string).collect());
+    let name = words.first().map(String::as_str).unwrap_or_default();
+    if cat.find(name).is_none() && cat.accepts_raw() {
+        let r = ctx.api.command(&sv.id, text, Value::Null).await?;
+        print_result(ctx, &r);
+        return Ok(());
+    }
+    let (name, rest) = words.split_first().map(|(n, r)| (n.clone(), r.to_vec())).unwrap_or_default();
+    exec(ctx, sv, cat, &name, &rest).await
+}
+
 pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[String]) -> Result<()> {
     let Some(def) = cat.find(name) else {
         if !cat.accepts_raw() {
@@ -1393,6 +1425,10 @@ async fn progress(ctx: &Ctx, query: &str, dismiss: bool) -> Result<()> {
         return Ok(());
     }
     if ctx.out.json || p.get("done").and_then(Value::as_bool) == Some(true) {
+        // 끝난 작업이 실패였으면 진행 줄만 보이고 성공으로 끝내지 않는다
+        if let Some(err) = p.get("done").and_then(Value::as_bool).filter(|d| *d).and(p.get("error")).and_then(Value::as_str) {
+            return Err(CliError::Partial { message: err.to_string(), data: p.clone() }.into());
+        }
         ctx.out.data(&p, |p| println!("{}", progress_line(p)));
         return Ok(());
     }

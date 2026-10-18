@@ -46,7 +46,12 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     for l in &lines {
         println!("{}", format_line(l));
     }
-    let cursor = Cursor::from(&first);
+    let mut cursor = Cursor::from(&first);
+    // `--lines 0`이면 보인 줄이 없어도 지금까지의 줄은 건너뛴다: 마지막 순번만 알아 둔다
+    if a.lines == 0 && cursor.running && !cursor.disk {
+        let last = Cursor::from(&ctx.api.console(&sv.id, None, Some(1)).await?);
+        cursor.next = last.next.or(Some(0));
+    }
 
     let interactive = !a.follow && !a.print && ctx.ask.enabled;
     if a.print || (!a.follow && !interactive) {
@@ -100,8 +105,15 @@ async fn follow_printing(ctx: &Ctx, sv: &Server, mut cur: Cursor, emit: impl Fn(
 }
 
 async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) -> Cursor {
-    // 디스크 로그는 since를 무시하므로, 꺼져 있는 동안은 실행 여부만 본다
-    let since = if cur.disk { None } else { cur.next };
+    // 디스크 로그는 since를 무시하므로, 꺼져 있는 동안은 실행 여부만 본다.
+    // 실행 중인데 아직 받은 줄이 없으면(빈 콘솔) 처음부터 받는다: 첫 줄을 놓치지 않게
+    let since = if cur.disk {
+        None
+    } else if cur.running {
+        Some(cur.next.unwrap_or(0))
+    } else {
+        cur.next
+    };
     let Ok(resp) = ctx
         .api
         .console(&sv.id, since, if since.is_none() { Some(1) } else { None })
@@ -332,12 +344,7 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
             }
             continue;
         }
-        let words = shlex::split(text).unwrap_or_else(|| text.split_whitespace().map(str::to_string).collect());
-        let (name, rest) = words
-            .split_first()
-            .map(|(n, r)| (n.clone(), r.to_vec()))
-            .unwrap_or_default();
-        report(ctx, crate::cmd::server::exec(ctx, sv, &cat, &name, &rest).await);
+        report(ctx, crate::cmd::server::exec_line(ctx, sv, &cat, text).await);
     }
     poller.abort();
     drop(rl);

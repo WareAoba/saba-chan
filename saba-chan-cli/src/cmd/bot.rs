@@ -509,7 +509,12 @@ async fn discord_settings(ctx: &Ctx, guild: &str, patch: Option<Value>) -> Resul
                     eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.discord_not_synced"));
                 }
             }
-            r.get("settings").cloned().unwrap_or(r)
+            // JSON에는 동기화 결과(`sync`)도 그대로 싣는다
+            if ctx.out.json {
+                r
+            } else {
+                r.get("settings").cloned().unwrap_or(r)
+            }
         }
     };
     ctx.out.data(&r, print_discord_settings);
