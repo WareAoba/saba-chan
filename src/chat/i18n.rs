@@ -68,9 +68,11 @@ pub fn normalize_language(requested: &str) -> String {
         return code.to_string();
     }
     let base = req.split('-').next().unwrap_or("").to_ascii_lowercase();
-    // zh는 지역 없이 오면 간체로 본다
+    // zh는 번체 쓰는 곳(Hant·홍콩·마카오)이면 번체, 그 밖은 간체로 본다
     if base == "zh" {
-        return "zh-CN".into();
+        let tags = req.to_ascii_lowercase();
+        let traditional = tags.split('-').skip(1).any(|t| ["hant", "tw", "hk", "mo"].contains(&t));
+        return if traditional { "zh-TW" } else { "zh-CN" }.into();
     }
     if base == "pt" {
         return "pt-BR".into();
@@ -148,6 +150,9 @@ mod tests {
         assert_eq!(normalize_language("ko-KR"), "ko");
         assert_eq!(normalize_language("zh_tw"), "zh-TW");
         assert_eq!(normalize_language("zh"), "zh-CN");
+        assert_eq!(normalize_language("zh-HK"), "zh-TW");
+        assert_eq!(normalize_language("zh-Hant-TW"), "zh-TW");
+        assert_eq!(normalize_language("zh-Hans-SG"), "zh-CN");
         assert_eq!(normalize_language("pt"), "pt-BR");
         assert_eq!(normalize_language("xx"), "en");
     }
