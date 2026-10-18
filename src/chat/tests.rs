@@ -180,6 +180,19 @@ async fn module_error_text_is_used_for_failures() {
 }
 
 #[tokio::test]
+async fn module_command_reply_shows_the_module_message() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({"success": true, "message": "월드를 저장했어요", "protocol": "module", "command": "say"}) });
+    let out = run(&api, &settings(), "mc say hi").await;
+    assert!(out.contains("월드를 저장했어요"), "{}", out);
+
+    // stdin 경로의 message는 내부 문구라 보이지 않는다
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({"success": true, "message": "sent to stdin", "data": null, "protocol": "stdin"}) });
+    let out = run(&api, &settings(), "mc say hi").await;
+    assert!(!out.contains("stdin"), "{}", out);
+}
+
+#[tokio::test]
 async fn unknown_inputs() {
     let api = fixture();
     let s = settings();
