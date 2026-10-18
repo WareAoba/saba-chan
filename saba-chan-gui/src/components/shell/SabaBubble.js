@@ -102,14 +102,18 @@ function useBubbleTriggers() {
             const b = useSabaBubble.getState().bubble;
             // 시계 같은 다른 갱신은 건너뛰고, 목록을 새로 받은 갱신에서만 resync 표시를 쓴다
             const resyncId = s.servers !== prev.servers ? resyncRef.current : null;
-            if (resyncId) resyncRef.current = null;
+            // 다른 말풍선으로 바뀌었거나 이미 놓였으면 표시는 끝났다
+            if (resyncId && (resyncId !== b?.id || b.released)) resyncRef.current = null;
             if (!b?.holdKey || b.released) return;
             const srv = s.servers.find((x) => x.id === b.holdKey);
-            // 재시작 예정 시각 전이면 아직 기다리는 중이라 꺼져 있는 것이 맞다
+            // 재시작 예정 시각 전이면 아직 기다리는 중이라 꺼져 있는 것이 맞다: 표시를 남겨 그 뒤 목록에서 다시 본다
             const restartDue = !(b.restartAt > Date.now());
-            if (resyncId === b.id && restartDue && srv?.status !== 'running') {
-                useSabaBubble.getState().release(b.holdKey);
-                return;
+            if (resyncId === b.id && restartDue) {
+                resyncRef.current = null;
+                if (srv?.status !== 'running') {
+                    useSabaBubble.getState().release(b.holdKey);
+                    return;
+                }
             }
             if (watch?.id !== b.id) {
                 const from = b.heldFrom ?? {};

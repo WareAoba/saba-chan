@@ -217,6 +217,13 @@ describe('사바쨩 말풍선', () => {
             useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
         });
         expect(useSabaBubble.getState().bubble?.released).toBe(false);
+
+        // 예정 시각이 지나도 아직 꺼져 있으면 (데몬이 다시 떠 예약이 사라짐 등) 놓는다
+        await advance(21000);
+        await act(async () => {
+            useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
+        });
+        expect(useSabaBubble.getState().bubble?.released).toBe(true);
     });
 
     it('다시 연결 뒤 새로 뜬 다른 서버의 복구 중은 놓지 않는다', async () => {
