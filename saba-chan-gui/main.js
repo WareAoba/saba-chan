@@ -1313,6 +1313,15 @@ function updateTrayMenu() {
                 }
             },
         },
+        {
+            // 터미널로 열기 (I4-e): 데몬이 새 콘솔 창에 CLI 셸을 띄운다 (지금은 Windows만)
+            label: '💻 터미널 열기',
+            visible: process.platform === 'win32',
+            click: async () => {
+                const res = await daemonCall('post', '/api/clients/launch', { kind: 'cli', view: 'shell' });
+                if (!res || !res.success) console.warn('[Tray] Could not open terminal:', res && (res.error_code || res.error));
+            },
+        },
         { type: 'separator' },
         {
             label: daemonProcess ? '🟢 데몬 실행 중' : '⚪ 데몬 중지됨',
@@ -2492,6 +2501,12 @@ ipcMain.handle('actions:run', (_event, id, body) =>
 const discordSettingsPath = (guild) => `/api/discord/${encodeURIComponent(guild)}/settings`;
 ipcMain.handle('discord:settings:get', (_event, guild) => daemonCall('get', discordSettingsPath(guild)));
 ipcMain.handle('discord:settings:set', (_event, guild, patch) => daemonCall('patch', discordSettingsPath(guild), patch || {}));
+
+// 터미널로 열기 (I4): 데몬이 새 콘솔 창에 CLI를 띄운다. {view: 'console'|'shell', instance?}
+ipcMain.handle('clients:launch', (_event, opts) => {
+    const { view, instance } = opts || {};
+    return daemonCall('post', '/api/clients/launch', { kind: 'cli', view, instance });
+});
 
 ipcMain.handle('audit:list', (_event, opts) => {
     const { limit, instance } = opts || {};

@@ -154,3 +154,95 @@ pub async fn daemon_console(
     )
         .into_response()
 }
+
+/// `POST /api/clients/launch` 본문에서 CLI 실행 인자를 만든다 (I4 "터미널로 열기").
+/// 실행 줄은 여기서 정한 모양뿐이다: 본문 문자열을 인자로 그대로 넘기지 않는다. 틀리면 `(field, reason)`
+/// CLI 인자와 그 줄이 가리키는 인스턴스 id
+type LaunchLine = (Vec<String>, Option<String>);
+
+fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'static str)> {
+    match body.get("kind").and_then(|v| v.as_str()) {
+        Some("cli") => {}
+        Some(_) => return Err(("kind", "only \"cli\" can be launched")),
+        None => return Err(("kind", "required")),
+    }
+    let instance = match body.get("instance") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).ok_or(("instance", "must be an instance id"))?.to_string()),
+    };
+    match (body.get("view").and_then(|v| v.as_str()), instance) {
+        // `--` 뒤라 id가 옵션으로 읽히지 않는다
+        (Some("console"), Some(id)) => Ok((vec!["console".into(), "--".into(), id.clone()], Some(id))),
+        (Some("console"), None) => Err(("instance", "required for the console view")),
+        (Some("shell"), None) => Ok((Vec::new(), None)),
+        (Some("shell"), Some(_)) => Err(("instance", "the shell view takes no instance")),
+        _ => Err(("view", "must be \"console\" or \"shell\"")),
+    }
+}
+
+/// POST /api/clients/launch — 새 터미널 창에 CLI를 띄운다 (I4). 로컬 전용: 액션 카탈로그에 없다
+pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+    let (args, instance) = match launch_args(&body) {
+        Ok(v) => v,
+        Err((field, reason)) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "success": false, "error": format!("Invalid input '{}': {}", field, reason), "error_code": "invalid_input", "field": field, "reason": reason })),
+            )
+                .into_response()
+        }
+    };
+    if let Some(id) = &instance {
+        if state.supervisor.read().await.instance_store.get(id).is_none() {
+            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+        }
+    }
+    if !cfg!(windows) {
+        return (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "success": false, "error": "Opening a terminal is only supported on Windows for now", "error_code": "unsupported_platform" })),
+        )
+            .into_response();
+    }
+    let Some(cli) = crate::boot_selector::find_interface_binary("saba-chan-cli") else {
+        return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": "saba-chan-cli was not found next to the daemon", "error_code": "cli_not_found" }))).into_response();
+    };
+    match spawn_in_new_console(&cli, &args) {
+        Ok(pid) => {
+            tracing::info!("[Launch] Opened CLI {:?} (pid {})", args, pid);
+            (StatusCode::OK, Json(json!({ "success": true, "pid": pid }))).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": format!("Could not start saba-chan-cli: {}", e), "error_code": "launch_failed" }))).into_response(),
+    }
+}
+
+#[cfg(windows)]
+fn spawn_in_new_console(cli: &std::path::Path, args: &[String]) -> std::io::Result<u32> {
+    crate::boot_selector::spawn_cli_in_new_console(cli, args)
+}
+
+#[cfg(not(windows))]
+fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String]) -> std::io::Result<u32> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Windows only"))
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::launch_args;
+    use serde_json::json;
+
+    #[test]
+    fn only_fixed_command_lines_are_built() {
+        let console = launch_args(&json!({ "kind": "cli", "view": "console", "instance": "abc" })).unwrap();
+        assert_eq!(console, (vec!["console".to_string(), "--".to_string(), "abc".to_string()], Some("abc".to_string())));
+        assert_eq!(launch_args(&json!({ "kind": "cli", "view": "shell" })).unwrap(), (vec![], None));
+
+        let field = |b| launch_args(&b).unwrap_err().0;
+        assert_eq!(field(json!({ "kind": "gui", "view": "shell" })), "kind");
+        assert_eq!(field(json!({ "view": "shell" })), "kind");
+        assert_eq!(field(json!({ "kind": "cli", "view": "console" })), "instance");
+        assert_eq!(field(json!({ "kind": "cli", "view": "console", "instance": 5 })), "instance");
+        assert_eq!(field(json!({ "kind": "cli", "view": "shell", "instance": "abc" })), "instance");
+        assert_eq!(field(json!({ "kind": "cli", "view": "run", "instance": "abc" })), "view");
+    }
+}
