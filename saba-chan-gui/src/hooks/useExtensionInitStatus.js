@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const POLL_INTERVAL_MS = 2000;
+const sameJson = (prev, next) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
 const MAX_IDLE_POLLS = 15; // true를 한 번도 못 봤을 때 최대 폴링 횟수 (30초)
 
 export default function useExtensionInitStatus() {
@@ -48,8 +49,9 @@ export default function useExtensionInitStatus() {
 
             const isInit = data.initializing ?? false;
             setInitializing(isInit);
-            setInProgress(data.in_progress ?? {});
-            setCompleted(data.completed ?? []);
+            // 폴링마다 같은 내용이면 이전 값을 그대로 둬서 앱 전체를 다시 그리지 않는다
+            setInProgress((prev) => sameJson(prev, data.in_progress ?? {}));
+            setCompleted((prev) => sameJson(prev, data.completed ?? []));
 
             if (isInit) {
                 sawTrueRef.current = true;

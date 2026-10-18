@@ -300,13 +300,13 @@
     "advanced_group": "Advanced Settings",
     "danger_zone": "Gefahrenzone",
     "reset_server_label": "Server zurücksetzen",
-    "reset_server_desc": "Alle Welten, Einstellungen, Logs und andere Daten löschen. Nur die Server-JAR und eula.txt werden beibehalten. Dies kann nicht rückgängig gemacht werden.",
+    "reset_server_desc": "Löscht die Daten dieses Servers und setzt ihn auf den Ausgangszustand zurück. Was gelöscht wird, hängt vom Spiel ab. Dies kann nicht rückgängig gemacht werden.",
     "reset_settings_label": "Einstellungen zurücksetzen",
     "reset_settings_desc": "Alle Servereinstellungen auf Werkseinstellungen zurücksetzen. Welt- und Speicherdaten bleiben erhalten. Dies kann nicht rückgängig gemacht werden.",
     "reset_button": "Zurücksetzen",
     "resetting": "Zurücksetzen...",
     "reset_confirm_title": "Server zurücksetzen",
-    "reset_confirm": "Server '{{name}}' vollständig zurücksetzen?\n\nAlle Welten, Einstellungen, Logs und andere Daten werden gelöscht.\nNur die Server-JAR und eula.txt werden beibehalten.\n\nDiese Aktion kann nicht rückgängig gemacht werden.",
+    "reset_confirm": "Server '{{name}}' zurücksetzen?\n\nDie Serverdaten werden gelöscht und der Server auf den Ausgangszustand zurückgesetzt. Dies kann nicht rückgängig gemacht werden.",
     "reset_success": "Server '{{name}}' wurde zurückgesetzt ({{count}} Elemente gelöscht)",
     "reset_failed": "Zurücksetzen fehlgeschlagen: {{error}}",
     "reset_error": "Zurücksetzen-Fehler: {{error}}",
@@ -443,7 +443,9 @@
     "generic_error": "Ein unerwarteter Fehler ist aufgetreten.",
     "port_conflict": "Port-Konflikt",
     "port_conflict_detail": "Port {{port}} wird bereits von Instanz '{{name}}' verwendet",
-    "port_conflict_force_stop_toast": "🚫 {{stopped}} wurde zwangsgestoppt — Port {{port}} kollidiert mit {{existing}}"
+    "port_conflict_force_stop_toast": "🚫 {{stopped}} wurde zwangsgestoppt — Port {{port}} kollidiert mit {{existing}}",
+    "unexpected_crash": "Etwas ist schiefgelaufen",
+    "retry": "Erneut versuchen"
   },
   "background_modal": {
     "title": "Hintergrunddienste",
@@ -689,7 +691,13 @@
     "preflight_failed": "Vorbereitung von Python fehlgeschlagen. Beim nächsten Serveraufruf wird es erneut versucht. ({{error}})",
     "module_needs": "Voraussetzungen nicht erfüllt: {{deps}}",
     "tab_maintenance": "Backups",
-    "tab_audit": "Protokoll"
+    "tab_audit": "Protokoll",
+    "daemon_down_title": "Keine Verbindung zum Kern-Daemon",
+    "daemon_down_body": "Der Daemon, der deine Server startet und verwaltet, läuft nicht. Starte ihn neu, um deine Server wieder zu laden.",
+    "daemon_down_stale": "Keine Verbindung zum Daemon. Angezeigt wird der zuletzt bekannte Stand.",
+    "daemon_restart": "Daemon neu starten",
+    "daemon_restarting": "Wird neu gestartet…",
+    "daemon_restart_failed": "Daemon konnte nicht neu gestartet werden. {{error}}"
   },
   "discord": {
     "nav_connection": "Verbindung",
@@ -1205,5 +1213,17 @@
     "hint": "Leer lassen für kein Limit. Bei Java-Servern 1–2 GB über -Xmx setzen. Gilt nur unter Windows.",
     "placeholder": "Kein Limit",
     "restart_note": "Gilt nach einem Neustart."
+  },
+  "loading": {
+    "step_init": "Wird initialisiert…",
+    "step_ui": "Oberfläche geladen",
+    "step_modules": "Module werden geladen…",
+    "step_instances": "Server werden geladen…",
+    "step_ready": "Server werden geprüft…",
+    "step_done": "Bereit",
+    "daemon_failed": "Der Kern-Daemon konnte nicht gestartet werden.",
+    "failed_hint": "Wenn du trotzdem öffnest, startet nur die Oberfläche. Starte den Daemon neu, um Server zu verwalten.",
+    "retry": "Erneut versuchen",
+    "continue": "Trotzdem öffnen"
   }
 }

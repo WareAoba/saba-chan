@@ -124,6 +124,34 @@ span[style*="--icon-loader"] svg,
     gap: 8px;
 }
 
+/* 데몬을 못 띄웠을 때 */
+.loading-failed {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    max-width: 420px;
+    text-align: center;
+}
+.loading-failed-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: calc(15px * var(--font-scale));
+    color: var(--warn, #f59e0b);
+}
+.loading-failed-hint {
+    margin: 0;
+    font-size: calc(13px * var(--font-scale));
+    opacity: 0.75;
+}
+.loading-failed-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
 .loading-progress-bar {
     width: 280px;
     height: 6px;

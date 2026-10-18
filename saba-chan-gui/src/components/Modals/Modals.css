@@ -1348,6 +1348,14 @@
     transition: border-color 0.15s;
 }
 
+/* 설정 줄 안에서는 설명 글이 좁아지지 않게 입력칸 폭을 정한다 */
+.setting-item > .setting-input-text {
+    width: 280px;
+    max-width: 50%;
+    flex-shrink: 0;
+    margin-left: 16px;
+}
+
 .setting-input-text:focus {
     border-color: var(--accent-color);
 }

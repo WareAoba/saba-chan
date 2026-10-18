@@ -71,8 +71,6 @@ function App() {
     const setInitProgress = useServerStore((s) => s.setInitProgress);
     const serversInitializing = useServerStore((s) => s.serversInitializing);
     const setServersInitializing = useServerStore((s) => s.setServersInitializing);
-    // 1초마다 바뀌는 값을 구독해 가동 시간 표시를 다시 그린다
-    const _nowEpoch = useServerStore((s) => s.nowEpoch);
     const formatUptime = useServerStore((s) => s.formatUptime);
 
     // ── UI Store (Zustand) ─────────────────────────────────
@@ -97,6 +95,7 @@ function App() {
     const setUnreadNoticeCount = useUIStore((s) => s.setUnreadNoticeCount);
     const backgroundDaemonStatus = useUIStore((s) => s.backgroundDaemonStatus);
     const [patchNotes, setPatchNotes] = useState(null);
+    const [initFailed, setInitFailed] = useState(null); // 데몬 기동 실패 문구
     const daemonRunning = backgroundDaemonStatus === 'running';
 
     // 마지막 업데이트 결과 (데몬 last-result): 데몬이 뜨면 한 번 묻고 알림을 남긴다. 알림을 누르면 패치노트
@@ -281,7 +280,7 @@ function App() {
                     if (status && status.running) {
                         console.log('[HMR] Daemon already running, skipping loading screen');
                         window.__sabaReadyReceived = true;
-                        setInitStatus('Ready!');
+                        setInitStatus(t('loading.step_done'));
                         setInitProgress(100);
                         setDaemonReady(true);
                         setServersInitializing(false);
@@ -299,14 +298,6 @@ function App() {
             window.api.onStatusUpdate((data) => {
                 console.log('[Init Status]', data.step, ':', data.message);
 
-                const statusMessages = {
-                    init: 'Initialize...',
-                    ui: 'UI loaded',
-                    daemon: 'Daemon preparing...',
-                    modules: 'Loading modules...',
-                    instances: 'Loading instances...',
-                    ready: 'Checking servers...',
-                };
                 const progressValues = {
                     init: 10,
                     ui: 20,
@@ -316,7 +307,17 @@ function App() {
                     ready: 90,
                 };
 
-                setInitStatus(statusMessages[data.step] || data.message);
+                // 데몬을 못 띄웠으면 로딩 화면에 실패와 할 일을 보인다 (main이 ready를 보내지 않는다)
+                if (data.step === 'daemon_failed') {
+                    setInitFailed(data.message || t('loading.daemon_failed'));
+                    return;
+                }
+                // 데몬 단계 문구는 main이 현지화해서 보낸다. 나머지 단계는 렌더러 locales를 쓴다
+                setInitStatus(
+                    data.step === 'daemon' && data.message
+                        ? data.message
+                        : t(`loading.step_${data.step}`, { defaultValue: data.message || '' }),
+                );
                 setInitProgress((prev) => Math.max(prev, progressValues[data.step] || prev));
 
                 if (data.step === 'ready') {
@@ -415,7 +416,7 @@ function App() {
     useEffect(() => {
         if (!serversInitializing && daemonReady) {
             setInitProgress(100);
-            setInitStatus('Ready!');
+            setInitStatus(t('loading.step_done'));
         }
     }, [serversInitializing, daemonReady]);
 
@@ -456,6 +457,13 @@ function App() {
     useEffect(() => {
         useServerStore.getState().fetchModules();
     }, []);
+
+    // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아났을 때 다시 받는다
+    useEffect(() => {
+        if (backgroundDaemonStatus === 'running' && !useServerStore.getState().modulesLoaded) {
+            useServerStore.getState().fetchModules();
+        }
+    }, [backgroundDaemonStatus]);
 
     // ── Main initialization + auto-refresh ──────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
@@ -555,9 +563,44 @@ function App() {
     // ── Render ───────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
+    // 종료 질문은 로딩 화면에서도 떠야 창 닫기(✕)가 먹는다
+    const questionModal = modal && (modal.type === 'question' || modal.type === 'warning') && (
+        <QuestionModal
+            title={modal.title}
+            message={modal.message}
+            detail={modal.detail}
+            buttons={modal.buttons}
+            onConfirm={modal.onConfirm}
+            onCancel={() => setModal(null)}
+        />
+    );
+
+    // 데몬 없이 메인 화면으로 (서버 화면이 데몬 연결 안내를 보인다)
+    const enterWithoutDaemon = () => {
+        setInitFailed(null);
+        setDaemonReady(true);
+        setServersInitializing(false);
+    };
+
     // Loading screen (daemon not ready or servers still initializing)
     if (!daemonReady || serversInitializing) {
-        return <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={initProgress} />;
+        return (
+            <>
+                <LoadingScreen
+                    logoSrc={logoSrc}
+                    initStatus={initStatus}
+                    initProgress={initProgress}
+                    failed={initFailed}
+                    onRetry={async () => {
+                        const res = await window.api.daemonRestart?.().catch((e) => ({ error: e.message }));
+                        if (res?.success) enterWithoutDaemon();
+                        else setInitFailed(res?.error || t('loading.daemon_failed'));
+                    }}
+                    onContinue={enterWithoutDaemon}
+                />
+                {questionModal}
+            </>
+        );
     }
 
     // Popout Console Mode (full-window console)
@@ -625,7 +668,7 @@ function App() {
         const iv = setInterval(() => {
             p += Math.random() * 20 + 10;
             if (p >= 100) {
-                setInitStatus('Ready!');
+                setInitStatus(t('loading.step_done'));
                 setInitProgress(100);
                 clearInterval(iv);
                 setTimeout(() => {
@@ -852,16 +895,7 @@ function App() {
                     {modal && modal.type === 'notification' && (
                         <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
                     )}
-                    {modal && (modal.type === 'question' || modal.type === 'warning') && (
-                        <QuestionModal
-                            title={modal.title}
-                            message={modal.message}
-                            detail={modal.detail}
-                            buttons={modal.buttons}
-                            onConfirm={modal.onConfirm}
-                            onCancel={() => setModal(null)}
-                        />
-                    )}
+                    {questionModal}
 
                     {/* waiting.png (느린 진행 감지) */}
                     {showWaitingImage && (

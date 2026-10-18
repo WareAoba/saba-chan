@@ -380,25 +380,16 @@ function GeneralTab({
                                 <div className="danger-zone-content">
                                     <div className="danger-zone-item">
                                         <div className="danger-zone-info">
+                                            {/* 무엇을 지우는지는 모듈마다 다르다: 모듈 locales의 reset.label·description이 먼저 */}
                                             <span className="danger-zone-label">
-                                                {settingsServer.module === 'palworld'
-                                                    ? t('server_settings.reset_settings_label', {
-                                                          defaultValue: 'Reset Settings',
-                                                      })
-                                                    : t('server_settings.reset_server_label', {
-                                                          defaultValue: 'Reset Server',
-                                                      })}
+                                                {t(`mod_${settingsServer.module}:reset.label`, {
+                                                    defaultValue: t('server_settings.reset_server_label'),
+                                                })}
                                             </span>
                                             <span className="danger-zone-desc">
-                                                {settingsServer.module === 'palworld'
-                                                    ? t('server_settings.reset_settings_desc', {
-                                                          defaultValue:
-                                                              'Reset all server settings to factory defaults. World and save data will be preserved. This cannot be undone.',
-                                                      })
-                                                    : t('server_settings.reset_server_desc', {
-                                                          defaultValue:
-                                                              'Delete all worlds, settings, logs, and other data. Only the server JAR and eula.txt will be kept. This cannot be undone.',
-                                                      })}
+                                                {t(`mod_${settingsServer.module}:reset.description`, {
+                                                    defaultValue: t('server_settings.reset_server_desc'),
+                                                })}
                                             </span>
                                         </div>
                                         <button
