@@ -1088,6 +1088,14 @@
       "allow": "不隔離執行",
       "allowed": "{{component}} 將不隔離執行。檔案變更後會再次詢問。",
       "allow_failed": "無法儲存同意：{{error}}"
+    },
+    "extension_gui": {
+      "title": "要載入此擴充功能的畫面嗎？",
+      "message": "{{id}} 是未經驗證的擴充功能。允許後，它的畫面程式碼可以控制 saba-chan 在這台電腦上的所有操作。僅在來源可信時允許。檔案變更後會再次詢問。",
+      "allow": "允許",
+      "deny": "稍後再說",
+      "allowed": "已允許擴充功能 {{id}} 的畫面。",
+      "allow_failed": "無法儲存許可：{{error}}"
     }
   },
   "patch_notes": {
@@ -1206,6 +1214,20 @@
     "revoke_named": "刪除 {{component}} 的同意",
     "revoked": "已刪除 {{component}} 不隔離執行的同意。",
     "failed": "無法載入或變更同意清單。"
+  },
+  "extension_gui_consent": {
+    "title": "擴充功能畫面",
+    "description": "已允許載入畫面的未經驗證擴充功能。被允許的畫面程式碼可以控制 saba-chan 在這台電腦上的所有操作。",
+    "empty": "沒有允許畫面的擴充功能。",
+    "active": "使用中",
+    "stale": "允許後檔案已變更，此許可不再使用。下次會再次詢問。",
+    "pending": "等待許可。允許前不會載入畫面。",
+    "allow": "允許",
+    "allow_named": "允許擴充功能 {{id}} 的畫面",
+    "revoke": "刪除",
+    "revoke_named": "刪除 {{component}} 的許可",
+    "revoked": "已刪除 {{component}} 的畫面許可，下次啟動時生效。",
+    "failed": "無法載入或修改許可清單。"
   },
   "events": {
     "remote_action": "從 Discord 執行：{{text}}",

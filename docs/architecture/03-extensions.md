@@ -234,6 +234,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 1. Renderer `window.api.extensionList()` → JS 브리지 `saba-chan-gui/src/api/createApi.js:510-517` → Tauri 명령 `daemon_request` → `GET /api/extensions`. 확장 관련 메서드는 `createApi.js:510-630`에 있다. 데몬 요청은 Tauri 셸이 대행한다(토큰 인증 포함, `src-tauri/src/native.rs:17-42`, `daemon.rs:213-229`).
 2. `ExtensionProvider`(`src/contexts/ExtensionContext.js:93-189`)가 enabled 익스텐션마다:
    - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`(`responseType:'text'`, `createApi.js:551-561`)로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:23-57`). `ext.gui`가 없으면 요청하지 않는다(`:32-34`).
+   - 확인되지 않았고 이 PC에서 허락하지 않은 익스텐션(목록의 `gui_allowed:false`, 또는 번들 요청이 403 `extension_gui_unapproved`)은 번들·스타일을 요청하지 않고 한 번 묻는다. 허락하면 `POST /api/sandbox/extension-gui/ext-<id>` 뒤 목록을 다시 받아 로드한다. 거절하면 그 실행에서는 다시 묻지 않고, 설정 > 고급 `ExtensionGuiSection`에서 허락하거나 지운다.
    - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:75-77`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
    - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:59-66`).
    - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. manifest의 `gui.slots`는 쓰지 않는다.
@@ -242,6 +243,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`·`window.electron`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 즉 번들은 AppContainer 밖에서 데몬 API 전체를 부른다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, 셸이 직접 정하는 `/api/updates/launch-updater`·`/api/client/*`·`/api/daemon/shutdown`은 거부, 04 문서 §1.1)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다.
    - 그래서 데몬은 번들(`/gui`)과 스타일(`/gui/styles`)을 **확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 익스텐션에만** 서빙한다(`extension::gui_allowed`, 플랫폼과 무관). 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}`. manifest의 `gui.bundle`·`gui.styles`는 익스텐션 폴더 기준 상대 경로(`..`·절대 경로 없음)이고, 링크를 거치지 않는 일반 파일이어야 한다. 아니면 404(허락은 폴더 안 파일의 지문에 묶이기 때문이다).
    - `GET /api/extensions` 항목에 GUI 번들이 있으면 `gui_allowed: bool`이 실린다. false면 GUI는 번들을 요청하지 말고 사용자에게 물은 뒤 `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다(원격 출처는 403 `consent_local_only`). 동의는 `config.json` `sandbox.extension_gui`에 익스텐션 폴더 전체의 파일 지문으로 남아, 파일이 하나라도 바뀌면 다시 묻는다. 철회는 `DELETE` 같은 경로.
+   - 웹뷰 CSP(04 §1)는 스크립트를 앱 자신과 `blob:`으로만 열고 `unsafe-eval`이 없으므로, 번들 안에서 `eval`·`new Function`을 쓰면 실행되지 않는다.
    - 받아들인 위험: 허락한 번들은 데몬 API 전체(동의 라우트 포함)를 부를 수 있다. 허락은 그 익스텐션을 GUI에서 믿는다는 뜻이다.
 
 현재 `gui`를 가진 익스텐션은 없으므로 이 경로는 실제로 쓰이지 않는다.

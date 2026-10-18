@@ -1088,6 +1088,14 @@
       "allow": "Ejecutar sin aislamiento",
       "allowed": "{{component}} se ejecutará sin aislamiento. Se volverá a preguntar si cambian sus archivos.",
       "allow_failed": "No se pudo guardar el consentimiento: {{error}}"
+    },
+    "extension_gui": {
+      "title": "¿Cargar las pantallas de esta extensión?",
+      "message": "{{id}} es una extensión no verificada. Si la permites, su código de pantalla podrá controlar todo lo que saba-chan hace en este PC. Permítela solo si viene de una fuente de confianza. Se te volverá a preguntar si cambian sus archivos.",
+      "allow": "Permitir",
+      "deny": "Ahora no",
+      "allowed": "Se permitieron las pantallas de la extensión {{id}}.",
+      "allow_failed": "No se pudo guardar el permiso: {{error}}"
     }
   },
   "patch_notes": {
@@ -1206,6 +1214,20 @@
     "revoke_named": "Quitar el consentimiento de {{component}}",
     "revoked": "Se quitó el consentimiento para ejecutar {{component}} sin aislamiento.",
     "failed": "No se pudo cargar o cambiar la lista."
+  },
+  "extension_gui_consent": {
+    "title": "Pantallas de extensiones",
+    "description": "Extensiones no verificadas cuyas pantallas permitiste cargar. El código de pantalla permitido puede controlar todo lo que saba-chan hace en este PC.",
+    "empty": "No hay pantallas de extensiones permitidas.",
+    "active": "En uso",
+    "stale": "Sus archivos cambiaron después de permitirla, así que este permiso no se usa. Se te volverá a preguntar.",
+    "pending": "Esperando permiso. Sus pantallas no se cargarán hasta que lo permitas.",
+    "allow": "Permitir",
+    "allow_named": "Permitir las pantallas de la extensión {{id}}",
+    "revoke": "Quitar",
+    "revoke_named": "Quitar el permiso de {{component}}",
+    "revoked": "Se quitó el permiso de pantalla de {{component}}. Se aplica en el próximo inicio.",
+    "failed": "No se pudo cargar o cambiar la lista de permisos."
   },
   "events": {
     "remote_action": "Ejecutado desde Discord: {{text}}",

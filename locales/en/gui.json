@@ -1089,6 +1089,14 @@
       "allow": "Run without isolation",
       "allowed": "{{component}} will run without isolation. You'll be asked again if its files change.",
       "allow_failed": "Couldn't save the consent: {{error}}"
+    },
+    "extension_gui": {
+      "title": "Load this extension's screens?",
+      "message": "{{id}} is an unverified extension. If you allow it, its screen code can control everything saba-chan does on this PC. Only allow it if you got it from a source you trust. You'll be asked again if its files change.",
+      "allow": "Allow",
+      "deny": "Not now",
+      "allowed": "Allowed the screens of the {{id}} extension.",
+      "allow_failed": "Couldn't save the permission: {{error}}"
     }
   },
   "patch_notes": {
@@ -1236,6 +1244,20 @@
     "revoke_named": "Remove consent for {{component}}",
     "revoked": "Removed the consent to run {{component}} without isolation.",
     "failed": "Couldn't load or change the consent list."
+  },
+  "extension_gui_consent": {
+    "title": "Extension screens",
+    "description": "Unverified extensions whose screens you allowed to load. Allowed screen code can control everything saba-chan does on this PC.",
+    "empty": "No extension screens are allowed.",
+    "active": "In use",
+    "stale": "Its files changed after you allowed it, so this permission isn't used. You'll be asked again next time.",
+    "pending": "Waiting for permission. Its screens won't load until you allow them.",
+    "allow": "Allow",
+    "allow_named": "Allow the screens of the {{id}} extension",
+    "revoke": "Remove",
+    "revoke_named": "Remove the permission for {{component}}",
+    "revoked": "Removed the screen permission for {{component}}. It takes effect on the next launch.",
+    "failed": "Couldn't load or change the permission list."
   },
   "events": {
     "remote_action": "Run from Discord: {{text}}",

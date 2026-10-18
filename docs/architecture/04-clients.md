@@ -87,7 +87,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 (미사용) |
 | systemMetrics (503) | GET /api/system/metrics[?sizes=false] | ✓ 715 (`SystemMonitor`) |
 | configDefaults / configReset (505-507) | GET /api/config/:kind/defaults, POST /api/config/:kind/reset {keys?} | ✓ 704-705 (미사용) |
-| extensionList…extensionInitStatus (510-630) | /api/extensions, /:id/enable, /disable, /audit, /i18n/:locale, /gui, /gui/styles(`responseType:'text'`), /icon(`responseType:'base64'`), /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 754-771 (확장 UI 로딩은 03 §4.1) |
+| extensionList…extensionInitStatus (510-630) | /api/extensions, /:id/enable, /disable, /audit, /i18n/:locale, /gui, /gui/styles(`responseType:'text'`), /icon(`responseType:'base64'`), /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 754-771 (확장 UI 로딩은 03 §4.1). `gui_allowed:false`면 번들·스타일을 요청하지 않고 사용자에게 한 번 묻는다(`ExtensionContext`). `/gui`가 403 `extension_gui_unapproved`면 `extensionGuiBundle`은 `{error_code:'extension_gui_unapproved'}`를 돌려주고 다시 묻는다 |
 | managedConsole (634) | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 679 |
 | managedStdin (642) | POST /api/instance/:id/stdin | ✓ 680 |
 | consolePopout / consolePopoutList (651-652) | Rust `console_popout` / `console_popout_list` (열린 팝아웃 창의 instanceId 배열). daemon 호출 없음 | n/a |
@@ -119,6 +119,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | sandboxListUnisolated (864) | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | ✓ 737 |
 | sandboxAllowUnisolated (865) | POST /api/sandbox/unisolated/:component. `sandbox_unavailable` 응답의 `component`를 넘긴다 | ✓ 738-741 |
 | sandboxRevokeUnisolated (866) | DELETE /api/sandbox/unisolated/:component | ✓ 738-741 |
+| sandboxListExtensionGui / sandboxAllowExtensionGui / sandboxRevokeExtensionGui | GET /api/sandbox/extension-gui, POST·DELETE /api/sandbox/extension-gui/ext-<id>. 확인되지 않은 익스텐션의 GUI 번들 허락(묻는 창은 `ExtensionContext`, 목록·철회는 설정 > 고급 `ExtensionGuiSection`) | 데몬 #148 |
 | actionsList (867) | GET /api/actions?surface=gui&instance?&locale? (P2) | ✓ 743 |
 | actionsPlan (872) | POST /api/actions/:id/plan `{input, instance?}` | ✓ 746 |
 | actionsRun (873) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |

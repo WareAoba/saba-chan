@@ -1088,6 +1088,14 @@
       "allow": "Executar sem isolamento",
       "allowed": "{{component}} vai rodar sem isolamento. Você será perguntado de novo se os arquivos mudarem.",
       "allow_failed": "Não foi possível salvar o consentimento: {{error}}"
+    },
+    "extension_gui": {
+      "title": "Carregar as telas desta extensão?",
+      "message": "{{id}} é uma extensão não verificada. Se você permitir, o código de tela dela poderá controlar tudo o que o saba-chan faz neste PC. Permita apenas se ela veio de uma fonte confiável. Você será perguntado de novo se os arquivos mudarem.",
+      "allow": "Permitir",
+      "deny": "Agora não",
+      "allowed": "Telas da extensão {{id}} permitidas.",
+      "allow_failed": "Não foi possível salvar a permissão: {{error}}"
     }
   },
   "patch_notes": {
@@ -1206,6 +1214,20 @@
     "revoke_named": "Remover o consentimento de {{component}}",
     "revoked": "Consentimento para executar {{component}} sem isolamento removido.",
     "failed": "Não foi possível carregar ou alterar a lista."
+  },
+  "extension_gui_consent": {
+    "title": "Telas de extensões",
+    "description": "Extensões não verificadas cujas telas você permitiu carregar. O código de tela permitido pode controlar tudo o que o saba-chan faz neste PC.",
+    "empty": "Nenhuma tela de extensão permitida.",
+    "active": "Em uso",
+    "stale": "Os arquivos mudaram depois da permissão, então ela não é usada. Você será perguntado de novo.",
+    "pending": "Aguardando permissão. As telas não serão carregadas até você permitir.",
+    "allow": "Permitir",
+    "allow_named": "Permitir as telas da extensão {{id}}",
+    "revoke": "Remover",
+    "revoke_named": "Remover a permissão de {{component}}",
+    "revoked": "Permissão de tela de {{component}} removida. Vale a partir da próxima inicialização.",
+    "failed": "Não foi possível carregar ou alterar a lista de permissões."
   },
   "events": {
     "remote_action": "Executado pelo Discord: {{text}}",
