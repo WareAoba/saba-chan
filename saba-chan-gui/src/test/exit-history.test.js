@@ -46,4 +46,26 @@ describe('ExitHistory', () => {
         expect(text).toContain('Gave up after 5 restarts in 10 minutes');
         expect(text).toContain("Couldn't restart: port busy");
     });
+
+    it('note_code가 있으면 영어 문장 대신 코드로 문구를 고른다', async () => {
+        window.api.instanceEvents = vi.fn().mockResolvedValue({
+            events: [
+                { at: '2026-10-16T09:00:00Z', kind: 'crash', note: 'x', note_code: 'auto_restart_off' },
+                { at: '2026-10-16T10:00:00Z', kind: 'crash', note: 'y', note_code: 'gave_up', note_args: { count: 3 } },
+                {
+                    at: '2026-10-16T11:00:00Z',
+                    kind: 'crash',
+                    note: 'z',
+                    note_code: 'restart_failed',
+                    note_args: { reason: 'no java' },
+                },
+            ],
+        });
+        render(<ExitHistory server={{ id: 'a', status: 'stopped' }} />);
+        await waitFor(() => expect(document.querySelectorAll('.exit-history li')).toHaveLength(3));
+        const text = document.querySelector('.exit-history').textContent;
+        expect(text).toContain('Auto restart is off');
+        expect(text).toContain('Gave up after 3 restarts in 10 minutes');
+        expect(text).toContain("Couldn't restart: no java");
+    });
 });
