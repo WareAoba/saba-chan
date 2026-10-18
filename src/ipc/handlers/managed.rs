@@ -325,7 +325,7 @@ pub async fn accept_agreements_handler(
                 let message = module_result.get("message").and_then(Value::as_str).unwrap_or("Module failed to apply the agreement");
                 return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": message }))).into_response();
             }
-            let language = state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
+            let language = state.config_store.ui_language().await;
             let sup = state.supervisor.read().await;
             let agreements = sup.instance_store.get(&id).map(|i| sup.agreement_views(i, &language)).unwrap_or_default();
             (StatusCode::OK, Json(json!({ "success": true, "agreements": agreements }))).into_response()

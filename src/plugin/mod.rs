@@ -14,7 +14,7 @@ pub fn set_ipc_port(port: u16) {
 /// Python 실행마다 넣는 데몬 연결 정보.
 /// - `SABA_IPC_PORT`, `SABA_IPC_URL`: 데몬 API 주소
 /// - `SABA_TOKEN_PATH`: `X-Saba-Token` 값이 든 파일 (토큰 자체는 env에 넣지 않는다)
-/// - `SABA_LANG`: 지금 GUI 언어. 언어를 바꿔도 데몬은 재시작하지 않으므로 매번 읽는다.
+/// - `SABA_LANG`: 지금 GUI 언어(고르기 전에는 OS 언어). 언어를 바꿔도 데몬은 재시작하지 않으므로 매번 읽는다.
 fn daemon_env() -> Vec<(&'static str, String)> {
     let port = *IPC_PORT.get().unwrap_or(&saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
     let mut env = vec![
@@ -29,10 +29,11 @@ fn daemon_env() -> Vec<(&'static str, String)> {
         .section("gui")
         .get("language")
         .and_then(|v| v.as_str())
-        .map(str::to_string);
-    if let Some(lang) = lang {
-        env.push(("SABA_LANG", lang));
-    }
+        .filter(|l| !l.trim().is_empty())
+        .map(str::to_string)
+        // 언어를 고르기 전에는 GUI처럼 OS 언어를 따른다
+        .unwrap_or_else(crate::chat::i18n::os_language);
+    env.push(("SABA_LANG", lang));
     env
 }
 

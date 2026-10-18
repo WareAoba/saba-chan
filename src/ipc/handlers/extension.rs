@@ -71,7 +71,7 @@ pub async fn list_extensions(
 ) -> Json<serde_json::Value> {
     let language = match q.lang.filter(|l| !l.is_empty()) {
         Some(l) => l,
-        None => state.config_store.get_gui_settings().await.language.unwrap_or_default(),
+        None => state.config_store.ui_language().await,
     };
     let mgr = state.extension_manager.read().await;
     let mut list = mgr.list();

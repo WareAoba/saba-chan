@@ -121,7 +121,7 @@ pub async fn run_with_daemon_settings(server: &IPCServer, req: &super::ChatReque
     let bot = server.config_store.get_bot_config().await;
     let language = match &req.locale {
         Some(locale) => locale.clone(),
-        None => server.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into()),
+        None => server.config_store.ui_language().await,
     };
     let catalog = super::i18n::Catalog::for_language(&language);
     super::process(server, &super::ChatSettings::from(&bot), &catalog, req).await

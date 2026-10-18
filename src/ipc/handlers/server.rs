@@ -720,7 +720,7 @@ async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Respon
         }
     }
     // 모듈 약관(`[[agreements]]`)을 모두 동의해야 켠다. 파이썬을 부르지 않는 검사라 validate보다 먼저
-    let language = state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
+    let language = state.config_store.ui_language().await;
     let missing = state.supervisor.read().await.missing_agreements(id, &language);
     if !missing.is_empty() {
         let names: Vec<&str> = missing.iter().filter_map(|a| a["label"].as_str()).collect();

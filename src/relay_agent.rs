@@ -371,7 +371,7 @@ impl Session {
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
         // (릴레이 스키마는 10자까지. 넘으면 heartbeat 전체가 거절되므로 싣지 않는다)
-        if let Some(language) = self.server.config_store.get_gui_settings().await.language.filter(|l| l.len() <= 10) {
+        if let Some(language) = Some(self.server.config_store.ui_language().await).filter(|l| l.len() <= 10) {
             meta["language"] = Value::String(language);
         }
         // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다

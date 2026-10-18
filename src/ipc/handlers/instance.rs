@@ -50,7 +50,7 @@ pub async fn get_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let language = state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
+    let language = state.config_store.ui_language().await;
     let supervisor = state.supervisor.read().await;
 
     match supervisor.instance_store.get(&id) {
@@ -352,7 +352,7 @@ pub async fn create_instance(
                         let tracker = state.provision_tracker.clone();
                         let supervisor_arc = state.supervisor.clone();
                         // 진행 문구는 데몬 언어로 (모듈이 보내는 문구는 SABA_LANG으로 이미 번역돼 온다)
-                        let text = crate::chat::i18n::Catalog::for_language(&state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into()));
+                        let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
 
                         // install_dir 결정: instance_dir / install_subdir (기본 "server")
                         let install_subdir = install_config.install_subdir.clone()
@@ -1517,7 +1517,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
 
     let tracker = state.provision_tracker.clone();
     let supervisor_arc = state.supervisor.clone();
-    let text = crate::chat::i18n::Catalog::for_language(&state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into()));
+    let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
     let install_settings = instance.module_settings.clone();

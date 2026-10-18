@@ -248,7 +248,7 @@ async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &Gu
     }
     // 자동 언어로 바꿀 때는 따를 언어도 지금 값으로 (heartbeat `language`는 다음 주기에야 간다)
     if diff.get("locale").and_then(Value::as_str) == Some(AUTO_LOCALE) {
-        if let Some(language) = state.config_store.get_gui_settings().await.language.filter(|l| l.len() <= 10) {
+        if let Some(language) = Some(state.config_store.ui_language().await).filter(|l| l.len() <= 10) {
             diff.insert("language".into(), Value::String(language));
         }
     }
