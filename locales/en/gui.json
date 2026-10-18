@@ -395,8 +395,6 @@
     "dependency_unmet_title": "Missing requirements",
     "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again.",
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
-    "eula_notice": "Minecraft EULA: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "Accept EULA and start",
     "working_dir_in_use": "Server '{{instance}}' already uses this folder. Two servers in one folder overwrite each other's world and settings. Pick another folder.",
     "no_command_path": "This server has no console to send commands to. Start it from Saba-chan to send commands."
   },
@@ -1256,5 +1254,14 @@
     "failed_hint": "If you open anyway, only the interface opens. Restart the daemon to manage servers.",
     "retry": "Try again",
     "continue": "Open anyway"
+  },
+  "agreements": {
+    "title": "Agreements",
+    "accept": "I agree to the {{name}}",
+    "read": "Read the {{name}}",
+    "read_short": "Read",
+    "start_title": "Agreement required",
+    "start_message": "To start '{{name}}', you need to agree to the terms below. Read them and check each one.",
+    "accept_and_start": "Agree and start"
   }
 }

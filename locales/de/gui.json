@@ -394,8 +394,6 @@
     "dependency_unmet_title": "Fehlende Voraussetzungen",
     "dependency_unmet_message": "Das Modul für '{{name}}' benötigt die unten stehenden Versionen. Aktualisiere oder installiere und aktiviere die Erweiterung und starte dann erneut.",
     "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",
-    "eula_notice": "Minecraft-EULA: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "EULA akzeptieren und starten",
     "working_dir_in_use": "Der Server '{{instance}}' verwendet diesen Ordner bereits. Zwei Server in einem Ordner überschreiben gegenseitig Welt und Einstellungen. Wähle einen anderen Ordner.",
     "no_command_path": "Dieser Server hat keine Konsole für Befehle. Starte ihn über Saba-chan, um Befehle zu senden."
   },
@@ -1226,5 +1224,14 @@
     "failed_hint": "Wenn du trotzdem öffnest, startet nur die Oberfläche. Starte den Daemon neu, um Server zu verwalten.",
     "retry": "Erneut versuchen",
     "continue": "Trotzdem öffnen"
+  },
+  "agreements": {
+    "title": "Vereinbarungen",
+    "accept": "Ich stimme der {{name}} zu",
+    "read": "{{name}} lesen",
+    "read_short": "Lesen",
+    "start_title": "Zustimmung erforderlich",
+    "start_message": "Um '{{name}}' zu starten, müssen Sie den folgenden Bedingungen zustimmen. Lesen Sie sie und haken Sie jede ab.",
+    "accept_and_start": "Zustimmen und starten"
   }
 }

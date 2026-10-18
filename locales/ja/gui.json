@@ -338,8 +338,6 @@
     "dependency_unmet_title": "必要な要件を満たしていません",
     "dependency_unmet_message": "'{{name}}' のモジュールには以下のバージョンが必要です。アップデートするか、拡張機能をインストールして有効にしてから、もう一度起動してください。",
     "preflight_failed_title": "'{{name}}' の起動前チェックで問題が見つかりました",
-    "eula_notice": "Minecraft EULA: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "EULA に同意して起動",
     "working_dir_in_use": "サーバー '{{instance}}' がすでにこのフォルダーを使っています。1つのフォルダーに2つのサーバーを作ると、ワールドと設定を互いに上書きします。別のフォルダーを選んでください。",
     "no_command_path": "このサーバーにはコマンドを送るコンソールがありません。サバちゃんから起動するとコマンドを送れます。"
   },
@@ -1226,5 +1224,14 @@
     "failed_hint": "このまま開くと画面だけが開きます。サーバーを操作するにはデーモンを再起動してください。",
     "retry": "再試行",
     "continue": "このまま開く"
+  },
+  "agreements": {
+    "title": "規約への同意",
+    "accept": "{{name}}に同意します",
+    "read": "{{name}}の原文を読む",
+    "read_short": "原文を見る",
+    "start_title": "規約への同意が必要です",
+    "start_message": "サーバー「{{name}}」を起動するには、以下の規約に同意する必要があります。原文を読んでチェックしてください。",
+    "accept_and_start": "同意して起動"
   }
 }

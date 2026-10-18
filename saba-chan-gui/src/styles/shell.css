@@ -2766,3 +2766,41 @@ button.appbar-preflight {
     font-size: var(--fs-xs);
     color: var(--text-3);
 }
+
+/* 약관 동의 (module.toml [[agreements]]): 서버 만들기 카드와 시작 확인 창이 같이 쓴다 */
+.agreement-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.agreement-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.agreement-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    text-align: left;
+}
+.agreement-check.disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+.agreement-read {
+    flex-shrink: 0;
+}
+.agreement-modal .agreement-list {
+    margin: 4px 0 16px;
+    width: 100%;
+}
+.modal-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

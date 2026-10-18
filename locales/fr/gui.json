@@ -394,8 +394,6 @@
     "dependency_unmet_title": "Prérequis manquants",
     "dependency_unmet_message": "Le module de « {{name}} » nécessite les versions ci-dessous. Mettez à jour, ou installez et activez l'extension, puis relancez.",
     "preflight_failed_title": "La vérification avant démarrage de '{{name}}' a trouvé un problème",
-    "eula_notice": "CLUF de Minecraft : https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "Accepter le CLUF et démarrer",
     "working_dir_in_use": "Le serveur '{{instance}}' utilise déjà ce dossier. Deux serveurs dans un même dossier écrasent le monde et les réglages l'un de l'autre. Choisissez un autre dossier.",
     "no_command_path": "Ce serveur n'a pas de console pour recevoir des commandes. Démarrez-le depuis Saba-chan pour envoyer des commandes."
   },
@@ -1226,5 +1224,14 @@
     "failed_hint": "Si vous ouvrez quand même, seule l'interface s'ouvre. Redémarrez le démon pour gérer les serveurs.",
     "retry": "Réessayer",
     "continue": "Ouvrir quand même"
+  },
+  "agreements": {
+    "title": "Accords",
+    "accept": "J'accepte {{name}}",
+    "read": "Lire {{name}}",
+    "read_short": "Lire",
+    "start_title": "Accord requis",
+    "start_message": "Pour démarrer « {{name}} », vous devez accepter les conditions ci-dessous. Lisez-les et cochez chacune.",
+    "accept_and_start": "Accepter et démarrer"
   }
 }

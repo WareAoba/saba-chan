@@ -394,8 +394,6 @@
     "dependency_unmet_title": "缺少必要组件",
     "dependency_unmet_message": "'{{name}}' 的模块需要以下版本。请更新，或安装并启用扩展插件后再启动。",
     "preflight_failed_title": "'{{name}}' 的启动前检查发现了问题",
-    "eula_notice": "Minecraft EULA：https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "同意 EULA 并启动",
     "working_dir_in_use": "服务器 '{{instance}}' 已在使用此文件夹。同一文件夹中的两个服务器会互相覆盖世界和设置。请选择其他文件夹。",
     "no_command_path": "此服务器没有可接收命令的控制台。请从萨巴酱启动服务器后再发送命令。"
   },
@@ -1226,5 +1224,14 @@
     "failed_hint": "直接打开只会打开界面。要管理服务器，请重启守护进程。",
     "retry": "重试",
     "continue": "直接打开"
+  },
+  "agreements": {
+    "title": "协议同意",
+    "accept": "我同意{{name}}",
+    "read": "阅读{{name}}原文",
+    "read_short": "查看原文",
+    "start_title": "需要同意协议",
+    "start_message": "要启动服务器“{{name}}”，需要同意以下协议。请阅读原文并勾选。",
+    "accept_and_start": "同意并启动"
   }
 }

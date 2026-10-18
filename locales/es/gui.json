@@ -394,8 +394,6 @@
     "dependency_unmet_title": "Faltan requisitos",
     "dependency_unmet_message": "El módulo de '{{name}}' necesita las versiones siguientes. Actualiza, o instala y activa la extensión, y vuelve a iniciar.",
     "preflight_failed_title": "La comprobación previa de '{{name}}' encontró un problema",
-    "eula_notice": "EULA de Minecraft: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "Aceptar la EULA e iniciar",
     "working_dir_in_use": "El servidor '{{instance}}' ya usa esta carpeta. Dos servidores en una carpeta sobrescriben el mundo y los ajustes del otro. Elige otra carpeta.",
     "no_command_path": "Este servidor no tiene consola para enviar comandos. Inícialo desde Saba-chan para enviar comandos."
   },
@@ -1226,5 +1224,14 @@
     "failed_hint": "Si abres de todos modos, solo se abre la interfaz. Reinicia el daemon para gestionar servidores.",
     "retry": "Reintentar",
     "continue": "Abrir de todos modos"
+  },
+  "agreements": {
+    "title": "Acuerdos",
+    "accept": "Acepto {{name}}",
+    "read": "Leer {{name}}",
+    "read_short": "Leer",
+    "start_title": "Se requiere aceptación",
+    "start_message": "Para iniciar '{{name}}', debe aceptar los términos siguientes. Léalos y marque cada uno.",
+    "accept_and_start": "Aceptar e iniciar"
   }
 }

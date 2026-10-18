@@ -26,6 +26,7 @@ const modules = [
         description: 'Minecraft Java 서버',
         interaction_mode: 'console',
         protocols: { supported: ['stdin'], default: 'stdin' },
+        agreements: [{ id: 'eula', label: 'Minecraft EULA', url: 'https://aka.ms/MinecraftEULA' }],
         commands: {
             fields: [
                 {
