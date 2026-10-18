@@ -153,6 +153,8 @@ contextBridge.exposeInMainWorld('api', {
     relayNodeChannels: (guildId) => ipcRenderer.invoke('relay:nodeChannels', guildId),
     relayNodeChannelsSave: (guildId, patch) => ipcRenderer.invoke('relay:nodeChannelsSave', guildId, patch),
     instanceAgreements: (id, accept) => ipcRenderer.invoke('instance:agreements', id, accept),
+    // 다음 할 일 (J1-a): {steps:[{id, done, optional}], next}
+    onboarding: () => ipcRenderer.invoke('onboarding:get'),
     instanceBackups: (id) => ipcRenderer.invoke('instance:backups', id),
     instanceBackupCreate: (id) => ipcRenderer.invoke('instance:backupCreate', id),
     instanceBackupDelete: (id, name) => ipcRenderer.invoke('instance:backupDelete', id, name),
