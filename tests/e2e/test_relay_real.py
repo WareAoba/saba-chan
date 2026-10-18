@@ -118,7 +118,9 @@ def test_heartbeat_cpu_ram_is_stored_by_real_relay(paired, relay, fake_server):
         return next((s for s in servers if s.get("name") == "mc1" and s.get("usage")), None)
 
     entry = wait_until(mc1, 60, "relay 호스트 기록에 mc1의 CPU·RAM")
-    assert entry["usage"]["memMb"] > 0, entry
+    usage = entry["usage"]
+    assert isinstance(usage.get("cpu"), (int, float)) and usage["cpu"] >= 0, entry
+    assert isinstance(usage.get("memMb"), (int, float)) and usage["memMb"] > 0, entry
     assert str(folder) not in str(entry), entry
 
 
@@ -131,5 +133,7 @@ def test_discord_start_of_unagreed_server_asks_to_agree_on_pc(paired, relay, fak
     if reply.get("ok") and reply["data"].get("planId"):
         reply = relay.action(GUILD, OWNER, {"action": "run_plan", **call, "planId": reply["data"]["planId"]})["reply"]
     assert reply.get("ok") is False and reply.get("code") == "agreement_required", reply
-    assert "동의" in reply.get("text", ""), reply
+    # ko 문구 "PC의 사바쨩에서 …에 동의해야 켤 수 있어요"와 약관 원문 링크
+    text = reply.get("text", "")
+    assert "PC" in text and "동의" in text and "<https://" in text, reply
     assert paired.server_status(iid) == "stopped"
