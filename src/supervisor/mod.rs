@@ -262,6 +262,46 @@ impl Supervisor {
         }
         map
     }
+    /// 시작 전 포트 검사. 실행 중인 다른 인스턴스와 겹치거나 다른 프로그램이 잡고 있는 포트가 있으면
+    /// `port_conflict` 응답을 돌려준다. 끄는 방법은 전역 설정(gui.portConflictCheck) 하나뿐이다
+    fn port_conflict_response(&self, instance: &crate::instance::ServerInstance) -> Option<Value> {
+        if self.skip_port_check.load(Ordering::Relaxed) {
+            return None;
+        }
+        let all_instances = self.instance_store.list();
+        let running_ids: std::collections::HashSet<String> = all_instances
+            .iter()
+            .filter(|i| self.tracker.get_pid(&i.id).is_ok())
+            .map(|i| i.id.clone())
+            .collect();
+        let module_protocols = self.build_module_protocols_map();
+        let mut details: Vec<String> = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols))
+            .iter()
+            .map(|c| c.to_string())
+            .collect();
+        // 인스턴스끼리 겹치지 않을 때만 다른 프로그램이 잡은 포트를 직접 묶어 본다.
+        // 이 인스턴스가 이미 실행 중이면 그 포트는 자기 것이므로 건너뛴다
+        if details.is_empty() && !running_ids.contains(&instance.id) {
+            let module = self.module_loader.get_module(&instance.module_name).ok();
+            let port_fields = module.as_ref().and_then(|m| m.metadata.settings.as_ref()).map(|s| s.port_fields()).unwrap_or_default();
+            let ports = crate::validator::start_check_ports(instance, Some(&module_protocols), &port_fields);
+            details = crate::validator::ports_held_elsewhere(&ports)
+                .into_iter()
+                .map(|(name, port)| format!("Port {} ({}) is in use by another program", port, name))
+                .collect();
+        }
+        if details.is_empty() {
+            return None;
+        }
+        tracing::warn!("Port conflict detected for '{}': {:?}", instance.name, details);
+        Some(json!({
+            "success": false,
+            "error": "port_conflict",
+            "error_code": "port_conflict",
+            "message": format!("Cannot start '{}': port conflict detected", instance.name),
+            "conflicts": details,
+        }))
+    }
     /// 인스턴스의 실행 파일 경로를 자동 해석합니다.
     ///
     /// 우선순위:
@@ -517,27 +557,8 @@ impl Supervisor {
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
             // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-            // 끄는 방법은 전역 설정(gui.portConflictCheck) 하나뿐이다
-            if !s.skip_port_check.load(Ordering::Relaxed) {
-                let all_instances = s.instance_store.list();
-                let running_ids: std::collections::HashSet<String> = all_instances
-                    .iter()
-                    .filter(|i| s.tracker.get_pid(&i.id).is_ok())
-                    .map(|i| i.id.clone())
-                    .collect();
-                let module_protocols = s.build_module_protocols_map();
-                let conflicts = crate::validator::check_port_conflicts(&instance, all_instances, &running_ids, Some(&module_protocols));
-                if !conflicts.is_empty() {
-                    let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
-                    tracing::warn!("Port conflict detected for '{}': {:?}", server_name, details);
-                    return Ok(json!({
-                        "success": false,
-                        "error": "port_conflict",
-                        "error_code": "port_conflict",
-                        "message": format!("Cannot start '{}': port conflict detected", server_name),
-                        "conflicts": details,
-                    }));
-                }
+            if let Some(blocked) = s.port_conflict_response(&instance) {
+                return Ok(blocked);
             }
 
             // ── 모듈 의존성 버전 검사 ([module.dependencies]의 saba-core, ext-<id>) ──
@@ -1326,27 +1347,8 @@ impl Supervisor {
             }
 
             // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-            // 끄는 방법은 전역 설정(gui.portConflictCheck) 하나뿐이다
-            if !s.skip_port_check.load(Ordering::Relaxed) {
-                let all_instances = s.instance_store.list();
-                let running_ids: std::collections::HashSet<String> = all_instances
-                    .iter()
-                    .filter(|i| s.tracker.get_pid(&i.id).is_ok())
-                    .map(|i| i.id.clone())
-                    .collect();
-                let module_protocols = s.build_module_protocols_map();
-                let conflicts = crate::validator::check_port_conflicts(&instance, all_instances, &running_ids, Some(&module_protocols));
-                if !conflicts.is_empty() {
-                    let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
-                    tracing::warn!("Port conflict detected for managed instance '{}': {:?}", instance.name, details);
-                    return Ok(json!({
-                        "success": false,
-                        "error": "port_conflict",
-                        "error_code": "port_conflict",
-                        "message": format!("Cannot start '{}': port conflict detected", instance.name),
-                        "conflicts": details,
-                    }));
-                }
+            if let Some(blocked) = s.port_conflict_response(&instance) {
+                return Ok(blocked);
             }
 
 
