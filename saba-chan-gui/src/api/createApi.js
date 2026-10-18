@@ -913,6 +913,14 @@ export function createApi({ invoke, hub }) {
         },
         actionsPlan: (id, body) => daemonCall('post', `/api/actions/${encodeURIComponent(id)}/plan`, body || {}),
         actionsRun: (id, body) => daemonCall('post', `/api/actions/${encodeURIComponent(id)}/run`, body || {}),
+        // 길드·인스턴스별 디스코드 부르는 말 (계약 integration/discord-instance-commands.md)
+        guildInstances: (guild) => daemonCall('get', `/api/guilds/${encodeURIComponent(guild)}/instances`),
+        guildInstanceWordsSave: (guild, id, body) =>
+            daemonCall(
+                'put',
+                `/api/guilds/${encodeURIComponent(guild)}/instances/${encodeURIComponent(id)}/words`,
+                body || {},
+            ),
         discordSettingsGet: (guild) => daemonCall('get', discordSettingsPath(guild)),
         discordSettingsSet: (guild, patch) => daemonCall('patch', discordSettingsPath(guild), patch || {}),
         // 터미널로 열기: 데몬이 새 콘솔 창에 CLI를 띄운다

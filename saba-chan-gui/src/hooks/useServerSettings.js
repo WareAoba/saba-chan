@@ -7,7 +7,7 @@ import { useModalClose } from './useModalClose';
 
 /**
  * Manages server settings modal: open, save, install version, reset.
- * (Discord command words moved to the Discord page — components/discord/WordsView.js)
+ * (Discord command words moved to the Discord page — components/discord/InstanceWordsTab.js)
  *
  * @param {Object} params
  * @param {Array} params.servers - Current server list

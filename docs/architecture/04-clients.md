@@ -123,6 +123,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | actionsList (867) | GET /api/actions?surface=gui&instance?&locale? (P2) | ✓ 743 |
 | actionsPlan (872) | POST /api/actions/:id/plan `{input, instance?}` | ✓ 746 |
 | actionsRun (873) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |
+| guildInstances | GET /api/guilds/:guild/instances (길드·인스턴스별 부르는 말, `integration/discord-instance-commands.md`) | 데몬 PR 대기 |
+| guildInstanceWordsSave | PUT /api/guilds/:guild/instances/:id/words `{words, commands}`. 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`를 그대로 넘긴다 | 데몬 PR 대기 |
 | discordSettingsGet (874) | GET /api/discord/:guild/settings (I2) | ✓ 732-735 |
 | discordSettingsSet (875) | PATCH /api/discord/:guild/settings `{locale?, sleeping?, music?}` | ✓ 732-735 |
 | openInTerminal (877) | POST /api/clients/launch `{kind:'cli', view, instance?}` (I4). 데몬이 새 콘솔 창에 CLI 콘솔·셸을 띄운다. 실패하면 데몬 본문(`error_code`)을 그대로 돌려준다. 트레이 메뉴 "터미널 열기"(Windows만)도 같은 라우트를 `view:'shell'`로 부른다(`tray.rs:433-446`) | ✓ 721 |

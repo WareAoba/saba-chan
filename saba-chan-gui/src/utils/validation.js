@@ -4,7 +4,6 @@
  * - validateSettingValue: module.toml SettingField 스키마 기반 개별 필드 검증
  * - validateAllSettings: 전체 설정 필드 일괄 검증
  * - checkPortConflicts: 모든 인스턴스 간 포트 충돌 검사
- * - checkAliasConflicts: 모듈 별명 충돌 검사
  */
 
 /**
@@ -200,61 +199,4 @@ function buildActivePortEntries(ports, supported) {
         entries.push({ value: ports.rest_port, type: 'rest_port' });
     }
     return entries.filter((e) => e.value != null && e.value !== '' && !isNaN(Number(e.value)));
-}
-
-/**
- * 모듈 별명(module aliases) 충돌을 검사합니다.
- * 한 모듈의 별명이 다른 모듈의 별명과 겹치는지 확인합니다.
- *
- * @param {string} targetModule - 검사할 모듈 이름
- * @param {Array} targetAliases - 대상 모듈의 별명 목록
- * @param {Object} moduleAliasesPerModule - 모듈별 별명 정의 { moduleName: { module_aliases: [...] } }
- * @param {Object} discordModuleAliases - GUI에서 설정한 커스텀 별명 { moduleName: "alias1,alias2" }
- * @returns {Array} 충돌 목록 [{ alias, conflictModule }]
- */
-export function checkAliasConflicts(targetModule, targetAliases, moduleAliasesPerModule, discordModuleAliases) {
-    const conflicts = [];
-
-    if (!Array.isArray(targetAliases) || targetAliases.length === 0) return conflicts;
-
-    // 다른 모든 모듈의 별명을 수집
-    const otherAliasMap = {}; // alias(lower) → moduleName
-
-    for (const [moduleName, aliasData] of Object.entries(moduleAliasesPerModule || {})) {
-        if (moduleName === targetModule) continue;
-
-        // module.toml 기본 별명
-        const baseAliases = aliasData?.module_aliases || [];
-        for (const alias of baseAliases) {
-            otherAliasMap[alias.toLowerCase()] = moduleName;
-        }
-
-        // 모듈 이름 자체도 별명으로 간주
-        otherAliasMap[moduleName.toLowerCase()] = moduleName;
-    }
-
-    // GUI 커스텀 별명
-    for (const [moduleName, customStr] of Object.entries(discordModuleAliases || {})) {
-        if (moduleName === targetModule) continue;
-        const customs = (customStr || '')
-            .split(',')
-            .map((a) => a.trim())
-            .filter((a) => a.length > 0);
-        for (const alias of customs) {
-            otherAliasMap[alias.toLowerCase()] = moduleName;
-        }
-    }
-
-    // 대상 별명과 비교
-    for (const alias of targetAliases) {
-        const lower = alias.toLowerCase();
-        if (otherAliasMap[lower]) {
-            conflicts.push({
-                alias,
-                conflictModule: otherAliasMap[lower],
-            });
-        }
-    }
-
-    return conflicts;
 }
