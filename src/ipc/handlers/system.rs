@@ -27,27 +27,30 @@ fn default_sizes() -> bool {
     true
 }
 
+/// 표본을 뜰 인스턴스 목록 (프로세스 PID와 폴더)
+pub(crate) async fn instance_roots(state: &IPCServer) -> Vec<InstanceRoot> {
+    let supervisor = state.supervisor.read().await;
+    supervisor
+        .instance_store
+        .list()
+        .iter()
+        .map(|inst| {
+            let mut dirs = vec![supervisor.instance_store.instance_dir(&inst.id)];
+            if let Some(wd) = inst.working_dir.as_deref().filter(|w| !w.is_empty()) {
+                dirs.push(PathBuf::from(wd));
+            }
+            InstanceRoot {
+                id: inst.id.clone(),
+                name: inst.name.clone(),
+                pid: supervisor.tracker.get_pid(&inst.id).ok(),
+                dirs,
+            }
+        })
+        .collect()
+}
+
 pub async fn get_metrics(State(state): State<IPCServer>, Query(q): Query<MetricsQuery>) -> impl IntoResponse {
-    let roots: Vec<InstanceRoot> = {
-        let supervisor = state.supervisor.read().await;
-        supervisor
-            .instance_store
-            .list()
-            .iter()
-            .map(|inst| {
-                let mut dirs = vec![supervisor.instance_store.instance_dir(&inst.id)];
-                if let Some(wd) = inst.working_dir.as_deref().filter(|w| !w.is_empty()) {
-                    dirs.push(PathBuf::from(wd));
-                }
-                InstanceRoot {
-                    id: inst.id.clone(),
-                    name: inst.name.clone(),
-                    pid: supervisor.tracker.get_pid(&inst.id).ok(),
-                    dirs,
-                }
-            })
-            .collect()
-    };
+    let roots = instance_roots(&state).await;
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let monitor = state.system_monitor.clone();
     // sysinfo는 동기 시스템 콜이다
