@@ -616,7 +616,7 @@ function App() {
                 popoutParams={popoutParams}
                 server={srv}
                 highlightRules={mod?.syntax_highlight?.rules || null}
-                quickCommands={consoleQuickCommands(mod?.commands?.fields)}
+                quickCommands={consoleQuickCommands(mod?.commands?.fields, mod?.command_aliases)}
                 openConsole={openConsole}
                 setConsoleInput={setConsoleInput}
                 sendConsoleCommand={sendConsoleCommand}

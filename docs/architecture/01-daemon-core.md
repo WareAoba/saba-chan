@@ -50,7 +50,7 @@
 10. Supervisor에 `extension_manager`와 `provision_tracker`를 주입한다(`main.rs:355-359`).
 11. **백그라운드 태스크 기동**
     - 익스텐션 `daemon.startup` 훅 비동기 디스패치(`main.rs:364-410`). 진행 상황은 `ExtensionInitTracker`에 기록되고 `/api/extensions/init-status`로 노출된다.
-    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes()`를 호출한다(`main.rs:416-463`). 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`).
+    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes()`를 호출한다(`main.rs:416-463`). 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`). 작업 잠금이 잡혀 있으면(백업 중) 풀릴 때까지 최대 30분 기다리고, 그사이 사용자가 정지·시작하면 그만둔다.
     - 업데이트 주기 확인 `spawn_update_scheduler`(`main.rs:466`)와 인스턴스 예약 작업(백업·재시작·공지·업데이트) 실행기 `backup::spawn_scheduler`(`main.rs:468`, 30초 주기)를 띄운다.
     - 하트비트 reaper: 30초 주기로 90초 넘게 하트비트가 없는 클라이언트를 정리한다(`main.rs:483-497`, `handlers/client.rs:116-136`).
     - 렌더러 watchdog은 없다. 인터페이스가 모두 떠나도 데몬은 남고 GUI를 다시 띄우지 않는다. 다음에 켠 GUI·CLI가 다시 붙는다(C14).
@@ -178,11 +178,11 @@
 | GET | `/api/version` | `server.rs:306` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:26` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:620` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
-| POST | `/api/server/:name/start` | `server.rs:881` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed} |
+| POST | `/api/server/:name/start` | `server.rs:881` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed}, 409 `instance_busy`(같은 인스턴스의 백업·복원·업데이트 중) |
 | POST | `/api/server/:name/stop` | `server.rs:938` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
-| POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다) |
+| POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 409 `instance_busy`(백업·복원·업데이트 중), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다) |
 | POST | `/api/instance/:id/stop` | `server.rs:785` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
-| POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped` |
+| POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped`. 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 최대 30분 기다렸다 켠다(`backup::start_when_free`). 기다리는 시작은 따로 돌아 요청이 끊겨도 이어지고, 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 409 `restart_cancelled`(`stopped` 포함) |
 | GET | `/api/instance/:id/events` | `server.rs:872` | - | `{events:[...]}` 최근 종료 이력 / 404. 한 건은 `at, kind, exit_code, signal, evidence, restart_in_secs, note`에 다시 띄우지 않은 이유가 있으면 `note_code`(`auto_restart_off` · `gave_up` + `note_args.count` · `restart_failed` + `note_args.reason`)·`note_args`. `note`는 영어 문장이라 화면 문구는 `note_code`로 고른다 |
 
 `GET /api/servers` 응답의 `ServerInfo` 필드(`ipc/mod.rs:160-209`):
@@ -222,7 +222,7 @@
 
 - `ExtensionInfo`(이름과 달리 모듈 정보다, `ipc/mod.rs:237-287`) 필드: `name, version, description, schema_version, display_name?, game_name?, author?, warnings?, unmet_dependencies?, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
 - `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ...}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs:499-522`).
-- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 `module.toml`이 있을 때만 `modules/<id>`와 바꾸고 refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다.
+- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다.
 
 #### 인스턴스 (handlers/instance.rs)
 
@@ -232,14 +232,14 @@
 | POST | `/api/instances` | `instance.rs:84` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?, preset?, module_settings?, accept_agreements?:[id], extension_data?:{}}` (`accept_agreements`: 동의한 모듈 약관. 선언 안 된 id는 400 `invalid_format`, 원격이면 403 `agreement_local_only`. 가져오기(`migration_source`)면 만든 직후 lifecycle `accept_agreements`를 불러 모듈이 반영하게 한다. `extension_data`: 익스텐션 `AddServer.options`의 답. null이 아닌 값을 새 인스턴스에 넣고, 객체가 아니면 400 `invalid_format`) | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400 `preset_not_found`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` + `agreements:[{id, label, url, accepted, accepted_at}]`(모듈 약관, 이름은 데몬 언어) / 404 `{error, error_code}` |
-| DELETE | `/api/instance/:id` | `instance.rs:789` | - | `{success}` / 404 / 500 |
+| DELETE | `/api/instance/:id` | `instance.rs:789` | - | `{success}` / 404 / 409 `instance_busy`(백업·복원·업데이트 중)·`server_running`(돌던 서버를 끝내지 못함: 아무것도 지우지 않는다) / 500 |
 | PATCH | `/api/instance/:id` | `instance.rs` `update_instance_settings` | 키-값 객체. `working_dir`는 작업 폴더로. `extra_args`(문자열은 `chat::split_quoted`로 나눔, 또는 문자열 배열, null은 비우기)는 인스턴스의 추가 실행 인자로. `memory_limit_mb`(MiB 정수 256 이상. 글자는 숫자나 `4G`·`4096M`(`GB`·`MB`, 대소문자 무관). null·""·0은 제한 없음)는 메모리 상한(02 문서 §3.6), 그 밖이면 400 `invalid_format`(`fields:[{field:"memory_limit_mb"}]`) | `{success:true, synced, sync_error?, ignored?}`(`synced:false`면 저장은 됐지만 모듈 `configure`가 게임 설정 파일에 쓰지 못함, `ignored`는 받고 쓰지 않은 RCON 키) / 400 `unknown_setting {fields}`(모듈이 설정 목록을 선언했는데 공통 필드·모듈 설정·데몬 설정 `auto_restart`·`restart_on_unknown_exit`·`managed_start`·`log_sessions_keep` 어디에도 없는 키) / 400 `validation_failed`·`invalid_format`(모듈 `format`·`pattern`과 다름)`{details, fields}` / 404 / 500 |
 | POST | `/api/instance/:id/launch-preview` | `instance.rs` `launch_preview` → `Supervisor::launch_preview` | `{settings?:{필드:값}, extra_args?: string\|string[]}` (extra_args가 없으면 저장된 것) | 실행 인자 미리보기. 서버를 띄우지 않고 익스텐션 hook도 부르지 않는다. 저장된 설정 위에 초안, 그 위에 추가 인자를 필드 `arg` 모양으로 읽은 값을 얹어 `get_launch_command`(`preview:true`)를 부른다. 필드에 `arg`를 선언하지 않은 모듈이면 모듈을 부르지 않고 `{success:true, has_launch_args:false, ...}`(command_line 없음)를 돌려준다. 성공 `{success:true, has_launch_args, command_line, program, args[], settings_from_args{}, extra_args[], extra_args_text(큰따옴표가 든 인자가 있으면 null: 배열로 저장), errors[{arg\|null, field, expected, got}]}`. password 필드 값과 인스턴스 `rest_password`는 `***`. 모듈 실패 `{success:false, error:"launch_command_failed"\|action_required, message?, ...같은 키}` / 404 / 500 `preview_failed`. `expected`는 `validator::expected_of` 코드(`memory_size`·`port`·`integer`·`path`·`pattern`·`number`·`boolean`·`enum`·`text`) |
 | POST | `/api/instance/:id/rename` | `instance.rs:878` | `{name}` | `{success, id, name, previous}` / 409 `name_taken`·`server_running` / 404 |
 | GET | `/api/provision-progress/:name` | `instance.rs:760` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}`. `error`는 모듈이 돌려준 `message`이거나, 스크립트가 비정상 종료·시간 초과면 `provision.script_failed` 문구다(스크립트 출력은 데몬 로그에만) |
 | DELETE | `/api/provision-progress/:name` | `instance.rs:719` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 인스턴스를 삭제한다 |
 | GET | `/api/instance/:id/check-update` | `instance.rs:1384` | - | 훅 결과 또는 `{update_available:false, reason}` |
-| POST | `/api/instance/:id/apply-update` | `instance.rs:1477` | - | `{success,id,provisioning:true}`. 409 `server_running`, 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
+| POST | `/api/instance/:id/apply-update` | `instance.rs:1481` | - | `{success,id,provisioning:true}`. 409 `server_running`·`instance_busy`(백업·복원·업데이트 중, 업데이트는 끝날 때까지 작업 잠금을 잡는다), 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
 
 `POST /api/instances` 동작 세부:
 
@@ -253,7 +253,7 @@
 
 `PATCH /api/instance/:id` 동작 세부:
 
-- 알려진 키(`port, rest_*, executable_path, protocol_mode, server_version, extension_data`)는 일급 필드로 반영한다. 예전 RCON 키(`rcon_port, rcon_password, enable_rcon`)는 받아도 어디에도 반영하지 않는다(`instance.rs:979-1000`).
+- 알려진 키(`port, rest_*, executable_path, protocol_mode, server_version, extension_data`)는 일급 필드로 반영한다. 예전 RCON 키(`rcon_port, rcon_password, enable_rcon`)는 받아도 어디에도 반영하지 않는다(`instance.rs:979-1000`). `rest_*`·`executable_path`에 null을 보내면 지정을 지워 기본값(모듈 실행 파일 해석, REST 기본값·실행 때 만드는 비밀번호)으로 되돌린다.
 - 나머지 키는 전부 `module_settings`로 들어간다.
 - 이후 락을 놓고 `manage_properties("write")`로 게임 설정 파일과 동기화하고, `extension_data`가 비어 있지 않으면 `server.settings_changed` 훅을 보낸다.
 
@@ -264,13 +264,13 @@
 | POST | `/api/instance/:id/command` | `command.rs:16` | `{command*, args?}` | 실행한 경로의 응답 + `command`. 실패 시 `error_code`, 모듈 `[errors]` 문구 `error_message`. 404 / 400 / 409 `server_not_running` |
 | GET | `/api/instance/:id/commands` | `command.rs` `list_instance_commands` | - | `{commands:[{name,label,description,risk,inputs,source:"module"\|"extension",group?,...}], components?}`. `[commands] hook = true`인 모듈은 lifecycle `instance_commands()`가 준 인스턴스별 명령이 module.toml 명령 뒤에 `group`(예: 플러그인 이름)과 함께 붙고, `components`는 모듈이 판정한 구성요소를 그대로 넘긴다. 목록은 매번 새로 읽는다 |
 | POST | `/api/instance/:id/rcon` | `command.rs:392` | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) |
-| POST | `/api/instance/:id/rest` | `command.rs:487` | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}` / 400 / 500 |
+| POST | `/api/instance/:id/rest` | `command.rs:487` | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}`(응답 없이 연결이 끊기면 `success:false`, `data.outcome:"unknown"`) / 400 / 500 |
 
 #### Managed 프로세스와 모듈 기능 (handlers/managed.rs)
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/instance/:id/managed/start` | `managed.rs:24` | 선택 `{config?}` | supervisor 결과 / 404 / 422 `memory_limit_reached` / 500 |
+| POST | `/api/instance/:id/managed/start` | `managed.rs:24` | 선택 `{config?}` | supervisor 결과 / 404 / 409 `instance_busy` / 422 `memory_limit_reached` / 500 |
 | GET | `/api/instance/:id/console` | `managed.rs:92` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
 | POST | `/api/instance/:id/stdin` | `managed.rs:118` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:139` | - | supervisor 결과 |
@@ -288,10 +288,12 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET/POST | `/api/instance/:id/backups` | `backup.rs:192/199` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
-| DELETE | `/api/instance/:id/backups/:name` | `backup.rs:207` | - | `{success}` / 404 `backup_not_found` |
-| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:218` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:230-231`) |
-| GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
+| GET/POST | `/api/instance/:id/backups` | `backup.rs:203/210` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
+| DELETE | `/api/instance/:id/backups/:name` | `backup.rs:218` | - | `{success}` / 404 `backup_not_found` / 409 `backup_busy` |
+| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`) |
+| GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. `backup_keep`은 1 이상이다(자동 백업 정리는 방금 만든 백업을 지우지 않는다). 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
+
+인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제가 함께 쓴다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다. 백업·복원은 잠금을 쥔 채 따로 돌아(`audit::spawn`, 출처 유지) 요청이 끊겨도 파일 작업이 끝날 때까지 잠금이 남는다.
 
 #### 설정 (handlers/bot.rs, handlers/config.rs)
 
@@ -307,7 +309,7 @@
 | GET | `/api/config/node-token` | `config.rs:134` | - | `{token}` (없으면 `""`) |
 | PUT | `/api/config/node-token` | `config.rs:144` | `{token}` | `{ok}`. 저장 뒤 릴레이 에이전트를 새 토큰으로 다시 시작한다 |
 | DELETE | `/api/config/node-token` | `config.rs:180` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다 |
-| POST | `/api/migration/export` | `migration.rs:184` | `{path(절대 경로), secrets?}` | `{success, path, secrets, instances:[{id,name}], config:[네임스페이스]}` / 400 `INVALID_PATH` / 500 `WRITE_FAILED`. A9: 데몬이 `path`에 zip(`saba-export.json`, `config.json`, `instances.json`, `secrets`면 `node_token`)을 쓴다. `updates`·`boot`·`extensions`·`schemaVersion`은 이 PC 것이라 뺀다. `secrets`가 아니면 챗봇 API 키, REST 비밀번호, 모듈이 `password`로 선언한 설정을 뺀다. 게임 서버 파일은 넣지 않는다 |
+| POST | `/api/migration/export` | `migration.rs:184` | `{path(절대 경로), secrets?}` | `{success, path, secrets, instances:[{id,name}], config:[네임스페이스]}` / 400 `INVALID_PATH` / 500 `WRITE_FAILED`. A9: 데몬이 `path`에 zip(`saba-export.json`, `config.json`, `instances.json`, `secrets`면 `node_token`)을 쓴다. `updates`·`boot`·`extensions`·`schemaVersion`은 이 PC 것이라 뺀다. `secrets`가 아니면 챗봇 API 키, REST 비밀번호, 모듈이 `password`로 선언한 설정을 뺀다(모듈을 읽지 못한 인스턴스는 모듈 설정을 모두 뺀다). 게임 서버 파일은 넣지 않는다 |
 | POST | `/api/migration/import` | `migration.rs:257` | `{path, dryRun?, overwrite?}` | `{success, dryRun, appVersion, secrets, instances:{added, replaced, skipped:[{id,name,reason}]}, missingModules, config:[네임스페이스], nodeToken:"imported"\|"kept"\|null}` / 400 `INVALID_PATH`·`INVALID_ARCHIVE`·`INVALID_CONFIG`. 인스턴스는 같은 id가 있으면 `exists`(`overwrite`면 덮어씀, 켜져 있으면 `running`), 다른 인스턴스와 폴더가 같으면 `working_dir_in_use`로 건너뛴다. 설정은 지금 값 위에 최상위 키 머지(파일에 없는 API 키는 남는다). 설정은 다른 것을 바꾸기 전에 먼저 검사한다(`check_sections`, 잘못되면 아무것도 바꾸지 않고 `INVALID_CONFIG`). 노드 토큰은 이 PC에 없을 때만 쓰고, 토큰을 실제로 가져올 때만 `relay.cloud`(relayUrl·hostId)·`cloudNodes`·`cloudMembers`도 바꾼다(아니면 이 PC 값 유지). `added`·`replaced` 항목에는 `working_dir`·`executable_path`가 붙는다 |
 | GET | `/api/system/components` | `config.rs:241` | - | `{version, components:{key:ver}, lastUpdated}` (`installed-manifest.json` + 번들 `versions.toml`) |
 | GET | `/api/system/metrics` | `system.rs:52` | `?sizes=false` | 시스템 모니터 표본 `{sampled_at_ms, window_ms, cpu:{cores,total_percent,others_percent}, memory:{total_bytes,used_bytes,others_bytes}, disk_io:{read_bps,write_bps,source:"physical"|"process",per_instance:false}, network:{rx_bps,tx_bps,per_instance:false}, disks:[{mount,total_bytes,available_bytes,others_bytes,instances:[{id,bytes}],sizes_at_ms}], instances:[{id,name,running,process_count,cpu_percent,memory_bytes,disk_read_bps,disk_write_bps}]}` (§10) |
@@ -352,7 +354,7 @@
 | POST | `/api/extensions/:id/disable` | `extension.rs:162` | 실행 중인 managed 인스턴스 참조 검사 |
 | POST | `/api/extensions/:id/mount` | `extension.rs:199` | |
 | POST | `/api/extensions/:id/unmount` | `extension.rs:211` | |
-| POST | `/api/extensions/:id/install` | `extension.rs:400` | 선택 `{download_url, sha256}`. 없으면 manifest에서 찾는다. 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
+| POST | `/api/extensions/:id/install` | `extension.rs:425` | 선택 `{download_url, sha256}`. 비어 있으면(`{}`) manifest의 URL과 sha256을 쓴다. `download_url`만 주면 manifest의 URL과 같을 때만 manifest의 sha256으로 받고, 다르면 `sha256_required`로 거부한다(`extension.rs:396-422`). 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
 | DELETE | `/api/extensions/:id` | `extension.rs:490` | |
 | GET/PUT | `/api/extensions/:id/config` | `extension.rs:574/587` | `{config}` / 객체 머지(null이면 키 삭제) |
 | GET | `/api/extensions/:id/gui` | `extension.rs` `serve_gui_bundle` | UMD JS 번들 (application/javascript). 확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 것만(`sandbox.extension_gui`), 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}` |
@@ -387,6 +389,7 @@
 | DELETE | `/api/chatbot/memory` | `chatbot.rs:333` | query `guildId?` |
 | GET | `/api/guilds/:guild/instances` | `guild_words.rs` `list` | - | 그 길드가 쓰는 서버(`allowedInstances`, 없으면 전부)마다 `{id, name, module, words, commands:[{name, label, risk, builtin, moduleAliases, aliases}]}`. `{guildId, instances}`. 명령은 이름마다 한 줄이고, 모듈이 내장(start·stop·status)과 같은 이름을 정의하면 이름표·위험도는 모듈 선언을 쓴다(`builtin`은 true) |
 | PUT | `/api/guilds/:guild/instances/:id/words` | `guild_words.rs` `put` | `{words, commands:{<명령>:[..]}}` | `{success, id, words, commands}`. 규칙 위반은 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`(`field`: `words[i]`·`commands.<명령>[i]`·`words`·`commands.<명령>`·`input`, `reason`: `invalid`·`reserved`·`conflict`(같은 서버 안에서 겹치면 `conflictWith`가 그 서버 이름)·`unknown_command`·`too_many`, `word`는 문제가 된 낱말), 그 길드가 쓰지 않는 서버는 404. 빈 값이면 항목을 지운다. 로컬 전용(릴레이 에이전트는 부르지 않고 액션 카탈로그에도 없다) |
+| PUT | `/api/guilds/:guild/allowed-instances` | `guild_words.rs` `put_allowed` | `{instances: [id] \| null}` | `{guildId, allowedInstances: [id] \| null}`. 그 길드가 보고 부를 수 있는 서버(`nodeSettings[guild].allowedInstances`). null은 제한 없음(키 삭제), 빈 배열은 아무 서버도 못 쓴다. 겹친 id는 하나로 줄인다. 없는 인스턴스 id는 400 `validation_failed {details:[{field:"instances", reason:"unknown_instance", id}]}`, 모양이 틀리면 `reason:"invalid"`. 설정 잠금 안에서 저장한다(`update_node_settings`). 로컬 전용(액션 카탈로그에 없다) |
 | GET·PATCH | `/api/chatbot/guilds/:guild` | `chatbot.rs` `get_guild`·`patch_guild` | PATCH `{설정 키: 값\|null}` | 길드 하나의 챗봇 설정(I2-b): `{success, guildId, settings, hasApiKey}`(`settings`는 릴레이 기본값 위에 실제 값). PATCH는 그 길드 값만 합쳐 `PUT /api/chatbot`과 같이 저장·동기화한다. 릴레이 기본값 표에 없는 키(`apiKey` 포함)는 400 `validation_failed`. 액션 `chatbot.settings.get`(safe, 디스코드는 소유자)·`chatbot.settings.set`(admin, 디스코드는 소유자, 챗봇 표면 없음: 챗봇이 자기 확인을 끄지 못하게). 원격은 자기 길드만 |
 
 
@@ -523,6 +526,7 @@ Relay 서명 방식(`relay.rs:115-161`):
   - `/api/discord/:guild/settings`로만 바뀐다. 봇 설정 저장은 이 블록도 되돌린다(`PERMISSION_KEYS`).
   - 데몬에 값이 없는 길드는 릴레이 값을 읽는다(릴레이에 없으면 기본값). 페어링했는데 릴레이를 읽지 못하면 GET은 기본값에 `loaded:false`를 붙여 답하고, PATCH는 503 `relay_unavailable`로 거절한다(기본값을 저장해 릴레이 값을 덮지 않게).
   - 릴레이에 닿지 않거나 5xx로 보내지 못한 설정은 저장해 두고, 다음에 하트비트가 성공하면 `sync_on_connect`로 다시 보낸다(`discord::take_pending_sync`).
+- `nodeSettings[guildId].allowedInstances`: 그 길드가 보고 부를 수 있는 인스턴스 id 목록(없으면 제한 없음). `PUT /api/guilds/:guild/allowed-instances`로만 바뀐다. 봇 설정 일괄 저장·초기화는 이 값을 바꾸지 않는다(`PERMISSION_KEYS`).
 - `nodeSettings[guildId].instances[instanceId]`: 그 길드에서 그 서버를 부르는 낱말 `{words:[..], commands:{<명령 정식 이름>:[..]}}`(`chat/words.rs`). `/api/guilds/:guild/instances*`로만 바뀐다(`PERMISSION_KEYS`). 낱말은 공백 없는 1~32자, 항목마다 10개까지이고, 같은 길드의 다른 서버 이름·id·낱말, 모듈 이름·module.toml 별명, `help`·`도움`·`도움말`·`list`·`목록`과 겹치면 안 된다. 명령 낱말은 같은 서버의 다른 명령 이름·별명과 겹치면 안 되고, 명령은 내장(start·stop·status)이거나 모듈 정의에 있어야 한다.
   - 채팅 처리기(릴레이에서 온 길드 요청만): 대상은 인스턴스 이름·id → 그 길드 `words` → 모듈 이름·module.toml 별명 순, 명령은 그 길드·서버의 `commands` → module.toml 별명 → 명령 이름 → 내장 순이다. 여러 서버가 걸리면 `errors.multiple_instances`로 답한다. 로컬 요청(GUI·CLI)은 사용자 낱말을 쓰지 않는다. 권한 키는 언제나 정식 이름(`<instance>/<command>`)이다.
 
@@ -547,7 +551,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 ### 5.2 REST (`protocol/rest.rs`)
 
 - `ureq`(동기)를 쓰고 timeout은 10초다. Basic Auth를 지원한다.
-- 연결이 EOF나 reset으로 끊기면 성공으로 간주한다. Palworld 대응 코드다(`rest.rs:105-124`).
+- 응답 없이 연결이 EOF나 reset으로 끊기면 결과를 알 수 없다고 본다: `success:false`, `data.outcome:"unknown"`, `error`(`rest.rs:105-122`). 종료 명령처럼 서버가 끊을 수 있는 요청도 성공으로 보고하지 않는다.
 - `verify_connection`은 실제 연결 없이 host와 port 유효성만 본다(`rest.rs:42-48`).
 - 인증 로그에는 사용자 이름만 debug 레벨로 남긴다(`rest.rs:91`). 토큰·비밀번호 길이는 남기지 않는다.
 
@@ -597,7 +601,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - 실행 형태: `<venv python> <module_path> <function>`. stdin으로 config JSON을 한 번 쓰고 닫는다.
 - 결과: stdout 전체, 또는 마지막 비지 않은 줄이 JSON이어야 한다(앞에 찍힌 print는 무시, `parse_plugin_output`, `:467-476`). 종료 코드가 0이 아니면 Err다. 파싱에 실패해도 Err다.
 - 진행률: stderr의 `PROGRESS:{json}` 줄을 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백에 넘긴다(`:68-79, 391-410`). 그 밖의 stderr는 debug 로그로만 남긴다.
-- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`, `:150`), install 계열은 1800초다. 시간이 넘으면 `child.kill()`한다.
+- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`, `:150`), install 계열은 1800초다. 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 `taskkill /T`·AppContainer job)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
 - `PluginCall`(`:161-177`)은 데몬 락 안에서 호출을 만들고 락을 놓은 뒤 실행하기 위한 묶음이다.
 
 **자식 프로세스 환경**

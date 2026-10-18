@@ -471,6 +471,12 @@
           "markdownDescription": "Enables the refresh_ipc_base command without any pre-configured scope."
         },
         {
+          "description": "Enables the sandbox_consent_allow command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sandbox-consent-allow",
+          "markdownDescription": "Enables the sandbox_consent_allow command without any pre-configured scope."
+        },
+        {
           "description": "Enables the settings_get_path command without any pre-configured scope.",
           "type": "string",
           "const": "allow-settings-get-path",
@@ -649,6 +655,12 @@
           "type": "string",
           "const": "deny-refresh-ipc-base",
           "markdownDescription": "Denies the refresh_ipc_base command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sandbox_consent_allow command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sandbox-consent-allow",
+          "markdownDescription": "Denies the sandbox_consent_allow command without any pre-configured scope."
         },
         {
           "description": "Denies the settings_get_path command without any pre-configured scope.",

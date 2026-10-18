@@ -23,17 +23,26 @@ pub mod scan;
 /// 이 플랫폼에서 제한을 거는가
 pub const ENFORCED: bool = cfg!(windows);
 
-/// 모듈·익스텐션 진입 파일(`<modules>/<이름>/lifecycle.py` 등)의 설치 기록 키와 폴더
+/// 모듈·익스텐션 진입 파일(`<modules>/<이름>/lifecycle.py`, `<modules>/<이름>/scripts/lifecycle.py` 등)의
+/// 설치 기록 키와 폴더
 pub fn component_of(entry: &Path) -> Option<(String, PathBuf)> {
-    let dir = entry.parent()?;
-    let name = dir.file_name()?.to_string_lossy().into_owned();
-    let parent = std::fs::canonicalize(dir.parent()?).ok()?;
-    let same = |root: PathBuf| std::fs::canonicalize(root).is_ok_and(|r| r == parent);
-    if same(crate::plugin::resolve_modules_dir()) {
-        return Some((format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, name), dir.to_path_buf()));
-    }
-    if same(crate::plugin::resolve_extensions_dir()) {
-        return Some((format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, name), dir.to_path_buf()));
+    component_in(entry, &crate::plugin::resolve_modules_dir(), &crate::plugin::resolve_extensions_dir())
+}
+
+/// 진입 파일의 조상 중 모듈·익스텐션 폴더 바로 아래 것이 그 구성요소 폴더다 (진입 파일이 하위 폴더에 있어도)
+fn component_in(entry: &Path, modules: &Path, extensions: &Path) -> Option<(String, PathBuf)> {
+    let roots = [
+        (std::fs::canonicalize(modules).ok(), saba_chan_updater_lib::relay::MODULE_PREFIX),
+        (std::fs::canonicalize(extensions).ok(), saba_chan_updater_lib::relay::EXTENSION_PREFIX),
+    ];
+    for dir in entry.parent()?.ancestors() {
+        let (Some(name), Some(parent)) = (dir.file_name(), dir.parent()) else { continue };
+        let Ok(parent) = std::fs::canonicalize(parent) else { continue };
+        for (root, prefix) in &roots {
+            if root.as_ref() == Some(&parent) {
+                return Some((format!("{}{}", prefix, name.to_string_lossy()), dir.to_path_buf()));
+            }
+        }
     }
     None
 }
@@ -866,6 +875,21 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_entry_in_a_subfolder_belongs_to_its_module_or_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (modules, extensions) = (tmp.path().join("modules"), tmp.path().join("extensions"));
+        for dir in [modules.join("game/scripts"), extensions.join("tool/src/py"), tmp.path().join("other")] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let of = |entry: PathBuf| component_in(&entry, &modules, &extensions);
+        assert_eq!(of(modules.join("game/lifecycle.py")), Some(("module-game".into(), modules.join("game"))));
+        assert_eq!(of(modules.join("game/scripts/lifecycle.py")), Some(("module-game".into(), modules.join("game"))));
+        assert_eq!(of(extensions.join("tool/src/py/m.py")), Some(("ext-tool".into(), extensions.join("tool"))));
+        assert_eq!(of(tmp.path().join("other/lifecycle.py")), None);
+        assert_eq!(of(modules.join("lifecycle.py")), None);
+    }
 
     #[test]
     fn the_runtimes_the_daemon_knows_are_opened_to_the_sandbox() {

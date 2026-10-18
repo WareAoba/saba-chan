@@ -388,7 +388,8 @@ export function createApi({ invoke, hub }) {
         },
         instanceDelete: async (id) => {
             try {
-                return (await del(`/api/instance/${encodeURIComponent(id)}`)).data;
+                // 데몬은 정지 대기·pre_delete 훅·폴더 삭제(재시도 포함)를 마치고 답한다
+                return (await del(`/api/instance/${encodeURIComponent(id)}`, { timeout: 120000 })).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -901,10 +902,11 @@ export function createApi({ invoke, hub }) {
         permissionsSetMember: (guildId, discordId, level) => daemonCall('put', permPath(guildId, discordId), { level }),
         permissionsRemoveMember: (guildId, discordId) => daemonCall('delete', permPath(guildId, discordId)),
         sandboxListUnisolated: () => daemonCall('get', '/api/sandbox/unisolated'),
-        sandboxAllowUnisolated: (component) => daemonCall('post', unisolatedPath(component), {}),
+        // 동의 기록은 셸이 네이티브 확인 창을 띄운 뒤에 보낸다. 취소하면 {success:false, error_code:'canceled'}
+        sandboxAllowUnisolated: (component) => invoke('sandbox_consent_allow', { kind: 'unisolated', component }),
         sandboxRevokeUnisolated: (component) => daemonCall('delete', unisolatedPath(component)),
         sandboxListExtensionGui: () => daemonCall('get', '/api/sandbox/extension-gui'),
-        sandboxAllowExtensionGui: (component) => daemonCall('post', extensionGuiPath(component), {}),
+        sandboxAllowExtensionGui: (component) => invoke('sandbox_consent_allow', { kind: 'extension-gui', component }),
         sandboxRevokeExtensionGui: (component) => daemonCall('delete', extensionGuiPath(component)),
         actionsList: (opts) => {
             const { surface = 'gui', instance, locale } = opts || {};

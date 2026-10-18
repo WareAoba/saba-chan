@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useServerSettings } from '../hooks/useServerSettings';
 
@@ -127,6 +127,59 @@ describe('서버 설정 창: 실제 설정', () => {
             await save;
         });
         expect(result.current.showSettingsModal).toBe(true);
+        expect(result.current.settingsServer.id).toBe('b');
+    });
+
+    it('먼저 연 서버의 버전 목록과 감지한 버전은 나중에 연 다른 서버 창에 들어가지 않는다', async () => {
+        const dl = [{ name: 'dl', install: { method: 'download' }, settings: { fields: [] } }];
+        const firstVersions = deferred();
+        const firstDetect = deferred();
+        window.api.moduleListVersions = vi
+            .fn()
+            .mockReturnValueOnce(firstVersions.promise)
+            .mockResolvedValue({ versions: ['2.0'] });
+        window.api.instanceGetInstalledVersion = vi.fn((id) =>
+            id === 'a' ? firstDetect.promise : Promise.resolve({ success: true, version: '2.0' }),
+        );
+        const { result } = renderHook(() =>
+            useServerSettings({
+                servers: [],
+                modules: dl,
+                setModal: vi.fn(),
+                setProgressBar: vi.fn(),
+                fetchServers: vi.fn(),
+            }),
+        );
+        let firstOpen;
+        await act(async () => {
+            firstOpen = result.current.handleOpenSettings({ id: 'a', name: 'A', module: 'dl' });
+        });
+        await waitFor(() => expect(window.api.moduleListVersions).toHaveBeenCalledTimes(1));
+        await act(async () => result.current.handleOpenSettings({ id: 'b', name: 'B', module: 'dl' }));
+        await act(async () => {
+            firstVersions.resolve({ versions: ['1.0'] });
+            firstDetect.resolve({ success: true, version: '1.0' });
+            await firstOpen;
+        });
+        expect(result.current.settingsServer.id).toBe('b');
+        expect(result.current.availableVersions).toEqual(['2.0']);
+        expect(result.current.settingsValues.server_version).toBe('2.0');
+    });
+
+    it('먼저 연 서버의 목록 조회가 늦게 끝나도 나중에 연 서버 창을 바꾸지 않는다', async () => {
+        const firstList = deferred();
+        window.api.serverList = vi.fn().mockReturnValueOnce(firstList.promise).mockResolvedValue(null);
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: {} });
+        const { result } = setup();
+        let firstOpen;
+        act(() => {
+            firstOpen = result.current.handleOpenSettings({ id: 'a', name: 'A', module: 'game' });
+        });
+        await act(async () => result.current.handleOpenSettings({ id: 'b', name: 'B', module: 'game' }));
+        await act(async () => {
+            firstList.resolve({ servers: [{ id: 'a', name: 'A', module: 'game' }] });
+            await firstOpen;
+        });
         expect(result.current.settingsServer.id).toBe('b');
     });
 });

@@ -37,6 +37,7 @@
     "allow-console-toggle-always-on-top",
     "allow-window-minimize",
     "allow-window-maximize",
-    "allow-window-close"
+    "allow-window-close",
+    "allow-sandbox-consent-allow"
   ]
 }

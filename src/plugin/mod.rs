@@ -239,11 +239,11 @@ impl Process {
         }
     }
 
-    /// 그것이 띄운 프로세스까지 끝낸다
-    async fn kill(&mut self) {
+    /// 그것이 띄운 프로세스까지 끝낸다. `pid`는 띄울 때 받아 둔 것 (이미 거둔 뒤에는 `child.id()`가 없다)
+    async fn kill(&mut self, pid: Option<u32>) {
         match self {
             Process::Plain(child) => {
-                if let Some(pid) = child.id() {
+                if let Some(pid) = pid.or(child.id()) {
                     kill_tree(pid);
                 }
                 let _ = child.kill().await;
@@ -381,12 +381,58 @@ async fn run_plugin_inner(
             }
         },
     };
-    let (stdin_pipe, stdout_pipe, stderr_pipe) = child.pipes();
+    let status = drive(&mut child, config_json.as_bytes(), on_progress, std::time::Duration::from_secs(timeout_secs)).await;
 
-    if let Some(mut stdin) = stdin_pipe {
-        stdin.write_all(config_json.as_bytes()).await?;
-        stdin.shutdown().await?;
+    match status {
+        Ok(Ok((exit_status, stdout_str, stderr_str))) => {
+            if !exit_status.success() {
+                tracing::error!("Plugin failed (exit {:?}):\n  stderr: {}\n  stdout: {}", exit_status.code(), stderr_str, stdout_str.trim());
+                return Err(anyhow::anyhow!("Plugin execution failed (exit {:?}):\nstderr: {}\nstdout: {}", exit_status.code(), stderr_str, stdout_str.trim()));
+            }
+
+            match parse_plugin_output(&stdout_str) {
+                Ok(result) => {
+                    tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
+                    Ok(result)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to parse plugin JSON: {} | stdout: {}", e, stdout_str);
+                    Err(anyhow::anyhow!("Invalid JSON from plugin: {}\nOutput: {}", e, stdout_str))
+                }
+            }
+        }
+        Ok(Err(e)) => {
+            tracing::error!("Plugin process error: {}", e);
+            Err(anyhow::anyhow!("Plugin process error: {}", e))
+        }
+        Err(_) => {
+            // 타임아웃 — drive가 프로세스 트리를 이미 끝냈다
+            tracing::warn!(
+                "Plugin timed out after {}s: {} -> {} — killed process",
+                timeout_secs, module_path, function
+            );
+            Err(anyhow::anyhow!("Plugin timed out after {}s", timeout_secs))
+        }
     }
+}
+
+type Collected = std::io::Result<(std::process::ExitStatus, String, String)>;
+
+/// 입력 쓰기부터 종료 대기, stdout·stderr 수집까지 한 기한 안에 한다.
+/// 기한을 넘기거나 입출력이 실패하면 프로세스 트리를 끝내고 읽기 작업을 멈춘다.
+/// (손자 프로세스가 파이프를 물려받아 쥐고 있으면 부모가 끝나도 출력이 닫히지 않는다)
+async fn drive(
+    child: &mut Process,
+    input: &[u8],
+    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    timeout: std::time::Duration,
+) -> std::result::Result<Collected, tokio::time::error::Elapsed> {
+    let pid = match child {
+        Process::Plain(c) => c.id(),
+        #[cfg(windows)]
+        Process::Contained(_) => None,
+    };
+    let (stdin_pipe, stdout_pipe, stderr_pipe) = child.pipes();
 
     // Stream stderr line-by-line to capture PROGRESS: events in real-time
     let stderr_handle = tokio::spawn(async move {
@@ -419,46 +465,26 @@ async fn run_plugin_inner(
         String::from_utf8_lossy(&buf).to_string()
     });
 
-    let status = tokio::time::timeout(
-        std::time::Duration::from_secs(timeout_secs),
-        child.wait(),
-    ).await;
+    let readers = [stderr_handle.abort_handle(), stdout_handle.abort_handle()];
 
-    match status {
-        Ok(Ok(exit_status)) => {
-            let stderr_str = stderr_handle.await.unwrap_or_default();
-            let stdout_str = stdout_handle.await.unwrap_or_default();
-
-            if !exit_status.success() {
-                tracing::error!("Plugin failed (exit {:?}):\n  stderr: {}\n  stdout: {}", exit_status.code(), stderr_str, stdout_str.trim());
-                return Err(anyhow::anyhow!("Plugin execution failed (exit {:?}):\nstderr: {}\nstdout: {}", exit_status.code(), stderr_str, stdout_str.trim()));
-            }
-
-            match parse_plugin_output(&stdout_str) {
-                Ok(result) => {
-                    tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
-                    Ok(result)
-                }
-                Err(e) => {
-                    tracing::error!("Failed to parse plugin JSON: {} | stdout: {}", e, stdout_str);
-                    Err(anyhow::anyhow!("Invalid JSON from plugin: {}\nOutput: {}", e, stdout_str))
-                }
-            }
+    let work = async {
+        if let Some(mut stdin) = stdin_pipe {
+            stdin.write_all(input).await?;
+            stdin.shutdown().await?;
         }
-        Ok(Err(e)) => {
-            tracing::error!("Plugin process error: {}", e);
-            Err(anyhow::anyhow!("Plugin process error: {}", e))
-        }
-        Err(_) => {
-            // 타임아웃 — 프로세스 강제 종료
-            tracing::warn!(
-                "Plugin timed out after {}s: {} -> {} — killing process",
-                timeout_secs, module_path, function
-            );
-            child.kill().await;
-            Err(anyhow::anyhow!("Plugin timed out after {}s", timeout_secs))
+        let exit_status = child.wait().await?;
+        let stderr_str = stderr_handle.await.unwrap_or_default();
+        let stdout_str = stdout_handle.await.unwrap_or_default();
+        Ok((exit_status, stdout_str, stderr_str))
+    };
+    let result = tokio::time::timeout(timeout, work).await;
+    if !matches!(result, Ok(Ok(_))) {
+        child.kill(pid).await;
+        for reader in readers {
+            reader.abort();
         }
     }
+    result
 }
 
 // detect_python_command()는 python_env::get_python_path()로 대체됨.
@@ -512,6 +538,37 @@ mod tests {
         let _ = child.wait().await;
         for _ in 0..50 {
             // 거둘 부모가 없으면 좀비로 남으니 상태도 본다
+            let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
+                .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
+            if zombie || !crate::supervisor::process::is_process_alive(grandchild) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("grandchild {grandchild} survived");
+    }
+
+    /// 부모가 끝나도 자식이 출력 파이프를 쥐고 있으면, 출력 수집까지 기한 안에 끊고 자식도 끝낸다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_deadline_covers_output_collection_after_the_process_exits() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            // 입력을 다 읽고 끝나야 한다: 먼저 끝나면 입력 쓰기가 끊긴 파이프로 실패해 기한까지 가지 않는다
+            .arg(format!("cat > /dev/null; sleep 30 & echo $! > {}; echo '{{}}'", pidfile.display()))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .process_group(0);
+        let mut child = Process::Plain(cmd.spawn().unwrap());
+        let started = std::time::Instant::now();
+        let result = drive(&mut child, b"{}", None, std::time::Duration::from_secs(1)).await;
+        assert!(result.is_err(), "timed out instead of waiting for the held pipe");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        let grandchild: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+        for _ in 0..50 {
             let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
                 .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
             if zombie || !crate::supervisor::process::is_process_alive(grandchild) {

@@ -1,3 +1,5 @@
+import { withCommandAliases } from './commandRisk';
+
 /**
  * 서버 한 개를 화면에 어떻게 보여줄지 정하는 순수 함수 모음.
  * 목록 줄과 상세 화면이 같은 규칙을 쓰도록 한곳에 둔다.
@@ -84,8 +86,8 @@ export function interactionOf(server, moduleData) {
  * 데몬 method "console"(예전 이름 "rcon")이고 console_template이 명령 이름으로 시작할 때만:
  * 칩은 이름을 입력칸에 채울 뿐이라, 템플릿이 다른 말로 바뀌는 명령이나 "module"/"rest" 명령은 콘솔에서 안 통한다.
  */
-export function consoleQuickCommands(fields = []) {
-    return (fields || []).filter((c) => {
+export function consoleQuickCommands(fields = [], commandAliases = null) {
+    return withCommandAliases(fields, commandAliases).filter((c) => {
         const method = c.method === 'rcon' || c.method === 'stdin' ? 'console' : c.method;
         if (method !== 'console') return false;
         const template = c.console_template ?? c.rcon_template;

@@ -790,6 +790,10 @@ pub async fn delete_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
+    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+        return super::backup::instance_busy();
+    };
     let supervisor = state.supervisor.write().await;
 
     // ── 인스턴스 존재 확인 ──
@@ -804,22 +808,38 @@ pub async fn delete_instance(
     // ── 실행 중이면 먼저 정지 ──
     // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서 (C12)
     let running_pid = supervisor.tracker.get_pid(&id).ok();
+    let started = supervisor.tracker.get_start_time(&id).ok();
     let managed = supervisor.managed_store.remove(&id).await;
     let _ = supervisor.tracker.untrack(&id);
     drop(supervisor);
     if let Some(pid) = running_pid {
+        use crate::supervisor::process::{force_kill_pid, is_process_alive, wait_gone};
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
         // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
-        match managed.as_ref() {
+        let killed = match managed.as_ref() {
             Some(m) if m.is_running() => m.force_kill(),
-            Some(_) => {}
-            None => {
-                let _ = crate::supervisor::process::force_kill_pid(pid);
+            Some(_) => Ok(()),
+            None => force_kill_pid(pid),
+        };
+        let gone = match killed {
+            Ok(()) => {
+                let alive = || managed.as_ref().map_or_else(|| is_process_alive(pid), |m| m.is_running());
+                wait_gone(std::time::Duration::from_secs(5), alive).await
             }
-        }
-        if managed.as_ref().is_none_or(|m| m.is_running()) {
-            // 프로세스 종료 대기
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            Err(e) => {
+                tracing::warn!("Could not stop instance '{}' before delete: {}", instance.name, e);
+                false
+            }
+        };
+        // 서버가 아직 돌고 있으면 추적을 되돌리고 파일을 지우지 않는다
+        if !gone {
+            let supervisor = state.supervisor.write().await;
+            if let Some(m) = managed {
+                supervisor.managed_store.insert(&id, m).await;
+            }
+            let _ = supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
+            let error = json!({ "success": false, "error": "The server is still running and could not be stopped", "error_code": "server_running" });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
         }
     }
 
@@ -1114,6 +1134,20 @@ pub async fn update_instance_settings(
     }
 
     // NOTE: REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
+    // REST 설정과 executable_path는 null이면 지정을 지워 기본값으로 되돌린다
+    let cleared = |key: &str| settings.get(key).is_some_and(Value::is_null);
+    if cleared("rest_host") {
+        updated.rest_host = None;
+    }
+    if cleared("rest_port") {
+        updated.rest_port = None;
+    }
+    if cleared("rest_username") {
+        updated.rest_username = None;
+    }
+    if cleared("rest_password") {
+        updated.rest_password = None;
+    }
 
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
@@ -1191,6 +1225,9 @@ pub async fn update_instance_settings(
         }
     }
 
+    if cleared("executable_path") {
+        updated.executable_path = None;
+    }
     if let Some(executable_path) = settings.get("executable_path").and_then(|v| v.as_str()) {
         // executable_path는 보통 모듈의 server_executable + working_dir에서 자동 해석되지만,
         // 명시적으로 설정하면 override로 저장합니다.
@@ -1326,10 +1363,11 @@ pub async fn update_instance_settings(
     // server.properties 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
     let mut sync_error: Option<String> = None;
     if !props_sync.is_empty() {
+        // 값에는 비밀번호가 들 수 있어 키만 남긴다
         tracing::info!(
             "Syncing settings to server.properties for instance {}: {:?}",
             id,
-            props_sync
+            props_sync.keys().collect::<Vec<_>>()
         );
         let props_value = Value::Object(props_sync);
         match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &id, "write", Some(props_value)).await {
@@ -1495,6 +1533,10 @@ pub async fn apply_server_update(
 /// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
 #[allow(clippy::result_large_err)]
 pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
+    // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
+    let Some(guard) = super::backup::BusyGuard::take(id) else {
+        return Err(super::backup::instance_busy());
+    };
     let supervisor = state.supervisor.read().await;
 
     let instance = match supervisor.instance_store.get(id) {
@@ -1600,8 +1642,9 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let backup_state = state.clone();
     let backup_id = id.to_string();
     Ok(tokio::spawn(async move {
+        let _guard = guard;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
-        if let Err(r) = super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate).await {
+        if let Err(r) = super::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
             let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
             tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
             tracker_done.update(
@@ -1977,6 +2020,39 @@ mod tests {
         assert!(user_settings(id.clone()).await.is_empty());
         assert!(patch(json!({ "java_path": "/opt/jdk/bin/java" })).await.status.is_success());
         assert!(user_settings(id.clone()).await.contains("java_path"));
+    }
+
+    #[tokio::test]
+    async fn null_clears_the_executable_and_rest_overrides() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        let exe = tmp.path().join("server").join("run.sh");
+        let set = json!({ "executable_path": exe.to_str().unwrap(), "rest_host": "10.0.0.2", "rest_port": 9000, "rest_username": "admin", "rest_password": "hunter22" });
+        assert!(patch(set).await.status.is_success());
+        let cleared = json!({ "executable_path": null, "rest_host": null, "rest_port": null, "rest_username": null, "rest_password": null });
+        assert!(patch(cleared).await.status.is_success());
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.executable_path, None);
+        assert_eq!((inst.rest_host, inst.rest_port, inst.rest_username, inst.rest_password), (None, None, None, None));
+        assert!(!inst.module_settings.contains_key("executable_path"));
     }
 
     #[test]

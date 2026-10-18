@@ -97,5 +97,16 @@
     "path_missing": "Aucun chemin indiqué",
     "path_not_folder": "Ce n'est pas un dossier",
     "no_log_folder": "Aucun dossier de journaux"
+  },
+  "consent": {
+    "allow": "Autoriser",
+    "unisolated": {
+      "title": "Exécuter sans isolation ?",
+      "message": "{{component}} n'est pas vérifié. Sans isolation, il peut accéder sans limite aux fichiers et programmes de ce PC. N'autorisez que si vous lui faites confiance."
+    },
+    "extension_gui": {
+      "title": "Charger l'écran de l'extension ?",
+      "message": "Le code d'écran de {{component}} n'est pas vérifié. S'il est chargé, il s'exécute dans la fenêtre de Saba-chan. N'autorisez que si vous lui faites confiance."
+    }
   }
 }

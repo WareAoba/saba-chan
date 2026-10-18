@@ -242,9 +242,10 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
-/// 길드·인스턴스 낱말 API(`instances`)
+/// 길드·인스턴스 낱말 API(`instances`), 길드가 쓸 서버 API(`allowedInstances`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
+    "allowedInstances",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",
@@ -341,9 +342,9 @@ impl ConfigStore {
 
     /// JSON Value로 GUI 설정 교체 (API 요청 수용, 스키마 검증 포함)
     pub async fn set_gui_settings_from_json(&self, json: Value) -> Result<GuiSettings, ConfigStoreError> {
-        // 기존 설정을 base로 하여 부분 업데이트 지원
-        let current = self.gui_settings.read().await.clone();
-        let current_json = serde_json::to_value(&current).unwrap_or_default();
+        // 기존 설정을 base로 하여 부분 업데이트 지원. 읽기·병합·저장 동안 쓰기 잠금을 잡아 동시 저장이 서로 덮지 않게
+        let mut current = self.gui_settings.write().await;
+        let current_json = serde_json::to_value(&*current).unwrap_or_default();
 
         // 기존 JSON에 새 JSON을 머지
         let merged = merge_json(current_json, json);
@@ -351,7 +352,7 @@ impl ConfigStore {
         let settings: GuiSettings = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
         self.file.set_section("gui", serde_json::to_value(&settings)?)?;
-        *self.gui_settings.write().await = settings.clone();
+        *current = settings.clone();
         Ok(settings)
     }
 
@@ -458,13 +459,18 @@ impl ConfigStore {
         let defaults = Self::defaults_json(kind)
             .and_then(|d| d.as_object().cloned())
             .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown config: {}", kind)))?;
+        // GUI는 읽기부터 저장까지 쓰기 잠금을 잡는다 (봇 설정은 아래에서 잡는다)
+        let mut gui = if kind == "gui" { Some(self.gui_settings.write().await) } else { None };
         let full = match keys {
             None => defaults,
             Some([]) => {
                 return Err(ConfigStoreError::InvalidData("keys is empty; omit keys to reset everything".into()))
             }
             Some(keys) => {
-                let current = if kind == "gui" { self.get_gui_settings_json().await } else { self.get_bot_config_json().await };
+                let current = match &gui {
+                    Some(g) => serde_json::to_value(&**g).unwrap_or_default(),
+                    None => self.get_bot_config_json().await,
+                };
                 let mut current = current.as_object().cloned().unwrap_or_default();
                 for key in keys {
                     if let Some(value) = defaults.get(key) {
@@ -479,12 +485,12 @@ impl ConfigStore {
             }
         };
         // 머지하지 않고 통째로 바꾼다 (지운 키가 되살아나지 않게)
-        if kind == "gui" {
+        if let Some(gui) = gui.as_mut() {
             let settings: GuiSettings = serde_json::from_value(Value::Object(full))
                 .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
             self.file.set_section("gui", serde_json::to_value(&settings)?)?;
-            *self.gui_settings.write().await = settings;
-            Ok(self.get_gui_settings_json().await)
+            **gui = settings;
+            Ok(serde_json::to_value(&**gui).unwrap_or_default())
         } else {
             let mut current = self.bot_config.write().await;
             // 초기화도 고정된 주인·부여값은 지우지 않는다 (권한 API로만 바뀐다)
@@ -934,6 +940,22 @@ mod tests {
         assert_eq!(store.get_bot_config().await.node_settings["h"]["defaultLevel"], -1);
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_gui_saves_keep_each_others_changes() {
+        let tmp = TempDir::new().unwrap();
+        let store = std::sync::Arc::new(ConfigStore::new(tmp.path()));
+        for round in 0..40u32 {
+            let a = store.clone();
+            let b = store.clone();
+            let ta = tokio::spawn(async move { a.set_gui_settings_from_json(serde_json::json!({ "fontScale": 100 + round })).await });
+            let tb = tokio::spawn(async move { b.set_gui_settings_from_json(serde_json::json!({ "ipcPort": 20000 + round })).await });
+            ta.await.unwrap().unwrap();
+            tb.await.unwrap().unwrap();
+            let now = store.get_gui_settings().await;
+            assert_eq!((now.font_scale, now.ipc_port), (100 + round, 20000 + round as u16), "round {}", round);
+        }
+    }
+
     #[tokio::test]
     async fn config_store_gui_save_load_roundtrip() {
         let tmp = TempDir::new().unwrap();
@@ -1128,15 +1150,19 @@ mod tests {
     fn saving_the_bot_config_keeps_permission_keys() {
         let current = serde_json::json!({ "nodeSettings": {
             "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["x"] },
-            "h": { "defaultLevel": -1 }
+            "h": { "defaultLevel": -1 },
+            "k": { "allowedInstances": ["x"] }
         } });
+        // 옛 스냅샷: k의 제한이 없던 때 것이라도 제한이 풀리면 안 된다
         let mut merged = merge_json(current.clone(), serde_json::json!({ "nodeSettings": {
-            "g": { "ownerDiscordId": "evil", "members": { "evil": 2 }, "allowedInstances": ["y"], "preset": "loose" }
+            "g": { "ownerDiscordId": "evil", "members": { "evil": 2 }, "allowedInstances": ["y"], "preset": "loose" },
+            "k": {}
         } }));
         keep_permission_keys(&mut merged, &current);
         assert_eq!(merged["nodeSettings"], serde_json::json!({
-            "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["y"] },
-            "h": { "defaultLevel": -1 }
+            "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["x"] },
+            "h": { "defaultLevel": -1 },
+            "k": { "allowedInstances": ["x"] }
         }));
     }
 
