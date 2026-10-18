@@ -80,6 +80,7 @@
     "unknown": "Error desconocido",
     "agreement_required": "Debes aceptar {{names}} antes de poder iniciar este servidor. Acéptalo en Saba-chan en el PC.",
     "agreement_local_only": "Los acuerdos solo se pueden aceptar en Saba-chan en este PC.",
+    "no_command_path": "'{{name}}' se inició fuera de saba-chan, así que no tiene consola para recibir comandos. Reinícialo desde saba-chan en el PC.",
     "alias_conflict": "❌ El alias '{{alias}}' es ambiguo — coincide con varios módulos: {{modules}}. Usa un alias más específico.",
     "multiple_instances": "⚠️ Existen múltiples instancias de '{{module}}'. Usa el nombre de la instancia en lugar del alias del módulo.",
     "auth_failed": "Falló la autenticación",

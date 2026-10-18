@@ -80,6 +80,7 @@
     "unknown": "不明なエラー",
     "agreement_required": "サーバーを起動するには{{names}}への同意が必要です。PCのSaba-chanで同意してください。",
     "agreement_local_only": "規約への同意はこのPCのSaba-chanでのみ行えます。",
+    "no_command_path": "「{{name}}」はサバちゃんの外で起動されたため、コマンドを受け取るコンソールがありません。PCのサバちゃんからサーバーを再起動してください。",
     "auth_failed": "認証失敗",
     "player_not_found": "プレイヤーが見つかりません",
     "internal_server_error": "内部サーバーエラー",

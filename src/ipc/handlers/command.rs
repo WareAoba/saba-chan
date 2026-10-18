@@ -420,7 +420,7 @@ pub async fn execute_rcon_command(
     (
         StatusCode::CONFLICT,
         Json(json!({
-            "error": format!("'{}' has no console to send commands to: start it from saba-chan (managed) to run commands", instance.name),
+            "error": format!("'{}' was started outside saba-chan and has no console for commands: restart it from saba-chan", instance.name),
             "error_code": "no_command_path",
         })),
     )
