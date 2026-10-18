@@ -30,7 +30,8 @@ use std::collections::HashMap;
 /// 처리기가 쓰는 봇 설정 일부
 #[derive(Debug, Clone, Default)]
 pub struct ChatSettings {
-    pub prefix: String,
+    /// 비어 있으면 응답 언어의 기본 접두사 (`default_prefix`)
+    pub prefixes: Vec<String>,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
     pub instance_aliases: HashMap<String, String>,
@@ -40,7 +41,7 @@ pub struct ChatSettings {
 impl From<&BotConfig> for ChatSettings {
     fn from(cfg: &BotConfig) -> Self {
         Self {
-            prefix: cfg.prefix.clone(),
+            prefixes: cfg.prefixes.clone(),
             module_aliases: cfg.module_aliases.clone(),
             command_aliases: cfg.command_aliases.clone(),
             instance_aliases: cfg.instance_aliases.clone(),
@@ -127,7 +128,7 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
     let aliases = ModuleAliases::build(&modules, &settings.module_aliases);
     let ctx = Ctx { api, settings, cat, req, modules, aliases };
 
-    let text = strip_prefix(req.text.trim(), &settings.prefix);
+    let text = strip_prefix(req.text.trim(), &ctx.prefixes());
     let args: Vec<&str> = text.split_whitespace().collect();
 
     if let Err(denied) = ctx.permit(None) {
@@ -182,10 +183,23 @@ fn skip_words(text: &str, n: usize) -> &str {
 }
 
 /// 릴레이는 접두사 없이 보내지만, 사용자가 붙여 보낸 경우도 받아 준다
-fn strip_prefix<'t>(text: &'t str, prefix: &str) -> &'t str {
-    if !prefix.is_empty() {
-        if let Some(rest) = text.strip_prefix(prefix) {
-            return rest.trim_start();
+/// 긴 접두사부터 대소문자 없이 맞춰 본다. 접두사 뒤에는 공백·쉼표·쌍점이 오거나 글이 끝나야 한다
+/// (`사바쨩, 안녕`은 접두사, `사바쨩아`는 아니다)
+fn strip_prefix<'t>(text: &'t str, prefixes: &[String]) -> &'t str {
+    let mut sorted: Vec<&String> = prefixes.iter().filter(|p| !p.is_empty()).collect();
+    sorted.sort_by_key(|p| std::cmp::Reverse(p.chars().count()));
+    for prefix in sorted {
+        let n = prefix.chars().count();
+        if text.chars().count() < n {
+            continue;
+        }
+        let end = text.char_indices().nth(n).map_or(text.len(), |(i, _)| i);
+        let (head, rest) = text.split_at(end);
+        if head.to_lowercase() != prefix.to_lowercase() {
+            continue;
+        }
+        if rest.is_empty() || rest.starts_with(|c: char| c.is_whitespace() || c == ',' || c == ':') {
+            return rest.trim_start_matches(|c: char| c.is_whitespace() || c == ',' || c == ':');
         }
     }
     text
@@ -194,6 +208,19 @@ fn strip_prefix<'t>(text: &'t str, prefix: &str) -> &'t str {
 impl<D: DaemonApi> Ctx<'_, D> {
     fn t(&self, key: &str, vars: &[(&str, &str)]) -> String {
         self.cat.t(key, vars)
+    }
+
+    /// 맞춰 볼 접두사. 설정이 비어 있으면 응답 언어의 기본값 하나
+    fn prefixes(&self) -> Vec<String> {
+        match self.settings.prefixes.is_empty() {
+            true => vec![self.t("default_prefix", &[])],
+            false => self.settings.prefixes.clone(),
+        }
+    }
+
+    /// 도움말에 보여 줄 접두사 (첫 번째)
+    fn prefix(&self) -> String {
+        self.prefixes().swap_remove(0)
     }
 
     // ── 노드 설정 (허용 인스턴스 / 멤버 권한) ──
@@ -245,7 +272,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
     // ── 도움말 / 목록 ──
 
     async fn help(&self) -> String {
-        let prefix = &self.settings.prefix;
+        let prefix = &self.prefix();
         let mut mounted: Vec<String> = Vec::new();
         match self.servers().await {
             Ok(servers) => {
@@ -349,7 +376,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
         if let Some(msg) = self.alias_conflict(alias) {
             return msg;
         }
-        let prefix = &self.settings.prefix;
+        let prefix = &self.prefix();
         // 인스턴스 이름으로 불렀으면 그 인스턴스의 모듈을 안내한다
         let named = self.named_servers(alias, servers);
         let module_name = named.first().map(|s| s.module.clone()).unwrap_or_else(|| self.aliases.resolve(alias));
@@ -524,7 +551,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
                     .unwrap_or_else(|| name.to_string());
                 self.t(
                     "command.missing_required",
-                    &[("arg_name", name), ("prefix", &self.settings.prefix), ("alias", alias), ("command", cmd_alias), ("description", &description)],
+                    &[("arg_name", name), ("prefix", &self.prefix()), ("alias", alias), ("command", cmd_alias), ("description", &description)],
                 )
             }
             "server_not_running" => {

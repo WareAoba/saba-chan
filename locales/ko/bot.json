@@ -1,4 +1,5 @@
 {
+  "default_prefix": "사바쨩",
   "commands": {
     "start": "서버 시작",
     "stop": "서버 중지",
@@ -286,11 +287,8 @@
       "music": "음악",
       "enabled": "켜기",
       "model": "모델",
-      "memo": "노드 메모",
-      "triggerWords": "호출어",
+      "memo": "서버 프롬프트",
       "confirmCommands": "명령 확인",
-      "ambientSeconds": "끼어들기 주기(초)",
-      "sessionSeconds": "후속 대화 시간(초)",
       "memory": "기억",
       "webSearch": "웹 검색",
       "disabledTools": "끈 도구 묶음",

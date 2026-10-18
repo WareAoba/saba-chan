@@ -95,7 +95,7 @@ fn fixture() -> FakeDaemon {
 }
 
 fn settings() -> ChatSettings {
-    ChatSettings { prefix: "!saba".into(), ..Default::default() }
+    ChatSettings { prefixes: vec!["!saba".into()], ..Default::default() }
 }
 
 fn discord(user: &str) -> Option<permissions::Requester> {
@@ -369,4 +369,28 @@ fn quoted_arguments_stay_together() {
     // 따옴표 안의 공백은 그대로 둔다
     assert_eq!(split_quoted(r#"say "two  spaces" now"#), vec!["say", "two  spaces", "now"]);
     assert_eq!(super::skip_words("  mc   say  \"a  b\"", 2), "\"a  b\"");
+}
+
+#[test]
+fn a_prefix_matches_without_case_only_before_a_break() {
+    let p = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(strip_prefix("사바쨩, help", &p(&["사바쨩"])), "help");
+    assert_eq!(strip_prefix("사바쨩: list", &p(&["사바쨩"])), "list");
+    assert_eq!(strip_prefix("사바쨩", &p(&["사바쨩"])), "");
+    assert_eq!(strip_prefix("사바쨩아 help", &p(&["사바쨩"])), "사바쨩아 help");
+    assert_eq!(strip_prefix("SABA-CHAN list", &p(&["Saba-chan"])), "list");
+    // 긴 접두사가 먼저다
+    assert_eq!(strip_prefix("!sab list", &p(&["!s", "!sab"])), "list");
+}
+
+#[tokio::test]
+async fn help_shows_the_language_default_when_no_prefix_is_set() {
+    let api = fixture();
+    let empty = ChatSettings::default();
+    let req = ChatRequest { text: "사바쨩 help".into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() };
+    let ko = process(&api, &empty, &Catalog::for_language("ko"), &req).await.text;
+    assert!(ko.contains("사바쨩 <"), "{}", ko);
+    let req = ChatRequest { text: "".into(), ..req };
+    let en = process(&api, &empty, &Catalog::for_language("en"), &req).await.text;
+    assert!(en.contains("Saba-chan <"), "{}", en);
 }

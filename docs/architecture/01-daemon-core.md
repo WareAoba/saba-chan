@@ -370,6 +370,7 @@
 |---|---|---|---|
 | GET | `/api/relay/host/:host_id/status` | `relay.rs:211` | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명). 서명 요청의 `relayUrl`은 설정한 릴레이와 같거나 루프백일 때만 따른다(`signed_relay_url`, `relay.rs:45-67`) |
 | GET | `/api/relay/host/:host_id/nodes` | `relay.rs:223` | `/api/hosts/:id/nodes` |
+| GET | `/api/relay/node/:guild_id/chatbot/models` | `relay.rs` `get_node_chatbot_models` | `/api/nodes/:id/chatbot/models` 서명 프록시. 릴레이 답을 그대로 전달한다: 200 `{provider, models, selected, effectiveModel}`, 409 `NO_API_KEY`, 422 `INVALID_API_KEY`·`QUOTA_EXCEEDED`, 503 `PROVIDER_UNAVAILABLE` |
 | GET/PUT | `/api/relay/node/:guild_id/channels` | `relay.rs:237/246` | `/api/nodes/:id/channels` 서명 프록시. 챗봇 채널(여럿)·음악 채널(하나) 배정의 원본은 릴레이다. 응답 `{guildId, chatbot:[id], music:id\|null, botAvailable, channels:[{id,name,category}]}`, PUT 본문 `{chatbot?, music?}`(준 키만). 오류 본문 `{error: CODE, channelId?}`는 그대로 전달(객체가 아닌 본문은 데몬이 400 `INVALID_BODY`). 데몬 config의 `chatbot.guilds.*.channelIds`는 `ChatbotConfig::migrate`가 지운다 |
 | GET | `/api/relay/node/:guild_id/members` | `relay.rs:236` | `/api/nodes/:id/discord-members`, 503이면 `/members`로 폴백 |
 | GET | `/api/relay/bot-invite` | `relay.rs:267-286` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 주소는 서명 요청과 같은 규칙(설정한 릴레이 또는 루프백)으로 정한다. 봇 초대 URL `{url}` |
@@ -504,7 +505,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 **BotConfig** (camelCase, `config.json`의 `relay`, `config_store/mod.rs:115-125`). 로컬 봇용 필드(`token`, `autoStart`, `mode`, `music*`)는 지워졌고, 옛 파일에 남아 있어도 무시된다.
 
-- `prefix`("!saba"), `cloud{relayUrl,hostId}` (hostId는 노드 토큰 `sbn_<hostId>.…`을 따른다: 페어링 완료·`PUT`·`DELETE /api/config/node-token`이 같이 맞춘다)
+- `prefixes`(문자열 목록, 기본 `[]`: 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다. ko `사바쨩`, ja `サバちゃん`, 그 밖 `Saba-chan`). 각각 공백 없는 1~32자, 10개까지이고 어기면 `PUT /api/config/bot`이 400이다. 예전 `prefix` 문자열은 읽을 때 옮긴다(`"!saba"`·빈 값 → `[]`, 그 밖 → `[값]`, `BotConfig::normalize`). `cloud{relayUrl,hostId}` (hostId는 노드 토큰 `sbn_<hostId>.…`을 따른다: 페어링 완료·`PUT`·`DELETE /api/config/node-token`이 같이 맞춘다)
 - `moduleAliases`, `commandAliases`
 - `instanceAliases`: 인스턴스 ID → 그 서버를 부르는 별명 목록(`"크리, cr"`). 같은 게임 서버가 여럿일 때 하나를 고른다. 채팅 처리기는 인스턴스 이름 → 인스턴스 별명 → 모듈 별명 순으로 찾고, 여러 서버가 걸리면 `errors.multiple_instances`로 답한다(`src/chat/mod.rs:256-285`)
 - `nodeSettings`, `cloudNodes`, `cloudMembers`

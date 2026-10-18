@@ -51,6 +51,8 @@
     "paired": "Vinculado con Discord.",
     "prefix": "Prefijo",
     "prefix_set": "El prefijo del chat ahora es {{prefix}}.",
+    "prefix_default": "Predeterminado (Saba-chan)",
+    "prefix_reset": "El prefijo del chat vuelve a ser el predeterminado.",
     "relay": "Relé",
     "started": "Conectado al relé del bot de Discord.",
     "stopped": "Desconectado del relé.",

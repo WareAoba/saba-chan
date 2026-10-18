@@ -258,6 +258,18 @@ pub async fn get_node_channels(
     signed_get(&base, &format!("/api/nodes/{}/channels", encode_path_segment(&guild_id)), invalid_response).await
 }
 
+// ── GET /api/relay/node/:guild_id/chatbot/models ──
+// 길드에 저장된 사용자 키로 relay가 받은 대화 모델 목록 (`{provider, models, selected, effectiveModel}`, 409 NO_API_KEY 등은 그대로)
+
+pub async fn get_node_chatbot_models(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    signed_get(&base, &format!("/api/nodes/{}/chatbot/models", encode_path_segment(&guild_id)), invalid_response).await
+}
+
 pub async fn put_node_channels(
     Path(guild_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
