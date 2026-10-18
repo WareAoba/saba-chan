@@ -658,6 +658,20 @@ const impl = {
                       },
         }),
     extensionList: () => ok({ extensions: [] }),
+    // 디스코드에서 코드 없이 연결 요청 (J1-b)
+    relayLinkRequests: () =>
+        ok({
+            requests: [
+                {
+                    requestId: 'lr-1',
+                    guildId: '900',
+                    guildName: '마크 친구들',
+                    userName: 'aoba',
+                    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+                },
+            ],
+        }),
+    relayLinkRequestRespond: (id, accept) => ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
     onboarding: () =>
         ok({
             steps: [

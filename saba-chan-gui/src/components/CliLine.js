@@ -59,23 +59,10 @@ export function fillCli(template, { server, values = {}, extra = {} }) {
     return rest.length ? `${line} ${rest.join(' ')}` : line;
 }
 
-export function CliLine({ actionId, server, values, extra }) {
+/** 명령 한 줄과 복사 버튼 */
+export function CliText({ line }) {
     const { t } = useTranslation('gui');
-    const [template, setTemplate] = useState(null);
     const [copied, setCopied] = useState(false);
-
-    useEffect(() => {
-        if (!window.api?.actionsList) return;
-        let alive = true;
-        loadCatalog().then((map) => alive && setTemplate(map[actionId] || null));
-        return () => {
-            alive = false;
-        };
-    }, [actionId]);
-
-    if (!template) return null;
-    const line = fillCli(template, { server, values, extra });
-
     return (
         <div className="cli-line">
             <Icon name="terminal" size="sm" />
@@ -95,4 +82,20 @@ export function CliLine({ actionId, server, values, extra }) {
             </button>
         </div>
     );
+}
+
+export function CliLine({ actionId, server, values, extra }) {
+    const [template, setTemplate] = useState(null);
+
+    useEffect(() => {
+        if (!window.api?.actionsList) return;
+        let alive = true;
+        loadCatalog().then((map) => alive && setTemplate(map[actionId] || null));
+        return () => {
+            alive = false;
+        };
+    }, [actionId]);
+
+    if (!template) return null;
+    return <CliText line={fillCli(template, { server, values, extra })} />;
 }

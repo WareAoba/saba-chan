@@ -1320,5 +1320,14 @@
   "cli_line": {
     "copy": "Copy CLI command",
     "copied": "Copied"
+  },
+  "link_request": {
+    "title": "Discord link requests",
+    "message": "{{guild}} asked to link to this PC",
+    "accept": "Accept",
+    "decline": "Decline",
+    "accepted": "Linked to {{guild}}.",
+    "expired": "The request expired. Ask again from Discord.",
+    "failed": "Couldn't handle the request."
   }
 }

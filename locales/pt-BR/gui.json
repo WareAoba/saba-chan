@@ -1290,5 +1290,14 @@
   "cli_line": {
     "copy": "Copiar comando da CLI",
     "copied": "Copiado"
+  },
+  "link_request": {
+    "title": "Pedidos de conexão do Discord",
+    "message": "{{guild}} pediu para se conectar a este PC",
+    "accept": "Aceitar",
+    "decline": "Recusar",
+    "accepted": "Conectado a {{guild}}.",
+    "expired": "O pedido expirou. Peça novamente pelo Discord.",
+    "failed": "Não foi possível processar o pedido."
   }
 }
