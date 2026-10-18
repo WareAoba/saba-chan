@@ -1078,8 +1078,8 @@ async function checkForUpdates() {
                 ];
                 const notifIcon = iconCandidates.find((p) => fs.existsSync(p)) || undefined;
                 const notif = new Notification({
-                    title: 'saba-chan — 업데이트 알림',
-                    body: `${filteredCount}개 업데이트: ${names.join(', ')}`,
+                    title: t('updates.notification_title'),
+                    body: t('updates.notification_body', { count: String(filteredCount), names: names.join(', ') }),
                     icon: notifIcon,
                 });
                 notif.on('click', () => {
@@ -1295,7 +1295,7 @@ function createTray() {
     }
     tray = new Tray(icon);
 
-    tray.setToolTip('사바쨩 - 게임 서버 관리');
+    tray.setToolTip(t('tray.tooltip'));
     updateTrayMenu();
 
     // 시스템 테마 변경 시 트레이 아이콘 업데이트
@@ -1322,7 +1322,7 @@ function updateTrayMenu() {
 
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: '🖥️ 창 열기',
+            label: t('tray.open_window'),
             click: () => {
                 if (mainWindow) {
                     mainWindow.show();
@@ -1332,7 +1332,7 @@ function updateTrayMenu() {
         },
         {
             // 터미널로 열기 (I4-e): 데몬이 새 콘솔 창에 CLI 셸을 띄운다 (지금은 Windows만)
-            label: '💻 터미널 열기',
+            label: t('tray.open_terminal'),
             visible: process.platform === 'win32',
             click: async () => {
                 const res = await daemonCall('post', '/api/clients/launch', { kind: 'cli', view: 'shell' });
@@ -1341,11 +1341,11 @@ function updateTrayMenu() {
         },
         { type: 'separator' },
         {
-            label: daemonProcess ? '🟢 데몬 실행 중' : '⚪ 데몬 중지됨',
+            label: daemonProcess ? t('tray.daemon_running') : t('tray.daemon_stopped'),
             enabled: false,
         },
         {
-            label: '🛑 데몬 종료',
+            label: t('tray.stop_daemon'),
             enabled: !!daemonProcess,
             click: async () => {
                 await stopDaemon();
@@ -1353,7 +1353,7 @@ function updateTrayMenu() {
             },
         },
         {
-            label: '▶️ 데몬 시작',
+            label: t('tray.start_daemon'),
             enabled: !daemonProcess,
             click: () => {
                 startDaemon();
@@ -1362,13 +1362,13 @@ function updateTrayMenu() {
         },
         { type: 'separator' },
         {
-            label: '🔌 인터페이스만 종료',
+            label: t('tray.quit_interface'),
             click: () => {
                 interfaceOnlyQuit();
             },
         },
         {
-            label: '❌ 완전히 종료',
+            label: t('tray.quit_all'),
             click: () => {
                 cleanQuit();
             },
@@ -1405,14 +1405,14 @@ app.on('ready', () => {
     // UI가 준비된 뒤 백그라운드 초기화를 시작
     if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.once('did-finish-load', () => {
-            sendStatus('ui', 'UI 로드 완료');
+            sendStatus('ui', t('init.ui_loaded'));
             runBackgroundInit();
 
             // --after-update 플래그 감지 → 업데이트 완료 알림
             if (process.argv.includes('--after-update')) {
                 console.log('[Updater] Detected --after-update flag, notifying renderer');
                 mainWindow.webContents.send('updates:completed', {
-                    message: '업데이트가 완료되었습니다!',
+                    message: t('updates.completed'),
                     timestamp: new Date().toISOString(),
                 });
             }
@@ -1989,21 +1989,21 @@ ipcMain.handle('instance:create', async (_event, data) => {
             // error_code(working_dir_in_use 등)·instance를 렌더러가 쓸 수 있게 본문을 그대로 넘긴다
             switch (status) {
                 case 400:
-                    return { ...body, error: body.error || '잘못된 요청: 입력값을 확인해주세요' };
+                    return { ...body, error: body.error || t('errors.invalid_input') };
                 case 409:
-                    return { ...body, error: body.error || '이미 존재하는 인스턴스 이름입니다' };
+                    return { ...body, error: body.error || t('errors.instance_name_taken') };
                 case 500:
-                    return { ...body, error: `인스턴스 생성 오류: ${body.error || body.message || '내부 오류 발생'}` };
+                    return { ...body, error: t('errors.create_error', { error: body.error || body.message || t('errors.internal') }) };
                 default:
-                    return { ...body, error: `생성 실패 (HTTP ${status}): ${body.error || error.message}` };
+                    return { ...body, error: t('errors.create_http', { status: String(status), error: body.error || error.message }) };
             }
         }
 
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
 
-        return { error: `인스턴스 생성 실패: ${error.message}` };
+        return { error: t('server.creation_failed', { error: error.message }) };
     }
 });
 
@@ -2065,21 +2065,21 @@ ipcMain.handle('instance:delete', async (_event, id) => {
 
             switch (status) {
                 case 404:
-                    return { error: `인스턴스를 찾을 수 없습니다` };
+                    return { error: t('errors.instance_not_found') };
                 case 409:
-                    return { error: `실행중인 인스턴스는 삭제할 수 없습니다. 먼저 정지해주세요` };
+                    return { error: t('errors.instance_running') };
                 case 500:
-                    return { error: `인스턴스 삭제 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                    return { error: t('errors.delete_error', { error: data.error || data.message || t('errors.internal') }) };
                 default:
-                    return { error: `삭제 실패 (HTTP ${status}): ${data.error || error.message}` };
+                    return { error: t('errors.delete_http', { status: String(status), error: data.error || error.message }) };
             }
         }
 
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
 
-        return { error: `인스턴스 삭제 실패: ${error.message}` };
+        return { error: t('server.delete_failed', { error: error.message }) };
     }
 });
 
@@ -2089,9 +2089,9 @@ ipcMain.handle('instance:reorder', async (_event, orderedIds) => {
         return response.data;
     } catch (error) {
         if (error.response) {
-            return { error: error.response.data?.error || '순서 변경 실패' };
+            return { error: error.response.data?.error || t('errors.reorder_failed', { error: `HTTP ${error.response.status}` }) };
         }
-        return { error: `순서 변경 실패: ${error.message}` };
+        return { error: t('errors.reorder_failed', { error: error.message }) };
     }
 });
 
@@ -2124,25 +2124,25 @@ ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
                     // 데몬의 검증 결과를 그대로: error_code가 invalid_format이면 renderer가 "잘못된 형식입니다"를 띄운다
                     return {
                         status,
-                        error: `잘못된 설정값: ${data.message || data.error || '입력값을 확인해주세요'}`,
+                        error: t('errors.settings_invalid', { error: data.message || data.error || t('errors.invalid_input') }),
                         error_code: data.error_code,
                         details: data.details,
                         fields: data.fields,
                     };
                 case 404:
-                    return { error: `인스턴스를 찾을 수 없습니다` };
+                    return { error: t('errors.instance_not_found') };
                 case 500:
-                    return { error: `설정 저장 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                    return { error: t('errors.settings_error', { error: data.error || data.message || t('errors.internal') }) };
                 default:
-                    return { error: `설정 저장 실패 (HTTP ${status}): ${data.error || error.message}` };
+                    return { error: t('errors.settings_http', { status: String(status), error: data.error || error.message }) };
             }
         }
 
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
 
-        return { error: `설정 저장 실패: ${error.message}` };
+        return { error: t('server.settings_save_failed', { error: error.message }) };
     }
 });
 
@@ -2165,16 +2165,16 @@ ipcMain.handle('instance:executeCommand', async (_event, id, command) => {
             const data = error.response.data || {};
             // 데몬이 모듈 [errors] 문구(error_message) 또는 원인(error)을 준다
             return {
-                error: data.error_message || data.error || `오류 (HTTP ${error.response.status})`,
+                error: data.error_message || data.error || t('errors.http', { status: String(error.response.status) }),
                 error_code: data.error_code,
                 field: data.field,
             };
         }
         const networkErrors = {
-            ECONNREFUSED: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요',
-            ETIMEDOUT: '요청 시간 초과: 서버가 응답하지 않습니다',
+            ECONNREFUSED: t('network.connection_refused'),
+            ETIMEDOUT: t('network.timeout'),
         };
-        return { error: networkErrors[error.code] || `명령어 실행 실패: ${error.message}` };
+        return { error: networkErrors[error.code] || t('errors.command_failed', { error: error.message }) };
     }
 });
 
@@ -2917,8 +2917,10 @@ ipcMain.handle('language:get', () => {
 ipcMain.handle('language:set', async (_event, language) => {
     const success = await setLanguage(language);
 
-    // 번역 다시 로드
+    // 번역 다시 로드 (트레이 메뉴도 새 언어로)
     translations = loadTranslations();
+    if (tray) tray.setToolTip(t('tray.tooltip'));
+    updateTrayMenu();
 
     // 데몬은 재시작하지 않음 — Python 모듈은 호출 시 환경변수로 언어를 결정하므로
     // 데몬을 재시작하면 실행 중인 서버가 모두 종료됨
@@ -3058,16 +3060,16 @@ ipcMain.handle('dataTransfer:import', async (_event, opts = {}) => {
 
 // 로그 파일 경로 반환
 ipcMain.handle('logs:getPath', async () => {
-    return logFilePath || '로그 파일 없음';
+    return logFilePath || t('errors.no_log_file');
 });
 
 // 외부 브라우저로 URL 열기
 ipcMain.handle('shell:openExternal', async (_event, url) => {
     if (!url || typeof url !== 'string') {
-        return { error: 'URL이 지정되지 않았습니다' };
+        return { error: t('errors.url_missing') };
     }
     if (!isWebUrl(url)) {
-        return { error: 'http(s) 주소만 열 수 있습니다' };
+        return { error: t('errors.url_not_web') };
     }
     try {
         await shell.openExternal(url);
@@ -3080,7 +3082,7 @@ ipcMain.handle('shell:openExternal', async (_event, url) => {
 // 파일 탐색기로 폴더 열기
 ipcMain.handle('shell:openPath', async (_event, folderPath) => {
     if (!folderPath || typeof folderPath !== 'string') {
-        return { error: '경로가 지정되지 않았습니다' };
+        return { error: t('errors.path_missing') };
     }
     try {
         const result = await shell.openPath(folderPath);
@@ -3100,7 +3102,7 @@ ipcMain.handle('logs:openFolder', async () => {
         shell.openPath(logsDir);
         return { success: true };
     }
-    return { error: '로그 폴더가 없습니다' };
+    return { error: t('errors.no_log_folder') };
 });
 
 ipcMain.handle('botConfig:save', async (_event, config) => {

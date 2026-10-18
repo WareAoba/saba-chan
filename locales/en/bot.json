@@ -134,6 +134,17 @@
     "restart_warning": "The server restarts in {{minutes}} min.",
     "update_warning": "The server restarts for an update in {{minutes}} min."
   },
+  "provision": {
+    "installing": "Installing server…",
+    "install_failed": "Installation failed",
+    "installed": "Server installed",
+    "updating": "Updating server…",
+    "update_failed": "Update failed",
+    "updated": "Server updated",
+    "module_missing": "Module not found: {{error}}",
+    "no_latest_version": "Couldn't find the latest server version",
+    "backup_failed": "Pre-update backup failed: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {

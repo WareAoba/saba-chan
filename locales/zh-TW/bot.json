@@ -134,6 +134,17 @@
     "restart_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動。",
     "update_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動以進行更新。"
   },
+  "provision": {
+    "installing": "正在安裝伺服器…",
+    "install_failed": "安裝失敗",
+    "installed": "伺服器已安裝",
+    "updating": "正在更新伺服器…",
+    "update_failed": "更新失敗",
+    "updated": "伺服器已更新",
+    "module_missing": "找不到模組: {{error}}",
+    "no_latest_version": "無法取得最新的伺服器版本",
+    "backup_failed": "更新前備份失敗: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {
