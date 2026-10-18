@@ -178,6 +178,8 @@ describe('사바쨩 말풍선', () => {
         await emit({ type: 'resync', data: {} });
         // 목록을 다시 받기 전의 다른 갱신(시계 등)은 표시를 쓰지 않는다
         await act(async () => useServerStore.setState({ nowEpoch: 123 }));
+        // 재시작 예정 시각(5초)이 지난 뒤의 목록
+        await advance(6000);
         await act(async () => {
             useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
         });
@@ -204,5 +206,59 @@ describe('사바쨩 말풍선', () => {
     it('모르는 그림 이름은 그리지 않는다', () => {
         const { container } = render(<SabaArt />);
         expect(container.querySelector('img')).toBeNull();
+    });
+    it('재시작을 기다리는 중에 다시 연결되면 복구 중을 놓지 않는다', async () => {
+        useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'running', start_time: 100 }] });
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 20 } });
+        await emit({ type: 'resync', data: {} });
+        await act(async () => {
+            useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
+        });
+        expect(useSabaBubble.getState().bubble?.released).toBe(false);
+
+        // 예정 시각이 지나도 아직 꺼져 있으면 (데몬이 다시 떠 예약이 사라짐 등) 놓는다
+        await advance(21000);
+        await act(async () => {
+            useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
+        });
+        expect(useSabaBubble.getState().bubble?.released).toBe(true);
+    });
+
+    it('다시 연결 뒤 새로 뜬 다른 서버의 복구 중은 놓지 않는다', async () => {
+        useServerStore.setState({
+            servers: [
+                { id: 'mc-1', name: 'Survival', status: 'running', start_time: 100 },
+                { id: 'mc-2', name: 'Creative', status: 'running', start_time: 100 },
+            ],
+        });
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 0 } });
+        await emit({ type: 'resync', data: {} });
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-2', kind: 'crash', restartInSecs: 0 } });
+        await act(async () => {
+            useServerStore.setState({
+                servers: [
+                    { id: 'mc-1', name: 'Survival', status: 'stopped' },
+                    { id: 'mc-2', name: 'Creative', status: 'stopped' },
+                ],
+            });
+        });
+        expect(useSabaBubble.getState().bubble).toMatchObject({ holdKey: 'mc-2', released: false });
+    });
+
+    it('깨운 뒤 한 번 졸린 사바쨩을 띄우면, 이어서 상태 확인이 끊겼다 돌아와도 다시 띄우지 않는다', async () => {
+        useUIStore.setState({ backgroundDaemonStatus: 'stopped' });
+        render(<SabaBubble />);
+        useSabaBubble.getState().markWoken();
+        await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'running' }));
+        expect(useSabaBubble.getState().bubble?.kind).toBe('sleepy');
+        await advance(5000);
+        await advance(400);
+        await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'stopped' }));
+        await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'running' }));
+        expect(useSabaBubble.getState().bubble).toBeNull();
     });
 });

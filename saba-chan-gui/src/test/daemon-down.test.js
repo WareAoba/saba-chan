@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ServersPage } from '../components/servers/ServersPage';
+import { useSabaBubble } from '../stores/useSabaBubble';
 import { useUIStore } from '../stores/useUIStore';
 
 const page = (servers) => (
@@ -26,6 +27,16 @@ describe('데몬이 꺼져 있을 때 서버 화면', () => {
             fireEvent.click(screen.getByRole('button', { name: /Wake up/ }));
         });
         expect(window.api.daemonRestart).toHaveBeenCalled();
+    });
+
+    it('깨우기에 실패하면 깨운 표시를 남기지 않는다 (뒤늦은 졸린 사바쨩이 뜨지 않게)', async () => {
+        useUIStore.setState({ backgroundDaemonStatus: 'stopped' });
+        window.api.daemonRestart = vi.fn().mockResolvedValue({ success: false, error: 'no' });
+        render(page([]));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Wake up/ }));
+        });
+        expect(useSabaBubble.getState().wokeAt).toBe(0);
     });
 
     it('데몬이 살아 있으면 원래 빈 화면이다', () => {

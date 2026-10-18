@@ -21,9 +21,11 @@ export function DaemonRestartButton({ className = 'btn btn-primary', wake = fals
         try {
             const res = await window.api.daemonRestart();
             if (!res?.success) {
+                useSabaBubble.getState().markWoken(false);
                 safeShowToast(t('shell.daemon_restart_failed', { error: res?.error || '' }), 'error', 6000);
             }
         } catch (e) {
+            useSabaBubble.getState().markWoken(false);
             safeShowToast(t('shell.daemon_restart_failed', { error: e.message }), 'error', 6000);
         }
         setRestarting(false);
