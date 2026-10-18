@@ -328,6 +328,13 @@ impl Session {
         self.cancel.cancel();
     }
 
+    /// 상태에 마지막 오류를 남긴다. 세션이 끝난 뒤(연결 해제·토큰 대체)에는 끝난 이유를 덮어쓰지 않는다
+    fn report_error(&self, e: String) {
+        if !self.cancel.is_cancelled() {
+            self.agent.update(self.generation, |s| s.last_error = Some(e));
+        }
+    }
+
     async fn check_version(&self) -> Result<(), String> {
         let info: Value = match self.client.get(format!("{}/info", self.base)).send().await {
             Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
@@ -402,7 +409,7 @@ impl Session {
             Err(e) if e == REPLACED => self.give_up_replaced(),
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
-                self.agent.update(self.generation, |s| s.last_error = Some(e));
+                self.report_error(e);
             }
         }
     }
@@ -545,7 +552,7 @@ impl Session {
                             failures += 1;
                             let backoff = backoff(failures);
                             tracing::warn!("[RelayAgent] poll failed ({}), retry in {}s", e, backoff.as_secs());
-                            self.agent.update(self.generation, |s| s.last_error = Some(e));
+                            self.report_error(e);
                             next = Some(Box::pin(async move {
                                 self.pause(backoff).await;
                                 self.poll_once().await
