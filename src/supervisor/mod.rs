@@ -2257,19 +2257,23 @@ impl Supervisor {
 
         let auto_restart = setting_flag(&instance, "auto_restart", true);
         let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
-        let (restart_in, note) = if crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
+        let (restart_in, note, note_code) = if crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
             let history = self.restart_history.entry(instance_id.to_string()).or_default();
             match crash::next_restart_delay(history, Instant::now()) {
                 Some(delay) => {
                     self.pending_restarts.push((instance_id.to_string(), delay));
-                    (Some(delay.as_secs()), None)
+                    (Some(delay.as_secs()), None, None)
                 }
-                None => (None, Some(format!("auto restart gave up after {} restarts in 10 minutes", crash::MAX_RESTARTS))),
+                None => (
+                    None,
+                    Some(format!("auto restart gave up after {} restarts in 10 minutes", crash::MAX_RESTARTS)),
+                    Some(("gave_up", serde_json::json!({ "count": crash::MAX_RESTARTS }))),
+                ),
             }
         } else if verdict.kind == crash::ExitKind::Crash && !auto_restart {
-            (None, Some("auto_restart is off".to_string()))
+            (None, Some("auto_restart is off".to_string()), Some(("auto_restart_off", serde_json::json!({}))))
         } else {
-            (None, None)
+            (None, None, None)
         };
 
         let line = match (verdict.kind, restart_in, &note) {
@@ -2286,7 +2290,8 @@ impl Supervisor {
             tracing::info!("'{}' exited: {:?} ({})", instance.name, verdict.kind, verdict.evidence);
         }
 
-        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note };
+        let (note_code, note_args) = note_code.map(|(c, a)| (c.to_string(), a)).unzip();
+        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note, note_code, note_args };
         crate::events::emit("instance.exit", serde_json::json!({
             "instanceId": instance_id,
             "instance": instance.name,
@@ -2296,6 +2301,8 @@ impl Supervisor {
             "evidence": event.verdict.evidence,
             "restartInSecs": event.restart_in_secs,
             "note": event.note,
+            "noteCode": event.note_code,
+            "noteArgs": event.note_args,
         }));
         if !self.exit_events.contains_key(instance_id) {
             let saved = self.saved_exit_events(instance_id);
@@ -2354,6 +2361,8 @@ impl Supervisor {
     pub fn record_restart_failure(&mut self, instance_id: &str, reason: String) {
         if let Some(last) = self.exit_events.get_mut(instance_id).and_then(|e| e.back_mut()) {
             last.note = Some(format!("restart failed: {}", reason));
+            last.note_code = Some("restart_failed".into());
+            last.note_args = Some(serde_json::json!({ "reason": reason }));
         }
         self.save_exit_events(instance_id);
     }
@@ -2836,6 +2845,10 @@ mod tests {
         assert_eq!(kind("off"), Some(crash::ExitKind::Crash));
         assert_eq!(kind("reattached"), Some(crash::ExitKind::UnknownExit), "a server running before the daemon restart did not fail to start");
         assert_eq!(supervisor.exit_events("off")[0].note.as_deref(), Some("auto_restart is off"));
+        assert_eq!(supervisor.exit_events("off")[0].note_code.as_deref(), Some("auto_restart_off"));
+        supervisor.record_restart_failure("crash", "no java".into());
+        let failed = supervisor.exit_events("crash").last().cloned().unwrap();
+        assert_eq!((failed.note_code.as_deref(), failed.note_args), (Some("restart_failed"), Some(json!({"reason": "no java"}))));
         assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5))]);
         assert!(supervisor.restart_still_wanted("crash").await);
         supervisor.stop_requested.insert("crash".into());
