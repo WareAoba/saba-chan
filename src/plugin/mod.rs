@@ -202,7 +202,12 @@ type Reader = Box<dyn tokio::io::AsyncRead + Unpin + Send>;
 /// 띄운 Python: 평소대로 띄운 것과 AppContainer 안에서 띄운 것 (실행마다 하나라 크기는 상관없다)
 #[allow(clippy::large_enum_variant)]
 enum Process {
-    Plain(tokio::process::Child),
+    /// 평소대로 띄운 것. Windows는 Job Object에 넣어 둔다: 부모가 먼저 끝나 `taskkill /T`가 못 찾는 손자도 끝낼 수 있게
+    Plain {
+        child: tokio::process::Child,
+        #[cfg(windows)]
+        job: Option<std::os::windows::io::OwnedHandle>,
+    },
     #[cfg(windows)]
     Contained(crate::sandbox::appcontainer::Contained),
 }
@@ -210,7 +215,7 @@ enum Process {
 impl Process {
     fn pipes(&mut self) -> (Option<Writer>, Option<Reader>, Option<Reader>) {
         match self {
-            Process::Plain(child) => (
+            Process::Plain { child, .. } => (
                 child.stdin.take().map(|p| Box::new(p) as Writer),
                 child.stdout.take().map(|p| Box::new(p) as Reader),
                 child.stderr.take().map(|p| Box::new(p) as Reader),
@@ -226,7 +231,7 @@ impl Process {
 
     async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
         match self {
-            Process::Plain(child) => child.wait().await,
+            Process::Plain { child, .. } => child.wait().await,
             #[cfg(windows)]
             Process::Contained(c) => {
                 use std::os::windows::process::ExitStatusExt;
@@ -242,7 +247,15 @@ impl Process {
     /// 그것이 띄운 프로세스까지 끝낸다. `pid`는 띄울 때 받아 둔 것 (이미 거둔 뒤에는 `child.id()`가 없다)
     async fn kill(&mut self, pid: Option<u32>) {
         match self {
-            Process::Plain(child) => {
+            Process::Plain {
+                child,
+                #[cfg(windows)]
+                job,
+            } => {
+                #[cfg(windows)]
+                if let Some(job) = job {
+                    windows_job::terminate(job);
+                }
                 if let Some(pid) = pid.or(child.id()) {
                     kill_tree(pid);
                 }
@@ -260,6 +273,56 @@ impl Process {
                 .await;
             }
         }
+    }
+}
+
+fn plain(child: tokio::process::Child) -> Process {
+    Process::Plain {
+        #[cfg(windows)]
+        job: windows_job::contain(&child),
+        child,
+    }
+}
+
+/// 평소대로 띄운 Python을 넣는 Job Object (Windows).
+/// 끝낼 때만 쓴다: 닫아도 안의 프로세스는 남는다(모듈 `start`가 띄우고 PID만 돌려주는 서버가 있다).
+/// Job 탈출을 요청하는 프로세스는 막지 않는다 (예전처럼 띄울 수 있게)
+#[cfg(windows)]
+mod windows_job {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+    use winapi::um::jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject, TerminateJobObject};
+    use winapi::um::winnt::{JobObjectExtendedLimitInformation, HANDLE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK};
+
+    /// 띄운 직후에 넣는다. 그 전에 띄운 손자는 없다고 본다 (Python이 시작하는 데 걸리는 시간보다 짧다).
+    /// 실패하면 None: 예전처럼 `taskkill /T`만 쓴다
+    pub(super) fn contain(child: &tokio::process::Child) -> Option<OwnedHandle> {
+        let process = child.raw_handle()? as HANDLE;
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+            if job.is_null() {
+                tracing::warn!("Plugin job object: {}", std::io::Error::last_os_error());
+                return None;
+            }
+            let job = OwnedHandle::from_raw_handle(job as RawHandle);
+            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+            let ok = SetInformationJobObject(
+                job.as_raw_handle() as HANDLE,
+                JobObjectExtendedLimitInformation,
+                &mut limits as *mut _ as *mut _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            ) != 0
+                && AssignProcessToJobObject(job.as_raw_handle() as HANDLE, process) != 0;
+            if !ok {
+                tracing::warn!("Plugin job object: {}", std::io::Error::last_os_error());
+                return None;
+            }
+            Some(job)
+        }
+    }
+
+    pub(super) fn terminate(job: &OwnedHandle) {
+        unsafe { TerminateJobObject(job.as_raw_handle() as HANDLE, 1) };
     }
 }
 
@@ -369,9 +432,9 @@ async fn run_plugin_inner(
     apply_creation_flags(&mut cmd);
 
     let mut child = match &isolation {
-        None => Process::Plain(cmd.spawn()?),
+        None => plain(cmd.spawn()?),
         Some(iso) => match crate::sandbox::spawn_isolated(cmd.as_std(), iso).await {
-            Ok(crate::sandbox::Spawned::Unisolated) => Process::Plain(cmd.spawn()?),
+            Ok(crate::sandbox::Spawned::Unisolated) => plain(cmd.spawn()?),
             #[cfg(windows)]
             Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
             Err(blocked) => {
@@ -428,7 +491,7 @@ async fn drive(
     timeout: std::time::Duration,
 ) -> std::result::Result<Collected, tokio::time::error::Elapsed> {
     let pid = match child {
-        Process::Plain(c) => c.id(),
+        Process::Plain { child, .. } => child.id(),
         #[cfg(windows)]
         Process::Contained(_) => None,
     };
@@ -562,7 +625,7 @@ mod tests {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .process_group(0);
-        let mut child = Process::Plain(cmd.spawn().unwrap());
+        let mut child = plain(cmd.spawn().unwrap());
         let started = std::time::Instant::now();
         let result = drive(&mut child, b"{}", None, std::time::Duration::from_secs(1)).await;
         assert!(result.is_err(), "timed out instead of waiting for the held pipe");
@@ -575,6 +638,36 @@ mod tests {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("grandchild {grandchild} survived");
+    }
+
+    /// 부모가 먼저 끝나 트리에서 떨어진 손자도 시간 초과 때 같이 끝낸다 (Job Object)
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_timed_out_run_kills_children_even_after_the_parent_exited() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let script = format!(
+            "$p = Start-Process ping -ArgumentList '-n','60','127.0.0.1' -PassThru -WindowStyle Hidden; Set-Content -Encoding ascii -Path '{}' -Value $p.Id",
+            pidfile.display()
+        );
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+        let mut child = plain(cmd.spawn().unwrap());
+        let pid = match &child {
+            Process::Plain { child, .. } => child.id(),
+            Process::Contained(_) => None,
+        };
+        let _ = child.wait().await;
+        let grandchild: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+        assert!(crate::supervisor::process::is_process_alive(grandchild), "grandchild should still run before the kill");
+        child.kill(pid).await;
+        for _ in 0..100 {
+            if !crate::supervisor::process::is_process_alive(grandchild) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         panic!("grandchild {grandchild} survived");
     }

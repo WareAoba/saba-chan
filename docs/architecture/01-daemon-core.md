@@ -601,7 +601,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - 실행 형태: `<venv python> <module_path> <function>`. stdin으로 config JSON을 한 번 쓰고 닫는다.
 - 결과: stdout 전체, 또는 마지막 비지 않은 줄이 JSON이어야 한다(앞에 찍힌 print는 무시, `parse_plugin_output`, `:467-476`). 종료 코드가 0이 아니면 Err다. 파싱에 실패해도 Err다.
 - 진행률: stderr의 `PROGRESS:{json}` 줄을 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백에 넘긴다(`:68-79, 391-410`). 그 밖의 stderr는 debug 로그로만 남긴다.
-- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`, `:150`), install 계열은 1800초다. 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 `taskkill /T`·AppContainer job)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
+- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`, `:150`), install 계열은 1800초다. 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
 - `PluginCall`(`:161-177`)은 데몬 락 안에서 호출을 만들고 락을 놓은 뒤 실행하기 위한 묶음이다.
 
 **자식 프로세스 환경**
