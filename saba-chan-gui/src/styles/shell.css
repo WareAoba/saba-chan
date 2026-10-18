@@ -90,6 +90,7 @@
     display: flex;
     align-items: center;
     gap: var(--sp-3);
+    min-width: 0;
 }
 .appbar-ext-init {
     display: inline-flex;
@@ -2465,9 +2466,11 @@ button.appbar-preflight {
     font: inherit;
     font-size: 12px;
 }
-/* 작업 진행: 문구가 길면 줄인다, 끝나면 초록 체크 */
+/* 작업 진행: 문구가 길면 줄인다(좁은 창에서는 창 버튼보다 먼저 줄어든다), 끝나면 초록 체크 */
 .appbar-task {
     max-width: 280px;
+    flex-shrink: 1;
+    min-width: 0;
     animation: motion-rise var(--dur) var(--ease) backwards;
 }
 .appbar-task .appbar-preflight-text {

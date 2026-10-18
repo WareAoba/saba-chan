@@ -11,7 +11,7 @@ export function TaskIndicator() {
     if (!task) return null;
 
     const done = task.percent === 100;
-    const known = !task.indeterminate && Number.isFinite(task.percent) && task.percent > 0;
+    const known = !task.indeterminate && Number.isFinite(task.percent) && task.percent >= 0;
     const percent = known ? Math.max(0, Math.min(100, task.percent)) : 0;
     const r = 7;
     const c = 2 * Math.PI * r;
