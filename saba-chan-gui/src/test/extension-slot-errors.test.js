@@ -66,4 +66,48 @@ describe('확장 슬롯 오류 격리', () => {
         await act(async () => {});
         expect(result.current.slots['test.slot']).toBeUndefined();
     });
+
+    it('끈 확장의 스타일은 문서에서 지운다 (다른 화면에 남지 않게)', async () => {
+        window.api.extensionList = vi
+            .fn()
+            .mockResolvedValueOnce({ extensions: [ext('good')] })
+            .mockResolvedValue({ extensions: [] });
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(result.current.slots['test.slot']).toHaveLength(1));
+        // 번들을 읽을 때 넣는 스타일
+        const style = document.createElement('style');
+        style.dataset.extension = 'good';
+        document.head.appendChild(style);
+        await act(async () => result.current.refreshExtensions());
+        await waitFor(() => expect(result.current.slots['test.slot']).toBeUndefined());
+        expect(document.querySelector('style[data-extension="good"]')).toBeNull();
+    });
+
+    it('번들을 읽는 사이 확장을 끄면 다 읽은 뒤 스타일과 전역을 내린다', async () => {
+        let giveBundle;
+        window.api.extensionGuiBundle = vi.fn(() => new Promise((r) => (giveBundle = r)));
+        window.api.extensionGuiStyles = vi.fn().mockResolvedValue('.slow{}');
+        const realAppend = document.head.appendChild.bind(document.head);
+        vi.spyOn(document.head, 'appendChild').mockImplementation((el) => {
+            realAppend(el);
+            if (el.tagName === 'SCRIPT') {
+                window.SabaExtSlow = { registerSlots: () => ({}) };
+                el.onload();
+            }
+            return el;
+        });
+        window.api.extensionList = vi
+            .fn()
+            .mockResolvedValueOnce({ extensions: [ext('slow')] })
+            .mockResolvedValue({ extensions: [] });
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalled());
+        await act(async () => result.current.refreshExtensions());
+        await act(async () => giveBundle('/* bundle */'));
+        await waitFor(() => expect(window.api.extensionGuiStyles).toHaveBeenCalled());
+        await act(async () => {});
+        expect(document.querySelector('style[data-extension="slow"]')).toBeNull();
+        expect(window.SabaExtSlow).toBeUndefined();
+        delete window.SabaExtSlow;
+    });
 });

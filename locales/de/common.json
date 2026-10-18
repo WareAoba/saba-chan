@@ -96,7 +96,8 @@
     "url_not_web": "Nur http(s)-Adressen können geöffnet werden",
     "path_missing": "Kein Pfad angegeben",
     "path_not_folder": "Das ist kein Ordner",
-    "no_log_folder": "Kein Logordner"
+    "no_log_folder": "Kein Logordner",
+    "open_folder_failed": "Der Ordner konnte nicht geöffnet werden"
   },
   "consent": {
     "allow": "Erlauben",

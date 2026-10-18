@@ -96,7 +96,8 @@
     "url_not_web": "Открывать можно только адреса http(s)",
     "path_missing": "Путь не указан",
     "path_not_folder": "Это не папка",
-    "no_log_folder": "Нет папки журналов"
+    "no_log_folder": "Нет папки журналов",
+    "open_folder_failed": "Не удалось открыть папку"
   },
   "consent": {
     "allow": "Разрешить",

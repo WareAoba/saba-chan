@@ -44,7 +44,13 @@ describe('ModuleAuditNotice (데몬 M12)', () => {
             .mockResolvedValue({ undeclared: [{ permission: 'dynamic_code', file: 'main.py', line: 7 }] });
         const { container, unmount } = render(<ExtensionAuditNotice extId="music" name="Music" />);
         await waitFor(() => expect(window.api.extensionAudit).toHaveBeenCalledTimes(1));
-        expect(container.innerHTML).toBe('');
+        // 검사하지 못했으면 깨끗하다고 보이지 않게 알린다
+        expect(
+            await screen.findByText(
+                "Couldn't check the code of 'Music'. It will be checked again when you open it next time.",
+            ),
+        ).toBeTruthy();
+        expect(container.querySelector('.tone-warn')).toBeNull();
         unmount();
         render(<ExtensionAuditNotice extId="music" name="Music" />);
         expect(await screen.findByText("Extension 'Music' uses capabilities it doesn't declare.")).toBeTruthy();

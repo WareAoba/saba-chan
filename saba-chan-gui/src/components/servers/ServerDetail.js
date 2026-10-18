@@ -5,6 +5,7 @@ import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
+import { openWithNotice } from '../../utils/helpers';
 import { useUIStore } from '../../stores/useUIStore';
 import {
     STATUS_TONE,
@@ -472,11 +473,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
                     <button
                         type="button"
                         className="btn btn-ghost"
-                        onClick={() =>
-                            window.api
-                                ?.shellOpenPath?.(workingDir)
-                                ?.catch?.((err) => console.error('[ServerDetail] open folder:', err.message))
-                        }
+                        onClick={() => openWithNotice(() => window.api.shellOpenPath(workingDir))}
                     >
                         <Icon name="folder" size="sm" /> {t('shell.open_folder')}
                     </button>

@@ -36,6 +36,7 @@ import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, isManaged } from './utils/serverView';
+import { openWithNotice } from './utils/helpers';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
@@ -864,11 +865,7 @@ function App() {
                                         const srv = contextMenu.server;
                                         const dir = srv?.module_settings?.working_dir || srv?.working_dir || null;
                                         if (dir) {
-                                            window.api
-                                                ?.shellOpenPath?.(dir)
-                                                ?.catch?.((err) =>
-                                                    console.error('[App] shellOpenPath failed:', err.message),
-                                                );
+                                            openWithNotice(() => window.api.shellOpenPath(dir));
                                         }
                                         setContextMenu(null);
                                     }}

@@ -56,6 +56,8 @@ export function TagInput({ value, onChange, placeholder, ariaLabel, invalid = []
                     else setDraft(v);
                 }}
                 onKeyDown={(e) => {
+                    // 한글 조합 중 Enter는 조합을 끝내는 키다: 여기서 넣으면 마지막 글자가 따로 남는다
+                    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                     if (e.key === 'Enter') {
                         e.preventDefault();
                         commit(draft);

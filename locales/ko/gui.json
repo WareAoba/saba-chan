@@ -1074,7 +1074,8 @@
     "ext_title": "'{{name}}' 익스텐션이 선언하지 않은 기능을 써요.",
     "ext_summary": "코드에서 {{perms}}을(를) 쓰는데 manifest.json의 permissions에는 없어요. 믿을 수 있는 익스텐션인지 확인해 주세요.",
     "perm_opaque_code": "읽을 수 없는 컴파일된 코드(.pyc)",
-    "perm_stdlib_shadow": "표준 라이브러리를 가리는 파일"
+    "perm_stdlib_shadow": "표준 라이브러리를 가리는 파일",
+    "unavailable": "'{{name}}'의 코드를 검사하지 못했어요. 다음에 열 때 다시 검사해요."
   },
   "trust": {
     "verified": "확인됨",

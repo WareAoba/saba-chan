@@ -62,20 +62,33 @@ function AuditNotice({ kind, id, name }) {
     const gen = useSyncExternalStore(subscribe, () => generation);
     const [undeclared, setUndeclared] = useState([]);
     const [open, setOpen] = useState(false);
+    const [failed, setFailed] = useState(false);
 
     useEffect(() => {
         setUndeclared([]);
         setOpen(false);
+        setFailed(false);
         if (!id || !window.api?.[source.api]) return;
         let alive = true;
         loadAudit(kind, id).then((res) => {
-            if (alive && Array.isArray(res?.undeclared)) setUndeclared(res.undeclared);
+            if (!alive) return;
+            if (Array.isArray(res?.undeclared)) setUndeclared(res.undeclared);
+            else setFailed(true);
         });
         return () => {
             alive = false;
         };
     }, [kind, id, source.api, gen]);
 
+    // 검사하지 못한 것을 깨끗한 것처럼 보이지 않게 한다
+    if (failed) {
+        return (
+            <div className="notice tone-info module-audit" role="status">
+                <Icon name="info" size="sm" />
+                <span className="module-audit-body">{t('module_audit.unavailable', { name })}</span>
+            </div>
+        );
+    }
     if (undeclared.length === 0) return null;
     const kinds = [...new Set(undeclared.map((f) => f.permission))];
     const label = (p) => t(`module_audit.perm_${p}`, { defaultValue: p });

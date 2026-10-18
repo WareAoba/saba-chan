@@ -80,8 +80,9 @@ export function AddInstanceNewServer({
 
         setSubmitting(true);
         const extensionData = addServerExtensionData(daemonExtensions, extValues);
+        let created;
         try {
-            await onAddServer({
+            created = await onAddServer({
                 name: newServerName.trim(),
                 module_name: selectedExtension,
                 module_settings: installValues,
@@ -95,6 +96,8 @@ export function AddInstanceNewServer({
         } finally {
             setSubmitting(false);
         }
+        // 만들지 못했으면 입력을 남겨 고쳐서 다시 보낼 수 있게 한다
+        if (created === false) return;
 
         // 폼 초기화
         setNewServerName('');

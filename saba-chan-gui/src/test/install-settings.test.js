@@ -34,3 +34,16 @@ describe('새 서버 만들기 — 만들 때 고르는 모듈 설정', () => {
         );
     });
 });
+
+describe('새 서버 만들기 — 만들지 못했을 때', () => {
+    it('만들기가 실패하면 입력한 이름과 고른 게임을 그대로 둔다 (다시 입력하지 않게)', async () => {
+        const onAddServer = vi.fn().mockResolvedValue(false);
+        render(<AddInstanceNewServer extensions={[minecraft]} servers={[]} onAddServer={onAddServer} />);
+        fireEvent.click(screen.getByText('Minecraft'));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /add_server|Add/i }));
+        });
+        expect(onAddServer).toHaveBeenCalled();
+        expect(screen.getByText('Server Type')).toBeTruthy();
+    });
+});

@@ -137,6 +137,29 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
         expect(payload).not.toHaveProperty('github_repo');
     });
 
+    it('데몬이 설정을 거부하면 MOCK으로 바뀐 척하지 않고 실패를 보인다', async () => {
+        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        await waitFor(() => expect(screen.getByText('REAL')).toBeTruthy());
+        setConfigSpy.mockResolvedValueOnce({ ok: false, error: 'daemon down' });
+        const toggle = document.querySelector('.update-mock-toggle input[type="checkbox"]');
+        await act(async () => fireEvent.click(toggle));
+        expect(screen.getByText('REAL')).toBeTruthy();
+        expect(screen.getByText(/daemon down/)).toBeTruthy();
+    });
+
+    it('자동 확인 토글을 저장하지 못하면 원래 값으로 되돌린다', async () => {
+        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        await waitFor(() => expect(getConfigSpy).toHaveBeenCalled());
+        await act(async () => {});
+        const row = [...document.querySelectorAll('.update-panel-setting-row')][0];
+        const toggle = row.querySelector('input[type="checkbox"]');
+        const before = toggle.checked;
+        setConfigSpy.mockResolvedValueOnce({ ok: false, error: 'daemon down' });
+        await act(async () => fireEvent.click(toggle));
+        expect(row.querySelector('input[type="checkbox"]').checked).toBe(before);
+        expect(screen.getByText(/daemon down/)).toBeTruthy();
+    });
+
     it('일반 빌드(mock_relay=false)에선 MOCK 전환을 감춘다', async () => {
         getConfigSpy.mockResolvedValueOnce({
             mock_relay: false,

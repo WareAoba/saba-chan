@@ -49,7 +49,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let state = app.state::<AppState>();
     let t = |k: &str| state.t(k, &[]);
-    let running = lifecycle::own_daemon_alive(app);
+    let running = lifecycle::daemon_running(app);
     let menu = Menu::new(app)?;
     menu.append(&MenuItem::with_id(
         app,
