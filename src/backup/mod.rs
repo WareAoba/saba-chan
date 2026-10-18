@@ -102,12 +102,7 @@ pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupI
     fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     // 밀리초까지 넣어 이름순이 곧 만든 순서가 되게 한다 (같은 초에 만든 복원 전 백업이 더 오래돼 보이지 않게)
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
-    let mut name = format!("{}-{}.zip", stamp, kind.as_str());
-    let mut n = 2;
-    while dir.join(&name).exists() {
-        name = format!("{}{}-{}.zip", stamp, n, kind.as_str());
-        n += 1;
-    }
+    let name = unique_name(dir, &stamp, kind);
     let final_path = dir.join(&name);
     let partial = dir.join(format!("{}.partial", name));
     let written = write_zip(&partial, paths);
@@ -117,6 +112,20 @@ pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupI
     }
     fs::rename(&partial, &final_path)?;
     info(&final_path).context("read new backup")
+}
+
+/// `stamp`로 시작하는 백업이 이미 있으면(종류가 달라도) 번호를 붙인다: 이름순이 만든 순서가 되게
+fn unique_name(dir: &Path, stamp: &str, kind: BackupKind) -> String {
+    let taken: Vec<String> = fs::read_dir(dir).into_iter().flatten().flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
+    let used = |s: &str| taken.iter().any(|name| name.starts_with(&format!("{}-", s)));
+    let mut candidate = stamp.to_string();
+    let mut n = 2;
+    while used(&candidate) {
+        // 두 자리로 채워 10번째도 9번째 뒤에 온다
+        candidate = format!("{}{:02}", stamp, n);
+        n += 1;
+    }
+    format!("{}-{}.zip", candidate, kind.as_str())
 }
 
 fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
@@ -380,6 +389,20 @@ mod tests {
         let left: Vec<_> = list(&dir).into_iter().map(|b| b.name).collect();
         assert!(left.contains(&manual.name));
         assert!(left.contains(autos.iter().max().unwrap()));
+    }
+
+    /// 같은 밀리초에 종류가 다른 백업을 만들어도 나중 것이 이름순으로 뒤에 온다
+    #[test]
+    fn a_backup_made_in_the_same_millisecond_still_sorts_as_newer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let stamp = "20260101-000000-000";
+        let first = unique_name(tmp.path(), stamp, BackupKind::Scheduled);
+        fs::write(tmp.path().join(&first), b"").unwrap();
+        let second = unique_name(tmp.path(), stamp, BackupKind::PreRestore);
+        assert!(second > first, "{second} should sort after {first}");
+        fs::write(tmp.path().join(&second), b"").unwrap();
+        let third = unique_name(tmp.path(), stamp, BackupKind::Scheduled);
+        assert!(third > second, "{third} should sort after {second}");
     }
 
     #[test]

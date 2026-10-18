@@ -109,7 +109,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `paths`(`{설정 이름}` 치환), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
-- 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙는다 (`backup/mod.rs:103-104`).
+- 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`).
 
 #### `[[settings.fields]]` (`SettingFieldToml` `:784-822` → `SettingField` `:393-444`)
 | 키 | 타입 | 기본값 |
@@ -258,7 +258,7 @@ players = "player_count"
   - `PROGRESS:{json}` 형식의 줄은 `ExtensionProgress {percent, message, step, total, label}`로 파싱해 콜백에 넘긴다 (`:69-79, 391-408`). 설치 진행률 표시에 쓰인다.
   - 나머지 줄은 `debug` 로그로만 남는다.
 - **종료 코드**: 0이 아니면, stdout에 `{"success":false,...}`가 있더라도 `Err("Plugin execution failed (exit ..)")`가 된다 (`:432-435`). 그래서 실제 모듈은 모르는 함수·예외도 JSON으로 답하고 종료 코드 0을 지킨다 (공용 `run_lifecycle`, `D:modules/daemon_rcon.py:260-`).
-- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120` (`:150`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 `taskkill /T`·AppContainer job)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
+- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120` (`:150`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
   - `install_server`를 프로비저닝 경로(`instance.rs:524-527`)와 업데이트 경로(`instance.rs:1676-1682`)에서 부를 때만 1800초를 쓴다.
   - **`POST /api/module/:name/install` → `Supervisor::install_server`는 기본 120초**다 (`mod.rs:2100`). Minecraft의 Java 다운로드와 jar 다운로드가 120초를 넘으면 실패한다.
 - **확인되지 않은 구성요소 (Windows)**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션은 Python을 띄우기 전에 그 폴더를 검사한다(`D:src/sandbox/`).
