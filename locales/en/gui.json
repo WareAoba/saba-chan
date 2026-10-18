@@ -620,7 +620,6 @@
     "add_server": "Add server",
     "search_placeholder": "Find a server",
     "no_match": "No matching servers",
-    "empty_title": "No servers yet",
     "empty_body": "Pick a game and Saba-chan will set up the server for you.",
     "start": "Start",
     "stop": "Stop",

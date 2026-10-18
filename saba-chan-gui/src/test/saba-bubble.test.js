@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SabaBubble } from '../components/shell/SabaBubble';
+import { SabaArt } from '../components/ui/SabaArt';
 import { useSabaBubble } from '../stores/useSabaBubble';
 import { useServerStore } from '../stores/useServerStore';
 import { useUIStore } from '../stores/useUIStore';
@@ -25,7 +26,7 @@ const advance = (ms) =>
 describe('사바쨩 말풍선', () => {
     beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: false });
-        useSabaBubble.setState({ bubble: null });
+        useSabaBubble.setState({ bubble: null, wokeAt: 0 });
         useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
         useUIStore.setState({ backgroundDaemonStatus: 'running' });
     });
@@ -73,6 +74,7 @@ describe('사바쨩 말풍선', () => {
         expect(useSabaBubble.getState().bubble).toBeNull();
 
         await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'stopped' }));
+        useSabaBubble.getState().markWoken();
         await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'checking' }));
         await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'running' }));
         expect(useSabaBubble.getState().bubble?.kind).toBe('sleepy');
@@ -87,6 +89,7 @@ describe('사바쨩 말풍선', () => {
         useUIStore.setState({ backgroundDaemonStatus: 'stopped' });
         render(<SabaBubble />);
         await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 } });
+        useSabaBubble.getState().markWoken();
         await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'running' }));
         expect(useSabaBubble.getState().bubble?.kind).toBe('recovering');
 
@@ -159,5 +162,44 @@ describe('사바쨩 말풍선', () => {
         await emit({ type: 'instance.restart_failed', data: { instanceId: 'mc-1' } });
         await advance(400);
         expect(useSabaBubble.getState().bubble?.kind).toBe('stopped');
+    });
+    it('아무도 깨우지 않았는데 상태 확인이 한 번 끊겼다 돌아오면 졸린 사바쨩을 띄우지 않는다', async () => {
+        render(<SabaBubble />);
+        await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'stopped' }));
+        await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'running' }));
+        expect(useSabaBubble.getState().bubble).toBeNull();
+    });
+
+    it('다시 연결했을 때 복구 중인 서버가 꺼져 있으면 복구 중을 놓는다', async () => {
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 } });
+        await emit({ type: 'resync', data: {} });
+        await act(async () => {
+            useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'stopped' }] });
+        });
+        expect(useSabaBubble.getState().bubble?.released).toBe(true);
+    });
+
+    it('이름을 모르는 서버도 문장에 주어가 있다', async () => {
+        const emit = fakeStream();
+        useServerStore.setState({ servers: [] });
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'ghost-1', kind: 'crash', restartInSecs: null } });
+        expect(useSabaBubble.getState().bubble?.text).toContain('ghost-1');
+    });
+
+    it('말풍선이 바뀌어도 알림 영역은 그대로 두고 내용만 바꾼다', async () => {
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        const live = screen.getByRole('status');
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: null } });
+        expect(screen.getByRole('status')).toBe(live);
+        expect(live.textContent).not.toBe('');
+    });
+
+    it('모르는 그림 이름은 그리지 않는다', () => {
+        const { container } = render(<SabaArt />);
+        expect(container.querySelector('img')).toBeNull();
     });
 });

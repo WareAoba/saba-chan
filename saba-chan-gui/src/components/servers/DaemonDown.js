@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSabaBubble } from '../../stores/useSabaBubble';
 import { useUIStore } from '../../stores/useUIStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
@@ -16,6 +17,7 @@ export function DaemonRestartButton({ className = 'btn btn-primary', wake = fals
         setRestarting(true);
         // 상태를 한번 내려 둬야 데몬을 따라가는 것들이 다시 본다 (BackgroundModal과 같다)
         useUIStore.getState().setBackgroundDaemonStatus('checking');
+        useSabaBubble.getState().markWoken();
         try {
             const res = await window.api.daemonRestart();
             if (!res?.success) {
@@ -45,7 +47,7 @@ export function DaemonDownState() {
     const { t } = useTranslation('gui');
     return (
         <div className="page page-empty">
-            <div className="empty-state daemon-sleep">
+            <div className="empty-state">
                 <SabaArt kind="sleep" size={300} />
                 <h2>{t('saba.sleep_title')}</h2>
                 <p>{t('saba.sleep_body')}</p>
