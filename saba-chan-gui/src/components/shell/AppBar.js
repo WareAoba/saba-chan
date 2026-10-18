@@ -54,10 +54,11 @@ export function AppBar({
         <header className="appbar">
             <div className="appbar-brand">
                 <img src="./icon.png" alt="" className="appbar-logo" />
-                {/* 검은 글자 그림을 마스크로 써서 테마 글자색으로 칠한다 */}
+                {/* 검은 글자 그림을 마스크로 써서 테마 글자색으로 칠한다.
+                    커스텀 속성 안 상대 url()은 스타일시트(assets/) 기준으로 풀리므로 절대 주소로 넘긴다 */}
                 <span
                     className="appbar-name appbar-wordmark"
-                    style={{ '--wordmark': `url("${wordmark.src}")`, aspectRatio: String(wordmark.ratio) }}
+                    style={{ '--wordmark': `url("${new URL(wordmark.src, document.baseURI).href}")`, aspectRatio: String(wordmark.ratio) }}
                 >
                     <span className="sr-only">{t('common:app_name')}</span>
                 </span>
