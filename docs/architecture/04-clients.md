@@ -108,7 +108,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | openFileDialog / openFolderDialog (778-779) | Rust `dialog_open_file` / `dialog_open_folder` | n/a |
 | migrationScanDir (782) | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 655 |
 | discordBotStatus / Start / Stop (793-816) | GET /api/relay/agent, POST /api/relay/agent/start·stop. Status는 `running`·`stopped`, 다른 PC가 같은 계정으로 페어링해 멈췄으면(`lastErrorCode: token_replaced`) `replaced`(연결 화면에 다시 페어링 안내). 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found` | ✓ 787-789 |
-| botConfigLoad (817) | GET /api/config/bot | ✓ 700 |
+| botConfigLoad (817) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
 | botConfigSave (826) | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (835-853) | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
 | auditList (855) | GET /api/audit?limit&instance (A10). `{entries}` 최신이 먼저 | ✓ 640 |

@@ -132,6 +132,7 @@ export function DiscordPage({
     const [cloudError, setCloudError] = useState('');
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
     const [membersLoading, setMembersLoading] = useState(null);
+    const [membersFailed, setMembersFailed] = useState({});
     const [saveState, setSaveState] = useState(null);
     const saveTimer = useRef(null);
 
@@ -158,15 +159,26 @@ export function DiscordPage({
     const setters = useRef({});
     setters.current = { setCloudNodes, setCloudMembers };
 
+    // 늦게 온 응답이 바뀐 연결(호스트·릴레이·연결 끊김)의 화면을 옛 목록으로 되돌리지 않게 한다
+    const relayKey = `${discordCloudHostId}|${relayUrl}|${relayConnected}`;
+    const relayKeyRef = useRef(relayKey);
+    relayKeyRef.current = relayKey;
+    // 멤버는 길드별로 받으므로 연결 상태가 잠깐 흔들려도 같은 호스트·릴레이의 답이면 쓴다
+    const hostKeyRef = useRef('');
+    hostKeyRef.current = `${discordCloudHostId}|${relayUrl}`;
+
     // ── 노드 목록 ──
     const loadNodes = useCallback(async () => {
         if (!discordCloudHostId) return;
+        const key = relayKeyRef.current;
         setCloudError('');
         try {
             const data = await window.api.relayListHostNodes(discordCloudHostId, relayUrl);
+            if (key !== relayKeyRef.current) return;
             if (data?.error) throw new Error(data.error);
             setters.current.setCloudNodes(Array.isArray(data) ? data : data?.nodes || []);
         } catch (e) {
+            if (key !== relayKeyRef.current) return;
             setCloudError(e.message || t('errors.network_error'));
         }
     }, [discordCloudHostId, relayUrl, t]);
@@ -177,15 +189,21 @@ export function DiscordPage({
 
     const loadMembers = useCallback(
         async (guildId) => {
+            const key = hostKeyRef.current;
             setMembersLoading(guildId);
             try {
                 const data = await window.api.relayListNodeMembers(guildId, relayUrl);
+                if (key !== hostKeyRef.current) return;
+                if (data?.error) throw new Error(data.error);
                 const members = Array.isArray(data) ? data : data?.members || [];
                 setters.current.setCloudMembers((prev) => ({ ...prev, [guildId]: members }));
+                setMembersFailed((prev) => ({ ...prev, [guildId]: false }));
             } catch (e) {
+                // 받아 둔 목록은 그대로 둔다 (실패를 빈 목록으로 덮지 않는다)
                 console.warn('[Discord] members fetch failed:', e);
+                if (key === hostKeyRef.current) setMembersFailed((prev) => ({ ...prev, [guildId]: true }));
             } finally {
-                setMembersLoading(null);
+                setMembersLoading((cur) => (cur === guildId ? null : cur));
             }
         },
         [relayUrl],
@@ -415,7 +433,12 @@ export function DiscordPage({
                                 </button>
                             )}
                         </div>
-                        {cloudNodes.length === 0 && (
+                        {cloudState === 'connected' && cloudError && (
+                            <p className="dc-nav-empty dc-field-error">
+                                {t('discord.nodes_refresh_failed', { error: cloudError })}
+                            </p>
+                        )}
+                        {cloudNodes.length === 0 && !(cloudState === 'connected' && cloudError) && (
                             <p className="dc-nav-empty">
                                 {cloudState === 'connected'
                                     ? t('discord.nodes_empty')
@@ -517,6 +540,7 @@ export function DiscordPage({
                                 update={updateNodes}
                                 members={cloudMembers[currentNode.guildId]}
                                 membersLoading={membersLoading === currentNode.guildId}
+                                membersFailed={!!membersFailed[currentNode.guildId]}
                                 onRefreshMembers={() => loadMembers(currentNode.guildId)}
                                 memberId={view.member || null}
                                 onOpenMember={(id) => setView({ kind: 'node', id: currentNode.guildId, member: id })}
