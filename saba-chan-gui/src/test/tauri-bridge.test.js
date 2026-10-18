@@ -160,6 +160,19 @@ describe('데몬 응답 가공', () => {
         expect(seen[1].body).toEqual({ command: 'kick', args: { player: 'p' } });
     });
 
+    it('instanceDelete는 데몬이 정지 대기·훅·폴더 삭제를 마칠 때까지 기다린다 (기본 5초로 끊지 않는다)', async () => {
+        const seen = [];
+        const { api } = await install({
+            daemon_request: (args) => {
+                seen.push(args);
+                return { status: 200, data: { success: true } };
+            },
+        });
+        await api.instanceDelete('i1');
+        expect(seen[0]).toMatchObject({ method: 'DELETE', path: '/api/instance/i1' });
+        expect(seen[0].timeoutMs).toBeGreaterThanOrEqual(60000);
+    });
+
     it('executeCommand는 HTTP 오류에서 데몬 문구와 error_code·field를 넘긴다', async () => {
         const { api } = await install({
             daemon_request: () => ({
