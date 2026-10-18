@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudStateOf, DiscordPage } from '../components/discord/DiscordPage';
@@ -95,7 +95,7 @@ const aliases = {
     palworld: { module_aliases: ['pal'], commands: {} },
 };
 
-function Harness({ save, initialView, botConfigSave }) {
+function Harness({ save, initialView, botConfigSave, hostId = 'host-1' }) {
     const [nodeSettings, setNodeSettings] = useState({});
     const [cloudNodes, setCloudNodes] = useState([]);
     const [cloudMembers, setCloudMembers] = useState({});
@@ -108,7 +108,7 @@ function Harness({ save, initialView, botConfigSave }) {
             discordBotStatus="running"
             discordPrefix="!saba"
             setDiscordPrefix={() => {}}
-            discordCloudHostId="host-1"
+            discordCloudHostId={hostId}
             setDiscordCloudHostId={() => {}}
             relayConnected
             relayConnecting={false}
@@ -166,6 +166,42 @@ describe('DiscordPage', () => {
 
         expect(window.__nodeSettings.g1.memberPermissions.u1.s1).toEqual(['stop']);
         await waitFor(() => expect(save).toHaveBeenCalled(), { timeout: 2000 });
+    });
+
+    it('멤버 목록을 다시 받다 실패하면 받아 둔 목록을 지우지 않고 알린다', async () => {
+        await act(async () => render(<Harness save={vi.fn()} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(4));
+        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
+        await act(async () => fireEvent.click(nodeRow));
+        await act(async () => fireEvent.click(document.querySelectorAll('.segmented-item')[1]));
+        await waitFor(() => expect(screen.getByText('민트')).toBeTruthy());
+
+        window.api.relayListNodeMembers = vi.fn().mockResolvedValue({ error: 'timeout' });
+        const refresh = [...document.querySelectorAll('button')].find((b) =>
+            /refresh|새로고침/i.test(
+                `${b.textContent} ${b.getAttribute('aria-label') || ''} ${b.dataset.tooltip || ''}`,
+            ),
+        );
+        await act(async () => fireEvent.click(refresh));
+        await waitFor(() => expect(document.querySelector('.dc-field-error')).not.toBeNull());
+        expect(screen.getByText('민트')).toBeTruthy();
+    });
+
+    it('호스트가 바뀐 뒤 늦게 온 옛 노드 목록은 버린다', async () => {
+        let resolveOld;
+        window.api.relayListHostNodes = vi.fn((host) =>
+            host === 'host-1'
+                ? new Promise((r) => {
+                      resolveOld = r;
+                  })
+                : Promise.resolve([{ guildId: 'g2', guildName: '새 마을' }]),
+        );
+        const { rerender } = render(<Harness save={vi.fn()} />);
+        await act(async () => rerender(<Harness save={vi.fn()} hostId="host-2" />));
+        await waitFor(() => expect(screen.getByText('새 마을')).toBeTruthy());
+        await act(async () => resolveOld([{ guildId: 'g1', guildName: '사바 마을' }]));
+        expect(screen.queryByText('사바 마을')).toBeNull();
+        expect(screen.getByText('새 마을')).toBeTruthy();
     });
 
     it('명령어 단어: 칩을 추가하고 저장하면 쉼표 문자열로 보낸다', async () => {

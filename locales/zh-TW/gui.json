@@ -781,6 +781,7 @@
     "members_hint": "預設所有成員都能使用所有命令。按一下成員即可選擇其可用的命令。",
     "members_loading": "正在載入成員…",
     "members_empty": "無法載入成員。請確認命令轉送已開啟，然後重新整理。",
+    "members_refresh_failed": "無法重新整理成員列表。目前顯示的是先前取得的列表。",
     "member_all": "所有命令",
     "member_restricted": "受限 · 已封鎖 {{count}} 個",
     "back_to_members": "成員",

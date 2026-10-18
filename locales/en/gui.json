@@ -784,6 +784,7 @@
     "members_hint": "By default every member can use every command. Click a member to choose which commands they can use.",
     "members_loading": "Loading members…",
     "members_empty": "Couldn't load members. Make sure the command relay is on, then refresh.",
+    "members_refresh_failed": "Couldn't refresh the member list. The list shown is from earlier.",
     "member_all": "All commands",
     "member_restricted": "Restricted · {{count}} blocked",
     "back_to_members": "Members",

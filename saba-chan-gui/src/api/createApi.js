@@ -859,14 +859,8 @@ export function createApi({ invoke, hub }) {
                 return errorBody(e);
             }
         },
-        botConfigLoad: async () => {
-            try {
-                return (await get('/api/config/bot')).data;
-            } catch (error) {
-                console.warn('Failed to load bot config from daemon, using defaults:', error.message);
-                return { prefix: '!saba', moduleAliases: {}, commandAliases: {} };
-            }
-        },
+        // 못 읽으면 던진다. 기본값을 돌려주면 호출한 쪽이 그 값을 저장해 디스크의 설정을 지운다
+        botConfigLoad: async () => (await get('/api/config/bot')).data,
         // 데몬이 bot-config의 원천. 최상위 키 단위로 병합되므로 부분 저장도 안전하다
         botConfigSave: async (config) => {
             try {
@@ -973,8 +967,8 @@ export function createApi({ invoke, hub }) {
                         timeout: 8000,
                     })
                 ).data;
-            } catch (_err) {
-                return [];
+            } catch (err) {
+                return errorBody(err);
             }
         },
         relayListNodeMembers: async (guildId, relayUrl) => {
@@ -984,8 +978,8 @@ export function createApi({ invoke, hub }) {
                         timeout: 8000,
                     })
                 ).data;
-            } catch (_err) {
-                return [];
+            } catch (err) {
+                return errorBody(err);
             }
         },
         relayBotInvite: async (relayUrl) => {

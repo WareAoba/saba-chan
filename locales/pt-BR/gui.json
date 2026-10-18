@@ -781,6 +781,7 @@
     "members_hint": "Por padrão, todo membro pode usar todos os comandos. Clique em um membro para escolher quais comandos ele pode usar.",
     "members_loading": "Carregando membros…",
     "members_empty": "Não foi possível carregar os membros. Verifique se a retransmissão de comandos está ligada e atualize.",
+    "members_refresh_failed": "Não foi possível atualizar a lista de membros. A lista exibida é anterior.",
     "member_all": "Todos os comandos",
     "member_restricted": "Restrito · {{count}} bloqueados",
     "back_to_members": "Membros",

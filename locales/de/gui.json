@@ -781,6 +781,7 @@
     "members_hint": "Standardmäßig kann jedes Mitglied alle Befehle nutzen. Klicke auf ein Mitglied, um festzulegen, welche Befehle es nutzen darf.",
     "members_loading": "Mitglieder werden geladen…",
     "members_empty": "Mitglieder konnten nicht geladen werden. Stelle sicher, dass die Befehlsweiterleitung an ist, und aktualisiere dann.",
+    "members_refresh_failed": "Die Mitgliederliste konnte nicht aktualisiert werden. Die angezeigte Liste ist älter.",
     "member_all": "Alle Befehle",
     "member_restricted": "Eingeschränkt · {{count}} gesperrt",
     "back_to_members": "Mitglieder",

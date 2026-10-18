@@ -784,6 +784,7 @@
     "members_hint": "기본적으로 모든 멤버가 모든 명령을 쓸 수 있어요. 막고 싶은 멤버를 눌러 명령을 고르세요.",
     "members_loading": "멤버 목록을 불러오는 중…",
     "members_empty": "멤버를 불러오지 못했어요. 명령 전달이 켜져 있는지 확인하고 새로고침하세요.",
+    "members_refresh_failed": "멤버 목록을 새로 받지 못했어요. 지금 보이는 목록은 전에 받은 것이에요.",
     "member_all": "모든 명령",
     "member_restricted": "제한 · {{count}}개 막힘",
     "back_to_members": "멤버 목록",

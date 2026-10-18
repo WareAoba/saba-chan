@@ -781,6 +781,7 @@
     "members_hint": "默认所有成员都可以使用所有命令。点击某个成员可选择其可用的命令。",
     "members_loading": "正在加载成员…",
     "members_empty": "无法加载成员。请确认命令转发已开启，然后刷新。",
+    "members_refresh_failed": "无法刷新成员列表。当前显示的是之前获取的列表。",
     "member_all": "所有命令",
     "member_restricted": "受限 · 已屏蔽 {{count}} 个",
     "back_to_members": "成员",

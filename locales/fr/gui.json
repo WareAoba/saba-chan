@@ -781,6 +781,7 @@
     "members_hint": "Par défaut, chaque membre peut utiliser toutes les commandes. Cliquez sur un membre pour choisir ses commandes autorisées.",
     "members_loading": "Chargement des membres…",
     "members_empty": "Impossible de charger les membres. Vérifiez que le relais de commandes est activé, puis actualisez.",
+    "members_refresh_failed": "Impossible d'actualiser la liste des membres. La liste affichée est plus ancienne.",
     "member_all": "Toutes les commandes",
     "member_restricted": "Restreint · {{count}} bloquées",
     "back_to_members": "Membres",
