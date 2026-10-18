@@ -183,9 +183,9 @@ pub enum Who {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Existing {
     None,
-    /// 이 SID의 명시 ACE가 이 폴더에 있다 (예전 데몬이 더한 것도): 데몬이 거둘 수 있다
+    /// 데몬이 더하는 모양 그대로인 이 SID의 명시 ACE가 있다 (예전 데몬이 더한 것도): 데몬이 거둘 수 있다
     Own,
-    /// 상속받았거나 ALL APPLICATION PACKAGES로 이미 읽을 수 있다: 이 폴더에서 거둘 것이 없다
+    /// 상속받았거나, ALL APPLICATION PACKAGES거나, 데몬이 더하지 않은 모양의 ACE로 이미 읽을 수 있다: 데몬이 거두지 않는다
     Elsewhere,
 }
 
@@ -204,7 +204,9 @@ pub fn existing_grant(aces: impl IntoIterator<Item = AceView>, mask: u32, inheri
         if !ace.allowed || ace.who == Who::Other || ace.mask & mask != mask || ace.flags & want != want {
             continue;
         }
-        if ace.who == Who::Own && ace.flags & ACE_INHERITED == 0 {
+        // 데몬이 더하는 모양(같은 권한, 같은 상속 표시) 그대로인 것만 데몬 것으로 본다. 관리자가 따로 준 넓은 권한은
+        // 거두면(그 SID의 명시 ACE를 모두 뺀다) 함께 사라지므로 기록하지 않는다
+        if ace.who == Who::Own && ace.mask == mask && ace.flags == want {
             return Existing::Own;
         }
         found = Existing::Elsewhere;
@@ -1034,6 +1036,9 @@ mod tests {
         assert_eq!(existing_grant([ace(Who::Packages, RX, oi_ci)], RX, true), Existing::Elsewhere);
         // 둘 다 있으면 명시 ACE가 우선
         assert_eq!(existing_grant([ace(Who::Packages, RX, oi_ci), ace(Who::Own, RX, oi_ci)], RX, true), Existing::Own);
+        // 데몬이 더하지 않은 모양(더 넓은 권한, 다른 상속 표시)이면 거두지 않는다
+        assert_eq!(existing_grant([ace(Who::Own, RX | 0x116, oi_ci)], RX, true), Existing::Elsewhere);
+        assert_eq!(existing_grant([ace(Who::Own, RX, oi_ci | 0x4)], RX, true), Existing::Elsewhere);
         // 권한이 모자라거나, 상속되지 않거나, 다른 SID거나, 거부 ACE면 없는 것
         assert_eq!(existing_grant([ace(Who::Own, 0x20, oi_ci)], RX, true), Existing::None);
         assert_eq!(existing_grant([ace(Who::Own, RX, 0)], RX, true), Existing::None);
