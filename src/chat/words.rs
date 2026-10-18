@@ -181,7 +181,8 @@ pub fn migrate(
             for (cmd, list) in command_aliases.get(&s.module).and_then(Value::as_object).into_iter().flatten() {
                 let target = entry.commands.entry(cmd.clone()).or_default();
                 for w in list.as_str().map(split).unwrap_or_default() {
-                    if !target.iter().any(|e| same(e, &w)) && target.len() < WORDS_MAX {
+                    let shape = w.chars().count() <= WORD_MAX_CHARS && !w.chars().any(char::is_whitespace);
+                    if shape && !target.iter().any(|e| same(e, &w)) && target.len() < WORDS_MAX {
                         target.push(w);
                     }
                 }
@@ -196,7 +197,8 @@ pub fn migrate(
             let mut w = table[id].clone();
             w.words.retain(|word| {
                 let other_server = servers.iter().filter(|s| &s.id != id).any(|s| same(&s.name, word) || same(&s.id, word));
-                let free = !RESERVED.iter().any(|r| same(r, word)) && !other_server && !taken.iter().any(|t| same(t, word));
+                let shape = word.chars().count() <= WORD_MAX_CHARS && !word.chars().any(char::is_whitespace);
+                let free = shape && !RESERVED.iter().any(|r| same(r, word)) && !other_server && !taken.iter().any(|t| same(t, word));
                 if !free {
                     tracing::info!("[Chat] guild {}: word '{}' of instance {} dropped (conflict)", guild, word, id);
                 }
@@ -279,13 +281,13 @@ mod tests {
             &json!({ "g1": { "defaultLevel": 1 } }),
             &guilds,
             |_| servers.clone(),
-            &HashMap::from([("b".to_string(), "크리, cr, p".to_string())]),
+            &HashMap::from([("b".to_string(), "크리, cr, p, 두 낱말".to_string())]),
             &HashMap::from([("minecraft".to_string(), "마크".to_string()), ("palworld".to_string(), "팰".to_string())]),
             &HashMap::from([("minecraft".to_string(), json!({ "kick": "추방, 킥" }))]),
         )
         .unwrap();
         let table = of_guild(&moved, "g1");
-        // 다른 서버의 id("p")와 같은 낱말은 버린다: 옮긴 뒤 그 서버를 가리키게 되므로
+        // 다른 서버의 id("p")와 같은 낱말은 버린다: 옮긴 뒤 그 서버를 가리키게 되므로. 규칙에 맞지 않는 낱말도 버린다
         assert_eq!(table["b"].words, vec!["크리", "cr"]);
         // 인스턴스가 둘인 모듈의 별명은 어느 쪽 것인지 몰라 버린다
         assert!(table["a"].words.is_empty());
