@@ -222,7 +222,12 @@ impl RelayClient {
             Err(RelayError::Status(404)) if check.up_to_date => return Ok(None),
             Err(e) => return Err(e),
         };
-        let manifest = verify_release(&signed, platform, channel, current)?;
+        let manifest = match verify_release(&signed, platform, channel, current) {
+            Ok(manifest) => manifest,
+            // 최신일 때는 버전만으로 manifest를 찾아서, 같은 버전이 다른 채널에도 있으면 그쪽 것이 올 수 있다
+            Err(RelayError::WrongChannel { .. }) if check.up_to_date => return Ok(None),
+            Err(e) => return Err(e),
+        };
         bind_release(latest, manifest).map(Some)
     }
 
@@ -358,6 +363,37 @@ mod tests {
             verify_release(&signed, "windows-x64", "beta", "0.1.0"),
             Err(RelayError::WrongChannel { .. })
         ));
+    }
+
+    /// 경로로 응답을 고르는 가짜 릴레이: check와 manifest 두 요청에 답한다
+    async fn fake_relay(check: String, manifest: String) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut buf = [0u8; 2048];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let body = if req.contains("/v1/updates/check") { &check } else { &manifest };
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+            }
+        });
+        format!("http://{}", addr)
+    }
+
+    #[tokio::test]
+    async fn an_up_to_date_client_skips_a_same_version_manifest_from_another_channel() {
+        // 같은 버전이 stable·beta 둘 다에 있으면 버전만 든 manifest 주소는 다른 채널 것을 줄 수 있다
+        let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.1", "t").await;
+        assert!(matches!(got, Ok(None)), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
     }
 
     #[test]
