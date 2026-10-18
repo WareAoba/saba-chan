@@ -50,7 +50,7 @@
 10. Supervisor에 `extension_manager`와 `provision_tracker`를 주입한다(`main.rs:355-359`).
 11. **백그라운드 태스크 기동**
     - 익스텐션 `daemon.startup` 훅 비동기 디스패치(`main.rs:364-410`). 진행 상황은 `ExtensionInitTracker`에 기록되고 `/api/extensions/init-status`로 노출된다.
-    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes()`를 호출한다(`main.rs:416-463`). 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`).
+    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes()`를 호출한다(`main.rs:416-463`). 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`). 작업 잠금이 잡혀 있으면(백업 중) 풀릴 때까지 최대 30분 기다리고, 그사이 사용자가 정지·시작하면 그만둔다.
     - 업데이트 주기 확인 `spawn_update_scheduler`(`main.rs:466`)와 인스턴스 예약 작업(백업·재시작·공지·업데이트) 실행기 `backup::spawn_scheduler`(`main.rs:468`, 30초 주기)를 띄운다.
     - 하트비트 reaper: 30초 주기로 90초 넘게 하트비트가 없는 클라이언트를 정리한다(`main.rs:483-497`, `handlers/client.rs:116-136`).
     - 렌더러 watchdog은 없다. 인터페이스가 모두 떠나도 데몬은 남고 GUI를 다시 띄우지 않는다. 다음에 켠 GUI·CLI가 다시 붙는다(C14).
@@ -182,7 +182,7 @@
 | POST | `/api/server/:name/stop` | `server.rs:938` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
 | POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 409 `instance_busy`(백업·복원·업데이트 중), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다) |
 | POST | `/api/instance/:id/stop` | `server.rs:785` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
-| POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped` |
+| POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped`. 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 최대 30분 기다렸다 켠다(`backup::start_when_free`). 기다리는 시작은 따로 돌아 요청이 끊겨도 이어지고, 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 409 `restart_cancelled`(`stopped` 포함) |
 | GET | `/api/instance/:id/events` | `server.rs:872` | - | `{events:[...]}` 최근 종료 이력 / 404. 한 건은 `at, kind, exit_code, signal, evidence, restart_in_secs, note`에 다시 띄우지 않은 이유가 있으면 `note_code`(`auto_restart_off` · `gave_up` + `note_args.count` · `restart_failed` + `note_args.reason`)·`note_args`. `note`는 영어 문장이라 화면 문구는 `note_code`로 고른다 |
 
 `GET /api/servers` 응답의 `ServerInfo` 필드(`ipc/mod.rs:160-209`):
@@ -293,7 +293,7 @@
 | POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`) |
 | GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. `backup_keep`은 1 이상이다(자동 백업 정리는 방금 만든 백업을 지우지 않는다). 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
 
-인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제가 함께 쓴다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다.
+인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제가 함께 쓴다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다. 백업·복원은 잠금을 쥔 채 따로 돌아(`audit::spawn`, 출처 유지) 요청이 끊겨도 파일 작업이 끝날 때까지 잠금이 남는다.
 
 #### 설정 (handlers/bot.rs, handlers/config.rs)
 

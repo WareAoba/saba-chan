@@ -85,6 +85,22 @@ pub async fn with_origin<F: Future>(origin: Origin, f: F) -> F::Output {
     ORIGIN.scope(origin, f).await
 }
 
+/// 지금 출처와 조용히 표시를 가진 채 따로 돌린다 (요청이 끊겨도 끝까지 가야 하는 작업)
+pub fn spawn<F>(f: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let (origin, quiet) = (current(), is_quiet());
+    tokio::spawn(async move {
+        if quiet {
+            with_origin(origin, quietly(f)).await
+        } else {
+            with_origin(origin, f).await
+        }
+    })
+}
+
 /// 지금 요청의 출처 (정해진 게 없으면 데몬 자신)
 pub fn current() -> Origin {
     ORIGIN.try_with(Clone::clone).unwrap_or_else(|_| Origin::new("daemon"))

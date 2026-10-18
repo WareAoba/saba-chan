@@ -2420,6 +2420,11 @@ impl Supervisor {
         !matches!(self.managed_store.get(instance_id).await, Some(p) if p.is_running())
     }
 
+    /// 지금 실행 세대 (시작할 때마다 1씩 오른다)
+    pub fn run_generation_of(&self, instance_id: &str) -> u64 {
+        self.run_generation.get(instance_id).copied().unwrap_or_default()
+    }
+
     /// 자동 재시작이 실패했을 때 이력에 남긴다
     pub fn record_restart_failure(&mut self, instance_id: &str, reason: String) {
         if let Some(last) = self.exit_events.get_mut(instance_id).and_then(|e| e.back_mut()) {

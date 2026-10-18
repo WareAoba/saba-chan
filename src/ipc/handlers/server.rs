@@ -859,7 +859,25 @@ async fn restart_instance(
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
-    let start = crate::ipc::internal::into_internal(start_instance_handler(Path(inst_id), State(state)).await).await;
+    // 백업·복원이 잠금을 쥐고 있으면 끝나기를 기다렸다 켠다. 요청이 끊겨도 꺼진 채 남지 않게 따로 돌린다.
+    // 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 그만둔다
+    let generation = state.supervisor.read().await.run_generation_of(&inst_id);
+    let start = crate::audit::spawn(async move {
+        let wanted = || async {
+            let supervisor = state.supervisor.read().await;
+            supervisor.instance_store.get(&inst_id).is_some() && supervisor.run_generation_of(&inst_id) == generation
+        };
+        super::backup::start_when_free(&state, &inst_id, wanted).await
+    })
+    .await;
+    let start = match start {
+        Ok(Some(start)) => start,
+        Ok(None) => {
+            let error = json!({ "success": false, "error": "The server was started or removed while waiting", "error_code": "restart_cancelled", "stopped": running });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
+        }
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
+    };
     let mut body = match start.body {
         Value::Object(map) => map,
         other => serde_json::Map::from_iter([("data".to_string(), other)]),
@@ -876,7 +894,12 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
         return;
     }
     tracing::info!("Auto restarting '{}' after a crash", instance_id);
-    let resp = crate::ipc::internal::into_internal(start_instance_handler(Path(instance_id.clone()), State(state.clone())).await).await;
+    // 백업이 잠금을 쥐고 있으면 끝나기를 기다린다 (기다리는 동안 사용자가 정지·시작하면 그만둔다)
+    let wanted = || async { state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await };
+    let Some(resp) = super::backup::start_when_free(&state, &instance_id, wanted).await else {
+        tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
+        return;
+    };
     let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
     if !ok {
         let reason = resp.body.get("error").or_else(|| resp.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();

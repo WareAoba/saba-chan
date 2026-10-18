@@ -26,6 +26,8 @@ const DEFAULT_KEEP: usize = 10;
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
 const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
 const REMOTE_MAX_BACKUP_KEEP: u32 = 30;
+/// 재시작이 작업 잠금이 풀리기를 기다리는 가장 긴 시간 (큰 월드의 백업·업데이트)
+const START_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 /// 파일을 다루는 작업(백업·복원·업데이트·시작·삭제) 중인 인스턴스. 같은 인스턴스에서 둘이 겹치지 않게
 static BUSY: Mutex<Option<HashSet<String>>> = Mutex::new(None);
@@ -133,10 +135,43 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
 /// 모듈이 백업을 지원하지 않으면 수동 백업만 오류이고, 자동 백업(업데이트 전·예약)은 건너뛴다
 pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Response> {
-    let Some(_guard) = BusyGuard::take(id) else {
+    let Some(guard) = BusyGuard::take(id) else {
         return Err(error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
-    take_backup_locked(state, id, kind, None).await
+    let (state, id) = (state.clone(), id.to_string());
+    detached(async move {
+        let _guard = guard;
+        take_backup_locked(&state, &id, kind, None).await
+    })
+    .await
+}
+
+/// 잠금을 쥔 작업을 따로 돌린다: 요청이 끊겨 핸들러가 버려져도 파일 작업이 끝날 때까지 잠금이 남는다
+async fn detached<T: Send + 'static>(work: impl std::future::Future<Output = Result<T, Response>> + Send + 'static) -> Result<T, Response> {
+    crate::audit::spawn(work).await.unwrap_or_else(|e| Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())))
+}
+
+/// 작업 잠금이 풀리면 시작한다. 재시작이 백업·복원과 겹쳐도 서버가 꺼진 채 남지 않게 한다.
+/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None
+pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
+    loop {
+        let resp = crate::ipc::internal::into_internal(
+            super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await,
+        )
+        .await;
+        if resp.body["error_code"] != "instance_busy" || std::time::Instant::now() >= deadline {
+            return Some(resp);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        if !still_wanted().await {
+            return None;
+        }
+    }
 }
 
 /// 이미 작업 잠금을 잡은 호출자(업데이트)용 `take_backup`
@@ -238,23 +273,24 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         Err(r) => return r,
     };
     // 잠금을 먼저 잡고 실행 여부를 본다: 시작도 같은 잠금을 잡으니 확인 뒤에 켜지지 않는다
-    let Some(_guard) = BusyGuard::take(&id) else {
+    let Some(guard) = BusyGuard::take(&id) else {
         return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
     };
     if is_running(&state, &id).await {
         return error(StatusCode::CONFLICT, "server_running", "Stop the server before restoring a backup");
     }
-    // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게
-    // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
-    let safety = match take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone())).await {
-        Ok(made) => made.map(|b| b.name),
-        Err(r) => return r,
+    let work = async move {
+        let _guard = guard;
+        // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게
+        // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
+        let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone())).await?.map(|b| b.name);
+        match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
+            Ok(Ok(paths)) => Ok(Json(json!({ "success": true, "restored": paths, "pre_restore_backup": safety })).into_response()),
+            Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+            Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
+        }
     };
-    match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
-        Ok(Ok(paths)) => Json(json!({ "success": true, "restored": paths, "pre_restore_backup": safety })).into_response(),
-        Ok(Err(e)) => error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e)),
-        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string()),
-    }
+    detached(work).await.unwrap_or_else(|r| r)
 }
 
 // ── 예약 작업 ──────────────────────────────────────────────
@@ -625,6 +661,38 @@ mod tests {
         assert!(state.supervisor.read().await.instance_store.get(&id).is_some());
         drop(guard);
         assert!(BusyGuard::take(&id).is_some(), "refused calls must not keep the lock");
+    }
+
+    #[tokio::test]
+    async fn a_crash_restart_waits_for_a_running_backup_instead_of_giving_up() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let guard = BusyGuard::take(&id).expect("free");
+        let restart = tokio::spawn(super::super::server::auto_restart(state.clone(), id.clone(), std::time::Duration::ZERO, 0));
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
+        drop(guard);
+        tokio::time::timeout(std::time::Duration::from_secs(10), restart).await.expect("starts once the lock is free").unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_dropped_restore_request_keeps_the_lock_until_the_work_ends() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
+        let hook = "import json, time\ntime.sleep(1.5)\nprint(json.dumps({'success': True, 'paths': []}))\n";
+        let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
+        let request = restore_backup(Path((id.clone(), "none.zip".into())), State(state.clone()));
+        if let Ok(done) = tokio::time::timeout(std::time::Duration::from_millis(300), request).await {
+            panic!("still in the safety backup: {:?}", crate::ipc::internal::into_internal(done).await.body);
+        }
+        assert!(BusyGuard::take(&id).is_none(), "a client that hangs up must not free the lock while files are still being written");
+        let mut freed = false;
+        for _ in 0..100 {
+            if BusyGuard::take(&id).is_some() {
+                freed = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(freed, "the lock is released when the work ends");
     }
 
     #[tokio::test]
