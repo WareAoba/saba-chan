@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useInstanceMaintenance, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
 import { useServerStore } from '../../stores/useServerStore';
 import { STATUS_TONE, initials, primaryAction, viewStatus } from '../../utils/serverView';
+import { DataBadges } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { StatusChip } from '../ui/StatusChip';
@@ -62,7 +63,10 @@ export function ServerRow({
                 <ExtensionSlot slotId="ServerCard.badge" server={server} />
             </div>
             <div className="server-row-text">
-                <div className="server-row-name">{server.name}</div>
+                <div className="server-row-name">
+                    {server.name}
+                    <DataBadges server={server} />
+                </div>
                 <div className="server-row-sub">
                     <span>{gameName}</span>
                     <span className="sep">·</span>

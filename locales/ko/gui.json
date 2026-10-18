@@ -411,7 +411,9 @@
     "alias_conflict_title": "별명 충돌",
     "alias_conflict_detail": "별명 '{{alias}}'는 '{{module}}' 모듈에 이미 등록되어 있습니다",
     "multiple_instances_warning": "같은 모듈 '{{module}}'을(를) 사용하는 인스턴스가 여러 개입니다 ({{names}}). 디스코드 봇에서 모듈 별명으로 호출 시 구분할 수 없으므로 인스턴스 이름을 사용해주세요.",
-    "alias_ambiguity_card": "'{{module}}' 모듈 인스턴스가 {{count}}개 — 디스코드 별명이 모호합니다"
+    "alias_ambiguity_card": "'{{module}}' 모듈 인스턴스가 {{count}}개 — 디스코드 별명이 모호합니다",
+    "sync_failed": "설정은 저장했지만 게임 설정 파일에 쓰지 못했어요. {{error}}",
+    "unknown_setting": "이 모듈에 없는 설정이에요: {{fields}}"
   },
   "buttons": {
     "add_server": "서버 추가",
@@ -697,7 +699,12 @@
     "daemon_down_stale": "데몬에 연결되지 않아 마지막으로 받은 상태를 보여 주고 있어요.",
     "daemon_restart": "데몬 다시 시작",
     "daemon_restarting": "다시 시작하는 중…",
-    "daemon_restart_failed": "데몬을 다시 시작하지 못했어요. {{error}}"
+    "daemon_restart_failed": "데몬을 다시 시작하지 못했어요. {{error}}",
+    "check_validate": "서버 점검",
+    "check_diagnose": "로그 진단",
+    "check_ok": "문제를 찾지 못했습니다. 켤 준비가 됐습니다.",
+    "check_log_ok": "최근 로그에서 알려진 문제를 찾지 못했습니다.",
+    "check_failed": "점검하지 못했습니다: {{error}}"
   },
   "discord": {
     "nav_connection": "연결",
@@ -1170,6 +1177,8 @@
     "action_restart": "재시작",
     "action_command": "명령",
     "action_stdin": "콘솔 입력",
+    "action_backup": "백업",
+    "skipped_stopped": "건너뜀 (서버 꺼짐)",
     "source_gui": "앱",
     "source_cli": "CLI",
     "source_api": "API",
@@ -1208,7 +1217,8 @@
     "confirm_title": "‘{{action}}’ 실행할까요?",
     "confirm_run": "실행",
     "done": "완료: {{action}}",
-    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기"
+    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기",
+    "none": "없음"
   },
   "unisolated": {
     "title": "격리 없이 돌리기",
@@ -1264,5 +1274,54 @@
     "start_title": "약관 동의가 필요합니다",
     "start_message": "'{{name}}' 서버를 켜려면 아래 약관에 동의해야 합니다. 원문을 읽고 체크해 주세요.",
     "accept_and_start": "동의하고 켜기"
+  },
+  "diagnostics": {
+    "title": "진단 정보",
+    "description": "데몬 상태와 최근 경고를 봅니다. 문제를 물어볼 때 복사해서 붙여 넣으세요. 비밀번호와 토큰은 들어가지 않습니다.",
+    "show": "진단 정보 보기",
+    "refresh": "새로 고침",
+    "copy": "복사",
+    "copied": "복사했습니다",
+    "failed": "진단 정보를 불러오지 못했습니다",
+    "version": "버전",
+    "uptime": "가동 시간",
+    "uptime_value": "{{h}}시간 {{m}}분",
+    "listen": "접속 주소",
+    "data_dir": "데이터 폴더",
+    "token": "인증 토큰",
+    "token_ok": "있음",
+    "token_missing": "없음",
+    "modules": "모듈",
+    "modules_error": "불러오지 못함: {{error}}",
+    "extensions": "켜진 익스텐션",
+    "extensions_missing": "켜져 있지만 설치되지 않은 익스텐션: {{list}}",
+    "recent_problems": "최근 경고와 오류",
+    "no_problems": "최근 경고나 오류가 없습니다."
+  },
+  "extension_config": {
+    "toggle": "설정",
+    "save": "저장",
+    "saved": "저장했습니다",
+    "load_failed": "설정을 불러오지 못했습니다: {{error}}",
+    "save_failed": "저장하지 못했습니다: {{error}}"
+  },
+  "onboarding": {
+    "title": "다음 할 일",
+    "step_module": "게임 모듈 설치",
+    "desc_module": "서버로 돌릴 게임의 모듈을 먼저 설치해요.",
+    "go_module": "게임 추가",
+    "step_server": "첫 서버 만들기",
+    "desc_server": "설치한 게임으로 서버를 하나 만들어요.",
+    "go_server": "서버 추가",
+    "step_discord": "디스코드 연결",
+    "desc_discord": "디스코드 봇과 연결하면 채팅으로 서버를 다룰 수 있어요.",
+    "go_discord": "디스코드 연결",
+    "step_chatbot": "챗봇 켜기",
+    "desc_chatbot": "AI 키를 넣으면 말로 서버를 다룰 수 있어요.",
+    "go_chatbot": "챗봇 설정"
+  },
+  "cli_line": {
+    "copy": "CLI 명령 복사",
+    "copied": "복사했어요"
   }
 }

@@ -410,7 +410,9 @@
     "alias_conflict_title": "别名冲突",
     "alias_conflict_detail": "别名 '{{alias}}' 已经注册到模块 '{{module}}'",
     "multiple_instances_warning": "有多个实例使用相同的模块 '{{module}}'（{{names}}）。对于 Discord 机器人调用，请使用实例名称而不是模块别名来区分。",
-    "alias_ambiguity_card": "'{{module}}' 模块实例 {{count}} 个 — Discord 别名不明确"
+    "alias_ambiguity_card": "'{{module}}' 模块实例 {{count}} 个 — Discord 别名不明确",
+    "sync_failed": "设置已保存，但无法写入游戏配置文件。{{error}}",
+    "unknown_setting": "此模块没有这些设置：{{fields}}"
   },
   "buttons": {
     "add_server": "添加服务器",
@@ -696,7 +698,12 @@
     "daemon_down_stale": "未连接到守护进程，正在显示最后一次收到的状态。",
     "daemon_restart": "重启守护进程",
     "daemon_restarting": "正在重启…",
-    "daemon_restart_failed": "无法重启守护进程。{{error}}"
+    "daemon_restart_failed": "无法重启守护进程。{{error}}",
+    "check_validate": "检查服务器",
+    "check_diagnose": "诊断日志",
+    "check_ok": "未发现问题，可以启动。",
+    "check_log_ok": "最近的日志中未发现已知问题。",
+    "check_failed": "无法检查：{{error}}"
   },
   "discord": {
     "nav_connection": "连接",
@@ -1140,6 +1147,8 @@
     "action_restart": "重启",
     "action_command": "命令",
     "action_stdin": "控制台输入",
+    "action_backup": "备份",
+    "skipped_stopped": "已跳过 (服务器未运行)",
     "source_gui": "应用",
     "source_cli": "CLI",
     "source_api": "API",
@@ -1178,7 +1187,8 @@
     "confirm_title": "执行 {{action}}？",
     "confirm_run": "执行",
     "done": "完成：{{action}}",
-    "hint": "↑↓ 移动 · Enter 执行 · Esc 关闭"
+    "hint": "↑↓ 移动 · Enter 执行 · Esc 关闭",
+    "none": "无"
   },
   "unisolated": {
     "title": "不隔离运行",
@@ -1234,5 +1244,54 @@
     "start_title": "需要同意协议",
     "start_message": "要启动服务器“{{name}}”，需要同意以下协议。请阅读原文并勾选。",
     "accept_and_start": "同意并启动"
+  },
+  "diagnostics": {
+    "title": "诊断信息",
+    "description": "查看守护进程状态和最近的警告。求助时请复制粘贴。不包含密码和令牌。",
+    "show": "显示诊断信息",
+    "refresh": "刷新",
+    "copy": "复制",
+    "copied": "已复制",
+    "failed": "无法加载诊断信息",
+    "version": "版本",
+    "uptime": "运行时间",
+    "uptime_value": "{{h}}小时{{m}}分",
+    "listen": "监听地址",
+    "data_dir": "数据文件夹",
+    "token": "认证令牌",
+    "token_ok": "存在",
+    "token_missing": "缺失",
+    "modules": "模块",
+    "modules_error": "加载失败：{{error}}",
+    "extensions": "已启用的扩展",
+    "extensions_missing": "已启用但未安装的扩展：{{list}}",
+    "recent_problems": "最近的警告和错误",
+    "no_problems": "最近没有警告或错误。"
+  },
+  "extension_config": {
+    "toggle": "设置",
+    "save": "保存",
+    "saved": "已保存",
+    "load_failed": "无法加载设置：{{error}}",
+    "save_failed": "无法保存：{{error}}"
+  },
+  "onboarding": {
+    "title": "下一步",
+    "step_module": "安装游戏模块",
+    "desc_module": "先安装要托管的游戏模块。",
+    "go_module": "添加游戏",
+    "step_server": "创建第一个服务器",
+    "desc_server": "用已安装的游戏创建一个服务器。",
+    "go_server": "添加服务器",
+    "step_discord": "连接 Discord",
+    "desc_discord": "连接 Discord 机器人后即可在聊天中管理服务器。",
+    "go_discord": "连接 Discord",
+    "step_chatbot": "开启聊天机器人",
+    "desc_chatbot": "填入 AI 密钥即可用自然语言管理服务器。",
+    "go_chatbot": "聊天机器人设置"
+  },
+  "cli_line": {
+    "copy": "复制 CLI 命令",
+    "copied": "已复制"
   }
 }

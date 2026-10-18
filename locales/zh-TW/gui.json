@@ -410,7 +410,9 @@
     "alias_conflict_title": "別名衝突",
     "alias_conflict_detail": "別名 '{{alias}}' 已經註冊到模組 '{{module}}'",
     "multiple_instances_warning": "有多個實例使用相同的模組 '{{module}}'（{{names}}）。對於 Discord 機器人調用，請使用實例名稱而不是模組別名來區分。",
-    "alias_ambiguity_card": "'{{module}}' 模組實例 {{count}} 個 — Discord 別名不明確"
+    "alias_ambiguity_card": "'{{module}}' 模組實例 {{count}} 個 — Discord 別名不明確",
+    "sync_failed": "設定已儲存，但無法寫入遊戲設定檔。{{error}}",
+    "unknown_setting": "此模組沒有這些設定：{{fields}}"
   },
   "buttons": {
     "add_server": "新增伺服器",
@@ -696,7 +698,12 @@
     "daemon_down_stale": "未連線到常駐程式，正在顯示最後一次收到的狀態。",
     "daemon_restart": "重新啟動常駐程式",
     "daemon_restarting": "正在重新啟動…",
-    "daemon_restart_failed": "無法重新啟動常駐程式。{{error}}"
+    "daemon_restart_failed": "無法重新啟動常駐程式。{{error}}",
+    "check_validate": "檢查伺服器",
+    "check_diagnose": "診斷日誌",
+    "check_ok": "未發現問題，可以啟動。",
+    "check_log_ok": "最近的日誌中未發現已知問題。",
+    "check_failed": "無法檢查：{{error}}"
   },
   "discord": {
     "nav_connection": "連線",
@@ -1140,6 +1147,8 @@
     "action_restart": "重新啟動",
     "action_command": "指令",
     "action_stdin": "主控台輸入",
+    "action_backup": "備份",
+    "skipped_stopped": "已略過 (伺服器未執行)",
     "source_gui": "應用程式",
     "source_cli": "CLI",
     "source_api": "API",
@@ -1178,7 +1187,8 @@
     "confirm_title": "執行 {{action}}？",
     "confirm_run": "執行",
     "done": "完成：{{action}}",
-    "hint": "↑↓ 移動 · Enter 執行 · Esc 關閉"
+    "hint": "↑↓ 移動 · Enter 執行 · Esc 關閉",
+    "none": "無"
   },
   "unisolated": {
     "title": "不隔離執行",
@@ -1234,5 +1244,54 @@
     "start_title": "需要同意條款",
     "start_message": "要啟動伺服器「{{name}}」，需要同意以下條款。請閱讀原文並勾選。",
     "accept_and_start": "同意並啟動"
+  },
+  "diagnostics": {
+    "title": "診斷資訊",
+    "description": "查看守護程序狀態和最近的警告。求助時請複製貼上。不包含密碼和權杖。",
+    "show": "顯示診斷資訊",
+    "refresh": "重新整理",
+    "copy": "複製",
+    "copied": "已複製",
+    "failed": "無法載入診斷資訊",
+    "version": "版本",
+    "uptime": "執行時間",
+    "uptime_value": "{{h}}小時{{m}}分",
+    "listen": "監聽位址",
+    "data_dir": "資料資料夾",
+    "token": "驗證權杖",
+    "token_ok": "存在",
+    "token_missing": "缺少",
+    "modules": "模組",
+    "modules_error": "載入失敗：{{error}}",
+    "extensions": "已啟用的擴充功能",
+    "extensions_missing": "已啟用但未安裝的擴充功能：{{list}}",
+    "recent_problems": "最近的警告與錯誤",
+    "no_problems": "最近沒有警告或錯誤。"
+  },
+  "extension_config": {
+    "toggle": "設定",
+    "save": "儲存",
+    "saved": "已儲存",
+    "load_failed": "無法載入設定：{{error}}",
+    "save_failed": "無法儲存：{{error}}"
+  },
+  "onboarding": {
+    "title": "下一步",
+    "step_module": "安裝遊戲模組",
+    "desc_module": "先安裝要架設的遊戲模組。",
+    "go_module": "新增遊戲",
+    "step_server": "建立第一個伺服器",
+    "desc_server": "用已安裝的遊戲建立一個伺服器。",
+    "go_server": "新增伺服器",
+    "step_discord": "連接 Discord",
+    "desc_discord": "連接 Discord 機器人後即可在聊天中管理伺服器。",
+    "go_discord": "連接 Discord",
+    "step_chatbot": "開啟聊天機器人",
+    "desc_chatbot": "填入 AI 金鑰即可用自然語言管理伺服器。",
+    "go_chatbot": "聊天機器人設定"
+  },
+  "cli_line": {
+    "copy": "複製 CLI 指令",
+    "copied": "已複製"
   }
 }

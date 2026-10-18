@@ -93,6 +93,21 @@ const scenarios = {
         await snap(page, 'opened-without-daemon');
         return {};
     },
+    // 약관에 동의하지 않은 서버를 켜면 확인 창이 뜨고, 체크해야 [동의하고 켜기]가 눌리며, 누르면 켜진다
+    async agreeAndStart(page) {
+        const L = ARGS.l;
+        await page.getByRole('button', { name: `${ARGS.serverName} ${L.start}` }).click({ timeout: 60_000 });
+        await page.getByText(L.agreement_title).first().waitFor({ timeout: 30_000 });
+        const go = page.getByRole('button', { name: L.accept_and_start, exact: true });
+        if (await go.isEnabled()) throw new Error('체크하기 전에 [동의하고 켜기]가 눌림');
+        await snap(page, 'agreement-dialog');
+        await page.locator('.agreement-modal input[type=checkbox]').first().check();
+        await go.click();
+        await page.getByText(ARGS.serverName, { exact: true }).first().click();
+        await page.getByText(/Done \(/).first().waitFor({ timeout: 60_000 });
+        await snap(page, 'agreed-and-running');
+        return {};
+    },
     async explore(page) {
         await page.waitForTimeout(ARGS.waitMs ?? 8000);
         await snap(page, 'explore');

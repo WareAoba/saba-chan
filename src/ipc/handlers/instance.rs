@@ -917,6 +917,32 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
     (!args.iter().any(|a| a.contains(['\r', '\n', '\0']))).then_some(args)
 }
 
+/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로)
+const KNOWN_FIELDS: &[&str] = &[
+    "port",
+    "rest_host",
+    "rest_port",
+    "rest_username",
+    "rest_password",
+    "executable_path",
+    "working_dir",
+    "protocol_mode",
+    "server_version",
+    "extension_data",
+    "extra_args",
+    "memory_limit_mb",
+    // RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
+    "rcon_port",
+    "rcon_password",
+    "enable_rcon",
+];
+
+/// 받지만 쓰지 않는 이름 (응답 `ignored`)
+const IGNORED_FIELDS: &[&str] = &["rcon_port", "rcon_password", "enable_rcon"];
+
+/// 모듈이 선언하지 않아도 데몬이 `module_settings`에서 읽는 설정
+const DAEMON_SETTING_KEYS: &[&str] = &["auto_restart", "restart_on_unknown_exit", "managed_start", "log_sessions_keep"];
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
     State(state): State<IPCServer>,
@@ -972,6 +998,27 @@ pub async fn update_instance_settings(
         }
     }
 
+    // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
+    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`DAEMON_SETTING_KEYS`)은 받는다
+    if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
+        if let Some(ref settings_meta) = module.metadata.settings {
+            let unknown: Vec<&String> = settings_obj
+                .keys()
+                .filter(|k| !KNOWN_FIELDS.contains(&k.as_str()) && !DAEMON_SETTING_KEYS.contains(&k.as_str()))
+                .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
+                .collect();
+            if !unknown.is_empty() {
+                let fields: Vec<Value> = unknown.iter().map(|k| json!({ "field": k })).collect();
+                let error = json!({
+                    "error": format!("Unknown setting: {}", unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")),
+                    "error_code": "unknown_setting",
+                    "fields": fields,
+                });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
+        }
+    }
+
     // 설정값 업데이트
     let mut updated = instance.clone();
 
@@ -988,27 +1035,6 @@ pub async fn update_instance_settings(
         }
     }
 
-    // 하드코딩된 공통 필드 목록
-    let known_fields: std::collections::HashSet<&str> = [
-        "port",
-        // RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
-        "rcon_port",
-        "rcon_password",
-        "enable_rcon",
-        "rest_host",
-        "rest_port",
-        "rest_username",
-        "rest_password",
-        "executable_path",
-        "protocol_mode",
-        "server_version",
-        "extension_data",
-        "extra_args",
-        "memory_limit_mb",
-    ]
-    .iter()
-    .cloned()
-    .collect();
 
     // common settings
     // port: 숫자 또는 문자열 수용
@@ -1122,6 +1148,11 @@ pub async fn update_instance_settings(
         }
     }
 
+    // 작업 폴더 (예: GUI가 서버 파일을 설치한 뒤 그 폴더로)
+    if let Some(dir) = settings.get("working_dir").and_then(|v| v.as_str()).filter(|d| !d.trim().is_empty()) {
+        updated.working_dir = Some(dir.to_string());
+    }
+
     // protocol_mode 설정 (rest 또는 rcon)
     if let Some(protocol_mode) = settings.get("protocol_mode").and_then(|v| v.as_str()) {
         updated.protocol_mode = protocol_mode.to_string();
@@ -1164,7 +1195,7 @@ pub async fn update_instance_settings(
     // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
-            if !known_fields.contains(key.as_str()) {
+            if !KNOWN_FIELDS.contains(&key.as_str()) {
                 updated.module_settings.insert(key.clone(), value.clone());
             }
         }
@@ -1186,6 +1217,7 @@ pub async fn update_instance_settings(
             // protocol_mode, executable_path 등은 server.properties에 관련 없으므로 제외
             if key == "protocol_mode"
                 || key == "executable_path"
+                || key == "working_dir"
                 || key == "server_version"
                 || key == "rest_host"
                 || key == "rest_port"
@@ -1223,7 +1255,8 @@ pub async fn update_instance_settings(
         .unwrap_or_else(|| serde_json::json!({}));
     drop(supervisor);
 
-    // server.properties 동기화 (변경된 항목이 있을 때만)
+    // server.properties 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
+    let mut sync_error: Option<String> = None;
     if !props_sync.is_empty() {
         tracing::info!(
             "Syncing settings to server.properties for instance {}: {:?}",
@@ -1232,12 +1265,18 @@ pub async fn update_instance_settings(
         );
         let props_value = Value::Object(props_sync);
         match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &id, "write", Some(props_value)).await {
+            // 모듈에 configure가 없으면 쓸 게임 설정 파일도 없다
+            Ok(r) if r.get("success").and_then(|v| v.as_bool()) == Some(false)
+                && !r.get("message").and_then(|v| v.as_str()).is_some_and(|m| m.starts_with("Unknown function")) => {
+                let message = r.get("message").or(r.get("error")).and_then(|v| v.as_str()).unwrap_or("configure failed");
+                tracing::warn!("Module could not write game settings for instance {}: {}", id, message);
+                sync_error = Some(message.to_string());
+            }
             Ok(_) => tracing::info!("server.properties synced successfully for instance {}", id),
-            Err(e) => tracing::warn!(
-                "Failed to sync server.properties for instance {}: {}",
-                id,
-                e
-            ),
+            Err(e) => {
+                tracing::warn!("Failed to sync server.properties for instance {}: {}", id, e);
+                sync_error = Some(e.to_string());
+            }
         }
     }
 
@@ -1258,7 +1297,16 @@ pub async fn update_instance_settings(
 
     // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
     state.credentials.invalidate(&id);
-    (StatusCode::OK, Json(json!({ "success": true }))).into_response()
+    let mut body = json!({ "success": true, "synced": sync_error.is_none() });
+    if let Some(e) = sync_error {
+        body["sync_error"] = json!(e);
+    }
+    // RCON 키처럼 받되 쓰지 않는 것
+    let ignored: Vec<&String> = settings.as_object().into_iter().flat_map(|o| o.keys()).filter(|k| IGNORED_FIELDS.contains(&k.as_str())).collect();
+    if !ignored.is_empty() {
+        body["ignored"] = json!(ignored);
+    }
+    (StatusCode::OK, Json(body)).into_response()
 }
 
 /// GET /api/instance/:id/check-update - 게임 서버 업데이트 확인
@@ -1689,6 +1737,53 @@ mod tests {
         let unknown = create(json!({ "name": "b", "module_name": "game", "preset": "nope" })).await;
         assert_eq!(unknown.status.as_u16(), 400);
         assert_eq!(unknown.body["error_code"], "preset_not_found");
+    }
+
+    #[tokio::test]
+    async fn settings_save_rejects_unknown_keys_and_reports_a_failed_game_file_write() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nprint(json.dumps({'success': False, 'message': 'server.properties is read-only'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+
+        let typo = patch(json!({ "motdd": "hi" })).await;
+        assert_eq!((typo.status.as_u16(), typo.body["error_code"].as_str()), (400, Some("unknown_setting")));
+        assert_eq!(typo.body["fields"][0]["field"], "motdd");
+
+        let saved = patch(json!({ "motd": "hi", "auto_restart": false, "enable_rcon": true })).await;
+        assert!(saved.status.is_success(), "{:?}", saved.body);
+        assert_eq!(saved.body["synced"], false);
+        assert_eq!(saved.body["sync_error"], "server.properties is read-only");
+        assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
+        let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
     }
 
     #[test]

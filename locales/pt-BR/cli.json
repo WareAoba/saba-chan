@@ -309,6 +309,7 @@
     },
     "must_be_one_of": "{{key}} precisa ser um destes: {{options}}",
     "restart_hint": "Reinicie {{name}} para aplicar: saba-chan-cli restart {{name}}",
+    "sync_failed": "Salvo, mas não foi possível gravar o arquivo de configuração do jogo: {{error}}",
     "unknown_key": "{{key}} é uma chave nova."
   },
   "shell": {

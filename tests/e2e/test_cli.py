@@ -36,6 +36,7 @@ def test_full_server_flow_through_cli(cli, daemon, fake_server):
     r = cli.run("server", "add", "cli1", "-m", "minecraft", "--from", str(folder), "--set", "ram=256M")
     assert r.code == 0, r
     iid = next(i["id"] for i in daemon.instances() if i["name"] == "cli1")
+    assert cli.run("server", "agree", "cli1", "--yes").code == 0
 
     listing = cli.run("server", "list", check=0).json()
     assert "cli1" in str(listing)
@@ -66,7 +67,8 @@ def test_full_server_flow_through_cli(cli, daemon, fake_server):
 def test_eula_preflight_reported_by_cli(cli, daemon, fake_server):
     folder, _ = fake_server("noeula", eula=False)
     cli.run("server", "add", "noeula", "-m", "minecraft", "--from", str(folder), "--set", "ram=256M", check=0)
-    r = cli.run("start", "noeula")
+    # 해결 명령 안내는 사람이 읽는 출력에만 나온다 (--json은 오류 코드만)
+    r = cli.run("start", "noeula", json_out=False)
     assert r.code == 1, r
     assert "server agree" in (r.stdout + r.stderr), r
     assert cli.run("server", "agree", "noeula", "--yes").code == 0

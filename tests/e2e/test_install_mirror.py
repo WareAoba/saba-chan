@@ -62,7 +62,7 @@ def mdaemon(sandbox, mirror, daemon_factory) -> Daemon:
 
 
 def _provision(daemon: Daemon, name: str, port: int, timeout: float = 300, **settings) -> tuple[str, dict]:
-    body = {"name": name, "module_name": "minecraft", "port": port, "module_settings": {"ram": "256M", **settings}}
+    body = {"name": name, "module_name": "minecraft", "port": port, "module_settings": {"ram": "256M", **settings}, "accept_agreements": daemon.agreement_ids("minecraft")}
     iid = daemon.api.ok("POST", "/api/instances", body)["id"]
     last: dict = {}
 

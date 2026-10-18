@@ -31,7 +31,7 @@ def test_import_detects_folder_and_port(mc):
 
 def test_eula_not_accepted_blocks_start_until_accepted(daemon, fake_server):
     folder, _ = fake_server("noeula", eula=False)
-    iid = daemon.import_server("noeula", folder, module_settings={"ram": "256M"})
+    iid = daemon.import_server("noeula", folder, module_settings={"ram": "256M"}, agree=False)
     r = daemon.api.post(f"/api/instance/{iid}/start")
     assert r.status_code == 409, r.text
     body = r.json()
@@ -148,7 +148,6 @@ def test_nonzero_exit_without_crash_report(mc):
 
 def test_hung_server_is_force_stopped(mc):
     daemon, iid, folder, port = mc
-    daemon.api.ok("PATCH", f"/api/instance/{iid}", {"stop_timeout": 5})
     daemon.start_instance(iid)
     daemon.wait_console(iid, DONE)
     daemon.stdin(iid, "e2e-hang")

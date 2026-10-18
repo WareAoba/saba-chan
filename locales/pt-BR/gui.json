@@ -410,7 +410,9 @@
     "alias_conflict_title": "Conflito de alias",
     "alias_conflict_detail": "O alias '{{alias}}' já está registrado no módulo '{{module}}'",
     "multiple_instances_warning": "Há várias instâncias usando o mesmo módulo '{{module}}' ({{names}}). Para chamadas do bot Discord, use nomes de instância em vez de aliases de módulo para diferenciá-las.",
-    "alias_ambiguity_card": "{{count}} instâncias do módulo '{{module}}' — aliases Discord são ambíguos"
+    "alias_ambiguity_card": "{{count}} instâncias do módulo '{{module}}' — aliases Discord são ambíguos",
+    "sync_failed": "As configurações foram salvas, mas o arquivo de configuração do jogo não pôde ser atualizado. {{error}}",
+    "unknown_setting": "Este módulo não tem estas configurações: {{fields}}"
   },
   "buttons": {
     "add_server": "Adicionar Servidor",
@@ -696,7 +698,12 @@
     "daemon_down_stale": "Sem conexão com o daemon. Mostrando o último estado conhecido.",
     "daemon_restart": "Reiniciar daemon",
     "daemon_restarting": "Reiniciando…",
-    "daemon_restart_failed": "Não foi possível reiniciar o daemon. {{error}}"
+    "daemon_restart_failed": "Não foi possível reiniciar o daemon. {{error}}",
+    "check_validate": "Verificar servidor",
+    "check_diagnose": "Diagnosticar log",
+    "check_ok": "Nenhum problema encontrado. Pronto para iniciar.",
+    "check_log_ok": "Nenhum problema conhecido no log recente.",
+    "check_failed": "Não foi possível verificar: {{error}}"
   },
   "discord": {
     "nav_connection": "Conexão",
@@ -1140,6 +1147,8 @@
     "action_restart": "Reiniciar",
     "action_command": "Comando",
     "action_stdin": "Entrada do console",
+    "action_backup": "Backup",
+    "skipped_stopped": "Ignorado (servidor desligado)",
     "source_gui": "App",
     "source_cli": "CLI",
     "source_api": "API",
@@ -1178,7 +1187,8 @@
     "confirm_title": "Executar {{action}}?",
     "confirm_run": "Executar",
     "done": "Concluído: {{action}}",
-    "hint": "↑↓ mover · Enter executar · Esc fechar"
+    "hint": "↑↓ mover · Enter executar · Esc fechar",
+    "none": "nenhum"
   },
   "unisolated": {
     "title": "Executar sem isolamento",
@@ -1234,5 +1244,54 @@
     "start_title": "Concordância necessária",
     "start_message": "Para iniciar '{{name}}', você precisa concordar com os termos abaixo. Leia-os e marque cada um.",
     "accept_and_start": "Concordar e iniciar"
+  },
+  "diagnostics": {
+    "title": "Diagnóstico",
+    "description": "Mostra o estado do daemon e avisos recentes. Copie ao pedir ajuda. Senhas e tokens não são incluídos.",
+    "show": "Mostrar diagnóstico",
+    "refresh": "Atualizar",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "failed": "Não foi possível carregar o diagnóstico",
+    "version": "Versão",
+    "uptime": "Tempo ativo",
+    "uptime_value": "{{h}} h {{m}} min",
+    "listen": "Endereço",
+    "data_dir": "Pasta de dados",
+    "token": "Token de autenticação",
+    "token_ok": "Presente",
+    "token_missing": "Ausente",
+    "modules": "Módulos",
+    "modules_error": "Falha ao carregar: {{error}}",
+    "extensions": "Extensões ativadas",
+    "extensions_missing": "Ativadas mas não instaladas: {{list}}",
+    "recent_problems": "Avisos e erros recentes",
+    "no_problems": "Nenhum aviso ou erro recente."
+  },
+  "extension_config": {
+    "toggle": "Configurações",
+    "save": "Salvar",
+    "saved": "Salvo",
+    "load_failed": "Não foi possível carregar as configurações: {{error}}",
+    "save_failed": "Não foi possível salvar: {{error}}"
+  },
+  "onboarding": {
+    "title": "Próximo passo",
+    "step_module": "Instalar um módulo de jogo",
+    "desc_module": "Primeiro instale o módulo do jogo que você quer hospedar.",
+    "go_module": "Adicionar jogo",
+    "step_server": "Criar seu primeiro servidor",
+    "desc_server": "Crie um servidor com o jogo instalado.",
+    "go_server": "Adicionar servidor",
+    "step_discord": "Conectar Discord",
+    "desc_discord": "Conecte o bot do Discord para gerenciar servidores pelo chat.",
+    "go_discord": "Conectar Discord",
+    "step_chatbot": "Ativar o chatbot",
+    "desc_chatbot": "Adicione uma chave de IA para gerenciar servidores com linguagem natural.",
+    "go_chatbot": "Configurações do chatbot"
+  },
+  "cli_line": {
+    "copy": "Copiar comando da CLI",
+    "copied": "Copiado"
   }
 }

@@ -10,7 +10,7 @@ export const auditAvailable = () => !!window.api?.auditList;
 const PAGE = 100;
 const MAX = 1000; // 데몬 상한
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon'];
-const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin'];
+const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup'];
 
 // 데몬은 인자를 JSON 문자열로 남긴다 (잘렸을 수 있다): 배열이면 띄어 쓰고, 아니면 그대로
 const argsText = (args) => {
@@ -26,6 +26,13 @@ export function auditWhat(e, t) {
     const action = ACTIONS.includes(e.action) ? t(`audit.action_${e.action}`) : e.action;
     const detail = [e.command, argsText(e.args)].filter(Boolean).join(' ');
     return detail ? `${action} · ${detail}` : action;
+}
+
+/** 한 건 → 결과 칩. 예약 백업은 서버가 꺼져 있으면 409로 건너뛴다 */
+export function auditResult(e, t) {
+    if (e.ok) return { tone: 'ok', label: t('audit.ok') };
+    if (e.action === 'backup' && e.status === 409) return { tone: 'idle', label: t('audit.skipped_stopped') };
+    return { tone: 'stop', label: t('audit.failed', { status: e.status }) };
 }
 
 /** 한 건 → "누가·어디서" 한 줄 */
@@ -116,10 +123,7 @@ export function AuditLog({ instanceId }) {
                                 </span>
                                 <span className="dc-list-sub">{auditWho(e, t)}</span>
                             </span>
-                            <StatusChip
-                                tone={e.ok ? 'ok' : 'stop'}
-                                label={e.ok ? t('audit.ok') : t('audit.failed', { status: e.status })}
-                            />
+                            <StatusChip {...auditResult(e, t)} />
                         </li>
                     ))}
                 </ul>
