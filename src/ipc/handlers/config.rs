@@ -142,7 +142,7 @@ pub async fn get_node_token(State(_state): State<IPCServer>) -> impl IntoRespons
 
 /// PUT /api/config/node-token
 pub async fn save_node_token(
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
     let token = payload
@@ -157,7 +157,10 @@ pub async fn save_node_token(
     }
 
     match std::fs::write(&token_path, token) {
-        Ok(_) => (StatusCode::OK, Json(json!({ "ok": true }))).into_response(),
+        Ok(_) => {
+            crate::relay_agent::restart(&state).await;
+            (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write node token: {}", e) })),
