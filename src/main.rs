@@ -327,9 +327,14 @@ async fn main() -> anyhow::Result<()> {
     // 모듈 경로: %APPDATA%/saba-chan/modules (환경 변수 오버라이드 가능)
     let modules_path = plugin::resolve_modules_dir();
     let modules_path_str = modules_path.to_string_lossy().to_string();
-    // 설치 도중 끝났으면 남은 준비·옛 폴더를 지운다 (아직 아무 설치도 돌지 않는다)
-    utils::remove_install_leftovers(&modules_path);
-    utils::remove_install_leftovers(&plugin::resolve_extensions_dir());
+    // 설치 도중 끝났으면 남은 준비·옛 폴더를 지운다 (아직 아무 설치도 돌지 않는다).
+    // 단일 실행 잠금을 못 잡았으면 같은 폴더를 쓰는 다른 데몬이 설치 중일 수 있어 건너뛴다
+    if _instance_lock.is_some() {
+        utils::remove_install_leftovers(&modules_path);
+        utils::remove_install_leftovers(&plugin::resolve_extensions_dir());
+    } else {
+        tracing::warn!("Skipping cleanup of interrupted installs without the single-instance guard");
+    }
     let supervisor = Arc::new(RwLock::new(supervisor::Supervisor::new(&modules_path_str)));
     {
         let mut sup = supervisor.write().await;
