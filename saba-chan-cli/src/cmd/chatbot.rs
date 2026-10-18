@@ -20,7 +20,13 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
         ChatbotCmd::Clear => {
             ctx.ask.ensure(&t!("chatbot.confirm_clear"))?;
             let r = ctx.api.clear_chatbot().await?;
-            ctx.out.done(&t!("chatbot.cleared"), &r);
+            // 릴레이에 닿지 못했으면 이 PC에서만 지운 것이다 (다음 연결 때 데몬이 다시 지운다)
+            let msg = if r.get("pendingRelayDelete").and_then(Value::as_bool) == Some(true) {
+                t!("chatbot.cleared_pending")
+            } else {
+                t!("chatbot.cleared")
+            };
+            ctx.out.done(&msg, &r);
             Ok(())
         }
         ChatbotCmd::Forget { guild } => {

@@ -105,7 +105,11 @@ impl Api {
             resp = self.send(&method, path, body.as_ref(), timeout).await?;
         }
         let status = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
+        // 본문을 다 받지 못했으면 빈 응답으로 성공 처리하지 않는다
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| CliError::Failed(t!("err.body_read", path = path, error = e)))?;
         let value: Value = if text.trim().is_empty() {
             Value::Null
         } else {
@@ -509,7 +513,7 @@ impl Api {
             check(status, value)?;
             return Err(anyhow::anyhow!("GET /api/events: {}", status));
         }
-        Ok(Events { resp, buf: String::new() })
+        Ok(Events { resp, buf: Vec::new() })
     }
 
     async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
@@ -970,25 +974,34 @@ pub struct DaemonEvent {
 /// 열린 이벤트 스트림
 pub struct Events {
     resp: reqwest::Response,
-    buf: String,
+    /// 아직 다 오지 않은 바이트. 덩어리 경계에서 한글이 잘려도 블록이 끝난 뒤에 디코딩한다
+    buf: Vec<u8>,
 }
 
 impl Events {
     /// 다음 이벤트. 데몬이 연결을 닫으면 None
     pub async fn next(&mut self) -> Result<Option<DaemonEvent>> {
         loop {
-            while let Some(end) = self.buf.find("\n\n") {
-                let block: String = self.buf.drain(..end + 2).collect();
-                if let Some(event) = parse_sse(&block) {
-                    return Ok(Some(event));
-                }
+            if let Some(event) = take_event(&mut self.buf) {
+                return Ok(Some(event));
             }
             match self.resp.chunk().await? {
-                Some(chunk) => self.buf.push_str(&String::from_utf8_lossy(&chunk)),
+                Some(chunk) => self.buf.extend_from_slice(&chunk),
                 None => return Ok(None),
             }
         }
     }
+}
+
+/// 버퍼에서 끝난 블록을 꺼내 이벤트로. 끝난 블록이 없으면 None (남은 바이트는 그대로)
+fn take_event(buf: &mut Vec<u8>) -> Option<DaemonEvent> {
+    while let Some(end) = buf.windows(2).position(|w| w == b"\n\n") {
+        let block: Vec<u8> = buf.drain(..end + 2).collect();
+        if let Some(event) = parse_sse(&String::from_utf8_lossy(&block)) {
+            return Some(event);
+        }
+    }
+    None
 }
 
 /// SSE 한 덩어리 → 이벤트. 주석(ping)뿐이거나 data가 JSON이 아니면 None
@@ -1020,5 +1033,17 @@ mod sse_tests {
         assert_eq!(e, DaemonEvent { id: Some(7), kind: "action.run".into(), data: serde_json::json!({ "ok": true }) });
         assert_eq!(parse_sse(":ping\n\n"), None);
         assert_eq!(parse_sse("event: resync\ndata: {}\n\n").map(|e| (e.id, e.kind)), Some((None, "resync".into())));
+    }
+
+    #[test]
+    fn korean_split_across_chunks_stays_whole() {
+        let raw = "data: {\"line\":\"서버\"}\n\n".as_bytes();
+        // '서'의 바이트 중간에서 자른다
+        let cut = raw.iter().position(|&b| b >= 0x80).unwrap() + 1;
+        let mut buf = raw[..cut].to_vec();
+        assert_eq!(take_event(&mut buf), None);
+        buf.extend_from_slice(&raw[cut..]);
+        assert_eq!(take_event(&mut buf).unwrap().data, serde_json::json!({ "line": "서버" }));
+        assert!(buf.is_empty());
     }
 }

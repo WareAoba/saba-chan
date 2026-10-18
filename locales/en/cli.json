@@ -25,7 +25,8 @@
     "use_existing": "Use an existing server folder",
     "folder_is": "{{dir}} looks like a {{game}} server.",
     "pick_game": "Pick the game with --module.",
-    "folder_in_use": "{{dir}} is already used by {{name}}. Two servers in one folder would overwrite each other."
+    "folder_in_use": "{{dir}} is already used by {{name}}. Two servers in one folder would overwrite each other.",
+    "created_settings_failed": "{{name}} was created, but its settings were not saved: {{error}}"
   },
   "bot": {
     "ask_token": "Node token",
@@ -232,7 +233,8 @@
     "not_a_number": "\"{{value}}\" is not a number.",
     "not_found": "No {{what}} named \"{{query}}\".",
     "pair_expected": "Expected KEY=VALUE, got \"{{got}}\".",
-    "timeout": "The daemon took too long to answer ({{path}})."
+    "timeout": "The daemon took too long to answer ({{path}}).",
+    "body_read": "Could not read the whole response from {{path}}: {{error}}"
   },
   "agree": {
     "none": "{{name}} has no agreements to accept.",
@@ -276,7 +278,8 @@
     "url_one_id": "--url and --sha256 work with one extension id at a time.",
     "no_config": "{{id}} has no settings.",
     "status_busy": "Starting up: {{list}}",
-    "status_done": "Ready: {{list}}"
+    "status_done": "Ready: {{list}}",
+    "update_failed": "{{n}} extension(s) failed to update."
   },
   "history": {
     "none": "No stops recorded yet."
@@ -390,7 +393,8 @@
     "bye": "Bye. The daemon and servers keep running.",
     "ctrl_c": "(press Ctrl+C again or type exit to leave)",
     "help_line": "Type a command (help, Tab to complete) or talk like in Discord (e.g. \"palworld start\"). exit to leave.",
-    "welcome": "Saba-chan CLI {{version}}"
+    "welcome": "Saba-chan CLI {{version}}",
+    "lang_fixed": "The language cannot change inside the shell; staying in {{lang}}."
   },
   "start": {
     "already": "{{name}} is already running.",
@@ -639,7 +643,8 @@
     "forgot": "The chatbot's memory is cleared.",
     "not_synced": "Saved on this PC. It reaches Discord once the bot is connected (saba-chan-cli bot status).",
     "sync_failed": "Discord server {{guild}} did not get the change: {{error}}",
-    "read_failed": "Could not read {{path}}: {{error}}"
+    "read_failed": "Could not read {{path}}: {{error}}",
+    "cleared_pending": "Cleared the chatbot settings and key on this PC. The relay was not reached; it will be cleared on the next connection."
   },
   "trust": {
     "verified": "verified",

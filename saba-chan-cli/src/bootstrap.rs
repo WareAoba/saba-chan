@@ -40,6 +40,9 @@ pub fn language(flag: Option<&str>) -> String {
             ["LC_ALL", "LC_MESSAGES", "LANG"]
                 .iter()
                 .find_map(|k| std::env::var(k).ok())
+                .filter(|s| !s.is_empty())
+                // Windows는 보통 이 변수가 없다: 데몬·GUI처럼 OS 로캘을 묻는다
+                .or_else(sys_locale::get_locale)
         })
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "en".into())

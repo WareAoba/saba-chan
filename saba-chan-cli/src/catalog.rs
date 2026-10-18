@@ -157,12 +157,14 @@ impl Catalog {
         }
     }
 
-    /// `GET /api/instance/:id/commands`에서 익스텐션 명령을 더한다 (같은 이름은 모듈 명령이 먼저)
-    pub fn add_extension_commands(&mut self, list: &[Value]) {
-        for c in list
-            .iter()
-            .filter(|c| c.get("source").and_then(Value::as_str) == Some("extension"))
-        {
+    /// `GET /api/instance/:id/commands`에서 이 서버에만 있는 명령(모듈 `[commands] hook`)과 익스텐션 명령을 더한다
+    /// (같은 이름은 먼저 있던 명령이 이긴다)
+    pub fn add_instance_commands(&mut self, list: &[Value]) {
+        for c in list {
+            let source = c.get("source").and_then(Value::as_str);
+            if !matches!(source, Some("module" | "extension")) {
+                continue;
+            }
             let Some(name) = str_of(c, "name") else { continue };
             if self.commands.iter().any(|x| x.name.eq_ignore_ascii_case(&name)) {
                 continue;
@@ -171,7 +173,7 @@ impl Catalog {
                 label: str_of(c, "label").unwrap_or_else(|| name.clone()),
                 description: str_of(c, "description").unwrap_or_default(),
                 risk: Risk::parse(c.get("risk").and_then(Value::as_str)),
-                method: "extension".into(),
+                method: source.unwrap_or_default().into(),
                 aliases: c
                     .get("aliases")
                     .and_then(Value::as_array)
@@ -415,5 +417,20 @@ mod tests {
         assert_eq!(give.label, "아이템 지급");
         assert_eq!(give.inputs[0].label, "플레이어");
         assert_eq!(give.description, "Give an item");
+    }
+
+    #[test]
+    fn instance_hook_and_extension_commands_are_added_once() {
+        let mut cat = Catalog::from_module(&module(), None);
+        cat.add_instance_commands(&[
+            json!({ "name": "give", "source": "module" }),
+            json!({ "name": "lp", "label": "LuckPerms", "source": "module", "group": "LuckPerms" }),
+            json!({ "name": "backup-now", "source": "extension", "extension": "backup" }),
+            json!({ "name": "Backup-Now", "source": "extension", "extension": "other" }),
+        ]);
+        assert_eq!(cat.find("lp").unwrap().label, "LuckPerms");
+        assert_eq!(cat.find("backup-now").unwrap().extension.as_deref(), Some("backup"));
+        assert_eq!(cat.commands.iter().filter(|c| c.name.eq_ignore_ascii_case("give")).count(), 1);
+        assert_eq!(cat.commands.iter().filter(|c| c.name.eq_ignore_ascii_case("backup-now")).count(), 1);
     }
 }

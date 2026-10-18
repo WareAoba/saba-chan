@@ -25,7 +25,12 @@ pub struct ShellHelper {
 
 impl ShellHelper {
     fn candidates(&self, line: &str) -> (usize, Vec<String>) {
-        let start = line.rfind(char::is_whitespace).map(|i| i + 1).unwrap_or(0);
+        // 전각 공백처럼 여러 바이트인 공백 뒤에서 자른다
+        let start = line
+            .char_indices()
+            .rfind(|(_, c)| c.is_whitespace())
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
         let (before, cur) = line.split_at(start);
         let before = before.split_whitespace().collect::<Vec<_>>().join(" ");
         let mut out: Vec<String> = self
@@ -175,7 +180,10 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 continue;
             }
         };
-        let first = words[0].trim_start_matches("saba-chan-cli").to_string();
+        // `# 메모`처럼 주석뿐인 줄은 단어가 없다
+        let Some(first) = words.first().map(|w| w.trim_start_matches("saba-chan-cli").to_string()) else {
+            continue;
+        };
         let words: Vec<String> = if first.is_empty() { words[1..].to_vec() } else { words };
         if words.is_empty() {
             continue;
@@ -213,6 +221,13 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     };
     let cli = Cli::from_arg_matches(&matches)?;
     let mut ctx = ctx.clone();
+    // 셸을 연 뒤에 준 `--port`는 이 줄에만 쓴다. `--lang`은 문구를 이미 불러와 바꿀 수 없다
+    if let Some(port) = cli.global.port {
+        ctx.api = crate::client::Api::new(port);
+    }
+    if cli.global.lang.as_deref().is_some_and(|l| crate::i18n::normalize(l) != crate::i18n::lang()) {
+        ctx.out.warn(&t!("shell.lang_fixed", lang = crate::i18n::lang()));
+    }
     if cli.global.json {
         ctx.out = crate::output::Out { json: true };
         ctx.ask.enabled = false;
@@ -224,7 +239,17 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
         None => Ok(()),
         Some(crate::cli::Cmd::Shell) => Ok(()),
         Some(cmd) => {
+            // `--no-color`(와 `--json`의 표준 출력)는 이 줄에만, 끝나면 되돌린다
+            let colors = (console::colors_enabled(), console::colors_enabled_stderr());
+            if cli.global.no_color || cli.global.json {
+                console::set_colors_enabled(false);
+            }
+            if cli.global.no_color {
+                console::set_colors_enabled_stderr(false);
+            }
             let r = crate::cmd::dispatch(&ctx, cmd).await;
+            console::set_colors_enabled(colors.0);
+            console::set_colors_enabled_stderr(colors.1);
             // `--json` 줄은 오류도 JSON으로
             let r = match r {
                 Err(e) if ctx.out.json => {
@@ -263,6 +288,13 @@ mod tests {
         assert_eq!(h.candidates("server st").1, vec!["start", "stop"]);
         let (start, list) = h.candidates("start pal");
         assert_eq!(start, 6);
+        assert_eq!(list, vec!["palworld-1"]);
+    }
+
+    #[test]
+    fn completes_after_a_full_width_space() {
+        let (start, list) = helper().candidates("start\u{3000}pal");
+        assert_eq!(start, "start\u{3000}".len());
         assert_eq!(list, vec!["palworld-1"]);
     }
 }
