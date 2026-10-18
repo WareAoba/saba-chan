@@ -349,6 +349,11 @@ async fn run_plugin_inner(
         cmd.env("PYTHONPATH", paths.join(&PYPATH_SEP.to_string()));
     }
 
+    // 데몬이 찾은 Java 런타임 (`[{java, home, version, major}]`, JAVA_HOME·PATH·설치 위치 순). 모듈은 필요한 주 버전을 여기서 고른다
+    if let Ok(runtimes) = serde_json::to_string(&crate::sandbox::java_runtimes()) {
+        cmd.env("SABA_JAVA_RUNTIMES", runtimes);
+    }
+
     // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
     let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
     if let Some(iso) = &isolation {
