@@ -489,6 +489,16 @@
       "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse"
     },
     "arg": {
+      "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
+      "bot.channels.no_notify": "Unassign the notification channel",
+      "bot.link.decline": "Refuse this connection request",
+      "bot.allow.all": "No limit: every server of this PC",
+      "bot.word.words": "New words (replace the old ones)",
+      "bot.word.clear": "Remove this command's words",
+      "sandbox.allow.component": "Component to run without isolation",
+      "sandbox.revoke.component": "Component to take the permission back from",
+      "do.plan": "Only check the input and show what would happen",
+      "do.input": "Input as key=value (values that read as JSON stay JSON)",
       "member": "Discord user ID",
       "level": "Level (admin, user, chatbot, banned or a number 2..-1)",
       "preset": "loose, default or strict",

@@ -612,6 +612,16 @@
       "bot.link": "디스코드에서 코드 없이 /사바쨩 연결로 온 연결 요청. ID 없이: 보기, ID: 수락, `--decline`: 거절"
     },
     "arg": {
+      "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
+      "bot.channels.no_notify": "알림 채널 해제",
+      "bot.link.decline": "이 연결 요청 거절",
+      "bot.allow.all": "제한 없음: 이 PC의 모든 서버",
+      "bot.word.words": "새 낱말 (기존 낱말을 바꿈)",
+      "bot.word.clear": "이 명령의 낱말 지우기",
+      "sandbox.allow.component": "격리 없이 실행할 구성요소",
+      "sandbox.revoke.component": "허용을 거둘 구성요소",
+      "do.plan": "입력만 검사하고 무엇을 할지 보여 줌",
+      "do.input": "입력 key=value (JSON으로 읽히는 값은 JSON)",
       "json": "글 대신 기계가 읽는 JSON으로 출력",
       "yes": "확인 질문에 모두 예",
       "no_color": "색 끄기",

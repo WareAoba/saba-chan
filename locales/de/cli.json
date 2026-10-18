@@ -420,6 +420,16 @@
       "bot.alias.remove": "Alias entfernen"
     },
     "arg": {
+      "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
+      "bot.channels.no_notify": "Benachrichtigungskanal entfernen",
+      "bot.link.decline": "Diese Verbindungsanfrage ablehnen",
+      "bot.allow.all": "Keine Grenze: alle Server dieses PCs",
+      "bot.word.words": "Neue Wörter (ersetzen die alten)",
+      "bot.word.clear": "Die Wörter dieses Befehls entfernen",
+      "sandbox.allow.component": "Komponente, die ohne Isolation läuft",
+      "sandbox.revoke.component": "Komponente, der die Erlaubnis entzogen wird",
+      "do.plan": "Nur die Eingabe prüfen und zeigen, was passieren würde",
+      "do.input": "Eingabe als key=value (Werte, die als JSON lesbar sind, bleiben JSON)",
       "server": "Servername (ein Teil genügt)",
       "ids": "Eine oder mehrere Erweiterungs-IDs"
     },

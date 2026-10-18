@@ -420,6 +420,16 @@
       "bot.alias.remove": "移除別名"
     },
     "arg": {
+      "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
+      "bot.channels.no_notify": "取消通知頻道",
+      "bot.link.decline": "拒絕此連線請求",
+      "bot.allow.all": "不限制: 此電腦上的所有伺服器",
+      "bot.word.words": "新詞語 (取代原有詞語)",
+      "bot.word.clear": "刪除此指令的詞語",
+      "sandbox.allow.component": "不隔離執行的元件",
+      "sandbox.revoke.component": "撤銷許可的元件",
+      "do.plan": "只檢查輸入並顯示將會發生什麼",
+      "do.input": "輸入 key=value (可依 JSON 讀取的值維持為 JSON)",
       "server": "伺服器名稱（部分即可）",
       "ids": "一個或多個擴充功能 ID"
     },

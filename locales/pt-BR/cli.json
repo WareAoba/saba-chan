@@ -420,6 +420,16 @@
       "bot.alias.remove": "Remover um apelido"
     },
     "arg": {
+      "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
+      "bot.channels.no_notify": "Remover o canal de avisos",
+      "bot.link.decline": "Recusar este pedido de conexão",
+      "bot.allow.all": "Sem limite: todos os servidores deste PC",
+      "bot.word.words": "Palavras novas (substituem as antigas)",
+      "bot.word.clear": "Remover as palavras deste comando",
+      "sandbox.allow.component": "Componente a executar sem isolamento",
+      "sandbox.revoke.component": "Componente do qual retirar a permissão",
+      "do.plan": "Só verificar a entrada e mostrar o que aconteceria",
+      "do.input": "Entrada como key=value (valores que podem ser lidos como JSON continuam JSON)",
       "server": "Nome do servidor (uma parte basta)",
       "ids": "Um ou mais IDs de extensão"
     },
