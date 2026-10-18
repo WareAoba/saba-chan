@@ -135,7 +135,7 @@ pub static ACTIONS: &[Def] = &[
     Def { fields: &[path_field("extension")], ..def("extension.enable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/enable") },
     Def { fields: &[path_field("extension")], ..def("extension.disable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/disable") },
     // 챗봇 설정 (I2-b). 디스코드에서는 소유자만, 그 길드 것만. 키는 받지 않고 챗봇 자신은 못 바꾼다(확인을 끄지 못하게)
-    Def { fields: &[path_field("guild")], ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
+    Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
     Def {
         fields: &[
             path_field("guild"),
@@ -270,15 +270,21 @@ fn schema(def: &Def) -> Value {
 }
 
 /// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
+/// 배포되는 CLI 실행 파일 이름
+const CLI_BIN: &str = "saba-chan-cli";
+
+/// 필수 입력마다 ` 이름=<이름>`
+fn cli_args(required: &[&str]) -> String {
+    required.iter().map(|n| format!(" {}=<{}>", n, n)).collect()
+}
+
 fn cli_line(def: &Def) -> String {
-    let mut line = format!("saba do {}", def.id);
+    let mut line = format!("{} do {}", CLI_BIN, def.id);
     if def.instance {
         line.push_str(" --server <server>");
     }
-    for f in def.fields.iter().filter(|f| f.required) {
-        line.push_str(&format!(" {}=<{}>", f.name, f.name));
-    }
-    line
+    let required: Vec<&str> = def.fields.iter().filter(|f| f.required).map(|f| f.name).collect();
+    line + &cli_args(&required)
 }
 
 fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
@@ -334,7 +340,7 @@ fn command_view(cmd: &Value) -> Option<Value> {
         "description": cmd.get("description"),
         "source": cmd.get("source"),
         "route": "POST /api/instance/:id/command",
-        "cli": format!("saba do {}{} --server <server>", COMMAND_PREFIX, name),
+        "cli": format!("{} do {}{} --server <server>{}", CLI_BIN, COMMAND_PREFIX, name, cli_args(&required)),
     }))
 }
 
@@ -377,7 +383,7 @@ fn query_view(query: &ModuleQuery, locale: &Value) -> Value {
         "title": query_text(locale, query, "label").unwrap_or_else(|| query.name.clone()),
         "description": query_text(locale, query, "description"),
         "route": "POST /api/instance/:id/query/:name",
-        "cli": format!("saba do {}{} --server <server>", QUERY_PREFIX, query.name),
+        "cli": format!("{} do {}{} --server <server>{}", CLI_BIN, QUERY_PREFIX, query.name, cli_args(&query.inputs.iter().filter(|i| i.required == Some(true)).map(|i| i.name.as_str()).collect::<Vec<_>>())),
     })
 }
 
@@ -687,6 +693,8 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         match input.get(f.name) {
             None if f.required => return Err(bad_input(f.name, "required")),
             None => {}
+            // PATCH는 null이 그 키를 기본값으로 되돌린다
+            Some(Value::Null) if !f.required && def.method == "PATCH" => {}
             Some(v) if !type_ok(f.ty, v) => return Err(bad_input(f.name, &format!("must be {}", f.ty))),
             Some(v) if f.in_path => {
                 let text = v.as_str().unwrap_or_default();
@@ -711,6 +719,12 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         };
         if let Some(key) = forbidden_remote_key(&Value::Object(input.clone()), &rules) {
             return Err(bad_input(&key, "this value cannot be changed remotely"));
+        }
+        // 서버 설정은 한 칸씩만 (묶음 값은 안에 무엇이 있는지 원격에서 다 볼 수 없다)
+        if def.id == "instance.settings.set" {
+            if let Some((key, _)) = input.iter().find(|(_, v)| v.is_object() || v.is_array()) {
+                return Err(bad_input(key, "this value cannot be changed remotely"));
+            }
         }
     }
     let body = if def.method == "GET" || def.method == "DELETE" || (body.is_empty() && !def.open_input && def.fields.is_empty()) {
@@ -821,6 +835,11 @@ impl StoredPlan {
 fn store_plan(plan_id: String, plan: StoredPlan) {
     let mut store = plans().lock().unwrap_or_else(|e| e.into_inner());
     store.retain(|_, p| p.created.elapsed() < PLAN_TTL);
+    // 확인을 기다리는 계획은 많아야 이만큼. 넘으면 가장 오래된 것부터 버린다
+    while store.len() >= MAX_PLANS {
+        let Some(oldest) = store.iter().min_by_key(|(_, p)| p.created).map(|(k, _)| k.clone()) else { break };
+        store.remove(&oldest);
+    }
     store.insert(plan_id, plan);
 }
 
@@ -829,6 +848,7 @@ fn expires_at() -> String {
 }
 
 const PLAN_TTL: Duration = Duration::from_secs(600);
+const MAX_PLANS: usize = 500;
 
 fn plans() -> &'static Mutex<HashMap<String, StoredPlan>> {
     static PLANS: std::sync::OnceLock<Mutex<HashMap<String, StoredPlan>>> = std::sync::OnceLock::new();
@@ -872,6 +892,26 @@ async fn current_values(server: &IPCServer, instance: &str, keys: impl Iterator<
     .collect()
 }
 
+/// 계획 요약에 싣는 값: 비밀값 키는 어느 깊이에서든 `***`로 (있었는지만 보인다)
+fn masked(key: &str, v: &Value, password_fields: &[String]) -> Value {
+    if is_secret_key(key, password_fields) {
+        return if v.is_null() { Value::Null } else { json!("***") };
+    }
+    match v {
+        Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (k.clone(), masked(k, x, password_fields))).collect()),
+        Value::Array(a) => Value::Array(a.iter().map(|x| masked("", x, password_fields)).collect()),
+        other => other.clone(),
+    }
+}
+
+/// 묶음 값의 이전 값은 바꾸는 칸만 남긴다
+fn project(before: &Value, input: &Value) -> Value {
+    match (before, input) {
+        (Value::Object(b), Value::Object(i)) => Value::Object(i.iter().map(|(k, x)| (k.clone(), b.get(k).map_or(Value::Null, |y| project(y, x)))).collect()),
+        _ => before.clone(),
+    }
+}
+
 /// 무엇을 바꾸는지 사람이 읽을 요약 `[{labelKey, label, value}]`
 async fn summarize(server: &IPCServer, r: &Resolved, locale: &str) -> Vec<Value> {
     let cat = catalog(locale);
@@ -889,10 +929,11 @@ async fn summarize(server: &IPCServer, r: &Resolved, locale: &str) -> Vec<Value>
         ("instance.settings.set", Some(i)) => Some(current_values(server, i, r.input.keys()).await),
         _ => None,
     };
+    let secret = all_password_fields(server).await;
     for (k, v) in &r.input {
-        let mut row = item(k, v.clone());
+        let mut row = item(k, masked(k, v, &secret));
         if let Some(b) = &before {
-            row["before"] = b.get(k).cloned().unwrap_or(Value::Null);
+            row["before"] = masked(k, &project(b.get(k).unwrap_or(&Value::Null), v), &secret);
         }
         out.push(row);
     }
@@ -928,6 +969,7 @@ async fn summarize(server: &IPCServer, r: &Resolved, locale: &str) -> Vec<Value>
 pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, plan_id: Option<&str>, caller: &Caller) -> Result<Value, ActionError> {
     let (r, caller) = match plan_id {
         Some(pid) => {
+            steps::lane_free(caller)?;
             let stored = take_plan(pid, id, caller)?;
             // 계획을 만든 경로의 상한을 쓴다 (챗봇이 만든 계획은 사람이 확인해도 챗봇 상한)
             let mut caller = caller.clone();
@@ -945,7 +987,9 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
                             authorize(server, r, &caller).await?;
                         }
                     }
-                    admit(server, &caller).await?;
+                    if steps.iter().any(steps::Step::is_admin) {
+                        admit(server, &caller).await?;
+                    }
                     return steps::run_steps(server, steps, caller).await;
                 }
                 PlanBody::One(r) => {
@@ -1039,6 +1083,10 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령은 라우트가 남긴다)
     if r.kind == Kind::Admin {
         record_admin(server, r, caller, ok, resp.status.as_u16()).await;
+    }
+    // 원격에서 만든 서버는 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
+    if let (true, "instance.create", Some(new_id)) = (ok, r.id.as_str(), result.get("id").and_then(Value::as_str)) {
+        steps::allow_in_guild(server, caller, new_id).await;
     }
     let mut out = json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result });
     if let (true, Some((instance, before))) = (ok, previous) {
@@ -1179,7 +1227,7 @@ async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value
 }
 
 mod steps;
-pub use steps::{plan_steps, run_status, PLAN_ID};
+pub use steps::{plan_steps, run_status};
 
 #[cfg(test)]
 mod tests;

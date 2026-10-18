@@ -642,7 +642,7 @@ fn link_request_event(cmd: &Value, payload: &Value) -> Option<Value> {
         "guildName": text(payload.get("guildName")),
         "requestedBy": text(cmd.get("requestedBy")),
         "userName": text(payload.get("userName")),
-        "expiresAt": payload.get("expiresAt").filter(|v| v.is_string() || v.is_number()),
+        "expiresAt": text(payload.get("expiresAt")),
     }))
 }
 
@@ -895,9 +895,9 @@ mod tests {
     #[test]
     fn a_link_request_from_discord_only_reaches_the_pc_screen() {
         let cmd = json!({ "guildId": "g1", "requestedBy": "u1" });
-        let payload = json!({ "action": "link_request", "requestId": "r1", "guildName": "길드", "userName": "주인", "expiresAt": 1700 });
+        let payload = json!({ "action": "link_request", "requestId": "r1", "guildName": "길드", "userName": "주인", "expiresAt": "2026-10-18T08:00:00Z" });
         let data = link_request_event(&cmd, &payload).unwrap();
-        assert_eq!(data, json!({ "requestId": "r1", "guildId": "g1", "guildName": "길드", "requestedBy": "u1", "userName": "주인", "expiresAt": 1700 }));
+        assert_eq!(data, json!({ "requestId": "r1", "guildId": "g1", "guildName": "길드", "requestedBy": "u1", "userName": "주인", "expiresAt": "2026-10-18T08:00:00Z" }));
         assert!(link_request_event(&cmd, &json!({ "action": "link_request" })).is_none(), "no request id");
         assert!(link_request_event(&json!({}), &json!({ "requestId": "r1" })).is_none(), "no guild");
         let event = crate::events::Event { id: 1, kind: "relay.link_request".into(), data, replay: true };

@@ -28,6 +28,16 @@ pub(super) enum Step {
     OnNew { id: String, from: usize, input: Value },
 }
 
+impl Step {
+    /// 관리 단계인가 (원격 관리 실행 횟수는 이런 단계가 있는 계획만 센다)
+    pub(super) fn is_admin(&self) -> bool {
+        match self {
+            Step::Ready(r) => r.kind == Kind::Admin,
+            Step::OnNew { id, .. } => find(id).is_some_and(|d| d.kind == Kind::Admin),
+        }
+    }
+}
+
 fn step_error(n: usize, mut e: ActionError) -> ActionError {
     if let Value::Object(m) = &mut e.data {
         if let Some(field) = m.get("field").and_then(Value::as_str) {
@@ -136,6 +146,12 @@ fn lanes() -> &'static Mutex<std::collections::HashSet<String>> {
     LANES.get_or_init(Default::default)
 }
 
+/// 이 자리에서 여러 단계 실행이 돌고 있으면 409 (계획을 쓰기 전에 본다)
+pub(super) fn lane_free(caller: &Caller) -> Result<(), ActionError> {
+    drop(Lane::take(caller)?);
+    Ok(())
+}
+
 impl Lane {
     fn take(caller: &Caller) -> Result<Self, ActionError> {
         let key = match &caller.remote {
@@ -236,7 +252,7 @@ async fn wait_installed(server: &IPCServer, instance: &str) -> Result<(), Action
 }
 
 /// 원격에서 만든 서버를 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
-async fn allow_in_guild(server: &IPCServer, caller: &Caller, instance: &str) {
+pub(super) async fn allow_in_guild(server: &IPCServer, caller: &Caller, instance: &str) {
     let Some(guild) = caller.remote.as_ref().and_then(|w| w.guild_id.clone()) else { return };
     let added = server
         .config_store
@@ -318,7 +334,6 @@ async fn execute_steps(server: &IPCServer, steps: Vec<Step>, caller: &Caller, re
             if let Some(new_id) = out.pointer("/result/id").and_then(Value::as_str) {
                 created[n] = Some(new_id.to_string());
                 lock(rec).steps[n]["instance"] = json!(new_id);
-                allow_in_guild(server, caller, new_id).await;
             }
         }
     }

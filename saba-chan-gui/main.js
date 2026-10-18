@@ -2595,6 +2595,12 @@ ipcMain.handle('relay:initiatePairing', async (_event, payload) => {
     }
 });
 
+// 디스코드에서 코드 없이 온 연결 요청 (J1-b). 수락·거절 응답은 데몬 본문 그대로
+ipcMain.handle('relay:linkRequests', () => daemonJson('get', '/api/relay/link-requests'));
+ipcMain.handle('relay:linkRequestRespond', (_event, requestId, accept) =>
+    daemonJson('post', `/api/relay/link-requests/${encodeURIComponent(requestId)}`, { accept: !!accept }),
+);
+
 ipcMain.handle('relay:pollPairingStatus', async (_event, code, secret, relayUrl) => {
     try {
         const params = new URLSearchParams();

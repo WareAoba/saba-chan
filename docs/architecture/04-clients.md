@@ -119,6 +119,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | instanceBackups…instanceScheduleSave (109-114) | instance:backup*/schedule* | 2359-2368 | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 688-691 (미사용) |
 | chatbotGet/Save/Clear/ClearMemory (115-118) | chatbot:* | 2370-2375 | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 753-754 (미사용) |
 | relayInitiatePairing / relayPollPairingStatus (119-120) | relay:* | 2377/2388 | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 744-745 |
+| relayLinkRequests / relayLinkRequestRespond | relay:linkRequests/linkRequestRespond | `main.js` | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다 | ✓ |
 | shellOpenPath (122) | shell:openPath | 2832 | Electron `shell.openPath` | n/a |
 | logsGetPath / logsOpenFolder (124-125) | logs:* | 2811/2848 | 로컬 | n/a (미사용) |
 | launchUninstaller (127) | app:launchUninstaller | 2599 | installer 직접 spawn | n/a |

@@ -329,7 +329,7 @@ async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     ]);
     let owner_bot = relay("owner", true);
     let planned = plan_steps(&state, &steps, &owner_bot).await.unwrap();
-    assert_eq!((planned["actionId"].as_str(), planned["needsConfirm"].as_bool()), (Some(PLAN_ID), Some(true)));
+    assert_eq!((planned["actionId"].as_str(), planned["needsConfirm"].as_bool()), (Some(steps::PLAN_ID), Some(true)));
     let summary = planned["summary"].to_string();
     assert!(summary.contains("1. ") && summary.contains("2. ") && summary.contains("new-srv"), "{}", summary);
 
@@ -345,8 +345,8 @@ async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
 
     // 다른 사람은 실행하지 못하고, 요청자가 누르면 순서대로 한 번에
     let plan_id = planned["planId"].as_str().unwrap();
-    assert_eq!(run(&state, PLAN_ID, None, &Value::Null, Some(plan_id), &relay("someone", false)).await.unwrap_err().code, "plan_not_yours");
-    let done = run(&state, PLAN_ID, None, &Value::Null, Some(plan_id), &relay("owner", false)).await.unwrap();
+    assert_eq!(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("someone", false)).await.unwrap_err().code, "plan_not_yours");
+    let done = run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("owner", false)).await.unwrap();
     assert_eq!(done["success"], true, "{}", done);
     let new_id = done["steps"][0]["instance"].as_str().unwrap().to_string();
     assert_eq!(done["steps"][1]["status"], "done");
@@ -402,6 +402,24 @@ async fn remote_settings_show_the_old_value_and_can_be_undone() {
 }
 
 #[tokio::test]
+async fn plan_summaries_never_show_stored_or_new_secrets() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
+    run(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "OLD-PW", "admin_password": "OLD-MOD", "players": 2 }), None, &gui()).await.unwrap();
+    let row = |planned: &Value, key: &str| planned["summary"].as_array().unwrap().iter().find(|r| r["labelKey"] == format!("actions.field.{}", key)).cloned().unwrap();
+    // 로컬도 요약에는 가린 값만
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "NEW-PW" }), &gui()).await.unwrap();
+    assert_eq!((row(&planned, "rest_password")["before"].clone(), row(&planned, "rest_password")["value"].clone()), (json!("***"), json!("***")));
+    // 묶음 값의 이전 값은 바꾸는 칸만
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "module_settings": { "players": 4 } }), &gui()).await.unwrap();
+    assert_eq!(row(&planned, "module_settings")["before"], json!({ "players": 2 }));
+    assert!(!planned.to_string().contains("OLD-"), "{planned}");
+    // 원격은 묶음 값을 받지 않는다
+    let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "module_settings": { "players": 4 } }), &relay("owner", true)).await.unwrap_err();
+    assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("module_settings")));
+}
+
+#[tokio::test]
 async fn remote_admin_runs_are_limited_per_guild_and_hour() {
     let (state, id, _tmp) = server().await;
     state
@@ -440,6 +458,12 @@ async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     assert_eq!(run(&state, "chatbot.settings.set", None, &local, None, &gui()).await.unwrap()["success"], true);
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
     assert_eq!((read["result"]["settings"]["confirmCommands"].as_bool(), read["result"]["settings"]["sessionSeconds"].as_i64()), (Some(false), Some(180)));
+    // null은 그 길드의 값을 지워 기본값으로 되돌린다
+    run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmCommands": null }), None, &gui()).await.unwrap();
+    let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
+    assert_ne!(read["result"]["settings"]["confirmCommands"].as_bool(), Some(false));
+    // 메모·호출어도 소유자만 읽는다
+    assert_eq!(plan(&state, "chatbot.settings.get", None, &json!({}), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
 }
 
 #[tokio::test]
@@ -447,9 +471,9 @@ async fn every_action_says_how_to_do_it_from_the_cli() {
     let (state, id, _tmp) = server().await;
     let listed = list(&state, None, None, "en").await;
     let create = listed["actions"].as_array().unwrap().iter().find(|a| a["id"] == "instance.create").cloned().unwrap();
-    assert_eq!(create["cli"], "saba do instance.create name=<name> module_name=<module_name>");
+    assert_eq!(create["cli"], "saba-chan-cli do instance.create name=<name> module_name=<module_name>");
     let per_server = list(&state, None, Some(&id), "en").await;
     let restore = per_server["actions"].as_array().unwrap().iter().find(|a| a["id"] == "backup.restore").cloned().unwrap();
-    assert_eq!(restore["cli"], "saba do backup.restore --server <server> name=<name>");
-    assert!(per_server["actions"].as_array().unwrap().iter().all(|a| a["cli"].as_str().is_some_and(|c| c.starts_with("saba do "))));
+    assert_eq!(restore["cli"], "saba-chan-cli do backup.restore --server <server> name=<name>");
+    assert!(per_server["actions"].as_array().unwrap().iter().all(|a| a["cli"].as_str().is_some_and(|c| c.starts_with("saba-chan-cli do "))));
 }
