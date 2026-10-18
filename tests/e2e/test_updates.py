@@ -18,7 +18,7 @@ import pytest
 
 from harness import procs
 from harness.daemon import wait_until
-from harness.fake_updates import FakeUpdates
+from harness.fake_updates import NEXT, FakeUpdates
 from harness.paths import EXE, REPO
 
 pytestmark = pytest.mark.mock_relay
@@ -39,8 +39,8 @@ def updates():
     if not MOCK_CORE.exists():
         pytest.skip(f"mock-relay 빌드가 없습니다: {MOCK_CORE} (CARGO_TARGET_DIR=target/e2e-mock cargo build -p saba-core --features mock-relay)")
     u = FakeUpdates(_platform())
-    u.add_component("saba-core", "0.1.6", {f"saba-core{EXE}": b"new core"})
-    u.add_component("cli", "0.1.6", {f"saba-chan-cli{EXE}": b"new cli"})
+    u.add_component("saba-core", NEXT, {f"saba-core{EXE}": b"new core"})
+    u.add_component("cli", NEXT, {f"saba-chan-cli{EXE}": b"new cli"})
     yield u
     u.close()
 
@@ -68,7 +68,7 @@ def test_check_finds_signed_release(udaemon, updates):
     body = _check(udaemon)
     assert body["ok"], body
     core = _component(body, "saba-core")
-    assert core["update_available"] and core["latest_version"] == "0.1.6", body
+    assert core["update_available"] and core["latest_version"] == NEXT, body
     checks = [r for r in updates.requests if r["path"] == "/v1/updates/check"]
     assert checks and checks[0]["query"]["platform"] == [_platform()]
     assert checks[0]["query"]["current"] != [""], "current가 빈 값 (운영 relay는 400 INVALID_CURRENT_VERSION)"

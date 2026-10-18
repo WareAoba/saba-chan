@@ -86,10 +86,10 @@ def test_relay_rejects_agent_after_token_rotation(paired, relay, sandbox):
     paired.api.ok("POST", "/api/relay/agent/stop")
     paired.api.ok("POST", "/api/relay/agent/start")
     status = wait_until(lambda: (s := paired.api.ok("GET", "/api/relay/agent")).get("lastError") and s, 90, "옛 토큰 거절")
-    # relay가 교체를 알리면 "node token replaced by a newer pairing"으로 멈춘다(#101).
+    # relay가 교체를 알리면 lastErrorCode token_replaced로 멈춘다(#101). GUI·CLI는 문구가 아니라 이 코드를 본다.
     # 알림 전에 거절이 먼저 오면 "node token rejected" 또는 "poll 401 … INVALID_TOKEN"
     err = status["lastError"].lower()
-    assert "replaced" in err or "reject" in err or "401" in err, status
+    assert status.get("lastErrorCode") == "token_replaced" or "reject" in err or "401" in err, status
 
 
 def test_owner_discord_setting_runs_without_confirm_button(paired, relay):
