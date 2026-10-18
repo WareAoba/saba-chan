@@ -160,7 +160,7 @@ pub static ACTIONS: &[Def] = &[
         discord_level: Some(crate::chat::permissions::OWNER),
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
     },
-    def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/updates/check"),
+    def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/apply") },
 ];
 
@@ -245,6 +245,78 @@ fn strip_secrets(v: &mut Value, password_fields: &[String]) {
             m.values_mut().for_each(|x| strip_secrets(x, password_fields));
         }
         Value::Array(a) => a.iter_mut().for_each(|x| strip_secrets(x, password_fields)),
+        _ => {}
+    }
+}
+
+/// 원격으로 나가는 결과에서 PC의 로컬 정보를 어느 깊이에서든 뺀다 (I3, 알림 push 경로와 같은 기준):
+/// 실행 파일·폴더·인자 키, 콘솔 줄이 든 종료 근거, 자동 재시작 실패 원문, 그리고 문자열 안의 절대 경로
+fn strip_local_details(v: &mut Value) {
+    const LOCAL_KEYS: [&str; 5] = ["working_dir", "executable_path", "extra_args", "extension_data", "install_path"];
+    match v {
+        Value::Object(m) => {
+            m.retain(|k, _| !LOCAL_KEYS.contains(&k.as_str()));
+            if m.get("evidence").and_then(Value::as_str).is_some_and(|e| !crate::supervisor::crash::shareable_evidence(e)) {
+                m.remove("evidence");
+            }
+            if let Some(args) = m.get_mut("note_args").and_then(Value::as_object_mut) {
+                args.remove("reason");
+            }
+            m.values_mut().for_each(strip_local_details);
+        }
+        Value::Array(a) => a.iter_mut().for_each(strip_local_details),
+        Value::String(s) => {
+            if let Some(masked) = mask_local_text(s) {
+                *s = masked;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것
+pub fn overridable(id: &str) -> bool {
+    find(id).is_some_and(|d| d.discord_level.is_none() && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
+}
+
+/// 문자열의 절대 경로를 `<path>`로 바꾸고, Python traceback은 마지막 줄(예외 문구)만 남긴다. 바뀐 것이 없으면 None
+fn mask_local_text(text: &str) -> Option<String> {
+    static QUOTED: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static PATHS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    // 따옴표로 시작하는 경로는 닫는 따옴표까지 (공백 포함)
+    let quoted = QUOTED.get_or_init(|| {
+        regex::Regex::new(r#""(?:\\\\|[A-Za-z]:[\\/]|/[^\s/"]+/)[^"\r\n]*"|'(?:\\\\|[A-Za-z]:[\\/]|/[^\s/']+/)[^'\r\n]*'"#).unwrap()
+    });
+    // Windows 드라이브·UNC 경로, 그리고 둘 이상의 조각으로 된 Unix 절대·홈 경로 (URL의 `://`는 `/` 다음이 `/`라 걸리지 않는다).
+    // 경로에 공백이 있을 수 있어 그 줄의 끝(또는 따옴표)까지 가린다
+    let paths = PATHS.get_or_init(|| {
+        regex::Regex::new(r#"\\\\[^\\\s"'<>|]+\\[^\r\n"'<>|]*|\b[A-Za-z]:[\\/][^\r\n"'<>|]*|(?P<pre>^|[\s"'(=:\[])~?/(?:[^\s/"'<>|]+/)+[^\r\n"'<>|]*"#).unwrap()
+    });
+    let base = if text.contains("Traceback (most recent call last)") {
+        text.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("")
+    } else {
+        text
+    };
+    let base = quoted.replace_all(base, |c: &regex::Captures| {
+        let q = &c[0][..1];
+        format!("{q}<path>{q}")
+    });
+    let masked = paths.replace_all(&base, "${pre}<path>");
+    (masked != text).then(|| masked.into_owned())
+}
+
+/// 이 길드에 열지 않은 인스턴스를 결과의 `servers`·`instances` 목록(어느 깊이든, 원소의 `id`)에서 뺀다
+fn retain_allowed(v: &mut Value, allowed: &[String]) {
+    match v {
+        Value::Object(m) => {
+            for (k, x) in m.iter_mut() {
+                if let (true, Some(items)) = (k == "servers" || k == "instances", x.as_array_mut()) {
+                    items.retain(|s| s.get("id").and_then(Value::as_str).is_none_or(|id| allowed.iter().any(|a| a == id)));
+                }
+                retain_allowed(x, allowed);
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| retain_allowed(x, allowed)),
         _ => {}
     }
 }
@@ -795,7 +867,9 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
         (None, Some(cmd)) => perms.required(instance, cmd, &r.risk),
         (None, None) => {
             let key = if instance.is_empty() { r.id.clone() } else { format!("{}/{}", instance, r.id) };
-            match perms.override_level(&key) {
+            // 내장 서버 액션은 명령 경로·GUI 권한 편집기와 같은 키(`<instance>/stop` 등)를 먼저 본다
+            let command_key = builtin_command(&r.id).filter(|_| !instance.is_empty()).map(|cmd| format!("{}/{}", instance, cmd));
+            match command_key.and_then(|k| perms.override_level(&k)).or_else(|| perms.override_level(&key)) {
                 Some(level) => level,
                 None if r.kind == Kind::Admin => admin_level(&perms.preset),
                 None => crate::chat::permissions::preset_level(&perms.preset, &r.risk),
@@ -806,6 +880,17 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
         return Err(denied(need));
     }
     Ok(())
+}
+
+/// 내장 서버 액션에 대응하는 내장 명령 이름 (레벨 키 `<instance>/<명령>`)
+fn builtin_command(action: &str) -> Option<&'static str> {
+    match action {
+        "server.start" => Some("start"),
+        "server.stop" => Some("stop"),
+        "server.restart" => Some("restart"),
+        "server.status" => Some("status"),
+        _ => None,
+    }
 }
 
 /// 확인이 필요한가: danger이거나, 챗봇이 고른 관리 액션. 사람이 직접 친 caution 관리 명령은 바로 실행한다
@@ -1083,8 +1168,9 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     }
     if caller.remote.is_some() {
         strip_secrets(&mut result, &all_password_fields(server).await);
-        if let (Some(allowed), Some(servers)) = (allowed_instances(server, caller).await, result.get_mut("servers").and_then(Value::as_array_mut)) {
-            servers.retain(|s| s.get("id").and_then(Value::as_str).is_some_and(|id| allowed.iter().any(|a| a == id)));
+        strip_local_details(&mut result);
+        if let Some(allowed) = allowed_instances(server, caller).await {
+            retain_allowed(&mut result, &allowed);
         }
     }
     let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
