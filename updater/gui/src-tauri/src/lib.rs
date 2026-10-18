@@ -86,6 +86,7 @@ async fn start_apply(
                 let msg = format!("Failed to load manifest: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
                 UpdateCompletionMarker::failure(msg.clone()).save().ok();
+                relaunch(&app, &apply_config, false);
                 msg
             })?
     };
@@ -116,6 +117,7 @@ async fn start_apply(
                 let msg = format!("Apply failed: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
                 UpdateCompletionMarker::failure(msg.clone()).save().ok();
+                relaunch(&app, &apply_config, false);
                 return Err(msg);
             }
         }
@@ -173,6 +175,15 @@ async fn start_apply(
     drop(mgr);
 
     // 5. GUI 재실행 → 업데이터 종료
+    relaunch(&app, &apply_config, true);
+
+    Ok(applied)
+}
+
+/// 업데이트를 띄운 프로그램(없으면 GUI)을 다시 띄운다. 적용이 실패해도 띄운다:
+/// 업데이터가 뜰 때 데몬·GUI는 이미 끝났으니 그대로 두면 아무것도 남지 않는다.
+/// `exit`이면 띄운 뒤 업데이터를 닫는다 (실패면 오류 화면을 남겨 둔다)
+fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, exit: bool) {
     let relaunch_exe = apply_config.relaunch_exe.clone();
     let relaunch_extra = apply_config.relaunch_extra.clone();
     let app_handle = app.clone();
@@ -192,11 +203,11 @@ async fn start_apply(
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        app_handle.exit(0);
+        if exit {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            app_handle.exit(0);
+        }
     });
-
-    Ok(applied)
 }
 
 /// 언어 설정 조회 — settings.json → 시스템 로케일 → "en"

@@ -231,6 +231,18 @@ async fn start_waiting_on_an_agreement_carries_the_list_for_the_relay() {
     assert!(r.text.contains("Accept Minecraft EULA first"), "{}", r.text);
 }
 
+/// 켜기 전 점검에 막히면 모듈이 준 해결 방법도 같이 보인다
+#[tokio::test]
+async fn start_blocked_by_a_preflight_check_shows_the_solution() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::CONFLICT,
+        body: json!({"success": false, "error": "Admin password is not set", "error_code": "preflight_failed", "solution": "Set admin_password in the server settings"}),
+    });
+    let out = run(&api, &settings(), "mc start").await;
+    assert!(out.contains("Admin password is not set") && out.contains("Set admin_password in the server settings"), "{}", out);
+}
+
 /// 알아보지 못한 입력은 코드가 붙는다: 릴레이가 이 코드로 모델 해석기에 묻는다. 처리한 응답에는 없다
 #[tokio::test]
 async fn unrecognized_input_carries_a_code_for_the_interpreter() {

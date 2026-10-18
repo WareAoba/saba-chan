@@ -14,7 +14,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 
 구성은 둘이다.
 - **Tauri 셸** `saba-chan-gui/src-tauri/src`(Rust): 창·트레이·데몬 기동·토큰·이벤트 스트림 같은 네이티브 일만 한다(`lib.rs:1-4`).
-- **JS 브리지** `saba-chan-gui/src/api`: `window.api`·`window.electron`을 예전 preload와 같은 이름·인자·결과로 만든다(`install.js:11-34`, `createApi.js:1-3`). `window.__TAURI__`가 있고 `window.api`가 없을 때만 설치하므로 테스트 mock과 브라우저 개발 mock(`src/dev`)은 그대로다(`install.js:12`). `src/index.js`가 가장 먼저 import한다. 데몬 응답 가공(상태별 오류 문구, `errorBody`·`daemonCall`·`daemonJson`)은 브리지가 한다(`daemon.js:80-106`).
+- **JS 브리지** `saba-chan-gui/src/api`: `window.api`·`window.electron`을 예전 preload와 같은 이름·인자·결과로 만든다(`install.js:11-34`, `createApi.js:1-3`). `window.__TAURI__`가 있고 `window.api`가 없을 때만 설치하므로 테스트 mock과 브라우저 개발 mock(`src/dev`)은 그대로다(`install.js:12`). `src/index.js`가 가장 먼저 import한다. 데몬 응답 가공(상태별 오류 문구, `errorBody`·`daemonCall`·`daemonJson`)은 브리지가 한다(`daemon.js:35-62`).
 
 ### 1.1 Tauri 셸이 맡는 일 (`saba-chan-gui/src-tauri/src`)
 
@@ -23,24 +23,24 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:634-802`(`router()`, 인증 �
 | 데이터 폴더 | `lib.rs:79`, `updater/src/constants.rs:55` | `constants::resolve_data_dir()`. `SABA_DATA_DIR`, Windows `%APPDATA%/saba-chan`, Unix `$HOME/.config/saba-chan`. 설치 루트는 debug면 저장소 루트, 배포면 exe 폴더다(`install_root()` `lib.rs:67-76`) |
 | IPC 토큰 인증 | `daemon.rs:120-271` | 토큰 파일(`constants::token_file_path()`, `lib.rs:95`)을 **직접 읽어** 데몬 요청에만 `X-Saba-Token`을 붙인다. 감사 로그 출처 `X-Saba-Client: gui`도 붙인다(`builder` `:182-192`, A10). 리다이렉트를 따라가지 않고 프록시도 쓰지 않는다(`:129-134`). 401이면 토큰 파일을 다시 읽고 1회 재시도한다. 단 `/api/relay/` 요청은 재시도하지 않는다(`send` `:213-229`) |
 | 렌더러 → 데몬 통로 | `native.rs:17-42`, `daemon.rs:93-116` | 렌더러는 `daemon_request` 명령으로만 데몬에 닿는다. 경로는 `/api/…`와 `/health`만 받고 `.`·`..` 조각(`%2e` 포함)·`\`·공백·`#`는 막는다. 경로에 넣는 이름은 브리지가 `encodeURIComponent`로 넣는다. 셸이 직접 정하는 `/api/updates/launch-updater`·`/api/client/*`·`/api/daemon/shutdown`은 렌더러에 열지 않는다(확장 GUI 스크립트도 같은 웹뷰에서 돈다). 막힌 경로는 `{status:0, code:'EINVAL'}`. 결과는 성공·HTTP 오류 모두 `{status, data}`, 연결 실패는 `{status:0, error, code}`(`ECONNREFUSED`·`ETIMEDOUT`·`EOTHER`). `responseType`은 `json`·`text`·`base64` |
-| 명령 권한 | `capabilities/default.json`, `build.rs` | 창 `main`과 `popout-*`에만 이 앱의 명령(`allow-*`)과 `core:default`를 연다. 명령 목록은 `build.rs`의 `COMMANDS`와 `lib.rs:112-143` `generate_handler!`가 짝을 이룬다 |
+| 명령 권한 | `capabilities/default.json`, `build.rs` | 창 `main`과 `popout-*`에만 이 앱의 명령(`allow-*`)과 `core:default`를 연다. 명령 목록은 `build.rs`의 `COMMANDS`와 `lib.rs:118-149` `generate_handler!`가 짝을 이룬다 |
 | **Daemon spawn** | `start_daemon()` `lifecycle.rs:158-215` | debug는 `target/release`(없으면 `target/debug`)의 `saba-core(.exe)`, 배포는 설치 루트의 것을 `--spawned`로 띄운다(`daemon_path` `:129-138`). cwd는 설치 루트, env는 `RUST_LOG=info, SABA_LANG, SABA_IPC_PORT, SABA_INSTANCES_PATH=<data>/instances, SABA_MODULES_PATH`(`constants::resolve_modules_dir()`). stdout/stderr는 GUI 로그로 넘긴다(`pipe_log` `:244-262`) |
 | 분리 실행 | `detach()` `lifecycle.rs:219-241`, `:188-197` | Windows는 `CREATE_NO_WINDOW`·`CREATE_NEW_PROCESS_GROUP`·`CREATE_BREAKAWAY_FROM_JOB`로 띄운다. GUI를 띄운 쪽의 job이 breakaway를 막아 spawn이 거부되면 breakaway 없이 다시 띄운다. Unix는 `process_group(0)` |
-| Daemon 재사용/기동 판단 | `ensure_daemon()` `lifecycle.rs:375-422` | `GET /health`가 200이면 기존 daemon을 재사용한다. 응답의 `token`이 `valid`가 아니거나(A6) 예전 데몬이 401을 주면 토큰을 다시 읽으며 최대 3회 확인한다(`reload_token_until_valid` `:342-359`). ECONNREFUSED/ETIMEDOUT이면 `start_daemon()` 뒤 500ms 간격으로 최대 20회(10초) 폴링한다(`wait_for_new_daemon` `:362-372`) |
+| Daemon 재사용/기동 판단 | `ensure_daemon()` `lifecycle.rs:389-436` | `GET /health`가 200이면 기존 daemon을 재사용한다. 응답의 `token`이 `valid`가 아니거나(A6) 예전 데몬이 401을 주면 토큰을 다시 읽으며 최대 3회 확인한다(`reload_token_until_valid` `:342-359`). ECONNREFUSED/ETIMEDOUT이면 `start_daemon()` 뒤 500ms 간격으로 최대 20회(10초) 폴링한다(`wait_for_new_daemon` `:362-372`) |
 | Daemon 종료 | `stop_daemon()` `lifecycle.rs:308-335`, `force_kill()` `:289-304` | 먼저 `POST /api/daemon/shutdown`을 보내고 최대 15초 기다린다. 그래도 안 끝나면 **이 GUI가 띄운 PID만** 강제 종료한다(Windows `taskkill /PID … /F`, `/T` 없음. Unix `Child::kill`(SIGKILL)). 이름 기반 kill은 하지 않는다(`:306-307` 주석) |
 | 클라이언트 등록/heartbeat | `lifecycle.rs:440-506` | `POST /api/client/register {kind:'gui', pid, installRoot}`(인스톨러가 이 설치의 GUI를 찾는 데 쓴다), 이후 30초마다 `POST /api/client/:id/heartbeat`. 404나 연결 거부면 다시 등록한다. 종료 시 `DELETE /api/client/:id/unregister[?shutdown=true]` |
-| install_root 동기화 | `sync_install_root()` `lifecycle.rs:425-436` | `PUT /api/updates/config {install_root}` |
+| install_root 동기화 | `sync_install_root()` `lifecycle.rs:439-450` | `PUT /api/updates/config {install_root}` |
 | 백그라운드 초기화 | `app_ready()` `lifecycle.rs:64-75`, `:77-116` | 렌더러가 리스너를 단 뒤 `app_ready`를 부르면 처음 한 번 `ensure_daemon` → 등록·heartbeat·이벤트·업데이트 확인을 시작하고 `status:update` `ready`를 보낸다. 데몬이 뜨지 않으면 `daemon_failed`만 보내고 멈춘다. `--after-update`면 첫 ready 뒤 `updates:completed` |
 | 이벤트 스트림 | `events.rs:75-116`, `lifecycle.rs:510-521` | `GET /api/events`(SSE) 연결 하나를 유지하고 받은 이벤트를 `events:message {id, type, data}`로 보낸다. 끊기면 3초 뒤 `Last-Event-ID`로 다시 붙고, 401이면 토큰을 다시 읽는다 |
 | 업데이트 알림 | `lifecycle.rs:523-565`, `events.rs:123-160` | 확인 주기는 데몬이 정한다. 셸은 10분마다 데몬이 캐시한 `GET /api/updates/status`를 읽어, 새 업데이트 목록일 때만 OS 알림을 띄우고 `updates:available`을 보낸다. Locales는 알림에서 뺀다. 적용은 사용자가 고른다 |
 | **업데이트 적용 시작** | `updater_launch_apply` `native.rs:81-102` | `POST /api/updates/launch-updater {relaunch:[current_exe()]}`만 보내고 500ms 뒤 `clean_quit()`한다. 업데이터는 데몬이 띄운다(`src/ipc/updates.rs:601-659`, 실행 파일은 `saba-chan-updater{EXE_SUFFIX}`, `updater_binary` `:662-669`) |
-| **Installer spawn(언인스톨)** | `launch_uninstaller` `native.rs:106-184` | 설치 루트·`saba-chan-gui` 하위·상위·exe 폴더에서 인스톨러를 찾고, 없으면 Windows 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation`을 본다(`winreg`, `:119-126`). `--uninstall`로 분리 실행(`DETACHED_PROCESS`) 뒤 `clean_quit()` |
+| **Installer spawn(언인스톨)** | `launch_uninstaller` `native.rs:151-184` | 설치 루트·`saba-chan-gui` 하위·상위·exe 폴더에서 인스톨러를 찾고, 없으면 Windows 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation`을 본다(`winreg`, `:119-126`). `--uninstall`로 분리 실행(`DETACHED_PROCESS`) 뒤 `clean_quit()` |
 | 모의 릴레이(개발용) | — | GUI는 띄우지 않는다. 개발자가 `node scripts/mock-release-server.js`를 직접 실행하거나 `scripts/build-core.ps1 -MockRelay`(모의 서명 키를 믿는 개발 빌드, 배포 금지)로 쓴다 |
 | 디스코드 연결 | `createApi.js:793-816` | 셸에 디스코드 코드는 없다. 브리지가 데몬의 릴레이 에이전트를 `/api/relay/agent{,/start,/stop}`로 켜고 끈다(§4) |
 | 콘솔 팝아웃 창 | `window.rs:192-280` | Tauri 창 라벨 `popout-<hex(instanceId)>`(`popout_label` `:21-24`)에 `index.html?console-popout=<id>&name=`을 붙여 같은 React 번들을 연다. 700×450(최소 400×250), 프레임 없음, 항상 위. 이미 열려 있으면 포커스한다. 열림·닫힘·되돌리기 요청은 메인 창에 `console:popoutOpened/Closed/popinRequest`로 알린다 |
 | 메인 창 | `create_main_window()` `window.rs:100-148` | 라벨 `main`, 프레임 없음, 페이지 로드 뒤 표시, 배경 `#f0f0f2`. 크기는 설정 `windowBounds`(작업 영역보다 크지 않게, 최소 780×min(840, max(560, 작업 영역 높이))). 이동·크기 변경이 멈추면 500ms 디바운스로 저장한다(최대화·최소화 중 제외, `schedule_save_bounds` `:159-188`) |
 | 탐색 잠금 | `lock_navigation()` `window.rs:70-96` | 모든 창에서 앱 주소(`tauri://localhost`, `tauri.localhost`, 개발 서버) 밖으로의 이동과 새 창을 막고, http(s) 링크만 바깥 브라우저로 연다 |
-| 트레이 | `tray.rs:342-480` | 창 열기, 터미널 열기(Windows만, `POST /api/clients/launch {kind:'cli', view:'shell'}`), 데몬 상태, 데몬 종료/시작, "인터페이스만 종료", "완전히 종료". "데몬 종료"는 `stop_daemon()`(API 우선), "데몬 시작"은 API가 아니라 `start_daemon()`을 직접 부른다. 왼쪽 클릭·더블클릭은 창 표시, 아이콘은 테마별 favicon |
+| 트레이 | `tray.rs:23-172` (메뉴 `49-149`) | 창 열기, 터미널 열기(Windows만, `POST /api/clients/launch {kind:'cli', view:'shell'}`), 데몬 상태, 데몬 종료/시작, "인터페이스만 종료", "완전히 종료". "데몬 종료"는 `stop_daemon()`(API 우선), "데몬 시작"은 API가 아니라 `start_daemon()`을 직접 부른다. 왼쪽 클릭·더블클릭은 창 표시, 아이콘은 테마별 favicon |
 | 종료 플로우 | `window.rs:139-142`, `app_close_response` `native.rs:63-78`, `lifecycle.rs:614-678` | 메인 창 닫기를 막고 `app:closeRequest`를 보낸 뒤 `exit-interface`/`quit`/`cancel`을 받는다. `exit-interface`는 unregister(shutdown=false) 뒤 데몬을 두고 끝낸다. `quit`은 unregister(shutdown=true) → `stop_daemon()`. 이 경로를 거치지 않고 끝나면 `on_exit`가 자기가 띄운 데몬만 정리한다(인터페이스만 종료한 경우 제외). 종료 요청(`app.exit`)이 웹뷰가 죽어 닿지 않으면 1초 뒤 `on_exit`를 직접 부르고 프로세스를 끝낸다(`exit_app`) |
 | 단일 인스턴스 | `lib.rs` `tauri_plugin_single_instance` | GUI는 한 번에 하나만 뜬다. 두 번째 실행은 창을 새로 만들지 않고 떠 있는 메인 창을 앞으로 가져온 뒤 끝난다. 여러 GUI가 한 데몬을 함께 쓰다 한쪽의 "완전히 종료"가 다른 쪽의 데몬을 꺼뜨리던 것을 막는다 |
 | 로그 | `logging.rs:10-45` | `<data>/logs/saba-chan-<ts>.log`와 stderr에 같이 쓴다. 패닉도 남긴다 |
@@ -345,7 +345,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | G13 | — | — | ~~`node scripts/mock-release-server.js` spawn~~ 없어짐(f6ca7b6). 개발자가 직접 실행한다 | |
 | G14 | — | — | ~~updater exe detached spawn(`--apply --relaunch`)~~ → 해결: GUI는 `POST /api/updates/launch-updater {relaunch}`만 보내고 업데이터는 데몬이 띄운다(`native.rs:81-102`, `src/ipc/updates.rs:601-659`) | |
 | G15 | — | — | ~~updater exe 경로 탐색(`existsSync`)~~ → 해결: 데몬의 `updater_binary()`가 찾는다(`updates.rs:662-669`) | |
-| G16 | native.rs:106-184 (119-126, 157-174) | OS/PROC | 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation` 읽기(`winreg`), installer `--uninstall` 분리 spawn | |
+| G16 | native.rs:151-184 | OS/PROC | 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation` 읽기(`winreg`), installer `--uninstall` 분리 spawn | |
 | G17 | — | — | ~~relay `PATCH /api/hosts/:hostId/bot-config` 직접 호출~~ 없어짐: 봇 설정은 `PUT /api/config/bot`, 릴레이 동기화는 에이전트 하트비트 | |
 | G18 | native.rs:338-383, window.rs:63-96 | OS | `shell_open_external`·탐색 잠금(http(s)만 바깥 브라우저), `shell_open_path`·`logs_open_folder`(로그 폴더, 인스턴스 폴더) | UI 성격 |
 | G19 | native.rs:300-334 | OS | 네이티브 파일/폴더/저장 다이얼로그(tauri-plugin-dialog) | UI 성격(경로 선택만 하고, 실제 스캔·내보내기는 daemon) |

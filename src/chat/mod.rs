@@ -444,7 +444,12 @@ impl<D: DaemonApi> Ctx<'_, D> {
         if !resp.is_success() {
             let detail = resp.str_field("error").unwrap_or_default();
             tracing::warn!("[Chat] 시작 실패 {}: {}", server.name, detail);
-            return error_line(&self.t("errors.error_title", &[]), detail);
+            let line = error_line(&self.t("errors.error_title", &[]), detail);
+            // 켜기 전 점검(preflight_failed)은 모듈이 준 해결 방법을 붙인다
+            return match resp.str_field("solution").filter(|s| !s.trim().is_empty()) {
+                Some(solution) => format!("{}\n💡 {}", line, solution),
+                None => line,
+            };
         }
         if resp.body.get("success").and_then(|v| v.as_bool()) == Some(false) {
             let msg = resp.str_field("message").or(resp.str_field("error")).map(str::to_string).unwrap_or_else(|| self.t("errors.error_title", &[]));

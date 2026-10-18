@@ -339,6 +339,7 @@
     "must_be_one_of": "{{key}} は次のいずれかにしてください: {{options}}",
     "restart_hint": "反映するには {{name}} を再起動してください: saba-chan-cli restart {{name}}",
     "sync_failed": "保存しましたが、ゲームの設定ファイルに書き込めませんでした: {{error}}",
+    "ignored": "saba-chanが使わない設定のため無視しました: {{keys}}",
     "unknown_key": "{{key}} は新しいキーです。"
   },
   "shell": {
