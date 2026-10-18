@@ -23,7 +23,7 @@ export function SabaArt({ kind, className, size, alt = '' }) {
 }
 
 /** 빈 목록: 청소하는 사바쨩 + "아직 추가하지 않았어요" + 목록별 안내 */
-export function SabaEmpty({ body, title, size = 120, compact, children }) {
+export function SabaEmpty({ body, title, size = 180, compact, children }) {
     const { t } = useTranslation('gui');
     return (
         <div className={clsx('saba-empty', { compact })}>
@@ -36,7 +36,7 @@ export function SabaEmpty({ body, title, size = 120, compact, children }) {
 }
 
 /** 가벼운 실패 (불러오기 실패 등): 고개를 갸웃하는 사바쨩 + 이유 + 다시 시도 */
-export function SabaFail({ message, onRetry, retryLabel, size = 96 }) {
+export function SabaFail({ message, onRetry, retryLabel, size = 180 }) {
     const { t } = useTranslation('gui');
     return (
         <div className="saba-fail" role="alert">

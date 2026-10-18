@@ -46,7 +46,7 @@ export function DaemonDownState() {
     return (
         <div className="page page-empty">
             <div className="empty-state daemon-sleep">
-                <SabaArt kind="sleep" size={220} />
+                <SabaArt kind="sleep" size={300} />
                 <h2>{t('saba.sleep_title')}</h2>
                 <p>{t('saba.sleep_body')}</p>
                 <DaemonRestartButton className="btn btn-primary btn-lg" wake />

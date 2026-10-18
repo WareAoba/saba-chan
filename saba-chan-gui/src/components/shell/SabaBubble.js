@@ -129,8 +129,8 @@ export function SabaBubble() {
     return (
         <output key={bubble.id} className={clsx('saba-bubble', `saba-bubble-${bubble.kind}`, { leaving })}>
             <div className="saba-bubble-body">
-                <SabaArt kind={bubble.kind} size={84} />
-                <p className="saba-bubble-text">{bubble.text}</p>
+                <SabaArt kind={bubble.kind} />
+                <span className="sr-only">{bubble.text}</span>
             </div>
         </output>
     );

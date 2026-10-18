@@ -825,7 +825,7 @@ function ModulesTab() {
                 </button>
             </div>
             {installedModules.length === 0 ? (
-                <SabaEmpty compact size={96} body={t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')} />
+                <SabaEmpty compact body={t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
                     {installedModules.map((m, idx) => {
@@ -888,7 +888,7 @@ function ModulesTab() {
                     {manifestLoading && (
                         <p className="ss-empty">{t('saba_storage.loading_manifest', '매니페스트 로드 중...')}</p>
                     )}
-                    {manifestError && <SabaFail message={manifestError} size={80} />}
+                    {manifestError && <SabaFail message={manifestError} />}
                     {!manifestLoading &&
                         manifestModules !== null &&
                         uninstalledModules.length === 0 &&
@@ -1062,7 +1062,7 @@ function ExtensionsTab() {
                 </button>
             </div>
             {extensions.length === 0 ? (
-                <SabaEmpty compact size={96} body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
+                <SabaEmpty compact body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
                     {extensions.map((ext) => {

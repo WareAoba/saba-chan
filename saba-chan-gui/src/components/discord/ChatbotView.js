@@ -346,7 +346,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                 </div>
                 <p className="dc-card-desc">{t('chatbot.guilds_desc')}</p>
                 {guildIds.length === 0 ? (
-                    <SabaEmpty compact size={96} body={t('chatbot.guilds_empty')} />
+                    <SabaEmpty compact body={t('chatbot.guilds_empty')} />
                 ) : (
                     <ul className="dc-list">
                         {guildIds.map((id) => {

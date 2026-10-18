@@ -731,7 +731,6 @@ function SettingsModal({
                             {extensions.length === 0 ? (
                                 <SabaEmpty
                                     compact
-                                    size={96}
                                     body={t('gui:settings_modal.extensions_none', '설치된 익스텐션이 없습니다.')}
                                 />
                             ) : (

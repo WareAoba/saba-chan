@@ -21,7 +21,7 @@
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    padding: var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-2);
+    padding: var(--sp-3);
     border-radius: var(--r-lg);
     border: 1px solid var(--line-strong);
     background: var(--bg-3);
@@ -43,13 +43,6 @@
 .saba-bubble .saba-art {
     flex-shrink: 0;
     animation: saba-bubble-art 700ms var(--ease) 120ms backwards;
-}
-.saba-bubble-text {
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    line-height: 1.45;
-    color: var(--text-1);
-    animation: saba-bubble-text 420ms var(--ease) 260ms backwards;
 }
 
 /* 아이콘에서 실처럼 늘어나 부풀었다가 자리를 잡는다 */
@@ -94,12 +87,6 @@
         transform: translateY(6px) rotate(-6deg) scale(0.9);
     }
 }
-@keyframes saba-bubble-text {
-    from {
-        opacity: 0;
-        transform: translateX(-6px);
-    }
-}
 
 /* 움직임 줄이기: 늘어나기·둥실은 빼고 조용히 나타났다 사라진다 */
 @media (prefers-reduced-motion: reduce) {
@@ -111,9 +98,9 @@
     }
 }
 
-/* 그림마다 가로세로가 달라 상자 크기로 맞춘다 */
+/* 대사 없이 그림만 크게. 그림마다 가로세로가 달라 상자 크기로 맞춘다 */
 .saba-bubble .saba-art {
-    width: 104px;
-    height: 96px;
+    width: 200px;
+    height: 180px;
     object-fit: contain;
 }

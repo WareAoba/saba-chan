@@ -77,7 +77,7 @@ export function ServersPage({
         return (
             <div className="page page-empty">
                 <div className="empty-state">
-                    <SabaArt kind="cleaning" size={200} />
+                    <SabaArt kind="cleaning" size={280} />
                     <h2>{t('saba.empty_title')}</h2>
                     <p>{t('shell.empty_body')}</p>
                     <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
