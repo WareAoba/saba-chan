@@ -18,6 +18,7 @@ export const useServerStore = create((set, get) => ({
     servers: [],
     modules: [],
     failedModules: [], // 데몬이 불러오지 못한 모듈 [{ path, error }]
+    modulesLoaded: false, // 모듈 목록을 한 번이라도 받았는지
     loading: true,
     moduleAliasesPerModule: {},
 
@@ -46,6 +47,7 @@ export const useServerStore = create((set, get) => ({
             servers: [],
             modules: [],
             failedModules: [], // 데몬이 불러오지 못한 모듈 [{ path, error }]
+            modulesLoaded: false,
             loading: true,
             moduleAliasesPerModule: {},
             daemonReady: false,
@@ -129,7 +131,7 @@ export const useServerStore = create((set, get) => ({
 
             if (data && data.modules) {
                 console.log('Setting modules:', data.modules.length, 'modules');
-                set({ modules: data.modules, failedModules: data.failed || [] });
+                set({ modules: data.modules, failedModules: data.failed || [], modulesLoaded: true });
 
                 // Register module locales
                 if (_i18n) {

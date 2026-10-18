@@ -2236,6 +2236,8 @@ button.activity-line:hover {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
     height: 30px;
     padding: 0 10px 0 7px;
     border-radius: var(--r-pill);

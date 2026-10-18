@@ -51,7 +51,8 @@ export function ServerDetail({
     const { t } = useTranslation('gui');
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const { provisionProgress, updateInfo, updatingServer } = useMaintenanceOf(server.id);
-    const status = viewStatus(server, moduleData);
+    const modulesLoaded = useServerStore((s) => s.modulesLoaded);
+    const status = viewStatus(server, moduleData, modulesLoaded);
     const moduleFailure = useServerStore((st) =>
         status === 'missing' ? failureForModule(st.failedModules, server.module) : null,
     );
@@ -104,6 +105,8 @@ export function ServerDetail({
     const activeTab = tabs.some((x) => x.id === tab) ? tab : defaultTab;
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
+    // 가동 시간은 1초마다 바뀐다: 앱 전체가 아니라 실행 중인 서버의 상세만 다시 그린다
+    useServerStore((st) => (status === 'running' ? st.nowEpoch : 0));
     const uptime = status === 'running' && server.start_time ? formatUptime(server.start_time) : null;
 
     const primaryButton = (() => {

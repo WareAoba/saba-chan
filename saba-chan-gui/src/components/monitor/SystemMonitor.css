@@ -169,6 +169,12 @@
 .monitor-top-slot + .server-detail {
     padding-top: var(--sp-4);
 }
+/* 좁은 창: 상세와 같은 좌우 여백 (shell.css .server-detail) */
+@media (max-width: 899px) {
+    .monitor-top-slot {
+        padding: var(--sp-4) var(--sp-4) 0;
+    }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .monitor-arc {
