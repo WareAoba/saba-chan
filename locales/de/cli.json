@@ -148,6 +148,22 @@
     "ok": "In den Logs von {{name}} wurden keine bekannten Probleme gefunden."
   },
   "err": {
+    "relay": {
+      "channel_conflict": "Ein Kanal kann nur eine Rolle haben (Chatbot, Musik oder Benachrichtigungen).",
+      "unknown_channel": "Dieser Kanal wurde auf dem Discord-Server nicht gefunden. Prüfe Kanalname oder ID.",
+      "bot_unavailable": "Der saba-chan-Bot antwortet gerade nicht. Versuche es gleich noch einmal.",
+      "node_not_found": "Das Relay kennt diesen PC nicht. Er wurde getrennt oder durch einen anderen PC ersetzt.",
+      "host_not_found": "Das Relay hat diesen PC nicht gefunden.",
+      "missing_token": "Dieser PC ist noch nicht gekoppelt.",
+      "invalid_token": "Das Verbindungstoken dieses PCs ist ungültig.",
+      "invalid_token_format": "Das Verbindungstoken dieses PCs ist fehlerhaft.",
+      "token_replaced": "Mit demselben Discord-Konto wurde ein anderer PC gekoppelt, daher wurde dieser PC getrennt.",
+      "guild_taken": "Dieser Discord-Server ist bereits mit einem anderen PC verbunden.",
+      "forbidden": "Du hast auf diesem Discord-Server keine Berechtigung dafür.",
+      "expired": "Der Code ist abgelaufen. Fang von vorne an.",
+      "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
+      "other": "Das Relay hat die Anfrage abgelehnt ({{code}})."
+    },
     "ambiguous": "Mehr als ein {{what}} passt zu „{{query}}“.",
     "ambiguous_hint": "Sei genauer: {{names}}",
     "bad_json": "Ungültiges JSON: {{error}}",
