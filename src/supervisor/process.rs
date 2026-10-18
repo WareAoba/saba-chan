@@ -40,24 +40,50 @@ pub fn is_process_alive(pid: u32) -> bool {
 }
 
 /// Force-kill a process by PID. Cross-platform helper.
+/// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다
 pub fn force_kill_pid(pid: u32) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        std::process::Command::new("taskkill")
+        let out = std::process::Command::new("taskkill")
             .args(["/F", "/PID", &pid.to_string()])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| anyhow::anyhow!("Failed to kill PID {}: {}", pid, e))?;
+        // 128: 그런 프로세스가 없다 (이미 끝났다). 접근 거부 등은 살아 있는지 조회도 막힐 수 있어 실패로 본다
+        if !out.status.success() && out.status.code() != Some(128) {
+            return Err(anyhow::anyhow!(
+                "Failed to kill PID {}: {}",
+                pid,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
     }
     #[cfg(not(target_os = "windows"))]
     {
-        unsafe {
-            libc::kill(pid as i32, libc::SIGKILL);
+        let ret = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+        if ret != 0 {
+            let err = std::io::Error::last_os_error();
+            // ESRCH: 이미 없다
+            if err.raw_os_error() != Some(libc::ESRCH) {
+                return Err(anyhow::anyhow!("Failed to kill PID {}: {}", pid, err));
+            }
         }
     }
     Ok(())
+}
+
+/// `alive`가 거짓이 될 때까지 최대 `timeout` 기다린다. 끝난 것을 확인하면 true
+pub async fn wait_gone(timeout: std::time::Duration, alive: impl Fn() -> bool) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    while alive() {
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    true
 }
 
 #[derive(Debug, Clone)]
@@ -245,6 +271,26 @@ mod tests {
 
         assert_eq!(tracker.get_pid("srv-a").unwrap(), 9999);
         assert_eq!(tracker.get_pid("srv-b").unwrap(), 9999);
+    }
+
+    /// 종료 요청이 거부되면 성공으로 치지 않는다 (권한 없는 프로세스: PID 1)
+    #[cfg(unix)]
+    #[test]
+    fn refused_kill_is_an_error() {
+        if unsafe { libc::geteuid() } == 0 {
+            return; // root는 PID 1에도 신호를 보낼 수 있어 시험하지 않는다
+        }
+        assert!(force_kill_pid(1).is_err());
+    }
+
+    /// 이미 없는 프로세스는 끝난 것으로 본다
+    #[cfg(unix)]
+    #[test]
+    fn killing_a_gone_process_is_ok() {
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        assert!(force_kill_pid(pid).is_ok());
     }
 
     /// 빈 서버 이름 — 허용되지만 의미 없는 엣지 케이스

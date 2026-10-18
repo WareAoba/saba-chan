@@ -79,7 +79,6 @@
     "music_normalize": "Even loudness",
     "allow_all": "This Discord server can see every server on this PC.",
     "allow_none": "No servers are open to it.",
-    "allow_bad_node": "The settings of {{guild}} are not an object. Check them with saba-chan-cli bot config.",
     "allow_all_saved": "{{guild}} can now see every server.",
     "allow_saved": "{{guild}} can now see only: {{servers}}",
     "link_accepted": "Connected {{guild}} to this PC.",

@@ -26,6 +26,10 @@ pub async fn start_managed_handler(
     State(state): State<IPCServer>,
     payload: Option<Json<serde_json::Value>>,
 ) -> impl IntoResponse {
+    // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
+    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+        return super::backup::instance_busy();
+    };
     // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
     {
         let mut supervisor = state.supervisor.write().await;

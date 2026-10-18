@@ -698,6 +698,10 @@ impl Api {
     pub async fn save_instance_words(&self, guild_id: &str, id: &str, body: Value) -> Result<Value> {
         self.put(&format!("/api/guilds/{}/instances/{}/words", seg(guild_id), seg(id)), body).await
     }
+    /// PUT /api/guilds/:guild/allowed-instances — `{instances: [id] | null}` (null은 제한 없음)
+    pub async fn save_allowed_instances(&self, guild_id: &str, instances: Option<&[String]>) -> Result<Value> {
+        self.put(&format!("/api/guilds/{}/allowed-instances", seg(guild_id)), json!({ "instances": instances })).await
+    }
     // ── 백업·예약 ──
 
     /// GET /api/instance/:id/backups — `{backups: [{name, kind, created, size}]}`

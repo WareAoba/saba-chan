@@ -456,8 +456,8 @@ async fn main() -> anyhow::Result<()> {
             // 크래시로 끝난 서버 다시 띄우기 (A1). 대기는 락 밖에서.
             let restarts = sup.take_pending_restarts();
             drop(sup);
-            for (instance_id, delay) in restarts {
-                tokio::spawn(ipc::handlers::server::auto_restart(restart_ipc.clone(), instance_id, delay));
+            for (instance_id, delay, generation) in restarts {
+                tokio::spawn(ipc::handlers::server::auto_restart(restart_ipc.clone(), instance_id, delay, generation));
             }
         }
     });
