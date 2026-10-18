@@ -108,6 +108,19 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
 }
 
 #[tokio::test]
+async fn direct_admin_commands_skip_confirmation_but_chatbot_and_danger_do_not() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let sleep = json!({ "guild": "g", "sleeping": true });
+    let direct = plan(&state, "discord.settings.set", None, &sleep, &relay("owner", false)).await.unwrap();
+    assert_eq!(direct["needsConfirm"], false);
+    let by_bot = plan(&state, "instance.settings.set", Some(&id), &json!({ "max_players": 4 }), &relay("owner", true)).await.unwrap();
+    assert_eq!(by_bot["needsConfirm"], true);
+    let restore = plan(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("owner", true)).await.unwrap();
+    assert_eq!(restore["needsConfirm"], true);
+}
+
+#[tokio::test]
 async fn inputs_are_checked_and_actions_run_through_the_real_routes() {
     let (state, id, _tmp) = server().await;
     let err = plan(&state, "backup.restore", Some(&id), &json!({ "nme": "b" }), &gui()).await.unwrap_err();
