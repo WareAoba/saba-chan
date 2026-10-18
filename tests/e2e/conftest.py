@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -184,3 +185,24 @@ def mc(daemon, fake_server):
 
 def pytest_report_header(config):
     return [f"saba e2e run dir: {RUN_DIR}", f"binaries: {binary('saba-core').parent}", f"platform: {sys.platform}, python {sys.version.split()[0]}", f"pid {os.getpid()}"]
+
+
+@pytest.fixture(scope="session")
+def xdisplay():
+    """창을 띄우는 시험용 화면. 리눅스에서 DISPLAY가 없으면 Xvfb를 하나 띄운다 (Windows·macOS·화면이 있으면 그대로)."""
+    if IS_WINDOWS or sys.platform == "darwin" or os.environ.get("DISPLAY"):
+        yield os.environ.get("DISPLAY")
+        return
+    if not shutil.which("Xvfb"):
+        pytest.skip("화면이 없고 Xvfb도 없습니다")
+    r, w = os.pipe()
+    proc = subprocess.Popen(["Xvfb", "-displayfd", str(w), "-screen", "0", "1440x900x24", "-nolisten", "tcp"], pass_fds=(w,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    os.close(w)
+    with os.fdopen(r) as f:
+        num = f.readline().strip()
+    if not num:
+        proc.kill()
+        pytest.skip("Xvfb를 띄우지 못했습니다")
+    yield f":{num}"
+    proc.kill()
+    proc.wait(10)
