@@ -1179,6 +1179,8 @@
     "action_restart": "재시작",
     "action_command": "명령",
     "action_stdin": "콘솔 입력",
+    "action_backup": "백업",
+    "skipped_stopped": "건너뜀 (서버 꺼짐)",
     "source_gui": "앱",
     "source_cli": "CLI",
     "source_api": "API",

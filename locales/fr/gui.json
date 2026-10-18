@@ -1149,6 +1149,8 @@
     "action_restart": "Redémarrer",
     "action_command": "Commande",
     "action_stdin": "Saisie console",
+    "action_backup": "Sauvegarde",
+    "skipped_stopped": "Ignorée (serveur arrêté)",
     "source_gui": "App",
     "source_cli": "CLI",
     "source_api": "API",

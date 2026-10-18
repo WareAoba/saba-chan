@@ -69,4 +69,14 @@ describe('AuditLog', () => {
         render(<AuditLog instanceId="mc-1" />);
         expect(await screen.findByText('Discord · Aoba · Saba Village')).toBeTruthy();
     });
+
+    it('서버가 꺼져 있어 건너뛴 예약 백업은 실패가 아니라 건너뜀으로 보인다', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({
+            entries: [entry({ action: 'backup', source: 'schedule', command: undefined, args: undefined, ok: false, status: 409 })],
+        });
+        render(<AuditLog instanceId="mc-1" />);
+        expect(await screen.findByText('Backup')).toBeTruthy();
+        expect(screen.getByText('Skipped (server off)')).toBeTruthy();
+        expect(screen.queryByText('Failed (409)')).toBeNull();
+    });
 });

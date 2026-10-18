@@ -1179,6 +1179,8 @@
     "action_restart": "Restart",
     "action_command": "Command",
     "action_stdin": "Console input",
+    "action_backup": "Backup",
+    "skipped_stopped": "Skipped (server off)",
     "source_gui": "App",
     "source_cli": "CLI",
     "source_api": "API",
