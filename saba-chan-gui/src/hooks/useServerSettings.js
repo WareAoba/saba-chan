@@ -301,7 +301,6 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             const installResult = await window.api.moduleInstallServer(module, {
                                 version,
                                 install_dir: targetDir,
-                                accept_eula: true,
                             });
 
                             if (installResult.error_code === 'extension_required') {

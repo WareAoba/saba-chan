@@ -13,6 +13,7 @@ import {
     SuccessModal,
     Toast,
 } from './components';
+import { AgreementDialog } from './components/AgreementList';
 import { DiscordPage } from './components/discord/DiscordPage';
 import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
@@ -897,6 +898,16 @@ function App() {
                         <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
                     )}
                     {questionModal}
+                    {modal && modal.type === 'agreements' && (
+                        <AgreementDialog
+                            title={modal.title}
+                            message={modal.message}
+                            module={modal.module}
+                            agreements={modal.agreements}
+                            onAccept={modal.onAccept}
+                            onCancel={() => setModal(null)}
+                        />
+                    )}
 
                     {/* waiting.png (느린 진행 감지) */}
                     {showWaitingImage && (

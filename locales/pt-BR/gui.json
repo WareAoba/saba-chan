@@ -394,8 +394,6 @@
     "dependency_unmet_title": "Requisitos ausentes",
     "dependency_unmet_message": "O módulo de '{{name}}' precisa das versões abaixo. Atualize, ou instale e ative a extensão, e inicie de novo.",
     "preflight_failed_title": "A verificação antes de iniciar '{{name}}' encontrou um problema",
-    "eula_notice": "EULA do Minecraft: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "Aceitar a EULA e iniciar",
     "working_dir_in_use": "O servidor '{{instance}}' já usa esta pasta. Dois servidores na mesma pasta sobrescrevem o mundo e as configurações um do outro. Escolha outra pasta.",
     "no_command_path": "Este servidor não tem console para enviar comandos. Inicie-o pela Saba-chan para enviar comandos."
   },
@@ -1225,5 +1223,14 @@
     "failed_hint": "Se abrir mesmo assim, só a interface abre. Reinicie o daemon para gerenciar servidores.",
     "retry": "Tentar de novo",
     "continue": "Abrir mesmo assim"
+  },
+  "agreements": {
+    "title": "Acordos",
+    "accept": "Concordo com {{name}}",
+    "read": "Ler {{name}}",
+    "read_short": "Ler",
+    "start_title": "Concordância necessária",
+    "start_message": "Para iniciar '{{name}}', você precisa concordar com os termos abaixo. Leia-os e marque cada um.",
+    "accept_and_start": "Concordar e iniciar"
   }
 }

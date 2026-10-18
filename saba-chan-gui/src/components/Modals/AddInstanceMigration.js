@@ -150,7 +150,6 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
             await onAddServer({
                 name: instanceName.trim(),
                 module_name: mod.name || mod.id,
-                accept_eula: true,
                 migration_source: dirPath,
             });
         } finally {

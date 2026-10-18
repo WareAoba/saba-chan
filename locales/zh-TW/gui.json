@@ -394,8 +394,6 @@
     "dependency_unmet_title": "缺少必要元件",
     "dependency_unmet_message": "'{{name}}' 的模組需要以下版本。請更新，或安裝並啟用擴充功能後再啟動。",
     "preflight_failed_title": "'{{name}}' 的啟動前檢查發現了問題",
-    "eula_notice": "Minecraft EULA：https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "同意 EULA 並啟動",
     "working_dir_in_use": "伺服器 '{{instance}}' 已在使用此資料夾。同一資料夾中的兩個伺服器會互相覆蓋世界和設定。請選擇其他資料夾。",
     "no_command_path": "此伺服器沒有可接收命令的主控台。請從薩巴醬啟動伺服器後再傳送命令。"
   },
@@ -1225,5 +1223,14 @@
     "failed_hint": "直接開啟只會開啟介面。要管理伺服器，請重新啟動常駐程式。",
     "retry": "重試",
     "continue": "直接開啟"
+  },
+  "agreements": {
+    "title": "條款同意",
+    "accept": "我同意{{name}}",
+    "read": "閱讀{{name}}原文",
+    "read_short": "查看原文",
+    "start_title": "需要同意條款",
+    "start_message": "要啟動伺服器「{{name}}」，需要同意以下條款。請閱讀原文並勾選。",
+    "accept_and_start": "同意並啟動"
   }
 }

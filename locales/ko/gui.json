@@ -395,8 +395,6 @@
     "dependency_unmet_title": "필요한 구성 요소가 맞지 않아요",
     "dependency_unmet_message": "'{{name}}' 서버의 모듈이 아래 버전을 필요로 해요. 업데이트하거나 확장 기능을 설치·켠 뒤 다시 시작하세요.",
     "preflight_failed_title": "'{{name}}' 서버를 켜기 전 점검에서 문제가 있어요",
-    "eula_notice": "마인크래프트 EULA: https://aka.ms/MinecraftEULA",
-    "eula_accept_and_start": "EULA에 동의하고 켜기",
     "working_dir_in_use": "'{{instance}}' 서버가 이미 이 폴더를 쓰고 있어요. 한 폴더에 서버를 둘 만들면 월드와 설정을 서로 덮어씁니다. 다른 폴더를 골라 주세요.",
     "no_command_path": "이 서버는 명령을 보낼 콘솔이 없어요. 사바쨩에서 서버를 켜야 명령을 보낼 수 있어요."
   },
@@ -1255,5 +1253,14 @@
     "failed_hint": "그대로 열면 화면만 열리고, 서버를 다루려면 데몬을 다시 시작해야 해요.",
     "retry": "다시 시도",
     "continue": "그대로 열기"
+  },
+  "agreements": {
+    "title": "약관 동의",
+    "accept": "{{name}}에 동의합니다",
+    "read": "{{name}} 원문 읽기",
+    "read_short": "원문 보기",
+    "start_title": "약관 동의가 필요합니다",
+    "start_message": "'{{name}}' 서버를 켜려면 아래 약관에 동의해야 합니다. 원문을 읽고 체크해 주세요.",
+    "accept_and_start": "동의하고 켜기"
   }
 }
