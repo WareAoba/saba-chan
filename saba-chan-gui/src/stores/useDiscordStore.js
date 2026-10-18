@@ -203,7 +203,8 @@ export const useDiscordStore = create((set, get) => ({
         if (state.discordCloudHostId) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             try {
-                if (generation === statusGeneration) set({ relayConnecting: true });
+                // 이미 붙어 있으면 '연결 중'으로 깜빡이지 않는다 (5초마다 확인)
+                if (generation === statusGeneration && !state.relayConnected) set({ relayConnecting: true });
                 const result = await window.api.relayCheckHostStatus(state.discordCloudHostId, relayUrl);
                 relayOk = !!result && !result.error;
             } catch {

@@ -71,8 +71,6 @@ function App() {
     const setInitProgress = useServerStore((s) => s.setInitProgress);
     const serversInitializing = useServerStore((s) => s.serversInitializing);
     const setServersInitializing = useServerStore((s) => s.setServersInitializing);
-    // 1초마다 바뀌는 값을 구독해 가동 시간 표시를 다시 그린다
-    const _nowEpoch = useServerStore((s) => s.nowEpoch);
     const formatUptime = useServerStore((s) => s.formatUptime);
 
     // ── UI Store (Zustand) ─────────────────────────────────
