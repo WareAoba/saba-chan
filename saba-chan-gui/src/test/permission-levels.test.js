@@ -135,10 +135,20 @@ describe('권한 화면', () => {
         await flush();
         expect(screen.getByRole('checkbox', { name: 'Newbie' })).toBeInTheDocument();
 
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Newbie' }));
+        let release;
+        window.api.relayListLegacyMembers.mockReturnValue(new Promise((r) => (release = r)));
+        fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+        // 응답 전에는 옛 후보로 가져올 수 없다
+        await flush();
+        expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull();
+        await act(async () => release(relayMembers));
+        expect(screen.getByRole('checkbox', { name: 'Newbie' })).not.toBeChecked();
+
         window.api.relayListLegacyMembers.mockResolvedValue([]);
         fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
         await flush();
-        expect(window.api.relayListLegacyMembers).toHaveBeenCalledTimes(2);
+        expect(window.api.relayListLegacyMembers).toHaveBeenCalledTimes(3);
         expect(screen.queryByRole('checkbox', { name: 'Newbie' })).toBeNull();
     });
 
