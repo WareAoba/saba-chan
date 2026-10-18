@@ -624,7 +624,7 @@ Relay 서명 방식(`relay.rs:100-137`):
   - `required==Some(true)`인데 값이 `null`이거나 빈 문자열이면 에러다.
 - `PATCH /api/instance/:id`는 `validate_settings_patch`(`:222-238`)로 **요청에 들어 있는 필드만** 검사한다(`instance.rs:779`). 보내지 않은 필수 필드는 오류가 아니다.
 - `check_port_conflicts`(`:253`)는 주어진 인스턴스 집합과 포트가 겹치는지 검사한다. 모듈이 지원하는 프로토콜의 포트만 본다. supervisor의 start 경로와 모니터는 **실행 중인** 인스턴스만 넘긴다.
-- 시작 전 검사(`Supervisor::port_conflict_response`)는 실행 중인 인스턴스와 겹치는 포트가 없으면 `start_check_ports`(같은 포트에 모듈 설정 중 `port = true`인 값을 더한 것)를 `ports_held_elsewhere`로 TCP·UDP 둘 다 묶어 본다. 다른 프로그램이 잡은 포트도 같은 `port_conflict` 응답(HTTP 200, `success:false`, `conflicts:["Port N (이름) is in use by another program"]`)으로 돌려준다. 이 인스턴스가 이미 실행 중이면 묶어 보지 않는다.
+- 시작 전 검사(`Supervisor::port_conflict_response`)는 실행 중인 인스턴스와 겹치는 포트가 없으면 `start_check_ports`(같은 포트에 모듈 설정 중 `port = true`인 값을 더한 것)를 `ports_held_elsewhere`로 TCP·UDP 둘 다 본다. Windows는 포트를 묶지 않고 OS의 사용 중 포트 표(`GetExtendedTcpTable`의 듣는 포트, `GetExtendedUdpTable`의 묶인 포트)를 읽는다. IPv4는 주소와 상관없이, IPv6는 `[::]`에 묶인 것(dual-stack 서버)만 센다. 0.0.0.0에 포트를 열면 방화벽 허용 알림이 뜨기 때문이다. 그래서 Windows에서는 시스템 예약 포트 범위는 이 검사로 잡지 않는다. 다른 OS는 0.0.0.0에 묶어 본다. 다른 프로그램이 잡은 포트도 같은 `port_conflict` 응답(HTTP 200, `success:false`, `conflicts:["Port N (이름) is in use by another program"]`)으로 돌려준다. 이 인스턴스가 이미 실행 중이면 보지 않는다.
 - `GET /api/servers`의 `port_conflicts`도 같은 함수를 쓰되(`server.rs:224-248`), "켜면 부딪힐" 서버를 미리 보여 주려고 정지된 인스턴스까지 모두 넘긴다.
 
 ### 7.3 기타
