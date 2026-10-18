@@ -9,6 +9,7 @@ const {
     Notification,
     dialog,
     shell,
+    screen,
 } = require('electron');
 const path = require('path');
 const axios = require('axios');
@@ -759,7 +760,7 @@ async function reloadTokenUntilValid() {
     return false;
 }
 
-// 이미 떠 있는 데몬이 있으면 재실행하지 않고 재사용
+// 이미 떠 있는 데몬이 있으면 재실행하지 않고 재사용. 데몬이 응답하지 않으면 false
 async function ensureDaemon() {
     try {
         // IPC 토큰을 먼저 로드 (이미 데몬이 떠있을 수 있으므로)
@@ -773,13 +774,13 @@ async function ensureDaemon() {
             await reloadTokenUntilValid();
             sendStatus('daemon', t('daemon.existing_running'));
             await syncInstallRoot();
-            return;
+            return true;
         }
         if (response.status === 200) {
             console.log('Existing daemon detected on IPC port. Skipping launch.');
             sendStatus('daemon', t('daemon.existing_running'));
             await syncInstallRoot();
-            return;
+            return true;
         }
     } catch (err) {
         // 401 = 데몬은 떠있지만 토큰이 맞지 않음 (이전 세션 토큰)
@@ -788,7 +789,7 @@ async function ensureDaemon() {
             await reloadTokenUntilValid();
             sendStatus('daemon', t('daemon.existing_running'));
             await syncInstallRoot();
-            return;
+            return true;
         }
         // ECONNREFUSED = 데몬이 안 떠있음, 그 외 에러 = 데몬은 떠있지만 문제 발생
         if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('timeout')) {
@@ -798,7 +799,7 @@ async function ensureDaemon() {
                 startDaemon();
                 // Daemon 시작 후 대기 및 재시도
                 let attempts = 0;
-                const maxAttempts = 8; // 최대 4초 대기
+                const maxAttempts = 20; // 최대 10초 대기 (첫 실행은 데이터 폴더 준비로 느릴 수 있다)
                 while (attempts < maxAttempts) {
                     await wait(500);
                     // 데몬이 시작되면서 새 토큰을 생성하므로 매 시도마다 재로드
@@ -809,7 +810,7 @@ async function ensureDaemon() {
                             console.log('✓ Daemon is now running');
                             sendStatus('daemon', t('daemon.started'));
                             await syncInstallRoot();
-                            return;
+                            return true;
                         }
                     } catch (_checkErr) {
                         // 아직 준비 안 됨, 계속 재시도
@@ -817,19 +818,18 @@ async function ensureDaemon() {
                     attempts++;
                 }
                 // 최대 시도 후에도 응답 없음
-                console.warn('Daemon did not respond after startup, but continuing...');
-                sendStatus('daemon', t('daemon.preparing'));
+                console.warn('Daemon did not respond after startup');
             } catch (daemonErr) {
                 console.error('Failed to start daemon:', daemonErr);
-                sendStatus('daemon', t('daemon.failed_to_start'));
             }
-            return;
+            return false;
         } else {
             // 다른 에러는 무시하고 계속
             console.warn('Unexpected error checking daemon:', err.message);
             sendStatus('daemon', t('daemon.check_warning', { error: err.message }));
         }
     }
+    return true;
 }
 
 // 데몬에 install_root 동기화 (portable 모드에서 임시 폴더가 아닌 실제 배포 경로 전달)
@@ -994,13 +994,27 @@ function stopDaemonEvents() {
     eventsReq = null;
 }
 
+// 데몬 기동에 실패해 초기화를 멈췄는가 (daemon:restart가 성공하면 나머지를 이어서 한다)
+let initPendingDaemon = false;
+
 async function runBackgroundInit() {
-    sendStatus('init', '초기화 시작');
-    await ensureDaemon();
+    sendStatus('init', t('init.start'));
+    const daemonUp = await ensureDaemon();
     updateTrayMenu();
+    if (!daemonUp) {
+        // ready를 보내지 않는다: 렌더러가 다시 시도 / 그대로 열기를 고른다
+        initPendingDaemon = true;
+        sendStatus('daemon_failed', t('daemon.failed_to_start'));
+        return;
+    }
+    await finishBackgroundInit();
+}
+
+async function finishBackgroundInit() {
+    initPendingDaemon = false;
     // 실제 데이터는 렌더러가 로드할 때 가져온다. 여기서는 로딩 표시만 넘긴다.
-    sendStatus('modules', '새 모듈 목록 준비 중...');
-    sendStatus('instances', '인스턴스 목록 준비 중...');
+    sendStatus('modules', t('init.modules'));
+    sendStatus('instances', t('init.instances'));
 
     // 데몬에 클라이언트 등록 및 heartbeat 시작
     await registerWithDaemon();
@@ -1010,7 +1024,7 @@ async function runBackgroundInit() {
     // 업데이트 주기적 체크 시작 (기본 3시간 간격)
     startUpdateChecker();
 
-    sendStatus('ready', '백그라운드 초기화 완료');
+    sendStatus('ready', t('init.ready'));
 
     // Discord Bot 자동 시작은 React App.js에서 처리
 }
@@ -1153,13 +1167,16 @@ function lockNavigation(win) {
 function createWindow() {
     const settings = loadSettings();
     const { width, height, x, y } = settings.windowBounds || { width: 1200, height: 840 };
+    // 작은 화면(1366×768 등)에서도 창이 다 들어가게: 작업 영역보다 크게 열지 않는다
+    const work = screen.getPrimaryDisplay().workAreaSize;
+    const minHeight = Math.min(840, Math.max(560, work.height));
 
     mainWindow = new BrowserWindow({
-        width,
-        height,
+        width: Math.min(width, work.width),
+        height: Math.min(Math.max(height, minHeight), work.height),
         ...(x !== undefined && y !== undefined ? { x, y } : {}),
         minWidth: 780,
-        minHeight: 840,
+        minHeight,
         show: false, // 준비될 때까지 보이지 않음
         backgroundColor: '#f0f0f2', // CSS 로드 전 흰 화면 방지 (라이트 모드 앱 배경 근사값)
         frame: false, // Windows 기본 프레임 제거
@@ -2735,7 +2752,7 @@ ipcMain.handle('daemon:restart', async () => {
         startDaemon();
         // 데몬이 시작될 때까지 대기하면서 새 토큰 로드 재시도
         let ready = false;
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 20; i++) {
             await wait(500);
             // 새 데몬이 새 토큰을 생성하므로 매 시도마다 재로드
             loadIpcToken();
@@ -2752,6 +2769,13 @@ ipcMain.handle('daemon:restart', async () => {
         if (!ready) {
             // 마지막 한 번 더 토큰 로드 시도
             loadIpcToken();
+            return { success: false, error: t('daemon.failed_to_start') };
+        }
+        // 기동 실패로 멈춘 초기화가 있으면 이어서 끝낸다 (렌더러는 ready를 받고 메인 화면으로 간다)
+        if (initPendingDaemon) {
+            await syncInstallRoot();
+            updateTrayMenu();
+            finishBackgroundInit().catch((e) => console.error('Background init failed:', e));
         }
         return { success: true, message: 'Daemon restarted successfully' };
     } catch (err) {

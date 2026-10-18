@@ -21,7 +21,7 @@
     "starting": "啟動守護程序...",
     "started": "守護程序已啟動",
     "preparing": "準備守護程序...（逾時）",
-    "failed_to_start": "啟動守護程序失敗 - 請手動執行",
+    "failed_to_start": "無法啟動常駐程式",
     "check_warning": "檢查守護程序時出現警告：{{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "連接埠衝突 — {{name}} 已停止",
     "force_stop_body": "{{stopped}} 因連接埠 {{port}} 與 {{existing}} 衝突而被強制停止"
+  },
+  "init": {
+    "start": "正在初始化...",
+    "modules": "正在準備模組清單...",
+    "instances": "正在準備伺服器清單...",
+    "ready": "準備就緒"
   }
 }

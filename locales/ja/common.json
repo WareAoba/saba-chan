@@ -21,7 +21,7 @@
     "starting": "デーモンを起動中...",
     "started": "デーモンが起動しました",
     "preparing": "デーモンを準備中... (タイムアウト)",
-    "failed_to_start": "デーモンの起動に失敗しました - 手動で実行してください",
+    "failed_to_start": "デーモンを起動できませんでした",
     "check_warning": "デーモンチェック警告: {{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "ポート競合 — {{name}} 停止",
     "force_stop_body": "ポート {{port}} が {{existing}} と競合したため、{{stopped}} が強制停止されました"
+  },
+  "init": {
+    "start": "初期化を開始しています...",
+    "modules": "モジュール一覧を準備中...",
+    "instances": "サーバー一覧を準備中...",
+    "ready": "準備完了"
   }
 }
