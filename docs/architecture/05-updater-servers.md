@@ -316,7 +316,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 **(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시)
 1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
 2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급, guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다).
-3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다. relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `<data_dir>/.node_token`에 저장**한다.
+3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다(#61). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `<data_dir>/.node_token`에 저장**한다.
 4. daemon `GET/PUT/DELETE /api/config/node-token`(`handlers/config.rs`)은 토큰 원문을 IPC로 그대로 반환한다.
 
 **(b) 명령 실행** (cloud 모드)
@@ -342,7 +342,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 | GET `/api/relay/host/:id/nodes` | GET `/api/hosts/:id/nodes` | 노드 토큰 | ✓ |
 | GET `/api/relay/node/:guild/members` | GET `/api/nodes/:g/discord-members`, 503이면 `/api/nodes/:g/members` | 노드 토큰 | ✓ |
 | POST `/api/relay/pair/initiate` | POST `/api/pair/initiate` | 없음 | ✓ |
-| GET `/api/relay/pair/:code/status` | GET `/api/pair/:code/status` | `X-Poll-Secret` | ✗ 데몬이 아직 `?secret=` 쿼리로 보낸다(`relay.rs` `poll_pairing_status`). relay는 server-chan c3a3425부터 헤더만 받아 새 페어링이 401로 끝난다. 데몬 수정 대기 |
+| GET `/api/relay/pair/:code/status` | GET `/api/pair/:code/status` | `X-Poll-Secret` | ✓. GUI가 데몬에 주는 `?secret=`을 데몬이 헤더로 옮겨 보낸다(saba-chan #61). relay는 server-chan c3a3425부터 헤더만 받는다 |
 | GET `/api/relay/bot-invite` | GET `/api/bot-invite` | 없음 | ✓ |
 | GET `/api/relay/agent`, POST `.../agent/start`·`stop` | — (daemon 안의 relay agent 상태·제어) | — | — |
 
