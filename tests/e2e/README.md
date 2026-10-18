@@ -19,6 +19,7 @@
 
 - 시험마다 폴더 하나를 만들고 `SABA_DATA_DIR`·`SABA_MODULES_PATH`·`SABA_EXTENSIONS_DIR`·`SABA_TOKEN_PATH`·`SABA_IPC_PORT`(빈 포트)와 `HOME`·`APPDATA`·`LOCALAPPDATA`·`TEMP`·`XDG_*`를 그 안으로 돌린다.
 - 시작과 끝에 실제 데이터 폴더(`%APPDATA%\saba-chan`, `~/.config/saba-chan` 등)의 파일 목록·크기·수정 시각을 비교한다. 바뀌면 실행 전체가 실패한다(`run-*/guard.md`).
+- 통과한 시험의 폴더는 `artifacts/`만 남기고 지운다(`SABA_E2E_KEEP=1`이면 남긴다).
 - 남은 프로세스는 명령줄에 이번 실행 폴더 경로가 들어간 것만 끝낸다. 이름으로 죽이지 않는다.
 
 ## 층과 파일

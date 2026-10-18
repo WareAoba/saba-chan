@@ -87,12 +87,19 @@ def fake_jar() -> Path:
 
 # ── 격리 폴더와 데몬 ──
 @pytest.fixture
-def sandbox(request) -> Sandbox:
+def sandbox(request):
     name = request.node.name.replace("[", "_").replace("]", "").replace("/", "_")[:80]
     root = RUN_DIR / name
     if root.exists():
         shutil.rmtree(root)
-    return Sandbox(root)
+    sb = Sandbox(root)
+    yield sb
+    # 통과한 시험은 artifacts만 남기고 지운다 (설치본 복사 등으로 시험 하나가 수백 MB). 남기려면 SABA_E2E_KEEP=1
+    rep = getattr(request.node, "rep_call", None)
+    if rep and rep.passed and not os.environ.get("SABA_E2E_KEEP"):
+        for child in root.iterdir():
+            if child.name != "artifacts":
+                shutil.rmtree(child, ignore_errors=True) if child.is_dir() else child.unlink(missing_ok=True)
 
 
 def _dump_artifacts(request, sb: Sandbox, daemon: Daemon | None):
