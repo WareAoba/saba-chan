@@ -820,7 +820,9 @@ export function createApi({ invoke, hub }) {
         discordBotStatus: async () => {
             try {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
-                return data?.running ? 'running' : 'stopped';
+                if (data?.running) return 'running';
+                // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
+                return data?.lastErrorCode === 'token_replaced' ? 'replaced' : 'stopped';
             } catch (_e) {
                 return 'stopped';
             }

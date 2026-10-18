@@ -747,6 +747,7 @@
     "node_count": "{{count}} Discord-Server",
     "agent_title": "Befehlsweiterleitung",
     "agent_desc": "Dieser PC empfängt und führt die aus Discord gesendeten Befehle aus. Solange sie aus ist, antwortet der Bot nicht.",
+    "agent_replaced": "Die PC-Verbindung dieses Discord-Kontos wurde auf einen anderen PC verschoben und hier beendet. Um diesen PC wieder zu nutzen, kopple ihn erneut von diesem PC aus.",
     "agent_running": "An",
     "agent_connecting": "Startet",
     "agent_stopped": "Aus",
