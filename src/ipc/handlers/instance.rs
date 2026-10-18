@@ -303,8 +303,20 @@ pub async fn create_instance(
                 return (StatusCode::CONFLICT, Json(error)).into_response();
             }
         }
-        if let Some(port) = payload.get("port").and_then(|v| v.as_u64()) {
-            instance.port = Some(port as u16);
+        let given_port = payload.get("port").filter(|v| !v.is_null());
+        if given_port.is_some_and(|v| v.as_u64().and_then(|p| u16::try_from(p).ok()).filter(|&p| p > 0).is_none()) {
+            let error = json!({ "error": "port must be a number from 1 to 65535", "error_code": "invalid_format", "fields": [{"field": "port"}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
+        if let Some(port) = given_port.and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()) {
+            instance.port = Some(port);
+            // 모듈이 `port` 설정을 선언했으면 그것도 맞춘다 (설치가 module_settings로 게임 설정 파일을 쓴다)
+            let declared = supervisor.module_loader.get_module(module).ok()
+                .and_then(|m| m.metadata.settings.as_ref().map(|s| s.fields.iter().any(|f| f.name == "port")))
+                .unwrap_or(false);
+            if declared {
+                instance.module_settings.insert("port".to_string(), json!(port));
+            }
         } else if !migration_mode {
             // 같은 게임을 여러 개 만들면 기본 포트가 겹친다: 다른 인스턴스와 겹치지 않게 옮긴다
             let port_fields_of = |module: &str| -> Vec<String> {
@@ -1793,6 +1805,43 @@ mod tests {
         let unknown = create(json!({ "name": "b", "module_name": "game", "preset": "nope" })).await;
         assert_eq!(unknown.status.as_u16(), 400);
         assert_eq!(unknown.body["error_code"], "preset_not_found");
+    }
+
+    #[tokio::test]
+    async fn create_with_a_port_also_sets_the_module_port_setting() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let body = json!({ "name": "a", "module_name": "game", "port": 25570 });
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(body)).await).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        // 설치는 module_settings로 게임 설정 파일을 쓴다: 두 값이 같아야 한다
+        assert_eq!((instance.port, &instance.module_settings["port"]), (Some(25570), &json!(25570)));
+
+        // 포트로 쓸 수 없는 값은 만들지 않고 알린다
+        for port in [json!(70000), json!(0), json!("abc")] {
+            let body = json!({ "name": "b", "module_name": "game", "port": port });
+            let bad = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(body)).await).await;
+            assert_eq!((bad.status.as_u16(), &bad.body["error_code"]), (400, &json!("invalid_format")), "{port}");
+        }
     }
 
     #[tokio::test]

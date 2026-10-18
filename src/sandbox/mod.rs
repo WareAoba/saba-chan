@@ -607,11 +607,28 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
     Err(Blocked { code: "sandbox_unavailable", file: None, detail: Some(error) })
 }
 
-// ── 격리 없이 돌리기 동의 (`config.json` `sandbox.unisolated`: 키 → 파일 지문) ──
+// ── 사용자 동의 (`config.json` `sandbox.<종류>`: 키 → 파일 지문) ──
 // 파일이 하나라도 바뀌면 지문이 달라져 다시 묻는다
 
 const CONSENT_SECTION: &str = "sandbox";
-const CONSENT_KEY: &str = "unisolated";
+
+/// 확인되지 않은 구성요소에 사용자가 이 PC에서 따로 허락하는 것
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Consent {
+    /// 격리 준비가 실패했을 때 격리 없이 돌리기 (`sandbox.unisolated`)
+    Unisolated,
+    /// 익스텐션 GUI 번들을 GUI에 싣기 (`sandbox.extension_gui`). 번들은 데몬 API 전체를 부를 수 있다
+    ExtensionGui,
+}
+
+impl Consent {
+    fn key(self) -> &'static str {
+        match self {
+            Consent::Unisolated => "unisolated",
+            Consent::ExtensionGui => "extension_gui",
+        }
+    }
+}
 
 /// 구성요소 폴더의 지문: 상대 경로와 내용 sha256을 정렬해 묶은 sha256 (`__pycache__` 제외)
 pub fn fingerprint(dir: &Path) -> String {
@@ -642,14 +659,19 @@ fn consent_file() -> saba_chan_updater_lib::config_file::ConfigFile {
 }
 
 pub fn unisolated_allowed(key: &str, dir: &Path) -> bool {
+    consented(Consent::Unisolated, key, dir)
+}
+
+/// `key`에 지금 파일 그대로 동의했는가
+pub fn consented(kind: Consent, key: &str, dir: &Path) -> bool {
     let section = consent_file().section(CONSENT_SECTION);
-    section.get(CONSENT_KEY).and_then(|m| m.get(key)).and_then(Value::as_str).is_some_and(|fp| fp == fingerprint(dir))
+    section.get(kind.key()).and_then(|m| m.get(key)).and_then(Value::as_str).is_some_and(|fp| fp == fingerprint(dir))
 }
 
 /// 동의 목록: `[{component, fingerprint, current}]` (`current`: 지금 파일과 지문이 같은가. 다르면 다시 묻는다)
-pub fn unisolated_list() -> Vec<Value> {
+pub fn consent_list(kind: Consent) -> Vec<Value> {
     let section = consent_file().section(CONSENT_SECTION);
-    let Some(entries) = section.get(CONSENT_KEY).and_then(Value::as_object) else { return Vec::new() };
+    let Some(entries) = section.get(kind.key()).and_then(Value::as_object) else { return Vec::new() };
     entries
         .iter()
         .map(|(key, fp)| {
@@ -669,11 +691,12 @@ pub fn component_dir(key: &str) -> Option<PathBuf> {
     if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
         return None;
     }
-    Some(root.join(name)).filter(|d| d.is_dir())
+    // 익스텐션 폴더는 id의 `-`를 `_`로 바꾼 이름일 수 있다 (Python 패키지 이름)
+    [root.join(name), root.join(name.replace('-', "_"))].into_iter().find(|d| d.is_dir())
 }
 
 /// 동의를 기록하거나 지운다. 기록하면 지금 파일의 지문을 돌려준다
-pub fn set_unisolated(key: &str, allow: bool) -> std::io::Result<Option<String>> {
+pub fn set_consent(kind: Consent, key: &str, allow: bool) -> std::io::Result<Option<String>> {
     let fp = if allow {
         let dir = component_dir(key).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "unknown component"))?;
         Some(fingerprint(&dir))
@@ -686,7 +709,7 @@ pub fn set_unisolated(key: &str, allow: bool) -> std::io::Result<Option<String>>
             *section = serde_json::json!({});
         }
         let map = section.as_object_mut().expect("object");
-        let entries = map.entry(CONSENT_KEY).or_insert_with(|| serde_json::json!({}));
+        let entries = map.entry(kind.key()).or_insert_with(|| serde_json::json!({}));
         if !entries.is_object() {
             *entries = serde_json::json!({});
         }
