@@ -1193,5 +1193,13 @@
     "err_cli_not_found": "找不到 CLI 程式，無法開啟終端機。",
     "err_not_found": "常駐程式中找不到此伺服器。",
     "err_generic": "無法開啟終端機。"
+  },
+  "memory_limit": {
+    "title": "記憶體上限",
+    "desc": "限制伺服器及其子程序合計可用的記憶體。超過時會停止伺服器。",
+    "label": "記憶體上限 (MB)",
+    "hint": "留空表示不限制。Java 伺服器請設為比 -Xmx 大 1~2GB。僅在 Windows 上生效。",
+    "placeholder": "不限制",
+    "restart_note": "重新啟動後生效。"
   }
 }

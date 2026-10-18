@@ -1193,5 +1193,13 @@
     "err_cli_not_found": "Programme CLI introuvable, impossible d'ouvrir le terminal.",
     "err_not_found": "Le démon n'a pas trouvé ce serveur.",
     "err_generic": "Impossible d'ouvrir le terminal."
+  },
+  "memory_limit": {
+    "title": "Limite de mémoire",
+    "desc": "Limite la mémoire que le serveur et ses processus enfants peuvent utiliser ensemble. Le serveur est arrêté s'il la dépasse.",
+    "label": "Limite de mémoire (Mo)",
+    "hint": "Laisse vide pour aucune limite. Pour les serveurs Java, mets 1 à 2 Go de plus que -Xmx. Uniquement sous Windows.",
+    "placeholder": "Aucune limite",
+    "restart_note": "S'applique après un redémarrage."
   }
 }
