@@ -53,7 +53,7 @@ class Api:
             return self.http.request(method, self.base + path, headers=headers, timeout=timeout, **kw)
         except requests.Timeout as e:
             # 어느 호출이 늦었는지 보고서에 남긴다 (예외 종류는 그대로)
-            raise type(e)(f"{method} {path} ({timeout:.0f}초): {e}") from e
+            raise type(e)(f"{method} {path} (timeout={timeout}): {e}") from e
 
     def get(self, path: str, **kw) -> requests.Response:
         return self.request("GET", path, **kw)
