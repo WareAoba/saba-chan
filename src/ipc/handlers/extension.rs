@@ -3,8 +3,8 @@
 //! GET  /api/extensions              → 익스텐션 목록
 //! POST /api/extensions/:id/enable   → 활성화
 //! POST /api/extensions/:id/disable  → 비활성화
-//! GET  /api/extensions/:id/gui      → GUI 번들 서빙
-//! GET  /api/extensions/:id/gui/styles → CSS 서빙
+//! GET  /api/extensions/:id/gui      → GUI 번들 서빙 (확인된 것이거나 사용자가 허락한 것만)
+//! GET  /api/extensions/:id/gui/styles → CSS 서빙 (번들과 같은 조건)
 //! GET  /api/extensions/:id/icon     → 아이콘 (icon.png) 서빙
 //! GET  /api/extensions/:id/audit    → 코드가 쓰는 위험한 능력과 manifest `permissions` 비교
 //! GET  /api/extensions/:id/i18n/:locale → i18n JSON
@@ -260,12 +260,49 @@ pub async fn serve_gui_bundle(
         None => return Err(StatusCode::NOT_FOUND), // 내장 익스텐션: 번들 없음
     };
 
-    let bundle_path = match mgr.extension_file_path(&ext_id, bundle_rel) {
-        Some(p) => p,
-        None => return Err(StatusCode::NOT_FOUND),
-    };
+    let dir = mgr.discovered(&ext_id).map(|ext| ext.dir.clone()).ok_or(StatusCode::NOT_FOUND)?;
+    let bundle_path = gui_file(&dir, bundle_rel).ok_or(StatusCode::NOT_FOUND)?;
+    drop(mgr);
+    if let Some(refused) = unapproved_gui(&ext_id, dir).await {
+        return Ok(refused);
+    }
 
     serve_static_file(&bundle_path, "application/javascript").await
+}
+
+/// manifest의 GUI 파일 경로를 익스텐션 폴더 안의 실제 파일로 푼다. 허락은 폴더 안 파일의 지문에 묶이므로
+/// 폴더 밖(`..`·절대 경로)이나 링크(파일이든 거쳐 가는 폴더든)를 가리키면 서빙하지 않는다
+fn gui_file(dir: &std::path::Path, relative: &str) -> Option<std::path::PathBuf> {
+    let rel = std::path::Path::new(relative);
+    if relative.is_empty() || !rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+        return None;
+    }
+    let mut path = dir.to_path_buf();
+    for part in rel.components() {
+        path.push(part);
+        let meta = std::fs::symlink_metadata(&path).ok()?;
+        if meta.file_type().is_symlink() {
+            return None;
+        }
+    }
+    std::fs::symlink_metadata(&path).ok()?.is_file().then_some(path)
+}
+
+/// 번들은 GUI 웹뷰에서 데몬 API 전체를 부를 수 있다. 확인된 익스텐션이 아니면 사용자가 이 PC에서
+/// 지금 파일 그대로 허락했을 때만 서빙한다. 아니면 403 `extension_gui_unapproved`
+async fn unapproved_gui(ext_id: &str, dir: std::path::PathBuf) -> Option<Response> {
+    let key = format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, ext_id);
+    let check = key.clone();
+    let allowed = tokio::task::spawn_blocking(move || crate::extension::gui_allowed(&check, &dir)).await.unwrap_or(false);
+    if allowed {
+        return None;
+    }
+    let body = json!({
+        "error": format!("The GUI of unverified extension '{}' needs your approval on this PC", ext_id),
+        "error_code": "extension_gui_unapproved",
+        "component": key,
+    });
+    Some((StatusCode::FORBIDDEN, Json(body)).into_response())
 }
 
 /// GET /api/extensions/:id/gui/styles — CSS 서빙
@@ -286,13 +323,12 @@ pub async fn serve_gui_styles(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    let styles_path = match gui.styles.as_deref() {
-        Some(s) => match mgr.extension_file_path(&ext_id, s) {
-            Some(p) => p,
-            None => return Err(StatusCode::NOT_FOUND),
-        },
-        None => return Err(StatusCode::NOT_FOUND),
-    };
+    let dir = mgr.discovered(&ext_id).map(|ext| ext.dir.clone()).ok_or(StatusCode::NOT_FOUND)?;
+    let styles_path = gui.styles.as_deref().and_then(|s| gui_file(&dir, s)).ok_or(StatusCode::NOT_FOUND)?;
+    drop(mgr);
+    if let Some(refused) = unapproved_gui(&ext_id, dir).await {
+        return Ok(refused);
+    }
 
     serve_static_file(&styles_path, "text/css").await
 }
@@ -573,4 +609,88 @@ pub async fn save_extension_config(
     mgr.set_extension_config(&ext_id, values);
     let updated = mgr.get_extension_config(&ext_id);
     Ok(Json(json!({ "success": true, "config": updated })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    #[tokio::test]
+    async fn an_unverified_extension_gui_is_served_only_after_local_approval() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 동의는 데몬 익스텐션 폴더의 구성요소에 기록된다: 그 아래에 겹치지 않는 이름으로 만든다
+        let ext = tempfile::Builder::new().prefix("guitrust").tempdir_in(crate::plugin::resolve_extensions_dir()).unwrap();
+        let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(
+            ext.path().join("manifest.json"),
+            json!({ "id": id, "name": "t", "version": "0.1.0", "gui": { "bundle": "gui.js", "styles": "gui.css" } }).to_string(),
+        )
+        .unwrap();
+        std::fs::write(ext.path().join("gui.js"), "window.x = 1").unwrap();
+        std::fs::write(ext.path().join("gui.css"), "body{}").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        {
+            let mut mgr = state.extension_manager.write().await;
+            mgr.discover().unwrap();
+            mgr.enable(&id).unwrap();
+        }
+        let key = format!("ext-{}", id);
+        let status = |r: Result<Response, StatusCode>| r.map(|r| r.status()).unwrap_or_else(|s| s);
+        let listed = |state: IPCServer, id: String| async move {
+            let mgr = state.extension_manager.read().await;
+            mgr.list().into_iter().find(|e| e.id == id).and_then(|e| e.gui_allowed)
+        };
+
+        assert_eq!(status(serve_gui_bundle(State(state.clone()), Path(id.clone())).await), StatusCode::FORBIDDEN);
+        assert_eq!(status(serve_gui_styles(State(state.clone()), Path(id.clone())).await), StatusCode::FORBIDDEN);
+        assert_eq!(listed(state.clone(), id.clone()).await, Some(false));
+
+        // 원격에서는 허락할 수 없다
+        let remote = crate::audit::with_origin(
+            crate::audit::Origin::new("discord"),
+            super::super::sandbox::allow_extension_gui(Path(key.clone())),
+        )
+        .await
+        .into_response();
+        assert_eq!(remote.status(), StatusCode::FORBIDDEN);
+
+        let ok = super::super::sandbox::allow_extension_gui(Path(key.clone())).await.into_response();
+        assert_eq!(ok.status(), StatusCode::OK);
+        assert_eq!(status(serve_gui_bundle(State(state.clone()), Path(id.clone())).await), StatusCode::OK);
+        assert_eq!(status(serve_gui_styles(State(state.clone()), Path(id.clone())).await), StatusCode::OK);
+        assert_eq!(listed(state.clone(), id.clone()).await, Some(true));
+
+        // 파일이 바뀌면 다시 묻는다
+        std::fs::write(ext.path().join("gui.js"), "window.x = 2").unwrap();
+        assert_eq!(status(serve_gui_bundle(State(state.clone()), Path(id.clone())).await), StatusCode::FORBIDDEN);
+        let _ = super::super::sandbox::revoke_extension_gui(Path(key)).await;
+    }
+
+    #[test]
+    fn gui_files_must_be_plain_files_inside_the_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("ext");
+        std::fs::create_dir_all(dir.join("gui")).unwrap();
+        std::fs::write(dir.join("gui").join("a.js"), "x").unwrap();
+        std::fs::write(tmp.path().join("outside.js"), "x").unwrap();
+        assert_eq!(gui_file(&dir, "gui/a.js"), Some(dir.join("gui").join("a.js")));
+        let outside = tmp.path().join("outside.js");
+        for bad in ["../outside.js", "gui/../../outside.js", "", "gui", "missing.js", outside.to_str().unwrap()] {
+            assert_eq!(gui_file(&dir, bad), None, "{}", bad);
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(tmp.path().join("outside.js"), dir.join("link.js")).unwrap();
+            std::os::unix::fs::symlink(tmp.path(), dir.join("linked")).unwrap();
+            assert_eq!(gui_file(&dir, "link.js"), None);
+            assert_eq!(gui_file(&dir, "linked/outside.js"), None);
+        }
+    }
 }
