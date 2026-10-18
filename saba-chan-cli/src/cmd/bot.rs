@@ -170,7 +170,14 @@ async fn status(ctx: &Ctx) -> Result<()> {
 
 async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
-    let relay = relay_url.clone().or_else(|| relay_of(&cfg).map(str::to_string));
+    // 데몬은 설정한 릴레이와만 페어링한다: 다른 릴레이를 주면 설정부터 바꾼다
+    // (나중에 바꾸면 노드 토큰은 예전 릴레이 것이 된다)
+    let mut cloud = cfg.get("cloud").cloned().unwrap_or_else(|| json!({}));
+    if let Some(u) = relay_url.as_deref().filter(|u| relay_of(&cfg) != Some(*u)) {
+        cloud["relayUrl"] = Value::String(u.to_string());
+        ctx.api.save_bot_config(json!({ "cloud": cloud.clone() })).await?;
+    }
+    let relay = relay_url.or_else(|| relay_of(&cfg).map(str::to_string));
     let init = ctx.api.pair_initiate(relay.as_deref()).await?;
     let code = s(&init, "code").to_string();
     let secret = s(&init, "pollSecret").to_string();
@@ -210,15 +217,11 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
         }
     };
     spin.finish_and_clear();
-    // 데몬은 노드 토큰만 저장한다. 호스트 id·릴레이 주소는 봇 설정에 넣는다.
-    let mut cloud = cfg.get("cloud").cloned().unwrap_or_else(|| json!({}));
+    // 데몬은 노드 토큰만 저장한다. 호스트 id는 봇 설정에 넣는다.
     if !s(&result, "hostId").is_empty() {
         cloud["hostId"] = Value::String(s(&result, "hostId").to_string());
+        ctx.api.save_bot_config(json!({ "cloud": cloud })).await?;
     }
-    if let Some(u) = relay_url {
-        cloud["relayUrl"] = Value::String(u);
-    }
-    ctx.api.save_bot_config(json!({ "cloud": cloud })).await?;
     let mut out = result.clone();
     if let Some(o) = out.as_object_mut() {
         o.remove("nodeToken");

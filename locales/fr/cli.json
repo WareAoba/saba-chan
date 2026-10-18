@@ -42,7 +42,7 @@
     "no_aliases": "Aucun alias pour l'instant. Ajoutez-en un : saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "Ce PC n'est pas encore appairé. Lancez : saba-chan-cli bot pair",
     "offer_start": "Se connecter au bot maintenant ?",
-    "pair_enter": "Saisissez ce code dans Discord avec la commande d'appairage du bot Saba-chan :",
+    "pair_enter": "Dans Discord, lancez `/saba connect` et saisissez ce code :",
     "pair_expired": "Le code d'appairage a expiré. Relancez bot pair.",
     "pair_no_code": "Le relais n'a renvoyé aucun code d'appairage.",
     "pair_polling": "En attente de Discord...",
