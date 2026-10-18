@@ -171,7 +171,8 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
         Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).ok_or(("instance", "must be an instance id"))?.to_string()),
     };
     match (body.get("view").and_then(|v| v.as_str()), instance) {
-        (Some("console"), Some(id)) => Ok((vec!["console".into(), id.clone()], Some(id))),
+        // `--` 뒤라 id가 옵션으로 읽히지 않는다
+        (Some("console"), Some(id)) => Ok((vec!["console".into(), "--".into(), id.clone()], Some(id))),
         (Some("console"), None) => Err(("instance", "required for the console view")),
         (Some("shell"), None) => Ok((Vec::new(), None)),
         (Some("shell"), Some(_)) => Err(("instance", "the shell view takes no instance")),
@@ -206,24 +207,23 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     let Some(cli) = crate::boot_selector::find_interface_binary("saba-chan-cli") else {
         return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": "saba-chan-cli was not found next to the daemon", "error_code": "cli_not_found" }))).into_response();
     };
-    let mut cmd = std::process::Command::new(&cli);
-    cmd.args(&args);
-    if let Some(dir) = cli.parent() {
-        cmd.current_dir(dir);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-        cmd.creation_flags(CREATE_NEW_CONSOLE);
-    }
-    match cmd.spawn() {
-        Ok(child) => {
-            tracing::info!("[Launch] Opened CLI {:?} (pid {})", args, child.id());
-            (StatusCode::OK, Json(json!({ "success": true, "pid": child.id() }))).into_response()
+    match spawn_in_new_console(&cli, &args) {
+        Ok(pid) => {
+            tracing::info!("[Launch] Opened CLI {:?} (pid {})", args, pid);
+            (StatusCode::OK, Json(json!({ "success": true, "pid": pid }))).into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": format!("Could not start saba-chan-cli: {}", e), "error_code": "launch_failed" }))).into_response(),
     }
+}
+
+#[cfg(windows)]
+fn spawn_in_new_console(cli: &std::path::Path, args: &[String]) -> std::io::Result<u32> {
+    crate::boot_selector::spawn_cli_in_new_console(cli, args)
+}
+
+#[cfg(not(windows))]
+fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String]) -> std::io::Result<u32> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Windows only"))
 }
 
 #[cfg(test)]
@@ -234,7 +234,7 @@ mod launch_tests {
     #[test]
     fn only_fixed_command_lines_are_built() {
         let console = launch_args(&json!({ "kind": "cli", "view": "console", "instance": "abc" })).unwrap();
-        assert_eq!(console, (vec!["console".to_string(), "abc".to_string()], Some("abc".to_string())));
+        assert_eq!(console, (vec!["console".to_string(), "--".to_string(), "abc".to_string()], Some("abc".to_string())));
         assert_eq!(launch_args(&json!({ "kind": "cli", "view": "shell" })).unwrap(), (vec![], None));
 
         let field = |b| launch_args(&b).unwrap_err().0;
