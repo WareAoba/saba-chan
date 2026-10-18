@@ -310,7 +310,11 @@
     "reset_success": "伺服器 '{{name}}' 已重設（已刪除 {{count}} 個項目）",
     "reset_failed": "重設失敗：{{error}}",
     "reset_error": "重設錯誤：{{error}}",
-    "stored_values_notice": "無法讀取伺服器的設定檔，目前顯示的是上次儲存的值。儲存時只會套用您變更過的欄位。"
+    "stored_values_notice": "無法讀取伺服器的設定檔，目前顯示的是上次儲存的值。儲存時只會套用您變更過的欄位。",
+    "install_server_running": "請先停止伺服器再安裝版本",
+    "reset_server_running": "請先停止伺服器再重設",
+    "instance_busy": "此伺服器上正在進行其他工作（備份或還原）。完成後請再試一次",
+    "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 機器人啟動失敗：{{error}}",
