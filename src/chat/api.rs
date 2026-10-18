@@ -47,6 +47,11 @@ impl ModuleView {
     pub fn command(&self, name: &str) -> Option<&CommandField> {
         self.commands.iter().find(|c| c.name == name)
     }
+
+    /// 명령의 module.toml 별칭 (없으면 빈 목록)
+    pub fn aliases_of(&self, command: &str) -> &[String] {
+        self.command_aliases.iter().find(|(c, _)| c == command).map(|(_, a)| a.as_slice()).unwrap_or(&[])
+    }
 }
 
 /// 처리기가 쓰는 데몬 기능. 응답은 HTTP 핸들러와 같은 (상태, JSON) 형태.
