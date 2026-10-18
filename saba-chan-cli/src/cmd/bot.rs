@@ -177,8 +177,32 @@ async fn status(ctx: &Ctx) -> Result<()> {
 
 async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
-    let relay = relay_url.clone().or_else(|| relay_of(&cfg).map(str::to_string));
-    let init = ctx.api.pair_initiate(relay.as_deref()).await?;
+    // 데몬은 설정한 릴레이와만 페어링한다: 다른 릴레이를 주면 설정부터 바꾼다
+    // (나중에 바꾸면 노드 토큰은 예전 릴레이 것이 된다)
+    let previous = cfg.get("cloud").cloned().unwrap_or_else(|| json!({}));
+    let mut cloud = previous.clone();
+    let switched = relay_url.as_deref().is_some_and(|u| relay_of(&cfg) != Some(u));
+    if switched {
+        cloud["relayUrl"] = Value::String(relay_url.clone().unwrap_or_default());
+        ctx.api.save_bot_config(json!({ "cloud": cloud.clone() })).await?;
+    }
+    let relay = relay_url.or_else(|| relay_of(&cfg).map(str::to_string));
+    let claimed = wait_for_claim(ctx, relay.as_deref()).await;
+    // 페어링이 끝나지 않았으면 예전 릴레이로 되돌린다 (그대로 두면 다음 재시작에 기존 토큰을 새 주소로 보낸다).
+    // 끝난 뒤의 오류는 되돌리지 않는다: 데몬은 이미 새 릴레이의 토큰을 저장했다.
+    // `--json`으로 코드만 낸 경우도 그대로 둔다: 이어서 기다리는 쪽이 새 릴레이로 claim을 받는다
+    if switched && claimed.is_err() {
+        let _ = ctx.api.save_bot_config(json!({ "cloud": previous })).await;
+    }
+    match claimed? {
+        Some(result) => finish_pair(ctx, result, cloud).await,
+        None => Ok(()),
+    }
+}
+
+/// 페어링 코드를 받아 보여 주고 claim될 때까지 기다린다. `--json`만 주면 코드만 내고 `None`
+async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>> {
+    let init = ctx.api.pair_initiate(relay).await?;
     let code = s(&init, "code").to_string();
     let secret = s(&init, "pollSecret").to_string();
     if code.is_empty() {
@@ -187,7 +211,7 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
     if ctx.out.json && !ctx.ask.yes {
         // 스크립트: 코드만 주고 끝 (폴링은 `--yes`로 기다린다)
         ctx.out.data(&init, |_| {});
-        return Ok(());
+        return Ok(None);
     }
     eprintln!();
     eprintln!("  {}", t!("bot.pair_enter"));
@@ -204,7 +228,7 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
                 return Err(crate::error::CliError::Cancelled.into());
             }
         }
-        let Ok(st) = ctx.api.pair_status(&code, &secret, relay.as_deref()).await else {
+        let Ok(st) = ctx.api.pair_status(&code, &secret, relay).await else {
             continue;
         };
         match s(&st, "status") {
@@ -217,15 +241,15 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
         }
     };
     spin.finish_and_clear();
-    // 데몬은 노드 토큰만 저장한다. 호스트 id·릴레이 주소는 봇 설정에 넣는다.
-    let mut cloud = cfg.get("cloud").cloned().unwrap_or_else(|| json!({}));
+    Ok(Some(result))
+}
+
+async fn finish_pair(ctx: &Ctx, result: Value, mut cloud: Value) -> Result<()> {
+    // 데몬은 노드 토큰만 저장한다. 호스트 id는 봇 설정에 넣는다.
     if !s(&result, "hostId").is_empty() {
         cloud["hostId"] = Value::String(s(&result, "hostId").to_string());
+        ctx.api.save_bot_config(json!({ "cloud": cloud })).await?;
     }
-    if let Some(u) = relay_url {
-        cloud["relayUrl"] = Value::String(u);
-    }
-    ctx.api.save_bot_config(json!({ "cloud": cloud })).await?;
     let mut out = result.clone();
     if let Some(o) = out.as_object_mut() {
         o.remove("nodeToken");

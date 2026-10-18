@@ -43,7 +43,7 @@
     "no_aliases": "Псевдонимов пока нет. Добавьте: saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "Этот ПК ещё не привязан. Выполните: saba-chan-cli bot pair",
     "offer_start": "Подключиться к боту сейчас?",
-    "pair_enter": "Введите этот код в Discord с командой привязки бота Saba-chan:",
+    "pair_enter": "В Discord выполните `/saba connect` и введите этот код:",
     "pair_expired": "Срок действия кода привязки истёк. Снова выполните bot pair.",
     "pair_no_code": "Ретранслятор не вернул код привязки.",
     "pair_polling": "Ожидание Discord...",

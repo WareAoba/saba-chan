@@ -43,7 +43,7 @@
     "no_aliases": "還沒有別名。新增一個：saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "這台電腦尚未配對。請執行：saba-chan-cli bot pair",
     "offer_start": "現在連線到機器人嗎？",
-    "pair_enter": "請在 Discord 中用 Saba-chan 機器人的配對指令輸入此代碼：",
+    "pair_enter": "在 Discord 中執行 `/saba connect` 並輸入此代碼:",
     "pair_expired": "配對代碼已過期。請重新執行 bot pair。",
     "pair_no_code": "中繼站沒有回傳配對代碼。",
     "pair_polling": "正在等待 Discord...",

@@ -43,7 +43,7 @@
     "no_aliases": "Nenhum apelido ainda. Adicione um: saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "Este PC ainda não está pareado. Execute: saba-chan-cli bot pair",
     "offer_start": "Conectar ao bot agora?",
-    "pair_enter": "Digite este código no Discord com o comando de pareamento do bot Saba-chan:",
+    "pair_enter": "No Discord, execute `/saba connect` e digite este código:",
     "pair_expired": "O código de pareamento expirou. Execute bot pair novamente.",
     "pair_no_code": "O relay não retornou um código de pareamento.",
     "pair_polling": "Aguardando o Discord...",

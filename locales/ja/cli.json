@@ -43,7 +43,7 @@
     "no_aliases": "エイリアスはまだありません。追加するには: saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "この PC はまだペアリングされていません。実行: saba-chan-cli bot pair",
     "offer_start": "今すぐボットに接続しますか？",
-    "pair_enter": "サバちゃんボットのペアリングコマンドで、Discord に次のコードを入力してください:",
+    "pair_enter": "Discordで `/saba connect` を実行し、このコードを入力してください:",
     "pair_expired": "ペアリングコードの有効期限が切れました。もう一度 bot pair を実行してください。",
     "pair_no_code": "リレーからペアリングコードが返されませんでした。",
     "pair_polling": "Discord を待っています...",
