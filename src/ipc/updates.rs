@@ -50,6 +50,8 @@ pub struct UpdateState {
     pub stop_requested: Option<tokio_util::sync::CancellationToken>,
     /// 업데이터를 띄울 때 끌 GUI를 찾는 클라이언트 등록부 (IPCServer::client_registry)
     pub clients: Option<crate::ipc::ClientRegistry>,
+    /// 업데이터를 이미 띄웠는가. 다시 띄우면 표를 새로 끊어 먼저 띄운 업데이터가 적용하지 못한다
+    updater_launched: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl UpdateState {
@@ -67,6 +69,7 @@ impl UpdateState {
             extension_manager: None,
             stop_requested: None,
             clients: None,
+            updater_launched: Arc::default(),
         }
     }
 
@@ -625,11 +628,20 @@ async fn launch_updater(
         )
             .into_response();
     }
+    use std::sync::atomic::Ordering;
+    if state.updater_launched.swap(true, Ordering::SeqCst) {
+        return (
+            axum::http::StatusCode::CONFLICT,
+            Json(json!({ "ok": false, "error": "The updater is already launching", "error_code": "updater_already_launched" })),
+        )
+            .into_response();
+    }
 
     // 이번 적용에만 쓰는 실행 표 (업데이터는 표 없이 --apply를 거절한다)
     let ticket = match saba_chan_updater_lib::launch_ticket::issue(&saba_chan_updater_lib::constants::resolve_staging_dir()) {
         Ok(t) => t,
         Err(e) => {
+            state.updater_launched.store(false, Ordering::SeqCst);
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "ok": false, "error": format!("Failed to prepare updater launch: {}", e) })),
@@ -656,6 +668,7 @@ async fn launch_updater(
         args.extend(relaunch);
     }
     if let Err(e) = spawn_detached(&updater, &args) {
+        state.updater_launched.store(false, Ordering::SeqCst);
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "ok": false, "error": format!("Failed to start updater: {}", e) })),
@@ -989,6 +1002,39 @@ mod tests {
         assert!(!crate::supervisor::process::is_process_alive(gui), "the registered GUI is closed");
         assert!(crate::supervisor::process::is_process_alive(other), "other programs are left alone");
         let _ = crate::supervisor::process::force_kill_pid(other);
+    }
+
+    /// 업데이터를 띄운 뒤 다시 부르면 표를 새로 끊지 않고 409로 거절한다.
+    /// 표를 새로 끊으면 먼저 띄운 업데이터의 표가 무효가 되어 둘 다 아무것도 적용하지 못한다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_second_launch_is_refused_while_one_is_pending() {
+        use axum::extract::State;
+        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
+        std::fs::create_dir_all(&staging).unwrap();
+        let staged = staging.join("saba-chan-gui-linux-x64.zip");
+        std::fs::write(&staged, b"zip").unwrap();
+        let pending = json!([{
+            "component": "gui", "current_version": "0.1.0", "latest_version": "0.2.0",
+            "update_available": true, "download_url": null, "asset_name": "saba-chan-gui-linux-x64.zip",
+            "release_notes": null, "published_at": null, "downloaded": true,
+            "downloaded_path": staged.to_string_lossy(), "installed": true
+        }]);
+        std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
+        std::env::set_var("SABA_UPDATER_PATH", "/bin/true");
+
+        let state = UpdateState::new();
+        state.manager.write().await.load_pending_manifest().unwrap();
+        let first = super::launch_updater(State(state.clone()), None).await;
+        assert_eq!(first.status(), axum::http::StatusCode::OK);
+        let ticket = std::fs::read_to_string(staging.join("apply-ticket")).unwrap();
+
+        let second = super::launch_updater(State(state.clone()), None).await;
+        assert_eq!(second.status(), axum::http::StatusCode::CONFLICT);
+        let body = axum::body::to_bytes(second.into_body(), usize::MAX).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error_code"], "updater_already_launched");
+        assert_eq!(std::fs::read_to_string(staging.join("apply-ticket")).unwrap(), ticket, "the first ticket stays valid");
     }
 
     /// CLI가 데몬을 다시 띄우라고 해도 GUI가 떠 있었으면 GUI를 띄운다. GUI가 부른 요청은 그대로
