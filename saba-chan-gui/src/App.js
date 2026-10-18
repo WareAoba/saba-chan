@@ -449,9 +449,14 @@ function App() {
 
     const saveCurrentSettings = async () => {
         try {
-            await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
+            const results = await Promise.all([
+                useSettingsStore.getState().save(),
+                useDiscordStore.getState().saveConfig(),
+            ]);
+            return results.every((r) => r !== false);
         } catch (err) {
             console.error('[App] Failed to save settings:', err.message);
+            return false;
         }
     };
 
