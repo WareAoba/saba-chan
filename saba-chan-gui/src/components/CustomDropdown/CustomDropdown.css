@@ -16,9 +16,9 @@
     gap: var(--sp-2);
     width: 100%;
     padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line);
+    border: 1px solid var(--line-strong);
     border-radius: var(--r-sm);
-    background: var(--inset);
+    background: var(--field);
     box-shadow: var(--shadow-inset);
     color: var(--text-primary);
     font: inherit;

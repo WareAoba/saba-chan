@@ -916,23 +916,7 @@ function App() {
                         </div>
                     )}
 
-                    {/* 글로벌 프로그레스바 */}
-                    {progressBar && (
-                        <div className="global-progress-bar">
-                            <div className="global-progress-content">
-                                <span className="global-progress-message">{progressBar.message}</span>
-                                {progressBar.percent != null && !progressBar.indeterminate && (
-                                    <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
-                                )}
-                            </div>
-                            <div className="global-progress-track">
-                                <div
-                                    className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
-                                    style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
-                                />
-                            </div>
-                        </div>
-                    )}
+                    {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                 </div>
             </TooltipProvider>
         </ExtensionProvider>

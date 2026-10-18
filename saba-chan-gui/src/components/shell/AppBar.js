@@ -6,6 +6,20 @@ import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { ConnectionRail } from './ConnectionRail';
 import { RuntimePreflight } from './RuntimePreflight';
+import { TaskIndicator } from './TaskIndicator';
+
+/** 공식 글자 로고: 한국어·일본어·영어는 각자, 나머지 언어는 영어. ratio = 가로/세로 */
+const WORDMARKS = {
+    ko: { src: './logo-kr.png', ratio: 996 / 300 },
+    ja: { src: './logo-jp.png', ratio: 1459 / 300 },
+    en: { src: './logo-en.png', ratio: 2236 / 300 },
+};
+export function wordmarkFor(lang) {
+    const l = String(lang || 'en').toLowerCase();
+    if (l.startsWith('ko')) return WORDMARKS.ko;
+    if (l.startsWith('ja')) return WORDMARKS.ja;
+    return WORDMARKS.en;
+}
 
 /** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다. */
 export const APP_PAGES = [
@@ -33,13 +47,20 @@ export function AppBar({
     onToggleDaemon,
     daemonProps,
 }) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
+    const wordmark = wordmarkFor(i18n.language);
 
     return (
         <header className="appbar">
             <div className="appbar-brand">
                 <img src="./icon.png" alt="" className="appbar-logo" />
-                <span className="appbar-name">{t('common:app_name')}</span>
+                {/* 검은 글자 그림을 마스크로 써서 테마 글자색으로 칠한다 */}
+                <span
+                    className="appbar-name appbar-wordmark"
+                    style={{ '--wordmark': `url("${wordmark.src}")`, aspectRatio: String(wordmark.ratio) }}
+                >
+                    <span className="sr-only">{t('common:app_name')}</span>
+                </span>
             </div>
 
             <nav className="appbar-tabs" aria-label={t('shell.nav_label')}>
@@ -61,6 +82,7 @@ export function AppBar({
 
             <div className="appbar-status">
                 <ExtensionSlot slotId="AppBar.status" />
+                <TaskIndicator />
                 <RuntimePreflight daemonStatus={daemonStatus} />
                 {extInitializing && (
                     <span className="appbar-ext-init" title={extInitLabel}>

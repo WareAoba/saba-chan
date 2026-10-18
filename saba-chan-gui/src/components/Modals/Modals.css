@@ -3009,7 +3009,7 @@
     width: 28px;
     height: 28px;
     border-radius: 6px;
-    object-fit: cover;
+    object-fit: contain;
 }
 
 .ss-card-icon .ss-card-icon-fallback {

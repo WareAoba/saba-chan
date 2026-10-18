@@ -48,6 +48,14 @@
     letter-spacing: -0.02em;
     color: var(--text-1);
 }
+.appbar-wordmark {
+    display: block;
+    height: 16px;
+    background-color: var(--text-1);
+    -webkit-mask: var(--wordmark) center / contain no-repeat;
+    mask: var(--wordmark) center / contain no-repeat;
+    flex-shrink: 0;
+}
 .appbar-tabs {
     display: flex;
     gap: var(--sp-1);
@@ -368,11 +376,16 @@
     font-weight: 800;
     color: var(--text-2);
 }
+/* 게임 아이콘은 투명 배경 그림이 많다: 자르지 않고 칸 안에 여백을 두고 맞춘다 */
 .server-row-icon img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 11px;
+    width: 72%;
+    height: 72%;
+    object-fit: contain;
+}
+.server-row-icon:has(> img),
+.detail-icon:has(> img) {
+    background: var(--bg-3);
+    box-shadow: var(--shadow-raised);
 }
 .server-row-dot {
     position: absolute;
@@ -512,10 +525,9 @@
     color: var(--discord);
 }
 .detail-icon img {
-    width: 100%;
-    height: 100%;
-    border-radius: 15px;
-    object-fit: cover;
+    width: 70%;
+    height: 70%;
+    object-fit: contain;
 }
 .detail-title {
     flex: 1;
@@ -2452,6 +2464,18 @@ button.appbar-preflight {
     cursor: pointer;
     font: inherit;
     font-size: 12px;
+}
+/* 작업 진행: 문구가 길면 줄인다, 끝나면 초록 체크 */
+.appbar-task {
+    max-width: 280px;
+    animation: motion-rise var(--dur) var(--ease) backwards;
+}
+.appbar-task .appbar-preflight-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.appbar-task.done {
+    color: var(--ok);
 }
 .appbar-preflight-pct {
     font-variant-numeric: tabular-nums;
