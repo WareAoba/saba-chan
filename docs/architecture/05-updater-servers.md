@@ -316,7 +316,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 
 **(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시)
 1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
-2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급, guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다).
+2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급, guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다). 길드가 이미 다른 사람(노드 주인이 아닌 사람)에게 묶여 있으면, 연결하는 사람이 디스코드 서버 주인일 때만 그 노드를 지우고 새로 만든다(옛 PC의 대기 명령도 지운다). 아니면 `GUILD_TAKEN`으로 거절하고 코드는 pending으로 남는다. `/사바쨩 연결해제`(노드 주인 또는 디스코드 서버 주인)는 노드와 그 길드의 대기 명령을 지운다. 권한·배정·챗봇 설정은 cascade로 지워지고, 길드 슬래시 명령은 0개로 다시 등록된다(`unbindGuild`). 데몬의 `nodeSettings`는 남는다.
 3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다(#61). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `<data_dir>/.node_token`에 저장**한다.
 4. daemon `GET/PUT/DELETE /api/config/node-token`(`handlers/config.rs`)은 토큰 원문을 IPC로 그대로 반환한다.
 
