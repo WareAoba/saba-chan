@@ -148,6 +148,22 @@
     "ok": "Aucun problème connu trouvé dans les journaux de {{name}}."
   },
   "err": {
+    "relay": {
+      "channel_conflict": "Un salon ne peut avoir qu'un seul rôle (chatbot, musique ou notifications).",
+      "unknown_channel": "Ce salon est introuvable sur le serveur Discord. Vérifiez son nom ou son id.",
+      "bot_unavailable": "Le bot saba-chan ne répond pas pour le moment. Réessayez dans un instant.",
+      "node_not_found": "Le relais ne connaît pas ce PC. Il a été dissocié ou remplacé par un autre PC.",
+      "host_not_found": "Le relais n'a pas trouvé ce PC.",
+      "missing_token": "Ce PC n'est pas encore associé.",
+      "invalid_token": "Le jeton de connexion de ce PC n'est pas valide.",
+      "invalid_token_format": "Le jeton de connexion de ce PC est mal formé.",
+      "token_replaced": "Un autre PC a été associé au même compte Discord, ce PC a donc été déconnecté.",
+      "guild_taken": "Ce serveur Discord est déjà connecté à un autre PC.",
+      "forbidden": "Vous n'avez pas la permission de faire cela sur ce serveur Discord.",
+      "expired": "Le code a expiré. Recommencez.",
+      "rate_limited": "Trop de requêtes. Réessayez dans une minute environ.",
+      "other": "Le relais a refusé la requête ({{code}})."
+    },
     "ambiguous": "Plusieurs {{what}} correspondent à « {{query}} ».",
     "ambiguous_hint": "Soyez plus précis : {{names}}",
     "bad_json": "JSON invalide : {{error}}",

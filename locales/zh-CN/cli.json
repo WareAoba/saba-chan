@@ -148,6 +148,22 @@
     "ok": "{{name}} 的日志中未发现已知问题。"
   },
   "err": {
+    "relay": {
+      "channel_conflict": "一个频道只能有一种用途（聊天机器人、音乐或通知）。",
+      "unknown_channel": "在 Discord 服务器中找不到该频道。请检查频道名称或 id。",
+      "bot_unavailable": "saba-chan 机器人目前没有响应。请稍后再试。",
+      "node_not_found": "中继不认识这台电脑。它已断开连接或被另一台电脑取代。",
+      "host_not_found": "中继找不到这台电脑。",
+      "missing_token": "这台电脑尚未配对。",
+      "invalid_token": "这台电脑的连接令牌无效。",
+      "invalid_token_format": "这台电脑的连接令牌格式错误。",
+      "token_replaced": "同一 Discord 账号配对了另一台电脑，因此这台电脑已断开。",
+      "guild_taken": "该 Discord 服务器已连接到另一台电脑。",
+      "forbidden": "你没有在该 Discord 服务器上执行此操作的权限。",
+      "expired": "代码已过期。请重新开始。",
+      "rate_limited": "请求过于频繁。请约一分钟后再试。",
+      "other": "中继拒绝了请求（{{code}}）。"
+    },
     "ambiguous": "有多个{{what}}匹配“{{query}}”。",
     "ambiguous_hint": "请更具体一些：{{names}}",
     "bad_json": "无效的 JSON：{{error}}",

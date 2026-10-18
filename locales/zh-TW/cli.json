@@ -148,6 +148,22 @@
     "ok": "{{name}} 的記錄中沒有發現已知問題。"
   },
   "err": {
+    "relay": {
+      "channel_conflict": "一個頻道只能有一種用途（聊天機器人、音樂或通知）。",
+      "unknown_channel": "在 Discord 伺服器中找不到該頻道。請檢查頻道名稱或 id。",
+      "bot_unavailable": "saba-chan 機器人目前沒有回應。請稍後再試。",
+      "node_not_found": "中繼不認得這台電腦。它已中斷連線或被另一台電腦取代。",
+      "host_not_found": "中繼找不到這台電腦。",
+      "missing_token": "這台電腦尚未配對。",
+      "invalid_token": "這台電腦的連線權杖無效。",
+      "invalid_token_format": "這台電腦的連線權杖格式錯誤。",
+      "token_replaced": "同一個 Discord 帳號配對了另一台電腦，因此這台電腦已中斷連線。",
+      "guild_taken": "該 Discord 伺服器已連線到另一台電腦。",
+      "forbidden": "你沒有在該 Discord 伺服器執行此操作的權限。",
+      "expired": "代碼已過期。請重新開始。",
+      "rate_limited": "請求過於頻繁。請約一分鐘後再試。",
+      "other": "中繼拒絕了請求（{{code}}）。"
+    },
     "ambiguous": "有多個{{what}}符合「{{query}}」。",
     "ambiguous_hint": "請更明確一點：{{names}}",
     "bad_json": "無效的 JSON：{{error}}",

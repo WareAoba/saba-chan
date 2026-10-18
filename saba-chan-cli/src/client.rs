@@ -826,6 +826,14 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
+    // 데몬이 그대로 넘긴 릴레이 본문은 `error`가 코드(`NODE_NOT_FOUND`)이고 error_code가 없다
+    let relay_code = pick("error").filter(|e| e.len() > 2 && e.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'));
+    let relay_code = if status == 429 && pick("error_code").is_none() { Some("RATE_LIMITED".to_string()) } else { relay_code };
+    if let (None, Some(rc)) = (pick("error_code"), relay_code) {
+        let code = rc.to_ascii_lowercase();
+        let message = crate::i18n::try_t(&format!("err.relay.{}", code)).unwrap_or_else(|| t!("err.relay.other", code = rc));
+        return Err(CliError::Api { status, code: Some(code), message, body }.into());
+    }
     let code = pick("error_code");
     // 내부 오류일 때 error_message는 뭉뚱그린 문구라 구체적인 error가 낫다
     let generic = code.as_deref() == Some("internal_server_error") && pick("error").is_some();
@@ -851,6 +859,20 @@ mod tests {
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    #[test]
+    fn relay_error_codes_are_shown_as_sentences() {
+        crate::i18n::init("ko");
+        let e = api_err(check(404, json!({ "error": "NODE_NOT_FOUND" })));
+        assert_eq!(e.code(), "node_not_found");
+        assert!(!e.to_string().contains("NODE_NOT_FOUND") && e.hint().is_some(), "{} / {:?}", e, e.hint());
+        let e = api_err(check(429, json!({ "statusCode": 429, "error": "Too Many Requests", "message": "Rate limit exceeded, retry in 1 minute" })));
+        assert_eq!(e.code(), "rate_limited");
+        assert!(!e.to_string().contains("Rate limit"), "{}", e);
+        // 모르는 코드도 코드 원문만 덩그러니 나오지 않는다
+        let e = api_err(check(400, json!({ "error": "SOMETHING_NEW" })));
+        assert!(e.to_string() != "SOMETHING_NEW" && e.to_string().contains("SOMETHING_NEW"), "{}", e);
     }
 
     #[test]

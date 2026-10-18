@@ -139,7 +139,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         }
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
-        "node_token_missing" | "not_paired" => Some(t!("err.hint.node_token_missing")),
+        "node_token_missing" | "not_paired" | "node_not_found" | "missing_token" | "invalid_token" | "invalid_token_format" => Some(t!("err.hint.node_token_missing")),
         "executable_missing" => Some(t!("err.hint.executable_missing")),
         "update_unsupported" => Some(t!("err.hint.update_unsupported")),
         "backup_unsupported" => Some(t!("err.hint.backup_unsupported")),
