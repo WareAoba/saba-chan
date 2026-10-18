@@ -319,6 +319,7 @@
     },
     "must_be_one_of": "{{key}} doit être l'un de : {{options}}",
     "restart_hint": "Redémarrez {{name}} pour appliquer : saba-chan-cli restart {{name}}",
+    "sync_failed": "Enregistré, mais le fichier de configuration du jeu n'a pas pu être écrit : {{error}}",
     "unknown_key": "{{key}} est une nouvelle clé."
   },
   "shell": {

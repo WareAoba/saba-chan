@@ -359,6 +359,7 @@
     },
     "must_be_one_of": "{{key}}는 다음 중 하나여야 해요: {{options}}",
     "restart_hint": "적용하려면 {{name}}을(를) 다시 시작하세요: saba-chan-cli restart {{name}}",
+    "sync_failed": "저장은 했지만 게임 설정 파일에 쓰지 못했어요: {{error}}",
     "unknown_key": "{{key}}는 새 키예요."
   },
   "shell": {

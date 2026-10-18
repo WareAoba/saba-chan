@@ -319,6 +319,7 @@
     },
     "must_be_one_of": "{{key}} 必须是以下之一：{{options}}",
     "restart_hint": "重启 {{name}} 以应用：saba-chan-cli restart {{name}}",
+    "sync_failed": "已保存，但无法写入游戏设置文件：{{error}}",
     "unknown_key": "{{key}} 是新键。"
   },
   "shell": {

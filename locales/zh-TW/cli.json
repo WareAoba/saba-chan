@@ -319,6 +319,7 @@
     },
     "must_be_one_of": "{{key}} 必須是以下其中之一：{{options}}",
     "restart_hint": "重新啟動 {{name}} 以套用：saba-chan-cli restart {{name}}",
+    "sync_failed": "已儲存，但無法寫入遊戲設定檔：{{error}}",
     "unknown_key": "{{key}} 是新的鍵。"
   },
   "shell": {
