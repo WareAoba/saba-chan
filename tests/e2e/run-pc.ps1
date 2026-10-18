@@ -104,17 +104,28 @@ if (-not $NoGui) {
     Push-Location $Repo
     try { cargo build @profileArgs -p saba-chan-gui; if ($LASTEXITCODE) { throw "GUI 빌드 실패" } } finally { Pop-Location }
     $env:SABA_E2E_GUI_EXE = Join-Path $Repo "target\$profileDir\saba-chan-gui.exe"
-    if (-not (Get-Command tauri-driver -ErrorAction SilentlyContinue)) {
-        cargo install tauri-driver --locked; if ($LASTEXITCODE) { throw "tauri-driver 설치 실패" }
+    # 데몬 기동 실패 시험은 배포 빌드가 필요하다. -Release가 아니면 예전 target\release 빌드를 쓰지 않게 none(건너뜀)
+    # (PowerShell은 빈 값을 넣으면 변수를 지운다)
+    $env:SABA_E2E_GUI_RELEASE_EXE = if ($Release) { $env:SABA_E2E_GUI_EXE } else { "none" }
+    # tauri-driver는 사용자 ~/.cargo가 아니라 시험 폴더에 설치한다 (PATH는 이 실행에만)
+    $cargoTools = Join-Path $Tools "cargo"
+    if (-not (Test-Path (Join-Path $cargoTools "bin\tauri-driver.exe"))) {
+        cargo install tauri-driver --locked --root $cargoTools; if ($LASTEXITCODE) { throw "tauri-driver 설치 실패" }
     }
+    $env:PATH = "$cargoTools\bin;$env:PATH"
     # WebView2와 같은 버전의 msedgedriver를 시험 폴더에 받는다 (PATH는 이 실행에만)
     $wv = (Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" -ErrorAction SilentlyContinue).pv
-    if (-not $wv) { $wv = (Get-Item "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" -ErrorAction SilentlyContinue).VersionInfo.ProductVersion }
+    if (-not $wv) { $wv = (Get-ItemProperty "HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" -ErrorAction SilentlyContinue).pv }
+    if (-not $wv) {
+        $wv = (Get-Item "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" -ErrorAction SilentlyContinue).VersionInfo.ProductVersion
+        if ($wv) { Write-Warning "WebView2 런타임 버전을 못 찾아 Edge 버전($wv)을 씁니다. 버전이 다르면 GUI 세션이 열리지 않습니다." }
+    }
     if (-not $wv) { throw "WebView2 런타임 버전을 찾지 못했습니다." }
     $edgeDir = Join-Path $Tools "msedgedriver-$wv"
     if (-not (Test-Path (Join-Path $edgeDir "msedgedriver.exe"))) {
         $zip = Join-Path $Tools "msedgedriver.zip"
-        Invoke-WebRequest -UseBasicParsing "https://msedgedriver.microsoft.com/$wv/edgedriver_win64.zip" -OutFile $zip
+        $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "win64" }
+        Invoke-WebRequest -UseBasicParsing "https://msedgedriver.microsoft.com/$wv/edgedriver_$arch.zip" -OutFile $zip
         Expand-Archive $zip -DestinationPath $edgeDir -Force
         Remove-Item $zip
     }

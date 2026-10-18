@@ -23,7 +23,9 @@ pytestmark = pytest.mark.gui
 # 다른 빌드를 시험할 때 (예: 병합 전 PR): SABA_E2E_GUI_EXE
 GUI_EXE = Path(os.environ.get("SABA_E2E_GUI_EXE", REPO / "target" / "debug" / f"saba-chan-gui{EXE}"))
 # 개발 빌드는 늘 저장소의 target/*/saba-core를 띄우므로, 데몬을 못 띄우는 상황은 배포 빌드를 옮겨서 만든다
-RELEASE_GUI_EXE = Path(os.environ.get("SABA_E2E_GUI_RELEASE_EXE", REPO / "target" / "release" / f"saba-chan-gui{EXE}"))
+# none이면 이 시험을 건너뛴다 (run-pc.ps1이 -Release 없이 돌 때 예전 배포 빌드를 쓰지 않게)
+_release = os.environ.get("SABA_E2E_GUI_RELEASE_EXE", str(REPO / "target" / "release" / f"saba-chan-gui{EXE}"))
+RELEASE_GUI_EXE = None if _release.lower() in ("", "none") else Path(_release)
 
 
 @pytest.fixture(scope="module")
@@ -170,7 +172,7 @@ def test_gui_shows_daemon_down_and_reconnects_to_new_daemon(ko_mc, open_gui, dae
 
 def test_gui_stops_on_daemon_start_failure_and_offers_retry(sandbox, daemon_factory, open_gui, tmp_path):
     """데몬을 띄우지 못하면 메인 화면으로 넘어가지 않고 이유와 [다시 시도]·[그대로 열기]를 보인다 (프리뷰 P1-2, #74·#75)."""
-    if not RELEASE_GUI_EXE.exists():
+    if RELEASE_GUI_EXE is None or not RELEASE_GUI_EXE.exists():
         pytest.skip(f"배포 빌드 GUI가 없습니다: {RELEASE_GUI_EXE}")
     if not L["failed_hint"]:
         pytest.skip("이 GUI에는 데몬 기동 실패 화면이 없음")
