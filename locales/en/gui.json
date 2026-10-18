@@ -759,6 +759,8 @@
     "agent_stopped": "Off",
     "agent_start": "Turn on",
     "agent_stop": "Put to sleep",
+    "agent_wake": "Wake up",
+    "sleep_failed": "Couldn't change sleep on {{count}} server(s).",
     "add_server_title": "Add another Discord server",
     "add_server_desc": "Get a new code and type it in another Discord server to connect it to this PC as well.",
     "connection_info": "Connection details",

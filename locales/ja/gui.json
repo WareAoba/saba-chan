@@ -756,6 +756,8 @@
     "agent_stopped": "オフ",
     "agent_start": "オンにする",
     "agent_stop": "寝かせる",
+    "agent_wake": "起こす",
+    "sleep_failed": "{{count}}個のサーバーでスリープを切り替えられませんでした。",
     "add_server_title": "別のDiscordサーバーを追加",
     "add_server_desc": "新しいコードを受け取って別のDiscordサーバーで入力すると、そのサーバーもこのPCに接続されます。",
     "connection_info": "接続情報",
