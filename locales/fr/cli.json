@@ -182,6 +182,7 @@
   "exit": {
     "crash": "planté",
     "in_game_stop": "arrêté depuis le jeu",
+    "start_failed": "échec du démarrage",
     "restarting_in": "redémarrage dans {{secs}} s",
     "unknown_exit": "terminé (fermé ou tué)",
     "user_stop": "arrêté par vous"

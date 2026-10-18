@@ -681,6 +681,7 @@
     "exit_user_stop": "Detenido por ti",
     "exit_in_game_stop": "Detenido en el juego",
     "exit_crash": "Fallo",
+    "exit_start_failed": "No pudo iniciarse",
     "exit_unknown_exit": "Desconocido",
     "exit_restart_in": "Reiniciando en {{secs}} s",
     "restart": "Reiniciar",

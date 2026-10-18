@@ -314,6 +314,7 @@ impl ManagedProcess {
             stdin_available: true,
             exit: exit_slot,
             started_at: info.started_at,
+            reattached: false,
             working_dir: info.cwd.clone(),
             log_follower: false,
             runner_pid: Some(info.runner_pid),

@@ -681,6 +681,7 @@
     "exit_user_stop": "Остановлен вами",
     "exit_in_game_stop": "Остановлен из игры",
     "exit_crash": "Сбой",
+    "exit_start_failed": "Не удалось запустить",
     "exit_unknown_exit": "Неизвестно",
     "exit_restart_in": "Перезапуск через {{secs}} с",
     "restart": "Перезапустить",

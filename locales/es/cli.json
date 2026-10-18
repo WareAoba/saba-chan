@@ -182,6 +182,7 @@
   "exit": {
     "crash": "se bloqueó",
     "in_game_stop": "detenido desde el juego",
+    "start_failed": "no pudo iniciarse",
     "restarting_in": "reiniciando en {{secs}} s",
     "unknown_exit": "finalizado (cerrado o forzado)",
     "user_stop": "detenido por ti"
