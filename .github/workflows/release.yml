@@ -60,10 +60,12 @@ on:
 permissions:
   contents: write
 
-# 동일 릴리즈에 대한 동시 실행 방지 (짧은 시간에 여러 편집 시)
+# 동일 릴리즈에 대한 동시 실행 방지 (짧은 시간에 여러 편집 시).
+# 진행 중인 실행은 취소하지 않는다: R2 업로드와 릴레이 등록 사이에서 끊기면
+# 다시 실행해도 "이미 R2에 있음"으로 멈춰 그 버전을 손으로 정리해야 한다
 concurrency:
   group: release-${{ github.event.release.tag_name || github.event.inputs.tag_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   package-and-manifest:
@@ -138,8 +140,10 @@ jobs:
           fi
 
       - name: Refuse to overwrite an existing release
+        id: guard
         if: steps.r2.outputs.enabled == 'true'
         env:
+          RELEASE_ACTION: ${{ github.event.action }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
@@ -150,7 +154,14 @@ jobs:
             "${{ vars.RELAY_URL }}/v1/updates/manifest/$VERSION")
           case "$code" in
             404) ;;
-            200) echo "::error::Relay already has $VERSION; bump versions.toml"; exit 1 ;;
+            200)
+              # 발행 뒤 릴리즈를 고친 것(edited)이면 R2·릴레이는 그대로 두고 GitHub 에셋만 다시 만든다
+              if [ "$RELEASE_ACTION" = "edited" ]; then
+                echo "::notice::Relay already has $VERSION; release edited, skipping R2 publish"
+                echo "publish=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "::error::Relay already has $VERSION; bump versions.toml"; exit 1 ;;
             *) echo "::error::Relay check for $VERSION returned HTTP $code; cannot confirm it is new"; exit 1 ;;
           esac
           count=$(aws s3api list-objects-v2 --bucket "${{ vars.R2_BUCKET }}" \
@@ -160,10 +171,11 @@ jobs:
             echo "::error::R2 releases/$VERSION/ already has objects (KeyCount=$count)"
             exit 1
           fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
 
       # 모듈·익스텐션도 같은 릴리즈에 싣는다 (U9e). 둘 다 공개 저장소, main 기준
       - name: Checkout modules
-        if: steps.r2.outputs.enabled == 'true'
+        if: steps.guard.outputs.publish == 'true'
         uses: actions/checkout@v4
         with:
           repository: WareAoba/saba-chan-modules
@@ -171,7 +183,7 @@ jobs:
           path: addons/modules
 
       - name: Checkout extensions
-        if: steps.r2.outputs.enabled == 'true'
+        if: steps.guard.outputs.publish == 'true'
         uses: actions/checkout@v4
         with:
           repository: WareAoba/saba-chan-extensions
@@ -179,12 +191,12 @@ jobs:
           path: addons/extensions
 
       - name: Install Rust toolchain
-        if: steps.r2.outputs.enabled == 'true'
+        if: steps.guard.outputs.publish == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       # 선언하지 않은 능력을 쓰는 모듈·익스텐션은 싣지 않는다 (M12)
       - name: Audit modules and extensions
-        if: steps.r2.outputs.enabled == 'true'
+        if: steps.guard.outputs.publish == 'true'
         run: |
           mods=$(for d in addons/modules/*/; do [ -f "$d/module.toml" ] && echo "$d"; done)
           exts=$(for d in addons/extensions/*/; do [ -f "$d/manifest.json" ] && echo "$d"; done)
@@ -193,7 +205,7 @@ jobs:
           ./target/debug/saba-core extension audit $exts
 
       - name: Build and sign manifest
-        if: steps.r2.outputs.enabled == 'true'
+        if: steps.guard.outputs.publish == 'true'
         env:
           UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
         run: |
@@ -210,7 +222,7 @@ jobs:
           cat release-manifest.unsigned.json
 
       - name: Upload assets to R2
-        if: steps.r2.outputs.enabled == 'true'
+        if: steps.guard.outputs.publish == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -229,7 +241,7 @@ jobs:
           done < r2-uploads.txt
 
       - name: Register release with relay
-        if: steps.r2.outputs.enabled == 'true'
+        if: steps.guard.outputs.publish == 'true'
         env:
           RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
         run: |

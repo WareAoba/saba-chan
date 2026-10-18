@@ -6,6 +6,7 @@
   manifest  빌드된 에셋 폴더로 릴레이용 릴리즈 manifest(서명 전 JSON)를 만든다.
             서명은 `cargo run -p saba-chan-updater-lib --example release_signing -- sign`.
   registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
+            `release-notes/<version>.json`({언어: 본문})이 있으면 notes로 같이 싣는다.
 
 manifest에 --modules-repo / --extensions-repo를 주면 그 저장소의 모듈(module.toml이 있는
 폴더)과 익스텐션(manifest.json이 있는 폴더)을 zip으로 묶어 같은 manifest에 넣는다 (U9e).
@@ -332,6 +333,7 @@ def cmd_registration(args: argparse.Namespace) -> int:
         "rolloutPercent": args.rollout,
         "isCritical": args.critical,
         "signedManifest": json.dumps(signed, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+        "notes": load_notes(Path(args.notes) if args.notes else ROOT / "release-notes" / f"{release}.json"),
         "assets": [
             {
                 "component": key,
@@ -346,6 +348,23 @@ def cmd_registration(args: argparse.Namespace) -> int:
     }
     write_json(body, args.out)
     return 0
+
+
+NOTES_LANG = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
+
+
+def load_notes(path: Path) -> dict | None:
+    """릴리즈 노트 {언어: 본문}. 서명 밖의 표시용이라 파일이 없으면 None(노트 없음).
+    릴레이가 거부할 모양(`routes/updates.ts` parseNotes)이면 등록 전에 여기서 멈춘다."""
+    if not path.is_file():
+        return None
+    notes = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(notes, dict) or not notes or len(notes) > 20:
+        raise SystemExit(f"{path}: notes must be a non-empty object of at most 20 languages")
+    for lang, text in notes.items():
+        if not NOTES_LANG.match(lang) or not isinstance(text, str) or not text.strip() or len(text) > 8000:
+            raise SystemExit(f"{path}: invalid note for {lang!r}")
+    return notes
 
 
 def write_json(value: dict, out: str | None) -> None:
@@ -376,6 +395,7 @@ def main() -> int:
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
     r.add_argument("--rollout", type=int, default=100)
     r.add_argument("--critical", action="store_true")
+    r.add_argument("--notes", help="릴리즈 노트 JSON (기본: release-notes/<version>.json)")
     r.add_argument("--out")
     args = parser.parse_args()
 

@@ -132,7 +132,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 ### 1.6 다운로드 → apply → swap → rollback 흐름
 
-1. **확인**: `POST /api/updates/check`와 daemon의 주기 확인이 같은 `check_and_follow_up`을 거친다(`updates.rs:161, 209-244`) → `check_for_updates()` (`lib.rs:467-539`). 릴레이 manifest 하나로 모든 컴포넌트를 비교한다. Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:216-222`, `silent_apply_locales` 279). `auto_download`이면 나머지 업데이트도 미리 받아 두고 pending manifest를 저장한다(`updates.rs:225-241`). 적용은 언제나 사용자가 고른다.
+1. **확인**: `POST /api/updates/check`와 daemon의 주기 확인이 같은 `check_and_follow_up`을 거친다(`updates.rs:161, 209-244`) → `check_for_updates()` (`lib.rs:467-539`). 릴레이 manifest 하나로 모든 컴포넌트를 비교한다. 이미 받아 둔 파일이 있고 최신 버전이 그대로면 적용 대기 상태를 이어 간다(`keep_staged`, 다운로드 사이에 주기 확인이 끼어도 적용할 것이 사라지지 않는다). Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:216-222`, `silent_apply_locales` 279). `auto_download`이면 나머지 업데이트도 미리 받아 두고 pending manifest를 저장한다(`updates.rs:225-241`). 적용은 언제나 사용자가 고른다.
 2. **다운로드**: `POST /api/updates/download` → staging 디렉터리로 받는다.
    - Windows: `%APPDATA%/saba-chan/updates/`
    - Unix: `~/.cache/saba-chan/updates/` (`constants.rs:148-167`)
@@ -148,8 +148,8 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
    - Tauri 커맨드: `get_apply_mode`, `start_apply`, `get_preferred_language`, `get_theme`, `check_after_update`.
 6. **바이너리 swap** (`apply_binary_update` `apply.rs:94-181`, gui 184-230)
    - 대상 프로세스가 끝나기를 최대 15초 기다린다. 시간이 지나도 "attempting update anyway"로 그냥 진행한다.
-   - Windows는 실행 중인 `X.exe`를 `X.exe.old`로 rename하고(재시도 5회, `apply.rs:64-92`, 366-382) zip에서 새 파일을 쓴다. Linux는 알려진 바이너리만 `X.old`로 rename한다.
-   - `cleanup_old_files()`는 install_root 바로 안의 사바쨩 실행 파일 `*.exe.old`만 지운다. 적용 직후에 한 번, 아직 잡혀 있어 못 지운 것은 다음 `UpdateManager` 생성 때 지운다(`lib.rs:395-396, 807-810, 886-902`).
+   - Windows는 실행 중인 `X.exe`를 `X.exe.old`로 rename하고(재시도 5회, `apply.rs:64-92`, 366-382) zip에서 새 파일을 쓴다. `X.exe.old`가 아직 잡혀 있어 지울 수 없으면(지난 업데이트 뒤로 계속 도는 서버의 `saba-runner` 등) `X.exe.old.1`, `.old.2` … 중 비울 수 있는 이름을 쓴다(`apply.rs` `free_backup_path`). Linux는 알려진 바이너리만 `X.old`로 rename한다.
+   - `cleanup_old_files()`는 install_root 바로 안의 사바쨩 실행 파일 `*.exe.old`·`*.exe.old.<n>`만 지운다. 적용 직후에 한 번, 아직 잡혀 있어 못 지운 것은 다음 `UpdateManager` 생성 때 지운다(`lib.rs:395-396, 807-810, 886-902`).
 7. **rollback**
    - 모듈·익스텐션은 staging에 `*_backup` 복사본을 만들고, 교체 도중 실패하면 그 백업으로 되돌린다. 성공하면 백업을 지운다(`replace_dir`, `apply.rs:24-62`).
    - 바이너리는 압축 해제 도중 실패하면 비켜 둔 `.old`를 원래 이름으로 되돌린다(`apply.rs:142-171`). 적용이 끝난 뒤에 이전 판으로 돌아가는 경로는 없다.
@@ -232,7 +232,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 | 파일 | 트리거 | 내용 |
 |---|---|---|
 | `ci.yml` | push/PR to main, develop, tag `v*` | 하나뿐인 검사 워크플로(옛 `test.yml`은 중복이라 b0b5631에서 지웠다). Rust matrix(os): `versions.py check` → fixture 모듈 생성 → `cargo clippy --workspace -D warnings` → build → test. JS(Node 22): GUI `npm ci` → vitest → `vite build`, 그리고 updater/installer 스크립트 `node --check`(`ci.yml:122-124`). Tauri GUI 셸(`saba-chan-gui/src-tauri`)은 workspace 멤버라 Rust 단계의 clippy·build·test에 들어간다 |
-| `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 올린 raw exe/zip을 `gh release download` → `package-release.py`로 표준 zip 재패키징 → `locales.zip`. 그다음 R2 단계: 태그가 `versions.toml`의 release 버전과 다르면 실패 → 릴레이와 R2에 같은 버전이 있으면(확인 실패 포함) 실패 → modules·extensions 저장소 `main`을 checkout → `scripts/versions.py manifest`가 모듈·익스텐션 zip까지 묶어 manifest 생성 → `release_signing` 예제로 `saba-updater-v1` 키 서명(번들 공개키로 검증까지) → R2 `releases/<version>/` 업로드 → 릴레이 `POST /admin/releases` 등록(본문은 한글을 `\uXXXX`로 이스케이프한 ASCII JSON이고 `--data-binary`로 보낸다, `scripts/versions.py:351-354`, `release.yml:226-229`). 마지막에 `scripts/changelog.py`로 만든 릴리즈 노트를 붙인다(`release.yml:1-48, 120-233, 272-282`) |
+| `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 올린 raw exe/zip을 `gh release download` → `package-release.py`로 표준 zip 재패키징 → `locales.zip`. 그다음 R2 단계: 태그가 `versions.toml`의 release 버전과 다르면 실패 → 릴레이와 R2에 같은 버전이 있으면(확인 실패 포함) 실패(단 `edited` 이벤트로 다시 돈 실행은 릴레이에 이미 있으면 R2·릴레이 단계를 건너뛰고 GitHub 에셋만 다시 만든다. 같은 태그의 실행은 줄을 서고 진행 중인 것을 취소하지 않는다) → modules·extensions 저장소 `main`을 checkout → `scripts/versions.py manifest`가 모듈·익스텐션 zip까지 묶어 manifest 생성 → `release_signing` 예제로 `saba-updater-v1` 키 서명(번들 공개키로 검증까지) → R2 `releases/<version>/` 업로드 → 릴레이 `POST /admin/releases` 등록(`release-notes/<version>.json`이 있으면 그 `{언어: 본문}`을 `notes`로 싣는다. 없으면 노트 없이 등록하고, 나중에 `PATCH /admin/releases/:id`로 고칠 수 있다. 본문은 한글을 `\uXXXX`로 이스케이프한 ASCII JSON이고 `--data-binary`로 보낸다, `scripts/versions.py:351-354`, `release.yml:226-229`). 마지막에 `scripts/changelog.py`로 만든 릴리즈 노트를 붙인다(`release.yml:1-48, 120-233, 272-282`) |
 
 - GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
 - 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다. 버전은 `versions.toml`에서 읽는다(`build-windows.ps1:27-28`). GUI 화면을 `npm run build`(vite)로 먼저 만들고(`:59-72`, Tauri GUI가 `build/`를 exe에 넣는다), 이어서 `cargo build --release --workspace`(`:98`)가 데몬·CLI·업데이터·인스톨러와 함께 `target/release/saba-chan-gui.exe`를 만든다(`:127`).

@@ -147,11 +147,7 @@ impl UpdateManager {
                 if moved.iter().any(|(p, _)| same_path(p, out_path)) {
                     return Ok(());
                 }
-                let existed = out_path.exists();
-                Self::move_aside_binary(out_path)?;
-                if existed && !out_path.exists() {
-                    let exe_old = out_path.with_extension("exe.old");
-                    let backup = if exe_old.exists() { exe_old } else { out_path.with_extension("old") };
+                if let Some(backup) = Self::move_aside(out_path)? {
                     moved.push((out_path.to_path_buf(), backup));
                 }
                 Ok(())
@@ -399,19 +395,42 @@ impl UpdateManager {
     /// 덮어쓸 실행 파일을 `.old`로 옮긴다. Windows는 실행 중인 exe를 지울 수
     /// 없지만 이름은 바꿀 수 있다.
     pub(crate) fn move_aside_binary(out_path: &Path) -> Result<()> {
+        Self::move_aside(out_path).map(|_| ())
+    }
+
+    /// `move_aside_binary`와 같고, 옮긴 백업 경로를 돌려준다 (옮기지 않았으면 None)
+    pub(crate) fn move_aside(out_path: &Path) -> Result<Option<PathBuf>> {
         if !out_path.exists() {
-            return Ok(());
+            return Ok(None);
         }
         if out_path.extension().map(|e| e == "exe").unwrap_or(false) {
-            let backup = out_path.with_extension("exe.old");
+            let backup = Self::free_backup_path(out_path);
             if let Err(e) = Self::rename_with_retry(out_path, &backup, 5) {
                 tracing::error!("[Updater] Cannot replace {}: {}", out_path.display(), e);
                 anyhow::bail!("Cannot replace {}: {}. Is the process still running?", out_path.display(), e);
             }
+            return Ok(Some(backup));
         } else if cfg!(unix) && Self::is_known_binary(out_path) {
-            let _ = std::fs::rename(out_path, out_path.with_extension("old"));
+            let backup = out_path.with_extension("old");
+            if std::fs::rename(out_path, &backup).is_ok() {
+                return Ok(Some(backup));
+            }
         }
-        Ok(())
+        Ok(None)
+    }
+
+    /// `<exe>.old`가 아직 떠 있는 프로세스에 잡혀 지울 수 없으면(예: 지난 업데이트 뒤로
+    /// 계속 도는 서버의 saba-runner) `<exe>.old.1`, `.old.2` … 중 비울 수 있는 이름을 쓴다.
+    fn free_backup_path(out_path: &Path) -> PathBuf {
+        let usable = |p: &Path| !p.exists() || std::fs::remove_file(p).is_ok();
+        let first = out_path.with_extension("exe.old");
+        if usable(&first) {
+            return first;
+        }
+        (1..100)
+            .map(|n| out_path.with_extension(format!("exe.old.{n}")))
+            .find(|p| usable(p))
+            .unwrap_or(first)
     }
 
     /// zip/tar.gz(또는 단일 파일)을 대상 디렉터리에 압축 해제
