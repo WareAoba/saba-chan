@@ -59,6 +59,18 @@ export function fillCli(template, { server, values = {}, extra = {} }) {
     return rest.length ? `${line} ${rest.join(' ')}` : line;
 }
 
+/**
+ * 명령 화면 입력 한 줄의 CLI 등가: 아는 명령이면 `server run`(인자 해석은 데몬), 아니면 콘솔에 그대로 보내는 `server send`.
+ * 입력한 줄은 사용자가 쓴 그대로 붙인다(따옴표도 데몬과 같은 규칙으로 나뉜다).
+ */
+export function commandCli(serverName, line, commands = []) {
+    const text = line.trim();
+    if (!text) return null;
+    const name = text.split(/\s+/)[0].toLowerCase();
+    const known = commands.some((c) => c.name.toLowerCase() === name);
+    return `saba-chan-cli server ${known ? 'run' : 'send'} ${arg(serverName)} ${text}`;
+}
+
 /** 명령 한 줄과 복사 버튼 */
 export function CliText({ line }) {
     const { t } = useTranslation('gui');

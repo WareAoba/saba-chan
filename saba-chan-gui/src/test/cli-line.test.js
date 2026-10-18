@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CliLine, changedForCli, fillCli, resetCliCache } from '../components/CliLine';
+import { CliLine, changedForCli, commandCli, fillCli, resetCliCache } from '../components/CliLine';
 import { summaryValue } from '../components/shell/CommandPalette';
 
 const t = (k) => (k === 'palette.none' ? 'none' : k);
@@ -71,5 +71,23 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
         expect(screen.getByText('saba do instance.settings.set --server mc port=25566')).toBeInTheDocument();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Copy/i })));
         expect(writeText).toHaveBeenCalledWith('saba do instance.settings.set --server mc port=25566');
+    });
+});
+
+describe('명령 화면의 CLI 줄', () => {
+    const commands = [{ name: 'say' }, { name: 'kick' }];
+
+    it('아는 명령이면 server run 한 줄을 만든다 (서버 이름은 필요하면 따옴표)', () => {
+        expect(commandCli('My Server', 'say hello world', commands)).toBe(
+            "saba-chan-cli server run 'My Server' say hello world",
+        );
+        expect(commandCli('wild', 'kick', commands)).toBe('saba-chan-cli server run wild kick');
+    });
+
+    it('모르는 명령은 콘솔에 그대로 보내는 server send, 비었으면 줄이 없다', () => {
+        expect(commandCli('wild', 'gamemode creative', commands)).toBe(
+            'saba-chan-cli server send wild gamemode creative',
+        );
+        expect(commandCli('wild', '  ', commands)).toBeNull();
     });
 });
