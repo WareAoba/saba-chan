@@ -26,7 +26,12 @@ export function ExtensionConfigForm({ ext }) {
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null); // {tone, text}
 
-    if (!fields.length || typeof window.api?.extensionConfigGet !== 'function') return null;
+    if (
+        !fields.length ||
+        typeof window.api?.extensionConfigGet !== 'function' ||
+        typeof window.api?.extensionConfigSet !== 'function'
+    )
+        return null;
 
     const toggle = async () => {
         if (open) return setOpen(false);
