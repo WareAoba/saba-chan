@@ -146,6 +146,7 @@
     "updated": "Serveur mis à jour",
     "module_missing": "Module introuvable : {{error}}",
     "no_latest_version": "Impossible de trouver la dernière version du serveur",
+    "script_failed": "Le script d'installation s'est terminé par une erreur. Consultez le journal du daemon pour plus de détails",
     "backup_failed": "Échec de la sauvegarde avant mise à jour : {{reason}}"
   },
   "actions": {

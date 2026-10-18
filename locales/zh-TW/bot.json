@@ -146,6 +146,7 @@
     "updated": "伺服器已更新",
     "module_missing": "找不到模組: {{error}}",
     "no_latest_version": "無法取得最新的伺服器版本",
+    "script_failed": "安裝腳本發生錯誤而結束。詳細內容請查看常駐程式記錄",
     "backup_failed": "更新前備份失敗: {{reason}}"
   },
   "actions": {
