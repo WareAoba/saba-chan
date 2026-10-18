@@ -4,6 +4,7 @@ Windows 전용 시험은 `windows` 표시가 있고 리눅스에서는 건너뛴
 """
 
 import json
+import os
 import time
 
 import pytest
@@ -226,11 +227,23 @@ def test_clean_unverified_module_passes_the_scan_and_runs(sandbox, daemon_factor
 def test_unverified_module_script_is_scanned_by_amsi(sandbox, daemon_factory, record_property):
     """미검증 모듈의 스크립트는 띄우기 전에 AMSI로 본다.
     백신(Defender)이 켜져 있으면 표본을 찾아 실행하지 않고 malware_detected로 알린다.
-    AMSI 공급자가 없으면(Defender 꺼짐, 다른 백신) 검사를 건너뛰고 데몬 실행마다 한 번 경고한다. 어느 쪽인지는 보고에 남긴다."""
+    AMSI 공급자가 없으면(Defender 꺼짐, 다른 백신) 검사를 건너뛰고 데몬 실행마다 한 번 경고한다. 어느 쪽인지는 보고에 남긴다.
+
+    표본을 디스크에 쓰면 실시간 검사가 위협 알림을 띄운다(그리고 파일을 먼저 치워 AMSI까지 가지 않는다).
+    그래서 SABA_E2E_AMSI_SAMPLE=1일 때만 돈다. 평소 실행의 AMSI 경로는 위 깨끗한 모듈 시험이 본다."""
+    if os.environ.get("SABA_E2E_AMSI_SAMPLE") != "1":
+        pytest.skip("표본을 디스크에 쓰면 백신 알림이 뜬다. SABA_E2E_AMSI_SAMPLE=1일 때만 돈다")
     mod = sandbox.modules / "e2e-amsi"
     mod.mkdir()
     (mod / "module.toml").write_text(ESCAPE_TOML.replace("e2e-escape", "e2e-amsi"), encoding="utf-8")
     script = mod / "lifecycle.py"
+
+    def remove_sample():  # 시험 폴더에 표본을 남기지 않는다 (백신이 잡고 있으면 백신이 치운다)
+        try:
+            script.unlink(missing_ok=True)
+        except OSError:
+            pass
+
     try:
         script.write_text(f"# {AMSI_SAMPLE}\n" + AMSI_PY, encoding="utf-8")
         time.sleep(2)  # 실시간 검사가 파일을 치우는지 본다
@@ -238,7 +251,15 @@ def test_unverified_module_script_is_scanned_by_amsi(sandbox, daemon_factory, re
     except OSError:
         present = False
     if not present:
+        remove_sample()
         pytest.skip("실시간 검사가 표본 파일을 먼저 치움 (AMSI까지 가지 않음)")
+    try:
+        _amsi_sample_run(daemon_factory, record_property)
+    finally:
+        remove_sample()
+
+
+def _amsi_sample_run(daemon_factory, record_property):
     d = daemon_factory()
     r = d.api.get("/api/module/e2e-amsi/versions", timeout=120)
     text = r.text
