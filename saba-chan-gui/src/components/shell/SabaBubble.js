@@ -13,7 +13,7 @@ const LEAVE_MS = 320;
 /**
  * 말풍선을 띄울 순간을 고른다:
  * - 앱이 켜진 뒤 데몬을 손으로 깨우면 (꺼짐 → 실행): 졸린 사바쨩
- * - 서버가 넘어져 자동 복구를 기다리면: 복구 중 (서버가 다시 켜질 때까지, 최소 5초)
+ * - 서버가 넘어져 자동 복구를 기다리면: 복구 중 (다시 켜지거나 복구를 멈출 때까지, 최소 5초)
  * - 복구를 포기했거나 실패하면: 멈춤
  */
 function useBubbleTriggers() {
@@ -55,6 +55,9 @@ function useBubbleTriggers() {
                 } else {
                     bubble.show({ kind: 'stopped', text: tRef.current('saba.stopped', { name }), minMs: 6000 });
                 }
+            } else if (ev.type === 'instance.restarted' || ev.type === 'instance.restart_cancelled') {
+                // 다시 켰거나 사용자가 복구를 멈췄다: 최소 시간만 채우고 들어간다
+                bubble.release(d.instanceId);
             } else if (ev.type === 'instance.restart_failed') {
                 bubble.show({
                     kind: 'stopped',
