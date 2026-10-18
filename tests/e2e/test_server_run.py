@@ -35,10 +35,11 @@ def test_eula_not_accepted_blocks_start_until_accepted(daemon, fake_server):
     r = daemon.api.post(f"/api/instance/{iid}/start")
     assert r.status_code == 409, r.text
     body = r.json()
-    assert body["error_code"] == "preflight_failed" and body["issue_code"] == "EULA_NOT_ACCEPTED"
+    assert body["error_code"] == "agreement_required" and body["agreements"][0]["id"] == "eula"
+    assert body["agreements"][0]["url"].startswith("https://")
     assert daemon.server_status(iid) == "stopped"
 
-    daemon.api.ok("POST", f"/api/instance/{iid}/accept-eula")
+    daemon.api.ok("POST", f"/api/instance/{iid}/agreements", {"accept": ["eula"]})
     assert "eula=true" in (folder / "eula.txt").read_text()
     daemon.start_instance(iid)
     daemon.wait_console(iid, DONE)
@@ -302,3 +303,15 @@ def test_launch_preview_matches_actual_command(mc):
 
 def _ensure_error_text(exc: E2EError) -> str:
     return str(exc)
+
+
+def test_console_input_to_rest_only_server_is_refused(daemon, sandbox):
+    """콘솔 입력을 받지 않는 모듈(Palworld, REST 전용)에 /stdin을 보내면 보낸 척하지 않고 409 (프리뷰 P1, #74).
+    GUI는 이 답을 보고 명령 API로 넘어간다."""
+    folder = sandbox.servers / "pal"
+    folder.mkdir()
+    for ext in ("steamcmd", "ue4-ini"):
+        daemon.api.ok("POST", f"/api/extensions/{ext}/enable")
+    iid = daemon.api.ok("POST", "/api/instances", {"name": "pal", "module_name": "palworld", "working_dir": str(folder)})["id"]
+    r = daemon.api.post(f"/api/instance/{iid}/stdin", {"command": "say hi"})
+    assert r.status_code == 409 and r.json().get("error_code") == "stdin_not_supported", f"{r.status_code} {r.text}"

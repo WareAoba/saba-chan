@@ -84,6 +84,9 @@ pub struct InstallProgress {
     /// 설치 로그 경로 (경고가 있을 때만)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_path: Option<String>,
+    /// 실패 종류 (화면이 번역 문구를 고른다. `message`는 원문 그대로 함께 보인다)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
 }
 
 /// 사용 가능한 모듈 정보
@@ -263,6 +266,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             download_total: None,
             warnings: Vec::new(),
             log_path: None,
+            error_code: None,
         };
         app.emit("install:progress", &p).ok();
     };
@@ -281,6 +285,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             download_total: total,
             warnings: Vec::new(),
             log_path: None,
+            error_code: None,
         };
         app.emit("install:progress", &p).ok();
     };
@@ -297,8 +302,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = PathBuf::from(&config.install_path);
-    // 설치기가 새로 만들었거나 비어 있던 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳)
-    let dedicated = !install_dir.is_dir() || is_empty_dir(&install_dir) || install_dir.join(uninstall::INSTALL_MARKER).is_file();
+    // 설치기가 새로 만든 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳).
+    // 원래 있던 빈 폴더(드라이브 루트, 문서 폴더 등)는 나중에 다른 파일이 생길 수 있어 표시하지 않는다
+    let dedicated = !install_dir.is_dir() || install_dir.join(uninstall::INSTALL_MARKER).is_file();
     let _ = std::fs::create_dir_all(&install_dir); // 이미 있어도 OK
 
     // 실제 쓰기 가능 여부 테스트
@@ -320,6 +326,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             emit_error(
                 &app,
                 &state,
+                "elevation_failed",
                 &format!("Failed to create directory: {}", elev_err),
             )
             .await;
@@ -337,7 +344,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         None => match release::fetch_latest().await {
             Ok(m) => m,
             Err(e) => {
-                emit_error(&app, &state, &e).await;
+                emit_error(&app, &state, "fetch_failed", &e).await;
                 return;
             }
         },
@@ -349,6 +356,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             emit_error(
                 &app,
                 &state,
+                "installer_outdated",
                 &format!(
                     "This installer (v{}) is outdated. Version v{} or later is required. \
                      Please download the latest installer.",
@@ -402,13 +410,13 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         };
 
         if let Err(e) = release::download(info, &temp_file, progress_cb).await {
-            emit_error(&app, &state, &format!("Failed to download {}: {}", key, e)).await;
+            emit_error(&app, &state, "download_failed", &format!("Failed to download {}: {}", key, e)).await;
             return;
         }
 
         emit("extract", &format!("Extracting {}...", key), pct + 3);
         if let Err(e) = extract_zip(&temp_file, &release::target_dir(&install_dir, info)) {
-            emit_error(&app, &state, &format!("Failed to extract {}: {}", key, e)).await;
+            emit_error(&app, &state, "extract_failed", &format!("Failed to extract {}: {}", key, e)).await;
             return;
         }
         let _ = std::fs::remove_file(&temp_file);
@@ -558,6 +566,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         download_total: None,
         log_path: (!warnings.is_empty()).then(|| log_file_path().display().to_string()),
         warnings,
+        error_code: None,
     };
     state.write().await.progress = final_progress.clone();
     app.emit("install:progress", &final_progress).ok();
@@ -566,7 +575,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     let _ = std::fs::remove_dir_all(std::env::temp_dir().join("saba-chan-installer"));
 }
 
-async fn emit_error(app: &AppHandle, state: &SharedState, msg: &str) {
+async fn emit_error(app: &AppHandle, state: &SharedState, code: &str, msg: &str) {
+    // 안내하는 로그 파일에 실패 원인이 남도록 먼저 기록한다
+    tracing::error!("[{}] {}", code, msg);
     let p = InstallProgress {
         step: "error".into(),
         message: msg.to_string(),
@@ -578,7 +589,8 @@ async fn emit_error(app: &AppHandle, state: &SharedState, msg: &str) {
         download_received: None,
         download_total: None,
         warnings: Vec::new(),
-        log_path: None,
+        log_path: Some(log_file_path().display().to_string()),
+        error_code: Some(code.to_string()),
     };
     state.write().await.progress = p.clone();
     app.emit("install:progress", &p).ok();

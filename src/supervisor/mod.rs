@@ -389,7 +389,7 @@ impl Supervisor {
         Ok(out)
     }
 
-    /// 확인되지 않은 모듈의 실행 대상 검사 (Windows). 막으면 `action_required` 응답
+    /// 확인되지 않은 모듈의 실행 대상 검사 (Windows). 띄울 프로그램 경로를 돌려주고, 막으면 `action_required` 응답
     async fn guard_launch(
         sup: &tokio::sync::RwLock<Self>,
         instance: &crate::instance::ServerInstance,
@@ -398,10 +398,10 @@ impl Supervisor {
         args: &[String],
         working_dir: &str,
         env_vars: &mut Vec<(String, String)>,
-    ) -> Option<Value> {
+    ) -> Result<String, Value> {
         let (entry, roots) = {
             let s = sup.read().await;
-            let module = s.module_loader.get_module(module_name).ok()?;
+            let Ok(module) = s.module_loader.get_module(module_name) else { return Ok(program.to_string()) };
             let mut dirs = vec![s.instance_store.instance_dir(&instance.id)];
             // 사용자가 정한 서버 폴더 (모듈이 돌려준 working_dir은 믿지 않는다)
             dirs.extend(instance.working_dir.iter().map(std::path::PathBuf::from));
@@ -416,13 +416,10 @@ impl Supervisor {
                 .map(std::path::PathBuf::from).into_iter().collect();
             (module.entry_path(), crate::sandbox::LaunchRoots { dirs, runtimes })
         };
-        match crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await {
-            Ok(()) => None,
-            Err(blocked) => {
-                tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
-                Some(blocked.to_json(crate::sandbox::message(&blocked)))
-            }
-        }
+        crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {
+            tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
+            blocked.to_json(crate::sandbox::message(&blocked))
+        })
     }
 
     /// 해석된 실행 파일 경로를 config map에 삽입합니다.
@@ -693,10 +690,14 @@ impl Supervisor {
                                     dirs: std::iter::once(instance_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
                                     runtimes: Vec::new(),
                                 };
-                                if let Err(blocked) = crate::sandbox::guard_launch_for(crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
-                                    return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-                                }
+                                let program = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
+                                    Ok(program) => program,
+                                    Err(blocked) => {
+                                        tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
+                                        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
+                                    }
+                                };
+                                let program = program.as_str();
                                 let spawn_result = if interactive {
                                     tracing::info!("Spawning interactive IO bridge for '{}'", server_name);
                                     managed_process::ManagedProcess::spawn(
@@ -792,9 +793,11 @@ impl Supervisor {
             .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
             .unwrap_or_default();
 
-        if let Some(blocked) = Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
-            return Ok(blocked);
-        }
+        let program = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+            Ok(program) => program,
+            Err(blocked) => return Ok(blocked),
+        };
+        let program = program.as_str();
 
         // Spawn detached process (no stdin/stdout capture)
         let mut cmd = TokioCommand::new(program);
@@ -1432,10 +1435,14 @@ impl Supervisor {
                                     dirs: std::iter::once(inst_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
                                     runtimes: Vec::new(),
                                 };
-                                if let Err(blocked) = crate::sandbox::guard_launch_for(crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
-                                    return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-                                }
+                                let program = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
+                                    Ok(program) => program,
+                                    Err(blocked) => {
+                                        tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
+                                        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
+                                    }
+                                };
+                                let program = program.as_str();
                                 let spawn_result = if interactive {
                                     tracing::info!("Spawning interactive IO bridge for '{}'", instance.name);
                                     managed_process::ManagedProcess::spawn(
@@ -1532,9 +1539,11 @@ impl Supervisor {
             .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
             .unwrap_or_default();
 
-        if let Some(blocked) = Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
-            return Ok(blocked);
-        }
+        let program = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+            Ok(program) => program,
+            Err(blocked) => return Ok(blocked),
+        };
+        let program = program.as_str();
 
         // Sync REST credentials from module via credential_map or rest_credentials
         {
@@ -1675,20 +1684,23 @@ impl Supervisor {
     /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
     /// (RCON은 보안상 늘 꺼져 있다).
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
-        let Some(instance) = self.instance_store.get(instance_id) else { return false };
-        let module_has_stdin = self
-            .module_loader
-            .get_module(&instance.module_name)
-            .ok()
-            .and_then(|m| m.metadata.protocols_supported)
-            .is_some_and(|p| p.iter().any(|s| s == "stdin"));
-        if !module_has_stdin {
+        if !self.module_accepts_stdin(instance_id) {
             return false;
         }
         match self.managed_store.get(instance_id).await {
             Some(proc) => proc.is_running() && proc.is_stdin_available(),
             None => false,
         }
+    }
+
+    /// 인스턴스의 모듈이 콘솔 입력(`protocols.supported`에 "stdin")을 받는가
+    pub fn module_accepts_stdin(&self, instance_id: &str) -> bool {
+        let Some(instance) = self.instance_store.get(instance_id) else { return false };
+        self.module_loader
+            .get_module(&instance.module_name)
+            .ok()
+            .and_then(|m| m.metadata.protocols_supported)
+            .is_some_and(|p| p.iter().any(|s| s == "stdin"))
     }
 
     /// Send a command to a managed process's stdin
@@ -1787,37 +1799,48 @@ impl Supervisor {
 
     /// Run validation on an instance (via module's validate function)
     pub async fn validate_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str) -> Result<Value> {
-        let call = {
-            let s = sup.read().await;
-            let instance = s.instance_store.get(instance_id)
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
-
-            let module = s.module_loader.get_module(&instance.module_name)?;
-            let module_path = module.entry_path();
-
-            let mut cfg = serde_json::Map::new();
-            if let Some(exe_path) = &instance.executable_path {
-                // 시작 때와 같은 두 키 (모듈마다 읽는 키가 다르다)
-                cfg.insert("server_executable".to_string(), json!(exe_path));
-                cfg.insert("server_jar".to_string(), json!(exe_path));
-            }
-            if let Some(work_dir) = &instance.working_dir {
-                cfg.insert("working_dir".to_string(), json!(work_dir));
-            }
-            if let Some(port) = instance.port {
-                cfg.insert("port".to_string(), json!(port));
-            }
-            // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
-            cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
-            // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
-            Self::insert_instance_fields(&mut cfg, instance);
-            // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
-            cfg.insert("running".to_string(), json!(s.tracker.get_pid(instance_id).is_ok()));
-
-            crate::plugin::PluginCall::new(module_path, "validate", Value::Object(cfg))
-        };
+        let call = sup.read().await.instance_call(instance_id, "validate")?;
         let result = call.run().await?;
         Ok(result)
+    }
+
+    /// 모듈 `[[queries]]` 조회 (X-2): `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다
+    pub async fn query_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str, function: &str, args: serde_json::Map<String, Value>) -> Result<Value> {
+        let mut call = sup.read().await.instance_call(instance_id, function)?;
+        if let Value::Object(cfg) = &mut call.config {
+            cfg.insert("args".to_string(), Value::Object(args));
+        }
+        call.run().await
+    }
+
+    /// 인스턴스를 알아보는 config로 lifecycle 함수 호출을 만든다 (`validate`·조회가 같은 값을 받는다)
+    fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
+        let instance = self.instance_store.get(instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        let module = self.module_loader.get_module(&instance.module_name)?;
+        let module_path = module.entry_path();
+
+        let mut cfg = serde_json::Map::new();
+        if let Some(exe_path) = &instance.executable_path {
+            // 시작 때와 같은 두 키 (모듈마다 읽는 키가 다르다)
+            cfg.insert("server_executable".to_string(), json!(exe_path));
+            cfg.insert("server_jar".to_string(), json!(exe_path));
+        }
+        if let Some(work_dir) = &instance.working_dir {
+            cfg.insert("working_dir".to_string(), json!(work_dir));
+        }
+        if let Some(port) = instance.port {
+            cfg.insert("port".to_string(), json!(port));
+        }
+        // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
+        cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
+        // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
+        Self::insert_instance_fields(&mut cfg, instance);
+        // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
+        cfg.insert("running".to_string(), json!(self.tracker.get_pid(instance_id).is_ok()));
+
+        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)))
     }
 
     /// Read or update server.properties (via module's configure/read_properties)
@@ -1874,25 +1897,52 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// Accept EULA for an instance
-    pub async fn accept_eula(sup: &tokio::sync::RwLock<Self>, instance_id: &str) -> Result<Value> {
+    /// 모듈이 선언한 약관(`[[agreements]]`)과 이 인스턴스의 동의 여부. 이름은 모듈 locales `agreements.<id>` (없으면 id)
+    pub fn agreement_views(&self, instance: &crate::instance::ServerInstance, lang: &str) -> Vec<Value> {
+        let Ok(module) = self.module_loader.get_module(&instance.module_name) else { return Vec::new() };
+        if module.metadata.agreements.is_empty() {
+            return Vec::new();
+        }
+        let lang = crate::chat::i18n::normalize_language(lang);
+        let locales = [crate::actions::module_locale(&module, &lang), crate::actions::module_locale(&module, "en")];
+        module.metadata.agreements.iter().map(|a| {
+            let pointer = format!("/agreements/{}", a.id);
+            let label = locales.iter().find_map(|l| l.pointer(&pointer).and_then(Value::as_str)).unwrap_or(&a.id);
+            let at = instance.accepted_agreements.get(&a.id);
+            json!({ "id": a.id, "label": label, "url": a.url, "accepted": at.is_some(), "accepted_at": at })
+        }).collect()
+    }
+
+    /// 아직 동의하지 않은 약관 (켜기 전 점검)
+    pub fn missing_agreements(&self, instance_id: &str, lang: &str) -> Vec<Value> {
+        let Some(instance) = self.instance_store.get(instance_id) else { return Vec::new() };
+        self.agreement_views(instance, lang).into_iter().filter(|v| v["accepted"] == json!(false)).collect()
+    }
+
+    /// 약관 동의를 기록하고 모듈 `accept_agreements`(`accepted_agreements: [id]`)로 모듈 파일(eula.txt 등)을 쓰게 한다.
+    /// 모듈이 선언하지 않은 id면 Err(그 id)
+    pub async fn accept_agreements(sup: &tokio::sync::RwLock<Self>, instance_id: &str, ids: &[String]) -> Result<std::result::Result<Value, String>> {
         let call = {
-            let s = sup.read().await;
-            let instance = s.instance_store.get(instance_id)
+            let mut s = sup.write().await;
+            let mut instance = s.instance_store.get(instance_id).cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
-
             let module = s.module_loader.get_module(&instance.module_name)?;
-            let module_path = module.entry_path();
-
-            let mut cfg = serde_json::Map::new();
-            if let Some(work_dir) = &instance.working_dir {
-                cfg.insert("working_dir".to_string(), json!(work_dir));
+            if let Some(unknown) = ids.iter().find(|id| !module.metadata.agreements.iter().any(|a| &a.id == *id)) {
+                return Ok(Err(unknown.clone()));
             }
-
-            crate::plugin::PluginCall::new(module_path, "accept_eula", Value::Object(cfg))
+            let now = chrono::Utc::now().to_rfc3339();
+            for id in ids {
+                instance.accepted_agreements.entry(id.clone()).or_insert_with(|| now.clone());
+            }
+            let accepted: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+            s.instance_store.update(instance_id, instance)?;
+            let mut call = s.instance_call(instance_id, "accept_agreements")?;
+            if let Value::Object(cfg) = &mut call.config {
+                cfg.insert("accepted_agreements".to_string(), json!(accepted));
+            }
+            call
         };
-        let result = call.run().await?;
-        Ok(result)
+        Ok(Ok(call.run().await?))
     }
 
     /// Diagnose errors from instance logs
@@ -1981,7 +2031,7 @@ impl Supervisor {
         version: &str,
         install_dir: &str,
         jar_name: Option<&str>,
-        accept_eula: bool,
+        accepted_agreements: &[String],
         initial_settings: Option<Value>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
@@ -2019,7 +2069,7 @@ impl Supervisor {
         let mut config = json!({
             "version": version,
             "install_dir": install_dir,
-            "accept_eula": accept_eula,
+            "accepted_agreements": accepted_agreements,
         });
 
         if let Some(ref name) = effective_jar {
@@ -2900,6 +2950,7 @@ mod tests {
             backup_keep: None,
             extra_args: Vec::new(),
             memory_limit_mb: None,
+            accepted_agreements: Default::default(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -2958,6 +3009,7 @@ mod tests {
             backup_keep: None,
             extra_args: Vec::new(),
             memory_limit_mb: None,
+            accepted_agreements: Default::default(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

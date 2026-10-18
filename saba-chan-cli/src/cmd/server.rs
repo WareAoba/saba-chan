@@ -41,7 +41,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Validate { server } => validate(ctx, server.as_deref()).await,
         ServerCmd::Diagnose { server } => diagnose(ctx, server.as_deref()).await,
         ServerCmd::LaunchPreview { server, extra_args } => launch_preview(ctx, server.as_deref(), extra_args.as_deref()).await,
-        ServerCmd::AcceptEula { server } => accept_eula(ctx, server.as_deref()).await,
+        ServerCmd::Agree { server } => agree(ctx, server.as_deref()).await,
         ServerCmd::Reset { server } => reset(ctx, server.as_deref()).await,
         ServerCmd::Reorder { servers } => reorder(ctx, &servers).await,
     }
@@ -688,6 +688,10 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
             let r = match ctx.api.start(&sv.id).await {
                 Err(e) if api_code(&e) == Some("preflight_failed") => {
                     return checkup(ctx, Err(e), "", &sv.name).await;
+                }
+                Err(e) if api_code(&e) == Some("agreement_required") => {
+                    ctx.out.hint(&format!("saba-chan-cli server agree {}", shlex::try_quote(&sv.name).unwrap_or_else(|_| sv.name.as_str().into())));
+                    return Err(e);
                 }
                 r => r?,
             };
@@ -1458,13 +1462,10 @@ async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str, server: &str) -> Res
             println!("{} {}", console::style("✓").green().bold(), ok_msg);
         }
     });
-    // 약관 동의가 걸린 문제면 바로 풀 수 있는 명령을 알려 준다
-    let mentions_eula = value
-        .get("issues")
-        .is_some_and(|i| i.to_string().to_ascii_lowercase().contains("eula"));
-    if mentions_eula {
+    // 동의하지 않은 모듈 약관이 있으면 바로 풀 수 있는 명령을 알려 준다
+    if value.get("error_code").and_then(Value::as_str) == Some("agreement_required") {
         ctx.out.hint(&format!(
-            "saba-chan-cli server accept-eula {}",
+            "saba-chan-cli server agree {}",
             shlex::try_quote(server).unwrap_or_else(|_| server.into())
         ));
     }
@@ -1506,11 +1507,25 @@ async fn launch_preview(ctx: &Ctx, query: Option<&str>, extra: Option<&str>) -> 
     Ok(())
 }
 
-async fn accept_eula(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+/// 모듈이 선언한 약관 중 아직 동의하지 않은 것을 원문 주소와 함께 보여 주고, 확인을 받아 동의한다
+async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
-    ctx.ask.ensure(&t!("eula.confirm", name = sv.name))?;
-    let r = ctx.api.accept_eula(&sv.id).await?;
-    ctx.out.done(&t!("eula.done", name = sv.name), &r);
+    let inst = ctx.api.instance(&sv.id).await?;
+    let pending: Vec<&Value> = inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).collect();
+    if pending.is_empty() {
+        ctx.out.done(&t!("agree.none", name = sv.name), &json!({ "success": true, "agreements": inst["agreements"] }));
+        return Ok(());
+    }
+    if !ctx.out.json {
+        for a in &pending {
+            println!("  {}  {}", console::style(s(a, "label")).bold(), s(a, "url"));
+        }
+    }
+    let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
+    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+    let ids: Vec<String> = pending.iter().map(|a| s(a, "id").to_string()).collect();
+    let r = ctx.api.accept_agreements(&sv.id, &ids).await?;
+    ctx.out.done(&t!("agree.done", name = sv.name), &r);
     Ok(())
 }
 

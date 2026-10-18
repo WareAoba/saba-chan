@@ -50,10 +50,16 @@ pub async fn get_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    let language = state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
     let supervisor = state.supervisor.read().await;
 
     match supervisor.instance_store.get(&id) {
-        Some(instance) => (StatusCode::OK, Json(instance)).into_response(),
+        Some(instance) => {
+            // 모듈 약관과 동의 여부 (`agreements`)를 붙인다
+            let mut body = serde_json::to_value(instance).unwrap_or_default();
+            body["agreements"] = json!(supervisor.agreement_views(instance, &language));
+            (StatusCode::OK, Json(body)).into_response()
+        }
         None => {
             let error = json!({
                 "error": format!("Instance not found: {}", id),
@@ -117,6 +123,18 @@ pub async fn create_instance(
             if let Some(given) = payload.get("module_settings").and_then(|v| v.as_object()) {
                 chosen.extend(given.clone());
             }
+
+            // 만들 때 동의한 약관 (`[[agreements]]` id). 이 PC에서만 받는다
+            let accepted = match super::managed::requested_agreements(&payload, "accept_agreements") {
+                Ok(ids) => ids,
+                Err(resp) => return *resp,
+            };
+            if let Some(unknown) = accepted.iter().find(|id| !loaded_module.metadata.agreements.iter().any(|a| &a.id == *id)) {
+                let error = json!({ "error": format!("Module '{}' has no agreement '{}'", module, unknown), "error_code": "invalid_format", "fields": [{"field": "accept_agreements"}] });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
+            let now = chrono::Utc::now().to_rfc3339();
+            instance.accepted_agreements = accepted.into_iter().map(|id| (id, now.clone())).collect();
 
             // 만들 때 고른 설정 (예: 마인크래프트 서버 종류 — 설치할 jar가 달라진다).
             // 모듈이 선언한 이름만, select는 고를 수 있는 값만 받는다
@@ -355,6 +373,7 @@ pub async fn create_instance(
                         let id_done = id.clone();
                         // install_server가 보는 인스턴스 설정 (서버 종류처럼 받을 파일을 바꾸는 값)
                         let install_settings = instance.module_settings.clone();
+                        let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
@@ -426,7 +445,7 @@ pub async fn create_instance(
 
                                 let mut config = serde_json::json!({
                                     "install_dir": &install_dir_str,
-                                    "accept_eula": true,
+                                    "accepted_agreements": &accepted_agreements,
                                     "settings": &install_settings,
                                 });
                                 if let Some(ref ver) = version {
@@ -608,6 +627,14 @@ pub async fn create_instance(
                     }
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
                     let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
+                    // 가져온 서버는 설치를 거치지 않으므로, 만들 때 동의한 약관을 모듈이 지금 반영한다 (예: eula.txt)
+                    if !instance.accepted_agreements.is_empty() {
+                        let ids: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+                        match crate::supervisor::Supervisor::accept_agreements(&state.supervisor, &id, &ids).await {
+                            Ok(Ok(result)) if result.get("success").and_then(|v| v.as_bool()) != Some(false) => {}
+                            other => tracing::warn!("Migration: module did not apply agreements for '{}': {:?}", instance_name, other),
+                        }
+                    }
                     // 모듈이 판정한 것(서버 종류, 설치된 플러그인 등)을 그대로 돌려준다
                     let mut response = json!({ "success": true, "id": id });
                     if let Some(detected) = detected {
@@ -1429,6 +1456,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
     let install_settings = instance.module_settings.clone();
+    let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
 
     // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
     tracker.take_creating(&instance_name);
@@ -1504,7 +1532,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
         let result = {
             let config = serde_json::json!({
                 "install_dir": &install_dir_str,
-                "accept_eula": true,
+                "accepted_agreements": &accepted_agreements,
                 "settings": &install_settings,
             });
 

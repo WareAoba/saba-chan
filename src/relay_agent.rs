@@ -160,6 +160,12 @@ impl RelayAgent {
 }
 
 /// 데몬 기동 시: 이 노드가 페어링돼 있으면(노드 토큰 존재) 에이전트를 띄운다
+/// 새 토큰을 저장한 뒤: 돌던 세션을 멈추고 새 토큰으로 다시 연결한다 (페어링을 마치면 바로 디스코드 명령을 받게)
+pub async fn restart(server: &IPCServer) {
+    server.relay_agent.stop();
+    auto_start(server).await;
+}
+
 pub async fn auto_start(server: &IPCServer) {
     if let Err(e) = server.relay_agent.start(server.clone()).await {
         tracing::info!("[RelayAgent] not started: {}", e);
@@ -325,7 +331,8 @@ impl Session {
             meta["language"] = Value::String(language);
         }
         // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
-        let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages());
+        let loaded = self.server.supervisor.read().await.list_modules().unwrap_or_default();
+        let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages(), &loaded);
         meta["actions"] = Value::Array(actions);
         if truncated {
             meta["actionsTruncated"] = Value::Bool(true);

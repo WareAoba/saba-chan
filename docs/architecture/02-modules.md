@@ -189,6 +189,31 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 
 #### `[[presets]]` (`ModulePreset`)
 서버를 만들 때 고르는 추천 설정 묶음(예: "친구용 소규모", "하드코어"). `id`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `[presets.settings]`(`[[settings.fields]]` 이름 → 값). 값은 그 설정의 규칙(형식·범위·select 선택지)을 따라야 하고, `password`·`file`·`path` 형식 설정은 넣지 못한다. 어기면 스키마 v1 모듈은 로드에 실패한다. 표시 문구는 모듈 locales의 `presets.<id>.label`·`description`이 덮는다. `GET /api/modules`의 각 모듈 `presets`, heartbeat `modules[].presets`(`{id, label}`만)에 실리고, `POST /api/instances`의 `preset`으로 고른다(01 §`POST /api/instances`). CLI는 `server add --preset <id>`(주지 않으면 새 서버일 때 묻는다), `module info`가 id를 보여 준다.
+
+#### `[[queries]]` (`QueryToml` → `ModuleQuery`)
+읽기 전용 조회(예: 접속자 목록). 액션 `server.query:<name>`(`kind=query`, risk `safe`, 모든 표면)이 되어 GUI·CLI·디스코드·챗봇 도구로 쓰인다(01 §액션 카탈로그). 키: `name`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `function`(lifecycle.py `FUNCTIONS`의 함수 이름, Python 식별자), `inputs`(`[[commands.fields]]`의 입력과 같은 모양: `name`·`type`·`required`·`label`·`placeholder`·`default`·`min`·`max`·`options`). 로드 때 검사: 이름 형식·중복, `function`이 식별자인지, 데몬이 정해진 뜻으로 부르며 상태를 바꾸는 함수(`start`·`stop`·`command`·`configure`·`get_launch_command`·`import_settings`·`install_server`·`reset_properties`·`reset_server`·`accept_agreements`)가 아닌지, 입력 이름 형식·중복, 입력 `type`이 `text`(기본)·`number`·`select`인지, `select`에 `options`가 있는지, `min ≤ max`. 어기면 스키마 v1 모듈은 로드에 실패하고, `schema_version`이 없는 모듈은 경고만 남기되 `[[queries]]`를 모두 끈다. 표시 문구는 모듈 locales의 `queries.<name>.label`·`description`이 덮는다(없으면 `label`·`description`, 그것도 없으면 `name`). `GET /api/modules`의 각 모듈 `queries`에 실린다.
+
+```toml
+[[queries]]
+name = "players"
+label = "접속자 목록"
+description = "지금 접속한 플레이어"
+function = "list_players"
+inputs = [{ name = "limit", type = "number", min = 1, max = 100 }]
+```
+
+#### `[[agreements]]` (`ModuleAgreement`)
+서버를 켜기 전에 사용자가 원문을 읽고 동의해야 하는 약관(예: 게임 EULA). `id`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `url`(https 원문). 이름은 모듈 locales `agreements.<id>`(없으면 id). 데몬은 게임 이름을 보지 않는다.
+
+```toml
+[[agreements]]
+id = "eula"
+url = "https://aka.ms/MinecraftEULA"
+```
+
+- 동의는 인스턴스 레코드 `accepted_agreements`(`{id: 동의 시각 RFC3339}`)에 남는다. 만들 때 `POST /api/instances`의 `accept_agreements:[id]`, 만든 뒤 `POST /api/instance/:id/agreements {accept:[id]}`로 받는다. 원격(디스코드·챗봇)에서 온 동의는 403 `agreement_local_only`(사람이 직접 원문을 보고 동의해야 하는 법적 동의).
+- 선언된 약관을 다 동의하지 않으면 켜기 전 점검이 409 `agreement_required`(`agreements:[{id, label, url, accepted, accepted_at}]`)로 막는다(01 문서 시작 라우트). 파일 내용(예: eula.txt)으로 동의를 추정하지 않는다.
+- 설치·재설치·업데이트 때 모듈은 `accepted_agreements:[id]`를 받고, 그 안에 자기 id가 있을 때만 자기 파일에 동의를 쓴다. 동의를 받으면 데몬이 lifecycle `accept_agreements`를 부른다(§2.3).
 ---
 
 ## 2. lifecycle.py 프로토콜
@@ -211,11 +236,12 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
   - 스크립트(`.py`·`.pth`·`.ps1`·`.bat` 등)는 AMSI(등록된 백신)로, 네이티브 코드와 묶음(`.pyd`·`.dll`·`.so`·`.exe`·`.zip`·`.egg`·`.whl`)은 Defender `MpCmdRun`으로 본다. `__pycache__`는 건너뛴다.
   - 찾으면 실행하지 않고 `{success:false, action_required:"malware_detected", message, file}`를 돌려준다.
   - `__pycache__` 밖에 `.pyc`·`.pyo`가 있으면 원본 없이 실행될 수 있어 `action_required:"unscannable_file"`로 막는다.
-  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다.
-  - 검사기가 없으면 그 검사를 건너뛰고 로그만 남긴다.
+  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다. 깨끗하다는 결과는 7일이 지나면 다시 검사한다(찾았다는 결과는 그대로 둔다). 파일 sha256은 데몬 실행 동안 경로·크기·수정 시각으로 기억해, 셋이 같으면 다시 읽지 않는다(설치 기록과 비교하는 신뢰 표시도 같다). 옛 형식 결과 파일은 찾았다는 결과만 그대로 옮긴다. 빈 파일은 검사할 내용이 없어 넘긴다.
+  - 검사기가 없으면(AMSI 공급자, `MpCmdRun`) 그 검사를 건너뛰고 데몬 실행마다 한 번 경고를 남긴다.
+  - 파일을 읽지 못하거나 한 파일의 검사가 실패하면(검사 스레드가 죽은 경우 포함) 실행하지 않고 `action_required:"scan_failed"`(`file`, `detail`)를 돌려준다. 나머지 파일 검사는 계속한다.
   - 검사를 통과하면 Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
-    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다). 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 재분석 지점이면 실행을 멈춘다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
+    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 표시를 지원하지 않는 볼륨이라 붙이지 못하면 경고만 남기고 계속한다(그 폴더 쓰기가 안 될 수 있다). 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다). 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 재분석 지점이면 실행을 멈춘다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
     - 환경: `SABA_TOKEN_PATH`를 뺀다. `PYTHONPYCACHEPREFIX`는 `pycache-sandbox/<꼬리표>`, `TEMP`·`TMP`는 `sandbox-temp/<꼬리표>`.
     - 시간 초과면 Job째 끝낸다.
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.
@@ -276,12 +302,13 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | `reset_server` | `POST /server/reset` | 위와 같음 |
 | `import_settings` | 마이그레이션 인스턴스 생성 `instance.rs:527-531`, `GET /api/instance/:id/settings/live` (`managed.rs:150-176`) | 마이그레이션은 `working_dir`만, live는 위와 같음 |
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
-| `accept_eula` | `POST /accept-eula` | `working_dir` |
+| `accept_agreements` | `POST /api/instance/:id/agreements` (동의를 기록한 뒤) | `validate`와 같은 config + `accepted_agreements:[id]`(지금까지 동의한 전부). 모듈은 자기 파일에 동의를 쓴다(예: minecraft eula.txt). 함수가 없으면 기록만 남는다 |
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1704-1712`) |
 | `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식) | `include_snapshots`, `page`, `per_page` 또는 `{}` |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
-| `install_server` | `POST /api/module/:name/install`(120초), 프로비저닝·업데이트(1800초) | `version`, `install_dir`, `accept_eula`, `jar_name`, `initial_settings` 등 |
+| `install_server` | `POST /api/module/:name/install`(120초), 프로비저닝·업데이트(1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `jar_name`, `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:1909-1958` | `install_dir`, `jar_name`(**기본값 `"server.jar"` 하드코딩**, `mod.rs:1890-1893`) |
+| `[[queries]]`의 `function` | `POST /api/instance/:id/query/:name`(액션 `server.query:<name>`) → `Supervisor::query_instance` | `validate`와 같은 config(`Supervisor::instance_call`) + `args{입력 이름: 값}`(명령 입력과 같이 검사·기본값 채움, 숫자는 숫자로). 돌려줄 것: `{"success": true, "data": <JSON>}` 또는 실패 `{"success": false, "message": "..."}`. `data`가 없으면 `success`·`message`를 뺀 나머지를 data로 본다. 읽기만 해야 한다(감사에 남지 않고 챗봇·일반 사용자도 부른다) |
 | `backup_paths` | 백업 때 `[backup] hook = true`인 모듈 (`D:src/ipc/handlers/backup.rs:91-96`) | `working_dir`, `extension_data`, 인스턴스 값 |
 
 모듈의 `start` 함수는 모든 모듈에서 지워졌다(FUNCTIONS에 없음). non-managed 모드도 `get_launch_command`로 데몬이 직접 spawn한다 (`mod.rs:580-652`).
@@ -308,7 +335,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | read_properties (호출) | ✔ | ✔ | ✔ | – |
 | reset_properties (호출) | ✔ | ✔ | – | – |
 | reset_server (호출) | ✔ | ✔ | ✔ | – |
-| accept_eula (호출) | ✔ | ✔(no-op) | – | – |
+| accept_agreements (호출) | ✔ | – | – | – |
 | diagnose_log (호출) | ✔ | ✔ | ✔ | ✔(stub) |
 | list_versions (호출) | ✔ | ✔ | – | – |
 | get_version_details (호출) | ✔ | ✔ | – | – |
@@ -353,12 +380,13 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - `requires_extensions` 검증은 **non-managed 경로에만 있다** (`mod.rs:392-449`). managed 경로는 `[module.dependencies]`의 `ext-<id>` 검사만 한다.
 - 두 경로 모두 인스턴스 ID로 추적하므로 모니터·포트 충돌 검사·정지·상태가 같은 키를 쓴다.
 - **확인되지 않은 모듈의 실행 대상 (Windows)**: `get_launch_command`가 돌려준 `program`은 두 경로 모두 띄우기 전에 검사한다(`Supervisor::guard_launch`, `sandbox::check_launch`). 신뢰 표시가 `verified`인 모듈은 검사하지 않는다.
-  - 허용: 실제 경로(링크·`..`를 푼 것)가 인스턴스 폴더나 사용자가 정한 서버 폴더(`working_dir`) 안에 있는 파일. 모듈이 돌려준 `working_dir`은 기준으로 쓰지 않는다.
+  - 허용: 실제 경로(링크·`..`를 푼 것)가 인스턴스 폴더나 사용자가 정한 서버 폴더(`working_dir`) 안에 있는 파일. 모듈이 돌려준 `working_dir`은 허용 위치로 쓰지 않는다.
+  - 경로가 있는 상대 `program`은 데몬 폴더가 아니라 모듈이 돌려준 `working_dir` 기준으로 풀어 검사하고, 검사한 그 절대 경로로 띄운다.
   - 허용: 경로 없는 `java`·`javaw`, 그리고 설정 `java_path`가 가리키는 java. `java_path`가 모듈 `module.toml`의 기본값과 같으면 사용자가 정한 것이 아니므로 인정하지 않는다.
   - 모듈이 돌려준 `env_vars`의 `PATH`·`PATHEXT`(대소문자 무시)는 버린다. 경로 없는 `java`는 데몬의 PATH로 찾는다.
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
-  - 통과한 절대 경로 실행 파일과, 실행 인자가 가리키는 있는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준. 예: `-jar server.jar`)은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고, MpCmdRun이 없으면 건너뛴다.
+  - 통과한 절대 경로 실행 파일과, 실행 인자가 가리키는 있는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준. 예: `-jar server.jar`)은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고(위 §2.1과 같은 7일·크기·수정 시각 규칙), MpCmdRun이 없으면 건너뛴다. 파일을 읽지 못하면 `scan_failed`로 막는다.
 
 **잠금**: `start_managed_handler`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:19-58`, `mod.rs:1093-1101`, C12).
 
@@ -444,7 +472,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
 | 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
-| 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
+| 기타 | `EulaManager`(accept_agreements), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:195-207`) |
 
@@ -460,7 +488,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 명령 | 10개, 전부 `method="rest"`(`/v1/api/...`): announce, info, players, metrics, settings, save, shutdown, kick, ban, unban. `resolve_player_id`가 닉네임을 SteamID로 해석한다 (`:112`). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
 | 의존성 | `extensions.ue4_ini`는 `try`로 불러온다(`:33-36`). 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 (`:742-757, 1494-1502`) |
 | 미등록 | `get_installed_version` |
-| 기타 | `accept_eula`는 no-op, `list_versions`는 Steam 단일 버전 |
+| 기타 | `list_versions`는 Steam 단일 버전 |
 
 ### 4.3 zomboid (`M:zomboid/`, lifecycle 1,492줄, toml 1,554줄)
 
@@ -472,7 +500,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 설정 | `IniManager`가 `Zomboid/Server/<servername>.ini`를 다룬다. `_INI_KEY_MAP`(saba 키 → INI 키). settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개, 전부 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
 | 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 force가 아니면 콘솔 `save`→`quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 강제 종료한다. PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
-| 미구현 | `accept_eula`, `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
+| 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
 ### 4.4 __example (`M:__example/`)
 
@@ -486,7 +514,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 
 ### 4.5 i18n과 locales
 
-- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `settings`, `commands`, `presets`, `errors`, `messages`, `rcon` 등이다(minecraft ko.json 기준).
+- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `settings`, `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`은 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
 - 인터페이스 측: `GET /api/module/:name/locales`가 `<modules_dir>/<name>/locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs:192-226`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다. 이 경로 계산은 `module.path`가 아니라 **모듈 이름으로 만든 경로**라서, ZIP 모듈(`.extracted/<name>`)이나 폴더명이 name과 다른 모듈에서는 locales가 비어 나온다.
 
 ---
@@ -574,7 +602,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:184-193`, `cmd/module.rs:99-100`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:394-414`) | — |
 | 6 | `D:src/ipc/handlers/instance.rs:991-1017` | 설정 동기화 제외 목록에 `java_path`, `ram`, `use_aikar_flags`(Minecraft 전용 키)와 `managed_start`, `graceful_stop`이 **데몬에 하드코딩**돼 있다. `rcon_port`·`rcon_password`·`enable_rcon`은 게임 파일로 넘기지 않으려고 뺀다. 주석·로그는 "server.properties"(Minecraft 파일명) | 게임별 지식이 데몬에 있음 (모듈 매뉴얼 소관) |
-| 7 | `D:src/supervisor/mod.rs:277, 1592, 1890-1893, 1614, 1668` | `server_jar` 키 주입, `jar_name="server.jar"` 기본값, `accept_eula`/`manage_properties`라는 Minecraft식 명명이 데몬 공용 API에 들어가 있음 | 동일 |
+| 7 | `D:src/supervisor/mod.rs:277, 1592, 1890-1893, 1614, 1668` | `server_jar` 키 주입, `jar_name="server.jar"` 기본값, `manage_properties`라는 Minecraft식 명명이 데몬 공용 API에 들어가 있음 | 동일 |
 | 8 | `saba-chan-gui/src/components/ServerSettingsModal.js:354,363` (`module === 'palworld'`), `useServerSettings.js:256` ("Install Minecraft …" 문자열) | GUI가 특정 게임 이름으로 분기 | 인터페이스에 게임 지식 |
 | 9 | `M:palworld/lifecycle.py:33-36`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs:85-97`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). ~~인증 없이 호출하고 포트도 하드코딩~~ → 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |

@@ -778,10 +778,13 @@ fn remove_install_dir(dir: &PathBuf) -> anyhow::Result<()> {
     }
     tracing::info!("[Uninstall] {:?} is not a dedicated install folder: removing Saba-chan files only", dir);
     for entry in std::fs::read_dir(dir)?.flatten() {
-        if !is_installed_entry(&entry.file_name().to_string_lossy()) {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // 폴더는 locales만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
+        let ours = if path.is_dir() { name.eq_ignore_ascii_case("locales") } else { is_installed_entry(&name) };
+        if !ours {
             continue;
         }
-        let path = entry.path();
         if path.is_dir() {
             let _ = remove_dir_robust(&path);
         } else {
@@ -1079,13 +1082,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("locales")).unwrap();
         std::fs::create_dir_all(dir.join("MyGame")).unwrap();
+        std::fs::create_dir_all(dir.join("Saba-chan")).unwrap();
         for f in ["saba-core.exe", "saba-chan-gui.exe.old", "i18n.py", "notes.txt"] {
             std::fs::write(dir.join(f), b"").unwrap();
         }
         remove_install_dir(&dir).unwrap();
         let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         left.sort();
-        assert_eq!(left, ["MyGame", "notes.txt"]);
+        assert_eq!(left, ["MyGame", "Saba-chan", "notes.txt"]);
 
         // 전용 표시가 있으면 폴더째 지운다
         std::fs::write(dir.join(INSTALL_MARKER), b"").unwrap();

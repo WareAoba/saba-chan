@@ -1066,6 +1066,7 @@
       "malware_detected": "Antivirus flagged a file of this unverified component: {{file}}",
       "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}}",
       "unscannable_file": "This unverified component has compiled files without their source, so it can't be scanned: {{file}}",
+      "scan_failed": "Couldn't scan a file of this unverified component, so it wasn't run: {{file}}",
       "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run."
     },
     "sandbox": {

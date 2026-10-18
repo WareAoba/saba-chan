@@ -21,7 +21,7 @@
     "starting": "启动守护程序...",
     "started": "守护程序已启动",
     "preparing": "准备守护程序...（超时）",
-    "failed_to_start": "启动守护程序失败 - 请手动运行",
+    "failed_to_start": "无法启动守护进程",
     "check_warning": "检查守护程序时出现警告：{{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "端口冲突 — {{name}} 已停止",
     "force_stop_body": "{{stopped}} 因端口 {{port}} 与 {{existing}} 冲突而被强制停止"
+  },
+  "init": {
+    "start": "正在初始化...",
+    "modules": "正在准备模块列表...",
+    "instances": "正在准备服务器列表...",
+    "ready": "准备就绪"
   }
 }

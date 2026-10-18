@@ -21,7 +21,7 @@
     "starting": "Iniciando demonio...",
     "started": "Demonio iniciado",
     "preparing": "Preparando demonio... (agotado el tiempo)",
-    "failed_to_start": "Error al iniciar el demonio - por favor ejecute manualmente",
+    "failed_to_start": "No se pudo iniciar el daemon",
     "check_warning": "Advertencia al verificar demonio: {{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "Conflicto de puerto — {{name}} detenido",
     "force_stop_body": "{{stopped}} fue detenido forzosamente porque el puerto {{port}} entra en conflicto con {{existing}}"
+  },
+  "init": {
+    "start": "Iniciando...",
+    "modules": "Preparando módulos...",
+    "instances": "Preparando servidores...",
+    "ready": "Listo"
   }
 }

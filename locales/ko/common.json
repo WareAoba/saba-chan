@@ -21,7 +21,7 @@
     "starting": "데몬을 시작합니다...",
     "started": "데몬 시작 완료",
     "preparing": "데몬 준비 중... (타임아웃)",
-    "failed_to_start": "❌ 데몬 시작 실패 - 직접 실행해주세요",
+    "failed_to_start": "데몬을 시작하지 못했습니다",
     "check_warning": "데몬 확인 중 경고: {{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "포트 충돌 — {{name}} 정지됨",
     "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 정지되었습니다"
+  },
+  "init": {
+    "start": "초기화를 시작합니다...",
+    "modules": "모듈 목록 준비 중...",
+    "instances": "서버 목록 준비 중...",
+    "ready": "준비 완료"
   }
 }

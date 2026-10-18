@@ -196,7 +196,7 @@ fn trust_at(records: &Path, official: &Path, component_key: &str, dir: &Path) ->
     let Some(files) = records.get(component_key) else {
         return Trust::Unverified;
     };
-    if verify_component(component_key, files).status != IntegrityStatus::Verified || has_unrecorded_code(dir, files) {
+    if verify_component(component_key, files, cached_sha256).status != IntegrityStatus::Verified || has_unrecorded_code(dir, files) {
         return Trust::Modified;
     }
     Trust::Verified
@@ -239,7 +239,7 @@ pub fn verify_installed() -> IntegrityReport {
 pub fn verify_records(records: &InstalledFiles) -> IntegrityReport {
     let mut components: Vec<ComponentIntegrity> = records
         .iter()
-        .map(|(key, files)| verify_component(key, files))
+        .map(|(key, files)| verify_component(key, files, compute_sha256))
         .collect();
     components.sort_by_key(|c| component_sort_key(&c.component));
 
@@ -269,7 +269,8 @@ pub fn verify_records(records: &InstalledFiles) -> IntegrityReport {
     }
 }
 
-fn verify_component(key: &str, files: &BTreeMap<String, String>) -> ComponentIntegrity {
+/// `hash`: 전체 검사는 매번 새로 계산하고(`compute_sha256`), 신뢰 표시는 바뀌지 않은 파일의 값을 다시 쓴다(`cached_sha256`)
+fn verify_component(key: &str, files: &BTreeMap<String, String>, hash: fn(&Path) -> Result<String, String>) -> ComponentIntegrity {
     let result = |status, expected: Option<&String>, actual: Option<String>, file: Option<&String>, message: String| {
         ComponentIntegrity {
             component: key.to_string(),
@@ -291,7 +292,7 @@ fn verify_component(key: &str, files: &BTreeMap<String, String>) -> ComponentInt
             });
             continue;
         }
-        match compute_sha256(Path::new(file)) {
+        match hash(Path::new(file)) {
             Ok(actual) if actual.eq_ignore_ascii_case(expected) => {}
             Ok(actual) => {
                 return result(IntegrityStatus::Tampered, Some(expected), Some(actual), Some(file), "file changed since install".into());
@@ -334,6 +335,39 @@ pub fn compute_sha256(path: &Path) -> Result<String, String> {
     Ok(hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect())
 }
 
+/// 파일 크기·수정 시각 (같으면 내용이 그대로라고 본다)
+fn file_stamp(path: &Path) -> Option<(u64, std::time::SystemTime)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
+}
+
+/// 방금 고친 파일은 같은 수정 시각 안에 다시 바뀔 수 있어 저장하지 않는다
+const RACY_STAMP: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// `compute_sha256`과 같지만, 경로·크기·수정 시각이 지난번과 같으면 다시 읽지 않는다 (데몬 실행 동안만 기억한다).
+/// 목록 조회·Python 실행마다 설치한 파일을 모두 해시하지 않게 한다
+pub fn cached_sha256(path: &Path) -> Result<String, String> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    type Cache = Mutex<HashMap<PathBuf, ((u64, std::time::SystemTime), String)>>;
+    static CACHE: OnceLock<Cache> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    let before = file_stamp(path);
+    if let Some(stamp) = before {
+        let hit = cache.lock().unwrap_or_else(|e| e.into_inner()).get(path).filter(|(s, _)| *s == stamp).map(|(_, h)| h.clone());
+        if let Some(hash) = hit {
+            return Ok(hash);
+        }
+    }
+    let hash = compute_sha256(path)?;
+    // 읽는 동안 바뀌지 않았고 오래된 파일만 기억한다
+    let settled = before.filter(|(_, mtime)| mtime.elapsed().is_ok_and(|age| age >= RACY_STAMP));
+    if let Some(stamp) = settled.filter(|s| file_stamp(path) == Some(*s)) {
+        cache.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf(), (stamp, hash.clone()));
+    }
+    Ok(hash)
+}
+
 /// 컴포넌트 키를 정렬 우선순위로 변환 (코어 → 모듈 → 익스텐션)
 fn component_sort_key(key: &str) -> (u8, String) {
     match key {
@@ -360,6 +394,35 @@ mod tests {
             compute_sha256(&f).unwrap(),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
+    }
+
+    /// 크기·수정 시각이 그대로면 다시 읽지 않고, 둘 중 하나라도 바뀌면 다시 계산한다
+    #[test]
+    fn unchanged_files_are_not_rehashed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("server.jar");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        let write = |content: &[u8], mtime| {
+            std::fs::write(&f, content).unwrap();
+            std::fs::File::options().write(true).open(&f).unwrap().set_modified(mtime).unwrap();
+        };
+        write(b"hello", old);
+        let first = cached_sha256(&f).unwrap();
+        assert_eq!(first, compute_sha256(&f).unwrap());
+        // 같은 크기·같은 시각으로 바꾸면 기억한 값이 나온다 (다시 읽지 않았다는 뜻)
+        write(b"HELLO", old);
+        assert_eq!(cached_sha256(&f).unwrap(), first);
+        // 시각이 바뀌면 다시 계산한다
+        write(b"HELLO", old + std::time::Duration::from_secs(1));
+        assert_eq!(cached_sha256(&f).unwrap(), compute_sha256(&f).unwrap());
+        assert_ne!(cached_sha256(&f).unwrap(), first);
+        // 방금 고친 파일은 기억하지 않는다
+        write(b"fresh", std::time::SystemTime::now());
+        let fresh = cached_sha256(&f).unwrap();
+        std::fs::write(&f, b"FRESH").unwrap();
+        assert_ne!(cached_sha256(&f).unwrap(), fresh);
+        std::fs::remove_file(&f).unwrap();
+        assert!(cached_sha256(&f).is_err());
     }
 
     #[test]

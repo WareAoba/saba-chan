@@ -21,7 +21,7 @@
     "starting": "Iniciando daemon...",
     "started": "Daemon iniciado",
     "preparing": "Preparando daemon... (tempo limite excedido)",
-    "failed_to_start": "Falha ao iniciar daemon - execute manualmente",
+    "failed_to_start": "Não foi possível iniciar o daemon",
     "check_warning": "Aviso ao verificar daemon: {{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "Conflito de porta — {{name}} parado",
     "force_stop_body": "{{stopped}} foi parado forçosamente porque a porta {{port}} conflita com {{existing}}"
+  },
+  "init": {
+    "start": "Iniciando...",
+    "modules": "Preparando módulos...",
+    "instances": "Preparando servidores...",
+    "ready": "Pronto"
   }
 }

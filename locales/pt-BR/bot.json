@@ -78,6 +78,8 @@
   "errors": {
     "error_title": "Erro ao executar comando",
     "unknown": "Erro desconhecido",
+    "agreement_required": "Você precisa aceitar {{names}} antes de iniciar este servidor. Aceite no Saba-chan do PC.",
+    "agreement_local_only": "Os termos só podem ser aceitos no Saba-chan deste PC.",
     "alias_conflict": "❌ O alias '{{alias}}' é ambíguo — corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
     "multiple_instances": "⚠️ Existem múltiplas instâncias de '{{module}}'. Use o nome da instância em vez do alias do módulo.",
     "auth_failed": "Falha na autenticação",

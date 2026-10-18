@@ -1065,6 +1065,7 @@
       "malware_detected": "防毒軟體將此未驗證元件的檔案標記為惡意：{{file}}",
       "launch_outside_instance": "此未驗證模組試圖執行伺服器資料夾之外的程式：{{file}}",
       "unscannable_file": "此未驗證元件含有沒有原始檔的編譯檔案，無法掃描：{{file}}",
+      "scan_failed": "無法掃描此未驗證元件的檔案，因此未執行：{{file}}",
       "sandbox_unavailable": "無法為 {{component}} 準備隔離環境，因此未執行。"
     },
     "sandbox": {

@@ -21,7 +21,7 @@
     "starting": "Daemon wird gestartet...",
     "started": "Daemon gestartet",
     "preparing": "Daemon wird vorbereitet... (Zeitüberschreitung)",
-    "failed_to_start": "Daemon-Start fehlgeschlagen - bitte manuell ausführen",
+    "failed_to_start": "Der Daemon konnte nicht gestartet werden",
     "check_warning": "Warnung beim Überprüfen des Daemon: {{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "Portkonflikt — {{name}} gestoppt",
     "force_stop_body": "{{stopped}} wurde erzwungen gestoppt, da Port {{port}} mit {{existing}} kollidiert"
+  },
+  "init": {
+    "start": "Wird gestartet...",
+    "modules": "Module werden vorbereitet...",
+    "instances": "Server werden vorbereitet...",
+    "ready": "Bereit"
   }
 }

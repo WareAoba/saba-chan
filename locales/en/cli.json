@@ -202,9 +202,10 @@
     "pair_expected": "Expected KEY=VALUE, got \"{{got}}\".",
     "timeout": "The daemon took too long to answer ({{path}})."
   },
-  "eula": {
-    "confirm": "Accept the EULA for {{name}}? You agree to the game's license terms.",
-    "done": "EULA accepted for {{name}}."
+  "agree": {
+    "none": "{{name}} has no agreements to accept.",
+    "confirm": "{{name}}: accept {{names}}? You agree to the terms at the links above.",
+    "done": "Agreements accepted for {{name}}."
   },
   "exit": {
     "crash": "crashed",

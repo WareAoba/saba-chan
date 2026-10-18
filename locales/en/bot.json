@@ -78,6 +78,8 @@
   "errors": {
     "error_title": "Error executing command",
     "unknown": "Unknown error",
+    "agreement_required": "You need to accept {{names}} before this server can start. Accept it in Saba-chan on the PC.",
+    "agreement_local_only": "Agreements can only be accepted in Saba-chan on this PC.",
     "alias_conflict": "❌ Alias '{{alias}}' is ambiguous — it matches multiple modules: {{modules}}. Please use a more specific alias.",
     "multiple_instances": "⚠️ Multiple '{{module}}' instances exist. Use an instance name instead of the module alias.",
     "auth_failed": "Authentication failed",

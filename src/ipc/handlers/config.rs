@@ -142,7 +142,7 @@ pub async fn get_node_token(State(_state): State<IPCServer>) -> impl IntoRespons
 
 /// PUT /api/config/node-token
 pub async fn save_node_token(
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
     let token = payload
@@ -155,9 +155,16 @@ pub async fn save_node_token(
     if let Some(parent) = token_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+    // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
+    let unchanged = std::fs::read_to_string(&token_path).is_ok_and(|t| t.trim() == token.trim());
 
     match std::fs::write(&token_path, token) {
-        Ok(_) => (StatusCode::OK, Json(json!({ "ok": true }))).into_response(),
+        Ok(_) => {
+            if !unchanged {
+                crate::relay_agent::restart(&state).await;
+            }
+            (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write node token: {}", e) })),
