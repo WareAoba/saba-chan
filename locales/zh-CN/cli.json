@@ -170,6 +170,7 @@
   "exit": {
     "crash": "崩溃",
     "in_game_stop": "在游戏内停止",
+    "start_failed": "启动失败",
     "restarting_in": "{{secs}} 秒后重启",
     "unknown_exit": "已结束（被关闭或被终止）",
     "user_stop": "由你停止"

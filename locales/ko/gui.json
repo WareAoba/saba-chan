@@ -680,6 +680,7 @@
     "exit_user_stop": "직접 끔",
     "exit_in_game_stop": "게임 안에서 끔",
     "exit_crash": "크래시",
+    "exit_start_failed": "켜지다 실패",
     "exit_unknown_exit": "이유 모름",
     "exit_restart_in": "{{secs}}초 뒤 다시 켬",
     "restart": "재시작",

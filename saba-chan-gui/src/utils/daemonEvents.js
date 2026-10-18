@@ -58,7 +58,7 @@ export function eventToast(ev, t, nameOf = (id) => id) {
                   };
         }
         case 'instance.exit': {
-            if (d.kind !== 'crash' && d.kind !== 'unknown_exit') return null;
+            if (!['crash', 'start_failed', 'unknown_exit'].includes(d.kind)) return null;
             const name = d.instance || nameOf(d.instanceId);
             const kind = t(`shell.exit_${d.kind}`, { defaultValue: d.kind });
             const restart = d.restartInSecs != null ? ` ${t('shell.exit_restart_in', { secs: d.restartInSecs })}` : '';

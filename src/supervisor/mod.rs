@@ -1006,6 +1006,7 @@ impl Supervisor {
                         if let Some(last) = s.exit_events.get_mut(&instance.id).and_then(|e| e.back_mut()) {
                             last.verdict.evidence = "force stop requested through saba-chan".into();
                         }
+                        s.save_exit_events(&instance.id);
                     }
                 }
 
@@ -2250,6 +2251,7 @@ impl Supervisor {
             console_tail: &tail,
             graceful_patterns: &graceful,
             new_crash_files: &crash_files,
+            ran_secs: saba_runner::now().saturating_sub(proc.started_at),
         });
 
         let auto_restart = setting_flag(&instance, "auto_restart", true);
@@ -2294,10 +2296,43 @@ impl Supervisor {
             "restartInSecs": event.restart_in_secs,
             "note": event.note,
         }));
+        if !self.exit_events.contains_key(instance_id) {
+            let saved = self.saved_exit_events(instance_id);
+            self.exit_events.insert(instance_id.to_string(), saved.into());
+        }
         let events = self.exit_events.entry(instance_id.to_string()).or_default();
         events.push_back(event);
         while events.len() > crash::EVENTS_KEPT {
             events.pop_front();
+        }
+        self.save_exit_events(instance_id);
+    }
+
+    fn exit_events_path(&self, instance_id: &str) -> std::path::PathBuf {
+        self.instance_store.instance_dir(instance_id).join("exit-events.json")
+    }
+
+    /// 지난 데몬 실행에서 남긴 종료 이력
+    fn saved_exit_events(&self, instance_id: &str) -> Vec<crash::ExitEvent> {
+        std::fs::read_to_string(self.exit_events_path(instance_id))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    fn save_exit_events(&self, instance_id: &str) {
+        let Some(events) = self.exit_events.get(instance_id) else { return };
+        let path = self.exit_events_path(instance_id);
+        if !path.parent().is_some_and(|d| d.is_dir()) {
+            return;
+        }
+        match serde_json::to_vec(events) {
+            Ok(bytes) => {
+                if let Err(e) = std::fs::write(&path, bytes) {
+                    tracing::warn!("Failed to save exit history for '{}': {}", instance_id, e);
+                }
+            }
+            Err(e) => tracing::warn!("Failed to encode exit history for '{}': {}", instance_id, e),
         }
     }
 
@@ -2319,11 +2354,15 @@ impl Supervisor {
         if let Some(last) = self.exit_events.get_mut(instance_id).and_then(|e| e.back_mut()) {
             last.note = Some(format!("restart failed: {}", reason));
         }
+        self.save_exit_events(instance_id);
     }
 
     /// 최근 종료 이력, 오래된 것부터
     pub fn exit_events(&self, instance_id: &str) -> Vec<crash::ExitEvent> {
-        self.exit_events.get(instance_id).map(|e| e.iter().cloned().collect()).unwrap_or_default()
+        match self.exit_events.get(instance_id) {
+            Some(events) => events.iter().cloned().collect(),
+            None => self.saved_exit_events(instance_id),
+        }
     }
 
     /// 인스턴스 서버 파일이 있을 수 있는 폴더들 (작업 폴더, 실행 파일 폴더, 인스턴스 폴더)
@@ -2765,9 +2804,11 @@ mod tests {
             supervisor.instance_store.add(inst).unwrap();
             let work = tmp.path().join(id);
             std::fs::create_dir_all(&work).unwrap();
-            let proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), script.into()], work.to_str().unwrap(), Vec::new(), None, None)
+            let mut proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), script.into()], work.to_str().unwrap(), Vec::new(), None, None)
                 .await
                 .unwrap();
+            // 켜지자마자 끝난 것(start_failed)과 가르려고, 한동안 돌다 끝난 것으로 둔다
+            proc.started_at -= 600;
             supervisor.managed_store.insert(id, proc).await;
         }
         supervisor.stop_requested.insert("stopped".into());
@@ -2791,6 +2832,10 @@ mod tests {
         assert!(supervisor.restart_still_wanted("crash").await);
         supervisor.stop_requested.insert("crash".into());
         assert!(!supervisor.restart_still_wanted("crash").await, "a stop during the wait cancels the restart");
+
+        // 데몬을 다시 켜도 종료 이력이 남는다
+        let restarted = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), instances_dir.to_str().unwrap());
+        assert_eq!(restarted.exit_events("crash").last().map(|e| e.verdict.kind), Some(crash::ExitKind::Crash));
     }
 
     /// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다 (M3)

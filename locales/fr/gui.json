@@ -679,6 +679,7 @@
     "exit_user_stop": "Arrêté par vous",
     "exit_in_game_stop": "Arrêté en jeu",
     "exit_crash": "Crash",
+    "exit_start_failed": "Échec du démarrage",
     "exit_unknown_exit": "Inconnu",
     "exit_restart_in": "Redémarrage dans {{secs}} s",
     "restart": "Redémarrer",

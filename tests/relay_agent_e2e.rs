@@ -162,6 +162,13 @@ async fn agent_round_trips_a_relay_command() {
     let en: Value = serde_json::from_str(include_str!("../locales/en/bot.json")).unwrap();
     assert_eq!(body["data"]["text"], en["list"]["empty"], "{}", body);
 
+    // heartbeat는 poll과 따로 돌아서 결과보다 늦게 올 수 있다
+    for _ in 0..50 {
+        if !relay_state.lock().unwrap().heartbeats.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     {
         let s = relay_state.lock().unwrap();
         assert_eq!(s.bad_signatures, 0);

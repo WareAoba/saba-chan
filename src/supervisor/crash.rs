@@ -6,14 +6,15 @@
 //!    - Windows 예외 종료 코드 (0xC0000005 같은 0xC… 값, Ctrl+C 종료 0xC000013A는 뺀다)
 //!    - unix 크래시 시그널 (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL)
 //!    - 모듈 `[detection] crash_artifacts`에 맞는 파일이 이번 실행 중에 생겼다
-//! 3. 모듈 `[detection] graceful_exit_patterns`가 콘솔 끝부분에 있다 → `in_game_stop`
-//! 4. 종료 코드 0 → `in_game_stop`
-//! 5. 그 밖 (작업 관리자 강제 종료, 창 닫기, 원인 모를 종료) → `unknown_exit`
+//! 3. 시작하고 `STARTUP_GRACE` 안에 끝났다 (포트 충돌·설정 오류처럼 켜지다 실패) → `start_failed`. 다시 띄워도 같으므로 재시작하지 않는다
+//! 4. 모듈 `[detection] graceful_exit_patterns`가 콘솔 끝부분에 있다 → `in_game_stop`
+//! 5. 종료 코드 0 → `in_game_stop`
+//! 6. 그 밖 (작업 관리자 강제 종료, 창 닫기, 원인 모를 종료) → `unknown_exit`
 //!
 //! 사용자 종료와 강제 종료를 크래시로 잘못 보지 않는 것이 우선이라, 흔적이 없으면 크래시로 보지 않는다.
 
 use super::managed_process::ProcessExit;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -26,6 +27,8 @@ pub const MAX_RESTARTS: usize = 3;
 pub const FIRST_RESTART_DELAY: Duration = Duration::from_secs(5);
 /// 콘솔 끝에서 정상 종료 문구를 찾는 줄 수
 pub const CONSOLE_TAIL_LINES: usize = 50;
+/// 시작하고 이 안에 끝나면 켜지다 실패한 것으로 본다
+pub const STARTUP_GRACE: Duration = Duration::from_secs(30);
 /// 인스턴스마다 남기는 종료 이력 수
 pub const EVENTS_KEPT: usize = 20;
 
@@ -36,16 +39,17 @@ const CRASH_SIGNALS: &[i32] = &[4, 6, 7, 8, 11];
 #[cfg(not(target_os = "linux"))]
 const CRASH_SIGNALS: &[i32] = &[4, 6, 10, 8, 11];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExitKind {
     UserStop,
     InGameStop,
     Crash,
+    StartFailed,
     UnknownExit,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExitVerdict {
     pub kind: ExitKind,
     pub exit_code: Option<i32>,
@@ -61,6 +65,8 @@ pub struct ExitFacts<'a> {
     pub console_tail: &'a [String],
     pub graceful_patterns: &'a [String],
     pub new_crash_files: &'a [PathBuf],
+    /// 시작부터 끝날 때까지 (초)
+    pub ran_secs: u64,
 }
 
 pub fn classify(f: &ExitFacts) -> ExitVerdict {
@@ -84,6 +90,14 @@ pub fn classify(f: &ExitFacts) -> ExitVerdict {
     }
     if let Some(file) = f.new_crash_files.first() {
         return verdict(ExitKind::Crash, format!("crash file {}", file.display()));
+    }
+    if f.ran_secs < STARTUP_GRACE.as_secs() {
+        let last = f.console_tail.iter().rev().map(|l| l.trim()).find(|l| !l.is_empty());
+        let evidence = match last {
+            Some(line) => format!("ended {}s after start: {}", f.ran_secs, line),
+            None => format!("ended {}s after start", f.ran_secs),
+        };
+        return verdict(ExitKind::StartFailed, evidence);
     }
     for pattern in f.graceful_patterns {
         let Ok(re) = regex::Regex::new(pattern) else { continue };
@@ -127,8 +141,8 @@ pub fn next_restart_delay(history: &mut VecDeque<Instant>, now: Instant) -> Opti
     Some(delay)
 }
 
-/// GET /api/instance/:id/events 한 줄
-#[derive(Debug, Clone, Serialize)]
+/// GET /api/instance/:id/events 한 줄. 인스턴스 폴더 `exit-events.json`에 남아 데몬을 다시 켜도 보인다
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExitEvent {
     /// unix 초
     pub at: u64,
@@ -152,6 +166,7 @@ mod tests {
             console_tail: tail,
             graceful_patterns: PATTERNS.get_or_init(|| vec!["Stopping the server".into()]),
             new_crash_files: files,
+            ran_secs: 600,
         }
     }
 
@@ -184,6 +199,13 @@ mod tests {
         assert_eq!(k(facts(code(0), &none, &no_files)), ExitKind::InGameStop);
         assert_eq!(k(facts(code(1), &none, &no_files)), ExitKind::UnknownExit, "task manager kill");
         assert_eq!(k(facts(None, &none, &no_files)), ExitKind::UnknownExit);
+
+        let bind = ["**** FAILED TO BIND TO PORT!".to_string(), "[Server thread/INFO]: Stopping the server".to_string()];
+        let early = |exit, files| ExitFacts { ran_secs: 4, ..facts(exit, &bind, files) };
+        assert_eq!(classify(&early(code(1), &no_files)).kind, ExitKind::StartFailed, "a stop line right after start is a failed start");
+        assert_eq!(classify(&early(code(1), &no_files)).evidence, "ended 4s after start: [Server thread/INFO]: Stopping the server");
+        assert_eq!(classify(&early(code(0xC000_0005u32 as i32), &no_files)).kind, ExitKind::Crash, "crash evidence still wins");
+        assert!(!wants_restart(ExitKind::StartFailed, true, true), "restarting would fail the same way");
     }
 
     #[test]

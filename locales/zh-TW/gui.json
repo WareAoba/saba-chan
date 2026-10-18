@@ -679,6 +679,7 @@
     "exit_user_stop": "手動停止",
     "exit_in_game_stop": "遊戲內停止",
     "exit_crash": "當機",
+    "exit_start_failed": "啟動失敗",
     "exit_unknown_exit": "原因不明",
     "exit_restart_in": "{{secs}} 秒後重新啟動",
     "restart": "重新啟動",

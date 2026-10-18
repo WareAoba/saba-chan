@@ -170,6 +170,7 @@
   "exit": {
     "crash": "abgestürzt",
     "in_game_stop": "im Spiel gestoppt",
+    "start_failed": "Start fehlgeschlagen",
     "restarting_in": "Neustart in {{secs}} s",
     "unknown_exit": "beendet (geschlossen oder abgebrochen)",
     "user_stop": "von dir gestoppt"

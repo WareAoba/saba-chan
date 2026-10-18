@@ -210,6 +210,7 @@
   "exit": {
     "crash": "crashed",
     "in_game_stop": "stopped from inside the game",
+    "start_failed": "failed to start",
     "restarting_in": "restarting in {{secs}}s",
     "unknown_exit": "ended (closed or killed)",
     "user_stop": "stopped by you"

@@ -170,6 +170,7 @@
   "exit": {
     "crash": "クラッシュ",
     "in_game_stop": "ゲーム内から停止",
+    "start_failed": "起動に失敗",
     "restarting_in": "{{secs}} 秒後に再起動",
     "unknown_exit": "終了（閉じられたか強制終了）",
     "user_stop": "ユーザーが停止"

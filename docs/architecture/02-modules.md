@@ -397,7 +397,7 @@ url = "https://aka.ms/MinecraftEULA"
   - managed: `running`/`stopped` 두 값이다. `watch::channel<bool>`의 `is_running()`으로 정한다 (`mod.rs:950-962`).
   - non-managed: 모듈 `status()`가 돌려준 문자열을 그대로 쓴다. Python이 실패하면 `"unknown"`이다.
   - extension hook `server.status`가 `handled: true`를 돌려주면 그 결과가 우선한다.
-- managed 서버가 끝나면 `judge_exit`가 `user_stop` / `crash` / `in_game_stop` / `unknown_exit`로 가르고 기록한다 (`mod.rs:1961-2029`, `D:src/supervisor/crash.rs:1-13`). 이력은 `GET /api/instance/:id/events`로 본다.
+- managed 서버가 끝나면 `judge_exit`가 `user_stop` / `crash` / `start_failed` / `in_game_stop` / `unknown_exit`로 가르고 기록한다 (`D:src/supervisor/crash.rs`). 이력은 `GET /api/instance/:id/events`로 본다. 이력은 인스턴스 폴더의 `exit-events.json`에도 저장해서 데몬을 다시 켜도 남는다.
 - `ProcessTracker`(`D:src/supervisor/process.rs`)는 PID와 시작 시각만 기록한다(`track`, `track_since`, `replace_pid`, `untrack`). 예전의 `ProcessStatus`, `get_status`, `mark_crashed`, `terminate`는 지워졌다. 강제 종료는 `ManagedProcess::force_kill`(`force_kill_pid`로 서버와 runner를 함께 죽인다, `managed_process.rs:230-235`)이다.
 
 ### 3.3 콘솔 캡처와 로그 파싱 (`managed_process.rs`)
@@ -441,8 +441,8 @@ url = "https://aka.ms/MinecraftEULA"
 
 ### 3.6 크래시 감지와 자동 재시작
 
-- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 콘솔 끝 50줄에 `graceful_exit_patterns`가 있거나 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
-- **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다 (`crash.rs:109-111`). 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:21-30`, `mod.rs:1993-2009`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:391-396`, `server.rs:735-751`). 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
+- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 시작 뒤 30초(`STARTUP_GRACE`) 안에 끝나면 `start_failed`(근거는 걸린 시간과 콘솔 마지막 줄, 포트 충돌 같은 시작 실패), 콘솔 끝 50줄에 `graceful_exit_patterns`가 있거나 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
+- **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다. `start_failed`는 다시 켜도 같은 이유로 실패하므로 재시작하지 않는다. 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:21-30`, `mod.rs:1993-2009`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:391-396`, `server.rs:735-751`). 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
 - `monitor_processes`(`mod.rs:2074-2254`)가 하는 일은 다음과 같다.
   1. `managed_store.cleanup_dead()`로 죽은 항목을 꺼내 종료를 판정하고, `managed.pid`를 삭제한 뒤 cooldown을 등록한다.
   2. 추적 중인 PID가 스냅샷에 없으면 untrack한다. saba-runner가 아직 서버를 돌리면(런처가 끝나고 실제 서버가 남은 경우) runner가 보는 PID로 옮긴다.

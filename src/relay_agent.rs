@@ -611,7 +611,7 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
     let data = match event.kind.as_str() {
         "instance.exit" => {
             let kind = d.get("kind").and_then(Value::as_str)?;
-            if kind != "crash" && kind != "unknown_exit" {
+            if !["crash", "start_failed", "unknown_exit"].contains(&kind) {
                 return None;
             }
             let mut v = pick(&["at", "instanceId", "instance", "kind", "exitCode", "signal", "restartInSecs", "note"]);

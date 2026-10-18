@@ -170,6 +170,7 @@
   "exit": {
     "crash": "travou",
     "in_game_stop": "parado de dentro do jogo",
+    "start_failed": "falha ao iniciar",
     "restarting_in": "reiniciando em {{secs}}s",
     "unknown_exit": "encerrado (fechado ou finalizado)",
     "user_stop": "parado por você"

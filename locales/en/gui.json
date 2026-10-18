@@ -680,6 +680,7 @@
     "exit_user_stop": "Stopped by you",
     "exit_in_game_stop": "Stopped in game",
     "exit_crash": "Crash",
+    "exit_start_failed": "Failed to start",
     "exit_unknown_exit": "Unknown",
     "exit_restart_in": "Restarting in {{secs}}s",
     "restart": "Restart",
