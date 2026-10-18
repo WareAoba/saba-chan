@@ -405,7 +405,8 @@ mod imp {
         }
     }
 
-    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<(), String> {
+    /// 이미 읽을 수 있으면(이 SID나 ALL APPLICATION PACKAGES) 그대로 두고 false, ACE를 더했으면 true
+    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<bool, String> {
         use std::os::windows::io::AsRawHandle;
         let (mask, inherit) = rights(access);
         unsafe {
@@ -419,10 +420,10 @@ mod imp {
             let already = already_granted(dacl, &[sid, everyone], mask, inherit);
             LocalFree(sd);
             if already {
-                return Ok(());
+                return Ok(false);
             }
         }
-        allow(path, sid, mask, inherit)
+        allow(path, sid, mask, inherit).map(|()| true)
     }
 
     /// 폴더 DACL에서 `sid`의 ACE를 모두 뺀다 (하위로 상속된 것도 함께 빠진다)
@@ -672,15 +673,16 @@ mod imp {
         let mut runtimes = Vec::new();
         for (path, access) in &grants.entries {
             let optional = grants.optional.contains(&(path.clone(), *access));
-            if let Err(e) = grant_one(path, sid, everyone, *access) {
-                if optional {
+            let added = match grant_one(path, sid, everyone, *access) {
+                Ok(added) => added,
+                Err(e) if optional => {
                     tracing::warn!("[Sandbox] skipping {}: {}", path.display(), e);
                     continue;
                 }
-                return Err(e);
-            }
-            // 없어도 되는 읽기 권한(런타임 폴더)은 기록해 두었다가 쓰지 않게 되면 거둔다
-            if optional && *access == Access::Read {
+                Err(e) => return Err(e),
+            };
+            // 없어도 되는 읽기 권한(런타임 폴더)은 실제로 더한 것만 기록해 두었다가 쓰지 않게 되면 거둔다
+            if added && optional && *access == Access::Read {
                 runtimes.push(path.clone());
             }
             // 표시를 지원하지 않는 볼륨(FAT·일부 네트워크 드라이브 등)도 있다: 실행은 막지 않고, 그 폴더 쓰기만 안 될 수 있다
