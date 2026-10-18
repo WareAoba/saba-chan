@@ -1,0 +1,4 @@
+{
+  "ko": "0.1.5에서 업데이트할 때는 사바쨩 창(GUI)의 업데이트 버튼으로 해 주세요. CLI나 자동 업데이트로 하면 창이 바뀌지 않을 수 있습니다. 0.1.6부터는 어느 쪽으로 해도 됩니다.",
+  "en": "When updating from 0.1.5, use the update button in the Saba-chan window (GUI). Updating from the CLI or by auto-update may leave the window on the old version. From 0.1.6 on, either way works."
+}

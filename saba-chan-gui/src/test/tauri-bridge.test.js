@@ -75,6 +75,24 @@ describe('데몬 응답 가공', () => {
         });
     });
 
+    it('bot-config를 못 읽으면 기본값을 꾸며 내지 않고 실패한다 (저장이 디스크 값을 덮지 않게)', async () => {
+        const { api } = await install({
+            daemon_request: daemon({ 'GET /api/config/bot': { status: 0, error: 'timeout', code: 'ETIMEDOUT' } }),
+        });
+        await expect(api.botConfigLoad()).rejects.toThrow();
+    });
+
+    it('릴레이 노드·멤버 목록이 실패하면 빈 배열 대신 오류를 돌려준다', async () => {
+        const { api } = await install({
+            daemon_request: daemon({
+                'GET /api/relay/host/h1/nodes': { status: 401, data: { error: 'unauthorized' } },
+                'GET /api/relay/node/g1/members': { status: 0, error: 'timeout', code: 'ETIMEDOUT' },
+            }),
+        });
+        expect(await api.relayListHostNodes('h1')).toMatchObject({ error: 'unauthorized' });
+        expect(await api.relayListNodeMembers('g1')).toMatchObject({ error: expect.any(String) });
+    });
+
     it('경로에 넣는 이름은 인코딩한다 (공백·빗금이 든 서버 이름)', async () => {
         const { api } = await install({
             daemon_request: daemon({

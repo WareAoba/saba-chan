@@ -322,6 +322,7 @@ export function NodeView({
     update,
     members,
     membersLoading,
+    membersFailed,
     onRefreshMembers,
     memberId,
     onOpenMember,
@@ -395,6 +396,14 @@ export function NodeView({
                 ]}
             />
 
+            {membersFailed &&
+                !membersLoading &&
+                members?.length > 0 &&
+                (activeTab === 'members' || activeTab === 'commands') && (
+                    <p className="dc-field-error">
+                        <Icon name="info" size="xs" /> {t('discord.members_refresh_failed')}
+                    </p>
+                )}
             {activeTab === 'instances' && (
                 <InstancesTab node={node} nodes={nodes} servers={servers} settings={settings} update={update} />
             )}
