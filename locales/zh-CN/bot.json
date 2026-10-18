@@ -79,6 +79,7 @@
     "error_title": "执行命令出错",
     "unknown": "未知错误",
     "agreement_required": "必须同意{{names}}才能启动服务器。请在电脑上的 Saba-chan 中同意。",
+    "memory_limit_at_start": "服务器启动时达到内存上限（{{limit}} MiB）并已停止。请把上限设得比内存设置高，或清空上限。",
     "agreement_local_only": "只能在这台电脑上的 Saba-chan 中同意协议。",
     "no_command_path": "“{{name}}”没有连接 saba-chan 控制台，无法接收命令。请在电脑上的 saba-chan 中以托管模式重新启动服务器。",
     "alias_conflict": "❌ 别名 '{{alias}}' 不明确 — 匹配多个模块：{{modules}}。请使用更具体的别名。",

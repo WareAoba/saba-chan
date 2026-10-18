@@ -79,6 +79,7 @@
     "error_title": "Erro ao executar comando",
     "unknown": "Erro desconhecido",
     "agreement_required": "Você precisa aceitar {{names}} antes de iniciar este servidor. Aceite no Saba-chan do PC.",
+    "memory_limit_at_start": "O servidor atingiu o limite de memória de {{limit}} MiB ao iniciar e foi parado. Defina o limite acima da RAM dele ou deixe-o vazio.",
     "agreement_local_only": "Os termos só podem ser aceitos no Saba-chan deste PC.",
     "no_command_path": "'{{name}}' não tem um console do saba-chan conectado, então não pode receber comandos. Reinicie-o no modo gerenciado pelo saba-chan no PC.",
     "alias_conflict": "❌ O alias '{{alias}}' é ambíguo — corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
