@@ -232,5 +232,8 @@ def test_host_id_follows_the_node_token(sandbox, relay, daemon_factory):
     d = daemon_factory()
     d.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
     assert d.api.ok("GET", "/api/config/bot")["cloud"]["hostId"] == relay.node_id
+    # 예전 값을 들고 있던 클라이언트가 봇 설정을 저장해도 토큰 쪽 ID가 남는다
+    d.api.ok("PUT", "/api/config/bot", {"prefix": "!x", "cloud": {"relayUrl": relay.url, "hostId": "stale"}})
+    assert d.api.ok("GET", "/api/config/bot")["cloud"]["hostId"] == relay.node_id
     d.api.ok("DELETE", "/api/config/node-token")
     assert d.api.ok("GET", "/api/config/bot")["cloud"].get("hostId", "") == ""

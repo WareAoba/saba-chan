@@ -20,13 +20,20 @@ pub async fn save_bot_config(
     Json(config): Json<Value>,
 ) -> impl IntoResponse {
     match state.config_store.set_bot_config_from_json(config).await {
-        Ok(_) => (
-            StatusCode::OK,
-            Json(json!({
-                "success": true,
-                "message": "Bot config saved"
-            })),
-        ).into_response(),
+        Ok(_) => {
+            // hostId는 노드 토큰이 기준이다: 클라이언트가 예전 값을 다시 보내도 토큰에 맞춘다
+            let token_path = saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token");
+            let token = std::fs::read_to_string(token_path).ok();
+            super::relay::sync_host_id(&state, token.as_deref()).await;
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "message": "Bot config saved"
+                })),
+            )
+                .into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({

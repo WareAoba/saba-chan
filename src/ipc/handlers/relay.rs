@@ -88,7 +88,7 @@ pub(crate) fn parse_node_token(token: &str) -> Option<(&str, &str)> {
 }
 
 /// 봇 설정의 `cloud.hostId`를 노드 토큰(`sbn_<hostId>.…`)에 맞춘다. 토큰이 기준이고, 없으면 비운다.
-/// 토큰을 쓰거나 지우는 곳(페어링 완료, 토큰 저장, 연결 해제)이 모두 부른다.
+/// 토큰을 쓰거나 지우는 곳(페어링 완료, 토큰 저장, 연결 해제)과 봇 설정 저장이 모두 부른다.
 pub(crate) async fn sync_host_id(state: &IPCServer, token: Option<&str>) {
     let host = token.and_then(|t| parse_node_token(t.trim())).map(|(id, _)| id).unwrap_or("");
     let mut cloud = state.config_store.get_bot_config_json().await.get("cloud").cloned().unwrap_or_else(|| json!({}));
