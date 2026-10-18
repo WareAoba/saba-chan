@@ -140,6 +140,18 @@ pub fn match_language(locale: &str) -> String {
         return l.to_string();
     }
     let base = locale.split('-').next().unwrap_or("");
+    // 데몬과 같은 규칙: 스크립트 태그가 지역보다 우선 (zh-Hans-HK → 간체, zh-HK·zh-MO·zh-Hant → 번체)
+    if base.eq_ignore_ascii_case("zh") {
+        let subtags: Vec<String> = locale.split('-').skip(1).map(|t| t.to_ascii_lowercase()).collect();
+        let has = |t: &str| subtags.iter().any(|s| s == t);
+        return if has("hans") {
+            "zh-CN".into()
+        } else if ["hant", "tw", "hk", "mo"].into_iter().any(has) {
+            "zh-TW".into()
+        } else {
+            "zh-CN".into()
+        };
+    }
     SUPPORTED_LANGUAGES
         .iter()
         .find(|l| **l == base || l.starts_with(&format!("{base}-")))
@@ -202,7 +214,12 @@ mod tests {
     fn matches_system_locale() {
         assert_eq!(match_language("ko-KR"), "ko");
         assert_eq!(match_language("zh-TW"), "zh-TW");
-        assert_eq!(match_language("zh-HK"), "zh-CN");
+        assert_eq!(match_language("zh-HK"), "zh-TW");
+        assert_eq!(match_language("zh_MO"), "zh-TW");
+        assert_eq!(match_language("zh-Hant-SG"), "zh-TW");
+        assert_eq!(match_language("zh-Hans-HK"), "zh-CN");
+        assert_eq!(match_language("zh-SG"), "zh-CN");
+        assert_eq!(match_language("zh"), "zh-CN");
         assert_eq!(match_language("pt_PT"), "pt-BR");
         assert_eq!(match_language("nl-NL"), "en");
     }
