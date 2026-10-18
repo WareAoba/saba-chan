@@ -78,6 +78,12 @@ pub struct InstallProgress {
     /// 현재 다운로드 전체 바이트 (Content-Length)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download_total: Option<u64>,
+    /// 설치는 끝났지만 실패한 단계 (완료 때만)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    /// 설치 로그 경로 (경고가 있을 때만)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_path: Option<String>,
 }
 
 /// 사용 가능한 모듈 정보
@@ -255,6 +261,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             download_file: None,
             download_received: None,
             download_total: None,
+            warnings: Vec::new(),
+            log_path: None,
         };
         app.emit("install:progress", &p).ok();
     };
@@ -271,6 +279,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             download_file: Some(file.to_string()),
             download_received: Some(received),
             download_total: total,
+            warnings: Vec::new(),
+            log_path: None,
         };
         app.emit("install:progress", &p).ok();
     };
@@ -447,16 +457,12 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
                 required_extensions
             );
 
-            match install_required_extensions(&app, &manifest, &required_extensions).await
-            {
-                Ok(ext_names) => {
-                    for name in ext_names {
-                        installed.push(format!("extension:{}", name));
-                    }
-                }
-                Err(e) => {
-                    warn(format!("Some required extensions failed to install: {}", e));
-                }
+            let (ext_names, failed) = install_required_extensions(&app, &manifest, &required_extensions).await;
+            for name in ext_names {
+                installed.push(format!("extension:{}", name));
+            }
+            for e in failed {
+                warn(e);
             }
         }
     }
@@ -550,6 +556,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         download_file: None,
         download_received: None,
         download_total: None,
+        log_path: (!warnings.is_empty()).then(|| log_file_path().display().to_string()),
+        warnings,
     };
     state.write().await.progress = final_progress.clone();
     app.emit("install:progress", &final_progress).ok();
@@ -569,6 +577,8 @@ async fn emit_error(app: &AppHandle, state: &SharedState, msg: &str) {
         download_file: None,
         download_received: None,
         download_total: None,
+        warnings: Vec::new(),
+        log_path: None,
     };
     state.write().await.progress = p.clone();
     app.emit("install:progress", &p).ok();
@@ -827,7 +837,8 @@ fn normalize_language_tag(input: &str) -> Option<String> {
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(target_dir)?;
-    saba_chan_updater_lib::extract_zip(zip_path, target_dir, |_| Ok(())).map(|_| ())
+    // 덮어쓰기 설치 때 켜진 서버의 saba-runner처럼 잠긴 exe는 업데이터처럼 비켜 둔다
+    saba_chan_updater_lib::extract_zip(zip_path, target_dir, saba_chan_updater_lib::move_aside_binary).map(|_| ())
 }
 
 /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
@@ -940,12 +951,13 @@ async fn install_required_extensions(
     app: &AppHandle,
     manifest: &ReleaseManifest,
     required_extensions: &[String],
-) -> Result<Vec<String>, String> {
+) -> (Vec<String>, Vec<String>) {
     let data_dir = resolve_data_dir();
     let mut installed = Vec::new();
+    let mut failed = Vec::new();
     for ext_id in required_extensions {
         let Some(info) = manifest.components.get(&format!("{}{}", relay::EXTENSION_PREFIX, ext_id)) else {
-            tracing::warn!("익스텐션 '{}' 이 릴리즈에 없습니다", ext_id);
+            failed.push(format!("Extension {} is not in this release", ext_id));
             continue;
         };
         let p = InstallProgress {
@@ -964,10 +976,10 @@ async fn install_required_extensions(
                 tracing::info!("익스텐션 '{}' 설치 완료: {}", ext_id, target_dir.display());
                 installed.push(ext_id.clone());
             }
-            Err(e) => tracing::warn!("익스텐션 '{}' 설치 실패: {}", ext_id, e),
+            Err(e) => failed.push(format!("Failed to install extension {}: {}", ext_id, e)),
         }
     }
-    Ok(installed)
+    (installed, failed)
 }
 
 // ═══════════════════════════════════════════════════════

@@ -135,8 +135,6 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     if last_install && !keep_settings {
         emit("modules", "Cleaning modules directory...", 80);
         remove_modules_dir();
-    } else {
-        emit("modules-keep", "Keeping module settings...", 80);
     }
 
     // Step 8: 레지스트리 삭제
@@ -256,7 +254,13 @@ async fn stop_saba_processes(install_dir: &Path) {
     // 데몬을 끄기 전에 데몬에 등록된 이 설치의 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
     let dirs = [install_dir.to_path_buf(), comparable_dir(install_dir)];
     let registered = match DaemonApi::from_config() {
-        Some(api) => api.registered_guis(&dirs).await,
+        Some(api) => {
+            // 프로세스를 끊기 전에 이 설치의 데몬에게 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
+            if api.daemon_is_in(&dirs).await {
+                api.stop_running_servers().await;
+            }
+            api.registered_guis(&dirs).await
+        }
         None => Vec::new(),
     };
     // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째 끝내 서버도 끝낸다.
@@ -309,6 +313,45 @@ impl DaemonApi {
 
     fn url(&self, path: &str) -> String {
         format!("http://127.0.0.1:{}{}", self.port, path)
+    }
+
+    /// 설정된 포트의 데몬이 이 설치 폴더의 것인지 (경로를 모르면 아니라고 본다)
+    async fn daemon_is_in(&self, dirs: &[PathBuf]) -> bool {
+        let health = self.client.get(self.url("/health")).header("X-Saba-Token", &self.token).send().await;
+        let Ok(r) = health else { return false };
+        let pid = r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
+        pid.and_then(|p| u32::try_from(p).ok())
+            .is_some_and(|pid| daemon_owner(&list_named(&["saba-core"]), pid, dirs) == Owner::Here)
+    }
+
+    /// 꺼져 있지 않은 서버마다 정상 종료를 요청하고 끝날 때까지 기다린다 (서버마다 최대 90초)
+    async fn stop_running_servers(&self) {
+        let list = self.client.get(self.url("/api/servers")).header("X-Saba-Token", &self.token).send().await;
+        let Ok(r) = list else { return };
+        let Ok(v) = r.json::<serde_json::Value>().await else { return };
+        let ids: Vec<String> = v
+            .get("servers")
+            .and_then(|s| s.as_array())
+            .into_iter()
+            .flatten()
+            .filter(|s| s.get("status").and_then(|st| st.as_str()).is_some_and(|st| st != "stopped"))
+            .filter_map(|s| s.get("id").and_then(|id| id.as_str()).map(String::from))
+            .collect();
+        let stops = ids.iter().map(|id| {
+            tracing::info!("[Uninstall] Stopping server {} before removal", id);
+            self.client
+                .post(self.url(&format!("/api/instance/{}/stop", id)))
+                .header("X-Saba-Token", &self.token)
+                .timeout(std::time::Duration::from_secs(90))
+                .json(&serde_json::json!({}))
+                .send()
+        });
+        for (id, r) in ids.iter().zip(futures_util::future::join_all(stops).await) {
+            match r {
+                Ok(r) => tracing::info!("[Uninstall] Stop {} answered {}", id, r.status()),
+                Err(e) => tracing::warn!("[Uninstall] Stop {} failed: {}", id, e),
+            }
+        }
     }
 
     /// 데몬에 등록된 GUI 중 이 설치 폴더에서 띄운 것의 PID. 데몬이 없거나 옛 버전이면 비어 있다
@@ -808,7 +851,9 @@ fn remove_appdata_dir_keep_settings() {
     let keep_names: &[&str] = &[
         "config.json",       // 모든 사용자 설정 (config_file)
         "config.json.bak",   // 직전 설정 백업
-        "instances",         // 인스턴스별 설정 저장
+        "instances",         // 서버 파일·월드·백업과 인스턴스 설정
+        ".node_token",       // 디스코드 연결 (재설치 뒤 다시 페어링하지 않게)
+        "extension-data",    // 익스텐션 설정
         // 아직 이관되지 않은 예전 설정 파일 (다음 실행 때 config.json으로 이관)
         "settings.json",
         "bot-config.json",
