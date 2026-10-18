@@ -417,11 +417,29 @@ async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chron
 async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
     let running = is_running(state, id).await;
     match task.action {
-        TaskAction::Backup if running => {
-            if let Err(r) = take_backup(state, id, BackupKind::Scheduled).await {
-                let body = crate::ipc::internal::into_internal(r).await.body;
-                tracing::warn!("Scheduled backup of '{}' failed: {}", id, body["error"]);
-            }
+        TaskAction::Backup => {
+            // 꺼져 있으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
+            let status = if !running {
+                tracing::info!("Scheduled backup of '{}' skipped: the server is not running", id);
+                409
+            } else {
+                match take_backup(state, id, BackupKind::Scheduled).await {
+                    Ok(Some(_)) => 200,
+                    Ok(None) => 204,
+                    Err(r) => {
+                        let resp = crate::ipc::internal::into_internal(r).await;
+                        tracing::warn!("Scheduled backup of '{}' failed: {}", id, resp.body["error"]);
+                        resp.status.as_u16()
+                    }
+                }
+            };
+            crate::audit::record(crate::audit::Event {
+                action: "backup",
+                instance_id: id,
+                ok: status < 300,
+                status,
+                ..Default::default()
+            });
         }
         TaskAction::Announce if running => {
             announce(state, id, task.message.as_deref().unwrap_or_default()).await;
@@ -525,6 +543,19 @@ mod tests {
         assert!(matches!(take_backup(&state, &id, BackupKind::Scheduled).await, Ok(None)));
         let err = take_backup(&state, &id, BackupKind::Manual).await.err().expect("manual backup of an unsupported module");
         assert_eq!(code(err).await, "backup_unsupported");
+    }
+
+    #[tokio::test]
+    async fn a_scheduled_backup_of_a_stopped_server_is_logged_as_skipped() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 60})).unwrap();
+        run_task(&state, &id, &task, chrono::Local::now().naive_local(), "k").await;
+        let entries = crate::audit::log().recent(10, Some(&id));
+        let entry = entries.first().expect("the skipped backup must leave a record");
+        assert_eq!(entry["action"], "backup");
+        assert_eq!(entry["source"], "schedule");
+        assert_eq!(entry["ok"], false);
+        assert_eq!(entry["status"], 409);
     }
 
     #[tokio::test]
