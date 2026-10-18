@@ -239,3 +239,19 @@ async fn discord_settings_stay_in_the_guild_that_asked_and_need_its_owner() {
     assert_eq!(plan(&state, "discord.settings.set", None, &input, &gui()).await.unwrap_err().code, "invalid_input");
     assert!(plan(&state, "discord.settings.set", None, &other, &gui()).await.is_ok());
 }
+
+#[tokio::test]
+async fn console_input_to_a_module_without_stdin_is_refused() {
+    use axum::response::IntoResponse;
+    let (state, id, _tmp) = server().await;
+    let resp = crate::ipc::handlers::managed::send_stdin_handler(
+        axum::extract::Path(id),
+        axum::extract::State(state),
+        axum::Json(json!({ "command": "say hi" })),
+    )
+    .await
+    .into_response();
+    assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["error_code"], "stdin_not_supported");
+}

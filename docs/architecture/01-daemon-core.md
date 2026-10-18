@@ -269,7 +269,7 @@
 |---|---|---|---|---|
 | POST | `/api/instance/:id/managed/start` | `managed.rs:14` | 선택 `{config?}` | supervisor 결과 / 404 / 500 |
 | GET | `/api/instance/:id/console` | `managed.rs:69` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
-| POST | `/api/instance/:id/stdin` | `managed.rs:90` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 500 |
+| POST | `/api/instance/:id/stdin` | `managed.rs:90` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:100` | - | supervisor 결과 |
 | GET | `/api/instance/:id/properties` | `managed.rs:115` | - | `manage_properties("read")` |
 | PUT | `/api/instance/:id/properties` | `managed.rs:130` | `{settings}` | `manage_properties("write")` |

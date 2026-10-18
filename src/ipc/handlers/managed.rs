@@ -98,8 +98,17 @@ pub async fn send_stdin_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
-    let resp = super::command::via_stdin(&state, &id, &payload).await.into_response();
+    // 콘솔 입력을 받지 않는 모듈(예: REST 전용)은 보낸 척하지 않는다: 클라이언트가 명령 API로 넘어가게
+    let resp = if !state.supervisor.read().await.module_accepts_stdin(&id) {
+        (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "This server does not take console input; use its commands instead", "error_code": "stdin_not_supported" })),
+        )
+            .into_response()
+    } else {
+        // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
+        super::command::via_stdin(&state, &id, &payload).await.into_response()
+    };
     let line = payload.get("command").or_else(|| payload.get("line")).and_then(|v| v.as_str()).map(str::to_string);
     super::audited(&state, "stdin", &id, line.as_deref(), None, resp).await
 }
