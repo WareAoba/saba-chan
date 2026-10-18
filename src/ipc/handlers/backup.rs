@@ -378,7 +378,7 @@ async fn count_down(
     message_key: &str,
     announce_on: bool,
 ) -> bool {
-    let language = state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
+    let language = state.config_store.ui_language().await;
     let catalog = crate::chat::i18n::Catalog::for_language(&language);
     let mut marks = if announce_on { task.warn_minutes.clone() } else { Vec::new() };
     marks.sort_unstable_by(|a, b| b.cmp(a));

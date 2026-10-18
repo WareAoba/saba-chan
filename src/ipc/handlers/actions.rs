@@ -33,7 +33,7 @@ pub struct ActionBody {
 async fn locale(state: &IPCServer, requested: Option<String>) -> String {
     match requested {
         Some(l) if !l.trim().is_empty() => l,
-        _ => state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into()),
+        _ => state.config_store.ui_language().await,
     }
 }
 

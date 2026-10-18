@@ -262,7 +262,7 @@ players = "player_count"
     - `python-guard/sitecustomize.py`는 활성 목록에 없는 `extensions.<이름>` import를 막는다 (`:85-97`).
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:100-117`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:198-205`). 목록이 없으면 빈 값이다.
-  - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-37`).
+  - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-37`).
     - ~~문서는 `DAEMON_API_URL`을 주입한다고 한다~~ → 해결: 다시 쓴 개발 가이드는 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`이라고 적는다(`M:docs/module-development-guide.md:31`). `daemon_rcon.py`는 `DAEMON_API_URL`이 있으면 그것을, 없으면 `SABA_IPC_URL`을, 둘 다 없으면 `http://127.0.0.1:57474`를 쓴다 (`D:modules/daemon_rcon.py:53-59`).
 
 ### 2.2 모듈 측 디스패치 관례

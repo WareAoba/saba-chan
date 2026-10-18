@@ -283,6 +283,14 @@ impl ConfigStore {
         self.gui_settings.read().await.clone()
     }
 
+    /// 데몬이 쓰는 화면 언어: 설정한 언어, 없으면 OS 언어 (GUI와 같은 규칙, 지원하지 않으면 en)
+    pub async fn ui_language(&self) -> String {
+        match self.gui_settings.read().await.language.as_deref() {
+            Some(l) if !l.trim().is_empty() => l.to_string(),
+            _ => crate::chat::i18n::os_language(),
+        }
+    }
+
     /// GUI 설정을 JSON Value로 반환 (API 응답용)
     pub async fn get_gui_settings_json(&self) -> Value {
         let settings = self.gui_settings.read().await;
@@ -623,6 +631,16 @@ mod tests {
         bad.insert("gui".into(), serde_json::json!({"fontScale": "big"}));
         assert!(store.check_sections(&bad).await.is_err());
         assert_eq!(store.get_gui_settings().await.font_scale, 100);
+    }
+
+    #[tokio::test]
+    async fn ui_language_follows_the_os_until_one_is_chosen() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        let os = crate::chat::i18n::os_language();
+        assert_eq!(store.ui_language().await, os);
+        store.set_gui_settings_from_json(serde_json::json!({"language": "ja"})).await.unwrap();
+        assert_eq!(store.ui_language().await, "ja");
     }
 
     #[test]

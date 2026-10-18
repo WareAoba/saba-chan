@@ -56,7 +56,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         (instance, module, running, stdin_route)
     };
     let errors = match &module {
-        Some(module) => module_errors(module, &state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into())),
+        Some(module) => module_errors(module, &state.config_store.ui_language().await),
         None => Default::default(),
     };
     let metadata = module.map(|m| m.metadata);

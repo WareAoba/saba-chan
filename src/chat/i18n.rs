@@ -56,6 +56,11 @@ impl Catalog {
     }
 }
 
+/// OS 언어를 지원 언어 코드로. 언어를 고르기 전의 기본값이다 (GUI 셸과 같은 규칙)
+pub fn os_language() -> String {
+    normalize_language(&sys_locale::get_locale().unwrap_or_else(|| FALLBACK_LANGUAGE.into()))
+}
+
 /// 요청 언어를 지원 언어 코드로 맞춥니다. 모르는 언어는 영어.
 pub fn normalize_language(requested: &str) -> String {
     let req = requested.trim().replace('_', "-");
