@@ -339,6 +339,7 @@
     "must_be_one_of": "{{key}} должно быть одним из: {{options}}",
     "restart_hint": "Перезапустите {{name}}, чтобы применить: saba-chan-cli restart {{name}}",
     "sync_failed": "Сохранено, но не удалось записать файл настроек игры: {{error}}",
+    "ignored": "Пропущено: saba-chan не использует эти настройки: {{keys}}",
     "unknown_key": "{{key}} — новый ключ."
   },
   "shell": {

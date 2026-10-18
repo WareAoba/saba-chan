@@ -833,7 +833,20 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
     let relay_code = if status == 429 && pick("error_code").is_none() { Some("RATE_LIMITED".to_string()) } else { relay_code };
     if let (None, Some(rc)) = (pick("error_code"), relay_code) {
         let code = rc.to_ascii_lowercase();
-        let message = crate::i18n::try_t(&format!("err.relay.{}", code)).unwrap_or_else(|| t!("err.relay.other", code = rc));
+        // 같은 뜻의 릴레이 코드는 한 문장으로 묶는다
+        let key = match code.as_str() {
+            "bot_offline" | "bot_not_ready" | "service_unavailable" => "bot_unavailable",
+            "invalid_channel" => "unknown_channel",
+            other => other,
+        };
+        let message = crate::i18n::try_t(&format!("err.relay.{}", key)).unwrap_or_else(|| {
+            // 모르는 코드는 릴레이가 붙인 설명이 있으면 같이 보인다
+            let other = t!("err.relay.other", code = rc);
+            match pick("message") {
+                Some(detail) => format!("{} {}", other, detail),
+                None => other,
+            }
+        });
         return Err(CliError::Api { status, code: Some(code), message, body }.into());
     }
     let code = pick("error_code");
@@ -875,6 +888,12 @@ mod tests {
         // 모르는 코드도 코드 원문만 덩그러니 나오지 않는다
         let e = api_err(check(400, json!({ "error": "SOMETHING_NEW" })));
         assert!(e.to_string() != "SOMETHING_NEW" && e.to_string().contains("SOMETHING_NEW"), "{}", e);
+        let e = api_err(check(400, json!({ "error": "SOMETHING_NEW", "message": "the relay says why" })));
+        assert!(e.to_string().contains("the relay says why"), "{}", e);
+        // 봇이 꺼져 있다는 여러 코드는 같은 문장
+        let offline = api_err(check(503, json!({ "error": "BOT_OFFLINE" }))).to_string();
+        assert_eq!(offline, api_err(check(503, json!({ "error": "BOT_NOT_READY" }))).to_string());
+        assert_eq!(offline, crate::i18n::try_t("err.relay.bot_unavailable").unwrap());
     }
 
     #[test]

@@ -1260,6 +1260,10 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
     if r.get("synced").and_then(Value::as_bool) == Some(false) {
         ctx.out.warn(&t!("set.sync_failed", error = s(&r, "sync_error")));
     }
+    let ignored: Vec<&str> = r.get("ignored").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+    if !ignored.is_empty() {
+        ctx.out.warn(&t!("set.ignored", keys = ignored.join(", ")));
+    }
     if status_of(&runtime(ctx, &sv).await.unwrap_or(Value::Null)) == "running" {
         ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
     }

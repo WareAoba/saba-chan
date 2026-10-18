@@ -14,8 +14,8 @@ pub fn format_response(data: &Value, cat: &Catalog) -> String {
         Value::Object(map) if map.is_empty() => done(),
         Value::Object(map) => {
             // 콘솔 명령 결과 {response, executed}: 서버가 찍은 답만 보인다 (내부 키는 보이지 않는다)
-            if let Some(text) = map.get("response").and_then(Value::as_str).filter(|t| !t.trim().is_empty()) {
-                return text.to_string();
+            if let Some(text) = map.get("response").and_then(Value::as_str) {
+                return if text.trim().is_empty() { done() } else { text.to_string() };
             }
             // 첫 번째 배열 필드가 있으면 그것을 목록으로 보여준다 (예: {"players": [...]})
             for (key, value) in map {
@@ -86,6 +86,8 @@ mod tests {
         let players = format_response(&json!({"players": [{"name": "Kim", "level": 3}]}), &cat);
         assert_eq!(players, "📋 **players** (1):\n• **Kim** (level: 3)");
         assert_eq!(format_response(&json!({"response": "There are 0 players", "executed": "list"}), &cat), "There are 0 players");
+        // 서버가 아무것도 찍지 않은 콘솔 명령도 내부 키 대신 완료 문구
+        assert_eq!(format_response(&json!({"response": "", "executed": "list"}), &cat), cat.t("responses.command_complete", &[]));
         assert_eq!(format_response(&Value::Null, &cat), cat.t("responses.command_complete", &[]));
     }
 }

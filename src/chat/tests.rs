@@ -231,6 +231,19 @@ async fn start_waiting_on_an_agreement_carries_the_list_for_the_relay() {
     assert!(r.text.contains("Accept Minecraft EULA first"), "{}", r.text);
 }
 
+/// 켜기 전 점검에 막히면 점검 코드와 모듈이 준 해결 방법을 보이고, 경로가 든 문제 문구는 내보내지 않는다
+#[tokio::test]
+async fn start_blocked_by_a_preflight_check_shows_the_solution() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::CONFLICT,
+        body: json!({"success": false, "error": "server.jar not found in C:\\Users\\me\\mc", "error_code": "preflight_failed", "issue_code": "server_jar_not_found", "solution": "Install the server again"}),
+    });
+    let out = run(&api, &settings(), "mc start").await;
+    assert!(out.contains("server_jar_not_found") && out.contains("Install the server again"), "{}", out);
+    assert!(!out.contains("C:\\Users"), "paths in the check message stay on the PC: {}", out);
+}
+
 /// 알아보지 못한 입력은 코드가 붙는다: 릴레이가 이 코드로 모델 해석기에 묻는다. 처리한 응답에는 없다
 #[tokio::test]
 async fn unrecognized_input_carries_a_code_for_the_interpreter() {
