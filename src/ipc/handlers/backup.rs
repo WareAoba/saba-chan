@@ -289,7 +289,8 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             if instance.schedule.contains(task) {
                 continue;
             }
-            if task.action == TaskAction::Update {
+            // 끈 업데이트 작업은 돌지 않으므로 끄는 것은 원격에서도 된다
+            if task.action == TaskAction::Update && task.enabled {
                 problems.push(format!("schedule[{}]: updates can only be scheduled on this PC", i));
             }
             if task.every_minutes.is_some_and(|m| m < REMOTE_MIN_EVERY_MINUTES) {
@@ -610,5 +611,8 @@ mod tests {
         // 이 PC에서 정한 작업은 디스코드에서 그대로 다시 보내도 된다
         assert_eq!(put(json!({ "schedule": [update, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
         assert_eq!(remote(json!({ "schedule": [update, restart(1), restart(60)], "backup_keep": 100 })).await, StatusCode::OK);
+        // 끄는 것은 된다
+        let off = json!({ "action": "update", "at": "04:00", "enabled": false });
+        assert_eq!(remote(json!({ "schedule": [off, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
     }
 }

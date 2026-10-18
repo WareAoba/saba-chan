@@ -287,10 +287,10 @@ fn mask_local_text(text: &str) -> Option<String> {
     let quoted = QUOTED.get_or_init(|| {
         regex::Regex::new(r#""(?:\\\\|[A-Za-z]:[\\/]|/[^\s/"]+/)[^"\r\n]*"|'(?:\\\\|[A-Za-z]:[\\/]|/[^\s/']+/)[^'\r\n]*'"#).unwrap()
     });
-    // Windows 드라이브·UNC 경로, 그리고 둘 이상의 조각으로 된 Unix 절대 경로 (URL의 `//`는 앞이 `:`라 걸리지 않는다).
+    // Windows 드라이브·UNC 경로, 그리고 둘 이상의 조각으로 된 Unix 절대·홈 경로 (URL의 `://`는 `/` 다음이 `/`라 걸리지 않는다).
     // 경로에 공백이 있을 수 있어 그 줄의 끝(또는 따옴표)까지 가린다
     let paths = PATHS.get_or_init(|| {
-        regex::Regex::new(r#"\\\\[^\\\s"'<>|]+\\[^\r\n"'<>|]*|\b[A-Za-z]:[\\/][^\r\n"'<>|]*|(?P<pre>^|[\s"'(=])/(?:[^\s/"'<>|]+/)+[^\r\n"'<>|]*"#).unwrap()
+        regex::Regex::new(r#"\\\\[^\\\s"'<>|]+\\[^\r\n"'<>|]*|\b[A-Za-z]:[\\/][^\r\n"'<>|]*|(?P<pre>^|[\s"'(=:\[])~?/(?:[^\s/"'<>|]+/)+[^\r\n"'<>|]*"#).unwrap()
     });
     let base = if text.contains("Traceback (most recent call last)") {
         text.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("")

@@ -529,10 +529,11 @@ fn remote_results_keep_paths_console_lines_and_raw_errors_on_the_pc() {
         "url": "https://example.com/a/b/c",
         "spaced": "copy C:\\Program Files\\Saba-chan\\a.txt (os error 5)",
         "quoted": "open '/home/me/Game Server/b.txt' failed",
+        "glued": "failed:/opt/srv1/run.sh [/opt/srv2/run.sh] ~/srv3/world",
     });
     strip_local_details(&mut v);
     let text = v.to_string();
-    for leak in ["Games", "crash.txt", "Steve", "Stopping", "/home/me", "Users", "lifecycle.py", "-x", "Files", "Saba-chan", "Server"] {
+    for leak in ["Games", "crash.txt", "Steve", "Stopping", "/home/me", "Users", "lifecycle.py", "-x", "Files", "Saba-chan", "Server", "srv1", "srv2", "srv3"] {
         assert!(!text.contains(leak), "{} leaked: {}", leak, text);
     }
     assert_eq!(v["servers"][0], json!({ "id": "a", "name": "srv", "status": "running" }));

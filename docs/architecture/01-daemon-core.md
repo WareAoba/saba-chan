@@ -291,7 +291,7 @@
 | GET/POST | `/api/instance/:id/backups` | `backup.rs:183/190` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
 | DELETE | `/api/instance/:id/backups/:name` | `backup.rs:198` | - | `{success}` / 404 `backup_not_found` |
 | POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:209` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:221-222`) |
-| GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 `update` 작업을 받지 않고 `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
+| GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
 
 #### 설정 (handlers/bot.rs, handlers/config.rs)
 
