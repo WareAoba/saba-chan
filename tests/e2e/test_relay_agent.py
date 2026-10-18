@@ -183,3 +183,24 @@ def test_replacing_node_token_drops_the_old_session(sandbox, relay, daemon_facto
     wait_until(lambda: d.api.ok("GET", "/api/relay/agent").get("lastError"), 30, "틀린 토큰 오류")
     d.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
     wait_until(lambda: relay.heartbeats, 30, "맞는 토큰으로 heartbeat")
+
+
+def test_heartbeat_carries_cpu_and_ram_only_for_running_servers(paired, relay, fake_server):
+    """`/사바쨩 상태`의 서버별 CPU·RAM (Q-5, #86): 켜진 서버에만 싣고, 꺼진 서버에는 없다."""
+    on, _ = fake_server("on1")
+    off, _ = fake_server("off1")
+    iid = paired.import_server("on1", on, module_settings={"ram": "256M"})
+    paired.import_server("off1", off, module_settings={"ram": "256M"})
+    paired.start_instance(iid)
+    paired.wait_console(iid, DONE)
+    paired.api.ok("POST", "/api/relay/agent/stop")
+    paired.api.ok("POST", "/api/relay/agent/start")
+
+    def latest():
+        return {s["name"]: s for s in relay.heartbeats[-1]["metadata"]["servers"]}
+
+    wait_until(lambda: {"on1", "off1"} <= latest().keys() and "usage" in latest()["on1"], 30, "켜진 서버의 CPU·RAM이 heartbeat에")
+    servers = latest()
+    usage = servers["on1"]["usage"]
+    assert usage and usage["memMb"] > 0 and usage["cpu"] >= 0, servers["on1"]
+    assert "usage" not in servers["off1"], servers["off1"]
