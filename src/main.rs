@@ -334,6 +334,11 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("Failed to initialize supervisor: {}", e);
         }
     }
+    // 예전에 준 런타임 폴더 읽기 권한 중 지금 쓰지 않는 것은 거둔다 (확인되지 않은 구성요소의 격리, Windows)
+    {
+        let users = supervisor.read().await.user_runtimes();
+        tokio::task::spawn_blocking(move || sandbox::reconcile_runtimes(&users));
+    }
     // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서)
     tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
 

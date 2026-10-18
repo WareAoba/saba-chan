@@ -2179,6 +2179,19 @@ impl Supervisor {
         Ok(result)
     }
 
+    /// 인스턴스마다 사용자가 정한 `java_path`: `(모듈 진입 파일, java_path)` (`sandbox::reconcile_runtimes`)
+    pub fn user_runtimes(&self) -> Vec<(String, String)> {
+        self.instance_store
+            .list()
+            .iter()
+            .filter(|inst| inst.user_settings.contains("java_path"))
+            .filter_map(|inst| {
+                let java = inst.module_settings.get("java_path")?.as_str()?.to_string();
+                Some((self.module_loader.get_module(&inst.module_name).ok()?.entry_path(), java))
+            })
+            .collect()
+    }
+
     /// server_version이 비어있고 working_dir이 설정된 인스턴스에 대해
     /// 모듈의 get_installed_version을 호출하여 버전을 감지·저장합니다.
     /// 데몬 초기화 뒤 한 번 호출하여 기존 서버의 버전을 보충합니다.

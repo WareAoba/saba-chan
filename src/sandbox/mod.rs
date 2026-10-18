@@ -54,7 +54,12 @@ pub fn restricted(trust: Trust) -> bool {
 /// 확인되지 않은 모듈이 돌려준 폴더(설치 결과 `install_path` 등)를 받아들이는가. 그 폴더는 인스턴스 폴더 키로
 /// 저장되어 다음 격리 실행에 쓰기를 받으므로, 데몬이 정한 `root`(인스턴스 폴더) 안일 때만 받는다
 pub fn accepts_module_dir(entry: &Path, dir: &str, root: &Path) -> bool {
-    !restricted(trust_of_entry(entry)) || inside(Path::new(dir), root)
+    !restricted(trust_of_entry(entry)) || folder_inside(Path::new(dir), root)
+}
+
+/// `root` 안의 실제 폴더인가 (파일은 아니다: 폴더로 열면 그 파일을 실행하게 된다)
+fn folder_inside(path: &Path, root: &Path) -> bool {
+    inside(path, root) && path.is_dir()
 }
 
 /// 링크·`..`를 푼 실제 경로로 `path`가 `root` 안인가 (없는 경로는 아니다)
@@ -452,6 +457,26 @@ pub fn open_user_runtime(entry: &Path, java_path: &str) {
     let _ = key;
 }
 
+/// 데몬이 시작할 때: 예전에 준 런타임 읽기 권한 중 지금 쓰지 않는 것을 거둔다. 지금 쓰는 것은 데몬이 아는 런타임과
+/// 인스턴스마다 사용자가 정한 `java_path`(`(모듈 진입 파일, java_path)`)다. Windows에서만 한다
+pub fn reconcile_runtimes(user_runtimes: &[(String, String)]) {
+    if !ENFORCED {
+        return;
+    }
+    let path = std::env::var_os("PATH");
+    let daemon: std::collections::BTreeSet<PathBuf> = runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), path.as_deref()).into_iter().collect();
+    let mut keep: BTreeMap<String, std::collections::BTreeSet<PathBuf>> = BTreeMap::new();
+    for (entry, java) in user_runtimes {
+        if let Some((key, _)) = component_of(Path::new(entry)) {
+            keep.entry(appcontainer::profile_for(&key)).or_default().extend(runtime_homes(Some(java), None, path.as_deref()));
+        }
+    }
+    #[cfg(windows)]
+    appcontainer::revoke_stale_runtimes(&daemon, &keep);
+    #[cfg(not(windows))]
+    let _ = (daemon, keep);
+}
+
 /// 격리된 모듈이 확인하고 띄울 런타임의 설치 폴더: 사용자가 정한 `java_path`(경로 없는 이름이면 PATH에서),
 /// `JAVA_HOME`, PATH의 `java`. 모듈은 `java -version`으로 런타임을 확인하는데, AppContainer는 Program Files 밖 폴더를 읽지 못한다
 pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: Option<&OsStr>) -> Vec<PathBuf> {
@@ -781,6 +806,10 @@ mod tests {
         assert!(!inside(&tmp.path().join("Games"), &inst));
         assert!(!inside(&inst.join("server").join("..").join("..").join("Games"), &inst));
         assert!(!inside(&inst.join("missing"), &inst));
+        // 인스턴스 폴더 안이어도 파일은 폴더로 받지 않는다
+        std::fs::write(inst.join("server").join("run.exe"), b"x").unwrap();
+        assert!(folder_inside(&inst.join("server"), &inst));
+        assert!(!folder_inside(&inst.join("server").join("run.exe"), &inst));
     }
 
     #[test]
