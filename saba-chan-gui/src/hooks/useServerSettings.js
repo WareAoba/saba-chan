@@ -88,6 +88,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
     // ── handleOpenSettings ──────────────────────────────────
     const handleOpenSettings = async (server) => {
+        // 첫 await 전에 번호를 매긴다: 그사이 다른 서버를 열면 이 호출의 늦은 결과는 모두 버린다
+        const request = ++openRequest.current;
         // Fetch latest server data from API
         let latestServer = server;
         try {
@@ -101,8 +103,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         } catch (error) {
             console.warn('Failed to fetch latest server data:', error);
         }
+        if (request !== openRequest.current) return;
 
-        const request = ++openRequest.current;
         setSettingsServer(latestServer);
         unconfirmedFields.current = new Set();
         touchedFields.current = new Set();
@@ -223,20 +225,23 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             setVersionsLoading(true);
             try {
                 const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
+                if (request !== openRequest.current) return;
                 if (versions && versions.versions) {
                     setAvailableVersions(versions.versions);
                 }
             } catch (err) {
                 console.warn('Failed to load versions:', err);
             } finally {
-                setVersionsLoading(false);
+                if (request === openRequest.current) setVersionsLoading(false);
             }
+            if (request !== openRequest.current) return;
 
             // Detect installed version from server binary if not already saved
             const hasSavedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
             if (!hasSavedVersion && latestServer.id) {
                 try {
                     const detected = await window.api.instanceGetInstalledVersion(latestServer.id);
+                    if (request !== openRequest.current) return;
                     if (detected?.success && detected.version) {
                         setSettingsValues((prev) => ({
                             ...prev,
@@ -445,6 +450,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     // ── handleSaveSettings ──────────────────────────────────
     const handleSaveSettings = async () => {
         if (!settingsServer) return;
+        // 첫 await 전에 잡는다: 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
+        const request = openRequest.current;
 
         try {
             const module = modules.find((m) => m.name === settingsServer.module);
@@ -509,9 +516,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 convertedSettings.extension_data = { ...settingsValues._extension_data };
             }
 
-            const request = openRequest.current;
             const result = await window.api.instanceUpdateSettings(settingsServer.id, convertedSettings);
-            // 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
             const stillOpen = request === openRequest.current;
 
             if (result.error && result.error_code === 'invalid_format') {
