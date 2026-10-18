@@ -482,6 +482,7 @@
       "monitor.watch": "Keep refreshing until Ctrl+C",
       "monitor.interval": "Seconds between refreshes with --watch",
       "audit.limit": "How many entries",
+      "audit.follow": "Keep printing new entries as they happen (Ctrl+C to stop)",
       "bot.lang.value": "auto or a language code (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.music.on": "Turn music on",
       "bot.music.off": "Turn music off",

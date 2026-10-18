@@ -162,14 +162,19 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         anyhow::Ok((made, pruned))
     })
     .await;
-    match result {
+    let result = match result {
         Ok(Ok((made, pruned))) => {
             tracing::info!("Backed up '{}' as {} ({} bytes, pruned {})", id, made.name, made.size, pruned.len());
-            Ok(Some(made))
+            Ok(made)
         }
-        Ok(Err(e)) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", format!("{:#}", e))),
-        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
-    }
+        Ok(Err(e)) => Err(format!("{:#}", e)),
+        Err(e) => Err(e.to_string()),
+    };
+    crate::events::emit("backup.done", match &result {
+        Ok(made) => json!({ "instanceId": id, "kind": kind, "name": made.name, "ok": true }),
+        Err(e) => json!({ "instanceId": id, "kind": kind, "ok": false, "error": e }),
+    });
+    result.map(Some).map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e))
 }
 
 async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Response> {
