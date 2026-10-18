@@ -134,7 +134,11 @@
     "provisioning": "프로비저닝 중…",
     "step_compose": "설정 생성",
     "migrate_existing": "기존 서버 마이그레이션…",
-    "migrate_existing_hint": "기존 게임 서버 디렉토리를 saba-chan으로 가져옵니다."
+    "migrate_existing_hint": "기존 게임 서버 디렉토리를 saba-chan으로 가져옵니다.",
+    "preset_title": "추천 설정",
+    "preset_none": "기본 설정",
+    "preset_none_hint": "모듈 기본값으로 만들어요.",
+    "preset_not_found": "이 모듈에 그 추천 설정이 없어요. 모듈을 새로 고친 뒤 다시 시도하세요."
   },
   "add_instance_modal": {
     "title": "인스턴스 추가",

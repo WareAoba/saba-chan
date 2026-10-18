@@ -813,6 +813,11 @@ export function useServerActions({
                 instanceData.module_settings = payload.module_settings;
             }
 
+            // 모듈 추천 프리셋 id (값은 데몬이 푼다)
+            if (payload?.preset) {
+                instanceData.preset = payload.preset;
+            }
+
             // 마이그레이션: 기존 서버 디렉토리 직접 연결
             if (payload?.migration_source) {
                 instanceData.migration_source = payload.migration_source;
@@ -860,6 +865,15 @@ export function useServerActions({
                     type: 'failure',
                     title: t('servers.add_failed_title'),
                     message: t('servers.working_dir_in_use', { instance: result.instance || '?' }),
+                });
+                return;
+            }
+
+            if (result.error_code === 'preset_not_found') {
+                setModal({
+                    type: 'failure',
+                    title: t('servers.add_failed_title'),
+                    message: t('add_server_modal.preset_not_found'),
                 });
                 return;
             }

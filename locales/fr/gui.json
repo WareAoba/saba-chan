@@ -134,7 +134,11 @@
     "provisioning": "Provisionnement en cours…",
     "step_compose": "Créer la configuration",
     "migrate_existing": "Migration du serveur existant…",
-    "migrate_existing_hint": "Importe un répertoire de serveur de jeu existant dans saba-chan."
+    "migrate_existing_hint": "Importe un répertoire de serveur de jeu existant dans saba-chan.",
+    "preset_title": "Configuration recommandée",
+    "preset_none": "Par défaut",
+    "preset_none_hint": "Utilise les valeurs par défaut du module.",
+    "preset_not_found": "Ce module n'a pas cette configuration recommandée. Actualisez les modules et réessayez."
   },
   "add_instance_modal": {
     "title": "Ajouter une instance",

@@ -134,7 +134,11 @@
     "provisioning": "Provisioning…",
     "step_compose": "Configuration",
     "migrate_existing": "Migrate Existing Server…",
-    "migrate_existing_hint": "Import an existing game server directory into saba-chan."
+    "migrate_existing_hint": "Import an existing game server directory into saba-chan.",
+    "preset_title": "Recommended setup",
+    "preset_none": "Default",
+    "preset_none_hint": "Uses the module's defaults.",
+    "preset_not_found": "This module doesn't have that recommended setup. Refresh modules and try again."
   },
   "add_instance_modal": {
     "title": "Add Instance",
