@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatbotView, ModelField } from '../components/discord/ChatbotView';
 import { DiscordPage } from '../components/discord/DiscordPage';
 import { defaultPrefix, prefixProblems, readPrefixes } from '../components/discord/prefixes';
+import { openDropdown } from './dropdown';
 
 const t = (k, o) => (o ? `${k}:${JSON.stringify(o)}` : k);
 
@@ -74,8 +75,13 @@ describe('모델 고르기 (chatbot-settings-v2 §1)', () => {
         render(<ModelField value="gpt-a" saved="gpt-a" onChange={onChange} guildId="g1" hasApiKey />);
         await waitFor(() => expect(screen.getByLabelText('Model')).not.toBeDisabled());
         expect(window.api.chatbotModels).toHaveBeenCalledWith('g1');
-        expect([...screen.getByLabelText('Model').options].map((o) => o.value)).toEqual(['gpt-a', 'gpt-b']);
-        fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'gpt-b' } });
+        const list = openDropdown(screen.getByLabelText('Model'));
+        expect(
+            within(list)
+                .getAllByRole('option')
+                .map((o) => o.textContent),
+        ).toEqual(['gpt-a', 'gpt-b']);
+        fireEvent.click(within(list).getByRole('option', { name: 'gpt-b' }));
         expect(onChange).toHaveBeenLastCalledWith('gpt-b');
     });
 

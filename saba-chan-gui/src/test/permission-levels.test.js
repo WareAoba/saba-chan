@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as L from '../components/discord/levels';
 import { NodeView } from '../components/discord/NodeView';
 import { OWNER_CONFIRM_MS, PermissionPanel } from '../components/discord/PermissionsTab';
+import { pickOption } from './dropdown';
 
 const API = ['permissionsGet', 'permissionsUpdate', 'permissionsSetMember', 'permissionsRemoveMember'];
 const node = { guildId: 'g1', guildName: 'Guild' };
@@ -92,12 +93,12 @@ describe('권한 화면', () => {
         expect(within(screen.getByRole('region', { name: 'Banned' })).getByText('1004')).toBeInTheDocument();
         expect(screen.getByText('Everyone else uses the default level (User).')).toBeInTheDocument();
 
-        fireEvent.change(screen.getByLabelText('Level for Mint'), { target: { value: '-1' } });
+        pickOption(screen.getByLabelText('Level for Mint'), 'Banned');
         await flush();
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1002', -1);
         expect(window.api.permissionsGet).toHaveBeenCalledTimes(2);
 
-        fireEvent.change(screen.getByLabelText('Default level'), { target: { value: '0' } });
+        pickOption(screen.getByLabelText('Default level'), 'Chatbot');
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { defaultLevel: 0 });
 
@@ -110,10 +111,10 @@ describe('권한 화면', () => {
         window.api.permissionsSetMember = vi.fn(async () => ({ error: 'x', error_code: 'owner_fixed' }));
         renderPanel();
         await flush();
-        fireEvent.change(screen.getByLabelText('Level for Mint'), { target: { value: '1' } });
+        pickOption(screen.getByLabelText('Level for Mint'), 'User');
         await flush();
         expect(window.showToast).toHaveBeenCalledWith("The owner's level can't be changed.", 'error', 5000, undefined);
-        expect(screen.getByLabelText('Level for Mint')).toHaveValue('2');
+        expect(screen.getByLabelText('Level for Mint')).toHaveTextContent('Admin');
     });
 
     it('릴레이에 남은 부여값을 골라 가져온다', async () => {
@@ -159,14 +160,13 @@ describe('권한 화면', () => {
         renderPanel('commands');
         await flush();
         const stop = screen.getByLabelText('Level needed for Stop');
-        expect(stop).toHaveValue('');
-        expect(within(stop).getByRole('option', { name: 'Preset (User)' })).toBeInTheDocument();
-        expect(screen.getByLabelText('Level needed for Say')).toHaveValue('3');
+        expect(stop).toHaveTextContent('Preset (User)');
+        expect(screen.getByLabelText('Level needed for Say')).toHaveTextContent('Owner');
 
-        fireEvent.change(stop, { target: { value: '2' } });
+        pickOption(stop, 'Admin');
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/stop': 2 } });
-        fireEvent.change(screen.getByLabelText('Level needed for Say'), { target: { value: '' } });
+        pickOption(screen.getByLabelText('Level needed for Say'), 'Preset (User)');
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/say': null } });
     });

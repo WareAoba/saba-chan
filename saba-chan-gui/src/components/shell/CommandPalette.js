@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import { useUIStore } from '../../stores/useUIStore';
 import { safeShowToast } from '../../utils/helpers';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
 
@@ -84,14 +85,16 @@ function Field({ field, value, onChange }) {
     let input;
     if (field.enum) {
         input = (
-            <select id={id} className="input" value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
-                {!field.required && <option value="" />}
-                {field.enum.map((v) => (
-                    <option key={String(v)} value={v}>
-                        {String(v)}
-                    </option>
-                ))}
-            </select>
+            <CustomDropdown
+                id={id}
+                value={value ?? ''}
+                onChange={(v) => onChange(v)}
+                placeholder=" "
+                options={[
+                    ...(field.required ? [] : [{ value: '', label: ' ' }]),
+                    ...field.enum.map((v) => ({ value: v, label: String(v) })),
+                ]}
+            />
         );
     } else if (field.type === 'boolean') {
         input = <input id={id} type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />;

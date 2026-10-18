@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSwapAnimation } from '../../hooks/useSwapAnimation';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { useDiscordStore } from '../../stores/useDiscordStore';
 import { safeShowToast } from '../../utils/helpers';
@@ -129,6 +130,8 @@ export function DiscordPage({
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const [view, setView] = useState(initialView || { kind: 'connection' });
+    // 왼쪽에서 다른 화면을 고르면 오른쪽이 살짝 떠오르며 바뀐다
+    const mainRef = useSwapAnimation(`${view.kind}:${view.id ?? ''}`);
     const [showMainNarrow, setShowMainNarrow] = useState(!!initialView);
     const [cloudError, setCloudError] = useState('');
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
@@ -391,7 +394,9 @@ export function DiscordPage({
                             'conn',
                             view.kind === 'connection',
                             () => go({ kind: 'connection' }),
-                            <Icon name="plug" size="sm" />,
+                            <span className={clsx('dc-brand-mark', { on: cloudState === 'connected' })}>
+                                <Icon name={cloudState === 'connected' ? 'discordLogo' : 'discord'} size="sm" />
+                            </span>,
                             t('discord.nav_connection'),
                             <StatusChip tone={connTone} pulse={cloudState === 'connecting'} label={connLabel} />,
                         )}
@@ -486,7 +491,7 @@ export function DiscordPage({
 
             {!mainHidden && (
                 <main className="server-detail-pane">
-                    <div className="server-detail dc-main">
+                    <div className="server-detail dc-main" ref={mainRef}>
                         {singleColumn && (
                             <button type="button" className="dc-crumb" onClick={() => setShowMainNarrow(false)}>
                                 <Icon name="chevronLeft" size="sm" /> {t('discord.back_to_menu')}

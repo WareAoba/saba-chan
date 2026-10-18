@@ -5,8 +5,6 @@
 
 /** 계열색 개수 (tokens.css --series-1..8). 넘치는 인스턴스는 "기타 인스턴스"로 묶는다 */
 export const SERIES_COUNT = 8;
-/** 최근 최대값을 잡는 표본 수 (2초 간격이면 약 2분) */
-export const PEAK_WINDOW = 60;
 /** 디스크 IO·네트워크 눈금의 최소값: 거의 놀 때 작은 값이 꽉 찬 원으로 보이지 않게 */
 const MIN_RATE_SCALE = 1024 * 1024;
 
@@ -56,16 +54,19 @@ function instanceSegments(values, slots, names) {
     return segs;
 }
 
-/** 최근 표본들에서 디스크 IO·네트워크 최대값 */
-export function peaksOf(history) {
-    let diskIo = 0;
-    let network = 0;
-    for (const s of history) {
-        diskIo = Math.max(diskIo, (s.disk_io?.read_bps || 0) + (s.disk_io?.write_bps || 0));
-        network = Math.max(network, (s.network?.rx_bps || 0) + (s.network?.tx_bps || 0));
-    }
-    return { diskIo, network };
+/** 디스크 IO·네트워크 최대값을 새 표본으로 갱신한다 (앱을 켠 뒤 본 최고값이 눈금이 된다) */
+export function nextPeaks(prev, snap) {
+    return {
+        diskIo: Math.max(prev.diskIo, (snap?.disk_io?.read_bps || 0) + (snap?.disk_io?.write_bps || 0)),
+        network: Math.max(prev.network, (snap?.network?.rx_bps || 0) + (snap?.network?.tx_bps || 0)),
+    };
 }
+
+/** 표본들에서 최대값 */
+export const peaksOf = (history) => history.reduce(nextPeaks, { diskIo: 0, network: 0 });
+
+/** 인스턴스로 나누지 않는 전체 몫의 색: 인스턴스 계열색과 헷갈리지 않는 중립색 */
+export const ALL_COLOR = 'var(--text-2)';
 
 /**
  * 원형 그래프 다섯 개. 각 조각의 value 합은 total 이하이고, 남는 몫이 유휴다.
@@ -122,7 +123,7 @@ export function buildRings(snap, slots, peaks = { diskIo: 0, network: 0 }) {
         // 실제 디스크 IO는 인스턴스별로 나누지 않는다: 프로세스 IO 카운터는 캐시 읽기까지 세서 몫이 맞지 않는다
         noteKey: io.source === 'process' ? 'monitor.disk_io_process_note' : 'monitor.disk_io_note',
         segments: [
-            { key: '__all', labelKey: 'monitor.all_disk_io', value: ioTotal, color: 'var(--accent)' },
+            { key: '__all', labelKey: 'monitor.all_disk_io', value: ioTotal, color: ALL_COLOR },
             idle(ioScale - ioTotal),
         ],
     });
@@ -159,7 +160,7 @@ export function buildRings(snap, slots, peaks = { diskIo: 0, network: 0 }) {
         format: formatRate,
         // 프로세스별 네트워크는 데몬이 아직 못 잰다: 전체 트래픽 한 조각만
         noteKey: net.per_instance ? 'monitor.scale_note' : 'monitor.network_note',
-        segments: [{ key: '__all', labelKey: 'monitor.all_traffic', value: netTotal, color: 'var(--accent)' }, idle(netScale - netTotal)],
+        segments: [{ key: '__all', labelKey: 'monitor.all_traffic', value: netTotal, color: ALL_COLOR }, idle(netScale - netTotal)],
     });
     return rings;
 }

@@ -9,6 +9,7 @@ import { installMockApi } from './dev/mockApi';
 import { i18nReady } from './i18n'; // Initialize i18n
 import './styles/tokens.css'; // 디자인 토큰 (다른 CSS보다 먼저)
 import './styles/base.css';
+import { installOverlayScrollbars } from './utils/overlayScrollbar';
 import { initTheme } from './utils/themeManager';
 
 // 익스텐션 UMD 번들이 window.React / window.ReactDOM 을 참조하므로 전역 노출
@@ -20,6 +21,8 @@ if (import.meta.env?.DEV && !window.api) installMockApi();
 
 // Apply saved theme before first render
 initTheme();
+// 스크롤바는 내용 위에 겹쳐 그린다 (레이아웃을 밀지 않게)
+installOverlayScrollbars();
 
 const handleGlobalError = (error, info) => {
     console.error('[ErrorBoundary] Uncaught error:', error);

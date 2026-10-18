@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
@@ -366,20 +367,22 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                                         <span className="dc-list-text">
                                             <span className="dc-list-name">{name}</span>
                                         </span>
-                                        <select
-                                            className="input cb-select"
+                                        <CustomDropdown
+                                            className="cb-select"
                                             value={g.enabled}
-                                            aria-label={t('chatbot.guild_enabled_aria', { name })}
-                                            onChange={(e) => setGuild(id, { enabled: e.target.value })}
-                                        >
-                                            <option value="inherit">
-                                                {t('chatbot.guild_inherit', {
-                                                    state: s.enabled ? t('chatbot.on') : t('chatbot.off'),
-                                                })}
-                                            </option>
-                                            <option value="on">{t('chatbot.on')}</option>
-                                            <option value="off">{t('chatbot.off')}</option>
-                                        </select>
+                                            ariaLabel={t('chatbot.guild_enabled_aria', { name })}
+                                            onChange={(v) => setGuild(id, { enabled: v })}
+                                            options={[
+                                                {
+                                                    value: 'inherit',
+                                                    label: t('chatbot.guild_inherit', {
+                                                        state: s.enabled ? t('chatbot.on') : t('chatbot.off'),
+                                                    }),
+                                                },
+                                                { value: 'on', label: t('chatbot.on') },
+                                                { value: 'off', label: t('chatbot.off') },
+                                            ]}
+                                        />
                                         {window.api?.chatbotClearMemory && (
                                             <button
                                                 type="button"
@@ -507,21 +510,14 @@ export function ModelField({ value, saved, onChange, guildId, hasApiKey }) {
         <div className="mt-field">
             <span>{t('chatbot.model')}</span>
             <span className="mt-inline">
-                {/* 디자인 세션의 공용 드롭다운이 들어오면 그것으로 바꾼다 */}
-                <select
-                    className="input cb-select"
+                <CustomDropdown
+                    className="cb-select"
                     value={value}
-                    aria-label={t('chatbot.model')}
+                    ariaLabel={t('chatbot.model')}
                     disabled={!res || res.loading || !!res.error}
-                    onChange={(e) => onChange(e.target.value)}
-                >
-                    {options.length === 0 && <option value={value}>{value}</option>}
-                    {options.map((m) => (
-                        <option key={m} value={m}>
-                            {m}
-                        </option>
-                    ))}
-                </select>
+                    onChange={onChange}
+                    options={(options.length ? options : [value]).map((m) => ({ value: m, label: m }))}
+                />
                 {res?.loading && <SabaSpinner size="sm" />}
                 {res?.error && canAsk && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={load}>

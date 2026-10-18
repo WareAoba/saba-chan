@@ -1,0 +1,137 @@
+/* ════════════════════════════════════════════════════════════════
+ * 공통 움직임: 화면 곳곳의 작은 전환. 하나하나는 짧고 약하게 둔다.
+ * 사용자가 애니메이션을 끄거나(data-no-transitions) 시스템이 움직임
+ * 줄이기를 원하면 tokens.css의 규칙이 모두 멈춘다.
+ * shell.css 다음에 읽는다.
+ * ════════════════════════════════════════════════════════════════ */
+
+/* ── 누를 수 있는 것: 색·테두리·그림자가 부드럽게 바뀐다 ── */
+button,
+.btn,
+.icon-btn,
+.input,
+.setting-item,
+.dc-list-row,
+.dc-nav-row,
+.appbar-tab,
+.settings-tab,
+.saba-storage-tab,
+.custom-dropdown-trigger,
+.status-chip,
+.notice-card {
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
+        opacity var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease),
+        filter var(--dur-fast) var(--ease);
+}
+
+/* 누르는 순간 살짝 눌린다 */
+.btn:active:not(:disabled),
+.icon-btn:active:not(:disabled),
+.appbar-tab:active,
+.settings-tab:active {
+    transform: scale(0.97);
+}
+
+/* 상태 점: 색이 바뀔 때 번지지 않게 천천히 */
+.status-chip-dot {
+    transition:
+        background-color var(--dur) var(--ease),
+        box-shadow var(--dur) var(--ease);
+}
+
+/* ── 나타나기: 카드·목록·설정 줄이 아래에서 살짝 떠오른다 ── */
+@keyframes motion-rise {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+@keyframes motion-fade {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes motion-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+    70% {
+        transform: scale(1.08);
+    }
+}
+
+.dc-card,
+.card,
+.settings-tab-content > .setting-item,
+.saba-storage-tab-content > *,
+.server-list > .server-row,
+.dc-list > li,
+.notice-card,
+.empty-state {
+    animation: motion-rise var(--dur) var(--ease) backwards;
+}
+
+/* 앞쪽 몇 개만 조금씩 늦게 (목록이 길어도 늦어지지 않게 8번째부터는 같이) */
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+        2
+    ) {
+    animation-delay: 30ms;
+}
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+        3
+    ) {
+    animation-delay: 60ms;
+}
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+        4
+    ) {
+    animation-delay: 90ms;
+}
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+        5
+    ) {
+    animation-delay: 120ms;
+}
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+        6
+    ) {
+    animation-delay: 150ms;
+}
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+        n + 7
+    ) {
+    animation-delay: 180ms;
+}
+
+/* 알림 숫자는 톡 튀어나온다 */
+.badge-count {
+    animation: motion-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+/* 경고·안내 줄은 조용히 나타난다 */
+.notice,
+.dc-field-error {
+    animation: motion-fade var(--dur) var(--ease) backwards;
+}
+
+/* 선택된 서버 줄의 왼쪽 막대가 위아래로 펴진다 */
+.server-row.selected::before {
+    animation: motion-bar var(--dur) var(--ease) backwards;
+}
+@keyframes motion-bar {
+    from {
+        transform: scaleY(0.3);
+        opacity: 0;
+    }
+}
+
+/* 저장 줄이 생기면 아래에서 올라온다 */
+.dc-savebar.dirty {
+    animation: motion-rise var(--dur) var(--ease) backwards;
+}

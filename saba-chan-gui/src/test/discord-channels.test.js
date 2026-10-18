@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChannelsTab, channelsErrorText, channelsPatch } from '../components/discord/ChannelsTab';
+import { openDropdown, pickOption } from './dropdown';
 
 const node = { guildId: 'g1', guildName: 'My Guild' };
 const base = {
@@ -41,13 +42,13 @@ describe('ChannelsTab', () => {
         window.api.relayNodeChannelsSave = vi.fn().mockResolvedValue({ ...base, chatbot: ['111'], music: '222' });
         render(<ChannelsTab node={node} />);
         const select = await screen.findByLabelText('Music channel');
-        fireEvent.change(select, { target: { value: '222' } });
+        pickOption(select, 'Text / #music');
         expect(screen.getByText(/All regular messages in #music will be deleted/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
         expect(window.api.relayNodeChannelsSave).not.toHaveBeenCalled();
         // 확인 상태에서 채널을 바꾸면 다시 확인받는다
-        fireEvent.change(select, { target: { value: '' } });
-        fireEvent.change(select, { target: { value: '222' } });
+        pickOption(select, 'None (unassign)');
+        pickOption(select, 'Text / #music');
         expect(screen.getByRole('button', { name: /^Save$/ })).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
         expect(window.api.relayNodeChannelsSave).not.toHaveBeenCalled();
@@ -64,8 +65,9 @@ describe('ChannelsTab', () => {
             .mockResolvedValue({ ...base, chatbot: [], music: '222', notify: '111' });
         render(<ChannelsTab node={node} />);
         const select = await screen.findByLabelText('Alert channel');
-        expect(select.querySelector('option[value="222"]').disabled).toBe(true);
-        fireEvent.change(select, { target: { value: '111' } });
+        const list = openDropdown(select);
+        expect(within(list).getByRole('option', { name: 'Text / #music' })).toHaveAttribute('aria-disabled', 'true');
+        fireEvent.click(within(list).getByRole('option', { name: 'Text / #chat' }));
         expect(screen.getByText('Used as the alert channel')).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
         await waitFor(() =>
@@ -85,7 +87,11 @@ describe('ChannelsTab', () => {
         render(<ChannelsTab node={node} />);
         expect(await screen.findByText(/You can only unassign/)).toBeTruthy();
         expect(screen.getByLabelText('Use #music as a chatbot channel').disabled).toBe(true);
-        for (const option of screen.getAllByRole('option', { name: '#music' })) expect(option.disabled).toBe(true);
+        for (const label of ['Music channel', 'Alert channel']) {
+            const list = openDropdown(screen.getByLabelText(label));
+            expect(within(list).getByRole('option', { name: '#music' })).toHaveAttribute('aria-disabled', 'true');
+            fireEvent.keyDown(screen.getByLabelText(label), { key: 'Escape' });
+        }
         fireEvent.click(screen.getByLabelText('Use #111 as a chatbot channel'));
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
         await waitFor(() => expect(window.api.relayNodeChannelsSave).toHaveBeenCalledWith('g1', { chatbot: [] }));

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
+import { pickOption } from './dropdown';
 
 const t = (k) => k;
 const API_KEYS = [
@@ -162,7 +163,7 @@ describe('ChatbotView', () => {
         rerender(<ChatbotView nodes={nodes} />);
         const sel = await screen.findByLabelText('Chatbot in My Guild');
         expect(screen.getByLabelText('Image generation').checked).toBe(false);
-        fireEvent.change(sel, { target: { value: 'off' } });
+        pickOption(sel, 'Off');
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
         const patch = window.api.chatbotSave.mock.calls[0][0];
@@ -181,7 +182,7 @@ describe('ChatbotView', () => {
             .fn()
             .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         render(<ChatbotView nodes={nodes} />);
-        const memo = await screen.findByLabelText('Node memo for My Guild');
+        const memo = await screen.findByLabelText('Server prompt for My Guild');
         expect(memo.value).toBe('안녕');
         expect(screen.getByText('2 / 8,000')).toBeTruthy();
         fireEvent.change(memo, { target: { value: 'x'.repeat(8001) } });
@@ -224,7 +225,7 @@ describe('ChatbotView', () => {
         window.api.chatbotClearMemory = vi.fn().mockResolvedValue({ success: true });
         render(<ChatbotView nodes={nodes} />);
         const sel = await screen.findByLabelText('Chatbot in My Guild');
-        fireEvent.change(sel, { target: { value: 'on' } });
+        pickOption(sel, 'On');
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText(/channelIds too long/);
         expect(window.api.chatbotSave).toHaveBeenCalledWith({
