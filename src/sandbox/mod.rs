@@ -302,7 +302,10 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     }
     // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
     let mut files: Vec<PathBuf> = Some(PathBuf::from(&program)).filter(|p| p.is_absolute()).into_iter().collect();
-    files.extend(argument_files(args, cwd));
+    match argument_files(args, cwd) {
+        Ok(found) => files.extend(found),
+        Err(arg) => return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None }),
+    }
     tokio::task::spawn_blocking(move || {
         let mut cache = VerdictCache::load();
         let result = files.iter().try_for_each(|f| scan::scan_executable(f, &scan::SystemScanner, &mut cache));
@@ -314,8 +317,27 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     Ok(program)
 }
 
-/// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준)
-fn argument_files(args: &[String], cwd: &Path) -> Vec<PathBuf> {
+/// `.`·`..`를 글자로만 푼 경로 (파일 시스템에 묻지 않는다)
+fn lexical(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                    out.pop();
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준).
+/// 로컬 드라이브가 아닌 경로(UNC 등)를 가리키는 인자는 묻지 않고 그 인자를 돌려준다 (`Err`)
+fn argument_files(args: &[String], cwd: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out: Vec<PathBuf> = Vec::new();
     for arg in args {
         let mut candidates = vec![arg.as_str(), arg.trim_start_matches('@')];
@@ -324,13 +346,16 @@ fn argument_files(args: &[String], cwd: &Path) -> Vec<PathBuf> {
             candidates.extend(arg.split_once(':').map(|(_, v)| v));
         }
         for c in candidates.into_iter().filter(|c| !c.is_empty()) {
-            let path = cwd.join(c);
-            if plain_local_path(&path) && path.is_file() && !out.contains(&path) {
+            let path = lexical(&cwd.join(c));
+            if !plain_local_path(&path) {
+                return Err(arg.clone());
+            }
+            if path.is_file() && !out.contains(&path) {
                 out.push(path);
             }
         }
     }
-    out
+    Ok(out)
 }
 
 /// 격리해서 돌릴 Python 실행 하나
@@ -852,9 +877,15 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let found = argument_files(&args, tmp.path());
+        let found = argument_files(&args, tmp.path()).unwrap();
         let names: Vec<_> = found.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
         assert_eq!(names, ["agent.jar", "args.txt", "extra.jar", "server.jar"]);
+        // `..`가 든 인자도 글자로 푼 경로로 검사 목록에 든다
+        std::fs::create_dir_all(tmp.path().join("sub")).unwrap();
+        let up = argument_files(&["-jar".to_string(), "sub/../server.jar".to_string()], tmp.path()).unwrap();
+        assert_eq!(up, vec![tmp.path().join("server.jar")]);
+        #[cfg(windows)]
+        assert_eq!(argument_files(&[r"\\host\share\x.jar".to_string()], tmp.path()), Err(r"\\host\share\x.jar".to_string()));
     }
 
     /// 익스텐션 hook은 확인된 모듈의 인스턴스에도 불린다: 인스턴스 폴더는 읽기만, 쓰기는 전용 폴더에만
