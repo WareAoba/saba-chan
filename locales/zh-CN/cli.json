@@ -57,7 +57,6 @@
     "invite": "用此链接将机器人邀请到你的 Discord 服务器：",
     "allow_all": "这个 Discord 服务器可以看到本机的所有服务器。",
     "allow_none": "没有开放的服务器。",
-    "allow_bad_node": "{{guild}} 的设置不是对象。请用 saba-chan-cli bot config 检查。",
     "allow_all_saved": "{{guild}} 现在可以看到所有服务器。",
     "allow_saved": "{{guild}} 现在只能看到：{{servers}}",
     "link_accepted": "已将 {{guild}} 连接到此电脑。",

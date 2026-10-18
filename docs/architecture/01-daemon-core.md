@@ -526,6 +526,7 @@ Relay 서명 방식(`relay.rs:115-161`):
   - `/api/discord/:guild/settings`로만 바뀐다. 봇 설정 저장은 이 블록도 되돌린다(`PERMISSION_KEYS`).
   - 데몬에 값이 없는 길드는 릴레이 값을 읽는다(릴레이에 없으면 기본값). 페어링했는데 릴레이를 읽지 못하면 GET은 기본값에 `loaded:false`를 붙여 답하고, PATCH는 503 `relay_unavailable`로 거절한다(기본값을 저장해 릴레이 값을 덮지 않게).
   - 릴레이에 닿지 않거나 5xx로 보내지 못한 설정은 저장해 두고, 다음에 하트비트가 성공하면 `sync_on_connect`로 다시 보낸다(`discord::take_pending_sync`).
+- `nodeSettings[guildId].allowedInstances`: 그 길드가 보고 부를 수 있는 인스턴스 id 목록(없으면 제한 없음). `PUT /api/guilds/:guild/allowed-instances`로만 바뀐다. 봇 설정 일괄 저장·초기화는 이 값을 바꾸지 않는다(`PERMISSION_KEYS`).
 - `nodeSettings[guildId].instances[instanceId]`: 그 길드에서 그 서버를 부르는 낱말 `{words:[..], commands:{<명령 정식 이름>:[..]}}`(`chat/words.rs`). `/api/guilds/:guild/instances*`로만 바뀐다(`PERMISSION_KEYS`). 낱말은 공백 없는 1~32자, 항목마다 10개까지이고, 같은 길드의 다른 서버 이름·id·낱말, 모듈 이름·module.toml 별명, `help`·`도움`·`도움말`·`list`·`목록`과 겹치면 안 된다. 명령 낱말은 같은 서버의 다른 명령 이름·별명과 겹치면 안 되고, 명령은 내장(start·stop·status)이거나 모듈 정의에 있어야 한다.
   - 채팅 처리기(릴레이에서 온 길드 요청만): 대상은 인스턴스 이름·id → 그 길드 `words` → 모듈 이름·module.toml 별명 순, 명령은 그 길드·서버의 `commands` → module.toml 별명 → 명령 이름 → 내장 순이다. 여러 서버가 걸리면 `errors.multiple_instances`로 답한다. 로컬 요청(GUI·CLI)은 사용자 낱말을 쓰지 않는다. 권한 키는 언제나 정식 이름(`<instance>/<command>`)이다.
 

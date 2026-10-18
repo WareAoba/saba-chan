@@ -57,7 +57,6 @@
     "invite": "次のリンクからボットを Discord サーバーに招待してください:",
     "allow_all": "このDiscordサーバーはこのPCのすべてのサーバーを見られます。",
     "allow_none": "開いているサーバーがありません。",
-    "allow_bad_node": "{{guild}} の設定がオブジェクトではありません。saba-chan-cli bot config で確認してください。",
     "allow_all_saved": "{{guild}} はすべてのサーバーを見られるようになりました。",
     "allow_saved": "{{guild}} で見られるのは次のサーバーだけです: {{servers}}",
     "link_accepted": "{{guild}} をこのPCに接続しました。",
