@@ -116,6 +116,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
 | relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels(`notify` 알림 채널 포함). 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
 | instanceAgreements (108) | instance:agreements | 2568 | POST /api/instance/:id/agreements `{accept:[id]}` | 모듈 약관 동의 |
+| onboarding | onboarding:get | 2569 | GET /api/onboarding (J1-a 다음 할 일) | - |
 | instanceBackups…instanceScheduleSave (109-114) | instance:backup*/schedule* | 2359-2368 | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 688-691 (미사용) |
 | chatbotGet/Save/Clear/ClearMemory (115-118) | chatbot:* | 2370-2375 | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 753-754 (미사용) |
 | relayInitiatePairing / relayPollPairingStatus (119-120) | relay:* | 2377/2388 | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 744-745 |

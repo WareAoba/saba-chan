@@ -25,15 +25,17 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         Err(e) => return Err(e),
     };
 
-    let (servers, modules, agent, updates, exts, preflight) = tokio::join!(
+    let (servers, modules, agent, updates, exts, preflight, onboarding) = tokio::join!(
         ctx.api.servers(),
         ctx.api.modules(),
         ctx.api.agent(),
         ctx.api.update_status(),
         ctx.api.extensions(),
-        ctx.api.preflight()
+        ctx.api.preflight(),
+        ctx.api.onboarding()
     );
     let preflight = preflight.ok();
+    let onboarding = onboarding.ok();
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
     let slots = exts
@@ -50,6 +52,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         "discord": agent.as_ref().ok(),
         "updates": updates.as_ref().ok(),
         "preflight": preflight,
+        "onboarding": onboarding,
     });
     ctx.out.data(&v, |_| {
         println!(
@@ -122,6 +125,19 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             if n > 0 {
                 ctx.out.hint("saba-chan-cli update status");
             }
+        }
+        // 처음 쓰는 사람에게 다음 단계 하나 (J1-a). 다 했으면 말하지 않는다
+        let next = onboarding.as_ref().and_then(|o| o.get("next")).and_then(Value::as_str);
+        let step = match next {
+            Some("module") => Some((t!("status.next_module"), "saba-chan-cli module install <module>")),
+            Some("server") => Some((t!("status.next_server"), "saba-chan-cli server add")),
+            Some("discord") => Some((t!("status.next_discord"), "saba-chan-cli bot pair")),
+            _ => None,
+        };
+        if let Some((text, cmd)) = step {
+            println!();
+            ctx.out.note(&text);
+            ctx.out.hint(cmd);
         }
     });
     Ok(())
