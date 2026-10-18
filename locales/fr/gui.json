@@ -1187,7 +1187,8 @@
     "extra_label": "Arguments supplémentaires",
     "extra_placeholder": "ex. -players=16 -useperfthreads",
     "unknown_args": "Les arguments sans paramètre correspondant sont transmis tels quels : {{args}}",
-    "invalid_format": "Format invalide."
+    "invalid_format": "Format invalide.",
+    "unchecked": "Impossible de vérifier les arguments de lancement supplémentaires, rien n'a été enregistré"
   },
   "activity": {
     "idle": "Cliquez pour voir le journal de la console du daemon",

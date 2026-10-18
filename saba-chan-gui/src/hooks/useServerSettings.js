@@ -481,6 +481,18 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             const convertedSettings = {};
             // 저장 직전의 추가 인자로 한 번 더 물어 남는 인자를 정한다 (미리보기 응답은 400ms 늦을 수 있다)
             const launch = await settleLaunchArgs(settingsServer.id, module?.settings?.fields, settingsValues);
+            if (launch?.failed) {
+                safeShowToast(
+                    t(
+                        launch.error_code === 'invalid_format'
+                            ? 'launch_preview.invalid_format'
+                            : 'launch_preview.unchecked',
+                    ),
+                    'warning',
+                    4000,
+                );
+                return;
+            }
             const values = launch ? { ...settingsValues, ...launch.settings } : settingsValues;
 
             if (module && module.settings && module.settings.fields) {
@@ -628,11 +640,13 @@ export async function settleLaunchArgs(id, fields, values) {
     try {
         // 입력칸을 아직 받지 못했으면(undefined) 데몬이 저장된 추가 인자로 나눈다
         const res = await window.api.instanceLaunchPreview(id, launchDraft(fields, values), values._launch_extra_args);
+        // 사용자가 고친 추가 인자를 나누지 못했으면 저장을 멈춘다 (그냥 저장하면 고친 인자가 빠진다)
+        if (res?.error && values._launch_extra_args !== undefined) return { failed: true, error_code: res.error_code };
         if (!res?.has_launch_args || !Array.isArray(res.extra_args)) return null;
         const settings = {};
         for (const [k, v] of Object.entries(res.settings_from_args || {})) settings[k] = String(v);
         return { extra_args: res.extra_args, settings };
     } catch {
-        return null;
+        return values._launch_extra_args !== undefined ? { failed: true } : null;
     }
 }

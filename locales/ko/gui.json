@@ -1219,7 +1219,8 @@
     "extra_label": "추가 인자",
     "extra_placeholder": "예: -players=16 -useperfthreads",
     "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}",
-    "invalid_format": "잘못된 형식입니다."
+    "invalid_format": "잘못된 형식입니다.",
+    "unchecked": "추가 인자를 확인하지 못해 저장하지 않았어요"
   },
   "activity": {
     "idle": "눌러서 데몬 콘솔 기록 보기",

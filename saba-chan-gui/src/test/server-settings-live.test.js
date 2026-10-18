@@ -182,4 +182,22 @@ describe('서버 설정 창: 실제 설정', () => {
         });
         expect(result.current.settingsServer.id).toBe('b');
     });
+
+    it('고친 추가 인자를 데몬이 나누지 못하면 저장하지 않고 알린다 (인자가 조용히 빠지지 않게)', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: {} });
+        window.api.instanceLaunchPreview = vi
+            .fn()
+            .mockResolvedValueOnce({ success: false, error: 'bad quote', error_code: 'invalid_format' })
+            .mockRejectedValueOnce(new Error('daemon down'));
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        act(() => result.current.handleSettingChange('_launch_extra_args', '-Xmx6G "oops'));
+        await act(async () => result.current.handleSaveSettings());
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
+        const warned = window.showToast.mock.calls.map((c) => c[0]);
+        expect(warned).toEqual(['Invalid format.', "Couldn't check the extra launch arguments, so nothing was saved"]);
+        delete window.api.instanceLaunchPreview;
+    });
 });

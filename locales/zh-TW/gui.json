@@ -1187,7 +1187,8 @@
     "extra_label": "額外參數",
     "extra_placeholder": "例如：-players=16 -useperfthreads",
     "unknown_args": "沒有對應設定的參數將原樣傳遞：{{args}}",
-    "invalid_format": "格式無效。"
+    "invalid_format": "格式無效。",
+    "unchecked": "無法檢查額外啟動參數，因此未儲存"
   },
   "activity": {
     "idle": "點擊查看常駐程式主控台記錄",

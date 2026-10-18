@@ -1187,7 +1187,8 @@
     "extra_label": "Zusätzliche Argumente",
     "extra_placeholder": "z. B. -players=16 -useperfthreads",
     "unknown_args": "Argumente ohne passende Einstellung werden unverändert übergeben: {{args}}",
-    "invalid_format": "Ungültiges Format."
+    "invalid_format": "Ungültiges Format.",
+    "unchecked": "Die zusätzlichen Startargumente konnten nicht geprüft werden, daher wurde nichts gespeichert"
   },
   "activity": {
     "idle": "Klicken, um das Daemon-Konsolenprotokoll anzuzeigen",

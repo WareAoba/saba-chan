@@ -1187,7 +1187,8 @@
     "extra_label": "Argumentos adicionales",
     "extra_placeholder": "p. ej. -players=16 -useperfthreads",
     "unknown_args": "Los argumentos sin ajuste correspondiente se pasan tal cual: {{args}}",
-    "invalid_format": "Formato no válido."
+    "invalid_format": "Formato no válido.",
+    "unchecked": "No se pudieron comprobar los argumentos de inicio adicionales, así que no se guardó nada"
   },
   "activity": {
     "idle": "Haz clic para ver el registro de la consola del daemon",

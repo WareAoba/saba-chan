@@ -1219,7 +1219,8 @@
     "extra_label": "Extra arguments",
     "extra_placeholder": "e.g. -players=16 -useperfthreads",
     "unknown_args": "Arguments without a matching setting are passed as is: {{args}}",
-    "invalid_format": "Invalid format."
+    "invalid_format": "Invalid format.",
+    "unchecked": "Couldn't check the extra launch arguments, so nothing was saved"
   },
   "activity": {
     "idle": "Click to view the daemon console log",

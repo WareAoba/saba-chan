@@ -1187,7 +1187,8 @@
     "extra_label": "额外参数",
     "extra_placeholder": "例如：-players=16 -useperfthreads",
     "unknown_args": "没有对应设置的参数将原样传递：{{args}}",
-    "invalid_format": "格式无效。"
+    "invalid_format": "格式无效。",
+    "unchecked": "无法检查附加启动参数，因此未保存"
   },
   "activity": {
     "idle": "点击查看守护进程控制台记录",
