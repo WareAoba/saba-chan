@@ -1076,7 +1076,7 @@
     },
     "start_blocked": {
       "malware_detected": "확인되지 않은 구성요소의 파일을 백신이 악성으로 판정했어요: {{file}}",
-      "launch_outside_instance": "확인되지 않은 모듈이 서버 폴더 밖의 프로그램을 실행하려 했어요: {{file}}",
+      "launch_outside_instance": "확인되지 않은 모듈이 서버 폴더 밖의 프로그램을 실행하려 했어요: {{file}} Java 경로를 직접 정했다면 서버 설정에서 다시 선택해 주세요.",
       "unscannable_file": "확인되지 않은 구성요소에 원본 없이 컴파일된 파일이 있어 검사할 수 없어요: {{file}}",
       "scan_failed": "확인되지 않은 구성요소의 파일을 검사하지 못해 실행하지 않았어요: {{file}}",
       "sandbox_unavailable": "{{component}}의 격리 환경을 준비하지 못해 실행하지 않았어요."

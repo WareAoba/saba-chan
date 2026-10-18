@@ -43,7 +43,7 @@ pub enum Access {
 pub struct Grants {
     pub entries: Vec<(PathBuf, Access)>,
     /// 주지 못해도 실행은 계속하는 폴더 (찾아 둔 런타임처럼 없어도 되는 것)
-    pub optional: Vec<PathBuf>,
+    pub optional: Vec<(PathBuf, Access)>,
 }
 
 /// 권한을 줄 수 없는 위치인가: 데이터 폴더와 그 위, 드라이브 루트, 사용자 폴더와 그 위
@@ -93,8 +93,8 @@ impl Grants {
         let before = self.entries.len();
         self.push(path, access, data_dir, home);
         if self.entries.len() > before {
-            let real = self.entries[before].0.clone();
-            self.optional.push(real);
+            let entry = self.entries[before].clone();
+            self.optional.push(entry);
         }
     }
 }
@@ -590,7 +590,7 @@ mod imp {
         let everyone = all_app_packages()?;
         for (path, access) in &grants.entries {
             if let Err(e) = grant_one(path, sid, everyone, *access) {
-                if grants.optional.contains(path) {
+                if grants.optional.contains(&(path.clone(), *access)) {
                     tracing::warn!("[Sandbox] skipping {}: {}", path.display(), e);
                     continue;
                 }

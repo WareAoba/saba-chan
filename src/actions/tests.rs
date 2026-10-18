@@ -204,6 +204,8 @@ async fn remote_settings_cannot_touch_launch_values_at_any_depth() {
     assert!(ok.is_ok(), "{:?}", ok);
     let create = json!({ "name": "n", "module_name": "plain", "module_settings": { "java_path": "x" } });
     assert_eq!(plan(&state, "instance.create", None, &create, &owner_bot).await.unwrap_err().code, "invalid_input");
+    // java_path는 모듈이 글자 형식으로 선언해도 막는다
+    assert_eq!(forbidden_remote_key(&json!({ "java_path": "x" }), &FieldRules::default()).as_deref(), Some("java_path"));
 }
 
 #[tokio::test]

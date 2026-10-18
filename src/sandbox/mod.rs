@@ -59,6 +59,9 @@ pub fn accepts_module_dir(entry: &Path, dir: &str, root: &Path) -> bool {
 
 /// 링크·`..`를 푼 실제 경로로 `path`가 `root` 안인가 (없는 경로는 아니다)
 fn inside(path: &Path, root: &Path) -> bool {
+    if !plain_local_path(path) {
+        return false;
+    }
     match (std::fs::canonicalize(path), std::fs::canonicalize(root)) {
         (Ok(p), Ok(r)) => p.starts_with(r),
         _ => false,
@@ -117,6 +120,10 @@ pub fn check_launch(program: &str, roots: &LaunchRoots) -> Result<(), &'static s
     if path.components().count() == 1 && !path.is_absolute() {
         return if RUNTIME_NAMES.contains(&name.as_str()) { Ok(()) } else { Err(OUTSIDE) };
     }
+    // 모듈이 준 경로는 파일 시스템에 묻기 전에 거른다 (UNC 등)
+    if !plain_local_path(path) {
+        return Err(OUTSIDE);
+    }
     // 링크·`..`로 빠져나가지 않게 실제 경로로 비교한다. 없는 파일은 거부
     let Ok(real) = std::fs::canonicalize(path) else { return Err(OUTSIDE) };
     let inside = roots.dirs.iter().filter_map(|d| std::fs::canonicalize(d).ok()).any(|d| real.starts_with(d));
@@ -154,7 +161,7 @@ pub fn message(blocked: &Blocked) -> String {
     let file = blocked.file.as_deref().unwrap_or("");
     match blocked.code {
         "malware_detected" => format!("Antivirus flagged a file of this unverified component: {}", file),
-        "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}", file),
+        "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
         "unscannable_file" => format!("This unverified component contains compiled code without source that cannot be scanned: {}", file),
         "scan_failed" => format!("Could not scan a file of this unverified component, so it was not run: {}", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
@@ -318,7 +325,7 @@ fn argument_files(args: &[String], cwd: &Path) -> Vec<PathBuf> {
         }
         for c in candidates.into_iter().filter(|c| !c.is_empty()) {
             let path = cwd.join(c);
-            if path.is_file() && !out.contains(&path) {
+            if plain_local_path(&path) && path.is_file() && !out.contains(&path) {
                 out.push(path);
             }
         }

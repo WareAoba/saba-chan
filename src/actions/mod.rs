@@ -195,8 +195,9 @@ pub(crate) fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
     password_fields.iter().any(|f| f == key) || SECRET_KEYS.iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s)))
 }
 
-/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상
-const LAUNCH_KEYS: &[&str] = &["executable_path", "working_dir", "instance_dir", "extra_args", "extension_data", "rest_host", "memory_limit_mb"];
+/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상.
+/// `java_path`는 모듈이 어떤 형식으로 선언하든 실행 대상 검사가 인정하는 런타임이라 늘 막는다
+const LAUNCH_KEYS: &[&str] = &["executable_path", "working_dir", "instance_dir", "extra_args", "extension_data", "rest_host", "memory_limit_mb", "java_path"];
 
 /// 모듈 설정 필드 중 원격에서 다루지 않는 것들
 #[derive(Debug, Default)]
