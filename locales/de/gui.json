@@ -1071,7 +1071,8 @@
     "ext_title": "Die Erweiterung '{{name}}' nutzt Funktionen, die sie nicht angibt.",
     "ext_summary": "Ihr Code nutzt {{perms}}, aber die permissions in manifest.json führen das nicht auf. Stelle sicher, dass du dieser Erweiterung vertraust.",
     "perm_opaque_code": "kompilierter Code ohne Quelltext (.pyc)",
-    "perm_stdlib_shadow": "Dateien, die die Standardbibliothek überdecken"
+    "perm_stdlib_shadow": "Dateien, die die Standardbibliothek überdecken",
+    "unavailable": "Der Code von '{{name}}' konnte nicht geprüft werden. Beim nächsten Öffnen wird erneut geprüft."
   },
   "trust": {
     "verified": "Geprüft",

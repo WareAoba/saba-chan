@@ -6,6 +6,7 @@ import { Icon } from '../Icon';
 
 import { DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
+import { openWithNotice } from '../../utils/helpers';
 
 function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     const { t } = useTranslation('gui');
@@ -144,11 +145,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                 <button
                     type="button"
                     className="btn btn-ghost btn-block"
-                    onClick={() =>
-                        window.api
-                            .logsOpenFolder()
-                            .catch?.((err) => console.error('[Background] logs folder:', err.message))
-                    }
+                    onClick={() => openWithNotice(() => window.api.logsOpenFolder())}
                 >
                     <Icon name="folder" size="sm" /> {t('shell.open_logs_folder')}
                 </button>

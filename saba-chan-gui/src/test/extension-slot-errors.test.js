@@ -66,4 +66,20 @@ describe('확장 슬롯 오류 격리', () => {
         await act(async () => {});
         expect(result.current.slots['test.slot']).toBeUndefined();
     });
+
+    it('끈 확장의 스타일은 문서에서 지운다 (다른 화면에 남지 않게)', async () => {
+        window.api.extensionList = vi
+            .fn()
+            .mockResolvedValueOnce({ extensions: [ext('good')] })
+            .mockResolvedValue({ extensions: [] });
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(result.current.slots['test.slot']).toHaveLength(1));
+        // 번들을 읽을 때 넣는 스타일
+        const style = document.createElement('style');
+        style.dataset.extension = 'good';
+        document.head.appendChild(style);
+        await act(async () => result.current.refreshExtensions());
+        await waitFor(() => expect(result.current.slots['test.slot']).toBeUndefined());
+        expect(document.querySelector('style[data-extension="good"]')).toBeNull();
+    });
 });

@@ -27,6 +27,18 @@ export const safeShowToast = (message, type, duration, options) => {
 };
 
 /**
+ * 폴더 열기 같은 셸 호출: 셸은 실패를 {error}(이미 번역된 문구)로 돌려주므로 토스트로 알린다.
+ */
+export const openWithNotice = async (call) => {
+    try {
+        const res = await call();
+        if (res?.error) safeShowToast(res.error, 'error', 4000);
+    } catch (err) {
+        safeShowToast(err?.message || String(err), 'error', 4000);
+    }
+};
+
+/**
  * Retry an async function with exponential backoff.
  */
 export const retryWithBackoff = async (fn, maxRetries = 3, initialDelay = 500) => {

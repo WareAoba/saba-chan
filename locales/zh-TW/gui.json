@@ -1071,7 +1071,8 @@
     "ext_title": "擴充功能 '{{name}}' 使用了未宣告的功能。",
     "ext_summary": "程式碼使用了{{perms}}，但 manifest.json 的 permissions 中沒有列出。請確認你信任此擴充功能。",
     "perm_opaque_code": "沒有原始碼的已編譯程式碼（.pyc）",
-    "perm_stdlib_shadow": "遮蔽標準函式庫的檔案"
+    "perm_stdlib_shadow": "遮蔽標準函式庫的檔案",
+    "unavailable": "無法檢查 '{{name}}' 的程式碼。下次開啟時會再次檢查。"
   },
   "trust": {
     "verified": "已驗證",

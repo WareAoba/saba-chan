@@ -1071,7 +1071,8 @@
     "ext_title": "扩展 '{{name}}' 使用了未声明的功能。",
     "ext_summary": "代码使用了{{perms}}，但 manifest.json 的 permissions 中没有列出。请确认你信任此扩展。",
     "perm_opaque_code": "没有源码的已编译代码（.pyc）",
-    "perm_stdlib_shadow": "遮盖标准库的文件"
+    "perm_stdlib_shadow": "遮盖标准库的文件",
+    "unavailable": "无法检查 '{{name}}' 的代码。下次打开时会再次检查。"
   },
   "trust": {
     "verified": "已验证",

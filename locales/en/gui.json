@@ -1074,7 +1074,8 @@
     "ext_title": "Extension '{{name}}' uses capabilities it doesn't declare.",
     "ext_summary": "Its code uses {{perms}}, which the permissions in manifest.json don't list. Make sure you trust this extension.",
     "perm_opaque_code": "compiled code with no source (.pyc)",
-    "perm_stdlib_shadow": "files that shadow the standard library"
+    "perm_stdlib_shadow": "files that shadow the standard library",
+    "unavailable": "Couldn't check the code of '{{name}}'. It will be checked again when you open it next time."
   },
   "trust": {
     "verified": "Verified",

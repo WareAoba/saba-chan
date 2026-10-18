@@ -272,9 +272,8 @@ pub fn settings_local_load(app: AppHandle) -> Value {
 pub fn settings_local_save(app: AppHandle, settings: Value) -> bool {
     let state = app.state::<AppState>();
     let merged = settings::merge(state.settings(), &settings);
-    let ok = save_local(&state, &merged);
-    state.refresh_ipc_base();
-    ok
+    // 연결 주소는 바꾸지 않는다: 지금 데몬은 옛 포트에 있고, 새 포트는 데몬을 다시 띄울 때 쓴다
+    save_local(&state, &merged)
 }
 
 #[tauri::command]

@@ -21,6 +21,11 @@ import { TrustBadge } from '../ui/TrustBadge';
 // @param {boolean}  isExiting - 나가기 애니메이션 여부
 // @param {boolean}  devMode   - 개발자 모드
 // ─────────────────────────────────────────────────────────────
+/** updaterCall은 던지지 않고 {ok:false, error}로 실패를 알린다 */
+function throwIfRejected(res) {
+    if (res?.ok === false || res?.error) throw new Error(res.error || 'failed');
+}
+
 function SabaStorage({ onBack, isExiting, devMode }) {
     const { t } = useTranslation('gui');
     const [activeTab, setActiveTab] = useState('components');
@@ -204,12 +209,12 @@ function ComponentsTab({ devMode }) {
         try {
             if (toMock) {
                 // 업데이트는 릴레이 전용이다. 데몬은 relay_url만 본다 (src/ipc/updates.rs set_config)
-                await window.api?.updaterSetConfig?.({ relay_url: MOCK_RELAY_URL });
+                throwIfRejected(await window.api?.updaterSetConfig?.({ relay_url: MOCK_RELAY_URL }));
                 setMockMode(true);
                 setMessage(t('saba_storage.switch_to_mock'));
             } else {
                 // 빈 문자열이면 데몬이 기본 릴레이로 돌아간다
-                await window.api?.updaterSetConfig?.({ relay_url: '' });
+                throwIfRejected(await window.api?.updaterSetConfig?.({ relay_url: '' }));
                 setMockMode(false);
                 setMessage(t('saba_storage.switch_to_real'));
             }
@@ -408,12 +413,13 @@ function ComponentsTab({ devMode }) {
     const handleAutoCheckToggle = useCallback(async (enabled) => {
         setAutoCheckEnabled(enabled);
         try {
-            await window.api?.updaterSetConfig?.({ enabled });
+            throwIfRejected(await window.api?.updaterSetConfig?.({ enabled }));
         } catch (e) {
             console.error('Failed to set auto-check config:', e);
             setAutoCheckEnabled(!enabled);
+            setError(t('saba_storage.switch_failed', { error: e.message }));
         }
-    }, []);
+    }, [t]);
 
     useEffect(() => {
         mountedRef.current = true;

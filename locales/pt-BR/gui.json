@@ -1071,7 +1071,8 @@
     "ext_title": "A extensão '{{name}}' usa recursos que não declara.",
     "ext_summary": "O código usa {{perms}}, mas as permissions do manifest.json não listam isso. Confirme se você confia nesta extensão.",
     "perm_opaque_code": "código compilado sem fonte (.pyc)",
-    "perm_stdlib_shadow": "arquivos que encobrem a biblioteca padrão"
+    "perm_stdlib_shadow": "arquivos que encobrem a biblioteca padrão",
+    "unavailable": "Não foi possível verificar o código de '{{name}}'. Ele será verificado de novo na próxima vez que você abrir."
   },
   "trust": {
     "verified": "Verificado",

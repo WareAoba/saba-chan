@@ -87,13 +87,8 @@ export function createApi({ invoke, hub }) {
             }
             existing = await loadLocalSettings(); // 데몬 없음 — 부트스트랩
         }
-        const result = await saveSettings({ ...existing, ...settings });
-        try {
-            await invoke('refresh_ipc_base');
-        } catch (e) {
-            console.warn('[settings:save] refresh_ipc_base failed:', e);
-        }
-        return result;
+        // IPC 포트를 바꿔도 연결 주소는 그대로 둔다: 지금 데몬은 옛 포트에 있고, 셸이 데몬을 다시 띄울 때 맞춘다
+        return saveSettings({ ...existing, ...settings });
     }
 
     const permPath = (guildId, discordId) =>

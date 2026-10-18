@@ -143,6 +143,15 @@ export function ExtensionProvider({ children }) {
     useEffect(() => {
         const enabled = extensions.filter((ext) => ext.enabled);
         setEnabledExtensions(enabled);
+        // 꺼졌거나 지운 확장은 번들을 내린다: 스타일이 다른 화면에 남지 않게, 다시 켜면 스타일까지 새로 읽게
+        const enabledIds = new Set(enabled.map((ext) => ext.id));
+        for (const id of [...loadedRef.current]) {
+            if (enabledIds.has(id)) continue;
+            document.querySelectorAll(`style[data-extension="${id}"]`).forEach((el) => el.remove());
+            delete window[`SabaExt${pascalCase(id)}`];
+            loadedRef.current.delete(id);
+            delete loadedVersionsRef.current[id];
+        }
         // 목록이 다시 바뀌면 이 로드의 결과는 버린다 (늦게 끝나 새 슬롯을 덮지 않게)
         let cancelled = false;
 

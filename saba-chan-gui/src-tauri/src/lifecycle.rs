@@ -20,6 +20,8 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 pub struct Lifecycle {
     /// 이 GUI가 띄운 데몬. 강제 종료는 이 PID에만 한다
     child: Mutex<Option<Child>>,
+    /// 이 GUI가 띄우지 않았지만 이미 떠 있어 붙은 데몬 (트레이가 꺼짐으로 보이지 않게)
+    attached_daemon: AtomicBool,
     /// 인터페이스만 종료: 데몬을 남긴다
     keep_daemon_alive: AtomicBool,
     init_started: AtomicBool,
@@ -138,6 +140,18 @@ fn daemon_path(install_root: &Path) -> PathBuf {
 }
 
 /// 이 GUI가 띄운 데몬이 아직 살아 있는가 (끝났으면 놓는다)
+impl Lifecycle {
+    fn shows_running(&self, own_alive: bool) -> bool {
+        own_alive || self.attached_daemon.load(Ordering::SeqCst)
+    }
+}
+
+/// 트레이에 보일 데몬 상태: 이 GUI가 띄운 데몬이 살아 있거나, 이미 떠 있던 데몬에 붙었다
+pub fn daemon_running(app: &AppHandle) -> bool {
+    let alive = own_daemon_alive(app);
+    app.state::<AppState>().life.shows_running(alive)
+}
+
 pub fn own_daemon_alive(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     let mut guard = state.life.child.lock().unwrap();
@@ -170,6 +184,8 @@ pub fn start_daemon(app: &AppHandle) {
         return;
     }
     let s = state.settings();
+    // 저장된 포트는 데몬을 새로 띄울 때 적용한다: 띄우는 데몬과 같은 포트로 연결 주소를 맞춘다
+    state.refresh_ipc_base();
     let mut cmd = Command::new(&path);
     cmd.arg("--spawned")
         .current_dir(&root)
@@ -311,7 +327,10 @@ fn force_kill(child: &mut Child) {
 pub async fn stop_daemon(app: &AppHandle) {
     let state = app.state::<AppState>();
     match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
-        Ok(_) => tracing::info!("Daemon shutdown requested via API"),
+        Ok(_) => {
+            tracing::info!("Daemon shutdown requested via API");
+            state.life.attached_daemon.store(false, Ordering::SeqCst);
+        }
         Err(e) => tracing::warn!("Daemon shutdown API failed: {}", e.message),
     }
     if state.life.child.lock().unwrap().is_none() {
@@ -400,6 +419,7 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
                 tracing::info!("Existing daemon detected on IPC port. Skipping launch.");
             }
             status_t(app, "daemon", "daemon.existing_running");
+            state.life.attached_daemon.store(true, Ordering::SeqCst);
             sync_install_root(app).await;
             true
         }
@@ -408,6 +428,7 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
             tracing::info!("Existing daemon detected (auth failed — stale token). Reloading token...");
             reload_token_until_valid(app).await;
             status_t(app, "daemon", "daemon.existing_running");
+            state.life.attached_daemon.store(true, Ordering::SeqCst);
             sync_install_root(app).await;
             true
         }
@@ -709,4 +730,23 @@ pub fn on_exit(app: &AppHandle) {
         }
     }
     tracing::info!("Cleanup completed");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_daemon_found_already_running_shows_as_running_until_stopped() {
+        let life = Lifecycle::default();
+        assert!(!life.shows_running(false));
+        life.attached_daemon.store(true, Ordering::SeqCst);
+        assert!(
+            life.shows_running(false),
+            "이 GUI가 띄우지 않은 데몬도 트레이에 실행 중으로 보인다"
+        );
+        life.attached_daemon.store(false, Ordering::SeqCst);
+        assert!(!life.shows_running(false));
+        assert!(life.shows_running(true));
+    }
 }

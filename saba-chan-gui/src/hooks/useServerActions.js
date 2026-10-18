@@ -817,7 +817,7 @@ export function useServerActions({
                 title: t('servers.add_server_name_empty_title'),
                 message: t('servers.add_server_name_empty_message'),
             });
-            return;
+            return false;
         }
         if (!moduleName) {
             setModal({
@@ -825,7 +825,7 @@ export function useServerActions({
                 title: t('servers.add_module_empty_title'),
                 message: t('servers.add_module_empty_message'),
             });
-            return;
+            return false;
         }
 
         try {
@@ -896,7 +896,7 @@ export function useServerActions({
                         },
                     ],
                 });
-                return;
+                return false;
             }
 
             // 데몬은 같은 이름의 서버를 만들지 않는다 (이름으로 서버를 찾는 화면이 섞이지 않게)
@@ -906,7 +906,7 @@ export function useServerActions({
                     title: t('servers.add_failed_title'),
                     message: t('servers.rename_name_taken', { name: serverName }),
                 });
-                return;
+                return false;
             }
 
             if (result.error_code === 'working_dir_in_use') {
@@ -915,7 +915,7 @@ export function useServerActions({
                     title: t('servers.add_failed_title'),
                     message: t('servers.working_dir_in_use', { instance: result.instance || '?' }),
                 });
-                return;
+                return false;
             }
 
             if (result.error_code === 'preset_not_found') {
@@ -924,7 +924,7 @@ export function useServerActions({
                     title: t('servers.add_failed_title'),
                     message: t('add_server_modal.preset_not_found'),
                 });
-                return;
+                return false;
             }
 
             if (result.error) {
@@ -958,9 +958,11 @@ export function useServerActions({
                     fetchServers();
                 }
             }
+            return !result.error;
         } catch (error) {
             const errorMsg = translateError(error.message);
             setModal({ type: 'failure', title: t('servers.add_error_title'), message: errorMsg });
+            return false;
         }
     };
 

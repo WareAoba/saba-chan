@@ -132,6 +132,18 @@ describe('데몬 응답 가공', () => {
         expect(puts).toEqual(['old', 'new']);
     });
 
+    it('IPC 포트를 저장해도 지금 데몬과의 연결 주소는 바꾸지 않는다 (데몬은 다시 켤 때 새 포트를 쓴다)', async () => {
+        const { api, tauri } = await install({
+            daemon_request: daemon({
+                'GET /api/config/gui': { status: 200, data: { ipcPort: 57474 } },
+                'PUT /api/config/gui': { status: 200, data: { success: true } },
+            }),
+            refresh_ipc_base: null,
+        });
+        expect(await api.settingsSave({ ipcPort: 57475 })).toBe(true);
+        expect(tauri.invoke.mock.calls.map((c) => c[0])).not.toContain('refresh_ipc_base');
+    });
+
     it('경로에 넣는 이름은 인코딩한다 (공백·빗금이 든 서버 이름)', async () => {
         const { api } = await install({
             daemon_request: daemon({
