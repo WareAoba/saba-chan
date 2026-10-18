@@ -80,15 +80,16 @@ def test_crash_alert_reaches_real_relay(paired, relay, fake_server):
 
 
 def test_relay_rejects_agent_after_token_rotation(paired, relay, sandbox):
-    """같은 방장이 다시 페어링하면 옛 토큰은 바로 끊긴다(invalidateCacheByNodeId)."""
+    """같은 방장이 다시 페어링하면 옛 토큰은 바로 끊긴다(invalidateCacheByNodeId). 에이전트는 교체를 알아채고 멈춘다(#101)."""
     init = paired.api.ok("POST", "/api/relay/pair/initiate", {"relayUrl": relay.url})
     assert relay.claim(init["code"], OWNER, GUILD).get("ok")
     paired.api.ok("POST", "/api/relay/agent/stop")
     paired.api.ok("POST", "/api/relay/agent/start")
     status = wait_until(lambda: (s := paired.api.ok("GET", "/api/relay/agent")).get("lastError") and s, 90, "옛 토큰 거절")
-    # heartbeat가 먼저 맞으면 "node token rejected", poll이 먼저면 "poll 401 … INVALID_TOKEN"
+    # relay가 교체를 알리면 "node token replaced by a newer pairing"으로 멈춘다(#101).
+    # 알림 전에 거절이 먼저 오면 "node token rejected" 또는 "poll 401 … INVALID_TOKEN"
     err = status["lastError"].lower()
-    assert "reject" in err or "401" in err, status
+    assert "replaced" in err or "reject" in err or "401" in err, status
 
 
 def test_owner_discord_setting_runs_without_confirm_button(paired, relay):

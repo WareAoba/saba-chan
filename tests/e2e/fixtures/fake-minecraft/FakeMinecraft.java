@@ -126,13 +126,14 @@ public class FakeMinecraft {
                     break;
                 }
                 case "e2e-alloc": {
+                    // 1 MiB 배열은 작은 G1 힙에서 humongous로 리전 두 개를 먹어 힙의 절반만 써도 OOM이 난다. 256 KiB씩 잡는다
                     int mb = Integer.parseInt(arg.trim());
-                    for (int i = 0; i < mb; i++) {
-                        byte[] b = new byte[1024 * 1024];
+                    for (int i = 0; i < mb * 4; i++) {
+                        byte[] b = new byte[256 * 1024];
                         for (int j = 0; j < b.length; j += 4096) b[j] = 1;
                         HOLD.add(b);
                     }
-                    log("Server thread", "INFO", "e2e-alloc holding " + HOLD.size() + " MiB");
+                    log("Server thread", "INFO", "e2e-alloc holding " + HOLD.size() / 4 + " MiB");
                     break;
                 }
                 case "e2e-hang":
