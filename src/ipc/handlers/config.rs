@@ -160,6 +160,7 @@ pub async fn save_node_token(
 
     match std::fs::write(&token_path, token) {
         Ok(_) => {
+            super::relay::sync_host_id(&state, Some(token)).await;
             if !unchanged {
                 crate::relay_agent::restart(&state).await;
             }
@@ -190,6 +191,7 @@ pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoRespo
                 .into_response();
         }
     }
+    super::relay::sync_host_id(&state, None).await;
     (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
 }
 

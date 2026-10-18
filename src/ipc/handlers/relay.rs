@@ -87,6 +87,21 @@ pub(crate) fn parse_node_token(token: &str) -> Option<(&str, &str)> {
     Some((&rest[..dot], &rest[dot + 1..]))
 }
 
+/// 봇 설정의 `cloud.hostId`를 노드 토큰(`sbn_<hostId>.…`)에 맞춘다. 토큰이 기준이고, 없으면 비운다.
+/// 토큰을 쓰거나 지우는 곳(페어링 완료, 토큰 저장, 연결 해제)이 모두 부른다.
+pub(crate) async fn sync_host_id(state: &IPCServer, token: Option<&str>) {
+    let host = token.and_then(|t| parse_node_token(t.trim())).map(|(id, _)| id).unwrap_or("");
+    let mut cloud = state.config_store.get_bot_config_json().await.get("cloud").cloned().unwrap_or_else(|| json!({}));
+    if cloud.get("hostId").and_then(Value::as_str).unwrap_or("") == host {
+        return;
+    }
+    // 병합은 최상위 키 단위라 cloud 묶음을 통째로 보낸다
+    cloud["hostId"] = Value::String(host.to_string());
+    if let Err(e) = state.config_store.set_bot_config_from_json(json!({ "cloud": cloud })).await {
+        tracing::warn!("Failed to sync relay host id: {}", e);
+    }
+}
+
 /// Load node token from the data directory file (.node_token).
 pub(crate) fn load_node_token() -> Option<String> {
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
@@ -435,6 +450,7 @@ pub async fn poll_pairing_status(
                 tracing::warn!("Failed to auto-save node token: {}", e);
             } else {
                 tracing::info!("Node token saved via pairing completion");
+                sync_host_id(&state, Some(token)).await;
                 crate::relay_agent::restart(&state).await;
             }
         }

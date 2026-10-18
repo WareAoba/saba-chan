@@ -224,3 +224,13 @@ def test_text_command_replies_in_the_guild_language(paired, relay):
     assert "<모듈>" in ko["data"]["text"], ko
     en = relay.wait_result(relay.push_command({"action": "raw_command", "text": "", "locale": "en-US"}, ownerDiscordId="1"))
     assert "<module>" in en["data"]["text"], en
+
+
+def test_host_id_follows_the_node_token(sandbox, relay, daemon_factory):
+    """호스트 ID는 토큰(`sbn_<hostId>.…`)이 기준: 토큰을 손으로 넣으면 같이 채우고, 연결 해제하면 같이 지운다 (프리뷰 P2)."""
+    sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
+    d = daemon_factory()
+    d.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
+    assert d.api.ok("GET", "/api/config/bot")["cloud"]["hostId"] == relay.node_id
+    d.api.ok("DELETE", "/api/config/node-token")
+    assert d.api.ok("GET", "/api/config/bot")["cloud"].get("hostId", "") == ""
