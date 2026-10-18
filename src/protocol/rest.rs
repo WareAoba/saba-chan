@@ -75,9 +75,14 @@ impl RestClient {
     fn send_http_request(&self, url: &str, method: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
         tracing::debug!("REST {} {}", method, url);
 
-        let agent = AgentBuilder::new()
-            .timeout(Duration::from_secs(10))
-            .build();
+        let mut builder = AgentBuilder::new().timeout(Duration::from_secs(10));
+        if self.use_https {
+            // TLS는 reqwest와 같은 native-tls를 쓴다 (rustls·webpki 루트를 따로 싣지 않는다)
+            let tls = native_tls::TlsConnector::new()
+                .map_err(|e| ProtocolError::Protocol(format!("TLS 초기화 실패: {}", e)))?;
+            builder = builder.tls_connector(std::sync::Arc::new(tls));
+        }
+        let agent = builder.build();
 
         let mut req = agent.request(method, url).set("Content-Type", "application/json");
 

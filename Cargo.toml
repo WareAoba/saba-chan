@@ -33,7 +33,7 @@ toml = "0.5"
 serde_ignored = "0.1"
 schemars = "0.8"
 axum = "0.7"
-zip = "0.6"
+zip = { version = "0.6", default-features = false, features = ["deflate", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tempfile = "3.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -41,7 +41,8 @@ glob = "0.3"
 regex = "1"
 reqwest = { version = "0.11", features = ["json"] }
 byteorder = "1.5"
-ureq = { version = "2.9", default-features = true, features = ["json", "tls"] }
+ureq = { version = "2.9", default-features = false, features = ["json", "native-tls"] }
+native-tls = "0.2"
 base64 = "0.21"
 sysinfo = "0.30"
 socket2 = "0.5"
@@ -80,7 +81,18 @@ regex-lite = "0.1"
 saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
 
 [profile.release]
-opt-level = 3
+# 크기 우선. 데몬 일은 대부분 프로세스·네트워크 대기다 (리눅스 측정: 데몬 -23%, CLI -25%)
+opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
+
+# 백업 압축·내려받기 해시처럼 계산이 몰리는 크레이트만 속도 최적화를 남긴다
+[profile.release.package.miniz_oxide]
+opt-level = 3
+
+[profile.release.package.sha2]
+opt-level = 3
+
+[profile.release.package.ring]
+opt-level = 3
