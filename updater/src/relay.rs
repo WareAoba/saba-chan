@@ -140,6 +140,10 @@ pub enum RelayError {
     WrongTarget { expected: String, got: String },
     #[error("refusing downgrade from {current} to {offered}")]
     Downgrade { current: String, offered: String },
+    #[error("manifest is for channel {got}, expected {expected}")]
+    WrongChannel { expected: String, got: String },
+    #[error("relay offered {advertised} but the signed manifest is {signed}")]
+    VersionMismatch { advertised: String, signed: String },
 }
 
 pub struct RelayClient {
@@ -218,8 +222,8 @@ impl RelayClient {
             Err(RelayError::Status(404)) if check.up_to_date => return Ok(None),
             Err(e) => return Err(e),
         };
-        let manifest = verify_release(&signed, platform, current)?;
-        Ok(Some(VerifiedRelease { latest, manifest }))
+        let manifest = verify_release(&signed, platform, channel, current)?;
+        bind_release(latest, manifest).map(Some)
     }
 
     async fn json<T: for<'de> Deserialize<'de>>(resp: reqwest::Response) -> Result<T, RelayError> {
@@ -230,10 +234,11 @@ impl RelayClient {
     }
 }
 
-/// 서명을 검증하고, 플랫폼이 맞는지, 현재보다 낮은 버전이 아닌지 확인한다.
+/// 서명을 검증하고, 플랫폼·채널이 맞는지, 현재보다 낮은 버전이 아닌지 확인한다.
 pub fn verify_release(
     signed: &SignedManifest,
     platform: &str,
+    channel: &str,
     current: &str,
 ) -> Result<ReleaseManifest, RelayError> {
     signature::verify(signed)?;
@@ -242,12 +247,24 @@ pub fn verify_release(
     if manifest.platform != platform {
         return Err(RelayError::WrongTarget { expected: platform.into(), got: manifest.platform });
     }
+    if manifest.channel != channel {
+        return Err(RelayError::WrongChannel { expected: channel.into(), got: manifest.channel });
+    }
     if let (Some(offered), Some(cur)) = (SemVer::parse(&manifest.version), SemVer::parse(current)) {
         if offered < cur {
             return Err(RelayError::Downgrade { current: current.into(), offered: manifest.version });
         }
     }
     Ok(manifest)
+}
+
+/// check 응답(`latest`)은 서명되지 않는다. 서명된 manifest와 같은 버전일 때만 받으므로 릴리즈 요약의
+/// 버전은 서명된 값이다. 패치노트는 릴레이에 등록하는 값이라 서명 밖에 있다
+fn bind_release(latest: LatestRelease, manifest: ReleaseManifest) -> Result<VerifiedRelease, RelayError> {
+    if latest.version != manifest.version {
+        return Err(RelayError::VersionMismatch { advertised: latest.version, signed: manifest.version });
+    }
+    Ok(VerifiedRelease { latest, manifest })
 }
 
 /// 릴레이에 보내는 익명 이벤트
@@ -310,7 +327,7 @@ mod tests {
     fn production_manifest_verifies_with_bundled_key() {
         let signed: SignedManifest = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
         assert_eq!(signed.key_id, "saba-updater-v1");
-        let m = verify_release(&signed, "windows-x64", "0.1.0").expect("production manifest must verify");
+        let m = verify_release(&signed, "windows-x64", "stable", "0.1.0").expect("production manifest must verify");
         assert_eq!(m.version, "0.1.1");
         let gui = &m.components["gui"];
         assert_eq!(gui.filename, "saba-chan-gui-windows-x64.zip");
@@ -324,12 +341,34 @@ mod tests {
     #[test]
     fn production_manifest_tampering_and_downgrade_are_rejected() {
         let mut signed: SignedManifest = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
-        assert!(matches!(verify_release(&signed, "windows-x64", "0.2.0"), Err(RelayError::Downgrade { .. })));
-        assert!(matches!(verify_release(&signed, "linux-x64", "0.1.0"), Err(RelayError::WrongTarget { .. })));
+        assert!(matches!(verify_release(&signed, "windows-x64", "stable", "0.2.0"), Err(RelayError::Downgrade { .. })));
+        assert!(matches!(verify_release(&signed, "linux-x64", "stable", "0.1.0"), Err(RelayError::WrongTarget { .. })));
         signed.manifest["components"]["gui"]["url"] = serde_json::json!("https://evil.example/gui.zip");
         assert!(matches!(
-            verify_release(&signed, "windows-x64", "0.1.0"),
+            verify_release(&signed, "windows-x64", "stable", "0.1.0"),
             Err(RelayError::Signature(signature::SignatureError::Invalid))
+        ));
+    }
+
+    #[test]
+    fn a_manifest_for_another_channel_is_rejected() {
+        let signed: SignedManifest = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
+        assert!(verify_release(&signed, "windows-x64", "stable", "0.1.0").is_ok());
+        assert!(matches!(
+            verify_release(&signed, "windows-x64", "beta", "0.1.0"),
+            Err(RelayError::WrongChannel { .. })
+        ));
+    }
+
+    #[test]
+    fn the_advertised_version_must_be_the_signed_one() {
+        let manifest: ReleaseManifest = serde_json::from_value(manifest("1.0.0", "linux-x64")).unwrap();
+        let latest = |version: &str| LatestRelease { version: version.into(), ..Default::default() };
+        let bound = bind_release(latest("1.0.0"), manifest.clone()).unwrap();
+        assert_eq!(crate::marker::ReleaseSummary::from(&bound.latest).version, "1.0.0");
+        assert!(matches!(
+            bind_release(latest("2.0.0"), manifest),
+            Err(RelayError::VersionMismatch { .. })
         ));
     }
 
@@ -363,7 +402,7 @@ mod tests {
         // 테스트 키는 TRUSTED_KEYS에 없으므로 번들 키로는 검증되지 않는다
         let signed = signature::sign(manifest("1.0.0", "linux-x64"), "saba-updater-v1", &private).unwrap();
         assert!(matches!(
-            verify_release(&signed, "linux-x64", "0.1.0"),
+            verify_release(&signed, "linux-x64", "stable", "0.1.0"),
             Err(RelayError::Signature(signature::SignatureError::Invalid))
         ));
     }
