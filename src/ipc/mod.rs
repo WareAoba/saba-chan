@@ -200,6 +200,9 @@ pub struct ServerInfo {
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
+    /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub slots: serde_json::Map<String, serde_json::Value>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -738,6 +741,8 @@ impl IPCServer {
             )
             // ── 액션 카탈로그 (P2) ──
             .route("/api/actions", get(handlers::actions::list_actions))
+            .route("/api/actions/plan", post(handlers::actions::plan_steps))
+            .route("/api/actions/runs/:run_id", get(handlers::actions::run_status))
             .route("/api/actions/:id/plan", post(handlers::actions::plan_action))
             .route("/api/actions/:id/run", post(handlers::actions::run_action))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
@@ -776,6 +781,8 @@ impl IPCServer {
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))
+            .route("/api/relay/link-requests", get(handlers::relay::list_link_requests))
+            .route("/api/relay/link-requests/:request_id", post(handlers::relay::answer_link_request))
             // ── Relay agent (cloud Discord bot ↔ daemon) ──
             .route("/api/relay/agent", get(handlers::chat::agent_status))
             .route("/api/relay/agent/start", post(handlers::chat::agent_start))
@@ -785,6 +792,7 @@ impl IPCServer {
             // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
             .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
             .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
+            .route("/api/chatbot/guilds/:guild", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
             // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──

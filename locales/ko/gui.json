@@ -704,7 +704,10 @@
     "check_diagnose": "로그 진단",
     "check_ok": "문제를 찾지 못했습니다. 켤 준비가 됐습니다.",
     "check_log_ok": "최근 로그에서 알려진 문제를 찾지 못했습니다.",
-    "check_failed": "점검하지 못했습니다: {{error}}"
+    "check_failed": "점검하지 못했습니다: {{error}}",
+    "exit_note_auto_off": "자동 재시작이 꺼져 있음",
+    "exit_note_gave_up": "10분 안에 {{count}}번 다시 켜서 포기함",
+    "exit_note_restart_failed": "다시 켜지 못함: {{reason}}"
   },
   "discord": {
     "nav_connection": "연결",
@@ -1323,5 +1326,14 @@
   "cli_line": {
     "copy": "CLI 명령 복사",
     "copied": "복사했어요"
+  },
+  "link_request": {
+    "title": "디스코드 연결 요청",
+    "message": "{{guild}}에서 이 PC에 연결해 달라는 요청이 왔어요",
+    "accept": "수락",
+    "decline": "거절",
+    "accepted": "{{guild}}와 연결했어요.",
+    "expired": "요청이 만료됐어요. 디스코드에서 다시 요청해 주세요.",
+    "failed": "요청을 처리하지 못했어요."
   }
 }

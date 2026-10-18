@@ -5,7 +5,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    padding-top: 40px;
+    padding-top: var(--sp-10);
     background: var(--loading-bg);
 }
 
@@ -16,8 +16,8 @@
     align-items: center;
     justify-content: center;
     color: var(--loading-text);
-    gap: 24px;
-    padding: 20px;
+    gap: var(--sp-6);
+    padding: var(--sp-5);
 }
 
 /* 로딩 로고 + 회전 그라데이션 링 */
@@ -121,7 +121,7 @@ span[style*="--icon-loader"] svg,
     opacity: 0.9;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 
 /* 데몬을 못 띄웠을 때 */
@@ -129,14 +129,14 @@ span[style*="--icon-loader"] svg,
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     max-width: 420px;
     text-align: center;
 }
 .loading-failed-message {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     margin: 0;
     font-size: calc(15px * var(--font-scale));
     color: var(--warn, #f59e0b);
@@ -148,8 +148,8 @@ span[style*="--icon-loader"] svg,
 }
 .loading-failed-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 8px;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
 }
 
 .loading-progress-bar {
@@ -158,7 +158,7 @@ span[style*="--icon-loader"] svg,
     background: var(--loading-bar-bg);
     border-radius: 3px;
     overflow: hidden;
-    margin-top: 8px;
+    margin-top: var(--sp-2);
 }
 
 .loading-progress-fill {
@@ -169,7 +169,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .loading-tips {
-    margin-top: 40px;
+    margin-top: var(--sp-10);
     font-size: calc(13px * var(--font-scale));
     opacity: 0.7;
     max-width: 300px;
@@ -177,7 +177,7 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 
 /* ========== 서버 카드 초기화 로딩 ========== */
@@ -202,7 +202,7 @@ span[style*="--icon-loader"] svg,
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: var(--sp-3);
     color: var(--brand-primary);
     font-size: calc(14px * var(--font-scale));
     font-weight: 500;
@@ -219,20 +219,20 @@ span[style*="--icon-loader"] svg,
 
 /* ServerCard 프로비저닝 진행 래퍼 */
 .sc-provision-wrap {
-    padding: 10px 16px 8px;
+    padding: var(--sp-2-5) var(--sp-4) var(--sp-2);
     border-top: 1px solid var(--border-light);
 }
 
 /* Native Provision */
 .native-provision {
-    padding: 4px 0 2px;
+    padding: var(--sp-1) 0 var(--sp-0-5);
 }
 
 .native-provision-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
 }
 
 .native-provision-icon {
@@ -268,8 +268,8 @@ span[style*="--icon-loader"] svg,
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    margin-top: 8px;
+    gap: var(--sp-1-5);
+    margin-top: var(--sp-2);
 }
 
 .as-provision-error {
@@ -283,7 +283,7 @@ span[style*="--icon-loader"] svg,
 .as-provision-dismiss {
     font-size: calc(11px * var(--font-scale));
     font-family: inherit;
-    padding: 4px 12px;
+    padding: var(--sp-1) var(--sp-3);
     border-radius: 4px;
     border: 1px solid var(--border-light);
     background: var(--bg-tertiary);
@@ -303,7 +303,7 @@ span[style*="--icon-loader"] svg,
     background: var(--bg-surface);
     color: var(--text-primary);
     border: 1px solid var(--border-separator);
-    padding: 0 16px;
+    padding: 0 var(--sp-4);
     height: var(--btn-height);
     border-radius: var(--btn-radius);
     cursor: pointer;
@@ -311,7 +311,7 @@ span[style*="--icon-loader"] svg,
     font-size: calc(14px * var(--font-scale));
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     transition: all 0.3s ease;
     box-shadow: 0 2px 4px var(--shadow-xs);
 }
@@ -337,7 +337,7 @@ span[style*="--icon-loader"] svg,
     background: var(--bg-surface);
     color: var(--text-primary);
     border: 1px solid var(--border-separator);
-    padding: 0 16px;
+    padding: 0 var(--sp-4);
     height: var(--btn-height);
     border-radius: var(--btn-radius);
     cursor: pointer;
@@ -345,7 +345,7 @@ span[style*="--icon-loader"] svg,
     font-size: calc(14px * var(--font-scale));
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     transition: all 0.3s ease;
     box-shadow: 0 2px 4px var(--shadow-xs);
 }
@@ -369,7 +369,7 @@ span[style*="--icon-loader"] svg,
 
 /* Updater Test button */
 .btn-updater-test {
-    padding: 8px 14px;
+    padding: var(--sp-2) var(--sp-4);
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     border-radius: 8px;
@@ -379,7 +379,7 @@ span[style*="--icon-loader"] svg,
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     transition: all 0.2s ease;
     white-space: nowrap;
 }
@@ -436,7 +436,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-small {
-    padding: 6px 12px;
+    padding: var(--sp-1-5) var(--sp-3);
     font-size: calc(12px * var(--font-scale));
     background: var(--discord);
     color: var(--text-on-primary);
@@ -460,12 +460,12 @@ span[style*="--icon-loader"] svg,
 
 .path-input {
     width: 100%;
-    padding: 10px;
+    padding: var(--sp-2-5);
     border: 2px solid var(--border-default);
     border-radius: 6px;
     font-size: calc(14px * var(--font-scale));
     font-family: "Courier New", monospace;
-    margin-bottom: 10px;
+    margin-bottom: var(--sp-2-5);
     background-color: var(--input-bg);
     color: var(--text-primary);
 }
@@ -484,7 +484,7 @@ span[style*="--icon-loader"] svg,
 .add-server-header {
     flex-direction: column;
     align-items: flex-start !important;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 
 .add-server-header h3 {
@@ -495,14 +495,14 @@ span[style*="--icon-loader"] svg,
 .as-header-row {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--sp-2);
     width: 100%;
 }
 
 .as-header-copy {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     min-width: 0;
 }
 
@@ -522,14 +522,14 @@ span[style*="--icon-loader"] svg,
 .as-body-stack {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--sp-3);
 }
 
 .as-grid-wrap {
     background: var(--bg-surface-tertiary);
     border: 1px solid var(--border-default);
     border-radius: 10px;
-    padding: 12px;
+    padding: var(--sp-3);
     max-height: 56vh;
     overflow-y: auto;
     overflow-x: hidden;
@@ -539,7 +539,7 @@ span[style*="--icon-loader"] svg,
 .as-game-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
-    gap: 12px;
+    gap: var(--sp-3);
     margin-bottom: 0;
 }
 
@@ -547,8 +547,8 @@ span[style*="--icon-loader"] svg,
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    padding: 18px 12px 14px;
+    gap: var(--sp-2-5);
+    padding: var(--sp-5) var(--sp-3) var(--sp-4);
     border-radius: 10px;
     border: 1.5px solid var(--border-default);
     background: var(--bg-surface-tertiary);
@@ -615,11 +615,11 @@ span[style*="--icon-loader"] svg,
 .as-game-card-badge {
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: var(--sp-1);
     font-size: calc(10px * var(--font-scale));
     color: var(--text-success);
     background: var(--bg-success-subtle);
-    padding: 3px 7px;
+    padding: var(--sp-1) var(--sp-2);
     border-radius: 6px;
     font-weight: 600;
 }
@@ -628,11 +628,11 @@ span[style*="--icon-loader"] svg,
 .as-selected-game {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
     border-radius: 10px;
     background: var(--bg-surface-tertiary);
-    margin-bottom: 16px;
+    margin-bottom: var(--sp-4);
 }
 
 .as-selected-game-icon {
@@ -653,7 +653,7 @@ span[style*="--icon-loader"] svg,
 .as-selected-game-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     flex: 1;
     min-width: 0;
 }
@@ -673,7 +673,7 @@ span[style*="--icon-loader"] svg,
     background: none;
     border: 1px solid var(--border-default);
     border-radius: 6px;
-    padding: 4px 10px;
+    padding: var(--sp-1) var(--sp-2-5);
     font-size: calc(11px * var(--font-scale));
     font-family: inherit;
     color: var(--text-tertiary);
@@ -702,22 +702,22 @@ span[style*="--icon-loader"] svg,
     background: var(--bg-surface-tertiary);
     border: 1px solid var(--border-default);
     border-radius: 10px;
-    padding: 12px;
+    padding: var(--sp-3);
 }
 
 .as-label {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-weight: 600;
     font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
-    margin-bottom: 6px;
+    margin-bottom: var(--sp-1-5);
 }
 
 .as-input {
     width: 100%;
-    padding: 10px 12px;
+    padding: var(--sp-2-5) var(--sp-3);
     border: 1.5px solid var(--border-default);
     border-radius: 8px;
     font-size: calc(14px * var(--font-scale));
@@ -743,9 +743,9 @@ span[style*="--icon-loader"] svg,
 .as-empty-hint {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin: 8px 0 0;
-    padding: 10px 12px;
+    gap: var(--sp-1-5);
+    margin: var(--sp-2) 0 0;
+    padding: var(--sp-2-5) var(--sp-3);
     border-radius: 8px;
     background: color-mix(in srgb, var(--failure-badge-bg) 40%, transparent);
     color: var(--failure-badge-icon);
@@ -754,14 +754,14 @@ span[style*="--icon-loader"] svg,
 
 /* -- Container toggle row -- */
 .as-container-row {
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
 }
 
 .as-toggle-row {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 12px 14px;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
     border-radius: 8px;
     background: var(--bg-surface-tertiary);
     transition: background 0.15s;
@@ -771,7 +771,7 @@ span[style*="--icon-loader"] svg,
     position: relative;
     display: inline-flex;
     flex-shrink: 0;
-    margin-top: 2px;
+    margin-top: var(--sp-0-5);
 }
 
 .as-toggle-switch input {
@@ -821,14 +821,14 @@ span[style*="--icon-loader"] svg,
 .as-toggle-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     min-width: 0;
 }
 
 .as-toggle-title {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
@@ -844,8 +844,8 @@ span[style*="--icon-loader"] svg,
 .as-provision-hint {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
-    margin: 0 0 12px;
+    gap: var(--sp-1-5);
+    margin: 0 0 var(--sp-3);
     padding: 0;
     font-size: calc(11px * var(--font-scale));
     color: var(--text-muted);
@@ -860,8 +860,8 @@ span[style*="--icon-loader"] svg,
 
 /* -- provision progress tracker -- */
 .as-provision-progress {
-    margin: 0 0 12px;
-    padding: 12px;
+    margin: 0 0 var(--sp-3);
+    padding: var(--sp-3);
     background: var(--bg-secondary);
     border-radius: 8px;
     border: 1px solid var(--border-light);
@@ -870,14 +870,14 @@ span[style*="--icon-loader"] svg,
 .as-provision-steps {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 10px;
+    margin-bottom: var(--sp-2-5);
 }
 
 .as-step {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-1);
     flex: 1;
 }
 
@@ -948,7 +948,7 @@ span[style*="--icon-loader"] svg,
     background: var(--bg-tertiary);
     border-radius: 2px;
     overflow: hidden;
-    margin-bottom: 8px;
+    margin-bottom: var(--sp-2);
 }
 
 .as-provision-bar-fill {
@@ -1004,22 +1004,22 @@ span[style*="--icon-loader"] svg,
 .as-divider {
     height: 1px;
     background: var(--border-light);
-    margin: 4px 0 12px;
+    margin: var(--sp-1) 0 var(--sp-3);
 }
 
 /* -- advanced panel -- */
 .as-advanced-toggle {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     background: none;
     border: none;
     color: var(--text-tertiary);
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     cursor: pointer;
-    padding: 4px 0;
-    margin-bottom: 8px;
+    padding: var(--sp-1) 0;
+    margin-bottom: var(--sp-2);
     font-family: inherit;
     transition: color 0.15s;
 }
@@ -1029,10 +1029,10 @@ span[style*="--icon-loader"] svg,
 }
 
 .as-advanced-panel {
-    padding: 14px;
+    padding: var(--sp-4);
     border-radius: 8px;
     background: var(--bg-surface-tertiary);
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
     animation: as-slide-in 0.15s ease-out;
 }
 
@@ -1049,7 +1049,7 @@ span[style*="--icon-loader"] svg,
 
 .as-path-row {
     display: flex;
-    gap: 8px;
+    gap: var(--sp-2);
     margin-bottom: 0;
 }
 
@@ -1092,10 +1092,10 @@ span[style*="--icon-loader"] svg,
 }
 
 .as-settings-path {
-    margin-top: 4px;
+    margin-top: var(--sp-1);
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-1);
     word-break: break-all;
     color: var(--text-muted);
 }
@@ -1104,13 +1104,13 @@ span[style*="--icon-loader"] svg,
 .as-migrate-link {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     background: none;
     border: none;
     color: var(--text-tertiary);
     font-size: calc(12px * var(--font-scale));
     cursor: pointer;
-    padding: 6px 0 0;
+    padding: var(--sp-1-5) 0 0;
     font-family: inherit;
     transition: color 0.15s;
 }
@@ -1127,7 +1127,7 @@ span[style*="--icon-loader"] svg,
 
 /* -- footer -- */
 .add-server-footer {
-    gap: 10px;
+    gap: var(--sp-2-5);
 }
 
 /* ===== Add Instance Modal (chooser entry point) ===== */
@@ -1173,7 +1173,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .add-instance-progress-wrap {
-    padding: 10px 20px 0;
+    padding: var(--sp-2-5) var(--sp-5) 0;
     flex-shrink: 0;
 }
 
@@ -1195,13 +1195,13 @@ span[style*="--icon-loader"] svg,
 .add-instance-header {
     flex-direction: column;
     align-items: flex-start !important;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 
 .add-instance-title-wrap {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--sp-1);
     width: 100%;
 }
 
@@ -1214,7 +1214,7 @@ span[style*="--icon-loader"] svg,
     border-radius: 12px;
     background: var(--brand-gradient);
     color: var(--brand-text);
-    margin-bottom: 8px;
+    margin-bottom: var(--sp-2);
     box-shadow: 0 4px 12px var(--brand-shadow-medium);
 }
 
@@ -1228,7 +1228,7 @@ span[style*="--icon-loader"] svg,
     height: 4px;
     border-radius: 999px;
     background: var(--brand-gradient);
-    margin-bottom: 2px;
+    margin-bottom: var(--sp-0-5);
 }
 
 .add-instance-header h3 {
@@ -1246,10 +1246,10 @@ span[style*="--icon-loader"] svg,
 .add-instance-chooser-body {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--sp-3);
     align-items: center;
     justify-content: center;
-    padding: 20px 0;
+    padding: var(--sp-5) 0;
     position: relative;
 }
 
@@ -1270,13 +1270,13 @@ span[style*="--icon-loader"] svg,
     background: var(--bg-surface-tertiary);
     border: 1px solid var(--border-default);
     border-radius: 12px;
-    padding: 12px;
+    padding: var(--sp-3);
 }
 
 .add-instance-chooser-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: var(--sp-3);
     width: min(100%, 680px);
     margin: 0 auto;
 }
@@ -1286,8 +1286,8 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: stretch;
     justify-content: flex-start;
-    gap: 16px;
-    padding: 24px 20px;
+    gap: var(--sp-4);
+    padding: var(--sp-6) var(--sp-5);
     border-radius: 12px;
     border: 1.5px solid var(--border-default);
     background: var(--bg-surface);
@@ -1329,7 +1329,7 @@ span[style*="--icon-loader"] svg,
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: var(--sp-2-5);
     min-width: 0;
     flex: 1;
 }
@@ -1379,7 +1379,7 @@ span[style*="--icon-loader"] svg,
 .ai-choice-text {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--sp-1);
     min-width: 0;
     flex: 1;
 }
@@ -1394,7 +1394,7 @@ span[style*="--icon-loader"] svg,
     font-size: calc(13px * var(--font-scale));
     color: var(--text-tertiary);
     line-height: 1.5;
-    margin-top: 4px;
+    margin-top: var(--sp-1);
     word-wrap: break-word;
     overflow-wrap: break-word;
     white-space: normal;
@@ -1429,11 +1429,11 @@ span[style*="--icon-loader"] svg,
 .ai-no-modules-hint {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: calc(12.5px * var(--font-scale));
     color: var(--warning);
     font-weight: 500;
-    margin: 6px 2px 0;
+    margin: var(--sp-1-5) var(--sp-0-5) 0;
     padding: 0;
 }
 
@@ -1470,7 +1470,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .add-instance-footer {
-    gap: 10px;
+    gap: var(--sp-2-5);
 }
 
 .ai-cancel-btn {
@@ -1504,7 +1504,7 @@ span[style*="--icon-loader"] svg,
     border: none;
     color: var(--text-tertiary);
     cursor: pointer;
-    margin-right: 6px;
+    margin-right: var(--sp-1-5);
     border-radius: 8px;
     transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
@@ -1540,18 +1540,18 @@ span[style*="--icon-loader"] svg,
 
 /* -- migration flow styles -- */
 .mg-scan-btn {
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
     align-self: flex-start;
 }
 
 .mg-status {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 14px;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
     border-radius: 8px;
     font-size: calc(13px * var(--font-scale));
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
 }
 
 .mg-status--scanning {
@@ -1568,12 +1568,12 @@ span[style*="--icon-loader"] svg,
 .mg-detected {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-4);
     border-radius: 10px;
     border: 1.5px solid var(--brand-primary);
     background: color-mix(in srgb, var(--brand-primary) 8%, var(--bg-surface-tertiary));
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
 }
 
 .mg-detected-icon {
@@ -1594,7 +1594,7 @@ span[style*="--icon-loader"] svg,
 .mg-detected-info {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--sp-1);
     flex: 1;
     min-width: 0;
 }
@@ -1608,7 +1608,7 @@ span[style*="--icon-loader"] svg,
 .mg-detected-hint {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-1);
     font-size: calc(11px * var(--font-scale));
     color: var(--brand-primary);
     font-weight: 500;
@@ -1622,26 +1622,26 @@ span[style*="--icon-loader"] svg,
 .mg-no-match-hint {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
-    margin-bottom: 10px;
+    margin-bottom: var(--sp-2-5);
 }
 
 .mg-module-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--sp-1);
     max-height: 200px;
     overflow-y: auto;
-    padding-right: 4px;
+    padding-right: var(--sp-1);
 }
 
 .mg-module-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: var(--sp-2-5);
+    padding: var(--sp-2-5) var(--sp-3);
     border-radius: 8px;
     border: 1.5px solid var(--border-default);
     background: var(--bg-surface-tertiary);
@@ -1678,7 +1678,7 @@ span[style*="--icon-loader"] svg,
 .mg-module-item-text {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     flex: 1;
     min-width: 0;
 }
@@ -1707,18 +1707,18 @@ span[style*="--icon-loader"] svg,
 .mg-source-path {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-1);
     word-break: break-all;
 }
 
 .form-row {
-    margin-bottom: 15px;
+    margin-bottom: var(--sp-4);
 }
 
 .form-row label {
     display: block;
     font-weight: bold;
-    margin-bottom: 5px;
+    margin-bottom: var(--sp-1);
     color: var(--text-primary);
     font-size: calc(13px * var(--font-scale));
 }
@@ -1726,7 +1726,7 @@ span[style*="--icon-loader"] svg,
 .form-row input,
 .form-row select {
     width: 100%;
-    padding: 10px;
+    padding: var(--sp-2-5);
     border: 2px solid var(--border-default);
     border-radius: 6px;
     font-size: calc(14px * var(--font-scale));
@@ -1747,7 +1747,7 @@ span[style*="--icon-loader"] svg,
 
 .path-input-group {
     display: flex;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 
 .path-input-group input {
@@ -1758,7 +1758,7 @@ span[style*="--icon-loader"] svg,
     background-color: var(--bg-4);
     color: var(--text-1);
     border: none;
-    padding: 10px 16px;
+    padding: var(--sp-2-5) var(--sp-4);
     border-radius: 6px;
     cursor: pointer;
     font-size: calc(13px * var(--font-scale));
@@ -1774,21 +1774,21 @@ span[style*="--icon-loader"] svg,
     display: block;
     color: var(--text-tertiary);
     font-size: calc(11px * var(--font-scale));
-    margin-top: 4px;
+    margin-top: var(--sp-1);
     font-style: italic;
 }
 
 .form-actions {
     display: flex;
-    gap: 10px;
-    margin-top: 20px;
-    padding-top: 15px;
+    gap: var(--sp-2-5);
+    margin-top: var(--sp-5);
+    padding-top: var(--sp-4);
     border-top: 1px solid var(--border-default);
 }
 
 .form-actions .btn {
     flex: 1;
-    padding: 12px;
+    padding: var(--sp-3);
     font-size: calc(14px * var(--font-scale));
 }
 
@@ -1804,7 +1804,7 @@ span[style*="--icon-loader"] svg,
     background: var(--ok);
     color: var(--text-on-primary);
     border: none;
-    padding: 0 20px;
+    padding: 0 var(--sp-5);
     height: var(--btn-height);
     border-radius: var(--btn-radius);
     cursor: pointer;
@@ -1818,7 +1818,7 @@ span[style*="--icon-loader"] svg,
     background: var(--stop);
     color: var(--text-on-primary);
     border: none;
-    padding: 0 20px;
+    padding: 0 var(--sp-5);
     height: var(--btn-height);
     border-radius: var(--btn-radius);
     cursor: pointer;
@@ -1857,7 +1857,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .modal-header {
-    padding: 20px;
+    padding: var(--sp-5);
     border-bottom: 1px solid var(--border-light);
     display: flex;
     justify-content: space-between;
@@ -1882,47 +1882,47 @@ span[style*="--icon-loader"] svg,
 }
 
 .modal-body {
-    padding: 20px;
+    padding: var(--sp-5);
     flex: 1;
     overflow-y: auto;
 }
 
 .modal-footer {
-    padding: 20px;
+    padding: var(--sp-5);
     border-top: 1px solid var(--border-light);
     display: flex;
-    gap: 10px;
+    gap: var(--sp-2-5);
     justify-content: flex-end;
 }
 
 .settings-form {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--sp-5);
 }
 
 /* 설정 그룹 */
 .settings-group {
     border: 1px solid var(--border-default);
     border-radius: 8px;
-    padding: 16px;
+    padding: var(--sp-4);
     background: var(--bg-secondary);
 }
 
 .settings-group + .settings-group {
-    margin-top: 4px;
+    margin-top: var(--sp-1);
 }
 
 .settings-group-title {
     font-size: calc(14px * var(--font-scale));
     font-weight: 700;
     color: var(--text-secondary);
-    margin: 0 0 12px 0;
-    padding-bottom: 8px;
+    margin: 0 0 var(--sp-3) 0;
+    padding-bottom: var(--sp-2);
     border-bottom: 1px solid var(--border-default);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     user-select: none;
 }
 
@@ -1939,7 +1939,7 @@ span[style*="--icon-loader"] svg,
     font-weight: 400;
     color: var(--text-tertiary);
     font-size: calc(12px * var(--font-scale));
-    margin-left: 4px;
+    margin-left: var(--sp-1);
 }
 
 .settings-group-advanced {
@@ -1949,8 +1949,8 @@ span[style*="--icon-loader"] svg,
 .version-loading {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px;
+    gap: var(--sp-2);
+    padding: var(--sp-2-5);
     color: var(--text-tertiary);
     font-size: calc(13px * var(--font-scale));
     font-style: italic;
@@ -1959,7 +1959,7 @@ span[style*="--icon-loader"] svg,
 .version-select-row {
     display: flex;
     align-items: stretch;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 
 .version-select-row .custom-dropdown {
@@ -1970,8 +1970,8 @@ span[style*="--icon-loader"] svg,
     white-space: nowrap;
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 8px 14px;
+    gap: var(--sp-1);
+    padding: var(--sp-2) var(--sp-4);
     font-size: calc(12px * var(--font-scale));
     border-radius: 6px;
     flex-shrink: 0;
@@ -1985,7 +1985,7 @@ span[style*="--icon-loader"] svg,
 .settings-field {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 
 .settings-field label {
@@ -1995,7 +1995,7 @@ span[style*="--icon-loader"] svg,
 
 .settings-field input,
 .settings-field select {
-    padding: 10px;
+    padding: var(--sp-2-5);
     border: 1px solid var(--border-default);
     border-radius: 4px;
     font-size: calc(14px * var(--font-scale));
@@ -2018,7 +2018,7 @@ span[style*="--icon-loader"] svg,
 }
 .number-spinner-input {
     flex: 1;
-    padding-right: 32px !important;
+    padding-right: var(--sp-8) !important;
     -moz-appearance: textfield;
 }
 .number-spinner-input::-webkit-inner-spin-button,
@@ -2078,12 +2078,12 @@ span[style*="--icon-loader"] svg,
 .no-settings {
     text-align: center;
     color: var(--text-disabled);
-    padding: 40px 20px;
+    padding: var(--sp-10) var(--sp-5);
 }
 
 .app-footer {
     background: var(--bg-surface);
-    padding: 15px;
+    padding: var(--sp-4);
     text-align: center;
     border-top: 1px solid var(--border-light);
     color: var(--text-tertiary);
@@ -2098,17 +2098,17 @@ span[style*="--icon-loader"] svg,
 
 .extension-tabs {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: var(--sp-2-5);
+    margin-bottom: var(--sp-5);
     flex-wrap: wrap;
     border-bottom: 2px solid var(--border-light);
-    padding-bottom: 10px;
+    padding-bottom: var(--sp-2-5);
 }
 
 .extension-tab {
     background: var(--tab-bg);
     border: none;
-    padding: 10px 16px;
+    padding: var(--sp-2-5) var(--sp-4);
     border-radius: 4px;
     cursor: pointer;
     font-size: calc(14px * var(--font-scale));
@@ -2129,7 +2129,7 @@ span[style*="--icon-loader"] svg,
 
 .cmd-name {
     background: var(--bg-surface-tertiary);
-    padding: 4px 8px;
+    padding: var(--sp-1) var(--sp-2);
     border-radius: 3px;
     font-weight: 600;
     color: var(--text-primary);
@@ -2140,8 +2140,8 @@ span[style*="--icon-loader"] svg,
 /* 모듈 별명 입력 섹션 */
 
 .placeholder-hint {
-    margin-top: 8px;
-    padding: 10px;
+    margin-top: var(--sp-2);
+    padding: var(--sp-2-5);
     background: var(--bg-surface-secondary);
     border-radius: 4px;
     color: var(--text-disabled);
@@ -2152,15 +2152,15 @@ span[style*="--icon-loader"] svg,
 .cmd-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: var(--sp-2-5);
+    margin-bottom: var(--sp-2-5);
     position: relative;
 }
 
 .cmd-header .cmd-name {
     background: var(--brand-primary);
     color: var(--brand-text);
-    padding: 4px 10px;
+    padding: var(--sp-1) var(--sp-2-5);
     border-radius: 3px;
     font-weight: 600;
     font-size: calc(12px * var(--font-scale));
@@ -2171,7 +2171,7 @@ span[style*="--icon-loader"] svg,
 .cmd-label {
     color: var(--text-muted);
     font-size: calc(11px * var(--font-scale));
-    margin-left: 6px;
+    margin-left: var(--sp-1-5);
     font-weight: 400;
 }
 
@@ -2203,7 +2203,7 @@ span[style*="--icon-loader"] svg,
     left: 0;
     background: var(--tooltip-bg);
     color: var(--tooltip-text);
-    padding: 8px 12px;
+    padding: var(--sp-2) var(--sp-3);
     border-radius: 4px;
     font-size: calc(12px * var(--font-scale));
     white-space: nowrap;
@@ -2240,10 +2240,10 @@ span[style*="--icon-loader"] svg,
 .settings-tabs {
     display: flex;
     gap: 0;
-    padding: 3px;
+    padding: var(--sp-1);
     border-radius: 8px;
     position: relative;
-    margin: 12px 20px 0;
+    margin: var(--sp-3) var(--sp-5) 0;
     background: var(--bg-surface-tertiary);
     height: 42px;
     min-height: 42px;
@@ -2307,15 +2307,15 @@ span[style*="--icon-loader"] svg,
     background: var(--protocol-section-bg);
     border: 1px solid var(--protocol-section-border);
     border-radius: 12px;
-    padding: 16px 20px;
-    margin-bottom: 20px;
+    padding: var(--sp-4) var(--sp-5);
+    margin-bottom: var(--sp-5);
 }
 
 .protocol-mode-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
+    margin-bottom: var(--sp-2);
 }
 
 .protocol-mode-title {
@@ -2324,13 +2324,13 @@ span[style*="--icon-loader"] svg,
     color: var(--text-primary);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
 }
 
 .protocol-mode-description {
     font-size: calc(13px * var(--font-scale));
     color: var(--text-tertiary);
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
 }
 
 /* Toggle Switch — replaced by SabaUI components */
@@ -2338,10 +2338,10 @@ span[style*="--icon-loader"] svg,
 .protocol-mode-hint {
     font-size: calc(12px * var(--font-scale));
     color: var(--text-disabled);
-    margin-top: 8px;
+    margin-top: var(--sp-2);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
 }
 
 .protocol-mode-hint .hint-icon {
@@ -2362,7 +2362,7 @@ span[style*="--icon-loader"] svg,
 /* Protocol badge in server card */
 .protocol-badge {
     font-size: calc(10px * var(--font-scale));
-    padding: 2px 6px;
+    padding: var(--sp-0-5) var(--sp-1-5);
     border-radius: 4px;
     font-weight: 600;
     text-transform: uppercase;
@@ -2427,7 +2427,7 @@ span[style*="--icon-loader"] svg,
     background: var(--bg-surface);
     border-top: 1px solid var(--border-light);
     box-shadow: 0 -2px 12px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
-    padding: 8px 16px 6px;
+    padding: var(--sp-2) var(--sp-4) var(--sp-1-5);
     animation: progress-slide-up 0.25s ease-out;
 }
 
@@ -2446,7 +2446,7 @@ span[style*="--icon-loader"] svg,
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 5px;
+    margin-bottom: var(--sp-1);
 }
 
 .global-progress-message {
@@ -2462,7 +2462,7 @@ span[style*="--icon-loader"] svg,
     font-size: calc(11px * var(--font-scale));
     font-weight: 600;
     color: var(--brand-primary);
-    margin-left: 12px;
+    margin-left: var(--sp-3);
     flex-shrink: 0;
 }
 
@@ -2511,7 +2511,7 @@ span[style*="--icon-loader"] svg,
     flex-direction: column;
     background: var(--console-custom-bg);
     border-radius: 12px;
-    margin-top: 16px;
+    margin-top: var(--sp-4);
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
     box-shadow: 0 4px 24px color-mix(in srgb, var(--shadow-ink) 25%, transparent);
@@ -2535,7 +2535,7 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 14px;
+    padding: var(--sp-2) var(--sp-4);
     background: color-mix(in srgb, var(--text-1) 4%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
     flex-shrink: 0;
@@ -2544,7 +2544,7 @@ span[style*="--icon-loader"] svg,
 .console-title {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--console-text);
@@ -2563,7 +2563,7 @@ span[style*="--icon-loader"] svg,
     color: color-mix(in srgb, var(--console-text) 55%, transparent);
     font-size: calc(20px * var(--font-scale));
     cursor: pointer;
-    padding: 2px 6px;
+    padding: var(--sp-0-5) var(--sp-1-5);
     border-radius: 4px;
     line-height: 1;
     transition: all 0.15s ease;
@@ -2577,7 +2577,7 @@ span[style*="--icon-loader"] svg,
 .console-output {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 14px;
+    padding: var(--sp-2-5) var(--sp-4);
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: calc(12.5px * var(--console-font-scale));
     line-height: 1.6;
@@ -2609,7 +2609,7 @@ span[style*="--icon-loader"] svg,
 .console-empty {
     color: color-mix(in srgb, var(--console-text) 55%, transparent);
     font-style: italic;
-    padding: 20px 0;
+    padding: var(--sp-5) 0;
     text-align: center;
 }
 
@@ -2639,8 +2639,8 @@ span[style*="--icon-loader"] svg,
 .console-input-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-4);
     border-top: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
     background: color-mix(in srgb, var(--text-1) 2%, transparent);
     flex-shrink: 0;
@@ -2659,7 +2659,7 @@ span[style*="--icon-loader"] svg,
     background: color-mix(in srgb, var(--text-1) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: var(--sp-1-5) var(--sp-2-5);
     color: var(--console-text);
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: calc(12.5px * var(--console-font-scale));
@@ -2679,7 +2679,7 @@ span[style*="--icon-loader"] svg,
     background: var(--brand-gradient);
     border: none;
     color: var(--text-on-primary);
-    padding: 6px 14px;
+    padding: var(--sp-1-5) var(--sp-4);
     border-radius: 6px;
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
@@ -2710,7 +2710,7 @@ span[style*="--icon-loader"] svg,
 
 .console-input-disabled .console-input {
     border-color: var(--console-warn);
-    padding-left: 30px;
+    padding-left: var(--sp-8);
     cursor: not-allowed;
     opacity: 0.7;
 }
@@ -2739,7 +2739,7 @@ span[style*="--icon-loader"] svg,
 .settings-field .toggle-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--sp-2-5);
 }
 
 .settings-field .toggle-row .toggle-label-text {
@@ -2753,10 +2753,10 @@ span[style*="--icon-loader"] svg,
    ═══════════════════════════════════════════════════════════ */
 
 .settings-group-danger {
-    margin-top: 20px;
+    margin-top: var(--sp-5);
     border: 1px solid color-mix(in srgb, var(--stop) 25%, transparent);
     border-radius: 10px;
-    padding: 16px;
+    padding: var(--sp-4);
     background: color-mix(in srgb, var(--stop) 4%, transparent);
 }
 
@@ -2764,24 +2764,24 @@ span[style*="--icon-loader"] svg,
     color: var(--stop) !important;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     font-size: calc(14px * var(--font-scale));
     font-weight: 600;
-    margin: 0 0 12px 0;
+    margin: 0 0 var(--sp-3) 0;
 }
 
 .danger-zone-content {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--sp-2-5);
 }
 
 .danger-zone-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 10px 12px;
+    gap: var(--sp-4);
+    padding: var(--sp-2-5) var(--sp-3);
     background: color-mix(in srgb, var(--shadow-ink) 15%, transparent);
     border-radius: 8px;
     border: 1px solid color-mix(in srgb, var(--stop) 12%, transparent);
@@ -2790,7 +2790,7 @@ span[style*="--icon-loader"] svg,
 .danger-zone-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-0-5);
     flex: 1;
     min-width: 0;
 }
@@ -2812,7 +2812,7 @@ span[style*="--icon-loader"] svg,
     color: var(--stop);
     border: 1px solid color-mix(in srgb, var(--stop) 30%, transparent);
     border-radius: 6px;
-    padding: 6px 16px;
+    padding: var(--sp-1-5) var(--sp-4);
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     cursor: pointer;
@@ -2834,14 +2834,14 @@ span[style*="--icon-loader"] svg,
 /* ===== Radio Group / Checkbox / Form Hint ===== */
 .radio-group {
     display: flex;
-    gap: 16px;
-    margin-top: 4px;
+    gap: var(--sp-4);
+    margin-top: var(--sp-1);
 }
 
 .radio-label {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     cursor: pointer;
     font-size: calc(13px * var(--font-scale));
     color: var(--text-primary);
@@ -2854,7 +2854,7 @@ span[style*="--icon-loader"] svg,
 .checkbox-label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-2);
     cursor: pointer;
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
@@ -2871,7 +2871,7 @@ span[style*="--icon-loader"] svg,
     display: block;
     font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
-    margin-top: 4px;
+    margin-top: var(--sp-1);
     font-style: italic;
 }
 
@@ -2899,17 +2899,17 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    margin-bottom: 20px;
-    padding: 12px 0;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-5);
+    padding: var(--sp-3) 0;
     border-bottom: 1px solid var(--border-default);
 }
 
 .migration-step {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
+    gap: var(--sp-1-5);
+    padding: var(--sp-1-5) var(--sp-4);
     border-radius: 20px;
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
@@ -2949,12 +2949,12 @@ span[style*="--icon-loader"] svg,
 .migration-form {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--sp-4);
 }
 
 .migration-form .path-row {
     display: flex;
-    gap: 8px;
+    gap: var(--sp-2);
     align-items: stretch;
 }
 
@@ -2966,7 +2966,7 @@ span[style*="--icon-loader"] svg,
     background-color: var(--bg-4);
     color: var(--text-1);
     border: none;
-    padding: 10px 16px;
+    padding: var(--sp-2-5) var(--sp-4);
     border-radius: 6px;
     cursor: pointer;
     font-size: calc(13px * var(--font-scale));
@@ -2981,11 +2981,11 @@ span[style*="--icon-loader"] svg,
 /* Step 2: Review */
 .migration-summary-bar {
     display: flex;
-    gap: 16px;
-    padding: 10px 16px;
+    gap: var(--sp-4);
+    padding: var(--sp-2-5) var(--sp-4);
     background: var(--bg-surface-tertiary);
     border-radius: 8px;
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
     font-size: calc(12px * var(--font-scale));
     align-items: center;
     flex-wrap: wrap;
@@ -2994,7 +2994,7 @@ span[style*="--icon-loader"] svg,
 .migration-summary-bar .summary-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-1);
     color: var(--text-secondary);
 }
 
@@ -3006,13 +3006,13 @@ span[style*="--icon-loader"] svg,
 .migration-items-list {
     max-height: 380px;
     overflow-y: auto;
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--text-1) 10%, transparent) transparent;
 }
 
 .migration-category {
-    margin-bottom: 10px;
+    margin-bottom: var(--sp-2-5);
     border: 1px solid var(--border-default);
     border-radius: 8px;
     overflow: hidden;
@@ -3021,8 +3021,8 @@ span[style*="--icon-loader"] svg,
 .migration-category-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
     background: var(--bg-surface-tertiary);
     cursor: pointer;
     font-size: calc(13px * var(--font-scale));
@@ -3047,14 +3047,14 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-category-items {
-    padding: 4px 8px;
+    padding: var(--sp-1) var(--sp-2);
 }
 
 .migration-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2);
     border-radius: 4px;
     font-size: calc(12px * var(--font-scale));
     color: var(--text-secondary);
@@ -3092,7 +3092,7 @@ span[style*="--icon-loader"] svg,
     background: var(--warn);
     color: var(--text-primary);
     font-size: calc(9px * var(--font-scale));
-    padding: 1px 6px;
+    padding: 1px var(--sp-1-5);
     border-radius: 4px;
     font-weight: 700;
     flex-shrink: 0;
@@ -3101,70 +3101,70 @@ span[style*="--icon-loader"] svg,
 .migration-options {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 10px 16px;
+    gap: var(--sp-4);
+    padding: var(--sp-2-5) var(--sp-4);
     background: var(--bg-surface-tertiary);
     border-radius: 8px;
-    margin-top: 8px;
+    margin-top: var(--sp-2);
 }
 
 /* Step 3: Result */
 .migration-result-success {
     text-align: center;
-    padding: 24px;
+    padding: var(--sp-6);
 }
 
 .migration-result-success .migration-result-icon {
     font-size: calc(48px * var(--font-scale));
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
 }
 
 .migration-result-success h3 {
     color: var(--success-badge-icon);
-    margin-bottom: 8px;
+    margin-bottom: var(--sp-2);
 }
 
 .migration-result-success p {
     color: var(--text-secondary);
     font-size: calc(13px * var(--font-scale));
-    margin: 4px 0;
+    margin: var(--sp-1) 0;
 }
 
 .migration-result-error {
     text-align: center;
-    padding: 24px;
+    padding: var(--sp-6);
 }
 
 .migration-result-error .migration-result-icon {
     font-size: calc(48px * var(--font-scale));
-    margin-bottom: 12px;
+    margin-bottom: var(--sp-3);
 }
 
 .migration-result-error h3 {
     color: var(--failure-badge-icon);
-    margin-bottom: 8px;
+    margin-bottom: var(--sp-2);
 }
 
 .migration-error {
     background: color-mix(in srgb, var(--stop) 10%, transparent);
     color: var(--failure-badge-icon);
-    padding: 10px 14px;
+    padding: var(--sp-2-5) var(--sp-4);
     border-radius: 6px;
     font-size: calc(12px * var(--font-scale));
-    margin-top: 12px;
+    margin-top: var(--sp-3);
     font-family: "Courier New", monospace;
     word-break: break-all;
 }
 
 .migration-warnings {
-    margin-top: 12px;
+    margin-top: var(--sp-3);
     text-align: left;
 }
 
 .migration-warnings h4 {
     color: var(--warn);
     font-size: calc(12px * var(--font-scale));
-    margin-bottom: 6px;
+    margin-bottom: var(--sp-1-5);
 }
 
 .migration-warnings ul {
@@ -3176,7 +3176,7 @@ span[style*="--icon-loader"] svg,
 .migration-warnings li {
     font-size: calc(11px * var(--font-scale));
     color: var(--text-secondary);
-    padding: 3px 0;
+    padding: var(--sp-1) 0;
 }
 
 .migration-warnings li::before {
@@ -3189,7 +3189,7 @@ span[style*="--icon-loader"] svg,
     background: var(--bg-surface-tertiary);
     color: var(--text-primary);
     border: 1px solid var(--border-default);
-    padding: 0 20px;
+    padding: 0 var(--sp-5);
     height: var(--btn-height);
     border-radius: var(--btn-radius);
     cursor: pointer;
@@ -3198,7 +3198,7 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     transition: all 0.2s ease;
     font-family: inherit;
 }

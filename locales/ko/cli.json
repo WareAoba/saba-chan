@@ -37,6 +37,7 @@
     "confirm_unpair": "이 PC를 디스코드 봇에서 끊고 페어링을 잊을까요?",
     "connection": "연결",
     "last_error": "마지막 오류",
+    "token_replaced": "이 디스코드 계정의 PC 연결이 다른 PC로 옮겨졌어요. 이 PC를 다시 쓰려면 `saba-chan-cli bot pair`로 다시 연결하세요.",
     "last_heartbeat": "마지막 응답",
     "list_empty": "아직 없어요.",
     "no_aliases": "별명이 아직 없어요. 추가: saba-chan-cli bot alias add 이름 모듈",
@@ -80,7 +81,18 @@
     "music_ui": "플레이어 패널",
     "music_queue_lines": "대기열 줄 수",
     "music_refresh": "패널 새로고침",
-    "music_normalize": "음량 고르게"
+    "music_normalize": "음량 고르게",
+    "allow_all": "이 디스코드 서버는 이 PC의 모든 서버를 볼 수 있어요.",
+    "allow_none": "열어 둔 서버가 없어요.",
+    "allow_bad_node": "{{guild}} 설정이 객체가 아니에요. saba-chan-cli bot config로 확인하세요.",
+    "allow_all_saved": "{{guild}}에서 이제 모든 서버를 볼 수 있어요.",
+    "allow_saved": "{{guild}}에서 이제 이 서버만 볼 수 있어요: {{servers}}",
+    "no_words": "정한 명령어 말이 없어요. 예: saba-chan-cli bot word minecraft start 켜",
+    "words_set": "이제 채팅에서 {{module}} {{command}}을(를) 이렇게 부를 수 있어요: {{words}}",
+    "words_cleared": "{{module}} {{command}}의 채팅 말을 지웠어요.",
+    "link_accepted": "{{guild}}을(를) 이 PC에 연결했어요.",
+    "link_declined": "연결 요청을 거절했어요.",
+    "pair_gui_hint": "디스코드 연결 상태는 GUI의 디스코드 화면에서도 볼 수 있어요."
   },
   "col": {
     "aliases": "별명",
@@ -596,7 +608,10 @@
       "bot.lang": "디스코드 서버에서 봇이 답하는 언어 (`auto`는 이 PC의 언어). 값이 없으면 보기",
       "bot.sleep": "디스코드 서버에서 봇 재우기 (깨울 때까지 명령을 받지 않아요)",
       "bot.wake": "디스코드 서버에서 봇 깨우기",
-      "bot.music": "디스코드 서버의 음악 플레이어 설정. 옵션이 없으면 보기"
+      "bot.music": "디스코드 서버의 음악 플레이어 설정. 옵션이 없으면 보기",
+      "bot.allow": "디스코드 서버가 보고 부를 수 있는 서버. 서버 없이: 보기, `--all`: 모든 서버",
+      "bot.word": "채팅에서 명령 대신 쓰는 말 (예: start를 \"켜\"로). 인자 없이: 보기",
+      "bot.link": "디스코드에서 코드 없이 /사바쨩 연결로 온 연결 요청. ID 없이: 보기, ID: 수락, `--decline`: 거절"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",

@@ -18,6 +18,7 @@ import { DiscordPage } from './components/discord/DiscordPage';
 import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { DaemonEvents } from './components/shell/DaemonEvents';
+import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
@@ -830,6 +831,7 @@ function App() {
                     {activityAvailable() && <ActivityBar />}
                     {paletteAvailable() && <CommandPalette />}
                     {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
+                    {linkRequestsAvailable() && <LinkRequests />}
 
                     {/* Context Menu */}
                     {contextMenu && (

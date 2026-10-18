@@ -32,6 +32,9 @@ const EVENT_PENDING: usize = 50;
 /// relay에 `/events`가 없을 때(404) 다시 알아보기까지 쉬는 시간. 그동안의 이벤트는 버린다
 const EVENT_PROBE: Duration = Duration::from_secs(600);
 
+/// 세션 안에서 토큰 대체를 알리는 오류 표시 (밖으로 나가지 않는다)
+const REPLACED: &str = "token_replaced";
+
 /// 에이전트 상태 (GET /api/relay/agent)
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +46,9 @@ pub struct AgentStatus {
     /// 마지막 하트비트 성공 시각 (epoch ms)
     pub last_heartbeat_at: Option<u64>,
     pub last_error: Option<String>,
+    /// 끊긴 이유를 클라이언트가 현지화할 수 있게 주는 코드. `token_replaced`: 같은 디스코드 계정이 다른 PC를 페어링했다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error_code: Option<&'static str>,
     pub commands_handled: u64,
 }
 
@@ -172,6 +178,12 @@ pub async fn auto_start(server: &IPCServer) {
     }
 }
 
+/// relay가 이 노드 토큰을 같은 계정의 새 페어링으로 대체했다고 답했는가
+fn token_replaced(status: reqwest::StatusCode, body: &Value) -> bool {
+    status == reqwest::StatusCode::UNAUTHORIZED
+        && body.get("error").and_then(|v| v.as_str()).is_some_and(|e| e.eq_ignore_ascii_case("TOKEN_REPLACED"))
+}
+
 fn http_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
@@ -199,6 +211,17 @@ impl Session {
             req = req.header("Content-Type", "application/json").body(b);
         }
         Ok(req)
+    }
+
+    /// 이 PC의 토큰이 다른 PC 페어링으로 대체됐다: 같은 토큰으로 다시 시도해도 소용없으니 멈춘다.
+    /// 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄운다
+    fn give_up_replaced(&self) {
+        tracing::warn!("[RelayAgent] node token was replaced by a newer pairing of the same Discord account; stopping");
+        self.agent.update(self.generation, |s| {
+            s.last_error = Some("node token replaced by a newer pairing".into());
+            s.last_error_code = Some("token_replaced");
+        });
+        self.cancel.cancel();
     }
 
     async fn check_version(&self) -> Result<(), String> {
@@ -241,6 +264,9 @@ impl Session {
             let resp = self.signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string()))?.send().await.map_err(|e| e.to_string())?;
             let status = resp.status();
             let data: Value = resp.json().await.unwrap_or(Value::Null);
+            if token_replaced(status, &data) {
+                return Err(REPLACED.to_string());
+            }
             if !status.is_success() {
                 let hint = if status.as_u16() == 401 || status.as_u16() == 403 { " (node token rejected)" } else { "" };
                 return Err(format!("heartbeat {}{}: {}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or("")));
@@ -259,6 +285,7 @@ impl Session {
                     s.last_error = None;
                 });
             }
+            Err(e) if e == REPLACED => self.give_up_replaced(),
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
                 self.agent.update(self.generation, |s| s.last_error = Some(e));
@@ -333,6 +360,8 @@ impl Session {
         }
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
+        // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
+        meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
         // (릴레이 스키마는 10자까지. 넘으면 heartbeat 전체가 거절되므로 싣지 않는다)
         if let Some(language) = self.server.config_store.get_gui_settings().await.language.filter(|l| l.len() <= 10) {
@@ -353,6 +382,7 @@ impl Session {
         while !self.cancel.is_cancelled() {
             match self.poll_once().await {
                 Ok(()) => failures = 0,
+                Err(e) if e == REPLACED => self.give_up_replaced(),
                 Err(e) => {
                     failures += 1;
                     let backoff = backoff(failures);
@@ -386,6 +416,9 @@ impl Session {
             b = resp.text() => b.unwrap_or_default(),
         };
         let body = decode_poll(&text);
+        if token_replaced(status, &body) {
+            return Err(REPLACED.to_string());
+        }
         if !status.is_success() {
             return Err(format!("poll {}: {}", status, body.get("error").and_then(|v| v.as_str()).unwrap_or("")));
         }
@@ -455,6 +488,14 @@ impl Session {
                 let result = crate::audit::with_origin(origin, action_request(&self.server, action, &payload, &caller)).await;
                 action_result(result)
             }
+            // 디스코드에서 코드 없이 `/사바쨩 연결` (J1-b): PC 화면에 알리기만 한다. 수락은 PC에서 사람이 누른다
+            "link_request" => match link_request_event(cmd, &payload) {
+                Some(data) => {
+                    crate::events::emit("relay.link_request", data);
+                    json!({ "success": true, "data": { "notified": true } })
+                }
+                None => json!({ "success": false, "data": { "error": "invalid link_request" } }),
+            },
             other => json!({ "success": false, "data": { "error": format!("Unknown action: {}", other) } }),
         }
     }
@@ -621,12 +662,29 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
             }
             v
         }
-        "backup.done" => pick(&["at", "instanceId", "kind", "ok", "name"]),
+        "backup.done" => pick(&["at", "instanceId", "instance", "kind", "ok", "name"]),
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
+        // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
+        "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         _ => return None,
     };
     Some(json!({ "id": event.id, "type": event.kind, "data": data }))
+}
+
+/// `link_request` → 데몬 이벤트 `relay.link_request` 본문. 요청 id와 길드가 없으면 None
+fn link_request_event(cmd: &Value, payload: &Value) -> Option<Value> {
+    let text = |v: Option<&Value>| v.and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+    let request_id = text(payload.get("requestId"))?;
+    let guild_id = text(payload.get("guildId").or(cmd.get("guildId")))?;
+    Some(json!({
+        "requestId": request_id,
+        "guildId": guild_id,
+        "guildName": text(payload.get("guildName")),
+        "requestedBy": text(cmd.get("requestedBy")),
+        "userName": text(payload.get("userName")),
+        "expiresAt": text(payload.get("expiresAt")),
+    }))
 }
 
 /// poll 응답 본문. 릴레이가 이모지를 반으로 잘라 짝 없는 서로게이트(`\ud83d`)가 오면 serde_json이
@@ -692,6 +750,8 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
     let instance = payload.get("instance").and_then(Value::as_str);
     let input = payload.get("input").cloned().unwrap_or(Value::Null);
     match action {
+        // 여러 단계 계획 (I1)
+        "plan" if payload.get("steps").is_some() => crate::actions::plan_steps(server, &payload["steps"], caller).await,
         "plan" => crate::actions::plan(server, id, instance, &input, caller).await,
         "run_plan" => {
             let plan_id = payload.get("planId").and_then(Value::as_str).unwrap_or_default();
@@ -894,6 +954,18 @@ mod tests {
     }
 
     #[test]
+    fn a_link_request_from_discord_only_reaches_the_pc_screen() {
+        let cmd = json!({ "guildId": "g1", "requestedBy": "u1" });
+        let payload = json!({ "action": "link_request", "requestId": "r1", "guildName": "길드", "userName": "주인", "expiresAt": "2026-10-18T08:00:00Z" });
+        let data = link_request_event(&cmd, &payload).unwrap();
+        assert_eq!(data, json!({ "requestId": "r1", "guildId": "g1", "guildName": "길드", "requestedBy": "u1", "userName": "주인", "expiresAt": "2026-10-18T08:00:00Z" }));
+        assert!(link_request_event(&cmd, &json!({ "action": "link_request" })).is_none(), "no request id");
+        assert!(link_request_event(&json!({}), &json!({ "requestId": "r1" })).is_none(), "no guild");
+        let event = crate::events::Event { id: 1, kind: "relay.link_request".into(), data, replay: true };
+        assert!(relay_event(&event).is_none(), "never sent back to the relay");
+    }
+
+    #[test]
     fn heartbeat_servers_carry_only_what_the_relay_reads() {
         let server = json!({
             "id": "i1", "name": "마크", "module": "minecraft", "status": "running",
@@ -1014,10 +1086,13 @@ mod tests {
         assert!(relay_event(&console).unwrap()["data"].get("evidence").is_none());
         assert!(relay_event(&ev("instance.exit", json!({"kind": "user_stop"}))).is_none());
 
-        let failed = ev("backup.done", json!({"instanceId": "i", "kind": "manual", "ok": false, "error": "D:\\saves locked"}));
-        assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "kind": "manual", "ok": false}));
+        let failed = ev("backup.done", json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false, "error": "D:\\saves locked"}));
+        assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
+        // 여러 단계 실행은 디스코드에서 시작한 것만
+        assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
+        assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");
     }
 
     #[test]

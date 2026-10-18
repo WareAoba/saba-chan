@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="560" viewBox="0 0 980 560" role="img" aria-labelledby="t d" lang="ko" font-family="Pretendard, &#x27;Apple SD Gothic Neo&#x27;, &#x27;Malgun Gothic&#x27;, &#x27;Noto Sans KR&#x27;, sans-serif">
+<title id="t">사바쨩 구조</title>
+<desc id="d">GUI와 CLI는 이 PC 안의 HTTP API로 데몬을 조작합니다. 데몬은 게임 서버를 실행하고 모듈과 익스텐션을 Python으로 부릅니다. 디스코드 명령은 클라우드 릴레이를 거치고, 연결은 PC가 먼저 바깥으로 엽니다.</desc>
+<!-- 생성기: saba-chan docs/diagrams/build.py. 손으로 고치지 말고 생성기를 고친다. -->
+<defs><marker id="ah0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/></marker></defs>
+<rect x="0.5" y="0.5" width="979" height="559" rx="18" fill="#0b0f1a" stroke="rgba(255,255,255,0.08)"/>
+<rect x="20" y="20" width="560" height="480" rx="16" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="6 5"/>
+<circle cx="38" cy="40" r="4" fill="#7c3aed"/>
+<text x="50.0" y="44.5" font-size="12.5" font-weight="700" fill="#94a3b8" text-anchor="start" data-fit="528.0">내 PC</text>
+<rect x="735" y="20" width="225" height="480" rx="16" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="6 5"/>
+<circle cx="753" cy="40" r="4" fill="#5865F2"/>
+<text x="765.0" y="44.5" font-size="12.5" font-weight="700" fill="#94a3b8" text-anchor="start" data-fit="193.0">클라우드</text>
+<path d="M165.0 158.0 L165.0 222.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M435.0 158.0 L435.0 222.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M123.0 312.0 L123.0 392.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M300.0 312.0 L300.0 392.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M477.0 312.0 L477.0 392.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M555.0 267.0 L757.0 267.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M847.0 222.0 L847.0 158.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" marker-start="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="45" y="70" width="240" height="88" rx="12" fill="#06b6d4" fill-opacity="0.16" stroke="#06b6d4" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="165.0" y="108.5" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="216.0">GUI 앱</text>
+<text x="165.0" y="130.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="216.0">데스크톱 앱 · 선택</text>
+<rect x="315" y="70" width="240" height="88" rx="12" fill="#06b6d4" fill-opacity="0.16" stroke="#06b6d4" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="435.0" y="108.5" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="216.0">CLI</text>
+<text x="435.0" y="130.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="216.0">명령줄 · 대화형 셸 · 선택</text>
+<rect x="211.8" y="177.2" width="176.3" height="25.6" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="300.0" y="194.2" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="234.0">HTTP API · 이 PC 안에서만</text>
+<rect x="45" y="222" width="510" height="90" rx="12" fill="#7c3aed" fill-opacity="0.16" stroke="#7c3aed" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="300.0" y="261.8" font-size="16" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="486.0">사바쨩 데몬 (saba-core)</text>
+<text x="300.0" y="284.6" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="486.0">서버 실행 · 설정 · 디스코드 연결을 혼자서</text>
+<rect x="45" y="392" width="156" height="88" rx="12" fill="#22c55e" fill-opacity="0.16" stroke="#22c55e" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="123.0" y="422.6" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="132.0">게임 서버</text>
+<text x="123.0" y="445.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">데몬이 실행하고</text>
+<text x="123.0" y="460.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">지켜봐요</text>
+<rect x="222" y="392" width="156" height="88" rx="12" fill="#3b82f6" fill-opacity="0.16" stroke="#3b82f6" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="300.0" y="422.6" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="132.0">모듈</text>
+<text x="300.0" y="445.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">게임별 설명서 ·</text>
+<text x="300.0" y="460.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">Python</text>
+<rect x="399" y="392" width="156" height="88" rx="12" fill="#3b82f6" fill-opacity="0.16" stroke="#3b82f6" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="477.0" y="430.4" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="132.0">익스텐션</text>
+<text x="477.0" y="452.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">추가 기능 · Python</text>
+<rect x="70.2" y="339.2" width="105.5" height="25.6" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="123.0" y="356.2" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="144.0">실행 · 콘솔 명령</text>
+<rect x="266.2" y="339.2" width="67.6" height="25.6" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="300.0" y="356.2" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="144.0">함수 호출</text>
+<rect x="441.8" y="339.2" width="70.5" height="25.6" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="477.0" y="356.2" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="144.0">hook 호출</text>
+<rect x="757" y="70" width="180" height="88" rx="12" fill="#5865F2" fill-opacity="0.16" stroke="#5865F2" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="847.0" y="108.5" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="156.0">디스코드</text>
+<text x="847.0" y="130.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">채팅으로 명령</text>
+<rect x="757" y="222" width="180" height="90" rx="12" fill="#5865F2" fill-opacity="0.16" stroke="#5865F2" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="847.0" y="253.7" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="156.0">디스코드 릴레이</text>
+<text x="847.0" y="276.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">사바쨩 봇 · 디스코드와</text>
+<text x="847.0" y="291.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">내 PC를 이어 줘요</text>
+<rect x="598.6" y="246.4" width="114.9" height="41.2" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="656.0" y="263.4" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="154.0">내 PC가 먼저</text>
+<text x="656.0" y="279.0" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="154.0">연결 (서명된 요청)</text>
+<text x="30.0" y="530.0" font-size="12.5" font-weight="400" fill="#94a3b8" text-anchor="start" data-fit="920.0">게임 서버는 내 PC에서 돌아가요. 릴레이와는 디스코드 명령과 결과, 서버 목록·상태 같은 요약만 주고받고, 원격 제어용 포트는 하나도 열지 않아요.</text>
+</svg>

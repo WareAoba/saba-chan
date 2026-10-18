@@ -134,6 +134,17 @@
     "restart_warning": "{{minutes}}분 뒤 서버가 다시 시작됩니다.",
     "update_warning": "{{minutes}}분 뒤 업데이트를 위해 서버가 다시 시작됩니다."
   },
+  "provision": {
+    "installing": "서버를 설치하는 중…",
+    "install_failed": "설치하지 못했어요",
+    "installed": "서버를 설치했어요",
+    "updating": "서버를 업데이트하는 중…",
+    "update_failed": "업데이트하지 못했어요",
+    "updated": "서버를 업데이트했어요",
+    "module_missing": "모듈을 찾지 못했어요: {{error}}",
+    "no_latest_version": "최신 서버 버전을 알아내지 못했어요",
+    "backup_failed": "업데이트 전 백업에 실패했어요: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {
@@ -235,6 +246,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "챗봇 설정 보기",
+          "description": "켜기·호출어·확인·도구 묶음"
+        },
+        "set": {
+          "title": "챗봇 설정 바꾸기",
+          "description": "켜기·호출어·확인·도구 묶음"
+        }
+      }
+    },
     "field": {
       "action": "작업",
       "instance": "서버",
@@ -256,7 +279,18 @@
       "guild": "디스코드 서버",
       "locale": "언어",
       "sleeping": "잠자기",
-      "music": "음악"
+      "music": "음악",
+      "enabled": "켜기",
+      "model": "모델",
+      "memo": "노드 메모",
+      "triggerWords": "호출어",
+      "confirmCommands": "명령 확인",
+      "ambientSeconds": "끼어들기 주기(초)",
+      "sessionSeconds": "후속 대화 시간(초)",
+      "memory": "기억",
+      "webSearch": "웹 검색",
+      "disabledTools": "끈 도구 묶음",
+      "step": "단계"
     }
   }
 }

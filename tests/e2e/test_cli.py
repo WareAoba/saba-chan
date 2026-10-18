@@ -3,6 +3,7 @@
 import pytest
 
 from harness.daemon import wait_until
+from harness.fake_relay import FakeRelay
 
 DONE = r"Done \([^)]+\)!"
 
@@ -174,3 +175,31 @@ def test_config_export_import_moves_servers_to_another_pc(cli, daemon, fake_serv
         assert "120" in Cli(other).run("config", "get", "fontScale", check=0).stdout
     finally:
         d2.shutdown()
+
+
+@pytest.fixture
+def relay():
+    r = FakeRelay()
+    yield r
+    r.close()
+
+
+def test_status_points_at_the_next_setup_step(cli, sandbox, relay, daemon_factory, fake_server):
+    """처음 쓰는 사람에게 `status`가 다음 할 일 하나를 알려 주고, 하면 다음 단계로 넘어간다 (J1-a, #87)."""
+    def next_step():
+        return cli.run("status", check=0).json()["onboarding"]["next"]
+
+    # 토큰을 저장하면 에이전트가 바로 붙으므로 운영 relay가 아닌 가짜 relay를 가리킨다
+    sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
+    daemon = daemon_factory()
+    assert next_step() == "server"
+    assert "server add" in cli.run("status", json_out=False, check=0).stderr
+    folder, _ = fake_server("ob1")
+    daemon.import_server("ob1", folder, module_settings={"ram": "256M"})
+    assert next_step() == "discord"
+    # 페어링 토큰을 저장하면 데몬 재시작 없이 끝난다. 챗봇 키는 선택이라 남아도 다음 할 일이 없다
+    daemon.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
+    wait_until(lambda: next_step() is None, 30, "페어링 뒤 다음 할 일 없음")
+    wait_until(lambda: relay.heartbeats, 30, "가짜 relay로 heartbeat")
+    human = cli.run("status", json_out=False, check=0)
+    assert "bot pair" not in human.stderr and "server add" not in human.stderr, human

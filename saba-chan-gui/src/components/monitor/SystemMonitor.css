@@ -41,7 +41,7 @@
 .monitor-legend li {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-1-5);
     min-width: 0;
 }
 .monitor-swatch {
@@ -110,7 +110,10 @@
     font-size: var(--fs-xs);
     color: var(--text-2);
     font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    word-break: keep-all;
+    /* 좁은 폭에서 "KB/s"만 다음 줄로 떨어지지 않게 두 줄 길이를 맞춘다 */
+    text-wrap: balance;
 }
 .monitor-ring-note {
     color: var(--text-3);

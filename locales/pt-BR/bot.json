@@ -134,6 +134,17 @@
     "restart_warning": "O servidor será reiniciado em {{minutes}} min.",
     "update_warning": "O servidor será reiniciado para atualização em {{minutes}} min."
   },
+  "provision": {
+    "installing": "Instalando o servidor…",
+    "install_failed": "Falha na instalação",
+    "installed": "Servidor instalado",
+    "updating": "Atualizando o servidor…",
+    "update_failed": "Falha na atualização",
+    "updated": "Servidor atualizado",
+    "module_missing": "Módulo não encontrado: {{error}}",
+    "no_latest_version": "Não foi possível obter a versão mais recente do servidor",
+    "backup_failed": "Falha no backup antes da atualização: {{reason}}"
+  },
   "actions": {
     "instance": {
       "list": {
@@ -235,6 +246,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "Ver configurações do chatbot",
+          "description": "Ligar, palavras de chamada, confirmação, ferramentas"
+        },
+        "set": {
+          "title": "Alterar configurações do chatbot",
+          "description": "Ligar, palavras de chamada, confirmação, ferramentas"
+        }
+      }
+    },
     "field": {
       "action": "Ação",
       "instance": "Servidor",
@@ -256,7 +279,18 @@
       "guild": "Servidor do Discord",
       "locale": "Idioma",
       "sleeping": "Repouso",
-      "music": "Música"
+      "music": "Música",
+      "enabled": "Ligado",
+      "model": "Modelo",
+      "memo": "Nota do nó",
+      "triggerWords": "Palavras de chamada",
+      "confirmCommands": "Confirmar comandos",
+      "ambientSeconds": "Intervalo de intervenção (s)",
+      "sessionSeconds": "Janela de continuação (s)",
+      "memory": "Memória",
+      "webSearch": "Busca na web",
+      "disabledTools": "Ferramentas desativadas",
+      "step": "Etapa"
     }
   }
 }

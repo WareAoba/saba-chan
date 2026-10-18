@@ -703,7 +703,10 @@
     "check_diagnose": "诊断日志",
     "check_ok": "未发现问题，可以启动。",
     "check_log_ok": "最近的日志中未发现已知问题。",
-    "check_failed": "无法检查：{{error}}"
+    "check_failed": "无法检查：{{error}}",
+    "exit_note_auto_off": "自动重启已关闭",
+    "exit_note_gave_up": "10 分钟内重启 {{count}} 次后放弃",
+    "exit_note_restart_failed": "无法重启：{{reason}}"
   },
   "discord": {
     "nav_connection": "连接",
@@ -1293,5 +1296,14 @@
   "cli_line": {
     "copy": "复制 CLI 命令",
     "copied": "已复制"
+  },
+  "link_request": {
+    "title": "Discord 连接请求",
+    "message": "{{guild}} 请求连接到这台电脑",
+    "accept": "接受",
+    "decline": "拒绝",
+    "accepted": "已与 {{guild}} 连接。",
+    "expired": "请求已过期，请在 Discord 中重新请求。",
+    "failed": "无法处理该请求。"
   }
 }

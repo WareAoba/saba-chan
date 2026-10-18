@@ -703,7 +703,10 @@
     "check_diagnose": "Protokoll analysieren",
     "check_ok": "Keine Probleme gefunden. Startbereit.",
     "check_log_ok": "Im aktuellen Protokoll wurden keine bekannten Probleme gefunden.",
-    "check_failed": "Prüfung fehlgeschlagen: {{error}}"
+    "check_failed": "Prüfung fehlgeschlagen: {{error}}",
+    "exit_note_auto_off": "Automatischer Neustart ist aus",
+    "exit_note_gave_up": "Nach {{count}} Neustarts in 10 Minuten aufgegeben",
+    "exit_note_restart_failed": "Neustart fehlgeschlagen: {{reason}}"
   },
   "discord": {
     "nav_connection": "Verbindung",
@@ -1293,5 +1296,14 @@
   "cli_line": {
     "copy": "CLI-Befehl kopieren",
     "copied": "Kopiert"
+  },
+  "link_request": {
+    "title": "Discord-Verbindungsanfragen",
+    "message": "{{guild}} möchte sich mit diesem PC verbinden",
+    "accept": "Annehmen",
+    "decline": "Ablehnen",
+    "accepted": "Mit {{guild}} verbunden.",
+    "expired": "Die Anfrage ist abgelaufen. Frag in Discord erneut an.",
+    "failed": "Die Anfrage konnte nicht verarbeitet werden."
   }
 }

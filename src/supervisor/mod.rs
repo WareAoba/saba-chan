@@ -1269,7 +1269,7 @@ impl Supervisor {
                 let message = result
                     .get("message")
                     .and_then(|m| m.as_str())
-                    .unwrap_or("Command executed successfully");
+                    .unwrap_or_default();
                 Ok(message.to_string())
             } else {
                 let error_msg = result

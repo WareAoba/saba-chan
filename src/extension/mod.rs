@@ -328,6 +328,36 @@ pub struct CliManifest {
     pub slots: HashMap<String, Value>,
 }
 
+/// 데이터 slot 이름 (Q-7). GUI 어휘로 통일했고, 옛 CLI 이름은 [`SLOT_ALIASES`]로 받는다
+pub const SLOT_BADGE: &str = "ServerCard.badge";
+pub const SLOT_STATUS: &str = "ServerDetail.status";
+pub const SLOT_OPTIONS: &str = "AddServer.options";
+
+/// 옛 이름 → 통일 이름. 한 릴리스 동안 받고 지운다
+pub const SLOT_ALIASES: &[(&str, &str)] = &[
+    ("InstanceList.badge", SLOT_BADGE),
+    ("InstanceDetail.status", SLOT_STATUS),
+    ("CreateInstance.options", SLOT_OPTIONS),
+];
+
+/// manifest `cli.slots` → 통일 이름 키, 값은 배열 (하나만 적었으면 한 칸짜리). 옛 이름과 새 이름을 함께 쓰면 이어 붙인다
+pub fn normalized_slots(cli: &CliManifest) -> serde_json::Map<String, Value> {
+    let mut keys: Vec<&String> = cli.slots.keys().collect();
+    keys.sort();
+    let mut out = serde_json::Map::new();
+    for key in keys {
+        let name = SLOT_ALIASES.iter().find(|(old, _)| old == key).map_or(key.as_str(), |(_, new)| new);
+        let items = match &cli.slots[key] {
+            Value::Array(a) => a.clone(),
+            other => vec![other.clone()],
+        };
+        if let Value::Array(list) = out.entry(name.to_string()).or_insert_with(|| Value::Array(Vec::new())) {
+            list.extend(items);
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldDef {
     #[serde(rename = "type")]
@@ -455,6 +485,9 @@ pub struct ExtensionListItem {
     pub dependencies: HashMap<String, String>,
     pub gui: Option<GuiManifest>,
     pub cli: Option<CliManifest>,
+    /// 데이터 slot (`cli.slots`를 통일 이름으로, 값은 늘 배열). 인터페이스는 이것만 읽는다 (Q-7)
+    #[serde(default)]
+    pub slots: serde_json::Map<String, Value>,
     pub instance_fields: HashMap<String, FieldDef>,
     pub config_fields: HashMap<String, FieldDef>,
     /// 익스텐션 디렉토리에 icon.png가 존재하는지 여부
@@ -1109,6 +1142,7 @@ impl ExtensionManager {
                     dependencies: m.dependencies.clone(),
                     gui: m.gui.clone(),
                     cli: m.cli.clone(),
+                    slots: m.cli.as_ref().map(normalized_slots).unwrap_or_default(),
                     instance_fields: m.instance_fields.clone(),
                     config_fields: m.config_fields.clone(),
                     has_icon,
@@ -1183,6 +1217,53 @@ impl ExtensionManager {
             context: self.inject_extension_config(context),
             calls: vec![HookCall { ext_id: ext_id.to_string(), target }],
         }))
+    }
+
+    /// 서버 하나에 붙일 데이터 slot (Q-7): 켜진 익스텐션만, 조건이 참인 것만, 값은 찾아서.
+    /// `ServerCard.badge` → `{extension, text}`, `ServerDetail.status` → `{extension, label, value}`
+    /// (값은 `extension_status[<ext>]` → `extension_status.default` → `extension_data` 순, 못 찾으면 그 줄을 뺀다)
+    pub fn server_slots(
+        &self,
+        ext_data: &HashMap<String, Value>,
+        ext_status: &HashMap<String, Value>,
+    ) -> serde_json::Map<String, Value> {
+        let mut out = serde_json::Map::new();
+        let mut exts: Vec<&DiscoveredExtension> = self.discovered.values().filter(|e| self.enabled.contains(&e.manifest.id)).collect();
+        exts.sort_by(|a, b| (a.manifest.priority, &a.manifest.id).cmp(&(b.manifest.priority, &b.manifest.id)));
+        let mut push = |slot: &str, item: Value| {
+            if let Value::Array(list) = out.entry(slot.to_string()).or_insert_with(|| Value::Array(Vec::new())) {
+                list.push(item);
+            }
+        };
+        for ext in exts {
+            let id = &ext.manifest.id;
+            let Some(cli) = &ext.manifest.cli else { continue };
+            let slots = normalized_slots(cli);
+            for item in slots.get(SLOT_BADGE).and_then(Value::as_array).into_iter().flatten() {
+                let shown = item.get("condition").and_then(Value::as_str).is_none_or(|c| Self::evaluate_condition(c, ext_data));
+                if let (true, Some(text)) = (shown, item.get("text").and_then(Value::as_str)) {
+                    push(SLOT_BADGE, serde_json::json!({ "extension": id, "text": text }));
+                }
+            }
+            for item in slots.get(SLOT_STATUS).and_then(Value::as_array).into_iter().flatten() {
+                let (Some(label), Some(key)) = (item.get("label").and_then(Value::as_str), item.get("value_from").and_then(Value::as_str)) else { continue };
+                // 비밀값처럼 보이는 키는 보이지 않는다 (목록은 원격으로도 나간다)
+                if crate::actions::is_secret_key(key, &[]) {
+                    continue;
+                }
+                let found = ext_status
+                    .get(id)
+                    .and_then(|s| s.get(key))
+                    .or_else(|| ext_status.get("default").and_then(|s| s.get(key)))
+                    .or_else(|| ext_data.get(key))
+                    .filter(|v| !v.is_null());
+                if let Some(v) = found {
+                    let value = v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
+                    push(SLOT_STATUS, serde_json::json!({ "extension": id, "label": label, "value": value }));
+                }
+            }
+        }
+        out
     }
 
     /// 조건 문자열 평가: "instance.ext_data.<key>" → ext_data[key] == true
@@ -1805,6 +1886,39 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         assert!(mgr.enable("nonexistent").is_err());
+    }
+
+    #[test]
+    fn data_slots_take_old_names_and_the_daemon_decides_what_a_server_shows() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_ext(tmp.path(), "box", json!({ "id": "box", "name": "box", "version": "0.1.0", "cli": { "slots": {
+            "InstanceList.badge": { "text": "📦", "condition": "instance.ext_data.boxed" },
+            "ServerDetail.status": [{ "label": "Box", "value_from": "box_state" }, { "label": "Missing", "value_from": "nope" }, { "label": "Key", "value_from": "api_token" }],
+            "CreateInstance.options": [{ "field": "boxed", "type": "boolean", "label": "Box" }]
+        } } }));
+        write_ext(tmp.path(), "off", json!({ "id": "off", "name": "off", "version": "0.1.0", "cli": { "slots": {
+            "ServerCard.badge": { "text": "x" }
+        } } }));
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enabled.insert("box".to_string());
+
+        let cli = mgr.discovered("box").unwrap().manifest.cli.clone().unwrap();
+        let slots = normalized_slots(&cli);
+        assert_eq!(slots[SLOT_OPTIONS], json!([{ "field": "boxed", "type": "boolean", "label": "Box" }]));
+        assert_eq!(slots[SLOT_BADGE].as_array().unwrap().len(), 1, "old name lands under the new one as an array");
+
+        let mut data = HashMap::new();
+        let status = HashMap::from([("box".to_string(), json!({ "box_state": "up", "api_token": "T0KEN" }))]);
+        let shown = mgr.server_slots(&data, &status);
+        assert!(shown.get(SLOT_BADGE).is_none(), "condition false, disabled extension skipped");
+        assert_eq!(shown[SLOT_STATUS], json!([{ "extension": "box", "label": "Box", "value": "up" }]));
+
+        data.insert("boxed".to_string(), json!(true));
+        data.insert("box_state".to_string(), json!(3));
+        let shown = mgr.server_slots(&data, &HashMap::new());
+        assert_eq!(shown[SLOT_BADGE], json!([{ "extension": "box", "text": "📦" }]));
+        assert_eq!(shown[SLOT_STATUS], json!([{ "extension": "box", "label": "Box", "value": "3" }]), "falls back to extension_data");
     }
 
     // ── 동적 마운트/언마운트 테스트 ──

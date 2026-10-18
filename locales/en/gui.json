@@ -704,7 +704,10 @@
     "check_diagnose": "Diagnose log",
     "check_ok": "No problems found. Ready to start.",
     "check_log_ok": "No known problems found in the recent log.",
-    "check_failed": "Couldn't run the check: {{error}}"
+    "check_failed": "Couldn't run the check: {{error}}",
+    "exit_note_auto_off": "Auto restart is off",
+    "exit_note_gave_up": "Gave up after {{count}} restarts in 10 minutes",
+    "exit_note_restart_failed": "Couldn't restart: {{reason}}"
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1323,5 +1326,14 @@
   "cli_line": {
     "copy": "Copy CLI command",
     "copied": "Copied"
+  },
+  "link_request": {
+    "title": "Discord link requests",
+    "message": "{{guild}} asked to link to this PC",
+    "accept": "Accept",
+    "decline": "Decline",
+    "accepted": "Linked to {{guild}}.",
+    "expired": "The request expired. Ask again from Discord.",
+    "failed": "Couldn't handle the request."
   }
 }

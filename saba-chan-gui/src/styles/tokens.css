@@ -231,14 +231,19 @@
     --fs-xl: calc(20px * var(--font-scale, 1));
     --fs-2xl: calc(24px * var(--font-scale, 1));
 
-    /* 간격 (4px 단위) */
+    /* 간격 (4px 단위, 12px 아래만 반 단계). 이 파일 밖의 padding·margin·gap은
+     * 이 변수만 쓴다 (1px만 예외). test/spacing-tokens.test.js가 지킨다 */
+    --sp-0-5: 2px;
     --sp-1: 4px;
+    --sp-1-5: 6px;
     --sp-2: 8px;
+    --sp-2-5: 10px;
     --sp-3: 12px;
     --sp-4: 16px;
     --sp-5: 20px;
     --sp-6: 24px;
     --sp-8: 32px;
+    --sp-10: 40px;
 
     /* 모서리 */
     --r-xs: 6px;
