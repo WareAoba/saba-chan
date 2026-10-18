@@ -1677,7 +1677,7 @@ impl Supervisor {
                         evidence: format!("memory limit {} MiB reached while starting", hit.limit_mb),
                     };
                     let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
-                    sup.write().await.record_exit(&instance.id, &instance.name, event);
+                    sup.write().await.record_exit(&instance.id, &instance.name, event, None);
                 }
                 spawned?
             }
@@ -2316,12 +2316,14 @@ impl Supervisor {
 
         let auto_restart = setting_flag(&instance, "auto_restart", true);
         let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
+        let mut attempt = None;
         let (restart_in, note, note_code) = if crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
             let history = self.restart_history.entry(instance_id.to_string()).or_default();
             match crash::next_restart_delay(history, Instant::now()) {
                 Some(delay) => {
                     let generation = self.run_generation.get(instance_id).copied().unwrap_or_default();
                     self.pending_restarts.push((instance_id.to_string(), delay, generation));
+                    attempt = Some(generation);
                     (Some(delay.as_secs()), None, None)
                 }
                 None => (
@@ -2352,11 +2354,12 @@ impl Supervisor {
 
         let (note_code, note_args) = note_code.map(|(c, a)| (c.to_string(), a)).unzip();
         let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note, note_code, note_args };
-        self.record_exit(instance_id, &instance.name, event);
+        self.record_exit(instance_id, &instance.name, event, attempt);
     }
 
-    /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다
-    fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent) {
+    /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다.
+    /// `attempt`는 다시 띄우기로 했을 때 그 복구 시도의 번호 (끝을 알리는 이벤트와 같은 `restartAttempt`)
+    fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent, attempt: Option<u64>) {
         crate::events::emit("instance.exit", serde_json::json!({
             "instanceId": instance_id,
             "instance": instance_name,
@@ -2365,6 +2368,7 @@ impl Supervisor {
             "signal": event.verdict.signal,
             "evidence": event.verdict.evidence,
             "restartInSecs": event.restart_in_secs,
+            "restartAttempt": attempt,
             "note": event.note,
             "noteCode": event.note_code,
             "noteArgs": event.note_args,
@@ -2432,7 +2436,7 @@ impl Supervisor {
     }
 
     /// 자동 재시작이 실패했을 때 이력에 남긴다
-    pub fn record_restart_failure(&mut self, instance_id: &str, reason: String) {
+    pub fn record_restart_failure(&mut self, instance_id: &str, attempt: u64, reason: String) {
         if let Some(last) = self.exit_events.get_mut(instance_id).and_then(|e| e.back_mut()) {
             last.note = Some(format!("restart failed: {}", reason));
             last.note_code = Some("restart_failed".into());
@@ -2443,9 +2447,22 @@ impl Supervisor {
                 "instance": self.instance_store.get(instance_id).map(|i| i.name.clone()).unwrap_or_default(),
                 "noteCode": last.note_code,
                 "noteArgs": last.note_args,
+                "restartAttempt": attempt,
             }));
         }
         self.save_exit_events(instance_id);
+    }
+
+    /// 자동 재시작 대기가 끝났을 때 알린다: 다시 켜졌으면 `instance.restarted`,
+    /// 대기 중에 정지·시작·삭제돼 그만뒀으면 `instance.restart_cancelled` (실패는 `record_restart_failure`).
+    /// `attempt`는 시작을 알린 `instance.exit`의 `restartAttempt`: 그 사이 새 크래시로 새 시도가 시작됐으면 번호가 다르다
+    pub fn record_restart_outcome(&self, instance_id: &str, attempt: u64, restarted: bool) {
+        let kind = if restarted { "instance.restarted" } else { "instance.restart_cancelled" };
+        crate::events::emit(kind, serde_json::json!({
+            "instanceId": instance_id,
+            "instance": self.instance_store.get(instance_id).map(|i| i.name.clone()).unwrap_or_default(),
+            "restartAttempt": attempt,
+        }));
     }
 
     /// 최근 종료 이력, 오래된 것부터
@@ -2916,7 +2933,11 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
+        let mut exits = crate::events::bus().subscribe(None);
         supervisor.monitor_processes(&[]).await.unwrap();
+        // 다시 띄우기로 한 종료는 그 복구 시도의 번호(예약한 재시작의 실행 세대)를 싣는다
+        let crash_exit = std::iter::from_fn(|| exits.rx.try_recv().ok()).find(|e| e.kind == "instance.exit" && e.data["instanceId"] == "crash").unwrap();
+        assert_eq!(crash_exit.data["restartAttempt"], 0);
 
         let kind = |id: &str| supervisor.exit_events(id).last().map(|e| e.verdict.kind);
         assert_eq!(kind("crash"), Some(crash::ExitKind::Crash));
@@ -2928,15 +2949,24 @@ mod tests {
         assert_eq!(supervisor.exit_events("off")[0].note.as_deref(), Some("auto_restart is off"));
         assert_eq!(supervisor.exit_events("off")[0].note_code.as_deref(), Some("auto_restart_off"));
         let mut sub = crate::events::bus().subscribe(None);
-        supervisor.record_restart_failure("crash", "no java".into());
+        supervisor.record_restart_failure("crash", 0, "no java".into());
         let failed = supervisor.exit_events("crash").last().cloned().unwrap();
         assert_eq!((failed.note_code.as_deref(), failed.note_args), (Some("restart_failed"), Some(json!({"reason": "no java"}))));
         // 이미 나간 instance.exit 뒤에 실패를 따로 알린다
         let mut told = false;
         while let Ok(e) = sub.rx.try_recv() {
-            told |= e.kind == "instance.restart_failed" && e.data["noteArgs"]["reason"] == "no java";
+            told |= e.kind == "instance.restart_failed" && e.data["noteArgs"]["reason"] == "no java" && e.data["restartAttempt"] == 0;
         }
         assert!(told, "restart failure was not announced on the event stream");
+        // 복구 시도의 끝도 알린다: 다시 켜졌거나, 대기 중에 정지·시작해서 그만뒀거나.
+        // 어느 시도의 끝인지 시작(`instance.exit`)과 같은 `restartAttempt`로 가른다
+        supervisor.record_restart_outcome("crash", 7, true);
+        supervisor.record_restart_outcome("crash", 8, false);
+        let ends: Vec<(String, Value)> = std::iter::from_fn(|| sub.rx.try_recv().ok())
+            .filter(|e| e.data["instanceId"] == "crash")
+            .map(|e| (e.kind.clone(), e.data["restartAttempt"].clone()))
+            .collect();
+        assert_eq!(ends, vec![("instance.restarted".to_string(), json!(7)), ("instance.restart_cancelled".to_string(), json!(8))]);
         assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5), 0)]);
         assert!(supervisor.restart_still_wanted("crash", 0).await);
         supervisor.stop_requested.insert("crash".into());

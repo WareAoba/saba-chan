@@ -892,6 +892,7 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
     tokio::time::sleep(delay).await;
     if !state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
+        state.supervisor.read().await.record_restart_outcome(&instance_id, generation, false);
         return;
     }
     tracing::info!("Auto restarting '{}' after a crash", instance_id);
@@ -899,13 +900,16 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
     let wanted = || async { state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await };
     let Some(resp) = super::backup::start_when_free(&state, &instance_id, wanted).await else {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
+        state.supervisor.read().await.record_restart_outcome(&instance_id, generation, false);
         return;
     };
     let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
     if !ok {
         let reason = resp.body.get("error").or_else(|| resp.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();
         tracing::warn!("Auto restart of '{}' failed: {}", instance_id, reason);
-        state.supervisor.write().await.record_restart_failure(&instance_id, reason);
+        state.supervisor.write().await.record_restart_failure(&instance_id, generation, reason);
+    } else {
+        state.supervisor.read().await.record_restart_outcome(&instance_id, generation, true);
     }
 }
 

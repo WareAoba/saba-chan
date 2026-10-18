@@ -20,7 +20,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 
 const MODULE: &str = "[module]\nschema_version = 1\nname = \"slowq\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[queries]]\nname = \"slow\"\nlabel = \"Slow\"\nfunction = \"slow_query\"\n";
-const LIFECYCLE: &str = "import json, sys, time\njson.load(sys.stdin)\nif sys.argv[1] == 'slow_query':\n    time.sleep(3)\nprint(json.dumps({'success': True, 'data': {'ok': 1}}))\n";
+const LIFECYCLE: &str = "import json, sys, time\njson.load(sys.stdin)\nif sys.argv[1] == 'slow_query':\n    time.sleep(2)\nprint(json.dumps({'success': True, 'data': {'ok': 1}}))\n";
 
 /// 계약대로: 전달한 뒤 ack도 결과도 없으면 다시 보낸다 (최대 2번, 간격은 테스트용으로 짧게)
 #[derive(Default)]
@@ -136,8 +136,10 @@ async fn a_reconnect_neither_drops_waiting_commands_nor_the_results_of_running_o
     // 설정이 바뀌어 연결을 다시 맺는다
     saba_core::relay_agent::restart(&handle).await;
 
-    for _ in 0..200 {
-        if relay.lock().unwrap().results.len() >= 5 {
+    // Windows CI는 Python 실행이 느리다: 넉넉히 기다린다 (다 오면 바로 끝난다)
+    for _ in 0..600 {
+        let distinct: std::collections::HashSet<String> = relay.lock().unwrap().results.iter().cloned().collect();
+        if distinct.len() >= 5 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
