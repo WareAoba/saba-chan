@@ -143,7 +143,9 @@ impl Api {
 
     /// GET /health — 락 없이 답하는 ping (`{ok, version, pid}`)
     pub async fn health(&self) -> Result<Value> {
-        self.call(Method::GET, "/health", None, Duration::from_secs(2)).await
+        // 연결 제한(2초)보다 길게 둔다: Windows는 닫힌 루프백 포트 거부에 2초쯤 걸려서,
+        // 같으면 "데몬 꺼짐"이 아니라 "응답 늦음"으로 끝난다
+        self.call(Method::GET, "/health", None, Duration::from_secs(5)).await
     }
     /// GET /api/version — 코어·모듈·익스텐션 버전
     pub async fn version(&self) -> Result<Value> {
