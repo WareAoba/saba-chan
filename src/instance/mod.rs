@@ -418,11 +418,19 @@ impl InstanceStore {
         let mut meta = instance.clone();
         let settings = std::mem::take(&mut meta.module_settings);
         let instance_json = serde_json::to_string_pretty(&meta)?;
-        write_atomic(&dir.join("instance.json"), &instance_json)?;
-
-        // settings.json — 모듈별 동적 설정 (비어있어도 저장)
         let settings_json = serde_json::to_string_pretty(&settings)?;
-        write_atomic(&dir.join("settings.json"), &settings_json)?;
+        let instance_path = dir.join("instance.json");
+        let previous = fs::read_to_string(&instance_path).ok();
+        write_atomic(&instance_path, &instance_json)?;
+
+        // settings.json — 모듈별 동적 설정 (비어있어도 저장). 못 쓰면 instance.json도 되돌려 반쪽 저장을 남기지 않는다
+        if let Err(e) = write_atomic(&dir.join("settings.json"), &settings_json) {
+            let _ = match &previous {
+                Some(old) => write_atomic(&instance_path, old),
+                None => fs::remove_file(&instance_path).map_err(Into::into),
+            };
+            return Err(e);
+        }
 
         #[cfg(unix)]
         {
@@ -640,6 +648,32 @@ mod tests {
         store2.load().unwrap();
         assert_eq!(store2.get(&id).unwrap().name, "updated-name");
         assert_eq!(store2.get(&id).unwrap().port, Some(9999));
+    }
+
+    #[test]
+    fn a_failed_settings_write_leaves_the_instance_files_as_they_were() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("before", "minecraft");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+
+        // settings.json을 쓸 수 없게 한다
+        let blocker = instances_dir.join(&id).join("settings.json.tmp");
+        fs::create_dir_all(blocker.join("x")).unwrap();
+        let mut changed = store.get(&id).unwrap().clone();
+        changed.name = "after".to_string();
+        changed.module_settings.insert("difficulty".into(), serde_json::json!("easy"));
+        assert!(store.update(&id, changed).is_err());
+        fs::remove_dir_all(&blocker).unwrap();
+
+        let mut reloaded = InstanceStore::new(instances_dir.to_str().unwrap());
+        reloaded.load().unwrap();
+        let back = reloaded.get(&id).unwrap();
+        assert_eq!(back.name, "before", "instance.json must not be half-updated");
+        assert_eq!(back.module_settings.get("difficulty"), Some(&serde_json::json!("hard")));
     }
 
     #[test]
