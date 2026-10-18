@@ -187,16 +187,22 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
         ctx.api.save_bot_config(json!({ "cloud": cloud.clone() })).await?;
     }
     let relay = relay_url.or_else(|| relay_of(&cfg).map(str::to_string));
-    let result = pair_with(ctx, relay, cloud).await;
-    // 페어링이 끝나지 않았으면 예전 릴레이로 되돌린다 (그대로 두면 다음 재시작에 기존 토큰을 새 주소로 보낸다)
-    if result.is_err() && switched {
+    let claimed = wait_for_claim(ctx, relay.as_deref()).await;
+    // 페어링이 끝나지 않았으면 예전 릴레이로 되돌린다 (그대로 두면 다음 재시작에 기존 토큰을 새 주소로 보낸다).
+    // 끝난 뒤의 오류는 되돌리지 않는다: 데몬은 이미 새 릴레이의 토큰을 저장했다.
+    // `--json`으로 코드만 낸 경우도 그대로 둔다: 이어서 기다리는 쪽이 새 릴레이로 claim을 받는다
+    if switched && claimed.is_err() {
         let _ = ctx.api.save_bot_config(json!({ "cloud": previous })).await;
     }
-    result
+    match claimed? {
+        Some(result) => finish_pair(ctx, result, cloud).await,
+        None => Ok(()),
+    }
 }
 
-async fn pair_with(ctx: &Ctx, relay: Option<String>, mut cloud: Value) -> Result<()> {
-    let init = ctx.api.pair_initiate(relay.as_deref()).await?;
+/// 페어링 코드를 받아 보여 주고 claim될 때까지 기다린다. `--json`만 주면 코드만 내고 `None`
+async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>> {
+    let init = ctx.api.pair_initiate(relay).await?;
     let code = s(&init, "code").to_string();
     let secret = s(&init, "pollSecret").to_string();
     if code.is_empty() {
@@ -205,7 +211,7 @@ async fn pair_with(ctx: &Ctx, relay: Option<String>, mut cloud: Value) -> Result
     if ctx.out.json && !ctx.ask.yes {
         // 스크립트: 코드만 주고 끝 (폴링은 `--yes`로 기다린다)
         ctx.out.data(&init, |_| {});
-        return Ok(());
+        return Ok(None);
     }
     eprintln!();
     eprintln!("  {}", t!("bot.pair_enter"));
@@ -222,7 +228,7 @@ async fn pair_with(ctx: &Ctx, relay: Option<String>, mut cloud: Value) -> Result
                 return Err(crate::error::CliError::Cancelled.into());
             }
         }
-        let Ok(st) = ctx.api.pair_status(&code, &secret, relay.as_deref()).await else {
+        let Ok(st) = ctx.api.pair_status(&code, &secret, relay).await else {
             continue;
         };
         match s(&st, "status") {
@@ -235,6 +241,10 @@ async fn pair_with(ctx: &Ctx, relay: Option<String>, mut cloud: Value) -> Result
         }
     };
     spin.finish_and_clear();
+    Ok(Some(result))
+}
+
+async fn finish_pair(ctx: &Ctx, result: Value, mut cloud: Value) -> Result<()> {
     // 데몬은 노드 토큰만 저장한다. 호스트 id는 봇 설정에 넣는다.
     if !s(&result, "hostId").is_empty() {
         cloud["hostId"] = Value::String(s(&result, "hostId").to_string());
