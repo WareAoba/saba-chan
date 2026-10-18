@@ -696,6 +696,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_dropped_reset_request_keeps_the_lock_until_the_module_is_done() {
+        let hook = "import json, time\ntime.sleep(1.5)\nprint(json.dumps({'success': True}))\n";
+        let (state, id, _tmp) = server_with(NO_BACKUP, Some(hook)).await;
+        let request = super::super::managed::reset_server_handler(Path(id.clone()), State(state.clone()));
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(300), request).await.is_err(), "the module is still running");
+        assert!(BusyGuard::take(&id).is_none(), "a client that hangs up must not free the lock mid-reset");
+        let mut freed = false;
+        for _ in 0..100 {
+            if BusyGuard::take(&id).is_some() {
+                freed = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(freed, "the lock is released when the reset ends");
+    }
+
+    #[tokio::test]
     async fn version_install_and_reset_wait_for_other_work_and_refuse_a_running_server() {
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
         let dir = state.supervisor.read().await.instance_store.get(&id).unwrap().working_dir.clone().unwrap();

@@ -328,17 +328,25 @@ pub async fn reset_server_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+    let Some(guard) = super::backup::BusyGuard::take(&id) else {
         return super::backup::instance_busy();
     };
     if super::backup::is_running(&state, &id).await {
         return server_running();
     }
-    let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await {
+    // 요청이 끊겨도 모듈이 파일을 지우는 동안 잠금을 쥔다
+    let reset = {
+        let (state, id) = (state.clone(), id.clone());
+        crate::audit::spawn(async move {
+            let _guard = guard;
+            Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await.map_err(|e| e.to_string())
+        })
+    };
+    let resp = match reset.await.unwrap_or_else(|e| Err(e.to_string())) {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(json!({"error": e})),
         )
             .into_response(),
     };
@@ -612,22 +620,31 @@ pub async fn install_server_handler(
         }
     }
 
-    // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다 (설치를 마칠 때까지 잡는다)
-    let _guards = match hold_instances_using(&state, &install_dir).await {
+    // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다.
+    // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
+    let guards = match hold_instances_using(&state, &install_dir).await {
         Ok(guards) => guards,
         Err(resp) => return resp,
     };
-    match Supervisor::install_server(
-            &state.supervisor,
-            &module_name,
-            &version,
-            &install_dir,
-            jar_name,
-            &accepted_agreements,
-            initial_settings,
-        )
-        .await
-    {
+    let jar_name = jar_name.map(str::to_string);
+    let install = {
+        let state = state.clone();
+        crate::audit::spawn(async move {
+            let _guards = guards;
+            Supervisor::install_server(
+                &state.supervisor,
+                &module_name,
+                &version,
+                &install_dir,
+                jar_name.as_deref(),
+                &accepted_agreements,
+                initial_settings,
+            )
+            .await
+            .map_err(|e| e.to_string())
+        })
+    };
+    match install.await.unwrap_or_else(|e| Err(e.to_string())) {
         Ok(result) => {
             let status = if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 StatusCode::OK
