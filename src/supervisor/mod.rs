@@ -59,8 +59,10 @@ pub struct Supervisor {
     restart_history: HashMap<String, VecDeque<Instant>>,
     /// 종료 이력 (GET /api/instance/:id/events)
     exit_events: HashMap<String, VecDeque<crash::ExitEvent>>,
-    /// 모니터가 정한 재시작 (인스턴스 ID, 대기). 데몬 루프가 가져가 실행한다
-    pending_restarts: Vec<(String, Duration)>,
+    /// 모니터가 정한 재시작 (인스턴스 ID, 대기, 예약 때의 실행 세대). 데몬 루프가 가져가 실행한다
+    pending_restarts: Vec<(String, Duration, u64)>,
+    /// 정지 요청과 시작마다 오르는 인스턴스별 세대. 예약된 재시작은 세대가 그대로일 때만 실행한다
+    run_generation: HashMap<String, u64>,
     /// 지금 시작 중인 인스턴스. 시작은 락을 놓고 진행하므로 중복 시작을 이것으로 막는다 (C12)
     starting: std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
 }
@@ -147,6 +149,7 @@ impl Supervisor {
             restart_history: HashMap::new(),
             exit_events: HashMap::new(),
             pending_restarts: Vec::new(),
+            run_generation: HashMap::new(),
             starting: Default::default(),
         }
     }
@@ -902,6 +905,7 @@ impl Supervisor {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
             s.stop_requested.insert(instance.id.clone());
+            *s.run_generation.entry(instance.id.clone()).or_default() += 1;
             let hook = s.extension_manager.clone().map(|ext_mgr| {
                 let instance_dir = s.instance_store.instance_dir(&instance.id);
                 let ctx = json!({
@@ -1685,6 +1689,7 @@ impl Supervisor {
         {
             let mut s = sup.write().await;
             s.stop_requested.remove(instance_id);
+            *s.run_generation.entry(instance.id.clone()).or_default() += 1;
             s.tracker.track(&instance.id, pid)?;
             s.managed_store.insert(&instance.id, managed).await;
         }
@@ -2309,7 +2314,8 @@ impl Supervisor {
             let history = self.restart_history.entry(instance_id.to_string()).or_default();
             match crash::next_restart_delay(history, Instant::now()) {
                 Some(delay) => {
-                    self.pending_restarts.push((instance_id.to_string(), delay));
+                    let generation = self.run_generation.get(instance_id).copied().unwrap_or_default();
+                    self.pending_restarts.push((instance_id.to_string(), delay, generation));
                     (Some(delay.as_secs()), None, None)
                 }
                 None => (
@@ -2398,13 +2404,17 @@ impl Supervisor {
     }
 
     /// 모니터가 정한 재시작을 가져간다. 대기 뒤 `restart_still_wanted`로 다시 확인하고 시작한다.
-    pub fn take_pending_restarts(&mut self) -> Vec<(String, Duration)> {
+    pub fn take_pending_restarts(&mut self) -> Vec<(String, Duration, u64)> {
         std::mem::take(&mut self.pending_restarts)
     }
 
-    /// 대기하는 동안 사용자가 정지·시작했거나 인스턴스가 지워졌으면 false
-    pub async fn restart_still_wanted(&self, instance_id: &str) -> bool {
-        if self.stop_requested.contains(instance_id) || self.instance_store.get(instance_id).is_none() {
+    /// 대기하는 동안 사용자가 정지·시작했거나 인스턴스가 지워졌으면 false.
+    /// `generation`은 예약 때의 실행 세대 (꺼진 서버에 정지를 보내면 정지 표시가 바로 지워지므로 세대로 가른다)
+    pub async fn restart_still_wanted(&self, instance_id: &str, generation: u64) -> bool {
+        if self.stop_requested.contains(instance_id)
+            || self.instance_store.get(instance_id).is_none()
+            || self.run_generation.get(instance_id).copied().unwrap_or_default() != generation
+        {
             return false;
         }
         !matches!(self.managed_store.get(instance_id).await, Some(p) if p.is_running())
@@ -2916,10 +2926,15 @@ mod tests {
             told |= e.kind == "instance.restart_failed" && e.data["noteArgs"]["reason"] == "no java";
         }
         assert!(told, "restart failure was not announced on the event stream");
-        assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5))]);
-        assert!(supervisor.restart_still_wanted("crash").await);
+        assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5), 0)]);
+        assert!(supervisor.restart_still_wanted("crash", 0).await);
         supervisor.stop_requested.insert("crash".into());
-        assert!(!supervisor.restart_still_wanted("crash").await, "a stop during the wait cancels the restart");
+        assert!(!supervisor.restart_still_wanted("crash", 0).await, "a stop during the wait cancels the restart");
+        // 꺼진 서버에 보낸 정지는 정지 표시를 바로 지운다: 그래도 대기 중 정지가 있었으면 재시작하지 않는다
+        supervisor.stop_requested.remove("crash");
+        let sup = tokio::sync::RwLock::new(supervisor);
+        Supervisor::stop_server(&sup, "crash", "game", false).await.unwrap();
+        assert!(!sup.read().await.restart_still_wanted("crash", 0).await, "a stop of the already exited server cancels the restart");
 
         // 데몬을 다시 켜도 종료 이력이 남는다
         let restarted = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), instances_dir.to_str().unwrap());

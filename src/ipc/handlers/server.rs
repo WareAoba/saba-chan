@@ -852,9 +852,9 @@ async fn restart_instance(
 }
 
 /// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
-pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration) {
+pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration, generation: u64) {
     tokio::time::sleep(delay).await;
-    if !state.supervisor.read().await.restart_still_wanted(&instance_id).await {
+    if !state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
         return;
     }
