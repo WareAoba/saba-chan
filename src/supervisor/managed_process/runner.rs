@@ -462,7 +462,7 @@ mod tests {
         assert!(wait_for(&proc, "early line").await, "output arrives while the server runs");
         proc.send_command("ping").await.unwrap();
         assert!(wait_for(&proc, "got ping").await);
-        proc.force_kill();
+        let _ = proc.force_kill();
     }
 
     #[test]

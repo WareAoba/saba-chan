@@ -231,11 +231,11 @@ impl Drop for ManagedProcess {
 
 impl ManagedProcess {
     /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
-    pub fn force_kill(&self) {
-        let _ = super::process::force_kill_pid(self.pid);
-        if let Some(runner) = self.runner_pid {
-            let _ = super::process::force_kill_pid(runner);
-        }
+    /// 종료 요청이 거부되면 오류 (끝났는지는 `is_running`으로 확인한다)
+    pub fn force_kill(&self) -> Result<()> {
+        let server = super::process::force_kill_pid(self.pid);
+        let runner = self.runner_pid.map_or(Ok(()), super::process::force_kill_pid);
+        server.and(runner)
     }
 
     /// Spawn a new managed process.
@@ -701,9 +701,9 @@ impl ManagedProcessStore {
     }
 
     /// Register a managed process under an instance ID.
-    pub async fn insert(&self, instance_id: &str, process: ManagedProcess) {
+    pub async fn insert(&self, instance_id: &str, process: impl Into<Arc<ManagedProcess>>) {
         let mut map = self.processes.lock().await;
-        map.insert(instance_id.to_string(), Arc::new(process));
+        map.insert(instance_id.to_string(), process.into());
     }
 
     /// Get a managed process by instance ID.

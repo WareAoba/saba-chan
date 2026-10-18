@@ -804,22 +804,38 @@ pub async fn delete_instance(
     // ── 실행 중이면 먼저 정지 ──
     // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서 (C12)
     let running_pid = supervisor.tracker.get_pid(&id).ok();
+    let started = supervisor.tracker.get_start_time(&id).ok();
     let managed = supervisor.managed_store.remove(&id).await;
     let _ = supervisor.tracker.untrack(&id);
     drop(supervisor);
     if let Some(pid) = running_pid {
+        use crate::supervisor::process::{force_kill_pid, is_process_alive, wait_gone};
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
         // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
-        match managed.as_ref() {
+        let killed = match managed.as_ref() {
             Some(m) if m.is_running() => m.force_kill(),
-            Some(_) => {}
-            None => {
-                let _ = crate::supervisor::process::force_kill_pid(pid);
+            Some(_) => Ok(()),
+            None => force_kill_pid(pid),
+        };
+        let gone = match killed {
+            Ok(()) => {
+                let alive = || managed.as_ref().map_or_else(|| is_process_alive(pid), |m| m.is_running());
+                wait_gone(std::time::Duration::from_secs(5), alive).await
             }
-        }
-        if managed.as_ref().is_none_or(|m| m.is_running()) {
-            // 프로세스 종료 대기
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            Err(e) => {
+                tracing::warn!("Could not stop instance '{}' before delete: {}", instance.name, e);
+                false
+            }
+        };
+        // 서버가 아직 돌고 있으면 추적을 되돌리고 파일을 지우지 않는다
+        if !gone {
+            let supervisor = state.supervisor.write().await;
+            if let Some(m) = managed {
+                supervisor.managed_store.insert(&id, m).await;
+            }
+            let _ = supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
+            let error = json!({ "success": false, "error": "The server is still running and could not be stopped", "error_code": "server_running" });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
         }
     }
 

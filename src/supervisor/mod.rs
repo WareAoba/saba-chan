@@ -962,7 +962,9 @@ impl Supervisor {
 
                 if force {
                     tracing::info!("Force-killing managed server '{}'", server_name);
-                    managed.force_kill();
+                    if let Err(e) = managed.force_kill() {
+                        tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
+                    }
                 } else if via_stdin {
                     tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
                     if let Err(e) = managed.send_command(&stop_cmd).await {
@@ -991,9 +993,13 @@ impl Supervisor {
                     }
                     if tokio::time::Instant::now() >= deadline {
                         tracing::warn!("Managed server '{}' did not exit in {}s, force killing", server_name, timeout_secs);
-                        managed.force_kill();
-                        // 추가 대기
-                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                        if let Err(e) = managed.force_kill() {
+                            tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
+                        }
+                        // 끝난 것을 확인하기 전에는 추적을 놓지 않는다 (종료가 거부됐으면 아직 돌고 있다)
+                        if !process::wait_gone(Duration::from_secs(5), || managed.is_running()).await {
+                            return Err(anyhow::anyhow!("Server '{}' is still running: force kill did not take effect", server_name));
+                        }
                         break;
                     }
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
