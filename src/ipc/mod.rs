@@ -662,10 +662,10 @@ impl IPCServer {
             // ── Command execution ──
             .route("/api/instance/:id/command", post(handlers::command::execute_command))
             .route("/api/instance/:id/commands", get(handlers::command::list_instance_commands))
-            .route("/api/instance/:id/rcon", post(handlers::command::execute_rcon_command))
-            .route("/api/instance/:id/rest", post(handlers::command::execute_rest_command))
+            .route("/api/instance/:id/rcon", post(handlers::command::rcon_route))
+            .route("/api/instance/:id/rest", post(handlers::command::rest_route))
             // ── Managed-process & module-feature endpoints ──
-            .route("/api/instance/:id/managed/start", post(handlers::managed::start_managed_handler))
+            .route("/api/instance/:id/managed/start", post(handlers::managed::start_managed_route))
             .route("/api/instance/:id/console", get(handlers::managed::get_console_handler))
             .route("/api/instance/:id/stdin", post(handlers::managed::send_stdin_handler))
             .route("/api/instance/:id/validate", post(handlers::managed::validate_instance_handler))

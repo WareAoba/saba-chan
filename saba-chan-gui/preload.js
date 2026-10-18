@@ -112,7 +112,7 @@ contextBridge.exposeInMainWorld('api', {
     // 감사 로그 (A10): {limit?, instance?} → {entries: [{ts, source, user?, userName?, guild?, guildName?, action, instanceId, instance?, command?, args?, ok, status}]}
     // 비밀 인자·설정값은 "***"로 가려져 있다
     auditList: (opts) => ipcRenderer.invoke('audit:list', opts),
-    // 디스코드 명령 권한: {guildId, ownerDiscordId, ownerConflict, defaultLevel, preset, chatbotCap, members, commandLevels, presets}
+    // 디스코드 명령 권한: {guildId, ownerDiscordId, relayOwnerDiscordId, defaultLevel, preset, chatbotCap, members, commandLevels, presets}
     permissionsGet: (guildId) => ipcRenderer.invoke('permissions:get', guildId),
     permissionsUpdate: (guildId, patch) => ipcRenderer.invoke('permissions:update', guildId, patch),
     permissionsSetMember: (guildId, discordId, level) => ipcRenderer.invoke('permissions:setMember', guildId, discordId, level),

@@ -835,10 +835,16 @@ pub(crate) fn load_updater_config() -> UpdateConfig {
 fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
     match file.section("updates") {
         serde_json::Value::Null => UpdateConfig::default(),
-        v => serde_json::from_value(v).unwrap_or_else(|e| {
-            tracing::warn!("[Updates] Ignoring invalid 'updates' config: {}", e);
-            UpdateConfig::default()
-        }),
+        mut v => {
+            // 0.1.1 이름(`relay_base_url`)과 새 이름이 같이 있으면 별칭이 겹쳐 설정 전체가 깨진다: 새 이름을 쓴다
+            if let Some(obj) = v.as_object_mut().filter(|o| o.contains_key("relay_url")) {
+                obj.remove("relay_base_url");
+            }
+            serde_json::from_value(v).unwrap_or_else(|e| {
+                tracing::warn!("[Updates] Ignoring invalid 'updates' config: {}", e);
+                UpdateConfig::default()
+            })
+        }
     }
 }
 
@@ -944,5 +950,10 @@ mod tests {
 
         file.set_section("updates", json!({ "relay_base_url": "", "channel": "beta" })).unwrap();
         assert_eq!(load_updater_config_from(&file).relay_url, None, "blank means the default relay");
+
+        // 둘 다 있으면 새 이름을 쓴다 (설정 전체가 기본값으로 떨어지지 않는다)
+        file.set_section("updates", json!({ "relay_base_url": "http://old", "relay_url": "http://new", "channel": "beta" })).unwrap();
+        let both = load_updater_config_from(&file);
+        assert_eq!((both.relay_url.as_deref(), both.channel.as_str()), (Some("http://new"), "beta"));
     }
 }
