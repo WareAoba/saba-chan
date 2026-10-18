@@ -258,7 +258,7 @@ players = "player_count"
   - `PROGRESS:{json}` 형식의 줄은 `ExtensionProgress {percent, message, step, total, label}`로 파싱해 콜백에 넘긴다 (`:69-79, 391-408`). 설치 진행률 표시에 쓰인다.
   - 나머지 줄은 `debug` 로그로만 남는다.
 - **종료 코드**: 0이 아니면, stdout에 `{"success":false,...}`가 있더라도 `Err("Plugin execution failed (exit ..)")`가 된다 (`:432-435`). 그래서 실제 모듈은 모르는 함수·예외도 JSON으로 답하고 종료 코드 0을 지킨다 (공용 `run_lifecycle`, `D:modules/daemon_rcon.py:260-`).
-- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120` (`:150`). 초과하면 `child.kill()`.
+- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120` (`:150`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 `taskkill /T`·AppContainer job)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
   - `install_server`를 프로비저닝 경로(`instance.rs:524-527`)와 업데이트 경로(`instance.rs:1676-1682`)에서 부를 때만 1800초를 쓴다.
   - **`POST /api/module/:name/install` → `Supervisor::install_server`는 기본 120초**다 (`mod.rs:2100`). Minecraft의 Java 다운로드와 jar 다운로드가 120초를 넘으면 실패한다.
 - **확인되지 않은 구성요소 (Windows)**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션은 Python을 띄우기 전에 그 폴더를 검사한다(`D:src/sandbox/`).

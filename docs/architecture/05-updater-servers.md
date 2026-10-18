@@ -288,7 +288,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 | GET | `/poll` | 노드(60/30s) | — | `{commands:[{id, payload, requestedBy, guildId, channelId}]}`(10건까지) / 204 / 401 `TOKEN_REPLACED`(대기 중 재페어링) | `routes/poll.ts` |
 | POST | `/result/:requestId` | 노드 | `{success:boolean, data}` | `{status:'ok'}` / 404 / 409 | `routes/result.ts` |
 | POST | `/heartbeat` | 노드(4/min), 5MB | `{agentVersion?, os?, metadata?}`(§4.4 (c)) | `{status:'ok', warning?:'UPDATE_REQUIRED', minVersion?}` | `routes/heartbeat.ts` |
-| POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 디스코드 전송이 실패한 길드는 2초·10초 뒤 다시 해 보고, 끝내 실패하면 그 이벤트를 받은 적 없는 것으로 돌려 데몬이 다시 보낸 것을 그 길드에만 보낸다 | `routes/events.ts`, `bot/notify.ts` |
+| POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 길드마다 따로 보내고, 디스코드 전송이 실패하면 2초·10초 뒤 다시 해 본다. 데몬은 2xx를 받은 이벤트를 다시 보내지 않으므로 끝내 실패한 길드는 그 알림을 놓친다(로그만) | `routes/events.ts`, `bot/notify.ts` |
 | GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
 | POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 묶을 수 없으면 409 `GUILD_TAKEN`·`HOST_NOT_FOUND`. 한 번만 쓴다 | `linkRequests.ts` |
 | GET | `/v1/updates/check` | — | `channel`(stable·beta·nightly), `platform`, `current`, `client_id` | `{upToDate:true}` / `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` | `routes/updates.ts`, §1.4 |

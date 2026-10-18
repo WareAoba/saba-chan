@@ -1230,8 +1230,7 @@ impl ExtensionManager {
             .ok_or_else(|| format!("Unknown python module: {}", cmd.module));
         Some(Ok(HookPlan {
             hook: format!("command.{}", cmd.name),
-            context: self.inject_extension_config(context),
-            calls: vec![HookCall { ext_id: ext_id.to_string(), target }],
+            calls: vec![HookCall { ext_id: ext_id.to_string(), target, context: self.context_for(ext_id, &context) }],
         }))
     }
 
@@ -1301,21 +1300,18 @@ impl ExtensionManager {
         }
     }
 
-    /// hook context에 extension_config를 주입합니다.
-    /// 이미 존재하지 않는 경우에만 추가합니다.
-    fn inject_extension_config(&self, mut context: Value) -> Value {
+    /// 이 익스텐션을 부를 context: `extension_config`에는 그 익스텐션 자신의 설정만 넣는다
+    /// (`{<id>: {...}}`). 다른 익스텐션의 설정은 넘기지 않는다.
+    fn context_for(&self, ext_id: &str, context: &Value) -> Value {
+        let mut context = context.clone();
         if let Some(obj) = context.as_object_mut() {
-            if !obj.contains_key("extension_config") {
-                obj.insert(
-                    "extension_config".to_string(),
-                    self.extension_config_as_value(),
-                );
-            }
+            let own = serde_json::json!({ ext_id: self.get_extension_config(ext_id) });
+            obj.insert("extension_config".to_string(), own);
         }
         context
     }
 
-    /// 이 hook에서 부를 익스텐션 함수 목록을 정한다 (조건 평가, extension_config 주입).
+    /// 이 hook에서 부를 익스텐션 함수 목록을 정한다 (조건 평가, 익스텐션마다 자기 extension_config 주입).
     /// Python 실행은 돌려준 `HookPlan`으로, 매니저 락을 놓은 뒤에 한다 (C12).
     pub fn plan_hook(&self, hook_name: &str, context: Value, only: Option<&str>) -> HookPlan {
         let mut hooks = self.hooks_for(hook_name);
@@ -1323,11 +1319,8 @@ impl ExtensionManager {
             hooks.retain(|(ext, _)| ext.manifest.id == id);
         }
         if hooks.is_empty() {
-            return HookPlan { hook: hook_name.to_string(), context, calls: Vec::new() };
+            return HookPlan { hook: hook_name.to_string(), calls: Vec::new() };
         }
-
-        // extension_config를 context에 자동 주입
-        let context = self.inject_extension_config(context);
 
         let ext_data: HashMap<String, Value> = context
             .get("extension_data")
@@ -1356,10 +1349,10 @@ impl ExtensionManager {
                         Err(format!("Unknown python module: {}", binding.module))
                     }
                 };
-                HookCall { ext_id: ext.manifest.id.clone(), target }
+                HookCall { ext_id: ext.manifest.id.clone(), target, context: self.context_for(&ext.manifest.id, &context) }
             })
             .collect();
-        HookPlan { hook: hook_name.to_string(), context, calls }
+        HookPlan { hook: hook_name.to_string(), calls }
     }
 
     /// 활성 익스텐션의 GUI 매니페스트 목록
@@ -1482,9 +1475,10 @@ impl ExtensionManager {
         &self.extensions_dir
     }
 
-    /// 받은 zip을 검사하고 `extensions/.staging-<id>`에 푼다. 락 없이 부르면 된다.
+    /// 받은 zip을 검사하고 `extensions/.staging-<id>-<uuid>`에 푼다. 락 없이 부르면 된다.
     /// sha256(있으면), manifest 스키마, manifest id, min_app_version을 여기서 확인하므로
-    /// 실패해도 설치된 익스텐션은 그대로다.
+    /// 실패해도 설치된 익스텐션은 그대로다. 폴더는 호출마다 새로 만들어, 같은 id를 겹쳐 설치해도
+    /// 돌려준 폴더에는 이 호출이 검사한 파일만 있다.
     pub fn stage_package(
         extensions_dir: &std::path::Path,
         ext_id: &str,
@@ -1499,11 +1493,11 @@ impl ExtensionManager {
                 anyhow::bail!("sha256 mismatch for '{}': expected {}, got {}", ext_id, expected, actual);
             }
         }
-        let staging = extensions_dir.join(format!(".staging-{}", Self::python_safe_dir_name(ext_id)));
-        if staging.exists() {
-            std::fs::remove_dir_all(&staging)
-                .with_context(|| format!("Failed to clear {}", staging.display()))?;
-        }
+        let staging = extensions_dir.join(format!(
+            ".staging-{}-{}",
+            Self::python_safe_dir_name(ext_id),
+            uuid::Uuid::new_v4().simple()
+        ));
         let result = (|| -> Result<()> {
             let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
                 .context("Failed to read downloaded zip archive")?;
@@ -1593,19 +1587,18 @@ impl ExtensionManager {
             .unwrap_or_default()
     }
 
-    /// 전체 익스텐션 설정 맵을 serde_json::Value로 반환합니다 (hook context 주입용).
-    pub fn extension_config_as_value(&self) -> Value {
-        serde_json::to_value(&self.extension_config).unwrap_or_default()
-    }
-
     /// 특정 익스텐션의 글로벌 설정을 업데이트합니다.
-    /// 기존 키를 머지(덮어쓰기)하며, 디스크에 즉시 영속화합니다.
+    /// 기존 키를 머지(덮어쓰기)하며, 디스크에 즉시 영속화합니다. 값이 null인 키는 지워 기본값으로 돌린다.
     pub fn set_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
         let entry = self.extension_config
             .entry(ext_id.to_string())
             .or_default();
         for (k, v) in values {
-            entry.insert(k, v);
+            if v.is_null() {
+                entry.remove(&k);
+            } else {
+                entry.insert(k, v);
+            }
         }
         self.save_extension_config();
     }
@@ -1669,7 +1662,6 @@ impl ExtensionManager {
 /// `ExtensionManager::plan_hook`이 정한 hook 실행 목록
 pub struct HookPlan {
     hook: String,
-    context: Value,
     calls: Vec<HookCall>,
 }
 
@@ -1677,6 +1669,8 @@ struct HookCall {
     ext_id: String,
     /// (Python 파일 경로, 함수 이름), 또는 왜 부를 수 없는지
     target: std::result::Result<(String, String), String>,
+    /// 이 익스텐션에 넘길 context (자기 설정만 든 `extension_config` 포함)
+    context: Value,
 }
 
 impl HookPlan {
@@ -1693,7 +1687,7 @@ impl HookPlan {
                 }
             };
             tracing::debug!("Dispatching hook '{}' → ext '{}' → {}::{}", self.hook, call.ext_id, module_path, function);
-            let result = crate::plugin::run_plugin_with_timeout(&module_path, &function, self.context.clone(), timeout_secs).await;
+            let result = crate::plugin::run_plugin_with_timeout(&module_path, &function, call.context, timeout_secs).await;
             match result {
                 Ok(val) => {
                     let handled = val.get("handled").and_then(|h| h.as_bool()) == Some(true);
@@ -2080,6 +2074,21 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_installs_of_one_id_keep_their_own_staged_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let m = json!({"id": "box", "name": "B", "version": "0.1.0"});
+        let first = ExtensionManager::stage_package(tmp.path(), "box", &zip_package(m.clone(), "first"), None).unwrap();
+        let second = ExtensionManager::stage_package(tmp.path(), "box", &zip_package(m, "second"), None).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read_to_string(first.join("data.txt")).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(second.join("data.txt")).unwrap(), "second");
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.install_staged("box", &first, &[], false).unwrap();
+        assert_eq!(std::fs::read_to_string(tmp.path().join("box/data.txt")).unwrap(), "first");
+    }
+
+    #[test]
     fn dropped_zip_replaces_existing_folder() {
         let tmp = tempfile::tempdir().unwrap();
         let m = json!({"id": "box", "name": "B", "version": "0.1.0"});
@@ -2117,6 +2126,44 @@ mod tests {
         for _ in 0..5 {
             let order: Vec<&str> = mgr.hooks_for("daemon.startup").iter().map(|(e, _)| e.manifest.id.as_str()).collect();
             assert_eq!(order, ["zeta", "alpha", "beta"], "disabled 'off' is skipped, priority 10 before default 100");
+        }
+    }
+
+    #[test]
+    fn a_null_setting_removes_the_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        let set = |pairs: &[(&str, Value)]| pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<HashMap<_, _>>();
+        mgr.set_extension_config("box", set(&[("a", json!(1)), ("b", json!("x"))]));
+        mgr.set_extension_config("box", set(&[("a", Value::Null)]));
+        assert_eq!(mgr.get_extension_config("box"), set(&[("b", json!("x"))]));
+    }
+
+    #[test]
+    fn hook_context_carries_only_the_called_extensions_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        for id in ["alpha", "beta"] {
+            let dir = tmp.path().join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            let manifest = json!({
+                "id": id, "name": id, "version": "0.1.0",
+                "python_modules": { "m": "m.py" },
+                "hooks": { "daemon.startup": { "module": "m", "function": "f" } },
+            });
+            std::fs::write(dir.join("manifest.json"), manifest.to_string()).unwrap();
+        }
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        for id in ["alpha", "beta"] {
+            mgr.enabled.insert(id.to_string());
+            let own: HashMap<String, Value> = [("token".to_string(), json!(format!("{id}-secret")))].into_iter().collect();
+            mgr.extension_config.insert(id.to_string(), own);
+        }
+        let plan = mgr.plan_hook("daemon.startup", json!({}), None);
+        assert_eq!(plan.calls.len(), 2);
+        for call in &plan.calls {
+            let id = call.ext_id.as_str();
+            assert_eq!(call.context["extension_config"], json!({ id: { "token": format!("{id}-secret") } }), "{id}");
         }
     }
 
