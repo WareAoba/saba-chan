@@ -37,6 +37,7 @@
     "confirm_unpair": "Отключить этот ПК от Discord-бота и забыть привязку?",
     "connection": "Подключение",
     "last_error": "Последняя ошибка",
+    "token_replaced": "Подключение ПК этого аккаунта Discord перенесено на другой ПК. Чтобы снова использовать этот ПК, подключите его заново через `saba-chan-cli bot pair`.",
     "last_heartbeat": "Последний сигнал",
     "list_empty": "Пока ничего.",
     "no_aliases": "Псевдонимов пока нет. Добавьте: saba-chan-cli bot alias add NAME MODULE",

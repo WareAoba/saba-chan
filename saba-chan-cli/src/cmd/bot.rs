@@ -156,7 +156,11 @@ async fn status(ctx: &Ctx) -> Result<()> {
         let secs = if at > 10_000_000_000 { at / 1000 } else { at };
         rows.push((t!("bot.last_heartbeat"), output::ago(secs)));
     }
-    let err = s(&agent, "lastError");
+    // 데몬이 코드를 주면 현지화한 문구로
+    let err = match s(&agent, "lastErrorCode") {
+        "token_replaced" => t!("bot.token_replaced"),
+        _ => s(&agent, "lastError").to_string(),
+    };
     if !err.is_empty() {
         rows.push((t!("bot.last_error"), console::style(err).red().to_string()));
     }

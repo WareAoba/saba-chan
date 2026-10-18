@@ -37,6 +37,7 @@
     "confirm_unpair": "¿Desconectar este PC del bot de Discord y olvidar su vinculación?",
     "connection": "Conexión",
     "last_error": "Último error",
+    "token_replaced": "La conexión de PC de esta cuenta de Discord se movió a otro PC. Para volver a usar este PC, vincúlalo de nuevo con `saba-chan-cli bot pair`.",
     "last_heartbeat": "Último latido",
     "list_empty": "Nada todavía.",
     "no_aliases": "Aún no hay alias. Añade uno: saba-chan-cli bot alias add NAME MODULE",
