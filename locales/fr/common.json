@@ -21,7 +21,7 @@
     "starting": "Démarrage du daemon...",
     "started": "Daemon démarré",
     "preparing": "Préparation du daemon... (délai dépassé)",
-    "failed_to_start": "Échec du démarrage du daemon - veuillez l'exécuter manuellement",
+    "failed_to_start": "Impossible de démarrer le démon",
     "check_warning": "Avertissement lors de la vérification du daemon: {{error}}"
   },
   "modules": {
@@ -51,5 +51,11 @@
   "port_conflict": {
     "force_stop_title": "Conflit de port — {{name}} arrêté",
     "force_stop_body": "{{stopped}} a été arrêté de force car le port {{port}} est en conflit avec {{existing}}"
+  },
+  "init": {
+    "start": "Démarrage...",
+    "modules": "Préparation des modules...",
+    "instances": "Préparation des serveurs...",
+    "ready": "Prêt"
   }
 }

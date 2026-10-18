@@ -132,7 +132,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | electron.getLanguage/setLanguage (152-153) | language:get/set | 2692/2696 | get은 config.json `gui.language`를 직접 읽는다(`loadSettings`). set은 `saveSettings`(API 우선)로 저장하고 번역을 다시 읽는다. 데몬은 재시작하지 않는다 | 부분 |
 | electron.shell.openExternal (156) | shell:openExternal | 2816 | 외부 URL 열기(http(s)만) | n/a |
 
-Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
+Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계 `{step, message, ts}`. `message`는 `locales/<lang>/common.json`의 `daemon.*`·`init.*`로 번역된다. 데몬이 10초 안에 응답하지 않으면 `step:'daemon_failed'`를 보내고 `ready`는 보내지 않는다. 그 뒤 `daemon:restart`가 성공하면 멈춘 초기화를 이어서 끝내고 `ready`를 보낸다. 실패하면 `{success:false, error}`), `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
 
 **renderer(src/, 테스트 제외)에서 쓰지 않는 preload API**: 위 표의 "미사용" 항목(`instanceEvents`, `instanceStop/Restart/Rename/Commands`, `instanceReadLiveSettings`, `runtimePreflight`, `configDefaults/Reset`, `updaterLastResult`, `loadNodeToken`, `deleteNodeToken`, `relayBotInvite`, `instanceAcceptEula`, 백업·예약 6개, `chatbot*` 4개, `logsGetPath`, `logsOpenFolder`). 반대로 **main.js가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/daemon/console`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
 

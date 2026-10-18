@@ -639,9 +639,10 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
     Ok(())
 }
 
-/// 확인이 필요한가: danger이거나 관리 액션
-fn needs_confirm(r: &Resolved) -> bool {
-    r.risk == "danger" || r.kind == Kind::Admin
+/// 확인이 필요한가: danger이거나, 챗봇이 고른 관리 액션. 사람이 직접 친 caution 관리 명령은 바로 실행한다
+fn needs_confirm(r: &Resolved, caller: &Caller) -> bool {
+    let via_chatbot = caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot);
+    r.risk == "danger" || (r.kind == Kind::Admin && via_chatbot)
 }
 
 struct StoredPlan {
@@ -668,7 +669,7 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     authorize(server, &r, caller).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
-    let confirm = needs_confirm(&r);
+    let confirm = needs_confirm(&r, caller);
     let expires = std::time::SystemTime::now() + PLAN_TTL;
     let expires_at = chrono::DateTime::<chrono::Utc>::from(expires).to_rfc3339();
     let view = json!({
@@ -760,7 +761,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             let r = resolve(server, id, instance, input, caller).await?;
             authorize(server, &r, caller).await?;
             // 릴레이에서는 확인이 필요한 액션을 계획 없이 실행하지 않는다
-            if caller.remote.is_some() && needs_confirm(&r) {
+            if caller.remote.is_some() && needs_confirm(&r, caller) {
                 return Err(ActionError::new(409, "confirm_required", "This action needs a plan and a confirmation"));
             }
             r

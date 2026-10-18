@@ -297,8 +297,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = PathBuf::from(&config.install_path);
-    // 설치기가 새로 만들었거나 비어 있던 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳)
-    let dedicated = !install_dir.is_dir() || is_empty_dir(&install_dir) || install_dir.join(uninstall::INSTALL_MARKER).is_file();
+    // 설치기가 새로 만든 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳).
+    // 원래 있던 빈 폴더(드라이브 루트, 문서 폴더 등)는 나중에 다른 파일이 생길 수 있어 표시하지 않는다
+    let dedicated = !install_dir.is_dir() || install_dir.join(uninstall::INSTALL_MARKER).is_file();
     let _ = std::fs::create_dir_all(&install_dir); // 이미 있어도 OK
 
     // 실제 쓰기 가능 여부 테스트
