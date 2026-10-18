@@ -71,6 +71,17 @@ def kill_pid(pid: int) -> None:
         pass
 
 
+def kill_group(pid: int) -> None:
+    """start_new_session으로 띄운 프로세스와 그 자식 전부 (Windows는 taskkill /T 트리)."""
+    if IS_WINDOWS:
+        kill_pid(pid)
+        return
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        kill_pid(pid)
+
+
 def kill_mentioning(marker: str) -> list[tuple[int, str]]:
     """남은 프로세스를 끝내고 무엇을 끝냈는지 돌려준다(누수 보고용)."""
     leftover = processes_mentioning(marker)

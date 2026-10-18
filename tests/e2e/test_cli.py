@@ -105,3 +105,70 @@ def test_daemon_stop_via_cli(cli, daemon):
 def test_completions_print(cli, shell):
     r = cli.run("completions", shell, json_out=False)
     assert r.code == 0 and len(r.stdout) > 200
+
+
+READ_ONLY = [
+    ("status",),
+    ("server", "list"),
+    ("module", "list"),
+    ("module", "info", "minecraft"),
+    ("module", "commands", "minecraft"),
+    ("module", "schema"),
+    ("extension", "list"),
+    ("bot", "status"),
+    ("chatbot", "show"),
+    ("update", "status"),
+    ("config", "show"),
+    ("config", "defaults"),
+    ("monitor",),
+    ("audit", "--limit", "5"),
+    ("version",),
+    ("do",),
+]
+
+
+@pytest.mark.parametrize("args", READ_ONLY, ids=lambda a: "-".join(a))
+def test_read_only_commands_print_json(cli, daemon, args):
+    """조회 명령은 --json으로 0과 해석되는 JSON을 낸다 (스크립트·봇이 기대는 계약)."""
+    r = cli.run(*args)
+    assert r.code == 0, r
+    r.json()
+
+
+def test_config_set_get_roundtrip(cli, daemon):
+    r = cli.run("config", "set", "fontScale=110")
+    assert r.code == 0, r
+    got = cli.run("config", "get", "fontScale", check=0).stdout
+    assert "110" in got, got
+    # 설정 파일 하나에 저장된다 (데몬이 쓴다)
+    assert "110" in (daemon.sb.data / "config.json").read_text(encoding="utf-8")
+    assert cli.run("config", "set", "fontScale=abc").code != 0, "숫자 설정에 글자를 받아들임"
+
+
+def test_config_export_import_moves_servers_to_another_pc(cli, daemon, fake_server, sandbox):
+    """설정·서버 목록을 zip으로 옮긴다. 게임 파일은 들어가지 않는다."""
+    from harness.cli import Cli
+    from harness.daemon import Daemon
+    from harness.sandbox import Sandbox
+
+    folder, _ = fake_server("moved")
+    daemon.import_server("moved", folder, module_settings={"ram": "256M"})
+    cli.run("config", "set", "fontScale=120", check=0)
+    archive = sandbox.root / "export.zip"
+    r = cli.run("config", "export", str(archive))
+    assert r.code == 0 and archive.exists(), r
+    import zipfile
+
+    names = zipfile.ZipFile(archive).namelist()
+    assert not any(n.endswith(("server.jar", "level.dat")) for n in names), f"게임 파일이 내보내기에 들어감: {names}"
+
+    other = Sandbox(sandbox.root / "pc2")
+    d2 = Daemon(other).start()
+    try:
+        r = Cli(other).run("config", "import", str(archive), "--yes")
+        assert r.code == 0, r
+        names2 = [i["name"] for i in d2.instances()]
+        assert "moved" in names2, names2
+        assert "120" in Cli(other).run("config", "get", "fontScale", check=0).stdout
+    finally:
+        d2.shutdown()
