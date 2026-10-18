@@ -191,6 +191,21 @@ async fn unknown_inputs() {
     assert!(run(&api, &s, "nothing start").await.contains("nothing"));
 }
 
+#[tokio::test]
+async fn start_waiting_on_an_agreement_carries_the_list_for_the_relay() {
+    let mut api = fixture();
+    let agreements = json!([{"id": "eula", "label": "Minecraft EULA", "url": "https://aka.ms/MinecraftEULA", "accepted": false}]);
+    api.reply = Some(InternalResponse {
+        status: StatusCode::CONFLICT,
+        body: json!({"success": false, "error": "Accept Minecraft EULA first", "error_code": "agreement_required", "agreements": agreements}),
+    });
+    let req = ChatRequest { text: "마크 시작".into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), ..Default::default() };
+    let r = process(&api, &settings(), &Catalog::for_language("en"), &req).await;
+    assert_eq!(r.code, Some("AGREEMENT_REQUIRED"));
+    assert_eq!(r.args["agreements"], agreements);
+    assert!(r.text.contains("Accept Minecraft EULA first"), "{}", r.text);
+}
+
 /// 알아보지 못한 입력은 코드가 붙는다: 릴레이가 이 코드로 모델 해석기에 묻는다. 처리한 응답에는 없다
 #[tokio::test]
 async fn unrecognized_input_carries_a_code_for_the_interpreter() {

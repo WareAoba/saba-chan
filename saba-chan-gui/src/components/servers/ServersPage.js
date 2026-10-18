@@ -9,6 +9,7 @@ import { failedModuleName, failedModuleReason } from '../../utils/failedModules'
 import { Icon } from '../Icon';
 import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
+import { OnboardingCard } from './OnboardingCard';
 import { ServerDetail } from './ServerDetail';
 import { ServerRow } from './ServerRow';
 
@@ -107,6 +108,7 @@ export function ServersPage({
                         )}
                     </div>
                     {isDaemonDown && <DaemonDownNotice />}
+                    <OnboardingCard onAddServer={onAddServer} refreshKey={servers.length} />
                     {failedModules.length > 0 && (
                         // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
                         <details className="notice tone-warn module-failures">
