@@ -68,4 +68,12 @@ describe('ExitHistory', () => {
         expect(text).toContain('Gave up after 3 restarts in 10 minutes');
         expect(text).toContain("Couldn't restart: no java");
     });
+
+    it('모르는 note_code에 문장이 없으면 근거나 코드를 보인다', async () => {
+        window.api.instanceEvents = vi.fn().mockResolvedValue({
+            events: [{ at: '2026-10-16T09:00:00Z', kind: 'crash', note_code: 'future_code' }],
+        });
+        render(<ExitHistory server={{ id: 'a', status: 'stopped' }} />);
+        await waitFor(() => expect(document.querySelector('.exit-history').textContent).toContain('future_code'));
+    });
 });
