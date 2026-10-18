@@ -157,6 +157,63 @@ pub fn merge_env(base: Vec<(OsString, OsString)>, changes: Vec<(OsString, Option
     env
 }
 
+/// 폴더 DACL의 ACE 하나를 보는 데 필요한 것만 (`existing_grant`가 Windows API 없이 판정하도록)
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Clone, Copy)]
+pub struct AceView {
+    pub allowed: bool,
+    pub mask: u32,
+    pub flags: u8,
+    pub who: Who,
+}
+
+/// ACE의 SID가 누구인가
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Who {
+    /// 이 프로필의 SID
+    Own,
+    /// ALL APPLICATION PACKAGES
+    Packages,
+    Other,
+}
+
+/// 폴더에 원하는 권한이 이미 있는가
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Existing {
+    None,
+    /// 데몬이 더하는 모양 그대로인 이 SID의 명시 ACE가 있다 (예전 데몬이 더한 것도): 데몬이 거둘 수 있다
+    Own,
+    /// 상속받았거나, ALL APPLICATION PACKAGES거나, 데몬이 더하지 않은 모양의 ACE로 이미 읽을 수 있다: 데몬이 거두지 않는다
+    Elsewhere,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+const ACE_OBJECT_INHERIT: u8 = 0x1;
+#[cfg_attr(not(windows), allow(dead_code))]
+const ACE_CONTAINER_INHERIT: u8 = 0x2;
+#[cfg(test)]
+const ACE_INHERITED: u8 = 0x10;
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn existing_grant(aces: impl IntoIterator<Item = AceView>, mask: u32, inherit: bool) -> Existing {
+    let want = if inherit { ACE_OBJECT_INHERIT | ACE_CONTAINER_INHERIT } else { 0 };
+    let mut found = Existing::None;
+    for ace in aces {
+        if !ace.allowed || ace.who == Who::Other || ace.mask & mask != mask || ace.flags & want != want {
+            continue;
+        }
+        // 데몬이 더하는 모양(같은 권한, 같은 상속 표시) 그대로인 것만 데몬 것으로 본다. 관리자가 따로 준 넓은 권한은
+        // 거두면(그 SID의 명시 ACE를 모두 뺀다) 함께 사라지므로 기록하지 않는다
+        if ace.who == Who::Own && ace.mask == mask && ace.flags == want {
+            return Existing::Own;
+        }
+        found = Existing::Elsewhere;
+    }
+    found
+}
+
 #[cfg_attr(not(windows), allow(dead_code))]
 /// 지금 쓰지 않는 런타임 읽기 권한: 기록된 것 중 `daemon`(모든 프로필이 쓰는 데몬 런타임)과 그 프로필의 `keep`에 없는 것
 pub fn stale_runtimes(
@@ -333,31 +390,36 @@ mod imp {
     }
 
     /// DACL에 이미 그 권한을 주는 허용 ACE가 있는가 (프로필 SID나 ALL APPLICATION PACKAGES)
-    unsafe fn already_granted(dacl: PACL, sids: &[PSID], mask: DWORD, inherit: bool) -> bool {
+    unsafe fn existing(dacl: PACL, sid: PSID, everyone: PSID, mask: DWORD, inherit: bool) -> super::Existing {
+        use super::{AceView, Who};
         if dacl.is_null() {
-            return true; // DACL이 없으면 누구나 접근할 수 있다
+            return super::Existing::Elsewhere; // DACL이 없으면 누구나 접근할 수 있다
         }
         let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
         if GetAclInformation(dacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) == 0 {
-            return false;
+            return super::Existing::None;
         }
-        let want_flags = if inherit { OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE } else { 0 };
-        for i in 0..info.AceCount {
+        let aces = (0..info.AceCount).filter_map(|i| {
             let mut ace: *mut c_void = null_mut();
             if GetAce(dacl, i, &mut ace) == 0 || ace.is_null() {
-                continue;
+                return None;
             }
             let header = &*(ace as *const ACE_HEADER);
             if header.AceType != ACCESS_ALLOWED_ACE_TYPE {
-                continue;
+                return Some(AceView { allowed: false, mask: 0, flags: header.AceFlags, who: Who::Other });
             }
             let allowed = &*(ace as *const ACCESS_ALLOWED_ACE);
             let ace_sid = &allowed.SidStart as *const DWORD as PSID;
-            if allowed.Mask & mask == mask && header.AceFlags & want_flags == want_flags && sids.iter().any(|s| EqualSid(ace_sid, *s) != 0) {
-                return true;
-            }
-        }
-        false
+            let who = if EqualSid(ace_sid, sid) != 0 {
+                Who::Own
+            } else if EqualSid(ace_sid, everyone) != 0 {
+                Who::Packages
+            } else {
+                Who::Other
+            };
+            Some(AceView { allowed: true, mask: allowed.Mask, flags: header.AceFlags, who })
+        });
+        super::existing_grant(aces.collect::<Vec<_>>(), mask, inherit)
     }
 
     /// ACL을 읽거나 고칠 폴더를 연다. 경로 마지막이 링크면 따라가지 않고, 연 폴더의 실제 경로가 `push`가 정한
@@ -405,8 +467,8 @@ mod imp {
         }
     }
 
-    /// 이미 읽을 수 있으면(이 SID나 ALL APPLICATION PACKAGES) 그대로 두고 false, ACE를 더했으면 true
-    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<bool, String> {
+    /// 권한이 이미 있으면 그대로 두고 무엇으로 있는지를, 없으면 ACE를 더하고 `None`을 돌려준다
+    fn grant_one(path: &Path, sid: PSID, everyone: PSID, access: Access) -> Result<super::Existing, String> {
         use std::os::windows::io::AsRawHandle;
         let (mask, inherit) = rights(access);
         unsafe {
@@ -417,13 +479,13 @@ mod imp {
             if rc != 0 {
                 return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }
-            let already = already_granted(dacl, &[sid, everyone], mask, inherit);
+            let existing = existing(dacl, sid, everyone, mask, inherit);
             LocalFree(sd);
-            if already {
-                return Ok(false);
+            if existing != super::Existing::None {
+                return Ok(existing);
             }
         }
-        allow(path, sid, mask, inherit).map(|()| true)
+        allow(path, sid, mask, inherit).map(|()| super::Existing::None)
     }
 
     /// 폴더 DACL에서 `sid`의 ACE를 모두 뺀다 (하위로 상속된 것도 함께 빠진다)
@@ -673,17 +735,26 @@ mod imp {
         let mut runtimes = Vec::new();
         for (path, access) in &grants.entries {
             let optional = grants.optional.contains(&(path.clone(), *access));
-            let added = match grant_one(path, sid, everyone, *access) {
-                Ok(added) => added,
+            let existing = match grant_one(path, sid, everyone, *access) {
+                Ok(existing) => existing,
                 Err(e) if optional => {
                     tracing::warn!("[Sandbox] skipping {}: {}", path.display(), e);
                     continue;
                 }
                 Err(e) => return Err(e),
             };
-            // 없어도 되는 읽기 권한(런타임 폴더)은 실제로 더한 것만 기록해 두었다가 쓰지 않게 되면 거둔다
-            if added && optional && *access == Access::Read {
-                runtimes.push(path.clone());
+            // 없어도 되는 읽기 권한(런타임 폴더)은 이 SID의 명시 ACE(지금 더한 것, 예전 데몬이 더한 것)를 기록해 두었다가
+            // 쓰지 않게 되면 거둔다. 상속받았거나 모든 앱 패키지로 읽을 수 있는 폴더는 이 폴더에서 거둘 것이 없다
+            if optional && *access == Access::Read {
+                let state = match existing {
+                    super::Existing::None => "granted",
+                    super::Existing::Own => "already granted to this profile",
+                    super::Existing::Elsewhere => "already readable (inherited or all app packages), not recorded",
+                };
+                tracing::info!("[Sandbox] runtime {} for {}: {}", path.display(), profile, state);
+                if existing != super::Existing::Elsewhere {
+                    runtimes.push(path.clone());
+                }
             }
             // 표시를 지원하지 않는 볼륨(FAT·일부 네트워크 드라이브 등)도 있다: 실행은 막지 않고, 그 폴더 쓰기만 안 될 수 있다
             if *access == Access::Write {
@@ -951,6 +1022,28 @@ mod tests {
         assert_eq!(stale_runtimes(&record, &daemon, &keep), BTreeMap::from([("a".to_string(), vec![PathBuf::from("/jdk17")])]));
         // 사용자가 정한 런타임을 더 쓰지 않으면 그것도 거둔다
         assert_eq!(stale_runtimes(&record, &daemon, &BTreeMap::new())["a"], vec![PathBuf::from("/jdk17"), PathBuf::from("/mine")]);
+    }
+
+    #[test]
+    fn only_this_profiles_own_explicit_ace_counts_as_a_grant_to_record() {
+        const RX: u32 = 0xA0;
+        let ace = |who, mask, flags| AceView { allowed: true, mask, flags, who };
+        let oi_ci = ACE_OBJECT_INHERIT | ACE_CONTAINER_INHERIT;
+        // 예전 데몬이 더한 이 SID의 명시 ACE는 기록해서 거둘 수 있게 한다
+        assert_eq!(existing_grant([ace(Who::Other, RX, oi_ci), ace(Who::Own, RX, oi_ci)], RX, true), Existing::Own);
+        // 위 폴더에서 상속받았거나 모든 앱 패키지로 읽을 수 있으면 이 폴더에서 거둘 것이 없다
+        assert_eq!(existing_grant([ace(Who::Own, RX, oi_ci | ACE_INHERITED)], RX, true), Existing::Elsewhere);
+        assert_eq!(existing_grant([ace(Who::Packages, RX, oi_ci)], RX, true), Existing::Elsewhere);
+        // 둘 다 있으면 명시 ACE가 우선
+        assert_eq!(existing_grant([ace(Who::Packages, RX, oi_ci), ace(Who::Own, RX, oi_ci)], RX, true), Existing::Own);
+        // 데몬이 더하지 않은 모양(더 넓은 권한, 다른 상속 표시)이면 거두지 않는다
+        assert_eq!(existing_grant([ace(Who::Own, RX | 0x116, oi_ci)], RX, true), Existing::Elsewhere);
+        assert_eq!(existing_grant([ace(Who::Own, RX, oi_ci | 0x4)], RX, true), Existing::Elsewhere);
+        // 권한이 모자라거나, 상속되지 않거나, 다른 SID거나, 거부 ACE면 없는 것
+        assert_eq!(existing_grant([ace(Who::Own, 0x20, oi_ci)], RX, true), Existing::None);
+        assert_eq!(existing_grant([ace(Who::Own, RX, 0)], RX, true), Existing::None);
+        assert_eq!(existing_grant([ace(Who::Other, RX, oi_ci)], RX, true), Existing::None);
+        assert_eq!(existing_grant([AceView { allowed: false, mask: RX, flags: oi_ci, who: Who::Own }], RX, true), Existing::None);
     }
 
     fn line(args: &[&str]) -> String {
