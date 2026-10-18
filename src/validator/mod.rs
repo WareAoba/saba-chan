@@ -427,9 +427,21 @@ pub fn start_check_ports(
     ports
 }
 
-/// 다른 프로그램이 이미 잡고 있는 포트를 찾는다. 게임마다 TCP·UDP가 달라 둘 다 묶어 보고,
+/// 다른 프로그램이 이미 잡고 있는 포트를 찾는다. 게임마다 TCP·UDP가 달라 둘 다 보고,
 /// 어느 쪽이든 사용 중이면 그 포트를 돌려준다
 pub fn ports_held_elsewhere(ports: &[(String, u16)]) -> Vec<(String, u16)> {
+    #[cfg(windows)]
+    {
+        // Windows는 0.0.0.0에 포트를 열면 방화벽 허용 알림을 띄우므로 묶어 보지 않고 OS의 사용 중 포트 목록을 읽는다
+        let held = held_ports::read();
+        ports.iter().filter(|(_, port)| *port != 0 && held.contains(port)).cloned().collect()
+    }
+    #[cfg(not(windows))]
+    ports_held_by_binding(ports)
+}
+
+#[cfg(not(windows))]
+fn ports_held_by_binding(ports: &[(String, u16)]) -> Vec<(String, u16)> {
     let in_use = |e: std::io::Error| {
         // Windows는 다른 프로그램이 독점(SO_EXCLUSIVEADDRUSE)으로 잡은 포트나 예약 범위에 PermissionDenied를 준다
         e.kind() == std::io::ErrorKind::AddrInUse || (cfg!(windows) && e.kind() == std::io::ErrorKind::PermissionDenied)
@@ -444,6 +456,67 @@ pub fn ports_held_elsewhere(ports: &[(String, u16)]) -> Vec<(String, u16)> {
         })
         .cloned()
         .collect()
+}
+
+/// TCP는 듣고 있는 포트, UDP는 묶인 포트 (IPv4·IPv6). 목록을 못 읽으면 빈 집합 (검사를 건너뛴다)
+#[cfg(windows)]
+mod held_ports {
+    use std::collections::HashSet;
+    use winapi::shared::tcpmib::{MIB_TCP6TABLE_OWNER_PID, MIB_TCPTABLE_OWNER_PID};
+    use winapi::shared::udpmib::{MIB_UDP6TABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID};
+    use winapi::shared::ws2def::{AF_INET, AF_INET6};
+    use winapi::um::iphlpapi::{GetExtendedTcpTable, GetExtendedUdpTable};
+    use winapi::shared::iprtrmib::{TCP_TABLE_OWNER_PID_LISTENER, UDP_TABLE_OWNER_PID};
+
+    const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
+
+    /// 표를 받을 버퍼를 크기가 맞을 때까지 다시 잡는다 (호출 사이에 표가 커질 수 있다)
+    fn table(read: impl Fn(*mut winapi::ctypes::c_void, &mut u32) -> u32) -> Option<Vec<u64>> {
+        let mut size = 0u32;
+        for _ in 0..4 {
+            // u64로 잡아 표 구조체 정렬을 맞춘다
+            let mut buf = vec![0u64; (size as usize).div_ceil(8).max(1)];
+            size = (buf.len() * 8) as u32;
+            match read(buf.as_mut_ptr().cast(), &mut size) {
+                0 => return Some(buf),
+                ERROR_INSUFFICIENT_BUFFER => continue,
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    /// 표의 행 수와 행들을 읽는다. 표는 `dwNumEntries` 다음에 행 배열이 오는 모양이다
+    unsafe fn rows<T, R>(buf: &[u64], table: *const T, first: *const R) -> &[R] {
+        let count = *(table as *const u32) as usize;
+        let start = first as usize - buf.as_ptr() as usize;
+        let fits = (buf.len() * 8).saturating_sub(start) / std::mem::size_of::<R>();
+        std::slice::from_raw_parts(first, count.min(fits))
+    }
+
+    pub fn read() -> HashSet<u16> {
+        let mut held = HashSet::new();
+        let port = |raw: u32| u16::from_be(raw as u16);
+        unsafe {
+            if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
+                let t = buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
+                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().map(|r| port(r.dwLocalPort)));
+            }
+            if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET6 as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
+                let t = buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
+                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().map(|r| port(r.dwLocalPort)));
+            }
+            if let Some(buf) = table(|p, n| GetExtendedUdpTable(p, n, 0, AF_INET as u32, UDP_TABLE_OWNER_PID, 0)) {
+                let t = buf.as_ptr() as *const MIB_UDPTABLE_OWNER_PID;
+                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().map(|r| port(r.dwLocalPort)));
+            }
+            if let Some(buf) = table(|p, n| GetExtendedUdpTable(p, n, 0, AF_INET6 as u32, UDP_TABLE_OWNER_PID, 0)) {
+                let t = buf.as_ptr() as *const MIB_UDP6TABLE_OWNER_PID;
+                held.extend(rows(&buf, t, (*t).table.as_ptr()).iter().map(|r| port(r.dwLocalPort)));
+            }
+        }
+        held
+    }
 }
 
 /// 인스턴스에서 모듈이 실제 사용하는 포트만 수집합니다.
