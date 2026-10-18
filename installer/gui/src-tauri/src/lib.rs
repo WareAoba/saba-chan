@@ -575,6 +575,8 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
 }
 
 async fn emit_error(app: &AppHandle, state: &SharedState, code: &str, msg: &str) {
+    // 안내하는 로그 파일에 실패 원인이 남도록 먼저 기록한다
+    tracing::error!("[{}] {}", code, msg);
     let p = InstallProgress {
         step: "error".into(),
         message: msg.to_string(),
