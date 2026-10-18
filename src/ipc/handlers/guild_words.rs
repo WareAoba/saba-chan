@@ -28,10 +28,17 @@ fn guild_servers(node_settings: &Value, guild: &str, servers: &[ServerView]) -> 
 }
 
 fn command_rows(module: Option<&ModuleView>, mine: &InstanceWords) -> Vec<Value> {
-    let builtin = BUILTIN_COMMANDS.iter().map(|c| (c.to_string(), String::new(), if *c == "status" { "safe" } else { "caution" }.to_string(), true));
-    let defined = module
-        .into_iter()
-        .flat_map(|m| m.commands.iter().map(|c| (c.name.clone(), c.label.clone(), c.risk.clone().unwrap_or_else(|| "caution".into()), false)));
+    // 모듈이 내장과 같은 이름을 정의하면 한 줄로: 이름표·위험도는 모듈 선언을 쓴다
+    let defines = |name: &str| module.is_some_and(|m| m.command(name).is_some());
+    let builtin = BUILTIN_COMMANDS
+        .iter()
+        .filter(|c| !defines(c))
+        .map(|c| (c.to_string(), String::new(), if *c == "status" { "safe" } else { "caution" }.to_string(), true));
+    let defined = module.into_iter().flat_map(|m| {
+        m.commands
+            .iter()
+            .map(|c| (c.name.clone(), c.label.clone(), c.risk.clone().unwrap_or_else(|| "caution".into()), BUILTIN_COMMANDS.contains(&c.name.as_str())))
+    });
     builtin
         .chain(defined)
         .map(|(name, label, risk, builtin)| {
@@ -160,5 +167,32 @@ pub async fn migrate_on_start(state: &IPCServer) {
     match state.config_store.finish_words_migration(node_settings).await {
         Ok(()) => tracing::info!("[Chat] moved global aliases to {} guild(s)", guilds.len()),
         Err(e) => tracing::warn!("[Chat] word migration not saved: {}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::supervisor::module_loader::CommandField;
+
+    #[test]
+    fn a_module_command_named_like_a_builtin_is_one_row() {
+        let stop = CommandField {
+            name: "stop".into(),
+            label: "서버 끄기".into(),
+            description: None,
+            method: Some("console".into()),
+            http_method: None,
+            endpoint_template: None,
+            console_template: Some("stop".into()),
+            risk: Some("danger".into()),
+            inputs: vec![],
+        };
+        let module = ModuleView { name: "minecraft".into(), commands: vec![stop], ..Default::default() };
+        let rows = command_rows(Some(&module), &InstanceWords::default());
+        let stops: Vec<&Value> = rows.iter().filter(|r| r["name"] == "stop").collect();
+        assert_eq!(stops.len(), 1, "{rows:?}");
+        assert_eq!((stops[0]["label"].as_str(), stops[0]["risk"].as_str(), stops[0]["builtin"].as_bool()), (Some("서버 끄기"), Some("danger"), Some(true)));
+        assert_eq!(rows.len(), BUILTIN_COMMANDS.len());
     }
 }
