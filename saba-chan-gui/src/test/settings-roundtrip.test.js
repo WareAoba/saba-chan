@@ -694,8 +694,8 @@ describe('설정 에러 핸들링', () => {
         });
         useSettingsStore.setState({ settingsPath: '/s.json' });
 
-        // Should not throw
-        await expect(useSettingsStore.getState().save()).resolves.toBeUndefined();
+        // Should not throw, and tells the caller it failed
+        await expect(useSettingsStore.getState().save()).resolves.toBe(false);
     });
 
     it('botConfigSave 실패 → 에러 토스트 (크래시 없음)', async () => {

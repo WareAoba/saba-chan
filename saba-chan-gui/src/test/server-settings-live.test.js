@@ -200,4 +200,23 @@ describe('서버 설정 창: 실제 설정', () => {
         expect(warned).toEqual(['Invalid format.', "Couldn't check the extra launch arguments, so nothing was saved"]);
         delete window.api.instanceLaunchPreview;
     });
+
+    it('실행 명령은 못 만들었어도 추가 인자는 나눴으면 저장한다 (아직 설치 안 한 서버)', async () => {
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: {} });
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'launch_command_failed',
+            error_code: 'launch_command_failed',
+            has_launch_args: true,
+            extra_args: ['-x'],
+            settings_from_args: {},
+        });
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        act(() => result.current.handleSettingChange('_launch_extra_args', '-x'));
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.api.instanceUpdateSettings).toHaveBeenCalled();
+        expect(window.api.instanceUpdateSettings.mock.calls[0][1].extra_args).toEqual(['-x']);
+        delete window.api.instanceLaunchPreview;
+    });
 });

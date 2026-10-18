@@ -117,7 +117,7 @@ export const useSettingsStore = create((set, get) => ({
             return;
         }
         try {
-            await window.api.settingsSave({
+            const saved = await window.api.settingsSave({
                 autoRefresh: state.autoRefresh,
                 refreshInterval: state.refreshInterval,
                 ipcPort: state.ipcPort,
@@ -138,9 +138,12 @@ export const useSettingsStore = create((set, get) => ({
                 consoleFontScale: state.consoleFontScale,
                 systemMonitorOpen: state.systemMonitorOpen,
             });
+            if (saved === false) return false;
             console.log('[Settings] GUI settings saved');
+            return true;
         } catch (error) {
             console.error('[Settings] Failed to save GUI settings:', error);
+            return false;
         }
     },
 

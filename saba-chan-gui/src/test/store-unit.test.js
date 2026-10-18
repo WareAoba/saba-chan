@@ -272,6 +272,14 @@ describe('useSettingsStore', () => {
         expect(state.consoleSyntaxHighlight).toBe(true);
     });
 
+    it('save() — 저장이 실패하면 false를 돌려준다 (호출자가 저장됨으로 표시하지 않게)', async () => {
+        useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
+        window.api.settingsSave.mockRejectedValueOnce(new Error('disk full'));
+        expect(await useSettingsStore.getState().save()).toBe(false);
+        window.api.settingsSave.mockResolvedValueOnce(false);
+        expect(await useSettingsStore.getState().save()).toBe(false);
+    });
+
     it('save() — 테마 필드가 payload에 포함되어야 한다', async () => {
         mockApi();
         useSettingsStore.setState({
