@@ -206,7 +206,7 @@ if __name__ == "__main__":
 
 
 @pytest.mark.windows
-def test_clean_unverified_module_passes_the_scan_and_runs(sandbox, daemon_factory):
+def test_clean_unverified_module_passes_the_scan_and_runs(sandbox, daemon_factory, record_property):
     """깨끗한 미검증 모듈은 검사를 통과해 격리 실행된다. 검사기가 있는지(Defender 켜짐)는 출력에 남긴다.
     표본을 찾는 쪽은 실시간 검사가 파일을 먼저 치우면 확인할 수 없어(아래 시험), 켜진 PC에서는 이 시험이 AMSI 경로를 본다."""
     mod = sandbox.modules / "e2e-amsi-clean"
@@ -216,14 +216,14 @@ def test_clean_unverified_module_passes_the_scan_and_runs(sandbox, daemon_factor
     d = daemon_factory()
     r = d.api.get("/api/module/e2e-amsi-clean/versions", timeout=120)
     scanned = "no AMSI provider" not in d.log_text()
-    print("AMSI 공급자 " + ("있음" if scanned else "없음"))
+    record_property("AMSI 공급자", "있음" if scanned else "없음")  # report.md에 남는다
     assert "e2e-amsi-ran" in r.text and "scan_failed" not in r.text, f"{r.status_code} {r.text[:500]}"
     if scanned:  # 깨끗하다는 결과를 남긴다 (검사기가 없으면 남길 결과가 없다)
         assert (d.sb.data / "scan-verdicts.json").exists(), "검사 결과가 남지 않음"
 
 
 @pytest.mark.windows
-def test_unverified_module_script_is_scanned_by_amsi(sandbox, daemon_factory):
+def test_unverified_module_script_is_scanned_by_amsi(sandbox, daemon_factory, record_property):
     """미검증 모듈의 스크립트는 띄우기 전에 AMSI로 본다.
     백신(Defender)이 켜져 있으면 표본을 찾아 실행하지 않고 malware_detected로 알린다.
     AMSI 공급자가 없으면(Defender 꺼짐, 다른 백신) 검사를 건너뛰고 데몬 실행마다 한 번 경고한다. 어느 쪽인지는 보고에 남긴다."""
@@ -244,10 +244,10 @@ def test_unverified_module_script_is_scanned_by_amsi(sandbox, daemon_factory):
     text = r.text
     log = d.log_text()
     if "no AMSI provider" in log:
-        print("AMSI 공급자 없음: 검사 없이 실행됨")
+        record_property("AMSI 공급자", "없음")
         assert "malware_detected" not in text and "e2e-amsi-ran" in text, text
         assert log.count("no AMSI provider") == 1, "경고가 한 번이 아님"
         return
-    print("AMSI 공급자 있음: 표본을 찾아야 함")
+    record_property("AMSI 공급자", "있음")
     assert "malware_detected" in text, f"{r.status_code} {text[:500]}"
     assert "e2e-amsi-ran" not in text, f"막아야 할 모듈이 실행됨: {text[:500]}"

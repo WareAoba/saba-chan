@@ -12,6 +12,8 @@ def main(junit: str, out: str, title: str = "saba-chan E2E 결과") -> int:
     for c in cases:
         name = f"{c.get('classname', '').split('.')[-1]}::{c.get('name')}"
         secs = float(c.get("time") or 0)
+        props = ", ".join(f"{p.get('name')}: {p.get('value')}" for p in c.iter("property"))
+        props = f" — {props}" if props else ""
         failure = c.find("failure") if c.find("failure") is not None else c.find("error")
         skipped = c.find("skipped")
         if failure is not None:
@@ -21,7 +23,7 @@ def main(junit: str, out: str, title: str = "saba-chan E2E 결과") -> int:
             kind = "예상된 실패" if (skipped.get("type") or "").endswith("xfail") else "건너뜀"
             rows[kind].append(f"- `{name}`: {(skipped.get('message') or '')[:200]}")
         else:
-            rows["통과"].append(f"- `{name}` ({secs:.0f}초)")
+            rows["통과"].append(f"- `{name}` ({secs:.0f}초){props}")
     lines = [f"# {title}", "", " · ".join(f"{k} {len(v)}" for k, v in rows.items()), ""]
     for key in ("실패", "예상된 실패", "건너뜀", "통과"):
         if rows[key]:
