@@ -1,6 +1,6 @@
 //! saba-runner — 게임 서버 하나를 띄우고 콘솔을 지킨다 (C8b)
 //!
-//! 사용법: `saba-runner --run-dir <dir> --log <file> [--cwd <dir>] [--console pipe|pty] [--tail <pattern>]... -- <program> [args...]`
+//! 사용법: `saba-runner --run-dir <dir> --log <file> [--cwd <dir>] [--console pipe|pty] [--tail <pattern>]... [--memory-limit <MiB>] -- <program> [args...]`
 //!
 //! `--console pty`: 서버를 의사 콘솔(Windows ConPTY, unix pty)에 띄운다. 출력이 파이프면
 //! 끝날 때까지 모아 두는 서버(stdout 블록 버퍼링)도 줄마다 나온다. stdout·stderr는 한 갈래로
@@ -9,6 +9,9 @@
 //! Windows에서는 서버를 Job Object에 넣는다. 러너가 어떻게 끝나든(강제 종료 포함) 서버와
 //! 서버가 띄운 프로세스가 같이 끝난다. 런처(곧바로 끝나고 진짜 서버를 남기는 exe)를 띄우면
 //! 남은 프로세스가 끝날 때까지 기다린다.
+//!
+//! `--memory-limit`: 서버와 그 자식들의 커밋 메모리 합을 MiB 단위로 막는다(Windows Job). 넘으면 서버를 끝내고
+//! `exit.json`의 `memory_limit_mb`에 남긴다. 다른 OS에서는 로그에 한 줄 남기고 무시한다.
 //!
 //! `--tail`: 서버가 콘솔 대신 파일에 쓰는 로그(예: `Pal/Saved/Logs/*.log`)를 따라 읽어
 //! 같은 세션 로그에 합친다. 상대 경로는 `--cwd` 기준, `*` `?`는 마지막 칸에만.
@@ -45,6 +48,8 @@ struct Args {
     cwd: Option<PathBuf>,
     console: Console,
     tails: Vec<String>,
+    /// MiB
+    memory_limit: Option<u64>,
     program: String,
     program_args: Vec<String>,
 }
@@ -54,6 +59,7 @@ fn parse_args() -> Result<Args, String> {
     let (mut run_dir, mut log, mut cwd) = (None, None, None);
     let mut console = Console::Pipe;
     let mut tails = Vec::new();
+    let mut memory_limit = None;
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--run-dir" => run_dir = it.next().map(PathBuf::from),
@@ -67,6 +73,10 @@ fn parse_args() -> Result<Args, String> {
                 }
             }
             "--tail" => tails.extend(it.next()),
+            "--memory-limit" => {
+                let value = it.next().unwrap_or_default();
+                memory_limit = Some(value.parse::<u64>().ok().filter(|m| *m > 0).ok_or_else(|| format!("--memory-limit takes MiB, got '{}'", value))?);
+            }
             "--" => break,
             other => return Err(format!("unknown argument '{}'", other)),
         }
@@ -78,6 +88,7 @@ fn parse_args() -> Result<Args, String> {
         cwd,
         console,
         tails,
+        memory_limit,
         program,
         program_args: it.collect(),
     })
@@ -214,7 +225,7 @@ impl Proc {
                 drop(master);
                 // Windows 예외 코드(0xC0000005 등)는 i32로 바꿔도 비트가 같다 (데몬이 u32로 다시 읽는다)
                 let code = status.exit_code() as i32;
-                Ok(ExitInfo { code: Some(code), success: status.success(), ended_at: now(), signal: None })
+                Ok(ExitInfo { code: Some(code), success: status.success(), ended_at: now(), signal: None, memory_limit_mb: None })
             }
         }
     }
@@ -295,7 +306,7 @@ fn run(args: Args) -> Result<i32, String> {
         Err(e) => {
             let msg = format!("Failed to spawn process '{}': {}", args.program, e);
             write_log(&log, Stream::System, &msg);
-            let _ = write_json(&exit_file(&args.run_dir), &ExitInfo { code: None, success: false, ended_at: now(), signal: None });
+            let _ = write_json(&exit_file(&args.run_dir), &ExitInfo { code: None, success: false, ended_at: now(), signal: None, memory_limit_mb: None });
             return Err(msg);
         }
     };
@@ -304,13 +315,22 @@ fn run(args: Args) -> Result<i32, String> {
     write_log(&log, Stream::System, &format!("Process started with PID {}", pid));
 
     #[cfg(windows)]
-    let job = match job::Job::contain(pid) {
+    let job = match job::Job::contain(pid, args.memory_limit.map(|mb| mb * 1024 * 1024)) {
         Ok(job) => Some(job),
         Err(e) => {
             write_log(&log, Stream::System, &format!("Could not put the server in a job object ({}); it may outlive saba-runner", e));
             None
         }
     };
+
+    #[cfg(not(windows))]
+    if let Some(mb) = args.memory_limit {
+        write_log(&log, Stream::System, &format!("Memory limit {} MiB is only enforced on Windows; running without it", mb));
+    }
+    #[cfg(windows)]
+    if let (Some(mb), None) = (args.memory_limit, &job) {
+        write_log(&log, Stream::System, &format!("Memory limit {} MiB is not enforced because the job object failed", mb));
+    }
 
     let info = RunnerInfo { runner_pid: std::process::id(), pid, port, log: args.log.clone(), started_at: now(), cwd: args.cwd.clone() };
     write_json(&runner_file(&args.run_dir), &info).map_err(|e| e.to_string())?;
@@ -350,7 +370,15 @@ fn run(args: Args) -> Result<i32, String> {
                 std::thread::sleep(Duration::from_secs(1));
             }
             // 진짜 서버의 종료 코드는 알 수 없다
-            exit = ExitInfo { code: None, success: false, ended_at: now(), signal: None };
+            exit = ExitInfo { code: None, success: false, ended_at: now(), signal: None, memory_limit_mb: None };
+        }
+    }
+    #[cfg(windows)]
+    if let (Some(job), Some(mb)) = (&job, args.memory_limit) {
+        if job.memory_limit_hit() {
+            write_log(&log, Stream::System, &format!("Memory limit of {} MiB reached; the server was stopped", mb));
+            exit.memory_limit_mb = Some(mb);
+            exit.success = false;
         }
     }
     #[cfg(not(windows))]

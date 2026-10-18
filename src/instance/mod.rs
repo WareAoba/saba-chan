@@ -63,6 +63,9 @@ pub struct ServerInstance {
     /// (`extra_args_placed`가 없으면) 데몬이 실행 인자 끝에 붙인다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_args: Vec<String>,
+    /// 서버와 그 자식 프로세스의 메모리 상한(MiB). saba-runner가 Windows Job으로 막는다. 없으면 제한 없음
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_limit_mb: Option<u64>,
 }
 
 fn default_protocol_mode() -> String {
@@ -100,6 +103,7 @@ impl ServerInstance {
             schedule: Vec::new(),
             backup_keep: None,
             extra_args: Vec::new(),
+            memory_limit_mb: None,
         }
     }
 

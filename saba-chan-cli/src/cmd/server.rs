@@ -1042,6 +1042,8 @@ const COMMON: &[(&str, &str)] = &[
     ("executable_path", "text"),
     ("protocol_mode", "text"),
     ("server_version", "text"),
+    // 메모리 상한(MiB). 비우면 제한 없음 (Windows만 적용)
+    ("memory_limit_mb", "number"),
 ];
 
 /// KEY=VALUE 하나를 PATCH 키와 형식 맞춘 값으로. `ext.키`는 extension_data, 빈 값은 지우기(null).
@@ -1091,6 +1093,10 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
             })
         })
         .ok_or_else(|| unknown_setting(fields, key))?;
+    // 공통 칸은 빈 값이 지우기다 (예: `memory_limit_mb=` → 제한 없음)
+    if raw.trim().is_empty() && COMMON.iter().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
+        return Ok((key.to_string(), Value::Null));
+    }
     let field = fields.iter().find(|f| s(f, "name") == key);
     if let Some(opts) = field.and_then(|f| f.get("options")).and_then(Value::as_array) {
         let opts: Vec<&str> = opts.iter().filter_map(Value::as_str).collect();
@@ -1540,6 +1546,8 @@ mod tests {
             json!(false)
         );
         assert!(typed_setting(&fields, &inst, "difficulty", "insane").is_err());
+        assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "6144").unwrap().1, json!(6144));
+        assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
         let (k, v) = typed_setting(&fields, &inst, "ext.box", "").unwrap();
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
     }

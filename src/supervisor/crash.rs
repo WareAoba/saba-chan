@@ -70,6 +70,9 @@ pub fn classify(f: &ExitFacts) -> ExitVerdict {
     if f.stop_requested {
         return verdict(ExitKind::UserStop, "stop requested through saba-chan".into());
     }
+    if let Some(mb) = f.exit.and_then(|e| e.memory_limit_mb) {
+        return verdict(ExitKind::Crash, format!("memory limit {} MiB reached", mb));
+    }
     if let Some(code) = exit_code {
         let raw = code as u32;
         if raw & 0xF000_0000 == 0xC000_0000 && raw != STATUS_CONTROL_C_EXIT {
@@ -153,7 +156,7 @@ mod tests {
     }
 
     fn code(c: i32) -> Option<ProcessExit> {
-        Some(ProcessExit { code: Some(c), signal: None })
+        Some(ProcessExit { code: Some(c), ..Default::default() })
     }
 
     #[test]
@@ -168,8 +171,11 @@ mod tests {
 
         assert_eq!(k(facts(code(0xC000_0005u32 as i32), &none, &no_files)), ExitKind::Crash);
         assert_eq!(k(facts(code(0xC000_013Au32 as i32), &none, &no_files)), ExitKind::UnknownExit, "Ctrl+C / closed window");
-        assert_eq!(k(facts(Some(ProcessExit { code: None, signal: Some(11) }), &none, &no_files)), ExitKind::Crash);
-        assert_eq!(k(facts(Some(ProcessExit { code: None, signal: Some(9) }), &none, &no_files)), ExitKind::UnknownExit, "SIGKILL is a kill");
+        assert_eq!(k(facts(Some(ProcessExit { signal: Some(11), ..Default::default() }), &none, &no_files)), ExitKind::Crash);
+        assert_eq!(k(facts(Some(ProcessExit { signal: Some(9), ..Default::default() }), &none, &no_files)), ExitKind::UnknownExit, "SIGKILL is a kill");
+        let over = facts(Some(ProcessExit { code: Some(8), memory_limit_mb: Some(4096), ..Default::default() }), &none, &no_files);
+        assert_eq!(classify(&over).kind, ExitKind::Crash);
+        assert_eq!(classify(&over).evidence, "memory limit 4096 MiB reached");
 
         let crash_file = [PathBuf::from("crash-reports/crash.txt")];
         let stopped = ["[Server thread/INFO]: Stopping the server".to_string()];

@@ -410,12 +410,13 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 
 ### 3.6 크래시 감지와 자동 재시작
 
-- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 콘솔 끝 50줄에 `graceful_exit_patterns`가 있거나 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
+- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 콘솔 끝 50줄에 `graceful_exit_patterns`가 있거나 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
 - **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다 (`crash.rs:109-111`). 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:21-30`, `mod.rs:1993-2009`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:391-396`, `server.rs:735-751`). 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
 - `monitor_processes`(`mod.rs:2074-2254`)가 하는 일은 다음과 같다.
   1. `managed_store.cleanup_dead()`로 죽은 항목을 꺼내 종료를 판정하고, `managed.pid`를 삭제한 뒤 cooldown을 등록한다.
   2. 추적 중인 PID가 스냅샷에 없으면 untrack한다. saba-runner가 아직 서버를 돌리면(런처가 끝나고 실제 서버가 남은 경우) runner가 보는 PID로 옮긴다.
   3. `auto_detect`가 켜진 인스턴스는 `process_name`(+`cmd_patterns`)으로 외부 프로세스를 찾고, 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가려 추적한다. 포트가 충돌하면 그 프로세스를 **강제 kill**하고 `PortConflictStopEvent`를 쌓는다.
+- **메모리 상한** (`memory_limit_mb`, 인스턴스 레코드, MiB): 비우면 제한 없음. 데몬이 saba-runner에 `--memory-limit <MiB>`로 넘기고, 러너는 Windows Job에 `JOB_OBJECT_LIMIT_JOB_MEMORY`를 건다(서버와 그 자식의 커밋 메모리 합, `runner/src/job.rs`). 넘으면 할당이 실패하고 Job이 완료 포트로 알린다. 러너는 그때 Job을 끝내고(종료 코드 8) `exit.json`에 `memory_limit_mb`를 남긴다. 데몬은 이것을 `crash`로 판정하므로 `auto_restart`면 다시 켠다. Java 서버면 상한을 `-Xmx`보다 1~2GB 크게 잡는다(힙 밖 메모리). Windows만 적용하고, 다른 OS나 러너 없이 띄운 서버는 로그에 한 줄 남기고 제한 없이 돈다. 원격(디스코드·챗봇) 설정 변경으로는 바꿀 수 없다.
 - `Supervisor::monitor()` stub은 지워졌다.
 - `process_name`은 Windows 값(`java.exe`)이고 Linux용 override가 없다. 이름 비교는 부분 문자열(`"java".contains("java.exe")`는 거짓)이라 **Linux에서 minecraft와 zomboid의 auto-detect는 매치에 실패한다** (`D:src/process_monitor.rs:125-130`).
 
