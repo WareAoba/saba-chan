@@ -1482,9 +1482,10 @@ impl ExtensionManager {
         &self.extensions_dir
     }
 
-    /// 받은 zip을 검사하고 `extensions/.staging-<id>`에 푼다. 락 없이 부르면 된다.
+    /// 받은 zip을 검사하고 `extensions/.staging-<id>-<uuid>`에 푼다. 락 없이 부르면 된다.
     /// sha256(있으면), manifest 스키마, manifest id, min_app_version을 여기서 확인하므로
-    /// 실패해도 설치된 익스텐션은 그대로다.
+    /// 실패해도 설치된 익스텐션은 그대로다. 폴더는 호출마다 새로 만들어, 같은 id를 겹쳐 설치해도
+    /// 돌려준 폴더에는 이 호출이 검사한 파일만 있다.
     pub fn stage_package(
         extensions_dir: &std::path::Path,
         ext_id: &str,
@@ -1499,11 +1500,11 @@ impl ExtensionManager {
                 anyhow::bail!("sha256 mismatch for '{}': expected {}, got {}", ext_id, expected, actual);
             }
         }
-        let staging = extensions_dir.join(format!(".staging-{}", Self::python_safe_dir_name(ext_id)));
-        if staging.exists() {
-            std::fs::remove_dir_all(&staging)
-                .with_context(|| format!("Failed to clear {}", staging.display()))?;
-        }
+        let staging = extensions_dir.join(format!(
+            ".staging-{}-{}",
+            Self::python_safe_dir_name(ext_id),
+            uuid::Uuid::new_v4().simple()
+        ));
         let result = (|| -> Result<()> {
             let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
                 .context("Failed to read downloaded zip archive")?;
@@ -2077,6 +2078,21 @@ mod tests {
             {"id": "helper", "name": "H", "version": "0.1.0", "download_url": "x"}
         ])).unwrap();
         assert_eq!(mgr.missing_dependencies("box", &remote), ["helper"]);
+    }
+
+    #[test]
+    fn overlapping_installs_of_one_id_keep_their_own_staged_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let m = json!({"id": "box", "name": "B", "version": "0.1.0"});
+        let first = ExtensionManager::stage_package(tmp.path(), "box", &zip_package(m.clone(), "first"), None).unwrap();
+        let second = ExtensionManager::stage_package(tmp.path(), "box", &zip_package(m, "second"), None).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read_to_string(first.join("data.txt")).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(second.join("data.txt")).unwrap(), "second");
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.install_staged("box", &first, &[], false).unwrap();
+        assert_eq!(std::fs::read_to_string(tmp.path().join("box/data.txt")).unwrap(), "first");
     }
 
     #[test]
