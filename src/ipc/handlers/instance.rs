@@ -835,8 +835,6 @@ pub async fn launch_preview(
     }
 }
 
-/// 추가 실행 인자 입력: 문자열이면 `chat::split_quoted`로 나누고, 배열이면 문자열만. null은 비우기.
-/// 줄바꿈·NUL이 든 인자는 받지 않는다
 /// 이보다 작은 메모리 상한은 서버가 뜨지도 못하므로 받지 않는다
 const MIN_MEMORY_LIMIT_MB: u64 = 256;
 
@@ -865,6 +863,8 @@ fn memory_limit_from(value: &Value) -> Result<Option<u64>, ()> {
     }
 }
 
+/// 추가 실행 인자 입력: 문자열이면 `chat::split_quoted`로 나누고, 배열이면 문자열만. null은 비우기.
+/// 줄바꿈·NUL이 든 인자는 받지 않는다
 pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
     let args: Vec<String> = match value {
         Value::Null => Vec::new(),

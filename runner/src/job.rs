@@ -58,8 +58,11 @@ impl Job {
                 memory_hit: Arc::new(AtomicBool::new(false)),
                 drained: Arc::new(AtomicBool::new(false)),
             };
+            // 알림을 못 받아도 상한과 KILL_ON_JOB_CLOSE는 건다 (종료 이유만 못 남긴다)
             if memory_limit.is_some() {
-                job.watch_memory()?;
+                if let Err(e) = job.watch_memory() {
+                    eprintln!("[saba-runner] memory limit notice unavailable: {}", e);
+                }
             }
             let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
             limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -106,7 +109,10 @@ impl Job {
             size_of::<JOBOBJECT_ASSOCIATE_COMPLETION_PORT>() as u32,
         ) == 0
         {
-            return Err(format!("associate completion port failed ({})", std::io::Error::last_os_error()));
+            let err = std::io::Error::last_os_error();
+            CloseHandle(port);
+            self.port = std::ptr::null_mut();
+            return Err(format!("associate completion port failed ({})", err));
         }
         // 핸들은 스레드로 숫자로 넘긴다. 포트를 닫으면(Drop) 기다림이 실패해 스레드가 끝난다
         let (job, port, hit, drained) = (self.handle as usize, port as usize, self.memory_hit.clone(), self.drained.clone());

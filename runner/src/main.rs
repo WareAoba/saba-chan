@@ -75,7 +75,7 @@ fn parse_args() -> Result<Args, String> {
             "--tail" => tails.extend(it.next()),
             "--memory-limit" => {
                 let value = it.next().unwrap_or_default();
-                memory_limit = Some(value.parse::<u64>().ok().filter(|m| *m > 0).ok_or_else(|| format!("--memory-limit takes MiB, got '{}'", value))?);
+                memory_limit = Some(value.parse::<u64>().ok().filter(|m| *m > 0 && m.checked_mul(1024 * 1024).is_some()).ok_or_else(|| format!("--memory-limit takes MiB, got '{}'", value))?);
             }
             "--" => break,
             other => return Err(format!("unknown argument '{}'", other)),
@@ -315,7 +315,7 @@ fn run(args: Args) -> Result<i32, String> {
     write_log(&log, Stream::System, &format!("Process started with PID {}", pid));
 
     #[cfg(windows)]
-    let job = match job::Job::contain(pid, args.memory_limit.map(|mb| mb * 1024 * 1024)) {
+    let job = match job::Job::contain(pid, args.memory_limit.map(|mb| mb.saturating_mul(1024 * 1024))) {
         Ok(job) => Some(job),
         Err(e) => {
             write_log(&log, Stream::System, &format!("Could not put the server in a job object ({}); it may outlive saba-runner", e));
