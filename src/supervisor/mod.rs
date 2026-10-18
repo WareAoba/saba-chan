@@ -2633,7 +2633,6 @@ mod tests {
         assert!(supervisor.unmet_module_dependencies("game").await.is_none());
     }
 
-    /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
     #[test]
     fn a_module_failure_says_why_instead_of_unknown_error() {
         assert_eq!(module_failure(&json!({"success": false, "message": "jar missing"}), "mc", "get_launch_command"), "jar missing");
@@ -2643,6 +2642,7 @@ mod tests {
         assert!(module_failure(&Value::Null, "m", "f").contains("nothing"));
     }
 
+    /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
     #[test]
     fn managed_start_policy() {
         let tmp = tempfile::tempdir().unwrap();

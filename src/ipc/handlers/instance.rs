@@ -122,15 +122,18 @@ pub async fn create_instance(
             // 모듈이 선언한 이름만, select는 고를 수 있는 값만 받는다
             if let Some(settings) = loaded_module.metadata.settings.as_ref() {
                 for field in &settings.fields {
-                    let Some(value) = chosen.get(&field.name) else { continue };
+                    let Some(value) = chosen.get(&field.name).filter(|v| !v.is_null()) else { continue };
                     let allowed = match (&field.options, value.as_str()) {
                         (Some(options), Some(v)) => options.iter().any(|o| o == v),
                         (Some(_), None) => false,
                         (None, _) => !value.is_object() && !value.is_array(),
                     };
-                    if allowed && crate::validator::validate_setting_value(field, Some(value)).is_ok() {
-                        instance.module_settings.insert(field.name.clone(), value.clone());
+                    if !allowed || crate::validator::validate_setting_value(field, Some(value)).is_err() {
+                        // 조용히 버리면 프리셋·기본값이 남아 고른 것과 다른 서버가 된다
+                        let error = json!({ "error": format!("module_settings.{} is not a valid value", field.name), "error_code": "invalid_format", "fields": [{"field": field.name}] });
+                        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
                     }
+                    instance.module_settings.insert(field.name.clone(), value.clone());
                 }
             }
 
@@ -1650,6 +1653,10 @@ mod tests {
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(instance.module_settings["max_players"], json!(10), "preset value");
         assert_eq!(instance.module_settings["pvp"], json!(true), "explicit setting wins");
+
+        let bad = create(json!({ "name": "c", "module_name": "game", "preset": "friends", "module_settings": { "max_players": "lots" } })).await;
+        assert_eq!(bad.status.as_u16(), 400);
+        assert_eq!(bad.body["fields"][0]["field"], "max_players");
 
         let unknown = create(json!({ "name": "b", "module_name": "game", "preset": "nope" })).await;
         assert_eq!(unknown.status.as_u16(), 400);

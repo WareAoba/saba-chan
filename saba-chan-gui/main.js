@@ -2088,11 +2088,12 @@ ipcMain.handle('instance:launchPreview', (_event, id, settings, extraArgs) => {
 
 ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
     try {
-        console.log(`[Main] Updating settings for instance ${id}:`, settings);
+        // 값에는 비밀번호 설정이 들어갈 수 있어 키 이름만 남긴다
+        console.log(`[Main] Updating settings for instance ${id}:`, Object.keys(settings || {}));
         const url = `${IPC_BASE}/api/instance/${id}`;
         console.log(`[Main] PATCH request to: ${url}`);
         const response = await axios.patch(url, settings);
-        console.log(`[Main] Response:`, response.data);
+        console.log(`[Main] Response: ${response.status}`);
         return response.data;
     } catch (error) {
         console.error(`[Main] Error updating settings:`, error.message);
