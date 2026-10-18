@@ -104,7 +104,6 @@ export function DiscordPage({
     relayConnected,
     relayConnecting,
     handleStartDiscordBot,
-    handleStopDiscordBot,
     saveCurrentSettings,
     servers = [],
     modules = [],
@@ -526,7 +525,7 @@ export function DiscordPage({
                                 onReload={loadNodes}
                                 onDisconnect={disconnect}
                                 onStartAgent={handleStartDiscordBot}
-                                onStopAgent={handleStopDiscordBot}
+                                nodes={cloudNodes}
                                 onInviteBot={inviteBot}
                             />
                         )}

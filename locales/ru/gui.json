@@ -756,6 +756,8 @@
     "agent_stopped": "Выкл.",
     "agent_start": "Включить",
     "agent_stop": "Усыпить",
+    "agent_wake": "Разбудить",
+    "sleep_failed": "Не удалось изменить режим сна на серверах: {{count}}.",
     "add_server_title": "Добавить ещё сервер Discord",
     "add_server_desc": "Получите новый код и введите его на другом сервере Discord, чтобы подключить и его к этому ПК.",
     "connection_info": "Сведения о подключении",

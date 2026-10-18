@@ -756,6 +756,8 @@
     "agent_stopped": "Aus",
     "agent_start": "Einschalten",
     "agent_stop": "Schlafen legen",
+    "agent_wake": "Aufwecken",
+    "sleep_failed": "Schlafmodus konnte auf {{count}} Server(n) nicht geändert werden.",
     "add_server_title": "Weiteren Discord-Server hinzufügen",
     "add_server_desc": "Hol dir einen neuen Code und gib ihn auf einem anderen Discord-Server ein, um auch diesen mit diesem PC zu verbinden.",
     "connection_info": "Verbindungsdetails",
