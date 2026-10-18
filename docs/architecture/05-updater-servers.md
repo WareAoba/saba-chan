@@ -126,6 +126,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 - `UpdateManager::verify_integrity` (`lib.rs:469-473`)는 `integrity::verify_installed`를 부른다. 업데이터가 적용할 때 zip에서 푼 파일마다 SHA-256을 `<data_dir>/installed-files.json`에 적어 두고(`record_install`, `integrity.rs:104-121`), 검사는 그 기록과 지금 파일만 비교한다. 네트워크를 쓰지 않는다(`integrity.rs:1-6`).
 - 결과 상태는 `Verified`, `Tampered`, `FileNotFound`, `Error` 중 하나다(`integrity.rs:45-55`). 설치기로 처음 깐 컴포넌트는 기록이 없어 결과에 나오지 않는다.
+- `installed-files.json`, `official-components.json`, `installed-manifest.json`은 같은 폴더의 임시 파일에 쓴 뒤 이름을 바꿔 통째로 바꾼다(`lib.rs` `write_atomic`). 고쳐 쓸 때 기존 파일을 읽거나 해석할 수 없으면 덮어쓰지 않고 오류를 낸다(다른 컴포넌트의 기록을 지우지 않게). 기록하는 쪽은 경고만 남기고 적용·설치는 그대로 성공한다.
 - ~~**해시 의미 불일치**: manifest의 zip 해시를 압축을 푼 파일과 비교해 항상 `Tampered`가 된다~~ → 해결: manifest 해시는 다운로드 검증에만 쓰고, 무결성 검사는 설치 때 기록한 파일 해시를 본다(`integrity.rs:1-6`).
 - 다운로드는 해시를 확인한다: `download_verified`가 받은 파일의 sha256을 manifest 값과 대조하고(`lib.rs:673, 727`), 적용 직전에 staging 파일을 다시 대조한다(`lib.rs:876-886`). 응답 머리나 다음 조각이 30초(`download::IDLE_TIMEOUT`) 동안 오지 않으면 끊고, manifest의 `size_bytes`보다 많이 오면 끊는다. `<이름>.part`에 받아 다 맞을 때만 이름을 바꾸므로, 다시 받다 실패해도 이미 받아 둔 파일은 그대로다(`download.rs`).
 - daemon API는 `GET /api/updates/integrity`이다(`src/ipc/updates.rs:115, 814`).

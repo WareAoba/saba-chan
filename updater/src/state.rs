@@ -140,38 +140,43 @@ impl UpdateManager {
 
     /// 로컬 설치 매니페스트 로드 — 설치된 컴포넌트 버전 맵 반환
     pub fn load_installed_manifest() -> HashMap<String, String> {
-        let path = Self::installed_manifest_path();
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(manifest) = serde_json::from_str::<HashMap<String, String>>(&content) {
-                tracing::debug!("[UpdateManager] Loaded installed manifest: {} components", manifest.len());
-                return manifest;
-            }
-        }
-        HashMap::new()
+        let manifest: HashMap<String, String> =
+            crate::read_json(&Self::installed_manifest_path()).ok().flatten().unwrap_or_default();
+        tracing::debug!("[UpdateManager] Loaded installed manifest: {} components", manifest.len());
+        manifest
+    }
+
+    /// 고쳐 쓰기 전에 읽는다. 읽을 수 없는 기록을 새 값 몇 개로 덮어쓰면 다른 컴포넌트의 버전이 사라진다
+    fn read_installed_manifest(path: &Path) -> Result<HashMap<String, String>> {
+        Ok(crate::read_json(path).map_err(anyhow::Error::msg)?.unwrap_or_default())
     }
 
     /// 로컬 설치 매니페스트 저장
     pub fn save_installed_manifest(versions: &HashMap<String, String>) -> Result<()> {
-        let path = Self::installed_manifest_path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        Self::save_installed_manifest_at(&Self::installed_manifest_path(), versions)
+    }
+
+    fn save_installed_manifest_at(path: &Path, versions: &HashMap<String, String>) -> Result<()> {
         let json = serde_json::to_string_pretty(versions)?;
-        std::fs::write(&path, json)?;
+        crate::write_atomic(path, json.as_bytes())?;
         tracing::info!("[UpdateManager] Saved installed manifest: {} components -> {:?}", versions.len(), path);
         Ok(())
     }
 
     /// 특정 컴포넌트의 설치 버전을 업데이트하고 매니페스트 저장
     pub fn update_installed_version(component_key: &str, version: &str) -> Result<()> {
-        let mut manifest = Self::load_installed_manifest();
+        Self::update_installed_version_at(&Self::installed_manifest_path(), component_key, version)
+    }
+
+    fn update_installed_version_at(path: &Path, component_key: &str, version: &str) -> Result<()> {
+        let mut manifest = Self::read_installed_manifest(path)?;
         manifest.insert(component_key.to_string(), version.to_string());
-        Self::save_installed_manifest(&manifest)
+        Self::save_installed_manifest_at(path, &manifest)
     }
 
     /// apply 성공 후 적용된 컴포넌트들의 버전을 일괄 업데이트
     pub fn update_installed_versions_batch(&self, applied_keys: &[String]) -> Result<()> {
-        let mut manifest = Self::load_installed_manifest();
+        let mut manifest = Self::read_installed_manifest(&Self::installed_manifest_path())?;
         let mut updated = false;
 
         for comp in &self.status.components {
@@ -209,4 +214,25 @@ impl UpdateManager {
     // ══════════════════════════════════════════════════════
     // 버전 의존성 확인
     // ══════════════════════════════════════════════════════
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 읽을 수 없는 설치 버전 기록을 새 키 하나만으로 덮어쓰면 다른 컴포넌트의 버전이 모두 사라진다
+    #[test]
+    fn an_unreadable_installed_manifest_is_not_overwritten() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("installed-manifest.json");
+        std::fs::write(&path, b"{\"gui\": \"0.1").unwrap();
+        assert!(UpdateManager::update_installed_version_at(&path, "saba-core", "0.2.0").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"{\"gui\": \"0.1");
+
+        std::fs::remove_file(&path).unwrap();
+        UpdateManager::update_installed_version_at(&path, "saba-core", "0.2.0").unwrap();
+        UpdateManager::update_installed_version_at(&path, "gui", "0.2.1").unwrap();
+        let saved: HashMap<String, String> = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved.len(), 2);
+    }
 }

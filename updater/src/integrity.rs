@@ -95,10 +95,7 @@ fn records_path() -> PathBuf {
 }
 
 fn load_records(path: &Path) -> InstalledFiles {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    crate::read_json(path).ok().flatten().unwrap_or_default()
 }
 
 /// 적용한 컴포넌트의 파일 해시를 기록한다. 같은 컴포넌트의 이전 기록은 바꾼다
@@ -111,13 +108,11 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
     for file in files {
         hashes.insert(file.to_string_lossy().to_string(), compute_sha256(file)?);
     }
-    let mut records = load_records(path);
+    // 읽을 수 없는 기록을 이 키 하나로 덮어쓰면 다른 컴포넌트의 기록이 사라진다
+    let mut records: InstalledFiles = crate::read_json(path)?.unwrap_or_default();
     records.insert(component_key.to_string(), hashes);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// 폴더째 설치한 컴포넌트(익스텐션 스토어 설치 등)의 모든 파일을 기록한다
@@ -156,10 +151,7 @@ fn official_path() -> PathBuf {
 }
 
 fn load_official(path: &Path) -> BTreeSet<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    crate::read_json(path).ok().flatten().unwrap_or_default()
 }
 
 /// 이 컴포넌트를 서명된 카탈로그에서 받았는지 적는다. 다른 곳에서 다시 깔면 false로 지운다
@@ -168,16 +160,13 @@ pub fn set_official(component_key: &str, official: bool) -> Result<(), String> {
 }
 
 fn set_official_at(path: &Path, component_key: &str, official: bool) -> Result<(), String> {
-    let mut keys = load_official(path);
+    let mut keys: BTreeSet<String> = crate::read_json(path)?.unwrap_or_default();
     let changed = if official { keys.insert(component_key.to_string()) } else { keys.remove(component_key) };
     if !changed {
         return Ok(());
     }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let json = serde_json::to_string_pretty(&keys).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// Python이 불러올 수 있는 파일. 설치 기록에 없는 것이 폴더에 생기면 "modified"
@@ -501,6 +490,23 @@ mod tests {
         let report = verify_records(&load_records(&records));
         assert_eq!(report.components[0].status, IntegrityStatus::FileNotFound);
         assert_eq!(report.overall, OverallIntegrity::Partial);
+    }
+
+    /// 읽을 수 없는 기록 파일을 새 키 하나만으로 덮어쓰면 다른 컴포넌트의 기록이 모두 사라진다
+    #[test]
+    fn an_unreadable_record_file_is_not_overwritten() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("a.py");
+        std::fs::write(&file, b"x").unwrap();
+        let records = tmp.path().join("installed-files.json");
+        let official = tmp.path().join("official-components.json");
+        std::fs::write(&records, b"{\"module-a\": {").unwrap();
+        std::fs::write(&official, b"[\"module-a\"").unwrap();
+
+        assert!(record_install_at(&records, "module-b", std::slice::from_ref(&file)).is_err());
+        assert!(set_official_at(&official, "module-b", true).is_err());
+        assert_eq!(std::fs::read(&records).unwrap(), b"{\"module-a\": {");
+        assert_eq!(std::fs::read(&official).unwrap(), b"[\"module-a\"");
     }
 
     #[test]

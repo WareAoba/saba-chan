@@ -48,6 +48,35 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use version::SemVer;
 
+/// 같은 폴더의 임시 파일에 쓰고 이름을 바꿔 `path`를 통째로 바꾼다. 쓰다 끊겨도 반쯤 쓰인 파일이 남지 않는다
+pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dir)?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dir.join(format!(".{}.{}-{}.tmp", name, std::process::id(), seq));
+    let written = std::fs::File::create(&tmp).and_then(|mut f| {
+        f.write_all(contents)?;
+        f.sync_all()
+    });
+    let result = written.and_then(|_| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// JSON 파일을 읽는다. 없으면 `None`. 읽거나 해석할 수 없으면 오류: 고쳐 쓰는 쪽이 덮어쓰지 않게
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> std::result::Result<Option<T>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str(&text).map(Some).map_err(|e| format!("{}: {}", path.display(), e)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{}: {}", path.display(), e)),
+    }
+}
+
 // ══════════════════════════════════════════════════════
 // 다운로드 진행률
 // ══════════════════════════════════════════════════════
