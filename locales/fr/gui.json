@@ -783,6 +783,7 @@
     "members_loading": "Chargement des membres…",
     "members_empty": "Impossible de charger les membres. Vérifiez que le relais de commandes est activé, puis actualisez.",
     "members_refresh_failed": "Impossible d'actualiser la liste des membres. La liste affichée est plus ancienne.",
+    "members_partial": "Impossible d'obtenir la liste complète des membres Discord : seuls les membres ayant des permissions sont affichés.",
     "member_all": "Toutes les commandes",
     "member_restricted": "Restreint · {{count}} bloquées",
     "back_to_members": "Membres",
@@ -924,6 +925,7 @@
       "refresh": "Intervalle d'actualisation du lecteur",
       "range": "Saisis un nombre entier de {{min}} à {{max}}.",
       "not_synced": "Enregistré, mais pas encore appliqué sur Discord. Ce sera fait à la prochaine connexion.",
+      "not_loaded": "Impossible de lire les paramètres de ce serveur depuis le relais. Les valeurs affichées sont celles par défaut et ne peuvent pas être modifiées. Rechargez une fois connecté.",
       "err_not_paired": "Ce serveur n'est pas appairé.",
       "err_invalid": "Valeur non valide : {{field}}",
       "err_generic": "Impossible de modifier les paramètres du bot."

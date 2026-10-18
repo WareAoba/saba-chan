@@ -187,6 +187,21 @@ describe('DiscordPage', () => {
         expect(screen.getByText('민트')).toBeTruthy();
     });
 
+    it('디스코드 전체 목록 대신 권한 멤버만 왔으면(partial) 일부 목록이라고 알린다', async () => {
+        window.api.relayListNodeMembers = vi.fn().mockResolvedValue({
+            members: [{ id: 'u1', username: 'mint', displayName: '민트' }],
+            partial: true,
+            reason: 'bot_unavailable',
+        });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(4));
+        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
+        await act(async () => fireEvent.click(nodeRow));
+        await act(async () => fireEvent.click(document.querySelectorAll('.segmented-item')[1]));
+        await waitFor(() => expect(screen.getByText('민트')).toBeTruthy());
+        expect(screen.getByText(/only members with permissions are shown/)).toBeTruthy();
+    });
+
     it('연결된 상태에서 노드 목록만 실패해도 실패를 알린다', async () => {
         window.api.relayListHostNodes = vi.fn().mockResolvedValue({ error: 'unauthorized' });
         await act(async () => render(<Harness save={vi.fn()} />));

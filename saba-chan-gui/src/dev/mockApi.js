@@ -631,15 +631,27 @@ const impl = {
         return ok({ success: true });
     },
     relayListNodeMembers: (guildId) =>
+        ok({
+            members:
+                guildId === 'guild-1'
+                    ? [
+                          { id: 'u-1', username: 'wareaoba', displayName: '아오바' },
+                          { id: 'u-2', username: 'mint', displayName: '민트' },
+                          { id: 'u-3', username: 'newbie01', displayName: '뉴비' },
+                          { id: 'u-4', username: 'sabafan', displayName: '사바팬' },
+                      ]
+                    : [{ id: 'u-1', username: 'wareaoba', displayName: '아오바' }],
+            partial: false,
+        }),
+    relayListLegacyMembers: (guildId) =>
         ok(
             guildId === 'guild-1'
                 ? [
                       { id: 'u-1', username: 'wareaoba', displayName: '아오바', level: 2 },
                       { id: 'u-2', username: 'mint', displayName: '민트', level: 2 },
-                      { id: 'u-3', username: 'newbie01', displayName: '뉴비', level: 0 },
                       { id: 'u-4', username: 'sabafan', displayName: '사바팬', level: 1 },
                   ]
-                : [{ id: 'u-1', username: 'wareaoba', displayName: '아오바' }],
+                : [],
         ),
     relayBotInvite: () => ok({ url: 'https://discord.com/oauth2/authorize?client_id=0&scope=bot' }),
     relayInitiatePairing: () =>

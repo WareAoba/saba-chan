@@ -783,6 +783,7 @@
     "members_loading": "Mitglieder werden geladen…",
     "members_empty": "Mitglieder konnten nicht geladen werden. Stelle sicher, dass die Befehlsweiterleitung an ist, und aktualisiere dann.",
     "members_refresh_failed": "Die Mitgliederliste konnte nicht aktualisiert werden. Die angezeigte Liste ist älter.",
+    "members_partial": "Die vollständige Discord-Mitgliederliste konnte nicht geladen werden. Es werden nur Mitglieder mit Berechtigungen angezeigt.",
     "member_all": "Alle Befehle",
     "member_restricted": "Eingeschränkt · {{count}} gesperrt",
     "back_to_members": "Mitglieder",
@@ -924,6 +925,7 @@
       "refresh": "Aktualisierungsintervall des Players",
       "range": "Gib eine ganze Zahl von {{min}} bis {{max}} ein.",
       "not_synced": "Gespeichert, aber noch nicht in Discord übernommen. Wird bei der nächsten Verbindung übernommen.",
+      "not_loaded": "Die Einstellungen dieses Servers konnten nicht vom Relay gelesen werden. Die angezeigten Werte sind Standardwerte und können nicht geändert werden. Nach dem Verbinden neu laden.",
       "err_not_paired": "Dieser Server ist nicht gekoppelt.",
       "err_invalid": "Ungültiger Wert: {{field}}",
       "err_generic": "Bot-Einstellungen konnten nicht geändert werden."
