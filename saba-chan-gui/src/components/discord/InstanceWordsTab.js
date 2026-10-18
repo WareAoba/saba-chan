@@ -68,8 +68,13 @@ function InstanceCard({ guildId, inst, onSaved }) {
         setBusy(true);
         try {
             const res = await window.api.guildInstanceWordsSave(guildId, inst.id, draft);
-            if (res?.error_code === 'validation_failed') setErrors(errorsByField(res.details));
-            else if (failed(res))
+            if (res?.error_code === 'validation_failed') {
+                const byField = errorsByField(res.details);
+                setErrors(byField);
+                // 본문 모양 문제(`input`)는 칸이 없으므로 알림으로 보인다
+                if (byField.input)
+                    safeShowToast(t('discord.iw_save_failed', { error: res.error || 'input' }), 'error', 5000);
+            } else if (failed(res))
                 safeShowToast(t('discord.iw_save_failed', { error: res?.error || '-' }), 'error', 5000);
             else {
                 setErrors({});
