@@ -29,7 +29,7 @@
     │  bot → POST /api/command (x-internal-secret, SELF_URL 루프백)
     │  PostgreSQL command_queue 에 적재 → pollWaiters.wake(hostId)
     ▼
-GET /poll (long-poll 25s, HMAC 서명)  ◄──── [saba-core 안의 relay agent (src/relay_agent.rs)]
+GET /poll (long-poll 25s, 노드 토큰)  ◄──── [saba-core 안의 relay agent (src/relay_agent.rs)]
 POST /result/:id                     ────►   (Discord에 로그인하지 않음)
 POST /heartbeat (60s)                         │ raw_command → crate::chat (같은 프로세스)
 POST /events (알림, I3)
@@ -41,7 +41,7 @@ POST /events (알림, I3)
 [GUI/CLI] ──► daemon /api/relay/* (pairing·host/node 조회 proxy, relay.rs) ──► relay /api/pair/*, /api/hosts/*, /api/nodes/*
 ```
 
-- 로컬 Discord bot(`discord_bot/`, local 모드)은 없어졌다. Discord bot은 server-chan 쪽 중앙 bot 하나뿐이다(`server-chan(git)/relay-server/src/bot/index.ts`).
+- 로컬 Discord bot(`discord_bot/`, local 모드)은 없어졌다. Discord bot은 server-chan 쪽 중앙 bot 하나뿐이다(`server-chan/relay-server/src/bot/`).
 - saba-chan 쪽 실행기는 daemon 안의 relay agent다. 받은 `raw_command`를 `crate::chat::api::run_with_daemon_settings`로 처리해 답한다(`relay_agent.rs:388-404`).
 - 운영 쪽 부가 구성요소(music-server, chatbot-server)는 server-chan 비공개 문서에서 다룬다(§5).
 
@@ -241,79 +241,87 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 
 ---
 
-## 4. Relay server (server-chan, git 저장소)
+## 4. Relay server (server-chan, 비공개 저장소)
 
-> ⚠️ 프레임워크는 **Fastify 5**다(`relay-server/package.json`: fastify, @fastify/helmet/cors/rate-limit, drizzle-orm+postgres, argon2, discord.js 14, zod). "Hono"가 아니다. DB는 PostgreSQL, ORM은 drizzle이며 기동할 때 `./drizzle`을 자동 migrate한다(`src/index.ts:113-120`).
+> server-chan `main` 기준(2026-10-18). 프레임워크는 **Fastify 5**, DB는 PostgreSQL + drizzle이고, 기동할 때 `./drizzle`(0000–0020)을 자동 migrate한다(`src/index.ts`). 앱 조립은 `src/app.ts` `buildApp`, 디스코드 봇은 같은 프로세스의 `src/bot/`, 챗봇은 `src/chatbot/`이다. **단일 인스턴스 전제**다: poll·result 대기열, 노드 토큰 검증 캐시, 레이트리밋 카운터, 봇 캐시(prefix·잠자기·언어), 음악·공지·챗봇 진행 상태는 프로세스 메모리에 있고 재시작하면 DB에서 다시 채우거나 사라진다(`src/index.ts` 머리 주석).
 
 ### 4.1 전역 동작
 
-- `onRequest` 훅(`src/index.ts:139-146`): `/health`를 빼고, `X-Saba-Client: 1` 헤더나 `x-internal-secret` 헤더(**값과 상관없이 존재만 확인**)가 없으면 444를 돌려준다. nginx의 `map $http_x_saba_client`(git `deploy/nginx/nginx.conf:31`)와 함께 2중 필터를 이룬다.
-- CORS는 `app://`, `tauri://`, 그리고 dev 모드의 localhost만 허용한다(`index.ts:79-104`).
-- rate limit은 전역 100/min이고, 라우트별 설정은 `middleware/rateLimit.ts:8-29`에 있다.
-- 프로덕션 필수 env: `RELAY_INTERNAL_SECRET`, `DISCORD_TOKEN`, `DATABASE_URL`, `SELF_URL`(`index.ts:27-35`).
-- **인증 3종**
-  - `authenticateNode` (`middleware/auth.ts:65-158`): `Authorization: Bearer sbn_<hostId>.<secret>` → DB `hosts.token_hash`를 argon2id로 검증(5분 캐시) → `x-request-timestamp` ±30초 → `x-request-nonce` 재사용 검사(**선택 사항**: 없으면 경고만, `auth.ts:120-130`) → `x-request-signature = hex(HMAC-SHA256(secret, METHOD\nreq.url\nts\nnonce\nJSON.stringify(body)))`. `req.node={id:hostId}`를 설정한다.
-  - `verifyInternal` (`middleware/internalAuth.ts:17-27`): `x-internal-secret`을 `RELAY_INTERNAL_SECRET`과 상수시간 비교한다. **시크릿을 설정하지 않으면 그냥 통과한다(dev)**.
-  - `authenticateNodeOrInternal` (`auth.ts:174-201`): internal 헤더를 먼저 보고, 없으면 node 토큰을 본다. 둘 다 없으면 시크릿 미설정 시 통과, 아니면 401이다.
-- 토큰 형식: `sbn_{nodeId}.{nanoid(48)}`. 여기서 nodeId는 사실 **hostId(nanoid 12)**다(`services/nodeToken.ts:9-20`). 같은 대상을 "node"와 "host"라는 두 이름으로 부르고 있다.
+- 클라이언트 게이트(`app.ts` `clientGate`): `X-Saba-Client: 1`이 없는 브라우저 접속에 안내 페이지(403/404 HTML)를 보여 준다. 보안 장치가 아니라 안내용이다. `/admin`, `/api/bot-invite`, 컨테이너 프로브용 `/health`, 내부 스크립트 호출은 통과한다.
+- CORS는 `app://`, `tauri://`, 웹사이트 origin, dev 모드의 localhost, `CORS_ORIGINS`만 허용한다.
+- 레이트리밋은 전역 100/min이고 라우트별 값은 `middleware/rateLimit.ts` `ROUTE_RATE_LIMITS`에 있다. 노드 경로(`/poll`, `/heartbeat`, `/events`, `/result/:id`)는 한 번 검증된 토큰이면 노드 단위로, 아니면 IP로 센다.
+- 프로덕션 필수 env: `RELAY_INTERNAL_SECRET`, `ADMIN_PAGE_KEY`, `DISCORD_TOKEN`, `DATABASE_URL`, `SELF_URL`. 없으면 기동하지 않는다.
+- 프로덕션의 5xx 응답은 내부 메시지 없이 `INTERNAL_SERVER_ERROR`만 돌려준다.
+- **인증 4종**
+  - 노드 토큰 `authenticateNode`(`middleware/auth.ts`): `Authorization: Bearer sbn_<hostId>.<secret>`를 DB `hosts.token_hash`(argon2id)로 검증하고 5분 캐시한다. `req.node = {id: hostId}`. 데몬이 함께 보내는 `x-request-timestamp`·`x-request-nonce`·`x-request-signature`는 받아들이되 검증하지 않는다(키가 같은 요청의 토큰이라 TLS 위에서 더하는 보호가 없다).
+  - 내부 시크릿 `verifyInternal`(`middleware/internalAuth.ts`): `x-internal-secret`을 `RELAY_INTERNAL_SECRET`과 상수시간 비교한다. 릴리즈 스크립트·봇 상태 조회용.
+  - 노드 또는 내부 `authenticateNodeOrInternal`: 노드 토큰이면 자기 호스트(`isForeignHost`)와 그 호스트의 길드만 다룬다.
+  - 관리자 키 `verifyAdmin`: `x-admin-key`를 `ADMIN_PAGE_KEY`와 비교한다. 키가 비어 있으면 항상 거부한다.
+- 토큰 형식: `sbn_{hostId}.{nanoid(48)}`(`services/nodeToken.ts`). 코드에서 "node"와 "host"가 같은 대상을 가리키는 곳이 남아 있다(`req.node.id`는 hostId다).
+- zod 스키마는 `middleware/schemas.ts` 한 곳에 있다.
 
-### 4.2 HTTP API 표 (git HEAD)
+### 4.2 HTTP API 표
 
-| Method | Path | Auth | Body / Query | Response | 위치 |
+| Method | Path | 인증 | Body / Query | 응답 | 위치 |
 |---|---|---|---|---|---|
-| GET | `/info` | (X-Saba-Client) | — | `{name, version, apiVersion:2, minAgentVersion:'0.1.0'}` | `index.ts:157-162` |
-| GET | `/health` | 없음 | — | `{status, uptime, db}` 200/503 | `index.ts:165-176` |
-| GET | `/bot-status` | internal | — | `{connected,…}` | `index.ts:179` |
-| POST | `/api/pair/initiate` | 없음(rate 10/min) | `{relayUrl?}` | `{code(nanoid32), pollSecret(nanoid48), expiresAt, ttl:300}`. pollSecret은 sha256으로 저장 | `routes/pair.ts:17-50` |
-| GET | `/api/pair/:code/status` | pollSecret (`X-Poll-Secret` 헤더 우선, `?secret=` 하위호환) | — | `pending`이면 `{status, expiresAt}` / `expired` / `claimed`이면 `{status, hostId, nodeToken}`. **nodeToken은 원자적 UPDATE로 1회만 반환** | `pair.ts:54-136` |
-| POST | `/api/pair/:code/claim` | internal | `{discordId, username, name?, guildId?, guildName?, locale?}` | `{ok, hostId, guildId, nodeCreated, message}`. 트랜잭션 + `FOR UPDATE`, 5회 시도 제한. 기존 host는 토큰을 재발급한다 | `pair.ts:139-266` |
-| DELETE | `/api/pair/cleanup` | internal | — | `{cleaned:true}` | `pair.ts:269-285` |
-| POST | `/api/hosts/:hostId/rotate-token` | internal | `{discordId}`(owner여야 함) | `{hostId, token, warning}` | `routes/host.ts:11-45` |
-| GET | `/api/hosts/:hostId` | node(자기 host만) 또는 internal | — | `{id,name,status,lastHeartbeat,agentVersion,createdAt}` | `host.ts:48-71` |
-| GET | `/api/hosts/:hostId/metadata` | node/internal | — | heartbeat metadata(JSON) | `host.ts:74-93` |
-| PATCH | `/api/hosts/:hostId/bot-config` | internal | `{prefix?, moduleAliases?, commandAliases?}` | `{success, botConfig}` | `host.ts:96-128` |
-| POST | `/api/nodes` | internal | `{guildId, guildName?, hostId, ownerDiscordId}` | `{guildId,hostId,status:'created'}` / 403 / 409 | `routes/node.ts:30-74` |
-| GET | `/api/nodes/:guildId` | internal | — | node row | `node.ts:77-93` |
-| GET | `/api/nodes/:guildId/metadata` | internal | — | `{hostId, hostStatus, …metadata}` | `node.ts:96-121` |
-| GET | `/api/hosts/:hostId/nodes` | node(자기 host)/internal | — | node[] | `node.ts:124-145` |
-| GET | `/api/nodes/:guildId/members` | node(자기 host의 길드)/internal | — | `[{id,username,displayName,level}]` (node_permissions) | `node.ts:148-184` |
-| GET | `/api/nodes/:guildId/discord-members` | node/internal | — | bot이 실시간으로 조회한 길드 멤버. bot이 없으면 503 `BOT_UNAVAILABLE` | `node.ts:187-214` |
-| GET/PATCH | `/api/nodes/:guildId/settings` | node/internal | PATCH `{locale?: 'auto'\|태그, sleeping?, musicEnabled?, musicUIEnabled?, musicSettings?: {queueLines 1-20, refreshInterval 2000-10000, normalize}, language?}`(준 키만, `musicSettings`는 키별로 합친다) | `{guildId, locale, sleeping, musicEnabled, musicUIEnabled, musicSettings}`. 원본은 데몬 `nodeSettings[g].discord`(I2)이고 데몬만 보낸다. 디스코드의 `/언어`·`/코코낸내`·`/기상`·`/음악 기능\|플레이어`는 데몬 액션 `discord.settings.set`을 부른다 (server-chan #36) | `node.ts` |
-| GET/PUT | `/api/nodes/:guildId/channels` | node/internal | PUT `{chatbot?: string[](≤20), music?: string\|null, notify?: string\|null}` | `{guildId, chatbot, music, notify, botAvailable, channels:[{id,name,category}]}`. `notify`는 알림 채널(I3, server-chan #39). 400 `INVALID_BODY`·`CHANNEL_CONFLICT`·`UNKNOWN_CHANNEL`(`channelId` 포함), 배정할 때 봇이 없으면 503 `BOT_UNAVAILABLE`. 한 채널은 한 종류만, 챗봇은 배정 채널에서만 답하고 음악 채널의 일반 메시지는 지운다 (server-chan PR #23) | `node.ts` |
-| DELETE | `/api/nodes/:guildId` | internal | `{discordId}`(owner) | `{status:'deleted'}` | `node.ts:217-237` |
-| POST | `/api/command` | internal | `{hostId?, guildId?, payload(1–50 keys), requestedBy?, channelId?, interactionToken?, requestId?}` | `{requestId, status:'queued'}`. host가 offline이거나 heartbeat가 3분 넘게 없으면 503 `HOST_OFFLINE` | `routes/command.ts:20-99` |
-| GET | `/api/command/:requestId/status` | internal | — | `{id,status,result,createdAt,completedAt}` | `command.ts:102-122` |
-| GET | `/poll` | node(HMAC) | — | `{commands:[{id,payload,requestedBy,guildId,channelId}]}` / 204 | `routes/poll.ts:8-112` |
-| POST | `/result/:requestId` | node(HMAC) | `{success:boolean, data:any(≤1MB)}` | `{status:'ok'}` / 404 / 409 | `routes/result.ts:6-85` |
-| POST | `/heartbeat` | node(HMAC), body ≤5MB, 4/min | `{agentVersion?, os?, metadata?{modules[], servers[], moduleDetails{}, botConfig?}}` | `{status:'ok', warning?:'UPDATE_REQUIRED', minVersion?}` | `routes/heartbeat.ts:23-73` |
+| GET | `/info` | — | — | `{name, version, apiVersion:2, minAgentVersion:'0.1.0'}` | `app.ts` |
+| GET | `/health` | — | — | `{status, uptime, db}` 200/503 | `app.ts` |
+| GET | `/bot-status` | 내부 | — | 봇 연결 상태 | `app.ts` |
+| GET | `/api/bot-invite` | — | — | `{clientId, inviteUrl, bot}` / 503 `BOT_NOT_CONFIGURED` | `app.ts` |
+| POST | `/api/pair/initiate` | —(3/min) | `{relayUrl?}` | `{code(nanoid32), pollSecret(nanoid48), expiresAt, ttl:300}`. pollSecret은 sha256으로 저장 | `routes/pair.ts` |
+| GET | `/api/pair/:code/status` | `X-Poll-Secret` 헤더(30/min) | — | `{status:'pending', expiresAt}` / `expired` / `{status:'claimed', hostId, nodeToken}`. nodeToken은 1회만 준다. 헤더가 없으면 401 `MISSING_POLL_SECRET`, 틀리면 403 | `pair.ts` |
+| GET | `/api/hosts/:hostId` | 노드(자기 호스트)/내부 | — | `{id, name, status, lastHeartbeat, agentVersion, createdAt}` | `routes/host.ts` |
+| PATCH | `/api/hosts/:hostId/bot-config` | 노드/내부 | `{prefix?, moduleAliases?, commandAliases?}` | `{success, botConfig}`. 지금 데몬은 heartbeat `botConfig`로 보내므로 쓰지 않는다 | `host.ts` |
+| GET | `/api/hosts/:hostId/nodes` | 노드/내부 | — | `[{guildId, hostId, guildName, locale, createdAt, updatedAt}]` | `routes/node.ts` |
+| GET | `/api/nodes/:guildId/members` | 노드/내부(10/min) | — | `[{id, username, displayName, level}]`(`node_permissions` 캐시) | `node.ts` |
+| GET | `/api/nodes/:guildId/discord-members` | 노드/내부(5/min) | — | 봇이 조회한 길드 멤버. 봇이 없으면 503 `BOT_UNAVAILABLE` | `node.ts` |
+| GET/PATCH | `/api/nodes/:guildId/settings` | 노드/내부 | PATCH `{locale?: 'auto'\|태그, language?, sleeping?, musicEnabled?, musicUIEnabled?, musicSettings?: {queueLines 1-20, refreshInterval 2000-10000, normalize}}`(준 키만, `musicSettings`는 키별로 합친다) | `{guildId, locale, sleeping, musicEnabled, musicUIEnabled, musicSettings}`. 원본은 데몬 `nodeSettings[g].discord`(I2)이고 데몬만 보낸다. 디스코드의 `/언어`·`/코코낸내`·`/기상`·`/음악 기능\|플레이어`는 데몬 액션 `discord.settings.set`을 부른다 (server-chan #36) | `node.ts` |
+| GET/PUT | `/api/nodes/:guildId/channels` | 노드/내부 | PUT `{chatbot?: string[](≤20), music?: string\|null, notify?: string\|null}` | `{guildId, chatbot, music, notify, botAvailable, channels:[{id,name,category}]}`. `notify`는 알림 채널(I3, server-chan #39). 400 `INVALID_BODY`·`CHANNEL_CONFLICT`·`UNKNOWN_CHANNEL`(`channelId` 포함), 배정할 때 봇이 없으면 503 `BOT_UNAVAILABLE`. 한 채널은 한 종류만, 챗봇은 배정 채널에서만 답하고 음악 채널의 일반 메시지는 지운다 (server-chan PR #23) | `node.ts` |
+| GET/PUT/DELETE | `/api/nodes/:guildId/chatbot` | 노드/내부 | PUT 설정 일부, `apiKey`: 문자열=교체, null=삭제, 생략=유지(128KB) | 설정 + `hasApiKey`(키 자체는 돌려주지 않는다) | `chatbot/routes.ts` |
+| DELETE | `/api/nodes/:guildId/chatbot/memory` | 노드/내부 | — | 이 길드의 장기 기억 삭제 | `chatbot/routes.ts` |
+| GET | `/poll` | 노드(60/30s) | — | `{commands:[{id, payload, requestedBy, guildId, channelId}]}`(10건까지) / 204 | `routes/poll.ts` |
+| POST | `/result/:requestId` | 노드 | `{success:boolean, data}` | `{status:'ok'}` / 404 / 409 | `routes/result.ts` |
+| POST | `/heartbeat` | 노드(4/min), 5MB | `{agentVersion?, os?, metadata?}`(§4.4 (c)) | `{status:'ok', warning?:'UPDATE_REQUIRED', minVersion?}` | `routes/heartbeat.ts` |
+| POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}` | `routes/events.ts` |
+| GET | `/v1/updates/check` | — | `channel`(stable·beta·nightly), `platform`, `current`, `client_id` | `{upToDate:true}` / `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` | `routes/updates.ts`, §1.4 |
+| GET | `/v1/updates/manifest/:version` | — | `release?` | 서명된 manifest 원문 | `updates.ts` |
+| POST | `/v1/updates/event` | —, 4KB | `{anonId, phase, hostId?, fromVersion?, toVersion?, errorCode?, platform?}` | 204(익명 업데이트 텔레메트리) | `updates.ts` |
+| POST | `/admin/releases` | 내부, 256KB | `{version, channel, signedManifest, notes?, rolloutPercent?, isCritical?, minSupported?, assets[]}` | 201 `{id, version, channel, assets}` / 409 `RELEASE_ALREADY_EXISTS` | `updates.ts` |
+| PATCH | `/admin/releases/:id` | 내부 | `{rolloutPercent?, yanked?, isCritical?, notes?}` | 바뀐 릴리즈 | `updates.ts` |
+| GET | `/admin/api/service` | 관리자 키 | — | `{bot, connections, hosts, nodes, db}` | `routes/admin.ts` |
+| GET/POST | `/admin/api/broadcast` | 관리자 키(POST 5/10min) | POST `{message, deleteAfterSeconds?}` | 202 `{ok, job}` / 409 `BROADCAST_IN_PROGRESS` / 503 `BOT_OFFLINE` | `routes/announcement.ts` |
 
-zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
+데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
-### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000-0007)
+### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0020)
 
 | 테이블 | 주요 컬럼 |
 |---|---|
 | `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen |
-| `hosts` | `id` PK(nanoid12), `owner_discord_id` **UNIQUE**(사용자 1명당 host 1개) → users, name, `token_hash`(argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig), timestamps |
-| `nodes` | `guild_id` PK, `host_id` → hosts (cascade), owner_discord_id, guild_name, locale(default 'en'), `default_level`(1, 개별 레벨이 없는 멤버의 레벨. 데몬 값의 캐시) |
+| `hosts` | `id` PK(nanoid12), `owner_discord_id` **UNIQUE**(사용자 1명당 host 1개) → users, name, `token_hash`(argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig. 서버 항목은 `id`·`name`·`module`·`status`만 저장, server-chan #40), timestamps |
+| `nodes` | `guild_id` PK, `host_id` → hosts(cascade), owner_discord_id, guild_name, locale, `locale_source`(auto/manual), music_enabled, music_ui_enabled, music_settings jsonb, is_sleep, `default_level`(데몬 값의 캐시), `notify_channel_id`(I3), timestamps |
 | `node_permissions` | PK(guild_id, discord_id), level(-1=금지, 0=챗봇, 1=유저, 2=관리자), granted_by. 데몬 `nodeSettings[guild].members`의 캐시(릴레이 바깥 검사용) |
-| `command_queue` | id PK, host_id, guild_id, payload jsonb, requested_by, channel_id, interaction_token, status(pending→delivered→completed / timeout), created/delivered/completed/expires_at(+60s), result jsonb |
-| `pairing_codes` | code PK, expires_at(+5분), status, attempts, relay_url, claimed_by, host_id, **node_token(평문, 수령 즉시 NULL)**, claimed_at, poll_secret_hash |
-| `audit_logs` | serial id, timestamp, user_discord_id, host_id, guild_id, action, detail, result |
+| `command_queue` | id PK, host_id, guild_id, payload jsonb, requested_by, channel_id, status(pending→delivered→completed / timeout / error), created/delivered/completed/expires_at(+60s), result jsonb |
+| `pairing_codes` | code PK, expires_at(+5분), status, attempts, relay_url, claimed_by, host_id, node_token(수령하면 NULL), claimed_at, poll_secret_hash |
+| `announcement_settings` | guild_id PK, channel_id, subscribed_at |
+| `audit_logs` | serial id, timestamp, user_discord_id, host_id, guild_id, action, detail, result. 명령은 `requestId`만 남는다(내용은 데몬 감사에) |
+| `releases` / `release_assets` | 버전·채널·롤아웃·isCritical·minSupported·signed_manifest·notes·yanked / 컴포넌트·플랫폼·파일·크기·sha256 (§1.3) |
+| `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
+| `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
 
-정리 스케줄러(`services/cleanup.ts:16-48`): audit 30일, 완료된 큐 7일, 만료 큐는 timeout 처리, heartbeat가 3분 넘게 없는 host는 offline, pairing 코드는 1일 뒤 삭제.
+정리 스케줄러(`services/cleanup.ts`): 감사 30일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
 ### 4.4 프로토콜 흐름
 
-**(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시 → relay)
-1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs:288-309`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
-2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 내장 bot `handlePair`가 `SELF_URL/api/pair/:code/claim`을 x-internal-secret으로 루프백 호출한다(`bot/index.ts:479-529`). users upsert, hosts 생성 또는 토큰 재발급, guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 평문 저장.
-3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs:321-358`). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `%APPDATA%/saba-chan/.node_token`에 자동 저장**한다(`relay.rs:341-355`).
-4. daemon `GET/PUT/DELETE /api/config/node-token`(`ipc/mod.rs:705`, `handlers/config.rs:135-`)은 토큰 원문을 IPC로 그대로 반환한다.
+**(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시)
+1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
+2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급, guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다).
+3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다(#61). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `<data_dir>/.node_token`에 저장**한다.
+4. daemon `GET/PUT/DELETE /api/config/node-token`(`handlers/config.rs`)은 토큰 원문을 IPC로 그대로 반환한다.
 
 **(b) 명령 실행** (cloud 모드)
-1. Discord 사용자가 `<prefix> <text>`를 입력한다. prefix는 길드별 캐시이고 기본값은 `BOT_PREFIX` env 또는 `'사바쨩'`이다(`bot/index.ts:230,238-281`).
-2. `forwardCommand`(`bot/index.ts:730-800`)가 requestId를 먼저 만들고 `resultWaiters.wait(id, 30s)`를 등록한 뒤 `POST /api/command`를 부른다. payload는 `{action:'raw_command', text, via:'direct'|'chatbot', voiceChannelId?, userName?, guildName?}`이고, 큐 항목에는 노드 주인 `ownerDiscordId`도 실린다(P1). 데몬은 처음 받은 주인을 고정하고, 다른 값은 무시한다(`relay_agent.rs` `requester`, `chat::permissions::pin_owner`). `ownerDiscordId`가 있는데 `via`가 없으면 챗봇으로 본다. 두 이름은 감사 로그에 남길 디스코드 표시 이름·서버 이름(한 줄, 100자까지)이고, 권한 판단에는 쓰지 않는다(권한은 `requestedBy`·`guildId` id로만). `guildId`로 nodes를 조회해 hostId를 찾고, 큐에 INSERT한 뒤 `pollWaiters.wake(hostId)`를 호출한다.
+1. Discord 사용자가 `<prefix> <text>`를 입력한다. prefix는 길드별 캐시(heartbeat `botConfig`)이고 기본값은 `BOT_PREFIX` env 또는 `'!saba'`이다(`bot/state/nodeState.ts`). 길드 슬래시 명령(`/<서버> <명령>`)과 챗봇 `run_command`도 같은 경로로 간다.
+2. `dispatchCommand`·`sendToDaemon`(`bot/commands/dispatch.ts`)이 requestId를 먼저 만들고 `resultWaiters.wait(id, 30s)`를 등록한 뒤 `submitCommand`(`services/commandSubmission.ts`)로 큐에 넣는다. payload는 `{action:'raw_command', text, via:'direct'|'chatbot', voiceChannelId?, userName?, guildName?}`이고, 큐 항목에는 노드 주인 `ownerDiscordId`도 실린다(P1). 데몬은 처음 받은 주인을 고정하고, 다른 값은 무시한다(`relay_agent.rs` `requester`, `chat::permissions::pin_owner`). `ownerDiscordId`가 있는데 `via`가 없으면 챗봇으로 본다. 두 이름은 감사 로그에 남길 디스코드 표시 이름·서버 이름(한 줄, 100자까지)이고, 권한 판단에는 쓰지 않는다(권한은 `requestedBy`·`guildId` id로만). `guildId`로 nodes를 조회해 hostId를 찾고, 큐에 INSERT한 뒤 `pollWaiters.wake(hostId)`를 호출한다.
 3. daemon의 relay agent(`src/relay_agent.rs:326-386`)가 `GET /poll`을 계속 돌리고 있다. 서버는 즉시 pending 최대 10건을 조회해 `delivered`로 표시하고 반환한다. 없으면 **25초 대기**(`poll.ts:6`, `pollWaiters.wait`) 후 다시 조회하고, 그래도 없으면 204를 준다. 클라이언트 연결이 끊기면 abort한다. 잠자기는 길드 단위이고 릴레이가 그 길드의 명령을 받지 않는 것으로 처리한다(데몬 폴링은 멈추지 않는다).
 4. agent는 받은 `raw_command`마다 `crate::chat::api::run_with_daemon_settings`를 같은 프로세스에서 실행한다(`relay_agent.rs:388-404`). 접두사·별명·길드별 설정은 daemon의 bot config에서 읽는다(`chat/api.rs:117-122`). 답 텍스트를 `{success, data:{text}}`로 담아 `POST /result/:id`로 보낸다. 입력을 알아보지 못했으면(인스턴스를 못 찾음, 정의에 없는 명령, 모르는 낱말) `{success:false, data:{code:"INSTANCE_NOT_FOUND"|"UNKNOWN_COMMAND", error:<현지화 문구>, args:{name?, command?, help?}}}`로 보내고(정의에 없는 명령이면 `help`에 그 모듈의 명령 안내를 담아 릴레이가 덧붙인다), 릴레이는 이 코드를 보고 모델 해석기에 정확한 명령을 한 번 묻는다(`relay_agent.rs` `raw_command_result`, `chat::Reply`). 모듈 이름만 쓰면 실패가 아니라 명령 안내다. 권한이 모자라면 `code:"PERMISSION_DENIED"`, `args:{need, level, via?}`다. 모르는 action은 `{success:false, data:{error:"Unknown action: <action>"}}`다(릴레이가 이 문구로 옛 데몬을 알아본다).
    - `{action:'plan'|'run_plan'|'query', id, input?, instance?, planId?, locale?, via, userName?, guildName?}` (P2·P3, `relay_agent.rs` `action_request`): 액션 카탈로그. 판정·검증은 데몬이 한다(`crate::actions`). `via:'chatbot'`이면 액션 선언의 `surfaces`에 chatbot이 없을 때 레벨과 상관없이 `action_not_allowed`다. 확인이 필요한 액션(danger·관리)은 `plan` → `run_plan`만 받고, 바로 부르면 `confirm_required`다. `planId`는 만든 `guildId`·`requestedBy`에 묶여 10분 살고(`plan_not_yours`·`plan_expired`), 챗봇이 만든 계획은 확인한 사람이 보내도 챗봇 상한으로 판정한다. `query`는 `kind=query` 액션만 받는다(`not_a_query`). 원격 요청에는 세 가지를 더 지킨다: 결과에서 비밀값(`*_password`·`*_token`·`*_secret`, 모듈 password 형식 필드)을 어느 깊이에서든 지운다. `instance.settings.set`·`instance.create` 입력은 비밀값과 실행 관련 키(`executable_path`·`working_dir`·`instance_dir`·`extra_args`·`extension_data`·`rest_host`, 모듈의 file 형식·path 형식 필드, 형식·정규식 없이 실행 인자가 되는 text 필드)를 어느 깊이에서든 `invalid_input`으로 거부한다. 길드에 `allowedInstances`가 있으면 그 밖의 인스턴스는 `PERMISSION_DENIED`(`args.instance`)이고 `instance.list`도 그 목록으로 거른다. 성공은 `{success, data:<plan·run 응답>}`, 실패는 `{success:false, data:{code, error, args?, field?, reason?}}`. 문구는 `locale`로 만든다.
@@ -324,25 +332,24 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 
 **(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}, allowedInstances?:{<guildId>:[instance id]}, permissions:{<guildId>:{defaultLevel, members}}, actions:[{id, kind, risk, surfaces, scope, title:{<locale>:…}, input}], actionsTruncated?, language?}`이고(`language`는 GUI 언어, 10자까지. 언어가 `auto`인 길드가 따른다)(`actions`는 디스코드·챗봇 표면의 액션만, 64개·32768바이트까지, 넘으면 `actionsTruncated:true`)(`allowedInstances`는 `bot.node_settings[guild].allowedInstances` 목록이 있는 길드만, 없으면 제한 없음. `permissions`는 `nodeSettings`에 있는 모든 길드(값이 없으면 `{defaultLevel:1, members:{}}`)이고, 릴레이는 이 값으로 자기 캐시의 데몬 행을 맞춘다), 서버 목록의 각 줄은 relay가 읽는 `{id, name, module, status}`만 싣는다(설정값·경로·비밀번호는 싣지 않는다, `relay_agent.rs` `relay_server_entry`). 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
 
-**(d) Sleep/Wake**: 슬래시 `/사바쨩 코코낸내`/`기상`이 메모리의 `_pausedHosts`/`_pausedGuilds` Set을 토글한다(`bot/index.ts:76-81,647-720`).
+**(d) Sleep/Wake**: 원본은 데몬 `nodeSettings[g].discord.sleeping`이다. 슬래시 `/사바쨩 코코낸내`/`기상`은 데몬 액션 `discord.settings.set`을 부르고, 데몬이 `PATCH /api/nodes/:g/settings {sleeping}`으로 relay의 `nodes.is_sleep`과 메모리 `_pausedGuilds`를 맞춘다(`bot/commands/discordSettings.ts` `applyNodeSettings`). 잠든 길드는 명령·알림을 받지 않는다. 옛 데몬(액션을 모름)이면 relay에만 쓴다.
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 
-| daemon 라우트 (`ipc/mod.rs:740-749`) | relay 호출 | 서명 | 일치 |
+| daemon 라우트 | relay 호출 | 인증 | 일치 |
 |---|---|---|---|
-| GET `/api/relay/host/:id/status` | GET `/api/hosts/:id` | HMAC(Bearer, ts, nonce, sig) | ✓ (`relay.rs:188-219`) |
-| GET `/api/relay/host/:id/nodes` | GET `/api/hosts/:id/nodes` | HMAC | ✓ |
-| GET `/api/relay/node/:guild/members` | GET `/api/nodes/:g/discord-members`, 503이면 `/api/nodes/:g/members` | HMAC | ✓ (discord-members는 rate limit 5/min) |
+| GET `/api/relay/host/:id/status` | GET `/api/hosts/:id` | 노드 토큰 | ✓ |
+| GET `/api/relay/host/:id/nodes` | GET `/api/hosts/:id/nodes` | 노드 토큰 | ✓ |
+| GET `/api/relay/node/:guild/members` | GET `/api/nodes/:g/discord-members`, 503이면 `/api/nodes/:g/members` | 노드 토큰 | ✓ |
 | POST `/api/relay/pair/initiate` | POST `/api/pair/initiate` | 없음 | ✓ |
-| GET `/api/relay/pair/:code/status` | GET `/api/pair/:code/status` (`X-Poll-Secret` 헤더) | 없음 | ✓. GUI가 데몬에 주는 `?secret=`을 데몬이 헤더로 옮겨 보낸다 |
-| GET `/api/relay/bot-invite` | GET `/api/bot-invite` | 없음 | ✗ git HEAD의 relay에는 이 라우트가 없다(`relay.rs:265-284`) |
+| GET `/api/relay/pair/:code/status` | GET `/api/pair/:code/status` | `X-Poll-Secret` | ✓. GUI가 데몬에 주는 `?secret=`을 데몬이 헤더로 옮겨 보낸다(saba-chan #61). relay는 server-chan c3a3425부터 헤더만 받는다 |
+| GET `/api/relay/bot-invite` | GET `/api/bot-invite` | 없음 | ✓ |
 | GET `/api/relay/agent`, POST `.../agent/start`·`stop` | — (daemon 안의 relay agent 상태·제어) | — | — |
 
-- 서명 payload 형식(`METHOD\npath\nts\nnonce\nbody`)은 Rust(`relay.rs:102-137`, relay agent도 같은 `signed_headers`를 쓴다, `relay_agent.rs:179-189`)와 서버(`auth.ts:139-148`)가 같다. 서버는 `req.url`(query 포함)로 서명을 확인한다. daemon은 query 없이 서명하는데, 실제로 서명하는 요청에 query를 붙이지 않으므로 현재는 문제가 없다.
-- ~~daemon proxy의 `relayUrl` query/body override는 **임의의 URL로 Bearer node token과 HMAC 헤더를 보낼 수 있게 한다**~~ → 해결: 서명하는 프록시(host status·nodes·members)는 `signed_base`를 거쳐, 요청한 주소가 설정된 릴레이와 같거나 루프백(모의 릴레이)일 때만 따르고 아니면 설정된 릴레이로 보낸다(`relay.rs:45-67, 216, 228, 241`). ~~서명하지 않는 pairing·bot-invite는 `relayUrl`을 그대로 따라, 다른 릴레이가 준 노드 토큰을 저장할 수 있다~~ → 해결: 페어링 시작·상태와 bot-invite도 `signed_base`를 거친다(`relay.rs:271, 299, 327`, 59a93b8).
-- `/poll`, `/heartbeat`, `/result`는 daemon 안의 relay agent가 부른다. 릴레이 주소는 bot config의 `cloud.relayUrl`, 토큰은 `<data_dir>/.node_token`에서 읽는다(`relay_agent.rs:72-80`).
-- ~~relay의 `PATCH /api/hosts/:id/bot-config`를 GUI가 직접 호출해 항상 실패하고, 길드별 prefix가 언제나 기본값이다~~ → 해결: GUI는 bot config를 daemon에만 저장하고(`main.js:2857-2867`), agent heartbeat가 `botConfig`를 보낸다(`relay_agent.rs:313-321`). relay는 heartbeat metadata를 `hosts.metadata`에 저장하고 bot이 거기서 prefix를 읽는다(`heartbeat.ts:51-54`, `bot/index.ts:237-271`).
-- `result.ts:54-80`의 Discord interaction followup은 `interactionToken`이 있을 때만 동작한다. 그런데 `forwardCommand`가 이 값을 넣지 않으므로 죽은 경로다. 또 `data.message/status`를 읽는 반면 agent는 `data.text`를 보내서 필드도 맞지 않는다(`relay_agent.rs:399`).
+- 데몬은 노드 요청에 `x-request-timestamp`·`x-request-nonce`·`x-request-signature`(`METHOD\npath\nts\nnonce\nbody` HMAC)를 붙이지만, relay는 Bearer 토큰만 검증한다(§4.1).
+- 서명하는 프록시(host status·nodes·members)와 페어링·bot-invite는 `signed_base`를 거쳐, 요청한 주소가 설정된 릴레이와 같거나 루프백(모의 릴레이)일 때만 따르고 아니면 설정된 릴레이로 보낸다(`relay.rs` `signed_base`, 59a93b8).
+- `/poll`, `/heartbeat`, `/result`, `/events`는 daemon 안의 relay agent가 부른다. 릴레이 주소는 bot config의 `cloud.relayUrl`, 토큰은 `<data_dir>/.node_token`에서 읽는다(`relay_agent.rs`).
+- bot config(prefix·별명)는 GUI가 daemon에만 저장하고 agent heartbeat의 `botConfig`로 relay에 간다. relay는 heartbeat metadata를 `hosts.metadata`에 저장하고 봇이 거기서 prefix를 읽는다(`heartbeat.ts`, `bot/state/nodeState.ts`).
 - 권한 판정의 주체는 데몬이다(`chat/permissions.rs`, 01 문서 BotConfig 절). 설정이 없는 길드도 기본 레벨(유저)로 판정한다. relay의 `node_permissions`·`nodes.default_level`은 데몬 값의 캐시이고 relay 바깥 검사(`commandAccess.ts`)에 쓴다. `/사바쨩 권한` 명령은 `permission` action으로 데몬에 보낸다.
 
 ---
