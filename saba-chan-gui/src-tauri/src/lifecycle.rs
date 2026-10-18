@@ -144,6 +144,11 @@ impl Lifecycle {
     fn shows_running(&self, own_alive: bool) -> bool {
         own_alive || self.attached_daemon.load(Ordering::SeqCst)
     }
+
+    /// heartbeat가 본 데몬 응답 여부를 붙은 데몬 상태에 반영한다. 바뀌었으면 true (트레이를 다시 만든다)
+    fn note_reachable(&self, reachable: bool) -> bool {
+        self.attached_daemon.swap(reachable, Ordering::SeqCst) != reachable
+    }
 }
 
 /// 트레이에 보일 데몬 상태: 이 GUI가 띄운 데몬이 살아 있거나, 이미 떠 있던 데몬에 붙었다
@@ -505,11 +510,16 @@ fn start_heartbeat(app: &AppHandle) {
                 register_with_daemon(&app2).await;
                 continue;
             };
-            if let Err(e) = state
+            let res = state
                 .client
                 .post(&format!("/api/client/{id}/heartbeat"), &json!({}), 3000)
-                .await
-            {
+                .await;
+            // 연결이 안 되면 데몬이 없다: 이 GUI 밖에서 꺼진 데몬을 트레이가 실행 중으로 보이지 않게
+            let reachable = res.as_ref().err().is_none_or(|e| e.status.is_some());
+            if state.life.note_reachable(reachable) {
+                tray::update_menu(&app2);
+            }
+            if let Err(e) = res {
                 // 데몬이 재시작되었을 수 있으므로 재등록
                 if e.status == Some(404) || e.code == "ECONNREFUSED" {
                     tracing::warn!("[Heartbeat] Lost registration, re-registering...");
@@ -748,5 +758,20 @@ mod tests {
         life.attached_daemon.store(false, Ordering::SeqCst);
         assert!(!life.shows_running(false));
         assert!(life.shows_running(true));
+    }
+
+    #[test]
+    fn heartbeat_reachability_updates_the_attached_daemon() {
+        let life = Lifecycle::default();
+        life.attached_daemon.store(true, Ordering::SeqCst);
+        // 붙은 데몬이 이 GUI 밖에서 꺼지면 heartbeat가 알아채 트레이를 바꾼다
+        assert!(life.note_reachable(false));
+        assert!(!life.shows_running(false));
+        assert!(
+            !life.note_reachable(false),
+            "바뀐 것이 없으면 트레이를 다시 만들지 않는다"
+        );
+        assert!(life.note_reachable(true));
+        assert!(life.shows_running(false));
     }
 }
