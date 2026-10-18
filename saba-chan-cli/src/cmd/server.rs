@@ -1269,6 +1269,9 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
         &t!("set.done", name = sv.name, count = pairs.len()),
         &json!({ "success": true, "changed": patch, "response": r }),
     );
+    if r.get("synced").and_then(Value::as_bool) == Some(false) {
+        ctx.out.warn(&t!("set.sync_failed", error = s(&r, "sync_error")));
+    }
     if status_of(&runtime(ctx, &sv).await.unwrap_or(Value::Null)) == "running" {
         ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
     }
