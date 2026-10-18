@@ -559,6 +559,19 @@ impl Supervisor {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
+            // ── 중복 시작 방어: 추적 중인 PID가 살아 있으면 새로 띄우지 않는다 (추적을 덮어쓰지 않게) ──
+            if let Ok(existing_pid) = s.tracker.get_pid(&instance.id) {
+                if process::is_process_alive(existing_pid) {
+                    return Ok(json!({
+                        "success": true,
+                        "server": instance.name,
+                        "pid": existing_pid,
+                        "already_running": true,
+                        "message": format!("Server '{}' is already running with PID {}", instance.name, existing_pid)
+                    }));
+                }
+            }
+
             // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
             if let Some(blocked) = s.port_conflict_response(&instance) {
                 return Ok(blocked);
@@ -3154,6 +3167,29 @@ mod tests {
 
         // cleanup
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    /// non-managed 시작도 추적 중인 PID가 살아 있으면 새로 띄우지 않고 추적을 덮어쓰지 않는다
+    #[tokio::test]
+    async fn test_start_non_managed_rejects_when_tracker_has_live_pid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        std::fs::create_dir_all(&instances_dir).unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
+        let mut inst = crate::instance::ServerInstance::new("NonManaged", "minecraft");
+        inst.id = "test-nm-guard".into();
+        supervisor.instance_store.add(inst).unwrap();
+        let current_pid = std::process::id();
+        supervisor.tracker.track("test-nm-guard", current_pid).unwrap();
+
+        let supervisor = tokio::sync::RwLock::new(supervisor);
+        let result = Supervisor::start_server(&supervisor, "test-nm-guard", "minecraft", json!({}))
+            .await
+            .expect("should return Ok, not Err");
+
+        assert_eq!(result["already_running"], true);
+        assert_eq!(result["pid"], current_pid);
+        assert_eq!(supervisor.read().await.tracker.get_pid("test-nm-guard").unwrap(), current_pid);
     }
 
     /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
