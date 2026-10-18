@@ -82,4 +82,41 @@ describe('사바쨩 말풍선', () => {
         await advance(400);
         expect(useSabaBubble.getState().bubble).toBeNull();
     });
+    it('붙잡힌 복구 중 말풍선을 졸린 사바쨩이 덮지 않고, 멈춤은 덮는다', async () => {
+        const emit = fakeStream();
+        useUIStore.setState({ backgroundDaemonStatus: 'stopped' });
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 } });
+        await act(async () => useUIStore.setState({ backgroundDaemonStatus: 'running' }));
+        expect(useSabaBubble.getState().bubble?.kind).toBe('recovering');
+
+        await emit({ type: 'instance.restart_failed', data: { instanceId: 'mc-1' } });
+        expect(useSabaBubble.getState().bubble?.kind).toBe('stopped');
+    });
+
+    it('넘어지기 전의 실행 상태가 남아 있어도 복구 중을 놓지 않는다', async () => {
+        useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Survival', status: 'running', start_time: 100 }] });
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 } });
+
+        // 목록이 아직 넘어지기 전 그대로 다시 들어온다
+        await act(async () => {
+            useServerStore.setState({
+                servers: [{ id: 'mc-1', name: 'Survival', status: 'running', start_time: 100 }],
+            });
+        });
+        await advance(6000);
+        await advance(400);
+        expect(useSabaBubble.getState().bubble).toMatchObject({ kind: 'recovering', released: false });
+
+        // 새로 켜졌으면(시작 시각이 바뀜) 놓는다
+        await act(async () => {
+            useServerStore.setState({
+                servers: [{ id: 'mc-1', name: 'Survival', status: 'running', start_time: 200 }],
+            });
+        });
+        await advance(400);
+        expect(useSabaBubble.getState().bubble).toBeNull();
+    });
 });

@@ -104,7 +104,9 @@
 /* 움직임 줄이기: 늘어나기·둥실은 빼고 조용히 나타났다 사라진다 */
 @media (prefers-reduced-motion: reduce) {
     .saba-bubble,
-    .saba-bubble.leaving {
+    .saba-bubble.leaving,
+    .saba-bubble .saba-art,
+    .saba-bubble-text {
         animation: none;
     }
 }
