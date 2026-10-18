@@ -283,10 +283,17 @@ def previous_release_candidates(releases: list[dict], current_tag: str) -> list[
         key = parse_tag_version(release.get("tag", ""))
         if key is None or key >= current:
             continue
-        if release.get("prerelease") and not current_is_pre:
+        # GitHub 표시가 빠졌어도 태그가 prerelease면 정식판에 쓰지 않는다
+        if (release.get("prerelease") or key[3] != (1,)) and not current_is_pre:
             continue
         picked.append((key, release))
     return [r for _, r in sorted(picked, key=lambda kr: kr[0], reverse=True)]
+
+
+def zip_has_root_file(path: Path, name: str) -> bool:
+    """zip 루트에 `name`이 있는지 (대소문자 무시, `\\` 구분자도 허용)"""
+    with zipfile.ZipFile(path) as zf:
+        return any(i.filename.replace("\\", "/").lower() == name.lower() for i in zf.infolist())
 
 
 def download_from_previous_release(
@@ -432,8 +439,9 @@ def main():
                     staged = find_raw_file([pattern])
                     if staged:
                         extra.append(str(staged))
-                    elif raw_file.suffix.lower() == ".zip":
-                        print(f"    ⚠ {pattern} not in staging — keeping the copy bundled in {raw_file.name}, if any")
+                    elif raw_file.suffix.lower() == ".zip" and all(
+                            zip_has_root_file(raw_file, b) for b in comp.get("bundles", [])):
+                        print(f"    {pattern} not in staging — using the copy bundled in {raw_file.name}")
                     else:
                         # exe만 올리면 데몬 옆에 있어야 할 파일이 빠진 채 서명된다
                         sys.exit(f"  ✗ {key}: {pattern} not in staging; upload it with {raw_file.name}")

@@ -34,8 +34,27 @@ class PreviousReleaseOrder(unittest.TestCase):
         releases = [rel("v0.2.0-beta.9", True), rel("v0.2.0-beta.10", True)]
         self.assertEqual(self.tags(releases, "v0.2.0-beta.11"), ["v0.2.0-beta.10", "v0.2.0-beta.9"])
 
+    def test_stable_release_skips_prerelease_tags_even_if_not_flagged(self):
+        releases = [rel("v0.1.6-beta.1", prerelease=False), rel("v0.1.5")]
+        self.assertEqual(self.tags(releases, "v0.1.6"), ["v0.1.5"])
+
     def test_unparseable_tags_are_skipped(self):
         self.assertEqual(self.tags([rel("nightly"), rel("v0.1.5")], "v0.1.6"), ["v0.1.5"])
+
+
+class CoreZipRunner(unittest.TestCase):
+    def zip_with(self, names):
+        import tempfile, zipfile
+        d = Path(tempfile.mkdtemp())
+        z = d / "saba-core.zip"
+        with zipfile.ZipFile(z, "w") as zf:
+            for n in names:
+                zf.writestr(n, b"x")
+        return z
+
+    def test_zip_must_carry_the_runner_at_its_root(self):
+        self.assertTrue(pr.zip_has_root_file(self.zip_with(["saba-core.exe", "saba-runner.exe"]), "saba-runner.exe"))
+        self.assertFalse(pr.zip_has_root_file(self.zip_with(["saba-core.exe", "x/saba-runner.exe"]), "saba-runner.exe"))
 
 
 if __name__ == "__main__":
