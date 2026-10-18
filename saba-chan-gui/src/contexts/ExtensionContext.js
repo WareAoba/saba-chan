@@ -106,6 +106,14 @@ export function ExtensionProvider({ children }) {
     const loadedRef = useRef(new Set());
     /** 로드된 익스텐션의 버전 추적 (핫로드 시 번들 무효화 판단용) */
     const loadedVersionsRef = useRef({});
+    /** 지금 켜진 확장 id (늦게 끝난 번들 읽기가 그 사이 꺼졌는지 본다) */
+    const enabledIdsRef = useRef(new Set());
+    const unloadBundle = (id) => {
+        document.querySelectorAll(`style[data-extension="${id}"]`).forEach((el) => el.remove());
+        delete window[`SabaExt${pascalCase(id)}`];
+        loadedRef.current.delete(id);
+        delete loadedVersionsRef.current[id];
+    };
     /** GUI 번들을 허락받아야 하는 활성 익스텐션 (확인 안 됨, 이 PC에서 허락 안 함) */
     const [guiPending, setGuiPending] = useState([]);
     /** 이번 실행에서 이미 물어본 익스텐션 (거절하면 다시 묻지 않고 설정 화면에서 허락하게 둔다) */
@@ -145,12 +153,9 @@ export function ExtensionProvider({ children }) {
         setEnabledExtensions(enabled);
         // 꺼졌거나 지운 확장은 번들을 내린다: 스타일이 다른 화면에 남지 않게, 다시 켜면 스타일까지 새로 읽게
         const enabledIds = new Set(enabled.map((ext) => ext.id));
+        enabledIdsRef.current = enabledIds;
         for (const id of [...loadedRef.current]) {
-            if (enabledIds.has(id)) continue;
-            document.querySelectorAll(`style[data-extension="${id}"]`).forEach((el) => el.remove());
-            delete window[`SabaExt${pascalCase(id)}`];
-            loadedRef.current.delete(id);
-            delete loadedVersionsRef.current[id];
+            if (!enabledIds.has(id)) unloadBundle(id);
         }
         // 목록이 다시 바뀌면 이 로드의 결과는 버린다 (늦게 끝나 새 슬롯을 덮지 않게)
         let cancelled = false;
@@ -199,6 +204,11 @@ export function ExtensionProvider({ children }) {
 
                 // ② UMD 번들 동적 로드
                 const mod = await loadExtensionBundle(ext);
+                // 읽는 사이 꺼졌으면 넣은 스타일·전역을 내린다 (그 사이 돈 로드는 아직 이 번들을 몰랐다)
+                if (!enabledIdsRef.current.has(ext.id)) {
+                    unloadBundle(ext.id);
+                    return;
+                }
                 if (mod === GUI_UNAPPROVED) {
                     pending.push(ext);
                     return;

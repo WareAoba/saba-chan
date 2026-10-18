@@ -82,4 +82,32 @@ describe('확장 슬롯 오류 격리', () => {
         await waitFor(() => expect(result.current.slots['test.slot']).toBeUndefined());
         expect(document.querySelector('style[data-extension="good"]')).toBeNull();
     });
+
+    it('번들을 읽는 사이 확장을 끄면 다 읽은 뒤 스타일과 전역을 내린다', async () => {
+        let giveBundle;
+        window.api.extensionGuiBundle = vi.fn(() => new Promise((r) => (giveBundle = r)));
+        window.api.extensionGuiStyles = vi.fn().mockResolvedValue('.slow{}');
+        const realAppend = document.head.appendChild.bind(document.head);
+        vi.spyOn(document.head, 'appendChild').mockImplementation((el) => {
+            realAppend(el);
+            if (el.tagName === 'SCRIPT') {
+                window.SabaExtSlow = { registerSlots: () => ({}) };
+                el.onload();
+            }
+            return el;
+        });
+        window.api.extensionList = vi
+            .fn()
+            .mockResolvedValueOnce({ extensions: [ext('slow')] })
+            .mockResolvedValue({ extensions: [] });
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalled());
+        await act(async () => result.current.refreshExtensions());
+        await act(async () => giveBundle('/* bundle */'));
+        await waitFor(() => expect(window.api.extensionGuiStyles).toHaveBeenCalled());
+        await act(async () => {});
+        expect(document.querySelector('style[data-extension="slow"]')).toBeNull();
+        expect(window.SabaExtSlow).toBeUndefined();
+        delete window.SabaExtSlow;
+    });
 });

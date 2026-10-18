@@ -139,7 +139,6 @@ fn daemon_path(install_root: &Path) -> PathBuf {
     install_root.join(daemon_file_name())
 }
 
-/// 이 GUI가 띄운 데몬이 아직 살아 있는가 (끝났으면 놓는다)
 impl Lifecycle {
     fn shows_running(&self, own_alive: bool) -> bool {
         own_alive || self.attached_daemon.load(Ordering::SeqCst)
@@ -149,6 +148,11 @@ impl Lifecycle {
     fn note_reachable(&self, reachable: bool) -> bool {
         self.attached_daemon.swap(reachable, Ordering::SeqCst) != reachable
     }
+
+    /// 이 GUI가 데몬을 새로 띄웠다: 예전에 붙었던 데몬 표시는 버린다 (이제는 띄운 데몬의 생사만 본다)
+    fn own_daemon_started(&self) {
+        self.attached_daemon.store(false, Ordering::SeqCst);
+    }
 }
 
 /// 트레이에 보일 데몬 상태: 이 GUI가 띄운 데몬이 살아 있거나, 이미 떠 있던 데몬에 붙었다
@@ -157,6 +161,7 @@ pub fn daemon_running(app: &AppHandle) -> bool {
     app.state::<AppState>().life.shows_running(alive)
 }
 
+/// 이 GUI가 띄운 데몬이 아직 살아 있는가 (끝났으면 놓는다)
 pub fn own_daemon_alive(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     let mut guard = state.life.child.lock().unwrap();
@@ -232,6 +237,7 @@ pub fn start_daemon(app: &AppHandle) {
                 pipe_log(err);
             }
             *state.life.child.lock().unwrap() = Some(child);
+            state.life.own_daemon_started();
             watch_daemon_exit(app.clone(), pid);
         }
         Err(e) => tracing::error!("Failed to start Core Daemon: {}", e),
@@ -773,5 +779,14 @@ mod tests {
         );
         assert!(life.note_reachable(true));
         assert!(life.shows_running(false));
+    }
+
+    #[test]
+    fn spawning_our_own_daemon_drops_the_attached_mark() {
+        let life = Lifecycle::default();
+        life.attached_daemon.store(true, Ordering::SeqCst);
+        life.own_daemon_started();
+        // 띄운 데몬이 죽으면 트레이에 꺼짐으로 보여야 한다
+        assert!(!life.shows_running(false));
     }
 }

@@ -96,7 +96,8 @@
     "url_not_web": "Seules les adresses http(s) peuvent être ouvertes",
     "path_missing": "Aucun chemin indiqué",
     "path_not_folder": "Ce n'est pas un dossier",
-    "no_log_folder": "Aucun dossier de journaux"
+    "no_log_folder": "Aucun dossier de journaux",
+    "open_folder_failed": "Impossible d'ouvrir le dossier"
   },
   "consent": {
     "allow": "Autoriser",

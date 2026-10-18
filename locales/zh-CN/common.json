@@ -96,7 +96,8 @@
     "url_not_web": "只能打开 http(s) 地址",
     "path_missing": "未指定路径",
     "path_not_folder": "不是文件夹",
-    "no_log_folder": "没有日志文件夹"
+    "no_log_folder": "没有日志文件夹",
+    "open_folder_failed": "无法打开文件夹"
   },
   "consent": {
     "allow": "允许",

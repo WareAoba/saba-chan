@@ -96,7 +96,8 @@
     "url_not_web": "http(s) 주소만 열 수 있어요",
     "path_missing": "경로가 없어요",
     "path_not_folder": "폴더가 아니에요",
-    "no_log_folder": "로그 폴더가 없어요"
+    "no_log_folder": "로그 폴더가 없어요",
+    "open_folder_failed": "폴더를 열지 못했어요"
   },
   "consent": {
     "allow": "허락",

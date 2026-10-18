@@ -414,9 +414,18 @@ pub fn shell_open_path(app: AppHandle, path: Option<String>) -> Value {
     if !is_folder(&path) {
         return json!({ "error": state.t("errors.path_not_folder", &[]) });
     }
-    match app.opener().open_path(path, None::<&str>) {
+    let res = app.opener().open_path(path, None::<&str>);
+    opened(res, state.t("errors.open_folder_failed", &[]))
+}
+
+/// 셸이 폴더를 열었는지: 실패하면 번역된 문구를 돌려준다 (원래 오류는 로그에만)
+fn opened<E: std::fmt::Display>(res: Result<(), E>, failed: String) -> Value {
+    match res {
         Ok(()) => json!({ "success": true }),
-        Err(e) => json!({ "error": e.to_string() }),
+        Err(e) => {
+            tracing::warn!("[Shell] open folder failed: {}", e);
+            json!({ "error": failed })
+        }
     }
 }
 
@@ -440,8 +449,8 @@ pub fn logs_open_folder(app: AppHandle) -> Value {
     if !dir.exists() {
         return json!({ "error": state.t("errors.no_log_folder", &[]) });
     }
-    let _ = app.opener().open_path(dir.to_string_lossy(), None::<&str>);
-    json!({ "success": true })
+    let res = app.opener().open_path(dir.to_string_lossy(), None::<&str>);
+    opened(res, state.t("errors.open_folder_failed", &[]))
 }
 
 #[tauri::command]
@@ -508,6 +517,14 @@ pub fn window_close(window: WebviewWindow) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_failed_open_reports_the_translated_message_not_success() {
+        let failed = "Couldn't open the folder".to_string();
+        assert_eq!(opened(Err("os error 2"), failed.clone()), json!({ "error": failed }));
+        assert_eq!(opened(Ok::<(), &str>(()), failed), json!({ "success": true }));
+    }
+
     use super::*;
 
     #[test]
