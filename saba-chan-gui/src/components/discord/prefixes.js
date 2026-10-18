@@ -31,6 +31,3 @@ export function defaultPrefix(t, nodes = []) {
     const node = nodes.find((n) => n?.prefixDefault && Array.isArray(n.prefixes) && n.prefixes[0]);
     return node ? node.prefixes[0] : t('discord.default_prefix');
 }
-
-/** 예시·안내에 쓸 대표 접두사 */
-export const primaryPrefix = (prefixes, t, nodes) => prefixes?.[0] || defaultPrefix(t, nodes);

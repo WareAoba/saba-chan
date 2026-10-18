@@ -535,10 +535,10 @@ export function ServerSettingsModal({
                     <Icon name="gamepad" size="sm" /> {t('server_settings.general_tab')}
                 </button>
                 {onOpenDiscordWords && (
-                    // 명령어 단어는 디스코드 화면에서 모듈별로 고친다
+                    // 명령어 단어는 디스코드 화면에서 길드·서버별로 고친다
                     <button
                         className="settings-tab settings-tab-link"
-                        onClick={() => onOpenDiscordWords(settingsServer.module)}
+                        onClick={() => onOpenDiscordWords(settingsServer.id)}
                     >
                         <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab')}
                         <Icon name="externalLinkIn" size="xs" />

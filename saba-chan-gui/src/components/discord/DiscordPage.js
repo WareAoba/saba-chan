@@ -13,10 +13,9 @@ import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
 import { permissionsAvailable } from './PermissionsTab';
-import { defaultPrefix, prefixProblems, primaryPrefix } from './prefixes';
+import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
 import { usePairing } from './usePairing';
-import { WordsView } from './WordsView';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 const AUTOSAVE_MS = 600;
@@ -113,9 +112,6 @@ export function DiscordPage({
     modules = [],
     moduleAliasesPerModule,
     discordModuleAliases,
-    discordCommandAliases,
-    setDiscordModuleAliases,
-    setDiscordCommandAliases,
     nodeSettings,
     setNodeSettings,
     cloudNodes = [],
@@ -140,6 +136,14 @@ export function DiscordPage({
     const [membersPartial, setMembersPartial] = useState({});
     const [saveState, setSaveState] = useState(null);
     const saveTimer = useRef(null);
+
+    // 서버 설정의 "명령어 단어" 링크 `{kind:'words', server}`: 노드 목록이 오면 그 서버를 쓰는
+    // 첫 길드의 부르는 말 탭으로 바꾼다. 그동안(또는 그런 길드가 없으면) 연결 화면을 보인다
+    useEffect(() => {
+        if (view.kind !== 'words' || !cloudNodes?.length) return;
+        const node = cloudNodes.find((n) => P.isInstanceAllowed(nodeSettings || {}, n.guildId, view.server));
+        setView(node ? { kind: 'node', id: node.guildId, tab: 'words' } : { kind: 'connection' });
+    }, [view, cloudNodes, nodeSettings]);
 
     useEffect(() => {
         if (initialView) {
@@ -298,58 +302,6 @@ export function DiscordPage({
           }
         : null;
 
-    // 인스턴스 별명은 디스코드 페이지에서만 쓰므로 스토어 대신 여기서 bot-config를 직접 읽는다
-    const [instanceAliases, setInstanceAliases] = useState({});
-    useEffect(() => {
-        let alive = true;
-        Promise.resolve(window.api?.botConfigLoad?.())
-            .then((cfg) => alive && setInstanceAliases(cfg?.instanceAliases || {}))
-            .catch(() => {});
-        return () => {
-            alive = false;
-        };
-    }, []);
-
-    // ── 명령어 단어 저장 (bot-config의 별명 키만 보낸다; 데몬이 최상위 키 단위로 병합) ──
-    const persistAliases = async (mutate, okMsg) => {
-        try {
-            const current = (await window.api.botConfigLoad()) || {};
-            const moduleAliases = { ...(current.moduleAliases || {}) };
-            const commandAliases = { ...(current.commandAliases || {}) };
-            const instanceAliases = { ...(current.instanceAliases || {}) };
-            mutate(moduleAliases, commandAliases, instanceAliases);
-            const res = await window.api.botConfigSave({
-                moduleAliases,
-                commandAliases,
-                instanceAliases,
-            });
-            if (res?.error) throw new Error(res.error);
-            setDiscordModuleAliases(moduleAliases);
-            setDiscordCommandAliases(commandAliases);
-            setInstanceAliases(instanceAliases);
-            safeShowToast(okMsg, 'success', 2500);
-        } catch (e) {
-            safeShowToast(t('discord.words_save_failed', { error: e.message }), 'error', 4000);
-        }
-    };
-    const saveWords = (moduleName, draft) =>
-        persistAliases((ma, ca, ia) => {
-            for (const [id, words] of Object.entries(draft.instances || {})) {
-                if (words.length) ia[id] = words.join(',');
-                else delete ia[id];
-            }
-            ma[moduleName] = draft.moduleAliases.join(',');
-            ca[moduleName] = Object.fromEntries(
-                Object.entries(draft.commands).map(([cmd, d]) => [cmd, d.aliases.join(',')]),
-            );
-        }, t('discord.words_saved'));
-    const resetWords = (moduleName) =>
-        persistAliases((ma, ca, ia) => {
-            delete ma[moduleName];
-            delete ca[moduleName];
-            for (const s of servers) if (s.module === moduleName) delete ia[s.id];
-        }, t('discord.words_reset_done'));
-
     // ── 명령 목록 / 위험도 ──
     const commandsFor = useCallback(
         (moduleName) =>
@@ -480,14 +432,6 @@ export function DiscordPage({
                             <span>{t('discord.nav_bot')}</span>
                         </div>
                         {navItem(
-                            'words',
-                            view.kind === 'words',
-                            () => go({ kind: 'words', module: view.module }),
-                            <Icon name="hash" size="sm" />,
-                            t('discord.nav_words'),
-                            <span>{t('discord.nav_words_sub', { count: modules.length })}</span>,
-                        )}
-                        {navItem(
                             'bot',
                             view.kind === 'bot',
                             () => go({ kind: 'bot' }),
@@ -522,7 +466,7 @@ export function DiscordPage({
                                 <Icon name="chevronLeft" size="sm" /> {t('discord.back_to_menu')}
                             </button>
                         )}
-                        {view.kind === 'connection' && (
+                        {(view.kind === 'connection' || view.kind === 'words') && (
                             <ConnectionView
                                 cloudState={cloudState}
                                 hostId={discordCloudHostId}
@@ -554,26 +498,12 @@ export function DiscordPage({
                                 membersFailed={!!membersFailed[currentNode.guildId]}
                                 membersPartial={membersPartial[currentNode.guildId] || null}
                                 onRefreshMembers={() => loadMembers(currentNode.guildId)}
+                                initialTab={view.tab}
                                 memberId={view.member || null}
                                 onOpenMember={(id) => setView({ kind: 'node', id: currentNode.guildId, member: id })}
                                 commandsFor={commandsFor}
                                 riskOf={riskOf}
                                 saveState={saveState}
-                            />
-                        )}
-                        {view.kind === 'words' && (
-                            <WordsView
-                                modules={modules}
-                                moduleName={view.module}
-                                onSelectModule={(m) => setView({ kind: 'words', module: m })}
-                                prefix={primaryPrefix(discordPrefixes, t, cloudNodes)}
-                                moduleAliasesPerModule={moduleAliasesPerModule}
-                                savedModuleAliases={discordModuleAliases}
-                                savedCommandAliases={discordCommandAliases}
-                                servers={servers}
-                                savedInstanceAliases={instanceAliases}
-                                onSave={saveWords}
-                                onReset={resetWords}
                             />
                         )}
                         {view.kind === 'bot' && (
