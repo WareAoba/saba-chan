@@ -88,10 +88,10 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             version,
             dir,
             jar,
-            accept_eula,
+            accept,
         } => {
             let m = resolve::module(ctx, Some(&module)).await?;
-            let mut body = json!({ "version": version, "install_dir": dir, "accept_eula": accept_eula });
+            let mut body = json!({ "version": version, "install_dir": dir, "accept_agreements": accept });
             if let Some(j) = jar {
                 body["jar_name"] = json!(j);
             }

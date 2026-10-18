@@ -312,8 +312,13 @@ impl Api {
         }
         self.post(&format!("/api/instance/{}/launch-preview", seg(id)), body).await
     }
-    pub async fn accept_eula(&self, id: &str) -> Result<Value> {
-        self.post(&format!("/api/instance/{}/accept-eula", seg(id)), json!({}))
+    /// GET /api/instance/:id — 레코드와 모듈 약관 `agreements`
+    pub async fn instance(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}", seg(id))).await
+    }
+    /// POST /api/instance/:id/agreements — `{accept:[id]}`
+    pub async fn accept_agreements(&self, id: &str, ids: &[String]) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/agreements", seg(id)), json!({ "accept": ids }))
             .await
     }
     /// POST /api/instance/:id/server/reset — 서버 파일 초기화
@@ -403,7 +408,7 @@ impl Api {
         self.get_slow(&format!("/api/module/{}/version/{}", seg(name), seg(version)))
             .await
     }
-    /// POST /api/module/:name/install — 서버 파일만 받는다 `{version, install_dir, jar_name?, accept_eula?}`
+    /// POST /api/module/:name/install — 서버 파일만 받는다 `{version, install_dir, jar_name?, accept_agreements?}`
     pub async fn install_server_files(&self, name: &str, body: Value) -> Result<Value> {
         self.post_long(&format!("/api/module/{}/install", seg(name)), body)
             .await

@@ -351,8 +351,8 @@ pub enum ServerCmd {
         #[arg(long = "args", allow_hyphen_values = true)]
         extra_args: Option<String>,
     },
-    /// Accept the game's EULA
-    AcceptEula { server: Option<String> },
+    /// Read and accept the license agreements the server's module asks for (e.g. a game EULA)
+    Agree { server: Option<String> },
     /// Wipe the server files and start fresh
     Reset { server: Option<String> },
     /// Rename a server
@@ -534,8 +534,9 @@ pub enum ModuleCmd {
         dir: String,
         #[arg(long)]
         jar: Option<String>,
-        #[arg(long)]
-        accept_eula: bool,
+        /// Agreement id the module declares (`[[agreements]]`), repeatable. Only pass ones you have read
+        #[arg(long = "accept", value_name = "ID")]
+        accept: Vec<String>,
     },
 }
 

@@ -311,7 +311,7 @@ fn input_type(input: &Value) -> &'static str {
 }
 
 /// 모듈 locales 한 언어 (`<모듈>/locales/<lang>.json`). 없거나 못 읽으면 Null
-fn module_locale(module: &LoadedModule, lang: &str) -> Value {
+pub(crate) fn module_locale(module: &LoadedModule, lang: &str) -> Value {
     let path = std::path::Path::new(&module.path).join("locales").join(format!("{}.json", lang));
     std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null)
 }

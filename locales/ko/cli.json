@@ -202,9 +202,10 @@
     "pair_expected": "KEY=VALUE 형식이어야 해요: \"{{got}}\"",
     "timeout": "데몬 응답이 너무 늦어요 ({{path}})."
   },
-  "eula": {
-    "confirm": "{{name}}의 EULA에 동의할까요? 게임의 라이선스 조건에 동의하는 거예요.",
-    "done": "{{name}}의 EULA에 동의했어요."
+  "agree": {
+    "none": "{{name}}에 동의할 약관이 없어요.",
+    "confirm": "{{name}}: {{names}}에 동의할까요? 위 주소의 원문을 읽고 동의하는 거예요.",
+    "done": "{{name}}의 약관에 동의했어요."
   },
   "exit": {
     "crash": "크래시",
@@ -471,7 +472,7 @@
       "server.validate": "켤 수 있는지 점검 (파일, 자바, 포트 ...)",
       "server.diagnose": "로그에서 알려진 문제 찾기",
       "server.launch-preview": "데몬이 실제로 띄울 실행 줄 보기 (서버는 켜지 않아요)",
-      "server.accept-eula": "게임 EULA에 동의",
+      "server.agree": "모듈 약관(게임 EULA 등)의 원문 주소를 보고 동의",
       "server.reset": "서버 파일을 모두 지우고 새로 시작",
       "server.reorder": "목록 순서 바꾸기: 원하는 순서대로 서버 이름을 적어요",
       "start": "서버 켜기",
@@ -631,7 +632,7 @@
       "per_page": "페이지당 개수",
       "dir": "폴더",
       "jar": "jar 파일 이름",
-      "accept_eula": "EULA에 동의",
+      "accept": "동의할 약관 id (읽은 것만)",
       "relay_url": "릴레이 주소",
       "token": "노드 토큰",
       "value": "새 값",

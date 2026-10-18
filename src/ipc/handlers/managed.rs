@@ -4,7 +4,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use super::super::IPCServer;
@@ -289,18 +289,55 @@ pub async fn reset_server_handler(
     super::audited(&state, "reset", &id, None, None, resp).await
 }
 
-/// POST /api/instance/:id/accept-eula — Accept Minecraft EULA
-pub async fn accept_eula_handler(
+/// 요청 본문의 약관 id 목록 (`key`: 문자열 배열, 없으면 빈 목록). 동의는 이 PC(GUI·CLI)에서만 받는다:
+/// 원격(디스코드·챗봇)에서 온 요청이 하나라도 담으면 403 `agreement_local_only`
+pub(crate) fn requested_agreements(payload: &Value, key: &str) -> Result<Vec<String>, Box<axum::response::Response>> {
+    let ids: Vec<String> = match payload.get(key) {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(items)) if items.iter().all(Value::is_string) => {
+            items.iter().filter_map(Value::as_str).map(str::to_string).collect()
+        }
+        Some(_) => {
+            let error = json!({ "error": format!("'{}' must be a list of agreement ids", key), "error_code": "invalid_format", "fields": [{"field": key}] });
+            return Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()));
+        }
+    };
+    if !ids.is_empty() && crate::audit::current().source == "discord" {
+        let error = json!({ "success": false, "error": "Agreements can only be accepted on this PC", "error_code": "agreement_local_only" });
+        return Err(Box::new((StatusCode::FORBIDDEN, Json(error)).into_response()));
+    }
+    Ok(ids)
+}
+
+/// POST /api/instance/:id/agreements `{accept:[id]}` — 모듈 약관 동의 (이 PC에서만)
+pub async fn accept_agreements_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
-) -> impl IntoResponse {
-    match Supervisor::accept_eula(&state.supervisor, &id).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
+    Json(payload): Json<Value>,
+) -> axum::response::Response {
+    let ids = match requested_agreements(&payload, "accept") {
+        Ok(ids) => ids,
+        Err(resp) => return *resp,
+    };
+    match Supervisor::accept_agreements(&state.supervisor, &id, &ids).await {
+        Ok(Ok(module_result)) => {
+            if module_result.get("success").and_then(Value::as_bool) == Some(false) {
+                let message = module_result.get("message").and_then(Value::as_str).unwrap_or("Module failed to apply the agreement");
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": message }))).into_response();
+            }
+            let language = state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into());
+            let sup = state.supervisor.read().await;
+            let agreements = sup.instance_store.get(&id).map(|i| sup.agreement_views(i, &language)).unwrap_or_default();
+            (StatusCode::OK, Json(json!({ "success": true, "agreements": agreements }))).into_response()
+        }
+        Ok(Err(unknown)) => {
+            let error = json!({ "error": format!("This server's module has no agreement '{}'", unknown), "error_code": "invalid_format", "fields": [{"field": "accept"}] });
+            (StatusCode::BAD_REQUEST, Json(error)).into_response()
+        }
+        Err(e) if e.to_string().starts_with("Instance not found") => {
+            (StatusCode::NOT_FOUND, Json(json!({ "error": e.to_string(), "error_code": "not_found" }))).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
     }
 }
 
@@ -422,7 +459,7 @@ pub async fn get_installed_version_handler(
 
 /// POST /api/module/:name/install — Install a server
 /// Body: { "version": "1.21.11", "install_dir": "/path/to/server",
-///         "jar_name": "server.jar", "accept_eula": true, "initial_settings": {...} }
+///         "jar_name": "server.jar", "accept_agreements": ["eula"], "initial_settings": {...} }
 pub async fn install_server_handler(
     Path(module_name): Path<String>,
     State(state): State<IPCServer>,
@@ -451,10 +488,10 @@ pub async fn install_server_handler(
     };
 
     let jar_name = payload.get("jar_name").and_then(|v| v.as_str());
-    let accept_eula = payload
-        .get("accept_eula")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let accepted_agreements = match requested_agreements(&payload, "accept_agreements") {
+        Ok(ids) => ids,
+        Err(resp) => return *resp,
+    };
     let initial_settings = payload.get("initial_settings").cloned();
 
     // ── 필수 익스텐션 의존성 검증 ──
@@ -470,6 +507,10 @@ pub async fn install_server_handler(
                     .into_response()
             }
         };
+        if let Some(unknown) = accepted_agreements.iter().find(|id| !module.metadata.agreements.iter().any(|a| &a.id == *id)) {
+            let error = json!({ "error": format!("Module '{}' has no agreement '{}'", module_name, unknown), "error_code": "invalid_format", "fields": [{"field": "accept_agreements"}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
         if let Some(ref install_cfg) = module.metadata.install {
             if !install_cfg.requires_extensions.is_empty() {
                 let ext_mgr = state.extension_manager.read().await;
@@ -521,7 +562,7 @@ pub async fn install_server_handler(
             &version,
             &install_dir,
             jar_name,
-            accept_eula,
+            &accepted_agreements,
             initial_settings,
         )
         .await

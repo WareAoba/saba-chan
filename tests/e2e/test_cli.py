@@ -68,8 +68,8 @@ def test_eula_preflight_reported_by_cli(cli, daemon, fake_server):
     cli.run("server", "add", "noeula", "-m", "minecraft", "--from", str(folder), "--set", "ram=256M", check=0)
     r = cli.run("start", "noeula")
     assert r.code == 1, r
-    assert "eula" in (r.stdout + r.stderr).lower(), r
-    assert cli.run("server", "accept-eula", "noeula", "--yes").code == 0
+    assert "server agree" in (r.stdout + r.stderr), r
+    assert cli.run("server", "agree", "noeula", "--yes").code == 0
     assert cli.run("start", "noeula").code == 0
 
 
