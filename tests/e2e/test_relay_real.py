@@ -103,7 +103,6 @@ def test_owner_discord_setting_runs_without_confirm_button(paired, relay):
     assert settings.get("sleeping") is True or settings.get("settings", {}).get("sleeping") is True, settings
 
 
-@pytest.mark.xfail(strict=True, reason="E2E-F6: relay heartbeat 라우트(serverEntry)가 서버 줄에서 id·name·module·status만 남기고 usage·statusLine을 버린다")
 def test_heartbeat_cpu_ram_is_stored_by_real_relay(paired, relay, fake_server):
     """데몬 heartbeat의 서버별 CPU·RAM(#86)이 relay 스키마를 지나 호스트 기록에 남는다 (/사바쨩 상태가 읽는 곳, relay 1605932)."""
     folder, _ = fake_server("mc1")
