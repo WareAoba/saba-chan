@@ -393,6 +393,11 @@ async fn count_down(
         if !still_scheduled(state, id, task_key).await {
             return false;
         }
+        let name = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
+        crate::events::emit(
+            "schedule.warn",
+            json!({ "instanceId": id, "instance": name, "action": task.action, "minutesLeft": minutes }),
+        );
         announce(state, id, &catalog.t(message_key, &[("minutes", &minutes.to_string())])).await;
     }
     let wait = (fire - chrono::Local::now().naive_local()).to_std().unwrap_or_default();

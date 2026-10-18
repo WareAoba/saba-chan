@@ -5,6 +5,7 @@
 //!   2. POST /heartbeat (60초)  — 온라인 유지 + 서버/모듈/봇 설정 메타데이터 동기화
 //!   3. GET  /poll (롱폴링)      — 디스코드에서 온 텍스트 명령 수신
 //!   4. POST /result/:id        — 채팅 처리기(`crate::chat`) 결과 반환
+//!   5. POST /events            — 디스코드 알림 채널(I3)에 띄울 이벤트 (`relay_event`)
 //!
 //! 인증은 노드 토큰(`<data_dir>/.node_token`, sbn_<id>.<secret>) HMAC 서명입니다.
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
@@ -23,6 +24,11 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
+/// 알림 이벤트(I3): 처음 한 건이 오면 이만큼 모아서, 한 번에 이만큼까지 보낸다
+const EVENT_GATHER: Duration = Duration::from_secs(2);
+const EVENT_BATCH: usize = 20;
+/// relay에 닿지 못하는 동안 들고 있는 최근 이벤트 수 (알림은 기록이 아니다)
+const EVENT_PENDING: usize = 50;
 
 /// 에이전트 상태 (GET /api/relay/agent)
 #[derive(Debug, Clone, Default, Serialize)]
@@ -110,7 +116,7 @@ impl RelayAgent {
                 // 디스코드 길드 설정도 데몬이 원본 (I2)
                 crate::ipc::handlers::discord::sync_on_connect(&sync_server).await;
             });
-            tokio::join!(session.heartbeat_loop(), session.poll_loop());
+            tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
         });
@@ -484,6 +490,83 @@ impl Session {
         }
     }
 
+    /// 데몬 이벤트 중 알림 채널에 띄울 것(`relay_event`)을 모아 `POST /events`로 올린다.
+    /// relay가 404면(아직 그 경로가 없음) 이 연결 동안은 올리지 않는다
+    async fn events_loop(&self) {
+        use tokio::sync::broadcast::error::{RecvError, TryRecvError};
+        let mut rx = crate::events::bus().subscribe(None).rx;
+        let mut pending = std::collections::VecDeque::new();
+        let mut failures: u32 = 0;
+        loop {
+            if pending.is_empty() {
+                // 첫 건을 기다렸다가 잠깐 더 모은다
+                let gather = tokio::time::sleep(EVENT_GATHER);
+                tokio::pin!(gather);
+                let mut gathering = false;
+                loop {
+                    tokio::select! {
+                        _ = self.cancel.cancelled() => return,
+                        _ = &mut gather, if gathering => break,
+                        r = rx.recv() => match r {
+                            Ok(e) => {
+                                queue_event(&mut pending, &e);
+                                if !gathering && !pending.is_empty() {
+                                    gathering = true;
+                                    gather.as_mut().reset(tokio::time::Instant::now() + EVENT_GATHER);
+                                }
+                            }
+                            Err(RecvError::Lagged(_)) => {}
+                            Err(RecvError::Closed) => return,
+                        },
+                    }
+                }
+            }
+            // 다시 보내기 전에 그 사이 쌓인 것도 넣는다
+            loop {
+                match rx.try_recv() {
+                    Ok(e) => queue_event(&mut pending, &e),
+                    Err(TryRecvError::Lagged(_)) => {}
+                    Err(_) => break,
+                }
+            }
+            let batch: Vec<Value> = pending.iter().take(EVENT_BATCH).cloned().collect();
+            let sent = async {
+                let body = json!({ "events": batch }).to_string();
+                self.signed(reqwest::Method::POST, "/events", Some(body))?.send().await.map_err(|e| e.to_string())
+            };
+            let resp = tokio::select! {
+                _ = self.cancel.cancelled() => return,
+                r = sent => r,
+            };
+            match resp {
+                Ok(r) if r.status().as_u16() == 404 => {
+                    tracing::info!("[RelayAgent] relay has no /events yet — not sending notifications on this connection");
+                    return;
+                }
+                // 4xx는 다시 보내도 같다: 그 묶음을 버린다
+                Ok(r) if r.status().is_success() || r.status().is_client_error() => {
+                    if !r.status().is_success() {
+                        tracing::warn!("[RelayAgent] events rejected: {}", r.status());
+                    }
+                    pending.drain(..batch.len());
+                    failures = 0;
+                }
+                other => {
+                    failures += 1;
+                    let backoff = backoff(failures);
+                    match other {
+                        Ok(r) => tracing::warn!("[RelayAgent] events {}, retry in {}s", r.status(), backoff.as_secs()),
+                        Err(e) => tracing::warn!("[RelayAgent] events failed ({}), retry in {}s", e, backoff.as_secs()),
+                    }
+                    self.pause(backoff).await;
+                    if self.cancel.is_cancelled() {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     async fn post_result(&self, id: &str, result: &Value) {
         let path = format!("/result/{}", encode_segment(id));
         let sent = async { self.signed(reqwest::Method::POST, &path, Some(result.to_string()))?.send().await.map_err(|e| e.to_string()) }.await;
@@ -493,6 +576,44 @@ impl Session {
             Err(e) => tracing::warn!("[RelayAgent] result {} failed: {}", id, e),
         }
     }
+}
+
+/// 올릴 이벤트면 대기열에 넣는다. 가장 오래된 것부터 버려 `EVENT_PENDING`건만 둔다
+fn queue_event(pending: &mut std::collections::VecDeque<Value>, event: &crate::events::Event) {
+    if let Some(v) = relay_event(event) {
+        pending.push_back(v);
+        while pending.len() > EVENT_PENDING {
+            pending.pop_front();
+        }
+    }
+}
+
+/// 알림 채널(I3)에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
+/// 원격으로 나가므로 경로·콘솔 줄·오류 원문은 싣지 않는다
+fn relay_event(event: &crate::events::Event) -> Option<Value> {
+    let d = &event.data;
+    let pick = |keys: &[&str]| -> serde_json::Map<String, Value> {
+        keys.iter().filter_map(|k| d.get(*k).map(|v| (k.to_string(), v.clone()))).collect()
+    };
+    let data = match event.kind.as_str() {
+        "instance.exit" => {
+            let kind = d.get("kind").and_then(Value::as_str)?;
+            if kind != "crash" && kind != "unknown_exit" {
+                return None;
+            }
+            let mut v = pick(&["at", "instanceId", "instance", "kind", "exitCode", "signal", "restartInSecs", "note"]);
+            // 종료 코드·신호만. 콘솔 줄(`console: …`)과 크래시 파일 경로는 뺀다
+            if let Some(evidence) = d.get("evidence").and_then(Value::as_str).filter(|e| e.starts_with("exit code") || e.starts_with("signal")) {
+                v.insert("evidence".into(), Value::from(evidence));
+            }
+            v
+        }
+        "backup.done" => pick(&["at", "instanceId", "kind", "ok", "name"]),
+        "update.available" => pick(&["at", "components"]),
+        "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
+        _ => return None,
+    };
+    Some(json!({ "id": event.id, "type": event.kind, "data": data }))
 }
 
 /// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다
@@ -776,6 +897,31 @@ mod tests {
             json!({ "success": false, "data": { "code": "UNKNOWN_COMMAND", "error": "Unknown command", "args": { "command": "dance" } } })
         );
         assert_eq!(raw_command_result("done".to_string().into()), json!({ "success": true, "data": { "text": "done" } }));
+    }
+
+    #[test]
+    fn only_notifications_go_to_the_relay_without_paths_or_console_lines() {
+        let ev = |kind: &str, data: Value| crate::events::Event { id: 7, kind: kind.into(), data, replay: true };
+        let crash = ev(
+            "instance.exit",
+            json!({"at": 1, "instanceId": "i", "instance": "마크", "kind": "crash", "exitCode": 1, "signal": null, "evidence": "crash file C:\\Users\\me\\crash.txt", "restartInSecs": 10, "note": null}),
+        );
+        let sent = relay_event(&crash).unwrap();
+        assert_eq!(sent["type"], "instance.exit");
+        assert_eq!(sent["id"], 7);
+        assert_eq!(sent["data"]["restartInSecs"], 10);
+        assert!(sent["data"].get("evidence").is_none());
+
+        let coded = ev("instance.exit", json!({"kind": "unknown_exit", "evidence": "exit code 3"}));
+        assert_eq!(relay_event(&coded).unwrap()["data"]["evidence"], "exit code 3");
+        let console = ev("instance.exit", json!({"kind": "crash", "evidence": "console: joined from 10.0.0.2"}));
+        assert!(relay_event(&console).unwrap()["data"].get("evidence").is_none());
+        assert!(relay_event(&ev("instance.exit", json!({"kind": "user_stop"}))).is_none());
+
+        let failed = ev("backup.done", json!({"instanceId": "i", "kind": "manual", "ok": false, "error": "D:\\saves locked"}));
+        assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "kind": "manual", "ok": false}));
+        assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
+        assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
     }
 
     #[test]
