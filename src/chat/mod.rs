@@ -17,6 +17,7 @@ pub mod api;
 pub mod format;
 pub mod i18n;
 pub mod permissions;
+pub mod words;
 
 use crate::config_store::BotConfig;
 use crate::ipc::internal::InternalResponse;
@@ -32,9 +33,7 @@ use std::collections::HashMap;
 pub struct ChatSettings {
     /// 비어 있으면 응답 언어의 기본 접두사 (`default_prefix`)
     pub prefixes: Vec<String>,
-    pub module_aliases: HashMap<String, String>,
-    pub command_aliases: HashMap<String, Value>,
-    pub instance_aliases: HashMap<String, String>,
+    /// 길드별 설정. 서버·명령을 부르는 낱말은 `nodeSettings[guild].instances` (`words`)
     pub node_settings: Value,
 }
 
@@ -42,9 +41,6 @@ impl From<&BotConfig> for ChatSettings {
     fn from(cfg: &BotConfig) -> Self {
         Self {
             prefixes: cfg.prefixes.clone(),
-            module_aliases: cfg.module_aliases.clone(),
-            command_aliases: cfg.command_aliases.clone(),
-            instance_aliases: cfg.instance_aliases.clone(),
             node_settings: cfg.node_settings.clone(),
         }
     }
@@ -98,6 +94,8 @@ struct Ctx<'a, D: DaemonApi> {
     req: &'a ChatRequest,
     modules: Vec<ModuleView>,
     aliases: ModuleAliases,
+    /// 요청한 길드의 인스턴스별 낱말 (로컬 요청이면 비어 있다)
+    words: HashMap<String, words::InstanceWords>,
 }
 
 /// 처리 결과. `text`는 늘 사람이 읽을 문구다. 데몬이 입력을 알아보지 못했으면 `code`가 붙고,
@@ -125,8 +123,12 @@ impl From<String> for Reply {
 /// 텍스트 명령을 처리하고 응답을 돌려줍니다. 실패해도 항상 응답을 만듭니다.
 pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Reply {
     let modules = api.modules().await;
-    let aliases = ModuleAliases::build(&modules, &settings.module_aliases);
-    let ctx = Ctx { api, settings, cat, req, modules, aliases };
+    let aliases = ModuleAliases::build(&modules);
+    let words = match (&req.remote, req.guild_id.as_deref()) {
+        (Some(_), Some(guild)) => words::of_guild(&settings.node_settings, guild),
+        _ => HashMap::new(),
+    };
+    let ctx = Ctx { api, settings, cat, req, modules, aliases, words };
 
     let text = strip_prefix(req.text.trim(), &ctx.prefixes());
     let args: Vec<&str> = text.split_whitespace().collect();
@@ -267,7 +269,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     fn is_mounted(&self, alias: &str, servers: &[ServerView]) -> bool {
         let module = self.aliases.resolve(alias);
-        servers.iter().any(|s| s.module == module || s.name.eq_ignore_ascii_case(alias) || s.name.to_lowercase() == alias.to_lowercase())
+        servers.iter().any(|s| s.module == module) || !self.named_servers(alias, servers).is_empty()
     }
 
     // ── 도움말 / 목록 ──
@@ -336,20 +338,15 @@ impl<D: DaemonApi> Ctx<'_, D> {
         Some(self.t("errors.alias_conflict", &[("alias", alias), ("modules", &modules)]))
     }
 
-    /// 인스턴스 이름이나 인스턴스 별명으로 부른 서버들
+    /// 인스턴스 이름·id나 그 길드에서 그 서버를 부르는 낱말로 부른 서버들
     fn named_servers<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Vec<&'s ServerView> {
-        let by_name: Vec<&ServerView> = servers.iter().filter(|s| s.name.to_lowercase() == alias.to_lowercase()).collect();
+        let by_name: Vec<&ServerView> = servers.iter().filter(|s| words::same(&s.name, alias) || s.id == alias).collect();
         if !by_name.is_empty() {
             return by_name;
         }
         servers
             .iter()
-            .filter(|s| {
-                self.settings
-                    .instance_aliases
-                    .get(&s.id)
-                    .is_some_and(|list| aliases::alias_listed(list, alias))
-            })
+            .filter(|s| self.words.get(&s.id).is_some_and(|w| w.words.iter().any(|word| words::same(word, alias))))
             .collect()
     }
 
@@ -426,7 +423,9 @@ impl<D: DaemonApi> Ctx<'_, D> {
         let Some(module) = self.module(&server.module) else {
             return self.t("server.module_missing", &[("module", &server.module)]).into();
         };
-        let command = aliases::resolve_command(Some(module), &self.settings.command_aliases, cmd_alias);
+        let command = words::command_for(self.words.get(&server.id), cmd_alias)
+            .map(str::to_string)
+            .unwrap_or_else(|| aliases::resolve_command(Some(module), cmd_alias));
 
         // 내장 명령의 위험도: status는 safe, start·stop은 caution. 모듈 명령은 선언값 (없으면 caution)
         let risk = match command.as_str() {

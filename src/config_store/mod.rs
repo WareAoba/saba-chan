@@ -122,9 +122,10 @@ pub struct BotConfig {
     #[serde(rename = "prefix", skip_serializing)]
     pub(crate) legacy_prefix: Option<String>,
     pub cloud: CloudConfig,
+    /// 예전 전역 별명 (모듈 → "a, b", 모듈 → 명령 → "a, b", 인스턴스 → "a, b").
+    /// 길드가 있으면 시작할 때 `nodeSettings[guild].instances`로 옮기고 비운다 (`chat::words::migrate`)
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
-    /// 인스턴스 ID → 그 인스턴스를 부르는 별명 ("a, b"). 같은 게임 서버가 여럿일 때 쓴다
     pub instance_aliases: HashMap<String, String>,
     pub node_settings: Value,
     pub cloud_nodes: Vec<Value>,
@@ -240,8 +241,10 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
 
-/// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1)와 디스코드 설정 API(I2, `discord`)
+/// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
+/// 길드·인스턴스 낱말 API(`instances`)
 pub const PERMISSION_KEYS: &[&str] = &[
+    "instances",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",
@@ -415,6 +418,19 @@ impl ConfigStore {
             *config = next;
         }
         Ok(out)
+    }
+
+    /// 예전 전역 별명을 길드·인스턴스 낱말로 옮긴 결과를 저장한다: `nodeSettings`를 바꾸고 옛 세 키를 비운다
+    pub async fn finish_words_migration(&self, node_settings: Value) -> Result<(), ConfigStoreError> {
+        let mut config = self.bot_config.write().await;
+        let mut next = config.clone();
+        next.node_settings = node_settings;
+        next.module_aliases.clear();
+        next.command_aliases.clear();
+        next.instance_aliases.clear();
+        self.file.set_section("relay", serde_json::to_value(&next)?)?;
+        *config = next;
+        Ok(())
     }
 
     // ── 기본값 ──
