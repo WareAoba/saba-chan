@@ -73,6 +73,22 @@ def test_memory_limit_allows_server_under_cap(mc):
     assert daemon.server_status(iid) == "running"
 
 
+@pytest.mark.windows
+@pytest.mark.parametrize("cap, mib", [("2G", 2048), ("4G", 4096)])
+def test_memory_limit_typed_in_gigabytes_lets_1g_server_run(mc, cap, mib):
+    """사람이 치는 "2G"·"4G" 상한: MiB로 저장되고, 힙 1G 서버가 힙을 거의 다 채워도 멈추지 않는다."""
+    daemon, iid, *_ = mc
+    daemon.api.ok("PATCH", f"/api/instance/{iid}", {"ram": "1G", "memory_limit_mb": cap, "auto_restart": False})
+    assert daemon.api.ok("GET", f"/api/instance/{iid}")["memory_limit_mb"] == mib
+    daemon.start_instance(iid)
+    daemon.wait_console(iid, DONE)
+    daemon.stdin(iid, "e2e-alloc 700")
+    daemon.wait_console(iid, "e2e-alloc holding 700 MiB")
+    time.sleep(3)
+    assert daemon.server_status(iid) == "running"
+    assert "Memory limit" not in daemon.console_text(iid)
+
+
 @pytest.mark.skipif(IS_WINDOWS, reason="리눅스 안내 문구")
 def test_memory_limit_is_reported_as_not_enforced_off_windows(mc):
     daemon, iid, *_ = mc
@@ -174,3 +190,47 @@ def test_unverified_module_cannot_write_outside_its_folders(sandbox, daemon_fact
     body = r.json()
     assert not target.exists(), f"격리된 모듈이 바깥에 씀: {body}"
     assert "escape" not in json.dumps(body) or "written" not in json.dumps(body.get("escape", {})), body
+
+
+# AMSI 시험 표본 (백신이 AMSI 검사에서만 찾도록 정한 무해한 글자). 저장소 파일 자체가 걸리지 않게 실행 중에 잇는다
+AMSI_SAMPLE = "AMSI Test Sample: " + "7e72c3ce-861b-4339-8740-0ac1484c1386"
+
+AMSI_PY = r'''
+import json, sys
+
+FUNCTIONS = {"list_versions": lambda config: {"success": True, "versions": ["e2e-amsi-ran"]}}
+
+if __name__ == "__main__":
+    print(json.dumps(FUNCTIONS[sys.argv[1]](json.loads(sys.stdin.read() or "{}"))))
+'''
+
+
+@pytest.mark.windows
+def test_unverified_module_script_is_scanned_by_amsi(sandbox, daemon_factory):
+    """미검증 모듈의 스크립트는 띄우기 전에 AMSI로 본다.
+    백신(Defender)이 켜져 있으면 표본을 찾아 실행하지 않고 malware_detected로 알린다.
+    AMSI 공급자가 없으면(Defender 꺼짐, 다른 백신) 검사를 건너뛰고 데몬 실행마다 한 번 경고한다. 어느 쪽인지는 보고에 남긴다."""
+    mod = sandbox.modules / "e2e-amsi"
+    mod.mkdir()
+    (mod / "module.toml").write_text(ESCAPE_TOML.replace("e2e-escape", "e2e-amsi"), encoding="utf-8")
+    script = mod / "lifecycle.py"
+    try:
+        script.write_text(f"# {AMSI_SAMPLE}\n" + AMSI_PY, encoding="utf-8")
+        time.sleep(2)  # 실시간 검사가 파일을 치우는지 본다
+        present = script.exists() and AMSI_SAMPLE in script.read_text(encoding="utf-8")
+    except OSError:
+        present = False
+    if not present:
+        pytest.skip("실시간 검사가 표본 파일을 먼저 치움 (AMSI까지 가지 않음)")
+    d = daemon_factory()
+    r = d.api.get("/api/module/e2e-amsi/versions", timeout=120)
+    text = r.text
+    log = d.log_text()
+    if "no AMSI provider" in log:
+        print("AMSI 공급자 없음: 검사 없이 실행됨")
+        assert "malware_detected" not in text and "e2e-amsi-ran" in text, text
+        assert log.count("no AMSI provider") == 1, "경고가 한 번이 아님"
+        return
+    print("AMSI 공급자 있음: 표본을 찾아야 함")
+    assert "malware_detected" in text, f"{r.status_code} {text[:500]}"
+    assert "e2e-amsi-ran" not in text, f"막아야 할 모듈이 실행됨: {text[:500]}"

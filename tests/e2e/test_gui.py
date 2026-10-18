@@ -7,6 +7,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from harness import procs
 from harness.paths import EXE, IS_WINDOWS, REPO
 from harness.webdriver import ENTER, Gui, tauri_driver
 
@@ -65,6 +67,15 @@ def labels(lang: str = "ko") -> dict:
         "continue": gui["loading"].get("continue", ""),
         "agreement_title": gui.get("agreements", {}).get("start_title", ""),
         "accept_and_start": gui.get("agreements", {}).get("accept_and_start", ""),
+        "tab_settings": gui["shell"]["tab_settings"],
+        "save_settings": gui["server_settings"]["save_settings"],
+        "memory_limit": gui["memory_limit"]["label"],
+        "invalid_format": gui["launch_preview"]["invalid_format"],
+        "popout": gui["console"]["popout"],
+        "popped_out": gui["shell"]["console_popped_out"],
+        "popin": gui["shell"]["console_popin"],
+        "open_terminal": gui["terminal"]["open"],
+        "terminal_unsupported": gui["terminal"]["err_unsupported_platform"],
     }
 
 
@@ -221,3 +232,75 @@ def test_gui_asks_for_agreement_before_first_start(sandbox, daemon_factory, fake
     assert "eula=true" in (folder / "eula.txt").read_text()
     eula = next(a for a in daemon.api.ok("GET", f"/api/instance/{iid}")["agreements"] if a["id"] == "eula")
     assert eula["accepted"], eula
+
+
+def test_gui_launch_preview_and_memory_limit_in_settings(ko_mc, open_gui):
+    """설정 탭: 실행 인자 미리보기가 데몬 계산을 보이고, 추가 인자가 설정 칸에 반영되며, 틀린 형식은 토스트로 알린다.
+    메모리 상한은 사람이 치는 "2G" 그대로 저장된다 (0.1.5 릴리스 확인에서 빠진 항목)."""
+    daemon, iid, *_ = ko_mc
+    art = daemon.sb.artifacts / "gui-launchPreview"
+    gui = open_gui(daemon, "launchPreview")
+    gui.click("mc1", kinds="*", timeout=60)
+    gui.click(L["tab_settings"], kinds="[role=tab]")
+    line = lambda: gui.js("const el = document.querySelector('.launch-preview-line'); return el ? el.innerText : ''") or ""
+    gui.wait(lambda: "-Xmx256M" in line(), 30, "미리보기에 -Xmx256M")
+    gui.fill(".launch-preview-input", "-Xmxabc")
+    gui.wait_text(L["invalid_format"], timeout=15)
+    gui.snap(art, "invalid-format")
+    gui.fill(".launch-preview-input", "-Xmx384M")
+    gui.wait(lambda: "-Xmx384M" in line() and "-Xmxabc" not in line(), 15, "미리보기에 -Xmx384M")
+    gui.fill(".memory-limit-input", "2G")
+    gui.snap(art, "edited")
+    gui.click(L["save_settings"])
+    saved = lambda: daemon.api.ok("GET", f"/api/instance/{iid}")
+    gui.wait(lambda: saved().get("memory_limit_mb") == 2048, 15, "memory_limit_mb 2048 저장")
+    inst = saved()
+    assert inst["module_settings"].get("ram") == "384M", inst["module_settings"]
+    assert "-Xmxabc" not in json.dumps(inst), inst
+
+
+def test_gui_console_popout_and_back(ko_mc, open_gui):
+    """콘솔을 별도 창으로 떼면 새 창에 콘솔이 이어지고, 메인 화면은 안내로 바뀌며, 되돌리면 창이 닫힌다."""
+    daemon, iid, *_ = ko_mc
+    art = daemon.sb.artifacts / "gui-popout"
+    gui = open_gui(daemon, "popout")
+    start_and_open_console(gui, "mc1")
+    main = gui.handles()
+    assert len(main) == 1, main
+    gui.click(L["popout"])
+    gui.wait_text(L["popped_out"], timeout=15)
+    popout = gui.wait(lambda: [h for h in gui.handles() if h not in main], 15, "콘솔 창")[0]
+    gui.switch(popout)
+    gui.wait_text("Done (", timeout=30)
+    gui.snap(art, "popout-window")
+    gui.type(f'[placeholder="{L["input_placeholder"]}"]', "say popout-e2e" + ENTER)
+    gui.wait_text("[Server] popout-e2e", timeout=30)
+    gui.switch(main[0])
+    gui.snap(art, "main-placeholder")
+    gui.click(L["popin"])
+    gui.wait(lambda: gui.handles() == main, 15, "콘솔 창 닫힘")
+    gui.wait_text("[Server] popout-e2e", timeout=30)
+    gui.snap(art, "popped-in")
+    assert daemon.server_status(iid) == "running"
+
+
+def test_gui_open_server_in_terminal(ko_mc, open_gui):
+    """서버 화면의 [터미널로 열기]: Windows는 데몬이 그 서버의 CLI 콘솔을 새 창에 띄우고, 다른 OS는 못 연다고 알린다."""
+    daemon, iid, *_ = ko_mc
+    art = daemon.sb.artifacts / "gui-openTerminal"
+    gui = open_gui(daemon, "openTerminal")
+    gui.click("mc1", kinds="*", timeout=60)
+    gui.click(L["open_terminal"])
+    if not IS_WINDOWS:
+        gui.wait_text(L["terminal_unsupported"], timeout=15)
+        gui.snap(art, "unsupported")
+        return
+    opened = gui.wait(lambda: re.search(r"\[Launch\] Opened CLI .*\(pid (\d+)\)", daemon.log_text()), 30, "데몬 로그의 Opened CLI")
+    pid = int(opened.group(1))
+    try:
+        assert iid in opened.group(0), opened.group(0)
+        time.sleep(2)
+        gui.snap(art, "opened")
+        assert procs.pid_alive(pid), "터미널 창의 CLI가 바로 끝남"
+    finally:
+        procs.kill_pid(pid)

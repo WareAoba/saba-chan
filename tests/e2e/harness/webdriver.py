@@ -118,6 +118,18 @@ class Gui:
         el = self.element(css)
         self._call("POST", f"/element/{el}/value", {"text": text})
 
+    def fill(self, css: str, text: str) -> None:
+        """입력칸을 비우고 새로 친다"""
+        el = self.element(css)
+        self._call("POST", f"/element/{el}/clear", {})
+        self._call("POST", f"/element/{el}/value", {"text": text})
+
+    def handles(self) -> list[str]:
+        return self._call("GET", "/window/handles")
+
+    def switch(self, handle: str) -> None:
+        self._call("POST", "/window", {"handle": handle})
+
     def screenshot(self, path: Path) -> None:
         try:
             path.write_bytes(base64.b64decode(self._call("GET", "/screenshot")))
