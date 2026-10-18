@@ -1616,11 +1616,18 @@ impl Supervisor {
                     .unwrap_or(managed_process::DEFAULT_LOG_SESSIONS);
                 ManagedProcess::spawn_with_runner(
                     &runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep,
-                    managed_process::RunnerLaunch { log_files: &module.metadata.log_files, console: module.metadata.console },
+                    managed_process::RunnerLaunch {
+                        log_files: &module.metadata.log_files,
+                        console: module.metadata.console,
+                        memory_limit_mb: instance.memory_limit_mb,
+                    },
                 ).await?
             }
             None => {
                 tracing::warn!("saba-runner not found next to the daemon; '{}' is attached directly and will lose its console if the daemon restarts", instance.name);
+                if let Some(mb) = instance.memory_limit_mb {
+                    tracing::warn!("'{}': memory limit {} MiB needs saba-runner and is not enforced", instance.name, mb);
+                }
                 ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?
             }
         };
@@ -2892,6 +2899,7 @@ mod tests {
             schedule: Vec::new(),
             backup_keep: None,
             extra_args: Vec::new(),
+            memory_limit_mb: None,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -2949,6 +2957,7 @@ mod tests {
             schedule: Vec::new(),
             backup_keep: None,
             extra_args: Vec::new(),
+            memory_limit_mb: None,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

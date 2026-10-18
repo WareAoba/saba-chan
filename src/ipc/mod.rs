@@ -197,6 +197,9 @@ pub struct ServerInfo {
     /// 설정 필드에 없는 추가 실행 인자 (`ServerInstance::extra_args`)
     #[serde(default)]
     pub extra_args: Vec<String>,
+    /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
+    #[serde(default)]
+    pub memory_limit_mb: Option<u64>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)

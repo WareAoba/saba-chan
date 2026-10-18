@@ -44,6 +44,9 @@ pub struct ExitInfo {
     /// 시그널로 끝났으면 그 번호 (unix)
     #[serde(default)]
     pub signal: Option<i32>,
+    /// 메모리 상한(`--memory-limit`, MiB)을 넘어 러너가 서버를 끝냈으면 그 상한
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_limit_mb: Option<u64>,
 }
 
 impl ExitInfo {
@@ -52,7 +55,7 @@ impl ExitInfo {
         let signal = std::os::unix::process::ExitStatusExt::signal(status);
         #[cfg(not(unix))]
         let signal = None;
-        Self { code: status.code(), success: status.success(), ended_at: now(), signal }
+        Self { code: status.code(), success: status.success(), ended_at: now(), signal, memory_limit_mb: None }
     }
 }
 

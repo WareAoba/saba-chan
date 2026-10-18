@@ -81,6 +81,8 @@ pub fn latest_session_log(instance_dir: &Path) -> Option<PathBuf> {
 pub struct RunnerLaunch<'a> {
     pub log_files: &'a [String],
     pub console: ConsoleMode,
+    /// 인스턴스 메모리 상한(MiB) → `--memory-limit`
+    pub memory_limit_mb: Option<u64>,
 }
 
 impl ManagedProcess {
@@ -115,6 +117,9 @@ impl ManagedProcess {
             .arg("--console").arg(launch.console.as_arg());
         for pattern in launch.log_files {
             cmd.arg("--tail").arg(pattern);
+        }
+        if let Some(mb) = launch.memory_limit_mb {
+            cmd.arg("--memory-limit").arg(mb.to_string());
         }
         cmd.arg("--")
             .arg(program)
@@ -401,7 +406,7 @@ mod tests {
         let script = "sleep 1; echo 'from the log file' >> game.log; sleep 5".to_string();
         let proc = ManagedProcess::spawn_with_runner(
             &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3,
-            RunnerLaunch { log_files: &["*.log".into()], console: ConsoleMode::Pipe },
+            RunnerLaunch { log_files: &["*.log".into()], console: ConsoleMode::Pipe, ..Default::default() },
         )
         .await
         .unwrap();
@@ -425,7 +430,7 @@ mod tests {
         let env = vec![("PYTHONUNBUFFERED".to_string(), String::new())];
         let proc = ManagedProcess::spawn_with_runner(
             &runner, "python3", &["-c".into(), script], inst.to_str().unwrap(), env, None, inst, 3,
-            RunnerLaunch { log_files: &[], console: ConsoleMode::Pty },
+            RunnerLaunch { log_files: &[], console: ConsoleMode::Pty, ..Default::default() },
         )
         .await
         .unwrap();

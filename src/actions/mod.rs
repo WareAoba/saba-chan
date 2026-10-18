@@ -168,8 +168,8 @@ fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
     password_fields.iter().any(|f| f == key) || SECRET_KEYS.iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s)))
 }
 
-/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자와 그 밖으로 새는 연결 대상
-const LAUNCH_KEYS: &[&str] = &["executable_path", "working_dir", "instance_dir", "extra_args", "extension_data", "rest_host"];
+/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상
+const LAUNCH_KEYS: &[&str] = &["executable_path", "working_dir", "instance_dir", "extra_args", "extension_data", "rest_host", "memory_limit_mb"];
 
 /// 모듈 설정 필드 중 원격에서 다루지 않는 것들
 #[derive(Debug, Default)]

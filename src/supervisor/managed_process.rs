@@ -193,11 +193,13 @@ pub struct ProcessExit {
     pub code: Option<i32>,
     /// unix 시그널 번호
     pub signal: Option<i32>,
+    /// 메모리 상한(MiB)을 넘어 러너가 끝냈으면 그 상한
+    pub memory_limit_mb: Option<u64>,
 }
 
 impl From<&saba_runner::ExitInfo> for ProcessExit {
     fn from(e: &saba_runner::ExitInfo) -> Self {
-        Self { code: e.code, signal: e.signal }
+        Self { code: e.code, signal: e.signal, memory_limit_mb: e.memory_limit_mb }
     }
 }
 
