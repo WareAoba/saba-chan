@@ -352,7 +352,7 @@
 | POST | `/api/extensions/:id/disable` | `extension.rs:162` | 실행 중인 managed 인스턴스 참조 검사 |
 | POST | `/api/extensions/:id/mount` | `extension.rs:199` | |
 | POST | `/api/extensions/:id/unmount` | `extension.rs:211` | |
-| POST | `/api/extensions/:id/install` | `extension.rs:400` | 선택 `{download_url, sha256}`. 없으면 manifest에서 찾는다. 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
+| POST | `/api/extensions/:id/install` | `extension.rs:425` | 선택 `{download_url, sha256}`. 비어 있으면(`{}`) manifest의 URL과 sha256을 쓴다. `download_url`만 주면 manifest의 URL과 같을 때만 manifest의 sha256으로 받고, 다르면 `sha256_required`로 거부한다(`extension.rs:396-422`). 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
 | DELETE | `/api/extensions/:id` | `extension.rs:490` | |
 | GET/PUT | `/api/extensions/:id/config` | `extension.rs:574/587` | `{config}` / 객체 머지(null이면 키 삭제) |
 | GET | `/api/extensions/:id/gui` | `extension.rs` `serve_gui_bundle` | UMD JS 번들 (application/javascript). 확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 것만(`sandbox.extension_gui`), 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}` |
@@ -597,7 +597,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - 실행 형태: `<venv python> <module_path> <function>`. stdin으로 config JSON을 한 번 쓰고 닫는다.
 - 결과: stdout 전체, 또는 마지막 비지 않은 줄이 JSON이어야 한다(앞에 찍힌 print는 무시, `parse_plugin_output`, `:467-476`). 종료 코드가 0이 아니면 Err다. 파싱에 실패해도 Err다.
 - 진행률: stderr의 `PROGRESS:{json}` 줄을 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백에 넘긴다(`:68-79, 391-410`). 그 밖의 stderr는 debug 로그로만 남긴다.
-- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`, `:150`), install 계열은 1800초다. 시간이 넘으면 `child.kill()`한다.
+- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`, `:150`), install 계열은 1800초다. 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 `taskkill /T`·AppContainer job)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
 - `PluginCall`(`:161-177`)은 데몬 락 안에서 호출을 만들고 락을 놓은 뒤 실행하기 위한 묶음이다.
 
 **자식 프로세스 환경**

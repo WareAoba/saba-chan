@@ -122,13 +122,13 @@
 - **확인되지 않은 익스텐션 (Windows)**: 신뢰 표시가 `verified`가 아니면 모듈과 같은 규칙을 따른다(02 문서 §2.1). hook 전에 폴더를 검사하고(`malware_detected`·`unscannable_file`·`scan_failed`), Python은 AppContainer 안에서 돈다(준비하지 못하면 `sandbox_unavailable`과 `component`).
   - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다.
   - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
-- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 초과하면 `child.kill()` 후 Err(`plg/:307-315`).
+- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 `taskkill /T`·AppContainer job)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plg/:421-488`).
 
 ### 2.2 디스패처 (`ext/:1213-1256`, `ext/:1557-1628`)
 
 - `hooks_for(name)`(`ext/:1116-1127`): **enabled**이면서 해당 hook을 가진 익스텐션 목록. ~~`HashMap`이라 실행 순서가 비결정적이다.~~ → 해결: `priority`, 그다음 id 순으로 정렬한다.
 - `plan_hook(name, ctx, only)`(`ext/:1213-1256`): 매니저 락 안에서 실행 목록만 정한다.
-  1. context에 `extension_config`(`extensions.settings` 전체 맵, 모든 익스텐션 것)를 주입한다(`ext/:1199-1209`). 다른 익스텐션의 설정까지 모든 hook 프로세스에 노출된다.
+  1. 부를 익스텐션마다 context를 따로 만들고, `extension_config`에는 그 익스텐션 자신의 설정만 `{<id>: {k: v}}` 형태로 넣는다(`ext/:1303-1312`). 다른 익스텐션의 설정은 넘기지 않는다. 명령(`plan_command`)도 같다.
   2. `context.extension_data`로 `condition`을 평가한다(bool, 0이 아닌 숫자, 비어 있지 않은 문자열이면 true).
   3. `python_modules[binding.module]` 경로를 정한다. 없는 모듈이면 그 호출은 Err 결과가 된다.
 - `HookPlan::run(timeout)`(`ext/:1572-1600`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나면 기록하고 계속 진행한다(graceful).
@@ -215,7 +215,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - **출처**: 최신 릴리즈의 서명된 manifest에 든 `ext-<id>` 컴포넌트다. `ExtensionManager::fetch_remote()`가 `relay::latest_catalog`를 부르고 `from_release`가 `meta`(이름·설명·작성자·`min_app_version`·의존성)와 `version`, `download_url`(R2), `sha256`, `asset`을 목록 항목으로 만든다(`ext/:1283-1324`). `manifest_url`, `set_manifest_url`, raw `main/manifest.json`은 없다. 앱보다 새 버전을 요구하면 `incompatible`로 표시한다.
 - `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against` 결과를 돌려준다(`handlers/extension.rs:361-382`).
 - `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs:468-487`).
-- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없으면 원격 목록에서 URL과 sha256을 찾는다. 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/:1376-1415`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/:695-721,1419-1440`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:400-465`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
+- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs:396-422`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/:1376-1415`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/:695-721,1419-1440`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:400-465`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
 - 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates.rs:575-577`).
 - 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/release.yml:185-215`, `D:scripts/versions.py:246-267`). 지금 저장소에는 `steamcmd`, `ue4_ini` 두 개만 있다.
 
@@ -352,11 +352,11 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 7. ~~`server.post_stop`이라는 이름과 실제 의미가 다르다.~~ → 해결: `server.stop`으로 바꾸고 옛 이름은 별칭으로 읽는다(`ext/:15-17`, `supervisor/mod.rs:908-911`).
 8. `server.list_enrich`는 인스턴스마다 순차로 Python을 실행한다(10초 × N). TTL 30초 캐시에 `handled:false`도 캐싱한다(`handlers/server.rs:119-128`).
 9. ~~`instances_using_ext`가 숫자 0, 빈 문자열도 "사용 중"으로 판정하고, 정지된 인스턴스가 있어도 remove할 수 있다.~~ → 해결: 빈 값은 미사용으로 보고(`ext/:891-898`), remove는 정지된 인스턴스까지 검사한다(`handlers/extension.rs:494-495`). disable은 여전히 실행 중인 인스턴스만 보므로, 정지된 인스턴스가 쓰는 익스텐션을 끈 뒤 시작하면 `extension_required` 에러가 난다.
-10. `save_extension_config` 주석은 "null을 전달하면 키 제거"라고 하지만, 실제로는 null 값을 저장한다(`handlers/extension.rs:586` vs `ext/:1490-1498`). 같은 핸들러 주석은 아직 `extensionConfig.json`이라고 적혀 있다(`:573`).
+10. ~~`save_extension_config` 주석은 "null을 전달하면 키 제거"라고 하지만, 실제로는 null 값을 저장한다.~~ → 해결: null인 키는 지워 기본값으로 돌린다(`ext/:1590-1606`). `get_extension_config` 핸들러 주석은 아직 `extensionConfig.json`이라고 적혀 있다(`:573`).
 11. ~~컴포넌트 의존성(`saba-core` 등)을 선언하면 HTTP enable이 불가능하다.~~ → 해결: `saba-core`는 데몬 버전으로 검사한다(`ext/:905-908`). 다른 컴포넌트 키는 여전히 버전을 쓰면 켤 수 없다.
 12. ~~install/update가 실행 중이거나 enabled인 익스텐션 디렉토리를 검사 없이 삭제한다. 무결성 검증·의존성 자동 설치가 없다.~~ → 해결: 실행 중 사용이면 거부, staging 후 교체·롤백, sha256 확인, 빠진 의존성 자동 설치(`ext/:1376-1440`, `handlers/extension.rs:460-462`).
 13. ~~`discover()`/`rescan()`이 manifest.id와 디렉토리명의 일치를 검사하지 않고, zip 추출은 기존 폴더가 있으면 새 zip을 버린다.~~ → 해결: 스캔이 이름을 검사하고(`ext/:763-769`), zip은 기존 폴더를 바꿔 끼운다(`ext/:652-683`).
-14. 모든 hook context에 전체 `extensions.settings`(타 익스텐션 비밀값 포함)가 주입된다(`ext/:1199-1209`).
+14. ~~모든 hook context에 전체 `extensions.settings`(타 익스텐션 비밀값 포함)가 주입된다.~~ → 해결: 익스텐션마다 자기 설정만 넣는다(`ext/:1303-1312`).
 15. GUI 번들을 Blob script로 무검증 실행하고, `window.api`에 전체 접근할 수 있다.
 16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.js:215`).
 17. ~~리포에 런타임 산출물(`dockerd.pid`, `.deps-resolved.json`, Go 바이너리)이 커밋되어 있다.~~ → 해결: 해당 익스텐션이 제거되었고, 저장소에는 소스·테스트·`icon.png`만 있다.
