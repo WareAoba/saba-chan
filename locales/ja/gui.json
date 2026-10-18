@@ -724,6 +724,7 @@
     "state_connected": "接続済み",
     "state_error": "接続失敗",
     "nodes_empty": "まだ接続されたDiscordサーバーはありません",
+    "nodes_refresh_failed": "サーバー一覧を更新できませんでした: {{error}}",
     "nodes_need_connect": "先にDiscordと接続してください",
     "connect_title": "Discordと接続",
     "connect_body": "コードを受け取ってDiscordサーバーで入力するだけです。接続すると、そのサーバーからボットでゲームサーバーを起動・停止できます。",

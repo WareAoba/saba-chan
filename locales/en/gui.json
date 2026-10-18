@@ -727,6 +727,7 @@
     "state_connected": "Connected",
     "state_error": "Connection failed",
     "nodes_empty": "No Discord server connected yet",
+    "nodes_refresh_failed": "Couldn't refresh the server list: {{error}}",
     "nodes_need_connect": "Connect to Discord first",
     "connect_title": "Connect to Discord",
     "connect_body": "Get a code and type it in your Discord server. Once connected, you can start and stop game servers from that server through the bot.",

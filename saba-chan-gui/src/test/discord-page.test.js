@@ -187,6 +187,13 @@ describe('DiscordPage', () => {
         expect(screen.getByText('민트')).toBeTruthy();
     });
 
+    it('연결된 상태에서 노드 목록만 실패해도 실패를 알린다', async () => {
+        window.api.relayListHostNodes = vi.fn().mockResolvedValue({ error: 'unauthorized' });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        await waitFor(() => expect(document.querySelector('.dc-nav-empty.dc-field-error')).not.toBeNull());
+        expect(document.querySelector('.dc-nav-empty.dc-field-error').textContent).toContain('unauthorized');
+    });
+
     it('호스트가 바뀐 뒤 늦게 온 옛 노드 목록은 버린다', async () => {
         let resolveOld;
         window.api.relayListHostNodes = vi.fn((host) =>

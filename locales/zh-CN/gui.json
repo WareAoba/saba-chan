@@ -724,6 +724,7 @@
     "state_connected": "已连接",
     "state_error": "连接失败",
     "nodes_empty": "还没有连接任何 Discord 服务器",
+    "nodes_refresh_failed": "无法刷新服务器列表：{{error}}",
     "nodes_need_connect": "请先连接 Discord",
     "connect_title": "连接 Discord",
     "connect_body": "获取一个代码并在你的 Discord 服务器中输入即可。连接后，就能在该服务器中通过机器人启动和停止游戏服务器。",

@@ -724,6 +724,7 @@
     "state_connected": "Verbunden",
     "state_error": "Verbindung fehlgeschlagen",
     "nodes_empty": "Noch kein Discord-Server verbunden",
+    "nodes_refresh_failed": "Die Serverliste konnte nicht aktualisiert werden: {{error}}",
     "nodes_need_connect": "Verbinde dich zuerst mit Discord",
     "connect_title": "Mit Discord verbinden",
     "connect_body": "Hol dir einen Code und gib ihn auf deinem Discord-Server ein. Danach kannst du dort über den Bot Gameserver starten und stoppen.",

@@ -724,6 +724,7 @@
     "state_connected": "Connecté",
     "state_error": "Échec de la connexion",
     "nodes_empty": "Aucun serveur Discord connecté pour l'instant",
+    "nodes_refresh_failed": "Impossible d'actualiser la liste des serveurs : {{error}}",
     "nodes_need_connect": "Connectez-vous d'abord à Discord",
     "connect_title": "Se connecter à Discord",
     "connect_body": "Obtenez un code et saisissez-le sur votre serveur Discord. Une fois connecté, vous pourrez démarrer et arrêter vos serveurs de jeu depuis ce serveur via le bot.",

@@ -163,6 +163,9 @@ export function DiscordPage({
     const relayKey = `${discordCloudHostId}|${relayUrl}|${relayConnected}`;
     const relayKeyRef = useRef(relayKey);
     relayKeyRef.current = relayKey;
+    // 멤버는 길드별로 받으므로 연결 상태가 잠깐 흔들려도 같은 호스트·릴레이의 답이면 쓴다
+    const hostKeyRef = useRef('');
+    hostKeyRef.current = `${discordCloudHostId}|${relayUrl}`;
 
     // ── 노드 목록 ──
     const loadNodes = useCallback(async () => {
@@ -186,11 +189,11 @@ export function DiscordPage({
 
     const loadMembers = useCallback(
         async (guildId) => {
-            const key = relayKeyRef.current;
+            const key = hostKeyRef.current;
             setMembersLoading(guildId);
             try {
                 const data = await window.api.relayListNodeMembers(guildId, relayUrl);
-                if (key !== relayKeyRef.current) return;
+                if (key !== hostKeyRef.current) return;
                 if (data?.error) throw new Error(data.error);
                 const members = Array.isArray(data) ? data : data?.members || [];
                 setters.current.setCloudMembers((prev) => ({ ...prev, [guildId]: members }));
@@ -198,7 +201,7 @@ export function DiscordPage({
             } catch (e) {
                 // 받아 둔 목록은 그대로 둔다 (실패를 빈 목록으로 덮지 않는다)
                 console.warn('[Discord] members fetch failed:', e);
-                if (key === relayKeyRef.current) setMembersFailed((prev) => ({ ...prev, [guildId]: true }));
+                if (key === hostKeyRef.current) setMembersFailed((prev) => ({ ...prev, [guildId]: true }));
             } finally {
                 setMembersLoading((cur) => (cur === guildId ? null : cur));
             }
@@ -430,7 +433,12 @@ export function DiscordPage({
                                 </button>
                             )}
                         </div>
-                        {cloudNodes.length === 0 && (
+                        {cloudState === 'connected' && cloudError && (
+                            <p className="dc-nav-empty dc-field-error">
+                                {t('discord.nodes_refresh_failed', { error: cloudError })}
+                            </p>
+                        )}
+                        {cloudNodes.length === 0 && !(cloudState === 'connected' && cloudError) && (
                             <p className="dc-nav-empty">
                                 {cloudState === 'connected'
                                     ? t('discord.nodes_empty')

@@ -724,6 +724,7 @@
     "state_connected": "已連線",
     "state_error": "連線失敗",
     "nodes_empty": "尚未連線任何 Discord 伺服器",
+    "nodes_refresh_failed": "無法重新整理伺服器列表：{{error}}",
     "nodes_need_connect": "請先連線 Discord",
     "connect_title": "連線 Discord",
     "connect_body": "取得一組代碼並在您的 Discord 伺服器中輸入即可。連線後，就能在該伺服器中透過機器人啟動和停止遊戲伺服器。",
