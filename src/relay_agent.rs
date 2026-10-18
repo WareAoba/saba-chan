@@ -235,6 +235,8 @@ struct Session {
 #[derive(Debug, Clone, PartialEq)]
 enum Received {
     New,
+    /// 받아 두고 아직 시작하지 않았다
+    Waiting,
     Running,
     Done(Value),
 }
@@ -248,33 +250,39 @@ struct SeenCommands {
 struct Seen {
     id: String,
     at: std::time::Instant,
-    /// 받은 세션 (`Session::generation`)
-    session: u64,
+    started: bool,
     result: Option<Value>,
 }
 
 impl SeenCommands {
     /// 받은 id를 기록하고, 이 명령을 어떻게 다룰지 돌려준다. 처음 본 id는 처리 중으로 기록한다
-    fn receive(&mut self, id: &str, now: std::time::Instant, session: u64) -> Received {
+    fn receive(&mut self, id: &str, now: std::time::Instant) -> Received {
         while self.entries.front().is_some_and(|e| now.saturating_duration_since(e.at) >= SEEN_FOR) {
             self.entries.pop_front();
         }
         if let Some(e) = self.entries.iter().find(|e| e.id == id) {
             return match &e.result {
                 Some(r) => Received::Done(r.clone()),
-                None => Received::Running,
+                None if e.started => Received::Running,
+                None => Received::Waiting,
             };
         }
-        self.entries.push_back(Seen { id: id.to_string(), at: now, session, result: None });
+        self.entries.push_back(Seen { id: id.to_string(), at: now, started: false, result: None });
         while self.entries.len() > SEEN_MAX {
             self.entries.pop_front();
         }
         Received::New
     }
 
-    /// 세션이 끝날 때: 그 세션이 받고 끝내지 못한 명령(받아 두고 시작하지 않은 것)은 잊는다. 다시 오면 다음 세션이 실행한다
-    fn forget_unfinished(&mut self, session: u64) {
-        self.entries.retain(|e| e.session != session || e.result.is_some());
+    /// 세션이 끝나 시작하지 않고 버린 명령: 다시 오면 다음 세션이 실행한다
+    fn forget(&mut self, ids: &[&str]) {
+        self.entries.retain(|e| !ids.contains(&e.id.as_str()));
+    }
+
+    fn start(&mut self, id: &str) {
+        if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
+            e.started = true;
+        }
     }
 
     fn finish(&mut self, id: &str, result: &Value) {
@@ -284,7 +292,7 @@ impl SeenCommands {
     }
 }
 
-/// poll 묶음의 명령 id로 만든 `POST /ack` 본문들 (`ACK_BATCH`개씩)
+/// 시작한 명령 id로 만든 `POST /ack` 본문들 (`ACK_BATCH`개씩)
 fn ack_bodies(commands: &[Value]) -> Vec<String> {
     let ids: Vec<&str> = commands.iter().filter_map(|c| c.get("id").and_then(Value::as_str)).collect();
     ids.chunks(ACK_BATCH).map(|chunk| json!({ "ids": chunk }).to_string()).collect()
@@ -293,10 +301,15 @@ fn ack_bodies(commands: &[Value]) -> Vec<String> {
 impl Session {
     /// 서명된 요청 생성. body는 서명한 문자열 그대로 보낸다.
     fn signed(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<reqwest::RequestBuilder, String> {
-        // 끝난 세션(연결 해제·주소나 토큰 교체)은 아무것도 보내지 않는다
+        // 끝난 세션(연결 해제·주소나 토큰 교체)은 새로 아무것도 보내지 않는다 (예외: 이미 시작한 명령의 결과)
         if self.cancel.is_cancelled() {
             return Err("relay session ended".into());
         }
+        self.request(method, path, body)
+    }
+
+    /// 이 세션의 주소·토큰으로 서명한 요청
+    fn request(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<reqwest::RequestBuilder, String> {
         let headers = signed_headers_with(&self.token, method.as_str(), path, body.as_deref()).ok_or("node token missing")?;
         let mut req = self.client.request(method, format!("{}{}", self.base, path));
         for (k, v) in headers {
@@ -520,8 +533,18 @@ impl Session {
         let mut waiting: Vec<Value> = Vec::new();
         let mut next: Option<Poll<'_>> = Some(Box::pin(self.poll_once()));
         while !self.cancel.is_cancelled() {
+            // 시작하는 명령만 ack한다: 받아 두고 시작하지 못한 명령은 연결이 끝나면 릴레이가 다음 연결로 다시 보낸다
+            let mut started = Vec::new();
             while running.len() < COMMANDS_IN_FLIGHT && !waiting.is_empty() {
-                running.push(self.run_command(waiting.remove(0)));
+                let cmd = waiting.remove(0);
+                if let Some(id) = cmd.get("id").and_then(Value::as_str) {
+                    self.seen.lock().unwrap_or_else(|e| e.into_inner()).start(id);
+                }
+                started.push(json!({ "id": cmd.get("id").cloned().unwrap_or(Value::Null) }));
+                running.push(self.run_command(cmd));
+            }
+            for body in ack_bodies(&started) {
+                side.push(Box::pin(self.post_ack(body)));
             }
             if next.is_none() && waiting.is_empty() && running.len() < COMMANDS_IN_FLIGHT {
                 next = Some(Box::pin(self.poll_once()));
@@ -532,19 +555,22 @@ impl Session {
                     match polled {
                         Ok(commands) => {
                             failures = 0;
-                            for body in ack_bodies(&commands) {
-                                side.push(Box::pin(self.post_ack(body)));
-                            }
                             let now = std::time::Instant::now();
+                            let mut reack = Vec::new();
                             for cmd in commands {
                                 let Some(id) = cmd.get("id").and_then(Value::as_str).map(str::to_string) else { continue };
-                                let received = self.seen.lock().unwrap_or_else(|e| e.into_inner()).receive(&id, now, self.generation);
+                                let received = self.seen.lock().unwrap_or_else(|e| e.into_inner()).receive(&id, now);
                                 match received {
                                     Received::New => waiting.push(cmd),
-                                    // 같은 명령을 다시 받았다: 실행하지 않는다. 끝난 것이면 결과만 다시 보낸다
-                                    Received::Running => {}
+                                    // 같은 명령을 다시 받았다: 실행하지 않는다. 실행 중이면 ack가 닿지 않은 것이니 다시 ack하고,
+                                    // 끝난 것이면 결과만 다시 보낸다
+                                    Received::Waiting => {}
+                                    Received::Running => reack.push(json!({ "id": id })),
                                     Received::Done(result) => side.push(Box::pin(async move { self.post_result(&id, &result).await })),
                                 }
+                            }
+                            for body in ack_bodies(&reack) {
+                                side.push(Box::pin(self.post_ack(body)));
                             }
                         }
                         Err(e) if e == REPLACED => self.give_up_replaced(),
@@ -562,11 +588,16 @@ impl Session {
                 }
                 Some(()) = running.next(), if !running.is_empty() => {}
                 Some(()) = side.next(), if !side.is_empty() => {}
+                _ = self.cancel.cancelled() => {}
             }
         }
-        // 연결 해제(취소) 뒤에는 받아 두고 시작하지 않은 명령은 버리고, 이미 시작한 것은 끝까지 마친다
+        // 연결 해제(취소) 뒤에는 받아 두고 시작하지 않은 명령은 바로 잊어 다음 연결이 다시 받으면 실행하게 하고,
+        // 이미 시작한 것은 끝까지 마쳐 결과를 올린다
+        {
+            let ids: Vec<&str> = waiting.iter().filter_map(|c| c.get("id").and_then(Value::as_str)).collect();
+            self.seen.lock().unwrap_or_else(|e| e.into_inner()).forget(&ids);
+        }
         while running.next().await.is_some() {}
-        self.seen.lock().unwrap_or_else(|e| e.into_inner()).forget_unfinished(self.generation);
     }
 
     async fn run_command(&self, cmd: Value) {
@@ -814,7 +845,11 @@ impl Session {
 
     async fn post_result(&self, id: &str, result: &Value) {
         let path = format!("/result/{}", encode_segment(id));
-        let sent = self.send_signed(reqwest::Method::POST, &path, Some(result.to_string())).await;
+        // 실행한 명령의 결과는 연결이 끝난 뒤에도 끝까지 보낸다: ack한 명령이라 릴레이가 다시 보내 주지 않는다
+        let sent = match self.request(reqwest::Method::POST, &path, Some(result.to_string())) {
+            Ok(req) => req.send().await.map_err(|e| e.to_string()),
+            Err(e) => Err(e),
+        };
         match sent {
             Ok(r) if r.status().is_success() => {}
             Ok(r) => tracing::warn!("[RelayAgent] result {} rejected: {}", id, r.status()),
@@ -1306,48 +1341,61 @@ mod tests {
     fn a_redelivered_command_runs_once_and_gets_its_result_again() {
         let mut seen = SeenCommands::default();
         let t = std::time::Instant::now();
-        assert_eq!(seen.receive("c1", t, 1), Received::New);
-        // 처리 중에 다시 오면 아무것도 하지 않는다 (끝날 때 결과가 한 번 나간다)
-        assert_eq!(seen.receive("c1", t + Duration::from_secs(15), 1), Received::Running);
+        assert_eq!(seen.receive("c1", t), Received::New);
+        seen.start("c1");
+        // 처리 중에 다시 오면 실행하지 않는다 (끝날 때 결과가 한 번 나간다)
+        assert_eq!(seen.receive("c1", t + Duration::from_secs(15)), Received::Running);
         seen.finish("c1", &json!({"ok": true}));
-        assert_eq!(seen.receive("c1", t + Duration::from_secs(30), 1), Received::Done(json!({"ok": true})));
-        assert_eq!(seen.receive("c2", t + Duration::from_secs(30), 1), Received::New);
+        assert_eq!(seen.receive("c1", t + Duration::from_secs(30)), Received::Done(json!({"ok": true})));
+        assert_eq!(seen.receive("c2", t + Duration::from_secs(30)), Received::New);
     }
 
-    /// 연결을 다시 맺어도 끝난 명령은 기억한다. 끝나지 못한 명령(받아 두고 시작하지 않은 것)은 잊어서 다시 오면 실행한다
+    /// 연결을 다시 맺어도 끝난 명령과 실행 중인 명령은 기억한다. 받아 두고 시작하지 않은 명령은 잊어서 다시 오면 실행한다
     #[test]
     fn a_reconnect_keeps_finished_commands_and_forgets_unfinished_ones() {
         let mut seen = SeenCommands::default();
         let t = std::time::Instant::now();
-        seen.receive("done", t, 1);
+        seen.receive("done", t);
         seen.finish("done", &json!({"ok": true}));
-        seen.receive("dropped", t, 1);
-        // 겹쳐 돈 새 세션이 받아 처리 중인 명령은 남는다
-        seen.receive("newer", t, 2);
-        seen.forget_unfinished(1);
-        assert_eq!(seen.receive("done", t, 2), Received::Done(json!({"ok": true})));
-        assert_eq!(seen.receive("dropped", t, 2), Received::New);
-        assert_eq!(seen.receive("newer", t, 2), Received::Running);
+        seen.receive("dropped", t);
+        // 실행 중인 명령은 남는다
+        seen.receive("running", t);
+        seen.start("running");
+        seen.forget(&["dropped"]);
+        assert_eq!(seen.receive("done", t), Received::Done(json!({"ok": true})));
+        assert_eq!(seen.receive("dropped", t), Received::New);
+        assert_eq!(seen.receive("running", t), Received::Running);
+    }
+
+    /// 실행 중인 명령이 다시 오면(ack가 닿지 않았다) 다시 ack한다. 아직 시작하지 않은 명령은 시작할 때 ack한다
+    #[test]
+    fn a_redelivered_command_is_told_apart_as_waiting_or_running() {
+        let mut seen = SeenCommands::default();
+        let t = std::time::Instant::now();
+        assert_eq!(seen.receive("c1", t), Received::New);
+        assert_eq!(seen.receive("c1", t), Received::Waiting);
+        seen.start("c1");
+        assert_eq!(seen.receive("c1", t), Received::Running);
     }
 
     #[test]
     fn remembered_commands_are_forgotten_after_ten_minutes_or_past_the_cap() {
         let mut seen = SeenCommands::default();
         let t = std::time::Instant::now();
-        seen.receive("old", t, 1);
-        assert_eq!(seen.receive("old", t + SEEN_FOR, 1), Received::New);
+        seen.receive("old", t);
+        assert_eq!(seen.receive("old", t + SEEN_FOR), Received::New);
 
         let mut seen = SeenCommands::default();
         for i in 0..=SEEN_MAX {
-            seen.receive(&format!("c{i}"), t, 1);
+            seen.receive(&format!("c{i}"), t);
         }
         assert_eq!(seen.entries.len(), SEEN_MAX);
-        assert_eq!(seen.receive("c0", t, 1), Received::New);
-        assert_eq!(seen.receive(&format!("c{SEEN_MAX}"), t, 1), Received::Running);
+        assert_eq!(seen.receive("c0", t), Received::New);
+        assert_eq!(seen.receive(&format!("c{SEEN_MAX}"), t), Received::Waiting);
     }
 
     #[test]
-    fn acks_carry_every_received_id_in_batches_the_relay_accepts() {
+    fn acks_carry_every_started_id_in_batches_the_relay_accepts() {
         let commands: Vec<Value> = (0..120).map(|i| json!({"id": format!("c{i}")})).chain([json!({"payload": {}})]).collect();
         let bodies = ack_bodies(&commands);
         let ids: Vec<Vec<String>> = bodies.iter().map(|b| serde_json::from_str::<Value>(b).unwrap()["ids"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect()).collect();
