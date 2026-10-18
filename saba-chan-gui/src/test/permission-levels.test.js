@@ -129,6 +129,29 @@ describe('권한 화면', () => {
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1003', 0);
     });
 
+    it('새로고침하면 릴레이에 남은 부여값도 다시 읽는다', async () => {
+        window.api.relayListLegacyMembers = vi.fn(async () => relayMembers);
+        renderPanel('members', { members: relayMembers.map(({ level, ...m }) => m), onRefreshMembers: vi.fn() });
+        await flush();
+        expect(screen.getByRole('checkbox', { name: 'Newbie' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Newbie' }));
+        let release;
+        window.api.relayListLegacyMembers.mockReturnValue(new Promise((r) => (release = r)));
+        fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+        // 응답 전에는 옛 후보로 가져올 수 없다
+        await flush();
+        expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull();
+        await act(async () => release(relayMembers));
+        expect(screen.getByRole('checkbox', { name: 'Newbie' })).not.toBeChecked();
+
+        window.api.relayListLegacyMembers.mockResolvedValue([]);
+        fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+        await flush();
+        expect(window.api.relayListLegacyMembers).toHaveBeenCalledTimes(3);
+        expect(screen.queryByRole('checkbox', { name: 'Newbie' })).toBeNull();
+    });
+
     it('소유자 불일치를 알리고, 고르면 소유자를 바꾼다', async () => {
         perm = base({ relayOwnerDiscordId: '1002' });
         renderPanel();

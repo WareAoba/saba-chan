@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
@@ -142,17 +142,29 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     const [ownerArmed, setOwnerArmed] = useState(false); // 릴레이 값은 덜 믿으므로 한 번 더 누르게 한다
 
     // 가져오기 후보는 릴레이에 남은 부여값(legacy-members)에서 고른다. 디스코드 멤버 목록에는 레벨이 없다
+    // 새로고침 때도 다시 읽는다 (옛 레벨을 가져오지 않게). 늦게 온 옛 응답은 버린다
     const [legacy, setLegacy] = useState([]);
-    useEffect(() => {
-        if (!window.api?.relayListLegacyMembers) return undefined;
-        let alive = true;
-        Promise.resolve(window.api.relayListLegacyMembers(guildId))
-            .then((res) => alive && setLegacy(Array.isArray(res) ? res : []))
-            .catch(() => alive && setLegacy([]));
-        return () => {
-            alive = false;
-        };
+    const legacyGen = useRef(0);
+    const loadLegacy = useCallback(async () => {
+        if (!window.api?.relayListLegacyMembers) return;
+        const gen = ++legacyGen.current;
+        // 새 목록이 올 때까지 옛 후보와 고른 것을 비워 옛 레벨을 가져오지 못하게 한다
+        setLegacy([]);
+        setPicked([]);
+        let res;
+        try {
+            res = await window.api.relayListLegacyMembers(guildId);
+        } catch {
+            res = null;
+        }
+        if (gen === legacyGen.current) setLegacy(Array.isArray(res) ? res : []);
     }, [guildId]);
+    useEffect(() => {
+        loadLegacy();
+        return () => {
+            legacyGen.current += 1;
+        };
+    }, [loadLegacy]);
     const byId = useMemo(
         () => new Map([...legacy, ...(members || [])].map((m) => [String(m.id), m])),
         [legacy, members],
@@ -316,6 +328,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                     className="btn btn-secondary"
                     onClick={() => {
                         load();
+                        loadLegacy();
                         onRefreshMembers?.();
                     }}
                     disabled={busy || membersLoading}
