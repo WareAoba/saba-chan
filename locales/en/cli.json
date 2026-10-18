@@ -63,6 +63,7 @@
     "channel_none": "none",
     "chatbot_channels": "Chatbot channels",
     "music_channel": "Music channel",
+    "notify_channel": "Notification channel",
     "confirm_music_channel": "Making #{{name}} the music channel deletes ordinary messages in it. Continue?",
     "channels_saved": "Channel assignment changed.",
     "channels_bot_missing": "The bot is not in this Discord server, so its channels can't be listed. Invite it: saba-chan-cli bot invite",

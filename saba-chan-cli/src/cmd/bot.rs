@@ -73,8 +73,8 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.data(&r, |r| print_list(r, "members"));
             Ok(())
         }
-        BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music } => {
-            channels(ctx, &guild, ChannelChange { chatbot, no_chatbot, music, no_music }).await
+        BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music, notify, no_notify } => {
+            channels(ctx, &guild, ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify }).await
         }
         BotCmd::Lang { guild, value } => {
             let patch = value.map(|v| json!({ "locale": v }));
@@ -347,6 +347,8 @@ struct ChannelChange {
     no_chatbot: bool,
     music: Option<String>,
     no_music: bool,
+    notify: Option<String>,
+    no_notify: bool,
 }
 
 /// 이름(앞의 `#` 무시) 또는 id → 채널 id
@@ -394,6 +396,11 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
             ctx.ask.ensure(&t!("bot.confirm_music_channel", name = name))?;
         }
         patch.insert("music".into(), json!(id));
+    }
+    if change.no_notify {
+        patch.insert("notify".into(), Value::Null);
+    } else if let Some(q) = &change.notify {
+        patch.insert("notify".into(), json!(channel_id(&list, q)?));
     }
     let r = if patch.is_empty() {
         current
@@ -459,9 +466,11 @@ fn print_channels(r: &Value) {
         .collect();
     let none = || output::dim(&t!("bot.channel_none"));
     let music = r.get("music").and_then(Value::as_str).map(name);
+    let notify = r.get("notify").and_then(Value::as_str).map(name);
     output::print_kv(&[
         (t!("bot.chatbot_channels"), if chatbot.is_empty() { none() } else { chatbot.join(", ") }),
         (t!("bot.music_channel"), music.unwrap_or_else(none)),
+        (t!("bot.notify_channel"), notify.unwrap_or_else(none)),
     ]);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
         eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
