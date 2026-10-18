@@ -258,7 +258,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 - 프로덕션 필수 env: `RELAY_INTERNAL_SECRET`, `ADMIN_PAGE_KEY`, `DISCORD_TOKEN`, `DATABASE_URL`, `SELF_URL`. 없으면 기동하지 않는다.
 - 프로덕션의 5xx 응답은 내부 메시지 없이 `INTERNAL_SERVER_ERROR`만 돌려준다.
 - **인증 4종**
-  - 노드 토큰 `authenticateNode`(`middleware/auth.ts`): `Authorization: Bearer sbn_<hostId>.<secret>`를 DB `hosts.token_hash`(argon2id)로 검증하고 5분 캐시한다. `req.node = {id: hostId}`. 데몬이 함께 보내는 `x-request-timestamp`·`x-request-nonce`·`x-request-signature`는 받아들이되 검증하지 않는다(키가 같은 요청의 토큰이라 TLS 위에서 더하는 보호가 없다).
+  - 노드 토큰 `authenticateNode`(`middleware/auth.ts`): `Authorization: Bearer sbn_<hostId>.<secret>`를 DB `hosts.token_hash`(argon2id)로 검증하고 5분 캐시한다. `req.node = {id: hostId}`. 실패는 401 `MISSING_TOKEN`·`INVALID_TOKEN_FORMAT`·`NODE_NOT_FOUND`·`INVALID_TOKEN`이고, 같은 계정의 재페어링으로 토큰이 바뀐 지 7일 안이면 `INVALID_TOKEN` 대신 `TOKEN_REPLACED`다(메모리 기록이라 relay를 다시 켜면 `INVALID_TOKEN`으로 돌아간다). 데몬은 `TOKEN_REPLACED`를 받으면 새로 저장된 토큰이 있으면 그것으로 바꾸고, 없으면 에이전트를 멈추고 "이 계정의 PC 연결이 다른 PC로 옮겨졌다"고 알린다. 데몬이 함께 보내는 `x-request-timestamp`·`x-request-nonce`·`x-request-signature`는 받아들이되 검증하지 않는다(키가 같은 요청의 토큰이라 TLS 위에서 더하는 보호가 없다).
   - 내부 시크릿 `verifyInternal`(`middleware/internalAuth.ts`): `x-internal-secret`을 `RELAY_INTERNAL_SECRET`과 상수시간 비교한다. 릴리즈 스크립트·봇 상태 조회용.
   - 노드 또는 내부 `authenticateNodeOrInternal`: 노드 토큰이면 자기 호스트(`isForeignHost`)와 그 호스트의 길드만 다룬다.
   - 관리자 키 `verifyAdmin`: `x-admin-key`를 `ADMIN_PAGE_KEY`와 비교한다. 키가 비어 있으면 항상 거부한다.
@@ -321,7 +321,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 
 **(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시)
 1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
-2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급, guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다). 길드가 이미 다른 사람(노드 주인이 아닌 사람)에게 묶여 있으면, 연결하는 사람이 디스코드 서버 주인일 때만 그 노드를 지우고 새로 만든다(옛 PC의 대기 명령도 지운다). 아니면 `GUILD_TAKEN`으로 거절하고 코드는 pending으로 남는다. `/사바쨩 연결해제`(노드 주인 또는 디스코드 서버 주인)는 노드와 그 길드의 대기 명령을 지운다. 권한·배정·챗봇 설정은 cascade로 지워지고, 길드 슬래시 명령은 0개로 다시 등록된다(`unbindGuild`). 데몬의 `nodeSettings`는 남는다.
+2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급(계정당 PC 하나. 3분 안에 heartbeat가 있던 PC를 대체하면 답에 그 사실을 붙인다), guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다). 길드가 이미 다른 사람(노드 주인이 아닌 사람)에게 묶여 있으면, 연결하는 사람이 디스코드 서버 주인일 때만 그 노드를 지우고 새로 만든다(옛 PC의 대기 명령도 지운다). 아니면 `GUILD_TAKEN`으로 거절하고 코드는 pending으로 남는다. `/사바쨩 연결해제`(노드 주인 또는 디스코드 서버 주인)는 노드와 그 길드의 대기 명령을 지운다. 권한·배정·챗봇 설정은 cascade로 지워지고, 길드 슬래시 명령은 0개로 다시 등록된다(`unbindGuild`). 데몬의 `nodeSettings`는 남는다.
 3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다(#61). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `<data_dir>/.node_token`에 저장**한다.
 4. daemon `GET/PUT/DELETE /api/config/node-token`(`handlers/config.rs`)은 토큰 원문을 IPC로 그대로 반환한다.
 
@@ -356,7 +356,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 - 서명하는 프록시(host status·nodes·members)와 페어링·bot-invite는 `signed_base`를 거쳐, 요청한 주소가 설정된 릴레이와 같거나 루프백(모의 릴레이)일 때만 따르고 아니면 설정된 릴레이로 보낸다(`relay.rs` `signed_base`, 59a93b8).
 - `/poll`, `/heartbeat`, `/result`, `/events`는 daemon 안의 relay agent가 부른다. 릴레이 주소는 bot config의 `cloud.relayUrl`, 토큰은 `<data_dir>/.node_token`에서 읽는다(`relay_agent.rs`).
 - bot config(prefix·별명)는 GUI가 daemon에만 저장하고 agent heartbeat의 `botConfig`로 relay에 간다. relay는 heartbeat metadata를 `hosts.metadata`에 저장하고 봇이 거기서 prefix를 읽는다(`heartbeat.ts`, `bot/state/nodeState.ts`).
-- 권한 판정의 주체는 데몬이다(`chat/permissions.rs`, 01 문서 BotConfig 절). 설정이 없는 길드도 기본 레벨(유저)로 판정한다. relay의 `node_permissions`·`nodes.default_level`은 데몬 값의 캐시이고 relay 바깥 검사(`commandAccess.ts`)에 쓴다. `/사바쨩 권한` 명령은 `permission` action으로 데몬에 보낸다.
+- 권한 판정의 주체는 데몬이다(`chat/permissions.rs`, 01 문서 BotConfig 절) 금지(-1) 멤버는 relay 게이트웨이가 음악·챗봇을 포함한 봇 기능 전체에서 먼저 막는다. 슬래시·버튼에는 숨김 답으로, 봇에게 한 메시지에는 10분에 한 번 짧은 안내로 답한다(`bot/gateway/gateway.ts`, `commandAccess.ts` `isBanned`). 설정이 없는 길드도 기본 레벨(유저)로 판정한다. relay의 `node_permissions`·`nodes.default_level`은 데몬 값의 캐시이고 relay 바깥 검사(`commandAccess.ts`)에 쓴다. `/사바쨩 권한` 명령은 `permission` action으로 데몬에 보낸다.
 
 ---
 
