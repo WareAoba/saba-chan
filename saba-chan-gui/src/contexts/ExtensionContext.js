@@ -12,10 +12,14 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useTranslation } from 'react-i18next';
 import { clearModuleAuditCache } from '../components/servers/ModuleAuditNotice';
 import i18n from '../i18n';
+import { useUIStore } from '../stores/useUIStore';
 import { safeShowToast } from '../utils/helpers';
 import { showTrustWarnings } from '../utils/trustNotice';
 
 const ExtensionContext = createContext(null);
+
+/** 데몬이 번들을 내주지 않았다: 확인되지 않았고 이 PC에서 허락하지 않음 (허락 뒤 파일이 바뀐 경우 포함) */
+const GUI_UNAPPROVED = Symbol('extension_gui_unapproved');
 
 /**
  * 익스텐션 GUI 번들 동적 로드
@@ -38,7 +42,8 @@ async function loadExtensionBundle(ext) {
     try {
         // IPC를 통해 번들 JS 소스 가져오기 (인증 포함)
         const jsSource = await window.api.extensionGuiBundle(ext.id);
-        if (!jsSource) return null;
+        if (jsSource?.error_code === 'extension_gui_unapproved') return GUI_UNAPPROVED;
+        if (typeof jsSource !== 'string' || !jsSource) return null;
 
         // blob URL로 <script> 태그 삽입
         await new Promise((resolve, reject) => {
@@ -101,6 +106,11 @@ export function ExtensionProvider({ children }) {
     const loadedRef = useRef(new Set());
     /** 로드된 익스텐션의 버전 추적 (핫로드 시 번들 무효화 판단용) */
     const loadedVersionsRef = useRef({});
+    /** GUI 번들을 허락받아야 하는 활성 익스텐션 (확인 안 됨, 이 PC에서 허락 안 함) */
+    const [guiPending, setGuiPending] = useState([]);
+    /** 이번 실행에서 이미 물어본 익스텐션 (거절하면 다시 묻지 않고 설정 화면에서 허락하게 둔다) */
+    const askedGuiRef = useRef(new Set());
+    const modalOpen = useUIStore((s) => Boolean(s.modal));
 
     // ── 매니페스트 / 버전관리 상태 ──────────────────────────────
     /** 원격 매니페스트에서 받아온 가용 익스텐션 목록 */
@@ -136,6 +146,7 @@ export function ExtensionProvider({ children }) {
 
         const loadBundles = async () => {
             const newSlots = {};
+            const pending = [];
 
             /** 슬롯 맵을 newSlots에 병합하는 헬퍼 */
             const mergeSlots = (extSlots) => {
@@ -168,8 +179,18 @@ export function ExtensionProvider({ children }) {
                     continue;
                 }
 
+                // 허락받지 않은 번들은 요청하지 않는다 (데몬이 gui_allowed로 알려 준다)
+                if (ext.gui && ext.gui_allowed === false) {
+                    pending.push(ext);
+                    continue;
+                }
+
                 // ② UMD 번들 동적 로드
                 const mod = await loadExtensionBundle(ext);
+                if (mod === GUI_UNAPPROVED) {
+                    pending.push(ext);
+                    continue;
+                }
                 loadedRef.current.add(ext.id);
                 loadedVersionsRef.current[ext.id] = ext.version;
 
@@ -186,6 +207,7 @@ export function ExtensionProvider({ children }) {
             }
 
             setSlots(newSlots);
+            setGuiPending(pending);
             setLoading(false);
         };
 
@@ -272,6 +294,50 @@ export function ExtensionProvider({ children }) {
         },
         [fetchExtensions, t],
     );
+
+    // 확인되지 않은 익스텐션의 GUI를 이 PC에서 허락한다 (데몬이 파일 지문과 함께 저장). 허락하면 다시 받아 로드한다
+    const approveExtensionGui = useCallback(
+        async (extId) => {
+            try {
+                const res = await window.api.sandboxAllowExtensionGui(`ext-${extId}`);
+                if (!res || res.success === false || res.error) {
+                    safeShowToast(t('trust.extension_gui.allow_failed', { error: res?.error || '' }), 'error', 5000);
+                    return false;
+                }
+                safeShowToast(t('trust.extension_gui.allowed', { id: extId }), 'info', 4000);
+                await fetchExtensions();
+                return true;
+            } catch (e) {
+                safeShowToast(t('trust.extension_gui.allow_failed', { error: e.message }), 'error', 5000);
+                return false;
+            }
+        },
+        [fetchExtensions, t],
+    );
+
+    // 허락을 기다리는 익스텐션을 하나씩 묻는다. 다른 창이 떠 있으면 닫힌 뒤에 묻는다
+    useEffect(() => {
+        if (modalOpen || !window.api?.sandboxAllowExtensionGui) return;
+        const next = guiPending.find((ext) => !askedGuiRef.current.has(ext.id));
+        if (!next) return;
+        askedGuiRef.current.add(next.id);
+        const { openModal, closeModal } = useUIStore.getState();
+        openModal({
+            type: 'question',
+            title: t('trust.extension_gui.title'),
+            message: t('trust.extension_gui.message', { id: next.id }),
+            buttons: [
+                {
+                    label: t('trust.extension_gui.allow'),
+                    action: async () => {
+                        closeModal();
+                        await approveExtensionGui(next.id);
+                    },
+                },
+                { label: t('trust.extension_gui.deny'), action: () => closeModal() },
+            ],
+        });
+    }, [guiPending, modalOpen, approveExtensionGui, t]);
 
     // ── 매니페스트 페치 ──────────────────────────────────────────────
     /** 원격 매니페스트에서 가용 익스텐션 목록을 가져옵니다. */
@@ -411,6 +477,9 @@ export function ExtensionProvider({ children }) {
         toggleExtension,
         refreshExtensions: fetchExtensions,
         removeExtension,
+        // 확인되지 않은 익스텐션의 GUI 허락
+        guiPending,
+        approveExtensionGui,
         // 매니페스트 & 버전관리
         manifestExtensions,
         availableUpdates,
@@ -436,6 +505,8 @@ export function useExtensions() {
             toggleExtension: () => {},
             refreshExtensions: () => {},
             removeExtension: async () => false,
+            guiPending: [],
+            approveExtensionGui: async () => false,
             manifestExtensions: [],
             availableUpdates: [],
             manifestLoading: false,

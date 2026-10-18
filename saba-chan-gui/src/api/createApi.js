@@ -76,6 +76,20 @@ export function createApi({ invoke, hub }) {
     const permPath = (guildId, discordId) =>
         `/api/permissions/${encodeURIComponent(guildId)}${discordId === undefined ? '' : `/members/${encodeURIComponent(discordId)}`}`;
     const unisolatedPath = (component) => `/api/sandbox/unisolated/${encodeURIComponent(component)}`;
+    const extensionGuiPath = (component) => `/api/sandbox/extension-gui/${encodeURIComponent(component)}`;
+    // 번들은 텍스트로 받으므로 403 본문도 글자다
+    const guiUnapproved = (error) => {
+        if (error.response?.status !== 403) return false;
+        let body = error.response.data;
+        if (typeof body === 'string') {
+            try {
+                body = JSON.parse(body);
+            } catch {
+                return false;
+            }
+        }
+        return body?.error_code === 'extension_gui_unapproved';
+    };
     const discordSettingsPath = (guild) => `/api/discord/${encodeURIComponent(guild)}/settings`;
     const instancePath = (id, rest = '') => `/api/instance/${encodeURIComponent(id)}${rest}`;
     const relayQs = (relayUrl) => (relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '');
@@ -574,6 +588,8 @@ export function createApi({ invoke, hub }) {
                 });
                 return typeof data === 'string' ? data : null;
             } catch (error) {
+                // 확인되지 않았고 이 PC에서 허락하지 않은 번들 (허락 뒤 파일이 바뀐 경우 포함)
+                if (guiUnapproved(error)) return { error_code: 'extension_gui_unapproved' };
                 if (error.response?.status !== 404) {
                     console.warn(`[Extension] Failed to load GUI bundle for '${extId}':`, error.message);
                 }
@@ -893,6 +909,9 @@ export function createApi({ invoke, hub }) {
         sandboxListUnisolated: () => daemonCall('get', '/api/sandbox/unisolated'),
         sandboxAllowUnisolated: (component) => daemonCall('post', unisolatedPath(component), {}),
         sandboxRevokeUnisolated: (component) => daemonCall('delete', unisolatedPath(component)),
+        sandboxListExtensionGui: () => daemonCall('get', '/api/sandbox/extension-gui'),
+        sandboxAllowExtensionGui: (component) => daemonCall('post', extensionGuiPath(component), {}),
+        sandboxRevokeExtensionGui: (component) => daemonCall('delete', extensionGuiPath(component)),
         actionsList: (opts) => {
             const { surface = 'gui', instance, locale } = opts || {};
             const qs = queryString({ surface, instance: instance || undefined, locale: locale || undefined });

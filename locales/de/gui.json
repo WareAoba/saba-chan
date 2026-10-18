@@ -1088,6 +1088,14 @@
       "allow": "Ohne Isolation ausführen",
       "allowed": "{{component}} läuft ohne Isolation. Ändern sich die Dateien, wirst du erneut gefragt.",
       "allow_failed": "Zustimmung konnte nicht gespeichert werden: {{error}}"
+    },
+    "extension_gui": {
+      "title": "Oberfläche dieser Erweiterung laden?",
+      "message": "{{id}} ist eine nicht verifizierte Erweiterung. Wenn du sie erlaubst, kann ihr Oberflächencode alles steuern, was saba-chan auf diesem PC tut. Erlaube sie nur, wenn sie aus einer vertrauenswürdigen Quelle stammt. Ändern sich ihre Dateien, wirst du erneut gefragt.",
+      "allow": "Erlauben",
+      "deny": "Nicht jetzt",
+      "allowed": "Oberfläche der Erweiterung {{id}} erlaubt.",
+      "allow_failed": "Erlaubnis konnte nicht gespeichert werden: {{error}}"
     }
   },
   "patch_notes": {
@@ -1206,6 +1214,20 @@
     "revoke_named": "Zustimmung für {{component}} entfernen",
     "revoked": "Zustimmung, {{component}} ohne Isolation auszuführen, entfernt.",
     "failed": "Die Liste konnte nicht geladen oder geändert werden."
+  },
+  "extension_gui_consent": {
+    "title": "Erweiterungs-Oberflächen",
+    "description": "Nicht verifizierte Erweiterungen, deren Oberfläche du erlaubt hast. Erlaubter Oberflächencode kann alles steuern, was saba-chan auf diesem PC tut.",
+    "empty": "Keine Erweiterungs-Oberfläche erlaubt.",
+    "active": "In Verwendung",
+    "stale": "Die Dateien haben sich nach der Erlaubnis geändert, daher wird sie nicht verwendet. Du wirst beim nächsten Mal erneut gefragt.",
+    "pending": "Wartet auf Erlaubnis. Die Oberfläche wird erst danach geladen.",
+    "allow": "Erlauben",
+    "allow_named": "Oberfläche der Erweiterung {{id}} erlauben",
+    "revoke": "Entfernen",
+    "revoke_named": "Erlaubnis für {{component}} entfernen",
+    "revoked": "Oberflächen-Erlaubnis für {{component}} entfernt. Gilt ab dem nächsten Start.",
+    "failed": "Die Erlaubnisliste konnte nicht geladen oder geändert werden."
   },
   "events": {
     "remote_action": "Über Discord ausgeführt: {{text}}",

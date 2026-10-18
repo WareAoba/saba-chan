@@ -1088,6 +1088,14 @@
       "allow": "Exécuter sans isolation",
       "allowed": "{{component}} s'exécutera sans isolation. La question sera reposée si ses fichiers changent.",
       "allow_failed": "Impossible d'enregistrer le consentement : {{error}}"
+    },
+    "extension_gui": {
+      "title": "Charger les écrans de cette extension ?",
+      "message": "{{id}} est une extension non vérifiée. Si vous l'autorisez, son code d'interface pourra contrôler tout ce que fait saba-chan sur ce PC. Ne l'autorisez que si elle provient d'une source de confiance. La question sera reposée si ses fichiers changent.",
+      "allow": "Autoriser",
+      "deny": "Plus tard",
+      "allowed": "Écrans de l'extension {{id}} autorisés.",
+      "allow_failed": "Impossible d'enregistrer l'autorisation : {{error}}"
     }
   },
   "patch_notes": {
@@ -1206,6 +1214,20 @@
     "revoke_named": "Retirer l'accord pour {{component}}",
     "revoked": "Accord d'exécution sans isolation retiré pour {{component}}.",
     "failed": "Impossible de charger ou de modifier la liste."
+  },
+  "extension_gui_consent": {
+    "title": "Écrans des extensions",
+    "description": "Extensions non vérifiées dont vous avez autorisé les écrans. Le code d'interface autorisé peut contrôler tout ce que fait saba-chan sur ce PC.",
+    "empty": "Aucun écran d'extension autorisé.",
+    "active": "Utilisé",
+    "stale": "Ses fichiers ont changé après l'autorisation, elle n'est donc pas utilisée. La question sera reposée.",
+    "pending": "En attente d'autorisation. Ses écrans ne se chargeront pas avant.",
+    "allow": "Autoriser",
+    "allow_named": "Autoriser les écrans de l'extension {{id}}",
+    "revoke": "Retirer",
+    "revoke_named": "Retirer l'autorisation de {{component}}",
+    "revoked": "Autorisation d'écran de {{component}} retirée. Effective au prochain lancement.",
+    "failed": "Impossible de charger ou de modifier la liste des autorisations."
   },
   "events": {
     "remote_action": "Exécuté depuis Discord : {{text}}",

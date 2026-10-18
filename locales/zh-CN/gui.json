@@ -1088,6 +1088,14 @@
       "allow": "不隔离运行",
       "allowed": "{{component}} 将不隔离运行。文件更改后会再次询问。",
       "allow_failed": "无法保存同意：{{error}}"
+    },
+    "extension_gui": {
+      "title": "要加载此扩展的界面吗？",
+      "message": "{{id}} 是未经验证的扩展。允许后，它的界面代码可以控制 saba-chan 在这台电脑上的所有操作。仅在来源可信时允许。文件变化后会再次询问。",
+      "allow": "允许",
+      "deny": "以后再说",
+      "allowed": "已允许扩展 {{id}} 的界面。",
+      "allow_failed": "无法保存许可：{{error}}"
     }
   },
   "patch_notes": {
@@ -1206,6 +1214,20 @@
     "revoke_named": "删除 {{component}} 的同意",
     "revoked": "已删除 {{component}} 不隔离运行的同意。",
     "failed": "无法加载或更改同意列表。"
+  },
+  "extension_gui_consent": {
+    "title": "扩展界面",
+    "description": "已允许加载界面的未验证扩展。被允许的界面代码可以控制 saba-chan 在这台电脑上的所有操作。",
+    "empty": "没有允许界面的扩展。",
+    "active": "使用中",
+    "stale": "允许后文件已变化，此许可不再使用。下次会再次询问。",
+    "pending": "等待许可。允许前不会加载界面。",
+    "allow": "允许",
+    "allow_named": "允许扩展 {{id}} 的界面",
+    "revoke": "删除",
+    "revoke_named": "删除 {{component}} 的许可",
+    "revoked": "已删除 {{component}} 的界面许可，下次启动时生效。",
+    "failed": "无法加载或修改许可列表。"
   },
   "events": {
     "remote_action": "从 Discord 执行：{{text}}",
