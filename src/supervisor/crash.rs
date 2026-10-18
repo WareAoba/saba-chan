@@ -6,8 +6,8 @@
 //!    - Windows 예외 종료 코드 (0xC0000005 같은 0xC… 값, Ctrl+C 종료 0xC000013A는 뺀다)
 //!    - unix 크래시 시그널 (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL)
 //!    - 모듈 `[detection] crash_artifacts`에 맞는 파일이 이번 실행 중에 생겼다
-//! 3. 시작하고 `STARTUP_GRACE` 안에 끝났다 (포트 충돌·설정 오류처럼 켜지다 실패) → `start_failed`. 다시 띄워도 같으므로 재시작하지 않는다
-//! 4. 모듈 `[detection] graceful_exit_patterns`가 콘솔 끝부분에 있다 → `in_game_stop`
+//! 3. 모듈 `[detection] graceful_exit_patterns`가 콘솔 끝부분에 있다 → `in_game_stop`
+//! 4. 시작하고 `STARTUP_GRACE` 안에 끝났다 (포트 충돌·설정 오류처럼 켜지다 실패) → `start_failed`. 다시 띄워도 같으므로 재시작하지 않는다
 //! 5. 종료 코드 0 → `in_game_stop`
 //! 6. 그 밖 (작업 관리자 강제 종료, 창 닫기, 원인 모를 종료) → `unknown_exit`
 //!
@@ -91,6 +91,12 @@ pub fn classify(f: &ExitFacts) -> ExitVerdict {
     if let Some(file) = f.new_crash_files.first() {
         return verdict(ExitKind::Crash, format!("crash file {}", file.display()));
     }
+    for pattern in f.graceful_patterns {
+        let Ok(re) = regex::Regex::new(pattern) else { continue };
+        if let Some(line) = f.console_tail.iter().rev().find(|l| re.is_match(l)) {
+            return verdict(ExitKind::InGameStop, format!("console: {}", line.trim()));
+        }
+    }
     if f.ran_secs < STARTUP_GRACE.as_secs() {
         let last = f.console_tail.iter().rev().map(|l| l.trim()).find(|l| !l.is_empty());
         let evidence = match last {
@@ -98,12 +104,6 @@ pub fn classify(f: &ExitFacts) -> ExitVerdict {
             None => format!("ended {}s after start", f.ran_secs),
         };
         return verdict(ExitKind::StartFailed, evidence);
-    }
-    for pattern in f.graceful_patterns {
-        let Ok(re) = regex::Regex::new(pattern) else { continue };
-        if let Some(line) = f.console_tail.iter().rev().find(|l| re.is_match(l)) {
-            return verdict(ExitKind::InGameStop, format!("console: {}", line.trim()));
-        }
     }
     match (exit_code, signal) {
         (Some(0), _) => verdict(ExitKind::InGameStop, "exit code 0".into()),
@@ -200,11 +200,12 @@ mod tests {
         assert_eq!(k(facts(code(1), &none, &no_files)), ExitKind::UnknownExit, "task manager kill");
         assert_eq!(k(facts(None, &none, &no_files)), ExitKind::UnknownExit);
 
-        let bind = ["**** FAILED TO BIND TO PORT!".to_string(), "[Server thread/INFO]: Stopping the server".to_string()];
-        let early = |exit, files| ExitFacts { ran_secs: 4, ..facts(exit, &bind, files) };
-        assert_eq!(classify(&early(code(1), &no_files)).kind, ExitKind::StartFailed, "a stop line right after start is a failed start");
-        assert_eq!(classify(&early(code(1), &no_files)).evidence, "ended 4s after start: [Server thread/INFO]: Stopping the server");
-        assert_eq!(classify(&early(code(0xC000_0005u32 as i32), &no_files)).kind, ExitKind::Crash, "crash evidence still wins");
+        let bind = ["**** FAILED TO BIND TO PORT!".to_string(), "[Server thread/INFO]: Stopping server".to_string()];
+        let early = |exit, tail| ExitFacts { ran_secs: 4, ..facts(exit, tail, &no_files) };
+        assert_eq!(classify(&early(code(0), &bind)).kind, ExitKind::StartFailed, "ending right after start is a failed start");
+        assert_eq!(classify(&early(code(0), &bind)).evidence, "ended 4s after start: [Server thread/INFO]: Stopping server");
+        assert_eq!(k(early(code(0xC000_0005u32 as i32), &bind)), ExitKind::Crash, "crash evidence still wins");
+        assert_eq!(k(early(code(0), &stopped)), ExitKind::InGameStop, "an in-game stop right after start is still a stop");
         assert!(!wants_restart(ExitKind::StartFailed, true, true), "restarting would fail the same way");
     }
 

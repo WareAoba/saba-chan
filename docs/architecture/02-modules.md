@@ -441,7 +441,7 @@ url = "https://aka.ms/MinecraftEULA"
 
 ### 3.6 크래시 감지와 자동 재시작
 
-- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 시작 뒤 30초(`STARTUP_GRACE`) 안에 끝나면 `start_failed`(근거는 걸린 시간과 콘솔 마지막 줄, 포트 충돌 같은 시작 실패), 콘솔 끝 50줄에 `graceful_exit_patterns`가 있거나 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
+- **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 콘솔 끝 50줄에 `graceful_exit_patterns`가 있으면 `in_game_stop`, 시작 뒤 30초(`STARTUP_GRACE`) 안에 끝나면 `start_failed`(근거는 걸린 시간과 콘솔 마지막 줄, 포트 충돌 같은 시작 실패), 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
 - **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다. `start_failed`는 다시 켜도 같은 이유로 실패하므로 재시작하지 않는다. 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:21-30`, `mod.rs:1993-2009`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:391-396`, `server.rs:735-751`). 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
 - `monitor_processes`(`mod.rs:2074-2254`)가 하는 일은 다음과 같다.
   1. `managed_store.cleanup_dead()`로 죽은 항목을 꺼내 종료를 판정하고, `managed.pid`를 삭제한 뒤 cooldown을 등록한다.
