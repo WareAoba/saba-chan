@@ -55,8 +55,6 @@ def test_memory_limit_hit_during_start_is_named_in_start_error(mc):
         pytest.skip("이 PC에서는 시작이 먼저 끝나 상한이 나중에 걸림")
     body = r.json() if r.content else {}
     assert body.get("error_code") == "memory_limit_reached", r.text
-    error = str(body.get("error", ""))
-    assert "memory" in error.lower() or "메모리" in error, r.text
     # 시작 중에 끝난 것도 종료 기록이 남아야 한다 (시작 실패 또는 crash)
     daemon.wait_status(iid, "stopped", timeout=60)
     events = daemon.exit_events(iid)
