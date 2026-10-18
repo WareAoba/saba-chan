@@ -235,11 +235,11 @@ pub struct ConfigStore {
     bot_config: RwLock<BotConfig>,
 }
 
-/// 이 PC에만 맞는 네임스페이스. 내보내기에서 뺀다
-const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extensions"];
+/// 이 PC에만 맞는 네임스페이스. 내보내기에서 뺀다 (`sandbox`: 이 PC 사용자가 확인한 동의)
+const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extensions", "sandbox"];
 
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
-const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
+const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
 /// 길드·인스턴스 낱말 API(`instances`), 길드가 쓸 서버 API(`allowedInstances`)
@@ -1144,6 +1144,20 @@ mod tests {
         // GUI 섹션은 클라이언트 섹션 쓰기에 영향받지 않는다
         store.set_gui_settings_from_json(serde_json::json!({ "language": "ja" })).await.unwrap();
         assert_eq!(ConfigStore::new(tmp.path()).get_client_section("cli").unwrap()["language"], "ko");
+    }
+
+    #[tokio::test]
+    async fn consent_records_are_not_a_client_section_and_stay_on_this_pc() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        assert!(store.merge_client_section("sandbox", serde_json::json!({ "x": {} })).is_err(), "only the consent API writes it");
+        store.file.set_section("sandbox", serde_json::json!({ "x": { "a": "1" } })).unwrap();
+        assert!(!store.portable_sections(true).contains_key("sandbox"), "a consent given on this PC must not travel");
+        let mut incoming = serde_json::Map::new();
+        incoming.insert("sandbox".into(), serde_json::json!({ "x": { "b": "2" } }));
+        let applied = store.import_sections(incoming).await.unwrap();
+        assert!(applied.is_empty());
+        assert_eq!(store.file.section("sandbox"), serde_json::json!({ "x": { "a": "1" } }));
     }
 
     #[test]
