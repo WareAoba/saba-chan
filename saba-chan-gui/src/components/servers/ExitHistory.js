@@ -18,7 +18,8 @@ export function exitNote(event, t) {
     if (gaveUp) return t('shell.exit_note_gave_up', { count: Number(gaveUp[1]) });
     const failed = /^restart failed: (.*)$/s.exec(note);
     if (failed) return t('shell.exit_note_restart_failed', { reason: failed[1] });
-    return note;
+    // 모르는 코드에 문장도 없으면 빈 칸 대신 근거나 코드를 보인다
+    return note || event.evidence || event.note_code;
 }
 
 /**
