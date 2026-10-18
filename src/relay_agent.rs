@@ -118,11 +118,18 @@ impl RelayAgent {
             }
             tracing::info!("[RelayAgent] started (relay={})", session.base);
             // 챗봇 설정은 데몬이 원본: 연결될 때마다 릴레이에 맞춘다
+            // 세션이 끝나면(연결 해제·토큰 교체) 같이 멈춘다: 예전 토큰으로 설정을 올리지 않게
             let sync_server = session.server.clone();
+            let sync_cancel = cancel.clone();
             tokio::spawn(async move {
-                crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await;
-                // 디스코드 길드 설정도 데몬이 원본 (I2)
-                crate::ipc::handlers::discord::sync_on_connect(&sync_server).await;
+                tokio::select! {
+                    _ = sync_cancel.cancelled() => {}
+                    _ = async {
+                        crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await;
+                        // 디스코드 길드 설정도 데몬이 원본 (I2)
+                        crate::ipc::handlers::discord::sync_on_connect(&sync_server).await;
+                    } => {}
+                }
             });
             tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop());
             agent.finish(generation, None);
