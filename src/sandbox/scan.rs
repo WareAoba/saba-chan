@@ -44,11 +44,12 @@ pub fn amsi_detected(result: u32) -> bool {
     result >= 32768
 }
 
-/// `AmsiScanBuffer` 결과: `E_NOTIMPL`은 공급자가 없는 것, 그 밖의 실패는 이 파일 검사 실패
+/// `AmsiScanBuffer` 결과: `E_NOTIMPL`·`ERROR_NOT_READY`(백신이 꺼져 있음)는 공급자가 없는 것, 그 밖의 실패는 이 파일 검사 실패
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn amsi_verdict(hr: i32, result: u32) -> Verdict {
     const E_NOTIMPL: i32 = 0x8000_4001_u32 as i32;
-    if hr == E_NOTIMPL {
+    const NOT_READY: i32 = 0x8007_0015_u32 as i32;
+    if hr == E_NOTIMPL || hr == NOT_READY {
         Verdict::Unavailable
     } else if hr < 0 {
         Verdict::Failed(format!("AMSI error 0x{:08x}", hr as u32))
@@ -342,6 +343,7 @@ mod tests {
         assert_eq!(amsi_verdict(0, 1), Verdict::Clean);
         assert!(matches!(amsi_verdict(0, 32768), Verdict::Detected(_)));
         assert_eq!(amsi_verdict(0x8000_4001_u32 as i32, 0), Verdict::Unavailable);
+        assert_eq!(amsi_verdict(0x8007_0015_u32 as i32, 0), Verdict::Unavailable);
         assert!(matches!(amsi_verdict(0x8007_0005_u32 as i32, 0), Verdict::Failed(_)));
     }
 

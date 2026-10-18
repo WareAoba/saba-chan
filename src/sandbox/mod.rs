@@ -162,6 +162,23 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// 옛 형식({sha: bool})은 시각 0으로 옮긴다: 찾음은 그대로 남고 깨끗함은 다시 본다. 깨진 파일은 비운다
+fn parse_entries(s: &str) -> BTreeMap<String, StoredVerdict> {
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum Entry {
+        Legacy(bool),
+        Current(StoredVerdict),
+    }
+    let raw: BTreeMap<String, Entry> = serde_json::from_str(s).unwrap_or_default();
+    raw.into_iter()
+        .map(|(k, e)| match e {
+            Entry::Legacy(detected) => (k, StoredVerdict { detected, at: 0 }),
+            Entry::Current(v) => (k, v),
+        })
+        .collect()
+}
+
 /// sha256 → 검사 결과 (`<data dir>/scan-verdicts.json`). 깨끗하다/찾았다만 저장한다
 #[derive(Debug, Default)]
 pub struct VerdictCache {
@@ -172,8 +189,7 @@ pub struct VerdictCache {
 impl VerdictCache {
     pub fn load() -> Self {
         let path = saba_chan_updater_lib::constants::resolve_data_dir().join("scan-verdicts.json");
-        // 옛 형식({sha: bool})이나 깨진 파일은 비우고 다시 검사한다 (찾음은 다시 찾는다)
-        let entries = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let entries = std::fs::read_to_string(&path).ok().map(|s| parse_entries(&s)).unwrap_or_default();
         Self { path: Some(path), entries }
     }
 
@@ -609,6 +625,15 @@ mod tests {
         assert_eq!(cache.get_at("clean", now + CLEAN_VERDICT_TTL_SECS), None);
         assert_eq!(cache.get_at("bad", now + CLEAN_VERDICT_TTL_SECS), Some(true));
         assert_eq!(cache.get_at("none", now), None);
+    }
+
+    #[test]
+    fn legacy_bool_verdicts_keep_detections() {
+        let entries = parse_entries(r#"{"bad":true,"clean":false,"new":{"detected":false,"at":5}}"#);
+        assert!(entries["bad"].detected);
+        assert_eq!((entries["clean"].detected, entries["clean"].at), (false, 0));
+        assert_eq!(entries["new"].at, 5);
+        assert!(parse_entries("not json").is_empty());
     }
 
     #[cfg(unix)]
