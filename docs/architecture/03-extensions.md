@@ -128,7 +128,7 @@
 
 - `hooks_for(name)`(`ext/:1116-1127`): **enabled**이면서 해당 hook을 가진 익스텐션 목록. ~~`HashMap`이라 실행 순서가 비결정적이다.~~ → 해결: `priority`, 그다음 id 순으로 정렬한다.
 - `plan_hook(name, ctx, only)`(`ext/:1213-1256`): 매니저 락 안에서 실행 목록만 정한다.
-  1. context에 `extension_config`(`extensions.settings` 전체 맵, 모든 익스텐션 것)를 주입한다(`ext/:1199-1209`). 다른 익스텐션의 설정까지 모든 hook 프로세스에 노출된다.
+  1. 부를 익스텐션마다 context를 따로 만들고, `extension_config`에는 그 익스텐션 자신의 설정만 `{<id>: {k: v}}` 형태로 넣는다(`ext/:1303-1312`). 다른 익스텐션의 설정은 넘기지 않는다. 명령(`plan_command`)도 같다.
   2. `context.extension_data`로 `condition`을 평가한다(bool, 0이 아닌 숫자, 비어 있지 않은 문자열이면 true).
   3. `python_modules[binding.module]` 경로를 정한다. 없는 모듈이면 그 호출은 Err 결과가 된다.
 - `HookPlan::run(timeout)`(`ext/:1572-1600`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나면 기록하고 계속 진행한다(graceful).
@@ -356,7 +356,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 11. ~~컴포넌트 의존성(`saba-core` 등)을 선언하면 HTTP enable이 불가능하다.~~ → 해결: `saba-core`는 데몬 버전으로 검사한다(`ext/:905-908`). 다른 컴포넌트 키는 여전히 버전을 쓰면 켤 수 없다.
 12. ~~install/update가 실행 중이거나 enabled인 익스텐션 디렉토리를 검사 없이 삭제한다. 무결성 검증·의존성 자동 설치가 없다.~~ → 해결: 실행 중 사용이면 거부, staging 후 교체·롤백, sha256 확인, 빠진 의존성 자동 설치(`ext/:1376-1440`, `handlers/extension.rs:460-462`).
 13. ~~`discover()`/`rescan()`이 manifest.id와 디렉토리명의 일치를 검사하지 않고, zip 추출은 기존 폴더가 있으면 새 zip을 버린다.~~ → 해결: 스캔이 이름을 검사하고(`ext/:763-769`), zip은 기존 폴더를 바꿔 끼운다(`ext/:652-683`).
-14. 모든 hook context에 전체 `extensions.settings`(타 익스텐션 비밀값 포함)가 주입된다(`ext/:1199-1209`).
+14. ~~모든 hook context에 전체 `extensions.settings`(타 익스텐션 비밀값 포함)가 주입된다.~~ → 해결: 익스텐션마다 자기 설정만 넣는다(`ext/:1303-1312`).
 15. GUI 번들을 Blob script로 무검증 실행하고, `window.api`에 전체 접근할 수 있다.
 16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.js:215`).
 17. ~~리포에 런타임 산출물(`dockerd.pid`, `.deps-resolved.json`, Go 바이너리)이 커밋되어 있다.~~ → 해결: 해당 익스텐션이 제거되었고, 저장소에는 소스·테스트·`icon.png`만 있다.
