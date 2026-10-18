@@ -19,8 +19,13 @@ pub async fn save_bot_config(
     State(state): State<IPCServer>,
     Json(config): Json<Value>,
 ) -> impl IntoResponse {
+    let old_relay = state.config_store.get_bot_config().await.cloud.relay_url;
     match state.config_store.set_bot_config_from_json(config).await {
-        Ok(_) => {
+        Ok(saved) => {
+            // 릴레이 주소가 바뀌면 에이전트 세션을 새 주소로 다시 시작한다 (예전 세션은 예전 주소에서 멈춘다)
+            if saved.cloud.relay_url.trim() != old_relay.trim() && state.relay_agent.status().running {
+                crate::relay_agent::restart(&state).await;
+            }
             // hostId는 노드 토큰이 기준이다: 클라이언트가 예전 값을 다시 보내도 토큰에 맞춘다
             let token_path = saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token");
             let token = std::fs::read_to_string(token_path).ok();

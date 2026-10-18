@@ -10,7 +10,7 @@
 //! 인증은 노드 토큰(`<data_dir>/.node_token`, sbn_<id>.<secret>) HMAC 서명입니다.
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
-use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_headers};
+use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_headers_with};
 use crate::ipc::IPCServer;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -83,9 +83,10 @@ impl RelayAgent {
 
     /// 에이전트를 시작합니다. 이미 돌고 있으면 그대로 둡니다.
     pub async fn start(&self, server: IPCServer) -> Result<(), String> {
-        if load_node_token().as_deref().and_then(parse_node_token).is_none() {
+        // 세션은 시작할 때의 주소·토큰 쌍만 쓴다: 주소나 토큰이 바뀌면 새 세션이 시작된다
+        let Some(node_token) = load_node_token().filter(|t| parse_node_token(t).is_some()) else {
             return Err("node token missing or malformed — pair this node first".into());
-        }
+        };
         let relay_url = {
             let bot = server.config_store.get_bot_config().await;
             let url = bot.cloud.relay_url.trim().to_string();
@@ -112,7 +113,7 @@ impl RelayAgent {
                     return;
                 }
             };
-            let session = Session { agent: agent.clone(), server, client, base: relay_url, cancel: cancel.clone(), generation };
+            let session = Session { agent: agent.clone(), server, client, base: relay_url, token: node_token, cancel: cancel.clone(), generation };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
                 agent.finish(generation, Some(e));
@@ -204,6 +205,7 @@ struct Session {
     server: IPCServer,
     client: reqwest::Client,
     base: String,
+    token: String,
     cancel: CancellationToken,
     generation: u64,
 }
@@ -211,7 +213,11 @@ struct Session {
 impl Session {
     /// 서명된 요청 생성. body는 서명한 문자열 그대로 보낸다.
     fn signed(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<reqwest::RequestBuilder, String> {
-        let headers = signed_headers(method.as_str(), path, body.as_deref()).ok_or("node token missing")?;
+        // 끝난 세션(연결 해제·주소나 토큰 교체)은 아무것도 보내지 않는다
+        if self.cancel.is_cancelled() {
+            return Err("relay session ended".into());
+        }
+        let headers = signed_headers_with(&self.token, method.as_str(), path, body.as_deref()).ok_or("node token missing")?;
         let mut req = self.client.request(method, format!("{}{}", self.base, path));
         for (k, v) in headers {
             req = req.header(k, v);
@@ -293,6 +299,16 @@ impl Session {
                     s.last_heartbeat_at = Some(now_ms());
                     s.last_error = None;
                 });
+                // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
+                if crate::ipc::handlers::discord::take_pending_sync() {
+                    let (server, cancel) = (self.server.clone(), self.cancel.clone());
+                    tokio::spawn(async move {
+                        tokio::select! {
+                            _ = cancel.cancelled() => {}
+                            _ = crate::ipc::handlers::discord::sync_on_connect(&server) => {}
+                        }
+                    });
+                }
             }
             Err(e) if e == REPLACED => self.give_up_replaced(),
             Err(e) => {

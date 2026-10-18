@@ -186,22 +186,53 @@ fn invalid(field: &str, reason: &str) -> Response {
 /// 읽고-바꾸고-저장하기를 한 번에 하나씩 (동시에 온 두 PATCH가 서로의 키를 지우지 않게)
 static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// 데몬에 저장된 값. 아직 없으면(업그레이드 뒤 첫 연결 전) 릴레이 값을, 그것도 못 읽으면 기본값
-async fn current(state: &IPCServer, guild: &str) -> GuildSettings {
-    let bot = state.config_store.get_bot_config().await;
-    if let Some(s) = GuildSettings::from_node(bot.node_settings.get(guild)) {
-        return s;
-    }
-    relay_settings(&relay_base(state).await, guild).await.map(|body| GuildSettings::from_relay(&body)).unwrap_or_default()
+/// 릴레이에 닿지 않아 보내지 못한 설정이 있다. 하트비트가 다시 성공하면 `sync_on_connect`로 다시 보낸다
+static PENDING_SYNC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn take_pending_sync() -> bool {
+    PENDING_SYNC.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
 
-/// 릴레이 `GET /api/nodes/:guild/settings` (페어링이 없거나 못 읽으면 None)
-async fn relay_settings(base: &str, guild: &str) -> Option<Value> {
-    load_node_token()?;
+/// 연결 실패나 릴레이 쪽 오류(5xx)면 다시 보낼 만하다. 거절(4xx)은 다시 보내도 같다
+fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
+    match outcome {
+        Ok((c, _)) => c.is_server_error(),
+        Err(_) => true,
+    }
+}
+
+/// 데몬에 저장된 값. 아직 없으면(업그레이드 뒤 첫 연결 전) 릴레이 값을, 릴레이에 노드 설정이 없으면 기본값.
+/// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다
+async fn current(state: &IPCServer, guild: &str) -> Option<GuildSettings> {
+    let bot = state.config_store.get_bot_config().await;
+    if let Some(s) = GuildSettings::from_node(bot.node_settings.get(guild)) {
+        return Some(s);
+    }
+    match relay_settings(&relay_base(state).await, guild).await {
+        RelaySettings::Found(body) => Some(GuildSettings::from_relay(&body)),
+        RelaySettings::Absent => Some(GuildSettings::default()),
+        RelaySettings::Unreachable => None,
+    }
+}
+
+enum RelaySettings {
+    Found(Value),
+    /// 페어링이 없거나 릴레이에 이 길드 설정이 없다 (404)
+    Absent,
+    /// 연결 실패나 그 밖의 오류
+    Unreachable,
+}
+
+/// 릴레이 `GET /api/nodes/:guild/settings`
+async fn relay_settings(base: &str, guild: &str) -> RelaySettings {
+    if load_node_token().is_none() {
+        return RelaySettings::Absent;
+    }
     let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
     match call(base, reqwest::Method::GET, &path, None).await {
-        Ok((c, body)) if c.is_success() => Some(body),
-        _ => None,
+        Ok((c, body)) if c.is_success() => RelaySettings::Found(body),
+        Ok((StatusCode::NOT_FOUND, _)) => RelaySettings::Absent,
+        _ => RelaySettings::Unreachable,
     }
 }
 
@@ -241,7 +272,10 @@ fn changed(have: &Value, want: &Value) -> Map<String, Value> {
 /// 릴레이 값을 못 읽으면 `before`(데몬이 마지막으로 맞춘 값)와 비교한다
 async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &GuildSettings) -> Result<(StatusCode, Value), String> {
     let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
-    let have = relay_settings(base, guild).await.unwrap_or_else(|| before.clone());
+    let have = match relay_settings(base, guild).await {
+        RelaySettings::Found(body) => body,
+        _ => before.clone(),
+    };
     let mut diff = changed(&have, &s.relay_body());
     if diff.is_empty() {
         return Ok((StatusCode::OK, Value::Null));
@@ -256,8 +290,16 @@ async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &Gu
 }
 
 /// GET /api/discord/:guild/settings
+/// 처음 보는 길드인데 릴레이를 읽지 못하면 기본값에 `loaded: false`를 붙인다 (그 값으로 저장하지 않는다)
 pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
-    Json(view(&guild, &current(&state, &guild).await)).into_response()
+    match current(&state, &guild).await {
+        Some(s) => Json(view(&guild, &s)).into_response(),
+        None => {
+            let mut v = view(&guild, &GuildSettings::default());
+            v["loaded"] = json!(false);
+            Json(v).into_response()
+        }
+    }
 }
 
 /// PATCH /api/discord/:guild/settings
@@ -267,7 +309,13 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "Not paired with the relay", "error_code": "not_paired" }))).into_response();
     }
     let _turn = SETTINGS_LOCK.lock().await;
-    let before = current(&state, &guild).await;
+    let Some(before) = current(&state, &guild).await else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "success": false, "error": "Could not read this server's settings from the relay", "error_code": "relay_unavailable" })),
+        )
+            .into_response();
+    };
     let mut next = before.clone();
     if let Err((field, reason)) = next.apply(patch) {
         return invalid(&field, reason);
@@ -283,6 +331,9 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
     }
     if let Err(e) = save(&state, &guild, &next).await {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "save_failed" }))).into_response();
+    }
+    if retry_later(&outcome) {
+        PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
     }
     Json(json!({ "success": true, "settings": view(&guild, &next), "sync": result_row(&guild, &outcome) })).into_response()
 }
@@ -307,6 +358,9 @@ pub async fn sync_on_connect(state: &IPCServer) {
                 let outcome = push(state, &base, &guild, &Value::Null, &s).await;
                 if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
                     tracing::warn!("[Discord] settings sync to guild {} failed: {}", guild, result_row(&guild, &outcome));
+                }
+                if retry_later(&outcome) {
+                    PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
             }
             None => {

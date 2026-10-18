@@ -95,7 +95,7 @@
 
 로컬 Discord 봇 실행 경로(`node_env`, `discord_bot` ext-process)는 L1(7b5102f)에서 지웠다. 디스코드 봇은 클라우드 릴레이에서만 돌고, 데몬은 릴레이 에이전트로 붙는다.
 
-1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:787-789`). 수동 제어는 `/api/relay/agent{,/start,/stop}`. 페어링 완료(`/api/relay/pair/:code/status`가 `claimed`로 토큰을 저장)나 `PUT /api/config/node-token`(저장된 토큰과 다를 때만) 뒤에는 `relay_agent::restart`가 돌던 세션을 멈추고 새 토큰으로 바로 다시 연결한다.
+1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:787-789`). 수동 제어는 `/api/relay/agent{,/start,/stop}`. 페어링 완료(`/api/relay/pair/:code/status`가 `claimed`로 토큰을 저장)나 `PUT /api/config/node-token`(저장된 토큰과 다를 때만) 뒤에는 `relay_agent::restart`가 돌던 세션을 멈추고 새 토큰으로 바로 다시 연결한다. 돌고 있는 에이전트의 릴레이 주소가 `PUT /api/config/bot`으로 바뀌어도 같다. 세션은 시작할 때 읽은 주소·토큰 쌍만 쓰고(`Session.token`, `signed_headers_with`), 끝난 세션은 요청을 보내지 않는다.
 2. `GET /info`로 최소 에이전트 버전을 확인하고, 60초마다 `POST /heartbeat`로 서버·모듈·봇 설정 메타데이터를 올린다(`relay_agent.rs:22`).
 3. `GET /poll`(롱폴링)로 디스코드 명령을 받아 채팅 처리기(`crate::chat`)로 실행하고 `POST /result/:id`로 돌려준다.
    - 같은 연결에서 `POST /events {events:[{id, type, data}]}`로 디스코드 알림 채널(I3)에 띄울 이벤트를 올린다(`relay_agent.rs` `events_loop`·`relay_event`). 올리는 것은 `instance.exit`(`crash`·`unknown_exit`만), `backup.done`, `update.available`, `schedule.warn`, `plan.done`(뒤에서 마친 여러 단계 실행: `runId, guildId?, ok, steps, stoppedAt`, 단계 줄에는 원격이라 오류 코드만)뿐이다. 원격으로 나가므로 경로·콘솔 줄·오류 원문은 뺀다(`evidence`는 `exit code …`·`signal …`일 때만, `backup.done`의 `error`는 빼고 `ok`만). 첫 건이 오면 2초 모아 20건씩 보내고, 닿지 못하면 백오프하며 최근 50건만 들고 있는다. 4xx(429 말고)는 그 묶음을 버리고 429·5xx·네트워크 오류는 백오프 뒤 다시 보내며, 404면(relay에 경로가 아직 없음) 그 묶음을 버리고 10분 동안 올리지 않은 뒤 다음 이벤트로 다시 알아본다.
@@ -372,7 +372,8 @@
 | GET | `/api/relay/host/:host_id/nodes` | `relay.rs:223` | `/api/hosts/:id/nodes` |
 | GET | `/api/relay/node/:guild_id/chatbot/models` | `relay.rs` `get_node_chatbot_models` | `/api/nodes/:id/chatbot/models` 서명 프록시. 릴레이 답을 그대로 전달한다: 200 `{provider, models, selected, effectiveModel}`, 409 `NO_API_KEY`, 422 `INVALID_API_KEY`·`QUOTA_EXCEEDED`, 503 `PROVIDER_UNAVAILABLE` |
 | GET/PUT | `/api/relay/node/:guild_id/channels` | `relay.rs:237/246` | `/api/nodes/:id/channels` 서명 프록시. 챗봇 채널(여럿)·음악 채널(하나) 배정의 원본은 릴레이다. 응답 `{guildId, chatbot:[id], music:id\|null, botAvailable, channels:[{id,name,category}]}`, PUT 본문 `{chatbot?, music?}`(준 키만). 오류 본문 `{error: CODE, channelId?}`는 그대로 전달(객체가 아닌 본문은 데몬이 400 `INVALID_BODY`). 데몬 config의 `chatbot.guilds.*.channelIds`는 `ChatbotConfig::migrate`가 지운다 |
-| GET | `/api/relay/node/:guild_id/members` | `relay.rs:236` | `/api/nodes/:id/discord-members`, 503이면 `/members`로 폴백 |
+| GET | `/api/relay/node/:guild_id/members` | `relay.rs` `list_node_members` | `/api/nodes/:id/discord-members`(15초 제한). 실패하면 `/members`(권한을 등록한 멤버만)로 폴백한다. query `withStatus=1`이면 `{members, partial, reason?}`로 답한다: 폴백이면 `partial:true`, `reason`은 `bot_unavailable`·`relay_error`·`relay_unreachable`. 없으면 예전처럼 배열만 |
+| GET | `/api/relay/node/:guild_id/legacy-members` | `relay.rs` `list_node_legacy_members` | `/api/nodes/:id/members` 서명 프록시. 릴레이 본문(`[{id, username, displayName, level}]`)을 그대로, 실패하면 오류 상태와 본문(빈 목록으로 바꾸지 않는다) |
 | GET | `/api/relay/bot-invite` | `relay.rs:267-286` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 주소는 서명 요청과 같은 규칙(설정한 릴레이 또는 루프백)으로 정한다. 봇 초대 URL `{url}` |
 | POST | `/api/relay/pair/initiate` | `relay.rs:288` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
 | GET | `/api/relay/pair/:code/status` | `relay.rs:321` | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
@@ -519,6 +520,8 @@ Relay 서명 방식(`relay.rs:100-137`):
 - `nodeSettings[guildId].discord`: 디스코드 길드 설정(I2, `ipc/handlers/discord.rs`). 원본은 이것 하나고 릴레이 값은 사본이다.
   - `{locale: "auto"|언어 코드, sleeping, music: {enabled, ui, queueLines 1-20, refreshInterval 2000-10000, normalize}}`. 기본값은 `auto`, false, `{true, true, 5, 4000, true}`(릴레이 기본값과 같다).
   - `/api/discord/:guild/settings`로만 바뀐다. 봇 설정 저장은 이 블록도 되돌린다(`PERMISSION_KEYS`).
+  - 데몬에 값이 없는 길드는 릴레이 값을 읽는다(릴레이에 없으면 기본값). 페어링했는데 릴레이를 읽지 못하면 GET은 기본값에 `loaded:false`를 붙여 답하고, PATCH는 503 `relay_unavailable`로 거절한다(기본값을 저장해 릴레이 값을 덮지 않게).
+  - 릴레이에 닿지 않거나 5xx로 보내지 못한 설정은 저장해 두고, 다음에 하트비트가 성공하면 `sync_on_connect`로 다시 보낸다(`discord::take_pending_sync`).
 
 **데몬이 실제로 쓰는 설정값은 일부뿐이다.**
 
