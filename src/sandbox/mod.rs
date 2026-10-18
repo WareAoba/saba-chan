@@ -51,6 +51,20 @@ pub fn restricted(trust: Trust) -> bool {
     ENFORCED && trust != Trust::Verified
 }
 
+/// 확인되지 않은 모듈이 돌려준 폴더(설치 결과 `install_path` 등)를 받아들이는가. 그 폴더는 인스턴스 폴더 키로
+/// 저장되어 다음 격리 실행에 쓰기를 받으므로, 데몬이 정한 `root`(인스턴스 폴더) 안일 때만 받는다
+pub fn accepts_module_dir(entry: &Path, dir: &str, root: &Path) -> bool {
+    !restricted(trust_of_entry(entry)) || inside(Path::new(dir), root)
+}
+
+/// 링크·`..`를 푼 실제 경로로 `path`가 `root` 안인가 (없는 경로는 아니다)
+fn inside(path: &Path, root: &Path) -> bool {
+    match (std::fs::canonicalize(path), std::fs::canonicalize(root)) {
+        (Ok(p), Ok(r)) => p.starts_with(r),
+        _ => false,
+    }
+}
+
 /// 어디 있든 실행하지 않는 프로그램 (셸·스크립트 호스트). 파일 이름(확장자 뺀 것)을 소문자로 본다
 const BLOCKED_PROGRAMS: &[&str] = &[
     "cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "rundll32", "regsvr32", "regsvcs", "regasm",
@@ -666,6 +680,18 @@ mod tests {
         let roots = LaunchRoots { dirs: vec![], runtimes: runtime_executables(vec![env_home.clone()]) };
         assert_eq!(check_launch(&env_home.join("bin").join("java").to_string_lossy(), &roots), Ok(()));
         assert_eq!(check_launch(&tools.join("bin").join("java").to_string_lossy(), &roots), Err("launch_outside_instance"));
+    }
+
+    #[test]
+    fn a_folder_an_unverified_module_returns_must_stay_in_the_instance() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path().join("inst");
+        std::fs::create_dir_all(inst.join("server")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("Games")).unwrap();
+        assert!(inside(&inst.join("server"), &inst));
+        assert!(!inside(&tmp.path().join("Games"), &inst));
+        assert!(!inside(&inst.join("server").join("..").join("..").join("Games"), &inst));
+        assert!(!inside(&inst.join("missing"), &inst));
     }
 
     #[test]

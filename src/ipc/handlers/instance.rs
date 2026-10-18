@@ -513,7 +513,13 @@ pub async fn create_instance(
                                                     }
                                                 }
                                                 if let Some(ref ip) = install_path {
-                                                    updated.working_dir = Some(ip.clone());
+                                                    // 확인되지 않은 모듈은 인스턴스 폴더 안만 (서버 폴더는 다음 격리 실행에 쓰기를 받는다)
+                                                    let root = sup.instance_store.instance_dir(&id_done);
+                                                    if crate::sandbox::accepts_module_dir(std::path::Path::new(&module_path), ip, &root) {
+                                                        updated.working_dir = Some(ip.clone());
+                                                    } else {
+                                                        tracing::warn!("Ignoring install_path outside the instance folder from unverified module: {}", ip);
+                                                    }
                                                 }
                                                 let _ = sup.instance_store.update(&id_done, updated);
                                             }
