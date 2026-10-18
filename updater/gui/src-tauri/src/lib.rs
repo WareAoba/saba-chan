@@ -164,18 +164,22 @@ async fn start_apply(
     marker.save().ok();
     mgr.clear_pending_manifest();
 
-    emit_progress(&app, "complete", &{
-        if applied.is_empty() {
-            "No updates to apply.".to_string()
-        } else {
-            format!("{} updates applied!", applied.len())
-        }
-    }, 100, &applied);
+    if failed.is_empty() {
+        emit_progress(&app, "complete", &{
+            if applied.is_empty() {
+                "No updates to apply.".to_string()
+            } else {
+                format!("{} updates applied!", applied.len())
+            }
+        }, 100, &applied);
+    } else {
+        emit_progress(&app, "error", &format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; ")), 0, &applied);
+    }
 
     drop(mgr);
 
-    // 5. GUI 재실행 → 업데이터 종료
-    relaunch(&app, &apply_config, true);
+    // 5. GUI 재실행 → 업데이터 종료 (하나라도 실패했으면 완료 알림 없이 띄우고 오류 화면을 남긴다)
+    relaunch(&app, &apply_config, failed.is_empty());
 
     Ok(applied)
 }
