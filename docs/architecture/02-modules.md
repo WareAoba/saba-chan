@@ -96,7 +96,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 |---|---|---|
 | `process_patterns` | Vec<String> | extension hook `server.status` 컨텍스트로만 전달 (`mod.rs:919-930`). 네이티브 auto-detect에는 **미사용** |
 | `cmd_patterns` | Vec<String> | auto-detect 때 커맨드라인 필터 (`mod.rs:2155-2164`) |
-| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 전부 있어야 함). GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.js:782-790`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.js:73-74`) |
+| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 항목은 전부 있어야 함). 한 항목 안의 `|`는 그중 하나, `*`는 그 폴더 바로 아래 파일 이름 패턴이다(`"server.jar|paper-*.jar"`, `module_loader.rs` `signature_present`). `..`가 든 항목은 맞지 않는다. GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.js:782-790`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.js:73-74`) |
 | `graceful_exit_patterns` | Vec<String> | 정상 종료 문구(정규식). 종료 판정에 쓴다 (§3.6) |
 | `crash_artifacts` | Vec<String> | 크래시 때 생기는 파일. 종료 판정에 쓴다 (§3.6) |
 

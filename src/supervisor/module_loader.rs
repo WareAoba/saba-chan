@@ -483,8 +483,24 @@ impl LoadedModule {
     /// 이 폴더가 이 모듈의 게임 서버 폴더인가 (`[detection] dir_signatures`가 전부 있으면)
     pub fn matches_dir(&self, dir: &Path) -> bool {
         let sigs = &self.metadata.dir_signatures;
-        !sigs.is_empty() && sigs.iter().all(|s| dir.join(s).exists())
+        !sigs.is_empty() && sigs.iter().all(|s| s.split('|').any(|alt| signature_present(dir, alt.trim())))
     }
+}
+
+/// `dir_signatures` 한 칸: 파일 이름이거나, `*`가 든 파일 이름 패턴 (그 폴더 바로 아래만 본다)
+fn signature_present(dir: &Path, sig: &str) -> bool {
+    if sig.is_empty() || sig.contains("..") {
+        return false;
+    }
+    if !sig.contains('*') {
+        return dir.join(sig).exists();
+    }
+    let Ok(pattern) = glob::Pattern::new(sig) else { return false };
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| pattern.matches(&e.file_name().to_string_lossy()))
 }
 
 /// 로드하지 못한 모듈과 그 이유 (`GET /api/modules`의 `failed`)
@@ -2232,6 +2248,15 @@ entry = "lifecycle.py"
         assert!(m.matches_dir(&good));
         m.metadata.dir_signatures.push("missing.txt".into());
         assert!(!m.matches_dir(&good));
+
+        // 한 항목 안의 `|`는 그중 하나, `*`는 파일 이름 패턴 (Paper·Fabric처럼 jar 이름이 버전마다 다른 서버)
+        std::fs::write(good.join("paper-1.21.4-15.jar"), "").unwrap();
+        m.metadata.dir_signatures = vec!["missing.jar|paper-*.jar".into(), "lifecycle.py".into()];
+        assert!(m.matches_dir(&good));
+        m.metadata.dir_signatures = vec!["missing.jar|purpur-*.jar".into()];
+        assert!(!m.matches_dir(&good));
+        m.metadata.dir_signatures = vec!["../*".into()];
+        assert!(!m.matches_dir(&good), "patterns stay inside the folder");
     }
 
     /// 모듈이 더 새 saba-core를 요구하면 로드하지 않고 이유를 남긴다 (M9)
