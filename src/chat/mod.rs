@@ -101,7 +101,7 @@ struct Ctx<'a, D: DaemonApi> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reply {
     pub text: String,
-    /// `UNKNOWN_COMMAND` | `INSTANCE_NOT_FOUND` | `PERMISSION_DENIED`. None이면 처리된 응답(성공이든 실행 오류든)
+    /// `UNKNOWN_COMMAND` | `INSTANCE_NOT_FOUND` | `PERMISSION_DENIED` | `AGREEMENT_REQUIRED`(`args.agreements`). None이면 처리된 응답(성공이든 실행 오류든)
     pub code: Option<&'static str>,
     pub args: Value,
 }
@@ -408,7 +408,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
         }
 
         match command.as_str() {
-            "start" => self.start(server).await.into(),
+            "start" => self.start(server).await,
             "stop" => self.stop(server).await.into(),
             "status" => self.status(server).into(),
             _ => match module.command(&command) {
@@ -427,8 +427,17 @@ impl<D: DaemonApi> Ctx<'_, D> {
         }
     }
 
-    async fn start(&self, server: &ServerView) -> String {
+    async fn start(&self, server: &ServerView) -> Reply {
         let resp = self.api.start(server).await;
+        // 약관 동의는 PC에서만 받는다: 릴레이가 원문 링크와 함께 안내하도록 목록을 싣는다
+        if resp.str_field("error_code") == Some("agreement_required") {
+            let text = resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.error_title", &[]));
+            return Reply::unrecognized("AGREEMENT_REQUIRED", format!("📜 {}", text), json!({ "agreements": resp.body.get("agreements") }));
+        }
+        self.start_text(server, resp).into()
+    }
+
+    fn start_text(&self, server: &ServerView, resp: InternalResponse) -> String {
         if !resp.is_success() {
             let detail = resp.str_field("error").unwrap_or_default();
             tracing::warn!("[Chat] 시작 실패 {}: {}", server.name, detail);
