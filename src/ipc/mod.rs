@@ -602,13 +602,15 @@ impl IPCServer {
         let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
 
         let stop_requested = tokio_util::sync::CancellationToken::new();
+        let client_registry = ClientRegistry::new();
         Self {
             supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
-            client_registry: ClientRegistry::new(),
+            client_registry: client_registry.clone(),
             update_state: UpdateState::new()
                 .with_hot_reload(supervisor, extension_manager.clone())
-                .with_stop_signal(stop_requested.clone()),
+                .with_stop_signal(stop_requested.clone())
+                .with_clients(client_registry),
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager,
