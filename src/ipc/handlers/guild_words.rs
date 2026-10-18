@@ -29,7 +29,7 @@ fn guild_servers(node_settings: &Value, guild: &str, servers: &[ServerView]) -> 
 
 fn command_rows(module: Option<&ModuleView>, mine: &InstanceWords) -> Vec<Value> {
     // 모듈이 내장과 같은 이름을 정의하면 한 줄로: 이름표·위험도는 모듈 선언을 쓴다
-    let defines = |name: &str| module.is_some_and(|m| m.command(name).is_some());
+    let defines = |name: &str| module.is_some_and(|m| m.commands.iter().any(|c| c.name.eq_ignore_ascii_case(name)));
     let builtin = BUILTIN_COMMANDS
         .iter()
         .filter(|c| !defines(c))
@@ -37,7 +37,7 @@ fn command_rows(module: Option<&ModuleView>, mine: &InstanceWords) -> Vec<Value>
     let defined = module.into_iter().flat_map(|m| {
         m.commands
             .iter()
-            .map(|c| (c.name.clone(), c.label.clone(), c.risk.clone().unwrap_or_else(|| "caution".into()), BUILTIN_COMMANDS.contains(&c.name.as_str())))
+            .map(|c| (c.name.clone(), c.label.clone(), c.risk.clone().unwrap_or_else(|| "caution".into()), BUILTIN_COMMANDS.iter().any(|b| b.eq_ignore_ascii_case(&c.name))))
     });
     builtin
         .chain(defined)
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn a_module_command_named_like_a_builtin_is_one_row() {
         let stop = CommandField {
-            name: "stop".into(),
+            name: "Stop".into(),
             label: "서버 끄기".into(),
             description: None,
             method: Some("console".into()),
@@ -190,7 +190,8 @@ mod tests {
         };
         let module = ModuleView { name: "minecraft".into(), commands: vec![stop], ..Default::default() };
         let rows = command_rows(Some(&module), &InstanceWords::default());
-        let stops: Vec<&Value> = rows.iter().filter(|r| r["name"] == "stop").collect();
+        // 실행 경로처럼 대소문자는 가리지 않는다
+        let stops: Vec<&Value> = rows.iter().filter(|r| r["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case("stop"))).collect();
         assert_eq!(stops.len(), 1, "{rows:?}");
         assert_eq!((stops[0]["label"].as_str(), stops[0]["risk"].as_str(), stops[0]["builtin"].as_bool()), (Some("서버 끄기"), Some("danger"), Some(true)));
         assert_eq!(rows.len(), BUILTIN_COMMANDS.len());
