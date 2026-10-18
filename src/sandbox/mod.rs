@@ -405,7 +405,9 @@ fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
 /// PATH에서 런타임 실행 파일을 찾는다 (앞에서부터 모두. 앞쪽 것이 Oracle `javapath` 같은 바로가기일 수 있다)
 fn find_on_path(name: &str, path: Option<&OsStr>) -> Vec<PathBuf> {
     let Some(path) = path else { return Vec::new() };
+    // 네트워크 공유(UNC)·상대 경로는 열어 보지 않는다 (느린 공유에서 멈추거나 자격 증명이 새지 않게)
     std::env::split_paths(path)
+        .filter(|dir| plain_local_path(dir))
         .filter_map(|dir| [format!("{name}.exe"), name.to_string()].into_iter().map(|f| dir.join(f)).find(|p| p.is_file()))
         .collect()
 }
@@ -425,7 +427,7 @@ const JAVA_VENDOR_DIRS: &[&str] = &[
     "jvm",
 ];
 
-/// 알려진 설치 위치 (Windows: Program Files 두 곳, Unix: `/usr/lib`)
+/// 알려진 설치 위치 (Windows: Program Files와 `%LOCALAPPDATA%\Programs`, Unix: `/usr/lib`)
 fn install_roots() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
     if cfg!(windows) {
@@ -435,6 +437,10 @@ fn install_roots() -> Vec<PathBuf> {
                     roots.push(dir);
                 }
             }
+        }
+        // 사용자 단위 설치 (예: Temurin의 "이 사용자만" 설치)
+        if let Some(dir) = std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Programs")).filter(|d| plain_local_path(d)) {
+            roots.push(dir);
         }
     } else {
         roots.push(PathBuf::from("/usr/lib"));
@@ -927,6 +933,9 @@ mod tests {
         assert_eq!(majors[0], (17, "17.0.9", "amd64"));
         assert!(majors.contains(&(21, "21.0.5", "amd64")) && majors.contains(&(8, "1.8.0_381", "x86")));
         assert!(runtimes.iter().all(|r| r.java.starts_with(&r.home)));
+        // 일반 로컬 경로가 아닌 PATH 항목은 열어 보지 않는다 (Windows에서는 UNC 공유)
+        let indirect = std::env::join_paths([tmp.path().join("javapath").join("..").join("jdk17").join("bin")]).unwrap();
+        assert_eq!(find_on_path("java", Some(&indirect)), Vec::<PathBuf>::new());
     }
 
     #[test]
