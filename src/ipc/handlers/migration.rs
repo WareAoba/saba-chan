@@ -168,6 +168,10 @@ pub(crate) fn judge(
             return Verdict::Skip("working_dir_in_use");
         }
     }
+    // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다
+    if existing.iter().any(|e| e.id != incoming.id && e.name == incoming.name) {
+        return Verdict::Skip("name_taken");
+    }
     match same {
         None => Verdict::Add,
         Some(_) if !overwrite => Verdict::Skip("exists"),
@@ -277,6 +281,8 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_ok()).map(|i| i.id.clone()));
             ids
         };
+        // 앞서 더하거나 바꾼 인스턴스까지 보고 판정한다: 미리보기(dry run)도 실제 가져오기와 같은 결과를 내게
+        let mut known: Vec<ServerInstance> = sup.instance_store.list().to_vec();
         for inst in bundle.instances {
             // 남이 준 zip이면 이 경로의 프로그램이 실행된다: 미리보기에서 보이게
             let entry = json!({
@@ -285,7 +291,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 "working_dir": inst.working_dir,
                 "executable_path": inst.executable_path,
             });
-            let verdict = judge(&inst, sup.instance_store.list(), &running, req.overwrite);
+            let verdict = judge(&inst, &known, &running, req.overwrite);
             let applied = match verdict {
                 Verdict::Skip(reason) => {
                     skipped.push(json!({ "id": inst.id, "name": inst.name, "reason": reason }));
@@ -300,6 +306,8 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 skipped.push(json!({ "id": inst.id, "name": inst.name, "reason": "save_failed" }));
                 continue;
             }
+            known.retain(|k| k.id != inst.id);
+            known.push(inst.clone());
             if sup.module_loader.get_module(&inst.module_name).is_err() && !missing_modules.contains(&inst.module_name) {
                 missing_modules.push(inst.module_name.clone());
             }
@@ -382,6 +390,33 @@ mod tests {
         assert!(i.module_settings.is_empty());
     }
 
+    #[tokio::test]
+    async fn a_dry_run_reports_what_the_real_import_would_do() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("saba.zip");
+        let (mut first, mut second) = (inst("a", None), inst("b", None));
+        first.name = "same".into();
+        second.name = "same".into();
+        let meta = json!({ "format": FORMAT, "formatVersion": FORMAT_VERSION, "appVersion": "0.1.5", "secrets": false });
+        write_bundle(&path, &Bundle { meta, config: Map::new(), instances: vec![first, second], node_token: None }).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            dir.path().join("modules").to_str().unwrap(),
+            dir.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let run = |dry: bool| {
+            let req: ImportRequest = serde_json::from_value(json!({ "path": path.to_string_lossy(), "dryRun": dry })).unwrap();
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(import(State(state), Json(req)).await).await.body }
+        };
+        let preview = run(true).await;
+        let done = run(false).await;
+        assert_eq!(preview["instances"]["added"].as_array().unwrap().len(), 1, "{preview}");
+        assert_eq!(preview["instances"]["skipped"][0]["reason"], "name_taken");
+        assert_eq!(preview["instances"], done["instances"]);
+    }
+
     #[test]
     fn bundle_round_trips_through_the_zip() {
         let dir = tempfile::tempdir().unwrap();
@@ -435,5 +470,8 @@ mod tests {
         assert_eq!(judge(&inst("b", Some("/srv/b")), &existing, &running, true), Verdict::Skip("running"));
         assert_eq!(judge(&inst("c", Some("/srv/a")), &existing, &running, false), Verdict::Skip("working_dir_in_use"));
         assert_eq!(judge(&inst("../x", None), &existing, &running, false), Verdict::Skip("invalid_id"));
+        let mut same_name = inst("d", Some("/srv/d"));
+        same_name.name = "a".into();
+        assert_eq!(judge(&same_name, &existing, &running, false), Verdict::Skip("name_taken"), "two servers with one name are told apart by name");
     }
 }
