@@ -151,4 +151,13 @@ describe('사바쨩 말풍선', () => {
         });
         expect(useSabaBubble.getState().bubble?.kind).toBe('recovering');
     });
+    it('오래 떠 있던 말풍선을 바꿔 띄우면 새 말풍선도 최소 시간을 다 채운다', async () => {
+        const emit = fakeStream();
+        render(<SabaBubble />);
+        await emit({ type: 'instance.exit', data: { instanceId: 'mc-1', kind: 'crash', restartInSecs: 5 } });
+        await advance(6000);
+        await emit({ type: 'instance.restart_failed', data: { instanceId: 'mc-1' } });
+        await advance(400);
+        expect(useSabaBubble.getState().bubble?.kind).toBe('stopped');
+    });
 });

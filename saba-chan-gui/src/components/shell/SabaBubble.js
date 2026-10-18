@@ -103,20 +103,21 @@ export function SabaBubble() {
     useBubbleTriggers();
     const bubble = useSabaBubble((s) => s.bubble);
     const [leaving, setLeaving] = useState(false);
-    const [minDone, setMinDone] = useState(false);
+    // 최소 시간이 지난 말풍선 id (바뀐 말풍선이 이전 것의 결과를 물려받지 않게)
+    const [minDone, setMinDone] = useState({ id: null, force: false });
     const shownId = useRef(null);
 
     // 새 말풍선이 오면 처음부터 다시 잰다
     // biome-ignore lint/correctness/useExhaustiveDependencies: 말풍선이 바뀔 때(id)만 다시 잰다
     useEffect(() => {
         if (!bubble) return undefined;
-        if (shownId.current !== bubble.id) {
-            shownId.current = bubble.id;
+        const id = bubble.id;
+        if (shownId.current !== id) {
+            shownId.current = id;
             setLeaving(false);
-            setMinDone(false);
         }
-        const min = setTimeout(() => setMinDone(true), bubble.minMs);
-        const max = setTimeout(() => setMinDone('force'), Math.max(bubble.minMs, BUBBLE_MAX_HOLD_MS));
+        const min = setTimeout(() => setMinDone((m) => (m.id === id ? m : { id, force: false })), bubble.minMs);
+        const max = setTimeout(() => setMinDone({ id, force: true }), Math.max(bubble.minMs, BUBBLE_MAX_HOLD_MS));
         return () => {
             clearTimeout(min);
             clearTimeout(max);
@@ -125,7 +126,8 @@ export function SabaBubble() {
 
     // 최소 시간이 지났고 붙잡을 이유가 없으면 들어간다
     useEffect(() => {
-        if (bubble && !leaving && (minDone === 'force' || (minDone && bubble.released))) setLeaving(true);
+        if (!bubble || leaving || minDone.id !== bubble.id) return;
+        if (minDone.force || bubble.released) setLeaving(true);
     }, [bubble, minDone, leaving]);
 
     // 들어가는 움직임이 끝나면 지운다
