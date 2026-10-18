@@ -204,7 +204,6 @@ def test_port_conflict_between_instances_is_refused(daemon, fake_server):
     assert daemon.server_status(a) == "running"
 
 
-@pytest.mark.xfail(strict=True, reason="E2E-F4: 다른 프로그램이 포트를 쓰면 시작이 500 'Process exited with code 1'로만 끝나고 포트 이유를 말하지 않음")
 def test_port_used_by_foreign_process_is_reported(mc):
     daemon, iid, _, port = mc
     with socket.socket() as squatter:
@@ -212,8 +211,10 @@ def test_port_used_by_foreign_process_is_reported(mc):
         squatter.listen()
         r = daemon.api.post(f"/api/instance/{iid}/start")
         daemon.wait_status(iid, "stopped", timeout=30)
-    assert r.status_code in (409, 400), r.text
-    assert "PORT_IN_USE" in r.text or str(port) in r.text, r.text
+    # 인스턴스끼리 겹칠 때와 같은 응답이다 (HTTP 200 + success:false)
+    body = r.json()
+    assert body.get("success") is False and body.get("error_code") == "port_conflict", r.text
+    assert any(str(port) in c for c in body.get("conflicts", [])), r.text
 
 
 def test_server_survives_daemon_restart_and_console_reattaches(daemon_factory, fake_server):
