@@ -94,6 +94,7 @@
     "pair_gui_hint": "You can also see the Discord connection in the GUI's Discord screen."
   },
   "col": {
+    "players": "Players",
     "aliases": "Aliases",
     "code": "Code",
     "command": "Command",

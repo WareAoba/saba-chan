@@ -73,6 +73,7 @@
     "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI."
   },
   "col": {
+    "players": "Jogadores",
     "aliases": "Apelidos",
     "code": "Código",
     "command": "Comando",

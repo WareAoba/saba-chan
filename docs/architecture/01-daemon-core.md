@@ -191,6 +191,7 @@
 - 접속 정보: `rest_host, rest_port, rest_username, rest_password, protocol_mode`
 - 설정과 상태: `module_settings, server_version, last_api_action?, provisioning, managed, extension_status?, extension_data, port_conflicts?`
 - `slots?`: 익스텐션 데이터 slot을 데몬이 판정한 결과(`{"ServerCard.badge":[{extension,text}], "ServerDetail.status":[{extension,label,value}]}`, 없으면 키가 없다). 규칙은 03-extensions 4.3.
+- `players?`: `{online, max?}`. `status`가 `running`이고 모듈이 `[status] players`로 알려 준 마지막 접속자 수(1분마다 갱신, `supervisor/players.rs`, 02 §1.2). 모르면 키가 없다.
 - `managed`는 saba-runner가 맡아 실행하는지다. 판정은 데몬의 `Supervisor::uses_managed_start` 하나이고(`server.rs:81`), 클라이언트는 이 값을 그대로 쓴다.
 - **REST 비밀번호가 평문으로 포함된다.**
 

@@ -462,6 +462,19 @@ async fn main() -> anyhow::Result<()> {
     // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
     ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
 
+    // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
+    let players_sup = supervisor.clone();
+    let players_cancel = shutdown_token.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = players_cancel.cancelled() => break,
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(supervisor::players::REFRESH_SECS)) => {}
+            }
+            supervisor::players::refresh(&players_sup).await;
+        }
+    });
+
     // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
     let registry_reaper = client_registry.clone();
     let reaper_cancel = shutdown_token.clone();

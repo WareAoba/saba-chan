@@ -73,6 +73,7 @@
     "pair_gui_hint": "Подключение к Discord также видно на экране Discord в GUI."
   },
   "col": {
+    "players": "Игроки",
     "aliases": "Псевдонимы",
     "code": "Код",
     "command": "Команда",

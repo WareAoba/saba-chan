@@ -198,6 +198,9 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         {
             rows.push((t!("col.started"), output::ago(st)));
         }
+        if let Some(p) = output::players(&rt) {
+            rows.push((t!("col.players"), p));
+        }
         if let Some(pid) = rt.get("pid").and_then(Value::as_u64) {
             rows.push(("PID".into(), pid.to_string()));
         }

@@ -210,6 +210,9 @@ pub fn print_server_table(servers: &[Value], modules: &Value) {
             })
             .unwrap_or_default();
         let mut state = output::status_badge(s(sv, "status"));
+        if let Some(p) = output::players(sv) {
+            state.push_str(&format!("  👥 {p}"));
+        }
         if sv
             .get("port_conflicts")
             .and_then(Value::as_array)

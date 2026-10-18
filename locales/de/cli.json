@@ -73,6 +73,7 @@
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI."
   },
   "col": {
+    "players": "Spieler",
     "aliases": "Aliase",
     "code": "Code",
     "command": "Befehl",
