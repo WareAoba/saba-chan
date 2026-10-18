@@ -73,6 +73,13 @@ pub async fn get_instance(
 /// 모듈 설정 기본값에서 인스턴스 폴더로 바뀌는 자리표시자
 pub const INSTANCE_DIR_PLACEHOLDER: &str = "{instance_dir}";
 
+/// 사용자가 정한 `java_path`를 그 모듈의 격리 실행에 연다 (폴더 권한 고치기는 오래 걸릴 수 있어 따로)
+fn open_user_runtime(entry: String, instance: &crate::instance::ServerInstance) {
+    let Some(java) = instance.module_settings.get("java_path").and_then(Value::as_str).filter(|_| instance.user_settings.contains("java_path")) else { return };
+    let java = java.to_string();
+    tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &java));
+}
+
 /// POST /api/instances - 새 인스턴스 생성
 pub async fn create_instance(
     State(state): State<IPCServer>,
@@ -152,6 +159,21 @@ pub async fn create_instance(
                         return (StatusCode::BAD_REQUEST, Json(error)).into_response();
                     }
                     instance.module_settings.insert(field.name.clone(), value.clone());
+                    // 사용자가 보낸 값이 모듈 기본값·프리셋과 다를 때만 사용자가 정한 값이다
+                    // (만들기 화면은 기본값을 채워 보낸다)
+                    let from_module = payload.get("preset").and_then(|v| v.as_str())
+                        .and_then(|id| loaded_module.metadata.presets.iter().find(|p| p.id == id))
+                        .and_then(|p| p.settings.get(&field.name))
+                        .is_some_and(|v| v == value)
+                        || field.default.as_ref().and_then(|d| d.as_str()).is_some_and(|d| {
+                            let dir = supervisor.instance_store.instance_dir(&instance.id);
+                            let substituted = d.replace(INSTANCE_DIR_PLACEHOLDER, &dir.to_string_lossy());
+                            value.as_str().is_some_and(|v| v == d || v == substituted)
+                        });
+                    let given = payload.get("module_settings").and_then(|v| v.get(&field.name)).is_some_and(|v| v == value);
+                    if given && !from_module {
+                        instance.user_settings.insert(field.name.clone());
+                    }
                 }
             }
 
@@ -182,6 +204,8 @@ pub async fn create_instance(
                     }
                 }
             }
+
+            open_user_runtime(loaded_module.entry_path(), &instance);
 
             Some((
                 loaded_module.metadata.install.clone(),
@@ -1218,6 +1242,10 @@ pub async fn update_instance_settings(
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
             if !KNOWN_FIELDS.contains(&key.as_str()) {
+                // 설정 화면은 고치지 않은 값도 함께 보낸다: 값이 바뀐 키만 사용자가 정한 것으로 기록한다
+                if updated.module_settings.get(key) != Some(value) {
+                    updated.user_settings.insert(key.clone());
+                }
                 updated.module_settings.insert(key.clone(), value.clone());
             }
         }
@@ -1271,8 +1299,13 @@ pub async fn update_instance_settings(
     // 익스텐션 hook에 넘길 값을 챙기고 락을 놓는다. 아래 모듈·익스텐션 호출은 락 밖에서 (C12)
     let instance_dir = supervisor.instance_store.instance_dir(&id);
     // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
-    let module_extensions = supervisor.module_loader.get_module(&updated_clone.module_name)
-        .ok()
+    let module = supervisor.module_loader.get_module(&updated_clone.module_name).ok();
+    if settings.get("java_path").is_some() {
+        if let Some(m) = &module {
+            open_user_runtime(m.entry_path(), &updated_clone);
+        }
+    }
+    let module_extensions = module
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));
     drop(supervisor);
@@ -1807,6 +1840,55 @@ mod tests {
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
+    }
+
+    #[tokio::test]
+    async fn only_values_the_user_changed_count_as_user_settings() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"java_path\"\ntype = \"text\"\ndefault = \"{instance_dir}/jdk/bin/java\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+        let user_settings = |id: String| {
+            let state = state.clone();
+            async move { state.supervisor.read().await.instance_store.get(&id).unwrap().user_settings.clone() }
+        };
+
+        // 기본값을 채워 보내도, 아무것도 안 보내도 모듈이 정한 값이다
+        let filled = create(json!({ "name": "a", "module_name": "game", "module_settings": { "java_path": "{instance_dir}/jdk/bin/java" } })).await;
+        let id = filled.body["id"].as_str().unwrap().to_string();
+        assert!(user_settings(id.clone()).await.is_empty());
+        let typed = create(json!({ "name": "b", "module_name": "game", "module_settings": { "java_path": "/opt/jdk/bin/java" } })).await;
+        assert!(user_settings(typed.body["id"].as_str().unwrap().to_string()).await.contains("java_path"));
+
+        // 저장할 때 고치지 않은 값을 함께 보내도 사용자가 정한 것이 아니다. 바꾼 값만 기록한다
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        let current = state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["java_path"].clone();
+        assert!(patch(json!({ "java_path": current })).await.status.is_success());
+        assert!(user_settings(id.clone()).await.is_empty());
+        assert!(patch(json!({ "java_path": "/opt/jdk/bin/java" })).await.status.is_success());
+        assert!(user_settings(id.clone()).await.contains("java_path"));
     }
 
     #[test]

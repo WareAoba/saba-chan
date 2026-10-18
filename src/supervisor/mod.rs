@@ -447,14 +447,12 @@ impl Supervisor {
             // 사용자가 정한 서버 폴더 (모듈이 돌려준 working_dir은 믿지 않는다)
             dirs.extend(instance.working_dir.iter().map(std::path::PathBuf::from));
             // 사용자가 설정한 java 경로 (이름이 java일 때만 런타임으로 인정된다).
-            // 모듈이 정한 기본값 그대로면 사용자가 정한 것이 아니다
-            let module_default = module.metadata.settings.as_ref()
-                .and_then(|s| s.fields.iter().find(|f| f.name == "java_path"))
-                .and_then(|f| f.default.as_ref())
-                .and_then(|d| d.as_str().map(str::to_string));
+            // 모듈 기본값·프리셋처럼 사용자가 정하지 않은 값은 인정하지 않는다
             let mut runtimes: Vec<_> = instance.module_settings.get("java_path").and_then(Value::as_str)
-                .filter(|p| module_default.as_deref() != Some(*p))
-                .map(std::path::PathBuf::from).into_iter().collect();
+                .filter(|_| instance.user_settings.contains("java_path"))
+                .map(std::path::PathBuf::from)
+                .filter(|p| crate::sandbox::plain_local_path(p))
+                .into_iter().collect();
             // 데몬의 JAVA_HOME·PATH가 가리키는 JDK (격리 실행에 읽기를 준 런타임과 같다)
             runtimes.extend(crate::sandbox::daemon_runtimes());
             (module.entry_path(), crate::sandbox::LaunchRoots { dirs, runtimes })
@@ -3008,6 +3006,7 @@ mod tests {
             extra_args: Vec::new(),
             memory_limit_mb: None,
             accepted_agreements: Default::default(),
+            user_settings: Default::default(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -3067,6 +3066,7 @@ mod tests {
             extra_args: Vec::new(),
             memory_limit_mb: None,
             accepted_agreements: Default::default(),
+            user_settings: Default::default(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

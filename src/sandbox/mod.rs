@@ -381,15 +381,42 @@ fn runtime_home(exe: &Path) -> Option<PathBuf> {
     (bin.file_name()?.eq_ignore_ascii_case("bin") && home.join("release").is_file()).then(|| home.to_path_buf())
 }
 
-/// 설정 `java_path` 중 사용자가 정한 값. 모듈이 `module.toml` 기본값·프리셋으로 넣은 값은 모듈이 고른 경로라
-/// 인정하지 않는다 (`Supervisor::guard_launch`와 같은 규칙). module.toml을 읽지 못하면 인정하지 않는다
-fn user_java_path<'a>(config: &'a Value, component_dir: &Path) -> Option<&'a str> {
-    let java = config.get("java_path").and_then(Value::as_str)?;
-    let module = crate::supervisor::module_loader::load_module_dir(component_dir).ok()?.metadata;
-    let default = module.settings.iter().flat_map(|s| &s.fields).filter(|f| f.name == "java_path").filter_map(|f| f.default.as_ref()?.as_str());
-    let presets = module.presets.iter().filter_map(|p| p.settings.get("java_path")?.as_str());
-    let declared: Vec<&str> = default.chain(presets).collect();
-    (!declared.contains(&java)).then_some(java)
+/// 파일 시스템에 묻기 전에 걸러 낼 경로: 로컬 드라이브의 절대 경로이고 `..`가 없어야 한다
+/// (UNC·`\\?\` 경로는 묻는 것만으로 다른 PC에 사용자 자격을 보낼 수 있다)
+pub fn plain_local_path(path: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    if !path.is_absolute() || path.components().any(|c| c == Component::ParentDir) {
+        return false;
+    }
+    match path.components().next() {
+        Some(Component::Prefix(p)) => matches!(p.kind(), Prefix::Disk(_)),
+        _ => cfg!(not(windows)),
+    }
+}
+
+/// 사용자가 설정에서 정한 런타임(`java_path`)을 그 구성요소의 격리 실행에 연다 (Windows, 확인되지 않은 것만).
+/// 설정을 저장할 때 데몬이 부른다: 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없다
+pub fn open_user_runtime(entry: &Path, java_path: &str) {
+    if !ENFORCED || !restricted(trust_of_entry(entry)) {
+        return;
+    }
+    let Some((key, _)) = component_of(entry) else { return };
+    let raw_data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+    let data_dir = std::fs::canonicalize(&raw_data_dir).unwrap_or(raw_data_dir);
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).and_then(|h| std::fs::canonicalize(h).ok());
+    let mut grants = appcontainer::Grants::default();
+    for runtime in runtime_homes(Some(java_path), None, std::env::var_os("PATH").as_deref()) {
+        grants.push_optional(&runtime, appcontainer::Access::Read, &data_dir, home.as_deref());
+    }
+    if grants.entries.is_empty() {
+        return;
+    }
+    #[cfg(windows)]
+    if let Err(e) = appcontainer::grant(&appcontainer::profile_for(&key), &grants) {
+        tracing::warn!("[Sandbox] could not open runtime {} to {}: {}", java_path, key, e);
+    }
+    #[cfg(not(windows))]
+    let _ = key;
 }
 
 /// 격리된 모듈이 확인하고 띄울 런타임의 설치 폴더: 사용자가 정한 `java_path`(경로 없는 이름이면 PATH에서),
@@ -399,6 +426,9 @@ pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: O
     if let Some(java) = java_path.map(str::trim).filter(|p| !p.is_empty()) {
         let java = Path::new(java);
         if java.is_absolute() {
+            if !plain_local_path(java) {
+                return Vec::new();
+            }
             exes.push(java.to_path_buf());
         } else if java.components().count() == 1 && RUNTIME_NAMES.contains(&stem(java).as_str()) {
             exes.extend(find_on_path(&stem(java), path));
@@ -473,9 +503,6 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         add(parent, Access::List);
     }
     add(&data_dir.join("python-guard"), Access::Read);
-    for home in runtime_homes(user_java_path(config, &dir), std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
-        add(&home, Access::Read);
-    }
     add(&pycache, Access::Write);
     add(&temp, Access::Write);
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
@@ -499,6 +526,10 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     if let Some(d) = &data {
         let _ = std::fs::create_dir_all(d);
         add(d, Access::Write);
+    }
+    // 런타임은 없어도 되는 권한: 주지 못하면 그 폴더만 빼고 띄운다 (Java를 쓰지 않는 구성요소까지 막지 않게)
+    for runtime in runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
+        grants.push_optional(&runtime, Access::Read, &data_dir, home);
     }
     let profile = appcontainer::profile_for(&key);
     Some(Isolation { key, dir, profile, grants, pycache, temp, data })
@@ -695,20 +726,15 @@ mod tests {
     }
 
     #[test]
-    fn a_java_path_the_module_chose_is_not_opened() {
+    fn only_plain_local_paths_reach_the_file_system() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("lifecycle.py"), b"").unwrap();
-        std::fs::write(
-            tmp.path().join("module.toml"),
-            "[module]\nschema_version = 1\nname = \"m\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"java_path\"\ntype = \"text\"\nlabel = \"java\"\ndefault = \"C:/Users/me/jdk/bin/java.exe\"\n\n[[presets]]\nid = \"p\"\nsettings = { java_path = \"C:/other/bin/java.exe\" }\n",
-        )
-        .unwrap();
-        let of = |v: &str| user_java_path(&serde_json::json!({ "java_path": v }), tmp.path()).map(str::to_string);
-        assert_eq!(of("C:/Users/me/jdk/bin/java.exe"), None, "module default");
-        assert_eq!(of("C:/other/bin/java.exe"), None, "module preset");
-        assert_eq!(of("D:/jdk21/bin/java.exe").as_deref(), Some("D:/jdk21/bin/java.exe"));
-        // module.toml이 없는 구성요소(익스텐션 등)는 인정하지 않는다
-        assert_eq!(user_java_path(&serde_json::json!({ "java_path": "D:/jdk21/bin/java.exe" }), &tmp.path().join("none")), None);
+        assert!(plain_local_path(tmp.path()));
+        assert!(!plain_local_path(&tmp.path().join("..").join("x")));
+        assert!(!plain_local_path(Path::new("bin/java")));
+        #[cfg(windows)]
+        for bad in [r"\\host\share\bin\java.exe", r"\\?\C:\jdk\bin\java.exe", r"\\.\C:\jdk\bin\java.exe"] {
+            assert!(!plain_local_path(Path::new(bad)), "{bad}");
+        }
     }
 
     #[test]

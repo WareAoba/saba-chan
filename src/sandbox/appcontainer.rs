@@ -42,6 +42,8 @@ pub enum Access {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Grants {
     pub entries: Vec<(PathBuf, Access)>,
+    /// 주지 못해도 실행은 계속하는 폴더 (찾아 둔 런타임처럼 없어도 되는 것)
+    pub optional: Vec<PathBuf>,
 }
 
 /// 권한을 줄 수 없는 위치인가: 데이터 폴더와 그 위, 드라이브 루트, 사용자 폴더와 그 위
@@ -83,6 +85,16 @@ impl Grants {
         }
         if !self.entries.iter().any(|(p, a)| p == &real && *a == access) {
             self.entries.push((real, access));
+        }
+    }
+
+    /// `push`와 같지만, 권한을 주지 못하면(관리자가 설치한 폴더 등) 경고만 하고 그 폴더 없이 띄운다
+    pub fn push_optional(&mut self, path: &Path, access: Access, data_dir: &Path, home: Option<&Path>) {
+        let before = self.entries.len();
+        self.push(path, access, data_dir, home);
+        if self.entries.len() > before {
+            let real = self.entries[before].0.clone();
+            self.optional.push(real);
         }
     }
 }
@@ -145,7 +157,7 @@ pub fn merge_env(base: Vec<(OsString, OsString)>, changes: Vec<(OsString, Option
 }
 
 #[cfg(windows)]
-pub use imp::{spawn, Contained};
+pub use imp::{grant, spawn, Contained};
 
 #[cfg(windows)]
 mod imp {
@@ -169,10 +181,10 @@ mod imp {
     use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
     use winapi::um::namedpipeapi::CreatePipe;
     use winapi::um::processthreadsapi::{
-        CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess, InitializeProcThreadAttributeList, ResumeThread,
+        CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess, InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread,
         TerminateProcess, UpdateProcThreadAttribute, PROCESS_INFORMATION,
     };
-    use winapi::um::securitybaseapi::{AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, InitializeAcl};
+    use winapi::um::securitybaseapi::{AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetTokenInformation, InitializeAcl};
     use winapi::um::synchapi::WaitForSingleObject;
     use winapi::um::winbase::{
         LocalFree, CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, HANDLE_FLAG_INHERIT,
@@ -187,7 +199,7 @@ mod imp {
         LABEL_SECURITY_INFORMATION, SECURITY_MANDATORY_LABEL_AUTHORITY, SECURITY_MANDATORY_LOW_RID, SYSTEM_MANDATORY_LABEL_ACE,
         SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, FILE_ATTRIBUTE_REPARSE_POINT, FILE_SHARE_DELETE,
         FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, WRITE_DAC, WRITE_OWNER, SECURITY_CREATOR_OWNER_RIGHTS_RID,
-        SECURITY_CREATOR_SID_AUTHORITY,
+        SECURITY_CREATOR_SID_AUTHORITY, OWNER_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER, TokenUser,
     };
 
     const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
@@ -436,16 +448,81 @@ mod imp {
         .map_err(Clone::clone)
     }
 
-    /// 표시를 바꾸려면 WRITE_OWNER가 있어야 한다. 사용자가 C:\ 바로 아래 만든 폴더(C:\Games 등)는 상속받은
-    /// "수정" 권한뿐이라 소유자에게도 WRITE_OWNER가 없다. 소유자는 언제든 DACL을 고칠 수 있으므로(암묵적 WRITE_DAC)
-    /// 권한을 넓히는 것이 아니다: 그 폴더에만 OWNER RIGHTS로 원래 권한과 WRITE_OWNER를 준다
-    fn open_for_relabel(path: &Path) -> Result<OwnedHandle, String> {
-        match open_checked(path, WRITE_OWNER) {
-            Ok(dir) => Ok(dir),
-            Err(first) => {
-                allow(path, owner_rights()?, READ_CONTROL | WRITE_DAC | WRITE_OWNER, false).map_err(|e| format!("{first} ({e})"))?;
-                open_checked(path, WRITE_OWNER)
+    /// 데몬을 돌리는 사용자 SID (토큰에서 한 번 읽어 둔다)
+    fn current_user() -> Result<&'static [u8], String> {
+        static SID: std::sync::OnceLock<Result<Vec<u8>, String>> = std::sync::OnceLock::new();
+        use std::os::windows::io::AsRawHandle;
+        SID.get_or_init(|| unsafe {
+            let mut token: HANDLE = null_mut();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                return Err(last_error("OpenProcessToken"));
             }
+            let token = OwnedHandle::from_raw_handle(token as RawHandle);
+            let mut buf = vec![0u8; 256];
+            let mut len: DWORD = 0;
+            if GetTokenInformation(token.as_raw_handle() as HANDLE, TokenUser, buf.as_mut_ptr() as *mut c_void, buf.len() as DWORD, &mut len) == 0 {
+                return Err(last_error("GetTokenInformation"));
+            }
+            let user = &*(buf.as_ptr() as *const TOKEN_USER);
+            let sid = user.User.Sid;
+            let n = GetLengthSid(sid) as usize;
+            Ok(std::slice::from_raw_parts(sid as *const u8, n).to_vec())
+        })
+        .as_ref()
+        .map(Vec::as_slice)
+        .map_err(Clone::clone)
+    }
+
+    /// 표시를 바꿀 핸들(`WRITE_OWNER`). 사용자가 C:\ 바로 아래 만든 폴더(C:\Games 등)는 상속받은 "수정" 권한뿐이라
+    /// 소유자에게도 WRITE_OWNER가 없다. 소유자가 데몬 사용자일 때만, 소유자의 암묵적 WRITE_DAC으로 그 폴더에
+    /// OWNER RIGHTS ACE를 잠깐 더해 핸들을 열고 원래 DACL로 되돌린다 (ACE는 남지 않는다)
+    fn open_for_relabel(path: &Path) -> Result<OwnedHandle, String> {
+        use std::os::windows::io::AsRawHandle;
+        let first = match open_checked(path, WRITE_OWNER) {
+            Ok(dir) => return Ok(dir),
+            Err(e) => e,
+        };
+        unsafe {
+            let read = open_checked(path, 0)?;
+            let mut owner: PSID = null_mut();
+            let mut dacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetSecurityInfo(
+                read.as_raw_handle() as HANDLE,
+                SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                &mut owner,
+                null_mut(),
+                &mut dacl,
+                null_mut(),
+                &mut sd,
+            );
+            if rc != 0 {
+                return Err(format!("{first} (read owner: {})", std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            let mine = current_user().is_ok_and(|me| !owner.is_null() && EqualSid(owner, me.as_ptr() as PSID) != 0);
+            if !mine {
+                LocalFree(sd);
+                return Err(format!("{first} (owner is not the daemon user)"));
+            }
+            if let Err(e) = owner_rights().and_then(|s| allow(path, s, READ_CONTROL | WRITE_DAC | WRITE_OWNER, false)) {
+                LocalFree(sd);
+                return Err(format!("{first} ({e})"));
+            }
+            let dir = open_checked(path, WRITE_DAC | WRITE_OWNER);
+            // 열었든 못 열었든 더한 ACE를 걷어 낸다 (원래 DACL 그대로)
+            let restore = match &dir {
+                Ok(d) => SetSecurityInfo(d.as_raw_handle() as HANDLE, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), dacl, null_mut()),
+                Err(_) => match open_checked(path, WRITE_DAC) {
+                    Ok(d) => SetSecurityInfo(d.as_raw_handle() as HANDLE, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), dacl, null_mut()),
+                    Err(_) => 1,
+                },
+            };
+            LocalFree(sd);
+            if restore != 0 {
+                tracing::warn!("[Sandbox] could not remove the temporary owner ACE on {}", path.display());
+            }
+            dir
         }
     }
 
@@ -499,6 +576,11 @@ mod imp {
         Ok(())
     }
 
+    /// 띄우지 않고 그 프로필에 권한만 준다 (사용자가 정한 런타임 등)
+    pub fn grant(profile: &str, grants: &Grants) -> Result<(), String> {
+        apply(profile, grants).map(|_| ())
+    }
+
     fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
         // ACL 고치기는 읽고-바꾸고-쓰기라, 두 실행이 같은 폴더(Python 설치 등)에 동시에 주면 한쪽 ACE가 사라진다.
         // 프로필이 구성요소마다 달라 겹칠 수 있으므로 데몬 안에서 한 번에 하나씩
@@ -507,7 +589,13 @@ mod imp {
         let sid = container_sid(profile)?;
         let everyone = all_app_packages()?;
         for (path, access) in &grants.entries {
-            grant_one(path, sid, everyone, *access)?;
+            if let Err(e) = grant_one(path, sid, everyone, *access) {
+                if grants.optional.contains(path) {
+                    tracing::warn!("[Sandbox] skipping {}: {}", path.display(), e);
+                    continue;
+                }
+                return Err(e);
+            }
             // 표시를 지원하지 않는 볼륨(FAT·일부 네트워크 드라이브 등)도 있다: 실행은 막지 않고, 그 폴더 쓰기만 안 될 수 있다
             if *access == Access::Write {
                 if let Err(e) = label_low(path) {
