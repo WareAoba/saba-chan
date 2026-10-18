@@ -686,6 +686,14 @@ impl Api {
     pub async fn set_discord_settings(&self, guild_id: &str, patch: Value) -> Result<Value> {
         self.patch(&format!("/api/discord/{}/settings", seg(guild_id)), patch).await
     }
+    /// GET /api/guilds/:guild/instances — `[{id, name, module, words, commands: [{name, label, risk, builtin, moduleAliases, aliases}]}]`
+    pub async fn guild_instances(&self, guild_id: &str) -> Result<Value> {
+        self.get(&format!("/api/guilds/{}/instances", seg(guild_id))).await
+    }
+    /// PUT /api/guilds/:guild/instances/:id/words — `{words, commands}`. 규칙 위반은 400 `validation_failed {details}`
+    pub async fn save_instance_words(&self, guild_id: &str, id: &str, body: Value) -> Result<Value> {
+        self.put(&format!("/api/guilds/{}/instances/{}/words", seg(guild_id), seg(id)), body).await
+    }
     // ── 백업·예약 ──
 
     /// GET /api/instance/:id/backups — `{backups: [{name, kind, created, size}]}`

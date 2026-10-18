@@ -28,10 +28,6 @@
     "folder_in_use": "{{dir}} ya lo usa {{name}}. Dos servidores en una misma carpeta se sobrescribirían."
   },
   "bot": {
-    "alias": "Alias",
-    "alias_added": "{{alias}} ahora significa {{module}}.",
-    "alias_removed": "Alias {{alias}} eliminado.",
-    "aliases": "Alias",
     "ask_token": "Token del nodo",
     "config_saved": "Ajustes del bot guardados.",
     "confirm_unpair": "¿Desconectar este PC del bot de Discord y olvidar su vinculación?",
@@ -40,7 +36,6 @@
     "token_replaced": "La conexión de PC de esta cuenta de Discord se movió a otro PC. Para volver a usar este PC, vincúlalo de nuevo con `saba-chan-cli bot pair`.",
     "last_heartbeat": "Último latido",
     "list_empty": "Nada todavía.",
-    "no_aliases": "Aún no hay alias. Añade uno: saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "Este PC aún no está vinculado. Ejecuta: saba-chan-cli bot pair",
     "offer_start": "¿Conectar con el bot ahora?",
     "pair_enter": "En Discord, ejecuta `/saba connect` e introduce este código:",
@@ -60,17 +55,11 @@
     "token_saved": "Token del nodo guardado.",
     "unpaired": "Vinculación eliminada.",
     "invite": "Invita al bot a tu servidor de Discord con este enlace:",
-    "no_server_aliases": "No hay nombres de servidor definidos. Ejemplo: saba-chan-cli bot server-alias NAME 크리",
-    "server_alias_set": "En el chat, ahora puedes llamar a {{name}}: {{aliases}}",
-    "server_alias_cleared": "Se eliminaron los nombres de chat de {{name}}.",
     "allow_all": "Este servidor de Discord ve todos los servidores de este PC.",
     "allow_none": "No hay servidores abiertos.",
     "allow_bad_node": "Los ajustes de {{guild}} no son un objeto. Revísalos con saba-chan-cli bot config.",
     "allow_all_saved": "{{guild}} ahora ve todos los servidores.",
     "allow_saved": "{{guild}} ahora solo ve: {{servers}}",
-    "no_words": "Aún no hay palabras de comando. Ejemplo: saba-chan-cli bot word minecraft start ya",
-    "words_set": "En el chat, {{module}} {{command}} ahora también se llama: {{words}}",
-    "words_cleared": "Se quitaron las palabras de chat de {{module}} {{command}}.",
     "link_accepted": "{{guild}} está conectado a este PC.",
     "link_declined": "Solicitud de conexión rechazada.",
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI."
@@ -436,18 +425,12 @@
     "ok": "{{name}} parece listo para iniciarse."
   },
   "help": {
-    "cmd": {
-      "bot.alias.list": "Listar alias",
-      "bot.alias.add": "Añadir un alias",
-      "bot.alias.remove": "Eliminar un alias"
-    },
+    "cmd": {},
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
       "bot.channels.no_notify": "Quitar el canal de avisos",
       "bot.link.decline": "Rechazar esta solicitud de conexión",
       "bot.allow.all": "Sin límite: todos los servidores de este PC",
-      "bot.word.words": "Palabras nuevas (sustituyen a las anteriores)",
-      "bot.word.clear": "Quitar las palabras de este comando",
       "sandbox.allow.component": "Componente que se ejecuta sin aislamiento",
       "sandbox.revoke.component": "Componente al que se retira el permiso",
       "do.plan": "Solo comprobar la entrada y mostrar lo que pasaría",

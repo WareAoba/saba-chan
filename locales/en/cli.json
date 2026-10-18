@@ -28,10 +28,6 @@
     "folder_in_use": "{{dir}} is already used by {{name}}. Two servers in one folder would overwrite each other."
   },
   "bot": {
-    "alias": "Alias",
-    "alias_added": "{{alias}} now means {{module}}.",
-    "alias_removed": "Removed alias {{alias}}.",
-    "aliases": "Aliases",
     "ask_token": "Node token",
     "config_saved": "Bot settings saved.",
     "confirm_unpair": "Disconnect this PC from the Discord bot and forget its pairing?",
@@ -40,7 +36,6 @@
     "token_replaced": "This Discord account's PC connection moved to another PC. To use this PC again, pair it again with `saba-chan-cli bot pair`.",
     "last_heartbeat": "Last heartbeat",
     "list_empty": "Nothing yet.",
-    "no_aliases": "No aliases yet. Add one: saba-chan-cli bot alias add NAME MODULE",
     "not_paired": "This PC is not paired yet. Run: saba-chan-cli bot pair",
     "offer_start": "Connect to the bot now?",
     "pair_enter": "In Discord, run `/saba connect` and enter this code:",
@@ -60,9 +55,6 @@
     "token_saved": "Node token saved.",
     "unpaired": "Pairing removed.",
     "invite": "Invite the bot to your Discord server with this link:",
-    "no_server_aliases": "No server names set. Example: saba-chan-cli bot server-alias NAME 크리",
-    "server_alias_set": "In chat, {{name}} can now be called: {{aliases}}",
-    "server_alias_cleared": "Removed the chat names of {{name}}.",
     "channel": "channel",
     "channel_ambiguous": "More than one channel is named {{name}}. Use its id.",
     "channel_none": "none",
@@ -89,12 +81,13 @@
     "allow_bad_node": "The settings of {{guild}} are not an object. Check them with saba-chan-cli bot config.",
     "allow_all_saved": "{{guild}} can now see every server.",
     "allow_saved": "{{guild}} can now see only: {{servers}}",
-    "no_words": "No command words yet. Example: saba-chan-cli bot word minecraft start go",
-    "words_set": "In chat, {{module}} {{command}} can now also be called: {{words}}",
-    "words_cleared": "Removed the chat words of {{module}} {{command}}.",
     "link_accepted": "Connected {{guild}} to this PC.",
     "link_declined": "Declined the connection request.",
-    "pair_gui_hint": "You can also see the Discord connection in the GUI's Discord screen."
+    "pair_gui_hint": "You can also see the Discord connection in the GUI's Discord screen.",
+    "words": "Words",
+    "command_words": "Command words",
+    "words_saved": "Saved the chat words of {{server}}.",
+    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them)."
   },
   "col": {
     "players": "Players",
@@ -225,7 +218,15 @@
       "backup_unsupported": "This game's module does not say what to back up. A newer module may: saba-chan-cli update check",
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
-      "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>"
+      "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>",
+      "conflict_with": "clashes with {{name}}",
+      "word": {
+        "invalid": "use 1-32 characters with no spaces",
+        "reserved": "is a reserved word",
+        "conflict": "already calls something else",
+        "unknown_command": "this server has no such command",
+        "too_many": "at most 10 words"
+      }
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -481,9 +482,6 @@
   },
   "help": {
     "cmd": {
-      "bot.alias.list": "List aliases",
-      "bot.alias.add": "Add an alias",
-      "bot.alias.remove": "Remove an alias",
       "config.export": "Save settings and the server list to a zip, to move to another PC (game files not included)",
       "config.import": "Bring in settings and servers from an export zip",
       "bot.channels": "Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show",
@@ -507,16 +505,14 @@
       "bot.wake": "Wake the bot on a Discord server",
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
-      "bot.word": "Chat words for one command of a game (e.g. \"go\" for start). No arguments: show",
-      "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse"
+      "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
+      "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
       "bot.channels.no_notify": "Unassign the notification channel",
       "bot.link.decline": "Refuse this connection request",
       "bot.allow.all": "No limit: every server of this PC",
-      "bot.word.words": "New words (replace the old ones)",
-      "bot.word.clear": "Remove this command's words",
       "sandbox.allow.component": "Component to run without isolation",
       "sandbox.revoke.component": "Component to take the permission back from",
       "do.plan": "Only check the input and show what would happen",
@@ -546,7 +542,10 @@
       "bot.music.ui": "Show the player panel (on or off)",
       "bot.music.queue_lines": "Queue lines in the player panel (1-20)",
       "bot.music.refresh": "Player panel refresh in milliseconds (2000-10000)",
-      "bot.music.normalize": "Even out loudness between tracks (on or off)"
+      "bot.music.normalize": "Even out loudness between tracks (on or off)",
+      "bot.words.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
+      "bot.words.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
+      "bot.words.clear": "Remove every word of this server"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
