@@ -75,6 +75,17 @@ describe('데몬 응답 가공', () => {
         });
     });
 
+    it('경로에 넣는 이름은 인코딩한다 (공백·빗금이 든 서버 이름)', async () => {
+        const { api } = await install({
+            daemon_request: daemon({
+                'GET /api/server/My%20Server/status': { status: 200, data: { status: 'running' } },
+                'POST /api/server/a%2Fb/stop': { status: 200, data: { success: true } },
+            }),
+        });
+        expect(await api.serverStatus('My Server')).toEqual({ status: 'running' });
+        expect(await api.serverStop('a/b')).toEqual({ success: true });
+    });
+
     it('instanceStart는 404를 서버 없음 문구로, 409는 데몬 문구를 살려 넘긴다', async () => {
         const { api } = await install({
             daemon_request: daemon({

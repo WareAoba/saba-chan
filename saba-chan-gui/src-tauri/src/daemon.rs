@@ -98,13 +98,22 @@ pub fn is_allowed_path(path: &str) -> bool {
     if path.contains('#') || path.contains('\\') || path.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return false;
     }
-    // `..`·`.` 조각, 인코딩된 점·빗금(%2e, %2f, %5c)으로 /api/ 밖으로 나가지 못하게
-    let lowered = route.to_ascii_lowercase();
-    if lowered.contains("%2e") || lowered.contains("%2f") || lowered.contains("%5c") {
+    // `..`·`.` 조각(인코딩된 %2e 포함)으로 /api/ 밖으로 나가지 못하게.
+    // 데몬(axum)은 원시 경로로 라우팅하므로 한 조각 안의 %2f·%5c는 이름의 일부로만 쓰인다.
+    let dot_segment = route.split('/').any(|seg| {
+        let seg = seg.to_ascii_lowercase().replace("%2e", ".");
+        seg == ".." || seg == "."
+    });
+    if dot_segment {
         return false;
     }
-    !route.split('/').any(|seg| seg == ".." || seg == ".")
+    // Rust 셸이 직접 정하는 경로는 렌더러(확장 GUI 스크립트 포함)에 열지 않는다
+    let lowered = route.to_ascii_lowercase();
+    !RESERVED_ROUTES.iter().any(|r| lowered == *r || lowered.starts_with(&format!("{r}/")))
 }
+
+/// 업데이터 실행(relaunch 대상), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
+const RESERVED_ROUTES: &[&str] = &["/api/updates/launch-updater", "/api/client", "/api/daemon/shutdown"];
 
 pub fn parse_method(method: &str) -> Option<reqwest::Method> {
     match method.to_ascii_uppercase().as_str() {
@@ -284,6 +293,9 @@ mod tests {
             "/api/instance/a1/stop",
             "/health",
             "/api/daemon/console?since=3&count=10",
+            "/api/server/My%20Server/status",
+            "/api/provision-progress/a%2Fb",
+            "/api/clients/launch",
         ] {
             assert!(is_allowed_path(ok), "{ok}");
         }
@@ -296,12 +308,17 @@ mod tests {
             "//evil/api/",
             "/api/../secret",
             "/api/%2e%2e/secret",
-            "/api/a%2Fb",
+            "/api/%2E/secret",
+            "/api/a/.%2e",
             "/api/a\\b",
             "/api/a b",
             "/api/a\nb",
             "/healthz",
             "/api/x#frag",
+            "/api/updates/launch-updater",
+            "/api/client/register",
+            "/api/Client/heartbeat",
+            "/api/daemon/shutdown",
         ] {
             assert!(!is_allowed_path(bad), "{bad:?}");
         }
@@ -409,7 +426,8 @@ mod tests {
         drop(listener);
         let dir = tempfile::tempdir().unwrap();
         let client = DaemonClient::new(format!("http://{addr}"), dir.path().join("none"));
-        let err = client.get("/health", 1000).await.unwrap_err();
+        // Windows는 닫힌 로컬 포트에도 SYN을 몇 번 다시 보내 거부까지 2초쯤 걸린다
+        let err = client.get("/health", 5000).await.unwrap_err();
         assert_eq!(err.code, "ECONNREFUSED");
         assert!(err.status.is_none());
     }

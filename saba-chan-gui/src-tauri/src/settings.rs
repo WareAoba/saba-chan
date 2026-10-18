@@ -49,7 +49,7 @@ pub fn write_gui_section(data_dir: &Path, gui: &Value) -> std::io::Result<()> {
     std::fs::create_dir_all(data_dir)?;
     let mut doc = read_config_document(data_dir);
     doc.insert("gui".into(), gui.clone());
-    if !doc.get("schemaVersion").is_some_and(|v| !v.is_null()) {
+    if doc.get("schemaVersion").is_none_or(|v| v.is_null()) {
         doc.insert("schemaVersion".into(), json!(1));
     }
     let tmp = with_suffix(&path, ".tmp");

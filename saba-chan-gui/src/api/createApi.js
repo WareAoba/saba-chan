@@ -118,7 +118,8 @@ export function createApi({ invoke, hub }) {
         // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
         instanceStart: async (instanceId) => {
             try {
-                return (await post(`/api/instance/${instanceId}/start`, {}, { timeout: 30000 })).data;
+                return (await post(`/api/instance/${encodeURIComponent(instanceId)}/start`, {}, { timeout: 30000 }))
+                    .data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -138,7 +139,8 @@ export function createApi({ invoke, hub }) {
         },
         serverStop: async (name, options = {}) => {
             try {
-                return (await post(`/api/server/${name}/stop`, options || {}, { timeout: 30000 })).data;
+                return (await post(`/api/server/${encodeURIComponent(name)}/stop`, options || {}, { timeout: 30000 }))
+                    .data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -159,7 +161,7 @@ export function createApi({ invoke, hub }) {
         },
         serverStatus: async (name) => {
             try {
-                return (await get(`/api/server/${name}/status`)).data;
+                return (await get(`/api/server/${encodeURIComponent(name)}/status`)).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -211,7 +213,7 @@ export function createApi({ invoke, hub }) {
         },
         moduleGetMetadata: async (moduleName) => {
             try {
-                return (await get(`/api/module/${moduleName}`)).data;
+                return (await get(`/api/module/${encodeURIComponent(moduleName)}`)).data;
             } catch (error) {
                 if (error.response) {
                     const { status, data } = error.response;
@@ -252,7 +254,8 @@ export function createApi({ invoke, hub }) {
                     page: options?.page || undefined,
                     per_page: options?.per_page || undefined,
                 });
-                return (await get(`/api/module/${moduleName}/versions${qs}`, { timeout: 15000 })).data;
+                return (await get(`/api/module/${encodeURIComponent(moduleName)}/versions${qs}`, { timeout: 15000 }))
+                    .data;
             } catch (error) {
                 return errorBody(error);
             }
@@ -260,14 +263,20 @@ export function createApi({ invoke, hub }) {
         moduleInstallServer: async (moduleName, installConfig) => {
             try {
                 // JAR 다운로드는 수십 MB — 최대 5분 허용
-                return (await post(`/api/module/${moduleName}/install`, installConfig, { timeout: 300000 })).data;
+                return (
+                    await post(`/api/module/${encodeURIComponent(moduleName)}/install`, installConfig, {
+                        timeout: 300000,
+                    })
+                ).data;
             } catch (error) {
                 return errorBody(error);
             }
         },
         instanceGetInstalledVersion: async (instanceId) => {
             try {
-                return (await get(`/api/instance/${instanceId}/installed-version`, { timeout: 10000 })).data;
+                return (
+                    await get(`/api/instance/${encodeURIComponent(instanceId)}/installed-version`, { timeout: 10000 })
+                ).data;
             } catch (error) {
                 return errorBody(error);
             }
@@ -281,14 +290,16 @@ export function createApi({ invoke, hub }) {
         },
         moduleInstallFromManifest: async (moduleId) => {
             try {
-                return (await post(`/api/modules/manifest/${moduleId}/install`, {}, { timeout: 120000 })).data;
+                return (
+                    await post(`/api/modules/manifest/${encodeURIComponent(moduleId)}/install`, {}, { timeout: 120000 })
+                ).data;
             } catch (error) {
                 return errorBody(error, { ok: false });
             }
         },
         moduleRemove: async (moduleId) => {
             try {
-                return (await del(`/api/modules/${moduleId}`, { timeout: 15000 })).data;
+                return (await del(`/api/modules/${encodeURIComponent(moduleId)}`, { timeout: 15000 })).data;
             } catch (error) {
                 return errorBody(error, { ok: false });
             }
@@ -346,7 +357,7 @@ export function createApi({ invoke, hub }) {
         instanceCheckUpdate: async (id) => {
             try {
                 // SteamCMD app_info_print는 느릴 수 있다
-                return (await get(`/api/instance/${id}/check-update`, { timeout: 30000 })).data;
+                return (await get(`/api/instance/${encodeURIComponent(id)}/check-update`, { timeout: 30000 })).data;
             } catch (error) {
                 console.error('instance:checkUpdate error:', error.message);
                 return { update_available: false, error: error.message };
@@ -354,7 +365,8 @@ export function createApi({ invoke, hub }) {
         },
         instanceApplyUpdate: async (id) => {
             try {
-                return (await post(`/api/instance/${id}/apply-update`, {}, { timeout: 10000 })).data;
+                return (await post(`/api/instance/${encodeURIComponent(id)}/apply-update`, {}, { timeout: 10000 }))
+                    .data;
             } catch (error) {
                 console.error('instance:applyUpdate error:', error.message);
                 return errorBody(error, { success: false });
@@ -362,7 +374,7 @@ export function createApi({ invoke, hub }) {
         },
         instanceDelete: async (id) => {
             try {
-                return (await del(`/api/instance/${id}`)).data;
+                return (await del(`/api/instance/${encodeURIComponent(id)}`)).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -409,7 +421,7 @@ export function createApi({ invoke, hub }) {
             try {
                 // 값에는 비밀번호가 들어갈 수 있어 키 이름만 남긴다
                 console.log(`[Bridge] Updating settings for instance ${id}:`, Object.keys(settings || {}));
-                return (await request('patch', `/api/instance/${id}`, settings)).data;
+                return (await request('patch', `/api/instance/${encodeURIComponent(id)}`, settings)).data;
             } catch (error) {
                 console.error('[Bridge] Error updating settings:', error.message);
                 if (error.response) {
@@ -456,7 +468,9 @@ export function createApi({ invoke, hub }) {
         },
         instanceResetServer: async (instanceId) => {
             try {
-                return (await post(`/api/instance/${instanceId}/server/reset`, {}, { timeout: 30000 })).data;
+                return (
+                    await post(`/api/instance/${encodeURIComponent(instanceId)}/server/reset`, {}, { timeout: 30000 })
+                ).data;
             } catch (error) {
                 return errorBody(error);
             }
@@ -468,7 +482,8 @@ export function createApi({ invoke, hub }) {
                 args: command.args && Object.keys(command.args).length > 0 ? command.args : null,
             };
             try {
-                return (await post(`/api/instance/${id}/command`, payload, { timeout: 30000 })).data;
+                return (await post(`/api/instance/${encodeURIComponent(id)}/command`, payload, { timeout: 30000 }))
+                    .data;
             } catch (error) {
                 console.error('[Bridge] Error executing command:', error.message, error.response?.data || '');
                 if (error.response) {
@@ -490,21 +505,24 @@ export function createApi({ invoke, hub }) {
                 return { error: networkErrors[error.code] || t('errors.command_failed', { error: error.message }) };
             }
         },
-        instanceStop: (id, opts = {}) => daemonCall('post', `/api/instance/${id}/stop`, { force: !!opts?.force }),
+        instanceStop: (id, opts = {}) =>
+            daemonCall('post', `/api/instance/${encodeURIComponent(id)}/stop`, { force: !!opts?.force }),
         // 재시작은 데몬이 프로세스 종료를 최대 2분 기다린다
         instanceRestart: (id, opts = {}) =>
-            daemonCall('post', `/api/instance/${id}/restart`, { force: !!opts?.force }, 150000),
-        instanceRename: (id, name) => daemonCall('post', `/api/instance/${id}/rename`, { name }),
-        instanceCommands: (id) => daemonCall('get', `/api/instance/${id}/commands`),
+            daemonCall('post', `/api/instance/${encodeURIComponent(id)}/restart`, { force: !!opts?.force }, 150000),
+        instanceRename: (id, name) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/rename`, { name }),
+        instanceCommands: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/commands`),
         // 설정 화면용: 디스크의 실제 설정 (실패하면 success:false)
-        instanceReadLiveSettings: (id) => daemonCall('get', `/api/instance/${id}/settings/live`, undefined, 60000),
+        instanceReadLiveSettings: (id) =>
+            daemonCall('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),
         runtimePreflight: () => daemonCall('get', '/api/runtime/preflight', undefined, 5000),
         // sizes=false면 데몬이 인스턴스 폴더 크기를 새로 재지 않는다
         systemMetrics: (opts = {}) =>
             daemonCall('get', `/api/system/metrics${opts?.sizes === false ? '?sizes=false' : ''}`, undefined, 5000),
-        configDefaults: (kind) => daemonCall('get', `/api/config/${kind}/defaults`),
+        configDefaults: (kind) => daemonCall('get', `/api/config/${encodeURIComponent(kind)}/defaults`),
         // keys를 생략하면 kind 전체를 기본값으로 되돌린다
-        configReset: (kind, keys) => daemonCall('post', `/api/config/${kind}/reset`, keys ? { keys } : {}),
+        configReset: (kind, keys) =>
+            daemonCall('post', `/api/config/${encodeURIComponent(kind)}/reset`, keys ? { keys } : {}),
 
         // ── 익스텐션 ──
         extensionList: async () => {
@@ -517,14 +535,14 @@ export function createApi({ invoke, hub }) {
         },
         extensionEnable: async (extId) => {
             try {
-                return (await post(`/api/extensions/${extId}/enable`)).data;
+                return (await post(`/api/extensions/${encodeURIComponent(extId)}/enable`)).data;
             } catch (error) {
                 return extensionFailure(extId, 'enable', error, true);
             }
         },
         extensionDisable: async (extId) => {
             try {
-                return (await post(`/api/extensions/${extId}/disable`)).data;
+                return (await post(`/api/extensions/${encodeURIComponent(extId)}/disable`)).data;
             } catch (error) {
                 return extensionFailure(extId, 'disable', error, true);
             }
@@ -538,7 +556,8 @@ export function createApi({ invoke, hub }) {
         },
         extensionI18n: async (extId, locale) => {
             try {
-                return (await get(`/api/extensions/${extId}/i18n/${locale}`)).data;
+                return (await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`))
+                    .data;
             } catch (error) {
                 // 404는 해당 로케일이 없는 것이므로 경고 없이 null
                 if (error.response?.status !== 404) {
@@ -550,7 +569,9 @@ export function createApi({ invoke, hub }) {
         // 익스텐션 GUI 번들 (JS 소스 텍스트)
         extensionGuiBundle: async (extId) => {
             try {
-                const { data } = await get(`/api/extensions/${extId}/gui`, { responseType: 'text' });
+                const { data } = await get(`/api/extensions/${encodeURIComponent(extId)}/gui`, {
+                    responseType: 'text',
+                });
                 return typeof data === 'string' ? data : null;
             } catch (error) {
                 if (error.response?.status !== 404) {
@@ -561,7 +582,9 @@ export function createApi({ invoke, hub }) {
         },
         extensionGuiStyles: async (extId) => {
             try {
-                const { data } = await get(`/api/extensions/${extId}/gui/styles`, { responseType: 'text' });
+                const { data } = await get(`/api/extensions/${encodeURIComponent(extId)}/gui/styles`, {
+                    responseType: 'text',
+                });
                 return typeof data === 'string' ? data : null;
             } catch (error) {
                 if (error.response?.status !== 404) {
@@ -573,7 +596,9 @@ export function createApi({ invoke, hub }) {
         // 익스텐션 아이콘 (PNG → data:image/png;base64)
         extensionIcon: async (extId) => {
             try {
-                const { data } = await get(`/api/extensions/${extId}/icon`, { responseType: 'base64' });
+                const { data } = await get(`/api/extensions/${encodeURIComponent(extId)}/icon`, {
+                    responseType: 'base64',
+                });
                 return typeof data === 'string' ? `data:image/png;base64,${data}` : null;
             } catch (error) {
                 if (error.response?.status !== 404) {
@@ -592,14 +617,16 @@ export function createApi({ invoke, hub }) {
         },
         extensionInstall: async (extId, opts = {}) => {
             try {
-                return (await post(`/api/extensions/${extId}/install`, opts || {}, { timeout: 60000 })).data;
+                return (
+                    await post(`/api/extensions/${encodeURIComponent(extId)}/install`, opts || {}, { timeout: 60000 })
+                ).data;
             } catch (error) {
                 return extensionFailure(extId, 'install', error, false);
             }
         },
         extensionRemove: async (extId) => {
             try {
-                return (await del(`/api/extensions/${extId}`, { timeout: 15000 })).data;
+                return (await del(`/api/extensions/${encodeURIComponent(extId)}`, { timeout: 15000 })).data;
             } catch (error) {
                 return extensionFailure(extId, 'remove', error, false);
             }
@@ -634,14 +661,14 @@ export function createApi({ invoke, hub }) {
         managedConsole: async (instanceId, since = 0, count = 200, opts = {}) => {
             try {
                 const qs = queryString({ since, count, spans: opts?.spans ? 1 : undefined });
-                return (await get(`/api/instance/${instanceId}/console${qs}`)).data;
+                return (await get(`/api/instance/${encodeURIComponent(instanceId)}/console${qs}`)).data;
             } catch (error) {
                 return errorBody(error);
             }
         },
         managedStdin: async (instanceId, command) => {
             try {
-                return (await post(`/api/instance/${instanceId}/stdin`, { command })).data;
+                return (await post(`/api/instance/${encodeURIComponent(instanceId)}/stdin`, { command })).data;
             } catch (error) {
                 return errorBody(error);
             }
