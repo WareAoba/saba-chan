@@ -1326,10 +1326,11 @@ pub async fn update_instance_settings(
     // server.properties 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
     let mut sync_error: Option<String> = None;
     if !props_sync.is_empty() {
+        // 값에는 비밀번호가 들 수 있어 키만 남긴다
         tracing::info!(
             "Syncing settings to server.properties for instance {}: {:?}",
             id,
-            props_sync
+            props_sync.keys().collect::<Vec<_>>()
         );
         let props_value = Value::Object(props_sync);
         match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &id, "write", Some(props_value)).await {

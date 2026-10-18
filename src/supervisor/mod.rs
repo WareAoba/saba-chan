@@ -1515,7 +1515,9 @@ impl Supervisor {
 
             // Get module and call get_launch_command
             let module = s.module_loader.get_module(module_name)?;
-            tracing::info!("get_launch_command config: {}", serde_json::to_string_pretty(&final_config).unwrap_or_default());
+            // 비밀번호류 설정값과 REST 비밀번호는 가려서 남긴다
+            let (_, logged) = crate::audit::redact(Some(&module.metadata), Some(&instance), None, Some(&final_config));
+            tracing::info!("get_launch_command config: {}", logged.unwrap_or_default());
             (crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config), module)
         };
         let launch_result = call.run().await?;
