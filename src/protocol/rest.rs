@@ -101,13 +101,9 @@ impl RestClient {
         let resp = match resp {
             Ok(r) => r,
             Err(e) => {
-                let err_msg = format!("{}", e);
-                // 응답 없이 연결이 닫히면(EOF·reset) 서버가 요청을 처리했는지 알 수 없다.
+                // 응답 없이 연결이 닫히면(EOF·reset·abort) 서버가 요청을 처리했는지 알 수 없다.
                 // 종료 명령처럼 서버가 끊는 것이 자연스러운 경우도 있어 전송 오류와 나누되, 성공으로 보고하지 않는다
-                if err_msg.contains("EOF")
-                    || err_msg.contains("connection closed")
-                    || err_msg.contains("Connection reset")
-                {
+                if closed_without_response(&e) {
                     return Ok(ServerResponse {
                         success: false,
                         data: Some(json!({
@@ -159,6 +155,26 @@ impl RestClient {
     }
 }
 
+/// 연결은 됐는데 응답 없이 닫혔는지. 오류 종류로 본다: Windows는 os error 10053(abort)·10054(reset)로,
+/// Unix는 EOF·reset으로 온다. 종류로 가릴 수 없으면 ureq 문구로 본다
+fn closed_without_response(e: &ureq::Error) -> bool {
+    use std::io::ErrorKind;
+    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(e);
+    while let Some(err) = source {
+        if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            if matches!(io.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::UnexpectedEof | ErrorKind::BrokenPipe) {
+                return true;
+            }
+            if matches!(io.kind(), ErrorKind::ConnectionRefused | ErrorKind::TimedOut) {
+                return false;
+            }
+        }
+        source = err.source();
+    }
+    let msg = e.to_string();
+    msg.contains("EOF") || msg.contains("connection closed") || msg.contains("Connection reset")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +207,21 @@ mod tests {
         let client = RestClient::new("127.0.0.1".to_string(), 8212, false);
         let debug_str = format!("{:?}", client);
         assert!(debug_str.contains("RestClient"));
+    }
+
+    /// Windows는 응답 없이 닫힌 연결을 os error 10053·10054로 돌려준다. 문구가 아니라 종류로 알아본다
+    #[test]
+    fn a_closed_connection_is_recognized_by_its_kind_on_every_platform() {
+        use std::io::{Error, ErrorKind};
+        let windows_abort = Error::new(ErrorKind::ConnectionAborted, "An established connection was aborted by the software in your host machine. (os error 10053)");
+        let windows_reset = Error::new(ErrorKind::ConnectionReset, "An existing connection was forcibly closed by the remote host. (os error 10054)");
+        for e in [windows_abort, windows_reset, Error::new(ErrorKind::UnexpectedEof, "eof")] {
+            assert!(closed_without_response(&ureq::Error::from(e)));
+        }
+        // 서버가 없거나 닿지 않으면 요청이 가지 않았다: 전송 오류다
+        for kind in [ErrorKind::ConnectionRefused, ErrorKind::TimedOut] {
+            assert!(!closed_without_response(&ureq::Error::from(Error::new(kind, "x"))));
+        }
     }
 
     #[test]

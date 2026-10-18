@@ -551,7 +551,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 ### 5.2 REST (`protocol/rest.rs`)
 
 - `ureq`(동기)를 쓰고 timeout은 10초다. Basic Auth를 지원한다.
-- 응답 없이 연결이 EOF나 reset으로 끊기면 결과를 알 수 없다고 본다: `success:false`, `data.outcome:"unknown"`, `error`(`rest.rs:105-122`). 종료 명령처럼 서버가 끊을 수 있는 요청도 성공으로 보고하지 않는다.
+- 응답 없이 연결이 끊기면(EOF·reset·abort. 오류 종류로 보므로 Windows의 os error 10053·10054도 같다) 결과를 알 수 없다고 본다: `success:false`, `data.outcome:"unknown"`, `error`(`rest.rs` `closed_without_response`). 종료 명령처럼 서버가 끊을 수 있는 요청도 성공으로 보고하지 않는다.
 - `verify_connection`은 실제 연결 없이 host와 port 유효성만 본다(`rest.rs:42-48`).
 - 인증 로그에는 사용자 이름만 debug 레벨로 남긴다(`rest.rs:91`). 토큰·비밀번호 길이는 남기지 않는다.
 
