@@ -412,6 +412,7 @@
     "multiple_instances_warning": "Il y a plusieurs instances qui utilisent le même module '{{module}}' ({{names}}). Pour les appels du bot Discord, veuillez utiliser les noms d'instance au lieu des alias de module pour les distinguer.",
     "alias_ambiguity_card": "Instances du module '{{module}}' {{count}} — les alias Discord sont ambigus",
     "sync_failed": "Paramètres enregistrés, mais le fichier de configuration du jeu n'a pas pu être mis à jour. {{error}}",
+    "ignored": "Ignorés, car saba-chan n'utilise pas ces paramètres : {{keys}}",
     "unknown_setting": "Ce module n'a pas ces paramètres : {{fields}}"
   },
   "buttons": {

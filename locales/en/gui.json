@@ -413,6 +413,7 @@
     "multiple_instances_warning": "Multiple instances use the same module '{{module}}' ({{names}}). Discord bot commands using module aliases will be ambiguous — use instance names instead.",
     "alias_ambiguity_card": "Module '{{module}}' has {{count}} instances — Discord alias is ambiguous",
     "sync_failed": "Settings were saved, but the game's config file couldn't be updated. {{error}}",
+    "ignored": "Ignored because saba-chan doesn't use these settings: {{keys}}",
     "unknown_setting": "This module doesn't have these settings: {{fields}}"
   },
   "buttons": {

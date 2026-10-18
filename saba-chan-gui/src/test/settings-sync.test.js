@@ -36,6 +36,21 @@ describe('설정 저장 결과 (PATCH /api/instance/:id)', () => {
         );
     });
 
+    it('데몬이 받고 쓰지 않은 키(ignored)는 그 키 이름으로 알린다', async () => {
+        window.api.instanceUpdateSettings = vi
+            .fn()
+            .mockResolvedValue({ success: true, synced: true, ignored: ['rcon_port', 'enable_rcon'] });
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.showToast).toHaveBeenCalledWith(
+            expect.stringContaining('rcon_port, enable_rcon'),
+            'warning',
+            6000,
+            undefined,
+        );
+    });
+
     it('모듈이 모르는 키(unknown_setting)는 그 키 이름으로 알린다', async () => {
         window.api.instanceUpdateSettings = vi.fn().mockResolvedValue({
             error: 'unknown setting',

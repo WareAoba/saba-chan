@@ -412,6 +412,7 @@
     "multiple_instances_warning": "有多个实例使用相同的模块 '{{module}}'（{{names}}）。对于 Discord 机器人调用，请使用实例名称而不是模块别名来区分。",
     "alias_ambiguity_card": "'{{module}}' 模块实例 {{count}} 个 — Discord 别名不明确",
     "sync_failed": "设置已保存，但无法写入游戏配置文件。{{error}}",
+    "ignored": "saba-chan 不使用这些设置，已忽略：{{keys}}",
     "unknown_setting": "此模块没有这些设置：{{fields}}"
   },
   "buttons": {

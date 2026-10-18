@@ -548,6 +548,10 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 if (result.synced === false) {
                     safeShowToast(t('settings.sync_failed', { error: result.sync_error || '' }), 'warning', 6000);
                 }
+                // 데몬이 받았지만 쓰지 않는 키 (RCON처럼 빠진 기능)
+                if (result.ignored?.length) {
+                    safeShowToast(t('settings.ignored', { keys: result.ignored.join(', ') }), 'warning', 6000);
+                }
                 if (stillOpen) setShowSettingsModal(false);
                 fetchServers();
             }
