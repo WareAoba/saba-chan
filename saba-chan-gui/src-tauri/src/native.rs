@@ -399,8 +399,9 @@ pub fn notify(app: AppHandle, title: String, body: String) {
 
 // ── 콘솔 팝아웃 ──
 
+/// 창을 만드는 명령은 async여야 한다: 동기 명령은 메인 스레드에서 돌아서, Windows에서는 창 생성이 끝나지 않고 GUI가 멈춘다
 #[tauri::command(rename_all = "camelCase")]
-pub fn console_popout(app: AppHandle, instance_id: String, server_name: Option<String>) -> Value {
+pub async fn console_popout(app: AppHandle, instance_id: String, server_name: Option<String>) -> Value {
     window::open_popout(&app, &instance_id, server_name.as_deref().unwrap_or(""))
         .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() }))
 }
