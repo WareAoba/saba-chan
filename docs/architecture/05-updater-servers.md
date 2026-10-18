@@ -288,6 +288,8 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 | POST | `/result/:requestId` | 노드 | `{success:boolean, data}` | `{status:'ok'}` / 404 / 409 | `routes/result.ts` |
 | POST | `/heartbeat` | 노드(4/min), 5MB | `{agentVersion?, os?, metadata?}`(§4.4 (c)) | `{status:'ok', warning?:'UPDATE_REQUIRED', minVersion?}` | `routes/heartbeat.ts` |
 | POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}` | `routes/events.ts` |
+| GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
+| POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 묶을 수 없으면 409 `GUILD_TAKEN`·`HOST_NOT_FOUND`. 한 번만 쓴다 | `linkRequests.ts` |
 | GET | `/v1/updates/check` | — | `channel`(stable·beta·nightly), `platform`, `current`, `client_id` | `{upToDate:true}` / `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` | `routes/updates.ts`, §1.4 |
 | GET | `/v1/updates/manifest/:version` | — | `release?` | 서명된 manifest 원문 | `updates.ts` |
 | POST | `/v1/updates/event` | —, 4KB | `{anonId, phase, hostId?, fromVersion?, toVersion?, errorCode?, platform?}` | 204(익명 업데이트 텔레메트리) | `updates.ts` |
@@ -322,6 +324,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 **(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시)
 1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
 2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급(계정당 PC 하나. 3분 안에 heartbeat가 있던 PC를 대체하면 답에 그 사실을 붙인다), guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다). 길드가 이미 다른 사람(노드 주인이 아닌 사람)에게 묶여 있으면, 연결하는 사람이 디스코드 서버 주인일 때만 그 노드를 지우고 새로 만든다(옛 PC의 대기 명령도 지운다). 아니면 `GUILD_TAKEN`으로 거절하고 코드는 pending으로 남는다. `/사바쨩 연결해제`(노드 주인 또는 디스코드 서버 주인)는 노드와 그 길드의 대기 명령을 지운다. 권한·배정·챗봇 설정은 cascade로 지워지고, 길드 슬래시 명령은 0개로 다시 등록된다(`unbindGuild`). 데몬의 `nodeSettings`는 남는다.
+   - 코드 없이 `/사바쨩 연결`(서버 관리 권한, 길드에서만)을 치면 친 사람의 켜진 PC(3분 안 heartbeat)에 수락을 묻는다(J1-b). PC가 없으면 코드 안내, 이미 내 PC에 묶인 길드면 그렇다고 답하고, 남의 PC에 묶인 길드는 위와 같은 규칙이다. 요청(`requestId`, 10분)은 relay 메모리에 두고(재시작하면 사라진다, `services/linkRequests.ts`) 그 호스트 큐에 `{action:'link_request', requestId, guildId, guildName, userName, expiresAt}`을 넣는다(노드가 아직 없어 큐 항목 `guildId`는 비우고 payload에 싣는다). 데몬은 이것을 `relay.link_request` 이벤트로 GUI에 보이고, 답은 `POST /api/link-requests/:id`다. 수락하면 페어링의 노드 만들기와 같은 검사로 길드를 묶고(토큰은 새로 만들지 않는다, 감사 `link_accept`, `pairing.ts` `linkGuildToHost`) 요청한 채널에 짧게 알린다.
 3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다(#61). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `<data_dir>/.node_token`에 저장**한다.
 4. daemon `GET/PUT/DELETE /api/config/node-token`(`handlers/config.rs`)은 토큰 원문을 IPC로 그대로 반환한다.
 
