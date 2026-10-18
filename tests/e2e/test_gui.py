@@ -7,20 +7,23 @@
 import functools
 import http.server
 import json
+import os
 import shutil
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 import pytest
 
 from harness import procs
 from harness.daemon import wait_until
-from harness.paths import E2E_DIR, IS_WINDOWS, REPO
+from harness.paths import E2E_DIR, EXE, IS_WINDOWS, REPO
 
 pytestmark = pytest.mark.gui
 
-GUI_DIR = REPO / "saba-chan-gui"
+# 다른 체크아웃의 GUI를 시험할 때 (예: 병합 전 PR): SABA_E2E_GUI_DIR
+GUI_DIR = Path(os.environ.get("SABA_E2E_GUI_DIR", REPO / "saba-chan-gui"))
 RUNNER = E2E_DIR / "gui" / "run.mjs"
 DONE = r"Done \([^)]+\)!"
 
@@ -39,13 +42,17 @@ def renderer():
 
 
 def labels(lang: str = "ko") -> dict:
-    gui = json.loads((REPO / "locales" / lang / "gui.json").read_text(encoding="utf-8"))
+    gui = json.loads((GUI_DIR.parent / "locales" / lang / "gui.json").read_text(encoding="utf-8"))
     return {
         "start": gui["shell"]["start"],
         "stop": gui["shell"]["stop"],
         "input_placeholder": gui["console"]["input_placeholder"],
         "confirm": gui["modals"]["confirm"],
         "daemon_down_stale": gui["shell"]["daemon_down_stale"],
+        "daemon_down_title": gui["shell"]["daemon_down_title"],
+        "failed_hint": gui["loading"].get("failed_hint", ""),
+        "retry": gui["loading"].get("retry", ""),
+        "continue": gui["loading"].get("continue", ""),
     }
 
 
@@ -137,3 +144,17 @@ def test_gui_shows_daemon_down_and_reconnects_to_new_daemon(ko_mc, renderer, dae
             out, err = proc.communicate(timeout=30)
     gui_result(art, out, err, proc.returncode, "reconnect")
     assert new.server_status(iid) == "running"
+
+
+def test_gui_stops_on_daemon_start_failure_and_offers_retry(sandbox, daemon_factory, renderer):
+    """데몬을 띄우지 못하면 메인 화면으로 넘어가지 않고 이유와 [다시 시도]·[그대로 열기]를 보인다 (프리뷰 P1-2, #74·#75)."""
+    # 개발 모드 GUI는 <저장소>/target/release/saba-core를 띄운다. 그게 있으면 진짜 데몬이 떠서 이 상황을 만들 수 없다
+    if (GUI_DIR.parent / "target" / "release" / f"saba-core{EXE}").exists():
+        pytest.skip("target/release/saba-core가 있어 GUI가 데몬을 띄울 수 있음")
+    if not labels("ko")["failed_hint"]:
+        pytest.skip("이 GUI에는 데몬 기동 실패 화면이 없음")
+    # 혹시 띄우더라도 시험 포트로: 기본 57474로 실제 데몬과 부딪히지 않게
+    sandbox.write_config({"gui": {"language": "ko", "ipcPort": sandbox.ipc_port}})
+    daemon = daemon_factory(start=False)
+    run_gui(daemon, renderer, "daemonFailed", timeout=300, l=labels("ko"))
+    assert not daemon.alive()
