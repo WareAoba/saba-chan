@@ -50,10 +50,10 @@
 <text x="847.0" y="130.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">채팅으로 명령</text>
 <rect x="757" y="222" width="180" height="90" rx="12" fill="#5865F2" fill-opacity="0.16" stroke="#5865F2" stroke-opacity="0.75" stroke-width="1.5"/>
 <text x="847.0" y="253.7" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="156.0">디스코드 릴레이</text>
-<text x="847.0" y="276.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">사바쨩 봇 · 명령을</text>
-<text x="847.0" y="291.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">전달만 해요</text>
+<text x="847.0" y="276.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">사바쨩 봇 · 디스코드와</text>
+<text x="847.0" y="291.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">내 PC를 이어 줘요</text>
 <rect x="598.6" y="246.4" width="114.9" height="41.2" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
 <text x="656.0" y="263.4" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="154.0">내 PC가 먼저</text>
 <text x="656.0" y="279.0" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="154.0">연결 (서명된 요청)</text>
-<text x="30.0" y="530.0" font-size="12.5" font-weight="400" fill="#94a3b8" text-anchor="start" data-fit="920.0">게임 서버는 내 PC에서 돌아가요. 릴레이는 디스코드 명령을 전달만 하고, 원격 제어용 포트는 하나도 열지 않아요.</text>
+<text x="30.0" y="530.0" font-size="12.5" font-weight="400" fill="#94a3b8" text-anchor="start" data-fit="920.0">게임 서버는 내 PC에서 돌아가요. 릴레이와는 디스코드 명령과 결과, 서버 목록·상태 같은 요약만 주고받고, 원격 제어용 포트는 하나도 열지 않아요.</text>
 </svg>
