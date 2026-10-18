@@ -390,6 +390,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* 익스텐션 데이터 slot 뱃지 (ServerCard.badge) */
+.data-slot-badge {
+    margin-left: 6px;
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
 .server-row-sub {
     display: flex;
     align-items: center;
