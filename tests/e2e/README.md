@@ -41,7 +41,7 @@
 
 - `fixtures/fake-minecraft/FakeMinecraft.java`: 바닐라 로그 형식·EULA·`server.properties`·포트 바인드·stdin 명령을 흉내 내는 가짜 서버. 시험 명령 `e2e-crash`, `e2e-hang`, `e2e-alloc <MB>`, `e2e-exit <코드>`, `e2e-spam <N>`. 하네스가 `javac`로 빌드해 캐시한다(JDK 17+).
 - `harness/mirror.py`: 시험용 CA와 HTTPS 가로채기 프록시. `HTTPS_PROXY`·`SSL_CERT_FILE`로 모듈 Python의 다운로드를 fixture로 돌리고, 등록하지 않은 주소는 거절·기록한다.
-- `harness/fake_relay.py`, `harness/real_relay.py`(server-chan `relay-server/test/e2e-harness.ts`를 띄움), `harness/fake_updates.py`.
+- `harness/fake_relay.py`, `harness/real_relay.py`(server-chan `relay-server/test/e2e/harness.ts`를 띄움), `harness/fake_updates.py`.
 
 ## 제품 버그를 찾으면
 

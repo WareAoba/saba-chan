@@ -1,24 +1,24 @@
 """실제 relay-server(server-chan, 비공개 저장소)를 임시 PostgreSQL 위에 띄운다.
 
-relay 쪽 하네스는 server-chan `relay-server/test/e2e-harness.ts`에 있다(relay 내부 함수를 쓰므로 비공개 저장소에 둔다).
-여기서는 그 스크립트를 실행하고, 디스코드 봇 대신 제어 포트로 페어링 클레임·명령 넣기를 한다.
-리눅스에서 root로 돌면 embedded-postgres(initdb)가 거부하므로 시스템 PostgreSQL을 postgres 사용자로 띄운다.
+relay 쪽 하네스는 server-chan `relay-server/test/e2e/harness.ts`(서버쨩 스레드 소유)다. stdin JSON 줄로 조작한다:
+첫 줄 {"ready":true,"url"}, 이후 요청 한 줄({"id","op",…})마다 같은 id의 답 한 줄. op는 claim·command·action·host·notices·stop.
+리눅스에서 root로 돌면 embedded-postgres(initdb)가 거부하므로 시스템 PostgreSQL을 postgres 사용자로 띄워 DATABASE_URL로 넘긴다.
 """
 
+import itertools
 import json
 import os
+import queue
 import shutil
 import subprocess
-import time
+import threading
 from pathlib import Path
-
-import requests
 
 from .paths import IS_WINDOWS, SERVER_CHAN_REPO
 from .sandbox import free_port
 
 RELAY_DIR = SERVER_CHAN_REPO / "relay-server"
-HARNESS = RELAY_DIR / "test" / "e2e-harness.ts"
+HARNESS = RELAY_DIR / "test" / "e2e" / "harness.ts"
 
 
 def available() -> str | None:
@@ -61,44 +61,71 @@ class RealRelay:
         root.mkdir(parents=True, exist_ok=True)
         self.pg = None
         env = {k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "DISCORD_TOKEN", "DISCORD_BOT_TOKEN")}
-        env.update(E2E_STATE_DIR=str(root), NODE_ENV="test")
+        env.update(E2E_RELAY_DIR=str(root), NODE_ENV="test")
         if not IS_WINDOWS and os.geteuid() == 0:
             self.pg = _SystemPostgres(root)
             env["DATABASE_URL"] = self.pg.url
         self.log = open(root / "relay.log", "w", encoding="utf-8")
         tsx = RELAY_DIR / "node_modules" / ".bin" / ("tsx.cmd" if IS_WINDOWS else "tsx")
-        self.proc = subprocess.Popen([str(tsx), str(HARNESS)], cwd=RELAY_DIR, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, text=True)
-        line = self._read_ready(120)
-        info = json.loads(line)
-        self.url, self.control = info["relayUrl"], info["controlUrl"]
-        self.http = requests.Session()
-        self.http.trust_env = False
+        self.proc = subprocess.Popen([str(tsx), str(HARNESS)], cwd=RELAY_DIR, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, text=True, encoding="utf-8")
+        # readline이 시한 없이 막히지 않게 stdout은 따로 읽어 줄 단위로 넘긴다
+        self._lines: queue.Queue = queue.Queue()
+        self._waiting: dict[int, queue.Queue] = {}
+        self._lock = threading.Lock()
+        self._ids = itertools.count(1)
+        self._ready: queue.Queue = queue.Queue()
+        threading.Thread(target=self._read, daemon=True).start()
+        try:
+            info = self._ready.get(timeout=120)
+        except queue.Empty:
+            info = None
+        if not info or not info.get("ready"):
+            self.close()
+            raise RuntimeError("relay 하네스가 뜨지 않음:\n" + Path(self.log.name).read_text(encoding="utf-8", errors="replace")[-3000:])
+        self.url = info["url"]
 
-    def _read_ready(self, timeout: float) -> str:
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            line = self.proc.stdout.readline()
-            if line.strip().startswith("{"):
-                return line
-            if self.proc.poll() is not None:
-                break
-        self.log.flush()
-        raise RuntimeError("relay 하네스가 뜨지 않음:\n" + Path(self.log.name).read_text()[-3000:])
+    def _read(self) -> None:
+        for line in self.proc.stdout:
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if msg.get("ready"):
+                self._ready.put(msg)
+                continue
+            with self._lock:
+                waiter = self._waiting.pop(msg.get("id"), None)
+            if waiter:
+                waiter.put(msg)
+        self._ready.put(None)  # 하네스가 끝남
+
+    def call(self, op: str, timeout: float = 60, **fields) -> dict:
+        rid = next(self._ids)
+        waiter: queue.Queue = queue.Queue()
+        with self._lock:
+            self._waiting[rid] = waiter
+        self.proc.stdin.write(json.dumps({"id": rid, "op": op, **fields}, ensure_ascii=False) + "\n")
+        self.proc.stdin.flush()
+        try:
+            return waiter.get(timeout=timeout)
+        except queue.Empty:
+            raise AssertionError(f"relay 하네스가 {op} 에 {timeout}초 안에 답하지 않음") from None
 
     def claim(self, code: str, discord_id: str, guild_id: str) -> dict:
-        return self.http.post(f"{self.control}/claim", json={"code": code, "discordId": discord_id, "guildId": guild_id}, timeout=30).json()
+        return self.call("claim", code=code, discordId=discord_id, guildId=guild_id)
 
-    def submit(self, guild_id: str, payload: dict, requested_by: str) -> requests.Response:
-        return self.http.post(f"{self.control}/command", json={"guildId": guild_id, "payload": payload, "requestedBy": requested_by}, timeout=30)
+    def command(self, guild_id: str, text: str, requested_by: str, timeout: float = 90) -> dict:
+        """디스코드 명령 대신 raw_command. 데몬 결과까지 기다린다 → {ok, result:{success,data}}"""
+        return self.call("command", timeout=timeout, guildId=guild_id, text=text, requestedBy=requested_by)
 
-    def command(self, request_id: str) -> dict:
-        return self.http.get(f"{self.control}/command/{request_id}", timeout=30).json()
+    def host(self, host_id: str) -> dict:
+        return self.call("host", hostId=host_id)
 
-    def node(self, guild_id: str) -> requests.Response:
-        return self.http.get(f"{self.control}/node/{guild_id}", timeout=30)
-
-    def requests_seen(self) -> list[dict]:
-        return self.http.get(f"{self.control}/requests", timeout=30).json()
+    def notices(self) -> list[dict]:
+        return self.call("notices")["notices"]
 
     def close(self) -> None:
         try:

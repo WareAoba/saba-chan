@@ -26,6 +26,10 @@ def wait_until(predicate: Callable[[], Any], timeout: float, what: str, interval
             value = predicate()
             if value:
                 return value
+        except AssertionError as exc:
+            if not isinstance(exc, E2EError):
+                raise  # 시험이 확정한 실패(assert)는 기다리지 않고 바로 올린다
+            last_exc = exc  # API 오류 응답 등 하네스 오류는 다시 본다
         except Exception as exc:  # 조건 함수 안의 일시 오류(연결 거부 등)는 다시 본다
             last_exc = exc
         time.sleep(interval)
