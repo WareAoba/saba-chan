@@ -5,7 +5,7 @@
  * No trivial single-function tests — every test exercises the full React tree through window.api mock boundary.
  */
 
-import { act, render, screen, waitFor, } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 
@@ -274,7 +274,7 @@ describe('로딩 스크린 상태 머신', () => {
             render(<App />);
         });
 
-        expect(screen.getByText(/Initialize/i)).toBeInTheDocument();
+        expect(screen.getByText(/Initializing/i)).toBeInTheDocument();
 
         // ready 단계 전송
         await act(async () => {
@@ -297,6 +297,52 @@ describe('로딩 스크린 상태 머신', () => {
             },
             { timeout: 5000 },
         );
+    });
+
+    it('데몬 기동 실패 → 이유와 [그대로 열기]를 보이고, 누르면 메인 UI', async () => {
+        window.api = createApiMock({
+            daemonStatus: vi.fn().mockRejectedValue(new Error('not running')),
+            onStatusUpdate: vi.fn((cb) => {
+                statusCallback = cb;
+            }),
+        });
+
+        await act(async () => {
+            render(<App />);
+        });
+        await act(async () => {
+            statusCallback({ step: 'daemon_failed', message: '데몬 시작 실패' });
+        });
+
+        expect(screen.getByText(/데몬 시작 실패/)).toBeInTheDocument();
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Open anyway/i }));
+        });
+        await waitFor(() => expect(screen.getByText('Saba-chan')).toBeInTheDocument(), { timeout: 3000 });
+    });
+
+    it('로딩 중에 창을 닫으면 종료 질문이 뜬다', async () => {
+        let closeRequestCb = null;
+        window.api = createApiMock({
+            daemonStatus: vi.fn().mockRejectedValue(new Error('not running')),
+            onCloseRequest: vi.fn((cb) => {
+                closeRequestCb = cb;
+            }),
+            closeResponse: vi.fn(),
+        });
+
+        await act(async () => {
+            render(<App />);
+        });
+        expect(closeRequestCb).not.toBeNull();
+        act(() => {
+            closeRequestCb();
+        });
+
+        await waitFor(() => {
+            const buttons = screen.getAllByRole('button');
+            expect(buttons.some((b) => /quit all|완전히 종료/i.test(b.textContent))).toBe(true);
+        });
     });
 
     it('HMR: daemon 이미 실행 중 → 로딩 스크린 스킵', async () => {

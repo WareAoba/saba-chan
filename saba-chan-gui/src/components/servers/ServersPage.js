@@ -8,6 +8,7 @@ import { useUIStore } from '../../stores/useUIStore';
 import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
 import { Icon } from '../Icon';
 import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
+import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
 import { ServerDetail } from './ServerDetail';
 import { ServerRow } from './ServerRow';
 
@@ -45,6 +46,7 @@ export function ServersPage({
     const selectedId = useUIStore((s) => s.activeServerId);
     const setSelectedId = useUIStore((s) => s.setActiveServerId);
     const setContextMenu = useUIStore((s) => s.setContextMenu);
+    const isDaemonDown = useUIStore((s) => daemonDown(s.backgroundDaemonStatus));
     const [query, setQuery] = useState('');
     const [showDetailNarrow, setShowDetailNarrow] = useState(false);
 
@@ -63,6 +65,9 @@ export function ServersPage({
         ? servers.filter((s) => `${s.name} ${s.module}`.toLowerCase().includes(query.trim().toLowerCase()))
         : servers;
     const selected = servers.find((s) => s.id === selectedId) || null;
+
+    // 데몬이 꺼져 있으면 목록이 비어 보여도 서버가 없는 게 아니다
+    if (servers.length === 0 && isDaemonDown) return <DaemonDownState />;
 
     if (servers.length === 0) {
         return (
@@ -101,6 +106,7 @@ export function ServersPage({
                             />
                         )}
                     </div>
+                    {isDaemonDown && <DaemonDownNotice />}
                     {failedModules.length > 0 && (
                         // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
                         <details className="notice tone-warn module-failures">
@@ -150,6 +156,7 @@ export function ServersPage({
             )}
             {!detailHidden && selected && (
                 <main className="server-detail-pane">
+                    {isDaemonDown && listHidden && <DaemonDownNotice />}
                     {!monitorSide && systemMonitorAvailable() && (
                         <div className="monitor-top-slot">
                             <SystemMonitor layout="top" servers={servers} />

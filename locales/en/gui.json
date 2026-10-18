@@ -301,13 +301,13 @@
     "advanced_group": "Advanced Settings",
     "danger_zone": "Danger Zone",
     "reset_server_label": "Reset Server",
-    "reset_server_desc": "Delete all worlds, settings, logs, and other data. Only the server JAR and eula.txt will be kept. This cannot be undone.",
+    "reset_server_desc": "Erase this server's data and return it to a fresh state. What gets erased depends on the game. This cannot be undone.",
     "reset_settings_label": "Reset Settings",
     "reset_settings_desc": "Reset all server settings to factory defaults. World and save data will be preserved. This cannot be undone.",
     "reset_button": "Reset",
     "resetting": "Resetting...",
     "reset_confirm_title": "Reset Server",
-    "reset_confirm": "Completely reset server '{{name}}'?\n\nThis will delete all worlds, settings, logs, and other data.\nOnly the server JAR and eula.txt will be kept.\n\nThis action cannot be undone.",
+    "reset_confirm": "Reset server '{{name}}'?\n\nThe server's data will be erased and it will return to a fresh state. This cannot be undone.",
     "reset_success": "Server '{{name}}' has been reset ({{count}} items deleted)",
     "reset_failed": "Reset failed: {{error}}",
     "reset_error": "Reset error: {{error}}",
@@ -444,7 +444,9 @@
     "generic_error": "An unexpected error occurred.",
     "port_conflict": "Port Conflict",
     "port_conflict_detail": "Port {{port}} is already used by instance '{{name}}'",
-    "port_conflict_force_stop_toast": "🚫 {{stopped}} was force-stopped — port {{port}} conflicts with {{existing}}"
+    "port_conflict_force_stop_toast": "🚫 {{stopped}} was force-stopped — port {{port}} conflicts with {{existing}}",
+    "unexpected_crash": "Something went wrong",
+    "retry": "Try again"
   },
   "background_modal": {
     "title": "Background Services",
@@ -690,7 +692,13 @@
     "preflight_failed": "Preparing Python failed. It will retry on the next server action. ({{error}})",
     "module_needs": "Requirements not met: {{deps}}",
     "tab_maintenance": "Backups",
-    "tab_audit": "Log"
+    "tab_audit": "Log",
+    "daemon_down_title": "Not connected to the core daemon",
+    "daemon_down_body": "The daemon that runs and manages your servers is not running. Restart it to load your servers again.",
+    "daemon_down_stale": "Not connected to the daemon. Showing the last known state.",
+    "daemon_restart": "Restart daemon",
+    "daemon_restarting": "Restarting…",
+    "daemon_restart_failed": "Couldn't restart the daemon. {{error}}"
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1235,5 +1243,17 @@
     "hint": "Leave empty for no limit. For Java servers, set it 1–2 GB above -Xmx. Applies on Windows only.",
     "placeholder": "No limit",
     "restart_note": "Takes effect after a restart."
+  },
+  "loading": {
+    "step_init": "Initializing…",
+    "step_ui": "Interface loaded",
+    "step_modules": "Loading modules…",
+    "step_instances": "Loading servers…",
+    "step_ready": "Checking servers…",
+    "step_done": "Ready",
+    "daemon_failed": "Couldn't start the core daemon.",
+    "failed_hint": "If you open anyway, only the interface opens. Restart the daemon to manage servers.",
+    "retry": "Try again",
+    "continue": "Open anyway"
   }
 }

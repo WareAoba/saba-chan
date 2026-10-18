@@ -300,13 +300,13 @@
     "advanced_group": "Advanced Settings",
     "danger_zone": "Zona de Peligro",
     "reset_server_label": "Restablecer Servidor",
-    "reset_server_desc": "Eliminar todos los mundos, configuraciones, registros y otros datos. Solo se conservarán el JAR del servidor y eula.txt. Esto no se puede deshacer.",
+    "reset_server_desc": "Borra los datos de este servidor y lo devuelve a su estado inicial. Lo que se borra depende del juego. No se puede deshacer.",
     "reset_settings_label": "Restablecer Configuración",
     "reset_settings_desc": "Restablecer todas las configuraciones del servidor a los valores de fábrica. Los datos del mundo y guardados se preservarán. Esto no se puede deshacer.",
     "reset_button": "Restablecer",
     "resetting": "Restableciendo...",
     "reset_confirm_title": "Restablecer Servidor",
-    "reset_confirm": "¿Restablecer completamente el servidor '{{name}}'?\n\nSe eliminarán todos los mundos, configuraciones, registros y otros datos.\nSolo se conservarán el JAR del servidor y eula.txt.\n\nEsta acción no se puede deshacer.",
+    "reset_confirm": "¿Restablecer el servidor '{{name}}'?\n\nSe borrarán los datos del servidor y volverá a su estado inicial. No se puede deshacer.",
     "reset_success": "El servidor '{{name}}' ha sido restablecido ({{count}} elementos eliminados)",
     "reset_failed": "Error al restablecer: {{error}}",
     "reset_error": "Error de restablecimiento: {{error}}",
@@ -443,7 +443,9 @@
     "generic_error": "Ocurrió un error inesperado.",
     "port_conflict": "Conflicto de puerto",
     "port_conflict_detail": "El puerto {{port}} ya está en uso por la instancia '{{name}}'",
-    "port_conflict_force_stop_toast": "🚫 {{stopped}} fue detenido forzosamente — el puerto {{port}} conflicta con {{existing}}"
+    "port_conflict_force_stop_toast": "🚫 {{stopped}} fue detenido forzosamente — el puerto {{port}} conflicta con {{existing}}",
+    "unexpected_crash": "Algo salió mal",
+    "retry": "Reintentar"
   },
   "background_modal": {
     "title": "Servicios de Fondo",
@@ -689,7 +691,13 @@
     "preflight_failed": "No se pudo preparar Python. Se reintentará en la próxima acción del servidor. ({{error}})",
     "module_needs": "Requisitos no cumplidos: {{deps}}",
     "tab_maintenance": "Copias",
-    "tab_audit": "Registro"
+    "tab_audit": "Registro",
+    "daemon_down_title": "Sin conexión con el daemon principal",
+    "daemon_down_body": "El daemon que inicia y gestiona tus servidores no está en ejecución. Reinícialo para volver a cargar tus servidores.",
+    "daemon_down_stale": "Sin conexión con el daemon. Se muestra el último estado conocido.",
+    "daemon_restart": "Reiniciar daemon",
+    "daemon_restarting": "Reiniciando…",
+    "daemon_restart_failed": "No se pudo reiniciar el daemon. {{error}}"
   },
   "discord": {
     "nav_connection": "Conexión",
@@ -1205,5 +1213,17 @@
     "hint": "Déjalo vacío para no limitar. En servidores Java, ponlo 1–2 GB por encima de -Xmx. Solo se aplica en Windows.",
     "placeholder": "Sin límite",
     "restart_note": "Se aplica tras reiniciar."
+  },
+  "loading": {
+    "step_init": "Inicializando…",
+    "step_ui": "Interfaz cargada",
+    "step_modules": "Cargando módulos…",
+    "step_instances": "Cargando servidores…",
+    "step_ready": "Comprobando servidores…",
+    "step_done": "Listo",
+    "daemon_failed": "No se pudo iniciar el daemon principal.",
+    "failed_hint": "Si abres de todos modos, solo se abre la interfaz. Reinicia el daemon para gestionar servidores.",
+    "retry": "Reintentar",
+    "continue": "Abrir de todos modos"
   }
 }

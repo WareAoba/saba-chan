@@ -373,10 +373,13 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         setModal({
             type: 'question',
             title: t('server_settings.reset_confirm_title', { defaultValue: 'Reset Server' }),
-            message: t('server_settings.reset_confirm', {
-                name: settingsServer.name,
-                defaultValue: `Completely reset server '${settingsServer.name}'?\n\nThis will delete all worlds, settings, logs, and other data.\nOnly the server JAR and eula.txt will be kept.\n\nThis action cannot be undone.`,
-            }),
+            // 무엇이 지워지는지는 게임마다 달라 모듈 locales의 reset.description을 덧붙인다
+            message: [
+                t('server_settings.reset_confirm', { name: settingsServer.name }),
+                t(`mod_${settingsServer.module}:reset.description`, { defaultValue: '' }),
+            ]
+                .filter(Boolean)
+                .join('\n\n'),
             buttons: [
                 {
                     label: t('modals.cancel', { defaultValue: 'Cancel' }),
