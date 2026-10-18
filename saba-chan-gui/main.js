@@ -1221,6 +1221,15 @@ function updateTrayMenu() {
                 }
             },
         },
+        {
+            // 터미널로 열기 (I4-e): 데몬이 새 콘솔 창에 CLI 셸을 띄운다 (지금은 Windows만)
+            label: '💻 터미널 열기',
+            visible: process.platform === 'win32',
+            click: async () => {
+                const res = await daemonCall('post', '/api/clients/launch', { kind: 'cli', view: 'shell' });
+                if (!res || !res.success) console.warn('[Tray] Could not open terminal:', res && (res.error_code || res.error));
+            },
+        },
         { type: 'separator' },
         {
             label: daemonProcess ? '🟢 데몬 실행 중' : '⚪ 데몬 중지됨',
