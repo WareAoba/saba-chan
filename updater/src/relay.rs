@@ -224,8 +224,11 @@ impl RelayClient {
         };
         let manifest = match verify_release(&signed, platform, channel, current) {
             Ok(manifest) => manifest,
-            // 최신일 때는 버전만으로 manifest를 찾아서, 같은 버전이 다른 채널에도 있으면 그쪽 것이 올 수 있다
-            Err(RelayError::WrongChannel { .. }) if check.up_to_date => return Ok(None),
+            // 최신일 때는 버전만으로 manifest를 찾아서, 같은 버전이 다른 채널에도 있으면 그쪽 것이 온다.
+            // 지금 깔린 그 버전이면 컴포넌트 비교용으로 받는다 (더 높은 버전은 bind_release가 막는다)
+            Err(RelayError::WrongChannel { got, .. }) if check.up_to_date => {
+                verify_release(&signed, platform, &got, current)?
+            }
             Err(e) => return Err(e),
         };
         bind_release(latest, manifest).map(Some)
@@ -389,11 +392,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_up_to_date_client_skips_a_same_version_manifest_from_another_channel() {
-        // 같은 버전이 stable·beta 둘 다에 있으면 버전만 든 manifest 주소는 다른 채널 것을 줄 수 있다
+    async fn an_up_to_date_client_compares_against_its_version_from_another_channel() {
+        // 같은 버전이 stable·beta 둘 다에 있으면 버전만 든 manifest 주소는 다른 채널 것을 줄 수 있다.
+        // 그래도 받아서 뒤처진 GUI·모듈을 비교할 수 있어야 한다
         let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.1", "t").await;
-        assert!(matches!(got, Ok(None)), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
+        assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
     }
 
     #[test]
