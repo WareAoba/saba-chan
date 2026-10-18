@@ -15,7 +15,7 @@ import * as P from './nodePermissions';
 import { permissionsAvailable } from './PermissionsTab';
 import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
-import { usePairing } from './usePairing';
+import { persistNodeToken, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 const AUTOSAVE_MS = 600;
@@ -267,14 +267,9 @@ export function DiscordPage({
         relayUrl,
         beforeStart: saveRelayUrl,
         onClaimed: async (s) => {
+            // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
+            if (s.nodeToken && window.api?.saveNodeToken && !(await persistNodeToken(s.nodeToken))) return false;
             if (s.hostId) setDiscordCloudHostId(s.hostId);
-            if (s.nodeToken && window.api?.saveNodeToken) {
-                try {
-                    await window.api.saveNodeToken(s.nodeToken);
-                } catch (e) {
-                    console.error('[Pairing] node token save failed:', e);
-                }
-            }
             await saveCurrentSettings();
             loadNodes();
         },

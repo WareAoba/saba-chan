@@ -138,7 +138,7 @@ function resultText(res) {
     }
 }
 
-function Palette({ onClose }) {
+function Palette({ onClose, busyRef }) {
     const { t, i18n } = useTranslation('gui');
     const activeServerId = useUIStore((s) => s.activeServerId);
     const servers = useServerStore((s) => s.servers);
@@ -154,6 +154,11 @@ function Palette({ onClose }) {
     const [values, setValues] = useState({});
     const [plan, setPlan] = useState(null);
     const [busy, setBusy] = useState(false);
+    // 실행 중에 닫거나 돌아가면 결과(성공 알림·실패 문구)를 볼 곳이 없다
+    busyRef.current = busy;
+    const close = () => {
+        if (!busy) onClose();
+    };
     const [error, setError] = useState(null);
     const [result, setResult] = useState(null);
     const inputRef = useRef(null);
@@ -245,6 +250,7 @@ function Palette({ onClose }) {
     };
 
     const back = () => {
+        if (busy) return;
         setStep('list');
         setChosen(null);
         setPlan(null);
@@ -256,7 +262,7 @@ function Palette({ onClose }) {
     const onKeyDown = (e) => {
         if (e.key === 'Escape') {
             e.preventDefault();
-            if (step === 'list') onClose();
+            if (step === 'list') close();
             else back();
             return;
         }
@@ -275,7 +281,7 @@ function Palette({ onClose }) {
 
     return (
         // biome-ignore lint/a11y/noStaticElementInteractions: 바깥을 누르면 닫는다
-        <div className="palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
             <div
                 className="palette"
                 role="dialog"
@@ -360,7 +366,7 @@ function Palette({ onClose }) {
                         ))}
                         {error && <p className="palette-error">{error}</p>}
                         <div className="palette-actions">
-                            <button type="button" className="btn btn-ghost" onClick={back}>
+                            <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>
                                 {t('palette.back')}
                             </button>
                             <button
@@ -387,7 +393,7 @@ function Palette({ onClose }) {
                         </dl>
                         {error && <p className="palette-error">{error}</p>}
                         <div className="palette-actions">
-                            <button type="button" className="btn btn-ghost" onClick={back}>
+                            <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>
                                 {t('modals.cancel')}
                             </button>
                             <button
@@ -407,7 +413,7 @@ function Palette({ onClose }) {
                         <h3>{actionTitle(chosen)}</h3>
                         <pre className="palette-result">{result}</pre>
                         <div className="palette-actions">
-                            <button type="button" className="btn btn-ghost" onClick={back}>
+                            <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>
                                 {t('palette.back')}
                             </button>
                         </div>
@@ -422,17 +428,26 @@ function Palette({ onClose }) {
 /** Ctrl+K (macOS ⌘K)로 여닫는다. 액션 IPC가 없으면 아무것도 하지 않는다 */
 export function CommandPalette() {
     const [open, setOpen] = useState(false);
+    const busyRef = useRef(false);
 
     useEffect(() => {
         const onKey = (e) => {
             if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
-                setOpen((o) => !o);
+                setOpen((o) => (o && busyRef.current ? o : !o));
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    return open ? <Palette onClose={() => setOpen(false)} /> : null;
+    return open ? (
+        <Palette
+            busyRef={busyRef}
+            onClose={() => {
+                busyRef.current = false;
+                setOpen(false);
+            }}
+        />
+    ) : null;
 }

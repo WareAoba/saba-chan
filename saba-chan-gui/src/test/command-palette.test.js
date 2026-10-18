@@ -74,6 +74,24 @@ describe('명령 팔레트', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 
+    it('실행 중에는 Esc·Ctrl+K·바깥 클릭으로 닫히지 않고, 끝나면 결과를 알린다', async () => {
+        let resolveRun;
+        window.api.actionsRun = vi.fn(() => new Promise((r) => (resolveRun = r)));
+        render(<CommandPalette />);
+        await open();
+        const input = screen.getByRole('combobox');
+        fireEvent.change(input, { target: { value: 'restart' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        await flush();
+        expect(window.api.actionsRun).toHaveBeenCalled();
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+        fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+        fireEvent.mouseDown(document.querySelector('.palette-overlay'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        await act(async () => resolveRun({ success: false, error: 'boom' }));
+        expect(screen.getByRole('dialog').textContent).toContain('boom');
+    });
+
     it('확인이 필요한 액션은 요약을 보여 주고 한 번 더 눌러야 실행한다', async () => {
         render(<CommandPalette />);
         await open();

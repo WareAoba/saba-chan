@@ -143,6 +143,8 @@ export function ExtensionProvider({ children }) {
     useEffect(() => {
         const enabled = extensions.filter((ext) => ext.enabled);
         setEnabledExtensions(enabled);
+        // 목록이 다시 바뀌면 이 로드의 결과는 버린다 (늦게 끝나 새 슬롯을 덮지 않게)
+        let cancelled = false;
 
         const loadBundles = async () => {
             const newSlots = {};
@@ -214,12 +216,16 @@ export function ExtensionProvider({ children }) {
                 }
             }
 
+            if (cancelled) return;
             setSlots(newSlots);
             setGuiPending(pending);
             setLoading(false);
         };
 
         loadBundles();
+        return () => {
+            cancelled = true;
+        };
     }, [extensions]);
 
     // 익스텐션 활성/비활성 토글

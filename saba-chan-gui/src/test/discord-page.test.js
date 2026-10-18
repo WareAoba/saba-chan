@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudStateOf, DiscordPage } from '../components/discord/DiscordPage';
 import * as P from '../components/discord/nodePermissions';
+import { useDiscordStore } from '../stores/useDiscordStore';
 
 const NODES = ['g1', 'g2'];
 
@@ -66,7 +67,7 @@ const aliases = {
     palworld: { module_aliases: ['pal'], commands: {} },
 };
 
-function Harness({ save, initialView, botConfigSave, hostId = 'host-1' }) {
+function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostId = () => {} }) {
     const [nodeSettings, setNodeSettings] = useState({});
     const [cloudNodes, setCloudNodes] = useState([]);
     const [cloudMembers, setCloudMembers] = useState({});
@@ -80,7 +81,7 @@ function Harness({ save, initialView, botConfigSave, hostId = 'host-1' }) {
             discordPrefixes={[]}
             setDiscordPrefixes={() => {}}
             discordCloudHostId={hostId}
-            setDiscordCloudHostId={() => {}}
+            setDiscordCloudHostId={setHostId}
             relayConnected
             relayConnecting={false}
             saveCurrentSettings={save}
@@ -111,6 +112,25 @@ describe('DiscordPage', () => {
             botConfigLoad: vi.fn().mockResolvedValue({ prefix: '!saba', moduleAliases: {}, commandAliases: {} }),
         };
         window.showToast = vi.fn();
+    });
+
+    it('짝지었어도 노드 토큰을 저장하지 못하면 새 호스트로 바꾸지 않는다 (토큰 없는 호스트가 남지 않게)', async () => {
+        useDiscordStore.setState({ saveConfig: vi.fn().mockResolvedValue(true) });
+        window.api.relayInitiatePairing = vi
+            .fn()
+            .mockResolvedValue({ code: 'C', pollSecret: 'p', expiresAt: '2999-01-01T00:00:00Z' });
+        window.api.relayPollPairingStatus = vi
+            .fn()
+            .mockResolvedValue({ status: 'claimed', hostId: 'h-new', nodeToken: 'tok' });
+        window.api.saveNodeToken = vi.fn().mockResolvedValue(false);
+        const setHostId = vi.fn();
+        const save = vi.fn().mockResolvedValue();
+        await act(async () => render(<Harness save={save} hostId="" setHostId={setHostId} />));
+        await act(async () => fireEvent.click(screen.getByText('Connect a Discord server')));
+        await waitFor(() => expect(window.api.saveNodeToken).toHaveBeenCalledTimes(2), { timeout: 5000 });
+        await act(async () => {});
+        expect(setHostId).not.toHaveBeenCalledWith('h-new');
+        expect(save).not.toHaveBeenCalled();
     });
 
     it('노드 → 멤버 → 명령 하나 막기가 막힌 명령 배열로 들어가고 자동 저장된다', async () => {

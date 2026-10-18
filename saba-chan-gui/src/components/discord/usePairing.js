@@ -3,6 +3,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const POLL_MS = 3000;
 const SUCCESS_HOLD_MS = 2000;
 
+/** 짝지어 받은 노드 토큰을 데몬에 저장한다. 실패하면 한 번 더 시도하고, 그래도 안 되면 false */
+export async function persistNodeToken(token) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            if ((await window.api.saveNodeToken(token)) !== false) return true;
+        } catch (e) {
+            console.error('[Pairing] node token save failed:', e);
+        }
+    }
+    return false;
+}
+
 /**
  * 릴레이 페어링 흐름: 코드 발급 → 디스코드에서 `/사바쨩 연결` 입력 → 폴링으로 확인.
  * status: idle | issuing | waiting | success | expired | error
@@ -72,8 +84,12 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
                     if (!s || s.error) return;
                     if (s.status === 'claimed') {
                         stopPolling();
+                        // 마무리(노드 토큰 저장)가 실패하면 다시 짝지어야 한다: 성공으로 보이지 않는다
+                        if ((await claimedRef.current?.(s)) === false) {
+                            setStatus('error');
+                            return;
+                        }
                         setStatus('success');
-                        await claimedRef.current?.(s);
                         holdRef.current = setTimeout(() => {
                             setStatus('idle');
                             setCode('');

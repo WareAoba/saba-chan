@@ -210,7 +210,14 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                                     className="as-input as-input-mono"
                                     type="text"
                                     value={dirPath}
-                                    onChange={(e) => setDirPath(e.target.value)}
+                                    onChange={(e) => {
+                                        // 감지 결과는 스캔한 경로의 것이다: 경로를 고치면 다시 스캔해야 한다
+                                        setDirPath(e.target.value);
+                                        setDetectedModule(null);
+                                        setNoMatch(false);
+                                        setManualModule(null);
+                                        setScanError(null);
+                                    }}
                                     placeholder={t('migration_modal.source_placeholder')}
                                     disabled={scanning}
                                 />
