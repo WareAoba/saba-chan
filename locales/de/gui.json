@@ -824,7 +824,7 @@
     "channels_reload": "Aktualisieren",
     "channels_save": "Speichern",
     "channels_save_confirm": "Speichern und Nachrichten löschen",
-    "channels_err_conflict": "Derselbe Kanal kann nicht gleichzeitig Chatbot- und Musikkanal sein.",
+    "channels_err_conflict": "Derselbe Kanal kann nicht zwei Arten gleichzeitig zugewiesen werden.",
     "channels_err_unknown": "{{channel}} ist kein Textkanal, den der Bot auf diesem Server nutzen kann.",
     "channels_err_bot": "Der Bot konnte nicht geprüft werden, daher wurde nichts geändert. Aufheben funktioniert weiterhin.",
     "channels_err_generic": "Kanalzuweisungen konnten nicht gespeichert werden.",
@@ -902,7 +902,10 @@
       "err_not_paired": "Dieser Server ist nicht gekoppelt.",
       "err_invalid": "Ungültiger Wert: {{field}}",
       "err_generic": "Bot-Einstellungen konnten nicht geändert werden."
-    }
+    },
+    "channels_notify": "Benachrichtigungskanal",
+    "channels_notify_hint": "Abstürze, automatische Neustarts, Updates, fertige Sicherungen und Hinweise auf geplante Neustarts erscheinen hier.",
+    "channels_is_notify": "Als Benachrichtigungskanal verwendet"
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",
@@ -1180,7 +1183,9 @@
     "remote_action": "Über Discord ausgeführt: {{text}}",
     "instance_exit": "{{name}} wurde beendet ({{kind}}).",
     "backup_done": "Sicherung von {{name}} abgeschlossen ({{kind}}).",
-    "backup_failed": "Sicherung von {{name}} fehlgeschlagen. {{error}}"
+    "backup_failed": "Sicherung von {{name}} fehlgeschlagen. {{error}}",
+    "schedule_restart": "{{name}} startet planmäßig in {{minutes}} Min. neu.",
+    "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert."
   },
   "terminal": {
     "open": "Im Terminal öffnen",

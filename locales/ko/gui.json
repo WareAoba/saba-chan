@@ -825,7 +825,7 @@
     "channels_reload": "새로 고침",
     "channels_save": "저장",
     "channels_save_confirm": "메시지 삭제를 알고 저장",
-    "channels_err_conflict": "같은 채널을 챗봇과 음악에 동시에 배정할 수 없어요.",
+    "channels_err_conflict": "같은 채널을 두 종류에 동시에 배정할 수 없어요.",
     "channels_err_unknown": "{{channel}}은(는) 이 서버에서 봇이 쓸 수 있는 텍스트 채널이 아니에요.",
     "channels_err_bot": "봇을 확인할 수 없어 바꾸지 못했어요. 해제는 지금도 할 수 있어요.",
     "channels_err_generic": "채널 배정을 저장하지 못했어요.",
@@ -903,7 +903,10 @@
       "err_not_paired": "이 서버와 페어링되어 있지 않아요.",
       "err_invalid": "잘못된 값이에요: {{field}}",
       "err_generic": "봇 설정을 바꾸지 못했어요."
-    }
+    },
+    "channels_notify": "알림 채널",
+    "channels_notify_hint": "크래시, 자동 재시작, 업데이트, 백업 완료, 예약 재시작 예고를 이 채널에 올려요.",
+    "channels_is_notify": "알림 채널로 쓰는 중"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",
@@ -1210,7 +1213,9 @@
     "remote_action": "디스코드에서 실행: {{text}}",
     "instance_exit": "{{name}} 서버가 꺼졌어요 ({{kind}}).",
     "backup_done": "{{name}} 백업을 마쳤어요 ({{kind}}).",
-    "backup_failed": "{{name}} 백업에 실패했어요. {{error}}"
+    "backup_failed": "{{name}} 백업에 실패했어요. {{error}}",
+    "schedule_restart": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 다시 시작돼요.",
+    "schedule_update": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 업데이트돼요."
   },
   "terminal": {
     "open": "터미널로 열기",

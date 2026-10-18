@@ -82,6 +82,15 @@ export function eventToast(ev, t, nameOf = (id) => id) {
             const kind = t(`maintenance.kind_${d.kind}`, { defaultValue: d.kind });
             return { message: t('events.backup_done', { name, kind }), type: 'success', duration: 4000 };
         }
+        case 'schedule.warn': {
+            if (d.action !== 'restart' && d.action !== 'update') return null;
+            const name = d.instance || nameOf(d.instanceId);
+            return {
+                message: t(`events.schedule_${d.action}`, { name, minutes: d.minutesLeft }),
+                type: 'info',
+                duration: 6000,
+            };
+        }
         default:
             return null;
     }

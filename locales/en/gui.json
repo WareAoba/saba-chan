@@ -825,7 +825,7 @@
     "channels_reload": "Refresh",
     "channels_save": "Save",
     "channels_save_confirm": "Save and delete messages",
-    "channels_err_conflict": "The same channel can't be both a chatbot and the music channel.",
+    "channels_err_conflict": "The same channel can't be assigned to two kinds at once.",
     "channels_err_unknown": "{{channel}} isn't a text channel the bot can use in this server.",
     "channels_err_bot": "The bot couldn't be checked, so nothing changed. Unassigning still works.",
     "channels_err_generic": "Couldn't save channel assignments.",
@@ -903,7 +903,10 @@
       "err_not_paired": "This server isn't paired.",
       "err_invalid": "Invalid value: {{field}}",
       "err_generic": "Couldn't change bot settings."
-    }
+    },
+    "channels_notify": "Alert channel",
+    "channels_notify_hint": "Crashes, auto restarts, updates, finished backups and scheduled restart warnings are posted here.",
+    "channels_is_notify": "Used as the alert channel"
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",
@@ -1210,7 +1213,9 @@
     "remote_action": "Run from Discord: {{text}}",
     "instance_exit": "{{name}} stopped ({{kind}}).",
     "backup_done": "Backed up {{name}} ({{kind}}).",
-    "backup_failed": "Backup of {{name}} failed. {{error}}"
+    "backup_failed": "Backup of {{name}} failed. {{error}}",
+    "schedule_restart": "{{name}} will restart as scheduled in {{minutes}} min.",
+    "schedule_update": "{{name}} will update as scheduled in {{minutes}} min."
   },
   "terminal": {
     "open": "Open in terminal",

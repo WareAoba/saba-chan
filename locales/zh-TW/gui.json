@@ -824,7 +824,7 @@
     "channels_reload": "重新整理",
     "channels_save": "儲存",
     "channels_save_confirm": "知悉會刪除訊息並儲存",
-    "channels_err_conflict": "同一個頻道不能同時作為聊天機器人頻道和音樂頻道。",
+    "channels_err_conflict": "同一個頻道不能同時指派給兩種用途。",
     "channels_err_unknown": "{{channel}} 不是機器人在此伺服器可用的文字頻道。",
     "channels_err_bot": "無法確認機器人，因此沒有變更。取消指派仍然可以。",
     "channels_err_generic": "無法儲存頻道指派。",
@@ -902,7 +902,10 @@
       "err_not_paired": "此伺服器尚未配對。",
       "err_invalid": "無效的值：{{field}}",
       "err_generic": "無法變更機器人設定。"
-    }
+    },
+    "channels_notify": "通知頻道",
+    "channels_notify_hint": "當機、自動重啟、更新、備份完成和排程重啟預告會發到這個頻道。",
+    "channels_is_notify": "用作通知頻道"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
@@ -1180,7 +1183,9 @@
     "remote_action": "從 Discord 執行：{{text}}",
     "instance_exit": "{{name}} 已停止（{{kind}}）。",
     "backup_done": "{{name}} 已完成備份（{{kind}}）。",
-    "backup_failed": "{{name}} 備份失敗。{{error}}"
+    "backup_failed": "{{name}} 備份失敗。{{error}}",
+    "schedule_restart": "{{name}} 將在 {{minutes}} 分鐘後依排程重啟。",
+    "schedule_update": "{{name}} 將在 {{minutes}} 分鐘後依排程更新。"
   },
   "terminal": {
     "open": "在終端機中開啟",

@@ -824,7 +824,7 @@
     "channels_reload": "再読み込み",
     "channels_save": "保存",
     "channels_save_confirm": "メッセージ削除を了承して保存",
-    "channels_err_conflict": "同じチャンネルをチャットボットと音楽に同時に割り当てることはできません。",
+    "channels_err_conflict": "同じチャンネルを2つの種類に同時に割り当てることはできません。",
     "channels_err_unknown": "{{channel}} はこのサーバーでボットが使えるテキストチャンネルではありません。",
     "channels_err_bot": "ボットを確認できなかったため変更していません。解除は今でもできます。",
     "channels_err_generic": "チャンネルの割り当てを保存できませんでした。",
@@ -902,7 +902,10 @@
       "err_not_paired": "このサーバーはペアリングされていません。",
       "err_invalid": "無効な値です: {{field}}",
       "err_generic": "ボット設定を変更できませんでした。"
-    }
+    },
+    "channels_notify": "通知チャンネル",
+    "channels_notify_hint": "クラッシュ、自動再起動、アップデート、バックアップ完了、予約再起動の予告をこのチャンネルに投稿します。",
+    "channels_is_notify": "通知チャンネルとして使用中"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",
@@ -1180,7 +1183,9 @@
     "remote_action": "Discordから実行: {{text}}",
     "instance_exit": "{{name}} が停止しました（{{kind}}）。",
     "backup_done": "{{name}} のバックアップが完了しました（{{kind}}）。",
-    "backup_failed": "{{name}} のバックアップに失敗しました。{{error}}"
+    "backup_failed": "{{name}} のバックアップに失敗しました。{{error}}",
+    "schedule_restart": "{{name}} は{{minutes}}分後に予約どおり再起動します。",
+    "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。"
   },
   "terminal": {
     "open": "ターミナルで開く",
