@@ -501,7 +501,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 **BotConfig** (camelCase, `config.json`의 `relay`, `config_store/mod.rs:115-125`). 로컬 봇용 필드(`token`, `autoStart`, `mode`, `music*`)는 지워졌고, 옛 파일에 남아 있어도 무시된다.
 
-- `prefix`("!saba"), `cloud{relayUrl,hostId}`
+- `prefix`("!saba"), `cloud{relayUrl,hostId}` (hostId는 노드 토큰 `sbn_<hostId>.…`을 따른다: 페어링 완료·`PUT`·`DELETE /api/config/node-token`이 같이 맞춘다)
 - `moduleAliases`, `commandAliases`
 - `instanceAliases`: 인스턴스 ID → 그 서버를 부르는 별명 목록(`"크리, cr"`). 같은 게임 서버가 여럿일 때 하나를 고른다. 채팅 처리기는 인스턴스 이름 → 인스턴스 별명 → 모듈 별명 순으로 찾고, 여러 서버가 걸리면 `errors.multiple_instances`로 답한다(`src/chat/mod.rs:256-285`)
 - `nodeSettings`, `cloudNodes`, `cloudMembers`
