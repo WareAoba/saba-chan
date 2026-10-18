@@ -14,6 +14,7 @@
 use saba_chan_updater_lib::integrity::Trust;
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub mod appcontainer;
@@ -349,6 +350,49 @@ fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
     Some(data_dir.join("extension-data").join(name))
 }
 
+/// PATH에서 런타임 실행 파일을 찾는다
+fn find_on_path(name: &str, path: Option<&OsStr>) -> Option<PathBuf> {
+    std::env::split_paths(path?).find_map(|dir| [format!("{name}.exe"), name.to_string()].into_iter().map(|f| dir.join(f)).find(|p| p.is_file()))
+}
+
+/// 런타임 실행 파일의 설치 폴더 (`<home>/bin/java`). 링크는 따라간 실제 위치로 보고,
+/// `release` 파일이 있는 JDK·JRE 폴더만 인정한다 (`bin`이 있는 아무 도구 폴더를 통째로 열지 않는다)
+fn runtime_home(exe: &Path) -> Option<PathBuf> {
+    let real = std::fs::canonicalize(exe).ok()?;
+    if !real.is_file() || !RUNTIME_NAMES.contains(&stem(&real).as_str()) {
+        return None;
+    }
+    let bin = real.parent()?;
+    let home = bin.parent()?;
+    (bin.file_name()?.eq_ignore_ascii_case("bin") && home.join("release").is_file()).then(|| home.to_path_buf())
+}
+
+/// 격리된 모듈이 확인하고 띄울 런타임의 설치 폴더: 설정 `java_path`(경로 없는 이름이면 PATH에서), `JAVA_HOME`,
+/// PATH의 `java`. 모듈은 `java -version`으로 런타임을 확인하는데, AppContainer는 Program Files 밖 폴더를 읽지 못한다
+pub fn runtime_homes(config: &Value, java_home: Option<&OsStr>, path: Option<&OsStr>) -> Vec<PathBuf> {
+    let mut exes = Vec::new();
+    if let Some(java) = config.get("java_path").and_then(Value::as_str).map(str::trim).filter(|p| !p.is_empty()) {
+        let java = Path::new(java);
+        if java.is_absolute() {
+            exes.push(java.to_path_buf());
+        } else if java.components().count() == 1 && RUNTIME_NAMES.contains(&stem(java).as_str()) {
+            exes.extend(find_on_path(&stem(java), path));
+        }
+    }
+    if let Some(home) = java_home.filter(|h| !h.is_empty()) {
+        let bin = Path::new(home).join("bin");
+        exes.extend(["java.exe", "java"].into_iter().map(|f| bin.join(f)).find(|p| p.is_file()));
+    }
+    exes.extend(find_on_path("java", path));
+    let mut homes: Vec<PathBuf> = Vec::new();
+    for home in exes.iter().filter_map(|e| runtime_home(e)) {
+        if !homes.contains(&home) {
+            homes.push(home);
+        }
+    }
+    homes
+}
+
 /// 확인되지 않은 구성요소의 Python 실행이면 격리 계획을 만든다. `config`의 `instance_dir`·`working_dir`에
 /// 쓰기를 준다 (데몬이 넣는 값. 데이터 폴더 자체와 그 위는 `Grants::push`가 버린다)
 pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<Isolation> {
@@ -391,6 +435,9 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         add(parent, Access::List);
     }
     add(&data_dir.join("python-guard"), Access::Read);
+    for home in runtime_homes(config, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
+        add(&home, Access::Read);
+    }
     add(&pycache, Access::Write);
     add(&temp, Access::Write);
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
@@ -562,6 +609,36 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_runtimes_the_daemon_knows_are_opened_to_the_sandbox() {
+        let tmp = tempfile::tempdir().unwrap();
+        let jdk = |name: &str, release: bool| {
+            let home = tmp.path().join(name);
+            std::fs::create_dir_all(home.join("bin")).unwrap();
+            std::fs::write(home.join("bin").join("java"), b"x").unwrap();
+            if release {
+                std::fs::write(home.join("release"), b"JAVA_VERSION=\"21\"").unwrap();
+            }
+            std::fs::canonicalize(home).unwrap()
+        };
+        let (set, env_home, on_path, tools) = (jdk("set", true), jdk("env", true), jdk("path", true), jdk("tools", false));
+        let path = std::env::join_paths([on_path.join("bin"), tools.join("bin")]).unwrap();
+        let java = set.join("bin").join("java");
+
+        let homes = runtime_homes(&serde_json::json!({ "java_path": java }), Some(env_home.as_os_str()), Some(&path));
+        assert_eq!(homes, vec![set.clone(), env_home.clone(), on_path.clone()]);
+        // 경로 없는 이름은 PATH에서 찾고, 같은 폴더는 한 번만
+        assert_eq!(runtime_homes(&serde_json::json!({ "java_path": "java" }), None, Some(&path)), vec![on_path.clone()]);
+        // `release` 없는 도구 폴더는 열지 않는다
+        let tools_path = std::env::join_paths([tools.join("bin")]).unwrap();
+        assert_eq!(runtime_homes(&serde_json::json!({}), None, Some(&tools_path)), Vec::<PathBuf>::new());
+        // 이름이 java가 아닌 실행 파일, 없는 파일은 런타임이 아니다
+        std::fs::write(set.join("bin").join("evil"), b"x").unwrap();
+        for bad in [set.join("bin").join("evil"), set.join("bin").join("missing")] {
+            assert_eq!(runtime_homes(&serde_json::json!({ "java_path": bad }), None, None), Vec::<PathBuf>::new());
+        }
+    }
 
     #[test]
     fn launch_targets_must_stay_inside_the_instance() {

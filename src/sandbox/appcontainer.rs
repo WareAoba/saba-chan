@@ -186,7 +186,8 @@ mod imp {
         PSID, SECURITY_CAPABILITIES, SE_GROUP_ENABLED, SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SYNCHRONIZE, ACL, ACL_REVISION,
         LABEL_SECURITY_INFORMATION, SECURITY_MANDATORY_LABEL_AUTHORITY, SECURITY_MANDATORY_LOW_RID, SYSTEM_MANDATORY_LABEL_ACE,
         SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, FILE_ATTRIBUTE_REPARSE_POINT, FILE_SHARE_DELETE,
-        FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, WRITE_DAC, WRITE_OWNER,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, WRITE_DAC, WRITE_OWNER, SECURITY_CREATOR_OWNER_RIGHTS_RID,
+        SECURITY_CREATOR_SID_AUTHORITY,
     };
 
     const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
@@ -359,18 +360,27 @@ mod imp {
             if rc != 0 {
                 return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }
-            if already_granted(dacl, &[sid, everyone], mask, inherit) {
-                LocalFree(sd);
+            let already = already_granted(dacl, &[sid, everyone], mask, inherit);
+            LocalFree(sd);
+            if already {
                 return Ok(());
             }
-            let dir = match open_checked(path, WRITE_DAC) {
-                Ok(d) => d,
-                Err(e) => {
-                    LocalFree(sd);
-                    return Err(e);
-                }
-            };
+        }
+        allow(path, sid, mask, inherit)
+    }
+
+    /// 폴더 DACL에 `sid` 허용 ACE를 더한다
+    fn allow(path: &Path, sid: PSID, mask: DWORD, inherit: bool) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
+        unsafe {
+            let dir = open_checked(path, WRITE_DAC)?;
             let h = dir.as_raw_handle() as HANDLE;
+            let mut dacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetSecurityInfo(h, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), &mut dacl, null_mut(), &mut sd);
+            if rc != 0 {
+                return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
             let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
             ea.grfAccessPermissions = mask;
             ea.grfAccessMode = GRANT_ACCESS;
@@ -408,6 +418,35 @@ mod imp {
         .as_ref()
         .map(|s| s.0)
         .map_err(Clone::clone)
+    }
+
+    /// OWNER RIGHTS S-1-3-4. 이 SID의 ACE가 있으면 소유자의 암묵적 권한(READ_CONTROL·WRITE_DAC) 대신 그 ACE를 쓴다
+    fn owner_rights() -> Result<PSID, String> {
+        static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
+        SID.get_or_init(|| {
+            let mut auth = SID_IDENTIFIER_AUTHORITY { Value: SECURITY_CREATOR_SID_AUTHORITY };
+            let mut sid: PSID = null_mut();
+            if unsafe { AllocateAndInitializeSid(&mut auth, 1, SECURITY_CREATOR_OWNER_RIGHTS_RID, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
+                return Err(last_error("AllocateAndInitializeSid"));
+            }
+            Ok(Sid(sid))
+        })
+        .as_ref()
+        .map(|s| s.0)
+        .map_err(Clone::clone)
+    }
+
+    /// 표시를 바꾸려면 WRITE_OWNER가 있어야 한다. 사용자가 C:\ 바로 아래 만든 폴더(C:\Games 등)는 상속받은
+    /// "수정" 권한뿐이라 소유자에게도 WRITE_OWNER가 없다. 소유자는 언제든 DACL을 고칠 수 있으므로(암묵적 WRITE_DAC)
+    /// 권한을 넓히는 것이 아니다: 그 폴더에만 OWNER RIGHTS로 원래 권한과 WRITE_OWNER를 준다
+    fn open_for_relabel(path: &Path) -> Result<OwnedHandle, String> {
+        match open_checked(path, WRITE_OWNER) {
+            Ok(dir) => Ok(dir),
+            Err(first) => {
+                allow(path, owner_rights()?, READ_CONTROL | WRITE_DAC | WRITE_OWNER, false).map_err(|e| format!("{first} ({e})"))?;
+                open_checked(path, WRITE_OWNER)
+            }
+        }
     }
 
     /// AppContainer 프로세스는 낮은 무결성 수준으로 돈다. 보통 폴더는 표시가 없어 중간 수준(쓰기 금지)으로 보므로
@@ -451,7 +490,7 @@ mod imp {
             {
                 return Err(last_error("AddMandatoryAce"));
             }
-            let dir = open_checked(path, WRITE_OWNER)?;
+            let dir = open_for_relabel(path)?;
             let rc = SetSecurityInfo(dir.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl);
             if rc != 0 {
                 return Err(format!("write label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));

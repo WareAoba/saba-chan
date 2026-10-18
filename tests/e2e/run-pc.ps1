@@ -63,12 +63,7 @@ if (-not (Get-Command javac -ErrorAction SilentlyContinue)) {
     $env:PATH = "$($jdk.FullName)\bin;$env:PATH"
     $env:JAVA_HOME = $jdk.FullName
 }
-# 시험 폴더의 모듈은 확인되지 않은 구성요소라 AppContainer로 돈다. Program Files의 JDK처럼 앱 컨테이너가 읽을 수 있게
-# 시험 폴더 안 JDK에 ALL APPLICATION PACKAGES 읽기·실행을 준다
-if ($env:JAVA_HOME -and ([IO.Path]::GetFullPath($env:JAVA_HOME) + '\').StartsWith($Root + '\', [StringComparison]::OrdinalIgnoreCase)) {
-    icacls $env:JAVA_HOME /grant "*S-1-15-2-1:(OI)(CI)RX" /T /Q | Out-Null
-    if ($LASTEXITCODE) { throw "JDK 폴더 권한 설정 실패" }
-}
+# 시험 폴더의 모듈은 AppContainer로 돈다. 시험 폴더 안 JDK는 데몬이 JAVA_HOME·PATH에서 찾아 읽기를 준다 (권한을 따로 주지 않는다)
 
 Step "바이너리 빌드"
 Push-Location $Repo

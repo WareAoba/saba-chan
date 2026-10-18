@@ -54,7 +54,9 @@ class Sandbox:
         self.data = root / "data"
         self.tmp = root / "tmp"
         self.modules = root / "modules"
-        self.extensions = root / "extensions"
+        # 익스텐션 폴더의 부모에는 데몬이 격리 실행(Windows)에 목록 권한을 준다. 시험 폴더 루트는 HOME의 위라
+        # 데몬이 주지 않으므로 한 단계 아래에 둔다
+        self.extensions = root / "plugins" / "extensions"
         self.servers = root / "servers"  # 가져오기용 기존 서버 폴더
         self.artifacts = root / "artifacts"
         for d in (self.home, self.data, self.tmp, self.servers, self.artifacts):
@@ -66,7 +68,7 @@ class Sandbox:
         if extensions:
             _copy_repo(EXTENSIONS_REPO, self.extensions)
         else:
-            self.extensions.mkdir(exist_ok=True)
+            self.extensions.mkdir(parents=True, exist_ok=True)
         self.ipc_port = free_port()
 
     @property
