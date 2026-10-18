@@ -146,6 +146,7 @@
     "updated": "サーバーを更新しました",
     "module_missing": "モジュールが見つかりません: {{error}}",
     "no_latest_version": "最新のサーバーバージョンを取得できませんでした",
+    "script_failed": "インストールスクリプトがエラーで終了しました。詳しくはデーモンのログを確認してください",
     "backup_failed": "更新前のバックアップに失敗しました: {{reason}}"
   },
   "actions": {

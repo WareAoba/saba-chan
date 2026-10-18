@@ -146,6 +146,7 @@
     "updated": "Servidor atualizado",
     "module_missing": "Módulo não encontrado: {{error}}",
     "no_latest_version": "Não foi possível obter a versão mais recente do servidor",
+    "script_failed": "O script de instalação terminou com erro. Veja o log do daemon para mais detalhes",
     "backup_failed": "Falha no backup antes da atualização: {{reason}}"
   },
   "actions": {

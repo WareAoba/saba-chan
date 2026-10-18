@@ -603,7 +603,8 @@ pub async fn create_instance(
                                         label: "done".to_string(),
                                         message: text.t("provision.install_failed", &[]),
                                         done: true,
-                                        error: Some(e.to_string()),
+                                        // 스크립트 출력(stderr·경로)은 로그에만 남긴다
+                                        error: Some(text.t("provision.script_failed", &[])),
                                         percent: Some(100),
                                         steps: None,
                                     });
@@ -1737,7 +1738,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                         label: "done".to_string(),
                         message: text.t("provision.update_failed", &[]),
                         done: true,
-                        error: Some(format!("{}", e)),
+                        // 스크립트 출력(stderr·경로)은 로그에만 남긴다
+                        error: Some(text.t("provision.script_failed", &[])),
                         percent: Some(100),
                         steps: None,
                     },
@@ -1805,6 +1807,43 @@ mod tests {
         let unknown = create(json!({ "name": "b", "module_name": "game", "preset": "nope" })).await;
         assert_eq!(unknown.status.as_u16(), 400);
         assert_eq!(unknown.body["error_code"], "preset_not_found");
+    }
+
+    #[tokio::test]
+    async fn a_crashed_install_script_reports_a_short_message_not_its_output() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"manual\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import sys\nsys.stderr.write('Traceback: /home/me/secret.py line 3\\n')\nsys.exit(1)\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+
+        let mut progress = None;
+        for _ in 0..200 {
+            progress = state.provision_tracker.get("a").filter(|p| p.done);
+            if progress.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let error = progress.expect("provisioning finished").error.unwrap();
+        let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
+        assert_eq!(error, text.t("provision.script_failed", &[]));
+        assert!(!error.contains("Traceback") && !error.contains("stderr"));
     }
 
     #[tokio::test]
