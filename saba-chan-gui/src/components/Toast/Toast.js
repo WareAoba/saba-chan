@@ -1,14 +1,30 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './Toast.css';
 
 function Toast() {
     const [toasts, setToasts] = useState([]);
     const [removingToasts, setRemovingToasts] = useState(new Set());
+    // 사라지기 타이머: 언마운트 뒤에 setState가 돌지 않도록 모아 두었다가 지운다
+    const timers = useRef(new Set());
+    const later = useCallback((fn, ms) => {
+        const id = setTimeout(() => {
+            timers.current.delete(id);
+            fn();
+        }, ms);
+        timers.current.add(id);
+    }, []);
+    useEffect(() => {
+        const pending = timers.current;
+        return () => {
+            for (const id of pending) clearTimeout(id);
+            pending.clear();
+        };
+    }, []);
 
     const removeToast = useCallback((id) => {
         setRemovingToasts((prev) => new Set([...prev, id]));
-        setTimeout(() => {
+        later(() => {
             setToasts((prev) => prev.filter((t) => t.id !== id));
             setRemovingToasts((prev) => {
                 const next = new Set(prev);
@@ -16,7 +32,7 @@ function Toast() {
                 return next;
             });
         }, 300);
-    }, []);
+    }, [later]);
 
     // 전역 토스트 이벤트 리스너 등록
     useEffect(() => {
@@ -41,7 +57,7 @@ function Toast() {
 
             // 모든 토스트는 자동으로 사라짐
             if (duration > 0) {
-                setTimeout(() => {
+                later(() => {
                     removeToast(id);
                 }, duration);
             }
@@ -55,7 +71,7 @@ function Toast() {
 
             // 기존 타이머 취소하고 새 타이머 설정
             if (duration > 0) {
-                setTimeout(() => {
+                later(() => {
                     removeToast(id);
                 }, duration);
             }
@@ -79,7 +95,7 @@ function Toast() {
             delete window.updateToast;
             delete window.showStatus;
         };
-    }, [removeToast]);
+    }, [removeToast, later]);
 
     return (
         <div className="toast-container">
