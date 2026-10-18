@@ -51,6 +51,18 @@ describe('디스코드에서 온 연결 요청 (J1-b)', () => {
         expect(screen.queryByText(/Pals/)).toBeNull();
     });
 
+    it('expiresAt이 초 단위 숫자여도 만료 전이면 보인다', async () => {
+        window.api.relayLinkRequests = vi.fn().mockResolvedValue({
+            requests: [
+                { requestId: 'r3', guildId: 'g', guildName: 'Secs', expiresAt: Math.floor(Date.now() / 1000) + 600 },
+            ],
+        });
+        window.api.relayLinkRequestRespond = vi.fn();
+        render(<LinkRequests />);
+        await act(async () => {});
+        expect(screen.getByText(/Secs/)).toBeInTheDocument();
+    });
+
     it('페어링 화면에 같은 일을 하는 CLI 한 줄을 보인다 (J1-c)', () => {
         render(<PairingCard pairing={{ status: 'waiting', code: 'ABC', remaining: 300 }} onCancel={vi.fn()} />);
         expect(screen.getByText('saba-chan-cli bot pair')).toBeInTheDocument();

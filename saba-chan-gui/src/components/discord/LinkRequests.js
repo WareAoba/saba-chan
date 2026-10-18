@@ -8,7 +8,9 @@ import { Icon } from '../Icon';
 export const linkRequestsAvailable = () =>
     typeof window.api?.relayLinkRequests === 'function' && typeof window.api?.relayLinkRequestRespond === 'function';
 
-const alive = (r) => !r.expiresAt || new Date(r.expiresAt).getTime() > Date.now();
+/** expiresAt: ISO 문자열, 밀리초, 또는 초(epoch seconds) 어느 것이든 */
+const expiryMs = (x) => (typeof x === 'number' && x < 1e12 ? x * 1000 : new Date(x).getTime());
+const alive = (r) => !r.expiresAt || !(expiryMs(r.expiresAt) <= Date.now());
 
 /**
  * 대기 중인 요청을 카드로 보이고 수락·거절을 데몬에 보낸다. 앱을 늦게 켰을 때를 위해 처음에 목록을 읽고,
