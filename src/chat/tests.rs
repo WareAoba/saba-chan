@@ -381,6 +381,9 @@ fn a_prefix_matches_without_case_only_before_a_break() {
     assert_eq!(strip_prefix("SABA-CHAN list", &p(&["Saba-chan"])), "list");
     // 긴 접두사가 먼저다
     assert_eq!(strip_prefix("!sab list", &p(&["!s", "!sab"])), "list");
+    // 기호로 끝나는 접두사는 명령에 바로 붙어도 된다
+    assert_eq!(strip_prefix("!list", &p(&["!"])), "list");
+    assert_eq!(strip_prefix("!slist", &p(&["!s"])), "!slist");
 }
 
 #[tokio::test]

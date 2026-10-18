@@ -183,8 +183,8 @@ fn skip_words(text: &str, n: usize) -> &str {
 }
 
 /// 릴레이는 접두사 없이 보내지만, 사용자가 붙여 보낸 경우도 받아 준다
-/// 긴 접두사부터 대소문자 없이 맞춰 본다. 접두사 뒤에는 공백·쉼표·쌍점이 오거나 글이 끝나야 한다
-/// (`사바쨩, 안녕`은 접두사, `사바쨩아`는 아니다)
+/// 긴 접두사부터 대소문자 없이 맞춰 본다. 글자로 끝나는 접두사 뒤에는 공백·쉼표·쌍점이 오거나 글이 끝나야 한다
+/// (`사바쨩, 안녕`은 접두사, `사바쨩아`는 아니다). 기호로 끝나는 접두사(`!`)는 명령에 바로 붙어도 된다
 fn strip_prefix<'t>(text: &'t str, prefixes: &[String]) -> &'t str {
     let mut sorted: Vec<&String> = prefixes.iter().filter(|p| !p.is_empty()).collect();
     sorted.sort_by_key(|p| std::cmp::Reverse(p.chars().count()));
@@ -198,7 +198,8 @@ fn strip_prefix<'t>(text: &'t str, prefixes: &[String]) -> &'t str {
         if head.to_lowercase() != prefix.to_lowercase() {
             continue;
         }
-        if rest.is_empty() || rest.starts_with(|c: char| c.is_whitespace() || c == ',' || c == ':') {
+        let symbolic = !prefix.chars().last().is_some_and(char::is_alphanumeric);
+        if symbolic || rest.is_empty() || rest.starts_with(|c: char| c.is_whitespace() || c == ',' || c == ':') {
             return rest.trim_start_matches(|c: char| c.is_whitespace() || c == ',' || c == ':');
         }
     }
