@@ -617,7 +617,6 @@
     "add_server": "Ajouter un serveur",
     "search_placeholder": "Rechercher un serveur",
     "no_match": "Aucun serveur correspondant",
-    "empty_title": "Aucun serveur pour l'instant",
     "empty_body": "Choisissez un jeu et Saba-chan configurera le serveur pour vous.",
     "start": "Démarrer",
     "stop": "Arrêter",

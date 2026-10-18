@@ -92,8 +92,7 @@
 @media (prefers-reduced-motion: reduce) {
     .saba-bubble,
     .saba-bubble.leaving,
-    .saba-bubble .saba-art,
-    .saba-bubble-text {
+    .saba-bubble .saba-art {
         animation: none;
     }
 }

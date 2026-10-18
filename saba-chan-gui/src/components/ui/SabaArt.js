@@ -10,6 +10,7 @@ import './SabaArt.css';
 export const SABA_ART = ['sleep', 'sleepy', 'cleaning', 'undefined', 'recovering', 'stopped', 'relay'];
 
 export function SabaArt({ kind, className, size, alt = '' }) {
+    if (!SABA_ART.includes(kind)) return null;
     return (
         <img
             src={`./saba/${kind}.webp`}

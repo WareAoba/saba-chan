@@ -617,7 +617,6 @@
     "add_server": "サーバーを追加",
     "search_placeholder": "サーバーを検索",
     "no_match": "一致するサーバーがありません",
-    "empty_title": "まだサーバーがありません",
     "empty_body": "ゲームを選ぶと、サバちゃんがサーバーを準備します。",
     "start": "起動",
     "stop": "停止",
