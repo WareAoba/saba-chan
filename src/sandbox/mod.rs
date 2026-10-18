@@ -305,6 +305,7 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     if let Err(code) = check_launch(&program, &roots) {
         return Err(Blocked { code, file: Some(program), detail: None });
     }
+    tracing::info!("[Sandbox] checking launch of unverified module program '{}'", program);
     // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
     let mut files: Vec<PathBuf> = Some(PathBuf::from(&program)).filter(|p| p.is_absolute()).into_iter().collect();
     match argument_files(args, cwd) {
@@ -401,9 +402,80 @@ fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
     Some(data_dir.join("extension-data").join(name))
 }
 
-/// PATH에서 런타임 실행 파일을 찾는다
-fn find_on_path(name: &str, path: Option<&OsStr>) -> Option<PathBuf> {
-    std::env::split_paths(path?).find_map(|dir| [format!("{name}.exe"), name.to_string()].into_iter().map(|f| dir.join(f)).find(|p| p.is_file()))
+/// PATH에서 런타임 실행 파일을 찾는다 (앞에서부터 모두. 앞쪽 것이 Oracle `javapath` 같은 바로가기일 수 있다)
+fn find_on_path(name: &str, path: Option<&OsStr>) -> Vec<PathBuf> {
+    let Some(path) = path else { return Vec::new() };
+    // 네트워크 공유(UNC)·상대 경로는 열어 보지 않는다 (느린 공유에서 멈추거나 자격 증명이 새지 않게)
+    std::env::split_paths(path)
+        .filter(|dir| plain_local_path(dir))
+        .filter_map(|dir| [format!("{name}.exe"), name.to_string()].into_iter().map(|f| dir.join(f)).find(|p| p.is_file()))
+        .collect()
+}
+
+/// JDK·JRE 배포판이 흔히 설치되는 폴더 아래 공급자 폴더 이름 (`<root>/<공급자>/<jdk>/release`)
+const JAVA_VENDOR_DIRS: &[&str] = &[
+    "Java",
+    "Eclipse Adoptium",
+    "Eclipse Foundation",
+    "AdoptOpenJDK",
+    "Microsoft",
+    "Zulu",
+    "BellSoft",
+    "Amazon Corretto",
+    "Semeru",
+    "OpenJDK",
+    "jvm",
+];
+
+/// 알려진 설치 위치 (Windows: Program Files와 `%LOCALAPPDATA%\Programs`, Unix: `/usr/lib`)
+fn install_roots() -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if cfg!(windows) {
+        for var in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(dir) = std::env::var_os(var).map(PathBuf::from).filter(|d| plain_local_path(d)) {
+                if !roots.contains(&dir) {
+                    roots.push(dir);
+                }
+            }
+        }
+        // 사용자 단위 설치 (예: Temurin의 "이 사용자만" 설치)
+        if let Some(dir) = std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Programs")).filter(|d| plain_local_path(d)) {
+            roots.push(dir);
+        }
+    } else {
+        roots.push(PathBuf::from("/usr/lib"));
+    }
+    roots
+}
+
+/// 설치 위치 아래 JDK·JRE의 java 실행 파일. 공급자 폴더 바로 아래만 본다
+fn installed_runtimes(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for vendor in roots.iter().flat_map(|r| JAVA_VENDOR_DIRS.iter().map(move |v| r.join(v))) {
+        let Ok(entries) = std::fs::read_dir(&vendor) else { continue };
+        let mut homes: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.join("release").is_file()).collect();
+        homes.sort();
+        found.extend(homes.into_iter().filter_map(|h| ["java.exe", "java"].into_iter().map(|f| h.join("bin").join(f)).find(|p| p.is_file())));
+    }
+    found
+}
+
+/// JDK·JRE의 `release` 파일에 적힌 값 (`JAVA_VERSION="21.0.5"`, `OS_ARCH="amd64"`)
+fn release_value(home: &Path, key: &str) -> Option<String> {
+    let text = std::fs::read_to_string(home.join("release")).ok()?;
+    let prefix = format!("{key}=");
+    text.lines().find_map(|l| l.strip_prefix(prefix.as_str())).map(|v| v.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty())
+}
+
+/// 주 버전: `1.8.0_381` → 8, `21.0.5` → 21
+fn java_major(version: &str) -> Option<u32> {
+    let mut parts = version.split(|c: char| !c.is_ascii_digit()).filter(|p| !p.is_empty());
+    let first: u32 = parts.next()?.parse().ok()?;
+    if first == 1 {
+        parts.next()?.parse().ok()
+    } else {
+        Some(first)
+    }
 }
 
 /// 런타임 실행 파일의 설치 폴더 (`<home>/bin/java`). 링크는 따라간 실제 위치로 보고,
@@ -478,8 +550,13 @@ pub fn reconcile_runtimes(user_runtimes: &[(String, String)]) {
 }
 
 /// 격리된 모듈이 확인하고 띄울 런타임의 설치 폴더: 사용자가 정한 `java_path`(경로 없는 이름이면 PATH에서),
-/// `JAVA_HOME`, PATH의 `java`. 모듈은 `java -version`으로 런타임을 확인하는데, AppContainer는 Program Files 밖 폴더를 읽지 못한다
+/// `JAVA_HOME`, PATH의 모든 `java`, 알려진 설치 위치의 JDK·JRE. `release` 파일이 있는 실제 설치 폴더만 센다
+/// (PATH 앞쪽의 바로가기는 빠진다). 모듈은 `java -version`으로 런타임을 확인하는데, AppContainer는 Program Files 밖 폴더를 읽지 못한다
 pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: Option<&OsStr>) -> Vec<PathBuf> {
+    runtime_homes_in(java_path, java_home, path, &install_roots())
+}
+
+fn runtime_homes_in(java_path: Option<&str>, java_home: Option<&OsStr>, path: Option<&OsStr>, roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut exes = Vec::new();
     if let Some(java) = java_path.map(str::trim).filter(|p| !p.is_empty()) {
         let java = Path::new(java);
@@ -489,7 +566,7 @@ pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: O
             }
             exes.push(java.to_path_buf());
         } else if java.components().count() == 1 && RUNTIME_NAMES.contains(&stem(java).as_str()) {
-            exes.extend(find_on_path(&stem(java), path));
+            exes.extend(find_on_path(&stem(java), path).into_iter().next());
         }
     }
     if let Some(home) = java_home.filter(|h| !h.is_empty()) {
@@ -497,6 +574,7 @@ pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: O
         exes.extend(["java.exe", "java"].into_iter().map(|f| bin.join(f)).find(|p| p.is_file()));
     }
     exes.extend(find_on_path("java", path));
+    exes.extend(installed_runtimes(roots));
     let mut homes: Vec<PathBuf> = Vec::new();
     for home in exes.iter().filter_map(|e| runtime_home(e)) {
         if !homes.contains(&home) {
@@ -504,6 +582,35 @@ pub fn runtime_homes(java_path: Option<&str>, java_home: Option<&OsStr>, path: O
         }
     }
     homes
+}
+
+/// 데몬이 찾은 Java 런타임 하나 (모듈에 `SABA_JAVA_RUNTIMES`로 넘긴다)
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct JavaRuntime {
+    pub java: PathBuf,
+    pub home: PathBuf,
+    pub version: String,
+    pub major: u32,
+    /// `release`의 `OS_ARCH` (`amd64`, `x86`, `aarch64` …). 적혀 있지 않으면 빈 문자열
+    pub arch: String,
+}
+
+/// 데몬 환경(`JAVA_HOME`, PATH)과 알려진 설치 위치의 Java 런타임. 순서는 `JAVA_HOME`, PATH, 설치 위치다
+pub fn java_runtimes() -> Vec<JavaRuntime> {
+    java_runtimes_in(std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref(), &install_roots())
+}
+
+fn java_runtimes_in(java_home: Option<&OsStr>, path: Option<&OsStr>, roots: &[PathBuf]) -> Vec<JavaRuntime> {
+    runtime_homes_in(None, java_home, path, roots)
+        .into_iter()
+        .filter_map(|home| {
+            let version = release_value(&home, "JAVA_VERSION")?;
+            let major = java_major(&version)?;
+            let arch = release_value(&home, "OS_ARCH").unwrap_or_default();
+            let java = ["java.exe", "java"].into_iter().map(|f| home.join("bin").join(f)).find(|p| p.is_file())?;
+            Some(JavaRuntime { java, home, version, major, arch })
+        })
+        .collect()
 }
 
 /// 데몬 환경(`JAVA_HOME`, PATH)이 가리키는 런타임 실행 파일. 격리 실행에 읽기를 준 그 런타임을 실행 대상 검사도 인정한다
@@ -778,22 +885,57 @@ mod tests {
         let path = std::env::join_paths([on_path.join("bin"), tools.join("bin")]).unwrap();
         let java = set.join("bin").join("java");
 
-        let homes = runtime_homes(java.to_str(), Some(env_home.as_os_str()), Some(&path));
+        let homes = runtime_homes_in(java.to_str(), Some(env_home.as_os_str()), Some(&path), &[]);
         assert_eq!(homes, vec![real(&set), real(&env_home), real(&on_path)]);
         // 경로 없는 이름은 PATH에서 찾고, 같은 폴더는 한 번만
-        assert_eq!(runtime_homes(Some("java"), None, Some(&path)), vec![real(&on_path)]);
+        assert_eq!(runtime_homes_in(Some("java"), None, Some(&path), &[]), vec![real(&on_path)]);
         // `release` 없는 도구 폴더는 열지 않는다
         let tools_path = std::env::join_paths([tools.join("bin")]).unwrap();
-        assert_eq!(runtime_homes(None, None, Some(&tools_path)), Vec::<PathBuf>::new());
+        assert_eq!(runtime_homes_in(None, None, Some(&tools_path), &[]), Vec::<PathBuf>::new());
         // 이름이 java가 아닌 실행 파일, 없는 파일은 런타임이 아니다
         std::fs::write(set.join("bin").join("evil"), b"x").unwrap();
         for bad in [set.join("bin").join("evil"), set.join("bin").join("missing")] {
-            assert_eq!(runtime_homes(bad.to_str(), None, None), Vec::<PathBuf>::new());
+            assert_eq!(runtime_homes_in(bad.to_str(), None, None, &[]), Vec::<PathBuf>::new());
         }
         // 그 JDK의 java는 실행 대상 검사도 통과한다
         let roots = LaunchRoots { dirs: vec![], runtimes: runtime_executables(vec![env_home.clone()]) };
         assert_eq!(check_launch(&env_home.join("bin").join("java").to_string_lossy(), &roots), Ok(()));
         assert_eq!(check_launch(&tools.join("bin").join("java").to_string_lossy(), &roots), Err("launch_outside_instance"));
+    }
+
+    #[test]
+    fn every_real_runtime_counts_not_just_the_first_java_on_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let jdk = |dir: &Path, version: &str| {
+            std::fs::create_dir_all(dir.join("bin")).unwrap();
+            std::fs::write(dir.join("bin").join("java"), b"x").unwrap();
+            let arch = if version.starts_with("1.8") { "x86" } else { "amd64" };
+            std::fs::write(dir.join("release"), format!("IMPLEMENTOR=\"x\"\nJAVA_VERSION=\"{version}\"\nOS_ARCH=\"{arch}\"\n")).unwrap();
+            std::fs::canonicalize(dir).unwrap()
+        };
+        // PATH 앞쪽의 바로가기(shim): `bin`·`release`가 없는 폴더의 java
+        let shim = tmp.path().join("javapath");
+        std::fs::create_dir_all(&shim).unwrap();
+        std::fs::write(shim.join("java"), b"x").unwrap();
+        let on_path = jdk(&tmp.path().join("jdk17"), "17.0.9");
+        let path = std::env::join_paths([shim.clone(), on_path.join("bin")]).unwrap();
+        // 알려진 설치 폴더 아래의 JDK (`<root>/<vendor>/<jdk>`)
+        let roots = vec![tmp.path().join("pf")];
+        let installed = jdk(&roots[0].join("Eclipse Adoptium").join("jdk-21"), "21.0.5");
+        let old = jdk(&roots[0].join("Java").join("jre1.8.0_381"), "1.8.0_381");
+
+        let homes = runtime_homes_in(None, None, Some(&path), &roots);
+        assert_eq!(homes.len(), 3, "{homes:?}");
+        assert_eq!(homes[0], on_path, "PATH 순서가 먼저");
+        assert!(homes.contains(&installed) && homes.contains(&old));
+        let runtimes = java_runtimes_in(None, Some(&path), &roots);
+        let majors: Vec<(u32, &str, &str)> = runtimes.iter().map(|r| (r.major, r.version.as_str(), r.arch.as_str())).collect();
+        assert_eq!(majors[0], (17, "17.0.9", "amd64"));
+        assert!(majors.contains(&(21, "21.0.5", "amd64")) && majors.contains(&(8, "1.8.0_381", "x86")));
+        assert!(runtimes.iter().all(|r| r.java.starts_with(&r.home)));
+        // 일반 로컬 경로가 아닌 PATH 항목은 열어 보지 않는다 (Windows에서는 UNC 공유)
+        let indirect = std::env::join_paths([tmp.path().join("javapath").join("..").join("jdk17").join("bin")]).unwrap();
+        assert_eq!(find_on_path("java", Some(&indirect)), Vec::<PathBuf>::new());
     }
 
     #[test]
