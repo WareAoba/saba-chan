@@ -39,26 +39,38 @@ function useBubbleTriggers() {
     // 서버 크래시 → 복구 중 / 멈춤
     useEffect(() => {
         const nameOf = (d) => d.instance || useServerStore.getState().servers.find((s) => s.id === d.instanceId)?.name;
+        // 같은 서버의 다른 복구 시도(늦게 온 이전 이벤트)인가
+        const staleFor = (d) => {
+            const b = useSabaBubble.getState().bubble;
+            return (
+                b?.holdKey === d.instanceId &&
+                typeof b.restartAttempt === 'number' &&
+                typeof d.restartAttempt === 'number' &&
+                b.restartAttempt !== d.restartAttempt
+            );
+        };
         return subscribeDaemonEvents((ev) => {
             const d = ev.data;
             const bubble = useSabaBubble.getState();
-            if (ev.type === 'instance.exit' && d.kind === 'crash') {
-                const name = nameOf(d) || '';
-                if (d.restartInSecs != null) {
-                    const srv = useServerStore.getState().servers.find((s) => s.id === d.instanceId);
-                    bubble.show({
-                        heldFrom: { status: srv?.status, startTime: srv?.start_time },
-                        kind: 'recovering',
-                        text: tRef.current('saba.recovering', { name }),
-                        holdKey: d.instanceId,
-                    });
-                } else {
-                    bubble.show({ kind: 'stopped', text: tRef.current('saba.stopped', { name }), minMs: 6000 });
-                }
+            if (ev.type === 'instance.exit' && d.restartInSecs != null) {
+                const srv = useServerStore.getState().servers.find((s) => s.id === d.instanceId);
+                bubble.show({
+                    heldFrom: { status: srv?.status, startTime: srv?.start_time },
+                    kind: 'recovering',
+                    text: tRef.current('saba.recovering', { name: nameOf(d) || '' }),
+                    holdKey: d.instanceId,
+                    restartAttempt: d.restartAttempt,
+                });
+            } else if (ev.type === 'instance.exit' && (d.kind === 'crash' || d.noteCode === 'gave_up')) {
+                bubble.show({
+                    kind: 'stopped',
+                    text: tRef.current('saba.stopped', { name: nameOf(d) || '' }),
+                    minMs: 6000,
+                });
             } else if (ev.type === 'instance.restarted' || ev.type === 'instance.restart_cancelled') {
-                // 다시 켰거나 사용자가 복구를 멈췄다: 최소 시간만 채우고 들어간다
-                bubble.release(d.instanceId);
-            } else if (ev.type === 'instance.restart_failed') {
+                // 다시 켰거나 사용자가 복구를 멈췄다: 최소 시간만 채우고 조용히 들어간다
+                if (!staleFor(d)) bubble.release(d.instanceId);
+            } else if (ev.type === 'instance.restart_failed' && !staleFor(d)) {
                 bubble.show({
                     kind: 'stopped',
                     text: tRef.current('saba.stopped', { name: nameOf(d) || '' }),
