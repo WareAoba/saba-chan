@@ -593,7 +593,8 @@ function App() {
                     failed={initFailed}
                     onRetry={async () => {
                         const res = await window.api.daemonRestart?.().catch((e) => ({ error: e.message }));
-                        if (res?.success) enterWithoutDaemon();
+                        // 성공하면 main이 멈춘 초기화를 이어서 마치고 ready를 보낸다: 진행 화면으로 돌아가 기다린다
+                        if (res?.success) setInitFailed(null);
                         else setInitFailed(res?.error || t('loading.daemon_failed'));
                     }}
                     onContinue={enterWithoutDaemon}
