@@ -616,6 +616,8 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "backup.done" => pick(&["at", "instanceId", "kind", "ok", "name"]),
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
+        // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
+        "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         _ => return None,
     };
     Some(json!({ "id": event.id, "type": event.kind, "data": data }))
@@ -684,6 +686,8 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
     let instance = payload.get("instance").and_then(Value::as_str);
     let input = payload.get("input").cloned().unwrap_or(Value::Null);
     match action {
+        // 여러 단계 계획 (I1)
+        "plan" if payload.get("steps").is_some() => crate::actions::plan_steps(server, &payload["steps"], caller).await,
         "plan" => crate::actions::plan(server, id, instance, &input, caller).await,
         "run_plan" => {
             let plan_id = payload.get("planId").and_then(Value::as_str).unwrap_or_default();
@@ -972,6 +976,9 @@ mod tests {
         assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
+        // 여러 단계 실행은 디스코드에서 시작한 것만
+        assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
+        assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");
     }
 
     #[test]

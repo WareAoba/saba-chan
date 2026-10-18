@@ -59,7 +59,15 @@
     "invite": "Invita al bot a tu servidor de Discord con este enlace:",
     "no_server_aliases": "No hay nombres de servidor definidos. Ejemplo: saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "En el chat, ahora puedes llamar a {{name}}: {{aliases}}",
-    "server_alias_cleared": "Se eliminaron los nombres de chat de {{name}}."
+    "server_alias_cleared": "Se eliminaron los nombres de chat de {{name}}.",
+    "allow_all": "Este servidor de Discord ve todos los servidores de este PC.",
+    "allow_none": "No hay servidores abiertos.",
+    "allow_bad_node": "Los ajustes de {{guild}} no son un objeto. Revísalos con saba-chan-cli bot config.",
+    "allow_all_saved": "{{guild}} ahora ve todos los servidores.",
+    "allow_saved": "{{guild}} ahora solo ve: {{servers}}",
+    "no_words": "Aún no hay palabras de comando. Ejemplo: saba-chan-cli bot word minecraft start ya",
+    "words_set": "En el chat, {{module}} {{command}} ahora también se llama: {{words}}",
+    "words_cleared": "Se quitaron las palabras de chat de {{module}} {{command}}."
   },
   "col": {
     "aliases": "Alias",

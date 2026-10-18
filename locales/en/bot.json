@@ -235,6 +235,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "Show chatbot settings",
+          "description": "On/off, wake words, confirmation, tool sets"
+        },
+        "set": {
+          "title": "Change chatbot settings",
+          "description": "On/off, wake words, confirmation, tool sets"
+        }
+      }
+    },
     "field": {
       "action": "Action",
       "instance": "Server",
@@ -256,7 +268,18 @@
       "guild": "Discord server",
       "locale": "Language",
       "sleeping": "Sleep",
-      "music": "Music"
+      "music": "Music",
+      "enabled": "On",
+      "model": "Model",
+      "memo": "Node memo",
+      "triggerWords": "Wake words",
+      "confirmCommands": "Confirm commands",
+      "ambientSeconds": "Chime-in interval (s)",
+      "sessionSeconds": "Follow-up window (s)",
+      "memory": "Memory",
+      "webSearch": "Web search",
+      "disabledTools": "Disabled tool sets",
+      "step": "Step"
     }
   }
 }

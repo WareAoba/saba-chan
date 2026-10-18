@@ -5,6 +5,9 @@
 //!   `server.query:<이름>`(읽기 전용, 모든 표면)으로 펼쳐진다.
 //! - 계획: [`plan`]은 입력을 검증하고 요약만 만든다(부작용 없음). planId는 요청자·길드·via에 묶이고 10분 산다.
 //! - 실행: [`run`]은 밑 라우트를 불러 `{success, result}`로 감싼다.
+//! - 여러 단계 계획(I1): [`plan_steps`]가 단계마다 검증·판정해 planId 하나로 묶는다 (`steps.rs`).
+//! - 원격 설정 변경은 바꾸기 전 값을 요약에 싣고, 실행 뒤 되돌리는 계획(`undoPlanId`)을 하나 더 만든다.
+//! - 원격 관리 실행은 길드당 시간당 횟수를 넘으면 `rate_limited` (`nodeSettings[guild].adminRunsPerHour`, 기본 10).
 //! - 표면: `surfaces`는 코드 상수다. 챗봇 경로는 여기 없는 액션을 레벨 판정 전에 거부한다(설정으로 풀 수 없다).
 //!   릴레이에서 온 요청만 P1 레벨을 본다(`crate::chat::permissions`). GUI·CLI는 판정하지 않는다.
 
@@ -131,6 +134,25 @@ pub static ACTIONS: &[Def] = &[
     Def { fields: &[path_field("module")], ..def("module.install", Kind::Admin, "caution", LOCAL_AND_CHATBOT, false, "POST", "/api/modules/manifest/:module/install") },
     Def { fields: &[path_field("extension")], ..def("extension.enable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/enable") },
     Def { fields: &[path_field("extension")], ..def("extension.disable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/disable") },
+    // 챗봇 설정 (I2-b). 디스코드에서는 소유자만, 그 길드 것만. 키는 받지 않고 챗봇 자신은 못 바꾼다(확인을 끄지 못하게)
+    Def { fields: &[path_field("guild")], ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
+    Def {
+        fields: &[
+            path_field("guild"),
+            field("enabled", "boolean", false),
+            field("model", "string", false),
+            field("memo", "string", false),
+            field("triggerWords", "array", false),
+            field("confirmCommands", "boolean", false),
+            field("ambientSeconds", "integer", false),
+            field("sessionSeconds", "integer", false),
+            field("memory", "boolean", false),
+            field("webSearch", "boolean", false),
+            field("disabledTools", "array", false),
+        ],
+        discord_level: Some(crate::chat::permissions::OWNER),
+        ..def("chatbot.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/guilds/:guild")
+    },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
     Def { fields: &[path_field("guild")], ..def("discord.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/discord/:guild/settings") },
     Def {
@@ -247,6 +269,18 @@ fn schema(def: &Def) -> Value {
     json!({ "type": "object", "properties": props, "required": required })
 }
 
+/// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
+fn cli_line(def: &Def) -> String {
+    let mut line = format!("saba do {}", def.id);
+    if def.instance {
+        line.push_str(" --server <server>");
+    }
+    for f in def.fields.iter().filter(|f| f.required) {
+        line.push_str(&format!(" {}=<{}>", f.name, f.name));
+    }
+    line
+}
+
 fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
     let title_key = format!("actions.{}.title", def.id);
     let description = translated(cat, &format!("actions.{}.description", def.id));
@@ -261,6 +295,7 @@ fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
         "title": translated(cat, &title_key).unwrap_or_else(|| def.id.to_string()),
         "description": description,
         "route": format!("{} {}", def.method, def.path.split('?').next().unwrap_or(def.path)),
+        "cli": cli_line(def),
     })
 }
 
@@ -299,6 +334,7 @@ fn command_view(cmd: &Value) -> Option<Value> {
         "description": cmd.get("description"),
         "source": cmd.get("source"),
         "route": "POST /api/instance/:id/command",
+        "cli": format!("saba do {}{} --server <server>", COMMAND_PREFIX, name),
     }))
 }
 
@@ -341,6 +377,7 @@ fn query_view(query: &ModuleQuery, locale: &Value) -> Value {
         "title": query_text(locale, query, "label").unwrap_or_else(|| query.name.clone()),
         "description": query_text(locale, query, "description"),
         "route": "POST /api/instance/:id/query/:name",
+        "cli": format!("saba do {}{} --server <server>", QUERY_PREFIX, query.name),
     })
 }
 
@@ -550,6 +587,11 @@ fn type_ok(ty: &str, v: &Value) -> bool {
 
 /// 선언과 입력으로 부를 라우트를 만든다 (검증만, 부작용 없음)
 async fn resolve(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller) -> Result<Resolved, ActionError> {
+    resolve_in(server, id, instance, input, caller, None).await
+}
+
+/// `module_hint`: 아직 없는 서버(같은 계획에서 만들 서버)의 모듈. 원격 설정 검사에 쓴다
+async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller, module_hint: Option<&str>) -> Result<Resolved, ActionError> {
     let mut input = match input {
         Value::Null => Map::new(),
         Value::Object(m) => m.clone(),
@@ -660,7 +702,7 @@ async fn resolve(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
     // 원격(디스코드·챗봇)은 비밀값과 실행 파일·폴더·인자를 바꾸지 못한다 (어느 깊이든, 모듈 필드 포함)
     if caller.remote.is_some() && matches!(def.id, "instance.settings.set" | "instance.create") {
         let module = match &instance {
-            Some(i) => server.supervisor.read().await.instance_store.get(i).map(|x| x.module_name.clone()),
+            Some(i) => server.supervisor.read().await.instance_store.get(i).map(|x| x.module_name.clone()).or_else(|| module_hint.map(str::to_string)),
             None => input.get("module_name").and_then(Value::as_str).map(str::to_string),
         };
         let rules = match module {
@@ -757,11 +799,33 @@ fn needs_confirm(r: &Resolved, caller: &Caller) -> bool {
     r.risk == "danger" || (r.kind == Kind::Admin && via_chatbot)
 }
 
+/// 계획 하나: 액션 하나 또는 여러 단계
+enum PlanBody {
+    One(Box<Resolved>),
+    Steps(Vec<steps::Step>),
+}
+
 struct StoredPlan {
-    resolved: Resolved,
+    body: PlanBody,
     owner: String,
     via_chatbot: bool,
     created: Instant,
+}
+
+impl StoredPlan {
+    fn new(body: PlanBody, caller: &Caller) -> Self {
+        Self { body, owner: caller.owner_key(), via_chatbot: caller.remote.as_ref().is_some_and(|w| w.via_chatbot), created: Instant::now() }
+    }
+}
+
+fn store_plan(plan_id: String, plan: StoredPlan) {
+    let mut store = plans().lock().unwrap_or_else(|e| e.into_inner());
+    store.retain(|_, p| p.created.elapsed() < PLAN_TTL);
+    store.insert(plan_id, plan);
+}
+
+fn expires_at() -> String {
+    chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now() + PLAN_TTL).to_rfc3339()
 }
 
 const PLAN_TTL: Duration = Duration::from_secs(600);
@@ -782,8 +846,6 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
     let confirm = needs_confirm(&r, caller);
-    let expires = std::time::SystemTime::now() + PLAN_TTL;
-    let expires_at = chrono::DateTime::<chrono::Utc>::from(expires).to_rfc3339();
     let view = json!({
         "success": true,
         "planId": plan_id,
@@ -792,15 +854,22 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
         "summary": summary,
         "risk": r.risk,
         "needsConfirm": confirm,
-        "expiresAt": expires_at,
+        "expiresAt": expires_at(),
     });
-    let mut store = plans().lock().unwrap_or_else(|e| e.into_inner());
-    store.retain(|_, p| p.created.elapsed() < PLAN_TTL);
-    store.insert(
-        plan_id,
-        StoredPlan { resolved: r, owner: caller.owner_key(), via_chatbot: caller.remote.as_ref().is_some_and(|w| w.via_chatbot), created: Instant::now() },
-    );
+    store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller));
     Ok(view)
+}
+
+/// 원격 설정 변경의 바꾸기 전 값 (`input`의 키마다). 인스턴스 칸에 없으면 모듈 설정에서, 그것도 없으면 Null
+async fn current_values(server: &IPCServer, instance: &str, keys: impl Iterator<Item = &String>) -> Map<String, Value> {
+    let sup = server.supervisor.read().await;
+    let Some(inst) = sup.instance_store.get(instance) else { return Map::new() };
+    let whole = serde_json::to_value(inst).unwrap_or_default();
+    keys.map(|k| {
+        let v = whole.get(k).filter(|v| !v.is_null()).or_else(|| inst.module_settings.get(k)).cloned().unwrap_or(Value::Null);
+        (k.clone(), v)
+    })
+    .collect()
 }
 
 /// 무엇을 바꾸는지 사람이 읽을 요약 `[{labelKey, label, value}]`
@@ -815,9 +884,19 @@ async fn summarize(server: &IPCServer, r: &Resolved, locale: &str) -> Vec<Value>
         let name = server.supervisor.read().await.instance_store.get(i).map(|x| x.name.clone()).unwrap_or_else(|| i.clone());
         out.push(item("instance", json!(name)));
     }
+    // 서버 설정은 바꾸기 전 값을 함께 (`before`)
+    let before = match (r.id.as_str(), &r.instance) {
+        ("instance.settings.set", Some(i)) => Some(current_values(server, i, r.input.keys()).await),
+        _ => None,
+    };
     for (k, v) in &r.input {
-        out.push(item(k, v.clone()));
+        let mut row = item(k, v.clone());
+        if let Some(b) = &before {
+            row["before"] = b.get(k).cloned().unwrap_or(Value::Null);
+        }
+        out.push(row);
     }
+
     match r.id.as_str() {
         // 덮어쓸 대상: 복원할 백업의 시각
         "backup.restore" => {
@@ -845,19 +924,11 @@ async fn summarize(server: &IPCServer, r: &Resolved, locale: &str) -> Vec<Value>
     out
 }
 
-/// `POST /api/actions/:id/run`: 입력으로 바로, 또는 planId로
+/// `POST /api/actions/:id/run`: 입력으로 바로, 또는 planId로 (여러 단계 계획은 id `plan` 또는 빈 값)
 pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, plan_id: Option<&str>, caller: &Caller) -> Result<Value, ActionError> {
-    let r = match plan_id {
+    let (r, caller) = match plan_id {
         Some(pid) => {
-            let stored = {
-                let mut store = plans().lock().unwrap_or_else(|e| e.into_inner());
-                store.retain(|_, p| p.created.elapsed() < PLAN_TTL);
-                let Some(p) = store.get(pid) else { return Err(ActionError::new(404, "plan_expired", "The plan expired or does not exist")) };
-                if p.owner != caller.owner_key() || (!id.is_empty() && p.resolved.id != id) {
-                    return Err(ActionError::new(403, "plan_not_yours", "This plan belongs to another request"));
-                }
-                store.remove(pid).expect("checked")
-            };
+            let stored = take_plan(pid, id, caller)?;
             // 계획을 만든 경로의 상한을 쓴다 (챗봇이 만든 계획은 사람이 확인해도 챗봇 상한)
             let mut caller = caller.clone();
             if let Some(who) = caller.remote.as_mut() {
@@ -866,8 +937,22 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             if stored.via_chatbot {
                 caller.surface = Chatbot;
             }
-            authorize(server, &stored.resolved, &caller).await?;
-            stored.resolved
+            match stored.body {
+                PlanBody::Steps(steps) => {
+                    // 누른 사람으로 지금 있는 단계를 다시 판정한다 (새 서버를 쓰는 단계는 그 차례에)
+                    for step in &steps {
+                        if let steps::Step::Ready(r) = step {
+                            authorize(server, r, &caller).await?;
+                        }
+                    }
+                    admit(server, &caller).await?;
+                    return steps::run_steps(server, steps, caller).await;
+                }
+                PlanBody::One(r) => {
+                    authorize(server, &r, &caller).await?;
+                    (*r, caller)
+                }
+            }
         }
         None => {
             let r = resolve(server, id, instance, input, caller).await?;
@@ -876,8 +961,67 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             if caller.remote.is_some() && needs_confirm(&r, caller) {
                 return Err(ActionError::new(409, "confirm_required", "This action needs a plan and a confirmation"));
             }
-            r
+            (r, caller.clone())
         }
+    };
+    if r.kind == Kind::Admin {
+        admit(server, &caller).await?;
+    }
+    Ok(execute(server, &r, &caller).await)
+}
+
+/// planId를 꺼낸다 (1회용). 다른 요청자·다른 액션이면 `plan_not_yours`
+fn take_plan(pid: &str, id: &str, caller: &Caller) -> Result<StoredPlan, ActionError> {
+    let mut store = plans().lock().unwrap_or_else(|e| e.into_inner());
+    store.retain(|_, p| p.created.elapsed() < PLAN_TTL);
+    let Some(p) = store.get(pid) else { return Err(ActionError::new(404, "plan_expired", "The plan expired or does not exist")) };
+    let same_action = match &p.body {
+        PlanBody::One(r) => id.is_empty() || r.id == id,
+        PlanBody::Steps(_) => id.is_empty() || id == steps::PLAN_ID,
+    };
+    if p.owner != caller.owner_key() || !same_action {
+        return Err(ActionError::new(403, "plan_not_yours", "This plan belongs to another request"));
+    }
+    Ok(store.remove(pid).expect("checked"))
+}
+
+/// 원격 관리 실행 횟수 (길드당 최근 한 시간). 여러 단계 계획은 한 번으로 센다
+const DEFAULT_ADMIN_RUNS_PER_HOUR: usize = 10;
+
+fn admin_runs() -> &'static Mutex<HashMap<String, std::collections::VecDeque<Instant>>> {
+    static RUNS: std::sync::OnceLock<Mutex<HashMap<String, std::collections::VecDeque<Instant>>>> = std::sync::OnceLock::new();
+    RUNS.get_or_init(Default::default)
+}
+
+async fn admit(server: &IPCServer, caller: &Caller) -> Result<(), ActionError> {
+    let Some(guild) = caller.remote.as_ref().and_then(|w| w.guild_id.clone()) else { return Ok(()) };
+    let limit = {
+        let bot = server.config_store.get_bot_config().await;
+        bot.node_settings.get(&guild).and_then(|n| n.get("adminRunsPerHour")).and_then(Value::as_u64).filter(|n| *n > 0).map(|n| n as usize).unwrap_or(DEFAULT_ADMIN_RUNS_PER_HOUR)
+    };
+    let hour = Duration::from_secs(3600);
+    let mut runs = admin_runs().lock().unwrap_or_else(|e| e.into_inner());
+    let recent = runs.entry(guild).or_default();
+    while recent.front().is_some_and(|t| t.elapsed() >= hour) {
+        recent.pop_front();
+    }
+    if recent.len() >= limit {
+        let wait = recent.front().map(|t| hour.saturating_sub(t.elapsed()).as_secs()).unwrap_or(0);
+        return Err(ActionError {
+            data: json!({ "args": { "perHour": limit, "retryInSecs": wait } }),
+            ..ActionError::new(429, "rate_limited", "Too many changes from this Discord server in the last hour")
+        });
+    }
+    recent.push_back(Instant::now());
+    Ok(())
+}
+
+/// 푼 액션 하나를 실행한다: 밑 라우트 응답을 `{success, actionId, status, result}`로.
+/// 원격 서버 설정 변경이 성공하면 바꾸기 전 값으로 되돌리는 계획을 함께 만든다 (`undoPlanId`)
+async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
+    let previous = match (r.id.as_str(), &r.instance, &caller.remote) {
+        ("instance.settings.set", Some(i), Some(_)) => Some((i.clone(), current_values(server, i, r.input.keys()).await)),
+        _ => None,
     };
     let resp = crate::audit::with_origin(caller.origin.clone(), call_as(server, r.method, &r.uri, r.body.clone(), Some(caller.origin.clone()))).await;
     let mut result = resp.body;
@@ -894,9 +1038,28 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
     let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
     // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령은 라우트가 남긴다)
     if r.kind == Kind::Admin {
-        record_admin(server, &r, caller, ok, resp.status.as_u16()).await;
+        record_admin(server, r, caller, ok, resp.status.as_u16()).await;
     }
-    Ok(json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result }))
+    let mut out = json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result });
+    if let (true, Some((instance, before))) = (ok, previous) {
+        if let Some(undo) = undo_plan(server, &instance, before, caller).await {
+            out["undoPlanId"] = json!(undo);
+            out["undoExpiresAt"] = json!(expires_at());
+        }
+    }
+    out
+}
+
+/// 바꾸기 전 값으로 되돌리는 계획 (같은 요청자, 같은 경로 상한). 전에 값이 없던 키는 되돌릴 수 없어 뺀다
+async fn undo_plan(server: &IPCServer, instance: &str, before: Map<String, Value>, caller: &Caller) -> Option<String> {
+    let input: Map<String, Value> = before.into_iter().filter(|(_, v)| !v.is_null()).collect();
+    if input.is_empty() {
+        return None;
+    }
+    let r = resolve(server, "instance.settings.set", Some(instance), &Value::Object(input), caller).await.ok()?;
+    let plan_id = new_plan_id();
+    store_plan(plan_id.clone(), StoredPlan::new(PlanBody::One(Box::new(r)), caller));
+    Some(plan_id)
 }
 
 /// 관리 액션 감사 한 줄: `action`은 액션 id, 입력은 비밀을 가려 남긴다
@@ -1014,6 +1177,9 @@ async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value
         Err(e) => InternalResponse { status: axum::http::StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e.to_string() }) },
     }
 }
+
+mod steps;
+pub use steps::{plan_steps, run_status, PLAN_ID};
 
 #[cfg(test)]
 mod tests;

@@ -682,8 +682,29 @@ pub enum BotCmd {
         #[arg(long)]
         clear: bool,
     },
+    /// Servers a Discord server can see and run. No servers: show. `--all`: every server
+    Allow {
+        guild: String,
+        /// Servers by name or id (replace the current list)
+        #[arg(conflicts_with = "all")]
+        servers: Vec<String>,
+        /// No limit: every server of this PC
+        #[arg(long)]
+        all: bool,
+    },
+    /// Chat words for one command of a game (e.g. "켜" for start): `word`, `word MODULE COMMAND WORDS…`, `word MODULE COMMAND --clear`
+    Word {
+        module: Option<String>,
+        command: Option<String>,
+        /// New words (replace the old ones)
+        words: Vec<String>,
+        /// Remove this command's words
+        #[arg(long)]
+        clear: bool,
+    },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
+
     /// Show or change any bot setting: KEY=VALUE (dotted keys, JSON values)
     Config {
         #[arg(value_name = "KEY=VALUE")]

@@ -235,6 +235,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "查看聊天机器人设置",
+          "description": "开关、唤醒词、确认、工具组"
+        },
+        "set": {
+          "title": "更改聊天机器人设置",
+          "description": "开关、唤醒词、确认、工具组"
+        }
+      }
+    },
     "field": {
       "action": "操作",
       "instance": "服务器",
@@ -256,7 +268,18 @@
       "guild": "Discord 服务器",
       "locale": "语言",
       "sleeping": "睡眠",
-      "music": "音乐"
+      "music": "音乐",
+      "enabled": "开启",
+      "model": "模型",
+      "memo": "节点备注",
+      "triggerWords": "唤醒词",
+      "confirmCommands": "确认命令",
+      "ambientSeconds": "插话间隔(秒)",
+      "sessionSeconds": "后续对话时间(秒)",
+      "memory": "记忆",
+      "webSearch": "网页搜索",
+      "disabledTools": "已关闭的工具组",
+      "step": "步骤"
     }
   }
 }

@@ -235,6 +235,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "Ver ajustes del chatbot",
+          "description": "Activar, palabras de llamada, confirmación, herramientas"
+        },
+        "set": {
+          "title": "Cambiar ajustes del chatbot",
+          "description": "Activar, palabras de llamada, confirmación, herramientas"
+        }
+      }
+    },
     "field": {
       "action": "Acción",
       "instance": "Servidor",
@@ -256,7 +268,18 @@
       "guild": "Servidor de Discord",
       "locale": "Idioma",
       "sleeping": "Reposo",
-      "music": "Música"
+      "music": "Música",
+      "enabled": "Activado",
+      "model": "Modelo",
+      "memo": "Nota del nodo",
+      "triggerWords": "Palabras de llamada",
+      "confirmCommands": "Confirmar comandos",
+      "ambientSeconds": "Intervalo de intervención (s)",
+      "sessionSeconds": "Ventana de seguimiento (s)",
+      "memory": "Memoria",
+      "webSearch": "Búsqueda web",
+      "disabledTools": "Herramientas desactivadas",
+      "step": "Paso"
     }
   }
 }

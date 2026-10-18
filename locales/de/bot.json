@@ -235,6 +235,18 @@
         }
       }
     },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "Chatbot-Einstellungen anzeigen",
+          "description": "Ein/Aus, Rufwörter, Bestätigung, Werkzeuge"
+        },
+        "set": {
+          "title": "Chatbot-Einstellungen ändern",
+          "description": "Ein/Aus, Rufwörter, Bestätigung, Werkzeuge"
+        }
+      }
+    },
     "field": {
       "action": "Aktion",
       "instance": "Server",
@@ -256,7 +268,18 @@
       "guild": "Discord-Server",
       "locale": "Sprache",
       "sleeping": "Ruhemodus",
-      "music": "Musik"
+      "music": "Musik",
+      "enabled": "Ein",
+      "model": "Modell",
+      "memo": "Knotennotiz",
+      "triggerWords": "Rufwörter",
+      "confirmCommands": "Befehle bestätigen",
+      "ambientSeconds": "Einwurf-Intervall (s)",
+      "sessionSeconds": "Folgegespräch (s)",
+      "memory": "Gedächtnis",
+      "webSearch": "Websuche",
+      "disabledTools": "Deaktivierte Werkzeuge",
+      "step": "Schritt"
     }
   }
 }

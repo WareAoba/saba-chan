@@ -59,7 +59,15 @@
     "invite": "用此链接将机器人邀请到你的 Discord 服务器：",
     "no_server_aliases": "未设置服务器名称。示例：saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "现在在聊天中可以这样称呼 {{name}}：{{aliases}}",
-    "server_alias_cleared": "已移除 {{name}} 的聊天名称。"
+    "server_alias_cleared": "已移除 {{name}} 的聊天名称。",
+    "allow_all": "这个 Discord 服务器可以看到本机的所有服务器。",
+    "allow_none": "没有开放的服务器。",
+    "allow_bad_node": "{{guild}} 的设置不是对象。请用 saba-chan-cli bot config 检查。",
+    "allow_all_saved": "{{guild}} 现在可以看到所有服务器。",
+    "allow_saved": "{{guild}} 现在只能看到：{{servers}}",
+    "no_words": "还没有命令别称。例：saba-chan-cli bot word minecraft start 开",
+    "words_set": "现在可以在聊天中这样调用 {{module}} {{command}}：{{words}}",
+    "words_cleared": "已删除 {{module}} {{command}} 的聊天别称。"
   },
   "col": {
     "aliases": "别名",

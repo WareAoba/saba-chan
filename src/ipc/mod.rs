@@ -737,6 +737,8 @@ impl IPCServer {
             )
             // ── 액션 카탈로그 (P2) ──
             .route("/api/actions", get(handlers::actions::list_actions))
+            .route("/api/actions/plan", post(handlers::actions::plan_steps))
+            .route("/api/actions/runs/:run_id", get(handlers::actions::run_status))
             .route("/api/actions/:id/plan", post(handlers::actions::plan_action))
             .route("/api/actions/:id/run", post(handlers::actions::run_action))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
@@ -784,6 +786,7 @@ impl IPCServer {
             // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
             .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
             .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
+            .route("/api/chatbot/guilds/:guild", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
             // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──
