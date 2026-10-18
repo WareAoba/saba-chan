@@ -1017,11 +1017,11 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
     Ok(execute(server, &r, &caller).await)
 }
 
-/// planId를 꺼낸다 (1회용). 다른 요청자·다른 액션이면 `plan_not_yours`
 fn is_steps_plan(pid: &str) -> bool {
     plans().lock().unwrap_or_else(|e| e.into_inner()).get(pid).is_some_and(|p| matches!(p.body, PlanBody::Steps(_)))
 }
 
+/// planId를 꺼낸다 (1회용). 다른 요청자·다른 액션이면 `plan_not_yours`
 fn take_plan(pid: &str, id: &str, caller: &Caller) -> Result<StoredPlan, ActionError> {
     let mut store = plans().lock().unwrap_or_else(|e| e.into_inner());
     store.retain(|_, p| p.created.elapsed() < PLAN_TTL);
