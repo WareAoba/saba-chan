@@ -747,6 +747,15 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/relay/link-requests — 디스코드에서 코드 없이 온 연결 요청 (J1-b)
+    pub async fn link_requests(&self, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query("/api/relay/link-requests", &[("relayUrl", relay_url.map(str::to_string))])).await
+    }
+    /// POST /api/relay/link-requests/:id — 수락·거절
+    pub async fn answer_link_request(&self, id: &str, accept: bool, relay_url: Option<&str>) -> Result<Value> {
+        let path = format!("/api/relay/link-requests/{}", seg(id));
+        self.post(&with_query(&path, &[("relayUrl", relay_url.map(str::to_string))]), json!({ "accept": accept })).await
+    }
     /// POST /api/chat/command — 디스코드와 같은 텍스트 명령 처리 (`{reply}`)
     pub async fn chat(&self, text: &str) -> Result<Value> {
         self.post("/api/chat/command", json!({ "text": text })).await

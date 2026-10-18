@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-local-load"
+description = "Enables the settings_local_load command without any pre-configured scope."
+commands.allow = ["settings_local_load"]
+
+[[permission]]
+identifier = "deny-settings-local-load"
+description = "Denies the settings_local_load command without any pre-configured scope."
+commands.deny = ["settings_local_load"]

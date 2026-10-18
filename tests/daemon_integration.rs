@@ -595,6 +595,41 @@ async fn test_ipc_multiple_instances_are_independent() {
     cleanup_test_instances();
 }
 
+/// 서버 추가 때 익스텐션이 물은 칸(`AddServer.options`)은 만들 때 `extension_data`로 한 번에 저장된다 (Q-7)
+#[tokio::test]
+async fn test_ipc_create_instance_saves_extension_data() {
+    let (base_url, _sup, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+    let modules: Value = client.get(format!("{}/api/modules", base_url)).send().await.unwrap().json().await.unwrap();
+    let module_name = modules["modules"][0]["name"].as_str().unwrap();
+
+    let bad = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({ "name": format!("test-extdata-bad-{}", pick_free_port()), "module_name": module_name, "extension_data": "boxed" }))
+        .send().await.unwrap();
+    assert_eq!(bad.status(), reqwest::StatusCode::BAD_REQUEST);
+    let bad: Value = bad.json().await.unwrap();
+    assert_eq!(bad["error_code"], "invalid_format");
+
+    let resp = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": format!("test-extdata-{}", pick_free_port()),
+            "module_name": module_name,
+            "extension_data": { "boxed": true, "skip": null }
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+    let id = resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+    let inst: Value = client.get(format!("{}/api/instance/{}", base_url, id)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(inst["extension_data"]["boxed"], true, "{inst}");
+    assert!(inst["extension_data"].get("skip").is_none());
+
+    client.delete(format!("{}/api/instance/{}", base_url, id)).send().await.unwrap();
+    server_task.abort();
+    cleanup_test_instances();
+}
+
 // ═══════════════════════════════════════════════════════
 // 7. 서버 업데이트 확인 API
 // ═══════════════════════════════════════════════════════

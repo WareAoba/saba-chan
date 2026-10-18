@@ -37,6 +37,7 @@
     "confirm_unpair": "この PC を Discord ボットから切断し、ペアリングを解除しますか？",
     "connection": "接続",
     "last_error": "最後のエラー",
+    "token_replaced": "このDiscordアカウントのPC接続は別のPCに移りました。このPCを再び使うには `saba-chan-cli bot pair` で接続し直してください。",
     "last_heartbeat": "最後のハートビート",
     "list_empty": "まだ何もありません。",
     "no_aliases": "エイリアスはまだありません。追加するには: saba-chan-cli bot alias add NAME MODULE",
@@ -59,7 +60,18 @@
     "invite": "次のリンクからボットを Discord サーバーに招待してください:",
     "no_server_aliases": "サーバーの呼び名が設定されていません。例: saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "チャットで {{name}} を次の名前で呼べるようになりました: {{aliases}}",
-    "server_alias_cleared": "{{name}} のチャット用の名前を削除しました。"
+    "server_alias_cleared": "{{name}} のチャット用の名前を削除しました。",
+    "allow_all": "このDiscordサーバーはこのPCのすべてのサーバーを見られます。",
+    "allow_none": "開いているサーバーがありません。",
+    "allow_bad_node": "{{guild}} の設定がオブジェクトではありません。saba-chan-cli bot config で確認してください。",
+    "allow_all_saved": "{{guild}} はすべてのサーバーを見られるようになりました。",
+    "allow_saved": "{{guild}} で見られるのは次のサーバーだけです: {{servers}}",
+    "no_words": "コマンドの呼び名がまだありません。例: saba-chan-cli bot word minecraft start 起動",
+    "words_set": "チャットで {{module}} {{command}} をこう呼べます: {{words}}",
+    "words_cleared": "{{module}} {{command}} の呼び名を消しました。",
+    "link_accepted": "{{guild}} をこのPCに接続しました。",
+    "link_declined": "接続リクエストを拒否しました。",
+    "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。"
   },
   "col": {
     "aliases": "エイリアス",
@@ -170,6 +182,7 @@
   "exit": {
     "crash": "クラッシュ",
     "in_game_stop": "ゲーム内から停止",
+    "start_failed": "起動に失敗",
     "restarting_in": "{{secs}} 秒後に再起動",
     "unknown_exit": "終了（閉じられたか強制終了）",
     "user_stop": "ユーザーが停止"

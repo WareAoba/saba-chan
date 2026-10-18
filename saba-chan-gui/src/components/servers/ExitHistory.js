@@ -2,8 +2,18 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StatusChip } from '../ui/StatusChip';
 
-const KIND_TONE = { crash: 'stop', unknown_exit: 'warn', in_game_stop: 'info', user_stop: 'idle' };
+const KIND_TONE = { crash: 'stop', start_failed: 'stop', unknown_exit: 'warn', in_game_stop: 'info', user_stop: 'idle' };
 const SHOW_MAX = 8;
+
+/** 데몬이 남기는 재시작 안 함 이유(영문 한 줄) → 현지화. 모르는 문구는 그대로 */
+export function exitNote(note, t) {
+    if (note === 'auto_restart is off') return t('shell.exit_note_auto_off');
+    const gaveUp = /^auto restart gave up after (\d+) restarts/.exec(note);
+    if (gaveUp) return t('shell.exit_note_gave_up', { count: Number(gaveUp[1]) });
+    const failed = /^restart failed: (.*)$/s.exec(note);
+    if (failed) return t('shell.exit_note_restart_failed', { reason: failed[1] });
+    return note;
+}
 
 /**
  * 최근 종료 기록 (데몬 A1: GET /api/instance/:id/events).
@@ -63,7 +73,7 @@ export function ExitHistory({ server }) {
                                 )}
                                 {(e.note || e.evidence) && (
                                     <span className="muted" title={e.evidence || undefined}>
-                                        {e.note || e.evidence}
+                                        {e.note ? exitNote(e.note, t) : e.evidence}
                                     </span>
                                 )}
                             </span>

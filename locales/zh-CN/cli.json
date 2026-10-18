@@ -37,6 +37,7 @@
     "confirm_unpair": "要断开此电脑与 Discord 机器人的连接并取消配对吗？",
     "connection": "连接",
     "last_error": "最近错误",
+    "token_replaced": "此 Discord 账号的电脑连接已转移到另一台电脑。要再次使用这台电脑,请用 `saba-chan-cli bot pair` 重新连接。",
     "last_heartbeat": "最近心跳",
     "list_empty": "暂无内容。",
     "no_aliases": "还没有别名。添加一个：saba-chan-cli bot alias add NAME MODULE",
@@ -59,7 +60,18 @@
     "invite": "用此链接将机器人邀请到你的 Discord 服务器：",
     "no_server_aliases": "未设置服务器名称。示例：saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "现在在聊天中可以这样称呼 {{name}}：{{aliases}}",
-    "server_alias_cleared": "已移除 {{name}} 的聊天名称。"
+    "server_alias_cleared": "已移除 {{name}} 的聊天名称。",
+    "allow_all": "这个 Discord 服务器可以看到本机的所有服务器。",
+    "allow_none": "没有开放的服务器。",
+    "allow_bad_node": "{{guild}} 的设置不是对象。请用 saba-chan-cli bot config 检查。",
+    "allow_all_saved": "{{guild}} 现在可以看到所有服务器。",
+    "allow_saved": "{{guild}} 现在只能看到：{{servers}}",
+    "no_words": "还没有命令别称。例：saba-chan-cli bot word minecraft start 开",
+    "words_set": "现在可以在聊天中这样调用 {{module}} {{command}}：{{words}}",
+    "words_cleared": "已删除 {{module}} {{command}} 的聊天别称。",
+    "link_accepted": "已将 {{guild}} 连接到此电脑。",
+    "link_declined": "已拒绝连接请求。",
+    "pair_gui_hint": "也可以在 GUI 的 Discord 页面查看 Discord 连接状态。"
   },
   "col": {
     "aliases": "别名",
@@ -170,6 +182,7 @@
   "exit": {
     "crash": "崩溃",
     "in_game_stop": "在游戏内停止",
+    "start_failed": "启动失败",
     "restarting_in": "{{secs}} 秒后重启",
     "unknown_exit": "已结束（被关闭或被终止）",
     "user_stop": "由你停止"

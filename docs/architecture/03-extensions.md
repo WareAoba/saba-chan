@@ -53,7 +53,7 @@
 | `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/:1165,1240`). |
 | `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. 옛 이름 `server.post_stop`은 `server.stop`으로 바꿔 읽는다(`ext/:15-17,40-51`). |
 | `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:228-286`). |
-| `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. CLI가 `cli.slots`만 해석한다(7.4). |
+| `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. `cli.slots`는 데이터 slot 선언이다(4.3). 인터페이스는 이 원본 대신 정규화된 `slots`를 읽는다. |
 | `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:454-458,913-918`). |
 | `instance_fields` | `HashMap<String, FieldDef>` | `{}` | (a) disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`), (b) ~~목록 응답 → CLI가 자동 설정 슬롯을 만든다~~(PR #6 CLI는 쓰지 않는다). **default 값을 인스턴스에 주입하는 코드는 없다.** |
 | `config_fields` | `HashMap<String, FieldDef>` | `{}` | 목록 응답에만 실린다. 값 저장은 `config.json`의 `extensions.settings.<id>`. 스키마 검증은 없다. |
@@ -68,7 +68,7 @@
 - **`GuiManifest`** (`ext/:307-317`): `bundle`, `styles`, `builtin: Option<bool>`, `slots: HashMap<String,String>`.
   - `builtin`은 daemon에서 읽지 않는다.
   - `slots`도 **GUI에서 읽지 않는다.** GUI는 번들의 `registerSlots()` 반환값만 쓴다(4절).
-- **`CliManifest`** (`ext/:320-326`): `slots: HashMap<String, Value>`. 형태가 자유로운 JSON이다.
+- **`CliManifest`** (`ext/:320-326`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
 - **`FieldDef`** (`ext/:328-336`): `type`(필수), `default: Option<Value>`, `optional: Option<bool>`.
 - **`ExtensionCommand`** (`ext/:275-293`): `name`, `label?`, `description?`, `risk?`(safe/caution/danger), `inputs[]`(모듈 명령과 같은 `CommandInput`), `module`, `function`, `condition?`.
 
@@ -229,17 +229,17 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ## 4. GUI 익스텐션 계약
 
-### 4.1 로딩 경로 (Electron)
+### 4.1 로딩 경로 (Tauri)
 
-1. Renderer `window.api.extensionList()` → main.js `ipcMain.handle('extension:list')` → `GET /api/extensions`(`saba-chan-gui/main.js:2084`, `preload.js:39-53`). 모든 호출은 main 프로세스가 axios로 대행한다(토큰 인증 포함).
+1. Renderer `window.api.extensionList()` → JS 브리지 `saba-chan-gui/src/api/createApi.js:510-517` → Tauri 명령 `daemon_request` → `GET /api/extensions`. 확장 관련 메서드는 `createApi.js:510-630`에 있다. 데몬 요청은 Tauri 셸이 대행한다(토큰 인증 포함, `src-tauri/src/native.rs:17-42`, `daemon.rs:213-229`).
 2. `ExtensionProvider`(`src/contexts/ExtensionContext.js:93-189`)가 enabled 익스텐션마다:
-   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:23-57`). `ext.gui`가 없으면 요청하지 않는다(`:32-34`).
+   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`(`responseType:'text'`, `createApi.js:551-561`)로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:23-57`). `ext.gui`가 없으면 요청하지 않는다(`:32-34`).
    - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:75-77`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
    - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:59-66`).
    - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. manifest의 `gui.slots`는 쓰지 않는다.
    - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:149-156`).
-3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.js:11-13`), 번들은 `window.React`를 참조한다(external 처리). 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
-4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`(preload가 노출한 모든 IPC)에 접근할 수 있다. 패키지 설치 때는 sha256을 확인하지만, 번들을 로드할 때는 검증하지 않는다.
+3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.js:15-16`), 번들은 `window.React`를 참조한다(external 처리). 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
+4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`·`window.electron`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, `daemon.rs:93-107`)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다. 패키지 설치 때는 sha256을 확인하지만, 번들을 로드할 때는 검증하지 않는다.
 
 현재 `gui`를 가진 익스텐션은 없으므로 이 경로는 실제로 쓰이지 않는다.
 
@@ -255,7 +255,22 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 | `AddServer.options` | `AddInstanceNewServer.js:228` | `t` | 없음 |
 
 - `server` 객체는 `/api/servers`의 `ServerInfo`다. 여기서 `extension_data`와 `extension_status[<extension_id>]`(list_enrich 결과)를 컴포넌트가 읽는다.
-- 슬롯 이름은 호스트에 하드코딩되어 있고, 슬롯 목록을 문서화하거나 검증하는 장치가 없다. CLI 쪽 슬롯 목록(`InstanceList.badge`, `InstanceDetail.status`, `CreateInstance.options`)은 `saba-chan-cli/src/slots.rs:1-8` 모듈 주석으로만 있다(PR #6 기준).
+- 슬롯 이름은 호스트에 하드코딩되어 있고 검증하는 장치는 없다. 번들 없이 데이터만 선언하는 slot은 4.3이다.
+
+### 4.3 데이터 slot (manifest `cli.slots`, GUI·CLI 공통)
+
+코드 없이 manifest에 데이터만 적는 slot. 이름은 GUI slot 이름과 같다. 옛 CLI 이름은 별칭으로 받아 새 이름으로 바꾼다(한 릴리스 뒤 제거, `SLOT_ALIASES`).
+
+| 이름 | 옛 이름 | manifest 형태 | 인터페이스가 읽는 곳 |
+|---|---|---|---|
+| `ServerCard.badge` | `InstanceList.badge` | `{text, condition?}` | `GET /api/servers` 각 서버 `slots["ServerCard.badge"]` = `[{extension, text}]` |
+| `ServerDetail.status` | `InstanceDetail.status` | `[{label, value_from}]` | 같은 곳 `slots["ServerDetail.status"]` = `[{extension, label, value}]` |
+| `AddServer.options` | `CreateInstance.options` | `[{field, type, label, default?}]` | `GET /api/extensions` 각 익스텐션 `slots["AddServer.options"]` |
+
+- 판정은 데몬이 한 번만 한다(`ExtensionManager::server_slots`, `src/extension/mod.rs`). 켜진 익스텐션만, priority·id 순. `condition`은 `evaluate_condition`(`instance.ext_data.<키>`가 참). `value`는 `extension_status[<ext>][value_from]` → `extension_status.default[value_from]` → `extension_data[value_from]` 순으로 찾고, 없거나 `value_from`이 비밀값 이름(`password`·`token`·`secret`이거나 `_password` 등으로 끝남)이면 그 줄을 뺀다(목록은 원격으로도 나간다). 문자열이 아니면 JSON 문자열로 바꾼다. 항목이 없으면 `slots` 키 자체가 없다.
+- `/api/extensions`의 `slots`는 `normalized_slots(cli)`: 통일 이름 키, 값은 늘 배열. 옛 이름과 새 이름을 함께 쓰면 이어 붙인다.
+- `AddServer.options`의 답은 `POST /api/instances` 본문 `extension_data: {field: value}`로 보낸다. 데몬이 null이 아닌 값을 새 인스턴스 `extension_data`에 넣는다(객체가 아니면 400 `invalid_format`). 설치 방식이 주는 값이 뒤에서 덮는다.
+- CLI(`saba-chan-cli/src/slots.rs`)는 이 결과를 그대로 출력한다. GUI는 같은 자리에서 번들 컴포넌트와 데이터 slot을 함께 그린다.
 - ~~`AddServer.options`의 `use_container` 의미가 호스트와 daemon에 하드코딩된 docker 전용 계약이다.~~ → 해결: 슬롯은 `t`만 받고, daemon `create_instance`에 `use_container`가 없다.
 
 ### 4.3 i18n
@@ -265,7 +280,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 preload/main IPC 바인딩이 **없다**. CLI `saba-chan-cli/src/client.rs:436-442`에만 있다(`extension config`, PR #6 기준).
+- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드(`createApi.js`)가 **없다**. CLI `saba-chan-cli/src/client.rs:436-442`에만 있다(`extension config`, PR #6 기준).
 - `extension:icon` → SabaStorage(`SabaStorage.js:982`), `extension:initStatus` → `hooks/useExtensionInitStatus.js`.
 
 ---
@@ -370,5 +385,4 @@ daemon을 우회하는 interface 동작:
 ### 7.4 GUI/CLI 슬롯 체계 비대칭
 
 - GUI: 번들의 `registerSlots()`가 기준이고 manifest의 `gui.slots`는 무시한다.
-- CLI: manifest의 `cli.slots`(데이터 기반)가 기준이다(PR #6 기준). `GET /api/extensions` 결과에서 켜진 익스텐션의 `cli.slots`를 모은다(`saba-chan-cli/src/slots.rs:24-52`, 호출 `cmd/server.rs:112-117`, `cmd/status.rs:42`). 지원 슬롯은 `InstanceList.badge`(목록 뱃지, `cmd/status.rs:189`), `InstanceDetail.status`(서버 정보 줄, `cmd/server.rs:228`), `CreateInstance.options`(서버 추가 때 물어볼 칸, `cmd/server.rs:402`) 셋이고 GUI 슬롯 이름(`ServerCard.*` 등)과 겹치지 않는다. 예전 `InstanceSettings.fields` 자동 파생과 `EXT_SLOTS_INIT` 라인 프로토콜은 없다.
-- CLI badge의 `condition` 평가는 CLI 쪽 `condition_holds`가 따로 구현한다(`slots.rs:87-99`). daemon `evaluate_condition`(`src/extension/mod.rs:1179-1195`)과 중복 구현이지만 판정은 같다(`instance.ext_data.<키>`만, bool·0이 아닌 수·비어 있지 않은 문자열이 참, 모르는 패턴은 false). ~~CLI는 bool만 참으로 보고 모르는 패턴은 표시한다~~ → 해결.
+- ~~CLI: manifest의 `cli.slots`만 읽고 이름이 GUI와 다르며, `condition` 판정을 CLI `condition_holds`가 따로 한다~~ → 해결(Q-7): 데이터 slot은 GUI 이름으로 통일했고 판정은 데몬이 한 번만 한다(4.3). 예전 `InstanceSettings.fields` 자동 파생과 `EXT_SLOTS_INIT` 라인 프로토콜은 없다.

@@ -141,7 +141,9 @@ def test_nonzero_exit_without_crash_report(mc):
     daemon.wait_status(iid, "stopped", timeout=30)
     last = wait_until(lambda: (daemon.exit_events(iid) or [None])[-1], 20, "종료 기록")
     assert last["exit_code"] == 3, last
-    assert last["kind"] in ("crash", "unknown_exit"), last
+    # 시작 30초 안에 끝났으므로 시작 실패로 본다 (크래시 흔적이 없으니 crash는 아니다)
+    assert last["kind"] == "start_failed", last
+    assert last["evidence"].startswith("ended "), last
 
 
 def test_hung_server_is_force_stopped(mc):

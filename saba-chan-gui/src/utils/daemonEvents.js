@@ -1,7 +1,7 @@
 import { auditWhat } from '../components/servers/AuditTab';
 import { safeShowToast } from './helpers';
 
-/** 데몬 이벤트 스트림 (P4: GET /api/events → main.js → preload onDaemonEvent) */
+/** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
 export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'function';
 
 /** 서버 목록을 다시 읽어야 하는 이벤트 (상태는 이벤트로 오지 않는다) */
@@ -58,7 +58,7 @@ export function eventToast(ev, t, nameOf = (id) => id) {
                   };
         }
         case 'instance.exit': {
-            if (d.kind !== 'crash' && d.kind !== 'unknown_exit') return null;
+            if (!['crash', 'start_failed', 'unknown_exit'].includes(d.kind)) return null;
             const name = d.instance || nameOf(d.instanceId);
             const kind = t(`shell.exit_${d.kind}`, { defaultValue: d.kind });
             const restart = d.restartInSecs != null ? ` ${t('shell.exit_restart_in', { secs: d.restartInSecs })}` : '';

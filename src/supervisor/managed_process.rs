@@ -179,6 +179,8 @@ pub struct ManagedProcess {
     exit: Arc<std::sync::Mutex<Option<ProcessExit>>>,
     /// 시작 시각 (unix 초). 이보다 새 크래시 파일만 이번 실행의 것으로 본다
     pub started_at: u64,
+    /// 데몬 재시작 뒤 다시 붙은 프로세스. 실제 시작 시각을 모르므로(`started_at`은 다시 붙은 시각) 시작 직후 실패로 보지 않는다
+    pub reattached: bool,
     /// 서버 작업 폴더. 모르면 None
     pub working_dir: Option<PathBuf>,
     /// 로그만 따라 읽는 프로세스(서버 자체가 아님). 이것이 끝나도 서버 종료로 보지 않는다
@@ -392,6 +394,7 @@ impl ManagedProcess {
             stdin_available: true,
             exit,
             started_at,
+            reattached: false,
             working_dir: Some(PathBuf::from(working_dir)),
             log_follower: false,
             runner_pid: None,
@@ -562,6 +565,7 @@ impl ManagedProcess {
             stdin_available: false, // log follower has no stdin
             exit: Default::default(),
             started_at: unix_now(),
+            reattached: false,
             working_dir: Some(working_dir.to_path_buf()),
             log_follower: true,
             runner_pid: None,
@@ -674,6 +678,7 @@ impl ManagedProcess {
             stdin_available: false, // reattached stub — stdio pipes lost
             exit: Default::default(),
             started_at: unix_now(),
+            reattached: true,
             working_dir: None,
             log_follower: false,
             runner_pid: None,

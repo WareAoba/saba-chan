@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-updater-launch-apply"
+description = "Enables the updater_launch_apply command without any pre-configured scope."
+commands.allow = ["updater_launch_apply"]
+
+[[permission]]
+identifier = "deny-updater-launch-apply"
+description = "Denies the updater_launch_apply command without any pre-configured scope."
+commands.deny = ["updater_launch_apply"]

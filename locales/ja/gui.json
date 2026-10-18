@@ -681,6 +681,7 @@
     "exit_user_stop": "手動で停止",
     "exit_in_game_stop": "ゲーム内で停止",
     "exit_crash": "クラッシュ",
+    "exit_start_failed": "起動に失敗",
     "exit_unknown_exit": "原因不明",
     "exit_restart_in": "{{secs}}秒後に再起動",
     "restart": "再起動",
@@ -702,7 +703,10 @@
     "check_diagnose": "ログ診断",
     "check_ok": "問題は見つかりませんでした。起動できます。",
     "check_log_ok": "最近のログに既知の問題は見つかりませんでした。",
-    "check_failed": "点検できませんでした: {{error}}"
+    "check_failed": "点検できませんでした: {{error}}",
+    "exit_note_auto_off": "自動再起動はオフ",
+    "exit_note_gave_up": "10分以内に{{count}}回再起動したため中止",
+    "exit_note_restart_failed": "再起動できませんでした: {{reason}}"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1292,5 +1296,14 @@
   "cli_line": {
     "copy": "CLIコマンドをコピー",
     "copied": "コピーしました"
+  },
+  "link_request": {
+    "title": "Discord 接続リクエスト",
+    "message": "{{guild}} からこの PC への接続リクエストが届きました",
+    "accept": "承認",
+    "decline": "拒否",
+    "accepted": "{{guild}} と接続しました。",
+    "expired": "リクエストの期限が切れました。Discord からもう一度リクエストしてください。",
+    "failed": "リクエストを処理できませんでした。"
   }
 }

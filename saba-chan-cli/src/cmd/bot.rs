@@ -105,6 +105,9 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             Ok(())
         }
         BotCmd::ServerAlias { server, names, clear } => server_alias(ctx, server.as_deref(), &names, clear).await,
+        BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
+        BotCmd::Allow { guild, servers, all } => allow(ctx, &guild, &servers, all).await,
+        BotCmd::Word { module, command, words, clear } => word(ctx, module.as_deref(), command.as_deref(), &words, clear).await,
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -153,7 +156,11 @@ async fn status(ctx: &Ctx) -> Result<()> {
         let secs = if at > 10_000_000_000 { at / 1000 } else { at };
         rows.push((t!("bot.last_heartbeat"), output::ago(secs)));
     }
-    let err = s(&agent, "lastError");
+    // 데몬이 코드를 주면 현지화한 문구로
+    let err = match s(&agent, "lastErrorCode") {
+        "token_replaced" => t!("bot.token_replaced"),
+        _ => s(&agent, "lastError").to_string(),
+    };
     if !err.is_empty() {
         rows.push((t!("bot.last_error"), console::style(err).red().to_string()));
     }
@@ -238,6 +245,7 @@ async fn pair_with(ctx: &Ctx, relay: Option<String>, mut cloud: Value) -> Result
         o.remove("nodeToken");
     }
     ctx.out.done(&t!("bot.paired"), &out);
+    ctx.out.hint(&t!("bot.pair_gui_hint"));
     let agent = ctx.api.agent().await.unwrap_or(Value::Null);
     if agent.get("running").and_then(Value::as_bool) != Some(true)
         && ctx.ask.confirm(&t!("bot.offer_start"), true).unwrap_or(false)
@@ -356,7 +364,93 @@ async fn server_alias(ctx: &Ctx, query: Option<&str>, names: &[String], clear: b
     Ok(())
 }
 
+/// `nodeSettings[guild].allowedInstances`: 그 디스코드 서버가 보고 부를 수 있는 서버 (키가 없으면 전부)
+async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<()> {
+    let cfg = ctx.api.bot_config().await?;
+    let mut nodes: Map<String, Value> = cfg.get("nodeSettings").and_then(Value::as_object).cloned().unwrap_or_default();
+    let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
+    let name_of = |id: &str| servers.iter().find(|s| s.id == id).map_or(id.to_string(), |s| s.name.clone());
+    if queries.is_empty() && !all {
+        let list = nodes.get(guild).and_then(|n| n.get("allowedInstances")).and_then(Value::as_array).cloned();
+        ctx.out.data(&json!({ "guild": guild, "allowedInstances": list }), |_| match &list {
+            None => println!("{}", t!("bot.allow_all")),
+            Some(l) if l.is_empty() => println!("{}", output::dim(&t!("bot.allow_none"))),
+            Some(l) => l.iter().filter_map(Value::as_str).for_each(|id| println!("{}", name_of(id))),
+        });
+        return Ok(());
+    }
+    let node = nodes.entry(guild.to_string()).or_insert_with(|| json!({}));
+    let Some(node) = node.as_object_mut() else { return Err(usage(t!("bot.allow_bad_node", guild = guild))) };
+    let msg = if all {
+        node.remove("allowedInstances");
+        t!("bot.allow_all_saved", guild = guild)
+    } else {
+        let mut ids = Vec::new();
+        for q in queries.iter().flat_map(|q| q.split(',')).map(str::trim).filter(|q| !q.is_empty()) {
+            let id = crate::resolve::server(ctx, Some(q)).await?.id;
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        let names: Vec<String> = ids.iter().map(|id| name_of(id)).collect();
+        node.insert("allowedInstances".into(), json!(ids));
+        t!("bot.allow_saved", guild = guild, servers = names.join(", "))
+    };
+    let r = ctx.api.save_bot_config(json!({ "nodeSettings": nodes })).await?;
+    ctx.out.done(&msg, &r);
+    Ok(())
+}
+
+/// `commandAliases`: 모듈 → (명령 → "말1, 말2"). 채팅에서 명령 대신 쓰는 말
+async fn word(ctx: &Ctx, module: Option<&str>, command: Option<&str>, words: &[String], clear: bool) -> Result<()> {
+    let cfg = ctx.api.bot_config().await?;
+    let mut map: Map<String, Value> = cfg.get("commandAliases").and_then(Value::as_object).cloned().unwrap_or_default();
+    let (Some(module), Some(command)) = (module, command) else {
+        let rows: Vec<(String, String)> = map
+            .iter()
+            .filter(|(m, _)| module.is_none_or(|q| q == m.as_str()))
+            .flat_map(|(m, cmds)| cmds.as_object().into_iter().flatten().map(move |(c, w)| (format!("{} {}", m, c), output::show(w))))
+            .collect();
+        ctx.out.data(&Value::Object(map.clone()), |_| {
+            if rows.is_empty() {
+                println!("{}", output::dim(&t!("bot.no_words")));
+            } else {
+                output::print_kv(&rows);
+            }
+        });
+        return Ok(());
+    };
+    if words.is_empty() && !clear {
+        let v = map.get(module).and_then(|m| m.get(command)).cloned().unwrap_or(Value::Null);
+        ctx.out.data(&json!({ "module": module, "command": command, "words": v }), |_| println!("{}", output::show(&v)));
+        return Ok(());
+    }
+    let entry = map.entry(module.to_string()).or_insert_with(|| json!({}));
+    if !entry.is_object() {
+        *entry = json!({});
+    }
+    let cmds = entry.as_object_mut().expect("object");
+    let joined = words.iter().flat_map(|w| w.split(',')).map(str::trim).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(", ");
+    if clear || joined.is_empty() {
+        cmds.remove(command);
+    } else {
+        cmds.insert(command.to_string(), Value::String(joined.clone()));
+    }
+    if cmds.is_empty() {
+        map.remove(module);
+    }
+    let r = ctx.api.save_bot_config(json!({ "commandAliases": map })).await?;
+    let msg = if clear || joined.is_empty() {
+        t!("bot.words_cleared", module = module, command = command)
+    } else {
+        t!("bot.words_set", module = module, command = command, words = joined)
+    };
+    ctx.out.done(&msg, &r);
+    Ok(())
+}
+
 struct ChannelChange {
+
     chatbot: Vec<String>,
     no_chatbot: bool,
     music: Option<String>,
@@ -489,6 +583,24 @@ fn print_channels(r: &Value) {
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
         eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
     }
+}
+
+/// 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 (J1-b). 수락하면 릴레이가 그 길드를 이 PC에 묶는다
+async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
+    let cfg = ctx.api.bot_config().await?;
+    let Some(id) = id else {
+        let r = ctx.api.link_requests(relay_of(&cfg)).await?;
+        ctx.out.data(&r, |r| print_list(r, "requests"));
+        return Ok(());
+    };
+    let r = ctx.api.answer_link_request(id, !decline, relay_of(&cfg)).await?;
+    if decline {
+        ctx.out.done(&t!("bot.link_declined"), &r);
+    } else {
+        let guild = [s(&r, "guildName"), s(&r, "guildId"), id].into_iter().find(|g| !g.is_empty()).unwrap_or(id);
+        ctx.out.done(&t!("bot.link_accepted", guild = guild), &r);
+    }
+    Ok(())
 }
 
 async fn nodes(ctx: &Ctx) -> Result<()> {

@@ -269,6 +269,48 @@ pub async fn put_node_channels(
     }
 }
 
+// ── GET /api/relay/link-requests · POST /api/relay/link-requests/:id ──
+// 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 (J1-b). 요청은 릴레이가 들고 있고, PC는 보고 수락·거절만 한다.
+// 수락하면 릴레이가 그 길드를 이 PC에 묶는다. 본문과 응답은 릴레이 것을 그대로 전달한다
+
+pub async fn list_link_requests(Query(params): Query<RelayQueryParams>, State(state): State<IPCServer>) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    signed_get(&base, "/api/link-requests", empty_list).await
+}
+
+#[derive(Deserialize)]
+pub struct LinkAnswer {
+    accept: bool,
+}
+
+pub async fn answer_link_request(
+    Path(request_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(answer): Json<LinkAnswer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!("/api/link-requests/{}", encode_path_segment(&request_id));
+    signed_post(&base, &path, &json!({ "accept": answer.accept })).await
+}
+
+/// 서명한 JSON POST를 보내고 답을 전달한다
+async fn signed_post(base: &str, api_path: &str, body: &Value) -> Response {
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let text = body.to_string();
+    let req = apply_signed_headers(client.post(format!("{}{}", base, api_path)), "POST", api_path, Some(&text))
+        .header("Content-Type", "application/json")
+        .body(text);
+    match send(req).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
+    }
+}
+
 // ── GET /api/relay/node/:guild_id/members ──
 // Try discord-members first; fall back to permission-based members on 503
 
@@ -414,13 +456,14 @@ mod tests {
     }
 
     use super::*;
-    use axum::{routing::get, Router};
+    use axum::{routing::{get, post}, Router};
 
     async fn mock_relay() -> String {
         let app = Router::new()
             .route("/api/hosts/h1", get(|| async { Json(json!({ "online": true })) }))
             .route("/api/hosts/h2", get(|| async { (StatusCode::NOT_FOUND, "nope") }))
-            .route("/api/bot-invite", get(|| async { Json(json!({ "url": "https://discord.com/x" })) }));
+            .route("/api/bot-invite", get(|| async { Json(json!({ "url": "https://discord.com/x" })) }))
+            .route("/api/link-requests/:id", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -440,6 +483,13 @@ mod tests {
         assert_eq!(body(signed_get(&base, "/api/hosts/h1", fallback).await).await, (StatusCode::OK, json!({ "online": true })));
         assert_eq!(body(signed_get(&base, "/api/hosts/h2", fallback).await).await, (StatusCode::NOT_FOUND, json!({ "ok": false })));
         assert_eq!(body(bot_invite(&base).await).await.1["url"], "https://discord.com/x");
+    }
+
+    #[tokio::test]
+    async fn a_link_request_answer_goes_to_the_relay_as_is() {
+        let base = mock_relay().await;
+        let (code, data) = body(signed_post(&base, "/api/link-requests/r1", &json!({ "accept": true })).await).await;
+        assert_eq!((code, data), (StatusCode::OK, json!({ "id": "r1", "accept": true })));
     }
 
     #[tokio::test]

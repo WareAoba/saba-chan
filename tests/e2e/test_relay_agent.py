@@ -132,6 +132,18 @@ def test_wrong_node_token_reports_rejection(sandbox, relay, daemon_factory):
     assert "reject" in err or "401" in err, status
 
 
+def test_token_replaced_by_another_pc_stops_the_agent(paired, relay):
+    """같은 디스코드 계정으로 다른 PC를 페어링하면 이 PC는 멈추고, 끊긴 이유를 상태에 남긴다 (프리뷰 P2 #19)."""
+    relay.token_replaced = True
+    status = wait_until(lambda: (s := paired.api.ok("GET", "/api/relay/agent")) and not s["running"] and s, 90, "에이전트 정지")
+    assert status["lastErrorCode"] == "token_replaced", status
+    seen = len(relay.requests)
+    import time
+
+    time.sleep(3)
+    assert len(relay.requests) == seen, "대체된 토큰으로 계속 요청함"
+
+
 def test_no_token_means_no_agent(sandbox, relay, daemon_factory):
     sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
     d = daemon_factory()
@@ -202,3 +214,24 @@ def test_replacing_node_token_drops_the_old_session(sandbox, relay, daemon_facto
     wait_until(lambda: d.api.ok("GET", "/api/relay/agent").get("lastError"), 30, "틀린 토큰 오류")
     d.api.ok("PUT", "/api/config/node-token", {"token": relay.node_token})
     wait_until(lambda: relay.heartbeats, 30, "맞는 토큰으로 heartbeat")
+
+
+def test_heartbeat_carries_cpu_and_ram_only_for_running_servers(paired, relay, fake_server):
+    """`/사바쨩 상태`의 서버별 CPU·RAM (Q-5, #86): 켜진 서버에만 싣고, 꺼진 서버에는 없다."""
+    on, _ = fake_server("on1")
+    off, _ = fake_server("off1")
+    iid = paired.import_server("on1", on, module_settings={"ram": "256M"})
+    paired.import_server("off1", off, module_settings={"ram": "256M"})
+    paired.start_instance(iid)
+    paired.wait_console(iid, DONE)
+    paired.api.ok("POST", "/api/relay/agent/stop")
+    paired.api.ok("POST", "/api/relay/agent/start")
+
+    def latest():
+        return {s["name"]: s for s in relay.heartbeats[-1]["metadata"]["servers"]}
+
+    wait_until(lambda: {"on1", "off1"} <= latest().keys() and "usage" in latest()["on1"], 30, "켜진 서버의 CPU·RAM이 heartbeat에")
+    servers = latest()
+    usage = servers["on1"]["usage"]
+    assert usage and usage["memMb"] > 0 and usage["cpu"] >= 0, servers["on1"]
+    assert "usage" not in servers["off1"], servers["off1"]

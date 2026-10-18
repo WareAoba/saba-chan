@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-local-save"
+description = "Enables the settings_local_save command without any pre-configured scope."
+commands.allow = ["settings_local_save"]
+
+[[permission]]
+identifier = "deny-settings-local-save"
+description = "Denies the settings_local_save command without any pre-configured scope."
+commands.deny = ["settings_local_save"]

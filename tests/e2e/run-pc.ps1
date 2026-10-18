@@ -34,15 +34,20 @@ function Need($cmd, $hint) {
 }
 
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
+$Root = (Resolve-Path $Root).Path.TrimEnd('\')
 $Tools = Join-Path $Root "tools"
 New-Item -ItemType Directory -Force -Path $Tools | Out-Null
 
 Step "준비물 확인"
 Need cargo "Rust(rustup)를 설치하세요."
 Need node "Node 22.12 이상을 설치하세요."
-$py = Get-Command python -ErrorAction SilentlyContinue
+# WindowsApps의 python.exe는 스토어 설치 안내 스텁이라 venv를 만들지 못한다
+$py = Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "*\WindowsApps\*" } | Select-Object -First 1
 if (-not $py) { $py = Get-Command py -ErrorAction SilentlyContinue }
-if (-not $py) { throw "Python 3.10 이상이 필요합니다." }
+if (-not $py) { throw "Python 3.10 이상이 필요합니다 (WindowsApps 스텁 말고 실제 설치본)." }
+foreach ($r in "saba-chan-modules", "saba-chan-extensions") {
+    if (-not (Test-Path (Join-Path $Git $r))) { throw "$Git\$r 이 없습니다. saba-chan 체크아웃 옆에 같은 이름으로 두세요 (worktree도 됩니다)." }
+}
 
 # 가짜 마인크래프트 서버를 빌드할 JDK. 없으면 시험 폴더 안에 Temurin 21을 받는다 (PATH는 이 실행에만)
 if (-not (Get-Command javac -ErrorAction SilentlyContinue)) {
@@ -57,6 +62,12 @@ if (-not (Get-Command javac -ErrorAction SilentlyContinue)) {
     }
     $env:PATH = "$($jdk.FullName)\bin;$env:PATH"
     $env:JAVA_HOME = $jdk.FullName
+}
+# 시험 폴더의 모듈은 확인되지 않은 구성요소라 AppContainer로 돈다. Program Files의 JDK처럼 앱 컨테이너가 읽을 수 있게
+# 시험 폴더 안 JDK에 ALL APPLICATION PACKAGES 읽기·실행을 준다
+if ($env:JAVA_HOME -and ([IO.Path]::GetFullPath($env:JAVA_HOME) + '\').StartsWith($Root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    icacls $env:JAVA_HOME /grant "*S-1-15-2-1:(OI)(CI)RX" /T /Q | Out-Null
+    if ($LASTEXITCODE) { throw "JDK 폴더 권한 설정 실패" }
 }
 
 Step "바이너리 빌드"

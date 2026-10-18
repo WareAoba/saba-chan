@@ -37,6 +37,7 @@
     "confirm_unpair": "Disconnect this PC from the Discord bot and forget its pairing?",
     "connection": "Connection",
     "last_error": "Last error",
+    "token_replaced": "This Discord account's PC connection moved to another PC. To use this PC again, pair it again with `saba-chan-cli bot pair`.",
     "last_heartbeat": "Last heartbeat",
     "list_empty": "Nothing yet.",
     "no_aliases": "No aliases yet. Add one: saba-chan-cli bot alias add NAME MODULE",
@@ -80,7 +81,18 @@
     "music_ui": "Player panel",
     "music_queue_lines": "Queue lines",
     "music_refresh": "Panel refresh",
-    "music_normalize": "Even loudness"
+    "music_normalize": "Even loudness",
+    "allow_all": "This Discord server can see every server on this PC.",
+    "allow_none": "No servers are open to it.",
+    "allow_bad_node": "The settings of {{guild}} are not an object. Check them with saba-chan-cli bot config.",
+    "allow_all_saved": "{{guild}} can now see every server.",
+    "allow_saved": "{{guild}} can now see only: {{servers}}",
+    "no_words": "No command words yet. Example: saba-chan-cli bot word minecraft start go",
+    "words_set": "In chat, {{module}} {{command}} can now also be called: {{words}}",
+    "words_cleared": "Removed the chat words of {{module}} {{command}}.",
+    "link_accepted": "Connected {{guild}} to this PC.",
+    "link_declined": "Declined the connection request.",
+    "pair_gui_hint": "You can also see the Discord connection in the GUI's Discord screen."
   },
   "col": {
     "aliases": "Aliases",
@@ -210,6 +222,7 @@
   "exit": {
     "crash": "crashed",
     "in_game_stop": "stopped from inside the game",
+    "start_failed": "failed to start",
     "restarting_in": "restarting in {{secs}}s",
     "unknown_exit": "ended (closed or killed)",
     "user_stop": "stopped by you"
@@ -472,7 +485,10 @@
       "bot.lang": "The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show",
       "bot.sleep": "Put the bot to sleep on a Discord server (it ignores commands until woken)",
       "bot.wake": "Wake the bot on a Discord server",
-      "bot.music": "Music player settings of a Discord server. No options: show"
+      "bot.music": "Music player settings of a Discord server. No options: show",
+      "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
+      "bot.word": "Chat words for one command of a game (e.g. \"go\" for start). No arguments: show",
+      "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse"
     },
     "arg": {
       "member": "Discord user ID",

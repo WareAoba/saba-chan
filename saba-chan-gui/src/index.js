@@ -1,4 +1,5 @@
 
+import './api/install'; // Tauri 셸이면 window.api 설치 (가장 먼저)
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ErrorBoundary } from 'react-error-boundary';

@@ -15,7 +15,7 @@
 //! - `DELETE /api/chatbot/memory?guildId=` — 장기 기억 지우기 (guildId가 없으면 모든 길드)
 
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -283,8 +283,36 @@ pub async fn delete_chatbot(State(state): State<IPCServer>) -> Response {
     Json(json!({ "success": true, "sync": rows, "pendingRelayDelete": !done })).into_response()
 }
 
+/// 길드 하나의 챗봇 설정 (I2-b, 디스코드 `/사바쨩 설정`이 액션으로 부른다): 릴레이 기본값 위에 실제 값, 키는 `hasApiKey`만
+fn guild_view(cfg: &ChatbotConfig, guild: &str) -> Value {
+    let mut settings = relay_defaults();
+    settings.extend(cfg.effective(guild));
+    json!({ "success": true, "guildId": guild, "settings": settings, "hasApiKey": cfg.api_key.as_deref().is_some_and(|k| !k.is_empty()) })
+}
+
+/// `GET /api/chatbot/guilds/:guild`
+pub async fn get_guild(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
+    Json(guild_view(&state.config_store.get_chatbot(), &guild)).into_response()
+}
+
+/// `PATCH /api/chatbot/guilds/:guild` `{설정 키: 값|null}`: 그 길드 값만 합친다. 키(`apiKey`)와 모르는 키는 받지 않는다
+pub async fn patch_guild(State(state): State<IPCServer>, Path(guild): Path<String>, Json(patch): Json<Map<String, Value>>) -> Response {
+    let known = relay_defaults();
+    if let Some(bad) = patch.keys().find(|k| !known.contains_key(*k)) {
+        let error = json!({ "success": false, "error": format!("unknown chatbot setting: {}", bad), "error_code": "validation_failed", "fields": [{ "field": bad }] });
+        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+    }
+    let body = ChatbotPatch { guilds: Some(Map::from_iter([(guild.clone(), Value::Object(patch))])), ..Default::default() };
+    let resp = put_chatbot(State(state.clone()), Json(body)).await;
+    if !resp.status().is_success() {
+        return resp;
+    }
+    Json(guild_view(&state.config_store.get_chatbot(), &guild)).into_response()
+}
+
 #[derive(Deserialize)]
 pub struct MemoryQuery {
+
     #[serde(default, rename = "guildId")]
     guild_id: Option<String>,
 }

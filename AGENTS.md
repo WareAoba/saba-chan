@@ -42,7 +42,7 @@
 - 주변 코드의 이름·주석 밀도·관용구를 따른다. 목적을 이루는 가장 작은 변경을 고른다.
 - 무관한 파일을 포맷하거나 정리하지 않는다.
 - Rust는 `rustfmt.toml`·`clippy.toml` 설정을 따른다.
-- GUI(Electron+React)는 preload 채널을 거쳐 데몬 API만 부른다. 새 IPC 채널을 만들면 `docs/architecture/04-clients.md`의 채널표를 고친다.
+- GUI(Tauri+React)는 window.api(src/api 브리지)를 거쳐 데몬 API만 부른다. 브리지 메서드나 Tauri 명령을 새로 만들면 `docs/architecture/04-clients.md`의 표를 고친다.
 
 ## 검사
 

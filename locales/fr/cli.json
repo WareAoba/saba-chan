@@ -37,6 +37,7 @@
     "confirm_unpair": "Déconnecter ce PC du bot Discord et oublier son appairage ?",
     "connection": "Connexion",
     "last_error": "Dernière erreur",
+    "token_replaced": "La connexion PC de ce compte Discord a été déplacée vers un autre PC. Pour réutiliser ce PC, associez-le à nouveau avec `saba-chan-cli bot pair`.",
     "last_heartbeat": "Dernier signal",
     "list_empty": "Rien pour l'instant.",
     "no_aliases": "Aucun alias pour l'instant. Ajoutez-en un : saba-chan-cli bot alias add NAME MODULE",
@@ -59,7 +60,18 @@
     "invite": "Invitez le bot sur votre serveur Discord avec ce lien :",
     "no_server_aliases": "Aucun nom de serveur défini. Exemple : saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "Dans le chat, {{name}} peut maintenant être appelé : {{aliases}}",
-    "server_alias_cleared": "Noms de chat de {{name}} supprimés."
+    "server_alias_cleared": "Noms de chat de {{name}} supprimés.",
+    "allow_all": "Ce serveur Discord voit tous les serveurs de ce PC.",
+    "allow_none": "Aucun serveur ouvert.",
+    "allow_bad_node": "Les réglages de {{guild}} ne sont pas un objet. Vérifiez-les avec saba-chan-cli bot config.",
+    "allow_all_saved": "{{guild}} voit maintenant tous les serveurs.",
+    "allow_saved": "{{guild}} ne voit maintenant que : {{servers}}",
+    "no_words": "Pas encore de mots de commande. Exemple : saba-chan-cli bot word minecraft start go",
+    "words_set": "Dans le chat, {{module}} {{command}} s'appelle aussi : {{words}}",
+    "words_cleared": "Mots de chat de {{module}} {{command}} supprimés.",
+    "link_accepted": "{{guild}} est connecté à ce PC.",
+    "link_declined": "Demande de connexion refusée.",
+    "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI."
   },
   "col": {
     "aliases": "Alias",
@@ -170,6 +182,7 @@
   "exit": {
     "crash": "planté",
     "in_game_stop": "arrêté depuis le jeu",
+    "start_failed": "échec du démarrage",
     "restarting_in": "redémarrage dans {{secs}} s",
     "unknown_exit": "terminé (fermé ou tué)",
     "user_stop": "arrêté par vous"
