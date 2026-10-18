@@ -193,8 +193,9 @@ def test_unverified_module_cannot_write_outside_its_folders(sandbox, daemon_fact
     assert "escape" not in json.dumps(body) or "written" not in json.dumps(body.get("escape", {})), body
 
 
-# AMSI 시험 표본 (백신이 AMSI 검사에서만 찾도록 정한 무해한 글자). 저장소 파일 자체가 걸리지 않게 실행 중에 잇는다
-AMSI_SAMPLE = "AMSI Test Sample: " + "7e72c3ce-861b-4339-8740-0ac1484c1386"
+# AMSI 시험 표본 (백신이 찾도록 정한 무해한 글자). 저장소 파일·.pyc에 이어진 채로 남지 않게 실행 중에 잇는다
+# ("a" + "b"는 컴파일러가 미리 합쳐 .pyc에 넣는다)
+AMSI_SAMPLE = "".join(["AMSI Test Sample: ", "7e72c3ce-861b-4339-", "8740-0ac1484c1386"])
 
 AMSI_PY = r'''
 import json, sys
