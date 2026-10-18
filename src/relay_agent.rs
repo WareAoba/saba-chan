@@ -631,7 +631,7 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
             }
             v
         }
-        "backup.done" => pick(&["at", "instanceId", "kind", "ok", "name"]),
+        "backup.done" => pick(&["at", "instanceId", "instance", "kind", "ok", "name"]),
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
@@ -1055,8 +1055,8 @@ mod tests {
         assert!(relay_event(&console).unwrap()["data"].get("evidence").is_none());
         assert!(relay_event(&ev("instance.exit", json!({"kind": "user_stop"}))).is_none());
 
-        let failed = ev("backup.done", json!({"instanceId": "i", "kind": "manual", "ok": false, "error": "D:\\saves locked"}));
-        assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "kind": "manual", "ok": false}));
+        let failed = ev("backup.done", json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false, "error": "D:\\saves locked"}));
+        assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
         // 여러 단계 실행은 디스코드에서 시작한 것만
