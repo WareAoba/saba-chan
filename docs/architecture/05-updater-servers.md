@@ -356,6 +356,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 - 서명하는 프록시(host status·nodes·members)와 페어링·bot-invite는 `signed_base`를 거쳐, 요청한 주소가 설정된 릴레이와 같거나 루프백(모의 릴레이)일 때만 따르고 아니면 설정된 릴레이로 보낸다(`relay.rs` `signed_base`, 59a93b8).
 - `/poll`, `/heartbeat`, `/result`, `/events`는 daemon 안의 relay agent가 부른다. 릴레이 주소는 bot config의 `cloud.relayUrl`, 토큰은 `<data_dir>/.node_token`에서 읽는다(`relay_agent.rs`).
 - bot config(prefix·별명)는 GUI가 daemon에만 저장하고 agent heartbeat의 `botConfig`로 relay에 간다. relay는 heartbeat metadata를 `hosts.metadata`에 저장하고 봇이 거기서 prefix를 읽는다(`heartbeat.ts`, `bot/state/nodeState.ts`).
+- `/사바쨩 상태`는 호스트가 온라인이면 heartbeat `servers`(길드는 `allowedInstances`로 거른 것, 20개까지)를 한 줄씩 붙인다. 각 줄에는 실행 여부, `usage`(CPU %·RAM MB), `statusLine`을 마크다운·멘션 문자를 빼고 넣는다(`bot/commands/coreService.ts`).
 - 권한 판정의 주체는 데몬이다(`chat/permissions.rs`, 01 문서 BotConfig 절). 금지(-1) 멤버는 relay 게이트웨이가 음악·챗봇을 포함한 봇 기능 전체에서 먼저 막는다. 슬래시·버튼에는 숨김 답으로, 봇에게 한 메시지에는 10분에 한 번 짧은 안내로 답한다(`bot/gateway/gateway.ts`, `commandAccess.ts` `isBanned`). 설정이 없는 길드도 기본 레벨(유저)로 판정한다. relay의 `node_permissions`·`nodes.default_level`은 데몬 값의 캐시이고 relay 바깥 검사(`commandAccess.ts`)에 쓴다. `/사바쨩 권한` 명령은 `permission` action으로 데몬에 보낸다. 카탈로그에서 risk가 danger인 prefix·길드 슬래시 명령은 바로 보내지 않고 확인 버튼을 띄운다. 요청한 사람만 누를 수 있고, 누른 사람 이름으로 `raw_command`를 보낸다. 레벨이 모자라면 확인 없이 거부 문구다(`actionCommands.ts` `dangerConfirm`).
 
 ---
