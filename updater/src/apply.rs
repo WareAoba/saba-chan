@@ -167,6 +167,8 @@ impl UpdateManager {
             }
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, &exe_dir)?;
+        } else {
+            anyhow::bail!("Unsupported archive format: {}", staged.display());
         }
 
         std::fs::remove_file(staged).ok();
@@ -188,6 +190,8 @@ impl UpdateManager {
                 files = extract_zip(staged, &self.install_root, Self::move_aside_binary)?;
             } else if Self::is_tar_gz(staged) {
                 Self::extract_tar_gz(staged, &self.install_root)?;
+            } else {
+                anyhow::bail!("Unsupported archive format: {}", staged.display());
             }
             std::fs::remove_file(staged).ok();
             self.retire_other_gui_exes(&files);
@@ -217,10 +221,10 @@ impl UpdateManager {
             }
         };
         tracing::info!("[Updater] Applying GUI update to dir: {}", extract_dir.display());
-        let mut files = Vec::new();
-        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            files = extract_zip(staged, &extract_dir, |_| Ok(()))?;
+        if !staged.extension().map(|e| e == "zip").unwrap_or(false) {
+            anyhow::bail!("Unsupported archive format: {}", staged.display());
         }
+        let files = extract_zip(staged, &extract_dir, |_| Ok(()))?;
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] GUI updated successfully");
         Ok(files)
