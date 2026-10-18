@@ -473,7 +473,7 @@ players = "player_count"
 ### 3.6 크래시 감지와 자동 재시작
 
 - **크래시 판정** (`D:src/supervisor/crash.rs`): 데몬이 정지를 보냈으면 `user_stop`, 메모리 상한을 넘어 러너가 끝냈으면 `crash`(근거 `memory limit N MiB reached`, 아래 메모리 상한), 예외 종료 코드·크래시 시그널·이번 실행 중 생긴 `crash_artifacts` 파일이 있으면 `crash`, 콘솔 끝 50줄에 `graceful_exit_patterns`가 있으면 `in_game_stop`, 시작 뒤 30초(`STARTUP_GRACE`) 안에 끝나면 `start_failed`(근거는 걸린 시간과 콘솔 마지막 줄, 포트 충돌 같은 시작 실패. 데몬 재시작 뒤 PID로 다시 붙은 서버는 시작 시각을 모르므로 빼고, 러너로 다시 붙은 서버는 러너가 띄운 시각을 쓴다), 종료 코드 0이면 `in_game_stop`, 그 밖은 `unknown_exit`다. 흔적이 없으면 크래시로 보지 않는다.
-- **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다. `start_failed`는 다시 켜도 같은 이유로 실패하므로 재시작하지 않는다. 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:22-33`, `mod.rs:2285-2305`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:456-461`, `server.rs:854-870`). 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
+- **자동 재시작**: `auto_restart`(기본 켬)가 켜져 있으면 `crash`를 재시작한다. `restart_on_unknown_exit`(기본 끔)까지 켜면 `unknown_exit`도 재시작한다. `start_failed`는 다시 켜도 같은 이유로 실패하므로 재시작하지 않는다. 첫 대기 5초에서 두 배씩 늘고, 10분 안에 3번을 넘으면 포기한다 (`crash.rs:22-33`, `mod.rs:2285-2305`). 데몬 루프가 예약을 가져가 대기 뒤 `POST /api/instance/:id/start`와 같은 경로로 시작한다 (`D:src/main.rs:456-461`, `server.rs:854-870`). 대기하는 동안 정지 요청이나 시작이 있었으면(인스턴스별 실행 세대가 예약 때와 다르면) 그만둔다. 판정과 재시작 여부는 콘솔에 System 줄로 남는다.
 - `monitor_processes`(`mod.rs:2435-2615`)가 하는 일은 다음과 같다.
   1. `managed_store.cleanup_dead()`로 죽은 항목을 꺼내 종료를 판정하고, `managed.pid`를 삭제한 뒤 cooldown을 등록한다.
   2. 추적 중인 PID가 스냅샷에 없으면 untrack한다. saba-runner가 아직 서버를 돌리면(런처가 끝나고 실제 서버가 남은 경우) runner가 보는 PID로 옮긴다.
@@ -566,7 +566,7 @@ players = "player_count"
   2. manifest의 `module-<id>`가 없으면 실패한다.
   - 설치된 모듈 버전이 manifest 버전보다 높으면 받지 않는다(`version::is_downgrade`). 릴레이가 예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다.
   3. R2 URL에서 `<modules>/_tmp_module_<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
-  4. `.staging-<id>`에 풀고 `module.toml`이 있을 때만 기존 `<modules>/<id>`를 지우고 바꾼다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
+  4. `.staging-<id>`에 풀고 데몬과 같은 규칙(`load_module_dir`: `module.toml` 파싱, 진입 파일, `saba-core` 요구 버전)으로 읽힐 때만 기존 `<modules>/<id>`와 바꾼다(`install_staged_module`). 기존 폴더는 `<id>.saba-old`로 옮겨 두었다가 새 폴더가 자리를 잡으면 지우고, 옮기다 실패하면 되돌린다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
   - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
 - **신뢰 표시 알림**: 서명된 카탈로그에서 받지 않았거나(`unverified`) 받은 뒤 바뀐(`modified`) 모듈로 인스턴스를 만들면 `POST /api/instances` 응답에 `module_trust`와 `warnings[{code, module}]`가 실린다. 알림일 뿐 만들기·실행은 막지 않는다(`server.rs` `trust_warnings`). CLI는 경고 줄로 보인다.
 - **`DELETE /api/modules/:id`**: `..`·`/`·`\`가 든 `id`는 거부하고, `<modules>/<id>`를 `remove_dir_all`로 지운다. 여기서 `id`는 **디렉터리명**이다 (`server.rs:593-617`).

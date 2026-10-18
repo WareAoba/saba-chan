@@ -147,6 +147,24 @@ describe('DiscordPage', () => {
         expect(document.querySelector('.detail-head h1').textContent).toBe('사바 마을');
     });
 
+    it('인스턴스 제한은 데몬 길드 API로 바로 저장하고 bot-config 일괄 저장으로 보내지 않는다', async () => {
+        const { useDiscordStore } = await import('../stores/useDiscordStore');
+        window.api.guildAllowedInstancesSave = vi.fn(async (guildId, instances) => ({
+            guildId,
+            allowedInstances: instances,
+        }));
+        const save = vi.fn();
+        await act(async () => render(<Harness save={save} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
+        await act(async () => fireEvent.click(nodeRow));
+        // 인스턴스 탭(첫 탭)에서 "고른 것만"으로 바꾼다
+        await act(async () => fireEvent.click(document.querySelectorAll('.dc-radio-input')[1]));
+        expect(window.api.guildAllowedInstancesSave).toHaveBeenCalledWith('g1', ['s1', 's2']);
+        expect(useDiscordStore.getState().nodeSettings.g1.allowedInstances).toEqual(['s1', 's2']);
+        expect(save).not.toHaveBeenCalled();
+    });
+
     it('멤버 목록을 다시 받다 실패하면 받아 둔 목록을 지우지 않고 알린다', async () => {
         await act(async () => render(<Harness save={vi.fn()} />));
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));

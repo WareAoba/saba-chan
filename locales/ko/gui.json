@@ -313,7 +313,11 @@
     "reset_success": "'{{name}}' 서버가 초기화되었습니다 ({{count}}개 항목 삭제됨)",
     "reset_failed": "초기화 실패: {{error}}",
     "reset_error": "초기화 오류: {{error}}",
-    "stored_values_notice": "설정 파일을 읽지 못해 마지막으로 저장된 값을 보여 주고 있어요. 저장하면 직접 바꾼 칸만 반영됩니다."
+    "stored_values_notice": "설정 파일을 읽지 못해 마지막으로 저장된 값을 보여 주고 있어요. 저장하면 직접 바꾼 칸만 반영됩니다.",
+    "install_server_running": "켜져 있는 서버에는 버전을 설치할 수 없어요. 먼저 정지해 주세요",
+    "reset_server_running": "켜져 있는 서버는 초기화할 수 없어요. 먼저 정지해 주세요",
+    "instance_busy": "이 서버에서 다른 작업(백업이나 복원)이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요",
+    "install_settings_failed": "버전은 설치했지만 설정을 저장하지 못했어요: {{error}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 봇 시작 실패: {{error}}",
@@ -791,6 +795,7 @@
     "instances_all_desc": "새로 만든 인스턴스도 바로 보여요",
     "instances_pick": "고른 인스턴스만",
     "instances_pick_desc": "켜 둔 것만 디스코드에서 보이고 조작돼요",
+    "allowed_save_failed": "서버 제한을 저장하지 못했어요: {{error}}",
     "instance_owned": "‘{{node}}’에서 사용 중",
     "no_instances": "아직 인스턴스가 없어요. 서버 화면에서 먼저 추가하세요.",
     "members_search": "이름으로 찾기",

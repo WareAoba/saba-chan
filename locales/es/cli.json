@@ -57,7 +57,6 @@
     "invite": "Invita al bot a tu servidor de Discord con este enlace:",
     "allow_all": "Este servidor de Discord ve todos los servidores de este PC.",
     "allow_none": "No hay servidores abiertos.",
-    "allow_bad_node": "Los ajustes de {{guild}} no son un objeto. Revísalos con saba-chan-cli bot config.",
     "allow_all_saved": "{{guild}} ahora ve todos los servidores.",
     "allow_saved": "{{guild}} ahora solo ve: {{servers}}",
     "link_accepted": "{{guild}} está conectado a este PC.",

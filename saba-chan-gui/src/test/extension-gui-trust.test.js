@@ -55,6 +55,18 @@ describe('확인되지 않은 익스텐션의 GUI 번들 (gui_allowed)', () => {
         await waitFor(() => expect(window.api.extensionGuiBundle).toHaveBeenCalledWith('docker'));
     });
 
+    it('확인 창에서 취소하면 오류를 띄우지 않고 목록을 다시 받지 않는다', async () => {
+        window.api.extensionList = vi.fn().mockResolvedValue({ extensions: [docker(false)] });
+        window.api.sandboxAllowExtensionGui = vi.fn().mockResolvedValue({ success: false, error_code: 'canceled' });
+        mount();
+        await waitFor(() => expect(modal()?.type).toBe('question'));
+        await act(async () => modal().buttons[0].action());
+        expect(window.api.sandboxAllowExtensionGui).toHaveBeenCalledWith('ext-docker');
+        expect(window.showToast.mock.calls.filter((c) => c[1] === 'error')).toEqual([]);
+        expect(window.api.extensionList).toHaveBeenCalledTimes(1);
+        expect(window.api.extensionGuiBundle).not.toHaveBeenCalled();
+    });
+
     it('거절하면 저장하지 않고, 목록을 다시 받아도 이번 실행에서는 다시 묻지 않는다', async () => {
         window.api.extensionList = vi.fn().mockResolvedValue({ extensions: [docker(false)] });
         window.api.sandboxAllowExtensionGui = vi.fn();

@@ -97,5 +97,16 @@
     "path_missing": "Kein Pfad angegeben",
     "path_not_folder": "Das ist kein Ordner",
     "no_log_folder": "Kein Logordner"
+  },
+  "consent": {
+    "allow": "Erlauben",
+    "unisolated": {
+      "title": "Ohne Isolation ausführen?",
+      "message": "{{component}} ist nicht verifiziert. Ohne Isolation kann es uneingeschränkt auf Dateien und Programme dieses PCs zugreifen. Nur erlauben, wenn Sie ihm vertrauen."
+    },
+    "extension_gui": {
+      "title": "Erweiterungsansicht laden?",
+      "message": "Der Ansichtscode von {{component}} ist nicht verifiziert. Wenn er geladen wird, läuft er im Saba-chan-Fenster. Nur erlauben, wenn Sie ihm vertrauen."
+    }
   }
 }

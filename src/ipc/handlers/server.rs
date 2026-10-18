@@ -561,14 +561,7 @@ pub async fn install_module_from_manifest(
         saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), comp.size_bytes, None).await?;
         let _ = std::fs::remove_dir_all(&staging);
         saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
-        if !staging.join("module.toml").is_file() {
-            anyhow::bail!("package has no module.toml");
-        }
-        // 다 받은 뒤에만 기존 폴더를 바꾼다
-        if target_dir.exists() {
-            std::fs::remove_dir_all(&target_dir)?;
-        }
-        std::fs::rename(&staging, &target_dir)?;
+        install_staged_module(&staging, &target_dir)?;
         // 서명된 카탈로그에서 받은 것: 신뢰 표시가 "verified"가 된다 (파일이 그대로인 동안)
         let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
         if let Err(e) = saba_chan_updater_lib::integrity::record_dir(&key, &target_dir)
@@ -587,6 +580,30 @@ pub async fn install_module_from_manifest(
     let supervisor = state.supervisor.read().await;
     let _ = supervisor.refresh_modules();
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
+}
+
+/// 풀어 둔 모듈 패키지를 데몬과 같은 규칙으로 읽어 본 뒤 설치 폴더와 바꾼다.
+/// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
+fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
+    crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
+    let mut old_name = target_dir.file_name().unwrap_or_default().to_os_string();
+    old_name.push(".saba-old");
+    let old = target_dir.with_file_name(old_name);
+    let _ = std::fs::remove_dir_all(&old);
+    let had_old = target_dir.exists();
+    if had_old {
+        std::fs::rename(target_dir, &old)?;
+    }
+    if let Err(e) = std::fs::rename(staging, target_dir) {
+        if had_old {
+            let _ = std::fs::rename(&old, target_dir);
+        }
+        return Err(e.into());
+    }
+    if had_old {
+        let _ = std::fs::remove_dir_all(&old);
+    }
+    Ok(())
 }
 
 /// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)
@@ -842,7 +859,25 @@ async fn restart_instance(
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
-    let start = crate::ipc::internal::into_internal(start_instance_handler(Path(inst_id), State(state)).await).await;
+    // 백업·복원이 잠금을 쥐고 있으면 끝나기를 기다렸다 켠다. 요청이 끊겨도 꺼진 채 남지 않게 따로 돌린다.
+    // 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 그만둔다
+    let generation = state.supervisor.read().await.run_generation_of(&inst_id);
+    let start = crate::audit::spawn(async move {
+        let wanted = || async {
+            let supervisor = state.supervisor.read().await;
+            supervisor.instance_store.get(&inst_id).is_some() && supervisor.run_generation_of(&inst_id) == generation
+        };
+        super::backup::start_when_free(&state, &inst_id, wanted).await
+    })
+    .await;
+    let start = match start {
+        Ok(Some(start)) => start,
+        Ok(None) => {
+            let error = json!({ "success": false, "error": "The server was started or removed while waiting", "error_code": "restart_cancelled", "stopped": running });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
+        }
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
+    };
     let mut body = match start.body {
         Value::Object(map) => map,
         other => serde_json::Map::from_iter([("data".to_string(), other)]),
@@ -852,14 +887,19 @@ async fn restart_instance(
 }
 
 /// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
-pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration) {
+pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration, generation: u64) {
     tokio::time::sleep(delay).await;
-    if !state.supervisor.read().await.restart_still_wanted(&instance_id).await {
+    if !state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
         return;
     }
     tracing::info!("Auto restarting '{}' after a crash", instance_id);
-    let resp = crate::ipc::internal::into_internal(start_instance_handler(Path(instance_id.clone()), State(state.clone())).await).await;
+    // 백업이 잠금을 쥐고 있으면 끝나기를 기다린다 (기다리는 동안 사용자가 정지·시작하면 그만둔다)
+    let wanted = || async { state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await };
+    let Some(resp) = super::backup::start_when_free(&state, &instance_id, wanted).await else {
+        tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
+        return;
+    };
     let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
     if !ok {
         let reason = resp.body.get("error").or_else(|| resp.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();
@@ -886,12 +926,20 @@ pub async fn start_server_handler(
     // API 경유 시작 기록 (GUI 외부 시작 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
-    {
+    let inst_id = {
         let sup = state.supervisor.read().await;
-        if let Some(inst) = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)) {
-            state.extension_status_cache.invalidate(&inst.id);
+        let id = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)).map(|i| i.id.clone());
+        if let Some(id) = &id {
+            state.extension_status_cache.invalidate(id);
         }
-    }
+        id
+    };
+    // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
+    let _guard = match inst_id.as_deref().map(super::backup::BusyGuard::take) {
+        Some(None) => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
+        Some(guard) => guard,
+        None => None,
+    };
 
     // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
     {
@@ -1160,5 +1208,27 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    #[test]
+    fn a_module_package_that_does_not_load_keeps_the_installed_module() {
+        let tmp = tempfile::tempdir().unwrap();
+        let toml = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+        let target = tmp.path().join("plain");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("module.toml"), toml).unwrap();
+        std::fs::write(target.join("lifecycle.py"), "old").unwrap();
+        // 진입 파일이 빠진 패키지
+        let staging = tmp.path().join(".staging-plain");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("module.toml"), toml.replace("1.0.0", "2.0.0")).unwrap();
+        assert!(install_staged_module(&staging, &target).is_err());
+        assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "old");
+
+        std::fs::write(staging.join("lifecycle.py"), "new").unwrap();
+        install_staged_module(&staging, &target).unwrap();
+        assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "new");
+        assert!(!staging.exists());
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1, "the old folder is removed after the swap");
     }
 }

@@ -79,7 +79,6 @@
     "music_normalize": "음량 고르게",
     "allow_all": "이 디스코드 서버는 이 PC의 모든 서버를 볼 수 있어요.",
     "allow_none": "열어 둔 서버가 없어요.",
-    "allow_bad_node": "{{guild}} 설정이 객체가 아니에요. saba-chan-cli bot config로 확인하세요.",
     "allow_all_saved": "{{guild}}에서 이제 모든 서버를 볼 수 있어요.",
     "allow_saved": "{{guild}}에서 이제 이 서버만 볼 수 있어요: {{servers}}",
     "link_accepted": "{{guild}}을(를) 이 PC에 연결했어요.",

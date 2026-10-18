@@ -556,7 +556,8 @@ mod tests {
         let pidfile = dir.path().join("child.pid");
         let mut cmd = Command::new("sh");
         cmd.arg("-c")
-            .arg(format!("sleep 30 & echo $! > {}; echo '{{}}'", pidfile.display()))
+            // 입력을 다 읽고 끝나야 한다: 먼저 끝나면 입력 쓰기가 끊긴 파이프로 실패해 기한까지 가지 않는다
+            .arg(format!("cat > /dev/null; sleep 30 & echo $! > {}; echo '{{}}'", pidfile.display()))
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

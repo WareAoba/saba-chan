@@ -97,5 +97,16 @@
     "path_missing": "No path given",
     "path_not_folder": "Not a folder",
     "no_log_folder": "No log folder"
+  },
+  "consent": {
+    "allow": "Allow",
+    "unisolated": {
+      "title": "Run without isolation?",
+      "message": "{{component}} is not verified. Without isolation it can access files and programs on this PC without limits. Allow only if you trust it."
+    },
+    "extension_gui": {
+      "title": "Load extension screen?",
+      "message": "The screen code of {{component}} is not verified. If loaded, it runs inside the Saba-chan window. Allow only if you trust it."
+    }
   }
 }

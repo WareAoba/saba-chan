@@ -160,6 +160,43 @@ describe('데몬 응답 가공', () => {
         expect(seen[1].body).toEqual({ command: 'kick', args: { player: 'p' } });
     });
 
+    it('instanceDelete는 데몬이 정지 대기·훅·폴더 삭제를 마칠 때까지 기다린다 (기본 5초로 끊지 않는다)', async () => {
+        const seen = [];
+        const { api } = await install({
+            daemon_request: (args) => {
+                seen.push(args);
+                return { status: 200, data: { success: true } };
+            },
+        });
+        await api.instanceDelete('i1');
+        expect(seen[0]).toMatchObject({ method: 'DELETE', path: '/api/instance/i1' });
+        expect(seen[0].timeoutMs).toBeGreaterThanOrEqual(60000);
+    });
+
+    it('격리 해제·확장 GUI 허락은 셸 명령(네이티브 확인 창)으로만 기록하고, 철회는 데몬에 바로 보낸다', async () => {
+        const seen = [];
+        const { api, tauri } = await install({
+            sandbox_consent_allow: ({ kind }) => ({ success: true, kind }),
+            daemon_request: (args) => {
+                seen.push(args);
+                return { status: 200, data: { success: true } };
+            },
+        });
+        expect(await api.sandboxAllowUnisolated('module-x')).toEqual({ success: true, kind: 'unisolated' });
+        await api.sandboxAllowExtensionGui('ext-y');
+        expect(tauri.invoke).toHaveBeenCalledWith('sandbox_consent_allow', {
+            kind: 'unisolated',
+            component: 'module-x',
+        });
+        expect(tauri.invoke).toHaveBeenCalledWith('sandbox_consent_allow', {
+            kind: 'extension-gui',
+            component: 'ext-y',
+        });
+        expect(seen).toEqual([]);
+        await api.sandboxRevokeExtensionGui('ext-y');
+        expect(seen[0]).toMatchObject({ method: 'DELETE', path: '/api/sandbox/extension-gui/ext-y' });
+    });
+
     it('executeCommand는 HTTP 오류에서 데몬 문구와 error_code·field를 넘긴다', async () => {
         const { api } = await install({
             daemon_request: () => ({

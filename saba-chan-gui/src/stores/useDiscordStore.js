@@ -12,6 +12,25 @@ export const setDiscordI18n = (t) => {
 };
 
 const RELAY_URL_FALLBACK = 'https://saba-chan.online';
+
+// bot-config 최상위 키 ↔ 스토어 필드. 데몬은 최상위 키 단위로 통째로 바꾸므로
+// 바뀐 키만 보낸다: 다른 경로(CLI·원격)가 그사이 바꾼 값을 옛 스냅샷으로 되돌리지 않게
+const BOT_KEYS = {
+    prefixes: ['discordPrefixes'],
+    cloud: ['discordCloudRelayUrl', 'discordCloudHostId'],
+    moduleAliases: ['discordModuleAliases'],
+    commandAliases: ['discordCommandAliases'],
+    nodeSettings: ['nodeSettings'],
+    cloudNodes: ['cloudNodes'],
+    cloudMembers: ['cloudMembers'],
+};
+// 마지막으로 데몬과 맞춘 값 (로드·저장 성공 때 갱신). 여기와 다른 필드만 바뀐 것으로 본다
+let synced = {};
+const sameValue = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
+const markSynced = (state, fields) => {
+    for (const f of fields) synced[f] = state[f];
+};
+const ALL_FIELDS = Object.values(BOT_KEYS).flat();
 // 상태 확인 세대: 연결 대상이 바뀌거나 폴링이 멈추면 올려서, 늦게 온 옛 응답을 버린다
 let statusGeneration = 0;
 
@@ -87,6 +106,8 @@ export const useDiscordStore = create((set, get) => ({
                     patch.cloudMembers = botCfg.cloudMembers;
 
                 set(patch);
+                synced = {};
+                markSynced(get(), ALL_FIELDS);
                 return;
             } catch (err) {
                 if (attempt === maxAttempts) {
@@ -102,43 +123,60 @@ export const useDiscordStore = create((set, get) => ({
     saveConfig: async () => {
         const state = get();
         try {
-            // 처음 로드에 실패했다면 스토어 값은 기본값이다. 그대로 보내면 디스크의
-            // hostId·별명·노드 설정을 지우므로, 데몬에서 다시 읽어 빈 값은 디스크 값으로 채운다.
-            // 그것도 못 읽으면 저장하지 않는다.
-            let base = null;
-            if (!state._botConfigLoaded) {
-                base = await window.api.botConfigLoad();
-                if (!base) throw new Error('bot config unavailable; refusing to overwrite it with defaults');
+            // 처음 로드에 실패했다면 스토어 값은 기본값이다. 데몬을 읽을 수 없으면 저장하지 않는다
+            if (!state._botConfigLoaded && !(await window.api.botConfigLoad())) {
+                throw new Error('bot config unavailable; refusing to overwrite it with defaults');
             }
-            const isEmpty = (v) => v == null || v === '' || (typeof v === 'object' && Object.keys(v).length === 0);
-            const pick = (value, baseValue, fallback) =>
-                base && isEmpty(value) ? (baseValue ?? fallback) : (value ?? fallback);
+            const initial = initialState();
+            const base = (f) => (f in synced ? synced[f] : initial[f]);
+            const changed = Object.keys(BOT_KEYS).filter((k) => BOT_KEYS[k].some((f) => !sameValue(state[f], base(f))));
+            if (changed.length === 0) return true;
 
-            // 데몬은 최상위 키 단위로 병합하므로 이 스토어가 아는 키만 보낸다.
-            const payload = {
-                prefixes: base && state.discordPrefixes.length === 0 ? readPrefixes(base) : state.discordPrefixes,
-                cloud: {
-                    relayUrl: pick(state.discordCloudRelayUrl, base?.cloud?.relayUrl, ''),
-                    hostId: pick(state.discordCloudHostId, base?.cloud?.hostId, ''),
-                },
-                moduleAliases: pick(state.discordModuleAliases, base?.moduleAliases, {}),
-                commandAliases: pick(state.discordCommandAliases, base?.commandAliases, {}),
-                nodeSettings: pick(state.nodeSettings, base?.nodeSettings, {}),
-                cloudNodes: pick(state.cloudNodes, base?.cloudNodes, []),
-                cloudMembers: pick(state.cloudMembers, base?.cloudMembers, {}),
-            };
+            const payload = {};
+            for (const k of changed) {
+                if (k === 'cloud') {
+                    // relayUrl·hostId는 한 키로 간다. 바꾸지 않은 쪽은 데몬의 지금 값을 쓴다
+                    const fresh = (await window.api.botConfigLoad().catch(() => null))?.cloud || {};
+                    const pickCloud = (f, sub) =>
+                        sameValue(state[f], base(f)) && typeof fresh[sub] === 'string' ? fresh[sub] : state[f];
+                    payload.cloud = {
+                        relayUrl: pickCloud('discordCloudRelayUrl', 'relayUrl'),
+                        hostId: pickCloud('discordCloudHostId', 'hostId'),
+                    };
+                } else {
+                    payload[k] = state[BOT_KEYS[k][0]];
+                }
+            }
             const res = await window.api.botConfigSave(payload);
             if (res?.error) {
                 console.error('[Settings] Failed to save bot config:', res.error);
                 safeShowToast(_t('settings.save_error'), 'error');
                 return false;
             }
+            markSynced(
+                state,
+                changed.flatMap((k) => BOT_KEYS[k]),
+            );
             return true;
         } catch (error) {
             console.error('[Settings] Failed to save bot config:', error);
             safeShowToast(_t('settings.save_error'), 'error');
             return false;
         }
+    },
+
+    /**
+     * 데몬 전용 API로 이미 저장한 길드 값을 스토어에 반영한다. 자동 저장이 다시 보내지 않게 동기화 기준도 같이 바꾼다
+     */
+    applySavedNodeValue: (guildId, key, value) => {
+        const put = (all) => {
+            const node = { ...(all?.[guildId] || {}) };
+            if (value == null) delete node[key];
+            else node[key] = value;
+            return { ...(all || {}), [guildId]: node };
+        };
+        synced.nodeSettings = put(synced.nodeSettings ?? initialState().nodeSettings);
+        set({ nodeSettings: put(get().nodeSettings) });
     },
 
     startBot: async () => {
@@ -242,6 +280,7 @@ export const useDiscordStore = create((set, get) => ({
         clearInterval(state._statusInterval);
         clearTimeout(state._statusTimeout);
         statusGeneration += 1;
+        synced = {};
         set(initialState());
     },
 }));

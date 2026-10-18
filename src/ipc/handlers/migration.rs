@@ -50,10 +50,14 @@ fn node_token_path() -> PathBuf {
     saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token")
 }
 
-/// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정
-pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: &HashMap<String, String>) {
+/// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정.
+/// 모듈을 읽지 못해 설정 종류를 모르면(`types`가 None) 모듈 설정을 모두 뺀다
+pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: Option<&HashMap<String, String>>) {
     instance.rest_password = None;
-    instance.module_settings.retain(|k, _| types.get(k).map(String::as_str) != Some("password"));
+    match types {
+        Some(types) => instance.module_settings.retain(|k, _| types.get(k).map(String::as_str) != Some("password")),
+        None => instance.module_settings.clear(),
+    }
 }
 
 /// 내보낼 묶음
@@ -164,6 +168,10 @@ pub(crate) fn judge(
             return Verdict::Skip("working_dir_in_use");
         }
     }
+    // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다
+    if existing.iter().any(|e| e.id != incoming.id && e.name == incoming.name) {
+        return Verdict::Skip("name_taken");
+    }
     match same {
         None => Verdict::Add,
         Some(_) if !overwrite => Verdict::Skip("exists"),
@@ -194,12 +202,8 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
             .cloned()
             .map(|mut inst| {
                 if !req.secrets {
-                    let types = sup
-                        .module_loader
-                        .get_module(&inst.module_name)
-                        .map(|m| m.metadata.setting_types())
-                        .unwrap_or_default();
-                    strip_instance_secrets(&mut inst, &types);
+                    let types = sup.module_loader.get_module(&inst.module_name).ok().map(|m| m.metadata.setting_types());
+                    strip_instance_secrets(&mut inst, types.as_ref());
                 }
                 inst
             })
@@ -277,6 +281,8 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_ok()).map(|i| i.id.clone()));
             ids
         };
+        // 앞서 더하거나 바꾼 인스턴스까지 보고 판정한다: 미리보기(dry run)도 실제 가져오기와 같은 결과를 내게
+        let mut known: Vec<ServerInstance> = sup.instance_store.list().to_vec();
         for inst in bundle.instances {
             // 남이 준 zip이면 이 경로의 프로그램이 실행된다: 미리보기에서 보이게
             let entry = json!({
@@ -285,7 +291,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 "working_dir": inst.working_dir,
                 "executable_path": inst.executable_path,
             });
-            let verdict = judge(&inst, sup.instance_store.list(), &running, req.overwrite);
+            let verdict = judge(&inst, &known, &running, req.overwrite);
             let applied = match verdict {
                 Verdict::Skip(reason) => {
                     skipped.push(json!({ "id": inst.id, "name": inst.name, "reason": reason }));
@@ -300,6 +306,8 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 skipped.push(json!({ "id": inst.id, "name": inst.name, "reason": "save_failed" }));
                 continue;
             }
+            known.retain(|k| k.id != inst.id);
+            known.push(inst.clone());
             if sup.module_loader.get_module(&inst.module_name).is_err() && !missing_modules.contains(&inst.module_name) {
                 missing_modules.push(inst.module_name.clone());
             }
@@ -367,10 +375,46 @@ mod tests {
         i.module_settings.insert("AdminPassword".into(), json!("secret"));
         i.module_settings.insert("port".into(), json!(25565));
         let types = HashMap::from([("AdminPassword".to_string(), "password".to_string()), ("port".to_string(), "number".to_string())]);
-        strip_instance_secrets(&mut i, &types);
+        strip_instance_secrets(&mut i, Some(&types));
         assert_eq!(i.rest_password, None);
         assert!(!i.module_settings.contains_key("AdminPassword"));
         assert_eq!(i.module_settings.get("port"), Some(&json!(25565)));
+    }
+
+    #[test]
+    fn export_without_secrets_drops_module_settings_when_the_module_is_missing() {
+        let mut i = inst("a", None);
+        i.module_settings.insert("AdminPassword".into(), json!("secret"));
+        // 모듈을 읽지 못하면 어느 설정이 비밀번호인지 모른다
+        strip_instance_secrets(&mut i, None);
+        assert!(i.module_settings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_dry_run_reports_what_the_real_import_would_do() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("saba.zip");
+        let (mut first, mut second) = (inst("a", None), inst("b", None));
+        first.name = "same".into();
+        second.name = "same".into();
+        let meta = json!({ "format": FORMAT, "formatVersion": FORMAT_VERSION, "appVersion": "0.1.5", "secrets": false });
+        write_bundle(&path, &Bundle { meta, config: Map::new(), instances: vec![first, second], node_token: None }).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            dir.path().join("modules").to_str().unwrap(),
+            dir.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let run = |dry: bool| {
+            let req: ImportRequest = serde_json::from_value(json!({ "path": path.to_string_lossy(), "dryRun": dry })).unwrap();
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(import(State(state), Json(req)).await).await.body }
+        };
+        let preview = run(true).await;
+        let done = run(false).await;
+        assert_eq!(preview["instances"]["added"].as_array().unwrap().len(), 1, "{preview}");
+        assert_eq!(preview["instances"]["skipped"][0]["reason"], "name_taken");
+        assert_eq!(preview["instances"], done["instances"]);
     }
 
     #[test]
@@ -426,5 +470,8 @@ mod tests {
         assert_eq!(judge(&inst("b", Some("/srv/b")), &existing, &running, true), Verdict::Skip("running"));
         assert_eq!(judge(&inst("c", Some("/srv/a")), &existing, &running, false), Verdict::Skip("working_dir_in_use"));
         assert_eq!(judge(&inst("../x", None), &existing, &running, false), Verdict::Skip("invalid_id"));
+        let mut same_name = inst("d", Some("/srv/d"));
+        same_name.name = "a".into();
+        assert_eq!(judge(&same_name, &existing, &running, false), Verdict::Skip("name_taken"), "two servers with one name are told apart by name");
     }
 }

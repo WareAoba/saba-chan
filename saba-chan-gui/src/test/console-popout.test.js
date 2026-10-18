@@ -85,3 +85,40 @@ describe('useMultiConsole 따로 띄운 창', () => {
         expect(renders).toBe(before);
     });
 });
+
+describe('useMultiConsole 닫았다 다시 열기', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+        useConsoleStore.setState({ consoles: {} });
+        delete window.api.managedConsole;
+    });
+
+    it('닫기 전에 보낸 읽기 요청이 다시 연 뒤에 돌아와도 줄이 겹치지 않는다', async () => {
+        vi.useFakeTimers();
+        const pending = [];
+        window.api.managedConsole = vi.fn(() => new Promise((resolve) => pending.push(resolve)));
+        const { result } = renderHook(() =>
+            useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
+        );
+        const batch = { source: 'managed', lines: [{ id: 1, content: 'hello' }] };
+
+        act(() => result.current.openConsole('e', 'E'));
+        await act(async () => vi.advanceTimersByTime(5000));
+        expect(pending).toHaveLength(1);
+
+        // 첫 요청이 아직 돌아오지 않은 채 닫았다 다시 연다
+        act(() => result.current.closeConsole('e'));
+        act(() => result.current.openConsole('e', 'E'));
+        await act(async () => vi.advanceTimersByTime(5000));
+        expect(pending).toHaveLength(2);
+
+        await act(async () => {
+            pending[0](batch);
+            pending[1](batch);
+        });
+        // 옛 루프는 결과를 버리고 멈춘다. 새 루프만 다음 요청을 보낸다
+        await act(async () => vi.advanceTimersByTime(5000));
+        expect(useConsoleStore.getState().consoles.e.lines.map((l) => l.content)).toEqual(['hello']);
+        expect(pending).toHaveLength(3);
+    });
+});

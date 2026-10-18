@@ -241,6 +241,26 @@ export function DiscordPage({
     );
     useEffect(() => () => clearTimeout(saveTimer.current), []);
 
+    // ── 길드가 쓸 서버 제한: 데몬 길드 API로 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
+    const updateAllowed = useCallback(
+        async (guildId, fn) => {
+            const next = P.nodeConfig(fn(nodeSettings || {}), guildId).allowedInstances;
+            setSaveState('saving');
+            try {
+                const res = await window.api.guildAllowedInstancesSave(guildId, Array.isArray(next) ? next : null);
+                if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
+                useDiscordStore
+                    .getState()
+                    .applySavedNodeValue(guildId, 'allowedInstances', res.allowedInstances ?? null);
+                setSaveState('saved');
+            } catch (e) {
+                setSaveState(null);
+                safeShowToast(t('discord.allowed_save_failed', { error: e.message }), 'error', 5000);
+            }
+        },
+        [nodeSettings, t],
+    );
+
     // ── 페어링 ──
     const pairing = usePairing({
         relayUrl,
@@ -493,6 +513,7 @@ export function DiscordPage({
                                 servers={servers}
                                 settings={settings}
                                 update={updateNodes}
+                                updateAllowed={updateAllowed}
                                 members={cloudMembers[currentNode.guildId]}
                                 membersLoading={membersLoading === currentNode.guildId}
                                 membersFailed={!!membersFailed[currentNode.guildId]}

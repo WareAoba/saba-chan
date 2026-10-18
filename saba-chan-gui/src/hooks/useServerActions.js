@@ -213,6 +213,7 @@ export function useServerActions({
                         setModal(null);
                         try {
                             const res = await window.api.sandboxAllowUnisolated(component);
+                            if (res?.error_code === 'canceled') return;
                             if (!res || res.success === false || res.error) {
                                 safeShowToast(
                                     t('trust.sandbox.allow_failed', { error: translateError(res?.error || '') }),
@@ -894,6 +895,16 @@ export function useServerActions({
                             action: () => setModal(null),
                         },
                     ],
+                });
+                return;
+            }
+
+            // 데몬은 같은 이름의 서버를 만들지 않는다 (이름으로 서버를 찾는 화면이 섞이지 않게)
+            if (result.error_code === 'name_taken') {
+                setModal({
+                    type: 'failure',
+                    title: t('servers.add_failed_title'),
+                    message: t('servers.rename_name_taken', { name: serverName }),
                 });
                 return;
             }

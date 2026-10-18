@@ -265,7 +265,7 @@ async fn finish_pair(ctx: &Ctx, result: Value, mut cloud: Value) -> Result<()> {
 /// `nodeSettings[guild].allowedInstances`: 그 디스코드 서버가 보고 부를 수 있는 서버 (키가 없으면 전부)
 async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
-    let mut nodes: Map<String, Value> = cfg.get("nodeSettings").and_then(Value::as_object).cloned().unwrap_or_default();
+    let nodes: Map<String, Value> = cfg.get("nodeSettings").and_then(Value::as_object).cloned().unwrap_or_default();
     let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
     let name_of = |id: &str| servers.iter().find(|s| s.id == id).map_or(id.to_string(), |s| s.name.clone());
     if queries.is_empty() && !all {
@@ -277,11 +277,9 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
         });
         return Ok(());
     }
-    let node = nodes.entry(guild.to_string()).or_insert_with(|| json!({}));
-    let Some(node) = node.as_object_mut() else { return Err(usage(t!("bot.allow_bad_node", guild = guild))) };
-    let msg = if all {
-        node.remove("allowedInstances");
-        t!("bot.allow_all_saved", guild = guild)
+    // bot-config 일괄 저장은 이 키를 바꾸지 않는다: 길드 단위 API로 저장한다
+    let (msg, r) = if all {
+        (t!("bot.allow_all_saved", guild = guild), ctx.api.save_allowed_instances(guild, None).await?)
     } else {
         let mut ids = Vec::new();
         for q in queries.iter().flat_map(|q| q.split(',')).map(str::trim).filter(|q| !q.is_empty()) {
@@ -291,10 +289,9 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
             }
         }
         let names: Vec<String> = ids.iter().map(|id| name_of(id)).collect();
-        node.insert("allowedInstances".into(), json!(ids));
-        t!("bot.allow_saved", guild = guild, servers = names.join(", "))
+        let r = ctx.api.save_allowed_instances(guild, Some(&ids)).await?;
+        (t!("bot.allow_saved", guild = guild, servers = names.join(", ")), r)
     };
-    let r = ctx.api.save_bot_config(json!({ "nodeSettings": nodes })).await?;
     ctx.out.done(&msg, &r);
     Ok(())
 }

@@ -102,24 +102,22 @@ impl RestClient {
             Ok(r) => r,
             Err(e) => {
                 let err_msg = format!("{}", e);
-                // 일부 게임 서버(Palworld 등)는 성공 시 빈 응답을 보내고 연결을 닫음
-                // ureq는 이를 "Unexpected EOF" / "connection closed" 에러로 처리
+                // 응답 없이 연결이 닫히면(EOF·reset) 서버가 요청을 처리했는지 알 수 없다.
+                // 종료 명령처럼 서버가 끊는 것이 자연스러운 경우도 있어 전송 오류와 나누되, 성공으로 보고하지 않는다
                 if err_msg.contains("EOF")
                     || err_msg.contains("connection closed")
                     || err_msg.contains("Connection reset")
                 {
                     return Ok(ServerResponse {
-                        success: true,
+                        success: false,
                         data: Some(json!({
-                            "status": 200,
+                            "outcome": "unknown",
                             "url": url,
                             "method": method,
                             "body": body,
-                            "response": {"raw": ""},
-                            "response_text": "",
-                            "note": "Server returned empty response (connection closed)",
+                            "note": "Connection closed before a response",
                         })),
-                        error: None,
+                        error: Some(format!("HTTP {} {}: connection closed before a response; the result is unknown", method, url)),
                     });
                 }
                 return Err(ProtocolError::Protocol(format!(
@@ -193,5 +191,23 @@ mod tests {
         let client = RestClient::new("127.0.0.1".to_string(), 8212, false);
         let debug_str = format!("{:?}", client);
         assert!(debug_str.contains("RestClient"));
+    }
+
+    #[test]
+    fn a_connection_closed_without_a_response_is_not_reported_as_success() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut sock, &mut buf);
+            // 응답 없이 닫는다
+        });
+        let client = RestClient::new("127.0.0.1".to_string(), port, false);
+        let resp = client.post("/v1/api/shutdown", Some(json!({ "waittime": 1 }))).expect("an unknown result, not a transport error");
+        server.join().unwrap();
+        assert!(!resp.success);
+        assert_eq!(resp.data.as_ref().unwrap()["outcome"], "unknown");
+        assert!(resp.error.is_some());
     }
 }

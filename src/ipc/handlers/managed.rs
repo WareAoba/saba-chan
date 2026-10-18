@@ -26,6 +26,10 @@ pub async fn start_managed_handler(
     State(state): State<IPCServer>,
     payload: Option<Json<serde_json::Value>>,
 ) -> impl IntoResponse {
+    // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
+    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+        return super::backup::instance_busy();
+    };
     // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
     {
         let mut supervisor = state.supervisor.write().await;
@@ -285,16 +289,65 @@ pub async fn reset_properties_handler(
     }
 }
 
+/// 켜져 있는 서버의 파일을 바꾸는 작업을 거절하는 409
+fn server_running() -> axum::response::Response {
+    let error = json!({ "success": false, "error": "Stop the server first", "error_code": "server_running" });
+    (StatusCode::CONFLICT, Json(error)).into_response()
+}
+
+/// `dir`을 쓰는 인스턴스(working_dir 또는 인스턴스 폴더)의 작업 잠금을 모두 잡는다.
+/// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
+#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
+async fn hold_instances_using(state: &IPCServer, dir: &str) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
+    let ids: Vec<String> = {
+        let supervisor = state.supervisor.read().await;
+        let dir = std::path::Path::new(dir);
+        supervisor.instance_store.list().iter()
+            .filter(|i| {
+                i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), dir))
+                    || saba_chan_updater_lib::same_path(&supervisor.instance_store.instance_dir(&i.id), dir)
+            })
+            .map(|i| i.id.clone())
+            .collect()
+    };
+    let mut guards = Vec::new();
+    for id in ids {
+        let Some(guard) = super::backup::BusyGuard::take(&id) else {
+            return Err(super::backup::instance_busy());
+        };
+        guards.push(guard);
+        if super::backup::is_running(state, &id).await {
+            return Err(server_running());
+        }
+    }
+    Ok(guards)
+}
+
 /// POST /api/instance/:id/server/reset — Full server reset (delete worlds, configs, etc.)
+/// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 pub async fn reset_server_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await {
+    let Some(guard) = super::backup::BusyGuard::take(&id) else {
+        return super::backup::instance_busy();
+    };
+    if super::backup::is_running(&state, &id).await {
+        return server_running();
+    }
+    // 요청이 끊겨도 모듈이 파일을 지우는 동안 잠금을 쥔다
+    let reset = {
+        let (state, id) = (state.clone(), id.clone());
+        crate::audit::spawn(async move {
+            let _guard = guard;
+            Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await.map_err(|e| e.to_string())
+        })
+    };
+    let resp = match reset.await.unwrap_or_else(|e| Err(e.to_string())) {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(json!({"error": e})),
         )
             .into_response(),
     };
@@ -568,17 +621,31 @@ pub async fn install_server_handler(
         }
     }
 
-    match Supervisor::install_server(
-            &state.supervisor,
-            &module_name,
-            &version,
-            &install_dir,
-            jar_name,
-            &accepted_agreements,
-            initial_settings,
-        )
-        .await
-    {
+    // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다.
+    // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
+    let guards = match hold_instances_using(&state, &install_dir).await {
+        Ok(guards) => guards,
+        Err(resp) => return resp,
+    };
+    let jar_name = jar_name.map(str::to_string);
+    let install = {
+        let state = state.clone();
+        crate::audit::spawn(async move {
+            let _guards = guards;
+            Supervisor::install_server(
+                &state.supervisor,
+                &module_name,
+                &version,
+                &install_dir,
+                jar_name.as_deref(),
+                &accepted_agreements,
+                initial_settings,
+            )
+            .await
+            .map_err(|e| e.to_string())
+        })
+    };
+    match install.await.unwrap_or_else(|e| Err(e.to_string())) {
         Ok(result) => {
             let status = if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 StatusCode::OK

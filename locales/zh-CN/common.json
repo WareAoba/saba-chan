@@ -97,5 +97,16 @@
     "path_missing": "未指定路径",
     "path_not_folder": "不是文件夹",
     "no_log_folder": "没有日志文件夹"
+  },
+  "consent": {
+    "allow": "允许",
+    "unisolated": {
+      "title": "要在不隔离的情况下运行吗？",
+      "message": "{{component}} 未经验证。不隔离运行时，它可以不受限制地访问此电脑上的文件和程序。仅在信任时允许。"
+    },
+    "extension_gui": {
+      "title": "要加载扩展界面吗？",
+      "message": "{{component}} 的界面代码未经验证。加载后它将在 Saba-chan 窗口内运行。仅在信任时允许。"
+    }
   }
 }

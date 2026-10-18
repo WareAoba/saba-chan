@@ -310,7 +310,11 @@
     "reset_success": "O servidor '{{name}}' foi resetado ({{count}} itens excluídos)",
     "reset_failed": "Falha ao resetar: {{error}}",
     "reset_error": "Erro ao resetar: {{error}}",
-    "stored_values_notice": "Não foi possível ler o arquivo de configurações do servidor, então estes são os últimos valores salvos. Salvar aplica apenas os campos que você alterar."
+    "stored_values_notice": "Não foi possível ler o arquivo de configurações do servidor, então estes são os últimos valores salvos. Salvar aplica apenas os campos que você alterar.",
+    "install_server_running": "Pare o servidor antes de instalar uma versão",
+    "reset_server_running": "Pare o servidor antes de redefini-lo",
+    "instance_busy": "Outra tarefa (backup ou restauração) está em andamento neste servidor. Tente novamente quando terminar",
+    "install_settings_failed": "A versão foi instalada, mas não foi possível salvar as configurações: {{error}}"
   },
   "discord_bot": {
     "start_failed_toast": "Falha ao iniciar o bot Discord: {{error}}",
@@ -788,6 +792,7 @@
     "instances_all_desc": "Novas instâncias aparecem na hora",
     "instances_pick": "Só as que eu escolher",
     "instances_pick_desc": "Só as instâncias que você ativar ficam visíveis no Discord",
+    "allowed_save_failed": "Não foi possível salvar a restrição de servidores: {{error}}",
     "instance_owned": "Usada por ‘{{node}}’",
     "no_instances": "Nenhuma instância ainda. Adicione uma na página Servidores primeiro.",
     "members_search": "Buscar por nome",

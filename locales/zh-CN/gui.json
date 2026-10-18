@@ -310,7 +310,11 @@
     "reset_success": "服务器 '{{name}}' 已重置（已删除 {{count}} 个项目）",
     "reset_failed": "重置失败：{{error}}",
     "reset_error": "重置错误：{{error}}",
-    "stored_values_notice": "无法读取服务器的设置文件，当前显示的是上次保存的值。保存时只会应用你修改过的字段。"
+    "stored_values_notice": "无法读取服务器的设置文件，当前显示的是上次保存的值。保存时只会应用你修改过的字段。",
+    "install_server_running": "请先停止服务器再安装版本",
+    "reset_server_running": "请先停止服务器再重置",
+    "instance_busy": "此服务器上正在进行其他任务（备份或恢复）。完成后请重试",
+    "install_settings_failed": "版本已安装，但保存设置失败：{{error}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 机器人启动失败：{{error}}",
@@ -788,6 +792,7 @@
     "instances_all_desc": "新建的实例也会立即显示",
     "instances_pick": "仅限选定的实例",
     "instances_pick_desc": "只有开启的实例会在 Discord 中显示和操作",
+    "allowed_save_failed": "无法保存服务器限制：{{error}}",
     "instance_owned": "已被 ‘{{node}}’ 使用",
     "no_instances": "还没有实例。请先在服务器页面添加。",
     "members_search": "按名称搜索",
