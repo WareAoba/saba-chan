@@ -114,7 +114,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | onDaemonEvent | events:message (main → 창) | - | main.js가 GET /api/events(SSE) 연결 하나를 유지하고 받은 이벤트를 `{id, type, data}`로 보낸다. 끊기면 3초 뒤 마지막 번호로 다시 붙는다. `type: 'resync'`면 목록을 다시 읽는다. 돌려주는 함수로 해제 (P4) | - |
 | dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
-| relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels. 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
+| relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels(`notify` 알림 채널 포함). 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
 | instanceAcceptEula (108) | instance:acceptEula | 2358 | POST /api/instance/:id/accept-eula | ✓ 685 (미사용) |
 | instanceBackups…instanceScheduleSave (109-114) | instance:backup*/schedule* | 2359-2368 | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 688-691 (미사용) |
 | chatbotGet/Save/Clear/ClearMemory (115-118) | chatbot:* | 2370-2375 | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 753-754 (미사용) |
@@ -214,7 +214,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
 - 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`.
 
-- `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
+- `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music] [--notify 이름] [--no-notify]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. `--notify`는 알림 채널(I3: 크래시·백업·업데이트·예약 예고)이다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
 - `bot lang GUILD [auto|코드]`, `bot sleep GUILD`, `bot wake GUILD`, `bot music GUILD [--on|--off] [--ui on|off] [--queue-lines N] [--refresh MS] [--normalize on|off]`: 디스코드 길드 설정(I2) `GET/PATCH /api/discord/:guild/settings`. 값이 없으면 보기만 한다. 봇에 닿지 않아 `sync.ok:false`면 다음 연결 때 보낸다고 알린다.
 - `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.
 - `audit [SERVER] [--limit N] [-f]`(A10, 별명 `activity`): `GET /api/audit`를 표로 보여 준다. `-f`는 목록을 읽기 전에 `GET /api/events`에 붙고, 이어서 `action.run`을 한 줄씩 따라간다(서버를 주면 그 서버 것만, `--json`이면 data 한 줄씩). 끊기면 2초 뒤 마지막 번호로 다시 붙는다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.

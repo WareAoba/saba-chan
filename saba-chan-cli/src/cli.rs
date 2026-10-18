@@ -631,6 +631,12 @@ pub enum BotCmd {
         /// Unassign the music channel
         #[arg(long)]
         no_music: bool,
+        /// The notification channel (crashes, backups, updates, scheduled restarts), by name or id
+        #[arg(long, conflicts_with = "no_notify")]
+        notify: Option<String>,
+        /// Unassign the notification channel
+        #[arg(long)]
+        no_notify: bool,
     },
     /// The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show
     Lang { guild: String, value: Option<String> },

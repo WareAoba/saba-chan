@@ -551,8 +551,8 @@ impl Session {
                     }
                     rx = rx.resubscribe();
                 }
-                // 4xx는 다시 보내도 같다: 그 묶음을 버린다
-                Ok(r) if r.status().is_success() || r.status().is_client_error() => {
+                // 4xx는 다시 보내도 같다: 그 묶음을 버린다 (429는 relay의 노드당 한도라 아래에서 쉬었다 다시 보낸다)
+                Ok(r) if r.status().is_success() || (r.status().is_client_error() && r.status().as_u16() != 429) => {
                     if !r.status().is_success() {
                         tracing::warn!("[RelayAgent] events rejected: {}", r.status());
                     }

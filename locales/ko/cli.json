@@ -63,6 +63,7 @@
     "channel_none": "없음",
     "chatbot_channels": "챗봇 채널",
     "music_channel": "음악 채널",
+    "notify_channel": "알림 채널",
     "confirm_music_channel": "#{{name}}을(를) 음악 채널로 정하면 그 채널의 일반 메시지는 지워져요. 계속할까요?",
     "channels_saved": "채널 배정을 바꿨어요.",
     "channels_bot_missing": "봇이 이 디스코드 서버에 없어서 채널 목록을 볼 수 없어요. 초대: saba-chan-cli bot invite",
