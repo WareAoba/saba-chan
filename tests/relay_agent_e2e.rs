@@ -173,7 +173,9 @@ async fn agent_round_trips_a_relay_command() {
         let s = relay_state.lock().unwrap();
         assert_eq!(s.bad_signatures, 0);
         let hb = s.heartbeats.first().expect("no heartbeat");
-        assert_eq!(hb["metadata"]["botConfig"]["prefix"], "!saba");
+        // 옛 기본값 "!saba"는 빈 목록(= 릴레이가 언어별 기본 접두사를 고른다)으로 옮겨진다
+        assert_eq!(hb["metadata"]["botConfig"]["prefixes"], json!([]));
+        assert!(hb["metadata"]["botConfig"].get("prefix").is_none());
         assert!(hb["metadata"]["onboarding"]["steps"].is_array(), "the Discord status view shows the same next step");
         assert!(hb["agentVersion"].is_string());
     }

@@ -358,11 +358,16 @@ impl Session {
             "modules": modules,
             "moduleDetails": {},
             "botConfig": {
-                "prefix": bot.prefix,
+                // 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다
+                "prefixes": bot.prefixes,
                 "moduleAliases": bot.module_aliases,
                 "commandAliases": command_aliases,
             },
         });
+        // 옛 릴레이는 `prefix` 하나만 안다 (첫 접두사, 기본값이면 싣지 않는다)
+        if let Some(first) = bot.prefixes.first() {
+            meta["botConfig"]["prefix"] = json!(first);
+        }
         // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;

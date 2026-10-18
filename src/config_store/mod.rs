@@ -116,7 +116,11 @@ impl Default for GuiSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BotConfig {
-    pub prefix: String,
+    /// 채팅 접두사(호출어). 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다 (ko `사바쨩`)
+    pub prefixes: Vec<String>,
+    /// 예전 `prefix` 하나. 읽을 때만 받고 `normalize`가 `prefixes`로 옮긴다
+    #[serde(rename = "prefix", skip_serializing)]
+    pub(crate) legacy_prefix: Option<String>,
     pub cloud: CloudConfig,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
@@ -139,7 +143,8 @@ pub struct CloudConfig {
 impl Default for BotConfig {
     fn default() -> Self {
         Self {
-            prefix: "!saba".to_string(),
+            prefixes: Vec::new(),
+            legacy_prefix: None,
             cloud: CloudConfig::default(),
             module_aliases: HashMap::new(),
             command_aliases: HashMap::new(),
@@ -148,6 +153,34 @@ impl Default for BotConfig {
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
         }
+    }
+}
+
+/// 접두사 하나의 최대 글자 수와 최대 개수 (릴레이 계약과 같다)
+pub const PREFIX_MAX_CHARS: usize = 32;
+pub const PREFIXES_MAX: usize = 10;
+
+impl BotConfig {
+    /// 예전 `prefix`를 `prefixes`로 옮긴다. 예전 기본값 `!saba`와 빈 값은 기본값(빈 목록)이다
+    fn normalize(&mut self) {
+        if let Some(old) = self.legacy_prefix.take() {
+            let old = old.trim();
+            if self.prefixes.is_empty() && !old.is_empty() && old != "!saba" {
+                self.prefixes = vec![old.to_string()];
+            }
+        }
+        self.prefixes = self.prefixes.iter().map(|p| p.trim().to_string()).collect();
+    }
+
+    /// 접두사는 공백 없는 1~32자, 10개까지
+    fn prefix_problem(&self) -> Option<String> {
+        if self.prefixes.len() > PREFIXES_MAX {
+            return Some(format!("prefixes: at most {} entries", PREFIXES_MAX));
+        }
+        self.prefixes
+            .iter()
+            .find(|p| p.is_empty() || p.chars().count() > PREFIX_MAX_CHARS || p.chars().any(char::is_whitespace))
+            .map(|p| format!("prefixes: '{}' must be 1-{} characters without spaces", p, PREFIX_MAX_CHARS))
     }
 }
 
@@ -254,7 +287,13 @@ impl ConfigStore {
         let file = ConfigFile::at(data_dir);
         let doc = file.load();
         let gui = section_or_default::<GuiSettings>(&doc, "gui");
-        let bot = section_or_default::<BotConfig>(&doc, "relay");
+        let mut bot = section_or_default::<BotConfig>(&doc, "relay");
+        bot.normalize();
+        // 손으로 고친 파일의 틀린 접두사는 버리고 기본값으로 둔다
+        if let Some(problem) = bot.prefix_problem() {
+            tracing::warn!("[Config] {}, using the default prefix", problem);
+            bot.prefixes.clear();
+        }
 
         Self {
             file,
@@ -342,8 +381,12 @@ impl ConfigStore {
             keep_permission_keys(&mut merged, &current_json);
         }
 
-        let config: BotConfig = serde_json::from_value(merged)
+        let mut config: BotConfig = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
+        config.normalize();
+        if let Some(problem) = config.prefix_problem() {
+            return Err(ConfigStoreError::InvalidData(problem));
+        }
         self.file.set_section("relay", serde_json::to_value(&config)?)?;
         *current = config.clone();
         Ok(config)
@@ -431,8 +474,9 @@ impl ConfigStore {
             // 초기화도 고정된 주인·부여값은 지우지 않는다 (권한 API로만 바뀐다)
             let mut full = Value::Object(full);
             keep_permission_keys(&mut full, &serde_json::to_value(&*current).unwrap_or_default());
-            let config: BotConfig = serde_json::from_value(full)
+            let mut config: BotConfig = serde_json::from_value(full)
                 .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
+            config.normalize();
             self.file.set_section("relay", serde_json::to_value(&config)?)?;
             *current = config;
             drop(current);
@@ -758,7 +802,8 @@ mod tests {
     fn bot_config_camel_case_serialization() {
         let config = BotConfig::default();
         let value = serde_json::to_value(&config).unwrap();
-        assert!(value.get("prefix").is_some());
+        assert_eq!(value.get("prefixes"), Some(&serde_json::json!([])));
+        assert!(value.get("prefix").is_none());
         assert!(value.get("autoStart").is_none());
         assert!(value.get("moduleAliases").is_some());
         assert!(value.get("commandAliases").is_some());
@@ -777,9 +822,9 @@ mod tests {
 
     #[test]
     fn bot_config_partial_json() {
-        let json = r#"{"prefix": "!test", "cloud": {"hostId": "h1"}}"#;
+        let json = r#"{"prefixes": ["!test"], "cloud": {"hostId": "h1"}}"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(loaded.prefix, "!test");
+        assert_eq!(loaded.prefixes, vec!["!test"]);
         assert_eq!(loaded.cloud.host_id, "h1");
         assert!(loaded.module_aliases.is_empty()); // default
     }
@@ -804,7 +849,7 @@ mod tests {
         }"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
         // 예전 로컬 봇 필드(token, autoStart, mode, music*)는 무시된다
-        assert_eq!(loaded.prefix, "!saba");
+        assert_eq!(loaded.legacy_prefix.as_deref(), Some("!saba"));
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
         assert_eq!(loaded.cloud.host_id, "host-1");
         assert_eq!(loaded.module_aliases.get("mc").map(|s| s.as_str()), Some("minecraft"));
@@ -820,7 +865,7 @@ mod tests {
         }"#;
         // serde(default)로 파싱은 성공해야 함 (알 수 없는 필드 무시)
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(loaded.prefix, "!saba");
+        assert_eq!(loaded.legacy_prefix.as_deref(), Some("!saba"));
     }
 
     // ── ConfigStore 파일 I/O ──
@@ -905,7 +950,7 @@ mod tests {
         let store = ConfigStore::new(tmp.path());
 
         let mut config = BotConfig::default();
-        config.prefix = "!test".to_string();
+        config.prefixes = vec!["!test".to_string()];
         config.cloud.relay_url = "https://relay.test".to_string();
         config.module_aliases.insert("mc".to_string(), "minecraft".to_string());
 
@@ -913,7 +958,7 @@ mod tests {
 
         // 인메모리 확인
         let loaded = store.get_bot_config().await;
-        assert_eq!(loaded.prefix, "!test");
+        assert_eq!(loaded.prefixes, vec!["!test"]);
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
 
         // 디스크에서 새로 로드
@@ -947,6 +992,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_old_single_prefix_becomes_a_list_and_the_old_default_becomes_the_default() {
+        for (old, want) in [("!saba", vec![]), ("", vec![]), ("!x", vec!["!x"])] {
+            let tmp = TempDir::new().unwrap();
+            std::fs::write(tmp.path().join("config.json"), serde_json::json!({ "relay": { "prefix": old } }).to_string()).unwrap();
+            let store = ConfigStore::new(tmp.path());
+            assert_eq!(store.get_bot_config().await.prefixes, want, "{:?}", old);
+            assert!(store.get_bot_config_json().await.get("prefix").is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn prefixes_must_be_short_words_and_few() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        let ok = store.set_bot_config_from_json(serde_json::json!({ "prefixes": ["사바쨩", "!s"] })).await.unwrap();
+        assert_eq!(ok.prefixes, vec!["사바쨩", "!s"]);
+        let long = "a".repeat(PREFIX_MAX_CHARS + 1);
+        let many: Vec<String> = (0..=PREFIXES_MAX).map(|i| format!("p{}", i)).collect();
+        for bad in [serde_json::json!(["두 단어"]), serde_json::json!([""]), serde_json::json!([long]), serde_json::json!(many)] {
+            assert!(matches!(store.set_bot_config_from_json(serde_json::json!({ "prefixes": bad })).await, Err(ConfigStoreError::InvalidData(_))), "{}", bad);
+        }
+        assert_eq!(store.get_bot_config().await.prefixes, vec!["사바쨩", "!s"], "a rejected save keeps the old value");
+    }
+
+    #[tokio::test]
     async fn config_store_bot_json_merge() {
         let tmp = TempDir::new().unwrap();
         let store = ConfigStore::new(tmp.path());
@@ -961,12 +1031,12 @@ mod tests {
 
         // 일부만 업데이트
         let partial = serde_json::json!({
-            "prefix": "!new"
+            "prefixes": ["!new"]
         });
         let result = store.set_bot_config_from_json(partial).await.unwrap();
 
         // 업데이트된 필드
-        assert_eq!(result.prefix, "!new");
+        assert_eq!(result.prefixes, vec!["!new"]);
         // 기존 값 유지 (최상위 키 단위 병합)
         assert_eq!(result.cloud.host_id, "h1");
         assert_eq!(result.cloud.relay_url, "https://relay.test");

@@ -77,23 +77,20 @@ pub fn drop_shared_roots(own: Vec<String>, other: Vec<String>) -> (Vec<String>, 
 /// - `taken`: 다른 인스턴스가 이미 추적하는 PID — 절대 고르지 않는다
 /// - `own_roots`: 이 인스턴스의 폴더들, `other_roots`: 같은 모듈의 다른 인스턴스 폴더들
 ///
-/// 같은 모듈 인스턴스가 이것뿐이면 폴더가 안 맞아도 첫 후보를 쓴다(예전 동작).
-/// 여럿이면 이 인스턴스 폴더 아래의 프로세스만, 다른 인스턴스 폴더 아래의 것은 빼고 고른다.
+/// 이 인스턴스 폴더 아래의 프로세스만, 다른 인스턴스 폴더 아래의 것은 빼고 고른다.
+/// 같은 모듈 인스턴스가 하나뿐이어도 폴더가 안 맞으면 고르지 않는다: java.exe처럼 흔한 이름은
+/// 이 PC의 다른 프로그램(다른 데이터 폴더의 서버, 버전 확인 등)일 수 있다
 pub fn pick_owned_process<'a>(
     candidates: &[&'a RunningProcess],
     taken: &std::collections::HashSet<u32>,
     own_roots: &[String],
     other_roots: &[String],
-    sole_instance_of_module: bool,
 ) -> Option<&'a RunningProcess> {
-    let free: Vec<&'a RunningProcess> = candidates.iter().copied().filter(|p| !taken.contains(&p.pid)).collect();
-    if let Some(p) = free.iter().copied().find(|p| process_under_any(p, own_roots) && !process_under_any_more_specific(p, own_roots, other_roots)) {
-        return Some(p);
-    }
-    if sole_instance_of_module {
-        return free.first().copied();
-    }
-    None
+    candidates
+        .iter()
+        .copied()
+        .filter(|p| !taken.contains(&p.pid))
+        .find(|p| process_under_any(p, own_roots) && !process_under_any_more_specific(p, own_roots, other_roots))
 }
 
 /// 프로세스가 다른 인스턴스 폴더에도 들어맞으면 이 인스턴스 것이 아니다.
@@ -183,14 +180,16 @@ mod tests {
         let roots_b = vec![r"C:\Saba\instances\b".to_string()];
         let none = HashSet::new();
 
-        assert_eq!(pick_owned_process(&cands, &none, &roots_b, &roots_a, false).map(|p| p.pid), Some(20));
+        assert_eq!(pick_owned_process(&cands, &none, &roots_b, &roots_a).map(|p| p.pid), Some(20));
         // B만 남은 인스턴스로 A 하나만 돌고 있으면 B는 아무것도 잡지 않는다
-        assert!(pick_owned_process(&[&a], &none, &roots_b, &roots_a, false).is_none());
+        assert!(pick_owned_process(&[&a], &none, &roots_b, &roots_a).is_none());
         // 다른 인스턴스가 이미 잡은 PID는 고르지 않는다
         let taken: HashSet<u32> = [10].into();
-        assert!(pick_owned_process(&[&a], &taken, &roots_a, &[], true).is_none());
-        // 같은 모듈 인스턴스가 하나뿐이면 폴더를 몰라도 예전처럼 첫 후보
-        assert_eq!(pick_owned_process(&[&a], &none, &[], &[], true).map(|p| p.pid), Some(10));
+        assert!(pick_owned_process(&[&a], &taken, &roots_a, &[]).is_none());
+        // 같은 모듈 인스턴스가 하나뿐이어도 다른 폴더에서 도는 같은 이름 프로세스는 가져가지 않는다
+        let elsewhere = proc(11, r"C:\SomewhereElse\server");
+        assert!(pick_owned_process(&[&elsewhere], &none, &roots_a, &[]).is_none());
+        assert!(pick_owned_process(&[&a], &none, &[], &[]).is_none());
         // 같은 실행 파일 폴더를 함께 쓰면 그 폴더로는 고르지 않고 작업 폴더로 가린다
         let shared = |pid: u32, cwd: &str| RunningProcess {
             pid,
@@ -204,8 +203,8 @@ mod tests {
             vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\a".to_string()],
             vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\b".to_string()],
         );
-        assert_eq!(pick_owned_process(&[&sb, &sa], &none, &own_a, &own_b, false).map(|p| p.pid), Some(40));
-        assert!(pick_owned_process(&[&sb], &none, &own_a, &own_b, false).is_none());
+        assert_eq!(pick_owned_process(&[&sb, &sa], &none, &own_a, &own_b).map(|p| p.pid), Some(40));
+        assert!(pick_owned_process(&[&sb], &none, &own_a, &own_b).is_none());
         // 작업 폴더가 공유 실행 폴더보다 짧아도, 공유 폴더를 빼면 각자 자기 서버를 찾는다
         let short = |pid: u32, cwd: &str| RunningProcess {
             pid,
@@ -218,9 +217,9 @@ mod tests {
         let bin = r"C:\Program Files\Game\bin".to_string();
         let (own, other) = drop_shared_roots(vec![bin.clone(), r"C:\A".into()], vec![bin.clone(), r"C:\B".into()]);
         assert_eq!(own, vec![r"C:\A".to_string()]);
-        assert_eq!(pick_owned_process(&[&pb, &pa], &none, &own, &other, false).map(|p| p.pid), Some(60));
+        assert_eq!(pick_owned_process(&[&pb, &pa], &none, &own, &other).map(|p| p.pid), Some(60));
         let (own_b, other_b) = drop_shared_roots(vec![bin.clone(), r"C:\B".into()], vec![bin, r"C:\A".into()]);
-        assert_eq!(pick_owned_process(&[&pa, &pb], &none, &own_b, &other_b, false).map(|p| p.pid), Some(70));
+        assert_eq!(pick_owned_process(&[&pa, &pb], &none, &own_b, &other_b).map(|p| p.pid), Some(70));
         // A의 실행 폴더에만 맞고 작업 폴더가 B 폴더면 A는 가져가지 않는다
         let odd = RunningProcess {
             pid: 80,
@@ -231,15 +230,15 @@ mod tests {
         };
         let own_odd = vec![r"C:\shared\bin".to_string(), r"C:\a".to_string()];
         let other_odd = vec![r"C:\b".to_string()];
-        assert!(pick_owned_process(&[&odd], &none, &own_odd, &other_odd, false).is_none());
-        assert_eq!(pick_owned_process(&[&odd], &none, &other_odd, &own_odd, false).map(|p| p.pid), Some(80));
+        assert!(pick_owned_process(&[&odd], &none, &own_odd, &other_odd).is_none());
+        assert_eq!(pick_owned_process(&[&odd], &none, &other_odd, &own_odd).map(|p| p.pid), Some(80));
         // 인스턴스 폴더가 다른 인스턴스 폴더 안에 있으면 더 깊은 쪽이 주인이다
         let nested = proc(90, r"C:\Saba\outer\inner");
         let (outer, inner) = (vec![r"C:\Saba\outer".to_string()], vec![r"C:\Saba\outer\inner".to_string()]);
-        assert_eq!(pick_owned_process(&[&nested], &none, &inner, &outer, false).map(|p| p.pid), Some(90));
-        assert!(pick_owned_process(&[&nested], &none, &outer, &inner, false).is_none());
+        assert_eq!(pick_owned_process(&[&nested], &none, &inner, &outer).map(|p| p.pid), Some(90));
+        assert!(pick_owned_process(&[&nested], &none, &outer, &inner).is_none());
         // "a"가 "ab"의 접두어여도 섞이지 않는다
         let ab = proc(30, r"C:\Saba\instances\ab");
-        assert!(pick_owned_process(&[&ab], &none, &roots_a, &[], false).is_none());
+        assert!(pick_owned_process(&[&ab], &none, &roots_a, &[]).is_none());
     }
 }

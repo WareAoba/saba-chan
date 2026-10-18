@@ -13,7 +13,7 @@ import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
 import { permissionsAvailable } from './PermissionsTab';
-import { defaultPrefix, prefixProblems, primaryPrefix } from './prefixes';
+import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
 import { usePairing } from './usePairing';
 
@@ -107,7 +107,6 @@ export function DiscordPage({
     relayConnected,
     relayConnecting,
     handleStartDiscordBot,
-    handleStopDiscordBot,
     saveCurrentSettings,
     servers = [],
     modules = [],
@@ -471,7 +470,7 @@ export function DiscordPage({
                                 onReload={loadNodes}
                                 onDisconnect={disconnect}
                                 onStartAgent={handleStartDiscordBot}
-                                onStopAgent={handleStopDiscordBot}
+                                nodes={cloudNodes}
                                 onInviteBot={inviteBot}
                             />
                         )}

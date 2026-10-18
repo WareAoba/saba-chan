@@ -1,4 +1,5 @@
 {
+  "default_prefix": "Saba-chan",
   "commands": {
     "start": "Server starten",
     "stop": "Server stoppen",
@@ -286,11 +287,8 @@
       "music": "Musik",
       "enabled": "Ein",
       "model": "Modell",
-      "memo": "Knotennotiz",
-      "triggerWords": "Rufwörter",
+      "memo": "Server-Prompt",
       "confirmCommands": "Befehle bestätigen",
-      "ambientSeconds": "Einwurf-Intervall (s)",
-      "sessionSeconds": "Folgegespräch (s)",
       "memory": "Gedächtnis",
       "webSearch": "Websuche",
       "disabledTools": "Deaktivierte Werkzeuge",

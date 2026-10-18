@@ -36,10 +36,7 @@ fn relay_defaults() -> Map<String, Value> {
         "provider": "openai",
         "model": "gpt-6-luna",
         "memo": "",
-        "triggerWords": ["사바쨩", "사바"],
         "confirmCommands": true,
-        "ambientSeconds": 0,
-        "sessionSeconds": 180,
         "memory": true,
         "webSearch": true,
         "disabledTools": [],
@@ -49,17 +46,29 @@ fn relay_defaults() -> Map<String, Value> {
     map
 }
 
+/// 릴레이가 고정값으로 바꾼 예전 설정 (챗봇 설정 v2 §2·§4). 받아도 저장하지 않고 릴레이에도 보내지 않는다
+const RETIRED: &[&str] = &["triggerWords", "sessionSeconds", "ambientSeconds"];
+
+fn drop_retired(map: &mut Map<String, Value>) {
+    for k in RETIRED {
+        map.remove(*k);
+    }
+}
+
 /// 길드 하나에 PUT할 본문: 기본값 위에 사용자 설정, 키는 데몬 것 (없으면 릴레이 것도 지운다)
 fn put_body(cfg: &ChatbotConfig, guild: &str) -> Map<String, Value> {
     let mut body = relay_defaults();
     body.extend(cfg.effective(guild));
+    drop_retired(&mut body);
     body.insert("apiKey".into(), json!(cfg.api_key));
     body
 }
 
 fn view(cfg: &ChatbotConfig) -> Map<String, Value> {
     let mut out = Map::new();
-    out.insert("settings".into(), Value::Object(cfg.settings.clone()));
+    let mut settings = cfg.settings.clone();
+    drop_retired(&mut settings);
+    out.insert("settings".into(), Value::Object(settings));
     out.insert("guilds".into(), json!(cfg.guilds));
     out.insert("hasApiKey".into(), json!(cfg.api_key.as_deref().is_some_and(|k| !k.is_empty())));
     out.insert("pendingRelayDelete".into(), json!(cfg.pending_relay_delete));
@@ -104,6 +113,7 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
     if let Some(s) = patch.settings {
         merge(&mut cfg.settings, s);
     }
+    drop_retired(&mut cfg.settings);
     for (guild, value) in patch.guilds.unwrap_or_default() {
         match value {
             Value::Null => {
@@ -112,6 +122,7 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
             Value::Object(m) => {
                 let entry = cfg.guilds.entry(guild.clone()).or_default();
                 merge(entry, m);
+                drop_retired(entry);
                 if entry.is_empty() {
                     cfg.guilds.remove(&guild);
                 }
@@ -287,6 +298,7 @@ pub async fn delete_chatbot(State(state): State<IPCServer>) -> Response {
 fn guild_view(cfg: &ChatbotConfig, guild: &str) -> Value {
     let mut settings = relay_defaults();
     settings.extend(cfg.effective(guild));
+    drop_retired(&mut settings);
     json!({ "success": true, "guildId": guild, "settings": settings, "hasApiKey": cfg.api_key.as_deref().is_some_and(|k| !k.is_empty()) })
 }
 
@@ -296,7 +308,8 @@ pub async fn get_guild(State(state): State<IPCServer>, Path(guild): Path<String>
 }
 
 /// `PATCH /api/chatbot/guilds/:guild` `{설정 키: 값|null}`: 그 길드 값만 합친다. 키(`apiKey`)와 모르는 키는 받지 않는다
-pub async fn patch_guild(State(state): State<IPCServer>, Path(guild): Path<String>, Json(patch): Json<Map<String, Value>>) -> Response {
+pub async fn patch_guild(State(state): State<IPCServer>, Path(guild): Path<String>, Json(mut patch): Json<Map<String, Value>>) -> Response {
+    drop_retired(&mut patch);
     let known = relay_defaults();
     if let Some(bad) = patch.keys().find(|k| !known.contains_key(*k)) {
         let error = json!({ "success": false, "error": format!("unknown chatbot setting: {}", bad), "error_code": "validation_failed", "fields": [{ "field": bad }] });
@@ -388,6 +401,18 @@ mod tests {
         assert_eq!(cfg.api_key, None);
         assert!(cfg.guilds.is_empty());
         assert!(apply(&mut cfg, patch(json!({"guilds": {"g1": 3}}))).is_err());
+    }
+
+    #[test]
+    fn retired_settings_are_accepted_but_never_kept_or_sent() {
+        // 옛 GUI·옛 설정 파일이 보내는 값: 릴레이는 고정값을 쓰니 데몬도 버린다
+        let mut cfg = ChatbotConfig::default();
+        cfg.guilds.insert("g1".into(), Map::from_iter([("sessionSeconds".to_string(), json!(60))]));
+        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "triggerWords": ["사바"], "ambientSeconds": 30}}))).unwrap();
+        assert_eq!(cfg.settings, Map::from_iter([("enabled".to_string(), json!(true))]));
+        let body = put_body(&cfg, "g1");
+        assert!(RETIRED.iter().all(|k| !body.contains_key(*k)));
+        assert!(RETIRED.iter().all(|k| guild_view(&cfg, "g1")["settings"].get(*k).is_none()));
     }
 
     #[test]

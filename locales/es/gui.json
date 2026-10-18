@@ -752,6 +752,8 @@
     "agent_stopped": "Desactivada",
     "agent_start": "Activar",
     "agent_stop": "Dormir",
+    "agent_wake": "Despertar",
+    "sleep_failed": "No se pudo cambiar el modo de suspensión en {{count}} servidor(es).",
     "add_server_title": "Añadir otro servidor de Discord",
     "add_server_desc": "Obtén un código nuevo y escríbelo en otro servidor de Discord para conectarlo también a este PC.",
     "connection_info": "Detalles de conexión",

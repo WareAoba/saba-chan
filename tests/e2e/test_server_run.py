@@ -329,7 +329,6 @@ def _old_java_first_on_path(sandbox) -> str:
     return os.pathsep.join([str(shim), os.environ.get("PATH", "")])
 
 
-@pytest.mark.xfail(strict=True, reason="F11: PATH 뒤쪽의 새 JDK를 두고 맨 앞의 Java 8 shim을 고른다 (리눅스: preflight JAVA_VERSION_TOO_OLD, Windows: 0xC0000135로 곧바로 끝남)")
 def test_server_starts_with_old_java_shim_first_on_path(daemon_factory, sandbox, fake_server):
     """사용자 PC처럼 Oracle Java 8 shim이 PATH 맨 앞에 있고 java_path가 기본값("java")이어도,
     시작 요청이 늦지 않게 답하고 1.21 서버가 뜰 수 있는 Java로 뜬다."""

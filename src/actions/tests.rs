@@ -467,7 +467,7 @@ async fn remote_admin_runs_are_limited_per_guild_and_hour() {
 async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     let (state, _id, _tmp) = server().await;
     open_everything(&state).await;
-    let input = json!({ "enabled": true, "triggerWords": ["사바"] });
+    let input = json!({ "enabled": true, "memo": "사바" });
     let planned = plan(&state, "chatbot.settings.set", None, &input, &relay("owner", false)).await.unwrap();
     assert_eq!(planned["needsConfirm"], false);
     assert_eq!(plan(&state, "chatbot.settings.set", None, &input, &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
@@ -479,12 +479,12 @@ async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     let local = json!({ "guild": "g", "confirmCommands": false });
     assert_eq!(run(&state, "chatbot.settings.set", None, &local, None, &gui()).await.unwrap()["success"], true);
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
-    assert_eq!((read["result"]["settings"]["confirmCommands"].as_bool(), read["result"]["settings"]["sessionSeconds"].as_i64()), (Some(false), Some(180)));
+    assert_eq!((read["result"]["settings"]["confirmCommands"].as_bool(), read["result"]["settings"]["model"].as_str()), (Some(false), Some("gpt-6-luna")));
     // null은 그 길드의 값을 지워 기본값으로 되돌린다
     run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmCommands": null }), None, &gui()).await.unwrap();
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
     assert_ne!(read["result"]["settings"]["confirmCommands"].as_bool(), Some(false));
-    // 메모·호출어도 소유자만 읽는다
+    // 메모도 소유자만 읽는다
     assert_eq!(plan(&state, "chatbot.settings.get", None, &json!({}), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
 }
 

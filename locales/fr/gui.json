@@ -752,6 +752,8 @@
     "agent_stopped": "Désactivé",
     "agent_start": "Activer",
     "agent_stop": "Endormir",
+    "agent_wake": "Réveiller",
+    "sleep_failed": "Impossible de changer la mise en veille sur {{count}} serveur(s).",
     "add_server_title": "Ajouter un autre serveur Discord",
     "add_server_desc": "Obtenez un nouveau code et saisissez-le sur un autre serveur Discord pour le connecter aussi à ce PC.",
     "connection_info": "Détails de la connexion",

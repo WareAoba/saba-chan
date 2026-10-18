@@ -51,6 +51,8 @@
     "paired": "Discord とペアリングしました。",
     "prefix": "プレフィックス",
     "prefix_set": "チャットのプレフィックスを {{prefix}} にしました。",
+    "prefix_default": "デフォルト (サバちゃん)",
+    "prefix_reset": "チャットのプレフィックスをデフォルトに戻しました。",
     "relay": "リレー",
     "started": "Discord ボットのリレーに接続しました。",
     "stopped": "リレーから切断しました。",
