@@ -165,6 +165,20 @@ export const useDiscordStore = create((set, get) => ({
         }
     },
 
+    /**
+     * 데몬 전용 API로 이미 저장한 길드 값을 스토어에 반영한다. 자동 저장이 다시 보내지 않게 동기화 기준도 같이 바꾼다
+     */
+    applySavedNodeValue: (guildId, key, value) => {
+        const put = (all) => {
+            const node = { ...(all?.[guildId] || {}) };
+            if (value == null) delete node[key];
+            else node[key] = value;
+            return { ...(all || {}), [guildId]: node };
+        };
+        synced.nodeSettings = put(synced.nodeSettings ?? initialState().nodeSettings);
+        set({ nodeSettings: put(get().nodeSettings) });
+    },
+
     startBot: async () => {
         try {
             const result = await window.api.discordBotStart();

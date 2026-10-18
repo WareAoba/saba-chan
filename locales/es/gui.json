@@ -788,6 +788,7 @@
     "instances_all_desc": "Las nuevas instancias aparecen al instante",
     "instances_pick": "Solo las que yo elija",
     "instances_pick_desc": "Solo las instancias que actives serán visibles en Discord",
+    "allowed_save_failed": "No se pudo guardar la restricción de servidores: {{error}}",
     "instance_owned": "En uso por ‘{{node}}’",
     "no_instances": "Aún no hay instancias. Añade una primero en la página Servidores.",
     "members_search": "Buscar por nombre",

@@ -321,6 +321,7 @@ export function NodeView({
     servers,
     settings,
     update,
+    updateAllowed,
     members,
     membersLoading,
     membersFailed,
@@ -427,7 +428,13 @@ export function NodeView({
                     </p>
                 )}
             {activeTab === 'instances' && (
-                <InstancesTab node={node} nodes={nodes} servers={servers} settings={settings} update={update} />
+                <InstancesTab
+                    node={node}
+                    nodes={nodes}
+                    servers={servers}
+                    settings={settings}
+                    update={(fn) => updateAllowed(node.guildId, fn)}
+                />
             )}
             {activeTab === 'words' && <InstanceWordsTab key={node.guildId} node={node} />}
             {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
