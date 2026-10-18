@@ -79,6 +79,7 @@ fn fixture() -> FakeDaemon {
         command_aliases: vec![("start".into(), vec!["시작".into()]), ("kick".into(), vec!["추방".into()])],
         commands: vec![kick, say],
         errors: HashMap::from([("server_not_running".to_string(), "MC is off".to_string())]),
+        ..Default::default()
     };
     let palworld = ModuleView {
         name: "palworld".into(),

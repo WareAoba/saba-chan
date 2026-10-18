@@ -390,6 +390,9 @@ pub struct AddArgs {
     /// Game port (`--port` is the daemon's)
     #[arg(long = "game-port", value_name = "PORT")]
     pub game_port: Option<u16>,
+    /// Start from one of the game's presets (`saba module info` lists them)
+    #[arg(long, value_name = "ID")]
+    pub preset: Option<String>,
     /// Extra settings KEY=VALUE (repeatable)
     #[arg(long = "set", value_name = "KEY=VALUE")]
     pub set: Vec<String>,

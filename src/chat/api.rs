@@ -39,6 +39,8 @@ pub struct ModuleView {
     pub commands: Vec<CommandField>,
     /// [errors] 오류 코드 → 문구
     pub errors: HashMap<String, String>,
+    /// [[presets]] 추천 설정 묶음 (heartbeat로 relay에 id·이름만 나간다)
+    pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
 }
 
 impl ModuleView {
@@ -94,6 +96,7 @@ impl DaemonApi for IPCServer {
                     command_aliases,
                     commands: meta.commands.map(|c| c.fields).unwrap_or_default(),
                     errors: meta.errors,
+                    presets: meta.presets,
                 }
             })
             .collect()
