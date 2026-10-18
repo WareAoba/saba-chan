@@ -1,6 +1,7 @@
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgreementDialog } from '../components/AgreementList';
+import { AddInstanceMigration } from '../components/Modals/AddInstanceMigration';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';
 import { useServerActions } from '../hooks/useServerActions';
 
@@ -41,6 +42,35 @@ describe('약관 동의: 서버 만들기', () => {
         expect(screen.queryByRole('checkbox')).toBeNull();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Add Server/i })));
         expect(onAddServer.mock.calls[0][0]).not.toHaveProperty('accept_agreements');
+    });
+});
+
+describe('약관 동의: 기존 서버 가져오기', () => {
+    it('감지한 모듈에 약관이 있으면 모두 체크해야 가져오고, accept_agreements를 싣는다', async () => {
+        window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old');
+        window.api.migrationScanDir = vi.fn().mockResolvedValue({ ok: true, matches: [{ name: 'game' }] });
+        const onAddServer = vi.fn().mockResolvedValue(undefined);
+        render(
+            <AddInstanceMigration
+                extensions={[{ name: 'game', agreements: [eula] }]}
+                servers={[]}
+                onAddServer={onAddServer}
+                onStepChange={vi.fn()}
+            />,
+        );
+        await act(async () => fireEvent.click(screen.getByTitle('Browse')));
+        await act(async () => fireEvent.click(await screen.findByRole('button', { name: /Next/i })));
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'old' } });
+        const submit = document.querySelector('.modal-footer .btn-confirm');
+        expect(submit).toBeDisabled();
+        fireEvent.click(screen.getByRole('checkbox'));
+        await act(async () => fireEvent.click(submit));
+        expect(onAddServer.mock.calls[0][0]).toMatchObject({
+            migration_source: '/srv/old',
+            accept_agreements: ['eula'],
+        });
+        delete window.api.openFolderDialog;
+        delete window.api.migrationScanDir;
     });
 });
 
