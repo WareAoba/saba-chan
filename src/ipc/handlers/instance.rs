@@ -192,6 +192,20 @@ pub async fn create_instance(
             None
         };
 
+        // ── 익스텐션이 만들 때 물은 칸 (`AddServer.options` → `extension_data`, Q-7). 설치 방식 값은 뒤에서 덮는다 ──
+        match payload.get("extension_data") {
+            None | Some(Value::Null) => {}
+            Some(Value::Object(given)) => {
+                for (key, value) in given.iter().filter(|(_, v)| !v.is_null()) {
+                    instance.extension_data.insert(key.clone(), value.clone());
+                }
+            }
+            Some(_) => {
+                let error = json!({ "error": "extension_data must be an object", "error_code": "invalid_format", "fields": [{"field": "extension_data"}] });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
+        }
+
         // ── 모듈의 install.requires_extensions → 인스턴스 required_extensions 자동 채우기 ──
         if let Some((Some(ref install), _, _)) = module_install {
             for ext_id in &install.requires_extensions {
@@ -337,6 +351,8 @@ pub async fn create_instance(
 
                         let tracker = state.provision_tracker.clone();
                         let supervisor_arc = state.supervisor.clone();
+                        // 진행 문구는 데몬 언어로 (모듈이 보내는 문구는 SABA_LANG으로 이미 번역돼 온다)
+                        let text = crate::chat::i18n::Catalog::for_language(&state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into()));
 
                         // install_dir 결정: instance_dir / install_subdir (기본 "server")
                         let install_subdir = install_config.install_subdir.clone()
@@ -361,7 +377,7 @@ pub async fn create_instance(
                             step: 0,
                             total: 1,
                             label: provision_label.clone(),
-                            message: "Installing server...".to_string(),
+                            message: text.t("provision.installing", &[]),
                             done: false,
                             error: None,
                             percent: Some(0),
@@ -388,9 +404,9 @@ pub async fn create_instance(
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
-                                            message: "Provisioning failed".to_string(),
+                                            message: text.t("provision.install_failed", &[]),
                                             done: true,
-                                            error: Some(format!("Module not found: {}", e)),
+                                            error: Some(text.t("provision.module_missing", &[("error", &e.to_string())])),
                                             percent: Some(100),
                                             steps: None,
                                         });
@@ -434,9 +450,9 @@ pub async fn create_instance(
                                     tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                         step: 0, total: 1,
                                         label: "done".to_string(),
-                                        message: "Provisioning failed".to_string(),
+                                        message: text.t("provision.install_failed", &[]),
                                         done: true,
-                                        error: Some("Failed to determine latest server version".to_string()),
+                                        error: Some(text.t("provision.no_latest_version", &[])),
                                         percent: Some(100),
                                         steps: None,
                                     });
@@ -507,7 +523,7 @@ pub async fn create_instance(
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
-                                            message: "Server installed successfully".to_string(),
+                                            message: text.t("provision.installed", &[]),
                                             done: true,
                                             error: None,
                                             percent: Some(100),
@@ -524,13 +540,13 @@ pub async fn create_instance(
                                     } else {
                                         let err_msg = val.get("message")
                                             .and_then(|v| v.as_str())
-                                            .unwrap_or("Installation failed")
-                                            .to_string();
+                                            .map(str::to_string)
+                                            .unwrap_or_else(|| text.t("provision.install_failed", &[]));
                                         tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
-                                            message: "Provisioning failed".to_string(),
+                                            message: text.t("provision.install_failed", &[]),
                                             done: true,
                                             error: Some(err_msg),
                                             percent: Some(100),
@@ -543,7 +559,7 @@ pub async fn create_instance(
                                     tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                         step: 0, total: 1,
                                         label: "done".to_string(),
-                                        message: "Provisioning failed".to_string(),
+                                        message: text.t("provision.install_failed", &[]),
                                         done: true,
                                         error: Some(e.to_string()),
                                         percent: Some(100),
@@ -1501,6 +1517,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
 
     let tracker = state.provision_tracker.clone();
     let supervisor_arc = state.supervisor.clone();
+    let text = crate::chat::i18n::Catalog::for_language(&state.config_store.get_gui_settings().await.language.unwrap_or_else(|| "en".into()));
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
     let install_settings = instance.module_settings.clone();
@@ -1514,7 +1531,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
             step: 0,
             total: 1,
             label: method.clone(),
-            message: "Updating server...".to_string(),
+            message: text.t("provision.updating", &[]),
             done: false,
             error: None,
             percent: Some(0),
@@ -1541,9 +1558,9 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                     step: 0,
                     total: 1,
                     label: "done".to_string(),
-                    message: "Update failed".to_string(),
+                    message: text.t("provision.update_failed", &[]),
                     done: true,
-                    error: Some(format!("Pre-update backup failed: {}", reason)),
+                    error: Some(text.t("provision.backup_failed", &[("reason", &reason)])),
                     percent: Some(100),
                     steps: None,
                 },
@@ -1563,9 +1580,9 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                             step: 0,
                             total: 1,
                             label: "done".to_string(),
-                            message: "Update failed".to_string(),
+                            message: text.t("provision.update_failed", &[]),
                             done: true,
-                            error: Some(format!("Module not found: {}", e)),
+                            error: Some(text.t("provision.module_missing", &[("error", &e.to_string())])),
                             percent: Some(100),
                             steps: None,
                         },
@@ -1628,7 +1645,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                             step: 0,
                             total: 1,
                             label: "done".to_string(),
-                            message: "Server updated successfully".to_string(),
+                            message: text.t("provision.updated", &[]),
                             done: true,
                             error: None,
                             percent: Some(100),
@@ -1640,8 +1657,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                         .get("message")
                         .or_else(|| val.get("error"))
                         .and_then(|v| v.as_str())
-                        .unwrap_or("Unknown error")
-                        .to_string();
+                        .map(str::to_string)
+                        .unwrap_or_else(|| text.t("provision.update_failed", &[]));
                     tracing::error!("Server update failed for '{}': {}", name_done, err_msg);
                     tracker_done.update(
                         &name_done,
@@ -1649,7 +1666,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                             step: 0,
                             total: 1,
                             label: "done".to_string(),
-                            message: "Update failed".to_string(),
+                            message: text.t("provision.update_failed", &[]),
                             done: true,
                             error: Some(err_msg),
                             percent: Some(100),
@@ -1667,7 +1684,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                         step: 0,
                         total: 1,
                         label: "done".to_string(),
-                        message: "Update failed".to_string(),
+                        message: text.t("provision.update_failed", &[]),
                         done: true,
                         error: Some(format!("{}", e)),
                         percent: Some(100),

@@ -56,6 +56,45 @@
     "start": "正在初始化...",
     "modules": "正在准备模块列表...",
     "instances": "正在准备服务器列表...",
-    "ready": "准备就绪"
+    "ready": "准备就绪",
+    "ui_loaded": "界面已就绪"
+  },
+  "tray": {
+    "tooltip": "Saba酱 - 游戏服务器管理",
+    "open_window": "🖥️ 打开窗口",
+    "open_terminal": "💻 打开终端",
+    "daemon_running": "🟢 守护进程运行中",
+    "daemon_stopped": "⚪ 守护进程已停止",
+    "stop_daemon": "🛑 停止守护进程",
+    "start_daemon": "▶️ 启动守护进程",
+    "quit_interface": "🔌 仅退出界面",
+    "quit_all": "❌ 完全退出"
+  },
+  "updates": {
+    "notification_title": "Saba酱 — 更新通知",
+    "notification_body": "{{count}} 个更新: {{names}}",
+    "completed": "更新完成!"
+  },
+  "errors": {
+    "invalid_input": "请求无效,请检查输入",
+    "instance_name_taken": "已存在同名服务器",
+    "internal": "内部错误",
+    "create_error": "无法创建服务器: {{error}}",
+    "create_http": "无法创建服务器 (HTTP {{status}}): {{error}}",
+    "instance_not_found": "找不到服务器",
+    "instance_running": "无法删除运行中的服务器,请先停止",
+    "delete_error": "无法删除服务器: {{error}}",
+    "delete_http": "无法删除服务器 (HTTP {{status}}): {{error}}",
+    "reorder_failed": "无法调整顺序: {{error}}",
+    "settings_invalid": "设置值无效: {{error}}",
+    "settings_error": "无法保存设置: {{error}}",
+    "settings_http": "无法保存设置 (HTTP {{status}}): {{error}}",
+    "http": "错误 (HTTP {{status}})",
+    "command_failed": "无法执行命令: {{error}}",
+    "no_log_file": "没有日志文件",
+    "url_missing": "未指定网址",
+    "url_not_web": "只能打开 http(s) 地址",
+    "path_missing": "未指定路径",
+    "no_log_folder": "没有日志文件夹"
   }
 }

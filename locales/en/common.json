@@ -56,6 +56,45 @@
     "start": "Starting up...",
     "modules": "Preparing modules...",
     "instances": "Preparing servers...",
-    "ready": "Ready"
+    "ready": "Ready",
+    "ui_loaded": "UI ready"
+  },
+  "tray": {
+    "tooltip": "Saba-chan - Game server manager",
+    "open_window": "🖥️ Open window",
+    "open_terminal": "💻 Open terminal",
+    "daemon_running": "🟢 Daemon running",
+    "daemon_stopped": "⚪ Daemon stopped",
+    "stop_daemon": "🛑 Stop daemon",
+    "start_daemon": "▶️ Start daemon",
+    "quit_interface": "🔌 Quit interface only",
+    "quit_all": "❌ Quit completely"
+  },
+  "updates": {
+    "notification_title": "Saba-chan — Updates",
+    "notification_body": "{{count}} updates: {{names}}",
+    "completed": "Update complete!"
+  },
+  "errors": {
+    "invalid_input": "Invalid request. Check your input",
+    "instance_name_taken": "A server with that name already exists",
+    "internal": "internal error",
+    "create_error": "Couldn't create the server: {{error}}",
+    "create_http": "Couldn't create the server (HTTP {{status}}): {{error}}",
+    "instance_not_found": "Server not found",
+    "instance_running": "A running server can't be deleted. Stop it first",
+    "delete_error": "Couldn't delete the server: {{error}}",
+    "delete_http": "Couldn't delete the server (HTTP {{status}}): {{error}}",
+    "reorder_failed": "Couldn't reorder: {{error}}",
+    "settings_invalid": "Invalid setting: {{error}}",
+    "settings_error": "Couldn't save settings: {{error}}",
+    "settings_http": "Couldn't save settings (HTTP {{status}}): {{error}}",
+    "http": "Error (HTTP {{status}})",
+    "command_failed": "Couldn't run the command: {{error}}",
+    "no_log_file": "No log file",
+    "url_missing": "No URL given",
+    "url_not_web": "Only http(s) addresses can be opened",
+    "path_missing": "No path given",
+    "no_log_folder": "No log folder"
   }
 }
