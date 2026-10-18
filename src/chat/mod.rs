@@ -481,7 +481,13 @@ impl<D: DaemonApi> Ctx<'_, D> {
     fn render_result(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, resp: InternalResponse) -> String {
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         if !failed {
-            let text = format::format_response(resp.body.get("data").unwrap_or(&Value::Null), self.cat);
+            // 모듈·익스텐션 명령은 답을 `message`로 준다 (stdin의 message는 내부 문구)
+            let message = match resp.str_field("protocol") {
+                Some("module" | "extension") => resp.body.get("message").filter(|m| m.as_str().is_some_and(|t| !t.trim().is_empty())),
+                _ => None,
+            };
+            let data = resp.body.get("data").filter(|d| !d.is_null()).or(message).unwrap_or(&Value::Null);
+            let text = format::format_response(data, self.cat);
             return self.t("command.execute_complete", &[("name", &server.name), ("command", &field.name), ("response", &text)]);
         }
 
