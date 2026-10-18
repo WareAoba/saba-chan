@@ -702,7 +702,10 @@
     "check_diagnose": "Разобрать журнал",
     "check_ok": "Проблем не найдено. Можно запускать.",
     "check_log_ok": "В недавнем журнале известных проблем не найдено.",
-    "check_failed": "Не удалось проверить: {{error}}"
+    "check_failed": "Не удалось проверить: {{error}}",
+    "exit_note_auto_off": "Автоперезапуск выключен",
+    "exit_note_gave_up": "Остановлено после {{count}} перезапусков за 10 минут",
+    "exit_note_restart_failed": "Не удалось перезапустить: {{reason}}"
   },
   "discord": {
     "nav_connection": "Подключение",

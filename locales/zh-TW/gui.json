@@ -702,7 +702,10 @@
     "check_diagnose": "診斷日誌",
     "check_ok": "未發現問題，可以啟動。",
     "check_log_ok": "最近的日誌中未發現已知問題。",
-    "check_failed": "無法檢查：{{error}}"
+    "check_failed": "無法檢查：{{error}}",
+    "exit_note_auto_off": "自動重啟已關閉",
+    "exit_note_gave_up": "10 分鐘內重啟 {{count}} 次後放棄",
+    "exit_note_restart_failed": "無法重啟：{{reason}}"
   },
   "discord": {
     "nav_connection": "連線",

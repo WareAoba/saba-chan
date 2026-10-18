@@ -187,9 +187,8 @@ const impl = {
                     exit_code: -1073741819,
                     evidence: 'hs_err_pid4120.log',
                     restart_in_secs: 10,
-                    note: 'restarting',
                 },
-                { at: now() - 600, kind: 'unknown_exit', exit_code: 1, note: 'restart_on_unknown_exit is off' },
+                { at: now() - 600, kind: 'crash', exit_code: 1, note: 'auto_restart is off' },
             ],
         }),
     instanceScheduleGet: () =>

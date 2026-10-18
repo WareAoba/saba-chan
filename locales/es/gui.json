@@ -702,7 +702,10 @@
     "check_diagnose": "Diagnosticar registro",
     "check_ok": "No se encontraron problemas. Listo para iniciar.",
     "check_log_ok": "No se encontraron problemas conocidos en el registro reciente.",
-    "check_failed": "No se pudo revisar: {{error}}"
+    "check_failed": "No se pudo revisar: {{error}}",
+    "exit_note_auto_off": "El reinicio automático está desactivado",
+    "exit_note_gave_up": "Se abandonó tras {{count}} reinicios en 10 minutos",
+    "exit_note_restart_failed": "No se pudo reiniciar: {{reason}}"
   },
   "discord": {
     "nav_connection": "Conexión",

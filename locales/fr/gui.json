@@ -702,7 +702,10 @@
     "check_diagnose": "Diagnostiquer le journal",
     "check_ok": "Aucun problème trouvé. Prêt à démarrer.",
     "check_log_ok": "Aucun problème connu dans le journal récent.",
-    "check_failed": "Vérification impossible : {{error}}"
+    "check_failed": "Vérification impossible : {{error}}",
+    "exit_note_auto_off": "Le redémarrage automatique est désactivé",
+    "exit_note_gave_up": "Abandon après {{count}} redémarrages en 10 minutes",
+    "exit_note_restart_failed": "Redémarrage impossible : {{reason}}"
   },
   "discord": {
     "nav_connection": "Connexion",

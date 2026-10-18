@@ -703,7 +703,10 @@
     "check_diagnose": "로그 진단",
     "check_ok": "문제를 찾지 못했습니다. 켤 준비가 됐습니다.",
     "check_log_ok": "최근 로그에서 알려진 문제를 찾지 못했습니다.",
-    "check_failed": "점검하지 못했습니다: {{error}}"
+    "check_failed": "점검하지 못했습니다: {{error}}",
+    "exit_note_auto_off": "자동 재시작이 꺼져 있음",
+    "exit_note_gave_up": "10분 안에 {{count}}번 다시 켜서 포기함",
+    "exit_note_restart_failed": "다시 켜지 못함: {{reason}}"
   },
   "discord": {
     "nav_connection": "연결",
