@@ -172,6 +172,7 @@
 |---|---|---|---|---|
 | GET | `/health` | `server.rs:19` `health_check` | - | `{ok:true, version, pid, token}`. 토큰 없이 부를 수 있다. `token`은 보낸 `X-Saba-Token`이 `valid`·`invalid`·`missing` 중 무엇인지(값은 드러내지 않는다) |
 | GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, audit_log, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
+| GET | `/api/onboarding` | `diagnostics.rs` `onboarding` | - | J1-a 다음 할 일. `{steps:[{id, done, optional}], next}`. 단계 `module`(모듈 있음)·`server`(서버 있음)·`discord`(노드 토큰 있음)·`chatbot`(챗봇 API 키, 선택). `next`는 안 한 첫 필수 단계 id, 다 했으면 null. 문구는 클라이언트가 id로 고른다 |
 | GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, userName?, guild?, guildName?, action, instanceId, instance?, command?, args?, ok, status}]}`. 비밀은 `***`로 가린다(아래 `audit.rs`). `action`은 `start`·`stop`·`restart`·`command`(`/command`·`/rcon`·`/rest`)·`stdin`·`properties`·`reset`, 액션 카탈로그의 관리 액션은 그 액션 id(예 `instance.settings.set`) |
 | GET | `/api/events` | `events.rs` `stream` | 헤더 `Last-Event-ID` 또는 `?since=<n>` | P4 이벤트 스트림(SSE). 한 건은 `id`(데몬이 켜진 뒤 1부터)·`event`(종류)·`data`(`{at, ...}` JSON). 최근 200건을 메모리에 두고 `since` 뒤 것을 먼저 보낸다. 번호가 버퍼보다 오래됐거나 데몬 재시작으로 커졌거나 느려서 놓친 건이 있으면 `event: resync`. 15초마다 `:ping`. 종류: `action.run`(감사 로그 한 줄과 같은 모양, `ts` 대신 `at`), `instance.exit`(`instanceId, instance, kind, exitCode, signal, evidence, restartInSecs, note`), `provision.progress`(`instance` + `/api/provision-progress` 필드. 지금 붙은 클라이언트에게만 보내고 `id`가 없다: 버퍼에 남지 않아 다시 붙을 때의 기록을 밀어내지 않는다), `backup.done`(`instanceId, kind, name?, ok, error?`), `update.available`(`components:[표시 이름]`, `/api/updates/check`의 `update_names`와 같다. 보이는 업데이트(구성요소·최신 버전)가 지난번과 달라졌을 때만), `schedule.warn`(`instanceId, instance, action:"restart"|"update", minutesLeft`, 예약 재시작·업데이트 예고 시각마다). 데몬 종료(`shutdown_token`)에 스트림도 끝난다 |
 | GET | `/api/version` | `server.rs:279` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
@@ -612,6 +613,7 @@ Relay 서명 방식(`relay.rs:100-137`):
   - `required==Some(true)`인데 값이 `null`이거나 빈 문자열이면 에러다.
 - `PATCH /api/instance/:id`는 `validate_settings_patch`(`:222-238`)로 **요청에 들어 있는 필드만** 검사한다(`instance.rs:779`). 보내지 않은 필수 필드는 오류가 아니다.
 - `check_port_conflicts`(`:253`)는 주어진 인스턴스 집합과 포트가 겹치는지 검사한다. 모듈이 지원하는 프로토콜의 포트만 본다. supervisor의 start 경로와 모니터는 **실행 중인** 인스턴스만 넘긴다.
+- 시작 전 검사(`Supervisor::port_conflict_response`)는 실행 중인 인스턴스와 겹치는 포트가 없으면 `start_check_ports`(같은 포트에 모듈 설정 중 `port = true`인 값을 더한 것)를 `ports_held_elsewhere`로 TCP·UDP 둘 다 묶어 본다. 다른 프로그램이 잡은 포트도 같은 `port_conflict` 응답(HTTP 200, `success:false`, `conflicts:["Port N (이름) is in use by another program"]`)으로 돌려준다. 이 인스턴스가 이미 실행 중이면 묶어 보지 않는다.
 - `GET /api/servers`의 `port_conflicts`도 같은 함수를 쓰되(`server.rs:224-248`), "켜면 부딪힐" 서버를 미리 보여 주려고 정지된 인스턴스까지 모두 넘긴다.
 
 ### 7.3 기타

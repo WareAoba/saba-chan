@@ -347,6 +347,9 @@
     "updates": "Updates",
     "updates_ready": "{{count}} verfügbar",
     "preflight_running": "Laufzeitumgebung für Spielmodule wird vorbereitet ({{percent}}%). Serveraktionen warten ggf., bis dies abgeschlossen ist.",
+    "next_module": "Als Nächstes: Installiere ein Spielmodul.",
+    "next_server": "Als Nächstes: Erstelle deinen ersten Server.",
+    "next_discord": "Als Nächstes: Verbinde diesen PC mit einem Discord-Server.",
     "preflight_failed": "Einrichtung der Laufzeitumgebung für Spielmodule fehlgeschlagen: {{error}}. Wird bei der nächsten Serveraktion erneut versucht."
   },
   "stop": {

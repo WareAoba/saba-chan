@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AgreementList, allChecked } from '../AgreementList';
 import Icon from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
 
@@ -34,6 +35,7 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
     // -- configure state --
     const [instanceName, setInstanceName] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [agreed, setAgreed] = useState({}); // 약관 id → 체크 여부
     const nameInputRef = useRef(null);
 
     // ─── 디렉토리 선택 ───
@@ -124,6 +126,7 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
             const name = mod.name || mod.id;
             const existingCount = servers?.filter((s) => s.module === name).length || 0;
             setInstanceName(`migrated-${name}-${existingCount + 1}`);
+            setAgreed({});
             setStep('configure');
         },
         [servers, onStepChange],
@@ -140,6 +143,10 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
     // onStepChange는 proceedWithModule/handleBackToPickDir에서 동기적으로 호출
     // (useEffect로 호출하면 paint 이후라 높이 애니메이션 캡처가 실패함)
 
+    // 설치된 모듈 목록(GET /api/modules)이 약관을 싣는다. 레지스트리에서 고른 모듈은 설치 뒤에 데몬이 묻는다
+    const agreementModuleName = (detectedModule || manualModule)?.name || (detectedModule || manualModule)?.id;
+    const agreements = extensions.find((e) => e.name === agreementModuleName)?.agreements || [];
+
     // ─── 제출 ───
     const handleSubmit = useCallback(async () => {
         const mod = detectedModule || manualModule;
@@ -151,11 +158,13 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                 name: instanceName.trim(),
                 module_name: mod.name || mod.id,
                 migration_source: dirPath,
+                // 사용자가 체크한 약관 (module.toml [[agreements]]): 데몬이 만든 직후 모듈에 동의를 남긴다
+                ...(agreements.length ? { accept_agreements: agreements.map((a) => a.id) } : {}),
             });
         } finally {
             setSubmitting(false);
         }
-    }, [detectedModule, manualModule, instanceName, dirPath, onAddServer]);
+    }, [detectedModule, manualModule, instanceName, dirPath, onAddServer, agreements]);
 
     const handleBackToPickDir = useCallback(() => {
         onStepChange?.('pick-dir'); // 높이 캡처 후 부모 상태 변경 (배칭)
@@ -168,7 +177,7 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
         ? activeModule.displayName || activeModule.display_name || activeModule.name || activeModule.id
         : '';
 
-    const canSubmit = instanceName.trim() && activeModule && !submitting;
+    const canSubmit = instanceName.trim() && activeModule && !submitting && allChecked(agreements, agreed);
 
     // ══════════════════════════════════════════
     //  Step 1: 디렉토리 선택 + 스캔
@@ -425,6 +434,23 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                             }}
                         />
                     </div>
+
+                    {/* 모듈이 선언한 약관: 모두 동의해야 가져올 수 있다 */}
+                    {agreements.length > 0 && (
+                        <div className="as-section as-section-card">
+                            <span className="as-label">
+                                <Icon name="file" size="sm" />
+                                {t('agreements.title')}
+                            </span>
+                            <AgreementList
+                                module={agreementModuleName}
+                                agreements={agreements}
+                                checked={agreed}
+                                onToggle={(id, on) => setAgreed((prev) => ({ ...prev, [id]: on }))}
+                                disabled={submitting}
+                            />
+                        </div>
+                    )}
 
                     {/* 마이그레이션 안내 */}
                     <p className="as-provision-hint">

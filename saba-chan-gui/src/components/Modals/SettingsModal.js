@@ -1,10 +1,12 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import { useDevMode } from '../../hooks/useDevMode';
 import { useModalClose } from '../../hooks/useModalClose';
+import { DiagnosticsPanel, diagnosticsAvailable } from '../DiagnosticsPanel';
+import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import {
     getTheme,
@@ -734,7 +736,8 @@ function SettingsModal({
                                 </div>
                             ) : (
                                 extensions.map((ext) => (
-                                    <div key={ext.id} className="setting-item extension-item">
+                                    <Fragment key={ext.id}>
+                                    <div className="setting-item extension-item">
                                         <label
                                             className="setting-label"
                                             htmlFor={`ext-toggle-${ext.id}`}
@@ -756,6 +759,8 @@ function SettingsModal({
                                             onChange={(checked) => handleExtensionToggle(ext.id, checked)}
                                         />
                                     </div>
+                                    {ext.enabled && <ExtensionConfigForm ext={ext} />}
+                                    </Fragment>
                                 ))
                             )}
 
@@ -1102,6 +1107,19 @@ function SettingsModal({
                                             <Icon name="bell" size="sm" /> Notice (Error)
                                         </button>
                                     </div>
+                                </div>
+                            )}
+
+                            {/* 데몬 진단 정보 (GET /api/diagnostics) */}
+                            {diagnosticsAvailable() && (
+                                <div className="setting-item setting-item-stack">
+                                    <label className="setting-label">
+                                        <span className="setting-title">
+                                            <Icon name="tool" size="sm" /> {t('gui:diagnostics.title')}
+                                        </span>
+                                        <span className="setting-description">{t('gui:diagnostics.description')}</span>
+                                    </label>
+                                    <DiagnosticsPanel />
                                 </div>
                             )}
 

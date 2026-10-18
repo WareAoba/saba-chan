@@ -334,6 +334,10 @@ impl Api {
     pub async fn preflight(&self) -> Result<Value> {
         self.get("/api/runtime/preflight").await
     }
+    /// GET /api/onboarding — 다음 할 일 `{steps, next}`
+    pub async fn onboarding(&self) -> Result<Value> {
+        self.get("/api/onboarding").await
+    }
     /// GET /api/instance/:id/properties — 게임 설정 파일
     pub async fn properties(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/properties", seg(id))).await
