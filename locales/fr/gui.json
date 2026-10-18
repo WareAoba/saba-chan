@@ -1181,5 +1181,12 @@
     "instance_exit": "{{name}} s'est arrêté ({{kind}}).",
     "backup_done": "Sauvegarde de {{name}} terminée ({{kind}}).",
     "backup_failed": "La sauvegarde de {{name}} a échoué. {{error}}"
+  },
+  "terminal": {
+    "open": "Ouvrir dans le terminal",
+    "err_unsupported_platform": "L'ouverture d'un terminal n'est pas encore prise en charge sur ce système.",
+    "err_cli_not_found": "Programme CLI introuvable, impossible d'ouvrir le terminal.",
+    "err_not_found": "Le démon n'a pas trouvé ce serveur.",
+    "err_generic": "Impossible d'ouvrir le terminal."
   }
 }

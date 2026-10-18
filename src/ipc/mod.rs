@@ -392,6 +392,10 @@ impl ProvisionTracker {
     }
 
     pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
+        if let Ok(serde_json::Value::Object(mut data)) = serde_json::to_value(&progress) {
+            data.insert("instance".into(), instance_id.into());
+            crate::events::emit_live("provision.progress", data.into());
+        }
         if let Ok(mut map) = self.inner.lock() {
             map.insert(instance_id.to_string(), progress);
         }
@@ -618,6 +622,7 @@ impl IPCServer {
             .route("/health", get(handlers::server::health_check))
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
             .route("/api/audit", get(handlers::diagnostics::audit))
+            .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/server/:name/status", get(handlers::server::get_server_status))

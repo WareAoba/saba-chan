@@ -91,6 +91,12 @@ describe('데몬 이벤트 스트림', () => {
             isNotice: true,
             source: 'saba-chan',
         });
+        window.__sabaNotice = { addNotice: vi.fn() };
+        await stream.emit({ id: 3, type: 'update.available', data: { components: [{ name: 'saba-core' }, 'gui'] } });
+        expect(window.__sabaNotice.addNotice).toHaveBeenCalledWith(
+            expect.objectContaining({ message: '📦 2 update(s) found: saba-core, gui' }),
+        );
+        delete window.__sabaNotice;
         unmount();
         expect(stream.subs.size).toBe(0);
     });

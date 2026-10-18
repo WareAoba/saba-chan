@@ -1181,5 +1181,12 @@
     "instance_exit": "{{name}} wurde beendet ({{kind}}).",
     "backup_done": "Sicherung von {{name}} abgeschlossen ({{kind}}).",
     "backup_failed": "Sicherung von {{name}} fehlgeschlagen. {{error}}"
+  },
+  "terminal": {
+    "open": "Im Terminal öffnen",
+    "err_unsupported_platform": "Das Öffnen eines Terminals wird auf diesem Betriebssystem noch nicht unterstützt.",
+    "err_cli_not_found": "Das CLI-Programm wurde nicht gefunden, daher kann das Terminal nicht geöffnet werden.",
+    "err_not_found": "Der Daemon hat diesen Server nicht gefunden.",
+    "err_generic": "Das Terminal konnte nicht geöffnet werden."
   }
 }

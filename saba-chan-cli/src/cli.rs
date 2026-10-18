@@ -95,11 +95,15 @@ pub enum Cmd {
     /// CPU, memory, disk and network use, and each server's share
     Monitor(MonitorArgs),
     /// Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)
+    #[command(visible_alias = "activity")]
     Audit {
         server: Option<String>,
         /// How many entries
         #[arg(long, default_value_t = 30)]
         limit: usize,
+        /// Keep printing new entries as they happen (Ctrl+C to stop)
+        #[arg(short, long)]
+        follow: bool,
     },
     /// Who may run which commands from Discord (levels per member, preset, overrides)
     #[command(subcommand, visible_alias = "permissions")]
