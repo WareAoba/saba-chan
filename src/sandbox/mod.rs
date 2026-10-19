@@ -198,6 +198,7 @@ pub const SYNC_FOLDER_MARK: &str = "is a cloud file of a sync folder";
 
 /// 표시를 걷지 못한 경로들로 막는 이유를 고른다. 동기화 폴더의 클라우드 파일이 섞여 있으면 그것이 원인이다
 /// (재분석 지점이라 표시를 읽지 못한다. 사용자 결정으로 막는 것은 그대로 두고, 폴더를 옮기라고 알린다)
+#[cfg_attr(not(windows), allow(dead_code))] // 표시 걷기는 Windows에서만 한다
 fn folder_label_block(stuck: &[(PathBuf, String)]) -> Blocked {
     let detail = stuck.iter().map(|(p, e)| format!("{}: {}", p.display(), e)).collect::<Vec<_>>().join("; ");
     let (code, first) = match stuck.iter().find(|(_, e)| e.contains(SYNC_FOLDER_MARK)) {
