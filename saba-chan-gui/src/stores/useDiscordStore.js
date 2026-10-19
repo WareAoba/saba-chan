@@ -59,8 +59,12 @@ const initialState = () => ({
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
+    // 릴레이 확인이 연달아 실패한 이유. 비어 있지 않으면 화면이 '연결 중' 대신 실패를 보인다
+    relayError: '',
 
     // ── Internal ──
+    // 연달아 실패한 릴레이 확인 수. 한 번 놓친 것으로 끊김·실패를 보이지 않는다
+    _relayFailures: 0,
     _settingsReady: false,
     _botConfigLoaded: false,
     _statusInterval: null,
@@ -78,7 +82,7 @@ export const useDiscordStore = create((set, get) => ({
         if (!targetChanged) return set(partial);
         // 연결 대상이 바뀌면 옛 호스트의 확인 결과는 무효 (다음 폴링까지 잘못된 상태를 보이지 않게)
         statusGeneration += 1;
-        set({ ...partial, relayConnected: false, relayConnecting: false });
+        set({ ...partial, relayConnected: false, relayConnecting: false, relayError: '', _relayFailures: 0 });
         if (get()._statusInterval) get().checkStatus();
     },
 
@@ -251,6 +255,7 @@ export const useDiscordStore = create((set, get) => ({
         }
 
         let relayOk = false;
+        let relayFailure = '';
         if (state.discordCloudHostId) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             try {
@@ -258,16 +263,24 @@ export const useDiscordStore = create((set, get) => ({
                 if (generation === statusGeneration && !state.relayConnected) set({ relayConnecting: true });
                 const result = await window.api.relayCheckHostStatus(state.discordCloudHostId, relayUrl);
                 relayOk = !!result && !result.error;
-            } catch {
-                /* disconnected */
+                if (!relayOk) relayFailure = String(result?.error || 'no response');
+            } catch (e) {
+                relayFailure = e?.message || String(e);
             }
         }
         // 그 사이 대상이 바뀌었거나 폴링이 멈췄으면 이 결과는 버린다
         if (generation !== statusGeneration) return;
 
+        // 두 번 연달아 실패해야 끊김·실패로 본다 (그 전까지는 지금 상태를 유지한다)
+        const failures = relayFailure ? get()._relayFailures + 1 : 0;
+        const settled = !relayFailure || failures >= 2;
+        if (!settled) relayOk = get().relayConnected;
+
         set({
             relayConnecting: false,
             relayConnected: relayOk,
+            relayError: settled ? relayFailure : get().relayError,
+            _relayFailures: failures,
             discordAgentReplaced: agentReplaced,
             discordBotStatus: agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped',
         });
