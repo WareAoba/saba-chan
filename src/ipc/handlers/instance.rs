@@ -356,6 +356,10 @@ pub async fn create_instance(
         let module_name_owned = module.to_string();
         let instance_dir = supervisor.instance_store.instance_dir(&id);
 
+        // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다.
+        // 목록에 보이기 전에 잡는다 (보인 뒤에 잡으면 그 틈의 삭제가 먼저 잡아 설치가 지워지는 폴더로 돈다)
+        let install_guard = super::backup::BusyGuard::take(&id);
+
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
@@ -434,9 +438,6 @@ pub async fn create_instance(
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
-                        // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다
-                        // (방금 만든 인스턴스라 다른 작업이 쥐고 있을 수 없다)
-                        let install_guard = super::backup::BusyGuard::take(&id);
 
                         tokio::spawn(async move {
                             let mut install_guard = install_guard;
@@ -1064,6 +1065,14 @@ pub async fn update_instance_settings(
             let error = json!({ "error": "Instance not found" });
             return (StatusCode::NOT_FOUND, Json(error)).into_response();
         }
+    };
+
+    // 서버 폴더를 옮기는 저장은 설치·업데이트·백업·복원이 그 폴더를 쓰지 않을 때만 (업데이트는 시작할 때
+    // 계산한 폴더로 다른 인스턴스를 잠그고 받는다). 같은 값을 다시 보내는 저장은 막지 않는다
+    let moves_folder = settings.get("working_dir").is_some_and(|v| v.as_str() != instance.working_dir.as_deref());
+    let _guard = match moves_folder.then(|| super::backup::BusyGuard::take(&id)) {
+        Some(None) => return super::backup::instance_busy(),
+        held => held.flatten(),
     };
 
     // ── 설정값 타입/범위 스키마 검증 ──
@@ -2057,6 +2066,43 @@ mod tests {
         assert_eq!(body["error_code"], "instance_busy");
         drop(other);
         assert!(super::super::backup::BusyGuard::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
+    }
+
+    /// 설치·업데이트·백업·복원이 그 폴더를 쓰는 동안 서버 폴더(`working_dir`)를 옮기지 않는다:
+    /// 업데이트는 시작할 때 계산한 폴더를 기준으로 다른 인스턴스를 잠그고 받는다
+    #[tokio::test]
+    async fn the_server_folder_does_not_move_while_a_task_holds_the_instance() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(modules.join("game")).unwrap();
+        std::fs::write(
+            modules.join("game").join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(modules.join("game").join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        let here = tmp.path().join("here").to_string_lossy().into_owned();
+        inst.working_dir = Some(here.clone());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let elsewhere = tmp.path().join("elsewhere").to_string_lossy().into_owned();
+        let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
+        assert_eq!(moved.status, 409, "{}", moved.body);
+        assert_eq!(moved.body["error_code"], "instance_busy");
+        // 같은 값을 다시 보내는 저장(GUI는 설정 전체를 보낸다)은 막지 않는다
+        let same = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": here }))).await).await;
+        assert_eq!(same.status, 200, "{}", same.body);
+        drop(busy);
+        let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
+        assert_eq!(moved.status, 200, "{}", moved.body);
     }
 
     #[tokio::test]
