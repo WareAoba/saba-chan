@@ -79,6 +79,15 @@ describe('실패로 정해진 뒤의 확인', () => {
         expect(stateOf()).toBe('connected');
     });
 
+    it('폴링을 멈추면 남은 릴레이 실패를 지운다', async () => {
+        window.api.relayCheckHostStatus.mockResolvedValue({ error: 'down' });
+        await useDiscordStore.getState().checkStatus();
+        await useDiscordStore.getState().checkStatus();
+        useDiscordStore.getState().stopStatusPolling();
+        expect(useDiscordStore.getState().relayError).toBe('');
+        expect(useDiscordStore.getState()._relayFailures).toBe(0);
+    });
+
     it('봇을 멈추면 남은 릴레이 실패를 지운다', async () => {
         window.api.relayCheckHostStatus.mockResolvedValue({ error: 'down' });
         await useDiscordStore.getState().checkStatus();
@@ -115,6 +124,25 @@ describe('디스코드 화면', () => {
         expect(screen.getByText(/connect ECONNREFUSED/)).toBeTruthy();
         // 연결되지 않았으니 노드 목록은 부르지 않는다
         expect(window.api.relayListHostNodes).not.toHaveBeenCalled();
+    });
+
+    it('끊겼지만 릴레이 실패가 아직 정해지지 않았으면 옛 노드 목록 오류를 보이지 않는다', async () => {
+        window.api.relayListHostNodes = vi.fn().mockResolvedValue({ error: 'old nodes error' });
+        window.showToast = vi.fn();
+        Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true });
+        const props = {
+            discordBotStatus: 'connecting',
+            discordCloudHostId: 'host',
+            setDiscordCloudHostId: () => {},
+            relayConnecting: false,
+            setDiscordPrefixes: () => {},
+            setNodeSettings: () => {},
+            setCloudNodes: () => {},
+            setCloudMembers: () => {},
+        };
+        const view = await act(async () => render(<DiscordPage {...props} relayConnected={true} />));
+        await act(async () => view.rerender(<DiscordPage {...props} relayConnected={false} />));
+        expect(screen.queryByText(/old nodes error/)).toBeNull();
     });
 
     it('옛 노드 목록 오류가 남아 있어도 릴레이 실패를 보이고, 다시 시도하면 상태 확인을 다시 한다', async () => {

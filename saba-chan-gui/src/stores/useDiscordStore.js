@@ -318,7 +318,7 @@ export const useDiscordStore = create((set, get) => ({
         clearInterval(state._statusInterval);
         clearTimeout(state._statusTimeout);
         statusGeneration += 1;
-        set({ _statusInterval: null, _statusTimeout: null, relayConnecting: false });
+        set({ _statusInterval: null, _statusTimeout: null, relayConnecting: false, relayError: '', _relayFailures: 0 });
     },
 
     // Test-only: reset to initial state
