@@ -1158,6 +1158,8 @@
     "reason_working_dir_in_use": "outro servidor usa a pasta de trabalho dele",
     "reason_invalid_id": "ID de servidor inválido",
     "reason_save_failed": "não foi possível salvar",
+    "reason_name_taken": "já existe um servidor com este nome",
+    "reason_busy": "sendo instalado, atualizado, copiado ou restaurado",
     "reason_other": "motivo desconhecido",
     "no_servers": "Nenhum servidor para importar",
     "config": "Configurações: {{sections}}",

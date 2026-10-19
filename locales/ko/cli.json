@@ -159,7 +159,9 @@
       "running": "켜져 있음",
       "working_dir_in_use": "다른 서버가 같은 폴더를 씀",
       "invalid_id": "잘못된 id",
-      "save_failed": "저장 실패"
+      "save_failed": "저장 실패",
+      "name_taken": "같은 이름의 서버가 있음",
+      "busy": "설치·업데이트·백업·복원 중"
     },
     "import_token_moved": "봇 페어링도 옮겼어요. 옛 PC는 연결을 끊으세요 (옛 PC에서: saba-chan-cli bot unpair)."
   },

@@ -1158,6 +1158,8 @@
     "reason_working_dir_in_use": "工作文件夹被其他服务器使用",
     "reason_invalid_id": "服务器 ID 无效",
     "reason_save_failed": "无法保存",
+    "reason_name_taken": "已有同名服务器",
+    "reason_busy": "正在安装、更新、备份或恢复",
     "reason_other": "未知原因",
     "no_servers": "没有可导入的服务器",
     "config": "设置：{{sections}}",

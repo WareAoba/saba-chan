@@ -1158,6 +1158,8 @@
     "reason_working_dir_in_use": "作業フォルダーを別のサーバーが使っています",
     "reason_invalid_id": "サーバーIDが正しくありません",
     "reason_save_failed": "保存できませんでした",
+    "reason_name_taken": "同じ名前のサーバーがあります",
+    "reason_busy": "インストール・更新・バックアップ・復元の最中です",
     "reason_other": "不明な理由",
     "no_servers": "インポートするサーバーがありません",
     "config": "設定: {{sections}}",
