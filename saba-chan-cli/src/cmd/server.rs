@@ -697,7 +697,19 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
         "provisioning" => return Err(failed(t!("start.provisioning", name = sv.name))),
         _ => {
             // 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법.
-            let r = match ctx.api.start(&sv.id).await {
+            let res = ctx.api.start(&sv.id).await;
+            // 예약 범위를 피해 옮긴 포트는 시작이 실패해도 저장돼 있으므로 먼저 알린다
+            let body = match &res {
+                Ok(v) => Some(v),
+                Err(e) => match e.downcast_ref::<CliError>() {
+                    Some(CliError::Api { body, .. }) => Some(body),
+                    _ => None,
+                },
+            };
+            for line in body.map(port_moved_lines).unwrap_or_default() {
+                ctx.out.note(&line);
+            }
+            let r = match res {
                 Err(e) if api_code(&e) == Some("preflight_failed") => {
                     return checkup(ctx, Err(e), "", &sv.name).await;
                 }
@@ -909,6 +921,16 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
 }
 
 /// API 오류의 `error_code`
+/// 시작 답의 `port_moved: [{field, from, to}]` → 알릴 줄
+fn port_moved_lines(body: &Value) -> Vec<String> {
+    body.get("port_moved")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|m| Some(t!("start.port_moved", from = m.get("from")?, to = m.get("to")?)))
+        .collect()
+}
+
 fn api_code(e: &anyhow::Error) -> Option<&str> {
     match e.downcast_ref::<CliError>() {
         Some(CliError::Api { body, .. }) => body.get("error_code").and_then(Value::as_str),
@@ -1804,5 +1826,15 @@ mod tests {
         insert_patch(&mut p, "extension_data.a", json!(1));
         insert_patch(&mut p, "port", json!(2));
         assert_eq!(Value::Object(p), json!({ "extension_data": { "a": 1 }, "port": 2 }));
+    }
+
+    /// 시작 전에 예약 범위를 피해 옮긴 포트를 알린다 (M13. 성공 답과 실패 답 모두)
+    #[test]
+    fn a_moved_port_is_told_on_start() {
+        let body = json!({ "success": false, "port_moved": [{ "field": "rest_port", "from": 8212, "to": 8242 }] });
+        let lines = port_moved_lines(&body);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("8212") && lines[0].contains("8242"), "{}", lines[0]);
+        assert!(port_moved_lines(&json!({ "success": true })).is_empty());
     }
 }

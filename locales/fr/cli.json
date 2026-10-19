@@ -362,6 +362,7 @@
     "not_yet": "{{name}} n'est pas encore lancé ({{status}}). Vérifiez : saba-chan-cli console {{name}}",
     "provisioning": "{{name}} est toujours en cours d'installation.",
     "requested": "Démarrage demandé pour {{name}}.",
+    "port_moved": "Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}.",
     "waiting": "Démarrage de {{name}}...",
     "exited": "{{name}} s'est arrêté juste après le démarrage. Dernières lignes ci-dessus."
   },
@@ -431,6 +432,7 @@
     "no_last": "Aucun résultat de mise à jour enregistré.",
     "not_installed": "non installé",
     "nothing_to_apply": "Rien à appliquer. Téléchargez d'abord : saba-chan-cli update download",
+    "apply_failed": "La mise à jour n'a pas pu être appliquée. Vérifiez les erreurs ci-dessus.",
     "ready": "prêt à installer",
     "up_to_date": "à jour",
     "updater_launched": "Programme de mise à jour lancé. Le daemon s'arrête pour la mise à jour.",

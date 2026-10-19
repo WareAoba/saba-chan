@@ -362,6 +362,7 @@
     "not_yet": "{{name}} 尚未运行（{{status}}）。请检查：saba-chan-cli console {{name}}",
     "provisioning": "{{name}} 仍在安装中。",
     "requested": "已请求启动 {{name}}。",
+    "port_moved": "Windows 预留了管理用 REST 端口 {{from}}，已改为 {{to}}。",
     "waiting": "正在启动 {{name}}...",
     "exited": "{{name}} 启动后立即退出。最后几行见上方。"
   },
@@ -431,6 +432,7 @@
     "no_last": "没有更新结果记录。",
     "not_installed": "未安装",
     "nothing_to_apply": "没有可应用的内容。请先下载：saba-chan-cli update download",
+    "apply_failed": "无法应用更新。请查看上面的错误。",
     "ready": "可以安装",
     "up_to_date": "已是最新",
     "updater_launched": "更新程序已启动。守护进程正在关闭以进行更新。",

@@ -362,6 +362,7 @@
     "not_yet": "{{name}} aún no está en marcha ({{status}}). Revisa: saba-chan-cli console {{name}}",
     "provisioning": "{{name}} se sigue instalando.",
     "requested": "Inicio solicitado para {{name}}.",
+    "port_moved": "Windows reservó el puerto REST {{from}}, así que se cambió a {{to}}.",
     "waiting": "Iniciando {{name}}...",
     "exited": "{{name}} se cerró justo después de iniciarse. Mira las últimas líneas arriba."
   },
@@ -431,6 +432,7 @@
     "no_last": "No hay resultados de actualización registrados.",
     "not_installed": "no instalado",
     "nothing_to_apply": "Nada que aplicar. Descarga primero: saba-chan-cli update download",
+    "apply_failed": "No se pudo aplicar la actualización. Revisa los errores de arriba.",
     "ready": "listo para instalar",
     "up_to_date": "al día",
     "updater_launched": "Actualizador iniciado. El daemon se está cerrando para actualizar.",

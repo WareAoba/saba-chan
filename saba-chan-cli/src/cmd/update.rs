@@ -218,6 +218,26 @@ async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// 업데이터 없이 끝난 적용의 결과: (알릴 문구, 실패 여부). 오류가 있으면 일부만 적용됐어도 실패다
+fn apply_outcome(r: &Value) -> (Option<String>, bool) {
+    let applied: Vec<String> = r
+        .get("applied")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(output::show)
+        .collect();
+    let failed = r.get("errors").and_then(Value::as_array).is_some_and(|e| !e.is_empty());
+    let done = if !applied.is_empty() {
+        Some(t!("update.applied", list = applied.join(", ")))
+    } else if failed {
+        None
+    } else {
+        Some(t!("update.nothing_to_apply"))
+    };
+    (done, failed)
+}
+
 async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     let spin = crate::progress::spinner(&t!("update.applying"));
     let r = ctx.api.update_apply(components).await;
@@ -227,17 +247,16 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
         ctx.out.warn(&output::show(e));
     }
     if r.get("requires_updater").and_then(Value::as_bool) != Some(true) {
-        let applied: Vec<String> = r
-            .get("applied")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(output::show)
-            .collect();
-        if applied.is_empty() {
-            ctx.out.done(&t!("update.nothing_to_apply"), &r);
-        } else {
-            ctx.out.done(&t!("update.applied", list = applied.join(", ")), &r);
+        let (done, failed) = apply_outcome(&r);
+        if failed {
+            // 일부 적용은 사람에게만 따로 알리고, --json은 오류 문서 하나에 결과를 싣는다
+            if let Some(msg) = done.filter(|_| !ctx.out.json) {
+                ctx.out.done(&msg, &r);
+            }
+            return Err(crate::error::CliError::Partial { message: t!("update.apply_failed"), data: r }.into());
+        }
+        if let Some(msg) = done {
+            ctx.out.done(&msg, &r);
         }
         return Ok(());
     }
@@ -347,6 +366,17 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬이 오류를 돌려준 적용은 "적용할 게 없어요"로 성공 처리하지 않는다 (cloud-review-300 P3-4)
+    #[test]
+    fn an_apply_with_errors_fails() {
+        let (done, failed) = apply_outcome(&json!({ "applied": [], "errors": ["boom"] }));
+        assert!(done.is_none() && failed);
+        let (done, failed) = apply_outcome(&json!({ "applied": ["gui"], "errors": ["boom"] }));
+        assert!(done.unwrap().contains("gui") && failed);
+        let (done, failed) = apply_outcome(&json!({ "applied": [], "errors": [] }));
+        assert!(done.is_some() && !failed);
+    }
 
     /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)
     #[test]

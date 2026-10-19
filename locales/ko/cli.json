@@ -418,6 +418,7 @@
     "not_yet": "{{name}}이(가) 아직 안 켜졌어요 ({{status}}). 확인: saba-chan-cli console {{name}}",
     "provisioning": "{{name}}은(는) 아직 설치 중이에요.",
     "requested": "{{name}} 시작을 요청했어요.",
+    "port_moved": "Windows가 관리용 REST 포트 {{from}}을(를) 예약해 두어 {{to}}(으)로 바꿨어요.",
     "waiting": "{{name}} 켜는 중...",
     "exited": "{{name}}이(가) 켜지자마자 꺼졌어요. 위의 마지막 줄을 확인하세요."
   },
@@ -487,6 +488,7 @@
     "no_last": "기록된 업데이트 결과가 없어요.",
     "not_installed": "설치 안 됨",
     "nothing_to_apply": "적용할 게 없어요. 먼저 받기: saba-chan-cli update download",
+    "apply_failed": "업데이트를 적용하지 못했어요. 위의 오류를 확인하세요.",
     "ready": "설치 준비됨",
     "up_to_date": "최신",
     "updater_launched": "업데이터를 띄웠어요. 업데이트를 위해 데몬이 꺼져요.",
