@@ -509,6 +509,19 @@ pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option
     json!({ "actions": actions, "locale": crate::chat::i18n::normalize_language(locale) })
 }
 
+/// 입력 칸마다 언어별 제목 (`title: {<locale>: …}`). 제목이 하나도 없는 칸은 그대로 둔다
+fn with_field_titles(mut input: Value, titles: impl Fn(&str) -> Map<String, Value>) -> Value {
+    if let Some(props) = input["properties"].as_object_mut() {
+        for (name, field) in props.iter_mut() {
+            let title = titles(name);
+            if !title.is_empty() {
+                field["title"] = Value::Object(title);
+            }
+        }
+    }
+    input
+}
+
 /// heartbeat `metadata.actions` (디스코드·챗봇 표면만, 인스턴스 펼침 없이). 상한: 64개, 32768바이트.
 /// 고정 액션 뒤에 모듈 조회(`server.query:<이름>`, `module` 필드로 어느 모듈의 것인지)를 모듈·이름 순으로 붙인다
 pub const HEARTBEAT_MAX_ACTIONS: usize = 64;
@@ -534,7 +547,9 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             "surfaces": d.surfaces.iter().filter(|s| matches!(s, Discord | Chatbot)).map(|s| s.name()).collect::<Vec<_>>(),
             "scope": if d.instance { "instance" } else { "none" },
             "title": title,
-            "input": remote_schema(d),
+            "input": with_field_titles(remote_schema(d), |name| {
+                cats.iter().filter_map(|(l, c)| Some((l.to_string(), json!(translated(c, &format!("actions.field.{}", name))?)))).collect()
+            }),
         }));
     }
     let mut modules: Vec<&LoadedModule> = modules.iter().filter(|m| !m.metadata.queries.is_empty()).collect();
@@ -559,13 +574,33 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
                 "scope": "instance",
                 "module": m.metadata.name,
                 "title": title,
-                "input": query_input_schema(q),
+                "input": with_field_titles(query_input_schema(q), |name| {
+                    let declared = q.inputs.iter().find(|i| i.name == name).and_then(|i| i.label.clone());
+                    module_locales
+                        .iter()
+                        .filter_map(|(l, loc)| {
+                            let label = loc.pointer(&format!("/queries/{}/inputs/{}/label", q.name, name)).and_then(Value::as_str).map(str::to_string).or_else(|| declared.clone())?;
+                            Some((l.to_string(), json!(label)))
+                        })
+                        .collect()
+                }),
             });
             let description = text("description");
             if !description.is_empty() {
                 item["description"] = Value::Object(description);
             }
             items.push(item);
+        }
+    }
+    // 상한을 넘으면 칸 제목부터 뺀다 (릴레이는 제목이 없으면 칸 이름을 보인다)
+    let total: usize = 2 + items.iter().map(|i| i.to_string().len() + 1).sum::<usize>();
+    if total > HEARTBEAT_MAX_BYTES {
+        for item in &mut items {
+            for field in item["input"]["properties"].as_object_mut().into_iter().flat_map(|p| p.values_mut()) {
+                if let Some(f) = field.as_object_mut() {
+                    f.remove("title");
+                }
+            }
         }
     }
     for item in items {
@@ -1203,6 +1238,12 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         steps::allow_in_guild(server, caller, new_id).await;
     }
     let mut out = json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result });
+    // 원격 화면은 JSON을 그리지 않으므로 요청 언어의 요약을 함께 준다
+    if let (true, Some(_)) = (ok, &caller.remote) {
+        if let Some(text) = summary::text(&r.id, &out["result"], &catalog(&caller.locale)) {
+            out["text"] = json!(text);
+        }
+    }
     if let (true, Some((instance, before))) = (ok, previous) {
         if let Some(undo) = undo_plan(server, &instance, before, caller).await {
             out["undoPlanId"] = json!(undo);
@@ -1341,6 +1382,7 @@ async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value
 }
 
 mod steps;
+mod summary;
 pub use steps::{plan_steps, run_status};
 
 #[cfg(test)]
