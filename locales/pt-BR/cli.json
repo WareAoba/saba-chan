@@ -202,6 +202,7 @@
       "backup_unsupported": "O módulo deste jogo não informa o que deve ser salvo no backup. Um módulo mais novo pode informar: saba-chan-cli update check",
       "nothing_to_back_up": "O mundo ainda não existe. Inicie o servidor uma vez para criá-lo.",
       "backup_busy": "Já há um backup ou restauração deste servidor em andamento. Tente de novo quando terminar.",
+      "invalid_relay_url": "Só são permitidos endereços de relay https:// (http apenas para localhost, 127.0.0.1 ou [::1] ao testar neste PC).",
       "no_command_path": "Este servidor foi iniciado fora do Saba-chan, então não tem console para receber comandos. Reinicie-o pelo Saba-chan: saba-chan-cli restart <server>"
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
