@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
+import { CHATBOT_TOOLS, ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
 import { pickOption } from './dropdown';
 
@@ -126,6 +126,11 @@ describe('챗봇 설정 변환', () => {
         // 계약 순서로 정리, 비면 null
         expect(p.disabledTools).toEqual(['lol', 'images']);
         expect(settingsPatch(d).disabledTools).toBeNull();
+    });
+
+    it('눈치 메모는 끌 수 없는 기본 사양이라 도구 목록에 없고, 예전에 꺼 둔 값은 다음 저장 때 지운다', () => {
+        expect(CHATBOT_TOOLS).not.toContain('social_notes');
+        expect(settingsPatch({ ...settingsDraft(), disabledTools: ['social_notes'] }).disabledTools).toBeNull();
     });
 
     it('릴레이 400을 읽을 수 있는 줄로', () => {

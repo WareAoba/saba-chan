@@ -1055,8 +1055,6 @@
     "tool_lol_hint": "Procura o histórico de partidas de League of Legends.",
     "tool_images": "Geração de imagens",
     "tool_images_hint": "Desenha imagens (10 por dia).",
-    "tool_social_notes": "Notas sociais",
-    "tool_social_notes_hint": "Guarda notas privadas sobre o clima e as pessoas. Nunca aparecem no app.",
     "relay_delete_pending": "As configurações antigas do chatbot ainda não foram removidas do relay. Será tentado de novo na próxima conexão.",
     "channels_moved": "Escolha os canais do chatbot na aba Canais de cada servidor do Discord.",
     "prefix_calls": "Ele responde quando chamado com um prefixo de Discord › Configurações.",
