@@ -122,7 +122,11 @@ async fn import(ctx: &Ctx, guild: &str, wanted: &[String]) -> Result<()> {
     } else {
         let mut chosen = Vec::new();
         for q in wanted {
-            let id = resolve::member(ctx, guild, q).await?;
+            // 길드를 떠난 예전 멤버도 이름으로 고르게, 릴레이 목록의 이름을 먼저 본다
+            let id = match legacy_named(&legacy, q) {
+                Some(id) => id,
+                None => resolve::member(ctx, guild, q).await?,
+            };
             match candidates.iter().find(|(c, _)| *c == id) {
                 Some(c) => chosen.push(c.clone()),
                 None => return Err(usage(t!("perm.import_not_candidate", member = q))),
@@ -147,6 +151,18 @@ async fn import(ctx: &Ctx, guild: &str, wanted: &[String]) -> Result<()> {
     }
     ctx.out.done(&t!("perm.imported", count = imported.len(), guild = guild), &data);
     Ok(())
+}
+
+/// 릴레이 목록에서 표시 이름·사용자 이름(앞의 `@` 무시, 대소문자 무시)이 꼭 맞는 하나의 id
+fn legacy_named(legacy: &Value, query: &str) -> Option<String> {
+    let q = query.trim().trim_start_matches('@').to_lowercase();
+    let mut hits = legacy.as_array().into_iter().flatten().filter(|m| {
+        [s(m, "displayName"), s(m, "username")].iter().any(|n| !n.is_empty() && n.to_lowercase() == q)
+    });
+    match (hits.next(), hits.next()) {
+        (Some(m), None) => Some(member_id(m)),
+        _ => None,
+    }
 }
 
 /// 디스코드 id (문자열이나 숫자)
@@ -302,5 +318,10 @@ mod tests {
             { "id": "5" }
         ]);
         assert_eq!(import_candidates(&perm, &legacy), vec![("2".to_string(), 2), ("3".to_string(), -1)]);
+        // 길드를 떠나 멤버 목록에 없는 예전 멤버도 릴레이 목록의 이름으로 고른다
+        let named = json!([{ "id": "7", "username": "old_friend", "displayName": "옛친구" }, { "id": "8", "username": "dup" }, { "id": "9", "username": "Dup" }]);
+        assert_eq!(legacy_named(&named, "@Old_Friend").as_deref(), Some("7"));
+        assert_eq!(legacy_named(&named, "옛친구").as_deref(), Some("7"));
+        assert_eq!(legacy_named(&named, "dup"), None);
     }
 }
