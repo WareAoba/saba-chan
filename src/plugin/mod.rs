@@ -4,6 +4,8 @@ use tokio::process::Command;
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use crate::utils::apply_creation_flags;
 
+mod loopback;
+
 /// 데몬 IPC 포트. 모듈이 데몬 API를 역호출할 때 쓴다(main이 기동 시 한 번 설정).
 static IPC_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
 
@@ -155,7 +157,7 @@ pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS).await
+    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS, None).await
 }
 
 /// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
@@ -164,15 +166,28 @@ pub struct PluginCall {
     pub entry: String,
     pub function: String,
     pub config: Value,
+    /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
+    pub server: Option<u32>,
+    pub timeout_secs: u64,
 }
 
 impl PluginCall {
     pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
-        Self { entry: entry.into(), function: function.to_string(), config }
+        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS }
+    }
+
+    pub fn serving(mut self, server: Option<u32>) -> Self {
+        self.server = server;
+        self
+    }
+
+    pub fn timeout(mut self, secs: u64) -> Self {
+        self.timeout_secs = secs;
+        self
     }
 
     pub async fn run(self) -> Result<Value> {
-        run_plugin(&self.entry, &self.function, self.config).await
+        run_plugin_inner(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server).await
     }
 }
 
@@ -181,7 +196,7 @@ impl PluginCall {
 pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
 
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, timeout_secs).await
+    run_plugin_inner(module_path, function, config, None, timeout_secs, None).await
 }
 
 /// Like `run_plugin_with_progress` but with a custom timeout.
@@ -196,7 +211,7 @@ pub async fn run_plugin_with_progress_and_timeout<F>(
 where
     F: Fn(ExtensionProgress) + Send + 'static,
 {
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs).await
+    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs, None).await
 }
 
 type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
@@ -378,6 +393,7 @@ async fn run_plugin_inner(
     config: Value,
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
     timeout_secs: u64,
+    server: Option<u32>,
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
@@ -463,6 +479,13 @@ async fn run_plugin_inner(
         cmd.env("SABA_JAVA_RUNTIMES", runtimes);
     }
 
+    // 격리 실행은 127.0.0.1에 닿지 못한다: 자기 인스턴스 포트로 가는 요청은 데몬이 대신 보낸다 (loopback.rs)
+    let mut loopback = isolation.as_ref().and_then(|iso| {
+        let dir = iso.temp.join("loopback");
+        std::fs::create_dir_all(&dir).map_err(|e| tracing::warn!("[Loopback] cannot create {}: {}", dir.display(), e)).ok()?;
+        cmd.env("SABA_LOOPBACK_DIR", &dir);
+        Some(loopback::Proxy { dir, ports: loopback::instance_ports(&config), server })
+    });
     if let Some(iso) = &isolation {
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
             .env("TEMP", &iso.temp)
@@ -489,6 +512,9 @@ async fn run_plugin_inner(
                 if let Some(enabled) = enabled_extensions {
                     unverified_extensions = set_extension_env(&mut cmd, enabled, false, Some(&iso.key));
                 }
+                // 격리 없이 돌면 루프백에 직접 닿는다
+                cmd.env_remove("SABA_LOOPBACK_DIR");
+                loopback = None;
                 plain(cmd.spawn()?)
             }
             #[cfg(windows)]
@@ -500,7 +526,7 @@ async fn run_plugin_inner(
             }
         },
     };
-    let status = drive(&mut child, config_json.as_bytes(), on_progress, std::time::Duration::from_secs(timeout_secs)).await;
+    let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, std::time::Duration::from_secs(timeout_secs)).await;
 
     match status {
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
@@ -545,6 +571,7 @@ async fn drive(
     child: &mut Process,
     input: &[u8],
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    loopback: Option<loopback::Proxy>,
     timeout: std::time::Duration,
 ) -> std::result::Result<Collected, tokio::time::error::Elapsed> {
     let pid = match child {
@@ -559,7 +586,24 @@ async fn drive(
         let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
             let mut reader = BufReader::new(pipe).lines();
+            let mut relayed = 0;
             while let Ok(Some(line)) = reader.next_line().await {
+                // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
+                if let Some(request) = line.strip_prefix(loopback::PREFIX) {
+                    match &loopback {
+                        Some(proxy) if relayed < loopback::MAX_REQUESTS => {
+                            relayed += 1;
+                            let (proxy, request) = (proxy.clone(), request.to_string());
+                            tokio::spawn(async move { loopback::serve(&proxy, &request).await });
+                        }
+                        Some(proxy) => {
+                            tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS);
+                            loopback::refuse(proxy, request, "too_many_requests");
+                        }
+                        None => tracing::warn!("[Loopback] request from an unisolated run ignored"),
+                    }
+                    continue;
+                }
                 if let Some(json_str) = line.strip_prefix("PROGRESS:") {
                     if let Ok(prog) = serde_json::from_str::<ExtensionProgress>(json_str) {
                         if let Some(ref cb) = on_progress {
@@ -689,6 +733,42 @@ mod tests {
         panic!("grandchild {grandchild} survived");
     }
 
+    /// 격리된 모듈(127.0.0.1에 못 닿음)이 공용 도우미 `loopback_http`로 자기 서버에 물으면 데몬이 대신 보내고 답을 돌려준다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_sandboxed_module_reaches_its_own_server_through_the_daemon() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut got = vec![0u8; 4096];
+            let n = sock.read(&mut got).await.unwrap();
+            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 22\r\n\r\n{\"currentplayernum\":3}").await.unwrap();
+            String::from_utf8_lossy(&got[..n]).to_string()
+        });
+        let relay = tempfile::tempdir().unwrap();
+        let script = format!(
+            "import json, sys; sys.path.insert(0, {:?}); import daemon_rcon; sys.stdin.read(); \
+             status, body = daemon_rcon.loopback_http({port}, 'GET', '/v1/api/metrics', headers={{'Authorization': 'Basic eA=='}}); \
+             print(json.dumps({{'status': status, 'body': json.loads(body)}}))",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/modules"),
+        );
+        let mut cmd = Command::new("python3");
+        cmd.arg("-c").arg(script).env("SABA_LOOPBACK_DIR", relay.path())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let mut child = plain(cmd.spawn().unwrap());
+        let proxy = loopback::Proxy { dir: relay.path().to_path_buf(), ports: vec![port], server: Some(std::process::id()) };
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, Some(proxy), std::time::Duration::from_secs(20)).await.unwrap().unwrap();
+        assert!(status.success(), "{stderr}");
+        assert_eq!(parse_plugin_output(&stdout).unwrap(), json!({ "status": 200, "body": { "currentplayernum": 3 } }));
+        assert!(server.await.unwrap().starts_with("GET /v1/api/metrics HTTP/1.1\r\n"));
+        assert!(!stderr.contains("LOOPBACK:"), "relay requests (they carry auth headers) are not logged");
+        assert_eq!(std::fs::read_dir(relay.path()).unwrap().count(), 0, "the module removes the reply it read");
+    }
+
     /// 부모가 끝나도 자식이 출력 파이프를 쥐고 있으면, 출력 수집까지 기한 안에 끊고 자식도 끝낸다
     #[cfg(unix)]
     #[tokio::test]
@@ -705,7 +785,7 @@ mod tests {
             .process_group(0);
         let mut child = plain(cmd.spawn().unwrap());
         let started = std::time::Instant::now();
-        let result = drive(&mut child, b"{}", None, std::time::Duration::from_secs(1)).await;
+        let result = drive(&mut child, b"{}", None, None, std::time::Duration::from_secs(1)).await;
         assert!(result.is_err(), "timed out instead of waiting for the held pipe");
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
         let grandchild: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();

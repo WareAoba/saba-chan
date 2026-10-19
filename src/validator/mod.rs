@@ -524,6 +524,9 @@ fn ports_held_by_binding(ports: &[(String, u16)]) -> Vec<(String, u16)> {
 /// IPv4는 주소와 상관없이 센다(예전 0.0.0.0 바인딩 검사도 막혔다). IPv6는 `[::]`에 묶인 것만 센다:
 /// 자바 서버처럼 dual-stack으로 듣는 소켓은 IPv6 표에만 나오고, 특정 IPv6 주소만 쓰는 소켓은 IPv4 포트와 겹치지 않는다
 #[cfg(windows)]
+pub(crate) use held_ports::tcp_listener_pids;
+
+#[cfg(windows)]
 mod held_ports {
     use std::collections::HashSet;
     use winapi::shared::tcpmib::{MIB_TCP6TABLE_OWNER_PID, MIB_TCPTABLE_OWNER_PID};
@@ -556,6 +559,26 @@ mod held_ports {
         let start = first as usize - buf.as_ptr() as usize;
         let fits = (buf.len() * 8).saturating_sub(start) / std::mem::size_of::<R>();
         std::slice::from_raw_parts(first, count.min(fits))
+    }
+
+    /// TCP로 그 포트를 듣는 프로세스 (IPv4·IPv6 모두. 루프백 중계가 듣는 쪽이 인스턴스 서버인지 본다)
+    pub fn tcp_listener_pids(want: u16) -> Option<Vec<u32>> {
+        let port = |raw: u32| u16::from_be(raw as u16);
+        let mut pids = Vec::new();
+        let mut read_any = false;
+        unsafe {
+            if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
+                let t = buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
+                pids.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| port(r.dwLocalPort) == want).map(|r| r.dwOwningPid));
+                read_any = true;
+            }
+            if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET6 as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
+                let t = buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
+                pids.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| port(r.dwLocalPort) == want).map(|r| r.dwOwningPid));
+                read_any = true;
+            }
+        }
+        read_any.then_some(pids)
     }
 
     pub fn read() -> HashSet<u16> {

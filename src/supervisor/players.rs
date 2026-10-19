@@ -127,7 +127,8 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
     let mut asks = tokio::task::JoinSet::new();
     for (id, pid, call) in calls {
         asks.spawn(async move {
-            let result = crate::plugin::run_plugin_with_timeout(&call.entry, &call.function, call.config, CALL_TIMEOUT_SECS).await;
+            // `run`으로 불러야 서버 PID가 함께 간다 (격리 실행의 루프백 중계가 그 서버의 포트만 잇는다)
+            let result = call.timeout(CALL_TIMEOUT_SECS).run().await;
             if let Err(e) = &result {
                 tracing::debug!("player count for {} failed: {}", id, e);
             }
