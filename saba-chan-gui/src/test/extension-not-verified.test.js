@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useServerActions } from '../hooks/useServerActions';
+import { useServerSettings } from '../hooks/useServerSettings';
 
 const notVerified = {
     success: false,
@@ -70,5 +71,53 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
         const text = shown(setModal);
         expect(text).toMatch(/ue4-ini, steamcmd/);
         expect(text).not.toMatch(/requires the following extension/);
+    });
+});
+
+describe('서버 설정 창에서 익스텐션이 확인되지 않았을 때', () => {
+    const modules = [
+        {
+            name: 'game',
+            install: { method: 'download' },
+            settings: { fields: [{ name: 'motd', field_type: 'text' }] },
+        },
+    ];
+    const srv = { id: 'a', name: 'A', module: 'game', status: 'stopped', module_settings: { working_dir: 'C:/a' } };
+    const open = async () => {
+        const setModal = vi.fn();
+        const hook = renderHook(() =>
+            useServerSettings({ servers: [srv], modules, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
+        );
+        await act(async () => hook.result.current.handleOpenSettings(srv));
+        return { ...hook, setModal };
+    };
+
+    beforeEach(() => {
+        window.showToast = vi.fn();
+        window.api = {
+            serverList: vi.fn().mockResolvedValue(null),
+            moduleListVersions: vi.fn().mockResolvedValue({ versions: ['1.0'] }),
+            instanceGetInstalledVersion: vi.fn().mockResolvedValue({ success: false }),
+            instanceReadLiveSettings: vi.fn().mockResolvedValue({ success: true, settings: {} }),
+        };
+    });
+
+    it('실제 설정 읽기가 막히면 바뀐 익스텐션을 알린다', async () => {
+        window.api.instanceReadLiveSettings = vi
+            .fn()
+            .mockResolvedValue({ ...notVerified, missing_extensions: ['ue4-ini'] });
+        const { setModal } = await open();
+        expect(shown(setModal)).toMatch(/ue4-ini, steamcmd/);
+    });
+
+    it('버전 설치가 막히면 "설치하고 켜라" 대신 바뀐 익스텐션을 알린다', async () => {
+        window.api.moduleInstallServer = vi.fn().mockResolvedValue({ ...notVerified, missing_extensions: ['ue4-ini'] });
+        const { result, setModal } = await open();
+        act(() => result.current.handleSettingChange('server_version', '1.0'));
+        await act(async () => result.current.handleInstallVersion());
+        await act(async () => setModal.mock.calls.at(-1)[0].buttons[0].action());
+        const text = shown(setModal);
+        expect(text).toMatch(/ue4-ini, steamcmd/);
+        expect(text).not.toMatch(/Required extension/);
     });
 });
