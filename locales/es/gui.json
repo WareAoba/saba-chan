@@ -429,6 +429,7 @@
   },
   "errors": {
     "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
+    "console_input_full": "El servidor todavía está procesando la entrada anterior. Inténtalo de nuevo en un momento.",
     "restart_cancelled": "El servidor se inició o se eliminó en otro lugar mientras esperaba, así que no se reinició.",
     "executable_not_found": "Ejecutable del servidor de juegos no encontrado. Por favor verifique la ruta en configuración.",
     "file_not_found": "Archivo o carpeta no encontrada. Por favor verifique la ruta.",
