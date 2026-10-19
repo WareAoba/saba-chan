@@ -290,6 +290,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 {
                     label: t('server_settings.install_version_button', { defaultValue: 'Install' }),
                     action: async () => {
+                        // 설치하는 사이 다른 서버 설정을 열면 그 창의 값은 건드리지 않는다
+                        const request = openRequest.current;
                         setModal(null);
                         setVersionInstalling(true);
                         setProgressBar({ message: t('servers.progress_downloading', { version }), percent: 0 });
@@ -363,7 +365,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                     await fetchServers();
                                     return;
                                 }
-                                handleSettingChange('server_version', version);
+                                if (request === openRequest.current) handleSettingChange('server_version', version);
                             }
 
                             setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
@@ -412,6 +414,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 {
                     label: t('server_settings.reset_button', { defaultValue: 'Reset' }),
                     action: async () => {
+                        const request = openRequest.current;
                         setModal(null);
                         setResettingServer(true);
                         try {
@@ -443,7 +446,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                         const serverList = await window.api.serverList();
                                         if (serverList && serverList.servers && !serverList.error) {
                                             const updated = serverList.servers.find((s) => s.id === settingsServer.id);
-                                            if (updated) {
+                                            if (updated && request === openRequest.current) {
                                                 setSettingsServer(updated);
                                                 setSettingsValues(updated.module_settings || {});
                                             }
