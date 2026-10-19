@@ -100,6 +100,15 @@ impl StartGuard {
 }
 
 /// 시작 준비 중에 정지가 들어와 띄우지 않았다 (또는 띄운 것을 바로 껐다)
+/// 시작 전에 예약 범위를 피해 옮긴 포트를 시작 응답(성공·실패 모두)에 싣는다: `port_moved: [{field, from, to}]`.
+/// 저장값이 조용히 바뀌지 않게 GUI·CLI·디스코드가 알린다
+fn with_port_moved(mut result: Value, moved: Option<(u16, u16)>) -> Value {
+    if let (Some((from, to)), Value::Object(map)) = (moved, &mut result) {
+        map.insert("port_moved".to_string(), json!([{ "field": "rest_port", "from": from, "to": to }]));
+    }
+    result
+}
+
 fn start_cancelled(server_name: &str) -> Value {
     json!({
         "success": false,
@@ -309,12 +318,15 @@ impl Supervisor {
     /// 범위에 들면 서버가 REST를 열지 못하므로, 시작 전에 새 인스턴스처럼 예약 범위와 다른 인스턴스의 포트를 피해
     /// 옮겨 저장한다(모듈이 시작 때 게임 설정 파일을 이 값으로 맞춘다). 기본값이 아닌 값은 사용자가 정한 것이므로
     /// 옮기지 않는다(시작 전 검사가 port_conflict로 알린다)
-    fn move_reserved_default_rest_port(&mut self, id: &str) {
+    /// 옮겼으면 `(옮기기 전, 옮긴 뒤)`
+    fn move_reserved_default_rest_port(&mut self, id: &str) -> Option<(u16, u16)> {
         // 이미 떠 있는 서버는 지금 포트로 붙어 있다
         if self.tracker.get_pid(id).is_ok_and(process::is_process_alive) {
-            return;
+            return None;
         }
-        self.move_default_rest_port_if(id, crate::validator::tcp_port_reserved_by_windows, crate::validator::port_reserved_by_windows);
+        let before = self.instance_store.get(id)?.rest_port?;
+        self.move_default_rest_port_if(id, crate::validator::tcp_port_reserved_by_windows, crate::validator::port_reserved_by_windows)
+            .map(|after| (before, after))
     }
 
     fn move_default_rest_port_if(&mut self, id: &str, reserved: impl Fn(u16) -> bool, avoid: impl Fn(u16) -> bool) -> Option<u16> {
@@ -654,13 +666,15 @@ impl Supervisor {
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
 
-        {
+        let moved = {
             let mut s = sup.write().await;
             let id = s.instance_store.get(server_name).or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name)).map(|i| i.id.clone());
-            if let Some(id) = id {
-                s.move_reserved_default_rest_port(&id);
-            }
-        }
+            id.and_then(|id| s.move_reserved_default_rest_port(&id))
+        };
+        Self::start_server_inner(sup, server_name, module_name, config).await.map(|result| with_port_moved(result, moved))
+    }
+
+    async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
 
         // ── 검사 (읽기 락) ──
         let (instance, starting, hook) = {
@@ -1466,7 +1480,16 @@ impl Supervisor {
         module_name: &str,
         config: Value,
     ) -> Result<Value> {
-        sup.write().await.move_reserved_default_rest_port(instance_id);
+        let moved = sup.write().await.move_reserved_default_rest_port(instance_id);
+        Self::start_managed_server_inner(sup, instance_id, module_name, config).await.map(|result| with_port_moved(result, moved))
+    }
+
+    async fn start_managed_server_inner(
+        sup: &tokio::sync::RwLock<Self>,
+        instance_id: &str,
+        module_name: &str,
+        config: Value,
+    ) -> Result<Value> {
 
         // ── 1) 검사 (읽기 락) ──
         let (mut instance, starting, hook) = {
@@ -3589,6 +3612,15 @@ mod tests {
     }
 
     /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
+    // 백로그 M13: 예약 범위 때문에 옮긴 REST 포트를 알리지 않고 저장값만 바꿨다
+    #[test]
+    fn a_start_reports_the_port_it_moved() {
+        let moved = with_port_moved(json!({ "success": false, "error_code": "port_conflict" }), Some((8212, 8242)));
+        assert_eq!(moved["port_moved"], json!([{ "field": "rest_port", "from": 8212, "to": 8242 }]));
+        assert_eq!(moved["error_code"], "port_conflict");
+        assert!(with_port_moved(json!({ "success": true }), None).get("port_moved").is_none());
+    }
+
     #[test]
     fn start_guard_blocks_a_second_start_until_dropped() {
         let set = std::sync::Arc::new(std::sync::Mutex::new(HashSet::new()));
