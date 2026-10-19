@@ -491,11 +491,14 @@ export function createApi({ invoke, hub }) {
                                 }),
                             };
                         default:
+                            // 409(working_dir_in_use·instance_busy)는 이유를 넘겨 설정 화면이 문구로 보이게 한다
                             return {
                                 error: t('errors.settings_http', {
                                     status: String(status),
                                     error: data.error || error.message,
                                 }),
+                                error_code: data.error_code,
+                                instance: data.instance,
                             };
                     }
                 }
