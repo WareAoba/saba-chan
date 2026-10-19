@@ -434,14 +434,19 @@ pub async fn create_instance(
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
+                        // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다
+                        // (방금 만든 인스턴스라 다른 작업이 쥐고 있을 수 없다)
+                        let install_guard = super::backup::BusyGuard::take(&id);
 
                         tokio::spawn(async move {
+                            let mut install_guard = install_guard;
                             // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
                             let module_path = {
                                 let sup = supervisor_arc.read().await;
                                 match sup.module_loader.get_module(&module_name_owned) {
                                     Ok(m) => m.entry_path(),
                                     Err(e) => {
+                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
@@ -488,6 +493,7 @@ pub async fn create_instance(
 
                                 // download 방식인데 버전을 파악하지 못한 경우 에러
                                 if install_config.method == "download" && version.is_none() {
+                                    drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                     tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                         step: 0, total: 1,
                                         label: "done".to_string(),
@@ -528,7 +534,7 @@ pub async fn create_instance(
 
                                 crate::plugin::run_plugin_with_progress_and_timeout(
                                     &module_path, "install_server", config, on_progress,
-                                    1800, // 30분 — 대용량 다운로드 허용
+                                    crate::plugin::INSTALL_TIMEOUT_SECS,
                                 ).await
                             };
 
@@ -567,6 +573,7 @@ pub async fn create_instance(
                                         }
 
                                         tracing::info!("Native provisioning completed for '{}'", name_done);
+                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
@@ -590,6 +597,7 @@ pub async fn create_instance(
                                             .map(str::to_string)
                                             .unwrap_or_else(|| text.t("provision.install_failed", &[]));
                                         tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
+                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
@@ -603,6 +611,7 @@ pub async fn create_instance(
                                 }
                                 Err(e) => {
                                     tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
+                                    drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                     tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                         step: 0, total: 1,
                                         label: "done".to_string(),
@@ -1478,12 +1487,7 @@ pub async fn check_server_update(
         .ok()
         .and_then(|m| m.metadata.install.clone());
 
-    // install_dir 계산: instance_dir / install_subdir
-    let install_subdir = install_config
-        .as_ref()
-        .and_then(|cfg| cfg.install_subdir.clone())
-        .unwrap_or_else(|| "server".to_string());
-    let install_dir = instance_dir.join(&install_subdir);
+    let install_dir = install_dir_of(&instance, &instance_dir, install_config.as_ref());
     let install_dir_str = install_dir.to_string_lossy().to_string();
 
     // app_id: extension_data(`<방식>_app_id`)에서 우선, 없으면 module config에서
@@ -1620,12 +1624,12 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     }
 
     let instance_dir = supervisor.instance_store.instance_dir(id);
-    let install_subdir = install_config
-        .install_subdir
-        .clone()
-        .unwrap_or_else(|| "server".to_string());
-    let install_dir = instance_dir.join(&install_subdir);
+    let install_dir = install_dir_of(&instance, &instance_dir, Some(&install_config));
     let install_dir_str = install_dir.to_string_lossy().to_string();
+    // 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이면 덮어쓰지 않는다 (업데이트가 끝날 때까지 잡는다)
+    drop(supervisor);
+    let others = super::managed::hold_other_instances_using(state, &install_dir_str, Some(id)).await?;
+    let supervisor = state.supervisor.read().await;
 
     let tracker = state.provision_tracker.clone();
     let supervisor_arc = state.supervisor.clone();
@@ -1661,6 +1665,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let backup_id = id.to_string();
     Ok(tokio::spawn(async move {
         let _guard = guard;
+        let _others = others;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
         if let Err(r) = super::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
             let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
@@ -1739,7 +1744,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                 "install_server",
                 config,
                 on_progress,
-                1800, // 30분 — 대용량 다운로드 허용
+                crate::plugin::INSTALL_TIMEOUT_SECS,
             )
             .await
         };
@@ -1819,6 +1824,21 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
         updated
     }))
 
+}
+
+/// 업데이트가 덮어쓸 폴더: 서버가 실제로 도는 working_dir, 없으면 instance_dir / install_subdir (기본 "server")
+fn install_dir_of(
+    instance: &crate::instance::ServerInstance,
+    instance_dir: &std::path::Path,
+    install_config: Option<&crate::supervisor::module_loader::ModuleInstallConfig>,
+) -> std::path::PathBuf {
+    if let Some(dir) = instance.working_dir.as_deref().filter(|d| !d.trim().is_empty()) {
+        return std::path::PathBuf::from(dir);
+    }
+    let subdir = install_config
+        .and_then(|cfg| cfg.install_subdir.as_deref())
+        .unwrap_or("server");
+    instance_dir.join(subdir)
 }
 
 #[cfg(test)]
@@ -1992,6 +2012,83 @@ mod tests {
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
+    }
+
+    /// 처음 설치(30분까지 걸린다)하는 동안 업데이트·삭제·복원이 같은 폴더에 끼어들지 못한다
+    /// 가져온(마이그레이션) 서버는 working_dir이 실제 서버 폴더다. 업데이트 확인·적용이 빈 `instance_dir/server`를
+    /// 보면 늘 "업데이트 있음"이 나오고, 적용하면 그 빈 폴더에 서버를 새로 받은 뒤 옛 서버를 다시 켠다
+    #[test]
+    fn updates_go_to_the_folder_the_server_runs_from() {
+        let mut instance = crate::instance::ServerInstance::new("a", "palworld");
+        let dir = std::path::Path::new("/data/instances/a");
+        assert_eq!(super::install_dir_of(&instance, dir, None), dir.join("server"));
+        instance.working_dir = Some("D:/Steam/steamapps/common/PalServer".into());
+        assert_eq!(super::install_dir_of(&instance, dir, None), std::path::PathBuf::from("D:/Steam/steamapps/common/PalServer"));
+    }
+
+    // 업데이트는 서버가 도는 working_dir에 쓴다: 같은 폴더를 쓰는 다른 인스턴스가 작업 중이면 덮어쓰지 않는다
+    #[tokio::test]
+    async fn an_update_waits_for_other_instances_sharing_the_server_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let shared = tmp.path().join("PalServer").to_string_lossy().to_string();
+        let mut ids = Vec::new();
+        for name in ["a", "b"] {
+            let mut inst = crate::instance::ServerInstance::new(name, "game");
+            inst.working_dir = Some(shared.clone());
+            inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
+            ids.push(inst.id.clone());
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let other = super::super::backup::BusyGuard::take(&ids[1]).expect("free");
+        let refused = super::begin_server_update(&state, &ids[0]).await.err().expect("the other instance is busy");
+        let body = crate::ipc::internal::into_internal(refused).await.body;
+        assert_eq!(body["error_code"], "instance_busy");
+        drop(other);
+        assert!(super::super::backup::BusyGuard::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
+    }
+
+    #[tokio::test]
+    async fn the_first_install_holds_the_instance_lock() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"download\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys, time\ntime.sleep(3)\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        let id = created.body["id"].as_str().unwrap().to_string();
+        assert!(super::super::backup::BusyGuard::take(&id).is_none(), "the install holds the lock");
+        for _ in 0..200 {
+            if let Some(_guard) = super::super::backup::BusyGuard::take(&id) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        panic!("the lock was never released after the install");
     }
 
     #[tokio::test]

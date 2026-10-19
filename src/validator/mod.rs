@@ -265,6 +265,12 @@ fn validate_select(field: &SettingField, value: &Value) -> Result<(), Validation
 /// 문자열 타입 검증 (text, password, file)
 fn validate_string(field: &SettingField, value: &Value) -> Result<(), ValidationError> {
     match value {
+        // 값은 설정 파일의 한 줄·실행 인자 하나가 된다: 줄바꿈은 다른 키를 덮어쓸 수 있다
+        Value::String(s) if s.contains(['\r', '\n', '\0']) => Err(ValidationError {
+            field: field.name.clone(),
+            message: format!("'{}' cannot contain line breaks", field.name),
+            error_type: ValidationErrorType::InvalidFormat,
+        }),
         Value::String(_) => Ok(()),
         Value::Number(_) | Value::Bool(_) => Ok(()), // 숫자/불리언도 문자열로 변환 가능
         _ => Err(ValidationError {
@@ -590,6 +596,20 @@ mod tests {
         assert!(validate_setting_value(&name, Some(&Value::from("my srv"))).is_err());
         assert_eq!(expected_of(&name), "pattern");
         assert_eq!(expected_of(&ram), "memory_size");
+    }
+
+    /// 설정 값은 설정 파일의 한 줄·실행 인자 하나가 된다. 줄바꿈이 있으면 다른 키를 덮어쓸 수 있다
+    /// (예: 서버 설명에 "x\nPassword=" → 원격에서 바꿀 수 없는 서버 비밀번호가 비워진다)
+    #[test]
+    fn text_values_cannot_carry_line_breaks() {
+        for field_type in ["text", "password"] {
+            let field = make_field("public_description", field_type);
+            assert!(validate_setting_value(&field, Some(&Value::from("우리 서버, 환영합니다"))).is_ok());
+            for bad in ["x\nPassword=", "x\r\nOpen=true", "x\0"] {
+                let err = validate_setting_value(&field, Some(&Value::from(bad))).unwrap_err();
+                assert_eq!(err.error_type, ValidationErrorType::InvalidFormat, "{field_type} {bad:?}");
+            }
+        }
     }
 
     #[test]

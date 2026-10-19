@@ -42,6 +42,13 @@ enum Console {
 /// 이보다 빨리 끝나고 자식 프로세스를 남기면 런처로 본다
 const LAUNCHER_WINDOW: Duration = Duration::from_secs(30);
 
+/// 띄운 프로세스가 끝났는데 job에 프로세스가 남았을 때, 남은 것을 서버로 따라가는가.
+/// 런처는 서버를 띄우고 정상 종료한다. 실패 코드로 끝났으면(DLL을 못 찾음 등) 남은 것은 오류 보고·콘솔 호스트
+/// 같은 부산물이라 따라가지 않는다 (따라가면 서버가 켜진 것처럼 보인 채 시작 실패가 묻힌다)
+fn follows_leftovers(success: bool, left: u32, elapsed: Duration) -> bool {
+    success && left > 0 && elapsed < LAUNCHER_WINDOW
+}
+
 struct Args {
     run_dir: PathBuf,
     log: PathBuf,
@@ -354,7 +361,7 @@ fn run(args: Args) -> Result<i32, String> {
     if let Some(job) = &job {
         // 런처: 곧바로 끝나고 진짜 서버를 남겼다. 남은 프로세스가 끝날 때까지가 서버의 수명이다.
         let left = job.active_processes();
-        if left > 0 && started_at.elapsed() < LAUNCHER_WINDOW {
+        if follows_leftovers(exit.success, left, started_at.elapsed()) {
             write_log(&log, Stream::System, &format!(
                 "PID {} exited with {:?} and left {} process(es) running; following them as the server. \
                  Point the module at the real server executable to get its console.", pid, exit.code, left));
@@ -382,7 +389,7 @@ fn run(args: Args) -> Result<i32, String> {
         }
     }
     #[cfg(not(windows))]
-    let _ = (started_at, LAUNCHER_WINDOW);
+    let _ = (started_at, follows_leftovers);
     // 남은 출력을 마저 옮긴다. 손자 프로세스가 파이프를 쥐고 있으면 오래 기다리지 않는다.
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -416,6 +423,16 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use saba_runner::wildcard as m;
+    use std::time::Duration;
+
+    #[test]
+    fn only_a_launcher_that_exited_cleanly_hands_over_to_what_it_left() {
+        let quick = Duration::from_secs(2);
+        assert!(super::follows_leftovers(true, 1, quick));
+        assert!(!super::follows_leftovers(false, 1, quick), "a crash at start is a failed start, not a launcher");
+        assert!(!super::follows_leftovers(true, 0, quick));
+        assert!(!super::follows_leftovers(true, 1, Duration::from_secs(60)));
+    }
 
     #[test]
     fn wildcard_matches_names() {

@@ -293,7 +293,7 @@
 | POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`) |
 | GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. `backup_keep`은 1 이상이다(자동 백업 정리는 방금 만든 백업을 지우지 않는다). 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
 
-인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제·서버 초기화(`reset_server_handler`)·버전 설치(`install_server_handler`, 그 폴더를 쓰는 인스턴스 전부, 설치를 마칠 때까지)가 함께 쓴다. 초기화와 버전 설치는 잠금을 잡은 뒤 실행 중이면 409 `server_running`으로 거절한다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다. 백업·복원·서버 초기화·버전 설치·인스턴스 삭제는 잠금을 쥔 채 따로 돌아(`audit::spawn`, 출처 유지) 요청이 끊겨도 파일 작업이 끝날 때까지 잠금이 남는다.
+인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지. 서버가 도는 `working_dir`에 쓰므로 그 폴더를 쓰는 다른 인스턴스의 잠금도 함께 잡고, 그중 켜져 있는 것이 있으면 409 `server_running`)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제·서버 초기화(`reset_server_handler`)·버전 설치(`install_server_handler`, 그 폴더를 쓰는 인스턴스 전부, 설치를 마칠 때까지)가 함께 쓴다. 초기화와 버전 설치는 잠금을 잡은 뒤 실행 중이면 409 `server_running`으로 거절한다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다. 백업·복원·서버 초기화·버전 설치·인스턴스 삭제는 잠금을 쥔 채 따로 돌아(`audit::spawn`, 출처 유지) 요청이 끊겨도 파일 작업이 끝날 때까지 잠금이 남는다.
 
 #### 설정 (handlers/bot.rs, handlers/config.rs)
 
@@ -630,7 +630,7 @@ Relay 서명 방식(`relay.rs:115-161`):
   - `number`: min/max 범위
   - `boolean`: true/false 또는 문자열 "true"/"false"
   - `select`: `options`에 포함되는지
-  - `text|password|file`: 문자열(숫자, 불리언도 허용)
+  - `text|password|file`: 문자열(숫자, 불리언도 허용). 줄바꿈(`\r`·`\n`)과 NUL이 든 문자열은 `InvalidFormat`이다(값은 설정 파일의 한 줄·실행 인자 하나가 된다)
   - 알 수 없는 타입은 통과시킨다.
   - `required==Some(true)`인데 값이 `null`이거나 빈 문자열이면 에러다.
 - `PATCH /api/instance/:id`는 `validate_settings_patch`(`:281-297`)로 **요청에 들어 있는 필드만** 검사한다(`instance.rs:1027`). 보내지 않은 필수 필드는 오류가 아니다.

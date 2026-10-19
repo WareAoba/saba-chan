@@ -442,13 +442,20 @@ impl Supervisor {
         args: &[String],
         working_dir: &str,
         env_vars: &mut Vec<(String, String)>,
-    ) -> Result<String, Value> {
+    ) -> Result<(String, crate::sandbox::LaunchGate), Value> {
         let (entry, roots) = {
             let s = sup.read().await;
-            let Ok(module) = s.module_loader.get_module(module_name) else { return Ok(program.to_string()) };
             let mut dirs = vec![s.instance_store.instance_dir(&instance.id)];
             // 사용자가 정한 서버 폴더 (모듈이 돌려준 working_dir은 믿지 않는다)
             dirs.extend(instance.working_dir.iter().map(std::path::PathBuf::from));
+            let Ok(module) = s.module_loader.get_module(module_name) else {
+                // 모듈을 못 찾으면 예전처럼 검사 없이 띄우되 서버 폴더의 표시는 걷는다
+                drop(s);
+                let roots = crate::sandbox::LaunchRoots { dirs, runtimes: Vec::new() };
+                return crate::sandbox::guard_launch_for(|| saba_chan_updater_lib::integrity::Trust::Verified, program, args, std::path::Path::new(working_dir), roots, env_vars)
+                    .await
+                    .map_err(|blocked| blocked.to_json(crate::sandbox::message(&blocked)));
+            };
             // 사용자가 설정한 java 경로 (이름이 java일 때만 런타임으로 인정된다).
             // 모듈 기본값·프리셋처럼 사용자가 정하지 않은 값은 인정하지 않는다
             let mut runtimes: Vec<_> = instance.module_settings.get("java_path").and_then(Value::as_str)
@@ -460,12 +467,12 @@ impl Supervisor {
             runtimes.extend(crate::sandbox::daemon_runtimes());
             (module.entry_path(), crate::sandbox::LaunchRoots { dirs, runtimes })
         };
-        let program = crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {
+        let (program, gate) = crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {
             tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
             blocked.to_json(crate::sandbox::message(&blocked))
         })?;
         tracing::info!("Starting '{}': program '{}' in '{}'", instance.name, program, working_dir);
-        Ok(program)
+        Ok((program, gate))
     }
 
     /// 해석된 실행 파일 경로를 config map에 삽입합니다.
@@ -730,8 +737,8 @@ impl Supervisor {
                                     dirs: std::iter::once(instance_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
                                     runtimes: Vec::new(),
                                 };
-                                let program = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    Ok(program) => program,
+                                let (program, gate) = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
+                                    Ok(launch) => launch,
                                     Err(blocked) => {
                                         tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
                                         return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
@@ -759,6 +766,7 @@ impl Supervisor {
                                         Some(&instance_dir),
                                     ).await
                                 };
+                                drop(gate);
                                 match spawn_result {
                                     Ok(mut follower) => {
                                         // 익스텐션이 붙인 다리라 서버 종료 판정(A1) 대상이 아니다
@@ -833,8 +841,8 @@ impl Supervisor {
             .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
             .unwrap_or_default();
 
-        let program = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
-            Ok(program) => program,
+        let (program, gate) = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+            Ok(launch) => launch,
             Err(blocked) => return Ok(blocked),
         };
         let program = program.as_str();
@@ -853,8 +861,9 @@ impl Supervisor {
 
         crate::utils::apply_creation_flags(&mut cmd);
 
-        let child = cmd.spawn()
-            .map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+        let child = cmd.spawn();
+        drop(gate);
+        let child = child.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
 
         let pid = child.id()
             .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))? ;
@@ -1470,8 +1479,8 @@ impl Supervisor {
                                     dirs: std::iter::once(inst_dir.clone()).chain(instance.working_dir.iter().map(std::path::PathBuf::from)).collect(),
                                     runtimes: Vec::new(),
                                 };
-                                let program = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
-                                    Ok(program) => program,
+                                let (program, gate) = match crate::sandbox::guard_launch_for(|| crate::sandbox::extension_trust(ext_id), program, &args, &work_dir, roots, &mut env_vars).await {
+                                    Ok(launch) => launch,
                                     Err(blocked) => {
                                         tracing::warn!("Extension '{}' launch blocked: {:?}", ext_id, blocked);
                                         return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
@@ -1499,6 +1508,7 @@ impl Supervisor {
                                         Some(&inst_dir),
                                     ).await
                                 };
+                                drop(gate);
                                 match spawn_result {
                                     Ok(mut follower) => {
                                         // 익스텐션이 붙인 다리라 서버 종료 판정(A1) 대상이 아니다
@@ -1576,8 +1586,8 @@ impl Supervisor {
             .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
             .unwrap_or_default();
 
-        let program = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
-            Ok(program) => program,
+        let (program, gate) = match Self::guard_launch(sup, &instance, module_name, program, &args, working_dir, &mut env_vars).await {
+            Ok(launch) => launch,
             Err(blocked) => return Ok(blocked),
         };
         let program = program.as_str();
@@ -1689,6 +1699,7 @@ impl Supervisor {
                 ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?
             }
         };
+        drop(gate);
         let pid = managed.pid;
 
         // Track the process
@@ -2129,7 +2140,8 @@ impl Supervisor {
             config["initial_settings"] = settings;
         }
 
-        let result = crate::plugin::run_plugin(&module_path, "install_server", config).await;
+        // 서버 파일과 Java를 받는다: 기본 120초로는 느린 회선에서 중간에 끊긴다 (처음 설치와 같은 한도)
+        let result = crate::plugin::run_plugin_with_timeout(&module_path, "install_server", config, crate::plugin::INSTALL_TIMEOUT_SECS).await;
 
         match result {
             Ok(ref val) => {
