@@ -1072,7 +1072,10 @@ mod imp {
             let said = String::from_utf8_lossy(&out.stdout).into_owned();
             assert!(out.status.success(), "{said}");
             use std::os::windows::fs::MetadataExt;
-            let compressed = std::fs::metadata(&exe).unwrap().file_attributes() & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT != 0;
+            // 보통 열기로는 WOF 필터가 재분석 지점을 감춘다: 링크를 따라가지 않는 열기와 폴더 목록(정리 순회가 보는 값)으로 본다
+            let reparse = |attributes: u32| attributes & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT != 0;
+            let listed = std::fs::read_dir(&bin).unwrap().flatten().find(|e| e.file_name() == "server.exe").unwrap();
+            let compressed = reparse(std::fs::symlink_metadata(&exe).unwrap().file_attributes()) || reparse(listed.metadata().unwrap().file_attributes());
             assert!(compressed, "compact did not make a WOF reparse point: {said}");
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 1);
             assert_eq!(super::low_label(&exe).unwrap(), None);
