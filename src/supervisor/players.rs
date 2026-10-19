@@ -85,8 +85,9 @@ fn forget(instance_id: &str) {
 /// 그 pid의 프로세스에서 센 것만 본다. 팰월드처럼 REST 포트를 열지 못하면 명령·정상 종료도 닿지 않는다
 pub fn unresponsive(instance_id: &str, pid: Option<u32>, now: std::time::Instant) -> Option<String> {
     let map = failures().lock().unwrap_or_else(|e| e.into_inner());
-    let (failed_pid, since, reason, _) = map.get(instance_id)?;
-    (*failed_pid == pid && now.duration_since(*since) >= UNRESPONSIVE_AFTER).then(|| reason.clone())
+    let (failed_pid, since, reason, logged) = map.get(instance_id)?;
+    // 데몬 로그에 경고를 남긴 뒤에만 알린다: 화면과 로그가 어긋나지 않게
+    (*failed_pid == pid && *logged && now.duration_since(*since) >= UNRESPONSIVE_AFTER).then(|| reason.clone())
 }
 
 /// 모듈 응답을 읽는다. 실패 응답이나 정수가 아닌 값은 None (모르는 값을 0으로 보이지 않는다)
@@ -165,6 +166,9 @@ mod tests {
         assert_eq!(unresponsive(id, pid, start + std::time::Duration::from_secs(60)), None);
         record(id, pid, Ok(&refused), start + std::time::Duration::from_secs(60));
         let later = start + UNRESPONSIVE_AFTER;
+        // PC 확인: 화면에는 떴는데 데몬 로그에 경고가 없었다. 경고를 남긴 질문 뒤에야 알린다
+        assert_eq!(unresponsive(id, pid, later), None, "not yet logged");
+        record(id, pid, Ok(&refused), later);
         assert_eq!(unresponsive(id, pid, later).as_deref(), Some("connection refused"));
 
         // 한 번이라도 답하면 지운다
@@ -194,6 +198,7 @@ mod tests {
         let id = "restart-inherits-test";
         let start = std::time::Instant::now();
         record(id, Some(1), Err("timeout".into()), start);
+        record(id, Some(1), Err("timeout".into()), start + UNRESPONSIVE_AFTER);
         assert!(unresponsive(id, Some(1), start + UNRESPONSIVE_AFTER).is_some());
         // 새 프로세스: 이전 기록은 보이지 않고, 새로 실패하면 그때부터 다시 센다
         assert_eq!(unresponsive(id, Some(2), start + UNRESPONSIVE_AFTER), None);
