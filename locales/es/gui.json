@@ -391,7 +391,7 @@
     "restart_confirm_message": "¿Detener e iniciar de nuevo '{{name}}'? Los jugadores conectados se desconectarán un momento.",
     "restarting_toast": "Reiniciando '{{name}}'…",
     "restart_completed_toast": "'{{name}}' reiniciado",
-    "port_moved": "Windows reserva el puerto REST de administración {{from}}, así que se cambió a {{to}}.",
+    "port_moved": "{{name}}: Windows reserva el puerto REST de administración {{from}}, así que se cambió a {{to}}.",
     "restart_failed_toast": "No se pudo reiniciar: {{error}}",
     "rename_failed_toast": "No se pudo renombrar: {{error}}",
     "rename_name_taken": "'{{name}}' ya está en uso",
