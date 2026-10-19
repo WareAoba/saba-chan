@@ -1184,7 +1184,7 @@ function SettingsModal({
                                 }}
                             >
                                 <Icon name="github" size="sm" />
-                                <span>GitHub 리포지토리</span>
+                                <span>{t('gui:settings_modal.github_repo')}</span>
                             </button>
                         </div>
 

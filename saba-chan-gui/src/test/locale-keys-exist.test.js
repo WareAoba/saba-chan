@@ -50,3 +50,17 @@ describe('고정 번역 키', () => {
         expect(missing).toEqual([]);
     });
 });
+
+describe('gui.json 언어별 키', () => {
+    // 한 언어에만 키가 빠지면 그 언어 사용자에게만 영어 문구가 보인다 (fallbackLng en)
+    it('모든 언어가 en과 같은 키를 가진다', () => {
+        const en = catalog('en', 'gui');
+        const problems = [];
+        for (const lang of fs.readdirSync(LOCALES).filter((l) => l !== 'en')) {
+            if (!fs.existsSync(path.join(LOCALES, lang, 'gui.json'))) continue;
+            const other = catalog(lang, 'gui');
+            for (const key of en) if (!other.has(key)) problems.push(`${lang}: ${key}`);
+        }
+        expect(problems).toEqual([]);
+    });
+});

@@ -367,7 +367,7 @@ export function DiscordPage({
         P.parseAliasList(discordModuleAliases?.[sampleModule])[0] ||
         moduleAliasesPerModule?.[sampleModule]?.module_aliases?.[0] ||
         sampleModule ||
-        'minecraft';
+        t('discord.usage_module_word');
 
     // 노드가 사라졌으면 연결 화면으로
     useEffect(() => {
