@@ -25,9 +25,10 @@ export function useInstanceCommands(server, moduleCommands) {
 
     if (!catalog) return moduleCommands;
     const byName = Object.fromEntries(moduleCommands.map((c) => [c.name, c]));
+    // module.toml에 없는 명령(익스텐션·동적 명령)은 데몬이 보낸 danger만 믿는다
     return catalog.map((c) =>
-        c.source === 'extension'
-            ? { ...c, risk: c.risk === 'danger' ? 'danger' : undefined }
-            : { ...c, ...(byName[c.name] || {}), risk: byName[c.name]?.risk },
+        byName[c.name] && c.source !== 'extension'
+            ? { ...c, ...byName[c.name], risk: byName[c.name].risk }
+            : { ...c, risk: c.risk === 'danger' ? 'danger' : undefined },
     );
 }

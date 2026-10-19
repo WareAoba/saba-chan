@@ -31,6 +31,8 @@ const markSynced = (state, fields) => {
     for (const f of fields) synced[f] = state[f];
 };
 const ALL_FIELDS = Object.values(BOT_KEYS).flat();
+// 저장은 한 번에 하나씩: 데몬 값을 읽는 사이 뒤 저장이 먼저 끝나 옛 값이 마지막에 남지 않게
+let saveQueue = Promise.resolve();
 // 상태 확인 세대: 연결 대상이 바뀌거나 폴링이 멈추면 올려서, 늦게 온 옛 응답을 버린다
 let statusGeneration = 0;
 
@@ -128,7 +130,14 @@ export const useDiscordStore = create((set, get) => ({
         }
     },
 
-    saveConfig: async () => {
+    saveConfig: () => {
+        const run = saveQueue.then(() => get()._saveNow());
+        saveQueue = run;
+        return run;
+    },
+
+    // 큐 차례가 왔을 때의 최신 상태를 저장한다. saveConfig로만 부른다
+    _saveNow: async () => {
         const state = get();
         try {
             // 처음 로드에 실패했다면 스토어 값은 기본값이다. 데몬을 읽을 수 없으면 저장하지 않는다
@@ -293,6 +302,7 @@ export const useDiscordStore = create((set, get) => ({
         clearTimeout(state._statusTimeout);
         statusGeneration += 1;
         synced = {};
+        saveQueue = Promise.resolve();
         set(initialState());
     },
 }));

@@ -426,7 +426,7 @@ players = "player_count"
   - non-managed: 모듈 `status()`가 돌려준 문자열을 그대로 쓴다. Python이 실패하면 `"unknown"`이다.
   - extension hook `server.status`가 `handled: true`를 돌려주면 그 결과가 우선한다.
 - managed 서버가 끝나면 `judge_exit`가 `user_stop` / `crash` / `start_failed` / `in_game_stop` / `unknown_exit`로 가르고 기록한다 (`D:src/supervisor/crash.rs`). 이력은 `GET /api/instance/:id/events`로 본다. 이력은 인스턴스 폴더의 `exit-events.json`에도 저장해서 데몬을 다시 켜도 남는다.
-- `ProcessTracker`(`D:src/supervisor/process.rs`)는 PID와 시작 시각만 기록한다(`track`, `track_since`, `replace_pid`, `untrack`). 예전의 `ProcessStatus`, `get_status`, `mark_crashed`, `terminate`는 지워졌다. 강제 종료는 `ManagedProcess::force_kill`(`force_kill_pid`로 서버와 runner를 함께 죽인다, `managed_process.rs:234-239`)이다.
+- `ProcessTracker`(`D:src/supervisor/process.rs`)는 PID와 시작 시각만 기록한다(`track`, `track_since`, `replace_pid`, `untrack`). 예전의 `ProcessStatus`, `get_status`, `mark_crashed`, `terminate`는 지워졌다. 강제 종료는 `ManagedProcess::force_kill`(서버는 `force_kill_tree`, runner는 `force_kill_pid`, `managed_process.rs:234-239`)이다. Windows의 `force_kill_tree`는 `taskkill /F /T`로 자식까지 끝낸다: runner 없이 띄운 런처형 서버(PalServer.exe)도 실제 서버가 남지 않는다. `force_kill_pid`는 그 PID 하나만 끝낸다(업데이트 때 GUI를 닫는 `close_guis`는 GUI가 띄운 데몬·업데이터를 남겨야 한다).
 
 ### 3.3 콘솔 캡처와 로그 파싱 (`managed_process.rs`)
 
@@ -440,6 +440,7 @@ players = "player_count"
 - **디스크 영속화**: 직접 실행이면 `<instance_dir>/logs/console.log`에 append한다. 포맷은 `[datetime] [source/level] content`이다 (`:788-803, 878-940`). 10MB가 되면 로테이션하고 2개(`.1`, `.2`)를 보관한다. writer가 죽으면 콘솔에 경고 줄을 넣는다. saba-runner로 띄우면 runner가 `<instance_dir>/logs/sessions/<시각>.log`에 쓰고, 기본 20개(`log_sessions_keep`)를 남긴다 (`managed_process/runner.rs:24-25, 133-138`).
 - **데몬 재시작 시 재부착**: `initialize → reattach_orphaned_managed` (`mod.rs:180-252`).
   - saba-runner가 쥔 서버면 `attach_runner`가 콘솔 기록, stdin, 종료 코드를 그대로 다시 잡는다 (`managed_process/runner.rs:198-224`).
+  - 기록한 PID가 아직 그 프로세스인지는 살아 있는지에 더해 시작 시각으로 본다(`process::is_same_process`): 기록한 때(runner는 `runner.json`의 `started_at`, `managed.pid`는 파일 수정 시각)보다 10초 넘게 늦게 시작한 프로세스는 재부팅 뒤 같은 PID를 받은 다른 프로세스로 보고 붙지 않는다(정지할 때 그 프로세스를 끄지 않게). 시작 시각을 읽지 못하면 살아 있는지만 본다.
   - runner가 없고 `managed.pid`의 PID만 살아 있으면 `create_reattached_stub`을 만든다. 이 스텁은 디스크 로그를 로드하고, 5초마다 PID 생존을 폴링하며, **stdin을 쓸 수 없고 새 출력도 받지 못한다** (`managed_process.rs:618-682`).
 - **disk fallback**: managed 프로세스가 없으면 `get_console_output`이 가장 최근 디스크 로그(세션 로그 또는 `console.log`)를 읽는다. 이때 `since_id`는 무시된다 (`mod.rs:1763-1781`).
 - **log follower**: 익스텐션이 `server.pre_start`에서 `log_follower{program,args,working_dir,interactive,strip_prefix,env_vars}`를 돌려주면 `spawn_log_follower`(읽기 전용) 또는 `spawn`(양방향)으로 그 프로세스를 managed_store에 등록한다. 종료 판정 대상은 아니다 (`mod.rs:684-761, 1411-1488`).
