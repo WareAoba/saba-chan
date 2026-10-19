@@ -192,6 +192,7 @@
 - 설정과 상태: `module_settings, server_version, last_api_action?, provisioning, managed, extension_status?, extension_data, port_conflicts?`
 - `slots?`: 익스텐션 데이터 slot을 데몬이 판정한 결과(`{"ServerCard.badge":[{extension,text}], "ServerDetail.status":[{extension,label,value}]}`, 없으면 키가 없다). 규칙은 03-extensions 4.3.
 - `players?`: `{online, max?}`. `status`가 `running`이고 모듈이 `[status] players`로 알려 준 마지막 접속자 수(1분마다 갱신, `supervisor/players.rs`, 02 §1.2). 모르면 키가 없다.
+- `unresponsive?`: 문자열. `status`가 `running`인데 그 접속자 함수가 5분(`players::UNRESPONSIVE_AFTER`) 넘게 계속 실패하거나 시간을 넘길 때, 모듈의 마지막 실패 이유(`message`)다. 프로세스는 살아 있지만 상태 질문에 답하지 않는다(예: 팰월드가 REST 포트를 열지 못하면 명령·정상 종료도 닿지 않는다). 한 번 답하면(수 없이 `{"success": true}`만 와도) 키가 없어진다. 기록은 pid별이라 재시작한 새 프로세스는 이전 실패를 잇지 않는다. 5분을 넘긴 뒤 첫 질문(1분마다)에서 데몬 로그에 경고를 한 번 남기고, 키는 그때부터 나온다(화면과 로그가 어긋나지 않게).
 - `managed`는 saba-runner가 맡아 실행하는지다. 판정은 데몬의 `Supervisor::uses_managed_start` 하나이고(`server.rs:87`), 클라이언트는 이 값을 그대로 쓴다.
 - **REST 비밀번호가 평문으로 포함된다.**
 

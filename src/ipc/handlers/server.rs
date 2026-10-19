@@ -178,6 +178,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     port_conflicts: vec![],
                     slots: Default::default(),
                     players: None,
+                    unresponsive: None,
                 });
                 ext_handled = true;
             }
@@ -232,6 +233,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             port_conflicts: vec![],
             slots: Default::default(),
             players: None,
+            unresponsive: None,
         });
     }
 
@@ -246,6 +248,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
     // ── 접속자 수 (Q-5): 모듈이 알려 준 마지막 값, 켜진 서버만 ──
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
         srv.players = crate::supervisor::players::get(&srv.id);
+        srv.unresponsive = crate::supervisor::players::unresponsive(&srv.id, srv.pid, std::time::Instant::now());
     }
 
     // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──

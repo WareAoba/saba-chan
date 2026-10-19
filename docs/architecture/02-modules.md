@@ -237,7 +237,7 @@ spawn_process = true
 ```
 
 #### `[status]` (`StatusSection`)
-켜진 서버의 상태를 더 알려 주는 함수(Q-5). 지금 키는 `players` 하나다: 접속자 수를 돌려주는 lifecycle 함수 이름(`[[queries]]`의 `function`과 같은 검사: Python 식별자, 상태를 바꾸는 함수가 아님. 어기면 스키마 v1은 로드 실패, 스키마 이전 모듈은 경고만 남기고 부르지 않는다). 데몬은 켜진(트래커에 PID가 있는) 서버마다 1분에 한 번, 10초 제한으로 부르고 마지막 값을 기억한다(`supervisor/players.rs`). 실패하거나 서버가 꺼지면 값을 지운다. 값은 `GET /api/servers`의 `players`와 relay 하트비트 `servers[].players`(05 §4)로 나간다. 함수 계약은 §2.3.
+켜진 서버의 상태를 더 알려 주는 함수(Q-5). 지금 키는 `players` 하나다: 접속자 수를 돌려주는 lifecycle 함수 이름(`[[queries]]`의 `function`과 같은 검사: Python 식별자, 상태를 바꾸는 함수가 아님. 어기면 스키마 v1은 로드 실패, 스키마 이전 모듈은 경고만 남기고 부르지 않는다). 데몬은 켜진(트래커에 PID가 있는) 서버마다 1분에 한 번, 10초 제한으로 부르고 마지막 값을 기억한다(`supervisor/players.rs`). 실패하거나 서버가 꺼지면 값을 지운다. 값은 `GET /api/servers`의 `players`와 relay 하트비트 `servers[].players`(05 §4)로 나간다. 같은 프로세스에서 5분 넘게 계속 실패하면(시간 초과 포함) 마지막 실패 `message`가 `GET /api/servers`의 `unresponsive`로 나가고 GUI에 응답 없음 경고로 보인다(01 §ServerInfo). 수를 알 수 없는 설정이면 실패 대신 `{"success": true}`를 돌려줘야 경고가 뜨지 않는다. 함수 계약은 §2.3.
 
 ```toml
 [status]
@@ -337,7 +337,7 @@ players = "player_count"
 | `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때 인스턴스 `module_settings`), `jar_name`, `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `install_dir`, `jar_name`(**기본값 `"server.jar"` 하드코딩**, `mod.rs:2168-2171`) |
 | `[[queries]]`의 `function` | `POST /api/instance/:id/query/:name`(액션 `server.query:<name>`) → `Supervisor::query_instance` | `validate`와 같은 config(`Supervisor::instance_call`) + `args{입력 이름: 값}`(명령 입력과 같이 검사·기본값 채움, 숫자는 숫자로). 돌려줄 것: `{"success": true, "data": <JSON>}` 또는 실패 `{"success": false, "message": "..."}`. `data`가 없으면 `success`·`message`를 뺀 나머지를 data로 본다. 읽기만 해야 한다(감사에 남지 않고 챗봇·일반 사용자도 부른다) |
-| `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한) | `validate`와 같은 config. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?}`(`max`가 없거나 0이면 최대를 모른다고 본다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 읽기만 해야 한다 |
+| `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한) | `validate`와 같은 config. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?}`(`max`가 없거나 0이면 최대를 모른다고 본다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 실패가 5분 넘게 이어지면 `message`가 `unresponsive`로 GUI에 보인다. 서버는 정상인데 수를 알 수 없으면(예: 상태 응답을 끈 설정) `online` 없이 `{"success": true}`를 돌려준다: 값은 비우고 실패로 세지 않는다. 읽기만 해야 한다 |
 | `backup_paths` | 백업 때 `[backup] hook = true`인 모듈 (`D:src/ipc/handlers/backup.rs:94-99`) | `working_dir`, `extension_data`, 인스턴스 값 |
 
 모듈의 `start` 함수는 모든 모듈에서 지워졌다(FUNCTIONS에 없음). non-managed 모드도 `get_launch_command`로 데몬이 직접 spawn한다 (`mod.rs:773-847`).
