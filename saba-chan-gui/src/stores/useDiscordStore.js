@@ -31,6 +31,8 @@ const markSynced = (state, fields) => {
     for (const f of fields) synced[f] = state[f];
 };
 const ALL_FIELDS = Object.values(BOT_KEYS).flat();
+// 저장은 한 번에 하나씩: 데몬 값을 읽는 사이 뒤 저장이 먼저 끝나 옛 값이 마지막에 남지 않게
+let saveQueue = Promise.resolve();
 // 상태 확인 세대: 연결 대상이 바뀌거나 폴링이 멈추면 올려서, 늦게 온 옛 응답을 버린다
 let statusGeneration = 0;
 
@@ -80,9 +82,9 @@ export const useDiscordStore = create((set, get) => ({
         if (get()._statusInterval) get().checkStatus();
     },
 
-    loadConfig: async () => {
+    loadConfig: async ({ attempts } = {}) => {
         const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
-        const maxAttempts = isTest ? 1 : 5;
+        const maxAttempts = attempts ?? (isTest ? 1 : 5);
         const retryDelay = 800;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -105,9 +107,17 @@ export const useDiscordStore = create((set, get) => ({
                 if (botCfg.cloudMembers && typeof botCfg.cloudMembers === 'object')
                     patch.cloudMembers = botCfg.cloudMembers;
 
+                // 읽기 전에 화면에서 고친 값은 덮지 않는다 (데몬이 없어 저장되지 못한 값). 데몬 값을 기준으로 두어
+                // 바뀐 것으로 남기고 아래에서 저장한다
+                const before = get();
+                const initial = initialState();
+                const edited = ALL_FIELDS.filter((f) => !sameValue(before[f], f in synced ? synced[f] : initial[f]));
+                const loaded = { ...before, ...patch };
+                for (const f of edited) delete patch[f];
                 set(patch);
                 synced = {};
-                markSynced(get(), ALL_FIELDS);
+                markSynced(loaded, ALL_FIELDS);
+                if (edited.length) await get().saveConfig();
                 return;
             } catch (err) {
                 if (attempt === maxAttempts) {
@@ -120,7 +130,14 @@ export const useDiscordStore = create((set, get) => ({
         }
     },
 
-    saveConfig: async () => {
+    saveConfig: () => {
+        const run = saveQueue.then(() => get()._saveNow());
+        saveQueue = run;
+        return run;
+    },
+
+    // 큐 차례가 왔을 때의 최신 상태를 저장한다. saveConfig로만 부른다
+    _saveNow: async () => {
         const state = get();
         try {
             // 처음 로드에 실패했다면 스토어 값은 기본값이다. 데몬을 읽을 수 없으면 저장하지 않는다
@@ -217,8 +234,12 @@ export const useDiscordStore = create((set, get) => ({
     },
 
     checkStatus: async () => {
-        const state = get();
         const generation = statusGeneration;
+        // 앱이 데몬보다 먼저 떠서 처음 설정 읽기에 실패했으면 여기서 다시 읽는다.
+        // 읽지 못한 채로 두면 호스트가 비어 저장된 연결이 있어도 연결 화면을 보인다
+        if (!get()._botConfigLoaded) await get().loadConfig({ attempts: 1 });
+        if (generation !== statusGeneration) return;
+        const state = get();
         let agentRunning = false;
         let agentReplaced = false;
         try {
@@ -281,6 +302,7 @@ export const useDiscordStore = create((set, get) => ({
         clearTimeout(state._statusTimeout);
         statusGeneration += 1;
         synced = {};
+        saveQueue = Promise.resolve();
         set(initialState());
     },
 }));

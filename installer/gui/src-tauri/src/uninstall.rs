@@ -911,6 +911,46 @@ fn remove_modules_dir() {
     }
 }
 
+/// 제거 후 정리 배치 스크립트. 경로는 배치 파일 안에서도 `%VAR%`가 펼쳐지므로 `%`를 `%%`로 적는다
+/// (펼쳐지면 `rmdir /s /q`가 엉뚱한 폴더를 지울 수 있다).
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn cleanup_script(
+    pid: u32,
+    self_exe: &str,
+    install_dir: Option<&str>,
+    dedicated: bool,
+    parent: Option<&str>,
+    script: &str,
+) -> String {
+    let q = |p: &str| p.replace('%', "%%");
+    // 전용 폴더가 아니면 비었을 때만 지운다 (사용자 파일이 남아 있을 수 있다)
+    let rmdir_line = match install_dir {
+        Some(dir) if dedicated => format!("if exist \"{0}\" rmdir /s /q \"{0}\"", q(dir)),
+        Some(dir) => format!("rmdir \"{}\" 2>nul", q(dir)),
+        None => String::new(),
+    };
+    // 부모 디렉토리도 정리 시도 (비어있으면 삭제)
+    let parent_line = match parent {
+        Some(parent) => format!("rmdir \"{}\" 2>nul", q(parent)),
+        None => String::new(),
+    };
+    format!(
+        "@echo off\r\n\
+        :wait\r\n\
+        tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\n\
+        if not errorlevel 1 (\r\n\
+            timeout /t 1 /nobreak >nul\r\n\
+            goto wait\r\n\
+        )\r\n\
+        del /f /q \"{self_exe}\"\r\n\
+        {rmdir_line}\r\n\
+        {parent_line}\r\n\
+        del /f /q \"{script}\"\r\n",
+        self_exe = q(self_exe),
+        script = q(script),
+    )
+}
+
 /// 프로세스 종료 후 자기 자신(및 남은 설치 디렉토리)을 삭제하는 cleanup 스크립트를 생성·실행.
 ///
 /// Windows에서는 실행 중인 .exe를 직접 삭제할 수 없으므로,
@@ -930,46 +970,19 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
 
         let pid = std::process::id();
         let script_path = std::env::temp_dir().join("saba-chan-cleanup.cmd");
+        // cmd 명령줄에서는 `%`를 이스케이프할 수 없다. 이런 임시 폴더면 남은 파일 정리를 건너뛴다
+        if script_path.to_string_lossy().contains('%') {
+            tracing::warn!("[Uninstall] Temp path contains '%', skipping cleanup script: {:?}", script_path);
+            return;
+        }
 
-        // 설치 디렉토리 삭제 명령 (있으면)
-        // 전용 폴더가 아니면 비었을 때만 지운다 (사용자 파일이 남아 있을 수 있다)
-        let rmdir_line = match install_dir {
-            Some(dir) if dedicated => format!(
-                "if exist \"{}\" rmdir /s /q \"{}\"",
-                dir.display(),
-                dir.display()
-            ),
-            Some(dir) => format!("rmdir \"{}\" 2>nul", dir.display()),
-            None => String::new(),
-        };
-
-        // 부모 디렉토리도 정리 시도 (비어있으면 삭제)
-        let parent_line = match self_exe.parent() {
-            Some(parent) => format!(
-                "rmdir \"{}\" 2>nul",
-                parent.display()
-            ),
-            None => String::new(),
-        };
-
-        let script_display = script_path.display().to_string();
-        let script = format!(
-            "@echo off\r\n\
-            :wait\r\n\
-            tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\n\
-            if not errorlevel 1 (\r\n\
-                timeout /t 1 /nobreak >nul\r\n\
-                goto wait\r\n\
-            )\r\n\
-            del /f /q \"{self_exe}\"\r\n\
-            {rmdir_line}\r\n\
-            {parent_line}\r\n\
-            del /f /q \"{script}\"\r\n",
-            pid = pid,
-            self_exe = self_exe.display(),
-            rmdir_line = rmdir_line,
-            parent_line = parent_line,
-            script = script_display,
+        let script = cleanup_script(
+            pid,
+            &self_exe.to_string_lossy(),
+            install_dir.map(|d| d.to_string_lossy()).as_deref(),
+            dedicated,
+            self_exe.parent().map(|p| p.to_string_lossy()).as_deref(),
+            &script_path.to_string_lossy(),
         );
 
         // 스크립트 파일 작성
@@ -986,12 +999,12 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
             }
         }
 
-        // CREATE_NO_WINDOW 플래그로 cmd 실행 (콘솔 창 숨김)
+        // CREATE_NO_WINDOW 플래그로 cmd 실행 (콘솔 창 숨김), /D로 AutoRun 레지스트리 명령을 끈다
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
         match std::process::Command::new("cmd")
-            .args(["/C", &script_path.to_string_lossy()])
+            .args(["/D", "/C", &script_path.to_string_lossy()])
             .creation_flags(CREATE_NO_WINDOW)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -1028,6 +1041,26 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cleanup_script_keeps_percent_signs_in_paths_literal() {
+        let s = cleanup_script(
+            7,
+            "C:\\%TEMP%\\Saba-chan\\saba-chan-installer.exe",
+            Some("C:\\%TEMP%\\Saba-chan"),
+            true,
+            Some("C:\\%TEMP%"),
+            "C:\\Users\\a%b%\\saba-chan-cleanup.cmd",
+        );
+        assert!(s.contains("if exist \"C:\\%%TEMP%%\\Saba-chan\" rmdir /s /q \"C:\\%%TEMP%%\\Saba-chan\""));
+        assert!(s.contains("del /f /q \"C:\\%%TEMP%%\\Saba-chan\\saba-chan-installer.exe\""));
+        assert!(s.contains("rmdir \"C:\\%%TEMP%%\" 2>nul"));
+        assert!(s.contains("del /f /q \"C:\\Users\\a%%b%%\\saba-chan-cleanup.cmd\""));
+        // 전용 폴더가 아니면 비었을 때만 지운다
+        let s = cleanup_script(7, "x.exe", Some("D:\\100%\\Saba"), false, None, "c.cmd");
+        assert!(s.contains("rmdir \"D:\\100%%\\Saba\" 2>nul"));
+        assert!(!s.contains("/s /q \"D:"));
+    }
 
     #[test]
     fn the_unpacked_gui_under_the_portable_launcher_is_found_but_not_the_uninstaller() {

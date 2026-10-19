@@ -209,9 +209,15 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
             for dir in dirs.iter().filter(|d| d.is_dir()) {
                 let started = std::time::Instant::now();
                 match appcontainer::clear_low_labels(dir) {
+                    // 표시가 없어도 파일마다 읽으므로 큰 서버 폴더는 시간이 든다: 오래 걸리면 남긴다
+                    Ok(0) if started.elapsed() >= std::time::Duration::from_millis(500) => tracing::info!(
+                        "[Sandbox] checked {} for low integrity labels (none) in {} ms",
+                        dir.display(),
+                        started.elapsed().as_millis()
+                    ),
                     Ok(0) => {}
                     Ok(n) => tracing::info!(
-                        "[Sandbox] removed the low integrity label from {} folder(s) under {} in {} ms",
+                        "[Sandbox] removed the low integrity label from {} file(s) and folder(s) under {} in {} ms",
                         n,
                         dir.display(),
                         started.elapsed().as_millis()

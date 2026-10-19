@@ -52,6 +52,43 @@ describe('릴레이 상태 확인 수명', () => {
     });
 });
 
+describe('데몬보다 앱이 먼저 뜬 경우', () => {
+    it('처음 설정 읽기에 실패해도 데몬이 뜬 뒤 상태 확인에서 다시 읽어 연결을 이어 간다', async () => {
+        window.api.botConfigLoad = vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
+        await useDiscordStore.getState().loadConfig();
+        expect(useDiscordStore.getState().discordCloudHostId).toBe('');
+
+        window.api.botConfigLoad.mockResolvedValue({ cloud: { hostId: 'h1', relayUrl: 'https://r' } });
+        window.api.relayCheckHostStatus.mockResolvedValue({ id: 'h1' });
+        await useDiscordStore.getState().checkStatus();
+
+        const s = useDiscordStore.getState();
+        expect(s.discordCloudHostId).toBe('h1');
+        expect(s.relayConnected).toBe(true);
+        expect(window.api.relayCheckHostStatus).toHaveBeenCalledWith('h1', 'https://r');
+    });
+});
+
+describe('늦게 읽은 설정과 그 전에 고친 값', () => {
+    it('설정을 읽기 전에 고친 값은 늦게 읽은 값으로 덮지 않고 데몬에 저장한다', async () => {
+        window.api.botConfigLoad = vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
+        window.api.botConfigSave = vi.fn().mockResolvedValue({ success: true });
+        await useDiscordStore.getState().loadConfig();
+        useDiscordStore.getState().update({ discordPrefixes: ['!new'] });
+
+        window.api.botConfigLoad.mockResolvedValue({
+            prefixes: ['!old'],
+            cloud: { hostId: 'h1', relayUrl: 'https://r' },
+        });
+        await useDiscordStore.getState().checkStatus();
+
+        const s = useDiscordStore.getState();
+        expect(s.discordPrefixes).toEqual(['!new']);
+        expect(s.discordCloudHostId).toBe('h1');
+        expect(window.api.botConfigSave).toHaveBeenCalledWith({ prefixes: ['!new'] });
+    });
+});
+
 describe('봇 설정 로드 실패 시 저장', () => {
     it('처음 로드 전에 저장하면 바꾼 키만 보내 디스크의 접두사·호스트를 건드리지 않는다', async () => {
         window.api.botConfigLoad = vi.fn().mockResolvedValue({

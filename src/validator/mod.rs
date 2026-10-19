@@ -388,12 +388,12 @@ pub fn instance_ports(instance: &ServerInstance, port_fields: &[&str]) -> Vec<(S
 /// 포트를 옮기는 폭의 단위. 게임이 몰래 쓰는 옆 포트(예: 좀보이드 port+1)와도 겹치지 않게 넉넉히 둔다
 pub const PORT_SHIFT_STEP: u16 = 10;
 
-/// `taken`과 겹치는 포트가 있으면 인스턴스의 모든 포트를 같은 폭(`PORT_SHIFT_STEP`의 배수)만큼 옮긴다.
+/// `taken`인 포트가 있으면 인스턴스의 모든 포트를 같은 폭(`PORT_SHIFT_STEP`의 배수)만큼 옮긴다.
 /// 같은 게임의 포트 묶음이 함께 움직이므로 서로의 간격이 유지된다. 옮긴 폭을 돌려준다(안 옮겼으면 None).
-pub fn shift_ports_clear_of(instance: &mut ServerInstance, port_fields: &[&str], taken: &std::collections::HashSet<u16>) -> Option<u16> {
+pub fn shift_ports_clear_of(instance: &mut ServerInstance, port_fields: &[&str], taken: impl Fn(u16) -> bool) -> Option<u16> {
     let ports = instance_ports(instance, port_fields);
     let delta = (0..=u16::MAX / PORT_SHIFT_STEP).map(|k| k * PORT_SHIFT_STEP).find(|&delta| {
-        ports.iter().all(|(_, p)| p.checked_add(delta).is_some_and(|q| !taken.contains(&q)))
+        ports.iter().all(|(_, p)| p.checked_add(delta).is_some_and(|q| !taken(q)))
     })?;
     if delta == 0 {
         return None;
@@ -444,6 +444,62 @@ pub fn ports_held_elsewhere(ports: &[(String, u16)]) -> Vec<(String, u16)> {
     }
     #[cfg(not(windows))]
     ports_held_by_binding(ports)
+}
+
+/// Windows가 예약한(제외 범위) 포트를 찾는다. Hyper-V·WinNAT 등이 부팅마다 범위를 잡아 두며, 그 안의 포트는
+/// 어떤 프로그램도 묶지 못한다(게임 서버가 조용히 그 포트를 열지 못한다). 사용 중 포트 목록에는 나오지 않는다.
+/// 범위는 TCP·UDP마다 따로 잡히므로 시작을 막을 때는 그 포트가 쓰는 프로토콜이 막혔을 때만 예약으로 본다
+pub fn ports_reserved_by_windows(ports: &[(String, u16)]) -> Vec<(String, u16)> {
+    ports.iter().filter(|(name, port)| {
+        let (tcp, udp) = reserved_protocols(*port);
+        blocks_start(name, tcp, udp)
+    }).cloned().collect()
+}
+
+/// 시작을 막을 예약인가. REST·RCON은 TCP만 쓰므로 TCP가 막히면 막힌 것이고, 게임 포트처럼 프로토콜을
+/// 모르는 포트는 둘 다 막혔을 때만 막힌 것으로 본다 (UDP만 쓰는 팰월드 8211이 TCP 범위에 걸려도 돈다)
+fn blocks_start(name: &str, tcp_denied: bool, udp_denied: bool) -> bool {
+    if matches!(name, "rest_port" | "rcon_port") {
+        tcp_denied
+    } else {
+        tcp_denied && udp_denied
+    }
+}
+
+/// 루프백에 묶어 보아 TCP나 UDP가 권한 거부면 예약된 것이다. 새 인스턴스의 포트를 고를 때 쓴다(어느 쪽이든 피한다)
+pub fn port_reserved_by_windows(port: u16) -> bool {
+    let (tcp, udp) = reserved_protocols(port);
+    tcp || udp
+}
+
+/// (TCP 거부, UDP 거부). 루프백은 방화벽 알림을 띄우지 않는다. Windows 밖에서는 늘 (false, false)
+fn reserved_protocols(port: u16) -> (bool, bool) {
+    #[cfg(windows)]
+    {
+        if port == 0 {
+            return (false, false);
+        }
+        let addr = (std::net::Ipv4Addr::LOCALHOST, port);
+        let denied = |e: std::io::Error| e.kind() == std::io::ErrorKind::PermissionDenied;
+        (std::net::TcpListener::bind(addr).err().is_some_and(denied), std::net::UdpSocket::bind(addr).err().is_some_and(denied))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = port;
+        (false, false)
+    }
+}
+
+/// TCP 포트(REST·RCON)가 Windows 예약 범위에 들었는가
+pub fn tcp_port_reserved_by_windows(port: u16) -> bool {
+    reserved_protocols(port).0
+}
+
+/// 기본 REST 포트가 막혔을 때 옮길 곳: `PORT_SHIFT_STEP` 간격으로 올라가며 `blocked`가 아닌 첫 포트
+pub fn next_free_port(from: u16, blocked: impl Fn(u16) -> bool) -> Option<u16> {
+    (1..=u16::MAX / PORT_SHIFT_STEP)
+        .filter_map(|k| from.checked_add(k * PORT_SHIFT_STEP))
+        .find(|&p| !blocked(p))
 }
 
 #[cfg(not(windows))]
@@ -555,6 +611,23 @@ fn collect_active_ports<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 리뷰: TCP 범위 8135-8234가 잡힌 PC에서 UDP만 쓰는 팰월드 8211까지 예약으로 막아 0.1.6 인스턴스가 못 떴다
+    #[test]
+    fn a_game_port_is_blocked_only_when_both_protocols_are_reserved() {
+        assert!(!blocks_start("port", true, false));
+        assert!(blocks_start("port", true, true));
+        assert!(blocks_start("rest_port", true, false));
+        assert!(!blocks_start("rest_port", false, true));
+    }
+
+    // 리뷰: 게임 포트를 직접 정한 팰월드를 여럿 만들면 REST가 모두 같은 첫 비예약 포트로 옮겨져 둘째가 못 떴다
+    #[test]
+    fn the_rest_port_moves_past_ports_other_instances_hold() {
+        let taken = [8222u16, 8232];
+        assert_eq!(next_free_port(8212, |p| taken.contains(&p) || (8135..=8234).contains(&p)), Some(8242));
+        assert_eq!(next_free_port(8212, |p| p == 8222 || p == 8242), Some(8232));
+    }
 
     fn make_field(name: &str, field_type: &str) -> SettingField {
         SettingField {
@@ -676,10 +749,10 @@ mod tests {
         let fields = ["port", "steam_port1"];
 
         let free: std::collections::HashSet<u16> = [25565].into();
-        assert_eq!(shift_ports_clear_of(&mut inst, &fields, &free), None, "nothing taken, nothing moves");
+        assert_eq!(shift_ports_clear_of(&mut inst, &fields, |p| free.contains(&p)), None, "nothing taken, nothing moves");
 
         let taken: std::collections::HashSet<u16> = [16261, 8766, 27025].into();
-        assert_eq!(shift_ports_clear_of(&mut inst, &fields, &taken), Some(20), "+10 would hit rest 27025");
+        assert_eq!(shift_ports_clear_of(&mut inst, &fields, |p| taken.contains(&p)), Some(20), "+10 would hit rest 27025");
         assert_eq!(inst.port, Some(16281));
         assert_eq!(inst.rest_port, Some(27035));
         assert_eq!(inst.module_settings["port"], serde_json::json!(16281));
@@ -1022,6 +1095,51 @@ mod tests {
         assert_eq!(ports_held_elsewhere(&ports), ports);
         drop((tcp, udp));
         assert!(ports_held_elsewhere(&ports).is_empty(), "released ports are free again");
+    }
+
+    /// 이 PC에서 Windows가 예약한(제외 범위) TCP 포트 하나. Hyper-V·WinNAT가 켜진 PC는 부팅마다 100개 묶음을 잡는다.
+    /// 한 포트짜리 범위(5985 WinRM 등)는 서비스가 실제로 듣고 있을 수 있어 넓은 범위의 가운데를 고른다
+    #[cfg(windows)]
+    fn an_excluded_tcp_port() -> Option<u16> {
+        let out = std::process::Command::new("netsh").args(["int", "ipv4", "show", "excludedportrange", "protocol=tcp"]).output().ok()?;
+        String::from_utf8_lossy(&out.stdout).lines().find_map(|line| {
+            let mut nums = line.split_whitespace().map(str::parse::<u16>);
+            match (nums.next(), nums.next()) {
+                (Some(Ok(start)), Some(Ok(end))) if end - start >= 10 => Some(start + (end - start) / 2),
+                _ => None,
+            }
+        })
+    }
+
+    // 실제 PC: 팰월드 REST 기본 포트 8212가 예약 범위(8135-8234)에 들어 있어 서버가 REST를 열지 못했고,
+    // 사용 중 포트 목록에는 나오지 않아 시작 전 검사도 통과했다
+    #[cfg(windows)]
+    #[test]
+    fn ports_in_a_windows_excluded_range_are_reported_as_reserved() {
+        let Some(port) = an_excluded_tcp_port() else {
+            eprintln!("this PC has no excluded port range; nothing to check");
+            return;
+        };
+        let ports = vec![("rest_port".to_string(), port)];
+        assert!(ports_held_elsewhere(&ports).is_empty(), "the held-port table does not list reserved ports");
+        assert_eq!(ports_reserved_by_windows(&ports), ports);
+        let free = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
+        assert!(ports_reserved_by_windows(&[("port".to_string(), free)]).is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn new_instance_ports_move_out_of_a_windows_excluded_range() {
+        let Some(port) = an_excluded_tcp_port() else {
+            eprintln!("this PC has no excluded port range; nothing to check");
+            return;
+        };
+        let mut inst = ServerInstance::new("p", "palworld");
+        inst.rest_port = Some(port);
+        let taken: std::collections::HashSet<u16> = std::collections::HashSet::new();
+        assert!(shift_ports_clear_of(&mut inst, &[], |p| taken.contains(&p) || port_reserved_by_windows(p)).is_some());
+        let moved = inst.rest_port.unwrap();
+        assert!(!port_reserved_by_windows(moved), "{port} moved to {moved}, which is still reserved");
     }
 
     #[test]

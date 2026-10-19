@@ -723,6 +723,8 @@
     "back_to_menu": "Menü",
     "state_no_host": "Nicht verbunden",
     "state_connecting": "Verbinde",
+    "state_checking": "Verbindung wird geprüft",
+    "checking_body": "Deine gespeicherte Discord-Verbindung wird geladen. Sie erscheint, sobald Saba-chan wach ist.",
     "state_connected": "Verbunden",
     "state_error": "Verbindung fehlgeschlagen",
     "nodes_empty": "Noch kein Discord-Server verbunden",
@@ -1093,10 +1095,15 @@
       "extension_modified": "Die Erweiterung ({{id}}) wurde nach der Installation verändert. Installiere sie neu, falls du sie nicht selbst bearbeitet hast.",
       "isolated": "Die Python-Skripte dieser Komponente laufen isoliert (nur erlaubte Ordner). Der Gameserver-Prozess wird nicht isoliert."
     },
+    "create_notice": {
+      "unverified": "Dieses Modul stammt nicht aus dem offiziellen Katalog. Seine Python-Skripte laufen isoliert, aber der Gameserver, den es installiert und startet, wird nicht isoliert und läuft mit den Rechten deines Kontos. Fahre nur fort, wenn du diesem Modul vertraust.",
+      "modified": "Die Dateien dieses Moduls wurden nach der Installation aus dem offiziellen Katalog geändert. Seine Python-Skripte laufen isoliert, aber der Gameserver, den es installiert und startet, wird nicht isoliert und läuft mit den Rechten deines Kontos. Fahre nur fort, wenn du diesem Modul vertraust."
+    },
     "start_blocked": {
       "launch_outside_instance": "Dieses nicht verifizierte Modul wollte ein Programm außerhalb des Serverordners starten: {{file}} Wenn du den Java-Pfad selbst festgelegt hast, wähle ihn in den Servereinstellungen erneut aus.",
       "server_folder_label": "Die Berechtigungsmarkierungen des Serverordners ({{file}}) konnten nicht bereinigt werden, daher wurde der Server nicht gestartet. Prüfe, ob dieses Konto die Berechtigungen des Ordners ändern darf.",
-      "sandbox_unavailable": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden, daher wurde sie nicht gestartet."
+      "sandbox_unavailable": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden, daher wurde sie nicht gestartet.",
+      "extension_not_verified": "Die Dateien dieser Erweiterungen wurden geändert und konnten nicht überprüft werden: {{extensions}}. Installieren Sie sie neu oder stellen Sie die ursprünglichen Dateien wieder her."
     },
     "sandbox": {
       "title": "Ohne Isolation ausführen?",

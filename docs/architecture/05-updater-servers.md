@@ -240,6 +240,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 - GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
 - 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다. 버전은 `versions.toml`에서 읽는다(`build-windows.ps1:27-28`). GUI 화면을 `npm run build`(vite)로 먼저 만들고(`:59-72`, Tauri GUI가 `build/`를 exe에 넣는다), 이어서 `cargo build --release --workspace`(`:98`)가 데몬·CLI·업데이터·인스톨러와 함께 `target/release/saba-chan-gui.exe`를 만든다(`:127`).
 - `package-release.py`는 **windows-x64 asset만** 만든다. manifest도 `--platform windows-x64`로 만든다.
+- 필수 구성요소는 `versions.toml`의 `[components.<키>] required = true`(지금은 `saba-core`, `gui`, `updater`) 한 곳에서 정한다. 이번 릴리즈에도 이전 릴리즈에도 없으면 `package-release.py`가 실패한다(`missing_required`). 설치기는 같은 파일을 빌드에 담아 읽고, manifest에 하나라도 없으면 기존 데몬을 끄기 전에 `release_incomplete`로 멈춘다(`installer/gui/src-tauri/src/release.rs`의 `required_components`).
 - `package-release.py`는 zip을 표준 형태로 다시 담는다: 경로 구분자를 `/`로 바꾸고, GUI zip 루트의 앱 exe를 `saba-chan-gui.exe`로 바꾸며(Tauri 빌드는 이미 `saba-chan-gui.exe`라 그대로다. `Saba-chan.exe` 개명은 옛 Electron zip에만 해당한다), 다른 컴포넌트의 exe는 뺀다(`package-release.py:147-184`). 다만 컴포넌트의 `bundles`에 적은 exe는 남기므로 raw saba-core zip에 든 `saba-runner.exe`가 재포장에서 빠지지 않는다(`:58-59, 166-169`). saba-core zip에는 `saba-runner.exe`와 공유 모듈(`i18n.py`, `daemon_rcon.py`)이 같이 들어간다(`package-release.py:48-60`).
 
 ### 3.2 modules / extensions repo
@@ -295,7 +296,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 | POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 길드마다 따로 보내고, 디스코드 전송이 실패하면 2초·10초 뒤 다시 해 본다. 데몬은 2xx를 받은 이벤트를 다시 보내지 않으므로 끝내 실패한 길드는 그 알림을 놓친다(로그만) | `routes/events.ts`, `bot/notify.ts` |
 | GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
 | POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 묶을 수 없으면 409 `GUILD_TAKEN`·`HOST_NOT_FOUND`. 한 번만 쓴다 | `linkRequests.ts` |
-| GET | `/v1/updates/check` | — | `channel`(stable·beta·nightly), `platform`, `current`, `client_id` | `{upToDate:true}` / `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` | `routes/updates.ts`, §1.4 |
+| GET | `/v1/updates/check` | — | `channel`(stable·beta·nightly), `platform`, `current`, `client_id` | `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` / `{upToDate:true, latest?}` (최신이면 `latest`는 요청한 채널에서 지금 버전의 릴리스를 가리킨다 — 업데이터가 컴포넌트를 비교한다. 그 채널에 지금 버전이 없으면 `{upToDate:true}`) | `routes/updates.ts`, §1.4 |
 | GET | `/v1/updates/manifest/:version` | — | `release?` | 서명된 manifest 원문 | `updates.ts` |
 | POST | `/v1/updates/event` | —, 4KB | `{anonId, phase, hostId?, fromVersion?, toVersion?, errorCode?, platform?}` | 204(익명 업데이트 텔레메트리) | `updates.ts` |
 | GET | `/v1/updates/download/installer` | — (브라우저, 게이트 예외) | 없음 | 302 → 가장 높은 stable(전원 롤아웃, yanked 제외, manifest `platform`이 없거나 `windows-x64`) manifest의 `components.installer.url`(https만). 없으면 302 → `/not-found.html`. `cache-control: no-store`. 웹사이트 다운로드 버튼이 쓴다 | `updates.ts` |

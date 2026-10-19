@@ -72,6 +72,6 @@ def test_catalog_palworld_installs_through_steamcmd(official, game_ports):
     assert exts.get("steamcmd") == "verified" and exts.get("ue4-ini") == "verified", exts
     iid = _provision(official, "pal-official", "palworld", game_ports[2], 7200)
     official.start_instance(iid)
-    wait_until(lambda: official.api.post(f"/api/instance/{iid}/rest", {"endpoint": "info"}, timeout=10).status_code == 200, 600, "Palworld REST 응답", interval=5)
+    wait_until(lambda: official.api.post(f"/api/instance/{iid}/rest", {"endpoint": "/v1/api/info"}, timeout=10).status_code == 200, 600, "Palworld REST 응답", interval=5)
     official.stop_instance(iid, timeout=180)
     official.wait_status(iid, "stopped", timeout=180)
