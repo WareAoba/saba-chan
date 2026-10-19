@@ -725,7 +725,9 @@
     "check_failed": "無法檢查：{{error}}",
     "exit_note_auto_off": "自動重啟已關閉",
     "exit_note_gave_up": "10 分鐘內重啟 {{count}} 次後放棄",
-    "exit_note_restart_failed": "無法重啟：{{reason}}"
+    "exit_note_restart_failed": "無法重啟：{{reason}}",
+    "parent_job_short": "核心依附於其他程式",
+    "parent_job": "saba-chan 核心正依附於啟動本應用程式的另一個程式執行。該程式關閉時，核心和伺服器管理可能會一起停止。請完全結束 saba-chan，再從開始功能表重新開啟。"
   },
   "discord": {
     "nav_connection": "連線",

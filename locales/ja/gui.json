@@ -725,7 +725,9 @@
     "check_failed": "点検できませんでした: {{error}}",
     "exit_note_auto_off": "自動再起動はオフ",
     "exit_note_gave_up": "10分以内に{{count}}回再起動したため中止",
-    "exit_note_restart_failed": "再起動できませんでした: {{reason}}"
+    "exit_note_restart_failed": "再起動できませんでした: {{reason}}",
+    "parent_job_short": "コアが他のアプリに依存中",
+    "parent_job": "サバちゃんのコアが、このアプリを起動した別のプログラムに結び付いて動いています。そのプログラムが終了すると、コアとサーバー管理も一緒に止まることがあります。サバちゃんを完全に終了してから、スタートメニューで開き直してください。"
   },
   "discord": {
     "nav_connection": "接続",
