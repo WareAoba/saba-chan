@@ -443,6 +443,13 @@ pub(crate) async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json:
     let sent = state.supervisor.read().await.send_stdin_command(id, command).await;
     let message = match sent {
         Ok(m) => m,
+        Err(e) if e.downcast_ref::<crate::supervisor::managed_process::StdinFull>().is_some() => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": format!("stdin command failed: {}", e), "error_code": "console_input_full" })),
+            )
+                .into_response()
+        }
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,

@@ -263,7 +263,7 @@
 |---|---|---|---|---|
 | POST | `/api/instance/:id/command` | `command.rs:16` | `{command*, args?}` | 실행한 경로의 응답 + `command`. 실패 시 `error_code`, 모듈 `[errors]` 문구 `error_message`. 404 / 400 / 409 `server_not_running` |
 | GET | `/api/instance/:id/commands` | `command.rs` `list_instance_commands` | - | `{commands:[{name,label,description,risk,inputs,source:"module"\|"extension",group?,...}], components?}`. `[commands] hook = true`인 모듈은 lifecycle `instance_commands()`가 준 인스턴스별 명령이 module.toml 명령 뒤에 `group`(예: 플러그인 이름)과 함께 붙고, `components`는 모듈이 판정한 구성요소를 그대로 넘긴다. 목록은 매번 새로 읽는다 |
-| POST | `/api/instance/:id/rcon` | `command.rs:392` | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) |
+| POST | `/api/instance/:id/rcon` | `command.rs:392` | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) / 503 `console_input_full`(서버가 콘솔 입력을 읽지 않아 대기열 256줄이 참. 기다리지 않고 바로 돌려준다) |
 | POST | `/api/instance/:id/rest` | `command.rs:487` | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}`(응답 없이 연결이 끊기면 `success:false`, `data.outcome:"unknown"`) / 400 / 500 |
 
 #### Managed 프로세스와 모듈 기능 (handlers/managed.rs)
@@ -272,7 +272,7 @@
 |---|---|---|---|---|
 | POST | `/api/instance/:id/managed/start` | `managed.rs:24` | 선택 `{config?}` | supervisor 결과 / 404 / 409 `instance_busy` / 422 `memory_limit_reached` / 500 |
 | GET | `/api/instance/:id/console` | `managed.rs:92` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
-| POST | `/api/instance/:id/stdin` | `managed.rs:118` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 500 |
+| POST | `/api/instance/:id/stdin` | `managed.rs:118` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 503 `console_input_full` / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:139` | - | supervisor 결과 |
 | POST | `/api/instance/:id/query/:name` | `managed.rs` `query_instance_handler` | `{args?: {입력: 값}}` | 모듈 `[[queries]]` 조회(X-2, 02 §`[[queries]]`): lifecycle `function`을 `validate`와 같은 config + `args`로 부른다. `{success, data}`(실패면 `success:false, error, error_code:"query_failed"`, Python이 실패하면 500, 디스코드에서 부르면 오류 원문 대신 `Query failed`). 404 `not_found`(인스턴스)·`unknown_query`, 400 `invalid_argument {field}`(선언에 없는 입력, 명령 입력과 같은 검사). 읽기 전용이라 감사에 남기지 않는다 |
 | GET | `/api/instance/:id/properties` | `managed.rs:209` | - | `manage_properties("read")` |
