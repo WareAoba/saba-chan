@@ -330,27 +330,13 @@ export function useServerActions({
                                 try {
                                     const installDir = await window.api.openFolderDialog();
                                     if (!installDir) return;
+                                    const s = servers.find((s) => s.name === name);
 
-                                    setProgressBar({
-                                        message: t('servers.progress_fetching_versions'),
-                                        indeterminate: true,
-                                    });
+                                    setProgressBar({ message: t('servers.progress_installing'), indeterminate: true });
 
-                                    const versions = await window.api.moduleListVersions(module, { per_page: 1 });
-                                    const latestVersion = versions?.latest?.release;
-                                    if (!latestVersion) {
-                                        setProgressBar(null);
-                                        safeShowToast(t('servers.version_fetch_failed'), 'error', 4000);
-                                        return;
-                                    }
-
-                                    setProgressBar({
-                                        message: t('servers.progress_downloading', { version: latestVersion }),
-                                        percent: 0,
-                                    });
-
+                                    // 최신 버전은 데몬이 이 인스턴스 설정(서버 종류 등)으로 고른다 (L23)
                                     const installResult = await window.api.moduleInstallServer(module, {
-                                        version: latestVersion,
+                                        instance_id: s?.id,
                                         install_dir: installDir,
                                     });
 
@@ -362,7 +348,6 @@ export function useServerActions({
 
                                     setProgressBar({ message: t('servers.progress_configuring'), percent: 90 });
 
-                                    const s = servers.find((s) => s.name === name);
                                     if (s && installResult.jar_path) {
                                         // working_dir만 설정 — 실행 파일은 모듈에서 자동 해석됨
                                         await window.api.instanceUpdateSettings(s.id, {
@@ -375,9 +360,12 @@ export function useServerActions({
                                     setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
                                     setTimeout(() => setProgressBar(null), 2000);
 
+                                    const done = t('servers.install_completed', {
+                                        version: installResult.version || '',
+                                    });
                                     const msg = installResult.java_warning
-                                        ? `${t('servers.install_completed', { version: latestVersion })}\n⚠️ ${installResult.java_warning}`
-                                        : t('servers.install_completed', { version: latestVersion });
+                                        ? `${done}\n⚠️ ${installResult.java_warning}`
+                                        : done;
                                     safeShowToast(msg, 'success', 5000);
                                     await fetchServers();
 
