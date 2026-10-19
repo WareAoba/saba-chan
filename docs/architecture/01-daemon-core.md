@@ -235,9 +235,9 @@
 | DELETE | `/api/instance/:id` | `instance.rs:789` | - | `{success}` / 404 / 409 `instance_busy`(백업·복원·업데이트 중)·`server_running`(돌던 서버를 끝내지 못함: 아무것도 지우지 않는다) / 500 |
 | PATCH | `/api/instance/:id` | `instance.rs` `update_instance_settings` | 키-값 객체. `working_dir`는 작업 폴더로. `extra_args`(문자열은 `chat::split_quoted`로 나눔, 또는 문자열 배열, null은 비우기)는 인스턴스의 추가 실행 인자로. `memory_limit_mb`(MiB 정수 256 이상. 글자는 숫자나 `4G`·`4096M`(`GB`·`MB`, 대소문자 무관). null·""·0은 제한 없음)는 메모리 상한(02 문서 §3.6), 그 밖이면 400 `invalid_format`(`fields:[{field:"memory_limit_mb"}]`) | `{success:true, synced, sync_error?, ignored?}`(`synced:false`면 저장은 됐지만 모듈 `configure`가 게임 설정 파일에 쓰지 못함, `ignored`는 받고 쓰지 않은 RCON 키) / 400 `unknown_setting {fields}`(모듈이 설정 목록을 선언했는데 공통 필드·모듈 설정·데몬 설정 `auto_restart`·`restart_on_unknown_exit`·`managed_start`·`log_sessions_keep` 어디에도 없는 키) / 400 `validation_failed`·`invalid_format`(모듈 `format`·`pattern`과 다름)`{details, fields}` / 404 / 500 |
 | POST | `/api/instance/:id/launch-preview` | `instance.rs` `launch_preview` → `Supervisor::launch_preview` | `{settings?:{필드:값}, extra_args?: string\|string[]}` (extra_args가 없으면 저장된 것) | 실행 인자 미리보기. 서버를 띄우지 않고 익스텐션 hook도 부르지 않는다. 저장된 설정 위에 초안, 그 위에 추가 인자를 필드 `arg` 모양으로 읽은 값을 얹어 `get_launch_command`(`preview:true`)를 부른다. 필드에 `arg`를 선언하지 않은 모듈이면 모듈을 부르지 않고 `{success:true, has_launch_args:false, ...}`(command_line 없음)를 돌려준다. 성공 `{success:true, has_launch_args, command_line, program, args[], settings_from_args{}, extra_args[], extra_args_text(큰따옴표가 든 인자가 있으면 null: 배열로 저장), errors[{arg\|null, field, expected, got}]}`. password 필드 값과 인스턴스 `rest_password`는 `***`. 모듈 실패 `{success:false, error:"launch_command_failed"\|action_required, message?, ...같은 키}` / 404 / 500 `preview_failed`. `expected`는 `validator::expected_of` 코드(`memory_size`·`port`·`integer`·`path`·`pattern`·`number`·`boolean`·`enum`·`text`) |
-| POST | `/api/instance/:id/rename` | `instance.rs:878` | `{name}` | `{success, id, name, previous}` / 409 `name_taken`·`server_running` / 404 |
+| POST | `/api/instance/:id/rename` | `instance.rs:878` | `{name}` | `{success, id, name, previous}`. 설치 진행 표시(이름 기준)도 새 이름으로 옮기고, 새 이름에 남아 있던 옛 표시는 버린다. 인스턴스를 지울 때도 그 이름의 표시를 지운다(`ProvisionTracker::forget`) / 409 `name_taken`·`server_running`·`instance_busy`(설치·업데이트·백업·복원 중) / 404 |
 | GET | `/api/provision-progress/:name` | `instance.rs:760` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}`. `error`는 모듈이 돌려준 `message`이거나, 스크립트가 비정상 종료·시간 초과면 `provision.script_failed` 문구다(스크립트 출력은 데몬 로그에만) |
-| DELETE | `/api/provision-progress/:name` | `instance.rs:719` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 인스턴스를 삭제한다 |
+| DELETE | `/api/provision-progress/:name` | `instance.rs:719` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 그 설치를 시작한 인스턴스를 ID로 찾아 삭제한다(그 사이 이름이 바뀌어도 같은 이름의 다른 인스턴스는 지우지 않는다. 다른 작업이 그 인스턴스를 쥐고 있으면 지우지 않는다). 아직 끝나지 않은 설치는 닫지 않는다(`rolled_back:false`, 아무것도 바꾸지 않음). 이름을 바꾸면 진행 표시도 새 이름으로 옮겨 간다 |
 | GET | `/api/instance/:id/check-update` | `instance.rs:1384` | - | 훅 결과 또는 `{update_available:false, reason}` |
 | POST | `/api/instance/:id/apply-update` | `instance.rs:1481` | - | `{success,id,provisioning:true}`. 409 `server_running`·`instance_busy`(백업·복원·업데이트 중, 업데이트는 끝날 때까지 작업 잠금을 잡는다), 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
 
@@ -261,9 +261,9 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/instance/:id/command` | `command.rs:16` | `{command*, args?}` | 실행한 경로의 응답 + `command`. 실패 시 `error_code`, 모듈 `[errors]` 문구 `error_message`. 404 / 400 / 409 `server_not_running` |
+| POST | `/api/instance/:id/command` | `command.rs:16` | `{command*, args?}` | 실행한 경로의 응답 + `command`. 실패 시 `error_code`, 모듈 `[errors]` 문구 `error_message`. 404 / 400 / 409 `server_not_running` / 503 `console_input_full`(콘솔로 보내는 명령인데 서버가 입력을 읽지 않음, `/rcon`과 같다) |
 | GET | `/api/instance/:id/commands` | `command.rs` `list_instance_commands` | - | `{commands:[{name,label,description,risk,inputs,source:"module"\|"extension",group?,...}], components?}`. `[commands] hook = true`인 모듈은 lifecycle `instance_commands()`가 준 인스턴스별 명령이 module.toml 명령 뒤에 `group`(예: 플러그인 이름)과 함께 붙고, `components`는 모듈이 판정한 구성요소를 그대로 넘긴다. 목록은 매번 새로 읽는다 |
-| POST | `/api/instance/:id/rcon` | `command.rs:392` | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) |
+| POST | `/api/instance/:id/rcon` | `command.rs:392` | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) / 503 `console_input_full`(서버가 콘솔 입력을 읽지 않아 대기열 256줄이 참. 기다리지 않고 바로 돌려준다) |
 | POST | `/api/instance/:id/rest` | `command.rs:487` | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}`(응답 없이 연결이 끊기면 `success:false`, `data.outcome:"unknown"`) / 400 / 500 |
 
 #### Managed 프로세스와 모듈 기능 (handlers/managed.rs)
@@ -272,7 +272,7 @@
 |---|---|---|---|---|
 | POST | `/api/instance/:id/managed/start` | `managed.rs:24` | 선택 `{config?}` | supervisor 결과 / 404 / 409 `instance_busy` / 422 `memory_limit_reached` / 500 |
 | GET | `/api/instance/:id/console` | `managed.rs:92` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
-| POST | `/api/instance/:id/stdin` | `managed.rs:118` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 500 |
+| POST | `/api/instance/:id/stdin` | `managed.rs:118` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 503 `console_input_full` / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:139` | - | supervisor 결과 |
 | POST | `/api/instance/:id/query/:name` | `managed.rs` `query_instance_handler` | `{args?: {입력: 값}}` | 모듈 `[[queries]]` 조회(X-2, 02 §`[[queries]]`): lifecycle `function`을 `validate`와 같은 config + `args`로 부른다. `{success, data}`(실패면 `success:false, error, error_code:"query_failed"`, Python이 실패하면 500, 디스코드에서 부르면 오류 원문 대신 `Query failed`). 404 `not_found`(인스턴스)·`unknown_query`, 400 `invalid_argument {field}`(선언에 없는 입력, 명령 입력과 같은 검사). 읽기 전용이라 감사에 남기지 않는다 |
 | GET | `/api/instance/:id/properties` | `managed.rs:209` | - | `manage_properties("read")` |
@@ -564,7 +564,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | 경로 | 동작 |
 |---|---|
 | `POST /api/instance/:id/command` | 모든 인터페이스의 단일 명령 경로다. 요청 해석·검증은 `crate::commands`가 한다. 모듈에 없는 이름이면 활성 익스텐션 명령을 먼저 본다(`command.rs:80-124`). 그다음 모듈 정의대로 `/rcon`(stdin), `/rest`, `lifecycle.py command`, 원시 stdin 중 하나로 보낸다(`command.rs:158-183`). 꺼져 있고 콘솔도 없으면 409 `server_not_running`이다. `Supervisor::execute_command`(`supervisor/mod.rs:1220-1266`)는 config `{command,args,protocol_mode,working_dir,rest_host,rest_port,pid,instance_id}`를 락 안에서 만들고, 락을 놓은 뒤 Python을 실행한다 |
-| `POST /api/instance/:id/rcon` | 이름은 호환용이고 **언제나 stdin으로 보낸다.** `routes_commands_to_stdin`(`supervisor/mod.rs:1704-1712`)이 콘솔 있는 서버(관리 모드, 재접속 후에도 saba-runner가 stdin 유지)를 확인하면 `via_stdin`(`command.rs:430-484`)이 한 줄을 쓰고 콘솔 출력을 최대 약 1.5초 모아 `data.response`로 돌려준다. 콘솔이 없으면 409 `no_command_path`(`command.rs:392-435`) |
+| `POST /api/instance/:id/rcon` | 이름은 호환용이고 **언제나 stdin으로 보낸다.** `routes_commands_to_stdin`(`supervisor/mod.rs:1704-1712`)이 콘솔 있는 서버(관리 모드, 재접속 후에도 saba-runner가 stdin 유지)를 확인하면 `via_stdin`(`command.rs:430-484`)이 한 줄을 쓰고 콘솔 출력을 최대 약 1.5초 모아 `data.response`로 돌려준다. 콘솔이 없으면 409 `no_command_path`(`command.rs:392-435`). 서버가 콘솔 입력을 읽지 않아 대기열(256줄)이 차 있으면 기다리지 않고 503 `console_input_full` |
 | `POST /api/instance/:id/rest` | 접속 정보는 `get_credentials`(게임 설정 파일)에서 읽고 인스턴스별로 캐시한다(`CredentialsCache`, `ipc/mod.rs:302-328`; `command.rs:661-689`). 실패하면 캐시를 지운다. host와 port는 payload, instance, 모듈 기본값 순으로 정하고, 동기 ureq 호출은 `spawn_blocking`으로 감싼다(`command.rs:614-621`) |
 | `POST /api/instance/:id/stdin` | `/rcon`과 같은 `via_stdin` 경로다(`managed.rs:118-137`) |
 

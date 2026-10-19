@@ -96,6 +96,20 @@ export function eventToast(ev, t, nameOf = (id) => id) {
     }
 }
 
+// 알린 포트 이동 (서버·from·to). 시작 응답과 instance.port_moved 이벤트가 같은 이동을 두 번 알리지 않게 한다
+const shownPortMoves = new Set();
+
+/** 데몬이 Windows 예약 범위를 피해 옮겨 저장한 포트를 알린다. 같은 이동은 한 번만 */
+export function showPortMoved({ instanceId, name, from, to }, t) {
+    const key = `${instanceId}|${from}|${to}`;
+    if (shownPortMoves.has(key)) return;
+    shownPortMoves.add(key);
+    safeShowToast(t('servers.port_moved', { name: name || instanceId, from, to }), 'warning', 8000, {
+        isNotice: true,
+        source: 'saba-chan',
+    });
+}
+
 /** 토스트를 띄우고 알림 보기에도 남긴다 */
 export function showEventToast(ev, t, nameOf) {
     const toast = eventToast(ev, t, nameOf);

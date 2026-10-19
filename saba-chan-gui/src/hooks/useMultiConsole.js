@@ -348,6 +348,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                 safeShowToast(t('servers.stdin_unconfirmed'), 'warning', 5000);
                 return;
             }
+            if (result?.error_code === 'console_input_full') {
+                // 서버가 앞의 입력을 아직 읽지 않았다: 다른 길로 보내도 같은 대기열이다
+                safeShowToast(t('errors.console_input_full'), 'warning', 5000);
+                return;
+            }
             if (result?.error) {
                 console.log('[Console] stdin failed, trying command API:', result.error);
                 const cmdResult = await window.api.executeCommand(instanceId, {
