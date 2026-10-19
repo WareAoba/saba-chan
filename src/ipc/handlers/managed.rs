@@ -537,16 +537,8 @@ pub async fn install_server_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let version = match payload.get("version").and_then(|v| v.as_str()) {
-        Some(v) => v.to_string(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Missing 'version' field"})),
-            )
-                .into_response()
-        }
-    };
+    // 비우면 아래에서 그 인스턴스 설정으로 최신을 고른다
+    let version = payload.get("version").and_then(|v| v.as_str()).filter(|v| !v.is_empty()).map(str::to_string);
 
     let install_dir = match payload.get("install_dir").and_then(|v| v.as_str()) {
         Some(v) => v.to_string(),
@@ -565,6 +557,24 @@ pub async fn install_server_handler(
         Err(resp) => return *resp,
     };
     let initial_settings = payload.get("initial_settings").cloned();
+    // 어느 인스턴스의 설치인가: 그 설정(서버 종류 등)으로 버전을 고르고 설치한다
+    let instance = match payload.get("instance_id").and_then(|v| v.as_str()) {
+        Some(id) => {
+            let sup = state.supervisor.read().await;
+            match sup.instance_store.get(id) {
+                Some(inst) if inst.module_name == module_name => {
+                    let dir = sup.instance_store.instance_dir(id);
+                    Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir)))
+                }
+                Some(_) => {
+                    let error = json!({ "error": format!("Instance '{}' is not a '{}' server", id, module_name), "error_code": "invalid_format", "fields": [{"field": "instance_id"}] });
+                    return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                }
+                None => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response(),
+            }
+        }
+        None => None,
+    };
 
     // ── 필수 익스텐션 의존성 검증 ──
     {
@@ -628,6 +638,24 @@ pub async fn install_server_handler(
         }
     }
 
+    let version = match version {
+        Some(v) => v,
+        None => {
+            let module_path = match state.supervisor.read().await.module_loader.get_module(&module_name) {
+                Ok(m) => m.entry_path(),
+                Err(e) => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)}))).into_response(),
+            };
+            let settings = instance.as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| json!({}));
+            match Supervisor::latest_version(&module_path, &settings).await {
+                Some(v) => v,
+                None => {
+                    let error = json!({ "error": "Could not find the latest version of this server", "error_code": "version_unknown" });
+                    return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+                }
+            }
+        }
+    };
+
     // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다.
     // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
     let guards = match hold_instances_using(&state, &install_dir).await {
@@ -647,6 +675,7 @@ pub async fn install_server_handler(
                 jar_name.as_deref(),
                 &accepted_agreements,
                 initial_settings,
+                instance,
             )
             .await
             .map_err(|e| e.to_string())
@@ -666,5 +695,52 @@ pub async fn install_server_handler(
             Json(json!({"error": e.to_string()})),
         )
             .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    // 실사용(L23): GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의
+    // 파일을 받을 수 있었다. 버전을 비우면 데몬이 그 인스턴스 설정으로 최신을 고르고, 설치에도 그 설정을 넘긴다
+    #[tokio::test]
+    async fn an_install_without_a_version_takes_the_latest_for_the_instance_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        // 종류가 "b"일 때만 최신이 2.0이고, 설치는 그 버전과 그 종류로 불렸을 때만 성공한다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\nkind = (config.get('settings') or {}).get('kind')\n\
+             if sys.argv[1] == 'list_versions':\n    print(json.dumps({'success': True, 'latest': {'release': '2.0' if kind == 'b' else '1.0'}}))\n\
+             else:\n    ok = config.get('version') == '2.0' and kind == 'b'\n    print(json.dumps({'success': ok, 'message': 'version %s kind %s' % (config.get('version'), kind)}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.module_settings.insert("kind".into(), json!("b"));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let install = |body: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state), Json(body)).await.into_response()).await }
+        };
+        let files = tmp.path().join("files");
+
+        let done = install(json!({ "install_dir": files, "instance_id": id })).await;
+        assert!(done.status.is_success(), "{}", done.body);
+        // 다른 모듈의 인스턴스는 받지 않는다
+        let other = install(json!({ "install_dir": files, "instance_id": "nope" })).await;
+        assert_eq!(other.status, StatusCode::NOT_FOUND, "{}", other.body);
+        // 버전을 정해 보내면 그대로 쓴다 (예전 클라이언트)
+        let pinned = install(json!({ "install_dir": files, "instance_id": id, "version": "1.0" })).await;
+        assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
     }
 }

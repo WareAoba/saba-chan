@@ -492,25 +492,7 @@ pub async fn create_instance(
                                 // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
                                 // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
                                 let version = if install_config.method == "download" {
-                                    match crate::plugin::run_plugin(
-                                        &module_path, "list_versions", serde_json::json!({ "settings": &install_settings }),
-                                    ).await {
-                                        Ok(ver_result) => {
-                                            ver_result.get("latest")
-                                                .and_then(|l| l.get("release"))
-                                                .and_then(|r| r.as_str())
-                                                .map(|s| s.to_string())
-                                                .or_else(|| {
-                                                    ver_result.get("latest_release")
-                                                        .and_then(|r| r.as_str())
-                                                        .map(|s| s.to_string())
-                                                })
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("Failed to fetch versions for '{}': {}", module_name_owned, e);
-                                            None
-                                        }
-                                    }
+                                    crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await
                                 } else {
                                     None // 익스텐션 방식은 version 불필요
                                 };
