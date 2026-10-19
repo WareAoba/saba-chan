@@ -463,6 +463,8 @@ impl Session {
             })
             .collect();
 
+        // 권한을 읽기 직전의 시각 (권한 변경 응답의 `permissionsAt`과 같은 PC 시계)
+        let permissions_at = now_ms();
         let bot = self.server.config_store.get_bot_config().await;
         // 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열)
         let command_aliases: serde_json::Map<String, Value> = bot
@@ -503,6 +505,7 @@ impl Session {
         }
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
+        meta["permissionsAt"] = json!(permissions_at);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
@@ -1079,7 +1082,8 @@ async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::pe
     match result {
         Ok(Ok(node)) => {
             let p = crate::chat::permissions::NodePermissions::from_node(Some(&Value::Object(node)));
-            json!({ "success": true, "data": { "defaultLevel": p.default_level, "members": p.members } })
+            // 저장을 마친 뒤의 시각: 릴레이는 이보다 먼저 읽은 heartbeat 권한을 버린다
+            json!({ "success": true, "data": { "defaultLevel": p.default_level, "members": p.members, "permissionsAt": now_ms() } })
         }
         Ok(Err(code)) => fail(&code.to_uppercase()),
         Err(e) => json!({ "success": false, "data": { "code": "SAVE_FAILED", "error": e.to_string() } }),
@@ -1173,6 +1177,30 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 디스코드에서 바꾼 권한의 응답과 heartbeat는 같은 PC 시계의 `permissionsAt`을 싣는다.
+    /// 릴레이는 바꾼 뒤보다 먼저 읽은 heartbeat 권한을 버린다 (늦게 와서 옛 레벨로 되돌리지 않게)
+    #[tokio::test]
+    async fn a_permission_change_reports_when_it_was_saved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let who = crate::chat::permissions::Requester {
+            guild_id: Some("r8-permissions-at".into()),
+            user_id: Some("owner".into()),
+            owner_id: Some("owner".into()),
+            via_chatbot: false,
+        };
+        let before = now_ms();
+        let res = permission_action(&server, &who, &json!({ "op": "default_level", "level": 1 })).await;
+        assert_eq!(res["success"], true, "{res}");
+        let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
+        assert!(at >= before && at <= now_ms());
+    }
 
     #[test]
     fn heartbeat_commands_leave_templates_on_the_pc() {
