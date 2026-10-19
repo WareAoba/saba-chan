@@ -279,7 +279,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 | GET | `/bot-status` | 내부 | — | 봇 연결 상태 | `app.ts` |
 | GET | `/api/bot-invite` | — | — | `{clientId, inviteUrl, bot}` / 503 `BOT_NOT_CONFIGURED` | `app.ts` |
 | POST | `/api/pair/initiate` | —(3/min) | `{relayUrl?}` | `{code(nanoid32), pollSecret(nanoid48), expiresAt, ttl:300}`. pollSecret은 sha256으로 저장 | `routes/pair.ts` |
-| GET | `/api/pair/:code/status` | `X-Poll-Secret` 헤더(30/min) | — | `{status:'pending', expiresAt}` / `expired` / `{status:'claimed', hostId, nodeToken}`. nodeToken은 1회만 준다. 헤더가 없으면 401 `MISSING_POLL_SECRET`, 틀리면 403 | `pair.ts` |
+| GET | `/api/pair/:code/status` | `X-Poll-Secret` 헤더(30/min) | — | `{status:'pending', expiresAt}` / `expired` / `{status:'claimed', hostId, nodeToken}`. nodeToken은 수령 기한(코드 만료와 클레임 뒤 2분 가운데 늦은 쪽)까지 다시 읽을 수 있고, 기한이 지나면 `null`이다. 헤더가 없으면 401 `MISSING_POLL_SECRET`, 틀리면 403 | `pair.ts` |
 | GET | `/api/hosts/:hostId` | 노드(자기 호스트)/내부 | — | `{id, name, status, lastHeartbeat, agentVersion, createdAt}` | `routes/host.ts` |
 | PATCH | `/api/hosts/:hostId/bot-config` | 노드/내부 | `{prefixes?, prefix?, moduleAliases?, commandAliases?}` (`prefixes`가 있으면 `prefix`보다 우선) | `{success, botConfig}`. 지금 데몬은 heartbeat `botConfig`로 보내므로 쓰지 않는다 | `host.ts` |
 | GET | `/api/hosts/:hostId/nodes` | 노드/내부 | — | `[{guildId, hostId, guildName, locale, iconUrl, prefixes, prefixDefault, createdAt, updatedAt}]`. `iconUrl`은 봇이 그 길드에 있고 아이콘이 있을 때만(128px png, 없으면 null), `prefixes`는 지금 쓰는 접두사(기본값이면 응답 언어의 글자), `prefixDefault`는 기본값을 쓰는 중인지 | `routes/node.ts` |
@@ -317,22 +317,22 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 | `nodes` | `guild_id` PK, `host_id` → hosts(cascade), owner_discord_id, guild_name, locale, `locale_source`(auto/manual), music_enabled, music_ui_enabled, music_settings jsonb, is_sleep, `default_level`(데몬 값의 캐시), `notify_channel_id`(I3), timestamps |
 | `node_permissions` | PK(guild_id, discord_id), level(-1=금지, 0=챗봇, 1=유저, 2=관리자), granted_by. 데몬 `nodeSettings[guild].members`의 캐시(릴레이 바깥 검사용) |
 | `command_queue` | id PK, host_id, guild_id, payload jsonb, requested_by, channel_id, status(pending→delivered→acked→completed / timeout / error), created/delivered/completed/expires_at(+60s), result jsonb, `redeliveries`(ack 없이 다시 보낸 횟수, `0022_command_redeliveries`) |
-| `pairing_codes` | code PK, expires_at(+5분), status, attempts, relay_url, claimed_by, host_id, node_token(수령하면 NULL), claimed_at, poll_secret_hash |
+| `pairing_codes` | code PK, expires_at(+5분), status, attempts, relay_url, claimed_by, host_id, node_token(수령 기한이 지나면 NULL. 읽을 때 또는 정리 작업이 지운다), claimed_at, poll_secret_hash |
 | `announcement_settings` | guild_id PK, channel_id, subscribed_at |
 | `audit_logs` | serial id, timestamp, user_discord_id, host_id, guild_id, action, detail, result. action `relay`(큐에 넣은 명령: `requestId`, `kind`, 명령은 서버·명령 이름과 인자 개수만, 액션은 id·instance·입력 키(참·거짓·숫자만 값, 여러 단계 계획은 단계마다 id·입력 키), 결과는 `queued` → `/result`가 성공이면 `success`, 실패면 데몬 코드로 바꾼다. 늦은 결과는 7일 안의 행에만 적는다)·`confirm`(확인 버튼 실행·취소)·`assign`(채널 배정, 앱에서 바꾸면 user `app`)·권한·페어링. 인자 값과 비밀은 남기지 않는다(`services/audit.ts`) |
 | `releases` / `release_assets` | 버전·채널(채널·버전 쌍은 유일, `0021_releases_unique`)·롤아웃·isCritical·minSupported·signed_manifest·notes·yanked / 컴포넌트·플랫폼·파일·크기·sha256 (§1.3) |
 | `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
 | `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
 
-정리 스케줄러(`services/cleanup.ts`): 감사 30일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
+정리 스케줄러(`services/cleanup.ts`): 감사 30일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
 ### 4.4 프로토콜 흐름
 
 **(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시)
 1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
-2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급(계정당 PC 하나. 3분 안에 heartbeat가 있던 PC를 대체하면 답에 그 사실을 붙인다), guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령하면 지운다). 길드가 이미 다른 사람(노드 주인이 아닌 사람)에게 묶여 있으면, 연결하는 사람이 디스코드 서버 주인일 때만 그 노드를 지우고 새로 만든다(옛 PC의 대기 명령도 지운다). 아니면 `GUILD_TAKEN`으로 거절하고 코드는 pending으로 남는다. `/사바쨩 연결해제`(노드 주인 또는 디스코드 서버 주인. 노드 주인은 잠근 노드 행으로 다시 확인한다)는 노드와 그 길드의 대기 명령을 지운다. 권한·배정·챗봇 설정은 cascade로 지워지고, 길드 슬래시 명령은 0개로 다시 등록된다(`unbindGuild`). 데몬의 `nodeSettings`는 남는다.
+2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 봇이 같은 프로세스에서 `claimPairingCode`를 부른다(`bot/commands/coreService.ts`, `services/pairing.ts`). users upsert, hosts 생성 또는 토큰 재발급(계정당 PC 하나. 3분 안에 heartbeat가 있던 PC를 대체하면 답에 그 사실을 붙인다), guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 저장(수령 기한이 지나면 지운다). 길드가 이미 다른 사람(노드 주인이 아닌 사람)에게 묶여 있으면, 연결하는 사람이 디스코드 서버 주인일 때만 그 노드를 지우고 새로 만든다(옛 PC의 대기 명령도 지운다). 아니면 `GUILD_TAKEN`으로 거절하고 코드는 pending으로 남는다. `/사바쨩 연결해제`(노드 주인 또는 디스코드 서버 주인. 노드 주인은 잠근 노드 행으로 다시 확인한다)는 노드와 그 길드의 대기 명령을 지운다. 권한·배정·챗봇 설정은 cascade로 지워지고, 길드 슬래시 명령은 0개로 다시 등록된다(`unbindGuild`). 데몬의 `nodeSettings`는 남는다.
    - 코드 없이 `/사바쨩 연결`(서버 관리 권한, 길드에서만)을 치면 친 사람의 켜진 PC(3분 안 heartbeat)에 수락을 묻는다(J1-b). PC가 없으면 코드 안내, 이미 내 PC에 묶인 길드면 그렇다고 답하고, 남의 PC에 묶인 길드는 위와 같은 규칙이다. 요청(`requestId`, 10분)은 relay 메모리에 두고(재시작하면 사라진다, `services/linkRequests.ts`) 그 호스트 큐에 `{action:'link_request', requestId, guildId, guildName, userName, expiresAt}`을 넣는다(노드가 아직 없어 큐 항목 `guildId`는 비우고 payload에 싣는다). 데몬은 이것을 `relay.link_request` 이벤트로 GUI에 보이고, 답은 `POST /api/link-requests/:id`다. 수락하면 페어링의 노드 만들기와 같은 검사로 길드를 묶고(남의 PC에 묶인 길드를 옮길 서버 주인 여부는 수락할 때 봇 캐시로 다시 본다. 봇이 그 길드를 모르면 옮기지 않는다)(토큰은 새로 만들지 않는다, 감사 `link_accept`, `pairing.ts` `linkGuildToHost`) 요청한 채널에 짧게 알린다.
-3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다(#61). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `<data_dir>/.node_token`에 저장**한다.
+3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs` `poll_pairing_status`). daemon은 relay에 `X-Poll-Secret` 헤더로 묻는다(#61). relay가 `claimed`와 함께 nodeToken을 돌려주면(응답을 잃어도 수령 기한 안의 다음 폴링이 다시 받는다) **daemon이 `<data_dir>/.node_token`에 저장**한다.
 4. daemon `GET/PUT/DELETE /api/config/node-token`(`handlers/config.rs`)은 토큰 원문을 IPC로 그대로 반환한다.
 
 **(b) 명령 실행** (cloud 모드)
