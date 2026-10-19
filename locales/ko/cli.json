@@ -798,7 +798,8 @@
       "help.command": "명령 경로 (예: `server start`)",
       "events.kind": "이 이벤트만. `instance`는 `instance.exit` 같은 아래 이벤트도 받아요",
       "events.server": "이 서버의 이벤트만",
-      "events.since": "이 이벤트 번호 다음부터 (데몬이 아직 가진 것은 다시 보내요)"
+      "events.since": "이 이벤트 번호 다음부터 (데몬이 아직 가진 것은 다시 보내요)",
+      "json_stream": "진행 상황과 결과를 JSON 줄(NDJSON)로 출력 (--json 포함)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

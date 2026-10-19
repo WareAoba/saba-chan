@@ -228,7 +228,7 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     if cli.global.lang.as_deref().is_some_and(|l| crate::i18n::normalize(l) != crate::i18n::lang()) {
         ctx.out.warn(&t!("shell.lang_fixed", lang = crate::i18n::lang()));
     }
-    if cli.global.json {
+    if cli.global.json || cli.global.json_stream {
         ctx.out = crate::output::Out { json: true };
         ctx.ask.enabled = false;
     }

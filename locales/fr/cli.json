@@ -490,7 +490,8 @@
       "help.command": "Chemin de la commande, par ex. `server start`",
       "events.kind": "Seulement ces événements ; `instance` inclut aussi `instance.exit` et similaires",
       "events.server": "Seulement les événements de ce serveur",
-      "events.since": "Commencer après cet id d'événement (renvoie ce que le démon garde encore)"
+      "events.since": "Commencer après cet id d'événement (renvoie ce que le démon garde encore)",
+      "json_stream": "Afficher la progression puis le résultat en lignes JSON (NDJSON) ; implique --json"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument, le shell interactif s'ouvre.\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },

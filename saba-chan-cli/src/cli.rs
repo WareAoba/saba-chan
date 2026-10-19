@@ -25,6 +25,9 @@ pub struct Global {
     /// Print machine-readable JSON instead of text
     #[arg(long, global = true, display_order = 900)]
     pub json: bool,
+    /// Print progress and then the result as JSON lines (NDJSON); implies --json
+    #[arg(long, global = true, display_order = 900)]
+    pub json_stream: bool,
     /// Answer yes to confirmation questions
     #[arg(short = 'y', long, global = true, display_order = 900)]
     pub yes: bool,

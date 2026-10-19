@@ -490,7 +490,8 @@
       "help.command": "Befehlspfad, z. B. `server start`",
       "events.kind": "Nur diese Ereignisse; `instance` umfasst auch `instance.exit` usw.",
       "events.server": "Nur Ereignisse dieses Servers",
-      "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)"
+      "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)",
+      "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente startet die interaktive Shell.\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

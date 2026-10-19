@@ -490,7 +490,8 @@
       "help.command": "Ruta del comando, p. ej. `server start`",
       "events.kind": "Solo estos eventos; `instance` también incluye `instance.exit` y similares",
       "events.server": "Solo eventos de este servidor",
-      "events.since": "Empieza tras este id de evento (reenvía lo que el daemon aún guarda)"
+      "events.since": "Empieza tras este id de evento (reenvía lo que el daemon aún guarda)",
+      "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos se abre la shell interactiva.\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },

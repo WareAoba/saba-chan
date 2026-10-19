@@ -604,7 +604,8 @@
       "help.command": "Command path, e.g. `server start`",
       "events.kind": "Only these events; `instance` also takes `instance.exit` and the like",
       "events.server": "Only events of this server",
-      "events.since": "Start after this event id (replays what the daemon still keeps)"
+      "events.since": "Start after this event id (replays what the daemon still keeps)",
+      "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
