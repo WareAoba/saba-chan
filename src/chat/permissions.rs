@@ -309,10 +309,10 @@ pub fn apply(node: &mut Map<String, Value>, change: &Change, owner_id: Option<&s
             }
         }
         Change::CommandLevel { key, level } => {
-            // `<instance>/<명령·액션 id>` 또는 전역 액션 덮어쓰기 `<action id>`
+            // `<instance>/<명령·액션 id>` 또는 전역 액션 덮어쓰기 `<action id>`. 지우기는 예전에 저장된 키도 받는다
             let well_formed = match key.split_once('/') {
                 Some((i, c)) => !i.is_empty() && !c.is_empty(),
-                None => crate::actions::overridable(key),
+                None => level.is_none() || crate::actions::overridable(key),
             };
             if !well_formed {
                 return Err("invalid_command");
@@ -435,6 +435,11 @@ mod tests {
         // 전역 액션 덮어쓰기는 원격에서 부를 수 있고 레벨이 고정되지 않은 액션 id만
         for fixed in ["update.apply", "instance.delete"] {
             assert_eq!(apply(&mut node, &Change::CommandLevel { key: fixed.into(), level: Some(0) }, owner), Err("invalid_command"));
+        }
+        // 인스턴스 액션은 `<instance>/<action id>`로만 판정하므로 전역 키는 받지 않는다. 예전에 저장된 것은 지울 수 있다
+        for per_instance in ["server.stop", "backup.restore"] {
+            assert_eq!(apply(&mut node, &Change::CommandLevel { key: per_instance.into(), level: Some(3) }, owner), Err("invalid_command"));
+            apply(&mut node, &Change::CommandLevel { key: per_instance.into(), level: None }, owner).unwrap();
         }
         apply(&mut node, &Change::CommandLevel { key: "instance.create".into(), level: Some(3) }, owner).unwrap();
         apply(&mut node, &Change::CommandLevel { key: "instance.create".into(), level: None }, owner).unwrap();
