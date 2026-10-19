@@ -2679,6 +2679,12 @@ impl Supervisor {
     }
 
     pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
+        self.monitor_processes_taken_at(process_snapshot, u64::MAX).await
+    }
+
+    /// `snapshot_taken_at`(unix 초): 프로세스 목록을 찍기 시작한 시각. 그 뒤에 추적한 PID는 목록에 없어도
+    /// 끝났다고 보지 않는다 (목록을 락 밖에서 찍는 사이에 막 시작한 서버)
+    pub async fn monitor_processes_taken_at(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess], snapshot_taken_at: u64) -> Result<()> {
         use crate::process_monitor;
 
         // Clean up dead managed processes and their PID files
@@ -2703,7 +2709,8 @@ impl Supervisor {
             if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                 tracked_count += 1;
                 
-                if !process_monitor::is_running_in(process_snapshot, pid) {
+                let tracked_after_snapshot = self.tracker.get_start_time(&instance.id).is_ok_and(|t| t >= snapshot_taken_at);
+                if !tracked_after_snapshot && !process_monitor::is_running_in(process_snapshot, pid) {
                     // 러너가 아직 서버를 돌리고 있으면(런처가 끝나고 진짜 서버가 남은 경우) 러너가 보는 PID로 옮긴다
                     // 로그만 따라 읽는 익스텐션 follower는 서버 수명을 말해 주지 않는다: 러너일 때만
                     if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running() && p.runner_pid.is_some()) {
@@ -2928,6 +2935,27 @@ mod tests {
         let snapshot = crate::process_monitor::get_running_processes();
         let result = supervisor.monitor_processes(&snapshot).await;
         assert!(result.is_ok());
+    }
+
+    // 백로그 L8: 감시는 프로세스 목록을 락 밖에서 먼저 찍는다. 그 사이에 막 시작해 추적한 PID는 목록에 없어
+    // "끝났다"며 추적에서 풀렸다. 목록을 찍은 뒤에 추적한 PID는 다음 목록까지 기다린다
+    #[tokio::test]
+    async fn a_pid_tracked_after_the_snapshot_is_not_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let inst = crate::instance::ServerInstance::new("fresh", "none");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        sup.tracker.track(&id, 4_000_000).unwrap();
+        let tracked_at = sup.tracker.get_start_time(&id).unwrap();
+
+        sup.monitor_processes_taken_at(&[], tracked_at - 1).await.unwrap();
+        assert!(sup.tracker.get_pid(&id).is_ok(), "the snapshot predates the start");
+        sup.monitor_processes_taken_at(&[], tracked_at + 1).await.unwrap();
+        assert!(sup.tracker.get_pid(&id).is_err(), "a later snapshot without the pid means it is gone");
     }
 
     /// cleanup_dead()가 죽은 managed process를 정리할 때
