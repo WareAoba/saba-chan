@@ -88,6 +88,12 @@ function CopyButton({ text, label }) {
     );
 }
 
+const PAIR_FAILURE_TEXT = {
+    expired: 'discord.pair_expired',
+    unsaved: 'discord.pair_not_saved',
+    error: 'discord.pair_error',
+};
+
 /** 페어링 진행 카드: 코드 → 디스코드에서 입력 → 자동 확인 */
 export function PairingCard({ pairing, onCancel }) {
     const { t } = useTranslation('gui');
@@ -112,12 +118,12 @@ export function PairingCard({ pairing, onCancel }) {
             </div>
         );
     }
-    if (pairing.status === 'expired' || pairing.status === 'error') {
+    if (pairing.status === 'expired' || pairing.status === 'unsaved' || pairing.status === 'error') {
         return (
             <div className="dc-card dc-pair tone-warn">
                 <div className="dc-pair-result">
                     <Icon name="alertTriangle" size="lg" />
-                    <strong>{t(pairing.status === 'expired' ? 'discord.pair_expired' : 'discord.pair_error')}</strong>
+                    <strong>{t(PAIR_FAILURE_TEXT[pairing.status])}</strong>
                 </div>
                 <div className="dc-row-actions">
                     <button type="button" className="btn btn-ghost" onClick={onCancel}>

@@ -748,6 +748,7 @@
     "pair_waiting": "Warte auf den Befehl in Discord",
     "pair_success": "Verbunden!",
     "pair_expired": "Der Code ist abgelaufen",
+    "pair_not_saved": "Der Befehl kam in Discord an, aber die Verbindung konnte auf diesem PC nicht gespeichert werden. Hol dir einen neuen Code und verbinde erneut",
     "pair_error": "Code konnte nicht abgerufen werden. Prüfe deine Internetverbindung",
     "pair_again": "Neuen Code holen",
     "cancel": "Abbrechen",
