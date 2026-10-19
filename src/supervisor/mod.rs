@@ -219,7 +219,17 @@ impl Supervisor {
                 }
             };
 
-            if process::is_process_alive(pid) {
+            // 기록한 뒤에 시작한 프로세스는 재부팅 뒤 같은 PID를 받은 다른 프로세스다 (기록 시각 = managed.pid를 쓴 때)
+            let recorded_at = std::fs::metadata(&pid_file)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs());
+            let same = match recorded_at {
+                Some(at) => process::is_same_process(pid, at),
+                None => process::is_process_alive(pid),
+            };
+            if same {
                 // Process is still running — re-register it
                 if let Err(e) = self.tracker.track(&instance.id, pid) {
                     tracing::warn!("Failed to re-track orphan '{}' (PID {}): {}", instance.name, pid, e);
@@ -239,9 +249,9 @@ impl Supervisor {
                     instance.name, pid
                 );
             } else {
-                // Process is dead — clean up stale PID file
+                // Process is dead (or the PID now belongs to another process) — clean up stale PID file
                 tracing::info!(
-                    "Cleaning up stale managed.pid for '{}' (PID {} no longer running)",
+                    "Cleaning up stale managed.pid for '{}' (PID {} is no longer the server)",
                     instance.name, pid
                 );
                 let _ = std::fs::remove_file(&pid_file);
@@ -3237,6 +3247,33 @@ mod tests {
         assert_eq!(with["lines"][0]["spans"], json!([[0, 5, "player"]]));
         let without = supervisor.get_console_output("srv", None, Some(10)).await.unwrap();
         assert!(without["lines"][0].get("spans").is_none());
+    }
+
+    /// 재부팅 뒤 기록된 PID를 다른 프로세스가 쓰면 다시 붙지 않는다 (붙으면 정지할 때 그 프로세스를 끈다)
+    #[tokio::test]
+    async fn a_pid_reused_after_reboot_is_not_reattached() {
+        let tmp = tempfile::tempdir().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
+        for (id, before_start) in [("reused", true), ("same", false)] {
+            let mut inst = crate::instance::ServerInstance::new(id, "minecraft");
+            inst.id = id.into();
+            supervisor.instance_store.add(inst).unwrap();
+            let inst_dir = supervisor.instance_store.instance_dir(id);
+            std::fs::create_dir_all(&inst_dir).unwrap();
+            let pid_file = inst_dir.join("managed.pid");
+            std::fs::write(&pid_file, std::process::id().to_string()).unwrap();
+            if before_start {
+                // 이 프로세스가 뜨기 한 시간 전에 기록한 PID
+                let started = process::process_start_time(std::process::id()).unwrap();
+                let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(started - 3600);
+                std::fs::File::options().write(true).open(&pid_file).unwrap().set_modified(at).unwrap();
+            }
+        }
+        supervisor.reattach_orphaned_managed().await;
+        assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
+        assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
+        assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
     }
 
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여

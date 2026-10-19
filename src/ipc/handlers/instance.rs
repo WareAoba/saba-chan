@@ -861,13 +861,13 @@ async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::R
     let _ = supervisor.tracker.untrack(&id);
     drop(supervisor);
     if let Some(pid) = running_pid {
-        use crate::supervisor::process::{force_kill_pid, is_process_alive, wait_gone};
+        use crate::supervisor::process::{force_kill_tree, is_process_alive, wait_gone};
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
         // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
         let killed = match managed.as_ref() {
             Some(m) if m.is_running() => m.force_kill(),
             Some(_) => Ok(()),
-            None => force_kill_pid(pid),
+            None => force_kill_tree(pid),
         };
         let gone = match killed {
             Ok(()) => {
