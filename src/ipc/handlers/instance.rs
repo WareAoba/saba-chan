@@ -2157,8 +2157,8 @@ mod tests {
         // 설치 중에 데이터 폴더에 첫 설정 파일을 쓰는 모듈 (좀보이드 첫 INI). 격리 실행은 그 폴더를 넘겨받아야 쓸 수 있다
         std::fs::write(
             dir.join("lifecycle.py"),
-            "import json, sys\nconfig = json.load(sys.stdin)\n\
-             ok = config['settings']['cache_dir'] in config.get('instance_data_dirs', [])\n\
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nnorm = lambda p: os.path.normcase(os.path.normpath(p))\n\
+             ok = norm(config['settings']['cache_dir']) in [norm(d) for d in config.get('instance_data_dirs', [])]\n\
              print(json.dumps({'success': ok, 'message': 'no data folder'}))\n",
         )
         .unwrap();
