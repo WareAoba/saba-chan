@@ -305,7 +305,7 @@
 | GET | `/api/config/gui` | `config.rs:15` | - | GuiSettings JSON |
 | PUT | `/api/config/gui` | `config.rs:21` | 부분 JSON | `{ok:true}` / 400 / 500. 저장에 성공하면 `supervisor.skip_port_check`도 갱신 |
 | GET | `/api/config/:kind/defaults` | `config.rs:47` | - | `{ok, defaults}` (`gui`, `bot`) / 404 |
-| POST | `/api/config/:kind/reset` | `config.rs:59` | 선택 `{keys?}` | `{ok, config}` / 400 |
+| POST | `/api/config/:kind/reset` | `config.rs:59` | 선택 `{keys?}` | `{ok, config}` / 400. 봇 설정 초기화도 권한 키와 `cloud.hostId`(노드 토큰을 따름)는 남기고, 릴레이 주소가 바뀌면 에이전트를 다시 시작한다 |
 | GET/PUT | `/api/config/client/:kind` | `config.rs:106/117` | 부분 객체(최상위 키 머지) | 그 네임스페이스 JSON (예: `cli`). 예약 이름(`schemaVersion`·`gui`·`relay`·`updates`·`boot`·`extensions`·`chatbot`·`sandbox`)은 400 |
 | GET | `/api/config/node-token` | `config.rs:134` | - | `{token}` (없으면 `""`) |
 | PUT | `/api/config/node-token` | `config.rs:144` | `{token}` | `{ok}`. 저장 뒤 릴레이 에이전트를 새 토큰으로 다시 시작한다 |
@@ -518,7 +518,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - `nodeSettings[guildId]`의 디스코드 명령 권한 (P1, `chat/permissions.rs`). 원본은 이것 하나다.
   - 키: `ownerDiscordId`(고정된 주인), `relayOwnerDiscordId`(릴레이가 알려 온 다른 주인, 경고용), `defaultLevel`(1), `members{discordId: -1..2}`, `preset`("default"·"loose"·"strict"), `commandLevels{"<instanceId>/<command>": 0..3}`, `chatbotCap`(0), 예전 금지 목록 `memberPermissions`(읽기만. `{discordId: {instanceId: [명령]}}`에 있는 명령은 그 사람에게 주인(3) 레벨을 요구한다. 채팅 명령(`NodePermissions::check`)과 액션 카탈로그(`actions::authorize`, 모듈 명령 액션과 내장 `server.start|stop|restart|status`) 모두 같다).
   - 레벨: 소유자 3, 관리자 2, 유저 1, 챗봇 0, 금지 -1. 요구 레벨은 `commandLevels` 덮어쓰기, 없으면 프리셋표[risk]다. default 프리셋은 safe 0, caution 1, danger 2이고, loose는 0/0/1, strict는 1/2/3이다. 내장 명령의 risk는 `status` safe, `start`·`stop` caution, 모듈 명령은 선언값(없으면 caution).
-  - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 액션은 `<action id>`·`<instanceId>/<action id>`로 덮어쓴다. 내장 `server.start`·`server.stop`·`server.restart`·`server.status`는 명령 경로·GUI 권한 편집기와 같은 `<instanceId>/start|stop|restart|status`를 먼저 보고, 없으면 `<instanceId>/<action id>`를 본다. `PATCH /api/permissions/:guildId`의 `commandLevels`는 `/`가 없는 키를 디스코드·챗봇에서 부를 수 있고 레벨이 코드에 고정되지 않은 액션 id일 때만 받는다(아니면 `invalid_command`, `actions::overridable`). 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
+  - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 인스턴스 액션은 `<instanceId>/<action id>`로, 인스턴스를 받지 않는 액션은 `<action id>`로 덮어쓴다. 내장 `server.start`·`server.stop`·`server.restart`·`server.status`는 명령 경로·GUI 권한 편집기와 같은 `<instanceId>/start|stop|restart|status`를 먼저 보고, 없으면 `<instanceId>/<action id>`를 본다. `PATCH /api/permissions/:guildId`의 `commandLevels`는 `/`가 없는 키를 디스코드·챗봇에서 부를 수 있고 레벨이 코드에 고정되지 않았으며 인스턴스를 받지 않는 액션 id일 때만 받는다(아니면 `invalid_command`, `actions::overridable`). 지우기(`null`)는 예전에 저장된 키도 받는다. 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
   - 판정: 릴레이에서 온 요청(`ChatRequest.remote`)만 판정한다. GUI·CLI 요청은 하지 않는다. 금지는 help·list도 못 쓴다. 챗봇 경로는 `min(작성자 레벨, chatbotCap)`이다. 거부는 `PERMISSION_DENIED {need, level, via?}`.
   - 설정이 없는 길드도 같은 기본값으로 판정한다(제한 없음이 아니다).
   - 이 키들은 권한 API로만 바뀐다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 이전 값으로 되돌린다(`config_store::keep_permission_keys`).

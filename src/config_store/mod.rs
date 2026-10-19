@@ -521,6 +521,8 @@ impl ConfigStore {
             keep_permission_keys(&mut full, &serde_json::to_value(&*current).unwrap_or_default());
             let mut config: BotConfig = serde_json::from_value(full)
                 .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
+            // hostId는 설정이 아니라 노드 토큰을 따르는 값이다: 토큰이 남아 있는 동안 비우면 릴레이 정리가 빈 목록을 본다
+            config.cloud.host_id = current.cloud.host_id.clone();
             config.normalize();
             self.file.set_section("relay", serde_json::to_value(&config)?)?;
             *current = config;
@@ -966,8 +968,16 @@ mod tests {
             })
             .await
             .unwrap();
+        // hostId는 노드 토큰을 따르는 값이라 초기화가 지우지 않는다 (relayUrl은 기본값으로)
+        store
+            .set_bot_config_from_json(serde_json::json!({ "cloud": { "relayUrl": "https://relay.example", "hostId": "h1" } }))
+            .await
+            .unwrap();
         let out = store.reset_to_defaults("bot", None).await.unwrap();
         assert_eq!(out["nodeSettings"]["g"], serde_json::json!({ "ownerDiscordId": "own", "members": { "a": 2 } }));
+        assert_eq!((out["cloud"]["relayUrl"].as_str(), out["cloud"]["hostId"].as_str()), (Some(""), Some("h1")));
+        let out = store.reset_to_defaults("bot", Some(&["cloud".to_string()])).await.unwrap();
+        assert_eq!(out["cloud"]["hostId"], "h1");
 
         let mut sections = serde_json::Map::new();
         sections.insert("relay".into(), serde_json::json!({ "nodeSettings": { "h": { "ownerDiscordId": "x", "defaultLevel": -1 } } }));
