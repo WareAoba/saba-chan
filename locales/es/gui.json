@@ -395,6 +395,7 @@
     "rename_failed_toast": "No se pudo renombrar: {{error}}",
     "rename_name_taken": "'{{name}}' ya está en uso",
     "rename_server_running": "Detén el servidor antes de renombrarlo",
+    "rename_instance_busy": "No se puede cambiar el nombre mientras hay otra tarea en curso (inicio, instalación, actualización, copia de seguridad o restauración). Inténtalo de nuevo cuando termine",
     "dependency_unmet_title": "Faltan requisitos",
     "dependency_unmet_message": "El módulo de '{{name}}' necesita las versiones siguientes. Actualiza, o instala y activa la extensión, y vuelve a iniciar.",
     "preflight_failed_title": "La comprobación previa de '{{name}}' encontró un problema",
@@ -426,6 +427,8 @@
     "loading_tips": "Puede administrar múltiples servidores de juegos simultáneamente"
   },
   "errors": {
+    "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
+    "restart_cancelled": "El servidor se inició o se eliminó en otro lugar mientras esperaba, así que no se reinició.",
     "executable_not_found": "Ejecutable del servidor de juegos no encontrado. Por favor verifique la ruta en configuración.",
     "file_not_found": "Archivo o carpeta no encontrada. Por favor verifique la ruta.",
     "permission_denied": "Permiso denegado. Por favor verifique los permisos de acceso al archivo.",
