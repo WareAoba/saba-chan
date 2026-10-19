@@ -452,6 +452,8 @@ pub async fn create_instance(
                         // install_server가 보는 인스턴스 설정 (서버 종류처럼 받을 파일을 바꾸는 값)
                         let install_settings = instance.module_settings.clone();
                         let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+                        // 설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈(좀보이드 첫 INI)도 격리 실행에서 쓸 수 있게 넘긴다
+                        let instance_data_dirs = crate::supervisor::Supervisor::instance_data_dirs(&instance, &instance_dir);
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
@@ -532,6 +534,7 @@ pub async fn create_instance(
                                     "install_dir": &install_dir_str,
                                     "accepted_agreements": &accepted_agreements,
                                     "settings": &install_settings,
+                                    crate::sandbox::INSTANCE_DATA_DIRS: &instance_data_dirs,
                                 });
                                 if let Some(ref ver) = version {
                                     config["version"] = serde_json::json!(ver);
@@ -2135,6 +2138,48 @@ mod tests {
         }
         let progress = progress.expect("provisioning finished");
         assert_eq!(progress.error, None, "list_versions did not get the instance settings");
+    }
+
+    #[tokio::test]
+    async fn the_first_install_may_write_the_module_data_folder() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"cache_dir\"\ntype = \"text\"\ndefault = \"{instance_dir}/data\"\n\n[install]\nmethod = \"manual\"\n",
+        )
+        .unwrap();
+        // 설치 중에 데이터 폴더에 첫 설정 파일을 쓰는 모듈 (좀보이드 첫 INI). 격리 실행은 그 폴더를 넘겨받아야 쓸 수 있다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\n\
+             ok = config['settings']['cache_dir'] in config.get('instance_data_dirs', [])\n\
+             print(json.dumps({'success': ok, 'message': 'no data folder'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
+        let mut progress = None;
+        for _ in 0..1200 {
+            progress = state.provision_tracker.get("a").filter(|p| p.done);
+            if progress.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let progress = progress.expect("provisioning finished");
+        assert_eq!(progress.error, None, "install_server did not get the instance data folder");
     }
 
     #[tokio::test]
