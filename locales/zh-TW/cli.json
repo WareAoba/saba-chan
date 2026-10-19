@@ -175,6 +175,7 @@
       "invalid_token_format": "這台電腦的連線權杖格式錯誤。",
       "token_replaced": "同一個 Discord 帳號配對了另一台電腦，因此這台電腦已中斷連線。",
       "guild_taken": "該 Discord 伺服器已連線到另一台電腦。",
+      "node_moved": "在此期間該 Discord 伺服器已轉到另一台電腦，因此沒有儲存。",
       "forbidden": "你沒有在該 Discord 伺服器執行此操作的權限。",
       "expired": "代碼已過期。請重新開始。",
       "rate_limited": "請求過於頻繁。請約一分鐘後再試。",

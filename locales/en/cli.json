@@ -222,6 +222,7 @@
       "invalid_token_format": "This PC's connection token is malformed.",
       "token_replaced": "Another PC was paired with the same Discord account, so this PC was disconnected.",
       "guild_taken": "That Discord server is already connected to another PC.",
+      "node_moved": "That Discord server moved to another PC in the meantime, so nothing was saved.",
       "forbidden": "You don't have permission to do that in that Discord server.",
       "expired": "The code has expired. Start again.",
       "rate_limited": "Too many requests. Try again in about a minute.",

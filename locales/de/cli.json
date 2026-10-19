@@ -175,6 +175,7 @@
       "invalid_token_format": "Das Verbindungstoken dieses PCs ist fehlerhaft.",
       "token_replaced": "Mit demselben Discord-Konto wurde ein anderer PC gekoppelt, daher wurde dieser PC getrennt.",
       "guild_taken": "Dieser Discord-Server ist bereits mit einem anderen PC verbunden.",
+      "node_moved": "Dieser Discord-Server ist inzwischen auf einen anderen PC umgezogen, daher wurde nichts gespeichert.",
       "forbidden": "Du hast auf diesem Discord-Server keine Berechtigung dafür.",
       "expired": "Der Code ist abgelaufen. Fang von vorne an.",
       "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
