@@ -153,26 +153,49 @@ impl UpdateManager {
         Ok(files)
     }
 
-    /// zip을 풀며 덮어쓸 실행 파일은 `.old`로 비켜 두고, 풀다가 실패하면 비켜 둔 파일을 되돌린다 (C13)
+    /// zip을 풀며 덮어쓸 파일을 비켜 두고(실행 파일은 `.old`, 나머지는 `.update-bak`), 풀다가 실패하면
+    /// 새로 생긴 파일을 지우고 비켜 둔 파일을 모두 되돌린다 (C13). 성공하면 `.update-bak`만 지운다
+    /// (`.old`는 아직 떠 있는 프로세스가 쥐고 있을 수 있어 `cleanup_old_files`가 지운다)
     fn extract_zip_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
-        let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+        // (원래 경로, 백업, 성공하면 백업을 지울지)
+        let mut moved: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
+        let mut created: Vec<PathBuf> = Vec::new();
         let result = extract_zip(staged, dir, |out_path| {
             // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
             // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
-            if moved.iter().any(|(p, _)| same_path(p, out_path)) {
+            if moved.iter().any(|(p, _, _)| same_path(p, out_path)) || created.iter().any(|p| same_path(p, out_path)) {
                 return Ok(());
             }
             if let Some(backup) = Self::move_aside(out_path)? {
-                moved.push((out_path.to_path_buf(), backup));
+                moved.push((out_path.to_path_buf(), backup, false));
+            } else if out_path.is_file() {
+                let mut name = out_path.file_name().unwrap_or_default().to_os_string();
+                name.push(".update-bak");
+                let backup = out_path.with_file_name(name);
+                let _ = std::fs::remove_file(&backup);
+                std::fs::rename(out_path, &backup)?;
+                moved.push((out_path.to_path_buf(), backup, true));
+            } else {
+                created.push(out_path.to_path_buf());
             }
             Ok(())
         });
-        if let Err(e) = &result {
-            tracing::error!("[Updater] Applying {} failed, restoring previous binaries: {}", what, e);
-            for (original, backup) in moved.iter().rev() {
-                let _ = std::fs::remove_file(original);
-                if let Err(re) = std::fs::rename(backup, original) {
-                    tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+        match &result {
+            Ok(_) => {
+                for (_, backup, _) in moved.iter().filter(|m| m.2) {
+                    let _ = std::fs::remove_file(backup);
+                }
+            }
+            Err(e) => {
+                tracing::error!("[Updater] Applying {} failed, restoring previous files: {}", what, e);
+                for path in &created {
+                    let _ = std::fs::remove_file(path);
+                }
+                for (original, backup, _) in moved.iter().rev() {
+                    let _ = std::fs::remove_file(original);
+                    if let Err(re) = std::fs::rename(backup, original) {
+                        tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+                    }
                 }
             }
         }

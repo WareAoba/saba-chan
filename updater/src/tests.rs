@@ -933,12 +933,18 @@ async fn a_failed_gui_extract_restores_the_previous_gui() {
     std::fs::create_dir_all(&manager.install_root).unwrap();
     let gui = manager.install_root.join(crate::GUI_EXE_NAMES[0]);
     std::fs::write(&gui, b"old gui").unwrap();
+    std::fs::write(manager.install_root.join("resources.pak"), b"old pak").unwrap();
     let zip_path = tmp.path().join("gui.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
         let opts = zip::write::FileOptions::default();
         zw.start_file(crate::GUI_EXE_NAMES[0], opts).unwrap();
         zw.write_all(b"new gui").unwrap();
+        // 실행 파일이 아닌 기존 파일과 새로 생기는 파일도 실패하면 원래대로 돌아가야 한다
+        zw.start_file("resources.pak", opts).unwrap();
+        zw.write_all(b"new pak").unwrap();
+        zw.start_file("new.dll", opts).unwrap();
+        zw.write_all(b"new dll").unwrap();
         zw.start_file("../escaped.txt", opts).unwrap();
         zw.write_all(b"bad").unwrap();
         zw.finish().unwrap();
@@ -946,8 +952,9 @@ async fn a_failed_gui_extract_restores_the_previous_gui() {
 
     assert!(manager.apply_gui_update(&zip_path.to_string_lossy()).await.is_err());
     assert_eq!(std::fs::read(&gui).unwrap(), b"old gui");
+    assert_eq!(std::fs::read(manager.install_root.join("resources.pak")).unwrap(), b"old pak");
     let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
-    assert_eq!(left.len(), 1, "no backup left behind: {left:?}");
+    assert_eq!(left.len(), 2, "no new file or backup left behind: {left:?}");
 }
 
 // 되돌리지 못해 실행 파일 없이 남은 `.exe.old`는 정리하지 않는다 (지우면 원래 GUI가 영영 사라진다)
