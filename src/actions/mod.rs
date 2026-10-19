@@ -95,6 +95,9 @@ pub struct Def {
     pub open_input: bool,
     /// 디스코드에서 고정 요구 레벨 (프리셋·덮어쓰기와 상관없이)
     pub discord_level: Option<i64>,
+    /// 원격 작업 목록(heartbeat: 디스코드 "/작업" 메뉴·챗봇 목록)에 싣는가. 전용 명령이 같은 액션을 부르는
+    /// 것(길드 설정은 "/사바쨩")은 빼고, 액션 자체는 그 표면에서 계속 부를 수 있다
+    pub remote_menu: bool,
 }
 
 use Surface::{Chatbot, Cli, Discord, Gui};
@@ -104,7 +107,7 @@ const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
-    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None }
+    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true }
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
@@ -135,7 +138,7 @@ pub static ACTIONS: &[Def] = &[
     Def { fields: &[path_field("extension")], ..def("extension.enable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/enable") },
     Def { fields: &[path_field("extension")], ..def("extension.disable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/disable") },
     // 챗봇 설정 (I2-b). 디스코드에서는 소유자만, 그 길드 것만. 키는 받지 않고 챗봇 자신은 못 바꾼다(확인을 끄지 못하게)
-    Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
+    Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), remote_menu: false, ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
     Def {
         fields: &[
             path_field("guild"),
@@ -148,13 +151,15 @@ pub static ACTIONS: &[Def] = &[
             field("disabledTools", "array", false),
         ],
         discord_level: Some(crate::chat::permissions::OWNER),
+        remote_menu: false,
         ..def("chatbot.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/guilds/:guild")
     },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
-    Def { fields: &[path_field("guild")], ..def("discord.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/discord/:guild/settings") },
+    Def { fields: &[path_field("guild")], remote_menu: false, ..def("discord.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/discord/:guild/settings") },
     Def {
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
+        remote_menu: false,
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
     },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
@@ -339,6 +344,18 @@ fn schema(def: &Def) -> Value {
     json!({ "type": "object", "properties": props, "required": required })
 }
 
+/// 원격 요청의 입력: 길드 칸은 요청이 온 길드로 데몬이 채우므로(`plan`) 묻지 않는다
+fn remote_schema(def: &Def) -> Value {
+    let mut input = schema(def);
+    if let Some(props) = input["properties"].as_object_mut() {
+        props.remove(GUILD_FIELD);
+    }
+    if let Some(required) = input["required"].as_array_mut() {
+        required.retain(|f| f != GUILD_FIELD);
+    }
+    input
+}
+
 /// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
 /// 배포되는 CLI 실행 파일 이름
 const CLI_BIN: &str = "saba-chan-cli";
@@ -499,7 +516,7 @@ pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 
 pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Value>, bool) {
     let cats: Vec<(&str, crate::chat::i18n::Catalog)> = locales.iter().map(|l| (*l, catalog(l))).collect();
-    let mut defs: Vec<&Def> = ACTIONS.iter().filter(|d| d.surfaces.contains(&Discord) || d.surfaces.contains(&Chatbot)).collect();
+    let mut defs: Vec<&Def> = ACTIONS.iter().filter(|d| d.remote_menu && (d.surfaces.contains(&Discord) || d.surfaces.contains(&Chatbot))).collect();
     defs.sort_by_key(|d| d.id);
     let mut out = Vec::new();
     let mut size = 2usize;
@@ -517,7 +534,7 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             "surfaces": d.surfaces.iter().filter(|s| matches!(s, Discord | Chatbot)).map(|s| s.name()).collect::<Vec<_>>(),
             "scope": if d.instance { "instance" } else { "none" },
             "title": title,
-            "input": schema(d),
+            "input": remote_schema(d),
         }));
     }
     let mut modules: Vec<&LoadedModule> = modules.iter().filter(|m| !m.metadata.queries.is_empty()).collect();
