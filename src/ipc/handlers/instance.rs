@@ -768,7 +768,8 @@ pub async fn dismiss_provision_progress(
     // 신규 생성이 실패했을 때만 롤백 — 그 설치의 인스턴스를 ID로 지운다.
     // 이름으로 찾으면 그 사이 이름을 바꾸고 같은 이름으로 만든 다른 인스턴스가 지워진다
     let rollback = creating.filter(|_| had_error);
-    let rolled_back = rollback.is_some();
+    // 실제로 지웠을 때만 rolled_back (건너뛰거나 실패하면 인스턴스가 남아 있다)
+    let mut rolled_back = false;
     if let Some(id) = rollback {
         // 다른 작업(업데이트·복원·삭제)이 그 폴더를 쓰는 중이면 지우지 않는다
         match super::backup::BusyGuard::take(&id) {
@@ -777,7 +778,10 @@ pub async fn dismiss_provision_progress(
                 let mut supervisor = state.supervisor.write().await;
                 if supervisor.instance_store.get(&id).is_some() {
                     match supervisor.instance_store.remove(&id) {
-                        Ok(_) => tracing::info!("Provisioning rollback: removed instance '{}' (id={})", name, id),
+                        Ok(_) => {
+                            rolled_back = true;
+                            tracing::info!("Provisioning rollback: removed instance '{}' (id={})", name, id)
+                        }
                         Err(e) => tracing::warn!("Failed to rollback instance '{}': {}", name, e),
                     }
                 }
