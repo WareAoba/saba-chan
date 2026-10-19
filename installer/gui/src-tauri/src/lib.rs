@@ -400,7 +400,13 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
 
     // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
     // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
-    let components = release::installable(&manifest);
+    let components = match release::installable(&manifest) {
+        Ok(c) => c,
+        Err(e) => {
+            emit_error(&app, &state, "fetch_failed", &e).await;
+            return;
+        }
+    };
     let total = components.len().max(1);
     let mut installed = Vec::new();
     let mut installed_versions = UpdateManager::load_installed_manifest();
