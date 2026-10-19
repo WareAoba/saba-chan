@@ -492,7 +492,7 @@ pub async fn create_instance(
                                 // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
                                 // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
                                 let version = if install_config.method == "download" {
-                                    crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await
+                                    crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await.ok()
                                 } else {
                                     None // 익스텐션 방식은 version 불필요
                                 };

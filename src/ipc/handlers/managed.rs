@@ -295,15 +295,9 @@ fn server_running() -> axum::response::Response {
     (StatusCode::CONFLICT, Json(error)).into_response()
 }
 
-/// `dir`을 쓰는 인스턴스(working_dir 또는 인스턴스 폴더)의 작업 잠금을 모두 잡는다.
-/// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
+/// `dir`을 쓰는 인스턴스(working_dir 또는 인스턴스 폴더)의 작업 잠금을 모두 잡는다. `except`(이미 잠금을 쥔
+/// 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 #[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
-async fn hold_instances_using(state: &IPCServer, dir: &str) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
-    hold_other_instances_using(state, dir, None).await
-}
-
-/// `hold_instances_using`과 같되 `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다
-#[allow(clippy::result_large_err)]
 pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
     let ids: Vec<String> = {
         let supervisor = state.supervisor.read().await;
@@ -537,8 +531,24 @@ pub async fn install_server_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    // 있으면 문자열이어야 한다 (형식이 틀린 값을 "비움"으로 받아 다른 버전을 설치하지 않게)
+    let text_field = |field: &str| match payload.get(field) {
+        None => Ok(None),
+        Some(Value::String(v)) => Ok(Some(v.clone())),
+        Some(_) => {
+            let error = json!({ "error": format!("'{}' must be a string", field), "error_code": "invalid_format", "fields": [{"field": field}] });
+            Err((StatusCode::BAD_REQUEST, Json(error)).into_response())
+        }
+    };
     // 비우면 아래에서 그 인스턴스 설정으로 최신을 고른다
-    let version = payload.get("version").and_then(|v| v.as_str()).filter(|v| !v.is_empty()).map(str::to_string);
+    let version = match text_field("version") {
+        Ok(v) => v.filter(|v| !v.is_empty()),
+        Err(resp) => return resp,
+    };
+    let instance_id = match text_field("instance_id") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
 
     let install_dir = match payload.get("install_dir").and_then(|v| v.as_str()) {
         Some(v) => v.to_string(),
@@ -557,23 +567,33 @@ pub async fn install_server_handler(
         Err(resp) => return *resp,
     };
     let initial_settings = payload.get("initial_settings").cloned();
-    // 어느 인스턴스의 설치인가: 그 설정(서버 종류 등)으로 버전을 고르고 설치한다
-    let instance = match payload.get("instance_id").and_then(|v| v.as_str()) {
+    // 어느 인스턴스의 설치인가: 그 설정(서버 종류 등)으로 버전을 고르고 설치한다. 그 인스턴스의 데이터 폴더를
+    // 모듈에 넘기므로 설치가 끝날 때까지 잡아 둔다(켜져 있거나 백업·복원·삭제 중이면 409). 설정은 잡은 뒤에 읽는다
+    let (instance, own_guard) = match instance_id.as_deref() {
         Some(id) => {
-            let sup = state.supervisor.read().await;
-            match sup.instance_store.get(id) {
-                Some(inst) if inst.module_name == module_name => {
-                    let dir = sup.instance_store.instance_dir(id);
-                    Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir)))
-                }
+            match state.supervisor.read().await.instance_store.get(id) {
+                Some(inst) if inst.module_name == module_name => {}
                 Some(_) => {
                     let error = json!({ "error": format!("Instance '{}' is not a '{}' server", id, module_name), "error_code": "invalid_format", "fields": [{"field": "instance_id"}] });
                     return (StatusCode::BAD_REQUEST, Json(error)).into_response();
                 }
                 None => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response(),
             }
+            let Some(guard) = super::backup::BusyGuard::take(id) else {
+                return super::backup::instance_busy();
+            };
+            if super::backup::is_running(&state, id).await {
+                return server_running();
+            }
+            let sup = state.supervisor.read().await;
+            // 잡기 전에 지워졌을 수 있다
+            let Some(inst) = sup.instance_store.get(id) else {
+                return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+            };
+            let dir = sup.instance_store.instance_dir(id);
+            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir))), Some(guard))
         }
-        None => None,
+        None => (None, None),
     };
 
     // ── 필수 익스텐션 의존성 검증 ──
@@ -647,9 +667,9 @@ pub async fn install_server_handler(
             };
             let settings = instance.as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| json!({}));
             match Supervisor::latest_version(&module_path, &settings).await {
-                Some(v) => v,
-                None => {
-                    let error = json!({ "error": "Could not find the latest version of this server", "error_code": "version_unknown" });
+                Ok(v) => v,
+                Err(e) => {
+                    let error = json!({ "error": format!("Could not find the latest version of this server: {}", e), "error_code": "version_unknown" });
                     return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
                 }
             }
@@ -658,13 +678,15 @@ pub async fn install_server_handler(
 
     // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다.
     // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
-    let guards = match hold_instances_using(&state, &install_dir).await {
+    let mut guards = match hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
         Ok(guards) => guards,
         Err(resp) => return resp,
     };
+    guards.extend(own_guard);
     let jar_name = jar_name.map(str::to_string);
     let install = {
         let state = state.clone();
+        let version = version.clone();
         crate::audit::spawn(async move {
             let _guards = guards;
             Supervisor::install_server(
@@ -682,7 +704,11 @@ pub async fn install_server_handler(
         })
     };
     match install.await.unwrap_or_else(|e| Err(e.to_string())) {
-        Ok(result) => {
+        Ok(mut result) => {
+            // 버전을 비운 클라이언트도 무엇을 설치했는지 안다
+            if let Some(obj) = result.as_object_mut() {
+                obj.entry("version").or_insert_with(|| json!(version));
+            }
             let status = if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 StatusCode::OK
             } else {
@@ -736,9 +762,25 @@ mod tests {
 
         let done = install(json!({ "install_dir": files, "instance_id": id })).await;
         assert!(done.status.is_success(), "{}", done.body);
-        // 다른 모듈의 인스턴스는 받지 않는다
-        let other = install(json!({ "install_dir": files, "instance_id": "nope" })).await;
-        assert_eq!(other.status, StatusCode::NOT_FOUND, "{}", other.body);
+        assert_eq!(done.body["version"], "2.0", "the client learns which version the daemon chose");
+        // 없는 인스턴스, 다른 모듈의 인스턴스, 문자열이 아닌 값은 받지 않는다
+        let missing = install(json!({ "install_dir": files, "instance_id": "nope" })).await;
+        assert_eq!(missing.status, StatusCode::NOT_FOUND, "{}", missing.body);
+        let foreign = crate::instance::ServerInstance::new("other", "elsewhere");
+        let foreign_id = foreign.id.clone();
+        state.supervisor.write().await.instance_store.add(foreign).unwrap();
+        let other = install(json!({ "install_dir": files, "instance_id": foreign_id })).await;
+        assert_eq!(other.status, StatusCode::BAD_REQUEST, "{}", other.body);
+        for body in [json!({ "install_dir": files, "instance_id": 123 }), json!({ "install_dir": files, "version": 1.2 })] {
+            let wrong = install(body).await;
+            assert_eq!(wrong.status, StatusCode::BAD_REQUEST, "{}", wrong.body);
+            assert_eq!(wrong.body["error_code"], "invalid_format");
+        }
+        // 그 인스턴스가 다른 작업(백업·복원·삭제 등)에 잡혀 있으면 그 데이터 폴더를 모듈에 넘기지 않는다
+        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let held = install(json!({ "install_dir": tmp.path().join("elsewhere"), "instance_id": id })).await;
+        assert_eq!(held.status, StatusCode::CONFLICT, "{}", held.body);
+        drop(busy);
         // 버전을 정해 보내면 그대로 쓴다 (예전 클라이언트)
         let pinned = install(json!({ "install_dir": files, "instance_id": id, "version": "1.0" })).await;
         assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
