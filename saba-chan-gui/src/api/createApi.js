@@ -564,7 +564,8 @@ export function createApi({ invoke, hub }) {
                 return (await get('/api/extensions')).data;
             } catch (error) {
                 console.warn('[Extension] Failed to list extensions:', error.message);
-                return { extensions: [] };
+                // error가 있으면 받은 목록이 아니다: 받아 둔 목록을 빈 목록으로 덮지 않게
+                return { extensions: [], error: error.message || 'extension list unavailable' };
             }
         },
         extensionEnable: async (extId) => {

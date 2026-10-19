@@ -391,10 +391,12 @@
     "restart_confirm_message": "Parar e iniciar '{{name}}' de novo? Os jogadores conectados cairão por um momento.",
     "restarting_toast": "Reiniciando '{{name}}'…",
     "restart_completed_toast": "'{{name}}' reiniciado",
+    "port_moved": "A porta REST de gerenciamento {{from}} é reservada pelo Windows, então foi trocada para {{to}}.",
     "restart_failed_toast": "Não foi possível reiniciar: {{error}}",
     "rename_failed_toast": "Não foi possível renomear: {{error}}",
     "rename_name_taken": "'{{name}}' já está em uso",
     "rename_server_running": "Pare o servidor antes de renomeá-lo",
+    "rename_instance_busy": "Não é possível renomear enquanto outra tarefa está em andamento (inicialização, instalação, atualização, backup ou restauração). Tente novamente quando terminar",
     "dependency_unmet_title": "Requisitos ausentes",
     "dependency_unmet_message": "O módulo de '{{name}}' precisa das versões abaixo. Atualize, ou instale e ative a extensão, e inicie de novo.",
     "preflight_failed_title": "A verificação antes de iniciar '{{name}}' encontrou um problema",
@@ -426,6 +428,8 @@
     "loading_tips": "Você pode gerenciar múltiplos servidores de jogos simultaneamente"
   },
   "errors": {
+    "start_cancelled": "O servidor foi parado enquanto iniciava, então não foi iniciado.",
+    "restart_cancelled": "O servidor foi iniciado ou removido em outro lugar durante a espera, então não foi reiniciado.",
     "executable_not_found": "Executável do servidor de jogos não encontrado. Verifique o caminho nas configurações.",
     "file_not_found": "Arquivo ou pasta não encontrada. Verifique o caminho.",
     "permission_denied": "Permissão negada. Verifique as permissões de acesso do arquivo.",

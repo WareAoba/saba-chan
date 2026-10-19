@@ -391,10 +391,12 @@
     "restart_confirm_message": "要停止并重新启动 '{{name}}' 吗？已连接的玩家会短暂断开。",
     "restarting_toast": "正在重启 '{{name}}'…",
     "restart_completed_toast": "'{{name}}' 已重启",
+    "port_moved": "管理用 REST 端口 {{from}} 被 Windows 保留，已改为 {{to}}。",
     "restart_failed_toast": "无法重启：{{error}}",
     "rename_failed_toast": "无法重命名：{{error}}",
     "rename_name_taken": "名称 '{{name}}' 已被使用",
     "rename_server_running": "请先停止服务器再重命名",
+    "rename_instance_busy": "其他操作（启动、安装、更新、备份或恢复等）进行中，无法重命名。请在完成后重试",
     "dependency_unmet_title": "缺少必要组件",
     "dependency_unmet_message": "'{{name}}' 的模块需要以下版本。请更新，或安装并启用扩展插件后再启动。",
     "preflight_failed_title": "'{{name}}' 的启动前检查发现了问题",
@@ -426,6 +428,8 @@
     "loading_tips": "您可以同时管理多个游戏服务器"
   },
   "errors": {
+    "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
+    "restart_cancelled": "等待期间服务器已在别处启动或删除，因此没有重启。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",
     "file_not_found": "找不到文件或文件夹。请检查路径。",
     "permission_denied": "权限被拒绝。请检查文件访问权限。",

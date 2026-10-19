@@ -259,6 +259,13 @@ export function useServerActions({
     };
 
     // ── handleStart ─────────────────────────────────────────
+    // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (시작·재시작, 성공·실패 모두): 조용히 바뀌지 않게 알린다
+    const notifyPortMoved = (result) => {
+        for (const m of Array.isArray(result?.port_moved) ? result.port_moved : []) {
+            safeShowToast(t('servers.port_moved', { from: m.from, to: m.to }), 'warning', 8000);
+        }
+    };
+
     const handleStart = async (name, module) => {
         try {
             const srv = servers.find((s) => s.name === name);
@@ -273,6 +280,7 @@ export function useServerActions({
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(srv.id);
+            notifyPortMoved(result);
 
             // ── action_required: server jar not found ──
             if (result.action_required === 'server_jar_not_found') {
@@ -495,6 +503,12 @@ export function useServerActions({
             if (result.error_code === 'start_in_progress') {
                 // 실제로 켜지는 중이므로 '켜는 중' 표시는 그대로 두고 알려만 준다
                 safeShowToast(t('servers.start_in_progress', { name }), 'info', 3000);
+                return;
+            }
+
+            // ── error_code: start_cancelled — 켜는 동안 사용자가 정지했다: 실패가 아니므로 알리지 않는다 ──
+            if (result.error_code === 'start_cancelled') {
+                revertOptimistic(name);
                 return;
             }
 
@@ -740,7 +754,13 @@ export function useServerActions({
                 try {
                     const force = srv.module_settings?.graceful_stop === false;
                     const result = await window.api.instanceRestart(srv.id, { force });
-                    if (result?.error || result?.success === false) {
+                    notifyPortMoved(result);
+                    const code = result?.error_code;
+                    if (code === 'start_cancelled' || code === 'restart_cancelled') {
+                        // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
+                        revertOptimistic(name);
+                        safeShowToast(t(`errors.${code}`), 'info', 4000);
+                    } else if (result?.error || result?.success === false) {
                         revertOptimistic(name);
                         const msg = translateError(result.error || result.message || '');
                         safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
@@ -779,7 +799,7 @@ export function useServerActions({
             }
             const code = result?.error_code;
             const msg =
-                code === 'name_taken' || code === 'server_running'
+                code === 'name_taken' || code === 'server_running' || code === 'instance_busy'
                     ? t(`servers.rename_${code}`, { name })
                     : translateError(result?.error || '');
             safeShowToast(t('servers.rename_failed_toast', { error: msg }), 'error', 4000);
@@ -808,10 +828,10 @@ export function useServerActions({
     };
 
     // ── handleAddServer ─────────────────────────────────────
-    const handleAddServer = async (payload) => {
+    const handleAddServer = async (payload, legacyModuleName) => {
         // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
-        const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
+        const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
 
         if (!serverName || !serverName.trim()) {
             setModal({
