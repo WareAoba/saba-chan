@@ -360,9 +360,18 @@ mod tests {
         assert!(has(Stream::Out, "cell"));
     }
 
-    /// 명령 코드가 터미널에 직접 찍으면 TUI 패널을 우회한다. `say!`·`tell!`을 쓴다
+    /// 명령 코드가 터미널에 직접 찍거나(막대·질문 포함) 하면 TUI 패널을 우회한다.
+    /// 출력은 `say!`·`tell!`, 진행 표시는 `progress`, 질문은 `prompt`만 쓴다
     #[test]
-    fn no_command_prints_to_the_terminal_directly() {
+    fn no_command_talks_to_the_terminal_directly() {
+        let rules: [(&str, &str); 6] = [
+            ("println!(", "output.rs"),
+            ("eprintln!(", "output.rs"),
+            ("print!(", "output.rs"),
+            ("eprint!(", "output.rs"),
+            ("indicatif", "progress.rs"),
+            ("dialoguer", "prompt.rs"),
+        ];
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut stack = vec![root];
         let mut bad = Vec::new();
@@ -373,21 +382,21 @@ mod tests {
                     stack.push(path);
                     continue;
                 }
-                if path.extension().and_then(|x| x.to_str()) != Some("rs") || path.ends_with("output.rs") {
+                if path.extension().and_then(|x| x.to_str()) != Some("rs") {
                     continue;
                 }
-                for (i, line) in std::fs::read_to_string(&path).unwrap().lines().enumerate() {
+                // 시험 모듈은 터미널에 쓰지 않으므로 보지 않는다 (이 시험의 규칙 문자열도 거기 있다)
+                let source = std::fs::read_to_string(&path).unwrap();
+                let body = source.split("#[cfg(test)]").next().unwrap_or("");
+                for (i, line) in body.lines().enumerate() {
                     let code = line.split("//").next().unwrap_or("");
-                    if ["println!(", "eprintln!(", "print!(", "eprint!("]
-                        .iter()
-                        .any(|m| code.contains(m))
-                    {
+                    if rules.iter().any(|(m, home)| code.contains(m) && !path.ends_with(home)) {
                         bad.push(format!("{}:{}", path.display(), i + 1));
                     }
                 }
             }
         }
-        assert!(bad.is_empty(), "say!/tell! 대신 직접 출력: {bad:#?}");
+        assert!(bad.is_empty(), "정해진 창구 밖에서 터미널을 직접 씀: {bad:#?}");
     }
 
     /// 디스코드 연결 상태 `connected`도 켜진 점으로 (빈 원이면 끊긴 것처럼 보인다)
