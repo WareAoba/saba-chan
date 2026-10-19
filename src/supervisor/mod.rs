@@ -985,9 +985,13 @@ impl Supervisor {
             // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
             if starting.stop_requested(&s) {
                 drop(s);
-                if let Err(e) = child.kill().await {
+                // 자식까지 끝낸다: 런처형 서버는 런처만 끝내면 실제 서버가 남는다
+                let killed = tokio::task::spawn_blocking(move || process::force_kill_tree(pid)).await;
+                if let Err(e) = killed.map_err(anyhow::Error::from).and_then(|r| r) {
                     tracing::warn!("Could not stop '{}' after a stop request during start: {}", server_name, e);
+                    let _ = child.kill().await;
                 }
+                let _ = child.wait().await;
                 return Ok(start_cancelled(server_name));
             }
             s.stop_requested.remove(&instance.id);
@@ -2787,16 +2791,12 @@ impl Supervisor {
                                         instance.name, process.pid, details
                                     );
 
-                                    // 프로세스 강제 종료 (spawn_blocking — sysinfo는 동기 시스템 콜)
+                                    // 자식까지 강제 종료 (런처형 서버는 런처만 끝내면 실제 서버가 남는다. taskkill은 동기라 spawn_blocking)
                                     let kill_pid = process.pid;
                                     let kill_name = instance.name.clone();
-                                    tokio::task::spawn_blocking(move || {
-                                        let mut sys = sysinfo::System::new();
-                                        sys.refresh_processes();
-                                        if let Some(proc) = sys.process(sysinfo::Pid::from_u32(kill_pid)) {
-                                            proc.kill();
-                                            tracing::info!("Force-killed PID {} for instance '{}'", kill_pid, kill_name);
-                                        }
+                                    tokio::task::spawn_blocking(move || match process::force_kill_tree(kill_pid) {
+                                        Ok(()) => tracing::info!("Force-killed PID {} for instance '{}'", kill_pid, kill_name),
+                                        Err(e) => tracing::warn!("Could not force-kill PID {} for instance '{}': {}", kill_pid, kill_name, e),
                                     }).await.ok();
 
                                     // tracker에서 제거 + 쿨다운 설정

@@ -1216,9 +1216,9 @@ function SettingsModal({
 
                                 {/* 마지막 업데이트 & 라이선스 */}
                                 <div className="about-app-footer">
-                                    {componentInfo?.lastUpdated && (
+                                    {formatLastUpdated(componentInfo?.lastUpdated, i18n.language) && (
                                         <span className="about-app-meta">
-                                            <Icon name="clock" size="xs" /> {new Date(componentInfo.lastUpdated).toLocaleDateString(i18n.language, { year: 'numeric', month: 'long', day: 'numeric' })}
+                                            <Icon name="clock" size="xs" /> {formatLastUpdated(componentInfo.lastUpdated, i18n.language)}
                                         </span>
                                     )}
                                     <span className="about-app-meta">
@@ -1240,6 +1240,13 @@ function SettingsModal({
             </div>
         </div>
     );
+}
+
+/** 데몬의 lastUpdated(unix 초, 문자열) → 날짜 글자. 읽을 수 없으면 null */
+export function formatLastUpdated(secs, language) {
+    const n = Number(secs);
+    if (!secs || !Number.isFinite(n)) return null;
+    return new Date(n * 1000).toLocaleDateString(language, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export default SettingsModal;

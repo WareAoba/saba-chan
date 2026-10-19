@@ -13,9 +13,10 @@ pub struct SemVer {
 }
 
 impl SemVer {
-    /// "v1.2.3" 또는 "1.2.3-beta.1" 형식을 파싱
+    /// "v1.2.3" 또는 "1.2.3-beta.1" 형식을 파싱. `+build`는 비교에 쓰지 않으므로 버린다
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.strip_prefix('v').unwrap_or(s);
+        let s = s.split_once('+').map_or(s, |(v, _)| v);
         let (version_part, prerelease) = if let Some(idx) = s.find('-') {
             (&s[..idx], Some(s[idx + 1..].to_string()))
         } else {
@@ -80,7 +81,30 @@ impl Ord for SemVer {
             (None, None) => Ordering::Equal,
             (None, Some(_)) => Ordering::Greater,    // 정식 > 프리릴리스
             (Some(_), None) => Ordering::Less,       // 프리릴리스 < 정식
-            (Some(a), Some(b)) => a.cmp(b),
+            (Some(a), Some(b)) => compare_prerelease(a, b),
+        }
+    }
+}
+
+/// 점으로 나눈 식별자별 비교: 숫자끼리는 값으로, 숫자는 문자보다 낮고, 앞이 같으면 짧은 쪽이 낮다 (SemVer 11절)
+fn compare_prerelease(a: &str, b: &str) -> Ordering {
+    let mut a_ids = a.split('.');
+    let mut b_ids = b.split('.');
+    loop {
+        let ord = match (a_ids.next(), b_ids.next()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) => match (x.parse::<u64>(), y.parse::<u64>()) {
+                // 값이 같으면 글자로 가른다 ("01"과 "1"이 같다고 보지 않는다: Eq와 맞춘다)
+                (Ok(m), Ok(n)) => m.cmp(&n).then_with(|| x.cmp(y)),
+                (Ok(_), Err(_)) => Ordering::Less,
+                (Err(_), Ok(_)) => Ordering::Greater,
+                (Err(_), Err(_)) => x.cmp(y),
+            },
+        };
+        if ord != Ordering::Equal {
+            return ord;
         }
     }
 }
@@ -135,6 +159,26 @@ mod tests {
         assert!(!is_downgrade("1.2.0", "1.3.0"));
         // 읽히지 않는 버전은 막지 않는다
         assert!(!is_downgrade("dev", "1.0.0"));
+    }
+
+    // L13: 프리릴리스는 점으로 나눈 식별자별로, 숫자는 숫자로 비교한다 (SemVer 11절)
+    #[test]
+    fn prerelease_identifiers_compare_numerically() {
+        let v = |s| SemVer::parse(s).unwrap();
+        assert!(v("1.0.0-beta.10") > v("1.0.0-beta.9"));
+        assert!(v("1.0.0-beta.2") > v("1.0.0-beta"));
+        assert!(v("1.0.0-beta") > v("1.0.0-alpha.5"));
+        assert!(v("1.0.0-alpha.beta") > v("1.0.0-alpha.1"), "numeric identifiers rank below text");
+    }
+
+    // L13: `+build`는 버전 비교에 쓰지 않는다 (예전에는 patch를 못 읽어 0이 됐다)
+    #[test]
+    fn build_metadata_is_ignored() {
+        let v = SemVer::parse("1.2.3+build.7").unwrap();
+        assert_eq!((v.major, v.minor, v.patch), (1, 2, 3));
+        assert_eq!(v, SemVer::parse("1.2.3").unwrap());
+        let pre = SemVer::parse("1.2.3-rc.1+sha.abc").unwrap();
+        assert_eq!(pre.prerelease.as_deref(), Some("rc.1"));
     }
 
     #[test]
