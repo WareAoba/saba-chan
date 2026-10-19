@@ -19,17 +19,21 @@ pub enum ProcessError {
 pub fn is_process_alive(pid: u32) -> bool {
     #[cfg(target_os = "windows")]
     {
-        use winapi::um::processthreadsapi::OpenProcess;
+        use winapi::um::processthreadsapi::{GetExitCodeProcess, OpenProcess};
         use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
         use winapi::um::handleapi::CloseHandle;
+        use winapi::um::minwinbase::STILL_ACTIVE;
 
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if handle.is_null() {
                 return false;
             }
+            // 끝난 프로세스도 누가 핸들을 쥐고 있으면 열린다: 종료 코드로 끝났는지 본다
+            let mut code = 0;
+            let ok = GetExitCodeProcess(handle, &mut code);
             CloseHandle(handle);
-            true
+            ok == 0 || code == STILL_ACTIVE
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -345,6 +349,15 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         (launcher, child.expect("the launcher started its child"))
+    }
+
+    /// 끝난 프로세스는 다른 핸들(여기서는 Child)이 남아 있어도 살아 있지 않다
+    #[cfg(windows)]
+    #[test]
+    fn an_exited_process_with_an_open_handle_is_not_alive() {
+        let mut child = std::process::Command::new("cmd").args(["/C", "exit 23"]).spawn().unwrap();
+        assert_eq!(child.wait().unwrap().code(), Some(23));
+        assert!(!is_process_alive(child.id()), "an exited process counts as running");
     }
 
     /// 런처형 서버(PalServer.exe 등)는 실제 서버를 자식으로 띄운다: 런처만 죽이면 서버가 남는다
