@@ -158,6 +158,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "nothing_to_back_up" => Some(t!("err.hint.nothing_to_back_up")),
         "backup_busy" => Some(t!("err.hint.backup_busy")),
         "no_command_path" => Some(t!("err.hint.no_command_path")),
+        "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
         // `details: [{field, reason, word?, conflictWith?}]` — 칸마다 한 줄
         "validation_failed" => {
             let lines: Vec<String> = body
@@ -222,6 +223,14 @@ pub fn classify(err: &anyhow::Error) -> std::borrow::Cow<'_, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬이 거절한 릴레이 주소는 쓸 수 있는 주소를 알려 준다 (R31)
+    #[test]
+    fn a_refused_relay_url_says_which_addresses_are_allowed() {
+        crate::i18n::init("en");
+        let hint = api_hint("invalid_relay_url", &json!({})).unwrap();
+        assert!(hint.contains("https://") && hint.contains("localhost"), "{}", hint);
+    }
 
     #[test]
     fn validation_details_become_one_line_per_field() {
