@@ -762,7 +762,8 @@ fn finished_update_leaves_no_staged_archives_or_old_binaries() {
     for f in ["pending.json", "saba-chan-gui-windows-x64.zip", "locales.zip.part"] {
         std::fs::write(manager.staging_dir.join(f), b"x").unwrap();
     }
-    for f in ["saba-core.exe.old", "saba-runner.exe.old.2", "saba-chan-gui.exe.old", "notepad.exe.old", "saba-core.exe.oldx", "saba-core.exe"] {
+    // 백업은 새 실행 파일이 제자리에 있을 때만 지운다
+    for f in ["saba-core.exe.old", "saba-runner.exe.old.2", "saba-chan-gui.exe.old", "notepad.exe.old", "saba-core.exe.oldx", "saba-core.exe", "saba-runner.exe", crate::GUI_EXE_NAMES[0]] {
         std::fs::write(manager.install_root.join(f), b"x").unwrap();
     }
 
@@ -773,7 +774,9 @@ fn finished_update_leaves_no_staged_archives_or_old_binaries() {
     let mut left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
     left.sort();
-    assert_eq!(left, vec!["notepad.exe.old", "saba-core.exe", "saba-core.exe.oldx"]);
+    let mut want = vec!["notepad.exe.old", "saba-core.exe", "saba-core.exe.oldx", "saba-runner.exe", crate::GUI_EXE_NAMES[0]];
+    want.sort();
+    assert_eq!(left, want);
 }
 
 // GUI exe 이름이 바뀐 업데이트(0.1.1 `Saba-chan.exe` → `saba-chan-gui.exe`)는 예전 exe를 남기지 않는다
@@ -918,4 +921,54 @@ fn an_installed_addon_without_an_install_record_is_offered_again() {
     assert!(!again(Component::Module("recordedmod".into()), "0.1.2"));
     assert!(!again(Component::CoreDaemon, "0.1.2"));
     assert!(!again(Component::Module("unrecordedmod".into()), "0.2.0"), "a newer local copy is not replaced by an older catalog one");
+}
+
+// GUI 교체 중 압축 해제가 실패하면 비켜 둔 GUI를 되돌린다 (그대로 두면 GUI가 사라진다)
+#[tokio::test]
+async fn a_failed_gui_extract_restores_the_previous_gui() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let gui = manager.install_root.join(crate::GUI_EXE_NAMES[0]);
+    std::fs::write(&gui, b"old gui").unwrap();
+    std::fs::write(manager.install_root.join("resources.pak"), b"old pak").unwrap();
+    let zip_path = tmp.path().join("gui.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        let opts = zip::write::FileOptions::default();
+        zw.start_file(crate::GUI_EXE_NAMES[0], opts).unwrap();
+        zw.write_all(b"new gui").unwrap();
+        // 실행 파일이 아닌 기존 파일과 새로 생기는 파일도 실패하면 원래대로 돌아가야 한다
+        zw.start_file("resources.pak", opts).unwrap();
+        zw.write_all(b"new pak").unwrap();
+        zw.start_file("new.dll", opts).unwrap();
+        zw.write_all(b"new dll").unwrap();
+        zw.start_file("../escaped.txt", opts).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+
+    assert!(manager.apply_gui_update(&zip_path.to_string_lossy()).await.is_err());
+    assert_eq!(std::fs::read(&gui).unwrap(), b"old gui");
+    assert_eq!(std::fs::read(manager.install_root.join("resources.pak")).unwrap(), b"old pak");
+    let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left.len(), 2, "no new file or backup left behind: {left:?}");
+}
+
+// 되돌리지 못해 실행 파일 없이 남은 `.exe.old`는 정리하지 않는다 (지우면 원래 GUI가 영영 사라진다)
+#[test]
+fn an_old_backup_without_its_exe_is_kept() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::write(tmp.path().join("saba-chan-gui.exe.old"), b"only copy").unwrap();
+    std::fs::write(tmp.path().join("saba-core.exe"), b"new").unwrap();
+    std::fs::write(tmp.path().join("saba-core.exe.old"), b"old").unwrap();
+
+    manager.cleanup_old_files();
+
+    assert!(tmp.path().join("saba-chan-gui.exe.old").exists());
+    assert!(!tmp.path().join("saba-core.exe.old").exists());
 }

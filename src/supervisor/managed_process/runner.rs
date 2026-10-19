@@ -199,7 +199,8 @@ impl ManagedProcess {
     pub async fn attach_runner(instance_dir: &Path, log_pattern: Option<&str>) -> Option<Self> {
         let run = run_dir(instance_dir);
         let info: RunnerInfo = read_json(&runner_file(&run))?;
-        if exit_file(&run).exists() || !crate::supervisor::process::is_process_alive(info.runner_pid) {
+        // 재부팅 뒤 그 PID를 다른 프로세스가 쓰면 시작 시각이 기록보다 늦다: 그것에 붙거나 그것을 끄지 않는다
+        if exit_file(&run).exists() || !crate::supervisor::process::is_same_process(info.runner_pid, info.started_at) {
             return None;
         }
         let token = std::fs::read_to_string(run.join(TOKEN_FILE)).ok()?.trim().to_string();

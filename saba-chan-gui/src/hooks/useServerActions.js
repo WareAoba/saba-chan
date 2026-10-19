@@ -745,6 +745,8 @@ export function useServerActions({
                         const msg = translateError(result.error || result.message || '');
                         safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
                     } else {
+                        // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다
+                        optimisticStatusRef.current.delete(name);
                         safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
                     }
                 } catch (error) {

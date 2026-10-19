@@ -509,6 +509,15 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     }
 
                     if (value === '' || value === null || value === undefined) {
+                        // 사용자가 지운 선택 문자열 칸은 빈 값으로 보내야 이전 값이 지워진다
+                        if (
+                            value === '' &&
+                            touchedFields.current.has(field.name) &&
+                            !field.required &&
+                            (field.field_type === 'text' || field.field_type === 'password')
+                        ) {
+                            convertedSettings[field.name] = '';
+                        }
                         return;
                     }
 
