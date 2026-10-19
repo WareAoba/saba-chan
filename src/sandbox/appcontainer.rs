@@ -1019,10 +1019,12 @@ mod imp {
             let tmp = tempfile::tempdir().unwrap();
             let dir = std::fs::canonicalize(tmp.path()).unwrap().join("instance");
             std::fs::create_dir_all(&dir).unwrap();
-            // C:\ 아래 새 폴더와 같은 권한: 인증된 사용자 수정, SYSTEM 모든 권한 (소유자에게 WRITE_OWNER 없음)
+            // C:\ 아래 새 폴더와 같은 권한: 인증된 사용자 수정, SYSTEM 모든 권한 (소유자에게 WRITE_OWNER 없음).
+            // Administrators 모든 권한은 넣지 않는다: 관리자 권한으로 도는 CI에서는 그 항목으로 WRITE_OWNER가 생긴다
+            // (실제 PC의 데몬은 제한된 토큰이라 Administrators가 거부 전용이다)
             let made = std::process::Command::new("icacls")
                 .arg(&dir)
-                .args(["/inheritance:r", "/grant:r", "*S-1-5-11:(OI)(CI)M", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"])
+                .args(["/inheritance:r", "/grant:r", "*S-1-5-11:(OI)(CI)M", "*S-1-5-18:(OI)(CI)F"])
                 .output()
                 .unwrap();
             assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stdout));
