@@ -1,11 +1,18 @@
 # ═══════════════════════════════════════════════════════════
-# 통합 CI — Lint · Test · Build
+# 통합 CI
 # ═══════════════════════════════════════════════════════════
 #
-# 구조:
-#   1) rust      — Clippy + build + test  (Windows / Ubuntu)
-#   2) js-tests  — GUI 화면 (Vitest + build), 업데이터/설치기 스크립트 문법
-#   3) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
+# PR에서는 로컬(클라우드 작업·리뷰, PC 점검)에서 돌리지 않는 것과
+# 릴리스를 깨뜨리는 것만 본다. 나머지 전체 시험은 수동/태그 실행으로 옮겼다.
+#
+# PR (바뀐 경로에 해당하는 것만):
+#   guard    — versions.toml 일치, 릴리스 패키징 스크립트 시험 (항상)
+#   windows  — Windows clippy + cargo test (Rust 변경 시). 배포 대상이 Windows뿐이고
+#              Windows 전용 코드는 로컬 클라우드에서 실행되지 않는다
+#   frontend — GUI 번들 빌드, 업데이터/설치기 스크립트 문법 (프런트 변경 시)
+#
+# 전체 (Actions 탭 workflow_dispatch, 또는 v* 태그 push):
+#   위 전부 + linux(Ubuntu clippy + cargo test), gui-tests(Vitest), e2e(Python E2E)
 #
 # release.yml:   릴리즈 패키징 & manifest 생성
 # ═══════════════════════════════════════════════════════════
@@ -13,25 +20,90 @@
 name: CI
 
 on:
-  push:
-    branches: [main, develop]
-    tags:
-      - 'v*'
   pull_request:
     branches: [main, develop]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   # ─────────────────────────────────────────
-  # 1. Rust — Clippy + Build + Test
+  # 바뀐 경로 → 돌릴 job (PR이 아니면 전부)
+  # ─────────────────────────────────────────
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.f.outputs.full }}
+      rust: ${{ steps.f.outputs.rust }}
+      frontend: ${{ steps.f.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: f
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "$files"
+          echo "full=false" >> "$GITHUB_OUTPUT"
+          # 문서·릴리스 노트·GUI 화면 소스만 바뀌면 Rust는 돌리지 않는다 (public/은 tray.rs가 include_bytes!로 묶어 제외하지 않는다)
+          if echo "$files" | grep -qvE '^(docs/|release-notes/|saba-chan-gui/src/|.*\.md$)'; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$files" | grep -qE '^(saba-chan-gui/|updater/gui/src/|installer/gui/src/|locales/)'; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─────────────────────────────────────────
+  # 릴리스 버전·패키징 (몇 초)
+  # ─────────────────────────────────────────
+  guard:
+    name: Versions & packaging
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versions match versions.toml
+        run: python3 scripts/versions.py check
+      - name: Release packaging tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
+  # ─────────────────────────────────────────
+  # Rust — Windows (PR) / Ubuntu (전체만)
   # ─────────────────────────────────────────
   rust:
     name: Rust (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
+        full: ['${{ needs.changes.outputs.full }}']
+        exclude:
+          # Ubuntu 시험은 클라우드 작업에서 매번 돌린다
+          - os: ubuntu-latest
+            full: 'false'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
@@ -42,14 +114,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-
-      - name: Versions match versions.toml
-        if: runner.os == 'Linux'
-        run: python3 scripts/versions.py check
-
-      - name: Release packaging tests
-        if: runner.os == 'Linux'
-        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -93,17 +157,16 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
-      - name: Build
-        run: cargo build --workspace
-
       - name: Test
         run: cargo test --workspace
 
   # ─────────────────────────────────────────
-  # 2. JavaScript — GUI
+  # 프런트 — 배포되는 번들이 만들어지는지
   # ─────────────────────────────────────────
-  js-tests:
-    name: JS Tests
+  frontend:
+    name: Frontend build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -116,13 +179,82 @@ jobs:
           cache: 'npm'
           cache-dependency-path: saba-chan-gui/package-lock.json
 
-      - name: Install & Test — GUI
+      - name: Build — GUI
         working-directory: saba-chan-gui
         run: |
           npm ci
-          npx vitest run
           npx vite build
+
+      # Vitest는 GUI 작업에서 매번 돌린다. 전체 실행에서만 다시 돌린다
+      - name: Test — GUI (full only)
+        if: needs.changes.outputs.full == 'true'
+        working-directory: saba-chan-gui
+        run: npx vitest run
 
       # 번들러 없이 그대로 실리는 스크립트는 문법만 확인한다
       - name: Syntax check — updater, installer
         run: node --check updater/gui/src/updater.js && node --check installer/gui/src/installer.js
+
+  # ─────────────────────────────────────────
+  # E2E — 실제 데몬·CLI·러너를 띄우는 Python 시험 (전체만)
+  # 클라우드 작업과 PC가 병합 전에 돌린다
+  # ─────────────────────────────────────────
+  e2e:
+    name: E2E (ubuntu)
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 시험 샌드박스는 모듈·익스텐션 저장소를 복사해 쓴다 (harness/sandbox.py)
+      - uses: actions/checkout@v4
+        with:
+          repository: WareAoba/saba-chan-modules
+          path: .e2e-deps/saba-chan-modules
+      - uses: actions/checkout@v4
+        with:
+          repository: WareAoba/saba-chan-extensions
+          path: .e2e-deps/saba-chan-extensions
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 업데이터(Tauri) 빌드에 필요하다
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: e2e-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: e2e-${{ runner.os }}-cargo-
+
+      # 외부망(network)·SteamCMD(steam)·느린(slow) 시험은 뺀다. GUI 시험은 tauri-driver가 없어 건너뛴다
+      - name: Run E2E
+        env:
+          SABA_E2E_ROOT: ${{ runner.temp }}/saba-e2e
+          SABA_E2E_MODULES_REPO: ${{ github.workspace }}/.e2e-deps/saba-chan-modules
+          SABA_E2E_EXTENSIONS_REPO: ${{ github.workspace }}/.e2e-deps/saba-chan-extensions
+        run: bash tests/e2e/run-cloud.sh
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: ${{ runner.temp }}/saba-e2e/*.md
+          if-no-files-found: ignore

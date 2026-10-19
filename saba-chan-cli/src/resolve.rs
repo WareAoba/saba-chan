@@ -6,6 +6,7 @@
 
 use crate::ctx::Ctx;
 use crate::error::{usage, CliError, Result};
+use crate::output::s;
 use serde_json::Value;
 
 pub enum Found<T> {
@@ -248,9 +249,120 @@ pub async fn extension(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
     }
 }
 
+// ── 디스코드 서버·멤버 ──
+
+/// 디스코드 id(숫자 snowflake)면 목록을 받지 않고 그대로 쓴다 (릴레이에 닿지 않아도 데몬에 저장하는 설정은 바뀌게)
+fn discord_id(query: &str) -> Option<&str> {
+    let q = query.trim();
+    (q.len() >= 15 && q.bytes().all(|b| b.is_ascii_digit())).then_some(q)
+}
+
+/// 페어링된 디스코드 서버 `(id, 이름)` (릴레이 노드 목록: 맨 목록이거나 `{nodes}`)
+pub fn guild_items(nodes: &Value) -> Vec<(String, String)> {
+    nodes
+        .get("nodes")
+        .or(Some(nodes))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|n| (s(n, "guildId").to_string(), s(n, "guildName").to_string()))
+        .filter(|(id, _)| !id.is_empty())
+        .collect()
+}
+
+fn guild_label(g: &(String, String)) -> String {
+    if g.1.is_empty() {
+        g.0.clone()
+    } else {
+        format!("{} ({})", g.1, g.0)
+    }
+}
+
+/// 디스코드 서버 이름이나 id → id. 안 주면 페어링된 서버가 하나일 때 그것 (터미널이면 고르기)
+pub async fn guild(ctx: &Ctx, query: Option<&str>) -> Result<String> {
+    if let Some(id) = query.and_then(discord_id) {
+        return Ok(id.to_string());
+    }
+    let items = guild_items(&crate::cmd::bot::paired_nodes(ctx).await?);
+    let what = t!("noun.guild");
+    match query.filter(|q| !q.trim().is_empty()) {
+        // 페어링된 서버가 하나뿐이면 묻지 않는다
+        None if items.len() == 1 => Ok(items[0].0.clone()),
+        None => choose(ctx, &what, items, guild_label).map(|g| g.0),
+        Some(q) => {
+            let found = find(&items, q, |g| vec![g.0.clone(), g.1.clone()], guild_label);
+            settle(ctx, &what, q, found, guild_label).map(|g| g.0)
+        }
+    }
+}
+
+/// 멤버 목록 (맨 목록이거나 `{members, partial}`)
+pub fn member_items(r: &Value) -> Vec<Value> {
+    r.get("members").or(Some(r)).and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+fn member_names(m: &Value) -> Vec<String> {
+    ["displayName", "username", "id"].iter().map(|k| s(m, k).to_string()).filter(|n| !n.is_empty()).collect()
+}
+
+pub fn member_label(m: &Value) -> String {
+    let name = [s(m, "displayName"), s(m, "username")].into_iter().find(|n| !n.is_empty()).unwrap_or("");
+    match (name, s(m, "username")) {
+        ("", _) => s(m, "id").to_string(),
+        (n, u) if !u.is_empty() && u != n => format!("{} (@{})", n, u),
+        (n, _) => n.to_string(),
+    }
+}
+
+/// 멤버 이름(표시 이름·사용자 이름, 앞의 `@` 무시)이나 id → 디스코드 id
+pub async fn member(ctx: &Ctx, guild: &str, query: &str) -> Result<String> {
+    let q = query.trim().trim_start_matches('@');
+    if let Some(id) = discord_id(q) {
+        return Ok(id.to_string());
+    }
+    let items = member_items(&crate::cmd::bot::members(ctx, guild).await?);
+    let found = find(&items, q, member_names, member_label);
+    settle(ctx, &t!("noun.member"), q, found, member_label).map(|m| s(&m, "id").to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn discord_ids_are_used_as_given_and_names_are_looked_up() {
+        assert_eq!(discord_id(" 332007306403250178 "), Some("332007306403250178"));
+        assert_eq!(discord_id("1234"), None);
+        assert_eq!(discord_id("사바 서버"), None);
+        let nodes = json!({ "nodes": [{ "guildId": "111111111111111111", "guildName": "사바 서버" }, { "guildId": "222222222222222222", "guildName": "친구들" }] });
+        let items = guild_items(&nodes);
+        let hit = |q| match find(&items, q, |g| vec![g.0.clone(), g.1.clone()], guild_label) {
+            Found::One(g) => Some(g.0),
+            _ => None,
+        };
+        assert_eq!(hit("친구").as_deref(), Some("222222222222222222"));
+        assert_eq!(hit("사바 서버").as_deref(), Some("111111111111111111"));
+        assert_eq!(guild_items(&json!([{ "guildId": "1", "guildName": "a" }])).len(), 1);
+    }
+
+    #[test]
+    fn members_are_found_by_display_or_user_name() {
+        let r = json!({ "members": [
+            { "id": "1", "username": "kimchi", "displayName": "김치마요" },
+            { "id": "2", "username": "saba", "displayName": "saba" }
+        ], "partial": false });
+        let items = member_items(&r);
+        let hit = |q: &str| match find(&items, q.trim_start_matches('@'), member_names, member_label) {
+            Found::One(m) => Some(s(&m, "id").to_string()),
+            _ => None,
+        };
+        assert_eq!(hit("@kimchi").as_deref(), Some("1"));
+        assert_eq!(hit("김치마요").as_deref(), Some("1"));
+        assert_eq!(member_label(&items[0]), "김치마요 (@kimchi)");
+        assert_eq!(member_label(&items[1]), "saba");
+        assert_eq!(member_items(&json!([{ "id": "3" }])).len(), 1);
+    }
 
     fn names(v: &&str) -> Vec<String> {
         vec![v.to_string()]

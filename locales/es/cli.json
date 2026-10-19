@@ -29,6 +29,14 @@
   },
   "bot": {
     "ask_token": "Token del nodo",
+    "relay_check": "Comprobación del relay",
+    "relay_ok": "responde",
+    "relay_failed": "no responde: {{error}}",
+    "expired": "caducada",
+    "expires_in": "Tiempo restante",
+    "members_partial": "No se pudo obtener la lista completa de Discord; solo se muestran miembros con nivel guardado.",
+    "requested_by": "Solicitado por",
+    "username": "Usuario",
     "config_saved": "Ajustes del bot guardados.",
     "confirm_unpair": "¿Desconectar este PC del bot de Discord y olvidar su vinculación?",
     "connection": "Conexión",
@@ -186,6 +194,7 @@
   },
   "agree": {
     "none": "{{name}} no tiene acuerdos que aceptar.",
+    "unknown_id": "Se omitieron ids de términos que este servidor no tiene: {{ids}} (tiene: {{known}})",
     "confirm": "{{name}}: ¿aceptar {{names}}? Aceptas los términos de los enlaces de arriba.",
     "done": "Acuerdos aceptados para {{name}}."
   },
@@ -250,6 +259,8 @@
   },
   "noun": {
     "command": "comando",
+    "guild": "servidor de Discord",
+    "member": "miembro",
     "extension": "extensión",
     "game": "juego",
     "module": "módulo",
@@ -281,7 +292,7 @@
     "done": "Orden guardado."
   },
   "reset": {
-    "confirm": "¿Borrar todos los archivos de {{name}} y empezar de cero? Esto no se puede deshacer.",
+    "confirm": "¿Restablecer {{name}}? Esto no se puede deshacer.",
     "done": "{{name}} se restableció."
   },
   "resolve": {
@@ -322,6 +333,7 @@
   },
   "set": {
     "default": "predeterminado",
+    "cannot_clear": "{{key}} no puede quedar vacío. Indica un valor nuevo.",
     "done": "Se guardaron {{count}} ajuste(s) de {{name}}.",
     "group": {
       "advanced": "Avanzado",
@@ -397,6 +409,13 @@
   },
   "update": {
     "after_hint": "Saba-chan se reiniciará tras la actualización. Después revisa: saba-chan-cli update last",
+    "notes": "Notas de la versión",
+    "result": "Resultado",
+    "result_ok": "correcto",
+    "result_failed": "falló",
+    "when": "Aplicado el",
+    "updated": "Actualizado",
+    "failed_one": "Falló",
     "applied": "Aplicado: {{list}}",
     "applying": "Aplicando actualizaciones...",
     "checking": "Buscando actualizaciones...",
@@ -518,6 +537,8 @@
   },
   "chatbot": {
     "api_key": "Clave de API guardada",
+    "provider": "Proveedor",
+    "model_replaced": "El modelo elegido {{selected}} no está disponible; se usa {{effective}}.",
     "common": "Ajustes para todos los servidores de Discord",
     "guild": "Servidor de Discord {{guild}}",
     "defaults": "(predeterminados)",

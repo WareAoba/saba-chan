@@ -2310,6 +2310,17 @@ mod tests {
         assert!(patch(json!({ "executable_path": null })).await.status.is_success());
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((inst.executable_path, inst.working_dir), (None, None));
+
+        // 비울 수 없는 칸은 null이어도 지금 값을 둔다 (CLI가 이 표로 빈 값을 거절한다)
+        let set = json!({ "port": 25000, "working_dir": "/srv/game", "protocol_mode": "rest", "server_version": "1.2" });
+        assert!(patch(set.clone()).await.status.is_success());
+        for key in saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS {
+            assert!(patch(json!({ *key: null })).await.status.is_success());
+        }
+        let after = serde_json::to_value(state.supervisor.read().await.instance_store.get(&id).cloned().unwrap()).unwrap();
+        for key in saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS {
+            assert_eq!(after[*key], set[*key], "{key}");
+        }
     }
 
     #[test]
