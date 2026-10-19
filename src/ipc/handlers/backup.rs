@@ -611,6 +611,22 @@ mod tests {
         (state, id, tmp)
     }
 
+    /// 모듈 호출이 끝나기를 기다리는 한도. 여기서 재는 것은 "끝나면 풀린다"이지 빠르기가 아니다: Windows 전체 실행에서는
+    /// 첫 격리 호출(venv 만들기)과 병렬 시험 부하로 Python이 10초 넘게 걸리기도 한다 (L24)
+    const WORK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
+
+    /// 잠금이 풀릴 때까지 (WORK_DEADLINE까지) 기다린다. 풀려서 잡았으면 true
+    async fn lock_freed(id: &str) -> bool {
+        let deadline = std::time::Instant::now() + WORK_DEADLINE;
+        while std::time::Instant::now() < deadline {
+            if BusyGuard::take(id).is_some() {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        false
+    }
+
     async fn code(r: Response) -> String {
         crate::ipc::internal::into_internal(r).await.body["error_code"].as_str().unwrap_or_default().to_string()
     }
@@ -671,7 +687,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
         drop(guard);
-        tokio::time::timeout(std::time::Duration::from_secs(10), restart).await.expect("starts once the lock is free").unwrap();
+        tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
     }
 
     #[tokio::test]
@@ -684,15 +700,7 @@ mod tests {
             panic!("still in the safety backup: {:?}", crate::ipc::internal::into_internal(done).await.body);
         }
         assert!(BusyGuard::take(&id).is_none(), "a client that hangs up must not free the lock while files are still being written");
-        let mut freed = false;
-        for _ in 0..100 {
-            if BusyGuard::take(&id).is_some() {
-                freed = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        assert!(freed, "the lock is released when the work ends");
+        assert!(lock_freed(&id).await, "the lock is released when the work ends");
     }
 
     #[tokio::test]
@@ -702,15 +710,7 @@ mod tests {
         let request = super::super::managed::reset_server_handler(Path(id.clone()), State(state.clone()));
         assert!(tokio::time::timeout(std::time::Duration::from_millis(300), request).await.is_err(), "the module is still running");
         assert!(BusyGuard::take(&id).is_none(), "a client that hangs up must not free the lock mid-reset");
-        let mut freed = false;
-        for _ in 0..100 {
-            if BusyGuard::take(&id).is_some() {
-                freed = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        assert!(freed, "the lock is released when the reset ends");
+        assert!(lock_freed(&id).await, "the lock is released when the reset ends");
     }
 
     #[tokio::test]

@@ -328,7 +328,8 @@ mod tests {
         assert_eq!(tracker.get_pid("srv-b").unwrap(), 9999);
     }
 
-    /// 자식 하나(ping)를 띄운 런처(cmd)와 그 자식 PID
+    /// 자식 하나(ping)를 띄운 런처(cmd)와 그 자식 PID. cmd는 ping보다 먼저 콘솔 호스트(conhost)를 자식으로 둔다:
+    /// 그것을 자식으로 잡으면 ping이 뜨기 전에 cmd를 죽였을 때 콘솔과 함께 사라진다 (L24). 이름으로 ping을 기다린다
     #[cfg(windows)]
     async fn launcher_with_child() -> (std::process::Child, u32) {
         use std::os::windows::process::CommandExt;
@@ -339,10 +340,14 @@ mod tests {
             .unwrap();
         let parent = sysinfo::Pid::from_u32(launcher.id());
         let mut child = None;
-        for _ in 0..50 {
+        for _ in 0..600 {
             let mut sys = sysinfo::System::new();
             sys.refresh_processes();
-            child = sys.processes().iter().find(|(_, p)| p.parent() == Some(parent)).map(|(pid, _)| pid.as_u32());
+            child = sys
+                .processes()
+                .iter()
+                .find(|(_, p)| p.parent() == Some(parent) && p.name().eq_ignore_ascii_case("ping.exe"))
+                .map(|(pid, _)| pid.as_u32());
             if child.is_some() {
                 break;
             }
