@@ -968,8 +968,14 @@ impl UpdateManager {
             if !(tail.is_empty() || tail.strip_prefix('.').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))) {
                 continue;
             }
-            let ours = stem.starts_with("saba-") || GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
-            if !ours {
+            let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
+            if !(gui || stem.starts_with("saba-")) {
+                continue;
+            }
+            // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
+            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(format!("{stem}.exe")).exists() };
+            if !replaced {
+                tracing::warn!("[Updater] Keeping {}: {}.exe is missing", path.display(), stem);
                 continue;
             }
             match std::fs::remove_file(&path) {

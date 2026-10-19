@@ -57,5 +57,13 @@ class CoreZipRunner(unittest.TestCase):
         self.assertFalse(pr.zip_has_root_file(self.zip_with(["saba-core.exe", "x/saba-runner.exe"]), "saba-runner.exe"))
 
 
+class RequiredComponents(unittest.TestCase):
+    def test_a_release_without_gui_or_updater_is_refused(self):
+        self.assertEqual(pr.missing_required({"saba-core": {}, "cli": {}, "locales": {}}), ["gui", "updater"])
+
+    def test_a_complete_release_passes(self):
+        self.assertEqual(pr.missing_required({"saba-core": {}, "gui": {}, "updater": {}}), [])
+
+
 if __name__ == "__main__":
     unittest.main()
