@@ -80,9 +80,9 @@ export const useDiscordStore = create((set, get) => ({
         if (get()._statusInterval) get().checkStatus();
     },
 
-    loadConfig: async () => {
+    loadConfig: async ({ attempts } = {}) => {
         const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
-        const maxAttempts = isTest ? 1 : 5;
+        const maxAttempts = attempts ?? (isTest ? 1 : 5);
         const retryDelay = 800;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -217,8 +217,12 @@ export const useDiscordStore = create((set, get) => ({
     },
 
     checkStatus: async () => {
-        const state = get();
         const generation = statusGeneration;
+        // 앱이 데몬보다 먼저 떠서 처음 설정 읽기에 실패했으면 여기서 다시 읽는다.
+        // 읽지 못한 채로 두면 호스트가 비어 저장된 연결이 있어도 연결 화면을 보인다
+        if (!get()._botConfigLoaded) await get().loadConfig({ attempts: 1 });
+        if (generation !== statusGeneration) return;
+        const state = get();
         let agentRunning = false;
         let agentReplaced = false;
         try {
