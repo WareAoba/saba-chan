@@ -413,7 +413,7 @@ pub async fn create_instance(
                             "manual" | "download" => "download".to_string(),
                             other => other.to_string(),
                         };
-                        tracker.mark_creating(&instance_name);
+                        tracker.mark_creating(&instance_name, &id);
                         tracker.update(&instance_name, crate::ipc::ProvisionProgress {
                             step: 0,
                             total: 1,
@@ -740,29 +740,26 @@ pub async fn dismiss_provision_progress(
         .get(&name)
         .map(|p| p.error.is_some())
         .unwrap_or(false);
-    let was_creating = state.provision_tracker.take_creating(&name);
+    let creating = state.provision_tracker.take_creating(&name);
 
     state.provision_tracker.remove(&name);
 
-    // 신규 생성이 실패했을 때만 롤백 — 인스턴스 삭제
-    let rolled_back = had_error && was_creating;
-    if rolled_back {
-        let mut supervisor = state.supervisor.write().await;
-        if let Some(id) = supervisor
-            .instance_store
-            .list()
-            .iter()
-            .find(|i| i.name == name)
-            .map(|i| i.id.clone())
-        {
-            if let Err(e) = supervisor.instance_store.remove(&id) {
-                tracing::warn!("Failed to rollback instance '{}': {}", name, e);
-            } else {
-                tracing::info!(
-                    "Provisioning rollback: removed instance '{}' (id={})",
-                    name,
-                    id
-                );
+    // 신규 생성이 실패했을 때만 롤백 — 그 설치의 인스턴스를 ID로 지운다.
+    // 이름으로 찾으면 그 사이 이름을 바꾸고 같은 이름으로 만든 다른 인스턴스가 지워진다
+    let rollback = creating.filter(|_| had_error);
+    let rolled_back = rollback.is_some();
+    if let Some(id) = rollback {
+        // 다른 작업(업데이트·복원·삭제)이 그 폴더를 쓰는 중이면 지우지 않는다
+        match super::backup::BusyGuard::take(&id) {
+            None => tracing::warn!("Skipping rollback of '{}' (id={}): another task holds the instance", name, id),
+            Some(_guard) => {
+                let mut supervisor = state.supervisor.write().await;
+                if supervisor.instance_store.get(&id).is_some() {
+                    match supervisor.instance_store.remove(&id) {
+                        Ok(_) => tracing::info!("Provisioning rollback: removed instance '{}' (id={})", name, id),
+                        Err(e) => tracing::warn!("Failed to rollback instance '{}': {}", name, e),
+                    }
+                }
             }
         }
     }
@@ -932,6 +929,10 @@ pub async fn rename_instance(
     };
     let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
+    };
+    // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 표시와 실패 정리가 이름으로 이어진다
+    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+        return super::backup::instance_busy();
     };
     let mut supervisor = state.supervisor.write().await;
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
@@ -2089,6 +2090,61 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         panic!("the lock was never released after the install");
+    }
+
+    /// 설치 실패를 dismiss하면 그 설치의 인스턴스만 지운다: 그 사이 이름이 바뀌고 같은 이름의 다른 인스턴스가 생겨도
+    #[tokio::test]
+    async fn dismissing_a_failed_install_never_deletes_another_instance() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, install, script) in [
+            ("game", "\n[install]\nmethod = \"download\"\n", "import json, sys, time\ntime.sleep(1)\nprint(json.dumps({'success': False, 'message': 'boom'}))\n"),
+            ("plain", "", ""),
+        ] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{install}"),
+            )
+            .unwrap();
+            std::fs::write(dir.join("lifecycle.py"), script).unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let a = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        let a = a.body["id"].as_str().unwrap().to_string();
+
+        // 설치하는 동안에는 이름을 바꿀 수 없다
+        let renamed = crate::ipc::internal::into_internal(super::rename_instance(State(state.clone()), Path(a.clone()), Json(json!({ "name": "b" }))).await).await;
+        assert_eq!(renamed.status, 409, "{}", renamed.body);
+        assert_eq!(renamed.body["error_code"], "instance_busy");
+
+        for _ in 0..200 {
+            if state.provision_tracker.get("a").is_some_and(|p| p.done) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(state.provision_tracker.get("a").is_some_and(|p| p.error.is_some()), "the install should have failed");
+
+        // 실패 뒤 dismiss 전에 이름을 바꾸고, 그 이름으로 다른 인스턴스를 만든다
+        let renamed = crate::ipc::internal::into_internal(super::rename_instance(State(state.clone()), Path(a.clone()), Json(json!({ "name": "b" }))).await).await;
+        assert_eq!(renamed.status, 200, "{}", renamed.body);
+        let c = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "plain" }))).await).await;
+        let c = c.body["id"].as_str().unwrap().to_string();
+
+        let dismissed = crate::ipc::internal::into_internal(super::dismiss_provision_progress(Path("a".to_string()), State(state.clone())).await).await;
+        assert_eq!(dismissed.body["rolled_back"], true);
+        let sup = state.supervisor.read().await;
+        assert!(sup.instance_store.get(&c).is_some(), "another instance with the old name must survive");
+        assert!(sup.instance_store.get(&a).is_none(), "the failed install is rolled back");
     }
 
     #[tokio::test]

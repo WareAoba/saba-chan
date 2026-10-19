@@ -378,9 +378,10 @@ pub struct ProvisionProgress {
 #[derive(Debug, Clone)]
 pub struct ProvisionTracker {
     inner: Arc<std::sync::Mutex<HashMap<String, ProvisionProgress>>>,
-    /// 새로 만드는 중인 인스턴스 이름. 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
+    /// 새로 만드는 중인 인스턴스 (진행 표시 이름 → 인스턴스 ID). 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
     /// 이 목록에 있는 것뿐이다. 기존 인스턴스의 업데이트 실패는 롤백하지 않는다.
-    creating: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// 이름이 그 사이 다른 인스턴스로 넘어갈 수 있으므로 지울 대상은 ID로만 찾는다
+    creating: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 impl Default for ProvisionTracker {
@@ -398,15 +399,15 @@ impl ProvisionTracker {
     }
 
     /// 신규 생성 프로비저닝 시작을 기록한다.
-    pub fn mark_creating(&self, name: &str) {
-        if let Ok(mut set) = self.creating.lock() {
-            set.insert(name.to_string());
+    pub fn mark_creating(&self, name: &str, instance_id: &str) {
+        if let Ok(mut map) = self.creating.lock() {
+            map.insert(name.to_string(), instance_id.to_string());
         }
     }
 
-    /// 신규 생성 표시를 지우고, 표시가 있었는지 돌려준다.
-    pub fn take_creating(&self, name: &str) -> bool {
-        self.creating.lock().map(|mut set| set.remove(name)).unwrap_or(false)
+    /// 신규 생성 표시를 지우고, 표시가 있었으면 그 인스턴스 ID를 돌려준다.
+    pub fn take_creating(&self, name: &str) -> Option<String> {
+        self.creating.lock().ok().and_then(|mut map| map.remove(name))
     }
 
     pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
@@ -911,11 +912,11 @@ mod tests {
     #[test]
     fn only_new_instances_are_marked_for_rollback() {
         let tracker = ProvisionTracker::new();
-        tracker.mark_creating("fresh");
-        assert!(tracker.take_creating("fresh"));
+        tracker.mark_creating("fresh", "id-1");
+        assert_eq!(tracker.take_creating("fresh").as_deref(), Some("id-1"));
         // 한 번 꺼내면 끝 — 이후 업데이트 실패를 dismiss해도 롤백하지 않는다
-        assert!(!tracker.take_creating("fresh"));
-        assert!(!tracker.take_creating("existing"));
+        assert!(tracker.take_creating("fresh").is_none());
+        assert!(tracker.take_creating("existing").is_none());
     }
 
     #[tokio::test]
