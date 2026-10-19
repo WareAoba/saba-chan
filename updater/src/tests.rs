@@ -972,3 +972,86 @@ fn an_old_backup_without_its_exe_is_kept() {
     assert!(tmp.path().join("saba-chan-gui.exe.old").exists());
     assert!(!tmp.path().join("saba-core.exe.old").exists());
 }
+
+fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersion {
+    crate::ComponentVersion {
+        component,
+        current_version: "0.1.0".into(),
+        latest_version: Some("0.2.0".into()),
+        update_available: true,
+        download_url: None,
+        asset_name: None,
+        release_notes: None,
+        published_at: None,
+        downloaded: true,
+        downloaded_path: Some(path.to_string_lossy().to_string()),
+        staged_sha256: None,
+        installed: true,
+    }
+}
+
+// L3(a): 여러 컴포넌트를 적용하다 실패해도 먼저 적용한 것은 버전을 기록한다 (그대로 두면 다시 받으라고 뜬다)
+#[tokio::test]
+async fn components_applied_before_a_failure_are_recorded() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let ext = Component::Extension(format!("l3-{}", std::process::id()));
+    let ext_zip = tmp.path().join("ext.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&ext_zip).unwrap());
+        zw.start_file("manifest.json", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"{}").unwrap();
+        zw.finish().unwrap();
+    }
+    manager.status.components = vec![staged(ext.clone(), &ext_zip), staged(Component::Cli, &tmp.path().join("missing.zip"))];
+
+    assert!(manager.apply_components(&[]).await.is_err());
+
+    assert_eq!(UpdateManager::load_installed_manifest().get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&format!("l3-{}", std::process::id())));
+}
+
+// L3(d): 새로 설치하다 실패하면 반쯤 풀린 폴더를 남기지 않는다
+#[test]
+fn a_failed_new_install_leaves_no_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let target = tmp.path().join("modules").join("fresh");
+    let bad = manager.staging_dir.join("module-fresh.zip");
+    {
+        use std::io::Write;
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&bad).unwrap());
+        let opts = zip::write::FileOptions::default();
+        zw.start_file("module.toml", opts).unwrap();
+        zw.write_all(b"name = \"fresh\"").unwrap();
+        zw.start_file("../escaped.txt", opts).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+
+    assert!(manager.replace_dir(&target, &bad, "fresh_backup").is_err());
+    assert!(!target.exists());
+}
+
+// L3(c): 적용 중 꺼져 남은 `.update-bak`은 다음 정리 때 원래 파일이 있으면 지우고, 없으면 되돌린다
+#[test]
+fn leftover_update_backups_are_cleaned_or_restored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::write(tmp.path().join("resources.pak"), b"new").unwrap();
+    std::fs::write(tmp.path().join("resources.pak.update-bak"), b"old").unwrap();
+    std::fs::write(tmp.path().join("WebView2Loader.dll.update-bak"), b"only copy").unwrap();
+
+    manager.cleanup_old_files();
+
+    assert_eq!(std::fs::read(tmp.path().join("resources.pak")).unwrap(), b"new");
+    assert!(!tmp.path().join("resources.pak.update-bak").exists());
+    assert_eq!(std::fs::read(tmp.path().join("WebView2Loader.dll")).unwrap(), b"only copy");
+    assert!(!tmp.path().join("WebView2Loader.dll.update-bak").exists());
+}

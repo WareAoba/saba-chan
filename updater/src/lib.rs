@@ -839,11 +839,23 @@ impl UpdateManager {
         // 적용 우선순위에 따라 정렬
         components.sort_by_key(|c| Self::component_apply_priority(&c.component));
 
+        // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
+        let mut failure = None;
         for comp in &components {
-            let staged_path = Self::verified_staged_path(comp)?;
-            let files = self.apply_one(&comp.component, staged_path).await?;
-            Self::record_files(&comp.component, &files);
-            applied.push(comp.component.display_name());
+            let result = match Self::verified_staged_path(comp) {
+                Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
+                Err(e) => Err(e),
+            };
+            match result {
+                Ok(files) => {
+                    Self::record_files(&comp.component, &files);
+                    applied.push(comp.component.display_name());
+                }
+                Err(e) => {
+                    failure = Some(e.context(format!("Applying {} failed", comp.component.display_name())));
+                    break;
+                }
+            }
         }
 
         // 적용 완료된 컴포넌트의 상태 업데이트
@@ -880,6 +892,12 @@ impl UpdateManager {
             self.cleanup_old_files();
         }
 
+        if let Some(e) = failure {
+            if !applied.is_empty() {
+                tracing::warn!("[UpdateManager] Applied before the failure: {:?}", applied);
+            }
+            return Err(e);
+        }
         Ok(applied)
     }
 
@@ -963,6 +981,16 @@ impl UpdateManager {
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            // 적용 중 꺼져 남은 `.update-bak` (`extract_zip_or_restore`): 원래 파일이 있으면 새 판이 들어간 것이라 지우고,
+            // 없으면 비켜 둔 채 끝난 것이라 되돌린다
+            if let Some(original) = name.strip_suffix(".update-bak").filter(|o| !o.is_empty()) {
+                let original = self.install_root.join(original);
+                let done = if original.exists() { std::fs::remove_file(&path) } else { std::fs::rename(&path, &original) };
+                if let Err(e) = done {
+                    tracing::debug!("[Updater] Cannot settle leftover backup {}: {}", path.display(), e);
+                }
+                continue;
+            }
             // `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`)
             let Some((stem, tail)) = name.split_once(".exe.old") else { continue };
             if !(tail.is_empty() || tail.strip_prefix('.').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))) {

@@ -52,6 +52,9 @@ impl UpdateManager {
                 if let Err(re) = self.copy_dir_recursive(&backup_dir, target_dir) {
                     tracing::error!("[Updater] Restore of {} failed: {}", target_dir.display(), re);
                 }
+            } else {
+                // 새로 설치하던 것: 반쯤 풀린 폴더를 남기지 않는다
+                let _ = std::fs::remove_dir_all(target_dir);
             }
             return Err(e);
             }
