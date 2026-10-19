@@ -656,10 +656,12 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/relay/node/:guild/members?withStatus=1 — `{members: [{id, username, displayName}], partial, reason?}`
+    /// (`partial`: 디스코드 전체 목록을 못 받아 권한을 등록한 멤버만)
     pub async fn node_members(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
         self.get(&with_query(
             &format!("/api/relay/node/{}/members", seg(guild_id)),
-            &[("relayUrl", relay_url.map(str::to_string))],
+            &[("withStatus", Some("1".to_string())), ("relayUrl", relay_url.map(str::to_string))],
         ))
         .await
     }

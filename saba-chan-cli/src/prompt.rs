@@ -104,6 +104,21 @@ impl Prompt {
         input.interact_text_on(&Term::stderr()).map(Some).map_err(Self::map_err)
     }
 
+    /// 비밀값: 터미널이면 숨겨서 묻고, 아니면 표준 입력 한 줄 (예: `cat key.txt | saba-chan-cli chatbot key`).
+    /// 셸 기록에 남지 않게 비밀값은 인자로 받지 않는다
+    pub fn secret_or_stdin(&self, question: &str) -> Result<String> {
+        use std::io::{BufRead, IsTerminal};
+        match self.secret(question)? {
+            Some(v) => Ok(v),
+            None if !std::io::stdin().is_terminal() => {
+                let mut line = String::new();
+                std::io::stdin().lock().read_line(&mut line)?;
+                Ok(line)
+            }
+            None => Ok(String::new()),
+        }
+    }
+
     pub fn secret(&self, question: &str) -> Result<Option<String>> {
         if !self.enabled {
             return Ok(None);

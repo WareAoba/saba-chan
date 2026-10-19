@@ -1138,8 +1138,11 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
             })
         })
         .ok_or_else(|| unknown_setting(fields, key))?;
-    // 공통 칸은 빈 값이 지우기다 (예: `memory_limit_mb=` → 제한 없음)
+    // 공통 칸은 빈 값이 지우기다 (예: `memory_limit_mb=` → 제한 없음). 데몬이 비우지 않는 칸은 거절한다
     if raw.trim().is_empty() && common().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
+        if saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS.contains(&key) {
+            return Err(usage(t!("set.cannot_clear", key = key)));
+        }
         return Ok((key.to_string(), Value::Null));
     }
     let field = fields.iter().find(|f| s(f, "name") == key);
@@ -1150,6 +1153,12 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         }
     }
     Ok((key.to_string(), typed(raw, &kind)?))
+}
+
+/// 선택형 설정의 선택지 (`a | b | c`). 선택지가 없으면 None
+fn options_line(f: &Value) -> Option<String> {
+    let opts: Vec<&str> = f.get("options")?.as_array()?.iter().filter_map(Value::as_str).collect();
+    (!opts.is_empty()).then(|| opts.join(" | "))
 }
 
 fn insert_patch(patch: &mut Map<String, Value>, key: &str, value: Value) {
@@ -1233,6 +1242,9 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
                 if let Some(d) = f.get("default").filter(|d| !d.is_null()) {
                     shown = output::dim(&format!("{} ({})", show(d), t!("set.default")));
                 }
+            }
+            if let Some(line) = options_line(f) {
+                shown = format!("{}  {}", shown, output::dim(&format!("({})", line)));
             }
             push(
                 group,
@@ -1570,6 +1582,12 @@ fn pending_agreements(inst: &Value) -> Vec<Value> {
     inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).cloned().collect()
 }
 
+/// `--accept`로 댔지만 이 서버의 약관에 없는 id (오타)
+fn unknown_accepts<'a>(inst: &Value, named: &'a [String]) -> Vec<&'a str> {
+    let agreements = inst["agreements"].as_array().cloned().unwrap_or_default();
+    named.iter().map(String::as_str).filter(|n| !agreements.iter().any(|a| s(a, "id") == *n)).collect()
+}
+
 fn show_agreements(ctx: &Ctx, pending: &[Value]) {
     if !ctx.out.json {
         for a in pending {
@@ -1596,6 +1614,11 @@ async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
     let Ok(inst) = ctx.api.instance(id).await else {
         return;
     };
+    let unknown = unknown_accepts(&inst, named);
+    if !unknown.is_empty() {
+        let known: Vec<&str> = inst["agreements"].as_array().into_iter().flatten().map(|a| s(a, "id")).collect();
+        ctx.out.warn(&t!("agree.unknown_id", ids = unknown.join(", "), known = known.join(", ")));
+    }
     let pending = pending_agreements(&inst);
     if pending.is_empty() {
         return;
@@ -1633,10 +1656,20 @@ async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     if status_of(&runtime(ctx, &sv).await?) == "running" {
         return Err(failed(t!("err.hint.server_running")));
     }
-    ctx.ask.ensure(&t!("reset.confirm", name = sv.name))?;
+    let locales = module_locales(ctx, &sv.module).await;
+    ctx.ask.ensure(&reset_question(&sv.name, locales.as_ref()))?;
     let r = ctx.api.reset_server(&sv.id).await?;
     ctx.out.done(&t!("reset.done", name = sv.name), &r);
     Ok(())
+}
+
+/// 초기화 확인 문구. 무엇이 지워지는지는 게임마다 달라 모듈 locales의 `reset.description`을 덧붙인다 (GUI와 같다)
+fn reset_question(name: &str, locales: Option<&Value>) -> String {
+    let question = t!("reset.confirm", name = name);
+    match locales.and_then(|l| l.pointer("/reset/description")).and_then(Value::as_str).filter(|d| !d.trim().is_empty()) {
+        Some(d) => format!("{}\n{}", question, d),
+        None => question,
+    }
 }
 
 async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
@@ -1663,6 +1696,43 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬이 비우지 않는 칸에 빈 값을 주면 성공으로 알리지 않고 거절한다 (L33)
+    #[test]
+    fn an_empty_value_is_refused_where_the_daemon_keeps_the_old_one() {
+        let inst = json!({ "module_settings": {} });
+        assert!(typed_setting(&[], &inst, "working_dir", "").is_err());
+        assert!(typed_setting(&[], &inst, "port", " ").is_err());
+        assert_eq!(typed_setting(&[], &inst, "rest_port", "").unwrap().1, Value::Null);
+        assert_eq!(typed_setting(&[], &inst, "working_dir", "C:/srv").unwrap().1, json!("C:/srv"));
+    }
+
+    /// `server settings`가 선택형 설정의 선택지를 함께 보인다 (C4)
+    #[test]
+    fn choices_are_shown_for_a_select_setting() {
+        let select = json!({ "name": "difficulty", "field_type": "select", "options": ["easy", "normal", "hard"] });
+        assert_eq!(options_line(&select).as_deref(), Some("easy | normal | hard"));
+        assert_eq!(options_line(&json!({ "name": "max_players", "field_type": "number" })), None);
+        assert_eq!(options_line(&json!({ "name": "x", "options": [] })), None);
+    }
+
+    /// 초기화 확인에 무엇이 지워지는지(모듈 `reset.description`)를 붙인다 (C5)
+    #[test]
+    fn the_reset_question_says_what_the_module_wipes() {
+        let locales = json!({ "reset": { "description": "월드 세이브만 지워요." } });
+        assert!(reset_question("a", Some(&locales)).ends_with("월드 세이브만 지워요."));
+        assert!(!reset_question("a", None).contains('\n'));
+        assert_eq!(reset_question("a", Some(&json!({}))), reset_question("a", None));
+    }
+
+    /// `--accept`에 이 서버 약관에 없는 id(오타)를 주면 알린다
+    #[test]
+    fn accept_ids_that_are_not_agreements_of_the_server_are_reported() {
+        let inst = json!({ "agreements": [{ "id": "eula", "accepted": false }, { "id": "privacy", "accepted": true }] });
+        let named = vec!["eula".to_string(), "eulla".to_string(), "privacy".to_string()];
+        assert_eq!(unknown_accepts(&inst, &named), vec!["eulla"]);
+        assert!(unknown_accepts(&json!({}), &[]).is_empty());
+    }
 
     #[test]
     fn typed_settings_follow_schema() {

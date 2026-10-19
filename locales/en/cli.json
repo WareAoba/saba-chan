@@ -30,6 +30,11 @@
   },
   "bot": {
     "ask_token": "Node token",
+    "expired": "expired",
+    "expires_in": "Time left",
+    "members_partial": "Couldn't get the full Discord member list; showing only members with a saved level.",
+    "requested_by": "Requested by",
+    "username": "Username",
     "config_saved": "Bot settings saved.",
     "confirm_unpair": "Disconnect this PC from the Discord bot and forget its pairing?",
     "connection": "Connection",
@@ -240,6 +245,7 @@
   },
   "agree": {
     "none": "{{name}} has no agreements to accept.",
+    "unknown_id": "Skipped agreement ids this server doesn't have: {{ids}} (it has: {{known}})",
     "confirm": "{{name}}: accept {{names}}? You agree to the terms at the links above.",
     "done": "Agreements accepted for {{name}}."
   },
@@ -305,6 +311,8 @@
   },
   "noun": {
     "command": "command",
+    "guild": "Discord server",
+    "member": "member",
     "extension": "extension",
     "game": "game",
     "module": "module",
@@ -336,7 +344,7 @@
     "done": "Order saved."
   },
   "reset": {
-    "confirm": "Wipe all of {{name}}'s files and start fresh? This can't be undone.",
+    "confirm": "Reset {{name}}? This can't be undone.",
     "done": "{{name}} was reset."
   },
   "resolve": {
@@ -377,6 +385,7 @@
   },
   "set": {
     "default": "default",
+    "cannot_clear": "{{key}} can't be left empty. Give a new value.",
     "done": "Saved {{count}} setting(s) for {{name}}.",
     "group": {
       "advanced": "Advanced",

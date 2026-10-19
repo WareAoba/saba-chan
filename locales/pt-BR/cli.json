@@ -29,6 +29,11 @@
   },
   "bot": {
     "ask_token": "Token do nó",
+    "expired": "expirado",
+    "expires_in": "Tempo restante",
+    "members_partial": "Não foi possível obter a lista completa do Discord; mostrando só membros com nível salvo.",
+    "requested_by": "Pedido por",
+    "username": "Usuário",
     "config_saved": "Configurações do bot salvas.",
     "confirm_unpair": "Desconectar este PC do bot do Discord e esquecer o pareamento?",
     "connection": "Conexão",
@@ -186,6 +191,7 @@
   },
   "agree": {
     "none": "{{name}} não tem termos para aceitar.",
+    "unknown_id": "Ids de termos ignorados que este servidor não tem: {{ids}} (ele tem: {{known}})",
     "confirm": "{{name}}: aceitar {{names}}? Você concorda com os termos dos links acima.",
     "done": "Termos aceitos para {{name}}."
   },
@@ -250,6 +256,8 @@
   },
   "noun": {
     "command": "comando",
+    "guild": "servidor do Discord",
+    "member": "membro",
     "extension": "extensão",
     "game": "jogo",
     "module": "módulo",
@@ -281,7 +289,7 @@
     "done": "Ordem salva."
   },
   "reset": {
-    "confirm": "Apagar todos os arquivos de {{name}} e começar do zero? Isso não pode ser desfeito.",
+    "confirm": "Redefinir {{name}}? Isso não pode ser desfeito.",
     "done": "{{name}} foi redefinido."
   },
   "resolve": {
@@ -322,6 +330,7 @@
   },
   "set": {
     "default": "padrão",
+    "cannot_clear": "{{key}} não pode ficar vazio. Informe um novo valor.",
     "done": "{{count}} configuração(ões) de {{name}} salva(s).",
     "group": {
       "advanced": "Avançado",

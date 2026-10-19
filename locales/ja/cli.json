@@ -29,6 +29,11 @@
   },
   "bot": {
     "ask_token": "ノードトークン",
+    "expired": "期限切れ",
+    "expires_in": "残り時間",
+    "members_partial": "Discordの全メンバー一覧を取得できなかったため、権限を登録したメンバーのみ表示しています。",
+    "requested_by": "依頼者",
+    "username": "ユーザー名",
     "config_saved": "ボットの設定を保存しました。",
     "confirm_unpair": "この PC を Discord ボットから切断し、ペアリングを解除しますか？",
     "connection": "接続",
@@ -186,6 +191,7 @@
   },
   "agree": {
     "none": "{{name}}に同意する規約はありません。",
+    "unknown_id": "このサーバーにない規約IDをスキップしました: {{ids}}（あるID: {{known}}）",
     "confirm": "{{name}}: {{names}}に同意しますか？上のリンクの原文に同意することになります。",
     "done": "{{name}}の規約に同意しました。"
   },
@@ -250,6 +256,8 @@
   },
   "noun": {
     "command": "コマンド",
+    "guild": "Discordサーバー",
+    "member": "メンバー",
     "extension": "拡張機能",
     "game": "ゲーム",
     "module": "モジュール",
@@ -281,7 +289,7 @@
     "done": "並び順を保存しました。"
   },
   "reset": {
-    "confirm": "{{name}} のファイルをすべて消去して最初からやり直しますか？元に戻せません。",
+    "confirm": "{{name}} を初期化しますか？元に戻せません。",
     "done": "{{name}} をリセットしました。"
   },
   "resolve": {
@@ -322,6 +330,7 @@
   },
   "set": {
     "default": "既定値",
+    "cannot_clear": "{{key}} は空にできません。新しい値を入力してください。",
     "done": "{{name}} の設定を {{count}} 件保存しました。",
     "group": {
       "advanced": "詳細",

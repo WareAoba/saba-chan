@@ -30,6 +30,11 @@
   },
   "bot": {
     "ask_token": "노드 토큰",
+    "expired": "만료됨",
+    "expires_in": "남은 시간",
+    "members_partial": "디스코드 전체 목록을 받지 못해 권한을 등록한 멤버만 보여요.",
+    "requested_by": "요청한 사람",
+    "username": "사용자 이름",
     "config_saved": "봇 설정을 저장했어요.",
     "confirm_unpair": "이 PC를 디스코드 봇에서 끊고 페어링을 잊을까요?",
     "connection": "연결",
@@ -240,6 +245,7 @@
   },
   "agree": {
     "none": "{{name}}에 동의할 약관이 없어요.",
+    "unknown_id": "이 서버에 없는 약관 id라 건너뛰었어요: {{ids}} (있는 id: {{known}})",
     "confirm": "{{name}}: {{names}}에 동의할까요? 위 주소의 원문을 읽고 동의하는 거예요.",
     "done": "{{name}}의 약관에 동의했어요."
   },
@@ -305,6 +311,8 @@
   },
   "noun": {
     "command": "명령",
+    "guild": "디스코드 서버",
+    "member": "멤버",
     "extension": "익스텐션",
     "game": "게임",
     "module": "모듈",
@@ -336,7 +344,7 @@
     "done": "순서를 저장했어요."
   },
   "reset": {
-    "confirm": "{{name}}의 파일을 모두 지우고 새로 시작할까요? 되돌릴 수 없어요.",
+    "confirm": "{{name}}을(를) 초기화할까요? 되돌릴 수 없어요.",
     "done": "{{name}}을(를) 초기화했어요."
   },
   "resolve": {
@@ -377,6 +385,7 @@
   },
   "set": {
     "default": "기본값",
+    "cannot_clear": "{{key}}는 비울 수 없어요. 새 값을 적어 주세요.",
     "done": "{{name}} 설정 {{count}}개를 저장했어요.",
     "group": {
       "advanced": "고급",
@@ -564,10 +573,10 @@
       "bot.stop": "릴레이 연결 끊기",
       "bot.pair": "이 PC를 디스코드 서버와 페어링 (디스코드에 넣을 코드를 보여 줘요)",
       "bot.unpair": "이 PC의 페어링 잊기",
-      "bot.token": "노드 토큰 직접 넣기 (다른 곳에서 페어링한 경우)",
+      "bot.token": "노드 토큰 직접 넣기 (다른 곳에서 페어링한 경우). 숨김 입력이나 표준 입력 한 줄로만 받아요",
       "bot.prefix": "채팅 접두사 보기·바꾸기",
       "bot.nodes": "이 PC와 페어링된 디스코드 서버",
-      "bot.members": "페어링된 디스코드 서버의 멤버",
+      "bot.members": "페어링된 디스코드 서버의 멤버 (서버 이름이나 id, 없으면 하나뿐인 서버)",
       "bot.config": "봇 설정 보기·바꾸기: 키=값 (점으로 이은 키, JSON 값)",
       "update": "사바쨩 업데이트",
       "update.status": "설치된 것과 새 버전",
@@ -617,13 +626,13 @@
       "monitor": "CPU·메모리·디스크·네트워크 사용량과 서버별 몫",
       "audit": "누가 어디서(GUI·CLI·디스코드·예약) 서버를 켜고 끄고 명령을 보냈는지",
       "perm": "디스코드에서 누가 어떤 명령을 쓸 수 있는지 (멤버 레벨, 프리셋, 명령별 레벨)",
-      "perm.show": "디스코드 서버 하나의 레벨·프리셋·덮어쓰기 보기",
-      "perm.grant": "멤버에게 레벨 주기: admin, user, chatbot, banned",
+      "perm.show": "디스코드 서버 하나의 레벨·프리셋·덮어쓰기 보기 (서버 이름이나 id, 없으면 하나뿐인 서버)",
+      "perm.grant": "멤버(이름이나 id)에게 레벨 주기: admin, user, chatbot, banned",
       "perm.revoke": "멤버의 개별 레벨 지우기 (기본 레벨을 받아요)",
       "perm.default": "개별 레벨이 없는 멤버의 레벨",
       "perm.preset": "명령 레벨 프리셋: loose, default, strict",
       "perm.cap": "챗봇을 거친 요청이 쓸 수 있는 가장 높은 레벨",
-      "perm.command": "명령 하나에 필요한 레벨 (`<서버 id>/<명령>`). 레벨을 비우면 프리셋으로 돌아가요",
+      "perm.command": "명령 하나에 필요한 레벨 (`<서버>/<명령>`, 서버는 이름이나 id). 레벨을 비우면 프리셋으로 돌아가요",
       "perm.owner": "고정된 디스코드 서버 주인 바꾸기",
       "sandbox": "확인되지 않은 모듈·익스텐션의 격리 실행",
       "sandbox.allow": "격리를 준비할 수 없을 때 이 구성요소를 격리 없이 돌리기 (파일이 바뀌면 다시 물어요)",
@@ -712,8 +721,8 @@
       "warn": "몇 분 전에 예고할지 (restart/update), 예: 10,5,1",
       "message": "공지할 말",
       "delete": "저장된 키를 지우기",
-      "chatbot.set.guild": "이 디스코드 서버에만 (서버 id)",
-      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)",
+      "chatbot.set.guild": "이 디스코드 서버에만 (이름이나 id)",
+      "chatbot.forget.guild": "이 디스코드 서버만 (이름이나 id)",
       "file": "zip 파일 경로",
       "secrets": "비밀번호·챗봇 API 키·봇 페어링도 저장",
       "dry_run": "바뀔 내용만 보기",
@@ -738,7 +747,7 @@
       "bot.words.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
       "bot.words.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
       "bot.words.clear": "이 서버의 낱말 모두 지우기",
-      "bot.channels.guild": "디스코드 서버 id. 없으면 페어링된 서버 전부 (바꾸기는 서버가 하나일 때만)"
+      "bot.channels.guild": "디스코드 서버 이름이나 id. 없으면 페어링된 서버 전부 (바꾸기는 서버가 하나일 때만)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
