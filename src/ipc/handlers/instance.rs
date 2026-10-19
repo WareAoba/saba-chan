@@ -920,6 +920,7 @@ async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::R
         let removed = state.supervisor.write().await.instance_store.remove(&id);
         match removed {
             Ok(_) => {
+                state.provision_tracker.forget(&instance.name);
                 let response = json!({ "success": true });
                 return (StatusCode::OK, Json(response)).into_response();
             }

@@ -412,7 +412,9 @@ impl ProvisionTracker {
 
     /// 인스턴스 이름이 바뀌면 진행 표시와 신규 생성 표시도 새 이름으로 옮긴다.
     /// 옛 이름에 남으면 그 이름으로 새로 만든 인스턴스가 설치 중으로 보이고, 그 배너를 닫으면 이 인스턴스가 지워진다
+    /// 새 이름에 남아 있던 옛 표시(지운 인스턴스의 것)는 버린다
     pub fn rename(&self, from: &str, to: &str) {
+        self.forget(to);
         if let Ok(mut map) = self.inner.lock() {
             if let Some(progress) = map.remove(from) {
                 map.insert(to.to_string(), progress);
@@ -422,6 +424,15 @@ impl ProvisionTracker {
             if let Some(id) = map.remove(from) {
                 map.insert(to.to_string(), id);
             }
+        }
+    }
+
+    /// 이름이 비면(인스턴스 삭제) 그 이름의 진행 표시와 신규 생성 표시를 지운다.
+    /// 남으면 같은 이름으로 새로 만든 인스턴스에 옛 오류 배너가 붙는다
+    pub fn forget(&self, name: &str) {
+        self.remove(name);
+        if let Ok(mut map) = self.creating.lock() {
+            map.remove(name);
         }
     }
 
@@ -932,6 +943,23 @@ mod tests {
         // 한 번 꺼내면 끝 — 이후 업데이트 실패를 dismiss해도 롤백하지 않는다
         assert!(tracker.take_creating("fresh").is_none());
         assert!(tracker.take_creating("existing").is_none());
+    }
+
+    // 리뷰 289 P3-2: 지운 "b"나 이름을 바꿔 비운 "b"의 옛 오류 배너가 새로 만든 "b"에 붙었다
+    #[test]
+    fn a_name_freed_by_delete_or_rename_carries_no_old_progress() {
+        let failed = || ProvisionProgress {
+            step: 1, total: 3, label: "install".into(), message: String::new(), done: true, error: Some("boom".into()), percent: None, steps: None,
+        };
+        let tracker = ProvisionTracker::new();
+        tracker.update("b", failed());
+        tracker.mark_creating("b", "old-b");
+        tracker.forget("b");
+        assert!(tracker.get("b").is_none() && tracker.take_creating("b").is_none());
+
+        tracker.update("b", failed());
+        tracker.rename("a", "b");
+        assert!(tracker.get("b").is_none(), "renaming onto a name drops the stale banner there");
     }
 
     #[tokio::test]
