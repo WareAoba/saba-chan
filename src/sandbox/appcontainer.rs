@@ -833,7 +833,9 @@ mod imp {
                         }
                     }
                 }
-                Err(e) => tracing::warn!("[Sandbox] could not list {}: {}", path.display(), e),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                // 목록을 읽지 못하면 그 안에 표시가 남았는지 알 수 없다
+                Err(e) => failed.push((path.clone(), format!("list: {e}"))),
             }
         }
         if failed.is_empty() {
