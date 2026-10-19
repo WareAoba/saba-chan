@@ -36,6 +36,7 @@
 | `test_updates.py` | L4 | 업데이트 확인·내려받기: 서명·변조·플랫폼·다운그레이드·해시 (`--features mock-relay` 빌드) |
 | `test_platform.py` | L5 | 메모리 상한(Job), 격리 실행(AppContainer), 모니터, 터미널로 열기 |
 | `test_real_games.py` | L5 | 진짜 게임 설치·실행 (`network`, `steam`) |
+| `test_official_catalog.py` | L5 | 운영 카탈로그에서 받은 공식 모듈·익스텐션: 신뢰 표시 verified, 격리 없이 마인크래프트 실행(데몬이 찾은 Java)·Palworld 설치 (`network`, `steam`). `test_real_games.py`는 저장소 복사본(unverified)이라 Windows에서 격리 상태로 돈다 — 둘 다 돌려야 두 상태를 본다 |
 | `test_gui.py` | L6 | Tauri GUI(tauri-driver WebDriver): 데몬에 붙기, 켜기·콘솔 명령·끄기, 데몬 끊김·재연결, 약관 동의, 데몬 기동 실패(배포 빌드) |
 
 고정 장치:
