@@ -4,9 +4,9 @@
 """
 
 import os
+import re
 import socket
 import time
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -157,8 +157,10 @@ def test_hung_server_is_force_stopped(mc):
     daemon.stdin(iid, "e2e-hang")
     daemon.wait_console(iid, "e2e-hang on")
     # 데몬은 모듈 [config] stop_timeout(기본 30초)만큼 기다린 뒤 강제 종료한다
-    config = tomllib.loads((MODULES_REPO / "minecraft" / "module.toml").read_text(encoding="utf-8")).get("config", {})
-    grace = config.get("stop_timeout", 30)
+    # (tomllib은 3.11부터라 3.10 실행기를 위해 그 줄만 읽는다)
+    toml = (MODULES_REPO / "minecraft" / "module.toml").read_text(encoding="utf-8")
+    found = re.search(r"^stop_timeout\s*=\s*(\d+)", toml, re.M)
+    grace = int(found.group(1)) if found else 30
     t0 = time.monotonic()
     daemon.stop_instance(iid, timeout=grace + 60)
     daemon.wait_status(iid, "stopped", timeout=90)
