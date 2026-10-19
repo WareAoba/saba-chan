@@ -159,6 +159,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "backup_busy" => Some(t!("err.hint.backup_busy")),
         "no_command_path" => Some(t!("err.hint.no_command_path")),
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
+        "module_busy" => Some(t!("err.hint.module_busy")),
+        "invalid_command" => Some(t!("err.hint.invalid_command")),
         // `details: [{field, reason, word?, conflictWith?}]` — 칸마다 한 줄
         "validation_failed" => {
             let lines: Vec<String> = body
@@ -230,6 +232,18 @@ mod tests {
         crate::i18n::init("en");
         let hint = api_hint("invalid_relay_url", &json!({})).unwrap();
         assert!(hint.contains("https://") && hint.contains("localhost"), "{}", hint);
+    }
+
+    /// 모듈 설치·삭제가 겹치거나 권한 키 모양이 틀리면 원문 코드 대신 할 일을 알려 준다
+    #[test]
+    fn busy_modules_and_malformed_command_keys_get_a_hint() {
+        crate::i18n::init("en");
+        for code in ["module_busy", "invalid_command"] {
+            let hint = api_hint(code, &json!({})).unwrap_or_default();
+            assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
+        }
+        // 언어는 다른 시험이 먼저 정할 수 있어 모양만 본다
+        assert!(api_hint("invalid_command", &json!({})).unwrap().contains(">/<"));
     }
 
     #[test]
