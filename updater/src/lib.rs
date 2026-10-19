@@ -350,7 +350,11 @@ pub fn extract_zip(
     let mut archive = zip::ZipArchive::new(file)?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let Some(rel) = entry.enclosed_name() else {
+        // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
+        let Some(rel) = entry
+            .enclosed_name()
+            .filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_))))
+        else {
             anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), entry.name());
         };
         reject_links_below(target_dir, rel)?;
@@ -381,7 +385,8 @@ pub(crate) fn reject_links_below(target_dir: &Path, rel: &Path) -> Result<()> {
                 anyhow::bail!("Refusing to write through a link: {}", path.display());
             }
             Ok(_) => {}
-            Err(_) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+            Err(e) => return Err(e.into()),
         }
     }
     Ok(())

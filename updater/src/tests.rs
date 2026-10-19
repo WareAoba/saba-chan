@@ -986,7 +986,7 @@ fn extract_zip_does_not_write_through_links_in_the_target() {
     std::fs::write(outside.join("victim.txt"), b"keep").unwrap();
     std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
     std::os::unix::fs::symlink(outside.join("victim.txt"), target.join("file.txt")).unwrap();
-    for name in ["sub/new.txt", "file.txt"] {
+    for name in ["sub/new.txt", "file.txt", "nope/../sub/new.txt"] {
         let zip_path = tmp.path().join("a.zip");
         {
             let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
