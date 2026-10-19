@@ -195,8 +195,9 @@ impl ManagedProcess {
         }
         // 늦게라도 서버를 띄우면 데몬이 모르는 서버가 남고, 다시 시작하면 같은 폴더·포트에 두 번째 서버가 뜬다.
         // 러너와 그 자식을 끝내고(Unix는 러너의 프로세스 그룹, Windows는 트리) 러너가 끝난 것을 본 뒤 실패를 돌려준다
-        if let Some(pid) = runner_pid {
-            crate::plugin::kill_tree(pid);
+        // 이미 거둔 러너의 pid는 다른 프로세스가 받았을 수 있다: 살아 있을 때만 끝낸다
+        if let Some(pid) = runner_pid.filter(|_| !reaped.is_finished()) {
+            let _ = tokio::task::spawn_blocking(move || crate::plugin::kill_tree(pid)).await;
         }
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reaped).await;
         Err(anyhow::anyhow!("saba-runner did not start '{}' in time", program))

@@ -37,6 +37,9 @@ pub struct PortConflictStopEvent {
     pub timestamp_ms: u64,
 }
 
+/// 읽지 않은 포트 충돌 강제 정지 알림을 몇 개까지 두는가 (헤드리스 데몬에서 끝없이 쌓이지 않게)
+pub const PORT_CONFLICT_STOPS_KEPT: usize = 20;
+
 pub struct Supervisor {
     pub tracker: ProcessTracker,
     pub module_loader: ModuleLoader,
@@ -2889,18 +2892,14 @@ impl Supervisor {
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .map(|d| d.as_millis() as u64)
                                         .unwrap_or(0);
-                                    if let Ok(mut events) = self.port_conflict_stops.lock() {
-                                        for conflict in &conflicts {
-                                            events.push(PortConflictStopEvent {
-                                                stopped_name: instance.name.clone(),
-                                                stopped_id: instance.id.clone(),
-                                                existing_name: conflict.conflicting_instance_name.clone(),
-                                                existing_id: conflict.conflicting_instance_id.clone(),
-                                                port: conflict.port,
-                                                timestamp_ms: ts,
-                                            });
-                                        }
-                                    }
+                                    self.record_port_conflict_stops(conflicts.iter().map(|conflict| PortConflictStopEvent {
+                                        stopped_name: instance.name.clone(),
+                                        stopped_id: instance.id.clone(),
+                                        existing_name: conflict.conflicting_instance_name.clone(),
+                                        existing_id: conflict.conflicting_instance_id.clone(),
+                                        port: conflict.port,
+                                        timestamp_ms: ts,
+                                    }));
                                 } // if !skip_port_check
                                 }
                             }
@@ -2910,6 +2909,15 @@ impl Supervisor {
         
         tracing::debug!("Monitor cycle: {} tracked, {} auto-detected", tracked_count, auto_detected_count);
         Ok(())
+    }
+
+    /// 포트 충돌 강제 정지 이벤트를 남긴다. 읽는 클라이언트가 없어도 최근 `PORT_CONFLICT_STOPS_KEPT`개만 둔다
+    pub fn record_port_conflict_stops(&self, new: impl IntoIterator<Item = PortConflictStopEvent>) {
+        if let Ok(mut events) = self.port_conflict_stops.lock() {
+            events.extend(new);
+            let over = events.len().saturating_sub(PORT_CONFLICT_STOPS_KEPT);
+            events.drain(..over);
+        }
     }
 
     /// 포트 충돌 강제 정지 이벤트를 drain (GUI 폴링에서 한 번 읽으면 비움)
