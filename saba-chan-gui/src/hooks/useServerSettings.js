@@ -336,10 +336,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 const extList = (installResult.missing_extensions || []).join(', ');
                                 safeShowToast(
                                     installResult.error ||
-                                        t('server_settings.extension_required_for_install', {
-                                            extensions: extList,
-                                            defaultValue: `Required extension(s) missing: ${extList}. Install them in Settings → Extensions first.`,
-                                        }),
+                                        t('server_settings.extension_required_for_install', { extensions: extList }),
                                     'error',
                                     6000,
                                 );

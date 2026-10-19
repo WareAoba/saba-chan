@@ -317,6 +317,7 @@
     "install_server_running": "請先停止伺服器再安裝版本",
     "reset_server_running": "請先停止伺服器再重設",
     "instance_busy": "此伺服器上正在進行其他工作（備份或還原）。完成後請再試一次",
+    "extension_required_for_install": "缺少必要的擴充功能：{{extensions}}。請先在 Saba 儲存中安裝。",
     "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}"
   },
   "discord_bot": {

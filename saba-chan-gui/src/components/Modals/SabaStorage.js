@@ -1151,7 +1151,7 @@ function ExtensionsTab() {
                     <button
                         className="ss-icon-btn"
                         onClick={handleShowStore}
-                        data-tooltip={t('extensions.show_more', '더 많은 익스텐션 표시')} aria-label={t('extensions.show_more', '더 많은 익스텐션 표시')}
+                        data-tooltip={t('saba_storage.show_more_extensions')} aria-label={t('saba_storage.show_more_extensions')}
                     >
                         <Icon name="chevronDown" size="sm" />
                     </button>

@@ -780,7 +780,7 @@ function App() {
                         extInitializing={extInitializing}
                         extInitLabel={
                             Object.values(extInitInProgress).join(', ') ||
-                            t('common:initializing', { defaultValue: 'Initializing extensions…' })
+                            t('common:init.extensions')
                         }
                         showNotice={showNoticeSection}
                         onToggleNotice={() => (showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true))}
@@ -900,7 +900,7 @@ function App() {
                                     }}
                                 >
                                     <Icon name="folder" size="sm" />
-                                    {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
+                                    {t('shell.open_folder')}
                                 </div>
                                 <div className="context-menu-separator" />
                                 <div

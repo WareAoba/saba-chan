@@ -320,6 +320,7 @@
     "install_server_running": "Stop the server before installing a version",
     "reset_server_running": "Stop the server before resetting it",
     "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes",
+    "extension_required_for_install": "Required extension(s) missing: {{extensions}}. Install them from Saba Storage first.",
     "install_settings_failed": "The version was installed, but saving the settings failed: {{error}}"
   },
   "discord_bot": {
