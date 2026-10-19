@@ -168,11 +168,12 @@ pub struct PluginCall {
     pub config: Value,
     /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
     pub server: Option<u32>,
+    pub timeout_secs: u64,
 }
 
 impl PluginCall {
     pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
-        Self { entry: entry.into(), function: function.to_string(), config, server: None }
+        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS }
     }
 
     pub fn serving(mut self, server: Option<u32>) -> Self {
@@ -180,8 +181,13 @@ impl PluginCall {
         self
     }
 
+    pub fn timeout(mut self, secs: u64) -> Self {
+        self.timeout_secs = secs;
+        self
+    }
+
     pub async fn run(self) -> Result<Value> {
-        run_plugin_inner(&self.entry, &self.function, self.config, None, DEFAULT_PLUGIN_TIMEOUT_SECS, self.server).await
+        run_plugin_inner(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server).await
     }
 }
 
