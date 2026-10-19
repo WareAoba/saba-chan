@@ -462,8 +462,17 @@ async fn a_failed_step_stops_the_plan_and_the_rest_is_skipped() {
         { "id": "backup.create", "instance": "@1", "input": {} },
     ]);
     let planned = plan_steps(&state, &steps, &gui()).await.unwrap();
-    // 빈 lifecycle.py라 시작이 실패한다
-    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap();
+    // 빈 lifecycle.py라 시작이 실패한다. 느린 러너에서는 실행이 뒤로 넘어가므로(`running`) 끝날 때까지 본다
+    let mut done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap();
+    let waited = std::time::Instant::now();
+    while done["running"] == true {
+        assert!(waited.elapsed() < std::time::Duration::from_secs(180), "the plan never finished: {}", done);
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let status = run_status(done["runId"].as_str().unwrap(), &gui()).unwrap();
+        if status["done"] == true {
+            done = status["result"].clone();
+        }
+    }
     assert_eq!((done["success"].as_bool(), done["stoppedAt"].as_i64()), (Some(false), Some(2)), "{}", done);
     let statuses: Vec<&str> = done["steps"].as_array().unwrap().iter().map(|s| s["status"].as_str().unwrap()).collect();
     assert_eq!(statuses, ["done", "failed", "skipped"]);
