@@ -2678,6 +2678,7 @@ impl Supervisor {
         roots
     }
 
+    #[cfg(test)]
     pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
         self.monitor_processes_taken_at(process_snapshot, u64::MAX).await
     }
