@@ -806,12 +806,13 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
 
 /// `bot config` 한 칸의 값 (C14). 키는 데몬 기본값의 모양으로 확인한다: 정해진 칸 아래는 있는 키만,
 /// 비어 있는 표(별명 등) 아래는 새 키도. 데몬은 모르는 키를 버리므로 저장했다고 말하기 전에 막는다.
-/// 값은 지금 값(없으면 기본값)의 형식으로, 빈 값은 그 형식의 빈 값(표의 키는 지운다)
+/// 값은 지금 값(없으면 기본값)의 형식으로, 빈 값은 그 형식의 빈 값(이름이 자유로운 표 아래의 키는 지운다)
 fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Value> {
     let mut shape = defaults;
+    let mut free = false;
     for part in key.split('.') {
         match shape.as_object() {
-            Some(m) if m.is_empty() => break,
+            Some(m) if m.is_empty() => { free = true; break }
             Some(m) if m.contains_key(part) => shape = &m[part],
             _ => {
                 let mut rows = Vec::new();
@@ -824,6 +825,7 @@ fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Valu
     let current = get_path(cfg, key).or_else(|| get_path(defaults, key));
     if raw.is_empty() {
         return Ok(match current {
+            _ if free => Value::Null,
             Some(Value::Array(_)) => json!([]),
             Some(Value::String(_)) => json!(""),
             _ => Value::Null,
@@ -850,6 +852,9 @@ mod tests {
         assert_eq!(bot_value(&cfg, &defaults, "cloud.relayUrl", "https://b").unwrap(), json!("https://b"));
         // 이름이 자유로운 칸(별명 표) 아래에는 새 키를 둘 수 있다
         assert_eq!(bot_value(&cfg, &defaults, "moduleAliases.palworld", "pal").unwrap(), json!("pal"));
+        // 자유로운 칸 아래의 빈 값은 그 키를 지운다
+        let cfg2 = json!({ "moduleAliases": { "palworld": "pal" } });
+        assert_eq!(bot_value(&cfg2, &defaults, "moduleAliases.palworld", "").unwrap(), Value::Null);
         // 모르는 키는 거절 (최상위 오타, 정해진 칸 아래 오타)
         assert!(bot_value(&cfg, &defaults, "prefix", "x").is_err());
         assert!(bot_value(&cfg, &defaults, "cloud.relayurl", "x").is_err());
