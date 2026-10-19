@@ -48,6 +48,7 @@
     "offer_start": "Jetzt mit dem Bot verbinden?",
     "pair_enter": "Führe in Discord `/saba connect` aus und gib diesen Code ein:",
     "pair_expired": "Der Kopplungscode ist abgelaufen. Führe bot pair erneut aus.",
+    "pair_token_not_saved": "Discord ist verbunden, aber die Verbindungsdaten konnten auf diesem PC nicht gespeichert werden. Führe bot pair erneut aus.",
     "pair_no_code": "Das Relay hat keinen Kopplungscode zurückgegeben.",
     "pair_polling": "Warte auf Discord...",
     "pair_waiting": "Drücke Strg+C zum Abbrechen.",

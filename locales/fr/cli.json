@@ -48,6 +48,7 @@
     "offer_start": "Se connecter au bot maintenant ?",
     "pair_enter": "Dans Discord, lancez `/saba connect` et saisissez ce code :",
     "pair_expired": "Le code d'appairage a expiré. Relancez bot pair.",
+    "pair_token_not_saved": "Discord a accepté le code, mais la connexion n'a pas pu être enregistrée sur ce PC. Relancez bot pair.",
     "pair_no_code": "Le relais n'a renvoyé aucun code d'appairage.",
     "pair_polling": "En attente de Discord...",
     "pair_waiting": "Appuyez sur Ctrl+C pour annuler.",

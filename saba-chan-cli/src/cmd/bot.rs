@@ -223,7 +223,11 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
         ctx.api.save_bot_config(json!({ "cloud": cloud.clone() })).await?;
     }
     let relay = relay_url.or_else(|| relay_of(&cfg).map(str::to_string));
-    let claimed = wait_for_claim(ctx, relay.as_deref()).await;
+    // 데몬이 토큰을 저장하지 못했으면(수령 기한이 지났거나 쓰기 실패) 끝나지 않은 페어링이다 (R15)
+    let claimed = wait_for_claim(ctx, relay.as_deref()).await.and_then(|r| match r {
+        Some(r) if !token_saved(&r) => Err(failed(t!("bot.pair_token_not_saved"))),
+        r => Ok(r),
+    });
     // 페어링이 끝나지 않았으면 예전 릴레이로 되돌린다 (그대로 두면 다음 재시작에 기존 토큰을 새 주소로 보낸다).
     // 끝난 뒤의 오류는 되돌리지 않는다: 데몬은 이미 새 릴레이의 토큰을 저장했다.
     // `--json`으로 코드만 낸 경우도 그대로 둔다: 이어서 기다리는 쪽이 새 릴레이로 claim을 받는다
@@ -291,6 +295,14 @@ async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>>
     };
     spin.finish_and_clear();
     Ok(Some(result))
+}
+
+/// 이 PC에 노드 토큰이 저장됐는지: 데몬의 `tokenSaved`, 없으면(옛 데몬) 받은 `nodeToken`이 있는지
+fn token_saved(result: &Value) -> bool {
+    match result.get("tokenSaved").and_then(Value::as_bool) {
+        Some(saved) => saved,
+        None => !s(result, "nodeToken").is_empty(),
+    }
 }
 
 /// 코드 유효기간(릴레이 5분)에 여유를 더한 시간. 릴레이가 `expired`를 알려 주지 못해도 여기서 멈춘다
@@ -878,6 +890,18 @@ fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 페어링 결과: 이 PC에 노드 토큰이 저장됐을 때만 연결됨 (R15). 옛 데몬은 tokenSaved 없이 nodeToken만 준다
+    #[test]
+    fn pairing_counts_only_when_the_token_was_saved_on_this_pc() {
+        assert!(token_saved(&json!({ "status": "claimed", "nodeToken": "t", "tokenSaved": true })));
+        assert!(!token_saved(&json!({ "status": "claimed", "nodeToken": null, "tokenSaved": false })));
+        // 쓰기 실패: 토큰은 받았지만 저장하지 못했다
+        assert!(!token_saved(&json!({ "status": "claimed", "nodeToken": "t", "tokenSaved": false })));
+        // 옛 데몬
+        assert!(token_saved(&json!({ "status": "claimed", "nodeToken": "t" })));
+        assert!(!token_saved(&json!({ "status": "claimed", "nodeToken": null })));
+    }
 
     /// 페어링 대기는 끝이 있다 (R18): 상태 조회가 연달아 실패하거나 코드 유효기간이 지나면 멈춘다
     #[test]
