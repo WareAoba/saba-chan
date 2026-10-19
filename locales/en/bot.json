@@ -289,7 +289,7 @@
       "enabled": "On",
       "model": "Model",
       "memo": "Server prompt",
-      "confirmCommands": "Confirm commands",
+      "confirmCommands": "Always ask for caution commands",
       "memory": "Memory",
       "webSearch": "Web search",
       "disabledTools": "Disabled tool sets",
