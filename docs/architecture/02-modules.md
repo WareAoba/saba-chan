@@ -276,6 +276,7 @@ players = "player_count"
   - `PYTHONPATH` = `<python-guard>` + `<extensions_dir의 부모>` + `<modules_dir>` + 기존 `PYTHONPATH`.
     - 그래서 `import extensions.steamcmd`, `import daemon_rcon`, `import i18n`이 가능하다.
     - `python-guard/sitecustomize.py`는 활성 목록에 없는 `extensions.<이름>` import를 막는다 (`:114-126`).
+    - 격리 없이 도는 실행(확인된 모듈·익스텐션, Windows)은 확인된 익스텐션만 import한다: 확인되지 않은(공식이 아니거나 고쳐진) 활성 익스텐션은 `SABA_ENABLED_EXTENSIONS`에서 빠지고 `SABA_UNVERIFIED_EXTENSIONS`에 들어가, import하면 "not verified" `ModuleNotFoundError`가 난다(`plugin::importable_extensions`). 그 코드가 격리 없이 그 실행의 권한(토큰 경로 등)으로 돌지 않게 한다. 격리된 실행은 활성 익스텐션을 모두 import한다(같은 격리 안에서 돈다). 격리 준비가 실패해 사용자 동의로 격리 없이 도는 실행(`Spawned::Unisolated`)은 격리 없는 실행과 같이 확인된 익스텐션만 import한다(동의는 그 구성요소 하나에 대한 것이다).
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:126-147`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:315-322`). 목록이 없으면 빈 값이다.
   - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-38`).
@@ -302,6 +303,7 @@ players = "player_count"
   - `extra_args_placed: true`: 받은 `extra_args`를 모듈이 알맞은 자리(예: JVM 인자는 `-jar` 앞)에 넣었다. 없으면 데몬이 `args` 끝에 붙인다(`supervisor::launch_args`).
 - `get_launch_command` 사용자 조치 필요: `action_required: "<code>"`를 넣으면 데몬이 결과를 그대로 GUI에 넘긴다 (`mod.rs:795-799, 1524-1527`). minecraft는 `server_jar_not_found` + `options:["update_path","install_new"]`를 쓴다.
 - 익스텐션 누락: `error_code: "extension_required"`, `missing_extensions[]`.
+- 데몬은 그 실행에서 확인되지 않아 import를 막은 익스텐션(`SABA_UNVERIFIED_EXTENSIONS`)만으로 `missing_extensions`가 채워진 `extension_required`를 `error_code: "extension_not_verified"`, `unverified_extensions[]`, 영문 `message`로 바꿔 돌려준다(`plugin/mod.rs` `explain_unverified_extensions`). 모듈이 import 실패를 삼켜도 설치·활성화 안내 대신 "파일이 바뀌어 확인되지 않음"이 보이게 하려는 것이다.
 - `status`: `status` 문자열과 `pid`를 데몬이 읽는다. 나머지 키는 버린다 (`mod.rs:1182-1197`).
 - `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance.rs:531-559`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
 - `list_versions`: 데몬은 `latest.release` 또는 `latest_release`만 읽는다 (`instance.rs:461-476`).

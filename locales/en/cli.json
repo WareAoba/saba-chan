@@ -209,6 +209,7 @@
     "hint": {
       "executable_missing": "Server files are missing. Check the folder or reinstall: saba-chan-cli server update",
       "extension_required": "Install the required extensions: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "These extensions changed and could not be verified: {{ids}}. Reinstall them or restore the original files: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",

@@ -329,6 +329,47 @@ mod windows_job {
     }
 }
 
+/// 이 실행이 import할 수 있는 익스텐션과 확인되지 않아 뺀 익스텐션. 격리 없이 도는 실행(확인된 모듈 등)이
+/// 확인되지 않은 익스텐션을 import하면 그 코드가 격리·검사 없이 그 실행의 권한(데몬 토큰 경로 등)으로 돈다
+fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+    if isolated {
+        return (enabled, Vec::new());
+    }
+    enabled.into_iter().partition(|id| !unverified(id))
+}
+
+/// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다. 확인되지 않아 뺀 것을 돌려준다
+fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool) -> Vec<String> {
+    let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
+        crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
+    });
+    cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
+    // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
+    cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
+    unverified
+}
+
+/// 모듈이 import 실패를 삼키고 `extension_required`로 답해도(팰월드는 맨 위에서 ue4_ini import 실패를 받아 둔다),
+/// 빠진 익스텐션이 모두 확인되지 않아 막은 것이면 설치·활성화 안내 대신 `extension_not_verified`로 바꾼다
+fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
+    if result.get("error_code").and_then(Value::as_str) != Some("extension_required") || unverified.is_empty() {
+        return;
+    }
+    let same = |a: &str, b: &str| a.replace('_', "-").eq_ignore_ascii_case(&b.replace('_', "-"));
+    let missing: Vec<String> = result.get("missing_extensions").and_then(Value::as_array).into_iter().flatten()
+        .filter_map(Value::as_str).map(str::to_string).collect();
+    let blocked: Vec<&String> = unverified.iter().filter(|u| missing.iter().any(|m| same(m, u))).collect();
+    if missing.is_empty() || blocked.len() < missing.len() {
+        return;
+    }
+    result["error_code"] = serde_json::json!("extension_not_verified");
+    result["unverified_extensions"] = serde_json::json!(blocked);
+    result["message"] = serde_json::json!(format!(
+        "Extension(s) {} changed and could not be verified. Reinstall them or restore the original files.",
+        blocked.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+    ));
+}
+
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
@@ -365,6 +406,9 @@ async fn run_plugin_inner(
         .env("PYTHONUNBUFFERED", "1")
         .envs(daemon_env());
 
+    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
+    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
+
     // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
     #[cfg(windows)]
     const PYPATH_SEP: char = ';';
@@ -372,6 +416,8 @@ async fn run_plugin_inner(
     const PYPATH_SEP: char = ':';
     let mut paths: Vec<String> = Vec::new();
     // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
+    let mut enabled_extensions: Option<Vec<String>> = None;
+    let mut unverified_extensions = Vec::new();
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
         let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
@@ -379,7 +425,8 @@ async fn run_plugin_inner(
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
-        cmd.env("SABA_ENABLED_EXTENSIONS", enabled.unwrap_or_default().join(","));
+        enabled_extensions = Some(enabled.unwrap_or_default());
+        unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some());
 
         let mut pypath = extensions_dir.parent()
             .unwrap_or(&extensions_dir)
@@ -414,8 +461,6 @@ async fn run_plugin_inner(
         cmd.env("SABA_JAVA_RUNTIMES", runtimes);
     }
 
-    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
-    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
     if let Some(iso) = &isolation {
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
             .env("TEMP", &iso.temp)
@@ -437,7 +482,13 @@ async fn run_plugin_inner(
     let mut child = match &isolation {
         None => plain(cmd.spawn()?),
         Some(iso) => match crate::sandbox::spawn_isolated(cmd.as_std(), iso).await {
-            Ok(crate::sandbox::Spawned::Unisolated) => plain(cmd.spawn()?),
+            Ok(crate::sandbox::Spawned::Unisolated) => {
+                // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
+                if let Some(enabled) = enabled_extensions {
+                    unverified_extensions = set_extension_env(&mut cmd, enabled, false);
+                }
+                plain(cmd.spawn()?)
+            }
             #[cfg(windows)]
             Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
             Err(blocked) => {
@@ -457,8 +508,9 @@ async fn run_plugin_inner(
             }
 
             match parse_plugin_output(&stdout_str) {
-                Ok(result) => {
+                Ok(mut result) => {
                     tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
+                    explain_unverified_extensions(&mut result, &unverified_extensions);
                     Ok(result)
                 }
                 Err(e) => {
@@ -571,6 +623,15 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 격리 없이 도는 실행은 확인된 익스텐션만 import한다. 격리된 실행은 활성 익스텐션을 모두 쓴다(같은 격리 안에서 돈다)
+    #[test]
+    fn an_unisolated_run_imports_only_verified_extensions() {
+        let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string()];
+        let unverified = |id: &str| id == "ue4-ini";
+        assert_eq!(importable_extensions(enabled.clone(), false, unverified), (vec!["steamcmd".to_string()], vec!["ue4-ini".to_string()]));
+        assert_eq!(importable_extensions(enabled.clone(), true, unverified), (enabled, vec![]));
+    }
     use serde_json::json;
 
     #[test]
@@ -688,8 +749,13 @@ mod tests {
     }
 
     /// 가드는 활성 목록에 없는 `extensions.<이름>` import만 막는다 (`-`와 `_`는 같다)
-    #[test]
-    fn import_guard_blocks_only_disabled_extensions() {
+    #[tokio::test]
+    async fn import_guard_blocks_only_disabled_extensions() {
+        // PATH의 첫 python이 Windows 스토어 스텁일 수 있으므로 데몬과 같은 탐지로 실제 인터프리터를 고른다
+        let Ok(python) = crate::python_env::detect_system_python().await else {
+            eprintln!("SKIP: Python >= 3.10 not found (python, python3, py)");
+            return;
+        };
         let tmp = tempfile::tempdir().unwrap();
         let guard = tmp.path().join("guard");
         std::fs::create_dir_all(&guard).unwrap();
@@ -702,16 +768,28 @@ mod tests {
         let sep = if cfg!(windows) { ";" } else { ":" };
         let pypath = format!("{}{}{}", guard.display(), sep, tmp.path().join("root").display());
         let probe = "import importlib\nfor m in ('steamcmd', 'ue4_ini'):\n    try:\n        importlib.import_module('extensions.' + m); print(m, 'ok')\n    except ImportError:\n        print(m, 'blocked')";
-        let Ok(out) = std::process::Command::new(if cfg!(windows) { "python" } else { "python3" })
+        let out = std::process::Command::new(&python)
             .args(["-c", probe])
             .env("PYTHONPATH", pypath)
             .env("SABA_ENABLED_EXTENSIONS", "ue4-ini")
             .output()
-        else {
-            eprintln!("SKIP: python not found");
-            return;
-        };
+            .expect("detected python must run");
         assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), "steamcmd blocked\nue4_ini ok");
+    }
+
+    // PC 실사용: 바뀐 ue4-ini를 확인된 팰월드가 import하지 못했는데, 모듈이 실패를 삼켜 "설치하고 활성화하세요"가 떴다
+    #[test]
+    fn a_blocked_unverified_extension_is_reported_as_unverified() {
+        let unverified = vec!["ue4-ini".to_string()];
+        let mut blocked = json!({"success": false, "error_code": "extension_required", "missing_extensions": ["ue4_ini"], "message": "install it"});
+        explain_unverified_extensions(&mut blocked, &unverified);
+        assert_eq!(blocked["error_code"], "extension_not_verified");
+        assert_eq!(blocked["unverified_extensions"], json!(["ue4-ini"]));
+
+        // 정말 빠진 것이 섞여 있으면 설치 안내가 맞다
+        let mut missing = json!({"error_code": "extension_required", "missing_extensions": ["ue4-ini", "steamcmd"]});
+        explain_unverified_extensions(&mut missing, &unverified);
+        assert_eq!(missing["error_code"], "extension_required");
     }
 
     #[test]
