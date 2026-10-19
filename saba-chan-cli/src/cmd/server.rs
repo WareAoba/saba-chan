@@ -1079,19 +1079,11 @@ fn setting_fields(module: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-/// 인스턴스 최상위에 있는 공통 칸과 그 형식 (데몬 `update_instance_settings`의 known_fields)
-const COMMON: &[(&str, &str)] = &[
-    ("port", "number"),
-    ("rest_host", "text"),
-    ("rest_port", "number"),
-    ("rest_username", "text"),
-    ("rest_password", "password"),
-    ("executable_path", "text"),
-    ("protocol_mode", "text"),
-    ("server_version", "text"),
-    // 메모리 상한(MiB). 비우면 제한 없음 (Windows만 적용)
-    ("memory_limit_mb", "number"),
-];
+/// 모듈이 선언하지 않아도 모든 서버에 있는 칸과 그 형식: 인스턴스 공통 칸과 데몬이 읽는 설정 (데몬과 같은 표)
+fn common() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    use saba_chan_updater_lib::constants::{DAEMON_SETTINGS, INSTANCE_FIELDS};
+    INSTANCE_FIELDS.iter().chain(DAEMON_SETTINGS)
+}
 
 /// KEY=VALUE 하나를 PATCH 키와 형식 맞춘 값으로. `ext.키`는 extension_data, 빈 값은 지우기(null).
 /// 모듈 정의에도, 공통 칸에도, 지금 값에도 없는 키 (오타일 가능성이 높다)
@@ -1099,7 +1091,7 @@ fn unknown_setting(fields: &[Value], key: &str) -> anyhow::Error {
     let names: Vec<String> = fields
         .iter()
         .map(|f| s(f, "name").to_string())
-        .chain(COMMON.iter().map(|(k, _)| k.to_string()))
+        .chain(common().map(|(k, _)| k.to_string()))
         .collect();
     let suggestions = match resolve::find(&names, key, |n| vec![n.clone()], |n| n.clone()) {
         resolve::Found::None(s) => s,
@@ -1127,7 +1119,7 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         .iter()
         .find(|f| s(f, "name") == key)
         .map(|f| s(f, "field_type").to_string())
-        .or_else(|| COMMON.iter().find(|(k, _)| *k == key).map(|(_, t)| t.to_string()))
+        .or_else(|| common().find(|(k, _)| *k == key).map(|(_, t)| t.to_string()))
         .or_else(|| {
             // 정의에 없는 키는 지금 값의 형식을 따른다
             let cur = instance
@@ -1141,7 +1133,7 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         })
         .ok_or_else(|| unknown_setting(fields, key))?;
     // 공통 칸은 빈 값이 지우기다 (예: `memory_limit_mb=` → 제한 없음)
-    if raw.trim().is_empty() && COMMON.iter().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
+    if raw.trim().is_empty() && common().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
         return Ok((key.to_string(), Value::Null));
     }
     let field = fields.iter().find(|f| s(f, "name") == key);
@@ -1243,13 +1235,25 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             );
             seen.push(name.to_string());
         }
-        for (k, _) in COMMON {
+        for (k, _) in saba_chan_updater_lib::constants::INSTANCE_FIELDS {
             if seen.iter().any(|s| s == k) {
                 continue;
             }
             if let Some(val) = sv.raw.get(*k).filter(|v| !v.is_null()) {
                 push("saba-chan", output::dim(&format!("[{}]", k)), output::mask(k, val));
             }
+        }
+        // 데몬이 읽는 설정은 값이 없어도 보인다: 바꿀 수 있다는 것을 알 수 있게
+        for (k, _) in saba_chan_updater_lib::constants::DAEMON_SETTINGS {
+            if seen.iter().any(|s| s == k) {
+                continue;
+            }
+            let shown = match ms.get(*k).filter(|v| !v.is_null()) {
+                Some(val) => output::mask(k, val),
+                None => output::dim(&format!("({})", t!("set.default"))),
+            };
+            push("saba-chan", output::dim(&format!("[{}]", k)), shown);
+            seen.push(k.to_string());
         }
         if let Some(map) = ms.as_object() {
             for (k, val) in map.iter().filter(|(k, _)| !seen.contains(k)) {
@@ -1619,6 +1623,19 @@ mod tests {
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
         let (k, v) = typed_setting(&fields, &inst, "ext.box", "").unwrap();
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
+    }
+
+    /// 새 서버(아직 값이 없음)에서도 데몬이 읽는 설정(auto_restart 등)과 공통 칸을 받는다 (C1)
+    #[test]
+    fn daemon_settings_are_accepted_on_a_new_server() {
+        let fields = vec![json!({ "name": "max_players", "field_type": "number" })];
+        let fresh = json!({ "module_settings": {} });
+        assert_eq!(typed_setting(&fields, &fresh, "auto_restart", "off").unwrap().1, json!(false));
+        assert_eq!(typed_setting(&fields, &fresh, "restart_on_unknown_exit", "on").unwrap().1, json!(true));
+        assert_eq!(typed_setting(&fields, &fresh, "managed_start", "false").unwrap().1, json!(false));
+        assert_eq!(typed_setting(&fields, &fresh, "log_sessions_keep", "5").unwrap().1, json!(5));
+        assert_eq!(typed_setting(&fields, &fresh, "extra_args", "-nogui -x").unwrap().1, json!("-nogui -x"));
+        assert_eq!(typed_setting(&fields, &fresh, "working_dir", "D:/srv").unwrap().1, json!("D:/srv"));
     }
 
     #[test]
