@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useInstanceMaintenance, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
 import { useServerStore } from '../../stores/useServerStore';
-import { STATUS_TONE, initials, playersText, primaryAction, viewStatus } from '../../utils/serverView';
+import { STATUS_TONE, gameNameOf, initials, playersText, primaryAction, viewStatus } from '../../utils/serverView';
 import { DataBadges } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
@@ -31,9 +31,7 @@ export function ServerRow({
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);
     const action = primaryAction(status);
-    const gameName = t(`mod_${server.module}:module.display_name`, {
-        defaultValue: moduleData?.game_name || server.module,
-    });
+    const gameName = gameNameOf(t, server.module, moduleData);
     const statusLabel = t(`shell.status_${status}`);
     const players = playersText(server);
 

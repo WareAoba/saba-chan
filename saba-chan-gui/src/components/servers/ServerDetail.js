@@ -10,6 +10,7 @@ import { useUIStore } from '../../stores/useUIStore';
 import {
     STATUS_TONE,
     consoleQuickCommands,
+    gameNameOf,
     initials,
     interactionOf,
     playersText,
@@ -62,9 +63,7 @@ export function ServerDetail({
     );
     const action = primaryAction(status);
     const interaction = interactionOf(server, moduleData);
-    const gameName = t(`mod_${server.module}:module.display_name`, {
-        defaultValue: moduleData?.game_name || server.module,
-    });
+    const gameName = gameNameOf(t, server.module, moduleData);
 
     const tabs = [
         interaction.console && {

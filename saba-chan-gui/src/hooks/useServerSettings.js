@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { launchDraft } from '../components/servers/LaunchPreview';
-import { createTranslateError, safeShowToast } from '../utils/helpers';
+import { busyMessage, createTranslateError, safeShowToast } from '../utils/helpers';
+import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { useModalClose } from './useModalClose';
 
@@ -267,27 +268,26 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         setSettingsValues((prev) => ({ ...prev, [fieldName]: String(value) }));
     };
 
-    // 데몬이 켜져 있거나(server_running) 다른 작업 중이라(instance_busy) 거절한 이유
-    const busyMessage = (code, runningKey) => {
-        if (code === 'server_running') return t(`server_settings.${runningKey}`);
-        if (code === 'instance_busy') return t('server_settings.instance_busy');
-        return null;
-    };
-
     // ── handleInstallVersion ────────────────────────────────
     const handleInstallVersion = async () => {
         if (!settingsServer || !settingsValues.server_version) return;
         const version = settingsValues.server_version;
         const serverName = settingsServer.name;
         const module = settingsServer.module;
+        const game = gameNameOf(
+            t,
+            module,
+            modules.find((m) => m.name === module),
+        );
 
         setModal({
             type: 'question',
             title: t('server_settings.install_version_confirm_title', { defaultValue: 'Install Server Version' }),
             message: t('server_settings.install_version_confirm', {
+                game,
                 version,
                 name: serverName,
-                defaultValue: `Install Minecraft ${version} for server '${serverName}'?\n\nThis will download and replace the server JAR file.`,
+                defaultValue: `Install ${game} ${version} for server '${serverName}'?\n\nThis will download and replace the server files.`,
             }),
             buttons: [
                 {
@@ -297,7 +297,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         const request = openRequest.current;
                         setModal(null);
                         setVersionInstalling(true);
-                        setProgressBar({ message: t('servers.progress_downloading', { version }), percent: 0 });
+                        setProgressBar({ message: t('servers.progress_downloading', { game, version }), percent: 0 });
                         try {
                             const srv = servers.find((s) => s.id === settingsServer.id);
                             const workDir = srv?.module_settings?.working_dir || srv?.working_dir || null;
@@ -347,7 +347,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             if (installResult.error || installResult.success === false) {
                                 setProgressBar(null);
                                 safeShowToast(
-                                    busyMessage(installResult.error_code, 'install_server_running') ||
+                                    busyMessage(t, installResult.error_code, 'install_server_running') ||
                                         translateError(installResult.error || installResult.message),
                                     'error',
                                     4000,
@@ -383,8 +383,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             setTimeout(() => setProgressBar(null), 2000);
 
                             const msg = installResult.java_warning
-                                ? `${t('servers.install_completed', { version })}\n⚠️ ${installResult.java_warning}`
-                                : t('servers.install_completed', { version });
+                                ? `${t('servers.install_completed', { game, version })}\n⚠️ ${installResult.java_warning}`
+                                : t('servers.install_completed', { game, version });
                             safeShowToast(msg, 'success', 5000);
                             await fetchServers();
                         } catch (err) {
@@ -435,7 +435,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 safeShowToast(
                                     t('server_settings.reset_failed', {
                                         error:
-                                            busyMessage(result?.error_code, 'reset_server_running') ||
+                                            busyMessage(t, result?.error_code, 'reset_server_running') ||
                                             translateError(result?.error || result?.message || ''),
                                         defaultValue: 'Reset failed',
                                     }),

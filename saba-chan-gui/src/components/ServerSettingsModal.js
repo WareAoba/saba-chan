@@ -337,7 +337,7 @@ function GeneralTab({
                                             <small className="field-description">
                                                 {t('server_settings.version_description_install', {
                                                     defaultValue:
-                                                        'Select a version and click Install to download the server JAR.',
+                                                        'Select a version and click Install to download the server files.',
                                                 })}
                                             </small>
                                         </div>
