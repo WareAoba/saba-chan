@@ -42,6 +42,9 @@ import { openWithNotice } from './utils/helpers';
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
 import './styles/motion.css';
+/** 로딩 화면이 사라지는 움직임 길이 (App.css의 loading-leave와 같다) */
+const LOADING_LEAVE_MS = 700;
+
 function App() {
     const { t, i18n } = useTranslation('gui');
 
@@ -592,8 +595,21 @@ function App() {
         setServersInitializing(false);
     };
 
+    // 로딩이 끝나면 로딩 화면을 바로 지우지 않고 메인 화면 위에서 잠깐 사라지게 둔다
+    const showLoading = !daemonReady || serversInitializing;
+    const [loadingLeaving, setLoadingLeaving] = useState(false);
+    const wasLoadingRef = useRef(showLoading);
+    useEffect(() => {
+        const was = wasLoadingRef.current;
+        wasLoadingRef.current = showLoading;
+        if (!was || showLoading) return undefined;
+        setLoadingLeaving(true);
+        const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
+        return () => clearTimeout(timer);
+    }, [showLoading]);
+
     // Loading screen (daemon not ready or servers still initializing)
-    if (!daemonReady || serversInitializing) {
+    if (showLoading) {
         return (
             <>
                 <LoadingScreen
@@ -922,6 +938,9 @@ function App() {
 
                     {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                 </div>
+                {loadingLeaving && (
+                    <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
+                )}
             </TooltipProvider>
         </ExtensionProvider>
     );
