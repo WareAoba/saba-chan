@@ -3789,3 +3789,8 @@
 .data-transfer-skip {
     color: var(--text-2);
 }
+
+/* 서버 만들기·가져오기의 신뢰 안내 (as-body-stack이 간격을 준다) */
+.trust-create-notice {
+    margin-bottom: 0;
+}
