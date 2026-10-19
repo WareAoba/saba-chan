@@ -141,6 +141,11 @@ pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
     }
 }
 
+/// zip의 노드 토큰을 이 PC에 쓸 것인가: 이 PC가 아직 페어링되지 않았을 때만
+fn takes_node_token(bundle: &Bundle) -> bool {
+    bundle.node_token.is_some() && !std::fs::read_to_string(node_token_path()).is_ok_and(|t| !t.trim().is_empty())
+}
+
 /// 가져올 인스턴스마다 넣을지 건너뛸지
 #[derive(Debug, PartialEq)]
 pub(crate) enum Verdict {
@@ -271,8 +276,14 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         Ok(b) => b,
         Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_ARCHIVE", e.to_string()),
     };
-    // 설정이 잘못된 zip이면 인스턴스·노드 토큰을 바꾸기 전에 멈춘다
-    if let Err(e) = state.config_store.check_sections(&bundle.config).await {
+    // 설정이 잘못된 zip이면 인스턴스·노드 토큰을 바꾸기 전에 멈춘다.
+    // 토큰을 가져오지 않으면 릴레이 연결 정보는 아래에서 버려지므로 검사하지 않는다
+    let takes = takes_node_token(&bundle);
+    let mut checked = bundle.config.clone();
+    if !takes {
+        keep_local_pairing(&mut checked);
+    }
+    if let Err(e) = state.config_store.check_sections(&checked).await {
         return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
     }
 
@@ -330,7 +341,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     // 이 PC가 이미 페어링돼 있으면 그 토큰을 둔다
     let node_token = match bundle.node_token {
         None => Value::Null,
-        Some(_) if std::fs::read_to_string(node_token_path()).is_ok_and(|t| !t.trim().is_empty()) => json!("kept"),
+        Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
         Some(token) => match std::fs::write(node_token_path(), token) {
             Ok(()) => json!("imported"),
@@ -474,6 +485,22 @@ mod tests {
         assert_eq!(res.body["error_code"], "INVALID_CONFIG", "{}", res.body);
         let sup = state.supervisor.read().await;
         assert_eq!(sup.instance_store.get("a").unwrap().name, "old");
+    }
+
+    /// 토큰 없이 가져오면 zip의 릴레이 연결 정보는 버려진다: 그 안의 옛 http 주소로 가져오기 전체를 막지 않는다
+    #[tokio::test]
+    async fn a_relay_address_the_import_drops_is_not_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Map::new();
+        config.insert("relay".into(), json!({ "prefixes": ["!s"], "cloud": { "relayUrl": "http://old.example", "hostId": "old" } }));
+        let bundle = Bundle { meta: meta(), config, instances: vec![], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, None).await;
+        let req: ImportRequest = serde_json::from_value(json!({ "path": path })).unwrap();
+        let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
+        assert_eq!(res.body["success"], true, "{}", res.body);
+        let bot = state.config_store.get_bot_config().await;
+        assert_eq!(bot.prefixes, vec!["!s"]);
+        assert_ne!(bot.cloud.relay_url, "http://old.example");
     }
 
     /// 설치·백업·복원이 쥔 인스턴스는 덮어쓰지 않는다: 작업이 옛 설정과 폴더로 계속 돈다

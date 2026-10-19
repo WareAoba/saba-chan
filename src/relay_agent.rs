@@ -90,15 +90,22 @@ impl RelayAgent {
     }
 
     /// 에이전트를 시작합니다. 이미 돌고 있으면 그대로 둡니다.
-    pub async fn start(&self, server: IPCServer) -> Result<(), String> {
+    pub async fn start(&self, server: IPCServer) -> Result<(), StartError> {
         // 세션은 시작할 때의 주소·토큰 쌍만 쓴다: 주소나 토큰이 바뀌면 새 세션이 시작된다
         let Some(node_token) = load_node_token().filter(|t| parse_node_token(t).is_some()) else {
-            return Err("node token missing or malformed — pair this node first".into());
+            return Err(StartError { code: "node_token_missing", message: "node token missing or malformed — pair this node first".into() });
         };
-        let relay_url = {
-            let bot = server.config_store.get_bot_config().await;
-            let url = bot.cloud.relay_url.trim().to_string();
-            resolve_relay_url(Some(url.as_str()))
+        let relay_url = match session_relay_url(&server.config_store.get_bot_config().await.cloud.relay_url) {
+            Ok(url) => url,
+            Err(e) => {
+                // 돌던 세션은 없다: 상태에 이유를 남겨 클라이언트가 보이게 한다
+                let mut inner = self.lock();
+                if inner.cancel.is_none() {
+                    inner.status.last_error = Some(e.message.clone());
+                    inner.status.last_error_code = Some(e.code);
+                }
+                return Err(e);
+            }
         };
         let (cancel, generation) = {
             let mut inner = self.lock();
@@ -202,7 +209,23 @@ pub async fn restart(server: &IPCServer) {
 
 pub async fn auto_start(server: &IPCServer) {
     if let Err(e) = server.relay_agent.start(server.clone()).await {
-        tracing::info!("[RelayAgent] not started: {}", e);
+        tracing::info!("[RelayAgent] not started: {}", e.message);
+    }
+}
+
+/// 에이전트를 띄우지 못한 이유. `code`는 API의 `error_code`다
+#[derive(Debug)]
+pub struct StartError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+/// 세션의 릴레이 주소. 노드 토큰이 평문으로 나가지 않게 https(또는 루프백 http 모의 릴레이)만 쓴다.
+/// 저장할 때 막는 규칙(`relay_url_problem`)을 예전에 저장된 값에도 적용한다
+fn session_relay_url(configured: &str) -> Result<String, StartError> {
+    match crate::config_store::relay_url_problem(configured) {
+        Some(message) => Err(StartError { code: "invalid_relay_url", message }),
+        None => Ok(resolve_relay_url(Some(configured.trim()))),
     }
 }
 
@@ -1200,6 +1223,16 @@ mod tests {
         assert_eq!(res["success"], true, "{res}");
         let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
         assert!(at >= before && at <= now_ms());
+    }
+
+    /// 노드 토큰이 평문으로 나가지 않게: 이미 저장된 http 주소(루프백 제외)로는 세션을 열지 않는다
+    #[test]
+    fn a_session_only_opens_to_an_https_or_loopback_relay() {
+        assert_eq!(session_relay_url("").unwrap(), "https://saba-chan.online");
+        assert_eq!(session_relay_url(" https://my.relay/ ").unwrap(), "https://my.relay");
+        assert_eq!(session_relay_url("http://127.0.0.1:9000").unwrap(), "http://127.0.0.1:9000");
+        let err = session_relay_url("http://old.example").unwrap_err();
+        assert_eq!(err.code, "invalid_relay_url");
     }
 
     #[test]
