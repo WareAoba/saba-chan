@@ -1066,7 +1066,8 @@ mod imp {
             let exe = bin.join("server.exe");
             std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
             std::fs::write(dir.join("data.pak"), vec![0u8; 1 << 20]).unwrap();
-            let out = std::process::Command::new("compact").args(["/c", "/s", "/exe:xpress4k", "/q"]).arg(&dir).output().unwrap();
+            // compact는 `\\?\` 경로를 받지 않는다: 폴더 안에서 돌린다
+            let out = std::process::Command::new("compact").current_dir(tmp.path()).args(["/c", "/s", "/exe:xpress4k", "/q", "*"]).output().unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
             use std::os::windows::fs::MetadataExt;
             let compressed = std::fs::metadata(&exe).unwrap().file_attributes() & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT != 0;
