@@ -207,6 +207,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     setSettingsValues((prev) => ({ ...prev, ...patch }));
                     setSettingsSource('live');
                 } else {
+                    // 켜진 익스텐션 파일이 바뀌어 확인되지 않아 모듈이 읽지 못했다
+                    const blocked = blockedText(live, t);
+                    if (blocked) safeShowToast(blocked, 'warning', 8000);
                     console.warn('Live settings unavailable; only edited fields will be saved:', live?.error);
                     setSettingsSource('stored');
                 }
@@ -316,6 +319,14 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 version,
                                 install_dir: targetDir,
                             });
+
+                            const blocked = blockedText(installResult, t);
+                            if (blocked) {
+                                setProgressBar(null);
+                                setVersionInstalling(false);
+                                safeShowToast(blocked, 'error', 8000);
+                                return;
+                            }
 
                             if (installResult.error_code === 'extension_required') {
                                 setProgressBar(null);

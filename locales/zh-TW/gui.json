@@ -1102,7 +1102,8 @@
     "start_blocked": {
       "launch_outside_instance": "此未驗證模組試圖執行伺服器資料夾之外的程式：{{file}} 如果 Java 路徑是你自己設定的，請在伺服器設定中重新選擇。",
       "server_folder_label": "無法清理伺服器資料夾（{{file}}）上的權限標記，因此未啟動伺服器。請確認此帳戶能否變更該資料夾的權限。",
-      "sandbox_unavailable": "無法為 {{component}} 準備隔離環境，因此未執行。"
+      "sandbox_unavailable": "無法為 {{component}} 準備隔離環境，因此未執行。",
+      "extension_not_verified": "這些擴充功能的檔案已被變更，無法驗證：{{extensions}}。請重新安裝或還原原始檔案。"
     },
     "sandbox": {
       "title": "不隔離直接執行？",
