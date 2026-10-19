@@ -189,6 +189,17 @@ pub(crate) fn instance_busy() -> Response {
     error(StatusCode::CONFLICT, "instance_busy", "A backup, restore or update is running for this instance")
 }
 
+/// `also`의 경로를 더한다. 이미 담는 경로 안에 있는 것은 빼고, 담는 경로를 품는 것은 그 경로들을 대신한다
+fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
+    for path in also {
+        if !path.exists() || paths.iter().any(|p| path.starts_with(p)) {
+            continue;
+        }
+        paths.retain(|p| !p.starts_with(path));
+        paths.push(path.clone());
+    }
+}
+
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
 /// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
 async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Response> {
@@ -198,11 +209,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         }
         return Ok(None);
     };
-    for path in also {
-        if path.exists() && !plan.paths.iter().any(|p| path.starts_with(p) || p.starts_with(path)) {
-            plan.paths.push(path.clone());
-        }
-    }
+    add_paths(&mut plan.paths, also);
     if plan.paths.is_empty() {
         return Ok(None);
     }
@@ -792,6 +799,16 @@ mod tests {
         let refused = restore_backup(Path((id.clone(), old)), State(state.clone())).await;
         assert_eq!(code(refused).await, "restore_outside");
         assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
+    }
+
+    #[test]
+    fn a_restore_target_that_holds_a_planned_path_replaces_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let world = tmp.path().join("world");
+        std::fs::create_dir_all(world.join("region")).unwrap();
+        let mut paths = vec![world.join("region")];
+        add_paths(&mut paths, &[world.clone(), world.join("region"), tmp.path().join("missing")]);
+        assert_eq!(paths, vec![world]);
     }
 
     #[tokio::test]
