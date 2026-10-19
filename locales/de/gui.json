@@ -1094,10 +1094,7 @@
       "isolated": "Diese Komponente läuft isoliert (nur erlaubte Ordner)"
     },
     "start_blocked": {
-      "malware_detected": "Der Virenschutz hat eine Datei dieser nicht verifizierten Komponente gemeldet: {{file}}",
       "launch_outside_instance": "Dieses nicht verifizierte Modul wollte ein Programm außerhalb des Serverordners starten: {{file}} Wenn du den Java-Pfad selbst festgelegt hast, wähle ihn in den Servereinstellungen erneut aus.",
-      "unscannable_file": "Diese nicht verifizierte Komponente enthält kompilierte Dateien ohne Quelle und kann nicht geprüft werden: {{file}}",
-      "scan_failed": "Eine Datei dieser nicht verifizierten Komponente konnte nicht geprüft werden, daher wurde sie nicht ausgeführt: {{file}}",
       "sandbox_unavailable": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden, daher wurde sie nicht gestartet."
     },
     "sandbox": {

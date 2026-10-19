@@ -56,9 +56,6 @@ describe('신뢰 경고 알림', () => {
     });
 
     it('시작이 막힌 이유는 두 코드만 문구로 바꾸고, 나머지는 원래 흐름에 맡긴다', () => {
-        expect(blockedText({ success: false, action_required: 'malware_detected', file: 'a.py' }, t)).toBe(
-            'Antivirus flagged a file of this unverified component: a.py',
-        );
         expect(blockedText({ action_required: 'launch_outside_instance', file: 'C:/x.exe' }, t)).toMatch(
             /outside the server folder: C:\/x\.exe/,
         );
