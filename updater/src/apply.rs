@@ -166,8 +166,9 @@ impl UpdateManager {
         let backup = Self::move_aside(&target)?;
         if let Err(e) = std::fs::copy(staged, &target) {
             tracing::error!("[Updater] Replacing {} failed, restoring previous copy: {}", target.display(), e);
-            let _ = std::fs::remove_file(&target);
+            // 비켜 두지 못했으면(Unix의 덮어쓰기) 지우지 않는다: 원래 사본이 그대로 남아 있을 수 있다
             if let Some(backup) = &backup {
+                let _ = std::fs::remove_file(&target);
                 if let Err(re) = std::fs::rename(backup, &target) {
                     tracing::error!("[Updater] Restore of {} failed: {}", target.display(), re);
                 }

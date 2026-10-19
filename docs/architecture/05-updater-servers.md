@@ -75,13 +75,14 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | `Module(name)` | `module-{name}` | `modules_dir/{name}`을 zip 내용으로 교체. 백업은 `staging/{name}_backup` (`apply.rs:7-13`, `replace_dir` 24-62) | 1 |
 | `Extension(name)` | `ext-{name}` | `extensions_dir`에 교체. 하이픈은 언더스코어로 변환(`lib.rs:426-442`, `apply.rs:16-22`). 백업은 `{name}_ext_backup` | 1 |
 | `Locales` | `locales` | `install_root/locales`에 해제(`lib.rs:855-858`) | 1 |
+| `Installer` | `installer` | 설치 폴더의 `saba-chan-installer.exe`를 받은 exe로 교체(`apply.rs` `apply_installer_update`) | 1 |
 | `CoreDaemon` | `saba-core` | `apply_binary_update("saba-core")` | 3 |
 | `Gui` / `Cli` | `gui` / `cli` | 프로세스가 돌고 있으면 5, 아니면 4 | 4/5 |
 
 - `DiscordBot` 컴포넌트는 로컬 bot과 함께 없어졌다. 우선순위 2는 비어 있다.
 - 알 수 없는 key는 업데이트 대상에서 빠진다(`lib.rs` `try_from_manifest_key`). `installer`는 `Component::Installer`로, 설치 폴더의 `saba-chan-installer.exe`(제거기)를 받은 exe로 바꾸고 복사가 실패하면 원래 사본을 되돌린다(`apply.rs` `apply_installer_update`). `from_manifest_key`는 모르는 key를 `Module`로 폴백한다(`lib.rs:118-120`).
 - 설치하지 않은 모듈·익스텐션은 업데이트 목록에 넣지 않는다. 새로 받는 것은 목록 화면의 몫이다(`lib.rs:515-518`).
-- **로컬 버전 판정 순서**(`collect_local_versions`, `lib.rs:585-624`): 먼저 `installed-manifest.json`(`<data_dir>/installed-manifest.json`)을 본다. 앱 컴포넌트가 거기 없으면 빌드에 묶인 `versions.toml` 버전을 쓰고, 모듈은 `module.toml`, 익스텐션은 `manifest.json`의 id·version을 읽는다.
+- **로컬 버전 판정 순서**(`collect_local_versions`, `lib.rs:585-624`): 먼저 `installed-manifest.json`(`<data_dir>/installed-manifest.json`)을 본다. 앱 컴포넌트가 거기 없으면 빌드에 묶인 `versions.toml` 버전을 쓰고(설치기는 빼고. 0.1.7까지 기록하지 않아 깔려 있는데 기록이 없으면 옛 사본으로 보고 바꾼다, `fill_bundled_versions`·`unknown_version_needs_update`), 모듈은 `module.toml`, 익스텐션은 `manifest.json`의 id·version을 읽는다.
   - ~~`saba-core` 폴백이 updater-lib의 `CARGO_PKG_VERSION`이다~~ → 해결: 폴백은 `versions.toml`의 컴포넌트별 버전이다(`lib.rs:589-592`, `versions.rs`). daemon은 기동할 때 자기 버전을 installed-manifest에 적는다(`launch_ticket.rs:28-30` `record_core_version`).
   - "설치돼 있는데 버전을 모르면 최신으로 간주하고 installed-manifest에 기록"하는 로직이 있다(`lib.rs:519-523`). 거짓 양성을 막으려는 것이지만, 실제로 구버전이어도 영구히 최신으로 표시될 수 있다.
 
@@ -210,7 +211,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | 7-8 | `setup_config`, 언어 설정을 `config.json`의 `gui.language`에 저장(`lib.rs:886-911`) |
 | 9 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan*` 등록. 키는 설치 폴더마다 따로다: 첫 설치본은 `Saba-chan`, 다른 폴더는 `Saba-chan-<폴더 해시 8자>`(`registry.rs:15-77`, `updater/src/uninstall_entry.rs:12-31`) |
 | 10 | 바탕화면·시작 메뉴 바로가기. 대상은 설치 폴더의 GUI exe(`saba-chan-gui.exe` 또는 0.1.1의 `Saba-chan.exe`)다. 만들기 전에 언어별 옛 이름(`shortcuts::ALL_SHORTCUT_NAMES`)의 바로가기를 지우되, `.lnk` 대상이 이 설치 폴더 안인 것만 지우고 시작 메뉴 폴더는 비었을 때만 지운다(`shortcuts::remove_shortcuts_into`). 제거(uninstall)도 같은 함수를 쓴다 |
-| 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`lib.rs:540-544`) |
+| 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`lib.rs:540-544`). 설치 폴더의 `saba-chan-installer.exe`가 지금 설치기와 같은 파일이면 `installer`에 자기 버전을 적는다(복사가 실패해 옛 사본이 남았으면 적지 않는다) |
 
 레지스트리·바로가기·모듈·익스텐션처럼 실패해도 계속하는 단계는 완료 이벤트의 `warnings`·`log_path`로 보내고, 완료 화면이 목록과 로그 경로를 남겨 보여 준다(`installer.js` `enterComplete`). 설치를 멈추는 실패는 `step:'error'`에 `error_code`(`elevation_failed`·`fetch_failed`·`installer_outdated`·`download_failed`·`extract_failed`)와 `log_path`를 싣고, 화면은 코드별 번역 문구와 원문·로그 경로, [다시 시도](설정 시트로)를 보인다. "사바쨩 실행"이 실패하면 창을 닫지 않고 안내한다.
 

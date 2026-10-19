@@ -554,7 +554,10 @@ impl UpdateManager {
                     continue;
                 }
                 // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록
-                let update_available = if installed && Self::reinstall_from_catalog(&component, &current, &info.version) {
+                let update_available = if installed
+                    && (Self::reinstall_from_catalog(&component, &current, &info.version)
+                        || (current.is_empty() && Self::unknown_version_needs_update(&component)))
+                {
                     true
                 } else if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);
@@ -630,14 +633,27 @@ impl UpdateManager {
     // ─────── 로컬 버전 수집 ────────────────────────────────────────────────────────────────────────
 
     /// 모든 컴포넌트의 현재 설치된 버전을 수집
+    /// 설치 기록에 없는 앱 컴포넌트를 빌드에 묶인 버전으로 채운다. 설치기는 0.1.7까지 기록되지 않았고
+    /// 이 빌드와 함께 깔린다는 보장도 없어(업데이터만 바뀐 설치본) 채우지 않는다
+    pub(crate) fn fill_bundled_versions(versions: &mut HashMap<String, String>) {
+        for (key, version) in &crate::versions::bundled().components {
+            if key != "installer" {
+                versions.entry(key.clone()).or_insert_with(|| version.clone());
+            }
+        }
+    }
+
+    /// 깔려 있는데 버전을 모르면 최신으로 기록하는 대신 바꿔야 하는 컴포넌트 (기록이 없으면 옛 판이다)
+    pub(crate) fn unknown_version_needs_update(component: &Component) -> bool {
+        matches!(component, Component::Installer)
+    }
+
     fn collect_local_versions(&self) -> HashMap<String, String> {
         // 1. 설치 매니페스트 우선 로드 (가장 신뢰할 수 있는 소스)
         let mut versions = Self::load_installed_manifest();
 
         // 2. 매니페스트에 없는 앱 컴포넌트는 빌드에 묶인 versions.toml 버전 (폴백)
-        for (key, version) in &crate::versions::bundled().components {
-            versions.entry(key.clone()).or_insert_with(|| version.clone());
-        }
+        Self::fill_bundled_versions(&mut versions);
 
         // 모듈: modules/*/module.toml에서 감지
         if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {

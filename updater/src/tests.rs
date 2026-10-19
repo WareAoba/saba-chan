@@ -1017,3 +1017,16 @@ async fn a_failed_installer_update_keeps_the_old_copy() {
     let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
     assert_eq!(left.len(), 1, "no backup left behind: {left:?}");
 }
+
+// M1: 0.1.7 이하 설치본은 설치기 버전을 기록하지 않았다. 번들 버전으로 채우면 최신으로 보여 영영 안 바뀌므로
+// 기록이 없는 설치기는 버전을 모르는 채로 두고, 깔려 있으면 한 번 바꾼다
+#[test]
+fn an_unrecorded_installer_is_not_assumed_current() {
+    let mut versions = std::collections::HashMap::new();
+    UpdateManager::fill_bundled_versions(&mut versions);
+    assert!(versions.contains_key("saba-core"));
+    assert!(!versions.contains_key("installer"));
+
+    assert!(UpdateManager::unknown_version_needs_update(&Component::Installer));
+    assert!(!UpdateManager::unknown_version_needs_update(&Component::CoreDaemon));
+}
