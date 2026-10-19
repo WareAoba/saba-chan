@@ -131,6 +131,21 @@
   },
   "daemon": {
     "already": "Le daemon est déjà lancé (v{{version}}).",
+    "diag": {
+      "version": "Version",
+      "uptime": "Durée de fonctionnement",
+      "listen": "Adresse",
+      "data_dir": "Dossier de données",
+      "token": "Fichier de jeton",
+      "token_missing": "absent ({{path}})",
+      "audit_log": "Journal d'audit",
+      "modules": "Modules",
+      "modules_error": "illisible : {{error}}",
+      "extensions": "Extensions activées",
+      "extensions_missing": "Activées mais non installées",
+      "problems": "Avertissements et erreurs récents",
+      "no_problems": "Aucun avertissement ni erreur récent"
+    },
     "binary_not_found": "Programme du daemon (saba-core) introuvable. Définissez SABA_CORE_PATH ou réinstallez.",
     "confirm_kill": "Le daemon ne s'est pas arrêté à temps. Le forcer à quitter (PID {{pid}}) ?",
     "killed": "Daemon forcé à quitter (PID {{pid}}).",

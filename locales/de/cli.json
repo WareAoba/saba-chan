@@ -131,6 +131,21 @@
   },
   "daemon": {
     "already": "Der Daemon läuft bereits (v{{version}}).",
+    "diag": {
+      "version": "Version",
+      "uptime": "Laufzeit",
+      "listen": "Adresse",
+      "data_dir": "Datenordner",
+      "token": "Token-Datei",
+      "token_missing": "fehlt ({{path}})",
+      "audit_log": "Audit-Protokoll",
+      "modules": "Module",
+      "modules_error": "nicht lesbar: {{error}}",
+      "extensions": "Aktive Erweiterungen",
+      "extensions_missing": "Aktiv, aber nicht installiert",
+      "problems": "Letzte Warnungen und Fehler",
+      "no_problems": "Keine aktuellen Warnungen oder Fehler"
+    },
     "binary_not_found": "Das Daemon-Programm (saba-core) wurde nicht gefunden. Setze SABA_CORE_PATH oder installiere neu.",
     "confirm_kill": "Der Daemon hat nicht rechtzeitig gestoppt. Beenden erzwingen (PID {{pid}})?",
     "killed": "Daemon zwangsweise beendet (PID {{pid}}).",

@@ -17,6 +17,7 @@ pub async fn run(ctx: &Ctx, cmd: DaemonCmd) -> Result<()> {
             stop(ctx, force).await?;
             start(ctx).await
         }
+        DaemonCmd::Diagnostics => diagnostics(ctx).await,
         DaemonCmd::Logs { lines, follow } => {
             ctx.ensure_daemon().await?;
             crate::cmd::console::daemon_logs(ctx, lines, follow).await
@@ -105,4 +106,136 @@ async fn stop(ctx: &Ctx, force: bool) -> Result<()> {
         &json!({ "running": false, "killed": pid }),
     );
     Ok(())
+}
+
+/// 도움을 청할 때 붙여 넣을 진단 (GUI 설정의 진단 정보와 같은 `GET /api/diagnostics`)
+async fn diagnostics(ctx: &Ctx) -> Result<()> {
+    let d = ctx.api.diagnostics().await?;
+    ctx.out.data(&d, |d| {
+        output::print_kv(&diagnostics_rows(d));
+        let problems = d
+            .get("recent_problems")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        println!();
+        if problems.is_empty() {
+            println!("{}", output::dim(&t!("daemon.diag.no_problems")));
+            return;
+        }
+        output::heading(&t!("daemon.diag.problems"));
+        for p in &problems {
+            let lvl = s(p, "level").to_uppercase();
+            let lvl = if lvl == "ERROR" {
+                console::style(lvl).red()
+            } else {
+                console::style(lvl).yellow()
+            };
+            println!("  {:5} {}", lvl, s(p, "message"));
+        }
+    });
+    Ok(())
+}
+
+fn diagnostics_rows(d: &Value) -> Vec<(String, String)> {
+    let list = |v: Option<&Value>| {
+        let names: Vec<&str> = v
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        if names.is_empty() {
+            "-".to_string()
+        } else {
+            names.join(", ")
+        }
+    };
+    let token = &d["token_file"];
+    let mut rows = vec![
+        (t!("daemon.diag.version"), s(d, "version").to_string()),
+        (
+            t!("daemon.diag.uptime"),
+            d.get("uptime_secs")
+                .and_then(Value::as_u64)
+                .map(output::duration)
+                .unwrap_or_else(|| "-".into()),
+        ),
+        (
+            "PID".to_string(),
+            d.get("pid")
+                .and_then(Value::as_u64)
+                .map(|p| p.to_string())
+                .unwrap_or_default(),
+        ),
+        (t!("daemon.diag.listen"), s(d, "listen_addr").to_string()),
+        (t!("daemon.diag.data_dir"), s(d, "data_dir").to_string()),
+        (
+            t!("daemon.diag.token"),
+            if token.get("exists").and_then(Value::as_bool) == Some(true) {
+                s(token, "path").to_string()
+            } else {
+                t!("daemon.diag.token_missing", path = s(token, "path"))
+            },
+        ),
+        (t!("daemon.diag.audit_log"), s(d, "audit_log").to_string()),
+        (
+            t!("daemon.diag.modules"),
+            match d["modules"].get("count").and_then(Value::as_u64) {
+                Some(n) => n.to_string(),
+                None => t!("daemon.diag.modules_error", error = s(&d["modules"], "error")),
+            },
+        ),
+        (t!("daemon.diag.extensions"), list(d["extensions"].get("enabled"))),
+    ];
+    let missing = list(d["extensions"].get("enabled_but_missing"));
+    if missing != "-" {
+        rows.push((t!("daemon.diag.extensions_missing"), missing));
+    }
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// GUI 진단과 같은 값을 빠짐없이 보인다: 없는 토큰 파일과 설치되지 않은 익스텐션이 눈에 띄어야 한다
+    #[test]
+    fn diagnostics_show_what_the_gui_shows() {
+        let d = json!({
+            "ok": true, "version": "0.1.7", "pid": 42, "uptime_secs": 3700,
+            "listen_addr": "127.0.0.1:57474", "data_dir": "/data",
+            "token_file": { "path": "/data/.ipc_token", "exists": false },
+            "audit_log": "/data/audit.log",
+            "extensions": { "enabled": ["backup", "music"], "enabled_but_missing": ["ghost"] },
+            "modules": { "error": "bad toml" },
+            "recent_problems": []
+        });
+        let rows = diagnostics_rows(&d);
+        let text: Vec<&str> = rows.iter().map(|(_, v)| v.as_str()).collect();
+        for want in [
+            "0.1.7",
+            "42",
+            "127.0.0.1:57474",
+            "/data",
+            "/data/audit.log",
+            "backup, music",
+            "ghost",
+        ] {
+            assert!(text.contains(&want), "{want} missing from {rows:?}");
+        }
+        assert!(
+            text.iter()
+                .any(|v| v.contains("/data/.ipc_token") && *v != "/data/.ipc_token"),
+            "missing token is marked: {rows:?}"
+        );
+        assert!(
+            text.iter().any(|v| v.contains("bad toml")),
+            "module error is shown: {rows:?}"
+        );
+        let healthy = json!({ "token_file": { "path": "/t", "exists": true }, "modules": { "count": 3 }, "extensions": { "enabled": [] } });
+        let rows = diagnostics_rows(&healthy);
+        assert!(rows.iter().any(|(_, v)| v == "/t") && rows.iter().any(|(_, v)| v == "3"));
+        assert_eq!(rows.len(), 9, "no missing-extensions row when nothing is missing");
+    }
 }

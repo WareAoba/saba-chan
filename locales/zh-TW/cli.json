@@ -131,6 +131,21 @@
   },
   "daemon": {
     "already": "常駐程式已在執行（v{{version}}）。",
+    "diag": {
+      "version": "版本",
+      "uptime": "執行時間",
+      "listen": "位址",
+      "data_dir": "資料資料夾",
+      "token": "權杖檔案",
+      "token_missing": "缺少 ({{path}})",
+      "audit_log": "稽核記錄",
+      "modules": "模組",
+      "modules_error": "無法讀取: {{error}}",
+      "extensions": "已啟用的擴充功能",
+      "extensions_missing": "已啟用但未安裝",
+      "problems": "最近的警告與錯誤",
+      "no_problems": "最近沒有警告或錯誤"
+    },
     "binary_not_found": "找不到常駐程式（saba-core）。請設定 SABA_CORE_PATH 或重新安裝。",
     "confirm_kill": "常駐程式未及時停止。要強制結束嗎（PID {{pid}}）？",
     "killed": "已強制結束常駐程式（PID {{pid}}）。",

@@ -131,6 +131,21 @@
   },
   "daemon": {
     "already": "守护进程已在运行（v{{version}}）。",
+    "diag": {
+      "version": "版本",
+      "uptime": "运行时间",
+      "listen": "地址",
+      "data_dir": "数据文件夹",
+      "token": "令牌文件",
+      "token_missing": "缺失 ({{path}})",
+      "audit_log": "审计日志",
+      "modules": "模块",
+      "modules_error": "无法读取: {{error}}",
+      "extensions": "已启用的扩展",
+      "extensions_missing": "已启用但未安装",
+      "problems": "最近的警告和错误",
+      "no_problems": "最近没有警告或错误"
+    },
     "binary_not_found": "找不到守护进程程序（saba-core）。请设置 SABA_CORE_PATH 或重新安装。",
     "confirm_kill": "守护进程未能及时停止。要强制结束吗（PID {{pid}}）？",
     "killed": "已强制结束守护进程（PID {{pid}}）。",
