@@ -34,6 +34,8 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
     const [code, setCode] = useState('');
     const [expiresAt, setExpiresAt] = useState(null);
     const [remaining, setRemaining] = useState(0);
+    // 실패 이유(데몬 error_code). 카드가 알맞은 문구를 고른다
+    const [errorCode, setErrorCode] = useState(null);
     const pollRef = useRef(null);
     const holdRef = useRef(null);
     // start·reset·화면 이탈마다 올린다: 지난 흐름의 늦은 응답이 상태를 바꾸지 않게
@@ -54,6 +56,7 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
         stopPolling();
         if (holdRef.current) clearTimeout(holdRef.current);
         setStatus('idle');
+        setErrorCode(null);
         setCode('');
         setExpiresAt(null);
         setRemaining(0);
@@ -94,13 +97,16 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
         const session = ++sessionRef.current;
         const live = () => sessionRef.current === session;
         finalCheckRef.current = null;
+        setErrorCode(null);
         setStatus('issuing');
         try {
             // 데몬은 설정(cloud.relay_url)에 저장된 릴레이로만 짝짓는다: 바꾼 주소를 먼저 저장한다
             if (beforeStart && (await beforeStart()) === false) throw new Error('relay url not saved');
             const data = await window.api.relayInitiatePairing({ relayUrl });
             if (!live()) return;
-            if (!data || data.error) throw new Error(data?.error || 'no response');
+            if (!data || data.error) {
+                throw Object.assign(new Error(data?.error || 'no response'), { code: data?.error_code });
+            }
             let settled = false;
             // final: 만료 시각 뒤의 마지막 확인. 그때도 연결되지 않았으면 만료로 끝낸다
             const check = async (final) => {
@@ -140,9 +146,10 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
         } catch (e) {
             if (!live()) return;
             console.error('[Pairing] initiate failed:', e);
+            setErrorCode(e?.code || null);
             setStatus('error');
         }
     }, [relayUrl, stopPolling, beforeStart]);
 
-    return { status, code, remaining, start, reset, active: status !== 'idle' };
+    return { status, errorCode, code, remaining, start, reset, active: status !== 'idle' };
 }

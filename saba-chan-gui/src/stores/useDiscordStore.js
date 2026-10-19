@@ -67,6 +67,8 @@ const initialState = () => ({
     // ── Internal ──
     // 연달아 실패한 릴레이 확인 수. 한 번 놓친 것으로 끊김·실패를 보이지 않는다
     _relayFailures: 0,
+    // 마지막 봇 설정 저장이 거절된 이유(error_code). 저장에 성공하면 비운다
+    _saveErrorCode: null,
     _settingsReady: false,
     _botConfigLoaded: false,
     _statusInterval: null,
@@ -153,6 +155,7 @@ export const useDiscordStore = create((set, get) => ({
             const initial = initialState();
             const base = (f) => (f in synced ? synced[f] : initial[f]);
             const changed = Object.keys(BOT_KEYS).filter((k) => BOT_KEYS[k].some((f) => !sameValue(state[f], base(f))));
+            set({ _saveErrorCode: null });
             if (changed.length === 0) return true;
 
             const payload = {};
@@ -173,7 +176,10 @@ export const useDiscordStore = create((set, get) => ({
             const res = await window.api.botConfigSave(payload);
             if (res?.error) {
                 console.error('[Settings] Failed to save bot config:', res.error);
-                safeShowToast(_t('settings.save_error'), 'error');
+                set({ _saveErrorCode: res.error_code || null });
+                // 릴레이 주소가 거절되면(R31) 어떤 주소를 쓸 수 있는지 알린다
+                const invalidUrl = res.error_code === 'invalid_relay_url';
+                safeShowToast(_t(invalidUrl ? 'discord.invalid_relay_url' : 'settings.save_error'), 'error');
                 return false;
             }
             markSynced(

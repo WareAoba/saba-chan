@@ -22,6 +22,11 @@ const AUTOSAVE_MS = 600;
 
 /** 짝짓기 전에 릴레이 주소(설정 화면에서 바꿨을 수 있다)를 config에 저장한다. 실패하면 false */
 const saveRelayUrl = () => useDiscordStore.getState().saveConfig();
+// 페어링 전에 주소를 저장한다. 거절되면 그 이유(error_code)를 페어링 카드에 넘긴다
+const saveRelayUrlForPairing = async () => {
+    if (await saveRelayUrl()) return true;
+    throw Object.assign(new Error('relay url not saved'), { code: useDiscordStore.getState()._saveErrorCode });
+};
 
 /** 연결 상태 머신: (checking →) no_host → connecting → connected | error */
 export function cloudStateOf({ hostId, connected, connecting, error, loaded }) {
@@ -285,7 +290,7 @@ export function DiscordPage({
     // ── 페어링 ──
     const pairing = usePairing({
         relayUrl,
-        beforeStart: saveRelayUrl,
+        beforeStart: saveRelayUrlForPairing,
         onClaimed: async (s) => {
             // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
             if (!(await claimSavedToken(s))) return false;

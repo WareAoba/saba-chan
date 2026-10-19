@@ -752,6 +752,7 @@
     "pair_success": "연결됐어요!",
     "pair_expired": "코드 유효 시간이 지났어요",
     "pair_not_saved": "디스코드에서는 입력했지만 이 PC에 연결 정보를 저장하지 못했어요. 새 코드를 받아 다시 연결하세요",
+    "invalid_relay_url": "릴레이 주소는 https://로 시작해야 해요. http는 이 PC(localhost·127.0.0.1·[::1])에서 시험할 때만 쓸 수 있어요",
     "pair_error": "연결 코드를 받지 못했어요. 인터넷 연결을 확인하세요",
     "pair_again": "새 코드 받기",
     "cancel": "취소",

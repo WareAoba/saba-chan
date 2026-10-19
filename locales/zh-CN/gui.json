@@ -749,6 +749,7 @@
     "pair_success": "已连接！",
     "pair_expired": "代码已过期",
     "pair_not_saved": "已在 Discord 中输入，但无法在这台电脑上保存连接信息。请获取新代码重新连接",
+    "invalid_relay_url": "中继地址必须以 https:// 开头。http 只能在这台电脑上测试时使用（localhost、127.0.0.1、[::1]）",
     "pair_error": "无法获取代码，请检查网络连接",
     "pair_again": "获取新代码",
     "cancel": "取消",
