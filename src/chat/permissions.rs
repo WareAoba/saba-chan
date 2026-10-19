@@ -183,17 +183,20 @@ impl NodePermissions {
         Ok(())
     }
 
+    /// 이 사람에게 이 인스턴스의 이 명령을 막아 두었는가 (`memberPermissions`). 막았으면 주인만 쓸 수 있다
+    pub fn member_denied(&self, who: &Requester, instance_id: &str, command: &str) -> bool {
+        who.user_id
+            .as_deref()
+            .and_then(|u| self.legacy_denied.get(u))
+            .and_then(|per| per.get(instance_id))
+            .is_some_and(|cmds| cmds.iter().any(|c| c == command))
+    }
+
     /// 서버 명령 하나
     pub fn check(&self, who: &Requester, instance_id: &str, command: &str, risk: &str) -> Result<(), Denied> {
         self.check_basic(who)?;
         let level = self.effective_level(who);
-        let legacy = who
-            .user_id
-            .as_deref()
-            .and_then(|u| self.legacy_denied.get(u))
-            .and_then(|per| per.get(instance_id))
-            .is_some_and(|cmds| cmds.iter().any(|c| c == command));
-        let need = if legacy { OWNER } else { self.required(instance_id, command, risk) };
+        let need = if self.member_denied(who, instance_id, command) { OWNER } else { self.required(instance_id, command, risk) };
         if level < need {
             return Err(self.denied(who, need));
         }

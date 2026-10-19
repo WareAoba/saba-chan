@@ -339,7 +339,14 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         keys
     } else {
         match state.config_store.import_sections(sections).await {
-            Ok(keys) => keys,
+            Ok(keys) => {
+                // 일반 설정 저장과 같이 실행 중인 포트 검사도 맞춘다
+                if keys.iter().any(|k| k == "gui") {
+                    let check = state.config_store.get_gui_settings().await.port_conflict_check;
+                    state.supervisor.read().await.skip_port_check.store(!check, std::sync::atomic::Ordering::Relaxed);
+                }
+                keys
+            }
             Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string()),
         }
     };
@@ -415,6 +422,61 @@ mod tests {
         assert_eq!(preview["instances"]["added"].as_array().unwrap().len(), 1, "{preview}");
         assert_eq!(preview["instances"]["skipped"][0]["reason"], "name_taken");
         assert_eq!(preview["instances"], done["instances"]);
+    }
+
+    /// 가져오기 시험용 데몬 상태와 zip 경로. `existing`은 미리 있는 인스턴스
+    async fn import_state(dir: &std::path::Path, bundle: Bundle, existing: Option<ServerInstance>) -> (IPCServer, String) {
+        let path = dir.join("saba.zip");
+        write_bundle(&path, &bundle).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            dir.join("modules").to_str().unwrap(),
+            dir.join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        if let Some(i) = existing {
+            sup.instance_store.add(i).unwrap();
+        }
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        (state, path.to_string_lossy().into_owned())
+    }
+
+    fn meta() -> Value {
+        json!({ "format": FORMAT, "formatVersion": FORMAT_VERSION, "appVersion": "0.1.5", "secrets": false })
+    }
+
+    /// 설정 저장에서 거부될 zip(잘못된 접두사)은 인스턴스를 덮어쓰기 전에 멈춘다
+    #[tokio::test]
+    async fn a_config_the_save_would_refuse_leaves_the_instances_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut old, mut new) = (inst("a", None), inst("a", None));
+        old.name = "old".into();
+        new.name = "new".into();
+        let mut config = Map::new();
+        config.insert("relay".into(), json!({ "prefixes": ["has space"] }));
+        let bundle = Bundle { meta: meta(), config, instances: vec![new], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, Some(old)).await;
+        let req: ImportRequest = serde_json::from_value(json!({ "path": path, "overwrite": true })).unwrap();
+        let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
+        assert_eq!(res.body["error_code"], "INVALID_CONFIG", "{}", res.body);
+        let sup = state.supervisor.read().await;
+        assert_eq!(sup.instance_store.get("a").unwrap().name, "old");
+    }
+
+    /// 가져온 포트 충돌 검사 설정은 일반 설정 저장처럼 바로 실행 중인 검사에 반영된다
+    #[tokio::test]
+    async fn imported_port_check_setting_applies_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Map::new();
+        config.insert("gui".into(), json!({ "portConflictCheck": false }));
+        let bundle = Bundle { meta: meta(), config, instances: vec![], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, None).await;
+        let req: ImportRequest = serde_json::from_value(json!({ "path": path })).unwrap();
+        let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
+        let skipped = state.supervisor.read().await.skip_port_check.load(std::sync::atomic::Ordering::Relaxed);
+        // 같은 프로세스의 다른 시험이 같은 설정 파일을 쓰므로 되돌린다
+        state.config_store.set_gui_settings_from_json(json!({ "portConflictCheck": true })).await.unwrap();
+        assert_eq!(res.body["success"], true, "{}", res.body);
+        assert!(skipped, "the running port check still uses the old setting");
     }
 
     #[test]
