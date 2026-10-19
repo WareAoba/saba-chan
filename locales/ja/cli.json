@@ -362,6 +362,7 @@
     "not_yet": "{{name}} はまだ動いていません（{{status}}）。確認: saba-chan-cli console {{name}}",
     "provisioning": "{{name}} はまだインストール中です。",
     "requested": "{{name}} の起動をリクエストしました。",
+    "port_moved": "Windows が管理用 REST ポート {{from}} を予約していたため {{to}} に変更しました。",
     "waiting": "{{name}} を起動しています...",
     "exited": "{{name}} は起動直後に終了しました。上の最後の行を確認してください。"
   },
@@ -431,6 +432,7 @@
     "no_last": "アップデート結果の記録はありません。",
     "not_installed": "未インストール",
     "nothing_to_apply": "適用するものがありません。先にダウンロード: saba-chan-cli update download",
+    "apply_failed": "アップデートを適用できませんでした。上のエラーを確認してください。",
     "ready": "インストール準備完了",
     "up_to_date": "最新",
     "updater_launched": "アップデーターを起動しました。更新のためデーモンを終了しています。",

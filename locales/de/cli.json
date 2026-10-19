@@ -362,6 +362,7 @@
     "not_yet": "{{name}} läuft noch nicht ({{status}}). Prüfe: saba-chan-cli console {{name}}",
     "provisioning": "{{name}} wird noch installiert.",
     "requested": "Start für {{name}} angefordert.",
+    "port_moved": "Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert.",
     "waiting": "{{name}} wird gestartet...",
     "exited": "{{name}} hat sich direkt nach dem Start beendet. Letzte Zeilen siehe oben."
   },
@@ -431,6 +432,7 @@
     "no_last": "Kein Update-Ergebnis gespeichert.",
     "not_installed": "nicht installiert",
     "nothing_to_apply": "Nichts anzuwenden. Zuerst herunterladen: saba-chan-cli update download",
+    "apply_failed": "Das Update konnte nicht angewendet werden. Prüfen Sie die Fehler oben.",
     "ready": "bereit zur Installation",
     "up_to_date": "aktuell",
     "updater_launched": "Updater gestartet. Der Daemon wird für das Update beendet.",
