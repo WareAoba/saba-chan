@@ -726,6 +726,8 @@
     "back_to_menu": "Menu",
     "state_no_host": "Not connected",
     "state_connecting": "Connecting",
+    "state_checking": "Checking connection",
+    "checking_body": "Loading your saved Discord connection. It will show up as soon as Saba-chan is awake.",
     "state_connected": "Connected",
     "state_error": "Connection failed",
     "nodes_empty": "No Discord server connected yet",

@@ -723,6 +723,8 @@
     "back_to_menu": "菜单",
     "state_no_host": "未连接",
     "state_connecting": "连接中",
+    "state_checking": "正在检查连接",
+    "checking_body": "正在读取已保存的 Discord 连接。萨巴酱醒来后会立即显示。",
     "state_connected": "已连接",
     "state_error": "连接失败",
     "nodes_empty": "还没有连接任何 Discord 服务器",

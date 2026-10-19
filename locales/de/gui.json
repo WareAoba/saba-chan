@@ -723,6 +723,8 @@
     "back_to_menu": "Menü",
     "state_no_host": "Nicht verbunden",
     "state_connecting": "Verbinde",
+    "state_checking": "Verbindung wird geprüft",
+    "checking_body": "Deine gespeicherte Discord-Verbindung wird geladen. Sie erscheint, sobald Saba-chan wach ist.",
     "state_connected": "Verbunden",
     "state_error": "Verbindung fehlgeschlagen",
     "nodes_empty": "Noch kein Discord-Server verbunden",

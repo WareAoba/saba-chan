@@ -723,6 +723,8 @@
     "back_to_menu": "メニュー",
     "state_no_host": "未接続",
     "state_connecting": "接続中",
+    "state_checking": "接続を確認中",
+    "checking_body": "保存されたDiscord接続を読み込んでいます。サバちゃんが起きたらすぐに表示します。",
     "state_connected": "接続済み",
     "state_error": "接続失敗",
     "nodes_empty": "まだ接続されたDiscordサーバーはありません",
