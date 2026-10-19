@@ -152,7 +152,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | getComponentInfo (1005) | GET /api/system/components (실패하면 `app_get_version`만) | ✓ 714 |
 | onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). 돌려주는 함수로 그 구독만 해제 | n/a |
 | onStatusUpdate (1026) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.js:137-177`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
-| daemonStatus (1030) | Rust `daemon_status` → GET /health | ✓ 637 |
+| daemonStatus (1030) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"` | ✓ 637 |
 | daemonRestart (1031) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
 | minimize/maximize/closeWindow (1034-1036, electron 1040-1042) | Rust `window_minimize` / `window_maximize`(토글) / `window_close`. 호출한 창에 적용한다 | n/a |
 | electron.getLanguage/setLanguage (1043-1044) | Rust `language_get`(config.json `gui.language`를 직접 읽는다) / `language_set`(`save_settings`로 API 우선 저장, 셸 번역·트레이 갱신. 데몬은 재시작하지 않는다, `native.rs:241-257`) | 부분 |

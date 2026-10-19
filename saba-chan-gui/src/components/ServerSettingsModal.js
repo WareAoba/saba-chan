@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { checkPortConflicts, validateAllSettings } from '../utils/validation';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -11,8 +11,10 @@ import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
  * SettingsField — Renders a single settings field based on field_type.
  * validationError가 있으면 필드 아래에 빨간 경고를 표시합니다.
  */
-function SettingsField({ field, value, modNs, onChange, validationError }) {
+export function SettingsField({ field, value, modNs, onChange, validationError }) {
     const { t } = useTranslation('gui');
+    // 이름표를 입력 칸에 잇는다 (화면 낭독기, 이름표 눌러 칸으로 가기)
+    const inputId = useId();
     const fieldLabel = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label });
     const fieldDesc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
     const hasError = !!validationError;
@@ -20,11 +22,12 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
 
     return (
         <div className="settings-field">
-            <label>
+            <label htmlFor={inputId}>
                 {fieldLabel} {field.required ? '*' : ''}
             </label>
             {field.field_type === 'text' && (
                 <input
+                    id={inputId}
                     type="text"
                     className={clsx(errorClass)}
                     value={String(value || '')}
@@ -34,6 +37,7 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
             )}
             {field.field_type === 'password' && (
                 <input
+                    id={inputId}
                     type="password"
                     className={clsx(errorClass)}
                     value={String(value || '')}
@@ -43,6 +47,7 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
             )}
             {field.field_type === 'number' && (
                 <input
+                    id={inputId}
                     type="number"
                     className={clsx('setting-input-number', errorClass)}
                     value={String(value || '')}
@@ -55,6 +60,7 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
             )}
             {field.field_type === 'file' && (
                 <input
+                    id={inputId}
                     type="text"
                     className={clsx(errorClass)}
                     value={String(value || '')}
@@ -64,6 +70,7 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
             )}
             {field.field_type === 'select' && (
                 <CustomDropdown
+                    id={inputId}
                     value={String(value || '')}
                     onChange={(val) => onChange(field.name, val)}
                     placeholder={fieldLabel}
@@ -73,6 +80,7 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
             {field.field_type === 'boolean' && (
                 <div className="toggle-row">
                     <SabaToggle
+                        id={inputId}
                         checked={value === true || value === 'true'}
                         onChange={(checked) => onChange(field.name, checked)}
                     />
@@ -147,6 +155,7 @@ function GeneralTab({
     serverRunning,
 }) {
     const { t } = useTranslation('gui');
+    const versionId = useId();
     const module = modules.find((m) => m.name === settingsServer.module);
     const hasModuleSettings = module?.settings?.fields?.length > 0;
     const protocols = module?.protocols || {};
@@ -265,7 +274,7 @@ function GeneralTab({
                                     {/* Server version selector — only for download-based modules */}
                                     {module?.install?.method === 'download' && (
                                         <div className="settings-field">
-                                            <label>
+                                            <label htmlFor={versionId}>
                                                 {t('server_settings.server_version', {
                                                     defaultValue: 'Server Version',
                                                 })}
@@ -280,6 +289,7 @@ function GeneralTab({
                                             ) : (
                                                 <div className="version-select-row">
                                                     <CustomDropdown
+                                                        id={versionId}
                                                         value={settingsValues.server_version || ''}
                                                         onChange={(val) => handleSettingChange('server_version', val)}
                                                         placeholder={t('server_settings.select_version', {
