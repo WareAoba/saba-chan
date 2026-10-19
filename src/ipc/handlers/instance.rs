@@ -1078,23 +1078,23 @@ pub async fn update_instance_settings(
         Some(None) => return super::backup::instance_busy(),
         held => held.flatten(),
     };
-    // 옮겨 갈 폴더를 쓰는 다른 인스턴스가 작업 중이어도 막는다 (그 작업은 그 폴더를 기준으로 받는다)
-    let mut _theirs = Vec::new();
+    // 다른 인스턴스가 쓰는 폴더(서버 폴더나 인스턴스 폴더)로는 옮기지 않는다: 만들 때처럼 한 폴더에 서버 둘을 두지 않는다.
+    // 그 인스턴스의 서버·설치·업데이트가 옮긴 서버의 파일을 덮어쓴다
     if let Some(dir) = settings.get("working_dir").and_then(|v| v.as_str()).filter(|d| moves_folder && !d.is_empty()) {
         let dir = std::path::Path::new(dir);
-        let others: Vec<String> = supervisor.instance_store.list().iter()
-            .filter(|i| i.id != id)
-            .filter(|i| {
-                i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), dir))
-                    || saba_chan_updater_lib::same_path(&supervisor.instance_store.instance_dir(&i.id), dir)
-            })
-            .map(|i| i.id.clone())
-            .collect();
-        for other in others {
-            match super::backup::BusyGuard::take(&other) {
-                Some(guard) => _theirs.push(guard),
-                None => return super::backup::instance_busy(),
-            }
+        let taken = supervisor.instance_store.list().iter().find(|i| {
+            i.id != id
+                && (i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), dir))
+                    || saba_chan_updater_lib::same_path(&supervisor.instance_store.instance_dir(&i.id), dir))
+        });
+        if let Some(other) = taken {
+            let error = json!({
+                "success": false,
+                "error": format!("Server '{}' already uses this folder", other.name),
+                "error_code": "working_dir_in_use",
+                "instance": other.name,
+            });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
         }
     }
 
@@ -2217,17 +2217,23 @@ mod tests {
         let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
         assert_eq!(moved.status, 200, "{}", moved.body);
 
-        // 옮겨 갈 폴더를 쓰는 다른 인스턴스가 작업 중이어도 옮기지 않는다 (그 작업은 그 폴더를 기준으로 받는다)
+        // 다른 인스턴스가 쓰는 폴더로는 옮기지 않는다: 만들 때처럼 한 폴더에 서버 둘을 두지 않는다
+        // (켜져 있거나 작업 중이면 그 서버가 옮긴 서버의 파일을 덮어쓴다)
         let mut other = crate::instance::ServerInstance::new("other", "game");
         let theirs = tmp.path().join("theirs").to_string_lossy().into_owned();
         other.working_dir = Some(theirs.clone());
         let other_id = other.id.clone();
-        state.supervisor.write().await.instance_store.add(other).unwrap();
-        let busy = super::super::backup::BusyGuard::take(&other_id).unwrap();
-        let into_busy = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": theirs }))).await).await;
-        assert_eq!(into_busy.status, 409, "{}", into_busy.body);
-        assert_eq!(into_busy.body["error_code"], "instance_busy");
-        drop(busy);
+        let their_instance_dir = {
+            let mut sup = state.supervisor.write().await;
+            sup.instance_store.add(other).unwrap();
+            sup.instance_store.instance_dir(&other_id).to_string_lossy().into_owned()
+        };
+        for dir in [&theirs, &their_instance_dir] {
+            let taken = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": dir }))).await).await;
+            assert_eq!(taken.status, 409, "{dir}: {}", taken.body);
+            assert_eq!(taken.body["error_code"], "working_dir_in_use");
+            assert_eq!(taken.body["instance"], "other");
+        }
     }
 
     #[tokio::test]

@@ -594,7 +594,12 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     setModal({
                         type: 'failure',
                         title: t('settings.save_failed_title'),
-                        message: blockedText(result, t) || translateError(result.error),
+                        message:
+                            (result.error_code === 'working_dir_in_use' &&
+                                t('servers.working_dir_in_use', { instance: result.instance || '?' })) ||
+                            (result.error_code === 'instance_busy' && t('server_settings.instance_busy')) ||
+                            blockedText(result, t) ||
+                            translateError(result.error),
                     });
                 }
                 console.error('Error response:', result.error);
