@@ -1102,7 +1102,8 @@
     "start_blocked": {
       "launch_outside_instance": "未確認のモジュールがサーバーフォルダー外のプログラムを実行しようとしました: {{file}} Java のパスを自分で設定した場合は、サーバー設定でもう一度選んでください。",
       "server_folder_label": "サーバーフォルダー（{{file}}）の権限マークを整理できなかったため、サーバーを起動しませんでした。このアカウントがそのフォルダーの権限を変更できるか確認してください。",
-      "sandbox_unavailable": "{{component}} の隔離環境を準備できなかったため、実行しませんでした。"
+      "sandbox_unavailable": "{{component}} の隔離環境を準備できなかったため、実行しませんでした。",
+      "extension_not_verified": "拡張機能のファイルが変更されたため確認できませんでした: {{extensions}}。再インストールするか、元のファイルに戻してください。"
     },
     "sandbox": {
       "title": "隔離せずに実行しますか？",

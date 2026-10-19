@@ -867,6 +867,13 @@ export function useServerActions({
             console.log('Adding instance:', instanceData);
             const result = await window.api.instanceCreate(instanceData);
 
+            // ── 켜진 익스텐션 파일이 바뀌어 확인되지 않음 (다시 설치·되돌리기 안내) ──
+            const blocked = blockedText(result, t);
+            if (blocked) {
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: blocked });
+                return;
+            }
+
             // ── extension_required 처리 ──
             if (result.error_code === 'extension_required') {
                 setModal({
