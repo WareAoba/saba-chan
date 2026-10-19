@@ -269,6 +269,7 @@ players = "player_count"
     - 시간 초과면 Job째 끝낸다.
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.
   - Linux·macOS에서는 하지 않는다.
+  - 격리되는 것은 lifecycle Python 실행(설치·설정·상태 스크립트)뿐이다. **게임 서버 프로세스는 격리되지 않는다**: 데몬이 사용자 권한(중간 무결성)으로 띄우고, 확인되지 않은 모듈이면 띄울 대상의 위치만 본다(아래 "확인되지 않은 모듈의 실행 대상"). 백신 검사도 하지 않으므로, 확인되지 않은 모듈이 설치 중 서버 폴더에 둔 실행 파일은 그대로 사용자 권한으로 돈다. 서버 폴더를 격리 실행의 쓰기 범위에서 빼는 구조 변경은 0.1.8 과제다.
 - **데몬 락**: lifecycle 호출은 데몬 락 밖에서 실행한다. 보통 `PluginCall`로 락 안에서 값을 챙기고 락을 놓은 뒤 부른다 (`:161-175`, C12).
 - **환경변수** (`:18-38, 284-349`):
   - `PYTHONIOENCODING=utf-8`, `PYTHONUNBUFFERED=1`
@@ -413,7 +414,7 @@ players = "player_count"
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
   - 실행 인자가 가리키는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준)도 로컬 드라이브 경로여야 한다. 아니면 `launch_outside_instance`다.
-- **서버 폴더의 낮은 수준 표시 걷기 (Windows)**: 격리 실행에 쓰기를 준 폴더에는 낮은 수준 표시가 붙고, 그 안에 받은 서버 파일(Java 등)도 표시를 상속한다. 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 뜨지 못한다(예: `0xC0000135`, `0xC0000022`). 그래서 데몬은 서버를 띄우기 전에 신뢰 표시와 상관없이 인스턴스 폴더와 사용자가 정한 서버 폴더, 그 아래 폴더에서 직접 붙은 낮은 수준 표시를 걷는다(상속받은 표시도 함께 빠진다, `sandbox::restore_server_folders` → `appcontainer::clear_low_labels`). 0.1.6까지 격리되어 표시가 남은 폴더도 다음 시작 때 고쳐진다. 격리된 모듈의 다음 Python 실행은 표시를 다시 붙이므로, 확인되지 않은 모듈은 시작할 때마다 걷고 붙인다. 걷지 못하면 경고만 남기고 띄운다.
+- **서버 폴더의 낮은 수준 표시 걷기 (Windows)**: 격리 실행에 쓰기를 준 폴더에는 낮은 수준 표시가 붙고, 그 안에 받은 서버 파일(Java 등)도 표시를 상속한다. 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 뜨지 못한다(예: `0xC0000135`, `0xC0000022`). 그래서 데몬은 서버를 띄우기 전에(모듈이 띄우든 익스텐션 시작 훅이 띄우든, 모든 실행이 지나는 `sandbox::guard_launch_for`에서) 신뢰 표시와 상관없이 인스턴스 폴더와 사용자가 정한 서버 폴더, 그 아래 폴더에서 직접 붙은 낮은 수준 표시를 걷는다(상속받은 표시도 함께 빠진다, `sandbox::restore_server_folders` → `appcontainer::clear_low_labels`). 0.1.6까지 격리되어 표시가 남은 폴더도 다음 시작 때 고쳐진다. 격리된 모듈의 다음 Python 실행은 표시를 다시 붙이므로, 확인되지 않은 모듈은 시작할 때마다 걷고 붙인다. 걷기부터 서버 프로세스를 띄울 때까지는 격리 실행이 권한을 주지 못하게 잠근다(`sandbox::LaunchGate`, 격리 실행은 권한을 주기 전에 같은 잠금을 잡는다). 한 폴더에서 실패해도 나머지를 마저 걷고, 표시가 붙어 있는데 걷지 못한 폴더가 남으면 띄우지 않고 `{success:false, action_required:"server_folder_label", file, detail}`을 돌려준다. 표시를 읽지 못한 폴더(표시를 지원하지 않는 볼륨 등)와 목록을 읽지 못한 폴더는 경고만 남긴다.
 
 **잠금**: `start_managed_handler`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:29-68`, `mod.rs:1289-1297`, C12).
 

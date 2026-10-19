@@ -186,18 +186,26 @@ pub fn message(blocked: &Blocked) -> String {
     let file = blocked.file.as_deref().unwrap_or("");
     match blocked.code {
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
+        "server_folder_label" => format!("Could not remove the low integrity mark from the server folder: {}. Check that this account can change the permissions of that folder.", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
 }
 
+/// 서버 폴더의 표시를 걷은 뒤 서버를 띄울 때까지 쥐는 잠금 (`guard_launch_for`가 돌려준다). 격리 실행은 권한을 주기
+/// 전에 이 잠금을 잡으므로(`spawn_isolated`), 걷은 뒤 서버가 뜨기 전에 표시가 다시 붙지 않는다. 서버를 띄운 뒤 놓는다
+pub struct LaunchGate(#[allow(dead_code)] tokio::sync::MutexGuard<'static, ()>);
+
+static LABEL_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 걷는다 (Windows). 그 표시가 붙은 실행 파일로 띄운
 /// 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
-/// 남아 있을 수 있다. 실패해도 실행은 막지 않는다
-pub async fn restore_server_folders(dirs: Vec<PathBuf>) {
+/// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 걷고, 걷지 못한 표시가 남으면 `server_folder_label`로 막는다
+async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
     #[cfg(windows)]
     {
-        let _ = tokio::task::spawn_blocking(move || {
+        let stuck = tokio::task::spawn_blocking(move || {
+            let mut stuck = Vec::new();
             for dir in dirs.iter().filter(|d| d.is_dir()) {
                 let started = std::time::Instant::now();
                 match appcontainer::clear_low_labels(dir) {
@@ -208,18 +216,26 @@ pub async fn restore_server_folders(dirs: Vec<PathBuf>) {
                         dir.display(),
                         started.elapsed().as_millis()
                     ),
-                    Err(e) => tracing::warn!("[Sandbox] could not remove the low integrity label under {}: {}", dir.display(), e),
+                    Err(failed) => stuck.extend(failed),
                 }
             }
+            stuck
         })
-        .await;
+        .await
+        .unwrap_or_else(|e| vec![(PathBuf::new(), e.to_string())]);
+        if let Some((first, _)) = stuck.first() {
+            let detail = stuck.iter().map(|(p, e)| format!("{}: {}", p.display(), e)).collect::<Vec<_>>().join("; ");
+            tracing::warn!("[Sandbox] could not remove the low integrity label: {}", detail);
+            return Err(Blocked { code: "server_folder_label", file: Some(first.display().to_string()), detail: Some(detail) });
+        }
     }
     #[cfg(not(windows))]
     let _ = dirs;
+    Ok(())
 }
 
 /// 서버 실행 전: 확인되지 않은 모듈이면 실행 대상 위치를 보고 실행 파일을 검사한다. 띄울 프로그램 경로를 돌려준다
-pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<String, Blocked> {
+pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(String, LaunchGate), Blocked> {
     guard_launch_for(|| trust_of_entry(Path::new(entry)), program, args, cwd, roots, env).await
 }
 
@@ -244,10 +260,14 @@ pub fn strip_search_path(env: &mut Vec<(String, String)>) {
 }
 
 /// `guard_launch`의 신뢰 표시를 받는 형태 (익스텐션이 띄우는 프로그램에도 쓴다).
-/// `trust`는 제한하는 플랫폼에서만 부른다. 제한하면 상대 경로를 작업 폴더 기준으로 푼 경로를 돌려준다
-pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<String, Blocked> {
+/// `trust`는 제한하는 플랫폼에서만 부른다. 제한하면 상대 경로를 작업 폴더 기준으로 푼 경로를 돌려준다.
+/// 함께 돌려주는 `LaunchGate`는 서버 프로세스를 띄운 직후 놓는다
+pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(String, LaunchGate), Blocked> {
+    // 모듈이 띄우든 익스텐션이 띄우든 서버를 실행하는 모든 길이 여기를 지난다
+    let gate = LaunchGate(LABEL_GATE.lock().await);
+    restore_server_folders(roots.dirs.clone()).await?;
     if !ENFORCED || !restricted(trust()) {
-        return Ok(program.to_string());
+        return Ok((program.to_string(), gate));
     }
     strip_search_path(env);
     let program = resolve_program(program, cwd);
@@ -258,7 +278,7 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     if let Err(arg) = argument_files(args, cwd) {
         return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None });
     }
-    Ok(program)
+    Ok((program, gate))
 }
 
 /// `.`·`..`를 글자로만 푼 경로 (파일 시스템에 묻지 않는다)
@@ -662,6 +682,8 @@ pub enum Spawned {
 
 /// 격리해서 띄운다. 준비가 실패하면 사용자가 동의한 경우만 격리 없이 돌리고, 아니면 `sandbox_unavailable`
 pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Result<Spawned, Blocked> {
+    // 권한 주기(서버 폴더에 표시 붙이기)는 서버를 띄우는 중이 아닐 때만
+    let gate = LABEL_GATE.lock().await;
     #[cfg(windows)]
     let error = {
         let program = cmd.get_program().to_os_string();
@@ -673,6 +695,7 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
         let started = tokio::task::spawn_blocking(move || appcontainer::spawn(&program, &args, cwd.as_deref(), &env, &profile, &grants))
             .await
             .unwrap_or_else(|e| Err(e.to_string()));
+        drop(gate);
         match started {
             Ok(child) => return Ok(Spawned::Contained(child)),
             Err(e) => e,
@@ -680,6 +703,7 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
     };
     #[cfg(not(windows))]
     let error = {
+        drop(gate);
         let _ = cmd;
         "AppContainer is only available on Windows".to_string()
     };
@@ -818,6 +842,28 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 서버 폴더의 표시를 걷은 뒤 서버가 뜨기 전에 격리 실행이 끼어 표시를 다시 붙이면 서버가 낮은 무결성으로 뜬다
+    #[tokio::test]
+    async fn a_sandboxed_call_waits_until_the_server_has_launched() {
+        let roots = LaunchRoots { dirs: Vec::new(), runtimes: Vec::new() };
+        let (_, gate) = guard_launch_for(|| Trust::Verified, "java", &[], Path::new("."), roots, &mut Vec::new()).await.unwrap();
+        let iso = Isolation {
+            key: "module-gate-test".into(),
+            dir: PathBuf::from("."),
+            profile: String::new(),
+            grants: appcontainer::Grants::default(),
+            pycache: PathBuf::new(),
+            temp: PathBuf::new(),
+            data: None,
+            extension_root: PathBuf::new(),
+        };
+        let call = tokio::spawn(async move { spawn_isolated(&std::process::Command::new("python"), &iso).await.is_ok() });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!call.is_finished(), "the sandboxed call must wait while a server launch is in progress");
+        drop(gate);
+        tokio::time::timeout(std::time::Duration::from_secs(5), call).await.expect("runs once the server has launched").unwrap();
+    }
 
     #[test]
     fn an_entry_in_a_subfolder_belongs_to_its_module_or_extension() {

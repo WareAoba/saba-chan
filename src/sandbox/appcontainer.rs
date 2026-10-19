@@ -753,37 +753,55 @@ mod imp {
 
     /// `label_low`가 붙인 낮은 수준 표시를 `dir`과 그 아래 폴더에서 걷는다. 상속받은 표시도 함께 빠진다.
     /// 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 서버(Java 등)가 뜨지 못하므로,
-    /// 서버를 띄우기 전에 부른다. 걷은 폴더 수를 돌려준다
-    pub fn clear_low_labels(dir: &Path) -> Result<usize, String> {
-        use std::os::windows::io::AsRawHandle;
+    /// 서버를 띄우기 전에 부른다. 걷은 폴더 수를 돌려준다. 한 폴더에서 실패해도 나머지를 마저 걷고, 표시가 있는데
+    /// 걷지 못한 폴더를 모아 Err로 돌려준다. 표시를 읽지 못한 폴더(표시를 지원하지 않는 볼륨 등)는 경고만 남긴다
+    pub fn clear_low_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
         let _guard = acl_lock();
         let mut cleared = 0;
+        let mut failed = Vec::new();
         let mut pending = vec![dir.to_path_buf()];
         while let Some(path) = pending.pop() {
-            if low_label(&path)? == Some(false) {
-                // 빈 표시 목록으로 바꾼다 (ACL 머리만)
-                let mut buf = [0u32; 4];
-                let acl = buf.as_mut_ptr() as *mut ACL;
-                if unsafe { InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) } == 0 {
-                    return Err(last_error("InitializeAcl"));
-                }
-                let handle = open_for_relabel(&path)?;
-                let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
-                if rc != 0 {
-                    return Err(format!("clear label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
-                }
-                cleared += 1;
+            match low_label(&path) {
+                Ok(Some(false)) => match clear_label(&path) {
+                    Ok(()) => cleared += 1,
+                    Err(e) => failed.push((path.clone(), e)),
+                },
+                Ok(_) => {}
+                Err(e) => tracing::warn!("[Sandbox] could not read the label of {}: {}", path.display(), e),
             }
             // 링크는 따라가지 않는다 (폴더 밖을 고치지 않게)
-            if let Ok(entries) = std::fs::read_dir(&path) {
-                for entry in entries.flatten() {
-                    if entry.file_type().is_ok_and(|t| t.is_dir() && !t.is_symlink()) {
-                        pending.push(entry.path());
+            match std::fs::read_dir(&path) {
+                Ok(entries) => {
+                    for entry in entries.flatten() {
+                        if entry.file_type().is_ok_and(|t| t.is_dir() && !t.is_symlink()) {
+                            pending.push(entry.path());
+                        }
                     }
                 }
+                Err(e) => tracing::warn!("[Sandbox] could not list {}: {}", path.display(), e),
             }
         }
-        Ok(cleared)
+        if failed.is_empty() {
+            Ok(cleared)
+        } else {
+            Err(failed)
+        }
+    }
+
+    /// 표시 목록을 비운다 (ACL 머리만)
+    fn clear_label(path: &Path) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
+        let mut buf = [0u32; 4];
+        let acl = buf.as_mut_ptr() as *mut ACL;
+        if unsafe { InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) } == 0 {
+            return Err(last_error("InitializeAcl"));
+        }
+        let handle = open_for_relabel(path)?;
+        let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
+        if rc != 0 {
+            return Err(format!("clear label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+        }
+        Ok(())
     }
 
     #[cfg(test)]

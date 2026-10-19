@@ -1626,6 +1626,10 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let instance_dir = supervisor.instance_store.instance_dir(id);
     let install_dir = install_dir_of(&instance, &instance_dir, Some(&install_config));
     let install_dir_str = install_dir.to_string_lossy().to_string();
+    // 같은 서버 폴더를 쓰는 다른 인스턴스가 켜져 있거나 작업 중이면 덮어쓰지 않는다 (업데이트가 끝날 때까지 잡는다)
+    drop(supervisor);
+    let others = super::managed::hold_other_instances_using(state, &install_dir_str, Some(id)).await?;
+    let supervisor = state.supervisor.read().await;
 
     let tracker = state.provision_tracker.clone();
     let supervisor_arc = state.supervisor.clone();
@@ -1661,6 +1665,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let backup_id = id.to_string();
     Ok(tokio::spawn(async move {
         let _guard = guard;
+        let _others = others;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
         if let Err(r) = super::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
             let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
@@ -2019,6 +2024,39 @@ mod tests {
         assert_eq!(super::install_dir_of(&instance, dir, None), dir.join("server"));
         instance.working_dir = Some("D:/Steam/steamapps/common/PalServer".into());
         assert_eq!(super::install_dir_of(&instance, dir, None), std::path::PathBuf::from("D:/Steam/steamapps/common/PalServer"));
+    }
+
+    // 업데이트는 서버가 도는 working_dir에 쓴다: 같은 폴더를 쓰는 다른 인스턴스가 작업 중이면 덮어쓰지 않는다
+    #[tokio::test]
+    async fn an_update_waits_for_other_instances_sharing_the_server_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let shared = tmp.path().join("PalServer").to_string_lossy().to_string();
+        let mut ids = Vec::new();
+        for name in ["a", "b"] {
+            let mut inst = crate::instance::ServerInstance::new(name, "game");
+            inst.working_dir = Some(shared.clone());
+            inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
+            ids.push(inst.id.clone());
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let other = super::super::backup::BusyGuard::take(&ids[1]).expect("free");
+        let refused = super::begin_server_update(&state, &ids[0]).await.err().expect("the other instance is busy");
+        let body = crate::ipc::internal::into_internal(refused).await.body;
+        assert_eq!(body["error_code"], "instance_busy");
+        drop(other);
+        assert!(super::super::backup::BusyGuard::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
     }
 
     #[tokio::test]
