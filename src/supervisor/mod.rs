@@ -2678,11 +2678,6 @@ impl Supervisor {
         roots
     }
 
-    #[cfg(test)]
-    pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
-        self.monitor_processes_taken_at(process_snapshot, u64::MAX).await
-    }
-
     /// `snapshot_taken_at`(unix 초): 프로세스 목록을 찍기 시작한 시각. 그 뒤에 추적한 PID는 목록에 없어도
     /// 끝났다고 보지 않는다 (목록을 락 밖에서 찍는 사이에 막 시작한 서버)
     pub async fn monitor_processes_taken_at(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess], snapshot_taken_at: u64) -> Result<()> {
@@ -2934,7 +2929,7 @@ mod tests {
         
         // 모니터링이 에러 없이 실행되어야 함
         let snapshot = crate::process_monitor::get_running_processes();
-        let result = supervisor.monitor_processes(&snapshot).await;
+        let result = supervisor.monitor_processes_taken_at(&snapshot, u64::MAX).await;
         assert!(result.is_ok());
     }
 
@@ -3205,7 +3200,7 @@ mod tests {
         }
 
         let mut exits = crate::events::bus().subscribe(None);
-        supervisor.monitor_processes(&[]).await.unwrap();
+        supervisor.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
         // 다시 띄우기로 한 종료는 그 복구 시도의 번호(예약한 재시작의 실행 세대)를 싣는다
         let crash_exit = std::iter::from_fn(|| exits.rx.try_recv().ok()).find(|e| e.kind == "instance.exit" && e.data["instanceId"] == "crash").unwrap();
         assert_eq!(crash_exit.data["restartAttempt"], 0);
