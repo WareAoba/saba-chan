@@ -222,6 +222,7 @@
     "type_to_filter": "Tapez une commande ou choisissez dans la liste"
   },
   "server_status": {
+    "unresponsive": "En cours d'exécution mais ne répond pas : {{reason}}",
     "running": "En cours d'exécution",
     "stopped": "Arrêté",
     "stopping": "Arrêt en cours...",

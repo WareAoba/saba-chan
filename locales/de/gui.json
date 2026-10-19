@@ -222,6 +222,7 @@
     "type_to_filter": "Befehl eingeben oder aus der Liste wählen"
   },
   "server_status": {
+    "unresponsive": "Läuft, reagiert aber nicht: {{reason}}",
     "running": "Läuft",
     "stopped": "Gestoppt",
     "stopping": "Wird beendet...",

@@ -224,6 +224,7 @@
     "type_to_filter": "Type a command or select from the list"
   },
   "server_status": {
+    "unresponsive": "Running but not responding: {{reason}}",
     "running": "Running",
     "stopped": "Stopped",
     "stopping": "Stopping...",

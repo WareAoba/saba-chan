@@ -222,6 +222,7 @@
     "type_to_filter": "輸入命令或從清單中選擇"
   },
   "server_status": {
+    "unresponsive": "正在執行但沒有回應：{{reason}}",
     "running": "執行中",
     "stopped": "已停止",
     "stopping": "正在停止...",

@@ -166,6 +166,7 @@
     "type_to_filter": "コマンドを入力するか、一覧から選んでください"
   },
   "server_status": {
+    "unresponsive": "実行中ですが応答がありません: {{reason}}",
     "running": "実行中",
     "stopped": "停止中",
     "stopping": "停止中...",

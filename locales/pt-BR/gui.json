@@ -222,6 +222,7 @@
     "type_to_filter": "Digite um comando ou escolha na lista"
   },
   "server_status": {
+    "unresponsive": "Em execução, mas sem resposta: {{reason}}",
     "running": "Em execução",
     "stopped": "Parado",
     "stopping": "Parando...",
