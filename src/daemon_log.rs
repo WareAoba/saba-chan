@@ -224,24 +224,27 @@ pub async fn daemon_terminal_loop(
         for inst in instances {
             let cursor = process_cursors.get(&inst.id).copied();
             if let Ok(result) = sup.get_console_output(&inst.id, cursor, Some(200)).await {
-                if let Some(lines) = result.get("lines").and_then(|v| v.as_array()) {
-                    for line in lines {
-                        let id = line.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let content = line.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                        let level = line.get("level").and_then(|v| v.as_str()).unwrap_or("info");
-                        let level_tag = match level {
-                            "error" => "\x1b[31mERROR\x1b[0m",
-                            "warn" => "\x1b[33m WARN\x1b[0m",
-                            _ => " INFO",
-                        };
-                        output_lines.push(format!(
-                            " {} \x1b[35m[{}]\x1b[0m {}",
-                            level_tag,
-                            inst.name,
-                            content
-                        ));
-                        process_cursors.insert(inst.id.clone(), id + 1);
-                    }
+                let lines = live_console_lines(&result);
+                if lines.is_empty() && result.get("source").is_some() {
+                    // 꺼졌다: 다시 켜면 줄 번호가 처음부터라 커서를 버린다
+                    process_cursors.remove(&inst.id);
+                }
+                for line in lines {
+                    let id = line.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let content = line.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    let level = line.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+                    let level_tag = match level {
+                        "error" => "\x1b[31mERROR\x1b[0m",
+                        "warn" => "\x1b[33m WARN\x1b[0m",
+                        _ => " INFO",
+                    };
+                    output_lines.push(format!(
+                        " {} \x1b[35m[{}]\x1b[0m {}",
+                        level_tag,
+                        inst.name,
+                        content
+                    ));
+                    process_cursors.insert(inst.id.clone(), id + 1);
                 }
             }
         }
@@ -258,11 +261,30 @@ pub async fn daemon_terminal_loop(
     }
 }
 
+/// 콘솔 조회 결과 중 터미널에 찍을 줄. 꺼진 인스턴스의 디스크 로그(`source: "disk"`)는 지난 기록이고
+/// `since`를 무시하므로 찍지 않는다 (찍으면 같은 줄을 매번 다시 찍는다)
+fn live_console_lines(result: &serde_json::Value) -> &[serde_json::Value] {
+    if result.get("source").and_then(|v| v.as_str()) == Some("disk") {
+        return &[];
+    }
+    result.get("lines").and_then(|v| v.as_array()).map_or(&[], Vec::as_slice)
+}
+
 // ─── Tests ───────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 백로그 L6: 꺼진 인스턴스는 디스크 로그로 답하는데, 그 답은 since를 무시해 같은 200줄을 0.5초마다 다시 찍었다
+    #[test]
+    fn the_terminal_shows_only_live_console_lines() {
+        let line = serde_json::json!({ "id": 3, "content": "hi" });
+        let live = serde_json::json!({ "success": true, "lines": [line.clone()], "running": true });
+        assert_eq!(live_console_lines(&live), &[line.clone()][..]);
+        let disk = serde_json::json!({ "success": true, "lines": [line], "running": false, "source": "disk" });
+        assert!(live_console_lines(&disk).is_empty(), "past log on disk is not live output");
+    }
 
     #[test]
     fn test_buffer_push_and_get() {
