@@ -272,7 +272,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | POST | `/api/instance/:id/managed/start` | `managed.rs:24` | 선택 `{config?}` | supervisor 결과(옮긴 포트가 있으면 `port_moved`, 7.2) / 404 / 409 `instance_busy` / 422 `memory_limit_reached` / 500 |
-| GET | `/api/instance/:id/console` | `managed.rs:92` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
+| GET | `/api/instance/:id/console` | `managed.rs:92` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3). 서버가 메모리에 있으면 `epoch`(콘솔 버퍼 세대)도 준다. 줄 `id`는 버퍼마다 0부터라(서버를 다시 켜거나 데몬이 다시 붙을 때) `epoch`가 바뀌면 클라이언트는 이어 읽던 `since`를 버린다. 디스크 기록(`source:"disk"`)은 `since`를 무시하고 `epoch`가 없다 / 404 |
 | POST | `/api/instance/:id/stdin` | `managed.rs:118` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 409 `stdin_not_supported`(모듈의 `protocols.supported`에 `stdin`이 없음, 예: REST 전용) / 503 `console_input_full` / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:139` | - | supervisor 결과 |
 | POST | `/api/instance/:id/query/:name` | `managed.rs` `query_instance_handler` | `{args?: {입력: 값}}` | 모듈 `[[queries]]` 조회(X-2, 02 §`[[queries]]`): lifecycle `function`을 `validate`와 같은 config + `args`로 부른다. `{success, data}`(실패면 `success:false, error, error_code:"query_failed"`, Python이 실패하면 500, 디스코드에서 부르면 오류 원문 대신 `Query failed`). 404 `not_found`(인스턴스)·`unknown_query`, 400 `invalid_argument {field}`(선언에 없는 입력, 명령 입력과 같은 검사). 읽기 전용이라 감사에 남기지 않는다 |

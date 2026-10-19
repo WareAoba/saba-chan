@@ -2000,6 +2000,7 @@ impl Supervisor {
             return Ok(json!({
                 "success": true,
                 "lines": lines,
+                "epoch": proc.console_epoch().await,
                 "running": proc.is_running(),
                 "stdin_available": proc.is_stdin_available(),
             }));
@@ -3524,6 +3525,23 @@ mod tests {
         assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
         assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
         assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
+    }
+
+    /// 데몬이 다시 붙으면 콘솔 줄 번호가 0부터 다시 매겨진다. PID가 같아도 클라이언트가 이어 읽던 번호를
+    /// 버리게 콘솔 응답의 `epoch`가 바뀐다 (그대로면 새 줄이 옛 번호를 넘을 때까지 콘솔이 멈추거나 줄이 겹친다)
+    #[tokio::test]
+    async fn a_reattached_console_reports_a_new_epoch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let supervisor = Supervisor::new_with_instances_dir("./modules", tmp.path().to_str().unwrap());
+        let inst_dir = tmp.path().join("srv");
+        let mut epochs = Vec::new();
+        for _ in 0..2 {
+            let stub = managed_process::ManagedProcess::create_reattached_stub(std::process::id(), &inst_dir).await;
+            supervisor.managed_store.insert("srv", stub).await;
+            let out = supervisor.get_console_output("srv", Some(0), None).await.unwrap();
+            epochs.push(out["epoch"].as_u64().unwrap_or_else(|| panic!("no epoch: {out}")));
+        }
+        assert_ne!(epochs[0], epochs[1]);
     }
 
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여
