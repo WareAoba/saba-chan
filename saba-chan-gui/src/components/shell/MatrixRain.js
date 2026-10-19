@@ -29,7 +29,7 @@ const WORDS = [
     '8211',
 ];
 const HEX = '0123456789abcdef';
-const FONT_PX = 13;
+const FONT_PX = 10;
 const STEP_MS = 70;
 const LINE = Math.round(FONT_PX * 1.5);
 
@@ -72,7 +72,7 @@ export function MatrixRain({ className }) {
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.font = `${FONT_PX}px ${readColor(canvas, '--font-mono', 'monospace')}`;
             ctx.textBaseline = 'top';
-            const gap = FONT_PX * 3;
+            const gap = FONT_PX * 4.2;
             rows = Math.ceil(h / LINE);
             cols = Array.from({ length: Math.ceil(w / gap) }, (_, i) => fresh(i * gap, true));
         };

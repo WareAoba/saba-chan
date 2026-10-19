@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import clsx from 'clsx';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
@@ -8,12 +9,41 @@ import { MatrixRain } from './shell/MatrixRain';
  * LoadingScreen — displayed while daemon is initializing.
  * failed가 있으면 데몬을 못 띄운 것: 진행 막대 대신 이유와 [다시 시도]·[그대로 열기]를 보인다.
  */
-export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRetry, onContinue }) {
+/** 로딩 중 데몬이 남긴 최신 로그 한 줄 (GET /api/daemon/console). 데몬이 아직 없으면 비어 있다 */
+function useLatestDaemonLog(active) {
+    const [line, setLine] = useState(null);
+    useEffect(() => {
+        if (!active || !window.api?.daemonConsole) return undefined;
+        let alive = true;
+        let timer;
+        const poll = async () => {
+            try {
+                const res = await window.api.daemonConsole({ count: 1 });
+                const last = res?.lines?.[res.lines.length - 1];
+                if (alive && last?.message) setLine(last);
+            } catch {
+                // 데몬이 아직 안 떴으면 다음에
+            }
+            if (alive) timer = setTimeout(poll, LOG_POLL_MS);
+        };
+        poll();
+        return () => {
+            alive = false;
+            clearTimeout(timer);
+        };
+    }, [active]);
+    return line;
+}
+
+const LOG_POLL_MS = 600;
+
+export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRetry, onContinue, leaving = false }) {
     const { t } = useTranslation('gui');
     const [retrying, setRetrying] = useState(false);
+    const log = useLatestDaemonLog(!failed && !leaving);
 
     return (
-        <div className="loading-screen">
+        <div className={clsx('loading-screen', { leaving })} aria-hidden={leaving || undefined}>
             {/* 뒤에서 흐르는 서버 콘솔 (가운데는 비워 둔다) */}
             <MatrixRain className="loading-matrix" />
             <div className="loading-vignette" aria-hidden="true" />
@@ -65,13 +95,23 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
                     </div>
                 ) : (
                     <div className="loading-term">
-                        {/* 콘솔 한 줄처럼: 프롬프트 + 지금 하는 일 + 깜빡이는 커서, 아래에 진행 막대 */}
+                        {/* 첫 줄: 지금 하는 일을 사람 말로. 둘째 줄: 데몬이 실제로 남긴 마지막 로그 */}
                         <div className="loading-status" aria-live="polite">
                             <span className="loading-prompt" aria-hidden="true">
                                 saba@core:~$
                             </span>
                             <span className="loading-status-text">{initStatus || t('loading.step_init')}</span>
                             <span className="loading-caret" aria-hidden="true" />
+                        </div>
+                        <div className={clsx('loading-log', log && `level-${String(log.level).toLowerCase()}`)}>
+                            {log ? (
+                                <>
+                                    <span className="loading-log-level">{String(log.level).toUpperCase()}</span>
+                                    <span className="loading-log-msg">{log.message}</span>
+                                </>
+                            ) : (
+                                <span className="loading-log-msg">…</span>
+                            )}
                         </div>
                         <div className="loading-progress-row">
                             <div className="loading-progress-bar">

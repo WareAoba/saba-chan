@@ -19,7 +19,7 @@
 .loading-matrix {
     position: absolute;
     inset: 0;
-    opacity: 0.5;
+    opacity: 0.28;
     pointer-events: none;
 }
 .loading-matrix canvas {
@@ -159,6 +159,62 @@
 /* Icon 로더 애니메이션 */
 span[style*="--icon-loader"] svg {
     animation: spin 1s linear infinite;
+}
+
+/* 데몬의 실제 마지막 로그 (둘째 줄): 작고 흐리게 */
+.loading-log {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    min-height: 18px;
+    font-family: var(--font-mono);
+    font-size: calc(11px * var(--font-scale));
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+}
+.loading-log-level {
+    flex-shrink: 0;
+    width: 5ch;
+    color: var(--text-3);
+}
+.loading-log.level-warn .loading-log-level {
+    color: var(--warn);
+}
+.loading-log.level-error .loading-log-level {
+    color: var(--stop);
+}
+.loading-log-msg {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 로딩이 끝나면: 메인 화면 위에서 로고가 살짝 커지며 화면 전체가 걷힌다 */
+.loading-screen.leaving {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    pointer-events: none;
+    animation: loading-leave 700ms var(--ease) forwards;
+}
+.loading-screen.leaving .loading-content {
+    animation: loading-leave-content 700ms var(--ease) forwards;
+}
+@keyframes loading-leave {
+    0%,
+    25% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+@keyframes loading-leave-content {
+    to {
+        transform: scale(1.08);
+        filter: blur(6px);
+    }
 }
 
 /* 콘솔 한 줄 같은 진행 표시 */
