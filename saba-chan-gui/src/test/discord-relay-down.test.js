@@ -57,6 +57,40 @@ describe('릴레이에 닿지 않을 때 디스코드 연결 상태', () => {
     });
 });
 
+describe('실패로 정해진 뒤의 확인', () => {
+    it('다시 확인하는 동안 실패를 "연결 중"으로 바꾸지 않는다', async () => {
+        window.api.relayCheckHostStatus.mockResolvedValue({ error: 'down' });
+        await useDiscordStore.getState().checkStatus();
+        await useDiscordStore.getState().checkStatus();
+        let during;
+        window.api.relayCheckHostStatus.mockImplementation(async () => {
+            during = stateOf();
+            return { error: 'down' };
+        });
+        await useDiscordStore.getState().checkStatus();
+        expect(during).toBe('error');
+    });
+
+    it('겹친 확인 두 개가 한 번의 실패를 두 번으로 세지 않는다', async () => {
+        window.api.relayCheckHostStatus.mockResolvedValueOnce({ connected: true });
+        await useDiscordStore.getState().checkStatus();
+        window.api.relayCheckHostStatus.mockResolvedValue({ error: 'blip' });
+        await Promise.all([useDiscordStore.getState().checkStatus(), useDiscordStore.getState().checkStatus()]);
+        expect(stateOf()).toBe('connected');
+    });
+
+    it('봇을 멈추면 남은 릴레이 실패를 지운다', async () => {
+        window.api.relayCheckHostStatus.mockResolvedValue({ error: 'down' });
+        await useDiscordStore.getState().checkStatus();
+        await useDiscordStore.getState().checkStatus();
+        window.api.discordBotStop = vi.fn().mockResolvedValue({});
+        window.showToast = vi.fn();
+        await useDiscordStore.getState().stopBot();
+        expect(useDiscordStore.getState().relayError).toBe('');
+        expect(useDiscordStore.getState()._relayFailures).toBe(0);
+    });
+});
+
 describe('디스코드 화면', () => {
     it('릴레이 확인이 실패로 정해지면 연결 화면에 실패와 이유를 보인다', async () => {
         useDiscordStore.setState({ _botConfigLoaded: true, relayError: 'connect ECONNREFUSED' });

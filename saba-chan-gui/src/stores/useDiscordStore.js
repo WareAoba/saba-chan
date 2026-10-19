@@ -35,6 +35,8 @@ const ALL_FIELDS = Object.values(BOT_KEYS).flat();
 let saveQueue = Promise.resolve();
 // 상태 확인 세대: 연결 대상이 바뀌거나 폴링이 멈추면 올려서, 늦게 온 옛 응답을 버린다
 let statusGeneration = 0;
+// 지금 확인 중인 대상 세대 (겹친 확인은 하나만 돌려 한 번의 실패를 두 번으로 세지 않는다)
+let checkingGeneration = null;
 
 // 디스코드 봇 본체는 클라우드(릴레이 서버)에서 돌고, 로컬에서는 데몬 내장
 // 릴레이 에이전트가 명령을 받아 처리한다. 이 스토어는 bot-config와
@@ -229,7 +231,7 @@ export const useDiscordStore = create((set, get) => ({
                     4000,
                 );
             } else {
-                set({ discordBotStatus: 'stopped', relayConnected: false });
+                set({ discordBotStatus: 'stopped', relayConnected: false, relayError: '', _relayFailures: 0 });
                 safeShowToast(_t('discord_bot.stopped_toast'), 'discord', 3000);
             }
         } catch (e) {
@@ -239,6 +241,16 @@ export const useDiscordStore = create((set, get) => ({
 
     checkStatus: async () => {
         const generation = statusGeneration;
+        if (checkingGeneration === generation) return;
+        checkingGeneration = generation;
+        try {
+            await get()._checkStatusNow(generation);
+        } finally {
+            if (checkingGeneration === generation) checkingGeneration = null;
+        }
+    },
+
+    _checkStatusNow: async (generation) => {
         // 앱이 데몬보다 먼저 떠서 처음 설정 읽기에 실패했으면 여기서 다시 읽는다.
         // 읽지 못한 채로 두면 호스트가 비어 저장된 연결이 있어도 연결 화면을 보인다
         if (!get()._botConfigLoaded) await get().loadConfig({ attempts: 1 });
@@ -259,11 +271,12 @@ export const useDiscordStore = create((set, get) => ({
         if (state.discordCloudHostId) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             try {
-                // 이미 붙어 있으면 '연결 중'으로 깜빡이지 않는다 (5초마다 확인)
-                if (generation === statusGeneration && !state.relayConnected) set({ relayConnecting: true });
+                // 이미 붙어 있거나 실패로 정해졌으면 '연결 중'으로 깜빡이지 않는다 (5초마다 확인)
+                if (generation === statusGeneration && !state.relayConnected && !state.relayError)
+                    set({ relayConnecting: true });
                 const result = await window.api.relayCheckHostStatus(state.discordCloudHostId, relayUrl);
                 relayOk = !!result && !result.error;
-                if (!relayOk) relayFailure = String(result?.error || 'no response');
+                if (!relayOk) relayFailure = String(result?.error || _t('errors.network_error'));
             } catch (e) {
                 relayFailure = e?.message || String(e);
             }
