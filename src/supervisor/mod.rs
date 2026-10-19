@@ -634,7 +634,7 @@ impl Supervisor {
                     return None;
                 }
                 let first = rel.components().next()?.as_os_str().to_str()?;
-                (!crate::instance::DAEMON_ENTRIES.contains(&first)).then(|| instance_dir.join(first).to_string_lossy().into_owned())
+                (!is_daemon_entry(first)).then(|| instance_dir.join(first).to_string_lossy().into_owned())
             })
             .collect();
         dirs.sort();
@@ -2895,6 +2895,16 @@ impl Supervisor {
     }
 }
 
+/// 인스턴스 폴더 바로 아래 이름이 데몬 항목을 가리킬 수 있는가. Windows는 대소문자를 가리지 않고 끝의 점·공백을
+/// 떼며, 짧은 이름(`SETTIN~1.JSO`)과 스트림 표기(`run:x`)로도 같은 항목을 연다. 그런 이름은 모두 데몬 항목으로 본다
+fn is_daemon_entry(name: &str) -> bool {
+    if name.contains(['~', ':']) {
+        return true;
+    }
+    let name = name.trim_end_matches(['.', ' ']);
+    crate::instance::DAEMON_ENTRIES.iter().any(|e| e.eq_ignore_ascii_case(name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3147,6 +3157,12 @@ mod tests {
             ("save_dir", at("zomboid/Saves")),
             ("meta", at("instance.json")),
             ("runner", at("run/x")),
+            // Windows는 이름의 대소문자, 끝의 점·공백, 짧은 이름(8.3), 스트림 표기를 같은 항목으로 연다
+            ("runner_upper", at("RUN/x")),
+            ("meta_dot", at("Instance.json.")),
+            ("logs_space", at("logs /x")),
+            ("short", at("SETTIN~1.JSO")),
+            ("stream", at("run:x")),
             ("up", at("../other")),
             ("whole", root.to_string_lossy().into_owned()),
             ("outside", "/home/user/Documents".to_string()),
