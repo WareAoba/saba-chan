@@ -329,6 +329,15 @@ mod windows_job {
     }
 }
 
+/// 이 실행이 import할 수 있는 익스텐션과 확인되지 않아 뺀 익스텐션. 격리 없이 도는 실행(확인된 모듈 등)이
+/// 확인되지 않은 익스텐션을 import하면 그 코드가 격리·검사 없이 그 실행의 권한(데몬 토큰 경로 등)으로 돈다
+fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+    if isolated {
+        return (enabled, Vec::new());
+    }
+    enabled.into_iter().partition(|id| !unverified(id))
+}
+
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
@@ -365,6 +374,9 @@ async fn run_plugin_inner(
         .env("PYTHONUNBUFFERED", "1")
         .envs(daemon_env());
 
+    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
+    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
+
     // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
     #[cfg(windows)]
     const PYPATH_SEP: char = ';';
@@ -379,7 +391,12 @@ async fn run_plugin_inner(
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
-        cmd.env("SABA_ENABLED_EXTENSIONS", enabled.unwrap_or_default().join(","));
+        let (importable, unverified) = importable_extensions(enabled.unwrap_or_default(), isolation.is_some(), |id| {
+            crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
+        });
+        cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
+        // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
+        cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
 
         let mut pypath = extensions_dir.parent()
             .unwrap_or(&extensions_dir)
@@ -414,8 +431,6 @@ async fn run_plugin_inner(
         cmd.env("SABA_JAVA_RUNTIMES", runtimes);
     }
 
-    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
-    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
     if let Some(iso) = &isolation {
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
             .env("TEMP", &iso.temp)
@@ -571,6 +586,15 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 격리 없이 도는 실행은 확인된 익스텐션만 import한다. 격리된 실행은 활성 익스텐션을 모두 쓴다(같은 격리 안에서 돈다)
+    #[test]
+    fn an_unisolated_run_imports_only_verified_extensions() {
+        let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string()];
+        let unverified = |id: &str| id == "ue4-ini";
+        assert_eq!(importable_extensions(enabled.clone(), false, unverified), (vec!["steamcmd".to_string()], vec!["ue4-ini".to_string()]));
+        assert_eq!(importable_extensions(enabled.clone(), true, unverified), (enabled, vec![]));
+    }
     use serde_json::json;
 
     #[test]

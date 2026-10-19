@@ -276,6 +276,7 @@ players = "player_count"
   - `PYTHONPATH` = `<python-guard>` + `<extensions_dir의 부모>` + `<modules_dir>` + 기존 `PYTHONPATH`.
     - 그래서 `import extensions.steamcmd`, `import daemon_rcon`, `import i18n`이 가능하다.
     - `python-guard/sitecustomize.py`는 활성 목록에 없는 `extensions.<이름>` import를 막는다 (`:114-126`).
+    - 격리 없이 도는 실행(확인된 모듈·익스텐션, Windows)은 확인된 익스텐션만 import한다: 확인되지 않은(공식이 아니거나 고쳐진) 활성 익스텐션은 `SABA_ENABLED_EXTENSIONS`에서 빠지고 `SABA_UNVERIFIED_EXTENSIONS`에 들어가, import하면 "not verified" `ModuleNotFoundError`가 난다(`plugin::importable_extensions`). 그 코드가 격리 없이 그 실행의 권한(토큰 경로 등)으로 돌지 않게 한다. 격리된 실행은 활성 익스텐션을 모두 import한다(같은 격리 안에서 돈다).
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:126-147`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:315-322`). 목록이 없으면 빈 값이다.
   - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-38`).
