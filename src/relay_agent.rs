@@ -1145,6 +1145,8 @@ fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
         "safe": preset_level(&p.preset, "safe"),
         "caution": preset_level(&p.preset, "caution"),
         "danger": preset_level(&p.preset, "danger"),
+        // 관리(Kind::Admin) 액션은 risk 대신 이 레벨이다 (`actions::authorize`)
+        "admin": crate::actions::admin_level(&p.preset),
     });
     let mut entry = json!({
         "defaultLevel": p.default_level,
@@ -1254,6 +1256,10 @@ mod tests {
         assert_eq!(res["success"], true, "{res}");
         let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
         assert!(at >= before && at <= now_ms());
+        // 응답은 heartbeat `permissions[guild]`와 같은 모양이다
+        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels"] {
+            assert!(res["data"].get(key).is_some(), "no {key}: {res}");
+        }
     }
 
     /// 노드 토큰이 평문으로 나가지 않게: 이미 저장된 http 주소(루프백 제외)로는 세션을 열지 않는다
@@ -1335,12 +1341,12 @@ mod tests {
             "g3": { "defaultLevel": -1 }
         });
         // 릴레이가 요구 레벨을 미리 셀 수 있게 프리셋을 푼 risk별 레벨, 챗봇 상한, 명령별 덮어쓰기도 싣는다
-        let default_levels = json!({ "safe": 0, "caution": 1, "danger": 2 });
+        let default_levels = json!({ "safe": 0, "caution": 1, "danger": 2, "admin": 2 });
         assert_eq!(
             permissions_by_guild(&nodes),
             json!({
                 "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 } },
-                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3 }, "commandLevels": {} },
+                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {} },
                 "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {} }
             })
         );
