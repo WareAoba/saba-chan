@@ -189,7 +189,7 @@ pub enum SandboxCmd {
     #[command(visible_alias = "ls")]
     List,
     /// Run this component without isolation when isolation cannot be prepared (asked again when its files change).
-    /// `--gui`: load this extension's GUI bundle instead
+    /// `--gui`: load this extension's GUI bundle instead (component is the `ext-<id>` name shown by `sandbox list`)
     Allow {
         component: String,
         #[arg(long)]

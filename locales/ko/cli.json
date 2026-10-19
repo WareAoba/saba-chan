@@ -665,8 +665,8 @@
       "bot.allow.all": "제한 없음: 이 PC의 모든 서버",
       "sandbox.allow.component": "격리 없이 실행할 구성요소",
       "sandbox.revoke.component": "허용을 거둘 구성요소",
-      "sandbox.allow.gui": "격리 대신 익스텐션 GUI 번들 싣기에 동의",
-      "sandbox.revoke.gui": "GUI 번들 싣기 동의를 지우기",
+      "sandbox.allow.gui": "격리 대신 익스텐션 GUI 번들 싣기에 동의 (구성요소는 sandbox list에 보이는 ext-<id> 이름)",
+      "sandbox.revoke.gui": "GUI 번들 싣기 동의를 지우기 (구성요소는 ext-<id> 이름)",
       "do.plan": "입력만 검사하고 무엇을 할지 보여 줌",
       "do.input": "입력 key=value (JSON으로 읽히는 값은 JSON)",
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -884,6 +884,7 @@
     "kind_gui": "GUI 번들",
     "stale": "파일이 바뀌어 쓰이지 않음",
     "in_use": "쓰는 중",
+    "needs_terminal": "동의는 터미널에서 직접 답해야 해요. --yes나 --json으로는 대신할 수 없어요.",
     "revoked": "{{component}}의 격리 없이 돌리기 동의를 지웠어요."
   },
   "do": {

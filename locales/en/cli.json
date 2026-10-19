@@ -695,6 +695,7 @@
     "kind_gui": "GUI bundle",
     "stale": "files changed, not in use",
     "in_use": "in use",
+    "needs_terminal": "Answer the consent yourself in a terminal. --yes or --json cannot stand in for it.",
     "revoked": "Removed the consent to run {{component}} without isolation."
   },
   "do": {
