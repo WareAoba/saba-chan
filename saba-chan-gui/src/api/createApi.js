@@ -741,18 +741,10 @@ export function createApi({ invoke, hub }) {
         consolePopin: (instanceId) => invoke('console_popin', { instanceId }),
         consoleToggleAlwaysOnTop: (instanceId, pinned) =>
             invoke('console_toggle_always_on_top', { instanceId, pinned }),
-        onConsolePopoutOpened: (callback) => {
-            hub.on('console:popoutOpened', callback);
-        },
-        offConsolePopoutOpened: () => hub.offAll('console:popoutOpened'),
-        onConsolePopoutClosed: (callback) => {
-            hub.on('console:popoutClosed', callback);
-        },
-        offConsolePopoutClosed: () => hub.offAll('console:popoutClosed'),
-        onConsolePopinRequest: (callback) => {
-            hub.on('console:popinRequest', callback);
-        },
-        offConsolePopinRequest: () => hub.offAll('console:popinRequest'),
+        // 셸 이벤트 구독은 그 구독만 떼는 함수를 돌려준다 (다른 화면의 구독은 남는다)
+        onConsolePopoutOpened: (callback) => hub.on('console:popoutOpened', callback),
+        onConsolePopoutClosed: (callback) => hub.on('console:popoutClosed', callback),
+        onConsolePopinRequest: (callback) => hub.on('console:popinRequest', callback),
 
         // ── 업데이터 (데몬 HTTP API) ──
         updaterCheck: async () => {
@@ -1117,15 +1109,9 @@ export function createApi({ invoke, hub }) {
         },
 
         // ── 앱 수명 ──
-        onCloseRequest: (callback) => {
-            hub.on('app:closeRequest', callback);
-        },
-        offCloseRequest: () => hub.offAll('app:closeRequest'),
+        onCloseRequest: (callback) => hub.on('app:closeRequest', callback),
         closeResponse: (choice) => send('app_close_response', { choice }),
-        onStatusUpdate: (callback) => {
-            hub.on('status:update', callback);
-        },
-        offStatusUpdate: () => hub.offAll('status:update'),
+        onStatusUpdate: (callback) => hub.on('status:update', callback),
         daemonStatus: () => invoke('daemon_status'),
         daemonRestart: () => invoke('daemon_restart'),
 

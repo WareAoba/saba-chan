@@ -297,13 +297,10 @@ function App() {
                 .catch(() => {});
         }
 
-        // Remove any previously stacked listeners (prevents duplicates on Fast Refresh)
-        if (window.api && window.api.offStatusUpdate) {
-            window.api.offStatusUpdate();
-        }
-
+        // 이 구독만 정리할 함수 (다른 화면의 상태 구독은 건드리지 않는다)
+        let offStatus;
         if (window.api && window.api.onStatusUpdate) {
-            window.api.onStatusUpdate((data) => {
+            offStatus = window.api.onStatusUpdate((data) => {
                 console.log('[Init Status]', data.step, ':', data.message);
 
                 const progressValues = {
@@ -378,9 +375,7 @@ function App() {
 
         return () => {
             // Cleanup IPC listeners on unmount / Fast Refresh re-run
-            if (window.api && window.api.offStatusUpdate) {
-                window.api.offStatusUpdate();
-            }
+            if (typeof offStatus === 'function') offStatus();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -486,8 +481,9 @@ function App() {
         fetchServers();
 
         // App close request handler
+        let offClose;
         if (window.api.onCloseRequest) {
-            window.api.onCloseRequest(() => {
+            offClose = window.api.onCloseRequest(() => {
                 // managed 모드로 실행 중인 인스턴스 검출
                 const currentServers = useServerStore.getState().servers;
                 const runningManaged = currentServers.filter((srv) => srv.status === 'running' && isManaged(srv));
@@ -568,7 +564,7 @@ function App() {
 
         return () => {
             clearInterval(interval);
-            if (window.api.offCloseRequest) window.api.offCloseRequest();
+            if (typeof offClose === 'function') offClose();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
 

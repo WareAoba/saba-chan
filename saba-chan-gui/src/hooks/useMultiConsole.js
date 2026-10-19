@@ -451,13 +451,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // PiP → 인앱 전환: 인앱 콘솔 창 열기
             openConsole(instanceId, serverName);
         };
-        if (window.api.onConsolePopoutOpened) window.api.onConsolePopoutOpened(handlePopoutOpened);
-        if (window.api.onConsolePopoutClosed) window.api.onConsolePopoutClosed(handlePopoutClosed);
-        if (window.api.onConsolePopinRequest) window.api.onConsolePopinRequest(handlePopinRequest);
+        const offs = [
+            window.api.onConsolePopoutOpened?.(handlePopoutOpened),
+            window.api.onConsolePopoutClosed?.(handlePopoutClosed),
+            window.api.onConsolePopinRequest?.(handlePopinRequest),
+        ];
         return () => {
-            if (window.api.offConsolePopoutOpened) window.api.offConsolePopoutOpened();
-            if (window.api.offConsolePopoutClosed) window.api.offConsolePopoutClosed();
-            if (window.api.offConsolePopinRequest) window.api.offConsolePopinRequest();
+            for (const off of offs) if (typeof off === 'function') off();
         };
     }, [isPopoutMode, openConsole, closeConsole]);
 
