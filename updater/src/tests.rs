@@ -972,3 +972,91 @@ fn an_old_backup_without_its_exe_is_kept() {
     assert!(tmp.path().join("saba-chan-gui.exe.old").exists());
     assert!(!tmp.path().join("saba-core.exe.old").exists());
 }
+
+// M4: 대상 폴더 안의 기존 링크(Windows는 정션 포함)를 따라 밖에 쓰지 않는다
+#[cfg(unix)]
+#[test]
+fn extract_zip_does_not_write_through_links_in_the_target() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("victim.txt"), b"keep").unwrap();
+    std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
+    std::os::unix::fs::symlink(outside.join("victim.txt"), target.join("file.txt")).unwrap();
+    for name in ["sub/new.txt", "file.txt"] {
+        let zip_path = tmp.path().join("a.zip");
+        {
+            let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+            zw.start_file(name, zip::write::FileOptions::default()).unwrap();
+            zw.write_all(b"bad").unwrap();
+            zw.finish().unwrap();
+        }
+        assert!(crate::extract_zip(&zip_path, &target, |_| Ok(())).is_err(), "{name}");
+    }
+    assert!(!outside.join("new.txt").exists());
+    assert_eq!(std::fs::read(outside.join("victim.txt")).unwrap(), b"keep");
+}
+
+// M4: tar의 링크 엔트리를 만들지 않고, 기존 링크를 따라 쓰지 않는다
+#[cfg(unix)]
+#[test]
+fn extract_tar_gz_does_not_create_or_follow_links() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let archive = tmp.path().join("a.tar.gz");
+    {
+        let gz = flate2::write::GzEncoder::new(std::fs::File::create(&archive).unwrap(), flate2::Compression::default());
+        let mut tw = tar::Builder::new(gz);
+        let mut link = tar::Header::new_gnu();
+        link.set_entry_type(tar::EntryType::Symlink);
+        link.set_size(0);
+        tw.append_link(&mut link, "sub", &outside).unwrap();
+        let mut file = tar::Header::new_gnu();
+        file.set_size(3);
+        file.set_mode(0o644);
+        tw.append_data(&mut file, "sub/new.txt", &b"bad"[..]).unwrap();
+        tw.into_inner().unwrap().finish().unwrap();
+    }
+    let _ = UpdateManager::extract_tar_gz(&archive, &target);
+    assert!(!outside.join("new.txt").exists());
+    assert!(!target.join("sub").is_symlink());
+
+    std::fs::remove_dir_all(target.join("sub")).unwrap();
+    std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
+    assert!(UpdateManager::extract_tar_gz(&archive, &target).is_err());
+    assert!(!outside.join("new.txt").exists());
+}
+
+// M4: Windows 정션도 링크로 보고 따라 쓰지 않는다 (PC에서 실행)
+#[cfg(windows)]
+#[test]
+fn extract_zip_does_not_write_through_a_junction() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let made = std::process::Command::new("cmd")
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(target.join("sub"))
+        .arg(&outside)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let zip_path = tmp.path().join("a.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("sub/new.txt", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+    assert!(crate::extract_zip(&zip_path, &target, |_| Ok(())).is_err());
+    assert!(!outside.join("new.txt").exists());
+}
