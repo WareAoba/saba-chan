@@ -23,6 +23,7 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
             set(ctx, &pairs, guild.as_deref()).await
         }
         ChatbotCmd::Key { delete } => key(ctx, delete).await,
+        ChatbotCmd::Models { guild } => models(ctx, guild.as_deref()).await,
         ChatbotCmd::Clear => {
             ctx.ask.ensure(&t!("chatbot.confirm_clear"))?;
             let r = ctx.api.clear_chatbot().await?;
@@ -226,9 +227,50 @@ fn report_sync(ctx: &Ctx, r: &Value) {
     }
 }
 
+/// 저장된 키로 쓸 수 있는 모델 (릴레이가 제공자에게 묻는다). `chatbot set model=` 값을 고를 때
+async fn models(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
+    let guild = resolve::guild(ctx, guild).await?;
+    let cfg = ctx.api.bot_config().await?;
+    let relay = cfg.pointer("/cloud/relayUrl").and_then(Value::as_str).filter(|u| !u.is_empty());
+    let r = ctx.api.chatbot_models(&guild, relay).await?;
+    ctx.out.data(&r, |r| {
+        println!("{}: {}", t!("chatbot.provider"), s(r, "provider"));
+        for line in model_lines(r) {
+            println!("{}", line);
+        }
+        // 고른 모델이 목록에서 사라져 대신 쓰는 모델
+        let (selected, effective) = (s(r, "selected"), s(r, "effectiveModel"));
+        if !effective.is_empty() && effective != selected {
+            ctx.out.warn(&t!("chatbot.model_replaced", selected = selected, effective = effective));
+        }
+        ctx.out.hint("saba-chan-cli chatbot set model=MODEL");
+    });
+    Ok(())
+}
+
+/// 모델 목록 한 줄씩, 지금 쓰는 모델에 ● 표시
+fn model_lines(r: &Value) -> Vec<String> {
+    let using = [s(r, "effectiveModel"), s(r, "selected")].into_iter().find(|m| !m.is_empty()).unwrap_or("");
+    r.get("models")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|m| if m == using { format!("{} {}", console::style("●").green(), output::bold(m)) } else { format!("  {}", m) })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 모델 목록에서 지금 쓰는 모델(대신 쓰는 모델이 있으면 그것)을 표시한다 (C12)
+    #[test]
+    fn the_model_in_use_is_marked() {
+        let r = json!({ "provider": "openai", "models": ["a", "b"], "selected": "gone", "effectiveModel": "b" });
+        let lines: Vec<String> = model_lines(&r).iter().map(|l| console::strip_ansi_codes(l).to_string()).collect();
+        assert_eq!(lines, vec!["  a", "● b"]);
+    }
 
     /// 바꿀 수 있는 키는 데몬이 주는 기본값 표에서 온다: 바꾸지 않은 키도 기본값과 함께 보인다
     #[test]

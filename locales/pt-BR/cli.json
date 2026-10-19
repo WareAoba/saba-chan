@@ -29,6 +29,9 @@
   },
   "bot": {
     "ask_token": "Token do nó",
+    "relay_check": "Verificação do relay",
+    "relay_ok": "respondendo",
+    "relay_failed": "sem resposta: {{error}}",
     "expired": "expirado",
     "expires_in": "Tempo restante",
     "members_partial": "Não foi possível obter a lista completa do Discord; mostrando só membros com nível salvo.",
@@ -406,6 +409,13 @@
   },
   "update": {
     "after_hint": "O Saba-chan vai reiniciar após a atualização. Depois verifique: saba-chan-cli update last",
+    "notes": "Notas da versão",
+    "result": "Resultado",
+    "result_ok": "sucesso",
+    "result_failed": "falhou",
+    "when": "Aplicado em",
+    "updated": "Atualizado",
+    "failed_one": "Falhou",
     "applied": "Aplicado: {{list}}",
     "applying": "Aplicando atualizações...",
     "checking": "Verificando atualizações...",
@@ -527,6 +537,8 @@
   },
   "chatbot": {
     "api_key": "Chave de API salva",
+    "provider": "Provedor",
+    "model_replaced": "O modelo escolhido {{selected}} não está disponível; {{effective}} é usado no lugar.",
     "common": "Configurações para todos os servidores do Discord",
     "guild": "Servidor do Discord {{guild}}",
     "defaults": "(padrões)",

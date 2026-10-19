@@ -29,6 +29,9 @@
   },
   "bot": {
     "ask_token": "ノードトークン",
+    "relay_check": "リレー確認",
+    "relay_ok": "応答あり",
+    "relay_failed": "応答なし: {{error}}",
     "expired": "期限切れ",
     "expires_in": "残り時間",
     "members_partial": "Discordの全メンバー一覧を取得できなかったため、権限を登録したメンバーのみ表示しています。",
@@ -406,6 +409,13 @@
   },
   "update": {
     "after_hint": "アップデート後にサバちゃんが再起動します。その後確認: saba-chan-cli update last",
+    "notes": "パッチノート",
+    "result": "結果",
+    "result_ok": "成功",
+    "result_failed": "失敗",
+    "when": "適用日時",
+    "updated": "更新したコンポーネント",
+    "failed_one": "失敗したコンポーネント",
     "applied": "適用済み: {{list}}",
     "applying": "アップデートを適用しています...",
     "checking": "アップデートを確認しています...",
@@ -527,6 +537,8 @@
   },
   "chatbot": {
     "api_key": "API キー保存済み",
+    "provider": "プロバイダー",
+    "model_replaced": "選んだモデル {{selected}} は使えないため {{effective}} を代わりに使います。",
     "common": "すべての Discord サーバー共通の設定",
     "guild": "Discord サーバー {{guild}}",
     "defaults": "（既定値）",

@@ -29,6 +29,9 @@
   },
   "bot": {
     "ask_token": "節點權杖",
+    "relay_check": "中繼檢查",
+    "relay_ok": "有回應",
+    "relay_failed": "沒有回應：{{error}}",
     "expired": "已過期",
     "expires_in": "剩餘時間",
     "members_partial": "無法取得完整的 Discord 成員清單，只顯示已設定等級的成員。",
@@ -406,6 +409,13 @@
   },
   "update": {
     "after_hint": "更新後 Saba-chan 會重新啟動。之後請檢查：saba-chan-cli update last",
+    "notes": "更新說明",
+    "result": "結果",
+    "result_ok": "成功",
+    "result_failed": "失敗",
+    "when": "套用時間",
+    "updated": "已更新",
+    "failed_one": "失敗",
     "applied": "已套用：{{list}}",
     "applying": "正在套用更新...",
     "checking": "正在檢查更新...",
@@ -527,6 +537,8 @@
   },
   "chatbot": {
     "api_key": "API 金鑰已儲存",
+    "provider": "提供者",
+    "model_replaced": "所選模型 {{selected}} 無法使用，改用 {{effective}}。",
     "common": "所有 Discord 伺服器的共用設定",
     "guild": "Discord 伺服器 {{guild}}",
     "defaults": "（預設值）",
