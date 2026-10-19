@@ -110,6 +110,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
     };
     match code {
         "extension_required" => Some(t!("err.hint.extension_required", ids = list("missing_extensions"))),
+        "extension_not_verified" => Some(t!("err.hint.extension_not_verified", ids = list("unverified_extensions"))),
         "module_dependency_unsatisfied" => {
             // 항목 꼴: "ext-steamcmd >=1.0.0 (not installed)"
             let deps: Vec<&str> = body
