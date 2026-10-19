@@ -160,10 +160,10 @@ pub async fn auth_middleware(
             if suppressed > 0 {
                 tracing::warn!(
                     "IPC auth failed from {}: {} (suppressed {} previous)",
-                    req.uri(), provided_hint, suppressed
+                    logged_target(req.uri()), provided_hint, suppressed
                 );
             } else {
-                tracing::warn!("IPC auth failed from {}: {}", req.uri(), provided_hint);
+                tracing::warn!("IPC auth failed from {}: {}", logged_target(req.uri()), provided_hint);
             }
         } else {
             AUTH_FAIL_SUPPRESSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -172,8 +172,19 @@ pub async fn auth_middleware(
     }
 }
 
+/// 로그에 남기는 요청 대상: 경로만 (쿼리에는 비밀값이 실릴 수 있다)
+fn logged_target(uri: &axum::http::Uri) -> &str {
+    uri.path()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failed_request_is_logged_without_its_query() {
+        let uri: axum::http::Uri = "/api/relay/pair/AB12/status?secret=s3cr3t".parse().unwrap();
+        assert_eq!(super::logged_target(&uri), "/api/relay/pair/AB12/status");
+    }
+
     #[test]
     fn token_comparison_checks_every_byte() {
         assert!(constant_time_eq(b"abcd", b"abcd"));
