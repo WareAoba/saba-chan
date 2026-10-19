@@ -366,6 +366,14 @@ pub struct Isolation {
 /// 데몬이 lifecycle 호출에 넣는 인스턴스 폴더 키 (설치·업데이트 호출은 `install_dir`만 넣는다)
 const INSTANCE_DIR_FIELDS: [&str; 3] = ["instance_dir", "working_dir", "install_dir"];
 
+/// 인스턴스 폴더 안의 모듈 데이터 폴더 목록 키 (`Supervisor::insert_instance_fields`가 만든다. 좀보이드 cache_dir 등)
+pub const INSTANCE_DATA_DIRS: &str = "instance_data_dirs";
+
+/// 격리 실행이 이 config 키의 폴더에 권한을 받는가. 이 키들은 데몬만 정하고 모듈 설정에서 싣지 않는다
+pub fn grants_write(key: &str) -> bool {
+    INSTANCE_DIR_FIELDS.contains(&key) || key == INSTANCE_DATA_DIRS
+}
+
 /// 격리 실행이 config의 인스턴스 폴더(`INSTANCE_DIR_FIELDS`)에 받는 권한: 모듈은 쓰기, 그 밖(익스텐션 등)은 읽기
 fn instance_access(key: &str) -> appcontainer::Access {
     if key.starts_with(saba_chan_updater_lib::relay::MODULE_PREFIX) {
@@ -664,8 +672,12 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
     // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
     let access = instance_access(&key);
-    for field in INSTANCE_DIR_FIELDS {
-        if let Some(path) = config.get(field).and_then(Value::as_str).filter(|p| !p.is_empty()) {
+    let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
+    // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
+    let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file());
+    let fields = INSTANCE_DIR_FIELDS.iter().filter_map(|field| config.get(*field).and_then(Value::as_str));
+    for path in fields.chain(data_dirs) {
+        if !path.is_empty() {
             let path = Path::new(path);
             // 새로 설치할 폴더는 아직 없다: 권한은 있는 폴더에만 줄 수 있으므로 먼저 만든다
             if access == Access::Write {

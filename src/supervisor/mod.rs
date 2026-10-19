@@ -595,9 +595,8 @@ impl Supervisor {
     /// 모듈 함수가 인스턴스를 알아보는 데 쓰는 값 (포트·비밀번호·모듈 설정·REST·데이터 폴더 등).
     /// 시작·정지·설정·초기화 모두 같은 값을 받아야 같은 서버 파일을 다룬다. 이미 있는 키는 두다.
     pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) {
-        // 데몬의 인스턴스 폴더: 모듈이 서버 폴더 옆에 둔 데이터(좀보이드 cache_dir 등)까지 격리 실행이 쓸 수 있게
-        // 한다(sandbox `INSTANCE_DIR_FIELDS`). 모듈 설정의 같은 키가 이기지 않게 덮어쓴다
-        cfg.insert("instance_dir".to_string(), json!(instance_dir.to_string_lossy()));
+        // 모듈이 서버 폴더 옆에 둔 데이터(좀보이드 cache_dir 등): 격리 실행이 쓸 수 있는 폴더로 싣는다
+        cfg.insert(crate::sandbox::INSTANCE_DATA_DIRS.to_string(), json!(Self::instance_data_dirs(instance, instance_dir)));
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
@@ -605,7 +604,10 @@ impl Supervisor {
         // (예: 설치가 기본 INI에서 읽어 온 8212)이 먼저 들어가면 모듈이 INI를 그 값으로 맞춰 데몬이 못 붙는다
         if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         for (key, value) in &instance.module_settings {
-            put(key, value.clone());
+            // 격리 실행이 쓰기를 받는 폴더 키는 데몬만 정한다 (모듈은 import_settings로 아무 값이나 넣을 수 있다)
+            if !crate::sandbox::grants_write(key) {
+                put(key, value.clone());
+            }
         }
         if let Some(v) = &instance.rest_host { put("rest_host", json!(v)); }
         if let Some(v) = &instance.rest_username { put("rest_username", json!(v)); }
@@ -616,6 +618,28 @@ impl Supervisor {
         put("instance_id", json!(&instance.id));
         // 사용자가 더한 실행 인자. 넣을 자리를 아는 모듈은 직접 넣고 `extra_args_placed: true`를 돌려준다
         put("extra_args", json!(&instance.extra_args));
+    }
+
+    /// 모듈 설정 중 인스턴스 폴더 안을 가리키는 폴더: 그 인스턴스 폴더 바로 아래 항목 단위로 돌려준다.
+    /// 인스턴스 폴더 자체, `..`가 든 경로, 데몬이 쓰는 항목(`instance.json`·`run/` 등)은 뺀다
+    fn instance_data_dirs(instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) -> Vec<String> {
+        use std::path::Component;
+        let mut dirs: Vec<String> = instance
+            .module_settings
+            .values()
+            .filter_map(Value::as_str)
+            .filter_map(|value| {
+                let rel = std::path::Path::new(value).strip_prefix(instance_dir).ok()?;
+                if !rel.components().all(|c| matches!(c, Component::Normal(_))) {
+                    return None;
+                }
+                let first = rel.components().next()?.as_os_str().to_str()?;
+                (!crate::instance::DAEMON_ENTRIES.contains(&first)).then(|| instance_dir.join(first).to_string_lossy().into_owned())
+            })
+            .collect();
+        dirs.sort();
+        dirs.dedup();
+        dirs
     }
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
@@ -1360,7 +1384,7 @@ impl Supervisor {
                 config_obj.insert("pid".to_string(), json!(pid));
             }
             // module_settings 포함 (server_name 등 Python이 INI 경로 해석에 사용)
-            for (key, value) in &instance.module_settings {
+            for (key, value) in instance.module_settings.iter().filter(|(key, _)| !crate::sandbox::grants_write(key)) {
                 config_obj.entry(key.clone()).or_insert_with(|| value.clone());
             }
             crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj))
@@ -3110,15 +3134,35 @@ mod tests {
         assert_eq!(cfg["rest_port"], json!(8242));
     }
 
-    // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라, 설정 쓰기·시작 명령 호출에서
-    // 격리 실행이 쓰기 권한을 받지 못했다. 모든 인스턴스 호출에 데몬의 인스턴스 폴더를 싣는다(모듈 설정 값은 무시)
+    // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라 격리 실행이 쓰지 못했다.
+    // 인스턴스 폴더 안을 가리키는 모듈 설정 폴더만 쓰기 대상으로 싣고, 데몬 파일(instance.json 등)과 인스턴스
+    // 폴더 자체는 싣지 않는다. 모듈 설정에서 온 폴더 키(리뷰 312: import_settings로 아무 경로나)는 config에 넣지 않는다
     #[test]
-    fn modules_get_the_daemons_instance_folder() {
+    fn modules_get_write_folders_only_inside_their_instance() {
+        let root = std::path::Path::new("/data/instances/pz");
+        let at = |rel: &str| root.join(rel).to_string_lossy().into_owned();
         let mut inst = crate::instance::ServerInstance::new("pz", "zomboid");
-        inst.module_settings.insert("instance_dir".into(), json!("/elsewhere"));
+        for (key, value) in [
+            ("cache_dir", at("zomboid")),
+            ("save_dir", at("zomboid/Saves")),
+            ("meta", at("instance.json")),
+            ("runner", at("run/x")),
+            ("up", at("../other")),
+            ("whole", root.to_string_lossy().into_owned()),
+            ("outside", "/home/user/Documents".to_string()),
+            ("install_dir", "/home/user".to_string()),
+            ("working_dir", "/home/user".to_string()),
+            ("instance_dir", "/home/user".to_string()),
+        ] {
+            inst.module_settings.insert(key.into(), json!(value));
+        }
         let mut cfg = serde_json::Map::new();
-        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pz"));
-        assert_eq!(cfg["instance_dir"], json!("/data/instances/pz"));
+        Supervisor::insert_instance_fields(&mut cfg, &inst, root);
+        assert_eq!(cfg["instance_data_dirs"], json!([at("zomboid")]));
+        for key in ["install_dir", "working_dir", "instance_dir"] {
+            assert!(cfg.get(key).is_none(), "{key} from module settings");
+        }
+        assert_eq!(cfg["cache_dir"], json!(at("zomboid")), "the setting itself still reaches the module");
     }
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
