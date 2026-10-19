@@ -214,9 +214,9 @@ pub struct LaunchGate(#[allow(dead_code)] tokio::sync::MutexGuard<'static, ()>);
 
 static LABEL_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 걷는다 (Windows). 그 표시가 붙은 실행 파일로 띄운
-/// 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
-/// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 걷고, 걷지 못한 표시가 남으면 `server_folder_label`로 막는다
+/// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 그 안 실행 파일에서 덮는다 (Windows). 그 표시가 걸린
+/// 실행 파일로 띄운 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
+/// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 남은 실행 파일이 있으면 `server_folder_label`로 막는다
 async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
     #[cfg(windows)]
     {
@@ -225,7 +225,7 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
             for dir in dirs.iter().filter(|d| d.is_dir()) {
                 let started = std::time::Instant::now();
                 match appcontainer::clear_low_labels(dir) {
-                    // 표시가 없어도 파일마다 읽으므로 큰 서버 폴더는 시간이 든다: 오래 걸리면 남긴다
+                    // 덮을 것이 없어도 폴더 전체를 훑으므로 큰 서버 폴더는 시간이 든다: 오래 걸리면 남긴다
                     Ok(0) if started.elapsed() >= std::time::Duration::from_millis(500) => tracing::info!(
                         "[Sandbox] checked {} for low integrity labels (none) in {} ms",
                         dir.display(),
@@ -233,7 +233,7 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
                     ),
                     Ok(0) => {}
                     Ok(n) => tracing::info!(
-                        "[Sandbox] removed the low integrity label from {} file(s) and folder(s) under {} in {} ms",
+                        "[Sandbox] set {} executable(s) under {} to medium integrity in {} ms",
                         n,
                         dir.display(),
                         started.elapsed().as_millis()
