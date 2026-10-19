@@ -240,6 +240,7 @@ async fn delete_remote(state: &IPCServer, cfg: &ChatbotConfig) -> (bool, Vec<Val
 
 /// 릴레이 에이전트가 연결된 직후 한 번
 pub async fn sync_on_connect(state: &IPCServer) {
+    let _turn = SAVE_LOCK.lock().await;
     let cfg = state.config_store.get_chatbot();
     if cfg.pending_relay_delete {
         let (done, rows) = delete_remote(state, &cfg).await;
@@ -264,7 +265,11 @@ pub async fn sync_on_connect(state: &IPCServer) {
     }
 }
 
+/// 챗봇 설정의 읽고-바꾸고-저장하기를 한 번에 하나씩 (키 교체와 설정 저장이 겹쳐도 서로의 값을 지우지 않게)
+static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 pub async fn put_chatbot(State(state): State<IPCServer>, Json(patch): Json<ChatbotPatch>) -> Response {
+    let _turn = SAVE_LOCK.lock().await;
     let mut cfg = state.config_store.get_chatbot();
     if let Err(e) = apply(&mut cfg, patch) {
         return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": e, "error_code": "validation_failed" }))).into_response();
@@ -287,6 +292,7 @@ pub async fn put_chatbot(State(state): State<IPCServer>, Json(patch): Json<Chatb
 }
 
 pub async fn delete_chatbot(State(state): State<IPCServer>) -> Response {
+    let _turn = SAVE_LOCK.lock().await;
     let cfg = state.config_store.get_chatbot();
     let (done, rows) = delete_remote(&state, &cfg).await;
     let cleared = ChatbotConfig { pending_relay_delete: !done, ..ChatbotConfig::default() };
@@ -357,6 +363,26 @@ mod tests {
 
     fn patch(v: Value) -> ChatbotPatch {
         serde_json::from_value(v).unwrap()
+    }
+
+    /// 읽고-바꾸고-저장하기는 한 번에 하나씩: 키 교체와 설정 저장이 겹치면 나중 것이 옛 값으로 새 키를 지운다
+    #[tokio::test]
+    async fn a_save_waits_for_the_one_in_progress() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            dir.path().join("modules").to_str().unwrap(),
+            dir.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let turn = SAVE_LOCK.lock().await;
+        // 거절되는 값이라 공유 설정 파일은 바뀌지 않는다
+        let save = tokio::spawn(put_chatbot(State(state), Json(patch(json!({"guilds": {"g1": 1}})))));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!save.is_finished(), "a save read the settings while another save was between its read and its write");
+        drop(turn);
+        let res = tokio::time::timeout(std::time::Duration::from_secs(5), save).await.unwrap().unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]
