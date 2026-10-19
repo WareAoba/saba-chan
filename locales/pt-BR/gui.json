@@ -1105,6 +1105,7 @@
     "start_blocked": {
       "launch_outside_instance": "Este módulo não verificado tentou executar um programa fora da pasta do servidor: {{file}} Se você definiu o caminho do Java, escolha-o novamente nas configurações do servidor.",
       "server_folder_label": "Não foi possível limpar as marcas de permissão da pasta do servidor ({{file}}), então o servidor não foi iniciado. Verifique se esta conta pode alterar as permissões dessa pasta.",
+      "server_in_sync_folder": "O servidor não foi iniciado porque a pasta dele ({{file}}) está dentro de uma pasta sincronizada como o OneDrive. Mova a pasta do servidor para fora da pasta sincronizada.",
       "sandbox_unavailable": "Não foi possível preparar um ambiente isolado para {{component}}, então ele não foi executado.",
       "extension_not_verified": "Os arquivos destas extensões foram alterados e não puderam ser verificados: {{extensions}}. Reinstale-as ou restaure os arquivos originais."
     },

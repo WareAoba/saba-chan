@@ -1105,6 +1105,7 @@
     "start_blocked": {
       "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}} Si configuraste la ruta de Java tú mismo, vuelve a elegirla en la configuración del servidor.",
       "server_folder_label": "No se pudieron limpiar las marcas de permisos de la carpeta del servidor ({{file}}), así que el servidor no se inició. Comprueba que esta cuenta pueda cambiar los permisos de esa carpeta.",
+      "server_in_sync_folder": "El servidor no se inició porque su carpeta ({{file}}) está dentro de una carpeta sincronizada como OneDrive. Mueve la carpeta del servidor fuera de la carpeta sincronizada.",
       "sandbox_unavailable": "No se pudo preparar un entorno aislado para {{component}}, así que no se ejecutó.",
       "extension_not_verified": "Los archivos de estas extensiones han cambiado y no se pudieron verificar: {{extensions}}. Reinstálalas o restaura los archivos originales."
     },

@@ -1105,6 +1105,7 @@
     "start_blocked": {
       "launch_outside_instance": "此未验证模块试图运行服务器文件夹之外的程序：{{file}} 如果 Java 路径是你自己设置的，请在服务器设置中重新选择。",
       "server_folder_label": "无法清理服务器文件夹（{{file}}）上的权限标记，因此未启动服务器。请确认此账户能否更改该文件夹的权限。",
+      "server_in_sync_folder": "服务器文件夹（{{file}}）位于 OneDrive 等同步文件夹中，因此没有启动服务器。请将服务器文件夹移到同步文件夹之外。",
       "sandbox_unavailable": "无法为 {{component}} 准备隔离环境，因此未运行。",
       "extension_not_verified": "这些扩展的文件已被更改，无法验证：{{extensions}}。请重新安装或恢复原始文件。"
     },

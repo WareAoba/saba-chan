@@ -1105,6 +1105,7 @@
     "start_blocked": {
       "launch_outside_instance": "Ce module non vérifié a tenté de lancer un programme hors du dossier du serveur : {{file}} Si vous avez défini vous-même le chemin de Java, sélectionnez-le à nouveau dans les paramètres du serveur.",
       "server_folder_label": "Impossible de nettoyer les marques d'autorisation du dossier du serveur ({{file}}), le serveur n'a donc pas été démarré. Vérifiez que ce compte peut modifier les autorisations de ce dossier.",
+      "server_in_sync_folder": "Le serveur n'a pas été démarré, car son dossier ({{file}}) se trouve dans un dossier synchronisé comme OneDrive. Déplacez le dossier du serveur hors du dossier synchronisé.",
       "sandbox_unavailable": "Impossible de préparer un environnement isolé pour {{component}}, il n'a donc pas été lancé.",
       "extension_not_verified": "Les fichiers de ces extensions ont été modifiés et n'ont pas pu être vérifiés : {{extensions}}. Réinstallez-les ou restaurez les fichiers d'origine."
     },
