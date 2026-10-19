@@ -121,6 +121,8 @@ async fn list_shows_status() {
     let out = run(&fixture(), &settings(), "list").await;
     assert!(out.contains("survival") && out.contains("🟢"), "{}", out);
     assert!(out.contains("pal1") && out.contains("⚪"), "{}", out);
+    // 실사용: 상태 문구에 이미 아이콘이 있어 "🟢 실행 중 🟢"처럼 두 번 찍혔다
+    assert_eq!(out.matches('🟢').count(), 1, "{}", out);
 }
 
 #[tokio::test]

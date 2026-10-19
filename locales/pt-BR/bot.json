@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **Lista de Servidores**",
     "empty": "📭 Nenhum servidor registrado",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 Em execução",

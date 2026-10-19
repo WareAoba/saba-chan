@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **伺服器清單**",
     "empty": "📭 未登錄伺服器",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 執行中",

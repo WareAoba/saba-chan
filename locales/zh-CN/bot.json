@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **服务器列表**",
     "empty": "📭 未注册服务器",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 运行中",
