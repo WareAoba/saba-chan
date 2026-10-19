@@ -159,4 +159,53 @@ mod tests {
         let missing: Vec<_> = a.iter().filter(|k| !b.contains(k)).collect();
         assert!(missing.is_empty(), "ko is missing keys: {:?}", missing);
     }
+
+    /// 코드가 `t!` 매크로로 부르는 고정 키는 en·ko에 있어야 한다: 없으면 키 이름이 그대로 찍힌다
+    #[test]
+    fn keys_used_in_code_exist_in_en_and_ko() {
+        fn sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    sources(&p, out)
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    out.push(p)
+                }
+            }
+        }
+        let mut files = vec![];
+        sources(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut files,
+        );
+        let catalogs = [("en", embedded("en").unwrap()), ("ko", embedded("ko").unwrap())];
+        let mut missing = vec![];
+        for file in files {
+            let text = std::fs::read_to_string(&file).unwrap();
+            for (at, _) in text.match_indices("t!(") {
+                // println!·format! 같은 다른 매크로와 문자열이 아닌 인자는 건너뛴다
+                if text[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+                    continue;
+                }
+                let Some(rest) = text[at + 3..].trim_start().strip_prefix('"') else {
+                    continue;
+                };
+                let key = &rest[..rest.find('"').unwrap()];
+                if !key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+                    continue;
+                }
+                for (lang, cat) in &catalogs {
+                    if lookup(cat, key).is_none() {
+                        missing.push(format!(
+                            "{} {}: {}",
+                            lang,
+                            file.file_name().unwrap().to_string_lossy(),
+                            key
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(missing.is_empty(), "missing keys: {:?}", missing);
+    }
 }

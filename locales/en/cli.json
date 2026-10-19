@@ -763,7 +763,18 @@
     "when": "When",
     "from": "From",
     "what": "What",
-    "result": "Result"
+    "result": "Result",
+    "scanning": "Checking the code of {{name}}...",
+    "declared": "Declared",
+    "none_declared": "(none)",
+    "no_findings": "The code uses none of the checked capabilities.",
+    "clean": "Everything the code uses is declared.",
+    "undeclared": "{{count}} undeclared use(s): {{permissions}}. Use it only if you trust where it came from.",
+    "col": {
+      "permission": "Capability",
+      "where": "Where",
+      "what": "Code"
+    }
   },
   "monitor": {
     "cpu": "CPU",
