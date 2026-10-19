@@ -149,20 +149,24 @@ pub(crate) enum Verdict {
     Skip(&'static str),
 }
 
+/// `instance_dir`는 id의 인스턴스 폴더 (`InstanceStore::instance_dir`)
 pub(crate) fn judge(
     incoming: &ServerInstance,
     existing: &[ServerInstance],
     running: &HashSet<String>,
     overwrite: bool,
+    instance_dir: &dyn Fn(&str) -> PathBuf,
 ) -> Verdict {
     if !crate::utils::is_single_path_component(&incoming.id) {
         return Verdict::Skip("invalid_id");
     }
     let same = existing.iter().find(|e| e.id == incoming.id);
-    if let Some(dir) = incoming.working_dir.as_deref() {
+    // 다른 서버의 서버 폴더나 인스턴스 폴더와 같거나 그 안·바깥이면 받지 않는다 (`InstanceStore::folder_user`와 같은 판정)
+    if let Some(dir) = incoming.working_dir.as_deref().map(Path::new) {
         let other = existing.iter().find(|o| {
             o.id != incoming.id
-                && o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(Path::new(d), Path::new(dir)))
+                && (o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(Path::new(d), dir))
+                    || saba_chan_updater_lib::paths_overlap(&instance_dir(&o.id), dir))
         });
         if other.is_some() {
             return Verdict::Skip("working_dir_in_use");
@@ -291,7 +295,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 "working_dir": inst.working_dir,
                 "executable_path": inst.executable_path,
             });
-            let mut verdict = judge(&inst, &known, &running, req.overwrite);
+            let mut verdict = judge(&inst, &known, &running, req.overwrite, &|id| sup.instance_store.instance_dir(id));
             // 설치·백업·복원이 쥔 인스턴스는 바꾸지 않는다. 잠금은 저장하는 동안만 쥔다
             let guard = match verdict {
                 Verdict::Skip(_) => None,
@@ -571,13 +575,21 @@ mod tests {
 
     #[test]
     fn existing_running_and_folder_clashing_instances_are_not_imported() {
-        let existing = vec![inst("a", Some("/srv/a")), inst("b", Some("/srv/b"))];
+        let existing = vec![inst("a", Some("/srv/a")), inst("b", Some("/srv/b")), inst("e", None)];
         let running = HashSet::from(["b".to_string()]);
+        let judge = |i: &ServerInstance, existing: &[ServerInstance], running: &HashSet<String>, overwrite: bool| {
+            judge(i, existing, running, overwrite, &|id: &str| Path::new("/data/instances").join(id))
+        };
         assert_eq!(judge(&inst("c", Some("/srv/c")), &existing, &running, false), Verdict::Add);
         assert_eq!(judge(&inst("a", Some("/srv/a")), &existing, &running, false), Verdict::Skip("exists"));
         assert_eq!(judge(&inst("a", Some("/srv/a")), &existing, &running, true), Verdict::Replace);
         assert_eq!(judge(&inst("b", Some("/srv/b")), &existing, &running, true), Verdict::Skip("running"));
         assert_eq!(judge(&inst("c", Some("/srv/a")), &existing, &running, false), Verdict::Skip("working_dir_in_use"));
+        // 다른 서버 폴더나 인스턴스 폴더의 안·바깥도 같다 (만들기·설정 저장과 같은 판정)
+        for dir in ["/srv/a/sub", "/srv", "/data/instances/e/server"] {
+            assert_eq!(judge(&inst("c", Some(dir)), &existing, &running, false), Verdict::Skip("working_dir_in_use"), "{dir}");
+        }
+        assert_eq!(judge(&inst("c", Some("/srv/a2")), &existing, &running, false), Verdict::Add);
         assert_eq!(judge(&inst("../x", None), &existing, &running, false), Verdict::Skip("invalid_id"));
         let mut same_name = inst("d", Some("/srv/d"));
         same_name.name = "a".into();
