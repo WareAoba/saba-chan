@@ -1091,7 +1091,7 @@
       "module_modified": "Le module ({{id}}) a été modifié après son installation. Réinstallez-le si vous ne l'avez pas modifié vous-même.",
       "extension_unverified": "Extension ({{id}}) activée alors qu'elle ne provient pas du catalogue officiel. Vérifiez que sa source est fiable.",
       "extension_modified": "L'extension ({{id}}) a été modifiée après son installation. Réinstallez-la si vous ne l'avez pas modifiée vous-même.",
-      "isolated": "Ce composant s'exécute dans un environnement isolé (dossiers autorisés uniquement)"
+      "isolated": "Les scripts Python de ce composant s'exécutent dans un environnement isolé (dossiers autorisés uniquement). Le processus du serveur de jeu n'est pas isolé."
     },
     "start_blocked": {
       "launch_outside_instance": "Ce module non vérifié a tenté de lancer un programme hors du dossier du serveur : {{file}} Si vous avez défini vous-même le chemin de Java, sélectionnez-le à nouveau dans les paramètres du serveur.",
