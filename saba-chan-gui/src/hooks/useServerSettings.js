@@ -207,6 +207,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     setSettingsValues((prev) => ({ ...prev, ...patch }));
                     setSettingsSource('live');
                 } else {
+                    // 켜진 익스텐션 파일이 바뀌어 확인되지 않아 모듈이 읽지 못했다
+                    const blocked = blockedText(live, t);
+                    if (blocked) safeShowToast(blocked, 'warning', 8000);
                     console.warn('Live settings unavailable; only edited fields will be saved:', live?.error);
                     setSettingsSource('stored');
                 }
@@ -290,6 +293,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 {
                     label: t('server_settings.install_version_button', { defaultValue: 'Install' }),
                     action: async () => {
+                        // 설치하는 사이 다른 서버 설정을 열면 그 창의 값은 건드리지 않는다
+                        const request = openRequest.current;
                         setModal(null);
                         setVersionInstalling(true);
                         setProgressBar({ message: t('servers.progress_downloading', { version }), percent: 0 });
@@ -314,6 +319,14 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 version,
                                 install_dir: targetDir,
                             });
+
+                            const blocked = blockedText(installResult, t);
+                            if (blocked) {
+                                setProgressBar(null);
+                                setVersionInstalling(false);
+                                safeShowToast(blocked, 'error', 8000);
+                                return;
+                            }
 
                             if (installResult.error_code === 'extension_required') {
                                 setProgressBar(null);
@@ -363,7 +376,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                     await fetchServers();
                                     return;
                                 }
-                                handleSettingChange('server_version', version);
+                                if (request === openRequest.current) handleSettingChange('server_version', version);
                             }
 
                             setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
@@ -412,6 +425,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 {
                     label: t('server_settings.reset_button', { defaultValue: 'Reset' }),
                     action: async () => {
+                        const request = openRequest.current;
                         setModal(null);
                         setResettingServer(true);
                         try {
@@ -443,7 +457,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                         const serverList = await window.api.serverList();
                                         if (serverList && serverList.servers && !serverList.error) {
                                             const updated = serverList.servers.find((s) => s.id === settingsServer.id);
-                                            if (updated) {
+                                            if (updated && request === openRequest.current) {
                                                 setSettingsServer(updated);
                                                 setSettingsValues(updated.module_settings || {});
                                             }
@@ -506,6 +520,15 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     }
 
                     if (value === '' || value === null || value === undefined) {
+                        // 사용자가 지운 선택 문자열 칸은 빈 값으로 보내야 이전 값이 지워진다
+                        if (
+                            value === '' &&
+                            touchedFields.current.has(field.name) &&
+                            !field.required &&
+                            (field.field_type === 'text' || field.field_type === 'password')
+                        ) {
+                            convertedSettings[field.name] = '';
+                        }
                         return;
                     }
 

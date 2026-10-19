@@ -724,6 +724,8 @@
     "back_to_menu": "Menú",
     "state_no_host": "No conectado",
     "state_connecting": "Conectando",
+    "state_checking": "Comprobando la conexión",
+    "checking_body": "Cargando tu conexión de Discord guardada. Aparecerá en cuanto Saba-chan despierte.",
     "state_connected": "Conectado",
     "state_error": "Error de conexión",
     "nodes_empty": "Aún no hay ningún servidor de Discord conectado",
@@ -1101,7 +1103,8 @@
     "start_blocked": {
       "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}} Si configuraste la ruta de Java tú mismo, vuelve a elegirla en la configuración del servidor.",
       "server_folder_label": "No se pudieron limpiar las marcas de permisos de la carpeta del servidor ({{file}}), así que el servidor no se inició. Comprueba que esta cuenta pueda cambiar los permisos de esa carpeta.",
-      "sandbox_unavailable": "No se pudo preparar un entorno aislado para {{component}}, así que no se ejecutó."
+      "sandbox_unavailable": "No se pudo preparar un entorno aislado para {{component}}, así que no se ejecutó.",
+      "extension_not_verified": "Los archivos de estas extensiones han cambiado y no se pudieron verificar: {{extensions}}. Reinstálalas o restaura los archivos originales."
     },
     "sandbox": {
       "title": "¿Ejecutar sin aislamiento?",

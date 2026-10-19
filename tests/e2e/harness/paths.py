@@ -3,6 +3,7 @@
 - SABA_E2E_ROOT: 시험 루트 (기본: Windows는 C:\\SabaE2E, 그 밖은 시스템 임시 폴더/saba-e2e. PC 시험은 이 폴더 밖에 쓰지 않는다)
 - SABA_E2E_BIN_DIR: saba-core·saba-runner·saba-chan-cli가 있는 폴더 (기본: target/debug)
 - SABA_E2E_MODULES_REPO / SABA_E2E_EXTENSIONS_REPO / SABA_E2E_SERVER_CHAN_REPO: 형제 저장소 체크아웃
+- SABA_E2E_LAYOUT=installed: 설치본과 같은 폴더 구성으로 돈다 (sandbox.py 참고)
 """
 
 import os
@@ -28,6 +29,7 @@ BIN_DIR = _env_path("SABA_E2E_BIN_DIR", REPO / "target" / "debug")
 MODULES_REPO = _env_path("SABA_E2E_MODULES_REPO", REPO.parent / "saba-chan-modules")
 EXTENSIONS_REPO = _env_path("SABA_E2E_EXTENSIONS_REPO", REPO.parent / "saba-chan-extensions")
 SERVER_CHAN_REPO = _env_path("SABA_E2E_SERVER_CHAN_REPO", REPO.parent / "server-chan")
+INSTALLED_LAYOUT = os.environ.get("SABA_E2E_LAYOUT") == "installed"
 
 
 def binary(name: str) -> Path:

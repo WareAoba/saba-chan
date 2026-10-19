@@ -103,8 +103,9 @@ export function createTranslateError(t) {
         if (msg.includes('ECONNREFUSED')) {
             return t('errors.daemon_connection_refused');
         }
-        if (msg.includes('ETIMEDOUT') || msg.includes('timeout') && msg.includes('exceeded')) {
-            return null;  // suppress noisy timeout toasts (provisioning, etc.)
+        // 시간 초과는 숨기지 않는다: 숨기면 저장·설치가 끝나지 않은 채 아무 알림도 없다
+        if (msg.includes('ETIMEDOUT') || /timed out|timeout.*exceeded/i.test(msg)) {
+            return t('errors.request_timeout');
         }
         if (msg.includes('ENOTFOUND')) {
             return t('errors.server_not_found');
@@ -166,8 +167,7 @@ export function createTranslateError(t) {
             return t('errors.process_crashed');
         }
 
-        // Fallback: log the original for debugging, return generic message
-        console.warn('[translateError] Unmatched error message:', msg);
-        return t('errors.generic_error', { defaultValue: 'An unexpected error occurred.' });
+        // 모르는 오류는 데몬이 보낸 문구를 그대로 보여 준다 (데몬·모듈 문구는 이미 현지화돼 있다)
+        return msg;
     };
 }

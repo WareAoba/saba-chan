@@ -255,6 +255,24 @@ fn write_runtime_record(path: &Path, record: &BTreeMap<String, BTreeSet<PathBuf>
     }
 }
 
+/// 핸들의 실제 경로(`GetFinalPathNameByHandleW`, `\\?\` 형식)가 열려던 경로와 같은 곳인가.
+/// `\\?\`·`\\?\UNC\` 머리, `/`, 끝 구분자, 대소문자를 맞춰 비교한다 (중간 폴더가 정션이면 다르다)
+#[cfg_attr(not(windows), allow(dead_code))]
+fn same_final_path(final_path: &str, requested: &str) -> bool {
+    fn plain(p: &str) -> String {
+        let p = p.replace('/', "\\");
+        let p = match (p.strip_prefix(r"\\?\UNC\"), p.strip_prefix(r"\\?\")) {
+            (Some(unc), _) => format!(r"\\{unc}"),
+            (None, Some(rest)) => rest.to_string(),
+            (None, None) => p,
+        };
+        let trimmed = p.trim_end_matches('\\');
+        // 드라이브 루트(`C:\`)는 구분자를 남긴다
+        if trimmed.len() == 2 && trimmed.ends_with(':') { format!("{trimmed}\\") } else { trimmed.to_string() }
+    }
+    plain(final_path).to_lowercase() == plain(requested).to_lowercase()
+}
+
 #[cfg(windows)]
 pub use imp::{clear_low_labels, grant, revoke_stale_runtimes, spawn, Contained};
 
@@ -460,7 +478,8 @@ mod imp {
                 return Err(last_error(&format!("resolve {}", path.display())));
             }
             let real = OsString::from_wide(&buf[..n]);
-            if !real.to_string_lossy().eq_ignore_ascii_case(&path.to_string_lossy()) {
+            // 짧은 이름(8.3, `RUNNER~1`)은 긴 이름으로 펴서 비교한다 (정션은 펴지 않는다)
+            if !super::same_final_path(&real.to_string_lossy(), &long_path(path).to_string_lossy()) {
                 return Err(format!("{} now resolves to {}", path.display(), real.to_string_lossy()));
             }
             Ok(handle)
@@ -751,35 +770,38 @@ mod imp {
         }
     }
 
-    /// `label_low`가 붙인 낮은 수준 표시를 `dir`과 그 아래 폴더에서 걷는다. 상속받은 표시도 함께 빠진다.
+    /// `label_low`가 붙인 낮은 수준 표시를 `dir`과 그 아래 폴더·파일에서 걷는다. 상속받은 표시도 함께 빠진다.
     /// 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 서버(Java 등)가 뜨지 못하므로,
-    /// 서버를 띄우기 전에 부른다. 걷은 폴더 수를 돌려준다. 한 폴더에서 실패해도 나머지를 마저 걷고, 표시가 있는데
-    /// 걷지 못한 폴더를 모아 Err로 돌려준다. 표시를 읽지 못한 폴더(표시를 지원하지 않는 볼륨 등)는 경고만 남긴다
+    /// 서버를 띄우기 전에 부른다. 걷은 폴더·파일 수를 돌려준다. 하나에서 실패해도 나머지를 마저 걷고, 표시가 있는데
+    /// 걷지 못했거나 표시를 읽지 못한 경로를 모아 Err로 돌려준다(읽지 못하면 표시가 남았는지 알 수 없다).
+    /// 볼륨이 보안 정보를 두지 않으면(FAT 등) 표시가 있을 수 없으므로 아무것도 하지 않는다
     pub fn clear_low_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
         let _guard = acl_lock();
+        // 실제 경로(`\\?\` 긴 이름)에서 시작한다: 짧은 이름(8.3)이 섞인 경로는 열 때의 경로 확인과 맞지 않는다
+        let dir = std::fs::canonicalize(dir).map_err(|e| vec![(dir.to_path_buf(), format!("resolve: {e}"))])?;
+        match persistent_acls(&dir) {
+            Ok(false) => return Ok(0),
+            Ok(true) => {}
+            Err(e) => return Err(vec![(dir, e)]),
+        }
         let mut cleared = 0;
         let mut failed = Vec::new();
-        let mut pending = vec![dir.to_path_buf()];
+        let mut pending = vec![dir];
         while let Some(path) = pending.pop() {
             // 위 폴더부터 걷으므로 여기서 남은 상속 표시는 다른 곳(sandbox-temp 등)에서 옮겨 온 폴더의 것이다:
             // 비우면 지금 위 폴더 기준으로 다시 계산되어 빠진다. 위 폴더에 진짜 표시가 있어 남으면 실패로 본다
-            match low_label(&path) {
-                Ok(Some(_)) => match clear_label(&path).and_then(|()| match low_label(&path)? {
-                    None => Ok(()),
-                    Some(_) => Err("the label is inherited from a parent folder".to_string()),
-                }) {
-                    Ok(()) => cleared += 1,
-                    Err(e) => failed.push((path.clone(), e)),
-                },
-                Ok(None) => {}
-                Err(e) => tracing::warn!("[Sandbox] could not read the label of {}: {}", path.display(), e),
-            }
+            clear_one(&path, &mut cleared, &mut failed);
             // 링크는 따라가지 않는다 (폴더 밖을 고치지 않게)
             match std::fs::read_dir(&path) {
                 Ok(entries) => {
                     for entry in entries.flatten() {
-                        if entry.file_type().is_ok_and(|t| t.is_dir() && !t.is_symlink()) {
-                            pending.push(entry.path());
+                        match entry.file_type() {
+                            Ok(t) if t.is_symlink() => {}
+                            Ok(t) if t.is_dir() => pending.push(entry.path()),
+                            // 폴더 표시를 걷어도 이미 있는 파일의 상속 표시는 파일에 WRITE_OWNER가 있을 때만 다시
+                            // 계산된다. C:\ 아래 폴더처럼 "수정" 권한만 상속받은 파일은 그대로 남으므로 파일마다 걷는다
+                            Ok(_) => clear_one(&entry.path(), &mut cleared, &mut failed),
+                            Err(e) => failed.push((entry.path(), format!("read the type: {e}"))),
                         }
                     }
                 }
@@ -791,6 +813,57 @@ mod imp {
         } else {
             Err(failed)
         }
+    }
+
+    /// 한 경로(폴더나 파일)의 낮은 수준 표시를 걷고 결과를 센다
+    fn clear_one(path: &Path, cleared: &mut usize, failed: &mut Vec<(PathBuf, String)>) {
+        match low_label(path) {
+            Ok(Some(_)) => match clear_label(path).and_then(|()| match low_label(path)? {
+                None => Ok(()),
+                Some(_) => Err("the label is inherited from a parent folder".to_string()),
+            }) {
+                Ok(()) => *cleared += 1,
+                Err(e) => failed.push((path.to_path_buf(), e)),
+            },
+            Ok(None) => {}
+            Err(e) => failed.push((path.to_path_buf(), format!("read the label: {e}"))),
+        }
+    }
+
+    /// 경로의 짧은 이름(8.3)을 긴 이름으로 편다. 링크·정션은 따라가지 않는다. 실패하면 그대로
+    fn long_path(path: &Path) -> PathBuf {
+        use std::os::windows::ffi::OsStringExt;
+        use winapi::um::fileapi::GetLongPathNameW;
+        let name = wide(path.as_os_str());
+        let mut buf = vec![0u16; 1024];
+        unsafe {
+            let mut n = GetLongPathNameW(name.as_ptr(), buf.as_mut_ptr(), buf.len() as DWORD) as usize;
+            if n >= buf.len() {
+                buf.resize(n, 0);
+                n = GetLongPathNameW(name.as_ptr(), buf.as_mut_ptr(), buf.len() as DWORD) as usize;
+            }
+            if n == 0 || n >= buf.len() {
+                return path.to_path_buf();
+            }
+            PathBuf::from(OsString::from_wide(&buf[..n]))
+        }
+    }
+
+    /// 경로가 있는 볼륨이 파일 보안 정보(ACL·표시)를 두는가 (NTFS·ReFS는 예, FAT·exFAT는 아니오)
+    fn persistent_acls(path: &Path) -> Result<bool, String> {
+        use winapi::um::fileapi::{GetVolumeInformationW, GetVolumePathNameW};
+        let name = wide(path.as_os_str());
+        let mut root = vec![0u16; name.len().max(260) + 1];
+        let mut flags: DWORD = 0;
+        unsafe {
+            if GetVolumePathNameW(name.as_ptr(), root.as_mut_ptr(), root.len() as DWORD) == 0 {
+                return Err(last_error(&format!("find the volume of {}", path.display())));
+            }
+            if GetVolumeInformationW(root.as_ptr(), null_mut(), 0, null_mut(), null_mut(), &mut flags, null_mut(), 0) == 0 {
+                return Err(last_error(&format!("read the volume of {}", path.display())));
+            }
+        }
+        Ok(flags & winapi::um::winnt::FILE_PERSISTENT_ACLS != 0)
     }
 
     /// 표시 목록을 비운다 (ACL 머리만)
@@ -884,6 +957,43 @@ mod imp {
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
         }
 
+        // 데몬은 인스턴스 폴더를 `C:\..` 형식으로 넘긴다 (`\\?\` 형식이 아니다). 실제 PC에서는 이 경로를
+        // 여는 확인이 모두 "다른 곳"으로 판정해 표시를 하나도 걷지 못했다
+        #[test]
+        fn labels_go_when_the_folder_is_given_as_a_plain_path() {
+            let tmp = tempfile::tempdir().unwrap();
+            let plain = tmp.path().to_path_buf();
+            assert!(!plain.to_string_lossy().starts_with(r"\\?\"), "{}", plain.display());
+            let real = std::fs::canonicalize(&plain).unwrap();
+            std::fs::create_dir_all(plain.join("server").join("bin")).unwrap();
+            super::label_low(&real).unwrap();
+            let exe = real.join("server").join("bin").join("java.exe");
+            std::fs::write(&exe, b"x").unwrap();
+            assert_eq!(super::low_label(&exe).unwrap(), Some(true));
+            assert_eq!(super::low_label(&plain.join("server")).unwrap(), Some(true), "a plain path opens");
+            assert_eq!(super::clear_low_labels(&plain).unwrap(), 1);
+            assert_eq!(super::low_label(&exe).unwrap(), None);
+        }
+
+        // 중간 폴더가 정션이면 다른 곳이다: 그 경로로는 표시를 읽거나 고치지 않는다
+        #[test]
+        fn a_path_through_a_junction_is_refused() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = std::fs::canonicalize(tmp.path()).unwrap();
+            std::fs::create_dir_all(root.join("target").join("sub")).unwrap();
+            let target = root.join("target");
+            let link = tmp.path().join("link");
+            let made = std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(&link)
+                .arg(&target)
+                .output()
+                .unwrap();
+            assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+            let err = super::low_label(&link.join("sub")).unwrap_err();
+            assert!(err.contains("resolves to"), "{err}");
+        }
+
         // 표시가 붙은 폴더(sandbox-temp 등)에서 받은 뒤 서버 폴더로 옮긴 파일은 상속 표시를 그대로 갖고 온다
         #[test]
         fn files_moved_in_from_a_labelled_folder_lose_the_label_too() {
@@ -900,6 +1010,48 @@ mod imp {
             assert_eq!(super::low_label(&moved).unwrap(), Some(true), "a move keeps the inherited label");
             assert!(super::clear_low_labels(&dir).unwrap() >= 1);
             assert_eq!(super::low_label(&moved).unwrap(), None);
+        }
+
+        // 실제 PC의 인스턴스 폴더(C:\ 아래)는 상속받은 "수정" 권한뿐이라 파일에 WRITE_OWNER가 없다. 이때 폴더 표시를
+        // 걷어도 이미 있는 파일의 상속 표시는 다시 계산되지 않아 남았다(Java가 낮은 무결성으로 떠 DLL을 못 읽음)
+        #[test]
+        fn files_without_write_owner_lose_the_inherited_label() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap().join("instance");
+            std::fs::create_dir_all(&dir).unwrap();
+            let icacls = |path: &std::path::Path, args: &[&str]| {
+                let out = std::process::Command::new("icacls").arg(path).args(args).output().unwrap();
+                (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned())
+            };
+            // 준비하는 동안은 Administrators 모든 권한도 둔다: 관리자 토큰(CI)이 만든 항목은 소유자가 Administrators라
+            // 그 권한 없이는 폴더에 표시를 붙이지 못한다
+            let (ok, out) = icacls(&dir, &["/inheritance:r", "/grant:r", "*S-1-5-11:(OI)(CI)M", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"]);
+            assert!(ok, "{out}");
+            let server = dir.join("server");
+            std::fs::create_dir_all(&server).unwrap();
+            super::label_low(&server).unwrap();
+            let bin = server.join("java").join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            let exe = bin.join("probe.exe");
+            std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+            std::fs::write(bin.join("jli.dll"), b"x").unwrap();
+            std::fs::write(server.join("server.jar"), b"x").unwrap();
+            // 그다음 실제 PC와 같게 맞춘다: 소유자는 데몬 사용자(관리자 토큰이면 Administrators였다), 권한은
+            // C:\ 아래 새 폴더처럼 인증된 사용자 수정·SYSTEM 모든 권한뿐이라 파일에 WRITE_OWNER가 없다.
+            // 제한된 토큰(실제 PC)에서는 소유자가 이미 데몬 사용자라 소유자 바꾸기가 거부돼도 그대로다
+            let user = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap_or_default(), std::env::var("USERNAME").unwrap_or_default());
+            let _ = icacls(&dir, &["/setowner", &user, "/T", "/C", "/Q"]);
+            let (ok, out) = icacls(&dir, &["/remove:g", "*S-1-5-32-544"]);
+            assert!(ok, "{out}");
+            assert_eq!(super::low_label(&exe).unwrap(), Some(true));
+            assert!(super::open_checked(&exe, winapi::um::winnt::WRITE_OWNER).is_err(), "the file must not grant WRITE_OWNER, as on a real PC");
+            assert_eq!(launch_integrity(&exe), 0x1000);
+            super::clear_low_labels(&dir).unwrap();
+            for file in [&exe, &bin.join("jli.dll"), &server.join("server.jar")] {
+                assert_eq!(super::low_label(file).unwrap(), None, "{}", file.display());
+            }
+            assert!(launch_integrity(&exe) >= 0x2000, "the server starts at the daemon's level");
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
         }
     }
 
@@ -1218,6 +1370,19 @@ pub use imp::wait;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬은 `C:\..` 형식으로 넘기고 GetFinalPathNameByHandleW는 `\\?\C:\..`를 돌려준다: 같은 곳이다.
+    /// 다른 곳을 가리키면(중간 폴더가 정션) 다르다
+    #[test]
+    fn a_verbatim_final_path_names_the_same_place_as_the_plain_one() {
+        assert!(same_final_path(r"\\?\C:\Users\me\saba\instances\x\server", r"C:\Users\me\saba\instances\x\server"));
+        assert!(same_final_path(r"\\?\C:\Users\me\x", r"\\?\C:\Users\me\x"));
+        assert!(same_final_path(r"\\?\C:\Users\Me\X", r"c:/users/me/x/"));
+        assert!(same_final_path(r"\\?\UNC\nas\share\x", r"\\nas\share\x"));
+        assert!(same_final_path(r"\\?\C:\", r"C:\"));
+        assert!(!same_final_path(r"\\?\D:\elsewhere\server", r"C:\Users\me\x\server"));
+        assert!(!same_final_path(r"\\?\C:\Users\me\x\server2", r"C:\Users\me\x\server"));
+    }
 
     #[test]
     fn runtimes_no_one_uses_any_more_are_the_stale_ones() {

@@ -90,7 +90,9 @@ async fn a_slow_command_does_not_hold_up_the_ones_behind_it() {
         let _ = server.start().await;
     });
 
-    for _ in 0..200 {
+    // 확인되지 않은 모듈이라 첫 호출이 격리용 venv를 만든다(Windows CI에서 15초 넘게 걸림).
+    // 순서만 보므로 느린 명령이 끝날 때까지 넉넉히 기다린다.
+    for _ in 0..900 {
         if relay.lock().unwrap().results.len() >= 2 {
             break;
         }

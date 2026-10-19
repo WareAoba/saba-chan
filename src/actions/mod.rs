@@ -873,6 +873,12 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
             }
         }
     };
+    // GUI에서 이 사람에게 막아 둔 명령은 채팅 경로와 같이 주인만 (액션 메뉴·확인 버튼으로 돌아가지 않게)
+    let command = r.command.as_deref().or_else(|| builtin_command(&r.id));
+    let need = match command {
+        Some(cmd) if !instance.is_empty() && perms.member_denied(who, instance, cmd) => need.max(crate::chat::permissions::OWNER),
+        _ => need,
+    };
     if perms.effective_level(who) < need {
         return Err(denied(need));
     }

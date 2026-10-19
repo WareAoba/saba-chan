@@ -727,6 +727,8 @@
     "back_to_menu": "메뉴",
     "state_no_host": "연결 안 됨",
     "state_connecting": "연결 중",
+    "state_checking": "연결 확인 중",
+    "checking_body": "저장된 디스코드 연결을 불러오고 있어요. 사바쨩이 깨어나면 바로 보여 드릴게요.",
     "state_connected": "연결됨",
     "state_error": "연결 실패",
     "nodes_empty": "아직 연결된 디스코드 서버가 없어요",
@@ -1104,7 +1106,8 @@
     "start_blocked": {
       "launch_outside_instance": "확인되지 않은 모듈이 서버 폴더 밖의 프로그램을 실행하려 했어요: {{file}} Java 경로를 직접 정했다면 서버 설정에서 다시 선택해 주세요.",
       "server_folder_label": "서버 폴더({{file}})의 권한 표시를 정리하지 못해 서버를 시작하지 않았어요. 이 계정이 그 폴더의 권한을 바꿀 수 있는지 확인해 주세요.",
-      "sandbox_unavailable": "{{component}}의 격리 환경을 준비하지 못해 실행하지 않았어요."
+      "sandbox_unavailable": "{{component}}의 격리 환경을 준비하지 못해 실행하지 않았어요.",
+      "extension_not_verified": "확장 파일이 바뀌어 확인되지 않았어요: {{extensions}}. 다시 설치하거나 원래대로 되돌려 주세요."
     },
     "sandbox": {
       "title": "격리 없이 실행할까요?",
