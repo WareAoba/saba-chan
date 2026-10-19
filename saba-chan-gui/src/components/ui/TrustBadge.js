@@ -18,3 +18,18 @@ export function TrustBadge({ trust }) {
         </span>
     );
 }
+
+/**
+ * 서버를 만들거나 가져올 때 고른 모듈이 확인되지 않았거나 바뀌었으면 알린다.
+ * 모듈 Python만 격리되고 게임 서버 프로세스는 격리되지 않으므로, 믿을 수 있는 모듈인지 이때 묻는다.
+ */
+export function TrustCreateNotice({ trust }) {
+    const { t } = useTranslation('gui');
+    if (trust !== 'unverified' && trust !== 'modified') return null;
+    return (
+        <div className="validation-warning-banner trust-create-notice" role="note">
+            <Icon name="alertTriangle" size="sm" />
+            <span>{t(`trust.create_notice.${trust}`)}</span>
+        </div>
+    );
+}

@@ -183,8 +183,7 @@ impl DaemonClient {
                 }
                 let mut cur = self.token.write().unwrap();
                 if *cur != token {
-                    let short: String = token.chars().take(8).collect();
-                    tracing::info!("[Auth] IPC token loaded: {}… from {}", short, self.token_path.display());
+                    tracing::info!("[Auth] IPC token loaded from {}", self.token_path.display());
                     *cur = token;
                 }
                 true
@@ -375,6 +374,37 @@ mod tests {
             assert!(is_allowed_request(&m, p), "{m} {p}");
         }
         assert!(!is_allowed_request(&Method::GET, "/api/updates/launch-updater"));
+    }
+
+    /// 로그는 파일로 남는다: 토큰은 앞부분도 쓰지 않는다
+    #[test]
+    fn token_load_log_has_no_token() {
+        #[derive(Clone, Default)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, "abcdef1234567890secret").unwrap();
+        let buf = Buf::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+        // 스레드 범위 구독자는 병렬 시험에서 로그 자리 캐시 때문에 놓칠 수 있어 전역으로 건다 (이 시험만 건다)
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+        assert!(DaemonClient::new("http://127.0.0.1:1".into(), path).load_token());
+        let log = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+        assert!(log.contains("IPC token loaded"), "{log}");
+        assert!(!log.contains("abcd"), "{log}");
     }
 
     #[test]
