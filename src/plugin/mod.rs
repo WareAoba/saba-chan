@@ -157,7 +157,7 @@ pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS).await
+    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS, None).await
 }
 
 /// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
@@ -166,15 +166,22 @@ pub struct PluginCall {
     pub entry: String,
     pub function: String,
     pub config: Value,
+    /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
+    pub server: Option<u32>,
 }
 
 impl PluginCall {
     pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
-        Self { entry: entry.into(), function: function.to_string(), config }
+        Self { entry: entry.into(), function: function.to_string(), config, server: None }
+    }
+
+    pub fn serving(mut self, server: Option<u32>) -> Self {
+        self.server = server;
+        self
     }
 
     pub async fn run(self) -> Result<Value> {
-        run_plugin(&self.entry, &self.function, self.config).await
+        run_plugin_inner(&self.entry, &self.function, self.config, None, DEFAULT_PLUGIN_TIMEOUT_SECS, self.server).await
     }
 }
 
@@ -183,7 +190,7 @@ impl PluginCall {
 pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
 
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, timeout_secs).await
+    run_plugin_inner(module_path, function, config, None, timeout_secs, None).await
 }
 
 /// Like `run_plugin_with_progress` but with a custom timeout.
@@ -198,7 +205,7 @@ pub async fn run_plugin_with_progress_and_timeout<F>(
 where
     F: Fn(ExtensionProgress) + Send + 'static,
 {
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs).await
+    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs, None).await
 }
 
 type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
@@ -380,6 +387,7 @@ async fn run_plugin_inner(
     config: Value,
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
     timeout_secs: u64,
+    server: Option<u32>,
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
@@ -470,7 +478,7 @@ async fn run_plugin_inner(
         let dir = iso.temp.join("loopback");
         std::fs::create_dir_all(&dir).map_err(|e| tracing::warn!("[Loopback] cannot create {}: {}", dir.display(), e)).ok()?;
         cmd.env("SABA_LOOPBACK_DIR", &dir);
-        Some(loopback::Proxy { dir, ports: loopback::instance_ports(&config) })
+        Some(loopback::Proxy { dir, ports: loopback::instance_ports(&config), server })
     });
     if let Some(iso) = &isolation {
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
@@ -582,7 +590,10 @@ async fn drive(
                             let (proxy, request) = (proxy.clone(), request.to_string());
                             tokio::spawn(async move { loopback::serve(&proxy, &request).await });
                         }
-                        Some(_) => tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS),
+                        Some(proxy) => {
+                            tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS);
+                            loopback::refuse(proxy, request, "too_many_requests");
+                        }
                         None => tracing::warn!("[Loopback] request from an unisolated run ignored"),
                     }
                     continue;
@@ -743,7 +754,7 @@ mod tests {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
         let mut child = plain(cmd.spawn().unwrap());
-        let proxy = loopback::Proxy { dir: relay.path().to_path_buf(), ports: vec![port] };
+        let proxy = loopback::Proxy { dir: relay.path().to_path_buf(), ports: vec![port], server: Some(std::process::id()) };
         let (status, stdout, stderr) = drive(&mut child, b"{}", None, Some(proxy), std::time::Duration::from_secs(20)).await.unwrap().unwrap();
         assert!(status.success(), "{stderr}");
         assert_eq!(parse_plugin_output(&stdout).unwrap(), json!({ "status": 200, "body": { "currentplayernum": 3 } }));

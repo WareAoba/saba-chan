@@ -4,7 +4,8 @@
 //! 모듈(공용 `saba_loopback.py`)이 stderr에 `LOOPBACK:{id, port, data, timeout, idle_ms}` 한 줄을 쓰면
 //! 데몬이 `127.0.0.1:port`에 TCP로 `data`(base64)를 보내고 받은 바이트를 `SABA_LOOPBACK_DIR/<id>.json`에
 //! `{ok, data}` 또는 `{ok:false, error}`로 둔다. 모듈은 그 파일을 기다린다(stdin은 지금처럼 config 뒤에 닫힌다).
-//! 포트는 데몬이 만든 config에 있는 그 인스턴스의 포트뿐이고, 요청·응답 크기와 시간에 상한이 있다.
+//! 포트는 데몬이 만든 config에 있는 그 인스턴스의 포트뿐이고, 그 포트에서 듣는 프로세스가 데몬이 추적하는
+//! 그 인스턴스의 서버(또는 그 자식)일 때만 연결한다. 요청·응답 크기와 시간에 상한이 있다.
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -32,17 +33,19 @@ pub struct Proxy {
     pub dir: PathBuf,
     /// 이 실행이 닿아도 되는 루프백 포트
     pub ports: Vec<u16>,
+    /// 데몬이 추적하는 그 인스턴스의 서버 PID. 없으면(꺼져 있음) 아무 데도 잇지 않는다
+    pub server: Option<u32>,
 }
 
-/// 데몬이 만든 config에서 그 인스턴스의 포트를 모은다: `port`, `rest_port`, 그리고 이름이 `_port`로 끝나는
-/// 값(`query_port`·`udp_port` 같은 모듈 포트 설정. `insert_instance_fields`가 같은 이름으로 싣는다)
+/// 데몬이 만든 config에서 그 인스턴스의 포트를 모은다: 게임 포트 `port`와 `rest_port`.
+/// 다른 `*_port` 모듈 설정은 모듈이 `import_settings`로 아무 값이나 넣을 수 있어 넣지 않는다
 pub fn instance_ports(config: &Value) -> Vec<u16> {
     let Some(map) = config.as_object() else {
         return Vec::new();
     };
     let mut ports: Vec<u16> = map
         .iter()
-        .filter(|(key, _)| key.as_str() == "port" || key.ends_with("_port"))
+        .filter(|(key, _)| matches!(key.as_str(), "port" | "rest_port"))
         .filter_map(|(_, value)| match value {
             Value::Number(n) => n.as_u64(),
             Value::String(s) => s.trim().parse().ok(),
@@ -83,10 +86,21 @@ pub async fn serve(proxy: &Proxy, line: &str) {
     }
 }
 
-/// 다 쓴 뒤에 이름을 바꿔 둔다: 모듈이 반쯤 쓴 파일을 읽지 않게
+/// 받지 않을 요청에 바로 거절을 돌려준다 (모듈이 시간 초과까지 기다리지 않게)
+pub fn refuse(proxy: &Proxy, line: &str, error: &str) {
+    let id = serde_json::from_str::<Value>(line).ok().and_then(|r| r.get("id").and_then(Value::as_str).map(str::to_owned));
+    if let Some(id) = id.filter(|id| plain_id(id)) {
+        let _ = write_reply(&proxy.dir, &id, &json!({ "ok": false, "error": error }));
+    }
+}
+
+/// 다 쓴 뒤에 이름을 바꿔 둔다: 모듈이 반쯤 쓴 파일을 읽지 않게. 폴더는 격리 쪽도 쓸 수 있으므로
+/// 미리 놓인 `.part`(링크 등)를 따라 쓰지 않고 지운 뒤 새로 만든다
 fn write_reply(dir: &Path, id: &str, reply: &Value) -> std::io::Result<()> {
+    use std::io::Write;
     let part = dir.join(format!("{id}.part"));
-    std::fs::write(&part, serde_json::to_vec(reply)?)?;
+    let _ = std::fs::remove_file(&part);
+    std::fs::OpenOptions::new().write(true).create_new(true).open(&part)?.write_all(&serde_json::to_vec(reply)?)?;
     std::fs::rename(&part, dir.join(format!("{id}.json")))
 }
 
@@ -106,6 +120,11 @@ async fn exchange(proxy: &Proxy, request: &Value) -> Result<Vec<u8>, String> {
     if data.len() > MAX_REQUEST {
         return Err("request_too_large".into());
     }
+    let server = proxy.server;
+    if !tokio::task::spawn_blocking(move || served_by(port, server)).await.unwrap_or(false) {
+        tracing::warn!("[Loopback] refused port {}: not held by the instance's server (PID {:?})", port, server);
+        return Err("port_not_served".into());
+    }
     let timeout = request
         .get("timeout")
         .and_then(Value::as_f64)
@@ -122,6 +141,71 @@ async fn exchange(proxy: &Proxy, request: &Value) -> Result<Vec<u8>, String> {
         Ok(result) => result.map_err(|e| format!("io: {e}")),
         Err(_) => Err("timed_out".into()),
     }
+}
+
+/// 그 포트에서 듣는 프로세스가 `server`이거나 그 자식인가
+fn served_by(port: u16, server: Option<u32>) -> bool {
+    let Some(root) = server else {
+        return false;
+    };
+    let Some(owners) = listener_pids(port) else {
+        return false;
+    };
+    let mut system = sysinfo::System::new();
+    system.refresh_processes();
+    let parent = |pid: u32| system.process(sysinfo::Pid::from_u32(pid)).and_then(|p| p.parent()).map(|p| p.as_u32());
+    owners.into_iter().any(|pid| descends_from(pid, root, parent))
+}
+
+/// `pid`에서 부모를 따라 올라가 `root`를 만나는가 (서버 런처 아래의 실제 서버 프로세스도 센다)
+fn descends_from(mut pid: u32, root: u32, parent: impl Fn(u32) -> Option<u32>) -> bool {
+    for _ in 0..64 {
+        if pid == root {
+            return true;
+        }
+        match parent(pid) {
+            Some(p) if p != pid => pid = p,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// TCP로 그 포트를 듣는 프로세스들. 표를 못 읽으면 None (그때는 잇지 않는다)
+#[cfg(windows)]
+fn listener_pids(port: u16) -> Option<Vec<u32>> {
+    crate::validator::tcp_listener_pids(port)
+}
+
+#[cfg(target_os = "linux")]
+fn listener_pids(port: u16) -> Option<Vec<u32>> {
+    // 듣는 소켓의 inode를 찾고(st 0A = LISTEN), 그 소켓을 쥔 프로세스를 /proc/<pid>/fd에서 찾는다
+    let mut sockets = Vec::new();
+    for table in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(text) = std::fs::read_to_string(table) else { continue };
+        for cols in text.lines().skip(1).map(|l| l.split_whitespace().collect::<Vec<_>>()) {
+            let local = cols.get(1).and_then(|a| a.rsplit(':').next()).and_then(|p| u16::from_str_radix(p, 16).ok());
+            if cols.get(3) == Some(&"0A") && local == Some(port) {
+                if let Some(inode) = cols.get(9) {
+                    sockets.push(std::path::PathBuf::from(format!("socket:[{inode}]")));
+                }
+            }
+        }
+    }
+    let mut pids = Vec::new();
+    for entry in std::fs::read_dir("/proc").ok()?.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+        let Ok(fds) = std::fs::read_dir(entry.path().join("fd")) else { continue };
+        if fds.flatten().any(|fd| std::fs::read_link(fd.path()).is_ok_and(|t| sockets.contains(&t))) {
+            pids.push(pid);
+        }
+    }
+    Some(pids)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn listener_pids(_port: u16) -> Option<Vec<u32>> {
+    None
 }
 
 /// 보내고, 닫힐 때까지(또는 상한까지, 또는 `idle` 동안 조용해질 때까지) 받는다
@@ -156,7 +240,8 @@ mod tests {
 
     fn proxy(ports: Vec<u16>) -> (tempfile::TempDir, Proxy) {
         let dir = tempfile::tempdir().unwrap();
-        let proxy = Proxy { dir: dir.path().to_path_buf(), ports };
+        // 테스트 서버는 이 시험 프로세스 안에서 듣는다
+        let proxy = Proxy { dir: dir.path().to_path_buf(), ports, server: Some(std::process::id()) };
         (dir, proxy)
     }
 
@@ -232,9 +317,36 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(3));
     }
 
+    /// 리뷰 310: 허용 포트는 모듈이 고칠 수 있는 config에서 온다. 그 포트에서 듣는 프로세스가 이 인스턴스의
+    /// 서버(또는 그 자식)가 아니면 연결하지 않는다 (PC의 다른 로컬 서비스에 대신 닿지 않게)
+    #[tokio::test]
+    async fn a_port_another_process_listens_on_is_refused() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (_dir, mut proxy) = proxy(vec![port]);
+        proxy.server = Some(u32::MAX);
+        serve(&proxy, &json!({ "id": "e", "port": port, "data": "" }).to_string()).await;
+        assert_eq!(reply(&proxy, "e")["error"], "port_not_served");
+        proxy.server = None;
+        serve(&proxy, &json!({ "id": "f", "port": port, "data": "" }).to_string()).await;
+        assert_eq!(reply(&proxy, "f")["error"], "port_not_served", "no running server, nothing to reach");
+        assert!(tokio::time::timeout(Duration::from_millis(100), listener.accept()).await.is_err(), "no connection was made");
+    }
+
     #[test]
-    fn the_instance_ports_come_from_the_daemon_built_config() {
-        let config = json!({ "port": 8211, "rest_port": 8212, "query_port": "27015", "max_players": 32, "pid": 4, "udp_port": 0 });
-        assert_eq!(instance_ports(&config), vec![8211, 8212, 27015]);
+    fn a_listener_counts_when_it_is_the_server_or_one_of_its_children() {
+        let parents = [(30, 20), (20, 10), (10, 1)];
+        let parent = |pid| parents.iter().find(|(p, _)| *p == pid).map(|(_, pp)| *pp);
+        assert!(descends_from(20, 20, parent));
+        assert!(descends_from(30, 20, parent));
+        assert!(!descends_from(10, 20, parent), "the server's parent is not the server");
+        assert!(!descends_from(5, 20, parent));
+    }
+
+    /// 모듈 설정의 `*_port` 값은 모듈이 정할 수 있으므로 넣지 않는다: 데몬 인스턴스 값 `port`·`rest_port`만
+    #[test]
+    fn the_instance_ports_are_the_game_and_rest_ports() {
+        let config = json!({ "port": 8211, "rest_port": "8212", "query_port": 27015, "x_port": 22, "max_players": 32, "pid": 4 });
+        assert_eq!(instance_ports(&config), vec![8211, 8212]);
     }
 }

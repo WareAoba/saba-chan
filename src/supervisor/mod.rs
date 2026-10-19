@@ -1158,7 +1158,7 @@ impl Supervisor {
                     if let Some(port) = instance.rest_port {
                         config_obj.insert("rest_port".to_string(), json!(port));
                     }
-                    if let Err(e) = crate::plugin::run_plugin(&module_path, "stop", Value::Object(config_obj)).await {
+                    if let Err(e) = crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).run().await {
                         tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e);
                     }
                 }
@@ -1259,7 +1259,7 @@ impl Supervisor {
         let config = Value::Object(config_obj);
 
         // Execute stop function
-        let result = crate::plugin::run_plugin(&module_path, "stop", config).await?;
+        let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).run().await?;
 
         // Check if the module actually succeeded
         let plugin_success = result.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
@@ -1360,7 +1360,7 @@ impl Supervisor {
             for (key, value) in &instance.module_settings {
                 config_obj.entry(key.clone()).or_insert_with(|| value.clone());
             }
-            crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj))
+            crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj)).serving(tracked_pid)
         };
 
         // Ask module for status
@@ -1447,7 +1447,7 @@ impl Supervisor {
             });
 
             // 플러그인 실행
-            crate::plugin::PluginCall::new(module_path, "command", config)
+            crate::plugin::PluginCall::new(module_path, "command", config).serving(pid)
         };
         let result = call.run().await?;
 
@@ -2074,9 +2074,10 @@ impl Supervisor {
         // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
         Self::insert_instance_fields(&mut cfg, instance);
         // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
-        cfg.insert("running".to_string(), json!(self.tracker.get_pid(instance_id).is_ok()));
+        let server = self.tracker.get_pid(instance_id).ok();
+        cfg.insert("running".to_string(), json!(server.is_some()));
 
-        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)))
+        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).serving(server))
     }
 
     /// Read or update server.properties (via module's configure/read_properties)
