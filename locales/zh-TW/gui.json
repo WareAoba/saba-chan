@@ -1158,6 +1158,8 @@
     "reason_working_dir_in_use": "工作資料夾被其他伺服器使用",
     "reason_invalid_id": "伺服器 ID 無效",
     "reason_save_failed": "無法儲存",
+    "reason_name_taken": "已有同名伺服器",
+    "reason_busy": "正在安裝、更新、備份或還原",
     "reason_other": "未知原因",
     "no_servers": "沒有可匯入的伺服器",
     "config": "設定：{{sections}}",

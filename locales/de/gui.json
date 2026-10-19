@@ -1158,6 +1158,8 @@
     "reason_working_dir_in_use": "ein anderer Server nutzt seinen Arbeitsordner",
     "reason_invalid_id": "ungültige Server-ID",
     "reason_save_failed": "konnte nicht gespeichert werden",
+    "reason_name_taken": "Ein Server mit diesem Namen existiert bereits",
+    "reason_busy": "wird gerade installiert, aktualisiert, gesichert oder wiederhergestellt",
     "reason_other": "unbekannter Grund",
     "no_servers": "Keine Server zum Importieren",
     "config": "Einstellungen: {{sections}}",
