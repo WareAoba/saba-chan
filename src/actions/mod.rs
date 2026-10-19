@@ -253,7 +253,7 @@ fn strip_secrets(v: &mut Value, password_fields: &[String]) {
 
 /// 원격으로 나가는 결과에서 PC의 로컬 정보를 어느 깊이에서든 뺀다 (I3, 알림 push 경로와 같은 기준):
 /// 실행 파일·폴더·인자 키, 콘솔 줄이 든 종료 근거, 자동 재시작 실패 원문, 그리고 문자열 안의 절대 경로
-fn strip_local_details(v: &mut Value) {
+pub(crate) fn strip_local_details(v: &mut Value) {
     const LOCAL_KEYS: [&str; 5] = ["working_dir", "executable_path", "extra_args", "extension_data", "install_path"];
     match v {
         Value::Object(m) => {
@@ -276,9 +276,10 @@ fn strip_local_details(v: &mut Value) {
     }
 }
 
-/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것
+/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것.
+/// 인스턴스 액션은 `<instance>/<action id>`로만 판정하므로(`authorize`) 전역 키를 받지 않는다
 pub fn overridable(id: &str) -> bool {
-    find(id).is_some_and(|d| d.discord_level.is_none() && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
+    find(id).is_some_and(|d| !d.instance && d.discord_level.is_none() && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
 }
 
 /// 문자열의 절대 경로를 `<path>`로 바꾸고, Python traceback은 마지막 줄(예외 문구)만 남긴다. 바뀐 것이 없으면 None

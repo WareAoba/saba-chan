@@ -1247,11 +1247,7 @@ impl ModuleToml {
     /// 키는 맞지만 값이 계약을 벗어난 곳
     fn value_problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
-        let entry = Path::new(&self.module.entry);
-        if self.module.entry.is_empty()
-            || entry.is_absolute()
-            || entry.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
-        {
+        if !crate::utils::is_inner_relative_path(&self.module.entry) {
             problems.push(format!("module.entry '{}' must be a path inside the module folder", self.module.entry));
         }
         for field in self.settings.iter().flat_map(|s| &s.fields) {

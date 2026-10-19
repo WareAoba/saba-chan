@@ -1029,12 +1029,15 @@ fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
     }
 }
 
-/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다
+/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다.
+/// 답 문구는 실행 오류 원문을 담을 수 있어 액션 결과와 같은 기준으로 로컬 정보를 뺀다 (I3)
 fn raw_command_result(reply: crate::chat::Reply) -> Value {
-    match reply.code {
+    let mut out = match reply.code {
         Some(code) => json!({ "success": false, "data": { "code": code, "error": reply.text, "args": reply.args } }),
         None => json!({ "success": true, "data": { "text": reply.text } }),
-    }
+    };
+    crate::actions::strip_local_details(&mut out);
+    out
 }
 
 fn backoff(failures: u32) -> Duration {
@@ -1368,6 +1371,21 @@ mod tests {
             json!({ "success": false, "data": { "code": "UNKNOWN_COMMAND", "error": "Unknown command", "args": { "command": "dance" } } })
         );
         assert_eq!(raw_command_result("done".to_string().into()), json!({ "success": true, "data": { "text": "done" } }));
+    }
+
+    /// 채팅 명령 답도 액션 결과와 같이 PC의 경로를 가린 채 나간다 (I3)
+    #[test]
+    fn raw_command_replies_keep_local_paths_on_the_pc() {
+        let failed: crate::chat::Reply = "❌ 오류: Failed to start server: Failed to spawn process 'C:\\Users\\me\\java\\bin\\java.exe': not found".to_string().into();
+        let out = raw_command_result(failed).to_string();
+        assert!(!out.contains("Users") && out.contains("<path>"), "{out}");
+        let denied = crate::chat::Reply {
+            text: "no access to /home/me/servers/world".into(),
+            code: Some("PERMISSION_DENIED"),
+            args: json!({ "path": "D:\\Games\\mc" }),
+        };
+        let out = raw_command_result(denied).to_string();
+        assert!(!out.contains("/home/me") && !out.contains("Games"), "{out}");
     }
 
     #[test]

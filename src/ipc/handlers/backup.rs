@@ -354,6 +354,22 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
                 problems.push(format!("schedule[{}]: every_minutes must be at least {} from Discord", i, REMOTE_MIN_EVERY_MINUTES));
             }
         }
+        // 작업 하나의 간격만 보면 매일 시각 작업이나 간격이 다른 작업 여럿으로 우회한다: 종류별 하루 실행 횟수로 본다.
+        // 원격은 그 횟수를 30분에 한 번(하루 48번) 넘게 올리지 못한다 (이 PC에서 이미 그보다 잦게 정했으면 늘리지만 못한다)
+        let remote_max = 24 * 60 / REMOTE_MIN_EVERY_MINUTES;
+        let mut actions: Vec<TaskAction> = Vec::new();
+        for task in &body.schedule {
+            if !actions.contains(&task.action) {
+                actions.push(task.action);
+            }
+        }
+        for action in actions {
+            let after = daily_runs(&body.schedule, action);
+            if after > remote_max && after > daily_runs(&instance.schedule, action) {
+                let name = serde_json::to_value(action).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+                problems.push(format!("{} would run {} times a day; at most {} from Discord", name, after, remote_max));
+            }
+        }
         if body.backup_keep.is_some_and(|k| k > REMOTE_MAX_BACKUP_KEEP && Some(k) != instance.backup_keep) {
             problems.push(format!("backup_keep must be at most {} from Discord", REMOTE_MAX_BACKUP_KEEP));
         }
@@ -541,6 +557,15 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
     }
 }
 
+/// 켜진 `action` 작업들이 하루에 도는 횟수 (매일 시각 작업은 1번, N분마다는 하루를 N으로 나눈 만큼)
+fn daily_runs(schedule: &[ScheduledTask], action: TaskAction) -> u32 {
+    schedule
+        .iter()
+        .filter(|t| t.enabled && t.action == action)
+        .map(|t| t.every_minutes.map_or(1, |m| (24 * 60u32).div_ceil(m.max(1))))
+        .sum()
+}
+
 /// 업데이트가 있으면: (켜져 있으면) 예고 → 정지 → 업데이트(업데이트 전 백업 포함) → 다시 시작.
 /// 꺼져 있어도 정한 시각까지는 기다린다 (예고 시각에 바로 시작하지 않게)
 async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
@@ -570,6 +595,7 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
         }
     }
     tracing::info!("Scheduled update of '{}'", id);
+    let generation = state.supervisor.read().await.run_generation_of(id);
     let updated = match super::instance::begin_server_update(state, id).await {
         Ok(job) => job.await.unwrap_or(false),
         Err(r) => {
@@ -581,7 +607,23 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
         if !updated {
             tracing::warn!("Scheduled update of '{}' failed; starting the old version again", id);
         }
-        let _ = super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await;
+        start_after_update(state, id, generation).await;
+    }
+}
+
+/// 예약 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
+/// 그사이 사용자가 켜거나 끄거나 인스턴스를 지우면(`generation`이 바뀌면) 그만둔다
+async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
+    let wanted = || async {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
+    };
+    match start_when_free(state, id, wanted).await {
+        None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
+        Some(resp) if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) => {
+            tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, resp.body)
+        }
+        Some(_) => {}
     }
 }
 
@@ -690,6 +732,22 @@ mod tests {
         tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
     }
 
+    /// 예약 업데이트가 끝난 뒤 다시 켤 때도, 그 순간 다른 작업(백업)이 잠금을 쥐면 끝나기를 기다린다 (꺼진 채 남지 않게)
+    #[tokio::test]
+    async fn a_scheduled_update_restart_waits_for_a_running_backup() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let generation = state.supervisor.read().await.run_generation_of(&id);
+        let guard = BusyGuard::take(&id).expect("free");
+        let restart = tokio::spawn({
+            let (state, id) = (state.clone(), id.clone());
+            async move { start_after_update(&state, &id, generation).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
+        drop(guard);
+        tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
+    }
+
     #[tokio::test]
     async fn a_dropped_restore_request_keeps_the_lock_until_the_work_ends() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
@@ -764,9 +822,41 @@ mod tests {
         assert_eq!(put(json!({ "schedule": [], "backup_keep": 0 })).await, StatusCode::BAD_REQUEST);
         // 이 PC에서 정한 작업은 디스코드에서 그대로 다시 보내도 된다
         assert_eq!(put(json!({ "schedule": [update, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
-        assert_eq!(remote(json!({ "schedule": [update, restart(1), restart(60)], "backup_keep": 100 })).await, StatusCode::OK);
+        assert_eq!(remote(json!({ "schedule": [update, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
+        // 이미 30분에 한 번보다 잦은 작업에 원격이 더 얹을 수는 없다
+        assert_eq!(remote(json!({ "schedule": [update, restart(1), restart(60)], "backup_keep": 100 })).await, StatusCode::BAD_REQUEST);
         // 끄는 것은 된다
         let off = json!({ "action": "update", "at": "04:00", "enabled": false });
         assert_eq!(remote(json!({ "schedule": [off, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
+    }
+
+    /// 원격 제한은 작업 하나의 간격이 아니라 하루에 도는 횟수로 본다: 매일 시각 작업이나 간격이 다른 작업을 여럿 넣어도,
+    /// 나눠서 보내도 30분에 한 번보다 자주 돌지 않는다
+    #[tokio::test]
+    async fn remote_schedules_cannot_add_up_to_running_more_often() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let remote = |body: Value| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(crate::audit::Origin::new("discord"), async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            })
+        };
+        let at = |t: &str| json!({ "action": "restart", "at": t });
+        let every = |m: u32| json!({ "action": "restart", "every_minutes": m });
+        let daily: Vec<Value> = (0..49).map(|m| at(&format!("{:02}:{:02}", m / 60, m % 60))).collect();
+        assert_eq!(remote(json!({ "schedule": daily })).await, StatusCode::BAD_REQUEST, "49 daily restarts");
+        let many: Vec<Value> = (30..33).map(every).collect();
+        assert_eq!(remote(json!({ "schedule": many })).await, StatusCode::BAD_REQUEST, "three restarts of about 30 minutes each");
+        // 하루 48번까지는 된다 (30분마다 하나와 같다)
+        let ok: Vec<Value> = (0..48).map(|m| at(&format!("{:02}:{:02}", m / 60, m % 60))).collect();
+        assert_eq!(remote(json!({ "schedule": ok.clone() })).await, StatusCode::OK);
+        // 이미 받은 작업 위에 하나 더 보내는 것도 막는다
+        let mut more = ok;
+        more.push(at("23:59"));
+        assert_eq!(remote(json!({ "schedule": more })).await, StatusCode::BAD_REQUEST);
+        // 다른 종류의 작업은 따로 센다
+        let announce_free = json!({ "action": "restart", "every_minutes": 30 });
+        assert_eq!(remote(json!({ "schedule": [announce_free] })).await, StatusCode::OK);
     }
 }
