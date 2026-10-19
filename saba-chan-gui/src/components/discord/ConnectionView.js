@@ -213,6 +213,7 @@ export function ConnectionView({
     pairing,
     onStartPairing,
     onCancelPairing,
+    onReload,
     onDisconnect,
     onStartAgent,
     nodes,
@@ -299,6 +300,9 @@ export function ConnectionView({
                     <div className="notice tone-stop">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('discord.relay_failed_body', { error: cloudError || '-' })}</span>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onReload}>
+                            {t('discord.reload')}
+                        </button>
                     </div>
                 )}
                 {agentReplaced && !agentRunning && (

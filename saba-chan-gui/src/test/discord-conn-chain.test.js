@@ -1,8 +1,8 @@
 /**
  * 연결 카드 흐름: 릴레이에 닿지 못하면 끊긴 자리만 빨간 X로, 재우기·연결 중이면 이음줄 없이 보인다.
  */
-import { render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { ConnectionView } from '../components/discord/ConnectionView';
 
 const viewProps = {
@@ -40,5 +40,14 @@ describe('연결 카드 흐름', () => {
         expect(links(container)).toEqual(['dc-chain-link off', 'dc-chain-link off']);
         expect(container.querySelector('.dc-chain-node.on')).toBeNull();
         expect(container.querySelector('.dc-chain-x')).toBeNull();
+    });
+
+    it('릴레이에 닿지 못했다는 알림에서 바로 다시 받을 수 있다', () => {
+        const onReload = vi.fn();
+        const { container } = render(
+            <ConnectionView {...viewProps} cloudState="error" cloudError="timeout" onReload={onReload} />,
+        );
+        fireEvent.click(container.querySelector('.notice.tone-stop button'));
+        expect(onReload).toHaveBeenCalledTimes(1);
     });
 });

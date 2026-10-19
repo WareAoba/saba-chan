@@ -409,6 +409,9 @@ export function DiscordPage({
                         {cloudState === 'connected' && cloudError && (
                             <p className="dc-nav-empty dc-field-error">
                                 {t('discord.nodes_refresh_failed', { error: cloudError })}
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={loadNodes}>
+                                    {t('discord.reload')}
+                                </button>
                             </p>
                         )}
                         {cloudNodes.length === 0 && !(cloudState === 'connected' && cloudError) && (
@@ -494,6 +497,7 @@ export function DiscordPage({
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}
+                                onReload={loadNodes}
                                 onDisconnect={disconnect}
                                 onStartAgent={handleStartDiscordBot}
                                 nodes={cloudNodes}
