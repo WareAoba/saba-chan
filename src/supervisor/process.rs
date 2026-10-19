@@ -63,14 +63,15 @@ pub fn is_same_process(pid: u32, recorded_at: u64) -> bool {
 }
 
 /// Force-kill a process by PID. Cross-platform helper.
-/// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다
+/// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다.
+/// Windows는 자식까지 끝낸다: 런처형 서버(PalServer.exe 등)는 런처만 죽이면 실제 서버가 남는다
 pub fn force_kill_pid(pid: u32) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         let out = std::process::Command::new("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
+            .args(["/F", "/T", "/PID", &pid.to_string()])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| anyhow::anyhow!("Failed to kill PID {}: {}", pid, e))?;
@@ -305,6 +306,35 @@ mod tests {
 
         assert_eq!(tracker.get_pid("srv-a").unwrap(), 9999);
         assert_eq!(tracker.get_pid("srv-b").unwrap(), 9999);
+    }
+
+    /// 런처형 서버(PalServer.exe 등)는 실제 서버를 자식으로 띄운다: 런처만 죽이면 서버가 남는다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_force_kill_also_ends_the_children() {
+        use std::os::windows::process::CommandExt;
+        let launcher = std::process::Command::new("cmd")
+            .args(["/C", "ping -n 60 127.0.0.1 > nul"])
+            .creation_flags(0x08000000)
+            .spawn()
+            .unwrap();
+        let parent = sysinfo::Pid::from_u32(launcher.id());
+        let mut child = None;
+        for _ in 0..50 {
+            let mut sys = sysinfo::System::new();
+            sys.refresh_processes();
+            child = sys.processes().iter().find(|(_, p)| p.parent() == Some(parent)).map(|(pid, _)| pid.as_u32());
+            if child.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        let child = child.expect("the launcher started its child");
+        force_kill_pid(launcher.id()).unwrap();
+        assert!(
+            wait_gone(std::time::Duration::from_secs(5), || is_process_alive(child)).await,
+            "the server the launcher started is still running"
+        );
     }
 
     /// 종료 요청이 거부되면 성공으로 치지 않는다 (권한 없는 프로세스: PID 1)
