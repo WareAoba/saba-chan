@@ -14,7 +14,7 @@ const failedRes = (res) => !res || res.success === false || Boolean(res.error_co
  * 재우기: 연결은 그대로 두고 모든 디스코드 서버의 잠자기(데몬 discord settings `sleeping`)를 켠다.
  * 모두 잠들어 있으면 깨우기로 바뀐다. 일부만 바뀐 채 실패하면 방금 하려던 쪽을 다시 누를 수 있게 둔다.
  */
-function SleepAllButton({ nodes }) {
+function SleepAllButton({ nodes, onAsleepChange }) {
     const { t } = useTranslation('gui');
     const ids = (nodes || []).map((n) => n.guildId).join(',');
     const [asleep, setAsleep] = useState(null); // null = 아직 모름
@@ -39,6 +39,9 @@ function SleepAllButton({ nodes }) {
         lastAttempt.current = null;
         load();
     }, [load]);
+    useEffect(() => {
+        onAsleepChange?.(asleep === true);
+    }, [asleep, onAsleepChange]);
 
     const toggle = async () => {
         const sleeping = !asleep;
@@ -177,6 +180,19 @@ export function PairingCard({ pairing, onCancel }) {
     );
 }
 
+/** 흐름 상자 사이 이음줄: on = 초록 점선, off = 없음, fail = 빨간 점선 + X */
+function ChainLink({ state }) {
+    return (
+        <li className={clsx('dc-chain-link', state)} aria-hidden="true">
+            {state === 'fail' && (
+                <span className="dc-chain-x">
+                    <Icon name="x" size={12} />
+                </span>
+            )}
+        </li>
+    );
+}
+
 /** 릴레이 주소에서 호스트 이름만 (긴 URL이 흐름 칸을 넘치지 않게) */
 function relayHost(url) {
     try {
@@ -208,6 +224,8 @@ export function ConnectionView({
 }) {
     const { t } = useTranslation('gui');
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+    // SleepAllButton이 알려 주는 "모든 서버를 재웠는지"
+    const [asleep, setAsleep] = useState(false);
 
     if (cloudState === 'no_host') {
         return (
@@ -239,6 +257,10 @@ export function ConnectionView({
 
     const connected = cloudState === 'connected';
     const agentRunning = botStatus === 'running' || botStatus === 'connecting';
+    // 모든 서버를 재웠으면 명령이 흐르지 않으니 사바쨩 쪽 흐름을 끈다
+    const flowing = agentRunning && connected && !asleep;
+    // 릴레이에 닿지 못한 것은 "실패": 끊긴 자리를 빨간 X로 보인다 (재우기·연결 중은 그냥 이음줄이 없다)
+    const relayFailed = cloudState === 'error';
     return (
         <div className="dc-view">
             {/* 연결 카드: 제목·상태·재우기 + 사바쨩 → 릴레이 서버 → 디스코드 흐름 + 그림 칸 (여러 카드를 하나로) */}
@@ -265,18 +287,9 @@ export function ConnectionView({
                                 <StatusChip tone="warn" pulse label={t('discord.relay_connecting')} />
                             )}
                             {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
-                            <button
-                                type="button"
-                                className="icon-btn"
-                                onClick={onReload}
-                                data-tooltip={t('discord.reload')}
-                                aria-label={t('discord.reload')}
-                            >
-                                <Icon name="refresh" size="sm" />
-                            </button>
                         </div>
                         {agentRunning ? (
-                            <SleepAllButton nodes={nodes} />
+                            <SleepAllButton nodes={nodes} onAsleepChange={setAsleep} />
                         ) : (
                             <button
                                 type="button"
@@ -294,6 +307,9 @@ export function ConnectionView({
                     <div className="notice tone-stop">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('discord.relay_failed_body', { error: cloudError || '-' })}</span>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onReload}>
+                            {t('discord.reload')}
+                        </button>
                     </div>
                 )}
                 {agentReplaced && !agentRunning && (
@@ -306,7 +322,7 @@ export function ConnectionView({
                 <div className="dc-conn-body">
                     {/* 명령이 흐르는 길: 이 PC의 사바쨩 → 릴레이 서버 → 디스코드. 끊긴 구간은 흐리게 */}
                     <ol className="dc-chain" aria-label={t('discord.agent_desc')}>
-                        <li className={clsx('dc-chain-node', { on: agentRunning })}>
+                        <li className={clsx('dc-chain-node', { on: flowing })}>
                             <img src="./icon.png" alt="" className="dc-chain-icon" />
                             <span className="dc-chain-name">{t('discord.chain_saba')}</span>
                             <span className="dc-chain-sub">
@@ -315,16 +331,16 @@ export function ConnectionView({
                                 )}
                             </span>
                         </li>
-                        <li className={clsx('dc-chain-link', { on: agentRunning && connected })} aria-hidden="true" />
-                        <li className={clsx('dc-chain-node', { on: connected })}>
-                            <Icon name="cloud" size="sm" />
+                        <ChainLink state={relayFailed ? 'fail' : flowing ? 'on' : 'off'} />
+                        <li className={clsx('dc-chain-node', { on: connected, fail: relayFailed })}>
+                            <Icon name={relayFailed ? 'cloudOff' : 'cloud'} size={26} />
                             <span className="dc-chain-name">{t('discord.chain_relay')}</span>
                             <span className="dc-chain-sub">{relayHost(relayUrl)}</span>
                         </li>
-                        <li className={clsx('dc-chain-link', { on: connected })} aria-hidden="true" />
+                        <ChainLink state={connected ? 'on' : 'off'} />
                         <li className={clsx('dc-chain-node', { on: connected && nodeCount > 0 })}>
                             <span className="dc-chain-discord">
-                                <Icon name="discordLogo" size="sm" />
+                                <Icon name="discordLogo" size={26} />
                             </span>
                             <span className="dc-chain-name">{t('discord.chain_discord')}</span>
                             <span className="dc-chain-sub">{t('discord.node_count', { count: nodeCount })}</span>

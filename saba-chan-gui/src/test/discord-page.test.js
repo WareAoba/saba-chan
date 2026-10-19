@@ -243,6 +243,20 @@ describe('DiscordPage', () => {
         expect(document.querySelector('.dc-nav-empty.dc-field-error').textContent).toContain('unauthorized');
     });
 
+    it('노드 목록만 실패하면 그 자리에서 다시 받을 수 있다', async () => {
+        window.api.relayListHostNodes = vi.fn().mockResolvedValue({ error: 'unauthorized' });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        const line = await waitFor(() => {
+            const el = document.querySelector('.dc-nav-empty.dc-field-error');
+            expect(el).not.toBeNull();
+            return el;
+        });
+        window.api.relayListHostNodes = vi.fn().mockResolvedValue([{ guildId: 'g1', guildName: '사바 마을' }]);
+        await act(async () => fireEvent.click(line.querySelector('button')));
+        expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(document.querySelector('.dc-nav-empty.dc-field-error')).toBeNull());
+    });
+
     it('호스트가 바뀐 뒤 늦게 온 옛 노드 목록은 버린다', async () => {
         let resolveOld;
         window.api.relayListHostNodes = vi.fn((host) =>

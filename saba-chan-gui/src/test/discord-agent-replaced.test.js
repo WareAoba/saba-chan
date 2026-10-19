@@ -16,7 +16,6 @@ const viewProps = {
     pairing: { active: false },
     onStartPairing: () => {},
     onCancelPairing: () => {},
-    onReload: () => {},
     onDisconnect: () => {},
     onStartAgent: () => {},
     onStopAgent: () => {},
