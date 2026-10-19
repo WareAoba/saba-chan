@@ -398,7 +398,7 @@ async fn reload_token_until_valid(app: &AppHandle) -> bool {
 }
 
 /// /health가 보낸 토큰을 맞다고 했는가. 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
-fn token_valid(health: &Value) -> bool {
+pub(crate) fn token_valid(health: &Value) -> bool {
     health.get("token").and_then(Value::as_str).unwrap_or("valid") == "valid"
 }
 

@@ -97,11 +97,26 @@ pub fn app_ready(app: AppHandle) {
     lifecycle::app_ready(&app);
 }
 
+/// `/health`는 토큰 없이도 200을 준다. 보낸 토큰이 맞을 때만 실행 중으로 본다: 토큰이 어긋나면 API가 모두 401이다
 #[tauri::command]
 pub async fn daemon_status(app: AppHandle) -> Value {
-    match app.state::<AppState>().client.get("/health", 1000).await {
-        Ok(_) => json!({ "running": true, "message": "Daemon is running" }),
-        Err(e) => json!({ "running": false, "message": format!("Daemon not responding: {}", e.message) }),
+    let client = &app.state::<AppState>().client;
+    let mut health = client.get("/health", 1000).await.map_err(|e| e.message);
+    // 데몬이 다시 떠서 토큰이 바뀌었으면 한 번 다시 읽어 본다
+    if matches!(&health, Ok(v) if !lifecycle::token_valid(v)) {
+        client.load_token();
+        health = client.get("/health", 1000).await.map_err(|e| e.message);
+    }
+    daemon_status_body(health)
+}
+
+fn daemon_status_body(health: Result<Value, String>) -> Value {
+    match health {
+        Ok(v) if lifecycle::token_valid(&v) => json!({ "running": true, "message": "Daemon is running" }),
+        Ok(_) => {
+            json!({ "running": false, "error_code": "token_invalid", "message": "Daemon is running but rejects this app's token" })
+        }
+        Err(e) => json!({ "running": false, "message": format!("Daemon not responding: {}", e) }),
     }
 }
 
@@ -526,6 +541,20 @@ mod tests {
     }
 
     use super::*;
+
+    /// `/health`는 토큰 없이도 200이다: 토큰이 맞을 때만 실행 중으로 본다 (L18 a)
+    #[test]
+    fn the_daemon_counts_as_running_only_when_our_token_is_valid() {
+        let running = |r: Result<Value, String>| daemon_status_body(r)["running"].clone();
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "valid" }))), json!(true));
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "invalid" }))), json!(false));
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "missing" }))), json!(false));
+        assert_eq!(running(Err("connection refused".into())), json!(false));
+        assert_eq!(
+            daemon_status_body(Ok(json!({ "token": "invalid" })))["error_code"],
+            json!("token_invalid")
+        );
+    }
 
     #[test]
     fn consent_path_takes_only_known_kinds_and_plain_names() {
