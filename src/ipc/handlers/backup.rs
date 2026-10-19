@@ -297,28 +297,34 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
     if is_running(&state, &id).await {
         return error(StatusCode::CONFLICT, "server_running", "Stop the server before restoring a backup");
     }
-    // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
-    let roots = {
-        let supervisor = state.supervisor.read().await;
-        let Some(instance) = supervisor.instance_store.get(&id) else {
-            return error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
-        };
-        let instance_dir = supervisor.instance_store.instance_dir(&id);
-        vec![server_base(instance, &instance_dir), instance_dir]
-    };
-    let targets = match backup::backed_up_paths(&dir, &name) {
-        Ok(t) => t,
-        Err(e) => return error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e)),
-    };
-    if targets.iter().any(|t| !backup::is_inside(t, &roots)) {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "restore_outside",
-            "This backup was made for a different server folder; it can no longer be restored here",
-        );
-    }
     let work = async move {
         let _guard = guard;
+        // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
+        let mut roots = {
+            let supervisor = state.supervisor.read().await;
+            let Some(instance) = supervisor.instance_store.get(&id) else {
+                return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            };
+            let instance_dir = supervisor.instance_store.instance_dir(&id);
+            vec![server_base(instance, &instance_dir), instance_dir]
+        };
+        // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다
+        match plan(&state, &id).await {
+            Ok(Some(p)) => roots.extend(p.paths),
+            Ok(None) => {}
+            Err(r) => return Err(r),
+        }
+        let targets = match backup::backed_up_paths(&dir, &name) {
+            Ok(t) => t,
+            Err(e) => return Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+        };
+        if targets.iter().any(|t| !backup::is_inside(t, &roots)) {
+            return Err(error(
+                StatusCode::BAD_REQUEST,
+                "restore_outside",
+                "This backup was made for a different server folder; it can no longer be restored here",
+            ));
+        }
         // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게. 지금 설정이 가리키지 않아도 복원이 덮을 경로는 함께 담는다
         // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
         let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
@@ -857,6 +863,27 @@ mod tests {
         let refused = restore_backup(Path((id.clone(), old)), State(state.clone())).await;
         assert_eq!(code(refused).await, "restore_outside");
         assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
+    }
+
+    // 훅이나 설정이 서버 폴더 밖(예: 사용자 폴더의 게임 데이터)을 가리키면, 지금도 가리키는 동안은 복원할 수 있다
+    #[tokio::test]
+    async fn a_backup_of_a_folder_the_module_still_points_outside_can_be_restored() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{cache_dir}}\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let outside = tmp.path().join("user-data");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("save.bin"), b"old").unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("cache_dir".into(), json!(outside.to_string_lossy()));
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let name = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+        std::fs::write(outside.join("save.bin"), b"new").unwrap();
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), name)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read(outside.join("save.bin")).unwrap(), b"old");
     }
 
     #[test]
