@@ -159,11 +159,24 @@ async fn status(ctx: &Ctx) -> Result<()> {
     let (agent, cfg) = tokio::join!(ctx.api.agent(), ctx.api.bot_config());
     let agent = agent?;
     let cfg = cfg.unwrap_or(Value::Null);
+    // 릴레이가 이 PC를 아는지도 본다 (GUI와 같다): 페어링했을 때만
+    let host = cfg.pointer("/cloud/hostId").and_then(Value::as_str).unwrap_or("");
+    let relay_check = match host {
+        "" => None,
+        host => Some(ctx.api.host_status(host, relay_of(&cfg)).await.map_err(|e| e.to_string())),
+    };
     if ctx.out.json {
-        ctx.out.data(&json!({ "agent": agent, "config": cfg }), |_| {});
+        let relay = relay_check.as_ref().map(|r| match r {
+            Ok(v) => json!({ "ok": v.get("error").is_none(), "status": v }),
+            Err(e) => json!({ "ok": false, "error": e }),
+        });
+        ctx.out.data(&json!({ "agent": agent, "config": cfg, "relay": relay }), |_| {});
         return Ok(());
     }
     let mut rows = vec![(t!("bot.connection"), crate::cmd::status::discord_line(&agent))];
+    if let Some(r) = &relay_check {
+        rows.push((t!("bot.relay_check"), relay_line(r)));
+    }
     rows.push((t!("bot.prefix"), prefixes_line(cfg.get("prefixes").unwrap_or(&Value::Null))));
     let relay = s(&agent, "relayUrl");
     if !relay.is_empty() {
@@ -184,6 +197,18 @@ async fn status(ctx: &Ctx) -> Result<()> {
     }
     output::print_kv(&rows);
     Ok(())
+}
+
+/// 릴레이 호스트 확인 결과 한 줄: 응답함, 아니면 오류
+fn relay_line(r: &std::result::Result<Value, String>) -> String {
+    let err = match r {
+        Ok(v) => v.get("error").map(|e| e.as_str().map(str::to_string).unwrap_or_else(|| e.to_string())),
+        Err(e) => Some(e.clone()),
+    };
+    match err {
+        None => console::style(t!("bot.relay_ok")).green().to_string(),
+        Some(e) => console::style(t!("bot.relay_failed", error = e)).red().to_string(),
+    }
 }
 
 async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
@@ -783,6 +808,15 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 릴레이가 이 PC를 아는지 한 줄로 (C11)
+    #[test]
+    fn the_relay_check_says_ok_or_why_not() {
+        let line = |r| console::strip_ansi_codes(&relay_line(&r)).to_string();
+        assert_eq!(line(Ok(json!({ "id": "h", "status": "online" }))), t!("bot.relay_ok"));
+        assert_eq!(line(Ok(json!({ "error": "HOST_NOT_FOUND" }))), t!("bot.relay_failed", error = "HOST_NOT_FOUND"));
+        assert_eq!(line(Err("timeout".into())), t!("bot.relay_failed", error = "timeout"));
+    }
 
     /// 멤버 표는 이름·사용자 이름·id만 이름순으로 (C7)
     #[test]

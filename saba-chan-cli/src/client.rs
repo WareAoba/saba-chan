@@ -548,9 +548,13 @@ impl Api {
             None => self.delete(&path).await,
         }
     }
-    /// POST/DELETE /api/sandbox/unisolated/:component (격리 없이 돌리기 동의)
-    pub async fn set_unisolated(&self, component: &str, allow: bool) -> Result<Value> {
-        let path = format!("/api/sandbox/unisolated/{}", seg(component));
+    /// GET /api/sandbox/{unisolated|extension-gui} — `{components:[{component, fingerprint, current}]}`
+    pub async fn consents(&self, kind: &str) -> Result<Value> {
+        self.get(&format!("/api/sandbox/{}", kind)).await
+    }
+    /// POST/DELETE /api/sandbox/{unisolated|extension-gui}/:component (격리 없이 돌리기, 익스텐션 GUI 번들 싣기 동의)
+    pub async fn set_consent(&self, kind: &str, component: &str, allow: bool) -> Result<Value> {
+        let path = format!("/api/sandbox/{}/{}", kind, seg(component));
         if allow {
             self.post(&path, json!({})).await
         } else {
@@ -662,6 +666,23 @@ impl Api {
         self.get(&with_query(
             &format!("/api/relay/node/{}/members", seg(guild_id)),
             &[("withStatus", Some("1".to_string())), ("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// GET /api/relay/host/:id/status — 릴레이가 이 PC(호스트)를 아는지. 실패하면 오류
+    pub async fn host_status(&self, host_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/host/{}/status", seg(host_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// GET /api/relay/node/:guild/chatbot/models — `{provider, models: [이름], selected, effectiveModel}`
+    /// (409 NO_API_KEY, 422 INVALID_API_KEY·QUOTA_EXCEEDED, 503 PROVIDER_UNAVAILABLE)
+    pub async fn chatbot_models(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/chatbot/models", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
         ))
         .await
     }
@@ -805,8 +826,9 @@ impl Api {
         self.post("/api/updates/launch-updater", json!({ "relaunch": relaunch }))
             .await
     }
-    pub async fn update_last_result(&self) -> Result<Value> {
-        self.get("/api/updates/last-result").await
+    /// GET /api/updates/last-result?lang — `{result, version, notes}` (notes: 그 언어의 패치노트)
+    pub async fn update_last_result(&self, lang: &str) -> Result<Value> {
+        self.get(&with_query("/api/updates/last-result", &[("lang", Some(lang.to_string()))])).await
     }
     pub async fn clear_update_last_result(&self) -> Result<Value> {
         self.delete("/api/updates/last-result").await

@@ -29,6 +29,9 @@
   },
   "bot": {
     "ask_token": "Jeton du nœud",
+    "relay_check": "Vérification du relais",
+    "relay_ok": "répond",
+    "relay_failed": "ne répond pas : {{error}}",
     "expired": "expirée",
     "expires_in": "Temps restant",
     "members_partial": "Liste complète des membres Discord indisponible ; seuls les membres avec un niveau enregistré sont affichés.",
@@ -406,6 +409,13 @@
   },
   "update": {
     "after_hint": "Saba-chan redémarrera après la mise à jour. Vérifiez ensuite : saba-chan-cli update last",
+    "notes": "Notes de version",
+    "result": "Résultat",
+    "result_ok": "réussi",
+    "result_failed": "échoué",
+    "when": "Appliqué le",
+    "updated": "Mis à jour",
+    "failed_one": "Échec",
     "applied": "Appliqué : {{list}}",
     "applying": "Application des mises à jour...",
     "checking": "Recherche de mises à jour...",
@@ -527,6 +537,8 @@
   },
   "chatbot": {
     "api_key": "Clé API enregistrée",
+    "provider": "Fournisseur",
+    "model_replaced": "Le modèle choisi {{selected}} n'est pas disponible ; {{effective}} est utilisé à la place.",
     "common": "Paramètres pour tous les serveurs Discord",
     "guild": "Serveur Discord {{guild}}",
     "defaults": "(valeurs par défaut)",

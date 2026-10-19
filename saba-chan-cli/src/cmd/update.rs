@@ -44,14 +44,21 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                 ctx.out.done(&t!("update.last_cleared"), &r);
                 return Ok(());
             }
-            let r = ctx.api.update_last_result().await?;
-            let res = r.get("result").cloned().unwrap_or(Value::Null);
-            ctx.out.data(&res, |v| {
-                if v.is_null() {
+            let r = ctx.api.update_last_result(crate::i18n::lang()).await?;
+            ctx.out.data(&r, |r| {
+                let rows = last_rows(r);
+                if rows.is_empty() {
                     println!("{}", output::dim(&t!("update.no_last")));
-                } else {
-                    crate::cmd::server::print_value(v);
+                    return;
                 }
+                output::print_kv(&rows);
+                // 패치노트는 GUI처럼 앱 언어로 (없으면 데몬이 영어·한국어 순으로 고른다)
+                if let Some(notes) = r.get("notes").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
+                    println!();
+                    output::heading(&t!("update.notes"));
+                    println!("{}", notes.trim_end());
+                }
+                ctx.out.hint("saba-chan-cli update last --clear");
             });
             Ok(())
         }
@@ -304,4 +311,55 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     let r = ctx.api.save_update_config(Value::Object(patch)).await?;
     ctx.out.done(&t!("update.config_saved"), &r);
     Ok(())
+}
+
+/// 마지막 적용 결과 (`{result: {timestamp, success, updated_components, failed, message}, version}`). 결과가 없으면 빈 목록
+fn last_rows(r: &Value) -> Vec<(String, String)> {
+    let Some(res) = r.get("result").filter(|v| v.is_object()) else {
+        return Vec::new();
+    };
+    let list = |key: &str| -> Vec<String> {
+        res.get(key).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect()
+    };
+    let ok = res.get("success").and_then(Value::as_bool) == Some(true);
+    let mut rows = Vec::new();
+    if let Some(v) = r.get("version").and_then(Value::as_str) {
+        rows.push((t!("col.version"), v.to_string()));
+    }
+    rows.push((
+        t!("update.result"),
+        if ok { console::style(t!("update.result_ok")).green().to_string() } else { console::style(t!("update.result_failed")).red().to_string() },
+    ));
+    rows.push((t!("update.when"), s(res, "timestamp").to_string()));
+    let updated = list("updated_components");
+    if !updated.is_empty() {
+        rows.push((t!("update.updated"), updated.join(", ")));
+    }
+    for f in list("failed") {
+        rows.push((t!("update.failed_one"), console::style(f).red().to_string()));
+    }
+    if let Some(m) = res.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()) {
+        rows.push((t!("col.what"), m.to_string()));
+    }
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)
+    #[test]
+    fn the_last_result_reads_as_rows() {
+        let r = json!({ "ok": true, "version": "0.1.7", "notes": "고친 것", "result": {
+            "timestamp": "2026-10-19T13:05:00Z", "success": false, "updated_components": ["saba-core", "cli"],
+            "failed": ["gui: 파일이 쓰기 중"], "message": null
+        } });
+        let rows: Vec<(String, String)> = last_rows(&r).into_iter().map(|(k, v)| (k, console::strip_ansi_codes(&v).to_string())).collect();
+        assert_eq!(rows[0], (t!("col.version"), "0.1.7".to_string()));
+        assert_eq!(rows[1].1, t!("update.result_failed"));
+        assert!(rows.contains(&(t!("update.updated"), "saba-core, cli".to_string())));
+        assert!(rows.contains(&(t!("update.failed_one"), "gui: 파일이 쓰기 중".to_string())));
+        assert!(last_rows(&json!({ "ok": true, "result": null })).is_empty());
+    }
 }

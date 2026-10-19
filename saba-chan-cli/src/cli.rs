@@ -156,11 +156,11 @@ pub enum BackupCmd {
     /// Back up now
     #[command(visible_alias = "new")]
     Create { server: Option<String> },
-    /// Delete one backup
+    /// Delete one backup (no name: pick from the list)
     #[command(visible_alias = "rm")]
-    Delete { server: String, backup: String },
-    /// Put a backup back (the server must be stopped; asks to stop it)
-    Restore { server: String, backup: String },
+    Delete { server: String, backup: Option<String> },
+    /// Put a backup back (the server must be stopped; asks to stop it). No name: pick from the list
+    Restore { server: String, backup: Option<String> },
 }
 
 #[derive(Subcommand, Debug)]
@@ -185,10 +185,22 @@ pub enum PermCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum SandboxCmd {
-    /// Run this component without isolation when isolation cannot be prepared (asked again when its files change)
-    Allow { component: String },
-    /// Remove the consent to run without isolation
-    Revoke { component: String },
+    /// Consents given on this PC (run without isolation, extension GUI bundles)
+    #[command(visible_alias = "ls")]
+    List,
+    /// Run this component without isolation when isolation cannot be prepared (asked again when its files change).
+    /// `--gui`: load this extension's GUI bundle instead (component is the `ext-<id>` name shown by `sandbox list`)
+    Allow {
+        component: String,
+        #[arg(long)]
+        gui: bool,
+    },
+    /// Remove the consent (`--gui`: the GUI bundle consent)
+    Revoke {
+        component: String,
+        #[arg(long)]
+        gui: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -247,6 +259,8 @@ pub enum ChatbotCmd {
     },
     /// Delete all chatbot settings and the key
     Clear,
+    /// Models the saved API key can use (name or id of the Discord server; without it: the only paired server)
+    Models { guild: Option<String> },
     /// Forget what the chatbot remembers (all Discord servers, or one)
     Forget {
         #[arg(long)]
