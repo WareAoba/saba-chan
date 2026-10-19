@@ -7,6 +7,14 @@ import { Icon } from '../Icon';
 /** 업데이트 결과 알림의 액션: 누르면 패치노트를 연다 */
 export const PATCH_NOTES_ACTION = 'openPatchNotes';
 
+/** 업데이트 결과 마커 → 알림 한 줄 */
+export function updateResultMessage(res, t) {
+    const r = res?.result || {};
+    const version = res?.version || '';
+    if (r.success) return t('patch_notes.notice_success', { version: version || t('patch_notes.unknown_version') });
+    return t('patch_notes.notice_failed', { count: (r.failed || []).length || 1 });
+}
+
 // ─── localStorage 키 ───────────────────────────────────
 const STORAGE_KEY = 'saba-chan-notices';
 
@@ -140,7 +148,12 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
                 <Icon name={icon} size="sm" />
             </div>
             <div className="notice-card-body">
-                <p className="notice-card-message">{notice.message}</p>
+                <p className="notice-card-message">
+                    {/* 업데이트 결과는 보일 때 번역한다 (만들 때 아직 사용자 언어가 아니었을 수 있다) */}
+                    {notice.action === PATCH_NOTES_ACTION && notice.data?.result
+                        ? updateResultMessage(notice.data, t)
+                        : notice.message}
+                </p>
                 <span className="notice-card-time">
                     {timeStr}
                     {clickable && <span className="notice-action-hint"> {t('notice_modal.click_to_open')}</span>}

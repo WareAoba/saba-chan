@@ -100,6 +100,8 @@ impl RestClient {
 
         let resp = match resp {
             Ok(r) => r,
+            // 4xx·5xx도 응답이다: 아래에서 상태와 본문을 함께 알린다
+            Err(ureq::Error::Status(_, r)) => r,
             Err(e) => {
                 // 응답 없이 연결이 닫히면(EOF·reset·abort) 서버가 요청을 처리했는지 알 수 없다.
                 // 종료 명령처럼 서버가 끊는 것이 자연스러운 경우도 있어 전송 오류와 나누되, 성공으로 보고하지 않는다
@@ -144,12 +146,14 @@ impl RestClient {
                 error: None,
             })
         } else {
-            Err(ProtocolError::Protocol(format!(
+            // 본문은 앞부분만: 오류 문자열은 클라이언트·감사 기록·디스코드로 간다
+            let head: String = text.chars().take(200).collect();
+            Err(ProtocolError::HttpStatus(status, format!(
                 "HTTP {} {} failed with status {}: {}",
                 method,
                 url,
                 status,
-                text
+                head
             )))
         }
     }
@@ -240,5 +244,22 @@ mod tests {
         assert!(!resp.success);
         assert_eq!(resp.data.as_ref().unwrap()["outcome"], "unknown");
         assert!(resp.error.is_some());
+    }
+
+    /// 게임 서버가 답한 HTTP 상태를 잃지 않는다: 401·403(관리자 비밀번호가 틀림)을 다른 실패와 나눠 알리게
+    #[test]
+    fn a_rejected_request_keeps_the_servers_status() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut sock, &mut buf);
+            let _ = std::io::Write::write_all(&mut sock, b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 12\r\nConnection: close\r\n\r\nUnauthorized");
+        });
+        let client = RestClient::new("127.0.0.1".to_string(), port, false);
+        let err = client.get("/v1/api/info").expect_err("a 401 is a failure");
+        server.join().unwrap();
+        assert!(matches!(err, ProtocolError::HttpStatus(401, _)), "{err:?}");
     }
 }

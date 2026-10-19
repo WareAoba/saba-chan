@@ -303,7 +303,7 @@ async fn test_monitoring_loop_is_stable_under_idle() {
     let empty_snapshot: Vec<saba_core::process_monitor::RunningProcess> = vec![];
     for iteration in 0..10 {
         let mut sup = supervisor.write().await;
-        let result = sup.monitor_processes(&empty_snapshot).await;
+        let result = sup.monitor_processes_taken_at(&empty_snapshot, u64::MAX).await;
         assert!(
             result.is_ok(),
             "Monitoring iteration {} should succeed: {:?}",
