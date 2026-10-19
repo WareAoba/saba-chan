@@ -24,7 +24,7 @@
 
 use saba_chan_updater_lib::{UpdateManager, UpdateCompletionMarker};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
@@ -196,16 +196,12 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
-        if let Some(ref cmd) = relaunch_exe {
-            wait_for_exe(cmd).await;
-            launch_with_retry(cmd, &relaunch_extra, applied).await;
-        } else {
-            // --relaunch 미지정 시 GUI exe 자동 추론
-            if let Some(gui_path) = resolve_gui_exe() {
-                let cmd = gui_path.to_string_lossy().to_string();
-                wait_for_exe(&cmd).await;
-                launch_with_retry(&cmd, &[], applied).await;
-            }
+        let requested = relaunch_exe.is_some();
+        if let Some(cmd) = relaunch_command(relaunch_exe, resolve_gui_exe()) {
+            // 받은 인자는 받은 프로그램의 것이다. 대신 띄우는 GUI에는 넘기지 않는다
+            let extra: &[String] = if requested { &relaunch_extra } else { &[] };
+            wait_for_exe(&cmd).await;
+            launch_with_retry(&cmd, extra, applied).await;
         }
 
         if applied {
@@ -295,6 +291,24 @@ fn resolve_modules_dir() -> String {
     let p = constants::resolve_modules_dir();
     if !p.exists() { let _ = std::fs::create_dir_all(&p); }
     p.to_string_lossy().to_string()
+}
+
+/// 다시 띄울 실행 파일: `--relaunch`로 받은 것, 없으면 설치된 GUI.
+/// 받은 것이 GUI인데 업데이트로 비켜났으면(0.1.1의 `Saba-chan.exe` → `saba-chan-gui.exe`) 설치된 GUI
+fn relaunch_command(requested: Option<String>, installed_gui: Option<PathBuf>) -> Option<String> {
+    let is_gui = |exe: &str| {
+        Path::new(exe).file_name().is_some_and(|n| {
+            saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| n.eq_ignore_ascii_case(g))
+        })
+    };
+    match (requested, installed_gui) {
+        (Some(cmd), Some(gui)) if is_gui(&cmd) && !Path::new(&cmd).exists() => {
+            tracing::info!("[Apply] {} was replaced; relaunching {}", cmd, gui.display());
+            Some(gui.to_string_lossy().into_owned())
+        }
+        (Some(cmd), _) => Some(cmd),
+        (None, gui) => gui.map(|g| g.to_string_lossy().into_owned()),
+    }
 }
 
 /// GUI exe가 쓰기 완료될 때까지 대기 (최대 10초)
@@ -522,4 +536,30 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // M3: 받은 GUI 경로(0.1.1의 `Saba-chan.exe`)가 업데이트로 비켜났으면 지금 설치된 GUI를 띄운다
+    #[test]
+    fn a_retired_gui_is_relaunched_as_the_installed_one() {
+        let dir = std::env::temp_dir().join(format!("saba-relaunch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let installed = dir.join(saba_chan_updater_lib::GUI_EXE_NAMES[0]);
+        std::fs::write(&installed, b"gui").unwrap();
+        // Windows는 `Saba-chan.exe`. 다른 OS는 GUI 이름이 하나라 없는 폴더의 같은 이름으로 대신한다
+        let old = dir.join("gone").join(saba_chan_updater_lib::GUI_EXE_NAMES.last().unwrap());
+
+        let cmd = relaunch_command(Some(old.to_string_lossy().into_owned()), Some(installed.clone()));
+        assert_eq!(cmd.as_deref(), Some(installed.to_string_lossy().as_ref()));
+        // 받은 경로가 있으면 그대로, GUI가 아닌 프로그램도 그대로
+        let cmd = relaunch_command(Some(installed.to_string_lossy().into_owned()), None);
+        assert_eq!(cmd.as_deref(), Some(installed.to_string_lossy().as_ref()));
+        let cli = dir.join("saba-chan-cli.exe").to_string_lossy().into_owned();
+        assert_eq!(relaunch_command(Some(cli.clone()), Some(installed.clone())), Some(cli));
+        assert_eq!(relaunch_command(None, Some(installed.clone())).as_deref(), Some(installed.to_string_lossy().as_ref()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
