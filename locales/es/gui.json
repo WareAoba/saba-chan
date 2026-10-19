@@ -391,6 +391,7 @@
     "restart_confirm_message": "¿Detener e iniciar de nuevo '{{name}}'? Los jugadores conectados se desconectarán un momento.",
     "restarting_toast": "Reiniciando '{{name}}'…",
     "restart_completed_toast": "'{{name}}' reiniciado",
+    "port_moved": "{{name}}: Windows reserva el puerto REST de administración {{from}}, así que se cambió a {{to}}.",
     "restart_failed_toast": "No se pudo reiniciar: {{error}}",
     "rename_failed_toast": "No se pudo renombrar: {{error}}",
     "rename_name_taken": "'{{name}}' ya está en uso",
@@ -428,6 +429,7 @@
   },
   "errors": {
     "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
+    "console_input_full": "El servidor todavía está procesando la entrada anterior. Inténtalo de nuevo en un momento.",
     "restart_cancelled": "El servidor se inició o se eliminó en otro lugar mientras esperaba, así que no se reinició.",
     "executable_not_found": "Ejecutable del servidor de juegos no encontrado. Por favor verifique la ruta en configuración.",
     "file_not_found": "Archivo o carpeta no encontrada. Por favor verifique la ruta.",
@@ -1105,6 +1107,7 @@
     "start_blocked": {
       "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}} Si configuraste la ruta de Java tú mismo, vuelve a elegirla en la configuración del servidor.",
       "server_folder_label": "No se pudieron limpiar las marcas de permisos de la carpeta del servidor ({{file}}), así que el servidor no se inició. Comprueba que esta cuenta pueda cambiar los permisos de esa carpeta.",
+      "server_in_sync_folder": "El servidor no se inició porque {{file}} está dentro de una carpeta sincronizada como OneDrive. Mueve la carpeta del servidor fuera de la carpeta sincronizada.",
       "sandbox_unavailable": "No se pudo preparar un entorno aislado para {{component}}, así que no se ejecutó.",
       "extension_not_verified": "Los archivos de estas extensiones han cambiado y no se pudieron verificar: {{extensions}}. Reinstálalas o restaura los archivos originales."
     },

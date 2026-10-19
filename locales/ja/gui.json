@@ -335,6 +335,7 @@
     "restart_confirm_message": "'{{name}}' を停止して再起動しますか？接続中のプレイヤーは一時的に切断されます。",
     "restarting_toast": "'{{name}}' を再起動中…",
     "restart_completed_toast": "'{{name}}' を再起動しました",
+    "port_moved": "{{name}}: 管理用 REST ポート {{from}} は Windows が予約しているため、{{to}} に変更しました。",
     "restart_failed_toast": "再起動できませんでした: {{error}}",
     "rename_failed_toast": "名前を変更できませんでした: {{error}}",
     "rename_name_taken": "'{{name}}' という名前はすでに使われています",
@@ -372,6 +373,7 @@
   },
   "errors": {
     "start_cancelled": "起動中に停止が要求されたため、サーバーを起動しませんでした。",
+    "console_input_full": "サーバーがまだ前の入力を処理しています。少し待ってからもう一度送信してください。",
     "restart_cancelled": "再起動を待つ間に別の場所でサーバーが起動または削除されたため、再起動しませんでした。",
     "executable_not_found": "ゲームサーバーの実行ファイルが見つかりません。設定のパスを確認してください。",
     "file_not_found": "ファイルまたはフォルダが見つかりません。パスを確認してください。",
@@ -1105,6 +1107,7 @@
     "start_blocked": {
       "launch_outside_instance": "未確認のモジュールがサーバーフォルダー外のプログラムを実行しようとしました: {{file}} Java のパスを自分で設定した場合は、サーバー設定でもう一度選んでください。",
       "server_folder_label": "サーバーフォルダー（{{file}}）の権限マークを整理できなかったため、サーバーを起動しませんでした。このアカウントがそのフォルダーの権限を変更できるか確認してください。",
+      "server_in_sync_folder": "{{file}} が OneDrive などの同期フォルダー内にあるため、サーバーを起動しませんでした。サーバーフォルダーを同期フォルダーの外へ移動してください。",
       "sandbox_unavailable": "{{component}} の隔離環境を準備できなかったため、実行しませんでした。",
       "extension_not_verified": "拡張機能のファイルが変更されたため確認できませんでした: {{extensions}}。再インストールするか、元のファイルに戻してください。"
     },

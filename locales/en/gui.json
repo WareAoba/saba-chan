@@ -394,6 +394,7 @@
     "restart_confirm_message": "Stop and start '{{name}}' again? Connected players will be dropped for a moment.",
     "restarting_toast": "Restarting '{{name}}'…",
     "restart_completed_toast": "'{{name}}' restarted",
+    "port_moved": "{{name}}: the management REST port {{from}} is reserved by Windows, so it was changed to {{to}}.",
     "restart_failed_toast": "Couldn't restart: {{error}}",
     "rename_failed_toast": "Couldn't rename: {{error}}",
     "rename_name_taken": "'{{name}}' is already taken",
@@ -431,6 +432,7 @@
   },
   "errors": {
     "start_cancelled": "The server was stopped while it was starting, so it was not started.",
+    "console_input_full": "The server is still processing earlier input. Try again in a moment.",
     "restart_cancelled": "The server was started or removed elsewhere while waiting, so it was not restarted.",
     "executable_not_found": "Game server executable not found. Please check the path in settings.",
     "file_not_found": "File or folder not found. Please check the path.",
@@ -1108,6 +1110,7 @@
     "start_blocked": {
       "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}} If you set the Java path yourself, choose it again in the server settings.",
       "server_folder_label": "Couldn't clean up the permission marks on the server folder ({{file}}), so the server wasn't started. Check that this account can change that folder's permissions.",
+      "server_in_sync_folder": "The server wasn't started because {{file}} is inside a sync folder such as OneDrive. Move the server folder outside the sync folder.",
       "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run.",
       "extension_not_verified": "These extensions' files have changed and could not be verified: {{extensions}}. Reinstall them or restore the original files."
     },

@@ -15,6 +15,10 @@ pub enum ProtocolError {
 
     #[error("Protocol-specific error: {0}")]
     Protocol(String),
+
+    /// 서버가 2xx가 아닌 상태로 답했다 (상태 코드, 설명)
+    #[error("{1}")]
+    HttpStatus(u16, String),
 }
 
 /// 통신 타입

@@ -3,15 +3,9 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useModalClose } from '../../hooks/useModalClose';
 import { Icon } from '../Icon';
-import { PATCH_NOTES_ACTION } from './NoticeModal';
+import { PATCH_NOTES_ACTION, updateResultMessage } from './NoticeModal';
 
-/** 업데이트 결과 마커 → 알림 한 줄 */
-export function updateResultMessage(res, t) {
-    const r = res?.result || {};
-    const version = res?.version || '';
-    if (r.success) return t('patch_notes.notice_success', { version: version || t('patch_notes.unknown_version') });
-    return t('patch_notes.notice_failed', { count: (r.failed || []).length || 1 });
-}
+export { updateResultMessage };
 
 /**
  * 시작할 때 마지막 업데이트 결과를 묻고, 있으면 알림을 남긴다 (데몬 GET /api/updates/last-result).
@@ -62,7 +56,8 @@ export function PatchNotesModal({ data, onClose }) {
                     <div className="notice tone-warn" role="alert">
                         <Icon name="alertTriangle" size="sm" />
                         <span>
-                            {result.message || t('patch_notes.failed')}
+                            {/* result.message는 업데이터의 진단 문장(영어)이라 보이지 않는다 */}
+                            {t('patch_notes.failed')}
                             {failed.length > 0 && (
                                 <ul className="patch-notes-failed">
                                     {failed.map((f) => (

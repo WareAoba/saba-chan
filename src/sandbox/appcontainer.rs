@@ -465,6 +465,10 @@ mod imp {
                 return Err(last_error(&format!("inspect {}", path.display())));
             }
             if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                // 동기화 폴더(OneDrive 등)의 클라우드 파일도 재분석 지점이다. 막는 것은 같지만 원인을 따로 알린다
+                if cloud_file(h) {
+                    return Err(format!("{} {}", path.display(), crate::sandbox::SYNC_FOLDER_MARK));
+                }
                 return Err(format!("{} is a link", path.display()));
             }
             // 버퍼가 작으면 필요한 길이(끝 NUL 포함)를 돌려준다: 그만큼 늘려 한 번 더
@@ -483,6 +487,29 @@ mod imp {
                 return Err(format!("{} now resolves to {}", path.display(), real.to_string_lossy()));
             }
             Ok(handle)
+        }
+    }
+
+    /// 재분석 지점의 태그가 클라우드 파일(`IO_REPARSE_TAG_CLOUD`, `0x9000_?01A` 묶음)인지
+    fn cloud_file(handle: HANDLE) -> bool {
+        use winapi::um::minwinbase::FileAttributeTagInfo;
+        use winapi::um::winbase::GetFileInformationByHandleEx;
+        // winapi 0.3에 없는 구조체 (fileapi.h FILE_ATTRIBUTE_TAG_INFO)
+        #[repr(C)]
+        #[allow(non_snake_case)]
+        struct FILE_ATTRIBUTE_TAG_INFO {
+            FileAttributes: DWORD,
+            ReparseTag: DWORD,
+        }
+        unsafe {
+            let mut info: FILE_ATTRIBUTE_TAG_INFO = std::mem::zeroed();
+            GetFileInformationByHandleEx(
+                handle,
+                FileAttributeTagInfo,
+                &mut info as *mut _ as *mut c_void,
+                std::mem::size_of::<FILE_ATTRIBUTE_TAG_INFO>() as DWORD,
+            ) != 0
+                && info.ReparseTag & 0xFFFF_0FFF == 0x9000_001A
         }
     }
 

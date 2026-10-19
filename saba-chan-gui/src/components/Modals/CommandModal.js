@@ -123,7 +123,11 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
             // 사용자에게 보여줄 간결한 메시지
             let displayMsg;
             if (isError) {
-                displayMsg = isNoCommandPath(result) ? t('servers.no_command_path') : result.error;
+                displayMsg = isNoCommandPath(result)
+                    ? t('servers.no_command_path')
+                    : result.error_code === 'console_input_full'
+                      ? t('errors.console_input_full')
+                      : result.error;
             } else if (!isEmptyResponse(responseObj)) {
                 // 의미 있는 응답이 있을 때: 문자열이면 그대로, 객체면 간략 표시
                 if (typeof responseObj === 'string') {
