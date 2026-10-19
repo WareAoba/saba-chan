@@ -400,6 +400,16 @@ impl InstanceStore {
         self.root_dir.join(id)
     }
 
+    /// `dir`과 겹치는 폴더(서버 폴더나 인스턴스 폴더, 그 안이나 바깥)를 쓰는 다른 인스턴스.
+    /// 한 폴더에 서버 둘을 두면 서로의 파일을 덮어쓰고, 한쪽의 복원·삭제가 다른 쪽 파일까지 치운다
+    pub fn folder_user(&self, dir: &Path, except: &str) -> Option<&ServerInstance> {
+        self.instances.iter().find(|i| {
+            i.id != except
+                && (i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(Path::new(d), dir))
+                    || saba_chan_updater_lib::paths_overlap(&self.instance_dir(&i.id), dir))
+        })
+    }
+
     /// 쓰거나 지울 인스턴스 폴더: id가 경로 한 칸이고, 폴더가 심볼릭 링크가 아니어야 한다
     fn checked_dir(&self, id: &str) -> Result<PathBuf> {
         if !crate::utils::is_single_path_component(id) {
