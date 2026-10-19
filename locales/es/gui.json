@@ -395,6 +395,7 @@
     "rename_failed_toast": "No se pudo renombrar: {{error}}",
     "rename_name_taken": "'{{name}}' ya está en uso",
     "rename_server_running": "Detén el servidor antes de renombrarlo",
+    "rename_instance_busy": "No se puede cambiar el nombre mientras se instala, actualiza, hace una copia de seguridad o restaura. Inténtalo de nuevo cuando termine",
     "dependency_unmet_title": "Faltan requisitos",
     "dependency_unmet_message": "El módulo de '{{name}}' necesita las versiones siguientes. Actualiza, o instala y activa la extensión, y vuelve a iniciar.",
     "preflight_failed_title": "La comprobación previa de '{{name}}' encontró un problema",

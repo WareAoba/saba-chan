@@ -395,6 +395,7 @@
     "rename_failed_toast": "Umbenennen fehlgeschlagen: {{error}}",
     "rename_name_taken": "'{{name}}' ist bereits vergeben",
     "rename_server_running": "Stoppe den Server, bevor du ihn umbenennst",
+    "rename_instance_busy": "Während Installation, Update, Sicherung oder Wiederherstellung kann der Name nicht geändert werden. Versuche es danach erneut",
     "dependency_unmet_title": "Fehlende Voraussetzungen",
     "dependency_unmet_message": "Das Modul für '{{name}}' benötigt die unten stehenden Versionen. Aktualisiere oder installiere und aktiviere die Erweiterung und starte dann erneut.",
     "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",

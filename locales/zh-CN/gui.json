@@ -395,6 +395,7 @@
     "rename_failed_toast": "无法重命名：{{error}}",
     "rename_name_taken": "名称 '{{name}}' 已被使用",
     "rename_server_running": "请先停止服务器再重命名",
+    "rename_instance_busy": "安装、更新、备份或恢复期间无法重命名。请在完成后重试",
     "dependency_unmet_title": "缺少必要组件",
     "dependency_unmet_message": "'{{name}}' 的模块需要以下版本。请更新，或安装并启用扩展插件后再启动。",
     "preflight_failed_title": "'{{name}}' 的启动前检查发现了问题",

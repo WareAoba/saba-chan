@@ -395,6 +395,7 @@
     "rename_failed_toast": "無法重新命名：{{error}}",
     "rename_name_taken": "名稱 '{{name}}' 已被使用",
     "rename_server_running": "請先停止伺服器再重新命名",
+    "rename_instance_busy": "安裝、更新、備份或還原期間無法重新命名。請在完成後再試一次",
     "dependency_unmet_title": "缺少必要元件",
     "dependency_unmet_message": "'{{name}}' 的模組需要以下版本。請更新，或安裝並啟用擴充功能後再啟動。",
     "preflight_failed_title": "'{{name}}' 的啟動前檢查發現了問題",

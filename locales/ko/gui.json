@@ -398,6 +398,7 @@
     "rename_failed_toast": "이름을 바꾸지 못했어요: {{error}}",
     "rename_name_taken": "'{{name}}' 이름은 이미 있어요",
     "rename_server_running": "켜져 있는 서버는 이름을 바꿀 수 없어요",
+    "rename_instance_busy": "설치·업데이트·백업·복원 중에는 이름을 바꿀 수 없어요. 끝난 뒤에 다시 시도해 주세요",
     "dependency_unmet_title": "필요한 구성 요소가 맞지 않아요",
     "dependency_unmet_message": "'{{name}}' 서버의 모듈이 아래 버전을 필요로 해요. 업데이트하거나 확장 기능을 설치·켠 뒤 다시 시작하세요.",
     "preflight_failed_title": "'{{name}}' 서버를 켜기 전 점검에서 문제가 있어요",
