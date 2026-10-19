@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudStateOf, DiscordPage } from '../components/discord/DiscordPage';
 import { useDiscordStore } from '../stores/useDiscordStore';
@@ -81,5 +81,32 @@ describe('디스코드 화면', () => {
         expect(screen.getByText(/connect ECONNREFUSED/)).toBeTruthy();
         // 연결되지 않았으니 노드 목록은 부르지 않는다
         expect(window.api.relayListHostNodes).not.toHaveBeenCalled();
+    });
+
+    it('옛 노드 목록 오류가 남아 있어도 릴레이 실패를 보이고, 다시 시도하면 상태 확인을 다시 한다', async () => {
+        window.api.relayListHostNodes = vi.fn().mockResolvedValue({ error: 'old nodes error' });
+        window.showToast = vi.fn();
+        Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true });
+        const props = {
+            discordBotStatus: 'connecting',
+            discordCloudHostId: 'host',
+            setDiscordCloudHostId: () => {},
+            relayConnecting: false,
+            setDiscordPrefixes: () => {},
+            setNodeSettings: () => {},
+            setCloudNodes: () => {},
+            setCloudMembers: () => {},
+        };
+        const view = await act(async () => render(<DiscordPage {...props} relayConnected={true} />));
+        // 연결된 동안 노드 목록이 실패해 그 오류가 남은 채로 릴레이가 끊겼다
+        useDiscordStore.setState({ relayError: 'connect ECONNREFUSED' });
+        await act(async () => view.rerender(<DiscordPage {...props} relayConnected={false} />));
+        expect(screen.getByText(/connect ECONNREFUSED/)).toBeTruthy();
+        expect(screen.queryByText(/old nodes error/)).toBeNull();
+
+        window.api.relayCheckHostStatus.mockResolvedValue({ connected: true });
+        window.api.relayListHostNodes.mockClear();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /refresh/i })));
+        expect(window.api.relayCheckHostStatus).toHaveBeenCalled();
     });
 });
