@@ -311,10 +311,16 @@ pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Pat
     guard_launch_for(|| trust_of_entry(Path::new(entry)), program, args, cwd, roots, env).await
 }
 
-/// 익스텐션 설치 기록의 신뢰 표시 (`extensions/<id>`)
+/// 익스텐션 설치 기록의 신뢰 표시 (`extensions/<id의 - 를 _로 바꾼 이름>`)
 pub fn extension_trust(ext_id: &str) -> Trust {
     let key = format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, ext_id);
-    saba_chan_updater_lib::integrity::trust_of(&key, &crate::plugin::resolve_extensions_dir().join(ext_id))
+    saba_chan_updater_lib::integrity::trust_of(&key, &extension_dir_in(&crate::plugin::resolve_extensions_dir(), ext_id))
+}
+
+/// 익스텐션 폴더: 설치는 id의 '-'를 '_'로 바꾼 이름에 한다. 그 폴더가 없으면 id 그대로 (예전 설치)
+fn extension_dir_in(extensions: &Path, ext_id: &str) -> PathBuf {
+    let safe = extensions.join(ext_id.replace('-', "_"));
+    if safe.is_dir() { safe } else { extensions.join(ext_id) }
 }
 
 /// 실행 대상을 찾을 때 쓰는 변수. 확인되지 않은 구성요소가 준 값은 버린다
@@ -1184,6 +1190,17 @@ mod tests {
         for key in ["module-minecraft", "ext-", "ext-../x", "ext-.hidden", "ext-a/b", "/somewhere/else"] {
             assert_eq!(extension_data_dir(data, key), None, "{key}");
         }
+    }
+
+    /// 익스텐션 폴더는 id의 '-'를 '_'로 바꾼 이름이다. 없는 폴더를 보면 기록에 없는 코드 검사가 빠진다
+    #[test]
+    fn an_extension_folder_is_found_by_its_python_safe_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("ue4_ini")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("old-style")).unwrap();
+        assert_eq!(extension_dir_in(tmp.path(), "ue4-ini"), tmp.path().join("ue4_ini"));
+        assert_eq!(extension_dir_in(tmp.path(), "old-style"), tmp.path().join("old-style"));
+        assert_eq!(extension_dir_in(tmp.path(), "steamcmd"), tmp.path().join("steamcmd"));
     }
 
     /// 모듈이 import한 익스텐션(SteamCMD 등)이 받은 파일을 둘 곳. 격리된 실행은 구성요소마다 따로 써서
