@@ -315,7 +315,7 @@ mod imp {
         FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_TRAVERSE, HANDLE,
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, OBJECT_INHERIT_ACE, PACL, PSECURITY_DESCRIPTOR,
         PSID, SECURITY_CAPABILITIES, SE_GROUP_ENABLED, SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SYNCHRONIZE, ACL, ACL_REVISION,
-        LABEL_SECURITY_INFORMATION, SECURITY_MANDATORY_LABEL_AUTHORITY, SECURITY_MANDATORY_LOW_RID, SYSTEM_MANDATORY_LABEL_ACE,
+        LABEL_SECURITY_INFORMATION, SECURITY_MANDATORY_LABEL_AUTHORITY, SECURITY_MANDATORY_LOW_RID, SECURITY_MANDATORY_MEDIUM_RID, SYSTEM_MANDATORY_LABEL_ACE,
         SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, FILE_ATTRIBUTE_REPARSE_POINT, FILE_SHARE_DELETE,
         FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, WRITE_DAC, WRITE_OWNER, SECURITY_CREATOR_OWNER_RIGHTS_RID,
         SECURITY_CREATOR_SID_AUTHORITY, OWNER_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER, TokenUser,
@@ -605,10 +605,19 @@ mod imp {
     /// 낮은 무결성 수준 S-1-16-4096
     fn low_integrity() -> Result<PSID, String> {
         static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
-        SID.get_or_init(|| {
+        integrity_sid(&SID, SECURITY_MANDATORY_LOW_RID)
+    }
+
+    fn medium_integrity() -> Result<PSID, String> {
+        static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
+        integrity_sid(&SID, SECURITY_MANDATORY_MEDIUM_RID)
+    }
+
+    fn integrity_sid(cell: &'static std::sync::OnceLock<Result<Sid, String>>, rid: DWORD) -> Result<PSID, String> {
+        cell.get_or_init(|| {
             let mut auth = SID_IDENTIFIER_AUTHORITY { Value: SECURITY_MANDATORY_LABEL_AUTHORITY };
             let mut sid: PSID = null_mut();
-            if unsafe { AllocateAndInitializeSid(&mut auth, 1, SECURITY_MANDATORY_LOW_RID, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
+            if unsafe { AllocateAndInitializeSid(&mut auth, 1, rid, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
                 return Err(last_error("AllocateAndInitializeSid"));
             }
             Ok(Sid(sid))
@@ -762,7 +771,7 @@ mod imp {
         Ok(())
     }
 
-    /// 경로의 낮은 수준 표시: `None` 없음, `Some(true)` 위 폴더에서 상속받은 것, `Some(false)` 직접 붙은 것
+    /// 경로에 걸린 낮은 수준 표시: `None` 없음(또는 앞선 다른 수준 표시), `Some(true)` 위 폴더에서 상속받은 것, `Some(false)` 직접 붙은 것
     fn low_label(path: &Path) -> Result<Option<bool>, String> {
         use std::os::windows::io::AsRawHandle;
         let low = low_integrity()?;
@@ -786,8 +795,11 @@ mod imp {
                     }
                     let header = &*(ace as *const ACE_HEADER);
                     let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
-                    if header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE && EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0 {
-                        found = Some(header.AceFlags & super::ACE_INHERITED != 0);
+                    // 처음 나오는 표시가 그 경로의 수준이다 (직접 붙인 표시가 상속받은 표시보다 앞에 온다)
+                    if header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE {
+                        if EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0 {
+                            found = Some(header.AceFlags & super::ACE_INHERITED != 0);
+                        }
                         break;
                     }
                 }
@@ -797,10 +809,12 @@ mod imp {
         }
     }
 
-    /// `label_low`가 붙인 낮은 수준 표시를 `dir`과 그 아래 폴더·파일에서 걷는다. 상속받은 표시도 함께 빠진다.
-    /// 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 서버(Java 등)가 뜨지 못하므로,
-    /// 서버를 띄우기 전에 부른다. 걷은 폴더·파일 수를 돌려준다. 하나에서 실패해도 나머지를 마저 걷고, 표시가 있는데
-    /// 걷지 못했거나 표시를 읽지 못한 경로를 모아 Err로 돌려준다(읽지 못하면 표시가 남았는지 알 수 없다).
+    /// `dir`과 그 아래의 실행 파일(`.exe`·`.com`)에 걸린 낮은 수준 표시를 중간 수준 표시로 덮는다. 낮은 수준 표시가
+    /// 걸린 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 서버(Java 등)가 뜨지 못하므로, 서버를 띄우기 전에 부른다.
+    /// 프로세스 수준은 실행 파일 표시만 따르므로 폴더와 다른 파일의 표시는 그대로 둔다: 폴더 표시를 걷으면 4만 개
+    /// 파일에 상속 계산이 퍼지고, 다음 격리 실행이 다시 붙이며 또 퍼진다(첫 시작이 90초 넘게 걸리던 원인).
+    /// 덮은 파일 수를 돌려준다. 하나에서 실패해도 나머지를 마저 보고, 낮은 수준이 남았거나 표시를 읽지 못한 실행 파일을
+    /// 모아 Err로 돌려준다(읽지 못하면 표시가 남았는지 알 수 없다).
     /// 볼륨이 보안 정보를 두지 않으면(FAT 등) 표시가 있을 수 없으므로 아무것도 하지 않는다
     pub fn clear_low_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
         let _guard = acl_lock();
@@ -815,9 +829,6 @@ mod imp {
         let mut failed = Vec::new();
         let mut pending = vec![dir];
         while let Some(path) = pending.pop() {
-            // 위 폴더부터 걷으므로 여기서 남은 상속 표시는 다른 곳(sandbox-temp 등)에서 옮겨 온 폴더의 것이다:
-            // 비우면 지금 위 폴더 기준으로 다시 계산되어 빠진다. 위 폴더에 진짜 표시가 있어 남으면 실패로 본다
-            clear_one(&path, &mut cleared, &mut failed);
             // 링크는 따라가지 않는다 (폴더 밖을 고치지 않게)
             match std::fs::read_dir(&path) {
                 Ok(entries) => {
@@ -825,16 +836,15 @@ mod imp {
                         match entry.file_type() {
                             Ok(t) if t.is_symlink() => {}
                             Ok(t) if t.is_dir() => pending.push(entry.path()),
-                            // 폴더 표시를 걷어도 이미 있는 파일의 상속 표시는 파일에 WRITE_OWNER가 있을 때만 다시
-                            // 계산된다. C:\ 아래 폴더처럼 "수정" 권한만 상속받은 파일은 그대로 남으므로 파일마다 걷는다
-                            Ok(_) => clear_one(&entry.path(), &mut cleared, &mut failed),
+                            Ok(_) if is_executable(&entry.path()) => clear_one(&entry.path(), &mut cleared, &mut failed),
+                            Ok(_) => {}
                             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                             Err(e) => failed.push((entry.path(), format!("read the type: {e}"))),
                         }
                     }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                // 목록을 읽지 못하면 그 안에 표시가 남았는지 알 수 없다
+                // 목록을 읽지 못하면 그 안에 실행 파일이 남았는지 알 수 없다
                 Err(e) => failed.push((path.clone(), format!("list: {e}"))),
             }
         }
@@ -845,14 +855,19 @@ mod imp {
         }
     }
 
-    /// 한 경로(폴더나 파일)의 낮은 수준 표시를 걷고 결과를 센다. 목록을 읽은 뒤에 지워진 경로(로그 회전·임시 파일)는
-    /// 표시가 남을 곳이 없으므로 실패로 치지 않는다
+    /// Windows가 프로그램으로 띄우는 파일 (확장자, 대소문자 무시)
+    fn is_executable(path: &Path) -> bool {
+        path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("exe") || e.eq_ignore_ascii_case("com"))
+    }
+
+    /// 한 실행 파일에 걸린 낮은 수준 표시를 중간 수준 표시로 덮고 결과를 센다. 목록을 읽은 뒤에 지워진 경로(업데이트 중
+    /// 바뀐 파일 등)는 표시가 남을 곳이 없으므로 실패로 치지 않는다
     fn clear_one(path: &Path, cleared: &mut usize, failed: &mut Vec<(PathBuf, String)>) {
         let gone = || matches!(std::fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
         match low_label(path) {
-            Ok(Some(_)) => match clear_label(path).and_then(|()| match low_label(path)? {
+            Ok(Some(_)) => match label_medium(path).and_then(|()| match low_label(path)? {
                 None => Ok(()),
-                Some(_) => Err("the label is inherited from a parent folder".to_string()),
+                Some(_) => Err("the low label is still in effect".to_string()),
             }) {
                 Ok(()) => *cleared += 1,
                 Err(_) if gone() => {}
@@ -900,18 +915,25 @@ mod imp {
         Ok(flags & winapi::um::winnt::FILE_PERSISTENT_ACLS != 0)
     }
 
-    /// 표시 목록을 비운다 (ACL 머리만)
-    fn clear_label(path: &Path) -> Result<(), String> {
+    /// 이 파일에만 중간 수준 표시를 직접 붙인다. 직접 붙인 표시가 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고,
+    /// 위 폴더 표시가 다시 퍼져도 남는다. 상속받은 낮은 수준 표시는 그 뒤에 그대로 있다
+    fn label_medium(path: &Path) -> Result<(), String> {
         use std::os::windows::io::AsRawHandle;
-        let mut buf = [0u32; 4];
+        let medium = medium_integrity()?;
+        // ACL 머리 + 표시 ACE 하나 + SID(하위 권한 1개)
+        let mut buf = [0u32; 16];
         let acl = buf.as_mut_ptr() as *mut ACL;
-        if unsafe { InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) } == 0 {
-            return Err(last_error("InitializeAcl"));
+        unsafe {
+            if InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) == 0
+                || AddMandatoryAce(acl, DWORD::from(ACL_REVISION), 0, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, medium) == 0
+            {
+                return Err(last_error("AddMandatoryAce"));
+            }
         }
         let handle = open_for_relabel(path)?;
         let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
         if rc != 0 {
-            return Err(format!("clear label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            return Err(format!("write label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
         }
         Ok(())
     }
@@ -981,9 +1003,11 @@ mod imp {
             assert!(launch_integrity(&exe) >= 0x2000, "after the labels go the server starts at the daemon's level");
         }
 
-        /// 격리 실행에 쓰기를 준 폴더(낮은 수준 표시)에 받은 서버 파일도, 서버를 띄우기 전에 표시가 걷힌다
+        /// 격리 실행에 쓰기를 준 폴더(낮은 수준 표시)에 받은 서버 실행 파일은, 서버를 띄우기 전에 중간 수준이 된다.
+        /// 폴더와 다른 파일의 표시는 그대로 둔다: 다음 격리 실행이 4만 개 파일에 표시를 다시 퍼뜨리지 않고(첫 시작 90초),
+        /// 모듈은 서버 설정 파일을 계속 쓸 수 있다
         #[test]
-        fn server_files_lose_the_low_label_before_launch() {
+        fn only_executables_lose_the_low_label_before_launch() {
             let tmp = tempfile::tempdir().unwrap();
             let dir = std::fs::canonicalize(tmp.path()).unwrap();
             let bin = dir.join("server").join("java").join("bin");
@@ -992,11 +1016,16 @@ mod imp {
             super::label_low(&dir.join("server")).unwrap();
             let exe = bin.join("java.exe");
             std::fs::write(&exe, b"x").unwrap();
+            let ini = dir.join("server").join("server.ini");
+            std::fs::write(&ini, b"x").unwrap();
             assert_eq!(super::low_label(&exe).unwrap(), Some(true));
-            // `server`는 이미 상속받은 표시가 있어 직접 붙지 않았다: 위 폴더만 걷으면 함께 빠진다
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 1);
             assert_eq!(super::low_label(&exe).unwrap(), None);
-            assert_eq!(super::low_label(&dir.join("server")).unwrap(), None);
+            assert_eq!(super::low_label(&ini).unwrap(), Some(true), "the module still writes its settings");
+            assert_eq!(super::low_label(&dir).unwrap(), Some(false), "the folder keeps its label");
+            // 다음 격리 실행이 폴더에 다시 쓰기를 주어도 실행 파일은 중간 수준 그대로다
+            super::label_low(&dir).unwrap();
+            assert_eq!(super::low_label(&exe).unwrap(), None);
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
         }
 
@@ -1089,9 +1118,10 @@ mod imp {
             assert_eq!(super::low_label(&exe).unwrap(), Some(true));
             assert!(super::open_checked(&exe, winapi::um::winnt::WRITE_OWNER).is_err(), "the file must not grant WRITE_OWNER, as on a real PC");
             assert_eq!(launch_integrity(&exe), 0x1000);
-            super::clear_low_labels(&dir).unwrap();
-            for file in [&exe, &bin.join("jli.dll"), &server.join("server.jar")] {
-                assert_eq!(super::low_label(file).unwrap(), None, "{}", file.display());
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 1);
+            assert_eq!(super::low_label(&exe).unwrap(), None);
+            for file in [&bin.join("jli.dll"), &server.join("server.jar")] {
+                assert_eq!(super::low_label(file).unwrap(), Some(true), "{}", file.display());
             }
             assert!(launch_integrity(&exe) >= 0x2000, "the server starts at the daemon's level");
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
