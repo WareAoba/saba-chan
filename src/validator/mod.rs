@@ -447,27 +447,54 @@ pub fn ports_held_elsewhere(ports: &[(String, u16)]) -> Vec<(String, u16)> {
 }
 
 /// Windows가 예약한(제외 범위) 포트를 찾는다. Hyper-V·WinNAT 등이 부팅마다 범위를 잡아 두며, 그 안의 포트는
-/// 어떤 프로그램도 묶지 못한다(게임 서버가 조용히 그 포트를 열지 못한다). 사용 중 포트 목록에는 나오지 않는다
+/// 어떤 프로그램도 묶지 못한다(게임 서버가 조용히 그 포트를 열지 못한다). 사용 중 포트 목록에는 나오지 않는다.
+/// 범위는 TCP·UDP마다 따로 잡히므로 시작을 막을 때는 그 포트가 쓰는 프로토콜이 막혔을 때만 예약으로 본다
 pub fn ports_reserved_by_windows(ports: &[(String, u16)]) -> Vec<(String, u16)> {
-    ports.iter().filter(|(_, port)| port_reserved_by_windows(*port)).cloned().collect()
+    ports.iter().filter(|(name, port)| {
+        let (tcp, udp) = reserved_protocols(*port);
+        blocks_start(name, tcp, udp)
+    }).cloned().collect()
 }
 
-/// 루프백에 묶어 보아 권한 거부면 예약된 것이다 (루프백은 방화벽 알림을 띄우지 않는다). Windows 밖에서는 늘 false
+/// 시작을 막을 예약인가. REST·RCON은 TCP만 쓰므로 TCP가 막히면 막힌 것이고, 게임 포트처럼 프로토콜을
+/// 모르는 포트는 둘 다 막혔을 때만 막힌 것으로 본다 (UDP만 쓰는 팰월드 8211이 TCP 범위에 걸려도 돈다)
+fn blocks_start(name: &str, tcp_denied: bool, udp_denied: bool) -> bool {
+    if matches!(name, "rest_port" | "rcon_port") {
+        tcp_denied
+    } else {
+        tcp_denied && udp_denied
+    }
+}
+
+/// 루프백에 묶어 보아 TCP나 UDP가 권한 거부면 예약된 것이다. 새 인스턴스의 포트를 고를 때 쓴다(어느 쪽이든 피한다)
 pub fn port_reserved_by_windows(port: u16) -> bool {
+    let (tcp, udp) = reserved_protocols(port);
+    tcp || udp
+}
+
+/// (TCP 거부, UDP 거부). 루프백은 방화벽 알림을 띄우지 않는다. Windows 밖에서는 늘 (false, false)
+fn reserved_protocols(port: u16) -> (bool, bool) {
     #[cfg(windows)]
     {
         if port == 0 {
-            return false;
+            return (false, false);
         }
         let addr = (std::net::Ipv4Addr::LOCALHOST, port);
         let denied = |e: std::io::Error| e.kind() == std::io::ErrorKind::PermissionDenied;
-        std::net::TcpListener::bind(addr).err().is_some_and(denied) || std::net::UdpSocket::bind(addr).err().is_some_and(denied)
+        (std::net::TcpListener::bind(addr).err().is_some_and(denied), std::net::UdpSocket::bind(addr).err().is_some_and(denied))
     }
     #[cfg(not(windows))]
     {
         let _ = port;
-        false
+        (false, false)
     }
+}
+
+/// 기본 REST 포트가 막혔을 때 옮길 곳: `PORT_SHIFT_STEP` 간격으로 올라가며 `blocked`가 아닌 첫 포트
+pub fn next_free_port(from: u16, blocked: impl Fn(u16) -> bool) -> Option<u16> {
+    (1..=u16::MAX / PORT_SHIFT_STEP)
+        .filter_map(|k| from.checked_add(k * PORT_SHIFT_STEP))
+        .find(|&p| !blocked(p))
 }
 
 #[cfg(not(windows))]
@@ -579,6 +606,23 @@ fn collect_active_ports<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 리뷰: TCP 범위 8135-8234가 잡힌 PC에서 UDP만 쓰는 팰월드 8211까지 예약으로 막아 0.1.6 인스턴스가 못 떴다
+    #[test]
+    fn a_game_port_is_blocked_only_when_both_protocols_are_reserved() {
+        assert!(!blocks_start("port", true, false));
+        assert!(blocks_start("port", true, true));
+        assert!(blocks_start("rest_port", true, false));
+        assert!(!blocks_start("rest_port", false, true));
+    }
+
+    // 리뷰: 게임 포트를 직접 정한 팰월드를 여럿 만들면 REST가 모두 같은 첫 비예약 포트로 옮겨져 둘째가 못 떴다
+    #[test]
+    fn the_rest_port_moves_past_ports_other_instances_hold() {
+        let taken = [8222u16, 8232];
+        assert_eq!(next_free_port(8212, |p| taken.contains(&p) || (8135..=8234).contains(&p)), Some(8242));
+        assert_eq!(next_free_port(8212, |p| p == 8222 || p == 8242), Some(8232));
+    }
 
     fn make_field(name: &str, field_type: &str) -> SettingField {
         SettingField {

@@ -319,6 +319,20 @@ pub async fn create_instance(
             let error = json!({ "error": "port must be a number from 1 to 65535", "error_code": "invalid_format", "fields": [{"field": "port"}] });
             return (StatusCode::BAD_REQUEST, Json(error)).into_response();
         }
+        // 다른 인스턴스가 저장해 둔 포트. 새 인스턴스의 포트(기본값으로 채운 REST 포트 포함)는 이것과 겹치지 않게 고른다
+        let port_fields_of = |module: &str| -> Vec<String> {
+            supervisor.module_loader.get_module(module).ok()
+                .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
+                .unwrap_or_default()
+        };
+        let mut taken = std::collections::HashSet::new();
+        for other in supervisor.instance_store.list() {
+            let fields = port_fields_of(&other.module_name);
+            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+            taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
+        }
+        // Windows가 예약한 포트(예: 팰월드 REST 8212가 Hyper-V 범위 안)도 피한다: 서버가 그 포트를 열지 못한다
+        let taken_or_reserved = |p: u16| taken.contains(&p) || crate::validator::port_reserved_by_windows(p);
         if let Some(port) = given_port.and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()) {
             instance.port = Some(port);
             // 모듈이 `port` 설정을 선언했으면 그것도 맞춘다 (설치가 module_settings로 게임 설정 파일을 쓴다)
@@ -330,33 +344,17 @@ pub async fn create_instance(
             }
         } else if !migration_mode {
             // 같은 게임을 여러 개 만들면 기본 포트가 겹친다: 다른 인스턴스와 겹치지 않게 옮긴다
-            let port_fields_of = |module: &str| -> Vec<String> {
-                supervisor.module_loader.get_module(module).ok()
-                    .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
-                    .unwrap_or_default()
-            };
-            let mut taken = std::collections::HashSet::new();
-            for other in supervisor.instance_store.list() {
-                let fields = port_fields_of(&other.module_name);
-                let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-                taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
-            }
             let fields = port_fields_of(module);
             let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-            // Windows가 예약한 포트(예: 팰월드 REST 8212가 Hyper-V 범위 안)도 피한다: 서버가 그 포트를 열지 못한다
-            let taken_or_reserved = |p: u16| taken.contains(&p) || crate::validator::port_reserved_by_windows(p);
             if let Some(delta) = crate::validator::shift_ports_clear_of(&mut instance, &fields, taken_or_reserved) {
                 tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances and reserved ports", instance.name, delta);
             }
         }
         // 기본 REST 포트가 Windows 예약 범위에 들면(팰월드 8212가 Hyper-V 범위 8135-8234 안에 든 PC) 서버가 REST를
-        // 열지 못한다: 게임 포트를 직접 정했어도, 사용자가 정하지 않은 REST 포트는 예약 범위 밖으로 옮긴다.
-        // 설치가 모듈 설정 값으로 게임 설정 파일을 쓰므로 같은 이름의 모듈 설정도 맞춘다
+        // 열지 못한다: 게임 포트를 직접 정했어도, 사용자가 정하지 않은 REST 포트는 예약 범위와 다른 인스턴스의
+        // 포트를 피해 옮긴다. 설치가 모듈 설정 값으로 게임 설정 파일을 쓰므로 같은 이름의 모듈 설정도 맞춘다
         if let Some(default) = instance.rest_port.filter(|&p| rest_port_defaulted && crate::validator::port_reserved_by_windows(p)) {
-            let free = (1..=u16::MAX / crate::validator::PORT_SHIFT_STEP)
-                .filter_map(|k| default.checked_add(k * crate::validator::PORT_SHIFT_STEP))
-                .find(|&p| !crate::validator::port_reserved_by_windows(p));
-            if let Some(free) = free {
+            if let Some(free) = crate::validator::next_free_port(default, taken_or_reserved) {
                 tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", instance.name, default, free);
                 instance.rest_port = Some(free);
                 if instance.module_settings.contains_key("rest_port") {
