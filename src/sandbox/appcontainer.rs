@@ -1019,15 +1019,14 @@ mod imp {
             let tmp = tempfile::tempdir().unwrap();
             let dir = std::fs::canonicalize(tmp.path()).unwrap().join("instance");
             std::fs::create_dir_all(&dir).unwrap();
-            // C:\ 아래 새 폴더와 같은 권한: 인증된 사용자 수정, SYSTEM 모든 권한 (소유자에게 WRITE_OWNER 없음).
-            // Administrators 모든 권한은 넣지 않는다: 관리자 권한으로 도는 CI에서는 그 항목으로 WRITE_OWNER가 생긴다
-            // (실제 PC의 데몬은 제한된 토큰이라 Administrators가 거부 전용이다)
-            let made = std::process::Command::new("icacls")
-                .arg(&dir)
-                .args(["/inheritance:r", "/grant:r", "*S-1-5-11:(OI)(CI)M", "*S-1-5-18:(OI)(CI)F"])
-                .output()
-                .unwrap();
-            assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stdout));
+            let icacls = |path: &std::path::Path, args: &[&str]| {
+                let out = std::process::Command::new("icacls").arg(path).args(args).output().unwrap();
+                (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned())
+            };
+            // 준비하는 동안은 Administrators 모든 권한도 둔다: 관리자 토큰(CI)이 만든 항목은 소유자가 Administrators라
+            // 그 권한 없이는 폴더에 표시를 붙이지 못한다
+            let (ok, out) = icacls(&dir, &["/inheritance:r", "/grant:r", "*S-1-5-11:(OI)(CI)M", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"]);
+            assert!(ok, "{out}");
             let server = dir.join("server");
             std::fs::create_dir_all(&server).unwrap();
             super::label_low(&server).unwrap();
@@ -1037,6 +1036,13 @@ mod imp {
             std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
             std::fs::write(bin.join("jli.dll"), b"x").unwrap();
             std::fs::write(server.join("server.jar"), b"x").unwrap();
+            // 그다음 실제 PC와 같게 맞춘다: 소유자는 데몬 사용자(관리자 토큰이면 Administrators였다), 권한은
+            // C:\ 아래 새 폴더처럼 인증된 사용자 수정·SYSTEM 모든 권한뿐이라 파일에 WRITE_OWNER가 없다.
+            // 제한된 토큰(실제 PC)에서는 소유자가 이미 데몬 사용자라 소유자 바꾸기가 거부돼도 그대로다
+            let user = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap_or_default(), std::env::var("USERNAME").unwrap_or_default());
+            let _ = icacls(&dir, &["/setowner", &user, "/T", "/C", "/Q"]);
+            let (ok, out) = icacls(&dir, &["/remove:g", "*S-1-5-32-544"]);
+            assert!(ok, "{out}");
             assert_eq!(super::low_label(&exe).unwrap(), Some(true));
             assert!(super::open_checked(&exe, winapi::um::winnt::WRITE_OWNER).is_err(), "the file must not grant WRITE_OWNER, as on a real PC");
             assert_eq!(launch_integrity(&exe), 0x1000);
