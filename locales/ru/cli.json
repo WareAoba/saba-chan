@@ -372,7 +372,7 @@
     "bad_quotes": "Незакрытая кавычка.",
     "bye": "Пока! Демон и серверы продолжают работать.",
     "ctrl_c": "(нажмите Ctrl+C ещё раз или введите exit для выхода)",
-    "help_line": "Введите команду (help, Tab — автодополнение) или пишите как в Discord (напр. \"palworld start\"). exit — выход.",
+    "help_line": "Введите команду (help, Tab — автодополнение) или пишите как в Discord (напр. \"my-server-1 start\"). exit — выход.",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {

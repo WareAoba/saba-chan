@@ -372,7 +372,7 @@
     "bad_quotes": "引號未閉合。",
     "bye": "再見。常駐程式和伺服器會繼續運作。",
     "ctrl_c": "（再按一次 Ctrl+C 或輸入 exit 離開）",
-    "help_line": "輸入指令（help，Tab 自動完成），或像在 Discord 一樣說話（例如 \"palworld start\"）。輸入 exit 離開。",
+    "help_line": "輸入指令（help，Tab 自動完成），或像在 Discord 一樣說話（例如 \"my-server-1 start\"）。輸入 exit 離開。",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {

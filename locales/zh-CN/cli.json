@@ -372,7 +372,7 @@
     "bad_quotes": "引号未闭合。",
     "bye": "再见。守护进程和服务器会继续运行。",
     "ctrl_c": "（再按一次 Ctrl+C 或输入 exit 退出）",
-    "help_line": "输入命令（help，Tab 补全），或像在 Discord 里一样说话（例如 \"palworld start\"）。输入 exit 退出。",
+    "help_line": "输入命令（help，Tab 补全），或像在 Discord 里一样说话（例如 \"my-server-1 start\"）。输入 exit 退出。",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {
