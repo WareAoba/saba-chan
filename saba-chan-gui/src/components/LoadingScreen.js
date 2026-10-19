@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
+import { MatrixRain } from './shell/MatrixRain';
 
 /**
  * LoadingScreen — displayed while daemon is initializing.
@@ -13,6 +14,9 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
 
     return (
         <div className="loading-screen">
+            {/* 뒤에서 흐르는 서버 콘솔 (가운데는 비워 둔다) */}
+            <MatrixRain className="loading-matrix" />
+            <div className="loading-vignette" aria-hidden="true" />
             <div className="appbar appbar-bare">
                 <div className="appbar-spacer" />
                 <WindowControls />
@@ -24,7 +28,13 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
                     <i className="glow-mask"></i>
                     <img src="./title.png" alt="" className="loading-logo-img" />
                 </div>
-                <img src={logoSrc} alt={t('common:app_name')} className="loading-logo-text" />
+                {/* 전용 글자 로고: 그림을 마스크로 써서 테마 글자색으로 칠한다 */}
+                <span
+                    className="loading-logo-text"
+                    role="img"
+                    aria-label={t('common:app_name')}
+                    style={{ '--wordmark': `url("${logoSrc}")` }}
+                />
                 {failed ? (
                     <div className="loading-failed" role="alert">
                         <p className="loading-failed-message">
@@ -54,14 +64,22 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
                         </div>
                     </div>
                 ) : (
-                    <>
-                        <div className="loading-status">
-                            <Icon name="loader" size="sm" /> {initStatus || t('loading.step_init')}
+                    <div className="loading-term">
+                        {/* 콘솔 한 줄처럼: 프롬프트 + 지금 하는 일 + 깜빡이는 커서, 아래에 진행 막대 */}
+                        <div className="loading-status" aria-live="polite">
+                            <span className="loading-prompt" aria-hidden="true">
+                                saba@core:~$
+                            </span>
+                            <span className="loading-status-text">{initStatus || t('loading.step_init')}</span>
+                            <span className="loading-caret" aria-hidden="true" />
                         </div>
-                        <div className="loading-progress-bar">
-                            <div className="loading-progress-fill" style={{ width: `${initProgress}%` }}></div>
+                        <div className="loading-progress-row">
+                            <div className="loading-progress-bar">
+                                <div className="loading-progress-fill" style={{ width: `${initProgress}%` }}></div>
+                            </div>
+                            <span className="loading-progress-pct">{Math.round(initProgress || 0)}%</span>
                         </div>
-                    </>
+                    </div>
                 )}
                 <div className="loading-tips">
                     <Icon name="info" size="sm" /> {t('buttons.loading_tips')}
