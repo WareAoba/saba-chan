@@ -10,9 +10,10 @@ from harness.paths import IS_WINDOWS, binary
 
 
 def test_unknown_argument_exits_2_without_touching_data_dir(sandbox):
+    before = sorted(sandbox.data.rglob("*"))  # 설치본 구성이면 modules·extensions가 이미 있다
     proc = subprocess.run([str(binary("saba-core")), "--no-such-flag"], env=sandbox.env(), stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
     assert proc.returncode == 2, proc.stderr
-    assert list(sandbox.data.iterdir()) == []
+    assert sorted(sandbox.data.rglob("*")) == before
 
 
 def test_version_flag(sandbox):
