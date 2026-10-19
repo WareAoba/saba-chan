@@ -338,6 +338,16 @@ fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl 
     enabled.into_iter().partition(|id| !unverified(id))
 }
 
+/// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다
+fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool) {
+    let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
+        crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
+    });
+    cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
+    // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
+    cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
+}
+
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
@@ -384,6 +394,7 @@ async fn run_plugin_inner(
     const PYPATH_SEP: char = ':';
     let mut paths: Vec<String> = Vec::new();
     // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
+    let mut enabled_extensions: Option<Vec<String>> = None;
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
         let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
@@ -391,12 +402,8 @@ async fn run_plugin_inner(
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
-        let (importable, unverified) = importable_extensions(enabled.unwrap_or_default(), isolation.is_some(), |id| {
-            crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
-        });
-        cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
-        // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
-        cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
+        enabled_extensions = Some(enabled.unwrap_or_default());
+        set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some());
 
         let mut pypath = extensions_dir.parent()
             .unwrap_or(&extensions_dir)
@@ -452,7 +459,13 @@ async fn run_plugin_inner(
     let mut child = match &isolation {
         None => plain(cmd.spawn()?),
         Some(iso) => match crate::sandbox::spawn_isolated(cmd.as_std(), iso).await {
-            Ok(crate::sandbox::Spawned::Unisolated) => plain(cmd.spawn()?),
+            Ok(crate::sandbox::Spawned::Unisolated) => {
+                // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
+                if let Some(enabled) = enabled_extensions {
+                    set_extension_env(&mut cmd, enabled, false);
+                }
+                plain(cmd.spawn()?)
+            }
             #[cfg(windows)]
             Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
             Err(blocked) => {
