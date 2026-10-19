@@ -770,10 +770,10 @@ mod imp {
         }
     }
 
-    /// `label_low`가 붙인 낮은 수준 표시를 `dir`과 그 아래 폴더에서 걷는다. 상속받은 표시도 함께 빠진다.
+    /// `label_low`가 붙인 낮은 수준 표시를 `dir`과 그 아래 폴더·파일에서 걷는다. 상속받은 표시도 함께 빠진다.
     /// 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 서버(Java 등)가 뜨지 못하므로,
-    /// 서버를 띄우기 전에 부른다. 걷은 폴더 수를 돌려준다. 한 폴더에서 실패해도 나머지를 마저 걷고, 표시가 있는데
-    /// 걷지 못했거나 표시를 읽지 못한 폴더를 모아 Err로 돌려준다(읽지 못하면 표시가 남았는지 알 수 없다).
+    /// 서버를 띄우기 전에 부른다. 걷은 폴더·파일 수를 돌려준다. 하나에서 실패해도 나머지를 마저 걷고, 표시가 있는데
+    /// 걷지 못했거나 표시를 읽지 못한 경로를 모아 Err로 돌려준다(읽지 못하면 표시가 남았는지 알 수 없다).
     /// 볼륨이 보안 정보를 두지 않으면(FAT 등) 표시가 있을 수 없으므로 아무것도 하지 않는다
     pub fn clear_low_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
         let _guard = acl_lock();
@@ -790,23 +790,18 @@ mod imp {
         while let Some(path) = pending.pop() {
             // 위 폴더부터 걷으므로 여기서 남은 상속 표시는 다른 곳(sandbox-temp 등)에서 옮겨 온 폴더의 것이다:
             // 비우면 지금 위 폴더 기준으로 다시 계산되어 빠진다. 위 폴더에 진짜 표시가 있어 남으면 실패로 본다
-            match low_label(&path) {
-                Ok(Some(_)) => match clear_label(&path).and_then(|()| match low_label(&path)? {
-                    None => Ok(()),
-                    Some(_) => Err("the label is inherited from a parent folder".to_string()),
-                }) {
-                    Ok(()) => cleared += 1,
-                    Err(e) => failed.push((path.clone(), e)),
-                },
-                Ok(None) => {}
-                Err(e) => failed.push((path.clone(), format!("read the label: {e}"))),
-            }
+            clear_one(&path, &mut cleared, &mut failed);
             // 링크는 따라가지 않는다 (폴더 밖을 고치지 않게)
             match std::fs::read_dir(&path) {
                 Ok(entries) => {
                     for entry in entries.flatten() {
-                        if entry.file_type().is_ok_and(|t| t.is_dir() && !t.is_symlink()) {
-                            pending.push(entry.path());
+                        match entry.file_type() {
+                            Ok(t) if t.is_symlink() => {}
+                            Ok(t) if t.is_dir() => pending.push(entry.path()),
+                            // 폴더 표시를 걷어도 이미 있는 파일의 상속 표시는 파일에 WRITE_OWNER가 있을 때만 다시
+                            // 계산된다. C:\ 아래 폴더처럼 "수정" 권한만 상속받은 파일은 그대로 남으므로 파일마다 걷는다
+                            Ok(_) => clear_one(&entry.path(), &mut cleared, &mut failed),
+                            Err(e) => failed.push((entry.path(), format!("read the type: {e}"))),
                         }
                     }
                 }
@@ -817,6 +812,21 @@ mod imp {
             Ok(cleared)
         } else {
             Err(failed)
+        }
+    }
+
+    /// 한 경로(폴더나 파일)의 낮은 수준 표시를 걷고 결과를 센다
+    fn clear_one(path: &Path, cleared: &mut usize, failed: &mut Vec<(PathBuf, String)>) {
+        match low_label(path) {
+            Ok(Some(_)) => match clear_label(path).and_then(|()| match low_label(path)? {
+                None => Ok(()),
+                Some(_) => Err("the label is inherited from a parent folder".to_string()),
+            }) {
+                Ok(()) => *cleared += 1,
+                Err(e) => failed.push((path.to_path_buf(), e)),
+            },
+            Ok(None) => {}
+            Err(e) => failed.push((path.to_path_buf(), format!("read the label: {e}"))),
         }
     }
 
@@ -1000,6 +1010,40 @@ mod imp {
             assert_eq!(super::low_label(&moved).unwrap(), Some(true), "a move keeps the inherited label");
             assert!(super::clear_low_labels(&dir).unwrap() >= 1);
             assert_eq!(super::low_label(&moved).unwrap(), None);
+        }
+
+        // 실제 PC의 인스턴스 폴더(C:\ 아래)는 상속받은 "수정" 권한뿐이라 파일에 WRITE_OWNER가 없다. 이때 폴더 표시를
+        // 걷어도 이미 있는 파일의 상속 표시는 다시 계산되지 않아 남았다(Java가 낮은 무결성으로 떠 DLL을 못 읽음)
+        #[test]
+        fn files_without_write_owner_lose_the_inherited_label() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap().join("instance");
+            std::fs::create_dir_all(&dir).unwrap();
+            // C:\ 아래 새 폴더와 같은 권한: 인증된 사용자 수정, SYSTEM 모든 권한 (소유자에게 WRITE_OWNER 없음)
+            let made = std::process::Command::new("icacls")
+                .arg(&dir)
+                .args(["/inheritance:r", "/grant:r", "*S-1-5-11:(OI)(CI)M", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"])
+                .output()
+                .unwrap();
+            assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stdout));
+            let server = dir.join("server");
+            std::fs::create_dir_all(&server).unwrap();
+            super::label_low(&server).unwrap();
+            let bin = server.join("java").join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            let exe = bin.join("probe.exe");
+            std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+            std::fs::write(bin.join("jli.dll"), b"x").unwrap();
+            std::fs::write(server.join("server.jar"), b"x").unwrap();
+            assert_eq!(super::low_label(&exe).unwrap(), Some(true));
+            assert!(super::open_checked(&exe, winapi::um::winnt::WRITE_OWNER).is_err(), "the file must not grant WRITE_OWNER, as on a real PC");
+            assert_eq!(launch_integrity(&exe), 0x1000);
+            super::clear_low_labels(&dir).unwrap();
+            for file in [&exe, &bin.join("jli.dll"), &server.join("server.jar")] {
+                assert_eq!(super::low_label(file).unwrap(), None, "{}", file.display());
+            }
+            assert!(launch_integrity(&exe) >= 0x2000, "the server starts at the daemon's level");
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
         }
     }
 
