@@ -261,10 +261,10 @@ export function DiscordPage({
     const updateAllowed = useCallback(
         (guildId, fn) => {
             const run = allowedQueue.current.then(async () => {
-                const current = useDiscordStore.getState().nodeSettings;
-                const next = P.nodeConfig(fn(current || {}), guildId).allowedInstances;
                 setSaveState('saving');
                 try {
+                    const current = useDiscordStore.getState().nodeSettings;
+                    const next = P.nodeConfig(fn(current || {}), guildId).allowedInstances;
                     const res = await window.api.guildAllowedInstancesSave(guildId, Array.isArray(next) ? next : null);
                     if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
                     useDiscordStore
