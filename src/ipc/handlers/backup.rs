@@ -77,6 +77,16 @@ struct Plan {
     keep: usize,
 }
 
+/// 백업 경로의 기준 폴더: 작업 폴더, 없으면 실행 파일 폴더, 없으면 인스턴스 폴더
+fn server_base(instance: &crate::instance::ServerInstance, instance_dir: &FsPath) -> PathBuf {
+    instance
+        .working_dir
+        .clone()
+        .or_else(|| instance.executable_path.as_ref().and_then(|p| FsPath::new(p).parent()).map(|p| p.to_string_lossy().to_string()))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| instance_dir.to_path_buf())
+}
+
 /// 모듈이 `[backup]`을 선언하지 않았으면 Ok(None)
 async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
     let (spec, base, dir, keep, hook_call, lookup) = {
@@ -88,12 +98,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
         let Some(spec) = module.as_ref().and_then(|m| m.metadata.backup.clone()) else {
             return Ok(None);
         };
-        let base = instance
-            .working_dir
-            .clone()
-            .or_else(|| instance.executable_path.as_ref().and_then(|p| FsPath::new(p).parent()).map(|p| p.to_string_lossy().to_string()))
-            .map(PathBuf::from)
-            .unwrap_or_else(|| supervisor.instance_store.instance_dir(id));
+        let base = server_base(&instance, &supervisor.instance_store.instance_dir(id));
         let hook_call = module.as_ref().filter(|_| spec.hook).map(|m| {
             let mut cfg = serde_json::Map::new();
             cfg.insert("working_dir".into(), json!(base.to_string_lossy()));
@@ -141,7 +146,7 @@ pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Resul
     let (state, id) = (state.clone(), id.to_string());
     detached(async move {
         let _guard = guard;
-        take_backup_locked(&state, &id, kind, None).await
+        take_backup_locked(&state, &id, kind, None, &[]).await
     })
     .await
 }
@@ -176,7 +181,7 @@ where
 
 /// 이미 작업 잠금을 잡은 호출자(업데이트)용 `take_backup`
 pub(crate) async fn take_backup_held(state: &IPCServer, id: &str, kind: BackupKind, _guard: &BusyGuard) -> Result<Option<BackupInfo>, Response> {
-    take_backup_locked(state, id, kind, None).await
+    take_backup_locked(state, id, kind, None, &[]).await
 }
 
 /// 다른 작업이 잡고 있을 때의 응답 (시작·업데이트·삭제)
@@ -185,13 +190,19 @@ pub(crate) fn instance_busy() -> Response {
 }
 
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
-async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>) -> Result<Option<BackupInfo>, Response> {
-    let Some(plan) = plan(state, id).await? else {
+/// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
+async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Response> {
+    let Some(mut plan) = plan(state, id).await? else {
         if kind == BackupKind::Manual {
             return Err(error(StatusCode::BAD_REQUEST, "backup_unsupported", "This module does not declare [backup] paths"));
         }
         return Ok(None);
     };
+    for path in also {
+        if path.exists() && !plan.paths.iter().any(|p| path.starts_with(p) || p.starts_with(path)) {
+            plan.paths.push(path.clone());
+        }
+    }
     if plan.paths.is_empty() {
         return Ok(None);
     }
@@ -279,11 +290,31 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
     if is_running(&state, &id).await {
         return error(StatusCode::CONFLICT, "server_running", "Stop the server before restoring a backup");
     }
+    // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
+    let roots = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(&id) else {
+            return error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+        };
+        let instance_dir = supervisor.instance_store.instance_dir(&id);
+        vec![server_base(instance, &instance_dir), instance_dir]
+    };
+    let targets = match backup::backed_up_paths(&dir, &name) {
+        Ok(t) => t,
+        Err(e) => return error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e)),
+    };
+    if targets.iter().any(|t| !backup::is_inside(t, &roots)) {
+        return error(
+            StatusCode::BAD_REQUEST,
+            "restore_outside",
+            "This backup was made for a different server folder; it can no longer be restored here",
+        );
+    }
     let work = async move {
         let _guard = guard;
-        // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게
+        // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게. 지금 설정이 가리키지 않아도 복원이 덮을 경로는 함께 담는다
         // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
-        let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone())).await?.map(|b| b.name);
+        let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
         match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
             Ok(Ok(paths)) => Ok(Json(json!({ "success": true, "restored": paths, "pre_restore_backup": safety })).into_response()),
             Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
@@ -694,8 +725,13 @@ mod tests {
     async fn a_dropped_restore_request_keeps_the_lock_until_the_work_ends() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
         let hook = "import json, time\ntime.sleep(1.5)\nprint(json.dumps({'success': True, 'paths': []}))\n";
-        let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
-        let request = restore_backup(Path((id.clone(), "none.zip".into())), State(state.clone()));
+        let (state, id, tmp) = server_with(&toml, Some(hook)).await;
+        // 복원은 백업이 돌아갈 경로부터 확인하니 실제 백업이 있어야 안전 백업 단계까지 간다
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let made = backup::create(&dir, BackupKind::Manual, &[world]).unwrap().name;
+        let request = restore_backup(Path((id.clone(), made)), State(state.clone()));
         if let Ok(done) = tokio::time::timeout(std::time::Duration::from_millis(300), request).await {
             panic!("still in the safety backup: {:?}", crate::ipc::internal::into_internal(done).await.body);
         }
@@ -711,6 +747,51 @@ mod tests {
         assert!(tokio::time::timeout(std::time::Duration::from_millis(300), request).await.is_err(), "the module is still running");
         assert!(BusyGuard::take(&id).is_none(), "a client that hangs up must not free the lock mid-reset");
         assert!(lock_freed(&id).await, "the lock is released when the reset ends");
+    }
+
+    /// 복원은 지금 서버 폴더·인스턴스 폴더 밖에 쓰지 않고, 복원 전 안전 백업은 백업이 덮을 경로까지 담는다 (D-B1)
+    #[tokio::test]
+    async fn a_restore_keeps_what_it_overwrites_and_stays_inside_the_server_folders() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{level_name}}\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let set = |key: &'static str, value: String| {
+            let state = state.clone();
+            let id = id.clone();
+            async move {
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                if key == "working_dir" {
+                    inst.working_dir = Some(value);
+                } else {
+                    inst.module_settings.insert(key.into(), json!(value));
+                }
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+        };
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(server.join("world")).unwrap();
+        std::fs::write(server.join("world/level.dat"), b"old").unwrap();
+        set("level_name", "world".into()).await;
+        let old = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+
+        // 월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 그사이 진행분은 안전 백업에 남는다
+        std::fs::write(server.join("world/level.dat"), b"progress").unwrap();
+        std::fs::create_dir_all(server.join("world2")).unwrap();
+        set("level_name", "world2".into()).await;
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old.clone())), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        let safety = done.body["pre_restore_backup"].as_str().expect("a safety backup").to_string();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert!(backup::backed_up_paths(&dir, &safety).unwrap().contains(&server.join("world")), "the overwritten world must be kept");
+
+        // 서버 폴더를 옮긴 뒤에는 옛 폴더에 쓰지 않는다
+        let moved = tmp.path().join("moved");
+        std::fs::create_dir_all(moved.join("world")).unwrap();
+        set("working_dir", moved.to_string_lossy().to_string()).await;
+        std::fs::write(server.join("world/level.dat"), b"someone else").unwrap();
+        let refused = restore_backup(Path((id.clone(), old)), State(state.clone())).await;
+        assert_eq!(code(refused).await, "restore_outside");
+        assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
     }
 
     #[tokio::test]

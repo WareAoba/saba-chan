@@ -218,6 +218,18 @@ pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// 백업이 돌려놓을 경로 (백업할 때의 절대 경로)
+pub fn backed_up_paths(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
+    let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
+    let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
+    Ok(manifest.paths.into_iter().map(|e| e.path).collect())
+}
+
+/// `path`가 `roots` 중 하나의 안(그 자체 포함)이고 `..`가 없는가 (글자 경로로 본다)
+pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
+    !path.components().any(|c| matches!(c, std::path::Component::ParentDir)) && roots.iter().any(|r| path.starts_with(r))
+}
+
 /// 백업을 원래 자리로 돌려놓는다. 서버는 꺼져 있어야 한다 (호출자가 확인).
 /// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣는다. 치워 둔 것은 모두 성공한 뒤에 지우고,
 /// 도중에 실패하면 이미 풀어 넣은 경로까지 거꾸로 모두 되돌린다

@@ -109,6 +109,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `paths`(`{설정 이름}` 치환), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
+- 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더 밖이면 복원은 400 `restore_outside`다.
 - 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`).
 
 #### `[[settings.fields]]` (`SettingFieldToml` `:784-822` → `SettingField` `:393-444`)
