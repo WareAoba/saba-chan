@@ -808,10 +808,10 @@ export function useServerActions({
     };
 
     // ── handleAddServer ─────────────────────────────────────
-    const handleAddServer = async (payload) => {
+    const handleAddServer = async (payload, legacyModuleName) => {
         // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
-        const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
+        const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
 
         if (!serverName || !serverName.trim()) {
             setModal({
