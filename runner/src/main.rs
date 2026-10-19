@@ -112,27 +112,58 @@ fn write_log(log: &Log, stream: Stream, content: &str) {
 
 /// 자식 출력 한 갈래를 줄 단위로 로그에 옮긴다 (`decode_line`).
 /// 의사 콘솔 출력은 터미널 제어 문자를 지우고, 그러고 나서 빈 줄은 버린다.
-fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: Console) -> std::thread::JoinHandle<()> {
+/// 의사 콘솔이 커서 위치를 묻는 요청(DSR). Windows ConPTY는 커서를 물려받는 모드로 열리면 처음에 이것을 보내고,
+/// 답이 올 때까지 콘솔을 쓰는 서버(팰월드 Shipping-Cmd 등)를 멈춰 둔다
+const CURSOR_QUERY: &[u8] = b"\x1b[6n";
+/// 그 답: 1행 1열
+const CURSOR_REPLY: &[u8] = b"\x1b[1;1R";
+
+/// 줄 끝 없이 온 요청도 바로 보게, 줄 단위가 아니라 읽은 만큼 본다
+fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: Console, reply: Option<Arc<Stdin>>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        let mut reader = BufReader::new(reader);
-        let mut buf = Vec::new();
+        let mut reader = reader;
+        let mut chunk = [0u8; 8192];
+        let mut pending: Vec<u8> = Vec::new();
+        let emit = |line: &[u8]| {
+            if console == Console::Pty {
+                let line = decode_line(&strip_ansi_escapes::strip(line));
+                // 화면을 다시 그린 자리(\r)는 마지막 내용만 남긴다
+                let line = line.rsplit('\r').next().unwrap_or_default();
+                if !line.trim().is_empty() {
+                    write_log(&log, stream, line);
+                }
+            } else {
+                write_log(&log, stream, &decode_line(line));
+            }
+        };
         loop {
-            buf.clear();
-            match reader.read_until(b'\n', &mut buf) {
+            let n = match reader.read(&mut chunk) {
                 Ok(0) | Err(_) => break,
-                Ok(_) => {
-                    if console == Console::Pty {
-                        let line = decode_line(&strip_ansi_escapes::strip(&buf));
-                        // 화면을 다시 그린 자리(\r)는 마지막 내용만 남긴다
-                        let line = line.rsplit('\r').next().unwrap_or_default();
-                        if !line.trim().is_empty() {
-                            write_log(&log, stream, line);
+                Ok(n) => n,
+            };
+            // 요청이 두 번 읽기에 걸쳐 올 수 있어 남은 앞부분과 이어서 찾는다
+            let scan_from = pending.len().saturating_sub(CURSOR_QUERY.len() - 1);
+            pending.extend_from_slice(&chunk[..n]);
+            if let Some(stdin) = &reply {
+                let asked = pending[scan_from..].windows(CURSOR_QUERY.len()).filter(|w| *w == CURSOR_QUERY).count();
+                if asked > 0 {
+                    if let Ok(mut guard) = stdin.lock() {
+                        if let Some(pipe) = guard.as_mut() {
+                            for _ in 0..asked {
+                                let _ = pipe.write_all(CURSOR_REPLY);
+                            }
+                            let _ = pipe.flush();
                         }
-                    } else {
-                        write_log(&log, stream, &decode_line(&buf));
                     }
                 }
             }
+            while let Some(nl) = pending.iter().position(|b| *b == b'\n') {
+                let line: Vec<u8> = pending.drain(..=nl).collect();
+                emit(&line);
+            }
+        }
+        if !pending.is_empty() {
+            emit(&pending);
         }
     })
 }
@@ -342,12 +373,14 @@ fn run(args: Args) -> Result<i32, String> {
     let info = RunnerInfo { runner_pid: std::process::id(), pid, port, log: args.log.clone(), started_at: now(), cwd: args.cwd.clone() };
     write_json(&runner_file(&args.run_dir), &info).map_err(|e| e.to_string())?;
 
-    let readers: Vec<_> = outputs.into_iter().map(|(r, stream)| pump(r, log.clone(), stream, args.console)).collect();
+    let stdin: Arc<Stdin> = Arc::new(Mutex::new(Some(stdin)));
+    // 의사 콘솔의 커서 위치 요청에는 runner가 답한다 (파이프에는 그런 요청이 없다)
+    let reply = (args.console == Console::Pty).then(|| stdin.clone());
+    let readers: Vec<_> = outputs.into_iter().map(|(r, stream)| pump(r, log.clone(), stream, args.console, reply.clone())).collect();
     if !args.tails.is_empty() {
         let base = args.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
         follow_files(args.tails.iter().map(|t| base.join(t)).collect(), log.clone());
     }
-    let stdin: Arc<Stdin> = Arc::new(Mutex::new(Some(stdin)));
     std::thread::spawn(move || {
         for conn in listener.incoming().map_while(Result::ok) {
             let (stdin, token) = (stdin.clone(), token.clone());
@@ -432,6 +465,47 @@ mod tests {
         assert!(!super::follows_leftovers(false, 1, quick), "a crash at start is a failed start, not a launcher");
         assert!(!super::follows_leftovers(true, 0, quick));
         assert!(!super::follows_leftovers(true, 1, Duration::from_secs(60)));
+    }
+
+    /// 쓴 바이트를 모아 두는 가짜 stdin
+    #[derive(Clone, Default)]
+    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for Sink {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // 실제 PC: ConPTY가 처음 보낸 커서 위치 요청(줄 끝 없음)에 아무도 답하지 않아 팰월드가 출력 0줄로
+    // 멈춰 있었다(직접 실행하면 5초 만에 REST가 뜸). 요청이 두 번 읽기에 걸쳐 와도 답한다
+    #[test]
+    fn a_pseudo_console_cursor_query_gets_an_answer_even_without_a_newline() {
+        let path = std::env::temp_dir().join(format!("saba-runner-cursor-{}.log", std::process::id()));
+        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        let sink = Sink::default();
+        let stdin: std::sync::Arc<super::Stdin> = std::sync::Arc::new(std::sync::Mutex::new(Some(Box::new(sink.clone()))));
+        // 앞쪽 요청은 두 조각으로 나뉘어 온다
+        struct Chunks(Vec<&'static [u8]>);
+        impl std::io::Read for Chunks {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.0.is_empty() {
+                    return Ok(0);
+                }
+                let c = self.0.remove(0);
+                buf[..c.len()].copy_from_slice(c);
+                Ok(c.len())
+            }
+        }
+        let reader = Chunks(vec![b"\x1b[", b"6n", b"REST API started\r\n\x1b[6n"]);
+        super::pump(reader, log, super::Stream::Stdout, super::Console::Pty, Some(stdin)).join().unwrap();
+        assert_eq!(sink.0.lock().unwrap().as_slice(), b"\x1b[1;1R\x1b[1;1R");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(text.contains("REST API started"), "{text}");
     }
 
     #[test]

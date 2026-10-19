@@ -723,6 +723,8 @@
     "back_to_menu": "Menu",
     "state_no_host": "Non connecté",
     "state_connecting": "Connexion…",
+    "state_checking": "Vérification de la connexion",
+    "checking_body": "Chargement de ta connexion Discord enregistrée. Elle s’affichera dès que Saba-chan sera réveillée.",
     "state_connected": "Connecté",
     "state_error": "Échec de la connexion",
     "nodes_empty": "Aucun serveur Discord connecté pour l'instant",
@@ -1093,10 +1095,15 @@
       "extension_modified": "L'extension ({{id}}) a été modifiée après son installation. Réinstallez-la si vous ne l'avez pas modifiée vous-même.",
       "isolated": "Les scripts Python de ce composant s'exécutent dans un environnement isolé (dossiers autorisés uniquement). Le processus du serveur de jeu n'est pas isolé."
     },
+    "create_notice": {
+      "unverified": "Ce module ne provient pas du catalogue officiel. Ses scripts Python s'exécutent de façon isolée, mais le serveur de jeu qu'il installe et lance n'est pas isolé et s'exécute avec les droits de votre compte. Ne continuez que si vous faites confiance à ce module.",
+      "modified": "Les fichiers de ce module ont changé après son installation depuis le catalogue officiel. Ses scripts Python s'exécutent de façon isolée, mais le serveur de jeu qu'il installe et lance n'est pas isolé et s'exécute avec les droits de votre compte. Ne continuez que si vous faites confiance à ce module."
+    },
     "start_blocked": {
       "launch_outside_instance": "Ce module non vérifié a tenté de lancer un programme hors du dossier du serveur : {{file}} Si vous avez défini vous-même le chemin de Java, sélectionnez-le à nouveau dans les paramètres du serveur.",
       "server_folder_label": "Impossible de nettoyer les marques d'autorisation du dossier du serveur ({{file}}), le serveur n'a donc pas été démarré. Vérifiez que ce compte peut modifier les autorisations de ce dossier.",
-      "sandbox_unavailable": "Impossible de préparer un environnement isolé pour {{component}}, il n'a donc pas été lancé."
+      "sandbox_unavailable": "Impossible de préparer un environnement isolé pour {{component}}, il n'a donc pas été lancé.",
+      "extension_not_verified": "Les fichiers de ces extensions ont été modifiés et n'ont pas pu être vérifiés : {{extensions}}. Réinstallez-les ou restaurez les fichiers d'origine."
     },
     "sandbox": {
       "title": "Exécuter sans isolation ?",

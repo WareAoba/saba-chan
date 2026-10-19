@@ -514,6 +514,19 @@ async fn built_in_server_actions_use_the_levels_set_for_their_commands() {
     assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", false)).await.is_ok());
 }
 
+/// GUI에서 사용자별로 막은 명령(`memberPermissions`)은 채팅 명령뿐 아니라 액션 메뉴·확인 버튼으로도 막힌다
+#[tokio::test]
+async fn commands_denied_to_a_member_stay_denied_through_actions() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "defaultLevel": 2, "memberPermissions": { "admin": { id.clone(): ["stop"] } } })).await;
+    let admin = relay("admin", false);
+    let err = plan(&state, "server.stop", Some(&id), &json!({}), &admin).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+    assert_eq!(err.data["args"]["need"], 3);
+    assert!(plan(&state, "server.start", Some(&id), &json!({}), &admin).await.is_ok(), "only the denied command");
+    assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("someone", false)).await.is_ok(), "only that member");
+}
+
 #[test]
 fn remote_results_keep_paths_console_lines_and_raw_errors_on_the_pc() {
     let mut v = json!({

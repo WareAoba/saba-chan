@@ -532,8 +532,13 @@ impl ConfigStore {
                     serde_json::from_value::<GuiSettings>(merged).map_err(|e| invalid("GUI settings", e))?;
                 }
                 "relay" => {
+                    // 저장(`merge_bot_config`)과 같은 검사: 접두사 규칙까지
                     let merged = merge_json(self.get_bot_config_json().await, value.clone());
-                    serde_json::from_value::<BotConfig>(merged).map_err(|e| invalid("bot config", e))?;
+                    let mut config = serde_json::from_value::<BotConfig>(merged).map_err(|e| invalid("bot config", e))?;
+                    config.normalize();
+                    if let Some(problem) = config.prefix_problem() {
+                        return Err(ConfigStoreError::InvalidData(problem));
+                    }
                 }
                 "chatbot" => {
                     let merged = merge_json(serde_json::to_value(self.get_chatbot())?, value.clone());

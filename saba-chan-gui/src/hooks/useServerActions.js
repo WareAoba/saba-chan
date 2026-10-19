@@ -658,9 +658,9 @@ export function useServerActions({
                         return;
                     }
 
-                    if (result.success === false && result.message) {
+                    const blocked = blockedText(result, t);
+                    if (result.success === false && (result.message || blocked)) {
                         revertOptimistic(name);
-                        const blocked = blockedText(result, t);
                         safeShowToast(
                             blocked ? t('servers.stop_failed_toast', { error: blocked }) : result.message,
                             'error',
@@ -745,6 +745,8 @@ export function useServerActions({
                         const msg = translateError(result.error || result.message || '');
                         safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
                     } else {
+                        // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다
+                        optimisticStatusRef.current.delete(name);
                         safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
                     }
                 } catch (error) {
@@ -864,6 +866,13 @@ export function useServerActions({
 
             console.log('Adding instance:', instanceData);
             const result = await window.api.instanceCreate(instanceData);
+
+            // ── 켜진 익스텐션 파일이 바뀌어 확인되지 않음 (다시 설치·되돌리기 안내) ──
+            const blocked = blockedText(result, t);
+            if (blocked) {
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: blocked });
+                return false;
+            }
 
             // ── extension_required 처리 ──
             if (result.error_code === 'extension_required') {

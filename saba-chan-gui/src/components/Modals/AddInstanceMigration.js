@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AgreementList, allChecked } from '../AgreementList';
 import Icon from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
+import { TrustCreateNotice } from '../ui/TrustBadge';
 
 /**
  * AddInstanceMigration — "기존 서버 마이그레이션" 흐름.
@@ -145,7 +146,8 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
 
     // 설치된 모듈 목록(GET /api/modules)이 약관을 싣는다. 레지스트리에서 고른 모듈은 설치 뒤에 데몬이 묻는다
     const agreementModuleName = (detectedModule || manualModule)?.name || (detectedModule || manualModule)?.id;
-    const agreements = extensions.find((e) => e.name === agreementModuleName)?.agreements || [];
+    const installedModule = extensions.find((e) => e.name === agreementModuleName);
+    const agreements = installedModule?.agreements || [];
 
     // ─── 제출 ───
     const handleSubmit = useCallback(async () => {
@@ -441,6 +443,9 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                             }}
                         />
                     </div>
+
+                    {/* 확인 안 된·바뀐 모듈: 게임 서버는 격리되지 않는다 */}
+                    <TrustCreateNotice trust={installedModule?.trust} />
 
                     {/* 모듈이 선언한 약관: 모두 동의해야 가져올 수 있다 */}
                     {agreements.length > 0 && (

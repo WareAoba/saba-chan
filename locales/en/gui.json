@@ -726,6 +726,8 @@
     "back_to_menu": "Menu",
     "state_no_host": "Not connected",
     "state_connecting": "Connecting",
+    "state_checking": "Checking connection",
+    "checking_body": "Loading your saved Discord connection. It will show up as soon as Saba-chan is awake.",
     "state_connected": "Connected",
     "state_error": "Connection failed",
     "nodes_empty": "No Discord server connected yet",
@@ -1096,10 +1098,15 @@
       "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
       "isolated": "This component's Python scripts run in an isolated environment (allowed folders only). The game server process is not isolated."
     },
+    "create_notice": {
+      "unverified": "This module is not from the official catalog. Its Python scripts run isolated, but the game server it installs and runs is not isolated and runs with your account's permissions. Only continue if you trust this module.",
+      "modified": "This module's files changed after installing from the official catalog. Its Python scripts run isolated, but the game server it installs and runs is not isolated and runs with your account's permissions. Only continue if you trust this module."
+    },
     "start_blocked": {
       "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}} If you set the Java path yourself, choose it again in the server settings.",
       "server_folder_label": "Couldn't clean up the permission marks on the server folder ({{file}}), so the server wasn't started. Check that this account can change that folder's permissions.",
-      "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run."
+      "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run.",
+      "extension_not_verified": "These extensions' files have changed and could not be verified: {{extensions}}. Reinstall them or restore the original files."
     },
     "sandbox": {
       "title": "Run without isolation?",

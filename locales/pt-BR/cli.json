@@ -164,6 +164,7 @@
     "hint": {
       "executable_missing": "Faltam arquivos do servidor. Verifique a pasta ou reinstale: saba-chan-cli server update",
       "extension_required": "Instale as extensões necessárias: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "Estas extensões foram alteradas e não puderam ser verificadas: {{ids}}. Reinstale-as ou restaure os arquivos originais: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Primeiro pareie este PC: saba-chan-cli bot pair",
       "server_not_running": "Primeiro inicie o servidor: saba-chan-cli start NAME",
       "server_running": "Primeiro pare o servidor: saba-chan-cli stop NAME",

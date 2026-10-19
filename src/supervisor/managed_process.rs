@@ -247,7 +247,7 @@ impl ManagedProcess {
     /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
     /// 종료 요청이 거부되면 오류 (끝났는지는 `is_running`으로 확인한다)
     pub fn force_kill(&self) -> Result<()> {
-        let server = super::process::force_kill_pid(self.pid);
+        let server = super::process::force_kill_tree(self.pid);
         let runner = self.runner_pid.map_or(Ok(()), super::process::force_kill_pid);
         server.and(runner)
     }

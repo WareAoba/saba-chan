@@ -31,8 +31,27 @@ pub fn required_installer_version(manifest: &ReleaseManifest) -> Option<&str> {
     manifest.components.get("installer").map(|c| c.version.as_str())
 }
 
-/// 설치 폴더에 풀 컴포넌트 (키 순서로 정렬). 모듈·익스텐션은 고른 것만 데이터 폴더에 따로 설치한다
-pub fn installable(manifest: &ReleaseManifest) -> Vec<(&String, &ManifestComponent)> {
+/// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다)
+fn required_components() -> Vec<String> {
+    let versions: toml::Table = include_str!("../../../../versions.toml").parse().unwrap_or_default();
+    let Some(components) = versions.get("components").and_then(|c| c.as_table()) else {
+        return Vec::new();
+    };
+    components
+        .iter()
+        .filter(|(_, c)| c.get("required").and_then(|r| r.as_bool()) == Some(true))
+        .map(|(k, _)| k.clone())
+        .collect()
+}
+
+/// 설치 폴더에 풀 컴포넌트 (키 순서로 정렬). 모듈·익스텐션은 고른 것만 데이터 폴더에 따로 설치한다.
+/// 필수 컴포넌트가 빠진 릴리즈는 반쪽 설치가 되므로 빠진 키 목록을 오류로 돌려준다
+pub fn installable(manifest: &ReleaseManifest) -> Result<Vec<(&String, &ManifestComponent)>, Vec<String>> {
+    let missing: Vec<String> =
+        required_components().into_iter().filter(|k| !manifest.components.contains_key(k)).collect();
+    if !missing.is_empty() {
+        return Err(missing);
+    }
     let mut list: Vec<_> = manifest
         .components
         .iter()
@@ -40,7 +59,7 @@ pub fn installable(manifest: &ReleaseManifest) -> Vec<(&String, &ManifestCompone
         .filter(|(key, _)| Component::try_from_manifest_key(key).is_some())
         .collect();
     list.sort_by(|a, b| a.0.cmp(b.0));
-    list
+    Ok(list)
 }
 
 /// 설치 화면의 모듈 목록 (`module-*` 컴포넌트와 그 meta)
@@ -162,13 +181,31 @@ mod tests {
             is_critical: false,
             components,
         };
-        let keys: Vec<_> = installable(&manifest).into_iter().map(|(k, _)| k.as_str()).collect();
+        let keys: Vec<_> = installable(&manifest).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(keys, ["cli", "gui", "locales", "saba-core", "updater"], "installer, the legacy bot and add-ons are skipped");
         assert_eq!(required_installer_version(&manifest), Some("0.2.0"));
 
         let root = Path::new("/opt/saba");
         assert_eq!(target_dir(root, &component("1", Some("."))), root);
         assert_eq!(target_dir(root, &component("1", Some("locales"))), root.join("locales"));
+    }
+
+    /// 데몬·GUI·업데이터가 빠진 릴리즈는 반쪽 설치가 된다. 설치하지 않고 실패한다
+    #[test]
+    fn a_release_missing_a_required_component_is_refused() {
+        let mut components = HashMap::new();
+        for key in ["saba-core", "cli", "locales"] {
+            components.insert(key.to_string(), component("0.2.0", None));
+        }
+        let manifest = ReleaseManifest {
+            version: "0.2.0".into(),
+            channel: "stable".into(),
+            platform: "windows-x64".into(),
+            released_at: None,
+            is_critical: false,
+            components,
+        };
+        assert_eq!(installable(&manifest).unwrap_err(), ["gui", "updater"]);
     }
 
     /// 깨끗한 설치로 받은 공식 모듈이 데몬에서 "verified"로 보여야 격리·검사 없이 돈다
