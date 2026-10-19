@@ -1,4 +1,4 @@
-//! 원격(디스코드·챗봇) 결과의 사람용 요약 (`text`). 요약이 없는 결과는 릴레이가 "키: 값" 줄로 보인다
+//! 원격(디스코드·챗봇) 결과의 사람용 요약 (`text`). 요약이 없는 결과는 릴레이가 결과 그대로 보인다
 
 use crate::chat::i18n::Catalog;
 use serde_json::Value;
@@ -14,6 +14,14 @@ pub(super) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
         "instance.events" => Some(events(result, cat)),
         "update.check" => updates(result, cat),
         "monitor.summary" => monitor(result, cat),
+        // 모듈 조회(접속자 목록 등)는 모양이 모듈마다 달라 채팅 명령 결과와 같은 범용 포맷으로
+        _ if id.starts_with(super::QUERY_PREFIX) => {
+            let mut shown = result.clone();
+            if let Some(map) = shown.as_object_mut() {
+                map.remove("success");
+            }
+            Some(crate::chat::format::format_response(&shown, cat))
+        }
         _ => None,
     }
 }
@@ -125,6 +133,9 @@ fn monitor(result: &Value, cat: &Catalog) -> Option<String> {
 /// 이 PC의 시각 (디스코드 사용자는 대개 PC 주인과 같은 시간대다)
 fn local_time(unix_secs: u64) -> String {
     use chrono::TimeZone;
+    if unix_secs == 0 {
+        return "?".into();
+    }
     chrono::Local.timestamp_opt(unix_secs as i64, 0).single().map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default()
 }
 

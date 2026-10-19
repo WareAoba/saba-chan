@@ -238,8 +238,15 @@ fn summaries_read_like_sentences() {
     let text = summary::text("instance.events", &events, &ko).unwrap();
     assert!(text.lines().nth(1).unwrap().contains("정지") && text.contains("비정상 종료"), "newest first: {text}");
 
-    // 모르는 액션은 요약하지 않는다 (릴레이가 키: 값으로 보인다)
-    assert!(summary::text("server.query:players", &json!({}), &ko).is_none());
+    // 시각을 모르면 1970년으로 찍지 않는다
+    let unknown = summary::text("backup.list", &json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] }), &ko).unwrap();
+    assert!(!unknown.contains("1970"), "{unknown}");
+
+    // 모듈 조회는 범용 포맷으로 (모양이 모듈마다 다르다)
+    let players = summary::text("server.query:players", &json!({ "success": true, "players": [{ "name": "steve" }] }), &ko).unwrap();
+    assert!(players.contains("steve") && !players.contains("success"), "{players}");
+    // 모르는 액션은 요약하지 않는다 (릴레이가 결과를 그대로 보인다)
+    assert!(summary::text("server.status", &json!({}), &ko).is_none());
 }
 
 #[test]
