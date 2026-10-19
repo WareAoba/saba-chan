@@ -115,6 +115,11 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
     crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
 }
 
+/// 이 컴포넌트의 설치 기록이 있나
+pub fn is_recorded(component_key: &str) -> bool {
+    load_records(&records_path()).contains_key(component_key)
+}
+
 /// 폴더째 설치한 컴포넌트(익스텐션 스토어 설치 등)의 모든 파일을 기록한다
 pub fn record_dir(component_key: &str, dir: &Path) -> Result<(), String> {
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {

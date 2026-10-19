@@ -60,12 +60,26 @@ pub fn amsi_verdict(hr: i32, result: u32) -> Verdict {
     }
 }
 
-/// `MpCmdRun -Scan` 종료 코드: 2면 위협을 찾은 것
+/// Defender가 "찾을 위협이 없다"고 답하는 오류 (`hr = 0x80508023`). 검사한 파일은 깨끗하다
+const MPCMDRUN_NO_THREAT_HR: &str = "0x80508023";
+
+/// `MpCmdRun -Scan`의 종료 코드와 출력. 2는 위협을 찾았을 때도 검사하지 못했을 때도 나온다.
+/// 검사하지 못했으면 출력에 실패 코드(`hr = 0x…`)가 있다: 문구는 Windows 언어를 따를 수 있어 코드로만 가른다.
+/// `0x80508023`은 깨끗함, 그 밖의 실패는 검사기를 쓸 수 없는 것(AMSI는 그대로 돈다), 코드가 없으면 찾은 것이다
 #[cfg_attr(not(windows), allow(dead_code))]
-pub fn mpcmdrun_verdict(code: Option<i32>) -> Verdict {
+pub fn mpcmdrun_verdict(code: Option<i32>, output: &str) -> Verdict {
+    let lower = output.to_ascii_lowercase();
     match code {
         Some(0) => Verdict::Clean,
-        Some(2) => Verdict::Detected("Windows Defender".into()),
+        Some(2) if lower.contains(MPCMDRUN_NO_THREAT_HR) => Verdict::Clean,
+        Some(2) if lower.replace(' ', "").contains("hr=0x") => Verdict::Unavailable,
+        Some(2) => {
+            let threat = output.lines().find_map(|l| l.trim().strip_prefix("Threat").and_then(|r| r.trim_start().strip_prefix(':')));
+            Verdict::Detected(match threat {
+                Some(name) => format!("Windows Defender ({})", name.trim()),
+                None => "Windows Defender".into(),
+            })
+        }
         _ => Verdict::Unavailable,
     }
 }
@@ -235,7 +249,14 @@ impl Scanner for SystemScanner {
                 use std::os::windows::process::CommandExt;
                 cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
             }
-            mpcmdrun_verdict(cmd.output().ok().and_then(|o| o.status.code()))
+            let Ok(out) = cmd.output() else { return Verdict::Unavailable };
+            let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+            let verdict = mpcmdrun_verdict(out.status.code(), &text);
+            if verdict == Verdict::Unavailable {
+                let reason = text.lines().find(|l| l.contains("Failed with hr")).unwrap_or("").trim();
+                tracing::warn!("[Sandbox] MpCmdRun could not scan {} (exit {:?}) {}", path.display(), out.status.code(), reason);
+            }
+            verdict
         }
         #[cfg(not(windows))]
         {
@@ -336,10 +357,25 @@ mod tests {
     #[test]
     fn result_codes_map_to_verdicts() {
         assert!(!amsi_detected(1) && amsi_detected(32768) && amsi_detected(40000));
-        assert_eq!(mpcmdrun_verdict(Some(0)), Verdict::Clean);
-        assert!(matches!(mpcmdrun_verdict(Some(2)), Verdict::Detected(_)));
-        assert_eq!(mpcmdrun_verdict(Some(1)), Verdict::Unavailable);
-        assert_eq!(mpcmdrun_verdict(None), Verdict::Unavailable);
+        assert_eq!(mpcmdrun_verdict(Some(0), "Scanning C:\\a.exe found no threats."), Verdict::Clean);
+        assert_eq!(mpcmdrun_verdict(Some(1), ""), Verdict::Unavailable);
+        assert_eq!(mpcmdrun_verdict(None, ""), Verdict::Unavailable);
+    }
+
+    /// MpCmdRun은 위협을 찾았을 때와 검사하지 못했을 때 모두 2로 끝난다. 위협 목록이 있을 때만 찾은 것이다
+    /// (실제 PC: 깨끗한 java.exe가 `CmdTool: Failed with hr = 0x80508023`과 2로 끝나 악성으로 막혔다)
+    #[test]
+    fn mpcmdrun_exit_2_is_a_detection_only_when_it_lists_threats() {
+        let found = "Scan starting...\nScan finished.\nScanning C:\\t\\eicar.com found 1 threats.\n\n\
+<===========================LIST OF DETECTED THREATS==========================>\n\
+----------------------------- Threat information ------------------------------\n\
+Threat                  : Virus:DOS/EICAR_Test_File\n";
+        assert_eq!(mpcmdrun_verdict(Some(2), found), Verdict::Detected("Windows Defender (Virus:DOS/EICAR_Test_File)".into()));
+        assert_eq!(mpcmdrun_verdict(Some(2), "Scan starting...\nCmdTool: Failed with hr = 0x80508023. Check C:\\x\\MpCmdRun.log"), Verdict::Clean);
+        assert_eq!(mpcmdrun_verdict(Some(2), "CmdTool: Failed with hr = 0x800106ba."), Verdict::Unavailable);
+        // 출력 문구는 Windows 언어를 따를 수 있다: 실패 코드(hr)가 없는 2는 찾은 것으로 본다
+        assert_eq!(mpcmdrun_verdict(Some(2), "검사 시작...\n위협 1개를 찾았습니다."), Verdict::Detected("Windows Defender".into()));
+        assert_eq!(mpcmdrun_verdict(Some(2), ""), Verdict::Detected("Windows Defender".into()));
         assert_eq!(amsi_verdict(0, 1), Verdict::Clean);
         assert!(matches!(amsi_verdict(0, 32768), Verdict::Detected(_)));
         assert_eq!(amsi_verdict(0x8000_4001_u32 as i32, 0), Verdict::Unavailable);

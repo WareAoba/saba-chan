@@ -546,7 +546,9 @@ impl UpdateManager {
                     continue;
                 }
                 // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록
-                let update_available = if installed && current.is_empty() {
+                let update_available = if installed && Self::reinstall_from_catalog(&component, &current, &info.version) {
+                    true
+                } else if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);
                     false
                 } else {
@@ -595,6 +597,15 @@ impl UpdateManager {
             comp.downloaded_path = prev.downloaded_path.clone();
             comp.staged_sha256 = prev.staged_sha256.clone();
         }
+    }
+
+    /// 설치 기록 없이 놓인 모듈·익스텐션(0.1.6 설치기가 받은 것)은 같은 버전이라도 카탈로그에서 다시 받는다.
+    /// 다시 받아야 공식 표시가 생겨 데몬이 격리하지 않는다. 기록이 있으면(사용자가 고쳤을 수 있다) 버전만 본다
+    /// 로컬 사본이 카탈로그보다 새 버전이면 내려받지 않는다
+    pub(crate) fn reinstall_from_catalog(component: &Component, current: &str, latest: &str) -> bool {
+        matches!(component, Component::Module(_) | Component::Extension(_))
+            && !version::is_downgrade(current, latest)
+            && !integrity::is_recorded(&component.manifest_key())
     }
 
     fn compare_versions(&self, latest: &str, current: &str) -> bool {

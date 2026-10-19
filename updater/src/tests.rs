@@ -902,3 +902,20 @@ async fn an_unknown_archive_format_is_not_applied_as_success() {
     let gui = tmp.path().join("saba-chan-gui-linux-x64.7z");
     assert!(manager.apply_gui_update(&gui.to_string_lossy()).await.is_err());
 }
+
+// 0.1.6 설치기는 받은 모듈·익스텐션을 기록하지 않았다. 설치 기록이 없는 것은 같은 버전이라도
+// 카탈로그에서 다시 받게 해서 공식 표시를 되찾게 한다 (기록이 있으면 사용자가 고친 것일 수 있어 건드리지 않는다)
+#[test]
+fn an_installed_addon_without_an_install_record_is_offered_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("lifecycle.py");
+    std::fs::write(&file, b"print('ok')").unwrap();
+    crate::integrity::record_install("module-recordedmod", &[file]).unwrap();
+
+    let again = |c: Component, current: &str| UpdateManager::reinstall_from_catalog(&c, current, "0.1.2");
+    assert!(again(Component::Module("unrecordedmod".into()), "0.1.2"));
+    assert!(again(Component::Extension("unrecordedext".into()), "0.1.1"));
+    assert!(!again(Component::Module("recordedmod".into()), "0.1.2"));
+    assert!(!again(Component::CoreDaemon, "0.1.2"));
+    assert!(!again(Component::Module("unrecordedmod".into()), "0.2.0"), "a newer local copy is not replaced by an older catalog one");
+}
