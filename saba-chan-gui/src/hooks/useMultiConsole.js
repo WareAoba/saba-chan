@@ -97,6 +97,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         //   Stopped / 기타          → 5000ms (리소스 절약)
         if (!pollingRefs.current[instanceId]) {
             let sinceId = 0;
+            // 마지막으로 본 실행 PID. 바뀌면 새 프로세스라 줄 번호가 0부터 다시 시작한다
+            let seenPid = null;
             let diskLoaded = false;
             let polling = false;
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
@@ -112,6 +114,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     if (polling) { schedulePoll(); return; }
                     polling = true;
                     try {
+                        const pid = useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid;
+                        if (pid > 0) {
+                            if (seenPid !== null && pid !== seenPid) sinceId = 0;
+                            seenPid = pid;
+                        }
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
                         const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
                         const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
