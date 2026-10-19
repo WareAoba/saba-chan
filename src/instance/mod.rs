@@ -15,6 +15,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// 인스턴스 폴더 바로 아래에서 데몬이 쓰는 항목. 격리된 모듈에게 쓰기를 주지 않는다
+/// (instance.json을 고칠 수 있으면 다음 로드 때 실행 파일·사용자 설정까지 바꾼다)
+pub const DAEMON_ENTRIES: &[&str] = &["instance.json", "settings.json", "settings.json.tmp", "managed.pid", "run", "logs", "backups"];
+
 // ═══════════════════════════════════════════════════════════════
 //  ServerInstance — 인스턴스 메타데이터
 // ═══════════════════════════════════════════════════════════════
