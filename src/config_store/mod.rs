@@ -185,6 +185,24 @@ impl BotConfig {
     }
 }
 
+/// 릴레이 주소 규칙: 빈 값(기본 릴레이), https, 루프백 http(모의 릴레이)만. 노드 토큰·페어링이 평문으로 오가지 않게.
+/// 저장·페어링 때만 본다 (이미 저장된 값은 읽을 때 막지 않는다)
+pub fn relay_url_problem(url: &str) -> Option<String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+    let ok = match reqwest::Url::parse(url) {
+        Ok(u) => match (u.scheme(), u.host_str()) {
+            ("https", Some(h)) => !h.is_empty(),
+            ("http", Some(h)) => matches!(h, "localhost" | "127.0.0.1" | "[::1]"),
+            _ => false,
+        },
+        Err(_) => false,
+    };
+    (!ok).then(|| format!("'{}' must be an https URL (http only for localhost)", url))
+}
+
 // ── Chatbot (config.json `chatbot`) ──
 
 /// AI 챗봇 설정의 원본. 릴레이는 이것을 받아 쓴다 (`/api/nodes/:guildId/chatbot`).
@@ -391,6 +409,11 @@ impl ConfigStore {
         if let Some(problem) = config.prefix_problem() {
             return Err(ConfigStoreError::InvalidData(problem));
         }
+        if config.cloud.relay_url.trim() != current.cloud.relay_url.trim() {
+            if let Some(problem) = relay_url_problem(&config.cloud.relay_url) {
+                return Err(ConfigStoreError::InvalidRelayUrl(problem));
+            }
+        }
         self.file.set_section("relay", serde_json::to_value(&config)?)?;
         *current = config.clone();
         Ok(config)
@@ -532,12 +555,17 @@ impl ConfigStore {
                     serde_json::from_value::<GuiSettings>(merged).map_err(|e| invalid("GUI settings", e))?;
                 }
                 "relay" => {
-                    // 저장(`merge_bot_config`)과 같은 검사: 접두사 규칙까지
+                    // 저장(`merge_bot_config`)과 같은 검사: 접두사·릴레이 주소 규칙까지
                     let merged = merge_json(self.get_bot_config_json().await, value.clone());
                     let mut config = serde_json::from_value::<BotConfig>(merged).map_err(|e| invalid("bot config", e))?;
                     config.normalize();
                     if let Some(problem) = config.prefix_problem() {
                         return Err(ConfigStoreError::InvalidData(problem));
+                    }
+                    if config.cloud.relay_url.trim() != self.get_bot_config().await.cloud.relay_url.trim() {
+                        if let Some(problem) = relay_url_problem(&config.cloud.relay_url) {
+                            return Err(ConfigStoreError::InvalidRelayUrl(problem));
+                        }
                     }
                 }
                 "chatbot" => {
@@ -631,6 +659,8 @@ pub enum ConfigStoreError {
     Serialization(#[from] serde_json::Error),
     #[error("Invalid data: {0}")]
     InvalidData(String),
+    #[error("Invalid relay URL: {0}")]
+    InvalidRelayUrl(String),
 }
 
 // ── File helpers ──
@@ -1057,6 +1087,28 @@ mod tests {
             assert!(matches!(store.set_bot_config_from_json(serde_json::json!({ "prefixes": bad })).await, Err(ConfigStoreError::InvalidData(_))), "{}", bad);
         }
         assert_eq!(store.get_bot_config().await.prefixes, vec!["사바쨩", "!s"], "a rejected save keeps the old value");
+    }
+
+    /// 릴레이 주소는 https만, http는 루프백(모의 릴레이)만. 이미 저장된 값은 읽기와 무관한 저장을 막지 않는다
+    #[tokio::test]
+    async fn relay_url_must_be_https_or_loopback_http() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("config.json"), serde_json::json!({ "relay": { "cloud": { "relayUrl": "http://old.example" } } }).to_string()).unwrap();
+        let store = ConfigStore::new(tmp.path());
+        assert_eq!(store.get_bot_config().await.cloud.relay_url, "http://old.example", "a stored value still loads");
+        store.set_bot_config_from_json(serde_json::json!({ "prefixes": ["!s"] })).await.expect("an unrelated save keeps the stored relay");
+        for ok in ["", "https://relay.test", "https://relay.test:8443/", "http://127.0.0.1:3000", "http://localhost:8080", "http://[::1]:9"] {
+            let saved = store.set_bot_config_from_json(serde_json::json!({ "cloud": { "relayUrl": ok } })).await.unwrap_or_else(|e| panic!("{}: {}", ok, e));
+            assert_eq!(saved.cloud.relay_url, ok);
+        }
+        for bad in ["http://relay.test", "http://127.0.0.1.evil.example", "ftp://relay.test", "relay.test", "https://", "javascript:alert(1)"] {
+            let r = store.set_bot_config_from_json(serde_json::json!({ "cloud": { "relayUrl": bad } })).await;
+            assert!(matches!(r, Err(ConfigStoreError::InvalidRelayUrl(_))), "{}: {:?}", bad, r);
+            let mut sections = serde_json::Map::new();
+            sections.insert("relay".into(), serde_json::json!({ "cloud": { "relayUrl": bad } }));
+            assert!(matches!(store.check_sections(&sections).await, Err(ConfigStoreError::InvalidRelayUrl(_))), "import {}", bad);
+        }
+        assert_eq!(store.get_bot_config().await.cloud.relay_url, "http://[::1]:9", "a rejected save keeps the old value");
     }
 
     #[tokio::test]
