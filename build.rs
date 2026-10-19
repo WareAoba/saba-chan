@@ -159,6 +159,8 @@ fn compile_with_winres(ico_path: &std::path::Path) {
     res.set("LegalCopyright", "Copyright (c) 2025 Saba-chan Contributors");
     match res.compile() {
         Ok(_) => println!("cargo:warning=winres fallback: resources embedded"),
+        // 아이콘·버전 정보 없는 데몬이 릴리스로 나가지 않게 멈춘다
+        Err(e) if std::env::var("PROFILE").as_deref() == Ok("release") => panic!("winres fallback failed: {e}"),
         Err(e) => println!("cargo:warning=winres fallback failed: {}", e),
     }
 }
