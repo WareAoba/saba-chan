@@ -140,6 +140,7 @@ export function DiscordPage({
     // 끊긴 동안은 릴레이 실패가 이유다 (연결됐을 때 남은 노드 목록 오류는 지난 일)
     const connectionError = relayConnected ? cloudError : relayError;
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
+    const agentRelayUrlInvalid = useDiscordStore((s) => s.discordAgentRelayUrlInvalid);
     const botConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
     const [membersLoading, setMembersLoading] = useState(null);
     const [membersFailed, setMembersFailed] = useState({});
@@ -525,6 +526,7 @@ export function DiscordPage({
                                 nodeCount={cloudNodes.length}
                                 botStatus={discordBotStatus}
                                 agentReplaced={agentReplaced}
+                                agentRelayUrlInvalid={agentRelayUrlInvalid}
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}

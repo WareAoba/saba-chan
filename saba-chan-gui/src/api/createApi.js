@@ -857,7 +857,9 @@ export function createApi({ invoke, hub }) {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
                 if (data?.running) return 'running';
                 // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
-                return data?.lastErrorCode === 'token_replaced' ? 'replaced' : 'stopped';
+                if (data?.lastErrorCode === 'token_replaced') return 'replaced';
+                // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
+                return data?.lastErrorCode === 'invalid_relay_url' ? 'invalid_relay_url' : 'stopped';
             } catch (_e) {
                 return 'stopped';
             }
@@ -868,6 +870,7 @@ export function createApi({ invoke, hub }) {
             } catch (e) {
                 const errData = e.response?.data;
                 if (errData?.error_code === 'node_token_missing') return { error: 'cloud_token_not_found' };
+                if (errData?.error_code === 'invalid_relay_url') return { error: 'invalid_relay_url' };
                 return { error: errData?.error || e.message };
             }
         },

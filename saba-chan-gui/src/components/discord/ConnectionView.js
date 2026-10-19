@@ -225,6 +225,7 @@ export function ConnectionView({
     nodeCount,
     botStatus,
     agentReplaced,
+    agentRelayUrlInvalid,
     pairing,
     onStartPairing,
     onCancelPairing,
@@ -343,6 +344,12 @@ export function ConnectionView({
                     <div className="notice tone-warn">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('discord.agent_replaced')}</span>
+                    </div>
+                )}
+                {agentRelayUrlInvalid && !agentRunning && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('discord.invalid_relay_url')}</span>
                     </div>
                 )}
 

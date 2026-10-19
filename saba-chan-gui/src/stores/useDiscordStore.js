@@ -58,6 +58,7 @@ const initialState = () => ({
     discordBotStatus: 'stopped',
     // 다른 PC가 같은 계정으로 페어링해서 이 PC의 에이전트가 멈췄다
     discordAgentReplaced: false,
+    discordAgentRelayUrlInvalid: false,
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
@@ -264,10 +265,12 @@ export const useDiscordStore = create((set, get) => ({
         const state = get();
         let agentRunning = false;
         let agentReplaced = false;
+        let agentRelayUrlInvalid = false;
         try {
             const agent = await window.api.discordBotStatus();
             agentRunning = agent === 'running';
             agentReplaced = agent === 'replaced';
+            agentRelayUrlInvalid = agent === 'invalid_relay_url';
         } catch {
             /* stopped */
         }
@@ -301,6 +304,7 @@ export const useDiscordStore = create((set, get) => ({
             relayError: settled ? relayFailure : get().relayError,
             _relayFailures: failures,
             discordAgentReplaced: agentReplaced,
+            discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
             discordBotStatus: agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped',
         });
     },
