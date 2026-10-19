@@ -61,7 +61,9 @@
     "allow_saved": "{{guild}} agora vê apenas: {{servers}}",
     "link_accepted": "{{guild}} foi conectado a este PC.",
     "link_declined": "Pedido de conexão recusado.",
-    "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI."
+    "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI.",
+    "no_paired_servers": "Nenhum servidor do Discord está pareado com este PC ainda. Execute: saba-chan-cli bot pair",
+    "pick_server": "Vários servidores do Discord estão pareados. Informe o id do que deseja alterar: {{servers}}"
   },
   "col": {
     "players": "Jogadores",

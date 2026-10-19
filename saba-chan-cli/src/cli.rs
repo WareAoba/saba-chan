@@ -231,7 +231,7 @@ pub enum ScheduleCmd {
 pub enum ChatbotCmd {
     /// Settings and whether an API key is saved
     Show,
-    /// Change settings: KEY=VALUE ... (empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
+    /// Change settings: KEY=VALUE ... (keys and their defaults: `chatbot show`; e.g. enabled=true; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
         pairs: Vec<String>,
@@ -620,9 +620,10 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server
     Members { guild: String },
-    /// Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show
+    /// Chatbot channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
     Channels {
-        guild: String,
+        /// Without it: every paired Discord server (changing needs exactly one)
+        guild: Option<String>,
         /// Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list
         #[arg(long, value_delimiter = ',', conflicts_with = "no_chatbot")]
         chatbot: Vec<String>,
@@ -895,6 +896,7 @@ mod tests {
         }
         assert!(p(&["bot", "words", "123", "--word", "크리"]).is_err(), "--word needs a server");
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
+        assert!(matches!(p(&["bot", "channels"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Channels { guild: None, .. }))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
     }

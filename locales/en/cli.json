@@ -87,7 +87,9 @@
     "words": "Words",
     "command_words": "Command words",
     "words_saved": "Saved the chat words of {{server}}.",
-    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them)."
+    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
+    "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
   },
   "col": {
     "players": "Players",

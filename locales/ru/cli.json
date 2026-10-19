@@ -61,7 +61,9 @@
     "allow_saved": "{{guild}} теперь видит только: {{servers}}",
     "link_accepted": "{{guild}} подключён к этому ПК.",
     "link_declined": "Запрос на подключение отклонён.",
-    "pair_gui_hint": "Подключение к Discord также видно на экране Discord в GUI."
+    "pair_gui_hint": "Подключение к Discord также видно на экране Discord в GUI.",
+    "no_paired_servers": "С этим ПК ещё не связан ни один сервер Discord. Выполните: saba-chan-cli bot pair",
+    "pick_server": "Связано несколько серверов Discord. Укажите id сервера, который нужно изменить: {{servers}}"
   },
   "col": {
     "players": "Игроки",

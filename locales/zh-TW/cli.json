@@ -61,7 +61,9 @@
     "allow_saved": "{{guild}} 現在只能看到：{{servers}}",
     "link_accepted": "已將 {{guild}} 連接到這台電腦。",
     "link_declined": "已拒絕連接請求。",
-    "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。"
+    "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
+    "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
+    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}"
   },
   "col": {
     "players": "線上玩家",

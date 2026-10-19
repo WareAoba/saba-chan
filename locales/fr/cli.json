@@ -61,7 +61,9 @@
     "allow_saved": "{{guild}} ne voit maintenant que : {{servers}}",
     "link_accepted": "{{guild}} est connecté à ce PC.",
     "link_declined": "Demande de connexion refusée.",
-    "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI."
+    "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI.",
+    "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
+    "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}"
   },
   "col": {
     "players": "Joueurs",
