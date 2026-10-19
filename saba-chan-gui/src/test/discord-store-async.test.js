@@ -69,6 +69,26 @@ describe('데몬보다 앱이 먼저 뜬 경우', () => {
     });
 });
 
+describe('늦게 읽은 설정과 그 전에 고친 값', () => {
+    it('설정을 읽기 전에 고친 값은 늦게 읽은 값으로 덮지 않고 데몬에 저장한다', async () => {
+        window.api.botConfigLoad = vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
+        window.api.botConfigSave = vi.fn().mockResolvedValue({ success: true });
+        await useDiscordStore.getState().loadConfig();
+        useDiscordStore.getState().update({ discordPrefixes: ['!new'] });
+
+        window.api.botConfigLoad.mockResolvedValue({
+            prefixes: ['!old'],
+            cloud: { hostId: 'h1', relayUrl: 'https://r' },
+        });
+        await useDiscordStore.getState().checkStatus();
+
+        const s = useDiscordStore.getState();
+        expect(s.discordPrefixes).toEqual(['!new']);
+        expect(s.discordCloudHostId).toBe('h1');
+        expect(window.api.botConfigSave).toHaveBeenCalledWith({ prefixes: ['!new'] });
+    });
+});
+
 describe('봇 설정 로드 실패 시 저장', () => {
     it('처음 로드 전에 저장하면 바꾼 키만 보내 디스크의 접두사·호스트를 건드리지 않는다', async () => {
         window.api.botConfigLoad = vi.fn().mockResolvedValue({
