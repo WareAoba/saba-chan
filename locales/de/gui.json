@@ -981,7 +981,7 @@
     "restore_stop_first": "Stoppe den Server vor dem Wiederherstellen.",
     "restored": "Wiederhergestellt. Der vorherige Stand wurde ebenfalls gesichert.",
     "err_restore_outside": "Diese Sicherung wurde für einen anderen Serverordner erstellt und kann nicht in den aktuellen wiederhergestellt werden. Wenn du den Serverordner verschoben hast, verschiebe ihn zurück und versuche es erneut.",
-    "err_backup_busy": "Für diesen Server läuft bereits eine Sicherung oder Wiederherstellung. Versuche es erneut, wenn sie fertig ist.",
+    "err_backup_busy": "Für diesen Server läuft gerade eine andere Aufgabe (Sicherung, Wiederherstellung, Update …). Versuche es erneut, wenn sie fertig ist.",
     "delete": "Löschen",
     "delete_confirm": "Zum Löschen klicken",
     "kind_manual": "Manuell",
