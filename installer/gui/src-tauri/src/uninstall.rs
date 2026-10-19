@@ -288,19 +288,35 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
     if let Some(api) = &api {
         // 프로세스를 끊기 전에 이 설치의 데몬에게 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
         let ours = api.daemon_is_in(&dirs).await;
-        if ours {
+        if ours.is_some() {
             api.stop_running_servers().await;
         }
         registered = api.registered_guis(&dirs).await;
         // 데몬도 정상 종료시킨다: 강제로 끊으면 끝나는 사이에 설정·토큰 파일을 다시 쓸 수 있다
-        if ours {
-            let daemons: Vec<u32> = processes_in(install_dir, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
-            // 러너 없이 띄운 서버는 데몬의 자식이다: 데몬이 먼저 끝나면 트리 종료가 닿지 않으므로 지금 찾아 둔다
-            orphans = list_all().map(|l| tree_of(&l, &daemons, std::process::id())).unwrap_or_default();
-            if api.shutdown("[Uninstall]").await {
-                let left = wait_for_exit(&daemons, list_all, DAEMON_EXIT_WAIT, delay).await;
-                if !left.is_empty() {
-                    tracing::warn!("[Uninstall] saba-core {:?} did not stop after the shutdown request", left);
+        if let Some(health_pid) = ours {
+            let mut daemons: Vec<(u32, String)> = processes_in(install_dir, &["saba-core"]);
+            if daemons.is_empty() {
+                daemons.push((health_pid, "saba-core".to_string()));
+            }
+            let pids: Vec<u32> = daemons.iter().map(|(pid, _)| *pid).collect();
+            // 러너 없이 띄운 서버는 데몬의 자식이다: 데몬이 먼저 끝나면 트리 종료가 닿지 않으므로 지금 찾아 둔다.
+            // 목록을 못 읽으면 자식을 모르므로 정상 종료 대신 예전처럼 트리째 끊는다
+            match list_all() {
+                Some(listing) => {
+                    orphans = tree_of(&listing, &pids, std::process::id());
+                    let daemons = identify(Some(&listing), &daemons);
+                    if api.shutdown("[Uninstall]").await {
+                        let left = wait_for_exit(&daemons, list_all, DAEMON_EXIT_WAIT, delay).await;
+                        if !left.is_empty() {
+                            tracing::warn!("[Uninstall] saba-core {:?} did not stop after the shutdown request", left);
+                        }
+                    }
+                }
+                None => {
+                    tracing::warn!("[Uninstall] Cannot list the daemon's children; stopping the daemon {:?} with its tree", pids);
+                    for pid in pids {
+                        kill_pid(pid, true);
+                    }
                 }
             }
         }
@@ -321,8 +337,12 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
     let launchers: Vec<u32> =
         found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
     let unpacked = descendants_of(&launchers, install_dir);
+    // 끈 프로세스를 PID·이름·시작 시각으로 적어 둔다: 끝나기를 기다리는 사이에 PID가 다른 프로그램에 다시 쓰일 수 있다
+    let before = list_all();
     let mut stopped: Vec<(u32, bool)> = Vec::new();
+    let mut names: Vec<(u32, String)> = Vec::new();
     for (pid, name) in found {
+        names.push((pid, name.clone()));
         let tree = TARGETS.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
         tracing::info!("[Uninstall] Stopping {} (PID {})", name, pid);
         kill_pid(pid, tree);
@@ -337,29 +357,34 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
         tracing::info!("[Uninstall] Stopping {} left under the daemon (PID {})", name, pid);
         kill_pid(pid, true);
         stopped.push((pid, true));
+        names.push((pid, name));
     }
     for pid in unpacked {
         tracing::info!("[Uninstall] Stopping unpacked GUI process (PID {})", pid);
         kill_pid(pid, false);
         stopped.push((pid, false));
+        names.push((pid, String::new()));
     }
     for pid in stop_registered_guis(&registered, "[Uninstall]") {
         if !stopped.iter().any(|(p, _)| *p == pid) {
             stopped.push((pid, false));
+            names.push((pid, String::new()));
         }
     }
 
     // 강제 종료는 바로 끝나지 않는다. 끝나기 전에 데이터를 지우면 그 프로세스가 파일을 다시 쓴다.
-    // 끝날 때까지 기다리고, 남은 것은 한 번 더 끊는다
-    let pids: Vec<u32> = stopped.iter().map(|(pid, _)| *pid).collect();
-    let mut left = wait_for_exit(&pids, list_all, KILL_EXIT_WAIT, delay).await;
+    // 끝날 때까지 기다리고, 아직 같은 프로세스로 남은 것만 한 번 더 끊는다
+    let procs = identify(before.as_deref(), &names);
+    let mut left = wait_for_exit(&procs, list_all, KILL_EXIT_WAIT, delay).await;
     if !left.is_empty() {
-        for (pid, tree) in stopped.iter().filter(|(pid, _)| left.contains(pid)) {
+        let again = list_all().map(|l| still_listed(&l, &left)).unwrap_or_default();
+        for (pid, tree) in stopped.iter().filter(|(pid, _)| again.iter().any(|(p, ..)| p == pid)) {
             tracing::warn!("[Uninstall] PID {} is still running; stopping it again", pid);
             kill_pid(*pid, *tree);
         }
         left = wait_for_exit(&left, list_all, KILL_EXIT_WAIT, delay).await;
     }
+    let left: Vec<u32> = left.into_iter().map(|(pid, ..)| pid).collect();
     if left.is_empty() {
         tracing::info!("[Uninstall] All stopped processes have exited");
     } else {
@@ -368,19 +393,19 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
     left
 }
 
-/// `pids` 중 `within` 동안 `list`(`pid|...` 줄)에 남아 있는 것. 다 끝나면 바로 돌아온다.
+/// `procs` 중 `within` 동안 `list`(`list_all` 줄)에 같은 프로세스로 남아 있는 것. 다 끝나면 바로 돌아온다.
 /// 목록을 못 읽은 회차(`None`)는 아무것도 끝나지 않은 것으로 센다
 async fn wait_for_exit(
-    pids: &[u32],
+    procs: &[Found],
     mut list: impl FnMut() -> Option<String>,
     within: std::time::Duration,
     delay: std::time::Duration,
-) -> Vec<u32> {
+) -> Vec<Found> {
     let deadline = std::time::Instant::now() + within;
-    let mut left = pids.to_vec();
+    let mut left = procs.to_vec();
     while !left.is_empty() {
         if let Some(listing) = list() {
-            left.retain(|pid| pid_listed(&listing, *pid));
+            left = still_listed(&listing, &left);
         }
         if left.is_empty() || std::time::Instant::now() + delay >= deadline {
             break;
@@ -444,13 +469,31 @@ fn tree_of(listing: &str, roots: &[u32], me: u32) -> Vec<Found> {
     found
 }
 
-/// `procs` 중 `listing`에 같은 PID·이름·시작 시각으로 아직 있는 것 (PID가 다른 프로그램에 다시 쓰였으면 뺀다)
+/// `procs` 중 `listing`에 같은 PID·이름·시작 시각으로 아직 있는 것 (PID가 다른 프로그램에 다시 쓰였으면 뺀다).
+/// 이름이 빈칸이거나 시작 시각이 0이면 (적어 둘 때 몰랐으면) 그 항목은 비교하지 않는다
 fn still_listed(listing: &str, procs: &[Found]) -> Vec<Found> {
+    let stem = |n: &str| n.strip_suffix(".exe").unwrap_or(n).to_ascii_lowercase();
     let rows = proc_rows(listing);
     procs
         .iter()
-        .filter(|(pid, name, start)| rows.iter().any(|r| r.pid == *pid && r.start == *start && r.name.eq_ignore_ascii_case(name)))
+        .filter(|(pid, name, start)| {
+            rows.iter().any(|r| {
+                r.pid == *pid && (*start == 0 || r.start == *start) && (name.is_empty() || stem(r.name) == stem(name))
+            })
+        })
         .cloned()
+        .collect()
+}
+
+/// 끌 프로세스(PID, 이름)를 `listing`(`list_all`)에서 찾아 시작 시각까지 적는다. 목록에 없으면 시작 시각 0
+fn identify(listing: Option<&str>, procs: &[(u32, String)]) -> Vec<Found> {
+    let rows = listing.map(proc_rows).unwrap_or_default();
+    procs
+        .iter()
+        .map(|(pid, name)| match rows.iter().find(|r| r.pid == *pid) {
+            Some(r) => (*pid, r.name.to_string(), r.start),
+            None => (*pid, name.clone(), 0),
+        })
         .collect()
 }
 
@@ -511,13 +554,13 @@ impl DaemonApi {
         format!("http://127.0.0.1:{}{}", self.port, path)
     }
 
-    /// 설정된 포트의 데몬이 이 설치 폴더의 것인지 (경로를 모르면 아니라고 본다)
-    async fn daemon_is_in(&self, dirs: &[PathBuf]) -> bool {
+    /// 설정된 포트의 데몬이 이 설치 폴더의 것이면 그 PID (경로를 모르면 아니라고 본다)
+    async fn daemon_is_in(&self, dirs: &[PathBuf]) -> Option<u32> {
         let health = self.client.get(self.url("/health")).header("X-Saba-Token", &self.token).send().await;
-        let Ok(r) = health else { return false };
+        let r = health.ok()?;
         let pid = r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
         pid.and_then(|p| u32::try_from(p).ok())
-            .is_some_and(|pid| daemon_owner(&list_named(&["saba-core"]).unwrap_or_default(), pid, dirs) == Owner::Here)
+            .filter(|pid| daemon_owner(&list_named(&["saba-core"]).unwrap_or_default(), *pid, dirs) == Owner::Here)
     }
 
     /// 데몬에 정상 종료를 요청한다. 받아들였는지만 돌려준다 (끝났는지는 부른 쪽이 프로세스로 확인한다)
@@ -748,7 +791,12 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     } else {
         tracing::info!("[Install] A daemon from this install is running (PID {:?}); asking it to shut down", daemons);
         let left = if api.shutdown("[Install]").await {
-            wait_for_exit(&daemons, list_all, DAEMON_EXIT_WAIT, std::time::Duration::from_millis(500)).await
+            let named: Vec<(u32, String)> = daemons.iter().map(|pid| (*pid, "saba-core".to_string())).collect();
+            let procs = identify(list_all().as_deref(), &named);
+            let left = wait_for_exit(&procs, list_all, DAEMON_EXIT_WAIT, std::time::Duration::from_millis(500)).await;
+            // 기다리는 사이에 PID가 다른 프로그램에 다시 쓰였을 수 있다: 아직 같은 프로세스인 것만 끊는다
+            let left = if left.is_empty() { left } else { list_all().map(|l| still_listed(&l, &left)).unwrap_or_default() };
+            left.into_iter().map(|(pid, ..)| pid).collect()
         } else {
             daemons
         };
@@ -1280,7 +1328,8 @@ mod tests {
     #[tokio::test]
     async fn stopped_processes_are_waited_for_until_they_are_gone() {
         let mut calls = 0;
-        let left = wait_for_exit(&[10, 20], || {
+        let procs = [(10, "saba-core.exe".to_string(), 5), (20, "saba-runner.exe".to_string(), 5)];
+        let left = wait_for_exit(&procs, || {
             calls += 1;
             Some(if calls < 3 { "10|1|5|saba-core.exe|C:/x/saba-core.exe\n20|1|5|saba-runner.exe|C:/x/saba-runner.exe".into() } else { String::new() })
         }, Duration::from_secs(5), Duration::ZERO)
@@ -1289,16 +1338,21 @@ mod tests {
         assert_eq!(calls, 3);
 
         let started = Instant::now();
-        let left = wait_for_exit(&[10, 20], || Some("20|1|5|saba-runner.exe|C:/x/saba-runner.exe".to_string()), Duration::from_millis(50), Duration::from_millis(5)).await;
-        assert_eq!(left, vec![20], "one still running until the deadline");
+        let left = wait_for_exit(&procs, || Some("20|1|5|saba-runner.exe|C:/x/saba-runner.exe".to_string()), Duration::from_millis(50), Duration::from_millis(5)).await;
+        assert_eq!(left, vec![procs[1].clone()], "one still running until the deadline");
+
+        // 리뷰 288: 기다리는 사이 PID가 다른 프로그램에 다시 쓰였으면 끝난 것으로 본다 (다시 끊지 않는다)
+        let reused = wait_for_exit(&procs[1..], || Some("20|1|9|explorer.exe|C:/Windows/explorer.exe".to_string()), Duration::from_secs(5), Duration::ZERO).await;
+        assert!(reused.is_empty());
         assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     // 리뷰 288: 프로세스 목록을 못 읽은 회차는 끝났다고 보지 않는다 (그러면 살아 있는 데몬 옆에서 데이터를 지운다)
     #[tokio::test]
     async fn a_round_without_a_process_list_counts_as_still_running() {
-        let left = wait_for_exit(&[10], || None, Duration::from_millis(30), Duration::from_millis(5)).await;
-        assert_eq!(left, vec![10]);
+        let procs = [(10, "saba-core.exe".to_string(), 5)];
+        let left = wait_for_exit(&procs, || None, Duration::from_millis(30), Duration::from_millis(5)).await;
+        assert_eq!(left, procs.to_vec());
     }
 
     // 리뷰 288: 목록 조회(PowerShell)·taskkill이 멈춰도 제거기가 함께 멈추지 않는다
@@ -1339,6 +1393,11 @@ mod tests {
                      111|5|99|conhost.exe|C:\\Windows\\conhost.exe\n\
                      121|5|99|explorer.exe|C:\\Windows\\explorer.exe\n";
         assert_eq!(still_listed(later, &found), vec![(110, "java.exe".to_string(), 60)]);
+
+        // 끌 때 적는 정보: 목록에 있으면 그 이름·시작 시각, 없으면(목록 실패) 아는 이름에 시작 시각 0
+        let named = [(110, String::new()), (999, "saba-core".to_string())];
+        assert_eq!(identify(Some(listing), &named), vec![(110, "java.exe".to_string(), 60), (999, "saba-core".to_string(), 0)]);
+        assert_eq!(still_listed("999|1|42|saba-core.exe|C:\\Saba\\saba-core.exe\n", &identify(None, &named[1..])).len(), 1);
     }
 
     // 실제 프로세스 목록으로: 데몬 자리의 셸 아래 자식을 찾고, 끈 뒤 끝날 때까지 기다린다
@@ -1358,8 +1417,7 @@ mod tests {
         assert!(kids.iter().any(|(_, name, _)| name == "sleep"), "{:?}", kids);
         kill_pid(root, true);
         let _ = sh.wait();
-        let pids: Vec<u32> = kids.iter().map(|(p, ..)| *p).collect();
-        let left = wait_for_exit(&pids, list_all, Duration::from_secs(5), Duration::from_millis(50)).await;
+        let left = wait_for_exit(&kids, list_all, Duration::from_secs(5), Duration::from_millis(50)).await;
         assert!(left.is_empty(), "{:?}", left);
     }
 

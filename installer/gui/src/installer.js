@@ -1222,6 +1222,7 @@ listen('uninstall:progress', (ev) => {
         $fill.classList.add('complete-fill');
         $msg.textContent = left.length ? left.join('\n') : p.message;
         $msg.style.whiteSpace = left.length ? 'pre-line' : '';
+        $msg.style.overflowWrap = left.length ? 'anywhere' : '';
         $pct.textContent = '100%';
 
         // 종료 버튼 표시
