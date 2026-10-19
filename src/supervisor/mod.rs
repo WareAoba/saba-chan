@@ -2896,13 +2896,15 @@ impl Supervisor {
 }
 
 /// 인스턴스 폴더 바로 아래 이름이 데몬 항목을 가리킬 수 있는가. Windows는 대소문자를 가리지 않고 끝의 점·공백을
-/// 떼며, 짧은 이름(`SETTIN~1.JSO`)과 스트림 표기(`run:x`)로도 같은 항목을 연다. 그런 이름은 모두 데몬 항목으로 본다
+/// 떼며, 짧은 이름(`SETTIN~1.JSO`)과 스트림 표기(`run:x`)로도 같은 항목을 연다. 그런 이름은 모두 데몬 항목으로 본다.
+/// 대소문자는 유니코드로 견준다 (`ſ`도 대문자로는 `S`다)
 fn is_daemon_entry(name: &str) -> bool {
     if name.contains(['~', ':']) {
         return true;
     }
     let name = name.trim_end_matches(['.', ' ']);
-    crate::instance::DAEMON_ENTRIES.iter().any(|e| e.eq_ignore_ascii_case(name))
+    let same = |a: &str, b: &str| a.to_uppercase() == b.to_uppercase() || a.to_lowercase() == b.to_lowercase();
+    crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
 }
 
 #[cfg(test)]
@@ -3163,6 +3165,8 @@ mod tests {
             ("logs_space", at("logs /x")),
             ("short", at("SETTIN~1.JSO")),
             ("stream", at("run:x")),
+            ("long_s", at("ſettings.json.tmp")),
+            ("korean", at("세이브")),
             ("up", at("../other")),
             ("whole", root.to_string_lossy().into_owned()),
             ("outside", "/home/user/Documents".to_string()),
@@ -3174,7 +3178,7 @@ mod tests {
         }
         let mut cfg = serde_json::Map::new();
         Supervisor::insert_instance_fields(&mut cfg, &inst, root);
-        assert_eq!(cfg["instance_data_dirs"], json!([at("zomboid")]));
+        assert_eq!(cfg["instance_data_dirs"], json!([at("zomboid"), at("세이브")]));
         for key in ["install_dir", "working_dir", "instance_dir"] {
             assert!(cfg.get(key).is_none(), "{key} from module settings");
         }
