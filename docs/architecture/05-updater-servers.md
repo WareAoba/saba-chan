@@ -235,7 +235,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 
 | 파일 | 트리거 | 내용 |
 |---|---|---|
-| `ci.yml` | push/PR to main, develop, tag `v*` | 하나뿐인 검사 워크플로(옛 `test.yml`은 중복이라 b0b5631에서 지웠다). Rust matrix(os): `versions.py check` → fixture 모듈 생성 → `cargo clippy --workspace -D warnings` → build → test. JS(Node 22): GUI `npm ci` → vitest → `vite build`, 그리고 updater/installer 스크립트 `node --check`(`ci.yml:122-124`). Tauri GUI 셸(`saba-chan-gui/src-tauri`)은 workspace 멤버라 Rust 단계의 clippy·build·test에 들어간다 |
+| `ci.yml` | PR to main, develop / tag `v*` push / `workflow_dispatch` | 하나뿐인 검사 워크플로(옛 `test.yml`은 중복이라 b0b5631에서 지웠다). PR에서는 로컬(클라우드 작업·리뷰, PC 점검)에서 돌리지 않는 것과 릴리스를 깨뜨리는 것만 본다. `changes` job이 base와의 diff로 돌릴 job을 고른다. PR: `guard`(`versions.py check`, `.github/scripts` 패키징 시험, 항상) · `rust` Windows만(fixture 모듈 생성 → `cargo clippy --workspace -D warnings` → `cargo test --workspace`, 문서·릴리스 노트·GUI 화면 소스(`saba-chan-gui/src/`)만 바뀌면 건너뜀. `public/`은 트레이 아이콘을 `include_bytes!`로 묶으므로 건너뛰지 않는다) · `frontend`(GUI `npm ci` → `vite build`, updater/installer 스크립트 `node --check`, 프런트·locales 변경 시). 전체(태그 push, `workflow_dispatch`): 위에 더해 Ubuntu `rust`, GUI vitest, `e2e`(`tests/e2e/run-cloud.sh`, 모듈·익스텐션 `main` checkout). 같은 PR의 이전 실행은 취소한다. main push에는 돌지 않는다. Tauri GUI 셸(`saba-chan-gui/src-tauri`)은 workspace 멤버라 `rust`의 clippy·test에 들어간다 |
 | `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 올린 raw exe/zip을 `gh release download`(릴리즈의 에셋이 크기까지 모두 받아지지 않으면 실패) → `package-release.py`로 표준 zip 재패키징 → `locales.zip`. 이번 릴리즈에 없는 구성요소는 이전 릴리즈에서 가져오는데, 태그 버전이 현재보다 낮은 것만 높은 순으로 보고 정식판은 prerelease(GitHub 표시나 `-pre` 태그)에서 가져오지 않는다. `saba-runner.exe`가 staging에도, 올린 saba-core zip 루트에도 없으면 실패한다. 태그는 `v1.2.3[-pre]` 꼴이어야 하고, GitHub prerelease인데 `versions.toml` 채널이 stable이면 실패한다. 그다음 R2 단계: 태그가 `versions.toml`의 release 버전과 다르면 실패 → 릴레이와 R2에 같은 버전이 있으면(확인 실패 포함) 실패(단 `edited` 이벤트로 다시 돈 실행은 릴레이에 이미 있으면 R2·릴레이 단계와 GitHub 에셋 교체·정리를 모두 건너뛴다. 같은 태그의 실행은 줄을 서고 진행 중인 것을 취소하지 않는다) → modules·extensions 저장소 `main`을 checkout → `scripts/versions.py manifest`가 모듈·익스텐션 zip까지 묶어 manifest 생성 → `release_signing` 예제를 키 없이 먼저 빌드하고, 키는 실행 단계에만 넘겨 `saba-updater-v1` 키 서명(번들 공개키로 검증까지) → R2 `releases/<version>/` 업로드 → 릴레이 `POST /admin/releases` 등록(`release-notes/<version>.json`이 있으면 그 `{언어: 본문}`을 `notes`로 싣는다. 없으면 노트 없이 등록하고, 나중에 `PATCH /admin/releases/:id`로 고칠 수 있다. 본문은 한글을 `\uXXXX`로 이스케이프한 ASCII JSON이고 `--data-binary`로 보낸다, `scripts/versions.py:370-373`, `release.yml:248-251`). 마지막에 `scripts/changelog.py`로 만든 릴리즈 노트를 붙인다(`release.yml:1-48, 122-255, 294-304`) |
 
 - GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
@@ -246,7 +246,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 
 ### 3.2 modules / extensions repo
 
-- 두 저장소 모두 자체 릴리즈 워크플로가 없다. `saba-chan-modules`에는 검사용 `check-modules.yml`, `saba-chan-extensions`에는 pytest·ruff 검사용 `ci.yml`만 있다.
+- 두 저장소 모두 자체 릴리즈 워크플로가 없다. `saba-chan-modules`에는 검사용 `check-modules.yml`(PR은 conformance만, `workflow_dispatch`는 모듈 단위 pytest까지), `saba-chan-extensions`에는 ruff 치명 규칙·pytest 검사용 `ci.yml`(PR은 Windows만, `workflow_dispatch`는 Windows+Ubuntu)만 있다. 둘 다 main push에는 돌지 않는다.
 - 둘 다 코어 `release.yml`이 `main`을 checkout해서 같은 릴리즈 manifest에 싣는다(§3.1, [02-modules.md](02-modules.md) §5, [03-extensions.md](03-extensions.md) §3.4).
 
 ---
