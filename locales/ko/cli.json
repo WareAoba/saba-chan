@@ -957,7 +957,18 @@
     "when": "언제",
     "from": "어디서",
     "what": "한 일",
-    "result": "결과"
+    "result": "결과",
+    "scanning": "{{name}}의 코드를 검사하는 중...",
+    "declared": "선언한 기능",
+    "none_declared": "(없음)",
+    "no_findings": "검사하는 기능을 코드가 쓰지 않아요.",
+    "clean": "코드가 쓰는 기능은 모두 선언돼 있어요.",
+    "undeclared": "선언하지 않은 사용 {{count}}건: {{permissions}}. 출처를 믿을 수 있을 때만 쓰세요.",
+    "col": {
+      "permission": "기능",
+      "where": "위치",
+      "what": "코드"
+    }
   },
   "monitor": {
     "cpu": "CPU",
