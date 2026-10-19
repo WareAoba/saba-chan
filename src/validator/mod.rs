@@ -490,6 +490,11 @@ fn reserved_protocols(port: u16) -> (bool, bool) {
     }
 }
 
+/// TCP 포트(REST·RCON)가 Windows 예약 범위에 들었는가
+pub fn tcp_port_reserved_by_windows(port: u16) -> bool {
+    reserved_protocols(port).0
+}
+
 /// 기본 REST 포트가 막혔을 때 옮길 곳: `PORT_SHIFT_STEP` 간격으로 올라가며 `blocked`가 아닌 첫 포트
 pub fn next_free_port(from: u16, blocked: impl Fn(u16) -> bool) -> Option<u16> {
     (1..=u16::MAX / PORT_SHIFT_STEP)
