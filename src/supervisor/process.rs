@@ -64,14 +64,30 @@ pub fn is_same_process(pid: u32, recorded_at: u64) -> bool {
 
 /// Force-kill a process by PID. Cross-platform helper.
 /// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다.
-/// Windows는 자식까지 끝낸다: 런처형 서버(PalServer.exe 등)는 런처만 죽이면 실제 서버가 남는다
+/// 그 프로세스 하나만 끝낸다: GUI가 띄운 데몬처럼 자식이 따로 살아야 하는 경우가 있다
 pub fn force_kill_pid(pid: u32) -> Result<()> {
+    kill(pid, false)
+}
+
+/// 게임 서버 강제 종료. Windows는 자식까지 끝낸다: 런처형 서버(PalServer.exe 등)는 런처만 죽이면
+/// 실제 서버가 남는다. Unix는 `force_kill_pid`와 같다
+pub fn force_kill_tree(pid: u32) -> Result<()> {
+    kill(pid, true)
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
+fn kill(pid: u32, tree: bool) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let pid_arg = pid.to_string();
+        let mut args = vec!["/F", "/PID", pid_arg.as_str()];
+        if tree {
+            args.insert(1, "/T");
+        }
         let out = std::process::Command::new("taskkill")
-            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .args(&args)
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| anyhow::anyhow!("Failed to kill PID {}: {}", pid, e))?;
@@ -308,10 +324,9 @@ mod tests {
         assert_eq!(tracker.get_pid("srv-b").unwrap(), 9999);
     }
 
-    /// 런처형 서버(PalServer.exe 등)는 실제 서버를 자식으로 띄운다: 런처만 죽이면 서버가 남는다
+    /// 자식 하나(ping)를 띄운 런처(cmd)와 그 자식 PID
     #[cfg(windows)]
-    #[tokio::test]
-    async fn a_force_kill_also_ends_the_children() {
+    async fn launcher_with_child() -> (std::process::Child, u32) {
         use std::os::windows::process::CommandExt;
         let launcher = std::process::Command::new("cmd")
             .args(["/C", "ping -n 60 127.0.0.1 > nul"])
@@ -329,12 +344,30 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-        let child = child.expect("the launcher started its child");
-        force_kill_pid(launcher.id()).unwrap();
+        (launcher, child.expect("the launcher started its child"))
+    }
+
+    /// 런처형 서버(PalServer.exe 등)는 실제 서버를 자식으로 띄운다: 런처만 죽이면 서버가 남는다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_server_kill_also_ends_the_children() {
+        let (launcher, child) = launcher_with_child().await;
+        force_kill_tree(launcher.id()).unwrap();
         assert!(
             wait_gone(std::time::Duration::from_secs(5), || is_process_alive(child)).await,
             "the server the launcher started is still running"
         );
+    }
+
+    /// 단일 강제 종료는 자식을 남긴다: GUI를 닫을 때 GUI가 띄운 데몬·업데이터가 같이 죽으면 안 된다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_plain_force_kill_leaves_the_children() {
+        let (mut launcher, child) = launcher_with_child().await;
+        force_kill_pid(launcher.id()).unwrap();
+        let _ = launcher.wait();
+        assert!(is_process_alive(child), "the child of a killed process was killed too");
+        let _ = force_kill_pid(child);
     }
 
     /// 종료 요청이 거부되면 성공으로 치지 않는다 (권한 없는 프로세스: PID 1)
