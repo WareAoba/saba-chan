@@ -723,6 +723,8 @@
     "back_to_menu": "菜单",
     "state_no_host": "未连接",
     "state_connecting": "连接中",
+    "state_checking": "正在检查连接",
+    "checking_body": "正在读取已保存的 Discord 连接。萨巴酱醒来后会立即显示。",
     "state_connected": "已连接",
     "state_error": "连接失败",
     "nodes_empty": "还没有连接任何 Discord 服务器",
@@ -1093,10 +1095,15 @@
       "extension_modified": "扩展（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。",
       "isolated": "此组件的 Python 脚本在隔离环境中运行（仅可访问允许的文件夹）。游戏服务器进程不会被隔离。"
     },
+    "create_notice": {
+      "unverified": "此模块并非来自官方目录。其 Python 脚本在隔离环境中运行，但它安装并运行的游戏服务器不会被隔离，将以你的账户权限运行。仅在信任此模块时继续。",
+      "modified": "此模块从官方目录安装后文件已被更改。其 Python 脚本在隔离环境中运行，但它安装并运行的游戏服务器不会被隔离，将以你的账户权限运行。仅在信任此模块时继续。"
+    },
     "start_blocked": {
       "launch_outside_instance": "此未验证模块试图运行服务器文件夹之外的程序：{{file}} 如果 Java 路径是你自己设置的，请在服务器设置中重新选择。",
       "server_folder_label": "无法清理服务器文件夹（{{file}}）上的权限标记，因此未启动服务器。请确认此账户能否更改该文件夹的权限。",
-      "sandbox_unavailable": "无法为 {{component}} 准备隔离环境，因此未运行。"
+      "sandbox_unavailable": "无法为 {{component}} 准备隔离环境，因此未运行。",
+      "extension_not_verified": "这些扩展的文件已被更改，无法验证：{{extensions}}。请重新安装或恢复原始文件。"
     },
     "sandbox": {
       "title": "不隔离直接运行？",

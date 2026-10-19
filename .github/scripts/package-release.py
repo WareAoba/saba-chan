@@ -102,6 +102,13 @@ OUTPUT_DIR = Path("output")
 
 # ─── 유틸리티 ────────────────────────────────────────────
 
+def missing_required(manifest_components: dict) -> list[str]:
+    """manifest에 빠진 필수 컴포넌트 키 (versions.toml의 `required = true`, 설치기도 같은 값을 읽는다)"""
+    import tomllib
+    data = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))
+    return [k for k, c in data.get("components", {}).items() if c.get("required") and k not in manifest_components]
+
+
 def sha256_file(path: Path) -> str:
     """파일의 SHA256 해시 계산"""
     h = hashlib.sha256()
@@ -505,6 +512,11 @@ def main():
             from_current.append(key)  # generated = current
 
         print()
+
+    # 데몬·GUI·업데이터가 빠진 릴리즈는 설치하면 반쪽이 된다
+    missing = missing_required(manifest_components)
+    if missing:
+        sys.exit(f"  ✗ required component(s) missing: {', '.join(missing)}")
 
     # release_version = versions.toml의 [release] version
     import tomllib

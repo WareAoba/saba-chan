@@ -21,6 +21,8 @@ channel = "stable"
 version = "0.1.7"
 asset = "saba-core-{platform}.zip"
 install_dir = "."
+# 빠지면 앱이 돌지 않는다: 패키징이 실패하고 설치기가 설치하지 않는다
+required = true
 # saba-runner는 saba-core zip에 같이 들어가므로 버전도 같이 간다
 files = ["Cargo.toml", "runner/Cargo.toml"]
 
@@ -34,6 +36,7 @@ files = ["saba-chan-cli/Cargo.toml"]
 version = "0.1.7"
 asset = "saba-chan-gui-{platform}.zip"
 install_dir = "."
+required = true
 files = [
     "saba-chan-gui/package.json",
     "saba-chan-gui/package-lock.json",
@@ -45,6 +48,7 @@ files = [
 version = "0.1.7"
 asset = "saba-chan-updater-{platform}.zip"
 install_dir = "."
+required = true
 files = [
     "updater/Cargo.toml",
     "updater/gui/src-tauri/Cargo.toml",

@@ -164,6 +164,7 @@
     "hint": {
       "executable_missing": "缺少服务器文件。请检查文件夹或重新安装：saba-chan-cli server update",
       "extension_required": "请安装所需扩展：saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "扩展文件已被更改，无法验证：{{ids}}。请重新安装或恢复原文件：saba-chan-cli extension install {{ids}}",
       "node_token_missing": "请先配对此电脑：saba-chan-cli bot pair",
       "server_not_running": "请先启动服务器：saba-chan-cli start NAME",
       "server_running": "请先停止服务器：saba-chan-cli stop NAME",
