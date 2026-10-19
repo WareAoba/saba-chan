@@ -453,7 +453,7 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 async fn get_download_progress(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
-    let prog = state.download_progress.lock().unwrap().clone();
+    let prog = state.download_progress.lock().unwrap_or_else(|e| e.into_inner()).clone();
     Json(json!({
         "ok": true,
         "component": prog.component,
