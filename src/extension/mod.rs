@@ -123,7 +123,7 @@ impl std::fmt::Display for ExtensionError {
 impl std::error::Error for ExtensionError {}
 
 impl ExtensionError {
-    fn not_found(ext_id: &str) -> Self {
+    pub(crate) fn not_found(ext_id: &str) -> Self {
         Self {
             error_code: "not_found".to_string(),
             message: format!("Extension '{}' not found in discovered extensions", ext_id),

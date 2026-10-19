@@ -625,6 +625,9 @@ pub async fn save_extension_config(
     };
 
     let mut mgr = state.extension_manager.write().await;
+    if mgr.discovered(&ext_id).is_none() {
+        return Err(extension_err_response(&ExtensionError::not_found(&ext_id).into()));
+    }
     mgr.set_extension_config(&ext_id, values);
     let updated = mgr.get_extension_config(&ext_id);
     Ok(Json(json!({ "success": true, "config": updated })))
@@ -651,6 +654,21 @@ mod tests {
         let offline: anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>> = Err(anyhow::anyhow!("offline"));
         assert_eq!(install_source("box", s("https://cdn/box.zip"), None, &offline).map_err(|(_, c)| c), Err("sha256_required"));
         assert_eq!(install_source("nope", None, None, &remote).map_err(|(_, c)| c), Err("not_in_manifest"));
+    }
+
+    // GUI #282 리뷰: 설치되지 않은 id로 설정을 저장하면 받아서 남겼다 (다른 익스텐션 경로처럼 없다고 답한다)
+    #[tokio::test]
+    async fn config_for_an_extension_that_is_not_installed_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let ghost = "not-installed-ext-282".to_string();
+        let err = save_extension_config(State(state.clone()), Path(ghost.clone()), Json(json!({ "k": 1 }))).await.unwrap_err();
+        assert_eq!((err.0, err.1["error_code"].as_str()), (StatusCode::NOT_FOUND, Some("not_found")));
+        assert_eq!(state.extension_manager.read().await.get_extension_config(&ghost), Default::default(), "nothing is saved");
     }
 
     #[tokio::test]

@@ -357,7 +357,7 @@
 | POST | `/api/extensions/:id/unmount` | `extension.rs:211` | |
 | POST | `/api/extensions/:id/install` | `extension.rs:425` | 선택 `{download_url, sha256}`. 비어 있으면(`{}`) manifest의 URL과 sha256을 쓴다. `download_url`만 주면 manifest의 URL과 같을 때만 manifest의 sha256으로 받고, 다르면 `sha256_required`로 거부한다(`extension.rs:396-422`). 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
 | DELETE | `/api/extensions/:id` | `extension.rs:490` | |
-| GET/PUT | `/api/extensions/:id/config` | `extension.rs:574/587` | `{config}` / 객체 머지(null이면 키 삭제) |
+| GET/PUT | `/api/extensions/:id/config` | `extension.rs` `get_extension_config`·`save_extension_config` | `{config}` / 객체 머지(null이면 키 삭제). PUT은 설치되지 않은(발견되지 않은) id면 저장하지 않고 404 `not_found` |
 | GET | `/api/extensions/:id/gui` | `extension.rs` `serve_gui_bundle` | UMD JS 번들 (application/javascript). 확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 것만(`sandbox.extension_gui`), 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}` |
 | GET | `/api/extensions/:id/gui/styles` | `extension.rs` `serve_gui_styles` | text/css. 번들과 같은 조건 |
 | GET | `/api/extensions/:id/icon` | `extension.rs:520` | icon.png |
