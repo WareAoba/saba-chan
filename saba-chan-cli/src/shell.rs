@@ -211,7 +211,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
 /// 셸 한 줄을 명령 하나로 실행
 async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     let argv = std::iter::once("saba-chan-cli".to_string()).chain(words.iter().cloned());
-    let matches = match crate::cli::localized().try_get_matches_from(argv) {
+    let matches = match crate::cli::parse(argv.map(Into::into).collect()) {
         Ok(m) => m,
         Err(e) => {
             // 도움말·버전도 여기로 온다. 셸은 끝내지 않고 보여만 준다.

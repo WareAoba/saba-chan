@@ -43,7 +43,7 @@ async fn main() {
     }
     i18n::init(&bootstrap::language(lang_flag().as_deref()));
 
-    let matches = match cli::localized().try_get_matches() {
+    let matches = match cli::parse(std::env::args_os().collect()) {
         Ok(m) => m,
         Err(e) => e.exit(),
     };

@@ -267,7 +267,8 @@
     "not_found": "没有名为“{{query}}”的{{what}}。",
     "pair_expected": "应为 KEY=VALUE，实际为“{{got}}”。",
     "timeout": "守护进程响应时间过长（{{path}}）。",
-    "body_read": "无法读取来自 {{path}} 的完整响应：{{error}}"
+    "body_read": "无法读取来自 {{path}} 的完整响应：{{error}}",
+    "unknown_command": "没有这个命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。"
   },
   "agree": {
     "none": "{{name}} 没有需要同意的协议。",
@@ -684,7 +685,8 @@
       "bot.music": "Discord 服务器的音乐播放器设置。不带选项则查看",
       "bot.allow": "Discord 服务器可以查看和调用的服务器。不指定服务器：查看，`--all`：所有服务器",
       "bot.link": "在 Discord 中不带代码使用 /사바쨩 연결 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
-      "bot.words": "Discord 服务器中用来称呼这台电脑上的服务器及其命令的词。不指定服务器：全部，不带选项：查看"
+      "bot.words": "Discord 服务器中用来称呼这台电脑上的服务器及其命令的词。不指定服务器：全部，不带选项：查看",
+      "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码"
     },
     "arg": {
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
@@ -791,7 +793,8 @@
       "bot.words.word": "称呼服务器的词，多个用逗号分隔（替换当前的词）。--word \"\" 表示删除",
       "bot.words.command": "单个命令的称呼：命令=称呼,称呼（只更改该命令，命令= 表示删除）。可多次使用",
       "bot.words.clear": "删除此服务器的所有称呼",
-      "bot.channels.guild": "Discord 服务器名称或 id。省略则为所有已配对的服务器（只有一个服务器时才能更改）"
+      "bot.channels.guild": "Discord 服务器名称或 id。省略则为所有已配对的服务器（只有一个服务器时才能更改）",
+      "help.command": "命令路径（例如 `server start`）"
     },
     "after": "名称可以只写一部分（例如 start pal）。不带参数运行会打开交互式 shell。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

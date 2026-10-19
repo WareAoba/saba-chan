@@ -5,6 +5,16 @@
 use serde_json::{json, Value};
 use std::fmt;
 
+/// 종료 코드와 그때 `error.code`에 오는 값. 1에는 데몬이 준 `error_code`도 온다 (`help --json`에 싣는다)
+pub const EXIT_CODES: &[(i32, &[&str])] = &[
+    (0, &[]),
+    (1, &["failed", "partial"]),
+    (2, &["usage", "ambiguous"]),
+    (3, &["daemon_unreachable"]),
+    (4, &["not_found"]),
+    (130, &["cancelled"]),
+];
+
 #[derive(Debug, Clone)]
 pub enum CliError {
     /// 데몬이 꺼져 있거나 포트가 다르다
@@ -244,6 +254,26 @@ mod tests {
         }
         // 언어는 다른 시험이 먼저 정할 수 있어 모양만 본다
         assert!(api_hint("invalid_command", &json!({})).unwrap().contains(">/<"));
+    }
+
+    /// `help --json`의 종료 코드 표가 실제 종료 코드와 맞는다
+    #[test]
+    fn exit_code_table_matches_every_error() {
+        let all = [
+            CliError::DaemonDown { url: String::new() },
+            CliError::NotFound { what: String::new(), query: String::new(), suggestions: vec![] },
+            CliError::Ambiguous { what: String::new(), query: String::new(), candidates: vec![] },
+            CliError::Usage(String::new()),
+            CliError::Cancelled,
+            CliError::Failed(String::new()),
+            CliError::Partial { message: String::new(), data: json!({}) },
+        ];
+        for e in all {
+            let row = EXIT_CODES.iter().find(|(exit, _)| *exit == e.exit_code()).unwrap();
+            assert!(row.1.contains(&e.code().as_str()), "{} not listed under {}", e.code(), row.0);
+        }
+        let api = CliError::Api { status: 409, code: Some("backup_busy".into()), message: String::new(), body: json!({}) };
+        assert_eq!(api.exit_code(), 1);
     }
 
     #[test]
