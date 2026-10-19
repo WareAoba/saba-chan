@@ -231,6 +231,43 @@ pub fn typed(raw: &str, kind: &str) -> Result<Value> {
     }
 }
 
+/// 지금 값의 형식에 맞춰 변환한다. 목록은 쉼표로 나눈 글자들 (JSON 배열도 받는다)
+pub fn coerce(raw: &str, current: Option<&Value>) -> Result<Value> {
+    match current {
+        Some(Value::Bool(_)) => parse_bool(raw)
+            .map(Value::Bool)
+            .ok_or_else(|| usage(t!("err.not_a_bool", value = raw))),
+        Some(Value::Number(_)) => typed(raw, "number"),
+        Some(Value::String(_)) => Ok(Value::String(raw.to_string())),
+        Some(Value::Array(_)) => match guess(raw) {
+            Value::Array(a) => Ok(Value::Array(a)),
+            _ => Ok(Value::Array(
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| Value::String(p.to_string()))
+                    .collect(),
+            )),
+        },
+        _ => Ok(guess(raw)),
+    }
+}
+
+/// 없는 설정 키: 비슷한 이름을 몇 개 권한다
+pub fn unknown_setting(key: &str, names: &[String]) -> anyhow::Error {
+    let suggestions = match crate::resolve::find(names, key, |n| vec![n.clone()], |n| n.clone()) {
+        crate::resolve::Found::None(s) => s,
+        crate::resolve::Found::One(n) => vec![n],
+        crate::resolve::Found::Many(v) => v.into_iter().take(3).collect(),
+    };
+    crate::error::CliError::NotFound {
+        what: t!("noun.setting"),
+        query: key.into(),
+        suggestions,
+    }
+    .into()
+}
+
 pub fn parse_bool(raw: &str) -> Option<bool> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "true" | "yes" | "y" | "on" | "1" | "켜기" | "예" => Some(true),

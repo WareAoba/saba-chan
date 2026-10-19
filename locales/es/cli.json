@@ -524,6 +524,8 @@
     "enabled": "Activada: {{task}}",
     "disabled": "Desactivada: {{task}}",
     "no_such": "No existe la tarea {{number}} (hay {{count}}).",
+    "edited": "Tarea cambiada: {{task}}",
+    "nothing_to_edit": "Indica al menos un cambio (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Conserva al menos 1 copia de seguridad.",
     "keep_set": "Se conservarán las últimas {{count}} copias programadas.",
     "confirm_clear": "¿Eliminar todas las tareas programadas de {{name}}?",

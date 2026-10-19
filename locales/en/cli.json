@@ -637,6 +637,8 @@
     "enabled": "Turned on: {{task}}",
     "disabled": "Turned off: {{task}}",
     "no_such": "There is no task {{number}} (there are {{count}}).",
+    "edited": "Task changed: {{task}}",
+    "nothing_to_edit": "Give at least one thing to change (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Keep at least 1 backup.",
     "keep_set": "Keeping the last {{count}} scheduled backups.",
     "confirm_clear": "Remove every scheduled task of {{name}}?",

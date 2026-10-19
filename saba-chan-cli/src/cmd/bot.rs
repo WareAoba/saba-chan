@@ -5,7 +5,7 @@
 //! 봇 설정(`/api/config/bot`)은 최상위 키 단위로 머지되므로, 맵(`nodeSettings`)은 통째로 보낸다.
 
 use crate::cli::BotCmd;
-use crate::cmd::{flatten, get_path, guess, set_path, split_pairs};
+use crate::cmd::{coerce, flatten, get_path, set_path, split_pairs};
 use crate::ctx::Ctx;
 use crate::error::{failed, usage, Result};
 use crate::output::{self, s};
@@ -782,14 +782,13 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
         });
         return Ok(());
     }
+    let defaults = ctx.api.config_defaults("bot").await?;
+    let defaults = defaults.get("defaults").cloned().unwrap_or(Value::Null);
     // 최상위 키 단위로 머지되므로, 바뀐 최상위 키는 현재 값 전체에 덮어써서 보낸다
     let mut full = cfg.clone();
     let mut touched = Vec::new();
     for (k, raw) in split_pairs(pairs)? {
-        let v = if raw.is_empty() { Value::Null } else { guess(&raw) };
-        if get_path(&cfg, &k).is_none() && !v.is_null() {
-            ctx.out.warn(&t!("set.unknown_key", key = k));
-        }
+        let v = bot_value(&cfg, &defaults, &k, &raw)?;
         set_path(&mut full, &k, v);
         let top = k.split('.').next().unwrap_or("").to_string();
         if !touched.contains(&top) {
@@ -805,9 +804,56 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// `bot config` 한 칸의 값 (C14). 키는 데몬 기본값의 모양으로 확인한다: 정해진 칸 아래는 있는 키만,
+/// 비어 있는 표(별명 등) 아래는 새 키도. 데몬은 모르는 키를 버리므로 저장했다고 말하기 전에 막는다.
+/// 값은 지금 값(없으면 기본값)의 형식으로, 빈 값은 그 형식의 빈 값(표의 키는 지운다)
+fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Value> {
+    let mut shape = defaults;
+    for part in key.split('.') {
+        match shape.as_object() {
+            Some(m) if m.is_empty() => break,
+            Some(m) if m.contains_key(part) => shape = &m[part],
+            _ => {
+                let mut rows = Vec::new();
+                flatten(defaults, "", &mut rows);
+                let names: Vec<String> = rows.into_iter().map(|(k, _)| k).collect();
+                return Err(crate::cmd::unknown_setting(key, &names));
+            }
+        }
+    }
+    let current = get_path(cfg, key).or_else(|| get_path(defaults, key));
+    if raw.is_empty() {
+        return Ok(match current {
+            Some(Value::Array(_)) => json!([]),
+            Some(Value::String(_)) => json!(""),
+            _ => Value::Null,
+        });
+    }
+    coerce(raw, current)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `bot config` 값: 모르는 키는 저장하지 않고, 값은 지금 형식으로 (C14)
+    #[test]
+    fn bot_config_keys_are_checked_and_values_follow_the_current_type() {
+        let defaults = json!({
+            "prefixes": [], "cloud": { "relayUrl": "", "hostId": "" },
+            "moduleAliases": {}, "nodeSettings": {}
+        });
+        let cfg = json!({ "prefixes": ["사바쨩"], "cloud": { "relayUrl": "https://a", "hostId": "h" }, "moduleAliases": {} });
+        // 목록 칸은 쉼표로
+        assert_eq!(bot_value(&cfg, &defaults, "prefixes", "사바, saba").unwrap(), json!(["사바", "saba"]));
+        assert_eq!(bot_value(&cfg, &defaults, "prefixes", "").unwrap(), json!([]));
+        assert_eq!(bot_value(&cfg, &defaults, "cloud.relayUrl", "https://b").unwrap(), json!("https://b"));
+        // 이름이 자유로운 칸(별명 표) 아래에는 새 키를 둘 수 있다
+        assert_eq!(bot_value(&cfg, &defaults, "moduleAliases.palworld", "pal").unwrap(), json!("pal"));
+        // 모르는 키는 거절 (최상위 오타, 정해진 칸 아래 오타)
+        assert!(bot_value(&cfg, &defaults, "prefix", "x").is_err());
+        assert!(bot_value(&cfg, &defaults, "cloud.relayurl", "x").is_err());
+    }
 
     /// 릴레이가 이 PC를 아는지 한 줄로 (C11)
     #[test]

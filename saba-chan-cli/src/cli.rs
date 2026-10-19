@@ -226,6 +226,26 @@ pub enum ScheduleCmd {
         #[arg(long)]
         message: Option<String>,
     },
+    /// Change task number N in place: only the options given change (see `schedule show`)
+    Edit {
+        server: String,
+        number: usize,
+        /// Repeat every N minutes instead (30, 30m, 2h)
+        #[arg(long, value_name = "TIME", conflicts_with = "at")]
+        every: Option<String>,
+        /// Every day at this time instead (HH:MM, this PC's clock)
+        #[arg(long, value_name = "HH:MM")]
+        at: Option<String>,
+        /// New warnings in minutes before (restart/update), e.g. 10,5,1
+        #[arg(long, value_name = "MINUTES", value_delimiter = ',', conflicts_with = "no_warn")]
+        warn: Vec<u32>,
+        /// Remove the warnings
+        #[arg(long)]
+        no_warn: bool,
+        /// New message to announce
+        #[arg(long)]
+        message: Option<String>,
+    },
     /// Remove task number N (see `schedule show`)
     #[command(visible_alias = "rm")]
     Remove { server: String, number: usize },
@@ -724,7 +744,7 @@ pub enum BotCmd {
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
 
-    /// Show or change any bot setting: KEY=VALUE (dotted keys, JSON values)
+    /// Show or change a bot setting: KEY=VALUE (dotted keys as shown with no arguments, lists comma-separated)
     Config {
         #[arg(value_name = "KEY=VALUE")]
         pairs: Vec<String>,

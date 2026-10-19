@@ -524,6 +524,8 @@
     "enabled": "Activée : {{task}}",
     "disabled": "Désactivée : {{task}}",
     "no_such": "Il n'y a pas de tâche {{number}} (il y en a {{count}}).",
+    "edited": "Tâche modifiée : {{task}}",
+    "nothing_to_edit": "Indiquez au moins une modification (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Conservez au moins 1 sauvegarde.",
     "keep_set": "Les {{count}} dernières sauvegardes planifiées sont conservées.",
     "confirm_clear": "Supprimer toutes les tâches planifiées de {{name}} ?",

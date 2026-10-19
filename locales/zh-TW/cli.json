@@ -524,6 +524,8 @@
     "enabled": "已開啟：{{task}}",
     "disabled": "已關閉：{{task}}",
     "no_such": "沒有工作 {{number}}（共 {{count}} 個）。",
+    "edited": "已修改工作：{{task}}",
+    "nothing_to_edit": "請至少指定一項變更（--every、--at、--warn、--no-warn、--message）。",
     "keep_zero": "請至少保留 1 個備份。",
     "keep_set": "將保留最近 {{count}} 個排程備份。",
     "confirm_clear": "要移除 {{name}} 的所有排程工作嗎？",

@@ -5,9 +5,9 @@
 //! `reset`은 데몬이 기본값으로 되돌린다 (CLI 칸은 기본값이 없어 키를 지운다).
 
 use crate::cli::ConfigCmd;
-use crate::cmd::{flatten, get_path, guess, parse_bool, split_pairs, typed};
+use crate::cmd::{coerce, flatten, get_path, split_pairs};
 use crate::ctx::Ctx;
-use crate::error::{usage, CliError, Result};
+use crate::error::{usage, Result};
 use crate::output;
 use serde_json::{json, Map, Value};
 
@@ -193,30 +193,7 @@ fn not_found(key: &str, doc: &Value, root: Root) -> anyhow::Error {
     flatten(doc, "", &mut rows);
     let prefix = if root == Root::Cli { "cli." } else { "" };
     let names: Vec<String> = rows.into_iter().map(|(k, _)| format!("{}{}", prefix, k)).collect();
-    let found = crate::resolve::find(&names, key, |n| vec![n.clone()], |n| n.clone());
-    let suggestions = match found {
-        crate::resolve::Found::None(s) => s,
-        crate::resolve::Found::One(n) => vec![n],
-        crate::resolve::Found::Many(v) => v.into_iter().take(3).collect(),
-    };
-    CliError::NotFound {
-        what: t!("noun.setting"),
-        query: key.into(),
-        suggestions,
-    }
-    .into()
-}
-
-/// 지금 값의 형식에 맞춰 변환한다
-fn coerce(raw: &str, current: Option<&Value>) -> Result<Value> {
-    match current {
-        Some(Value::Bool(_)) => parse_bool(raw)
-            .map(Value::Bool)
-            .ok_or_else(|| usage(t!("err.not_a_bool", value = raw))),
-        Some(Value::Number(_)) => typed(raw, "number"),
-        Some(Value::String(_)) => Ok(Value::String(raw.to_string())),
-        _ => Ok(guess(raw)),
-    }
+    crate::cmd::unknown_setting(key, &names)
 }
 
 async fn set(ctx: &Ctx, pairs: &[String]) -> Result<()> {

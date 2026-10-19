@@ -40,6 +40,30 @@ pub async fn run(ctx: &Ctx, cmd: ScheduleCmd) -> Result<()> {
             list.push(task);
             save(ctx, &sv, list, None, &t!("schedule.added", task = label)).await
         }
+        ScheduleCmd::Edit {
+            server,
+            number,
+            every,
+            at,
+            warn,
+            no_warn,
+            message,
+        } => {
+            let sv = resolve::server(ctx, Some(&server)).await?;
+            let cur = ctx.api.schedule(&sv.id).await?;
+            let change = Edit {
+                every,
+                at,
+                warn,
+                no_warn,
+                message,
+            };
+            edit_on(ctx, &sv, &cur, number, |list, i| {
+                list[i] = edited(&cur, &list[i], &change)?;
+                Ok(t!("schedule.edited", task = describe(&list[i])))
+            })
+            .await
+        }
         ScheduleCmd::Remove { server, number } => {
             edit(ctx, &server, number, |list, i| {
                 let t = list.remove(i);
@@ -93,14 +117,65 @@ async fn save(ctx: &Ctx, sv: &Server, list: Vec<Value>, keep: Option<u32>, msg: 
 async fn edit(ctx: &Ctx, server: &str, number: usize, f: impl FnOnce(&mut Vec<Value>, usize) -> String) -> Result<()> {
     let sv = resolve::server(ctx, Some(server)).await?;
     let cur = ctx.api.schedule(&sv.id).await?;
-    let mut list = tasks(&cur);
+    edit_on(ctx, &sv, &cur, number, |list, i| Ok(f(list, i))).await
+}
+
+async fn edit_on(
+    ctx: &Ctx,
+    sv: &Server,
+    cur: &Value,
+    number: usize,
+    f: impl FnOnce(&mut Vec<Value>, usize) -> Result<String>,
+) -> Result<()> {
+    let mut list = tasks(cur);
     if number == 0 || number > list.len() {
         ctx.out
             .hint(&format!("saba-chan-cli schedule show {}", shell_word(&sv.name)));
         return Err(usage(t!("schedule.no_such", number = number, count = list.len())));
     }
-    let msg = f(&mut list, number - 1);
-    save(ctx, &sv, list, None, &msg).await
+    let msg = f(&mut list, number - 1)?;
+    save(ctx, sv, list, None, &msg).await
+}
+
+/// `schedule edit`에서 바꿀 것 — 준 것만
+#[derive(Default)]
+struct Edit {
+    every: Option<String>,
+    at: Option<String>,
+    warn: Vec<u32>,
+    no_warn: bool,
+    message: Option<String>,
+}
+
+/// 작업 하나에 바꿀 것을 얹고, 추가와 같은 검사(`build`)를 거친다. 켜짐 여부는 그대로
+fn edited(cur: &Value, task: &Value, change: &Edit) -> Result<Value> {
+    if change.every.is_none() && change.at.is_none() && change.warn.is_empty() && !change.no_warn && change.message.is_none() {
+        return Err(usage(t!("schedule.nothing_to_edit")));
+    }
+    let old_every = task.get("every_minutes").and_then(Value::as_u64).map(|n| n.to_string());
+    let old_at = task.get("at").and_then(Value::as_str).map(str::to_string);
+    let (every, at) = match (&change.every, &change.at) {
+        (Some(e), _) => (Some(e.clone()), None),
+        (None, Some(a)) => (None, Some(a.clone())),
+        (None, None) => (old_every, old_at),
+    };
+    let warn: Vec<u32> = if change.no_warn {
+        Vec::new()
+    } else if !change.warn.is_empty() {
+        change.warn.clone()
+    } else {
+        task.get("warn_minutes")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_u64)
+            .filter_map(|m| u32::try_from(m).ok())
+            .collect()
+    };
+    let message = change.message.clone().or_else(|| task.get("message").and_then(Value::as_str).map(str::to_string));
+    let mut out = build(cur, s(task, "action"), every.as_deref(), at.as_deref(), &warn, message.as_deref())?;
+    out["enabled"] = json!(task.get("enabled").and_then(Value::as_bool).unwrap_or(true));
+    Ok(out)
 }
 
 async fn toggle(ctx: &Ctx, server: &str, number: usize, on: bool) -> Result<()> {
@@ -299,6 +374,33 @@ fn parse_at(raw: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 작업 하나를 지우지 않고 고친다. 준 것만 바뀌고 켜짐 여부는 그대로 (C19)
+    #[test]
+    fn an_edit_changes_only_what_is_given() {
+        let cur = json!({ "backup_supported": true, "announce_supported": true });
+        let task = json!({ "action": "restart", "at": "04:00", "warn_minutes": [10, 1], "enabled": false });
+        let none = Edit::default();
+        assert!(edited(&cur, &task, &none).is_err(), "nothing to change");
+
+        let every = Edit { every: Some("2h".into()), ..Edit::default() };
+        let t = edited(&cur, &task, &every).unwrap();
+        assert_eq!(t["every_minutes"], 120);
+        assert!(t.get("at").is_none());
+        assert_eq!(t["warn_minutes"], json!([10, 1]));
+        assert_eq!(t["enabled"], false);
+
+        let warn = Edit { warn: vec![5], ..Edit::default() };
+        assert_eq!(edited(&cur, &task, &warn).unwrap()["warn_minutes"], json!([5]));
+        let no_warn = Edit { no_warn: true, ..Edit::default() };
+        assert!(edited(&cur, &task, &no_warn).unwrap().get("warn_minutes").is_none());
+
+        // 검사는 추가와 같다: 공지 문구를 비울 수 없다
+        let announce = json!({ "action": "announce", "every_minutes": 60, "message": "hi", "enabled": true });
+        let t = edited(&cur, &announce, &Edit { message: Some("bye".into()), ..Edit::default() }).unwrap();
+        assert_eq!((t["message"].clone(), t["every_minutes"].clone()), (json!("bye"), json!(60)));
+        assert!(edited(&cur, &announce, &Edit { message: Some(" ".into()), ..Edit::default() }).is_err());
+    }
 
     #[test]
     fn every_forms() {
