@@ -372,7 +372,7 @@
     "bad_quotes": "Guillemet non fermé.",
     "bye": "Au revoir. Le daemon et les serveurs continuent de tourner.",
     "ctrl_c": "(appuyez à nouveau sur Ctrl+C ou tapez exit pour quitter)",
-    "help_line": "Tapez une commande (help, Tab pour compléter) ou parlez comme sur Discord (ex. \"palworld start\"). exit pour quitter.",
+    "help_line": "Tapez une commande (help, Tab pour compléter) ou parlez comme sur Discord (ex. \"my-server-1 start\"). exit pour quitter.",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {

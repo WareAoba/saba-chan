@@ -372,7 +372,7 @@
     "bad_quotes": "引用符が閉じられていません。",
     "bye": "またね。デーモンとサーバーは動き続けます。",
     "ctrl_c": "（もう一度 Ctrl+C を押すか exit と入力すると終了します）",
-    "help_line": "コマンドを入力するか（help、Tab で補完）、Discord と同じように話しかけてください（例: \"palworld start\"）。exit で終了します。",
+    "help_line": "コマンドを入力するか（help、Tab で補完）、Discord と同じように話しかけてください（例: \"my-server-1 start\"）。exit で終了します。",
     "welcome": "サバちゃん CLI {{version}}"
   },
   "start": {

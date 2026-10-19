@@ -372,7 +372,7 @@
     "bad_quotes": "Comilla sin cerrar.",
     "bye": "Adiós. El daemon y los servidores siguen en marcha.",
     "ctrl_c": "(pulsa Ctrl+C otra vez o escribe exit para salir)",
-    "help_line": "Escribe un comando (help, Tab para autocompletar) o habla como en Discord (p. ej. \"palworld start\"). exit para salir.",
+    "help_line": "Escribe un comando (help, Tab para autocompletar) o habla como en Discord (p. ej. \"my-server-1 start\"). exit para salir.",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {

@@ -372,7 +372,7 @@
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
     "bye": "Tschüss. Daemon und Server laufen weiter.",
     "ctrl_c": "(drücke erneut Strg+C oder gib exit ein, um zu beenden)",
-    "help_line": "Gib einen Befehl ein (help, Tab zum Vervollständigen) oder schreib wie in Discord (z. B. \"palworld start\"). exit zum Beenden.",
+    "help_line": "Gib einen Befehl ein (help, Tab zum Vervollständigen) oder schreib wie in Discord (z. B. \"my-server-1 start\"). exit zum Beenden.",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {
