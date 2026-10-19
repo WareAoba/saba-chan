@@ -173,8 +173,11 @@ impl UpdateManager {
                 name.push(".update-bak");
                 let backup = out_path.with_file_name(name);
                 let _ = std::fs::remove_file(&backup);
-                std::fs::rename(out_path, &backup)?;
-                moved.push((out_path.to_path_buf(), backup, true));
+                // 다른 프로세스가 지우기 공유 없이 잡고 있으면 이름을 못 바꾼다. 예전처럼 덮어쓰기만 한다
+                match std::fs::rename(out_path, &backup) {
+                    Ok(()) => moved.push((out_path.to_path_buf(), backup, true)),
+                    Err(e) => tracing::warn!("[Updater] Cannot back up {}, overwriting in place: {}", out_path.display(), e),
+                }
             } else {
                 created.push(out_path.to_path_buf());
             }
