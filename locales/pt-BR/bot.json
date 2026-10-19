@@ -48,7 +48,8 @@
     "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "O servidor não está em execução. Por favor, inicie o servidor primeiro",
-    "module_missing": "❌ O módulo '{{module}}' não está instalado. Este servidor não pode ser controlado."
+    "module_missing": "❌ O módulo '{{module}}' não está instalado. Este servidor não pode ser controlado.",
+    "port_moved": "🔀 O Windows reservou a porta REST {{from}}, então ela foi alterada para {{to}}."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executando...",

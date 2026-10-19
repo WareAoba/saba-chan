@@ -233,6 +233,25 @@ async fn start_waiting_on_an_agreement_carries_the_list_for_the_relay() {
     assert!(r.text.contains("Accept Minecraft EULA first"), "{}", r.text);
 }
 
+/// 시작 전에 예약 범위를 피해 옮긴 포트는 디스코드 답에도 알린다 (M13. 저장값만 조용히 바뀌지 않게)
+#[tokio::test]
+async fn a_start_says_which_port_it_moved() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::OK,
+        body: json!({"success": true, "port_moved": [{"field": "rest_port", "from": 8212, "to": 8242}]}),
+    });
+    let out = run(&api, &settings(), "mc start").await;
+    assert!(out.contains("8212") && out.contains("8242"), "{}", out);
+    // 시작이 실패해도 옮긴 것은 남았으므로 알린다
+    api.reply = Some(InternalResponse {
+        status: StatusCode::OK,
+        body: json!({"success": false, "message": "port in use", "port_moved": [{"field": "rest_port", "from": 8212, "to": 8242}]}),
+    });
+    let out = run(&api, &settings(), "mc start").await;
+    assert!(out.contains("port in use") && out.contains("8242"), "{}", out);
+}
+
 /// 켜기 전 점검에 막히면 점검 코드와 모듈이 준 해결 방법을 보이고, 경로가 든 문제 문구는 내보내지 않는다
 #[tokio::test]
 async fn start_blocked_by_a_preflight_check_shows_the_solution() {
