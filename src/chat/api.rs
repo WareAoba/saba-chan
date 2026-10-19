@@ -68,7 +68,7 @@ pub trait DaemonApi {
 
 impl DaemonApi for IPCServer {
     async fn servers(&self) -> Result<Vec<ServerView>, String> {
-        let resp = into_internal(crate::ipc::handlers::server::list_servers(State(self.clone())).await).await;
+        let resp = into_internal(crate::ipc::handlers::server::list_servers_internal(self).await).await;
         if !resp.is_success() {
             return Err(resp.str_field("error").unwrap_or("failed to list servers").to_string());
         }

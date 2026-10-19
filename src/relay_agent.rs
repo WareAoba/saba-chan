@@ -454,7 +454,7 @@ impl Session {
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
-            crate::ipc::handlers::server::list_servers(axum::extract::State(self.server.clone())).await,
+            crate::ipc::handlers::server::list_servers_internal(&self.server).await,
         )
         .await
         .body

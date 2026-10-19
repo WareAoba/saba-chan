@@ -482,8 +482,20 @@ impl InstanceStore {
         let settings_path = dir.join("settings.json");
         if settings_path.exists() {
             let settings_content = fs::read_to_string(&settings_path)?;
-            let mut settings: HashMap<String, serde_json::Value> =
-                serde_json::from_str(&settings_content).unwrap_or_default();
+            let mut settings: HashMap<String, serde_json::Value> = match serde_json::from_str(&settings_content) {
+                Ok(s) => s,
+                Err(e) => {
+                    // 다음 저장이 빈 설정으로 덮기 전에 원본을 남긴다
+                    let kept = keep_corrupt_copy(&settings_path, &settings_content);
+                    tracing::warn!(
+                        "settings.json of instance '{}' is not valid JSON ({}); starting with empty settings, original kept as {}",
+                        instance.name,
+                        e,
+                        kept.as_deref().map(|p| p.display().to_string()).unwrap_or_else(|| "(could not copy)".into())
+                    );
+                    HashMap::new()
+                }
+            };
             stale |= drop_legacy_rcon_keys(&mut settings);
             instance.module_settings = settings;
         }
@@ -522,6 +534,28 @@ const LEGACY_RCON_KEYS: &[&str] = &[
     "enable-rcon",
     "broadcast-rcon-to-ops",
 ];
+
+/// 깨진 설정 파일의 사본 `<이름>.corrupt`(이미 다른 내용이 있으면 `<이름>.corrupt-<초>`). 같은 내용의 사본이 있으면 그 경로
+fn keep_corrupt_copy(path: &Path, content: &str) -> Option<PathBuf> {
+    let mut name = path.file_name()?.to_os_string();
+    name.push(".corrupt");
+    let mut target = path.with_file_name(&name);
+    if let Ok(existing) = fs::read_to_string(&target) {
+        if existing == content {
+            return Some(target);
+        }
+        name.push(format!("-{}", chrono::Utc::now().timestamp()));
+        target = path.with_file_name(name);
+    }
+    fs::write(&target, content).ok()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // 원본처럼 비밀번호가 들어 있을 수 있다
+        let _ = fs::set_permissions(&target, fs::Permissions::from_mode(0o600));
+    }
+    Some(target)
+}
 
 /// 남은 RCON 키를 지운다. 하나라도 지웠으면 true
 fn drop_legacy_rcon_keys(settings: &mut HashMap<String, serde_json::Value>) -> bool {
@@ -784,6 +818,33 @@ mod tests {
         let meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
         assert!(meta.get("rcon_port").is_none() && meta.get("rcon_password").is_none());
         assert!(!dir.join("settings.json.tmp").exists());
+    }
+
+    /// 손으로 고치다 깨진 settings.json은 다음 저장이 덮기 전에 사본으로 남긴다 (D-S5)
+    #[test]
+    fn a_broken_settings_file_is_kept_before_anything_overwrites_it() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("hand-edited", "minecraft");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+        let dir = store.instance_dir(&id);
+        let broken = r#"{"motd": "hi", "max_players": 20,}"#;
+        fs::write(dir.join("settings.json"), broken).unwrap();
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let loaded = store.get(&id).cloned().unwrap();
+        store.update(&id, loaded).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("settings.json.corrupt")).unwrap(), broken);
+
+        // 같은 내용이면 사본을 더 만들지 않는다
+        fs::write(dir.join("settings.json"), broken).unwrap();
+        InstanceStore::new(instances_dir.to_str().unwrap()).load().unwrap();
+        let copies = fs::read_dir(&dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("settings.json.corrupt")).count();
+        assert_eq!(copies, 1);
     }
 
     #[test]
