@@ -106,6 +106,8 @@ pub async fn create_instance(
             return (StatusCode::CONFLICT, Json(error)).into_response();
         }
         let mut instance = crate::instance::ServerInstance::new(name, module);
+        // REST 포트를 모듈 기본값으로 채웠는가 (사용자가 정하지 않은 값만 예약 범위 밖으로 옮긴다)
+        let mut rest_port_defaulted = false;
 
         // 모듈 정보에서 process_name, default_port, install 설정 가져오기
         let mut module_trust = None;
@@ -119,6 +121,7 @@ pub async fn create_instance(
             let supported = loaded_module.metadata.protocols_supported.as_deref().unwrap_or(&[]);
             if instance.rest_port.is_none() && supported.iter().any(|s| s == "rest") {
                 instance.rest_port = Some(loaded_module.metadata.default_rest_port());
+                rest_port_defaulted = true;
             }
 
             // 고른 프리셋(`[[presets]]`)의 설정이 바탕이 되고, 따로 보낸 설정이 그 위를 덮는다
@@ -134,6 +137,9 @@ pub async fn create_instance(
             }
             if let Some(given) = payload.get("module_settings").and_then(|v| v.as_object()) {
                 chosen.extend(given.clone());
+            }
+            if chosen.get("rest_port").is_some_and(|v| !v.is_null()) {
+                rest_port_defaulted = false;
             }
 
             // 만들 때 동의한 약관 (`[[agreements]]` id). 이 PC에서만 받는다
@@ -313,6 +319,20 @@ pub async fn create_instance(
             let error = json!({ "error": "port must be a number from 1 to 65535", "error_code": "invalid_format", "fields": [{"field": "port"}] });
             return (StatusCode::BAD_REQUEST, Json(error)).into_response();
         }
+        // 다른 인스턴스가 저장해 둔 포트. 새 인스턴스의 포트(기본값으로 채운 REST 포트 포함)는 이것과 겹치지 않게 고른다
+        let port_fields_of = |module: &str| -> Vec<String> {
+            supervisor.module_loader.get_module(module).ok()
+                .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
+                .unwrap_or_default()
+        };
+        let mut taken = std::collections::HashSet::new();
+        for other in supervisor.instance_store.list() {
+            let fields = port_fields_of(&other.module_name);
+            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+            taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
+        }
+        // Windows가 예약한 포트(예: 팰월드 REST 8212가 Hyper-V 범위 안)도 피한다: 서버가 그 포트를 열지 못한다
+        let taken_or_reserved = |p: u16| taken.contains(&p) || crate::validator::port_reserved_by_windows(p);
         if let Some(port) = given_port.and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()) {
             instance.port = Some(port);
             // 모듈이 `port` 설정을 선언했으면 그것도 맞춘다 (설치가 module_settings로 게임 설정 파일을 쓴다)
@@ -324,21 +344,22 @@ pub async fn create_instance(
             }
         } else if !migration_mode {
             // 같은 게임을 여러 개 만들면 기본 포트가 겹친다: 다른 인스턴스와 겹치지 않게 옮긴다
-            let port_fields_of = |module: &str| -> Vec<String> {
-                supervisor.module_loader.get_module(module).ok()
-                    .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
-                    .unwrap_or_default()
-            };
-            let mut taken = std::collections::HashSet::new();
-            for other in supervisor.instance_store.list() {
-                let fields = port_fields_of(&other.module_name);
-                let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-                taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
-            }
             let fields = port_fields_of(module);
             let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-            if let Some(delta) = crate::validator::shift_ports_clear_of(&mut instance, &fields, &taken) {
-                tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances", instance.name, delta);
+            if let Some(delta) = crate::validator::shift_ports_clear_of(&mut instance, &fields, taken_or_reserved) {
+                tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances and reserved ports", instance.name, delta);
+            }
+        }
+        // 기본 REST 포트가 Windows 예약 범위에 들면(팰월드 8212가 Hyper-V 범위 8135-8234 안에 든 PC) 서버가 REST를
+        // 열지 못한다: 게임 포트를 직접 정했어도, 사용자가 정하지 않은 REST 포트는 예약 범위와 다른 인스턴스의
+        // 포트를 피해 옮긴다. 설치가 모듈 설정 값으로 게임 설정 파일을 쓰므로 같은 이름의 모듈 설정도 맞춘다
+        if let Some(default) = instance.rest_port.filter(|&p| rest_port_defaulted && crate::validator::port_reserved_by_windows(p)) {
+            if let Some(free) = crate::validator::next_free_port(default, taken_or_reserved) {
+                tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", instance.name, default, free);
+                instance.rest_port = Some(free);
+                if instance.module_settings.contains_key("rest_port") {
+                    instance.module_settings.insert("rest_port".to_string(), json!(free));
+                }
             }
         }
 
@@ -417,7 +438,7 @@ pub async fn create_instance(
                             "manual" | "download" => "download".to_string(),
                             other => other.to_string(),
                         };
-                        tracker.mark_creating(&instance_name);
+                        tracker.mark_creating(&instance_name, &id);
                         tracker.update(&instance_name, crate::ipc::ProvisionProgress {
                             step: 0,
                             total: 1,
@@ -435,6 +456,8 @@ pub async fn create_instance(
                         // install_server가 보는 인스턴스 설정 (서버 종류처럼 받을 파일을 바꾸는 값)
                         let install_settings = instance.module_settings.clone();
                         let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+                        // 설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈(좀보이드 첫 INI)도 격리 실행에서 쓸 수 있게 넘긴다
+                        let instance_data_dirs = crate::supervisor::Supervisor::instance_data_dirs(&instance, &instance_dir);
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
@@ -467,10 +490,11 @@ pub async fn create_instance(
                             // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
                             // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
                             let result = {
-                                // download 방식 모듈은 먼저 list_versions로 최신 버전 조회
+                                // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
+                                // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
                                 let version = if install_config.method == "download" {
                                     match crate::plugin::run_plugin(
-                                        &module_path, "list_versions", serde_json::json!({}),
+                                        &module_path, "list_versions", serde_json::json!({ "settings": &install_settings }),
                                     ).await {
                                         Ok(ver_result) => {
                                             ver_result.get("latest")
@@ -511,6 +535,7 @@ pub async fn create_instance(
                                     "install_dir": &install_dir_str,
                                     "accepted_agreements": &accepted_agreements,
                                     "settings": &install_settings,
+                                    crate::sandbox::INSTANCE_DATA_DIRS: &instance_data_dirs,
                                 });
                                 if let Some(ref ver) = version {
                                     config["version"] = serde_json::json!(ver);
@@ -735,35 +760,36 @@ pub async fn dismiss_provision_progress(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    // 프로비저닝 에러가 있었는지 확인
-    let had_error = state
-        .provision_tracker
-        .get(&name)
-        .map(|p| p.error.is_some())
-        .unwrap_or(false);
-    let was_creating = state.provision_tracker.take_creating(&name);
+    // 끝난 설치만 닫는다: 진행 중(또는 막 시작해 아직 표시가 없는) 설치의 신규 생성 표시를 지우면
+    // 그 설치가 실패해도 롤백되지 않는다
+    let Some(progress) = state.provision_tracker.get(&name).filter(|p| p.done) else {
+        return (StatusCode::OK, Json(json!({ "success": true, "rolled_back": false }))).into_response();
+    };
+    let had_error = progress.error.is_some();
+    let creating = state.provision_tracker.take_creating(&name);
 
     state.provision_tracker.remove(&name);
 
-    // 신규 생성이 실패했을 때만 롤백 — 인스턴스 삭제
-    let rolled_back = had_error && was_creating;
-    if rolled_back {
-        let mut supervisor = state.supervisor.write().await;
-        if let Some(id) = supervisor
-            .instance_store
-            .list()
-            .iter()
-            .find(|i| i.name == name)
-            .map(|i| i.id.clone())
-        {
-            if let Err(e) = supervisor.instance_store.remove(&id) {
-                tracing::warn!("Failed to rollback instance '{}': {}", name, e);
-            } else {
-                tracing::info!(
-                    "Provisioning rollback: removed instance '{}' (id={})",
-                    name,
-                    id
-                );
+    // 신규 생성이 실패했을 때만 롤백 — 그 설치의 인스턴스를 ID로 지운다.
+    // 이름으로 찾으면 그 사이 이름을 바꾸고 같은 이름으로 만든 다른 인스턴스가 지워진다
+    let rollback = creating.filter(|_| had_error);
+    // 실제로 지웠을 때만 rolled_back (건너뛰거나 실패하면 인스턴스가 남아 있다)
+    let mut rolled_back = false;
+    if let Some(id) = rollback {
+        // 다른 작업(업데이트·복원·삭제)이 그 폴더를 쓰는 중이면 지우지 않는다
+        match super::backup::BusyGuard::take(&id) {
+            None => tracing::warn!("Skipping rollback of '{}' (id={}): another task holds the instance", name, id),
+            Some(_guard) => {
+                let mut supervisor = state.supervisor.write().await;
+                if supervisor.instance_store.get(&id).is_some() {
+                    match supervisor.instance_store.remove(&id) {
+                        Ok(_) => {
+                            rolled_back = true;
+                            tracing::info!("Provisioning rollback: removed instance '{}' (id={})", name, id)
+                        }
+                        Err(e) => tracing::warn!("Failed to rollback instance '{}': {}", name, e),
+                    }
+                }
             }
         }
     }
@@ -841,13 +867,13 @@ async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::R
     let _ = supervisor.tracker.untrack(&id);
     drop(supervisor);
     if let Some(pid) = running_pid {
-        use crate::supervisor::process::{force_kill_pid, is_process_alive, wait_gone};
+        use crate::supervisor::process::{force_kill_tree, is_process_alive, wait_gone};
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
         // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
         let killed = match managed.as_ref() {
             Some(m) if m.is_running() => m.force_kill(),
             Some(_) => Ok(()),
-            None => force_kill_pid(pid),
+            None => force_kill_tree(pid),
         };
         let gone = match killed {
             Ok(()) => {
@@ -899,6 +925,7 @@ async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::R
         let removed = state.supervisor.write().await.instance_store.remove(&id);
         match removed {
             Ok(_) => {
+                state.provision_tracker.forget(&instance.name);
                 let response = json!({ "success": true });
                 return (StatusCode::OK, Json(response)).into_response();
             }
@@ -934,6 +961,10 @@ pub async fn rename_instance(
     let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
     };
+    // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 표시와 실패 정리가 이름으로 이어진다
+    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+        return super::backup::instance_busy();
+    };
     let mut supervisor = state.supervisor.write().await;
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
         return fail(StatusCode::NOT_FOUND, format!("Instance not found: {}", id), "not_found");
@@ -953,6 +984,8 @@ pub async fn rename_instance(
     if let Err(e) = supervisor.instance_store.update(&id, instance) {
         return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "internal");
     }
+    // 실패한 설치의 진행 표시는 이름으로 이어지므로 같은 잠금 안에서 함께 옮긴다
+    state.provision_tracker.rename(&previous, new_name);
     Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
 }
 
@@ -1024,31 +1057,20 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
     (!args.iter().any(|a| a.contains(['\r', '\n', '\0']))).then_some(args)
 }
 
-/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로)
-const KNOWN_FIELDS: &[&str] = &[
-    "port",
-    "rest_host",
-    "rest_port",
-    "rest_username",
-    "rest_password",
-    "executable_path",
-    "working_dir",
-    "protocol_mode",
-    "server_version",
-    "extension_data",
-    "extra_args",
-    "memory_limit_mb",
-    // RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
-    "rcon_port",
-    "rcon_password",
-    "enable_rcon",
-];
+/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
+/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
+fn is_known_field(key: &str) -> bool {
+    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || key == "extension_data" || IGNORED_FIELDS.contains(&key)
+}
 
-/// 받지만 쓰지 않는 이름 (응답 `ignored`)
+/// 받지만 쓰지 않는 이름 (응답 `ignored`).
+/// RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
 const IGNORED_FIELDS: &[&str] = &["rcon_port", "rcon_password", "enable_rcon"];
 
 /// 모듈이 선언하지 않아도 데몬이 `module_settings`에서 읽는 설정
-const DAEMON_SETTING_KEYS: &[&str] = &["auto_restart", "restart_on_unknown_exit", "managed_start", "log_sessions_keep"];
+fn is_daemon_setting(key: &str) -> bool {
+    saba_chan_updater_lib::constants::DAEMON_SETTINGS.iter().any(|(k, _)| *k == key)
+}
 
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
@@ -1114,12 +1136,12 @@ pub async fn update_instance_settings(
     }
 
     // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
-    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`DAEMON_SETTING_KEYS`)은 받는다
+    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`constants::DAEMON_SETTINGS`)은 받는다
     if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
         if let Some(ref settings_meta) = module.metadata.settings {
             let unknown: Vec<&String> = settings_obj
                 .keys()
-                .filter(|k| !KNOWN_FIELDS.contains(&k.as_str()) && !DAEMON_SETTING_KEYS.contains(&k.as_str()))
+                .filter(|k| !is_known_field(k) && !is_daemon_setting(k))
                 .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
                 .collect();
             if !unknown.is_empty() {
@@ -1327,7 +1349,7 @@ pub async fn update_instance_settings(
     // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
-            if !KNOWN_FIELDS.contains(&key.as_str()) {
+            if !is_known_field(key) {
                 // 설정 화면은 고치지 않은 값도 함께 보낸다: 값이 바뀐 키만 사용자가 정한 것으로 기록한다
                 if updated.module_settings.get(key) != Some(value) {
                     updated.user_settings.insert(key.clone());
@@ -2105,6 +2127,96 @@ mod tests {
         assert!(super::super::backup::BusyGuard::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
     }
 
+    /// 새 인스턴스의 버전을 고를 때 인스턴스 설정(서버 종류 등)을 넘긴다: 그 종류로 받을 수 있는 최신이 다르다
+    #[tokio::test]
+    async fn the_version_for_a_new_instance_is_chosen_with_its_settings() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"server_type\"\ntype = \"text\"\ndefault = \"vanilla\"\n\n[install]\nmethod = \"download\"\n",
+        )
+        .unwrap();
+        // 설정을 받았을 때만 버전을 알려 준다. 못 받으면 "최신 버전을 찾지 못함"으로 끝난다.
+        // Windows에서는 격리 실행이라 모듈이 임시 폴더 밖에 파일을 쓸 수 없어 설치 결과로 확인한다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
+             latest = {'release': '1.0'} if config.get('settings', {}).get('server_type') == 'paper' else {}\n    \
+             print(json.dumps({'success': True, 'latest': latest}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        crate::ipc::internal::into_internal(
+            super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game", "module_settings": { "server_type": "paper" } }))).await,
+        )
+        .await;
+        // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
+        let mut progress = None;
+        for _ in 0..1200 {
+            progress = state.provision_tracker.get("a").filter(|p| p.done);
+            if progress.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let progress = progress.expect("provisioning finished");
+        assert_eq!(progress.error, None, "list_versions did not get the instance settings");
+    }
+
+    #[tokio::test]
+    async fn the_first_install_may_write_the_module_data_folder() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"cache_dir\"\ntype = \"text\"\ndefault = \"{instance_dir}/data\"\n\n[install]\nmethod = \"manual\"\n",
+        )
+        .unwrap();
+        // 설치 중에 데이터 폴더에 첫 설정 파일을 쓰는 모듈 (좀보이드 첫 INI). 격리 실행은 그 폴더를 넘겨받아야 쓸 수 있다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nnorm = lambda p: os.path.normcase(os.path.normpath(p))\n\
+             ok = norm(config['settings']['cache_dir']) in [norm(d) for d in config.get('instance_data_dirs', [])]\n\
+             print(json.dumps({'success': ok, 'message': 'no data folder'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
+        let mut progress = None;
+        for _ in 0..1200 {
+            progress = state.provision_tracker.get("a").filter(|p| p.done);
+            if progress.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let progress = progress.expect("provisioning finished");
+        assert_eq!(progress.error, None, "install_server did not get the instance data folder");
+    }
+
     #[tokio::test]
     async fn the_first_install_holds_the_instance_lock() {
         use axum::extract::State;
@@ -2135,6 +2247,66 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         panic!("the lock was never released after the install");
+    }
+
+    /// 설치 실패를 dismiss하면 그 설치의 인스턴스만 지운다: 그 사이 이름이 바뀌고 같은 이름의 다른 인스턴스가 생겨도
+    #[tokio::test]
+    async fn dismissing_a_failed_install_never_deletes_another_instance() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, install, script) in [
+            ("game", "\n[install]\nmethod = \"download\"\n", "import json, sys, time\ntime.sleep(1)\nprint(json.dumps({'success': False, 'message': 'boom'}))\n"),
+            ("plain", "", ""),
+        ] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{install}"),
+            )
+            .unwrap();
+            std::fs::write(dir.join("lifecycle.py"), script).unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let a = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        let a = a.body["id"].as_str().unwrap().to_string();
+
+        // 설치하는 동안에는 이름을 바꿀 수 없다
+        let renamed = crate::ipc::internal::into_internal(super::rename_instance(State(state.clone()), Path(a.clone()), Json(json!({ "name": "b" }))).await).await;
+        assert_eq!(renamed.status, 409, "{}", renamed.body);
+        assert_eq!(renamed.body["error_code"], "instance_busy");
+
+        for _ in 0..200 {
+            if state.provision_tracker.get("a").is_some_and(|p| p.done) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(state.provision_tracker.get("a").is_some_and(|p| p.error.is_some()), "the install should have failed");
+
+        // 실패 뒤 dismiss 전에 이름을 바꾸고, 그 이름으로 다른 인스턴스를 만든다
+        let renamed = crate::ipc::internal::into_internal(super::rename_instance(State(state.clone()), Path(a.clone()), Json(json!({ "name": "b" }))).await).await;
+        assert_eq!(renamed.status, 200, "{}", renamed.body);
+        let c = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "plain" }))).await).await;
+        let c = c.body["id"].as_str().unwrap().to_string();
+
+        // 실패 표시는 이름과 함께 옮겨 간다: 같은 이름의 새 인스턴스가 설치 중으로 보이거나 그 배너로 A가 지워지지 않게
+        assert!(state.provision_tracker.get("a").is_none(), "the new instance with the old name is not provisioning");
+        let other = crate::ipc::internal::into_internal(super::dismiss_provision_progress(Path("a".to_string()), State(state.clone())).await).await;
+        assert_eq!(other.body["rolled_back"], false);
+        assert!(state.supervisor.read().await.instance_store.get(&a).is_some(), "dismissing another name's banner keeps A");
+        let dismissed = crate::ipc::internal::into_internal(super::dismiss_provision_progress(Path("b".to_string()), State(state.clone())).await).await;
+        assert_eq!(dismissed.body["rolled_back"], true);
+        let sup = state.supervisor.read().await;
+        assert!(sup.instance_store.get(&c).is_some(), "another instance with the old name must survive");
+        assert!(sup.instance_store.get(&a).is_none(), "the failed install is rolled back");
     }
 
     #[tokio::test]
@@ -2229,6 +2401,17 @@ mod tests {
         assert!(patch(json!({ "executable_path": null })).await.status.is_success());
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((inst.executable_path, inst.working_dir), (None, None));
+
+        // 비울 수 없는 칸은 null이어도 지금 값을 둔다 (CLI가 이 표로 빈 값을 거절한다)
+        let set = json!({ "port": 25000, "working_dir": "/srv/game", "protocol_mode": "rest", "server_version": "1.2" });
+        assert!(patch(set.clone()).await.status.is_success());
+        for key in saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS {
+            assert!(patch(json!({ *key: null })).await.status.is_success());
+        }
+        let after = serde_json::to_value(state.supervisor.read().await.instance_store.get(&id).cloned().unwrap()).unwrap();
+        for key in saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS {
+            assert_eq!(after[*key], set[*key], "{key}");
+        }
     }
 
     #[test]

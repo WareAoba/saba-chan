@@ -18,14 +18,14 @@ pub async fn run(ctx: &Ctx, cmd: BackupCmd) -> Result<()> {
         BackupCmd::Create { server } => create(ctx, server.as_deref()).await,
         BackupCmd::Delete { server, backup } => {
             let sv = resolve::server(ctx, Some(&server)).await?;
-            let name = pick(ctx, &sv, &backup).await?;
+            let name = pick(ctx, &sv, backup.as_deref()).await?;
             ctx.ask
                 .ensure(&t!("backup.confirm_delete", backup = name, name = sv.name))?;
             let r = ctx.api.delete_backup(&sv.id, &name).await?;
             ctx.out.done(&t!("backup.deleted", backup = name), &r);
             Ok(())
         }
-        BackupCmd::Restore { server, backup } => restore(ctx, &server, &backup).await,
+        BackupCmd::Restore { server, backup } => restore(ctx, &server, backup.as_deref()).await,
     }
 }
 
@@ -78,7 +78,7 @@ async fn create(ctx: &Ctx, server: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-async fn restore(ctx: &Ctx, server: &str, backup: &str) -> Result<()> {
+async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, Some(server)).await?;
     let name = pick(ctx, &sv, backup).await?;
     let was_running = status_of(&runtime(ctx, &sv).await?) != "stopped";
@@ -117,9 +117,26 @@ async fn restore(ctx: &Ctx, server: &str, backup: &str) -> Result<()> {
     Ok(())
 }
 
-/// 백업 이름: 정확히, 앞부분만, 또는 `latest`(가장 최근)
-async fn pick(ctx: &Ctx, sv: &Server, query: &str) -> Result<String> {
-    let items = backups(ctx, sv).await?;
+/// 백업 이름: 정확히, 앞부분만, 또는 `latest`(가장 최근). 이름이 없으면 목록에서 고른다(최근 것부터)
+async fn pick(ctx: &Ctx, sv: &Server, query: Option<&str>) -> Result<String> {
+    let mut items = backups(ctx, sv).await?;
+    let what = t!("noun.backup");
+    let label = |b: &Value| format!("{} ({})", s(b, "name"), kind_label(s(b, "kind")));
+    let Some(query) = query.filter(|q| !q.trim().is_empty()) else {
+        if items.is_empty() {
+            return Err(crate::error::failed(t!("backup.none", name = sv.name)));
+        }
+        newest_first(&mut items);
+        // 하나뿐이어도 터미널이 아니면 고르지 않는다: 되돌리기·지우기는 이름을 적어야 한다
+        if !ctx.ask.enabled {
+            return Err(crate::error::usage(t!("resolve.name_required", what = what)));
+        }
+        let labels: Vec<String> = items.iter().map(label).collect();
+        return match ctx.ask.select(&t!("resolve.pick", what = what), &labels, 0)? {
+            Some(i) => Ok(s(&items[i], "name").to_string()),
+            None => Err(crate::error::CliError::Cancelled.into()),
+        };
+    };
     if query.eq_ignore_ascii_case("latest") {
         if let Some(b) = items
             .iter()
@@ -128,11 +145,13 @@ async fn pick(ctx: &Ctx, sv: &Server, query: &str) -> Result<String> {
             return Ok(s(b, "name").to_string());
         }
     }
-    let what = t!("noun.backup");
-    let label = |b: &Value| format!("{} ({})", s(b, "name"), kind_label(s(b, "kind")));
     let found = resolve::find(&items, query, |b| vec![s(b, "name").to_string()], label);
     let b = resolve::settle(ctx, &what, query, found, label)?;
     Ok(s(&b, "name").to_string())
+}
+
+fn newest_first(items: &mut [Value]) {
+    items.sort_by_key(|b| std::cmp::Reverse(b.get("created").and_then(Value::as_u64).unwrap_or(0)));
 }
 
 /// 데몬은 백업을 `{name, ...}`로 준다 (이름 문자열만 와도 받는다)

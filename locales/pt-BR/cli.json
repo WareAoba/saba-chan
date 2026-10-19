@@ -29,6 +29,14 @@
   },
   "bot": {
     "ask_token": "Token do nó",
+    "relay_check": "Verificação do relay",
+    "relay_ok": "respondendo",
+    "relay_failed": "sem resposta: {{error}}",
+    "expired": "expirado",
+    "expires_in": "Tempo restante",
+    "members_partial": "Não foi possível obter a lista completa do Discord; mostrando só membros com nível salvo.",
+    "requested_by": "Pedido por",
+    "username": "Usuário",
     "config_saved": "Configurações do bot salvas.",
     "confirm_unpair": "Desconectar este PC do bot do Discord e esquecer o pareamento?",
     "connection": "Conexão",
@@ -61,7 +69,9 @@
     "allow_saved": "{{guild}} agora vê apenas: {{servers}}",
     "link_accepted": "{{guild}} foi conectado a este PC.",
     "link_declined": "Pedido de conexão recusado.",
-    "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI."
+    "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI.",
+    "no_paired_servers": "Nenhum servidor do Discord está pareado com este PC ainda. Execute: saba-chan-cli bot pair",
+    "pick_server": "Vários servidores do Discord estão pareados. Informe o id do que deseja alterar: {{servers}}"
   },
   "col": {
     "players": "Jogadores",
@@ -164,6 +174,7 @@
     "hint": {
       "executable_missing": "Faltam arquivos do servidor. Verifique a pasta ou reinstale: saba-chan-cli server update",
       "extension_required": "Instale as extensões necessárias: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "Estas extensões foram alteradas e não puderam ser verificadas: {{ids}}. Reinstale-as ou restaure os arquivos originais: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Primeiro pareie este PC: saba-chan-cli bot pair",
       "server_not_running": "Primeiro inicie o servidor: saba-chan-cli start NAME",
       "server_running": "Primeiro pare o servidor: saba-chan-cli stop NAME",
@@ -183,6 +194,7 @@
   },
   "agree": {
     "none": "{{name}} não tem termos para aceitar.",
+    "unknown_id": "Ids de termos ignorados que este servidor não tem: {{ids}} (ele tem: {{known}})",
     "confirm": "{{name}}: aceitar {{names}}? Você concorda com os termos dos links acima.",
     "done": "Termos aceitos para {{name}}."
   },
@@ -247,6 +259,8 @@
   },
   "noun": {
     "command": "comando",
+    "guild": "servidor do Discord",
+    "member": "membro",
     "extension": "extensão",
     "game": "jogo",
     "module": "módulo",
@@ -278,7 +292,7 @@
     "done": "Ordem salva."
   },
   "reset": {
-    "confirm": "Apagar todos os arquivos de {{name}} e começar do zero? Isso não pode ser desfeito.",
+    "confirm": "Redefinir {{name}}? Isso não pode ser desfeito.",
     "done": "{{name}} foi redefinido."
   },
   "resolve": {
@@ -313,10 +327,13 @@
     },
     "updated": "{{name}} atualizado.",
     "updating": "Atualizando {{name}}...",
-    "version_unknown": "desconhecida"
+    "version_unknown": "desconhecida",
+    "unresponsive": "Sem resposta",
+    "unresponsive_reason": "Em execução, mas sem resposta: {{reason}}"
   },
   "set": {
     "default": "padrão",
+    "cannot_clear": "{{key}} não pode ficar vazio. Informe um novo valor.",
     "done": "{{count}} configuração(ões) de {{name}} salva(s).",
     "group": {
       "advanced": "Avançado",
@@ -392,6 +409,13 @@
   },
   "update": {
     "after_hint": "O Saba-chan vai reiniciar após a atualização. Depois verifique: saba-chan-cli update last",
+    "notes": "Notas da versão",
+    "result": "Resultado",
+    "result_ok": "sucesso",
+    "result_failed": "falhou",
+    "when": "Aplicado em",
+    "updated": "Atualizado",
+    "failed_one": "Falhou",
     "applied": "Aplicado: {{list}}",
     "applying": "Aplicando atualizações...",
     "checking": "Verificando atualizações...",
@@ -500,6 +524,8 @@
     "enabled": "Ativada: {{task}}",
     "disabled": "Desativada: {{task}}",
     "no_such": "Não existe a tarefa {{number}} (há {{count}}).",
+    "edited": "Tarefa alterada: {{task}}",
+    "nothing_to_edit": "Informe pelo menos uma alteração (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Mantenha pelo menos 1 backup.",
     "keep_set": "Mantendo os últimos {{count}} backups agendados.",
     "confirm_clear": "Remover todas as tarefas agendadas de {{name}}?",
@@ -513,6 +539,8 @@
   },
   "chatbot": {
     "api_key": "Chave de API salva",
+    "provider": "Provedor",
+    "model_replaced": "O modelo escolhido {{selected}} não está disponível; {{effective}} é usado no lugar.",
     "common": "Configurações para todos os servidores do Discord",
     "guild": "Servidor do Discord {{guild}}",
     "defaults": "(padrões)",

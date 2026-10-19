@@ -68,7 +68,7 @@ def test_palworld_real_install_run_stop(daemon, game_ports):
     iid = _provision(daemon, "pal", "palworld", game_ports[2], 7200)
     daemon.start_instance(iid)
     # Palworld는 stdin 콘솔이 없다: REST가 답하면 떠 있는 것
-    wait_until(lambda: daemon.api.post(f"/api/instance/{iid}/rest", {"endpoint": "info"}, timeout=10).status_code == 200, 600, "Palworld REST 응답", interval=5)
+    wait_until(lambda: daemon.api.post(f"/api/instance/{iid}/rest", {"endpoint": "/v1/api/info"}, timeout=10).status_code == 200, 600, "Palworld REST 응답", interval=5)
     daemon.stop_instance(iid, timeout=180)
     daemon.wait_status(iid, "stopped", timeout=180)
 

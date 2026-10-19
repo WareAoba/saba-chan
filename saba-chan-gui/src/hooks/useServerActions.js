@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
+import { showPortMoved } from '../utils/daemonEvents';
 import { reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 
@@ -40,7 +41,7 @@ export function useServerActions({
 
     // -- Internal refs for change detection --
     const guiInitiatedOpsRef = useRef(new Set());
-    const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp }
+    const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp, pending }
     const lastErrorToastRef = useRef(0);
     const firstFetchDoneRef = useRef(false);
     const bootGraceRef = useRef(true); // suppress notifications during app boot
@@ -133,7 +134,7 @@ export function useServerActions({
                         const existing = prev.find((s) => s.name === newServer.name);
 
                         // Optimistic status 보호: starting/stopping 상태를
-                        // 서버가 아직 전환 완료 전이면 유지 (최대 60초)
+                        // 서버가 아직 전환 완료 전이면 유지 (요청이 끝난 뒤 최대 60초, 요청 중에는 계속)
                         let mergedStatus = newServer.status;
                         const opt = optimisticStatusRef.current.get(newServer.name);
                         if (opt) {
@@ -142,7 +143,7 @@ export function useServerActions({
                             const transitioned =
                                 (opt.status === 'starting' && newServer.status === 'running') ||
                                 (opt.status === 'stopping' && newServer.status === 'stopped');
-                            if (transitioned || elapsed > GUARD_MS) {
+                            if (transitioned || (elapsed > GUARD_MS && !opt.pending)) {
                                 optimisticStatusRef.current.delete(newServer.name);
                             } else {
                                 mergedStatus = opt.status;
@@ -259,6 +260,13 @@ export function useServerActions({
     };
 
     // ── handleStart ─────────────────────────────────────────
+    // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (시작·재시작, 성공·실패 모두): 조용히 바뀌지 않게 알린다
+    const notifyPortMoved = (result, srv) => {
+        for (const m of Array.isArray(result?.port_moved) ? result.port_moved : []) {
+            showPortMoved({ instanceId: srv.id, name: srv.name, from: m.from, to: m.to }, t);
+        }
+    };
+
     const handleStart = async (name, module) => {
         try {
             const srv = servers.find((s) => s.name === name);
@@ -268,11 +276,15 @@ export function useServerActions({
             }
 
             // Optimistic update: 즉시 'starting' 상태 표시
-            optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
+            // 시작 요청이 끝날 때까지는(첫 시작은 몇 분) 목록 새로고침이 이 표시를 지우지 않는다
+            optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now(), pending: true });
             setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'starting' } : s)));
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(srv.id);
+            const opt = optimisticStatusRef.current.get(name);
+            if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
+            notifyPortMoved(result, srv);
 
             // ── action_required: server jar not found ──
             if (result.action_required === 'server_jar_not_found') {
@@ -498,6 +510,12 @@ export function useServerActions({
                 return;
             }
 
+            // ── error_code: start_cancelled — 켜는 동안 사용자가 정지했다: 실패가 아니므로 알리지 않는다 ──
+            if (result.error_code === 'start_cancelled') {
+                revertOptimistic(name);
+                return;
+            }
+
             // ── error_code: port_conflict — 데몬이 포트 충돌 감지 ──
             if (result.error_code === 'port_conflict' || result.error === 'port_conflict') {
                 revertOptimistic(name);
@@ -658,9 +676,9 @@ export function useServerActions({
                         return;
                     }
 
-                    if (result.success === false && result.message) {
+                    const blocked = blockedText(result, t);
+                    if (result.success === false && (result.message || blocked)) {
                         revertOptimistic(name);
-                        const blocked = blockedText(result, t);
                         safeShowToast(
                             blocked ? t('servers.stop_failed_toast', { error: blocked }) : result.message,
                             'error',
@@ -740,11 +758,19 @@ export function useServerActions({
                 try {
                     const force = srv.module_settings?.graceful_stop === false;
                     const result = await window.api.instanceRestart(srv.id, { force });
-                    if (result?.error || result?.success === false) {
+                    notifyPortMoved(result, srv);
+                    const code = result?.error_code;
+                    if (code === 'start_cancelled' || code === 'restart_cancelled') {
+                        // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
+                        revertOptimistic(name);
+                        safeShowToast(t(`errors.${code}`), 'info', 4000);
+                    } else if (result?.error || result?.success === false) {
                         revertOptimistic(name);
                         const msg = translateError(result.error || result.message || '');
                         safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
                     } else {
+                        // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다
+                        optimisticStatusRef.current.delete(name);
                         safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
                     }
                 } catch (error) {
@@ -777,7 +803,7 @@ export function useServerActions({
             }
             const code = result?.error_code;
             const msg =
-                code === 'name_taken' || code === 'server_running'
+                code === 'name_taken' || code === 'server_running' || code === 'instance_busy'
                     ? t(`servers.rename_${code}`, { name })
                     : translateError(result?.error || '');
             safeShowToast(t('servers.rename_failed_toast', { error: msg }), 'error', 4000);
@@ -806,10 +832,10 @@ export function useServerActions({
     };
 
     // ── handleAddServer ─────────────────────────────────────
-    const handleAddServer = async (payload) => {
+    const handleAddServer = async (payload, legacyModuleName) => {
         // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
-        const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
+        const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
 
         if (!serverName || !serverName.trim()) {
             setModal({
@@ -864,6 +890,13 @@ export function useServerActions({
 
             console.log('Adding instance:', instanceData);
             const result = await window.api.instanceCreate(instanceData);
+
+            // ── 켜진 익스텐션 파일이 바뀌어 확인되지 않음 (다시 설치·되돌리기 안내) ──
+            const blocked = blockedText(result, t);
+            if (blocked) {
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: blocked });
+                return false;
+            }
 
             // ── extension_required 처리 ──
             if (result.error_code === 'extension_required') {

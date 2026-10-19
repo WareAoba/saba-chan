@@ -224,6 +224,7 @@
     "type_to_filter": "Type a command or select from the list"
   },
   "server_status": {
+    "unresponsive": "Running but not responding: {{reason}}",
     "running": "Running",
     "stopped": "Stopped",
     "stopping": "Stopping...",
@@ -394,10 +395,12 @@
     "restart_confirm_message": "Stop and start '{{name}}' again? Connected players will be dropped for a moment.",
     "restarting_toast": "Restarting '{{name}}'…",
     "restart_completed_toast": "'{{name}}' restarted",
+    "port_moved": "{{name}}: the management REST port {{from}} is reserved by Windows, so it was changed to {{to}}.",
     "restart_failed_toast": "Couldn't restart: {{error}}",
     "rename_failed_toast": "Couldn't rename: {{error}}",
     "rename_name_taken": "'{{name}}' is already taken",
     "rename_server_running": "Stop the server before renaming it",
+    "rename_instance_busy": "Can't rename while another task (starting, installing, updating, backing up or restoring) is in progress. Try again when it's done",
     "dependency_unmet_title": "Missing requirements",
     "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again.",
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
@@ -429,6 +432,9 @@
     "loading_tips": "You can manage multiple game servers simultaneously"
   },
   "errors": {
+    "start_cancelled": "The server was stopped while it was starting, so it was not started.",
+    "console_input_full": "The server is still processing earlier input. Try again in a moment.",
+    "restart_cancelled": "The server was started or removed elsewhere while waiting, so it was not restarted.",
     "executable_not_found": "Game server executable not found. Please check the path in settings.",
     "file_not_found": "File or folder not found. Please check the path.",
     "permission_denied": "Permission denied. Please check file access permissions.",
@@ -726,6 +732,8 @@
     "back_to_menu": "Menu",
     "state_no_host": "Not connected",
     "state_connecting": "Connecting",
+    "state_checking": "Checking connection",
+    "checking_body": "Loading your saved Discord connection. It will show up as soon as Saba-chan is awake.",
     "state_connected": "Connected",
     "state_error": "Connection failed",
     "nodes_empty": "No Discord server connected yet",
@@ -1050,8 +1058,6 @@
     "tool_lol_hint": "Looks up League of Legends match history.",
     "tool_images": "Image generation",
     "tool_images_hint": "Draws pictures (10 per day).",
-    "tool_social_notes": "Social notes",
-    "tool_social_notes_hint": "Keeps private notes about the mood and people. Never shown in the app.",
     "relay_delete_pending": "The old chatbot settings haven't been removed from the relay yet. It will retry on the next connection.",
     "channels_moved": "Pick the channels the chatbot talks in from the Channels tab of each Discord server.",
     "prefix_calls": "It answers when called with a command prefix from Discord › Settings.",
@@ -1096,10 +1102,16 @@
       "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
       "isolated": "This component's Python scripts run in an isolated environment (allowed folders only). The game server process is not isolated."
     },
+    "create_notice": {
+      "unverified": "This module is not from the official catalog. Its Python scripts run isolated, but the game server it installs and runs is not isolated and runs with your account's permissions. Only continue if you trust this module.",
+      "modified": "This module's files changed after installing from the official catalog. Its Python scripts run isolated, but the game server it installs and runs is not isolated and runs with your account's permissions. Only continue if you trust this module."
+    },
     "start_blocked": {
       "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}} If you set the Java path yourself, choose it again in the server settings.",
       "server_folder_label": "Couldn't clean up the permission marks on the server folder ({{file}}), so the server wasn't started. Check that this account can change that folder's permissions.",
-      "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run."
+      "server_in_sync_folder": "The server wasn't started because {{file}} is inside a sync folder such as OneDrive. Move the server folder outside the sync folder.",
+      "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run.",
+      "extension_not_verified": "These extensions' files have changed and could not be verified: {{extensions}}. Reinstall them or restore the original files."
     },
     "sandbox": {
       "title": "Run without isolation?",

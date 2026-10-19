@@ -5,6 +5,9 @@
 import i18n from 'i18next';
 import { createDaemonClient, queryString } from './daemon';
 
+/** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
+const START_TIMEOUT_MS = 30 * 60_000;
+
 // 오류·상태 문구는 main.js처럼 common 네임스페이스
 const t = (key, vars = {}) => i18n.t(key, { ns: 'common', ...vars });
 
@@ -147,11 +150,17 @@ export function createApi({ invoke, hub }) {
                 return connectionError(error);
             }
         },
-        // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
+        // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다.
+        // 첫 시작은 준비에 몇 분이 걸릴 수 있어 CLI처럼 30분까지 기다린다 (중간에 끊으면 시작 중인데 실패로 보인다)
         instanceStart: async (instanceId) => {
             try {
-                return (await post(`/api/instance/${encodeURIComponent(instanceId)}/start`, {}, { timeout: 30000 }))
-                    .data;
+                return (
+                    await post(
+                        `/api/instance/${encodeURIComponent(instanceId)}/start`,
+                        {},
+                        { timeout: START_TIMEOUT_MS },
+                    )
+                ).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -546,6 +555,9 @@ export function createApi({ invoke, hub }) {
             daemonCall('post', `/api/instance/${encodeURIComponent(id)}/restart`, { force: !!opts?.force }, 150000),
         instanceRename: (id, name) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/rename`, { name }),
         instanceCommands: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/commands`),
+        // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
+        instanceValidate: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
+        instanceDiagnose: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),
         // 설정 화면용: 디스크의 실제 설정 (실패하면 success:false)
         instanceReadLiveSettings: (id) =>
             daemonCall('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),
@@ -564,7 +576,8 @@ export function createApi({ invoke, hub }) {
                 return (await get('/api/extensions')).data;
             } catch (error) {
                 console.warn('[Extension] Failed to list extensions:', error.message);
-                return { extensions: [] };
+                // error가 있으면 받은 목록이 아니다: 받아 둔 목록을 빈 목록으로 덮지 않게
+                return { extensions: [], error: error.message || 'extension list unavailable' };
             }
         },
         extensionEnable: async (extId) => {
@@ -588,6 +601,10 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error);
             }
         },
+        // 익스텐션 설정 (manifest config_fields). Set은 값 객체를 그대로 보낸다(키 단위 병합, null이면 삭제)
+        extensionConfigGet: (extId) => daemonCall('get', `/api/extensions/${encodeURIComponent(extId)}/config`),
+        extensionConfigSet: (extId, config) =>
+            daemonCall('put', `/api/extensions/${encodeURIComponent(extId)}/config`, config),
         extensionI18n: async (extId, locale) => {
             try {
                 return (await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`))
@@ -724,18 +741,10 @@ export function createApi({ invoke, hub }) {
         consolePopin: (instanceId) => invoke('console_popin', { instanceId }),
         consoleToggleAlwaysOnTop: (instanceId, pinned) =>
             invoke('console_toggle_always_on_top', { instanceId, pinned }),
-        onConsolePopoutOpened: (callback) => {
-            hub.on('console:popoutOpened', callback);
-        },
-        offConsolePopoutOpened: () => hub.offAll('console:popoutOpened'),
-        onConsolePopoutClosed: (callback) => {
-            hub.on('console:popoutClosed', callback);
-        },
-        offConsolePopoutClosed: () => hub.offAll('console:popoutClosed'),
-        onConsolePopinRequest: (callback) => {
-            hub.on('console:popinRequest', callback);
-        },
-        offConsolePopinRequest: () => hub.offAll('console:popinRequest'),
+        // 셸 이벤트 구독은 그 구독만 떼는 함수를 돌려준다 (다른 화면의 구독은 남는다)
+        onConsolePopoutOpened: (callback) => hub.on('console:popoutOpened', callback),
+        onConsolePopoutClosed: (callback) => hub.on('console:popoutClosed', callback),
+        onConsolePopinRequest: (callback) => hub.on('console:popinRequest', callback),
 
         // ── 업데이터 (데몬 HTTP API) ──
         updaterCheck: async () => {
@@ -1032,6 +1041,8 @@ export function createApi({ invoke, hub }) {
         // ── 동의·온보딩·백업·예약·챗봇 ──
         instanceAgreements: (id, accept) => daemonJson('post', instancePath(id, '/agreements'), { accept }),
         onboarding: () => daemonJson('get', '/api/onboarding'),
+        // 문제를 물어볼 때 붙여 넣는 데몬 진단 (비밀은 데몬이 싣지 않는다)
+        daemonDiagnostics: () => daemonJson('get', '/api/diagnostics'),
         instanceBackups: (id) => daemonJson('get', instancePath(id, '/backups')),
         instanceBackupCreate: (id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT),
         instanceBackupDelete: (id, name) =>
@@ -1098,15 +1109,9 @@ export function createApi({ invoke, hub }) {
         },
 
         // ── 앱 수명 ──
-        onCloseRequest: (callback) => {
-            hub.on('app:closeRequest', callback);
-        },
-        offCloseRequest: () => hub.offAll('app:closeRequest'),
+        onCloseRequest: (callback) => hub.on('app:closeRequest', callback),
         closeResponse: (choice) => send('app_close_response', { choice }),
-        onStatusUpdate: (callback) => {
-            hub.on('status:update', callback);
-        },
-        offStatusUpdate: () => hub.offAll('status:update'),
+        onStatusUpdate: (callback) => hub.on('status:update', callback),
         daemonStatus: () => invoke('daemon_status'),
         daemonRestart: () => invoke('daemon_restart'),
 

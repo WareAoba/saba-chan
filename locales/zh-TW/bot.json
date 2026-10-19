@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **伺服器清單**",
     "empty": "📭 未登錄伺服器",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 執行中",
@@ -48,7 +48,8 @@
     "not_found": "❌ 找不到模組 \"{{alias}}\" 的伺服器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
     "not_running_default": "伺服器未執行。請先啟動伺服器",
-    "module_missing": "❌ 模組 '{{module}}' 未安裝。此伺服器無法控制。"
+    "module_missing": "❌ 模組 '{{module}}' 未安裝。此伺服器無法控制。",
+    "port_moved": "🔀 Windows 保留了管理用 REST 連接埠 {{from}}，已改為 {{to}}。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 執行中...",
@@ -293,6 +294,34 @@
       "webSearch": "網頁搜尋",
       "disabledTools": "已關閉的工具組",
       "step": "步驟"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…另有 {{count}} 項",
+      "backups": "💾 **{{count}} 個備份**",
+      "backups_empty": "📭 沒有備份",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "手動",
+        "scheduled": "排程",
+        "pre-update": "更新前",
+        "pre-restore": "還原前"
+      },
+      "events": "📜 **最近的啟動與停止紀錄**",
+      "events_empty": "📭 沒有紀錄",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "已停止",
+        "in_game_stop": "在遊戲內停止",
+        "crash": "異常結束",
+        "start_failed": "啟動失敗",
+        "unknown_exit": "不明原因結束"
+      },
+      "updates": "⬆️ **{{count}} 個更新**",
+      "updates_none": "✅ 全部已是最新",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · 記憶體 {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

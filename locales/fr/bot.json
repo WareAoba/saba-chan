@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **Liste des serveurs**",
     "empty": "📭 Aucun serveur enregistré",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 En cours d'exécution",
@@ -48,7 +48,8 @@
     "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Le serveur n'est pas en cours d'exécution. Veuillez d'abord démarrer le serveur",
-    "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé."
+    "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé.",
+    "port_moved": "🔀 Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
@@ -293,6 +294,34 @@
       "webSearch": "Recherche web",
       "disabledTools": "Outils désactivés",
       "step": "Étape"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…et {{count}} de plus",
+      "backups": "💾 **{{count}} sauvegardes**",
+      "backups_empty": "📭 Aucune sauvegarde",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "manuelle",
+        "scheduled": "planifiée",
+        "pre-update": "avant mise à jour",
+        "pre-restore": "avant restauration"
+      },
+      "events": "📜 **Démarrages et arrêts récents**",
+      "events_empty": "📭 Aucun enregistrement",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "arrêté",
+        "in_game_stop": "arrêté en jeu",
+        "crash": "plantage",
+        "start_failed": "échec du démarrage",
+        "unknown_exit": "arrêt pour une raison inconnue"
+      },
+      "updates": "⬆️ **{{count}} mises à jour**",
+      "updates_none": "✅ Tout est à jour",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · Mémoire {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

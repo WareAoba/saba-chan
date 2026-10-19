@@ -222,6 +222,7 @@
     "type_to_filter": "Befehl eingeben oder aus der Liste wählen"
   },
   "server_status": {
+    "unresponsive": "Läuft, reagiert aber nicht: {{reason}}",
     "running": "Läuft",
     "stopped": "Gestoppt",
     "stopping": "Wird beendet...",
@@ -391,10 +392,12 @@
     "restart_confirm_message": "'{{name}}' stoppen und neu starten? Verbundene Spieler werden kurz getrennt.",
     "restarting_toast": "'{{name}}' wird neu gestartet…",
     "restart_completed_toast": "'{{name}}' neu gestartet",
+    "port_moved": "{{name}}: Der REST-Verwaltungsport {{from}} ist von Windows reserviert und wurde auf {{to}} geändert.",
     "restart_failed_toast": "Neustart fehlgeschlagen: {{error}}",
     "rename_failed_toast": "Umbenennen fehlgeschlagen: {{error}}",
     "rename_name_taken": "'{{name}}' ist bereits vergeben",
     "rename_server_running": "Stoppe den Server, bevor du ihn umbenennst",
+    "rename_instance_busy": "Der Name kann nicht geändert werden, während ein anderer Vorgang (Start, Installation, Update, Sicherung oder Wiederherstellung) läuft. Versuche es danach erneut",
     "dependency_unmet_title": "Fehlende Voraussetzungen",
     "dependency_unmet_message": "Das Modul für '{{name}}' benötigt die unten stehenden Versionen. Aktualisiere oder installiere und aktiviere die Erweiterung und starte dann erneut.",
     "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",
@@ -426,6 +429,9 @@
     "loading_tips": "Sie können mehrere Spielserver gleichzeitig verwalten"
   },
   "errors": {
+    "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
+    "console_input_full": "Der Server verarbeitet noch frühere Eingaben. Versuche es gleich noch einmal.",
+    "restart_cancelled": "Der Server wurde während des Wartens an anderer Stelle gestartet oder entfernt, daher wurde er nicht neu gestartet.",
     "executable_not_found": "Ausführbare Datei des Spielservers nicht gefunden. Bitte überprüfen Sie den Pfad in den Einstellungen.",
     "file_not_found": "Datei oder Ordner nicht gefunden. Bitte überprüfen Sie den Pfad.",
     "permission_denied": "Berechtigung verweigert. Bitte überprüfen Sie die Dateizugriffsberechtigung.",
@@ -723,6 +729,8 @@
     "back_to_menu": "Menü",
     "state_no_host": "Nicht verbunden",
     "state_connecting": "Verbinde",
+    "state_checking": "Verbindung wird geprüft",
+    "checking_body": "Deine gespeicherte Discord-Verbindung wird geladen. Sie erscheint, sobald Saba-chan wach ist.",
     "state_connected": "Verbunden",
     "state_error": "Verbindung fehlgeschlagen",
     "nodes_empty": "Noch kein Discord-Server verbunden",
@@ -1047,8 +1055,6 @@
     "tool_lol_hint": "Sucht den League-of-Legends-Spielverlauf.",
     "tool_images": "Bilderzeugung",
     "tool_images_hint": "Zeichnet Bilder (10 pro Tag).",
-    "tool_social_notes": "Soziale Notizen",
-    "tool_social_notes_hint": "Führt private Notizen über Stimmung und Leute. Werden in der App nie angezeigt.",
     "relay_delete_pending": "Die alten Chatbot-Einstellungen wurden noch nicht vom Relay entfernt. Beim nächsten Verbinden wird es erneut versucht.",
     "channels_moved": "Die Kanäle des Chatbots wählst du im Tab „Kanäle“ des jeweiligen Discord-Servers.",
     "prefix_calls": "Er antwortet, wenn er mit einem Befehlspräfix aus Discord › Einstellungen gerufen wird.",
@@ -1093,10 +1099,16 @@
       "extension_modified": "Die Erweiterung ({{id}}) wurde nach der Installation verändert. Installiere sie neu, falls du sie nicht selbst bearbeitet hast.",
       "isolated": "Die Python-Skripte dieser Komponente laufen isoliert (nur erlaubte Ordner). Der Gameserver-Prozess wird nicht isoliert."
     },
+    "create_notice": {
+      "unverified": "Dieses Modul stammt nicht aus dem offiziellen Katalog. Seine Python-Skripte laufen isoliert, aber der Gameserver, den es installiert und startet, wird nicht isoliert und läuft mit den Rechten deines Kontos. Fahre nur fort, wenn du diesem Modul vertraust.",
+      "modified": "Die Dateien dieses Moduls wurden nach der Installation aus dem offiziellen Katalog geändert. Seine Python-Skripte laufen isoliert, aber der Gameserver, den es installiert und startet, wird nicht isoliert und läuft mit den Rechten deines Kontos. Fahre nur fort, wenn du diesem Modul vertraust."
+    },
     "start_blocked": {
       "launch_outside_instance": "Dieses nicht verifizierte Modul wollte ein Programm außerhalb des Serverordners starten: {{file}} Wenn du den Java-Pfad selbst festgelegt hast, wähle ihn in den Servereinstellungen erneut aus.",
       "server_folder_label": "Die Berechtigungsmarkierungen des Serverordners ({{file}}) konnten nicht bereinigt werden, daher wurde der Server nicht gestartet. Prüfe, ob dieses Konto die Berechtigungen des Ordners ändern darf.",
-      "sandbox_unavailable": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden, daher wurde sie nicht gestartet."
+      "server_in_sync_folder": "Der Server wurde nicht gestartet, weil {{file}} in einem Synchronisierungsordner wie OneDrive liegt. Verschiebe den Serverordner aus dem Synchronisierungsordner.",
+      "sandbox_unavailable": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden, daher wurde sie nicht gestartet.",
+      "extension_not_verified": "Die Dateien dieser Erweiterungen wurden geändert und konnten nicht überprüft werden: {{extensions}}. Installieren Sie sie neu oder stellen Sie die ursprünglichen Dateien wieder her."
     },
     "sandbox": {
       "title": "Ohne Isolation ausführen?",

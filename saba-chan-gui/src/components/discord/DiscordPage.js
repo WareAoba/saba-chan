@@ -23,9 +23,10 @@ const AUTOSAVE_MS = 600;
 /** 짝짓기 전에 릴레이 주소(설정 화면에서 바꿨을 수 있다)를 config에 저장한다. 실패하면 false */
 const saveRelayUrl = () => useDiscordStore.getState().saveConfig();
 
-/** 연결 상태 머신: no_host → connecting → connected | error */
-export function cloudStateOf({ hostId, connected, connecting, error }) {
-    if (!hostId) return 'no_host';
+/** 연결 상태 머신: (checking →) no_host → connecting → connected | error */
+export function cloudStateOf({ hostId, connected, connecting, error, loaded }) {
+    // 데몬에서 설정을 아직 못 읽었으면 호스트가 비어 있어도 연결 전인지 알 수 없다
+    if (!hostId) return loaded === false ? 'checking' : 'no_host';
     if (connected) return 'connected';
     if (error && !connecting) return 'error';
     return 'connecting';
@@ -129,7 +130,12 @@ export function DiscordPage({
     const mainRef = useSwapAnimation(`${view.kind}:${view.id ?? ''}`);
     const [showMainNarrow, setShowMainNarrow] = useState(!!initialView);
     const [cloudError, setCloudError] = useState('');
+    // 릴레이 확인이 연달아 실패한 이유 (노드 목록은 연결됐을 때만 읽으므로 그 오류만으로는 실패를 알 수 없다)
+    const relayError = useDiscordStore((s) => s.relayError);
+    // 끊긴 동안은 릴레이 실패가 이유다 (연결됐을 때 남은 노드 목록 오류는 지난 일)
+    const connectionError = relayConnected ? cloudError : relayError;
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
+    const botConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
     const [membersLoading, setMembersLoading] = useState(null);
     const [membersFailed, setMembersFailed] = useState({});
     // 길드별 일부 목록 사유 (권한을 등록한 멤버만 받았을 때)
@@ -156,7 +162,8 @@ export function DiscordPage({
         hostId: discordCloudHostId,
         connected: relayConnected,
         connecting: relayConnecting,
-        error: cloudError,
+        error: connectionError,
+        loaded: botConfigLoaded,
     });
 
     const go = (next) => {
@@ -350,7 +357,9 @@ export function DiscordPage({
         }
     }, [view, cloudNodes]);
 
-    const connTone = { connected: 'ok', connecting: 'warn', error: 'stop', no_host: 'idle' }[cloudState];
+    const connTone = { connected: 'ok', connecting: 'warn', checking: 'warn', error: 'stop', no_host: 'idle' }[
+        cloudState
+    ];
     const connLabel = t(`discord.state_${cloudState}`);
 
     const navHidden = singleColumn && showMainNarrow;
@@ -386,7 +395,11 @@ export function DiscordPage({
                                 <Icon name={cloudState === 'connected' ? 'discordLogo' : 'discord'} size="sm" />
                             </span>,
                             t('discord.nav_connection'),
-                            <StatusChip tone={connTone} pulse={cloudState === 'connecting'} label={connLabel} />,
+                            <StatusChip
+                                tone={connTone}
+                                pulse={cloudState === 'connecting' || cloudState === 'checking'}
+                                label={connLabel}
+                            />,
                         )}
 
                         <div className="dc-nav-group">
@@ -490,14 +503,14 @@ export function DiscordPage({
                                 cloudState={cloudState}
                                 hostId={discordCloudHostId}
                                 relayUrl={relayUrl}
-                                cloudError={cloudError}
+                                cloudError={connectionError}
                                 nodeCount={cloudNodes.length}
                                 botStatus={discordBotStatus}
                                 agentReplaced={agentReplaced}
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}
-                                onReload={loadNodes}
+                                onReload={relayConnected ? loadNodes : () => useDiscordStore.getState().checkStatus()}
                                 onDisconnect={disconnect}
                                 onStartAgent={handleStartDiscordBot}
                                 nodes={cloudNodes}

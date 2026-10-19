@@ -186,10 +186,26 @@ pub fn message(blocked: &Blocked) -> String {
     let file = blocked.file.as_deref().unwrap_or("");
     match blocked.code {
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
+        "server_in_sync_folder" => format!("The server folder is inside a sync folder such as OneDrive, so saba-chan cannot check it: {}. Move the server folder outside the sync folder.", file),
         "server_folder_label" => format!("Could not remove the low integrity mark from the server folder: {}. Check that this account can change the permissions of that folder.", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
+}
+
+/// `clear_low_labels` 오류 문구에 붙는 표시: 그 경로가 동기화 폴더(OneDrive 등)의 클라우드 파일이다
+pub const SYNC_FOLDER_MARK: &str = "is a cloud file of a sync folder";
+
+/// 표시를 걷지 못한 경로들로 막는 이유를 고른다. 동기화 폴더의 클라우드 파일이 섞여 있으면 그것이 원인이다
+/// (재분석 지점이라 표시를 읽지 못한다. 사용자 결정으로 막는 것은 그대로 두고, 폴더를 옮기라고 알린다)
+#[cfg_attr(not(windows), allow(dead_code))] // 표시 걷기는 Windows에서만 한다
+fn folder_label_block(stuck: &[(PathBuf, String)]) -> Blocked {
+    let detail = stuck.iter().map(|(p, e)| format!("{}: {}", p.display(), e)).collect::<Vec<_>>().join("; ");
+    let (code, first) = match stuck.iter().find(|(_, e)| e.contains(SYNC_FOLDER_MARK)) {
+        Some((path, _)) => ("server_in_sync_folder", Some(path)),
+        None => ("server_folder_label", stuck.first().map(|(p, _)| p)),
+    };
+    Blocked { code, file: first.map(|p| p.display().to_string()), detail: Some(detail) }
 }
 
 /// 서버 폴더의 표시를 걷은 뒤 서버를 띄울 때까지 쥐는 잠금 (`guard_launch_for`가 돌려준다). 격리 실행은 권한을 주기
@@ -209,9 +225,15 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
             for dir in dirs.iter().filter(|d| d.is_dir()) {
                 let started = std::time::Instant::now();
                 match appcontainer::clear_low_labels(dir) {
+                    // 표시가 없어도 파일마다 읽으므로 큰 서버 폴더는 시간이 든다: 오래 걸리면 남긴다
+                    Ok(0) if started.elapsed() >= std::time::Duration::from_millis(500) => tracing::info!(
+                        "[Sandbox] checked {} for low integrity labels (none) in {} ms",
+                        dir.display(),
+                        started.elapsed().as_millis()
+                    ),
                     Ok(0) => {}
                     Ok(n) => tracing::info!(
-                        "[Sandbox] removed the low integrity label from {} folder(s) under {} in {} ms",
+                        "[Sandbox] removed the low integrity label from {} file(s) and folder(s) under {} in {} ms",
                         n,
                         dir.display(),
                         started.elapsed().as_millis()
@@ -223,10 +245,10 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
         })
         .await
         .unwrap_or_else(|e| vec![(PathBuf::new(), e.to_string())]);
-        if let Some((first, _)) = stuck.first() {
-            let detail = stuck.iter().map(|(p, e)| format!("{}: {}", p.display(), e)).collect::<Vec<_>>().join("; ");
-            tracing::warn!("[Sandbox] could not remove the low integrity label: {}", detail);
-            return Err(Blocked { code: "server_folder_label", file: Some(first.display().to_string()), detail: Some(detail) });
+        if !stuck.is_empty() {
+            let blocked = folder_label_block(&stuck);
+            tracing::warn!("[Sandbox] could not remove the low integrity label: {}", blocked.detail.as_deref().unwrap_or(""));
+            return Err(blocked);
         }
     }
     #[cfg(not(windows))]
@@ -343,6 +365,14 @@ pub struct Isolation {
 
 /// 데몬이 lifecycle 호출에 넣는 인스턴스 폴더 키 (설치·업데이트 호출은 `install_dir`만 넣는다)
 const INSTANCE_DIR_FIELDS: [&str; 3] = ["instance_dir", "working_dir", "install_dir"];
+
+/// 인스턴스 폴더 안의 모듈 데이터 폴더 목록 키 (`Supervisor::insert_instance_fields`가 만든다. 좀보이드 cache_dir 등)
+pub const INSTANCE_DATA_DIRS: &str = "instance_data_dirs";
+
+/// 격리 실행이 이 config 키의 폴더에 권한을 받는가. 이 키들은 데몬만 정하고 모듈 설정에서 싣지 않는다
+pub fn grants_write(key: &str) -> bool {
+    INSTANCE_DIR_FIELDS.contains(&key) || key == INSTANCE_DATA_DIRS
+}
 
 /// 격리 실행이 config의 인스턴스 폴더(`INSTANCE_DIR_FIELDS`)에 받는 권한: 모듈은 쓰기, 그 밖(익스텐션 등)은 읽기
 fn instance_access(key: &str) -> appcontainer::Access {
@@ -642,8 +672,12 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
     // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
     let access = instance_access(&key);
-    for field in INSTANCE_DIR_FIELDS {
-        if let Some(path) = config.get(field).and_then(Value::as_str).filter(|p| !p.is_empty()) {
+    let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
+    // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
+    let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file());
+    let fields = INSTANCE_DIR_FIELDS.iter().filter_map(|field| config.get(*field).and_then(Value::as_str));
+    for path in fields.chain(data_dirs) {
+        if !path.is_empty() {
             let path = Path::new(path);
             // 새로 설치할 폴더는 아직 없다: 권한은 있는 폴더에만 줄 수 있으므로 먼저 만든다
             if access == Access::Write {
@@ -842,6 +876,22 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 백로그 M7 (사용자 결정: 동기화 폴더 아래 서버는 계속 막는다). 막되 원인과 할 일을 알린다
+    #[test]
+    fn a_server_folder_in_a_sync_folder_is_blocked_with_its_own_reason() {
+        let synced = PathBuf::from(r"C:\Users\me\OneDrive\server\PalServer.exe");
+        let blocked = folder_label_block(&[
+            (PathBuf::from(r"C:\srv\a.txt"), "access denied".to_string()),
+            (synced.clone(), format!("{} {}", synced.display(), SYNC_FOLDER_MARK)),
+        ]);
+        assert_eq!(blocked.code, "server_in_sync_folder");
+        assert_eq!(blocked.file.as_deref(), Some(synced.to_str().unwrap()));
+        assert!(message(&blocked).contains("sync folder"), "{}", message(&blocked));
+
+        let plain = folder_label_block(&[(PathBuf::from(r"C:\srv\a.txt"), "access denied".to_string())]);
+        assert_eq!(plain.code, "server_folder_label");
+    }
 
     // 서버 폴더의 표시를 걷은 뒤 서버가 뜨기 전에 격리 실행이 끼어 표시를 다시 붙이면 서버가 낮은 무결성으로 뜬다
     #[tokio::test]

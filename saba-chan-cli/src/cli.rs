@@ -156,18 +156,18 @@ pub enum BackupCmd {
     /// Back up now
     #[command(visible_alias = "new")]
     Create { server: Option<String> },
-    /// Delete one backup
+    /// Delete one backup (no name: pick from the list)
     #[command(visible_alias = "rm")]
-    Delete { server: String, backup: String },
-    /// Put a backup back (the server must be stopped; asks to stop it)
-    Restore { server: String, backup: String },
+    Delete { server: String, backup: Option<String> },
+    /// Put a backup back (the server must be stopped; asks to stop it). No name: pick from the list
+    Restore { server: String, backup: Option<String> },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum PermCmd {
-    /// Levels, preset and overrides of one Discord server
-    Show { guild: String },
-    /// Give a member a level: admin, user, chatbot or banned
+    /// Levels, preset and overrides of one Discord server (name or id; without it: the only paired server)
+    Show { guild: Option<String> },
+    /// Give a member (name or id) a level: admin, user, chatbot or banned
     Grant { guild: String, member: String, level: String },
     /// Take a member's own level away (they get the default level)
     Revoke { guild: String, member: String },
@@ -177,7 +177,7 @@ pub enum PermCmd {
     Preset { guild: String, preset: String },
     /// Highest level a request through the chatbot can use
     Cap { guild: String, level: String },
-    /// Level one command needs (`<server id>/<command>`); leave the level out to go back to the preset
+    /// Level one command needs (`<server>/<command>`, server by name or id); leave the level out to go back to the preset
     Command { guild: String, key: String, level: Option<String> },
     /// Change the pinned owner of this Discord server
     Owner { guild: String, member: String },
@@ -185,10 +185,22 @@ pub enum PermCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum SandboxCmd {
-    /// Run this component without isolation when isolation cannot be prepared (asked again when its files change)
-    Allow { component: String },
-    /// Remove the consent to run without isolation
-    Revoke { component: String },
+    /// Consents given on this PC (run without isolation, extension GUI bundles)
+    #[command(visible_alias = "ls")]
+    List,
+    /// Run this component without isolation when isolation cannot be prepared (asked again when its files change).
+    /// `--gui`: load this extension's GUI bundle instead (component is the `ext-<id>` name shown by `sandbox list`)
+    Allow {
+        component: String,
+        #[arg(long)]
+        gui: bool,
+    },
+    /// Remove the consent (`--gui`: the GUI bundle consent)
+    Revoke {
+        component: String,
+        #[arg(long)]
+        gui: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -214,6 +226,26 @@ pub enum ScheduleCmd {
         #[arg(long)]
         message: Option<String>,
     },
+    /// Change task number N in place: only the options given change (see `schedule show`)
+    Edit {
+        server: String,
+        number: usize,
+        /// Repeat every N minutes instead (30, 30m, 2h)
+        #[arg(long, value_name = "TIME", conflicts_with = "at")]
+        every: Option<String>,
+        /// Every day at this time instead (HH:MM, this PC's clock)
+        #[arg(long, value_name = "HH:MM")]
+        at: Option<String>,
+        /// New warnings in minutes before (restart/update), e.g. 10,5,1
+        #[arg(long, value_name = "MINUTES", value_delimiter = ',', conflicts_with = "no_warn")]
+        warn: Vec<u32>,
+        /// Remove the warnings
+        #[arg(long)]
+        no_warn: bool,
+        /// New message to announce
+        #[arg(long)]
+        message: Option<String>,
+    },
     /// Remove task number N (see `schedule show`)
     #[command(visible_alias = "rm")]
     Remove { server: String, number: usize },
@@ -231,11 +263,11 @@ pub enum ScheduleCmd {
 pub enum ChatbotCmd {
     /// Settings and whether an API key is saved
     Show,
-    /// Change settings: KEY=VALUE ... (empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
+    /// Change settings: KEY=VALUE ... (keys and their defaults: `chatbot show`; e.g. enabled=true; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
         pairs: Vec<String>,
-        /// Only for this Discord server (guild id)
+        /// Only for this Discord server (name or id)
         #[arg(long)]
         guild: Option<String>,
     },
@@ -247,6 +279,8 @@ pub enum ChatbotCmd {
     },
     /// Delete all chatbot settings and the key
     Clear,
+    /// Models the saved API key can use (name or id of the Discord server; without it: the only paired server)
+    Models { guild: Option<String> },
     /// Forget what the chatbot remembers (all Discord servers, or one)
     Forget {
         #[arg(long)]
@@ -402,6 +436,10 @@ pub struct AddArgs {
     /// Don't wait for the install to finish
     #[arg(long)]
     pub no_wait: bool,
+    /// Agreement id the module declares (`[[agreements]]`, e.g. a game EULA), repeatable. Only pass ones you have read.
+    /// `--yes` never accepts an agreement
+    #[arg(long = "accept", value_name = "ID")]
+    pub accept: Vec<String>,
 }
 
 #[derive(Args, Debug, Clone, Default)]
@@ -607,8 +645,8 @@ pub enum BotCmd {
     },
     /// Forget this PC's pairing
     Unpair,
-    /// Set the node token by hand (from a pairing done elsewhere)
-    Token { token: Option<String> },
+    /// Set the node token by hand (from a pairing done elsewhere). Asked for without showing it, or one line on stdin; never an argument
+    Token,
     /// Show or change the chat prefixes: `prefix`, `prefix A B`, `prefix --default`
     Prefix {
         values: Vec<String>,
@@ -618,11 +656,12 @@ pub enum BotCmd {
     },
     /// Discord servers paired with this PC
     Nodes,
-    /// Members of a paired Discord server
-    Members { guild: String },
-    /// Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show
+    /// Members of a paired Discord server (name or id; without it: the only paired server)
+    Members { guild: Option<String> },
+    /// Chatbot channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
     Channels {
-        guild: String,
+        /// Without it: every paired Discord server (changing needs exactly one)
+        guild: Option<String>,
         /// Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list
         #[arg(long, value_delimiter = ',', conflicts_with = "no_chatbot")]
         chatbot: Vec<String>,
@@ -645,12 +684,12 @@ pub enum BotCmd {
     /// The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show
     Lang { guild: String, value: Option<String> },
     /// Put the bot to sleep on a Discord server (it ignores commands until woken)
-    Sleep { guild: String },
+    Sleep { guild: Option<String> },
     /// Wake the bot on a Discord server
-    Wake { guild: String },
+    Wake { guild: Option<String> },
     /// Music player settings of a Discord server. No options: show
     Music {
-        guild: String,
+        guild: Option<String>,
         /// Turn music on
         #[arg(long, conflicts_with = "off")]
         on: bool,
@@ -705,7 +744,7 @@ pub enum BotCmd {
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
 
-    /// Show or change any bot setting: KEY=VALUE (dotted keys, JSON values)
+    /// Show or change a bot setting: KEY=VALUE (dotted keys as shown with no arguments, lists comma-separated)
     Config {
         #[arg(value_name = "KEY=VALUE")]
         pairs: Vec<String>,
@@ -895,6 +934,11 @@ mod tests {
         }
         assert!(p(&["bot", "words", "123", "--word", "크리"]).is_err(), "--word needs a server");
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
+        assert!(matches!(p(&["bot", "channels"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Channels { guild: None, .. }))));
+        assert!(matches!(p(&["bot", "members"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Members { guild: None }))));
+        // 토큰은 셸 기록에 남지 않게 인자로 받지 않는다 (C15)
+        assert!(p(&["bot", "token", "secret-token"]).is_err());
+        assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
     }

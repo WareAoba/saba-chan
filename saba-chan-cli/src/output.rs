@@ -141,7 +141,7 @@ pub fn heading(text: &str) {
 pub fn status_badge(status: &str) -> String {
     let label = crate::i18n::try_t(&format!("status.{}", status)).unwrap_or_else(|| status.to_string());
     let dot: StyledObject<&str> = match status {
-        "running" => style("●").green(),
+        "running" | "connected" => style("●").green(),
         "starting" | "provisioning" | "stopping" => style("◐").yellow(),
         "crashed" | "error" => style("●").red(),
         _ => style("○").dim(),
@@ -225,6 +225,22 @@ pub fn ago(epoch_secs: u64) -> String {
     t!(&format!("time.{}_ago", unit), n = n)
 }
 
+/// UTC ISO-8601 시각(`2026-10-19T17:02:57.000Z`) → epoch 초. 다른 모양이면 None
+pub fn iso_epoch(iso: &str) -> Option<u64> {
+    let (date, time) = iso.trim().strip_suffix('Z')?.split_once('T')?;
+    let mut d = date.splitn(3, '-').map(|p| p.parse::<i64>().ok());
+    let (y, mo, day) = (d.next()??, d.next()??, d.next()??);
+    let mut t = time.split('.').next()?.splitn(3, ':').map(|p| p.parse::<i64>().ok());
+    let (h, mi, s) = (t.next()??, t.next()??, t.next()??);
+    // 그레고리력 날짜 → 1970-01-01부터의 일수
+    let (y, m) = if mo <= 2 { (y - 1, mo + 9) } else { (y, mo - 3) };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * m + 2) / 5 + day - 1;
+    let days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+    u64::try_from(days * 86400 + h * 3600 + mi * 60 + s).ok()
+}
+
 /// 초 → "1시간 3분"
 pub fn duration(secs: u64) -> String {
     let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
@@ -251,6 +267,21 @@ pub fn players(server: &Value) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 디스코드 연결 상태 `connected`도 켜진 점으로 (빈 원이면 끊긴 것처럼 보인다)
+    #[test]
+    fn a_connected_badge_has_a_filled_dot() {
+        assert!(console::strip_ansi_codes(&status_badge("connected")).starts_with('●'));
+        assert!(console::strip_ansi_codes(&status_badge("disconnected")).starts_with('○'));
+    }
+
+    #[test]
+    fn iso_times_from_the_relay_become_epoch_seconds() {
+        assert_eq!(iso_epoch("1970-01-02T00:00:00.000Z"), Some(86400));
+        assert_eq!(iso_epoch("2026-10-19T17:02:57.000Z"), Some(1792429377));
+        assert_eq!(iso_epoch("2026-10-19T17:02:57Z"), Some(1792429377));
+        assert_eq!(iso_epoch("2026-10-19 17:02"), None);
+    }
 
     #[test]
     fn masks_secret_values_only() {

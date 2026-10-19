@@ -13,8 +13,10 @@ export function ErrorFallback({ error, resetErrorBoundary }) {
 
     useEffect(() => {
         if (!window.api?.onCloseRequest) return undefined;
-        window.api.onCloseRequest(() => window.api.closeResponse?.('exit-interface'));
-        return () => window.api.offCloseRequest?.();
+        const off = window.api.onCloseRequest(() => window.api.closeResponse?.('exit-interface'));
+        return () => {
+            if (typeof off === 'function') off();
+        };
     }, []);
 
     return (

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\nlabel = \"pw\"\n\n[[settings.fields]]\nname = \"java_path\"\ntype = \"file\"\nlabel = \"java\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\nlabel = \"motd\"\narg = \"-motd={value}\"\n\n[[settings.fields]]\nname = \"players\"\ntype = \"number\"\nlabel = \"players\"\narg = \"-players={value}\"\n\n[[queries]]\nname = \"players\"\nlabel = \"Players\"\nfunction = \"list_players\"\ninputs = [{ name = \"limit\", type = \"number\", min = 1, max = 10 }]\n";
-const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람" } } }"#;
+const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람", "inputs": { "limit": { "label": "최대 인원" } } } } }"#;
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
     // 토큰은 한 번만 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
@@ -154,6 +154,99 @@ fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
     assert!(actions.iter().all(|a| a["id"] != "instance.delete" && a["id"] != "extension.enable"));
     let restore = actions.iter().find(|a| a["id"] == "backup.restore").unwrap();
     assert_eq!(restore["surfaces"], json!(["chatbot"]));
+}
+
+// 실사용: 디스코드 "/작업"에 길드 설정 작업이 "guild" 필수 칸과 함께 보였다. 길드 설정은 "/사바쨩" 전용 명령이
+// 같은 액션을 부르므로 메뉴에는 싣지 않고, 원격 요청이 스스로 채우는 길드 칸은 어느 메뉴 입력에도 두지 않는다
+#[test]
+fn the_remote_menu_has_no_guild_settings_and_no_guild_input() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    for id in ["chatbot.settings.get", "chatbot.settings.set", "discord.settings.get", "discord.settings.set"] {
+        assert!(actions.iter().all(|a| a["id"] != id), "{id} is served by the /사바쨩 commands");
+        assert!(find(id).unwrap().surfaces.contains(&Discord), "{id} stays callable from Discord");
+    }
+    for a in &actions {
+        assert!(a["input"]["properties"].get(GUILD_FIELD).is_none(), "{} asks for a guild", a["id"]);
+        assert!(a["input"]["required"].as_array().is_none_or(|r| !r.iter().any(|f| f == GUILD_FIELD)), "{}", a["id"]);
+    }
+}
+
+// 실사용: 디스코드 입력칸이 "name"·"backup_keep" 같은 내부 이름으로 보였다. 칸마다 언어별 제목을 싣는다
+#[test]
+fn remote_inputs_carry_localized_field_titles() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let field = |id: &str, name: &str| actions.iter().find(|a| a["id"] == id).unwrap()["input"]["properties"][name]["title"].clone();
+    assert_eq!((field("backup.restore", "name")["ko"].as_str(), field("backup.restore", "name")["en"].as_str()), (Some("이름"), Some("Name")));
+    assert_eq!(field("instance.schedule.set", "backup_keep")["ko"], "보관할 백업 수");
+    assert_eq!(field("instance.schedule.set", "backup_keep").as_object().unwrap().len(), crate::chat::i18n::languages().len());
+}
+
+// 상한을 넘으면 칸 제목부터 빼서 액션을 덜 잃는다
+#[test]
+fn field_titles_go_first_when_the_heartbeat_is_too_big() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("big");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut toml = String::from("[module]\nschema_version = 1\nname = \"big\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n");
+    let label = "x".repeat(120);
+    for q in 0..30 {
+        toml.push_str(&format!("\n[[queries]]\nname = \"q{q:02}\"\nfunction = \"f\"\ninputs = [{{ name = \"a\", label = \"{label}\" }}, {{ name = \"b\", label = \"{label}\" }}]\n"));
+    }
+    std::fs::write(dir.join("module.toml"), toml).unwrap();
+    std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+    let modules = vec![crate::supervisor::module_loader::load_module_dir(&dir).unwrap()];
+    let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
+    assert!(!truncated, "every action still fits without field titles");
+    assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
+    assert!(actions.iter().all(|a| a["input"]["properties"].as_object().is_none_or(|p| p.values().all(|f| f.get("title").is_none()))));
+}
+
+// 실사용: 디스코드에 결과가 JSON 그대로 보였다. 원격 결과에는 요청 언어의 사람용 요약을 붙인다
+#[tokio::test]
+async fn remote_results_carry_a_readable_summary() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let listed = query(&state, "instance.list", None, &json!({}), &relay("someone", false)).await.unwrap();
+    let text = listed["text"].as_str().unwrap();
+    assert!(text.contains("srv") && text.contains("정지됨"), "{text}");
+    assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업이 없어요"));
+    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("기록이 없어요"));
+    assert!(query(&state, "monitor.summary", None, &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("CPU"));
+    // GUI·CLI는 자기 화면으로 그린다
+    assert!(run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap().get("text").is_none());
+}
+
+#[test]
+fn summaries_read_like_sentences() {
+    let ko = crate::chat::i18n::Catalog::for_language("ko");
+    let backups: Vec<Value> = (0..12).map(|n| json!({ "name": format!("b{n:02}"), "kind": "scheduled", "created": 1_700_000_000 + n * 60, "size": 1_536 * 1024 * 1024 })).collect();
+    let text = summary::text("backup.list", &json!({ "success": true, "backups": backups }), &ko).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[0].contains("12"), "{text}");
+    assert!(lines[1].contains("b11") && lines[1].contains("예약") && lines[1].contains("1.5 GB"), "newest first: {text}");
+    assert!(lines.len() <= 12 && lines.last().unwrap().contains('2'), "the rest is counted: {text}");
+
+    let updates = json!({ "ok": true, "updates_available": 1, "components": [
+        { "display_name": "Saba-chan GUI", "current_version": "0.1.7", "latest_version": "0.1.8", "update_available": true },
+        { "display_name": "Saba-chan CLI", "current_version": "0.1.7", "latest_version": "0.1.7", "update_available": false },
+    ] });
+    let text = summary::text("update.check", &updates, &ko).unwrap();
+    assert!(text.contains("Saba-chan GUI") && text.contains("0.1.7 → 0.1.8") && !text.contains("CLI"), "{text}");
+    assert!(summary::text("update.check", &json!({ "ok": true, "updates_available": 0, "components": [] }), &ko).unwrap().contains("최신"));
+
+    let events = json!({ "events": [{ "at": 1_700_000_000, "kind": "crash" }, { "at": 1_700_000_600, "kind": "user_stop" }] });
+    let text = summary::text("instance.events", &events, &ko).unwrap();
+    assert!(text.lines().nth(1).unwrap().contains("정지") && text.contains("비정상 종료"), "newest first: {text}");
+
+    // 시각을 모르면 1970년으로 찍지 않는다
+    let unknown = summary::text("backup.list", &json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] }), &ko).unwrap();
+    assert!(!unknown.contains("1970"), "{unknown}");
+
+    // 모듈 조회는 범용 포맷으로 (모양이 모듈마다 다르다)
+    let players = summary::text("server.query:players", &json!({ "success": true, "players": [{ "name": "steve" }] }), &ko).unwrap();
+    assert!(players.contains("steve") && !players.contains("success"), "{players}");
+    // 모르는 액션은 요약하지 않는다 (릴레이가 결과를 그대로 보인다)
+    assert!(summary::text("server.status", &json!({}), &ko).is_none());
 }
 
 #[test]
@@ -318,6 +411,8 @@ async fn module_queries_are_safe_read_actions_on_every_surface() {
     assert_eq!((q["module"].as_str(), q["kind"].as_str()), (Some("plain"), Some("query")));
     assert_eq!((q["title"]["ko"].as_str(), q["title"]["en"].as_str()), (Some("접속자 목록"), Some("Players")));
     assert_eq!(q["description"]["ko"], "지금 접속한 사람");
+    // 입력 칸 이름도 모듈 locales 문구로 (없는 언어는 module.toml label, 그것도 없으면 싣지 않는다)
+    assert_eq!(q["input"]["properties"]["limit"]["title"], json!({ "ko": "최대 인원" }));
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
 }
 
@@ -512,6 +607,19 @@ async fn built_in_server_actions_use_the_levels_set_for_their_commands() {
     }
     assert_eq!(query(&state, "server.status", Some(&id), &json!({}), &admin).await.unwrap_err().code, "PERMISSION_DENIED");
     assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", false)).await.is_ok());
+}
+
+/// GUI에서 사용자별로 막은 명령(`memberPermissions`)은 채팅 명령뿐 아니라 액션 메뉴·확인 버튼으로도 막힌다
+#[tokio::test]
+async fn commands_denied_to_a_member_stay_denied_through_actions() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "defaultLevel": 2, "memberPermissions": { "admin": { id.clone(): ["stop"] } } })).await;
+    let admin = relay("admin", false);
+    let err = plan(&state, "server.stop", Some(&id), &json!({}), &admin).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+    assert_eq!(err.data["args"]["need"], 3);
+    assert!(plan(&state, "server.start", Some(&id), &json!({}), &admin).await.is_ok(), "only the denied command");
+    assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("someone", false)).await.is_ok(), "only that member");
 }
 
 #[test]
