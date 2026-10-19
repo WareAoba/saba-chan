@@ -1094,7 +1094,7 @@
       "module_modified": "The module ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
       "extension_unverified": "Enabled an extension ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
       "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
-      "isolated": "This component runs in an isolated environment (allowed folders only)"
+      "isolated": "This component's Python scripts run in an isolated environment (allowed folders only). The game server process is not isolated."
     },
     "start_blocked": {
       "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}} If you set the Java path yourself, choose it again in the server settings.",

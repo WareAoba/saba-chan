@@ -1091,7 +1091,7 @@
       "module_modified": "El módulo ({{id}}) cambió después de instalarse. Reinstálalo si no lo editaste tú.",
       "extension_unverified": "Se activó una extensión ({{id}}) que no proviene del catálogo oficial. Asegúrate de confiar en su origen.",
       "extension_modified": "La extensión ({{id}}) cambió después de instalarse. Reinstálala si no la editaste tú.",
-      "isolated": "Este componente se ejecuta en un entorno aislado (solo carpetas permitidas)"
+      "isolated": "Los scripts de Python de este componente se ejecutan en un entorno aislado (solo carpetas permitidas). El proceso del servidor de juego no está aislado."
     },
     "start_blocked": {
       "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}} Si configuraste la ruta de Java tú mismo, vuelve a elegirla en la configuración del servidor.",

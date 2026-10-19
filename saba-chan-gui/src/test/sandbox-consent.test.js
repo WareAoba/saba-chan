@@ -94,7 +94,9 @@ describe('격리·검사 문구', () => {
     it('isolated=true인 경고에만 격리 안내 한 줄을 붙인다', () => {
         showTrustWarnings({ warnings: [{ code: 'module_unverified', module: 'm', isolated: true }] }, t);
         showTrustWarnings({ warnings: [{ code: 'module_unverified', module: 'm', isolated: false }] }, t);
-        expect(window.showToast.mock.calls[0][0]).toMatch(/\nThis component runs in an isolated environment/);
+        expect(window.showToast.mock.calls[0][0]).toMatch(
+            /\nThis component's Python scripts run in an isolated environment.*The game server process is not isolated\./,
+        );
         expect(window.showToast.mock.calls[1][0]).not.toMatch(/isolated environment/);
     });
 
