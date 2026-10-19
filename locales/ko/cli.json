@@ -49,6 +49,7 @@
     "offer_start": "지금 봇에 연결할까요?",
     "pair_enter": "디스코드에서 `/사바쨩 연결`의 코드 칸에 이 코드를 넣으세요:",
     "pair_expired": "페어링 코드가 만료됐어요. bot pair를 다시 실행하세요.",
+    "pair_token_not_saved": "디스코드에서는 연결됐지만 이 PC에 연결 정보를 저장하지 못했어요. bot pair를 다시 실행하세요.",
     "pair_no_code": "릴레이가 페어링 코드를 주지 않았어요.",
     "pair_polling": "디스코드를 기다리는 중...",
     "pair_waiting": "취소하려면 Ctrl+C.",

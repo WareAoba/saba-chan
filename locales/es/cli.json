@@ -48,6 +48,7 @@
     "offer_start": "¿Conectar con el bot ahora?",
     "pair_enter": "En Discord, ejecuta `/saba connect` e introduce este código:",
     "pair_expired": "El código de vinculación caducó. Ejecuta bot pair de nuevo.",
+    "pair_token_not_saved": "Discord aceptó el código, pero no se pudo guardar la conexión en este PC. Ejecuta bot pair de nuevo.",
     "pair_no_code": "El relé no devolvió ningún código de vinculación.",
     "pair_polling": "Esperando a Discord...",
     "pair_waiting": "Pulsa Ctrl+C para cancelar.",

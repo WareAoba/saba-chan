@@ -48,6 +48,7 @@
     "offer_start": "現在連線到機器人嗎？",
     "pair_enter": "在 Discord 中執行 `/saba connect` 並輸入此代碼:",
     "pair_expired": "配對代碼已過期。請重新執行 bot pair。",
+    "pair_token_not_saved": "Discord 已接受配對代碼，但無法在此電腦上儲存連線資訊。請重新執行 bot pair。",
     "pair_no_code": "中繼站沒有回傳配對代碼。",
     "pair_polling": "正在等待 Discord...",
     "pair_waiting": "按 Ctrl+C 取消。",
