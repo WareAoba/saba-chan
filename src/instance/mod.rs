@@ -274,7 +274,8 @@ impl InstanceStore {
         if let Ok(entries) = fs::read_dir(&self.root_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if !path.is_dir() {
+                // 링크(정션 포함)는 따라가지 않는다: 저장·삭제가 다른 곳의 폴더를 건드린다
+                if !entry.file_type().is_ok_and(|t| t.is_dir()) {
                     continue;
                 }
                 let instance_json = path.join("instance.json");
@@ -617,6 +618,27 @@ mod tests {
             store2.list()[0].module_settings.get("difficulty"),
             Some(&serde_json::json!("hard"))
         );
+    }
+
+    // 백로그 L17d: 인스턴스 폴더 자리에 놓인 링크를 따라가 다른 곳의 폴더를 인스턴스로 불러왔다.
+    // 저장·삭제가 그 폴더를 건드린다
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_instance_folder_is_not_loaded() {
+        let tmp = TempDir::new().unwrap();
+        let elsewhere = tmp.path().join("elsewhere");
+        let mut other = InstanceStore::new(elsewhere.to_str().unwrap());
+        other.load().unwrap();
+        let inst = make_test_instance("linked", "minecraft");
+        let id = inst.id.clone();
+        other.add(inst).unwrap();
+
+        let instances_dir = tmp.path().join("instances");
+        std::fs::create_dir_all(&instances_dir).unwrap();
+        std::os::unix::fs::symlink(elsewhere.join(&id), instances_dir.join(&id)).unwrap();
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        assert!(store.list().is_empty(), "the link was followed");
     }
 
     #[test]
