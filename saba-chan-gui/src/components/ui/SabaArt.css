@@ -161,7 +161,7 @@
 }
 .dc-chain-node > :first-child {
     grid-row: 1 / span 2;
-    width: 22px;
+    width: 34px;
     justify-self: center;
     display: inline-flex;
     justify-content: center;
@@ -170,9 +170,16 @@
     color: var(--text-1);
     border-color: color-mix(in srgb, var(--ok) 45%, var(--line-strong));
 }
+.dc-chain-node.fail {
+    color: var(--text-1);
+    border-color: color-mix(in srgb, var(--stop) 60%, var(--line-strong));
+}
+.dc-chain-node.fail > :first-child {
+    color: var(--stop);
+}
 .dc-chain-icon {
-    width: 22px;
-    height: 22px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
 }
 .dc-chain-node:not(.on) .dc-chain-icon {
@@ -196,14 +203,32 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+/* 이음줄: 이어졌을 때만 초록 점선, 끊긴 실패는 빨간 점선과 X, 그 밖에는 빈자리 */
 .dc-chain-link {
+    position: relative;
     align-self: center;
     width: 0;
-    height: var(--sp-5);
-    border-left: 2px dashed var(--line-strong);
+    height: var(--sp-6);
+    border-left: 2px dashed transparent;
 }
 .dc-chain-link.on {
     border-left-color: var(--ok);
+}
+.dc-chain-link.fail {
+    border-left-color: var(--stop);
+}
+.dc-chain-x {
+    position: absolute;
+    top: 50%;
+    left: -1px;
+    translate: -50% -50%;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--stop);
+    color: var(--knob);
 }
 
 /* 그림 칸: 그림은 칸 안에만 있다 */
@@ -211,11 +236,6 @@
     display: grid;
     place-items: center;
     min-height: 220px;
-    padding: var(--sp-3);
-    border-radius: var(--r-lg);
-    border: 1px solid var(--line);
-    background: var(--bg-1);
-    overflow: hidden;
 }
 .dc-conn-art img {
     width: 100%;
