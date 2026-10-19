@@ -71,13 +71,31 @@ pub struct Supervisor {
 struct StartGuard {
     set: std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
     id: String,
+    /// 시작을 받았을 때의 실행 세대. 정지 요청은 세대를 올리므로, 띄우기 전후에 이 값과 다르면
+    /// 시작 준비 중에 정지가 들어온 것이다 (그 정지는 PID가 없어 바로 성공으로 끝난다)
+    generation: u64,
 }
 
 impl StartGuard {
-    fn claim(set: &std::sync::Arc<std::sync::Mutex<HashSet<String>>>, id: &str) -> Option<Self> {
+    fn claim(set: &std::sync::Arc<std::sync::Mutex<HashSet<String>>>, id: &str, generation: u64) -> Option<Self> {
         let fresh = set.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
-        fresh.then(|| Self { set: set.clone(), id: id.to_string() })
+        fresh.then(|| Self { set: set.clone(), id: id.to_string(), generation })
     }
+
+    /// 시작 준비 중에 정지(또는 삭제)가 들어왔는가
+    fn stop_requested(&self, s: &Supervisor) -> bool {
+        s.run_generation_of(&self.id) != self.generation || s.instance_store.get(&self.id).is_none()
+    }
+}
+
+/// 시작 준비 중에 정지가 들어와 띄우지 않았다 (또는 띄운 것을 바로 껐다)
+fn start_cancelled(server_name: &str) -> Value {
+    json!({
+        "success": false,
+        "error": "start_cancelled",
+        "error_code": "start_cancelled",
+        "message": format!("Server '{}' was stopped while it was starting", server_name),
+    })
 }
 
 impl Drop for StartGuard {
@@ -561,7 +579,7 @@ impl Supervisor {
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
 
         // ── 검사 (읽기 락) ──
-        let (instance, _starting, hook) = {
+        let (instance, starting, hook) = {
             let s = sup.read().await;
             // Find instance to get executable_path and working_dir
             let instance = s.instance_store.get(server_name)
@@ -654,7 +672,7 @@ impl Supervisor {
             }
 
 
-            let Some(starting) = StartGuard::claim(&s.starting, &instance.id) else {
+            let Some(starting) = StartGuard::claim(&s.starting, &instance.id, s.run_generation_of(&instance.id)) else {
                 return Ok(json!({
                     "success": false,
                     "error": "start_in_progress",
@@ -846,6 +864,9 @@ impl Supervisor {
             Err(blocked) => return Ok(blocked),
         };
         let program = program.as_str();
+        if starting.stop_requested(&*sup.read().await) {
+            return Ok(start_cancelled(server_name));
+        }
 
         // Spawn detached process (no stdin/stdout capture)
         let mut cmd = TokioCommand::new(program);
@@ -863,7 +884,7 @@ impl Supervisor {
 
         let child = cmd.spawn();
         drop(gate);
-        let child = child.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+        let mut child = child.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
 
         let pid = child.id()
             .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))? ;
@@ -872,6 +893,14 @@ impl Supervisor {
         // managed 시작과 같이 정지 표시를 지우고 세대를 올린다 (기다리던 재시작이 이 시작 뒤에 또 켜지 않게)
         {
             let mut s = sup.write().await;
+            // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
+            if starting.stop_requested(&s) {
+                drop(s);
+                if let Err(e) = child.kill().await {
+                    tracing::warn!("Could not stop '{}' after a stop request during start: {}", server_name, e);
+                }
+                return Ok(start_cancelled(server_name));
+            }
             s.stop_requested.remove(&instance.id);
             *s.run_generation.entry(instance.id.clone()).or_default() += 1;
             s.tracker.track(&instance.id, pid)?;
@@ -1340,7 +1369,7 @@ impl Supervisor {
         config: Value,
     ) -> Result<Value> {
         // ── 1) 검사 (읽기 락) ──
-        let (mut instance, _starting, hook) = {
+        let (mut instance, starting, hook) = {
             let s = sup.read().await;
             let instance = s.instance_store.get(instance_id).cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
@@ -1394,7 +1423,7 @@ impl Supervisor {
             }
 
 
-            let Some(starting) = StartGuard::claim(&s.starting, instance_id) else {
+            let Some(starting) = StartGuard::claim(&s.starting, instance_id, s.run_generation_of(instance_id)) else {
                 return Ok(json!({
                     "success": false,
                     "error": "start_in_progress",
@@ -1660,6 +1689,10 @@ impl Supervisor {
             }
         }
 
+        if starting.stop_requested(&*sup.read().await) {
+            return Ok(start_cancelled(&instance.name));
+        }
+
         // Spawn managed process
         let log_pattern = module.metadata.log_pattern.as_deref();
         let inst_dir = sup.read().await.instance_store.instance_dir(&instance.id);
@@ -1705,6 +1738,14 @@ impl Supervisor {
         // Track the process
         {
             let mut s = sup.write().await;
+            // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
+            if starting.stop_requested(&s) {
+                drop(s);
+                if let Err(e) = managed.force_kill() {
+                    tracing::warn!("Could not stop '{}' after a stop request during start: {}", instance.name, e);
+                }
+                return Ok(start_cancelled(&instance.name));
+            }
             s.stop_requested.remove(instance_id);
             *s.run_generation.entry(instance.id.clone()).or_default() += 1;
             s.tracker.track(&instance.id, pid)?;
@@ -3260,14 +3301,57 @@ mod tests {
         assert_eq!(supervisor.read().await.tracker.get_pid("test-nm-guard").unwrap(), current_pid);
     }
 
+    /// 시작 준비(모듈 호출) 중에 들어온 정지는 PID가 없어 바로 성공으로 끝난다. 그 뒤 서버가 떠서는 안 된다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_during_start_preparation_keeps_the_server_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\n\
+             if sys.argv[1] == 'get_launch_command':\n    time.sleep(2)\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-during-start".into();
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+
+        let starter = {
+            let sup = sup.clone();
+            tokio::spawn(async move { Supervisor::start_managed_server(&sup, "stop-during-start", "game", json!({})).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        let stopped = Supervisor::stop_server(&sup, "stop-during-start", "game", false).await.unwrap();
+        assert_ne!(stopped["success"], false, "{stopped}");
+
+        let started = starter.await.unwrap().unwrap();
+        assert_eq!(started["error_code"], "start_cancelled", "{started}");
+        let s = sup.read().await;
+        assert!(s.tracker.get_pid("stop-during-start").is_err(), "nothing is tracked");
+        assert!(s.managed_store.get("stop-during-start").await.is_none(), "no server was left running");
+    }
+
     /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
     #[test]
     fn start_guard_blocks_a_second_start_until_dropped() {
         let set = std::sync::Arc::new(std::sync::Mutex::new(HashSet::new()));
-        let first = StartGuard::claim(&set, "a").expect("first start");
-        assert!(StartGuard::claim(&set, "a").is_none());
-        assert!(StartGuard::claim(&set, "b").is_some(), "other instances are not blocked");
+        let first = StartGuard::claim(&set, "a", 0).expect("first start");
+        assert!(StartGuard::claim(&set, "a", 0).is_none());
+        assert!(StartGuard::claim(&set, "b", 0).is_some(), "other instances are not blocked");
         drop(first);
-        assert!(StartGuard::claim(&set, "a").is_some());
+        assert!(StartGuard::claim(&set, "a", 0).is_some());
     }
 }
