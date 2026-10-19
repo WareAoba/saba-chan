@@ -224,6 +224,7 @@
     "type_to_filter": "명령을 입력하거나 목록에서 고르세요"
   },
   "server_status": {
+    "unresponsive": "실행 중이지만 응답이 없어요: {{reason}}",
     "running": "실행중",
     "stopped": "정지중",
     "stopping": "정지 중...",

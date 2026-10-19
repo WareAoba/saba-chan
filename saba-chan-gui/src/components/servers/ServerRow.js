@@ -87,6 +87,15 @@ export function ServerRow({
                     )}
                 </div>
             </div>
+            {/* 켜져 있지만 상태 질문에 계속 답하지 않는다 (데몬 unresponsive: 모듈의 마지막 실패 이유) */}
+            {server.unresponsive && status === 'running' && (
+                <span
+                    className="server-row-flag tone-warn"
+                    title={t('server_status.unresponsive', { reason: server.unresponsive })}
+                >
+                    <Icon name="alertTriangle" size={14} />
+                </span>
+            )}
             {updateInfo && status === 'stopped' && (
                 <span className="server-row-flag" title={t('shell.update_available')}>
                     <Icon name="arrowUp" size={14} />

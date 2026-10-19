@@ -222,6 +222,7 @@
     "type_to_filter": "Введите команду или выберите из списка"
   },
   "server_status": {
+    "unresponsive": "Запущен, но не отвечает: {{reason}}",
     "running": "Запущен",
     "stopped": "Остановлен",
     "stopping": "Остановка...",
