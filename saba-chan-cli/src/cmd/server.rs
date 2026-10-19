@@ -698,17 +698,7 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
         _ => {
             // 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법.
             let res = ctx.api.start(&sv.id).await;
-            // 예약 범위를 피해 옮긴 포트는 시작이 실패해도 저장돼 있으므로 먼저 알린다
-            let body = match &res {
-                Ok(v) => Some(v),
-                Err(e) => match e.downcast_ref::<CliError>() {
-                    Some(CliError::Api { body, .. }) => Some(body),
-                    _ => None,
-                },
-            };
-            for line in body.map(port_moved_lines).unwrap_or_default() {
-                ctx.out.note(&line);
-            }
+            tell_moved_ports(ctx, &res);
             let r = match res {
                 Err(e) if api_code(&e) == Some("preflight_failed") => {
                     return checkup(ctx, Err(e), "", &sv.name).await;
@@ -813,6 +803,7 @@ pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let spin = crate::progress::spinner(&t!("restart.waiting", name = sv.name));
     let r = ctx.api.restart(&sv.id, a.force).await;
     spin.finish_and_clear();
+    tell_moved_ports(ctx, &r);
     let r = r?;
     let st = wait_status(
         ctx,
@@ -920,8 +911,7 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
     Ok(())
 }
 
-/// API 오류의 `error_code`
-/// 시작 답의 `port_moved: [{field, from, to}]` → 알릴 줄
+/// 시작·재시작 답의 `port_moved: [{field, from, to}]` → 알릴 줄
 fn port_moved_lines(body: &Value) -> Vec<String> {
     body.get("port_moved")
         .and_then(Value::as_array)
@@ -931,6 +921,21 @@ fn port_moved_lines(body: &Value) -> Vec<String> {
         .collect()
 }
 
+/// 예약 범위를 피해 옮긴 포트는 시작이 실패해도 저장돼 있으므로, 답이 성공이든 오류든 알린다
+fn tell_moved_ports(ctx: &Ctx, res: &Result<Value>) {
+    let body = match res {
+        Ok(v) => Some(v),
+        Err(e) => match e.downcast_ref::<CliError>() {
+            Some(CliError::Api { body, .. }) => Some(body),
+            _ => None,
+        },
+    };
+    for line in body.map(port_moved_lines).unwrap_or_default() {
+        ctx.out.note(&line);
+    }
+}
+
+/// API 오류의 `error_code`
 fn api_code(e: &anyhow::Error) -> Option<&str> {
     match e.downcast_ref::<CliError>() {
         Some(CliError::Api { body, .. }) => body.get("error_code").and_then(Value::as_str),
