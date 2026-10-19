@@ -76,6 +76,13 @@ export const waitForDaemon = async (timeout = 10000) => {
     throw new Error('Daemon startup timeout');
 };
 
+/** 데몬이 켜져 있거나(server_running) 다른 작업 중이라(instance_busy) 거절한 이유. 그 밖의 코드는 null */
+export function busyMessage(t, code, runningKey) {
+    if (code === 'server_running') return t(`server_settings.${runningKey}`);
+    if (code === 'instance_busy') return t('server_settings.instance_busy');
+    return null;
+}
+
 /**
  * Creates an error translator function bound to the given i18n `t` function.
  * Maps common backend error messages to user-friendly i18n translations.

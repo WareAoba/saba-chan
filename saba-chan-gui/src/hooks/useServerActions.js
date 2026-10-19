@@ -1,8 +1,8 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
+import { busyMessage, createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
 import { showPortMoved } from '../utils/daemonEvents';
-import { reuseUnchanged } from '../utils/serverView';
+import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 
 /**
@@ -342,7 +342,15 @@ export function useServerActions({
 
                                     if (installResult.error || installResult.success === false) {
                                         setProgressBar(null);
-                                        safeShowToast(installResult.error || installResult.message, 'error', 4000);
+                                        const code = installResult.error_code;
+                                        safeShowToast(
+                                            busyMessage(t, code, 'install_server_running') ||
+                                                (code === 'version_unknown'
+                                                    ? t('servers.version_unknown', { error: installResult.error })
+                                                    : translateError(installResult.error || installResult.message)),
+                                            'error',
+                                            4000,
+                                        );
                                         return;
                                     }
 
@@ -361,6 +369,11 @@ export function useServerActions({
                                     setTimeout(() => setProgressBar(null), 2000);
 
                                     const done = t('servers.install_completed', {
+                                        game: gameNameOf(
+                                            t,
+                                            module,
+                                            modules.find((m) => m.name === module),
+                                        ),
                                         version: installResult.version || '',
                                     });
                                     const msg = installResult.java_warning
