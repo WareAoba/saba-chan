@@ -61,6 +61,20 @@ pub(crate) fn signed_relay_url(configured: &str, requested: Option<&str>) -> Str
     }
 }
 
+/// 페어링 주소. 서명 요청과 같은 규칙에 더해, https(또는 루프백 http)가 아니면 거절한다:
+/// 요청한 주소가 평문 http면 설정 주소로 바꿔 치우지 않고 알린다
+pub(crate) fn pairing_relay_url(configured: &str, requested: Option<&str>) -> Result<String, String> {
+    if let Some(problem) = requested.and_then(crate::config_store::relay_url_problem) {
+        return Err(problem);
+    }
+    let base = signed_relay_url(configured, requested);
+    crate::config_store::relay_url_problem(&base).map_or(Ok(base), Err)
+}
+
+fn invalid_relay_url(problem: String) -> Response {
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": problem, "error_code": "invalid_relay_url" }))).into_response()
+}
+
 async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
     signed_relay_url(&configured, requested)
@@ -458,8 +472,12 @@ pub async fn initiate_pairing(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .or(params.relay_url);
-    // 페어링이 받은 노드 토큰은 그 릴레이 것이다: 설정한 릴레이(또는 모의 릴레이)와만 페어링한다
-    let base = signed_base(&state, relay_url.as_deref()).await;
+    // 페어링이 받은 노드 토큰은 그 릴레이 것이다: 설정한 릴레이(또는 모의 릴레이)와만, https로만 페어링한다
+    let configured = state.config_store.get_bot_config().await.cloud.relay_url;
+    let base = match pairing_relay_url(&configured, relay_url.as_deref()) {
+        Ok(base) => base,
+        Err(problem) => return invalid_relay_url(problem),
+    };
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
@@ -487,7 +505,11 @@ pub async fn poll_pairing_status(
     Query(params): Query<PairStatusQuery>,
     State(state): State<IPCServer>,
 ) -> Response {
-    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let configured = state.config_store.get_bot_config().await.cloud.relay_url;
+    let base = match pairing_relay_url(&configured, params.relay_url.as_deref()) {
+        Ok(base) => base,
+        Err(problem) => return invalid_relay_url(problem),
+    };
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
@@ -587,6 +609,15 @@ mod tests {
         assert_eq!(signed_relay_url(cfg, Some("https://saba-chan.online")), "https://saba-chan.online");
         assert_eq!(signed_relay_url(cfg, Some("http://127.0.0.1:9000/")), "http://127.0.0.1:9000", "mock relay");
         assert_eq!(signed_relay_url("https://my.relay", None), "https://my.relay");
+    }
+
+    /// 페어링은 받은 노드 토큰이 평문으로 오가지 않게 https(또는 루프백 모의 릴레이)에서만 한다
+    #[test]
+    fn pairing_only_goes_to_an_https_or_loopback_relay() {
+        assert_eq!(pairing_relay_url("", None).unwrap(), "https://saba-chan.online");
+        assert_eq!(pairing_relay_url("https://my.relay", Some("http://127.0.0.1:9000")).unwrap(), "http://127.0.0.1:9000");
+        assert!(pairing_relay_url("https://my.relay", Some("http://evil.example")).is_err(), "a plain-http request is refused, not silently replaced");
+        assert!(pairing_relay_url("http://old.example", None).is_err(), "a stored plain-http relay is not used for pairing");
     }
 
     use super::*;

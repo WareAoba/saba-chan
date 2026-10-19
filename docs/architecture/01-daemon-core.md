@@ -301,7 +301,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/config/bot` | `bot.rs:12` | - | BotConfig JSON (`config.json`의 `relay`) |
-| PUT | `/api/config/bot` | `bot.rs:18` | 부분 JSON (얕은 머지) | `{success, message}` / 500 `{error}` |
+| PUT | `/api/config/bot` | `bot.rs:18` | 부분 JSON (얕은 머지) | `{success, message}` / 400 `{success:false, error, error_code}`(`invalid_relay_url`: 바뀐 `cloud.relayUrl`이 https나 루프백 http가 아니다, `invalid_request`: 그 밖의 형식·접두사 규칙) / 500 `{error}` |
 | GET | `/api/config/gui` | `config.rs:15` | - | GuiSettings JSON |
 | PUT | `/api/config/gui` | `config.rs:21` | 부분 JSON | `{ok:true}` / 400 / 500. 저장에 성공하면 `supervisor.skip_port_check`도 갱신 |
 | GET | `/api/config/:kind/defaults` | `config.rs:47` | - | `{ok, defaults}` (`gui`, `bot`) / 404 |
@@ -378,8 +378,8 @@
 | GET | `/api/relay/node/:guild_id/members` | `relay.rs` `list_node_members` | `/api/nodes/:id/discord-members`(15초 제한). 실패하면 `/members`(권한을 등록한 멤버만)로 폴백한다. query `withStatus=1`이면 `{members, partial, reason?}`로 답한다: 폴백이면 `partial:true`, `reason`은 `bot_unavailable`·`relay_error`·`relay_unreachable`. 없으면 예전처럼 배열만 |
 | GET | `/api/relay/node/:guild_id/legacy-members` | `relay.rs` `list_node_legacy_members` | `/api/nodes/:id/members` 서명 프록시. 릴레이 본문(`[{id, username, displayName, level}]`)을 그대로, 실패하면 오류 상태와 본문(빈 목록으로 바꾸지 않는다) |
 | GET | `/api/relay/bot-invite` | `relay.rs:430-449` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 주소는 서명 요청과 같은 규칙(설정한 릴레이 또는 루프백)으로 정한다. 봇 초대 URL `{url}` |
-| POST | `/api/relay/pair/initiate` | `relay.rs:451` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
-| GET | `/api/relay/pair/:code/status` | `relay.rs` `poll_pairing_status` | `secret?, relayUrl?`. relay 응답을 그대로 돌려준다. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 저장하고(같은 값이 이미 있으면 다시 쓰지 않고 relay agent도 다시 띄우지 않는다, `store_node_token`) `tokenSaved:bool`을 더한다. `false`면 토큰이 이 PC에 없다(수령 기한이 지나 `nodeToken:null`이거나 쓰기 실패): 클라이언트는 연결됨으로 보이지 않고 다시 페어링하게 한다 |
+| POST | `/api/relay/pair/initiate` | `relay.rs` `initiate_pairing` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음). 릴레이 주소가 https(또는 루프백 http)가 아니면 400 `{error, error_code:"invalid_relay_url"}`(`pairing_relay_url`): 요청한 `relayUrl`이 그렇거나, 요청이 없을 때 쓰는 저장된 `cloud.relayUrl`이 그렇다 |
+| GET | `/api/relay/pair/:code/status` | `relay.rs` `poll_pairing_status` | `secret?, relayUrl?`. 릴레이 주소 규칙은 시작과 같다(아니면 400 `invalid_relay_url`). relay 응답을 그대로 돌려준다. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 저장하고(같은 값이 이미 있으면 다시 쓰지 않고 relay agent도 다시 띄우지 않는다, `store_node_token`) `tokenSaved:bool`을 더한다. `false`면 토큰이 이 PC에 없다(수령 기한이 지나 `nodeToken:null`이거나 쓰기 실패): 클라이언트는 연결됨으로 보이지 않고 다시 페어링하게 한다 |
 | GET | `/api/relay/link-requests` | `relay.rs` `list_link_requests` | relay `GET /api/link-requests` 서명 프록시. 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 중 이 PC에 온 것(J1-b) |
 | POST | `/api/relay/link-requests/:request_id` | `relay.rs` `answer_link_request` | `{accept:bool}` → relay `POST /api/link-requests/:id` 서명 프록시. 수락하면 relay가 그 길드를 이 PC에 묶는다. 응답은 relay 것 그대로 |
 | GET | `/api/relay/agent` | `chat.rs:19` | 에이전트 상태 `{running, relayUrl, hasToken, agentVersion, lastHeartbeatAt, lastError, lastErrorCode?, commandsHandled}`. `lastErrorCode` `token_replaced`: relay가 401 `TOKEN_REPLACED`(같은 디스코드 계정이 다른 PC를 페어링)로 답해서 에이전트가 멈췄다. 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄운다 |
@@ -512,7 +512,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 **BotConfig** (camelCase, `config.json`의 `relay`, `config_store/mod.rs:118-133`). 로컬 봇용 필드(`token`, `autoStart`, `mode`, `music*`)는 지워졌고, 옛 파일에 남아 있어도 무시된다.
 
-- `prefixes`(문자열 목록, 기본 `[]`: 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다. ko `사바쨩`, ja `サバちゃん`, 그 밖 `Saba-chan`). 각각 공백 없는 1~32자, 10개까지이고 어기면 `PUT /api/config/bot`이 400이다. 예전 `prefix` 문자열은 읽을 때 옮긴다(`"!saba"`·빈 값 → `[]`, 그 밖 → `[값]`, `BotConfig::normalize`). `cloud{relayUrl,hostId}` (hostId는 노드 토큰 `sbn_<hostId>.…`을 따른다: 페어링 완료·`PUT`·`DELETE /api/config/node-token`이 같이 맞춘다)
+- `prefixes`(문자열 목록, 기본 `[]`: 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다. ko `사바쨩`, ja `サバちゃん`, 그 밖 `Saba-chan`). 각각 공백 없는 1~32자, 10개까지이고 어기면 `PUT /api/config/bot`이 400이다. 예전 `prefix` 문자열은 읽을 때 옮긴다(`"!saba"`·빈 값 → `[]`, 그 밖 → `[값]`, `BotConfig::normalize`). `cloud{relayUrl,hostId}` (relayUrl은 빈 값(기본 릴레이)·https·루프백 http(`localhost`·`127.0.0.1`·`[::1]`, 모의 릴레이)만 받는다(`config_store::relay_url_problem`). 저장·가져오기(`check_sections`)에서 값이 바뀔 때만 보고, 이미 저장된 값은 읽기와 다른 키 저장을 막지 않는다. hostId는 노드 토큰 `sbn_<hostId>.…`을 따른다: 페어링 완료·`PUT`·`DELETE /api/config/node-token`이 같이 맞춘다)
 - `moduleAliases`, `commandAliases`, `instanceAliases`: 예전 전역 별명. 데몬이 시작할 때 길드를 하나라도 알면(`nodeSettings` 키, `cloudNodes[].guildId`) 아래 `nodeSettings[guild].instances`로 옮기고 비운다(`guild_words::migrate_on_start`, `chat::words::migrate`). `instanceAliases[id]`는 그 서버를 쓰는 길드마다 `words`로, 모듈 별명은 그 길드에 그 모듈 서버가 하나뿐일 때만 그 서버 `words`로(여럿이면 버리고 로그), `commandAliases[모듈]`은 그 모듈 서버마다 `commands`로 간다. 다른 서버 이름·낱말과 겹치는 낱말은 버린다
 - `nodeSettings`, `cloudNodes`, `cloudMembers`
 - `nodeSettings[guildId]`의 디스코드 명령 권한 (P1, `chat/permissions.rs`). 원본은 이것 하나다.

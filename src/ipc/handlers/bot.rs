@@ -39,6 +39,16 @@ pub async fn save_bot_config(
             )
                 .into_response()
         }
+        Err(crate::config_store::ConfigStoreError::InvalidRelayUrl(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "success": false, "error": msg, "error_code": "invalid_relay_url" })),
+        )
+            .into_response(),
+        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "success": false, "error": msg, "error_code": "invalid_request" })),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
