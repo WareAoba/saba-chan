@@ -197,7 +197,7 @@ async fn show(ctx: &Ctx, server: Option<&str>) -> Result<()> {
     ctx.out.data(&cur, |cur| {
         let list = tasks(cur);
         if list.is_empty() {
-            println!("{}", output::dim(&t!("schedule.none", name = sv.name)));
+            say!("{}", output::dim(&t!("schedule.none", name = sv.name)));
             ctx.out.hint(&format!(
                 "saba-chan-cli schedule add {} restart --at 04:00 --warn 10,1",
                 shell_word(&sv.name)
@@ -221,12 +221,12 @@ async fn show(ctx: &Ctx, server: Option<&str>) -> Result<()> {
         }
         if cur.get("backup_supported").and_then(Value::as_bool) == Some(true) {
             let keep = cur.get("backup_keep").map(output::show).unwrap_or_default();
-            println!("{}", output::dim(&t!("schedule.keep", count = keep)));
+            say!("{}", output::dim(&t!("schedule.keep", count = keep)));
         } else {
-            println!("{}", output::dim(&t!("schedule.no_backup")));
+            say!("{}", output::dim(&t!("schedule.no_backup")));
         }
         if cur.get("announce_supported").and_then(Value::as_bool) != Some(true) {
-            println!("{}", output::dim(&t!("schedule.no_announce")));
+            say!("{}", output::dim(&t!("schedule.no_announce")));
         }
     });
     Ok(())

@@ -240,8 +240,8 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         output::print_kv(&rows);
         if let Some(p) = &progress {
-            println!();
-            println!("{}", progress_line(p));
+            say!();
+            say!("{}", progress_line(p));
         }
     });
     Ok(())
@@ -732,7 +732,7 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
                     if !ctx.out.json {
                         let tail = ctx.api.console(&sv.id, None, Some(6)).await.unwrap_or(Value::Null);
                         for l in tail.get("lines").and_then(Value::as_array).into_iter().flatten() {
-                            eprintln!("  {}", crate::cmd::console::format_line(l));
+                            tell!("  {}", crate::cmd::console::format_line(l));
                         }
                     }
                     ctx.out
@@ -975,7 +975,7 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
             .or_else(|| r.get("message").and_then(Value::as_str))
             .or_else(|| r.get("output").and_then(Value::as_str));
         if let Some(t) = text.filter(|t| !t.trim().is_empty()) {
-            println!("{}", t.trim_end());
+            say!("{}", t.trim_end());
             return;
         }
         // 빈 답(`{response: "", executed}`)은 보낸 것만 알린다
@@ -985,7 +985,7 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
         });
         match data.filter(|_| !empty_reply) {
             Some(d) => print_value(d),
-            None => println!("{} {}", console::style("✓").green().bold(), t!("run.sent")),
+            None => say!("{} {}", console::style("✓").green().bold(), t!("run.sent")),
         }
     });
 }
@@ -1025,10 +1025,10 @@ pub fn print_value(v: &Value) {
         }
         Value::Array(items) => {
             for it in items {
-                println!("{}", show(it));
+                say!("{}", show(it));
             }
         }
-        other => println!("{}", show(other)),
+        other => say!("{}", show(other)),
     }
 }
 
@@ -1056,7 +1056,7 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
     let v = json!({ "module": module, "accepts_raw": cat.accepts_raw(), "commands": v });
     ctx.out.data(&v, |_| {
         if cat.commands.is_empty() {
-            println!("{}", output::dim(&t!("run.no_commands")));
+            say!("{}", output::dim(&t!("run.no_commands")));
         } else {
             let mut t = output::table(&[t!("col.command"), t!("col.what"), t!("col.aliases")]);
             for c in &cat.commands {
@@ -1077,8 +1077,8 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
             output::print_table(t);
         }
         if cat.accepts_raw() {
-            println!();
-            println!("{}", output::dim(&t!("run.raw_ok")));
+            say!();
+            say!("{}", output::dim(&t!("run.raw_ok")));
         }
     });
     Ok(())
@@ -1314,9 +1314,9 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             let title = crate::i18n::try_t(&format!("set.group.{}", group)).unwrap_or(group);
             output::heading(&title);
             output::print_kv(&rows);
-            println!();
+            say!();
         }
-        println!(
+        say!(
             "{}",
             output::dim(&format!("saba-chan-cli server set {} KEY=VALUE", shell_word(&sv.name)))
         );
@@ -1399,7 +1399,7 @@ async fn version(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             .or_else(|| r.get("server_version"))
             .map(show)
             .unwrap_or_else(|| output::dim(&t!("server.version_unknown")));
-        println!("{}  {}", sv.name, v);
+        say!("{}  {}", sv.name, v);
     });
     Ok(())
 }
@@ -1414,13 +1414,13 @@ async fn update(ctx: &Ctx, query: Option<&str>, check_only: bool) -> Result<()> 
     if check_only || !available {
         ctx.out.data(&r, |r| {
             if available {
-                println!("{}", t!("server.update_available", name = sv.name));
+                say!("{}", t!("server.update_available", name = sv.name));
                 ctx.out
                     .hint(&format!("saba-chan-cli server update {}", shell_word(&sv.name)));
             } else {
                 let reason = s(r, "reason");
                 let tail = crate::i18n::try_t(&format!("server.update_reason.{}", reason)).unwrap_or_default();
-                println!("{} {}", t!("server.update_none", name = sv.name), output::dim(&tail));
+                say!("{} {}", t!("server.update_none", name = sv.name), output::dim(&tail));
             }
         });
         return Ok(());
@@ -1470,7 +1470,7 @@ async fn progress(ctx: &Ctx, query: &str, dismiss: bool) -> Result<()> {
     }
     let p = ctx.api.provision_progress(&name).await?;
     if p.get("active").and_then(Value::as_bool) != Some(true) {
-        ctx.out.data(&p, |_| println!("{}", t!("progress.none", name = name)));
+        ctx.out.data(&p, |_| say!("{}", t!("progress.none", name = name)));
         return Ok(());
     }
     if ctx.out.json || p.get("done").and_then(Value::as_bool) == Some(true) {
@@ -1478,7 +1478,7 @@ async fn progress(ctx: &Ctx, query: &str, dismiss: bool) -> Result<()> {
         if let Some(err) = p.get("done").and_then(Value::as_bool).filter(|d| *d).and(p.get("error")).and_then(Value::as_str) {
             return Err(CliError::Partial { message: err.to_string(), data: p.clone() }.into());
         }
-        ctx.out.data(&p, |p| println!("{}", progress_line(p)));
+        ctx.out.data(&p, |p| say!("{}", progress_line(p)));
         return Ok(());
     }
     let r = follow_provision(ctx, &name).await?;
@@ -1497,7 +1497,7 @@ async fn history(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     ctx.out.data(&r, |r| {
         let events = r.get("events").and_then(Value::as_array).cloned().unwrap_or_default();
         if events.is_empty() {
-            println!("{}", output::dim(&t!("history.none")));
+            say!("{}", output::dim(&t!("history.none")));
             return;
         }
         let mut t = output::table(&[t!("col.when"), t!("col.kind"), t!("col.code"), t!("col.why")]);
@@ -1539,7 +1539,7 @@ async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str, server: &str) -> Res
     };
     ctx.out.data(&value, |v| {
         if !crate::cmd::print_issues(v) {
-            println!("{} {}", console::style("✓").green().bold(), ok_msg);
+            say!("{} {}", console::style("✓").green().bold(), ok_msg);
         }
     });
     // 동의하지 않은 모듈 약관이 있으면 바로 풀 수 있는 명령을 알려 준다
@@ -1573,15 +1573,15 @@ async fn launch_preview(ctx: &Ctx, query: Option<&str>, extra: Option<&str>) -> 
     let r = ctx.api.launch_preview(&sv.id, extra).await?;
     ctx.out.data(&r, |r| {
         if r.get("has_launch_args").and_then(Value::as_bool) == Some(false) {
-            println!("{}", dim(&t!("launch_preview.no_args", name = sv.name)));
+            say!("{}", dim(&t!("launch_preview.no_args", name = sv.name)));
         }
         match r.get("command_line").and_then(Value::as_str) {
-            Some(line) if r.get("success").and_then(Value::as_bool) == Some(true) => println!("{}", line),
-            _ => println!("{} {}", console::style("✗").red(), s(r, "message")),
+            Some(line) if r.get("success").and_then(Value::as_bool) == Some(true) => say!("{}", line),
+            _ => say!("{} {}", console::style("✗").red(), s(r, "message")),
         }
         for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
             let what = e.get("arg").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| show(&e["got"]));
-            println!("{} {}", console::style("!").yellow(), t!("launch_preview.invalid_format", arg = what, field = s(e, "field")));
+            say!("{} {}", console::style("!").yellow(), t!("launch_preview.invalid_format", arg = what, field = s(e, "field")));
         }
     });
     Ok(())
@@ -1618,7 +1618,7 @@ fn unknown_accepts<'a>(inst: &Value, named: &'a [String]) -> Vec<&'a str> {
 fn show_agreements(ctx: &Ctx, pending: &[Value]) {
     if !ctx.out.json {
         for a in pending {
-            println!("  {}  {}", console::style(s(a, "label")).bold(), s(a, "url"));
+            say!("  {}  {}", console::style(s(a, "label")).bold(), s(a, "url"));
         }
     }
 }
@@ -1671,7 +1671,7 @@ async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
         }
     };
     if accepted && !ctx.out.json {
-        println!("{} {}", console::style("✓").green().bold(), t!("agree.done", name = name));
+        say!("{} {}", console::style("✓").green().bold(), t!("agree.done", name = name));
     }
     if !accepted || chosen.len() < pending.len() {
         ctx.out.hint(&format!("saba-chan-cli server agree {}", shell_word(name)));

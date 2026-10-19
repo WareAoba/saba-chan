@@ -49,7 +49,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             if values.is_empty() && !default {
                 let cfg = ctx.api.bot_config().await?;
                 let p = cfg.get("prefixes").cloned().unwrap_or_else(|| json!([]));
-                ctx.out.data(&json!({ "prefixes": p }), |_| println!("{}", prefixes_line(&p)));
+                ctx.out.data(&json!({ "prefixes": p }), |_| say!("{}", prefixes_line(&p)));
                 return Ok(());
             }
             let r = ctx.api.save_bot_config(json!({ "prefixes": values })).await?;
@@ -64,7 +64,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.data(&r, |r| {
                 let rows = member_rows(r);
                 if rows.is_empty() {
-                    println!("{}", output::dim(&t!("bot.list_empty")));
+                    say!("{}", output::dim(&t!("bot.list_empty")));
                 } else {
                     let mut t = output::table(&[t!("col.name"), t!("bot.username"), t!("col.id")]);
                     for row in rows {
@@ -108,8 +108,8 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let cfg = ctx.api.bot_config().await?;
             let r = ctx.api.bot_invite(relay_of(&cfg)).await?;
             ctx.out.data(&r, |r| {
-                println!("{}", t!("bot.invite"));
-                println!("  {}", console::style(s(r, "url")).cyan().underlined());
+                say!("{}", t!("bot.invite"));
+                say!("  {}", console::style(s(r, "url")).cyan().underlined());
             });
             Ok(())
         }
@@ -253,12 +253,12 @@ async fn wait_for_claim(ctx: &Ctx, relay: Option<&str>) -> Result<Option<Value>>
         ctx.out.data(&init, |_| {});
         return Ok(None);
     }
-    eprintln!();
-    eprintln!("  {}", t!("bot.pair_enter"));
-    eprintln!();
-    eprintln!("      {}", console::style(&code).bold().cyan());
-    eprintln!();
-    eprintln!("  {}", output::dim(&t!("bot.pair_waiting")));
+    tell!();
+    tell!("  {}", t!("bot.pair_enter"));
+    tell!();
+    tell!("      {}", console::style(&code).bold().cyan());
+    tell!();
+    tell!("  {}", output::dim(&t!("bot.pair_waiting")));
     let spin = crate::progress::spinner(&t!("bot.pair_polling"));
     let mut wait = PairWait::new(std::time::Instant::now());
     let result = loop {
@@ -351,7 +351,7 @@ async fn finish_pair(ctx: &Ctx, result: Value, mut cloud: Value) -> Result<()> {
     {
         ctx.api.agent_start().await?;
         if !ctx.out.json {
-            println!("{} {}", console::style("✓").green().bold(), t!("bot.started"));
+            say!("{} {}", console::style("✓").green().bold(), t!("bot.started"));
         }
     }
     Ok(())
@@ -366,9 +366,9 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
     if queries.is_empty() && !all {
         let list = nodes.get(guild).and_then(|n| n.get("allowedInstances")).and_then(Value::as_array).cloned();
         ctx.out.data(&json!({ "guild": guild, "allowedInstances": list }), |_| match &list {
-            None => println!("{}", t!("bot.allow_all")),
-            Some(l) if l.is_empty() => println!("{}", output::dim(&t!("bot.allow_none"))),
-            Some(l) => l.iter().filter_map(Value::as_str).for_each(|id| println!("{}", name_of(id))),
+            None => say!("{}", t!("bot.allow_all")),
+            Some(l) if l.is_empty() => say!("{}", output::dim(&t!("bot.allow_none"))),
+            Some(l) => l.iter().filter_map(Value::as_str).for_each(|id| say!("{}", name_of(id))),
         });
         return Ok(());
     }
@@ -480,7 +480,7 @@ async fn words(ctx: &Ctx, guild: &str, query: Option<&str>, change: WordsChange)
     let Some(q) = query else {
         ctx.out.data(&Value::Array(list.clone()), |_| {
             if list.is_empty() {
-                println!("{}", output::dim(&t!("bot.list_empty")));
+                say!("{}", output::dim(&t!("bot.list_empty")));
                 return;
             }
             let mut t = output::table(&[t!("noun.server"), t!("bot.words"), t!("bot.command_words")]);
@@ -587,7 +587,7 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
     } else {
         let r = ctx.api.set_node_channels(guild, Value::Object(patch), relay).await?;
         if !ctx.out.json {
-            println!("{} {}", console::style("✓").green().bold(), t!("bot.channels_saved"));
+            say!("{} {}", console::style("✓").green().bold(), t!("bot.channels_saved"));
         }
         r
     };
@@ -608,7 +608,7 @@ async fn channels_of_paired(ctx: &Ctx, change: ChannelChange) -> Result<()> {
     for (guild, name) in &targets {
         let r = ctx.api.node_channels(guild, relay_of(&cfg)).await;
         if !ctx.out.json {
-            println!();
+            say!();
             output::heading(&if name.is_empty() { guild.clone() } else { format!("{} ({})", name, guild) });
             match &r {
                 Ok(r) => print_channels(r),
@@ -646,9 +646,9 @@ async fn discord_settings(ctx: &Ctx, guild: &str, patch: Option<Value>) -> Resul
         Some(p) => {
             let r = ctx.api.set_discord_settings(guild, p).await?;
             if !ctx.out.json {
-                println!("{} {}", console::style("✓").green().bold(), t!("bot.discord_saved"));
+                say!("{} {}", console::style("✓").green().bold(), t!("bot.discord_saved"));
                 if r.pointer("/sync/ok").and_then(Value::as_bool) == Some(false) {
-                    eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.discord_not_synced"));
+                    tell!("{} {}", console::style("!").yellow().bold(), t!("bot.discord_not_synced"));
                 }
             }
             // JSON에는 동기화 결과(`sync`)도 그대로 싣는다
@@ -702,7 +702,7 @@ fn print_channels(r: &Value) {
         (t!("bot.notify_channel"), notify.unwrap_or_else(none)),
     ]);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
-        eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
+        tell!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
     }
 }
 
@@ -714,7 +714,7 @@ async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
         ctx.out.data(&r, |r| {
             let rows = link_rows(r, now());
             if rows.is_empty() {
-                println!("{}", output::dim(&t!("bot.list_empty")));
+                say!("{}", output::dim(&t!("bot.list_empty")));
                 return;
             }
             let mut t = output::table(&[t!("col.id"), t!("noun.guild"), t!("bot.requested_by"), t!("bot.expires_in")]);
@@ -788,7 +788,7 @@ async fn nodes(ctx: &Ctx) -> Result<()> {
     ctx.out.data(&r, |r| {
         let rows = node_rows(r);
         if rows.is_empty() {
-            println!("{}", output::dim(&t!("bot.list_empty")));
+            say!("{}", output::dim(&t!("bot.list_empty")));
             return;
         }
         let mut t = output::table(&[t!("col.name"), t!("col.id"), t!("bot.locale"), t!("bot.prefix")]);

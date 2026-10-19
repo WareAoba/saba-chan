@@ -114,7 +114,7 @@ async fn import(ctx: &Ctx, guild: &str, wanted: &[String]) -> Result<()> {
     let chosen: Vec<(String, i64)> = if wanted.is_empty() {
         if !ctx.out.json {
             for (id, level) in &candidates {
-                eprintln!("  {}: {}", label(id), level_name(*level));
+                tell!("  {}: {}", label(id), level_name(*level));
             }
         }
         ctx.ask.ensure(&t!("perm.import_confirm", count = candidates.len()))?;
@@ -238,14 +238,14 @@ fn show(ctx: &Ctx, r: &Value, names: &Names) {
             "" => output::dim(&t!("perm.no_owner")),
             id => member_name(names, id),
         };
-        println!("{}: {}", t!("perm.owner"), owner);
+        say!("{}: {}", t!("perm.owner"), owner);
         if let Some(conflict) = r.get("relayOwnerDiscordId").and_then(Value::as_str) {
             ctx.out.warn(&t!("perm.owner_conflict", id = conflict));
         }
         let level = |k: &str| r.get(k).and_then(Value::as_i64).unwrap_or(1);
-        println!("{}: {}", t!("perm.default"), level_name(level("defaultLevel")));
-        println!("{}: {}", t!("perm.preset"), s(r, "preset"));
-        println!("{}: {}", t!("perm.cap"), level_name(level("chatbotCap")));
+        say!("{}: {}", t!("perm.default"), level_name(level("defaultLevel")));
+        say!("{}: {}", t!("perm.preset"), s(r, "preset"));
+        say!("{}: {}", t!("perm.cap"), level_name(level("chatbotCap")));
 
         let mut members: Vec<(String, i64)> = r
             .get("members")

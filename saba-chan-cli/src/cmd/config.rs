@@ -36,7 +36,7 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
             let v = get_path(&doc, path)
                 .cloned()
                 .ok_or_else(|| not_found(&key, &doc, root))?;
-            ctx.out.data(&v, |v| println!("{}", output::show(v)));
+            ctx.out.data(&v, |v| say!("{}", output::show(v)));
             Ok(())
         }
         ConfigCmd::Set { pairs } => set(ctx, &pairs).await,
