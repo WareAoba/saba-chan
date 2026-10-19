@@ -21,8 +21,8 @@ export const CHATBOT_DEFAULTS = {
     webSearch: true,
     disabledTools: [],
 };
-/** 끌 수 있는 도구 묶음 (계약 disabledTools) */
-export const CHATBOT_TOOLS = ['research', 'lol', 'images', 'social_notes'];
+/** 끌 수 있는 도구 묶음 (계약 disabledTools). 눈치 메모는 끌 수 없는 기본 사양이라 없다 */
+export const CHATBOT_TOOLS = ['research', 'lol', 'images'];
 export const MEMO_MAX = 8000;
 
 export const chatbotAvailable = () => !!window.api?.chatbotGet;

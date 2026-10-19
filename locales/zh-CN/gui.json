@@ -1055,8 +1055,6 @@
     "tool_lol_hint": "查询英雄联盟战绩。",
     "tool_images": "图片生成",
     "tool_images_hint": "画图（每天 10 张）。",
-    "tool_social_notes": "察言观色备忘",
-    "tool_social_notes_hint": "记录关于氛围和成员的私人备忘，不会在应用中显示。",
     "relay_delete_pending": "旧的聊天机器人设置尚未从中继删除，下次连接时会再次删除。",
     "channels_moved": "聊天机器人对话的频道在各 Discord 服务器的「频道」标签页中选择。",
     "prefix_calls": "用 Discord › 基本设置 中的命令前缀呼叫时回答。",

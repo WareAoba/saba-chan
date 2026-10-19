@@ -1055,8 +1055,6 @@
     "tool_lol_hint": "查詢英雄聯盟戰績。",
     "tool_images": "圖片生成",
     "tool_images_hint": "畫圖（每天 10 張）。",
-    "tool_social_notes": "察言觀色備忘",
-    "tool_social_notes_hint": "記錄關於氣氛和成員的私人備忘，不會在應用程式中顯示。",
     "relay_delete_pending": "舊的聊天機器人設定尚未從中繼刪除，下次連線時會再次刪除。",
     "channels_moved": "聊天機器人對話的頻道在各 Discord 伺服器的「頻道」分頁中選擇。",
     "prefix_calls": "用 Discord › 基本設定 中的命令前綴呼叫時回答。",
