@@ -296,11 +296,42 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     if let Err(code) = check_launch(&program, &roots) {
         return Err(Blocked { code, file: Some(program), detail: None });
     }
-    // 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)도 폴더 밖 경로·특수 경로를 쓰지 않아야 한다
-    if let Err(arg) = argument_files(args, cwd) {
+    // 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)도 폴더 밖 경로·특수 경로를 쓰지 않아야 한다.
+    // Java가 인자처럼 읽는 `@파일`의 내용과 JVM 옵션 환경 변수도 같이 본다
+    if let Err(arg) = argument_files(args, cwd).and_then(|_| argument_files(&indirect_arguments(args, env, cwd), cwd)) {
         return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None });
     }
     Ok((program, gate))
+}
+
+/// Java가 실행 인자처럼 읽는 환경 변수 (`CLASSPATH`는 값 전체가 경로 목록 하나)
+const JVM_OPTION_VARS: &[&str] = &["JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"];
+
+/// `@파일`이 너무 크면 읽지 않는다 (인자 파일은 짧다)
+const ARGUMENT_FILE_LIMIT: u64 = 1 << 20;
+
+/// 인자 밖에서 Java가 인자로 읽는 것: 있는 `@파일`의 내용(`#` 줄은 주석), JVM 옵션 환경 변수, `CLASSPATH`.
+/// `argument_files`가 인자처럼 검사한다. `@파일` 경로 자체는 먼저 `argument_files(args)`로 검사한 뒤 부른다
+fn indirect_arguments(args: &[String], env: &[(String, String)], cwd: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for file in args.iter().filter_map(|a| a.strip_prefix('@')) {
+        let path = cwd.join(file);
+        if !std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= ARGUMENT_FILE_LIMIT) {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap_or_default()).into_owned();
+        for line in text.lines().filter(|l| !l.trim_start().starts_with('#')) {
+            out.extend(crate::chat::split_quoted(line));
+        }
+    }
+    for (key, value) in env {
+        if JVM_OPTION_VARS.iter().any(|v| key.eq_ignore_ascii_case(v)) {
+            out.extend(crate::chat::split_quoted(value));
+        } else if key.eq_ignore_ascii_case("CLASSPATH") {
+            out.push(value.clone());
+        }
+    }
+    out
 }
 
 /// `.`·`..`를 글자로만 푼 경로 (파일 시스템에 묻지 않는다)
@@ -1161,6 +1192,36 @@ mod tests {
         let prop = r"-Djava.class.path=lib\*;\\host\share\x.jar".to_string();
         assert_eq!(argument_files(&[prop.clone()], tmp.path()), Err(prop));
         assert!(argument_files(&["-cp".to_string(), r"lib\*;.".to_string()], tmp.path()).is_ok());
+    }
+
+    /// Java가 인자처럼 읽는 곳(`@파일`의 내용, JVM 옵션·클래스 경로 환경 변수)도 인자와 같이 본다
+    #[test]
+    fn arguments_java_reads_from_files_and_variables_are_checked_too() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("args.txt"), "# 주석\n-javaagent:agent.jar \"-Dname=a b\"\n-Xmx4G\n").unwrap();
+        let env: Vec<(String, String)> = [("JAVA_TOOL_OPTIONS", "-agentpath:x.dll"), ("CLASSPATH", "a.jar;b.jar"), ("SERVER_NAME", "-javaagent:ignored.jar")]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let found = indirect_arguments(&["@args.txt".to_string(), "@missing.txt".to_string(), "-jar".to_string()], &env, tmp.path());
+        assert_eq!(found, ["-javaagent:agent.jar", "-Dname=a b", "-Xmx4G", "-agentpath:x.dll", "a.jar;b.jar"]);
+    }
+
+    /// 공유 폴더 경로는 `@파일` 안에 있어도, JVM 옵션 환경 변수에 있어도 막는다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_share_inside_an_argument_file_or_a_jvm_variable_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let share = r"-javaagent:\\host\share\x.jar";
+        std::fs::write(tmp.path().join("args.txt"), share).unwrap();
+        let roots = LaunchRoots::default();
+        let refused = guard_launch_for(|| Trust::Unverified, "java", &["@args.txt".to_string()], tmp.path(), roots.clone(), &mut Vec::new()).await;
+        assert_eq!(refused.err().and_then(|b| b.file).as_deref(), Some(share));
+        let mut env = vec![("JDK_JAVA_OPTIONS".to_string(), share.to_string())];
+        let refused = guard_launch_for(|| Trust::Unverified, "java", &[], tmp.path(), roots.clone(), &mut env).await;
+        assert_eq!(refused.err().and_then(|b| b.file).as_deref(), Some(share));
+        let mut env = vec![("JDK_JAVA_OPTIONS".to_string(), "-Xmx4G".to_string())];
+        assert!(guard_launch_for(|| Trust::Unverified, "java", &[], tmp.path(), roots, &mut env).await.is_ok());
     }
 
     /// 익스텐션 hook은 확인된 모듈의 인스턴스에도 불린다: 인스턴스 폴더는 읽기만, 쓰기는 전용 폴더에만
