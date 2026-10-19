@@ -1151,6 +1151,8 @@ impl UpdateManager {
     /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
     /// Flow 2 (GUI/CLI): 직접 적용, self-update flow로 전환
     pub async fn apply_single_component(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+        // 업데이터·데몬의 개별 적용도 지난 적용이 남긴 것부터 정리한다 (같은 프로세스가 적용하므로 안전하다)
+        self.settle_interrupted_updates();
         let comp = self.status.components.iter()
             .find(|c| &c.component == component && c.downloaded && c.update_available)
             .cloned()

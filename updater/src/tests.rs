@@ -1249,3 +1249,18 @@ fn an_unrecorded_installer_is_not_assumed_current() {
     assert!(UpdateManager::unknown_version_needs_update(&Component::Installer));
     assert!(!UpdateManager::unknown_version_needs_update(&Component::CoreDaemon));
 }
+
+// L3: 개별 적용(업데이터 키별 적용, 데몬 직접 적용)도 지난 적용이 남긴 백업을 되돌린다
+#[tokio::test]
+async fn a_single_component_apply_restores_a_backup_left_by_an_interrupted_apply() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::write(tmp.path().join("resources.pak.update-bak"), b"old").unwrap();
+
+    // 받아 둔 업데이트가 없어 적용은 실패하지만, 정리는 그 앞에서 한다
+    assert!(manager.apply_single_component(&Component::Locales).await.is_err());
+
+    assert_eq!(std::fs::read(tmp.path().join("resources.pak")).unwrap(), b"old");
+    assert!(!tmp.path().join("resources.pak.update-bak").exists());
+}
