@@ -39,6 +39,29 @@ pub fn is_process_alive(pid: u32) -> bool {
     }
 }
 
+/// 기록과 실제 프로세스 시작 시각의 차이로 볼 여유 (시계·기록 시점 차이)
+const START_TIME_SLACK_SECS: u64 = 10;
+
+/// 프로세스가 시작된 시각 (Unix 초). 읽지 못하면 None
+pub fn process_start_time(pid: u32) -> Option<u64> {
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut sys = sysinfo::System::new();
+    if !sys.refresh_process(pid) {
+        return None;
+    }
+    sys.process(pid).map(|p| p.start_time()).filter(|&t| t > 0)
+}
+
+/// 기록해 둔 PID가 아직 그때의 프로세스인가: 살아 있고, `recorded_at`(그 프로세스를 띄운 뒤 기록한 시각)보다
+/// 늦게 시작하지 않았다. 재부팅 뒤 같은 PID를 다른 프로세스가 쓰면 시작 시각이 기록보다 늦다.
+/// 시작 시각을 읽지 못하면(권한) 살아 있는지만 본다
+pub fn is_same_process(pid: u32, recorded_at: u64) -> bool {
+    if !is_process_alive(pid) {
+        return false;
+    }
+    process_start_time(pid).is_none_or(|started| started <= recorded_at.saturating_add(START_TIME_SLACK_SECS))
+}
+
 /// Force-kill a process by PID. Cross-platform helper.
 /// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다
 pub fn force_kill_pid(pid: u32) -> Result<()> {
@@ -182,6 +205,17 @@ fn current_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 재부팅 뒤 같은 PID를 다른 프로세스가 쓰면, 그 프로세스는 기록보다 늦게 시작했다
+    #[test]
+    fn a_pid_reused_after_the_record_is_not_the_same_process() {
+        let me = std::process::id();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        assert!(is_same_process(me, now), "the recording process itself");
+        let started = process_start_time(me).expect("own start time");
+        assert!(!is_same_process(me, started.saturating_sub(3600)), "started an hour after the record");
+        assert!(!is_same_process(u32::MAX - 1, now), "not running");
+    }
 
     #[test]
     fn test_get_pid() {
