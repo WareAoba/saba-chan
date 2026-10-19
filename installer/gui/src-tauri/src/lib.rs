@@ -671,6 +671,31 @@ async fn launch_app(state: State<'_, SharedState>) -> Result<(), String> {
 // 관리자 권한 상승 (UAC) — 디렉토리 생성 전용
 // ═══════════════════════════════════════════════════════
 
+/// Windows 명령줄 인자 하나로 따옴표를 씌운다 (CommandLineToArgvW 규칙: `"` 앞과 끝의 `\`는 두 배로)
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn quote_arg(arg: &str) -> String {
+    let mut out = String::from("\"");
+    let mut backslashes = 0;
+    for c in arg.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                out.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
+                out.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                out.extend(std::iter::repeat_n('\\', backslashes));
+                out.push(c);
+                backslashes = 0;
+            }
+        }
+    }
+    out.extend(std::iter::repeat_n('\\', backslashes * 2));
+    out.push('"');
+    out
+}
+
 /// UAC 프롬프트로 디렉토리를 생성하고 현재 사용자에게 쓰기 권한을 부여한다.
 /// 앱 전체를 재시작하지 않고 디렉토리만 상승 처리한다.
 /// ShellExecuteExW("runas")로 자기 자신을 --elevate-mkdir 모드로 실행하므로
@@ -701,7 +726,7 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
         (_, Ok(u)) => u,
         _ => return Err("Cannot determine the current user".into()),
     };
-    let params = to_wide(&format!("--elevate-mkdir \"{}\" --grant \"{}\"", dir.to_string_lossy(), user));
+    let params = to_wide(&format!("--elevate-mkdir {} --grant {}", quote_arg(&dir.to_string_lossy()), quote_arg(&user)));
 
     let mut sei: SHELLEXECUTEINFOW = unsafe { zeroed() };
     sei.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
@@ -1224,6 +1249,14 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    // L15(a): `\`로 끝나는 경로는 그대로 따옴표로 감싸면 `\"`가 되어 다음 인자까지 먹는다
+    #[test]
+    fn elevation_arguments_survive_trailing_backslashes_and_quotes() {
+        assert_eq!(quote_arg(r"C:\Program Files\Saba-chan"), r#""C:\Program Files\Saba-chan""#);
+        assert_eq!(quote_arg(r"D:\"), r#""D:\\""#);
+        assert_eq!(quote_arg(r#"a\"b"#), r#""a\\\"b""#);
+    }
+
     use super::*;
 
     #[test]

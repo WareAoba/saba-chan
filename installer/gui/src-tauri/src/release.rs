@@ -151,6 +151,14 @@ pub async fn download(
 
 #[cfg(test)]
 mod tests {
+    // L15(c): 빌드에 담긴 versions.toml을 못 읽으면 필수 목록이 비어 반쪽 릴리스를 막지 못한다
+    #[test]
+    fn the_bundled_versions_file_names_the_required_components() {
+        let mut required = super::required_components();
+        required.sort();
+        assert_eq!(required, ["gui", "saba-core", "updater"]);
+    }
+
     use super::*;
     use std::collections::HashMap;
 

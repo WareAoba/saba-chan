@@ -98,6 +98,8 @@ COMPONENTS = [
 
 STAGING_DIR = Path("staging")
 OUTPUT_DIR = Path("output")
+# 저장소 루트의 versions.toml (작업 폴더와 상관없이)
+VERSIONS_TOML = Path(__file__).resolve().parents[2] / "versions.toml"
 
 
 # ─── 유틸리티 ────────────────────────────────────────────
@@ -105,7 +107,7 @@ OUTPUT_DIR = Path("output")
 def missing_required(manifest_components: dict) -> list[str]:
     """manifest에 빠진 필수 컴포넌트 키 (versions.toml의 `required = true`, 설치기도 같은 값을 읽는다)"""
     import tomllib
-    data = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads(VERSIONS_TOML.read_text(encoding="utf-8"))
     return [k for k, c in data.get("components", {}).items() if c.get("required") and k not in manifest_components]
 
 
@@ -121,7 +123,7 @@ def sha256_file(path: Path) -> str:
 def read_bundled_version(key: str) -> str | None:
     """versions.toml의 [components.<key>] version"""
     import tomllib
-    data = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads(VERSIONS_TOML.read_text(encoding="utf-8"))
     return data.get("components", {}).get(key, {}).get("version")
 
 
@@ -520,7 +522,7 @@ def main():
 
     # release_version = versions.toml의 [release] version
     import tomllib
-    release_version = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))["release"]["version"]
+    release_version = tomllib.loads(VERSIONS_TOML.read_text(encoding="utf-8"))["release"]["version"]
 
     # manifest.json 생성
     manifest = {
