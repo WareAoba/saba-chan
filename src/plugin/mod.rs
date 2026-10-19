@@ -186,6 +186,7 @@ impl PluginCall {
         self
     }
 
+    #[cfg(test)]
     pub fn config(&self) -> &Value {
         &self.config
     }
@@ -194,6 +195,7 @@ impl PluginCall {
         &mut self.config
     }
 
+    #[cfg(test)]
     pub fn server(&self) -> Option<u32> {
         self.server
     }
