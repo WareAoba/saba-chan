@@ -869,6 +869,7 @@
     "channels_err_conflict": "Un même salon ne peut pas être attribué à deux types à la fois.",
     "channels_err_unknown": "{{channel}} n'est pas un salon textuel utilisable par le bot sur ce serveur.",
     "channels_err_bot": "Le bot n'a pas pu être vérifié, rien n'a changé. Le retrait fonctionne toujours.",
+    "channels_err_moved": "Entre-temps, ce serveur Discord est passé sur un autre PC, rien n'a donc été enregistré.",
     "channels_err_generic": "Impossible d'enregistrer les attributions de salons.",
     "tab_commands": "Commandes",
     "level_owner": "Propriétaire",

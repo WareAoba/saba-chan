@@ -869,6 +869,7 @@
     "channels_err_conflict": "同じチャンネルを2つの種類に同時に割り当てることはできません。",
     "channels_err_unknown": "{{channel}} はこのサーバーでボットが使えるテキストチャンネルではありません。",
     "channels_err_bot": "ボットを確認できなかったため変更していません。解除は今でもできます。",
+    "channels_err_moved": "その間にこのDiscordサーバーが別のPCに移ったため、保存していません。",
     "channels_err_generic": "チャンネルの割り当てを保存できませんでした。",
     "tab_commands": "コマンド",
     "level_owner": "オーナー",

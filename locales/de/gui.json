@@ -869,6 +869,7 @@
     "channels_err_conflict": "Derselbe Kanal kann nicht zwei Arten gleichzeitig zugewiesen werden.",
     "channels_err_unknown": "{{channel}} ist kein Textkanal, den der Bot auf diesem Server nutzen kann.",
     "channels_err_bot": "Der Bot konnte nicht geprüft werden, daher wurde nichts geändert. Aufheben funktioniert weiterhin.",
+    "channels_err_moved": "Dieser Discord-Server ist inzwischen auf einen anderen PC umgezogen, daher wurde nichts gespeichert.",
     "channels_err_generic": "Kanalzuweisungen konnten nicht gespeichert werden.",
     "tab_commands": "Befehle",
     "level_owner": "Besitzer",

@@ -29,6 +29,13 @@ describe('채널 배정 변환', () => {
         );
         expect(channelsErrorText({ error: 'INVALID_BODY' }, t, String)).toBe('discord.channels_err_generic');
     });
+
+    it('저장하는 사이 이 서버가 다른 PC로 옮겨 갔으면(409 NODE_MOVED) 코드 대신 알린다', () => {
+        const t = (k) => k;
+        expect(channelsErrorText({ error: 'NODE_MOVED', error_code: 'NODE_MOVED' }, t, String)).toBe(
+            'discord.channels_err_moved',
+        );
+    });
 });
 
 describe('ChannelsTab', () => {

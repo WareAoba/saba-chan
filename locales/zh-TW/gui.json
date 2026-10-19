@@ -869,6 +869,7 @@
     "channels_err_conflict": "同一個頻道不能同時指派給兩種用途。",
     "channels_err_unknown": "{{channel}} 不是機器人在此伺服器可用的文字頻道。",
     "channels_err_bot": "無法確認機器人，因此沒有變更。取消指派仍然可以。",
+    "channels_err_moved": "在此期間這個 Discord 伺服器已轉到另一台電腦，因此沒有儲存。",
     "channels_err_generic": "無法儲存頻道指派。",
     "tab_commands": "指令",
     "level_owner": "擁有者",

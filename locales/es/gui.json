@@ -869,6 +869,7 @@
     "channels_err_conflict": "No se puede asignar el mismo canal a dos tipos a la vez.",
     "channels_err_unknown": "{{channel}} no es un canal de texto que el bot pueda usar en este servidor.",
     "channels_err_bot": "No se pudo comprobar el bot, así que no cambió nada. Quitar asignaciones sigue funcionando.",
+    "channels_err_moved": "Mientras tanto, este servidor de Discord pasó a otro PC, así que no se guardó nada.",
     "channels_err_generic": "No se pudieron guardar las asignaciones de canales.",
     "tab_commands": "Comandos",
     "level_owner": "Propietario",
