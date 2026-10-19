@@ -193,7 +193,7 @@ pub enum Existing {
 const ACE_OBJECT_INHERIT: u8 = 0x1;
 #[cfg_attr(not(windows), allow(dead_code))]
 const ACE_CONTAINER_INHERIT: u8 = 0x2;
-#[cfg(test)]
+#[cfg_attr(not(windows), allow(dead_code))]
 const ACE_INHERITED: u8 = 0x10;
 
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -256,7 +256,7 @@ fn write_runtime_record(path: &Path, record: &BTreeMap<String, BTreeSet<PathBuf>
 }
 
 #[cfg(windows)]
-pub use imp::{grant, revoke_stale_runtimes, spawn, Contained};
+pub use imp::{clear_low_labels, grant, revoke_stale_runtimes, spawn, Contained};
 
 #[cfg(windows)]
 mod imp {
@@ -716,6 +716,151 @@ mod imp {
         Ok(())
     }
 
+    /// 경로의 낮은 수준 표시: `None` 없음, `Some(true)` 위 폴더에서 상속받은 것, `Some(false)` 직접 붙은 것
+    fn low_label(path: &Path) -> Result<Option<bool>, String> {
+        use std::os::windows::io::AsRawHandle;
+        let low = low_integrity()?;
+        unsafe {
+            let read = open_checked(path, 0)?;
+            let mut sacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetSecurityInfo(read.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), &mut sacl, &mut sd);
+            if rc != 0 {
+                return Err(format!("read label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            let mut found = None;
+            let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+            if !sacl.is_null()
+                && GetAclInformation(sacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) != 0
+            {
+                for i in 0..info.AceCount {
+                    let mut ace: *mut c_void = null_mut();
+                    if GetAce(sacl, i, &mut ace) == 0 || ace.is_null() {
+                        continue;
+                    }
+                    let header = &*(ace as *const ACE_HEADER);
+                    let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
+                    if header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE && EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0 {
+                        found = Some(header.AceFlags & super::ACE_INHERITED != 0);
+                        break;
+                    }
+                }
+            }
+            LocalFree(sd);
+            Ok(found)
+        }
+    }
+
+    /// `label_low`가 붙인 낮은 수준 표시를 `dir`과 그 아래 폴더에서 걷는다. 상속받은 표시도 함께 빠진다.
+    /// 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 서버(Java 등)가 뜨지 못하므로,
+    /// 서버를 띄우기 전에 부른다. 걷은 폴더 수를 돌려준다
+    pub fn clear_low_labels(dir: &Path) -> Result<usize, String> {
+        use std::os::windows::io::AsRawHandle;
+        let _guard = acl_lock();
+        let mut cleared = 0;
+        let mut pending = vec![dir.to_path_buf()];
+        while let Some(path) = pending.pop() {
+            if low_label(&path)? == Some(false) {
+                // 빈 표시 목록으로 바꾼다 (ACL 머리만)
+                let mut buf = [0u32; 4];
+                let acl = buf.as_mut_ptr() as *mut ACL;
+                if unsafe { InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) } == 0 {
+                    return Err(last_error("InitializeAcl"));
+                }
+                let handle = open_for_relabel(&path)?;
+                let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
+                if rc != 0 {
+                    return Err(format!("clear label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+                }
+                cleared += 1;
+            }
+            // 링크는 따라가지 않는다 (폴더 밖을 고치지 않게)
+            if let Ok(entries) = std::fs::read_dir(&path) {
+                for entry in entries.flatten() {
+                    if entry.file_type().is_ok_and(|t| t.is_dir() && !t.is_symlink()) {
+                        pending.push(entry.path());
+                    }
+                }
+            }
+        }
+        Ok(cleared)
+    }
+
+    #[cfg(test)]
+    mod label_tests {
+        /// `exe`로 띄운 프로세스의 무결성 수준 RID (0x1000 낮음, 0x2000 중간). 멈춘 채 띄워 보고 바로 끝낸다
+        fn launch_integrity(exe: &std::path::Path) -> u32 {
+            use super::*;
+            use std::os::windows::io::AsRawHandle;
+            use winapi::um::winnt::{TokenIntegrityLevel, TOKEN_MANDATORY_LABEL};
+            unsafe {
+                let app = wide(exe.as_os_str());
+                let mut line = wide(std::ffi::OsStr::new("probe --list"));
+                let mut si: winapi::um::processthreadsapi::STARTUPINFOW = std::mem::zeroed();
+                si.cb = std::mem::size_of_val(&si) as DWORD;
+                let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+                assert_ne!(
+                    CreateProcessW(app.as_ptr(), line.as_mut_ptr(), null_mut(), null_mut(), FALSE, CREATE_SUSPENDED | CREATE_NO_WINDOW, null_mut(), null_mut(), &mut si, &mut pi),
+                    0,
+                    "{}",
+                    last_error("CreateProcessW")
+                );
+                let process = OwnedHandle::from_raw_handle(pi.hProcess as RawHandle);
+                let _thread = OwnedHandle::from_raw_handle(pi.hThread as RawHandle);
+                let mut token: HANDLE = null_mut();
+                let opened = OpenProcessToken(process.as_raw_handle() as HANDLE, TOKEN_QUERY, &mut token);
+                let mut buf = vec![0u8; 256];
+                let mut len: DWORD = 0;
+                let read = opened != 0
+                    && GetTokenInformation(token, TokenIntegrityLevel, buf.as_mut_ptr() as *mut c_void, buf.len() as DWORD, &mut len) != 0;
+                let rid = if read {
+                    let label = &*(buf.as_ptr() as *const TOKEN_MANDATORY_LABEL);
+                    let count = *winapi::um::securitybaseapi::GetSidSubAuthorityCount(label.Label.Sid);
+                    *winapi::um::securitybaseapi::GetSidSubAuthority(label.Label.Sid, DWORD::from(count) - 1)
+                } else {
+                    0
+                };
+                if !token.is_null() {
+                    drop(OwnedHandle::from_raw_handle(token as RawHandle));
+                }
+                TerminateProcess(process.as_raw_handle() as HANDLE, 1);
+                assert!(read, "read the integrity level");
+                rid
+            }
+        }
+
+        /// 낮은 수준 표시를 상속한 실행 파일은 낮은 무결성으로 뜬다(서버가 DLL을 못 읽고 끝나던 원인). 걷으면 중간으로 뜬다
+        #[test]
+        fn a_server_in_a_folder_the_sandbox_wrote_runs_at_medium_integrity_after_the_labels_go() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            super::label_low(&dir).unwrap();
+            let exe = dir.join("probe.exe");
+            std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+            assert_eq!(launch_integrity(&exe), 0x1000, "the inherited low label makes the launch low integrity");
+            super::clear_low_labels(&dir).unwrap();
+            assert!(launch_integrity(&exe) >= 0x2000, "after the labels go the server starts at the daemon's level");
+        }
+
+        /// 격리 실행에 쓰기를 준 폴더(낮은 수준 표시)에 받은 서버 파일도, 서버를 띄우기 전에 표시가 걷힌다
+        #[test]
+        fn server_files_lose_the_low_label_before_launch() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            let bin = dir.join("server").join("java").join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            super::label_low(&dir).unwrap();
+            super::label_low(&dir.join("server")).unwrap();
+            let exe = bin.join("java.exe");
+            std::fs::write(&exe, b"x").unwrap();
+            assert_eq!(super::low_label(&exe).unwrap(), Some(true));
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 2);
+            assert_eq!(super::low_label(&exe).unwrap(), None);
+            assert_eq!(super::low_label(&dir.join("server")).unwrap(), None);
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
+        }
+    }
+
     /// 띄우지 않고 그 프로필에 권한만 준다 (사용자가 정한 런타임 등)
     pub fn grant(profile: &str, grants: &Grants) -> Result<(), String> {
         apply(profile, grants).map(|_| ())
@@ -728,12 +873,31 @@ mod imp {
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// 오래 걸린 권한 주기를 로그에 남긴다 (반복의 끝에서, 실패로 빠져나가도)
+    struct SlowGrant<'a> {
+        path: &'a Path,
+        access: Access,
+        started: std::time::Instant,
+    }
+
+    impl Drop for SlowGrant<'_> {
+        fn drop(&mut self) {
+            let took = self.started.elapsed();
+            if took >= std::time::Duration::from_millis(500) {
+                tracing::info!("[Sandbox] granting {:?} on {} took {} ms", self.access, self.path.display(), took.as_millis());
+            }
+        }
+    }
+
     fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
         let _guard = acl_lock();
         let sid = container_sid(profile)?;
         let everyone = all_app_packages()?;
         let mut runtimes = Vec::new();
         for (path, access) in &grants.entries {
+            // 상속되는 권한·표시는 하위 파일 전부에 퍼진다: 큰 폴더는 처음 한 번 오래 걸릴 수 있어 남긴다
+            let started = std::time::Instant::now();
+            let _slow = SlowGrant { path, access: *access, started };
             let optional = grants.optional.contains(&(path.clone(), *access));
             let existing = match grant_one(path, sid, everyone, *access) {
                 Ok(existing) => existing,

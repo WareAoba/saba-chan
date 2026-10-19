@@ -338,12 +338,6 @@ async fn run_plugin_inner(
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
-    // 확인되지 않은 모듈·익스텐션: 실행 전에 스크립트를 백신으로 본다 (Windows)
-    if let Err(blocked) = crate::sandbox::guard_entry(module_path).await {
-        tracing::warn!("Plugin {} blocked: {:?}", module_path, blocked);
-        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-    }
-
     let config_json = serde_json::to_string(&config)?;
     let python_exe = crate::python_env::get_python_path().await?;
     tracing::debug!("Using Python: {}", python_exe.display());

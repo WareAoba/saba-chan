@@ -460,6 +460,7 @@ impl Supervisor {
             runtimes.extend(crate::sandbox::daemon_runtimes());
             (module.entry_path(), crate::sandbox::LaunchRoots { dirs, runtimes })
         };
+        crate::sandbox::restore_server_folders(roots.dirs.clone()).await;
         let program = crate::sandbox::guard_launch(&entry, program, args, std::path::Path::new(working_dir), roots, env_vars).await.map_err(|blocked| {
             tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
             blocked.to_json(crate::sandbox::message(&blocked))

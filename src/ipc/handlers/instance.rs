@@ -439,13 +439,14 @@ pub async fn create_instance(
                         let install_guard = super::backup::BusyGuard::take(&id);
 
                         tokio::spawn(async move {
-                            let _install_guard = install_guard;
+                            let mut install_guard = install_guard;
                             // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
                             let module_path = {
                                 let sup = supervisor_arc.read().await;
                                 match sup.module_loader.get_module(&module_name_owned) {
                                     Ok(m) => m.entry_path(),
                                     Err(e) => {
+                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
@@ -492,6 +493,7 @@ pub async fn create_instance(
 
                                 // download 방식인데 버전을 파악하지 못한 경우 에러
                                 if install_config.method == "download" && version.is_none() {
+                                    drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                     tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                         step: 0, total: 1,
                                         label: "done".to_string(),
@@ -571,6 +573,7 @@ pub async fn create_instance(
                                         }
 
                                         tracing::info!("Native provisioning completed for '{}'", name_done);
+                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
@@ -594,6 +597,7 @@ pub async fn create_instance(
                                             .map(str::to_string)
                                             .unwrap_or_else(|| text.t("provision.install_failed", &[]));
                                         tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
+                                        drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
@@ -607,6 +611,7 @@ pub async fn create_instance(
                                 }
                                 Err(e) => {
                                     tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
+                                    drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                     tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                         step: 0, total: 1,
                                         label: "done".to_string(),

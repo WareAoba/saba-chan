@@ -4,11 +4,7 @@
 //! 그대로인 것은 지금처럼 실행한다.
 //! - 실행 대상 검사: 모듈이 돌려준 서버 실행 파일이 인스턴스 폴더나 데몬이 아는 런타임 안에 있어야 한다.
 //!   셸·스크립트 호스트(`cmd`, `powershell` 등)는 어디 있든 거부한다 (`launch_outside_instance`).
-//! - 악성 코드 검사: Python·스크립트 파일은 AMSI(등록된 백신)로, 서버 실행 파일은 처음 실행 전에
-//!   Defender `MpCmdRun`으로 본다. 찾으면 실행하지 않는다 (`malware_detected`). 결과는 sha256으로 저장해
-//!   바뀌지 않은 파일은 다시 보지 않는다(깨끗하다는 결과만 7일 동안. 찾은 파일은 매번 다시 본다).
-//!   Defender가 꺼져 있거나 AMSI 공급자가 없으면 건너뛰고 경고를 남긴다. 파일을 읽지 못하거나 검사가
-//!   실패하거나 시간 안에 끝나지 않으면 실행하지 않는다 (`scan_failed`, 악성 판정과 구분한다).
+//! - 백신 검사는 하지 않는다 (Defender·AMSI 검사는 오판정과 지연이 많아 뺐다). 격리 실행과 실행 대상 검사로 막는다.
 //!
 //! Linux·macOS는 아직 지원 대상이 아니라 지금처럼 실행한다.
 
@@ -19,7 +15,6 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub mod appcontainer;
-pub mod scan;
 
 /// 이 플랫폼에서 제한을 거는가
 pub const ENFORCED: bool = cfg!(windows);
@@ -190,122 +185,31 @@ impl Blocked {
 pub fn message(blocked: &Blocked) -> String {
     let file = blocked.file.as_deref().unwrap_or("");
     match blocked.code {
-        "malware_detected" => format!("Antivirus flagged a file of this unverified component: {}", file),
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
-        "unscannable_file" => format!("This unverified component contains compiled code without source that cannot be scanned: {}", file),
-        "scan_failed" => format!("Could not scan a file of this unverified component, so it was not run: {}", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
 }
 
-/// 깨끗하다는 결과를 다시 쓰는 기간 (백신 정의가 바뀌므로 지나면 다시 본다)
-const CLEAN_VERDICT_TTL_SECS: u64 = 7 * 24 * 60 * 60;
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-struct StoredVerdict {
-    detected: bool,
-    /// 검사한 시각 (유닉스 초)
-    #[serde(default)]
-    at: u64,
-    /// 이 결과를 적은 판정 규칙의 판. 그보다 옛 판의 찾음은 다시 본다
-    #[serde(default)]
-    format: u32,
-}
-
-/// 판정 규칙의 판. 1: MpCmdRun이 검사하지 못한 것(종료 코드 2)을 찾음으로 보지 않는다
-const VERDICT_FORMAT: u32 = 1;
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
-/// 옛 형식({sha: bool})은 시각 0으로 옮긴다: 깨끗함은 다시 본다. 옛 판의 찾음은 잘못 적었을 수 있어 버린다. 깨진 파일은 비운다
-fn parse_entries(s: &str) -> BTreeMap<String, StoredVerdict> {
-    #[derive(serde::Deserialize)]
-    #[serde(untagged)]
-    enum Entry {
-        Legacy(bool),
-        Current(StoredVerdict),
-    }
-    let raw: BTreeMap<String, Entry> = serde_json::from_str(s).unwrap_or_default();
-    raw.into_iter()
-        .map(|(k, e)| match e {
-            Entry::Legacy(detected) => (k, StoredVerdict { detected, at: 0, format: 0 }),
-            Entry::Current(v) => (k, v),
-        })
-        .filter(|(_, v)| !v.detected || v.format >= VERDICT_FORMAT)
-        .collect()
-}
-
-/// sha256 → 검사 결과 (`<data dir>/scan-verdicts.json`). 깨끗하다/찾았다만 저장한다
-#[derive(Debug, Default)]
-pub struct VerdictCache {
-    path: Option<PathBuf>,
-    entries: BTreeMap<String, StoredVerdict>,
-}
-
-impl VerdictCache {
-    pub fn load() -> Self {
-        let path = saba_chan_updater_lib::constants::resolve_data_dir().join("scan-verdicts.json");
-        let entries = std::fs::read_to_string(&path).ok().map(|s| parse_entries(&s)).unwrap_or_default();
-        Self { path: Some(path), entries }
-    }
-
-    #[cfg(test)]
-    pub fn in_memory() -> Self {
-        Self::default()
-    }
-
-    /// Some(false) = 깨끗하다. 7일이 지난 깨끗함과 찾았다는 결과는 None: 다시 본다
-    /// (오탐은 백신 정의가 고쳐지면 바로 풀려야 하고, 찾은 파일을 다시 보는 비용은 그 파일 하나다)
-    pub fn get(&self, sha: &str) -> Option<bool> {
-        self.get_at(sha, now_secs())
-    }
-
-    fn get_at(&self, sha: &str, now: u64) -> Option<bool> {
-        let v = self.entries.get(sha)?;
-        (!v.detected && now.saturating_sub(v.at) < CLEAN_VERDICT_TTL_SECS).then_some(false)
-    }
-
-    pub fn put(&mut self, sha: String, detected: bool) {
-        self.entries.insert(sha, StoredVerdict { detected, at: now_secs(), format: VERDICT_FORMAT });
-    }
-
-    pub fn save(&self) {
-        let Some(path) = &self.path else { return };
-        if let Ok(json) = serde_json::to_string(&self.entries) {
-            if let Err(e) = std::fs::write(path, json) {
-                tracing::warn!("[Sandbox] could not save scan verdicts: {}", e);
+/// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 걷는다 (Windows). 그 표시가 붙은 실행 파일로 띄운
+/// 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
+/// 남아 있을 수 있다. 실패해도 실행은 막지 않는다
+pub async fn restore_server_folders(dirs: Vec<PathBuf>) {
+    #[cfg(windows)]
+    {
+        let _ = tokio::task::spawn_blocking(move || {
+            for dir in dirs.iter().filter(|d| d.is_dir()) {
+                match appcontainer::clear_low_labels(dir) {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("[Sandbox] removed the low integrity label from {} folder(s) under {}", n, dir.display()),
+                    Err(e) => tracing::warn!("[Sandbox] could not remove the low integrity label under {}: {}", dir.display(), e),
+                }
             }
-        }
+        })
+        .await;
     }
-}
-
-/// 검사를 끝내지 못했다 (검사 스레드가 죽었다 등). 제한하는 구성요소는 실행하지 않는다
-fn scan_failed(detail: impl std::fmt::Display) -> Blocked {
-    Blocked { code: "scan_failed", file: None, detail: Some(detail.to_string()) }
-}
-
-/// Python 실행 전: 확인되지 않은 구성요소면 스크립트를 검사한다
-pub async fn guard_entry(entry: &str) -> Result<(), Blocked> {
-    // 신뢰 표시는 설치한 파일을 해시한다: 제한하지 않는 플랫폼에서는 구하지 않는다
-    if !ENFORCED {
-        return Ok(());
-    }
-    let entry = PathBuf::from(entry);
-    if !restricted(trust_of_entry(&entry)) {
-        return Ok(());
-    }
-    let dir = entry.parent().map(Path::to_path_buf).ok_or_else(|| scan_failed("no component folder"))?;
-    tokio::task::spawn_blocking(move || {
-        let mut cache = VerdictCache::load();
-        let result = scan::scan_component(&dir, &scan::SystemScanner, &mut cache);
-        cache.save();
-        result
-    })
-    .await
-    .unwrap_or_else(|e| Err(scan_failed(e)))
+    #[cfg(not(windows))]
+    let _ = dirs;
 }
 
 /// 서버 실행 전: 확인되지 않은 모듈이면 실행 대상 위치를 보고 실행 파일을 검사한다. 띄울 프로그램 경로를 돌려준다
@@ -344,21 +248,10 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     if let Err(code) = check_launch(&program, &roots) {
         return Err(Blocked { code, file: Some(program), detail: None });
     }
-    tracing::info!("[Sandbox] checking launch of unverified module program '{}'", program);
-    // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
-    let mut files: Vec<PathBuf> = Some(PathBuf::from(&program)).filter(|p| p.is_absolute()).into_iter().collect();
-    match argument_files(args, cwd) {
-        Ok(found) => files.extend(found),
-        Err(arg) => return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None }),
+    // 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)도 폴더 밖 경로·특수 경로를 쓰지 않아야 한다
+    if let Err(arg) = argument_files(args, cwd) {
+        return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None });
     }
-    tokio::task::spawn_blocking(move || {
-        let mut cache = VerdictCache::load();
-        let result = files.iter().try_for_each(|f| scan::scan_executable(f, &scan::SystemScanner, &mut cache));
-        cache.save();
-        result
-    })
-    .await
-    .unwrap_or_else(|e| Err(scan_failed(e)))?;
     Ok(program)
 }
 
@@ -1102,37 +995,6 @@ mod tests {
         assert_eq!(resolve_program("java", &inst), "java");
         let abs = inst.join("bin").join("server.exe").to_string_lossy().into_owned();
         assert_eq!(resolve_program(&abs, tmp.path()), abs);
-    }
-
-    #[test]
-    fn clean_verdicts_expire_and_detections_are_always_rescanned() {
-        let mut cache = VerdictCache::in_memory();
-        cache.put("clean".into(), false);
-        cache.put("bad".into(), true);
-        let now = now_secs();
-        assert_eq!(cache.get_at("clean", now), Some(false));
-        assert_eq!(cache.get_at("clean", now + CLEAN_VERDICT_TTL_SECS), None);
-        // 오탐은 백신 정의가 고쳐지면 바로 풀려야 한다: 찾았다는 결과는 다시 쓰지 않는다
-        assert_eq!(cache.get_at("bad", now), None);
-        assert_eq!(cache.get_at("none", now), None);
-    }
-
-    /// 0.1.7 전의 데몬은 Defender가 검사하지 못한 파일도 찾음으로 적었다. 그때 적은 찾음은 버리고 다시 본다
-    #[test]
-    fn detections_recorded_before_the_mpcmdrun_fix_are_rescanned() {
-        let entries = parse_entries(
-            r#"{"bad":true,"clean":false,"new":{"detected":false,"at":5},"old":{"detected":true,"at":9},"kept":{"detected":true,"at":9,"format":1}}"#,
-        );
-        assert!(!entries.contains_key("bad") && !entries.contains_key("old"));
-        assert!(entries["kept"].detected);
-        assert_eq!((entries["clean"].detected, entries["clean"].at), (false, 0));
-        assert_eq!(entries["new"].at, 5);
-        assert!(parse_entries("not json").is_empty());
-
-        let mut cache = VerdictCache::in_memory();
-        cache.put("x".into(), true);
-        let saved = serde_json::to_string(&cache.entries).unwrap();
-        assert!(parse_entries(&saved)["x"].detected, "a detection saved now survives a reload");
     }
 
     #[cfg(unix)]

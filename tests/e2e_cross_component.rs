@@ -360,7 +360,8 @@ async fn e2e_instance_lifecycle_with_python_module() {
         }
     }
 
-    // ── 6) 삭제
+    // ── 6) 삭제 (설치 중에는 삭제를 받지 않는다: 프로비저닝이 끝나기를 기다린다)
+    wait_for_provision(&base_url, &client, &instance_name).await;
     let delete_resp = client
         .delete(format!("{}/api/instance/{}", base_url, instance_id))
         .send().await.unwrap();
@@ -596,7 +597,8 @@ async fn e2e_cross_component_simultaneous_operation() {
         .send().await.unwrap();
     assert_eq!(health.status(), reqwest::StatusCode::OK);
 
-    // ── D) 정리
+    // ── D) 정리 (설치 중에는 삭제를 받지 않는다)
+    wait_for_provision(&base_url, &client, &inst_name).await;
     let _ = client
         .delete(format!("{}/api/instance/{}", base_url, instance_id))
         .send().await;
