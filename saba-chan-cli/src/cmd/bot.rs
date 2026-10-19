@@ -9,6 +9,7 @@ use crate::cmd::{flatten, get_path, guess, set_path, split_pairs};
 use crate::ctx::Ctx;
 use crate::error::{failed, usage, Result};
 use crate::output::{self, s};
+use crate::resolve;
 use serde_json::{json, Map, Value};
 use std::time::Duration;
 
@@ -33,14 +34,9 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.done(&t!("bot.unpaired"), &r);
             Ok(())
         }
-        BotCmd::Token { token } => {
-            let token = match token {
-                Some(t) => t,
-                None => ctx
-                    .ask
-                    .secret(&t!("bot.ask_token"))?
-                    .ok_or_else(|| usage(t!("bot.token_required")))?,
-            };
+        BotCmd::Token => {
+            // 셸 기록에 남지 않게 인자로 받지 않는다 (터미널이 아니면 표준 입력 한 줄)
+            let token = ctx.ask.secret_or_stdin(&t!("bot.ask_token"))?;
             if token.trim().is_empty() {
                 return Err(usage(t!("bot.token_required")));
             }
@@ -63,24 +59,38 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Nodes => nodes(ctx).await,
         BotCmd::Members { guild } => {
-            let cfg = ctx.api.bot_config().await?;
-            let r = ctx.api.node_members(&guild, relay_of(&cfg)).await?;
-            ctx.out.data(&r, |r| print_list(r, "members"));
+            let guild = resolve::guild(ctx, guild.as_deref()).await?;
+            let r = members(ctx, &guild).await?;
+            ctx.out.data(&r, |r| {
+                let rows = member_rows(r);
+                if rows.is_empty() {
+                    println!("{}", output::dim(&t!("bot.list_empty")));
+                } else {
+                    let mut t = output::table(&[t!("col.name"), t!("bot.username"), t!("col.id")]);
+                    for row in rows {
+                        t.add_row(row);
+                    }
+                    output::print_table(t);
+                }
+                if r.get("partial").and_then(Value::as_bool) == Some(true) {
+                    ctx.out.warn(&t!("bot.members_partial"));
+                }
+            });
             Ok(())
         }
         BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music, notify, no_notify } => {
             let change = ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify };
             match guild {
-                Some(guild) => channels(ctx, &guild, change).await,
+                Some(guild) => channels(ctx, &resolve::guild(ctx, Some(&guild)).await?, change).await,
                 None => channels_of_paired(ctx, change).await,
             }
         }
         BotCmd::Lang { guild, value } => {
             let patch = value.map(|v| json!({ "locale": v }));
-            discord_settings(ctx, &guild, patch).await
+            discord_settings(ctx, &resolve::guild(ctx, Some(&guild)).await?, patch).await
         }
-        BotCmd::Sleep { guild } => discord_settings(ctx, &guild, Some(json!({ "sleeping": true }))).await,
-        BotCmd::Wake { guild } => discord_settings(ctx, &guild, Some(json!({ "sleeping": false }))).await,
+        BotCmd::Sleep { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": true }))).await,
+        BotCmd::Wake { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": false }))).await,
         BotCmd::Music { guild, on, off, ui, queue_lines, refresh, normalize } => {
             let mut music = Map::new();
             if on || off {
@@ -92,7 +102,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
                 }
             }
             let patch = (!music.is_empty()).then(|| json!({ "music": music }));
-            discord_settings(ctx, &guild, patch).await
+            discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
@@ -104,8 +114,11 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             Ok(())
         }
         BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
-        BotCmd::Allow { guild, servers, all } => allow(ctx, &guild, &servers, all).await,
-        BotCmd::Words { guild, server, word, command, clear } => words(ctx, &guild, server.as_deref(), WordsChange { words: word, commands: command, clear }).await,
+        BotCmd::Allow { guild, servers, all } => allow(ctx, &resolve::guild(ctx, Some(&guild)).await?, &servers, all).await,
+        BotCmd::Words { guild, server, word, command, clear } => {
+            let guild = resolve::guild(ctx, Some(&guild)).await?;
+            words(ctx, &guild, server.as_deref(), WordsChange { words: word, commands: command, clear }).await
+        }
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -537,11 +550,7 @@ async fn channels_of_paired(ctx: &Ctx, change: ChannelChange) -> Result<()> {
 
 /// 페어링된 디스코드 서버 `(id, 이름)`. 바꾸기(`changing`)는 어느 서버인지 분명할 때(하나뿐)만
 fn target_guilds(nodes: &Value, changing: bool) -> Result<Vec<(String, String)>> {
-    let list: Vec<(String, String)> = node_list(nodes)
-        .iter()
-        .map(|n| (s(n, "guildId").to_string(), s(n, "guildName").to_string()))
-        .filter(|(id, _)| !id.is_empty())
-        .collect();
+    let list = resolve::guild_items(nodes);
     if list.is_empty() {
         return Err(failed(t!("bot.no_paired_servers")));
     }
@@ -624,7 +633,19 @@ async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
     let Some(id) = id else {
         let r = ctx.api.link_requests(relay_of(&cfg)).await?;
-        ctx.out.data(&r, |r| print_list(r, "requests"));
+        ctx.out.data(&r, |r| {
+            let rows = link_rows(r, now());
+            if rows.is_empty() {
+                println!("{}", output::dim(&t!("bot.list_empty")));
+                return;
+            }
+            let mut t = output::table(&[t!("col.id"), t!("noun.guild"), t!("bot.requested_by"), t!("bot.expires_in")]);
+            for row in rows {
+                t.add_row(row);
+            }
+            output::print_table(t);
+            ctx.out.hint("saba-chan-cli bot link ID  |  bot link ID --decline");
+        });
         return Ok(());
     };
     let r = ctx.api.answer_link_request(id, !decline, relay_of(&cfg)).await?;
@@ -637,7 +658,45 @@ async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
     Ok(())
 }
 
-async fn paired_nodes(ctx: &Ctx) -> Result<Value> {
+fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// 연결 요청 표의 줄: 요청 id(수락할 때 쓴다), 디스코드 서버, 요청한 사람, 남은 시간
+fn link_rows(r: &Value, now: u64) -> Vec<Vec<String>> {
+    r.get("requests")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|q| {
+            let left = match output::iso_epoch(s(q, "expiresAt")) {
+                Some(at) if at > now => output::duration(at - now),
+                Some(_) => output::dim(&t!("bot.expired")),
+                None => String::new(),
+            };
+            let who = [s(q, "userName"), s(q, "requestedBy")].into_iter().find(|n| !n.is_empty()).unwrap_or("");
+            vec![s(q, "requestId").to_string(), [s(q, "guildName"), s(q, "guildId")].into_iter().find(|n| !n.is_empty()).unwrap_or("").to_string(), who.to_string(), left]
+        })
+        .collect()
+}
+
+/// 디스코드 서버 멤버 (`{members, partial}`)
+pub async fn members(ctx: &Ctx, guild: &str) -> Result<Value> {
+    let cfg = ctx.api.bot_config().await?;
+    ctx.api.node_members(guild, relay_of(&cfg)).await
+}
+
+/// 멤버 표의 줄: 표시 이름, 사용자 이름, id (이름순). 프로필 사진 주소는 `--json`으로만
+fn member_rows(r: &Value) -> Vec<Vec<String>> {
+    let mut rows: Vec<Vec<String>> = resolve::member_items(r)
+        .iter()
+        .map(|m| vec![s(m, "displayName").to_string(), s(m, "username").to_string(), s(m, "id").to_string()])
+        .collect();
+    rows.sort_by_key(|r| r[0].to_lowercase());
+    rows
+}
+
+pub async fn paired_nodes(ctx: &Ctx) -> Result<Value> {
     let cfg = ctx.api.bot_config().await?;
     let host = cfg.pointer("/cloud/hostId").and_then(Value::as_str).unwrap_or("");
     if host.is_empty() {
@@ -683,22 +742,6 @@ fn node_rows(r: &Value) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// 릴레이 응답 목록을 표로 (모양을 모르니 첫 항목의 단순 값 칸만)
-fn print_list(r: &Value, key: &str) {
-    let list = r
-        .get(key)
-        .or_else(|| r.get("data"))
-        .or(Some(r))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    if list.is_empty() {
-        println!("{}", output::dim(&t!("bot.list_empty")));
-        return;
-    }
-    crate::cmd::server::print_value(&Value::Array(list));
-}
-
 async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
     if pairs.is_empty() {
@@ -740,6 +783,31 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 멤버 표는 이름·사용자 이름·id만 이름순으로 (C7)
+    #[test]
+    fn member_rows_show_names_and_ids_only() {
+        let r = json!({ "members": [
+            { "id": "2", "username": "saba", "displayName": "사바", "avatarUrl": "https://cdn.example/a.png" },
+            { "id": "1", "username": "kimchi", "displayName": "김치마요" }
+        ], "partial": true });
+        assert_eq!(member_rows(&r), vec![vec!["김치마요", "kimchi", "1"], vec!["사바", "saba", "2"]]);
+    }
+
+    /// 연결 요청은 id·서버 이름·요청한 사람·남은 시간만 (C9)
+    #[test]
+    fn link_rows_show_who_asked_and_the_time_left() {
+        let r = json!({ "requests": [
+            { "requestId": "r1", "guildId": "9", "guildName": "친구들", "requestedBy": "5", "userName": "kimchi", "expiresAt": "2026-10-19T17:10:00.000Z" },
+            { "requestId": "r2", "guildId": "8", "guildName": "", "requestedBy": "6", "userName": "", "expiresAt": "2026-10-19T17:00:00.000Z" }
+        ] });
+        let now = output::iso_epoch("2026-10-19T17:05:00Z").unwrap();
+        let rows = link_rows(&r, now);
+        assert_eq!(rows[0][..3], ["r1", "친구들", "kimchi"]);
+        assert_eq!(rows[0][3], output::duration(300));
+        assert_eq!(rows[1][..3], ["r2", "8", "6"]);
+        assert_eq!(console::strip_ansi_codes(&rows[1][3]), t!("bot.expired"));
+    }
 
     /// 표에는 알아볼 칸만: 디스코드 프로필 사진 주소 같은 긴 값이 줄을 깨지 않게
     #[test]

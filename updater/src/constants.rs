@@ -56,6 +56,10 @@ pub const INSTANCE_FIELDS: &[(&str, &str)] = &[
     ("memory_limit_mb", "number"),
 ];
 
+/// `INSTANCE_FIELDS` 중 비울 수 없는 칸: 데몬 PATCH가 null을 받아도 지금 값을 둔다.
+/// CLI `server set KEY=`(빈 값)는 이 칸을 성공으로 알리지 않고 거절한다
+pub const UNCLEARABLE_INSTANCE_FIELDS: &[&str] = &["port", "working_dir", "protocol_mode", "server_version"];
+
 /// 모듈이 선언하지 않아도 데몬이 `module_settings`에서 읽는 설정 `(이름, 형식)`
 pub const DAEMON_SETTINGS: &[(&str, &str)] = &[
     ("auto_restart", "boolean"),

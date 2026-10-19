@@ -29,6 +29,11 @@
   },
   "bot": {
     "ask_token": "Jeton du nœud",
+    "expired": "expirée",
+    "expires_in": "Temps restant",
+    "members_partial": "Liste complète des membres Discord indisponible ; seuls les membres avec un niveau enregistré sont affichés.",
+    "requested_by": "Demandé par",
+    "username": "Nom d'utilisateur",
     "config_saved": "Paramètres du bot enregistrés.",
     "confirm_unpair": "Déconnecter ce PC du bot Discord et oublier son appairage ?",
     "connection": "Connexion",
@@ -186,6 +191,7 @@
   },
   "agree": {
     "none": "{{name}} n'a aucun accord à accepter.",
+    "unknown_id": "Identifiants de conditions ignorés, absents de ce serveur : {{ids}} (présents : {{known}})",
     "confirm": "{{name}} : accepter {{names}} ? Vous acceptez les conditions des liens ci-dessus.",
     "done": "Accords acceptés pour {{name}}."
   },
@@ -250,6 +256,8 @@
   },
   "noun": {
     "command": "commande",
+    "guild": "serveur Discord",
+    "member": "membre",
     "extension": "extension",
     "game": "jeu",
     "module": "module",
@@ -281,7 +289,7 @@
     "done": "Ordre enregistré."
   },
   "reset": {
-    "confirm": "Effacer tous les fichiers de {{name}} et repartir de zéro ? Cette action est irréversible.",
+    "confirm": "Réinitialiser {{name}} ? Cette action est irréversible.",
     "done": "{{name}} a été réinitialisé."
   },
   "resolve": {
@@ -322,6 +330,7 @@
   },
   "set": {
     "default": "par défaut",
+    "cannot_clear": "{{key}} ne peut pas être vide. Indiquez une nouvelle valeur.",
     "done": "{{count}} paramètre(s) enregistré(s) pour {{name}}.",
     "group": {
       "advanced": "Avancé",

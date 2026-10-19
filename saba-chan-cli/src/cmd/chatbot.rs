@@ -10,12 +10,18 @@ use crate::ctx::Ctx;
 use crate::error::{failed, usage, Result};
 use crate::output::{self, s};
 use serde_json::{json, Map, Value};
-use std::io::{BufRead, IsTerminal};
+use crate::resolve;
 
 pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
     match cmd {
         ChatbotCmd::Show => show(ctx).await,
-        ChatbotCmd::Set { pairs, guild } => set(ctx, &pairs, guild.as_deref()).await,
+        ChatbotCmd::Set { pairs, guild } => {
+            let guild = match guild {
+                Some(g) => Some(resolve::guild(ctx, Some(&g)).await?),
+                None => None,
+            };
+            set(ctx, &pairs, guild.as_deref()).await
+        }
         ChatbotCmd::Key { delete } => key(ctx, delete).await,
         ChatbotCmd::Clear => {
             ctx.ask.ensure(&t!("chatbot.confirm_clear"))?;
@@ -30,6 +36,10 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
             Ok(())
         }
         ChatbotCmd::Forget { guild } => {
+            let guild = match guild {
+                Some(g) => Some(resolve::guild(ctx, Some(&g)).await?),
+                None => None,
+            };
             let q = match &guild {
                 Some(g) => t!("chatbot.confirm_forget_guild", guild = g),
                 None => t!("chatbot.confirm_forget"),
@@ -45,6 +55,11 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
 
 async fn show(ctx: &Ctx) -> Result<()> {
     let r = ctx.api.chatbot().await?;
+    // 길드 제목에 쓸 이름 (페어링 전이거나 릴레이에 닿지 않으면 id 그대로)
+    let names = match ctx.out.json || r.get("guilds").and_then(Value::as_object).is_none_or(|g| g.is_empty()) {
+        true => Vec::new(),
+        false => crate::cmd::bot::paired_nodes(ctx).await.map(|n| resolve::guild_items(&n)).unwrap_or_default(),
+    };
     ctx.out.data(&r, |r| {
         let key = r.get("hasApiKey").and_then(Value::as_bool).unwrap_or(false);
         output::print_kv(&[(t!("chatbot.api_key"), output::yes_no(key))]);
@@ -64,7 +79,11 @@ async fn show(ctx: &Ctx) -> Result<()> {
         }
         for (guild, m) in r.get("guilds").and_then(Value::as_object).into_iter().flatten() {
             println!();
-            output::heading(&t!("chatbot.guild", guild = guild));
+            let label = match names.iter().find(|(id, _)| id == guild) {
+                Some((_, name)) if !name.is_empty() => format!("{} ({})", name, guild),
+                _ => guild.clone(),
+            };
+            output::heading(&t!("chatbot.guild", guild = label));
             print_settings(m.as_object().unwrap_or(&Map::new()));
         }
         if !key {
@@ -170,16 +189,7 @@ async fn key(ctx: &Ctx, delete: bool) -> Result<()> {
         report_sync(ctx, &r);
         return Ok(());
     }
-    let key = match ctx.ask.secret(&t!("chatbot.ask_key"))? {
-        Some(k) => k,
-        // 터미널이 아니면 표준 입력 한 줄 (예: `cat key.txt | saba-chan-cli chatbot key`)
-        None if !std::io::stdin().is_terminal() => {
-            let mut line = String::new();
-            std::io::stdin().lock().read_line(&mut line)?;
-            line
-        }
-        None => String::new(),
-    };
+    let key = ctx.ask.secret_or_stdin(&t!("chatbot.ask_key"))?;
     let key = key.trim();
     if key.is_empty() {
         return Err(usage(t!("chatbot.key_required")));
