@@ -499,6 +499,8 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let created = ctx.api.create_instance(body).await?;
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
+    // 7-0) 약관 (예: 게임 EULA). 설치를 기다리기 전에 묻는다
+    offer_agreements(ctx, &id, &name).await?;
 
     // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
     let mut settings_error = None;
@@ -1546,21 +1548,62 @@ async fn launch_preview(ctx: &Ctx, query: Option<&str>, extra: Option<&str>) -> 
 async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let inst = ctx.api.instance(&sv.id).await?;
-    let pending: Vec<&Value> = inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).collect();
+    let pending = pending_agreements(&inst);
     if pending.is_empty() {
         ctx.out.done(&t!("agree.none", name = sv.name), &json!({ "success": true, "agreements": inst["agreements"] }));
         return Ok(());
     }
+    show_agreements(ctx, &pending);
+    let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
+    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+    let r = accept(ctx, &sv.id, &pending).await?;
+    ctx.out.done(&t!("agree.done", name = sv.name), &r);
+    Ok(())
+}
+
+/// 모듈이 선언했지만 아직 동의하지 않은 약관 (인스턴스 응답의 `agreements`)
+fn pending_agreements(inst: &Value) -> Vec<Value> {
+    inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).cloned().collect()
+}
+
+fn show_agreements(ctx: &Ctx, pending: &[Value]) {
     if !ctx.out.json {
-        for a in &pending {
+        for a in pending {
             println!("  {}  {}", console::style(s(a, "label")).bold(), s(a, "url"));
         }
     }
-    let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
-    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+}
+
+async fn accept(ctx: &Ctx, id: &str, pending: &[Value]) -> Result<Value> {
     let ids: Vec<String> = pending.iter().map(|a| s(a, "id").to_string()).collect();
-    let r = ctx.api.accept_agreements(&sv.id, &ids).await?;
-    ctx.out.done(&t!("agree.done", name = sv.name), &r);
+    ctx.api.accept_agreements(id, &ids).await
+}
+
+/// 만든 서버에 동의할 약관이 있으면 GUI처럼 만들 때 묻는다. 물을 수 없거나 거절하면 서버는 두고
+/// `server agree`를 안내한다 (첫 start가 약관 때문에 막히지 않게)
+async fn offer_agreements(ctx: &Ctx, id: &str, name: &str) -> Result<()> {
+    let Ok(inst) = ctx.api.instance(id).await else {
+        return Ok(());
+    };
+    let pending = pending_agreements(&inst);
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let hint = || ctx.out.hint(&format!("saba-chan-cli server agree {}", shell_word(name)));
+    if !ctx.ask.yes && !ctx.ask.enabled {
+        hint();
+        return Ok(());
+    }
+    show_agreements(ctx, &pending);
+    let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
+    if ctx.ask.confirm(&t!("agree.confirm", name = name, names = names.join(", ")), false)? {
+        accept(ctx, id, &pending).await?;
+        if !ctx.out.json {
+            println!("{} {}", console::style("✓").green().bold(), t!("agree.done", name = name));
+        }
+    } else {
+        hint();
+    }
     Ok(())
 }
 
@@ -1636,6 +1679,18 @@ mod tests {
         assert_eq!(typed_setting(&fields, &fresh, "log_sessions_keep", "5").unwrap().1, json!(5));
         assert_eq!(typed_setting(&fields, &fresh, "extra_args", "-nogui -x").unwrap().1, json!("-nogui -x"));
         assert_eq!(typed_setting(&fields, &fresh, "working_dir", "D:/srv").unwrap().1, json!("D:/srv"));
+    }
+
+    /// 만들 때·`server agree`가 묻는 약관은 아직 동의하지 않은 것만 (C2)
+    #[test]
+    fn only_unaccepted_agreements_are_asked() {
+        let inst = json!({ "agreements": [
+            { "id": "eula", "label": "Minecraft EULA", "url": "https://aka.ms/MinecraftEULA", "accepted": false },
+            { "id": "tos", "label": "ToS", "url": "https://example.com", "accepted": true },
+        ] });
+        let ids: Vec<String> = pending_agreements(&inst).iter().map(|a| s(a, "id").to_string()).collect();
+        assert_eq!(ids, vec!["eula"]);
+        assert!(pending_agreements(&json!({})).is_empty());
     }
 
     #[test]
