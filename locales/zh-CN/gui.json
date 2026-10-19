@@ -222,6 +222,7 @@
     "type_to_filter": "输入命令或从列表中选择"
   },
   "server_status": {
+    "unresponsive": "正在运行但没有响应：{{reason}}",
     "running": "运行中",
     "stopped": "已停止",
     "stopping": "正在停止...",
@@ -391,7 +392,7 @@
     "restart_confirm_message": "要停止并重新启动 '{{name}}' 吗？已连接的玩家会短暂断开。",
     "restarting_toast": "正在重启 '{{name}}'…",
     "restart_completed_toast": "'{{name}}' 已重启",
-    "port_moved": "管理用 REST 端口 {{from}} 被 Windows 保留，已改为 {{to}}。",
+    "port_moved": "{{name}}：管理用 REST 端口 {{from}} 被 Windows 保留，已改为 {{to}}。",
     "restart_failed_toast": "无法重启：{{error}}",
     "rename_failed_toast": "无法重命名：{{error}}",
     "rename_name_taken": "名称 '{{name}}' 已被使用",
@@ -429,6 +430,7 @@
   },
   "errors": {
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
+    "console_input_full": "服务器仍在处理之前的输入，请稍后再发送。",
     "restart_cancelled": "等待期间服务器已在别处启动或删除，因此没有重启。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",
     "file_not_found": "找不到文件或文件夹。请检查路径。",
@@ -1106,6 +1108,7 @@
     "start_blocked": {
       "launch_outside_instance": "此未验证模块试图运行服务器文件夹之外的程序：{{file}} 如果 Java 路径是你自己设置的，请在服务器设置中重新选择。",
       "server_folder_label": "无法清理服务器文件夹（{{file}}）上的权限标记，因此未启动服务器。请确认此账户能否更改该文件夹的权限。",
+      "server_in_sync_folder": "{{file}} 位于 OneDrive 等同步文件夹中，因此没有启动服务器。请将服务器文件夹移到同步文件夹之外。",
       "sandbox_unavailable": "无法为 {{component}} 准备隔离环境，因此未运行。",
       "extension_not_verified": "这些扩展的文件已被更改，无法验证：{{extensions}}。请重新安装或恢复原始文件。"
     },

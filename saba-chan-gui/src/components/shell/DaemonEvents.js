@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
-import { SERVER_CHANGING, showEventToast, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { SERVER_CHANGING, showEventToast, showPortMoved, subscribeDaemonEvents } from '../../utils/daemonEvents';
 
 const REFETCH_DEBOUNCE_MS = 300;
 
@@ -40,6 +40,15 @@ export function DaemonEvents({ onServersChanged }) {
                         dedup: true,
                     });
                 }
+                return;
+            }
+            if (ev.type === 'instance.port_moved') {
+                // 자동·예약 재시작처럼 시작 응답을 아무도 보지 않는 경로도 알린다
+                const d = ev.data;
+                showPortMoved(
+                    { instanceId: d.instanceId, name: d.instance || nameOf(d.instanceId), from: d.from, to: d.to },
+                    tr,
+                );
                 return;
             }
             showEventToast(ev, tr, nameOf);

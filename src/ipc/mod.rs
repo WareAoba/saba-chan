@@ -206,6 +206,10 @@ pub struct ServerInfo {
     /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
+    /// 켜져 있지만 상태 질문(접속자 수)에 `UNRESPONSIVE_AFTER` 넘게 답하지 않을 때 마지막 실패 이유.
+    /// REST로 명령을 보내는 서버라면 명령·정상 종료도 닿지 않는다 (`supervisor::players::unresponsive`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unresponsive: Option<String>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -378,9 +382,10 @@ pub struct ProvisionProgress {
 #[derive(Debug, Clone)]
 pub struct ProvisionTracker {
     inner: Arc<std::sync::Mutex<HashMap<String, ProvisionProgress>>>,
-    /// 새로 만드는 중인 인스턴스 이름. 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
+    /// 새로 만드는 중인 인스턴스 (진행 표시 이름 → 인스턴스 ID). 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
     /// 이 목록에 있는 것뿐이다. 기존 인스턴스의 업데이트 실패는 롤백하지 않는다.
-    creating: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// 이름이 그 사이 다른 인스턴스로 넘어갈 수 있으므로 지울 대상은 ID로만 찾는다
+    creating: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 impl Default for ProvisionTracker {
@@ -398,15 +403,41 @@ impl ProvisionTracker {
     }
 
     /// 신규 생성 프로비저닝 시작을 기록한다.
-    pub fn mark_creating(&self, name: &str) {
-        if let Ok(mut set) = self.creating.lock() {
-            set.insert(name.to_string());
+    pub fn mark_creating(&self, name: &str, instance_id: &str) {
+        if let Ok(mut map) = self.creating.lock() {
+            map.insert(name.to_string(), instance_id.to_string());
         }
     }
 
-    /// 신규 생성 표시를 지우고, 표시가 있었는지 돌려준다.
-    pub fn take_creating(&self, name: &str) -> bool {
-        self.creating.lock().map(|mut set| set.remove(name)).unwrap_or(false)
+    /// 신규 생성 표시를 지우고, 표시가 있었으면 그 인스턴스 ID를 돌려준다.
+    pub fn take_creating(&self, name: &str) -> Option<String> {
+        self.creating.lock().ok().and_then(|mut map| map.remove(name))
+    }
+
+    /// 인스턴스 이름이 바뀌면 진행 표시와 신규 생성 표시도 새 이름으로 옮긴다.
+    /// 옛 이름에 남으면 그 이름으로 새로 만든 인스턴스가 설치 중으로 보이고, 그 배너를 닫으면 이 인스턴스가 지워진다
+    /// 새 이름에 남아 있던 옛 표시(지운 인스턴스의 것)는 버린다
+    pub fn rename(&self, from: &str, to: &str) {
+        self.forget(to);
+        if let Ok(mut map) = self.inner.lock() {
+            if let Some(progress) = map.remove(from) {
+                map.insert(to.to_string(), progress);
+            }
+        }
+        if let Ok(mut map) = self.creating.lock() {
+            if let Some(id) = map.remove(from) {
+                map.insert(to.to_string(), id);
+            }
+        }
+    }
+
+    /// 이름이 비면(인스턴스 삭제) 그 이름의 진행 표시와 신규 생성 표시를 지운다.
+    /// 남으면 같은 이름으로 새로 만든 인스턴스에 옛 오류 배너가 붙는다
+    pub fn forget(&self, name: &str) {
+        self.remove(name);
+        if let Ok(mut map) = self.creating.lock() {
+            map.remove(name);
+        }
     }
 
     pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
@@ -911,11 +942,28 @@ mod tests {
     #[test]
     fn only_new_instances_are_marked_for_rollback() {
         let tracker = ProvisionTracker::new();
-        tracker.mark_creating("fresh");
-        assert!(tracker.take_creating("fresh"));
+        tracker.mark_creating("fresh", "id-1");
+        assert_eq!(tracker.take_creating("fresh").as_deref(), Some("id-1"));
         // 한 번 꺼내면 끝 — 이후 업데이트 실패를 dismiss해도 롤백하지 않는다
-        assert!(!tracker.take_creating("fresh"));
-        assert!(!tracker.take_creating("existing"));
+        assert!(tracker.take_creating("fresh").is_none());
+        assert!(tracker.take_creating("existing").is_none());
+    }
+
+    // 리뷰 289 P3-2: 지운 "b"나 이름을 바꿔 비운 "b"의 옛 오류 배너가 새로 만든 "b"에 붙었다
+    #[test]
+    fn a_name_freed_by_delete_or_rename_carries_no_old_progress() {
+        let failed = || ProvisionProgress {
+            step: 1, total: 3, label: "install".into(), message: String::new(), done: true, error: Some("boom".into()), percent: None, steps: None,
+        };
+        let tracker = ProvisionTracker::new();
+        tracker.update("b", failed());
+        tracker.mark_creating("b", "old-b");
+        tracker.forget("b");
+        assert!(tracker.get("b").is_none() && tracker.take_creating("b").is_none());
+
+        tracker.update("b", failed());
+        tracker.rename("a", "b");
+        assert!(tracker.get("b").is_none(), "renaming onto a name drops the stale banner there");
     }
 
     #[tokio::test]

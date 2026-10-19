@@ -453,7 +453,7 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 async fn get_download_progress(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
-    let prog = state.download_progress.lock().unwrap().clone();
+    let prog = state.download_progress.lock().unwrap_or_else(|e| e.into_inner()).clone();
     Json(json!({
         "ok": true,
         "component": prog.component,
@@ -500,7 +500,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
     targets.sort_by_key(|comp| match comp {
         Component::Updater => 0u8,
-        Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
+        Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
         Component::CoreDaemon => 3,
         Component::Gui => 4,
         Component::Cli => 4,

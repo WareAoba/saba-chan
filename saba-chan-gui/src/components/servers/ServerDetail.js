@@ -231,6 +231,13 @@ export function ServerDetail({
 
             {status !== 'missing' && <ModuleAuditNotice moduleName={server.module} />}
 
+            {server.unresponsive && status === 'running' && (
+                <div className="notice tone-warn" role="status">
+                    <Icon name="alertTriangle" size="sm" />
+                    <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
+                </div>
+            )}
+
             {conflicts.length > 0 && (
                 <div className="notice tone-warn">
                     <Icon name="alertCircle" size="sm" />
