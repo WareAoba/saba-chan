@@ -206,6 +206,10 @@ pub struct ServerInfo {
     /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
+    /// 켜져 있지만 상태 질문(접속자 수)에 `UNRESPONSIVE_AFTER` 넘게 답하지 않을 때 마지막 실패 이유.
+    /// 명령·정상 종료도 닿지 않는 상태다 (`supervisor::players::unresponsive`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unresponsive: Option<String>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
