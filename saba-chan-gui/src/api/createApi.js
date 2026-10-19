@@ -887,7 +887,8 @@ export function createApi({ invoke, hub }) {
                 return { success: true, message: 'Bot config saved' };
             } catch (error) {
                 console.error('Failed to save bot config via daemon:', error.message);
-                return { error: 'Failed to save bot config' };
+                // error_code(invalid_relay_url 등)를 렌더러가 쓸 수 있게 본문을 넘긴다
+                return errorBody(error);
             }
         },
         saveNodeToken: async (token) => {

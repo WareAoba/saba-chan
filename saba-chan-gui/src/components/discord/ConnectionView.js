@@ -123,7 +123,13 @@ export function PairingCard({ pairing, onCancel }) {
             <div className="dc-card dc-pair tone-warn">
                 <div className="dc-pair-result">
                     <Icon name="alertTriangle" size="lg" />
-                    <strong>{t(PAIR_FAILURE_TEXT[pairing.status])}</strong>
+                    <strong>
+                        {t(
+                            pairing.errorCode === 'invalid_relay_url'
+                                ? 'discord.invalid_relay_url'
+                                : PAIR_FAILURE_TEXT[pairing.status],
+                        )}
+                    </strong>
                 </div>
                 <div className="dc-row-actions">
                     <button type="button" className="btn btn-ghost" onClick={onCancel}>
