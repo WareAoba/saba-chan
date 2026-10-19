@@ -53,9 +53,15 @@ async fn show(ctx: &Ctx) -> Result<()> {
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
+        // 예전 데몬은 기본값 표를 주지 않는다: 그때는 저장된 값만
+        let defaults = r.get("defaults").and_then(Value::as_object).cloned().unwrap_or_default();
         println!();
         output::heading(&t!("chatbot.common"));
-        print_settings(&settings);
+        if defaults.is_empty() {
+            print_settings(&settings);
+        } else {
+            output::print_kv(&setting_rows(&defaults, &settings));
+        }
         for (guild, m) in r.get("guilds").and_then(Value::as_object).into_iter().flatten() {
             println!();
             output::heading(&t!("chatbot.guild", guild = guild));
@@ -75,16 +81,32 @@ fn print_settings(m: &Map<String, Value>) {
     }
     let rows: Vec<(String, String)> = m
         .iter()
-        .map(|(k, v)| {
-            let mut shown = output::mask(k, v);
-            // 긴 메모 같은 글은 앞부분만
-            if shown.chars().count() > 80 {
-                shown = format!("{}…", shown.chars().take(80).collect::<String>().replace('\n', " "));
-            }
-            (k.clone(), shown)
-        })
+        .map(|(k, v)| (k.clone(), shown(k, v)))
         .collect();
     output::print_kv(&rows);
+}
+
+/// 공통 설정 표: 바꿀 수 있는 키(데몬의 기본값 표)와 저장된 키를 이름순으로, 저장하지 않은 키는 기본값에 표시를 붙여
+fn setting_rows(defaults: &Map<String, Value>, settings: &Map<String, Value>) -> Vec<(String, String)> {
+    let keys: std::collections::BTreeSet<&String> = defaults.keys().chain(settings.keys()).collect();
+    keys.into_iter()
+        .map(|k| {
+            let row = match settings.get(k) {
+                Some(v) => shown(k, v),
+                None => format!("{} {}", shown(k, &defaults[k]), output::dim(&t!("chatbot.defaults"))),
+            };
+            (k.clone(), row)
+        })
+        .collect()
+}
+
+fn shown(k: &str, v: &Value) -> String {
+    let mut shown = output::mask(k, v);
+    // 긴 메모 같은 글은 앞부분만
+    if shown.chars().count() > 80 {
+        shown = format!("{}…", shown.chars().take(80).collect::<String>().replace('\n', " "));
+    }
+    shown
 }
 
 async fn set(ctx: &Ctx, pairs: &[String], guild: Option<&str>) -> Result<()> {
@@ -191,5 +213,25 @@ fn report_sync(ctx: &Ctx, r: &Value) {
         let err = row.get("error").map(output::show).unwrap_or_default();
         ctx.out
             .warn(&t!("chatbot.sync_failed", guild = s(row, "guildId"), error = err));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 바꿀 수 있는 키는 데몬이 주는 기본값 표에서 온다: 바꾸지 않은 키도 기본값과 함께 보인다
+    #[test]
+    fn every_key_shows_with_its_value_or_its_default() {
+        crate::i18n::init("ko");
+        let defaults = json!({ "enabled": false, "model": "m" });
+        let settings = json!({ "enabled": true, "memo": "hi" });
+        let rows = setting_rows(defaults.as_object().unwrap(), settings.as_object().unwrap());
+        let plain: Vec<(String, String)> = rows.into_iter().map(|(k, v)| (k, console::strip_ansi_codes(&v).to_string())).collect();
+        assert_eq!(plain, vec![
+            ("enabled".to_string(), console::strip_ansi_codes(&output::show(&json!(true))).to_string()),
+            ("memo".to_string(), "hi".to_string()),
+            ("model".to_string(), format!("m {}", t!("chatbot.defaults"))),
+        ]);
     }
 }

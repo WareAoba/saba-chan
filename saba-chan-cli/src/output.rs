@@ -141,7 +141,7 @@ pub fn heading(text: &str) {
 pub fn status_badge(status: &str) -> String {
     let label = crate::i18n::try_t(&format!("status.{}", status)).unwrap_or_else(|| status.to_string());
     let dot: StyledObject<&str> = match status {
-        "running" => style("●").green(),
+        "running" | "connected" => style("●").green(),
         "starting" | "provisioning" | "stopping" => style("◐").yellow(),
         "crashed" | "error" => style("●").red(),
         _ => style("○").dim(),
@@ -251,6 +251,13 @@ pub fn players(server: &Value) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 디스코드 연결 상태 `connected`도 켜진 점으로 (빈 원이면 끊긴 것처럼 보인다)
+    #[test]
+    fn a_connected_badge_has_a_filled_dot() {
+        assert!(console::strip_ansi_codes(&status_badge("connected")).starts_with('●'));
+        assert!(console::strip_ansi_codes(&status_badge("disconnected")).starts_with('○'));
+    }
 
     #[test]
     fn masks_secret_values_only() {

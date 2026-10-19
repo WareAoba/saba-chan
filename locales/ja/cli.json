@@ -61,7 +61,9 @@
     "allow_saved": "{{guild}} で見られるのは次のサーバーだけです: {{servers}}",
     "link_accepted": "{{guild}} をこのPCに接続しました。",
     "link_declined": "接続リクエストを拒否しました。",
-    "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。"
+    "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。",
+    "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
+    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}"
   },
   "col": {
     "players": "接続者",
@@ -314,7 +316,9 @@
     },
     "updated": "{{name}} を更新しました。",
     "updating": "{{name}} を更新しています...",
-    "version_unknown": "不明"
+    "version_unknown": "不明",
+    "unresponsive": "応答なし",
+    "unresponsive_reason": "実行中ですが応答がありません: {{reason}}"
   },
   "set": {
     "default": "既定値",

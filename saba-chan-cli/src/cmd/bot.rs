@@ -69,7 +69,11 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             Ok(())
         }
         BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music, notify, no_notify } => {
-            channels(ctx, &guild, ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify }).await
+            let change = ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify };
+            match guild {
+                Some(guild) => channels(ctx, &guild, change).await,
+                None => channels_of_paired(ctx, change).await,
+            }
         }
         BotCmd::Lang { guild, value } => {
             let patch = value.map(|v| json!({ "locale": v }));
@@ -430,6 +434,12 @@ struct ChannelChange {
     no_notify: bool,
 }
 
+impl ChannelChange {
+    fn is_empty(&self) -> bool {
+        self.chatbot.is_empty() && !self.no_chatbot && self.music.is_none() && !self.no_music && self.notify.is_none() && !self.no_notify
+    }
+}
+
 /// 이름(앞의 `#` 무시) 또는 id → 채널 id
 fn channel_id(list: &[Value], query: &str) -> Result<String> {
     let q = query.trim().trim_start_matches('#');
@@ -492,6 +502,54 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
     };
     ctx.out.data(&r, print_channels);
     Ok(())
+}
+
+/// 서버 id 없이: 페어링된 디스코드 서버마다 보여 준다. 바꾸기는 서버가 하나일 때만
+async fn channels_of_paired(ctx: &Ctx, change: ChannelChange) -> Result<()> {
+    let list = paired_nodes(ctx).await?;
+    let targets = target_guilds(&list, !change.is_empty())?;
+    if let [(guild, _)] = targets.as_slice() {
+        return channels(ctx, guild, change).await;
+    }
+    let cfg = ctx.api.bot_config().await?;
+    let mut all = Vec::new();
+    // 서버 하나를 못 읽어도 나머지는 보여 준다
+    for (guild, name) in &targets {
+        let r = ctx.api.node_channels(guild, relay_of(&cfg)).await;
+        if !ctx.out.json {
+            println!();
+            output::heading(&if name.is_empty() { guild.clone() } else { format!("{} ({})", name, guild) });
+            match &r {
+                Ok(r) => print_channels(r),
+                Err(e) => ctx.out.warn(&e.to_string()),
+            }
+        }
+        all.push(match r {
+            Ok(r) => json!({ "guildId": guild, "guildName": name, "channels": r }),
+            Err(e) => json!({ "guildId": guild, "guildName": name, "error": e.to_string() }),
+        });
+    }
+    if ctx.out.json {
+        ctx.out.data(&Value::Array(all), |_| {});
+    }
+    Ok(())
+}
+
+/// 페어링된 디스코드 서버 `(id, 이름)`. 바꾸기(`changing`)는 어느 서버인지 분명할 때(하나뿐)만
+fn target_guilds(nodes: &Value, changing: bool) -> Result<Vec<(String, String)>> {
+    let list: Vec<(String, String)> = node_list(nodes)
+        .iter()
+        .map(|n| (s(n, "guildId").to_string(), s(n, "guildName").to_string()))
+        .filter(|(id, _)| !id.is_empty())
+        .collect();
+    if list.is_empty() {
+        return Err(failed(t!("bot.no_paired_servers")));
+    }
+    if changing && list.len() > 1 {
+        let ids = list.iter().map(|(id, name)| format!("{} ({})", id, name)).collect::<Vec<_>>().join(", ");
+        return Err(usage(t!("bot.pick_server", servers = ids)));
+    }
+    Ok(list)
 }
 
 /// 길드 설정 보기·바꾸기 (I2). 원본은 데몬이고 데몬이 릴레이에 맞춘다
@@ -579,15 +637,50 @@ async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
     Ok(())
 }
 
-async fn nodes(ctx: &Ctx) -> Result<()> {
+async fn paired_nodes(ctx: &Ctx) -> Result<Value> {
     let cfg = ctx.api.bot_config().await?;
     let host = cfg.pointer("/cloud/hostId").and_then(Value::as_str).unwrap_or("");
     if host.is_empty() {
         return Err(failed(t!("bot.not_paired")));
     }
-    let r = ctx.api.host_nodes(host, relay_of(&cfg)).await?;
-    ctx.out.data(&r, |r| print_list(r, "nodes"));
+    ctx.api.host_nodes(host, relay_of(&cfg)).await
+}
+
+async fn nodes(ctx: &Ctx) -> Result<()> {
+    let r = paired_nodes(ctx).await?;
+    ctx.out.data(&r, |r| {
+        let rows = node_rows(r);
+        if rows.is_empty() {
+            println!("{}", output::dim(&t!("bot.list_empty")));
+            return;
+        }
+        let mut t = output::table(&[t!("col.name"), t!("col.id"), t!("bot.locale"), t!("bot.prefix")]);
+        for row in rows {
+            t.add_row(row);
+        }
+        output::print_table(t);
+    });
     Ok(())
+}
+
+/// 릴레이 노드 목록 (맨 목록이거나 `{nodes: [...]}`)
+fn node_list(r: &Value) -> Vec<Value> {
+    r.get("nodes").or(Some(r)).and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+/// 노드 표의 줄: 이름, id, 언어, 접두사. 프로필 사진 주소·시각 같은 긴 값은 `--json`으로만
+fn node_rows(r: &Value) -> Vec<Vec<String>> {
+    node_list(r)
+        .iter()
+        .map(|n| {
+            vec![
+                s(n, "guildName").to_string(),
+                s(n, "guildId").to_string(),
+                s(n, "locale").to_string(),
+                prefixes_line(n.get("prefixes").unwrap_or(&Value::Null)),
+            ]
+        })
+        .collect()
 }
 
 /// 릴레이 응답 목록을 표로 (모양을 모르니 첫 항목의 단순 값 칸만)
@@ -647,6 +740,30 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 표에는 알아볼 칸만: 디스코드 프로필 사진 주소 같은 긴 값이 줄을 깨지 않게
+    #[test]
+    fn node_rows_show_the_name_id_language_and_prefixes_only() {
+        let r = json!([{
+            "guildId": "1", "hostId": "h", "guildName": "사바 서버", "locale": "ko",
+            "createdAt": "2026-10-19T00:00:00Z", "updatedAt": "2026-10-19T00:00:00Z",
+            "iconUrl": "https://cdn.discordapp.com/icons/1/abcdef.png?size=128",
+            "prefixes": ["사바쨩", "!"], "prefixDefault": false,
+        }]);
+        assert_eq!(node_rows(&r), vec![vec!["사바 서버", "1", "ko", "사바쨩, !"]]);
+    }
+
+    /// `bot channels`만 치면 페어링된 디스코드 서버마다 보여 준다. 바꾸기는 서버가 하나일 때만 id 없이 된다
+    #[test]
+    fn channels_without_a_guild_cover_every_paired_server_and_a_change_needs_exactly_one() {
+        let two = json!([{ "guildId": "1", "guildName": "a" }, { "guildId": "2", "guildName": "b" }]);
+        let one = json!([{ "guildId": "1", "guildName": "a" }]);
+        let ids = |v: Vec<(String, String)>| v.into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+        assert_eq!(ids(target_guilds(&two, false).unwrap()), vec!["1", "2"]);
+        assert!(target_guilds(&two, true).is_err());
+        assert_eq!(ids(target_guilds(&one, true).unwrap()), vec!["1"]);
+        assert!(target_guilds(&json!([]), false).is_err());
+    }
 
     #[test]
     fn channels_are_found_by_id_or_name_and_a_shared_name_must_use_the_id() {

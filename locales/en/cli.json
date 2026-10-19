@@ -87,7 +87,9 @@
     "words": "Words",
     "command_words": "Command words",
     "words_saved": "Saved the chat words of {{server}}.",
-    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them)."
+    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
+    "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
   },
   "col": {
     "players": "Players",
@@ -369,7 +371,9 @@
     },
     "updated": "{{name}} updated.",
     "updating": "Updating {{name}}...",
-    "version_unknown": "unknown"
+    "version_unknown": "unknown",
+    "unresponsive": "Not responding",
+    "unresponsive_reason": "Running but not responding: {{reason}}"
   },
   "set": {
     "default": "default",

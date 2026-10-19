@@ -191,6 +191,10 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             (t!("col.state"), output::status_badge(status_of(&rt))),
             (t!("col.id"), output::dim(&sv.id)),
         ];
+        // 켜져 있지만 상태 질문에 답하지 않음: 명령·정상 종료도 닿지 않을 수 있다
+        if let Some(reason) = rt.get("unresponsive").and_then(Value::as_str) {
+            rows.push((t!("server.unresponsive"), console::style(t!("server.unresponsive_reason", reason = reason)).yellow().to_string()));
+        }
         if let Some(st) = rt
             .get("start_time")
             .and_then(Value::as_u64)
@@ -499,6 +503,8 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let created = ctx.api.create_instance(body).await?;
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
+    // 7-0) 약관 (예: 게임 EULA). 설치를 기다리기 전에 묻는다
+    offer_agreements(ctx, &id, &name, &a.accept).await;
 
     // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
     let mut settings_error = None;
@@ -1079,19 +1085,11 @@ fn setting_fields(module: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-/// 인스턴스 최상위에 있는 공통 칸과 그 형식 (데몬 `update_instance_settings`의 known_fields)
-const COMMON: &[(&str, &str)] = &[
-    ("port", "number"),
-    ("rest_host", "text"),
-    ("rest_port", "number"),
-    ("rest_username", "text"),
-    ("rest_password", "password"),
-    ("executable_path", "text"),
-    ("protocol_mode", "text"),
-    ("server_version", "text"),
-    // 메모리 상한(MiB). 비우면 제한 없음 (Windows만 적용)
-    ("memory_limit_mb", "number"),
-];
+/// 모듈이 선언하지 않아도 모든 서버에 있는 칸과 그 형식: 인스턴스 공통 칸과 데몬이 읽는 설정 (데몬과 같은 표)
+fn common() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    use saba_chan_updater_lib::constants::{DAEMON_SETTINGS, INSTANCE_FIELDS};
+    INSTANCE_FIELDS.iter().chain(DAEMON_SETTINGS)
+}
 
 /// KEY=VALUE 하나를 PATCH 키와 형식 맞춘 값으로. `ext.키`는 extension_data, 빈 값은 지우기(null).
 /// 모듈 정의에도, 공통 칸에도, 지금 값에도 없는 키 (오타일 가능성이 높다)
@@ -1099,7 +1097,7 @@ fn unknown_setting(fields: &[Value], key: &str) -> anyhow::Error {
     let names: Vec<String> = fields
         .iter()
         .map(|f| s(f, "name").to_string())
-        .chain(COMMON.iter().map(|(k, _)| k.to_string()))
+        .chain(common().map(|(k, _)| k.to_string()))
         .collect();
     let suggestions = match resolve::find(&names, key, |n| vec![n.clone()], |n| n.clone()) {
         resolve::Found::None(s) => s,
@@ -1127,7 +1125,7 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         .iter()
         .find(|f| s(f, "name") == key)
         .map(|f| s(f, "field_type").to_string())
-        .or_else(|| COMMON.iter().find(|(k, _)| *k == key).map(|(_, t)| t.to_string()))
+        .or_else(|| common().find(|(k, _)| *k == key).map(|(_, t)| t.to_string()))
         .or_else(|| {
             // 정의에 없는 키는 지금 값의 형식을 따른다
             let cur = instance
@@ -1141,7 +1139,7 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         })
         .ok_or_else(|| unknown_setting(fields, key))?;
     // 공통 칸은 빈 값이 지우기다 (예: `memory_limit_mb=` → 제한 없음)
-    if raw.trim().is_empty() && COMMON.iter().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
+    if raw.trim().is_empty() && common().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
         return Ok((key.to_string(), Value::Null));
     }
     let field = fields.iter().find(|f| s(f, "name") == key);
@@ -1243,13 +1241,25 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             );
             seen.push(name.to_string());
         }
-        for (k, _) in COMMON {
+        for (k, _) in saba_chan_updater_lib::constants::INSTANCE_FIELDS {
             if seen.iter().any(|s| s == k) {
                 continue;
             }
             if let Some(val) = sv.raw.get(*k).filter(|v| !v.is_null()) {
                 push("saba-chan", output::dim(&format!("[{}]", k)), output::mask(k, val));
             }
+        }
+        // 데몬이 읽는 설정은 값이 없어도 보인다: 바꿀 수 있다는 것을 알 수 있게
+        for (k, _) in saba_chan_updater_lib::constants::DAEMON_SETTINGS {
+            if seen.iter().any(|s| s == k) {
+                continue;
+            }
+            let shown = match ms.get(*k).filter(|v| !v.is_null()) {
+                Some(val) => output::mask(k, val),
+                None => output::dim(&format!("({})", t!("set.default"))),
+            };
+            push("saba-chan", output::dim(&format!("[{}]", k)), shown);
+            seen.push(k.to_string());
         }
         if let Some(map) = ms.as_object() {
             for (k, val) in map.iter().filter(|(k, _)| !seen.contains(k)) {
@@ -1542,22 +1552,80 @@ async fn launch_preview(ctx: &Ctx, query: Option<&str>, extra: Option<&str>) -> 
 async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let inst = ctx.api.instance(&sv.id).await?;
-    let pending: Vec<&Value> = inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).collect();
+    let pending = pending_agreements(&inst);
     if pending.is_empty() {
         ctx.out.done(&t!("agree.none", name = sv.name), &json!({ "success": true, "agreements": inst["agreements"] }));
         return Ok(());
     }
+    show_agreements(ctx, &pending);
+    let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
+    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+    let r = accept(ctx, &sv.id, &pending).await?;
+    ctx.out.done(&t!("agree.done", name = sv.name), &r);
+    Ok(())
+}
+
+/// 모듈이 선언했지만 아직 동의하지 않은 약관 (인스턴스 응답의 `agreements`)
+fn pending_agreements(inst: &Value) -> Vec<Value> {
+    inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).cloned().collect()
+}
+
+fn show_agreements(ctx: &Ctx, pending: &[Value]) {
     if !ctx.out.json {
-        for a in &pending {
+        for a in pending {
             println!("  {}  {}", console::style(s(a, "label")).bold(), s(a, "url"));
         }
     }
-    let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
-    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+}
+
+async fn accept(ctx: &Ctx, id: &str, pending: &[Value]) -> Result<Value> {
     let ids: Vec<String> = pending.iter().map(|a| s(a, "id").to_string()).collect();
-    let r = ctx.api.accept_agreements(&sv.id, &ids).await?;
-    ctx.out.done(&t!("agree.done", name = sv.name), &r);
-    Ok(())
+    ctx.api.accept_agreements(id, &ids).await
+}
+
+/// 동의할 약관을 나눈다: `--accept`로 id를 댄 것(바로 동의)과 사람에게 물을 것.
+/// 물을 수 없으면(`--json`, 터미널 아님) 묻지 않는다. `--yes`는 약관 동의로 치지 않는다
+fn split_agreements(pending: &[Value], named: &[String], can_ask: bool) -> (Vec<Value>, Vec<Value>) {
+    let (by_name, rest): (Vec<Value>, Vec<Value>) = pending.iter().cloned().partition(|a| named.iter().any(|n| n == s(a, "id")));
+    (by_name, if can_ask { rest } else { Vec::new() })
+}
+
+/// 만든 서버에 동의할 약관이 있으면 GUI처럼 만들 때 묻는다. 동의하지 않았거나 실패해도 서버 만들기는
+/// 이어 가고 `server agree`를 안내한다 (첫 start가 약관 때문에 막히지 않게, 만든 서버의 남은 단계는 그대로)
+async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
+    let Ok(inst) = ctx.api.instance(id).await else {
+        return;
+    };
+    let pending = pending_agreements(&inst);
+    if pending.is_empty() {
+        return;
+    }
+    let (by_name, ask) = split_agreements(&pending, named, ctx.ask.enabled);
+    let mut chosen = by_name;
+    if !ask.is_empty() {
+        show_agreements(ctx, &ask);
+        let names: Vec<&str> = ask.iter().map(|a| s(a, "label")).collect();
+        if ctx.ask.consent(&t!("agree.confirm", name = name, names = names.join(", "))) {
+            chosen.extend(ask);
+        }
+    }
+    let accepted = if chosen.is_empty() {
+        false
+    } else {
+        match accept(ctx, id, &chosen).await {
+            Ok(_) => true,
+            Err(e) => {
+                ctx.out.warn(&e.to_string());
+                false
+            }
+        }
+    };
+    if accepted && !ctx.out.json {
+        println!("{} {}", console::style("✓").green().bold(), t!("agree.done", name = name));
+    }
+    if !accepted || chosen.len() < pending.len() {
+        ctx.out.hint(&format!("saba-chan-cli server agree {}", shell_word(name)));
+    }
 }
 
 async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
@@ -1619,6 +1687,45 @@ mod tests {
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
         let (k, v) = typed_setting(&fields, &inst, "ext.box", "").unwrap();
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
+    }
+
+    /// 새 서버(아직 값이 없음)에서도 데몬이 읽는 설정(auto_restart 등)과 공통 칸을 받는다 (C1)
+    #[test]
+    fn daemon_settings_are_accepted_on_a_new_server() {
+        let fields = vec![json!({ "name": "max_players", "field_type": "number" })];
+        let fresh = json!({ "module_settings": {} });
+        assert_eq!(typed_setting(&fields, &fresh, "auto_restart", "off").unwrap().1, json!(false));
+        assert_eq!(typed_setting(&fields, &fresh, "restart_on_unknown_exit", "on").unwrap().1, json!(true));
+        assert_eq!(typed_setting(&fields, &fresh, "managed_start", "false").unwrap().1, json!(false));
+        assert_eq!(typed_setting(&fields, &fresh, "log_sessions_keep", "5").unwrap().1, json!(5));
+        assert_eq!(typed_setting(&fields, &fresh, "extra_args", "-nogui -x").unwrap().1, json!("-nogui -x"));
+        assert_eq!(typed_setting(&fields, &fresh, "working_dir", "D:/srv").unwrap().1, json!("D:/srv"));
+    }
+
+    /// 만들 때·`server agree`가 묻는 약관은 아직 동의하지 않은 것만 (C2)
+    #[test]
+    fn only_unaccepted_agreements_are_asked() {
+        let inst = json!({ "agreements": [
+            { "id": "eula", "label": "Minecraft EULA", "url": "https://aka.ms/MinecraftEULA", "accepted": false },
+            { "id": "tos", "label": "ToS", "url": "https://example.com", "accepted": true },
+        ] });
+        let ids: Vec<String> = pending_agreements(&inst).iter().map(|a| s(a, "id").to_string()).collect();
+        assert_eq!(ids, vec!["eula"]);
+        assert!(pending_agreements(&json!({})).is_empty());
+    }
+
+    /// 약관은 `--accept`로 이름을 댄 것만 바로 동의하고, 나머지는 사람에게 물을 수 있을 때만 묻는다.
+    /// `--yes`나 `--json`은 동의가 아니다 (리뷰 315)
+    #[test]
+    fn agreements_are_accepted_only_by_name_or_asked() {
+        let pending = vec![json!({ "id": "eula", "label": "EULA" }), json!({ "id": "tos", "label": "ToS" })];
+        let ids = |v: &[Value]| v.iter().map(|a| s(a, "id").to_string()).collect::<Vec<_>>();
+        let (named, ask) = split_agreements(&pending, &["eula".to_string()], true);
+        assert_eq!((ids(&named), ids(&ask)), (vec!["eula".to_string()], vec!["tos".to_string()]));
+        let (named, ask) = split_agreements(&pending, &[], false);
+        assert!(named.is_empty() && ask.is_empty(), "cannot ask: nothing is accepted, only guidance");
+        let (named, ask) = split_agreements(&pending, &[], true);
+        assert_eq!((ids(&named).len(), ids(&ask)), (0, vec!["eula".to_string(), "tos".to_string()]));
     }
 
     #[test]

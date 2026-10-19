@@ -1053,31 +1053,20 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
     (!args.iter().any(|a| a.contains(['\r', '\n', '\0']))).then_some(args)
 }
 
-/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로)
-const KNOWN_FIELDS: &[&str] = &[
-    "port",
-    "rest_host",
-    "rest_port",
-    "rest_username",
-    "rest_password",
-    "executable_path",
-    "working_dir",
-    "protocol_mode",
-    "server_version",
-    "extension_data",
-    "extra_args",
-    "memory_limit_mb",
-    // RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
-    "rcon_port",
-    "rcon_password",
-    "enable_rcon",
-];
+/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
+/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
+fn is_known_field(key: &str) -> bool {
+    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || key == "extension_data" || IGNORED_FIELDS.contains(&key)
+}
 
-/// 받지만 쓰지 않는 이름 (응답 `ignored`)
+/// 받지만 쓰지 않는 이름 (응답 `ignored`).
+/// RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
 const IGNORED_FIELDS: &[&str] = &["rcon_port", "rcon_password", "enable_rcon"];
 
 /// 모듈이 선언하지 않아도 데몬이 `module_settings`에서 읽는 설정
-const DAEMON_SETTING_KEYS: &[&str] = &["auto_restart", "restart_on_unknown_exit", "managed_start", "log_sessions_keep"];
+fn is_daemon_setting(key: &str) -> bool {
+    saba_chan_updater_lib::constants::DAEMON_SETTINGS.iter().any(|(k, _)| *k == key)
+}
 
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
@@ -1135,12 +1124,12 @@ pub async fn update_instance_settings(
     }
 
     // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
-    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`DAEMON_SETTING_KEYS`)은 받는다
+    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`constants::DAEMON_SETTINGS`)은 받는다
     if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
         if let Some(ref settings_meta) = module.metadata.settings {
             let unknown: Vec<&String> = settings_obj
                 .keys()
-                .filter(|k| !KNOWN_FIELDS.contains(&k.as_str()) && !DAEMON_SETTING_KEYS.contains(&k.as_str()))
+                .filter(|k| !is_known_field(k) && !is_daemon_setting(k))
                 .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
                 .collect();
             if !unknown.is_empty() {
@@ -1348,7 +1337,7 @@ pub async fn update_instance_settings(
     // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
-            if !KNOWN_FIELDS.contains(&key.as_str()) {
+            if !is_known_field(key) {
                 // 설정 화면은 고치지 않은 값도 함께 보낸다: 값이 바뀐 키만 사용자가 정한 것으로 기록한다
                 if updated.module_settings.get(key) != Some(value) {
                     updated.user_settings.insert(key.clone());

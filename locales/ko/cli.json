@@ -87,7 +87,9 @@
     "words": "부르는 낱말",
     "command_words": "명령 낱말",
     "words_saved": "{{server}}의 채팅 낱말을 저장했어요.",
-    "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=)."
+    "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
+    "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
+    "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}"
   },
   "col": {
     "players": "접속자",
@@ -369,7 +371,9 @@
     },
     "updated": "{{name}}을(를) 업데이트했어요.",
     "updating": "{{name}} 업데이트 중...",
-    "version_unknown": "알 수 없음"
+    "version_unknown": "알 수 없음",
+    "unresponsive": "응답 없음",
+    "unresponsive_reason": "실행 중이지만 응답이 없어요: {{reason}}"
   },
   "set": {
     "default": "기본값",
@@ -601,7 +605,7 @@
       "schedule.clear": "예약 작업 모두 지우기",
       "chatbot": "디스코드 AI 챗봇 설정과 API 키",
       "chatbot.show": "설정과 API 키 저장 여부",
-      "chatbot.set": "설정 바꾸기: 키=값 ... (빈 값 = 기본값, [a,b] = 목록, @파일 = 파일 내용, 예: memo=@메모.txt)",
+      "chatbot.set": "설정 바꾸기: 키=값 ... (키와 기본값: `chatbot show`, 예: enabled=true. 빈 값 = 기본값, [a,b] = 목록, @파일 = 파일 내용, 예: memo=@메모.txt)",
       "chatbot.key": "API 키 저장 (숨겨서 물어봐요. 인자로 넘기지 마세요)",
       "chatbot.clear": "챗봇 설정과 키 모두 지우기",
       "chatbot.forget": "챗봇이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",
@@ -609,7 +613,7 @@
       "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교",
       "config.export": "설정과 서버 목록을 zip으로 저장 (다른 PC로 옮길 때, 게임 파일은 빠짐)",
       "config.import": "내보낸 zip에서 설정과 서버 가져오기",
-      "bot.channels": "디스코드 서버의 챗봇 채널(여러 개)·음악 채널(하나). 옵션이 없으면 보기만",
+      "bot.channels": "디스코드 서버의 챗봇 채널(여러 개)·음악 채널(하나)·알림 채널. 옵션이 없으면 보기만",
       "monitor": "CPU·메모리·디스크·네트워크 사용량과 서버별 몫",
       "audit": "누가 어디서(GUI·CLI·디스코드·예약) 서버를 켜고 끄고 명령을 보냈는지",
       "perm": "디스코드에서 누가 어떤 명령을 쓸 수 있는지 (멤버 레벨, 프리셋, 명령별 레벨)",
@@ -733,7 +737,8 @@
       "bot.music.normalize": "곡마다 음량 고르게 (on 또는 off)",
       "bot.words.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
       "bot.words.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
-      "bot.words.clear": "이 서버의 낱말 모두 지우기"
+      "bot.words.clear": "이 서버의 낱말 모두 지우기",
+      "bot.channels.guild": "디스코드 서버 id. 없으면 페어링된 서버 전부 (바꾸기는 서버가 하나일 때만)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

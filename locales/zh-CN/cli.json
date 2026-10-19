@@ -61,7 +61,9 @@
     "allow_saved": "{{guild}} 现在只能看到：{{servers}}",
     "link_accepted": "已将 {{guild}} 连接到此电脑。",
     "link_declined": "已拒绝连接请求。",
-    "pair_gui_hint": "也可以在 GUI 的 Discord 页面查看 Discord 连接状态。"
+    "pair_gui_hint": "也可以在 GUI 的 Discord 页面查看 Discord 连接状态。",
+    "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
+    "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}"
   },
   "col": {
     "players": "在线玩家",
@@ -314,7 +316,9 @@
     },
     "updated": "{{name}} 已更新。",
     "updating": "正在更新 {{name}}...",
-    "version_unknown": "未知"
+    "version_unknown": "未知",
+    "unresponsive": "无响应",
+    "unresponsive_reason": "正在运行但没有响应: {{reason}}"
   },
   "set": {
     "default": "默认",

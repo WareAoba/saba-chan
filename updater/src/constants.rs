@@ -35,6 +35,36 @@ pub const DEFAULT_IPC_PORT: u16 = 57474;
 pub const DEFAULT_DAEMON_URL: &str = "http://127.0.0.1:57474";
 
 // ══════════════════════════════════════════════════════
+//  인스턴스 설정 칸
+// ══════════════════════════════════════════════════════
+
+/// 모듈이 선언하지 않아도 모든 서버 인스턴스에 있는 설정 칸 `(이름, 형식)`. 데몬 PATCH `/api/instance/:id`가
+/// 인스턴스 필드로 받고, CLI `server set`·`server settings`가 같은 표를 쓴다
+pub const INSTANCE_FIELDS: &[(&str, &str)] = &[
+    ("port", "number"),
+    ("rest_host", "text"),
+    ("rest_port", "number"),
+    ("rest_username", "text"),
+    ("rest_password", "password"),
+    ("executable_path", "text"),
+    ("working_dir", "text"),
+    ("protocol_mode", "text"),
+    ("server_version", "text"),
+    // 문자열이면 데몬이 따옴표를 지켜 나눈다
+    ("extra_args", "text"),
+    // 메모리 상한(MiB). 비우면 제한 없음 (Windows만 적용)
+    ("memory_limit_mb", "number"),
+];
+
+/// 모듈이 선언하지 않아도 데몬이 `module_settings`에서 읽는 설정 `(이름, 형식)`
+pub const DAEMON_SETTINGS: &[(&str, &str)] = &[
+    ("auto_restart", "boolean"),
+    ("restart_on_unknown_exit", "boolean"),
+    ("managed_start", "boolean"),
+    ("log_sessions_keep", "number"),
+];
+
+// ══════════════════════════════════════════════════════
 //  지원 언어
 // ══════════════════════════════════════════════════════
 

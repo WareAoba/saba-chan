@@ -61,7 +61,9 @@
     "allow_saved": "{{guild}} ahora solo ve: {{servers}}",
     "link_accepted": "{{guild}} está conectado a este PC.",
     "link_declined": "Solicitud de conexión rechazada.",
-    "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI."
+    "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
+    "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
+    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}"
   },
   "col": {
     "players": "Jugadores",
@@ -314,7 +316,9 @@
     },
     "updated": "{{name}} actualizado.",
     "updating": "Actualizando {{name}}...",
-    "version_unknown": "desconocida"
+    "version_unknown": "desconocida",
+    "unresponsive": "No responde",
+    "unresponsive_reason": "En ejecución pero no responde: {{reason}}"
   },
   "set": {
     "default": "predeterminado",
