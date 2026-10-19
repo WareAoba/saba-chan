@@ -1093,6 +1093,10 @@
       "extension_modified": "La extensión ({{id}}) cambió después de instalarse. Reinstálala si no la editaste tú.",
       "isolated": "Los scripts de Python de este componente se ejecutan en un entorno aislado (solo carpetas permitidas). El proceso del servidor de juego no está aislado."
     },
+    "create_notice": {
+      "unverified": "Este módulo no proviene del catálogo oficial. Sus scripts de Python se ejecutan aislados, pero el servidor de juego que instala y ejecuta no está aislado y se ejecuta con los permisos de tu cuenta. Continúa solo si confías en este módulo.",
+      "modified": "Los archivos de este módulo cambiaron después de instalarlo desde el catálogo oficial. Sus scripts de Python se ejecutan aislados, pero el servidor de juego que instala y ejecuta no está aislado y se ejecuta con los permisos de tu cuenta. Continúa solo si confías en este módulo."
+    },
     "start_blocked": {
       "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}} Si configuraste la ruta de Java tú mismo, vuelve a elegirla en la configuración del servidor.",
       "server_folder_label": "No se pudieron limpiar las marcas de permisos de la carpeta del servidor ({{file}}), así que el servidor no se inició. Comprueba que esta cuenta pueda cambiar los permisos de esa carpeta.",
