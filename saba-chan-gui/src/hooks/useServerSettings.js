@@ -315,9 +315,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 targetDir = workDir;
                             }
 
+                            // instance_id: 데몬이 이 인스턴스 설정(서버 종류 등)으로 설치하고 작업 잠금을 잡는다
                             const installResult = await window.api.moduleInstallServer(module, {
                                 version,
                                 install_dir: targetDir,
+                                instance_id: settingsServer.id,
                             });
 
                             const blocked = blockedText(installResult, t);
@@ -356,28 +358,27 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 return;
                             }
 
+                            // 설치한 버전만 기록한다 (설정 저장은 버전을 보내지 않는다)
+                            const update = { server_version: version };
                             if (installResult.jar_path) {
                                 // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
-                                const installDir =
+                                update.working_dir =
                                     installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
-                                const saved = await window.api.instanceUpdateSettings(settingsServer.id, {
-                                    working_dir: installDir,
-                                    server_version: version,
-                                });
-                                if (!saved || saved.error || saved.success === false) {
-                                    setProgressBar(null);
-                                    safeShowToast(
-                                        t('server_settings.install_settings_failed', {
-                                            error: translateError(saved?.error || saved?.message || ''),
-                                        }),
-                                        'error',
-                                        6000,
-                                    );
-                                    await fetchServers();
-                                    return;
-                                }
-                                if (request === openRequest.current) handleSettingChange('server_version', version);
                             }
+                            const saved = await window.api.instanceUpdateSettings(settingsServer.id, update);
+                            if (!saved || saved.error || saved.success === false) {
+                                setProgressBar(null);
+                                safeShowToast(
+                                    t('server_settings.install_settings_failed', {
+                                        error: translateError(saved?.error || saved?.message || ''),
+                                    }),
+                                    'error',
+                                    6000,
+                                );
+                                await fetchServers();
+                                return;
+                            }
+                            if (request === openRequest.current) handleSettingChange('server_version', version);
 
                             setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
                             setTimeout(() => setProgressBar(null), 2000);
@@ -538,10 +539,6 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         convertedSettings[field.name] = value;
                     }
                 });
-            }
-
-            if (settingsValues.server_version) {
-                convertedSettings.server_version = settingsValues.server_version;
             }
 
             // 램 상한: 바꿨을 때만 보낸다. 비우면 제한 없음(null), 형식 검사는 데몬이 한다 (invalid_format)
