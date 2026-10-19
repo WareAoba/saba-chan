@@ -207,7 +207,7 @@ pub struct ServerInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
     /// 켜져 있지만 상태 질문(접속자 수)에 `UNRESPONSIVE_AFTER` 넘게 답하지 않을 때 마지막 실패 이유.
-    /// 명령·정상 종료도 닿지 않는 상태다 (`supervisor::players::unresponsive`)
+    /// REST로 명령을 보내는 서버라면 명령·정상 종료도 닿지 않는다 (`supervisor::players::unresponsive`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unresponsive: Option<String>,
 }
