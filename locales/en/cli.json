@@ -178,6 +178,21 @@
   },
   "daemon": {
     "already": "The daemon is already running (v{{version}}).",
+    "diag": {
+      "version": "Version",
+      "uptime": "Uptime",
+      "listen": "Address",
+      "data_dir": "Data folder",
+      "token": "Token file",
+      "token_missing": "missing ({{path}})",
+      "audit_log": "Audit log",
+      "modules": "Modules",
+      "modules_error": "could not read: {{error}}",
+      "extensions": "Enabled extensions",
+      "extensions_missing": "Enabled but not installed",
+      "problems": "Recent warnings and errors",
+      "no_problems": "No recent warnings or errors"
+    },
     "binary_not_found": "Could not find the daemon program (saba-core). Set SABA_CORE_PATH or reinstall.",
     "confirm_kill": "The daemon did not stop in time. Kill it (PID {{pid}})?",
     "killed": "Daemon killed (PID {{pid}}).",

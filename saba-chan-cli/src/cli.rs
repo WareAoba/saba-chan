@@ -517,6 +517,8 @@ pub enum DaemonCmd {
         #[arg(long)]
         force: bool,
     },
+    /// Self-check to paste when asking for help: version, paths, token file, modules, extensions, recent warnings
+    Diagnostics,
     /// The daemon's own log
     Logs {
         #[arg(short = 'n', long, default_value_t = 100)]

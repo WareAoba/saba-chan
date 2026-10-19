@@ -131,6 +131,21 @@
   },
   "daemon": {
     "already": "デーモンはすでに動いています（v{{version}}）。",
+    "diag": {
+      "version": "バージョン",
+      "uptime": "稼働時間",
+      "listen": "アドレス",
+      "data_dir": "データフォルダー",
+      "token": "トークンファイル",
+      "token_missing": "なし ({{path}})",
+      "audit_log": "監査ログ",
+      "modules": "モジュール",
+      "modules_error": "読み込めません: {{error}}",
+      "extensions": "有効な拡張機能",
+      "extensions_missing": "有効だが未インストール",
+      "problems": "最近の警告・エラー",
+      "no_problems": "最近の警告・エラーはありません"
+    },
     "binary_not_found": "デーモンのプログラム（saba-core）が見つかりません。SABA_CORE_PATH を設定するか、再インストールしてください。",
     "confirm_kill": "デーモンが時間内に停止しませんでした。強制終了しますか（PID {{pid}}）？",
     "killed": "デーモンを強制終了しました（PID {{pid}}）。",

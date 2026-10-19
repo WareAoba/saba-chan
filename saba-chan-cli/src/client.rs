@@ -340,6 +340,10 @@ impl Api {
     pub async fn preflight(&self) -> Result<Value> {
         self.get("/api/runtime/preflight").await
     }
+    /// GET /api/diagnostics — 데몬 진단 (경로·토큰 파일·모듈·익스텐션·최근 경고)
+    pub async fn diagnostics(&self) -> Result<Value> {
+        self.get("/api/diagnostics").await
+    }
     /// GET /api/onboarding — 다음 할 일 `{steps, next}`
     pub async fn onboarding(&self) -> Result<Value> {
         self.get("/api/onboarding").await
