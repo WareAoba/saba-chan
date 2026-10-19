@@ -293,6 +293,34 @@
       "webSearch": "ウェブ検索",
       "disabledTools": "無効なツール",
       "step": "ステップ"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…ほか {{count}} 件",
+      "backups": "💾 **バックアップ {{count}} 件**",
+      "backups_empty": "📭 バックアップがありません",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "手動",
+        "scheduled": "予約",
+        "pre-update": "アップデート前",
+        "pre-restore": "復元前"
+      },
+      "events": "📜 **最近の起動・停止記録**",
+      "events_empty": "📭 記録がありません",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "停止",
+        "in_game_stop": "ゲーム内で停止",
+        "crash": "異常終了",
+        "start_failed": "起動失敗",
+        "unknown_exit": "不明な終了"
+      },
+      "updates": "⬆️ **アップデート {{count}} 件**",
+      "updates_none": "✅ すべて最新です",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · メモリ {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

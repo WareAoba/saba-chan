@@ -293,6 +293,34 @@
       "webSearch": "Веб-поиск",
       "disabledTools": "Отключённые инструменты",
       "step": "Шаг"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…и ещё {{count}}",
+      "backups": "💾 **Резервных копий: {{count}}**",
+      "backups_empty": "📭 Резервных копий нет",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "вручную",
+        "scheduled": "по расписанию",
+        "pre-update": "перед обновлением",
+        "pre-restore": "перед восстановлением"
+      },
+      "events": "📜 **Последние запуски и остановки**",
+      "events_empty": "📭 Записей нет",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "остановлен",
+        "in_game_stop": "остановлен в игре",
+        "crash": "аварийно завершился",
+        "start_failed": "не удалось запустить",
+        "unknown_exit": "завершился по неизвестной причине"
+      },
+      "updates": "⬆️ **Обновлений: {{count}}**",
+      "updates_none": "✅ Всё обновлено",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ ЦП {{cpu}}% · Память {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · ЦП {{cpu}}% · {{memory}}"
     }
   }
 }

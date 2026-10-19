@@ -293,6 +293,34 @@
       "webSearch": "网页搜索",
       "disabledTools": "已关闭的工具组",
       "step": "步骤"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…另有 {{count}} 项",
+      "backups": "💾 **{{count}} 个备份**",
+      "backups_empty": "📭 没有备份",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "手动",
+        "scheduled": "计划",
+        "pre-update": "更新前",
+        "pre-restore": "恢复前"
+      },
+      "events": "📜 **最近的启动与停止记录**",
+      "events_empty": "📭 没有记录",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "已停止",
+        "in_game_stop": "在游戏内停止",
+        "crash": "异常退出",
+        "start_failed": "启动失败",
+        "unknown_exit": "未知原因退出"
+      },
+      "updates": "⬆️ **{{count}} 个更新**",
+      "updates_none": "✅ 全部已是最新",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · 内存 {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

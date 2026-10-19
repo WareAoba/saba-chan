@@ -293,6 +293,34 @@
       "webSearch": "Recherche web",
       "disabledTools": "Outils désactivés",
       "step": "Étape"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…et {{count}} de plus",
+      "backups": "💾 **{{count}} sauvegardes**",
+      "backups_empty": "📭 Aucune sauvegarde",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "manuelle",
+        "scheduled": "planifiée",
+        "pre-update": "avant mise à jour",
+        "pre-restore": "avant restauration"
+      },
+      "events": "📜 **Démarrages et arrêts récents**",
+      "events_empty": "📭 Aucun enregistrement",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "arrêté",
+        "in_game_stop": "arrêté en jeu",
+        "crash": "plantage",
+        "start_failed": "échec du démarrage",
+        "unknown_exit": "arrêt pour une raison inconnue"
+      },
+      "updates": "⬆️ **{{count}} mises à jour**",
+      "updates_none": "✅ Tout est à jour",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · Mémoire {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }
