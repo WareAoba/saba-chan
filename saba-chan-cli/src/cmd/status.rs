@@ -135,6 +135,15 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
+/// 서버 상태 표시. 켜져 있지만 상태 질문에 답하지 않으면(`unresponsive`) 그것도 붙인다 (GUI 목록과 같게)
+pub fn state_badge(sv: &Value) -> String {
+    let mut state = output::status_badge(s(sv, "status"));
+    if sv.get("unresponsive").and_then(Value::as_str).is_some() {
+        state.push_str(&console::style(format!("  ⚠ {}", t!("server.unresponsive"))).yellow().to_string());
+    }
+    state
+}
+
 pub fn discord_line(a: &Value) -> String {
     let flag = |k: &str| a.get(k).and_then(Value::as_bool).unwrap_or(false);
     if flag("running") {
@@ -209,7 +218,7 @@ pub fn print_server_table(servers: &[Value], modules: &Value) {
                 output::duration(now.saturating_sub(st))
             })
             .unwrap_or_default();
-        let mut state = output::status_badge(s(sv, "status"));
+        let mut state = state_badge(sv);
         if let Some(p) = output::players(sv) {
             state.push_str(&format!("  👥 {p}"));
         }
@@ -278,4 +287,19 @@ pub async fn version(ctx: &Ctx) -> Result<()> {
         output::print_kv(&rows);
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 켜져 있지만 응답이 없는 서버(H1)를 목록·상태에서도 알 수 있게 (C3)
+    #[test]
+    fn an_unresponsive_server_is_marked() {
+        crate::i18n::init("ko");
+        let plain = |v: Value| console::strip_ansi_codes(&state_badge(&v)).to_string();
+        assert!(plain(json!({ "status": "running", "unresponsive": "timed out" })).contains(&t!("server.unresponsive")));
+        assert!(!plain(json!({ "status": "running" })).contains(&t!("server.unresponsive")));
+    }
 }

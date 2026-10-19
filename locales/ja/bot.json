@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **サーバーリスト**",
     "empty": "📭 登録されたサーバーがありません",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 実行中",
@@ -48,7 +48,8 @@
     "not_found": "❌ モジュール \"{{alias}}\" のサーバーが見つかりません ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください",
-    "module_missing": "❌ モジュール '{{module}}' がインストールされていません。このサーバーは制御できません。"
+    "module_missing": "❌ モジュール '{{module}}' がインストールされていません。このサーバーは制御できません。",
+    "port_moved": "🔀 Windows が管理用 REST ポート {{from}} を予約していたため {{to}} に変更しました。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 実行中...",
@@ -293,6 +294,34 @@
       "webSearch": "ウェブ検索",
       "disabledTools": "無効なツール",
       "step": "ステップ"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…ほか {{count}} 件",
+      "backups": "💾 **バックアップ {{count}} 件**",
+      "backups_empty": "📭 バックアップがありません",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "手動",
+        "scheduled": "予約",
+        "pre-update": "アップデート前",
+        "pre-restore": "復元前"
+      },
+      "events": "📜 **最近の起動・停止記録**",
+      "events_empty": "📭 記録がありません",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "停止",
+        "in_game_stop": "ゲーム内で停止",
+        "crash": "異常終了",
+        "start_failed": "起動失敗",
+        "unknown_exit": "不明な終了"
+      },
+      "updates": "⬆️ **アップデート {{count}} 件**",
+      "updates_none": "✅ すべて最新です",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · メモリ {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

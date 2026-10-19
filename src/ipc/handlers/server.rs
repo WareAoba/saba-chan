@@ -178,6 +178,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     port_conflicts: vec![],
                     slots: Default::default(),
                     players: None,
+                    unresponsive: None,
                 });
                 ext_handled = true;
             }
@@ -232,6 +233,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             port_conflicts: vec![],
             slots: Default::default(),
             players: None,
+            unresponsive: None,
         });
     }
 
@@ -246,6 +248,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
     // ── 접속자 수 (Q-5): 모듈이 알려 준 마지막 값, 켜진 서버만 ──
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
         srv.players = crate::supervisor::players::get(&srv.id);
+        srv.unresponsive = crate::supervisor::players::unresponsive(&srv.id, srv.pid, std::time::Instant::now());
     }
 
     // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
@@ -701,6 +704,12 @@ async fn start_instance(
             .into_response();
     };
 
+    // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다
+    let since = state.supervisor.read().await.run_generation_of(&instance.id);
+    crate::supervisor::START_SINCE.scope(since, start_checked(state, instance, managed)).await
+}
+
+async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstance, managed: bool) -> axum::response::Response {
     if let Some(blocked) = preflight(&state, &instance.id).await {
         return blocked;
     }
@@ -1086,6 +1095,52 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// 시작 전 점검(모듈 validate) 중에 들어온 정지도 시작을 취소한다: 그 정지는 PID가 없어 바로 성공으로 끝난다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_during_the_pre_start_check_keeps_the_server_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\n\
+             if sys.argv[1] == 'validate':\n    time.sleep(2)\n    print(json.dumps({'success': True, 'issues': []}))\n\
+             elif sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-during-check".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let starter = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                crate::ipc::internal::into_internal(start_instance(Path("stop-during-check".into()), State(state)).await).await.body
+            })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        let stopped = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-during-check", "game", false).await.unwrap();
+        assert_ne!(stopped["success"], false, "{stopped}");
+
+        let started = starter.await.unwrap();
+        assert_eq!(started["error_code"], "start_cancelled", "{started}");
+        let s = state.supervisor.read().await;
+        assert!(s.tracker.get_pid("stop-during-check").is_err(), "nothing is tracked");
+        assert!(s.managed_store.get("stop-during-check").await.is_none(), "no server was left running");
+    }
 
     #[test]
     fn only_unofficial_or_changed_components_get_a_notice() {

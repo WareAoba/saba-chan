@@ -29,6 +29,14 @@
   },
   "bot": {
     "ask_token": "Токен узла",
+    "relay_check": "Проверка relay",
+    "relay_ok": "отвечает",
+    "relay_failed": "не отвечает: {{error}}",
+    "expired": "истёк",
+    "expires_in": "Осталось",
+    "members_partial": "Не удалось получить полный список участников Discord; показаны только участники с сохранённым уровнем.",
+    "requested_by": "Запросил",
+    "username": "Имя пользователя",
     "config_saved": "Настройки бота сохранены.",
     "confirm_unpair": "Отключить этот ПК от Discord-бота и забыть привязку?",
     "connection": "Подключение",
@@ -61,7 +69,9 @@
     "allow_saved": "{{guild}} теперь видит только: {{servers}}",
     "link_accepted": "{{guild}} подключён к этому ПК.",
     "link_declined": "Запрос на подключение отклонён.",
-    "pair_gui_hint": "Подключение к Discord также видно на экране Discord в GUI."
+    "pair_gui_hint": "Подключение к Discord также видно на экране Discord в GUI.",
+    "no_paired_servers": "С этим ПК ещё не связан ни один сервер Discord. Выполните: saba-chan-cli bot pair",
+    "pick_server": "Связано несколько серверов Discord. Укажите id сервера, который нужно изменить: {{servers}}"
   },
   "col": {
     "players": "Игроки",
@@ -164,6 +174,7 @@
     "hint": {
       "executable_missing": "Отсутствуют файлы сервера. Проверьте папку или переустановите: saba-chan-cli server update",
       "extension_required": "Установите нужные расширения: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "Файлы расширений изменены и не прошли проверку: {{ids}}. Переустановите их или верните исходные файлы: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Сначала привяжите этот ПК: saba-chan-cli bot pair",
       "server_not_running": "Сначала запустите сервер: saba-chan-cli start NAME",
       "server_running": "Сначала остановите сервер: saba-chan-cli stop NAME",
@@ -183,6 +194,7 @@
   },
   "agree": {
     "none": "У {{name}} нет соглашений для принятия.",
+    "unknown_id": "Пропущены id условий, которых нет у этого сервера: {{ids}} (есть: {{known}})",
     "confirm": "{{name}}: принять {{names}}? Вы соглашаетесь с условиями по ссылкам выше.",
     "done": "Соглашения для {{name}} приняты."
   },
@@ -247,6 +259,8 @@
   },
   "noun": {
     "command": "команда",
+    "guild": "сервер Discord",
+    "member": "участник",
     "extension": "расширение",
     "game": "игра",
     "module": "модуль",
@@ -278,7 +292,7 @@
     "done": "Порядок сохранён."
   },
   "reset": {
-    "confirm": "Стереть все файлы {{name}} и начать заново? Это нельзя отменить.",
+    "confirm": "Сбросить {{name}}? Это нельзя отменить.",
     "done": "{{name}} сброшен."
   },
   "resolve": {
@@ -313,10 +327,13 @@
     },
     "updated": "{{name}} обновлён.",
     "updating": "Обновление {{name}}...",
-    "version_unknown": "неизвестно"
+    "version_unknown": "неизвестно",
+    "unresponsive": "Не отвечает",
+    "unresponsive_reason": "Запущен, но не отвечает: {{reason}}"
   },
   "set": {
     "default": "по умолчанию",
+    "cannot_clear": "{{key}} нельзя оставить пустым. Укажите новое значение.",
     "done": "Сохранено настроек для {{name}}: {{count}}.",
     "group": {
       "advanced": "Дополнительно",
@@ -392,6 +409,13 @@
   },
   "update": {
     "after_hint": "После обновления Saba-chan перезапустится. Затем проверьте: saba-chan-cli update last",
+    "notes": "Список изменений",
+    "result": "Результат",
+    "result_ok": "успешно",
+    "result_failed": "ошибка",
+    "when": "Применено",
+    "updated": "Обновлено",
+    "failed_one": "Ошибка",
     "applied": "Применено: {{list}}",
     "applying": "Применение обновлений...",
     "checking": "Проверка обновлений...",
@@ -500,6 +524,8 @@
     "enabled": "Включено: {{task}}",
     "disabled": "Выключено: {{task}}",
     "no_such": "Задачи {{number}} нет (всего задач: {{count}}).",
+    "edited": "Задача изменена: {{task}}",
+    "nothing_to_edit": "Укажите хотя бы одно изменение (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Храните хотя бы 1 резервную копию.",
     "keep_set": "Хранятся последние резервные копии по расписанию: {{count}}.",
     "confirm_clear": "Удалить все запланированные задачи {{name}}?",
@@ -513,6 +539,8 @@
   },
   "chatbot": {
     "api_key": "API-ключ сохранён",
+    "provider": "Провайдер",
+    "model_replaced": "Выбранная модель {{selected}} недоступна; вместо неё используется {{effective}}.",
     "common": "Настройки для всех серверов Discord",
     "guild": "Сервер Discord {{guild}}",
     "defaults": "(по умолчанию)",

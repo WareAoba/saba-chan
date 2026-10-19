@@ -438,11 +438,12 @@ async fn main() -> anyhow::Result<()> {
             }
             
             // Phase 1: write lock 밖에서 프로세스 목록을 한 번 스캔 (비용이 큰 sysinfo 호출)
+            let taken_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
             let process_snapshot = crate::process_monitor::get_running_processes_async().await;
             
             // Phase 2: write lock 안에서는 snapshot 기반 매칭만 수행 (시스템 콜 없음)
             let mut sup = supervisor_monitor.write().await;
-            match sup.monitor_processes(&process_snapshot).await {
+            match sup.monitor_processes_taken_at(&process_snapshot, taken_at).await {
                 Ok(_) => {
                     if error_count > 0 {
                         tracing::info!("Monitor recovered after {} errors", error_count);

@@ -453,6 +453,9 @@
     color: var(--info);
     display: inline-flex;
 }
+.server-row-flag.tone-warn {
+    color: var(--warn);
+}
 .server-row-action {
     border-color: var(--line);
     background: var(--surface-gradient);

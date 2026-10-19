@@ -227,6 +227,21 @@ export function ConnectionView({
     // SleepAllButton이 알려 주는 "모든 서버를 재웠는지"
     const [asleep, setAsleep] = useState(false);
 
+    // 데몬에서 저장된 연결을 아직 읽지 못했다: 연결 버튼을 보이면 연결이 없는 줄 알고 다시 짝지을 수 있다
+    if (cloudState === 'checking') {
+        return (
+            <div className="dc-view">
+                <div className="dc-hero">
+                    <div className="dc-hero-icon">
+                        <Icon name="discord" size="xl" />
+                    </div>
+                    <h1>{t('discord.state_checking')}</h1>
+                    <p>{t('discord.checking_body')}</p>
+                </div>
+            </div>
+        );
+    }
+
     if (cloudState === 'no_host') {
         return (
             <div className="dc-view">

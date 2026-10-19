@@ -4,6 +4,8 @@ use tokio::process::Command;
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use crate::utils::apply_creation_flags;
 
+mod loopback;
+
 /// 데몬 IPC 포트. 모듈이 데몬 API를 역호출할 때 쓴다(main이 기동 시 한 번 설정).
 static IPC_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
 
@@ -155,7 +157,7 @@ pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS).await
+    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS, None).await
 }
 
 /// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
@@ -164,15 +166,28 @@ pub struct PluginCall {
     pub entry: String,
     pub function: String,
     pub config: Value,
+    /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
+    pub server: Option<u32>,
+    pub timeout_secs: u64,
 }
 
 impl PluginCall {
     pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
-        Self { entry: entry.into(), function: function.to_string(), config }
+        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS }
+    }
+
+    pub fn serving(mut self, server: Option<u32>) -> Self {
+        self.server = server;
+        self
+    }
+
+    pub fn timeout(mut self, secs: u64) -> Self {
+        self.timeout_secs = secs;
+        self
     }
 
     pub async fn run(self) -> Result<Value> {
-        run_plugin(&self.entry, &self.function, self.config).await
+        run_plugin_inner(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server).await
     }
 }
 
@@ -181,7 +196,7 @@ impl PluginCall {
 pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
 
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, timeout_secs).await
+    run_plugin_inner(module_path, function, config, None, timeout_secs, None).await
 }
 
 /// Like `run_plugin_with_progress` but with a custom timeout.
@@ -196,7 +211,7 @@ pub async fn run_plugin_with_progress_and_timeout<F>(
 where
     F: Fn(ExtensionProgress) + Send + 'static,
 {
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs).await
+    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs, None).await
 }
 
 type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
@@ -329,12 +344,56 @@ mod windows_job {
     }
 }
 
+/// 이 실행이 import할 수 있는 익스텐션과 확인되지 않아 뺀 익스텐션. 격리 없이 도는 실행(확인된 모듈 등)이
+/// 확인되지 않은 익스텐션을 import하면 그 코드가 격리·검사 없이 그 실행의 권한(데몬 토큰 경로 등)으로 돈다.
+/// `consented`는 사용자가 격리 없이 돌리기로 한 구성요소의 키(`ext-<id>`)다: 그 익스텐션은 이미 이 실행의 코드이므로 자기 패키지를 import할 수 있다
+fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl Fn(&str) -> bool, consented: Option<&str>) -> (Vec<String>, Vec<String>) {
+    if isolated {
+        return (enabled, Vec::new());
+    }
+    let own = consented.and_then(|key| key.strip_prefix("ext-")).map(|id| id.replace('_', "-"));
+    enabled.into_iter().partition(|id| !unverified(id) || own.as_deref() == Some(id.replace('_', "-").as_str()))
+}
+
+/// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다. 확인되지 않아 뺀 것을 돌려준다
+fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool, consented: Option<&str>) -> Vec<String> {
+    let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
+        crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
+    }, consented);
+    cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
+    // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
+    cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
+    unverified
+}
+
+/// 모듈이 import 실패를 삼키고 `extension_required`로 답해도(팰월드는 맨 위에서 ue4_ini import 실패를 받아 둔다),
+/// 빠진 익스텐션이 모두 확인되지 않아 막은 것이면 설치·활성화 안내 대신 `extension_not_verified`로 바꾼다
+fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
+    if result.get("error_code").and_then(Value::as_str) != Some("extension_required") || unverified.is_empty() {
+        return;
+    }
+    let same = |a: &str, b: &str| a.replace('_', "-").eq_ignore_ascii_case(&b.replace('_', "-"));
+    let missing: Vec<String> = result.get("missing_extensions").and_then(Value::as_array).into_iter().flatten()
+        .filter_map(Value::as_str).map(str::to_string).collect();
+    let blocked: Vec<&String> = unverified.iter().filter(|u| missing.iter().any(|m| same(m, u))).collect();
+    if missing.is_empty() || blocked.len() < missing.len() {
+        return;
+    }
+    result["error_code"] = serde_json::json!("extension_not_verified");
+    result["unverified_extensions"] = serde_json::json!(blocked);
+    result["message"] = serde_json::json!(format!(
+        "Extension(s) {} changed and could not be verified. Reinstall them or restore the original files.",
+        blocked.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+    ));
+}
+
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
     config: Value,
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
     timeout_secs: u64,
+    server: Option<u32>,
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
@@ -365,6 +424,9 @@ async fn run_plugin_inner(
         .env("PYTHONUNBUFFERED", "1")
         .envs(daemon_env());
 
+    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
+    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
+
     // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
     #[cfg(windows)]
     const PYPATH_SEP: char = ';';
@@ -372,6 +434,8 @@ async fn run_plugin_inner(
     const PYPATH_SEP: char = ':';
     let mut paths: Vec<String> = Vec::new();
     // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
+    let mut enabled_extensions: Option<Vec<String>> = None;
+    let mut unverified_extensions = Vec::new();
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
         let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
@@ -379,7 +443,8 @@ async fn run_plugin_inner(
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
-        cmd.env("SABA_ENABLED_EXTENSIONS", enabled.unwrap_or_default().join(","));
+        enabled_extensions = Some(enabled.unwrap_or_default());
+        unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some(), None);
 
         let mut pypath = extensions_dir.parent()
             .unwrap_or(&extensions_dir)
@@ -414,8 +479,13 @@ async fn run_plugin_inner(
         cmd.env("SABA_JAVA_RUNTIMES", runtimes);
     }
 
-    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
-    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
+    // 격리 실행은 127.0.0.1에 닿지 못한다: 자기 인스턴스 포트로 가는 요청은 데몬이 대신 보낸다 (loopback.rs)
+    let mut loopback = isolation.as_ref().and_then(|iso| {
+        let dir = iso.temp.join("loopback");
+        std::fs::create_dir_all(&dir).map_err(|e| tracing::warn!("[Loopback] cannot create {}: {}", dir.display(), e)).ok()?;
+        cmd.env("SABA_LOOPBACK_DIR", &dir);
+        Some(loopback::Proxy { dir, ports: loopback::instance_ports(&config), server })
+    });
     if let Some(iso) = &isolation {
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
             .env("TEMP", &iso.temp)
@@ -437,7 +507,16 @@ async fn run_plugin_inner(
     let mut child = match &isolation {
         None => plain(cmd.spawn()?),
         Some(iso) => match crate::sandbox::spawn_isolated(cmd.as_std(), iso).await {
-            Ok(crate::sandbox::Spawned::Unisolated) => plain(cmd.spawn()?),
+            Ok(crate::sandbox::Spawned::Unisolated) => {
+                // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
+                if let Some(enabled) = enabled_extensions {
+                    unverified_extensions = set_extension_env(&mut cmd, enabled, false, Some(&iso.key));
+                }
+                // 격리 없이 돌면 루프백에 직접 닿는다
+                cmd.env_remove("SABA_LOOPBACK_DIR");
+                loopback = None;
+                plain(cmd.spawn()?)
+            }
             #[cfg(windows)]
             Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
             Err(blocked) => {
@@ -447,7 +526,7 @@ async fn run_plugin_inner(
             }
         },
     };
-    let status = drive(&mut child, config_json.as_bytes(), on_progress, std::time::Duration::from_secs(timeout_secs)).await;
+    let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, std::time::Duration::from_secs(timeout_secs)).await;
 
     match status {
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
@@ -457,8 +536,9 @@ async fn run_plugin_inner(
             }
 
             match parse_plugin_output(&stdout_str) {
-                Ok(result) => {
+                Ok(mut result) => {
                     tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
+                    explain_unverified_extensions(&mut result, &unverified_extensions);
                     Ok(result)
                 }
                 Err(e) => {
@@ -491,6 +571,7 @@ async fn drive(
     child: &mut Process,
     input: &[u8],
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    loopback: Option<loopback::Proxy>,
     timeout: std::time::Duration,
 ) -> std::result::Result<Collected, tokio::time::error::Elapsed> {
     let pid = match child {
@@ -505,7 +586,24 @@ async fn drive(
         let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
             let mut reader = BufReader::new(pipe).lines();
+            let mut relayed = 0;
             while let Ok(Some(line)) = reader.next_line().await {
+                // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
+                if let Some(request) = line.strip_prefix(loopback::PREFIX) {
+                    match &loopback {
+                        Some(proxy) if relayed < loopback::MAX_REQUESTS => {
+                            relayed += 1;
+                            let (proxy, request) = (proxy.clone(), request.to_string());
+                            tokio::spawn(async move { loopback::serve(&proxy, &request).await });
+                        }
+                        Some(proxy) => {
+                            tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS);
+                            loopback::refuse(proxy, request, "too_many_requests");
+                        }
+                        None => tracing::warn!("[Loopback] request from an unisolated run ignored"),
+                    }
+                    continue;
+                }
                 if let Some(json_str) = line.strip_prefix("PROGRESS:") {
                     if let Ok(prog) = serde_json::from_str::<ExtensionProgress>(json_str) {
                         if let Some(ref cb) = on_progress {
@@ -571,6 +669,27 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 격리 없이 도는 실행은 확인된 익스텐션만 import한다. 격리된 실행은 활성 익스텐션을 모두 쓴다(같은 격리 안에서 돈다)
+    #[test]
+    fn an_unisolated_run_imports_only_verified_extensions() {
+        let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string()];
+        let unverified = |id: &str| id == "ue4-ini";
+        assert_eq!(importable_extensions(enabled.clone(), false, unverified, None), (vec!["steamcmd".to_string()], vec!["ue4-ini".to_string()]));
+        assert_eq!(importable_extensions(enabled.clone(), true, unverified, None), (enabled, vec![]));
+    }
+
+    /// 사용자가 격리 없이 돌리기로 한 익스텐션은 자기 패키지(`extensions.<자기 id>`)를 import할 수 있다. 다른 미확인 익스텐션은 그대로 막는다
+    #[test]
+    fn an_extension_run_unisolated_by_consent_imports_itself() {
+        let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string(), "other".to_string()];
+        let unverified = |id: &str| id != "steamcmd";
+        assert_eq!(
+            importable_extensions(enabled.clone(), false, unverified, Some("ext-ue4_ini")),
+            (vec!["steamcmd".to_string(), "ue4-ini".to_string()], vec!["other".to_string()])
+        );
+        assert_eq!(importable_extensions(enabled, false, unverified, Some("module-ue4-ini")).1, vec!["ue4-ini".to_string(), "other".to_string()], "a module key is not an extension");
+    }
     use serde_json::json;
 
     #[test]
@@ -614,6 +733,42 @@ mod tests {
         panic!("grandchild {grandchild} survived");
     }
 
+    /// 격리된 모듈(127.0.0.1에 못 닿음)이 공용 도우미 `loopback_http`로 자기 서버에 물으면 데몬이 대신 보내고 답을 돌려준다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_sandboxed_module_reaches_its_own_server_through_the_daemon() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut got = vec![0u8; 4096];
+            let n = sock.read(&mut got).await.unwrap();
+            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 22\r\n\r\n{\"currentplayernum\":3}").await.unwrap();
+            String::from_utf8_lossy(&got[..n]).to_string()
+        });
+        let relay = tempfile::tempdir().unwrap();
+        let script = format!(
+            "import json, sys; sys.path.insert(0, {:?}); import daemon_rcon; sys.stdin.read(); \
+             status, body = daemon_rcon.loopback_http({port}, 'GET', '/v1/api/metrics', headers={{'Authorization': 'Basic eA=='}}); \
+             print(json.dumps({{'status': status, 'body': json.loads(body)}}))",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/modules"),
+        );
+        let mut cmd = Command::new("python3");
+        cmd.arg("-c").arg(script).env("SABA_LOOPBACK_DIR", relay.path())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let mut child = plain(cmd.spawn().unwrap());
+        let proxy = loopback::Proxy { dir: relay.path().to_path_buf(), ports: vec![port], server: Some(std::process::id()) };
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, Some(proxy), std::time::Duration::from_secs(20)).await.unwrap().unwrap();
+        assert!(status.success(), "{stderr}");
+        assert_eq!(parse_plugin_output(&stdout).unwrap(), json!({ "status": 200, "body": { "currentplayernum": 3 } }));
+        assert!(server.await.unwrap().starts_with("GET /v1/api/metrics HTTP/1.1\r\n"));
+        assert!(!stderr.contains("LOOPBACK:"), "relay requests (they carry auth headers) are not logged");
+        assert_eq!(std::fs::read_dir(relay.path()).unwrap().count(), 0, "the module removes the reply it read");
+    }
+
     /// 부모가 끝나도 자식이 출력 파이프를 쥐고 있으면, 출력 수집까지 기한 안에 끊고 자식도 끝낸다
     #[cfg(unix)]
     #[tokio::test]
@@ -630,7 +785,7 @@ mod tests {
             .process_group(0);
         let mut child = plain(cmd.spawn().unwrap());
         let started = std::time::Instant::now();
-        let result = drive(&mut child, b"{}", None, std::time::Duration::from_secs(1)).await;
+        let result = drive(&mut child, b"{}", None, None, std::time::Duration::from_secs(1)).await;
         assert!(result.is_err(), "timed out instead of waiting for the held pipe");
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
         let grandchild: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
@@ -688,8 +843,13 @@ mod tests {
     }
 
     /// 가드는 활성 목록에 없는 `extensions.<이름>` import만 막는다 (`-`와 `_`는 같다)
-    #[test]
-    fn import_guard_blocks_only_disabled_extensions() {
+    #[tokio::test]
+    async fn import_guard_blocks_only_disabled_extensions() {
+        // PATH의 첫 python이 Windows 스토어 스텁일 수 있으므로 데몬과 같은 탐지로 실제 인터프리터를 고른다
+        let Ok(python) = crate::python_env::detect_system_python().await else {
+            eprintln!("SKIP: Python >= 3.10 not found (python, python3, py)");
+            return;
+        };
         let tmp = tempfile::tempdir().unwrap();
         let guard = tmp.path().join("guard");
         std::fs::create_dir_all(&guard).unwrap();
@@ -702,16 +862,28 @@ mod tests {
         let sep = if cfg!(windows) { ";" } else { ":" };
         let pypath = format!("{}{}{}", guard.display(), sep, tmp.path().join("root").display());
         let probe = "import importlib\nfor m in ('steamcmd', 'ue4_ini'):\n    try:\n        importlib.import_module('extensions.' + m); print(m, 'ok')\n    except ImportError:\n        print(m, 'blocked')";
-        let Ok(out) = std::process::Command::new(if cfg!(windows) { "python" } else { "python3" })
+        let out = std::process::Command::new(&python)
             .args(["-c", probe])
             .env("PYTHONPATH", pypath)
             .env("SABA_ENABLED_EXTENSIONS", "ue4-ini")
             .output()
-        else {
-            eprintln!("SKIP: python not found");
-            return;
-        };
+            .expect("detected python must run");
         assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), "steamcmd blocked\nue4_ini ok");
+    }
+
+    // PC 실사용: 바뀐 ue4-ini를 확인된 팰월드가 import하지 못했는데, 모듈이 실패를 삼켜 "설치하고 활성화하세요"가 떴다
+    #[test]
+    fn a_blocked_unverified_extension_is_reported_as_unverified() {
+        let unverified = vec!["ue4-ini".to_string()];
+        let mut blocked = json!({"success": false, "error_code": "extension_required", "missing_extensions": ["ue4_ini"], "message": "install it"});
+        explain_unverified_extensions(&mut blocked, &unverified);
+        assert_eq!(blocked["error_code"], "extension_not_verified");
+        assert_eq!(blocked["unverified_extensions"], json!(["ue4-ini"]));
+
+        // 정말 빠진 것이 섞여 있으면 설치 안내가 맞다
+        let mut missing = json!({"error_code": "extension_required", "missing_extensions": ["ue4-ini", "steamcmd"]});
+        explain_unverified_extensions(&mut missing, &unverified);
+        assert_eq!(missing["error_code"], "extension_required");
     }
 
     #[test]

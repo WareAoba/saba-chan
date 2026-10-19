@@ -314,10 +314,38 @@ describe('이벤트', () => {
         expect(cb).toHaveBeenCalledTimes(1);
         expect(cb).toHaveBeenCalledWith({ step: 'ready', message: 'r', ts: 2 });
 
-        // offStatusUpdate는 이 채널의 모든 구독을 뗀다
-        api.offStatusUpdate();
+        // 돌려받은 함수는 자기 구독만 뗀다: 다른 화면(알림 등)의 구독은 남는다
+        const other = vi.fn();
+        const off = api.onStatusUpdate(cb);
+        api.onStatusUpdate(other);
+        await flush();
+        off();
+        cb.mockClear();
+        other.mockClear();
         tauri.emit('status:update', { step: 'ready', message: 'again', ts: 3 });
-        expect(cb).toHaveBeenCalledTimes(1);
+        expect(cb).not.toHaveBeenCalled();
+        expect(other).toHaveBeenCalledTimes(1);
+    });
+
+    it('닫기 요청·콘솔 창 구독도 돌려준 함수로 그 구독만 해제한다', async () => {
+        const { api, tauri } = await install({});
+        for (const [on, channel, payload] of [
+            ['onCloseRequest', 'app:closeRequest', undefined],
+            ['onConsolePopoutOpened', 'console:popoutOpened', { instanceId: 'a' }],
+            ['onConsolePopoutClosed', 'console:popoutClosed', { instanceId: 'a' }],
+            ['onConsolePopinRequest', 'console:popinRequest', { instanceId: 'a', serverName: 'A' }],
+        ]) {
+            const a = vi.fn();
+            const b = vi.fn();
+            const offA = api[on](a);
+            api[on](b);
+            offA();
+            tauri.emit(channel, payload);
+            expect(a, on).not.toHaveBeenCalled();
+            expect(b, on).toHaveBeenCalledTimes(1);
+        }
+        expect(api.offStatusUpdate).toBeUndefined();
+        expect(api.offCloseRequest).toBeUndefined();
     });
 
     it('closeResponse는 고른 값을 app_close_response로 넘긴다', async () => {

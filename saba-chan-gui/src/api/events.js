@@ -57,12 +57,10 @@ export function createEventHub() {
         return () => set.delete(cb);
     }
 
-    const offAll = (name) => listenersOf(name).clear();
-
     /** 모든 채널을 구독한다 (listen: (name, cb) => Promise<unlisten>) */
     async function start(listen) {
         await Promise.all(EVENT_CHANNELS.map((name) => listen(name, (payload) => receive(name, payload))));
     }
 
-    return { on, offAll, dispatch, start };
+    return { on, dispatch, start };
 }

@@ -29,6 +29,14 @@
   },
   "bot": {
     "ask_token": "ノードトークン",
+    "relay_check": "リレー確認",
+    "relay_ok": "応答あり",
+    "relay_failed": "応答なし: {{error}}",
+    "expired": "期限切れ",
+    "expires_in": "残り時間",
+    "members_partial": "Discordの全メンバー一覧を取得できなかったため、権限を登録したメンバーのみ表示しています。",
+    "requested_by": "依頼者",
+    "username": "ユーザー名",
     "config_saved": "ボットの設定を保存しました。",
     "confirm_unpair": "この PC を Discord ボットから切断し、ペアリングを解除しますか？",
     "connection": "接続",
@@ -61,7 +69,9 @@
     "allow_saved": "{{guild}} で見られるのは次のサーバーだけです: {{servers}}",
     "link_accepted": "{{guild}} をこのPCに接続しました。",
     "link_declined": "接続リクエストを拒否しました。",
-    "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。"
+    "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。",
+    "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
+    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}"
   },
   "col": {
     "players": "接続者",
@@ -164,6 +174,7 @@
     "hint": {
       "executable_missing": "サーバーファイルが見つかりません。フォルダーを確認するか再インストールしてください: saba-chan-cli server update",
       "extension_required": "必要な拡張機能をインストールしてください: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "拡張機能のファイルが変更され、確認できませんでした: {{ids}}。再インストールするか元に戻してください: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "先にこの PC をペアリングしてください: saba-chan-cli bot pair",
       "server_not_running": "先にサーバーを起動してください: saba-chan-cli start NAME",
       "server_running": "先にサーバーを停止してください: saba-chan-cli stop NAME",
@@ -183,6 +194,7 @@
   },
   "agree": {
     "none": "{{name}}に同意する規約はありません。",
+    "unknown_id": "このサーバーにない規約IDをスキップしました: {{ids}}（あるID: {{known}}）",
     "confirm": "{{name}}: {{names}}に同意しますか？上のリンクの原文に同意することになります。",
     "done": "{{name}}の規約に同意しました。"
   },
@@ -247,6 +259,8 @@
   },
   "noun": {
     "command": "コマンド",
+    "guild": "Discordサーバー",
+    "member": "メンバー",
     "extension": "拡張機能",
     "game": "ゲーム",
     "module": "モジュール",
@@ -278,7 +292,7 @@
     "done": "並び順を保存しました。"
   },
   "reset": {
-    "confirm": "{{name}} のファイルをすべて消去して最初からやり直しますか？元に戻せません。",
+    "confirm": "{{name}} を初期化しますか？元に戻せません。",
     "done": "{{name}} をリセットしました。"
   },
   "resolve": {
@@ -313,10 +327,13 @@
     },
     "updated": "{{name}} を更新しました。",
     "updating": "{{name}} を更新しています...",
-    "version_unknown": "不明"
+    "version_unknown": "不明",
+    "unresponsive": "応答なし",
+    "unresponsive_reason": "実行中ですが応答がありません: {{reason}}"
   },
   "set": {
     "default": "既定値",
+    "cannot_clear": "{{key}} は空にできません。新しい値を入力してください。",
     "done": "{{name}} の設定を {{count}} 件保存しました。",
     "group": {
       "advanced": "詳細",
@@ -392,6 +409,13 @@
   },
   "update": {
     "after_hint": "アップデート後にサバちゃんが再起動します。その後確認: saba-chan-cli update last",
+    "notes": "パッチノート",
+    "result": "結果",
+    "result_ok": "成功",
+    "result_failed": "失敗",
+    "when": "適用日時",
+    "updated": "更新したコンポーネント",
+    "failed_one": "失敗したコンポーネント",
     "applied": "適用済み: {{list}}",
     "applying": "アップデートを適用しています...",
     "checking": "アップデートを確認しています...",
@@ -500,6 +524,8 @@
     "enabled": "有効にしました: {{task}}",
     "disabled": "無効にしました: {{task}}",
     "no_such": "タスク {{number}} はありません（全 {{count}} 件）。",
+    "edited": "タスクを変更しました: {{task}}",
+    "nothing_to_edit": "変更する項目を1つ以上指定してください（--every, --at, --warn, --no-warn, --message）。",
     "keep_zero": "バックアップは 1 つ以上保持してください。",
     "keep_set": "スケジュールバックアップを直近 {{count}} 件保持します。",
     "confirm_clear": "{{name}} のスケジュールされたタスクをすべて削除しますか？",
@@ -513,6 +539,8 @@
   },
   "chatbot": {
     "api_key": "API キー保存済み",
+    "provider": "プロバイダー",
+    "model_replaced": "選んだモデル {{selected}} は使えないため {{effective}} を代わりに使います。",
     "common": "すべての Discord サーバー共通の設定",
     "guild": "Discord サーバー {{guild}}",
     "defaults": "（既定値）",

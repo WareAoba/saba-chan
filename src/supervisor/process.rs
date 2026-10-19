@@ -19,17 +19,21 @@ pub enum ProcessError {
 pub fn is_process_alive(pid: u32) -> bool {
     #[cfg(target_os = "windows")]
     {
-        use winapi::um::processthreadsapi::OpenProcess;
+        use winapi::um::processthreadsapi::{GetExitCodeProcess, OpenProcess};
         use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
         use winapi::um::handleapi::CloseHandle;
+        use winapi::um::minwinbase::STILL_ACTIVE;
 
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if handle.is_null() {
                 return false;
             }
+            // 끝난 프로세스도 누가 핸들을 쥐고 있으면 열린다: 종료 코드로 끝났는지 본다
+            let mut code = 0;
+            let ok = GetExitCodeProcess(handle, &mut code);
             CloseHandle(handle);
-            true
+            ok == 0 || code == STILL_ACTIVE
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -39,15 +43,55 @@ pub fn is_process_alive(pid: u32) -> bool {
     }
 }
 
+/// 기록과 실제 프로세스 시작 시각의 차이로 볼 여유 (시계·기록 시점 차이)
+const START_TIME_SLACK_SECS: u64 = 10;
+
+/// 프로세스가 시작된 시각 (Unix 초). 읽지 못하면 None
+pub fn process_start_time(pid: u32) -> Option<u64> {
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut sys = sysinfo::System::new();
+    if !sys.refresh_process(pid) {
+        return None;
+    }
+    sys.process(pid).map(|p| p.start_time()).filter(|&t| t > 0)
+}
+
+/// 기록해 둔 PID가 아직 그때의 프로세스인가: 살아 있고, `recorded_at`(그 프로세스를 띄운 뒤 기록한 시각)보다
+/// 늦게 시작하지 않았다. 재부팅 뒤 같은 PID를 다른 프로세스가 쓰면 시작 시각이 기록보다 늦다.
+/// 시작 시각을 읽지 못하면(권한) 살아 있는지만 본다
+pub fn is_same_process(pid: u32, recorded_at: u64) -> bool {
+    if !is_process_alive(pid) {
+        return false;
+    }
+    process_start_time(pid).is_none_or(|started| started <= recorded_at.saturating_add(START_TIME_SLACK_SECS))
+}
+
 /// Force-kill a process by PID. Cross-platform helper.
-/// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다
+/// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다.
+/// 그 프로세스 하나만 끝낸다: GUI가 띄운 데몬처럼 자식이 따로 살아야 하는 경우가 있다
 pub fn force_kill_pid(pid: u32) -> Result<()> {
+    kill(pid, false)
+}
+
+/// 게임 서버 강제 종료. Windows는 자식까지 끝낸다: 런처형 서버(PalServer.exe 등)는 런처만 죽이면
+/// 실제 서버가 남는다. Unix는 `force_kill_pid`와 같다
+pub fn force_kill_tree(pid: u32) -> Result<()> {
+    kill(pid, true)
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
+fn kill(pid: u32, tree: bool) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let pid_arg = pid.to_string();
+        let mut args = vec!["/F", "/PID", pid_arg.as_str()];
+        if tree {
+            args.insert(1, "/T");
+        }
         let out = std::process::Command::new("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
+            .args(&args)
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| anyhow::anyhow!("Failed to kill PID {}: {}", pid, e))?;
@@ -183,6 +227,17 @@ fn current_timestamp() -> u64 {
 mod tests {
     use super::*;
 
+    /// 재부팅 뒤 같은 PID를 다른 프로세스가 쓰면, 그 프로세스는 기록보다 늦게 시작했다
+    #[test]
+    fn a_pid_reused_after_the_record_is_not_the_same_process() {
+        let me = std::process::id();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        assert!(is_same_process(me, now), "the recording process itself");
+        let started = process_start_time(me).expect("own start time");
+        assert!(!is_same_process(me, started.saturating_sub(3600)), "started an hour after the record");
+        assert!(!is_same_process(u32::MAX - 1, now), "not running");
+    }
+
     #[test]
     fn test_get_pid() {
         let tracker = ProcessTracker::new();
@@ -271,6 +326,61 @@ mod tests {
 
         assert_eq!(tracker.get_pid("srv-a").unwrap(), 9999);
         assert_eq!(tracker.get_pid("srv-b").unwrap(), 9999);
+    }
+
+    /// 자식 하나(ping)를 띄운 런처(cmd)와 그 자식 PID
+    #[cfg(windows)]
+    async fn launcher_with_child() -> (std::process::Child, u32) {
+        use std::os::windows::process::CommandExt;
+        let launcher = std::process::Command::new("cmd")
+            .args(["/C", "ping -n 60 127.0.0.1 > nul"])
+            .creation_flags(0x08000000)
+            .spawn()
+            .unwrap();
+        let parent = sysinfo::Pid::from_u32(launcher.id());
+        let mut child = None;
+        for _ in 0..50 {
+            let mut sys = sysinfo::System::new();
+            sys.refresh_processes();
+            child = sys.processes().iter().find(|(_, p)| p.parent() == Some(parent)).map(|(pid, _)| pid.as_u32());
+            if child.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        (launcher, child.expect("the launcher started its child"))
+    }
+
+    /// 끝난 프로세스는 다른 핸들(여기서는 Child)이 남아 있어도 살아 있지 않다
+    #[cfg(windows)]
+    #[test]
+    fn an_exited_process_with_an_open_handle_is_not_alive() {
+        let mut child = std::process::Command::new("cmd").args(["/C", "exit 23"]).spawn().unwrap();
+        assert_eq!(child.wait().unwrap().code(), Some(23));
+        assert!(!is_process_alive(child.id()), "an exited process counts as running");
+    }
+
+    /// 런처형 서버(PalServer.exe 등)는 실제 서버를 자식으로 띄운다: 런처만 죽이면 서버가 남는다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_server_kill_also_ends_the_children() {
+        let (launcher, child) = launcher_with_child().await;
+        force_kill_tree(launcher.id()).unwrap();
+        assert!(
+            wait_gone(std::time::Duration::from_secs(5), || is_process_alive(child)).await,
+            "the server the launcher started is still running"
+        );
+    }
+
+    /// 단일 강제 종료는 자식을 남긴다: GUI를 닫을 때 GUI가 띄운 데몬·업데이터가 같이 죽으면 안 된다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_plain_force_kill_leaves_the_children() {
+        let (mut launcher, child) = launcher_with_child().await;
+        force_kill_pid(launcher.id()).unwrap();
+        let _ = launcher.wait();
+        assert!(is_process_alive(child), "the child of a killed process was killed too");
+        let _ = force_kill_pid(child);
     }
 
     /// 종료 요청이 거부되면 성공으로 치지 않는다 (권한 없는 프로세스: PID 1)

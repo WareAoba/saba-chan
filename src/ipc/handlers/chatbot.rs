@@ -72,6 +72,8 @@ fn view(cfg: &ChatbotConfig) -> Map<String, Value> {
     out.insert("guilds".into(), json!(cfg.guilds));
     out.insert("hasApiKey".into(), json!(cfg.api_key.as_deref().is_some_and(|k| !k.is_empty())));
     out.insert("pendingRelayDelete".into(), json!(cfg.pending_relay_delete));
+    // 바꿀 수 있는 키와 그 기본값. 클라이언트가 키 이름을 따로 두지 않는다
+    out.insert("defaults".into(), Value::Object(relay_defaults()));
     out
 }
 
@@ -421,5 +423,13 @@ mod tests {
         let text = Value::Object(view(&cfg)).to_string();
         assert!(!text.contains("sk-secret"));
         assert!(text.contains("\"hasApiKey\":true"));
+    }
+
+    /// 클라이언트가 키 이름을 따로 두지 않게, 바꿀 수 있는 키와 기본값을 함께 준다
+    #[test]
+    fn view_lists_every_key_with_its_default() {
+        let v = view(&ChatbotConfig::default());
+        assert_eq!(v["defaults"], Value::Object(relay_defaults()));
+        assert_eq!(v["defaults"]["enabled"], json!(false));
     }
 }

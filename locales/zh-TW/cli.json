@@ -29,6 +29,14 @@
   },
   "bot": {
     "ask_token": "節點權杖",
+    "relay_check": "中繼檢查",
+    "relay_ok": "有回應",
+    "relay_failed": "沒有回應：{{error}}",
+    "expired": "已過期",
+    "expires_in": "剩餘時間",
+    "members_partial": "無法取得完整的 Discord 成員清單，只顯示已設定等級的成員。",
+    "requested_by": "請求者",
+    "username": "使用者名稱",
     "config_saved": "機器人設定已儲存。",
     "confirm_unpair": "要中斷這台電腦與 Discord 機器人的連線並取消配對嗎？",
     "connection": "連線",
@@ -61,7 +69,9 @@
     "allow_saved": "{{guild}} 現在只能看到：{{servers}}",
     "link_accepted": "已將 {{guild}} 連接到這台電腦。",
     "link_declined": "已拒絕連接請求。",
-    "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。"
+    "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
+    "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
+    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}"
   },
   "col": {
     "players": "線上玩家",
@@ -164,6 +174,7 @@
     "hint": {
       "executable_missing": "缺少伺服器檔案。請檢查資料夾或重新安裝：saba-chan-cli server update",
       "extension_required": "請安裝所需的擴充功能：saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "擴充功能檔案已變更，無法驗證：{{ids}}。請重新安裝或還原原始檔案：saba-chan-cli extension install {{ids}}",
       "node_token_missing": "請先配對這台電腦：saba-chan-cli bot pair",
       "server_not_running": "請先啟動伺服器：saba-chan-cli start NAME",
       "server_running": "請先停止伺服器：saba-chan-cli stop NAME",
@@ -183,6 +194,7 @@
   },
   "agree": {
     "none": "{{name}} 沒有需要同意的協議。",
+    "unknown_id": "已略過此伺服器沒有的條款 id：{{ids}}（現有：{{known}}）",
     "confirm": "{{name}}：同意{{names}}嗎？這表示你同意上面連結中的條款。",
     "done": "已同意 {{name}} 的協議。"
   },
@@ -247,6 +259,8 @@
   },
   "noun": {
     "command": "指令",
+    "guild": "Discord 伺服器",
+    "member": "成員",
     "extension": "擴充功能",
     "game": "遊戲",
     "module": "模組",
@@ -278,7 +292,7 @@
     "done": "順序已儲存。"
   },
   "reset": {
-    "confirm": "要清除 {{name}} 的所有檔案並重新開始嗎？此動作無法復原。",
+    "confirm": "要重設 {{name}} 嗎？此動作無法復原。",
     "done": "{{name}} 已重設。"
   },
   "resolve": {
@@ -313,10 +327,13 @@
     },
     "updated": "{{name}} 已更新。",
     "updating": "正在更新 {{name}}...",
-    "version_unknown": "未知"
+    "version_unknown": "未知",
+    "unresponsive": "無回應",
+    "unresponsive_reason": "正在執行但沒有回應: {{reason}}"
   },
   "set": {
     "default": "預設",
+    "cannot_clear": "{{key}} 不能留空。請填寫新值。",
     "done": "已為 {{name}} 儲存 {{count}} 項設定。",
     "group": {
       "advanced": "進階",
@@ -392,6 +409,13 @@
   },
   "update": {
     "after_hint": "更新後 Saba-chan 會重新啟動。之後請檢查：saba-chan-cli update last",
+    "notes": "更新說明",
+    "result": "結果",
+    "result_ok": "成功",
+    "result_failed": "失敗",
+    "when": "套用時間",
+    "updated": "已更新",
+    "failed_one": "失敗",
     "applied": "已套用：{{list}}",
     "applying": "正在套用更新...",
     "checking": "正在檢查更新...",
@@ -500,6 +524,8 @@
     "enabled": "已開啟：{{task}}",
     "disabled": "已關閉：{{task}}",
     "no_such": "沒有工作 {{number}}（共 {{count}} 個）。",
+    "edited": "已修改工作：{{task}}",
+    "nothing_to_edit": "請至少指定一項變更（--every、--at、--warn、--no-warn、--message）。",
     "keep_zero": "請至少保留 1 個備份。",
     "keep_set": "將保留最近 {{count}} 個排程備份。",
     "confirm_clear": "要移除 {{name}} 的所有排程工作嗎？",
@@ -513,6 +539,8 @@
   },
   "chatbot": {
     "api_key": "API 金鑰已儲存",
+    "provider": "提供者",
+    "model_replaced": "所選模型 {{selected}} 無法使用，改用 {{effective}}。",
     "common": "所有 Discord 伺服器的共用設定",
     "guild": "Discord 伺服器 {{guild}}",
     "defaults": "（預設值）",

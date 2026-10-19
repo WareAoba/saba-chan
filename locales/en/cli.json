@@ -30,6 +30,14 @@
   },
   "bot": {
     "ask_token": "Node token",
+    "relay_check": "Relay check",
+    "relay_ok": "responding",
+    "relay_failed": "not responding: {{error}}",
+    "expired": "expired",
+    "expires_in": "Time left",
+    "members_partial": "Couldn't get the full Discord member list; showing only members with a saved level.",
+    "requested_by": "Requested by",
+    "username": "Username",
     "config_saved": "Bot settings saved.",
     "confirm_unpair": "Disconnect this PC from the Discord bot and forget its pairing?",
     "connection": "Connection",
@@ -87,7 +95,9 @@
     "words": "Words",
     "command_words": "Command words",
     "words_saved": "Saved the chat words of {{server}}.",
-    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them)."
+    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
+    "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
   },
   "col": {
     "players": "Players",
@@ -209,6 +219,7 @@
     "hint": {
       "executable_missing": "Server files are missing. Check the folder or reinstall: saba-chan-cli server update",
       "extension_required": "Install the required extensions: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "These extensions changed and could not be verified: {{ids}}. Reinstall them or restore the original files: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
@@ -237,6 +248,7 @@
   },
   "agree": {
     "none": "{{name}} has no agreements to accept.",
+    "unknown_id": "Skipped agreement ids this server doesn't have: {{ids}} (it has: {{known}})",
     "confirm": "{{name}}: accept {{names}}? You agree to the terms at the links above.",
     "done": "Agreements accepted for {{name}}."
   },
@@ -302,6 +314,8 @@
   },
   "noun": {
     "command": "command",
+    "guild": "Discord server",
+    "member": "member",
     "extension": "extension",
     "game": "game",
     "module": "module",
@@ -333,7 +347,7 @@
     "done": "Order saved."
   },
   "reset": {
-    "confirm": "Wipe all of {{name}}'s files and start fresh? This can't be undone.",
+    "confirm": "Reset {{name}}? This can't be undone.",
     "done": "{{name}} was reset."
   },
   "resolve": {
@@ -368,10 +382,13 @@
     },
     "updated": "{{name}} updated.",
     "updating": "Updating {{name}}...",
-    "version_unknown": "unknown"
+    "version_unknown": "unknown",
+    "unresponsive": "Not responding",
+    "unresponsive_reason": "Running but not responding: {{reason}}"
   },
   "set": {
     "default": "default",
+    "cannot_clear": "{{key}} can't be left empty. Give a new value.",
     "done": "Saved {{count}} setting(s) for {{name}}.",
     "group": {
       "advanced": "Advanced",
@@ -448,6 +465,13 @@
   },
   "update": {
     "after_hint": "Saba-chan will restart after the update. Then check: saba-chan-cli update last",
+    "notes": "Release notes",
+    "result": "Result",
+    "result_ok": "succeeded",
+    "result_failed": "failed",
+    "when": "Applied at",
+    "updated": "Updated",
+    "failed_one": "Failed",
     "applied": "Applied: {{list}}",
     "applying": "Applying updates...",
     "checking": "Checking for updates...",
@@ -613,6 +637,8 @@
     "enabled": "Turned on: {{task}}",
     "disabled": "Turned off: {{task}}",
     "no_such": "There is no task {{number}} (there are {{count}}).",
+    "edited": "Task changed: {{task}}",
+    "nothing_to_edit": "Give at least one thing to change (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Keep at least 1 backup.",
     "keep_set": "Keeping the last {{count}} scheduled backups.",
     "confirm_clear": "Remove every scheduled task of {{name}}?",
@@ -626,6 +652,8 @@
   },
   "chatbot": {
     "api_key": "API key saved",
+    "provider": "Provider",
+    "model_replaced": "The chosen model {{selected}} isn't available; {{effective}} is used instead.",
     "common": "Settings for every Discord server",
     "guild": "Discord server {{guild}}",
     "defaults": "(defaults)",
@@ -659,6 +687,17 @@
   },
   "sandbox": {
     "allowed": "{{component}} will run without isolation. You will be asked again if its files change.",
+    "confirm_allow": "Run {{component}} without isolation? Unverified code will reach this PC's files and network without limits. You'll be asked again if its files change.",
+    "confirm_gui": "Load {{component}}'s GUI bundle into the app? Unverified code will run inside the app window.",
+    "gui_allowed": "{{component}}'s GUI bundle will be loaded.",
+    "gui_revoked": "Removed the consent to load {{component}}'s GUI bundle.",
+    "none": "No consents are recorded on this PC.",
+    "component": "Component",
+    "kind_unisolated": "Run without isolation",
+    "kind_gui": "GUI bundle",
+    "stale": "files changed, not in use",
+    "in_use": "in use",
+    "needs_terminal": "Answer the consent yourself in a terminal. --yes or --json cannot stand in for it.",
     "revoked": "Removed the consent to run {{component}} without isolation."
   },
   "do": {

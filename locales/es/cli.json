@@ -29,6 +29,14 @@
   },
   "bot": {
     "ask_token": "Token del nodo",
+    "relay_check": "Comprobación del relay",
+    "relay_ok": "responde",
+    "relay_failed": "no responde: {{error}}",
+    "expired": "caducada",
+    "expires_in": "Tiempo restante",
+    "members_partial": "No se pudo obtener la lista completa de Discord; solo se muestran miembros con nivel guardado.",
+    "requested_by": "Solicitado por",
+    "username": "Usuario",
     "config_saved": "Ajustes del bot guardados.",
     "confirm_unpair": "¿Desconectar este PC del bot de Discord y olvidar su vinculación?",
     "connection": "Conexión",
@@ -61,7 +69,9 @@
     "allow_saved": "{{guild}} ahora solo ve: {{servers}}",
     "link_accepted": "{{guild}} está conectado a este PC.",
     "link_declined": "Solicitud de conexión rechazada.",
-    "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI."
+    "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
+    "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
+    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}"
   },
   "col": {
     "players": "Jugadores",
@@ -164,6 +174,7 @@
     "hint": {
       "executable_missing": "Faltan archivos del servidor. Revisa la carpeta o reinstala: saba-chan-cli server update",
       "extension_required": "Instala las extensiones necesarias: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "Estas extensiones cambiaron y no se pudieron verificar: {{ids}}. Reinstálalas o restaura los archivos originales: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Primero vincula este PC: saba-chan-cli bot pair",
       "server_not_running": "Primero inicia el servidor: saba-chan-cli start NAME",
       "server_running": "Primero detén el servidor: saba-chan-cli stop NAME",
@@ -183,6 +194,7 @@
   },
   "agree": {
     "none": "{{name}} no tiene acuerdos que aceptar.",
+    "unknown_id": "Se omitieron ids de términos que este servidor no tiene: {{ids}} (tiene: {{known}})",
     "confirm": "{{name}}: ¿aceptar {{names}}? Aceptas los términos de los enlaces de arriba.",
     "done": "Acuerdos aceptados para {{name}}."
   },
@@ -247,6 +259,8 @@
   },
   "noun": {
     "command": "comando",
+    "guild": "servidor de Discord",
+    "member": "miembro",
     "extension": "extensión",
     "game": "juego",
     "module": "módulo",
@@ -278,7 +292,7 @@
     "done": "Orden guardado."
   },
   "reset": {
-    "confirm": "¿Borrar todos los archivos de {{name}} y empezar de cero? Esto no se puede deshacer.",
+    "confirm": "¿Restablecer {{name}}? Esto no se puede deshacer.",
     "done": "{{name}} se restableció."
   },
   "resolve": {
@@ -313,10 +327,13 @@
     },
     "updated": "{{name}} actualizado.",
     "updating": "Actualizando {{name}}...",
-    "version_unknown": "desconocida"
+    "version_unknown": "desconocida",
+    "unresponsive": "No responde",
+    "unresponsive_reason": "En ejecución pero no responde: {{reason}}"
   },
   "set": {
     "default": "predeterminado",
+    "cannot_clear": "{{key}} no puede quedar vacío. Indica un valor nuevo.",
     "done": "Se guardaron {{count}} ajuste(s) de {{name}}.",
     "group": {
       "advanced": "Avanzado",
@@ -392,6 +409,13 @@
   },
   "update": {
     "after_hint": "Saba-chan se reiniciará tras la actualización. Después revisa: saba-chan-cli update last",
+    "notes": "Notas de la versión",
+    "result": "Resultado",
+    "result_ok": "correcto",
+    "result_failed": "falló",
+    "when": "Aplicado el",
+    "updated": "Actualizado",
+    "failed_one": "Falló",
     "applied": "Aplicado: {{list}}",
     "applying": "Aplicando actualizaciones...",
     "checking": "Buscando actualizaciones...",
@@ -500,6 +524,8 @@
     "enabled": "Activada: {{task}}",
     "disabled": "Desactivada: {{task}}",
     "no_such": "No existe la tarea {{number}} (hay {{count}}).",
+    "edited": "Tarea cambiada: {{task}}",
+    "nothing_to_edit": "Indica al menos un cambio (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Conserva al menos 1 copia de seguridad.",
     "keep_set": "Se conservarán las últimas {{count}} copias programadas.",
     "confirm_clear": "¿Eliminar todas las tareas programadas de {{name}}?",
@@ -513,6 +539,8 @@
   },
   "chatbot": {
     "api_key": "Clave de API guardada",
+    "provider": "Proveedor",
+    "model_replaced": "El modelo elegido {{selected}} no está disponible; se usa {{effective}}.",
     "common": "Ajustes para todos los servidores de Discord",
     "guild": "Servidor de Discord {{guild}}",
     "defaults": "(predeterminados)",

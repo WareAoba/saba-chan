@@ -97,6 +97,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         //   Stopped / 기타          → 5000ms (리소스 절약)
         if (!pollingRefs.current[instanceId]) {
             let sinceId = 0;
+            // 마지막으로 본 실행 PID. 바뀌면 새 프로세스라 줄 번호가 0부터 다시 시작한다
+            let seenPid = null;
             let diskLoaded = false;
             let polling = false;
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
@@ -112,6 +114,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     if (polling) { schedulePoll(); return; }
                     polling = true;
                     try {
+                        const pid = useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid;
+                        if (pid > 0) {
+                            if (seenPid !== null && pid !== seenPid) sinceId = 0;
+                            seenPid = pid;
+                        }
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
                         const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
                         const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
@@ -341,6 +348,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                 safeShowToast(t('servers.stdin_unconfirmed'), 'warning', 5000);
                 return;
             }
+            if (result?.error_code === 'console_input_full') {
+                // 서버가 앞의 입력을 아직 읽지 않았다: 다른 길로 보내도 같은 대기열이다
+                safeShowToast(t('errors.console_input_full'), 'warning', 5000);
+                return;
+            }
             if (result?.error) {
                 console.log('[Console] stdin failed, trying command API:', result.error);
                 const cmdResult = await window.api.executeCommand(instanceId, {
@@ -439,13 +451,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // PiP → 인앱 전환: 인앱 콘솔 창 열기
             openConsole(instanceId, serverName);
         };
-        if (window.api.onConsolePopoutOpened) window.api.onConsolePopoutOpened(handlePopoutOpened);
-        if (window.api.onConsolePopoutClosed) window.api.onConsolePopoutClosed(handlePopoutClosed);
-        if (window.api.onConsolePopinRequest) window.api.onConsolePopinRequest(handlePopinRequest);
+        const offs = [
+            window.api.onConsolePopoutOpened?.(handlePopoutOpened),
+            window.api.onConsolePopoutClosed?.(handlePopoutClosed),
+            window.api.onConsolePopinRequest?.(handlePopinRequest),
+        ];
         return () => {
-            if (window.api.offConsolePopoutOpened) window.api.offConsolePopoutOpened();
-            if (window.api.offConsolePopoutClosed) window.api.offConsolePopoutClosed();
-            if (window.api.offConsolePopinRequest) window.api.offConsolePopinRequest();
+            for (const off of offs) if (typeof off === 'function') off();
         };
     }, [isPopoutMode, openConsole, closeConsole]);
 

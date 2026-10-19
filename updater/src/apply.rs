@@ -52,6 +52,9 @@ impl UpdateManager {
                 if let Err(re) = self.copy_dir_recursive(&backup_dir, target_dir) {
                     tracing::error!("[Updater] Restore of {} failed: {}", target_dir.display(), re);
                 }
+            } else {
+                // 새로 설치하던 것: 반쯤 풀린 폴더를 남기지 않는다
+                let _ = std::fs::remove_dir_all(target_dir);
             }
             return Err(e);
             }
@@ -139,32 +142,7 @@ impl UpdateManager {
         let mut files = Vec::new();
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            // 옮겨 둔 실행 파일을 기억해 두었다가, 풀다가 실패하면 되돌린다 (C13)
-            let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
-            let result = extract_zip(staged, &exe_dir, |out_path| {
-                // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
-                // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
-                if moved.iter().any(|(p, _)| same_path(p, out_path)) {
-                    return Ok(());
-                }
-                if let Some(backup) = Self::move_aside(out_path)? {
-                    moved.push((out_path.to_path_buf(), backup));
-                }
-                Ok(())
-            });
-            match result {
-                Ok(written) => files = written,
-                Err(e) => {
-                    tracing::error!("[Updater] Applying {} failed, restoring previous binaries: {}", binary_name, e);
-                    for (original, backup) in moved.iter().rev() {
-                        let _ = std::fs::remove_file(original);
-                        if let Err(re) = std::fs::rename(backup, original) {
-                            tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
-                        }
-                    }
-                    return Err(e);
-                }
-            }
+            files = Self::extract_zip_or_restore(staged, &exe_dir, binary_name)?;
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, &exe_dir)?;
         } else {
@@ -178,6 +156,85 @@ impl UpdateManager {
         Ok(files)
     }
 
+    /// 설치 폴더의 설치기 사본을 바꾼다. 릴리스의 설치기는 zip이 아닌 exe 그대로다.
+    /// 복사가 실패하면 비켜 둔 원래 사본을 되돌린다 (제거기가 사라지면 안 된다)
+    pub(crate) fn apply_installer_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
+        let staged = Path::new(staged_path);
+        if staged.extension().is_some_and(|e| e == "zip") {
+            let files = Self::extract_zip_or_restore(staged, &self.install_root, "installer")?;
+            std::fs::remove_file(staged).ok();
+            return Ok(files);
+        }
+        let target = self.install_root.join(INSTALLER_EXE);
+        let backup = Self::move_aside(&target)?;
+        if let Err(e) = std::fs::copy(staged, &target) {
+            tracing::error!("[Updater] Replacing {} failed, restoring previous copy: {}", target.display(), e);
+            // 비켜 두지 못했으면(Unix의 덮어쓰기) 지우지 않는다: 원래 사본이 그대로 남아 있을 수 있다
+            if let Some(backup) = &backup {
+                let _ = std::fs::remove_file(&target);
+                if let Err(re) = std::fs::rename(backup, &target) {
+                    tracing::error!("[Updater] Restore of {} failed: {}", target.display(), re);
+                }
+            }
+            anyhow::bail!("Cannot replace {}: {}", target.display(), e);
+        }
+        std::fs::remove_file(staged).ok();
+        tracing::info!("[Updater] Installer updated");
+        Ok(vec![target])
+    }
+
+    /// zip을 풀며 덮어쓸 파일을 비켜 두고(실행 파일은 `.old`, 나머지는 `.update-bak`), 풀다가 실패하면
+    /// 새로 생긴 파일을 지우고 비켜 둔 파일을 모두 되돌린다 (C13). 성공하면 `.update-bak`만 지운다
+    /// (`.old`는 아직 떠 있는 프로세스가 쥐고 있을 수 있어 `cleanup_old_files`가 지운다)
+    fn extract_zip_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
+        // (원래 경로, 백업, 성공하면 백업을 지울지)
+        let mut moved: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
+        let mut created: Vec<PathBuf> = Vec::new();
+        let result = extract_zip(staged, dir, |out_path| {
+            // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
+            // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
+            if moved.iter().any(|(p, _, _)| same_path(p, out_path)) || created.iter().any(|p| same_path(p, out_path)) {
+                return Ok(());
+            }
+            if let Some(backup) = Self::move_aside(out_path)? {
+                moved.push((out_path.to_path_buf(), backup, false));
+            } else if out_path.is_file() {
+                let mut name = out_path.file_name().unwrap_or_default().to_os_string();
+                name.push(".update-bak");
+                let backup = out_path.with_file_name(name);
+                let _ = std::fs::remove_file(&backup);
+                // 다른 프로세스가 지우기 공유 없이 잡고 있으면 이름을 못 바꾼다. 예전처럼 덮어쓰기만 한다
+                match std::fs::rename(out_path, &backup) {
+                    Ok(()) => moved.push((out_path.to_path_buf(), backup, true)),
+                    Err(e) => tracing::warn!("[Updater] Cannot back up {}, overwriting in place: {}", out_path.display(), e),
+                }
+            } else {
+                created.push(out_path.to_path_buf());
+            }
+            Ok(())
+        });
+        match &result {
+            Ok(_) => {
+                for (_, backup, _) in moved.iter().filter(|m| m.2) {
+                    let _ = std::fs::remove_file(backup);
+                }
+            }
+            Err(e) => {
+                tracing::error!("[Updater] Applying {} failed, restoring previous files: {}", what, e);
+                for path in &created {
+                    let _ = std::fs::remove_file(path);
+                }
+                for (original, backup, _) in moved.iter().rev() {
+                    let _ = std::fs::remove_file(original);
+                    if let Err(re) = std::fs::rename(backup, original) {
+                        tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+                    }
+                }
+            }
+        }
+        result
+    }
+
     /// GUI 업데이트 적용
     pub(crate) async fn apply_gui_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
@@ -187,7 +244,7 @@ impl UpdateManager {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
             let mut files = Vec::new();
             if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-                files = extract_zip(staged, &self.install_root, Self::move_aside_binary)?;
+                files = Self::extract_zip_or_restore(staged, &self.install_root, "GUI")?;
             } else if Self::is_tar_gz(staged) {
                 Self::extract_tar_gz(staged, &self.install_root)?;
             } else {
@@ -363,6 +420,7 @@ impl UpdateManager {
                 let exe_name = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
                 self.install_root.join(exe_name).exists()
             }
+            Component::Installer => self.install_root.join(INSTALLER_EXE).exists(),
             Component::Locales => {
                 // locales/ 디렉터리에 en/ 존재 확인
                 self.install_root.join("locales").join("en").exists()
@@ -391,7 +449,7 @@ impl UpdateManager {
             Component::Gui => self.install_root.clone(),
             Component::Module(name) => self.modules_dir.join(name),
             Component::Extension(name) => self.resolve_ext_dir(name),
-            Component::Updater => self.install_root.clone(),
+            Component::Updater | Component::Installer => self.install_root.clone(),
             Component::Locales => self.install_root.join("locales"),
         }
     }
@@ -489,9 +547,16 @@ impl UpdateManager {
                 continue;
             }
 
+            let kind = entry.header().entry_type();
+            // 링크 엔트리는 만들지 않는다 (뒤 엔트리가 그 링크를 따라 밖에 쓸 수 있다)
+            if !(kind.is_dir() || kind.is_file()) {
+                tracing::warn!("[Updater] Skipping non-file entry: {}", entry_path.display());
+                continue;
+            }
+            reject_links_below(target_dir, &entry_path)?;
             let out_path = target_dir.join(&entry_path);
 
-            if entry.header().entry_type().is_dir() {
+            if kind.is_dir() {
                 std::fs::create_dir_all(&out_path)?;
             } else {
                 if let Some(parent) = out_path.parent() {

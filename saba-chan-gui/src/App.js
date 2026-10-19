@@ -42,6 +42,9 @@ import { openWithNotice } from './utils/helpers';
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
 import './styles/motion.css';
+/** 로딩 화면이 사라지는 움직임 길이 (App.css의 loading-leave와 같다) */
+const LOADING_LEAVE_MS = 700;
+
 function App() {
     const { t, i18n } = useTranslation('gui');
 
@@ -294,13 +297,10 @@ function App() {
                 .catch(() => {});
         }
 
-        // Remove any previously stacked listeners (prevents duplicates on Fast Refresh)
-        if (window.api && window.api.offStatusUpdate) {
-            window.api.offStatusUpdate();
-        }
-
+        // 이 구독만 정리할 함수 (다른 화면의 상태 구독은 건드리지 않는다)
+        let offStatus;
         if (window.api && window.api.onStatusUpdate) {
-            window.api.onStatusUpdate((data) => {
+            offStatus = window.api.onStatusUpdate((data) => {
                 console.log('[Init Status]', data.step, ':', data.message);
 
                 const progressValues = {
@@ -375,9 +375,7 @@ function App() {
 
         return () => {
             // Cleanup IPC listeners on unmount / Fast Refresh re-run
-            if (window.api && window.api.offStatusUpdate) {
-                window.api.offStatusUpdate();
-            }
+            if (typeof offStatus === 'function') offStatus();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -483,8 +481,9 @@ function App() {
         fetchServers();
 
         // App close request handler
+        let offClose;
         if (window.api.onCloseRequest) {
-            window.api.onCloseRequest(() => {
+            offClose = window.api.onCloseRequest(() => {
                 // managed 모드로 실행 중인 인스턴스 검출
                 const currentServers = useServerStore.getState().servers;
                 const runningManaged = currentServers.filter((srv) => srv.status === 'running' && isManaged(srv));
@@ -565,7 +564,7 @@ function App() {
 
         return () => {
             clearInterval(interval);
-            if (window.api.offCloseRequest) window.api.offCloseRequest();
+            if (typeof offClose === 'function') offClose();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
 
@@ -592,8 +591,21 @@ function App() {
         setServersInitializing(false);
     };
 
+    // 로딩이 끝나면 로딩 화면을 바로 지우지 않고 메인 화면 위에서 잠깐 사라지게 둔다
+    const showLoading = !daemonReady || serversInitializing;
+    const [loadingLeaving, setLoadingLeaving] = useState(false);
+    const wasLoadingRef = useRef(showLoading);
+    useEffect(() => {
+        const was = wasLoadingRef.current;
+        wasLoadingRef.current = showLoading;
+        if (!was || showLoading) return undefined;
+        setLoadingLeaving(true);
+        const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
+        return () => clearTimeout(timer);
+    }, [showLoading]);
+
     // Loading screen (daemon not ready or servers still initializing)
-    if (!daemonReady || serversInitializing) {
+    if (showLoading) {
         return (
             <>
                 <LoadingScreen
@@ -922,6 +934,9 @@ function App() {
 
                     {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                 </div>
+                {loadingLeaving && (
+                    <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
+                )}
             </TooltipProvider>
         </ExtensionProvider>
     );

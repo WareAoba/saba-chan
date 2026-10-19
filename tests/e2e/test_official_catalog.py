@@ -1,5 +1,5 @@
 """L5 공식 카탈로그: 사용자가 받는 길 그대로. 운영 릴리스의 서명된 카탈로그에서 모듈·익스텐션을 받으면
-신뢰 표시가 verified이고, 격리(AppContainer·Defender 검사) 없이 진짜 게임이 돈다 (PC: run-pc.ps1 -Network / -Steam).
+신뢰 표시가 verified이고, 격리(AppContainer) 없이 진짜 게임이 돈다 (PC: run-pc.ps1 -Network / -Steam).
 
 test_real_games.py는 저장소 복사본을 쓰므로 unverified라 Windows에서 격리 상태로 돈다. 이 파일은 그 반대쪽이다.
 두 파일을 함께 돌려야 "공식 모듈은 그대로, 확인되지 않은 모듈은 격리해서" 둘 다 실제로 도는지 본다.
@@ -72,6 +72,6 @@ def test_catalog_palworld_installs_through_steamcmd(official, game_ports):
     assert exts.get("steamcmd") == "verified" and exts.get("ue4-ini") == "verified", exts
     iid = _provision(official, "pal-official", "palworld", game_ports[2], 7200)
     official.start_instance(iid)
-    wait_until(lambda: official.api.post(f"/api/instance/{iid}/rest", {"endpoint": "info"}, timeout=10).status_code == 200, 600, "Palworld REST 응답", interval=5)
+    wait_until(lambda: official.api.post(f"/api/instance/{iid}/rest", {"endpoint": "/v1/api/info"}, timeout=10).status_code == 200, 600, "Palworld REST 응답", interval=5)
     official.stop_instance(iid, timeout=180)
     official.wait_status(iid, "stopped", timeout=180)

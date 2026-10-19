@@ -7,6 +7,7 @@ import ExtensionSlot from '../ExtensionSlot';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import Icon from '../Icon';
 import { Segmented } from '../ui/StatusChip';
+import { TrustCreateNotice } from '../ui/TrustBadge';
 
 /** 모듈이 만들 때 고르라고 한 설정 (`install = true`, 예: 마인크래프트 서버 종류) */
 const installFields = (module) => (module?.settings?.fields || []).filter((f) => f.install && f.field_type === 'select');
@@ -231,6 +232,9 @@ export function AddInstanceNewServer({
                             {t('add_server_modal.change_game')}
                         </button>
                     </div>
+
+                    {/* 확인 안 된·바뀐 모듈: 게임 서버는 격리되지 않는다 */}
+                    <TrustCreateNotice trust={selectedModule?.trust} />
 
                     {/* 인스턴스 이름 */}
                     <div className="as-section as-section-card">
