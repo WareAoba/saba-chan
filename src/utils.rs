@@ -16,11 +16,13 @@ pub fn apply_creation_flags(cmd: &mut Command) -> &mut Command {
 }
 
 /// 경로 한 칸으로만 쓸 수 있는 이름인지 (인스턴스 id, 모듈 이름, 로케일 등).
-/// 구분자·`.`/`..`·드라이브 표기(`C:`)·NUL이 있으면 다른 폴더를 가리킬 수 있어 거부한다
+/// 구분자·`.`/`..`·드라이브 표기(`C:`)·NUL이 있으면 다른 폴더를 가리킬 수 있어 거부한다.
+/// 끝의 `.`·공백도 거부한다: Windows가 버려서 `x.`가 `x` 폴더를 가리킨다
 pub fn is_single_path_component(name: &str) -> bool {
     !name.is_empty()
         && name != "."
         && name != ".."
+        && !name.ends_with(['.', ' '])
         && !name.contains(['/', '\\', ':', '\0'])
 }
 
@@ -71,7 +73,8 @@ mod tests {
         for ok in ["minecraft", "ko", "zh-TW", "a1b2-c3", "my.server"] {
             assert!(is_single_path_component(ok), "{ok}");
         }
-        for bad in ["", ".", "..", "../x", "a/b", "a\\b", "C:", "C:x", "a\0b"] {
+        // Windows는 끝의 `.`·공백을 버려 `x.`와 `x `가 `x` 폴더를 가리킨다 (백로그 L17c)
+        for bad in ["", ".", "..", "../x", "a/b", "a\\b", "C:", "C:x", "a\0b", "x.", "x ", "x. "] {
             assert!(!is_single_path_component(bad), "{bad:?}");
         }
     }
