@@ -5,6 +5,9 @@
 import i18n from 'i18next';
 import { createDaemonClient, queryString } from './daemon';
 
+/** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
+const START_TIMEOUT_MS = 30 * 60_000;
+
 // 오류·상태 문구는 main.js처럼 common 네임스페이스
 const t = (key, vars = {}) => i18n.t(key, { ns: 'common', ...vars });
 
@@ -147,11 +150,17 @@ export function createApi({ invoke, hub }) {
                 return connectionError(error);
             }
         },
-        // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
+        // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다.
+        // 첫 시작은 준비에 몇 분이 걸릴 수 있어 CLI처럼 30분까지 기다린다 (중간에 끊으면 시작 중인데 실패로 보인다)
         instanceStart: async (instanceId) => {
             try {
-                return (await post(`/api/instance/${encodeURIComponent(instanceId)}/start`, {}, { timeout: 30000 }))
-                    .data;
+                return (
+                    await post(
+                        `/api/instance/${encodeURIComponent(instanceId)}/start`,
+                        {},
+                        { timeout: START_TIMEOUT_MS },
+                    )
+                ).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;

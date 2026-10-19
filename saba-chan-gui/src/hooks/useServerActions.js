@@ -41,7 +41,7 @@ export function useServerActions({
 
     // -- Internal refs for change detection --
     const guiInitiatedOpsRef = useRef(new Set());
-    const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp }
+    const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp, pending }
     const lastErrorToastRef = useRef(0);
     const firstFetchDoneRef = useRef(false);
     const bootGraceRef = useRef(true); // suppress notifications during app boot
@@ -134,7 +134,7 @@ export function useServerActions({
                         const existing = prev.find((s) => s.name === newServer.name);
 
                         // Optimistic status 보호: starting/stopping 상태를
-                        // 서버가 아직 전환 완료 전이면 유지 (최대 60초)
+                        // 서버가 아직 전환 완료 전이면 유지 (요청이 끝난 뒤 최대 60초, 요청 중에는 계속)
                         let mergedStatus = newServer.status;
                         const opt = optimisticStatusRef.current.get(newServer.name);
                         if (opt) {
@@ -143,7 +143,7 @@ export function useServerActions({
                             const transitioned =
                                 (opt.status === 'starting' && newServer.status === 'running') ||
                                 (opt.status === 'stopping' && newServer.status === 'stopped');
-                            if (transitioned || elapsed > GUARD_MS) {
+                            if (transitioned || (elapsed > GUARD_MS && !opt.pending)) {
                                 optimisticStatusRef.current.delete(newServer.name);
                             } else {
                                 mergedStatus = opt.status;
@@ -276,11 +276,14 @@ export function useServerActions({
             }
 
             // Optimistic update: 즉시 'starting' 상태 표시
-            optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
+            // 시작 요청이 끝날 때까지는(첫 시작은 몇 분) 목록 새로고침이 이 표시를 지우지 않는다
+            optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now(), pending: true });
             setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'starting' } : s)));
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(srv.id);
+            const opt = optimisticStatusRef.current.get(name);
+            if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
             notifyPortMoved(result, srv);
 
             // ── action_required: server jar not found ──
