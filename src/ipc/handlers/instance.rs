@@ -2075,15 +2075,14 @@ mod tests {
              [[settings.fields]]\nname = \"server_type\"\ntype = \"text\"\ndefault = \"vanilla\"\n\n[install]\nmethod = \"download\"\n",
         )
         .unwrap();
-        let seen = tmp.path().join("seen.json");
+        // 설정을 받았을 때만 버전을 알려 준다. 못 받으면 "최신 버전을 찾지 못함"으로 끝난다.
+        // Windows에서는 격리 실행이라 모듈이 임시 폴더 밖에 파일을 쓸 수 없어 설치 결과로 확인한다
         std::fs::write(
             dir.join("lifecycle.py"),
-            format!(
-                "import json, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
-                 open({:?}, 'w').write(json.dumps(config))\n    print(json.dumps({{'success': True, 'latest': {{'release': '1.0'}}}}))\n\
-                 else:\n    print(json.dumps({{'success': True}}))\n",
-                seen.to_string_lossy()
-            ),
+            "import json, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
+             latest = {'release': '1.0'} if config.get('settings', {}).get('server_type') == 'paper' else {}\n    \
+             print(json.dumps({'success': True, 'latest': latest}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
@@ -2096,15 +2095,17 @@ mod tests {
             super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game", "module_settings": { "server_type": "paper" } }))).await,
         )
         .await;
-        for _ in 0..100 {
-            if let Ok(text) = std::fs::read_to_string(&seen) {
-                let config: serde_json::Value = serde_json::from_str(&text).unwrap();
-                assert_eq!(config["settings"]["server_type"], "paper", "{config}");
-                return;
+        // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
+        let mut progress = None;
+        for _ in 0..1200 {
+            progress = state.provision_tracker.get("a").filter(|p| p.done);
+            if progress.is_some() {
+                break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        panic!("list_versions was never called");
+        let progress = progress.expect("provisioning finished");
+        assert_eq!(progress.error, None, "list_versions did not get the instance settings");
     }
 
     #[tokio::test]
