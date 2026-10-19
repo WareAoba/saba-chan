@@ -4,19 +4,19 @@
 [data-theme="dark"] {
     --art-shadow: drop-shadow(0 6px 16px color-mix(in srgb, var(--shadow-ink) 55%, transparent));
     /* 상태 그림(자는·청소·갸웃)을 어두운 바탕에 녹이는 정도 */
-    --art-tone: saturate(0.45) brightness(0.86);
-    --art-blend: 0.7;
+    --art-tone: saturate(0.4) brightness(0.68);
+    --art-blend: 0.6;
 }
 [data-theme="light"] {
     --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
-    --art-tone: saturate(0.5);
-    --art-blend: 0.72;
+    --art-tone: saturate(0.45) brightness(0.92);
+    --art-blend: 0.62;
 }
 @media (prefers-color-scheme: light) {
     [data-theme="auto"] {
         --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
-        --art-tone: saturate(0.5);
-        --art-blend: 0.72;
+        --art-tone: saturate(0.45) brightness(0.92);
+        --art-blend: 0.62;
     }
 }
 
@@ -96,35 +96,145 @@
     word-break: break-word;
 }
 
-/* 디스코드 릴레이(명령 전달) 카드: 왼쪽은 글, 오른쪽은 정사각 그림 칸 (겹치지 않는다) */
-.dc-card.dc-relay-card {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--sp-5);
+/* 디스코드 연결 카드: 위는 제목·상태·재우기, 아래 왼쪽은 명령 흐름, 오른쪽은 그림 칸 */
+.dc-card.dc-conn-card {
+    gap: var(--sp-4);
 }
-.dc-relay-body {
-    flex: 1;
+.dc-conn-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-4);
+}
+.dc-conn-title {
     min-width: 0;
+}
+.dc-conn-title h1 {
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.dc-conn-title p {
+    margin-top: var(--sp-1);
+    font-size: var(--fs-sm);
+}
+.dc-conn-side {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-3);
-}
-.dc-relay-art {
+    align-items: flex-end;
+    gap: var(--sp-2);
     flex-shrink: 0;
-    width: 148px;
-    height: 148px;
+}
+.dc-conn-state {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+.dc-conn-body {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.1fr);
+    gap: var(--sp-5);
+    align-items: stretch;
+}
+
+/* 명령 흐름: 상자 셋을 점선으로 잇는다 */
+.dc-chain {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.dc-chain-node {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: var(--sp-2-5);
+    align-items: center;
+    padding: var(--sp-2-5) var(--sp-3);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    color: var(--text-3);
+    transition:
+        border-color var(--dur) var(--ease),
+        color var(--dur) var(--ease);
+}
+.dc-chain-node > :first-child {
+    grid-row: 1 / span 2;
+    width: 22px;
+    justify-self: center;
+    display: inline-flex;
+    justify-content: center;
+}
+.dc-chain-node.on {
+    color: var(--text-1);
+    border-color: color-mix(in srgb, var(--ok) 45%, var(--line-strong));
+}
+.dc-chain-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+}
+.dc-chain-node:not(.on) .dc-chain-icon {
+    filter: grayscale(1);
+    opacity: 0.6;
+}
+.dc-chain-discord {
+    display: inline-flex;
+}
+.dc-chain-node.on .dc-chain-discord {
+    color: var(--discord);
+}
+.dc-chain-name {
+    font-weight: 700;
+    font-size: var(--fs-md);
+}
+.dc-chain-sub {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dc-chain-link {
+    align-self: center;
+    width: 0;
+    height: var(--sp-5);
+    border-left: 2px dashed var(--line-strong);
+}
+.dc-chain-link.on {
+    border-left-color: var(--ok);
+}
+
+/* 그림 칸: 그림은 칸 안에만 있다 */
+.dc-conn-art {
+    display: grid;
+    place-items: center;
+    min-height: 220px;
+    padding: var(--sp-3);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    overflow: hidden;
+}
+.dc-conn-art img {
+    width: 100%;
+    height: 100%;
+    max-height: 240px;
     object-fit: contain;
     pointer-events: none;
     user-select: none;
     transition: filter 600ms var(--ease);
 }
-.dc-relay-card.off .dc-relay-art {
+.dc-conn-card.off .dc-conn-art img {
     filter: saturate(0.12);
 }
 @media (max-width: 720px) {
-    .dc-relay-art {
-        width: 96px;
-        height: 96px;
+    .dc-conn-body {
+        grid-template-columns: 1fr;
+    }
+    .dc-conn-art {
+        min-height: 160px;
     }
 }
 

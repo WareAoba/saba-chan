@@ -177,6 +177,15 @@ export function PairingCard({ pairing, onCancel }) {
     );
 }
 
+/** 릴레이 주소에서 호스트 이름만 (긴 URL이 흐름 칸을 넘치지 않게) */
+function relayHost(url) {
+    try {
+        return new URL(url).host;
+    } catch {
+        return url || '-';
+    }
+}
+
 /**
  * 연결 화면: 아직 연결 안 함 → 시작 안내 / 연결됨 → 연결 정보·에이전트·해제.
  */
@@ -232,61 +241,38 @@ export function ConnectionView({
     const agentRunning = botStatus === 'running' || botStatus === 'connecting';
     return (
         <div className="dc-view">
-            <header className="detail-head">
-                <div className={clsx('detail-icon dc-brand-icon', { on: connected })}>
-                    <Icon name={connected ? 'discordLogo' : 'discord'} size="lg" />
-                </div>
-                <div className="detail-title">
-                    <h1>{t('discord.connection_title')}</h1>
-                    <div className="detail-sub">
-                        {connected && <StatusChip tone="ok" label={t('discord.relay_connected')} />}
-                        {cloudState === 'connecting' && (
-                            <StatusChip tone="warn" pulse label={t('discord.relay_connecting')} />
-                        )}
-                        {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
-                        <span className="muted">{t('discord.node_count', { count: nodeCount })}</span>
-                    </div>
-                </div>
-                <div className="detail-actions">
-                    <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={onReload}
-                        data-tooltip={t('discord.reload')}
-                        aria-label={t('discord.reload')}
-                    >
-                        <Icon name="refresh" size="sm" />
-                    </button>
-                </div>
-            </header>
-
-            {cloudState === 'error' && (
-                <div className="notice tone-stop">
-                    <Icon name="alertTriangle" size="sm" />
-                    <span>{t('discord.relay_failed_body', { error: cloudError || '-' })}</span>
-                </div>
-            )}
-
-            <section className={clsx('dc-card dc-relay-card', { off: !agentRunning })}>
-                <div className="dc-relay-body">
-                    <div className="dc-card-head">
-                        <h2>{t('discord.agent_title')}</h2>
-                        <StatusChip
-                            tone={botStatus === 'running' ? 'ok' : botStatus === 'connecting' ? 'warn' : 'idle'}
-                            pulse={botStatus === 'connecting'}
-                            label={t(
-                                `discord.agent_${botStatus === 'running' || botStatus === 'connecting' ? botStatus : 'stopped'}`,
+            {/* 연결 카드: 제목·상태·재우기 + 사바쨩 → 릴레이 서버 → 디스코드 흐름 + 그림 칸 (여러 카드를 하나로) */}
+            <section className={clsx('dc-card dc-conn-card', { off: !agentRunning })}>
+                <div className="dc-conn-head">
+                    <div className="dc-conn-title">
+                        <h1>{t('discord.connection_title')}</h1>
+                        <p className="muted">
+                            {t(
+                                connected
+                                    ? 'discord.conn_sub_connected'
+                                    : cloudState === 'connecting'
+                                      ? 'discord.conn_sub_connecting'
+                                      : 'discord.conn_sub_error',
                             )}
-                        />
+                        </p>
                     </div>
-                    <p className="dc-card-desc">{t('discord.agent_desc')}</p>
-                    {agentReplaced && !agentRunning && (
-                        <div className="notice tone-warn">
-                            <Icon name="alertTriangle" size="sm" />
-                            <span>{t('discord.agent_replaced')}</span>
+                    <div className="dc-conn-side">
+                        <div className="dc-conn-state">
+                            {connected && <StatusChip tone="ok" label={t('discord.relay_connected')} />}
+                            {cloudState === 'connecting' && (
+                                <StatusChip tone="warn" pulse label={t('discord.relay_connecting')} />
+                            )}
+                            {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
+                            <button
+                                type="button"
+                                className="icon-btn"
+                                onClick={onReload}
+                                data-tooltip={t('discord.reload')}
+                                aria-label={t('discord.reload')}
+                            >
+                                <Icon name="refresh" size="sm" />
+                            </button>
                         </div>
-                    )}
-                    <div className="dc-row-actions">
                         {agentRunning ? (
                             <SleepAllButton nodes={nodes} />
                         ) : (
@@ -301,8 +287,52 @@ export function ConnectionView({
                         )}
                     </div>
                 </div>
-                {/* 릴레이(명령 전달) 그림: 글과 칸을 나눠 겹치지 않는다. 꺼져 있으면 채도를 크게 낮춘다 */}
-                <img src="./saba/relay.webp" alt="" className="dc-relay-art" draggable={false} decoding="async" />
+
+                {cloudState === 'error' && (
+                    <div className="notice tone-stop">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('discord.relay_failed_body', { error: cloudError || '-' })}</span>
+                    </div>
+                )}
+                {agentReplaced && !agentRunning && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('discord.agent_replaced')}</span>
+                    </div>
+                )}
+
+                <div className="dc-conn-body">
+                    {/* 명령이 흐르는 길: 이 PC의 사바쨩 → 릴레이 서버 → 디스코드. 끊긴 구간은 흐리게 */}
+                    <ol className="dc-chain" aria-label={t('discord.agent_desc')}>
+                        <li className={clsx('dc-chain-node', { on: agentRunning })}>
+                            <img src="./icon.png" alt="" className="dc-chain-icon" />
+                            <span className="dc-chain-name">{t('discord.chain_saba')}</span>
+                            <span className="dc-chain-sub">
+                                {t(
+                                    `discord.agent_${botStatus === 'running' || botStatus === 'connecting' ? botStatus : 'stopped'}`,
+                                )}
+                            </span>
+                        </li>
+                        <li className={clsx('dc-chain-link', { on: agentRunning && connected })} aria-hidden="true" />
+                        <li className={clsx('dc-chain-node', { on: connected })}>
+                            <Icon name="cloud" size="sm" />
+                            <span className="dc-chain-name">{t('discord.chain_relay')}</span>
+                            <span className="dc-chain-sub">{relayHost(relayUrl)}</span>
+                        </li>
+                        <li className={clsx('dc-chain-link', { on: connected })} aria-hidden="true" />
+                        <li className={clsx('dc-chain-node', { on: connected && nodeCount > 0 })}>
+                            <span className="dc-chain-discord">
+                                <Icon name="discordLogo" size="sm" />
+                            </span>
+                            <span className="dc-chain-name">{t('discord.chain_discord')}</span>
+                            <span className="dc-chain-sub">{t('discord.node_count', { count: nodeCount })}</span>
+                        </li>
+                    </ol>
+                    <div className="dc-conn-art">
+                        {/* 그림은 칸 안에서만: 다른 것이 침범하지 않는다. 명령 전달이 꺼지면 채도를 낮춘다 */}
+                        <img src="./saba/relay.webp" alt="" draggable={false} decoding="async" />
+                    </div>
+                </div>
             </section>
 
             <section className="dc-card">
