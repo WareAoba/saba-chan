@@ -98,7 +98,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
             let mut cfg = serde_json::Map::new();
             cfg.insert("working_dir".into(), json!(base.to_string_lossy()));
             cfg.insert("extension_data".into(), json!(&instance.extension_data));
-            crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &instance);
+            crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &instance, &supervisor.instance_store.instance_dir(id));
             crate::plugin::PluginCall::new(m.entry_path(), "backup_paths", Value::Object(cfg))
         });
         // `{설정}` 자리: 인스턴스 설정 값, 없으면 module.toml 기본값

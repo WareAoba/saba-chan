@@ -488,7 +488,7 @@ impl Supervisor {
             if let Some(port) = settings.get("port").cloned().or_else(|| instance.port.map(|p| json!(p))) {
                 cfg.insert("port".to_string(), port);
             }
-            Self::insert_instance_fields(&mut cfg, &preview_instance);
+            Self::insert_instance_fields(&mut cfg, &preview_instance, &s.instance_store.instance_dir(&instance.id));
             cfg.insert("managed".to_string(), json!(s.uses_managed_start(&preview_instance)));
             cfg.insert("preview".to_string(), json!(true));
             let call = crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", Value::Object(cfg));
@@ -594,7 +594,10 @@ impl Supervisor {
 
     /// 모듈 함수가 인스턴스를 알아보는 데 쓰는 값 (포트·비밀번호·모듈 설정·REST·데이터 폴더 등).
     /// 시작·정지·설정·초기화 모두 같은 값을 받아야 같은 서버 파일을 다룬다. 이미 있는 키는 두다.
-    pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance) {
+    pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) {
+        // 데몬의 인스턴스 폴더: 모듈이 서버 폴더 옆에 둔 데이터(좀보이드 cache_dir 등)까지 격리 실행이 쓸 수 있게
+        // 한다(sandbox `INSTANCE_DIR_FIELDS`). 모듈 설정의 같은 키가 이기지 않게 덮어쓴다
+        cfg.insert("instance_dir".to_string(), json!(instance_dir.to_string_lossy()));
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
@@ -929,7 +932,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            Self::insert_instance_fields(&mut cfg, &instance);
+            Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Non-managed → managed=false로 명시 (모듈이 실행 방식을 구분)
             cfg.insert("managed".to_string(), json!(false));
             let final_config = Value::Object(cfg);
@@ -1118,7 +1121,7 @@ impl Supervisor {
             let module = s.module_loader.get_module(module_name)?;
             let mut config_obj = serde_json::Map::new();
             s.insert_resolved_exe(&mut config_obj, &instance, module_name);
-            Self::insert_instance_fields(&mut config_obj, &instance);
+            Self::insert_instance_fields(&mut config_obj, &instance, &s.instance_store.instance_dir(&instance.id));
             // 추적표는 id로만 찾는다 (다른 인스턴스 id와 이름이 같아도 섞이지 않게)
             let tracked_pid = s.tracker.get_pid(&instance.id).ok();
             (module, config_obj, tracked_pid)
@@ -1710,7 +1713,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            Self::insert_instance_fields(&mut cfg, &instance);
+            Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Managed mode indicator → 모듈이 실행 방식을 구분
             cfg.insert("managed".to_string(), json!(true));
             let final_config = Value::Object(cfg);
@@ -2072,7 +2075,7 @@ impl Supervisor {
         // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
         cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
         // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
-        Self::insert_instance_fields(&mut cfg, instance);
+        Self::insert_instance_fields(&mut cfg, instance, &self.instance_store.instance_dir(instance_id));
         // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
         cfg.insert("running".to_string(), json!(self.tracker.get_pid(instance_id).is_ok()));
 
@@ -2108,7 +2111,7 @@ impl Supervisor {
             // Extension 데이터 전달 — Python lifecycle 스크립트가 플랫폼 경로를 올바르게 판단하도록
             cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
             // 시작 때와 같은 인스턴스 값 (예: zomboid cache_dir — 다른 서버의 파일을 건드리지 않게)
-            Self::insert_instance_fields(&mut cfg, instance);
+            Self::insert_instance_fields(&mut cfg, instance, &s.instance_store.instance_dir(instance_id));
             if let Some(port) = instance.port {
                 cfg.entry("port".to_string()).or_insert(json!(port));
             }
@@ -3103,8 +3106,19 @@ mod tests {
         inst.rest_port = Some(8242);
         inst.module_settings.insert("rest_port".into(), json!(8212));
         let mut cfg = serde_json::Map::new();
-        Supervisor::insert_instance_fields(&mut cfg, &inst);
+        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pal"));
         assert_eq!(cfg["rest_port"], json!(8242));
+    }
+
+    // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라, 설정 쓰기·시작 명령 호출에서
+    // 격리 실행이 쓰기 권한을 받지 못했다. 모든 인스턴스 호출에 데몬의 인스턴스 폴더를 싣는다(모듈 설정 값은 무시)
+    #[test]
+    fn modules_get_the_daemons_instance_folder() {
+        let mut inst = crate::instance::ServerInstance::new("pz", "zomboid");
+        inst.module_settings.insert("instance_dir".into(), json!("/elsewhere"));
+        let mut cfg = serde_json::Map::new();
+        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pz"));
+        assert_eq!(cfg["instance_dir"], json!("/data/instances/pz"));
     }
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
