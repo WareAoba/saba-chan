@@ -60,28 +60,78 @@ pub fn amsi_verdict(hr: i32, result: u32) -> Verdict {
     }
 }
 
-/// Defender가 "찾을 위협이 없다"고 답하는 오류 (`hr = 0x80508023`). 검사한 파일은 깨끗하다
+/// Defender가 "찾을 위협이 없다"고 답하는 오류 (`hr = 0x80508023`, ERROR_MP_THREAT_NOT_FOUND). 검사한 파일은 깨끗하다
 const MPCMDRUN_NO_THREAT_HR: &str = "0x80508023";
+/// Defender가 꺼져 있다는 오류 (다른 백신을 쓰거나 서비스를 껐다). 검사기가 없는 것과 같다
+const MPCMDRUN_STOPPED_HR: &[&str] = &["0x800106ba", "0x80070422"];
+
+/// 출력의 실패 코드 (`hr = 0x…`, 소문자)
+fn mpcmdrun_hr(output: &str) -> Option<String> {
+    let compact = output.to_ascii_lowercase().replace(' ', "");
+    let rest = &compact[compact.find("hr=0x")? + 3..];
+    let hex: String = rest.chars().take(2).chain(rest.chars().skip(2).take_while(char::is_ascii_hexdigit)).collect();
+    Some(hex)
+}
 
 /// `MpCmdRun -Scan`의 종료 코드와 출력. 2는 위협을 찾았을 때도 검사하지 못했을 때도 나온다.
 /// 검사하지 못했으면 출력에 실패 코드(`hr = 0x…`)가 있다: 문구는 Windows 언어를 따를 수 있어 코드로만 가른다.
-/// `0x80508023`은 깨끗함, 그 밖의 실패는 검사기를 쓸 수 없는 것(AMSI는 그대로 돈다), 코드가 없으면 찾은 것이다
+/// `0x80508023`은 깨끗함, Defender가 꺼졌다는 코드는 검사기 없음(AMSI는 그대로 돈다), 그 밖의 코드는
+/// 이 파일 검사 실패, 코드가 없으면 찾은 것이다
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn mpcmdrun_verdict(code: Option<i32>, output: &str) -> Verdict {
-    let lower = output.to_ascii_lowercase();
     match code {
         Some(0) => Verdict::Clean,
-        Some(2) if lower.contains(MPCMDRUN_NO_THREAT_HR) => Verdict::Clean,
-        Some(2) if lower.replace(' ', "").contains("hr=0x") => Verdict::Unavailable,
-        Some(2) => {
-            let threat = output.lines().find_map(|l| l.trim().strip_prefix("Threat").and_then(|r| r.trim_start().strip_prefix(':')));
-            Verdict::Detected(match threat {
-                Some(name) => format!("Windows Defender ({})", name.trim()),
-                None => "Windows Defender".into(),
-            })
-        }
+        Some(2) => match mpcmdrun_hr(output) {
+            Some(hr) if hr == MPCMDRUN_NO_THREAT_HR => Verdict::Clean,
+            Some(hr) if MPCMDRUN_STOPPED_HR.contains(&hr.as_str()) => Verdict::Unavailable,
+            Some(hr) => Verdict::Failed(format!("MpCmdRun hr={}", hr)),
+            None => {
+                let threat = output.lines().find_map(|l| l.trim().strip_prefix("Threat").and_then(|r| r.trim_start().strip_prefix(':')));
+                Verdict::Detected(match threat {
+                    Some(name) => format!("Windows Defender ({})", name.trim()),
+                    None => "Windows Defender".into(),
+                })
+            }
+        },
         _ => Verdict::Unavailable,
     }
+}
+
+/// 실행 파일 하나 검사에 주는 시간. 넘으면 그 파일 검사 실패다 (시작이 영영 기다리지 않게)
+#[cfg_attr(not(windows), allow(dead_code))]
+const MPCMDRUN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// `cmd`를 실행해 출력을 모은다. `timeout` 안에 끝나지 않으면 끝내고 `Ok(None)`
+#[cfg_attr(not(windows), allow(dead_code))]
+fn output_within(mut cmd: std::process::Command, timeout: std::time::Duration) -> std::io::Result<Option<std::process::Output>> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    // 출력이 파이프를 채워 멈추지 않게 따로 읽는다
+    let read = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let stdout = read(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let stderr = read(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    Ok(Some(std::process::Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() }))
 }
 
 /// AMSI로 볼 파일 (Python이 읽거나 셸이 실행할 수 있는 글)
@@ -249,10 +299,14 @@ impl Scanner for SystemScanner {
                 use std::os::windows::process::CommandExt;
                 cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
             }
-            let Ok(out) = cmd.output() else { return Verdict::Unavailable };
+            let out = match output_within(cmd, MPCMDRUN_TIMEOUT) {
+                Ok(Some(out)) => out,
+                Ok(None) => return Verdict::Failed("MpCmdRun timed out".into()),
+                Err(_) => return Verdict::Unavailable,
+            };
             let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
             let verdict = mpcmdrun_verdict(out.status.code(), &text);
-            if verdict == Verdict::Unavailable {
+            if matches!(verdict, Verdict::Unavailable | Verdict::Failed(_)) {
                 let reason = text.lines().find(|l| l.contains("Failed with hr")).unwrap_or("").trim();
                 tracing::warn!("[Sandbox] MpCmdRun could not scan {} (exit {:?}) {}", path.display(), out.status.code(), reason);
             }
@@ -354,6 +408,32 @@ mod tests {
         }
     }
 
+
+    /// Defender가 꺼져 있다는 실패만 검사기가 없는 것이다. 그 밖의 실패는 이 파일을 검사하지 못한 것이라
+    /// 조용히 건너뛰지 않는다 (악성 판정과도 구분한다)
+    #[test]
+    fn only_a_stopped_defender_skips_the_scan() {
+        assert_eq!(mpcmdrun_verdict(Some(2), "CmdTool: Failed with hr = 0x800106ba."), Verdict::Unavailable);
+        assert_eq!(mpcmdrun_verdict(Some(2), "CmdTool: Failed with hr = 0x80070422."), Verdict::Unavailable);
+        assert_eq!(mpcmdrun_verdict(Some(2), "CmdTool: Failed with hr = 0x80070005."), Verdict::Failed("MpCmdRun hr=0x80070005".into()));
+        assert_eq!(mpcmdrun_verdict(Some(2), "CmdTool: Failed with hr = 0x80508020"), Verdict::Failed("MpCmdRun hr=0x80508020".into()));
+    }
+
+    /// 검사기가 멈추면 시작이 영영 기다리지 않는다
+    #[cfg(unix)]
+    #[test]
+    fn a_hung_scanner_is_stopped() {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30");
+        let started = std::time::Instant::now();
+        assert!(output_within(cmd, std::time::Duration::from_millis(300)).unwrap().is_none());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        let mut cmd = std::process::Command::new("echo");
+        cmd.arg("done");
+        let out = output_within(cmd, std::time::Duration::from_secs(5)).unwrap().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "done");
+    }
+
     #[test]
     fn result_codes_map_to_verdicts() {
         assert!(!amsi_detected(1) && amsi_detected(32768) && amsi_detected(40000));
@@ -450,9 +530,9 @@ Threat                  : Virus:DOS/EICAR_Test_File\n";
         let blocked = scan_component(tmp.path(), &fake, &mut cache).unwrap_err();
         assert_eq!(blocked.code, "malware_detected");
         assert!(blocked.file.unwrap().ends_with("bad.py"));
-        // 찾은 결과도 저장된다
+        // 찾은 파일은 매번 다시 본다 (오탐이 풀리면 바로 실행된다)
         assert!(scan_component(tmp.path(), &fake, &mut cache).is_err());
-        assert_eq!(fake.calls.get(), 2);
+        assert_eq!(fake.calls.get(), 3);
 
         // 검사기가 없으면 막지 않는다
         let none = Fake { calls: Cell::new(0), available: false };

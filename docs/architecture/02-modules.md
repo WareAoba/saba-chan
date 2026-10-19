@@ -262,11 +262,11 @@ players = "player_count"
   - `install_server`는 어디서 부르든(프로비저닝, 업데이트, `POST /api/module/:name/install` → `Supervisor::install_server`) 1800초(`plugin::INSTALL_TIMEOUT_SECS`)를 쓴다.
   - 프로비저닝 설치는 끝날 때까지 인스턴스 작업 잠금(`BusyGuard`)을 쥔다: 그동안 시작·업데이트·삭제·복원은 `instance_busy`다.
 - **확인되지 않은 구성요소 (Windows)**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션은 Python을 띄우기 전에 그 폴더를 검사한다(`D:src/sandbox/`). 신뢰 표시의 키는 모듈이면 `module-<폴더 이름>`, 익스텐션이면 `ext-<manifest id>`다(폴더 이름은 id의 `-`를 `_`로 바꾼 것이라 다를 수 있다. 그 폴더 이름에 맞지 않는 id는 받지 않고 폴더 이름을 쓴다, `sandbox::component_of`).
-  - 스크립트(`.py`·`.pth`·`.ps1`·`.bat` 등)는 AMSI(등록된 백신)로, 네이티브 코드와 묶음(`.pyd`·`.dll`·`.so`·`.exe`·`.zip`·`.egg`·`.whl`)은 Defender `MpCmdRun`으로 본다. `__pycache__`는 건너뛴다. `MpCmdRun`은 위협을 찾았을 때도 검사하지 못했을 때도 종료 코드 2를 내므로, 출력의 실패 코드로 가른다(문구는 Windows 언어를 따를 수 있다). `hr = 0x80508023`(찾을 위협이 없음)은 깨끗함, 그 밖의 `hr = 0x…`는 검사기를 쓸 수 없는 것으로 보고 실패 줄을 경고로 남기며, 실패 코드가 없으면 찾은 것이다(`scan::mpcmdrun_verdict`).
+  - 스크립트(`.py`·`.pth`·`.ps1`·`.bat` 등)는 AMSI(등록된 백신)로, 네이티브 코드와 묶음(`.pyd`·`.dll`·`.so`·`.exe`·`.zip`·`.egg`·`.whl`)은 Defender `MpCmdRun`으로 본다. `__pycache__`는 건너뛴다. `MpCmdRun`은 위협을 찾았을 때도 검사하지 못했을 때도 종료 코드 2를 내므로, 출력의 실패 코드로 가른다(문구는 Windows 언어를 따를 수 있다). `hr = 0x80508023`(ERROR_MP_THREAT_NOT_FOUND, 찾을 위협이 없음)은 깨끗함, Defender가 꺼져 있다는 `0x800106ba`·`0x80070422`는 검사기 없음, 그 밖의 `hr = 0x…`는 그 파일 검사 실패(`scan_failed`)이고, 실패 코드가 없으면 찾은 것이다(`scan::mpcmdrun_verdict`). 한 파일 검사가 5분 안에 끝나지 않으면 MpCmdRun을 끝내고 검사 실패로 본다.
   - 찾으면 실행하지 않고 `{success:false, action_required:"malware_detected", message, file}`를 돌려준다.
   - `__pycache__` 밖에 `.pyc`·`.pyo`가 있으면 원본 없이 실행될 수 있어 `action_required:"unscannable_file"`로 막는다.
-  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다. 깨끗하다는 결과는 7일이 지나면 다시 검사한다(찾았다는 결과는 그대로 둔다). 파일 sha256은 데몬 실행 동안 경로·크기·수정 시각으로 기억해, 셋이 같으면 다시 읽지 않는다(설치 기록과 비교하는 신뢰 표시도 같다). 옛 형식 결과 파일은 깨끗하다는 결과만 시각 0으로 옮긴다. 결과에는 판정 규칙의 판(`format`, `VERDICT_FORMAT`)을 적고, 지금보다 옛 판의 찾았다는 결과는 버리고 다시 본다(판 1: MpCmdRun이 검사하지 못한 것을 찾음으로 적던 0.1.6까지의 결과). 빈 파일은 검사할 내용이 없어 넘긴다.
-  - 검사기가 없으면(AMSI 공급자, `MpCmdRun`) 그 검사를 건너뛰고 데몬 실행마다 한 번 경고를 남긴다.
+  - 결과는 sha256으로 `<data_dir>/scan-verdicts.json`에 남겨, 바뀌지 않은 파일은 다시 보지 않는다. 깨끗하다는 결과는 7일이 지나면 다시 검사한다. 찾았다는 결과는 다시 쓰지 않고 매번 검사한다(오탐은 백신 정의가 고쳐지면 바로 풀린다). 파일 sha256은 데몬 실행 동안 경로·크기·수정 시각으로 기억해, 셋이 같으면 다시 읽지 않는다(설치 기록과 비교하는 신뢰 표시도 같다). 옛 형식 결과 파일은 깨끗하다는 결과만 시각 0으로 옮긴다. 결과에는 판정 규칙의 판(`format`, `VERDICT_FORMAT`)을 적고, 지금보다 옛 판의 찾았다는 결과는 버리고 다시 본다(판 1: MpCmdRun이 검사하지 못한 것을 찾음으로 적던 0.1.6까지의 결과). 빈 파일은 검사할 내용이 없어 넘긴다.
+  - 검사기가 없으면(AMSI 공급자, `MpCmdRun`이 없거나 Defender가 꺼짐) 그 검사를 건너뛰고 데몬 실행마다 한 번 경고를 남긴다.
   - 파일을 읽지 못하거나 한 파일의 검사가 실패하면(검사 스레드가 죽은 경우 포함) 실행하지 않고 `action_required:"scan_failed"`(`file`, `detail`)를 돌려준다. 나머지 파일 검사는 계속한다.
   - 검사를 통과하면 Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만. 루프백 예외를 주지 않으므로 같은 PC의 데몬 API·로컬 프록시에는 닿지 못한다) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
@@ -418,7 +418,7 @@ players = "player_count"
   - 모듈이 돌려준 `env_vars`의 `PATH`·`PATHEXT`(대소문자 무시)는 버린다. 경로 없는 `java`는 데몬의 PATH로 찾는다.
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
-  - 통과한 절대 경로 실행 파일과, 실행 인자가 가리키는 있는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준. 예: `-jar server.jar`)은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고(위 §2.1과 같은 7일·크기·수정 시각 규칙), MpCmdRun이 없으면 건너뛴다. 파일을 읽지 못하면 `scan_failed`로 막는다.
+  - 통과한 절대 경로 실행 파일과, 실행 인자가 가리키는 있는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준. 예: `-jar server.jar`)은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고(위 §2.1과 같은 규칙), MpCmdRun이 없거나 Defender가 꺼져 있으면 건너뛴다. 파일을 읽지 못하거나 검사가 실패하거나 시간 안에 끝나지 않으면 `scan_failed`로 막는다.
 
 **잠금**: `start_managed_handler`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:29-68`, `mod.rs:1289-1297`, C12).
 

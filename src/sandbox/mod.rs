@@ -6,8 +6,9 @@
 //!   셸·스크립트 호스트(`cmd`, `powershell` 등)는 어디 있든 거부한다 (`launch_outside_instance`).
 //! - 악성 코드 검사: Python·스크립트 파일은 AMSI(등록된 백신)로, 서버 실행 파일은 처음 실행 전에
 //!   Defender `MpCmdRun`으로 본다. 찾으면 실행하지 않는다 (`malware_detected`). 결과는 sha256으로 저장해
-//!   바뀌지 않은 파일은 다시 보지 않는다(깨끗하다는 결과는 7일 동안). 검사기가 없으면 건너뛰고 경고를 남긴다.
-//!   파일을 읽지 못하거나 검사가 실패하면 실행하지 않는다 (`scan_failed`).
+//!   바뀌지 않은 파일은 다시 보지 않는다(깨끗하다는 결과만 7일 동안. 찾은 파일은 매번 다시 본다).
+//!   Defender가 꺼져 있거나 AMSI 공급자가 없으면 건너뛰고 경고를 남긴다. 파일을 읽지 못하거나 검사가
+//!   실패하거나 시간 안에 끝나지 않으면 실행하지 않는다 (`scan_failed`, 악성 판정과 구분한다).
 //!
 //! Linux·macOS는 아직 지원 대상이 아니라 지금처럼 실행한다.
 
@@ -256,14 +257,15 @@ impl VerdictCache {
         Self::default()
     }
 
-    /// Some(true) = 찾았다, Some(false) = 깨끗하다 (7일이 지난 깨끗하다는 None: 다시 본다)
+    /// Some(false) = 깨끗하다. 7일이 지난 깨끗함과 찾았다는 결과는 None: 다시 본다
+    /// (오탐은 백신 정의가 고쳐지면 바로 풀려야 하고, 찾은 파일을 다시 보는 비용은 그 파일 하나다)
     pub fn get(&self, sha: &str) -> Option<bool> {
         self.get_at(sha, now_secs())
     }
 
     fn get_at(&self, sha: &str, now: u64) -> Option<bool> {
         let v = self.entries.get(sha)?;
-        (v.detected || now.saturating_sub(v.at) < CLEAN_VERDICT_TTL_SECS).then_some(v.detected)
+        (!v.detected && now.saturating_sub(v.at) < CLEAN_VERDICT_TTL_SECS).then_some(false)
     }
 
     pub fn put(&mut self, sha: String, detected: bool) {
@@ -1103,14 +1105,15 @@ mod tests {
     }
 
     #[test]
-    fn clean_verdicts_expire_but_detections_do_not() {
+    fn clean_verdicts_expire_and_detections_are_always_rescanned() {
         let mut cache = VerdictCache::in_memory();
         cache.put("clean".into(), false);
         cache.put("bad".into(), true);
         let now = now_secs();
         assert_eq!(cache.get_at("clean", now), Some(false));
         assert_eq!(cache.get_at("clean", now + CLEAN_VERDICT_TTL_SECS), None);
-        assert_eq!(cache.get_at("bad", now + CLEAN_VERDICT_TTL_SECS), Some(true));
+        // 오탐은 백신 정의가 고쳐지면 바로 풀려야 한다: 찾았다는 결과는 다시 쓰지 않는다
+        assert_eq!(cache.get_at("bad", now), None);
         assert_eq!(cache.get_at("none", now), None);
     }
 
