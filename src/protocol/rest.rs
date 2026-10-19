@@ -146,12 +146,14 @@ impl RestClient {
                 error: None,
             })
         } else {
+            // 본문은 앞부분만: 오류 문자열은 클라이언트·감사 기록·디스코드로 간다
+            let head: String = text.chars().take(200).collect();
             Err(ProtocolError::HttpStatus(status, format!(
                 "HTTP {} {} failed with status {}: {}",
                 method,
                 url,
                 status,
-                text
+                head
             )))
         }
     }
