@@ -29,6 +29,11 @@
   },
   "bot": {
     "ask_token": "Node-Token",
+    "expired": "abgelaufen",
+    "expires_in": "Verbleibend",
+    "members_partial": "Die vollständige Discord-Mitgliederliste war nicht verfügbar; es werden nur Mitglieder mit gespeicherter Stufe angezeigt.",
+    "requested_by": "Angefragt von",
+    "username": "Benutzername",
     "config_saved": "Bot-Einstellungen gespeichert.",
     "confirm_unpair": "Diesen PC vom Discord-Bot trennen und die Kopplung vergessen?",
     "connection": "Verbindung",
@@ -186,6 +191,7 @@
   },
   "agree": {
     "none": "{{name}} hat keine Vereinbarungen zum Annehmen.",
+    "unknown_id": "Übersprungene Bedingungs-IDs, die dieser Server nicht hat: {{ids}} (vorhanden: {{known}})",
     "confirm": "{{name}}: {{names}} annehmen? Du stimmst den Bedingungen unter den Links oben zu.",
     "done": "Vereinbarungen für {{name}} angenommen."
   },
@@ -250,6 +256,8 @@
   },
   "noun": {
     "command": "Befehl",
+    "guild": "Discord-Server",
+    "member": "Mitglied",
     "extension": "Erweiterung",
     "game": "Spiel",
     "module": "Modul",
@@ -281,7 +289,7 @@
     "done": "Reihenfolge gespeichert."
   },
   "reset": {
-    "confirm": "Alle Dateien von {{name}} löschen und neu beginnen? Das kann nicht rückgängig gemacht werden.",
+    "confirm": "{{name}} zurücksetzen? Das kann nicht rückgängig gemacht werden.",
     "done": "{{name}} wurde zurückgesetzt."
   },
   "resolve": {
@@ -322,6 +330,7 @@
   },
   "set": {
     "default": "Standard",
+    "cannot_clear": "{{key}} darf nicht leer sein. Gib einen neuen Wert an.",
     "done": "{{count}} Einstellung(en) für {{name}} gespeichert.",
     "group": {
       "advanced": "Erweitert",
