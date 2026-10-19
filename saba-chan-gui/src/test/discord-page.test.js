@@ -48,6 +48,9 @@ describe('nodePermissions (데몬 src/chat/mod.rs 해석과 같다)', () => {
         expect(cloudStateOf({ hostId: 'h', connected: true })).toBe('connected');
         expect(cloudStateOf({ hostId: 'h', error: 'x' })).toBe('error');
         expect(cloudStateOf({ hostId: 'h' })).toBe('connecting');
+        // 데몬에서 설정을 아직 못 읽었으면 호스트가 비어도 연결 전이라고 단정하지 않는다
+        expect(cloudStateOf({ hostId: '', loaded: false })).toBe('checking');
+        expect(cloudStateOf({ hostId: '', loaded: true })).toBe('no_host');
     });
 });
 
@@ -114,8 +117,15 @@ describe('DiscordPage', () => {
         window.showToast = vi.fn();
     });
 
+    it('설정을 아직 읽지 못했으면 연결 버튼 없이 연결 확인 중을 보인다', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: false });
+        await act(async () => render(<Harness save={vi.fn()} hostId="" />));
+        expect(screen.queryByText('Connect a Discord server')).toBeNull();
+        expect(screen.getAllByText('Checking connection').length).toBeGreaterThan(0);
+    });
+
     it('짝지었어도 노드 토큰을 저장하지 못하면 새 호스트로 바꾸지 않는다 (토큰 없는 호스트가 남지 않게)', async () => {
-        useDiscordStore.setState({ saveConfig: vi.fn().mockResolvedValue(true) });
+        useDiscordStore.setState({ saveConfig: vi.fn().mockResolvedValue(true), _botConfigLoaded: true });
         window.api.relayInitiatePairing = vi
             .fn()
             .mockResolvedValue({ code: 'C', pollSecret: 'p', expiresAt: '2999-01-01T00:00:00Z' });

@@ -726,6 +726,8 @@
     "back_to_menu": "메뉴",
     "state_no_host": "연결 안 됨",
     "state_connecting": "연결 중",
+    "state_checking": "연결 확인 중",
+    "checking_body": "저장된 디스코드 연결을 불러오고 있어요. 사바쨩이 깨어나면 바로 보여 드릴게요.",
     "state_connected": "연결됨",
     "state_error": "연결 실패",
     "nodes_empty": "아직 연결된 디스코드 서버가 없어요",

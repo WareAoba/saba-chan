@@ -723,6 +723,8 @@
     "back_to_menu": "選單",
     "state_no_host": "未連線",
     "state_connecting": "連線中",
+    "state_checking": "正在檢查連線",
+    "checking_body": "正在讀取已儲存的 Discord 連線。薩巴醬醒來後會立即顯示。",
     "state_connected": "已連線",
     "state_error": "連線失敗",
     "nodes_empty": "尚未連線任何 Discord 伺服器",

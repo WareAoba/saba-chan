@@ -723,6 +723,8 @@
     "back_to_menu": "Menu",
     "state_no_host": "Non connecté",
     "state_connecting": "Connexion…",
+    "state_checking": "Vérification de la connexion",
+    "checking_body": "Chargement de ta connexion Discord enregistrée. Elle s’affichera dès que Saba-chan sera réveillée.",
     "state_connected": "Connecté",
     "state_error": "Échec de la connexion",
     "nodes_empty": "Aucun serveur Discord connecté pour l'instant",
