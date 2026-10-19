@@ -144,6 +144,8 @@ pub enum RelayError {
     WrongChannel { expected: String, got: String },
     #[error("relay offered {advertised} but the signed manifest is {signed}")]
     VersionMismatch { advertised: String, signed: String },
+    #[error("manifest component {key} has an unsafe {field}: {value}")]
+    UnsafePath { key: String, field: &'static str, value: String },
 }
 
 pub struct RelayClient {
@@ -263,7 +265,32 @@ pub fn verify_release(
             return Err(RelayError::Downgrade { current: current.into(), offered: manifest.version });
         }
     }
+    check_manifest_paths(&manifest)?;
     Ok(manifest)
+}
+
+/// 컴포넌트 키(모듈·익스텐션 폴더 이름이 된다), 받을 파일 이름, `install_dir`가 폴더 밖을 가리키지 않는지.
+/// 서명이 맞아도 확인한다: 이 값들은 그대로 경로에 붙는다
+pub fn check_manifest_paths(manifest: &ReleaseManifest) -> Result<(), RelayError> {
+    // 경로 한 칸: 영문·숫자·`.`·`_`·`-`만, `.`으로 시작하지 않는다 (`..`, 숨김 파일, 구분자, 드라이브·ADS의 `:`를 막는다)
+    let plain = |s: &str| {
+        !s.is_empty() && !s.starts_with('.') && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    };
+    for (key, c) in &manifest.components {
+        let unsafe_path = |field, value: &str| RelayError::UnsafePath { key: key.clone(), field, value: value.to_string() };
+        if !plain(key) {
+            return Err(unsafe_path("key", key));
+        }
+        if !plain(&c.filename) {
+            return Err(unsafe_path("asset", &c.filename));
+        }
+        if let Some(dir) = c.install_dir.as_deref() {
+            if dir != "." && !dir.split(['/', '\\']).all(plain) {
+                return Err(unsafe_path("install_dir", dir));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// check 응답(`latest`)은 서명되지 않는다. 서명된 manifest와 같은 버전일 때만 받으므로 릴리즈 요약의
@@ -445,6 +472,35 @@ mod tests {
             verify_release(&signed, "linux-x64", "stable", "0.1.0"),
             Err(RelayError::Signature(signature::SignatureError::Invalid))
         ));
+    }
+
+    // L16: 키·파일 이름·install_dir가 폴더 밖을 가리키면 서명이 맞아도 manifest를 받지 않는다
+    #[test]
+    fn manifest_paths_must_stay_inside_their_folders() {
+        let with = |key: &str, field: &str, value: &str| {
+            let mut v = manifest("1.0.0", "windows-x64");
+            let comp = v["components"]["saba-core"].take();
+            v["components"] = json!({ key: comp });
+            v["components"][key][field] = json!(value);
+            serde_json::from_value::<ReleaseManifest>(v).unwrap()
+        };
+        assert!(check_manifest_paths(&with("saba-core", "install_dir", ".")).is_ok());
+        assert!(check_manifest_paths(&with("locales", "install_dir", "locales")).is_ok());
+        assert!(check_manifest_paths(&with("module-palworld", "filename", "module-palworld.zip")).is_ok());
+        for (key, field, value) in [
+            ("module-../evil", "filename", "a.zip"),
+            ("ext-a\\b", "filename", "a.zip"),
+            ("saba-core", "filename", "../saba-core.zip"),
+            ("saba-core", "filename", "C:saba-core.zip"),
+            ("saba-core", "install_dir", "../.."),
+            ("saba-core", "install_dir", "C:\\Windows"),
+            ("saba-core", "install_dir", "/etc"),
+        ] {
+            assert!(
+                matches!(check_manifest_paths(&with(key, field, value)), Err(RelayError::UnsafePath { .. })),
+                "{key} {field}={value}"
+            );
+        }
     }
 
     #[test]
