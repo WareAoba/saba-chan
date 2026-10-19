@@ -198,7 +198,7 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
 
         let requested = relaunch_exe.is_some();
         if let Some(cmd) = relaunch_command(relaunch_exe, resolve_gui_exe()) {
-            // 받은 인자는 받은 프로그램의 것이다. 대신 띄우는 GUI에는 넘기지 않는다
+            // 받은 인자는 받은 프로그램의 것이다. --relaunch 없이 찾은 GUI에는 넘기지 않는다
             let extra: &[String] = if requested { &relaunch_extra } else { &[] };
             wait_for_exe(&cmd).await;
             launch_with_retry(&cmd, extra, applied).await;
