@@ -427,6 +427,7 @@
     "loading_tips": "Puede administrar múltiples servidores de juegos simultáneamente"
   },
   "errors": {
+    "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
     "executable_not_found": "Ejecutable del servidor de juegos no encontrado. Por favor verifique la ruta en configuración.",
     "file_not_found": "Archivo o carpeta no encontrada. Por favor verifique la ruta.",
     "permission_denied": "Permiso denegado. Por favor verifique los permisos de acceso al archivo.",
