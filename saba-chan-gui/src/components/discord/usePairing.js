@@ -26,6 +26,10 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
     const [remaining, setRemaining] = useState(0);
     const pollRef = useRef(null);
     const holdRef = useRef(null);
+    // start·reset·화면 이탈마다 올린다: 지난 흐름의 늦은 응답이 상태를 바꾸지 않게
+    const sessionRef = useRef(0);
+    // 만료 시각에 한 번 더 확인하는 함수 (그 직전에 연결됐을 수 있다)
+    const finalCheckRef = useRef(null);
     const claimedRef = useRef(onClaimed);
     claimedRef.current = onClaimed;
 
@@ -35,6 +39,8 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
     }, []);
 
     const reset = useCallback(() => {
+        sessionRef.current++;
+        finalCheckRef.current = null;
         stopPolling();
         if (holdRef.current) clearTimeout(holdRef.current);
         setStatus('idle');
@@ -45,6 +51,7 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
 
     useEffect(
         () => () => {
+            sessionRef.current++;
             stopPolling();
             if (holdRef.current) clearTimeout(holdRef.current);
         },
@@ -57,52 +64,71 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
         const tick = () => {
             const left = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
             setRemaining(left);
-            if (left <= 0) {
-                stopPolling();
-                setStatus('expired');
-            }
+            if (left > 0) return false;
+            stopPolling();
+            const finalCheck = finalCheckRef.current;
+            finalCheckRef.current = null;
+            if (finalCheck) finalCheck();
+            else setStatus('expired');
+            return true;
         };
-        tick();
-        const id = setInterval(tick, 1000);
+        if (tick()) return;
+        const id = setInterval(() => {
+            if (tick()) clearInterval(id);
+        }, 1000);
         return () => clearInterval(id);
     }, [status, expiresAt, stopPolling]);
 
     const start = useCallback(async () => {
         stopPolling();
+        const session = ++sessionRef.current;
+        const live = () => sessionRef.current === session;
+        finalCheckRef.current = null;
         setStatus('issuing');
         try {
             // 데몬은 설정(cloud.relay_url)에 저장된 릴레이로만 짝짓는다: 바꾼 주소를 먼저 저장한다
             if (beforeStart && (await beforeStart()) === false) throw new Error('relay url not saved');
             const data = await window.api.relayInitiatePairing({ relayUrl });
+            if (!live()) return;
             if (!data || data.error) throw new Error(data?.error || 'no response');
-            setCode(data.code);
-            setExpiresAt(data.expiresAt);
-            setStatus('waiting');
-            pollRef.current = setInterval(async () => {
+            let settled = false;
+            // final: 만료 시각 뒤의 마지막 확인. 그때도 연결되지 않았으면 만료로 끝낸다
+            const check = async (final) => {
+                let s = null;
                 try {
-                    const s = await window.api.relayPollPairingStatus(data.code, data.pollSecret, relayUrl);
-                    if (!s || s.error) return;
-                    if (s.status === 'claimed') {
-                        stopPolling();
-                        // 마무리(노드 토큰 저장)가 실패하면 다시 짝지어야 한다: 성공으로 보이지 않는다
-                        if ((await claimedRef.current?.(s)) === false) {
-                            setStatus('error');
-                            return;
-                        }
-                        setStatus('success');
-                        holdRef.current = setTimeout(() => {
-                            setStatus('idle');
-                            setCode('');
-                        }, SUCCESS_HOLD_MS);
-                    } else if (s.status === 'expired') {
-                        stopPolling();
-                        setStatus('expired');
-                    }
+                    s = await window.api.relayPollPairingStatus(data.code, data.pollSecret, relayUrl);
                 } catch {
                     /* 네트워크 오류 — 계속 기다린다 */
                 }
-            }, POLL_MS);
+                if (settled || !live()) return;
+                if (s?.status === 'claimed') {
+                    settled = true;
+                    stopPolling();
+                    // 마무리(노드 토큰 저장)가 실패하면 다시 짝지어야 한다: 성공으로 보이지 않는다
+                    const ok = (await claimedRef.current?.(s)) !== false;
+                    if (!live()) return;
+                    if (!ok) {
+                        setStatus('error');
+                        return;
+                    }
+                    setStatus('success');
+                    holdRef.current = setTimeout(() => {
+                        setStatus('idle');
+                        setCode('');
+                    }, SUCCESS_HOLD_MS);
+                } else if (s?.status === 'expired' || final) {
+                    settled = true;
+                    stopPolling();
+                    setStatus('expired');
+                }
+            };
+            finalCheckRef.current = () => check(true);
+            setCode(data.code);
+            setExpiresAt(data.expiresAt);
+            setStatus('waiting');
+            pollRef.current = setInterval(() => check(false), POLL_MS);
         } catch (e) {
+            if (!live()) return;
             console.error('[Pairing] initiate failed:', e);
             setStatus('error');
         }
