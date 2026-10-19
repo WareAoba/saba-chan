@@ -62,8 +62,8 @@ jobs:
           files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
           echo "$files"
           echo "full=false" >> "$GITHUB_OUTPUT"
-          # 문서·릴리스 노트·GUI 화면 소스만 바뀌면 Rust는 돌리지 않는다
-          if echo "$files" | grep -qvE '^(docs/|release-notes/|saba-chan-gui/src/|saba-chan-gui/public/|.*\.md$)'; then
+          # 문서·릴리스 노트·GUI 화면 소스만 바뀌면 Rust는 돌리지 않는다 (public/은 tray.rs가 include_bytes!로 묶어 제외하지 않는다)
+          if echo "$files" | grep -qvE '^(docs/|release-notes/|saba-chan-gui/src/|.*\.md$)'; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
