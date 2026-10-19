@@ -3130,6 +3130,33 @@ mod tests {
         assert!(without["lines"][0].get("spans").is_none());
     }
 
+    /// 재부팅 뒤 기록된 PID를 다른 프로세스가 쓰면 다시 붙지 않는다 (붙으면 정지할 때 그 프로세스를 끈다)
+    #[tokio::test]
+    async fn a_pid_reused_after_reboot_is_not_reattached() {
+        let tmp = tempfile::tempdir().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
+        for (id, before_start) in [("reused", true), ("same", false)] {
+            let mut inst = crate::instance::ServerInstance::new(id, "minecraft");
+            inst.id = id.into();
+            supervisor.instance_store.add(inst).unwrap();
+            let inst_dir = supervisor.instance_store.instance_dir(id);
+            std::fs::create_dir_all(&inst_dir).unwrap();
+            let pid_file = inst_dir.join("managed.pid");
+            std::fs::write(&pid_file, std::process::id().to_string()).unwrap();
+            if before_start {
+                // 이 프로세스가 뜨기 한 시간 전에 기록한 PID
+                let started = process::process_start_time(std::process::id()).unwrap();
+                let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(started - 3600);
+                std::fs::File::options().write(true).open(&pid_file).unwrap().set_modified(at).unwrap();
+            }
+        }
+        supervisor.reattach_orphaned_managed().await;
+        assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
+        assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
+        assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
+    }
+
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여
     /// 중복 프로세스 생성을 방지하는지 검증
     #[tokio::test]
@@ -3268,33 +3295,6 @@ mod tests {
         assert_eq!(result["already_running"], true);
         assert_eq!(result["pid"], current_pid);
         assert_eq!(supervisor.read().await.tracker.get_pid("test-nm-guard").unwrap(), current_pid);
-    }
-
-    /// 재부팅 뒤 기록된 PID를 다른 프로세스가 쓰면 다시 붙지 않는다 (붙으면 정지할 때 그 프로세스를 끈다)
-    #[tokio::test]
-    async fn a_pid_reused_after_reboot_is_not_reattached() {
-        let tmp = tempfile::tempdir().unwrap();
-        let instances_dir = tmp.path().join("instances");
-        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
-        for (id, before_start) in [("reused", true), ("same", false)] {
-            let mut inst = crate::instance::ServerInstance::new(id, "minecraft");
-            inst.id = id.into();
-            supervisor.instance_store.add(inst).unwrap();
-            let inst_dir = supervisor.instance_store.instance_dir(id);
-            std::fs::create_dir_all(&inst_dir).unwrap();
-            let pid_file = inst_dir.join("managed.pid");
-            std::fs::write(&pid_file, std::process::id().to_string()).unwrap();
-            if before_start {
-                // 이 프로세스가 뜨기 한 시간 전에 기록한 PID
-                let started = process::process_start_time(std::process::id()).unwrap();
-                let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(started - 3600);
-                std::fs::File::options().write(true).open(&pid_file).unwrap().set_modified(at).unwrap();
-            }
-        }
-        supervisor.reattach_orphaned_managed().await;
-        assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
-        assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
-        assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
     }
 
     /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
