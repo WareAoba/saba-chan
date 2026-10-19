@@ -2049,7 +2049,7 @@ mod tests {
         assert_eq!(super::install_dir_of(&instance, dir, None), std::path::PathBuf::from("D:/Steam/steamapps/common/PalServer"));
     }
 
-    // 업데이트는 서버가 도는 working_dir에 쓴다: 같은 폴더를 쓰는 다른 인스턴스가 작업 중이면 덮어쓰지 않는다
+    // 업데이트는 서버가 도는 working_dir에 쓴다: 같은 폴더(그 안이나 바깥)를 쓰는 다른 인스턴스가 작업 중이면 덮어쓰지 않는다
     #[tokio::test]
     async fn an_update_waits_for_other_instances_sharing_the_server_folder() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2065,10 +2065,12 @@ mod tests {
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let shared = tmp.path().join("PalServer").to_string_lossy().to_string();
+        // 예전에 만든 인스턴스는 다른 서버 폴더 안에 있을 수 있다: 같은 폴더처럼 잠근다
+        let inside = tmp.path().join("PalServer").join("Pal").to_string_lossy().to_string();
         let mut ids = Vec::new();
-        for name in ["a", "b"] {
+        for (name, dir) in [("a", &shared), ("b", &inside)] {
             let mut inst = crate::instance::ServerInstance::new(name, "game");
-            inst.working_dir = Some(shared.clone());
+            inst.working_dir = Some(dir.clone());
             inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
             ids.push(inst.id.clone());
             sup.instance_store.add(inst).unwrap();

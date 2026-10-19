@@ -751,6 +751,7 @@
     "pair_waiting": "Waiting for the command in Discord",
     "pair_success": "Connected!",
     "pair_expired": "The code has expired",
+    "pair_not_saved": "The command went through in Discord, but we couldn't save the connection on this PC. Get a new code and connect again",
     "pair_error": "Couldn't get a code. Check your internet connection",
     "pair_again": "Get a new code",
     "cancel": "Cancel",
