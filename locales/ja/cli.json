@@ -25,7 +25,8 @@
     "use_existing": "既存のサーバーフォルダーを使う",
     "folder_is": "{{dir}} は {{game}} サーバーのようです。",
     "pick_game": "--module でゲームを選んでください。",
-    "folder_in_use": "{{dir}} はすでに {{name}} が使っています。同じフォルダーに 2 つのサーバーを置くと互いに上書きしてしまいます。"
+    "folder_in_use": "{{dir}} はすでに {{name}} が使っています。同じフォルダーに 2 つのサーバーを置くと互いに上書きしてしまいます。",
+    "created_settings_failed": "{{name}} は作成しましたが、設定を保存できませんでした: {{error}}"
   },
   "bot": {
     "ask_token": "ノードトークン",
@@ -64,6 +65,27 @@
     "token_saved": "ノードトークンを保存しました。",
     "unpaired": "ペアリングを解除しました。",
     "invite": "次のリンクからボットを Discord サーバーに招待してください:",
+    "channel": "チャンネル",
+    "channel_ambiguous": "{{name}} という名前のチャンネルが複数あります。ID で指定してください。",
+    "channel_none": "なし",
+    "chatbot_channels": "チャットボットのチャンネル",
+    "music_channel": "音楽チャンネル",
+    "notify_channel": "通知チャンネル",
+    "confirm_music_channel": "#{{name}} を音楽チャンネルにすると、そのチャンネルの通常のメッセージは削除されます。続けますか?",
+    "channels_saved": "チャンネルの割り当てを変更しました。",
+    "channels_bot_missing": "ボットがこの Discord サーバーにいないため、チャンネル一覧を取得できません。招待: saba-chan-cli bot invite",
+    "discord_saved": "Discord の設定を保存しました。",
+    "discord_not_synced": "この PC には保存しましたが、ボットに届きませんでした。ボットが再接続したときに送ります。",
+    "on": "オン",
+    "off": "オフ",
+    "locale": "言語",
+    "locale_auto": "自動 (この PC の言語)",
+    "sleeping": "スリープ",
+    "music": "音楽",
+    "music_ui": "プレイヤーパネル",
+    "music_queue_lines": "キューの行数",
+    "music_refresh": "パネルの更新",
+    "music_normalize": "音量をそろえる",
     "allow_all": "このDiscordサーバーはこのPCのすべてのサーバーを見られます。",
     "allow_none": "開いているサーバーがありません。",
     "allow_all_saved": "{{guild}} はすべてのサーバーを見られるようになりました。",
@@ -71,6 +93,10 @@
     "link_accepted": "{{guild}} をこのPCに接続しました。",
     "link_declined": "接続リクエストを拒否しました。",
     "pair_gui_hint": "Discordの接続状態はGUIのDiscord画面でも確認できます。",
+    "words": "呼び出し語",
+    "command_words": "コマンド語",
+    "words_saved": "{{server}} のチャット用の語を保存しました。",
+    "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}"
   },
@@ -117,7 +143,28 @@
     "saved": "保存しました: {{keys}}",
     "confirm_reset_all": "すべての設定を既定値に戻しますか？",
     "confirm_reset": "{{keys}} を既定値に戻しますか？",
-    "all": "すべての設定"
+    "all": "すべての設定",
+    "confirm_export_secrets": "パスワード・チャットボットの API キー・ボットのペアリングもそのままファイルに入ります。続けますか?",
+    "exported": "{{path}} に設定とサーバー {{count}} 件を保存しました。",
+    "export_no_secrets": "パスワード・API キー・ボットのペアリングは含めていません。含めるには --secrets を付けてください。",
+    "import_preview": "取り込むと次のように変わります (まだ何も変えていません)。",
+    "imported": "取り込みました。",
+    "import_added": "新しいサーバー",
+    "import_replaced": "上書きしたサーバー",
+    "import_settings": "設定",
+    "import_skipped": "{{name}}: スキップ ({{reason}})",
+    "import_missing_module": "{{module}} モジュールがこの PC にありません。そのサーバーを起動する前にモジュールをインストールしてください。",
+    "import_move_files": "ゲームサーバーのファイルは含まれていません。サーバーフォルダーを同じパスに移すか、サーバー設定でフォルダーを変更してください。",
+    "skip_reason": {
+      "exists": "すでにあります。置き換えるには --overwrite",
+      "running": "起動中",
+      "working_dir_in_use": "別のサーバーが同じフォルダーを使っています",
+      "invalid_id": "無効な ID",
+      "save_failed": "保存できませんでした",
+      "name_taken": "同じ名前のサーバーがあります",
+      "busy": "インストール・更新・バックアップ・復元の最中です"
+    },
+    "import_token_moved": "ボットのペアリングも移しました。古い PC の接続を切ってください (古い PC で: saba-chan-cli bot unpair)。"
   },
   "console": {
     "attach_help": "{{name}} に接続しました。コマンドを入力してください。:help でヘルプ、:q で抜けます（サーバーは動き続けます）。",
@@ -203,13 +250,22 @@
       "nothing_to_back_up": "ワールドがまだありません。一度サーバーを起動して作成してください。",
       "backup_busy": "このサーバーのバックアップまたは復元がすでに実行中です。終わってからもう一度試してください。",
       "invalid_relay_url": "リレーのアドレスは https:// のみ使えます(この PC でのテスト用に localhost・127.0.0.1・[::1] の http だけは使えます)。",
-      "no_command_path": "このサーバーはサバちゃんの外で起動されたため、コマンドを受け付けるコンソールがありません。サバちゃんから再起動してください: saba-chan-cli restart <server>"
+      "no_command_path": "このサーバーはサバちゃんの外で起動されたため、コマンドを受け付けるコンソールがありません。サバちゃんから再起動してください: saba-chan-cli restart <server>",
+      "conflict_with": "重なる相手: {{name}}",
+      "word": {
+        "invalid": "空白なしの 1〜32 文字で書いてください",
+        "reserved": "予約語なので使えません",
+        "conflict": "すでに別のものを呼ぶ語です",
+        "unknown_command": "このサーバーにないコマンドです",
+        "too_many": "語は 10 個までです"
+      }
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
     "not_found": "「{{query}}」という{{what}}はありません。",
     "pair_expected": "KEY=VALUE の形式が必要ですが、「{{got}}」が指定されました。",
-    "timeout": "デーモンの応答に時間がかかりすぎました（{{path}}）。"
+    "timeout": "デーモンの応答に時間がかかりすぎました（{{path}}）。",
+    "body_read": "{{path}} の応答を最後まで受け取れませんでした: {{error}}"
   },
   "agree": {
     "none": "{{name}}に同意する規約はありません。",
@@ -254,7 +310,8 @@
     "url_one_id": "--url と --sha256 は一度に 1 つの拡張機能 ID にのみ使えます。",
     "no_config": "{{id}} には設定がありません。",
     "status_busy": "起動中: {{list}}",
-    "status_done": "準備完了: {{list}}"
+    "status_done": "準備完了: {{list}}",
+    "update_failed": "{{n}} 個のエクステンションを更新できませんでした。"
   },
   "history": {
     "none": "停止の記録はまだありません。"
@@ -373,7 +430,8 @@
     "bye": "またね。デーモンとサーバーは動き続けます。",
     "ctrl_c": "（もう一度 Ctrl+C を押すか exit と入力すると終了します）",
     "help_line": "コマンドを入力するか（help、Tab で補完）、Discord と同じように話しかけてください（例: \"my-server-1 start\"）。exit で終了します。",
-    "welcome": "サバちゃん CLI {{version}}"
+    "welcome": "サバちゃん CLI {{version}}",
+    "lang_fixed": "シェルの中では言語を変えられません。今の言語 ({{lang}}) のままです。"
   },
   "start": {
     "already": "{{name}} はすでに動いています。",
@@ -467,6 +525,10 @@
   "validate": {
     "blocked": "これらを修正するまでサーバーを起動できません。",
     "ok": "{{name}} は起動できる状態のようです。"
+  },
+  "launch_preview": {
+    "no_args": "{{name}} のモジュールは設定を起動引数に使いません。",
+    "invalid_format": "形式が正しくありません: {{arg}} ({{field}})"
   },
   "help": {
     "cmd": {},
@@ -578,14 +640,37 @@
     "forgot": "チャットボットの記憶を消去しました。",
     "not_synced": "この PC に保存しました。ボットが接続されると Discord に反映されます（saba-chan-cli bot status）。",
     "sync_failed": "Discord サーバー {{guild}} に変更が反映されませんでした: {{error}}",
-    "read_failed": "{{path}} を読み込めませんでした: {{error}}"
+    "read_failed": "{{path}} を読み込めませんでした: {{error}}",
+    "cleared_pending": "この PC のチャットボット設定とキーを消しました。リレーにはまだ届いていないため、次の接続時に消します。"
   },
   "trust": {
     "verified": "確認済み",
     "modified": "変更あり",
-    "unverified": "未確認"
+    "unverified": "未確認",
+    "notice": {
+      "module_unverified": "公式カタログ以外から入手したモジュール ({{id}}) で作成しました。信頼できる入手元か確認してください。",
+      "module_modified": "モジュール ({{id}}) のファイルがインストール後に変わっています。自分で編集したのでなければ再インストールしてください。",
+      "extension_unverified": "公式カタログ以外から入手したエクステンション ({{id}}) を有効にしました。信頼できる入手元か確認してください。",
+      "extension_modified": "エクステンション ({{id}}) のファイルがインストール後に変わっています。自分で編集したのでなければ再インストールしてください。",
+      "isolated": "この構成要素は隔離された環境で動きます (許可したフォルダーのみ)"
+    }
+  },
+  "do": {
+    "bad_pair": "入力は key=value の形にしてください: {{pair}}",
+    "confirm": "{{action}} を実行しますか?",
+    "done": "{{action}} が完了しました",
+    "col": {
+      "id": "アクション",
+      "title": "名前",
+      "risk": "リスク"
+    }
   },
   "audit": {
+    "empty": "まだ記録がありません。",
+    "when": "日時",
+    "from": "送信元",
+    "what": "内容",
+    "result": "結果",
     "scanning": "{{name}} のコードを検査中...",
     "declared": "宣言済み",
     "none_declared": "(なし)",
