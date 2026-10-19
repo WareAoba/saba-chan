@@ -240,7 +240,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 - GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
 - 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다. 버전은 `versions.toml`에서 읽는다(`build-windows.ps1:27-28`). GUI 화면을 `npm run build`(vite)로 먼저 만들고(`:59-72`, Tauri GUI가 `build/`를 exe에 넣는다), 이어서 `cargo build --release --workspace`(`:98`)가 데몬·CLI·업데이터·인스톨러와 함께 `target/release/saba-chan-gui.exe`를 만든다(`:127`).
 - `package-release.py`는 **windows-x64 asset만** 만든다. manifest도 `--platform windows-x64`로 만든다.
-- 필수 구성요소(`saba-core`, `gui`, `updater`)가 이번 릴리즈에도 이전 릴리즈에도 없으면 `package-release.py`가 실패한다(`required`, `missing_required`). 설치기도 manifest에 셋 중 하나라도 없으면 `fetch_failed`로 설치를 멈춘다(`installer/gui/src-tauri/src/release.rs`의 `REQUIRED`).
+- 필수 구성요소는 `versions.toml`의 `[components.<키>] required = true`(지금은 `saba-core`, `gui`, `updater`) 한 곳에서 정한다. 이번 릴리즈에도 이전 릴리즈에도 없으면 `package-release.py`가 실패한다(`missing_required`). 설치기는 같은 파일을 빌드에 담아 읽고, manifest에 하나라도 없으면 기존 데몬을 끄기 전에 `release_incomplete`로 멈춘다(`installer/gui/src-tauri/src/release.rs`의 `required_components`).
 - `package-release.py`는 zip을 표준 형태로 다시 담는다: 경로 구분자를 `/`로 바꾸고, GUI zip 루트의 앱 exe를 `saba-chan-gui.exe`로 바꾸며(Tauri 빌드는 이미 `saba-chan-gui.exe`라 그대로다. `Saba-chan.exe` 개명은 옛 Electron zip에만 해당한다), 다른 컴포넌트의 exe는 뺀다(`package-release.py:147-184`). 다만 컴포넌트의 `bundles`에 적은 exe는 남기므로 raw saba-core zip에 든 `saba-runner.exe`가 재포장에서 빠지지 않는다(`:58-59, 166-169`). saba-core zip에는 `saba-runner.exe`와 공유 모듈(`i18n.py`, `daemon_rcon.py`)이 같이 들어간다(`package-release.py:48-60`).
 
 ### 3.2 modules / extensions repo

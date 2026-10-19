@@ -364,9 +364,6 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
-    // 덮어쓰기 설치: 이 폴더의 데몬이 떠 있으면 먼저 끈다 (파일 잠금 방지)
-    uninstall::stop_daemon_before_install(&install_dir).await;
-
     // Step 2: 서명된 릴리즈 manifest (5-10%)
     emit("fetch", "Fetching release information...", 7);
     let manifest = match config.release.clone() {
@@ -400,13 +397,18 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
 
     // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
     // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
+    // 필수 컴포넌트가 빠진 릴리즈는 기존 설치를 건드리기 전에 멈춘다
     let components = match release::installable(&manifest) {
         Ok(c) => c,
-        Err(e) => {
-            emit_error(&app, &state, "fetch_failed", &e).await;
+        Err(missing) => {
+            let msg = format!("The release is missing required components: {}", missing.join(", "));
+            emit_error(&app, &state, "release_incomplete", &msg).await;
             return;
         }
     };
+
+    // 덮어쓰기 설치: 이 폴더의 데몬이 떠 있으면 먼저 끈다 (파일 잠금 방지)
+    uninstall::stop_daemon_before_install(&install_dir).await;
     let total = components.len().max(1);
     let mut installed = Vec::new();
     let mut installed_versions = UpdateManager::load_installed_manifest();

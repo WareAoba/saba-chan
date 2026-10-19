@@ -31,15 +31,26 @@ pub fn required_installer_version(manifest: &ReleaseManifest) -> Option<&str> {
     manifest.components.get("installer").map(|c| c.version.as_str())
 }
 
-/// 하나라도 빠지면 앱이 돌지 않는 컴포넌트 (패키징 스크립트의 `required`와 같다)
-const REQUIRED: &[&str] = &["saba-core", "gui", "updater"];
+/// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다)
+fn required_components() -> Vec<String> {
+    let versions: toml::Table = include_str!("../../../../versions.toml").parse().unwrap_or_default();
+    let Some(components) = versions.get("components").and_then(|c| c.as_table()) else {
+        return Vec::new();
+    };
+    components
+        .iter()
+        .filter(|(_, c)| c.get("required").and_then(|r| r.as_bool()) == Some(true))
+        .map(|(k, _)| k.clone())
+        .collect()
+}
 
 /// 설치 폴더에 풀 컴포넌트 (키 순서로 정렬). 모듈·익스텐션은 고른 것만 데이터 폴더에 따로 설치한다.
-/// 필수 컴포넌트가 빠진 릴리즈는 반쪽 설치가 되므로 오류다
-pub fn installable(manifest: &ReleaseManifest) -> Result<Vec<(&String, &ManifestComponent)>, String> {
-    let missing: Vec<&str> = REQUIRED.iter().copied().filter(|k| !manifest.components.contains_key(*k)).collect();
+/// 필수 컴포넌트가 빠진 릴리즈는 반쪽 설치가 되므로 빠진 키 목록을 오류로 돌려준다
+pub fn installable(manifest: &ReleaseManifest) -> Result<Vec<(&String, &ManifestComponent)>, Vec<String>> {
+    let missing: Vec<String> =
+        required_components().into_iter().filter(|k| !manifest.components.contains_key(k)).collect();
     if !missing.is_empty() {
-        return Err(format!("The release is missing required components: {}", missing.join(", ")));
+        return Err(missing);
     }
     let mut list: Vec<_> = manifest
         .components
@@ -194,8 +205,7 @@ mod tests {
             is_critical: false,
             components,
         };
-        let err = installable(&manifest).unwrap_err();
-        assert!(err.contains("gui") && err.contains("updater"), "{err}");
+        assert_eq!(installable(&manifest).unwrap_err(), ["gui", "updater"]);
     }
 
     /// 깨끗한 설치로 받은 공식 모듈이 데몬에서 "verified"로 보여야 격리·검사 없이 돈다

@@ -43,14 +43,12 @@ from pathlib import Path
 #   output_name   — 최종 zip 파일 이름 (이전 릴리즈 탐색 기준)
 #   install_dir   — 인스톨러가 설치할 디렉터리
 #   exe_name      — exe를 zip으로 감쌀 때 내부 파일명
-#   required      — 없으면 릴리즈를 만들지 않는다 (인스톨러 release.rs의 REQUIRED와 같다)
 
 COMPONENTS = [
     {
         "key": "saba-core",
         "raw_patterns": [r"saba-core\.exe$", r"saba-core.*\.zip$"],
         "output_name": "saba-core-windows-x64.zip",
-        "required": True,
         "install_dir": ".",
         "exe_name": "saba-core.exe",
         # 공유 모듈 유틸리티 — %APPDATA%/saba-chan/modules/ 에 설치됨
@@ -71,7 +69,6 @@ COMPONENTS = [
         "key": "gui",
         "raw_patterns": [r"saba-chan-gui\.exe$", r"[Ss]aba.*[Cc]han\.exe$", r"saba-chan-gui.*\.zip$"],
         "output_name": "saba-chan-gui-windows-x64.zip",
-        "required": True,
         "install_dir": ".",
         "exe_name": "saba-chan-gui.exe",
     },
@@ -79,7 +76,6 @@ COMPONENTS = [
         "key": "updater",
         "raw_patterns": [r"saba-chan-updater\.exe$", r"saba-chan-updater.*\.zip$"],
         "output_name": "saba-chan-updater-windows-x64.zip",
-        "required": True,
         "install_dir": ".",
         "exe_name": "saba-chan-updater.exe",
     },
@@ -107,8 +103,10 @@ OUTPUT_DIR = Path("output")
 # ─── 유틸리티 ────────────────────────────────────────────
 
 def missing_required(manifest_components: dict) -> list[str]:
-    """manifest에 빠진 필수 컴포넌트 키"""
-    return [c["key"] for c in COMPONENTS if c.get("required") and c["key"] not in manifest_components]
+    """manifest에 빠진 필수 컴포넌트 키 (versions.toml의 `required = true`, 설치기도 같은 값을 읽는다)"""
+    import tomllib
+    data = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))
+    return [k for k, c in data.get("components", {}).items() if c.get("required") and k not in manifest_components]
 
 
 def sha256_file(path: Path) -> str:
