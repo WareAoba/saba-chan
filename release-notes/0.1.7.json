@@ -1,0 +1,4 @@
+{
+  "ko": "0.1.6에서 공식 모듈·익스텐션이 확인되지 않은 것으로 잘못 보여 격리 실행되던 문제를 고쳤습니다(마인크래프트가 백신 판정과 함께 바로 꺼지거나 팰월드 SteamCMD 설치가 막히던 증상). 업데이트하면 설치 기록이 없는 모듈·익스텐션을 공식 카탈로그에서 다시 받습니다.",
+  "en": "Fixes official modules and extensions being treated as unverified in 0.1.6 and run sandboxed (Minecraft closing right away with an antivirus verdict, or the Palworld SteamCMD install being blocked). After updating, modules and extensions without an install record are downloaded again from the official catalog."
+}

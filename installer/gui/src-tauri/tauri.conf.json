@@ -1,6 +1,6 @@
 {
   "productName": "Saba-chan Installer",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "identifier": "com.saba-chan.installer",
   "build": {
     "frontendDist": "../src"
