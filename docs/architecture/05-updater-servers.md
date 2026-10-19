@@ -125,7 +125,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 ### 1.5 무결성 검증
 
 - `UpdateManager::verify_integrity` (`lib.rs:469-473`)는 `integrity::verify_installed`를 부른다. 업데이터가 적용할 때 zip에서 푼 파일마다 SHA-256을 `<data_dir>/installed-files.json`에 적어 두고(`record_install`, `integrity.rs:104-121`), 검사는 그 기록과 지금 파일만 비교한다. 네트워크를 쓰지 않는다(`integrity.rs:1-6`).
-- 결과 상태는 `Verified`, `Tampered`, `FileNotFound`, `Error` 중 하나다(`integrity.rs:45-55`). 설치기로 처음 깐 컴포넌트는 기록이 없어 결과에 나오지 않는다.
+- 결과 상태는 `Verified`, `Tampered`, `FileNotFound`, `Error` 중 하나다(`integrity.rs:45-55`). 설치기로 처음 깐 코어 컴포넌트(모듈·익스텐션 밖)는 기록이 없어 결과에 나오지 않는다.
 - `installed-files.json`, `official-components.json`, `installed-manifest.json`은 같은 폴더의 임시 파일에 쓴 뒤 이름을 바꿔 통째로 바꾼다(`lib.rs` `write_atomic`). 고쳐 쓸 때 기존 파일을 읽거나 해석할 수 없으면 덮어쓰지 않고 오류를 낸다(다른 컴포넌트의 기록을 지우지 않게). 기록하는 쪽은 경고만 남기고 적용·설치는 그대로 성공한다.
 - ~~**해시 의미 불일치**: manifest의 zip 해시를 압축을 푼 파일과 비교해 항상 `Tampered`가 된다~~ → 해결: manifest 해시는 다운로드 검증에만 쓰고, 무결성 검사는 설치 때 기록한 파일 해시를 본다(`integrity.rs:1-6`).
 - 다운로드는 해시를 확인한다: `download_verified`가 받은 파일의 sha256을 manifest 값과 대조하고(`lib.rs:673, 727`), 적용 직전에 staging 파일을 다시 대조한다(`lib.rs:876-886`). 응답 머리나 다음 조각이 30초(`download::IDLE_TIMEOUT`) 동안 오지 않으면 끊고, manifest의 `size_bytes`보다 많이 오면 끊는다. `<이름>.part`에 받아 다 맞을 때만 이름을 바꾸므로, 다시 받다 실패해도 이미 받아 둔 파일은 그대로다(`download.rs`).
@@ -204,7 +204,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`lib.rs:353-369`) |
 | 3 (10-45%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs:35-45`, `lib.rs:371-425`). 하나라도 실패하면 설치를 멈춘다 |
 | 3.5 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사(`lib.rs:856-884`) |
-| 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`lib.rs:437-476`, 915-948). 실패는 경고로 남긴다 |
+| 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`lib.rs:437-476`, 915-948). 푼 폴더는 데몬 카탈로그 설치와 같이 `installed-files.json`에 해시를, `official-components.json`에 키를 적어 신뢰 표시가 `verified`가 된다(`release.rs` `install_addon_zip`). 기록하지 못하면 그 구성요소는 `unverified`로 격리되므로 설치 경고로 보인다. 실패는 경고로 남긴다 |
 | 5 (55-70%) | portable Python(python-build-standalone, 판과 SHA-256은 `updater/src/python_pin.rs`에 고정)과 venv (`runtime_bootstrap.rs:42-51`). 실패해도 치명적으로 처리하지 않는다 |
 | 6 | 없음: 로컬 Discord bot이 없어져 portable Node·npm install 단계도 지워졌다 |
 | 7-8 | `setup_config`, 언어 설정을 `config.json`의 `gui.language`에 저장(`lib.rs:886-911`) |

@@ -66,20 +66,30 @@ pub fn modules(manifest: &ReleaseManifest) -> Vec<crate::ModuleInfo> {
 }
 
 /// 모듈·익스텐션 하나를 받아(SHA-256 검증) `target`에 새로 푼다
-pub async fn install_addon(info: &ManifestComponent, target: &Path) -> Result<(), String> {
+pub async fn install_addon(key: &str, info: &ManifestComponent, target: &Path) -> Result<(), String> {
     let temp_dir = std::env::temp_dir().join("saba-chan-installer");
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     let zip = temp_dir.join(&info.filename);
     download(info, &zip, |_, _| {}).await?;
-    let result = (|| {
+    let result = install_addon_zip(key, &zip, target);
+    let _ = std::fs::remove_file(&zip);
+    result
+}
+
+/// 받은 zip을 `target`에 새로 풀고, 서명된 카탈로그에서 받은 것으로 기록한다.
+/// 기록이 없으면 데몬이 "unverified"로 보고 격리해 실행한다 (데몬 카탈로그 설치와 같은 기록)
+fn install_addon_zip(key: &str, zip: &Path, target: &Path) -> Result<(), String> {
+    (|| {
         if target.exists() {
             std::fs::remove_dir_all(target)?;
         }
         std::fs::create_dir_all(target)?;
-        saba_chan_updater_lib::extract_zip(&zip, target, |_| Ok(())).map(|_| ())
-    })();
-    let _ = std::fs::remove_file(&zip);
-    result.map_err(|e| e.to_string())
+        saba_chan_updater_lib::extract_zip(zip, target, |_| Ok(())).map(|_| ())
+    })()
+    .map_err(|e| e.to_string())?;
+    saba_chan_updater_lib::integrity::record_dir(key, target)
+        .and_then(|_| saba_chan_updater_lib::integrity::set_official(key, true))
+        .map_err(|e| format!("Could not record installed files: {}", e))
 }
 
 /// 컴포넌트가 풀릴 폴더
@@ -159,5 +169,35 @@ mod tests {
         let root = Path::new("/opt/saba");
         assert_eq!(target_dir(root, &component("1", Some("."))), root);
         assert_eq!(target_dir(root, &component("1", Some("locales"))), root.join("locales"));
+    }
+
+    /// 깨끗한 설치로 받은 공식 모듈이 데몬에서 "verified"로 보여야 격리·검사 없이 돈다
+    #[test]
+    fn an_installed_addon_is_recorded_as_official() {
+        use std::io::Write;
+        let root = std::env::temp_dir().join(format!("saba-installer-trust-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::env::set_var("SABA_DATA_DIR", &data);
+
+        let zip_path = root.join("module.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zip.start_file("lifecycle.py", zip::write::FileOptions::default()).unwrap();
+        zip.write_all(b"print('hi')").unwrap();
+        zip.finish().unwrap();
+
+        let target = data.join("modules").join("palworld");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("old.py"), "stale").unwrap();
+        install_addon_zip("module-palworld", &zip_path, &target).unwrap();
+
+        assert!(!target.join("old.py").exists(), "the folder is replaced, not merged");
+        assert_eq!(
+            saba_chan_updater_lib::integrity::trust_of("module-palworld", &target),
+            saba_chan_updater_lib::integrity::Trust::Verified
+        );
+        std::env::remove_var("SABA_DATA_DIR");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -472,7 +472,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
                 continue;
             };
             emit("modules-download", &format!("Installing module: {}...", module_id), 49);
-            match release::install_addon(info, &data_dir.join("modules").join(module_id)).await {
+            match release::install_addon(&key, info, &data_dir.join("modules").join(module_id)).await {
                 Ok(()) => installed.push(format!("module:{}", module_id)),
                 Err(e) => warn(format!("Failed to install module '{}': {}", module_id, e)),
             }
@@ -997,7 +997,8 @@ async fn install_required_extensions(
     let mut installed = Vec::new();
     let mut failed = Vec::new();
     for ext_id in required_extensions {
-        let Some(info) = manifest.components.get(&format!("{}{}", relay::EXTENSION_PREFIX, ext_id)) else {
+        let key = format!("{}{}", relay::EXTENSION_PREFIX, ext_id);
+        let Some(info) = manifest.components.get(&key) else {
             failed.push(format!("Extension {} is not in this release", ext_id));
             continue;
         };
@@ -1012,7 +1013,7 @@ async fn install_required_extensions(
 
         let default_dir = format!("extensions/{}", ext_id.replace('-', "_"));
         let target_dir = data_dir.join(info.install_dir.as_deref().unwrap_or(&default_dir));
-        match release::install_addon(info, &target_dir).await {
+        match release::install_addon(&key, info, &target_dir).await {
             Ok(()) => {
                 tracing::info!("익스텐션 '{}' 설치 완료: {}", ext_id, target_dir.display());
                 installed.push(ext_id.clone());
