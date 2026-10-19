@@ -67,7 +67,8 @@ function SettingsModal({
     const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
     const [showAboutPage, setShowAboutPage] = useState(false);
     const [aboutExiting, setAboutExiting] = useState(false);
-    const [appVersion, setAppVersion] = useState('0.1.0');
+    // 받기 전에는 모른다: 지어낸 버전을 보이지 않는다
+    const [appVersion, setAppVersion] = useState(null);
     const [componentInfo, setComponentInfo] = useState(null);
     const aboutBtnRef = useRef(null);
     const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
@@ -1191,26 +1192,26 @@ function SettingsModal({
                         <div className="about-card about-app-card">
                             <div className="about-app-logo-container">
                                 <img src="./title.png" alt="Saba-chan" className="about-app-logo" />
-                                <span className="about-version-badge">v{appVersion}</span>
+                                {appVersion && <span className="about-version-badge">v{appVersion}</span>}
                             </div>
                             <div className="about-app-info">
                                 {/* 컴포넌트 버전 */}
                                 <div className="about-component-list">
                                     <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="package" size="xs" /> Core</span>
-                                        <span className="about-component-ver">v{componentInfo?.components?.['saba-core'] || appVersion}</span>
+                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.['saba-core'] || appVersion)}</span>
                                     </div>
                                     <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="monitor" size="xs" /> GUI</span>
-                                        <span className="about-component-ver">v{componentInfo?.components?.gui || appVersion}</span>
+                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.gui || appVersion)}</span>
                                     </div>
                                     <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="terminal" size="xs" /> CLI</span>
-                                        <span className="about-component-ver">v{componentInfo?.components?.cli || appVersion}</span>
+                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.cli || appVersion)}</span>
                                     </div>
                                     <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="refresh" size="xs" /> Updater</span>
-                                        <span className="about-component-ver">v{componentInfo?.components?.updater || appVersion}</span>
+                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.updater || appVersion)}</span>
                                     </div>
                                 </div>
 
@@ -1243,6 +1244,9 @@ function SettingsModal({
 }
 
 /** 데몬의 lastUpdated(unix 초, 문자열) → 날짜 글자. 읽을 수 없으면 null */
+/** 컴포넌트 버전 표시. 모르면 대시 */
+const versionLabel = (v) => (v ? `v${v}` : '—');
+
 export function formatLastUpdated(secs, language) {
     const n = Number(secs);
     if (!secs || !Number.isFinite(n)) return null;
