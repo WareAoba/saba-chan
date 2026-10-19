@@ -869,6 +869,7 @@
     "channels_err_conflict": "同一个频道不能同时分配给两种用途。",
     "channels_err_unknown": "{{channel}} 不是机器人在此服务器可用的文字频道。",
     "channels_err_bot": "无法确认机器人，因此没有更改。取消分配仍然可以。",
+    "channels_err_moved": "在此期间这个 Discord 服务器已转到另一台电脑，因此没有保存。",
     "channels_err_generic": "无法保存频道分配。",
     "tab_commands": "命令",
     "level_owner": "所有者",

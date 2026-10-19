@@ -872,6 +872,7 @@
     "channels_err_conflict": "The same channel can't be assigned to two kinds at once.",
     "channels_err_unknown": "{{channel}} isn't a text channel the bot can use in this server.",
     "channels_err_bot": "The bot couldn't be checked, so nothing changed. Unassigning still works.",
+    "channels_err_moved": "This Discord server moved to another PC in the meantime, so nothing was saved.",
     "channels_err_generic": "Couldn't save channel assignments.",
     "tab_commands": "Commands",
     "level_owner": "Owner",

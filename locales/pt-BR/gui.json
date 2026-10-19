@@ -869,6 +869,7 @@
     "channels_err_conflict": "O mesmo canal não pode ser atribuído a dois tipos ao mesmo tempo.",
     "channels_err_unknown": "{{channel}} não é um canal de texto que o bot pode usar neste servidor.",
     "channels_err_bot": "Não foi possível verificar o bot, então nada mudou. Remover ainda funciona.",
+    "channels_err_moved": "Enquanto isso, este servidor do Discord foi movido para outro PC, então nada foi salvo.",
     "channels_err_generic": "Não foi possível salvar as atribuições de canais.",
     "tab_commands": "Comandos",
     "level_owner": "Dono",
