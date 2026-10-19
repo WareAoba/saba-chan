@@ -266,7 +266,7 @@ pub async fn sync_on_connect(state: &IPCServer) {
 }
 
 /// 챗봇 설정의 읽고-바꾸고-저장하기를 한 번에 하나씩 (키 교체와 설정 저장이 겹쳐도 서로의 값을 지우지 않게)
-static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(super) static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub async fn put_chatbot(State(state): State<IPCServer>, Json(patch): Json<ChatbotPatch>) -> Response {
     let _turn = SAVE_LOCK.lock().await;
