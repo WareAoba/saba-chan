@@ -14,24 +14,24 @@
 # R2 경로는 releases/<release version>/<asset> (운영 0.1.1과 같은 규칙).
 
 [release]
-version = "0.1.6"
+version = "0.1.7"
 channel = "stable"
 
 [components.saba-core]
-version = "0.1.6"
+version = "0.1.7"
 asset = "saba-core-{platform}.zip"
 install_dir = "."
 # saba-runner는 saba-core zip에 같이 들어가므로 버전도 같이 간다
 files = ["Cargo.toml", "runner/Cargo.toml"]
 
 [components.cli]
-version = "0.1.6"
+version = "0.1.7"
 asset = "saba-chan-cli-{platform}.zip"
 install_dir = "."
 files = ["saba-chan-cli/Cargo.toml"]
 
 [components.gui]
-version = "0.1.6"
+version = "0.1.7"
 asset = "saba-chan-gui-{platform}.zip"
 install_dir = "."
 files = [
@@ -42,7 +42,7 @@ files = [
 ]
 
 [components.updater]
-version = "0.1.6"
+version = "0.1.7"
 asset = "saba-chan-updater-{platform}.zip"
 install_dir = "."
 files = [
@@ -52,7 +52,7 @@ files = [
 ]
 
 [components.installer]
-version = "0.1.6"
+version = "0.1.7"
 asset = "saba-chan-installer.exe"
 install_dir = "."
 files = [
@@ -61,7 +61,7 @@ files = [
 ]
 
 [components.locales]
-version = "0.1.6"
+version = "0.1.7"
 asset = "locales.zip"
 install_dir = "locales"
 
