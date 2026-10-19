@@ -5,6 +5,7 @@ import './Modals.css';
 import { Icon } from '../Icon';
 
 import { useSabaBubble } from '../../stores/useSabaBubble';
+import { daemonStateOf } from '../servers/DaemonDown';
 import { DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
 import { openWithNotice } from '../../utils/helpers';
@@ -23,7 +24,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
             try {
                 if (window.api && window.api.daemonStatus) {
                     const status = await window.api.daemonStatus();
-                    setDaemonStatus(status.running ? 'running' : 'stopped');
+                    setDaemonStatus(daemonStateOf(status));
                     if (status.running) {
                         setUptime(t('background_modal.uptime_connected'));
                     } else {
@@ -75,7 +76,11 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     };
 
     const tone =
-        daemonStatus === 'running' ? 'ok' : daemonStatus === 'stopped' || daemonStatus === 'error' ? 'stop' : 'warn';
+        daemonStatus === 'running'
+            ? 'ok'
+            : daemonStatus === 'stopped' || daemonStatus === 'error' || daemonStatus === 'token_invalid'
+              ? 'stop'
+              : 'warn';
     const port = ipcPort || DEFAULT_IPC_PORT;
     const address = `${t('background_modal.ipc_host_value')}:${port}`;
 
@@ -94,7 +99,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                 <div className="bg-pop-title">
                     <strong>
                         {t(
-                            `shell.daemon_${daemonStatus === 'error' ? 'stopped' : daemonStatus === 'running' || daemonStatus === 'stopped' ? daemonStatus : 'checking'}`,
+                            `shell.daemon_${daemonStatus === 'error' ? 'stopped' : ['running', 'stopped', 'token_invalid'].includes(daemonStatus) ? daemonStatus : 'checking'}`,
                         )}
                     </strong>
                     <span>{t('shell.daemon_about')}</span>
@@ -104,7 +109,8 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                 </button>
             </div>
 
-            {/* 2. 꺼져 있으면 할 일이 먼저 */}
+            {/* 2. 꺼져 있으면 할 일이 먼저. 토큰이 어긋나면 다시 시작으로 풀리지 않으니 이유만 알린다 */}
+            {daemonStatus === 'token_invalid' && <p className="bg-pop-note">{t('shell.daemon_tip_token_invalid')}</p>}
             {(daemonStatus === 'stopped' || daemonStatus === 'error') && (
                 <button
                     type="button"

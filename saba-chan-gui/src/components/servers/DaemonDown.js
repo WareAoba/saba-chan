@@ -6,8 +6,12 @@ import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaArt } from '../ui/SabaArt';
 
-/** 상단바가 확인한 데몬 상태가 꺼짐·오류인지 ('checking'은 아직 모름) */
-export const daemonDown = (status) => status === 'stopped' || status === 'error';
+/** 상단바가 확인한 데몬 상태가 꺼짐·오류인지 ('checking'은 아직 모름). 토큰이 어긋나도 API를 못 쓰니 꺼진 것과 같다 */
+export const daemonDown = (status) => status === 'stopped' || status === 'error' || status === 'token_invalid';
+
+/** `daemonStatus()` 답 → 상태. 데몬이 떠 있어도 이 앱의 토큰을 받지 않으면 다시 시작으로 풀리지 않아 따로 둔다 */
+export const daemonStateOf = (status) =>
+    status?.running ? 'running' : status?.error_code === 'token_invalid' ? 'token_invalid' : 'stopped';
 
 /** 데몬 다시 시작 버튼. 실패하면 이유를 토스트로 알린다 */
 export function DaemonRestartButton({ className = 'btn btn-primary', wake = false }) {
@@ -47,6 +51,17 @@ export function DaemonRestartButton({ className = 'btn btn-primary', wake = fals
 /** 서버가 하나도 안 보이는데 데몬이 꺼져 있을 때: "서버가 없어요" 대신 */
 export function DaemonDownState() {
     const { t } = useTranslation('gui');
+    const tokenInvalid = useUIStore((s) => s.backgroundDaemonStatus === 'token_invalid');
+    if (tokenInvalid) {
+        return (
+            <div className="page page-empty">
+                <div className="empty-state">
+                    <h2>{t('shell.daemon_token_invalid')}</h2>
+                    <p>{t('shell.daemon_tip_token_invalid')}</p>
+                </div>
+            </div>
+        );
+    }
     return (
         <div className="page page-empty">
             <div className="empty-state">
@@ -62,11 +77,12 @@ export function DaemonDownState() {
 /** 서버 목록은 있지만 데몬이 꺼져 있을 때: 마지막으로 받은 상태라고 알린다 */
 export function DaemonDownNotice() {
     const { t } = useTranslation('gui');
+    const tokenInvalid = useUIStore((s) => s.backgroundDaemonStatus === 'token_invalid');
     return (
         <div className="notice tone-warn daemon-down-notice" role="alert">
             <Icon name="alertTriangle" size="sm" />
-            <span>{t('shell.daemon_down_stale')}</span>
-            <DaemonRestartButton className="btn btn-ghost btn-sm" wake />
+            <span>{t(tokenInvalid ? 'shell.daemon_tip_token_invalid' : 'shell.daemon_down_stale')}</span>
+            {!tokenInvalid && <DaemonRestartButton className="btn btn-ghost btn-sm" wake />}
         </div>
     );
 }
