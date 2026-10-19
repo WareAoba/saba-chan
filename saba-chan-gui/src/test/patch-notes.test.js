@@ -39,7 +39,8 @@ describe('업데이트 결과 알림 (A5)', () => {
         window.__sabaNotice.addNotice({ message: 'updated', action: PATCH_NOTES_ACTION, source: 'Updater', data });
         const onOpen = vi.fn();
         render(<NoticeModal isOpen onClose={vi.fn()} onOpenPatchNotes={onOpen} />);
-        fireEvent.click(screen.getByText('updated'));
+        // 업데이트 결과 알림 문구는 data로 보일 때 만든다
+        fireEvent.click(screen.getByText(/0\.1\.3/));
         expect(onOpen).toHaveBeenCalledWith(data);
         window.__sabaNotice.clearAllNotices();
         expect(window.api.updaterLastResult).toHaveBeenCalledWith({ clear: true });
