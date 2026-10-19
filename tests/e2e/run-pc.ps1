@@ -3,7 +3,7 @@
   saba-chan E2E 전체를 이 PC(Windows)에서 한 번에 돌린다. 설계: tests/e2e/README.md
 
 .DESCRIPTION
-  모든 시험은 -Root(기본 C:\SabaE2E) 안에서만 돈다. 실제 %APPDATA%\saba-chan, 설치본, 기본 포트 57474는 건드리지 않고,
+  모든 시험은 -Root(기본 C:\SabaE2E, -InstalledLayout이면 %USERPROFILE%\SabaE2E) 안에서만 돈다. 실제 %APPDATA%\saba-chan, 설치본, 기본 포트 57474는 건드리지 않고,
   끝날 때 실제 데이터 폴더가 바뀌지 않았는지 비교한다. 프로세스는 이름으로 죽이지 않는다(시험 폴더 경로가 명령줄에 있는 것만).
 
 .EXAMPLE
