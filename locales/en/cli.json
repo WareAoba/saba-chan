@@ -724,6 +724,11 @@
     "level_col": "Level",
     "saved": "Saved permissions for {{guild}}",
     "bad_level": "Unknown level: {{level}} (admin, user, chatbot, banned)",
+    "import_none": "No levels left on the relay to bring in.",
+    "import_confirm": "Bring the levels of the {{count}} member(s) above into this PC?",
+    "import_not_candidate": "{{member}} has nothing to bring in. See the list with `saba-chan-cli perm import <server>`.",
+    "import_partial": "Brought in {{ok}}, {{failed}} failed.",
+    "imported": "Brought in levels for {{count}} member(s) of {{guild}}",
     "level": {
       "owner": "owner",
       "admin": "admin",

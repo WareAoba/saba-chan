@@ -139,7 +139,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
     }
 }
 
-fn relay_of(cfg: &Value) -> Option<&str> {
+pub(crate) fn relay_of(cfg: &Value) -> Option<&str> {
     cfg.pointer("/cloud/relayUrl")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
