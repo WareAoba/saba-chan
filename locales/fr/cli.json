@@ -175,6 +175,7 @@
       "invalid_token_format": "Le jeton de connexion de ce PC est mal formé.",
       "token_replaced": "Un autre PC a été associé au même compte Discord, ce PC a donc été déconnecté.",
       "guild_taken": "Ce serveur Discord est déjà connecté à un autre PC.",
+      "node_moved": "Entre-temps, ce serveur Discord est passé sur un autre PC, rien n'a donc été enregistré.",
       "forbidden": "Vous n'avez pas la permission de faire cela sur ce serveur Discord.",
       "expired": "Le code a expiré. Recommencez.",
       "rate_limited": "Trop de requêtes. Réessayez dans une minute environ.",

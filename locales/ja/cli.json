@@ -175,6 +175,7 @@
       "invalid_token_format": "このPCの接続トークンの形式が正しくありません。",
       "token_replaced": "同じDiscordアカウントで別のPCが接続されたため、このPCの接続が切れました。",
       "guild_taken": "そのDiscordサーバーはすでに別のPCに接続されています。",
+      "node_moved": "その間にそのDiscordサーバーが別のPCに移ったため、保存していません。",
       "forbidden": "そのDiscordサーバーでこの操作をする権限がありません。",
       "expired": "コードの有効期限が切れました。最初からやり直してください。",
       "rate_limited": "リクエストが多すぎます。1分ほどしてからもう一度お試しください。",

@@ -946,6 +946,9 @@ mod tests {
         let offline = api_err(check(503, json!({ "error": "BOT_OFFLINE" }))).to_string();
         assert_eq!(offline, api_err(check(503, json!({ "error": "BOT_NOT_READY" }))).to_string());
         assert_eq!(offline, crate::i18n::try_t("err.relay.bot_unavailable").unwrap());
+        // 확인한 뒤 그 디스코드 서버가 다른 PC로 옮겨 갔다 (릴레이 409, 감사 R6)
+        let moved = api_err(check(409, json!({ "error": "NODE_MOVED" })));
+        assert_eq!(moved.to_string(), crate::i18n::try_t("err.relay.node_moved").unwrap_or_default(), "{}", moved);
     }
 
     #[test]

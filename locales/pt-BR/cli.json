@@ -175,6 +175,7 @@
       "invalid_token_format": "O token de conexão deste PC está mal formado.",
       "token_replaced": "Outro PC foi pareado com a mesma conta do Discord, então este PC foi desconectado.",
       "guild_taken": "Esse servidor do Discord já está conectado a outro PC.",
+      "node_moved": "Enquanto isso, esse servidor do Discord passou para outro PC, então nada foi salvo.",
       "forbidden": "Você não tem permissão para fazer isso nesse servidor do Discord.",
       "expired": "O código expirou. Comece de novo.",
       "rate_limited": "Muitas solicitações. Tente de novo em cerca de um minuto.",
