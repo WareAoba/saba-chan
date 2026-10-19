@@ -139,32 +139,7 @@ impl UpdateManager {
         let mut files = Vec::new();
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            // 옮겨 둔 실행 파일을 기억해 두었다가, 풀다가 실패하면 되돌린다 (C13)
-            let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
-            let result = extract_zip(staged, &exe_dir, |out_path| {
-                // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
-                // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
-                if moved.iter().any(|(p, _)| same_path(p, out_path)) {
-                    return Ok(());
-                }
-                if let Some(backup) = Self::move_aside(out_path)? {
-                    moved.push((out_path.to_path_buf(), backup));
-                }
-                Ok(())
-            });
-            match result {
-                Ok(written) => files = written,
-                Err(e) => {
-                    tracing::error!("[Updater] Applying {} failed, restoring previous binaries: {}", binary_name, e);
-                    for (original, backup) in moved.iter().rev() {
-                        let _ = std::fs::remove_file(original);
-                        if let Err(re) = std::fs::rename(backup, original) {
-                            tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
-                        }
-                    }
-                    return Err(e);
-                }
-            }
+            files = Self::extract_zip_or_restore(staged, &exe_dir, binary_name)?;
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, &exe_dir)?;
         } else {
@@ -178,6 +153,32 @@ impl UpdateManager {
         Ok(files)
     }
 
+    /// zip을 풀며 덮어쓸 실행 파일은 `.old`로 비켜 두고, 풀다가 실패하면 비켜 둔 파일을 되돌린다 (C13)
+    fn extract_zip_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
+        let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let result = extract_zip(staged, dir, |out_path| {
+            // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
+            // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
+            if moved.iter().any(|(p, _)| same_path(p, out_path)) {
+                return Ok(());
+            }
+            if let Some(backup) = Self::move_aside(out_path)? {
+                moved.push((out_path.to_path_buf(), backup));
+            }
+            Ok(())
+        });
+        if let Err(e) = &result {
+            tracing::error!("[Updater] Applying {} failed, restoring previous binaries: {}", what, e);
+            for (original, backup) in moved.iter().rev() {
+                let _ = std::fs::remove_file(original);
+                if let Err(re) = std::fs::rename(backup, original) {
+                    tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+                }
+            }
+        }
+        result
+    }
+
     /// GUI 업데이트 적용
     pub(crate) async fn apply_gui_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
@@ -187,7 +188,7 @@ impl UpdateManager {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
             let mut files = Vec::new();
             if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-                files = extract_zip(staged, &self.install_root, Self::move_aside_binary)?;
+                files = Self::extract_zip_or_restore(staged, &self.install_root, "GUI")?;
             } else if Self::is_tar_gz(staged) {
                 Self::extract_tar_gz(staged, &self.install_root)?;
             } else {
