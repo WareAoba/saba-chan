@@ -827,14 +827,24 @@ mod imp {
         }
         let mut cleared = 0;
         let mut failed = Vec::new();
+        use std::os::windows::fs::MetadataExt;
+        if let Some(e) = std::fs::metadata(&dir).ok().and_then(|m| reparse_refusal(&dir, m.file_attributes())) {
+            return Err(vec![(dir, e)]);
+        }
         let mut pending = vec![dir];
         while let Some(path) = pending.pop() {
             // 링크는 따라가지 않는다 (폴더 밖을 고치지 않게)
             match std::fs::read_dir(&path) {
                 Ok(entries) => {
                     for entry in entries.flatten() {
+                        let attributes = entry.metadata().map(|m| m.file_attributes()).unwrap_or(0);
                         match entry.file_type() {
                             Ok(t) if t.is_symlink() => {}
+                            Ok(_) if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 => {
+                                if let Some(e) = reparse_refusal(&entry.path(), attributes) {
+                                    failed.push((entry.path(), e));
+                                }
+                            }
                             Ok(t) if t.is_dir() => pending.push(entry.path()),
                             Ok(_) if is_executable(&entry.path()) => clear_one(&entry.path(), &mut cleared, &mut failed),
                             Ok(_) => {}
@@ -852,6 +862,20 @@ mod imp {
             Ok(cleared)
         } else {
             Err(failed)
+        }
+    }
+
+    /// 링크가 아닌 재분석 지점(동기화 폴더의 클라우드 파일·폴더 등)이면 막는 까닭. 실행 파일이 아니어도 막는다
+    /// (사용자 결정: 동기화 폴더 아래 서버는 지원하지 않는다). 목록의 속성으로 거르므로 다른 파일은 열지 않는다.
+    /// 그 사이 지워졌으면 막지 않는다
+    fn reparse_refusal(path: &Path, attributes: u32) -> Option<String> {
+        if attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+            return None;
+        }
+        match open_checked(path, 0) {
+            Ok(_) => None,
+            Err(_) if matches!(std::fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) => None,
+            Err(e) => Some(e),
         }
     }
 
@@ -1023,8 +1047,10 @@ mod imp {
             assert_eq!(super::low_label(&exe).unwrap(), None);
             assert_eq!(super::low_label(&ini).unwrap(), Some(true), "the module still writes its settings");
             assert_eq!(super::low_label(&dir).unwrap(), Some(false), "the folder keeps its label");
-            // 다음 격리 실행이 폴더에 다시 쓰기를 주어도 실행 파일은 중간 수준 그대로다
-            super::label_low(&dir).unwrap();
+            // 폴더 표시가 다시 하위로 퍼져도(다른 데몬·도구가 다시 붙임) 실행 파일은 중간 수준 그대로다
+            let out = std::process::Command::new("icacls").arg(&dir).args(["/setintegritylevel", "(OI)(CI)L"]).output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+            assert_eq!(super::low_label(&ini).unwrap(), Some(true));
             assert_eq!(super::low_label(&exe).unwrap(), None);
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
         }
