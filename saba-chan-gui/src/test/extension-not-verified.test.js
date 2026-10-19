@@ -64,10 +64,23 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
         expect(shown(setModal)).toMatch(/ue4-ini, steamcmd/);
     });
 
+    it('정지: message가 없어도 바뀐 익스텐션을 알린다', async () => {
+        window.api.instanceStop = vi.fn().mockResolvedValue(notVerified);
+        const { result, setModal } = setup();
+        await act(async () => result.current.handleStop('A'));
+        await act(async () => setModal.mock.calls.at(-1)[0].onConfirm());
+        expect(shown(setModal)).toMatch(/ue4-ini, steamcmd/);
+    });
+
     it('서버 만들기: extension_required 안내 대신 확인되지 않았다고 알린다', async () => {
         window.api.instanceCreate = vi.fn().mockResolvedValue(notVerified);
         const { result, setModal } = setup();
-        await act(async () => result.current.handleAddServer({ name: 'B', module_name: 'game' }));
+        let returned;
+        await act(async () => {
+            returned = await result.current.handleAddServer({ name: 'B', module_name: 'game' });
+        });
+        // 실패로 알려야 만들기 창이 입력한 이름·게임을 지우지 않는다
+        expect(returned).toBe(false);
         const text = shown(setModal);
         expect(text).toMatch(/ue4-ini, steamcmd/);
         expect(text).not.toMatch(/requires the following extension/);

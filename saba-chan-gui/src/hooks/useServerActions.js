@@ -658,9 +658,9 @@ export function useServerActions({
                         return;
                     }
 
-                    if (result.success === false && result.message) {
+                    const blocked = blockedText(result, t);
+                    if (result.success === false && (result.message || blocked)) {
                         revertOptimistic(name);
-                        const blocked = blockedText(result, t);
                         safeShowToast(
                             blocked ? t('servers.stop_failed_toast', { error: blocked }) : result.message,
                             'error',
@@ -871,7 +871,7 @@ export function useServerActions({
             const blocked = blockedText(result, t);
             if (blocked) {
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: blocked });
-                return;
+                return false;
             }
 
             // ── extension_required 처리 ──
