@@ -546,6 +546,9 @@ export function createApi({ invoke, hub }) {
             daemonCall('post', `/api/instance/${encodeURIComponent(id)}/restart`, { force: !!opts?.force }, 150000),
         instanceRename: (id, name) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/rename`, { name }),
         instanceCommands: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/commands`),
+        // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
+        instanceValidate: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
+        instanceDiagnose: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),
         // 설정 화면용: 디스크의 실제 설정 (실패하면 success:false)
         instanceReadLiveSettings: (id) =>
             daemonCall('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),
@@ -589,6 +592,10 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error);
             }
         },
+        // 익스텐션 설정 (manifest config_fields). Set은 값 객체를 그대로 보낸다(키 단위 병합, null이면 삭제)
+        extensionConfigGet: (extId) => daemonCall('get', `/api/extensions/${encodeURIComponent(extId)}/config`),
+        extensionConfigSet: (extId, config) =>
+            daemonCall('put', `/api/extensions/${encodeURIComponent(extId)}/config`, config),
         extensionI18n: async (extId, locale) => {
             try {
                 return (await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`))
@@ -1033,6 +1040,8 @@ export function createApi({ invoke, hub }) {
         // ── 동의·온보딩·백업·예약·챗봇 ──
         instanceAgreements: (id, accept) => daemonJson('post', instancePath(id, '/agreements'), { accept }),
         onboarding: () => daemonJson('get', '/api/onboarding'),
+        // 문제를 물어볼 때 붙여 넣는 데몬 진단 (비밀은 데몬이 싣지 않는다)
+        daemonDiagnostics: () => daemonJson('get', '/api/diagnostics'),
         instanceBackups: (id) => daemonJson('get', instancePath(id, '/backups')),
         instanceBackupCreate: (id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT),
         instanceBackupDelete: (id, name) =>
