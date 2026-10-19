@@ -391,7 +391,7 @@
     "restart_confirm_message": "Parar e iniciar '{{name}}' de novo? Os jogadores conectados cairão por um momento.",
     "restarting_toast": "Reiniciando '{{name}}'…",
     "restart_completed_toast": "'{{name}}' reiniciado",
-    "port_moved": "A porta REST de gerenciamento {{from}} é reservada pelo Windows, então foi trocada para {{to}}.",
+    "port_moved": "{{name}}: a porta REST de gerenciamento {{from}} é reservada pelo Windows, então foi trocada para {{to}}.",
     "restart_failed_toast": "Não foi possível reiniciar: {{error}}",
     "rename_failed_toast": "Não foi possível renomear: {{error}}",
     "rename_name_taken": "'{{name}}' já está em uso",
