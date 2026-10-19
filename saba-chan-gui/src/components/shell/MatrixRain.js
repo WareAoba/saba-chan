@@ -59,6 +59,7 @@ export function MatrixRain({ className }) {
         let h = 0;
         let raf = 0;
         let last = 0;
+        const moving = motionAllowed();
         const ink = readColor(canvas, '--matrix-ink', '#7d8ee8');
         const head = readColor(canvas, '--matrix-head', '#e6e9ff');
         const fade = readColor(canvas, '--matrix-fade', 'rgba(13, 14, 16, 0.16)');
@@ -75,6 +76,13 @@ export function MatrixRain({ className }) {
             const gap = FONT_PX * 4.2;
             rows = Math.ceil(h / LINE);
             cols = Array.from({ length: Math.ceil(w / gap) }, (_, i) => fresh(i * gap, true));
+            // 크기를 바꾸면 캔버스가 지워진다: 멈춘 화면이면 한 장면을 다시 채운다
+            if (!moving) prefill();
+        };
+
+        // 한 장면만: 몇 번 미리 흘려서 화면을 채운다
+        const prefill = () => {
+            for (let i = 0; i < 60; i++) step();
         };
 
         // 열마다 한 줄씩 내려가되 빠르기(몇 걸음마다 한 줄)가 다르다
@@ -111,13 +119,7 @@ export function MatrixRain({ className }) {
         };
 
         resize();
-        const moving = motionAllowed();
-        if (moving) {
-            raf = requestAnimationFrame(loop);
-        } else {
-            // 한 장면만: 몇 번 미리 흘려서 화면을 채운다
-            for (let i = 0; i < 60; i++) step();
-        }
+        if (moving) raf = requestAnimationFrame(loop);
         window.addEventListener('resize', resize);
         return () => {
             cancelAnimationFrame(raf);

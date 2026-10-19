@@ -103,10 +103,12 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
                             <span className="loading-status-text">{initStatus || t('loading.step_init')}</span>
                             <span className="loading-caret" aria-hidden="true" />
                         </div>
-                        <div className={clsx('loading-log', log && `level-${String(log.level).toLowerCase()}`)}>
+                        <div className={clsx('loading-log', log?.level && `level-${String(log.level).toLowerCase()}`)}>
                             {log ? (
                                 <>
-                                    <span className="loading-log-level">{String(log.level).toUpperCase()}</span>
+                                    {log.level && (
+                                        <span className="loading-log-level">{String(log.level).toUpperCase()}</span>
+                                    )}
                                     <span className="loading-log-msg">{log.message}</span>
                                 </>
                             ) : (

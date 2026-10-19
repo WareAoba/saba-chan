@@ -32,4 +32,13 @@ describe('LoadingScreen 데몬 로그 줄', () => {
         await act(async () => vi.advanceTimersByTime(2000));
         expect(window.api.daemonConsole).not.toHaveBeenCalled();
     });
+
+    it('로그에 수준이 없으면 수준 칸을 비운다 (UNDEFINED를 쓰지 않는다)', async () => {
+        window.api.daemonConsole = vi.fn().mockResolvedValue({ lines: [{ message: '준비 중' }] });
+        const { container } = render(<LoadingScreen logoSrc="" initProgress={10} />);
+        await flush();
+        expect(screen.getByText('준비 중')).toBeTruthy();
+        expect(container.textContent).not.toContain('UNDEFINED');
+        expect(container.querySelector('.loading-log-level')).toBeNull();
+    });
 });
