@@ -524,6 +524,8 @@
     "enabled": "有効にしました: {{task}}",
     "disabled": "無効にしました: {{task}}",
     "no_such": "タスク {{number}} はありません（全 {{count}} 件）。",
+    "edited": "タスクを変更しました: {{task}}",
+    "nothing_to_edit": "変更する項目を1つ以上指定してください（--every, --at, --warn, --no-warn, --message）。",
     "keep_zero": "バックアップは 1 つ以上保持してください。",
     "keep_set": "スケジュールバックアップを直近 {{count}} 件保持します。",
     "confirm_clear": "{{name}} のスケジュールされたタスクをすべて削除しますか？",

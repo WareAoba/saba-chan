@@ -524,6 +524,8 @@
     "enabled": "Ativada: {{task}}",
     "disabled": "Desativada: {{task}}",
     "no_such": "Não existe a tarefa {{number}} (há {{count}}).",
+    "edited": "Tarefa alterada: {{task}}",
+    "nothing_to_edit": "Informe pelo menos uma alteração (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Mantenha pelo menos 1 backup.",
     "keep_set": "Mantendo os últimos {{count}} backups agendados.",
     "confirm_clear": "Remover todas as tarefas agendadas de {{name}}?",

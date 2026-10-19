@@ -524,6 +524,8 @@
     "enabled": "Eingeschaltet: {{task}}",
     "disabled": "Ausgeschaltet: {{task}}",
     "no_such": "Es gibt keine Aufgabe {{number}} (es gibt {{count}}).",
+    "edited": "Aufgabe geändert: {{task}}",
+    "nothing_to_edit": "Gib mindestens eine Änderung an (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Behalte mindestens 1 Backup.",
     "keep_set": "Die letzten {{count}} geplanten Backups werden behalten.",
     "confirm_clear": "Alle geplanten Aufgaben von {{name}} entfernen?",

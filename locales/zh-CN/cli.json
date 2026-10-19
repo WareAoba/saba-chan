@@ -524,6 +524,8 @@
     "enabled": "已开启：{{task}}",
     "disabled": "已关闭：{{task}}",
     "no_such": "没有任务 {{number}}（共 {{count}} 个）。",
+    "edited": "已修改任务：{{task}}",
+    "nothing_to_edit": "请至少指定一项更改（--every、--at、--warn、--no-warn、--message）。",
     "keep_zero": "请至少保留 1 个备份。",
     "keep_set": "将保留最近 {{count}} 个定时备份。",
     "confirm_clear": "要移除 {{name}} 的所有定时任务吗？",
