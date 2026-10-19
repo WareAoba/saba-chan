@@ -25,7 +25,8 @@
     "use_existing": "使用已有的服务器文件夹",
     "folder_is": "{{dir}} 看起来是 {{game}} 服务器。",
     "pick_game": "请用 --module 选择游戏。",
-    "folder_in_use": "{{dir}} 已被 {{name}} 使用。两个服务器放在同一文件夹会互相覆盖。"
+    "folder_in_use": "{{dir}} 已被 {{name}} 使用。两个服务器放在同一文件夹会互相覆盖。",
+    "created_settings_failed": "{{name}} 已创建，但其设置未能保存：{{error}}"
   },
   "bot": {
     "ask_token": "节点令牌",
@@ -64,6 +65,27 @@
     "token_saved": "节点令牌已保存。",
     "unpaired": "已取消配对。",
     "invite": "用此链接将机器人邀请到你的 Discord 服务器：",
+    "channel": "频道",
+    "channel_ambiguous": "有多个名为 {{name}} 的频道。请使用其 id。",
+    "channel_none": "无",
+    "chatbot_channels": "聊天机器人频道",
+    "music_channel": "音乐频道",
+    "notify_channel": "通知频道",
+    "confirm_music_channel": "将 #{{name}} 设为音乐频道后，其中的普通消息会被删除。要继续吗？",
+    "channels_saved": "频道分配已更改。",
+    "channels_bot_missing": "机器人不在这个 Discord 服务器中，因此无法列出其频道。请邀请它：saba-chan-cli bot invite",
+    "discord_saved": "Discord 设置已保存。",
+    "discord_not_synced": "已在本机保存，但无法联系到机器人。机器人重新连接后会发送。",
+    "on": "开",
+    "off": "关",
+    "locale": "语言",
+    "locale_auto": "auto（跟随这台电脑的语言）",
+    "sleeping": "休眠中",
+    "music": "音乐",
+    "music_ui": "播放器面板",
+    "music_queue_lines": "队列行数",
+    "music_refresh": "面板刷新",
+    "music_normalize": "音量均衡",
     "allow_all": "这个 Discord 服务器可以看到本机的所有服务器。",
     "allow_none": "没有开放的服务器。",
     "allow_all_saved": "{{guild}} 现在可以看到所有服务器。",
@@ -71,6 +93,10 @@
     "link_accepted": "已将 {{guild}} 连接到此电脑。",
     "link_declined": "已拒绝连接请求。",
     "pair_gui_hint": "也可以在 GUI 的 Discord 页面查看 Discord 连接状态。",
+    "words": "称呼",
+    "command_words": "命令称呼",
+    "words_saved": "已保存 {{server}} 的聊天称呼。",
+    "words_bad_command": "{{spec}}：请写成 命令=称呼,称呼（命令= 表示删除）。",
     "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
     "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}"
   },
@@ -117,7 +143,28 @@
     "saved": "已保存：{{keys}}",
     "confirm_reset_all": "要将所有设置恢复为默认值吗？",
     "confirm_reset": "要将 {{keys}} 恢复为默认值吗？",
-    "all": "所有设置"
+    "all": "所有设置",
+    "confirm_export_secrets": "密码、聊天机器人 API 密钥和机器人配对信息将原样写入文件。要继续吗？",
+    "exported": "已将设置和 {{count}} 个服务器保存到 {{path}}。",
+    "export_no_secrets": "未包含密码、API 密钥和机器人配对信息。添加 --secrets 可包含它们。",
+    "import_preview": "导入将做出以下更改（尚未更改任何内容）。",
+    "imported": "已导入。",
+    "import_added": "新服务器",
+    "import_replaced": "被替换的服务器",
+    "import_settings": "设置",
+    "import_skipped": "{{name}}：已跳过（{{reason}}）",
+    "import_missing_module": "这台电脑上没有 {{module}} 模块。启动该服务器前请先安装它。",
+    "import_move_files": "不包含游戏服务器文件。请把服务器文件夹移到相同路径，或在服务器设置中更改文件夹。",
+    "skip_reason": {
+      "exists": "已存在，使用 --overwrite 替换",
+      "running": "正在运行",
+      "working_dir_in_use": "另一个服务器在使用同一文件夹",
+      "invalid_id": "id 无效",
+      "save_failed": "无法保存",
+      "name_taken": "已有同名服务器",
+      "busy": "正在安装、更新、备份或恢复"
+    },
+    "import_token_moved": "机器人配对也一并迁移了。请断开旧电脑（在旧电脑上运行：saba-chan-cli bot unpair）。"
   },
   "console": {
     "attach_help": "已连接到 {{name}}。输入命令，:help 查看帮助，:q 退出（服务器会继续运行）。",
@@ -203,13 +250,22 @@
       "nothing_to_back_up": "世界尚不存在。请先启动一次服务器来创建它。",
       "backup_busy": "此服务器已有备份或恢复正在进行。请在完成后重试。",
       "invalid_relay_url": "中继地址只能使用 https://(仅在本机测试时可对 localhost、127.0.0.1 或 [::1] 使用 http)。",
-      "no_command_path": "此服务器是在 Saba-chan 之外启动的，没有可接收命令的控制台。请通过 Saba-chan 重新启动：saba-chan-cli restart <server>"
+      "no_command_path": "此服务器是在 Saba-chan 之外启动的，没有可接收命令的控制台。请通过 Saba-chan 重新启动：saba-chan-cli restart <server>",
+      "conflict_with": "与 {{name}} 冲突",
+      "word": {
+        "invalid": "请使用 1-32 个字符，不含空格",
+        "reserved": "是保留词",
+        "conflict": "已用于称呼其他对象",
+        "unknown_command": "该服务器没有这个命令",
+        "too_many": "最多 10 个称呼"
+      }
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
     "not_found": "没有名为“{{query}}”的{{what}}。",
     "pair_expected": "应为 KEY=VALUE，实际为“{{got}}”。",
-    "timeout": "守护进程响应时间过长（{{path}}）。"
+    "timeout": "守护进程响应时间过长（{{path}}）。",
+    "body_read": "无法读取来自 {{path}} 的完整响应：{{error}}"
   },
   "agree": {
     "none": "{{name}} 没有需要同意的协议。",
@@ -254,7 +310,8 @@
     "url_one_id": "--url 和 --sha256 一次只能用于一个扩展 ID。",
     "no_config": "{{id}} 没有设置项。",
     "status_busy": "正在启动：{{list}}",
-    "status_done": "已就绪：{{list}}"
+    "status_done": "已就绪：{{list}}",
+    "update_failed": "{{n}} 个扩展更新失败。"
   },
   "history": {
     "none": "暂无停止记录。"
@@ -373,7 +430,8 @@
     "bye": "再见。守护进程和服务器会继续运行。",
     "ctrl_c": "（再按一次 Ctrl+C 或输入 exit 退出）",
     "help_line": "输入命令（help，Tab 补全），或像在 Discord 里一样说话（例如 \"my-server-1 start\"）。输入 exit 退出。",
-    "welcome": "Saba-chan CLI {{version}}"
+    "welcome": "Saba-chan CLI {{version}}",
+    "lang_fixed": "在 shell 中无法更改语言，继续使用 {{lang}}。"
   },
   "start": {
     "already": "{{name}} 已在运行。",
@@ -467,6 +525,10 @@
   "validate": {
     "blocked": "修复这些问题之前服务器无法启动。",
     "ok": "{{name}} 看起来可以启动了。"
+  },
+  "launch_preview": {
+    "no_args": "{{name}} 的模块不会把设置转换为启动参数。",
+    "invalid_format": "格式无效：{{arg}}（{{field}}）"
   },
   "help": {
     "cmd": {},
@@ -578,14 +640,77 @@
     "forgot": "聊天机器人的记忆已清除。",
     "not_synced": "已保存在此电脑上。机器人连接后会同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 服务器 {{guild}} 未收到此更改：{{error}}",
-    "read_failed": "无法读取 {{path}}：{{error}}"
+    "read_failed": "无法读取 {{path}}：{{error}}",
+    "cleared_pending": "已清除这台电脑上的聊天机器人设置和密钥。未能联系到中继，将在下次连接时清除。"
   },
   "trust": {
     "verified": "已验证",
     "modified": "已修改",
-    "unverified": "未验证"
+    "unverified": "未验证",
+    "notice": {
+      "module_unverified": "此服务器由非官方目录来源的模块（{{id}}）创建。请确认你信任其来源。",
+      "module_modified": "模块（{{id}}）在安装后被修改过。除非是你自己修改的，否则请重新安装。",
+      "extension_unverified": "已启用非官方目录来源的扩展（{{id}}）。请确认你信任其来源。",
+      "extension_modified": "扩展（{{id}}）在安装后被修改过。除非是你自己修改的，否则请重新安装。",
+      "isolated": "此组件在隔离环境中运行（仅限允许的文件夹）"
+    }
+  },
+  "sandbox": {
+    "allowed": "{{component}} 将在无隔离的情况下运行。如果其文件发生变化，会再次询问你。",
+    "confirm_allow": "要在无隔离的情况下运行 {{component}} 吗？未经验证的代码将不受限制地访问这台电脑的文件和网络。如果其文件发生变化，会再次询问你。",
+    "confirm_gui": "要把 {{component}} 的 GUI 包加载到应用中吗？未经验证的代码将在应用窗口中运行。",
+    "gui_allowed": "将加载 {{component}} 的 GUI 包。",
+    "gui_revoked": "已撤销加载 {{component}} 的 GUI 包的同意。",
+    "none": "这台电脑上没有记录任何同意。",
+    "component": "组件",
+    "kind_unisolated": "无隔离运行",
+    "kind_gui": "GUI 包",
+    "stale": "文件已更改，未使用",
+    "in_use": "使用中",
+    "needs_terminal": "请在终端中亲自回答此同意。--yes 或 --json 不能代替。",
+    "revoked": "已撤销在无隔离的情况下运行 {{component}} 的同意。"
+  },
+  "do": {
+    "bad_pair": "输入必须形如 key=value：{{pair}}",
+    "confirm": "要执行 {{action}} 吗？",
+    "done": "{{action}} 已完成",
+    "col": {
+      "id": "操作",
+      "title": "名称",
+      "risk": "风险"
+    }
+  },
+  "perm": {
+    "owner": "所有者",
+    "no_owner": "尚不清楚（中继首次报告时固定）",
+    "owner_conflict": "中继报告了不同的所有者（{{id}}）。保留已固定的所有者；如需更改，请使用 `saba-chan-cli perm owner`。",
+    "default": "默认等级",
+    "preset": "预设",
+    "cap": "聊天机器人上限",
+    "member": "成员",
+    "command": "命令",
+    "level_col": "等级",
+    "saved": "已保存 {{guild}} 的权限",
+    "bad_level": "未知等级：{{level}}（admin、user、chatbot、banned）",
+    "import_none": "中继上没有可导入的等级。",
+    "import_confirm": "要把上面 {{count}} 名成员的等级导入这台电脑吗？",
+    "import_not_candidate": "{{member}} 没有可导入的内容。使用 `saba-chan-cli perm import <server>` 查看列表。",
+    "import_partial": "已导入 {{ok}} 个，{{failed}} 个失败。",
+    "imported": "已导入 {{guild}} 的 {{count}} 名成员的等级",
+    "level": {
+      "owner": "所有者",
+      "admin": "管理员",
+      "user": "用户",
+      "chatbot": "聊天机器人",
+      "banned": "已封禁"
+    }
   },
   "audit": {
+    "empty": "尚无记录。",
+    "when": "时间",
+    "from": "来源",
+    "what": "内容",
+    "result": "结果",
     "scanning": "正在检查 {{name}} 的代码...",
     "declared": "已声明",
     "none_declared": "(无)",
@@ -597,5 +722,24 @@
       "where": "位置",
       "what": "代码"
     }
+  },
+  "monitor": {
+    "cpu": "CPU",
+    "memory": "内存",
+    "disk_io": "磁盘 IO",
+    "disk": "磁盘",
+    "network": "网络",
+    "read_write": "读 {{read}} · 写 {{write}}",
+    "disk_free": "{{total}} 中可用 {{free}}",
+    "rx_tx": "入 {{rx}} · 出 {{tx}}",
+    "others": "其他进程",
+    "idle": "空闲",
+    "legend": "█ 服务器（颜色）·",
+    "none_running": "没有正在运行的服务器",
+    "network_note": "磁盘 IO 和网络是整台电脑的数值，不按服务器拆分。条形按观察期间的峰值缩放。每个服务器的 IO 请求包含缓存命中，因此会超过实际磁盘 IO。",
+    "watch_hint": "按 Ctrl+C 停止",
+    "io_requests": "IO 请求（含缓存）",
+    "disk_io_process_note": "无法使用物理磁盘计数器；显示进程 IO 的总和（含缓存命中）。",
+    "whole": "整台电脑（不拆分）"
   }
 }
