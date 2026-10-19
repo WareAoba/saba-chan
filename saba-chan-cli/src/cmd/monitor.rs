@@ -42,8 +42,8 @@ pub async fn run(ctx: &Ctx, args: MonitorArgs) -> Result<()> {
         } else {
             let _ = term.clear_screen();
             print(&v, &peaks);
-            println!();
-            println!("{}", output::dim(&t!("monitor.watch_hint")));
+            say!();
+            say!("{}", output::dim(&t!("monitor.watch_hint")));
         }
         tokio::select! {
             _ = tokio::time::sleep(every) => {}
@@ -206,9 +206,9 @@ fn print(v: &Value, peaks: &Peaks) {
         .enumerate()
         .filter(|(_, x)| x.get("running").and_then(Value::as_bool).unwrap_or(false))
         .collect();
-    println!();
+    say!();
     if running.is_empty() {
-        println!("{}", output::dim(&t!("monitor.none_running")));
+        say!("{}", output::dim(&t!("monitor.none_running")));
     } else {
         let mut table = output::table(&[t!("col.name"), t!("monitor.cpu"), t!("monitor.memory"), t!("monitor.io_requests")]);
         for (i, x) in running {
@@ -225,7 +225,7 @@ fn print(v: &Value, peaks: &Peaks) {
         }
         output::print_table(table);
     }
-    println!(
+    say!(
         "{}",
         output::dim(&format!(
             "{} ▓ {}  ▒ {}  ░ {}",
@@ -235,9 +235,9 @@ fn print(v: &Value, peaks: &Peaks) {
             t!("monitor.idle")
         ))
     );
-    println!("{}", output::dim(&t!("monitor.network_note")));
+    say!("{}", output::dim(&t!("monitor.network_note")));
     if output::s(v.get("disk_io").unwrap_or(&Value::Null), "source") == "process" {
-        println!("{}", output::dim(&t!("monitor.disk_io_process_note")));
+        say!("{}", output::dim(&t!("monitor.disk_io_process_note")));
     }
 }
 

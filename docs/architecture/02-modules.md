@@ -403,7 +403,7 @@ players = "player_count"
 |---|---|---|
 | 엔트리 | `Supervisor::start_managed_server` `mod.rs:1298-1686` | `Supervisor::start_server` `mod.rs:550-855` |
 | 사전 검사 | 중복 실행 방지(managed_store와 tracker PID 생존 확인), 모듈 의존성, 포트 충돌, 시작 중 표시(`StartGuard`), extension `server.pre_start` hook | 포트 충돌, 모듈 의존성, `requires_extensions` 검증, 시작 중 표시, `server.pre_start` hook |
-| spawn | saba-runner가 있으면 `ManagedProcess::spawn_with_runner`, 없으면 `ManagedProcess::spawn`(stdin, stdout, stderr 파이프) (`mod.rs:1622-1660`) | `TokioCommand` — stdio 모두 `null`, 콘솔 없음 |
+| spawn | saba-runner가 있으면 `ManagedProcess::spawn_with_runner`(러너가 10초 안에 `runner.json`을 쓰지 못하면 러너와 그 자식을 끝내고 시작 실패), 없으면 `ManagedProcess::spawn`(stdin, stdout, stderr 파이프) (`mod.rs:1622-1660`) | `TokioCommand` — stdio 모두 `null`, 콘솔 없음 |
 | 추적 키 | `tracker.track(instance.id, pid)` | `tracker.track(instance.id, pid)` (`mod.rs:846-847`) |
 | PID 영속화 | `<instance_dir>/managed.pid`, runner면 `<instance_dir>/run/` | 없음 |
 | 자격증명 동기화 | `rest_credentials` 또는 `credential_map` | 없음 |

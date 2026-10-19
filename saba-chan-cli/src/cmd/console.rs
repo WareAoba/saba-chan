@@ -47,7 +47,7 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         .cloned()
         .unwrap_or_default();
     for l in &lines {
-        println!("{}", format_line(l));
+        say!("{}", format_line(l));
     }
     let mut cursor = Cursor::from(&first);
     // `--lines 0`이면 보인 줄이 없어도 지금까지의 줄은 건너뛴다: 마지막 순번만 알아 둔다
@@ -59,7 +59,7 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     let interactive = !a.follow && !a.print && ctx.ask.enabled;
     if a.print || (!a.follow && !interactive) {
         if lines.is_empty() {
-            println!("{}", crate::output::dim(&t!("console.empty")));
+            say!("{}", crate::output::dim(&t!("console.empty")));
         }
         return Ok(());
     }
@@ -70,7 +70,7 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         attach(ctx, &sv, cursor).await
     } else {
         ctx.out.note(&t!("console.following", name = sv.name));
-        follow_printing(ctx, &sv, cursor, |line| println!("{}", line)).await
+        follow_printing(ctx, &sv, cursor, |line| say!("{}", line)).await
     }
 }
 
@@ -257,48 +257,6 @@ fn token_style(token: &str, t: &str) -> String {
     .to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
-    /// 실행 여부만 보면 이어 읽던 순번을 그대로 써서 콘솔이 멈춘다
-    #[test]
-    fn a_new_console_epoch_while_running_means_reattached() {
-        let before = Cursor::from(&json!({"lines": [{"id": 900}], "running": true, "epoch": 1}));
-        let after = Cursor::from(&json!({"lines": [], "running": true, "epoch": 2}));
-        assert!(reattached(&before, &after));
-        let same = Cursor::from(&json!({"lines": [{"id": 901}], "running": true, "epoch": 1}));
-        assert!(!reattached(&before, &same));
-        // 세대를 모르는 응답(옛 데몬, 디스크 기록)은 다시 붙은 것으로 보지 않는다
-        let old = Cursor::from(&json!({"lines": [], "running": true}));
-        assert!(!reattached(&before, &old));
-        assert!(!reattached(&old, &after));
-    }
-
-    #[test]
-    fn spans_convert_utf16_offsets_to_byte_ranges() {
-        let text = "안녕 😀 <철수>";
-        let spans = json!([[7, 9, "player"], [100, 101, "error"], [8, 9, "warn"]]);
-        let got = span_ranges(text, Some(&spans));
-        assert_eq!(got.len(), 1, "out-of-range and overlapping spans are dropped");
-        let (st, en, tok) = got[0];
-        assert_eq!((&text[st..en], tok), ("철수", "player"));
-    }
-
-    #[test]
-    fn format_line_keeps_text_and_colors_spans() {
-        console::set_colors_enabled(true);
-        let line = json!({"content": "Steve joined", "source": "stdout", "level": "info", "spans": [[0, 5, "player"]]});
-        let out = format_line(&line);
-        assert!(out.starts_with("\u{1b}["), "the player token is styled: {:?}", out);
-        assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
-        let plain = json!({"content": "x", "source": "system", "level": "info"});
-        assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
-    }
-}
-
 /// 보면서 입력하기. 새 줄은 입력 줄을 건드리지 않고 위에 찍힌다.
 async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
     let ctx = &Ctx {
@@ -334,7 +292,7 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
         }
     });
 
-    eprintln!("{}", style(t!("console.attach_help", name = sv.name)).dim());
+    tell!("{}", style(t!("console.attach_help", name = sv.name)).dim());
     let prompt = format!("{}> ", sv.name);
     loop {
         let line = tokio::task::block_in_place(|| rl.readline(&prompt));
@@ -354,7 +312,7 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
         if let Some(meta) = text.strip_prefix(':') {
             match meta.trim() {
                 "q" | "quit" | "exit" => break,
-                "help" | "h" | "?" => eprintln!("{}", t!("console.meta_help")),
+                "help" | "h" | "?" => tell!("{}", t!("console.meta_help")),
                 "commands" | "c" => {
                     let _ = crate::cmd::server::print_commands(ctx, &sv.module, &cat);
                 }
@@ -414,7 +372,7 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
             "warn" => style(format!("{:5}", lvl.to_uppercase())).yellow().to_string(),
             _ => style(format!("{:5}", lvl.to_uppercase())).dim().to_string(),
         };
-        println!("{} {}", lvl_s, s(l, "message"));
+        say!("{} {}", lvl_s, s(l, "message"));
     };
     let mut next = None;
     for l in first.get("lines").and_then(Value::as_array).into_iter().flatten() {
@@ -436,5 +394,47 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
             print(l);
             next = l.get("id").and_then(Value::as_u64).map(|id| id + 1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
+    /// 실행 여부만 보면 이어 읽던 순번을 그대로 써서 콘솔이 멈춘다
+    #[test]
+    fn a_new_console_epoch_while_running_means_reattached() {
+        let before = Cursor::from(&json!({"lines": [{"id": 900}], "running": true, "epoch": 1}));
+        let after = Cursor::from(&json!({"lines": [], "running": true, "epoch": 2}));
+        assert!(reattached(&before, &after));
+        let same = Cursor::from(&json!({"lines": [{"id": 901}], "running": true, "epoch": 1}));
+        assert!(!reattached(&before, &same));
+        // 세대를 모르는 응답(옛 데몬, 디스크 기록)은 다시 붙은 것으로 보지 않는다
+        let old = Cursor::from(&json!({"lines": [], "running": true}));
+        assert!(!reattached(&before, &old));
+        assert!(!reattached(&old, &after));
+    }
+
+    #[test]
+    fn spans_convert_utf16_offsets_to_byte_ranges() {
+        let text = "안녕 😀 <철수>";
+        let spans = json!([[7, 9, "player"], [100, 101, "error"], [8, 9, "warn"]]);
+        let got = span_ranges(text, Some(&spans));
+        assert_eq!(got.len(), 1, "out-of-range and overlapping spans are dropped");
+        let (st, en, tok) = got[0];
+        assert_eq!((&text[st..en], tok), ("철수", "player"));
+    }
+
+    #[test]
+    fn format_line_keeps_text_and_colors_spans() {
+        console::set_colors_enabled(true);
+        let line = json!({"content": "Steve joined", "source": "stdout", "level": "info", "spans": [[0, 5, "player"]]});
+        let out = format_line(&line);
+        assert!(out.starts_with("\u{1b}["), "the player token is styled: {:?}", out);
+        assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
+        let plain = json!({"content": "x", "source": "system", "level": "info"});
+        assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
     }
 }

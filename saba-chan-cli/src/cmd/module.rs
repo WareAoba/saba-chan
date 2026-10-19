@@ -70,17 +70,17 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             ctx.out.data(&r, |r| {
                 let m = r.get("matches").and_then(Value::as_array).cloned().unwrap_or_default();
                 if m.is_empty() {
-                    println!("{}", t!("module.detect_none", dir = dir));
+                    say!("{}", t!("module.detect_none", dir = dir));
                 }
                 for x in m {
-                    println!("{} {}", console::style("✓").green(), resolve::module_label(&x));
+                    say!("{} {}", console::style("✓").green(), resolve::module_label(&x));
                 }
             });
             Ok(())
         }
         ModuleCmd::Schema => {
             let r = ctx.api.module_schema().await?;
-            println!("{}", serde_json::to_string_pretty(&r).unwrap_or_default());
+            say!("{}", serde_json::to_string_pretty(&r).unwrap_or_default());
             Ok(())
         }
         ModuleCmd::InstallFiles {
@@ -110,7 +110,7 @@ async fn list(ctx: &Ctx) -> Result<()> {
     ctx.out.data(&r, |r| {
         let mods = r.get("modules").and_then(Value::as_array).cloned().unwrap_or_default();
         if mods.is_empty() {
-            println!("{}", output::dim(&t!("module.none")));
+            say!("{}", output::dim(&t!("module.none")));
         } else {
             let mut t = output::table(&[
                 t!("col.name"),
@@ -166,7 +166,7 @@ async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {
         output::heading(&resolve::module_label(m));
         let desc = s(m, "description");
         if !desc.is_empty() {
-            println!("{}", desc);
+            say!("{}", desc);
         }
         let mut rows = vec![(t!("col.version"), s(m, "version").to_string())];
         if !s(m, "trust").is_empty() {
@@ -255,7 +255,7 @@ async fn versions(
             return crate::cmd::server::print_value(r);
         }
         if let Some(latest) = r.get("latest").filter(|l| !l.is_null()) {
-            println!(
+            say!(
                 "{} {}",
                 output::dim(&t!("module.latest")),
                 show(latest.get("release").unwrap_or(latest))
@@ -264,8 +264,8 @@ async fn versions(
         let list = r.get("versions").and_then(Value::as_array).cloned().unwrap_or_default();
         for v in list {
             match v.as_str() {
-                Some(id) => println!("{}", id),
-                None => println!("{}  {}", s(&v, "id"), output::dim(s(&v, "type"))),
+                Some(id) => say!("{}", id),
+                None => say!("{}  {}", s(&v, "id"), output::dim(s(&v, "type"))),
             }
         }
     });
@@ -308,8 +308,8 @@ async fn available(ctx: &Ctx) -> Result<()> {
             ]);
         }
         output::print_table(t);
-        println!();
-        println!("{}", output::dim("saba-chan-cli module install <NAME>"));
+        say!();
+        say!("{}", output::dim("saba-chan-cli module install <NAME>"));
     });
     Ok(())
 }

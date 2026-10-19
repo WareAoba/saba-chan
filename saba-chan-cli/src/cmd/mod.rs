@@ -78,7 +78,7 @@ pub async fn chat(ctx: &Ctx, text: &str) -> Result<()> {
     let r = ctx.api.chat(text).await?;
     // 답은 디스코드용 마크다운이다: 터미널에서는 강조 기호만 뗀다
     ctx.out
-        .data(&r, |r| println!("{}", plain(crate::output::s(r, "reply"))));
+        .data(&r, |r| say!("{}", plain(crate::output::s(r, "reply"))));
     Ok(())
 }
 
@@ -134,9 +134,9 @@ pub fn print_audit(ctx: &Ctx, label: &str, r: &Value) {
             declared.join(", ")
         };
         crate::output::print_kv(&[(t!("audit.declared"), declared_text)]);
-        println!();
+        say!();
         if findings.is_empty() {
-            println!("{}", crate::output::dim(&t!("audit.no_findings")));
+            say!("{}", crate::output::dim(&t!("audit.no_findings")));
         } else {
             let mut t =
                 crate::output::table(&[t!("audit.col.permission"), t!("audit.col.where"), t!("audit.col.what")]);
@@ -155,10 +155,10 @@ pub fn print_audit(ctx: &Ctx, label: &str, r: &Value) {
                 ]);
             }
             crate::output::print_table(t);
-            println!();
+            say!();
         }
         if undeclared.is_empty() {
-            println!("{} {}", ::console::style("✓").green().bold(), t!("audit.clean"));
+            say!("{} {}", ::console::style("✓").green().bold(), t!("audit.clean"));
         } else {
             let mut perms: Vec<&str> = undeclared.iter().map(|f| crate::output::s(f, "permission")).collect();
             perms.sort_unstable();
@@ -338,10 +338,10 @@ pub fn print_issues(v: &Value) -> bool {
         } else {
             msg
         };
-        println!("{} {}", mark, msg);
+        say!("{} {}", mark, msg);
         let fix = crate::output::s(i, "solution");
         if !fix.is_empty() {
-            println!("  {}", crate::output::dim(fix));
+            say!("  {}", crate::output::dim(fix));
         }
     }
     !issues.is_empty()
