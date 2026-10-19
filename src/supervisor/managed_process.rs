@@ -79,6 +79,22 @@ struct LogBuffer {
     max_size: usize,
     /// Async sender for disk persistence (None = no persistence)
     file_tx: Option<mpsc::UnboundedSender<String>>,
+    /// 이 버퍼의 세대. 줄 번호는 버퍼마다 0부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다
+    epoch: u64,
+}
+
+/// 버퍼 세대: 만든 시각(밀리초). 데몬을 다시 켜도 앞 세대보다 크고, 한 프로세스 안에서도 겹치지 않는다
+fn next_epoch() -> u64 {
+    static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let mut last = LAST.load(std::sync::atomic::Ordering::Relaxed);
+    loop {
+        let next = now.max(last + 1);
+        match LAST.compare_exchange_weak(last, next, std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed) {
+            Ok(_) => return next,
+            Err(seen) => last = seen,
+        }
+    }
 }
 
 impl LogBuffer {
@@ -92,6 +108,7 @@ impl LogBuffer {
             next_id: 0,
             max_size,
             file_tx: None,
+            epoch: next_epoch(),
         }
     }
 
@@ -592,6 +609,11 @@ impl ManagedProcess {
     /// Get all log lines with `id >= since_id`.
     pub async fn get_console_since(&self, since_id: u64) -> Vec<LogLine> {
         self.log_buffer.lock().await.get_since(since_id)
+    }
+
+    /// 콘솔 버퍼의 세대 (`LogBuffer::epoch`)
+    pub async fn console_epoch(&self) -> u64 {
+        self.log_buffer.lock().await.epoch
     }
 
     /// 지금 이후의 콘솔 줄만 보려면 이 값으로 `get_console_since`를 부른다
