@@ -16,8 +16,18 @@ export async function persistNodeToken(token) {
 }
 
 /**
+ * 짝짓기가 끝났을 때 이 PC에 노드 토큰이 저장됐는지. 데몬은 저장한 결과를 `tokenSaved`로 알려 준다
+ * (수령 기한이 지나 토큰이 오지 않았거나 쓰지 못하면 false). 예전 데몬은 이 값이 없어 받은 토큰을 직접 저장한다
+ */
+export async function claimSavedToken(s) {
+    if (typeof s?.tokenSaved === 'boolean') return s.tokenSaved;
+    if (!s?.nodeToken) return false;
+    return window.api?.saveNodeToken ? persistNodeToken(s.nodeToken) : true;
+}
+
+/**
  * 릴레이 페어링 흐름: 코드 발급 → 디스코드에서 `/사바쨩 연결` 입력 → 폴링으로 확인.
- * status: idle | issuing | waiting | success | expired | error
+ * status: idle | issuing | waiting | success | expired | unsaved | error
  */
 export function usePairing({ relayUrl, onClaimed, beforeStart }) {
     const [status, setStatus] = useState('idle');
@@ -108,7 +118,7 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }) {
                     const ok = (await claimedRef.current?.(s)) !== false;
                     if (!live()) return;
                     if (!ok) {
-                        setStatus('error');
+                        setStatus('unsaved');
                         return;
                     }
                     setStatus('success');

@@ -748,6 +748,7 @@
     "pair_waiting": "等待在 Discord 中輸入命令",
     "pair_success": "已連線！",
     "pair_expired": "代碼已過期",
+    "pair_not_saved": "已在 Discord 中輸入，但無法在這台電腦上儲存連線資訊。請取得新代碼重新連線",
     "pair_error": "無法取得代碼，請檢查網路連線",
     "pair_again": "取得新代碼",
     "cancel": "取消",

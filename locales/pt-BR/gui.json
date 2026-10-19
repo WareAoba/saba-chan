@@ -748,6 +748,7 @@
     "pair_waiting": "Aguardando o comando no Discord",
     "pair_success": "Conectado!",
     "pair_expired": "O código expirou",
+    "pair_not_saved": "O comando chegou ao Discord, mas não foi possível salvar a conexão neste PC. Pegue um código novo e conecte de novo",
     "pair_error": "Não foi possível gerar um código. Verifique sua conexão com a internet",
     "pair_again": "Gerar novo código",
     "cancel": "Cancelar",
