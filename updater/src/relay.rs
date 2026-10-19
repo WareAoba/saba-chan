@@ -278,7 +278,9 @@ pub fn check_manifest_paths(manifest: &ReleaseManifest) -> Result<(), RelayError
     };
     for (key, c) in &manifest.components {
         let unsafe_path = |field, value: &str| RelayError::UnsafePath { key: key.clone(), field, value: value.to_string() };
-        if !plain(key) {
+        // 접두사 뒤 이름이 그대로 `modules/<이름>` 폴더가 되므로 이름만으로도 한 칸이어야 한다
+        let name = key.strip_prefix("module-").or_else(|| key.strip_prefix("ext-")).unwrap_or(key);
+        if !plain(key) || !plain(name) {
             return Err(unsafe_path("key", key));
         }
         if !plain(&c.filename) {
@@ -489,6 +491,9 @@ mod tests {
         assert!(check_manifest_paths(&with("module-palworld", "filename", "module-palworld.zip")).is_ok());
         for (key, field, value) in [
             ("module-../evil", "filename", "a.zip"),
+            ("module-..", "filename", "a.zip"),
+            ("module-.", "filename", "a.zip"),
+            ("ext-", "filename", "a.zip"),
             ("ext-a\\b", "filename", "a.zip"),
             ("saba-core", "filename", "../saba-core.zip"),
             ("saba-core", "filename", "C:saba-core.zip"),
