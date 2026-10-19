@@ -177,6 +177,9 @@ impl PluginCall {
 }
 
 /// Like `run_plugin` but with a custom timeout (seconds).
+/// 서버 설치·업데이트(`install_server`) 한도: 대용량 다운로드를 허용한다
+pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
+
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, timeout_secs).await
 }
@@ -334,12 +337,6 @@ async fn run_plugin_inner(
     timeout_secs: u64,
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
-
-    // 확인되지 않은 모듈·익스텐션: 실행 전에 스크립트를 백신으로 본다 (Windows)
-    if let Err(blocked) = crate::sandbox::guard_entry(module_path).await {
-        tracing::warn!("Plugin {} blocked: {:?}", module_path, blocked);
-        return Ok(blocked.to_json(crate::sandbox::message(&blocked)));
-    }
 
     let config_json = serde_json::to_string(&config)?;
     let python_exe = crate::python_env::get_python_path().await?;

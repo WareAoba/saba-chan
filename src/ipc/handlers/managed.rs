@@ -299,6 +299,12 @@ fn server_running() -> axum::response::Response {
 /// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 #[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 async fn hold_instances_using(state: &IPCServer, dir: &str) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
+    hold_other_instances_using(state, dir, None).await
+}
+
+/// `hold_instances_using`과 같되 `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다
+#[allow(clippy::result_large_err)]
+pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
     let ids: Vec<String> = {
         let supervisor = state.supervisor.read().await;
         let dir = std::path::Path::new(dir);
@@ -307,6 +313,7 @@ async fn hold_instances_using(state: &IPCServer, dir: &str) -> Result<Vec<super:
                 i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), dir))
                     || saba_chan_updater_lib::same_path(&supervisor.instance_store.instance_dir(&i.id), dir)
             })
+            .filter(|i| except != Some(i.id.as_str()))
             .map(|i| i.id.clone())
             .collect()
     };

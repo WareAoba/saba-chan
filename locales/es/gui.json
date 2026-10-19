@@ -1091,13 +1091,15 @@
       "module_modified": "El módulo ({{id}}) cambió después de instalarse. Reinstálalo si no lo editaste tú.",
       "extension_unverified": "Se activó una extensión ({{id}}) que no proviene del catálogo oficial. Asegúrate de confiar en su origen.",
       "extension_modified": "La extensión ({{id}}) cambió después de instalarse. Reinstálala si no la editaste tú.",
-      "isolated": "Este componente se ejecuta en un entorno aislado (solo carpetas permitidas)"
+      "isolated": "Los scripts de Python de este componente se ejecutan en un entorno aislado (solo carpetas permitidas). El proceso del servidor de juego no está aislado."
+    },
+    "create_notice": {
+      "unverified": "Este módulo no proviene del catálogo oficial. Sus scripts de Python se ejecutan aislados, pero el servidor de juego que instala y ejecuta no está aislado y se ejecuta con los permisos de tu cuenta. Continúa solo si confías en este módulo.",
+      "modified": "Los archivos de este módulo cambiaron después de instalarlo desde el catálogo oficial. Sus scripts de Python se ejecutan aislados, pero el servidor de juego que instala y ejecuta no está aislado y se ejecuta con los permisos de tu cuenta. Continúa solo si confías en este módulo."
     },
     "start_blocked": {
-      "malware_detected": "El antivirus marcó un archivo de este componente no verificado: {{file}}",
       "launch_outside_instance": "Este módulo no verificado intentó ejecutar un programa fuera de la carpeta del servidor: {{file}} Si configuraste la ruta de Java tú mismo, vuelve a elegirla en la configuración del servidor.",
-      "unscannable_file": "Este componente no verificado tiene archivos compilados sin su código fuente y no se puede analizar: {{file}}",
-      "scan_failed": "No se pudo analizar un archivo de este componente no verificado, así que no se ejecutó: {{file}}",
+      "server_folder_label": "No se pudieron limpiar las marcas de permisos de la carpeta del servidor ({{file}}), así que el servidor no se inició. Comprueba que esta cuenta pueda cambiar los permisos de esa carpeta.",
       "sandbox_unavailable": "No se pudo preparar un entorno aislado para {{component}}, así que no se ejecutó."
     },
     "sandbox": {

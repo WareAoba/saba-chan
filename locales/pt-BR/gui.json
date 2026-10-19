@@ -1091,13 +1091,15 @@
       "module_modified": "O módulo ({{id}}) foi alterado depois de instalado. Reinstale-o se não foi você quem o editou.",
       "extension_unverified": "Extensão ({{id}}) ativada sem vir do catálogo oficial. Confirme que você confia na origem.",
       "extension_modified": "A extensão ({{id}}) foi alterada depois de instalada. Reinstale-a se não foi você quem a editou.",
-      "isolated": "Este componente roda em um ambiente isolado (somente pastas permitidas)"
+      "isolated": "Os scripts Python deste componente rodam em um ambiente isolado (somente pastas permitidas). O processo do servidor de jogo não é isolado."
+    },
+    "create_notice": {
+      "unverified": "Este módulo não veio do catálogo oficial. Os scripts Python dele rodam isolados, mas o servidor de jogo que ele instala e executa não é isolado e roda com as permissões da sua conta. Continue somente se você confia neste módulo.",
+      "modified": "Os arquivos deste módulo mudaram depois de instalado pelo catálogo oficial. Os scripts Python dele rodam isolados, mas o servidor de jogo que ele instala e executa não é isolado e roda com as permissões da sua conta. Continue somente se você confia neste módulo."
     },
     "start_blocked": {
-      "malware_detected": "O antivírus sinalizou um arquivo deste componente não verificado: {{file}}",
       "launch_outside_instance": "Este módulo não verificado tentou executar um programa fora da pasta do servidor: {{file}} Se você definiu o caminho do Java, escolha-o novamente nas configurações do servidor.",
-      "unscannable_file": "Este componente não verificado tem arquivos compilados sem o código-fonte e não pode ser analisado: {{file}}",
-      "scan_failed": "Não foi possível analisar um arquivo deste componente não verificado, então ele não foi executado: {{file}}",
+      "server_folder_label": "Não foi possível limpar as marcas de permissão da pasta do servidor ({{file}}), então o servidor não foi iniciado. Verifique se esta conta pode alterar as permissões dessa pasta.",
       "sandbox_unavailable": "Não foi possível preparar um ambiente isolado para {{component}}, então ele não foi executado."
     },
     "sandbox": {

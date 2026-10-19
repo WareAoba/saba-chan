@@ -4,10 +4,7 @@
 //! 그대로인 것은 지금처럼 실행한다.
 //! - 실행 대상 검사: 모듈이 돌려준 서버 실행 파일이 인스턴스 폴더나 데몬이 아는 런타임 안에 있어야 한다.
 //!   셸·스크립트 호스트(`cmd`, `powershell` 등)는 어디 있든 거부한다 (`launch_outside_instance`).
-//! - 악성 코드 검사: Python·스크립트 파일은 AMSI(등록된 백신)로, 서버 실행 파일은 처음 실행 전에
-//!   Defender `MpCmdRun`으로 본다. 찾으면 실행하지 않는다 (`malware_detected`). 결과는 sha256으로 저장해
-//!   바뀌지 않은 파일은 다시 보지 않는다(깨끗하다는 결과는 7일 동안). 검사기가 없으면 건너뛰고 경고를 남긴다.
-//!   파일을 읽지 못하거나 검사가 실패하면 실행하지 않는다 (`scan_failed`).
+//! - 백신 검사는 하지 않는다 (Defender·AMSI 검사는 오판정과 지연이 많아 뺐다). 격리 실행과 실행 대상 검사로 막는다.
 //!
 //! Linux·macOS는 아직 지원 대상이 아니라 지금처럼 실행한다.
 
@@ -18,7 +15,6 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub mod appcontainer;
-pub mod scan;
 
 /// 이 플랫폼에서 제한을 거는가
 pub const ENFORCED: bool = cfg!(windows);
@@ -189,125 +185,57 @@ impl Blocked {
 pub fn message(blocked: &Blocked) -> String {
     let file = blocked.file.as_deref().unwrap_or("");
     match blocked.code {
-        "malware_detected" => format!("Antivirus flagged a file of this unverified component: {}", file),
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
-        "unscannable_file" => format!("This unverified component contains compiled code without source that cannot be scanned: {}", file),
-        "scan_failed" => format!("Could not scan a file of this unverified component, so it was not run: {}", file),
+        "server_folder_label" => format!("Could not remove the low integrity mark from the server folder: {}. Check that this account can change the permissions of that folder.", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
 }
 
-/// 깨끗하다는 결과를 다시 쓰는 기간 (백신 정의가 바뀌므로 지나면 다시 본다)
-const CLEAN_VERDICT_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+/// 서버 폴더의 표시를 걷은 뒤 서버를 띄울 때까지 쥐는 잠금 (`guard_launch_for`가 돌려준다). 격리 실행은 권한을 주기
+/// 전에 이 잠금을 잡으므로(`spawn_isolated`), 걷은 뒤 서버가 뜨기 전에 표시가 다시 붙지 않는다. 서버를 띄운 뒤 놓는다
+pub struct LaunchGate(#[allow(dead_code)] tokio::sync::MutexGuard<'static, ()>);
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-struct StoredVerdict {
-    detected: bool,
-    /// 검사한 시각 (유닉스 초)
-    #[serde(default)]
-    at: u64,
-    /// 이 결과를 적은 판정 규칙의 판. 그보다 옛 판의 찾음은 다시 본다
-    #[serde(default)]
-    format: u32,
-}
+static LABEL_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// 판정 규칙의 판. 1: MpCmdRun이 검사하지 못한 것(종료 코드 2)을 찾음으로 보지 않는다
-const VERDICT_FORMAT: u32 = 1;
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
-/// 옛 형식({sha: bool})은 시각 0으로 옮긴다: 깨끗함은 다시 본다. 옛 판의 찾음은 잘못 적었을 수 있어 버린다. 깨진 파일은 비운다
-fn parse_entries(s: &str) -> BTreeMap<String, StoredVerdict> {
-    #[derive(serde::Deserialize)]
-    #[serde(untagged)]
-    enum Entry {
-        Legacy(bool),
-        Current(StoredVerdict),
-    }
-    let raw: BTreeMap<String, Entry> = serde_json::from_str(s).unwrap_or_default();
-    raw.into_iter()
-        .map(|(k, e)| match e {
-            Entry::Legacy(detected) => (k, StoredVerdict { detected, at: 0, format: 0 }),
-            Entry::Current(v) => (k, v),
-        })
-        .filter(|(_, v)| !v.detected || v.format >= VERDICT_FORMAT)
-        .collect()
-}
-
-/// sha256 → 검사 결과 (`<data dir>/scan-verdicts.json`). 깨끗하다/찾았다만 저장한다
-#[derive(Debug, Default)]
-pub struct VerdictCache {
-    path: Option<PathBuf>,
-    entries: BTreeMap<String, StoredVerdict>,
-}
-
-impl VerdictCache {
-    pub fn load() -> Self {
-        let path = saba_chan_updater_lib::constants::resolve_data_dir().join("scan-verdicts.json");
-        let entries = std::fs::read_to_string(&path).ok().map(|s| parse_entries(&s)).unwrap_or_default();
-        Self { path: Some(path), entries }
-    }
-
-    #[cfg(test)]
-    pub fn in_memory() -> Self {
-        Self::default()
-    }
-
-    /// Some(true) = 찾았다, Some(false) = 깨끗하다 (7일이 지난 깨끗하다는 None: 다시 본다)
-    pub fn get(&self, sha: &str) -> Option<bool> {
-        self.get_at(sha, now_secs())
-    }
-
-    fn get_at(&self, sha: &str, now: u64) -> Option<bool> {
-        let v = self.entries.get(sha)?;
-        (v.detected || now.saturating_sub(v.at) < CLEAN_VERDICT_TTL_SECS).then_some(v.detected)
-    }
-
-    pub fn put(&mut self, sha: String, detected: bool) {
-        self.entries.insert(sha, StoredVerdict { detected, at: now_secs(), format: VERDICT_FORMAT });
-    }
-
-    pub fn save(&self) {
-        let Some(path) = &self.path else { return };
-        if let Ok(json) = serde_json::to_string(&self.entries) {
-            if let Err(e) = std::fs::write(path, json) {
-                tracing::warn!("[Sandbox] could not save scan verdicts: {}", e);
+/// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 걷는다 (Windows). 그 표시가 붙은 실행 파일로 띄운
+/// 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
+/// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 걷고, 걷지 못한 표시가 남으면 `server_folder_label`로 막는다
+async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
+    #[cfg(windows)]
+    {
+        let stuck = tokio::task::spawn_blocking(move || {
+            let mut stuck = Vec::new();
+            for dir in dirs.iter().filter(|d| d.is_dir()) {
+                let started = std::time::Instant::now();
+                match appcontainer::clear_low_labels(dir) {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(
+                        "[Sandbox] removed the low integrity label from {} folder(s) under {} in {} ms",
+                        n,
+                        dir.display(),
+                        started.elapsed().as_millis()
+                    ),
+                    Err(failed) => stuck.extend(failed),
+                }
             }
+            stuck
+        })
+        .await
+        .unwrap_or_else(|e| vec![(PathBuf::new(), e.to_string())]);
+        if let Some((first, _)) = stuck.first() {
+            let detail = stuck.iter().map(|(p, e)| format!("{}: {}", p.display(), e)).collect::<Vec<_>>().join("; ");
+            tracing::warn!("[Sandbox] could not remove the low integrity label: {}", detail);
+            return Err(Blocked { code: "server_folder_label", file: Some(first.display().to_string()), detail: Some(detail) });
         }
     }
-}
-
-/// 검사를 끝내지 못했다 (검사 스레드가 죽었다 등). 제한하는 구성요소는 실행하지 않는다
-fn scan_failed(detail: impl std::fmt::Display) -> Blocked {
-    Blocked { code: "scan_failed", file: None, detail: Some(detail.to_string()) }
-}
-
-/// Python 실행 전: 확인되지 않은 구성요소면 스크립트를 검사한다
-pub async fn guard_entry(entry: &str) -> Result<(), Blocked> {
-    // 신뢰 표시는 설치한 파일을 해시한다: 제한하지 않는 플랫폼에서는 구하지 않는다
-    if !ENFORCED {
-        return Ok(());
-    }
-    let entry = PathBuf::from(entry);
-    if !restricted(trust_of_entry(&entry)) {
-        return Ok(());
-    }
-    let dir = entry.parent().map(Path::to_path_buf).ok_or_else(|| scan_failed("no component folder"))?;
-    tokio::task::spawn_blocking(move || {
-        let mut cache = VerdictCache::load();
-        let result = scan::scan_component(&dir, &scan::SystemScanner, &mut cache);
-        cache.save();
-        result
-    })
-    .await
-    .unwrap_or_else(|e| Err(scan_failed(e)))
+    #[cfg(not(windows))]
+    let _ = dirs;
+    Ok(())
 }
 
 /// 서버 실행 전: 확인되지 않은 모듈이면 실행 대상 위치를 보고 실행 파일을 검사한다. 띄울 프로그램 경로를 돌려준다
-pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<String, Blocked> {
+pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(String, LaunchGate), Blocked> {
     guard_launch_for(|| trust_of_entry(Path::new(entry)), program, args, cwd, roots, env).await
 }
 
@@ -332,32 +260,25 @@ pub fn strip_search_path(env: &mut Vec<(String, String)>) {
 }
 
 /// `guard_launch`의 신뢰 표시를 받는 형태 (익스텐션이 띄우는 프로그램에도 쓴다).
-/// `trust`는 제한하는 플랫폼에서만 부른다. 제한하면 상대 경로를 작업 폴더 기준으로 푼 경로를 돌려준다
-pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<String, Blocked> {
+/// `trust`는 제한하는 플랫폼에서만 부른다. 제한하면 상대 경로를 작업 폴더 기준으로 푼 경로를 돌려준다.
+/// 함께 돌려주는 `LaunchGate`는 서버 프로세스를 띄운 직후 놓는다
+pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(String, LaunchGate), Blocked> {
+    // 모듈이 띄우든 익스텐션이 띄우든 서버를 실행하는 모든 길이 여기를 지난다
+    let gate = LaunchGate(LABEL_GATE.lock().await);
+    restore_server_folders(roots.dirs.clone()).await?;
     if !ENFORCED || !restricted(trust()) {
-        return Ok(program.to_string());
+        return Ok((program.to_string(), gate));
     }
     strip_search_path(env);
     let program = resolve_program(program, cwd);
     if let Err(code) = check_launch(&program, &roots) {
         return Err(Blocked { code, file: Some(program), detail: None });
     }
-    tracing::info!("[Sandbox] checking launch of unverified module program '{}'", program);
-    // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
-    let mut files: Vec<PathBuf> = Some(PathBuf::from(&program)).filter(|p| p.is_absolute()).into_iter().collect();
-    match argument_files(args, cwd) {
-        Ok(found) => files.extend(found),
-        Err(arg) => return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None }),
+    // 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)도 폴더 밖 경로·특수 경로를 쓰지 않아야 한다
+    if let Err(arg) = argument_files(args, cwd) {
+        return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None });
     }
-    tokio::task::spawn_blocking(move || {
-        let mut cache = VerdictCache::load();
-        let result = files.iter().try_for_each(|f| scan::scan_executable(f, &scan::SystemScanner, &mut cache));
-        cache.save();
-        result
-    })
-    .await
-    .unwrap_or_else(|e| Err(scan_failed(e)))?;
-    Ok(program)
+    Ok((program, gate))
 }
 
 /// `.`·`..`를 글자로만 푼 경로 (파일 시스템에 묻지 않는다)
@@ -761,6 +682,8 @@ pub enum Spawned {
 
 /// 격리해서 띄운다. 준비가 실패하면 사용자가 동의한 경우만 격리 없이 돌리고, 아니면 `sandbox_unavailable`
 pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Result<Spawned, Blocked> {
+    // 권한 주기(서버 폴더에 표시 붙이기)는 서버를 띄우는 중이 아닐 때만
+    let gate = LABEL_GATE.lock().await;
     #[cfg(windows)]
     let error = {
         let program = cmd.get_program().to_os_string();
@@ -772,6 +695,7 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
         let started = tokio::task::spawn_blocking(move || appcontainer::spawn(&program, &args, cwd.as_deref(), &env, &profile, &grants))
             .await
             .unwrap_or_else(|e| Err(e.to_string()));
+        drop(gate);
         match started {
             Ok(child) => return Ok(Spawned::Contained(child)),
             Err(e) => e,
@@ -779,6 +703,7 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
     };
     #[cfg(not(windows))]
     let error = {
+        drop(gate);
         let _ = cmd;
         "AppContainer is only available on Windows".to_string()
     };
@@ -917,6 +842,28 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 서버 폴더의 표시를 걷은 뒤 서버가 뜨기 전에 격리 실행이 끼어 표시를 다시 붙이면 서버가 낮은 무결성으로 뜬다
+    #[tokio::test]
+    async fn a_sandboxed_call_waits_until_the_server_has_launched() {
+        let roots = LaunchRoots { dirs: Vec::new(), runtimes: Vec::new() };
+        let (_, gate) = guard_launch_for(|| Trust::Verified, "java", &[], Path::new("."), roots, &mut Vec::new()).await.unwrap();
+        let iso = Isolation {
+            key: "module-gate-test".into(),
+            dir: PathBuf::from("."),
+            profile: String::new(),
+            grants: appcontainer::Grants::default(),
+            pycache: PathBuf::new(),
+            temp: PathBuf::new(),
+            data: None,
+            extension_root: PathBuf::new(),
+        };
+        let call = tokio::spawn(async move { spawn_isolated(&std::process::Command::new("python"), &iso).await.is_ok() });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!call.is_finished(), "the sandboxed call must wait while a server launch is in progress");
+        drop(gate);
+        tokio::time::timeout(std::time::Duration::from_secs(5), call).await.expect("runs once the server has launched").unwrap();
+    }
 
     #[test]
     fn an_entry_in_a_subfolder_belongs_to_its_module_or_extension() {
@@ -1100,36 +1047,6 @@ mod tests {
         assert_eq!(resolve_program("java", &inst), "java");
         let abs = inst.join("bin").join("server.exe").to_string_lossy().into_owned();
         assert_eq!(resolve_program(&abs, tmp.path()), abs);
-    }
-
-    #[test]
-    fn clean_verdicts_expire_but_detections_do_not() {
-        let mut cache = VerdictCache::in_memory();
-        cache.put("clean".into(), false);
-        cache.put("bad".into(), true);
-        let now = now_secs();
-        assert_eq!(cache.get_at("clean", now), Some(false));
-        assert_eq!(cache.get_at("clean", now + CLEAN_VERDICT_TTL_SECS), None);
-        assert_eq!(cache.get_at("bad", now + CLEAN_VERDICT_TTL_SECS), Some(true));
-        assert_eq!(cache.get_at("none", now), None);
-    }
-
-    /// 0.1.7 전의 데몬은 Defender가 검사하지 못한 파일도 찾음으로 적었다. 그때 적은 찾음은 버리고 다시 본다
-    #[test]
-    fn detections_recorded_before_the_mpcmdrun_fix_are_rescanned() {
-        let entries = parse_entries(
-            r#"{"bad":true,"clean":false,"new":{"detected":false,"at":5},"old":{"detected":true,"at":9},"kept":{"detected":true,"at":9,"format":1}}"#,
-        );
-        assert!(!entries.contains_key("bad") && !entries.contains_key("old"));
-        assert!(entries["kept"].detected);
-        assert_eq!((entries["clean"].detected, entries["clean"].at), (false, 0));
-        assert_eq!(entries["new"].at, 5);
-        assert!(parse_entries("not json").is_empty());
-
-        let mut cache = VerdictCache::in_memory();
-        cache.put("x".into(), true);
-        let saved = serde_json::to_string(&cache.entries).unwrap();
-        assert!(parse_entries(&saved)["x"].detected, "a detection saved now survives a reload");
     }
 
     #[cfg(unix)]
