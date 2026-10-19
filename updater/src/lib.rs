@@ -367,8 +367,19 @@ pub fn extract_zip(
             std::fs::create_dir_all(parent)?;
         }
         before_write(&out_path)?;
-        let mut outfile = std::fs::File::create(&out_path)?;
-        std::io::copy(&mut entry, &mut outfile)?;
+        // 옆 이름에 다 쓴 뒤 바꾼다. 쓰다 꺼져도 원래 이름에는 반쯤 쓴 파일이 생기지 않아,
+        // 다음 정리(`cleanup_old_files`)가 비켜 둔 `.update-bak`을 믿고 되돌릴 수 있다
+        let mut partial = out_path.clone().into_os_string();
+        partial.push(".update-new");
+        let partial = PathBuf::from(partial);
+        let wrote = std::fs::File::create(&partial).and_then(|mut f| {
+            std::io::copy(&mut entry, &mut f)?;
+            f.sync_all()
+        });
+        if let Err(e) = wrote.and_then(|_| std::fs::rename(&partial, &out_path)) {
+            let _ = std::fs::remove_file(&partial);
+            return Err(e.into());
+        }
         written.push(out_path);
     }
     Ok(written)
@@ -853,6 +864,7 @@ impl UpdateManager {
     /// 이 순서를 지키면 업데이트 도중 프로세스 충돌이 방지됩니다.
     pub async fn apply_components(&mut self, keys: &[String]) -> Result<Vec<String>> {
         let mut applied = Vec::new();
+        self.settle_interrupted_updates();
 
         let mut components: Vec<ComponentVersion> = self.status.components.iter()
             .filter(|c| c.downloaded && c.update_available)
@@ -999,22 +1011,37 @@ impl UpdateManager {
 
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
 
-    /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old`(`.exe.old.<n>` 포함) 백업을 지운다 (설치 폴더 바로 안만).
-    /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
-    pub fn cleanup_old_files(&self) {
+    /// 적용 중 꺼져 남은 파일을 정리한다 (설치 폴더 바로 안만). 적용하는 프로세스만 적용 직전에 부른다:
+    /// 다른 프로세스(데몬 시작 등)가 적용 도중에 부르면 비켜 둔 백업을 되돌리고 쓰는 중인 파일을 지운다
+    pub fn settle_interrupted_updates(&self) {
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
-            // 적용 중 꺼져 남은 `.update-bak` (`extract_zip_or_restore`): 원래 파일이 있으면 새 판이 들어간 것이라 지우고,
-            // 없으면 비켜 둔 채 끝난 것이라 되돌린다
+            // 쓰다 꺼져 남은 `extract_zip`의 반쪽 파일
+            if name.ends_with(".update-new") {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    tracing::debug!("[Updater] Cannot remove partial file {}: {}", path.display(), e);
+                }
+                continue;
+            }
+            // `extract_zip_or_restore`가 남긴 `.update-bak`: 원래 파일이 있으면 새 판이 다 들어간 것이라
+            // (`extract_zip`은 다 쓴 뒤에만 원래 이름을 만든다) 지우고, 없으면 비켜 둔 채 끝난 것이라 되돌린다
             if let Some(original) = name.strip_suffix(".update-bak").filter(|o| !o.is_empty()) {
                 let original = self.install_root.join(original);
                 let done = if original.exists() { std::fs::remove_file(&path) } else { std::fs::rename(&path, &original) };
                 if let Err(e) = done {
                     tracing::debug!("[Updater] Cannot settle leftover backup {}: {}", path.display(), e);
                 }
-                continue;
             }
+        }
+    }
+
+    /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old`(`.exe.old.<n>` 포함) 백업을 지운다 (설치 폴더 바로 안만).
+    /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
+    pub fn cleanup_old_files(&self) {
+        let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
+        for path in entries.flatten().map(|e| e.path()) {
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
             // `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`)
             let Some((stem, tail)) = name.split_once(".exe.old") else { continue };
             if !(tail.is_empty() || tail.strip_prefix('.').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))) {

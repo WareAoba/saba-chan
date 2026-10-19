@@ -1048,7 +1048,7 @@ fn leftover_update_backups_are_cleaned_or_restored() {
     std::fs::write(tmp.path().join("resources.pak.update-bak"), b"old").unwrap();
     std::fs::write(tmp.path().join("WebView2Loader.dll.update-bak"), b"only copy").unwrap();
 
-    manager.cleanup_old_files();
+    manager.settle_interrupted_updates();
 
     assert_eq!(std::fs::read(tmp.path().join("resources.pak")).unwrap(), b"new");
     assert!(!tmp.path().join("resources.pak.update-bak").exists());
@@ -1142,4 +1142,52 @@ fn extract_zip_does_not_write_through_a_junction() {
     }
     assert!(crate::extract_zip(&zip_path, &target, |_| Ok(())).is_err());
     assert!(!outside.join("new.txt").exists());
+}
+
+// L3(c): 새 파일은 `.update-new`에 다 쓴 뒤 이름을 바꾼다. 쓰다 꺼지면 원래 이름에는 아무것도 없어서
+// 다음 정리가 `.update-bak`을 되돌리고 반쯤 쓴 `.update-new`를 지운다 (원래 이름에 깨진 파일이 남아 백업을 지우던 문제)
+#[test]
+fn an_interrupted_write_leaves_the_backup_to_be_restored() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("a.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("resources.pak", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"new").unwrap();
+        zw.finish().unwrap();
+    }
+    let target = tmp.path().join("install");
+    std::fs::create_dir_all(&target).unwrap();
+    crate::extract_zip(&zip_path, &target, |_| Ok(())).unwrap();
+    assert_eq!(std::fs::read(target.join("resources.pak")).unwrap(), b"new");
+    assert!(!target.join("resources.pak.update-new").exists());
+
+    // 쓰다 꺼진 상태: 원래 이름은 비켜 났고 반쯤 쓴 `.update-new`만 있다
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = target.clone();
+    std::fs::remove_file(target.join("resources.pak")).unwrap();
+    std::fs::write(target.join("resources.pak.update-bak"), b"old").unwrap();
+    std::fs::write(target.join("resources.pak.update-new"), b"ne").unwrap();
+
+    manager.settle_interrupted_updates();
+
+    assert_eq!(std::fs::read(target.join("resources.pak")).unwrap(), b"old");
+    assert!(!target.join("resources.pak.update-new").exists());
+}
+
+// L3(c): 데몬·업데이터가 뜰 때의 정리는 다른 프로세스가 적용하는 중일 수 있어 백업을 건드리지 않는다
+#[test]
+fn startup_cleanup_leaves_backups_of_a_running_apply_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("resources.pak.update-bak"), b"old").unwrap();
+    std::fs::write(tmp.path().join("resources.pak.update-new"), b"ne").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+
+    manager.cleanup_old_files();
+
+    assert!(tmp.path().join("resources.pak.update-bak").exists());
+    assert!(tmp.path().join("resources.pak.update-new").exists());
+    assert!(!tmp.path().join("resources.pak").exists());
 }
