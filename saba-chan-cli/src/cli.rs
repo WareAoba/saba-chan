@@ -106,6 +106,18 @@ pub enum Cmd {
         #[arg(short, long)]
         follow: bool,
     },
+    /// Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop
+    Events {
+        /// Only these events; `instance` also takes `instance.exit` and the like
+        #[arg(long, value_name = "EVENT")]
+        kind: Vec<String>,
+        /// Only events of this server
+        #[arg(long, short)]
+        server: Option<String>,
+        /// Start after this event id (replays what the daemon still keeps)
+        #[arg(long, value_name = "ID")]
+        since: Option<u64>,
+    },
     /// Who may run which commands from Discord (levels per member, preset, overrides)
     #[command(subcommand, visible_alias = "permissions")]
     Perm(PermCmd),

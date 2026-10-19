@@ -473,7 +473,8 @@
   },
   "help": {
     "cmd": {
-      "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes"
+      "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
+      "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden"
     },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
@@ -486,7 +487,10 @@
       "do.input": "Eingabe als key=value (Werte, die als JSON lesbar sind, bleiben JSON)",
       "server": "Servername (ein Teil genügt)",
       "ids": "Eine oder mehrere Erweiterungs-IDs",
-      "help.command": "Befehlspfad, z. B. `server start`"
+      "help.command": "Befehlspfad, z. B. `server start`",
+      "events.kind": "Nur diese Ereignisse; `instance` umfasst auch `instance.exit` usw.",
+      "events.server": "Nur Ereignisse dieses Servers",
+      "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente startet die interaktive Shell.\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

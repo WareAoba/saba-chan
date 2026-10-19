@@ -560,7 +560,8 @@
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
       "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
       "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show",
-      "help": "Show help for a command. With --json: the command tree, arguments and exit codes"
+      "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
+      "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
@@ -600,7 +601,10 @@
       "bot.words.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
       "bot.words.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
       "bot.words.clear": "Remove every word of this server",
-      "help.command": "Command path, e.g. `server start`"
+      "help.command": "Command path, e.g. `server start`",
+      "events.kind": "Only these events; `instance` also takes `instance.exit` and the like",
+      "events.server": "Only events of this server",
+      "events.since": "Start after this event id (replays what the daemon still keeps)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

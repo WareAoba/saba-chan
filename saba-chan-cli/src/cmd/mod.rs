@@ -8,6 +8,7 @@ pub mod config;
 pub mod console;
 pub mod daemon;
 pub mod do_action;
+pub mod events;
 pub mod extension;
 pub mod module;
 pub mod monitor;
@@ -51,6 +52,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Update(c) => update::run(ctx, c).await,
         Cmd::Config(c) => config::run(ctx, c).await,
         Cmd::Chat { text } => chat(ctx, &text.join(" ")).await,
+        Cmd::Events { kind, server, since } => events::run(ctx, &kind, server.as_deref(), since).await,
         Cmd::Help { command } => help(ctx, &command),
         Cmd::Completions { shell } => {
             let mut cmd = crate::cli::localized();

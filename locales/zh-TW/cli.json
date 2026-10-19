@@ -473,7 +473,8 @@
   },
   "help": {
     "cmd": {
-      "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼"
+      "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
+      "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止"
     },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
@@ -486,7 +487,10 @@
       "do.input": "輸入 key=value (可依 JSON 讀取的值維持為 JSON)",
       "server": "伺服器名稱（部分即可）",
       "ids": "一個或多個擴充功能 ID",
-      "help.command": "命令路徑（例如 `server start`）"
+      "help.command": "命令路徑（例如 `server start`）",
+      "events.kind": "只看這些事件；`instance` 也包括 `instance.exit` 等下層事件",
+      "events.server": "只看這個伺服器的事件",
+      "events.since": "從這個事件編號之後開始（常駐程式仍保留的會重新傳送）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。不帶參數執行會開啟互動式 shell。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

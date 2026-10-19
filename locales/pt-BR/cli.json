@@ -473,7 +473,8 @@
   },
   "help": {
     "cmd": {
-      "help": "Mostra a ajuda de um comando. Com --json: a árvore de comandos, os argumentos e os códigos de saída"
+      "help": "Mostra a ajuda de um comando. Com --json: a árvore de comandos, os argumentos e os códigos de saída",
+      "events": "Acompanha os eventos do daemon ao vivo (com --json: um JSON por linha). Ctrl+C para parar"
     },
     "arg": {
       "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
@@ -486,7 +487,10 @@
       "do.input": "Entrada como key=value (valores que podem ser lidos como JSON continuam JSON)",
       "server": "Nome do servidor (uma parte basta)",
       "ids": "Um ou mais IDs de extensão",
-      "help.command": "Caminho do comando, ex.: `server start`"
+      "help.command": "Caminho do comando, ex.: `server start`",
+      "events.kind": "Só estes eventos; `instance` também inclui `instance.exit` e afins",
+      "events.server": "Só eventos deste servidor",
+      "events.since": "Começar após este id de evento (reenvia o que o daemon ainda guarda)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos, abre o shell interativo.\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
