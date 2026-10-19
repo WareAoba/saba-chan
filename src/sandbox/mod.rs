@@ -199,9 +199,15 @@ pub async fn restore_server_folders(dirs: Vec<PathBuf>) {
     {
         let _ = tokio::task::spawn_blocking(move || {
             for dir in dirs.iter().filter(|d| d.is_dir()) {
+                let started = std::time::Instant::now();
                 match appcontainer::clear_low_labels(dir) {
                     Ok(0) => {}
-                    Ok(n) => tracing::info!("[Sandbox] removed the low integrity label from {} folder(s) under {}", n, dir.display()),
+                    Ok(n) => tracing::info!(
+                        "[Sandbox] removed the low integrity label from {} folder(s) under {} in {} ms",
+                        n,
+                        dir.display(),
+                        started.elapsed().as_millis()
+                    ),
                     Err(e) => tracing::warn!("[Sandbox] could not remove the low integrity label under {}: {}", dir.display(), e),
                 }
             }
