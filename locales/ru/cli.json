@@ -48,6 +48,7 @@
     "offer_start": "Подключиться к боту сейчас?",
     "pair_enter": "В Discord выполните `/saba connect` и введите этот код:",
     "pair_expired": "Срок действия кода привязки истёк. Снова выполните bot pair.",
+    "pair_token_not_saved": "Discord принял код, но сохранить подключение на этом ПК не удалось. Снова выполните bot pair.",
     "pair_no_code": "Ретранслятор не вернул код привязки.",
     "pair_polling": "Ожидание Discord...",
     "pair_waiting": "Нажмите Ctrl+C для отмены.",

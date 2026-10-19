@@ -48,6 +48,7 @@
     "offer_start": "今すぐボットに接続しますか？",
     "pair_enter": "Discordで `/saba connect` を実行し、このコードを入力してください:",
     "pair_expired": "ペアリングコードの有効期限が切れました。もう一度 bot pair を実行してください。",
+    "pair_token_not_saved": "Discord では接続されましたが、この PC に接続情報を保存できませんでした。もう一度 bot pair を実行してください。",
     "pair_no_code": "リレーからペアリングコードが返されませんでした。",
     "pair_polling": "Discord を待っています...",
     "pair_waiting": "Ctrl+C でキャンセルします。",
