@@ -294,10 +294,10 @@ export function createApi({ invoke, hub }) {
         },
         moduleInstallServer: async (moduleName, installConfig) => {
             try {
-                // JAR 다운로드는 수십 MB — 최대 5분 허용
+                // 데몬이 install_server에 30분까지 허용한다 — 그보다 먼저 끊으면 설치가 도는 중에 실패로 보인다 (1분 여유)
                 return (
                     await post(`/api/module/${encodeURIComponent(moduleName)}/install`, installConfig, {
-                        timeout: 300000,
+                        timeout: 1860000,
                     })
                 ).data;
             } catch (error) {
