@@ -18,11 +18,21 @@ fn status_line(port: u16, request: &str) -> Option<String> {
     out.lines().next().filter(|l| l.starts_with("HTTP/")).map(str::to_string)
 }
 
+/// 단언이 실패해도 데몬을 남기지 않는다
+struct KillOnDrop(std::process::Child);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 #[test]
 fn a_daemon_keeps_serving_after_its_parent_closes_the_log_pipe() {
     let data_dir = tempfile::tempdir().unwrap();
     let port = free_port();
-    let mut daemon = Command::new(env!("CARGO_BIN_EXE_saba-core"))
+    let mut daemon = KillOnDrop(Command::new(env!("CARGO_BIN_EXE_saba-core"))
         .arg("--spawned")
         .env("SABA_DATA_DIR", data_dir.path())
         .env("SABA_IPC_PORT", port.to_string())
@@ -32,20 +42,20 @@ fn a_daemon_keeps_serving_after_its_parent_closes_the_log_pipe() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn saba-core");
+        .expect("spawn saba-core"));
 
     let token_path = data_dir.path().join(".ipc_token");
     let deadline = Instant::now() + Duration::from_secs(30);
     while !token_path.exists() || status_line(port, "GET /api/version HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").is_none() {
         assert!(Instant::now() < deadline, "daemon never came up");
-        assert!(daemon.try_wait().unwrap().is_none(), "daemon exited early");
+        assert!(daemon.0.try_wait().unwrap().is_none(), "daemon exited early");
         std::thread::sleep(Duration::from_millis(100));
     }
     let token = std::fs::read_to_string(&token_path).unwrap();
 
     // 부모(GUI)가 사라진 것처럼 파이프의 읽는 쪽을 닫는다
-    drop(daemon.stdout.take());
-    drop(daemon.stderr.take());
+    drop(daemon.0.stdout.take());
+    drop(daemon.0.stderr.take());
 
     // 경고를 남기는 요청(토큰 없음)과 정보 로그를 남기는 요청(클라이언트 등록) 모두 답해야 한다
     let unauthorized = status_line(port, "GET /api/servers HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
@@ -62,12 +72,9 @@ fn a_daemon_keeps_serving_after_its_parent_closes_the_log_pipe() {
         assert_eq!(registered.as_deref().map(|l| l.contains("200")), Some(true), "{registered:?}");
     }
     std::thread::sleep(Duration::from_millis(300));
-    assert!(daemon.try_wait().unwrap().is_none(), "daemon must keep running");
+    assert!(daemon.0.try_wait().unwrap().is_none(), "daemon must keep running");
 
     // 로그는 데몬 자신의 파일에 남는다
     let log = std::fs::read_to_string(data_dir.path().join("logs").join("daemon.log")).unwrap_or_default();
     assert!(log.contains("[Heartbeat] Active clients"), "the daemon log file should keep the lines: {log}");
-
-    let _ = daemon.kill();
-    let _ = daemon.wait();
 }

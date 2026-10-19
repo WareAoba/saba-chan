@@ -315,7 +315,10 @@ impl LogFile {
             *guard = None;
             let mut rolled = self.path.as_os_str().to_os_string();
             rolled.push(".1");
-            let _ = std::fs::rename(&self.path, rolled);
+            if std::fs::rename(&self.path, rolled).is_err() {
+                // 넘기지 못하면 비우고 새로 쓴다: 상한을 지키는 쪽이 낫다
+                let _ = std::fs::OpenOptions::new().write(true).truncate(true).open(&self.path);
+            }
         }
         if guard.is_none() {
             *guard = Self::append(&self.path);
@@ -358,6 +361,21 @@ mod tests {
         assert!(std::fs::read_to_string(path.with_extension("log.1")).unwrap().starts_with("first line"));
         log.write_panic("boom at src/x.rs:1");
         assert!(std::fs::read_to_string(&path).unwrap().contains("PANIC boom at src/x.rs:1"));
+    }
+
+    /// `.1`로 넘기지 못해도(이름 바꾸기 실패) 파일이 끝없이 커지지 않는다
+    #[test]
+    fn the_log_file_stays_capped_when_it_cannot_roll_over() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("daemon.log");
+        let blocker = path.with_extension("log.1");
+        std::fs::create_dir_all(blocker.join("busy")).unwrap();
+        let log = LogFile::open(&path, 32);
+        let mut w = log.writer();
+        for _ in 0..20 {
+            std::io::Write::write_all(&mut w, b"a line of about twenty\n").unwrap();
+        }
+        assert!(std::fs::metadata(&path).unwrap().len() <= 32, "the file must not grow past the cap");
     }
 
     // 백로그 L6: 꺼진 인스턴스는 디스크 로그로 답하는데, 그 답은 since를 무시해 같은 200줄을 0.5초마다 다시 찍었다
