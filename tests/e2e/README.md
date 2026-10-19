@@ -10,6 +10,7 @@
 | Windows PC | `powershell -ExecutionPolicy Bypass -File tests\e2e\run-pc.ps1` | 위 + Windows 전용(메모리 상한, 격리 실행, 터미널로 열기) |
 | | `... -Network` | + 진짜 마인크래프트 바닐라·Paper·Fabric 설치·실행 |
 | | `... -Network -Steam` | + Palworld·Zomboid (SteamCMD, 수 GB) |
+| | `... -InstalledLayout` | 같은 시험을 설치본과 같은 폴더 구성으로 (아래 "설치본 구성") |
 
 결과는 `<루트>/report-<시각>.md`, 시험마다 데몬 로그·콘솔·CLI 출력·GUI 스크린샷은 `<루트>/run-<시각>/<시험>/artifacts/`에 남는다. 루트는 `SABA_E2E_ROOT`(PC 기본 `C:\SabaE2E`, 리눅스 기본 `/tmp/saba-e2e`).
 
@@ -19,6 +20,7 @@
 
 - 시험마다 폴더 하나를 만들고 `SABA_DATA_DIR`·`SABA_MODULES_PATH`·`SABA_EXTENSIONS_DIR`·`SABA_TOKEN_PATH`·`SABA_IPC_PORT`(빈 포트)와 `HOME`·`APPDATA`·`LOCALAPPDATA`·`TEMP`·`XDG_*`를 그 안으로 돌린다.
 - 시작과 끝에 실제 데이터 폴더(`%APPDATA%\saba-chan`, `~/.config/saba-chan` 등)의 파일 목록·크기·수정 시각을 비교한다. 바뀌면 실행 전체가 실패한다(`run-*/guard.md`).
+- 설치본 구성(`SABA_E2E_LAYOUT=installed`, `run-pc.ps1 -InstalledLayout`): 경로용 `SABA_*` 변수를 주지 않는다. 데몬·CLI·GUI는 설치본처럼 기본 위치를 스스로 찾고(`%APPDATA%\saba-chan`과 그 아래 `modules`·`extensions`·`instances`·`.ipc_token`, 리눅스는 `~/.config/saba-chan`), 그 `APPDATA`·`HOME`만 시험 폴더의 가짜 프로필이다. `-Root`를 주지 않으면 시험 루트가 `%USERPROFILE%\SabaE2E`라서 실제 `%APPDATA%`와 같은 권한(사용자 프로필 상속)을 받는다. 실제 프로필·설치본은 여전히 건드리지 않는다. 바이너리는 설치 폴더(`C:\Program Files\Saba-chan`)가 아니라 빌드 폴더에서 뜬다는 점만 설치본과 다르다.
 - 통과한 시험의 폴더는 `artifacts/`만 남기고 지운다(`SABA_E2E_KEEP=1`이면 남긴다).
 - 남은 프로세스는 명령줄에 이번 실행 폴더 경로가 들어간 것만 끝낸다. 이름으로 죽이지 않는다.
 

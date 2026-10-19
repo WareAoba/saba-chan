@@ -3,6 +3,9 @@
 데몬·CLI·GUI·모듈 Python·SteamCMD가 읽는 경로를 전부 이 폴더 안으로 돌린다.
 steamcmd 익스텐션은 HOME 아래(~/.config/saba-chan/steamcmd)를 쓰고, Python 런타임은 exe 옆을 쓸 수 있으며,
 Electron은 APPDATA를 본다. 그래서 SABA_* 외에 HOME·APPDATA·LOCALAPPDATA·TEMP·XDG_*도 바꾼다.
+
+SABA_E2E_LAYOUT=installed면 경로용 SABA_* 변수를 주지 않는다. 데몬·CLI가 설치본처럼 기본 위치
+(%APPDATA%\saba-chan, 그 아래 modules·extensions·.ipc_token)를 스스로 찾고, 그 APPDATA만 시험 폴더의 HOME 아래로 돌린다.
 """
 
 import os
@@ -10,10 +13,12 @@ import shutil
 import socket
 from pathlib import Path
 
-from .paths import EXTENSIONS_REPO, IS_WINDOWS, MODULES_REPO
+from .paths import EXTENSIONS_REPO, INSTALLED_LAYOUT, IS_WINDOWS, MODULES_REPO
 
 # 시험 환경에 새면 결과가 흔들리는 변수 (예: 클라우드 프록시의 JAVA_TOOL_OPTIONS는 콘솔 첫 줄을 더럽힌다)
 _DROP_ENV = ("JAVA_TOOL_OPTIONS", "SABA_IPC_URL", "SABA_PYTHON", "IPC_BASE", "RUST_LOG", "PYTHONDONTWRITEBYTECODE")  # 마지막은 run-pc.ps1이 하네스에만 준다
+# 설치본 구성에서 데몬이 기본 위치 대신 쓰게 되는 경로 변수 (바깥 셸에 남아 있어도 넘기지 않는다)
+_PATH_ENV = ("SABA_DATA_DIR", "SABA_MODULES_PATH", "SABA_EXTENSIONS_DIR", "SABA_TOKEN_PATH", "SABA_INSTANCES_PATH")
 
 
 def free_port() -> int:
@@ -51,12 +56,19 @@ class Sandbox:
     def __init__(self, root: Path, *, modules: bool = True, extensions: bool = True):
         self.root = root
         self.home = root / "home"
-        self.data = root / "data"
+        self.installed_layout = INSTALLED_LAYOUT
+        if self.installed_layout:
+            # 데몬 기본값과 같은 자리 (updater/src/constants.rs resolve_data_dir)
+            self.data = (self.home / "AppData" / "Roaming" if IS_WINDOWS else self.home / ".config") / "saba-chan"
+            self.modules = self.data / "modules"
+            self.extensions = self.data / "extensions"
+        else:
+            self.data = root / "data"
+            self.modules = root / "modules"
+            # 익스텐션 폴더의 부모에는 데몬이 격리 실행(Windows)에 목록 권한을 준다. 시험 폴더 루트는 HOME의 위라
+            # 데몬이 주지 않으므로 한 단계 아래에 둔다
+            self.extensions = root / "plugins" / "extensions"
         self.tmp = root / "tmp"
-        self.modules = root / "modules"
-        # 익스텐션 폴더의 부모에는 데몬이 격리 실행(Windows)에 목록 권한을 준다. 시험 폴더 루트는 HOME의 위라
-        # 데몬이 주지 않으므로 한 단계 아래에 둔다
-        self.extensions = root / "plugins" / "extensions"
         self.servers = root / "servers"  # 가져오기용 기존 서버 폴더
         self.artifacts = root / "artifacts"
         for d in (self.home, self.data, self.tmp, self.servers, self.artifacts):
@@ -79,12 +91,15 @@ class Sandbox:
         return self.token_path.read_text().strip()
 
     def env(self, **extra: str) -> dict[str, str]:
-        env = {k: v for k, v in os.environ.items() if k not in _DROP_ENV}
+        env = {k: v for k, v in os.environ.items() if k not in _DROP_ENV and k not in _PATH_ENV}
+        if not self.installed_layout:
+            env.update(
+                SABA_DATA_DIR=str(self.data),
+                SABA_MODULES_PATH=str(self.modules),
+                SABA_EXTENSIONS_DIR=str(self.extensions),
+                SABA_TOKEN_PATH=str(self.token_path),
+            )
         env.update(
-            SABA_DATA_DIR=str(self.data),
-            SABA_MODULES_PATH=str(self.modules),
-            SABA_EXTENSIONS_DIR=str(self.extensions),
-            SABA_TOKEN_PATH=str(self.token_path),
             SABA_IPC_PORT=str(self.ipc_port),
             HOME=str(self.home),
             USERPROFILE=str(self.home) if IS_WINDOWS else env.get("USERPROFILE", ""),

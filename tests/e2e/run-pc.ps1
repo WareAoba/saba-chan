@@ -11,6 +11,9 @@
   powershell -ExecutionPolicy Bypass -File tests\e2e\run-pc.ps1 -Network        # + 진짜 마인크래프트 설치·실행 (바닐라·Paper·Fabric)
   powershell -ExecutionPolicy Bypass -File tests\e2e\run-pc.ps1 -Network -Steam # + Palworld·Zomboid (수 GB)
   powershell -ExecutionPolicy Bypass -File tests\e2e\run-pc.ps1 -Only "memory_limit or open_in_terminal"
+  powershell -ExecutionPolicy Bypass -File tests\e2e\run-pc.ps1 -InstalledLayout -NoGui -Network -Only "real or official"
+    # 설치본과 같은 폴더 구성: 데몬이 SABA_* 경로 변수 없이 %APPDATA%\saba-chan(시험 폴더 안의 가짜 프로필)을 쓴다.
+    # -Root를 주지 않으면 시험 폴더를 사용자 프로필 아래(%USERPROFILE%\SabaE2E)에 두어 실제 %APPDATA%와 같은 권한을 물려받는다
 #>
 param(
     [string]$Root = "C:\SabaE2E",
@@ -20,10 +23,12 @@ param(
     [switch]$NoRelay,
     [switch]$Release,
     [switch]$Slow,
+    [switch]$InstalledLayout,
     [string]$Only = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ($InstalledLayout -and -not $PSBoundParameters.ContainsKey("Root")) { $Root = Join-Path $env:USERPROFILE "SabaE2E" }
 $E2E = $PSScriptRoot
 $Repo = (Resolve-Path (Join-Path $E2E "..\..")).Path
 $Git = Split-Path $Repo -Parent
@@ -146,6 +151,7 @@ if (-not (Test-Path "$venv\Scripts\python.exe")) { & $py.Source -m venv $venv }
 if ($LASTEXITCODE) { throw "pip install 실패" }
 
 $env:SABA_E2E_ROOT = $Root
+$env:SABA_E2E_LAYOUT = if ($InstalledLayout) { "installed" } else { "test" }
 # .pyc를 남기지 않는다 (AMSI 시험 표본이 든 옛 .pyc는 백신 알림을 띄웠다)
 $env:PYTHONDONTWRITEBYTECODE = "1"
 Get-ChildItem -Path $E2E -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
