@@ -729,28 +729,72 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
     Err("Directory creation was cancelled or failed".into())
 }
 
-/// 관리자 권한으로 만들 폴더 검사: 절대 경로, `.`·`..` 없음, 드라이브 루트 아님, Windows 폴더 밖
+/// 관리자 권한으로 만들 폴더 검사: 드라이브 절대 경로, `.`·`..` 없음, 두 단계 이상 깊이,
+/// Windows 폴더 밖, 보호된 시스템 폴더(Program Files, ProgramData, Users, 사용자 폴더) 자체가 아님.
+/// 이 폴더 전체에 사용자 전체 권한을 주므로 사바쨩 전용 하위 폴더만 받는다
 fn check_elevated_target(dir: &Path) -> Result<(), String> {
-    use std::path::Component;
-    if !dir.is_absolute() {
-        return Err("path must be absolute".into());
+    check_elevated_target_in(&dir.to_string_lossy(), &|name| std::env::var(name).ok())
+}
+
+fn check_elevated_target_in(dir: &str, env: &dyn Fn(&str) -> Option<String>) -> Result<(), String> {
+    let norm = |p: &str| p.replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let lower = norm(dir);
+    let bytes = lower.as_bytes();
+    if bytes.len() < 3 || !bytes[0].is_ascii_alphabetic() || bytes[1] != b':' || bytes[2] != b'\\' {
+        return Err("path must be an absolute drive path".into());
     }
-    if dir.components().any(|c| matches!(c, Component::CurDir | Component::ParentDir)) {
+    let parts: Vec<&str> = lower[3..].split('\\').collect();
+    if parts.iter().any(|c| c.is_empty() || *c == "." || *c == "..") {
         return Err("path must not contain . or ..".into());
     }
-    if dir.components().filter(|c| matches!(c, Component::Normal(_))).count() == 0 {
-        return Err("refusing a drive root".into());
+    if parts.len() < 2 {
+        return Err("refusing a drive root or a top-level folder".into());
     }
-    let lower = dir.to_string_lossy().to_lowercase().replace('/', "\\");
-    for var in ["SystemRoot", "WINDIR"] {
-        if let Ok(sys) = std::env::var(var) {
-            let sys = sys.to_lowercase().trim_end_matches('\\').to_string();
-            if !sys.is_empty() && (lower == sys || lower.starts_with(&format!("{}\\", sys))) {
-                return Err("refusing a path inside the Windows folder".into());
-            }
+    if let Some(sys) = env("SystemRoot").or_else(|| env("WINDIR")).map(|v| norm(&v)) {
+        if !sys.is_empty() && (lower == sys || lower.starts_with(&format!("{}\\", sys))) {
+            return Err("refusing a path inside the Windows folder".into());
         }
     }
+    let users = env("SystemDrive").map(|d| format!("{}\\Users", d));
+    let protected = ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "USERPROFILE", "PUBLIC"]
+        .into_iter()
+        .filter_map(env)
+        .chain(users);
+    if protected.map(|p| norm(&p)).any(|p| !p.is_empty() && p == lower) {
+        return Err("refusing a protected system folder".into());
+    }
     Ok(())
+}
+
+fn is_link_or_reparse_point(path: &Path) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return false };
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    meta.file_type().is_symlink()
+}
+
+/// 권한을 줄 폴더의 내용 검사: 링크·정션을 거치지 않고, 아직 없거나, 비었거나, 사바쨩 설치 폴더(설치 표시나 실행 파일)여야 한다.
+/// `icacls /T`가 하위 전체에 권한을 주므로 다른 파일이 든 기존 폴더는 받지 않는다
+fn check_elevated_contents(dir: &Path) -> Result<(), String> {
+    // 정션·심볼릭 링크를 따라가면 다른 폴더(System32 등)에 권한이 걸린다: 자신과 위 폴더 모두 확인
+    if dir.ancestors().any(is_link_or_reparse_point) {
+        return Err("refusing a path through a link or junction".into());
+    }
+    if !dir.exists()
+        || is_empty_dir(dir)
+        || dir.join(uninstall::INSTALL_MARKER).is_file()
+        || uninstall::looks_like_install_dir(dir)
+    {
+        Ok(())
+    } else {
+        Err("refusing an existing folder that is not a Saba-chan install".into())
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1054,7 +1098,7 @@ pub fn run() {
     if let Some(pos) = args.iter().position(|a| a == "--elevate-mkdir") {
         if let Some(dir_str) = args.get(pos + 1) {
             let dir = Path::new(dir_str);
-            if let Err(e) = check_elevated_target(dir) {
+            if let Err(e) = check_elevated_target(dir).and_then(|_| check_elevated_contents(dir)) {
                 eprintln!("elevate-mkdir: {}", e);
                 std::process::exit(1);
             }
@@ -1197,5 +1241,65 @@ mod tests {
         std::fs::write(root.join(core), b"").unwrap();
         assert_eq!(dedicated_install_dir(&root), root, "an existing install is updated in place");
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn elevation_grants_only_on_a_new_empty_or_saba_chan_folder() {
+        let root = std::env::temp_dir().join(format!("saba-elevate-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(check_elevated_contents(&root.join("new")).is_ok(), "a folder that does not exist yet");
+        assert!(check_elevated_contents(&root).is_ok(), "an empty folder");
+
+        std::fs::write(root.join("report.docx"), b"").unwrap();
+        assert!(check_elevated_contents(&root).is_err(), "a folder with someone else's files");
+
+        std::fs::write(root.join(uninstall::INSTALL_MARKER), b"").unwrap();
+        assert!(check_elevated_contents(&root).is_ok(), "a folder the installer made");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn elevation_refuses_a_link_or_a_folder_below_a_link() {
+        let root = std::env::temp_dir().join(format!("saba-elevate-link-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
+        assert!(check_elevated_contents(&root.join("link")).is_err(), "the folder itself is a link");
+        assert!(check_elevated_contents(&root.join("link").join("Saba-chan")).is_err(), "a parent is a link");
+        assert!(check_elevated_contents(&root.join("real").join("Saba-chan")).is_ok());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn elevation_only_creates_a_dedicated_folder_below_a_parent() {
+        let env = |name: &str| match name {
+            "SystemRoot" => Some(r"C:\Windows".to_string()),
+            "ProgramFiles" => Some(r"C:\Program Files".to_string()),
+            "ProgramFiles(x86)" => Some(r"C:\Program Files (x86)".to_string()),
+            "ProgramData" => Some(r"C:\ProgramData".to_string()),
+            "SystemDrive" => Some("C:".to_string()),
+            "USERPROFILE" => Some(r"C:\Users\me".to_string()),
+            _ => None,
+        };
+        for refused in [
+            r"C:\Program Files",
+            r"c:\program files\",
+            r"C:\Program Files (x86)",
+            r"C:\ProgramData",
+            r"C:\Users",
+            r"C:\Users\me",
+            r"C:\Windows\Saba-chan",
+            r"C:\Games",
+            r"C:\",
+            r"C:\Program Files\..\Users\x",
+            r"Saba-chan",
+        ] {
+            assert!(check_elevated_target_in(refused, &env).is_err(), "{refused} must be refused");
+        }
+        for allowed in [r"C:\Program Files\Saba-chan", r"D:\Games\Saba-chan", r"C:\Users\me\Saba-chan"] {
+            assert!(check_elevated_target_in(allowed, &env).is_ok(), "{allowed} must be allowed");
+        }
     }
 }
