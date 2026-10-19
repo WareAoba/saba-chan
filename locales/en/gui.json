@@ -398,6 +398,7 @@
     "rename_failed_toast": "Couldn't rename: {{error}}",
     "rename_name_taken": "'{{name}}' is already taken",
     "rename_server_running": "Stop the server before renaming it",
+    "rename_instance_busy": "Can't rename while another task (starting, installing, updating, backing up or restoring) is in progress. Try again when it's done",
     "dependency_unmet_title": "Missing requirements",
     "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again.",
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
@@ -429,6 +430,8 @@
     "loading_tips": "You can manage multiple game servers simultaneously"
   },
   "errors": {
+    "start_cancelled": "The server was stopped while it was starting, so it was not started.",
+    "restart_cancelled": "The server was started or removed elsewhere while waiting, so it was not restarted.",
     "executable_not_found": "Game server executable not found. Please check the path in settings.",
     "file_not_found": "File or folder not found. Please check the path.",
     "permission_denied": "Permission denied. Please check file access permissions.",

@@ -115,6 +115,10 @@ export function createTranslateError(t) {
         }
 
         // Server start/stop errors
+        // 시작 준비 중에 정지가 들어와 띄우지 않았다 (데몬 start_cancelled)
+        if (msg === 'start_cancelled' || msg.includes('was stopped while it was starting')) {
+            return t('errors.start_cancelled');
+        }
         if (msg.includes('Module failed to start')) {
             return t('errors.module_failed_to_start');
         }
