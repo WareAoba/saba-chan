@@ -120,36 +120,58 @@
     border-left: 3px solid var(--border-default);
 }
 
+/* 유리 위의 버튼: 채운 버튼은 색 한 겹 + 위쪽 빛줄, 올리면 같은 색으로 은은히 빛난다 */
 .modal-button {
+    --btn-tone: var(--accent);
     padding: 0 var(--sp-5);
-    border: none;
-    height: 38px;
-    border-radius: var(--r-sm);
+    border: 1px solid color-mix(in srgb, var(--btn-tone) 70%, white);
+    height: 40px;
+    border-radius: var(--r-md);
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
+    letter-spacing: 0.01em;
     cursor: pointer;
-    transition: all 0.2s ease;
+    background-color: var(--btn-tone);
+    color: var(--text-on-dark);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 2px 8px color-mix(in srgb, var(--btn-tone) 22%, transparent);
+    transition:
+        transform var(--dur-fast) var(--ease),
+        filter var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.failure-button {
-    background-color: var(--stop);
-    color: var(--text-on-dark);
+.modal-button:hover {
+    filter: brightness(1.07);
+    transform: translateY(-1px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.26),
+        0 6px 18px color-mix(in srgb, var(--btn-tone) 38%, transparent);
 }
 
-.failure-button:hover {
-    background-color: color-mix(in srgb, var(--stop) 85%, var(--shadow-ink));
+.modal-button:active {
+    transform: translateY(0) scale(0.98);
+    filter: brightness(0.97);
+}
+
+.modal-button:focus-visible {
+    outline: none;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 0 0 3px color-mix(in srgb, var(--btn-tone) 40%, transparent);
+}
+
+.failure-button {
+    --btn-tone: var(--stop);
 }
 
 .notification-button {
-    background-color: var(--info);
-    color: var(--text-on-dark);
-}
-
-.notification-button:hover {
-    background-color: color-mix(in srgb, var(--info) 85%, var(--shadow-ink));
+    --btn-tone: var(--info);
 }
 
 .modal-buttons-group {
@@ -160,25 +182,22 @@
 }
 
 .question-confirm {
-    background-color: var(--ok);
-    color: var(--text-on-dark);
     flex: 1;
 }
 
-.question-confirm:hover {
-    background-color: color-mix(in srgb, var(--ok) 85%, var(--shadow-ink));
-}
-
-/* 취소는 유리 위의 옅은 면 */
+/* 취소는 색 없는 유리 버튼: 테두리와 옅은 면만 */
 .question-cancel {
-    background-color: color-mix(in srgb, var(--text-1) 9%, transparent);
-    color: var(--text-1);
-    border: 1px solid var(--glass-border);
+    --btn-tone: transparent;
     flex: 1;
+    color: var(--text-1);
+    background-color: color-mix(in srgb, var(--text-1) 7%, transparent);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-highlight);
 }
 
 .question-cancel:hover {
-    background-color: color-mix(in srgb, var(--text-1) 14%, transparent);
+    background-color: color-mix(in srgb, var(--text-1) 12%, transparent);
+    box-shadow: var(--glass-highlight);
 }
 
 /* ===== Prompt Modal Input ===== */
