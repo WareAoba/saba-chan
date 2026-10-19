@@ -66,6 +66,14 @@ fn open_external(app: &AppHandle, url: &str) {
     }
 }
 
+/// 제목 표시줄·작업 표시줄 아이콘을 exe 아이콘에서 창 DPI에 맞는 크기로 건다
+fn apply_icon(_win: &WebviewWindow) {
+    #[cfg(windows)]
+    if let Ok(hwnd) = _win.hwnd() {
+        saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+    }
+}
+
 /// 창이 앱 화면 밖으로 이동하거나 새 창을 열지 못하게 한다. 웹 링크는 바깥 브라우저로
 fn lock_navigation<'a>(
     app: &AppHandle,
@@ -132,6 +140,7 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         builder = builder.position(x, y);
     }
     let win = lock_navigation(app, builder).build()?;
+    apply_icon(&win);
 
     let handle = app.clone();
     win.on_window_event(move |event| match event {
@@ -210,6 +219,7 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         .decorations(false)
         .always_on_top(true);
     let win = lock_navigation(app, builder).build()?;
+    apply_icon(&win);
 
     // 메인 창에 팝아웃 열림/닫힘 알림 → 임베디드 콘솔 숨김 제어
     emit_main(app, "console:popoutOpened", instance_id);

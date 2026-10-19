@@ -485,6 +485,11 @@ pub fn run() {
         .manage(apply_config)
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
+                // 작업 표시줄·제목 표시줄 아이콘을 창 DPI에 맞는 크기로
+                #[cfg(windows)]
+                if let Ok(hwnd) = win.hwnd() {
+                    saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+                }
                 // 사용자 언어에 맞는 타이틀
                 let title = match load_setting("language").as_deref() {
                     Some("ko") => "사바쨩 — 업데이트중!",

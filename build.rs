@@ -6,10 +6,11 @@ fn main() {
 
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let res_dir = PathBuf::from(&manifest_dir).join("resources");
-        let ico_path = res_dir.join("core-icon.ico");
+        // 저장소에 들어 있는 아이콘이다 (원본 icons/saba-core.png, scripts/make-icons.py로 만든다)
+        let res_dir = PathBuf::from(&manifest_dir).join("icons");
+        let ico_path = res_dir.join("saba-core.ico");
 
-        println!("cargo:rerun-if-changed=resources/core-icon.ico");
+        println!("cargo:rerun-if-changed=icons/saba-core.ico");
         println!("cargo:rerun-if-changed=build.rs");
 
         if ico_path.exists() {
@@ -96,11 +97,11 @@ VALUE "Translation", 0x0, 0x04b0
                     compile_with_winres(&ico_path);
                 }
             }
+        } else if env::var("PROFILE").as_deref() == Ok("release") {
+            // 아이콘·버전 정보 없는 데몬이 릴리스로 나가지 않게 멈춘다
+            panic!("아이콘 파일이 없습니다: {}", ico_path.display());
         } else {
-            println!(
-                "cargo:warning=Icon file not found. Please place core-icon.ico in: {}",
-                res_dir.display()
-            );
+            println!("cargo:warning=Icon file not found: {}", ico_path.display());
         }
     }
 }
