@@ -202,6 +202,7 @@
       "backup_unsupported": "Das Modul dieses Spiels gibt nicht an, was gesichert werden soll. Ein neueres Modul kann es vielleicht: saba-chan-cli update check",
       "nothing_to_back_up": "Die Welt existiert noch nicht. Starte den Server einmal, um sie zu erstellen.",
       "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist.",
+      "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
       "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
