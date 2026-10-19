@@ -630,7 +630,7 @@ Relay 서명 방식(`relay.rs:115-161`):
   - `number`: min/max 범위
   - `boolean`: true/false 또는 문자열 "true"/"false"
   - `select`: `options`에 포함되는지
-  - `text|password|file`: 문자열(숫자, 불리언도 허용)
+  - `text|password|file`: 문자열(숫자, 불리언도 허용). 줄바꿈(`\r`·`\n`)과 NUL이 든 문자열은 `InvalidFormat`이다(값은 설정 파일의 한 줄·실행 인자 하나가 된다)
   - 알 수 없는 타입은 통과시킨다.
   - `required==Some(true)`인데 값이 `null`이거나 빈 문자열이면 에러다.
 - `PATCH /api/instance/:id`는 `validate_settings_patch`(`:281-297`)로 **요청에 들어 있는 필드만** 검사한다(`instance.rs:1027`). 보내지 않은 필수 필드는 오류가 아니다.

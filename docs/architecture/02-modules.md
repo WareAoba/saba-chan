@@ -259,8 +259,8 @@ players = "player_count"
   - 나머지 줄은 `debug` 로그로만 남는다.
 - **종료 코드**: 0이 아니면, stdout에 `{"success":false,...}`가 있더라도 `Err("Plugin execution failed (exit ..)")`가 된다 (`:432-435`). 그래서 실제 모듈은 모르는 함수·예외도 JSON으로 답하고 종료 코드 0을 지킨다 (공용 `run_lifecycle`, `D:modules/daemon_rcon.py:260-`).
 - **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120` (`:150`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
-  - `install_server`를 프로비저닝 경로(`instance.rs:524-527`)와 업데이트 경로(`instance.rs:1676-1682`)에서 부를 때만 1800초를 쓴다.
-  - **`POST /api/module/:name/install` → `Supervisor::install_server`는 기본 120초**다 (`mod.rs:2100`). Minecraft의 Java 다운로드와 jar 다운로드가 120초를 넘으면 실패한다.
+  - `install_server`는 어디서 부르든(프로비저닝, 업데이트, `POST /api/module/:name/install` → `Supervisor::install_server`) 1800초(`plugin::INSTALL_TIMEOUT_SECS`)를 쓴다.
+  - 프로비저닝 설치는 끝날 때까지 인스턴스 작업 잠금(`BusyGuard`)을 쥔다: 그동안 시작·업데이트·삭제·복원은 `instance_busy`다.
 - **확인되지 않은 구성요소 (Windows)**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션은 Python을 띄우기 전에 그 폴더를 검사한다(`D:src/sandbox/`). 신뢰 표시의 키는 모듈이면 `module-<폴더 이름>`, 익스텐션이면 `ext-<manifest id>`다(폴더 이름은 id의 `-`를 `_`로 바꾼 것이라 다를 수 있다. 그 폴더 이름에 맞지 않는 id는 받지 않고 폴더 이름을 쓴다, `sandbox::component_of`).
   - 스크립트(`.py`·`.pth`·`.ps1`·`.bat` 등)는 AMSI(등록된 백신)로, 네이티브 코드와 묶음(`.pyd`·`.dll`·`.so`·`.exe`·`.zip`·`.egg`·`.whl`)은 Defender `MpCmdRun`으로 본다. `__pycache__`는 건너뛴다. `MpCmdRun`은 위협을 찾았을 때도 검사하지 못했을 때도 종료 코드 2를 내므로, 출력의 실패 코드로 가른다(문구는 Windows 언어를 따를 수 있다). `hr = 0x80508023`(찾을 위협이 없음)은 깨끗함, 그 밖의 `hr = 0x…`는 검사기를 쓸 수 없는 것으로 보고 실패 줄을 경고로 남기며, 실패 코드가 없으면 찾은 것이다(`scan::mpcmdrun_verdict`).
   - 찾으면 실행하지 않고 `{success:false, action_required:"malware_detected", message, file}`를 돌려준다.
@@ -337,7 +337,7 @@ players = "player_count"
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1982-1990`) |
 | `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식) | `include_snapshots`, `page`, `per_page` 또는 `{}` |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
-| `install_server` | `POST /api/module/:name/install`(120초), 프로비저닝·업데이트(1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때 인스턴스 `module_settings`), `jar_name`, `initial_settings` 등 |
+| `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때 인스턴스 `module_settings`), `jar_name`, `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `install_dir`, `jar_name`(**기본값 `"server.jar"` 하드코딩**, `mod.rs:2168-2171`) |
 | `[[queries]]`의 `function` | `POST /api/instance/:id/query/:name`(액션 `server.query:<name>`) → `Supervisor::query_instance` | `validate`와 같은 config(`Supervisor::instance_call`) + `args{입력 이름: 값}`(명령 입력과 같이 검사·기본값 채움, 숫자는 숫자로). 돌려줄 것: `{"success": true, "data": <JSON>}` 또는 실패 `{"success": false, "message": "..."}`. `data`가 없으면 `success`·`message`를 뺀 나머지를 data로 본다. 읽기만 해야 한다(감사에 남지 않고 챗봇·일반 사용자도 부른다) |
 | `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한) | `validate`와 같은 config. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?}`(`max`가 없거나 0이면 최대를 모른다고 본다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 읽기만 해야 한다 |
@@ -616,7 +616,7 @@ players = "player_count"
 ### 6.4 데몬 프로토콜과 운영 문제
 1. ~~`SABA_ENABLED_EXTENSIONS`의 상태 파일 경로가 `ExtensionManager`와 다르다~~ → 해결: 둘 다 `<data_dir>/config.json`의 `extensions.enabled`를 읽는다 (`plugin/mod.rs:315-322`).
 2. ~~데몬이 `SABA_LANG`과 `DAEMON_API_URL`을 주입하지 않는다~~ → 해결: `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`을 넣는다 (`plugin/mod.rs:18-38`). 이름이 `DAEMON_API_URL`이 아니라 `SABA_IPC_URL`이라 모듈 문서와 다르다 (§2.1).
-3. `/api/module/:name/install` 경로의 타임아웃이 120초다 (`mod.rs:2100`).
+3. ~~`/api/module/:name/install` 경로의 타임아웃이 120초다~~ → 해결: 1800초 (`plugin::INSTALL_TIMEOUT_SECS`).
 4. ~~non-managed는 이름으로, 나머지는 ID로 추적한다~~ → 해결: non-managed도 인스턴스 ID로 추적한다 (`mod.rs:846-847`).
 5. ~~`managed/start`가 write lock을 잡은 채로 Python을 호출한다~~ → 해결: 시작은 단계마다 락을 짧게 잡고 Python은 락 밖에서 부른다 (`managed.rs:67-68`, C12).
 6. ~~`server.post_stop` hook을 정지 전에 dispatch한다~~ → 해결: hook 이름이 `server.stop`이고 정지 전에 부른다고 명시돼 있다 (`mod.rs:908-911`).

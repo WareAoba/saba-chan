@@ -2129,7 +2129,8 @@ impl Supervisor {
             config["initial_settings"] = settings;
         }
 
-        let result = crate::plugin::run_plugin(&module_path, "install_server", config).await;
+        // 서버 파일과 Java를 받는다: 기본 120초로는 느린 회선에서 중간에 끊긴다 (처음 설치와 같은 한도)
+        let result = crate::plugin::run_plugin_with_timeout(&module_path, "install_server", config, crate::plugin::INSTALL_TIMEOUT_SECS).await;
 
         match result {
             Ok(ref val) => {

@@ -177,6 +177,9 @@ impl PluginCall {
 }
 
 /// Like `run_plugin` but with a custom timeout (seconds).
+/// 서버 설치·업데이트(`install_server`) 한도: 대용량 다운로드를 허용한다
+pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
+
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, timeout_secs).await
 }
