@@ -249,7 +249,9 @@ export function ConnectionView({
                         <p className="muted">
                             {t(
                                 connected
-                                    ? 'discord.conn_sub_connected'
+                                    ? agentRunning
+                                        ? 'discord.conn_sub_connected'
+                                        : 'discord.conn_sub_paused'
                                     : cloudState === 'connecting'
                                       ? 'discord.conn_sub_connecting'
                                       : 'discord.conn_sub_error',

@@ -507,17 +507,11 @@
     flex: none;
 }
 /* 디스코드 연결: 연결되면 공식 로고(브랜드색), 끊기면 선만 있는 흑백 */
-.dc-brand-icon,
 .dc-brand-mark {
     color: var(--text-3);
     transition:
         color var(--dur) var(--ease),
         background-color var(--dur) var(--ease);
-}
-.dc-brand-icon.on {
-    color: var(--knob);
-    background: var(--discord);
-    box-shadow: none;
 }
 .dc-brand-mark {
     display: inline-flex;
