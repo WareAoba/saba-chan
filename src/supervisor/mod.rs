@@ -2070,7 +2070,7 @@ impl Supervisor {
     /// 모듈 `[[queries]]` 조회 (X-2): `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다
     pub async fn query_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str, function: &str, args: serde_json::Map<String, Value>) -> Result<Value> {
         let mut call = sup.read().await.instance_call(instance_id, function)?;
-        if let Value::Object(cfg) = &mut call.config {
+        if let Value::Object(cfg) = call.config_mut() {
             cfg.insert("args".to_string(), Value::Object(args));
         }
         call.run().await
@@ -2201,7 +2201,7 @@ impl Supervisor {
             let accepted: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
             s.instance_store.update(instance_id, instance)?;
             let mut call = s.instance_call(instance_id, "accept_agreements")?;
-            if let Value::Object(cfg) = &mut call.config {
+            if let Value::Object(cfg) = call.config_mut() {
                 cfg.insert("accepted_agreements".to_string(), json!(accepted));
             }
             call
@@ -3016,6 +3016,28 @@ mod tests {
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
         let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// 인스턴스 함수 호출은 추적 중인 서버 PID를 싣는다: 격리 실행의 루프백 중계가 그 서버의 포트로만 잇는다
+    #[tokio::test]
+    async fn an_instance_call_carries_the_tracked_server_pid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        assert_eq!(sup.instance_call(&id, "status").unwrap().server(), None);
+        sup.tracker.track(&id, 4_000_001).unwrap();
+        let call = sup.instance_call(&id, "status").unwrap();
+        assert_eq!(call.server(), Some(4_000_001));
+        assert_eq!(call.config()["running"], true);
     }
 
     /// 데몬보다 새 saba-core를 요구해 로드되지 못한 모듈도 시작 응답과 목록이 이유를 준다

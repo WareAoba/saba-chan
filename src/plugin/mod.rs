@@ -163,12 +163,12 @@ pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Res
 /// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
 /// Python은 몇 분까지 걸릴 수 있어서, 락을 쥔 채 기다리면 모니터와 다른 요청이 모두 멈춘다.
 pub struct PluginCall {
-    pub entry: String,
-    pub function: String,
-    pub config: Value,
+    entry: String,
+    function: String,
+    config: Value,
     /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
-    pub server: Option<u32>,
-    pub timeout_secs: u64,
+    server: Option<u32>,
+    timeout_secs: u64,
 }
 
 impl PluginCall {
@@ -184,6 +184,18 @@ impl PluginCall {
     pub fn timeout(mut self, secs: u64) -> Self {
         self.timeout_secs = secs;
         self
+    }
+
+    pub fn config(&self) -> &Value {
+        &self.config
+    }
+
+    pub fn config_mut(&mut self) -> &mut Value {
+        &mut self.config
+    }
+
+    pub fn server(&self) -> Option<u32> {
+        self.server
     }
 
     pub async fn run(self) -> Result<Value> {
