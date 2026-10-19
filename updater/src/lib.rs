@@ -106,6 +106,8 @@ pub enum Component {
     Cli,
     Gui,
     Updater,
+    /// 설치 폴더의 `saba-chan-installer.exe` (제거기로 쓰인다)
+    Installer,
     Module(String),
     Extension(String),
     Locales,
@@ -119,6 +121,7 @@ impl Component {
             Component::Cli => "cli".to_string(),
             Component::Gui => "gui".to_string(),
             Component::Updater => "updater".to_string(),
+            Component::Installer => "installer".to_string(),
             Component::Module(name) => format!("module-{}", name),
             Component::Extension(name) => format!("ext-{}", name),
             Component::Locales => "locales".to_string(),
@@ -132,6 +135,7 @@ impl Component {
             "cli" => Some(Component::Cli),
             "gui" => Some(Component::Gui),
             "updater" => Some(Component::Updater),
+            "installer" => Some(Component::Installer),
             "locales" => Some(Component::Locales),
             k if k.starts_with("module-") => {
                 Some(Component::Module(k.strip_prefix("module-").unwrap().to_string()))
@@ -155,6 +159,7 @@ impl Component {
             Component::Cli => "CLI".to_string(),
             Component::Gui => "GUI".to_string(),
             Component::Updater => "Updater".to_string(),
+            Component::Installer => "Installer".to_string(),
             Component::Module(name) => format!("Module: {}", name),
             Component::Extension(name) => format!("Extension: {}", name),
             Component::Locales => "Locales".to_string(),
@@ -307,6 +312,9 @@ fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
 
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
 pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &["saba-chan-gui.exe", "Saba-chan.exe"] } else { &["saba-chan-gui"] };
+
+/// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
+pub const INSTALLER_EXE: &str = if cfg!(windows) { "saba-chan-installer.exe" } else { "saba-chan-installer" };
 
 /// 설치 폴더 바로 안의 GUI 실행 파일
 pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
@@ -893,6 +901,7 @@ impl UpdateManager {
             Component::Updater => self.apply_binary_update("saba-chan-updater", staged_path).await,
             Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
             Component::Gui => self.apply_gui_update(staged_path).await,
+            Component::Installer => self.apply_installer_update(staged_path),
             Component::Locales => {
                 let target = self.install_root.join("locales");
                 self.extract_to_directory(Path::new(staged_path), &target).await
@@ -930,14 +939,14 @@ impl UpdateManager {
     ///
     /// 낮은 값일수록 먼저 적용됩니다:
     /// - 0: Updater (업데이트 방식 변경 대응 — 디스크의 바이너리를 먼저 교체)
-    /// - 1: 모듈, 익스텐션, Locales (프로세스 중단 불필요)
+    /// - 1: 모듈, 익스텐션, Locales, Installer (프로세스 중단 불필요)
     /// - 3: CoreDaemon (데몬 프로세스 종료 후 교체)
     /// - 4: 사용하지 않는 인터페이스 (GUI 사용 중이면 CLI, 반대도 마찬가지)
     /// - 5: 현재 사용 중인 인터페이스 (재시작 필요)
     fn component_apply_priority(component: &Component) -> u8 {
         match component {
             Component::Updater => 0,
-            Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
+            Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
             Component::CoreDaemon => 3,
             // GUI/CLI는 현재 실행 중인 인터페이스를 마지막에 적용
             Component::Gui => {

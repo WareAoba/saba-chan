@@ -79,7 +79,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | `Gui` / `Cli` | `gui` / `cli` | 프로세스가 돌고 있으면 5, 아니면 4 | 4/5 |
 
 - `DiscordBot` 컴포넌트는 로컬 bot과 함께 없어졌다. 우선순위 2는 비어 있다.
-- 알 수 없는 key(예: `installer`)는 업데이트 대상에서 빠진다(`lib.rs:509-512`). `from_manifest_key`는 모르는 key를 `Module`로 폴백한다(`lib.rs:118-120`).
+- 알 수 없는 key는 업데이트 대상에서 빠진다(`lib.rs` `try_from_manifest_key`). `installer`는 `Component::Installer`로, 설치 폴더의 `saba-chan-installer.exe`(제거기)를 받은 exe로 바꾸고 복사가 실패하면 원래 사본을 되돌린다(`apply.rs` `apply_installer_update`). `from_manifest_key`는 모르는 key를 `Module`로 폴백한다(`lib.rs:118-120`).
 - 설치하지 않은 모듈·익스텐션은 업데이트 목록에 넣지 않는다. 새로 받는 것은 목록 화면의 몫이다(`lib.rs:515-518`).
 - **로컬 버전 판정 순서**(`collect_local_versions`, `lib.rs:585-624`): 먼저 `installed-manifest.json`(`<data_dir>/installed-manifest.json`)을 본다. 앱 컴포넌트가 거기 없으면 빌드에 묶인 `versions.toml` 버전을 쓰고, 모듈은 `module.toml`, 익스텐션은 `manifest.json`의 id·version을 읽는다.
   - ~~`saba-core` 폴백이 updater-lib의 `CARGO_PKG_VERSION`이다~~ → 해결: 폴백은 `versions.toml`의 컴포넌트별 버전이다(`lib.rs:589-592`, `versions.rs`). daemon은 기동할 때 자기 버전을 installed-manifest에 적는다(`launch_ticket.rs:28-30` `record_core_version`).
@@ -104,8 +104,8 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 }
 ```
 
-- 컴포넌트 키는 `saba-core`, `cli`, `gui`, `updater`, `locales`, `module-<name>`, `ext-<id>`다. 업데이터가 모르는 키(예: `installer`)는 건너뛴다.
-- `installer`는 0.1.5부터 zip이 아닌 `saba-chan-installer.exe` 그대로다(`versions.toml`, `.github/scripts/package-release.py`). 소개 페이지 다운로드(relay `/v1/updates/download/installer`)가 최신 stable manifest의 이 `url`로 보낸다. 설치기는 이 항목의 `version`만 읽는다(2.5단계). 0.1.4 이전 릴리스는 zip 그대로 둔다.
+- 컴포넌트 키는 `saba-core`, `cli`, `gui`, `updater`, `installer`, `locales`, `module-<name>`, `ext-<id>`다. 업데이터가 모르는 키는 건너뛴다.
+- `installer`는 0.1.5부터 zip이 아닌 `saba-chan-installer.exe` 그대로다(`versions.toml`, `.github/scripts/package-release.py`). 소개 페이지 다운로드(relay `/v1/updates/download/installer`)가 최신 stable manifest의 이 `url`로 보낸다. 설치기는 이 항목의 `version`만 읽고(2.5단계) 자기 자신을 설치 폴더에 복사하며 그 버전을 installed-manifest의 `installer`로 적는다. 업데이터는 이 기록이 manifest보다 낮으면 사본을 바꾼다. 0.1.4 이전 릴리스는 zip 그대로 둔다.
 - `requires`(다른 컴포넌트 최소 버전)와 `meta`(목록 화면용)는 선택이다.
 - 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이나 채널이 요청과 다르거나, 현재보다 낮은 버전이면 거부한다(`relay.rs` `verify_release`). 단 이미 최신이라 버전만으로 manifest를 받은 경우에는 채널이 달라도(같은 버전이 stable·beta 둘 다에 있으면 릴레이는 늦게 등록한 행을 준다) 그 버전이 지금 깔린 버전과 같으면 받아서 컴포넌트를 비교한다. check 응답의 `latest`는 서명 밖이라, 그 `version`이 서명된 manifest의 `version`과 다르면 거부한다(`bind_release`). 그래서 적용 결과에 싣는 릴리즈 버전은 서명된 값이다. 패치노트(`notes`)는 릴레이에 등록하는 값이라 서명 밖에 있다.
 

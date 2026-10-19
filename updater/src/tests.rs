@@ -972,3 +972,48 @@ fn an_old_backup_without_its_exe_is_kept() {
     assert!(tmp.path().join("saba-chan-gui.exe.old").exists());
     assert!(!tmp.path().join("saba-core.exe.old").exists());
 }
+
+// M1: manifest의 `installer`도 업데이트 대상이다. 건너뛰면 설치 폴더의 제거기가 처음 설치한 판에 남는다
+#[test]
+fn the_installer_manifest_key_is_a_component() {
+    assert_eq!(Component::try_from_manifest_key("installer"), Some(Component::Installer));
+    assert_eq!(Component::Installer.manifest_key(), "installer");
+}
+
+// M1: 릴리스의 설치기는 zip이 아닌 exe 그대로다. 설치 폴더의 사본을 바꾼다
+#[tokio::test]
+async fn an_installer_update_replaces_the_installed_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let target = manager.install_root.join(crate::INSTALLER_EXE);
+    std::fs::write(&target, b"old installer").unwrap();
+    assert!(manager.is_component_installed(&Component::Installer));
+    let staged = tmp.path().join("saba-chan-installer.exe");
+    std::fs::write(&staged, b"new installer").unwrap();
+
+    let files = manager.apply_one(&Component::Installer, &staged.to_string_lossy()).await.unwrap();
+
+    assert_eq!(std::fs::read(&target).unwrap(), b"new installer");
+    assert_eq!(files, vec![target]);
+    assert!(!staged.exists());
+}
+
+// M1: 바꾸다 실패하면 원래 설치기를 되돌린다 (제거기가 사라지면 안 된다)
+#[tokio::test]
+async fn a_failed_installer_update_keeps_the_old_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let target = manager.install_root.join(crate::INSTALLER_EXE);
+    std::fs::write(&target, b"old installer").unwrap();
+    let missing = tmp.path().join("gone.exe");
+
+    assert!(manager.apply_one(&Component::Installer, &missing.to_string_lossy()).await.is_err());
+
+    assert_eq!(std::fs::read(&target).unwrap(), b"old installer");
+    let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left.len(), 1, "no backup left behind: {left:?}");
+}

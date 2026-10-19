@@ -573,6 +573,10 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
 
     // Step 10.5: 설치한 버전 기록 (업데이터가 같은 파일을 읽는다)
     emit("manifest", "Recording installed versions...", 98);
+    // 설치 폴더에 남긴 자기 사본도 기록한다. 업데이터가 이 버전을 보고 사본을 바꾼다
+    if install_dir.join(saba_chan_updater_lib::INSTALLER_EXE).is_file() {
+        installed_versions.insert("installer".to_string(), env!("CARGO_PKG_VERSION").to_string());
+    }
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
         warn(format!("Failed to write installed manifest: {}", e));
     }
