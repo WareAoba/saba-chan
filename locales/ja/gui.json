@@ -549,7 +549,9 @@
     "bot_replacing": "Discord Bot ファイルを置換中...",
     "update_done": "更新処理が完了しました",
     "restart_required_title": "再起動必要",
-    "apply": "適用"
+    "apply": "適用",
+    "module_busy": "このモジュールの別のインストールまたは削除がまだ進行中です。終わってからもう一度お試しください。",
+    "remove_failed": "モジュールの削除に失敗しました: {{error}}"
   },
   "add_instance_modal": {
     "title": "インスタンスを追加",

@@ -605,7 +605,9 @@
     "bot_replacing": "Substituindo arquivos do Discord Bot...",
     "update_done": "Processamento de atualização concluído",
     "restart_required_title": "Reinicialização necessária",
-    "apply": "Aplicar"
+    "apply": "Aplicar",
+    "module_busy": "Outra instalação ou remoção deste módulo ainda está em andamento. Tente de novo quando terminar.",
+    "remove_failed": "Não foi possível remover o módulo: {{error}}"
   },
   "validation": {
     "required": "{{field}} é obrigatório",
