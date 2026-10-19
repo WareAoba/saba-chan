@@ -1336,6 +1336,7 @@
     "step_ready": "서버 상태를 확인하는 중…",
     "step_done": "준비됐어요",
     "daemon_failed": "코어 데몬을 시작하지 못했어요.",
+    "daemon_stalled": "코어 데몬이 응답하지 않아요.",
     "failed_hint": "그대로 열면 화면만 열리고, 서버를 다루려면 데몬을 다시 시작해야 해요.",
     "retry": "다시 시도",
     "continue": "그대로 열기"

@@ -25,7 +25,7 @@ pub struct Lifecycle {
     /// 인터페이스만 종료: 데몬을 남긴다
     keep_daemon_alive: AtomicBool,
     init_started: AtomicBool,
-    /// 데몬 기동에 실패해 초기화를 멈췄는가 (daemon_restart가 성공하면 나머지를 이어서 한다)
+    /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
     ready_sent: AtomicBool,
     quitting: AtomicBool,
@@ -77,15 +77,12 @@ pub fn app_ready(app: &AppHandle) {
 }
 
 async fn run_background_init(app: &AppHandle) {
+    app.state::<AppState>().life.begin_init();
     status_t(app, "init", "init.start");
     let up = ensure_daemon(app).await;
     tray::update_menu(app);
     if !up {
         // ready를 보내지 않는다: 렌더러가 다시 시도 / 그대로 열기를 고른다
-        app.state::<AppState>()
-            .life
-            .init_pending_daemon
-            .store(true, Ordering::SeqCst);
         status_t(app, "daemon_failed", "daemon.failed_to_start");
         return;
     }
@@ -94,7 +91,9 @@ async fn run_background_init(app: &AppHandle) {
 
 async fn finish_background_init(app: &AppHandle) {
     let state = app.state::<AppState>();
-    state.life.init_pending_daemon.store(false, Ordering::SeqCst);
+    if !state.life.claim_init_finish() {
+        return;
+    }
     // 실제 데이터는 렌더러가 가져온다. 여기서는 로딩 표시만 넘긴다
     status_t(app, "modules", "init.modules");
     status_t(app, "instances", "init.instances");
@@ -147,6 +146,20 @@ impl Lifecycle {
     /// heartbeat가 본 데몬 응답 여부를 붙은 데몬 상태에 반영한다. 바뀌었으면 true (트레이를 다시 만든다)
     fn note_reachable(&self, reachable: bool) -> bool {
         self.attached_daemon.swap(reachable, Ordering::SeqCst) != reachable
+    }
+
+    /// 초기화 시작. 끝내기 전에 끊기면(렌더러가 멈춤을 알린다) 다시 시도가 나머지를 마친다
+    fn begin_init(&self) {
+        self.init_pending_daemon.store(true, Ordering::SeqCst);
+    }
+
+    fn init_unfinished(&self) -> bool {
+        self.init_pending_daemon.load(Ordering::SeqCst)
+    }
+
+    /// 나머지 초기화를 맡는다. 원래 초기화와 다시 시도가 겹쳐도 한 번만 true
+    fn claim_init_finish(&self) -> bool {
+        self.init_pending_daemon.swap(false, Ordering::SeqCst)
     }
 
     /// 이 GUI가 데몬을 새로 띄웠다: 예전에 붙었던 데몬 표시는 버린다 (이제는 띄운 데몬의 생사만 본다)
@@ -650,7 +663,7 @@ pub async fn daemon_restart(app: &AppHandle) -> Value {
         return json!({ "success": false, "error": state.t("daemon.failed_to_start", &[]) });
     }
     // 기동 실패로 멈춘 초기화가 있으면 이어서 끝낸다 (렌더러는 ready를 받고 메인 화면으로 간다)
-    if state.life.init_pending_daemon.load(Ordering::SeqCst) {
+    if state.life.init_unfinished() {
         sync_install_root(app).await;
         tray::update_menu(app);
         let app2 = app.clone();
@@ -800,6 +813,20 @@ mod tests {
         assert!(heartbeat_reached::<()>(&Err(err(Some(404), ""))));
         assert!(heartbeat_reached::<()>(&Ok(())));
         assert!(!heartbeat_reached::<()>(&Err(err(None, "ECONNREFUSED"))));
+    }
+
+    #[test]
+    fn an_init_that_never_finished_is_finished_once_by_a_retry() {
+        let life = Lifecycle::default();
+        life.begin_init();
+        // 초기화가 데몬 단계에서 끊겨도(M11) 다시 시도가 나머지를 한 번만 마친다
+        assert!(life.init_unfinished());
+        assert!(life.claim_init_finish());
+        assert!(!life.init_unfinished());
+        assert!(
+            !life.claim_init_finish(),
+            "다시 시도와 원래 초기화가 겹쳐도 두 번 마치지 않는다"
+        );
     }
 
     #[test]

@@ -1304,6 +1304,7 @@
     "step_ready": "Comprobando servidores…",
     "step_done": "Listo",
     "daemon_failed": "No se pudo iniciar el daemon principal.",
+    "daemon_stalled": "El daemon principal no responde.",
     "failed_hint": "Si abres de todos modos, solo se abre la interfaz. Reinicia el daemon para gestionar servidores.",
     "retry": "Reintentar",
     "continue": "Abrir de todos modos"

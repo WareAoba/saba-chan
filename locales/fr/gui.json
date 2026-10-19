@@ -1304,6 +1304,7 @@
     "step_ready": "Vérification des serveurs…",
     "step_done": "Prêt",
     "daemon_failed": "Impossible de démarrer le démon principal.",
+    "daemon_stalled": "Le daemon principal ne répond pas.",
     "failed_hint": "Si vous ouvrez quand même, seule l'interface s'ouvre. Redémarrez le démon pour gérer les serveurs.",
     "retry": "Réessayer",
     "continue": "Ouvrir quand même"

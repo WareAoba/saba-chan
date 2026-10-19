@@ -1336,6 +1336,7 @@
     "step_ready": "Checking servers…",
     "step_done": "Ready",
     "daemon_failed": "Couldn't start the core daemon.",
+    "daemon_stalled": "The core daemon is not responding.",
     "failed_hint": "If you open anyway, only the interface opens. Restart the daemon to manage servers.",
     "retry": "Try again",
     "continue": "Open anyway"
