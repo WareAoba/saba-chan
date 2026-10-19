@@ -519,9 +519,16 @@ impl UpdateManager {
                 continue;
             }
 
+            let kind = entry.header().entry_type();
+            // 링크 엔트리는 만들지 않는다 (뒤 엔트리가 그 링크를 따라 밖에 쓸 수 있다)
+            if !(kind.is_dir() || kind.is_file()) {
+                tracing::warn!("[Updater] Skipping non-file entry: {}", entry_path.display());
+                continue;
+            }
+            reject_links_below(target_dir, &entry_path)?;
             let out_path = target_dir.join(&entry_path);
 
-            if entry.header().entry_type().is_dir() {
+            if kind.is_dir() {
                 std::fs::create_dir_all(&out_path)?;
             } else {
                 if let Some(parent) = out_path.parent() {

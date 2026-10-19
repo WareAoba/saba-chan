@@ -4,7 +4,6 @@ Windows 전용 시험은 `windows` 표시가 있고 리눅스에서는 건너뛴
 """
 
 import json
-import os
 import time
 
 import pytest
@@ -180,7 +179,8 @@ if __name__ == "__main__":
 
 @pytest.mark.windows
 def test_unverified_module_cannot_write_outside_its_folders(sandbox, daemon_factory):
-    """미검증 모듈은 AppContainer 안에서 돈다: 데이터 폴더 밖·사용자 폴더에 쓰지 못한다."""
+    """미검증 모듈은 AppContainer 안에서 돈다: 데이터 폴더 밖·사용자 폴더에 쓰지 못한다.
+    모듈이 실제로 돌아 거부를 받았는지까지 본다 (API 실패·격리 불가로 안 돈 것을 통과로 치지 않게)."""
     mod = sandbox.modules / "e2e-escape"
     mod.mkdir()
     (mod / "module.toml").write_text(ESCAPE_TOML, encoding="utf-8")
@@ -188,19 +188,18 @@ def test_unverified_module_cannot_write_outside_its_folders(sandbox, daemon_fact
     target = sandbox.root / "escape-target.txt"
     d = daemon_factory(extra_env={"E2E_ESCAPE_TARGET": str(target)})
     r = d.api.get("/api/module/e2e-escape/versions", timeout=120)
-    body = r.json()
-    assert not target.exists(), f"격리된 모듈이 바깥에 씀: {body}"
-    assert "escape" not in json.dumps(body) or "written" not in json.dumps(body.get("escape", {})), body
+    assert r.status_code == 200, f"{r.status_code} {r.text[:500]}"
+    escape = r.json().get("escape")
+    assert escape, f"모듈이 돌지 않음: {r.text[:500]}"
+    assert escape["outside"].startswith("denied"), f"격리된 모듈이 바깥에 씀: {escape}"
+    assert escape["home"] != "written", f"격리된 모듈이 사용자 폴더에 씀: {escape}"
+    assert not target.exists()
 
 
-# AMSI 시험 표본 (백신이 찾도록 정한 무해한 글자). 저장소 파일·.pyc에 이어진 채로 남지 않게 실행 중에 잇는다
-# ("a" + "b"는 컴파일러가 미리 합쳐 .pyc에 넣는다)
-AMSI_SAMPLE = "".join(["AMSI Test Sample: ", "7e72c3ce-861b-4339-", "8740-0ac1484c1386"])
-
-AMSI_PY = r'''
+CLEAN_PY = r'''
 import json, sys
 
-FUNCTIONS = {"list_versions": lambda config: {"success": True, "versions": ["e2e-amsi-ran"]}}
+FUNCTIONS = {"list_versions": lambda config: {"success": True, "versions": ["e2e-unverified-ran"]}}
 
 if __name__ == "__main__":
     print(json.dumps(FUNCTIONS[sys.argv[1]](json.loads(sys.stdin.read() or "{}"))))
@@ -208,68 +207,17 @@ if __name__ == "__main__":
 
 
 @pytest.mark.windows
-def test_clean_unverified_module_passes_the_scan_and_runs(sandbox, daemon_factory, record_property):
-    """깨끗한 미검증 모듈은 검사를 통과해 격리 실행된다. 검사기가 있는지(Defender 켜짐)는 출력에 남긴다.
-    표본을 찾는 쪽은 실시간 검사가 파일을 먼저 치우면 확인할 수 없어(아래 시험), 켜진 PC에서는 이 시험이 AMSI 경로를 본다."""
-    mod = sandbox.modules / "e2e-amsi-clean"
+def test_unverified_module_runs_isolated_without_a_virus_scan(sandbox, daemon_factory):
+    """백신 검사는 뺐다(사용자 결정 2026-10-19): 미검증 모듈은 알림 + AppContainer만으로 돈다.
+    검사 결과 파일·MpCmdRun·AMSI 흔적이 없어야 한다."""
+    mod = sandbox.modules / "e2e-unverified"
     mod.mkdir()
-    (mod / "module.toml").write_text(ESCAPE_TOML.replace("e2e-escape", "e2e-amsi-clean"), encoding="utf-8")
-    (mod / "lifecycle.py").write_text(AMSI_PY, encoding="utf-8")
+    (mod / "module.toml").write_text(ESCAPE_TOML.replace("e2e-escape", "e2e-unverified"), encoding="utf-8")
+    (mod / "lifecycle.py").write_text(CLEAN_PY, encoding="utf-8")
     d = daemon_factory()
-    r = d.api.get("/api/module/e2e-amsi-clean/versions", timeout=120)
-    scanned = "no AMSI provider" not in d.log_text()
-    record_property("AMSI 공급자", "있음" if scanned else "없음")  # report.md에 남는다
-    assert "e2e-amsi-ran" in r.text and "scan_failed" not in r.text, f"{r.status_code} {r.text[:500]}"
-    if scanned:  # 깨끗하다는 결과를 남긴다 (검사기가 없으면 남길 결과가 없다)
-        assert (d.sb.data / "scan-verdicts.json").exists(), "검사 결과가 남지 않음"
-
-
-@pytest.mark.windows
-def test_unverified_module_script_is_scanned_by_amsi(sandbox, daemon_factory, record_property):
-    """미검증 모듈의 스크립트는 띄우기 전에 AMSI로 본다.
-    백신(Defender)이 켜져 있으면 표본을 찾아 실행하지 않고 malware_detected로 알린다.
-    AMSI 공급자가 없으면(Defender 꺼짐, 다른 백신) 검사를 건너뛰고 데몬 실행마다 한 번 경고한다. 어느 쪽인지는 보고에 남긴다.
-
-    표본을 디스크에 쓰면 실시간 검사가 위협 알림을 띄운다(그리고 파일을 먼저 치워 AMSI까지 가지 않는다).
-    그래서 SABA_E2E_AMSI_SAMPLE=1일 때만 돈다. 평소 실행의 AMSI 경로는 위 깨끗한 모듈 시험이 본다."""
-    if os.environ.get("SABA_E2E_AMSI_SAMPLE") != "1":
-        pytest.skip("표본을 디스크에 쓰면 백신 알림이 뜬다. SABA_E2E_AMSI_SAMPLE=1일 때만 돈다")
-    mod = sandbox.modules / "e2e-amsi"
-    mod.mkdir()
-    (mod / "module.toml").write_text(ESCAPE_TOML.replace("e2e-escape", "e2e-amsi"), encoding="utf-8")
-    script = mod / "lifecycle.py"
-
-    def remove_sample():  # 시험 폴더에 표본을 남기지 않는다 (백신이 잡고 있으면 백신이 치운다)
-        try:
-            script.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-    try:
-        script.write_text(f"# {AMSI_SAMPLE}\n" + AMSI_PY, encoding="utf-8")
-        time.sleep(2)  # 실시간 검사가 파일을 치우는지 본다
-        present = script.exists() and AMSI_SAMPLE in script.read_text(encoding="utf-8")
-    except OSError:
-        present = False
-    if not present:
-        remove_sample()
-        pytest.skip("실시간 검사가 표본 파일을 먼저 치움 (AMSI까지 가지 않음)")
-    try:
-        _amsi_sample_run(daemon_factory, record_property)
-    finally:
-        remove_sample()
-
-
-def _amsi_sample_run(daemon_factory, record_property):
-    d = daemon_factory()
-    r = d.api.get("/api/module/e2e-amsi/versions", timeout=120)
-    text = r.text
+    r = d.api.get("/api/module/e2e-unverified/versions", timeout=120)
+    assert r.status_code == 200 and "e2e-unverified-ran" in r.text, f"{r.status_code} {r.text[:500]}"
+    assert not (d.sb.data / "scan-verdicts.json").exists(), "검사 결과 파일이 남음"
     log = d.log_text()
-    if "no AMSI provider" in log:
-        record_property("AMSI 공급자", "없음")
-        assert "malware_detected" not in text and "e2e-amsi-ran" in text, text
-        assert log.count("no AMSI provider") == 1, "경고가 한 번이 아님"
-        return
-    record_property("AMSI 공급자", "있음")
-    assert "malware_detected" in text, f"{r.status_code} {text[:500]}"
-    assert "e2e-amsi-ran" not in text, f"막아야 할 모듈이 실행됨: {text[:500]}"
+    for word in ("MpCmdRun", "AMSI", "Defender"):
+        assert word not in log, f"백신 검사 흔적이 로그에 남음: {word}"

@@ -76,7 +76,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `default` | String | GUI로 전달만 함 (`ProtocolsInfo`). `supported`와 같은 값만 받는다 |
 | `interaction_mode` | String | `console` 또는 `commands`. GUI가 콘솔 버튼 같은 UI를 고르는 데 쓴다 (`saba-chan-gui/src/components/ServerCard.js:417-421`, `App.js:494-500`). 데몬은 해석하지 않는다. 데몬은 모든 모듈을 기본 managed로 시작하고(`mod.rs:1690-1700`), 그 판정을 `GET /api/servers`의 `ServerInfo.managed`로 알려 준다(`D:src/ipc/mod.rs:185-187`, `server.rs:87`). 그런데 GUI는 이 값을 쓰지 않고 아직 `managed_start`가 없으면 `console`만 managed로 본다(`ServerCard.js:418-421`, `App.js:494-500`). 그래서 palworld 같은 `commands` 모듈은 데몬은 managed로, GUI(콘솔 버튼·종료 확인)는 non-managed로 다룬다 |
 
-> **RCON 정책**: 보안상 saba-chan은 RCON을 쓰지 않는다. 데몬에는 RCON 클라이언트가 없고, 게임 명령은 모두 서버 콘솔(stdin)로 간다. `/api/instance/:id/rcon`은 이름만 남은 호환 경로로, 한 줄을 stdin에 쓰고 콘솔 출력을 약 1.5초 모아 `data.response`로 돌려준다(`D:src/ipc/handlers/command.rs:392-436`). 콘솔이 없는 서버(관리하지 않는 모드, runner 없이 붙은 프로세스)는 409 `no_command_path`를 받으므로 saba-chan에서 명령을 보낼 수 없다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목, RCON 폴백(stop·status·command), `get_credentials`는 지워졌고 `supported = ["stdin"]`이다. palworld도 RCON 명령 경로(RCON 클라이언트, `protocol_mode=rcon` 분기, `rcon_enabled`·`rcon_port` 키 매핑, `rcon_password` 반환)를 지웠다. 명령은 늘 데몬 REST 경로로 가고, `configure()`는 저장할 때마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:933, 1224-`). 콘솔 명령은 `method = "console"` + `console_template`이다(예전 이름 `rcon`·`rcon_template`도 별칭으로 읽힌다).
+> **RCON 정책**: 보안상 saba-chan은 RCON을 쓰지 않는다. 데몬에는 RCON 클라이언트가 없고, 게임 명령은 모두 서버 콘솔(stdin)로 간다. `/api/instance/:id/rcon`은 이름만 남은 호환 경로로, 한 줄을 stdin에 쓰고 콘솔 출력을 약 1.5초 모아 `data.response`로 돌려준다(`D:src/ipc/handlers/command.rs:392-436`). 콘솔이 없는 서버(관리하지 않는 모드, runner 없이 붙은 프로세스)는 409 `no_command_path`를 받으므로 saba-chan에서 명령을 보낼 수 없다. 서버가 콘솔 입력을 읽지 않아 대기열이 차 있으면 기다리지 않고 503 `console_input_full`을 받는다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목, RCON 폴백(stop·status·command), `get_credentials`는 지워졌고 `supported = ["stdin"]`이다. palworld도 RCON 명령 경로(RCON 클라이언트, `protocol_mode=rcon` 분기, `rcon_enabled`·`rcon_port` 키 매핑, `rcon_password` 반환)를 지웠다. 명령은 늘 데몬 REST 경로로 가고, `configure()`는 저장할 때마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:933, 1224-`). 콘솔 명령은 `method = "console"` + `console_template`이다(예전 이름 `rcon`·`rcon_template`도 별칭으로 읽힌다).
 
 #### `[config]` (`ConfigSection` `:738-755`)
 | 키 | 타입 | 사용처 |
@@ -306,7 +306,7 @@ players = "player_count"
 - 데몬은 그 실행에서 확인되지 않아 import를 막은 익스텐션(`SABA_UNVERIFIED_EXTENSIONS`)만으로 `missing_extensions`가 채워진 `extension_required`를 `error_code: "extension_not_verified"`, `unverified_extensions[]`, 영문 `message`로 바꿔 돌려준다(`plugin/mod.rs` `explain_unverified_extensions`). 모듈이 import 실패를 삼켜도 설치·활성화 안내 대신 "파일이 바뀌어 확인되지 않음"이 보이게 하려는 것이다.
 - `status`: `status` 문자열과 `pid`를 데몬이 읽는다. 나머지 키는 버린다 (`mod.rs:1182-1197`).
 - `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance.rs:531-559`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
-- `list_versions`: 데몬은 `latest.release` 또는 `latest_release`만 읽는다 (`instance.rs:461-476`).
+- `list_versions`: 데몬은 `latest.release` 또는 `latest_release`만 읽는다 (`instance.rs:461-476`). 새 인스턴스를 설치할 때는 `{settings}`(인스턴스 `module_settings`)를 넘긴다: 모듈은 그 설정(예: Minecraft `server_type`)으로 받을 수 있는 최신을 `latest.release`로 돌려준다(Paper·Folia는 안정 빌드가 나온 가장 새 버전).
 - `get_installed_version`: `version`.
 - `get_credentials`: `success`, `rest_username`, `rest_password`. 데몬은 REST 자격증명만 쓴다 (`command.rs:579-581, 660-687`). 지금은 palworld만 구현한다. minecraft·zomboid는 RCON 값만 돌려주던 이 함수를 지웠다.
 - `import_settings`: `success`, `settings{}`. `port`·`rest_port`와 credential_map의 게임 키(→ `rest_password`)는 인스턴스 필드로도 맞춘다 (`D:src/instance/mod.rs:172-206`). 마이그레이션에서는 `executable_path`(작업 폴더 기준 상대 경로, 모듈이 찾은 서버 실행 파일)와 `detected`(판정 결과, 데몬은 내용을 보지 않고 생성 응답에 넘긴다)도 읽는다.
@@ -332,7 +332,7 @@ players = "player_count"
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
 | `accept_agreements` | `POST /api/instance/:id/agreements` (동의를 기록한 뒤) | `validate`와 같은 config + `accepted_agreements:[id]`(지금까지 동의한 전부). 모듈은 자기 파일에 동의를 쓴다(예: minecraft eula.txt). 함수가 없으면 기록만 남는다 |
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1982-1990`) |
-| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식) | `include_snapshots`, `page`, `per_page` 또는 `{}` |
+| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식) | `include_snapshots`, `page`, `per_page` 또는 프로비저닝 때 `{settings}` |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
 | `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때 인스턴스 `module_settings`), `jar_name`, `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `install_dir`, `jar_name`(**기본값 `"server.jar"` 하드코딩**, `mod.rs:2168-2171`) |
@@ -465,7 +465,7 @@ players = "player_count"
 
 - 데몬의 프로토콜 계층에는 REST(`rest.rs`, `client.rs`)만 남았다. RCON 코드는 지워졌다.
 - **명령 해석**: `POST /api/instance/:id/command`가 모든 인터페이스의 단일 경로다. `crate::commands`가 module.toml 정의로 이름·별명·입력을 해석하고 `method`에 따라 콘솔·REST·모듈 `command()`로 보낸다. 정의에 없는 명령은 한 줄 그대로 콘솔로 간다 (`D:src/commands/mod.rs:1-17`, `command.rs:11-`).
-- **콘솔 경로**: `/api/instance/:id/rcon`과 `/stdin`은 서버 콘솔(stdin)에 쓰고, 콘솔 출력을 잠깐 모아 답으로 돌려준다. 콘솔이 없으면 409 `no_command_path` (위 RCON 정책).
+- **콘솔 경로**: `/api/instance/:id/rcon`과 `/stdin`은 서버 콘솔(stdin)에 쓰고, 콘솔 출력을 잠깐 모아 답으로 돌려준다. 콘솔이 없으면 409 `no_command_path`, 서버가 입력을 읽지 않아 대기열이 차 있으면 503 `console_input_full` (위 RCON 정책).
 - **REST 경로**: `/api/instance/:id/rest`. `get_credentials`(캐시)로 게임 설정 파일의 계정을 읽는다. Basic Auth의 username 기본값은 `"admin"`이다.
 - **RCON 끄기**: minecraft는 모든 모드와 설치 때 `enable-rcon=false`를 강제한다 (`M:minecraft/lifecycle.py:526, 990-995, 1712`). zomboid는 `RCONPassword`를 비운다 (`M:zomboid/lifecycle.py:817-827`). palworld는 실행 전과 `configure()` 저장마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:256-258, 933`).
 - `SupervisorError`(`error.rs`)는 지워졌다. 핸들러는 `anyhow` + 수동 JSON을 쓴다.

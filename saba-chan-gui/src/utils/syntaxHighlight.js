@@ -95,8 +95,9 @@ function compileRules(rules) {
             try {
                 // Named group (?P<hl>...) → JS 형식 (?<hl>...) 변환
                 const { src, flags } = splitInlineFlags(rule.pattern.replace(/\(\?P</g, '(?<'));
-                const regex = new RegExp(src, `g${flags}`);
                 const hasHlGroup = /\(\?<hl>/.test(src);
+                // hl 그룹은 d 플래그로 실제 위치를 받는다 (같은 글자가 매치 앞부분에 있어도 맞게)
+                const regex = new RegExp(src, `g${hasHlGroup ? 'd' : ''}${flags}`);
                 return {
                     name: rule.name,
                     regex,
@@ -140,11 +141,7 @@ export function highlightLine(text, compiledRules) {
         while ((match = rule.regex.exec(text)) !== null) {
             let start, end;
             if (rule.hasHlGroup && match.groups?.hl !== undefined) {
-                // hl 그룹의 시작/끝 계산
-                const hlValue = match.groups.hl;
-                const hlIdx = match[0].indexOf(hlValue);
-                start = match.index + hlIdx;
-                end = start + hlValue.length;
+                [start, end] = match.indices.groups.hl;
             } else {
                 start = match.index;
                 end = start + match[0].length;
