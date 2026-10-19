@@ -4,8 +4,9 @@
 steamcmd 익스텐션은 HOME 아래(~/.config/saba-chan/steamcmd)를 쓰고, Python 런타임은 exe 옆을 쓸 수 있으며,
 Electron은 APPDATA를 본다. 그래서 SABA_* 외에 HOME·APPDATA·LOCALAPPDATA·TEMP·XDG_*도 바꾼다.
 
-SABA_E2E_LAYOUT=installed면 경로용 SABA_* 변수를 주지 않는다. 데몬·CLI가 설치본처럼 기본 위치
-(%APPDATA%\saba-chan, 그 아래 modules·extensions·.ipc_token)를 스스로 찾고, 그 APPDATA만 시험 폴더의 HOME 아래로 돌린다.
+SABA_E2E_LAYOUT=installed면 modules·extensions·토큰 경로 변수를 주지 않는다. 데몬·CLI가 설치본처럼 기본 위치
+(%APPDATA%/saba-chan 아래 modules·extensions·.ipc_token)를 스스로 찾고, 그 APPDATA만 시험 폴더의 HOME 아래로 돌린다.
+SABA_DATA_DIR만은 그 기본 위치 값을 그대로 준다(env() 주석).
 """
 
 import os
@@ -92,7 +93,12 @@ class Sandbox:
 
     def env(self, **extra: str) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if k not in _DROP_ENV and k not in _PATH_ENV}
-        if not self.installed_layout:
+        if self.installed_layout:
+            # 데이터 폴더만은 기본 위치 값 그대로 준다. Python 런타임(python_env)은 이 변수가 없으면 쓸 수 있는
+            # exe 폴더(포터블 배포)를 먼저 쓰는데, 시험 바이너리는 쓸 수 있는 target/에 있어 시험 폴더 밖에 venv를 만든다.
+            # 설치본(Program Files)은 쓸 수 없어 %APPDATA%\saba-chan으로 가므로 같은 값을 주면 같은 자리다
+            env["SABA_DATA_DIR"] = str(self.data)
+        else:
             env.update(
                 SABA_DATA_DIR=str(self.data),
                 SABA_MODULES_PATH=str(self.modules),
