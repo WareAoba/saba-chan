@@ -723,6 +723,8 @@
     "back_to_menu": "選單",
     "state_no_host": "未連線",
     "state_connecting": "連線中",
+    "state_checking": "正在檢查連線",
+    "checking_body": "正在讀取已儲存的 Discord 連線。薩巴醬醒來後會立即顯示。",
     "state_connected": "已連線",
     "state_error": "連線失敗",
     "nodes_empty": "尚未連線任何 Discord 伺服器",
@@ -1092,6 +1094,10 @@
       "extension_unverified": "已啟用非官方目錄來源的擴充功能（{{id}}）。請確認其來源可信。",
       "extension_modified": "擴充功能（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。",
       "isolated": "此元件的 Python 腳本在隔離環境中執行（僅可存取允許的資料夾）。遊戲伺服器程序不會被隔離。"
+    },
+    "create_notice": {
+      "unverified": "此模組並非來自官方目錄。其 Python 腳本在隔離環境中執行，但它安裝並執行的遊戲伺服器不會被隔離，會以你的帳戶權限執行。僅在信任此模組時繼續。",
+      "modified": "此模組從官方目錄安裝後檔案已被變更。其 Python 腳本在隔離環境中執行，但它安裝並執行的遊戲伺服器不會被隔離，會以你的帳戶權限執行。僅在信任此模組時繼續。"
     },
     "start_blocked": {
       "launch_outside_instance": "此未驗證模組試圖執行伺服器資料夾之外的程式：{{file}} 如果 Java 路徑是你自己設定的，請在伺服器設定中重新選擇。",
