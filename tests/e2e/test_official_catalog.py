@@ -10,7 +10,7 @@ import shutil
 
 import pytest
 
-from harness.daemon import Daemon
+from harness.daemon import Daemon, wait_until
 from test_real_games import MC_DONE, _enable_extensions, _provision
 
 pytestmark = [pytest.mark.network, pytest.mark.slow]
@@ -53,10 +53,10 @@ def test_catalog_modules_and_extensions_are_verified(official):
 def test_catalog_minecraft_runs_with_daemon_found_java(official, game_ports):
     """사용자처럼 java 경로를 주지 않는다: 모듈·데몬이 찾거나 받은 Java로 떠야 한다"""
     _install_module(official, "minecraft")
+    assert _trust(official, "modules")["minecraft"] == "verified"  # 격리 없이 도는 상태에서 본다
     iid = _provision(official, "mc-official", "minecraft", game_ports[0], 1800, server_type="vanilla", ram="1G")
     official.start_instance(iid)
     official.wait_console(iid, MC_DONE, timeout=600)
-    assert "malware_detected" not in official.log_text() and "scan_failed" not in official.log_text()
     official.stop_instance(iid, timeout=180)
     official.wait_status(iid, "stopped", timeout=180)
 
@@ -67,5 +67,11 @@ def test_catalog_palworld_installs_through_steamcmd(official, game_ports):
     _install_extension(official, "steamcmd")
     _install_extension(official, "ue4-ini")
     _enable_extensions(official, "steamcmd", "ue4-ini")
+    assert _trust(official, "modules")["palworld"] == "verified"
+    exts = _trust(official, "extensions")
+    assert exts.get("steamcmd") == "verified" and exts.get("ue4-ini") == "verified", exts
     iid = _provision(official, "pal-official", "palworld", game_ports[2], 7200)
-    assert official.instance(iid).get("executable_path"), official.instance(iid)
+    official.start_instance(iid)
+    wait_until(lambda: official.api.post(f"/api/instance/{iid}/rest", {"endpoint": "info"}, timeout=10).status_code == 200, 600, "Palworld REST 응답", interval=5)
+    official.stop_instance(iid, timeout=180)
+    official.wait_status(iid, "stopped", timeout=180)
