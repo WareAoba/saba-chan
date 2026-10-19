@@ -379,7 +379,7 @@
 | GET | `/api/relay/node/:guild_id/legacy-members` | `relay.rs` `list_node_legacy_members` | `/api/nodes/:id/members` 서명 프록시. 릴레이 본문(`[{id, username, displayName, level}]`)을 그대로, 실패하면 오류 상태와 본문(빈 목록으로 바꾸지 않는다) |
 | GET | `/api/relay/bot-invite` | `relay.rs:430-449` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 주소는 서명 요청과 같은 규칙(설정한 릴레이 또는 루프백)으로 정한다. 봇 초대 URL `{url}` |
 | POST | `/api/relay/pair/initiate` | `relay.rs:451` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
-| GET | `/api/relay/pair/:code/status` | `relay.rs:485` | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
+| GET | `/api/relay/pair/:code/status` | `relay.rs` `poll_pairing_status` | `secret?, relayUrl?`. relay 응답을 그대로 돌려준다. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 저장하고(같은 값이 이미 있으면 다시 쓰지 않고 relay agent도 다시 띄우지 않는다, `store_node_token`) `tokenSaved:bool`을 더한다. `false`면 토큰이 이 PC에 없다(수령 기한이 지나 `nodeToken:null`이거나 쓰기 실패): 클라이언트는 연결됨으로 보이지 않고 다시 페어링하게 한다 |
 | GET | `/api/relay/link-requests` | `relay.rs` `list_link_requests` | relay `GET /api/link-requests` 서명 프록시. 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 중 이 PC에 온 것(J1-b) |
 | POST | `/api/relay/link-requests/:request_id` | `relay.rs` `answer_link_request` | `{accept:bool}` → relay `POST /api/link-requests/:id` 서명 프록시. 수락하면 relay가 그 길드를 이 PC에 묶는다. 응답은 relay 것 그대로 |
 | GET | `/api/relay/agent` | `chat.rs:19` | 에이전트 상태 `{running, relayUrl, hasToken, agentVersion, lastHeartbeatAt, lastError, lastErrorCode?, commandsHandled}`. `lastErrorCode` `token_replaced`: relay가 401 `TOKEN_REPLACED`(같은 디스코드 계정이 다른 PC를 페어링)로 답해서 에이전트가 멈췄다. 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄운다 |
