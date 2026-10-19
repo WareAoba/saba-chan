@@ -980,6 +980,8 @@
     "restore_hint": "The current state is backed up first.",
     "restore_stop_first": "Stop the server before restoring.",
     "restored": "Restored. The state just before was backed up too.",
+    "err_restore_outside": "This backup was made for a different server folder, so it can't be restored into the current one. If you moved the server folder, move it back and try again.",
+    "err_backup_busy": "Another task (backup, restore, update, ...) is running for this server. Try again when it finishes.",
     "delete": "Delete",
     "delete_confirm": "Click to delete",
     "kind_manual": "Manual",
