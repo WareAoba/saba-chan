@@ -398,7 +398,7 @@
     "rename_failed_toast": "Couldn't rename: {{error}}",
     "rename_name_taken": "'{{name}}' is already taken",
     "rename_server_running": "Stop the server before renaming it",
-    "rename_instance_busy": "Can't rename while installing, updating, backing up or restoring. Try again when it's done",
+    "rename_instance_busy": "Can't rename while another task (starting, installing, updating, backing up or restoring) is in progress. Try again when it's done",
     "dependency_unmet_title": "Missing requirements",
     "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again.",
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",

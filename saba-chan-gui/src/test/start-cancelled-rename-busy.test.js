@@ -50,7 +50,7 @@ describe('이름 바꾸기: 다른 작업 중 (instance_busy)', () => {
         window.showToast = vi.fn();
     });
 
-    it('설치·업데이트·백업·복원 중이라 못 바꾼다고 알린다', async () => {
+    it('시작·설치·백업 같은 다른 작업 중이라 못 바꾼다고 알린다', async () => {
         window.api.instanceRename = vi
             .fn()
             .mockResolvedValue({ success: false, error: 'busy', error_code: 'instance_busy' });
@@ -60,6 +60,8 @@ describe('이름 바꾸기: 다른 작업 중 (instance_busy)', () => {
             ok = await result.current.handleRename('a', 'B');
         });
         expect(ok).toBe(false);
-        expect(window.showToast.mock.calls.at(-1)[0]).toMatch(/installing, updating, backing up or restoring/);
+        expect(window.showToast.mock.calls.at(-1)[0]).toMatch(
+            /another task \(starting, installing, updating, backing up or restoring\)/,
+        );
     });
 });

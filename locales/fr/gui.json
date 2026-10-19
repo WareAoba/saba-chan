@@ -395,7 +395,7 @@
     "rename_failed_toast": "Impossible de renommer : {{error}}",
     "rename_name_taken": "« {{name}} » est déjà utilisé",
     "rename_server_running": "Arrêtez le serveur avant de le renommer",
-    "rename_instance_busy": "Impossible de renommer pendant une installation, une mise à jour, une sauvegarde ou une restauration. Réessayez une fois l'opération terminée",
+    "rename_instance_busy": "Impossible de renommer pendant qu'une autre opération est en cours (démarrage, installation, mise à jour, sauvegarde ou restauration). Réessayez une fois l'opération terminée",
     "dependency_unmet_title": "Prérequis manquants",
     "dependency_unmet_message": "Le module de « {{name}} » nécessite les versions ci-dessous. Mettez à jour, ou installez et activez l'extension, puis relancez.",
     "preflight_failed_title": "La vérification avant démarrage de '{{name}}' a trouvé un problème",
