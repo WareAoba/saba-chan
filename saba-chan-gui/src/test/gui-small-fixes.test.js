@@ -1,5 +1,5 @@
 import { act, render, renderHook } from '@testing-library/react';
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ExtensionSlot from '../components/ExtensionSlot';
 import { useModalClose } from '../hooks/useModalClose';
@@ -30,6 +30,22 @@ describe('확장 슬롯', () => {
             }, []);
             return null;
         };
+        slots = { s: [A, B] };
+        const { rerender } = render(<ExtensionSlot slotId="s" />);
+        slots = { s: [B] };
+        rerender(<ExtensionSlot slotId="s" />);
+        expect(mounts).toEqual(['B']);
+    });
+
+    it('memo로 감싼 컴포넌트도 앞의 것이 빠질 때 새로 만들지 않는다', () => {
+        const mounts = [];
+        const A = () => null;
+        const B = memo(() => {
+            useEffect(() => {
+                mounts.push('B');
+            }, []);
+            return null;
+        });
         slots = { s: [A, B] };
         const { rerender } = render(<ExtensionSlot slotId="s" />);
         slots = { s: [B] };
