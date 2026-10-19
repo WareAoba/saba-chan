@@ -293,6 +293,13 @@ impl Supervisor {
                 .into_iter()
                 .map(|(name, port)| format!("Port {} ({}) is in use by another program", port, name))
                 .collect();
+            // 예약 범위의 포트는 아무도 쓰지 않아도 서버가 열지 못한다 (사용 중 목록에 없어 따로 본다)
+            let reserved: Vec<String> = crate::validator::ports_reserved_by_windows(&ports)
+                .into_iter()
+                .filter(|(_, port)| !details.iter().any(|d| d.starts_with(&format!("Port {} ", port))))
+                .map(|(name, port)| format!("Port {} ({}) is reserved by Windows (excluded port range); choose another port", port, name))
+                .collect();
+            details.extend(reserved);
         }
         if details.is_empty() {
             return None;
@@ -492,11 +499,13 @@ impl Supervisor {
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
+        // REST 포트는 데몬이 접속하는 인스턴스 값이 기준이다 (정지도 그 값을 쓴다). 모듈 설정에 남은 옛 값
+        // (예: 설치가 기본 INI에서 읽어 온 8212)이 먼저 들어가면 모듈이 INI를 그 값으로 맞춰 데몬이 못 붙는다
+        if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         for (key, value) in &instance.module_settings {
             put(key, value.clone());
         }
         if let Some(v) = &instance.rest_host { put("rest_host", json!(v)); }
-        if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         if let Some(v) = &instance.rest_username { put("rest_username", json!(v)); }
         if let Some(v) = &instance.rest_password { put("rest_password", json!(v)); }
         put("protocol_mode", json!(&instance.protocol_mode));
@@ -2851,6 +2860,18 @@ mod tests {
         let legacy = module_failure(&json!({"command": "sh", "args": []}), "e2e-mock", "get_launch_command");
         assert!(legacy.contains("e2e-mock") && legacy.contains("command") && legacy.contains("args"), "{}", legacy);
         assert!(module_failure(&Value::Null, "m", "f").contains("nothing"));
+    }
+
+    // 실제 PC: 새 팰월드의 REST 포트를 예약 범위 밖(8242)으로 옮겼는데 모듈 설정에 기본 INI의 8212가 남아,
+    // 모듈이 시작 때 INI를 8212로 맞추고 데몬은 8242로 접속해 REST가 끝내 닿지 않았다
+    #[test]
+    fn modules_get_the_instance_rest_port_over_a_stale_module_setting() {
+        let mut inst = crate::instance::ServerInstance::new("pal", "palworld");
+        inst.rest_port = Some(8242);
+        inst.module_settings.insert("rest_port".into(), json!(8212));
+        let mut cfg = serde_json::Map::new();
+        Supervisor::insert_instance_fields(&mut cfg, &inst);
+        assert_eq!(cfg["rest_port"], json!(8242));
     }
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
