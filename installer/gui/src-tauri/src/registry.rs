@@ -98,7 +98,9 @@ fn copy_installer_to_install_dir(install_dir: &Path) {
     if let Ok(exe) = std::env::current_exe() {
         let dest = install_dir.join("saba-chan-installer.exe");
         if exe != dest {
-            let _ = std::fs::copy(&exe, &dest);
+            if let Err(e) = std::fs::copy(&exe, &dest) {
+                tracing::warn!("[Registry] Could not copy the installer to {}: {}", dest.display(), e);
+            }
         }
     }
 }

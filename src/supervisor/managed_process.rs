@@ -231,6 +231,18 @@ impl Drop for ManagedProcess {
     }
 }
 
+/// 서버가 콘솔 입력을 읽지 않아 보낼 대기열이 찼다
+#[derive(Debug)]
+pub struct StdinFull;
+
+impl std::fmt::Display for StdinFull {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the server is not reading its console input")
+    }
+}
+
+impl std::error::Error for StdinFull {}
+
 impl ManagedProcess {
     /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
     /// 종료 요청이 거부되면 오류 (끝났는지는 `is_running`으로 확인한다)
@@ -407,13 +419,16 @@ impl ManagedProcess {
     ///
     /// 한 번에 한 줄만 보낸다. 끝의 줄바꿈은 떼고, 안에 줄바꿈이 있으면 거부한다
     /// (그대로 보내면 서버가 두 번째 명령으로 읽는다).
+    /// 서버가 입력을 읽지 않아 대기열이 차면 기다리지 않고 실패한다: 호출하는 쪽이 데몬 락을 쥐고 있을 수 있다
     pub async fn send_command(&self, command: &str) -> Result<()> {
         let command = command.trim_end_matches(['\r', '\n']);
         if crate::commands::has_line_break(command) {
             anyhow::bail!("command must be a single line");
         }
-        self.stdin_tx.send(command.to_string()).await
-            .map_err(|e| anyhow::anyhow!("stdin channel closed: {}", e))
+        self.stdin_tx.try_send(command.to_string()).map_err(|e| match e {
+            mpsc::error::TrySendError::Full(_) => anyhow::Error::new(StdinFull),
+            mpsc::error::TrySendError::Closed(_) => anyhow::anyhow!("stdin channel closed"),
+        })
     }
 
     /// Spawn a log follower that streams an extension-provided command's output
@@ -1053,6 +1068,29 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 서버가 콘솔 입력을 읽지 않으면 보내기가 기다리지 않고 바로 실패한다.
+    /// 기다리면 그 사이 데몬 락을 쥔 호출(콘솔 명령 API)이 데몬 전체를 멈춘다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sending_to_a_server_that_never_reads_stdin_fails_instead_of_waiting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc = ManagedProcess::spawn("/bin/sh", &["-c".into(), "sleep 30".into()], ".", Vec::new(), None, Some(tmp.path()))
+            .await
+            .unwrap();
+        let line = "x".repeat(4096);
+        let sent = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            for _ in 0..1000 {
+                if proc.send_command(&line).await.is_err() {
+                    return true;
+                }
+            }
+            false
+        })
+        .await;
+        let _ = proc.force_kill();
+        assert_eq!(sent, Ok(true), "a full console input must be reported, not waited on");
+    }
 
     #[test]
     fn log_timestamp_parser_rejects_bad_input_without_panicking() {

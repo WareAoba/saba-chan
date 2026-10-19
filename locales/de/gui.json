@@ -391,10 +391,12 @@
     "restart_confirm_message": "'{{name}}' stoppen und neu starten? Verbundene Spieler werden kurz getrennt.",
     "restarting_toast": "'{{name}}' wird neu gestartet…",
     "restart_completed_toast": "'{{name}}' neu gestartet",
+    "port_moved": "{{name}}: Der REST-Verwaltungsport {{from}} ist von Windows reserviert und wurde auf {{to}} geändert.",
     "restart_failed_toast": "Neustart fehlgeschlagen: {{error}}",
     "rename_failed_toast": "Umbenennen fehlgeschlagen: {{error}}",
     "rename_name_taken": "'{{name}}' ist bereits vergeben",
     "rename_server_running": "Stoppe den Server, bevor du ihn umbenennst",
+    "rename_instance_busy": "Der Name kann nicht geändert werden, während ein anderer Vorgang (Start, Installation, Update, Sicherung oder Wiederherstellung) läuft. Versuche es danach erneut",
     "dependency_unmet_title": "Fehlende Voraussetzungen",
     "dependency_unmet_message": "Das Modul für '{{name}}' benötigt die unten stehenden Versionen. Aktualisiere oder installiere und aktiviere die Erweiterung und starte dann erneut.",
     "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",
@@ -426,6 +428,9 @@
     "loading_tips": "Sie können mehrere Spielserver gleichzeitig verwalten"
   },
   "errors": {
+    "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
+    "console_input_full": "Der Server verarbeitet noch frühere Eingaben. Versuche es gleich noch einmal.",
+    "restart_cancelled": "Der Server wurde während des Wartens an anderer Stelle gestartet oder entfernt, daher wurde er nicht neu gestartet.",
     "executable_not_found": "Ausführbare Datei des Spielservers nicht gefunden. Bitte überprüfen Sie den Pfad in den Einstellungen.",
     "file_not_found": "Datei oder Ordner nicht gefunden. Bitte überprüfen Sie den Pfad.",
     "permission_denied": "Berechtigung verweigert. Bitte überprüfen Sie die Dateizugriffsberechtigung.",
@@ -1102,6 +1107,7 @@
     "start_blocked": {
       "launch_outside_instance": "Dieses nicht verifizierte Modul wollte ein Programm außerhalb des Serverordners starten: {{file}} Wenn du den Java-Pfad selbst festgelegt hast, wähle ihn in den Servereinstellungen erneut aus.",
       "server_folder_label": "Die Berechtigungsmarkierungen des Serverordners ({{file}}) konnten nicht bereinigt werden, daher wurde der Server nicht gestartet. Prüfe, ob dieses Konto die Berechtigungen des Ordners ändern darf.",
+      "server_in_sync_folder": "Der Server wurde nicht gestartet, weil {{file}} in einem Synchronisierungsordner wie OneDrive liegt. Verschiebe den Serverordner aus dem Synchronisierungsordner.",
       "sandbox_unavailable": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden, daher wurde sie nicht gestartet.",
       "extension_not_verified": "Die Dateien dieser Erweiterungen wurden geändert und konnten nicht überprüft werden: {{extensions}}. Installieren Sie sie neu oder stellen Sie die ursprünglichen Dateien wieder her."
     },

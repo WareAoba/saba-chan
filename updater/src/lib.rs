@@ -106,6 +106,8 @@ pub enum Component {
     Cli,
     Gui,
     Updater,
+    /// 설치 폴더의 `saba-chan-installer.exe` (제거기로 쓰인다)
+    Installer,
     Module(String),
     Extension(String),
     Locales,
@@ -119,6 +121,7 @@ impl Component {
             Component::Cli => "cli".to_string(),
             Component::Gui => "gui".to_string(),
             Component::Updater => "updater".to_string(),
+            Component::Installer => "installer".to_string(),
             Component::Module(name) => format!("module-{}", name),
             Component::Extension(name) => format!("ext-{}", name),
             Component::Locales => "locales".to_string(),
@@ -132,6 +135,7 @@ impl Component {
             "cli" => Some(Component::Cli),
             "gui" => Some(Component::Gui),
             "updater" => Some(Component::Updater),
+            "installer" => Some(Component::Installer),
             "locales" => Some(Component::Locales),
             k if k.starts_with("module-") => {
                 Some(Component::Module(k.strip_prefix("module-").unwrap().to_string()))
@@ -155,6 +159,7 @@ impl Component {
             Component::Cli => "CLI".to_string(),
             Component::Gui => "GUI".to_string(),
             Component::Updater => "Updater".to_string(),
+            Component::Installer => "Installer".to_string(),
             Component::Module(name) => format!("Module: {}", name),
             Component::Extension(name) => format!("Extension: {}", name),
             Component::Locales => "Locales".to_string(),
@@ -308,6 +313,9 @@ fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
 pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &["saba-chan-gui.exe", "Saba-chan.exe"] } else { &["saba-chan-gui"] };
 
+/// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
+pub const INSTALLER_EXE: &str = if cfg!(windows) { "saba-chan-installer.exe" } else { "saba-chan-installer" };
+
 /// 설치 폴더 바로 안의 GUI 실행 파일
 pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
     GUI_EXE_NAMES.iter().map(|n| install_root.join(n)).find(|p| p.is_file())
@@ -338,6 +346,7 @@ pub fn move_aside_binary(path: &Path) -> Result<()> {
 /// 엔트리 경로는 `enclosed_name()`으로 검사해 `..`나 절대 경로로
 /// `target_dir` 밖에 쓰는 엔트리(zip-slip)를 거부한다. `before_write`는
 /// 파일을 쓰기 직전에 호출된다(실행 중 바이너리를 비켜 두는 데 쓴다).
+/// 대상 폴더 안의 기존 링크(Windows 정션 포함)를 따라 밖에 쓰지 않는다.
 /// 쓴 파일 경로를 돌려준다(무결성 기록용).
 pub fn extract_zip(
     staged: &Path,
@@ -349,9 +358,14 @@ pub fn extract_zip(
     let mut archive = zip::ZipArchive::new(file)?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let Some(rel) = entry.enclosed_name() else {
+        // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
+        let Some(rel) = entry
+            .enclosed_name()
+            .filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_))))
+        else {
             anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), entry.name());
         };
+        reject_links_below(target_dir, rel)?;
         let out_path = target_dir.join(rel);
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;
@@ -366,6 +380,24 @@ pub fn extract_zip(
         written.push(out_path);
     }
     Ok(written)
+}
+
+/// `target_dir` 아래 `rel`까지 이미 있는 경로 중 링크가 있으면 거부한다 (`target_dir` 자체는 링크여도 된다).
+/// Windows의 `is_symlink`는 정션도 링크로 본다
+pub(crate) fn reject_links_below(target_dir: &Path, rel: &Path) -> Result<()> {
+    let mut path = target_dir.to_path_buf();
+    for part in rel.components() {
+        path.push(part);
+        match std::fs::symlink_metadata(&path) {
+            Ok(md) if md.file_type().is_symlink() => {
+                anyhow::bail!("Refusing to write through a link: {}", path.display());
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
 }
 
 // ══════════════════════════════════════════════════════
@@ -546,7 +578,10 @@ impl UpdateManager {
                     continue;
                 }
                 // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록
-                let update_available = if installed && Self::reinstall_from_catalog(&component, &current, &info.version) {
+                let update_available = if installed
+                    && (Self::reinstall_from_catalog(&component, &current, &info.version)
+                        || (current.is_empty() && Self::unknown_version_needs_update(&component)))
+                {
                     true
                 } else if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);
@@ -622,14 +657,27 @@ impl UpdateManager {
     // ─────── 로컬 버전 수집 ────────────────────────────────────────────────────────────────────────
 
     /// 모든 컴포넌트의 현재 설치된 버전을 수집
+    /// 설치 기록에 없는 앱 컴포넌트를 빌드에 묶인 버전으로 채운다. 설치기는 0.1.7까지 기록되지 않았고
+    /// 이 빌드와 함께 깔린다는 보장도 없어(업데이터만 바뀐 설치본) 채우지 않는다
+    pub(crate) fn fill_bundled_versions(versions: &mut HashMap<String, String>) {
+        for (key, version) in &crate::versions::bundled().components {
+            if key != "installer" {
+                versions.entry(key.clone()).or_insert_with(|| version.clone());
+            }
+        }
+    }
+
+    /// 깔려 있는데 버전을 모르면 최신으로 기록하는 대신 바꿔야 하는 컴포넌트 (기록이 없으면 옛 판이다)
+    pub(crate) fn unknown_version_needs_update(component: &Component) -> bool {
+        matches!(component, Component::Installer)
+    }
+
     fn collect_local_versions(&self) -> HashMap<String, String> {
         // 1. 설치 매니페스트 우선 로드 (가장 신뢰할 수 있는 소스)
         let mut versions = Self::load_installed_manifest();
 
         // 2. 매니페스트에 없는 앱 컴포넌트는 빌드에 묶인 versions.toml 버전 (폴백)
-        for (key, version) in &crate::versions::bundled().components {
-            versions.entry(key.clone()).or_insert_with(|| version.clone());
-        }
+        Self::fill_bundled_versions(&mut versions);
 
         // 모듈: modules/*/module.toml에서 감지
         if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
@@ -893,6 +941,7 @@ impl UpdateManager {
             Component::Updater => self.apply_binary_update("saba-chan-updater", staged_path).await,
             Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
             Component::Gui => self.apply_gui_update(staged_path).await,
+            Component::Installer => self.apply_installer_update(staged_path),
             Component::Locales => {
                 let target = self.install_root.join("locales");
                 self.extract_to_directory(Path::new(staged_path), &target).await
@@ -930,14 +979,14 @@ impl UpdateManager {
     ///
     /// 낮은 값일수록 먼저 적용됩니다:
     /// - 0: Updater (업데이트 방식 변경 대응 — 디스크의 바이너리를 먼저 교체)
-    /// - 1: 모듈, 익스텐션, Locales (프로세스 중단 불필요)
+    /// - 1: 모듈, 익스텐션, Locales, Installer (프로세스 중단 불필요)
     /// - 3: CoreDaemon (데몬 프로세스 종료 후 교체)
     /// - 4: 사용하지 않는 인터페이스 (GUI 사용 중이면 CLI, 반대도 마찬가지)
     /// - 5: 현재 사용 중인 인터페이스 (재시작 필요)
     fn component_apply_priority(component: &Component) -> u8 {
         match component {
             Component::Updater => 0,
-            Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
+            Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
             Component::CoreDaemon => 3,
             // GUI/CLI는 현재 실행 중인 인터페이스를 마지막에 적용
             Component::Gui => {

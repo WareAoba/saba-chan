@@ -972,3 +972,149 @@ fn an_old_backup_without_its_exe_is_kept() {
     assert!(tmp.path().join("saba-chan-gui.exe.old").exists());
     assert!(!tmp.path().join("saba-core.exe.old").exists());
 }
+
+// M1: manifest의 `installer`도 업데이트 대상이다. 건너뛰면 설치 폴더의 제거기가 처음 설치한 판에 남는다
+#[test]
+fn the_installer_manifest_key_is_a_component() {
+    assert_eq!(Component::try_from_manifest_key("installer"), Some(Component::Installer));
+    assert_eq!(Component::Installer.manifest_key(), "installer");
+}
+
+// M1: 릴리스의 설치기는 zip이 아닌 exe 그대로다. 설치 폴더의 사본을 바꾼다
+#[tokio::test]
+async fn an_installer_update_replaces_the_installed_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let target = manager.install_root.join(crate::INSTALLER_EXE);
+    std::fs::write(&target, b"old installer").unwrap();
+    assert!(manager.is_component_installed(&Component::Installer));
+    let staged = tmp.path().join("saba-chan-installer.exe");
+    std::fs::write(&staged, b"new installer").unwrap();
+
+    let files = manager.apply_one(&Component::Installer, &staged.to_string_lossy()).await.unwrap();
+
+    assert_eq!(std::fs::read(&target).unwrap(), b"new installer");
+    assert_eq!(files, vec![target]);
+    assert!(!staged.exists());
+}
+
+// M1: 바꾸다 실패하면 원래 설치기를 되돌린다 (제거기가 사라지면 안 된다)
+#[tokio::test]
+async fn a_failed_installer_update_keeps_the_old_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let target = manager.install_root.join(crate::INSTALLER_EXE);
+    std::fs::write(&target, b"old installer").unwrap();
+    let missing = tmp.path().join("gone.exe");
+
+    assert!(manager.apply_one(&Component::Installer, &missing.to_string_lossy()).await.is_err());
+
+    assert_eq!(std::fs::read(&target).unwrap(), b"old installer");
+    let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left.len(), 1, "no backup left behind: {left:?}");
+}
+
+// M1: 0.1.7 이하 설치본은 설치기 버전을 기록하지 않았다. 번들 버전으로 채우면 최신으로 보여 영영 안 바뀌므로
+// 기록이 없는 설치기는 버전을 모르는 채로 두고, 깔려 있으면 한 번 바꾼다
+#[test]
+fn an_unrecorded_installer_is_not_assumed_current() {
+    let mut versions = std::collections::HashMap::new();
+    UpdateManager::fill_bundled_versions(&mut versions);
+    assert!(versions.contains_key("saba-core"));
+    assert!(!versions.contains_key("installer"));
+
+    assert!(UpdateManager::unknown_version_needs_update(&Component::Installer));
+    assert!(!UpdateManager::unknown_version_needs_update(&Component::CoreDaemon));
+}
+
+// M4: 대상 폴더 안의 기존 링크(Windows는 정션 포함)를 따라 밖에 쓰지 않는다
+#[cfg(unix)]
+#[test]
+fn extract_zip_does_not_write_through_links_in_the_target() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("victim.txt"), b"keep").unwrap();
+    std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
+    std::os::unix::fs::symlink(outside.join("victim.txt"), target.join("file.txt")).unwrap();
+    for name in ["sub/new.txt", "file.txt", "nope/../sub/new.txt"] {
+        let zip_path = tmp.path().join("a.zip");
+        {
+            let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+            zw.start_file(name, zip::write::FileOptions::default()).unwrap();
+            zw.write_all(b"bad").unwrap();
+            zw.finish().unwrap();
+        }
+        assert!(crate::extract_zip(&zip_path, &target, |_| Ok(())).is_err(), "{name}");
+    }
+    assert!(!outside.join("new.txt").exists());
+    assert_eq!(std::fs::read(outside.join("victim.txt")).unwrap(), b"keep");
+}
+
+// M4: tar의 링크 엔트리를 만들지 않고, 기존 링크를 따라 쓰지 않는다
+#[cfg(unix)]
+#[test]
+fn extract_tar_gz_does_not_create_or_follow_links() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let archive = tmp.path().join("a.tar.gz");
+    {
+        let gz = flate2::write::GzEncoder::new(std::fs::File::create(&archive).unwrap(), flate2::Compression::default());
+        let mut tw = tar::Builder::new(gz);
+        let mut link = tar::Header::new_gnu();
+        link.set_entry_type(tar::EntryType::Symlink);
+        link.set_size(0);
+        tw.append_link(&mut link, "sub", &outside).unwrap();
+        let mut file = tar::Header::new_gnu();
+        file.set_size(3);
+        file.set_mode(0o644);
+        tw.append_data(&mut file, "sub/new.txt", &b"bad"[..]).unwrap();
+        tw.into_inner().unwrap().finish().unwrap();
+    }
+    let _ = UpdateManager::extract_tar_gz(&archive, &target);
+    assert!(!outside.join("new.txt").exists());
+    assert!(!target.join("sub").is_symlink());
+
+    std::fs::remove_dir_all(target.join("sub")).unwrap();
+    std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
+    assert!(UpdateManager::extract_tar_gz(&archive, &target).is_err());
+    assert!(!outside.join("new.txt").exists());
+}
+
+// M4: Windows 정션도 링크로 보고 따라 쓰지 않는다 (PC에서 실행)
+#[cfg(windows)]
+#[test]
+fn extract_zip_does_not_write_through_a_junction() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let made = std::process::Command::new("cmd")
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(target.join("sub"))
+        .arg(&outside)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let zip_path = tmp.path().join("a.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("sub/new.txt", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+    assert!(crate::extract_zip(&zip_path, &target, |_| Ok(())).is_err());
+    assert!(!outside.join("new.txt").exists());
+}

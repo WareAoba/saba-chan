@@ -99,6 +99,15 @@ impl StartGuard {
     }
 }
 
+/// 시작 전에 예약 범위를 피해 옮긴 포트를 시작 응답(`success:false`도)에 싣는다: `port_moved: [{field, from, to}]`.
+/// 응답을 받지 않는 경로를 위해 옮길 때 `instance.port_moved` 이벤트도 낸다 (`move_default_rest_port_if`)
+fn with_port_moved(mut result: Value, moved: Option<(u16, u16)>) -> Value {
+    if let (Some((from, to)), Value::Object(map)) = (moved, &mut result) {
+        map.insert("port_moved".to_string(), json!([{ "field": "rest_port", "from": from, "to": to }]));
+    }
+    result
+}
+
 /// 시작 준비 중에 정지가 들어와 띄우지 않았다 (또는 띄운 것을 바로 껐다)
 fn start_cancelled(server_name: &str) -> Value {
     json!({
@@ -309,12 +318,15 @@ impl Supervisor {
     /// 범위에 들면 서버가 REST를 열지 못하므로, 시작 전에 새 인스턴스처럼 예약 범위와 다른 인스턴스의 포트를 피해
     /// 옮겨 저장한다(모듈이 시작 때 게임 설정 파일을 이 값으로 맞춘다). 기본값이 아닌 값은 사용자가 정한 것이므로
     /// 옮기지 않는다(시작 전 검사가 port_conflict로 알린다)
-    fn move_reserved_default_rest_port(&mut self, id: &str) {
+    /// 옮겼으면 `(옮기기 전, 옮긴 뒤)`
+    fn move_reserved_default_rest_port(&mut self, id: &str) -> Option<(u16, u16)> {
         // 이미 떠 있는 서버는 지금 포트로 붙어 있다
         if self.tracker.get_pid(id).is_ok_and(process::is_process_alive) {
-            return;
+            return None;
         }
-        self.move_default_rest_port_if(id, crate::validator::tcp_port_reserved_by_windows, crate::validator::port_reserved_by_windows);
+        let before = self.instance_store.get(id)?.rest_port?;
+        self.move_default_rest_port_if(id, crate::validator::tcp_port_reserved_by_windows, crate::validator::port_reserved_by_windows)
+            .map(|after| (before, after))
     }
 
     fn move_default_rest_port_if(&mut self, id: &str, reserved: impl Fn(u16) -> bool, avoid: impl Fn(u16) -> bool) -> Option<u16> {
@@ -348,6 +360,8 @@ impl Supervisor {
             return None;
         }
         tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", name, rest, free);
+        // 자동·예약 재시작처럼 시작 응답을 아무도 보지 않는 경로에서도 바뀐 포트를 알 수 있게
+        crate::events::emit("instance.port_moved", json!({ "instanceId": id, "instance": name, "field": "rest_port", "from": rest, "to": free }));
         Some(free)
     }
 
@@ -654,13 +668,15 @@ impl Supervisor {
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
 
-        {
+        let moved = {
             let mut s = sup.write().await;
             let id = s.instance_store.get(server_name).or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name)).map(|i| i.id.clone());
-            if let Some(id) = id {
-                s.move_reserved_default_rest_port(&id);
-            }
-        }
+            id.and_then(|id| s.move_reserved_default_rest_port(&id))
+        };
+        Self::start_server_inner(sup, server_name, module_name, config).await.map(|result| with_port_moved(result, moved))
+    }
+
+    async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
 
         // ── 검사 (읽기 락) ──
         let (instance, starting, hook) = {
@@ -985,9 +1001,13 @@ impl Supervisor {
             // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
             if starting.stop_requested(&s) {
                 drop(s);
-                if let Err(e) = child.kill().await {
+                // 자식까지 끝낸다: 런처형 서버는 런처만 끝내면 실제 서버가 남는다
+                let killed = tokio::task::spawn_blocking(move || process::force_kill_tree(pid)).await;
+                if let Err(e) = killed.map_err(anyhow::Error::from).and_then(|r| r) {
                     tracing::warn!("Could not stop '{}' after a stop request during start: {}", server_name, e);
+                    let _ = child.kill().await;
                 }
+                let _ = child.wait().await;
                 return Ok(start_cancelled(server_name));
             }
             s.stop_requested.remove(&instance.id);
@@ -1466,7 +1486,16 @@ impl Supervisor {
         module_name: &str,
         config: Value,
     ) -> Result<Value> {
-        sup.write().await.move_reserved_default_rest_port(instance_id);
+        let moved = sup.write().await.move_reserved_default_rest_port(instance_id);
+        Self::start_managed_server_inner(sup, instance_id, module_name, config).await.map(|result| with_port_moved(result, moved))
+    }
+
+    async fn start_managed_server_inner(
+        sup: &tokio::sync::RwLock<Self>,
+        instance_id: &str,
+        module_name: &str,
+        config: Value,
+    ) -> Result<Value> {
 
         // ── 1) 검사 (읽기 락) ──
         let (mut instance, starting, hook) = {
@@ -2650,6 +2679,12 @@ impl Supervisor {
     }
 
     pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
+        self.monitor_processes_taken_at(process_snapshot, u64::MAX).await
+    }
+
+    /// `snapshot_taken_at`(unix 초): 프로세스 목록을 찍기 시작한 시각. 그 뒤에 추적한 PID는 목록에 없어도
+    /// 끝났다고 보지 않는다 (목록을 락 밖에서 찍는 사이에 막 시작한 서버)
+    pub async fn monitor_processes_taken_at(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess], snapshot_taken_at: u64) -> Result<()> {
         use crate::process_monitor;
 
         // Clean up dead managed processes and their PID files
@@ -2674,7 +2709,8 @@ impl Supervisor {
             if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                 tracked_count += 1;
                 
-                if !process_monitor::is_running_in(process_snapshot, pid) {
+                let tracked_after_snapshot = self.tracker.get_start_time(&instance.id).is_ok_and(|t| t >= snapshot_taken_at);
+                if !tracked_after_snapshot && !process_monitor::is_running_in(process_snapshot, pid) {
                     // 러너가 아직 서버를 돌리고 있으면(런처가 끝나고 진짜 서버가 남은 경우) 러너가 보는 PID로 옮긴다
                     // 로그만 따라 읽는 익스텐션 follower는 서버 수명을 말해 주지 않는다: 러너일 때만
                     if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running() && p.runner_pid.is_some()) {
@@ -2787,16 +2823,12 @@ impl Supervisor {
                                         instance.name, process.pid, details
                                     );
 
-                                    // 프로세스 강제 종료 (spawn_blocking — sysinfo는 동기 시스템 콜)
+                                    // 자식까지 강제 종료 (런처형 서버는 런처만 끝내면 실제 서버가 남는다. taskkill은 동기라 spawn_blocking)
                                     let kill_pid = process.pid;
                                     let kill_name = instance.name.clone();
-                                    tokio::task::spawn_blocking(move || {
-                                        let mut sys = sysinfo::System::new();
-                                        sys.refresh_processes();
-                                        if let Some(proc) = sys.process(sysinfo::Pid::from_u32(kill_pid)) {
-                                            proc.kill();
-                                            tracing::info!("Force-killed PID {} for instance '{}'", kill_pid, kill_name);
-                                        }
+                                    tokio::task::spawn_blocking(move || match process::force_kill_tree(kill_pid) {
+                                        Ok(()) => tracing::info!("Force-killed PID {} for instance '{}'", kill_pid, kill_name),
+                                        Err(e) => tracing::warn!("Could not force-kill PID {} for instance '{}': {}", kill_pid, kill_name, e),
                                     }).await.ok();
 
                                     // tracker에서 제거 + 쿨다운 설정
@@ -2903,6 +2935,27 @@ mod tests {
         let snapshot = crate::process_monitor::get_running_processes();
         let result = supervisor.monitor_processes(&snapshot).await;
         assert!(result.is_ok());
+    }
+
+    // 백로그 L8: 감시는 프로세스 목록을 락 밖에서 먼저 찍는다. 그 사이에 막 시작해 추적한 PID는 목록에 없어
+    // "끝났다"며 추적에서 풀렸다. 목록을 찍은 뒤에 추적한 PID는 다음 목록까지 기다린다
+    #[tokio::test]
+    async fn a_pid_tracked_after_the_snapshot_is_not_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let inst = crate::instance::ServerInstance::new("fresh", "none");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        sup.tracker.track(&id, 4_000_000).unwrap();
+        let tracked_at = sup.tracker.get_start_time(&id).unwrap();
+
+        sup.monitor_processes_taken_at(&[], tracked_at - 1).await.unwrap();
+        assert!(sup.tracker.get_pid(&id).is_ok(), "the snapshot predates the start");
+        sup.monitor_processes_taken_at(&[], tracked_at + 1).await.unwrap();
+        assert!(sup.tracker.get_pid(&id).is_err(), "a later snapshot without the pid means it is gone");
     }
 
     /// cleanup_dead()가 죽은 managed process를 정리할 때
@@ -3030,7 +3083,12 @@ mod tests {
         }
         let reserved = |p: u16| (8135..=8234).contains(&p);
 
+        let mut events = crate::events::bus().subscribe(None);
         assert_eq!(sup.move_default_rest_port_if(&old_id, reserved, reserved), Some(8252));
+        // 리뷰 289: 자동·예약 재시작은 시작 응답을 로그에만 남기므로, 옮긴 일은 이벤트로도 알린다
+        let told = std::iter::from_fn(|| events.rx.try_recv().ok()).find(|e| e.kind == "instance.port_moved" && e.data["instanceId"] == old_id.as_str());
+        let told = told.expect("instance.port_moved was not emitted");
+        assert_eq!((told.data["field"].clone(), told.data["from"].clone(), told.data["to"].clone()), (json!("rest_port"), json!(8212), json!(8252)));
         let moved = sup.instance_store.get(&old_id).unwrap();
         assert_eq!((moved.rest_port, moved.module_settings["rest_port"].clone()), (Some(8252), json!(8252)));
         let mut reloaded = crate::instance::InstanceStore::new(tmp.path().join("instances").to_str().unwrap());
@@ -3586,6 +3644,15 @@ mod tests {
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
         let calls = std::fs::read_to_string(&log).unwrap();
         assert_eq!(calls.lines().collect::<Vec<_>>(), ["stop", "start", "stop"], "the extension's server is stopped again");
+    }
+
+    // 백로그 M13: 예약 범위 때문에 옮긴 REST 포트를 알리지 않고 저장값만 바꿨다
+    #[test]
+    fn a_start_reports_the_port_it_moved() {
+        let moved = with_port_moved(json!({ "success": false, "error_code": "port_conflict" }), Some((8212, 8242)));
+        assert_eq!(moved["port_moved"], json!([{ "field": "rest_port", "from": 8212, "to": 8242 }]));
+        assert_eq!(moved["error_code"], "port_conflict");
+        assert!(with_port_moved(json!({ "success": true }), None).get("port_moved").is_none());
     }
 
     /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
