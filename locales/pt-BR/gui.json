@@ -428,6 +428,7 @@
   },
   "errors": {
     "start_cancelled": "O servidor foi parado enquanto iniciava, então não foi iniciado.",
+    "console_input_full": "O servidor ainda está processando a entrada anterior. Tente novamente em instantes.",
     "executable_not_found": "Executável do servidor de jogos não encontrado. Verifique o caminho nas configurações.",
     "file_not_found": "Arquivo ou pasta não encontrada. Verifique o caminho.",
     "permission_denied": "Permissão negada. Verifique as permissões de acesso do arquivo.",

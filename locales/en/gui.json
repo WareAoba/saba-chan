@@ -431,6 +431,7 @@
   },
   "errors": {
     "start_cancelled": "The server was stopped while it was starting, so it was not started.",
+    "console_input_full": "The server is still processing earlier input. Try again in a moment.",
     "executable_not_found": "Game server executable not found. Please check the path in settings.",
     "file_not_found": "File or folder not found. Please check the path.",
     "permission_denied": "Permission denied. Please check file access permissions.",

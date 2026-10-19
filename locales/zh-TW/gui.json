@@ -428,6 +428,7 @@
   },
   "errors": {
     "start_cancelled": "伺服器在啟動過程中被停止，因此未啟動。",
+    "console_input_full": "伺服器仍在處理先前的輸入，請稍後再傳送。",
     "executable_not_found": "找不到遊戲伺服器可執行檔。請檢查設定中的路徑。",
     "file_not_found": "找不到檔案或資料夾。請檢查路徑。",
     "permission_denied": "權限被拒絕。請檢查檔案存取權限。",
