@@ -335,6 +335,7 @@
     "restart_confirm_message": "'{{name}}' を停止して再起動しますか？接続中のプレイヤーは一時的に切断されます。",
     "restarting_toast": "'{{name}}' を再起動中…",
     "restart_completed_toast": "'{{name}}' を再起動しました",
+    "port_moved": "管理用 REST ポート {{from}} は Windows が予約しているため、{{to}} に変更しました。",
     "restart_failed_toast": "再起動できませんでした: {{error}}",
     "rename_failed_toast": "名前を変更できませんでした: {{error}}",
     "rename_name_taken": "'{{name}}' という名前はすでに使われています",

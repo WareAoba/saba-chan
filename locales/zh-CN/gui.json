@@ -391,6 +391,7 @@
     "restart_confirm_message": "要停止并重新启动 '{{name}}' 吗？已连接的玩家会短暂断开。",
     "restarting_toast": "正在重启 '{{name}}'…",
     "restart_completed_toast": "'{{name}}' 已重启",
+    "port_moved": "管理用 REST 端口 {{from}} 被 Windows 保留，已改为 {{to}}。",
     "restart_failed_toast": "无法重启：{{error}}",
     "rename_failed_toast": "无法重命名：{{error}}",
     "rename_name_taken": "名称 '{{name}}' 已被使用",

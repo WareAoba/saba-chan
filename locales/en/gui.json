@@ -394,6 +394,7 @@
     "restart_confirm_message": "Stop and start '{{name}}' again? Connected players will be dropped for a moment.",
     "restarting_toast": "Restarting '{{name}}'…",
     "restart_completed_toast": "'{{name}}' restarted",
+    "port_moved": "The management REST port {{from}} is reserved by Windows, so it was changed to {{to}}.",
     "restart_failed_toast": "Couldn't restart: {{error}}",
     "rename_failed_toast": "Couldn't rename: {{error}}",
     "rename_name_taken": "'{{name}}' is already taken",
