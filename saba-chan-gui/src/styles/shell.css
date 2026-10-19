@@ -1304,6 +1304,12 @@ button.activity-line:hover {
     color: var(--text-2);
     line-height: 1.4;
 }
+.bg-pop-note {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.4;
+}
 .bg-pop-facts {
     margin: 0;
     padding: var(--sp-1) var(--sp-3);

@@ -21,6 +21,7 @@ import { CommandPalette, paletteAvailable } from './components/shell/CommandPale
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
+import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
@@ -431,7 +432,7 @@ function App() {
             try {
                 if (window.api && window.api.daemonStatus) {
                     const status = await window.api.daemonStatus();
-                    setBackgroundDaemonStatus(status.running ? 'running' : 'stopped');
+                    setBackgroundDaemonStatus(daemonStateOf(status));
                 } else {
                     setBackgroundDaemonStatus('error');
                 }
