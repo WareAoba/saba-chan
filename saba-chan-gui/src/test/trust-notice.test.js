@@ -62,9 +62,9 @@ describe('신뢰 경고 알림', () => {
         expect(blockedText({ action_required: 'server_folder_label', file: 'D:/srv/a' }, t)).toMatch(
             /permission marks on the server folder \(D:\/srv\/a\)/,
         );
-        expect(blockedText({ action_required: 'server_in_sync_folder', file: 'C:/OneDrive/srv/a' }, t)).toMatch(
-            /\(C:\/OneDrive\/srv\/a\) is inside a sync folder/,
-        );
+        expect(
+            blockedText({ action_required: 'server_in_sync_folder', file: 'C:/OneDrive/srv/PalServer.exe' }, t),
+        ).toMatch(/because C:\/OneDrive\/srv\/PalServer\.exe is inside a sync folder/);
         expect(blockedText({ action_required: 'extension_required' }, t)).toBeNull();
         expect(blockedText({ success: false, message: 'x' }, t)).toBeNull();
     });

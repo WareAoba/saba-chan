@@ -1108,7 +1108,7 @@
     "start_blocked": {
       "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}} If you set the Java path yourself, choose it again in the server settings.",
       "server_folder_label": "Couldn't clean up the permission marks on the server folder ({{file}}), so the server wasn't started. Check that this account can change that folder's permissions.",
-      "server_in_sync_folder": "The server wasn't started because its folder ({{file}}) is inside a sync folder such as OneDrive. Move the server folder outside the sync folder.",
+      "server_in_sync_folder": "The server wasn't started because {{file}} is inside a sync folder such as OneDrive. Move the server folder outside the sync folder.",
       "sandbox_unavailable": "Couldn't prepare an isolated environment for {{component}}, so it wasn't run.",
       "extension_not_verified": "These extensions' files have changed and could not be verified: {{extensions}}. Reinstall them or restore the original files."
     },

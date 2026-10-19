@@ -1108,7 +1108,7 @@
     "start_blocked": {
       "launch_outside_instance": "확인되지 않은 모듈이 서버 폴더 밖의 프로그램을 실행하려 했어요: {{file}} Java 경로를 직접 정했다면 서버 설정에서 다시 선택해 주세요.",
       "server_folder_label": "서버 폴더({{file}})의 권한 표시를 정리하지 못해 서버를 시작하지 않았어요. 이 계정이 그 폴더의 권한을 바꿀 수 있는지 확인해 주세요.",
-      "server_in_sync_folder": "서버 폴더({{file}})가 OneDrive 같은 동기화 폴더 안에 있어 서버를 시작하지 않았어요. 서버 폴더를 동기화 폴더 밖으로 옮겨 주세요.",
+      "server_in_sync_folder": "{{file}}이(가) OneDrive 같은 동기화 폴더 안에 있어 서버를 시작하지 않았어요. 서버 폴더를 동기화 폴더 밖으로 옮겨 주세요.",
       "sandbox_unavailable": "{{component}}의 격리 환경을 준비하지 못해 실행하지 않았어요.",
       "extension_not_verified": "확장 파일이 바뀌어 확인되지 않았어요: {{extensions}}. 다시 설치하거나 원래대로 되돌려 주세요."
     },
