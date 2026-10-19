@@ -322,6 +322,7 @@ fn lexical(path: &Path) -> PathBuf {
 }
 
 /// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준).
+/// 클래스 경로처럼 경로 목록이면(Windows `;`) 항목마다 본다.
 /// 로컬 드라이브가 아닌 경로(UNC 등)를 가리키는 인자는 묻지 않고 그 인자를 돌려준다 (`Err`)
 fn argument_files(args: &[String], cwd: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out: Vec<PathBuf> = Vec::new();
@@ -331,7 +332,12 @@ fn argument_files(args: &[String], cwd: &Path) -> Result<Vec<PathBuf>, String> {
             candidates.extend(arg.split_once('=').map(|(_, v)| v));
             candidates.extend(arg.split_once(':').map(|(_, v)| v));
         }
-        for c in candidates.into_iter().filter(|c| !c.is_empty()) {
+        let listed: Vec<String> = candidates
+            .iter()
+            .filter(|c| cfg!(windows) && c.contains(';'))
+            .flat_map(|c| c.split(';').map(str::to_string).collect::<Vec<_>>())
+            .collect();
+        for c in candidates.into_iter().chain(listed.iter().map(String::as_str)).filter(|c| !c.is_empty()) {
             let path = lexical(&cwd.join(c));
             if !plain_local_path(&path) {
                 return Err(arg.clone());
@@ -1143,6 +1149,18 @@ mod tests {
         assert_eq!(up, vec![tmp.path().join("server.jar")]);
         #[cfg(windows)]
         assert_eq!(argument_files(&[r"\\host\share\x.jar".to_string()], tmp.path()), Err(r"\\host\share\x.jar".to_string()));
+    }
+
+    /// 클래스 경로 목록(`a.jar;b.jar`) 안의 공유 폴더 경로도 막는다 (Java가 그 경로를 열며 자격 증명을 보낸다)
+    #[cfg(windows)]
+    #[test]
+    fn a_share_inside_a_class_path_list_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let list = r"lib\a.jar;\\host\share\x.jar".to_string();
+        assert_eq!(argument_files(&["-cp".to_string(), list.clone()], tmp.path()), Err(list));
+        let prop = r"-Djava.class.path=lib\*;\\host\share\x.jar".to_string();
+        assert_eq!(argument_files(&[prop.clone()], tmp.path()), Err(prop));
+        assert!(argument_files(&["-cp".to_string(), r"lib\*;.".to_string()], tmp.path()).is_ok());
     }
 
     /// 익스텐션 hook은 확인된 모듈의 인스턴스에도 불린다: 인스턴스 폴더는 읽기만, 쓰기는 전용 폴더에만
