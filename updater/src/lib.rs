@@ -338,6 +338,7 @@ pub fn move_aside_binary(path: &Path) -> Result<()> {
 /// 엔트리 경로는 `enclosed_name()`으로 검사해 `..`나 절대 경로로
 /// `target_dir` 밖에 쓰는 엔트리(zip-slip)를 거부한다. `before_write`는
 /// 파일을 쓰기 직전에 호출된다(실행 중 바이너리를 비켜 두는 데 쓴다).
+/// 대상 폴더 안의 기존 링크(Windows 정션 포함)를 따라 밖에 쓰지 않는다.
 /// 쓴 파일 경로를 돌려준다(무결성 기록용).
 pub fn extract_zip(
     staged: &Path,
@@ -349,9 +350,14 @@ pub fn extract_zip(
     let mut archive = zip::ZipArchive::new(file)?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let Some(rel) = entry.enclosed_name() else {
+        // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
+        let Some(rel) = entry
+            .enclosed_name()
+            .filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_))))
+        else {
             anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), entry.name());
         };
+        reject_links_below(target_dir, rel)?;
         let out_path = target_dir.join(rel);
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;
@@ -366,6 +372,24 @@ pub fn extract_zip(
         written.push(out_path);
     }
     Ok(written)
+}
+
+/// `target_dir` 아래 `rel`까지 이미 있는 경로 중 링크가 있으면 거부한다 (`target_dir` 자체는 링크여도 된다).
+/// Windows의 `is_symlink`는 정션도 링크로 본다
+pub(crate) fn reject_links_below(target_dir: &Path, rel: &Path) -> Result<()> {
+    let mut path = target_dir.to_path_buf();
+    for part in rel.components() {
+        path.push(part);
+        match std::fs::symlink_metadata(&path) {
+            Ok(md) if md.file_type().is_symlink() => {
+                anyhow::bail!("Refusing to write through a link: {}", path.display());
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
 }
 
 // ══════════════════════════════════════════════════════
