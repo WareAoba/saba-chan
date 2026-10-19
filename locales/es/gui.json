@@ -317,6 +317,7 @@
     "install_server_running": "Detén el servidor antes de instalar una versión",
     "reset_server_running": "Detén el servidor antes de restablecerlo",
     "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",
+    "extension_required_for_install": "Faltan extensiones necesarias: {{extensions}}. Instálalas primero desde Saba Storage.",
     "install_settings_failed": "La versión se instaló, pero no se pudo guardar la configuración: {{error}}"
   },
   "discord_bot": {

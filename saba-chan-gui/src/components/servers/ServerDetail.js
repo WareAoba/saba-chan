@@ -120,11 +120,7 @@ export function ServerDetail({
                     className="btn btn-info"
                     disabled={updatingServer}
                     onClick={() => applyInstanceUpdate(server, setServers)}
-                    title={t('server_status.update_available', {
-                        local: updateInfo.local_buildid,
-                        remote: updateInfo.remote_buildid,
-                        defaultValue: `${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`,
-                    })}
+                    title={`${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`}
                 >
                     <Icon name="arrowUp" size="sm" /> {updatingServer ? t('shell.updating') : t('shell.update')}
                 </button>

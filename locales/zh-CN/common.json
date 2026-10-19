@@ -57,7 +57,8 @@
     "modules": "正在准备模块列表...",
     "instances": "正在准备服务器列表...",
     "ready": "准备就绪",
-    "ui_loaded": "界面已就绪"
+    "ui_loaded": "界面已就绪",
+    "extensions": "正在准备扩展..."
   },
   "tray": {
     "tooltip": "Saba酱 - 游戏服务器管理",
