@@ -466,10 +466,14 @@ mod imp {
             }
             if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
                 // 동기화 폴더(OneDrive 등)의 클라우드 파일도 재분석 지점이다. 막는 것은 같지만 원인을 따로 알린다
-                if cloud_file(h) {
-                    return Err(format!("{} {}", path.display(), crate::sandbox::SYNC_FOLDER_MARK));
+                match reparse_tag(h) {
+                    Some(tag) if tag & 0xFFFF_0FFF == 0x9000_001A => {
+                        return Err(format!("{} {}", path.display(), crate::sandbox::SYNC_FOLDER_MARK));
+                    }
+                    // 이름 대리 표시가 없는 태그(압축 WOF·중복 제거 등)는 다른 곳을 가리키지 않는 같은 파일이다
+                    Some(tag) if tag & 0x2000_0000 == 0 => {}
+                    _ => return Err(format!("{} is a link", path.display())),
                 }
-                return Err(format!("{} is a link", path.display()));
             }
             // 버퍼가 작으면 필요한 길이(끝 NUL 포함)를 돌려준다: 그만큼 늘려 한 번 더
             let mut buf = vec![0u16; 1024];
@@ -490,8 +494,8 @@ mod imp {
         }
     }
 
-    /// 재분석 지점의 태그가 클라우드 파일(`IO_REPARSE_TAG_CLOUD`, `0x9000_?01A` 묶음)인지
-    fn cloud_file(handle: HANDLE) -> bool {
+    /// 재분석 지점의 태그 (클라우드 파일 `IO_REPARSE_TAG_CLOUD`는 `0x9000_?01A` 묶음, 링크류는 이름 대리 비트 `0x2000_0000`)
+    fn reparse_tag(handle: HANDLE) -> Option<u32> {
         use winapi::um::minwinbase::FileAttributeTagInfo;
         use winapi::um::winbase::GetFileInformationByHandleEx;
         // winapi 0.3에 없는 구조체 (fileapi.h FILE_ATTRIBUTE_TAG_INFO)
@@ -503,13 +507,13 @@ mod imp {
         }
         unsafe {
             let mut info: FILE_ATTRIBUTE_TAG_INFO = std::mem::zeroed();
-            GetFileInformationByHandleEx(
+            (GetFileInformationByHandleEx(
                 handle,
                 FileAttributeTagInfo,
                 &mut info as *mut _ as *mut c_void,
                 std::mem::size_of::<FILE_ATTRIBUTE_TAG_INFO>() as DWORD,
-            ) != 0
-                && info.ReparseTag & 0xFFFF_0FFF == 0x9000_001A
+            ) != 0)
+                .then_some(info.ReparseTag)
         }
     }
 
@@ -840,11 +844,7 @@ mod imp {
                         let attributes = entry.metadata().map(|m| m.file_attributes()).unwrap_or(0);
                         match entry.file_type() {
                             Ok(t) if t.is_symlink() => {}
-                            Ok(_) if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 => {
-                                if let Some(e) = reparse_refusal(&entry.path(), attributes) {
-                                    failed.push((entry.path(), e));
-                                }
-                            }
+                            Ok(_) if reparse_refusal(&entry.path(), attributes).map(|e| failed.push((entry.path(), e))).is_some() => {}
                             Ok(t) if t.is_dir() => pending.push(entry.path()),
                             Ok(_) if is_executable(&entry.path()) => clear_one(&entry.path(), &mut cleared, &mut failed),
                             Ok(_) => {}
@@ -865,9 +865,9 @@ mod imp {
         }
     }
 
-    /// 링크가 아닌 재분석 지점(동기화 폴더의 클라우드 파일·폴더 등)이면 막는 까닭. 실행 파일이 아니어도 막는다
-    /// (사용자 결정: 동기화 폴더 아래 서버는 지원하지 않는다). 목록의 속성으로 거르므로 다른 파일은 열지 않는다.
-    /// 그 사이 지워졌으면 막지 않는다
+    /// 재분석 지점이 동기화 폴더의 클라우드 파일·폴더(또는 링크)면 막는 까닭. 실행 파일이 아니어도 막는다
+    /// (사용자 결정: 동기화 폴더 아래 서버는 지원하지 않는다). 압축(WOF) 같은 다른 재분석 지점은 막지 않고 보통처럼
+    /// 다룬다. 목록의 속성으로 거르므로 다른 파일은 열지 않는다. 그 사이 지워졌으면 막지 않는다
     fn reparse_refusal(path: &Path, attributes: u32) -> Option<String> {
         if attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
             return None;
@@ -1053,6 +1053,27 @@ mod imp {
             assert_eq!(super::low_label(&ini).unwrap(), Some(true));
             assert_eq!(super::low_label(&exe).unwrap(), None);
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
+        }
+
+        // 압축된 게임 폴더(compact /exe, WOF)의 파일도 재분석 지점이지만 링크가 아니다: 막지 않고, 실행 파일은 덮는다
+        #[test]
+        fn compressed_server_files_do_not_block_the_start() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            let bin = dir.join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            super::label_low(&dir).unwrap();
+            let exe = bin.join("server.exe");
+            std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+            std::fs::write(dir.join("data.pak"), vec![0u8; 1 << 20]).unwrap();
+            let out = std::process::Command::new("compact").args(["/c", "/s", "/exe:xpress4k", "/q"]).arg(&dir).output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+            use std::os::windows::fs::MetadataExt;
+            let compressed = std::fs::metadata(&exe).unwrap().file_attributes() & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT != 0;
+            assert!(compressed, "compact did not make a WOF reparse point");
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 1);
+            assert_eq!(super::low_label(&exe).unwrap(), None);
+            assert!(launch_integrity(&exe) >= 0x2000, "a compressed server starts at the daemon's level");
         }
 
         // 데몬은 인스턴스 폴더를 `C:\..` 형식으로 넘긴다 (`\\?\` 형식이 아니다). 실제 PC에서는 이 경로를
