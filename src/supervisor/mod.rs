@@ -99,9 +99,8 @@ impl StartGuard {
     }
 }
 
-/// 시작 준비 중에 정지가 들어와 띄우지 않았다 (또는 띄운 것을 바로 껐다)
-/// 시작 전에 예약 범위를 피해 옮긴 포트를 시작 응답(성공·실패 모두)에 싣는다: `port_moved: [{field, from, to}]`.
-/// 저장값이 조용히 바뀌지 않게 GUI·CLI·디스코드가 알린다
+/// 시작 전에 예약 범위를 피해 옮긴 포트를 시작 응답(`success:false`도)에 싣는다: `port_moved: [{field, from, to}]`.
+/// 응답을 받지 않는 경로를 위해 옮길 때 `instance.port_moved` 이벤트도 낸다 (`move_default_rest_port_if`)
 fn with_port_moved(mut result: Value, moved: Option<(u16, u16)>) -> Value {
     if let (Some((from, to)), Value::Object(map)) = (moved, &mut result) {
         map.insert("port_moved".to_string(), json!([{ "field": "rest_port", "from": from, "to": to }]));
@@ -109,6 +108,7 @@ fn with_port_moved(mut result: Value, moved: Option<(u16, u16)>) -> Value {
     result
 }
 
+/// 시작 준비 중에 정지가 들어와 띄우지 않았다 (또는 띄운 것을 바로 껐다)
 fn start_cancelled(server_name: &str) -> Value {
     json!({
         "success": false,
@@ -360,6 +360,8 @@ impl Supervisor {
             return None;
         }
         tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", name, rest, free);
+        // 자동·예약 재시작처럼 시작 응답을 아무도 보지 않는 경로에서도 바뀐 포트를 알 수 있게
+        crate::events::emit("instance.port_moved", json!({ "instanceId": id, "instance": name, "field": "rest_port", "from": rest, "to": free }));
         Some(free)
     }
 
@@ -3053,7 +3055,12 @@ mod tests {
         }
         let reserved = |p: u16| (8135..=8234).contains(&p);
 
+        let mut events = crate::events::bus().subscribe(None);
         assert_eq!(sup.move_default_rest_port_if(&old_id, reserved, reserved), Some(8252));
+        // 리뷰 289: 자동·예약 재시작은 시작 응답을 로그에만 남기므로, 옮긴 일은 이벤트로도 알린다
+        let told = std::iter::from_fn(|| events.rx.try_recv().ok()).find(|e| e.kind == "instance.port_moved" && e.data["instanceId"] == old_id.as_str());
+        let told = told.expect("instance.port_moved was not emitted");
+        assert_eq!((told.data["field"].clone(), told.data["from"].clone(), told.data["to"].clone()), (json!("rest_port"), json!(8212), json!(8252)));
         let moved = sup.instance_store.get(&old_id).unwrap();
         assert_eq!((moved.rest_port, moved.module_settings["rest_port"].clone()), (Some(8252), json!(8252)));
         let mut reloaded = crate::instance::InstanceStore::new(tmp.path().join("instances").to_str().unwrap());
@@ -3611,7 +3618,6 @@ mod tests {
         assert_eq!(calls.lines().collect::<Vec<_>>(), ["stop", "start", "stop"], "the extension's server is stopped again");
     }
 
-    /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
     // 백로그 M13: 예약 범위 때문에 옮긴 REST 포트를 알리지 않고 저장값만 바꿨다
     #[test]
     fn a_start_reports_the_port_it_moved() {
@@ -3621,6 +3627,7 @@ mod tests {
         assert!(with_port_moved(json!({ "success": true }), None).get("port_moved").is_none());
     }
 
+    /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
     #[test]
     fn start_guard_blocks_a_second_start_until_dropped() {
         let set = std::sync::Arc::new(std::sync::Mutex::new(HashSet::new()));
