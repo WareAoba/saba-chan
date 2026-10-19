@@ -330,19 +330,21 @@ mod windows_job {
 }
 
 /// 이 실행이 import할 수 있는 익스텐션과 확인되지 않아 뺀 익스텐션. 격리 없이 도는 실행(확인된 모듈 등)이
-/// 확인되지 않은 익스텐션을 import하면 그 코드가 격리·검사 없이 그 실행의 권한(데몬 토큰 경로 등)으로 돈다
-fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+/// 확인되지 않은 익스텐션을 import하면 그 코드가 격리·검사 없이 그 실행의 권한(데몬 토큰 경로 등)으로 돈다.
+/// `consented`는 사용자가 격리 없이 돌리기로 한 구성요소의 키(`ext-<id>`)다: 그 익스텐션은 이미 이 실행의 코드이므로 자기 패키지를 import할 수 있다
+fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl Fn(&str) -> bool, consented: Option<&str>) -> (Vec<String>, Vec<String>) {
     if isolated {
         return (enabled, Vec::new());
     }
-    enabled.into_iter().partition(|id| !unverified(id))
+    let own = consented.and_then(|key| key.strip_prefix("ext-")).map(|id| id.replace('_', "-"));
+    enabled.into_iter().partition(|id| !unverified(id) || own.as_deref() == Some(id.replace('_', "-").as_str()))
 }
 
 /// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다. 확인되지 않아 뺀 것을 돌려준다
-fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool) -> Vec<String> {
+fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool, consented: Option<&str>) -> Vec<String> {
     let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
         crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
-    });
+    }, consented);
     cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
     // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
     cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
@@ -426,7 +428,7 @@ async fn run_plugin_inner(
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
         enabled_extensions = Some(enabled.unwrap_or_default());
-        unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some());
+        unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some(), None);
 
         let mut pypath = extensions_dir.parent()
             .unwrap_or(&extensions_dir)
@@ -485,7 +487,7 @@ async fn run_plugin_inner(
             Ok(crate::sandbox::Spawned::Unisolated) => {
                 // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
                 if let Some(enabled) = enabled_extensions {
-                    unverified_extensions = set_extension_env(&mut cmd, enabled, false);
+                    unverified_extensions = set_extension_env(&mut cmd, enabled, false, Some(&iso.key));
                 }
                 plain(cmd.spawn()?)
             }
@@ -629,8 +631,20 @@ mod tests {
     fn an_unisolated_run_imports_only_verified_extensions() {
         let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string()];
         let unverified = |id: &str| id == "ue4-ini";
-        assert_eq!(importable_extensions(enabled.clone(), false, unverified), (vec!["steamcmd".to_string()], vec!["ue4-ini".to_string()]));
-        assert_eq!(importable_extensions(enabled.clone(), true, unverified), (enabled, vec![]));
+        assert_eq!(importable_extensions(enabled.clone(), false, unverified, None), (vec!["steamcmd".to_string()], vec!["ue4-ini".to_string()]));
+        assert_eq!(importable_extensions(enabled.clone(), true, unverified, None), (enabled, vec![]));
+    }
+
+    /// 사용자가 격리 없이 돌리기로 한 익스텐션은 자기 패키지(`extensions.<자기 id>`)를 import할 수 있다. 다른 미확인 익스텐션은 그대로 막는다
+    #[test]
+    fn an_extension_run_unisolated_by_consent_imports_itself() {
+        let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string(), "other".to_string()];
+        let unverified = |id: &str| id != "steamcmd";
+        assert_eq!(
+            importable_extensions(enabled.clone(), false, unverified, Some("ext-ue4_ini")),
+            (vec!["steamcmd".to_string(), "ue4-ini".to_string()], vec!["other".to_string()])
+        );
+        assert_eq!(importable_extensions(enabled, false, unverified, Some("module-ue4-ini")).1, vec!["ue4-ini".to_string(), "other".to_string()], "a module key is not an extension");
     }
     use serde_json::json;
 
