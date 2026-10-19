@@ -316,7 +316,9 @@
     },
     "updated": "{{name}} обновлён.",
     "updating": "Обновление {{name}}...",
-    "version_unknown": "неизвестно"
+    "version_unknown": "неизвестно",
+    "unresponsive": "Не отвечает",
+    "unresponsive_reason": "Запущен, но не отвечает: {{reason}}"
   },
   "set": {
     "default": "по умолчанию",

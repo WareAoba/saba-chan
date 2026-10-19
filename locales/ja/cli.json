@@ -316,7 +316,9 @@
     },
     "updated": "{{name}} を更新しました。",
     "updating": "{{name}} を更新しています...",
-    "version_unknown": "不明"
+    "version_unknown": "不明",
+    "unresponsive": "応答なし",
+    "unresponsive_reason": "実行中ですが応答がありません: {{reason}}"
   },
   "set": {
     "default": "既定値",

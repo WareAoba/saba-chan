@@ -191,6 +191,10 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             (t!("col.state"), output::status_badge(status_of(&rt))),
             (t!("col.id"), output::dim(&sv.id)),
         ];
+        // 켜져 있지만 상태 질문에 답하지 않음: 명령·정상 종료도 닿지 않을 수 있다
+        if let Some(reason) = rt.get("unresponsive").and_then(Value::as_str) {
+            rows.push((t!("server.unresponsive"), console::style(t!("server.unresponsive_reason", reason = reason)).yellow().to_string()));
+        }
         if let Some(st) = rt
             .get("start_time")
             .and_then(Value::as_u64)

@@ -371,7 +371,9 @@
     },
     "updated": "{{name}} updated.",
     "updating": "Updating {{name}}...",
-    "version_unknown": "unknown"
+    "version_unknown": "unknown",
+    "unresponsive": "Not responding",
+    "unresponsive_reason": "Running but not responding: {{reason}}"
   },
   "set": {
     "default": "default",

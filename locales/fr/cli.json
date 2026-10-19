@@ -316,7 +316,9 @@
     },
     "updated": "{{name}} mis à jour.",
     "updating": "Mise à jour de {{name}}...",
-    "version_unknown": "inconnue"
+    "version_unknown": "inconnue",
+    "unresponsive": "Ne répond pas",
+    "unresponsive_reason": "En cours d'exécution mais ne répond pas : {{reason}}"
   },
   "set": {
     "default": "par défaut",

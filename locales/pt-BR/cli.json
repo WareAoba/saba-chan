@@ -316,7 +316,9 @@
     },
     "updated": "{{name}} atualizado.",
     "updating": "Atualizando {{name}}...",
-    "version_unknown": "desconhecida"
+    "version_unknown": "desconhecida",
+    "unresponsive": "Sem resposta",
+    "unresponsive_reason": "Em execução, mas sem resposta: {{reason}}"
   },
   "set": {
     "default": "padrão",

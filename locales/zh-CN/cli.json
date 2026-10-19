@@ -316,7 +316,9 @@
     },
     "updated": "{{name}} 已更新。",
     "updating": "正在更新 {{name}}...",
-    "version_unknown": "未知"
+    "version_unknown": "未知",
+    "unresponsive": "无响应",
+    "unresponsive_reason": "正在运行但没有响应: {{reason}}"
   },
   "set": {
     "default": "默认",
