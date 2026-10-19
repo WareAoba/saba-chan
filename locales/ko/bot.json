@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **서버 목록**",
     "empty": "📭 등록된 서버가 없습니다",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 실행 중",

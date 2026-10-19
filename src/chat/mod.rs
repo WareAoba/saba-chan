@@ -322,12 +322,9 @@ impl<D: DaemonApi> Ctx<'_, D> {
         let lines: Vec<String> = servers
             .iter()
             .map(|s| {
-                let (icon, status) = if s.is_running() {
-                    ("🟢", self.t("status.running", &[]))
-                } else {
-                    ("⚪", self.t("status.stopped", &[]))
-                };
-                self.t("list.item", &[("name", &s.name), ("module", &s.module), ("status", &status), ("status_icon", icon)])
+                // 상태 문구에 아이콘이 들어 있다 (🟢 실행 중)
+                let status = self.t(if s.is_running() { "status.running" } else { "status.stopped" }, &[]);
+                self.t("list.item", &[("name", &s.name), ("module", &s.module), ("status", &status)])
             })
             .collect();
         format!("{}\n{}", self.t("list.title", &[]), lines.join("\n"))
