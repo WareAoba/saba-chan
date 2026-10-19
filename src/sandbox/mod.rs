@@ -27,6 +27,10 @@ pub fn component_of(entry: &Path) -> Option<(String, PathBuf)> {
 
 /// 진입 파일의 조상 중 모듈·익스텐션 폴더 바로 아래 것이 그 구성요소 폴더다 (진입 파일이 하위 폴더에 있어도)
 fn component_in(entry: &Path, modules: &Path, extensions: &Path) -> Option<(String, PathBuf)> {
+    // 조상을 글자로 거슬러 오르므로 `..`·`.`가 있으면 실제 위치와 다른 구성요소로 판정될 수 있다: 어느 것에도 속하지 않는다
+    if entry.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::CurDir)) {
+        return None;
+    }
     let roots = [
         (std::fs::canonicalize(modules).ok(), saba_chan_updater_lib::relay::MODULE_PREFIX),
         (std::fs::canonicalize(extensions).ok(), saba_chan_updater_lib::relay::EXTENSION_PREFIX),
@@ -1026,6 +1030,9 @@ mod tests {
         assert_eq!(of(extensions.join("tool/src/py/m.py")), Some(("ext-tool".into(), extensions.join("tool"))));
         assert_eq!(of(tmp.path().join("other/lifecycle.py")), None);
         assert_eq!(of(modules.join("lifecycle.py")), None);
+        // `..`가 든 경로는 글자로 접어 다른 구성요소로 판정하지 않는다
+        assert_eq!(of(extensions.join("tool/../../modules/game/lifecycle.py")), None);
+        assert_eq!(of(modules.join("game/../game/lifecycle.py")), None);
     }
 
     // 익스텐션 id에 '-'가 있으면 폴더 이름은 '_'로 바뀐다 (`ue4-ini` → `ue4_ini`). 신뢰 기록의 키는 id로 적으므로
