@@ -26,7 +26,7 @@ pub async fn agent_start(State(state): State<IPCServer>) -> impl IntoResponse {
         Ok(()) => (StatusCode::OK, Json(json!({ "success": true, "status": state.relay_agent.status() }))).into_response(),
         Err(e) => (
             StatusCode::CONFLICT,
-            Json(json!({ "success": false, "error": e, "error_code": "node_token_missing" })),
+            Json(json!({ "success": false, "error": e.message, "error_code": e.code })),
         )
             .into_response(),
     }
