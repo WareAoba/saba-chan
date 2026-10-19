@@ -537,17 +537,17 @@ pub async fn install_server_handler(
         Some(Value::String(v)) => Ok(Some(v.clone())),
         Some(_) => {
             let error = json!({ "error": format!("'{}' must be a string", field), "error_code": "invalid_format", "fields": [{"field": field}] });
-            Err((StatusCode::BAD_REQUEST, Json(error)).into_response())
+            Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()))
         }
     };
     // 비우면 아래에서 그 인스턴스 설정으로 최신을 고른다
     let version = match text_field("version") {
         Ok(v) => v.filter(|v| !v.is_empty()),
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     let instance_id = match text_field("instance_id") {
         Ok(v) => v,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     let install_dir = match payload.get("install_dir").and_then(|v| v.as_str()) {
