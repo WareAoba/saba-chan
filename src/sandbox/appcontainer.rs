@@ -761,12 +761,17 @@ mod imp {
         let mut failed = Vec::new();
         let mut pending = vec![dir.to_path_buf()];
         while let Some(path) = pending.pop() {
+            // 위 폴더부터 걷으므로 여기서 남은 상속 표시는 다른 곳(sandbox-temp 등)에서 옮겨 온 폴더의 것이다:
+            // 비우면 지금 위 폴더 기준으로 다시 계산되어 빠진다. 위 폴더에 진짜 표시가 있어 남으면 실패로 본다
             match low_label(&path) {
-                Ok(Some(false)) => match clear_label(&path) {
+                Ok(Some(_)) => match clear_label(&path).and_then(|()| match low_label(&path)? {
+                    None => Ok(()),
+                    Some(_) => Err("the label is inherited from a parent folder".to_string()),
+                }) {
                     Ok(()) => cleared += 1,
                     Err(e) => failed.push((path.clone(), e)),
                 },
-                Ok(_) => {}
+                Ok(None) => {}
                 Err(e) => tracing::warn!("[Sandbox] could not read the label of {}: {}", path.display(), e),
             }
             // 링크는 따라가지 않는다 (폴더 밖을 고치지 않게)
@@ -872,10 +877,29 @@ mod imp {
             let exe = bin.join("java.exe");
             std::fs::write(&exe, b"x").unwrap();
             assert_eq!(super::low_label(&exe).unwrap(), Some(true));
-            assert_eq!(super::clear_low_labels(&dir).unwrap(), 2);
+            // `server`는 이미 상속받은 표시가 있어 직접 붙지 않았다: 위 폴더만 걷으면 함께 빠진다
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 1);
             assert_eq!(super::low_label(&exe).unwrap(), None);
             assert_eq!(super::low_label(&dir.join("server")).unwrap(), None);
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
+        }
+
+        // 표시가 붙은 폴더(sandbox-temp 등)에서 받은 뒤 서버 폴더로 옮긴 파일은 상속 표시를 그대로 갖고 온다
+        #[test]
+        fn files_moved_in_from_a_labelled_folder_lose_the_label_too() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = std::fs::canonicalize(tmp.path()).unwrap();
+            let (staging, dir) = (root.join("staging"), root.join("server"));
+            std::fs::create_dir_all(staging.join("jre").join("bin")).unwrap();
+            std::fs::create_dir_all(&dir).unwrap();
+            super::label_low(&staging).unwrap();
+            let exe = staging.join("jre").join("bin").join("java.exe");
+            std::fs::write(&exe, b"x").unwrap();
+            std::fs::rename(staging.join("jre"), dir.join("jre")).unwrap();
+            let moved = dir.join("jre").join("bin").join("java.exe");
+            assert_eq!(super::low_label(&moved).unwrap(), Some(true), "a move keeps the inherited label");
+            assert!(super::clear_low_labels(&dir).unwrap() >= 1);
+            assert_eq!(super::low_label(&moved).unwrap(), None);
         }
     }
 
