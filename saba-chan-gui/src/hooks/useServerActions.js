@@ -498,6 +498,12 @@ export function useServerActions({
                 return;
             }
 
+            // ── error_code: start_cancelled — 켜는 동안 사용자가 정지했다: 실패가 아니므로 알리지 않는다 ──
+            if (result.error_code === 'start_cancelled') {
+                revertOptimistic(name);
+                return;
+            }
+
             // ── error_code: port_conflict — 데몬이 포트 충돌 감지 ──
             if (result.error_code === 'port_conflict' || result.error === 'port_conflict') {
                 revertOptimistic(name);
@@ -740,7 +746,12 @@ export function useServerActions({
                 try {
                     const force = srv.module_settings?.graceful_stop === false;
                     const result = await window.api.instanceRestart(srv.id, { force });
-                    if (result?.error || result?.success === false) {
+                    const code = result?.error_code;
+                    if (code === 'start_cancelled' || code === 'restart_cancelled') {
+                        // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
+                        revertOptimistic(name);
+                        safeShowToast(t(`errors.${code}`), 'info', 4000);
+                    } else if (result?.error || result?.success === false) {
                         revertOptimistic(name);
                         const msg = translateError(result.error || result.message || '');
                         safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
@@ -779,7 +790,7 @@ export function useServerActions({
             }
             const code = result?.error_code;
             const msg =
-                code === 'name_taken' || code === 'server_running'
+                code === 'name_taken' || code === 'server_running' || code === 'instance_busy'
                     ? t(`servers.rename_${code}`, { name })
                     : translateError(result?.error || '');
             safeShowToast(t('servers.rename_failed_toast', { error: msg }), 'error', 4000);
