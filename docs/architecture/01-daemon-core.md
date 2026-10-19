@@ -264,7 +264,7 @@
 | POST | `/api/instance/:id/command` | `command.rs:16` | `{command*, args?}` | 실행한 경로의 응답 + `command`. 실패 시 `error_code`, 모듈 `[errors]` 문구 `error_message`. 404 / 400 / 409 `server_not_running` / 503 `console_input_full`(콘솔로 보내는 명령인데 서버가 입력을 읽지 않음, `/rcon`과 같다) |
 | GET | `/api/instance/:id/commands` | `command.rs` `list_instance_commands` | - | `{commands:[{name,label,description,risk,inputs,source:"module"\|"extension",group?,...}], components?}`. `[commands] hook = true`인 모듈은 lifecycle `instance_commands()`가 준 인스턴스별 명령이 module.toml 명령 뒤에 `group`(예: 플러그인 이름)과 함께 붙고, `components`는 모듈이 판정한 구성요소를 그대로 넘긴다. 목록은 매번 새로 읽는다 |
 | POST | `/api/instance/:id/rcon` | `command.rs:392` | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) / 503 `console_input_full`(서버가 콘솔 입력을 읽지 않아 대기열 256줄이 참. 기다리지 않고 바로 돌려준다) |
-| POST | `/api/instance/:id/rest` | `command.rs:487` | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}`(응답 없이 연결이 끊기면 `success:false`, `data.outcome:"unknown"`) / 400 / 500 |
+| POST | `/api/instance/:id/rest` | `command.rs:487` | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}`(응답 없이 연결이 끊기면 `success:false`, `data.outcome:"unknown"`) / 400 / 500(게임 서버가 401·403으로 거절하면 `error_code:"auth_failed"`, `/command`가 모듈 `errors.auth_failed` 문구를 붙인다) |
 
 #### Managed 프로세스와 모듈 기능 (handlers/managed.rs)
 
