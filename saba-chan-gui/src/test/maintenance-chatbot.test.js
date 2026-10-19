@@ -103,6 +103,37 @@ describe('MaintenanceTab', () => {
         });
     });
 
+    it('복원·백업 거절은 데몬의 영어 원문 대신 이유를 알린다', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            backups: [{ name: 'a-manual.zip', kind: 'manual', created: 1, size: 1 }],
+        });
+        window.api.instanceBackupRestore = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'This backup points outside the server folders',
+            error_code: 'restore_outside',
+        });
+        window.api.instanceBackupCreate = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'A backup or restore is already running for this instance',
+            error_code: 'backup_busy',
+        });
+        render(<MaintenanceTab server={stopped} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Click to restore' }));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalled());
+        expect(window.showToast.mock.calls[0][0]).toMatch(/server folder/);
+        expect(window.showToast.mock.calls[0][0]).not.toMatch(/points outside/);
+
+        fireEvent.click(await screen.findByRole('button', { name: /Back up now/ }));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalledTimes(2));
+        expect(window.showToast.mock.calls[1][0]).not.toMatch(/already running for this instance/);
+        delete window.showToast;
+    });
+
     it('켜져 있으면 복원 버튼이 잠긴다', async () => {
         window.api.instanceScheduleGet = vi
             .fn()

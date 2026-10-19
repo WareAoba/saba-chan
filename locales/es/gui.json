@@ -980,6 +980,8 @@
     "restore_hint": "Primero se hace una copia del estado actual.",
     "restore_stop_first": "Detén el servidor antes de restaurar.",
     "restored": "Restaurado. También se guardó una copia del estado anterior.",
+    "err_restore_outside": "Esta copia de seguridad se creó para otra carpeta del servidor, así que no se puede restaurar en la actual. Si moviste la carpeta del servidor, devuélvela a su lugar e inténtalo de nuevo.",
+    "err_backup_busy": "Ya hay una copia de seguridad o restauración en curso para este servidor. Inténtalo de nuevo cuando termine.",
     "delete": "Eliminar",
     "delete_confirm": "Haz clic para eliminar",
     "kind_manual": "Manual",

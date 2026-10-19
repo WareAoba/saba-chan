@@ -980,6 +980,8 @@
     "restore_hint": "O estado atual é salvo em backup antes.",
     "restore_stop_first": "Pare o servidor antes de restaurar.",
     "restored": "Restaurado. O estado anterior também foi salvo em backup.",
+    "err_restore_outside": "Este backup foi feito para outra pasta do servidor, então não pode ser restaurado na atual. Se você moveu a pasta do servidor, devolva-a ao lugar original e tente de novo.",
+    "err_backup_busy": "Já há um backup ou restauração em andamento para este servidor. Tente de novo quando terminar.",
     "delete": "Excluir",
     "delete_confirm": "Clique para excluir",
     "kind_manual": "Manual",
