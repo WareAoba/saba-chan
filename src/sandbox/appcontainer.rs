@@ -828,11 +828,14 @@ mod imp {
                             // 폴더 표시를 걷어도 이미 있는 파일의 상속 표시는 파일에 WRITE_OWNER가 있을 때만 다시
                             // 계산된다. C:\ 아래 폴더처럼 "수정" 권한만 상속받은 파일은 그대로 남으므로 파일마다 걷는다
                             Ok(_) => clear_one(&entry.path(), &mut cleared, &mut failed),
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                             Err(e) => failed.push((entry.path(), format!("read the type: {e}"))),
                         }
                     }
                 }
-                Err(e) => tracing::warn!("[Sandbox] could not list {}: {}", path.display(), e),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                // 목록을 읽지 못하면 그 안에 표시가 남았는지 알 수 없다
+                Err(e) => failed.push((path.clone(), format!("list: {e}"))),
             }
         }
         if failed.is_empty() {
@@ -842,17 +845,21 @@ mod imp {
         }
     }
 
-    /// 한 경로(폴더나 파일)의 낮은 수준 표시를 걷고 결과를 센다
+    /// 한 경로(폴더나 파일)의 낮은 수준 표시를 걷고 결과를 센다. 목록을 읽은 뒤에 지워진 경로(로그 회전·임시 파일)는
+    /// 표시가 남을 곳이 없으므로 실패로 치지 않는다
     fn clear_one(path: &Path, cleared: &mut usize, failed: &mut Vec<(PathBuf, String)>) {
+        let gone = || matches!(std::fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
         match low_label(path) {
             Ok(Some(_)) => match clear_label(path).and_then(|()| match low_label(path)? {
                 None => Ok(()),
                 Some(_) => Err("the label is inherited from a parent folder".to_string()),
             }) {
                 Ok(()) => *cleared += 1,
+                Err(_) if gone() => {}
                 Err(e) => failed.push((path.to_path_buf(), e)),
             },
             Ok(None) => {}
+            Err(_) if gone() => {}
             Err(e) => failed.push((path.to_path_buf(), format!("read the label: {e}"))),
         }
     }
@@ -950,6 +957,15 @@ mod imp {
                 assert!(read, "read the integrity level");
                 rid
             }
+        }
+
+        /// 폴더를 읽은 뒤 지워진 파일(서버 로그 회전 등) 때문에 시작이 막히지 않는다
+        #[test]
+        fn a_path_gone_during_the_walk_is_not_a_failure() {
+            let tmp = tempfile::tempdir().unwrap();
+            let (mut cleared, mut failed) = (0, Vec::new());
+            super::clear_one(&tmp.path().join("rotated.log"), &mut cleared, &mut failed);
+            assert!(failed.is_empty(), "{failed:?}");
         }
 
         /// 낮은 수준 표시를 상속한 실행 파일은 낮은 무결성으로 뜬다(서버가 DLL을 못 읽고 끝나던 원인). 걷으면 중간으로 뜬다
