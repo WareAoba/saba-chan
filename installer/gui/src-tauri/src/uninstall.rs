@@ -1100,7 +1100,17 @@ mod tests {
         let body = cleanup_script(pid, &exe.to_string_lossy(), Some(&dir.to_string_lossy()), true, None);
         std::fs::write(&script, body).unwrap();
 
-        let status = std::process::Command::new("cmd").args(CLEANUP_CMD_ARGS).arg(&script).status().unwrap();
+        // 실제 제거기처럼 창 없는 콘솔(CREATE_NO_WINDOW)에서 돌려 `chcp 65001`이 먹는지까지 본다
+        use std::os::windows::process::CommandExt;
+        let status = std::process::Command::new("cmd")
+            .args(CLEANUP_CMD_ARGS)
+            .arg(&script)
+            .creation_flags(0x0800_0000)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
 
         assert!(status.success());
         assert!(!dir.exists(), "the folder is removed");
