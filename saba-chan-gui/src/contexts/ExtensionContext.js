@@ -131,20 +131,36 @@ export function ExtensionProvider({ children }) {
     const [installingIds, setInstallingIds] = useState(new Set());
 
     // 익스텐션 목록 가져오기
+    // 받지 못하면 받아 둔 목록을 그대로 두고 false를 돌려준다
     const fetchExtensions = useCallback(async () => {
         try {
             const data = await window.api.extensionList();
+            if (!data || data.error || !Array.isArray(data.extensions)) {
+                throw new Error(data?.error || 'extension list unavailable');
+            }
             // 설치·업데이트·삭제·재검색 뒤 목록이 바뀌면 코드 검사도 다시 한다
             clearModuleAuditCache();
-            setExtensions(data.extensions || []);
+            setExtensions(data.extensions);
+            return true;
         } catch (e) {
             console.warn('[Extension] Failed to fetch extensions:', e);
+            return false;
         }
     }, []);
 
-    // 초기 로드
+    // 초기 로드. 데몬이 아직 안 떴거나 잠깐 닿지 않으면 받을 때까지 간격을 늘려 다시 묻는다
     useEffect(() => {
-        fetchExtensions();
+        let alive = true;
+        let timer = null;
+        const attempt = async (delay) => {
+            if ((await fetchExtensions()) || !alive) return;
+            timer = setTimeout(() => attempt(Math.min(delay * 2, 30_000)), delay);
+        };
+        attempt(2000);
+        return () => {
+            alive = false;
+            clearTimeout(timer);
+        };
     }, [fetchExtensions]);
 
     // 활성 익스텐션 변경 시 GUI 번들 로드 & 슬롯 등록
