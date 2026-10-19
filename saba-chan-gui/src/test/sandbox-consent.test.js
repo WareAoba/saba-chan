@@ -98,7 +98,9 @@ describe('격리·검사 문구', () => {
         expect(window.showToast.mock.calls[1][0]).not.toMatch(/isolated environment/);
     });
 
-    it('검사할 수 없는 파일은 파일 이름과 함께 알린다', () => {
-        expect(blockedText({ action_required: 'unscannable_file', file: 'mod/x.pyc' }, t)).toMatch(/mod\/x\.pyc$/);
+    it('백신 검사를 뺀 뒤로 검사 관련 막힘 코드는 따로 알리지 않는다 (데몬이 보내지 않는다)', () => {
+        for (const code of ['malware_detected', 'unscannable_file', 'scan_failed']) {
+            expect(blockedText({ action_required: code, file: 'mod/x.pyc' }, t)).toBeNull();
+        }
     });
 });
