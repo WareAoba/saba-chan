@@ -125,6 +125,7 @@
     "meta_help": ":q verlassen · :commands Spielbefehle anzeigen · :start / :stop den Server · alles andere wird als Spielbefehl gesendet",
     "not_running": "{{name}} läuft nicht. Das letzte Log wird angezeigt; neue Zeilen erscheinen, sobald er startet.",
     "started": "── Server gestartet ──",
+    "reattached": "── Daemon neu verbunden (letzte Zeilen) ──",
     "stopped": "── Server gestoppt ──",
     "unknown_meta": "Unbekannt: :{{cmd}}. Versuche :help."
   },

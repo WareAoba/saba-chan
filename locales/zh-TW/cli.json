@@ -125,6 +125,7 @@
     "meta_help": ":q 離開 · :commands 列出遊戲指令 · :start / :stop 啟動或停止伺服器 · 其他內容會當作遊戲指令送出",
     "not_running": "{{name}} 未執行。正在顯示最近的記錄；啟動後會顯示新的行。",
     "started": "── 伺服器已啟動 ──",
+    "reattached": "── 常駐程式已重新連線（顯示最近的行） ──",
     "stopped": "── 伺服器已停止 ──",
     "unknown_meta": "未知的 :{{cmd}}。試試 :help。"
   },

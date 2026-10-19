@@ -125,6 +125,7 @@
     "meta_help": ":q quitter · :commands lister les commandes du jeu · :start / :stop le serveur · tout le reste est envoyé comme commande du jeu",
     "not_running": "{{name}} n'est pas lancé. Affichage du dernier journal ; les nouvelles lignes apparaîtront au démarrage.",
     "started": "── serveur démarré ──",
+    "reattached": "── démon reconnecté (lignes récentes) ──",
     "stopped": "── serveur arrêté ──",
     "unknown_meta": ":{{cmd}} inconnu. Essayez :help."
   },
