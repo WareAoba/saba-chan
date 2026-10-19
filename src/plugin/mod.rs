@@ -50,7 +50,7 @@ fn is_secret_env(name: &str) -> bool {
 
 /// 시간 초과한 Python과 그것이 띄운 프로세스를 함께 끝낸다.
 /// Unix는 자기 프로세스 그룹으로 띄우므로 그룹째, Windows는 `taskkill /T`
-fn kill_tree(pid: u32) {
+pub(crate) fn kill_tree(pid: u32) {
     #[cfg(unix)]
     unsafe {
         nix::libc::kill(-(pid as i32), nix::libc::SIGKILL);
