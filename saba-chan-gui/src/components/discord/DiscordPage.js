@@ -494,7 +494,6 @@ export function DiscordPage({
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}
-                                onReload={loadNodes}
                                 onDisconnect={disconnect}
                                 onStartAgent={handleStartDiscordBot}
                                 nodes={cloudNodes}
