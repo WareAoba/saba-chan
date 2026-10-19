@@ -666,7 +666,7 @@
     "daemon_tip_running": "Le démon Saba-chan tourne sur ce PC. Cliquez pour plus de détails",
     "daemon_tip_checking": "Vérification du démon",
     "daemon_tip_stopped": "Le démon est arrêté. Cliquez pour le relancer",
-    "daemon_tip_token_invalid": "Le daemon tourne mais refuse la clé de connexion de cette application. Une autre installation de Saba-chan l'a peut-être lancé. Quittez ce daemon et l'application se reconnectera.",
+    "daemon_tip_token_invalid": "Le daemon tourne mais refuse la clé de connexion de cette application. Une autre installation de Saba-chan l'a peut-être lancé. Quittez ce daemon, puis relancez le daemon d'ici.",
     "bot_tip_running": "Le bot Discord est connecté via le cloud Saba-chan",
     "bot_tip_connecting": "Le bot est activé et se connecte au cloud Saba-chan",
     "bot_tip_stopped": "Le bot Discord est désactivé. Cliquez pour aller l'activer",

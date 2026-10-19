@@ -669,7 +669,7 @@
     "daemon_tip_running": "The Saba-chan daemon is running on this PC. Click for details",
     "daemon_tip_checking": "Checking the daemon",
     "daemon_tip_stopped": "The daemon is stopped. Click to start it again",
-    "daemon_tip_token_invalid": "The daemon is running but doesn't accept this app's connection key. Another Saba-chan install may have started it. Quit that daemon and this app reconnects.",
+    "daemon_tip_token_invalid": "The daemon is running but doesn't accept this app's connection key. Another Saba-chan install may have started it. Quit that daemon, then start the daemon again from here.",
     "bot_tip_running": "The Discord bot is connected through the Saba-chan cloud",
     "bot_tip_connecting": "The bot is on and connecting to the Saba-chan cloud",
     "bot_tip_stopped": "The Discord bot is off. Click to go turn it on",

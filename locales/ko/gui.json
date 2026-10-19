@@ -669,7 +669,7 @@
     "daemon_tip_running": "내 PC에서 사바쨩 데몬이 돌고 있어요. 눌러서 자세히 보기",
     "daemon_tip_checking": "데몬 상태를 확인하고 있어요",
     "daemon_tip_stopped": "데몬이 꺼져 있어요. 눌러서 다시 켤 수 있어요",
-    "daemon_tip_token_invalid": "데몬은 켜져 있지만 이 앱의 연결 키를 받지 않아요. 다른 사바쨩 설치본이 띄운 데몬일 수 있어요. 그 데몬을 끄면 다시 연결돼요.",
+    "daemon_tip_token_invalid": "데몬은 켜져 있지만 이 앱의 연결 키를 받지 않아요. 다른 사바쨩 설치본이 띄운 데몬일 수 있어요. 그 데몬을 끈 뒤 여기서 데몬을 다시 켜 주세요.",
     "bot_tip_running": "디스코드 봇이 사바쨩 클라우드를 통해 연결돼 있어요",
     "bot_tip_connecting": "봇을 켰고, 사바쨩 클라우드에 연결하는 중이에요",
     "bot_tip_stopped": "디스코드 봇이 꺼져 있어요. 눌러서 켜러 가기",
