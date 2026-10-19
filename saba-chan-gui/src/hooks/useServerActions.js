@@ -310,9 +310,17 @@ export function useServerActions({
                                         if (s) {
                                             // working_dir 설정 — 실행 파일은 모듈에서 자동 해석됨
                                             const dir = filePath.replace(/[/\\][^/\\]+$/, '');
-                                            await window.api.instanceUpdateSettings(s.id, {
+                                            const saved = await window.api.instanceUpdateSettings(s.id, {
                                                 working_dir: dir,
                                             });
+                                            if (!saved || saved.error || saved.success === false) {
+                                                safeShowToast(
+                                                    translateError(saved?.error || saved?.message || ''),
+                                                    'error',
+                                                    4000,
+                                                );
+                                                return;
+                                            }
                                             safeShowToast(t('servers.jar_path_updated'), 'success', 3000);
                                             await fetchServers();
                                             handleStart(name, module);
@@ -358,11 +366,23 @@ export function useServerActions({
 
                                     if (s && installResult.jar_path) {
                                         // working_dir만 설정 — 실행 파일은 모듈에서 자동 해석됨
-                                        await window.api.instanceUpdateSettings(s.id, {
+                                        const saved = await window.api.instanceUpdateSettings(s.id, {
                                             working_dir:
                                                 installResult.install_path ||
                                                 installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
                                         });
+                                        if (!saved || saved.error || saved.success === false) {
+                                            setProgressBar(null);
+                                            safeShowToast(
+                                                t('server_settings.install_settings_failed', {
+                                                    error: translateError(saved?.error || saved?.message || ''),
+                                                }),
+                                                'error',
+                                                6000,
+                                            );
+                                            await fetchServers();
+                                            return;
+                                        }
                                     }
 
                                     setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
