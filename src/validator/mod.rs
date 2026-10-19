@@ -1123,12 +1123,15 @@ mod tests {
     /// 이 PC에서 Windows가 예약한(제외 범위) TCP 포트 하나. Hyper-V·WinNAT가 켜진 PC는 부팅마다 100개 묶음을 잡는다.
     /// 한 포트짜리 범위(5985 WinRM 등)는 서비스가 실제로 듣고 있을 수 있어 넓은 범위의 가운데를 고른다
     #[cfg(windows)]
+    /// 예약 범위 안에서 지금 아무 프로그램도 쥐고 있지 않은 포트. 예약한 쪽(WinNAT 등)이 범위 안 포트를 실제로
+    /// 듣고 있기도 해서(CI 러너) 사용 중 포트 목록에 있는 것은 건너뛴다
     fn an_excluded_tcp_port() -> Option<u16> {
         let out = std::process::Command::new("netsh").args(["int", "ipv4", "show", "excludedportrange", "protocol=tcp"]).output().ok()?;
+        let held = held_ports::read();
         String::from_utf8_lossy(&out.stdout).lines().find_map(|line| {
             let mut nums = line.split_whitespace().map(str::parse::<u16>);
             match (nums.next(), nums.next()) {
-                (Some(Ok(start)), Some(Ok(end))) if end - start >= 10 => Some(start + (end - start) / 2),
+                (Some(Ok(start)), Some(Ok(end))) if end - start >= 10 => (start + 1..end).find(|p| !held.contains(p)),
                 _ => None,
             }
         })
