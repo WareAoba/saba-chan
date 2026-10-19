@@ -259,6 +259,13 @@ export function useServerActions({
     };
 
     // ── handleStart ─────────────────────────────────────────
+    // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (시작·재시작, 성공·실패 모두): 조용히 바뀌지 않게 알린다
+    const notifyPortMoved = (result) => {
+        for (const m of Array.isArray(result?.port_moved) ? result.port_moved : []) {
+            safeShowToast(t('servers.port_moved', { from: m.from, to: m.to }), 'warning', 8000);
+        }
+    };
+
     const handleStart = async (name, module) => {
         try {
             const srv = servers.find((s) => s.name === name);
@@ -273,10 +280,7 @@ export function useServerActions({
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(srv.id);
-            // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (성공·실패 모두): 조용히 바뀌지 않게 알린다
-            for (const m of Array.isArray(result?.port_moved) ? result.port_moved : []) {
-                safeShowToast(t('servers.port_moved', { from: m.from, to: m.to }), 'warning', 8000);
-            }
+            notifyPortMoved(result);
 
             // ── action_required: server jar not found ──
             if (result.action_required === 'server_jar_not_found') {
@@ -750,6 +754,7 @@ export function useServerActions({
                 try {
                     const force = srv.module_settings?.graceful_stop === false;
                     const result = await window.api.instanceRestart(srv.id, { force });
+                    notifyPortMoved(result);
                     const code = result?.error_code;
                     if (code === 'start_cancelled' || code === 'restart_cancelled') {
                         // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
