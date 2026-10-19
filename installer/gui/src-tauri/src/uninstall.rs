@@ -205,7 +205,9 @@ pub async fn do_silent_uninstall() {
     );
     if last_install {
         eprintln!("  Removing user data and runtime environments...");
-        remove_appdata_dir();
+        for path in remove_appdata_dir() {
+            eprintln!("  Could not remove {}", path.display());
+        }
     } else if install_dir.is_none() {
         eprintln!("  Keeping user data: no Saba-chan install was found next to this uninstaller");
     } else {
@@ -257,16 +259,25 @@ pub fn target_dir() -> Option<PathBuf> {
 async fn stop_saba_processes(install_dir: &Path) {
     // 데몬을 끄기 전에 데몬에 등록된 이 설치의 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
     let dirs = [install_dir.to_path_buf(), comparable_dir(install_dir)];
-    let registered = match DaemonApi::from_config() {
-        Some(api) => {
-            // 프로세스를 끊기 전에 이 설치의 데몬에게 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
-            if api.daemon_is_in(&dirs).await {
-                api.stop_running_servers().await;
-            }
-            api.registered_guis(&dirs).await
+    let api = DaemonApi::from_config();
+    let mut registered = Vec::new();
+    if let Some(api) = &api {
+        // 프로세스를 끊기 전에 이 설치의 데몬에게 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
+        let ours = api.daemon_is_in(&dirs).await;
+        if ours {
+            api.stop_running_servers().await;
         }
-        None => Vec::new(),
-    };
+        registered = api.registered_guis(&dirs).await;
+        // 데몬도 정상 종료시킨다: 강제로 끊으면 끝나는 사이에 설정·토큰 파일을 다시 쓸 수 있다
+        if ours {
+            let daemons: Vec<u32> = processes_in(install_dir, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
+            api.shutdown("[Uninstall]").await;
+            let left = wait_for_exit(&daemons, || list_named(&["saba-core"]), 40, std::time::Duration::from_millis(500)).await;
+            if !left.is_empty() {
+                tracing::warn!("[Uninstall] saba-core {:?} did not stop after the shutdown request", left);
+            }
+        }
+    }
     // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째 끝내 서버도 끝낸다.
     // GUI·CLI는 트리 없이: GUI가 이 제거기를 자식으로 띄우므로 트리째 끝내면 제거기도 죽는다.
     const TARGETS: [(&str, bool); 6] = [
@@ -283,16 +294,53 @@ async fn stop_saba_processes(install_dir: &Path) {
     let launchers: Vec<u32> =
         found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
     let unpacked = descendants_of(&launchers, install_dir);
+    let mut stopped: Vec<(u32, bool)> = Vec::new();
     for (pid, name) in found {
         let tree = TARGETS.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
         tracing::info!("[Uninstall] Stopping {} (PID {})", name, pid);
         kill_pid(pid, tree);
+        stopped.push((pid, tree));
     }
     for pid in unpacked {
         tracing::info!("[Uninstall] Stopping unpacked GUI process (PID {})", pid);
         kill_pid(pid, false);
     }
     stop_registered_guis(&registered, "[Uninstall]");
+
+    // 강제 종료는 바로 끝나지 않는다. 끝나기 전에 데이터를 지우면 그 프로세스가 파일을 다시 쓴다.
+    // 끝날 때까지 기다리고, 남은 것은 한 번 더 끊는다
+    let names = TARGETS.map(|(n, _)| n);
+    let pids: Vec<u32> = stopped.iter().map(|(pid, _)| *pid).collect();
+    let delay = std::time::Duration::from_millis(500);
+    let mut left = wait_for_exit(&pids, || list_named(&names), 20, delay).await;
+    if !left.is_empty() {
+        for (pid, tree) in stopped.iter().filter(|(pid, _)| left.contains(pid)) {
+            tracing::warn!("[Uninstall] PID {} is still running; stopping it again", pid);
+            kill_pid(*pid, *tree);
+        }
+        left = wait_for_exit(&left, || list_named(&names), 20, delay).await;
+    }
+    if left.is_empty() {
+        tracing::info!("[Uninstall] All stopped processes have exited");
+    } else {
+        tracing::warn!("[Uninstall] Still running after stop: {:?}", left);
+    }
+}
+
+/// `pids` 중 `tries`번 확인해도 `list`(`pid|name|exe` 줄)에 남아 있는 것. 다 끝나면 바로 돌아온다
+async fn wait_for_exit(pids: &[u32], mut list: impl FnMut() -> String, tries: u32, delay: std::time::Duration) -> Vec<u32> {
+    let mut left = pids.to_vec();
+    for i in 0..tries {
+        let listing = list();
+        left.retain(|pid| pid_listed(&listing, *pid));
+        if left.is_empty() {
+            break;
+        }
+        if i + 1 < tries {
+            tokio::time::sleep(delay).await;
+        }
+    }
+    left
 }
 
 /// 데몬 API (설정된 포트·토큰 파일)
@@ -326,6 +374,21 @@ impl DaemonApi {
         let pid = r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
         pid.and_then(|p| u32::try_from(p).ok())
             .is_some_and(|pid| daemon_owner(&list_named(&["saba-core"]), pid, dirs) == Owner::Here)
+    }
+
+    /// 데몬에 정상 종료를 요청한다 (응답만 기록한다. 끝났는지는 부른 쪽이 프로세스로 확인한다)
+    async fn shutdown(&self, tag: &str) {
+        let sent = self
+            .client
+            .post(self.url("/api/daemon/shutdown"))
+            .header("X-Saba-Token", &self.token)
+            .json(&serde_json::json!({}))
+            .send()
+            .await;
+        match sent {
+            Ok(r) => tracing::info!("{} Shutdown request answered {}", tag, r.status()),
+            Err(e) => tracing::warn!("{} Shutdown request failed: {}", tag, e),
+        }
     }
 
     /// 꺼져 있지 않은 서버마다 정상 종료를 요청하고 끝날 때까지 기다린다 (서버마다 최대 90초)
@@ -551,29 +614,8 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
         tracing::info!("[Install] No daemon from this install is running");
     } else {
         tracing::info!("[Install] A daemon from this install is running (PID {:?}); asking it to shut down", daemons);
-        let sent = api
-            .client
-            .post(api.url("/api/daemon/shutdown"))
-            .header("X-Saba-Token", &api.token)
-            .json(&serde_json::json!({}))
-            .send()
-            .await;
-        match sent {
-            Ok(r) => tracing::info!("[Install] Shutdown request answered {}", r.status()),
-            Err(e) => tracing::warn!("[Install] Shutdown request failed: {}", e),
-        }
-        let alive = |daemons: &[u32]| -> Vec<u32> {
-            let listing = list_named(&["saba-core"]);
-            daemons.iter().copied().filter(|pid| pid_listed(&listing, *pid)).collect()
-        };
-        let mut left = daemons.clone();
-        for _ in 0..40 {
-            left = alive(&daemons);
-            if left.is_empty() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
+        api.shutdown("[Install]").await;
+        let left = wait_for_exit(&daemons, || list_named(&["saba-core"]), 40, std::time::Duration::from_millis(500)).await;
         if left.is_empty() {
             tracing::info!("[Install] Daemon stopped");
         }
@@ -854,36 +896,56 @@ fn owned_data_dir() -> Option<PathBuf> {
 
 /// 사용자 데이터 폴더를 지운다. `keep_settings`면 런타임·캐시만 지운다.
 /// 앱이 만들지 않는 항목(업데이트 서명 키 등)은 어느 쪽이든 남는다
-fn remove_appdata_entries(keep_settings: bool) {
-    let Some(saba_dir) = owned_data_dir() else { return };
-    let Ok(entries) = std::fs::read_dir(&saba_dir) else { return };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        let path = entry.path();
-        if !saba_chan_updater_lib::uninstall_entry::removable_data_entry(&name_str, keep_settings) {
+/// 지우지 못한 항목을 돌려준다 (몇 번 다시 시도한 뒤에도 남은 것)
+fn remove_appdata_entries(keep_settings: bool) -> Vec<PathBuf> {
+    let Some(saba_dir) = owned_data_dir() else { return Vec::new() };
+    let removable = |path: &Path| {
+        path.file_name()
+            .is_some_and(|n| saba_chan_updater_lib::uninstall_entry::removable_data_entry(&n.to_string_lossy(), keep_settings))
+    };
+    let pending = |dir: &Path| -> Vec<PathBuf> {
+        std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| removable(p)).collect()
+    };
+    for path in std::fs::read_dir(&saba_dir).into_iter().flatten().flatten().map(|e| e.path()) {
+        if !removable(&path) {
             tracing::info!("[Uninstall] Keeping: {:?}", path);
-            continue;
         }
-        if path.is_dir() {
-            tracing::info!("[Uninstall] Removing dir: {:?}", path);
-            let _ = remove_dir_robust(&path);
-        } else {
-            tracing::info!("[Uninstall] Removing file: {:?}", path);
-            let _ = std::fs::remove_file(&path);
+    }
+    // 잠긴 파일, 아직 끝나는 중인 프로세스가 다시 쓴 파일은 잠시 뒤 다시 지운다
+    let mut left = pending(&saba_dir);
+    for attempt in 0..3 {
+        for path in &left {
+            if path.is_dir() {
+                tracing::info!("[Uninstall] Removing dir: {:?}", path);
+                let _ = remove_dir_robust(path);
+            } else {
+                tracing::info!("[Uninstall] Removing file: {:?}", path);
+                let _ = std::fs::remove_file(path);
+            }
         }
+        left = pending(&saba_dir);
+        if left.is_empty() {
+            break;
+        }
+        if attempt < 2 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+    for path in &left {
+        tracing::warn!("[Uninstall] Could not remove {:?}", path);
     }
     // 남긴 것이 없으면 폴더도 지운다
     let _ = std::fs::remove_dir(&saba_dir);
+    left
 }
 
-fn remove_appdata_dir() {
-    remove_appdata_entries(false);
+fn remove_appdata_dir() -> Vec<PathBuf> {
+    remove_appdata_entries(false)
 }
 
 /// 설정 파일만 남기고 나머지 삭제 (바이너리, 런타임, 캐시 등)
-fn remove_appdata_dir_keep_settings() {
-    remove_appdata_entries(true);
+fn remove_appdata_dir_keep_settings() -> Vec<PathBuf> {
+    remove_appdata_entries(true)
 }
 
 fn remove_temp_files() {
@@ -1041,6 +1103,23 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // M15: 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
+    // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다
+    #[tokio::test]
+    async fn stopped_processes_are_waited_for_until_they_are_gone() {
+        let mut calls = 0;
+        let left = wait_for_exit(&[10, 20], || {
+            calls += 1;
+            if calls < 3 { "10|saba-core|C:/x/saba-core.exe\n20|saba-runner|C:/x/saba-runner.exe".into() } else { String::new() }
+        }, 5, std::time::Duration::ZERO)
+        .await;
+        assert!(left.is_empty());
+        assert_eq!(calls, 3);
+
+        let left = wait_for_exit(&[10, 20], || "20|saba-runner|C:/x/saba-runner.exe".to_string(), 3, std::time::Duration::ZERO).await;
+        assert_eq!(left, vec![20], "one still running after every try");
+    }
 
     #[test]
     fn the_cleanup_script_keeps_percent_signs_in_paths_literal() {
