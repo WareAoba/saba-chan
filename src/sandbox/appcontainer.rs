@@ -1066,12 +1066,14 @@ mod imp {
             let exe = bin.join("server.exe");
             std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
             std::fs::write(dir.join("data.pak"), vec![0u8; 1 << 20]).unwrap();
-            // compact는 `\\?\` 경로를 받지 않는다: 폴더 안에서 돌린다
-            let out = std::process::Command::new("compact").current_dir(tmp.path()).args(["/c", "/s", "/exe:xpress4k", "/q", "*"]).output().unwrap();
-            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+            // compact는 `\\?\` 경로를 받지 않는다: 실행 파일 하나를 보통 경로로 넘긴다
+            let plain_exe = tmp.path().join("bin").join("server.exe");
+            let out = std::process::Command::new("compact").args(["/c", "/exe:xpress4k"]).arg(&plain_exe).output().unwrap();
+            let said = String::from_utf8_lossy(&out.stdout).into_owned();
+            assert!(out.status.success(), "{said}");
             use std::os::windows::fs::MetadataExt;
             let compressed = std::fs::metadata(&exe).unwrap().file_attributes() & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT != 0;
-            assert!(compressed, "compact did not make a WOF reparse point");
+            assert!(compressed, "compact did not make a WOF reparse point: {said}");
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 1);
             assert_eq!(super::low_label(&exe).unwrap(), None);
             assert!(launch_integrity(&exe) >= 0x2000, "a compressed server starts at the daemon's level");
