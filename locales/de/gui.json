@@ -391,6 +391,7 @@
     "restart_confirm_message": "'{{name}}' stoppen und neu starten? Verbundene Spieler werden kurz getrennt.",
     "restarting_toast": "'{{name}}' wird neu gestartet…",
     "restart_completed_toast": "'{{name}}' neu gestartet",
+    "port_moved": "{{name}}: Der REST-Verwaltungsport {{from}} ist von Windows reserviert und wurde auf {{to}} geändert.",
     "restart_failed_toast": "Neustart fehlgeschlagen: {{error}}",
     "rename_failed_toast": "Umbenennen fehlgeschlagen: {{error}}",
     "rename_name_taken": "'{{name}}' ist bereits vergeben",
@@ -429,6 +430,7 @@
   "errors": {
     "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
     "console_input_full": "Der Server verarbeitet noch frühere Eingaben. Versuche es gleich noch einmal.",
+    "restart_cancelled": "Der Server wurde während des Wartens an anderer Stelle gestartet oder entfernt, daher wurde er nicht neu gestartet.",
     "executable_not_found": "Ausführbare Datei des Spielservers nicht gefunden. Bitte überprüfen Sie den Pfad in den Einstellungen.",
     "file_not_found": "Datei oder Ordner nicht gefunden. Bitte überprüfen Sie den Pfad.",
     "permission_denied": "Berechtigung verweigert. Bitte überprüfen Sie die Dateizugriffsberechtigung.",

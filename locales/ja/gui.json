@@ -335,6 +335,7 @@
     "restart_confirm_message": "'{{name}}' を停止して再起動しますか？接続中のプレイヤーは一時的に切断されます。",
     "restarting_toast": "'{{name}}' を再起動中…",
     "restart_completed_toast": "'{{name}}' を再起動しました",
+    "port_moved": "{{name}}: 管理用 REST ポート {{from}} は Windows が予約しているため、{{to}} に変更しました。",
     "restart_failed_toast": "再起動できませんでした: {{error}}",
     "rename_failed_toast": "名前を変更できませんでした: {{error}}",
     "rename_name_taken": "'{{name}}' という名前はすでに使われています",
@@ -373,6 +374,7 @@
   "errors": {
     "start_cancelled": "起動中に停止が要求されたため、サーバーを起動しませんでした。",
     "console_input_full": "サーバーがまだ前の入力を処理しています。少し待ってからもう一度送信してください。",
+    "restart_cancelled": "再起動を待つ間に別の場所でサーバーが起動または削除されたため、再起動しませんでした。",
     "executable_not_found": "ゲームサーバーの実行ファイルが見つかりません。設定のパスを確認してください。",
     "file_not_found": "ファイルまたはフォルダが見つかりません。パスを確認してください。",
     "permission_denied": "権限が拒否されました。ファイルアクセス権限を確認してください。",
