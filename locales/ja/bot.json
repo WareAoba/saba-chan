@@ -48,7 +48,8 @@
     "not_found": "❌ モジュール \"{{alias}}\" のサーバーが見つかりません ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください",
-    "module_missing": "❌ モジュール '{{module}}' がインストールされていません。このサーバーは制御できません。"
+    "module_missing": "❌ モジュール '{{module}}' がインストールされていません。このサーバーは制御できません。",
+    "port_moved": "🔀 Windows が管理用 REST ポート {{from}} を予約していたため {{to}} に変更しました。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 実行中...",

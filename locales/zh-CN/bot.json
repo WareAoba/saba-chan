@@ -48,7 +48,8 @@
     "not_found": "❌ 找不到模块 \"{{alias}}\" 的服务器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
     "not_running_default": "服务器未运行。请先启动服务器",
-    "module_missing": "❌ 模块 '{{module}}' 未安装。此服务器无法控制。"
+    "module_missing": "❌ 模块 '{{module}}' 未安装。此服务器无法控制。",
+    "port_moved": "🔀 Windows 预留了管理用 REST 端口 {{from}}，已改为 {{to}}。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 执行中...",

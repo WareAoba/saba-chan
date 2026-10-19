@@ -461,7 +461,18 @@ impl<D: DaemonApi> Ctx<'_, D> {
             let text = resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.error_title", &[]));
             return Reply::unrecognized("AGREEMENT_REQUIRED", format!("📜 {}", text), json!({ "agreements": resp.body.get("agreements") }));
         }
-        self.start_text(server, resp).into()
+        let moved = self.port_moved_lines(&resp);
+        let text = self.start_text(server, resp);
+        if moved.is_empty() { text.into() } else { format!("{}\n{}", text, moved.join("\n")).into() }
+    }
+
+    /// 시작 전에 예약 범위를 피해 옮긴 포트 (`port_moved`, 시작이 실패해도 옮긴 값은 저장돼 있다)
+    fn port_moved_lines(&self, resp: &InternalResponse) -> Vec<String> {
+        let moves = resp.body.get("port_moved").and_then(Value::as_array).cloned().unwrap_or_default();
+        moves
+            .iter()
+            .filter_map(|m| Some(self.t("server.port_moved", &[("from", &m.get("from")?.to_string()), ("to", &m.get("to")?.to_string())])))
+            .collect()
     }
 
     fn start_text(&self, server: &ServerView, resp: InternalResponse) -> String {
