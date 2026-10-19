@@ -177,6 +177,19 @@ export function PairingCard({ pairing, onCancel }) {
     );
 }
 
+/** 흐름 상자 사이 이음줄: on = 초록 점선, off = 없음, fail = 빨간 점선 + X */
+function ChainLink({ state }) {
+    return (
+        <li className={clsx('dc-chain-link', state)} aria-hidden="true">
+            {state === 'fail' && (
+                <span className="dc-chain-x">
+                    <Icon name="x" size={12} />
+                </span>
+            )}
+        </li>
+    );
+}
+
 /** 릴레이 주소에서 호스트 이름만 (긴 URL이 흐름 칸을 넘치지 않게) */
 function relayHost(url) {
     try {
@@ -200,7 +213,6 @@ export function ConnectionView({
     pairing,
     onStartPairing,
     onCancelPairing,
-    onReload,
     onDisconnect,
     onStartAgent,
     nodes,
@@ -239,6 +251,8 @@ export function ConnectionView({
 
     const connected = cloudState === 'connected';
     const agentRunning = botStatus === 'running' || botStatus === 'connecting';
+    // 릴레이에 닿지 못한 것은 "실패": 끊긴 자리를 빨간 X로 보인다 (재우기·연결 중은 그냥 이음줄이 없다)
+    const relayFailed = cloudState === 'error';
     return (
         <div className="dc-view">
             {/* 연결 카드: 제목·상태·재우기 + 사바쨩 → 릴레이 서버 → 디스코드 흐름 + 그림 칸 (여러 카드를 하나로) */}
@@ -265,15 +279,6 @@ export function ConnectionView({
                                 <StatusChip tone="warn" pulse label={t('discord.relay_connecting')} />
                             )}
                             {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
-                            <button
-                                type="button"
-                                className="icon-btn"
-                                onClick={onReload}
-                                data-tooltip={t('discord.reload')}
-                                aria-label={t('discord.reload')}
-                            >
-                                <Icon name="refresh" size="sm" />
-                            </button>
                         </div>
                         {agentRunning ? (
                             <SleepAllButton nodes={nodes} />
@@ -306,7 +311,7 @@ export function ConnectionView({
                 <div className="dc-conn-body">
                     {/* 명령이 흐르는 길: 이 PC의 사바쨩 → 릴레이 서버 → 디스코드. 끊긴 구간은 흐리게 */}
                     <ol className="dc-chain" aria-label={t('discord.agent_desc')}>
-                        <li className={clsx('dc-chain-node', { on: agentRunning })}>
+                        <li className={clsx('dc-chain-node', { on: agentRunning && connected })}>
                             <img src="./icon.png" alt="" className="dc-chain-icon" />
                             <span className="dc-chain-name">{t('discord.chain_saba')}</span>
                             <span className="dc-chain-sub">
@@ -315,16 +320,16 @@ export function ConnectionView({
                                 )}
                             </span>
                         </li>
-                        <li className={clsx('dc-chain-link', { on: agentRunning && connected })} aria-hidden="true" />
-                        <li className={clsx('dc-chain-node', { on: connected })}>
-                            <Icon name="cloud" size="sm" />
+                        <ChainLink state={relayFailed ? 'fail' : agentRunning && connected ? 'on' : 'off'} />
+                        <li className={clsx('dc-chain-node', { on: connected, fail: relayFailed })}>
+                            <Icon name={relayFailed ? 'cloudOff' : 'cloud'} size={26} />
                             <span className="dc-chain-name">{t('discord.chain_relay')}</span>
                             <span className="dc-chain-sub">{relayHost(relayUrl)}</span>
                         </li>
-                        <li className={clsx('dc-chain-link', { on: connected })} aria-hidden="true" />
+                        <ChainLink state={connected ? 'on' : 'off'} />
                         <li className={clsx('dc-chain-node', { on: connected && nodeCount > 0 })}>
                             <span className="dc-chain-discord">
-                                <Icon name="discordLogo" size="sm" />
+                                <Icon name="discordLogo" size={26} />
                             </span>
                             <span className="dc-chain-name">{t('discord.chain_discord')}</span>
                             <span className="dc-chain-sub">{t('discord.node_count', { count: nodeCount })}</span>
