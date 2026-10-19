@@ -391,6 +391,7 @@
     "restart_confirm_message": "Остановить и снова запустить «{{name}}»? Подключённые игроки ненадолго отключатся.",
     "restarting_toast": "Перезапуск «{{name}}»…",
     "restart_completed_toast": "«{{name}}» перезапущен",
+    "port_moved": "Порт {{from}} зарезервирован Windows, поэтому он изменён на {{to}}. Используйте новый порт и для внешнего доступа, и в настройках роутера.",
     "restart_failed_toast": "Не удалось перезапустить: {{error}}",
     "rename_failed_toast": "Не удалось переименовать: {{error}}",
     "rename_name_taken": "Имя «{{name}}» уже занято",

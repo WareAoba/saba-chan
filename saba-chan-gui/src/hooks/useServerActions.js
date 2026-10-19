@@ -273,6 +273,10 @@ export function useServerActions({
 
             // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
             const result = await window.api.instanceStart(srv.id);
+            // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (성공·실패 모두): 조용히 바뀌지 않게 알린다
+            for (const m of Array.isArray(result?.port_moved) ? result.port_moved : []) {
+                safeShowToast(t('servers.port_moved', { from: m.from, to: m.to }), 'warning', 8000);
+            }
 
             // ── action_required: server jar not found ──
             if (result.action_required === 'server_jar_not_found') {

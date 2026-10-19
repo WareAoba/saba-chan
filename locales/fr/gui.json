@@ -391,6 +391,7 @@
     "restart_confirm_message": "Arrêter puis redémarrer « {{name}} » ? Les joueurs connectés seront déconnectés un instant.",
     "restarting_toast": "Redémarrage de « {{name}} »…",
     "restart_completed_toast": "« {{name}} » redémarré",
+    "port_moved": "Le port {{from}} est réservé par Windows ; il a été remplacé par {{to}}. Utilisez aussi le nouveau port pour l'accès externe et les réglages du routeur.",
     "restart_failed_toast": "Impossible de redémarrer : {{error}}",
     "rename_failed_toast": "Impossible de renommer : {{error}}",
     "rename_name_taken": "« {{name}} » est déjà utilisé",

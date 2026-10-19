@@ -394,6 +394,7 @@
     "restart_confirm_message": "'{{name}}' 서버를 껐다가 다시 켤까요? 접속한 사람은 잠시 끊겨요.",
     "restarting_toast": "'{{name}}' 재시작 중…",
     "restart_completed_toast": "'{{name}}'을(를) 다시 켰어요",
+    "port_moved": "포트 {{from}}은(는) Windows가 예약해 두어 {{to}}(으)로 바꿨어요. 외부 접속이나 공유기 설정에도 새 포트를 써 주세요.",
     "restart_failed_toast": "재시작하지 못했어요: {{error}}",
     "rename_failed_toast": "이름을 바꾸지 못했어요: {{error}}",
     "rename_name_taken": "'{{name}}' 이름은 이미 있어요",

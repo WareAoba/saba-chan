@@ -391,6 +391,7 @@
     "restart_confirm_message": "要停止並重新啟動 '{{name}}' 嗎？已連線的玩家會短暫斷線。",
     "restarting_toast": "正在重新啟動 '{{name}}'…",
     "restart_completed_toast": "'{{name}}' 已重新啟動",
+    "port_moved": "連接埠 {{from}} 被 Windows 保留，已改為 {{to}}。外部連線與路由器設定也請使用新的連接埠。",
     "restart_failed_toast": "無法重新啟動：{{error}}",
     "rename_failed_toast": "無法重新命名：{{error}}",
     "rename_name_taken": "名稱 '{{name}}' 已被使用",
