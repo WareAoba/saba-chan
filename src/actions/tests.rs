@@ -156,6 +156,21 @@ fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
     assert_eq!(restore["surfaces"], json!(["chatbot"]));
 }
 
+// 실사용: 디스코드 "/작업"에 길드 설정 작업이 "guild" 필수 칸과 함께 보였다. 길드 설정은 "/사바쨩" 전용 명령이
+// 같은 액션을 부르므로 메뉴에는 싣지 않고, 원격 요청이 스스로 채우는 길드 칸은 어느 메뉴 입력에도 두지 않는다
+#[test]
+fn the_remote_menu_has_no_guild_settings_and_no_guild_input() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    for id in ["chatbot.settings.get", "chatbot.settings.set", "discord.settings.get", "discord.settings.set"] {
+        assert!(actions.iter().all(|a| a["id"] != id), "{id} is served by the /사바쨩 commands");
+        assert!(find(id).unwrap().surfaces.contains(&Discord), "{id} stays callable from Discord");
+    }
+    for a in &actions {
+        assert!(a["input"]["properties"].get(GUILD_FIELD).is_none(), "{} asks for a guild", a["id"]);
+        assert!(a["input"]["required"].as_array().is_none_or(|r| !r.iter().any(|f| f == GUILD_FIELD)), "{}", a["id"]);
+    }
+}
+
 #[test]
 fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
     for d in ACTIONS.iter().filter(|d| d.surfaces.contains(&Chatbot)) {
