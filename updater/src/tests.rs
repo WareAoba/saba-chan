@@ -912,8 +912,10 @@ fn an_installed_addon_without_an_install_record_is_offered_again() {
     std::fs::write(&file, b"print('ok')").unwrap();
     crate::integrity::record_install("module-recordedmod", &[file]).unwrap();
 
-    assert!(UpdateManager::reinstall_from_catalog(&Component::Module("unrecordedmod".into())));
-    assert!(UpdateManager::reinstall_from_catalog(&Component::Extension("unrecordedext".into())));
-    assert!(!UpdateManager::reinstall_from_catalog(&Component::Module("recordedmod".into())));
-    assert!(!UpdateManager::reinstall_from_catalog(&Component::CoreDaemon));
+    let again = |c: Component, current: &str| UpdateManager::reinstall_from_catalog(&c, current, "0.1.2");
+    assert!(again(Component::Module("unrecordedmod".into()), "0.1.2"));
+    assert!(again(Component::Extension("unrecordedext".into()), "0.1.1"));
+    assert!(!again(Component::Module("recordedmod".into()), "0.1.2"));
+    assert!(!again(Component::CoreDaemon, "0.1.2"));
+    assert!(!again(Component::Module("unrecordedmod".into()), "0.2.0"), "a newer local copy is not replaced by an older catalog one");
 }

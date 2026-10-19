@@ -63,20 +63,23 @@ pub fn amsi_verdict(hr: i32, result: u32) -> Verdict {
 /// Defender가 "찾을 위협이 없다"고 답하는 오류 (`hr = 0x80508023`). 검사한 파일은 깨끗하다
 const MPCMDRUN_NO_THREAT_HR: &str = "0x80508023";
 
-/// `MpCmdRun -Scan`의 종료 코드와 출력. 2는 위협을 찾았을 때도 검사하지 못했을 때도 나오므로
-/// 위협 목록이 있을 때만 찾은 것으로 본다. 그 밖의 실패는 검사기를 쓸 수 없는 것으로 본다 (AMSI는 그대로 돈다)
+/// `MpCmdRun -Scan`의 종료 코드와 출력. 2는 위협을 찾았을 때도 검사하지 못했을 때도 나온다.
+/// 검사하지 못했으면 출력에 실패 코드(`hr = 0x…`)가 있다: 문구는 Windows 언어를 따를 수 있어 코드로만 가른다.
+/// `0x80508023`은 깨끗함, 그 밖의 실패는 검사기를 쓸 수 없는 것(AMSI는 그대로 돈다), 코드가 없으면 찾은 것이다
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn mpcmdrun_verdict(code: Option<i32>, output: &str) -> Verdict {
+    let lower = output.to_ascii_lowercase();
     match code {
         Some(0) => Verdict::Clean,
-        Some(2) if output.contains("LIST OF DETECTED THREATS") => {
+        Some(2) if lower.contains(MPCMDRUN_NO_THREAT_HR) => Verdict::Clean,
+        Some(2) if lower.replace(' ', "").contains("hr=0x") => Verdict::Unavailable,
+        Some(2) => {
             let threat = output.lines().find_map(|l| l.trim().strip_prefix("Threat").and_then(|r| r.trim_start().strip_prefix(':')));
             Verdict::Detected(match threat {
                 Some(name) => format!("Windows Defender ({})", name.trim()),
                 None => "Windows Defender".into(),
             })
         }
-        Some(2) if output.to_ascii_lowercase().contains(MPCMDRUN_NO_THREAT_HR) => Verdict::Clean,
         _ => Verdict::Unavailable,
     }
 }
@@ -370,7 +373,9 @@ Threat                  : Virus:DOS/EICAR_Test_File\n";
         assert_eq!(mpcmdrun_verdict(Some(2), found), Verdict::Detected("Windows Defender (Virus:DOS/EICAR_Test_File)".into()));
         assert_eq!(mpcmdrun_verdict(Some(2), "Scan starting...\nCmdTool: Failed with hr = 0x80508023. Check C:\\x\\MpCmdRun.log"), Verdict::Clean);
         assert_eq!(mpcmdrun_verdict(Some(2), "CmdTool: Failed with hr = 0x800106ba."), Verdict::Unavailable);
-        assert_eq!(mpcmdrun_verdict(Some(2), ""), Verdict::Unavailable);
+        // 출력 문구는 Windows 언어를 따를 수 있다: 실패 코드(hr)가 없는 2는 찾은 것으로 본다
+        assert_eq!(mpcmdrun_verdict(Some(2), "검사 시작...\n위협 1개를 찾았습니다."), Verdict::Detected("Windows Defender".into()));
+        assert_eq!(mpcmdrun_verdict(Some(2), ""), Verdict::Detected("Windows Defender".into()));
         assert_eq!(amsi_verdict(0, 1), Verdict::Clean);
         assert!(matches!(amsi_verdict(0, 32768), Verdict::Detected(_)));
         assert_eq!(amsi_verdict(0x8000_4001_u32 as i32, 0), Verdict::Unavailable);
