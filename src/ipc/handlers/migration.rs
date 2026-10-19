@@ -291,7 +291,15 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 "working_dir": inst.working_dir,
                 "executable_path": inst.executable_path,
             });
-            let verdict = judge(&inst, &known, &running, req.overwrite);
+            let mut verdict = judge(&inst, &known, &running, req.overwrite);
+            // 설치·백업·복원이 쥔 인스턴스는 바꾸지 않는다. 잠금은 저장하는 동안만 쥔다
+            let guard = match verdict {
+                Verdict::Skip(_) => None,
+                _ => super::backup::BusyGuard::take(&inst.id),
+            };
+            if guard.is_none() && !matches!(verdict, Verdict::Skip(_)) {
+                verdict = Verdict::Skip("busy");
+            }
             let applied = match verdict {
                 Verdict::Skip(reason) => {
                     skipped.push(json!({ "id": inst.id, "name": inst.name, "reason": reason }));
@@ -460,6 +468,24 @@ mod tests {
         assert_eq!(res.body["error_code"], "INVALID_CONFIG", "{}", res.body);
         let sup = state.supervisor.read().await;
         assert_eq!(sup.instance_store.get("a").unwrap().name, "old");
+    }
+
+    /// 설치·백업·복원이 쥔 인스턴스는 덮어쓰지 않는다: 작업이 옛 설정과 폴더로 계속 돈다
+    #[tokio::test]
+    async fn an_instance_held_by_a_task_is_not_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut old, mut new) = (inst("held-by-import-test", None), inst("held-by-import-test", None));
+        old.name = "old".into();
+        new.name = "new".into();
+        let bundle = Bundle { meta: meta(), config: Map::new(), instances: vec![new], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, Some(old)).await;
+        let _task = super::super::backup::BusyGuard::take("held-by-import-test").unwrap();
+        for dry in [true, false] {
+            let req: ImportRequest = serde_json::from_value(json!({ "path": path, "overwrite": true, "dryRun": dry })).unwrap();
+            let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
+            assert_eq!(res.body["instances"]["skipped"][0]["reason"], "busy", "{}", res.body);
+        }
+        assert_eq!(state.supervisor.read().await.instance_store.get("held-by-import-test").unwrap().name, "old");
     }
 
     /// 가져온 포트 충돌 검사 설정은 일반 설정 저장처럼 바로 실행 중인 검사에 반영된다

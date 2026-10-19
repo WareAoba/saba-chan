@@ -1161,6 +1161,8 @@
     "reason_working_dir_in_use": "another server uses its working folder",
     "reason_invalid_id": "invalid server ID",
     "reason_save_failed": "could not be saved",
+    "reason_name_taken": "a server with this name exists",
+    "reason_busy": "being installed, updated, backed up or restored",
     "reason_other": "unknown reason",
     "no_servers": "No servers to import",
     "config": "Settings: {{sections}}",

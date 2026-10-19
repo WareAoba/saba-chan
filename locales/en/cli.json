@@ -159,7 +159,9 @@
       "running": "running",
       "working_dir_in_use": "another server uses the same folder",
       "invalid_id": "invalid id",
-      "save_failed": "could not save"
+      "save_failed": "could not save",
+      "name_taken": "a server with this name exists",
+      "busy": "being installed, updated, backed up or restored"
     },
     "import_token_moved": "The bot pairing moved too. Disconnect the old PC (on the old PC: saba-chan-cli bot unpair)."
   },
