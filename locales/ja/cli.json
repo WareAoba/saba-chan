@@ -655,6 +655,21 @@
       "isolated": "この構成要素は隔離された環境で動きます (許可したフォルダーのみ)"
     }
   },
+  "sandbox": {
+    "allowed": "{{component}} を隔離なしで動かすことにしました。ファイルが変わったらもう一度確認します。",
+    "confirm_allow": "{{component}} を隔離なしで動かしますか? 確認されていないコードがこの PC のファイルとネットワークに制限なく触れられるようになります。ファイルが変わったらもう一度確認します。",
+    "confirm_gui": "{{component}} の GUI バンドルをアプリに読み込みますか? 確認されていないコードがアプリの画面の中で動きます。",
+    "gui_allowed": "{{component}} の GUI バンドルを読み込むことにしました。",
+    "gui_revoked": "{{component}} の GUI バンドル読み込みへの同意を取り消しました。",
+    "none": "この PC に記録された同意はありません。",
+    "component": "構成要素",
+    "kind_unisolated": "隔離なしで実行",
+    "kind_gui": "GUI バンドル",
+    "stale": "ファイルが変わったため未使用",
+    "in_use": "使用中",
+    "needs_terminal": "同意はターミナルで直接答えてください。--yes や --json では代わりになりません。",
+    "revoked": "{{component}} を隔離なしで動かす同意を取り消しました。"
+  },
   "do": {
     "bad_pair": "入力は key=value の形にしてください: {{pair}}",
     "confirm": "{{action}} を実行しますか?",
@@ -663,6 +678,31 @@
       "id": "アクション",
       "title": "名前",
       "risk": "リスク"
+    }
+  },
+  "perm": {
+    "owner": "オーナー",
+    "no_owner": "まだ不明です (リレーが最初に知らせたときに固定されます)",
+    "owner_conflict": "リレーが別のオーナー ({{id}}) を知らせてきました。固定したオーナーをそのまま使います。変えるには `saba-chan-cli perm owner` を使ってください。",
+    "default": "既定のレベル",
+    "preset": "プリセット",
+    "cap": "チャットボットの上限",
+    "member": "メンバー",
+    "command": "コマンド",
+    "level_col": "レベル",
+    "saved": "{{guild}} の権限を保存しました",
+    "bad_level": "不明なレベルです: {{level}} (admin, user, chatbot, banned)",
+    "import_none": "リレーから取り込める権限はありません。",
+    "import_confirm": "上の {{count}} 人のレベルをこの PC に取り込みますか?",
+    "import_not_candidate": "{{member}} は取り込みの対象ではありません。対象は `saba-chan-cli perm import <server>` で確認してください。",
+    "import_partial": "{{ok}} 人を取り込み、{{failed}} 人は失敗しました。",
+    "imported": "{{guild}} に {{count}} 人のレベルを取り込みました",
+    "level": {
+      "owner": "オーナー",
+      "admin": "管理者",
+      "user": "ユーザー",
+      "chatbot": "チャットボット",
+      "banned": "禁止"
     }
   },
   "audit": {
@@ -682,5 +722,24 @@
       "where": "場所",
       "what": "コード"
     }
+  },
+  "monitor": {
+    "cpu": "CPU",
+    "memory": "メモリ",
+    "disk_io": "ディスク IO",
+    "disk": "ディスク",
+    "network": "ネットワーク",
+    "read_write": "読み込み {{read}} · 書き込み {{write}}",
+    "disk_free": "空き {{free}} / {{total}}",
+    "rx_tx": "受信 {{rx}} · 送信 {{tx}}",
+    "others": "その他のプロセス",
+    "idle": "アイドル・空き",
+    "legend": "█ サーバー (色) ·",
+    "none_running": "起動中のサーバーはありません",
+    "network_note": "ディスク IO とネットワークは PC 全体の値で、サーバーごとには分けていません。バーは表示中の最大値を基準にしています。サーバーごとの IO 要求はキャッシュからの読み込みも数えるため、実際のディスク IO より大きくなります。",
+    "watch_hint": "Ctrl+C で終了",
+    "io_requests": "IO 要求 (キャッシュを含む)",
+    "disk_io_process_note": "実際のディスクの値を読めないため、プロセス IO の合計 (キャッシュを含む) を表示しています。",
+    "whole": "PC 全体 (分けていません)"
   }
 }
