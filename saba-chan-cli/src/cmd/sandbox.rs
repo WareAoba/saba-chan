@@ -58,7 +58,7 @@ async fn list(ctx: &Ctx) -> Result<()> {
     ctx.out.data(&v, |v| {
         let rows = consent_rows(v);
         if rows.is_empty() {
-            println!("{}", output::dim(&t!("sandbox.none")));
+            say!("{}", output::dim(&t!("sandbox.none")));
             return;
         }
         let mut t = output::table(&[t!("sandbox.component"), t!("col.kind"), t!("col.state")]);

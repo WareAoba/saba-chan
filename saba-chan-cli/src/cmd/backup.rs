@@ -40,7 +40,7 @@ async fn list(ctx: &Ctx, server: Option<&str>) -> Result<()> {
     ctx.out.data(&r, |r| {
         let items = r.get("backups").and_then(Value::as_array).cloned().unwrap_or_default();
         if items.is_empty() {
-            println!("{}", output::dim(&t!("backup.none", name = sv.name)));
+            say!("{}", output::dim(&t!("backup.none", name = sv.name)));
             ctx.out
                 .hint(&format!("saba-chan-cli backup create {}", shell_word(&sv.name)));
             return;

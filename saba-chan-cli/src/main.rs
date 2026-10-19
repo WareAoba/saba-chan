@@ -5,6 +5,8 @@
 
 #[macro_use]
 mod i18n;
+#[macro_use]
+mod output;
 
 mod bootstrap;
 mod catalog;
@@ -13,7 +15,6 @@ mod client;
 mod cmd;
 mod ctx;
 mod error;
-mod output;
 mod progress;
 mod prompt;
 mod resolve;

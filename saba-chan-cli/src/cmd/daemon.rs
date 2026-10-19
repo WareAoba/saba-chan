@@ -35,7 +35,7 @@ async fn status(ctx: &Ctx) -> Result<()> {
             let v =
                 json!({ "running": true, "version": h.get("version"), "pid": h.get("pid"), "url": ctx.api.base_url() });
             ctx.out.data(&v, |_| {
-                println!(
+                say!(
                     "{}  {}",
                     output::status_badge("running"),
                     output::dim(&format!(
@@ -51,7 +51,7 @@ async fn status(ctx: &Ctx) -> Result<()> {
         Err(e) if is_down(&e) => {
             let v = json!({ "running": false, "url": ctx.api.base_url() });
             ctx.out.data(&v, |_| {
-                println!(
+                say!(
                     "{}  {}",
                     output::status_badge("stopped"),
                     output::dim(ctx.api.base_url())
@@ -118,9 +118,9 @@ async fn diagnostics(ctx: &Ctx) -> Result<()> {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        println!();
+        say!();
         if problems.is_empty() {
-            println!("{}", output::dim(&t!("daemon.diag.no_problems")));
+            say!("{}", output::dim(&t!("daemon.diag.no_problems")));
             return;
         }
         output::heading(&t!("daemon.diag.problems"));
@@ -131,7 +131,7 @@ async fn diagnostics(ctx: &Ctx) -> Result<()> {
             } else {
                 console::style(lvl).yellow()
             };
-            println!("  {:5} {}", lvl, s(p, "message"));
+            say!("  {:5} {}", lvl, s(p, "message"));
         }
     });
     Ok(())

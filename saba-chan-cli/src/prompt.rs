@@ -2,11 +2,50 @@
 //!
 //! 터미널이 아니거나 `--json`이면 묻지 않는다. 그때 꼭 필요한 값이 없으면 호출한 쪽이
 //! 사용법 오류를 낸다. `--yes`는 확인 질문만 건너뛴다(값을 지어내지는 않는다).
+//! 묻는 창구도 바꿔 끼울 수 있다: 끼워져 있으면 터미널 대신 그 창구가 묻는다 (TUI의 대화상자).
 
 use crate::error::{CliError, Result};
 use console::Term;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Password, Select};
 use std::io::IsTerminal;
+
+/// 묻는 창구. 답이 None이면 사람이 취소한 것
+pub trait Asker: Send + Sync {
+    fn confirm(&self, question: &str, default: bool) -> Option<bool>;
+    fn select(&self, question: &str, items: &[String], default: usize) -> Option<usize>;
+    fn text(&self, question: &str, default: Option<&str>, allow_empty: bool) -> Option<String>;
+    fn secret(&self, question: &str) -> Option<String>;
+}
+
+static ASKER: std::sync::RwLock<Option<Box<dyn Asker>>> = std::sync::RwLock::new(None);
+
+/// 끼워 둔 창구로 묻는다. 없으면 None
+fn ask_with<T>(f: impl FnOnce(&dyn Asker) -> T) -> Option<T> {
+    ASKER.read().ok().as_ref().and_then(|a| a.as_deref()).map(f)
+}
+
+/// 창구를 바꿔 끼운다. 놓으면 터미널로 돌아간다 (TUI가 끼운다. 그 전까지는 시험만 쓴다)
+#[must_use]
+#[cfg_attr(not(test), allow(dead_code))]
+pub struct AskerGuard(());
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl AskerGuard {
+    pub fn install(asker: Box<dyn Asker>) -> Self {
+        if let Ok(mut a) = ASKER.write() {
+            *a = Some(asker);
+        }
+        Self(())
+    }
+}
+
+impl Drop for AskerGuard {
+    fn drop(&mut self) {
+        if let Ok(mut a) = ASKER.write() {
+            *a = None;
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct Prompt {
@@ -44,6 +83,9 @@ impl Prompt {
         if !self.enabled {
             return Err(CliError::Usage(t!("prompt.needs_yes", question = question)).into());
         }
+        if let Some(answer) = ask_with(|a| a.confirm(question, default)) {
+            return answer.ok_or_else(|| CliError::Cancelled.into());
+        }
         Confirm::with_theme(&Self::theme())
             .with_prompt(question)
             .default(default)
@@ -56,6 +98,9 @@ impl Prompt {
     pub fn consent(&self, question: &str) -> bool {
         if !self.enabled {
             return false;
+        }
+        if let Some(answer) = ask_with(|a| a.confirm(question, false)) {
+            return answer.unwrap_or(false);
         }
         Confirm::with_theme(&Self::theme())
             .with_prompt(question)
@@ -80,10 +125,14 @@ impl Prompt {
         if !self.enabled || items.is_empty() {
             return Ok(None);
         }
+        let default = default.min(items.len() - 1);
+        if let Some(picked) = ask_with(|a| a.select(question, items, default)) {
+            return picked.map(Some).ok_or_else(|| CliError::Cancelled.into());
+        }
         let picked = Select::with_theme(&Self::theme())
             .with_prompt(question)
             .items(items)
-            .default(default.min(items.len() - 1))
+            .default(default)
             .interact_on_opt(&Term::stderr())
             .map_err(Self::map_err)?;
         picked.map(Some).ok_or_else(|| CliError::Cancelled.into())
@@ -93,6 +142,9 @@ impl Prompt {
     pub fn text(&self, question: &str, default: Option<&str>, allow_empty: bool) -> Result<Option<String>> {
         if !self.enabled {
             return Ok(None);
+        }
+        if let Some(answer) = ask_with(|a| a.text(question, default, allow_empty)) {
+            return answer.map(Some).ok_or_else(|| CliError::Cancelled.into());
         }
         let theme = Self::theme();
         let mut input = Input::<String>::with_theme(&theme)
@@ -123,11 +175,73 @@ impl Prompt {
         if !self.enabled {
             return Ok(None);
         }
+        if let Some(answer) = ask_with(|a| a.secret(question)) {
+            return answer.map(Some).ok_or_else(|| CliError::Cancelled.into());
+        }
         Password::with_theme(&Self::theme())
             .with_prompt(question)
             .allow_empty_password(true)
             .interact_on(&Term::stderr())
             .map(Some)
             .map_err(Self::map_err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Scripted;
+
+    impl Asker for Scripted {
+        fn confirm(&self, question: &str, _default: bool) -> Option<bool> {
+            match question {
+                "cancel?" => None,
+                "agree?" => Some(false),
+                _ => Some(true),
+            }
+        }
+        fn select(&self, _question: &str, items: &[String], _default: usize) -> Option<usize> {
+            Some(items.len() - 1)
+        }
+        fn text(&self, _question: &str, default: Option<&str>, _allow_empty: bool) -> Option<String> {
+            Some(format!("typed-{}", default.unwrap_or("")))
+        }
+        fn secret(&self, _question: &str) -> Option<String> {
+            Some("s3cret".into())
+        }
+    }
+
+    /// 끼운 창구가 묻는다. `--yes`는 동의를 대신하지 않고, 창구에서 취소하면 취소로 끝난다
+    #[test]
+    fn questions_go_to_the_installed_asker() {
+        let _guard = AskerGuard::install(Box::new(Scripted));
+        let ask = Prompt {
+            enabled: true,
+            yes: false,
+        };
+        assert!(ask.confirm("go?", false).unwrap());
+        assert!(matches!(
+            ask.confirm("cancel?", true).unwrap_err().downcast_ref::<CliError>(),
+            Some(CliError::Cancelled)
+        ));
+        assert_eq!(ask.select("pick", &["a".into(), "b".into()], 0).unwrap(), Some(1));
+        assert_eq!(ask.text("name", Some("x"), false).unwrap().as_deref(), Some("typed-x"));
+        assert_eq!(ask.secret("key").unwrap().as_deref(), Some("s3cret"));
+        assert!(!Prompt {
+            enabled: true,
+            yes: true
+        }
+        .consent("agree?"));
+        // 물을 수 없을 때(파이프·--json)는 창구가 있어도 묻지 않는다
+        assert_eq!(
+            Prompt {
+                enabled: false,
+                yes: false
+            }
+            .text("name", None, true)
+            .unwrap(),
+            None
+        );
     }
 }
