@@ -410,6 +410,21 @@ impl ProvisionTracker {
         self.creating.lock().ok().and_then(|mut map| map.remove(name))
     }
 
+    /// 인스턴스 이름이 바뀌면 진행 표시와 신규 생성 표시도 새 이름으로 옮긴다.
+    /// 옛 이름에 남으면 그 이름으로 새로 만든 인스턴스가 설치 중으로 보이고, 그 배너를 닫으면 이 인스턴스가 지워진다
+    pub fn rename(&self, from: &str, to: &str) {
+        if let Ok(mut map) = self.inner.lock() {
+            if let Some(progress) = map.remove(from) {
+                map.insert(to.to_string(), progress);
+            }
+        }
+        if let Ok(mut map) = self.creating.lock() {
+            if let Some(id) = map.remove(from) {
+                map.insert(to.to_string(), id);
+            }
+        }
+    }
+
     pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
         if let Ok(serde_json::Value::Object(mut data)) = serde_json::to_value(&progress) {
             data.insert("instance".into(), instance_id.into());

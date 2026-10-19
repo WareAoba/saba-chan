@@ -755,12 +755,12 @@ pub async fn dismiss_provision_progress(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    // 프로비저닝 에러가 있었는지 확인
-    let had_error = state
-        .provision_tracker
-        .get(&name)
-        .map(|p| p.error.is_some())
-        .unwrap_or(false);
+    // 끝난 설치만 닫는다: 진행 중(또는 막 시작해 아직 표시가 없는) 설치의 신규 생성 표시를 지우면
+    // 그 설치가 실패해도 롤백되지 않는다
+    let Some(progress) = state.provision_tracker.get(&name).filter(|p| p.done) else {
+        return (StatusCode::OK, Json(json!({ "success": true, "rolled_back": false }))).into_response();
+    };
+    let had_error = progress.error.is_some();
     let creating = state.provision_tracker.take_creating(&name);
 
     state.provision_tracker.remove(&name);
@@ -978,6 +978,8 @@ pub async fn rename_instance(
     if let Err(e) = supervisor.instance_store.update(&id, instance) {
         return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "internal");
     }
+    // 실패한 설치의 진행 표시는 이름으로 이어지므로 같은 잠금 안에서 함께 옮긴다
+    state.provision_tracker.rename(&previous, new_name);
     Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
 }
 
@@ -2165,7 +2167,12 @@ mod tests {
         let c = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "plain" }))).await).await;
         let c = c.body["id"].as_str().unwrap().to_string();
 
-        let dismissed = crate::ipc::internal::into_internal(super::dismiss_provision_progress(Path("a".to_string()), State(state.clone())).await).await;
+        // 실패 표시는 이름과 함께 옮겨 간다: 같은 이름의 새 인스턴스가 설치 중으로 보이거나 그 배너로 A가 지워지지 않게
+        assert!(state.provision_tracker.get("a").is_none(), "the new instance with the old name is not provisioning");
+        let other = crate::ipc::internal::into_internal(super::dismiss_provision_progress(Path("a".to_string()), State(state.clone())).await).await;
+        assert_eq!(other.body["rolled_back"], false);
+        assert!(state.supervisor.read().await.instance_store.get(&a).is_some(), "dismissing another name's banner keeps A");
+        let dismissed = crate::ipc::internal::into_internal(super::dismiss_provision_progress(Path("b".to_string()), State(state.clone())).await).await;
         assert_eq!(dismissed.body["rolled_back"], true);
         let sup = state.supervisor.read().await;
         assert!(sup.instance_store.get(&c).is_some(), "another instance with the old name must survive");
