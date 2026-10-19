@@ -12,7 +12,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         Err(e) if matches!(e.downcast_ref::<CliError>(), Some(CliError::DaemonDown { .. })) => {
             let v = json!({ "daemon": { "running": false, "url": ctx.api.base_url() } });
             ctx.out.data(&v, |_| {
-                println!(
+                say!(
                     "{}  {}",
                     output::bold(&t!("status.daemon")),
                     output::status_badge("stopped")
@@ -48,7 +48,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         "onboarding": onboarding,
     });
     ctx.out.data(&v, |_| {
-        println!(
+        say!(
             "{}  {}  {}",
             output::bold(&t!("status.daemon")),
             output::status_badge("running"),
@@ -58,7 +58,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 health.get("pid").and_then(Value::as_u64).unwrap_or(0)
             ))
         );
-        println!();
+        say!();
         print_server_table(
             servers
                 .get("servers")
@@ -100,9 +100,9 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 ));
             }
         }
-        println!();
+        say!();
         if let Ok(a) = &agent {
-            println!("{}  {}", output::bold(&t!("status.discord")), discord_line(a));
+            say!("{}  {}", output::bold(&t!("status.discord")), discord_line(a));
         }
         if let Ok(u) = &updates {
             let n = u.get("updates_available").and_then(Value::as_u64).unwrap_or(0);
@@ -113,7 +113,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             } else {
                 output::dim(&t!("status.up_to_date"))
             };
-            println!("{}  {}", output::bold(&t!("status.updates")), line);
+            say!("{}  {}", output::bold(&t!("status.updates")), line);
             if n > 0 {
                 ctx.out.hint("saba-chan-cli update status");
             }
@@ -127,7 +127,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             _ => None,
         };
         if let Some((text, cmd)) = step {
-            println!();
+            say!();
             ctx.out.note(&text);
             ctx.out.hint(cmd);
         }
@@ -188,7 +188,7 @@ pub fn module_display(modules: &Value) -> HashMap<String, String> {
 
 pub fn print_server_table(servers: &[Value], modules: &Value) {
     if servers.is_empty() {
-        println!("{}", output::dim(&t!("server.none_yet")));
+        say!("{}", output::dim(&t!("server.none_yet")));
         return;
     }
     let names = module_display(modules);

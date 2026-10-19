@@ -196,7 +196,7 @@
 - `managed`는 saba-runner가 맡아 실행하는지다. 판정은 데몬의 `Supervisor::uses_managed_start` 하나이고(`server.rs:87`), 클라이언트는 이 값을 그대로 쓴다.
 - **REST 비밀번호가 평문으로 포함된다.**
 
-`port_conflict_stops`는 한 번 읽으면 비워지는 drain 큐다(`server.rs:277-281`).
+`port_conflict_stops`는 클라이언트(GUI·CLI)가 `GET /api/servers`로 한 번 읽으면 비워지는 drain 큐다(`server.rs` `server_list`). 데몬 안의 목록 호출(릴레이 하트비트·채팅, `list_servers_internal`)은 같은 목록을 보되 비우지 않는다.
 
 `status` 값은 다음 중 하나다.
 
@@ -223,7 +223,7 @@
 
 - `ExtensionInfo`(이름과 달리 모듈 정보다, `ipc/mod.rs:237-287`) 필드: `name, version, description, schema_version, display_name?, game_name?, author?, warnings?, unmet_dependencies?, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
 - `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ...}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs:499-522`).
-- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다.
+- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다. 받은 zip과 staging은 요청마다 다른 이름(`.tmp-module-<id>-<uuid>.zip`, `.staging-<id>-<uuid>`)이고, 같은 모듈의 설치·제거(`DELETE /api/modules/:id`)는 한 번에 하나만 한다. 다른 요청이 진행 중이면 `{ok:false, error_code:"module_busy"}`다.
 
 #### 인스턴스 (handlers/instance.rs)
 
@@ -292,7 +292,7 @@
 | GET/POST | `/api/instance/:id/backups` | `backup.rs:203/210` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
 | DELETE | `/api/instance/:id/backups/:name` | `backup.rs:218` | - | `{success}` / 404 `backup_not_found` / 409 `backup_busy` |
 | POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`) |
-| GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. `backup_keep`은 1 이상이다(자동 백업 정리는 방금 만든 백업을 지우지 않는다). 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다 |
+| GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. `backup_keep`은 1 이상이다(자동 백업 정리는 방금 만든 백업을 지우지 않는다). 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다. 또 작업 종류별로 켜진 작업들이 하루에 도는 횟수(매일 시각 작업 1번, N분마다 ⌈1440/N⌉번)를 48번(30분에 한 번) 넘게 올리지 못한다(이 PC에서 이미 그보다 잦게 정했으면 늘리지만 못한다, `daily_runs`). 예약 `update`가 끈 서버는 업데이트 뒤 다시 켜는데, 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 기다리고 그사이 켜거나 끄거나 지우면 그만둔다(`start_after_update`) |
 
 인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지. 서버가 도는 `working_dir`에 쓰므로 그 폴더를 쓰는 다른 인스턴스의 잠금도 함께 잡고, 그중 켜져 있는 것이 있으면 409 `server_running`)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제·서버 초기화(`reset_server_handler`)·버전 설치(`install_server_handler`, 그 폴더를 쓰는 인스턴스 전부, 설치를 마칠 때까지)가 함께 쓴다. 초기화와 버전 설치는 잠금을 잡은 뒤 실행 중이면 409 `server_running`으로 거절한다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다. 백업·복원·서버 초기화·버전 설치·인스턴스 삭제는 잠금을 쥔 채 따로 돌아(`audit::spawn`, 출처 유지) 요청이 끊겨도 파일 작업이 끝날 때까지 잠금이 남는다.
 
@@ -305,7 +305,7 @@
 | GET | `/api/config/gui` | `config.rs:15` | - | GuiSettings JSON |
 | PUT | `/api/config/gui` | `config.rs:21` | 부분 JSON | `{ok:true}` / 400 / 500. 저장에 성공하면 `supervisor.skip_port_check`도 갱신 |
 | GET | `/api/config/:kind/defaults` | `config.rs:47` | - | `{ok, defaults}` (`gui`, `bot`) / 404 |
-| POST | `/api/config/:kind/reset` | `config.rs:59` | 선택 `{keys?}` | `{ok, config}` / 400 |
+| POST | `/api/config/:kind/reset` | `config.rs:59` | 선택 `{keys?}` | `{ok, config}` / 400. 봇 설정 초기화도 권한 키와 `cloud.hostId`(노드 토큰을 따름)는 남기고, 릴레이 주소가 바뀌면 에이전트를 다시 시작한다 |
 | GET/PUT | `/api/config/client/:kind` | `config.rs:106/117` | 부분 객체(최상위 키 머지) | 그 네임스페이스 JSON (예: `cli`). 예약 이름(`schemaVersion`·`gui`·`relay`·`updates`·`boot`·`extensions`·`chatbot`·`sandbox`)은 400 |
 | GET | `/api/config/node-token` | `config.rs:134` | - | `{token}` (없으면 `""`) |
 | PUT | `/api/config/node-token` | `config.rs:144` | `{token}` | `{ok}`. 저장 뒤 릴레이 에이전트를 새 토큰으로 다시 시작한다 |
@@ -471,7 +471,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - 저장 형식(JSON, pretty):
   - `<root>/order.json`: id 배열
   - `<root>/<id>/instance.json`: `module_settings`를 뺀 메타데이터
-  - `<root>/<id>/settings.json`: `module_settings`
+  - `<root>/<id>/settings.json`: `module_settings`. JSON이 아니면(손으로 고치다 깨진 경우) 빈 설정으로 올리고 경고를 남기며, 다음 저장이 덮기 전에 원본을 `settings.json.corrupt`(다른 내용이 이미 있으면 `.corrupt-<초>`)로 남긴다
   - Unix에서는 두 파일 모두 0600으로 둔다.
 - `instance.json`·`settings.json`은 임시 파일에 쓰고 rename하는 원자적 쓰기다(`write_atomic`, `instance/mod.rs:502-513`). `order.json`은 그냥 덮어쓴다(`:472-476`).
 - 쓰거나 지울 폴더는 id가 경로 한 칸이고 심볼릭 링크가 아니어야 한다(`checked_dir`, `:399-409`).
@@ -518,7 +518,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - `nodeSettings[guildId]`의 디스코드 명령 권한 (P1, `chat/permissions.rs`). 원본은 이것 하나다.
   - 키: `ownerDiscordId`(고정된 주인), `relayOwnerDiscordId`(릴레이가 알려 온 다른 주인, 경고용), `defaultLevel`(1), `members{discordId: -1..2}`, `preset`("default"·"loose"·"strict"), `commandLevels{"<instanceId>/<command>": 0..3}`, `chatbotCap`(0), 예전 금지 목록 `memberPermissions`(읽기만. `{discordId: {instanceId: [명령]}}`에 있는 명령은 그 사람에게 주인(3) 레벨을 요구한다. 채팅 명령(`NodePermissions::check`)과 액션 카탈로그(`actions::authorize`, 모듈 명령 액션과 내장 `server.start|stop|restart|status`) 모두 같다).
   - 레벨: 소유자 3, 관리자 2, 유저 1, 챗봇 0, 금지 -1. 요구 레벨은 `commandLevels` 덮어쓰기, 없으면 프리셋표[risk]다. default 프리셋은 safe 0, caution 1, danger 2이고, loose는 0/0/1, strict는 1/2/3이다. 내장 명령의 risk는 `status` safe, `start`·`stop` caution, 모듈 명령은 선언값(없으면 caution).
-  - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 액션은 `<action id>`·`<instanceId>/<action id>`로 덮어쓴다. 내장 `server.start`·`server.stop`·`server.restart`·`server.status`는 명령 경로·GUI 권한 편집기와 같은 `<instanceId>/start|stop|restart|status`를 먼저 보고, 없으면 `<instanceId>/<action id>`를 본다. `PATCH /api/permissions/:guildId`의 `commandLevels`는 `/`가 없는 키를 디스코드·챗봇에서 부를 수 있고 레벨이 코드에 고정되지 않은 액션 id일 때만 받는다(아니면 `invalid_command`, `actions::overridable`). 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
+  - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 인스턴스 액션은 `<instanceId>/<action id>`로, 인스턴스를 받지 않는 액션은 `<action id>`로 덮어쓴다. 내장 `server.start`·`server.stop`·`server.restart`·`server.status`는 명령 경로·GUI 권한 편집기와 같은 `<instanceId>/start|stop|restart|status`를 먼저 보고, 없으면 `<instanceId>/<action id>`를 본다. `PATCH /api/permissions/:guildId`의 `commandLevels`는 `/`가 없는 키를 디스코드·챗봇에서 부를 수 있고 레벨이 코드에 고정되지 않았으며 인스턴스를 받지 않는 액션 id일 때만 받는다(아니면 `invalid_command`, `actions::overridable`). 지우기(`null`)는 예전에 저장된 키도 받는다. 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
   - 판정: 릴레이에서 온 요청(`ChatRequest.remote`)만 판정한다. GUI·CLI 요청은 하지 않는다. 금지는 help·list도 못 쓴다. 챗봇 경로는 `min(작성자 레벨, chatbotCap)`이다. 거부는 `PERMISSION_DENIED {need, level, via?}`.
   - 설정이 없는 길드도 같은 기본값으로 판정한다(제한 없음이 아니다).
   - 이 키들은 권한 API로만 바뀐다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 이전 값으로 되돌린다(`config_store::keep_permission_keys`).

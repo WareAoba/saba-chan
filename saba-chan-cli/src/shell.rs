@@ -131,14 +131,14 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         }
     });
 
-    eprintln!(
+    tell!(
         "{}",
         console::style(t!("shell.welcome", version = env!("CARGO_PKG_VERSION"))).bold()
     );
     if let Err(e) = crate::cmd::status::run(&ctx).await {
         ctx.out.error(&classify(&e));
     }
-    eprintln!("{}", crate::output::dim(&t!("shell.help_line")));
+    tell!("{}", crate::output::dim(&t!("shell.help_line")));
 
     let mut rl = editor(names(&ctx).await)?;
     let top: Vec<String> = crate::cli::command_words()
@@ -159,7 +159,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                     break;
                 }
                 last_ctrl_c = true;
-                eprintln!("{}", crate::output::dim(&t!("shell.ctrl_c")));
+                tell!("{}", crate::output::dim(&t!("shell.ctrl_c")));
                 continue;
             }
             Err(ReadlineError::Eof) => break,
@@ -204,7 +204,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             }
         }
     }
-    eprintln!("{}", crate::output::dim(&t!("shell.bye")));
+    tell!("{}", crate::output::dim(&t!("shell.bye")));
     Ok(())
 }
 

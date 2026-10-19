@@ -27,8 +27,8 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
             ctx.out.data(&r, |r| {
                 print_status(r);
                 if r.get("updates_available").and_then(Value::as_u64).unwrap_or(0) > 0 {
-                    println!();
-                    println!(
+                    say!();
+                    say!(
                         "{}",
                         output::dim("saba-chan-cli update download && saba-chan-cli update apply")
                     );
@@ -48,15 +48,15 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
             ctx.out.data(&r, |r| {
                 let rows = last_rows(r);
                 if rows.is_empty() {
-                    println!("{}", output::dim(&t!("update.no_last")));
+                    say!("{}", output::dim(&t!("update.no_last")));
                     return;
                 }
                 output::print_kv(&rows);
                 // 패치노트는 GUI처럼 앱 언어로 (없으면 데몬이 영어·한국어 순으로 고른다)
                 if let Some(notes) = r.get("notes").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
-                    println!();
+                    say!();
                     output::heading(&t!("update.notes"));
-                    println!("{}", notes.trim_end());
+                    say!("{}", notes.trim_end());
                 }
                 ctx.out.hint("saba-chan-cli update last --clear");
             });
@@ -75,7 +75,7 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                     .unwrap_or_default();
                 // 업데이터가 설치한 컴포넌트만 기록이 있다 (설치기로 처음 깐 것은 빠진다)
                 if comps.is_empty() {
-                    println!("{}", output::dim(&t!("update.integrity_empty")));
+                    say!("{}", output::dim(&t!("update.integrity_empty")));
                     return;
                 }
                 let mut t = output::table(&[t!("col.name"), t!("col.state"), t!("col.what")]);
@@ -104,8 +104,8 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                     t.add_row(vec![name.to_string(), mark, what]);
                 }
                 output::print_table(t);
-                println!();
-                println!(
+                say!();
+                say!(
                     "{}",
                     t!(
                         "update.integrity_summary",
@@ -128,7 +128,7 @@ fn print_status(r: &Value) {
         .cloned()
         .unwrap_or_default();
     if comps.is_empty() {
-        println!("{}", output::dim(&t!("update.not_checked")));
+        say!("{}", output::dim(&t!("update.not_checked")));
     }
     let mut t = output::table(&[
         t!("col.name"),
@@ -164,10 +164,10 @@ fn print_status(r: &Value) {
     }
     let err = s(r, "error");
     if !err.is_empty() {
-        eprintln!("{} {}", console::style("!").yellow().bold(), err);
+        tell!("{} {}", console::style("!").yellow().bold(), err);
     }
     if let Some(at) = r.get("last_check").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-        println!("{}", output::dim(&t!("update.last_check", at = at)));
+        say!("{}", output::dim(&t!("update.last_check", at = at)));
     }
 }
 

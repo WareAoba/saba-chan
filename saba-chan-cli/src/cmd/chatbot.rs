@@ -71,7 +71,7 @@ async fn show(ctx: &Ctx) -> Result<()> {
             .unwrap_or_default();
         // 예전 데몬은 기본값 표를 주지 않는다: 그때는 저장된 값만
         let defaults = r.get("defaults").and_then(Value::as_object).cloned().unwrap_or_default();
-        println!();
+        say!();
         output::heading(&t!("chatbot.common"));
         if defaults.is_empty() {
             print_settings(&settings);
@@ -79,7 +79,7 @@ async fn show(ctx: &Ctx) -> Result<()> {
             output::print_kv(&setting_rows(&defaults, &settings));
         }
         for (guild, m) in r.get("guilds").and_then(Value::as_object).into_iter().flatten() {
-            println!();
+            say!();
             let label = match names.iter().find(|(id, _)| id == guild) {
                 Some((_, name)) if !name.is_empty() => format!("{} ({})", name, guild),
                 _ => guild.clone(),
@@ -96,7 +96,7 @@ async fn show(ctx: &Ctx) -> Result<()> {
 
 fn print_settings(m: &Map<String, Value>) {
     if m.is_empty() {
-        println!("  {}", output::dim(&t!("chatbot.defaults")));
+        say!("  {}", output::dim(&t!("chatbot.defaults")));
         return;
     }
     let rows: Vec<(String, String)> = m
@@ -234,9 +234,9 @@ async fn models(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
     let relay = cfg.pointer("/cloud/relayUrl").and_then(Value::as_str).filter(|u| !u.is_empty());
     let r = ctx.api.chatbot_models(&guild, relay).await?;
     ctx.out.data(&r, |r| {
-        println!("{}: {}", t!("chatbot.provider"), s(r, "provider"));
+        say!("{}: {}", t!("chatbot.provider"), s(r, "provider"));
         for line in model_lines(r) {
-            println!("{}", line);
+            say!("{}", line);
         }
         // 고른 모델이 목록에서 사라져 대신 쓰는 모델
         let (selected, effective) = (s(r, "selected"), s(r, "effectiveModel"));
