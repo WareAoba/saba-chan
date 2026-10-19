@@ -402,6 +402,10 @@ pub struct AddArgs {
     /// Don't wait for the install to finish
     #[arg(long)]
     pub no_wait: bool,
+    /// Agreement id the module declares (`[[agreements]]`, e.g. a game EULA), repeatable. Only pass ones you have read.
+    /// `--yes` never accepts an agreement
+    #[arg(long = "accept", value_name = "ID")]
+    pub accept: Vec<String>,
 }
 
 #[derive(Args, Debug, Clone, Default)]

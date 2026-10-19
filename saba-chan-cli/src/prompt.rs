@@ -52,6 +52,20 @@ impl Prompt {
             .ok_or_else(|| CliError::Cancelled.into())
     }
 
+    /// 사람이 직접 하는 동의 (약관 등). `--yes`로 대신하지 않고, 물을 수 없거나 취소·오류면 동의하지 않은 것
+    pub fn consent(&self, question: &str) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        Confirm::with_theme(&Self::theme())
+            .with_prompt(question)
+            .default(false)
+            .interact_on_opt(&Term::stderr())
+            .ok()
+            .flatten()
+            .unwrap_or(false)
+    }
+
     /// 확인을 받고, 아니면 취소로 끝낸다
     pub fn ensure(&self, question: &str) -> Result<()> {
         if self.confirm(question, false)? {

@@ -513,14 +513,21 @@ async fn channels_of_paired(ctx: &Ctx, change: ChannelChange) -> Result<()> {
     }
     let cfg = ctx.api.bot_config().await?;
     let mut all = Vec::new();
+    // 서버 하나를 못 읽어도 나머지는 보여 준다
     for (guild, name) in &targets {
-        let r = ctx.api.node_channels(guild, relay_of(&cfg)).await?;
+        let r = ctx.api.node_channels(guild, relay_of(&cfg)).await;
         if !ctx.out.json {
             println!();
             output::heading(&if name.is_empty() { guild.clone() } else { format!("{} ({})", name, guild) });
-            print_channels(&r);
+            match &r {
+                Ok(r) => print_channels(r),
+                Err(e) => ctx.out.warn(&e.to_string()),
+            }
         }
-        all.push(json!({ "guildId": guild, "guildName": name, "channels": r }));
+        all.push(match r {
+            Ok(r) => json!({ "guildId": guild, "guildName": name, "channels": r }),
+            Err(e) => json!({ "guildId": guild, "guildName": name, "error": e.to_string() }),
+        });
     }
     if ctx.out.json {
         ctx.out.data(&Value::Array(all), |_| {});

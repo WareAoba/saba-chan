@@ -504,7 +504,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
     // 7-0) 약관 (예: 게임 EULA). 설치를 기다리기 전에 묻는다
-    offer_agreements(ctx, &id, &name).await?;
+    offer_agreements(ctx, &id, &name, &a.accept).await;
 
     // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
     let mut settings_error = None;
@@ -1583,32 +1583,49 @@ async fn accept(ctx: &Ctx, id: &str, pending: &[Value]) -> Result<Value> {
     ctx.api.accept_agreements(id, &ids).await
 }
 
-/// 만든 서버에 동의할 약관이 있으면 GUI처럼 만들 때 묻는다. 물을 수 없거나 거절하면 서버는 두고
-/// `server agree`를 안내한다 (첫 start가 약관 때문에 막히지 않게)
-async fn offer_agreements(ctx: &Ctx, id: &str, name: &str) -> Result<()> {
+/// 동의할 약관을 나눈다: `--accept`로 id를 댄 것(바로 동의)과 사람에게 물을 것.
+/// 물을 수 없으면(`--json`, 터미널 아님) 묻지 않는다. `--yes`는 약관 동의로 치지 않는다
+fn split_agreements(pending: &[Value], named: &[String], can_ask: bool) -> (Vec<Value>, Vec<Value>) {
+    let (by_name, rest): (Vec<Value>, Vec<Value>) = pending.iter().cloned().partition(|a| named.iter().any(|n| n == s(a, "id")));
+    (by_name, if can_ask { rest } else { Vec::new() })
+}
+
+/// 만든 서버에 동의할 약관이 있으면 GUI처럼 만들 때 묻는다. 동의하지 않았거나 실패해도 서버 만들기는
+/// 이어 가고 `server agree`를 안내한다 (첫 start가 약관 때문에 막히지 않게, 만든 서버의 남은 단계는 그대로)
+async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
     let Ok(inst) = ctx.api.instance(id).await else {
-        return Ok(());
+        return;
     };
     let pending = pending_agreements(&inst);
     if pending.is_empty() {
-        return Ok(());
+        return;
     }
-    let hint = || ctx.out.hint(&format!("saba-chan-cli server agree {}", shell_word(name)));
-    if !ctx.ask.yes && !ctx.ask.enabled {
-        hint();
-        return Ok(());
-    }
-    show_agreements(ctx, &pending);
-    let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
-    if ctx.ask.confirm(&t!("agree.confirm", name = name, names = names.join(", ")), false)? {
-        accept(ctx, id, &pending).await?;
-        if !ctx.out.json {
-            println!("{} {}", console::style("✓").green().bold(), t!("agree.done", name = name));
+    let (by_name, ask) = split_agreements(&pending, named, ctx.ask.enabled);
+    let mut chosen = by_name;
+    if !ask.is_empty() {
+        show_agreements(ctx, &ask);
+        let names: Vec<&str> = ask.iter().map(|a| s(a, "label")).collect();
+        if ctx.ask.consent(&t!("agree.confirm", name = name, names = names.join(", "))) {
+            chosen.extend(ask);
         }
-    } else {
-        hint();
     }
-    Ok(())
+    let accepted = if chosen.is_empty() {
+        false
+    } else {
+        match accept(ctx, id, &chosen).await {
+            Ok(_) => true,
+            Err(e) => {
+                ctx.out.warn(&e.to_string());
+                false
+            }
+        }
+    };
+    if accepted && !ctx.out.json {
+        println!("{} {}", console::style("✓").green().bold(), t!("agree.done", name = name));
+    }
+    if !accepted || chosen.len() < pending.len() {
+        ctx.out.hint(&format!("saba-chan-cli server agree {}", shell_word(name)));
+    }
 }
 
 async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
@@ -1695,6 +1712,20 @@ mod tests {
         let ids: Vec<String> = pending_agreements(&inst).iter().map(|a| s(a, "id").to_string()).collect();
         assert_eq!(ids, vec!["eula"]);
         assert!(pending_agreements(&json!({})).is_empty());
+    }
+
+    /// 약관은 `--accept`로 이름을 댄 것만 바로 동의하고, 나머지는 사람에게 물을 수 있을 때만 묻는다.
+    /// `--yes`나 `--json`은 동의가 아니다 (리뷰 315)
+    #[test]
+    fn agreements_are_accepted_only_by_name_or_asked() {
+        let pending = vec![json!({ "id": "eula", "label": "EULA" }), json!({ "id": "tos", "label": "ToS" })];
+        let ids = |v: &[Value]| v.iter().map(|a| s(a, "id").to_string()).collect::<Vec<_>>();
+        let (named, ask) = split_agreements(&pending, &["eula".to_string()], true);
+        assert_eq!((ids(&named), ids(&ask)), (vec!["eula".to_string()], vec!["tos".to_string()]));
+        let (named, ask) = split_agreements(&pending, &[], false);
+        assert!(named.is_empty() && ask.is_empty(), "cannot ask: nothing is accepted, only guidance");
+        let (named, ask) = split_agreements(&pending, &[], true);
+        assert_eq!((ids(&named).len(), ids(&ask)), (0, vec!["eula".to_string(), "tos".to_string()]));
     }
 
     #[test]
