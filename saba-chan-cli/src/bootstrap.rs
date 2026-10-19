@@ -87,8 +87,59 @@ pub fn spawn_daemon(port: u16) -> Result<PathBuf> {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
-    cmd.spawn().map_err(|e| failed(t!("daemon.spawn_failed", error = e)))?;
+    spawn_detached(&mut cmd).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))?;
     Ok(binary)
+}
+
+/// 이 프로세스의 표준 입출력 핸들을 물려주지 않고 띄운다 (자식의 입출력은 `cmd`에 정한 대로).
+/// Windows는 상속 가능한 핸들을 모두 자식에게 넘긴다: CLI의 출력이 부른 쪽의 파이프면 데몬이 그 파이프를 쥐어,
+/// CLI가 끝나도 부른 쪽은 출력의 끝을 기다린다
+fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
+    #[cfg(windows)]
+    let _no_inherit = StdNoInherit::new();
+    cmd.spawn()
+}
+
+/// 표준 입출력 핸들의 상속 표시를 잠시 지우고, 사라질 때 되돌린다
+#[cfg(windows)]
+struct StdNoInherit(Vec<windows_sys::Win32::Foundation::HANDLE>);
+
+#[cfg(windows)]
+impl StdNoInherit {
+    fn new() -> Self {
+        use windows_sys::Win32::Foundation::{
+            GetHandleInformation, SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+        };
+        use windows_sys::Win32::System::Console::{
+            GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+        };
+        let mut cleared = Vec::new();
+        for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+            let handle = unsafe { GetStdHandle(which) };
+            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+                continue;
+            }
+            let mut flags = 0;
+            // stdout과 stderr이 같은 핸들이면 두 번째는 이미 지워져 있다
+            if unsafe { GetHandleInformation(handle, &mut flags) } != 0
+                && flags & HANDLE_FLAG_INHERIT != 0
+                && unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } != 0
+            {
+                cleared.push(handle);
+            }
+        }
+        Self(cleared)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for StdNoInherit {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+        for &handle in &self.0 {
+            unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
+        }
+    }
 }
 
 /// 정상 종료가 안 된 데몬을 PID로만 끝낸다 (이름으로 죽이면 다른 사용자의 데몬까지 죽는다)
@@ -117,3 +168,44 @@ pub fn kill_pid(pid: u64) -> Result<()> {
 
 pub const START_TIMEOUT: Duration = Duration::from_secs(20);
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(20);
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT};
+    use windows_sys::Win32::System::Console::{GetStdHandle, SetStdHandle, STD_OUTPUT_HANDLE};
+
+    /// 출력이 파이프인 CLI(스크립트, `| more`)가 데몬을 띄워도 데몬이 그 파이프를 쥐지 않는다:
+    /// 쥐면 CLI가 끝나도 부른 쪽이 출력의 끝을 받지 못해 `daemon start`가 끝나지 않는 것처럼 보인다
+    #[test]
+    fn a_detached_child_does_not_hold_our_output_pipe() {
+        let (mut reader, writer) = std::io::pipe().unwrap();
+        let raw = writer.as_raw_handle() as HANDLE;
+        // 부른 쪽이 넘겨준 파이프처럼 상속 가능하게 해서 표준 출력으로 둔다
+        unsafe { SetHandleInformation(raw, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
+        let old = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+        unsafe { SetStdHandle(STD_OUTPUT_HANDLE, raw) };
+        let mut cmd = Command::new("ping");
+        cmd.args(["-n", "6", "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let child = spawn_detached(&mut cmd);
+        unsafe { SetStdHandle(STD_OUTPUT_HANDLE, old) };
+        drop(writer);
+        let mut child = child.expect("ping starts");
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = reader.read_to_end(&mut buf);
+            let _ = tx.send(());
+        });
+        let closed = rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(closed, "the child still holds the write end of our output pipe");
+    }
+}
