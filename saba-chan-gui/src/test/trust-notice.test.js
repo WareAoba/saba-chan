@@ -55,9 +55,12 @@ describe('신뢰 경고 알림', () => {
         expect(warned[0][0]).toMatch(/extension \(music\) that did not come from the official catalog/);
     });
 
-    it('시작이 막힌 이유는 두 코드만 문구로 바꾸고, 나머지는 원래 흐름에 맡긴다', () => {
+    it('시작이 막힌 이유는 아는 코드만 문구로 바꾸고, 나머지는 원래 흐름에 맡긴다', () => {
         expect(blockedText({ action_required: 'launch_outside_instance', file: 'C:/x.exe' }, t)).toMatch(
             /outside the server folder: C:\/x\.exe/,
+        );
+        expect(blockedText({ action_required: 'server_folder_label', file: 'D:/srv/a' }, t)).toMatch(
+            /permission marks on the server folder \(D:\/srv\/a\)/,
         );
         expect(blockedText({ action_required: 'extension_required' }, t)).toBeNull();
         expect(blockedText({ success: false, message: 'x' }, t)).toBeNull();
