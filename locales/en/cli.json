@@ -172,6 +172,7 @@
     "meta_help": ":q leave · :commands list game commands · :start / :stop the server · anything else is sent as a game command",
     "not_running": "{{name}} is not running. Showing the last log; new lines appear once it starts.",
     "started": "── server started ──",
+    "reattached": "── daemon reattached (showing recent lines) ──",
     "stopped": "── server stopped ──",
     "unknown_meta": "Unknown :{{cmd}}. Try :help."
   },

@@ -125,6 +125,7 @@
     "meta_help": ":q salir · :commands ver comandos del juego · :start / :stop el servidor · todo lo demás se envía como comando del juego",
     "not_running": "{{name}} no está en marcha. Se muestra el último registro; las nuevas líneas aparecerán cuando arranque.",
     "started": "── servidor iniciado ──",
+    "reattached": "── daemon reconectado (líneas recientes) ──",
     "stopped": "── servidor detenido ──",
     "unknown_meta": ":{{cmd}} desconocido. Prueba :help."
   },

@@ -125,6 +125,7 @@
     "meta_help": ":q 退出 · :commands 列出游戏命令 · :start / :stop 启动或停止服务器 · 其他内容将作为游戏命令发送",
     "not_running": "{{name}} 未运行。正在显示最近的日志；启动后会显示新行。",
     "started": "── 服务器已启动 ──",
+    "reattached": "── 守护进程已重新连接（显示最近的行） ──",
     "stopped": "── 服务器已停止 ──",
     "unknown_meta": "未知的 :{{cmd}}。试试 :help。"
   },

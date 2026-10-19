@@ -3,6 +3,7 @@
 //! 데몬은 줄마다 순번(`id`)을 주고 `?since=<id>`(그 번호 포함)로 이어 받게 한다.
 //! 서버가 다시 뜨면 순번이 0부터 다시 시작하고, 꺼져 있을 때는 디스크 로그(`source: "disk"`)를 주며
 //! 이때는 `since`가 무시된다. 그래서 실행 여부·출처가 바뀌면 처음부터 다시 읽는다.
+//! 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대(`epoch`)가 바뀌고 순번도 새로 매겨진다.
 //!
 //! 입력 모드에서는 친 줄을 게임 명령으로 보낸다 (정의된 명령이면 인자를 묶고, 아니면 콘솔 한 줄).
 //! `:`로 시작하는 줄은 CLI가 처리한다 (`:help`).
@@ -19,6 +20,8 @@ use serde_json::Value;
 use std::time::Duration;
 
 const POLL: Duration = Duration::from_millis(500);
+/// 다시 붙은 버퍼는 디스크 기록을 다시 담는다: 이미 본 줄을 모두 다시 찍지 않고 최근 줄만 보인다
+const REATTACH_LINES: usize = 20;
 
 pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
@@ -77,6 +80,8 @@ struct Cursor {
     next: Option<u64>,
     running: bool,
     disk: bool,
+    /// 콘솔 버퍼 세대. 모르는 응답(옛 데몬, 디스크 기록)이면 None
+    epoch: Option<u64>,
 }
 
 impl Cursor {
@@ -89,8 +94,14 @@ impl Cursor {
             next: last.map(|id| id + 1),
             running: resp.get("running").and_then(Value::as_bool).unwrap_or(false),
             disk: s(resp, "source") == "disk",
+            epoch: resp.get("epoch").and_then(Value::as_u64),
         }
     }
+}
+
+/// 실행 중인 채로 버퍼 세대가 바뀌었다: 데몬이 다시 붙었다 (같음 비교만, 크기는 보지 않는다)
+fn reattached(cur: &Cursor, fresh: &Cursor) -> bool {
+    cur.running && !cur.disk && fresh.running && matches!((cur.epoch, fresh.epoch), (Some(a), Some(b)) if a != b)
 }
 
 /// 새 줄을 받아 `emit`으로 넘긴다. Ctrl+C로 끝.
@@ -122,6 +133,21 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
         return cur;
     };
     let fresh = Cursor::from(&resp);
+    if reattached(&cur, &fresh) {
+        // 옛 순번으로 받은 줄은 버리고, 새 버퍼의 최근 줄부터 이어 읽는다
+        if let Ok(recent) = ctx.api.console(&sv.id, None, Some(REATTACH_LINES)).await {
+            emit(style(t!("console.reattached")).cyan().dim().to_string());
+            for l in recent.get("lines").and_then(Value::as_array).into_iter().flatten() {
+                emit(format_line(l));
+            }
+            let next = Cursor::from(&recent);
+            return Cursor {
+                next: next.next.or(Some(0)),
+                ..next
+            };
+        }
+        return cur;
+    }
     let restarted = fresh.running && (!cur.running || cur.disk);
     if restarted {
         // 새 프로세스: 순번이 새로 시작한다 → 최근 줄부터 다시
@@ -146,6 +172,7 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
         next: fresh.next.or(cur.next),
         running: fresh.running,
         disk: fresh.disk,
+        epoch: fresh.epoch.or(cur.epoch),
     }
 }
 
@@ -234,6 +261,21 @@ fn token_style(token: &str, t: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
+    /// 실행 여부만 보면 이어 읽던 순번을 그대로 써서 콘솔이 멈춘다
+    #[test]
+    fn a_new_console_epoch_while_running_means_reattached() {
+        let before = Cursor::from(&json!({"lines": [{"id": 900}], "running": true, "epoch": 1}));
+        let after = Cursor::from(&json!({"lines": [], "running": true, "epoch": 2}));
+        assert!(reattached(&before, &after));
+        let same = Cursor::from(&json!({"lines": [{"id": 901}], "running": true, "epoch": 1}));
+        assert!(!reattached(&before, &same));
+        // 세대를 모르는 응답(옛 데몬, 디스크 기록)은 다시 붙은 것으로 보지 않는다
+        let old = Cursor::from(&json!({"lines": [], "running": true}));
+        assert!(!reattached(&before, &old));
+        assert!(!reattached(&old, &after));
+    }
 
     #[test]
     fn spans_convert_utf16_offsets_to_byte_ranges() {
