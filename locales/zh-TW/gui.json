@@ -1304,6 +1304,7 @@
     "step_ready": "正在檢查伺服器狀態…",
     "step_done": "準備就緒",
     "daemon_failed": "無法啟動核心常駐程式。",
+    "daemon_stalled": "核心守護程序沒有回應。",
     "failed_hint": "直接開啟只會開啟介面。要管理伺服器，請重新啟動常駐程式。",
     "retry": "重試",
     "continue": "直接開啟"

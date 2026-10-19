@@ -1304,6 +1304,7 @@
     "step_ready": "Server werden geprüft…",
     "step_done": "Bereit",
     "daemon_failed": "Der Kern-Daemon konnte nicht gestartet werden.",
+    "daemon_stalled": "Der Core-Daemon antwortet nicht.",
     "failed_hint": "Wenn du trotzdem öffnest, startet nur die Oberfläche. Starte den Daemon neu, um Server zu verwalten.",
     "retry": "Erneut versuchen",
     "continue": "Trotzdem öffnen"

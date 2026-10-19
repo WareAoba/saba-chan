@@ -45,6 +45,8 @@ import './styles/shell.css';
 import './styles/motion.css';
 /** 로딩 화면이 사라지는 움직임 길이 (App.css의 loading-leave와 같다) */
 const LOADING_LEAVE_MS = 700;
+/** 초기화 단계 소식이 이만큼 없으면 멈춘 것으로 본다. main의 가장 긴 단계(새 데몬 기다리기)는 30초를 넘지 않는다 */
+const INIT_STALL_MS = 60_000;
 
 function App() {
     const { t, i18n } = useTranslation('gui');
@@ -106,6 +108,7 @@ function App() {
     const backgroundDaemonStatus = useUIStore((s) => s.backgroundDaemonStatus);
     const [patchNotes, setPatchNotes] = useState(null);
     const [initFailed, setInitFailed] = useState(null); // 데몬 기동 실패 문구
+    const [initSeen, setInitSeen] = useState(0); // 받은 초기화 단계 수 (멈춤 감시를 다시 센다)
     const daemonRunning = backgroundDaemonStatus === 'running';
 
     // 마지막 업데이트 결과 (데몬 last-result): 데몬이 뜨면 한 번 묻고 알림을 남긴다. 알림을 누르면 패치노트
@@ -303,6 +306,7 @@ function App() {
         if (window.api && window.api.onStatusUpdate) {
             offStatus = window.api.onStatusUpdate((data) => {
                 console.log('[Init Status]', data.step, ':', data.message);
+                setInitSeen((n) => n + 1);
 
                 const progressValues = {
                     init: 10,
@@ -423,6 +427,16 @@ function App() {
             setInitStatus(t('loading.step_done'));
         }
     }, [serversInitializing, daemonReady]);
+
+    // 초기화가 소식 없이 멈추면(M11) 진행 화면에 묶어 두지 않고 이유와 [다시 시도]·[그대로 열기]를 보인다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: initSeen은 단계가 올 때마다 다시 세려고 둔다
+    useEffect(() => {
+        if (daemonReady || initFailed || window.__sabaReadyReceived) return undefined;
+        const timer = setTimeout(() => {
+            if (!window.__sabaReadyReceived) setInitFailed(t('loading.daemon_stalled'));
+        }, INIT_STALL_MS);
+        return () => clearTimeout(timer);
+    }, [daemonReady, initFailed, initSeen, t]);
 
     // Background Daemon status polling
     // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable

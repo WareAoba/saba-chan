@@ -1304,6 +1304,7 @@
     "step_ready": "正在检查服务器状态…",
     "step_done": "准备就绪",
     "daemon_failed": "无法启动核心守护进程。",
+    "daemon_stalled": "核心守护进程没有响应。",
     "failed_hint": "直接打开只会打开界面。要管理服务器，请重启守护进程。",
     "retry": "重试",
     "continue": "直接打开"
