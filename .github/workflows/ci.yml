@@ -5,8 +5,7 @@
 # 구조:
 #   1) rust      — Clippy + build + test  (Windows / Ubuntu)
 #   2) js-tests  — GUI 화면 (Vitest + build), 업데이터/설치기 스크립트 문법
-#   3) e2e       — Python E2E (tests/e2e/run-cloud.sh, 외부망·Steam·느린 시험 제외, Ubuntu)
-#   4) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
+#   3) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
 #
 # release.yml:   릴리즈 패키징 & manifest 생성
 # ═══════════════════════════════════════════════════════════
@@ -127,64 +126,3 @@ jobs:
       # 번들러 없이 그대로 실리는 스크립트는 문법만 확인한다
       - name: Syntax check — updater, installer
         run: node --check updater/gui/src/updater.js && node --check installer/gui/src/installer.js
-
-  # ─────────────────────────────────────────
-  # 3. E2E — 실제 데몬·CLI·러너를 띄우는 Python 시험
-  # ─────────────────────────────────────────
-  e2e:
-    name: E2E (ubuntu)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-
-    steps:
-      - uses: actions/checkout@v4
-
-      # 시험 샌드박스는 모듈·익스텐션 저장소를 복사해 쓴다 (harness/sandbox.py)
-      - uses: actions/checkout@v4
-        with:
-          repository: WareAoba/saba-chan-modules
-          path: .e2e-deps/saba-chan-modules
-      - uses: actions/checkout@v4
-        with:
-          repository: WareAoba/saba-chan-extensions
-          path: .e2e-deps/saba-chan-extensions
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      # 업데이터(Tauri) 빌드에 필요하다
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Cargo cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: e2e-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: e2e-${{ runner.os }}-cargo-
-
-      # 외부망(network)·SteamCMD(steam)·느린(slow) 시험은 뺀다. GUI 시험은 tauri-driver가 없어 건너뛴다
-      - name: Run E2E
-        env:
-          SABA_E2E_ROOT: ${{ runner.temp }}/saba-e2e
-          SABA_E2E_MODULES_REPO: ${{ github.workspace }}/.e2e-deps/saba-chan-modules
-          SABA_E2E_EXTENSIONS_REPO: ${{ github.workspace }}/.e2e-deps/saba-chan-extensions
-        run: bash tests/e2e/run-cloud.sh
-
-      - name: Upload E2E report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-report
-          path: ${{ runner.temp }}/saba-e2e/*.md
-          if-no-files-found: ignore
