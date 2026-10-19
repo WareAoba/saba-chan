@@ -257,48 +257,6 @@ fn token_style(token: &str, t: &str) -> String {
     .to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
-    /// 실행 여부만 보면 이어 읽던 순번을 그대로 써서 콘솔이 멈춘다
-    #[test]
-    fn a_new_console_epoch_while_running_means_reattached() {
-        let before = Cursor::from(&json!({"lines": [{"id": 900}], "running": true, "epoch": 1}));
-        let after = Cursor::from(&json!({"lines": [], "running": true, "epoch": 2}));
-        assert!(reattached(&before, &after));
-        let same = Cursor::from(&json!({"lines": [{"id": 901}], "running": true, "epoch": 1}));
-        assert!(!reattached(&before, &same));
-        // 세대를 모르는 응답(옛 데몬, 디스크 기록)은 다시 붙은 것으로 보지 않는다
-        let old = Cursor::from(&json!({"lines": [], "running": true}));
-        assert!(!reattached(&before, &old));
-        assert!(!reattached(&old, &after));
-    }
-
-    #[test]
-    fn spans_convert_utf16_offsets_to_byte_ranges() {
-        let text = "안녕 😀 <철수>";
-        let spans = json!([[7, 9, "player"], [100, 101, "error"], [8, 9, "warn"]]);
-        let got = span_ranges(text, Some(&spans));
-        assert_eq!(got.len(), 1, "out-of-range and overlapping spans are dropped");
-        let (st, en, tok) = got[0];
-        assert_eq!((&text[st..en], tok), ("철수", "player"));
-    }
-
-    #[test]
-    fn format_line_keeps_text_and_colors_spans() {
-        console::set_colors_enabled(true);
-        let line = json!({"content": "Steve joined", "source": "stdout", "level": "info", "spans": [[0, 5, "player"]]});
-        let out = format_line(&line);
-        assert!(out.starts_with("\u{1b}["), "the player token is styled: {:?}", out);
-        assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
-        let plain = json!({"content": "x", "source": "system", "level": "info"});
-        assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
-    }
-}
-
 /// 보면서 입력하기. 새 줄은 입력 줄을 건드리지 않고 위에 찍힌다.
 async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
     let ctx = &Ctx {
@@ -436,5 +394,47 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
             print(l);
             next = l.get("id").and_then(Value::as_u64).map(|id| id + 1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
+    /// 실행 여부만 보면 이어 읽던 순번을 그대로 써서 콘솔이 멈춘다
+    #[test]
+    fn a_new_console_epoch_while_running_means_reattached() {
+        let before = Cursor::from(&json!({"lines": [{"id": 900}], "running": true, "epoch": 1}));
+        let after = Cursor::from(&json!({"lines": [], "running": true, "epoch": 2}));
+        assert!(reattached(&before, &after));
+        let same = Cursor::from(&json!({"lines": [{"id": 901}], "running": true, "epoch": 1}));
+        assert!(!reattached(&before, &same));
+        // 세대를 모르는 응답(옛 데몬, 디스크 기록)은 다시 붙은 것으로 보지 않는다
+        let old = Cursor::from(&json!({"lines": [], "running": true}));
+        assert!(!reattached(&before, &old));
+        assert!(!reattached(&old, &after));
+    }
+
+    #[test]
+    fn spans_convert_utf16_offsets_to_byte_ranges() {
+        let text = "안녕 😀 <철수>";
+        let spans = json!([[7, 9, "player"], [100, 101, "error"], [8, 9, "warn"]]);
+        let got = span_ranges(text, Some(&spans));
+        assert_eq!(got.len(), 1, "out-of-range and overlapping spans are dropped");
+        let (st, en, tok) = got[0];
+        assert_eq!((&text[st..en], tok), ("철수", "player"));
+    }
+
+    #[test]
+    fn format_line_keeps_text_and_colors_spans() {
+        console::set_colors_enabled(true);
+        let line = json!({"content": "Steve joined", "source": "stdout", "level": "info", "spans": [[0, 5, "player"]]});
+        let out = format_line(&line);
+        assert!(out.starts_with("\u{1b}["), "the player token is styled: {:?}", out);
+        assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
+        let plain = json!({"content": "x", "source": "system", "level": "info"});
+        assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
     }
 }
