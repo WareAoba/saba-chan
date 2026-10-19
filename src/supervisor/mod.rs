@@ -276,6 +276,52 @@ impl Supervisor {
         }
         map
     }
+    /// 0.1.6까지 만든 인스턴스는 모듈 기본 REST 포트(팰월드 8212)를 그대로 저장해 두었다. 그 포트가 Windows 예약
+    /// 범위에 들면 서버가 REST를 열지 못하므로, 시작 전에 새 인스턴스처럼 예약 범위와 다른 인스턴스의 포트를 피해
+    /// 옮겨 저장한다(모듈이 시작 때 게임 설정 파일을 이 값으로 맞춘다). 기본값이 아닌 값은 사용자가 정한 것이므로
+    /// 옮기지 않는다(시작 전 검사가 port_conflict로 알린다)
+    fn move_reserved_default_rest_port(&mut self, id: &str) {
+        // 이미 떠 있는 서버는 지금 포트로 붙어 있다
+        if self.tracker.get_pid(id).is_ok_and(process::is_process_alive) {
+            return;
+        }
+        self.move_default_rest_port_if(id, crate::validator::tcp_port_reserved_by_windows, crate::validator::port_reserved_by_windows);
+    }
+
+    fn move_default_rest_port_if(&mut self, id: &str, reserved: impl Fn(u16) -> bool, avoid: impl Fn(u16) -> bool) -> Option<u16> {
+        let instance = self.instance_store.get(id)?.clone();
+        let rest = instance.rest_port?;
+        let module = self.module_loader.get_module(&instance.module_name).ok()?;
+        let supports_rest = module.metadata.protocols_supported.as_deref().unwrap_or(&[]).iter().any(|p| p == "rest");
+        if !supports_rest || rest != module.metadata.default_rest_port() || !reserved(rest) {
+            return None;
+        }
+        let port_fields_of = |name: &str| -> Vec<String> {
+            self.module_loader.get_module(name).ok()
+                .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
+                .unwrap_or_default()
+        };
+        let mut taken = std::collections::HashSet::new();
+        for other in self.instance_store.list().iter().filter(|o| o.id != id) {
+            let fields = port_fields_of(&other.module_name);
+            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+            taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
+        }
+        let free = crate::validator::next_free_port(rest, |p| taken.contains(&p) || avoid(p))?;
+        let mut moved = instance;
+        moved.rest_port = Some(free);
+        if moved.module_settings.contains_key("rest_port") {
+            moved.module_settings.insert("rest_port".to_string(), json!(free));
+        }
+        let name = moved.name.clone();
+        if let Err(e) = self.instance_store.update(id, moved) {
+            tracing::warn!("Instance '{}': could not save the moved REST port: {}", name, e);
+            return None;
+        }
+        tracing::info!("Instance '{}': REST port {} is reserved by Windows, using {}", name, rest, free);
+        Some(free)
+    }
+
     /// 시작 전 포트 검사. 실행 중인 다른 인스턴스와 겹치거나 다른 프로그램이 잡고 있는 포트가 있으면
     /// `port_conflict` 응답을 돌려준다. 끄는 방법은 전역 설정(gui.portConflictCheck) 하나뿐이다
     fn port_conflict_response(&self, instance: &crate::instance::ServerInstance) -> Option<Value> {
@@ -303,6 +349,13 @@ impl Supervisor {
                 .into_iter()
                 .map(|(name, port)| format!("Port {} ({}) is in use by another program", port, name))
                 .collect();
+            // 예약 범위의 포트는 아무도 쓰지 않아도 서버가 열지 못한다 (사용 중 목록에 없어 따로 본다)
+            let reserved: Vec<String> = crate::validator::ports_reserved_by_windows(&ports)
+                .into_iter()
+                .filter(|(_, port)| !details.iter().any(|d| d.starts_with(&format!("Port {} ", port))))
+                .map(|(name, port)| format!("Port {} ({}) is reserved by Windows (excluded port range); choose another port", port, name))
+                .collect();
+            details.extend(reserved);
         }
         if details.is_empty() {
             return None;
@@ -502,11 +555,13 @@ impl Supervisor {
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
+        // REST 포트는 데몬이 접속하는 인스턴스 값이 기준이다 (정지도 그 값을 쓴다). 모듈 설정에 남은 옛 값
+        // (예: 설치가 기본 INI에서 읽어 온 8212)이 먼저 들어가면 모듈이 INI를 그 값으로 맞춰 데몬이 못 붙는다
+        if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         for (key, value) in &instance.module_settings {
             put(key, value.clone());
         }
         if let Some(v) = &instance.rest_host { put("rest_host", json!(v)); }
-        if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         if let Some(v) = &instance.rest_username { put("rest_username", json!(v)); }
         if let Some(v) = &instance.rest_password { put("rest_password", json!(v)); }
         put("protocol_mode", json!(&instance.protocol_mode));
@@ -569,6 +624,14 @@ impl Supervisor {
     /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다 (C12).
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
+
+        {
+            let mut s = sup.write().await;
+            let id = s.instance_store.get(server_name).or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name)).map(|i| i.id.clone());
+            if let Some(id) = id {
+                s.move_reserved_default_rest_port(&id);
+            }
+        }
 
         // ── 검사 (읽기 락) ──
         let (instance, _starting, hook) = {
@@ -1349,6 +1412,8 @@ impl Supervisor {
         module_name: &str,
         config: Value,
     ) -> Result<Value> {
+        sup.write().await.move_reserved_default_rest_port(instance_id);
+
         // ── 1) 검사 (읽기 락) ──
         let (mut instance, _starting, hook) = {
             let s = sup.read().await;
@@ -2861,6 +2926,60 @@ mod tests {
         let legacy = module_failure(&json!({"command": "sh", "args": []}), "e2e-mock", "get_launch_command");
         assert!(legacy.contains("e2e-mock") && legacy.contains("command") && legacy.contains("args"), "{}", legacy);
         assert!(module_failure(&Value::Null, "m", "f").contains("nothing"));
+    }
+
+    // 0.1.7 업그레이드: 0.1.6에서 만든 팰월드는 기본 REST 8212를 저장해 두었다. 8212가 Windows 예약 범위(8135-8234)에
+    // 들면 시작 전에 새 인스턴스처럼 옮겨 저장해야 서버가 뜬다. 사용자가 정한 기본값 아닌 포트는 그대로 둔다
+    #[test]
+    fn a_reserved_default_rest_port_moves_before_start() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("pal");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"pal\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = [\"rest\"]\n\n\
+             [[settings.fields]]\nname = \"rest_port\"\ntype = \"number\"\nport = true\nlabel = \"REST\"\ndefault = 8212\n",
+        )
+        .unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut old = crate::instance::ServerInstance::new("pal-016", "pal");
+        old.rest_port = Some(8212);
+        old.module_settings.insert("rest_port".into(), json!(8212));
+        let mut other = crate::instance::ServerInstance::new("pal-other", "pal");
+        other.rest_port = Some(8242);
+        let mut picked = crate::instance::ServerInstance::new("pal-picked", "pal");
+        picked.rest_port = Some(8200);
+        let (old_id, picked_id) = (old.id.clone(), picked.id.clone());
+        for inst in [old, other, picked] {
+            sup.instance_store.add(inst).unwrap();
+        }
+        let reserved = |p: u16| (8135..=8234).contains(&p);
+
+        assert_eq!(sup.move_default_rest_port_if(&old_id, reserved, reserved), Some(8252));
+        let moved = sup.instance_store.get(&old_id).unwrap();
+        assert_eq!((moved.rest_port, moved.module_settings["rest_port"].clone()), (Some(8252), json!(8252)));
+        let mut reloaded = crate::instance::InstanceStore::new(tmp.path().join("instances").to_str().unwrap());
+        reloaded.load().unwrap();
+        assert_eq!(reloaded.get(&old_id).unwrap().rest_port, Some(8252));
+
+        assert_eq!(sup.move_default_rest_port_if(&picked_id, reserved, reserved), None);
+        assert_eq!(sup.instance_store.get(&picked_id).unwrap().rest_port, Some(8200));
+    }
+
+    // 실제 PC: 새 팰월드의 REST 포트를 예약 범위 밖(8242)으로 옮겼는데 모듈 설정에 기본 INI의 8212가 남아,
+    // 모듈이 시작 때 INI를 8212로 맞추고 데몬은 8242로 접속해 REST가 끝내 닿지 않았다
+    #[test]
+    fn modules_get_the_instance_rest_port_over_a_stale_module_setting() {
+        let mut inst = crate::instance::ServerInstance::new("pal", "palworld");
+        inst.rest_port = Some(8242);
+        inst.module_settings.insert("rest_port".into(), json!(8212));
+        let mut cfg = serde_json::Map::new();
+        Supervisor::insert_instance_fields(&mut cfg, &inst);
+        assert_eq!(cfg["rest_port"], json!(8242));
     }
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
