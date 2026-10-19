@@ -76,6 +76,17 @@ struct StartGuard {
     generation: u64,
 }
 
+tokio::task_local! {
+    /// 시작 요청을 받았을 때의 실행 세대. 시작 API는 모듈 validate(시작 전 점검)를 끝낸 뒤 시작을 부르므로,
+    /// 점검 중에 들어온 정지도 잡도록 그 전에 잡은 세대를 `StartGuard`의 기준으로 쓴다
+    pub static START_SINCE: u64;
+}
+
+/// `StartGuard`의 기준 세대: 시작 API가 미리 잡아 두었으면 그 값, 아니면 지금 값
+fn start_baseline(s: &Supervisor, id: &str) -> u64 {
+    START_SINCE.try_with(|g| *g).unwrap_or_else(|_| s.run_generation_of(id))
+}
+
 impl StartGuard {
     fn claim(set: &std::sync::Arc<std::sync::Mutex<HashSet<String>>>, id: &str, generation: u64) -> Option<Self> {
         let fresh = set.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
@@ -672,7 +683,7 @@ impl Supervisor {
             }
 
 
-            let Some(starting) = StartGuard::claim(&s.starting, &instance.id, s.run_generation_of(&instance.id)) else {
+            let Some(starting) = StartGuard::claim(&s.starting, &instance.id, start_baseline(&s, &instance.id)) else {
                 return Ok(json!({
                     "success": false,
                     "error": "start_in_progress",
@@ -719,6 +730,11 @@ impl Supervisor {
                                 server_name
                             );
                             return Ok(fail_val);
+                        }
+                        // 익스텐션이 띄우는 사이 정지가 들어왔으면 그 정지(server.stop)는 이미 끝났다: 다시 꺼서 되돌린다
+                        if starting.stop_requested(&*sup.read().await) {
+                            Self::undo_extension_start(sup, &instance.id, module_name).await;
+                            return Ok(start_cancelled(&instance.name));
                         }
                         // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
                         if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
@@ -913,6 +929,15 @@ impl Supervisor {
             "pid": pid,
             "message": format!("Server '{}' started with PID {} (non-managed mode)", server_name, pid)
         }))
+    }
+
+    /// 익스텐션이 맡은 시작이 끝났을 때 이미 정지가 들어와 있었다: 그 정지의 `server.stop`은 서버가 뜨기 전에 돌았으므로
+    /// 정지를 한 번 더 불러 익스텐션이 띄운 서버를 끈다
+    async fn undo_extension_start(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str) {
+        match Self::stop_server(sup, instance_id, module_name, false).await {
+            Ok(v) if v.get("success").and_then(Value::as_bool) != Some(false) => {}
+            other => tracing::warn!("Could not stop '{}' after a stop request during an extension start: {:?}", instance_id, other),
+        }
     }
 
     /// 서버 정지. `server_name`은 인스턴스 id (이름은 겹칠 수 있다); 예전 호출을 위해 이름도 받는다
@@ -1423,7 +1448,7 @@ impl Supervisor {
             }
 
 
-            let Some(starting) = StartGuard::claim(&s.starting, instance_id, s.run_generation_of(instance_id)) else {
+            let Some(starting) = StartGuard::claim(&s.starting, instance_id, start_baseline(&s, instance_id)) else {
                 return Ok(json!({
                     "success": false,
                     "error": "start_in_progress",
@@ -1472,6 +1497,11 @@ impl Supervisor {
                                 instance.name
                             );
                             return Ok(fail_val);
+                        }
+                        // 익스텐션이 띄우는 사이 정지가 들어왔으면 그 정지(server.stop)는 이미 끝났다: 다시 꺼서 되돌린다
+                        if starting.stop_requested(&*sup.read().await) {
+                            Self::undo_extension_start(sup, &instance.id, module_name).await;
+                            return Ok(start_cancelled(&instance.name));
                         }
                         // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
                         if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
@@ -3342,6 +3372,64 @@ mod tests {
         let s = sup.read().await;
         assert!(s.tracker.get_pid("stop-during-start").is_err(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-start").await.is_none(), "no server was left running");
+    }
+
+    /// 익스텐션이 맡은 시작(pre_start handled) 중에 들어온 정지: 정지 hook이 먼저 끝나 익스텐션 서버가 뒤늦게 뜬다.
+    /// 시작은 취소로 끝나고, 익스텐션의 정지를 다시 불러 그 서버를 끈다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_during_an_extension_start_stops_what_the_extension_started() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let ext_root = tmp.path().join("extensions");
+        let ext = ext_root.join("box");
+        std::fs::create_dir_all(&ext).unwrap();
+        let manifest = json!({
+            "id": "box", "name": "box", "version": "0.1.0",
+            "python_modules": { "m": "m.py" },
+            "hooks": {
+                "server.pre_start": { "module": "m", "function": "start" },
+                "server.stop": { "module": "m", "function": "stop" },
+            },
+        });
+        std::fs::write(ext.join("manifest.json"), manifest.to_string()).unwrap();
+        let log = tmp.path().join("hook.log");
+        std::fs::write(
+            ext.join("m.py"),
+            format!(
+                "import json, sys, time\nfn = sys.argv[1]\nif fn == 'start':\n    time.sleep(2)\n\
+                 open({log:?}, 'a').write(fn + '\\n')\nprint(json.dumps({{'handled': True, 'success': True}}))\n",
+                log = log.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enable("box").unwrap();
+        sup.extension_manager = Some(std::sync::Arc::new(tokio::sync::RwLock::new(mgr)));
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-during-ext-start".into();
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+
+        let starter = {
+            let sup = sup.clone();
+            tokio::spawn(async move { Supervisor::start_server(&sup, "stop-during-ext-start", "game", json!({})).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        let stopped = Supervisor::stop_server(&sup, "stop-during-ext-start", "game", false).await.unwrap();
+        assert_ne!(stopped["success"], false, "{stopped}");
+
+        let started = starter.await.unwrap().unwrap();
+        assert_eq!(started["error_code"], "start_cancelled", "{started}");
+        let calls = std::fs::read_to_string(&log).unwrap();
+        assert_eq!(calls.lines().collect::<Vec<_>>(), ["stop", "start", "stop"], "the extension's server is stopped again");
     }
 
     /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
