@@ -766,9 +766,26 @@ fn check_elevated_target_in(dir: &str, env: &dyn Fn(&str) -> Option<String>) -> 
     Ok(())
 }
 
-/// 권한을 줄 폴더의 내용 검사: 아직 없거나, 비었거나, 사바쨩 설치 폴더(설치 표시나 실행 파일)여야 한다.
+fn is_link_or_reparse_point(path: &Path) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return false };
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    meta.file_type().is_symlink()
+}
+
+/// 권한을 줄 폴더의 내용 검사: 링크·정션을 거치지 않고, 아직 없거나, 비었거나, 사바쨩 설치 폴더(설치 표시나 실행 파일)여야 한다.
 /// `icacls /T`가 하위 전체에 권한을 주므로 다른 파일이 든 기존 폴더는 받지 않는다
 fn check_elevated_contents(dir: &Path) -> Result<(), String> {
+    // 정션·심볼릭 링크를 따라가면 다른 폴더(System32 등)에 권한이 걸린다: 자신과 위 폴더 모두 확인
+    if dir.ancestors().any(is_link_or_reparse_point) {
+        return Err("refusing a path through a link or junction".into());
+    }
     if !dir.exists()
         || is_empty_dir(dir)
         || dir.join(uninstall::INSTALL_MARKER).is_file()
@@ -1239,6 +1256,19 @@ mod tests {
 
         std::fs::write(root.join(uninstall::INSTALL_MARKER), b"").unwrap();
         assert!(check_elevated_contents(&root).is_ok(), "a folder the installer made");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn elevation_refuses_a_link_or_a_folder_below_a_link() {
+        let root = std::env::temp_dir().join(format!("saba-elevate-link-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
+        assert!(check_elevated_contents(&root.join("link")).is_err(), "the folder itself is a link");
+        assert!(check_elevated_contents(&root.join("link").join("Saba-chan")).is_err(), "a parent is a link");
+        assert!(check_elevated_contents(&root.join("real").join("Saba-chan")).is_ok());
         std::fs::remove_dir_all(&root).unwrap();
     }
 
