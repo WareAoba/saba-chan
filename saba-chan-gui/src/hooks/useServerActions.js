@@ -588,6 +588,7 @@ export function useServerActions({
                             if (consecutiveStopped >= 5) {
                                 resolved = true;
                                 setProgressBar(null);
+                                revertOptimistic(name);
                                 safeShowToast(
                                     t('servers.start_failed_toast', { error: 'Process exited immediately' }),
                                     'error',
