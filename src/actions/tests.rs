@@ -416,6 +416,20 @@ async fn module_queries_are_safe_read_actions_on_every_surface() {
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
 }
 
+/// 느린 러너에서는 계획 실행이 뒤로 넘어간다(`running`): 끝날 때까지 보고 결과를 돌려준다
+async fn finished(mut done: Value) -> Value {
+    let waited = std::time::Instant::now();
+    while done["running"] == true {
+        assert!(waited.elapsed() < std::time::Duration::from_secs(180), "the plan never finished: {}", done);
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let status = run_status(done["runId"].as_str().unwrap(), &gui()).unwrap();
+        if status["done"] == true {
+            done = status["result"].clone();
+        }
+    }
+    done
+}
+
 #[tokio::test]
 async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     let (state, _id, _tmp) = server().await;
@@ -443,7 +457,7 @@ async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     // 다른 사람은 실행하지 못하고, 요청자가 누르면 순서대로 한 번에
     let plan_id = planned["planId"].as_str().unwrap();
     assert_eq!(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("someone", false)).await.unwrap_err().code, "plan_not_yours");
-    let done = run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("owner", false)).await.unwrap();
+    let done = finished(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("owner", false)).await.unwrap()).await;
     assert_eq!(done["success"], true, "{}", done);
     let new_id = done["steps"][0]["instance"].as_str().unwrap().to_string();
     assert_eq!(done["steps"][1]["status"], "done");
@@ -462,17 +476,8 @@ async fn a_failed_step_stops_the_plan_and_the_rest_is_skipped() {
         { "id": "backup.create", "instance": "@1", "input": {} },
     ]);
     let planned = plan_steps(&state, &steps, &gui()).await.unwrap();
-    // 빈 lifecycle.py라 시작이 실패한다. 느린 러너에서는 실행이 뒤로 넘어가므로(`running`) 끝날 때까지 본다
-    let mut done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap();
-    let waited = std::time::Instant::now();
-    while done["running"] == true {
-        assert!(waited.elapsed() < std::time::Duration::from_secs(180), "the plan never finished: {}", done);
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let status = run_status(done["runId"].as_str().unwrap(), &gui()).unwrap();
-        if status["done"] == true {
-            done = status["result"].clone();
-        }
-    }
+    // 빈 lifecycle.py라 시작이 실패한다
+    let done = finished(run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap()).await;
     assert_eq!((done["success"].as_bool(), done["stoppedAt"].as_i64()), (Some(false), Some(2)), "{}", done);
     let statuses: Vec<&str> = done["steps"].as_array().unwrap().iter().map(|s| s["status"].as_str().unwrap()).collect();
     assert_eq!(statuses, ["done", "failed", "skipped"]);
