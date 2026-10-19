@@ -2287,8 +2287,27 @@ impl Supervisor {
         Ok(result)
     }
 
+    /// 모듈 `list_versions`로 그 설정(서버 종류 등)에서 받을 수 있는 최신 버전 (`latest.release`, 예전 모양 `latest_release`).
+    /// 찾지 못하면 그 까닭(모듈 실행 오류, 모듈이 준 메시지)
+    pub async fn latest_version(module_path: &str, settings: &Value) -> std::result::Result<String, String> {
+        match crate::plugin::run_plugin(module_path, "list_versions", json!({ "settings": settings })).await {
+            Ok(v) => v
+                .pointer("/latest/release")
+                .or_else(|| v.get("latest_release"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .ok_or_else(|| v.get("message").and_then(Value::as_str).unwrap_or("list_versions gave no latest release").to_string()),
+            Err(e) => {
+                tracing::warn!("Failed to fetch versions from '{}': {}", module_path, e);
+                Err(e.to_string())
+            }
+        }
+    }
+
     /// Install a server: download binary, setup directory, optional initial settings.
     /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
+    /// `instance`: 그 인스턴스의 설정과 격리 실행이 쓸 데이터 폴더 (처음 설치와 같은 값을 받는다)
+    #[allow(clippy::too_many_arguments)]
     pub async fn install_server(
         sup: &tokio::sync::RwLock<Self>,
         module_name: &str,
@@ -2297,6 +2316,7 @@ impl Supervisor {
         jar_name: Option<&str>,
         accepted_agreements: &[String],
         initial_settings: Option<Value>,
+        instance: Option<(Value, Vec<String>)>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
@@ -2341,6 +2361,10 @@ impl Supervisor {
         }
         if let Some(settings) = initial_settings {
             config["initial_settings"] = settings;
+        }
+        if let Some((settings, data_dirs)) = instance {
+            config["settings"] = settings;
+            config[crate::sandbox::INSTANCE_DATA_DIRS] = json!(data_dirs);
         }
 
         // 서버 파일과 Java를 받는다: 기본 120초로는 느린 회선에서 중간에 끊긴다 (처음 설치와 같은 한도)
