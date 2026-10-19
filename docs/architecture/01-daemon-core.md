@@ -50,7 +50,7 @@
 10. Supervisor에 `extension_manager`와 `provision_tracker`를 주입한다(`main.rs:355-359`).
 11. **백그라운드 태스크 기동**
     - 익스텐션 `daemon.startup` 훅 비동기 디스패치(`main.rs:364-410`). 진행 상황은 `ExtensionInitTracker`에 기록되고 `/api/extensions/init-status`로 노출된다.
-    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes()`를 호출한다(`main.rs:416-463`). 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`). 작업 잠금이 잡혀 있으면(백업 중) 풀릴 때까지 최대 30분 기다리고, 그사이 사용자가 정지·시작하면 그만둔다.
+    - 프로세스 모니터: 2초 주기로 `process_monitor::get_running_processes_async()` 스냅샷을 찍고 `sup.monitor_processes_taken_at()`를 호출한다(`main.rs:416-463`). 스냅샷은 락 밖에서 찍으므로, 찍기 시작한 시각 뒤에 추적한 PID는 스냅샷에 없어도 끝났다고 보지 않고 다음 주기로 넘긴다. 이때 supervisor **write lock**을 잡는다. 크래시로 끝난 서버는 `take_pending_restarts`로 모아 락 밖에서 `server::auto_restart`로 다시 띄운다(`main.rs:456-461`). 작업 잠금이 잡혀 있으면(백업 중) 풀릴 때까지 최대 30분 기다리고, 그사이 사용자가 정지·시작하면 그만둔다.
     - 업데이트 주기 확인 `spawn_update_scheduler`(`main.rs:466`)와 인스턴스 예약 작업(백업·재시작·공지·업데이트) 실행기 `backup::spawn_scheduler`(`main.rs:468`, 30초 주기)를 띄운다.
     - 하트비트 reaper: 30초 주기로 90초 넘게 하트비트가 없는 클라이언트를 정리한다(`main.rs:483-497`, `handlers/client.rs:116-136`).
     - 렌더러 watchdog은 없다. 인터페이스가 모두 떠나도 데몬은 남고 GUI를 다시 띄우지 않는다. 다음에 켠 GUI·CLI가 다시 붙는다(C14).
