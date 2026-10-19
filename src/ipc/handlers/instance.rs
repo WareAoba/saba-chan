@@ -301,10 +301,7 @@ pub async fn create_instance(
         };
         // 한 폴더에 서버 둘이면 서로의 월드·설정을 덮어쓴다
         if let Some(dir) = instance.working_dir.as_deref() {
-            let taken = supervisor.instance_store.list().iter().find(|o| {
-                o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), std::path::Path::new(dir)))
-            });
-            if let Some(other) = taken {
+            if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(dir), &instance.id) {
                 let error = json!({
                     "success": false,
                     "error": format!("Server '{}' already uses this folder", other.name),
@@ -1078,16 +1075,10 @@ pub async fn update_instance_settings(
         Some(None) => return super::backup::instance_busy(),
         held => held.flatten(),
     };
-    // 다른 인스턴스가 쓰는 폴더(서버 폴더나 인스턴스 폴더)로는 옮기지 않는다: 만들 때처럼 한 폴더에 서버 둘을 두지 않는다.
+    // 다른 인스턴스가 쓰는 폴더(서버 폴더나 인스턴스 폴더, 그 안이나 바깥)로는 옮기지 않는다: 만들 때처럼 한 폴더에 서버 둘을 두지 않는다.
     // 그 인스턴스의 서버·설치·업데이트가 옮긴 서버의 파일을 덮어쓴다
     if let Some(dir) = settings.get("working_dir").and_then(|v| v.as_str()).filter(|d| moves_folder && !d.is_empty()) {
-        let dir = std::path::Path::new(dir);
-        let taken = supervisor.instance_store.list().iter().find(|i| {
-            i.id != id
-                && (i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), dir))
-                    || saba_chan_updater_lib::same_path(&supervisor.instance_store.instance_dir(&i.id), dir))
-        });
-        if let Some(other) = taken {
+        if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(dir), &id) {
             let error = json!({
                 "success": false,
                 "error": format!("Server '{}' already uses this folder", other.name),
@@ -2228,12 +2219,22 @@ mod tests {
             sup.instance_store.add(other).unwrap();
             sup.instance_store.instance_dir(&other_id).to_string_lossy().into_owned()
         };
-        for dir in [&theirs, &their_instance_dir] {
+        // 그 폴더의 안이나 바깥도 같다: 한쪽의 복원·삭제가 다른 쪽 서버 파일까지 치운다
+        let inside = tmp.path().join("theirs").join("sub").to_string_lossy().into_owned();
+        let outside = tmp.path().to_string_lossy().into_owned();
+        for dir in [&theirs, &their_instance_dir, &inside, &outside] {
             let taken = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": dir }))).await).await;
             assert_eq!(taken.status, 409, "{dir}: {}", taken.body);
             assert_eq!(taken.body["error_code"], "working_dir_in_use");
             assert_eq!(taken.body["instance"], "other");
+            let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "new", "module_name": "game", "working_dir": dir }))).await).await;
+            assert_eq!(made.status, 409, "{dir}: {}", made.body);
+            assert_eq!(made.body["error_code"], "working_dir_in_use");
         }
+        // 이름만 비슷한 옆 폴더는 다른 폴더다
+        let beside = tmp.path().join("theirs2").to_string_lossy().into_owned();
+        let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": beside }))).await).await;
+        assert_eq!(moved.status, 200, "{}", moved.body);
     }
 
     #[tokio::test]

@@ -324,16 +324,23 @@ pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
 /// 같은 파일을 가리키는 경로인지. 구성 요소로 비교해 `./`는 무시하고,
 /// Windows 파일 이름은 대소문자를 가리지 않는다
 pub fn same_path(a: &Path, b: &Path) -> bool {
-    let parts = |p: &Path| -> Vec<String> {
-        p.components()
-            .filter(|c| !matches!(c, std::path::Component::CurDir))
-            .map(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                if cfg!(windows) { s.to_lowercase() } else { s.into_owned() }
-            })
-            .collect()
-    };
-    parts(a) == parts(b)
+    path_parts(a) == path_parts(b)
+}
+
+/// 같은 폴더이거나 한쪽이 다른 쪽 안에 있는지 (`same_path`와 같은 비교). 빈 경로는 어디와도 겹치지 않는다
+pub fn paths_overlap(a: &Path, b: &Path) -> bool {
+    let (a, b) = (path_parts(a), path_parts(b));
+    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.starts_with(&a))
+}
+
+fn path_parts(p: &Path) -> Vec<String> {
+    p.components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .map(|c| {
+            let s = c.as_os_str().to_string_lossy();
+            if cfg!(windows) { s.to_lowercase() } else { s.into_owned() }
+        })
+        .collect()
 }
 
 /// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
