@@ -346,6 +346,8 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         keys.retain(|k| matches!(k.as_str(), "gui" | "relay" | "chatbot") || crate::config_store::ConfigStore::is_client_section(k));
         keys
     } else {
+        // 챗봇 절은 챗봇 저장과 같은 차례를 지킨다
+        let _turn = if sections.contains_key("chatbot") { Some(super::chatbot::SAVE_LOCK.lock().await) } else { None };
         match state.config_store.import_sections(sections).await {
             Ok(keys) => {
                 // 일반 설정 저장과 같이 실행 중인 포트 검사도 맞춘다
@@ -486,6 +488,25 @@ mod tests {
             assert_eq!(res.body["instances"]["skipped"][0]["reason"], "busy", "{}", res.body);
         }
         assert_eq!(state.supervisor.read().await.instance_store.get("held-by-import-test").unwrap().name, "old");
+    }
+
+    /// 가져오기의 챗봇 절도 챗봇 저장과 한 번에 하나씩: 겹치면 한쪽이 옛 값으로 다른 쪽 저장을 지운다
+    #[tokio::test]
+    async fn an_imported_chatbot_section_waits_for_a_chatbot_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Map::new();
+        // 빈 절은 지금 값을 그대로 다시 쓴다 (같은 프로세스의 다른 시험과 설정 파일을 같이 쓴다)
+        config.insert("chatbot".into(), json!({}));
+        let bundle = Bundle { meta: meta(), config, instances: vec![], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, None).await;
+        let turn = super::super::chatbot::SAVE_LOCK.lock().await;
+        let req: ImportRequest = serde_json::from_value(json!({ "path": path })).unwrap();
+        let run = tokio::spawn(import(State(state), Json(req)));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!run.is_finished(), "the import wrote the chatbot settings while a chatbot save was in progress");
+        drop(turn);
+        let res = tokio::time::timeout(std::time::Duration::from_secs(5), run).await.unwrap().unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     /// 가져온 포트 충돌 검사 설정은 일반 설정 저장처럼 바로 실행 중인 검사에 반영된다
