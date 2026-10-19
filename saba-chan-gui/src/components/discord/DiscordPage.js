@@ -130,6 +130,10 @@ export function DiscordPage({
     const mainRef = useSwapAnimation(`${view.kind}:${view.id ?? ''}`);
     const [showMainNarrow, setShowMainNarrow] = useState(!!initialView);
     const [cloudError, setCloudError] = useState('');
+    // 릴레이 확인이 연달아 실패한 이유 (노드 목록은 연결됐을 때만 읽으므로 그 오류만으로는 실패를 알 수 없다)
+    const relayError = useDiscordStore((s) => s.relayError);
+    // 끊긴 동안은 릴레이 실패가 이유다 (연결됐을 때 남은 노드 목록 오류는 지난 일)
+    const connectionError = relayConnected ? cloudError : relayError;
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
     const botConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
     const [membersLoading, setMembersLoading] = useState(null);
@@ -158,7 +162,7 @@ export function DiscordPage({
         hostId: discordCloudHostId,
         connected: relayConnected,
         connecting: relayConnecting,
-        error: cloudError,
+        error: connectionError,
         loaded: botConfigLoaded,
     });
 
@@ -499,14 +503,14 @@ export function DiscordPage({
                                 cloudState={cloudState}
                                 hostId={discordCloudHostId}
                                 relayUrl={relayUrl}
-                                cloudError={cloudError}
+                                cloudError={connectionError}
                                 nodeCount={cloudNodes.length}
                                 botStatus={discordBotStatus}
                                 agentReplaced={agentReplaced}
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}
-                                onReload={loadNodes}
+                                onReload={relayConnected ? loadNodes : () => useDiscordStore.getState().checkStatus()}
                                 onDisconnect={disconnect}
                                 onStartAgent={handleStartDiscordBot}
                                 nodes={cloudNodes}

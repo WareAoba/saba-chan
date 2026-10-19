@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * 모달 닫기 트랜지션 훅.
@@ -21,6 +21,9 @@ export function useModalClose(onClose, duration = 220) {
             onClose();
         }, duration);
     }, [onClose, duration]);
+
+    // 닫히는 중에 모달이 사라지면 뒤늦게 onClose를 부르지 않는다
+    useEffect(() => () => clearTimeout(timerRef.current), []);
 
     return { isClosing, requestClose };
 }

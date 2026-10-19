@@ -487,10 +487,11 @@ pub async fn create_instance(
                             // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
                             // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
                             let result = {
-                                // download 방식 모듈은 먼저 list_versions로 최신 버전 조회
+                                // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
+                                // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
                                 let version = if install_config.method == "download" {
                                     match crate::plugin::run_plugin(
-                                        &module_path, "list_versions", serde_json::json!({}),
+                                        &module_path, "list_versions", serde_json::json!({ "settings": &install_settings }),
                                     ).await {
                                         Ok(ver_result) => {
                                             ver_result.get("latest")
@@ -2086,6 +2087,54 @@ mod tests {
         assert_eq!(body["error_code"], "instance_busy");
         drop(other);
         assert!(super::super::backup::BusyGuard::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
+    }
+
+    /// 새 인스턴스의 버전을 고를 때 인스턴스 설정(서버 종류 등)을 넘긴다: 그 종류로 받을 수 있는 최신이 다르다
+    #[tokio::test]
+    async fn the_version_for_a_new_instance_is_chosen_with_its_settings() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"server_type\"\ntype = \"text\"\ndefault = \"vanilla\"\n\n[install]\nmethod = \"download\"\n",
+        )
+        .unwrap();
+        // 설정을 받았을 때만 버전을 알려 준다. 못 받으면 "최신 버전을 찾지 못함"으로 끝난다.
+        // Windows에서는 격리 실행이라 모듈이 임시 폴더 밖에 파일을 쓸 수 없어 설치 결과로 확인한다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
+             latest = {'release': '1.0'} if config.get('settings', {}).get('server_type') == 'paper' else {}\n    \
+             print(json.dumps({'success': True, 'latest': latest}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        crate::ipc::internal::into_internal(
+            super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game", "module_settings": { "server_type": "paper" } }))).await,
+        )
+        .await;
+        // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
+        let mut progress = None;
+        for _ in 0..1200 {
+            progress = state.provision_tracker.get("a").filter(|p| p.done);
+            if progress.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let progress = progress.expect("provisioning finished");
+        assert_eq!(progress.error, None, "list_versions did not get the instance settings");
     }
 
     #[tokio::test]
