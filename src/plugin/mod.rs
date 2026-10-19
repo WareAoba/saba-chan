@@ -428,6 +428,12 @@ async fn run_plugin_inner(
             cmd.env("SABA_EXTENSION_DATA_DIR", data);
         }
     }
+    // import된 익스텐션(SteamCMD 등)이 받은 파일을 둘 곳: `<뿌리>/<익스텐션 id>`
+    let extension_root = match &isolation {
+        Some(iso) => iso.extension_root.clone(),
+        None => crate::sandbox::extension_data_root(&saba_chan_updater_lib::constants::resolve_data_dir(), None),
+    };
+    cmd.env("SABA_EXTENSION_DATA_ROOT", extension_root);
 
     apply_creation_flags(&mut cmd);
 

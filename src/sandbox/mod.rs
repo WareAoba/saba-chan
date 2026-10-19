@@ -40,11 +40,26 @@ fn component_in(entry: &Path, modules: &Path, extensions: &Path) -> Option<(Stri
         let Ok(parent) = std::fs::canonicalize(parent) else { continue };
         for (root, prefix) in &roots {
             if root.as_ref() == Some(&parent) {
-                return Some((format!("{}{}", prefix, name.to_string_lossy()), dir.to_path_buf()));
+                let name = name.to_string_lossy();
+                let id = if *prefix == saba_chan_updater_lib::relay::EXTENSION_PREFIX {
+                    extension_id_in(dir, &name).unwrap_or_else(|| name.to_string())
+                } else {
+                    name.to_string()
+                };
+                return Some((format!("{}{}", prefix, id), dir.to_path_buf()));
             }
         }
     }
     None
+}
+
+/// 익스텐션 폴더의 manifest id. 폴더 이름은 id의 '-'를 '_'로 바꾼 것이라 신뢰 기록의 키(id)와 다를 수 있다.
+/// 그 폴더 이름에 맞지 않는 id(다른 익스텐션을 사칭)는 받지 않는다
+fn extension_id_in(dir: &Path, folder: &str) -> Option<String> {
+    let content = std::fs::read_to_string(dir.join("manifest.json")).ok()?;
+    let manifest: serde_json::Value = serde_json::from_str(content.trim_start_matches('\u{feff}')).ok()?;
+    let id = manifest.get("id")?.as_str()?;
+    (id.replace('-', "_") == folder).then(|| id.to_string())
 }
 
 /// 진입 파일의 신뢰 표시. 모듈·익스텐션 폴더 밖이면 확인되지 않은 것으로 본다
@@ -192,13 +207,19 @@ struct StoredVerdict {
     /// 검사한 시각 (유닉스 초)
     #[serde(default)]
     at: u64,
+    /// 이 결과를 적은 판정 규칙의 판. 그보다 옛 판의 찾음은 다시 본다
+    #[serde(default)]
+    format: u32,
 }
+
+/// 판정 규칙의 판. 1: MpCmdRun이 검사하지 못한 것(종료 코드 2)을 찾음으로 보지 않는다
+const VERDICT_FORMAT: u32 = 1;
 
 fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-/// 옛 형식({sha: bool})은 시각 0으로 옮긴다: 찾음은 그대로 남고 깨끗함은 다시 본다. 깨진 파일은 비운다
+/// 옛 형식({sha: bool})은 시각 0으로 옮긴다: 깨끗함은 다시 본다. 옛 판의 찾음은 잘못 적었을 수 있어 버린다. 깨진 파일은 비운다
 fn parse_entries(s: &str) -> BTreeMap<String, StoredVerdict> {
     #[derive(serde::Deserialize)]
     #[serde(untagged)]
@@ -209,9 +230,10 @@ fn parse_entries(s: &str) -> BTreeMap<String, StoredVerdict> {
     let raw: BTreeMap<String, Entry> = serde_json::from_str(s).unwrap_or_default();
     raw.into_iter()
         .map(|(k, e)| match e {
-            Entry::Legacy(detected) => (k, StoredVerdict { detected, at: 0 }),
+            Entry::Legacy(detected) => (k, StoredVerdict { detected, at: 0, format: 0 }),
             Entry::Current(v) => (k, v),
         })
+        .filter(|(_, v)| !v.detected || v.format >= VERDICT_FORMAT)
         .collect()
 }
 
@@ -245,7 +267,7 @@ impl VerdictCache {
     }
 
     pub fn put(&mut self, sha: String, detected: bool) {
-        self.entries.insert(sha, StoredVerdict { detected, at: now_secs() });
+        self.entries.insert(sha, StoredVerdict { detected, at: now_secs(), format: VERDICT_FORMAT });
     }
 
     pub fn save(&self) {
@@ -388,6 +410,8 @@ pub struct Isolation {
     pub temp: PathBuf,
     /// 익스텐션이 쓸 수 있는 전용 폴더 (`<data>/extension-data/<이름>`, 환경 변수 `SABA_EXTENSION_DATA_DIR`)
     pub data: Option<PathBuf>,
+    /// 이 실행이 import한 익스텐션들이 쓸 폴더의 뿌리 (`extension_data_root`, 환경 변수 `SABA_EXTENSION_DATA_ROOT`)
+    pub extension_root: PathBuf,
 }
 
 /// 데몬이 lifecycle 호출에 넣는 인스턴스 폴더 키 (설치·업데이트 호출은 `install_dir`만 넣는다)
@@ -409,6 +433,15 @@ fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
         return None;
     }
     Some(data_dir.join("extension-data").join(name))
+}
+
+/// import된 익스텐션이 `<뿌리>/<id>`에 받은 파일을 두는 뿌리. 격리된 실행(`isolated_tag`)은 구성요소마다 따로 둔다:
+/// 공용 폴더에 쓰게 하면 확인된 실행이 나중에 그 파일을 격리 없이 실행할 수 있다
+pub fn extension_data_root(data_dir: &Path, isolated_tag: Option<&str>) -> PathBuf {
+    match isolated_tag {
+        Some(tag) => data_dir.join("sandbox-data").join(tag).join("extension-data"),
+        None => data_dir.join("extension-data"),
+    }
 }
 
 /// PATH에서 런타임 실행 파일을 찾는다 (앞에서부터 모두. 앞쪽 것이 Oracle `javapath` 같은 바로가기일 수 있다)
@@ -701,12 +734,15 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         let _ = std::fs::create_dir_all(d);
         add(d, Access::Write);
     }
+    let extension_root = extension_data_root(&raw_data_dir, Some(&tag));
+    let _ = std::fs::create_dir_all(&extension_root);
+    add(&extension_root, Access::Write);
     // 런타임은 없어도 되는 권한: 주지 못하면 그 폴더만 빼고 띄운다 (Java를 쓰지 않는 구성요소까지 막지 않게)
     for runtime in runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
         grants.push_optional(&runtime, Access::Read, &data_dir, home);
     }
     let profile = appcontainer::profile_for(&key);
-    Some(Isolation { key, dir, profile, grants, pycache, temp, data })
+    Some(Isolation { key, dir, profile, grants, pycache, temp, data, extension_root })
 }
 
 /// 격리 실행을 띄운 결과
@@ -891,6 +927,22 @@ mod tests {
         assert_eq!(of(modules.join("lifecycle.py")), None);
     }
 
+    // 익스텐션 id에 '-'가 있으면 폴더 이름은 '_'로 바뀐다 (`ue4-ini` → `ue4_ini`). 신뢰 기록의 키는 id로 적으므로
+    // 폴더 이름이 아니라 manifest의 id로 찾아야 기록이 있는 공식 익스텐션이 격리되지 않는다
+    #[test]
+    fn an_extension_is_keyed_by_its_manifest_id_not_its_folder_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (modules, extensions) = (tmp.path().join("modules"), tmp.path().join("extensions"));
+        std::fs::create_dir_all(&modules).unwrap();
+        std::fs::create_dir_all(extensions.join("ue4_ini")).unwrap();
+        std::fs::write(extensions.join("ue4_ini/manifest.json"), br#"{"id":"ue4-ini"}"#).unwrap();
+        std::fs::create_dir_all(extensions.join("other_ext")).unwrap();
+        std::fs::write(extensions.join("other_ext/manifest.json"), br#"{"id":"steamcmd"}"#).unwrap();
+        let of = |entry: PathBuf| component_in(&entry, &modules, &extensions).map(|(key, _)| key);
+        assert_eq!(of(extensions.join("ue4_ini/ue4_ini.py")).as_deref(), Some("ext-ue4-ini"));
+        assert_eq!(of(extensions.join("other_ext/x.py")).as_deref(), Some("ext-other_ext"), "an id that is not this folder's is ignored");
+    }
+
     #[test]
     fn the_runtimes_the_daemon_knows_are_opened_to_the_sandbox() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1056,13 +1108,22 @@ mod tests {
         assert_eq!(cache.get_at("none", now), None);
     }
 
+    /// 0.1.7 전의 데몬은 Defender가 검사하지 못한 파일도 찾음으로 적었다. 그때 적은 찾음은 버리고 다시 본다
     #[test]
-    fn legacy_bool_verdicts_keep_detections() {
-        let entries = parse_entries(r#"{"bad":true,"clean":false,"new":{"detected":false,"at":5}}"#);
-        assert!(entries["bad"].detected);
+    fn detections_recorded_before_the_mpcmdrun_fix_are_rescanned() {
+        let entries = parse_entries(
+            r#"{"bad":true,"clean":false,"new":{"detected":false,"at":5},"old":{"detected":true,"at":9},"kept":{"detected":true,"at":9,"format":1}}"#,
+        );
+        assert!(!entries.contains_key("bad") && !entries.contains_key("old"));
+        assert!(entries["kept"].detected);
         assert_eq!((entries["clean"].detected, entries["clean"].at), (false, 0));
         assert_eq!(entries["new"].at, 5);
         assert!(parse_entries("not json").is_empty());
+
+        let mut cache = VerdictCache::in_memory();
+        cache.put("x".into(), true);
+        let saved = serde_json::to_string(&cache.entries).unwrap();
+        assert!(parse_entries(&saved)["x"].detected, "a detection saved now survives a reload");
     }
 
     #[cfg(unix)]
@@ -1123,6 +1184,16 @@ mod tests {
         for key in ["module-minecraft", "ext-", "ext-../x", "ext-.hidden", "ext-a/b", "/somewhere/else"] {
             assert_eq!(extension_data_dir(data, key), None, "{key}");
         }
+    }
+
+    /// 모듈이 import한 익스텐션(SteamCMD 등)이 받은 파일을 둘 곳. 격리된 실행은 구성요소마다 따로 써서
+    /// 확인된 실행이 쓰는 파일을 바꾸지 못하게 한다 (실제 PC: 격리된 팰월드가 공용 SteamCMD 폴더를 만들지 못해 설치가 막혔다)
+    #[test]
+    fn isolated_runs_get_their_own_extension_data_root() {
+        let data = Path::new("data");
+        assert_eq!(extension_data_root(data, None), data.join("extension-data"));
+        let tag = appcontainer::component_tag("module-palworld");
+        assert_eq!(extension_data_root(data, Some(&tag)), data.join("sandbox-data").join(&tag).join("extension-data"));
     }
 
     /// 폴더 권한은 프로필 SID에 남는다: 구성요소마다 프로필·캐시·임시 폴더가 달라야 서로의 권한을 쓰지 못한다

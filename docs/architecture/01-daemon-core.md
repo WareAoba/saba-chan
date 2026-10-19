@@ -88,7 +88,7 @@
 
 **데몬이 자식 프로세스에 넘기는 환경변수**
 
-- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). 토큰 값 자체는 넘기지 않는다. 공용 `modules/daemon_rcon.py`는 `SABA_TOKEN_PATH` 파일을 읽어 `X-Saba-Token`을 붙인다(`modules/daemon_rcon.py:48-54`).
+- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). 토큰 값 자체는 넘기지 않는다. 공용 `modules/daemon_rcon.py`는 `SABA_TOKEN_PATH` 파일을 읽어 `X-Saba-Token`을 붙인다(`modules/daemon_rcon.py:48-54`).
 - `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 `config.json`의 `gui.language`에서 읽고, 비었으면 OS 언어를 지원 언어로 맞춰 쓴다(`ConfigStore::ui_language`, `chat::i18n::os_language`. 중국어는 Hant·TW·HK·MO면 zh-TW, 그 밖은 zh-CN).
 
 ### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)

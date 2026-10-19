@@ -120,7 +120,7 @@
   - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/:84-96`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).
   - 공용 모듈 `i18n.py`, `daemon_rcon.py`를 modules 디렉토리에 내장본과 같게 맞춘다(`plg/:98-116,217-224`).
 - **확인되지 않은 익스텐션 (Windows)**: 신뢰 표시가 `verified`가 아니면 모듈과 같은 규칙을 따른다(02 문서 §2.1). hook 전에 폴더를 검사하고(`malware_detected`·`unscannable_file`·`scan_failed`), Python은 AppContainer 안에서 돈다(준비하지 못하면 `sandbox_unavailable`과 `component`).
-  - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다.
+  - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 모듈이 익스텐션을 import해 쓸 때(SteamCMD 등)는 `SABA_EXTENSION_DATA_ROOT/<id>`에 쓴다(격리된 모듈은 그 모듈만의 뿌리를 받는다, 02 §2.1). 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다.
   - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
 - **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plg/:421-488`).
 
