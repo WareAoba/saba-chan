@@ -725,8 +725,13 @@ mod tests {
     }
 
     /// 가드는 활성 목록에 없는 `extensions.<이름>` import만 막는다 (`-`와 `_`는 같다)
-    #[test]
-    fn import_guard_blocks_only_disabled_extensions() {
+    #[tokio::test]
+    async fn import_guard_blocks_only_disabled_extensions() {
+        // PATH의 첫 python이 Windows 스토어 스텁일 수 있으므로 데몬과 같은 탐지로 실제 인터프리터를 고른다
+        let Ok(python) = crate::python_env::detect_system_python().await else {
+            eprintln!("SKIP: Python >= 3.10 not found (python, python3, py)");
+            return;
+        };
         let tmp = tempfile::tempdir().unwrap();
         let guard = tmp.path().join("guard");
         std::fs::create_dir_all(&guard).unwrap();
@@ -739,15 +744,12 @@ mod tests {
         let sep = if cfg!(windows) { ";" } else { ":" };
         let pypath = format!("{}{}{}", guard.display(), sep, tmp.path().join("root").display());
         let probe = "import importlib\nfor m in ('steamcmd', 'ue4_ini'):\n    try:\n        importlib.import_module('extensions.' + m); print(m, 'ok')\n    except ImportError:\n        print(m, 'blocked')";
-        let Ok(out) = std::process::Command::new(if cfg!(windows) { "python" } else { "python3" })
+        let out = std::process::Command::new(&python)
             .args(["-c", probe])
             .env("PYTHONPATH", pypath)
             .env("SABA_ENABLED_EXTENSIONS", "ue4-ini")
             .output()
-        else {
-            eprintln!("SKIP: python not found");
-            return;
-        };
+            .expect("detected python must run");
         assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), "steamcmd blocked\nue4_ini ok");
     }
 
