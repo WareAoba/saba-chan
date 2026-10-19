@@ -181,6 +181,8 @@ pub enum PermCmd {
     Command { guild: String, key: String, level: Option<String> },
     /// Change the pinned owner of this Discord server
     Owner { guild: String, member: String },
+    /// Bring levels still kept on the relay (from before) into this PC. No members: all of them, after asking
+    Import { guild: String, members: Vec<String> },
 }
 
 #[derive(Subcommand, Debug)]

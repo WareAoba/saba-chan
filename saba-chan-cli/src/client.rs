@@ -669,6 +669,14 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/relay/node/:guildId/legacy-members — 릴레이에 남은 권한 부여값 `[{id, username, displayName, level}]`
+    pub async fn legacy_members(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/legacy-members", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
     /// GET /api/relay/host/:id/status — 릴레이가 이 PC(호스트)를 아는지. 실패하면 오류
     pub async fn host_status(&self, host_id: &str, relay_url: Option<&str>) -> Result<Value> {
         self.get(&with_query(
