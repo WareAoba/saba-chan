@@ -766,6 +766,20 @@ fn check_elevated_target_in(dir: &str, env: &dyn Fn(&str) -> Option<String>) -> 
     Ok(())
 }
 
+/// 권한을 줄 폴더의 내용 검사: 아직 없거나, 비었거나, 사바쨩 설치 폴더(설치 표시나 실행 파일)여야 한다.
+/// `icacls /T`가 하위 전체에 권한을 주므로 다른 파일이 든 기존 폴더는 받지 않는다
+fn check_elevated_contents(dir: &Path) -> Result<(), String> {
+    if !dir.exists()
+        || is_empty_dir(dir)
+        || dir.join(uninstall::INSTALL_MARKER).is_file()
+        || uninstall::looks_like_install_dir(dir)
+    {
+        Ok(())
+    } else {
+        Err("refusing an existing folder that is not a Saba-chan install".into())
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 fn elevate_create_dir(_dir: &Path) -> Result<(), String> {
     Err("Elevation is only supported on Windows".to_string())
@@ -1067,7 +1081,7 @@ pub fn run() {
     if let Some(pos) = args.iter().position(|a| a == "--elevate-mkdir") {
         if let Some(dir_str) = args.get(pos + 1) {
             let dir = Path::new(dir_str);
-            if let Err(e) = check_elevated_target(dir) {
+            if let Err(e) = check_elevated_target(dir).and_then(|_| check_elevated_contents(dir)) {
                 eprintln!("elevate-mkdir: {}", e);
                 std::process::exit(1);
             }
@@ -1209,6 +1223,22 @@ mod tests {
         let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
         std::fs::write(root.join(core), b"").unwrap();
         assert_eq!(dedicated_install_dir(&root), root, "an existing install is updated in place");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn elevation_grants_only_on_a_new_empty_or_saba_chan_folder() {
+        let root = std::env::temp_dir().join(format!("saba-elevate-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(check_elevated_contents(&root.join("new")).is_ok(), "a folder that does not exist yet");
+        assert!(check_elevated_contents(&root).is_ok(), "an empty folder");
+
+        std::fs::write(root.join("report.docx"), b"").unwrap();
+        assert!(check_elevated_contents(&root).is_err(), "a folder with someone else's files");
+
+        std::fs::write(root.join(uninstall::INSTALL_MARKER), b"").unwrap();
+        assert!(check_elevated_contents(&root).is_ok(), "a folder the installer made");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
