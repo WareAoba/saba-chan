@@ -363,7 +363,14 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
         let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
         match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
-            Ok(Ok(paths)) => Ok(Json(json!({ "success": true, "restored": paths, "pre_restore_backup": safety })).into_response()),
+            // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
+            Ok(Ok(done)) => Ok(Json(json!({
+                "success": true,
+                "restored": done.paths,
+                "pre_restore_backup": safety,
+                "links_not_restored": done.links_missed,
+            }))
+            .into_response()),
             Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
             Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
         }
