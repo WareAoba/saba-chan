@@ -405,11 +405,8 @@ async fn module_list_response(
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
-            // 구현한 함수 목록 (MK1): 모듈마다 처음 한 번 묻고 진입 파일이 바뀔 때까지 캐시한다. 데몬 락 밖에서, 모듈끼리 동시에
-            let asks: Vec<_> = modules.iter().map(|m| {
-                let entry = m.entry_path();
-                tokio::spawn(async move { crate::plugin::module_functions(&entry).await })
-            }).collect();
+            // 구현한 함수 목록 (MK1): 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
+            let asks: Vec<_> = modules.iter().map(|m| tokio::spawn(crate::plugin::module_functions_for_list(m.entry_path()))).collect();
             let mut modules: Vec<ExtensionInfo> = modules.into_iter().map(|m| module_info(m, versions)).collect();
             for (info, ask) in modules.iter_mut().zip(asks) {
                 info.functions = ask.await.ok().flatten();
@@ -437,6 +434,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
     let modules = state.supervisor.read().await.refresh_modules();
     if let Ok(m) = &modules {
         tracing::info!("Module cache refreshed. Found {} modules", m.len());
+        crate::plugin::prefetch_module_functions(m.iter().map(|m| m.entry_path()).collect());
     }
     let versions = component_versions(&state).await;
     let failed = state.supervisor.read().await.module_loader.load_errors();

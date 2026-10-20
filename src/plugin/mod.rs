@@ -412,30 +412,93 @@ pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
 pub const FUNCTIONS_QUERY: &str = "functions";
 const FUNCTIONS_TIMEOUT_SECS: u64 = 15;
 
-type FunctionCache = std::collections::HashMap<String, (Option<std::time::SystemTime>, Option<Vec<String>>)>;
-/// 진입 파일 경로 → (그때의 수정 시각, 목록). 모듈을 업데이트해 진입 파일이 바뀌면 다시 묻는다
-static MODULE_FUNCTIONS: std::sync::LazyLock<std::sync::Mutex<FunctionCache>> = std::sync::LazyLock::new(Default::default);
+/// 목록을 묻다 실패한(시간 초과·격리 차단 등) 결과는 이만큼만 기억한다: 일시적인 실패가 기능을 계속 가리지 않게
+const FUNCTIONS_RETRY_SECS: u64 = 60;
+/// `GET /api/modules`가 캐시에 없는 목록을 기다리는 한도. 넘기면 null로 답하고 묻기는 뒤에서 마저 한다
+pub const FUNCTIONS_LIST_WAIT_MS: u64 = 2000;
 
-/// `functions` 응답에서 목록을 읽는다. 옛 모듈("Unknown function")·실패·모양이 다른 답은 모름(None): 아무것도 숨기지 않는다
-fn function_list(result: Result<Value>) -> Option<Vec<String>> {
-    let value = result.ok()?;
-    if value.get("success").and_then(Value::as_bool) != Some(true) {
-        return None;
-    }
-    value.get("functions")?.as_array()?.iter().map(|f| f.as_str().map(str::to_string)).collect()
+/// `functions`에 대한 모듈의 답
+#[derive(Debug, Clone, PartialEq)]
+enum FunctionsAnswer {
+    Listed(Vec<String>),
+    /// `functions`를 모르는 옛 모듈("Unknown function"): 진입 파일이 바뀔 때까지 다시 묻지 않는다
+    Unknown,
+    /// 실패·모양이 다른 답: 잠시 뒤 다시 묻는다
+    Failed,
 }
 
-/// 모듈이 구현한 lifecycle 함수 목록. 진입 파일마다 처음 한 번 `functions`를 불러 두고, 모르면 None
-pub async fn module_functions(entry: &str) -> Option<Vec<String>> {
-    let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
-    if let Some((at, list)) = MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).get(entry) {
-        if *at == modified {
-            return list.clone();
+impl FunctionsAnswer {
+    fn list(&self) -> Option<Vec<String>> {
+        match self {
+            Self::Listed(list) => Some(list.clone()),
+            _ => None,
         }
     }
-    let list = function_list(spawn_plugin(entry, FUNCTIONS_QUERY, serde_json::json!({}), None, FUNCTIONS_TIMEOUT_SECS, None).await);
-    MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(entry.to_string(), (modified, list.clone()));
+}
+
+/// 진입 파일 경로 → (그때의 수정 시각, 답, 답한 때). 모듈을 업데이트해 진입 파일이 바뀌면 다시 묻는다
+type FunctionCache = std::collections::HashMap<String, (Option<std::time::SystemTime>, FunctionsAnswer, std::time::Instant)>;
+static MODULE_FUNCTIONS: std::sync::LazyLock<std::sync::Mutex<FunctionCache>> = std::sync::LazyLock::new(Default::default);
+/// 진입 파일마다 하나: 동시에 온 요청이 Python을 따로 띄우지 않고 먼저 물은 답을 기다린다
+type FunctionLocks = std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>;
+static FUNCTIONS_ASKING: std::sync::LazyLock<std::sync::Mutex<FunctionLocks>> = std::sync::LazyLock::new(Default::default);
+
+/// `functions` 응답을 읽는다. 목록은 성공 응답의 문자열 배열에서만 읽는다
+fn functions_answer(result: Result<Value>) -> FunctionsAnswer {
+    let Ok(value) = result else { return FunctionsAnswer::Failed };
+    if value.get("success").and_then(Value::as_bool) != Some(true) {
+        let unknown = value.get("message").and_then(Value::as_str).is_some_and(|m| m.starts_with("Unknown function"));
+        return if unknown { FunctionsAnswer::Unknown } else { FunctionsAnswer::Failed };
+    }
+    let list: Option<Vec<String>> = value.get("functions").and_then(Value::as_array)
+        .and_then(|items| items.iter().map(|f| f.as_str().map(str::to_string)).collect());
+    list.map_or(FunctionsAnswer::Failed, FunctionsAnswer::Listed)
+}
+
+/// 캐시에 남은 답이 아직 쓸 만한가: 진입 파일이 그대로이고, 실패면 다시 물을 때가 지나지 않았다
+fn still_valid(cached: &(Option<std::time::SystemTime>, FunctionsAnswer, std::time::Instant), modified: Option<std::time::SystemTime>) -> bool {
+    cached.0 == modified
+        && (cached.1 != FunctionsAnswer::Failed || cached.2.elapsed() < std::time::Duration::from_secs(FUNCTIONS_RETRY_SECS))
+}
+
+/// 캐시에 있는 목록 (Some(None)은 "물었지만 모름")
+fn cached_functions(entry: &str) -> Option<Option<Vec<String>>> {
+    let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
+    let cache = MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner());
+    cache.get(entry).filter(|c| still_valid(c, modified)).map(|c| c.1.list())
+}
+
+/// 모듈이 구현한 lifecycle 함수 목록. 진입 파일마다 `functions`를 한 번 불러 두고(동시 요청은 그 답을 함께 기다린다), 모르면 None
+pub async fn module_functions(entry: &str) -> Option<Vec<String>> {
+    if let Some(list) = cached_functions(entry) {
+        return list;
+    }
+    let lock = FUNCTIONS_ASKING.lock().unwrap_or_else(|e| e.into_inner()).entry(entry.to_string()).or_default().clone();
+    let _asking = lock.lock().await;
+    if let Some(list) = cached_functions(entry) {
+        return list;
+    }
+    let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
+    let answer = functions_answer(spawn_plugin(entry, FUNCTIONS_QUERY, serde_json::json!({}), None, FUNCTIONS_TIMEOUT_SECS, None).await);
+    let list = answer.list();
+    MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(entry.to_string(), (modified, answer, std::time::Instant::now()));
     list
+}
+
+/// 목록 응답용: 캐시에 없으면 뒤에서 묻기 시작하고 `FUNCTIONS_LIST_WAIT_MS`까지만 기다린다
+pub async fn module_functions_for_list(entry: String) -> Option<Vec<String>> {
+    if let Some(list) = cached_functions(&entry) {
+        return list;
+    }
+    let asking = tokio::spawn(async move { module_functions(&entry).await });
+    tokio::time::timeout(std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS), asking).await.ok()?.ok()?
+}
+
+/// 데몬 시작·모듈 새로고침 때 목록을 미리 물어 둔다 (목록 응답이 기다리지 않게)
+pub fn prefetch_module_functions(entries: Vec<String>) {
+    for entry in entries {
+        tokio::spawn(async move { module_functions(&entry).await });
+    }
 }
 
 /// 모듈이 밝힌 목록에 없는 선택 함수에 대한 답. 목록을 모르거나 필수 함수면 None(그대로 부른다)
@@ -992,17 +1055,65 @@ mod tests {
         assert!(unsupported_reply("functions", Some(&known)).is_none());
     }
 
-    /// 목록은 성공 응답의 문자열 배열에서만 읽는다. `functions`를 모르는 모듈("Unknown function")·실패·모양이 다른 답은 모름(None)
+    /// 목록은 성공 응답의 문자열 배열에서만 읽는다. `functions`를 모르는 옛 모듈은 Unknown(다시 묻지 않음), 실패·모양이 다른 답은 Failed
     #[test]
     fn the_function_list_is_read_only_from_a_successful_reply() {
         assert_eq!(
-            function_list(Ok(json!({ "success": true, "functions": ["validate", "diagnose_log"] }))),
-            Some(vec!["validate".to_string(), "diagnose_log".to_string()])
+            functions_answer(Ok(json!({ "success": true, "functions": ["validate", "diagnose_log"] }))),
+            FunctionsAnswer::Listed(vec!["validate".to_string(), "diagnose_log".to_string()])
         );
-        assert_eq!(function_list(Ok(json!({ "success": false, "message": "Unknown function: functions" }))), None);
-        assert_eq!(function_list(Ok(json!({ "success": true, "functions": "validate" }))), None);
-        assert_eq!(function_list(Ok(json!({ "success": true, "functions": ["validate", 3] }))), None);
-        assert_eq!(function_list(Err(anyhow::anyhow!("timed out"))), None);
+        assert_eq!(functions_answer(Ok(json!({ "success": false, "message": "Unknown function: functions" }))), FunctionsAnswer::Unknown);
+        assert_eq!(functions_answer(Ok(json!({ "success": false, "error_code": "sandbox_consent_required" }))), FunctionsAnswer::Failed);
+        assert_eq!(functions_answer(Ok(json!({ "success": true, "functions": "validate" }))), FunctionsAnswer::Failed);
+        assert_eq!(functions_answer(Ok(json!({ "success": true, "functions": ["validate", 3] }))), FunctionsAnswer::Failed);
+        assert_eq!(functions_answer(Err(anyhow::anyhow!("timed out"))), FunctionsAnswer::Failed);
+    }
+
+    /// 답은 진입 파일이 바뀌면 버린다. 실패는 잠시만 기억해 일시적인 실패가 기능을 계속 가리지 않게 한다
+    #[test]
+    fn a_failed_answer_is_retried_and_a_changed_entry_is_asked_again() {
+        let t = Some(std::time::SystemTime::UNIX_EPOCH);
+        let now = std::time::Instant::now();
+        let old = now.checked_sub(std::time::Duration::from_secs(FUNCTIONS_RETRY_SECS + 1)).unwrap();
+        assert!(still_valid(&(t, FunctionsAnswer::Unknown, old), t), "an old module's answer stays");
+        assert!(still_valid(&(t, FunctionsAnswer::Listed(vec![]), old), t));
+        assert!(still_valid(&(t, FunctionsAnswer::Failed, now), t));
+        assert!(!still_valid(&(t, FunctionsAnswer::Failed, old), t), "a failure is asked again later");
+        assert!(!still_valid(&(t, FunctionsAnswer::Listed(vec![]), now), Some(std::time::SystemTime::now())), "an updated module is asked again");
+    }
+
+    /// 동시에 온 요청은 Python을 한 번만 띄운다. 목록 응답은 느린 모듈을 짧게만 기다리고, 묻기는 뒤에서 마저 해 캐시에 남긴다
+    #[tokio::test]
+    async fn concurrent_asks_share_one_run_and_the_list_does_not_wait_for_a_slow_module() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("lifecycle.py");
+        std::fs::write(
+            &entry,
+            "import json, sys, time\nopen('runs.txt', 'a').write('x')\ntime.sleep(float(open('delay.txt').read()))\n\
+             print(json.dumps({'success': True, 'functions': ['validate']}))\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("delay.txt"), "0.5").unwrap();
+        let entry = entry.to_string_lossy().into_owned();
+        let asks: Vec<_> = (0..3).map(|_| {
+            let entry = entry.clone();
+            tokio::spawn(async move { module_functions(&entry).await })
+        }).collect();
+        for ask in asks {
+            assert_eq!(ask.await.unwrap(), Some(vec!["validate".to_string()]));
+        }
+        assert_eq!(std::fs::read_to_string(dir.path().join("runs.txt")).unwrap(), "x", "one run for concurrent asks");
+
+        // 모듈이 바뀌었고 느리다: 목록은 기다리지 않고 null, 뒤에서 마친 답은 캐시에 남는다
+        std::fs::write(dir.path().join("delay.txt"), "4").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let text = std::fs::read_to_string(&entry).unwrap();
+        std::fs::write(&entry, format!("{text}# changed\n")).unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(module_functions_for_list(entry.clone()).await, None);
+        assert!(started.elapsed() < std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS + 1500), "{:?}", started.elapsed());
+        assert_eq!(module_functions(&entry).await, Some(vec!["validate".to_string()]), "the background ask finishes and is shared");
+        assert_eq!(std::fs::read_to_string(dir.path().join("runs.txt")).unwrap(), "xx");
     }
 
     /// 공용 진입점 `run_lifecycle`은 표에 `functions`가 없으면 표의 키(자신 제외)로 답한다
