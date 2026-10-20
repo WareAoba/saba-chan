@@ -3,7 +3,7 @@
 //! relay가 주는 Ed25519 서명 manifest를 검증하고, 각 컴포넌트를 R2에서 받으며
 //! SHA-256을 확인한다. 어떤 컴포넌트를 설치할지도 업데이터의 규칙
 //! (`Component::try_from_manifest_key`)을 따르므로 업데이터가 모르는 키는 설치하지 않는다.
-//! `installer`는 받지 않고 실행 중인 자기 자신을 설치 폴더에 복사한다(`registry.rs`).
+//! `installer`는 받지 않는다. 호출자가 넘긴 제거기 exe(`InstallOptions.uninstaller_exe`)를 설치 폴더에 복사한다(`registry.rs`).
 
 use saba_chan_updater_lib::download::download_verified;
 use saba_chan_updater_lib::relay::{self, ManifestComponent, ReleaseManifest, RelayClient};
@@ -12,15 +12,27 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// relay 서명을 검증한 릴리즈 manifest. `fetch_latest`만 만들 수 있어, 설치 호출자가 검증을 건너뛸 수 없다
+/// (받은 모듈·익스텐션은 공식으로 기록된다)
+#[derive(Debug, Clone)]
+pub struct VerifiedRelease(ReleaseManifest);
+
+impl std::ops::Deref for VerifiedRelease {
+    type Target = ReleaseManifest;
+    fn deref(&self) -> &ReleaseManifest {
+        &self.0
+    }
+}
+
 /// 이 플랫폼의 최신 릴리즈 manifest (서명 검증 완료)
-pub async fn fetch_latest() -> Result<ReleaseManifest, String> {
+pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
     let client = RelayClient::new(relay::DEFAULT_RELAY_URL);
     let platform = relay::current_platform();
     match client
         .fetch_verified_release(relay::DEFAULT_CHANNEL, &platform, "", &relay::anon_client_id())
         .await
     {
-        Ok(Some(release)) => Ok(release.manifest),
+        Ok(Some(release)) => Ok(VerifiedRelease(release.manifest)),
         Ok(None) => Err(format!("No release is published for {}", platform)),
         Err(e) => Err(format!("Failed to fetch release: {}", e)),
     }

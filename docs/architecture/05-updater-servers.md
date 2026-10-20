@@ -185,8 +185,8 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 ## 2. Installer (`saba-chan/installer/gui`, Tauri, v0.1.2)
 
-크레이트 둘로 나뉜다(0.1.9, 무인 설치 설계 1단계).
-- `saba-chan-installer-core`(`installer/core`, Tauri 없음, 버전은 `versions.toml` installer와 같이 간다): 설치 순서 `install(InstallOptions, &dyn InstallHooks) -> InstallProgress`(마지막 진행을 돌려준다)와 `release.rs`(릴리즈 받기, 업데이터와 같은 relay 경로), `runtime_bootstrap.rs`, `registry.rs`, `shortcuts.rs`, `uninstall.rs`(`do_uninstall(keep_settings, on_progress)`). 진행은 `InstallHooks::progress`로 알리고, 쓸 수 없는 폴더는 `InstallHooks::elevate_create_dir`로 만든다. 기본 구현은 상승하지 않고 `elevation_failed`로 멈춘다(창 없는 설치). `InstallOptions.uninstaller_exe`가 있으면 그 exe를 설치 폴더의 `saba-chan-installer.exe`로 복사해 제거기로 등록하고 installed-manifest의 `installer`에 버전을 적는다. 없으면 둘 다 건너뛰고, Windows의 설치된 앱 항목도 만들지 않는다(실행할 제거 명령이 없다). 지금은 설치기 GUI만 이 crate를 쓴다. `saba-chan-cli install` 연동은 다음 단계다.
+크레이트 둘로 나뉜다(0.1.9 릴리즈부터, 무인 설치 설계 1단계. 크레이트 버전은 릴리즈 때 올린다).
+- `saba-chan-installer-core`(`installer/core`, Tauri 없음, 버전은 `versions.toml` installer와 같이 간다): 설치 순서 `install(InstallOptions, &dyn InstallHooks) -> InstallProgress`(마지막 진행을 돌려준다)와 `release.rs`(릴리즈 받기, 업데이터와 같은 relay 경로), `runtime_bootstrap.rs`, `registry.rs`, `shortcuts.rs`, `uninstall.rs`(`do_uninstall(keep_settings, on_progress)`). 진행은 `InstallHooks::progress`로 알리고(받기와 같은 작업에서 불리므로 막지 않는다), 쓸 수 없는 폴더는 `InstallHooks::elevate_create_dir`로 만든다. 기본 구현은 상승하지 않고 `elevation_failed`로 멈춘다(창 없는 설치). 릴리즈는 `release::fetch_latest`가 서명을 검증해 돌려주는 `VerifiedRelease`만 `InstallOptions.release`로 받는다(호출자가 만든 manifest로 검증을 건너뛸 수 없다). 받은 zip은 프로세스마다 따로인 `%TEMP%/saba-chan-installer-<pid>`에 둔다(`work_dir`, 창 인스톨러와 CLI가 함께 돌아도 서로 지우지 않는다). `InstallOptions.uninstaller_exe`가 있으면 그 exe를 설치 폴더의 `saba-chan-installer.exe`로 복사해 제거기로 등록하고 installed-manifest의 `installer`에 버전을 적는다. 없으면 둘 다 건너뛰고, Windows의 설치된 앱 항목도 만들지 않는다(실행할 제거 명령이 없다). 지금은 설치기 GUI만 이 crate를 쓴다. `saba-chan-cli install` 연동은 다음 단계다.
 - `saba-chan-installer`(`installer/gui/src-tauri`, Tauri): 화면 상태와 Tauri 커맨드, UAC 상승(`--elevate-mkdir`), 로그 초기화. `WindowHooks`가 진행을 `install:progress`·`uninstall:progress` 이벤트로 보내고 상승을 UAC로 한다. 제거기로 자기 exe를 넘긴다.
 
 아래 `lib.rs` 근거는 따로 적지 않으면 `installer/core/src/lib.rs`다.
@@ -197,7 +197,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 - 설치기가 새로 만든 폴더에만 `.saba-chan-install` 표시 파일을 둔다(원래 있던 빈 폴더는 나중에 다른 파일이 생길 수 있어 표시하지 않는다). 제거기는 이 표시가 있을 때만 폴더를 통째로 지우고, 없으면(0.1.4 이전 설치, 사용자 파일이 있던 기존 설치 폴더) 사바쨩 실행 파일·`locales` 폴더·공유 모듈 파일만 지운 뒤 폴더가 비었을 때만 지운다(`uninstall.rs` `remove_install_dir`).
 - 쓰기에 실패하면 창 인스톨러는 UAC로 권한을 올려 디렉터리를 만든다(`installer/gui/src-tauri/src/lib.rs` `elevate_create_dir`). 창 없는 설치는 상승하지 않고 멈춘다.
 - 데이터는 `%APPDATA%/saba-chan`에 둔다(updater constants와 같다).
-- 로그는 `%TEMP%/saba-chan-installer.log`에 남는다(`lib.rs:1001-1016`).
+- 로그는 `%TEMP%/saba-chan-installer.log`에 남는다(`log_file_path`, 초기화는 `installer/gui/src-tauri/src/lib.rs` `init_logging`).
 
 **`install` 단계** (`installer/core/src/lib.rs` `install`)
 
@@ -205,25 +205,25 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 |---|---|
 | 1 (0-5%) | install dir 생성, 쓰기 probe, 필요하면 권한 상승 |
 | 1.5 | 덮어쓰기 전에 이 설치 폴더의 프로세스를 끈다(`uninstall.rs` `stop_daemon_before_install`). `saba-core`는 실행 파일 경로(받은 경로와 실제 경로 둘 다)로 찾고, 못 찾으면 설정된 포트의 `/health` PID를 보고 그 exe가 이 폴더 안이거나 경로를 못 읽을 때만 대상으로 삼는다. `/api/daemon/shutdown` 후 20초 안에 안 끝나면(요청이 거절되면 바로) 그 PID만 kill. 이어서 이 폴더의 GUI exe와 `saba-chan-cli`를 그 PID만 끈다(트리째 끄면 데몬이 남았을 때 그 아래 게임 서버까지 죽는다). 포터블 GUI는 실행기가 임시 폴더에 풀어 띄우므로, 실행기를 끄기 전에 그 자손(`descendants_in`)을 찾고, 데몬을 끄기 전에 `GET /api/clients`에서 `installRoot`가 이 폴더인 GUI PID를 받아 둔다. 그 PID가 아직 GUI 이름의 프로세스일 때만 끈다. 단계마다 `%TEMP%\saba-chan-installer.log`에 남긴다 |
-| 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs:16-28` `fetch_latest`) |
-| 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`lib.rs:353-369`) |
-| 3 (10-45%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs:35-45`, `lib.rs:371-425`). 하나라도 실패하면 설치를 멈춘다 |
-| 3.5 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사(`lib.rs:856-884`) |
-| 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`lib.rs:437-476`, 915-948). 푼 폴더는 데몬 카탈로그 설치와 같이 `installed-files.json`에 해시를, `official-components.json`에 키를 적어 신뢰 표시가 `verified`가 된다(`release.rs` `install_addon_zip`). 기록하지 못하면 그 구성요소는 `unverified`로 격리되므로 설치 경고로 보인다. 실패는 경고로 남긴다 |
+| 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs` `fetch_latest`) |
+| 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`install`의 `installer_outdated`) |
+| 3 (10-45%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs` `installable`, `install`의 3단계). 하나라도 실패하면 설치를 멈춘다 |
+| 3.5 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사(`install_shared_modules`) |
+| 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`install`의 4단계, `install_required_extensions`). 푼 폴더는 데몬 카탈로그 설치와 같이 `installed-files.json`에 해시를, `official-components.json`에 키를 적어 신뢰 표시가 `verified`가 된다(`release.rs` `install_addon_zip`). 기록하지 못하면 그 구성요소는 `unverified`로 격리되므로 설치 경고로 보인다. 실패는 경고로 남긴다 |
 | 5 (55-70%) | portable Python(python-build-standalone, 판과 SHA-256은 `updater/src/python_pin.rs`에 고정)과 venv (`runtime_bootstrap.rs:42-51`). 실패해도 치명적으로 처리하지 않는다 |
 | 6 | 없음: 로컬 Discord bot이 없어져 portable Node·npm install 단계도 지워졌다 |
-| 7-8 | `setup_config`, 언어 설정을 `config.json`의 `gui.language`에 저장(`lib.rs:886-911`) |
-| 9 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan*` 등록. 키는 설치 폴더마다 따로다: 첫 설치본은 `Saba-chan`, 다른 폴더는 `Saba-chan-<폴더 해시 8자>`(`registry.rs:15-77`, `updater/src/uninstall_entry.rs:12-31`) |
+| 7-8 | `setup_config`, 언어 설정을 `config.json`의 `gui.language`에 저장(`setup_config`, `save_language_setting`) |
+| 9 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan*` 등록. 키는 설치 폴더마다 따로다: 첫 설치본은 `Saba-chan`, 다른 폴더는 `Saba-chan-<폴더 해시 8자>`(`registry.rs` `register_uninstall_entry`, `updater/src/uninstall_entry.rs`) |
 | 10 | 바탕화면·시작 메뉴 바로가기. 대상은 설치 폴더의 GUI exe(`saba-chan-gui.exe` 또는 0.1.1의 `Saba-chan.exe`)다. 만들기 전에 언어별 옛 이름(`shortcuts::ALL_SHORTCUT_NAMES`)의 바로가기를 지우되, `.lnk` 대상이 이 설치 폴더 안인 것만 지우고 시작 메뉴 폴더는 비었을 때만 지운다(`shortcuts::remove_shortcuts_into`). 제거(uninstall)도 같은 함수를 쓴다 |
-| 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`lib.rs:540-544`). 설치 폴더의 `saba-chan-installer.exe`가 지금 설치기와 같은 파일이면 `installer`에 자기 버전을 적는다(복사가 실패해 옛 사본이 남았으면 적지 않는다) |
+| 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`install`의 10.5단계). 설치 폴더의 `saba-chan-installer.exe`가 지금 설치기와 같은 파일이면 `installer`에 자기 버전을 적는다(복사가 실패해 옛 사본이 남았으면 적지 않는다) |
 
 레지스트리·바로가기·모듈·익스텐션처럼 실패해도 계속하는 단계는 완료 이벤트의 `warnings`·`log_path`로 보내고, 완료 화면이 목록과 로그 경로를 남겨 보여 준다(`installer.js` `enterComplete`). 설치를 멈추는 실패는 `step:'error'`에 `error_code`(`elevation_failed`·`fetch_failed`·`installer_outdated`·`download_failed`·`extract_failed`)와 `log_path`를 싣고, 화면은 코드별 번역 문구와 원문·로그 경로, [다시 시도](설정 시트로)를 보인다. "사바쨩 실행"이 실패하면 창을 닫지 않고 안내한다.
 
 코어 zip을 풀 때 덮어쓸 exe가 잠겨 있으면(켜진 서버의 `saba-runner` 등) 업데이터와 같은 `move_aside_binary`로 `.exe.old`로 비켜 두고 계속한다.
 
-Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(같은 manifest의 `module-*`, 폴백 없음), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/src-tauri/src/native.rs:149-184`).
+Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(같은 manifest의 `module-*`, 폴백 없음), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/src-tauri/src/native.rs:149-184`).
 
-설치와 제거는 한 번에 하나만 돈다. 이미 돌고 있으면 `start_install`·`start_uninstall`이 `busy`로 거절하고 화면은 진행 중인 것을 그대로 둔다(`lib.rs` `WorkGuard`). 설치기가 새로 만든 폴더의 전용 표시(`uninstall::INSTALL_MARKER`)는 폴더를 만든 바로 뒤에 쓴다(받다 실패한 뒤 다시 시도해도 전용 폴더로 남는다). Python 런타임 준비나 공유 모듈(`i18n.py`·`daemon_rcon.py`) 복사가 실패하면 설치는 이어 가되 완료 화면 경고에 띄운다.
+설치와 제거는 한 번에 하나만 돈다. 이미 돌고 있으면 `start_install`·`start_uninstall`이 `busy`로 거절하고 화면은 진행 중인 것을 그대로 둔다(`installer/gui/src-tauri/src/lib.rs` `WorkGuard`. 프로세스 안에서만 막는다). 설치기가 새로 만든 폴더의 전용 표시(`uninstall::INSTALL_MARKER`)는 폴더를 만든 바로 뒤에 쓴다(받다 실패한 뒤 다시 시도해도 전용 폴더로 남는다). Python 런타임 준비나 공유 모듈(`i18n.py`·`daemon_rcon.py`) 복사가 실패하면 설치는 이어 가되 완료 화면 경고에 띄운다.
 
 **제거** (`uninstall.rs`): 대상은 제거기 자신이 든 설치 폴더 하나다(`uninstall.rs` `target_dir`). 설정된 포트의 데몬이 이 폴더의 것이면 먼저 `GET /api/servers`에서 꺼져 있지 않은 서버마다 `POST /api/instance/:id/stop`으로 정상 종료를 요청해 기다린다(서버마다 최대 90초). 이어서 데몬 아래 프로세스(러너 없이 띄운 서버 등. 제거기 자신과 그 위, 부모보다 먼저 시작한 프로세스는 뺀다, `tree_of`)를 적어 두고 데몬에 `/api/daemon/shutdown`을 보내, 요청이 받아들여졌으면 끝날 때까지 최대 20초(마지막 목록 조회가 걸리면 그만큼 더) 기다린다. 목록을 못 읽으면 자식을 모르므로 정상 종료 대신 데몬을 트리째 끊는다. 그다음 그 폴더에서 실행 중인 사바쨩 프로세스만 끝내고(`uninstall.rs` `stop_saba_processes`), 적어 둔 데몬 아래 프로세스 중 같은 PID·이름·시작 시각으로 남은 것도 트리째 끝낸다. 끈 프로세스(GUI 포함)는 PID·이름·시작 시각으로 적어 두고 실제로 끝났는지 최대 10초 확인하며(기다리는 사이 PID가 다른 프로그램에 다시 쓰였으면 끝난 것으로 본다), 아직 같은 프로세스로 남았으면 한 번 더 끊고 다시 최대 10초 기다린다(`wait_for_exit`). 프로세스 목록을 못 읽은 회차는 끝나지 않은 것으로 센다. 목록 조회(PowerShell)와 `taskkill`은 한 번에 10초까지만 기다린다(`output_within`). 끝나기 전에 지우면 끝나는 중인 프로세스가 파일을 잡고 있거나 다시 쓴다. 포터블 GUI 실행기가 임시 폴더에 풀어 띄운 실제 GUI(실행기의 자손, 제거기 자신은 뺀다, `descendants_in`)와 데몬에 이 설치로 등록된 GUI(`GET /api/clients`)도 끝낸 뒤, 그 폴더의 레지스트리 항목만 지운다(`registry.rs:78-93`). `%APPDATA%/saba-chan`과 모듈 폴더는 설치본들이 함께 쓰므로 다른 설치본 항목이 남아 있으면 지우지 않는다(`uninstall.rs` `do_uninstall`의 `last_install`, `uninstall_entry.rs:42-48`). 제거기 옆에서 설치 폴더를 찾지 못하면 마지막 설치본으로 치지 않아 사용자 데이터를 지우지 않는다. `SABA_DATA_DIR`·`SABA_MODULES_PATH`·`SABA_EXTENSIONS_DIR`로 데이터 폴더를 바꿔 두었으면 그 폴더는 남의 것일 수 있어 지우지 않는다(`owned_data_dir`). 앱이 만들지 않는 `.keys`(업데이트 서명 키)는 어느 경우에도 지우지 않는다. `keep_settings`(화면 문구 "게임 서버와 설정 남기기")이면 다시 받거나 만들 수 있는 런타임·캐시(모듈, 익스텐션, Python 런타임, 업데이트, 로그, 무결성·검사 기록 등, `uninstall_entry.rs` `RUNTIME_ENTRIES`)만 지우고 그 밖의 것(설정, 인스턴스, 토큰, 앞으로 생길 파일)은 남긴다(`removable_data_entry`). 지운 뒤 지울 항목이 남아 있으면 1초 간격으로 두 번 더 지우고, 그래도 남은 것은 로그에 남기고 결과에 알린다: 화면은 완료 문구 대신 "일부 파일이 남았습니다"와 남은 경로를 보여 주고(`UninstallProgress.left`), 조용한 제거(`--uninstall --silent`)는 남은 경로를 찍고 종료 코드 1로 끝난다.
 
@@ -407,7 +407,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 |---|---|---|
 | U1 | ~~manifest `sha256`은 zip 해시이고 integrity는 압축을 푼 파일 해시라서 항상 `Tampered`가 된다~~ → 해결: 적용 때 푼 파일 해시를 `installed-files.json`에 기록하고 그 기록과 비교한다 | `integrity.rs:1-6, 104-121` |
 | U2 | ~~다운로드와 설치 때 sha256을 검증하지 않는다~~ 해결됨: 업데이터·설치기·데몬 모듈 설치 모두 `download_verified`로 확인한다 | `download.rs:40` |
-| U3 | ~~**Zip-slip**: `entry.name()`을 그대로 `join`한다~~ → 해결: 모든 zip 해제가 `enclosed_name()`으로 검사하는 `extract_zip` 하나를 거치고, tar.gz는 `..`·절대 경로 엔트리를 건너뛴다 | updater `lib.rs:307-340`, `apply.rs:475-486`; installer `lib.rs:850-854` |
+| U3 | ~~**Zip-slip**: `entry.name()`을 그대로 `join`한다~~ → 해결: 모든 zip 해제가 `enclosed_name()`으로 검사하는 `extract_zip` 하나를 거치고, tar.gz는 `..`·절대 경로 엔트리를 건너뛴다 | updater `lib.rs:307-340`, `apply.rs:475-486`; installer `lib.rs` `extract_zip` |
 | U4 | ~~`saba-core` 버전 폴백이 updater-lib 버전이다~~ → 해결: 폴백은 빌드에 묶인 `versions.toml` 버전이다 | `lib.rs:587-590`, `versions.rs` |
 | U5 | ~~`prepare_daemon_update`는 사용되지 않는다. rollback 경로가 없다~~ → 해결: 함수는 지워졌고, 적용 도중 실패하면 백업·`.old`로 되돌린다. 적용이 끝난 뒤 이전 판으로 돌아가는 경로는 여전히 없다 | `apply.rs:24-62, 142-167` |
 | U6 | ~~v2 모듈(worker/foreground/queue/scheduler/ipc)이 죽은 코드다. `cli.rs.removed`, `lib.rs.bak` 잔재~~ → 해결: 지워졌다(e023a75). ~~헤더 주석만 남았다~~ → 해결: 헤더도 현재 파일 구성으로 바뀌었다 | `lib.rs:1-12` |

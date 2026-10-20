@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants;
 use saba_chan_updater_lib::relay::{self, ReleaseManifest};
+pub use release::VerifiedRelease;
 use saba_chan_updater_lib::UpdateManager;
 
 /// 설치기 버전 — 설치기 컴포넌트(`versions.toml` installer)와 같이 간다
@@ -66,6 +67,11 @@ pub struct ModuleInfo {
     pub required_extensions: Vec<String>,
 }
 
+/// 받은 zip을 두는 임시 폴더 (프로세스마다 따로)
+fn work_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("saba-chan-installer-{}", std::process::id()))
+}
+
 /// 설치 설정 (스냅샷)
 #[derive(Debug, Clone)]
 pub struct InstallOptions {
@@ -76,7 +82,7 @@ pub struct InstallOptions {
     pub create_start_menu_shortcut: bool,
     pub selected_modules: Vec<String>,
     /// 미리 받아 둔 검증된 manifest. 없으면 설치가 받는다
-    pub release: Option<ReleaseManifest>,
+    pub release: Option<VerifiedRelease>,
     /// 모듈 메타데이터 (required_extensions 해석용)
     pub module_metadata: Vec<ModuleInfo>,
     /// 설치 폴더에 `saba-chan-installer.exe`로 남길 제거기 (창 인스톨러는 자기 exe). 없으면 남기지 않는다
@@ -85,7 +91,7 @@ pub struct InstallOptions {
 
 /// 설치가 부르는 바깥 동작
 pub trait InstallHooks: Send + Sync {
-    /// 단계마다 (다운로드는 받는 동안 계속)
+    /// 단계마다 (다운로드는 받는 동안 계속). 받기와 같은 작업에서 불리므로 막지 않는다 (무거운 일은 채널로 넘긴다)
     fn progress(&self, progress: &InstallProgress);
 
     /// 쓸 수 없는 설치 폴더를 권한 상승으로 만든다. 기본은 상승하지 않고 이유를 돌려준다
@@ -207,7 +213,8 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     let total = components.len().max(1);
     let mut installed = Vec::new();
     let mut installed_versions = UpdateManager::load_installed_manifest();
-    let temp_dir = std::env::temp_dir().join("saba-chan-installer");
+    // 설치기 창과 CLI가 함께 돌아도 서로의 받는 파일을 지우지 않게 프로세스마다 따로 쓴다
+    let temp_dir = work_dir();
     let _ = std::fs::create_dir_all(&temp_dir);
 
     for (i, (key, info)) in components.iter().enumerate() {
@@ -398,7 +405,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     hooks.progress(&final_progress);
 
     // 임시 디렉토리 정리
-    let _ = std::fs::remove_dir_all(std::env::temp_dir().join("saba-chan-installer"));
+    let _ = std::fs::remove_dir_all(work_dir());
     final_progress
 }
 
@@ -721,6 +728,7 @@ mod tests {
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o555)).unwrap();
         // root는 권한과 무관하게 쓸 수 있어 이 확인이 뜻이 없다
         if std::fs::write(root.join("probe"), b"").is_ok() {
+            eprintln!("skipped: running as root, permissions are not enforced");
             std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
             let _ = std::fs::remove_dir_all(&root);
             return;

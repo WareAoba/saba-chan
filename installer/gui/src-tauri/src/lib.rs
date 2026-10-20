@@ -11,8 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
-use saba_chan_installer_core::{release, uninstall, InstallHooks, InstallOptions, InstallProgress, ModuleInfo};
-use saba_chan_updater_lib::relay::ReleaseManifest;
+use saba_chan_installer_core::{release, uninstall, InstallHooks, InstallOptions, InstallProgress, ModuleInfo, VerifiedRelease};
 
 // ═══════════════════════════════════════════════════════
 // 타입
@@ -27,7 +26,7 @@ pub struct InstallerState {
     pub create_start_menu_shortcut: bool,
     pub selected_modules: Vec<String>,
     /// fetch_latest_release가 받은 검증된 manifest
-    pub release: Option<ReleaseManifest>,
+    pub release: Option<VerifiedRelease>,
     pub progress: InstallProgress,
     /// 로드된 모듈 메타데이터 (required_extensions 해석용)
     pub module_metadata: Vec<ModuleInfo>,
