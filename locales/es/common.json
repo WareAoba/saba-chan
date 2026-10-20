@@ -57,7 +57,8 @@
     "modules": "Preparando módulos...",
     "instances": "Preparando servidores...",
     "ready": "Listo",
-    "ui_loaded": "Interfaz lista"
+    "ui_loaded": "Interfaz lista",
+    "extensions": "Preparando extensiones..."
   },
   "tray": {
     "tooltip": "Saba-chan - Gestor de servidores de juegos",

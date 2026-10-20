@@ -62,4 +62,28 @@ describe('설정 저장 결과 (PATCH /api/instance/:id)', () => {
         await act(async () => result.current.handleSaveSettings());
         expect(setModal.mock.calls.at(-1)[0].message).toContain('bogus');
     });
+
+    it('저장 응답을 기다리는 동안 다시 누르면 한 번만 보내고, 저장 중임을 알린다', async () => {
+        let finish;
+        window.api.instanceUpdateSettings = vi.fn(
+            () =>
+                new Promise((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' }));
+        let first;
+        await act(async () => {
+            first = result.current.handleSaveSettings();
+        });
+        expect(result.current.savingSettings).toBe(true);
+        await act(async () => result.current.handleSaveSettings());
+        expect(window.api.instanceUpdateSettings).toHaveBeenCalledTimes(1);
+        await act(async () => {
+            finish({ success: true, synced: true });
+            await first;
+        });
+        expect(result.current.savingSettings).toBe(false);
+    });
 });

@@ -141,6 +141,11 @@ pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
     }
 }
 
+/// zip의 노드 토큰을 이 PC에 쓸 것인가: 이 PC가 아직 페어링되지 않았을 때만
+fn takes_node_token(bundle: &Bundle) -> bool {
+    bundle.node_token.is_some() && !std::fs::read_to_string(node_token_path()).is_ok_and(|t| !t.trim().is_empty())
+}
+
 /// 가져올 인스턴스마다 넣을지 건너뛸지
 #[derive(Debug, PartialEq)]
 pub(crate) enum Verdict {
@@ -149,20 +154,24 @@ pub(crate) enum Verdict {
     Skip(&'static str),
 }
 
+/// `instance_dir`는 id의 인스턴스 폴더 (`InstanceStore::instance_dir`)
 pub(crate) fn judge(
     incoming: &ServerInstance,
     existing: &[ServerInstance],
     running: &HashSet<String>,
     overwrite: bool,
+    instance_dir: &dyn Fn(&str) -> PathBuf,
 ) -> Verdict {
     if !crate::utils::is_single_path_component(&incoming.id) {
         return Verdict::Skip("invalid_id");
     }
     let same = existing.iter().find(|e| e.id == incoming.id);
-    if let Some(dir) = incoming.working_dir.as_deref() {
+    // 다른 서버의 서버 폴더나 인스턴스 폴더와 같거나 그 안·바깥이면 받지 않는다 (`InstanceStore::folder_user`와 같은 판정)
+    if let Some(dir) = incoming.working_dir.as_deref().map(Path::new) {
         let other = existing.iter().find(|o| {
             o.id != incoming.id
-                && o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(Path::new(d), Path::new(dir)))
+                && (o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(Path::new(d), dir))
+                    || saba_chan_updater_lib::paths_overlap(&instance_dir(&o.id), dir))
         });
         if other.is_some() {
             return Verdict::Skip("working_dir_in_use");
@@ -267,8 +276,14 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         Ok(b) => b,
         Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_ARCHIVE", e.to_string()),
     };
-    // 설정이 잘못된 zip이면 인스턴스·노드 토큰을 바꾸기 전에 멈춘다
-    if let Err(e) = state.config_store.check_sections(&bundle.config).await {
+    // 설정이 잘못된 zip이면 인스턴스·노드 토큰을 바꾸기 전에 멈춘다.
+    // 토큰을 가져오지 않으면 릴레이 연결 정보는 아래에서 버려지므로 검사하지 않는다
+    let takes = takes_node_token(&bundle);
+    let mut checked = bundle.config.clone();
+    if !takes {
+        keep_local_pairing(&mut checked);
+    }
+    if let Err(e) = state.config_store.check_sections(&checked).await {
         return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
     }
 
@@ -291,7 +306,15 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 "working_dir": inst.working_dir,
                 "executable_path": inst.executable_path,
             });
-            let verdict = judge(&inst, &known, &running, req.overwrite);
+            let mut verdict = judge(&inst, &known, &running, req.overwrite, &|id| sup.instance_store.instance_dir(id));
+            // 설치·백업·복원이 쥔 인스턴스는 바꾸지 않는다. 잠금은 저장하는 동안만 쥔다
+            let guard = match verdict {
+                Verdict::Skip(_) => None,
+                _ => super::backup::BusyGuard::take(&inst.id),
+            };
+            if guard.is_none() && !matches!(verdict, Verdict::Skip(_)) {
+                verdict = Verdict::Skip("busy");
+            }
             let applied = match verdict {
                 Verdict::Skip(reason) => {
                     skipped.push(json!({ "id": inst.id, "name": inst.name, "reason": reason }));
@@ -318,7 +341,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     // 이 PC가 이미 페어링돼 있으면 그 토큰을 둔다
     let node_token = match bundle.node_token {
         None => Value::Null,
-        Some(_) if std::fs::read_to_string(node_token_path()).is_ok_and(|t| !t.trim().is_empty()) => json!("kept"),
+        Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
         Some(token) => match std::fs::write(node_token_path(), token) {
             Ok(()) => json!("imported"),
@@ -338,6 +361,8 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         keys.retain(|k| matches!(k.as_str(), "gui" | "relay" | "chatbot") || crate::config_store::ConfigStore::is_client_section(k));
         keys
     } else {
+        // 챗봇 절은 챗봇 저장과 같은 차례를 지킨다
+        let _turn = if sections.contains_key("chatbot") { Some(super::chatbot::SAVE_LOCK.lock().await) } else { None };
         match state.config_store.import_sections(sections).await {
             Ok(keys) => {
                 // 일반 설정 저장과 같이 실행 중인 포트 검사도 맞춘다
@@ -462,6 +487,59 @@ mod tests {
         assert_eq!(sup.instance_store.get("a").unwrap().name, "old");
     }
 
+    /// 토큰 없이 가져오면 zip의 릴레이 연결 정보는 버려진다: 그 안의 옛 http 주소로 가져오기 전체를 막지 않는다
+    #[tokio::test]
+    async fn a_relay_address_the_import_drops_is_not_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Map::new();
+        config.insert("relay".into(), json!({ "prefixes": ["!s"], "cloud": { "relayUrl": "http://old.example", "hostId": "old" } }));
+        let bundle = Bundle { meta: meta(), config, instances: vec![], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, None).await;
+        let req: ImportRequest = serde_json::from_value(json!({ "path": path })).unwrap();
+        let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
+        assert_eq!(res.body["success"], true, "{}", res.body);
+        let bot = state.config_store.get_bot_config().await;
+        assert_eq!(bot.prefixes, vec!["!s"]);
+        assert_ne!(bot.cloud.relay_url, "http://old.example");
+    }
+
+    /// 설치·백업·복원이 쥔 인스턴스는 덮어쓰지 않는다: 작업이 옛 설정과 폴더로 계속 돈다
+    #[tokio::test]
+    async fn an_instance_held_by_a_task_is_not_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut old, mut new) = (inst("held-by-import-test", None), inst("held-by-import-test", None));
+        old.name = "old".into();
+        new.name = "new".into();
+        let bundle = Bundle { meta: meta(), config: Map::new(), instances: vec![new], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, Some(old)).await;
+        let _task = super::super::backup::BusyGuard::take("held-by-import-test").unwrap();
+        for dry in [true, false] {
+            let req: ImportRequest = serde_json::from_value(json!({ "path": path, "overwrite": true, "dryRun": dry })).unwrap();
+            let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
+            assert_eq!(res.body["instances"]["skipped"][0]["reason"], "busy", "{}", res.body);
+        }
+        assert_eq!(state.supervisor.read().await.instance_store.get("held-by-import-test").unwrap().name, "old");
+    }
+
+    /// 가져오기의 챗봇 절도 챗봇 저장과 한 번에 하나씩: 겹치면 한쪽이 옛 값으로 다른 쪽 저장을 지운다
+    #[tokio::test]
+    async fn an_imported_chatbot_section_waits_for_a_chatbot_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Map::new();
+        // 빈 절은 지금 값을 그대로 다시 쓴다 (같은 프로세스의 다른 시험과 설정 파일을 같이 쓴다)
+        config.insert("chatbot".into(), json!({}));
+        let bundle = Bundle { meta: meta(), config, instances: vec![], node_token: None };
+        let (state, path) = import_state(dir.path(), bundle, None).await;
+        let turn = super::super::chatbot::SAVE_LOCK.lock().await;
+        let req: ImportRequest = serde_json::from_value(json!({ "path": path })).unwrap();
+        let run = tokio::spawn(import(State(state), Json(req)));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!run.is_finished(), "the import wrote the chatbot settings while a chatbot save was in progress");
+        drop(turn);
+        let res = tokio::time::timeout(std::time::Duration::from_secs(5), run).await.unwrap().unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
     /// 가져온 포트 충돌 검사 설정은 일반 설정 저장처럼 바로 실행 중인 검사에 반영된다
     #[tokio::test]
     async fn imported_port_check_setting_applies_at_once() {
@@ -524,13 +602,21 @@ mod tests {
 
     #[test]
     fn existing_running_and_folder_clashing_instances_are_not_imported() {
-        let existing = vec![inst("a", Some("/srv/a")), inst("b", Some("/srv/b"))];
+        let existing = vec![inst("a", Some("/srv/a")), inst("b", Some("/srv/b")), inst("e", None)];
         let running = HashSet::from(["b".to_string()]);
+        let judge = |i: &ServerInstance, existing: &[ServerInstance], running: &HashSet<String>, overwrite: bool| {
+            judge(i, existing, running, overwrite, &|id: &str| Path::new("/data/instances").join(id))
+        };
         assert_eq!(judge(&inst("c", Some("/srv/c")), &existing, &running, false), Verdict::Add);
         assert_eq!(judge(&inst("a", Some("/srv/a")), &existing, &running, false), Verdict::Skip("exists"));
         assert_eq!(judge(&inst("a", Some("/srv/a")), &existing, &running, true), Verdict::Replace);
         assert_eq!(judge(&inst("b", Some("/srv/b")), &existing, &running, true), Verdict::Skip("running"));
         assert_eq!(judge(&inst("c", Some("/srv/a")), &existing, &running, false), Verdict::Skip("working_dir_in_use"));
+        // 다른 서버 폴더나 인스턴스 폴더의 안·바깥도 같다 (만들기·설정 저장과 같은 판정)
+        for dir in ["/srv/a/sub", "/srv", "/data/instances/e/server"] {
+            assert_eq!(judge(&inst("c", Some(dir)), &existing, &running, false), Verdict::Skip("working_dir_in_use"), "{dir}");
+        }
+        assert_eq!(judge(&inst("c", Some("/srv/a2")), &existing, &running, false), Verdict::Add);
         assert_eq!(judge(&inst("../x", None), &existing, &running, false), Verdict::Skip("invalid_id"));
         let mut same_name = inst("d", Some("/srv/d"));
         same_name.name = "a".into();

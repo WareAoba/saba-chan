@@ -9,6 +9,7 @@ import { localizedDescription } from '../../utils/localizedText';
 import { clearModuleAuditCache, ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
 import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
+import { createTranslateError, safeShowToast } from '../../utils/helpers';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -356,6 +357,8 @@ function ComponentsTab({ devMode }) {
         try {
             const res = await window.api?.updaterApply?.(allKeys);
             clearModuleAuditCache();
+            // 일부만 적용돼도(ok:false) 적용된 것은 알린다 (G-U9b)
+            daemonApplied = res?.applied || [];
             if (res?.ok === false) {
                 hadError = true;
                 setError(
@@ -363,8 +366,6 @@ function ComponentsTab({ devMode }) {
                         (prev ? prev + '\n' : '') +
                         (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')),
                 );
-            } else {
-                daemonApplied = res?.applied || [];
             }
             // 데몬이 needs_updater로 보낸 컴포넌트가 있으면 업데이터 exe 스폰
             if (res?.requires_updater && res?.needs_updater?.length > 0) {
@@ -768,6 +769,9 @@ function ModulesTab() {
                 clearModuleAuditCache();
                 const listRes = await window.api?.moduleRefresh?.();
                 if (listRes?.modules) setInstalledModules(listRes.modules);
+            } else if (res?.error_code === 'module_busy') {
+                // 같은 모듈의 다른 설치·제거가 끝나지 않았다: 실패로 굳히지 않고 다시 누를 수 있게 둔다
+                safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
             } else {
                 setInstallResults((prev) => ({ ...prev, [moduleId]: 'error' }));
             }
@@ -779,7 +783,7 @@ function ModulesTab() {
             n.delete(moduleId);
             return n;
         });
-    }, []);
+    }, [t]);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;
@@ -789,13 +793,17 @@ function ModulesTab() {
         try {
             const res = await window.api?.moduleRemove?.(id);
             if (res?.ok) await loadInstalledModules();
-        } catch (_) {}
+            else if (res?.error_code === 'module_busy') safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
+            else safeShowToast(t('saba_storage.remove_failed', { error: createTranslateError(t)(res?.error) }), 'error', 5000);
+        } catch (e) {
+            safeShowToast(t('saba_storage.remove_failed', { error: createTranslateError(t)(e?.message) }), 'error', 5000);
+        }
         setRemovingIds((prev) => {
             const n = new Set(prev);
             n.delete(id);
             return n;
         });
-    }, [confirmRemoveId, loadInstalledModules]);
+    }, [confirmRemoveId, loadInstalledModules, t]);
 
     const installedIds = new Set(
         installedModules.map((m) => {
@@ -1151,7 +1159,7 @@ function ExtensionsTab() {
                     <button
                         className="ss-icon-btn"
                         onClick={handleShowStore}
-                        data-tooltip={t('extensions.show_more', '더 많은 익스텐션 표시')} aria-label={t('extensions.show_more', '더 많은 익스텐션 표시')}
+                        data-tooltip={t('saba_storage.show_more_extensions')} aria-label={t('saba_storage.show_more_extensions')}
                     >
                         <Icon name="chevronDown" size="sm" />
                     </button>

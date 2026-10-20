@@ -21,7 +21,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>, limit: usize, follow: bool) ->
     ctx.out.data(&r, |r| {
         let entries = r.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
         if entries.is_empty() {
-            println!("{}", output::dim(&t!("audit.empty")));
+            say!("{}", output::dim(&t!("audit.empty")));
             return;
         }
         let mut t = output::table(&[t!("audit.when"), t!("audit.from"), t!("noun.server"), t!("audit.what"), t!("audit.result")]);
@@ -41,9 +41,9 @@ pub async fn run(ctx: &Ctx, server: Option<&str>, limit: usize, follow: bool) ->
                     continue;
                 }
                 if ctx.out.json {
-                    println!("{}", event.data);
+                    say!("{}", output::event_line(serde_json::json!({ "event": event.kind, "data": event.data })));
                 } else {
-                    println!("{}", row(&event.data).join("  "));
+                    say!("{}", row(&event.data).join("  "));
                 }
             }
             // 데몬이 다시 켜지는 중일 수 있다: 마지막 번호로 다시 붙는다

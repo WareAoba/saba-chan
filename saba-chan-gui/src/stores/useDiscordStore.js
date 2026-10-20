@@ -35,6 +35,8 @@ const ALL_FIELDS = Object.values(BOT_KEYS).flat();
 let saveQueue = Promise.resolve();
 // 상태 확인 세대: 연결 대상이 바뀌거나 폴링이 멈추면 올려서, 늦게 온 옛 응답을 버린다
 let statusGeneration = 0;
+// 지금 확인 중인 대상 세대 (겹친 확인은 하나만 돌려 한 번의 실패를 두 번으로 세지 않는다)
+let checkingGeneration = null;
 
 // 디스코드 봇 본체는 클라우드(릴레이 서버)에서 돌고, 로컬에서는 데몬 내장
 // 릴레이 에이전트가 명령을 받아 처리한다. 이 스토어는 bot-config와
@@ -56,11 +58,22 @@ const initialState = () => ({
     discordBotStatus: 'stopped',
     // 다른 PC가 같은 계정으로 페어링해서 이 PC의 에이전트가 멈췄다
     discordAgentReplaced: false,
+    discordAgentRelayUrlInvalid: false,
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
+    // 릴레이 확인이 연달아 실패한 이유. 비어 있지 않으면 화면이 '연결 중' 대신 실패를 보인다
+    relayError: '',
+    // 길드 목록을 다시 읽어야 할 때 올린다 (연결 요청 수락 등). 디스코드 화면이 보고 다시 읽는다
+    cloudNodesStale: 0,
 
     // ── Internal ──
+    // 연달아 실패한 릴레이 확인 수. 한 번 놓친 것으로 끊김·실패를 보이지 않는다
+    _relayFailures: 0,
+    // 연달아 답을 받지 못한 에이전트 상태 확인 수. 한 번 늦은 것으로 꺼짐을 보이지 않는다
+    _agentFailures: 0,
+    // 마지막 봇 설정 저장이 거절된 이유(error_code). 저장에 성공하면 비운다
+    _saveErrorCode: null,
     _settingsReady: false,
     _botConfigLoaded: false,
     _statusInterval: null,
@@ -78,7 +91,7 @@ export const useDiscordStore = create((set, get) => ({
         if (!targetChanged) return set(partial);
         // 연결 대상이 바뀌면 옛 호스트의 확인 결과는 무효 (다음 폴링까지 잘못된 상태를 보이지 않게)
         statusGeneration += 1;
-        set({ ...partial, relayConnected: false, relayConnecting: false });
+        set({ ...partial, relayConnected: false, relayConnecting: false, relayError: '', _relayFailures: 0 });
         if (get()._statusInterval) get().checkStatus();
     },
 
@@ -147,6 +160,7 @@ export const useDiscordStore = create((set, get) => ({
             const initial = initialState();
             const base = (f) => (f in synced ? synced[f] : initial[f]);
             const changed = Object.keys(BOT_KEYS).filter((k) => BOT_KEYS[k].some((f) => !sameValue(state[f], base(f))));
+            set({ _saveErrorCode: null });
             if (changed.length === 0) return true;
 
             const payload = {};
@@ -167,7 +181,10 @@ export const useDiscordStore = create((set, get) => ({
             const res = await window.api.botConfigSave(payload);
             if (res?.error) {
                 console.error('[Settings] Failed to save bot config:', res.error);
-                safeShowToast(_t('settings.save_error'), 'error');
+                set({ _saveErrorCode: res.error_code || null });
+                // 릴레이 주소가 거절되면(R31) 어떤 주소를 쓸 수 있는지 알린다
+                const invalidUrl = res.error_code === 'invalid_relay_url';
+                safeShowToast(_t(invalidUrl ? 'discord.invalid_relay_url' : 'settings.save_error'), 'error');
                 return false;
             }
             markSynced(
@@ -195,6 +212,8 @@ export const useDiscordStore = create((set, get) => ({
         synced.nodeSettings = put(synced.nodeSettings ?? initialState().nodeSettings);
         set({ nodeSettings: put(get().nodeSettings) });
     },
+
+    markCloudNodesStale: () => set({ cloudNodesStale: get().cloudNodesStale + 1 }),
 
     startBot: async () => {
         try {
@@ -225,7 +244,7 @@ export const useDiscordStore = create((set, get) => ({
                     4000,
                 );
             } else {
-                set({ discordBotStatus: 'stopped', relayConnected: false });
+                set({ discordBotStatus: 'stopped', relayConnected: false, relayError: '', _relayFailures: 0 });
                 safeShowToast(_t('discord_bot.stopped_toast'), 'discord', 3000);
             }
         } catch (e) {
@@ -235,40 +254,67 @@ export const useDiscordStore = create((set, get) => ({
 
     checkStatus: async () => {
         const generation = statusGeneration;
+        if (checkingGeneration === generation) return;
+        checkingGeneration = generation;
+        try {
+            await get()._checkStatusNow(generation);
+        } finally {
+            if (checkingGeneration === generation) checkingGeneration = null;
+        }
+    },
+
+    _checkStatusNow: async (generation) => {
         // 앱이 데몬보다 먼저 떠서 처음 설정 읽기에 실패했으면 여기서 다시 읽는다.
         // 읽지 못한 채로 두면 호스트가 비어 저장된 연결이 있어도 연결 화면을 보인다
         if (!get()._botConfigLoaded) await get().loadConfig({ attempts: 1 });
         if (generation !== statusGeneration) return;
         const state = get();
-        let agentRunning = false;
-        let agentReplaced = false;
+        let agent = 'unknown';
         try {
-            const agent = await window.api.discordBotStatus();
-            agentRunning = agent === 'running';
-            agentReplaced = agent === 'replaced';
+            agent = await window.api.discordBotStatus();
         } catch {
-            /* stopped */
+            /* unknown */
         }
 
         let relayOk = false;
+        let relayFailure = '';
         if (state.discordCloudHostId) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             try {
-                // 이미 붙어 있으면 '연결 중'으로 깜빡이지 않는다 (5초마다 확인)
-                if (generation === statusGeneration && !state.relayConnected) set({ relayConnecting: true });
+                // 이미 붙어 있거나 실패로 정해졌으면 '연결 중'으로 깜빡이지 않는다 (5초마다 확인)
+                if (generation === statusGeneration && !state.relayConnected && !state.relayError)
+                    set({ relayConnecting: true });
                 const result = await window.api.relayCheckHostStatus(state.discordCloudHostId, relayUrl);
                 relayOk = !!result && !result.error;
-            } catch {
-                /* disconnected */
+                if (!relayOk) relayFailure = String(result?.error || _t('errors.network_error'));
+            } catch (e) {
+                relayFailure = e?.message || String(e);
             }
         }
         // 그 사이 대상이 바뀌었거나 폴링이 멈췄으면 이 결과는 버린다
         if (generation !== statusGeneration) return;
 
+        // 에이전트도 두 번 연달아 모를 때만 꺼짐으로 본다 (그 전까지는 지금 상태를 유지한다)
+        const agentFailures = agent === 'unknown' ? get()._agentFailures + 1 : 0;
+        const prev = get();
+        const keepAgent = agent === 'unknown' && agentFailures < 2;
+        const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : agent === 'running';
+        const agentReplaced = keepAgent ? prev.discordAgentReplaced : agent === 'replaced';
+        const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : agent === 'invalid_relay_url';
+
+        // 두 번 연달아 실패해야 끊김·실패로 본다 (그 전까지는 지금 상태를 유지한다)
+        const failures = relayFailure ? get()._relayFailures + 1 : 0;
+        const settled = !relayFailure || failures >= 2;
+        if (!settled) relayOk = get().relayConnected;
+
         set({
             relayConnecting: false,
             relayConnected: relayOk,
+            relayError: settled ? relayFailure : get().relayError,
+            _relayFailures: failures,
+            _agentFailures: agentFailures,
             discordAgentReplaced: agentReplaced,
+            discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
             discordBotStatus: agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped',
         });
     },
@@ -292,7 +338,14 @@ export const useDiscordStore = create((set, get) => ({
         clearInterval(state._statusInterval);
         clearTimeout(state._statusTimeout);
         statusGeneration += 1;
-        set({ _statusInterval: null, _statusTimeout: null, relayConnecting: false });
+        set({
+            _statusInterval: null,
+            _statusTimeout: null,
+            relayConnecting: false,
+            relayError: '',
+            _relayFailures: 0,
+            _agentFailures: 0,
+        });
     },
 
     // Test-only: reset to initial state

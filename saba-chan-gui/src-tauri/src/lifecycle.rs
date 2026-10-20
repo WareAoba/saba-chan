@@ -22,10 +22,12 @@ pub struct Lifecycle {
     child: Mutex<Option<Child>>,
     /// 이 GUI가 띄우지 않았지만 이미 떠 있어 붙은 데몬 (트레이가 꺼짐으로 보이지 않게)
     attached_daemon: AtomicBool,
+    /// 이 GUI가 띄운 데몬이 job breakaway를 거절당해 GUI를 띄운 프로그램의 job 안에서 돈다
+    daemon_in_parent_job: AtomicBool,
     /// 인터페이스만 종료: 데몬을 남긴다
     keep_daemon_alive: AtomicBool,
     init_started: AtomicBool,
-    /// 데몬 기동에 실패해 초기화를 멈췄는가 (daemon_restart가 성공하면 나머지를 이어서 한다)
+    /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
     ready_sent: AtomicBool,
     quitting: AtomicBool,
@@ -77,15 +79,12 @@ pub fn app_ready(app: &AppHandle) {
 }
 
 async fn run_background_init(app: &AppHandle) {
+    app.state::<AppState>().life.begin_init();
     status_t(app, "init", "init.start");
     let up = ensure_daemon(app).await;
     tray::update_menu(app);
     if !up {
         // ready를 보내지 않는다: 렌더러가 다시 시도 / 그대로 열기를 고른다
-        app.state::<AppState>()
-            .life
-            .init_pending_daemon
-            .store(true, Ordering::SeqCst);
         status_t(app, "daemon_failed", "daemon.failed_to_start");
         return;
     }
@@ -94,7 +93,9 @@ async fn run_background_init(app: &AppHandle) {
 
 async fn finish_background_init(app: &AppHandle) {
     let state = app.state::<AppState>();
-    state.life.init_pending_daemon.store(false, Ordering::SeqCst);
+    if !state.life.claim_init_finish() {
+        return;
+    }
     // 실제 데이터는 렌더러가 가져온다. 여기서는 로딩 표시만 넘긴다
     status_t(app, "modules", "init.modules");
     status_t(app, "instances", "init.instances");
@@ -149,9 +150,29 @@ impl Lifecycle {
         self.attached_daemon.swap(reachable, Ordering::SeqCst) != reachable
     }
 
+    /// 초기화 시작. 끝내기 전에 끊기면(렌더러가 멈춤을 알린다) 다시 시도가 나머지를 마친다
+    fn begin_init(&self) {
+        self.init_pending_daemon.store(true, Ordering::SeqCst);
+    }
+
+    fn init_unfinished(&self) -> bool {
+        self.init_pending_daemon.load(Ordering::SeqCst)
+    }
+
+    /// 나머지 초기화를 맡는다. 원래 초기화와 다시 시도가 겹쳐도 한 번만 true
+    fn claim_init_finish(&self) -> bool {
+        self.init_pending_daemon.swap(false, Ordering::SeqCst)
+    }
+
     /// 이 GUI가 데몬을 새로 띄웠다: 예전에 붙었던 데몬 표시는 버린다 (이제는 띄운 데몬의 생사만 본다)
-    fn own_daemon_started(&self) {
+    fn own_daemon_started(&self, in_parent_job: bool) {
         self.attached_daemon.store(false, Ordering::SeqCst);
+        self.daemon_in_parent_job.store(in_parent_job, Ordering::SeqCst);
+    }
+
+    /// 지금 붙어 있는 데몬이 이 GUI가 job 안에 띄운 그 데몬인가 (붙기만 한 데몬이나 이미 끝난 데몬은 아니다)
+    pub fn daemon_in_parent_job(&self) -> bool {
+        self.daemon_in_parent_job.load(Ordering::SeqCst) && self.child.lock().unwrap().is_some()
     }
 }
 
@@ -218,14 +239,17 @@ pub fn start_daemon(app: &AppHandle) {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     detach(&mut cmd, true);
+    let mut in_parent_job = false;
     let spawned = cmd.spawn().or_else(|e| {
-        // GUI를 띄운 쪽의 job이 breakaway를 막으면 CreateProcess가 거부된다: 그때는 떼지 않고 띄운다
+        // GUI를 띄운 쪽의 job이 breakaway를 막으면 CreateProcess가 거부된다: 그때는 떼지 않고 띄운다.
+        // 그러면 GUI를 띄운 프로그램이 꺼질 때 데몬도 함께 꺼질 수 있어 화면에 경고한다 (daemon_status `in_parent_job`)
         if cfg!(windows) {
-            tracing::info!(
-                "[Daemon] spawn with job breakaway failed ({}), retrying without (this job does not allow breakaway)",
+            tracing::warn!(
+                "[Daemon] spawn with job breakaway failed ({}), retrying without: the daemon will run inside the job of the program that launched this app and may stop when that program exits",
                 e
             );
             detach(&mut cmd, false);
+            in_parent_job = true;
             cmd.spawn()
         } else {
             Err(e)
@@ -244,7 +268,7 @@ pub fn start_daemon(app: &AppHandle) {
                 pipe_log(err);
             }
             *state.life.child.lock().unwrap() = Some(child);
-            state.life.own_daemon_started();
+            state.life.own_daemon_started(in_parent_job);
             watch_daemon_exit(app.clone(), pid);
         }
         Err(e) => tracing::error!("Failed to start Core Daemon: {}", e),
@@ -398,7 +422,7 @@ async fn reload_token_until_valid(app: &AppHandle) -> bool {
 }
 
 /// /health가 보낸 토큰을 맞다고 했는가. 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
-fn token_valid(health: &Value) -> bool {
+pub(crate) fn token_valid(health: &Value) -> bool {
     health.get("token").and_then(Value::as_str).unwrap_or("valid") == "valid"
 }
 
@@ -650,7 +674,7 @@ pub async fn daemon_restart(app: &AppHandle) -> Value {
         return json!({ "success": false, "error": state.t("daemon.failed_to_start", &[]) });
     }
     // 기동 실패로 멈춘 초기화가 있으면 이어서 끝낸다 (렌더러는 ready를 받고 메인 화면으로 간다)
-    if state.life.init_pending_daemon.load(Ordering::SeqCst) {
+    if state.life.init_unfinished() {
         sync_install_root(app).await;
         tray::update_menu(app);
         let app2 = app.clone();
@@ -803,10 +827,24 @@ mod tests {
     }
 
     #[test]
+    fn an_init_that_never_finished_is_finished_once_by_a_retry() {
+        let life = Lifecycle::default();
+        life.begin_init();
+        // 초기화가 데몬 단계에서 끊겨도(M11) 다시 시도가 나머지를 한 번만 마친다
+        assert!(life.init_unfinished());
+        assert!(life.claim_init_finish());
+        assert!(!life.init_unfinished());
+        assert!(
+            !life.claim_init_finish(),
+            "다시 시도와 원래 초기화가 겹쳐도 두 번 마치지 않는다"
+        );
+    }
+
+    #[test]
     fn spawning_our_own_daemon_drops_the_attached_mark() {
         let life = Lifecycle::default();
         life.attached_daemon.store(true, Ordering::SeqCst);
-        life.own_daemon_started();
+        life.own_daemon_started(false);
         // 띄운 데몬이 죽으면 트레이에 꺼짐으로 보여야 한다
         assert!(!life.shows_running(false));
     }

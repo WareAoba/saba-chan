@@ -57,7 +57,8 @@
     "modules": "Preparing modules...",
     "instances": "Preparing servers...",
     "ready": "Ready",
-    "ui_loaded": "UI ready"
+    "ui_loaded": "UI ready",
+    "extensions": "Preparing extensions..."
   },
   "tray": {
     "tooltip": "Saba-chan - Game server manager",

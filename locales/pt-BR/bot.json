@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **Lista de Servidores**",
     "empty": "📭 Nenhum servidor registrado",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 Em execução",
@@ -48,7 +48,8 @@
     "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "O servidor não está em execução. Por favor, inicie o servidor primeiro",
-    "module_missing": "❌ O módulo '{{module}}' não está instalado. Este servidor não pode ser controlado."
+    "module_missing": "❌ O módulo '{{module}}' não está instalado. Este servidor não pode ser controlado.",
+    "port_moved": "🔀 O Windows reservou a porta REST {{from}}, então ela foi alterada para {{to}}."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executando...",
@@ -99,6 +100,7 @@
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Você não tem permissão para usar este comando.",
+    "chatbot_not_allowed": "❌ O chatbot não pode executar este comando. Execute-o diretamente.",
     "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Atualmente em {{count}} servidores. Remova o bot dos servidores não utilizados."
   },
   "messages": {
@@ -288,11 +290,39 @@
       "enabled": "Ligado",
       "model": "Modelo",
       "memo": "Prompt do servidor",
-      "confirmCommands": "Confirmar comandos",
+      "confirmCommands": "Sempre perguntar em comandos de cuidado",
       "memory": "Memória",
       "webSearch": "Busca na web",
       "disabledTools": "Ferramentas desativadas",
       "step": "Etapa"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…e mais {{count}}",
+      "backups": "💾 **{{count}} backups**",
+      "backups_empty": "📭 Nenhum backup",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "manual",
+        "scheduled": "agendado",
+        "pre-update": "antes da atualização",
+        "pre-restore": "antes da restauração"
+      },
+      "events": "📜 **Inícios e paradas recentes**",
+      "events_empty": "📭 Nenhum registro",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "parado",
+        "in_game_stop": "parado no jogo",
+        "crash": "travou",
+        "start_failed": "falha ao iniciar",
+        "unknown_exit": "encerrou por motivo desconhecido"
+      },
+      "updates": "⬆️ **{{count}} atualizações**",
+      "updates_none": "✅ Tudo está atualizado",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · Memória {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

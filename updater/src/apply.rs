@@ -52,6 +52,9 @@ impl UpdateManager {
                 if let Err(re) = self.copy_dir_recursive(&backup_dir, target_dir) {
                     tracing::error!("[Updater] Restore of {} failed: {}", target_dir.display(), re);
                 }
+            } else {
+                // 새로 설치하던 것: 반쯤 풀린 폴더를 남기지 않는다
+                let _ = std::fs::remove_dir_all(target_dir);
             }
             return Err(e);
             }
@@ -151,6 +154,33 @@ impl UpdateManager {
         // 공유 모듈(i18n.py, daemon_rcon.py)은 새 데몬이 자기 안에 든 판으로 맞춘다 (plugin::ensure_shared_modules)
 
         Ok(files)
+    }
+
+    /// 설치 폴더의 설치기 사본을 바꾼다. 릴리스의 설치기는 zip이 아닌 exe 그대로다.
+    /// 복사가 실패하면 비켜 둔 원래 사본을 되돌린다 (제거기가 사라지면 안 된다)
+    pub(crate) fn apply_installer_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
+        let staged = Path::new(staged_path);
+        if staged.extension().is_some_and(|e| e == "zip") {
+            let files = Self::extract_zip_or_restore(staged, &self.install_root, "installer")?;
+            std::fs::remove_file(staged).ok();
+            return Ok(files);
+        }
+        let target = self.install_root.join(INSTALLER_EXE);
+        let backup = Self::move_aside(&target)?;
+        if let Err(e) = std::fs::copy(staged, &target) {
+            tracing::error!("[Updater] Replacing {} failed, restoring previous copy: {}", target.display(), e);
+            // 비켜 두지 못했으면(Unix의 덮어쓰기) 지우지 않는다: 원래 사본이 그대로 남아 있을 수 있다
+            if let Some(backup) = &backup {
+                let _ = std::fs::remove_file(&target);
+                if let Err(re) = std::fs::rename(backup, &target) {
+                    tracing::error!("[Updater] Restore of {} failed: {}", target.display(), re);
+                }
+            }
+            anyhow::bail!("Cannot replace {}: {}", target.display(), e);
+        }
+        std::fs::remove_file(staged).ok();
+        tracing::info!("[Updater] Installer updated");
+        Ok(vec![target])
     }
 
     /// zip을 풀며 덮어쓸 파일을 비켜 두고(실행 파일은 `.old`, 나머지는 `.update-bak`), 풀다가 실패하면
@@ -390,6 +420,7 @@ impl UpdateManager {
                 let exe_name = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
                 self.install_root.join(exe_name).exists()
             }
+            Component::Installer => self.install_root.join(INSTALLER_EXE).exists(),
             Component::Locales => {
                 // locales/ 디렉터리에 en/ 존재 확인
                 self.install_root.join("locales").join("en").exists()
@@ -418,7 +449,7 @@ impl UpdateManager {
             Component::Gui => self.install_root.clone(),
             Component::Module(name) => self.modules_dir.join(name),
             Component::Extension(name) => self.resolve_ext_dir(name),
-            Component::Updater => self.install_root.clone(),
+            Component::Updater | Component::Installer => self.install_root.clone(),
             Component::Locales => self.install_root.join("locales"),
         }
     }
@@ -516,9 +547,16 @@ impl UpdateManager {
                 continue;
             }
 
+            let kind = entry.header().entry_type();
+            // 링크 엔트리는 만들지 않는다 (뒤 엔트리가 그 링크를 따라 밖에 쓸 수 있다)
+            if !(kind.is_dir() || kind.is_file()) {
+                tracing::warn!("[Updater] Skipping non-file entry: {}", entry_path.display());
+                continue;
+            }
+            reject_links_below(target_dir, &entry_path)?;
             let out_path = target_dir.join(&entry_path);
 
-            if entry.header().entry_type().is_dir() {
+            if kind.is_dir() {
                 std::fs::create_dir_all(&out_path)?;
             } else {
                 if let Some(parent) = out_path.parent() {

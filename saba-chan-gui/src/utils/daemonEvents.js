@@ -96,9 +96,42 @@ export function eventToast(ev, t, nameOf = (id) => id) {
     }
 }
 
+// 알린 포트 이동 (서버·from·to). 시작 응답과 instance.port_moved 이벤트가 같은 이동을 두 번 알리지 않게 한다
+const shownPortMoves = new Set();
+
+/** 데몬이 Windows 예약 범위를 피해 옮겨 저장한 포트를 알린다. 같은 이동은 한 번만 */
+export function showPortMoved({ instanceId, name, from, to }, t) {
+    const key = `${instanceId}|${from}|${to}`;
+    if (shownPortMoves.has(key)) return;
+    shownPortMoves.add(key);
+    safeShowToast(t('servers.port_moved', { name: name || instanceId, from, to }), 'warning', 8000, {
+        isNotice: true,
+        source: 'saba-chan',
+    });
+}
+
+// 서버의 예기치 않은 멈춤 하나는 이벤트(instance.exit)와 목록 폴링이 따로 알아챈다.
+// 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다 (G-S6).
+// 같은 쪽이 연달아 알리면(재시작 사이 크래시가 거듭되면) 모두 알린다
+const stopNotices = new Map();
+const STOP_NOTICE_PAIR_MS = 30_000;
+
+/** 이 서버의 예기치 않은 멈춤을 지금 알려도 되는지. source: 'event' | 'poll' */
+export function claimStopNotice(instanceId, source) {
+    if (!instanceId) return true;
+    const mark = stopNotices.get(instanceId);
+    if (mark && mark.source !== source && Date.now() - mark.at < STOP_NOTICE_PAIR_MS) {
+        stopNotices.delete(instanceId);
+        return false;
+    }
+    stopNotices.set(instanceId, { source, at: Date.now() });
+    return true;
+}
+
 /** 토스트를 띄우고 알림 보기에도 남긴다 */
 export function showEventToast(ev, t, nameOf) {
     const toast = eventToast(ev, t, nameOf);
+    if (toast && ev.type === 'instance.exit' && !claimStopNotice(ev.data.instanceId, 'event')) return null;
     if (toast) safeShowToast(toast.message, toast.type, toast.duration, { isNotice: true, source: 'saba-chan' });
     return toast;
 }

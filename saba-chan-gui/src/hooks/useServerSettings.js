@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { launchDraft } from '../components/servers/LaunchPreview';
-import { createTranslateError, safeShowToast } from '../utils/helpers';
+import { busyMessage, createTranslateError, moduleSupports, safeShowToast } from '../utils/helpers';
+import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { useModalClose } from './useModalClose';
 
@@ -74,6 +75,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionInstalling, setVersionInstalling] = useState(false);
     const [resettingServer, setResettingServer] = useState(false);
+    const [savingSettings, setSavingSettings] = useState(false);
+    // 저장 응답을 기다리는 동안 다시 누른 저장은 버린다 (G-U5)
+    const savingRef = useRef(false);
     // 실제 설정으로 확인하지 못한 칸 (저장된 캐시나 module.toml 기본값). 사용자가 고치지 않으면 저장하지 않는다
     // (그대로 저장하면 게임 안이나 파일에서 바꾼 값을 덮어쓴다)
     const unconfirmedFields = useRef(new Set());
@@ -224,7 +228,12 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
         setAvailableVersions([]);
-        if (installMethod === 'download') {
+        // 버전 목록·설치를 구현한 모듈만 (MK1)
+        if (
+            installMethod === 'download' &&
+            moduleSupports(mod, 'list_versions') &&
+            moduleSupports(mod, 'install_server')
+        ) {
             setVersionsLoading(true);
             try {
                 const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
@@ -241,7 +250,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
             // Detect installed version from server binary if not already saved
             const hasSavedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
-            if (!hasSavedVersion && latestServer.id) {
+            if (!hasSavedVersion && latestServer.id && moduleSupports(mod, 'get_installed_version')) {
                 try {
                     const detected = await window.api.instanceGetInstalledVersion(latestServer.id);
                     if (request !== openRequest.current) return;
@@ -267,27 +276,26 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         setSettingsValues((prev) => ({ ...prev, [fieldName]: String(value) }));
     };
 
-    // 데몬이 켜져 있거나(server_running) 다른 작업 중이라(instance_busy) 거절한 이유
-    const busyMessage = (code, runningKey) => {
-        if (code === 'server_running') return t(`server_settings.${runningKey}`);
-        if (code === 'instance_busy') return t('server_settings.instance_busy');
-        return null;
-    };
-
     // ── handleInstallVersion ────────────────────────────────
     const handleInstallVersion = async () => {
         if (!settingsServer || !settingsValues.server_version) return;
         const version = settingsValues.server_version;
         const serverName = settingsServer.name;
         const module = settingsServer.module;
+        const game = gameNameOf(
+            t,
+            module,
+            modules.find((m) => m.name === module),
+        );
 
         setModal({
             type: 'question',
             title: t('server_settings.install_version_confirm_title', { defaultValue: 'Install Server Version' }),
             message: t('server_settings.install_version_confirm', {
+                game,
                 version,
                 name: serverName,
-                defaultValue: `Install Minecraft ${version} for server '${serverName}'?\n\nThis will download and replace the server JAR file.`,
+                defaultValue: `Install ${game} ${version} for server '${serverName}'?\n\nThis will download and replace the server files.`,
             }),
             buttons: [
                 {
@@ -297,7 +305,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         const request = openRequest.current;
                         setModal(null);
                         setVersionInstalling(true);
-                        setProgressBar({ message: t('servers.progress_downloading', { version }), percent: 0 });
+                        setProgressBar({ message: t('servers.progress_downloading', { game, version }), percent: 0 });
                         try {
                             const srv = servers.find((s) => s.id === settingsServer.id);
                             const workDir = srv?.module_settings?.working_dir || srv?.working_dir || null;
@@ -315,9 +323,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 targetDir = workDir;
                             }
 
+                            // instance_id: 데몬이 이 인스턴스 설정(서버 종류 등)으로 설치하고 작업 잠금을 잡는다
                             const installResult = await window.api.moduleInstallServer(module, {
                                 version,
                                 install_dir: targetDir,
+                                instance_id: settingsServer.id,
                             });
 
                             const blocked = blockedText(installResult, t);
@@ -334,10 +344,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 const extList = (installResult.missing_extensions || []).join(', ');
                                 safeShowToast(
                                     installResult.error ||
-                                        t('server_settings.extension_required_for_install', {
-                                            extensions: extList,
-                                            defaultValue: `Required extension(s) missing: ${extList}. Install them in Settings → Extensions first.`,
-                                        }),
+                                        t('server_settings.extension_required_for_install', { extensions: extList }),
                                     'error',
                                     6000,
                                 );
@@ -347,7 +354,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             if (installResult.error || installResult.success === false) {
                                 setProgressBar(null);
                                 safeShowToast(
-                                    busyMessage(installResult.error_code, 'install_server_running') ||
+                                    busyMessage(t, installResult.error_code, 'install_server_running') ||
                                         translateError(installResult.error || installResult.message),
                                     'error',
                                     4000,
@@ -356,35 +363,34 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 return;
                             }
 
+                            // 설치한 버전만 기록한다 (설정 저장은 버전을 보내지 않는다)
+                            const update = { server_version: version };
                             if (installResult.jar_path) {
                                 // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
-                                const installDir =
+                                update.working_dir =
                                     installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
-                                const saved = await window.api.instanceUpdateSettings(settingsServer.id, {
-                                    working_dir: installDir,
-                                    server_version: version,
-                                });
-                                if (!saved || saved.error || saved.success === false) {
-                                    setProgressBar(null);
-                                    safeShowToast(
-                                        t('server_settings.install_settings_failed', {
-                                            error: translateError(saved?.error || saved?.message || ''),
-                                        }),
-                                        'error',
-                                        6000,
-                                    );
-                                    await fetchServers();
-                                    return;
-                                }
-                                if (request === openRequest.current) handleSettingChange('server_version', version);
                             }
+                            const saved = await window.api.instanceUpdateSettings(settingsServer.id, update);
+                            if (!saved || saved.error || saved.success === false) {
+                                setProgressBar(null);
+                                safeShowToast(
+                                    t('server_settings.install_settings_failed', {
+                                        error: translateError(saved?.error || saved?.message || ''),
+                                    }),
+                                    'error',
+                                    6000,
+                                );
+                                await fetchServers();
+                                return;
+                            }
+                            if (request === openRequest.current) handleSettingChange('server_version', version);
 
                             setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
                             setTimeout(() => setProgressBar(null), 2000);
 
                             const msg = installResult.java_warning
-                                ? `${t('servers.install_completed', { version })}\n⚠️ ${installResult.java_warning}`
-                                : t('servers.install_completed', { version });
+                                ? `${t('servers.install_completed', { game, version })}\n⚠️ ${installResult.java_warning}`
+                                : t('servers.install_completed', { game, version });
                             safeShowToast(msg, 'success', 5000);
                             await fetchServers();
                         } catch (err) {
@@ -435,7 +441,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 safeShowToast(
                                     t('server_settings.reset_failed', {
                                         error:
-                                            busyMessage(result?.error_code, 'reset_server_running') ||
+                                            busyMessage(t, result?.error_code, 'reset_server_running') ||
                                             translateError(result?.error || result?.message || ''),
                                         defaultValue: 'Reset failed',
                                     }),
@@ -486,7 +492,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
     // ── handleSaveSettings ──────────────────────────────────
     const handleSaveSettings = async () => {
-        if (!settingsServer) return;
+        if (!settingsServer || savingRef.current) return;
+        savingRef.current = true;
+        setSavingSettings(true);
         // 첫 await 전에 잡는다: 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
         const request = openRequest.current;
 
@@ -538,10 +546,6 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         convertedSettings[field.name] = value;
                     }
                 });
-            }
-
-            if (settingsValues.server_version) {
-                convertedSettings.server_version = settingsValues.server_version;
             }
 
             // 램 상한: 바꿨을 때만 보낸다. 비우면 제한 없음(null), 형식 검사는 데몬이 한다 (invalid_format)
@@ -597,7 +601,12 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     setModal({
                         type: 'failure',
                         title: t('settings.save_failed_title'),
-                        message: blockedText(result, t) || translateError(result.error),
+                        message:
+                            (result.error_code === 'working_dir_in_use' &&
+                                t('servers.working_dir_in_use', { instance: result.instance || '?' })) ||
+                            (result.error_code === 'instance_busy' && t('server_settings.instance_busy')) ||
+                            blockedText(result, t) ||
+                            translateError(result.error),
                     });
                 }
                 console.error('Error response:', result.error);
@@ -625,6 +634,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 title: t('settings.save_error_title'),
                 message: translateError(error.message),
             });
+        } finally {
+            savingRef.current = false;
+            setSavingSettings(false);
         }
     };
 
@@ -642,6 +654,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         versionsLoading,
         versionInstalling,
         resettingServer,
+        savingSettings,
         // Close animation
         isSettingsClosing,
         requestSettingsClose,

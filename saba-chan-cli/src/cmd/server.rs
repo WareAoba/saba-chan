@@ -50,7 +50,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
 
 /// `/api/servers`에서 이 서버의 실행 상태
 pub async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
-    let list = ctx.api.servers().await?;
+    let list = ctx.api.servers(true).await?;
     Ok(list
         .get("servers")
         .and_then(Value::as_array)
@@ -151,7 +151,7 @@ async fn settle(ctx: &Ctx, sv: &Server, window: Duration) -> String {
 // ── 목록·정보 ──
 
 async fn list(ctx: &Ctx) -> Result<()> {
-    let (servers, modules) = tokio::join!(ctx.api.servers(), ctx.api.modules());
+    let (servers, modules) = tokio::join!(ctx.api.servers(true), ctx.api.modules());
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
     ctx.out.data(servers.get("servers").unwrap_or(&json!([])), |list| {
@@ -179,7 +179,8 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         .ok()
         .filter(|p| p.get("active").and_then(Value::as_bool) == Some(true));
 
-    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress });
+    let missing = crate::cmd::module::unsupported(&module);
+    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress, "unsupported": missing });
     ctx.out.data(&v, |_| {
         let game = s(&module, "display_name");
         output::heading(&format!(
@@ -191,6 +192,10 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             (t!("col.state"), output::status_badge(status_of(&rt))),
             (t!("col.id"), output::dim(&sv.id)),
         ];
+        // 켜져 있지만 상태 질문에 답하지 않음: 명령·정상 종료도 닿지 않을 수 있다
+        if let Some(reason) = rt.get("unresponsive").and_then(Value::as_str) {
+            rows.push((t!("server.unresponsive"), console::style(t!("server.unresponsive_reason", reason = reason)).yellow().to_string()));
+        }
         if let Some(st) = rt
             .get("start_time")
             .and_then(Value::as_u64)
@@ -234,10 +239,13 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         if let Some(e) = &last_exit {
             rows.push((t!("col.last_exit"), exit_line(e)));
         }
+        if !missing.is_empty() {
+            rows.push((t!("col.unsupported"), missing.join(", ")));
+        }
         output::print_kv(&rows);
         if let Some(p) = &progress {
-            println!();
-            println!("{}", progress_line(p));
+            say!();
+            say!("{}", progress_line(p));
         }
     });
     Ok(())
@@ -401,11 +409,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         let label = d.get("label").and_then(Value::as_str).unwrap_or(field);
         let default = d.get("default").cloned().unwrap_or(Value::Null);
         let value = if s(d, "type") == "boolean" {
-            if ctx.ask.enabled {
-                Value::Bool(ctx.ask.confirm(label, default.as_bool().unwrap_or(false))?)
-            } else {
-                default
-            }
+            bool_option(&ctx.ask, label, &default)?
         } else {
             match ctx.ask.text(label, default.as_str(), true)? {
                 Some(v) if !v.is_empty() => Value::String(v),
@@ -499,13 +503,23 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let created = ctx.api.create_instance(body).await?;
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
+    // 7-0) 약관 (예: 게임 EULA). 설치를 기다리기 전에 묻는다
+    offer_agreements(ctx, &id, &name, &a.accept).await;
 
     // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
     let mut settings_error = None;
     if !patch.is_empty() {
-        if let Err(e) = ctx.api.update_instance(&id, Value::Object(patch)).await {
-            ctx.out.warn(&t!("add.settings_failed", error = e));
-            settings_error = Some(e.to_string());
+        match ctx.api.update_instance(&id, Value::Object(patch)).await {
+            Err(e) => {
+                ctx.out.warn(&t!("add.settings_failed", error = e));
+                settings_error = Some(e.to_string());
+            }
+            Ok(r) => {
+                if let Some(e) = sync_failure(&r) {
+                    ctx.out.warn(&e);
+                    settings_error = Some(e);
+                }
+            }
         }
     }
 
@@ -624,10 +638,17 @@ async fn ensure_extensions(ctx: &Ctx, module: &Value) -> Result<()> {
             spin.finish_and_clear();
             r?;
         }
-        ctx.api.enable_extension(id).await?;
+        let r = ctx.api.enable_extension(id).await?;
         ctx.out.done(&t!("ext.enabled", id = id), &json!({ "id": id }));
+        // `extension enable`처럼 미확인·변경된 익스텐션이면 알린다
+        super::print_trust_warnings(ctx, &r);
     }
     Ok(())
+}
+
+/// 따라가던 설치 항목이 끝을 보이기 전에 사라졌다. 부르는 쪽은 항목이 있을 때만 따라가므로 성공으로 치지 않는다
+fn provision_lost(p: &Value) -> bool {
+    p.get("active").and_then(Value::as_bool) != Some(true)
 }
 
 /// 설치 진행률을 끝날 때까지 보여 준다. Ctrl+C는 기다리기만 멈춘다 (설치는 계속).
@@ -635,9 +656,9 @@ async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
     let bar = crate::progress::percent_bar(&t!("add.installing"));
     loop {
         let p = ctx.api.provision_progress(name).await?;
-        if p.get("active").and_then(Value::as_bool) != Some(true) {
+        if provision_lost(&p) {
             bar.finish_and_clear();
-            return Ok(json!({ "done": true }));
+            return Err(failed(t!("progress.lost", name = name)));
         }
         if let Some(pct) = p.get("percent").and_then(Value::as_u64) {
             bar.set_position(pct.min(100));
@@ -663,7 +684,7 @@ async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
 }
 
 async fn remove(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     let running = status_of(&runtime(ctx, &sv).await?) == "running";
     let question = if running {
         t!("remove.confirm_running", name = sv.name)
@@ -691,7 +712,9 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
         "provisioning" => return Err(failed(t!("start.provisioning", name = sv.name))),
         _ => {
             // 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법.
-            let r = match ctx.api.start(&sv.id).await {
+            let res = ctx.api.start(&sv.id).await;
+            tell_moved_ports(ctx, &res);
+            let r = match res {
                 Err(e) if api_code(&e) == Some("preflight_failed") => {
                     return checkup(ctx, Err(e), "", &sv.name).await;
                 }
@@ -724,7 +747,7 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
                     if !ctx.out.json {
                         let tail = ctx.api.console(&sv.id, None, Some(6)).await.unwrap_or(Value::Null);
                         for l in tail.get("lines").and_then(Value::as_array).into_iter().flatten() {
-                            eprintln!("  {}", crate::cmd::console::format_line(l));
+                            tell!("  {}", crate::cmd::console::format_line(l));
                         }
                     }
                     ctx.out
@@ -795,6 +818,7 @@ pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let spin = crate::progress::spinner(&t!("restart.waiting", name = sv.name));
     let r = ctx.api.restart(&sv.id, a.force).await;
     spin.finish_and_clear();
+    tell_moved_ports(ctx, &r);
     let r = r?;
     let st = wait_status(
         ctx,
@@ -890,7 +914,7 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
     };
     let (mut args, missing) = def.bind(words).map_err(usage)?;
     for input in missing {
-        let v = ask_input(ctx, def, &input)?;
+        let v = ask_input(&ctx.ask, def, &input)?;
         args.insert(input.name.clone(), input.coerce(v).map_err(usage)?);
     }
     if def.risk == Risk::Danger {
@@ -902,6 +926,30 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
     Ok(())
 }
 
+/// 시작·재시작 답의 `port_moved: [{field, from, to}]` → 알릴 줄
+fn port_moved_lines(body: &Value) -> Vec<String> {
+    body.get("port_moved")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|m| Some(t!("start.port_moved", from = m.get("from")?, to = m.get("to")?)))
+        .collect()
+}
+
+/// 예약 범위를 피해 옮긴 포트는 시작이 실패해도 저장돼 있으므로, 답이 성공이든 오류든 알린다
+fn tell_moved_ports(ctx: &Ctx, res: &Result<Value>) {
+    let body = match res {
+        Ok(v) => Some(v),
+        Err(e) => match e.downcast_ref::<CliError>() {
+            Some(CliError::Api { body, .. }) => Some(body),
+            _ => None,
+        },
+    };
+    for line in body.map(port_moved_lines).unwrap_or_default() {
+        ctx.out.note(&line);
+    }
+}
+
 /// API 오류의 `error_code`
 fn api_code(e: &anyhow::Error) -> Option<&str> {
     match e.downcast_ref::<CliError>() {
@@ -910,10 +958,10 @@ fn api_code(e: &anyhow::Error) -> Option<&str> {
     }
 }
 
-fn ask_input(ctx: &Ctx, def: &Command, input: &Input) -> Result<Value> {
+fn ask_input(ask: &crate::prompt::Prompt, def: &Command, input: &Input) -> Result<Value> {
     let missing = || usage(t!("run.missing_arg", label = input.label, usage = def.usage()));
     if !input.options.is_empty() {
-        return match ctx.ask.select(&input.label, &input.options, 0)? {
+        return match ask.select(&input.label, &input.options, 0)? {
             Some(i) => Ok(Value::String(input.options[i].clone())),
             None => Err(missing()),
         };
@@ -922,10 +970,21 @@ fn ask_input(ctx: &Ctx, def: &Command, input: &Input) -> Result<Value> {
         Some(p) => format!("{} {}", input.label, output::dim(&format!("({})", p))),
         None => input.label.clone(),
     };
-    match ctx.ask.text(&prompt, None, false)? {
+    // 비밀번호 칸은 화면에 보이지 않게 묻는다
+    let answer = if input.kind == "password" {
+        ask.secret(&prompt)?.filter(|v| !v.is_empty())
+    } else {
+        ask.text(&prompt, None, false)?
+    };
+    match answer {
         Some(v) => Ok(Value::String(v)),
         None => Err(missing()),
     }
+}
+
+/// 설정은 저장했지만 게임 설정 파일에 쓰지 못했으면(`synced: false`) 그 이유
+fn sync_failure(r: &Value) -> Option<String> {
+    (r.get("synced").and_then(Value::as_bool) == Some(false)).then(|| t!("set.sync_failed", error = s(r, "sync_error")))
 }
 
 /// 명령 응답을 사람이 읽게: 문자열 → 그대로, 객체 배열 → 표, 객체 → 이름: 값
@@ -942,7 +1001,7 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
             .or_else(|| r.get("message").and_then(Value::as_str))
             .or_else(|| r.get("output").and_then(Value::as_str));
         if let Some(t) = text.filter(|t| !t.trim().is_empty()) {
-            println!("{}", t.trim_end());
+            say!("{}", t.trim_end());
             return;
         }
         // 빈 답(`{response: "", executed}`)은 보낸 것만 알린다
@@ -952,7 +1011,7 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
         });
         match data.filter(|_| !empty_reply) {
             Some(d) => print_value(d),
-            None => println!("{} {}", console::style("✓").green().bold(), t!("run.sent")),
+            None => say!("{} {}", console::style("✓").green().bold(), t!("run.sent")),
         }
     });
 }
@@ -992,10 +1051,10 @@ pub fn print_value(v: &Value) {
         }
         Value::Array(items) => {
             for it in items {
-                println!("{}", show(it));
+                say!("{}", show(it));
             }
         }
-        other => println!("{}", show(other)),
+        other => say!("{}", show(other)),
     }
 }
 
@@ -1023,7 +1082,7 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
     let v = json!({ "module": module, "accepts_raw": cat.accepts_raw(), "commands": v });
     ctx.out.data(&v, |_| {
         if cat.commands.is_empty() {
-            println!("{}", output::dim(&t!("run.no_commands")));
+            say!("{}", output::dim(&t!("run.no_commands")));
         } else {
             let mut t = output::table(&[t!("col.command"), t!("col.what"), t!("col.aliases")]);
             for c in &cat.commands {
@@ -1044,8 +1103,8 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
             output::print_table(t);
         }
         if cat.accepts_raw() {
-            println!();
-            println!("{}", output::dim(&t!("run.raw_ok")));
+            say!();
+            say!("{}", output::dim(&t!("run.raw_ok")));
         }
     });
     Ok(())
@@ -1079,19 +1138,11 @@ fn setting_fields(module: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-/// 인스턴스 최상위에 있는 공통 칸과 그 형식 (데몬 `update_instance_settings`의 known_fields)
-const COMMON: &[(&str, &str)] = &[
-    ("port", "number"),
-    ("rest_host", "text"),
-    ("rest_port", "number"),
-    ("rest_username", "text"),
-    ("rest_password", "password"),
-    ("executable_path", "text"),
-    ("protocol_mode", "text"),
-    ("server_version", "text"),
-    // 메모리 상한(MiB). 비우면 제한 없음 (Windows만 적용)
-    ("memory_limit_mb", "number"),
-];
+/// 모듈이 선언하지 않아도 모든 서버에 있는 칸과 그 형식: 인스턴스 공통 칸과 데몬이 읽는 설정 (데몬과 같은 표)
+fn common() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    use saba_chan_updater_lib::constants::{DAEMON_SETTINGS, INSTANCE_FIELDS};
+    INSTANCE_FIELDS.iter().chain(DAEMON_SETTINGS)
+}
 
 /// KEY=VALUE 하나를 PATCH 키와 형식 맞춘 값으로. `ext.키`는 extension_data, 빈 값은 지우기(null).
 /// 모듈 정의에도, 공통 칸에도, 지금 값에도 없는 키 (오타일 가능성이 높다)
@@ -1099,7 +1150,7 @@ fn unknown_setting(fields: &[Value], key: &str) -> anyhow::Error {
     let names: Vec<String> = fields
         .iter()
         .map(|f| s(f, "name").to_string())
-        .chain(COMMON.iter().map(|(k, _)| k.to_string()))
+        .chain(common().map(|(k, _)| k.to_string()))
         .collect();
     let suggestions = match resolve::find(&names, key, |n| vec![n.clone()], |n| n.clone()) {
         resolve::Found::None(s) => s,
@@ -1127,7 +1178,7 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         .iter()
         .find(|f| s(f, "name") == key)
         .map(|f| s(f, "field_type").to_string())
-        .or_else(|| COMMON.iter().find(|(k, _)| *k == key).map(|(_, t)| t.to_string()))
+        .or_else(|| common().find(|(k, _)| *k == key).map(|(_, t)| t.to_string()))
         .or_else(|| {
             // 정의에 없는 키는 지금 값의 형식을 따른다
             let cur = instance
@@ -1140,8 +1191,11 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
             })
         })
         .ok_or_else(|| unknown_setting(fields, key))?;
-    // 공통 칸은 빈 값이 지우기다 (예: `memory_limit_mb=` → 제한 없음)
-    if raw.trim().is_empty() && COMMON.iter().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
+    // 공통 칸은 빈 값이 지우기다 (예: `memory_limit_mb=` → 제한 없음). 데몬이 비우지 않는 칸은 거절한다
+    if raw.trim().is_empty() && common().any(|(k, _)| *k == key) && !fields.iter().any(|f| s(f, "name") == key) {
+        if saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS.contains(&key) {
+            return Err(usage(t!("set.cannot_clear", key = key)));
+        }
         return Ok((key.to_string(), Value::Null));
     }
     let field = fields.iter().find(|f| s(f, "name") == key);
@@ -1152,6 +1206,12 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         }
     }
     Ok((key.to_string(), typed(raw, &kind)?))
+}
+
+/// 선택형 설정의 선택지 (`a | b | c`). 선택지가 없으면 None
+fn options_line(f: &Value) -> Option<String> {
+    let opts: Vec<&str> = f.get("options")?.as_array()?.iter().filter_map(Value::as_str).collect();
+    (!opts.is_empty()).then(|| opts.join(" | "))
 }
 
 fn insert_patch(patch: &mut Map<String, Value>, key: &str, value: Value) {
@@ -1236,6 +1296,9 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
                     shown = output::dim(&format!("{} ({})", show(d), t!("set.default")));
                 }
             }
+            if let Some(line) = options_line(f) {
+                shown = format!("{}  {}", shown, output::dim(&format!("({})", line)));
+            }
             push(
                 group,
                 format!("{} {}", label(f), output::dim(&format!("[{}]", name))),
@@ -1243,13 +1306,25 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             );
             seen.push(name.to_string());
         }
-        for (k, _) in COMMON {
+        for (k, _) in saba_chan_updater_lib::constants::INSTANCE_FIELDS {
             if seen.iter().any(|s| s == k) {
                 continue;
             }
             if let Some(val) = sv.raw.get(*k).filter(|v| !v.is_null()) {
                 push("saba-chan", output::dim(&format!("[{}]", k)), output::mask(k, val));
             }
+        }
+        // 데몬이 읽는 설정은 값이 없어도 보인다: 바꿀 수 있다는 것을 알 수 있게
+        for (k, _) in saba_chan_updater_lib::constants::DAEMON_SETTINGS {
+            if seen.iter().any(|s| s == k) {
+                continue;
+            }
+            let shown = match ms.get(*k).filter(|v| !v.is_null()) {
+                Some(val) => output::mask(k, val),
+                None => output::dim(&format!("({})", t!("set.default"))),
+            };
+            push("saba-chan", output::dim(&format!("[{}]", k)), shown);
+            seen.push(k.to_string());
         }
         if let Some(map) = ms.as_object() {
             for (k, val) in map.iter().filter(|(k, _)| !seen.contains(k)) {
@@ -1265,9 +1340,9 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             let title = crate::i18n::try_t(&format!("set.group.{}", group)).unwrap_or(group);
             output::heading(&title);
             output::print_kv(&rows);
-            println!();
+            say!();
         }
-        println!(
+        say!(
             "{}",
             output::dim(&format!("saba-chan-cli server set {} KEY=VALUE", shell_word(&sv.name)))
         );
@@ -1285,12 +1360,11 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
         insert_patch(&mut patch, &key, value);
     }
     let r = ctx.api.update_instance(&sv.id, Value::Object(patch.clone())).await?;
-    ctx.out.done(
-        &t!("set.done", name = sv.name, count = pairs.len()),
-        &json!({ "success": true, "changed": patch, "response": r }),
-    );
-    if r.get("synced").and_then(Value::as_bool) == Some(false) {
-        ctx.out.warn(&t!("set.sync_failed", error = s(&r, "sync_error")));
+    let data = json!({ "success": true, "changed": patch, "response": r });
+    // 게임 설정 파일에 쓰지 못했으면 끝에 실패로 알린다 (--json은 오류 문서 하나에 결과를 싣는다)
+    let sync_error = sync_failure(&r);
+    if sync_error.is_none() || !ctx.out.json {
+        ctx.out.done(&t!("set.done", name = sv.name, count = pairs.len()), &data);
     }
     let ignored: Vec<&str> = r.get("ignored").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
     if !ignored.is_empty() {
@@ -1299,7 +1373,10 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
     if status_of(&runtime(ctx, &sv).await.unwrap_or(Value::Null)) == "running" {
         ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
     }
-    Ok(())
+    match sync_error {
+        Some(message) => Err(CliError::Partial { message, data }.into()),
+        None => Ok(()),
+    }
 }
 
 async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) -> Result<()> {
@@ -1331,6 +1408,9 @@ async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) ->
             ctx.out.done(&t!("props.saved", name = sv.name), &r);
         }
         PropsCmd::Reset => {
+            if let Ok(m) = module_info(ctx, &sv.module).await {
+                crate::cmd::module::ensure_supported(&m, "reset_properties")?;
+            }
             ctx.ask.ensure(&t!("props.confirm_reset", name = sv.name))?;
             let r = ctx.api.reset_properties(&sv.id).await?;
             ctx.out.done(&t!("props.reset_done", name = sv.name), &r);
@@ -1350,7 +1430,7 @@ async fn version(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             .or_else(|| r.get("server_version"))
             .map(show)
             .unwrap_or_else(|| output::dim(&t!("server.version_unknown")));
-        println!("{}  {}", sv.name, v);
+        say!("{}  {}", sv.name, v);
     });
     Ok(())
 }
@@ -1365,13 +1445,13 @@ async fn update(ctx: &Ctx, query: Option<&str>, check_only: bool) -> Result<()> 
     if check_only || !available {
         ctx.out.data(&r, |r| {
             if available {
-                println!("{}", t!("server.update_available", name = sv.name));
+                say!("{}", t!("server.update_available", name = sv.name));
                 ctx.out
                     .hint(&format!("saba-chan-cli server update {}", shell_word(&sv.name)));
             } else {
                 let reason = s(r, "reason");
                 let tail = crate::i18n::try_t(&format!("server.update_reason.{}", reason)).unwrap_or_default();
-                println!("{} {}", t!("server.update_none", name = sv.name), output::dim(&tail));
+                say!("{} {}", t!("server.update_none", name = sv.name), output::dim(&tail));
             }
         });
         return Ok(());
@@ -1421,7 +1501,7 @@ async fn progress(ctx: &Ctx, query: &str, dismiss: bool) -> Result<()> {
     }
     let p = ctx.api.provision_progress(&name).await?;
     if p.get("active").and_then(Value::as_bool) != Some(true) {
-        ctx.out.data(&p, |_| println!("{}", t!("progress.none", name = name)));
+        ctx.out.data(&p, |_| say!("{}", t!("progress.none", name = name)));
         return Ok(());
     }
     if ctx.out.json || p.get("done").and_then(Value::as_bool) == Some(true) {
@@ -1429,7 +1509,7 @@ async fn progress(ctx: &Ctx, query: &str, dismiss: bool) -> Result<()> {
         if let Some(err) = p.get("done").and_then(Value::as_bool).filter(|d| *d).and(p.get("error")).and_then(Value::as_str) {
             return Err(CliError::Partial { message: err.to_string(), data: p.clone() }.into());
         }
-        ctx.out.data(&p, |p| println!("{}", progress_line(p)));
+        ctx.out.data(&p, |p| say!("{}", progress_line(p)));
         return Ok(());
     }
     let r = follow_provision(ctx, &name).await?;
@@ -1448,7 +1528,7 @@ async fn history(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     ctx.out.data(&r, |r| {
         let events = r.get("events").and_then(Value::as_array).cloned().unwrap_or_default();
         if events.is_empty() {
-            println!("{}", output::dim(&t!("history.none")));
+            say!("{}", output::dim(&t!("history.none")));
             return;
         }
         let mut t = output::table(&[t!("col.when"), t!("col.kind"), t!("col.code"), t!("col.why")]);
@@ -1490,7 +1570,7 @@ async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str, server: &str) -> Res
     };
     ctx.out.data(&value, |v| {
         if !crate::cmd::print_issues(v) {
-            println!("{} {}", console::style("✓").green().bold(), ok_msg);
+            say!("{} {}", console::style("✓").green().bold(), ok_msg);
         }
     });
     // 동의하지 않은 모듈 약관이 있으면 바로 풀 수 있는 명령을 알려 준다
@@ -1524,15 +1604,15 @@ async fn launch_preview(ctx: &Ctx, query: Option<&str>, extra: Option<&str>) -> 
     let r = ctx.api.launch_preview(&sv.id, extra).await?;
     ctx.out.data(&r, |r| {
         if r.get("has_launch_args").and_then(Value::as_bool) == Some(false) {
-            println!("{}", dim(&t!("launch_preview.no_args", name = sv.name)));
+            say!("{}", dim(&t!("launch_preview.no_args", name = sv.name)));
         }
         match r.get("command_line").and_then(Value::as_str) {
-            Some(line) if r.get("success").and_then(Value::as_bool) == Some(true) => println!("{}", line),
-            _ => println!("{} {}", console::style("✗").red(), s(r, "message")),
+            Some(line) if r.get("success").and_then(Value::as_bool) == Some(true) => say!("{}", line),
+            _ => say!("{} {}", console::style("✗").red(), s(r, "message")),
         }
         for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
             let what = e.get("arg").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| show(&e["got"]));
-            println!("{} {}", console::style("!").yellow(), t!("launch_preview.invalid_format", arg = what, field = s(e, "field")));
+            say!("{} {}", console::style("!").yellow(), t!("launch_preview.invalid_format", arg = what, field = s(e, "field")));
         }
     });
     Ok(())
@@ -1542,33 +1622,124 @@ async fn launch_preview(ctx: &Ctx, query: Option<&str>, extra: Option<&str>) -> 
 async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let inst = ctx.api.instance(&sv.id).await?;
-    let pending: Vec<&Value> = inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).collect();
+    let pending = pending_agreements(&inst);
     if pending.is_empty() {
         ctx.out.done(&t!("agree.none", name = sv.name), &json!({ "success": true, "agreements": inst["agreements"] }));
         return Ok(());
     }
-    if !ctx.out.json {
-        for a in &pending {
-            println!("  {}  {}", console::style(s(a, "label")).bold(), s(a, "url"));
-        }
-    }
+    show_agreements(ctx, &pending);
     let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
-    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
-    let ids: Vec<String> = pending.iter().map(|a| s(a, "id").to_string()).collect();
-    let r = ctx.api.accept_agreements(&sv.id, &ids).await?;
+    ctx.ask.agreed(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+    let r = accept(ctx, &sv.id, &pending).await?;
     ctx.out.done(&t!("agree.done", name = sv.name), &r);
     Ok(())
 }
 
+/// 익스텐션이 묻는 예/아니오 칸 (AddServer.options). `--yes`는 확인을 넘길 뿐 값을 정하지 않으므로 기본값을 쓴다
+fn bool_option(ask: &crate::prompt::Prompt, label: &str, default: &Value) -> Result<Value> {
+    if ask.enabled && !ask.yes {
+        Ok(Value::Bool(ask.confirm(label, default.as_bool().unwrap_or(false))?))
+    } else {
+        Ok(default.clone())
+    }
+}
+
+/// 모듈이 선언했지만 아직 동의하지 않은 약관 (인스턴스 응답의 `agreements`)
+fn pending_agreements(inst: &Value) -> Vec<Value> {
+    inst["agreements"].as_array().into_iter().flatten().filter(|a| a["accepted"] == json!(false)).cloned().collect()
+}
+
+/// `--accept`로 댔지만 이 서버의 약관에 없는 id (오타)
+fn unknown_accepts<'a>(inst: &Value, named: &'a [String]) -> Vec<&'a str> {
+    let agreements = inst["agreements"].as_array().cloned().unwrap_or_default();
+    named.iter().map(String::as_str).filter(|n| !agreements.iter().any(|a| s(a, "id") == *n)).collect()
+}
+
+fn show_agreements(ctx: &Ctx, pending: &[Value]) {
+    if !ctx.out.json {
+        for a in pending {
+            say!("  {}  {}", console::style(s(a, "label")).bold(), s(a, "url"));
+        }
+    }
+}
+
+async fn accept(ctx: &Ctx, id: &str, pending: &[Value]) -> Result<Value> {
+    let ids: Vec<String> = pending.iter().map(|a| s(a, "id").to_string()).collect();
+    ctx.api.accept_agreements(id, &ids).await
+}
+
+/// 동의할 약관을 나눈다: `--accept`로 id를 댄 것(바로 동의)과 사람에게 물을 것.
+/// 물을 수 없으면(`--json`, 터미널 아님) 묻지 않는다. `--yes`는 약관 동의로 치지 않는다
+fn split_agreements(pending: &[Value], named: &[String], can_ask: bool) -> (Vec<Value>, Vec<Value>) {
+    let (by_name, rest): (Vec<Value>, Vec<Value>) = pending.iter().cloned().partition(|a| named.iter().any(|n| n == s(a, "id")));
+    (by_name, if can_ask { rest } else { Vec::new() })
+}
+
+/// 만든 서버에 동의할 약관이 있으면 GUI처럼 만들 때 묻는다. 동의하지 않았거나 실패해도 서버 만들기는
+/// 이어 가고 `server agree`를 안내한다 (첫 start가 약관 때문에 막히지 않게, 만든 서버의 남은 단계는 그대로)
+async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
+    let Ok(inst) = ctx.api.instance(id).await else {
+        return;
+    };
+    let unknown = unknown_accepts(&inst, named);
+    if !unknown.is_empty() {
+        let known: Vec<&str> = inst["agreements"].as_array().into_iter().flatten().map(|a| s(a, "id")).collect();
+        ctx.out.warn(&t!("agree.unknown_id", ids = unknown.join(", "), known = known.join(", ")));
+    }
+    let pending = pending_agreements(&inst);
+    if pending.is_empty() {
+        return;
+    }
+    let (by_name, ask) = split_agreements(&pending, named, ctx.ask.enabled);
+    let mut chosen = by_name;
+    if !ask.is_empty() {
+        show_agreements(ctx, &ask);
+        let names: Vec<&str> = ask.iter().map(|a| s(a, "label")).collect();
+        if ctx.ask.consent(&t!("agree.confirm", name = name, names = names.join(", "))) {
+            chosen.extend(ask);
+        }
+    }
+    let accepted = if chosen.is_empty() {
+        false
+    } else {
+        match accept(ctx, id, &chosen).await {
+            Ok(_) => true,
+            Err(e) => {
+                ctx.out.warn(&e.to_string());
+                false
+            }
+        }
+    };
+    if accepted && !ctx.out.json {
+        say!("{} {}", console::style("✓").green().bold(), t!("agree.done", name = name));
+    }
+    if !accepted || chosen.len() < pending.len() {
+        ctx.out.hint(&format!("saba-chan-cli server agree {}", shell_word(name)));
+    }
+}
+
 async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     if status_of(&runtime(ctx, &sv).await?) == "running" {
         return Err(failed(t!("err.hint.server_running")));
     }
-    ctx.ask.ensure(&t!("reset.confirm", name = sv.name))?;
+    if let Ok(m) = module_info(ctx, &sv.module).await {
+        crate::cmd::module::ensure_supported(&m, "reset_server")?;
+    }
+    let locales = module_locales(ctx, &sv.module).await;
+    ctx.ask.ensure(&reset_question(&sv.name, locales.as_ref()))?;
     let r = ctx.api.reset_server(&sv.id).await?;
     ctx.out.done(&t!("reset.done", name = sv.name), &r);
     Ok(())
+}
+
+/// 초기화 확인 문구. 무엇이 지워지는지는 게임마다 달라 모듈 locales의 `reset.description`을 덧붙인다 (GUI와 같다)
+fn reset_question(name: &str, locales: Option<&Value>) -> String {
+    let question = t!("reset.confirm", name = name);
+    match locales.and_then(|l| l.pointer("/reset/description")).and_then(Value::as_str).filter(|d| !d.trim().is_empty()) {
+        Some(d) => format!("{}\n{}", question, d),
+        None => question,
+    }
 }
 
 async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
@@ -1596,6 +1767,98 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// 설치 진행 항목이 끝(done)을 보이기 전에 사라지면(데몬 재시작, 다른 곳에서 이름 바꾸기·삭제) 성공이 아니다 (L52)
+    #[test]
+    fn a_vanished_install_is_not_reported_as_finished() {
+        assert!(provision_lost(&json!({ "active": false })));
+        assert!(provision_lost(&json!({})));
+        assert!(!provision_lost(&json!({ "active": true, "done": false })));
+        assert!(!provision_lost(&json!({ "active": true, "done": true })));
+    }
+
+    struct Typing;
+
+    impl crate::prompt::Asker for Typing {
+        fn confirm(&self, _q: &str, _d: bool) -> Option<bool> {
+            Some(true)
+        }
+        fn select(&self, _q: &str, _items: &[String], _d: usize) -> Option<usize> {
+            Some(0)
+        }
+        fn text(&self, _q: &str, _d: Option<&str>, _e: bool) -> Option<String> {
+            Some("shown".into())
+        }
+        fn secret(&self, _q: &str) -> Option<String> {
+            Some("hidden".into())
+        }
+    }
+
+    /// 게임 명령의 비밀번호 칸은 화면에 보이지 않게 묻는다 (L54)
+    #[test]
+    fn a_password_input_is_asked_without_echo() {
+        let cat = Catalog::from_module(
+            &json!({ "commands": { "fields": [
+                { "name": "login", "inputs": [
+                    { "name": "pw", "type": "password", "required": true },
+                    { "name": "who", "required": true }
+                ] }
+            ] } }),
+            None,
+        );
+        let def = cat.find("login").unwrap();
+        let _lock = crate::prompt::ASKER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::prompt::AskerGuard::install(Box::new(Typing));
+        let ask = crate::prompt::Prompt { enabled: true, yes: false };
+        assert_eq!(ask_input(&ask, def, &def.inputs[0]).unwrap(), json!("hidden"));
+        assert_eq!(ask_input(&ask, def, &def.inputs[1]).unwrap(), json!("shown"));
+    }
+
+    /// 게임 설정 파일에 쓰지 못한 저장(`synced: false`)은 실패로 알린다 (L57)
+    #[test]
+    fn an_unsynced_save_is_a_failure() {
+        let why = sync_failure(&json!({ "success": true, "synced": false, "sync_error": "locked" })).unwrap();
+        assert!(why.contains("locked"), "{why}");
+        assert!(sync_failure(&json!({ "success": true, "synced": true })).is_none());
+        assert!(sync_failure(&json!({ "success": true })).is_none());
+    }
+
+    /// 데몬이 비우지 않는 칸에 빈 값을 주면 성공으로 알리지 않고 거절한다 (L33)
+    #[test]
+    fn an_empty_value_is_refused_where_the_daemon_keeps_the_old_one() {
+        let inst = json!({ "module_settings": {} });
+        assert!(typed_setting(&[], &inst, "working_dir", "").is_err());
+        assert!(typed_setting(&[], &inst, "port", " ").is_err());
+        assert_eq!(typed_setting(&[], &inst, "rest_port", "").unwrap().1, Value::Null);
+        assert_eq!(typed_setting(&[], &inst, "working_dir", "C:/srv").unwrap().1, json!("C:/srv"));
+    }
+
+    /// `server settings`가 선택형 설정의 선택지를 함께 보인다 (C4)
+    #[test]
+    fn choices_are_shown_for_a_select_setting() {
+        let select = json!({ "name": "difficulty", "field_type": "select", "options": ["easy", "normal", "hard"] });
+        assert_eq!(options_line(&select).as_deref(), Some("easy | normal | hard"));
+        assert_eq!(options_line(&json!({ "name": "max_players", "field_type": "number" })), None);
+        assert_eq!(options_line(&json!({ "name": "x", "options": [] })), None);
+    }
+
+    /// 초기화 확인에 무엇이 지워지는지(모듈 `reset.description`)를 붙인다 (C5)
+    #[test]
+    fn the_reset_question_says_what_the_module_wipes() {
+        let locales = json!({ "reset": { "description": "월드 세이브만 지워요." } });
+        assert!(reset_question("a", Some(&locales)).ends_with("월드 세이브만 지워요."));
+        assert!(!reset_question("a", None).contains('\n'));
+        assert_eq!(reset_question("a", Some(&json!({}))), reset_question("a", None));
+    }
+
+    /// `--accept`에 이 서버 약관에 없는 id(오타)를 주면 알린다
+    #[test]
+    fn accept_ids_that_are_not_agreements_of_the_server_are_reported() {
+        let inst = json!({ "agreements": [{ "id": "eula", "accepted": false }, { "id": "privacy", "accepted": true }] });
+        let named = vec!["eula".to_string(), "eulla".to_string(), "privacy".to_string()];
+        assert_eq!(unknown_accepts(&inst, &named), vec!["eulla"]);
+        assert!(unknown_accepts(&json!({}), &[]).is_empty());
+    }
+
     #[test]
     fn typed_settings_follow_schema() {
         let fields = vec![
@@ -1621,11 +1884,80 @@ mod tests {
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
     }
 
+    /// 새 서버(아직 값이 없음)에서도 데몬이 읽는 설정(auto_restart 등)과 공통 칸을 받는다 (C1)
+    #[test]
+    fn daemon_settings_are_accepted_on_a_new_server() {
+        let fields = vec![json!({ "name": "max_players", "field_type": "number" })];
+        let fresh = json!({ "module_settings": {} });
+        assert_eq!(typed_setting(&fields, &fresh, "auto_restart", "off").unwrap().1, json!(false));
+        assert_eq!(typed_setting(&fields, &fresh, "restart_on_unknown_exit", "on").unwrap().1, json!(true));
+        assert_eq!(typed_setting(&fields, &fresh, "managed_start", "false").unwrap().1, json!(false));
+        assert_eq!(typed_setting(&fields, &fresh, "log_sessions_keep", "5").unwrap().1, json!(5));
+        assert_eq!(typed_setting(&fields, &fresh, "extra_args", "-nogui -x").unwrap().1, json!("-nogui -x"));
+        assert_eq!(typed_setting(&fields, &fresh, "working_dir", "D:/srv").unwrap().1, json!("D:/srv"));
+    }
+
+    /// 만들 때·`server agree`가 묻는 약관은 아직 동의하지 않은 것만 (C2)
+    #[test]
+    fn only_unaccepted_agreements_are_asked() {
+        let inst = json!({ "agreements": [
+            { "id": "eula", "label": "Minecraft EULA", "url": "https://aka.ms/MinecraftEULA", "accepted": false },
+            { "id": "tos", "label": "ToS", "url": "https://example.com", "accepted": true },
+        ] });
+        let ids: Vec<String> = pending_agreements(&inst).iter().map(|a| s(a, "id").to_string()).collect();
+        assert_eq!(ids, vec!["eula"]);
+        assert!(pending_agreements(&json!({})).is_empty());
+    }
+
+    /// 약관은 `--accept`로 이름을 댄 것만 바로 동의하고, 나머지는 사람에게 물을 수 있을 때만 묻는다.
+    /// `--yes`나 `--json`은 동의가 아니다 (리뷰 315)
+    #[test]
+    fn agreements_are_accepted_only_by_name_or_asked() {
+        let pending = vec![json!({ "id": "eula", "label": "EULA" }), json!({ "id": "tos", "label": "ToS" })];
+        let ids = |v: &[Value]| v.iter().map(|a| s(a, "id").to_string()).collect::<Vec<_>>();
+        let (named, ask) = split_agreements(&pending, &["eula".to_string()], true);
+        assert_eq!((ids(&named), ids(&ask)), (vec!["eula".to_string()], vec!["tos".to_string()]));
+        let (named, ask) = split_agreements(&pending, &[], false);
+        assert!(named.is_empty() && ask.is_empty(), "cannot ask: nothing is accepted, only guidance");
+        let (named, ask) = split_agreements(&pending, &[], true);
+        assert_eq!((ids(&named).len(), ids(&ask)), (0, vec!["eula".to_string(), "tos".to_string()]));
+    }
+
     #[test]
     fn patch_nests_extension_data() {
         let mut p = Map::new();
         insert_patch(&mut p, "extension_data.a", json!(1));
         insert_patch(&mut p, "port", json!(2));
         assert_eq!(Value::Object(p), json!({ "extension_data": { "a": 1 }, "port": 2 }));
+    }
+
+    /// 시작 전에 예약 범위를 피해 옮긴 포트를 알린다 (M13. 성공 답과 실패 답 모두)
+    #[test]
+    fn a_moved_port_is_told_on_start() {
+        let body = json!({ "success": false, "port_moved": [{ "field": "rest_port", "from": 8212, "to": 8242 }] });
+        let lines = port_moved_lines(&body);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("8212") && lines[0].contains("8242"), "{}", lines[0]);
+        assert!(port_moved_lines(&json!({ "success": true })).is_empty());
+    }
+
+    /// 약관 동의는 사람이 직접 답한다: `server agree`도 `--yes`로 동의하지 않는다 (확인 `ensure`가 아니라 동의 `agreed`)
+    #[test]
+    fn server_agree_asks_for_a_consent_not_a_confirmation() {
+        // Windows 체크아웃은 줄 끝이 CRLF일 수 있다
+        let src = include_str!("server.rs").replace("\r\n", "\n");
+        let body = &src[src.find("async fn agree(").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(body.contains("ctx.ask.agreed(") && !body.contains("ensure("), "{body}");
+    }
+
+    /// 익스텐션이 묻는 예/아니오 칸은 `--yes`여도 켜지 않는다: 기본값을 쓴다 (`--yes`는 확인을 넘길 뿐 값을 정하지 않는다)
+    #[test]
+    fn yes_keeps_the_default_of_a_yes_no_option() {
+        let ask = crate::prompt::Prompt { enabled: true, yes: true };
+        assert_eq!(bool_option(&ask, "q", &json!(false)).unwrap(), json!(false));
+        assert_eq!(bool_option(&ask, "q", &json!(true)).unwrap(), json!(true));
+        let quiet = crate::prompt::Prompt { enabled: false, yes: false };
+        assert_eq!(bool_option(&quiet, "q", &Value::Null).unwrap(), Value::Null);
     }
 }

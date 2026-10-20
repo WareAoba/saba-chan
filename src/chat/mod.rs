@@ -322,12 +322,9 @@ impl<D: DaemonApi> Ctx<'_, D> {
         let lines: Vec<String> = servers
             .iter()
             .map(|s| {
-                let (icon, status) = if s.is_running() {
-                    ("🟢", self.t("status.running", &[]))
-                } else {
-                    ("⚪", self.t("status.stopped", &[]))
-                };
-                self.t("list.item", &[("name", &s.name), ("module", &s.module), ("status", &status), ("status_icon", icon)])
+                // 상태 문구에 아이콘이 들어 있다 (🟢 실행 중)
+                let status = self.t(if s.is_running() { "status.running" } else { "status.stopped" }, &[]);
+                self.t("list.item", &[("name", &s.name), ("module", &s.module), ("status", &status)])
             })
             .collect();
         format!("{}\n{}", self.t("list.title", &[]), lines.join("\n"))
@@ -431,10 +428,14 @@ impl<D: DaemonApi> Ctx<'_, D> {
         let risk = match command.as_str() {
             "status" => "safe",
             "start" | "stop" => "caution",
-            _ => module.command(&command).and_then(|f| f.risk.as_deref()).unwrap_or("caution"),
+            _ => crate::commands::risk_of(module.command(&command).and_then(|f| f.risk.as_deref())),
         };
         if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
             return self.permission_denied(denied);
+        }
+        // 챗봇 경로의 danger 명령은 요청자 본인이 확인한 것만 (릴레이 확인 버튼 → `confirmedBy`). 액션 경로는 확인 계획이 같은 일을 한다
+        if risk == "danger" && self.req.remote.as_ref().is_some_and(|w| w.via_chatbot && !w.confirmed_by_requester()) {
+            return Reply::unrecognized("action_not_allowed", self.t("errors.chatbot_not_allowed", &[]), json!({ "command": command }));
         }
 
         match command.as_str() {
@@ -464,7 +465,18 @@ impl<D: DaemonApi> Ctx<'_, D> {
             let text = resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.error_title", &[]));
             return Reply::unrecognized("AGREEMENT_REQUIRED", format!("📜 {}", text), json!({ "agreements": resp.body.get("agreements") }));
         }
-        self.start_text(server, resp).into()
+        let moved = self.port_moved_lines(&resp);
+        let text = self.start_text(server, resp);
+        if moved.is_empty() { text.into() } else { format!("{}\n{}", text, moved.join("\n")).into() }
+    }
+
+    /// 시작 전에 예약 범위를 피해 옮긴 포트 (`port_moved`, 시작이 실패해도 옮긴 값은 저장돼 있다)
+    fn port_moved_lines(&self, resp: &InternalResponse) -> Vec<String> {
+        let moves = resp.body.get("port_moved").and_then(Value::as_array).cloned().unwrap_or_default();
+        moves
+            .iter()
+            .filter_map(|m| Some(self.t("server.port_moved", &[("from", &m.get("from")?.to_string()), ("to", &m.get("to")?.to_string())])))
+            .collect()
     }
 
     fn start_text(&self, server: &ServerView, resp: InternalResponse) -> String {

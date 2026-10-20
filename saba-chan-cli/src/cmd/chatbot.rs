@@ -7,16 +7,23 @@
 use crate::cli::ChatbotCmd;
 use crate::cmd::{guess, split_pairs};
 use crate::ctx::Ctx;
-use crate::error::{failed, usage, Result};
+use crate::error::{failed, usage, CliError, Result};
 use crate::output::{self, s};
 use serde_json::{json, Map, Value};
-use std::io::{BufRead, IsTerminal};
+use crate::resolve;
 
 pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
     match cmd {
         ChatbotCmd::Show => show(ctx).await,
-        ChatbotCmd::Set { pairs, guild } => set(ctx, &pairs, guild.as_deref()).await,
+        ChatbotCmd::Set { pairs, guild } => {
+            let guild = match guild {
+                Some(g) => Some(resolve::guild(ctx, Some(&g)).await?),
+                None => None,
+            };
+            set(ctx, &pairs, guild.as_deref()).await
+        }
         ChatbotCmd::Key { delete } => key(ctx, delete).await,
+        ChatbotCmd::Models { guild } => models(ctx, guild.as_deref()).await,
         ChatbotCmd::Clear => {
             ctx.ask.ensure(&t!("chatbot.confirm_clear"))?;
             let r = ctx.api.clear_chatbot().await?;
@@ -30,12 +37,21 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
             Ok(())
         }
         ChatbotCmd::Forget { guild } => {
+            let guild = match guild {
+                Some(g) => Some(resolve::guild(ctx, Some(&g)).await?),
+                None => None,
+            };
             let q = match &guild {
                 Some(g) => t!("chatbot.confirm_forget_guild", guild = g),
                 None => t!("chatbot.confirm_forget"),
             };
             ctx.ask.ensure(&q)?;
-            let r = ctx.api.forget_chatbot(guild.as_deref()).await?;
+            // 릴레이에 일부만 닿으면 데몬은 200에 success:false와 길드별 sync를 준다: 어느 길드가 실패했는지 보이고 실패로 끝낸다
+            let r = crate::client::partial(ctx.api.forget_chatbot(guild.as_deref()).await)?;
+            if r.get("success").and_then(Value::as_bool) == Some(false) {
+                report_sync(ctx, &r);
+                return Err(CliError::Partial { message: t!("chatbot.forget_failed"), data: r }.into());
+            }
             ctx.out.done(&t!("chatbot.forgot"), &r);
             report_sync(ctx, &r);
             Ok(())
@@ -45,6 +61,11 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
 
 async fn show(ctx: &Ctx) -> Result<()> {
     let r = ctx.api.chatbot().await?;
+    // 길드 제목에 쓸 이름 (페어링 전이거나 릴레이에 닿지 않으면 id 그대로)
+    let names = match ctx.out.json || r.get("guilds").and_then(Value::as_object).is_none_or(|g| g.is_empty()) {
+        true => Vec::new(),
+        false => crate::cmd::bot::paired_nodes(ctx).await.map(|n| resolve::guild_items(&n)).unwrap_or_default(),
+    };
     ctx.out.data(&r, |r| {
         let key = r.get("hasApiKey").and_then(Value::as_bool).unwrap_or(false);
         output::print_kv(&[(t!("chatbot.api_key"), output::yes_no(key))]);
@@ -53,12 +74,22 @@ async fn show(ctx: &Ctx) -> Result<()> {
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
-        println!();
+        // 예전 데몬은 기본값 표를 주지 않는다: 그때는 저장된 값만
+        let defaults = r.get("defaults").and_then(Value::as_object).cloned().unwrap_or_default();
+        say!();
         output::heading(&t!("chatbot.common"));
-        print_settings(&settings);
+        if defaults.is_empty() {
+            print_settings(&settings);
+        } else {
+            output::print_kv(&setting_rows(&defaults, &settings));
+        }
         for (guild, m) in r.get("guilds").and_then(Value::as_object).into_iter().flatten() {
-            println!();
-            output::heading(&t!("chatbot.guild", guild = guild));
+            say!();
+            let label = match names.iter().find(|(id, _)| id == guild) {
+                Some((_, name)) if !name.is_empty() => format!("{} ({})", name, guild),
+                _ => guild.clone(),
+            };
+            output::heading(&t!("chatbot.guild", guild = label));
             print_settings(m.as_object().unwrap_or(&Map::new()));
         }
         if !key {
@@ -70,21 +101,37 @@ async fn show(ctx: &Ctx) -> Result<()> {
 
 fn print_settings(m: &Map<String, Value>) {
     if m.is_empty() {
-        println!("  {}", output::dim(&t!("chatbot.defaults")));
+        say!("  {}", output::dim(&t!("chatbot.defaults")));
         return;
     }
     let rows: Vec<(String, String)> = m
         .iter()
-        .map(|(k, v)| {
-            let mut shown = output::mask(k, v);
-            // 긴 메모 같은 글은 앞부분만
-            if shown.chars().count() > 80 {
-                shown = format!("{}…", shown.chars().take(80).collect::<String>().replace('\n', " "));
-            }
-            (k.clone(), shown)
-        })
+        .map(|(k, v)| (k.clone(), shown(k, v)))
         .collect();
     output::print_kv(&rows);
+}
+
+/// 공통 설정 표: 바꿀 수 있는 키(데몬의 기본값 표)와 저장된 키를 이름순으로, 저장하지 않은 키는 기본값에 표시를 붙여
+fn setting_rows(defaults: &Map<String, Value>, settings: &Map<String, Value>) -> Vec<(String, String)> {
+    let keys: std::collections::BTreeSet<&String> = defaults.keys().chain(settings.keys()).collect();
+    keys.into_iter()
+        .map(|k| {
+            let row = match settings.get(k) {
+                Some(v) => shown(k, v),
+                None => format!("{} {}", shown(k, &defaults[k]), output::dim(&t!("chatbot.defaults"))),
+            };
+            (k.clone(), row)
+        })
+        .collect()
+}
+
+fn shown(k: &str, v: &Value) -> String {
+    let mut shown = output::mask(k, v);
+    // 긴 메모 같은 글은 앞부분만
+    if shown.chars().count() > 80 {
+        shown = format!("{}…", shown.chars().take(80).collect::<String>().replace('\n', " "));
+    }
+    shown
 }
 
 async fn set(ctx: &Ctx, pairs: &[String], guild: Option<&str>) -> Result<()> {
@@ -148,16 +195,7 @@ async fn key(ctx: &Ctx, delete: bool) -> Result<()> {
         report_sync(ctx, &r);
         return Ok(());
     }
-    let key = match ctx.ask.secret(&t!("chatbot.ask_key"))? {
-        Some(k) => k,
-        // 터미널이 아니면 표준 입력 한 줄 (예: `cat key.txt | saba-chan-cli chatbot key`)
-        None if !std::io::stdin().is_terminal() => {
-            let mut line = String::new();
-            std::io::stdin().lock().read_line(&mut line)?;
-            line
-        }
-        None => String::new(),
-    };
+    let key = ctx.ask.secret_or_stdin(&t!("chatbot.ask_key"))?;
     let key = key.trim();
     if key.is_empty() {
         return Err(usage(t!("chatbot.key_required")));
@@ -191,5 +229,66 @@ fn report_sync(ctx: &Ctx, r: &Value) {
         let err = row.get("error").map(output::show).unwrap_or_default();
         ctx.out
             .warn(&t!("chatbot.sync_failed", guild = s(row, "guildId"), error = err));
+    }
+}
+
+/// 저장된 키로 쓸 수 있는 모델 (릴레이가 제공자에게 묻는다). `chatbot set model=` 값을 고를 때
+async fn models(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
+    let guild = resolve::guild(ctx, guild).await?;
+    let cfg = ctx.api.bot_config().await?;
+    let relay = cfg.pointer("/cloud/relayUrl").and_then(Value::as_str).filter(|u| !u.is_empty());
+    let r = ctx.api.chatbot_models(&guild, relay).await?;
+    ctx.out.data(&r, |r| {
+        say!("{}: {}", t!("chatbot.provider"), s(r, "provider"));
+        for line in model_lines(r) {
+            say!("{}", line);
+        }
+        // 고른 모델이 목록에서 사라져 대신 쓰는 모델
+        let (selected, effective) = (s(r, "selected"), s(r, "effectiveModel"));
+        if !effective.is_empty() && effective != selected {
+            ctx.out.warn(&t!("chatbot.model_replaced", selected = selected, effective = effective));
+        }
+        ctx.out.hint("saba-chan-cli chatbot set model=MODEL");
+    });
+    Ok(())
+}
+
+/// 모델 목록 한 줄씩, 지금 쓰는 모델에 ● 표시
+fn model_lines(r: &Value) -> Vec<String> {
+    let using = [s(r, "effectiveModel"), s(r, "selected")].into_iter().find(|m| !m.is_empty()).unwrap_or("");
+    r.get("models")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|m| if m == using { format!("{} {}", console::style("●").green(), output::bold(m)) } else { format!("  {}", m) })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 모델 목록에서 지금 쓰는 모델(대신 쓰는 모델이 있으면 그것)을 표시한다 (C12)
+    #[test]
+    fn the_model_in_use_is_marked() {
+        let r = json!({ "provider": "openai", "models": ["a", "b"], "selected": "gone", "effectiveModel": "b" });
+        let lines: Vec<String> = model_lines(&r).iter().map(|l| console::strip_ansi_codes(l).to_string()).collect();
+        assert_eq!(lines, vec!["  a", "● b"]);
+    }
+
+    /// 바꿀 수 있는 키는 데몬이 주는 기본값 표에서 온다: 바꾸지 않은 키도 기본값과 함께 보인다
+    #[test]
+    fn every_key_shows_with_its_value_or_its_default() {
+        crate::i18n::init("ko");
+        let defaults = json!({ "enabled": false, "model": "m" });
+        let settings = json!({ "enabled": true, "memo": "hi" });
+        let rows = setting_rows(defaults.as_object().unwrap(), settings.as_object().unwrap());
+        let plain: Vec<(String, String)> = rows.into_iter().map(|(k, v)| (k, console::strip_ansi_codes(&v).to_string())).collect();
+        assert_eq!(plain, vec![
+            ("enabled".to_string(), console::strip_ansi_codes(&output::show(&json!(true))).to_string()),
+            ("memo".to_string(), "hi".to_string()),
+            ("model".to_string(), format!("m {}", t!("chatbot.defaults"))),
+        ]);
     }
 }

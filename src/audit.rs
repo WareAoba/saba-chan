@@ -32,11 +32,14 @@ pub struct Origin {
     pub user_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guild_name: Option<String>,
+    /// 요청을 고른 길: 챗봇이면 "chatbot" (라우트가 챗봇에만 거는 제한을 잠금 안에서 판정한다)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
 }
 
 impl Origin {
     pub fn new(source: &str) -> Self {
-        Self { source: source.to_string(), user: None, guild: None, user_name: None, guild_name: None }
+        Self { source: source.to_string(), user: None, guild: None, user_name: None, guild_name: None, via: None }
     }
 
     /// 채팅 명령을 보낸 사람·서버를 붙인다

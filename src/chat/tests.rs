@@ -99,7 +99,7 @@ fn settings() -> ChatSettings {
 }
 
 fn discord(user: &str) -> Option<permissions::Requester> {
-    Some(permissions::Requester { guild_id: Some("g1".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: false })
+    Some(permissions::Requester { guild_id: Some("g1".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: false, ..Default::default() })
 }
 
 async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
@@ -121,6 +121,8 @@ async fn list_shows_status() {
     let out = run(&fixture(), &settings(), "list").await;
     assert!(out.contains("survival") && out.contains("🟢"), "{}", out);
     assert!(out.contains("pal1") && out.contains("⚪"), "{}", out);
+    // 실사용: 상태 문구에 이미 아이콘이 있어 "🟢 실행 중 🟢"처럼 두 번 찍혔다
+    assert_eq!(out.matches('🟢').count(), 1, "{}", out);
 }
 
 #[tokio::test]
@@ -231,6 +233,25 @@ async fn start_waiting_on_an_agreement_carries_the_list_for_the_relay() {
     assert!(r.text.contains("Accept Minecraft EULA first"), "{}", r.text);
 }
 
+/// 시작 전에 예약 범위를 피해 옮긴 포트는 디스코드 답에도 알린다 (M13. 저장값만 조용히 바뀌지 않게)
+#[tokio::test]
+async fn a_start_says_which_port_it_moved() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::OK,
+        body: json!({"success": true, "port_moved": [{"field": "rest_port", "from": 8212, "to": 8242}]}),
+    });
+    let out = run(&api, &settings(), "mc start").await;
+    assert!(out.contains("8212") && out.contains("8242"), "{}", out);
+    // 시작이 실패해도 옮긴 것은 남았으므로 알린다
+    api.reply = Some(InternalResponse {
+        status: StatusCode::OK,
+        body: json!({"success": false, "message": "port in use", "port_moved": [{"field": "rest_port", "from": 8212, "to": 8242}]}),
+    });
+    let out = run(&api, &settings(), "mc start").await;
+    assert!(out.contains("port in use") && out.contains("8242"), "{}", out);
+}
+
 /// 켜기 전 점검에 막히면 점검 코드와 모듈이 준 해결 방법을 보이고, 경로가 든 문제 문구는 내보내지 않는다
 #[tokio::test]
 async fn start_blocked_by_a_preflight_check_shows_the_solution() {
@@ -320,6 +341,31 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
 
     assert_eq!(reply("mc kick steve", None).await.code, None);
     assert_eq!(api.calls().len(), 2);
+}
+
+/// 챗봇 경로의 danger 모듈 명령은 요청자 본인이 확인했다는 표지(`confirmedBy`가 요청자)가 있을 때만 실행한다 (사용자 결정 2026-10-20).
+/// 표지가 없거나 다른 사람이면 레벨·상한과 상관없이 막는다
+#[tokio::test]
+async fn the_chatbot_runs_danger_module_commands_only_when_the_requester_confirmed() {
+    let mut api = fixture();
+    api.modules[0].commands[0].risk = Some("danger".into()); // kick
+    let mut s = settings();
+    s.node_settings = json!({ "g1": { "chatbotCap": 2, "preset": "loose" } });
+    let ask = |confirmed_by: Option<&str>| {
+        let mut bot = discord("owner");
+        let who = bot.as_mut().unwrap();
+        who.via_chatbot = true;
+        who.confirmed_by = confirmed_by.map(str::to_string);
+        ChatRequest { text: "mc kick steve".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() }
+    };
+    for confirmed_by in [None, Some("someone-else")] {
+        let r = process(&api, &s, &Catalog::for_language("en"), &ask(confirmed_by)).await;
+        assert_eq!(r.code, Some("action_not_allowed"), "{confirmed_by:?}: {}", r.text);
+        assert!(api.calls().is_empty());
+    }
+    let r = process(&api, &s, &Catalog::for_language("en"), &ask(Some("owner"))).await;
+    assert_ne!(r.code, Some("action_not_allowed"), "{}", r.text);
+    assert!(!api.calls().is_empty(), "the confirmed command runs");
 }
 
 #[tokio::test]

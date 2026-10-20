@@ -27,6 +27,10 @@ pub fn component_of(entry: &Path) -> Option<(String, PathBuf)> {
 
 /// 진입 파일의 조상 중 모듈·익스텐션 폴더 바로 아래 것이 그 구성요소 폴더다 (진입 파일이 하위 폴더에 있어도)
 fn component_in(entry: &Path, modules: &Path, extensions: &Path) -> Option<(String, PathBuf)> {
+    // 조상을 글자로 거슬러 오르므로 `..`·`.`가 있으면 실제 위치와 다른 구성요소로 판정될 수 있다: 어느 것에도 속하지 않는다
+    if entry.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::CurDir)) {
+        return None;
+    }
     let roots = [
         (std::fs::canonicalize(modules).ok(), saba_chan_updater_lib::relay::MODULE_PREFIX),
         (std::fs::canonicalize(extensions).ok(), saba_chan_updater_lib::relay::EXTENSION_PREFIX),
@@ -186,10 +190,26 @@ pub fn message(blocked: &Blocked) -> String {
     let file = blocked.file.as_deref().unwrap_or("");
     match blocked.code {
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
+        "server_in_sync_folder" => format!("The server folder is inside a sync folder such as OneDrive, so saba-chan cannot check it: {}. Move the server folder outside the sync folder.", file),
         "server_folder_label" => format!("Could not remove the low integrity mark from the server folder: {}. Check that this account can change the permissions of that folder.", file),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
+}
+
+/// `clear_low_labels` 오류 문구에 붙는 표시: 그 경로가 동기화 폴더(OneDrive 등)의 클라우드 파일이다
+pub const SYNC_FOLDER_MARK: &str = "is a cloud file of a sync folder";
+
+/// 표시를 걷지 못한 경로들로 막는 이유를 고른다. 동기화 폴더의 클라우드 파일이 섞여 있으면 그것이 원인이다
+/// (재분석 지점이라 표시를 읽지 못한다. 사용자 결정으로 막는 것은 그대로 두고, 폴더를 옮기라고 알린다)
+#[cfg_attr(not(windows), allow(dead_code))] // 표시 걷기는 Windows에서만 한다
+fn folder_label_block(stuck: &[(PathBuf, String)]) -> Blocked {
+    let detail = stuck.iter().map(|(p, e)| format!("{}: {}", p.display(), e)).collect::<Vec<_>>().join("; ");
+    let (code, first) = match stuck.iter().find(|(_, e)| e.contains(SYNC_FOLDER_MARK)) {
+        Some((path, _)) => ("server_in_sync_folder", Some(path)),
+        None => ("server_folder_label", stuck.first().map(|(p, _)| p)),
+    };
+    Blocked { code, file: first.map(|p| p.display().to_string()), detail: Some(detail) }
 }
 
 /// 서버 폴더의 표시를 걷은 뒤 서버를 띄울 때까지 쥐는 잠금 (`guard_launch_for`가 돌려준다). 격리 실행은 권한을 주기
@@ -198,9 +218,9 @@ pub struct LaunchGate(#[allow(dead_code)] tokio::sync::MutexGuard<'static, ()>);
 
 static LABEL_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 걷는다 (Windows). 그 표시가 붙은 실행 파일로 띄운
-/// 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
-/// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 걷고, 걷지 못한 표시가 남으면 `server_folder_label`로 막는다
+/// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 그 안 실행 파일에서 덮는다 (Windows). 그 표시가 걸린
+/// 실행 파일로 띄운 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
+/// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 남은 실행 파일이 있으면 `server_folder_label`로 막는다
 async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
     #[cfg(windows)]
     {
@@ -209,7 +229,7 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
             for dir in dirs.iter().filter(|d| d.is_dir()) {
                 let started = std::time::Instant::now();
                 match appcontainer::clear_low_labels(dir) {
-                    // 표시가 없어도 파일마다 읽으므로 큰 서버 폴더는 시간이 든다: 오래 걸리면 남긴다
+                    // 덮을 것이 없어도 폴더 전체를 훑으므로 큰 서버 폴더는 시간이 든다: 오래 걸리면 남긴다
                     Ok(0) if started.elapsed() >= std::time::Duration::from_millis(500) => tracing::info!(
                         "[Sandbox] checked {} for low integrity labels (none) in {} ms",
                         dir.display(),
@@ -217,7 +237,7 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
                     ),
                     Ok(0) => {}
                     Ok(n) => tracing::info!(
-                        "[Sandbox] removed the low integrity label from {} file(s) and folder(s) under {} in {} ms",
+                        "[Sandbox] set {} executable(s) under {} to medium integrity in {} ms",
                         n,
                         dir.display(),
                         started.elapsed().as_millis()
@@ -229,10 +249,10 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
         })
         .await
         .unwrap_or_else(|e| vec![(PathBuf::new(), e.to_string())]);
-        if let Some((first, _)) = stuck.first() {
-            let detail = stuck.iter().map(|(p, e)| format!("{}: {}", p.display(), e)).collect::<Vec<_>>().join("; ");
-            tracing::warn!("[Sandbox] could not remove the low integrity label: {}", detail);
-            return Err(Blocked { code: "server_folder_label", file: Some(first.display().to_string()), detail: Some(detail) });
+        if !stuck.is_empty() {
+            let blocked = folder_label_block(&stuck);
+            tracing::warn!("[Sandbox] could not remove the low integrity label: {}", blocked.detail.as_deref().unwrap_or(""));
+            return Err(blocked);
         }
     }
     #[cfg(not(windows))]
@@ -280,11 +300,103 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     if let Err(code) = check_launch(&program, &roots) {
         return Err(Blocked { code, file: Some(program), detail: None });
     }
-    // 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)도 폴더 밖 경로·특수 경로를 쓰지 않아야 한다
-    if let Err(arg) = argument_files(args, cwd) {
+    // 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)도 폴더 밖 경로·특수 경로를 쓰지 않아야 한다.
+    // Java가 인자처럼 읽는 `@파일`의 내용과 JVM 옵션 환경 변수도 같이 본다
+    if let Err(arg) = argument_files(args, cwd).and_then(|_| argument_files(&indirect_arguments(args, env, cwd)?, cwd)) {
         return Err(Blocked { code: "launch_outside_instance", file: Some(arg), detail: None });
     }
     Ok((program, gate))
+}
+
+/// Java가 실행 인자처럼 읽는 환경 변수 (`CLASSPATH`는 값 전체가 경로 목록 하나)
+const JVM_OPTION_VARS: &[&str] = &["JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"];
+
+/// 이보다 큰 인자 파일은 읽지 않고 막는다 (인자 파일은 짧다)
+const ARGUMENT_FILE_LIMIT: u64 = 1 << 20;
+
+/// 인자 밖에서 Java가 인자로 읽는 것: JVM 옵션 환경 변수, `CLASSPATH`(경로 목록 하나), 그리고 인자·환경 변수가 가리키는
+/// 인자 파일(`@파일`, `-XX:VMOptionsFile=파일`)의 내용. `argument_files`가 인자처럼 검사한다. 인자 파일은 한 단계만 읽는다
+/// (Java도 인자 파일 안의 `@`를 다시 풀지 않는다). 로컬 경로가 아니거나 너무 크거나 읽지 못하는 인자 파일은 그 인자로 `Err`
+fn indirect_arguments(args: &[String], env: &[(String, String)], cwd: &Path) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for (key, value) in env {
+        if JVM_OPTION_VARS.iter().any(|v| key.eq_ignore_ascii_case(v)) {
+            out.extend(java_tokens(value));
+        } else if key.eq_ignore_ascii_case("CLASSPATH") {
+            out.push(value.clone());
+        }
+    }
+    let named: Vec<String> = args.iter().chain(out.iter()).cloned().collect();
+    for arg in &named {
+        let Some(file) = arg.strip_prefix('@').or_else(|| arg.strip_prefix("-XX:VMOptionsFile=")) else { continue };
+        let path = lexical(&cwd.join(file));
+        if !plain_local_path(&path) {
+            return Err(arg.clone());
+        }
+        // 없는 파일은 Java가 실행하지 못한다
+        if !path.exists() {
+            continue;
+        }
+        if !std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= ARGUMENT_FILE_LIMIT) {
+            return Err(arg.clone());
+        }
+        let text = std::fs::read(&path).map_err(|_| arg.clone())?;
+        out.extend(java_tokens(&String::from_utf8_lossy(&text)));
+    }
+    Ok(out)
+}
+
+/// Java가 인자 파일·옵션 변수를 나누는 대로 나눈 낱말. 공백으로 나누고, 낱말 어디서든 `"`·`'`로 감싼 부분은 따옴표를 벗겨
+/// 이어 붙이며, 낱말 밖의 `#`부터 줄 끝은 주석이다. 따옴표 안의 `\`를 이스케이프로 보는 규칙(`@파일`·`JDK_JAVA_OPTIONS`)과
+/// 글자 그대로 보는 규칙(`JAVA_TOOL_OPTIONS`·`VMOptionsFile`)이 달라, 두 가지로 나눈 낱말을 모두 돌려준다 (검사는 넓게 막는 쪽)
+fn java_tokens(text: &str) -> Vec<String> {
+    let mut out = split_java(text, true);
+    out.extend(split_java(text, false).into_iter().filter(|t| !out.contains(t)).collect::<Vec<_>>());
+    out
+}
+
+fn split_java(text: &str, escapes: bool) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut word = String::new();
+    let (mut in_word, mut quote) = (false, None::<char>);
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some(_) if escapes && c == '\\' => match chars.next() {
+                // 줄 이음: 다음 줄 앞 공백까지 건너뛴다
+                Some('\r' | '\n') => {
+                    while chars.next_if(|n| n.is_whitespace()).is_some() {}
+                }
+                Some('n') => word.push('\n'),
+                Some('t') => word.push('\t'),
+                Some('r') => word.push('\r'),
+                Some('f') => word.push('\u{c}'),
+                Some(n) => word.push(n),
+                None => {}
+            },
+            Some(_) => word.push(c),
+            None if c == '"' || c == '\'' => {
+                quote = Some(c);
+                in_word = true;
+            }
+            None if c.is_whitespace() => {
+                if in_word {
+                    out.push(std::mem::take(&mut word));
+                    in_word = false;
+                }
+            }
+            None if c == '#' && !in_word => while chars.next_if(|n| *n != '\n').is_some() {},
+            None => {
+                word.push(c);
+                in_word = true;
+            }
+        }
+    }
+    if in_word {
+        out.push(word);
+    }
+    out
 }
 
 /// `.`·`..`를 글자로만 푼 경로 (파일 시스템에 묻지 않는다)
@@ -306,6 +418,7 @@ fn lexical(path: &Path) -> PathBuf {
 }
 
 /// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준).
+/// 클래스 경로처럼 경로 목록이면(Windows `;`) 항목마다 본다.
 /// 로컬 드라이브가 아닌 경로(UNC 등)를 가리키는 인자는 묻지 않고 그 인자를 돌려준다 (`Err`)
 fn argument_files(args: &[String], cwd: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out: Vec<PathBuf> = Vec::new();
@@ -315,7 +428,12 @@ fn argument_files(args: &[String], cwd: &Path) -> Result<Vec<PathBuf>, String> {
             candidates.extend(arg.split_once('=').map(|(_, v)| v));
             candidates.extend(arg.split_once(':').map(|(_, v)| v));
         }
-        for c in candidates.into_iter().filter(|c| !c.is_empty()) {
+        let listed: Vec<String> = candidates
+            .iter()
+            .filter(|c| cfg!(windows) && c.contains(';'))
+            .flat_map(|c| c.split(';').map(str::to_string).collect::<Vec<_>>())
+            .collect();
+        for c in candidates.into_iter().chain(listed.iter().map(String::as_str)).filter(|c| !c.is_empty()) {
             let path = lexical(&cwd.join(c));
             if !plain_local_path(&path) {
                 return Err(arg.clone());
@@ -349,6 +467,14 @@ pub struct Isolation {
 
 /// 데몬이 lifecycle 호출에 넣는 인스턴스 폴더 키 (설치·업데이트 호출은 `install_dir`만 넣는다)
 const INSTANCE_DIR_FIELDS: [&str; 3] = ["instance_dir", "working_dir", "install_dir"];
+
+/// 인스턴스 폴더 안의 모듈 데이터 폴더 목록 키 (`Supervisor::insert_instance_fields`가 만든다. 좀보이드 cache_dir 등)
+pub const INSTANCE_DATA_DIRS: &str = "instance_data_dirs";
+
+/// 격리 실행이 이 config 키의 폴더에 권한을 받는가. 이 키들은 데몬만 정하고 모듈 설정에서 싣지 않는다
+pub fn grants_write(key: &str) -> bool {
+    INSTANCE_DIR_FIELDS.contains(&key) || key == INSTANCE_DATA_DIRS
+}
 
 /// 격리 실행이 config의 인스턴스 폴더(`INSTANCE_DIR_FIELDS`)에 받는 권한: 모듈은 쓰기, 그 밖(익스텐션 등)은 읽기
 fn instance_access(key: &str) -> appcontainer::Access {
@@ -648,8 +774,12 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
     // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
     let access = instance_access(&key);
-    for field in INSTANCE_DIR_FIELDS {
-        if let Some(path) = config.get(field).and_then(Value::as_str).filter(|p| !p.is_empty()) {
+    let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
+    // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
+    let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file());
+    let fields = INSTANCE_DIR_FIELDS.iter().filter_map(|field| config.get(*field).and_then(Value::as_str));
+    for path in fields.chain(data_dirs) {
+        if !path.is_empty() {
             let path = Path::new(path);
             // 새로 설치할 폴더는 아직 없다: 권한은 있는 폴더에만 줄 수 있으므로 먼저 만든다
             if access == Access::Write {
@@ -849,6 +979,22 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    // 백로그 M7 (사용자 결정: 동기화 폴더 아래 서버는 계속 막는다). 막되 원인과 할 일을 알린다
+    #[test]
+    fn a_server_folder_in_a_sync_folder_is_blocked_with_its_own_reason() {
+        let synced = PathBuf::from(r"C:\Users\me\OneDrive\server\PalServer.exe");
+        let blocked = folder_label_block(&[
+            (PathBuf::from(r"C:\srv\a.txt"), "access denied".to_string()),
+            (synced.clone(), format!("{} {}", synced.display(), SYNC_FOLDER_MARK)),
+        ]);
+        assert_eq!(blocked.code, "server_in_sync_folder");
+        assert_eq!(blocked.file.as_deref(), Some(synced.to_str().unwrap()));
+        assert!(message(&blocked).contains("sync folder"), "{}", message(&blocked));
+
+        let plain = folder_label_block(&[(PathBuf::from(r"C:\srv\a.txt"), "access denied".to_string())]);
+        assert_eq!(plain.code, "server_folder_label");
+    }
+
     // 서버 폴더의 표시를 걷은 뒤 서버가 뜨기 전에 격리 실행이 끼어 표시를 다시 붙이면 서버가 낮은 무결성으로 뜬다
     #[tokio::test]
     async fn a_sandboxed_call_waits_until_the_server_has_launched() {
@@ -884,6 +1030,9 @@ mod tests {
         assert_eq!(of(extensions.join("tool/src/py/m.py")), Some(("ext-tool".into(), extensions.join("tool"))));
         assert_eq!(of(tmp.path().join("other/lifecycle.py")), None);
         assert_eq!(of(modules.join("lifecycle.py")), None);
+        // `..`가 든 경로는 글자로 접어 다른 구성요소로 판정하지 않는다
+        assert_eq!(of(extensions.join("tool/../../modules/game/lifecycle.py")), None);
+        assert_eq!(of(modules.join("game/../game/lifecycle.py")), None);
     }
 
     // 익스텐션 id에 '-'가 있으면 폴더 이름은 '_'로 바뀐다 (`ue4-ini` → `ue4_ini`). 신뢰 기록의 키는 id로 적으므로
@@ -1099,6 +1248,76 @@ mod tests {
         assert_eq!(up, vec![tmp.path().join("server.jar")]);
         #[cfg(windows)]
         assert_eq!(argument_files(&[r"\\host\share\x.jar".to_string()], tmp.path()), Err(r"\\host\share\x.jar".to_string()));
+    }
+
+    /// 클래스 경로 목록(`a.jar;b.jar`) 안의 공유 폴더 경로도 막는다 (Java가 그 경로를 열며 자격 증명을 보낸다)
+    #[cfg(windows)]
+    #[test]
+    fn a_share_inside_a_class_path_list_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let list = r"lib\a.jar;\\host\share\x.jar".to_string();
+        assert_eq!(argument_files(&["-cp".to_string(), list.clone()], tmp.path()), Err(list));
+        let prop = r"-Djava.class.path=lib\*;\\host\share\x.jar".to_string();
+        assert_eq!(argument_files(&[prop.clone()], tmp.path()), Err(prop));
+        assert!(argument_files(&["-cp".to_string(), r"lib\*;.".to_string()], tmp.path()).is_ok());
+    }
+
+    /// Java가 인자처럼 읽는 곳(`@파일`·`-XX:VMOptionsFile`의 내용, JVM 옵션·클래스 경로 환경 변수)도 인자와 같이 본다
+    #[test]
+    fn arguments_java_reads_from_files_and_variables_are_checked_too() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("args.txt"), "# 주석\n-javaagent:agent.jar \"-Dname=a b\" # 뒤 주석\n-Xmx4G\n").unwrap();
+        std::fs::write(tmp.path().join("vm.txt"), "-agentlib:vm").unwrap();
+        std::fs::write(tmp.path().join("env.txt"), "-Denv=1").unwrap();
+        let env: Vec<(String, String)> = [
+            ("JAVA_TOOL_OPTIONS", "-agentpath:x.dll"),
+            ("JDK_JAVA_OPTIONS", "@env.txt"),
+            ("CLASSPATH", "a.jar;b.jar"),
+            ("SERVER_NAME", "-javaagent:ignored.jar"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let args = ["@args.txt", "@missing.txt", "-XX:VMOptionsFile=vm.txt", "-jar"].map(String::from);
+        let found = indirect_arguments(&args, &env, tmp.path()).unwrap();
+        assert_eq!(
+            found,
+            ["-agentpath:x.dll", "@env.txt", "a.jar;b.jar", "-javaagent:agent.jar", "-Dname=a b", "-Xmx4G", "-agentlib:vm", "-Denv=1"]
+        );
+        // 너무 큰 인자 파일은 건너뛰지 않고 막는다
+        std::fs::write(tmp.path().join("big.txt"), vec![b' '; (ARGUMENT_FILE_LIMIT + 1) as usize]).unwrap();
+        assert_eq!(indirect_arguments(&["@big.txt".to_string()], &[], tmp.path()), Err("@big.txt".to_string()));
+    }
+
+    /// 따옴표는 낱말 중간에서도 벗긴다. 따옴표 안의 `\`는 이스케이프로 보는 규칙과 글자 그대로 보는 규칙 둘 다로 나눈다
+    #[test]
+    fn java_splits_quotes_anywhere_in_a_word() {
+        assert_eq!(split_java(r#"-javaagent:"a b.jar" -D'x'=y"#, true), ["-javaagent:a b.jar", "-Dx=y"]);
+        assert_eq!(split_java("\"lo\\\n    ng\"", true), ["long"]);
+        let both = java_tokens(r#"-javaagent:"\\h\s\x.jar""#);
+        assert!(both.contains(&r"-javaagent:\hsx.jar".to_string()), "{both:?}");
+        assert!(both.contains(&r"-javaagent:\\h\s\x.jar".to_string()), "{both:?}");
+    }
+
+    /// 공유 폴더 경로는 `@파일` 안에 있어도, JVM 옵션 환경 변수에 있어도, 값만 따옴표로 감싸도 막는다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_share_inside_an_argument_file_or_a_jvm_variable_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let roots = LaunchRoots::default();
+        for (file, line) in [("args.txt", r"-javaagent:\\host\share\x.jar"), ("quoted.txt", r#"-javaagent:"\\host\share\x.jar""#)] {
+            std::fs::write(tmp.path().join(file), line).unwrap();
+            let arg = format!("@{file}");
+            let refused = guard_launch_for(|| Trust::Unverified, "java", &[arg], tmp.path(), roots.clone(), &mut Vec::new()).await;
+            assert!(refused.is_err(), "{line}");
+        }
+        let share = r"-javaagent:'\\host\share\x.jar'";
+        let mut env = vec![("JAVA_TOOL_OPTIONS".to_string(), share.to_string())];
+        assert!(guard_launch_for(|| Trust::Unverified, "java", &[], tmp.path(), roots.clone(), &mut env).await.is_err());
+        let mut env = vec![("JDK_JAVA_OPTIONS".to_string(), r"@\\host\share\args.txt".to_string())];
+        assert!(guard_launch_for(|| Trust::Unverified, "java", &[], tmp.path(), roots.clone(), &mut env).await.is_err());
+        let mut env = vec![("JDK_JAVA_OPTIONS".to_string(), "-Xmx4G".to_string())];
+        assert!(guard_launch_for(|| Trust::Unverified, "java", &[], tmp.path(), roots, &mut env).await.is_ok());
     }
 
     /// 익스텐션 hook은 확인된 모듈의 인스턴스에도 불린다: 인스턴스 폴더는 읽기만, 쓰기는 전용 폴더에만

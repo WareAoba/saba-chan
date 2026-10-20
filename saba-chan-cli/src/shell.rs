@@ -131,14 +131,14 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         }
     });
 
-    eprintln!(
+    tell!(
         "{}",
         console::style(t!("shell.welcome", version = env!("CARGO_PKG_VERSION"))).bold()
     );
     if let Err(e) = crate::cmd::status::run(&ctx).await {
         ctx.out.error(&classify(&e));
     }
-    eprintln!("{}", crate::output::dim(&t!("shell.help_line")));
+    tell!("{}", crate::output::dim(&t!("shell.help_line")));
 
     let mut rl = editor(names(&ctx).await)?;
     let top: Vec<String> = crate::cli::command_words()
@@ -159,7 +159,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                     break;
                 }
                 last_ctrl_c = true;
-                eprintln!("{}", crate::output::dim(&t!("shell.ctrl_c")));
+                tell!("{}", crate::output::dim(&t!("shell.ctrl_c")));
                 continue;
             }
             Err(ReadlineError::Eof) => break,
@@ -204,14 +204,14 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             }
         }
     }
-    eprintln!("{}", crate::output::dim(&t!("shell.bye")));
+    tell!("{}", crate::output::dim(&t!("shell.bye")));
     Ok(())
 }
 
 /// 셸 한 줄을 명령 하나로 실행
 async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     let argv = std::iter::once("saba-chan-cli".to_string()).chain(words.iter().cloned());
-    let matches = match crate::cli::localized().try_get_matches_from(argv) {
+    let matches = match crate::cli::parse(argv.map(Into::into).collect()) {
         Ok(m) => m,
         Err(e) => {
             // 도움말·버전도 여기로 온다. 셸은 끝내지 않고 보여만 준다.
@@ -228,7 +228,7 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     if cli.global.lang.as_deref().is_some_and(|l| crate::i18n::normalize(l) != crate::i18n::lang()) {
         ctx.out.warn(&t!("shell.lang_fixed", lang = crate::i18n::lang()));
     }
-    if cli.global.json {
+    if cli.global.json || cli.global.json_stream {
         ctx.out = crate::output::Out { json: true };
         ctx.ask.enabled = false;
     }
@@ -241,12 +241,15 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
         Some(cmd) => {
             // `--no-color`(와 `--json`의 표준 출력)는 이 줄에만, 끝나면 되돌린다
             let colors = (console::colors_enabled(), console::colors_enabled_stderr());
-            if cli.global.no_color || cli.global.json {
+            if cli.global.no_color || cli.global.json || cli.global.json_stream {
                 console::set_colors_enabled(false);
             }
             if cli.global.no_color {
                 console::set_colors_enabled_stderr(false);
             }
+            // `--json-stream`도 이 줄에만
+            crate::output::set_stream(cli.global.json_stream);
+            let stream = cli.global.json_stream.then(crate::progress::stream_lines);
             let r = crate::cmd::dispatch(&ctx, cmd).await;
             console::set_colors_enabled(colors.0);
             console::set_colors_enabled_stderr(colors.1);
@@ -259,6 +262,8 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
                 r => r,
             };
             crate::output::flush();
+            drop(stream);
+            crate::output::set_stream(false);
             r
         }
     }

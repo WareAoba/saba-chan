@@ -1,8 +1,10 @@
 use anyhow::Result;
 use serde_json::Value;
 use tokio::process::Command;
-use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use crate::utils::apply_creation_flags;
+
+mod loopback;
 
 /// 데몬 IPC 포트. 모듈이 데몬 API를 역호출할 때 쓴다(main이 기동 시 한 번 설정).
 static IPC_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
@@ -48,7 +50,7 @@ fn is_secret_env(name: &str) -> bool {
 
 /// 시간 초과한 Python과 그것이 띄운 프로세스를 함께 끝낸다.
 /// Unix는 자기 프로세스 그룹으로 띄우므로 그룹째, Windows는 `taskkill /T`
-fn kill_tree(pid: u32) {
+pub(crate) fn kill_tree(pid: u32) {
     #[cfg(unix)]
     unsafe {
         nix::libc::kill(-(pid as i32), nix::libc::SIGKILL);
@@ -155,24 +157,51 @@ pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS).await
+    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS, None).await
 }
 
 /// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
 /// Python은 몇 분까지 걸릴 수 있어서, 락을 쥔 채 기다리면 모니터와 다른 요청이 모두 멈춘다.
 pub struct PluginCall {
-    pub entry: String,
-    pub function: String,
-    pub config: Value,
+    entry: String,
+    function: String,
+    config: Value,
+    /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
+    server: Option<u32>,
+    timeout_secs: u64,
 }
 
 impl PluginCall {
     pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
-        Self { entry: entry.into(), function: function.to_string(), config }
+        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS }
+    }
+
+    pub fn serving(mut self, server: Option<u32>) -> Self {
+        self.server = server;
+        self
+    }
+
+    pub fn timeout(mut self, secs: u64) -> Self {
+        self.timeout_secs = secs;
+        self
+    }
+
+    #[cfg(test)]
+    pub fn config(&self) -> &Value {
+        &self.config
+    }
+
+    pub fn config_mut(&mut self) -> &mut Value {
+        &mut self.config
+    }
+
+    #[cfg(test)]
+    pub fn server(&self) -> Option<u32> {
+        self.server
     }
 
     pub async fn run(self) -> Result<Value> {
-        run_plugin(&self.entry, &self.function, self.config).await
+        run_plugin_inner(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server).await
     }
 }
 
@@ -181,7 +210,7 @@ impl PluginCall {
 pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
 
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None, timeout_secs).await
+    run_plugin_inner(module_path, function, config, None, timeout_secs, None).await
 }
 
 /// Like `run_plugin_with_progress` but with a custom timeout.
@@ -196,7 +225,7 @@ pub async fn run_plugin_with_progress_and_timeout<F>(
 where
     F: Fn(ExtensionProgress) + Send + 'static,
 {
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs).await
+    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs, None).await
 }
 
 type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
@@ -330,19 +359,21 @@ mod windows_job {
 }
 
 /// 이 실행이 import할 수 있는 익스텐션과 확인되지 않아 뺀 익스텐션. 격리 없이 도는 실행(확인된 모듈 등)이
-/// 확인되지 않은 익스텐션을 import하면 그 코드가 격리·검사 없이 그 실행의 권한(데몬 토큰 경로 등)으로 돈다
-fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+/// 확인되지 않은 익스텐션을 import하면 그 코드가 격리·검사 없이 그 실행의 권한(데몬 토큰 경로 등)으로 돈다.
+/// `consented`는 사용자가 격리 없이 돌리기로 한 구성요소의 키(`ext-<id>`)다: 그 익스텐션은 이미 이 실행의 코드이므로 자기 패키지를 import할 수 있다
+fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl Fn(&str) -> bool, consented: Option<&str>) -> (Vec<String>, Vec<String>) {
     if isolated {
         return (enabled, Vec::new());
     }
-    enabled.into_iter().partition(|id| !unverified(id))
+    let own = consented.and_then(|key| key.strip_prefix("ext-")).map(|id| id.replace('_', "-"));
+    enabled.into_iter().partition(|id| !unverified(id) || own.as_deref() == Some(id.replace('_', "-").as_str()))
 }
 
 /// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다. 확인되지 않아 뺀 것을 돌려준다
-fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool) -> Vec<String> {
+fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool, consented: Option<&str>) -> Vec<String> {
     let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
         crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
-    });
+    }, consented);
     cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
     // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
     cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
@@ -370,12 +401,146 @@ fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
     ));
 }
 
+/// 모듈이 구현하지 않아도 되는 lifecycle 함수 (MK1). 모듈이 `functions`로 밝힌 목록에 없으면 데몬은 Python을 띄우지 않고
+/// `not_supported`로 답하고, 클라이언트는 `GET /api/modules`의 `functions`를 보고 그 기능을 숨긴다
+pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
+    "reset_server", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
+    "read_properties", "reset_properties", "configure", "import_settings", "install_server", "validate",
+];
+
+/// 예약 함수: 모듈이 구현한 lifecycle 함수 이름(자신 제외)을 `{"success": true, "functions": [...]}`로 답한다
+pub const FUNCTIONS_QUERY: &str = "functions";
+const FUNCTIONS_TIMEOUT_SECS: u64 = 15;
+
+/// 목록을 묻다 실패한(시간 초과·격리 차단 등) 결과는 이만큼만 기억한다: 일시적인 실패가 기능을 계속 가리지 않게
+const FUNCTIONS_RETRY_SECS: u64 = 60;
+/// `GET /api/modules`가 캐시에 없는 목록을 기다리는 한도. 넘기면 null로 답하고 묻기는 뒤에서 마저 한다
+pub const FUNCTIONS_LIST_WAIT_MS: u64 = 2000;
+
+/// `functions`에 대한 모듈의 답
+#[derive(Debug, Clone, PartialEq)]
+enum FunctionsAnswer {
+    Listed(Vec<String>),
+    /// `functions`를 모르는 옛 모듈("Unknown function"): 진입 파일이 바뀔 때까지 다시 묻지 않는다
+    Unknown,
+    /// 실패·모양이 다른 답: 잠시 뒤 다시 묻는다
+    Failed,
+}
+
+impl FunctionsAnswer {
+    fn list(&self) -> Option<Vec<String>> {
+        match self {
+            Self::Listed(list) => Some(list.clone()),
+            _ => None,
+        }
+    }
+}
+
+/// 진입 파일 경로 → (그때의 수정 시각, 답, 답한 때). 모듈을 업데이트해 진입 파일이 바뀌면 다시 묻는다
+type FunctionCache = std::collections::HashMap<String, (Option<std::time::SystemTime>, FunctionsAnswer, std::time::Instant)>;
+static MODULE_FUNCTIONS: std::sync::LazyLock<std::sync::Mutex<FunctionCache>> = std::sync::LazyLock::new(Default::default);
+/// 진입 파일마다 하나: 동시에 온 요청이 Python을 따로 띄우지 않고 먼저 물은 답을 기다린다
+type FunctionLocks = std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>;
+static FUNCTIONS_ASKING: std::sync::LazyLock<std::sync::Mutex<FunctionLocks>> = std::sync::LazyLock::new(Default::default);
+
+/// `functions` 응답을 읽는다. 목록은 성공 응답의 문자열 배열에서만 읽는다
+fn functions_answer(result: Result<Value>) -> FunctionsAnswer {
+    let Ok(value) = result else { return FunctionsAnswer::Failed };
+    if value.get("success").and_then(Value::as_bool) != Some(true) {
+        let unknown = value.get("message").and_then(Value::as_str).is_some_and(|m| m.starts_with("Unknown function"));
+        return if unknown { FunctionsAnswer::Unknown } else { FunctionsAnswer::Failed };
+    }
+    let list: Option<Vec<String>> = value.get("functions").and_then(Value::as_array)
+        .and_then(|items| items.iter().map(|f| f.as_str().map(str::to_string)).collect());
+    list.map_or(FunctionsAnswer::Failed, FunctionsAnswer::Listed)
+}
+
+/// 캐시에 남은 답이 아직 쓸 만한가: 진입 파일이 그대로이고, 실패면 다시 물을 때가 지나지 않았다
+fn still_valid(cached: &(Option<std::time::SystemTime>, FunctionsAnswer, std::time::Instant), modified: Option<std::time::SystemTime>) -> bool {
+    cached.0 == modified
+        && (cached.1 != FunctionsAnswer::Failed || cached.2.elapsed() < std::time::Duration::from_secs(FUNCTIONS_RETRY_SECS))
+}
+
+/// 캐시에 있는 목록 (Some(None)은 "물었지만 모름")
+fn cached_functions(entry: &str) -> Option<Option<Vec<String>>> {
+    let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
+    let cache = MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner());
+    cache.get(entry).filter(|c| still_valid(c, modified)).map(|c| c.1.list())
+}
+
+/// 모듈이 구현한 lifecycle 함수 목록. 진입 파일마다 `functions`를 한 번 불러 두고(동시 요청은 그 답을 함께 기다린다), 모르면 None
+pub async fn module_functions(entry: &str) -> Option<Vec<String>> {
+    if let Some(list) = cached_functions(entry) {
+        return list;
+    }
+    let lock = FUNCTIONS_ASKING.lock().unwrap_or_else(|e| e.into_inner()).entry(entry.to_string()).or_default().clone();
+    let _asking = lock.lock().await;
+    if let Some(list) = cached_functions(entry) {
+        return list;
+    }
+    let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
+    let answer = functions_answer(spawn_plugin(entry, FUNCTIONS_QUERY, serde_json::json!({}), None, FUNCTIONS_TIMEOUT_SECS, None).await);
+    let list = answer.list();
+    MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(entry.to_string(), (modified, answer, std::time::Instant::now()));
+    list
+}
+
+/// 목록 응답용: 캐시에 없으면 뒤에서 묻기 시작하고 `FUNCTIONS_LIST_WAIT_MS`까지만 기다린다
+pub async fn module_functions_for_list(entry: String) -> Option<Vec<String>> {
+    if let Some(list) = cached_functions(&entry) {
+        return list;
+    }
+    let asking = tokio::spawn(async move { module_functions(&entry).await });
+    tokio::time::timeout(std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS), asking).await.ok()?.ok()?
+}
+
+/// 데몬 시작·모듈 새로고침 때 목록을 미리 물어 둔다 (목록 응답이 기다리지 않게)
+pub fn prefetch_module_functions(entries: Vec<String>) {
+    for entry in entries {
+        tokio::spawn(async move { module_functions(&entry).await });
+    }
+}
+
+/// 모듈이 밝힌 목록에 없는 선택 함수에 대한 답. 목록을 모르거나 필수 함수면 None(그대로 부른다)
+fn unsupported_reply(function: &str, known: Option<&[String]>) -> Option<Value> {
+    let known = known?;
+    if !OPTIONAL_MODULE_FUNCTIONS.contains(&function) || known.iter().any(|f| f == function) {
+        return None;
+    }
+    Some(serde_json::json!({
+        "success": false,
+        "error_code": "not_supported",
+        "function": function,
+        "message": format!("This module does not implement '{}'", function),
+    }))
+}
+
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
     config: Value,
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
     timeout_secs: u64,
+    server: Option<u32>,
+) -> Result<Value> {
+    // 모듈(옆에 module.toml이 있는 진입 파일)만: 익스텐션 hook 이름은 이 표와 상관없다
+    let is_module = std::path::Path::new(module_path).parent().is_some_and(|d| d.join("module.toml").is_file());
+    if is_module && OPTIONAL_MODULE_FUNCTIONS.contains(&function) {
+        if let Some(reply) = unsupported_reply(function, module_functions(module_path).await.as_deref()) {
+            tracing::debug!("Module {} does not implement {}", module_path, function);
+            return Ok(reply);
+        }
+    }
+    spawn_plugin(module_path, function, config, on_progress, timeout_secs, server).await
+}
+
+async fn spawn_plugin(
+    module_path: &str,
+    function: &str,
+    config: Value,
+    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    timeout_secs: u64,
+    server: Option<u32>,
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
@@ -426,7 +591,7 @@ async fn run_plugin_inner(
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
         enabled_extensions = Some(enabled.unwrap_or_default());
-        unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some());
+        unverified_extensions = set_extension_env(&mut cmd, enabled_extensions.clone().unwrap_or_default(), isolation.is_some(), None);
 
         let mut pypath = extensions_dir.parent()
             .unwrap_or(&extensions_dir)
@@ -461,6 +626,13 @@ async fn run_plugin_inner(
         cmd.env("SABA_JAVA_RUNTIMES", runtimes);
     }
 
+    // 격리 실행은 127.0.0.1에 닿지 못한다: 자기 인스턴스 포트로 가는 요청은 데몬이 대신 보낸다 (loopback.rs)
+    let mut loopback = isolation.as_ref().and_then(|iso| {
+        let dir = iso.temp.join("loopback");
+        std::fs::create_dir_all(&dir).map_err(|e| tracing::warn!("[Loopback] cannot create {}: {}", dir.display(), e)).ok()?;
+        cmd.env("SABA_LOOPBACK_DIR", &dir);
+        Some(loopback::Proxy { dir, ports: loopback::instance_ports(&config), server })
+    });
     if let Some(iso) = &isolation {
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
             .env("TEMP", &iso.temp)
@@ -485,8 +657,11 @@ async fn run_plugin_inner(
             Ok(crate::sandbox::Spawned::Unisolated) => {
                 // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
                 if let Some(enabled) = enabled_extensions {
-                    unverified_extensions = set_extension_env(&mut cmd, enabled, false);
+                    unverified_extensions = set_extension_env(&mut cmd, enabled, false, Some(&iso.key));
                 }
+                // 격리 없이 돌면 루프백에 직접 닿는다
+                cmd.env_remove("SABA_LOOPBACK_DIR");
+                loopback = None;
                 plain(cmd.spawn()?)
             }
             #[cfg(windows)]
@@ -498,7 +673,7 @@ async fn run_plugin_inner(
             }
         },
     };
-    let status = drive(&mut child, config_json.as_bytes(), on_progress, std::time::Duration::from_secs(timeout_secs)).await;
+    let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, std::time::Duration::from_secs(timeout_secs)).await;
 
     match status {
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
@@ -543,6 +718,7 @@ async fn drive(
     child: &mut Process,
     input: &[u8],
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    loopback: Option<loopback::Proxy>,
     timeout: std::time::Duration,
 ) -> std::result::Result<Collected, tokio::time::error::Elapsed> {
     let pid = match child {
@@ -556,8 +732,27 @@ async fn drive(
     let stderr_handle = tokio::spawn(async move {
         let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
-            let mut reader = BufReader::new(pipe).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
+            let mut reader = BufReader::new(pipe);
+            let mut raw = Vec::new();
+            let mut relayed = 0;
+            // UTF-8이 아닌 줄에서 멈추면 stderr 파이프가 차서 모듈이 시간 초과까지 멈춘다
+            while let Some(line) = crate::supervisor::managed_process::next_line(&mut reader, &mut raw).await {
+                // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
+                if let Some(request) = line.strip_prefix(loopback::PREFIX) {
+                    match &loopback {
+                        Some(proxy) if relayed < loopback::MAX_REQUESTS => {
+                            relayed += 1;
+                            let (proxy, request) = (proxy.clone(), request.to_string());
+                            tokio::spawn(async move { loopback::serve(&proxy, &request).await });
+                        }
+                        Some(proxy) => {
+                            tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS);
+                            loopback::refuse(proxy, request, "too_many_requests");
+                        }
+                        None => tracing::warn!("[Loopback] request from an unisolated run ignored"),
+                    }
+                    continue;
+                }
                 if let Some(json_str) = line.strip_prefix("PROGRESS:") {
                     if let Ok(prog) = serde_json::from_str::<ExtensionProgress>(json_str) {
                         if let Some(ref cb) = on_progress {
@@ -629,8 +824,20 @@ mod tests {
     fn an_unisolated_run_imports_only_verified_extensions() {
         let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string()];
         let unverified = |id: &str| id == "ue4-ini";
-        assert_eq!(importable_extensions(enabled.clone(), false, unverified), (vec!["steamcmd".to_string()], vec!["ue4-ini".to_string()]));
-        assert_eq!(importable_extensions(enabled.clone(), true, unverified), (enabled, vec![]));
+        assert_eq!(importable_extensions(enabled.clone(), false, unverified, None), (vec!["steamcmd".to_string()], vec!["ue4-ini".to_string()]));
+        assert_eq!(importable_extensions(enabled.clone(), true, unverified, None), (enabled, vec![]));
+    }
+
+    /// 사용자가 격리 없이 돌리기로 한 익스텐션은 자기 패키지(`extensions.<자기 id>`)를 import할 수 있다. 다른 미확인 익스텐션은 그대로 막는다
+    #[test]
+    fn an_extension_run_unisolated_by_consent_imports_itself() {
+        let enabled = vec!["steamcmd".to_string(), "ue4-ini".to_string(), "other".to_string()];
+        let unverified = |id: &str| id != "steamcmd";
+        assert_eq!(
+            importable_extensions(enabled.clone(), false, unverified, Some("ext-ue4_ini")),
+            (vec!["steamcmd".to_string(), "ue4-ini".to_string()], vec!["other".to_string()])
+        );
+        assert_eq!(importable_extensions(enabled, false, unverified, Some("module-ue4-ini")).1, vec!["ue4-ini".to_string(), "other".to_string()], "a module key is not an extension");
     }
     use serde_json::json;
 
@@ -675,6 +882,60 @@ mod tests {
         panic!("grandchild {grandchild} survived");
     }
 
+    /// 격리된 모듈(127.0.0.1에 못 닿음)이 공용 도우미 `loopback_http`로 자기 서버에 물으면 데몬이 대신 보내고 답을 돌려준다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_sandboxed_module_reaches_its_own_server_through_the_daemon() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut got = vec![0u8; 4096];
+            let n = sock.read(&mut got).await.unwrap();
+            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 22\r\n\r\n{\"currentplayernum\":3}").await.unwrap();
+            String::from_utf8_lossy(&got[..n]).to_string()
+        });
+        let relay = tempfile::tempdir().unwrap();
+        let script = format!(
+            "import json, sys; sys.path.insert(0, {:?}); import daemon_rcon; sys.stdin.read(); \
+             status, body = daemon_rcon.loopback_http({port}, 'GET', '/v1/api/metrics', headers={{'Authorization': 'Basic eA=='}}); \
+             print(json.dumps({{'status': status, 'body': json.loads(body)}}))",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/modules"),
+        );
+        let mut cmd = Command::new("python3");
+        cmd.arg("-c").arg(script).env("SABA_LOOPBACK_DIR", relay.path())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let mut child = plain(cmd.spawn().unwrap());
+        let proxy = loopback::Proxy { dir: relay.path().to_path_buf(), ports: vec![port], server: Some(std::process::id()) };
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, Some(proxy), std::time::Duration::from_secs(20)).await.unwrap().unwrap();
+        assert!(status.success(), "{stderr}");
+        assert_eq!(parse_plugin_output(&stdout).unwrap(), json!({ "status": 200, "body": { "currentplayernum": 3 } }));
+        assert!(server.await.unwrap().starts_with("GET /v1/api/metrics HTTP/1.1\r\n"));
+        assert!(!stderr.contains("LOOPBACK:"), "relay requests (they carry auth headers) are not logged");
+        assert_eq!(std::fs::read_dir(relay.path()).unwrap().count(), 0, "the module removes the reply it read");
+    }
+
+    /// stderr의 UTF-8이 아닌 줄 하나로 읽기가 멈추지 않는다: 멈추면 모듈이 다음 stderr 쓰기에서 끊기거나 파이프가 차서 멈춘다 (D-S7)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stderr_line_that_is_not_utf8_does_not_cut_off_the_run() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg(r"cat > /dev/null; printf 'bad \377\n' >&2; head -c 300000 /dev/zero | tr '\0' 'x' | fold -w 100 >&2; echo '{}'")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .process_group(0);
+        let mut child = plain(cmd.spawn().unwrap());
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+        assert!(status.success(), "the module was not cut off: {status:?}");
+        assert_eq!(stdout.trim(), "{}");
+        assert!(stderr.contains("xxxx"), "later stderr lines are still read");
+    }
+
     /// 부모가 끝나도 자식이 출력 파이프를 쥐고 있으면, 출력 수집까지 기한 안에 끊고 자식도 끝낸다
     #[cfg(unix)]
     #[tokio::test]
@@ -691,7 +952,7 @@ mod tests {
             .process_group(0);
         let mut child = plain(cmd.spawn().unwrap());
         let started = std::time::Instant::now();
-        let result = drive(&mut child, b"{}", None, std::time::Duration::from_secs(1)).await;
+        let result = drive(&mut child, b"{}", None, None, std::time::Duration::from_secs(1)).await;
         assert!(result.is_err(), "timed out instead of waiting for the held pipe");
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
         let grandchild: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
@@ -797,6 +1058,112 @@ mod tests {
         assert_eq!(parse_plugin_output("{\n  \"ok\": 1\n}\n").unwrap(), json!({"ok": 1}));
         assert_eq!(parse_plugin_output("debug print\n{\"ok\": 2}\n\n").unwrap(), json!({"ok": 2}));
         assert!(parse_plugin_output("{\"ok\": 3}\nnot json\n").is_err());
+    }
+
+    /// 모듈이 `functions`로 밝힌 목록에 없는 선택 함수는 Python을 띄우지 않고 not_supported로 답한다 (MK1).
+    /// 목록을 모르는 옛 모듈과 필수 함수는 그대로 부른다
+    #[test]
+    fn optional_functions_a_module_does_not_list_are_refused_without_running_it() {
+        let known = vec!["validate".to_string(), "list_versions".to_string()];
+        let refused = unsupported_reply("reset_server", Some(&known)).expect("reset_server is not listed");
+        assert_eq!(refused["success"], false);
+        assert_eq!(refused["error_code"], "not_supported");
+        assert_eq!(refused["function"], "reset_server");
+        assert!(unsupported_reply("list_versions", Some(&known)).is_none(), "listed");
+        assert!(unsupported_reply("reset_server", None).is_none(), "an old module without the list is asked anyway");
+        assert!(unsupported_reply("start", Some(&known)).is_none(), "required functions are never refused");
+        assert!(unsupported_reply("functions", Some(&known)).is_none());
+    }
+
+    /// 목록은 성공 응답의 문자열 배열에서만 읽는다. `functions`를 모르는 옛 모듈은 Unknown(다시 묻지 않음), 실패·모양이 다른 답은 Failed
+    #[test]
+    fn the_function_list_is_read_only_from_a_successful_reply() {
+        assert_eq!(
+            functions_answer(Ok(json!({ "success": true, "functions": ["validate", "diagnose_log"] }))),
+            FunctionsAnswer::Listed(vec!["validate".to_string(), "diagnose_log".to_string()])
+        );
+        assert_eq!(functions_answer(Ok(json!({ "success": false, "message": "Unknown function: functions" }))), FunctionsAnswer::Unknown);
+        assert_eq!(functions_answer(Ok(json!({ "success": false, "error_code": "sandbox_consent_required" }))), FunctionsAnswer::Failed);
+        assert_eq!(functions_answer(Ok(json!({ "success": true, "functions": "validate" }))), FunctionsAnswer::Failed);
+        assert_eq!(functions_answer(Ok(json!({ "success": true, "functions": ["validate", 3] }))), FunctionsAnswer::Failed);
+        assert_eq!(functions_answer(Err(anyhow::anyhow!("timed out"))), FunctionsAnswer::Failed);
+    }
+
+    /// 답은 진입 파일이 바뀌면 버린다. 실패는 잠시만 기억해 일시적인 실패가 기능을 계속 가리지 않게 한다
+    #[test]
+    fn a_failed_answer_is_retried_and_a_changed_entry_is_asked_again() {
+        let t = Some(std::time::SystemTime::UNIX_EPOCH);
+        let now = std::time::Instant::now();
+        let old = now.checked_sub(std::time::Duration::from_secs(FUNCTIONS_RETRY_SECS + 1)).unwrap();
+        assert!(still_valid(&(t, FunctionsAnswer::Unknown, old), t), "an old module's answer stays");
+        assert!(still_valid(&(t, FunctionsAnswer::Listed(vec![]), old), t));
+        assert!(still_valid(&(t, FunctionsAnswer::Failed, now), t));
+        assert!(!still_valid(&(t, FunctionsAnswer::Failed, old), t), "a failure is asked again later");
+        assert!(!still_valid(&(t, FunctionsAnswer::Listed(vec![]), now), Some(std::time::SystemTime::now())), "an updated module is asked again");
+    }
+
+    /// 동시에 온 요청은 Python을 한 번만 띄운다. 목록 응답은 느린 모듈을 짧게만 기다리고, 묻기는 뒤에서 마저 해 캐시에 남긴다
+    #[tokio::test]
+    async fn concurrent_asks_share_one_run_and_the_list_does_not_wait_for_a_slow_module() {
+        // Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다: 실행 횟수는 답에 실은 pid로 센다
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("lifecycle.py");
+        std::fs::write(
+            &entry,
+            "import json, os, sys, time\ntime.sleep(float(open('delay.txt').read()))\n\
+             print(json.dumps({'success': True, 'functions': ['validate', str(os.getpid())]}))\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("delay.txt"), "0.5").unwrap();
+        let entry = entry.to_string_lossy().into_owned();
+        let first = std::time::Instant::now();
+        let asks: Vec<_> = (0..3).map(|_| {
+            let entry = entry.clone();
+            tokio::spawn(async move { module_functions(&entry).await })
+        }).collect();
+        let mut answers = Vec::new();
+        for ask in asks {
+            answers.push(ask.await.unwrap().expect("listed"));
+        }
+        // 이 러너에서 Python 한 번을 띄우는 데 드는 시간 (느린 Windows 러너에서는 수 초)
+        let startup = first.elapsed().saturating_sub(std::time::Duration::from_millis(500));
+        assert_eq!(answers[0][0], "validate");
+        // 동시에 돈 실행이라면 pid가 서로 다르다
+        assert!(answers.iter().all(|a| a == &answers[0]), "one run for concurrent asks: {answers:?}");
+
+        // 모듈이 바뀌었고 느리다: 목록은 기다리지 않고 null, 뒤에서 마친 답은 캐시에 남는다
+        let delay = 4.0;
+        std::fs::write(dir.path().join("delay.txt"), delay.to_string()).unwrap();
+        let text = std::fs::read_to_string(&entry).unwrap();
+        std::fs::write(&entry, format!("{text}# changed\n")).unwrap();
+        // 수정 시각 해상도가 거친 파일 시스템에서도 바뀐 것으로 보이게
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::File::options().write(true).open(&entry).unwrap().set_modified(later).unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(module_functions_for_list(entry.clone()).await, None);
+        assert!(started.elapsed() < std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS + 1500), "{:?}", started.elapsed());
+        let shared = module_functions(&entry).await.expect("the background ask finishes");
+        assert_ne!(shared, answers[0], "the changed module was asked again");
+        // 새로 실행했다면 목록이 기다린 시간(FUNCTIONS_LIST_WAIT_MS)에 띄우는 시간과 지연 전체가 더해진다.
+        // 기준은 그 차이의 절반이다: 같은 실행이면 띄우는 시간 + 지연, 새 실행이면 그보다 2초 더
+        let limit = startup + std::time::Duration::from_secs_f64(delay) + std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS / 2);
+        assert!(started.elapsed() < limit, "the background ask is shared, not run again: {:?}", started.elapsed());
+    }
+
+    /// 공용 진입점 `run_lifecycle`은 표에 `functions`가 없으면 표의 키(자신 제외)로 답한다
+    #[test]
+    fn run_lifecycle_answers_functions_with_its_table() {
+        let script = format!(
+            "import sys; sys.path.insert(0, {:?}); sys.argv = ['lifecycle.py', 'functions']; import daemon_rcon; \
+             daemon_rcon.run_lifecycle({{'validate': lambda c: {{}}, 'reset_server': lambda c: {{}}}})",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/modules"),
+        );
+        let out = std::process::Command::new("python3").arg("-c").arg(script).stdin(std::process::Stdio::null()).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(
+            parse_plugin_output(&String::from_utf8_lossy(&out.stdout)).unwrap(),
+            json!({ "success": true, "functions": ["validate", "reset_server"] })
+        );
     }
 
     #[tokio::test]

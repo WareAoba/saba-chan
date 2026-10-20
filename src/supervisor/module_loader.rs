@@ -440,14 +440,26 @@ impl OneOrMany {
 
 /// 설정 값 형식 이름 (`format`)
 pub const SETTING_FORMATS: &[&str] = &["memory_size", "port", "integer", "path"];
+/// 설정 필드 `type`으로 받는 값 (GUI·CLI가 그리는 것)
+pub const SETTING_TYPES: &[&str] = &["text", "password", "number", "file", "select", "boolean"];
+/// 명령 입력 `inputs[].type`으로 받는 값
+pub const COMMAND_INPUT_TYPES: &[&str] = &["text", "password", "number", "select", "boolean"];
 
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
 pub const CORE_PORT_FIELDS: &[&str] = &["port", "rest_port"];
+
+/// 사바쨩 설정 묶음: 실행 방식(Java 경로·메모리·실행 인자 등)처럼 사바쨩이 쓰는 값. 게임 설정 파일로 넘기지 않는다
+pub const SABA_SETTINGS_GROUP: &str = "saba-chan";
 
 impl ModuleSettings {
     /// 포트로 표시된 설정 이름 (`port = true`)
     pub fn port_fields(&self) -> Vec<&str> {
         self.fields.iter().filter(|f| f.port).map(|f| f.name.as_str()).collect()
+    }
+
+    /// 사바쨩 설정 이름 (`group = "saba-chan"`)
+    pub fn saba_fields(&self) -> Vec<&str> {
+        self.fields.iter().filter(|f| f.group.as_deref() == Some(SABA_SETTINGS_GROUP)).map(|f| f.name.as_str()).collect()
     }
 }
 
@@ -1247,14 +1259,13 @@ impl ModuleToml {
     /// 키는 맞지만 값이 계약을 벗어난 곳
     fn value_problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
-        let entry = Path::new(&self.module.entry);
-        if self.module.entry.is_empty()
-            || entry.is_absolute()
-            || entry.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
-        {
+        if !crate::utils::is_inner_relative_path(&self.module.entry) {
             problems.push(format!("module.entry '{}' must be a path inside the module folder", self.module.entry));
         }
         for field in self.settings.iter().flat_map(|s| &s.fields) {
+            if !SETTING_TYPES.contains(&field.field_type.as_str()) {
+                problems.push(format!("settings field '{}': type '{}' must be one of {}", field.name, field.field_type, SETTING_TYPES.join(", ")));
+            }
             if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
                 problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
             }
@@ -1273,6 +1284,17 @@ impl ModuleToml {
             }
         }
         for cmd in self.commands.iter().flat_map(|c| &c.fields) {
+            for input in &cmd.inputs {
+                if let Some(ty) = input.input_type.as_deref().filter(|t| !COMMAND_INPUT_TYPES.contains(t)) {
+                    problems.push(format!(
+                        "commands '{}': input '{}' type '{}' must be one of {}",
+                        cmd.name,
+                        input.name,
+                        ty,
+                        COMMAND_INPUT_TYPES.join(", ")
+                    ));
+                }
+            }
             if let Some(risk) = &cmd.risk {
                 if !COMMAND_RISKS.contains(&risk.as_str()) {
                     problems.push(format!(
@@ -1343,7 +1365,7 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
 /// 데몬이 정해진 뜻으로 부르는 lifecycle 함수 중 상태를 바꾸는 것: 조회(`[[queries]]`)·`[status] players`의 함수가 될 수 없다
 const NON_QUERY_FUNCTIONS: &[&str] = &[
     "start", "stop", "command", "configure", "get_launch_command", "import_settings", "install_server",
-    "reset_properties", "reset_server", "accept_agreements",
+    "reset_properties", "reset_server", "accept_agreements", "functions",
 ];
 /// 조회 입력으로 쓸 수 있는 형식 (없으면 text)
 const QUERY_INPUT_TYPES: &[&str] = &["text", "number", "select"];
@@ -2141,6 +2163,23 @@ entry = "lifecycle.py"
             assert!(err.contains("protocols"), "{err}");
         }
         assert!(parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"rest\", \"stdin\"]\ndefault = \"rest\"\n")).is_ok());
+    }
+
+    /// 클라이언트가 그리지 못하는 설정·명령 입력 type은 화면에서 조용히 사라진다: 로드할 때 알린다 (MK2)
+    #[test]
+    fn schema_v1_checks_setting_and_command_input_types() {
+        let setting = |ty: &str| format!("{V1}\n[[settings.fields]]\nname = \"motd\"\ntype = \"{ty}\"\n");
+        let err = parse_module_toml(&setting("textarea")).unwrap_err().to_string();
+        assert!(err.contains("settings field 'motd'") && err.contains("textarea"), "{err}");
+        for ty in SETTING_TYPES {
+            assert!(parse_module_toml(&setting(ty)).is_ok(), "{ty}");
+        }
+        let input = |ty: &str| format!("{V1}\n[[commands.fields]]\nname = \"kick\"\ninputs = [{{ name = \"player\", type = \"{ty}\" }}]\n");
+        let err = parse_module_toml(&input("slider")).unwrap_err().to_string();
+        assert!(err.contains("commands 'kick'") && err.contains("slider"), "{err}");
+        assert!(parse_module_toml(&input("password")).is_ok());
+        // 스키마 이전 모듈은 경고만 하고 올린다
+        assert!(parse_module_toml(&setting("textarea").replace("schema_version = 1\n", "")).is_ok());
     }
 
     #[test]

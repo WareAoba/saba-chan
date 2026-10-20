@@ -8,6 +8,7 @@ pub mod config;
 pub mod console;
 pub mod daemon;
 pub mod do_action;
+pub mod events;
 pub mod extension;
 pub mod module;
 pub mod monitor;
@@ -51,6 +52,8 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Update(c) => update::run(ctx, c).await,
         Cmd::Config(c) => config::run(ctx, c).await,
         Cmd::Chat { text } => chat(ctx, &text.join(" ")).await,
+        Cmd::Events { kind, server, since } => events::run(ctx, &kind, server.as_deref(), since).await,
+        Cmd::Help { command } => help(ctx, &command),
         Cmd::Completions { shell } => {
             let mut cmd = crate::cli::localized();
             clap_complete::generate(shell, &mut cmd, "saba-chan-cli", &mut std::io::stdout());
@@ -58,6 +61,26 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         }
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
     }
+}
+
+/// `help [명령…]`: 번역된 도움말. `--json`이면 명령 트리·인자·종료 코드
+fn help(ctx: &Ctx, path: &[String]) -> Result<()> {
+    let mut root = crate::cli::localized();
+    root.build();
+    let unknown = || usage(t!("err.unknown_command", path = path.join(" ")));
+    if ctx.out.json {
+        let v = crate::cli::schema(&root, path).ok_or_else(unknown)?;
+        ctx.out.data(&v, |_| {});
+        return Ok(());
+    }
+    let mut cmd = &mut root;
+    for word in path {
+        cmd = cmd.find_subcommand_mut(word).ok_or_else(unknown)?;
+    }
+    let text = cmd.render_help();
+    let text = if ::console::colors_enabled() { text.ansi().to_string() } else { text.to_string() };
+    say!("{}", text.trim_end());
+    Ok(())
 }
 
 /// 데몬 없이도 되는 명령은 데몬을 깨우지 않는다
@@ -68,6 +91,7 @@ fn needs_daemon(cmd: &Cmd) -> bool {
         Cmd::Status
             | Cmd::Version
             | Cmd::Completions { .. }
+            | Cmd::Help { .. }
             | Cmd::Shell
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
@@ -78,7 +102,7 @@ pub async fn chat(ctx: &Ctx, text: &str) -> Result<()> {
     let r = ctx.api.chat(text).await?;
     // 답은 디스코드용 마크다운이다: 터미널에서는 강조 기호만 뗀다
     ctx.out
-        .data(&r, |r| println!("{}", plain(crate::output::s(r, "reply"))));
+        .data(&r, |r| say!("{}", plain(crate::output::s(r, "reply"))));
     Ok(())
 }
 
@@ -134,9 +158,9 @@ pub fn print_audit(ctx: &Ctx, label: &str, r: &Value) {
             declared.join(", ")
         };
         crate::output::print_kv(&[(t!("audit.declared"), declared_text)]);
-        println!();
+        say!();
         if findings.is_empty() {
-            println!("{}", crate::output::dim(&t!("audit.no_findings")));
+            say!("{}", crate::output::dim(&t!("audit.no_findings")));
         } else {
             let mut t =
                 crate::output::table(&[t!("audit.col.permission"), t!("audit.col.where"), t!("audit.col.what")]);
@@ -155,10 +179,10 @@ pub fn print_audit(ctx: &Ctx, label: &str, r: &Value) {
                 ]);
             }
             crate::output::print_table(t);
-            println!();
+            say!();
         }
         if undeclared.is_empty() {
-            println!("{} {}", ::console::style("✓").green().bold(), t!("audit.clean"));
+            say!("{} {}", ::console::style("✓").green().bold(), t!("audit.clean"));
         } else {
             let mut perms: Vec<&str> = undeclared.iter().map(|f| crate::output::s(f, "permission")).collect();
             perms.sort_unstable();
@@ -231,6 +255,43 @@ pub fn typed(raw: &str, kind: &str) -> Result<Value> {
     }
 }
 
+/// 지금 값의 형식에 맞춰 변환한다. 목록은 쉼표로 나눈 글자들 (JSON 배열도 받는다)
+pub fn coerce(raw: &str, current: Option<&Value>) -> Result<Value> {
+    match current {
+        Some(Value::Bool(_)) => parse_bool(raw)
+            .map(Value::Bool)
+            .ok_or_else(|| usage(t!("err.not_a_bool", value = raw))),
+        Some(Value::Number(_)) => typed(raw, "number"),
+        Some(Value::String(_)) => Ok(Value::String(raw.to_string())),
+        Some(Value::Array(_)) => match guess(raw) {
+            Value::Array(a) => Ok(Value::Array(a)),
+            _ => Ok(Value::Array(
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| Value::String(p.to_string()))
+                    .collect(),
+            )),
+        },
+        _ => Ok(guess(raw)),
+    }
+}
+
+/// 없는 설정 키: 비슷한 이름을 몇 개 권한다
+pub fn unknown_setting(key: &str, names: &[String]) -> anyhow::Error {
+    let suggestions = match crate::resolve::find(names, key, |n| vec![n.clone()], |n| n.clone()) {
+        crate::resolve::Found::None(s) => s,
+        crate::resolve::Found::One(n) => vec![n],
+        crate::resolve::Found::Many(v) => v.into_iter().take(3).collect(),
+    };
+    crate::error::CliError::NotFound {
+        what: t!("noun.setting"),
+        query: key.into(),
+        suggestions,
+    }
+    .into()
+}
+
 pub fn parse_bool(raw: &str) -> Option<bool> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "true" | "yes" | "y" | "on" | "1" | "켜기" | "예" => Some(true),
@@ -301,10 +362,10 @@ pub fn print_issues(v: &Value) -> bool {
         } else {
             msg
         };
-        println!("{} {}", mark, msg);
+        say!("{} {}", mark, msg);
         let fix = crate::output::s(i, "solution");
         if !fix.is_empty() {
-            println!("  {}", crate::output::dim(fix));
+            say!("  {}", crate::output::dim(fix));
         }
     }
     !issues.is_empty()

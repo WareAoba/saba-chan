@@ -138,7 +138,7 @@ fn format_ok(format: &str, s: &str) -> bool {
     let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
     match format {
         // 4G, 1024M, 512k: 숫자 뒤에 단위 한 글자. 4096·4GB·"4 G"는 아니다
-        "memory_size" => s.len() > 1 && digits(&s[..s.len() - 1]) && s.ends_with(['K', 'M', 'G', 'k', 'm', 'g']),
+        "memory_size" => s.strip_suffix(['K', 'M', 'G', 'k', 'm', 'g']).is_some_and(digits),
         "port" => digits(s) && s.parse::<u32>().is_ok_and(|p| (1..=65535).contains(&p)),
         "integer" => digits(s.strip_prefix('-').unwrap_or(s)),
         "path" => !s.trim().is_empty() && !s.contains(['\r', '\n', '\0']),
@@ -524,6 +524,9 @@ fn ports_held_by_binding(ports: &[(String, u16)]) -> Vec<(String, u16)> {
 /// IPv4는 주소와 상관없이 센다(예전 0.0.0.0 바인딩 검사도 막혔다). IPv6는 `[::]`에 묶인 것만 센다:
 /// 자바 서버처럼 dual-stack으로 듣는 소켓은 IPv6 표에만 나오고, 특정 IPv6 주소만 쓰는 소켓은 IPv4 포트와 겹치지 않는다
 #[cfg(windows)]
+pub(crate) use held_ports::tcp_listener_pids;
+
+#[cfg(windows)]
 mod held_ports {
     use std::collections::HashSet;
     use winapi::shared::tcpmib::{MIB_TCP6TABLE_OWNER_PID, MIB_TCPTABLE_OWNER_PID};
@@ -556,6 +559,26 @@ mod held_ports {
         let start = first as usize - buf.as_ptr() as usize;
         let fits = (buf.len() * 8).saturating_sub(start) / std::mem::size_of::<R>();
         std::slice::from_raw_parts(first, count.min(fits))
+    }
+
+    /// TCP로 그 포트를 듣는 프로세스 (IPv4·IPv6 모두. 루프백 중계가 듣는 쪽이 인스턴스 서버인지 본다)
+    pub fn tcp_listener_pids(want: u16) -> Option<Vec<u32>> {
+        let port = |raw: u32| u16::from_be(raw as u16);
+        let mut pids = Vec::new();
+        let mut read_any = false;
+        unsafe {
+            if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
+                let t = buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
+                pids.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| port(r.dwLocalPort) == want).map(|r| r.dwOwningPid));
+                read_any = true;
+            }
+            if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET6 as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
+                let t = buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
+                pids.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| port(r.dwLocalPort) == want).map(|r| r.dwOwningPid));
+                read_any = true;
+            }
+        }
+        read_any.then_some(pids)
     }
 
     pub fn read() -> HashSet<u16> {
@@ -654,7 +677,7 @@ mod tests {
         for ok in ["4G", "1024M", "512k"] {
             assert!(validate_setting_value(&ram, Some(&Value::from(ok))).is_ok(), "{}", ok);
         }
-        for bad in ["4096", "4GB", "4 G", "G", "-4G"] {
+        for bad in ["4096", "4GB", "4 G", "G", "-4G", "4기", "가"] {
             let err = validate_setting_value(&ram, Some(&Value::from(bad))).unwrap_err();
             assert_eq!(err.error_type, ValidationErrorType::InvalidFormat, "{}", bad);
         }
@@ -1100,12 +1123,15 @@ mod tests {
     /// 이 PC에서 Windows가 예약한(제외 범위) TCP 포트 하나. Hyper-V·WinNAT가 켜진 PC는 부팅마다 100개 묶음을 잡는다.
     /// 한 포트짜리 범위(5985 WinRM 등)는 서비스가 실제로 듣고 있을 수 있어 넓은 범위의 가운데를 고른다
     #[cfg(windows)]
+    /// 예약 범위 안에서 지금 아무 프로그램도 쥐고 있지 않은 포트. 예약한 쪽(WinNAT 등)이 범위 안 포트를 실제로
+    /// 듣고 있기도 해서(CI 러너) 사용 중 포트 목록에 있는 것은 건너뛴다
     fn an_excluded_tcp_port() -> Option<u16> {
         let out = std::process::Command::new("netsh").args(["int", "ipv4", "show", "excludedportrange", "protocol=tcp"]).output().ok()?;
+        let held = held_ports::read();
         String::from_utf8_lossy(&out.stdout).lines().find_map(|line| {
             let mut nums = line.split_whitespace().map(str::parse::<u16>);
             match (nums.next(), nums.next()) {
-                (Some(Ok(start)), Some(Ok(end))) if end - start >= 10 => Some(start + (end - start) / 2),
+                (Some(Ok(start)), Some(Ok(end))) if end - start >= 10 => (start + 1..end).find(|p| !held.contains(p)),
                 _ => None,
             }
         })
@@ -1116,12 +1142,16 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn ports_in_a_windows_excluded_range_are_reported_as_reserved() {
-        let Some(port) = an_excluded_tcp_port() else {
+        if an_excluded_tcp_port().is_none() {
             eprintln!("this PC has no excluded port range; nothing to check");
             return;
-        };
-        let ports = vec![("rest_port".to_string(), port)];
-        assert!(ports_held_elsewhere(&ports).is_empty(), "the held-port table does not list reserved ports");
+        }
+        // 고른 뒤 확인하기 전에 다른 프로그램(병렬 시험이 연 UDP 소켓 등)이 그 번호를 쥘 수 있다: 비어 있는 것을 다시 고른다
+        let ports = (0..5)
+            .filter_map(|_| an_excluded_tcp_port())
+            .map(|port| vec![("rest_port".to_string(), port)])
+            .find(|ports| ports_held_elsewhere(ports).is_empty())
+            .expect("the held-port table does not list reserved ports");
         assert_eq!(ports_reserved_by_windows(&ports), ports);
         let free = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
         assert!(ports_reserved_by_windows(&[("port".to_string(), free)]).is_empty());

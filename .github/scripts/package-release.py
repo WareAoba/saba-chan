@@ -89,7 +89,7 @@ COMPONENTS = [
     {
         "key": "installer",
         "raw_patterns": [r"saba-chan-installer\.exe$", r"saba-chan-installer.*\.zip$"],
-        # zip이 아닌 exe 그대로 싣는다: 소개 페이지 다운로드가 이 에셋을 가리킨다. 업데이터는 받지 않는다
+        # zip이 아닌 exe 그대로 싣는다: 소개 페이지 다운로드가 이 에셋을 가리키고, 업데이터는 설치 폴더의 제거기 사본을 이것으로 바꾼다
         "output_name": "saba-chan-installer.exe",
         "install_dir": ".",
         "exe_name": "saba-chan-installer.exe",

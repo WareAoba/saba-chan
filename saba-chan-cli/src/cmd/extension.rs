@@ -31,7 +31,7 @@ pub async fn run(ctx: &Ctx, cmd: ExtCmd) -> Result<()> {
         ExtCmd::Install { ids, url, sha256 } => install_many(ctx, &ids, url, sha256).await,
         ExtCmd::Update { extension } => update(ctx, extension.as_deref()).await,
         ExtCmd::Remove { extension } => {
-            let e = resolve::extension(ctx, extension.as_deref()).await?;
+            let e = resolve::extension_exact(ctx, extension.as_deref()).await?;
             let id = s(&e, "id").to_string();
             ctx.ask.ensure(&t!("ext.confirm_remove", id = id))?;
             let r = ctx.api.remove_extension(&id).await?;
@@ -64,15 +64,15 @@ pub async fn run(ctx: &Ctx, cmd: ExtCmd) -> Result<()> {
                     .map(|(id, v)| format!("{} ({})", id, output::show(v)))
                     .collect();
                 if busy.is_empty() {
-                    println!("{}", output::dim(&t!("ext.status_idle")));
+                    say!("{}", output::dim(&t!("ext.status_idle")));
                 } else {
-                    println!("{}", t!("ext.status_busy", list = busy.join(", ")));
+                    say!("{}", t!("ext.status_busy", list = busy.join(", ")));
                 }
                 if let Some(done) = r
                     .get("completed")
                     .filter(|d| d.as_array().is_some_and(|a| !a.is_empty()))
                 {
-                    println!("{}", output::dim(&t!("ext.status_done", list = output::show(done))));
+                    say!("{}", output::dim(&t!("ext.status_done", list = output::show(done))));
                 }
             });
             Ok(())
@@ -99,7 +99,7 @@ async fn list(ctx: &Ctx) -> Result<()> {
             .cloned()
             .unwrap_or_default();
         if list.is_empty() {
-            println!("{}", output::dim(&t!("ext.none")));
+            say!("{}", output::dim(&t!("ext.none")));
         } else {
             let mut t = output::table(&[
                 t!("col.name"),
@@ -223,7 +223,7 @@ fn print_config(ext: &Value, values: &Value) -> bool {
     if keys.is_empty() {
         return false;
     }
-    println!();
+    say!();
     output::heading(&t!("ext.config"));
     let rows: Vec<(String, String)> = keys
         .iter()
@@ -278,8 +278,8 @@ async fn available(ctx: &Ctx) -> Result<()> {
             ]);
         }
         output::print_table(t);
-        println!();
-        println!("{}", output::dim("saba-chan-cli extension install <ID>"));
+        say!();
+        say!("{}", output::dim("saba-chan-cli extension install <ID>"));
     });
     Ok(())
 }
@@ -347,7 +347,7 @@ async fn update(ctx: &Ctx, q: Option<&str>) -> Result<()> {
     }
     if !ctx.out.json {
         for u in &updates {
-            println!(
+            say!(
                 "  {}  {} → {}",
                 s(u, "id"),
                 s(u, "installed_version"),
@@ -372,7 +372,7 @@ async fn update(ctx: &Ctx, q: Option<&str>) -> Result<()> {
         match r {
             Ok(_) => {
                 if !ctx.out.json {
-                    println!(
+                    say!(
                         "{} {}",
                         console::style("✓").green().bold(),
                         t!("ext.updated", id = id, version = s(u, "latest_version"))
@@ -410,7 +410,7 @@ async fn config(ctx: &Ctx, q: Option<&str>, pairs: &[String]) -> Result<()> {
         let values = r.get("config").cloned().unwrap_or(Value::Null);
         ctx.out.data(&values, |v| {
             if !print_config(&e, v) {
-                println!("{}", output::dim(&t!("ext.no_config", id = id)));
+                say!("{}", output::dim(&t!("ext.no_config", id = id)));
             }
         });
         return Ok(());

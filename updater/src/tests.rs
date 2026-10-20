@@ -972,3 +972,295 @@ fn an_old_backup_without_its_exe_is_kept() {
     assert!(tmp.path().join("saba-chan-gui.exe.old").exists());
     assert!(!tmp.path().join("saba-core.exe.old").exists());
 }
+
+fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersion {
+    crate::ComponentVersion {
+        component,
+        current_version: "0.1.0".into(),
+        latest_version: Some("0.2.0".into()),
+        update_available: true,
+        download_url: None,
+        asset_name: None,
+        release_notes: None,
+        published_at: None,
+        downloaded: true,
+        downloaded_path: Some(path.to_string_lossy().to_string()),
+        staged_sha256: None,
+        installed: true,
+    }
+}
+
+// L3(a): 여러 컴포넌트를 적용하다 실패해도 먼저 적용한 것은 버전을 기록한다 (그대로 두면 다시 받으라고 뜬다)
+#[tokio::test]
+async fn components_applied_before_a_failure_are_recorded() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let ext = Component::Extension(format!("l3-{}", std::process::id()));
+    let ext_zip = tmp.path().join("ext.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&ext_zip).unwrap());
+        zw.start_file("manifest.json", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"{}").unwrap();
+        zw.finish().unwrap();
+    }
+    manager.status.components = vec![staged(ext.clone(), &ext_zip), staged(Component::Cli, &tmp.path().join("missing.zip"))];
+
+    assert!(manager.apply_components(&[]).await.is_err());
+
+    assert_eq!(UpdateManager::load_installed_manifest().get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&format!("l3-{}", std::process::id())));
+}
+
+// L3(d): 새로 설치하다 실패하면 반쯤 풀린 폴더를 남기지 않는다
+#[test]
+fn a_failed_new_install_leaves_no_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let target = tmp.path().join("modules").join("fresh");
+    let bad = manager.staging_dir.join("module-fresh.zip");
+    {
+        use std::io::Write;
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&bad).unwrap());
+        let opts = zip::write::FileOptions::default();
+        zw.start_file("module.toml", opts).unwrap();
+        zw.write_all(b"name = \"fresh\"").unwrap();
+        zw.start_file("../escaped.txt", opts).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+
+    assert!(manager.replace_dir(&target, &bad, "fresh_backup").is_err());
+    assert!(!target.exists());
+}
+
+// L3(c): 적용 중 꺼져 남은 `.update-bak`은 다음 정리 때 원래 파일이 있으면 지우고, 없으면 되돌린다
+#[test]
+fn leftover_update_backups_are_cleaned_or_restored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::write(tmp.path().join("resources.pak"), b"new").unwrap();
+    std::fs::write(tmp.path().join("resources.pak.update-bak"), b"old").unwrap();
+    std::fs::write(tmp.path().join("WebView2Loader.dll.update-bak"), b"only copy").unwrap();
+
+    manager.settle_interrupted_updates();
+
+    assert_eq!(std::fs::read(tmp.path().join("resources.pak")).unwrap(), b"new");
+    assert!(!tmp.path().join("resources.pak.update-bak").exists());
+    assert_eq!(std::fs::read(tmp.path().join("WebView2Loader.dll")).unwrap(), b"only copy");
+    assert!(!tmp.path().join("WebView2Loader.dll.update-bak").exists());
+}
+
+// M4: 대상 폴더 안의 기존 링크(Windows는 정션 포함)를 따라 밖에 쓰지 않는다
+#[cfg(unix)]
+#[test]
+fn extract_zip_does_not_write_through_links_in_the_target() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("victim.txt"), b"keep").unwrap();
+    std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
+    std::os::unix::fs::symlink(outside.join("victim.txt"), target.join("file.txt")).unwrap();
+    for name in ["sub/new.txt", "file.txt", "nope/../sub/new.txt"] {
+        let zip_path = tmp.path().join("a.zip");
+        {
+            let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+            zw.start_file(name, zip::write::FileOptions::default()).unwrap();
+            zw.write_all(b"bad").unwrap();
+            zw.finish().unwrap();
+        }
+        assert!(crate::extract_zip(&zip_path, &target, |_| Ok(())).is_err(), "{name}");
+    }
+    assert!(!outside.join("new.txt").exists());
+    assert_eq!(std::fs::read(outside.join("victim.txt")).unwrap(), b"keep");
+}
+
+// M4: tar의 링크 엔트리를 만들지 않고, 기존 링크를 따라 쓰지 않는다
+#[cfg(unix)]
+#[test]
+fn extract_tar_gz_does_not_create_or_follow_links() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let archive = tmp.path().join("a.tar.gz");
+    {
+        let gz = flate2::write::GzEncoder::new(std::fs::File::create(&archive).unwrap(), flate2::Compression::default());
+        let mut tw = tar::Builder::new(gz);
+        let mut link = tar::Header::new_gnu();
+        link.set_entry_type(tar::EntryType::Symlink);
+        link.set_size(0);
+        tw.append_link(&mut link, "sub", &outside).unwrap();
+        let mut file = tar::Header::new_gnu();
+        file.set_size(3);
+        file.set_mode(0o644);
+        tw.append_data(&mut file, "sub/new.txt", &b"bad"[..]).unwrap();
+        tw.into_inner().unwrap().finish().unwrap();
+    }
+    let _ = UpdateManager::extract_tar_gz(&archive, &target);
+    assert!(!outside.join("new.txt").exists());
+    assert!(!target.join("sub").is_symlink());
+
+    std::fs::remove_dir_all(target.join("sub")).unwrap();
+    std::os::unix::fs::symlink(&outside, target.join("sub")).unwrap();
+    assert!(UpdateManager::extract_tar_gz(&archive, &target).is_err());
+    assert!(!outside.join("new.txt").exists());
+}
+
+// M4: Windows 정션도 링크로 보고 따라 쓰지 않는다 (PC에서 실행)
+#[cfg(windows)]
+#[test]
+fn extract_zip_does_not_write_through_a_junction() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("target");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let made = std::process::Command::new("cmd")
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(target.join("sub"))
+        .arg(&outside)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let zip_path = tmp.path().join("a.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("sub/new.txt", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+    assert!(crate::extract_zip(&zip_path, &target, |_| Ok(())).is_err());
+    assert!(!outside.join("new.txt").exists());
+}
+
+// L3(c): 새 파일은 `.update-new`에 다 쓴 뒤 이름을 바꾼다. 쓰다 꺼지면 원래 이름에는 아무것도 없어서
+// 다음 정리가 `.update-bak`을 되돌리고 반쯤 쓴 `.update-new`를 지운다 (원래 이름에 깨진 파일이 남아 백업을 지우던 문제)
+#[test]
+fn an_interrupted_write_leaves_the_backup_to_be_restored() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("a.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("resources.pak", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"new").unwrap();
+        zw.finish().unwrap();
+    }
+    let target = tmp.path().join("install");
+    std::fs::create_dir_all(&target).unwrap();
+    crate::extract_zip(&zip_path, &target, |_| Ok(())).unwrap();
+    assert_eq!(std::fs::read(target.join("resources.pak")).unwrap(), b"new");
+    assert!(!target.join("resources.pak.update-new").exists());
+
+    // 쓰다 꺼진 상태: 원래 이름은 비켜 났고 반쯤 쓴 `.update-new`만 있다
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = target.clone();
+    std::fs::remove_file(target.join("resources.pak")).unwrap();
+    std::fs::write(target.join("resources.pak.update-bak"), b"old").unwrap();
+    std::fs::write(target.join("resources.pak.update-new"), b"ne").unwrap();
+
+    manager.settle_interrupted_updates();
+
+    assert_eq!(std::fs::read(target.join("resources.pak")).unwrap(), b"old");
+    assert!(!target.join("resources.pak.update-new").exists());
+}
+
+// L3(c): 데몬·업데이터가 뜰 때의 정리는 다른 프로세스가 적용하는 중일 수 있어 백업을 건드리지 않는다
+#[test]
+fn startup_cleanup_leaves_backups_of_a_running_apply_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("resources.pak.update-bak"), b"old").unwrap();
+    std::fs::write(tmp.path().join("resources.pak.update-new"), b"ne").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+
+    manager.cleanup_old_files();
+
+    assert!(tmp.path().join("resources.pak.update-bak").exists());
+    assert!(tmp.path().join("resources.pak.update-new").exists());
+    assert!(!tmp.path().join("resources.pak").exists());
+}
+
+// M1: manifest의 `installer`도 업데이트 대상이다. 건너뛰면 설치 폴더의 제거기가 처음 설치한 판에 남는다
+#[test]
+fn the_installer_manifest_key_is_a_component() {
+    assert_eq!(Component::try_from_manifest_key("installer"), Some(Component::Installer));
+    assert_eq!(Component::Installer.manifest_key(), "installer");
+}
+
+// M1: 릴리스의 설치기는 zip이 아닌 exe 그대로다. 설치 폴더의 사본을 바꾼다
+#[tokio::test]
+async fn an_installer_update_replaces_the_installed_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let target = manager.install_root.join(crate::INSTALLER_EXE);
+    std::fs::write(&target, b"old installer").unwrap();
+    assert!(manager.is_component_installed(&Component::Installer));
+    let staged = tmp.path().join("saba-chan-installer.exe");
+    std::fs::write(&staged, b"new installer").unwrap();
+
+    let files = manager.apply_one(&Component::Installer, &staged.to_string_lossy()).await.unwrap();
+
+    assert_eq!(std::fs::read(&target).unwrap(), b"new installer");
+    assert_eq!(files, vec![target]);
+    assert!(!staged.exists());
+}
+
+// M1: 바꾸다 실패하면 원래 설치기를 되돌린다 (제거기가 사라지면 안 된다)
+#[tokio::test]
+async fn a_failed_installer_update_keeps_the_old_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let target = manager.install_root.join(crate::INSTALLER_EXE);
+    std::fs::write(&target, b"old installer").unwrap();
+    let missing = tmp.path().join("gone.exe");
+
+    assert!(manager.apply_one(&Component::Installer, &missing.to_string_lossy()).await.is_err());
+
+    assert_eq!(std::fs::read(&target).unwrap(), b"old installer");
+    let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left.len(), 1, "no backup left behind: {left:?}");
+}
+
+// M1: 0.1.7 이하 설치본은 설치기 버전을 기록하지 않았다. 번들 버전으로 채우면 최신으로 보여 영영 안 바뀌므로
+// 기록이 없는 설치기는 버전을 모르는 채로 두고, 깔려 있으면 한 번 바꾼다
+#[test]
+fn an_unrecorded_installer_is_not_assumed_current() {
+    let mut versions = std::collections::HashMap::new();
+    UpdateManager::fill_bundled_versions(&mut versions);
+    assert!(versions.contains_key("saba-core"));
+    assert!(!versions.contains_key("installer"));
+
+    assert!(UpdateManager::unknown_version_needs_update(&Component::Installer));
+    assert!(!UpdateManager::unknown_version_needs_update(&Component::CoreDaemon));
+}
+
+// L3: 개별 적용(업데이터 키별 적용, 데몬 직접 적용)도 지난 적용이 남긴 백업을 되돌린다
+#[tokio::test]
+async fn a_single_component_apply_restores_a_backup_left_by_an_interrupted_apply() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::write(tmp.path().join("resources.pak.update-bak"), b"old").unwrap();
+
+    // 받아 둔 업데이트가 없어 적용은 실패하지만, 정리는 그 앞에서 한다
+    assert!(manager.apply_single_component(&Component::Locales).await.is_err());
+
+    assert_eq!(std::fs::read(tmp.path().join("resources.pak")).unwrap(), b"old");
+    assert!(!tmp.path().join("resources.pak.update-bak").exists());
+}

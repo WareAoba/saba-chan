@@ -209,10 +209,10 @@ async fn instance_commands(
             }
         }
     }
-    let entry = {
+    let (entry, instance_dir) = {
         let supervisor = state.supervisor.read().await;
         match supervisor.module_loader.get_module(&instance.module_name) {
-            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => m.entry_path(),
+            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => (m.entry_path(), supervisor.instance_store.instance_dir(&instance.id)),
             _ => return Default::default(),
         }
     };
@@ -220,7 +220,7 @@ async fn instance_commands(
     if let Some(dir) = &instance.working_dir {
         config.insert("working_dir".into(), json!(dir));
     }
-    crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance);
+    crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance, &instance_dir);
     let loaded = match crate::plugin::run_plugin(&entry, "instance_commands", Value::Object(config)).await {
         Ok(value) if value.get("success").and_then(Value::as_bool) != Some(false) => {
             crate::commands::InstanceCommands::parse(&value)
@@ -266,7 +266,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "name": field.name,
                 "label": field.label,
                 "description": field.description,
-                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "risk": crate::commands::risk_of(field.risk.as_deref()),
                 "inputs": field.inputs,
                 "source": "module",
                 "aliases": aliases,
@@ -286,7 +286,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "name": field.name,
                 "label": field.label,
                 "description": field.description,
-                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "risk": crate::commands::risk_of(field.risk.as_deref()),
                 "inputs": field.inputs,
                 "source": "module",
                 "group": extra.groups.get(&field.name),
@@ -302,7 +302,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
             "name": cmd.name,
             "label": cmd.label.as_deref().unwrap_or(&cmd.name),
             "description": cmd.description,
-            "risk": cmd.risk.as_deref().unwrap_or("caution"),
+            "risk": crate::commands::risk_of(cmd.risk.as_deref()),
             "inputs": cmd.inputs,
             "source": "extension",
             "extension": ext_id,
@@ -443,6 +443,13 @@ pub(crate) async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json:
     let sent = state.supervisor.read().await.send_stdin_command(id, command).await;
     let message = match sent {
         Ok(m) => m,
+        Err(e) if e.downcast_ref::<crate::supervisor::managed_process::StdinFull>().is_some() => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": format!("stdin command failed: {}", e), "error_code": "console_input_full" })),
+            )
+                .into_response()
+        }
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -609,16 +616,16 @@ pub async fn execute_rest_command(
     // 연결 확인과 요청은 블로킹 I/O라 async 런타임 밖에서 실행한다
     enum RestFailure {
         Connect(String),
-        Execute(String),
+        Execute(crate::protocol::ProtocolError),
     }
     let outcome = tokio::task::spawn_blocking(move || {
         client
             .connect_rest(std::time::Duration::from_secs(5))
             .map_err(|e| RestFailure::Connect(e.to_string()))?;
-        client.execute(cmd).map_err(|e| RestFailure::Execute(e.to_string()))
+        client.execute(cmd).map_err(RestFailure::Execute)
     })
     .await
-    .unwrap_or_else(|e| Err(RestFailure::Execute(format!("task failed: {}", e))));
+    .unwrap_or_else(|e| Err(RestFailure::Execute(crate::protocol::ProtocolError::Protocol(format!("task failed: {}", e)))));
 
     // 인증 실패 등으로 접속 정보가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
     if !matches!(&outcome, Ok(response) if response.success) {
@@ -647,14 +654,18 @@ pub async fn execute_rest_command(
             })),
         )
             .into_response(),
-        Err(RestFailure::Execute(e)) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": format!("REST execution failed: {}", e)
-            })),
-        )
-            .into_response(),
+        Err(RestFailure::Execute(e)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(rest_execute_failure(&e))).into_response(),
     }
+}
+
+/// REST 요청 실패의 응답 본문. 게임 서버가 401·403으로 거절하면(관리자 비밀번호가 다름) `auth_failed`로 나눠
+/// `/command`가 모듈의 `errors.auth_failed` 문구를 붙이게 한다 (데몬 토큰 실패와 섞이지 않게 HTTP 상태는 500 그대로)
+fn rest_execute_failure(e: &crate::protocol::ProtocolError) -> Value {
+    let mut body = json!({ "error": format!("REST execution failed: {}", e) });
+    if matches!(e, crate::protocol::ProtocolError::HttpStatus(401 | 403, _)) {
+        body["error_code"] = json!("auth_failed");
+    }
+    body
 }
 
 /// 게임 설정 파일의 접속 정보 (lifecycle.py `get_credentials`). 캐시가 있으면 Python을 띄우지 않는다.
@@ -691,6 +702,32 @@ async fn instance_credentials(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 팰월드 관리자 비밀번호가 틀려 REST가 401로 거절되면 일반 "내부 오류" 대신 모듈의 인증 실패 문구가 붙는다
+    #[tokio::test]
+    async fn a_rest_command_the_game_rejects_gets_the_modules_auth_text() {
+        use crate::protocol::ProtocolError;
+        let errors: std::collections::HashMap<String, String> = [
+            ("auth_failed".to_string(), "비밀번호를 확인하세요".to_string()),
+            ("internal_server_error".to_string(), "내부 오류".to_string()),
+        ]
+        .into();
+        let reply = |e: ProtocolError| {
+            command_reply(
+                crate::ipc::internal::InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: rest_execute_failure(&e) },
+                "info",
+                &errors,
+            )
+        };
+        let body = |r: axum::response::Response| async move {
+            serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap()
+        };
+        let rejected = body(reply(ProtocolError::HttpStatus(401, "HTTP GET x failed with status 401: ".into()))).await;
+        assert_eq!(rejected["error_code"], "auth_failed");
+        assert_eq!(rejected["error_message"], "비밀번호를 확인하세요");
+        let other = body(reply(ProtocolError::HttpStatus(500, "boom".into()))).await;
+        assert_eq!(other["error_code"], "internal_server_error");
+    }
 
     #[test]
     fn module_error_text_follows_the_gui_language() {
