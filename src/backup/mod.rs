@@ -2,7 +2,8 @@
 //!
 //! 모듈 `[backup] paths`가 가리키는 폴더·파일을 `<인스턴스 폴더>/backups/<시각>-<종류>.zip` 하나로 묶는다.
 //! zip 안에는 `saba-backup.json`(항목 번호 → 원래 절대 경로)과 `<번호>/...` 파일이 들어 있어
-//! 복원 때 원래 자리로 돌려놓는다. 이 파일의 함수는 모두 블로킹이다 (호출자가 spawn_blocking).
+//! 복원 때 원래 자리로 돌려놓는다. 폴더 안의 심볼릭 링크는 가리키는 곳을 담지 않고 `links`에 링크로만 적는다.
+//! 이 파일의 함수는 모두 블로킹이다 (호출자가 spawn_blocking).
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -53,7 +54,21 @@ pub struct BackupInfo {
 struct Manifest {
     version: u32,
     paths: Vec<ManifestEntry>,
+    /// 백업한 폴더 안의 심볼릭 링크. 가리키는 곳은 담지 않고 링크만 되살린다 (D-B13)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    links: Vec<LinkEntry>,
 }
+
+#[derive(Serialize, Deserialize)]
+struct LinkEntry {
+    path: PathBuf,
+    target: PathBuf,
+    /// 폴더를 가리키는 링크 (Windows는 폴더·파일 링크를 따로 만든다)
+    dir: bool,
+}
+
+/// 이보다 오래된 `*.partial`은 강제 종료가 남긴 것으로 본다 (쓰는 중이면 수정 시각이 계속 새로워진다)
+const STALE_PARTIAL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
 #[derive(Serialize, Deserialize)]
 struct ManifestEntry {
@@ -100,6 +115,7 @@ pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupI
         bail!("nothing to back up: none of the module's backup paths exist");
     }
     fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    clear_stale_partials(dir);
     // 밀리초까지 넣어 이름순이 곧 만든 순서가 되게 한다 (같은 초에 만든 복원 전 백업이 더 오래돼 보이지 않게)
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
     let name = unique_name(dir, &stamp, kind);
@@ -112,6 +128,19 @@ pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupI
     }
     fs::rename(&partial, &final_path)?;
     info(&final_path).context("read new backup")
+}
+
+/// 강제 종료로 남은 반쪽 백업 파일을 지운다 (D-B13)
+fn clear_stale_partials(dir: &Path) {
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        let stale = entry.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age > STALE_PARTIAL);
+        if stale && path.extension().is_some_and(|e| e == "partial") {
+            if let Err(e) = fs::remove_file(&path) {
+                tracing::warn!("Could not remove leftover partial backup {}: {}", path.display(), e);
+            }
+        }
+    }
 }
 
 /// `stamp`로 시작하는 백업이 이미 있으면(종류가 달라도) 번호를 붙인다: 이름순이 만든 순서가 되게
@@ -133,7 +162,7 @@ fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
     let opts = zip::write::FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .large_file(true);
-    let mut manifest = Manifest { version: 1, paths: Vec::new() };
+    let mut manifest = Manifest { version: 1, paths: Vec::new(), links: Vec::new() };
     for (i, path) in paths.iter().enumerate() {
         let entry = i.to_string();
         let is_file = path.is_file();
@@ -142,7 +171,7 @@ fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
             io::copy(&mut File::open(path)?, &mut zip)?;
         } else {
             zip.add_directory(format!("{}/", entry), opts)?;
-            add_dir(&mut zip, path, &entry, opts)?;
+            add_dir(&mut zip, path, &entry, opts, &mut manifest.links)?;
         }
         manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file });
     }
@@ -152,14 +181,17 @@ fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::write::FileOptions) -> Result<()> {
+fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::write::FileOptions, links: &mut Vec<LinkEntry>) -> Result<()> {
     for item in fs::read_dir(dir)? {
         let item = item?;
         let name = format!("{}/{}", prefix, item.file_name().to_string_lossy());
         let kind = item.file_type()?;
         if kind.is_dir() {
             zip.add_directory(format!("{}/", name), opts)?;
-            add_dir(zip, &item.path(), &name, opts)?;
+            add_dir(zip, &item.path(), &name, opts, links)?;
+        } else if kind.is_symlink() {
+            let path = item.path();
+            links.push(LinkEntry { target: fs::read_link(&path)?, dir: path.is_dir(), path });
         } else if kind.is_file() {
             zip.start_file(&name, opts)?;
             // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
@@ -258,6 +290,12 @@ pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
             failed = Some(e.context(format!("restore {}", entry.path.display())));
             break;
         }
+        // 링크는 그 폴더 안에 있던 것만, 링크 자체로 되살린다. 만들지 못하면(Windows 권한 등) 알리고 나머지 복원은 이어 간다
+        for link in manifest.links.iter().filter(|l| !entry.is_file && is_inside(&l.path, std::slice::from_ref(&entry.path))) {
+            if let Err(e) = make_link(link) {
+                tracing::warn!("Could not restore link {} -> {}: {}", link.path.display(), link.target.display(), e);
+            }
+        }
     }
     if let Some(e) = failed {
         // 되돌리지 못한 경로는 오류에 붙인다 (원래 내용은 `.saba-restore-old`와 복원 전 안전 백업에 남아 있다)
@@ -297,6 +335,25 @@ fn free_aside_path(path: &Path) -> PathBuf {
         .map(|n| if n == 1 { base.clone() } else { PathBuf::from(format!("{}.{}", base.display(), n)) })
         .find(|p| !p.exists() && p.symlink_metadata().is_err())
         .expect("a free name")
+}
+
+fn make_link(link: &LinkEntry) -> io::Result<()> {
+    if link.path.symlink_metadata().is_ok() {
+        return Err(io::Error::new(io::ErrorKind::AlreadyExists, "something is already there"));
+    }
+    if let Some(parent) = link.path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(&link.target, &link.path);
+    #[cfg(windows)]
+    return if link.dir {
+        std::os::windows::fs::symlink_dir(&link.target, &link.path)
+    } else {
+        std::os::windows::fs::symlink_file(&link.target, &link.path)
+    };
+    #[cfg(not(any(unix, windows)))]
+    Err(io::Error::new(io::ErrorKind::Unsupported, "links are not supported here"))
 }
 
 fn remove_any(path: &Path) {
@@ -351,6 +408,42 @@ mod tests {
         let patterns = vec!["{level_name}".to_string(), "{level_name}_nether".to_string(), "{unset}/x".to_string()];
         let got = fill_paths(&patterns, tmp.path(), |k| (k == "level_name").then(|| "world".to_string()));
         assert_eq!(got, vec![tmp.path().join("world"), tmp.path().join("world_nether")]);
+    }
+
+    // D-B13: 강제 종료로 남은 반쪽 파일(`*.zip.partial`)은 다음 백업 때 지운다. 지금 쓰는 중일 수 있는 새 것은 둔다
+    #[test]
+    fn a_new_backup_clears_partial_files_left_by_a_crash() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        fs::create_dir_all(&dir).unwrap();
+        let stale = dir.join("20200101-000000-000-scheduled.zip.partial");
+        fs::write(&stale, b"half").unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+        File::options().write(true).open(&stale).unwrap().set_modified(old).unwrap();
+        let fresh = dir.join("20990101-000000-000-manual.zip.partial");
+        fs::write(&fresh, b"being written").unwrap();
+        create(&dir, BackupKind::Manual, &[w]).unwrap();
+        assert!(!stale.exists(), "a partial file left by a crash must not pile up");
+        assert!(fresh.exists(), "a partial file that may still be written stays");
+    }
+
+    // D-B13: 백업할 폴더 안의 심볼릭 링크를 말없이 빼면, 복원이 폴더를 바꿔 넣은 뒤 링크가 사라졌다
+    #[cfg(unix)]
+    #[test]
+    fn links_inside_a_backed_up_folder_come_back_on_restore() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let outside = tmp.path().join("shared");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, w.join("shared")).unwrap();
+        std::os::unix::fs::symlink("level.dat", w.join("region/latest")).unwrap();
+        let dir = tmp.path().join("backups");
+        let b = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        restore(&dir, &b.name).unwrap();
+        assert_eq!(fs::read_link(w.join("shared")).unwrap(), outside);
+        assert_eq!(fs::read_link(w.join("region/latest")).unwrap(), Path::new("level.dat"));
+        assert!(outside.is_dir(), "restoring a link never touches where it points");
     }
 
     #[test]
