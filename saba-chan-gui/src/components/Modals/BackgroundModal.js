@@ -8,7 +8,7 @@ import { useSabaBubble } from '../../stores/useSabaBubble';
 import { daemonStateOf } from '../servers/DaemonDown';
 import { DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
-import { openWithNotice } from '../../utils/helpers';
+import { openWithNotice, safeShowToast } from '../../utils/helpers';
 
 function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     const { t } = useTranslation('gui');
@@ -61,15 +61,18 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
         useSabaBubble.getState().markWoken();
         try {
             const result = await window.api.daemonRestart();
-            if (result.success) {
+            if (result?.success) {
                 console.log('Daemon restarted successfully');
             } else {
                 useSabaBubble.getState().markWoken(false);
-                console.error('Failed to restart daemon:', result.error);
+                console.error('Failed to restart daemon:', result?.error);
+                // 실패는 화면에도 알린다 (DaemonDown과 같은 문구, G-U7)
+                safeShowToast(t('shell.daemon_restart_failed', { error: result?.error || '' }), 'error', 6000);
             }
         } catch (error) {
             useSabaBubble.getState().markWoken(false);
             console.error('Failed to restart daemon:', error);
+            safeShowToast(t('shell.daemon_restart_failed', { error: error.message }), 'error', 6000);
         } finally {
             setTimeout(() => setRestarting(false), 3000);
         }
