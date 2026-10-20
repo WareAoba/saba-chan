@@ -785,7 +785,8 @@ export function createApi({ invoke, hub }) {
             try {
                 const body = { components: Array.isArray(components) ? components : [] };
                 const { data } = await post('/api/updates/apply', body, { timeout: 120000 });
-                if (data?.applied && data.applied.length > 0) {
+                // 일부만 적용됐으면(ok:false) 성공 알림을 띄우지 않는다: 실패는 부른 화면이 보인다 (G-U9)
+                if (data?.ok !== false && data?.applied && data.applied.length > 0) {
                     hub.dispatch('updates:completed', {
                         count: data.applied.length,
                         names: data.applied,
