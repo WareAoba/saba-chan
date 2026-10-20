@@ -200,6 +200,7 @@ mod tests {
     /// 복원은 끝났어도 되살리지 못한 링크가 있으면 그 수를 알린다. 경로는 데몬 로그에만 있다 (D-B14)
     #[test]
     fn a_restore_that_missed_links_says_how_many() {
+        crate::i18n::init("ko");
         assert!(links_missed(&json!({ "links_not_restored": 2 })).is_some_and(|m| m.contains('2')));
         assert_eq!(links_missed(&json!({ "links_not_restored": 0 })), None);
         assert_eq!(links_missed(&json!({})), None, "an older daemon does not report it");
