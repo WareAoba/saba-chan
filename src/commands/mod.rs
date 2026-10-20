@@ -289,7 +289,6 @@ fn toml_to_json(v: &toml::Value) -> Option<Value> {
     serde_json::to_value(v).ok()
 }
 
-/// 콘솔 한 줄을 여러 줄로 쪼갤 수 있는 문자(`\r`, `\n`, NUL)가 있는지
 /// 명령 위험도: safe·caution·danger만 그대로, 없으면 caution. 모르는 값(오타·대소문자 다름)은 danger로 다룬다
 pub fn risk_of(risk: Option<&str>) -> &'static str {
     match risk {
@@ -300,6 +299,7 @@ pub fn risk_of(risk: Option<&str>) -> &'static str {
     }
 }
 
+/// 콘솔 한 줄을 여러 줄로 쪼갤 수 있는 문자(`\r`, `\n`, NUL)가 있는지
 pub fn has_line_break(text: &str) -> bool {
     text.contains(['\r', '\n', '\0'])
 }

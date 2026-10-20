@@ -110,6 +110,19 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
     assert_eq!(err.data["args"]["via"], "chatbot");
 }
 
+/// 챗봇이 만든 계획은 확인한 쪽이 via를 보내지 않아도 챗봇 출처로 실행된다 (보관 백업 수 줄이기 같은 챗봇 제한이 그 출처를 본다)
+#[tokio::test]
+async fn a_chatbot_plan_runs_as_the_chatbot_whoever_confirms_it() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let lower = json!({ "schedule": [], "backup_keep": 1 });
+    let made = plan(&state, "instance.schedule.set", Some(&id), &lower, &relay("owner", true)).await.unwrap();
+    let plan_id = made["planId"].as_str().unwrap().to_string();
+    let ran = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("owner", false)).await.unwrap();
+    assert_eq!(ran["success"], false, "{ran}");
+    assert_eq!(ran["status"], 400, "{ran}");
+}
+
 #[tokio::test]
 async fn direct_admin_commands_skip_confirmation_but_chatbot_and_danger_do_not() {
     let (state, id, _tmp) = server().await;

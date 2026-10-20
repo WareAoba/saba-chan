@@ -1125,6 +1125,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             }
             if stored.via_chatbot {
                 caller.surface = Chatbot;
+                caller.origin.via = Some("chatbot".to_string());
             }
             match stored.body {
                 PlanBody::Steps(steps) => {
