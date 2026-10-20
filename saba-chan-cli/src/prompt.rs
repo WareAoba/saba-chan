@@ -224,7 +224,6 @@ mod tests {
         }
     }
 
-    /// 끼운 창구가 묻는다. `--yes`는 동의를 대신하지 않고, 창구에서 취소하면 취소로 끝난다
     /// 사람이 직접 하는 동의는 `--yes`로 대신하지 않는다: 물을 수 없으면 터미널에서 하라는 오류
     #[test]
     fn yes_does_not_stand_in_for_a_consent() {
@@ -233,6 +232,7 @@ mod tests {
         assert!(matches!(err.downcast_ref::<CliError>(), Some(CliError::Usage(_))), "{err}");
     }
 
+    /// 끼운 창구가 묻는다. `--yes`는 동의를 대신하지 않고, 창구에서 취소하면 취소로 끝난다
     #[test]
     fn questions_go_to_the_installed_asker() {
         let _guard = AskerGuard::install(Box::new(Scripted));
