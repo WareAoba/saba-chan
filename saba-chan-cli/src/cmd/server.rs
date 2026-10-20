@@ -646,12 +646,12 @@ async fn ensure_extensions(ctx: &Ctx, module: &Value) -> Result<()> {
     Ok(())
 }
 
-/// 설치 진행률을 끝날 때까지 보여 준다. Ctrl+C는 기다리기만 멈춘다 (설치는 계속).
 /// 따라가던 설치 항목이 끝을 보이기 전에 사라졌다. 부르는 쪽은 항목이 있을 때만 따라가므로 성공으로 치지 않는다
 fn provision_lost(p: &Value) -> bool {
     p.get("active").and_then(Value::as_bool) != Some(true)
 }
 
+/// 설치 진행률을 끝날 때까지 보여 준다. Ctrl+C는 기다리기만 멈춘다 (설치는 계속).
 async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
     let bar = crate::progress::percent_bar(&t!("add.installing"));
     loop {
