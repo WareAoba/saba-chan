@@ -62,4 +62,20 @@ describe('서버 실행 파일을 찾지 못했을 때', () => {
         const opts = await pickPath(await start({ success: false, action_required: 'executable_not_found' }));
         expect(opts.filters).toBeUndefined();
     });
+
+    // 모듈 기본 이름과 다른 파일을 골라도 다음 시작에서 그 파일을 쓴다: 폴더와 함께 실행 파일 경로를 저장한다
+    it('고른 파일의 경로와 폴더를 함께 저장한다', async () => {
+        const modal = await start({
+            success: false,
+            action_required: 'executable_not_found',
+            configured_path: 'C:/s/x.jar',
+        });
+        window.api.openFileDialog = vi.fn().mockResolvedValue('D:/mc/paper-1.21.jar');
+        window.api.instanceUpdateSettings = vi.fn().mockResolvedValue({ success: true });
+        await act(async () => modal.buttons[0].action());
+        expect(window.api.instanceUpdateSettings).toHaveBeenCalledWith('a', {
+            working_dir: 'D:/mc',
+            executable_path: 'D:/mc/paper-1.21.jar',
+        });
+    });
 });

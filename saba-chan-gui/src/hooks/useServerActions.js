@@ -314,10 +314,11 @@ export function useServerActions({
                                     if (filePath) {
                                         const s = servers.find((s) => s.name === name);
                                         if (s) {
-                                            // working_dir 설정 — 실행 파일은 모듈에서 자동 해석됨
+                                            // 고른 파일과 그 폴더: 이름이 모듈 기본값과 달라도, 예전 경로가 남아 있어도 이 파일로 켠다
                                             const dir = filePath.replace(/[/\\][^/\\]+$/, '');
                                             const saved = await window.api.instanceUpdateSettings(s.id, {
                                                 working_dir: dir,
+                                                executable_path: filePath,
                                             });
                                             if (!saved || saved.error || saved.success === false) {
                                                 safeShowToast(
