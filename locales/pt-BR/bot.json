@@ -44,6 +44,7 @@
     "start_complete": "✅ Solicitação de início de **{{name}}** concluída!",
     "stop_request": "⏳ Parando servidor **{{name}}**...",
     "stop_complete": "✅ Solicitação de parada de **{{name}}** concluída!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** não foi parado: não há como (console ou REST) salvar e sair. Para encerrá-lo sem salvar, escolha uma parada forçada no saba-chan neste PC.",
     "status_check": "📊 Status de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",

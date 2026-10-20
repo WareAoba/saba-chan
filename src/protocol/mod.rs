@@ -1,5 +1,6 @@
 pub mod rest;
 pub mod client;
+pub mod rcon;
 
 use thiserror::Error;
 use serde::{Deserialize, Serialize};

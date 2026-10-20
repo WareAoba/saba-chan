@@ -426,7 +426,9 @@
     "done": "{{name}} gestoppt.",
     "not_yet": "{{name}} wurde noch nicht gestoppt. Erzwingen: saba-chan-cli stop --force {{name}}",
     "requested": "Stopp für {{name}} angefordert.",
-    "waiting": "{{name}} wird gestoppt..."
+    "waiting": "{{name}} wird gestoppt...",
+    "no_graceful": "{{name}} kann nicht zum Speichern und Beenden aufgefordert werden (keine Konsole). Ein erzwungenes Beenden kann den Fortschritt seit dem letzten Speichern verlieren.",
+    "force_confirm": "Ohne Speichern stoppen?"
   },
   "time": {
     "day_ago": "vor {{n}} T",

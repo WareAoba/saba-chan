@@ -426,7 +426,9 @@
     "done": "{{name}} 已停止。",
     "not_yet": "{{name}} 尚未停止。強制停止：saba-chan-cli stop --force {{name}}",
     "requested": "已要求停止 {{name}}。",
-    "waiting": "正在停止 {{name}}..."
+    "waiting": "正在停止 {{name}}...",
+    "no_graceful": "無法（沒有主控台）請求 {{name}} 儲存後結束。強制停止可能會遺失上次儲存之後的進度。",
+    "force_confirm": "不儲存就停止嗎？"
   },
   "time": {
     "day_ago": "{{n}} 天前",

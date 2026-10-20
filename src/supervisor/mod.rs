@@ -23,6 +23,9 @@ const STOP_COOLDOWN_SECS: u64 = 30;
 /// 포트 충돌로 인한 강제 정지 이벤트
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PortConflictStopEvent {
+    /// 알림 번호 (데몬이 켜진 뒤 1부터 늘어난다). 클라이언트는 본 번호를 기억해 `notices_after`로 그 뒤만 받는다 (L50)
+    #[serde(default)]
+    pub id: u64,
     /// 강제 정지된 인스턴스 이름
     pub stopped_name: String,
     /// 강제 정지된 인스턴스 ID
@@ -37,8 +40,28 @@ pub struct PortConflictStopEvent {
     pub timestamp_ms: u64,
 }
 
-/// 읽지 않은 포트 충돌 강제 정지 알림을 몇 개까지 두는가 (헤드리스 데몬에서 끝없이 쌓이지 않게)
+/// 포트 충돌 강제 정지 알림을 몇 개까지 두는가 (헤드리스 데몬에서 끝없이 쌓이지 않게)
 pub const PORT_CONFLICT_STOPS_KEPT: usize = 20;
+/// 포트 충돌 강제 정지 알림을 얼마나 두는가. 그사이 여러 클라이언트가 각자 읽는다 (L50)
+pub const PORT_CONFLICT_STOPS_TTL_MS: u64 = 10 * 60 * 1000;
+
+/// 포트 충돌 강제 정지 알림. 읽어도 지우지 않고 `PORT_CONFLICT_STOPS_TTL_MS`·`PORT_CONFLICT_STOPS_KEPT`까지 둔다
+#[derive(Debug, Default)]
+pub struct PortConflictStops {
+    events: Vec<PortConflictStopEvent>,
+    last_id: u64,
+    /// 매개변수 없이 읽는 옛 클라이언트에게 마지막으로 보인 번호 (한 번 읽으면 비던 예전 동작을 지운 것 없이 흉내 낸다)
+    legacy_seen: u64,
+}
+
+impl PortConflictStops {
+    fn forget_old(&mut self) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        self.events.retain(|e| now.saturating_sub(e.timestamp_ms) <= PORT_CONFLICT_STOPS_TTL_MS);
+        let over = self.events.len().saturating_sub(PORT_CONFLICT_STOPS_KEPT);
+        self.events.drain(..over);
+    }
+}
 
 pub struct Supervisor {
     pub tracker: ProcessTracker,
@@ -52,8 +75,8 @@ pub struct Supervisor {
     pub extension_manager: Option<std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>>,
     /// 프로비저닝 진행 상태 추적 (auto-detect 억제용)
     pub provision_tracker: Option<crate::ipc::ProvisionTracker>,
-    /// 포트 충돌로 인한 강제 정지 이벤트 큐 (GUI에서 폴링 후 drain)
-    pub port_conflict_stops: std::sync::Mutex<Vec<PortConflictStopEvent>>,
+    /// 포트 충돌로 인한 강제 정지 알림 (클라이언트가 `GET /api/servers`로 읽는다)
+    port_conflict_stops: std::sync::Mutex<PortConflictStops>,
     /// GUI 설정: 포트 충돌 검사 건너뛰기 (portConflictCheck 비활성화 시 true)
     pub skip_port_check: std::sync::Arc<AtomicBool>,
     /// 데몬이 정지를 보낸 인스턴스. 이 상태로 끝나면 사용자 정지다 (A1)
@@ -187,7 +210,7 @@ impl Supervisor {
             stop_cooldowns: HashMap::new(),
             extension_manager: None,
             provision_tracker: None,
-            port_conflict_stops: std::sync::Mutex::new(Vec::new()),
+            port_conflict_stops: std::sync::Mutex::new(PortConflictStops::default()),
             skip_port_check: std::sync::Arc::new(AtomicBool::new(false)),
             stop_requested: HashSet::new(),
             restart_history: HashMap::new(),
@@ -537,7 +560,9 @@ impl Supervisor {
         let program = launch_result.get("program").and_then(Value::as_str).unwrap_or("").to_string();
         let mut args = launch_args(&launch_result, &preview_instance);
         let rest_password = preview_instance.rest_password.as_deref().unwrap_or("");
-        crate::launch_args::mask_secrets(&fields, &settings, &[rest_password], &mut args);
+        let rcon = crate::protocol::rcon::load(&sup.read().await.instance_store.instance_dir(instance_id));
+        let rcon_password = rcon.as_ref().map(|a| a.password.as_str()).unwrap_or("");
+        crate::launch_args::mask_secrets(&fields, &settings, &[rest_password, rcon_password], &mut args);
         obj.insert("success".into(), json!(true));
         obj.insert("command_line".into(), json!(crate::launch_args::command_line(&program, &args)));
         obj.insert("program".into(), json!(program));
@@ -602,6 +627,11 @@ impl Supervisor {
     pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) {
         // 모듈이 서버 폴더 옆에 둔 데이터(좀보이드 cache_dir 등): 격리 실행이 쓸 수 있는 폴더로 싣는다
         cfg.insert(crate::sandbox::INSTANCE_DATA_DIRS.to_string(), json!(Self::instance_data_dirs(instance, instance_dir)));
+        // RCON 접속 정보는 데몬이 만든 값이 기준이다 (RCON만 받는 모듈, `rcon.json`이 있을 때). 모듈은 이 값을 게임 설정에 쓴다
+        if let Some(access) = crate::protocol::rcon::load(instance_dir) {
+            cfg.insert("rcon_port".into(), json!(access.port));
+            cfg.insert("rcon_password".into(), json!(access.password));
+        }
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
@@ -961,6 +991,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
+            s.ensure_rcon_access(&instance)?;
             Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Non-managed → managed=false로 명시 (모듈이 실행 방식을 구분)
             cfg.insert("managed".to_string(), json!(false));
@@ -1200,8 +1231,8 @@ impl Supervisor {
                     }
                 }
 
-                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 모듈 설정값 또는 기본 30초)
-                let timeout_secs = if force { 5 } else { module.metadata.stop_timeout.unwrap_or(30) };
+                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 인스턴스 설정 `stop_timeout`, 모듈 값, 기본 30초 순)
+                let timeout_secs = if force { 5 } else { stop_timeout_of(&instance, module.metadata.stop_timeout) };
                 let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
                 loop {
                     if !managed.is_running() {
@@ -1751,6 +1782,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
+            s.ensure_rcon_access(&instance)?;
             Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Managed mode indicator → 모듈이 실행 방식을 구분
             cfg.insert("managed".to_string(), json!(true));
@@ -1968,6 +2000,44 @@ impl Supervisor {
             Some(proc) => proc.is_running() && proc.is_stdin_available(),
             None => false,
         }
+    }
+
+    /// RCON만 받는 모듈의 인스턴스면 접속 정보를 만들어 둔다 (시작 전). 그 밖의 모듈은 아무것도 하지 않는다
+    /// 모듈이 RCON을 더 쓰지 않으면(업데이트로 stdin·rest가 생김) 남은 접속 정보를 지운다.
+    /// 준비하지 못하면 시작을 멈춘다: 비밀번호 없이 띄우면 명령을 보낼 길이 없다
+    pub(crate) fn ensure_rcon_access(&self, instance: &crate::instance::ServerInstance) -> Result<()> {
+        let dir = self.instance_store.instance_dir(&instance.id);
+        let Some(port) = self.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.rcon_only_port()) else {
+            let _ = std::fs::remove_file(dir.join(crate::protocol::rcon::ACCESS_FILE));
+            return Ok(());
+        };
+        // 두 인스턴스가 동시에 처음 켜져도 같은 포트를 고르지 않게, 고르고 저장하는 동안 하나씩만
+        static PICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _picking = PICKING.lock().unwrap_or_else(|e| e.into_inner());
+        // 다른 인스턴스의 RCON·게임·REST 포트는 고르지 않는다
+        let taken: Vec<u16> = self
+            .instance_store
+            .list()
+            .iter()
+            .filter(|other| other.id != instance.id)
+            .flat_map(|other| {
+                let rcon = crate::protocol::rcon::load(&self.instance_store.instance_dir(&other.id)).map(|a| a.port);
+                [rcon, other.port, other.rest_port]
+            })
+            .flatten()
+            .chain(instance.port)
+            .chain(instance.rest_port)
+            .collect();
+        crate::protocol::rcon::ensure(&dir, port, &taken)
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!("Could not prepare RCON access for '{}': {}", instance.name, e))
+    }
+
+    /// 명령을 RCON으로 보낼 인스턴스면 접속 정보 (모듈이 RCON만 받고, 시작할 때 접속 정보를 만들어 둔 경우)
+    pub fn rcon_route(&self, instance_id: &str) -> Option<crate::protocol::rcon::Access> {
+        let instance = self.instance_store.get(instance_id)?;
+        self.module_loader.get_module(&instance.module_name).ok()?.metadata.rcon_only_port()?;
+        crate::protocol::rcon::load(&self.instance_store.instance_dir(instance_id))
     }
 
     /// 인스턴스의 모듈이 콘솔 입력(`protocols.supported`에 "stdin")을 받는가
@@ -2887,6 +2957,7 @@ impl Supervisor {
                                         .map(|d| d.as_millis() as u64)
                                         .unwrap_or(0);
                                     self.record_port_conflict_stops(conflicts.iter().map(|conflict| PortConflictStopEvent {
+                                        id: 0,
                                         stopped_name: instance.name.clone(),
                                         stopped_id: instance.id.clone(),
                                         existing_name: conflict.conflicting_instance_name.clone(),
@@ -2905,22 +2976,57 @@ impl Supervisor {
         Ok(())
     }
 
-    /// 포트 충돌 강제 정지 이벤트를 남긴다. 읽는 클라이언트가 없어도 최근 `PORT_CONFLICT_STOPS_KEPT`개만 둔다
+    /// 포트 충돌 강제 정지 이벤트를 남긴다. 번호를 붙이고, 읽는 클라이언트가 없어도 최근 것만 둔다
     pub fn record_port_conflict_stops(&self, new: impl IntoIterator<Item = PortConflictStopEvent>) {
-        if let Ok(mut events) = self.port_conflict_stops.lock() {
-            events.extend(new);
-            let over = events.len().saturating_sub(PORT_CONFLICT_STOPS_KEPT);
-            events.drain(..over);
+        if let Ok(mut stops) = self.port_conflict_stops.lock() {
+            // 번호는 지금 시각(µs, JS 숫자로도 정확하다)보다 작지 않게 붙인다: 데몬을 다시 켜도 앞 실행의 번호보다 커서,
+            // 클라이언트가 들고 있는 번호로 새 알림을 거르지 않는다
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0);
+            for mut event in new {
+                stops.last_id = (stops.last_id + 1).max(now);
+                event.id = stops.last_id;
+                stops.events.push(event);
+            }
+            stops.forget_old();
         }
     }
 
-    /// 포트 충돌 강제 정지 이벤트를 drain (GUI 폴링에서 한 번 읽으면 비움)
+    /// 번호가 `after`보다 큰 알림. 읽어도 지우지 않는다 (`after`가 0이면 남은 것 모두)
+    pub fn port_conflict_stops_after(&self, after: u64) -> Vec<PortConflictStopEvent> {
+        self.port_conflict_stops
+            .lock()
+            .map(|mut stops| {
+                stops.forget_old();
+                stops.events.iter().filter(|e| e.id > after).cloned().collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// 매개변수 없이 읽는 옛 클라이언트용: 아직 이 방식으로 보이지 않은 알림만 주고 본 것으로 적는다.
+    /// 알림은 지우지 않으므로 `notices_after`로 읽는 클라이언트는 그대로 본다
     pub fn drain_port_conflict_stops(&self) -> Vec<PortConflictStopEvent> {
         self.port_conflict_stops
             .lock()
-            .map(|mut events| std::mem::take(&mut *events))
+            .map(|mut stops| {
+                stops.forget_old();
+                let seen = stops.legacy_seen;
+                let unseen: Vec<_> = stops.events.iter().filter(|e| e.id > seen).cloned().collect();
+                stops.legacy_seen = stops.last_id;
+                unseen
+            })
             .unwrap_or_default()
     }
+}
+
+/// 저장 후 종료를 기다리는 시간(초): 인스턴스 설정 `stop_timeout`(큰 월드는 저장이 길다, MK14), 모듈 `stop_timeout`, 기본 30.
+/// 인스턴스 값은 1~3600초로 맞춘다
+pub(crate) fn stop_timeout_of(instance: &crate::instance::ServerInstance, module_value: Option<u64>) -> u64 {
+    instance.module_settings.get("stop_timeout")
+        .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())))
+        .filter(|n| *n > 0)
+        .map(|n| n.min(3600))
+        .or(module_value)
+        .unwrap_or(30)
 }
 
 /// 모듈 `stop()`이 저장 후 종료를 요청할 길이 없다고 답했는가 (콘솔·REST가 없는 서버. 모듈은 이때 서버를 끝내지 않는다)
@@ -3953,5 +4059,27 @@ mod tests {
         assert!(StartGuard::claim(&set, "b", 0).is_some(), "other instances are not blocked");
         drop(first);
         assert!(StartGuard::claim(&set, "a", 0).is_some());
+    }
+
+    /// 데몬을 다시 켜도 알림 번호는 앞 실행보다 크다: 클라이언트가 들고 있는 번호 뒤의 새 알림을 놓치지 않는다 (L50)
+    #[test]
+    fn notice_ids_keep_growing_across_a_daemon_restart() {
+        let tmp = tempfile::tempdir().unwrap();
+        let event = || PortConflictStopEvent {
+            id: 0,
+            stopped_name: "b".into(),
+            stopped_id: "b-id".into(),
+            existing_name: "a".into(),
+            existing_id: "a-id".into(),
+            port: 1,
+            timestamp_ms: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+        };
+        let daemon = || Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let first = daemon();
+        first.record_port_conflict_stops([event(), event()]);
+        let seen = first.port_conflict_stops_after(0).last().unwrap().id;
+        let restarted = daemon();
+        restarted.record_port_conflict_stops([event()]);
+        assert_eq!(restarted.port_conflict_stops_after(seen).len(), 1, "a client that saw id {seen} gets the new notice");
     }
 }

@@ -66,6 +66,7 @@ pub const DAEMON_SETTINGS: &[(&str, &str)] = &[
     ("restart_on_unknown_exit", "boolean"),
     ("managed_start", "boolean"),
     ("log_sessions_keep", "number"),
+    ("stop_timeout", "number"),
 ];
 
 // ══════════════════════════════════════════════════════

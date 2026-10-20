@@ -26,19 +26,34 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
 pub struct ListServersQuery {
     /// `keep`이면 포트 충돌 강제 정지 알림을 보여 주기만 하고 비우지 않는다 (알림을 사람에게 보이지 않는 조회용)
     pub notices: Option<String>,
+    /// 이 번호 뒤의 포트 충돌 강제 정지 알림만 받는다. 읽어도 다른 클라이언트 몫을 지우지 않는다 (L50)
+    pub notices_after: Option<u64>,
 }
 
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반). 클라이언트(GUI·CLI)가 부르며, 포트 충돌 강제 정지 알림을 읽어 비운다
 pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListServersQuery>) -> axum::response::Response {
-    server_list(&state, q.notices.as_deref() != Some("keep")).await
+    let notices = match (q.notices_after, q.notices.as_deref()) {
+        (Some(after), _) => Notices::After(after),
+        (None, Some("keep")) => Notices::After(0),
+        (None, _) => Notices::Legacy,
+    };
+    server_list(&state, notices).await
+}
+
+/// 목록에 실을 포트 충돌 강제 정지 알림
+enum Notices {
+    /// 번호가 이것보다 큰 알림 모두 (본 것으로 적지 않는다)
+    After(u64),
+    /// 매개변수 없는 옛 클라이언트: 이 방식으로 아직 보이지 않은 것만
+    Legacy,
 }
 
 /// 데몬 안에서 부르는 서버 목록 (릴레이 하트비트·채팅). 강제 정지 알림은 클라이언트 몫이라 비우지 않는다
 pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Response {
-    server_list(state, false).await
+    server_list(state, Notices::After(0)).await
 }
 
-async fn server_list(state: &IPCServer, take_notices: bool) -> axum::response::Response {
+async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Response {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
     struct InstanceSnapshot {
@@ -293,13 +308,12 @@ async fn server_list(state: &IPCServer, take_notices: bool) -> axum::response::R
         }
     }
 
-    // 포트 충돌 강제 정지 이벤트 (짧은 read lock). 클라이언트 요청만 비운다
+    // 포트 충돌 강제 정지 이벤트 (짧은 read lock). 옛 클라이언트 요청만 본 것으로 적는다
     let port_conflict_stops = {
         let supervisor = state.supervisor.read().await;
-        if take_notices {
-            supervisor.drain_port_conflict_stops()
-        } else {
-            supervisor.port_conflict_stops.lock().map(|e| e.clone()).unwrap_or_default()
+        match notices {
+            Notices::After(after) => supervisor.port_conflict_stops_after(after),
+            Notices::Legacy => supervisor.drain_port_conflict_stops(),
         }
     };
 
@@ -1039,23 +1053,7 @@ pub async fn start_server_handler(
         None => None,
     };
 
-    // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
-    {
-        let mut supervisor = state.supervisor.write().await;
-        let inst_opt = supervisor.instance_store.get(&name)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == name))
-            .cloned();
-        if let Some(mut inst) = inst_opt {
-            let changed = inst.ensure_passwords();
-
-            if changed {
-                let inst_id = inst.id.clone();
-                if let Err(e) = supervisor.instance_store.update(&inst_id, inst) {
-                    tracing::warn!("Failed to save auto-generated passwords for {}: {}", name, e);
-                }
-            }
-        }
-    }
+    fill_passwords(&state, &name).await;
 
     let resp = match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
         .await
@@ -1174,11 +1172,50 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 }
 
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
+/// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
+/// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`credential_map`으로 데몬에 돌아온다). `key`: 인스턴스 id 또는 이름
+pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
+    let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
+    let mut supervisor = state.supervisor.write().await;
+    let found = supervisor.instance_store.get(key).or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key)).cloned();
+    if let Some(mut inst) = found {
+        if inst.ensure_passwords(generate) {
+            let id = inst.id.clone();
+            if let Err(e) = supervisor.instance_store.update(&id, inst) {
+                tracing::warn!("Failed to save auto-generated passwords for {}: {}", key, e);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// GUI "비밀번호 자동 생성"을 끄면 시작할 때 빈 REST 비밀번호를 채우지 않는다. 켜져 있으면(기본) 채운다
+    #[tokio::test]
+    async fn rest_passwords_are_generated_only_when_the_setting_is_on() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        state.config_store = Arc::new(crate::config_store::ConfigStore::new(&tmp.path().join("data")));
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        state.supervisor.write().await.instance_store.add(inst).unwrap();
+        let password = || async { state.supervisor.read().await.instance_store.get(&id).unwrap().rest_password.clone() };
+
+        state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": false })).await.unwrap();
+        fill_passwords(&state, &id).await;
+        assert_eq!(password().await, None, "the setting is off");
+        state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": true })).await.unwrap();
+        fill_passwords(&state, "srv").await;
+        assert_eq!(password().await.map(|p| p.len()), Some(16), "found by name too");
+    }
 
     /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다
     #[tokio::test]
@@ -1355,6 +1392,44 @@ mod tests {
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-after-check").is_err(), "nothing is tracked");
         assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
+    }
+
+    /// 정지 대기 시간은 인스턴스 설정 `stop_timeout`(초)이 모듈 값보다 앞선다: 큰 월드는 늘리고, 여기서는 줄여 바로 끝나는지 본다 (MK14)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_instance_stop_timeout_overrides_the_module_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n[config]\nstop_timeout = 60\n",
+        )
+        .unwrap();
+        // stop()은 아무것도 하지 않는다: 서버는 대기 시간이 지나 강제 종료돼야 끝난다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 60'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "short-stop".into();
+        inst.module_settings.insert("stop_timeout".into(), json!(1));
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let started = crate::ipc::internal::into_internal(start_instance(Path("short-stop".into()), State(state.clone())).await).await.body;
+        assert_eq!(started["success"], true, "{started}");
+
+        let begun = std::time::Instant::now();
+        let stopped = crate::ipc::internal::into_internal(stop_instance(state.clone(), "short-stop", false).await).await.body;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert!(begun.elapsed() < std::time::Duration::from_secs(15), "waited {:?}, not the instance's 1s", begun.elapsed());
     }
 
     /// 콘솔이 없어 저장 후 종료를 요청할 길이 없으면 모듈 `stop()`은 `graceful_stop_unavailable`로 답한다. 데몬은 그때
@@ -1552,27 +1627,74 @@ mod tests {
             tmp.path().join("instances").to_str().unwrap(),
         );
         sup.initialize().await.unwrap();
-        sup.port_conflict_stops.lock().unwrap().push(crate::supervisor::PortConflictStopEvent {
+        sup.record_port_conflict_stops([crate::supervisor::PortConflictStopEvent {
+            id: 0,
             stopped_name: "b".into(),
             stopped_id: "b-id".into(),
             existing_name: "a".into(),
             existing_id: "a-id".into(),
             port: 25565,
-            timestamp_ms: 1,
-        });
+            timestamp_ms: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+        }]);
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let stops = |body: Value| body["port_conflict_stops"].as_array().map(Vec::len).unwrap_or(0);
 
         let internal = crate::ipc::internal::into_internal(list_servers_internal(&state).await).await.body;
         assert_eq!(stops(internal), 1, "internal callers still see it");
         // 대기 루프·목록 같은 클라이언트 조회는 `notices=keep`으로 비우지 않고 본다
-        let keep = Query(ListServersQuery { notices: Some("keep".into()) });
+        let keep = Query(ListServersQuery { notices: Some("keep".into()), ..Default::default() });
         let peek = crate::ipc::internal::into_internal(list_servers(State(state.clone()), keep).await).await.body;
         assert_eq!(stops(peek), 1, "notices=keep shows it without taking it");
         let client = crate::ipc::internal::into_internal(list_servers(State(state.clone()), Query(ListServersQuery::default())).await).await.body;
         assert_eq!(stops(client), 1, "the client gets the notice the heartbeat did not take");
         let again = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
         assert_eq!(stops(again), 0, "a client reads it once");
+    }
+
+    /// 강제 정지 알림은 한 클라이언트가 읽어도 사라지지 않는다: 알림마다 id가 있고 `notices_after`로 본 것 뒤만 받는다.
+    /// 옛 클라이언트(매개변수 없음)가 먼저 읽어도 새 클라이언트는 그대로 본다. 오래된 알림은 지운다 (L50)
+    #[tokio::test]
+    async fn every_client_sees_forced_stop_notices_by_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        let event = |port: u16, timestamp_ms: u64| crate::supervisor::PortConflictStopEvent {
+            id: 0,
+            stopped_name: "b".into(),
+            stopped_id: "b-id".into(),
+            existing_name: "a".into(),
+            existing_id: "a-id".into(),
+            port,
+            timestamp_ms,
+        };
+        sup.record_port_conflict_stops([event(1, now - crate::supervisor::PORT_CONFLICT_STOPS_TTL_MS - 1000), event(2, now)]);
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let list = |q: ListServersQuery| {
+            let state = state.clone();
+            async move {
+                let body = crate::ipc::internal::into_internal(list_servers(State(state), Query(q)).await).await.body;
+                body["port_conflict_stops"].as_array().cloned().unwrap_or_default()
+            }
+        };
+        let after = |id: u64| ListServersQuery { notices_after: Some(id), ..Default::default() };
+
+        let legacy = list(ListServersQuery::default()).await;
+        assert_eq!(legacy.len(), 1, "an old notice is gone: {legacy:?}");
+        let seen = list(after(0)).await;
+        assert_eq!(seen.len(), 1, "a client that read nothing still sees it after the legacy read");
+        let id = seen[0]["id"].as_u64().expect("notices carry an id");
+        assert!(id > 0);
+        assert!(list(after(id)).await.is_empty(), "nothing after what the client has seen");
+        assert!(list(ListServersQuery::default()).await.is_empty(), "the legacy read still shows a notice once");
+
+        state.supervisor.read().await.record_port_conflict_stops([event(3, now)]);
+        let fresh = list(after(id)).await;
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0]["port"], 3);
+        assert!(fresh[0]["id"].as_u64().unwrap() > id);
     }
 
     /// 아무 클라이언트도 읽지 않는 헤드리스 데몬에서도 알림이 끝없이 쌓이지 않는다
@@ -1583,13 +1705,15 @@ mod tests {
             tmp.path().join("modules").to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let event = |port: u16| crate::supervisor::PortConflictStopEvent {
+            id: 0,
             stopped_name: "b".into(),
             stopped_id: "b-id".into(),
             existing_name: "a".into(),
             existing_id: "a-id".into(),
             port,
-            timestamp_ms: 1,
+            timestamp_ms: now,
         };
         for port in 0..30 {
             sup.record_port_conflict_stops([event(port)]);

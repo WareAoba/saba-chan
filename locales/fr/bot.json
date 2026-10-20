@@ -44,6 +44,7 @@
     "start_complete": "✅ Demande de démarrage de **{{name}}** terminée!",
     "stop_request": "⏳ Arrêt du serveur **{{name}}**...",
     "stop_complete": "✅ Demande d'arrêt de **{{name}}** terminée!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** n'a pas été arrêté : il n'a aucun moyen (console ou REST) de sauvegarder et de quitter. Pour l'arrêter sans sauvegarder, choisissez un arrêt forcé dans saba-chan sur ce PC.",
     "status_check": "📊 Statut de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",

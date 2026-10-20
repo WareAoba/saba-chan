@@ -482,6 +482,8 @@
   "stop": {
     "already": "{{name}} は動いていません。",
     "done": "{{name}} を停止しました。",
+    "force_confirm": "保存せずに停止しますか？",
+    "no_graceful": "{{name}} に保存して終了するよう頼む手段（コンソール）がありません。強制停止すると、最後の保存以降の進行が失われることがあります。",
     "not_yet": "{{name}} はまだ停止していません。強制停止: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} の停止をリクエストしました。",
     "waiting": "{{name}} を停止しています..."
@@ -756,7 +758,8 @@
       "guild": "Discord サーバーの ID",
       "member": "Discord のユーザー ID",
       "level": "レベル (admin・user・chatbot・banned、または 2..-1 の数)",
-      "preset": "loose・default・strict",
+      "perm.preset.preset": "loose・default・strict",
+      "server.add.preset": "ゲームのおすすめ設定の id（`module info` で確認できます）",
       "components": "更新する構成要素",
       "clear": "結果の記録を消す",
       "key": "設定キー",
