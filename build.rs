@@ -7,8 +7,7 @@ fn main() {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         // 저장소에 들어 있는 아이콘이다 (원본 icons/saba-core.png, scripts/make-icons.py로 만든다)
-        let res_dir = PathBuf::from(&manifest_dir).join("icons");
-        let ico_path = res_dir.join("saba-core.ico");
+        let ico_path = PathBuf::from(&manifest_dir).join("icons").join("saba-core.ico");
 
         println!("cargo:rerun-if-changed=icons/saba-core.ico");
         println!("cargo:rerun-if-changed=build.rs");
