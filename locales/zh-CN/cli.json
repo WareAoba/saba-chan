@@ -238,7 +238,7 @@
     "daemon_down_hint": "启动方式：saba-chan-cli daemon start",
     "did_you_mean": "你是不是想要：{{names}}？",
     "hint": {
-      "executable_missing": "缺少服务器文件。请检查文件夹或重新安装：saba-chan-cli server update",
+      "executable_missing": "缺少服务器文件。请重新安装（saba-chan-cli server update）或指定可执行文件路径：saba-chan-cli server set 服务器 executable_path=路径",
       "extension_required": "请安装所需扩展：saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "扩展文件已被更改，无法验证：{{ids}}。请重新安装或恢复原文件：saba-chan-cli extension install {{ids}}",
       "node_token_missing": "请先配对此电脑：saba-chan-cli bot pair",

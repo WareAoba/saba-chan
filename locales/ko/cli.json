@@ -238,7 +238,7 @@
     "daemon_down_hint": "켜기: saba-chan-cli daemon start",
     "did_you_mean": "혹시 이건가요: {{names}}?",
     "hint": {
-      "executable_missing": "서버 파일이 없어요. 폴더를 확인하거나 다시 설치하세요: saba-chan-cli server update",
+      "executable_missing": "서버 파일이 없어요. 다시 설치하거나(saba-chan-cli server update) 실행 파일 경로를 지정하세요: saba-chan-cli server set 서버 executable_path=경로",
       "extension_required": "필요한 익스텐션을 설치하세요: saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "확장 파일이 바뀌어 확인되지 않았습니다: {{ids}}. 다시 설치하거나 원래대로 되돌려 주세요: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "먼저 이 PC를 페어링하세요: saba-chan-cli bot pair",

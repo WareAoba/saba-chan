@@ -191,7 +191,7 @@
     "daemon_down_hint": "Démarrez-le avec : saba-chan-cli daemon start",
     "did_you_mean": "Vouliez-vous dire : {{names}} ?",
     "hint": {
-      "executable_missing": "Des fichiers du serveur sont manquants. Vérifiez le dossier ou réinstallez : saba-chan-cli server update",
+      "executable_missing": "Des fichiers du serveur sont manquants. Réinstallez (saba-chan-cli server update) ou indiquez le chemin de l'exécutable : saba-chan-cli server set SERVEUR executable_path=CHEMIN",
       "extension_required": "Installez les extensions requises : saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "Ces extensions ont été modifiées et n'ont pas pu être vérifiées : {{ids}}. Réinstallez-les ou restaurez les fichiers d'origine : saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Appairez d'abord ce PC : saba-chan-cli bot pair",
