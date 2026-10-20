@@ -35,7 +35,7 @@
 3. **로그 버퍼와 tracing 초기화** (`main.rs:222-278`)
    - `DaemonLogBuffer`(링 버퍼 10,000줄, `daemon_log.rs:21`)와 `DaemonLogLayer`를 모든 모드에 합성한다.
    - 필터는 `RUST_LOG`이며 기본값은 `info`다.
-   - CLI 모드는 CLI 대화형 셸이 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs:239-247`). 나머지 모드는 stderr로 보낸다.
+   - CLI 모드는 CLI 대화형 셸이 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs:239-247`). 나머지 모드는 stderr와 `<data_dir>/logs/daemon.log`(이어 쓰기, 5 MiB를 넘으면 `daemon.log.1`로 넘김, `daemon_log::LogFile`)에 함께 보낸다. GUI가 띄운 데몬의 stderr는 GUI의 파이프라 GUI가 먼저 끝나면 남지 않기 때문이다. 이 모드는 패닉도 tracing을 거치지 않고 같은 파일에 `PANIC` 줄로 남긴다.
 4. **IPC 포트 결정** (`main.rs:285-298`)
    - `SABA_IPC_PORT` 환경변수, 없으면 `config.json`의 `gui.ipcPort`, 둘 다 없으면 `DEFAULT_IPC_PORT = 57474`(`constants.rs:32`)다.
    - **바인드 주소는 `127.0.0.1`로 고정이다.** 포트는 `plugin::set_ipc_port`로 Python 실행 환경에도 넘긴다.
@@ -119,6 +119,7 @@
   settings.json 등           예전 개별 파일. 한 번 config.json으로 이관하고 원본은 두며 .migrated 사본을 남긴다
   daemon.lock (+ .owner)    단일 인스턴스 잠금과 실행 중 데몬 pid·주소    instance_lock.rs
   daemon.log                CLI 부트 모드에서만 생성
+  logs/daemon.log (+ .1)    그 밖의 모드의 데몬 로그·패닉 (GUI 로그 saba-chan-<시각>.log와 같은 폴더)    daemon_log.rs
   python-guard/sitecustomize.py   활성 익스텐션만 import하게 하는 가드    plugin/mod.rs:113-125
   installed-manifest.json, updater-state.json, update-complete.json (updater)
   modules/<module>/module.toml, lifecycle.py, locales/*.json
