@@ -171,6 +171,30 @@ fn print_status(r: &Value) {
     }
 }
 
+/// 받기 결과의 실패들. 구성요소를 고르지 않은 받기는 실패해도 `errors` 없이 `{ok:false, error}`만 온다
+fn download_errors(r: &Value) -> Vec<String> {
+    let mut errors: Vec<String> = r
+        .get("errors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|e| {
+            if e.is_string() {
+                output::show(e)
+            } else {
+                format!("{}: {}", s(e, "component"), s(e, "error"))
+            }
+        })
+        .collect();
+    if errors.is_empty() && r.get("ok").and_then(Value::as_bool) == Some(false) {
+        errors.push(match s(r, "error") {
+            "" => t!("update.download_failed"),
+            e => e.to_string(),
+        });
+    }
+    errors
+}
+
 async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
     let bar = crate::progress::bytes_bar(&t!("update.downloading"));
     let req = ctx.api.update_download(components);
@@ -193,24 +217,19 @@ async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
         }
     };
     bar.finish_and_clear();
-    let r = r?;
-    let errors: Vec<String> = r
-        .get("errors")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|e| {
-            if e.is_string() {
-                output::show(e)
-            } else {
-                format!("{}: {}", s(e, "component"), s(e, "error"))
-            }
-        })
-        .collect();
+    let r = crate::client::partial(r)?;
+    let errors = download_errors(&r);
     for e in &errors {
         ctx.out.warn(e);
     }
     let n = r.get("downloaded").and_then(Value::as_array).map_or(0, |a| a.len());
+    if !errors.is_empty() {
+        // 일부만 받았으면 받은 것은 사람에게 알리고 실패로 끝낸다 (--json은 오류 문서 하나에 결과를 싣는다)
+        if n > 0 && !ctx.out.json {
+            ctx.out.done(&t!("update.downloaded", n = n), &r);
+        }
+        return Err(crate::error::CliError::Partial { message: t!("update.download_failed"), data: r }.into());
+    }
     ctx.out.done(&t!("update.downloaded", n = n), &r);
     if n > 0 {
         ctx.out.hint("saba-chan-cli update apply");
@@ -242,7 +261,7 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     let spin = crate::progress::spinner(&t!("update.applying"));
     let r = ctx.api.update_apply(components).await;
     spin.finish_and_clear();
-    let r = r?;
+    let r = crate::client::partial(r)?;
     for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
         ctx.out.warn(&output::show(e));
     }
@@ -259,6 +278,11 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
             ctx.out.done(&msg, &r);
         }
         return Ok(());
+    }
+    // 실패한 구성요소가 있어도 코어 업데이트는 막지 않는다 (GUI와 같다): 알리고 종료 코드로 실패를 남긴다
+    let (_, failed) = apply_outcome(&r);
+    if failed {
+        ctx.out.warn(&t!("update.apply_failed"));
     }
     let list: Vec<String> = r
         .get("needs_updater")
@@ -280,7 +304,7 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     ctx.out.hint(&t!("update.after_hint"));
     // 이 CLI 파일도 교체 대상일 수 있으니 셸 안에서도 여기서 끝낸다
     output::flush();
-    std::process::exit(0);
+    std::process::exit(i32::from(failed));
 }
 
 async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
@@ -366,6 +390,18 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 고르지 않은 받기가 실패하면 `errors` 없이 `{ok:false, error}`만 온다: 0개 받음으로 끝내지 않는다 (cloud-review-426 P2)
+    #[test]
+    fn a_failed_full_download_is_a_failure() {
+        assert_eq!(download_errors(&json!({ "ok": false, "error": "net down" })), vec!["net down".to_string()]);
+        assert_eq!(download_errors(&json!({ "ok": false })).len(), 1);
+        assert!(download_errors(&json!({ "ok": true, "downloaded": [], "count": 0 })).is_empty());
+        assert_eq!(
+            download_errors(&json!({ "ok": false, "errors": [{ "component": "gui", "error": "x" }] })),
+            vec!["gui: x".to_string()]
+        );
+    }
 
     /// 데몬이 오류를 돌려준 적용은 "적용할 게 없어요"로 성공 처리하지 않는다 (cloud-review-300 P3-4)
     #[test]

@@ -181,9 +181,11 @@ impl Api {
 
     // ── 서버 (런타임 상태) ──
 
-    /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다)
-    pub async fn servers(&self) -> Result<Value> {
-        self.get_slow("/api/servers").await
+    /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다).
+    /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 읽으면 비워진다: 알림을 보여 주는 `status`만 비우고,
+    /// 나머지는 `keep`으로 남겨 둔다
+    pub async fn servers(&self, keep_notices: bool) -> Result<Value> {
+        self.get_slow(if keep_notices { "/api/servers?notices=keep" } else { "/api/servers" }).await
     }
     /// POST /api/instance/:id/start — managed 여부는 데몬이 고른다
     pub async fn start(&self, id: &str) -> Result<Value> {
@@ -422,7 +424,7 @@ impl Api {
         self.get_slow(&format!("/api/module/{}/version/{}", seg(name), seg(version)))
             .await
     }
-    /// POST /api/module/:name/install — 서버 파일만 받는다 `{version, install_dir, jar_name?, accept_agreements?}`
+    /// POST /api/module/:name/install — 서버 파일만 받는다 `{version, install_dir, server_executable?, accept_agreements?}`
     pub async fn install_server_files(&self, name: &str, body: Value) -> Result<Value> {
         self.post_long(&format!("/api/module/{}/install", seg(name)), body)
             .await
@@ -868,6 +870,19 @@ fn with_query(path: &str, params: &[(&str, Option<String>)]) -> String {
     }
 }
 
+/// 일부만 된 작업의 결과(2xx에 `ok`/`success: false`)는 오류 대신 본문을 돌려준다.
+/// 무엇이 되고 무엇이 실패했는지는 부른 명령이 보이고 실패로 끝낸다 (데몬이 오류 문구 없이 결과만 싣는다)
+pub fn partial(r: Result<Value>) -> Result<Value> {
+    match r {
+        Err(e) => match e.downcast::<CliError>() {
+            Ok(CliError::Api { status, body, .. }) if (200..300).contains(&status) => Ok(body),
+            Ok(other) => Err(other.into()),
+            Err(e) => Err(e),
+        },
+        ok => ok,
+    }
+}
+
 /// 상태 코드와 본문으로 성공·실패를 정한다
 pub fn check(status: u16, body: Value) -> Result<Value> {
     let flag_false = |k: &str| body.get(k).and_then(Value::as_bool) == Some(false);
@@ -901,7 +916,8 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
         });
         return Err(CliError::Api { status, code: Some(code), message, body }.into());
     }
-    let code = pick("error_code");
+    // 모듈이 사용자 조치를 바라는 실패(`action_required`, 예: 실행 파일 없음)는 그 코드가 오류 코드다
+    let code = pick("error_code").or_else(|| pick("action_required"));
     // 내부 오류일 때 error_message는 뭉뚱그린 문구라 구체적인 error가 낫다
     let generic = code.as_deref() == Some("internal_server_error") && pick("error").is_some();
     let message = pick("error_message")
@@ -926,6 +942,28 @@ mod tests {
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    /// 일부만 된 작업(2xx에 `ok`/`success: false`, 예: 업데이트 받기·적용, 챗봇 기억 지우기)은 본문을 명령에 돌려준다:
+    /// 무엇이 되고 무엇이 실패했는지는 명령이 보이고 실패로 끝낸다. 2xx가 아닌 실패는 그대로 오류다
+    #[test]
+    fn a_partly_done_result_is_handed_back_to_the_command() {
+        let body = json!({ "ok": false, "applied": ["gui"], "errors": [{ "component": "cli", "error": "boom" }] });
+        assert_eq!(partial(check(200, body.clone())).unwrap(), body);
+        assert!(partial(check(500, json!({ "error": "boom" }))).is_err());
+        assert_eq!(partial(check(200, json!({ "ok": true }))).unwrap(), json!({ "ok": true }));
+    }
+
+    /// 모듈이 실행 파일을 못 찾은 시작 실패(`action_required`)는 그 코드로 다루고 다시 설치하라고 안내한다 (MK7, 옛 server_jar_not_found 포함)
+    #[test]
+    fn a_missing_executable_is_reported_by_its_action_code() {
+        crate::i18n::init("en");
+        for code in ["executable_not_found", "server_jar_not_found"] {
+            let e = api_err(check(200, json!({ "success": false, "action_required": code, "message": "server.jar not found" })));
+            assert_eq!(e.code(), code);
+            assert_eq!(e.to_string(), "server.jar not found");
+            assert!(e.hint().is_some_and(|h| h.contains("server update")), "{}", code);
+        }
     }
 
     #[test]

@@ -375,11 +375,11 @@
     "delete_error_title": "인스턴스 삭제 예외",
     "initializing_overlay": "서버 상태 확인 중...",
     "jar_not_found_title": "서버 파일을 찾을 수 없습니다",
-    "jar_not_found_message": "서버 실행 파일(server.jar)이 설정되어 있지 않습니다.\n경로를 지정하거나 새로 설치할 수 있습니다.",
+    "jar_not_found_message": "서버 실행 파일이 설정되어 있지 않습니다.\n경로를 지정하거나 새로 설치할 수 있습니다.",
     "jar_not_found_message_with_path": "서버 파일을 찾을 수 없습니다:\n{{path}}\n\n경로를 수정하거나 새로 설치할 수 있습니다.",
     "jar_action_update_path": "경로 수정",
     "jar_action_install_new": "새로 설치",
-    "select_server_jar": "서버 JAR 파일 선택",
+    "select_server_jar": "서버 실행 파일 선택",
     "jar_path_updated": "✅ 서버 경로가 업데이트되었습니다",
     "installing_server": "⏳ 서버를 설치하는 중...",
     "install_completed": "✅ {{game}} {{version}} 서버 설치 완료!",
@@ -437,6 +437,7 @@
     "start_cancelled": "시작하는 동안 정지 요청이 들어와 서버를 켜지 않았어요.",
     "console_input_full": "서버가 아직 앞의 입력을 처리하는 중이에요. 잠시 뒤에 다시 보내 주세요.",
     "restart_cancelled": "재시작을 기다리는 동안 다른 곳에서 서버를 켜거나 지워서 재시작하지 않았어요.",
+    "not_supported": "이 서버의 모듈은 이 기능을 지원하지 않아요.",
     "executable_not_found": "게임 서버 실행 파일을 찾을 수 없습니다. 설정에서 경로를 확인해주세요.",
     "file_not_found": "파일 또는 폴더를 찾을 수 없습니다. 경로를 확인해주세요.",
     "permission_denied": "권한이 없습니다. 파일 접근 권한을 확인해주세요.",
@@ -607,7 +608,7 @@
     "mock_server_label": "Mock 서버 (테스트)",
     "real_api_label": "실제 GitHub API",
     "module_busy": "이 모듈의 다른 설치나 제거가 아직 진행 중이에요. 끝난 뒤 다시 시도해 주세요.",
-    "remove_failed": "모듈 제거 실패: {{error}}"
+    "remove_failed": "모듈을 제거하지 못했어요: {{error}}"
   },
   "validation": {
     "required": "{{field}}은(는) 필수 항목입니다",

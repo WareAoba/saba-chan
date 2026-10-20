@@ -319,11 +319,11 @@
     "delete_error_title": "インスタンス削除例外",
     "initializing_overlay": "サーバーステータスをチェック中...",
     "jar_not_found_title": "サーバーファイルが見つかりません",
-    "jar_not_found_message": "サーバー実行ファイル（server.jar）が設定されていません。\nパスを指定するか、新しくインストールできます。",
+    "jar_not_found_message": "サーバー実行ファイルが設定されていません。\nパスを指定するか、新しくインストールできます。",
     "jar_not_found_message_with_path": "サーバーファイルが見つかりません：\n{{path}}\n\nパスを変更するか、新しくインストールできます。",
     "jar_action_update_path": "パスを変更",
     "jar_action_install_new": "新規インストール",
-    "select_server_jar": "サーバーJARファイルを選択",
+    "select_server_jar": "サーバー実行ファイルを選択",
     "jar_path_updated": "✅ サーバーパスが更新されました",
     "installing_server": "⏳ サーバーをインストール中...",
     "install_completed": "✅ {{game}} {{version}} サーバーのインストール完了！",
@@ -381,6 +381,7 @@
     "start_cancelled": "起動中に停止が要求されたため、サーバーを起動しませんでした。",
     "console_input_full": "サーバーがまだ前の入力を処理しています。少し待ってからもう一度送信してください。",
     "restart_cancelled": "再起動を待つ間に別の場所でサーバーが起動または削除されたため、再起動しませんでした。",
+    "not_supported": "このサーバーのモジュールはこの機能に対応していません。",
     "executable_not_found": "ゲームサーバーの実行ファイルが見つかりません。設定のパスを確認してください。",
     "file_not_found": "ファイルまたはフォルダが見つかりません。パスを確認してください。",
     "permission_denied": "権限が拒否されました。ファイルアクセス権限を確認してください。",
@@ -551,7 +552,7 @@
     "restart_required_title": "再起動必要",
     "apply": "適用",
     "module_busy": "このモジュールの別のインストールまたは削除がまだ進行中です。終わってからもう一度お試しください。",
-    "remove_failed": "モジュールの削除に失敗しました: {{error}}"
+    "remove_failed": "モジュールを削除できませんでした: {{error}}"
   },
   "add_instance_modal": {
     "title": "インスタンスを追加",

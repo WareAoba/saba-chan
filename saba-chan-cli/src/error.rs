@@ -162,7 +162,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
         "node_token_missing" | "not_paired" | "node_not_found" | "missing_token" | "invalid_token" | "invalid_token_format" => Some(t!("err.hint.node_token_missing")),
-        "executable_missing" => Some(t!("err.hint.executable_missing")),
+        // 모듈이 실행 파일을 못 찾음: executable_not_found (MK7), 옛 모듈은 server_jar_not_found
+        "executable_missing" | "executable_not_found" | "server_jar_not_found" => Some(t!("err.hint.executable_missing")),
         "update_unsupported" => Some(t!("err.hint.update_unsupported")),
         "backup_unsupported" => Some(t!("err.hint.backup_unsupported")),
         "nothing_to_back_up" => Some(t!("err.hint.nothing_to_back_up")),
@@ -170,6 +171,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "no_command_path" => Some(t!("err.hint.no_command_path")),
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
         "module_busy" => Some(t!("err.hint.module_busy")),
+        "not_supported" => Some(t!("err.hint.not_supported")),
         "invalid_command" => Some(t!("err.hint.invalid_command")),
         // `details: [{field, reason, word?, conflictWith?}]` — 칸마다 한 줄
         "validation_failed" => {
@@ -248,7 +250,7 @@ mod tests {
     #[test]
     fn busy_modules_and_malformed_command_keys_get_a_hint() {
         crate::i18n::init("en");
-        for code in ["module_busy", "invalid_command"] {
+        for code in ["module_busy", "invalid_command", "not_supported"] {
             let hint = api_hint(code, &json!({})).unwrap_or_default();
             assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
         }

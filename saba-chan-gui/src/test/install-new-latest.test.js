@@ -1,9 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useServerActions } from '../hooks/useServerActions';
+import i18n from '../i18n';
 
 /** 시작했더니 서버 파일이 없다 → "새로 설치"를 누른다. 설치 응답은 install로 정한다 */
-async function installNew(install) {
+async function openJarModal(modules = [{ name: 'game', game_name: 'Terraria' }], install) {
     const servers = [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }];
     const setModal = vi.fn();
     window.api = {
@@ -19,7 +20,7 @@ async function installNew(install) {
         useServerActions({
             servers,
             setServers: vi.fn(),
-            modules: [{ name: 'game', game_name: 'Terraria' }],
+            modules,
             loading: false,
             setLoading: vi.fn(),
             setModal,
@@ -31,7 +32,12 @@ async function installNew(install) {
         }),
     );
     await act(async () => result.current.handleStart('A', 'game'));
-    await act(async () => setModal.mock.calls[0][0].buttons[1].action());
+    return setModal.mock.calls[0][0];
+}
+
+async function installNew(install) {
+    const modal = await openJarModal(undefined, install);
+    await act(async () => modal.buttons[1].action());
     return window.showToast.mock.calls.at(-1)[0];
 }
 
@@ -55,5 +61,12 @@ describe('서버 파일이 없을 때 새로 설치', () => {
     ])('설치를 거절한 이유(%s)를 현지화해 보인다', async (code, text) => {
         const toast = await installNew({ success: false, error_code: code, error: 'no releases' });
         expect(toast).toMatch(text);
+    });
+
+    // 모듈이 install_server를 구현하지 않으면(functions 목록에 없음) "새로 설치"를 보이지 않는다 (MK1)
+    it('설치를 구현하지 않은 모듈이면 새로 설치를 보이지 않는다', async () => {
+        const modal = await openJarModal([{ name: 'game', game_name: 'Terraria', functions: ['validate'] }]);
+        expect(modal.buttons.map((b) => b.label)).not.toContain(i18n.t('gui:servers.jar_action_install_new'));
+        expect(modal.buttons).toHaveLength(2);
     });
 });

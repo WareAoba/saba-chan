@@ -101,7 +101,8 @@
     "rest_port": "REST 連接埠",
     "author": "作者",
     "mode": "模式",
-    "trust": "來源"
+    "trust": "來源",
+    "unsupported": "不支援"
   },
   "common": {
     "fetching": "正在取得...",
@@ -190,7 +191,7 @@
     "daemon_down_hint": "啟動方式：saba-chan-cli daemon start",
     "did_you_mean": "你是不是要找：{{names}}？",
     "hint": {
-      "executable_missing": "缺少伺服器檔案。請檢查資料夾或重新安裝：saba-chan-cli server update",
+      "executable_missing": "缺少伺服器檔案。請重新安裝（saba-chan-cli server update）或指定執行檔路徑：saba-chan-cli server set 伺服器 executable_path=路徑",
       "extension_required": "請安裝所需的擴充功能：saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "擴充功能檔案已變更，無法驗證：{{ids}}。請重新安裝或還原原始檔案：saba-chan-cli extension install {{ids}}",
       "node_token_missing": "請先配對這台電腦：saba-chan-cli bot pair",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
-      "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>"
+      "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
+      "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
     "not_found": "沒有名為「{{query}}」的{{what}}。",
     "pair_expected": "應為 KEY=VALUE，實際為「{{got}}」。",
     "timeout": "常駐程式回應時間過長（{{path}}）。",
-    "unknown_command": "沒有這個命令：{{path}}。執行 `saba-chan-cli help` 查看命令列表。"
+    "unknown_command": "沒有這個命令：{{path}}。執行 `saba-chan-cli help` 查看命令列表。",
+    "not_supported": "{{module}} 模組不支援此功能"
   },
   "agree": {
     "none": "{{name}} 沒有需要同意的協議。",
@@ -455,6 +458,7 @@
     "not_installed": "未安裝",
     "nothing_to_apply": "沒有可套用的項目。請先下載：saba-chan-cli update download",
     "apply_failed": "無法套用更新。請查看上面的錯誤。",
+    "download_failed": "部分更新無法下載。請查看上面的錯誤。",
     "ready": "可以安裝",
     "up_to_date": "已是最新",
     "updater_launched": "更新程式已啟動。常駐程式正在關閉以進行更新。",
@@ -587,6 +591,7 @@
     "confirm_forget": "要讓聊天機器人忘記它在所有 Discord 伺服器中記住的內容嗎？",
     "confirm_forget_guild": "要讓聊天機器人忘記它在 Discord 伺服器 {{guild}} 中記住的內容嗎？",
     "forgot": "聊天機器人的記憶已清除。",
+    "forget_failed": "部分 Discord 伺服器上的聊天機器人記憶無法清除。請查看上面的錯誤。",
     "not_synced": "已儲存在這台電腦上。機器人連線後會同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 伺服器 {{guild}} 沒有收到此變更：{{error}}",
     "read_failed": "無法讀取 {{path}}：{{error}}"

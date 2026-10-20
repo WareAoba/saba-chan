@@ -127,7 +127,8 @@
     "rest_port": "REST ポート",
     "author": "作者",
     "mode": "モード",
-    "trust": "出所"
+    "trust": "出所",
+    "unsupported": "未対応"
   },
   "common": {
     "fetching": "取得中...",
@@ -237,7 +238,7 @@
     "daemon_down_hint": "起動するには: saba-chan-cli daemon start",
     "did_you_mean": "もしかして: {{names}}？",
     "hint": {
-      "executable_missing": "サーバーファイルが見つかりません。フォルダーを確認するか再インストールしてください: saba-chan-cli server update",
+      "executable_missing": "サーバーファイルが見つかりません。再インストールする(saba-chan-cli server update)か、実行ファイルのパスを指定してください: saba-chan-cli server set サーバー executable_path=パス",
       "extension_required": "必要な拡張機能をインストールしてください: saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "拡張機能のファイルが変更され、確認できませんでした: {{ids}}。再インストールするか元に戻してください: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "先にこの PC をペアリングしてください: saba-chan-cli bot pair",
@@ -260,7 +261,8 @@
         "conflict": "すでに別のものを呼ぶ語です",
         "unknown_command": "このサーバーにないコマンドです",
         "too_many": "語は 10 個までです"
-      }
+      },
+      "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -268,7 +270,8 @@
     "pair_expected": "KEY=VALUE の形式が必要ですが、「{{got}}」が指定されました。",
     "timeout": "デーモンの応答に時間がかかりすぎました（{{path}}）。",
     "body_read": "{{path}} の応答を最後まで受け取れませんでした: {{error}}",
-    "unknown_command": "そのコマンドはありません: {{path}}。`saba-chan-cli help` でコマンド一覧を見られます。"
+    "unknown_command": "そのコマンドはありません: {{path}}。`saba-chan-cli help` でコマンド一覧を見られます。",
+    "not_supported": "{{module}} モジュールはこの機能に対応していません"
   },
   "agree": {
     "none": "{{name}}に同意する規約はありません。",
@@ -513,6 +516,7 @@
     "not_installed": "未インストール",
     "nothing_to_apply": "適用するものがありません。先にダウンロード: saba-chan-cli update download",
     "apply_failed": "アップデートを適用できませんでした。上のエラーを確認してください。",
+    "download_failed": "一部のアップデートをダウンロードできませんでした。上のエラーを確認してください。",
     "ready": "インストール準備完了",
     "up_to_date": "最新",
     "updater_launched": "アップデーターを起動しました。更新のためデーモンを終了しています。",
@@ -739,7 +743,7 @@
       "page": "ページ",
       "per_page": "1 ページあたりの件数",
       "dir": "フォルダー",
-      "jar": "jar ファイル名",
+      "executable": "ダウンロードするサーバー実行ファイル名（既定: モジュールの server_executable）",
       "accept": "同意する規約の ID (読んだものだけ)",
       "relay_url": "リレーのアドレス",
       "token": "ノードトークン",
@@ -895,6 +899,7 @@
     "confirm_forget": "すべての Discord サーバーでチャットボットが覚えている内容を忘れさせますか？",
     "confirm_forget_guild": "Discord サーバー {{guild}} でチャットボットが覚えている内容を忘れさせますか？",
     "forgot": "チャットボットの記憶を消去しました。",
+    "forget_failed": "一部のDiscordサーバーでチャットボットの記憶を消去できませんでした。上のエラーを確認してください。",
     "not_synced": "この PC に保存しました。ボットが接続されると Discord に反映されます（saba-chan-cli bot status）。",
     "sync_failed": "Discord サーバー {{guild}} に変更が反映されませんでした: {{error}}",
     "read_failed": "{{path}} を読み込めませんでした: {{error}}",
