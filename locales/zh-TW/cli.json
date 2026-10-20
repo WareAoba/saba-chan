@@ -458,6 +458,7 @@
     "not_installed": "未安裝",
     "nothing_to_apply": "沒有可套用的項目。請先下載：saba-chan-cli update download",
     "apply_failed": "無法套用更新。請查看上面的錯誤。",
+    "download_failed": "部分更新無法下載。請查看上面的錯誤。",
     "ready": "可以安裝",
     "up_to_date": "已是最新",
     "updater_launched": "更新程式已啟動。常駐程式正在關閉以進行更新。",
@@ -590,6 +591,7 @@
     "confirm_forget": "要讓聊天機器人忘記它在所有 Discord 伺服器中記住的內容嗎？",
     "confirm_forget_guild": "要讓聊天機器人忘記它在 Discord 伺服器 {{guild}} 中記住的內容嗎？",
     "forgot": "聊天機器人的記憶已清除。",
+    "forget_failed": "部分 Discord 伺服器上的聊天機器人記憶無法清除。請查看上面的錯誤。",
     "not_synced": "已儲存在這台電腦上。機器人連線後會同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 伺服器 {{guild}} 沒有收到此變更：{{error}}",
     "read_failed": "無法讀取 {{path}}：{{error}}"

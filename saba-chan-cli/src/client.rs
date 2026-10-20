@@ -870,6 +870,19 @@ fn with_query(path: &str, params: &[(&str, Option<String>)]) -> String {
     }
 }
 
+/// 일부만 된 작업의 결과(2xx에 `ok`/`success: false`)는 오류 대신 본문을 돌려준다.
+/// 무엇이 되고 무엇이 실패했는지는 부른 명령이 보이고 실패로 끝낸다 (데몬이 오류 문구 없이 결과만 싣는다)
+pub fn partial(r: Result<Value>) -> Result<Value> {
+    match r {
+        Err(e) => match e.downcast::<CliError>() {
+            Ok(CliError::Api { status, body, .. }) if (200..300).contains(&status) => Ok(body),
+            Ok(other) => Err(other.into()),
+            Err(e) => Err(e),
+        },
+        ok => ok,
+    }
+}
+
 /// 상태 코드와 본문으로 성공·실패를 정한다
 pub fn check(status: u16, body: Value) -> Result<Value> {
     let flag_false = |k: &str| body.get(k).and_then(Value::as_bool) == Some(false);
@@ -929,6 +942,16 @@ mod tests {
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    /// 일부만 된 작업(2xx에 `ok`/`success: false`, 예: 업데이트 받기·적용, 챗봇 기억 지우기)은 본문을 명령에 돌려준다:
+    /// 무엇이 되고 무엇이 실패했는지는 명령이 보이고 실패로 끝낸다. 2xx가 아닌 실패는 그대로 오류다
+    #[test]
+    fn a_partly_done_result_is_handed_back_to_the_command() {
+        let body = json!({ "ok": false, "applied": ["gui"], "errors": [{ "component": "cli", "error": "boom" }] });
+        assert_eq!(partial(check(200, body.clone())).unwrap(), body);
+        assert!(partial(check(500, json!({ "error": "boom" }))).is_err());
+        assert_eq!(partial(check(200, json!({ "ok": true }))).unwrap(), json!({ "ok": true }));
     }
 
     /// 모듈이 실행 파일을 못 찾은 시작 실패(`action_required`)는 그 코드로 다루고 다시 설치하라고 안내한다 (MK7, 옛 server_jar_not_found 포함)

@@ -7,7 +7,7 @@
 use crate::cli::ChatbotCmd;
 use crate::cmd::{guess, split_pairs};
 use crate::ctx::Ctx;
-use crate::error::{failed, usage, Result};
+use crate::error::{failed, usage, CliError, Result};
 use crate::output::{self, s};
 use serde_json::{json, Map, Value};
 use crate::resolve;
@@ -46,7 +46,12 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
                 None => t!("chatbot.confirm_forget"),
             };
             ctx.ask.ensure(&q)?;
-            let r = ctx.api.forget_chatbot(guild.as_deref()).await?;
+            // 릴레이에 일부만 닿으면 데몬은 200에 success:false와 길드별 sync를 준다: 어느 길드가 실패했는지 보이고 실패로 끝낸다
+            let r = crate::client::partial(ctx.api.forget_chatbot(guild.as_deref()).await)?;
+            if r.get("success").and_then(Value::as_bool) == Some(false) {
+                report_sync(ctx, &r);
+                return Err(CliError::Partial { message: t!("chatbot.forget_failed"), data: r }.into());
+            }
             ctx.out.done(&t!("chatbot.forgot"), &r);
             report_sync(ctx, &r);
             Ok(())

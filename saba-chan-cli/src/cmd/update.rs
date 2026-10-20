@@ -193,7 +193,7 @@ async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
         }
     };
     bar.finish_and_clear();
-    let r = r?;
+    let r = crate::client::partial(r)?;
     let errors: Vec<String> = r
         .get("errors")
         .and_then(Value::as_array)
@@ -211,6 +211,13 @@ async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
         ctx.out.warn(e);
     }
     let n = r.get("downloaded").and_then(Value::as_array).map_or(0, |a| a.len());
+    if !errors.is_empty() {
+        // 일부만 받았으면 받은 것은 사람에게 알리고 실패로 끝낸다 (--json은 오류 문서 하나에 결과를 싣는다)
+        if n > 0 && !ctx.out.json {
+            ctx.out.done(&t!("update.downloaded", n = n), &r);
+        }
+        return Err(crate::error::CliError::Partial { message: t!("update.download_failed"), data: r }.into());
+    }
     ctx.out.done(&t!("update.downloaded", n = n), &r);
     if n > 0 {
         ctx.out.hint("saba-chan-cli update apply");
@@ -242,11 +249,13 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     let spin = crate::progress::spinner(&t!("update.applying"));
     let r = ctx.api.update_apply(components).await;
     spin.finish_and_clear();
-    let r = r?;
+    let r = crate::client::partial(r)?;
     for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
         ctx.out.warn(&output::show(e));
     }
-    if r.get("requires_updater").and_then(Value::as_bool) != Some(true) {
+    // 실패한 구성요소가 있으면 업데이터를 띄우지 않고 실패로 끝낸다 (고친 뒤 다시 적용하면 남은 것도 함께)
+    let failed = r.get("errors").and_then(Value::as_array).is_some_and(|e| !e.is_empty());
+    if failed || r.get("requires_updater").and_then(Value::as_bool) != Some(true) {
         let (done, failed) = apply_outcome(&r);
         if failed {
             // 일부 적용은 사람에게만 따로 알리고, --json은 오류 문서 하나에 결과를 싣는다
