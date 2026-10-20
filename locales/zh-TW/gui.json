@@ -358,6 +358,9 @@
     "start_timeout_toast": "⚠️ 正在啟動 {{name}} 伺服器...（可能需要一些時間）",
     "stop_confirm_title": "停止伺服器",
     "stop_confirm_message": "確定要停止 {{name}} 伺服器嗎？",
+    "force_stop_title": "不儲存就停止嗎？",
+    "force_stop_message": "無法（沒有主控台）請求 {{name}} 儲存後結束。強制停止可能會遺失上次儲存之後的進度。",
+    "force_stop_confirm": "不儲存直接停止",
     "stop_failed_toast": "❌ 伺服器停止失敗：{{error}}",
     "stopping_toast": "⏳ 正在停止 {{name}} 伺服器...",
     "stop_completed_toast": "✅ {{name}} 伺服器已停止！",
@@ -436,6 +439,10 @@
   "errors": {
     "start_cancelled": "伺服器在啟動過程中被停止，因此未啟動。",
     "console_input_full": "伺服器仍在處理先前的輸入，請稍後再傳送。",
+    "rcon_unreachable": "無法連線到伺服器的 RCON。請確認伺服器已完全啟動。",
+    "rcon_auth_failed": "伺服器拒絕了 RCON 密碼。請嘗試重新啟動伺服器。",
+    "rcon_timeout": "伺服器沒有及時回應 RCON 指令。",
+    "rcon_failed": "伺服器傳回了無法辨識的 RCON 回應。",
     "restart_cancelled": "重新啟動期間伺服器已在別處停止、啟動或刪除，因此沒有重新啟動。",
     "not_supported": "此伺服器的模組不支援此功能。",
     "executable_not_found": "找不到遊戲伺服器可執行檔。請檢查設定中的路徑。",
@@ -989,6 +996,7 @@
     "restore_hint": "還原前會先備份目前狀態。",
     "restore_stop_first": "請先停止伺服器再還原。",
     "restored": "已還原。還原前的狀態也已備份。",
+    "restored_links_missed": "已還原，但資料夾中有 {{count}} 個連結未能重建（例如 Windows 權限）。路徑見守護程式日誌。",
     "err_restore_outside": "此備份是為另一個伺服器資料夾建立的，無法還原到目前的資料夾。如果你移動過伺服器資料夾，請把它移回原處後再試。",
     "err_backup_busy": "此伺服器正在進行其他工作（備份、還原、更新等）。請在完成後重試。",
     "err_schedule_changed": "排程工作已在別處被修改，因此未儲存。請重新讀取後再修改。",
@@ -1347,6 +1355,13 @@
     "hint": "留空表示不限制。Java 伺服器請設為比 -Xmx 大 1~2GB。僅在 Windows 上生效。",
     "placeholder": "不限制",
     "restart_note": "重新啟動後生效。"
+  },
+  "stop_timeout": {
+    "title": "停止等待時間",
+    "desc": "請求伺服器儲存並關閉後，會等待這麼長時間。仍未停止則強制關閉。世界較大時請調長。",
+    "label": "停止等待（秒）",
+    "hint": "1~3600 秒。留空則使用模組預設值。",
+    "placeholder": "模組預設值"
   },
   "loading": {
     "step_init": "正在初始化…",

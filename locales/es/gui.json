@@ -358,6 +358,9 @@
     "start_timeout_toast": "⚠️ Iniciando servidor {{name}}... (puede tomar un tiempo)",
     "stop_confirm_title": "Detener Servidor",
     "stop_confirm_message": "¿Está seguro de que desea detener el servidor {{name}}?",
+    "force_stop_title": "¿Detener sin guardar?",
+    "force_stop_message": "No hay forma (no hay consola) de pedir a {{name}} que guarde y se cierre. Forzar el cierre puede perder el progreso desde el último guardado.",
+    "force_stop_confirm": "Detener sin guardar",
     "stop_failed_toast": "❌ Falló la detención del servidor: {{error}}",
     "stopping_toast": "⏳ Deteniendo servidor {{name}}...",
     "stop_completed_toast": "✅ ¡Servidor {{name}} detenido!",
@@ -436,6 +439,10 @@
   "errors": {
     "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
     "console_input_full": "El servidor todavía está procesando la entrada anterior. Inténtalo de nuevo en un momento.",
+    "rcon_unreachable": "No se pudo conectar al RCON del servidor. Comprueba que el servidor haya terminado de iniciarse.",
+    "rcon_auth_failed": "El servidor rechazó la contraseña de RCON. Prueba a reiniciar el servidor.",
+    "rcon_timeout": "El servidor no respondió a tiempo al comando RCON.",
+    "rcon_failed": "El servidor envió una respuesta RCON que no se pudo leer.",
     "restart_cancelled": "El servidor se detuvo, se inició o se eliminó en otro lugar durante el reinicio, así que no se reinició.",
     "not_supported": "El módulo de este servidor no admite esta función.",
     "executable_not_found": "Ejecutable del servidor de juegos no encontrado. Por favor verifique la ruta en configuración.",
@@ -989,6 +996,7 @@
     "restore_hint": "Primero se hace una copia del estado actual.",
     "restore_stop_first": "Detén el servidor antes de restaurar.",
     "restored": "Restaurado. También se guardó una copia del estado anterior.",
+    "restored_links_missed": "Restaurado, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, permisos de Windows). Las rutas están en el registro del daemon.",
     "err_restore_outside": "Esta copia de seguridad se creó para otra carpeta del servidor, así que no se puede restaurar en la actual. Si moviste la carpeta del servidor, devuélvela a su lugar e inténtalo de nuevo.",
     "err_backup_busy": "Hay otra tarea en curso para este servidor (copia de seguridad, restauración, actualización…). Inténtalo de nuevo cuando termine.",
     "err_schedule_changed": "La programación se cambió en otro lugar, así que no se guardó. Vuelve a cargarla y haz tus cambios de nuevo.",
@@ -1347,6 +1355,13 @@
     "hint": "Déjalo vacío para no limitar. En servidores Java, ponlo 1–2 GB por encima de -Xmx. Solo se aplica en Windows.",
     "placeholder": "Sin límite",
     "restart_note": "Se aplica tras reiniciar."
+  },
+  "stop_timeout": {
+    "title": "Tiempo de espera al detener",
+    "desc": "Tras pedir al servidor que guarde y se apague, se espera este tiempo. Si sigue en marcha, se apaga a la fuerza. Auméntalo para mundos grandes.",
+    "label": "Espera al detener (segundos)",
+    "hint": "De 1 a 3600 segundos. Déjalo vacío para usar el valor por defecto del módulo.",
+    "placeholder": "Valor por defecto del módulo"
   },
   "loading": {
     "step_init": "Inicializando…",

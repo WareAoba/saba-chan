@@ -212,7 +212,7 @@
         "title": "備份列表"
       },
       "create": {
-        "title": "建立備份"
+        "title": "備份"
       },
       "restore": {
         "title": "還原備份",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "查看 Discord 設定",
-          "description": "語言、睡眠與音樂功能"
-        },
         "set": {
           "title": "變更 Discord 設定",
           "description": "語言、睡眠與音樂功能"

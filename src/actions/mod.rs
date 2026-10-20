@@ -69,14 +69,25 @@ pub struct Field {
     pub required: bool,
     /// 경로의 `:<name>` 자리에 들어간다 (본문에는 넣지 않는다)
     pub in_path: bool,
+    /// 다른 조회 액션의 결과에서 고르는 값 (스키마의 `optionsFrom`)
+    pub options_from: Option<OptionsFrom>,
+}
+
+/// 입력 칸의 값을 고를 목록: 같은 인스턴스에서 `action`을 부른 결과의 `list` 배열, 항목의 `value` 키가 값이고 `label` 키가 보일 이름
+#[derive(Debug)]
+pub struct OptionsFrom {
+    pub action: &'static str,
+    pub list: &'static str,
+    pub value: &'static str,
+    pub label: &'static str,
 }
 
 const fn field(name: &'static str, ty: &'static str, required: bool) -> Field {
-    Field { name, ty, required, in_path: false }
+    Field { name, ty, required, in_path: false, options_from: None }
 }
 
 const fn path_field(name: &'static str) -> Field {
-    Field { name, ty: "string", required: true, in_path: true }
+    Field { name, ty: "string", required: true, in_path: true, options_from: None }
 }
 
 /// 액션 선언
@@ -95,8 +106,8 @@ pub struct Def {
     pub open_input: bool,
     /// 디스코드에서 고정 요구 레벨 (프리셋·덮어쓰기와 상관없이)
     pub discord_level: Option<i64>,
-    /// 원격 작업 목록(heartbeat: 디스코드 "/작업" 메뉴·챗봇 목록)에 싣는가. 전용 명령이 같은 액션을 부르는
-    /// 것(길드 설정은 "/사바쨩")은 빼고, 액션 자체는 그 표면에서 계속 부를 수 있다
+    /// 디스코드 작업 메뉴에 싣는가 (heartbeat `surfaces`에 discord를 넣는가). 전용 명령이 같은 액션을 부르는
+    /// 것(길드 설정은 "/사바쨩")과 메뉴에서 뺀 것은 false다. 챗봇 목록에는 그대로 남고, 액션 자체도 디스코드에서 계속 부를 수 있다
     pub remote_menu: bool,
 }
 
@@ -119,11 +130,17 @@ pub static ACTIONS: &[Def] = &[
     def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
     def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
-    def("instance.events", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/events"),
+    // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
+    def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
     def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
-    def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups"),
+    // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
+    Def { remote_menu: false, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
     def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups"),
-    Def { fields: &[path_field("name")], ..def("backup.restore", Kind::Admin, "danger", LOCAL_AND_CHATBOT, true, "POST", "/api/instance/:id/backups/:name/restore") },
+    // 디스코드에서도 복원한다 (검수 14번). 백업은 목록에서 고른다
+    Def {
+        fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
+        ..def("backup.restore", Kind::Admin, "danger", ALL, true, "POST", "/api/instance/:id/backups/:name/restore")
+    },
     Def {
         fields: &[field("name", "string", true), field("module_name", "string", true), field("preset", "string", false), field("module_settings", "object", false)],
         ..def("instance.create", Kind::Admin, "caution", LOCAL_AND_CHATBOT, false, "POST", "/api/instances")
@@ -155,7 +172,6 @@ pub static ACTIONS: &[Def] = &[
         ..def("chatbot.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/guilds/:guild")
     },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
-    Def { fields: &[path_field("guild")], remote_menu: false, ..def("discord.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/discord/:guild/settings") },
     Def {
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
@@ -340,7 +356,17 @@ fn schema(def: &Def) -> Value {
     if def.open_input {
         return json!({ "type": "object", "additionalProperties": true });
     }
-    let props: Map<String, Value> = def.fields.iter().map(|f| (f.name.to_string(), json!({ "type": f.ty }))).collect();
+    let props: Map<String, Value> = def
+        .fields
+        .iter()
+        .map(|f| {
+            let mut prop = json!({ "type": f.ty });
+            if let Some(o) = &f.options_from {
+                prop["optionsFrom"] = json!({ "action": o.action, "list": o.list, "value": o.value, "label": o.label });
+            }
+            (f.name.to_string(), prop)
+        })
+        .collect();
     let required: Vec<&str> = def.fields.iter().filter(|f| f.required).map(|f| f.name).collect();
     json!({ "type": "object", "properties": props, "required": required })
 }
@@ -527,7 +553,8 @@ pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 
 pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Value>, bool) {
     let cats: Vec<(&str, crate::chat::i18n::Catalog)> = locales.iter().map(|l| (*l, catalog(l))).collect();
-    let mut defs: Vec<&Def> = ACTIONS.iter().filter(|d| d.remote_menu && (d.surfaces.contains(&Discord) || d.surfaces.contains(&Chatbot))).collect();
+    let remote = |d: &Def| -> Vec<Surface> { d.surfaces.iter().copied().filter(|s| *s == Chatbot || (*s == Discord && d.remote_menu)).collect() };
+    let mut defs: Vec<&Def> = ACTIONS.iter().filter(|d| !remote(d).is_empty()).collect();
     defs.sort_by_key(|d| d.id);
     let mut out = Vec::new();
     let mut size = 2usize;
@@ -542,7 +569,7 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             "id": d.id,
             "kind": d.kind.name(),
             "risk": d.risk,
-            "surfaces": d.surfaces.iter().filter(|s| matches!(s, Discord | Chatbot)).map(|s| s.name()).collect::<Vec<_>>(),
+            "surfaces": remote(d).iter().map(|s| s.name()).collect::<Vec<_>>(),
             "scope": if d.instance { "instance" } else { "none" },
             "title": title,
             "input": with_field_titles(remote_schema(d), |name| {
@@ -1007,6 +1034,7 @@ fn new_plan_id() -> String {
 pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller) -> Result<Value, ActionError> {
     let r = resolve(server, id, instance, input, caller).await?;
     authorize(server, &r, caller).await?;
+    refuse_restore_while_running(server, &r).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
     let confirm = needs_confirm(&r, caller);
@@ -1022,6 +1050,16 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     });
     store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller));
     Ok(view)
+}
+
+/// 켜진 서버의 복원은 계획부터 거절한다 (먼저 끄는 단계가 앞에 있는 여러 단계 계획은 실행 때 라우트가 본다)
+async fn refuse_restore_while_running(server: &IPCServer, r: &Resolved) -> Result<(), ActionError> {
+    match (r.id.as_str(), &r.instance) {
+        ("backup.restore", Some(i)) if crate::ipc::handlers::backup::is_running(server, i).await => {
+            Err(ActionError::new(409, "server_running", "Stop the server before restoring a backup"))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// 원격 설정 변경의 바꾸기 전 값 (`input`의 키마다). 인스턴스 칸에 없으면 모듈 설정에서, 그것도 없으면 Null
@@ -1242,6 +1280,10 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     // 원격에서 만든 서버는 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
     if let (true, "instance.create", Some(new_id)) = (ok, r.id.as_str(), result.get("id").and_then(Value::as_str)) {
         steps::allow_in_guild(server, caller, new_id).await;
+    }
+    // 백업 목록 항목에 사람이 읽을 이름을 붙인다 (복원 칸에서 고를 때 보인다)
+    if ok && r.id == "backup.list" {
+        summary::label_backups(&mut result, &catalog(&caller.locale));
     }
     let mut out = json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result });
     // 원격 화면은 JSON을 그리지 않으므로 요청 언어의 요약을 함께 준다

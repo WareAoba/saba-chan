@@ -17,6 +17,8 @@ export function createEventHub() {
     const channels = new Map(EVENT_CHANNELS.map((name) => [name, new Set()]));
     // 늦게 붙는 onStatusUpdate도 놓치지 않게 마지막 초기화 상태를 기억한다
     let lastStatus = null;
+    // 구독자가 없을 때 온 닫기 요청 (로드 중 Alt+F4). 첫 구독자에게 넘겨야 셸이 받음 확인을 받는다
+    let pendingClose = false;
 
     const listenersOf = (name) => {
         if (!channels.has(name)) channels.set(name, new Set());
@@ -39,7 +41,8 @@ export function createEventHub() {
         if (name === 'console:popinRequest') {
             dispatch(name, payload?.instanceId, payload?.serverName);
         } else if (name === 'app:closeRequest') {
-            dispatch(name);
+            if (listenersOf(name).size === 0) pendingClose = true;
+            else dispatch(name);
         } else {
             dispatch(name, payload);
         }
@@ -52,6 +55,12 @@ export function createEventHub() {
             const status = lastStatus;
             queueMicrotask(() => {
                 if (set.has(cb)) cb(status);
+            });
+        }
+        if (name === 'app:closeRequest' && pendingClose) {
+            pendingClose = false;
+            queueMicrotask(() => {
+                if (set.has(cb)) cb();
             });
         }
         return () => set.delete(cb);

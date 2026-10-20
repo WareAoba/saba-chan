@@ -153,6 +153,26 @@ fn error_codes_come_from_the_body_or_the_status() {
     assert_eq!(error_code(500, &Value::Null), "internal_server_error");
 }
 
+/// 콘솔 한 줄에서 값은 자기 자리만 채운다 (입력 검증). 뒤에 다른 자리가 오는 값은 한 단어여야 하고,
+/// 템플릿이 따옴표로 감싼 자리는 공백을 받되 따옴표는 받지 않는다. 마지막 자리는 남은 말을 모두 받는다
+#[test]
+fn a_console_value_fills_only_its_own_place() {
+    let err = plan_of("give", json!({ "player": "Steve extra", "item": "diamond" })).unwrap_err();
+    assert_eq!((err.code, err.field.as_deref()), ("invalid_argument", Some("player")));
+    let err = plan_of("give", json!({ "player": "Steve", "item": "diamond\tx" })).unwrap_err();
+    assert_eq!(err.field.as_deref(), Some("item"));
+    assert_eq!(plan_of("say", json!({ "message": "hello there" })), Ok(Plan::Console { line: "say hello there".into() }));
+
+    let mut meta = module();
+    let mut xp = field("addxp", "console", vec![input("player", "text", true), input("amount", "text", true)]);
+    xp.console_template = Some("addxp \"{player}\" fitness={amount}".into());
+    meta.commands.as_mut().unwrap().fields.push(xp);
+    let named = |args: Value| plan(&meta, &Request::parse("addxp", &args));
+    assert_eq!(named(json!({ "player": "Mr Smith", "amount": "5" })), Ok(Plan::Console { line: "addxp \"Mr Smith\" fitness=5".into() }));
+    let err = named(json!({ "player": "Mr\" x \"", "amount": "5" })).unwrap_err();
+    assert_eq!(err.field.as_deref(), Some("player"));
+}
+
 #[test]
 fn a_line_break_inside_an_argument_cannot_add_a_second_console_command() {
     for value in ["hi\nop attacker", "hi\rop attacker", "hi\0op attacker"] {

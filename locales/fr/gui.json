@@ -358,6 +358,9 @@
     "start_timeout_toast": "⚠️ Démarrage du serveur {{name}}... (peut prendre un certain temps)",
     "stop_confirm_title": "Arrêter le serveur",
     "stop_confirm_message": "Êtes-vous sûr de vouloir arrêter le serveur {{name}}?",
+    "force_stop_title": "Arrêter sans sauvegarder ?",
+    "force_stop_message": "Impossible (pas de console) de demander à {{name}} de sauvegarder et de s'arrêter. Forcer l'arrêt peut faire perdre la progression depuis la dernière sauvegarde.",
+    "force_stop_confirm": "Arrêter sans sauvegarder",
     "stop_failed_toast": "❌ Échec de l'arrêt du serveur: {{error}}",
     "stopping_toast": "⏳ Arrêt du serveur {{name}}...",
     "stop_completed_toast": "✅ Serveur {{name}} arrêté!",
@@ -436,6 +439,10 @@
   "errors": {
     "start_cancelled": "Le serveur a été arrêté pendant son démarrage ; il n'a donc pas été lancé.",
     "console_input_full": "Le serveur traite encore les saisies précédentes. Réessayez dans un instant.",
+    "rcon_unreachable": "Impossible de se connecter au RCON du serveur. Vérifiez que le serveur a fini de démarrer.",
+    "rcon_auth_failed": "Le serveur a refusé le mot de passe RCON. Essayez de redémarrer le serveur.",
+    "rcon_timeout": "Le serveur n'a pas répondu à temps à la commande RCON.",
+    "rcon_failed": "Le serveur a envoyé une réponse RCON illisible.",
     "restart_cancelled": "Le serveur a été arrêté, démarré ou supprimé ailleurs pendant le redémarrage, il n'a donc pas été redémarré.",
     "not_supported": "Le module de ce serveur ne prend pas en charge cette fonction.",
     "executable_not_found": "Exécutable du serveur de jeux non trouvé. Veuillez vérifier le chemin dans les paramètres.",
@@ -989,6 +996,7 @@
     "restore_hint": "L'état actuel est sauvegardé au préalable.",
     "restore_stop_first": "Arrêtez le serveur avant de restaurer.",
     "restored": "Restauration effectuée. L'état précédent a aussi été sauvegardé.",
+    "restored_links_missed": "Restauration effectuée, mais {{count}} lien(s) du dossier n'ont pas pu être recréés (droits Windows, par exemple). Les chemins figurent dans le journal du daemon.",
     "err_restore_outside": "Cette sauvegarde a été créée pour un autre dossier de serveur et ne peut pas être restaurée dans le dossier actuel. Si vous avez déplacé le dossier du serveur, remettez-le à son emplacement et réessayez.",
     "err_backup_busy": "Une autre tâche est en cours pour ce serveur (sauvegarde, restauration, mise à jour…). Réessayez une fois terminée.",
     "err_schedule_changed": "La planification a été modifiée ailleurs, elle n'a donc pas été enregistrée. Rechargez-la puis refaites vos modifications.",
@@ -1347,6 +1355,13 @@
     "hint": "Laisse vide pour aucune limite. Pour les serveurs Java, mets 1 à 2 Go de plus que -Xmx. Uniquement sous Windows.",
     "placeholder": "Aucune limite",
     "restart_note": "S'applique après un redémarrage."
+  },
+  "stop_timeout": {
+    "title": "Délai d'arrêt",
+    "desc": "Après avoir demandé au serveur de sauvegarder et de s'arrêter, on attend ce délai. S'il tourne encore, il est arrêté de force. Augmentez-le pour les grands mondes.",
+    "label": "Délai d'arrêt (secondes)",
+    "hint": "De 1 à 3600 secondes. Laissez vide pour la valeur par défaut du module.",
+    "placeholder": "Valeur par défaut du module"
   },
   "loading": {
     "step_init": "Initialisation…",

@@ -43,7 +43,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | 메인 창 | `create_main_window()` `window.rs:100-148` | 라벨 `main`, 프레임 없음, 페이지 로드 뒤 표시, 배경 `#f0f0f2`. 크기는 설정 `windowBounds`(작업 영역보다 크지 않게, 최소 780×min(840, max(560, 작업 영역 높이))). 이동·크기 변경이 멈추면 500ms 디바운스로 저장한다(최대화·최소화 중 제외, `schedule_save_bounds` `:159-188`) |
 | 탐색 잠금 | `lock_navigation()` `window.rs:70-96` | 모든 창에서 앱 주소(`tauri://localhost`, `tauri.localhost`, 개발 서버) 밖으로의 이동과 새 창을 막고, http(s) 링크만 바깥 브라우저로 연다 |
 | 트레이 | `tray.rs:23-172` (메뉴 `49-149`) | 창 열기, 터미널 열기(Windows만, `POST /api/clients/launch {kind:'cli', view:'shell'}`), 데몬 상태, 데몬 종료/시작, "인터페이스만 종료", "완전히 종료". "데몬 종료"는 `stop_daemon()`(API 우선), "데몬 시작"은 API가 아니라 `start_daemon()`을 직접 부른다. 왼쪽 클릭·더블클릭은 창 표시, 아이콘은 테마별 favicon |
-| 종료 플로우 | `window.rs:139-142`, `app_close_response` `native.rs:63-78`, `lifecycle.rs:630-712` | 메인 창 닫기를 막고 `app:closeRequest`를 보낸 뒤 `exit-interface`/`quit`/`cancel`을 받는다. `exit-interface`는 unregister(shutdown=false) 뒤 데몬을 두고 끝낸다. `quit`은 unregister(shutdown=true) → `stop_daemon()`. 이 경로를 거치지 않고 끝나면 `on_exit`가 자기가 띄운 데몬만 정리한다(인터페이스만 종료한 경우 제외). 종료 요청(`app.exit`)이 웹뷰가 죽어 닿지 않으면 1초 뒤 `on_exit`를 직접 부르고 프로세스를 끝낸다(`exit_app`) |
+| 종료 플로우 | `window.rs:139-142`, `app_close_response` `native.rs:63-78`, `lifecycle.rs:630-712` | 메인 창 닫기를 막고 `app:closeRequest`를 보낸 뒤 `ack`(받음 확인)와 `exit-interface`/`quit`/`cancel`을 받는다. 받음 확인도 없이 5초가 지난 뒤 OS 닫기(Alt+F4·작업 표시줄)가 다시 오면 렌더러가 멈춘 것으로 보고 `exit-interface`처럼 끝낸다(`window.rs` `renderer_unresponsive`). 1분보다 오래된 물음이나 `app_ready` 전의 물음은 렌더러가 못 받은 것으로 보고 다시 묻는다. 브리지는 구독자가 없을 때 온 `app:closeRequest`를 첫 구독자에게 한 번 넘긴다(`events.js`). 창 안의 X는 렌더러 버튼이라 멈추면 눌리지 않으며, 그때는 트레이의 `quit_interface`·`quit_all`이 렌더러 없이 끝낸다. `exit-interface`는 unregister(shutdown=false) 뒤 데몬을 두고 끝낸다. `quit`은 unregister(shutdown=true) → `stop_daemon()`. 이 경로를 거치지 않고 끝나면 `on_exit`가 자기가 띄운 데몬만 정리한다(인터페이스만 종료한 경우 제외). 종료 요청(`app.exit`)이 웹뷰가 죽어 닿지 않으면 1초 뒤 `on_exit`를 직접 부르고 프로세스를 끝낸다(`exit_app`) |
 | 단일 인스턴스 | `lib.rs` `tauri_plugin_single_instance` | GUI는 한 번에 하나만 뜬다. 두 번째 실행은 창을 새로 만들지 않고 떠 있는 메인 창을 앞으로 가져온 뒤 끝난다. 여러 GUI가 한 데몬을 함께 쓰다 한쪽의 "완전히 종료"가 다른 쪽의 데몬을 꺼뜨리던 것을 막는다 |
 | 로그 | `logging.rs:10-45` | `<data>/logs/saba-chan-<ts>.log`와 stderr에 같이 쓴다. 패닉도 남긴다 |
 | 셸 i18n | `i18n.rs:1-62` | 트레이·알림·상태 문구는 `<installRoot>/locales/<lang>/common.json`을 먼저 읽고, 없거나 깨졌으면 exe에 `include_str!`로 넣은 10개 언어 사본을 쓴다. 없는 키는 영어 → 키 그대로. 언어를 바꾸면 다시 읽고 트레이를 갱신한다(`language_set` `native.rs:248-257`) |
@@ -58,7 +58,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 |---|---|---|
 | serverList (90) | GET /api/servers?notices_after=<본 마지막 알림 id> (port_conflict_stops가 있으면 `notify` 명령으로 OS 알림. 받은 가장 큰 `id`를 기억해 다음 조회에 실어 같은 알림을 두 번 띄우지 않는다, L50). 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs:185-187`, `handlers/server.rs:87`) | ✓ 643 |
 | instanceStart (119) | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다) | ✓ 646 |
-| serverStop (139) | POST /api/server/:name/stop | ✓ 650 |
+| serverStop (139) | POST /api/server/:name/stop (70분 timeout, L74) | ✓ 650 |
 | serverStatus (160) | GET /api/server/:name/status | ✓ 644 |
 | moduleList (181) | GET /api/modules | ✓ 651 |
 | moduleRefresh (192) | POST /api/modules/refresh | ✓ 652 |
@@ -83,7 +83,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceLaunchPreview (452) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
 | instanceResetServer (457) | POST /api/instance/:id/server/reset | ✓ 686 |
 | executeCommand (465) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
-| instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(restart는 150초 timeout), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 (미사용) |
+| instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(둘 다 70분 timeout: 데몬이 stop_timeout까지 기다린 뒤 답한다, L74), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 (미사용) |
 | instanceValidate / instanceDiagnose | POST /api/instance/:id/validate · /diagnose `{}` (60초 timeout). 모듈 결과 `{success, issues:[{code, severity, message, solution}]}`를 그대로 돌려준다(서버 상세 `ServerCheck`) | ✓ 717, 724 |
 | instanceReadLiveSettings (500) | GET /api/instance/:id/settings/live | ✓ 685 (미사용) |
 | runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 (미사용) |
@@ -150,7 +150,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | launchUninstaller (1003) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
 | getAppVersion (1004) | Rust `app_get_version` (패키지 버전) | n/a |
 | getComponentInfo (1005) | GET /api/system/components (실패하면 `app_get_version`만) | ✓ 714 |
-| onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). 돌려주는 함수로 그 구독만 해제 | n/a |
+| onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). App은 받자마자 `ack`를 보낸다. 돌려주는 함수로 그 구독만 해제 | n/a |
 | onStatusUpdate (1026) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.js:137-177`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
 | daemonStatus (1030) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
 | daemonRestart (1031) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
@@ -227,7 +227,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 > 이 절은 CLI 리메이크(PR #6, 브랜치 `claude/cli-remake-b1wszk`) 기준이다. 예전 TUI(`tui/`, `process.rs`, `config.rs`, `gui_config.rs`, `cli_config.rs`, `module_registry.rs`)는 이 리메이크에서 모두 지워졌다.
 
 ### 3.1 쓰는 방법 세 가지
-- **한 번 실행하는 하위 명령**: clap 기반(`cli.rs`). `status`, `start|stop|restart <서버>`, `console`, `run <서버> <게임 명령>`, `server …`(list, info, add, remove, commands, send, settings, set, properties, rest, update, history, validate, diagnose, agree, reset, rename, reorder 등), `daemon …`, `module …`, `extension …`, `bot …`, `backup …`, `schedule …`, `chatbot …`, `update …`, `config …`, `chat <문장>`, `monitor [--watch] [--interval 초]`, `version`, `shell`, `completions <셸>` (`cli.rs:41-138`). 콘솔에 한 줄을 그대로 보내는 명령은 `server send`다(`rcon` 하위 명령은 없다). `GET /api/servers`의 `port_conflict_stops`(읽으면 비워지는 알림)는 `status`만 비우고 보여 준다. 서버 목록·상태 대기 같은 나머지 호출은 `?notices=keep`으로 남겨 둔다(`client.rs` `servers`). `schedule`의 추가·고치기·지우기·켜기·끄기·보관 수는 읽을 때 받은 `revision`을 PUT에 실어, 그사이 다른 곳에서 바뀐 일정이면 409 `schedule_changed` 안내로 끝난다(`schedule clear`만 싣지 않는다, `cmd/schedule.rs` `save_body`).
+- **한 번 실행하는 하위 명령**: clap 기반(`cli.rs`). `status`, `start|stop|restart <서버>`, `console`, `run <서버> <게임 명령>`, `server …`(list, info, add, remove, commands, send, settings, set, properties, rest, update, history, validate, diagnose, agree, reset, rename, reorder 등), `daemon …`, `module …`, `extension …`, `bot …`, `backup …`, `schedule …`, `chatbot …`, `update …`, `config …`, `chat <문장>`, `monitor [--watch] [--interval 초]`, `version`, `shell`, `completions <셸>` (`cli.rs:41-138`). 콘솔에 한 줄을 그대로 보내는 명령은 `server send`다(`rcon` 하위 명령은 없다). `GET /api/servers`의 `port_conflict_stops`(데몬에 10분 남는 알림)는 `status`만 `?notices_after=<이 실행에서 본 마지막 id>`로 받아 보여 준다. 새 실행은 0부터라 남은 알림을 언제 일인지와 함께 다시 보이고, 셸 안에서 다시 부르면 본 것 뒤만 보인다(L50). 서버 목록·상태 대기 같은 나머지 호출은 `?notices=keep`이다(`client.rs` `servers`). `schedule`의 추가·고치기·지우기·켜기·끄기·보관 수는 읽을 때 받은 `revision`을 PUT에 실어, 그사이 다른 곳에서 바뀐 일정이면 409 `schedule_changed` 안내로 끝난다(`schedule clear`만 싣지 않는다, `cmd/schedule.rs` `save_body`).
 - **대화형 셸**: 인자 없이 터미널에서 실행하면 열린다(`main.rs:130`, `shell.rs`). 한 줄이 명령 하나이고 Tab으로 명령·서버 이름·게임 명령을 채운다(게임 명령은 `catalog`에서, `shell.rs:109`). 첫 단어가 명령이 아니면 디스코드와 같은 채팅 처리기로 보낸다(`shell.rs:1-5, 187`). 셸을 닫아도 데몬과 서버는 계속 돈다.
 - **스크립트용 `--json`**: stdout에는 JSON 문서 하나만 나가고, 안내와 진행 표시는 stderr로 간다(`output.rs:1-6`). 종료 코드: 0 성공, 1 실패, 2 사용법·모호함, 3 데몬 응답 없음, 4 대상 없음, 130 취소(`error.rs`의 `EXIT_CODES`). `help --json [명령…]`은 명령 트리(경로·별칭·설명), 인자(이름·플래그·위치·필수·값·선택지), 전역 옵션, 종료 코드 표를 JSON 하나로 낸다(`cli::schema`). 데몬 없이 되고, 별칭으로 찾아도 경로는 본 이름이다. 맨 위 `help`는 이 명령이라 clap의 하위 `help`는 꺼지고, `server help start`처럼 하위 자리에 온 `help`는 `cli::parse`가 맨 앞으로 옮겨 읽는다. 사람용 출력은 모두 `output::write_line` 한 창구(`say!`·`tell!`)를 지난다. 명령 코드가 `println!`으로 직접 찍지 않는 것은 시험이 지킨다(`no_command_talks_to_the_terminal_directly`). 진행 표시(`progress::Progress`)와 질문(`prompt::Asker`)도 같은 방식으로 바꿔 끼울 수 있고, `indicatif`·`dialoguer`는 각 파일 밖에서 쓰지 않는다. TUI가 이 창구들을 바꿔 끼워 명령 결과는 패널에, 진행은 작업 줄에, 질문은 대화상자에 그린다. `--json-stream`은 `--json`을 포함하고, 진행 표시를 막대 대신 stdout에 `{type:"progress", id, kind?, message?, position?, length?, done?}` 한 줄씩 내며(같은 막대의 위치는 250ms 간격, `progress::stream_lines`), `events`·`audit -f`의 줄에는 `type:"event"`가 붙고, 마지막 줄에 `{type:"result", data}`로 `--json`과 같은 문서(실패면 `{ok:false, error, error_code}`)를 싣는다. 전역 옵션은 `--json`, `--json-stream`, `--yes`, `--lang`, `--port`, `--no-color`.
 
@@ -242,7 +242,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - 실행 파일 이름(MK7): `module install-files --executable FILE`(예전 `--jar`는 별칭)은 `POST /api/module/:name/install`에 `server_executable`로 보낸다. 시작 실패의 `action_required`(`client.rs` `check`)는 `error_code`가 없을 때 오류 코드가 되고, `executable_not_found`(옛 `server_jar_not_found`)에는 다시 설치하라는 안내가 붙는다(`error.rs` `api_hint`).
 - 사람이 직접 하는 동의(약관 `server agree`·`server add`, 격리 없이 돌리기·익스텐션 GUI `sandbox allow`)는 `prompt.rs` `agreed`·`consent`로만 받는다. `--yes`·`--json`은 동의가 아니고, 물을 수 없으면 터미널에서 하라는 오류다. 묻지 않고 동의하는 길은 읽은 약관 id를 대는 `server add --accept ID`뿐이다.
 - 이름으로 대상 찾기(`resolve.rs`): 정확히 같음 → 대소문자 무시 → 앞부분 → 포함 순서로 찾는다. 지우기·초기화(`server remove`·`server reset`·`module remove`·`extension remove`)와 권한 대상 멤버(`perm`)는 앞의 두 단계만 쓴다(`find_exact`). 앞부분·포함으로만 맞는 이름은 고르지 않고 제안으로 보인다. 이 명령들은 이름 없이 물을 수 없으면(`--json`, 파이프) 대상이 하나뿐이어도 고르지 않고 이름을 대라고 한다.
-- 일부만 된 결과: 데몬이 2xx에 `ok`/`success: false`와 결과만 싣는 응답(`update download`·`update apply`의 `errors`, `chatbot forget`의 `sync`, `server set`·`server add --set`의 `synced: false`)은 `client::partial`로 본문을 받아 된 것과 실패한 것을 보이고 `partial`(종료 코드 1)로 끝낸다. 구성요소를 고르지 않은 받기가 `errors` 없이 `{ok:false, error}`로 실패해도 실패로 끝낸다. 적용에 실패한 구성요소가 있어도 코어 업데이트가 있으면 GUI처럼 경고하고 업데이터를 띄우며, 종료 코드 1로 실패를 남긴다. `monitor --watch --json`은 표본마다 JSON 한 줄을 낸다(`events`와 같다).
+- 일부만 된 결과: 데몬이 2xx에 `ok`/`success: false`와 결과만 싣는 응답(`update download`·`update apply`의 `errors`, `chatbot forget`의 `sync`, `server set`·`server add --set`의 `synced: false`)은 `client::partial`로 본문을 받아 된 것과 실패한 것을 보이고 `partial`(종료 코드 1)로 끝낸다. 구성요소를 고르지 않은 받기가 `errors` 없이 `{ok:false, error}`로 실패해도 실패로 끝낸다. 적용에 실패한 구성요소가 있어도 코어 업데이트가 있으면 GUI처럼 경고하고 업데이터를 띄우며, 종료 코드 1로 실패를 남긴다. 업데이터를 띄운 뒤에는 `GET /api/updates/last-result`가 적용 전과 다른 결과(시각)를 줄 때까지 2초마다 묻고(최대 15분, 그 사이 데몬이 꺼져 있는 오류는 기다림의 일부다) 결과와 패치노트를 보인 뒤 끝낸다. 결과가 실패이거나 15분이 지나면 종료 코드 1이다(`cmd/update.rs` `wait_for_result`, 06 §9). `monitor --watch --json`은 표본마다 JSON 한 줄을 낸다(`events`와 같다).
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
 - 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`.
 
@@ -280,7 +280,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | 단계 | 요청 | 내용 |
 |---|---|---|
 | 버전 확인 | `GET /info` | 릴레이가 요구하는 최소 에이전트 버전 확인 |
-| 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그를 남긴다(`relay_agent.rs:281-327`). 잠자기는 길드 설정(I2)이라 폴링은 쉬지 않는다. 게임 서버 비밀번호(`rcon_password`, `rest_password`)는 메타데이터에서 뺀다(273-276) |
+| 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그를 남긴다(`relay_agent.rs:281-327`). 지금 릴레이는 경고 대신 426 `AGENT_TOO_OLD`로 거부하고(05 §3 `/heartbeat`), 데몬은 이를 하트비트 오류로 남긴다. 잠자기는 길드 설정(I2)이라 폴링은 쉬지 않는다. 게임 서버 비밀번호(`rcon_password`, `rest_password`)는 메타데이터에서 뺀다(273-276) |
 | 명령 받기 | `GET /poll` (롱폴링) | 디스코드에서 온 명령. 현재 `payload.action`은 `raw_command` 하나다 |
 | 결과 보내기 | `POST /result/:id` | 채팅 처리기의 응답 `{success, data:{text}}` (`:505-567`) |
 

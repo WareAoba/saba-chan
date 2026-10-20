@@ -358,6 +358,9 @@
     "start_timeout_toast": "⚠️ Starting {{name}} server... (may take some time)",
     "stop_confirm_title": "Stop Server",
     "stop_confirm_message": "Are you sure you want to stop {{name}} server?",
+    "force_stop_title": "Stop without saving?",
+    "force_stop_message": "There is no way (no console) to ask {{name}} to save and exit. Forcing it off may lose progress since the last save.",
+    "force_stop_confirm": "Stop without saving",
     "stop_failed_toast": "❌ Server stop failed: {{error}}",
     "stopping_toast": "⏳ Stopping {{name}} server...",
     "stop_completed_toast": "✅ {{name}} server stopped!",
@@ -436,6 +439,10 @@
   "errors": {
     "start_cancelled": "The server was stopped while it was starting, so it was not started.",
     "console_input_full": "The server is still processing earlier input. Try again in a moment.",
+    "rcon_unreachable": "Couldn't connect to the server's RCON. Check that the server has finished starting.",
+    "rcon_auth_failed": "The server rejected the RCON password. Try restarting the server.",
+    "rcon_timeout": "The server didn't answer the RCON command in time.",
+    "rcon_failed": "The server sent an RCON reply that couldn't be read.",
     "restart_cancelled": "The server was stopped, started or removed elsewhere during the restart, so it was not restarted.",
     "not_supported": "This server's module doesn't support this feature.",
     "executable_not_found": "Game server executable not found. Please check the path in settings.",
@@ -989,6 +996,7 @@
     "restore_hint": "The current state is backed up first.",
     "restore_stop_first": "Stop the server before restoring.",
     "restored": "Restored. The state just before was backed up too.",
+    "restored_links_missed": "Restored, but {{count}} link(s) inside the folder couldn't be recreated (Windows permissions, for example). The daemon log lists the paths.",
     "err_restore_outside": "This backup was made for a different server folder, so it can't be restored into the current one. If you moved the server folder, move it back and try again.",
     "err_backup_busy": "Another task (backup, restore, update, ...) is running for this server. Try again when it finishes.",
     "err_schedule_changed": "The schedule was changed elsewhere, so it wasn't saved. Reload it and make your changes again.",
@@ -1347,6 +1355,13 @@
     "hint": "Leave empty for no limit. For Java servers, set it 1–2 GB above -Xmx. Applies on Windows only.",
     "placeholder": "No limit",
     "restart_note": "Takes effect after a restart."
+  },
+  "stop_timeout": {
+    "title": "Stop wait time",
+    "desc": "After asking the server to save and shut down, Saba-chan waits this long. If it still hasn't stopped, it is forced off. Raise it for large worlds.",
+    "label": "Stop wait (seconds)",
+    "hint": "1 to 3600 seconds. Leave empty to use the module default.",
+    "placeholder": "Module default"
   },
   "loading": {
     "step_init": "Initializing…",
