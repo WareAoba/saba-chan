@@ -214,6 +214,14 @@ export function DiscordPage({
     useEffect(() => {
         if (discordCloudHostId && relayConnected) loadNodes();
     }, [discordCloudHostId, relayConnected, loadNodes]);
+    // 연결 요청을 수락하는 등 다른 곳에서 길드가 늘면 다시 읽는다
+    useEffect(
+        () =>
+            useDiscordStore.subscribe((s, prev) => {
+                if (s.cloudNodesStale !== prev.cloudNodesStale) loadNodes();
+            }),
+        [loadNodes],
+    );
 
     const loadMembers = useCallback(
         async (guildId) => {

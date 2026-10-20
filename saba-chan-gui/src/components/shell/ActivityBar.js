@@ -15,7 +15,6 @@ export const ACTIVITY_POLL_MS = 3000;
 export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
 const CONSOLE_MAX = 2000;
-const RESTART_CHECK_EVERY = 5; // 새 줄 없는 폴링이 이만큼 이어지면 데몬 재시작을 확인한다
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon'];
 
 /** 몇 초 전·몇 분 전 (현재 언어로) */
@@ -50,29 +49,21 @@ function DaemonConsole() {
         let alive = true;
         let timer;
         let next; // 처음엔 최근 것부터, 그 뒤로는 받은 다음 id부터 (since는 그 id를 포함한다)
-        let idle = 0; // 새 줄 없이 지난 폴링 수
+        let epoch; // 데몬 로그 버퍼 세대. 데몬이 다시 켜지면 id가 1부터라 바뀌면 처음부터 다시 받는다 (L55)
         const poll = async () => {
             try {
                 let res = await window.api.daemonConsole(next === undefined ? {} : { since: next });
-                let got = Array.isArray(res?.lines) ? res.lines : null;
-                // 데몬이 다시 켜지면 id가 1부터 다시 시작해 since 뒤로는 영영 비어 있다:
-                // 조용할 때 가끔 최신 1줄을 보고, id가 거꾸로 갔으면 처음부터 다시 받는다
-                if (got && !got.length && next !== undefined && ++idle >= RESTART_CHECK_EVERY) {
-                    idle = 0;
-                    const latest = await window.api.daemonConsole({ count: 1 });
-                    const top = latest?.lines?.[latest.lines.length - 1];
-                    if (top && top.id < next - 1) {
-                        next = undefined;
-                        setLines([]);
-                        res = await window.api.daemonConsole({});
-                        got = Array.isArray(res?.lines) ? res.lines : null;
-                    }
+                if (next !== undefined && res?.epoch !== undefined && res.epoch !== epoch) {
+                    next = undefined;
+                    setLines([]);
+                    res = await window.api.daemonConsole({});
                 }
+                if (res?.epoch !== undefined) epoch = res.epoch;
+                const got = Array.isArray(res?.lines) ? res.lines : null;
                 if (!alive) return;
                 if (!got) throw new Error(res?.error || tRef.current('activity.console_failed'));
                 setError(null);
                 if (got.length) {
-                    idle = 0;
                     next = got[got.length - 1].id + 1;
                     setLines((prev) => {
                         const all = prev.concat(got);

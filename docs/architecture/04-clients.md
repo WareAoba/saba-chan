@@ -94,7 +94,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | managedConsole (634) | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 679 |
 | managedStdin (642) | POST /api/instance/:id/stdin | ✓ 680 |
 | consolePopout / consolePopoutList (651-652) | Rust `console_popout` / `console_popout_list` (열린 팝아웃 창의 instanceId 배열). daemon 호출 없음 | n/a |
-| daemonConsole (653) | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count}` 그대로 | ✓ 752 |
+| daemonConsole (653) | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count, epoch}` 그대로. 활동 줄의 데몬 콘솔(`ActivityBar.js` `DaemonConsole`)은 `epoch`가 바뀌면 받은 줄을 비우고 처음부터 다시 받는다(L55) | ✓ 752 |
 | consoleFocusPopout / Popin / ToggleAlwaysOnTop (658-661) | Rust `console_focus_popout` / `console_popin` / `console_toggle_always_on_top` | n/a |
 | updaterCheck (676) | POST /api/updates/check | ✓ updates.rs:109 |
 | updaterStatus (696) | GET /api/updates/status | ✓ 100 |
