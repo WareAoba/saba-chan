@@ -67,4 +67,13 @@ describe('모듈 설치·제거가 겹쳐 거절될 때', () => {
         expect(document.querySelector('.ss-status-err')).toBeNull();
         expect(document.querySelector('.ss-icon-btn.accent')).not.toBeNull();
     });
+
+    it('다른 이유로 제거하지 못하면 데몬 원문 대신 번역한 이유를 알린다', async () => {
+        window.api.moduleRemove.mockResolvedValue({ ok: false, error: 'Permission denied (os error 13)' });
+        await openModules();
+        await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.danger')));
+        await act(async () => fireEvent.click(document.querySelector('.question-confirm')));
+        const expected = i18n.t('gui:saba_storage.remove_failed', { error: i18n.t('gui:errors.permission_denied') });
+        await waitFor(() => expect(window.showToast).toHaveBeenCalledWith(expected, 'error', 5000, undefined));
+    });
 });

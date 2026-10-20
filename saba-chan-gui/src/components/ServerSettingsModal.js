@@ -7,6 +7,9 @@ import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 
+// 데몬이 받는 설정 type (module_loader SETTING_TYPES). 밖의 값은 글자 칸으로 그린다
+const FIELD_TYPES = ['text', 'password', 'number', 'file', 'select', 'boolean'];
+
 /**
  * SettingsField — Renders a single settings field based on field_type.
  * validationError가 있으면 필드 아래에 빨간 경고를 표시합니다.
@@ -19,13 +22,14 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
     const fieldDesc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
     const hasError = !!validationError;
     const errorClass = hasError ? 'setting-input-error' : '';
+    const fieldType = FIELD_TYPES.includes(field.field_type) ? field.field_type : 'text';
 
     return (
         <div className="settings-field">
             <label htmlFor={inputId}>
                 {fieldLabel} {field.required ? '*' : ''}
             </label>
-            {field.field_type === 'text' && (
+            {fieldType === 'text' && (
                 <input
                     id={inputId}
                     type="text"
@@ -35,7 +39,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'password' && (
+            {fieldType === 'password' && (
                 <input
                     id={inputId}
                     type="password"
@@ -45,7 +49,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'number' && (
+            {fieldType === 'number' && (
                 <input
                     id={inputId}
                     type="number"
@@ -58,7 +62,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'file' && (
+            {fieldType === 'file' && (
                 <input
                     id={inputId}
                     type="text"
@@ -68,7 +72,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'select' && (
+            {fieldType === 'select' && (
                 <CustomDropdown
                     id={inputId}
                     value={String(value || '')}
@@ -77,7 +81,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     options={(field.options || []).map((opt) => ({ value: opt, label: opt }))}
                 />
             )}
-            {field.field_type === 'boolean' && (
+            {fieldType === 'boolean' && (
                 <div className="toggle-row">
                     <SabaToggle
                         id={inputId}
