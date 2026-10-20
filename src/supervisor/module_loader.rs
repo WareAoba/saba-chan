@@ -1286,11 +1286,19 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 /// 데몬이 읽는 `[extensions.<이름>]` 표. 0.1.8 로더가 내용을 검사하지 않는 자리라 새 키를 여기 둔다.
 /// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
 pub const DAEMON_TABLE: &str = "saba-core";
+/// 이 데몬이 읽는 `[extensions.saba-core]` 키
+const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout"];
 
 /// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`을 읽는다 (R39). 틀린 값은 그 값만 빼고 경고로 남긴다
 fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
     let mut warnings = Vec::new();
+    // 이 표는 버전 사이를 잇는 자리라, 더 새 데몬의 키가 있어도 모듈을 거부하지 않는다
+    if let Some(obj) = table.as_object() {
+        for key in obj.keys().filter(|k| !DAEMON_TABLE_KEYS.contains(&k.as_str())) {
+            warnings.push(format!("extensions.{}.{} is not known to this saba-chan; ignored", DAEMON_TABLE, key));
+        }
+    }
     match table.get("ready_patterns") {
         None => {}
         Some(serde_json::Value::Array(items)) => {
@@ -2279,7 +2287,29 @@ entry = "lifecycle.py"
         assert_eq!(zero.ready_timeout, None);
         assert!(zero.warnings.iter().any(|w| w.contains("ready_timeout")));
         assert_eq!(parse_module_toml(V1).unwrap().ready_patterns, Vec::<String>::new());
+        let later = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 30\nfrom_a_later_core = true\n")).unwrap();
+        assert_eq!(later.ready_timeout, Some(30), "a key from a newer daemon does not stop the module from loading");
+        assert!(later.warnings.iter().any(|w| w.contains("from_a_later_core")), "{:?}", later.warnings);
         assert!(!crate::extension::is_valid_extension_id(DAEMON_TABLE), "the daemon table name is reserved");
+    }
+
+    #[test]
+    fn the_minecraft_ready_line_matches_what_the_console_holds() {
+        // minecraft/module.toml 표 원문. 콘솔 줄은 게임 stdout 그대로다(러너 머리 `[날짜] [STDOUT/INFO]`는 파일에만 붙는다)
+        let table = r#"
+[extensions.saba-core]
+ready_patterns = ['\]: Done \(\d+(\.\d+)?s\)! For help, type "help"']
+player_join_patterns = [
+    '\]: (?P<name>[A-Za-z0-9_]{1,16}) joined the game\s*$',
+    '\]: (?P<name>[A-Za-z0-9_]{1,16}) \(formerly known as [A-Za-z0-9_]{1,16}\) joined the game\s*$',
+]
+player_leave_patterns = ['\]: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
+"#;
+        let meta = parse_module_toml(&format!("{V1}{table}")).unwrap();
+        let ready = regex::Regex::new(&meta.ready_patterns[0]).unwrap();
+        assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO]: Done (0.267s)! For help, type "help""#));
+        assert!(!ready.is_match(r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#), "a chat line is not the server");
+        assert!(!ready.is_match("[20:06:58] [Server thread/INFO]: Preparing level \"world\""));
     }
 
     #[test]
