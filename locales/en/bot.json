@@ -212,7 +212,7 @@
         "title": "Backups"
       },
       "create": {
-        "title": "Create backup"
+        "title": "Backup"
       },
       "restore": {
         "title": "Restore backup",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Discord settings",
-          "description": "Language, sleep and music"
-        },
         "set": {
           "title": "Change Discord settings",
           "description": "Language, sleep and music"

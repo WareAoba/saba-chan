@@ -212,7 +212,7 @@
         "title": "백업 목록"
       },
       "create": {
-        "title": "백업 만들기"
+        "title": "백업"
       },
       "restore": {
         "title": "백업 복원",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "디스코드 설정 보기",
-          "description": "언어·잠자기·음악 기능"
-        },
         "set": {
           "title": "디스코드 설정 바꾸기",
           "description": "언어·잠자기·음악 기능"

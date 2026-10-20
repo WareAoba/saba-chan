@@ -212,7 +212,7 @@
         "title": "バックアップ一覧"
       },
       "create": {
-        "title": "バックアップを作成"
+        "title": "バックアップ"
       },
       "restore": {
         "title": "バックアップを復元",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Discord設定を見る",
-          "description": "言語・スリープ・音楽機能"
-        },
         "set": {
           "title": "Discord設定を変更",
           "description": "言語・スリープ・音楽機能"
