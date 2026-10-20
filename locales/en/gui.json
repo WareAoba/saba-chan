@@ -436,7 +436,7 @@
   "errors": {
     "start_cancelled": "The server was stopped while it was starting, so it was not started.",
     "console_input_full": "The server is still processing earlier input. Try again in a moment.",
-    "restart_cancelled": "The server was started or removed elsewhere while waiting, so it was not restarted.",
+    "restart_cancelled": "The server was stopped, started or removed elsewhere during the restart, so it was not restarted.",
     "not_supported": "This server's module doesn't support this feature.",
     "executable_not_found": "Game server executable not found. Please check the path in settings.",
     "file_not_found": "File or folder not found. Please check the path.",

@@ -436,7 +436,7 @@
   "errors": {
     "start_cancelled": "O servidor foi parado enquanto iniciava, então não foi iniciado.",
     "console_input_full": "O servidor ainda está processando a entrada anterior. Tente novamente em instantes.",
-    "restart_cancelled": "O servidor foi iniciado ou removido em outro lugar durante a espera, então não foi reiniciado.",
+    "restart_cancelled": "O servidor foi parado, iniciado ou removido em outro lugar durante a reinicialização, então não foi reiniciado.",
     "not_supported": "O módulo deste servidor não oferece suporte a este recurso.",
     "executable_not_found": "Executável do servidor de jogos não encontrado. Verifique o caminho nas configurações.",
     "file_not_found": "Arquivo ou pasta não encontrada. Verifique o caminho.",
