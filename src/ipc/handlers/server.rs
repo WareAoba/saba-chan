@@ -26,19 +26,34 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
 pub struct ListServersQuery {
     /// `keep`이면 포트 충돌 강제 정지 알림을 보여 주기만 하고 비우지 않는다 (알림을 사람에게 보이지 않는 조회용)
     pub notices: Option<String>,
+    /// 이 번호 뒤의 포트 충돌 강제 정지 알림만 받는다. 읽어도 다른 클라이언트 몫을 지우지 않는다 (L50)
+    pub notices_after: Option<u64>,
 }
 
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반). 클라이언트(GUI·CLI)가 부르며, 포트 충돌 강제 정지 알림을 읽어 비운다
 pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListServersQuery>) -> axum::response::Response {
-    server_list(&state, q.notices.as_deref() != Some("keep")).await
+    let notices = match (q.notices_after, q.notices.as_deref()) {
+        (Some(after), _) => Notices::After(after),
+        (None, Some("keep")) => Notices::After(0),
+        (None, _) => Notices::Legacy,
+    };
+    server_list(&state, notices).await
+}
+
+/// 목록에 실을 포트 충돌 강제 정지 알림
+enum Notices {
+    /// 번호가 이것보다 큰 알림 모두 (본 것으로 적지 않는다)
+    After(u64),
+    /// 매개변수 없는 옛 클라이언트: 이 방식으로 아직 보이지 않은 것만
+    Legacy,
 }
 
 /// 데몬 안에서 부르는 서버 목록 (릴레이 하트비트·채팅). 강제 정지 알림은 클라이언트 몫이라 비우지 않는다
 pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Response {
-    server_list(state, false).await
+    server_list(state, Notices::After(0)).await
 }
 
-async fn server_list(state: &IPCServer, take_notices: bool) -> axum::response::Response {
+async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Response {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
     struct InstanceSnapshot {
@@ -293,13 +308,12 @@ async fn server_list(state: &IPCServer, take_notices: bool) -> axum::response::R
         }
     }
 
-    // 포트 충돌 강제 정지 이벤트 (짧은 read lock). 클라이언트 요청만 비운다
+    // 포트 충돌 강제 정지 이벤트 (짧은 read lock). 옛 클라이언트 요청만 본 것으로 적는다
     let port_conflict_stops = {
         let supervisor = state.supervisor.read().await;
-        if take_notices {
-            supervisor.drain_port_conflict_stops()
-        } else {
-            supervisor.port_conflict_stops.lock().map(|e| e.clone()).unwrap_or_default()
+        match notices {
+            Notices::After(after) => supervisor.port_conflict_stops_after(after),
+            Notices::Legacy => supervisor.drain_port_conflict_stops(),
         }
     };
 
@@ -1575,27 +1589,74 @@ mod tests {
             tmp.path().join("instances").to_str().unwrap(),
         );
         sup.initialize().await.unwrap();
-        sup.port_conflict_stops.lock().unwrap().push(crate::supervisor::PortConflictStopEvent {
+        sup.record_port_conflict_stops([crate::supervisor::PortConflictStopEvent {
+            id: 0,
             stopped_name: "b".into(),
             stopped_id: "b-id".into(),
             existing_name: "a".into(),
             existing_id: "a-id".into(),
             port: 25565,
-            timestamp_ms: 1,
-        });
+            timestamp_ms: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+        }]);
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let stops = |body: Value| body["port_conflict_stops"].as_array().map(Vec::len).unwrap_or(0);
 
         let internal = crate::ipc::internal::into_internal(list_servers_internal(&state).await).await.body;
         assert_eq!(stops(internal), 1, "internal callers still see it");
         // 대기 루프·목록 같은 클라이언트 조회는 `notices=keep`으로 비우지 않고 본다
-        let keep = Query(ListServersQuery { notices: Some("keep".into()) });
+        let keep = Query(ListServersQuery { notices: Some("keep".into()), ..Default::default() });
         let peek = crate::ipc::internal::into_internal(list_servers(State(state.clone()), keep).await).await.body;
         assert_eq!(stops(peek), 1, "notices=keep shows it without taking it");
         let client = crate::ipc::internal::into_internal(list_servers(State(state.clone()), Query(ListServersQuery::default())).await).await.body;
         assert_eq!(stops(client), 1, "the client gets the notice the heartbeat did not take");
         let again = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
         assert_eq!(stops(again), 0, "a client reads it once");
+    }
+
+    /// 강제 정지 알림은 한 클라이언트가 읽어도 사라지지 않는다: 알림마다 id가 있고 `notices_after`로 본 것 뒤만 받는다.
+    /// 옛 클라이언트(매개변수 없음)가 먼저 읽어도 새 클라이언트는 그대로 본다. 오래된 알림은 지운다 (L50)
+    #[tokio::test]
+    async fn every_client_sees_forced_stop_notices_by_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        let event = |port: u16, timestamp_ms: u64| crate::supervisor::PortConflictStopEvent {
+            id: 0,
+            stopped_name: "b".into(),
+            stopped_id: "b-id".into(),
+            existing_name: "a".into(),
+            existing_id: "a-id".into(),
+            port,
+            timestamp_ms,
+        };
+        sup.record_port_conflict_stops([event(1, now - crate::supervisor::PORT_CONFLICT_STOPS_TTL_MS - 1000), event(2, now)]);
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let list = |q: ListServersQuery| {
+            let state = state.clone();
+            async move {
+                let body = crate::ipc::internal::into_internal(list_servers(State(state), Query(q)).await).await.body;
+                body["port_conflict_stops"].as_array().cloned().unwrap_or_default()
+            }
+        };
+        let after = |id: u64| ListServersQuery { notices_after: Some(id), ..Default::default() };
+
+        let legacy = list(ListServersQuery::default()).await;
+        assert_eq!(legacy.len(), 1, "an old notice is gone: {legacy:?}");
+        let seen = list(after(0)).await;
+        assert_eq!(seen.len(), 1, "a client that read nothing still sees it after the legacy read");
+        let id = seen[0]["id"].as_u64().expect("notices carry an id");
+        assert!(id > 0);
+        assert!(list(after(id)).await.is_empty(), "nothing after what the client has seen");
+        assert!(list(ListServersQuery::default()).await.is_empty(), "the legacy read still shows a notice once");
+
+        state.supervisor.read().await.record_port_conflict_stops([event(3, now)]);
+        let fresh = list(after(id)).await;
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0]["port"], 3);
+        assert!(fresh[0]["id"].as_u64().unwrap() > id);
     }
 
     /// 아무 클라이언트도 읽지 않는 헤드리스 데몬에서도 알림이 끝없이 쌓이지 않는다
@@ -1606,13 +1667,15 @@ mod tests {
             tmp.path().join("modules").to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let event = |port: u16| crate::supervisor::PortConflictStopEvent {
+            id: 0,
             stopped_name: "b".into(),
             stopped_id: "b-id".into(),
             existing_name: "a".into(),
             existing_id: "a-id".into(),
             port,
-            timestamp_ms: 1,
+            timestamp_ms: now,
         };
         for port in 0..30 {
             sup.record_port_conflict_stops([event(port)]);
