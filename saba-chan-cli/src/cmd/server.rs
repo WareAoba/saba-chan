@@ -651,6 +651,16 @@ fn provision_lost(p: &Value) -> bool {
     p.get("active").and_then(Value::as_bool) != Some(true)
 }
 
+/// 항목이 사라졌는데 그 이름의 서버가 설치 중이 아닌 채로 있으면, 끝난 항목을 다른 곳(GUI 카드)에서 다음 폴링 전에 닫은 것이다.
+/// 실패한 새 설치는 닫을 때 지워지므로 남은 서버는 성공으로 본다 (L65)
+fn closed_after_finish(servers: &Value, name: &str) -> bool {
+    servers
+        .get("servers")
+        .and_then(Value::as_array)
+        .and_then(|a| a.iter().find(|x| s(x, "name") == name))
+        .is_some_and(|x| status_of(x) != "provisioning")
+}
+
 /// 설치 진행률을 끝날 때까지 보여 준다. Ctrl+C는 기다리기만 멈춘다 (설치는 계속).
 async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
     let bar = crate::progress::percent_bar(&t!("add.installing"));
@@ -658,6 +668,9 @@ async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
         let p = ctx.api.provision_progress(name).await?;
         if provision_lost(&p) {
             bar.finish_and_clear();
+            if closed_after_finish(&ctx.api.servers(true).await?, name) {
+                return Ok(json!({ "active": false, "done": true }));
+            }
             return Err(failed(t!("progress.lost", name = name)));
         }
         if let Some(pct) = p.get("percent").and_then(Value::as_u64) {
@@ -1776,6 +1789,19 @@ mod tests {
         assert!(provision_lost(&json!({})));
         assert!(!provision_lost(&json!({ "active": true, "done": false })));
         assert!(!provision_lost(&json!({ "active": true, "done": true })));
+    }
+
+    /// 끝난 설치 카드를 GUI가 다음 폴링 전에 닫으면 항목은 사라져도 서버는 설치 중이 아닌 채로 남는다 (L65)
+    #[test]
+    fn an_install_closed_elsewhere_after_it_finished_counts_as_finished() {
+        let list = json!({ "servers": [
+            { "name": "mc", "status": "stopped" },
+            { "name": "pal", "status": "provisioning" },
+        ] });
+        assert!(closed_after_finish(&list, "mc"));
+        // 아직 설치 중이거나, 이름이 바뀌었거나 지워졌으면(실패한 새 설치는 닫을 때 지워진다) 알 수 없다
+        assert!(!closed_after_finish(&list, "pal"));
+        assert!(!closed_after_finish(&list, "gone"));
     }
 
     struct Typing;
