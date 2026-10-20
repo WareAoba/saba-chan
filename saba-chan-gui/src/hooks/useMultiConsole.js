@@ -367,8 +367,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         setConsoleInput(instanceId, '');
         try {
             const result = await window.api.managedStdin(instanceId, cmd);
-            if (result?.error_code === 'ETIMEDOUT') {
-                // 데몬이 이미 보냈을 수 있다: 명령 API로 다시 보내면 두 번 실행된다
+            if (result?.error_code === 'ETIMEDOUT' || result?.error_code === 'EOTHER') {
+                // 답을 못 받았다(시간 초과·연결 끊김): 데몬이 이미 보냈을 수 있어 명령 API로 다시 보내면 두 번 실행된다 (G-C4)
                 safeShowToast(t('servers.stdin_unconfirmed'), 'warning', 5000);
                 return;
             }
