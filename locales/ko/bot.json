@@ -287,7 +287,7 @@
       "enabled": "켜기",
       "model": "모델",
       "memo": "서버 프롬프트",
-      "confirmCommands": "주의 명령 항상 묻기",
+      "confirmCommands": "서버 명령 실행 전에 항상 묻기",
       "memory": "기억",
       "webSearch": "웹 검색",
       "disabledTools": "끈 도구 묶음",
