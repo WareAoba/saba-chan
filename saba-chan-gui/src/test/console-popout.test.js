@@ -146,4 +146,20 @@ describe('useMultiConsole 콘솔 입력', () => {
         ]);
         act(() => result.current.closeConsole('f'));
     });
+    it('연결이 끊겨 답을 못 받은 콘솔 입력도 명령 API로 다시 보내지 않는다 (G-C4)', async () => {
+        window.showToast = vi.fn();
+        window.api.managedStdin = vi.fn().mockResolvedValue({ error: 'connection reset', error_code: 'EOTHER' });
+        window.api.executeCommand = vi.fn().mockResolvedValue({ success: true });
+        const { result } = renderHook(() =>
+            useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
+        );
+        act(() => result.current.openConsole('g', 'G'));
+        act(() => result.current.setConsoleInput('g', 'ban griefer'));
+        await act(async () => result.current.sendConsoleCommand('g'));
+        expect(window.api.executeCommand).not.toHaveBeenCalled();
+        expect(window.showToast.mock.calls.map((c) => c[0])).toEqual([
+            "Couldn't confirm the command was sent. Check the console before trying again.",
+        ]);
+        act(() => result.current.closeConsole('g'));
+    });
 });

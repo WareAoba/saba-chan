@@ -280,7 +280,7 @@ players = "player_count"
     - 격리 없이 도는 실행(확인된 모듈·익스텐션, Windows)은 확인된 익스텐션만 import한다: 확인되지 않은(공식이 아니거나 고쳐진) 활성 익스텐션은 `SABA_ENABLED_EXTENSIONS`에서 빠지고 `SABA_UNVERIFIED_EXTENSIONS`에 들어가, import하면 "not verified" `ModuleNotFoundError`가 난다(`plugin::importable_extensions`). 그 코드가 격리 없이 그 실행의 권한(토큰 경로 등)으로 돌지 않게 한다. 격리된 실행은 활성 익스텐션을 모두 import한다(같은 격리 안에서 돈다). 격리 준비가 실패해 사용자 동의로 격리 없이 도는 실행(`Spawned::Unisolated`)은 격리 없는 실행과 같이 확인된 익스텐션만 import한다(동의는 그 구성요소 하나에 대한 것이다). 단, 동의한 구성요소가 익스텐션이면 자기 패키지(`extensions.<자기 id>`)는 import할 수 있다(이미 그 실행의 코드다).
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:126-147`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:315-322`). 목록이 없으면 빈 값이다.
-  - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-38`).
+  - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-38`).
   - `SABA_EXTENSION_DATA_ROOT` = 모듈이 import한 익스텐션(SteamCMD 등)이 받은 파일을 `<뿌리>/<익스텐션 id>`에 두는 뿌리(`sandbox::extension_data_root`). 보통은 `<data_dir>/extension-data`, 격리 실행은 구성요소마다 따로인 `<data_dir>/sandbox-data/<꼬리표>/extension-data`다(공용 폴더에 쓰게 하면 확인된 실행이 그 파일을 격리 없이 실행할 수 있다). 데몬이 만들고 격리 실행에는 쓰기를 준다.
   - `SABA_LOOPBACK_DIR` = 격리 실행에만 둔다. AppContainer는 127.0.0.1에 닿지 못하므로(능력은 `internetClient`뿐) 공용 도우미 `daemon_rcon.loopback_exchange`·`loopback_http`가 이 값이 있으면 직접 연결하지 않고 데몬에 맡긴다(`plugin/loopback.rs`). 도우미는 stderr에 `LOOPBACK:{id, port, data(base64), timeout, idle_ms?}` 한 줄을 쓰고, 데몬은 `127.0.0.1:port`와 주고받은 결과를 `<SABA_LOOPBACK_DIR>/<id>.json`(`{ok:true, data}` 또는 `{ok:false, error}`)으로 둔다. 도우미가 읽고 지운다. 허용 포트는 데몬이 만든 config의 `port`·`rest_port`뿐이고(다른 `*_port` 모듈 설정은 모듈이 `import_settings`로 바꿀 수 있어 넣지 않는다), 밖이면 `port_not_allowed`로 거절하고 로그만 남긴다. 그 포트에서 듣는 프로세스가 데몬이 추적하는 그 인스턴스의 서버이거나 그 자식이 아니면(서버가 꺼져 있을 때 포함) `port_not_served`로 거절한다. 서버 PID는 데몬이 `PluginCall::serving`으로 넘긴 값이고 config의 `pid`는 쓰지 않는다. 상한은 보내기 64 KiB, 받기 1 MiB, 요청당 30초, `idle_ms` 2초, 한 실행 64건이고, 넘친 요청은 `too_many_requests`로 바로 거절한다. 받기는 서버가 닫을 때까지이고, `idle_ms`가 있으면 답이 온 뒤 그만큼 조용할 때 끝난다(마인크래프트 상태 핑처럼 닫지 않는 프로토콜). `LOOPBACK:` 줄은 인증 머리글이 들 수 있어 로그에 남기지 않는다. 격리 준비에 실패해 사용자 동의로 격리 없이 도는 실행에는 두지 않는다.
   - `SABA_JAVA_RUNTIMES` = 데몬이 찾은 Java 런타임의 JSON 배열 `[{java, home, version, major, arch}]`(`sandbox::java_runtimes`). 순서는 데몬 환경의 `JAVA_HOME`, PATH의 모든 `java`, 알려진 설치 위치(Windows는 Program Files 두 곳, 그 밖은 `/usr/lib`의 `<공급자>/<jdk>`, 공급자 폴더는 `JAVA_VENDOR_DIRS`)다. `release` 파일이 있는 실제 JDK·JRE만 들고(Oracle `javapath` 같은 바로가기는 빠진다), `version`은 그 `JAVA_VERSION`, `major`는 주 버전(`1.8.0_381`→8), `arch`는 `release`의 `OS_ARCH`(`amd64`·`x86` 등, 없으면 빈 문자열)다. 모듈은 필요한 주 버전 이상의 64비트 런타임을 여기서 고르고, 격리 실행에서도 이 폴더들은 읽을 수 있다. 사용자가 정한 `java_path`는 따로 config로 온다.
@@ -375,7 +375,7 @@ players = "player_count"
 | install_server (호출) | ✔ | ✔ | ✔ | ✔ |
 | get_installed_version (호출) | ✔ | – | – | – |
 | import_settings (호출) | ✔ | ✔ | ✔ | ✔ |
-| backup_paths (hook일 때 호출) | – | – | ✔ | – |
+| backup_paths (hook일 때 호출) | – | ✔ | ✔ | – |
 
 출처: `M:minecraft/lifecycle.py:1834-1851`, `M:palworld/lifecycle.py:1473-1490`, `M:zomboid/lifecycle.py:1432-1445`, `M:__example/__example__lifecycle.py:478-488`.
 
@@ -457,12 +457,13 @@ players = "player_count"
 - **managed stop** (`mod.rs:951-1026`):
   1. `force`이면 `force_kill`을 한다.
   2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다.
-  3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다.
+  3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다. 모듈이 `{success:false, error_code:"graceful_stop_unavailable"}`로 답하면 기다리거나 강제 종료하지 않고 그 응답을 돌려준다(아래).
   4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 `stop_timeout`(기본 30초), force면 5초다.
   5. 시간이 지나면 강제 종료하고 2초 더 기다린다.
   6. `managed_store`에서 제거하고 종료를 판정·기록하고, `managed.pid`를 삭제하고, 30초짜리 stop cooldown(`STOP_COOLDOWN_SECS`)을 등록한다.
   - palworld는 stdin이 없어 3번 경로로 간다. 모듈 `stop()`이 REST로 저장·종료를 요청한다 (`M:palworld/lifecycle.py:399-426`).
-- **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:1056-1099`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(콘솔이 없을 때 불리므로 보통 실패, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows에는 보낼 정상 종료 신호가 없어 바로 강제 종료한다.
+- **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:1056-1099`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(콘솔이 없을 때 불리므로 보통 실패, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows처럼 보낼 정상 종료 신호가 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(아래).
+- **저장 후 종료를 요청할 길이 없을 때** (MK10): 콘솔도 REST도 없는 서버(runner 없이 다시 붙은 서버 등)에서 `force: false`인 `stop()`은 서버를 끝내지 말고 `{success:false, error_code:"graceful_stop_unavailable", message}`를 돌려준다(message는 모듈 locales). 데몬은 두 경로(managed 3번, non-managed) 모두 서버를 그대로 두고 HTTP 200 `{success:false, server, error_code:"graceful_stop_unavailable", error}`로 답한다. 클라이언트는 저장 없이 끝난다는 것을 알리고 사용자가 고르면 `force: true`로 다시 요청한다. 예약 작업(재시작·업데이트)은 강제 종료하지 않고 그만둔다.
 - **extension 위임**: `server.stop` hook은 정지 전에 불린다. `handled`를 돌려주면 그대로 반환하고, 정지를 맡을 익스텐션이 실패하면 실패를 돌려준다 (`mod.rs:908-933`).
 
 ### 3.5 명령 경로 (stdin/REST)
@@ -506,7 +507,7 @@ players = "player_count"
 | 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, 실행 대상(`server_types.launch_target`: `-jar <서버 jar> nogui` 또는 Forge/NeoForge 인자 파일)을 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
-| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
+| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
 | 기타 | `EulaManager`(accept_agreements), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:24-41`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:196-208`) |
@@ -518,7 +519,7 @@ players = "player_count"
 | protocols | `supported=["rest"]`, `interaction_mode=commands`, `credential_map.rest_password="AdminPassword"` |
 | 설치 | `steamcmd`, app_id 2394010, `requires_extensions=["steamcmd","ue4-ini"]`. `extensions.steamcmd.SteamCMD`를 사용한다 |
 | 실행 | `--port=<port>`. 실제 서버 `Pal/Binaries/Win64/PalServer-Win64-Shipping-Cmd.exe`가 있으면 런처 대신 그것을 직접 띄운다(`:322-331`). `[launch] console = "pty"`. 시작 전 `_enforce_rest_policy`로 INI에 RESTAPIEnabled와 AdminPassword를 보장하고, `AdminPassword`를 최상위로 돌려주어 데몬이 rest_password를 동기화하게 한다 (`:216-346`) |
-| 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. REST로 저장·종료를 요청하고 60초 안에 안 끝나면 강제 종료한다 (`:399-426`) |
+| 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. REST로 저장·종료를 요청하고 60초 안에 안 끝나면 강제 종료한다 (`:399-426`). REST를 쓸 수 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4) |
 | 설정 | `PalWorldSettings.ini`의 `OptionSettings=(...)`를 **`extensions.ue4_ini`** 익스텐션으로 파싱한다. 동봉된 `DefaultPalWorldSettings.ini`가 기본값이다. settings 117개. 목록 값 키(`_LIST_KEYS`, 지금은 `DenyTechnologyList`)는 화면의 `PALBOX,RepairBench`를 INI에 `("PALBOX","RepairBench")`로 쓰고 읽을 때 쉼표 형태로 되돌린다 (`:884-904, 927-928, 975-977`). `configure()`는 저장마다 `RCONEnabled=False`를 쓴다 (`:933`) |
 | 명령 | 10개, 전부 `method="rest"`(`/v1/api/...`): announce, info, players, metrics, settings, save, shutdown, kick, ban, unban. `resolve_player_id`가 닉네임을 SteamID로 해석한다 (`:112`). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
 | 의존성 | `extensions.ue4_ini`는 `try`로 불러온다(`:33-36`). 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 (`:742-757, 1494-1502`) |
@@ -534,7 +535,7 @@ players = "player_count"
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 `Zomboid/Server/<servername>.ini`를 다룬다. `_INI_KEY_MAP`(saba 키 → INI 키). settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개, 전부 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
-| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 force가 아니면 콘솔 `save`→`quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 강제 종료한다. PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
+| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 force가 아니면 콘솔 `save`→`quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 강제 종료한다. 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
 | 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
 ### 4.4 __example (`M:__example/`)

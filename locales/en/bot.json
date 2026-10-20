@@ -44,6 +44,7 @@
     "start_complete": "✅ **{{name}}** start request completed!",
     "stop_request": "⏳ Stopping **{{name}}** server...",
     "stop_complete": "✅ **{{name}}** stop request completed!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** was not stopped: it has no way (console or REST) to save and exit. To end it without saving, choose a force stop in saba-chan on this PC.",
     "status_check": "📊 **{{name}}** status: {{status}} {{pid_info}}",
     "not_found": "❌ No server found for module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
@@ -100,7 +101,7 @@
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
     "permission_denied": "❌ You don't have permission to use this command.",
-    "chatbot_not_allowed": "❌ The chatbot can't run this command. Please run it directly.",
+    "chatbot_not_allowed": "❌ Talking Saba-chan can't run this command. Please run it directly.",
     "local_single_guild_only": "⚠️ Local bots can only be used in one server. Currently in {{count}} servers. Please remove the bot from unused servers."
   },
   "messages": {
@@ -256,11 +257,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "Show chatbot settings",
+          "title": "Show Talking Saba-chan settings",
           "description": "On/off, wake words, confirmation, tool sets"
         },
         "set": {
-          "title": "Change chatbot settings",
+          "title": "Change Talking Saba-chan settings",
           "description": "On/off, wake words, confirmation, tool sets"
         }
       }

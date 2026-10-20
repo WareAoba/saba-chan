@@ -23,6 +23,8 @@ pub struct Api {
     /// 데몬 포트 (데몬을 띄울 때 그대로 넘긴다)
     pub port: u16,
     token: Arc<RwLock<Option<String>>>,
+    /// 요청마다 싣는 `Accept-Language` (`--lang`·`SABA_LANG`으로 고른 언어). 없으면 데몬이 자기 설정을 따른다
+    pub lang: Option<String>,
 }
 
 fn read_token() -> Option<String> {
@@ -46,10 +48,15 @@ pub fn seg(s: &str) -> String {
 }
 
 impl Api {
-    pub fn new(port: u16) -> Self {
+    pub fn new(port: u16, lang: Option<String>) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(v) = lang.as_deref().and_then(|l| reqwest::header::HeaderValue::from_str(l).ok()) {
+            headers.insert(reqwest::header::ACCEPT_LANGUAGE, v);
+        }
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(2))
             .no_proxy()
+            .default_headers(headers)
             .build()
             .expect("http client");
         Self {
@@ -57,6 +64,7 @@ impl Api {
             base: format!("http://127.0.0.1:{}", port),
             port,
             token: Arc::new(RwLock::new(read_token())),
+            lang,
         }
     }
 
@@ -840,9 +848,9 @@ impl Api {
         self.post("/api/updates/launch-updater", json!({ "relaunch": relaunch }))
             .await
     }
-    /// GET /api/updates/last-result?lang — `{result, version, notes}` (notes: 그 언어의 패치노트)
+    /// GET /api/updates/last-result?lang&include_seen=true — `{result, version, notes, acknowledged}` (notes: 그 언어의 패치노트)
     pub async fn update_last_result(&self, lang: &str) -> Result<Value> {
-        self.get(&with_query("/api/updates/last-result", &[("lang", Some(lang.to_string()))])).await
+        self.get(&last_result_path(lang)).await
     }
     pub async fn clear_update_last_result(&self) -> Result<Value> {
         self.delete("/api/updates/last-result").await
@@ -856,6 +864,11 @@ impl Api {
     pub async fn save_update_config(&self, patch: Value) -> Result<Value> {
         self.put("/api/updates/config", patch).await
     }
+}
+
+/// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
+fn last_result_path(lang: &str) -> String {
+    with_query("/api/updates/last-result", &[("lang", Some(lang.to_string())), ("include_seen", Some("true".into()))])
 }
 
 fn with_query(path: &str, params: &[(&str, Option<String>)]) -> String {
@@ -940,8 +953,42 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
 mod tests {
     use super::*;
 
+    /// GUI가 패치노트를 열어 확인한 뒤에도 `update last`가 결과와 노트를 보인다 (L70)
+    #[test]
+    fn the_last_result_includes_one_already_seen_elsewhere() {
+        assert_eq!(last_result_path("ko"), "/api/updates/last-result?lang=ko&include_seen=true");
+    }
+
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
+    async fn request_head(lang: Option<&str>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            // 머리가 여러 조각으로 올 수 있으니 빈 줄까지 읽는다
+            let (mut head, mut buf) = (Vec::new(), [0; 1024]);
+            while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = sock.read(&mut buf).await.unwrap();
+                assert!(n > 0, "connection closed before the request head ended");
+                head.extend_from_slice(&buf[..n]);
+            }
+            sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
+            String::from_utf8_lossy(&head).to_ascii_lowercase()
+        });
+        Api::new(port, lang.map(str::to_string)).call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
+        server.await.unwrap()
+    }
+
+    /// `--lang`을 주면 데몬 문구도 그 언어로 오게 요청마다 `Accept-Language`를 싣는다. 안 주면 데몬 설정을 따른다
+    #[tokio::test]
+    async fn the_chosen_language_goes_to_the_daemon() {
+        assert!(request_head(Some("ko")).await.contains("\r\naccept-language: ko\r\n"));
+        assert!(!request_head(None).await.contains("accept-language"));
     }
 
     /// 일부만 된 작업(2xx에 `ok`/`success: false`, 예: 업데이트 받기·적용, 챗봇 기억 지우기)은 본문을 명령에 돌려준다:

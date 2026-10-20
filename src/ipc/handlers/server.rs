@@ -1053,23 +1053,7 @@ pub async fn start_server_handler(
         None => None,
     };
 
-    // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
-    {
-        let mut supervisor = state.supervisor.write().await;
-        let inst_opt = supervisor.instance_store.get(&name)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == name))
-            .cloned();
-        if let Some(mut inst) = inst_opt {
-            let changed = inst.ensure_passwords();
-
-            if changed {
-                let inst_id = inst.id.clone();
-                if let Err(e) = supervisor.instance_store.update(&inst_id, inst) {
-                    tracing::warn!("Failed to save auto-generated passwords for {}: {}", name, e);
-                }
-            }
-        }
-    }
+    fill_passwords(&state, &name).await;
 
     let resp = match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
         .await
@@ -1188,11 +1172,50 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 }
 
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
+/// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
+/// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`credential_map`으로 데몬에 돌아온다). `key`: 인스턴스 id 또는 이름
+pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
+    let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
+    let mut supervisor = state.supervisor.write().await;
+    let found = supervisor.instance_store.get(key).or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key)).cloned();
+    if let Some(mut inst) = found {
+        if inst.ensure_passwords(generate) {
+            let id = inst.id.clone();
+            if let Err(e) = supervisor.instance_store.update(&id, inst) {
+                tracing::warn!("Failed to save auto-generated passwords for {}: {}", key, e);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// GUI "비밀번호 자동 생성"을 끄면 시작할 때 빈 REST 비밀번호를 채우지 않는다. 켜져 있으면(기본) 채운다
+    #[tokio::test]
+    async fn rest_passwords_are_generated_only_when_the_setting_is_on() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        state.config_store = Arc::new(crate::config_store::ConfigStore::new(&tmp.path().join("data")));
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        state.supervisor.write().await.instance_store.add(inst).unwrap();
+        let password = || async { state.supervisor.read().await.instance_store.get(&id).unwrap().rest_password.clone() };
+
+        state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": false })).await.unwrap();
+        fill_passwords(&state, &id).await;
+        assert_eq!(password().await, None, "the setting is off");
+        state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": true })).await.unwrap();
+        fill_passwords(&state, "srv").await;
+        assert_eq!(password().await.map(|p| p.len()), Some(16), "found by name too");
+    }
 
     /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다
     #[tokio::test]
@@ -1369,6 +1392,64 @@ mod tests {
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-after-check").is_err(), "nothing is tracked");
         assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
+    }
+
+    /// 콘솔이 없어 저장 후 종료를 요청할 길이 없으면 모듈 `stop()`은 `graceful_stop_unavailable`로 답한다. 데몬은 그때
+    /// 서버를 죽이지 않고 그 코드를 돌려준다: 강제 종료(저장 없음)는 사용자가 `force`로 고른다 (MK10)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_server_that_cannot_save_and_exit_is_not_killed_by_a_plain_stop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, signal, sys\n\
+             config = json.load(sys.stdin)\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             elif sys.argv[1] == 'stop' and not config.get('force'):\n    \
+             print(json.dumps({'success': False, 'error_code': 'graceful_stop_unavailable', 'message': 'no console'}))\n\
+             elif sys.argv[1] == 'stop':\n    os.kill(config['pid'], signal.SIGKILL)\n    print(json.dumps({'success': True}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for id in ["no-console-managed", "no-console-native"] {
+            let mut inst = crate::instance::ServerInstance::new(id, "game");
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let stop = |id: &'static str, force: bool| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(stop_instance(state, id, force).await).await.body }
+        };
+
+        // managed인데 모듈이 stdin을 받지 않는다: 데몬은 모듈 stop()에 맡긴다
+        let started = crate::ipc::internal::into_internal(start_instance(Path("no-console-managed".into()), State(state.clone())).await).await.body;
+        assert_eq!(started["success"], true, "{started}");
+        let refused = stop("no-console-managed", false).await;
+        assert_eq!((refused["success"].clone(), refused["error_code"].clone()), (json!(false), json!("graceful_stop_unavailable")), "{refused}");
+        let managed = state.supervisor.read().await.managed_store.get("no-console-managed").await.expect("still managed");
+        assert!(managed.is_running(), "a plain stop does not kill it");
+        assert_eq!(stop("no-console-managed", true).await["success"], true);
+
+        // non-managed(데몬이 PID만 안다): 모듈 stop()의 답을 그대로 전한다
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("no-console-native", child.id()).unwrap();
+        let refused = stop("no-console-native", false).await;
+        assert_eq!(refused["error_code"], "graceful_stop_unavailable", "{refused}");
+        assert!(child.try_wait().unwrap().is_none(), "a plain stop does not kill it");
+        assert_eq!(stop("no-console-native", true).await["success"], true);
+        assert!(child.wait().is_ok());
     }
 
     #[test]

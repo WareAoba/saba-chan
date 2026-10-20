@@ -53,6 +53,8 @@ const T = {
         uninstallSub: 'Please wait...',
         uninstallComplete: 'Uninstall complete!',
         uninstallCompleteSub: 'Saba-chan has been removed.',
+        uninstallCompletePartial: 'Uninstalled, but some files are left',
+        uninstallCompletePartialSub: 'These could not be deleted. Close any program using them and delete them yourself:',
         uninstallFailed: 'Uninstall failed',
         labelLanguage: 'Language',
         // Install progress
@@ -125,6 +127,8 @@ const T = {
         uninstallSub: '잠시만 기다려 주세요...!',
         uninstallComplete: '제거 완료!',
         uninstallCompleteSub: '사바쨩이 제거되었습니다.',
+        uninstallCompletePartial: '제거했지만 일부 파일이 남았습니다',
+        uninstallCompletePartialSub: '아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:',
         uninstallFailed: '제거 실패',
         labelLanguage: '언어',
         // Install progress
@@ -196,6 +200,8 @@ const T = {
         uninstallSub: 'しばらくお待ちください...',
         uninstallComplete: 'アンインストール完了!',
         uninstallCompleteSub: 'サバちゃんは削除されました。',
+        uninstallCompletePartial: 'アンインストールしましたが、一部のファイルが残っています',
+        uninstallCompletePartialSub: '次の項目を削除できませんでした。使用中のプログラムを閉じてから手動で削除してください:',
         uninstallFailed: 'アンインストール失敗',
         labelLanguage: '言語',
         // Install progress
@@ -267,6 +273,8 @@ const T = {
         uninstallSub: '请稍候...',
         uninstallComplete: '卸载完成！',
         uninstallCompleteSub: 'Saba-chan 已被移除。',
+        uninstallCompletePartial: '已卸载，但仍有部分文件残留',
+        uninstallCompletePartialSub: '以下项目无法删除。请关闭正在使用它们的程序后手动删除：',
         uninstallFailed: '卸载失败',
         labelLanguage: '语言',
         // Install progress
@@ -338,6 +346,8 @@ const T = {
         uninstallSub: '請稍候...',
         uninstallComplete: '解除安裝完成！',
         uninstallCompleteSub: 'Saba-chan 已被移除。',
+        uninstallCompletePartial: '已解除安裝，但仍有部分檔案殘留',
+        uninstallCompletePartialSub: '無法刪除下列項目。請關閉正在使用它們的程式後手動刪除：',
         uninstallFailed: '解除安裝失敗',
         labelLanguage: '語言',
         // Install progress
@@ -409,6 +419,8 @@ const T = {
         uninstallSub: 'Por favor, espera...',
         uninstallComplete: '¡Desinstalación completada!',
         uninstallCompleteSub: 'Saba-chan ha sido eliminado.',
+        uninstallCompletePartial: 'Desinstalado, pero quedan algunos archivos',
+        uninstallCompletePartialSub: 'No se pudieron eliminar. Cierra los programas que los usan y elimínalos manualmente:',
         uninstallFailed: 'Error en la desinstalación',
         labelLanguage: 'Idioma',
         // Install progress
@@ -480,6 +492,8 @@ const T = {
         uninstallSub: 'Por favor, aguarde...',
         uninstallComplete: 'Desinstalação concluída!',
         uninstallCompleteSub: 'O Saba-chan foi removido.',
+        uninstallCompletePartial: 'Desinstalado, mas alguns arquivos ficaram',
+        uninstallCompletePartialSub: 'Não foi possível excluí-los. Feche os programas que os usam e exclua-os manualmente:',
         uninstallFailed: 'Falha na desinstalação',
         labelLanguage: 'Idioma',
         // Install progress
@@ -551,6 +565,8 @@ const T = {
         uninstallSub: 'Пожалуйста, подождите...',
         uninstallComplete: 'Удаление завершено!',
         uninstallCompleteSub: 'Saba-chan был удалён.',
+        uninstallCompletePartial: 'Удаление завершено, но некоторые файлы остались',
+        uninstallCompletePartialSub: 'Их не удалось удалить. Закройте программы, которые их используют, и удалите их вручную:',
         uninstallFailed: 'Ошибка удаления',
         labelLanguage: 'Язык',
         // Install progress
@@ -622,6 +638,8 @@ const T = {
         uninstallSub: 'Bitte warten...',
         uninstallComplete: 'Deinstallation abgeschlossen!',
         uninstallCompleteSub: 'Saba-chan wurde entfernt.',
+        uninstallCompletePartial: 'Deinstalliert, aber einige Dateien sind übrig',
+        uninstallCompletePartialSub: 'Diese konnten nicht gelöscht werden. Schließe Programme, die sie verwenden, und lösche sie manuell:',
         uninstallFailed: 'Deinstallation fehlgeschlagen',
         labelLanguage: 'Sprache',
         // Install progress
@@ -693,6 +711,8 @@ const T = {
         uninstallSub: 'Veuillez patienter...',
         uninstallComplete: 'Désinstallation terminée !',
         uninstallCompleteSub: 'Saba-chan a été supprimé.',
+        uninstallCompletePartial: 'Désinstallé, mais certains fichiers restent',
+        uninstallCompletePartialSub: 'Ils n\'ont pas pu être supprimés. Fermez les programmes qui les utilisent et supprimez-les manuellement :',
         uninstallFailed: 'Échec de la désinstallation',
         labelLanguage: 'Langue',
         // Install progress
@@ -1195,11 +1215,14 @@ listen('uninstall:progress', (ev) => {
     if (p.step === 'complete') {
         $glowRing.className = 'loading-logo-container complete';
         $logoArea.className = 'logo-area state-complete';
-        $statusText.textContent = tr('uninstallComplete');
-        $statusSub.textContent = tr('uninstallCompleteSub');
+        const left = p.left || [];
+        $statusText.textContent = tr(left.length ? 'uninstallCompletePartial' : 'uninstallComplete');
+        $statusSub.textContent = tr(left.length ? 'uninstallCompletePartialSub' : 'uninstallCompleteSub');
         $fill.style.width = '100%';
         $fill.classList.add('complete-fill');
-        $msg.textContent = p.message;
+        $msg.textContent = left.length ? left.join('\n') : p.message;
+        $msg.style.whiteSpace = left.length ? 'pre-line' : '';
+        $msg.style.overflowWrap = left.length ? 'anywhere' : '';
         $pct.textContent = '100%';
 
         // 종료 버튼 표시

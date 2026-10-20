@@ -88,8 +88,8 @@
 
 **데몬이 자식 프로세스에 넘기는 환경변수**
 
-- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). 토큰 값 자체는 넘기지 않는다. 공용 `modules/daemon_rcon.py`는 `SABA_TOKEN_PATH` 파일을 읽어 `X-Saba-Token`을 붙인다(`modules/daemon_rcon.py:48-54`).
-- `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 `config.json`의 `gui.language`에서 읽고, 비었으면 OS 언어를 지원 언어로 맞춰 쓴다(`ConfigStore::ui_language`, `chat::i18n::os_language`. 중국어는 Hant·TW·HK·MO면 zh-TW, 그 밖은 zh-CN).
+- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). 토큰 값 자체는 넘기지 않는다. 공용 `modules/daemon_rcon.py`는 `SABA_TOKEN_PATH` 파일을 읽어 `X-Saba-Token`을 붙인다(`modules/daemon_rcon.py:48-54`).
+- `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 HTTP 요청에 `Accept-Language`가 있으면 그 요청 동안 첫 언어 태그(`ko-KR,ko;q=0.9` → `ko-KR`, 영문자·숫자·`-` 16자까지, `*`는 무시)를 쓰고(CLI `--lang`, 감사 출처 `Origin.lang`로 그 요청이 띄운 작업까지 이어진다), 없으면 `config.json`의 `gui.language`에서 읽고, 비었으면 OS 언어를 지원 언어로 맞춰 쓴다(`ConfigStore::ui_language`, `chat::i18n::os_language`. 중국어는 Hant·TW·HK·MO면 zh-TW, 그 밖은 zh-CN). 릴레이에 알리는 이 PC의 언어(하트비트·디스코드 설정의 `language`)는 요청 언어를 따르지 않는다(`ConfigStore::pc_language`).
 
 ### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)
 
@@ -180,7 +180,7 @@
 | GET | `/api/servers` | `server.rs:26` `list_servers` | `?notices_after=<id>` 또는 `?notices=keep` | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:620` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
 | POST | `/api/server/:name/start` | `server.rs:881` | `{module: string (필수), config?: any}` | supervisor 결과(예약 범위를 피해 REST 포트를 옮겼으면 `port_moved`, 7.2). 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed}, 409 `instance_busy`(같은 인스턴스의 백업·복원·업데이트 중) |
-| POST | `/api/server/:name/stop` | `server.rs:938` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
+| POST | `/api/server/:name/stop` | `server.rs:938` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed}. 모듈이 저장 후 종료를 요청할 수 없으면 HTTP 200 `{success:false, error_code:"graceful_stop_unavailable"}`(서버는 그대로, `force:true`로 다시, 02 §3.4) |
 | POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`(+ 옮긴 포트가 있으면 `port_moved`, 7.2). 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 409 `instance_busy`(백업·복원·업데이트 중), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다), `success:false` `start_cancelled`(시작 준비 중에 정지·삭제가 들어와 띄우지 않았거나 띄운 것을 바로 껐다. 정지는 시작 요청을 받을 때(약관·validate 점검 전, `supervisor::START_SINCE`)의 실행 세대(`run_generation`)가 바뀐 것으로 안다. 익스텐션이 맡은 시작(`server.pre_start` handled)이 끝났을 때 정지가 들어와 있었으면 정지를 한 번 더 불러 익스텐션이 띄운 서버를 끈다) |
 | POST | `/api/instance/:id/stop` | `server.rs:785` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
 | POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답(`port_moved` 포함) + `stopped`. 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 최대 30분 기다렸다 켠다(`backup::start_when_free`). 기다리는 시작은 따로 돌아 요청이 끊겨도 이어지고, 정지 단계(서버가 끝나기를 기다리는 동안)에 다른 정지·시작이 들어왔거나, 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 409 `restart_cancelled`(`stopped` 포함). 기다린 뒤의 시작은 재시작이 확인한 실행 세대를 시작 기준(`supervisor::START_SINCE`)으로 써서, 확인과 시작 사이에 들어온 정지도 시작을 취소한다(`success:false` `start_cancelled`, 자동 재시작·예약 업데이트 뒤 시작도 같다, `backup::start_when_free`) |
@@ -292,9 +292,9 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET/POST | `/api/instance/:id/backups` | `backup.rs:203/210` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
+| GET/POST | `/api/instance/:id/backups` | `backup.rs:203/210` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패). 원격(디스코드·챗봇) 요청은 백업을 정리하지 않으므로, 그 종류의 백업이 이미 50개(`REMOTE_BACKUP_CAP`)면 409 `backup_limit`로 거절한다(복원 전 안전 백업도 같다, D-B7) |
 | DELETE | `/api/instance/:id/backups/:name` | `backup.rs:218` | - | `{success}` / 404 `backup_not_found` / 409 `backup_busy` |
-| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`). 백업은 만들 때의 절대 경로로 돌아가므로, 그 경로가 지금 서버 폴더·인스턴스 폴더·모듈이 지금 백업하는 경로(`[backup] paths`·`backup_paths` 훅이 가리키는 경로, 지금 없어도 된다) 밖이면 아무것도 바꾸지 않고 400 `restore_outside`다. 복원 전 안전 백업은 지금 설정의 경로와 함께 복원이 덮을 경로(예: 이름을 바꾸기 전 월드 폴더)도 담는다. 모듈이 `[backup]`을 더는 선언하지 않아도(모듈 업데이트로 빠짐) 덮을 경로는 안전 백업으로 남긴다(`bare_plan`) |
+| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup, links_not_restored}`. `links_not_restored`는 백업한 폴더 안의 링크 중 되살리지 못한 수다(Windows 권한 등, 경로는 데몬 로그에만, 나머지 복원은 끝났다, D-B14). 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`). 백업은 만들 때의 절대 경로로 돌아가므로, 그 경로가 지금 서버 폴더·인스턴스 폴더·모듈이 지금 백업하는 경로(`[backup] paths`·`backup_paths` 훅이 가리키는 경로, 지금 없어도 된다) 밖이면 아무것도 바꾸지 않고 400 `restore_outside`다. 복원 전 안전 백업은 지금 설정의 경로와 함께 복원이 덮을 경로(예: 이름을 바꾸기 전 월드 폴더)도 담는다. 모듈이 `[backup]`을 더는 선언하지 않아도(모듈 업데이트로 빠짐) 덮을 경로는 안전 백업으로 남긴다(`bare_plan`) |
 | GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep, revision?}` | GET은 `schedule, backup_keep, backup_supported, announce_supported`와 `revision`(일정·보관 수의 지문 문자열)을 준다. PUT에 GET에서 받은 `revision`을 실으면, 그사이 다른 곳에서 일정이나 보관 수가 바뀌었을 때 덮어쓰지 않고 409 `schedule_changed`로 거절한다(다시 읽고 고쳐 보낸다). `revision`이 없으면 예전처럼 받는다(목록 전체를 다시 보내는 클라이언트는 실어 보낸다, L51). 400 `validation_failed {details}`. `backup_keep`은 1 이상이다(자동 백업 정리는 방금 만든 백업을 지우지 않는다). 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다. 챗봇을 거친 요청(감사 출처 `via:"chatbot"`, 릴레이 액션이 붙인다)은 `backup_keep`을 지금 값(없으면 10)보다 줄이지 못한다(줄이면 다음 백업이 옛 백업을 지운다). 백업 작업의 하루 실행 횟수도 지금 값(백업 작업이 없거나 하루 한 번보다 드물면 1)보다 늘리려면 보관 수가 덮는 기간(`backup_keep` ÷ 하루 횟수)이 줄지 않게 `backup_keep`을 함께 올려야 한다. 쓰기 잠금 안에서 지금 값과 견주므로 계획 확인 사이 PC에서 올린 값도 본다. 또 작업 종류별로 켜진 작업들이 하루에 도는 횟수(매일 시각 작업 1번, N분마다 ⌈1440/N⌉번)를 48번(30분에 한 번) 넘게 올리지 못한다(이 PC에서 이미 그보다 잦게 정했으면 늘리지만 못한다, `daily_runs`). 예약 `update`가 끈 서버는 업데이트 뒤 다시 켜는데, 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 기다리고 그사이 켜거나 끄거나 지우면 그만둔다(`start_after_update`) |
 
 인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지. 서버가 도는 `working_dir`에 쓰므로 그 폴더를 쓰는 다른 인스턴스의 잠금도 함께 잡고, 그중 켜져 있는 것이 있으면 409 `server_running`)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제·서버 초기화(`reset_server_handler`)·버전 설치(`install_server_handler`, 그 폴더를 쓰는 인스턴스 전부, 설치를 마칠 때까지)가 함께 쓴다. 초기화와 버전 설치는 잠금을 잡은 뒤 실행 중이면 409 `server_running`으로 거절한다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다. 백업·복원·서버 초기화·버전 설치·인스턴스 삭제는 잠금을 쥔 채 따로 돌아(`audit::spawn`, 출처 유지) 요청이 끊겨도 파일 작업이 끝날 때까지 잠금이 남는다.
@@ -413,7 +413,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | GET | `/api/updates/download/progress` | `updates.rs:450` | - | `{ok,component,bytes_received,total_bytes,active}` |
 | POST | `/api/updates/apply` | `updates.rs:475` | download와 같은 본문 규칙 | `{ok,applied,needs_updater,requires_updater,errors}` |
 | POST | `/api/updates/launch-updater` | `updates.rs:609` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음). 등록된 GUI(`/api/client/register`의 `pid`, 실행 파일 이름이 GUI일 때만)가 떠 있으면 다시 띄울 것을 그 GUI로 바꾸고, 종료 전에 3초 기다려 남은 GUI를 끈다 |
-| GET/DELETE | `/api/updates/last-result` | `updates.rs` `get_last_result`/`clear_last_result` | GET `?lang=` | 마지막 적용 결과 `{result, version, notes}` / 확인 처리 |
+| GET/DELETE | `/api/updates/last-result` | `updates.rs` `get_last_result`/`clear_last_result` | GET `?lang=`, `?include_seen=true` | 마지막 적용 결과 `{result, version, notes, acknowledged}` / 확인 처리(마커는 남기고 `acknowledged`만 적는다, 05 참고) |
 | GET | `/api/updates/integrity` | `updates.rs:814` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
 | GET | `/api/updates/config` | `updates.rs:844` | - | `{ok, config, mock_relay}` |
 | PUT | `/api/updates/config` | `updates.rs:859` | 부분 `{enabled,check_interval_hours(1-8),auto_download,install_root,relay_url,channel}` | `{ok, config}`. `config.json`의 `updates` 절에 저장한다(`:899-902, 936-942`). 비어 있지 않은 `relay_url`은 개발 빌드(`mock-relay`)만 받고, 릴리즈 빌드는 403 `relay_url_not_settable`(D7: 출처는 config.json에서만) |
@@ -461,12 +461,11 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `extension_data` | HashMap<String,Value> | 설치 방식 익스텐션 키(`install_method_<방식>`, `<방식>_<이름>`, `instance/mod.rs:142-166`) 등 |
 | `required_extensions` | Vec<String> | 모듈의 `install.requires_extensions`를 복사한다 |
 | `schedule` | Vec<ScheduledTask> | 예약 작업 (백업·재시작·공지·업데이트) |
-| `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다 |
+| `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다. 원격(디스코드·챗봇) 요청이 만든 백업은 정리를 하지 않는다(원격 복원을 거듭해도 앞서 남긴 안전 백업이 밀려 지워지지 않는다. 넘친 것은 이 PC에서 만드는 다음 백업이 정리한다, D-B11) |
 
 - RCON 필드(`rcon_port`, `rcon_password`)는 없다. 예전 `instance.json`·`settings.json`에 남은 RCON 키는 로드할 때 한 번 지우고 다시 쓴다(`instance/mod.rs:439-468, 483-500`).
-- `ensure_passwords()`(`instance/mod.rs:210`)는 시작할 때(`server.rs:903`, `managed.rs:33`) 비어 있는 REST 비밀번호를 16자 영숫자로 채운다.
+- 시작할 때(`server.rs` `fill_passwords`, 두 시작 경로 공용) `ensure_passwords(generate)`가 비어 있는 REST 비밀번호를 16자 영숫자로 채운다. `generate`는 `GuiSettings.autoGeneratePasswords`(기본 true)다. 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만들어 `credential_map`으로 데몬에 돌려준다(Palworld는 INI `AdminPassword`가 비면 임의 값을 써 넣는다). 이미 있는 비밀번호는 켜져 있어도 바꾸지 않는다.
 - 비밀번호 생성은 `constants::generate_random_password`가 uuid v4 바이트에 `% 62`를 적용하는 방식이다(`constants.rs:188-201`). 모듈로 편향이 있고, 두 번째 uuid는 계산만 하고 쓰지 않는다.
-- `GuiSettings.autoGeneratePasswords`는 이 동작에 **반영되지 않는다.**
 
 ### 4.2 영속화 (`InstanceStore`, `instance/mod.rs:238-477`)
 
@@ -539,7 +538,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - `portConflictCheck`: 기동할 때 `skip_port_check` 원자 변수를 초기화하고(`ipc/mod.rs:822-828`), PUT·reset이 성공하면 갱신한다(`config.rs:28, 88-91`). start 경로와 모니터가 이 값 하나만 본다(`supervisor/mod.rs:269, 2555`).
 - `language`: Python 실행의 `SABA_LANG`, 채팅 응답, 예약 공지, 익스텐션 설명 언어에 쓴다(`plugin/mod.rs:28-36`, `chat/api.rs:129`, `backup.rs:402`, `extension.rs:74`).
 - `ipcPort`: `SABA_IPC_PORT`가 없을 때 데몬 포트로 쓴다(`main.rs:285-296`).
-- `autoGeneratePasswords`: 미사용.
+- `autoGeneratePasswords`: 시작할 때 빈 REST 비밀번호를 채우는가(§ 인스턴스 비밀번호).
 
 예전 `src/config/mod.rs`의 `GlobalConfig`는 지워졌다.
 
@@ -715,7 +714,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - ~~`plugin::run_extension*`, `RestClient::with_basic_auth`, `ServerResponse::success/error`, `CommandResponse`, `BotConfig`(ipc/mod.rs), `ExtensionInitTracker::is_initializing`, `InstanceStore::save`, `ServerInstance::ext_f64`, `process_monitor::find_by_name*` 동기 버전 미사용~~ → 해결: 모두 지워졌다(`ext_str`는 테스트 전용, `instance/mod.rs:128-131`).
 - ~~업데이트 설정의 `check_interval_hours`, `auto_download`, `auto_apply`는 저장만 되고 아무 동작이 없다~~ → 해결: `config.json`에 저장되고, 데몬 스케줄러가 주기와 `auto_download`를 쓴다(`updates.rs:256`, `:899-902`). `auto_apply`는 설정에서 지워졌고 적용은 언제나 사용자가 고른다(`updater/src/lib.rs:236-252`).
 - ~~`skip_port_check` 계열이 따로 논다~~ → 해결: 기동 시 `gui.portConflictCheck`로 초기화하고, start 경로와 모니터가 같은 원자 변수 하나만 본다(§4.4).
-- `GuiSettings.autoGeneratePasswords`는 데몬에서 효과가 없다. ~~`ipcPort`~~는 데몬 포트로 쓴다(§4.4).
+- ~~`GuiSettings.autoGeneratePasswords`는 데몬에서 효과가 없다~~ → 해결: 시작할 때 빈 REST 비밀번호를 채울지 이 값으로 정한다. ~~`ipcPort`~~는 데몬 포트로 쓴다(§4.4).
 - 비 Windows 부트 선택기는 키 입력을 지원하지 않는데도 DEL 안내를 표시한다(`boot_selector.rs:244-248, 308`).
 - `ServerStartRequest.module`이 필수 필드다(`ipc/mod.rs:132-136`). 인스턴스에 이미 모듈 정보가 있는데도 `/api/server/:name/start` 호출자가 다시 보내야 한다. `/api/instance/:id/start`는 이 값을 데몬이 채운다(`server.rs:696`).
 - `python_env`의 데이터 디렉토리가 `constants::resolve_data_dir()`와 어긋난다(§6). 같은 파일 상단 주석은 `<data_dir>`라고 적고 있다.

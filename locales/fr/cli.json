@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} a été créé et ses paramètres enregistrés, mais le fichier de configuration du jeu n'a pas pu être écrit : {{error}}",
     "ask_folder": "Dossier du serveur",
     "ask_name": "Nom du serveur",
     "ask_source": "Comment voulez-vous le configurer ?",
@@ -168,7 +169,7 @@
   },
   "err": {
     "relay": {
-      "channel_conflict": "Un salon ne peut avoir qu'un seul rôle (chatbot, musique ou notifications).",
+      "channel_conflict": "Un salon ne peut avoir qu'un seul rôle (Saba-chan qui parle, musique ou notifications).",
       "unknown_channel": "Ce salon est introuvable sur le serveur Discord. Vérifiez son nom ou son id.",
       "bot_unavailable": "Le bot saba-chan ne répond pas pour le moment. Réessayez dans un instant.",
       "node_not_found": "Le relais ne connaît pas ce PC. Il a été dissocié ou remplacé par un autre PC.",
@@ -455,7 +456,7 @@
     "downloading": "Téléchargement",
     "integrity_summary": "{{verified}} intacts · {{failed}} modifiés ou illisibles · {{skipped}} avec des fichiers manquants",
     "last_check": "Dernière vérification : {{at}}",
-    "last_cleared": "Effacé.",
+    "last_cleared": "Marqué comme vu.",
     "latest": "Dernière",
     "no_last": "Aucun résultat de mise à jour enregistré.",
     "not_installed": "non installé",
@@ -536,6 +537,7 @@
     "restoring": "Restauration de {{backup}}...",
     "restored": "{{name}} est revenu à {{backup}}.",
     "pre_restore": "Le monde précédent est conservé dans la sauvegarde {{backup}}.",
+    "links_not_restored": "La restauration est terminée, mais {{count}} lien(s) du dossier n'ont pas pu être recréés (droits Windows, par exemple). Les chemins figurent dans le journal du daemon.",
     "start_again": "Redémarrer {{name}} ?"
   },
   "schedule": {
@@ -583,18 +585,18 @@
     "common": "Paramètres pour tous les serveurs Discord",
     "guild": "Serveur Discord {{guild}}",
     "defaults": "(valeurs par défaut)",
-    "saved": "Paramètres du chatbot enregistrés.",
+    "saved": "Paramètres de Saba-chan qui parle enregistrés.",
     "ask_key": "Clé API (masquée)",
     "key_required": "Aucune clé API fournie. Saisissez-la à l'invite ou transmettez-la par un pipe : cat key.txt | saba-chan-cli chatbot key",
     "key_saved": "Clé API enregistrée. Elle ne sera plus jamais affichée.",
-    "confirm_delete_key": "Supprimer la clé API enregistrée ? Le chatbot ne répondra plus jusqu'à l'enregistrement d'une nouvelle clé.",
+    "confirm_delete_key": "Supprimer la clé API enregistrée ? Saba-chan qui parle ne répondra plus jusqu'à l'enregistrement d'une nouvelle clé.",
     "key_deleted": "Clé API supprimée.",
-    "confirm_clear": "Supprimer tous les paramètres du chatbot et la clé API ?",
-    "cleared": "Paramètres et clé du chatbot supprimés.",
-    "confirm_forget": "Faire oublier au chatbot ce qu'il a retenu sur tous les serveurs Discord ?",
-    "confirm_forget_guild": "Faire oublier au chatbot ce qu'il a retenu sur le serveur Discord {{guild}} ?",
-    "forgot": "La mémoire du chatbot a été effacée.",
-    "forget_failed": "La mémoire du chatbot n'a pas pu être effacée sur certains serveurs Discord. Vérifiez les erreurs ci-dessus.",
+    "confirm_clear": "Supprimer tous les paramètres de Saba-chan qui parle et la clé API ?",
+    "cleared": "Paramètres et clé de Saba-chan qui parle supprimés.",
+    "confirm_forget": "Faire oublier à Saba-chan qui parle ce qu'elle a retenu sur tous les serveurs Discord ?",
+    "confirm_forget_guild": "Faire oublier à Saba-chan qui parle ce qu'elle a retenu sur le serveur Discord {{guild}} ?",
+    "forgot": "La mémoire de Saba-chan qui parle a été effacée.",
+    "forget_failed": "La mémoire de Saba-chan qui parle n'a pas pu être effacée sur certains serveurs Discord. Vérifiez les erreurs ci-dessus.",
     "not_synced": "Enregistré sur ce PC. Le changement atteindra Discord une fois le bot connecté (saba-chan-cli bot status).",
     "sync_failed": "Le serveur Discord {{guild}} n'a pas reçu le changement : {{error}}",
     "read_failed": "Impossible de lire {{path}} : {{error}}"
