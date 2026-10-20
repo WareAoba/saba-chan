@@ -757,7 +757,7 @@
       "member": "Discord のユーザー ID",
       "level": "レベル (admin・user・chatbot・banned、または 2..-1 の数)",
       "perm.preset.preset": "loose・default・strict",
-      "server.add.preset": "ゲームのおすすめ設定の id(`module info` で確認できます)",
+      "server.add.preset": "ゲームのおすすめ設定の id（`module info` で確認できます）",
       "components": "更新する構成要素",
       "clear": "結果の記録を消す",
       "key": "設定キー",
