@@ -852,7 +852,7 @@
     "bot_title": "General",
     "bot_desc": "Ajustes que se aplican a todo el bot de Discord.",
     "prefix_title": "Prefijo de comandos",
-    "prefix_desc": "El bot responde a los mensajes que empiezan con una de estas palabras, y Saba-chan parlante también se llama con ellas. Puedes añadir varias.",
+    "prefix_desc": "El bot responde a los mensajes que empiezan con una de estas palabras, y Saba-chan parlante también se invoca con ellas. Puedes añadir varias.",
     "usage_title": "Cómo se usa",
     "usage_help": "Ayuda",
     "usage_list_word": "list",

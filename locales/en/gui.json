@@ -1057,7 +1057,7 @@
     "web_search": "Web search",
     "web_search_hint": "Looks things up online when needed.",
     "guilds_title": "Per Discord server",
-    "guilds_desc": "Turn Talking Saba-chan on or off per server, or limit which channels it answers in. With no channels it answers wherever it's called.",
+    "guilds_desc": "Turn Talking Saba-chan on or off per server, or limit which channels she answers in. With no channels she answers wherever she's called.",
     "guilds_empty": "No Discord servers connected.",
     "guild_enabled_aria": "Talking Saba-chan in {{name}}",
     "guild_inherit": "Default ({{state}})",

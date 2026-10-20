@@ -1057,7 +1057,7 @@
     "web_search": "Pesquisa na web",
     "web_search_hint": "Pesquisa na internet quando necessário.",
     "guilds_title": "Por servidor do Discord",
-    "guilds_desc": "Ligue ou desligue a Saba-chan falante por servidor, ou limite os canais em que ela responde. Sem canais definidos, ela responde onde for chamado.",
+    "guilds_desc": "Ligue ou desligue a Saba-chan falante por servidor, ou limite os canais em que ela responde. Sem canais definidos, ela responde onde for chamada.",
     "guilds_empty": "Nenhum servidor do Discord conectado.",
     "guild_enabled_aria": "Saba-chan falante em {{name}}",
     "guild_inherit": "Padrão ({{state}})",
