@@ -289,7 +289,7 @@
       "enabled": "Activado",
       "model": "Modelo",
       "memo": "Prompt del servidor",
-      "confirmCommands": "Confirmar comandos",
+      "confirmCommands": "Preguntar siempre en comandos de precaución",
       "memory": "Memoria",
       "webSearch": "Búsqueda web",
       "disabledTools": "Herramientas desactivadas",
