@@ -87,15 +87,17 @@ describe('ActivityBar', () => {
         expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8 });
     });
 
-    it('데몬이 다시 켜져 id가 처음부터 시작하면 처음부터 다시 받는다', async () => {
+    // L55: 데몬은 다시 켜질 때마다 로그 id를 1부터 센다. 답의 epoch가 바뀌면 since를 버리고 처음부터 받는다.
+    // 새 데몬이 이미 since보다 많은 줄을 냈어도(id 60 > since 51) 옛 줄 뒤에 섞지 않는다
+    it('데몬이 다시 켜져 epoch가 바뀌면 받은 줄을 비우고 처음부터 다시 받는다', async () => {
         window.api.auditList = vi.fn().mockResolvedValue({ entries: [] });
         const line = (id, message) => ({ id, timestamp: Date.now(), level: 'info', target: 'x', message });
+        let restarted = false;
         window.api.daemonConsole = vi.fn(async (opts) => {
-            if (opts.since !== undefined) return { lines: [] };
-            if (opts.count === 1) return { lines: [line(3, 'new 3')] };
-            return window.api.daemonConsole.mock.calls.length === 1
-                ? { lines: [line(50, 'old 50')] }
-                : { lines: [line(1, 'new 1'), line(3, 'new 3')] };
+            if (!restarted) return { epoch: 100, lines: opts.since === undefined ? [line(50, 'old 50')] : [] };
+            return opts.since === undefined
+                ? { epoch: 200, lines: [line(1, 'new 1'), line(60, 'new 60')] }
+                : { epoch: 200, lines: [line(60, 'new 60')] };
         });
         render(<ActivityBar />);
         await flush();
@@ -103,16 +105,16 @@ describe('ActivityBar', () => {
         await flush();
         expect(screen.getByText('old 50')).toBeInTheDocument();
 
-        for (let i = 0; i < 5; i++) {
-            await act(async () => {
-                vi.advanceTimersByTime(1000);
-            });
-            await flush();
-        }
+        restarted = true;
+        await act(async () => {
+            vi.advanceTimersByTime(1000);
+        });
+        await flush();
         expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51 });
-        expect(window.api.daemonConsole).toHaveBeenCalledWith({ count: 1 });
+        expect(window.api.daemonConsole).toHaveBeenLastCalledWith({});
         expect(screen.queryByText('old 50')).toBeNull();
         expect(screen.getByText('new 1')).toBeInTheDocument();
+        expect(screen.getAllByText('new 60')).toHaveLength(1);
     });
 
     it('ago는 초·분·시간 단위로 쓴다', () => {
