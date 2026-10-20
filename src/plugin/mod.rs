@@ -732,9 +732,11 @@ async fn drive(
     let stderr_handle = tokio::spawn(async move {
         let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
-            let mut reader = BufReader::new(pipe).lines();
+            let mut reader = BufReader::new(pipe);
+            let mut raw = Vec::new();
             let mut relayed = 0;
-            while let Ok(Some(line)) = reader.next_line().await {
+            // UTF-8이 아닌 줄에서 멈추면 stderr 파이프가 차서 모듈이 시간 초과까지 멈춘다
+            while let Some(line) = crate::supervisor::managed_process::next_line(&mut reader, &mut raw).await {
                 // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
                 if let Some(request) = line.strip_prefix(loopback::PREFIX) {
                     match &loopback {
@@ -914,6 +916,24 @@ mod tests {
         assert!(server.await.unwrap().starts_with("GET /v1/api/metrics HTTP/1.1\r\n"));
         assert!(!stderr.contains("LOOPBACK:"), "relay requests (they carry auth headers) are not logged");
         assert_eq!(std::fs::read_dir(relay.path()).unwrap().count(), 0, "the module removes the reply it read");
+    }
+
+    /// stderr의 UTF-8이 아닌 줄 하나로 읽기가 멈추지 않는다: 멈추면 모듈이 다음 stderr 쓰기에서 끊기거나 파이프가 차서 멈춘다 (D-S7)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stderr_line_that_is_not_utf8_does_not_cut_off_the_run() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg(r"cat > /dev/null; printf 'bad \377\n' >&2; head -c 300000 /dev/zero | tr '\0' 'x' | fold -w 100 >&2; echo '{}'")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .process_group(0);
+        let mut child = plain(cmd.spawn().unwrap());
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+        assert!(status.success(), "the module was not cut off: {status:?}");
+        assert_eq!(stdout.trim(), "{}");
+        assert!(stderr.contains("xxxx"), "later stderr lines are still read");
     }
 
     /// 부모가 끝나도 자식이 출력 파이프를 쥐고 있으면, 출력 수집까지 기한 안에 끊고 자식도 끝낸다
