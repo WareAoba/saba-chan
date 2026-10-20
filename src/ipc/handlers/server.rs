@@ -637,8 +637,9 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     if let Err(e) = result {
         return fail(format!("{:#}", e));
     }
-    let supervisor = state.supervisor.read().await;
+    let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
+    supervisor.migrate_list_settings();
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
 }
 
@@ -712,8 +713,9 @@ pub async fn remove_module(
     }
     let _ = saba_chan_updater_lib::integrity::set_official(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id), false);
     // 캐시 갱신 (write lock)
-    let supervisor = state.supervisor.write().await;
+    let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
+    supervisor.migrate_list_settings();
     (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
 }
 

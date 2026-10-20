@@ -587,10 +587,11 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     if needs_updater.is_empty() {
         if has_module_updates {
             if let Some(ref sup) = state.supervisor {
-                let sup = sup.read().await;
+                let mut sup = sup.write().await;
                 match sup.refresh_modules() {
                     Ok(modules) => {
                         tracing::info!("[Updates] Hot-reloaded {} module(s) after update", modules.len());
+                        sup.migrate_list_settings();
                     }
                     Err(e) => {
                         tracing::warn!("[Updates] Failed to hot-reload modules after update: {}", e);

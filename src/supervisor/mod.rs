@@ -233,10 +233,22 @@ impl Supervisor {
         self.instance_store.load()?;
         tracing::info!("Loaded {} server instances", self.instance_store.list().len());
 
+        self.migrate_list_settings();
+
         // 고아 managed 프로세스 재연결
         self.reattach_orphaned_managed().await;
         
         Ok(())
+    }
+
+    /// 모듈이 `list`로 바꾼 설정의 옛 문자열 값을 배열로 읽는다 (06 §8.1). 모듈을 다시 읽은 뒤에도 부른다
+    pub fn migrate_list_settings(&mut self) {
+        let loader = &self.module_loader;
+        self.instance_store.adjust_in_memory(|instance| {
+            if let Some(settings) = loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()) {
+                crate::validator::migrate_list_values(&settings.fields, &mut instance.module_settings);
+            }
+        });
     }
 
     /// Detect orphaned managed processes from a previous daemon run and restore
