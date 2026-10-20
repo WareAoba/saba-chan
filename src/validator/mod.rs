@@ -138,7 +138,7 @@ fn format_ok(format: &str, s: &str) -> bool {
     let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
     match format {
         // 4G, 1024M, 512k: 숫자 뒤에 단위 한 글자. 4096·4GB·"4 G"는 아니다
-        "memory_size" => s.len() > 1 && digits(&s[..s.len() - 1]) && s.ends_with(['K', 'M', 'G', 'k', 'm', 'g']),
+        "memory_size" => s.strip_suffix(['K', 'M', 'G', 'k', 'm', 'g']).is_some_and(digits),
         "port" => digits(s) && s.parse::<u32>().is_ok_and(|p| (1..=65535).contains(&p)),
         "integer" => digits(s.strip_prefix('-').unwrap_or(s)),
         "path" => !s.trim().is_empty() && !s.contains(['\r', '\n', '\0']),
@@ -677,7 +677,7 @@ mod tests {
         for ok in ["4G", "1024M", "512k"] {
             assert!(validate_setting_value(&ram, Some(&Value::from(ok))).is_ok(), "{}", ok);
         }
-        for bad in ["4096", "4GB", "4 G", "G", "-4G"] {
+        for bad in ["4096", "4GB", "4 G", "G", "-4G", "4기", "가"] {
             let err = validate_setting_value(&ram, Some(&Value::from(bad))).unwrap_err();
             assert_eq!(err.error_type, ValidationErrorType::InvalidFormat, "{}", bad);
         }
