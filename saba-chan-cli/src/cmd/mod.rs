@@ -255,7 +255,8 @@ pub fn typed(raw: &str, kind: &str) -> Result<Value> {
             .ok_or_else(|| usage(t!("err.not_a_bool", value = raw))),
         // 스키마 2 목록: JSON 배열 그대로, 아니면 쉼표로 나눈 글자들 (빈 값은 빈 목록)
         "list" => match guess(raw) {
-            Value::Array(a) => Ok(Value::Array(a)),
+            // 글자만 든 JSON 배열만 그대로. `[1]` 같은 한 항목은 글자 "[1]"이다
+            Value::Array(a) if a.iter().all(Value::is_string) => Ok(Value::Array(a)),
             _ => Ok(Value::Array(
                 raw.split(',')
                     .map(str::trim)
@@ -432,6 +433,7 @@ mod tests {
         assert_eq!(typed(" a, b ,,c", "list").unwrap(), json!(["a", "b", "c"]));
         assert_eq!(typed("[\"a,b\", \"c\"]", "list").unwrap(), json!(["a,b", "c"]));
         assert_eq!(typed("", "list").unwrap(), json!([]));
+        assert_eq!(typed("[1]", "list").unwrap(), json!(["[1]"]));
         assert_eq!(
             typed("Welcome\\nHave fun", "multiline").unwrap(),
             json!("Welcome\nHave fun")
