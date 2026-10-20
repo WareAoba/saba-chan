@@ -912,6 +912,8 @@ async fn restart_instance(
         return instance_not_found(&id);
     };
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
+    // 이 재시작의 정지는 세대를 한 번 올린다. 그보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다 (D-S8)
+    let before_stop = state.supervisor.read().await.run_generation_of(&inst_id);
     let running;
     {
         // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
@@ -937,6 +939,10 @@ async fn restart_instance(
     // 백업·복원이 잠금을 쥐고 있으면 끝나기를 기다렸다 켠다. 요청이 끊겨도 꺼진 채 남지 않게 따로 돌린다.
     // 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 그만둔다
     let generation = state.supervisor.read().await.run_generation_of(&inst_id);
+    if generation > before_stop + 1 {
+        let error = json!({ "success": false, "error": "The server was stopped or started while restarting", "error_code": "restart_cancelled", "stopped": running });
+        return (StatusCode::CONFLICT, Json(error)).into_response();
+    }
     let start = crate::audit::spawn(async move {
         let wanted = || async {
             let supervisor = state.supervisor.read().await;
@@ -1183,6 +1189,53 @@ mod tests {
             let installed = crate::ipc::internal::into_internal(install_module_from_manifest(Path(id.into()), State(state.clone())).await).await.body;
             assert_eq!(installed["error"], "Invalid module ID", "{id:?}: {installed}");
         }
+    }
+
+    /// 재시작의 정지 단계(서버가 끝나기를 기다리는 동안)에 들어온 정지도 재시작을 취소한다 (D-S8)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_during_a_restart_keeps_the_server_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_timeout = 3\n",
+        )
+        .unwrap();
+        // 정상 종료 요청(TERM)을 무시해 정지가 stop_timeout까지 걸리는 서버
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', \"trap '' TERM; sleep 60\"], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-during-restart".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let started = crate::ipc::internal::into_internal(start_instance(Path("stop-during-restart".into()), State(state.clone())).await).await.body;
+        assert_ne!(started["success"], false, "{started}");
+
+        let restarter = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                crate::ipc::internal::into_internal(restart_instance(Path("stop-during-restart".into()), State(state), None).await).await.body
+            })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        let _ = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-during-restart", "game", false).await;
+
+        let restarted = restarter.await.unwrap();
+        assert_eq!(restarted["error_code"], "restart_cancelled", "{restarted}");
+        let s = state.supervisor.read().await;
+        assert!(s.tracker.get_pid("stop-during-restart").is_err(), "nothing is tracked");
+        assert!(s.managed_store.get("stop-during-restart").await.is_none(), "the restart did not bring the server back");
     }
 
     /// 시작 전 점검(모듈 validate) 중에 들어온 정지도 시작을 취소한다: 그 정지는 PID가 없어 바로 성공으로 끝난다
