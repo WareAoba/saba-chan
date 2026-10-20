@@ -347,9 +347,9 @@ impl ManagedProcess {
             let buf = log_buffer.clone();
             let re = log_regex.clone();
             readers.push(tokio::spawn(async move {
-                let reader = BufReader::new(stdout);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stdout);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let level = parse_log_level(&line, re.as_deref());
                     buf.lock().await.push(LogSource::Stdout, line, level);
                 }
@@ -361,9 +361,9 @@ impl ManagedProcess {
             let buf = log_buffer.clone();
             let re = log_regex.clone();
             readers.push(tokio::spawn(async move {
-                let reader = BufReader::new(stderr);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stderr);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let level = parse_log_level(&line, re.as_deref());
                     // stderr lines default to at least Warn
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
@@ -524,9 +524,9 @@ impl ManagedProcess {
             let re = log_regex.clone();
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
-                let reader = BufReader::new(stdout);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stdout);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let content = if let Some(ref sep) = prefix {
                         if let Some(pos) = line.find(sep.as_str()) {
                             line[pos + sep.len()..].to_string()
@@ -548,9 +548,9 @@ impl ManagedProcess {
             let re = log_regex;
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
-                let reader = BufReader::new(stderr);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stderr);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let content = if let Some(ref sep) = prefix {
                         if let Some(pos) = line.find(sep.as_str()) {
                             line[pos + sep.len()..].to_string()
@@ -1087,9 +1087,38 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 
 // ─── Tests ───────────────────────────────────────────────────
 
+/// 자식 출력 한 줄. UTF-8이 아닌 줄도 끊지 않고 러너와 같은 방식으로 글자로 바꾼다 (D-S7).
+/// 끝(EOF)이나 읽기 오류면 None
+pub(crate) async fn next_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, raw: &mut Vec<u8>) -> Option<String> {
+    raw.clear();
+    match reader.read_until(b'\n', raw).await {
+        Ok(0) | Err(_) => None,
+        Ok(_) => Some(saba_runner::decode_line(raw)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UTF-8이 아닌 줄 하나로 콘솔 읽기가 끝나지 않는다: 끝나면 파이프가 차서 서버가 멈춘다 (D-S7)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_line_that_is_not_utf8_does_not_stop_the_console() {
+        let script = r"printf 'bad \377\376 line\n'; printf 'err \377\n' >&2; echo after; echo err-after >&2; sleep 5";
+        let proc = ManagedProcess::spawn("/bin/sh", &["-c".into(), script.into()], ".", Vec::new(), None, None).await.unwrap();
+        let mut seen = Vec::new();
+        for _ in 0..50 {
+            seen = proc.get_recent_console(10).await.into_iter().map(|l| l.content).collect();
+            if seen.iter().any(|l| l == "after") && seen.iter().any(|l| l == "err-after") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(seen.iter().any(|l| l == "after") && seen.iter().any(|l| l == "err-after"), "{seen:?}");
+        assert!(seen.iter().any(|l| l.starts_with("bad ") && l.contains('\u{fffd}')), "{seen:?}");
+        let _ = proc.force_kill();
+    }
 
     /// 서버가 콘솔 입력을 읽지 않으면 보내기가 기다리지 않고 바로 실패한다.
     /// 기다리면 그 사이 데몬 락을 쥔 호출(콘솔 명령 API)이 데몬 전체를 멈춘다
