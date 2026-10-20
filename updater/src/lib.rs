@@ -8,6 +8,7 @@
 //! - `state.rs`: 적용 대기 목록, 설치된 버전 기록
 //! - `apply.rs`: 받은 파일을 설치 폴더에 적용
 //! - `relay.rs`·`signature.rs`·`download.rs`: relay manifest 확인, 서명 검증, R2 다운로드
+//! - `window_icon.rs`: Tauri 창(GUI·업데이터·인스톨러)의 Windows 아이콘
 //!
 //! 경로는 모두 `install_root` 기준입니다.
 
@@ -26,6 +27,7 @@ pub mod signature;
 pub mod uninstall_entry;
 pub mod version;
 pub mod versions;
+pub mod window_icon;
 mod apply;
 mod state;
 mod time;
