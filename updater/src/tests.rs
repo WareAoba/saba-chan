@@ -1406,3 +1406,39 @@ async fn locales_are_replaced_with_a_backup() {
     assert!(locales.join("ko/gui.json").exists());
     assert!(!locales.join("ko/old.json").exists(), "files dropped from the new release are removed");
 }
+
+// L3(b): tar.gz로 받은 GUI도 풀다 실패하면 zip처럼 원래대로 되돌린다
+#[tokio::test]
+async fn a_failed_tar_gz_gui_extract_restores_the_previous_gui() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let gui = manager.install_root.join(crate::GUI_EXE_NAMES[0]);
+    std::fs::write(&gui, b"old gui").unwrap();
+    std::fs::write(manager.install_root.join("resources.pak"), b"old pak").unwrap();
+    let tar_path = tmp.path().join("gui.tar.gz");
+    {
+        let gz = flate2::write::GzEncoder::new(std::fs::File::create(&tar_path).unwrap(), flate2::Compression::default());
+        let mut tb = tar::Builder::new(gz);
+        let mut add = |name: &str, data: &[u8]| {
+            let mut h = tar::Header::new_gnu();
+            h.set_size(data.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            tb.append_data(&mut h, name, data).unwrap();
+        };
+        add(crate::GUI_EXE_NAMES[0], b"new gui");
+        add("resources.pak", b"new pak");
+        add("new.dll", b"new dll");
+        // new.dll은 파일이라 그 아래에 쓸 수 없다: 여기서 실패한다
+        add("new.dll/inner.txt", b"x");
+        tb.into_inner().unwrap().finish().unwrap();
+    }
+
+    assert!(manager.apply_gui_update(&tar_path.to_string_lossy()).await.is_err());
+    assert_eq!(std::fs::read(&gui).unwrap(), b"old gui");
+    assert_eq!(std::fs::read(manager.install_root.join("resources.pak")).unwrap(), b"old pak");
+    let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left.len(), 2, "no new file or backup left behind: {left:?}");
+}

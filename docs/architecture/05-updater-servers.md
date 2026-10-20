@@ -154,7 +154,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
    - `cleanup_old_files()`는 install_root 바로 안의 사바쨩 실행 파일 `*.exe.old`·`*.exe.old.<n>`만 지운다. 적용 직후에 한 번, 아직 잡혀 있어 못 지운 것은 다음 `UpdateManager` 생성 때 지운다(`lib.rs:410-411, 837-840, 919-939`).
 7. **rollback**
    - 모듈·익스텐션은 staging에 `*_backup` 복사본을 만들고, 교체 도중 실패하면 그 백업으로 되돌린다. 성공하면 백업을 지운다(`replace_dir`, `apply.rs:24-62`).
-   - 바이너리는 압축 해제 도중 실패하면 비켜 둔 `.old`를 원래 이름으로 되돌린다(`apply.rs:142-167`). 적용이 끝난 뒤에 이전 판으로 돌아가는 경로는 없다.
+   - 바이너리와 GUI(설치 폴더 바로 안의 exe든 폴더 모드든)는 압축 해제 도중 실패하면 새로 생긴 파일을 지우고 비켜 둔 `.old`·`.update-bak`을 원래 이름으로 되돌린다. zip과 tar.gz가 같은 경로를 쓴다(`apply.rs` `extract_or_restore`). 적용이 끝난 뒤에 이전 판으로 돌아가는 경로는 없다.
    - ~~`prepare_daemon_update`는 호출하는 곳이 없다(죽은 코드)~~ → 해결: 함수가 지워졌다(grep 0건).
 8. **설치 버전 기록**: `update_installed_versions_batch` → `installed-manifest.json`(`state.rs:173-193`). 코어가 바뀌면 Windows "설치된 앱" `DisplayVersion`도 갱신하는데, 이 설치 폴더의 항목만 고친다(`state.rs:199-207`, `uninstall_entry.rs:76-85`).
 
