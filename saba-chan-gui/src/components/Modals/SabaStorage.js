@@ -357,6 +357,8 @@ function ComponentsTab({ devMode }) {
         try {
             const res = await window.api?.updaterApply?.(allKeys);
             clearModuleAuditCache();
+            // 일부만 적용돼도(ok:false) 적용된 것은 알린다 (G-U9b)
+            daemonApplied = res?.applied || [];
             if (res?.ok === false) {
                 hadError = true;
                 setError(
@@ -364,8 +366,6 @@ function ComponentsTab({ devMode }) {
                         (prev ? prev + '\n' : '') +
                         (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')),
                 );
-            } else {
-                daemonApplied = res?.applied || [];
             }
             // 데몬이 needs_updater로 보낸 컴포넌트가 있으면 업데이터 exe 스폰
             if (res?.requires_updater && res?.needs_updater?.length > 0) {
