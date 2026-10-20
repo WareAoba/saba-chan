@@ -196,9 +196,9 @@ impl Api {
     /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 데몬에 남는다: 알림을 보여 주는 `status`는 이 실행에서 본 것 뒤만,
     /// 나머지는 `keep`으로 남은 것 모두를 받는다
     pub async fn servers(&self, keep_notices: bool) -> Result<Value> {
-        let body = self.get_slow(&servers_path(keep_notices, &self.notices_seen)).await?;
+        let mut body = self.get_slow(&servers_path(keep_notices, &self.notices_seen)).await?;
         if !keep_notices {
-            remember_notices(&self.notices_seen, &body);
+            remember_notices(&self.notices_seen, &mut body);
         }
         Ok(body)
     }
@@ -881,18 +881,15 @@ fn servers_path(keep_notices: bool, seen: &std::sync::atomic::AtomicU64) -> Stri
     }
 }
 
-/// 받은 알림 중 가장 큰 id를 본 것으로 적는다
-fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &Value) {
-    let newest = body
-        .get("port_conflict_stops")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|n| n.get("id").and_then(Value::as_u64))
-        .max();
-    if let Some(id) = newest {
-        seen.fetch_max(id, std::sync::atomic::Ordering::Relaxed);
-    }
+/// 받은 알림 중 가장 큰 id를 본 것으로 적고, 겹친 조회로 이미 본 것(id가 커서 이하)은 거른다 (GUI serverList와 같은 규칙)
+fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &mut Value) {
+    let Some(list) = body.get_mut("port_conflict_stops").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let newest = list.iter().filter_map(|n| n.get("id").and_then(Value::as_u64)).max().unwrap_or(0);
+    let before = seen.fetch_max(newest, std::sync::atomic::Ordering::Relaxed);
+    // id가 없는 알림(옛 데몬)은 그대로 둔다
+    list.retain(|n| n.get("id").and_then(Value::as_u64).is_none_or(|id| id > before));
 }
 
 /// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
@@ -998,10 +995,16 @@ mod tests {
     fn port_conflict_notices_are_read_after_the_last_one_seen() {
         let seen = std::sync::atomic::AtomicU64::new(0);
         assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=0");
-        remember_notices(&seen, &json!({ "port_conflict_stops": [{ "id": 9 }, { "id": 5 }] }));
+        let mut first = json!({ "port_conflict_stops": [{ "id": 9 }, { "id": 5 }] });
+        remember_notices(&seen, &mut first);
+        assert_eq!(first["port_conflict_stops"].as_array().unwrap().len(), 2);
         assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=9");
-        remember_notices(&seen, &json!({ "port_conflict_stops": [] }));
-        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=9");
+        // 겹친 조회가 같은 알림을 늦게 받아도 본 것은 다시 보이지 않는다
+        let mut late = json!({ "port_conflict_stops": [{ "id": 9 }, { "id": 12 }] });
+        remember_notices(&seen, &mut late);
+        assert_eq!(late["port_conflict_stops"], json!([{ "id": 12 }]));
+        remember_notices(&seen, &mut json!({ "port_conflict_stops": [] }));
+        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=12");
         assert_eq!(servers_path(true, &seen), "/api/servers?notices=keep");
     }
 
