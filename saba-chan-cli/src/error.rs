@@ -271,6 +271,9 @@ mod tests {
             let hint = api_hint(code, &json!({ "protocol": "rcon" })).unwrap_or_default();
             assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
         }
+        // 시간 초과는 서버가 이미 실행했을 수 있다: 다시 보내라고 하지 않고 콘솔에서 확인하게 한다 (지급·차단이 두 번 되지 않게)
+        let hint = api_hint("rcon_timeout", &json!({ "protocol": "rcon" })).unwrap();
+        assert!(hint.contains("saba-chan-cli console") && !hint.to_lowercase().contains("try again"), "{}", hint);
     }
 
     /// `help --json`의 종료 코드 표가 실제 종료 코드와 맞는다
