@@ -1,4 +1,4 @@
-//! 서버 로그 읽기·내보내기 (디스코드 검수 9번, 계약 06 §3): 원천은 러너가 남기는 콘솔 기록 세션 파일이다
+//! 서버 로그 읽기·내보내기 (디스코드 검수 9번, 계약 06 §3): 원천은 러너가 남기는 콘솔 기록 세션 파일과, 러너 없이 직접 실행했을 때의 `console.log`·회전 파일이다
 //!
 //! - `GET /api/instance/:id/logs?source=&lines=&before=`: 한 세션의 끝에서부터 줄을 읽는다. `before`는 이전 응답이 준 커서다.
 //! - `GET /api/instance/:id/logs/export?source=&since=&until=`: 한 세션을 파일 하나로 (`{fileName, bytes, truncated, content}`).
@@ -17,26 +17,33 @@ use std::io::{BufRead, Read, Seek, SeekFrom};
 use std::path::{Path as FsPath, PathBuf};
 
 use super::super::IPCServer;
-use crate::supervisor::managed_process::sessions_dir;
+use crate::supervisor::managed_process::{console_log_path, sessions_dir, CONSOLE_LOG_ROTATIONS};
 
 /// 한 번에 읽는 줄 수의 기본값과 상한
 const DEFAULT_LINES: usize = 200;
 const MAX_LINES: usize = 500;
-/// 내보내기 내용의 상한 (넘으면 최근 쪽을 남긴다)
+/// 내보내기 내용의 상한, JSON 문자열로 쓴 크기 (넘으면 최근 쪽을 남긴다)
 pub const EXPORT_MAX_BYTES: usize = 4 * 1024 * 1024;
 /// 끝에서 거꾸로 읽는 조각 크기
 const CHUNK: u64 = 64 * 1024;
 
-/// 세션 파일 하나: id는 파일 이름에서 `.log`를 뺀 것(시작 시각 `YYYYMMDD-HHMMSS`, UTC)
+/// 원천 하나: 러너 세션 파일(id는 시작 시각 `YYYYMMDD-HHMMSS`, UTC) 또는 직접 실행 때의 `console.log`·회전 파일(`console`, `console.1`, …)
 struct Session {
     id: String,
     path: PathBuf,
     started_at: Option<u64>,
 }
 
-/// 최근 것부터
+/// 첫 줄의 시각 (직접 실행 기록은 파일 이름에 시작 시각이 없다)
+fn first_line_time(path: &FsPath) -> Option<u64> {
+    let mut first = String::new();
+    std::io::BufReader::new(std::fs::File::open(path).ok()?).read_line(&mut first).ok()?;
+    line_time(&first)
+}
+
+/// 최근에 쓴 것부터
 fn sessions(instance_dir: &FsPath) -> Vec<Session> {
-    let mut list: Vec<Session> = std::fs::read_dir(sessions_dir(instance_dir))
+    let runner = std::fs::read_dir(sessions_dir(instance_dir))
         .into_iter()
         .flatten()
         .flatten()
@@ -46,10 +53,17 @@ fn sessions(instance_dir: &FsPath) -> Vec<Session> {
             let id = path.file_stem()?.to_str()?.to_string();
             let started_at = chrono::NaiveDateTime::parse_from_str(&id, "%Y%m%d-%H%M%S").ok().map(|t| t.and_utc().timestamp().max(0) as u64);
             Some(Session { id, path, started_at })
-        })
-        .collect();
-    list.sort_by(|a, b| b.id.cmp(&a.id));
-    list
+        });
+    // saba-runner 없이 직접 실행하면 콘솔 기록은 `console.log`와 그 회전 파일에 남는다
+    let direct = console_log_path(instance_dir);
+    let direct = (0..=CONSOLE_LOG_ROTATIONS)
+        .map(|i| if i == 0 { ("console".to_string(), direct.clone()) } else { (format!("console.{i}"), PathBuf::from(format!("{}.{i}", direct.display()))) })
+        .filter(|(_, path)| path.is_file())
+        .map(|(id, path)| Session { started_at: first_line_time(&path), id, path });
+    let modified = |p: &FsPath| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let mut list: Vec<(Option<std::time::SystemTime>, Session)> = runner.chain(direct).map(|s| (modified(&s.path), s)).collect();
+    list.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.id.cmp(&a.1.id)));
+    list.into_iter().map(|(_, s)| s).collect()
 }
 
 fn not_found(what: &str) -> axum::response::Response {
@@ -159,7 +173,12 @@ pub async fn logs_handler(Path(id): Path<String>, State(state): State<IPCServer>
     }
 }
 
-/// 한 세션을 시각으로 걸러 최근 `EXPORT_MAX_BYTES`까지 모은다 → (내용, 넘쳐서 앞을 버렸는가)
+/// 줄 하나(+ 줄바꿈)가 JSON 문자열 안에서 차지하는 바이트: 릴레이로 갈 때의 크기
+fn json_len(line: &str) -> usize {
+    serde_json::to_string(line).map_or(line.len() * 6, |s| s.len() - 2) + 2
+}
+
+/// 한 세션을 시각으로 걸러 JSON으로 쓴 크기가 최근 `EXPORT_MAX_BYTES`까지 모은다 → (내용, 넘쳐서 앞을 버렸는가)
 fn export_lines(path: &FsPath, since: Option<u64>, until: Option<u64>) -> std::io::Result<(String, bool)> {
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
     let mut kept: VecDeque<String> = VecDeque::new();
@@ -180,11 +199,11 @@ fn export_lines(path: &FsPath, since: Option<u64>, until: Option<u64>) -> std::i
         if !inside {
             continue;
         }
-        bytes += line.len() + 1;
+        bytes += json_len(&line);
         kept.push_back(line);
         while bytes > EXPORT_MAX_BYTES {
             let Some(old) = kept.pop_front() else { break };
-            bytes -= old.len() + 1;
+            bytes -= json_len(&old);
             truncated = true;
         }
     }
@@ -319,5 +338,38 @@ mod tests {
         let content = cut["content"].as_str().unwrap();
         assert!(content.len() <= EXPORT_MAX_BYTES && content.ends_with("last\n"));
         assert!(content.starts_with("[2026-10-20 11:00:00]"), "whole lines only");
+    }
+
+    #[tokio::test]
+    async fn a_server_run_without_the_runner_has_its_console_log_as_sources() {
+        let (state, id, _tmp) = server_with_sessions(&[("20261019-100000", "[2026-10-19 10:00:00] [STDOUT/INFO] runner\n")]).await;
+        let logs = state.supervisor.read().await.instance_store.instance_dir(&id).join("logs");
+        let day = std::time::Duration::from_secs(86400);
+        let now = std::time::SystemTime::now();
+        for (name, line, age) in [("console.log", "[2026-10-20 12:00:00] [STDOUT/INFO] direct", 0u32), ("console.log.1", "[2026-10-20 08:00:00] [STDOUT/INFO] rotated", 1)] {
+            std::fs::write(logs.join(name), format!("{line}\n")).unwrap();
+            std::fs::File::options().append(true).open(logs.join(name)).unwrap().set_modified(now - day * age).unwrap();
+        }
+        let session = sessions_dir(&logs.parent().unwrap().to_path_buf()).join("20261019-100000.log");
+        std::fs::File::options().append(true).open(session).unwrap().set_modified(now - day * 2).unwrap();
+
+        let (status, body) = get(&state, &id, &[], false).await;
+        assert_eq!(status, StatusCode::OK);
+        let ids: Vec<&str> = body["sources"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["console", "console.1", "20261019-100000"], "newest written first");
+        assert_eq!(body["lines"], json!(["[2026-10-20 12:00:00] [STDOUT/INFO] direct"]));
+        assert_eq!(body["sources"][0]["startedAt"], 1792497600u64, "first line's time");
+        let (_, rotated) = get(&state, &id, &[("source", "console.1")], true).await;
+        assert_eq!(rotated["content"], "[2026-10-20 08:00:00] [STDOUT/INFO] rotated\n");
+    }
+
+    #[tokio::test]
+    async fn an_export_stays_under_the_limit_once_written_as_json() {
+        // 따옴표·역슬래시는 JSON에서 두 배가 된다: 내보내기 상한은 JSON 문자열로 잰다
+        let quoted = format!("[2026-10-20 11:00:00] [STDOUT/INFO] {}\n", "\"\\".repeat(32));
+        let (state, id, _tmp) = server_with_sessions(&[("20261020-110000", &quoted.repeat(EXPORT_MAX_BYTES / quoted.len() + 10))]).await;
+        let (_, cut) = get(&state, &id, &[], true).await;
+        assert_eq!(cut["truncated"], true);
+        assert!(serde_json::to_string(&cut["content"]).unwrap().len() <= EXPORT_MAX_BYTES);
     }
 }

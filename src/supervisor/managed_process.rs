@@ -27,7 +27,7 @@ const CONSOLE_LOG_FILENAME: &str = "console.log";
 /// Maximum console log file size before rotation (10 MB).
 const CONSOLE_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
 /// Number of rotated files to keep.
-const CONSOLE_LOG_ROTATIONS: usize = 2;
+pub(crate) const CONSOLE_LOG_ROTATIONS: usize = 2;
 
 /// Default maximum number of log lines to keep in the ring buffer.
 const DEFAULT_LOG_BUFFER: usize = 10_000;
