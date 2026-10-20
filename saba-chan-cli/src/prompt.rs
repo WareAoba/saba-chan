@@ -111,6 +111,18 @@ impl Prompt {
             .unwrap_or(false)
     }
 
+    /// 사람이 직접 하는 동의(약관, 격리 없이 돌리기)를 받는다: `--yes`로 대신하지 않고, 물을 수 없으면 터미널에서 다시 하라고 한다
+    pub fn agreed(&self, question: &str) -> Result<()> {
+        if !self.enabled {
+            return Err(CliError::Usage(t!("sandbox.needs_terminal")).into());
+        }
+        if self.consent(question) {
+            Ok(())
+        } else {
+            Err(CliError::Cancelled.into())
+        }
+    }
+
     /// 확인을 받고, 아니면 취소로 끝낸다
     pub fn ensure(&self, question: &str) -> Result<()> {
         if self.confirm(question, false)? {
@@ -213,6 +225,14 @@ mod tests {
     }
 
     /// 끼운 창구가 묻는다. `--yes`는 동의를 대신하지 않고, 창구에서 취소하면 취소로 끝난다
+    /// 사람이 직접 하는 동의는 `--yes`로 대신하지 않는다: 물을 수 없으면 터미널에서 하라는 오류
+    #[test]
+    fn yes_does_not_stand_in_for_a_consent() {
+        let ask = Prompt { enabled: false, yes: true };
+        let err = ask.agreed("q").unwrap_err();
+        assert!(matches!(err.downcast_ref::<CliError>(), Some(CliError::Usage(_))), "{err}");
+    }
+
     #[test]
     fn questions_go_to_the_installed_asker() {
         let _guard = AskerGuard::install(Box::new(Scripted));
