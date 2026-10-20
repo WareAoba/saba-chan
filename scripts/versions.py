@@ -217,6 +217,15 @@ def raw_url(repo: str, ref: str | None, rel: str) -> str | None:
     return f"https://raw.githubusercontent.com/{repo}/{ref}/{rel}"
 
 
+def extension_core_requirement(ext: dict) -> str | None:
+    """익스텐션이 요구하는 saba-core 버전 (`dependencies."saba-core"`, 없으면 `min_app_version`). 업데이터가 `requires`로 검사한다"""
+    deps = ext.get("dependencies")
+    core = deps.get("saba-core") if isinstance(deps, dict) else None
+    if core and core != "*":
+        return core
+    return f">={ext['min_app_version']}" if ext.get("min_app_version") else None
+
+
 def addon_components(args: argparse.Namespace, assets: Path) -> dict:
     """모듈·익스텐션 저장소를 zip으로 묶고 `{키: {version, asset, install_dir, meta, requires?}}`를 돌려준다."""
     found = {}
@@ -264,9 +273,12 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
                 "has_gui": "gui" in ext,
                 "has_i18n": (folder / "i18n").is_dir(),
             }
-            found[f"ext-{ext_id}"] = {"version": ext["version"], "asset": asset,
-                                      "install_dir": f"extensions/{folder.name}",
-                                      "meta": {k: v for k, v in meta.items() if v is not None}}
+            comp = {"version": ext["version"], "asset": asset, "install_dir": f"extensions/{folder.name}",
+                    "meta": {k: v for k, v in meta.items() if v is not None}}
+            core = extension_core_requirement(ext)
+            if core:
+                comp["requires"] = {"saba-core": core}
+            found[f"ext-{ext_id}"] = comp
     return found
 
 
