@@ -291,8 +291,9 @@ export function useServerActions({
                 result.action_required === 'executable_not_found' ||
                 result.action_required === 'server_jar_not_found'
             ) {
-                // 파일 종류는 설정된 경로의 확장자로 (없으면 모든 파일)
-                const configuredName = (result.configured_path || '').split(/[/\\]/).pop();
+                // 파일 종류는 설정된 경로의 확장자로, 없으면 모듈이 밝힌 실행 파일 이름으로 (둘 다 없으면 모든 파일)
+                const declared = modules.find((m) => m.name === (srv?.module || module))?.server_executable;
+                const configuredName = (result.configured_path || declared || '').split(/[/\\]/).pop();
                 const ext = configuredName.includes('.') ? configuredName.split('.').pop() : '';
                 revertOptimistic(name);
                 setModal({

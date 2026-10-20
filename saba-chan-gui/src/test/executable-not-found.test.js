@@ -6,7 +6,7 @@ import { useServerActions } from '../hooks/useServerActions';
  * 모듈은 서버 실행 파일을 찾지 못하면 범용 코드 executable_not_found를 준다(예전 모듈은 server_jar_not_found).
  * GUI는 둘 다 경로 다시 고르기·새로 설치를 묻고, 파일 고르기 필터는 게임마다 다른 실행 파일 확장자를 따른다
  */
-async function start(startResult) {
+async function start(startResult, module = { name: 'game' }) {
     const servers = [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }];
     const setModal = vi.fn();
     window.api = {
@@ -19,7 +19,7 @@ async function start(startResult) {
         useServerActions({
             servers,
             setServers: vi.fn(),
-            modules: [{ name: 'game' }],
+            modules: [module],
             loading: false,
             setLoading: vi.fn(),
             setModal,
@@ -58,7 +58,17 @@ describe('서버 실행 파일을 찾지 못했을 때', () => {
         expect(opts.filters).toEqual([{ name: 'PalServer.exe', extensions: ['exe'] }]);
     });
 
-    it('설정된 경로가 없으면 모든 파일을 고르게 한다', async () => {
+    it('설정된 경로가 없으면 모듈이 밝힌 실행 파일 이름의 확장자를 따른다', async () => {
+        const opts = await pickPath(
+            await start(
+                { success: false, action_required: 'executable_not_found' },
+                { name: 'game', server_executable: 'server.jar' },
+            ),
+        );
+        expect(opts.filters).toEqual([{ name: 'server.jar', extensions: ['jar'] }]);
+    });
+
+    it('설정된 경로도 모듈 선언도 없으면 모든 파일을 고르게 한다', async () => {
         const opts = await pickPath(await start({ success: false, action_required: 'executable_not_found' }));
         expect(opts.filters).toBeUndefined();
     });
