@@ -3171,9 +3171,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("modules").join("chatty");
         std::fs::create_dir_all(&dir).unwrap();
-        let table = "player_join_patterns = ['\\]: (?P<name>[A-Za-z0-9_]{1,16}) joined the game\\s*$']\nplayer_leave_patterns = ['\\]: (?P<name>[A-Za-z0-9_]{1,16}) left the game\\s*$']\n";
+        let head = "^\\[\\d{2}:\\d{2}:\\d{2}(?:\\] \\[[^\\]]*/| )INFO\\]: ";
+        let table = format!("player_join_patterns = ['{head}(?P<name>[A-Za-z0-9_]{{1,16}}) joined the game\\s*$']\nplayer_leave_patterns = ['{head}(?P<name>[A-Za-z0-9_]{{1,16}}) left the game\\s*$']\n");
         std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"chatty\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\n{table}")).unwrap();
-        let sh = "echo '[20:07:05] [Server thread/INFO]: Steve joined the game'; echo '[20:07:06] [Server thread/INFO]: <Alex> Bob joined the game'; sleep 0.6; echo '[20:07:09] [Server thread/INFO]: Steve left the game'; sleep 30";
+        let sh = "echo '[20:07:05] [Server thread/INFO]: Steve joined the game'; echo '[20:07:06] [Server thread/INFO]: <Alex> ]: Bob joined the game'; sleep 0.6; echo '[20:07:09] [Server thread/INFO]: Steve left the game'; sleep 30";
         std::fs::write(dir.join("lifecycle.py"), format!(
             "import json, sys\n\
              if sys.argv[1] == 'get_launch_command':\n    \

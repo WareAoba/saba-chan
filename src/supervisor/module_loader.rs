@@ -2337,6 +2337,19 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name
         assert!(!ready.is_match("[20:06:58] [Server thread/INFO]: Preparing level \"world\""));
         assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
         assert_eq!((meta.player_join_patterns.len(), meta.player_leave_patterns.len()), (2, 1));
+        let players = crate::supervisor::player_events::Patterns::new(&meta.player_join_patterns, &meta.player_leave_patterns).unwrap();
+        use crate::supervisor::player_events::Change::{Join, Leave};
+        assert_eq!(players.parse("[20:07:05] [Server thread/INFO]: Steve joined the game"), Some(("Steve".into(), Join)));
+        assert_eq!(players.parse("[20:07:05 INFO]: Steve joined the game"), Some(("Steve".into(), Join)), "Paper's header");
+        assert_eq!(players.parse("[20:07:06] [Server thread/INFO]: Alex (formerly known as Al) joined the game"), Some(("Alex".into(), Join)));
+        assert_eq!(players.parse("[20:07:09] [Server thread/INFO]: Steve left the game"), Some(("Steve".into(), Leave)));
+        for chat in [
+            "[20:07:07] [Server thread/INFO]: <Steve> ]: Notch joined the game",
+            "[20:07:07] [Server thread/INFO]: [Not Secure] <Steve> ]: Notch joined the game",
+            "[20:07:07] [Server thread/INFO]: <Steve> Notch left the game",
+        ] {
+            assert_eq!(players.parse(chat), None, "chat is not a player: {chat}");
+        }
     }
 
     /// MK8 §8.3: 접속·퇴장 문구도 `[extensions.saba-core]`에 둔다. `(?P<name>…)`이 없거나 정규식이 아니면 그 항목만 버린다
