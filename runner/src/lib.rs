@@ -113,14 +113,163 @@ pub fn matching_files(pattern: &Path) -> Vec<PathBuf> {
 /// 앞에 붙으므로 앞뒤의 NUL은 버린다. 잘못된 UTF-8은 대체 문자로.
 pub fn decode_line(bytes: &[u8]) -> String {
     let bytes = trim_nul(bytes);
-    let odd_nuls = bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count();
-    let text = if bytes.len() >= 2 && odd_nuls * 2 >= bytes.len() / 2 {
+    decode_as(bytes, odd_nuls(bytes))
+}
+
+/// 바이트 절반 가까이가 홀수 자리 0인가 (UTF-16LE로 쓴 ASCII)
+fn odd_nuls(bytes: &[u8]) -> bool {
+    let nuls = bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count();
+    bytes.len() >= 2 && nuls * 2 >= bytes.len() / 2
+}
+
+fn decode_as(bytes: &[u8], utf16: bool) -> String {
+    let text = if utf16 {
         let units: Vec<u16> = bytes.chunks(2).map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
         String::from_utf16_lossy(&units).trim_start_matches('\u{feff}').to_string()
     } else {
         String::from_utf8_lossy(bytes).trim_start_matches('\u{feff}').to_string()
     };
     text.trim_end_matches(['\r', '\n', '\0']).to_string()
+}
+
+/// 끝나지 않는 줄 하나가 메모리를 다 쓰지 않게, 이 길이에서 끊어 내보낸다 (짝수라 UTF-16 글자를 가르지 않는다)
+pub const MAX_LINE: usize = 64 * 1024;
+
+/// 자식 출력 한 갈래를 줄로 자른다. UTF-16LE 출력은 `\n` 바이트만 보고 자르면 0A·00이 낀 글자(上, 一 등)에서 줄이
+/// 어긋난다 (D-S13). 줄마다 UTF-16LE인지 정한다. NUL이 적은 한자 줄이나 빈 앞부분처럼 바이트만으로 정하기 어려우면 뒤따르는 바이트와 앞 줄의 판단을 보되,
+/// NUL이 하나도 없으면 UTF-8(또는 ANSI 코드 페이지)로 본다: 첫 줄만 UTF-16LE로 쓰고 이후는 다른 인코딩으로 쓰는 서버가 있다.
+/// UTF-16 줄 끝(0A 00)은 스트림 처음부터 센 짝수 자리에만 온다. 한 번 잘못 잘라도 다음 줄에서 다시 맞춘다
+#[derive(Debug, Default)]
+pub struct Lines {
+    utf16: bool,
+    pending: Vec<u8>,
+    /// 이미 본 자리. 다음 바이트를 기다리는 동안 같은 앞부분을 다시 보지 않는다
+    from: usize,
+    /// `pending[0]`이 스트림의 홀수 자리인가
+    odd: bool,
+}
+
+impl Lines {
+    pub fn push(&mut self, bytes: &[u8]) {
+        self.pending.extend_from_slice(bytes);
+    }
+
+    /// 아직 줄로 내보내지 않은 바이트
+    pub fn pending(&self) -> &[u8] {
+        &self.pending
+    }
+
+    /// 다음 줄 (줄 끝 포함). 아직 줄이 끝나지 않았으면 None. `MAX_LINE`을 넘으면 거기서 끊는다
+    pub fn next_line(&mut self) -> Option<Vec<u8>> {
+        let end = match self.line_end() {
+            Some(end) => end,
+            None if self.pending.len() >= MAX_LINE => {
+                let head = &self.pending[..MAX_LINE];
+                self.utf16 = judge(head, self.utf16, &mut self.odd);
+                if self.utf16 { MAX_LINE - 1 } else { utf8_cut(head) }
+            }
+            None => return None,
+        };
+        let mut line: Vec<u8> = self.pending.drain(..=end).collect();
+        self.from = 0;
+        let start_odd = self.odd;
+        self.odd ^= line.len() % 2 == 1;
+        // 어긋났던 자리에서 시작한 UTF-16 줄: 첫 바이트는 앞 글자의 나머지다
+        if self.utf16 && start_odd {
+            line.remove(0);
+        }
+        Some(line)
+    }
+
+    /// 스트림이 끝났을 때 남은 바이트
+    pub fn finish(&mut self) -> Option<Vec<u8>> {
+        self.from = 0;
+        (!self.pending.is_empty()).then(|| std::mem::take(&mut self.pending))
+    }
+
+    fn line_end(&mut self) -> Option<usize> {
+        let buf = &self.pending;
+        while let Some(i) = buf.get(self.from..)?.iter().position(|b| *b == b'\n') {
+            let nl = self.from + i;
+            let body = &buf[..nl];
+            let even = nl.is_multiple_of(2) != self.odd;
+            // UTF-16 줄 뒤 짝수 자리의 0A 00은 줄 끝이다: NUL 없는 글자만 쓴 줄(한글 등)도 UTF-16으로 이어 본다. UTF-8에는 0A 뒤 0이 오지 않는다
+            if self.utf16 && even && buf.get(nl + 1) == Some(&0) {
+                self.from = 0;
+                return Some(nl + 1);
+            }
+            match body.len() {
+                // 빈 앞부분은 뒤따르는 바이트까지 본다
+                0 => {
+                    let seen = &buf[..buf.len().min(nl + 33)];
+                    if seen.len() >= 2 {
+                        self.utf16 = judge(seen, self.utf16, &mut self.odd);
+                    }
+                }
+                // UTF-16 줄이면 `\n`이 줄 처음에서 홀수 자리에 올 수 없다
+                1 => self.utf16 = false,
+                _ => self.utf16 = judge(body, self.utf16, &mut self.odd),
+            }
+            if !self.utf16 {
+                self.from = 0;
+                return Some(nl);
+            }
+            // 홀수 자리 0A는 글자의 윗바이트다. 짝수 자리는 다음 바이트가 0일 때만 줄 끝이다
+            match buf.get(nl + 1) {
+                Some(0) if even => {
+                    self.from = 0;
+                    return Some(nl + 1);
+                }
+                None if even => {
+                    self.from = nl;
+                    return None;
+                }
+                _ => self.from = nl + 1,
+            }
+        }
+        self.from = buf.len();
+        None
+    }
+
+    /// `next_line`·`finish`로 꺼낸 줄을 글자로. 줄 끝 `\r\n`은 뗀다
+    pub fn decode(&self, line: &[u8]) -> String {
+        if self.utf16 {
+            decode_as(line, true)
+        } else {
+            decode_line(line)
+        }
+    }
+}
+
+/// `head`를 끊을 자리(포함). 끝의 UTF-8 글자가 잘리면 그 글자 앞에서 끊는다
+fn utf8_cut(head: &[u8]) -> usize {
+    let last = head.len() - 1;
+    let Some(start) = (last.saturating_sub(3)..=last).rev().find(|&i| head[i] & 0xc0 != 0x80) else {
+        return last;
+    };
+    let need = match head[start] {
+        b if b >= 0xf0 => 4,
+        b if b >= 0xe0 => 3,
+        b if b >= 0xc0 => 2,
+        _ => 1,
+    };
+    if start + need > head.len() && start > 0 { start - 1 } else { last }
+}
+
+/// `seen`(줄 처음부터)이 UTF-16LE인가. `odd`: `seen[0]`이 스트림의 홀수 자리인가
+fn judge(seen: &[u8], was_utf16: bool, odd: &mut bool) -> bool {
+    if !was_utf16 && (seen.starts_with(&[0xff, 0xfe]) || (!high_nuls(seen, *odd) && high_nuls(seen, false))) {
+        // 다른 인코딩 줄 뒤에 이 줄 처음부터 UTF-16LE로 쓴다: 짝수 자리를 이 줄 처음에 맞춘다
+        *odd = false;
+        return true;
+    }
+    high_nuls(seen, *odd) || (was_utf16 && seen.contains(&0))
+}
+
+/// 스트림의 홀수 자리(UTF-16LE 글자의 윗바이트) 절반 가까이가 0인가. `start_odd`: `bytes[0]`이 홀수 자리인가
+fn high_nuls(bytes: &[u8], start_odd: bool) -> bool {
+    let nuls = bytes.iter().skip(usize::from(!start_odd)).step_by(2).filter(|b| **b == 0).count();
+    nuls * 2 >= bytes.len() / 2
 }
 
 fn trim_nul(mut b: &[u8]) -> &[u8] {
@@ -209,6 +358,55 @@ mod tests {
         assert_eq!(decode_line(&next), "다음 줄");
         assert_eq!(decode_line(b"plain\r\n"), "plain");
         assert_eq!(decode_line(b""), "");
+    }
+
+    fn split(chunks: &[&[u8]]) -> Vec<String> {
+        let (mut lines, mut out) = (Lines::default(), Vec::new());
+        for chunk in chunks {
+            lines.push(chunk);
+            while let Some(line) = lines.next_line() {
+                out.push(lines.decode(&line));
+            }
+        }
+        if let Some(rest) = lines.finish() {
+            out.push(lines.decode(&rest));
+        }
+        out
+    }
+
+    /// UTF-16LE 줄은 0A·00이 낀 글자(上 = 0A 4E, 一 = 00 4E)에서 끊기지 않는다. 첫 줄만 UTF-16LE인 출력도 그대로 읽는다 (D-S13)
+    #[test]
+    fn utf16_lines_split_only_at_their_own_line_ends() {
+        let utf16 = |s: &str| -> Vec<u8> { s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect() };
+        assert_eq!(split(&[&utf16("\u{feff}Ready 上一\r\n上\r\n一番\r\nend\r\n")]), ["Ready 上一", "上", "一番", "end"]);
+        let mut mixed = utf16("\u{feff}Server starting\r\n");
+        mixed.extend_from_slice("다음 줄\na\n".as_bytes());
+        assert_eq!(split(&[&mixed]), ["Server starting", "다음 줄", "a"]);
+        let mut ansi_first = b"echo off\r\n.\n".to_vec();
+        ansi_first.extend(utf16("ok 上\r\nend\r\n"));
+        assert_eq!(split(&[&ansi_first]), ["echo off", ".", "ok 上", "end"]);
+        assert_eq!(split(&[b"plain\r\nb\n\nlast"]), ["plain", "b", "", "last"]);
+        assert_eq!(split(&[&utf16("Ready\n다음\nend\n")]), ["Ready", "다음", "end"], "a line with no NUL after a UTF-16 line");
+    }
+
+    /// BOM 없이 0A로 시작하는 UTF-16LE 출력(上 = 0A 4E): 한꺼번에 오면 그대로 읽고, 한 바이트씩 와서 처음을 잘못 잘라도
+    /// 다음 줄에서 다시 맞춘다. 줄 끝이 없는 출력은 `MAX_LINE`에서 끊는다
+    #[test]
+    fn utf16_lines_recover_from_a_wrong_first_cut() {
+        let utf16 = |s: &str| -> Vec<u8> { s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect() };
+        let bytes = utf16("上一\r\nok\r\n");
+        assert_eq!(split(&[&bytes]), ["上一", "ok"]);
+        let one_by_one: Vec<&[u8]> = bytes.chunks(1).collect();
+        let lines = split(&one_by_one);
+        assert_eq!(lines.last().map(String::as_str), Some("ok"), "{lines:?}");
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        let endless = utf16(&"a一".repeat(MAX_LINE / 2));
+        let lines = split(&[&endless]);
+        assert_eq!(lines.len(), 2);
+        assert!(lines.iter().all(|l| l.chars().all(|c| c == 'a' || c == '一')), "a cut keeps whole characters");
+        let endless = "가".repeat(MAX_LINE);
+        let lines = split(&[endless.as_bytes()]);
+        assert!(lines.len() > 1 && lines.iter().all(|l| l.chars().all(|c| c == '가')), "a UTF-8 cut keeps whole characters");
     }
 
     #[test]

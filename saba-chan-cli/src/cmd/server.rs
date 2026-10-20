@@ -512,12 +512,12 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         match ctx.api.update_instance(&id, Value::Object(patch)).await {
             Err(e) => {
                 ctx.out.warn(&t!("add.settings_failed", error = e));
-                settings_error = Some(e.to_string());
+                settings_error = Some(t!("add.created_settings_failed", name = name, error = e));
             }
             Ok(r) => {
                 if let Some(e) = sync_failure(&r) {
                     ctx.out.warn(&e);
-                    settings_error = Some(e);
+                    settings_error = add_settings_failure(&name, &r);
                 }
             }
         }
@@ -529,7 +529,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         if a.no_wait {
             if let Some(error) = settings_error {
                 return Err(CliError::Partial {
-                    message: t!("add.created_settings_failed", name = name, error = error),
+                    message: error,
                     data: json!({ "id": id, "name": name, "module": module_name, "provisioning": true }),
                 }
                 .into());
@@ -538,7 +538,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             ctx.out.hint(&format!("saba-chan-cli server progress {}", name));
             return Ok(());
         }
-        let result = follow_provision(ctx, &name).await?;
+        let result = follow_provision(ctx, &name, true).await?;
         if let Some(err) = result.get("error").and_then(Value::as_str) {
             let rolled = ctx.api.dismiss_provision(&name).await.ok();
             let removed = rolled.and_then(|r| r.get("rolled_back").and_then(Value::as_bool)) == Some(true);
@@ -552,7 +552,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let out = json!({ "success": true, "id": id, "name": name, "module": module_name, "provisioned": provisioning });
     if let Some(error) = settings_error {
         return Err(CliError::Partial {
-            message: t!("add.created_settings_failed", name = name, error = error),
+            message: error,
             data: json!({ "id": id, "name": name, "module": module_name, "provisioned": provisioning }),
         }
         .into());
@@ -651,13 +651,27 @@ fn provision_lost(p: &Value) -> bool {
     p.get("active").and_then(Value::as_bool) != Some(true)
 }
 
+/// 항목이 사라졌는데 그 이름의 서버가 설치 중이 아닌 채로 있으면, 끝난 항목을 다른 곳(GUI 카드)에서 다음 폴링 전에 닫은 것이다.
+/// 실패한 새 설치는 닫을 때 지워지므로 남은 서버는 성공으로 본다 (L65). 새로 만든 서버의 설치에만 쓴다
+fn closed_after_finish(servers: &Value, name: &str) -> bool {
+    servers
+        .get("servers")
+        .and_then(Value::as_array)
+        .and_then(|a| a.iter().find(|x| s(x, "name") == name))
+        .is_some_and(|x| status_of(x) != "provisioning")
+}
+
 /// 설치 진행률을 끝날 때까지 보여 준다. Ctrl+C는 기다리기만 멈춘다 (설치는 계속).
-async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
+/// `created`: 방금 만든 서버의 첫 설치다. 기존 서버의 업데이트는 실패해도 닫을 때 서버가 남으므로 사라진 항목을 성공으로 보지 않는다
+async fn follow_provision(ctx: &Ctx, name: &str, created: bool) -> Result<Value> {
     let bar = crate::progress::percent_bar(&t!("add.installing"));
     loop {
         let p = ctx.api.provision_progress(name).await?;
         if provision_lost(&p) {
             bar.finish_and_clear();
+            if created && closed_after_finish(&ctx.api.servers(true).await?, name) {
+                return Ok(json!({ "active": false, "done": true }));
+            }
             return Err(failed(t!("progress.lost", name = name)));
         }
         if let Some(pct) = p.get("percent").and_then(Value::as_u64) {
@@ -711,56 +725,9 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
         }
         "provisioning" => return Err(failed(t!("start.provisioning", name = sv.name))),
         _ => {
-            // 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법.
             let res = ctx.api.start(&sv.id).await;
             tell_moved_ports(ctx, &res);
-            let r = match res {
-                Err(e) if api_code(&e) == Some("preflight_failed") => {
-                    return checkup(ctx, Err(e), "", &sv.name).await;
-                }
-                Err(e) if api_code(&e) == Some("agreement_required") => {
-                    ctx.out.hint(&format!("saba-chan-cli server agree {}", shlex::try_quote(&sv.name).unwrap_or_else(|_| sv.name.as_str().into())));
-                    return Err(e);
-                }
-                r => r?,
-            };
-            if a.no_wait {
-                ctx.out.done(&t!("start.requested", name = sv.name), &r);
-            } else {
-                let st = wait_status(
-                    ctx,
-                    &sv,
-                    &["running"],
-                    Duration::from_secs(90),
-                    &t!("start.waiting", name = sv.name),
-                )
-                .await?;
-                // 프로세스가 떴다가 바로 꺼지는 경우를 잡는다 (설정 오류, 약관 등)
-                let st = if st == "running" {
-                    settle(ctx, &sv, Duration::from_secs(3)).await
-                } else {
-                    st
-                };
-                if st == "running" {
-                    ctx.out.done(&t!("start.done", name = sv.name), &r);
-                } else if matches!(st.as_str(), "stopped" | "crashed") {
-                    if !ctx.out.json {
-                        let tail = ctx.api.console(&sv.id, None, Some(6)).await.unwrap_or(Value::Null);
-                        for l in tail.get("lines").and_then(Value::as_array).into_iter().flatten() {
-                            tell!("  {}", crate::cmd::console::format_line(l));
-                        }
-                    }
-                    ctx.out
-                        .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
-                    return Err(CliError::Failed(t!("start.exited", name = sv.name)).into());
-                } else {
-                    ctx.out.warn(&t!("start.not_yet", name = sv.name, status = st));
-                    ctx.out.hint(&format!("saba-chan-cli console {}", shell_word(&sv.name)));
-                    ctx.out
-                        .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
-                    return Err(CliError::Failed(t!("start.not_yet", name = sv.name, status = st)).into());
-                }
-            }
+            finish_start(ctx, &sv, res, a.no_wait, t!("start.done", name = sv.name)).await?;
         }
     }
     if a.console {
@@ -773,6 +740,59 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
             },
         ))
         .await;
+    }
+    Ok(())
+}
+
+/// 시작 요청의 결과를 마무리한다: 점검 실패·약관 안내, 켜질 때까지 기다리고 바로 꺼지지 않는지 본다.
+/// 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법. `start`와 `restart`가 같이 쓴다 (L56)
+async fn finish_start(ctx: &Ctx, sv: &Server, res: Result<Value>, no_wait: bool, done: String) -> Result<()> {
+    let r = match res {
+        Err(e) if api_code(&e) == Some("preflight_failed") => {
+            return checkup(ctx, Err(e), "", &sv.name).await;
+        }
+        Err(e) if api_code(&e) == Some("agreement_required") => {
+            ctx.out.hint(&format!("saba-chan-cli server agree {}", shlex::try_quote(&sv.name).unwrap_or_else(|_| sv.name.as_str().into())));
+            return Err(e);
+        }
+        r => r?,
+    };
+    if no_wait {
+        ctx.out.done(&t!("start.requested", name = sv.name), &r);
+    } else {
+        let st = wait_status(
+            ctx,
+            sv,
+            &["running"],
+            Duration::from_secs(90),
+            &t!("start.waiting", name = sv.name),
+        )
+        .await?;
+        // 프로세스가 떴다가 바로 꺼지는 경우를 잡는다 (설정 오류, 약관 등)
+        let st = if st == "running" {
+            settle(ctx, sv, Duration::from_secs(3)).await
+        } else {
+            st
+        };
+        if st == "running" {
+            ctx.out.done(&done, &r);
+        } else if matches!(st.as_str(), "stopped" | "crashed") {
+            if !ctx.out.json {
+                let tail = ctx.api.console(&sv.id, None, Some(6)).await.unwrap_or(Value::Null);
+                for l in tail.get("lines").and_then(Value::as_array).into_iter().flatten() {
+                    tell!("  {}", crate::cmd::console::format_line(l));
+                }
+            }
+            ctx.out
+                .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
+            return Err(CliError::Failed(t!("start.exited", name = sv.name)).into());
+        } else {
+            ctx.out.warn(&t!("start.not_yet", name = sv.name, status = st));
+            ctx.out.hint(&format!("saba-chan-cli console {}", shell_word(&sv.name)));
+            ctx.out
+                .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
+            return Err(CliError::Failed(t!("start.not_yet", name = sv.name, status = st)).into());
+        }
     }
     Ok(())
 }
@@ -819,21 +839,7 @@ pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let r = ctx.api.restart(&sv.id, a.force).await;
     spin.finish_and_clear();
     tell_moved_ports(ctx, &r);
-    let r = r?;
-    let st = wait_status(
-        ctx,
-        &sv,
-        &["running"],
-        Duration::from_secs(90),
-        &t!("start.waiting", name = sv.name),
-    )
-    .await?;
-    if st == "running" {
-        ctx.out.done(&t!("restart.done", name = sv.name), &r);
-        Ok(())
-    } else {
-        Err(failed(t!("start.not_yet", name = sv.name, status = st)))
-    }
+    finish_start(ctx, &sv, r, false, t!("restart.done", name = sv.name)).await
 }
 
 pub async fn rename(ctx: &Ctx, query: Option<&str>, new_name: &str) -> Result<()> {
@@ -980,6 +986,12 @@ fn ask_input(ask: &crate::prompt::Prompt, def: &Command, input: &Input) -> Resul
         Some(v) => Ok(Value::String(v)),
         None => Err(missing()),
     }
+}
+
+/// `add --set` 저장 응답이 `synced: false`면 끝에 알릴 문구. 설정은 저장했으므로 "저장하지 못했다"가 아니다 (L63)
+fn add_settings_failure(name: &str, r: &Value) -> Option<String> {
+    (r.get("synced").and_then(Value::as_bool) == Some(false))
+        .then(|| t!("add.created_settings_unsynced", name = name, error = s(r, "sync_error")))
 }
 
 /// 설정은 저장했지만 게임 설정 파일에 쓰지 못했으면(`synced: false`) 그 이유
@@ -1201,8 +1213,12 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
     let field = fields.iter().find(|f| s(f, "name") == key);
     if let Some(opts) = field.and_then(|f| f.get("options")).and_then(Value::as_array) {
         let opts: Vec<&str> = opts.iter().filter_map(Value::as_str).collect();
-        if !opts.is_empty() && !opts.iter().any(|o| o.eq_ignore_ascii_case(raw)) {
-            return Err(usage(t!("set.must_be_one_of", key = key, options = opts.join(", "))));
+        if !opts.is_empty() {
+            // 데몬은 선택지를 그대로 비교하므로, 대소문자만 다르게 친 값은 모듈이 정한 선택지로 보낸다 (L58)
+            let Some(opt) = opts.iter().find(|o| **o == raw).or_else(|| opts.iter().find(|o| o.eq_ignore_ascii_case(raw))) else {
+                return Err(usage(t!("set.must_be_one_of", key = key, options = opts.join(", "))));
+            };
+            return Ok((key.to_string(), typed(opt, &kind)?));
         }
     }
     Ok((key.to_string(), typed(raw, &kind)?))
@@ -1473,7 +1489,7 @@ async fn update(ctx: &Ctx, query: Option<&str>, check_only: bool) -> Result<()> 
         .and_then(|p| p.get("active").and_then(Value::as_bool))
         == Some(true)
     {
-        let p = follow_provision(ctx, &sv.name).await?;
+        let p = follow_provision(ctx, &sv.name, false).await?;
         if let Some(err) = p.get("error").and_then(Value::as_str) {
             let _ = ctx.api.dismiss_provision(&sv.name).await;
             return Err(failed(err.to_string()));
@@ -1512,7 +1528,7 @@ async fn progress(ctx: &Ctx, query: &str, dismiss: bool) -> Result<()> {
         ctx.out.data(&p, |p| say!("{}", progress_line(p)));
         return Ok(());
     }
-    let r = follow_provision(ctx, &name).await?;
+    let r = follow_provision(ctx, &name, false).await?;
     match r.get("error").and_then(Value::as_str) {
         Some(err) => Err(failed(err.to_string())),
         None => {
@@ -1776,6 +1792,19 @@ mod tests {
         assert!(!provision_lost(&json!({ "active": true, "done": true })));
     }
 
+    /// 끝난 설치 카드를 GUI가 다음 폴링 전에 닫으면 항목은 사라져도 서버는 설치 중이 아닌 채로 남는다 (L65)
+    #[test]
+    fn an_install_closed_elsewhere_after_it_finished_counts_as_finished() {
+        let list = json!({ "servers": [
+            { "name": "mc", "status": "stopped" },
+            { "name": "pal", "status": "provisioning" },
+        ] });
+        assert!(closed_after_finish(&list, "mc"));
+        // 아직 설치 중이거나, 이름이 바뀌었거나 지워졌으면(실패한 새 설치는 닫을 때 지워진다) 알 수 없다
+        assert!(!closed_after_finish(&list, "pal"));
+        assert!(!closed_after_finish(&list, "gone"));
+    }
+
     struct Typing;
 
     impl crate::prompt::Asker for Typing {
@@ -1839,6 +1868,26 @@ mod tests {
         assert_eq!(options_line(&select).as_deref(), Some("easy | normal | hard"));
         assert_eq!(options_line(&json!({ "name": "max_players", "field_type": "number" })), None);
         assert_eq!(options_line(&json!({ "name": "x", "options": [] })), None);
+    }
+
+    /// `add --set`이 저장은 했지만 게임 설정 파일에 못 썼으면 "저장하지 못했다"고 하지 않는다 (L63)
+    #[test]
+    fn an_add_whose_settings_were_saved_but_not_synced_says_so() {
+        let msg = add_settings_failure("srv", &json!({ "success": true, "synced": false, "sync_error": "locked" })).unwrap();
+        assert!(msg.contains("srv") && msg.contains("locked"), "{msg}");
+        assert_ne!(msg, t!("add.created_settings_failed", name = "srv", error = "locked"));
+        assert!(!msg.contains(&t!("set.sync_failed", error = "locked")), "the sync reason is not nested in another sentence: {msg}");
+        assert!(add_settings_failure("srv", &json!({ "success": true, "synced": true })).is_none());
+    }
+
+    /// 선택형 설정은 대소문자를 가리지 않고 받되, 데몬에는 모듈이 정한 선택지 그대로 보낸다 (L58)
+    #[test]
+    fn a_select_setting_is_sent_as_the_option_it_matched() {
+        let fields = [json!({ "name": "difficulty", "field_type": "select", "options": ["easy", "Normal", "hard"] })];
+        let inst = json!({});
+        assert_eq!(typed_setting(&fields, &inst, "difficulty", "NORMAL").unwrap().1, json!("Normal"));
+        assert_eq!(typed_setting(&fields, &inst, "difficulty", "Hard").unwrap().1, json!("hard"));
+        assert!(typed_setting(&fields, &inst, "difficulty", "peaceful").is_err());
     }
 
     /// 초기화 확인에 무엇이 지워지는지(모듈 `reset.description`)를 붙인다 (C5)

@@ -169,6 +169,8 @@ function ComponentsTab({ devMode }) {
     const [downloadProgress, setDownloadProgress] = useState({ component: null, percent: 0, active: false });
     const pollRef = useRef(null);
     const progressPollRef = useRef(null);
+    // 진행률 폴러를 같이 쓰는 다운로드 수. 마지막 것이 끝날 때 멈춘다 (G-U8)
+    const progressUsersRef = useRef(0);
     const mountedRef = useRef(true);
 
     const markBusy = useCallback((key) => setBusyKeys((prev) => new Set(prev).add(key)), []);
@@ -184,6 +186,7 @@ function ComponentsTab({ devMode }) {
 
     // ── 다운로드 진행률 폴링 ─────────────────────────────────────────
     const startProgressPolling = useCallback(() => {
+        progressUsersRef.current += 1;
         if (progressPollRef.current) return;
         progressPollRef.current = setInterval(async () => {
             try {
@@ -198,6 +201,8 @@ function ComponentsTab({ devMode }) {
         }, 250);
     }, []);
     const stopProgressPolling = useCallback(() => {
+        progressUsersRef.current = Math.max(0, progressUsersRef.current - 1);
+        if (progressUsersRef.current > 0) return;
         if (progressPollRef.current) {
             clearInterval(progressPollRef.current);
             progressPollRef.current = null;

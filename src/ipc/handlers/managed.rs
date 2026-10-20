@@ -30,19 +30,7 @@ pub async fn start_managed_handler(
     let Some(_guard) = super::backup::BusyGuard::take(&id) else {
         return super::backup::instance_busy();
     };
-    // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
-    {
-        let mut supervisor = state.supervisor.write().await;
-        if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
-            let changed = inst.ensure_passwords();
-
-            if changed {
-                if let Err(e) = supervisor.instance_store.update(&id, inst) {
-                    tracing::warn!("Failed to save auto-generated passwords for {}: {}", id, e);
-                }
-            }
-        }
-    }
+    super::server::fill_passwords(&state, &id).await;
 
     let (module_name, config) = {
         let supervisor = state.supervisor.read().await;

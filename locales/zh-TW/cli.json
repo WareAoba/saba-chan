@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} 已建立且設定已儲存，但無法寫入遊戲設定檔：{{error}}",
     "ask_folder": "伺服器資料夾",
     "ask_name": "伺服器名稱",
     "ask_source": "你想怎麼設定？",
@@ -168,7 +169,7 @@
   },
   "err": {
     "relay": {
-      "channel_conflict": "一個頻道只能有一種用途（聊天機器人、音樂或通知）。",
+      "channel_conflict": "一個頻道只能有一種用途（會說話的 Saba-chan、音樂或通知）。",
       "unknown_channel": "在 Discord 伺服器中找不到該頻道。請檢查頻道名稱或 id。",
       "bot_unavailable": "saba-chan 機器人目前沒有回應。請稍後再試。",
       "node_not_found": "中繼不認得這台電腦。它已中斷連線或被另一台電腦取代。",
@@ -455,7 +456,7 @@
     "downloading": "正在下載",
     "integrity_summary": "{{verified}} 個完好 · {{failed}} 個已變更或無法讀取 · {{skipped}} 個缺少檔案",
     "last_check": "上次檢查：{{at}}",
-    "last_cleared": "已清除。",
+    "last_cleared": "已標記為已查看。",
     "latest": "最新",
     "no_last": "沒有更新結果記錄。",
     "not_installed": "未安裝",
@@ -536,6 +537,7 @@
     "restoring": "正在還原 {{backup}}...",
     "restored": "{{name}} 已還原到 {{backup}}。",
     "pre_restore": "先前的世界已保留為備份 {{backup}}。",
+    "links_not_restored": "還原已完成，但資料夾中有 {{count}} 個連結無法重新建立（例如 Windows 權限）。路徑請見守護程式記錄。",
     "start_again": "要再次啟動 {{name}} 嗎？"
   },
   "schedule": {
@@ -583,18 +585,18 @@
     "common": "所有 Discord 伺服器的共用設定",
     "guild": "Discord 伺服器 {{guild}}",
     "defaults": "（預設值）",
-    "saved": "聊天機器人設定已儲存。",
+    "saved": "會說話的 Saba-chan 的設定已儲存。",
     "ask_key": "API 金鑰（隱藏）",
     "key_required": "未提供 API 金鑰。請在提示時輸入，或透過管線傳入：cat key.txt | saba-chan-cli chatbot key",
     "key_saved": "API 金鑰已儲存。之後不會再顯示。",
-    "confirm_delete_key": "要刪除已儲存的 API 金鑰嗎？在儲存新金鑰之前，聊天機器人將不再回覆。",
+    "confirm_delete_key": "要刪除已儲存的 API 金鑰嗎？在儲存新金鑰之前，會說話的 Saba-chan 將不再回覆。",
     "key_deleted": "API 金鑰已刪除。",
-    "confirm_clear": "要刪除所有聊天機器人設定和 API 金鑰嗎？",
-    "cleared": "聊天機器人設定和金鑰已刪除。",
-    "confirm_forget": "要讓聊天機器人忘記它在所有 Discord 伺服器中記住的內容嗎？",
-    "confirm_forget_guild": "要讓聊天機器人忘記它在 Discord 伺服器 {{guild}} 中記住的內容嗎？",
-    "forgot": "聊天機器人的記憶已清除。",
-    "forget_failed": "部分 Discord 伺服器上的聊天機器人記憶無法清除。請查看上面的錯誤。",
+    "confirm_clear": "要刪除會說話的 Saba-chan 的所有設定和 API 金鑰嗎？",
+    "cleared": "會說話的 Saba-chan 的設定和金鑰已刪除。",
+    "confirm_forget": "要讓會說話的 Saba-chan 忘記她在所有 Discord 伺服器中記住的內容嗎？",
+    "confirm_forget_guild": "要讓會說話的 Saba-chan 忘記她在 Discord 伺服器 {{guild}} 中記住的內容嗎？",
+    "forgot": "會說話的 Saba-chan 的記憶已清除。",
+    "forget_failed": "部分 Discord 伺服器上會說話的 Saba-chan 的記憶無法清除。請查看上面的錯誤。",
     "not_synced": "已儲存在這台電腦上。機器人連線後會同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 伺服器 {{guild}} 沒有收到此變更：{{error}}",
     "read_failed": "無法讀取 {{path}}：{{error}}"

@@ -1053,23 +1053,7 @@ pub async fn start_server_handler(
         None => None,
     };
 
-    // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
-    {
-        let mut supervisor = state.supervisor.write().await;
-        let inst_opt = supervisor.instance_store.get(&name)
-            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == name))
-            .cloned();
-        if let Some(mut inst) = inst_opt {
-            let changed = inst.ensure_passwords();
-
-            if changed {
-                let inst_id = inst.id.clone();
-                if let Err(e) = supervisor.instance_store.update(&inst_id, inst) {
-                    tracing::warn!("Failed to save auto-generated passwords for {}: {}", name, e);
-                }
-            }
-        }
-    }
+    fill_passwords(&state, &name).await;
 
     let resp = match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
         .await
@@ -1188,11 +1172,50 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 }
 
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
+/// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
+/// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`credential_map`으로 데몬에 돌아온다). `key`: 인스턴스 id 또는 이름
+pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
+    let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
+    let mut supervisor = state.supervisor.write().await;
+    let found = supervisor.instance_store.get(key).or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key)).cloned();
+    if let Some(mut inst) = found {
+        if inst.ensure_passwords(generate) {
+            let id = inst.id.clone();
+            if let Err(e) = supervisor.instance_store.update(&id, inst) {
+                tracing::warn!("Failed to save auto-generated passwords for {}: {}", key, e);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// GUI "비밀번호 자동 생성"을 끄면 시작할 때 빈 REST 비밀번호를 채우지 않는다. 켜져 있으면(기본) 채운다
+    #[tokio::test]
+    async fn rest_passwords_are_generated_only_when_the_setting_is_on() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        state.config_store = Arc::new(crate::config_store::ConfigStore::new(&tmp.path().join("data")));
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        state.supervisor.write().await.instance_store.add(inst).unwrap();
+        let password = || async { state.supervisor.read().await.instance_store.get(&id).unwrap().rest_password.clone() };
+
+        state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": false })).await.unwrap();
+        fill_passwords(&state, &id).await;
+        assert_eq!(password().await, None, "the setting is off");
+        state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": true })).await.unwrap();
+        fill_passwords(&state, "srv").await;
+        assert_eq!(password().await.map(|p| p.len()), Some(16), "found by name too");
+    }
 
     /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다
     #[tokio::test]

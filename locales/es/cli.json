@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "Se creó {{name}} y se guardaron sus ajustes, pero no se pudo escribir el archivo de configuración del juego: {{error}}",
     "ask_folder": "Carpeta del servidor",
     "ask_name": "Nombre del servidor",
     "ask_source": "¿Cómo quieres configurarlo?",
@@ -168,7 +169,7 @@
   },
   "err": {
     "relay": {
-      "channel_conflict": "Un canal solo puede tener una función (chatbot, música o notificaciones).",
+      "channel_conflict": "Un canal solo puede tener una función (Saba-chan parlante, música o notificaciones).",
       "unknown_channel": "No se encontró ese canal en el servidor de Discord. Revisa el nombre o el id del canal.",
       "bot_unavailable": "El bot de saba-chan no responde ahora. Inténtalo de nuevo en un momento.",
       "node_not_found": "El relay no conoce este PC. Se desvinculó o lo reemplazó otro PC.",
@@ -455,7 +456,7 @@
     "downloading": "Descargando",
     "integrity_summary": "{{verified}} intactos · {{failed}} modificados o ilegibles · {{skipped}} con archivos faltantes",
     "last_check": "Última comprobación: {{at}}",
-    "last_cleared": "Borrado.",
+    "last_cleared": "Marcado como visto.",
     "latest": "Más reciente",
     "no_last": "No hay resultados de actualización registrados.",
     "not_installed": "no instalado",
@@ -536,6 +537,7 @@
     "restoring": "Restaurando {{backup}}...",
     "restored": "{{name}} ha vuelto a {{backup}}.",
     "pre_restore": "El mundo anterior se conserva como copia de seguridad {{backup}}.",
+    "links_not_restored": "La restauración terminó, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, por permisos de Windows). Las rutas están en el registro del daemon.",
     "start_again": "¿Iniciar {{name}} de nuevo?"
   },
   "schedule": {
@@ -583,18 +585,18 @@
     "common": "Ajustes para todos los servidores de Discord",
     "guild": "Servidor de Discord {{guild}}",
     "defaults": "(predeterminados)",
-    "saved": "Ajustes del chatbot guardados.",
+    "saved": "Ajustes de Saba-chan parlante guardados.",
     "ask_key": "Clave de API (oculta)",
     "key_required": "No se indicó ninguna clave de API. Escríbela cuando se pida o pásala por tubería: cat key.txt | saba-chan-cli chatbot key",
     "key_saved": "Clave de API guardada. No se volverá a mostrar.",
-    "confirm_delete_key": "¿Eliminar la clave de API guardada? El chatbot dejará de responder hasta que se guarde una nueva.",
+    "confirm_delete_key": "¿Eliminar la clave de API guardada? Saba-chan parlante dejará de responder hasta que se guarde una nueva.",
     "key_deleted": "Clave de API eliminada.",
-    "confirm_clear": "¿Eliminar todos los ajustes del chatbot y la clave de API?",
-    "cleared": "Ajustes y clave del chatbot eliminados.",
-    "confirm_forget": "¿Hacer que el chatbot olvide lo que recuerda en todos los servidores de Discord?",
-    "confirm_forget_guild": "¿Hacer que el chatbot olvide lo que recuerda en el servidor de Discord {{guild}}?",
-    "forgot": "Se borró la memoria del chatbot.",
-    "forget_failed": "No se pudo borrar la memoria del chatbot en algunos servidores de Discord. Revisa los errores de arriba.",
+    "confirm_clear": "¿Eliminar todos los ajustes de Saba-chan parlante y la clave de API?",
+    "cleared": "Ajustes y clave de Saba-chan parlante eliminados.",
+    "confirm_forget": "¿Hacer que Saba-chan parlante olvide lo que recuerda en todos los servidores de Discord?",
+    "confirm_forget_guild": "¿Hacer que Saba-chan parlante olvide lo que recuerda en el servidor de Discord {{guild}}?",
+    "forgot": "Se borró la memoria de Saba-chan parlante.",
+    "forget_failed": "No se pudo borrar la memoria de Saba-chan parlante en algunos servidores de Discord. Revisa los errores de arriba.",
     "not_synced": "Guardado en este PC. Llegará a Discord cuando el bot esté conectado (saba-chan-cli bot status).",
     "sync_failed": "El servidor de Discord {{guild}} no recibió el cambio: {{error}}",
     "read_failed": "No se pudo leer {{path}}: {{error}}"
