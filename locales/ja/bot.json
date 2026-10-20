@@ -290,7 +290,7 @@
       "enabled": "オン",
       "model": "モデル",
       "memo": "サーバープロンプト",
-      "confirmCommands": "コマンド確認",
+      "confirmCommands": "注意コマンドを常に確認",
       "memory": "記憶",
       "webSearch": "ウェブ検索",
       "disabledTools": "無効なツール",

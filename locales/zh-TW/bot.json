@@ -290,7 +290,7 @@
       "enabled": "開啟",
       "model": "模型",
       "memo": "伺服器提示詞",
-      "confirmCommands": "確認指令",
+      "confirmCommands": "注意指令一律詢問",
       "memory": "記憶",
       "webSearch": "網頁搜尋",
       "disabledTools": "已關閉的工具組",

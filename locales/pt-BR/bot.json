@@ -290,7 +290,7 @@
       "enabled": "Ligado",
       "model": "Modelo",
       "memo": "Prompt do servidor",
-      "confirmCommands": "Confirmar comandos",
+      "confirmCommands": "Sempre perguntar em comandos de cuidado",
       "memory": "Memória",
       "webSearch": "Busca na web",
       "disabledTools": "Ferramentas desativadas",

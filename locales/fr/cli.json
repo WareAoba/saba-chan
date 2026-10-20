@@ -211,7 +211,8 @@
     "not_a_number": "« {{value}} » n'est pas un nombre.",
     "not_found": "Aucun {{what}} nommé « {{query}} ».",
     "pair_expected": "KEY=VALUE attendu, reçu « {{got}} ».",
-    "timeout": "Le daemon a mis trop de temps à répondre ({{path}})."
+    "timeout": "Le daemon a mis trop de temps à répondre ({{path}}).",
+    "unknown_command": "Commande inconnue : {{path}}. Lancez `saba-chan-cli help` pour voir les commandes."
   },
   "agree": {
     "none": "{{name}} n'a aucun accord à accepter.",
@@ -471,7 +472,10 @@
     "ok": "{{name}} semble prêt à démarrer."
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "Afficher l'aide d'une commande. Avec --json : l'arbre des commandes, les arguments et les codes de sortie",
+      "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter"
+    },
     "arg": {
       "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
       "bot.channels.no_notify": "Retirer le salon des notifications",
@@ -482,7 +486,12 @@
       "do.plan": "Vérifier seulement l'entrée et montrer ce qui se passerait",
       "do.input": "Entrée sous la forme key=value (les valeurs lisibles en JSON restent du JSON)",
       "server": "Nom du serveur (une partie suffit)",
-      "ids": "Un ou plusieurs ID d'extension"
+      "ids": "Un ou plusieurs ID d'extension",
+      "help.command": "Chemin de la commande, par ex. `server start`",
+      "events.kind": "Seulement ces événements ; `instance` inclut aussi `instance.exit` et similaires",
+      "events.server": "Seulement les événements de ce serveur",
+      "events.since": "Commencer après cet id d'événement (renvoie ce que le démon garde encore)",
+      "json_stream": "Afficher la progression puis le résultat en lignes JSON (NDJSON) ; implique --json"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument, le shell interactif s'ouvre.\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },

@@ -41,7 +41,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>, limit: usize, follow: bool) ->
                     continue;
                 }
                 if ctx.out.json {
-                    say!("{}", event.data);
+                    say!("{}", output::event_line(serde_json::json!({ "event": event.kind, "data": event.data })));
                 } else {
                     say!("{}", row(&event.data).join("  "));
                 }

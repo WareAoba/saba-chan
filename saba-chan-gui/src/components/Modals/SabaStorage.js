@@ -9,6 +9,7 @@ import { localizedDescription } from '../../utils/localizedText';
 import { clearModuleAuditCache, ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
 import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
+import { safeShowToast } from '../../utils/helpers';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -768,6 +769,9 @@ function ModulesTab() {
                 clearModuleAuditCache();
                 const listRes = await window.api?.moduleRefresh?.();
                 if (listRes?.modules) setInstalledModules(listRes.modules);
+            } else if (res?.error_code === 'module_busy') {
+                // 같은 모듈의 다른 설치·제거가 끝나지 않았다: 실패로 굳히지 않고 다시 누를 수 있게 둔다
+                safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
             } else {
                 setInstallResults((prev) => ({ ...prev, [moduleId]: 'error' }));
             }
@@ -779,7 +783,7 @@ function ModulesTab() {
             n.delete(moduleId);
             return n;
         });
-    }, []);
+    }, [t]);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;
@@ -789,13 +793,17 @@ function ModulesTab() {
         try {
             const res = await window.api?.moduleRemove?.(id);
             if (res?.ok) await loadInstalledModules();
-        } catch (_) {}
+            else if (res?.error_code === 'module_busy') safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
+            else safeShowToast(t('saba_storage.remove_failed', { error: res?.error || '-' }), 'error', 5000);
+        } catch (e) {
+            safeShowToast(t('saba_storage.remove_failed', { error: e?.message || '-' }), 'error', 5000);
+        }
         setRemovingIds((prev) => {
             const n = new Set(prev);
             n.delete(id);
             return n;
         });
-    }, [confirmRemoveId, loadInstalledModules]);
+    }, [confirmRemoveId, loadInstalledModules, t]);
 
     const installedIds = new Set(
         installedModules.map((m) => {

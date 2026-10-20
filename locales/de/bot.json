@@ -290,7 +290,7 @@
       "enabled": "Ein",
       "model": "Modell",
       "memo": "Server-Prompt",
-      "confirmCommands": "Befehle bestätigen",
+      "confirmCommands": "Bei Vorsicht-Befehlen immer fragen",
       "memory": "Gedächtnis",
       "webSearch": "Websuche",
       "disabledTools": "Deaktivierte Werkzeuge",

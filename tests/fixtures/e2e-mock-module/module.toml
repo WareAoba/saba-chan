@@ -24,7 +24,7 @@ install_subdir = "server"
 [[settings.fields]]
 name = "server_name"
 label = "Server Name"
-type = "string"
+type = "text"
 default = "E2E Test Server"
 required = true
 

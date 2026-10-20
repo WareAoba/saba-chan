@@ -290,7 +290,7 @@
       "enabled": "开启",
       "model": "模型",
       "memo": "服务器提示词",
-      "confirmCommands": "确认命令",
+      "confirmCommands": "注意命令总是询问",
       "memory": "记忆",
       "webSearch": "网页搜索",
       "disabledTools": "已关闭的工具组",

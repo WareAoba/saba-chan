@@ -177,6 +177,15 @@ fn the_remote_menu_has_no_guild_settings_and_no_guild_input() {
     }
 }
 
+// 릴레이 사전 검사가 데몬 판정과 같은 답을 내게, 고정 레벨이 있는 액션은 그 레벨을 싣는다
+#[test]
+fn remote_menu_items_carry_their_fixed_level() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = |id: &str| actions.iter().find(|a| a["id"] == id).unwrap().clone();
+    assert_eq!(item("update.apply")["level"], crate::chat::permissions::OWNER);
+    assert!(item("server.start").get("level").is_none());
+}
+
 // 실사용: 디스코드 입력칸이 "name"·"backup_keep" 같은 내부 이름으로 보였다. 칸마다 언어별 제목을 싣는다
 #[test]
 fn remote_inputs_carry_localized_field_titles() {

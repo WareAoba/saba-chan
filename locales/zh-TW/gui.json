@@ -605,7 +605,9 @@
     "bot_replacing": "正在替換 Discord 機器人檔案...",
     "update_done": "更新處理完成",
     "restart_required_title": "需要重新啟動",
-    "apply": "套用"
+    "apply": "套用",
+    "module_busy": "此模組的另一個安裝或移除仍在進行中。請在完成後再試一次。",
+    "remove_failed": "移除模組失敗：{{error}}"
   },
   "validation": {
     "required": "{{field}} 為必填欄位",
@@ -1044,8 +1046,8 @@
     "enabled_hint": "也可以依伺服器個別開啟或關閉。",
     "model": "模型",
     "seconds": "秒",
-    "confirm_commands": "執行指令前確認",
-    "confirm_commands_hint": "AI 選擇的指令需在 Discord 上確認後才會執行。",
+    "confirm_commands": "注意指令一律詢問",
+    "confirm_commands_hint": "開啟後，啟動、停止、重新啟動等注意指令需在 Discord 上確認後才執行；關閉後一律允許。安全指令一律立即執行，危險指令一律需要確認。應用程式中設定的使用者權限一律優先。",
     "memory": "長期記憶",
     "memory_hint": "記住對話中得知的內容，用於之後的對話。",
     "web_search": "網路搜尋",

@@ -605,7 +605,9 @@
     "bot_replacing": "正在替换 Discord Bot 文件...",
     "update_done": "更新处理完成",
     "restart_required_title": "需要重启",
-    "apply": "应用"
+    "apply": "应用",
+    "module_busy": "此模块的另一个安装或移除仍在进行中。请在完成后重试。",
+    "remove_failed": "移除模块失败：{{error}}"
   },
   "validation": {
     "required": "{{field}} 为必填项",
@@ -1044,8 +1046,8 @@
     "enabled_hint": "也可以按服务器单独开启或关闭。",
     "model": "模型",
     "seconds": "秒",
-    "confirm_commands": "执行命令前确认",
-    "confirm_commands_hint": "AI 选择的命令需在 Discord 上确认后才会执行。",
+    "confirm_commands": "注意命令总是询问",
+    "confirm_commands_hint": "开启后，启动、停止、重启等注意命令需在 Discord 上确认后才执行；关闭后总是允许。安全命令总是立即执行，危险命令总是需要确认。应用中设置的用户权限始终优先。",
     "memory": "长期记忆",
     "memory_hint": "记住对话中了解到的内容，用于之后的对话。",
     "web_search": "网络搜索",
