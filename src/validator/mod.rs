@@ -1142,12 +1142,16 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn ports_in_a_windows_excluded_range_are_reported_as_reserved() {
-        let Some(port) = an_excluded_tcp_port() else {
+        if an_excluded_tcp_port().is_none() {
             eprintln!("this PC has no excluded port range; nothing to check");
             return;
-        };
-        let ports = vec![("rest_port".to_string(), port)];
-        assert!(ports_held_elsewhere(&ports).is_empty(), "the held-port table does not list reserved ports");
+        }
+        // 고른 뒤 확인하기 전에 다른 프로그램(병렬 시험이 연 UDP 소켓 등)이 그 번호를 쥘 수 있다: 비어 있는 것을 다시 고른다
+        let ports = (0..5)
+            .filter_map(|_| an_excluded_tcp_port())
+            .map(|port| vec![("rest_port".to_string(), port)])
+            .find(|ports| ports_held_elsewhere(ports).is_empty())
+            .expect("the held-port table does not list reserved ports");
         assert_eq!(ports_reserved_by_windows(&ports), ports);
         let free = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
         assert!(ports_reserved_by_windows(&[("port".to_string(), free)]).is_empty());
