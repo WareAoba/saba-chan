@@ -355,6 +355,7 @@
   "progress": {
     "dismissed": "已清除 {{name}} 的进度。",
     "finished": "{{name}} 安装完成。",
+    "lost": "无法再跟踪 {{name}} 的安装进度。守护进程可能已重启，或服务器在别处被重命名或删除。请用 server list 确认。",
     "none": "{{name}} 没有正在进行的安装。",
     "rolled_back": "{{name}} 安装失败，已被移除。"
   },

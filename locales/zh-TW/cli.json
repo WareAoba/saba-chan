@@ -298,6 +298,7 @@
   "progress": {
     "dismissed": "已清除 {{name}} 的進度。",
     "finished": "{{name}} 安裝完成。",
+    "lost": "無法再追蹤 {{name}} 的安裝進度。常駐程式可能已重新啟動，或伺服器在別處被重新命名或刪除。請用 server list 確認。",
     "none": "{{name}} 沒有進行中的安裝。",
     "rolled_back": "{{name}} 安裝失敗，已被移除。"
   },

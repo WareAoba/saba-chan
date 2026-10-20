@@ -75,9 +75,11 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
 }
 
 /// 다음에 어디서부터 읽을지
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Cursor {
     next: Option<u64>,
+    /// 받은 가장 새 줄의 내용 (디스크 기록으로 바뀔 때 어디까지 찍었는지 찾는다)
+    last: Option<String>,
     running: bool,
     disk: bool,
     /// 콘솔 버퍼 세대. 모르는 응답(옛 데몬, 디스크 기록)이면 None
@@ -86,12 +88,13 @@ struct Cursor {
 
 impl Cursor {
     fn from(resp: &Value) -> Self {
-        let last = resp
+        let newest = resp
             .get("lines")
             .and_then(Value::as_array)
-            .and_then(|l| l.iter().filter_map(|x| x.get("id")?.as_u64()).max());
+            .and_then(|l| l.iter().filter(|x| x.get("id").and_then(Value::as_u64).is_some()).max_by_key(|x| x.get("id").and_then(Value::as_u64)));
         Self {
-            next: last.map(|id| id + 1),
+            next: newest.and_then(|x| x.get("id")?.as_u64()).map(|id| id + 1),
+            last: newest.map(|x| s(x, "content").to_string()),
             running: resp.get("running").and_then(Value::as_bool).unwrap_or(false),
             disk: s(resp, "source") == "disk",
             epoch: resp.get("epoch").and_then(Value::as_u64),
@@ -163,17 +166,30 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
     if cur.running && !fresh.running {
         emit(style(t!("console.stopped")).cyan().dim().to_string());
     }
-    if since.is_some() {
-        for l in resp.get("lines").and_then(Value::as_array).into_iter().flatten() {
-            emit(format_line(l));
-        }
+    let lines = resp.get("lines").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    for l in new_lines(since, &cur, &fresh, lines) {
+        emit(format_line(l));
     }
     Cursor {
         next: fresh.next.or(cur.next),
+        last: fresh.last.or(cur.last),
         running: fresh.running,
         disk: fresh.disk,
         epoch: fresh.epoch.or(cur.epoch),
     }
+}
+
+/// 받은 줄 중 아직 찍지 않은 것. 디스크 기록은 since를 무시하고 최근 줄을 주므로(멈춘 직후), 마지막으로 본 줄
+/// 뒤의 것(멈추기 직전 출력)만 찍는다. 그 줄을 찾지 못하면 어디까지 찍었는지 모르니 찍지 않는다
+fn new_lines<'a>(since: Option<u64>, cur: &Cursor, fresh: &Cursor, lines: &'a [Value]) -> &'a [Value] {
+    if since.is_none() || cur.disk {
+        return &[];
+    }
+    if !fresh.disk {
+        return lines;
+    }
+    let seen = cur.last.as_deref().and_then(|last| lines.iter().rposition(|l| s(l, "content") == last));
+    seen.map_or(&[], |i| &lines[i + 1..])
 }
 
 pub fn format_line(l: &Value) -> String {
@@ -418,6 +434,26 @@ fn restarted(seen: Option<u64>, now: Option<u64>) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 서버가 멈추면 데몬은 디스크 로그로 바꿔 since를 무시하고 최근 줄을 준다: 이미 찍은 줄은 다시 찍지 않고,
+    /// 마지막으로 본 줄 뒤에 남은 줄(멈추기 직전 출력)만 찍는다 (L53)
+    #[test]
+    fn a_stop_prints_only_the_disk_lines_after_the_last_one_seen() {
+        let memory = Cursor::from(&json!({ "lines": [{ "id": 900, "content": "a" }, { "id": 901, "content": "b" }], "running": true }));
+        let disk_resp = json!({ "lines": [{ "id": 0, "content": "a" }, { "id": 1, "content": "b" }, { "id": 2, "content": "Stopping" }], "running": false, "source": "disk" });
+        let disk = Cursor::from(&disk_resp);
+        let lines = disk_resp["lines"].as_array().unwrap();
+        let contents = |v: &[Value]| v.iter().map(|l| s(l, "content").to_string()).collect::<Vec<_>>();
+        assert_eq!(contents(new_lines(Some(902), &memory, &disk, lines)), vec!["Stopping"]);
+        // 마지막으로 본 줄이 디스크 기록에 없으면 어디까지 찍었는지 모른다: 다시 찍지 않는다
+        let unknown = Cursor::from(&json!({ "lines": [{ "id": 901, "content": "zzz" }], "running": true }));
+        assert!(new_lines(Some(902), &unknown, &disk, lines).is_empty());
+        // 메모리 버퍼에서 받은 줄은 그대로, 디스크에 머무는 동안은 찍지 않는다
+        let mem_resp = json!({ "lines": [{ "id": 902, "content": "c" }], "running": true });
+        let mem_lines = mem_resp["lines"].as_array().unwrap();
+        assert_eq!(contents(new_lines(Some(902), &memory, &Cursor::from(&mem_resp), mem_lines)), vec!["c"]);
+        assert!(new_lines(None, &disk, &disk, lines).is_empty());
+    }
 
     /// `daemon logs -f`는 데몬이 다시 켜져 번호가 1부터 다시 시작하면 처음부터 다시 읽는다 (L55)
     #[test]

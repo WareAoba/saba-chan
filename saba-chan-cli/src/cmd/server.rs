@@ -646,14 +646,19 @@ async fn ensure_extensions(ctx: &Ctx, module: &Value) -> Result<()> {
     Ok(())
 }
 
+/// 따라가던 설치 항목이 끝을 보이기 전에 사라졌다. 부르는 쪽은 항목이 있을 때만 따라가므로 성공으로 치지 않는다
+fn provision_lost(p: &Value) -> bool {
+    p.get("active").and_then(Value::as_bool) != Some(true)
+}
+
 /// 설치 진행률을 끝날 때까지 보여 준다. Ctrl+C는 기다리기만 멈춘다 (설치는 계속).
 async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
     let bar = crate::progress::percent_bar(&t!("add.installing"));
     loop {
         let p = ctx.api.provision_progress(name).await?;
-        if p.get("active").and_then(Value::as_bool) != Some(true) {
+        if provision_lost(&p) {
             bar.finish_and_clear();
-            return Ok(json!({ "done": true }));
+            return Err(failed(t!("progress.lost", name = name)));
         }
         if let Some(pct) = p.get("percent").and_then(Value::as_u64) {
             bar.set_position(pct.min(100));
@@ -1761,6 +1766,15 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 설치 진행 항목이 끝(done)을 보이기 전에 사라지면(데몬 재시작, 다른 곳에서 이름 바꾸기·삭제) 성공이 아니다 (L52)
+    #[test]
+    fn a_vanished_install_is_not_reported_as_finished() {
+        assert!(provision_lost(&json!({ "active": false })));
+        assert!(provision_lost(&json!({})));
+        assert!(!provision_lost(&json!({ "active": true, "done": false })));
+        assert!(!provision_lost(&json!({ "active": true, "done": true })));
+    }
 
     struct Typing;
 

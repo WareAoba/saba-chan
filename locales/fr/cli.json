@@ -298,6 +298,7 @@
   "progress": {
     "dismissed": "Progression de {{name}} effacée.",
     "finished": "L'installation de {{name}} est terminée.",
+    "lost": "Impossible de suivre davantage l'installation de {{name}}. Le démon a peut-être redémarré, ou le serveur a été renommé ou supprimé ailleurs. Vérifiez avec server list.",
     "none": "Aucune installation en cours pour {{name}}.",
     "rolled_back": "L'installation de {{name}} a échoué et il a été supprimé."
   },
