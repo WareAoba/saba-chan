@@ -31,6 +31,13 @@ $DistDir = Join-Path $ReleaseDir "saba-chan-v$ReleaseVersion"
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
+# 각 Cargo.toml·tauri.conf.json의 버전이 versions.toml과 맞아야 exe에 맞는 버전이 박힌다
+python (Join-Path $ScriptDir "versions.py") check
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "versions.py check failed: run 'python scripts/versions.py sync' first" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "Saba-chan Windows Release Build" -ForegroundColor Cyan
 Write-Host "  (Parallel Mode)" -ForegroundColor DarkCyan
