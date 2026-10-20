@@ -38,7 +38,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         );
     }
 
-    let (instance, module, running, stdin_route) = {
+    let (instance, module, running, stdin_route, rcon_route) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
             return command_reply(
@@ -53,7 +53,8 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let running = supervisor.tracker.get_pid(&instance.id).is_ok();
         let stdin_route = supervisor.routes_commands_to_stdin(&instance.id).await;
-        (instance, module, running, stdin_route)
+        let rcon_route = !stdin_route && supervisor.rcon_route(&instance.id).is_some();
+        (instance, module, running, stdin_route, rcon_route)
     };
     let errors = match &module {
         Some(module) => module_errors(module, &state.config_store.ui_language().await),
@@ -177,6 +178,10 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
                     .await,
             )
             .await
+        }
+        // RCON만 받는 서버: 정의에 없는 한 줄도 콘솔 입력처럼 RCON으로 보낸다
+        Plan::Raw { line } if rcon_route => {
+            into_internal(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": line }))).await).await
         }
         Plan::Raw { line } => match &request.args {
             Args::Named(args) if !args.is_empty() => {
@@ -410,12 +415,16 @@ pub async fn execute_rcon_command(
         }
     };
 
-    // 명령은 언제나 stdin으로 보낸다 (콘솔 출력을 잠깐 모아 답으로 돌려준다). RCON은 보안상 쓰지 않는다.
-    // GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다. 경로 이름(`/rcon`)은 예전 호출자와의 호환용이다.
+    // 콘솔 한 줄은 stdin으로 보낸다 (콘솔 출력을 잠깐 모아 답으로 돌려준다). RCON은 모듈이 RCON만 받을 때의
+    // 마지막 경로다 (`rcon_route`). GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다
     let stdin_ok = supervisor.routes_commands_to_stdin(&id).await;
+    let rcon = if stdin_ok { None } else { supervisor.rcon_route(&id) };
     drop(supervisor);
     if stdin_ok {
         return via_stdin(&state, &id, &payload).await;
+    }
+    if let Some(access) = rcon {
+        return via_rcon(&access, &payload).await;
     }
     (
         StatusCode::CONFLICT,
@@ -425,6 +434,30 @@ pub async fn execute_rcon_command(
         })),
     )
         .into_response()
+}
+
+/// RCON으로 한 줄을 실행한다. 답은 `data.response`. 실패 응답에 비밀번호·서버 답을 싣지 않는다
+async fn via_rcon(access: &crate::protocol::rcon::Access, payload: &serde_json::Value) -> axum::response::Response {
+    use crate::protocol::rcon::RconError;
+    let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
+    };
+    match crate::protocol::rcon::exec(access.port, &access.password, command).await {
+        Ok(response) => Json(json!({
+            "success": true,
+            "message": format!("Sent over RCON: {}", command),
+            "protocol": "rcon",
+            "data": { "response": response },
+        }))
+        .into_response(),
+        Err(e) => {
+            let status = match e {
+                RconError::InvalidCommand => StatusCode::BAD_REQUEST,
+                _ => StatusCode::BAD_GATEWAY,
+            };
+            (status, Json(json!({ "success": false, "error": e.to_string(), "error_code": e.code(), "protocol": "rcon" }))).into_response()
+        }
+    }
 }
 
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
@@ -727,6 +760,72 @@ mod tests {
         assert_eq!(rejected["error_message"], "비밀번호를 확인하세요");
         let other = body(reply(ProtocolError::HttpStatus(500, "boom".into()))).await;
         assert_eq!(other["error_code"], "internal_server_error");
+    }
+
+    /// RCON만 받는 모듈: 시작 때 만든 접속 정보로 127.0.0.1 RCON에 명령을 보낸다. stdin도 받는 모듈은 RCON을 쓰지 않는다
+    #[tokio::test]
+    async fn commands_reach_a_server_that_only_speaks_rcon() {
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+        async fn server_for(protocols: &str, port: u16) -> (IPCServer, String, tempfile::TempDir) {
+            let tmp = tempfile::tempdir().unwrap();
+            let modules = tmp.path().join("modules");
+            let dir = modules.join("plain");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!("[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n[protocols]\nsupported = {protocols}\nrcon_port = {port}\n"),
+            )
+            .unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+            let instances = tmp.path().join("instances");
+            let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
+            sup.initialize().await.unwrap();
+            let inst = crate::instance::ServerInstance::new("srv", "plain");
+            let id = inst.id.clone();
+            sup.instance_store.add(inst.clone()).unwrap();
+            sup.tracker.track(&id, std::process::id()).unwrap();
+            // 시작이 하는 준비: 접속 정보를 만들고 모듈 config에 싣는다
+            sup.ensure_rcon_access(&inst);
+            let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+            (state, id, tmp)
+        }
+        let body = |r: axum::response::Response| async move {
+            let status = r.status();
+            (status, serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap())
+        };
+        let request = |line: &str| CommandRequest { command: line.into(), args: Value::Null };
+
+        // 포트를 먼저 정해야 module.toml에 쓸 수 있다: 비밀번호는 데몬이 만든 것을 읽어 같은 포트에 서버를 띄운다
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let (state, id, _tmp) = server_for("[\"rcon\"]", port).await;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        let access = crate::protocol::rcon::load(&dir).expect("access is prepared for an rcon-only module");
+        assert_eq!(access.port, port);
+        let mut cfg = serde_json::Map::new();
+        cfg.insert("rcon_password".into(), json!("from-settings"));
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &inst, &dir);
+        assert_eq!(cfg["rcon_password"], json!(access.password), "the module writes the daemon's password into the game config");
+
+        let seen = crate::protocol::rcon::fake_server_on(port, &access.password).await;
+        let (status, reply) = body(run_command(&id, &state, request("say hi")).await).await;
+        assert_eq!(status, StatusCode::OK, "{reply}");
+        assert_eq!(reply["protocol"], "rcon");
+        assert_eq!(reply["data"]["response"], "ran: say hi");
+        assert_eq!(seen.lock().unwrap().as_slice(), ["say hi"]);
+        assert!(!reply.to_string().contains(&access.password));
+
+        // stdin도 받는 모듈: RCON 접속 정보를 만들지 않고, 콘솔이 없으면 예전처럼 409
+        let (state, id, _tmp2) = server_for("[\"stdin\", \"rcon\"]", port).await;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        assert!(crate::protocol::rcon::load(&dir).is_none());
+        let (status, reply) = body(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": "say hi" }))).await.into_response()).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(reply["error_code"], "no_command_path");
+        assert_eq!(seen.lock().unwrap().len(), 1, "nothing more went over RCON");
     }
 
     #[test]

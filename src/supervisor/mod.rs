@@ -537,7 +537,9 @@ impl Supervisor {
         let program = launch_result.get("program").and_then(Value::as_str).unwrap_or("").to_string();
         let mut args = launch_args(&launch_result, &preview_instance);
         let rest_password = preview_instance.rest_password.as_deref().unwrap_or("");
-        crate::launch_args::mask_secrets(&fields, &settings, &[rest_password], &mut args);
+        let rcon = crate::protocol::rcon::load(&sup.read().await.instance_store.instance_dir(instance_id));
+        let rcon_password = rcon.as_ref().map(|a| a.password.as_str()).unwrap_or("");
+        crate::launch_args::mask_secrets(&fields, &settings, &[rest_password, rcon_password], &mut args);
         obj.insert("success".into(), json!(true));
         obj.insert("command_line".into(), json!(crate::launch_args::command_line(&program, &args)));
         obj.insert("program".into(), json!(program));
@@ -602,6 +604,11 @@ impl Supervisor {
     pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) {
         // 모듈이 서버 폴더 옆에 둔 데이터(좀보이드 cache_dir 등): 격리 실행이 쓸 수 있는 폴더로 싣는다
         cfg.insert(crate::sandbox::INSTANCE_DATA_DIRS.to_string(), json!(Self::instance_data_dirs(instance, instance_dir)));
+        // RCON 접속 정보는 데몬이 만든 값이 기준이다 (RCON만 받는 모듈, `rcon.json`이 있을 때). 모듈은 이 값을 게임 설정에 쓴다
+        if let Some(access) = crate::protocol::rcon::load(instance_dir) {
+            cfg.insert("rcon_port".into(), json!(access.port));
+            cfg.insert("rcon_password".into(), json!(access.password));
+        }
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
@@ -961,6 +968,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
+            s.ensure_rcon_access(&instance);
             Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Non-managed → managed=false로 명시 (모듈이 실행 방식을 구분)
             cfg.insert("managed".to_string(), json!(false));
@@ -1745,6 +1753,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
+            s.ensure_rcon_access(&instance);
             Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Managed mode indicator → 모듈이 실행 방식을 구분
             cfg.insert("managed".to_string(), json!(true));
@@ -1962,6 +1971,23 @@ impl Supervisor {
             Some(proc) => proc.is_running() && proc.is_stdin_available(),
             None => false,
         }
+    }
+
+    /// RCON만 받는 모듈의 인스턴스면 접속 정보를 만들어 둔다 (시작 전). 그 밖의 모듈은 아무것도 하지 않는다
+    pub(crate) fn ensure_rcon_access(&self, instance: &crate::instance::ServerInstance) {
+        let Some(port) = self.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.rcon_only_port()) else {
+            return;
+        };
+        if let Err(e) = crate::protocol::rcon::ensure(&self.instance_store.instance_dir(&instance.id), port) {
+            tracing::warn!("Could not prepare RCON access for instance '{}': {}", instance.name, e);
+        }
+    }
+
+    /// 명령을 RCON으로 보낼 인스턴스면 접속 정보 (모듈이 RCON만 받고, 시작할 때 접속 정보를 만들어 둔 경우)
+    pub fn rcon_route(&self, instance_id: &str) -> Option<crate::protocol::rcon::Access> {
+        let instance = self.instance_store.get(instance_id)?;
+        self.module_loader.get_module(&instance.module_name).ok()?.metadata.rcon_only_port()?;
+        crate::protocol::rcon::load(&self.instance_store.instance_dir(instance_id))
     }
 
     /// 인스턴스의 모듈이 콘솔 입력(`protocols.supported`에 "stdin")을 받는가

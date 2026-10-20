@@ -53,6 +53,9 @@ pub struct ModuleMetadata {
     pub protocols_supported: Option<Vec<String>>,  // ["rcon", "stdin", "rest"] etc.
     #[serde(default)]
     pub protocols_default: Option<String>,  // default protocol mode
+    /// `[protocols] rcon_port`: 게임의 기본 RCON 포트. `rcon`만 받는 모듈에서만 쓴다 (`rcon_only_port`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rcon_port: Option<u16>,
     #[serde(default)]
     pub settings: Option<ModuleSettings>,  // 설정 스키마
     #[serde(default)]
@@ -239,6 +242,14 @@ pub struct CommandAliasInfo {
 }
 
 impl ModuleMetadata {
+    /// 명령을 RCON으로 보내는 모듈이면 그 기본 RCON 포트. `supported`에 rcon이 있고 stdin·rest가 없을 때만이다
+    /// (명령 경로 우선순위 STDIN → REST → RCON: 다른 경로가 있으면 RCON을 쓰지 않는다)
+    pub fn rcon_only_port(&self) -> Option<u16> {
+        let supported = self.protocols_supported.as_deref()?;
+        let only_rcon = supported.iter().any(|p| p == "rcon") && !supported.iter().any(|p| p == "stdin" || p == "rest");
+        self.rcon_port.filter(|p| only_rcon && *p > 0)
+    }
+
     /// 설정 필드의 기본값을 가져옵니다
     pub fn get_setting_default<T: std::str::FromStr>(&self, field_name: &str) -> Option<T> {
         self.settings.as_ref().and_then(|s| {
@@ -743,6 +754,9 @@ struct ProtocolsSection {
     /// "console" | "commands"
     #[serde(default)]
     interaction_mode: Option<String>,
+    /// 게임의 기본 RCON 포트. `supported`에 rcon만 있을 때 데몬이 이 포트로 접속한다
+    #[serde(default)]
+    rcon_port: Option<u16>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1135,6 +1149,7 @@ impl ModuleToml {
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
             protocols_supported: self.protocols.as_ref().and_then(|p| p.supported.clone()),
             protocols_default: self.protocols.as_ref().and_then(|p| p.default.clone()),
+            rcon_port: self.protocols.as_ref().and_then(|p| p.rcon_port),
             settings,
             commands,
             syntax_highlight,
@@ -1311,6 +1326,10 @@ impl ModuleToml {
                 if !PROTOCOLS.contains(&value.as_str()) {
                     problems.push(format!("protocols: '{}' must be one of {}", value, PROTOCOLS.join(", ")));
                 }
+            }
+            let only_rcon = p.supported.as_ref().is_some_and(|s| s.iter().any(|v| v == "rcon") && !s.iter().any(|v| v == "stdin" || v == "rest"));
+            if only_rcon && p.rcon_port.unwrap_or(0) == 0 {
+                problems.push("protocols: rcon_port is required when rcon is the only protocol".to_string());
             }
         }
         // 공지·저장 명령은 [commands.fields]의 이름을 가리킨다
@@ -1927,6 +1946,16 @@ interaction_mode = "commands"
 "#;
         let meta = parse_module_toml(toml).unwrap();
         assert_eq!(meta.interaction_mode.as_deref(), Some("commands"));
+        assert_eq!(meta.rcon_only_port(), None, "rest is there: rcon is never used");
+    }
+
+    #[test]
+    fn rcon_is_used_only_when_it_is_the_only_protocol_and_needs_a_port() {
+        let with = |protocols: &str| parse_module_toml(&format!("[module]\nschema_version = 1\nname = \"g\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[protocols]\n{protocols}\n"));
+        assert_eq!(with("supported = [\"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), Some(27015));
+        assert_eq!(with("supported = [\"stdin\", \"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), None);
+        let err = with("supported = [\"rcon\"]").unwrap_err().to_string();
+        assert!(err.contains("rcon_port"), "{err}");
     }
 
     #[test]
