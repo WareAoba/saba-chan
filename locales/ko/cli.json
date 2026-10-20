@@ -742,7 +742,7 @@
       "page": "페이지",
       "per_page": "페이지당 개수",
       "dir": "폴더",
-      "jar": "jar 파일 이름",
+      "executable": "받을 서버 실행 파일 이름 (기본: 모듈의 server_executable)",
       "accept": "동의할 약관 id (읽은 것만)",
       "relay_url": "릴레이 주소",
       "token": "노드 토큰",

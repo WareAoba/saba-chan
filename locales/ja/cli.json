@@ -742,7 +742,7 @@
       "page": "ページ",
       "per_page": "1 ページあたりの件数",
       "dir": "フォルダー",
-      "jar": "jar ファイル名",
+      "executable": "ダウンロードするサーバー実行ファイル名（既定: モジュールの server_executable）",
       "accept": "同意する規約の ID (読んだものだけ)",
       "relay_url": "リレーのアドレス",
       "token": "ノードトークン",
