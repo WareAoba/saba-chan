@@ -482,8 +482,8 @@
   "stop": {
     "already": "{{name}}은(는) 이미 꺼져 있어요.",
     "done": "{{name}}을(를) 껐어요.",
-    "force_confirm": "그래도 끌까요? 저장하지 않은 진행은 잃을 수 있어요.",
-    "no_graceful": "{{name}}은(는) 저장하고 끄라고 알릴 방법이 없어요. 저장 없이 강제 종료됩니다.",
+    "force_confirm": "저장 없이 끌까요?",
+    "no_graceful": "{{name}}에 저장하고 끄라고 요청할 방법(콘솔)이 없어요. 강제로 끄면 마지막 저장 뒤의 진행이 사라질 수 있어요.",
     "not_yet": "{{name}}이(가) 아직 안 꺼졌어요. 강제로: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} 정지를 요청했어요.",
     "waiting": "{{name}} 끄는 중..."
