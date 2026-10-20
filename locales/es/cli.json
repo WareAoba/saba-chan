@@ -458,6 +458,7 @@
     "not_installed": "no instalado",
     "nothing_to_apply": "Nada que aplicar. Descarga primero: saba-chan-cli update download",
     "apply_failed": "No se pudo aplicar la actualización. Revisa los errores de arriba.",
+    "download_failed": "No se pudieron descargar algunas actualizaciones. Revisa los errores de arriba.",
     "ready": "listo para instalar",
     "up_to_date": "al día",
     "updater_launched": "Actualizador iniciado. El daemon se está cerrando para actualizar.",
@@ -590,6 +591,7 @@
     "confirm_forget": "¿Hacer que el chatbot olvide lo que recuerda en todos los servidores de Discord?",
     "confirm_forget_guild": "¿Hacer que el chatbot olvide lo que recuerda en el servidor de Discord {{guild}}?",
     "forgot": "Se borró la memoria del chatbot.",
+    "forget_failed": "No se pudo borrar la memoria del chatbot en algunos servidores de Discord. Revisa los errores de arriba.",
     "not_synced": "Guardado en este PC. Llegará a Discord cuando el bot esté conectado (saba-chan-cli bot status).",
     "sync_failed": "El servidor de Discord {{guild}} no recibió el cambio: {{error}}",
     "read_failed": "No se pudo leer {{path}}: {{error}}"
