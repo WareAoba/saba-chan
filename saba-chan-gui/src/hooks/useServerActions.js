@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { busyMessage, createTranslateError, moduleSupports, retryWithBackoff, safeShowToast } from '../utils/helpers';
-import { showPortMoved } from '../utils/daemonEvents';
+import { claimStopNotice, showPortMoved } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 
@@ -107,11 +107,17 @@ export function useServerActions({
                         if (wasRunning && nowStopped && !isKnownOp) {
                             // Crash / unexpected stop — genuinely important.
                             // This is the ONLY state transition that warrants
-                            // a persistent notice.
-                            safeShowToast(t('servers.unexpected_stop_toast', { name: newServer.name }), 'error', 5000, {
-                                isNotice: true,
-                                source: newServer.name,
-                            });
+                            // a persistent notice. instance.exit 이벤트가 이미 알렸으면 건너뛴다 (G-S6)
+                            if (claimStopNotice(newServer.id))
+                                safeShowToast(
+                                    t('servers.unexpected_stop_toast', { name: newServer.name }),
+                                    'error',
+                                    5000,
+                                    {
+                                        isNotice: true,
+                                        source: newServer.name,
+                                    },
+                                );
                         } else if (wasRunning && nowStopped && !isGuiOp && isApiOp && !inBootGrace) {
                             // API-initiated stop (Discord bot command, etc.)
                             // Informational toast only — not notice-worthy.

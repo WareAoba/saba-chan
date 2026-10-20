@@ -110,9 +110,23 @@ export function showPortMoved({ instanceId, name, from, to }, t) {
     });
 }
 
+// 서버가 예기치 않게 멈춘 것을 마지막으로 알린 때. 이벤트와 목록 폴링이 같은 멈춤을 두 번 알리지 않게 한다
+const stopNotices = new Map();
+const STOP_NOTICE_DEDUP_MS = 30_000;
+
+/** 이 서버의 예기치 않은 멈춤을 지금 알려도 되는지. 알려도 되면 알린 것으로 적는다 */
+export function claimStopNotice(instanceId) {
+    if (!instanceId) return true;
+    const last = stopNotices.get(instanceId);
+    if (last !== undefined && Date.now() - last < STOP_NOTICE_DEDUP_MS) return false;
+    stopNotices.set(instanceId, Date.now());
+    return true;
+}
+
 /** 토스트를 띄우고 알림 보기에도 남긴다 */
 export function showEventToast(ev, t, nameOf) {
     const toast = eventToast(ev, t, nameOf);
+    if (toast && ev.type === 'instance.exit' && !claimStopNotice(ev.data.instanceId)) return null;
     if (toast) safeShowToast(toast.message, toast.type, toast.duration, { isNotice: true, source: 'saba-chan' });
     return toast;
 }
