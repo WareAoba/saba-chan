@@ -1,6 +1,8 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useServerStore } from '../../stores/useServerStore';
+import { moduleSupports } from '../../utils/helpers';
 import { Icon } from '../Icon';
 
 /** 데몬에 점검 채널이 있을 때만 (예전 preload면 버튼을 숨긴다) */
@@ -21,20 +23,25 @@ export function ServerCheck({ server }) {
     const { t } = useTranslation('gui');
     const [running, setRunning] = useState(null); // 'validate' | 'diagnose'
     const [result, setResult] = useState(null); // {kind, issues} | {kind, error}
+    // 모듈이 구현한 점검만 (MK1)
+    const module = useServerStore((s) => s.modules.find((m) => m.name === server.module));
+    const canValidate = typeof window.api?.instanceValidate === 'function' && moduleSupports(module, 'validate');
+    const canDiagnose = typeof window.api?.instanceDiagnose === 'function' && moduleSupports(module, 'diagnose_log');
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: 다른 서버로 가면 결과를 지운다
     useEffect(() => {
         setResult(null);
     }, [server.id]);
 
-    if (!checkAvailable()) return null;
+    if (!canValidate && !canDiagnose) return null;
 
     const run = async (kind) => {
         const call = kind === 'validate' ? window.api.instanceValidate : window.api.instanceDiagnose;
         setRunning(kind);
         try {
             const res = await call(server.id);
-            if (res?.error && !Array.isArray(res?.issues)) setResult({ kind, error: res.error });
+            if (res?.error_code === 'not_supported') setResult({ kind, error: t('errors.not_supported') });
+            else if (res?.error && !Array.isArray(res?.issues)) setResult({ kind, error: res.error });
             else setResult({ kind, issues: sortIssues(res?.issues || []) });
         } catch (err) {
             setResult({ kind, error: err.message });
@@ -46,7 +53,7 @@ export function ServerCheck({ server }) {
     return (
         <section className="server-check">
             <div className="server-check-actions">
-                {typeof window.api.instanceValidate === 'function' && (
+                {canValidate && (
                     <button
                         type="button"
                         className="btn btn-ghost"
@@ -61,7 +68,7 @@ export function ServerCheck({ server }) {
                         {t('shell.check_validate')}
                     </button>
                 )}
-                {typeof window.api.instanceDiagnose === 'function' && (
+                {canDiagnose && (
                     <button
                         type="button"
                         className="btn btn-ghost"
