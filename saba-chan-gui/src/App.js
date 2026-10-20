@@ -34,7 +34,7 @@ import { useServerSettings } from './hooks/useServerSettings';
 import { useConsoleStore } from './stores/useConsoleStore';
 import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
-import { useSettingsStore } from './stores/useSettingsStore';
+import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, isManaged } from './utils/serverView';
@@ -420,6 +420,7 @@ function App() {
     useEffect(() => {
         setDiscordI18n(t);
         setServerI18n(t, i18n);
+        setSettingsI18n(t);
     }, [t, i18n]);
 
     // Finalize loading screen when server initialization completes
