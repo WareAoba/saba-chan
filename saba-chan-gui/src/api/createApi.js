@@ -862,7 +862,8 @@ export function createApi({ invoke, hub }) {
                 // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
                 return data?.lastErrorCode === 'invalid_relay_url' ? 'invalid_relay_url' : 'stopped';
             } catch (_e) {
-                return 'stopped';
+                // 늦거나 닿지 못했다: 꺼졌는지 모른다 (스토어가 두 번 연달아 모를 때만 꺼짐으로 본다)
+                return 'unknown';
             }
         },
         discordBotStart: async () => {
