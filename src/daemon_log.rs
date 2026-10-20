@@ -67,21 +67,20 @@ impl DaemonLogBuffer {
 
     /// Push a new log entry into the buffer, evicting the oldest if at capacity.
     pub fn push(&self, level: String, target: String, message: String) {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
 
+        // 번호는 잠금 안에서 매긴다: 버퍼 순서와 번호 순서가 같아야 since 폴링이 줄을 건너뛰지 않는다 (D-S14)
+        let mut buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let entry = DaemonLogEntry {
-            id,
+            id: self.next_id.fetch_add(1, Ordering::Relaxed),
             timestamp,
             level,
             target,
             message,
         };
-
-        let mut buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if buf.len() >= self.capacity {
             buf.pop_front();
         }
@@ -408,6 +407,27 @@ mod tests {
         assert_eq!(entries[0].message, "hello world");
         assert_eq!(entries[1].id, 2);
         assert_eq!(entries[1].level, "warn");
+    }
+
+    // D-S14: 번호를 잠금 밖에서 매기면 늦은 번호가 먼저 들어가, since 폴링이 이른 번호 한 줄을 건너뛴다
+    #[test]
+    fn ids_follow_buffer_order_when_threads_log_at_once() {
+        let buf = DaemonLogBuffer::new();
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let buf = buf.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..1000 {
+                        buf.push("info".into(), "t".into(), "x".into());
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let ids: Vec<u64> = buf.get_since(Some(1), Some(10_000)).iter().map(|e| e.id).collect();
+        assert_eq!(ids, (1..=8000).collect::<Vec<_>>(), "ids must rise in the order lines enter the buffer");
     }
 
     #[test]
