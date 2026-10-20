@@ -86,7 +86,7 @@ async fn start_apply(
         mgr.load_pending_manifest()
             .map_err(|e| {
                 let msg = format!("Failed to load manifest: {}", e);
-                emit_progress(&app, "error", &msg, 0, &[]);
+                emit_progress_with_failures(&app, "error", &msg, 0, &[], 1);
                 UpdateCompletionMarker::failure(msg.clone()).save().ok();
                 relaunch(&app, &apply_config, false);
                 msg
@@ -98,37 +98,22 @@ async fn start_apply(
 
     // 2. apply-targets.json에서 적용 대상 결정
     let mut mgr = manager.write().await;
-    let target_keys: Vec<String> = mgr
+    let mut target_keys: Vec<String> = mgr
         .load_updater_apply_targets()
         .unwrap_or_default();
 
     tracing::info!("[Apply] Targets: {:?}", target_keys);
 
     // 3. 적용
-    let applied: Vec<String>;
-    let mut failed: Vec<String> = Vec::new();
-
+    // apply-targets.json이 없거나 비어있으면 받아 둔 것 전체를 적용 순서대로. 실패하면 남은 것은 건너뛴 것으로 남긴다
     if target_keys.is_empty() {
-        // apply-targets.json이 없거나 비어있으면 전체 적용. 실패해도 그 전에 적용한 것과 함께 아래에서 마커를 남기고 정리한다
-        let total = mgr.get_pending_components().len();
-        emit_progress(&app, "applying", &format!("Applying {} components...", total), 50, &[]);
-
-        let all_keys: Vec<String> = mgr.get_pending_components().iter().map(|c| c.component.manifest_key()).collect();
-        let (a, failure) = mgr.apply_components_report(&all_keys).await;
-        applied = a;
-        if let Some(e) = failure {
-            failed.push(format!("Apply failed: {:#}", e));
-        }
-    } else {
-        // 개별 컴포넌트 순차 적용 (진행률 이벤트 발행)
-        let total = target_keys.len();
-        let (a, f) = mgr.apply_target_keys(&target_keys, |i, key, done| {
-            let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
-            emit_progress(&app, "applying", &format!("Applying {} ({}/{})...", key, i + 1, total), pct, done);
-        }).await;
-        applied = a;
-        failed = f;
+        target_keys = mgr.pending_keys_in_apply_order();
     }
+    let total = target_keys.len();
+    let (applied, failed) = mgr.apply_target_keys(&target_keys, |i, key, done| {
+        let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
+        emit_progress(&app, "applying", &format!("Applying {} ({}/{})...", key, i + 1, total), pct, done);
+    }).await;
 
     // 4. 완료 마커 저장 — 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
     let marker = UpdateCompletionMarker {

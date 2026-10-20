@@ -34,7 +34,6 @@ const TRANSLATIONS = {
         applyRestartingGui: 'Restarting GUI...',
         applyFailed: 'Update failed',
         applyFailedCount: '{{applied}} applied, {{failed}} failed or skipped',
-        applyStartFailed: 'Apply failed: {{error}}',
     },
     ko: {
         appTitle: '사바쨩 업데이터',
@@ -59,7 +58,6 @@ const TRANSLATIONS = {
         applyRestartingGui: 'GUI를 재시작합니다…',
         applyFailed: '업데이트 실패',
         applyFailedCount: '{{applied}}개 적용, {{failed}}개 실패하거나 건너뜀',
-        applyStartFailed: '적용 실패: {{error}}',
     },
     ja: {
         appTitle: 'Saba-chan アップデーター',
@@ -84,7 +82,6 @@ const TRANSLATIONS = {
         applyRestartingGui: 'GUIを再起動しています...',
         applyFailed: '更新失敗',
         applyFailedCount: '{{applied}} 件適用、{{failed}} 件失敗またはスキップ',
-        applyStartFailed: '適用失敗: {{error}}',
     },
 };
 
@@ -420,9 +417,10 @@ async function enterApplyMode(mode) {
     });
 
     // apply 실행
+    // 거부 사유는 진단용 원문이라 화면에는 번역한 요약만 보인다
     invoke('start_apply').catch(err => {
-        showRing('error', tr('applyFailed'), String(err));
+        console.warn('[Apply]', err);
+        showRing('error', tr('applyFailed'), tr('applyFailedCount', { applied: 0, failed: 1 }));
         hideProgress();
-        showToast(tr('applyStartFailed', { error: err }), 'error', 8000);
     });
 }

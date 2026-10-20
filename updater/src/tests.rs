@@ -1360,6 +1360,20 @@ async fn target_keys_stop_at_the_first_failure() {
     assert!(!manager.resolve_ext_dir(&name).exists());
 }
 
+// 목록 없는 적용도 키별로 적용·건너뜀을 남기도록, 받아 둔 것을 적용 순서대로 키 목록으로 준다
+#[test]
+fn pending_keys_come_in_apply_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    let ext = Component::Extension("order".into());
+    manager.status.components = vec![
+        staged(Component::CoreDaemon, &tmp.path().join("core.zip")),
+        staged(ext.clone(), &tmp.path().join("ext.zip")),
+    ];
+
+    assert_eq!(manager.pending_keys_in_apply_order(), vec![ext.manifest_key(), "saba-core".to_string()]);
+}
+
 // U-9: 목록 없는 적용이 실패해도 그 전에 적용한 것을 돌려준다 (업데이터가 완료 마커에 싣고 pending을 지운다)
 #[tokio::test]
 async fn a_failed_apply_reports_what_it_applied_before() {

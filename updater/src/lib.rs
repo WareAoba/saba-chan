@@ -1072,6 +1072,15 @@ impl UpdateManager {
         Ok(path)
     }
 
+    /// 받아 둔 업데이트의 키를 적용 순서대로. 목록 없는 적용도 `apply_target_keys`로 키마다 결과를 남긴다
+    pub fn pending_keys_in_apply_order(&self) -> Vec<String> {
+        let mut pending: Vec<&ComponentVersion> = self.status.components.iter()
+            .filter(|c| c.downloaded && c.update_available)
+            .collect();
+        pending.sort_by_key(|c| Self::component_apply_priority(&c.component));
+        pending.iter().map(|c| c.component.manifest_key()).collect()
+    }
+
     /// 컴포넌트의 적용 우선순위를 반환합니다.
     ///
     /// 낮은 값일수록 먼저 적용됩니다:
