@@ -2047,8 +2047,7 @@ mod tests {
         std::fs::write(
             dir.join("lifecycle.py"),
             "import json, sys\nconfig = json.load(sys.stdin)\n\
-             open('configured.json', 'w').write(json.dumps(sorted(config.get('settings', {}))))\n\
-             print(json.dumps({'success': True}))\n",
+             print(json.dumps({'success': False, 'message': json.dumps(sorted(config.get('settings', {})))}))\n",
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
@@ -2065,7 +2064,8 @@ mod tests {
         let body = json!({ "motd": "hi", "heap": "4G", "ram": "8", "protocol_mode": "rest" });
         let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await;
         assert!(saved.status.is_success(), "{:?}", saved.body);
-        let configured: Vec<String> = serde_json::from_str(&std::fs::read_to_string(dir.join("configured.json")).unwrap()).unwrap();
+        // 받은 키는 실패 메시지로 돌려받는다: Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다
+        let configured: Vec<String> = serde_json::from_str(saved.body["sync_error"].as_str().unwrap()).unwrap();
         assert_eq!(configured, vec!["motd", "ram"], "a saba-chan setting and daemon fields stay out; a game setting named like another game's launcher setting goes in");
     }
 
