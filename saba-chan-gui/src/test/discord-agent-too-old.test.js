@@ -60,4 +60,15 @@ describe('릴레이가 받지 않는 앱 버전', () => {
         fireEvent.click(screen.getByRole('button', { name: /update/i }));
         expect(useUIStore.getState().settingsInitialView).toBe('update');
     });
+
+    it('거절되는 동안은 명령이 흐르는 것처럼 보이지 않고, 릴레이 거절 오류 줄도 따로 보이지 않는다', () => {
+        const { rerender } = render(<ConnectionView {...viewProps} agentMinVersion="0.1.9" />);
+        // 이 PC의 사바쨩 칸(첫 칸)이 꺼져 보인다. 릴레이 자체는 닿는다
+        expect(document.querySelector('.dc-chain-node').classList.contains('on')).toBe(false);
+        expect(document.querySelector('.dc-conn-card.off')).not.toBeNull();
+        rerender(
+            <ConnectionView {...viewProps} cloudState="error" cloudError="AGENT_TOO_OLD" agentMinVersion="0.1.9" />,
+        );
+        expect(screen.queryByText(/AGENT_TOO_OLD/)).toBeNull();
+    });
 });
