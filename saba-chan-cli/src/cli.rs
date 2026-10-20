@@ -1137,6 +1137,23 @@ mod tests {
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.cmd keys missing: {:?}", missing);
     }
+    /// `server add --preset`은 게임의 추천 설정 id다. 권한 프리셋(`perm preset`)의 설명을 빌려 쓰면 안 된다 (L73)
+    #[test]
+    fn server_add_preset_is_explained_as_a_game_preset() {
+        crate::i18n::init("ko");
+        let cmd = localized();
+        let help = |path: &[&str]| {
+            let mut c = &cmd;
+            for name in &path[..path.len() - 1] {
+                c = c.find_subcommand(name).unwrap();
+            }
+            let arg = c.get_arguments().find(|a| a.get_id() == path[path.len() - 1]).unwrap();
+            arg.get_help().map(|h| h.to_string()).unwrap_or_default()
+        };
+        assert!(!help(&["server", "add", "preset"]).contains("loose"));
+        assert!(help(&["perm", "preset", "preset"]).contains("loose"));
+    }
+
     #[test]
     fn every_argument_has_a_korean_help_line() {
         crate::i18n::init("ko");
