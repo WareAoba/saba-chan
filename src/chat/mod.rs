@@ -428,13 +428,13 @@ impl<D: DaemonApi> Ctx<'_, D> {
         let risk = match command.as_str() {
             "status" => "safe",
             "start" | "stop" => "caution",
-            _ => module.command(&command).and_then(|f| f.risk.as_deref()).unwrap_or("caution"),
+            _ => crate::commands::risk_of(module.command(&command).and_then(|f| f.risk.as_deref())),
         };
         if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
             return self.permission_denied(denied);
         }
-        // 모듈은 명령의 표면을 선언하지 못한다: danger 명령은 챗봇 경로에서 막는다 (액션 경로 `command_view`와 같은 기준)
-        if risk == "danger" && self.req.remote.as_ref().is_some_and(|w| w.via_chatbot) {
+        // 챗봇 경로의 danger 명령은 요청자 본인이 확인한 것만 (릴레이 확인 버튼 → `confirmedBy`). 액션 경로는 확인 계획이 같은 일을 한다
+        if risk == "danger" && self.req.remote.as_ref().is_some_and(|w| w.via_chatbot && !w.confirmed_by_requester()) {
             return Reply::unrecognized("action_not_allowed", self.t("errors.chatbot_not_allowed", &[]), json!({ "command": command }));
         }
 

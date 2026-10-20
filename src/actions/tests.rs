@@ -33,7 +33,7 @@ async fn server() -> (IPCServer, String, tempfile::TempDir) {
 }
 
 fn relay(user: &str, chatbot: bool) -> Caller {
-    let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
     Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "ko".into() }
 }
 
@@ -73,12 +73,6 @@ async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
         assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{:?}", err);
     }
     assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
-    // 보관할 백업 수를 줄이면 다음 백업이 옛 백업을 지운다: 챗봇은 줄이지 못한다 (늘리거나 그대로는 된다)
-    let keep = |n: u32| json!({ "schedule": [], "backup_keep": n });
-    let err = plan(&state, "instance.schedule.set", Some(&id), &keep(1), &owner_bot).await.unwrap_err();
-    assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("backup_keep")), "{:?}", err);
-    assert!(plan(&state, "instance.schedule.set", Some(&id), &keep(12), &owner_bot).await.is_ok());
-    assert!(plan(&state, "instance.schedule.set", Some(&id), &keep(1), &gui()).await.is_ok());
 }
 
 #[tokio::test]
@@ -271,7 +265,19 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
             assert!(!d.id.contains(word), "{} must not be open to the chatbot", d.id);
         }
     }
-    assert!(command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap()["surfaces"].as_array().unwrap().iter().all(|s| s != "chatbot"));
+}
+
+/// 모듈의 위험 명령도 챗봇이 고를 수 있지만 늘 확인 계획을 거친다(요청자 본인이 확인 버튼을 누른다, 사용자 결정 2026-10-20).
+/// 결과는 콘솔·조회처럼 IP·비밀처럼 보이는 값을 가려 보낸다
+#[test]
+fn danger_module_commands_reach_the_chatbot_only_through_a_confirmation() {
+    let wipe = command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap();
+    assert!(wipe["surfaces"].as_array().unwrap().iter().any(|s| s == "chatbot"));
+    assert_eq!(wipe["risk"], "danger", "danger always needs a confirmed plan (needs_confirm)");
+    for id in ["server.console.tail", "server.query:players", "server.command:kick"] {
+        assert!(chatbot_masked(id), "{id}");
+    }
+    assert!(!chatbot_masked("server.status"));
 }
 
 #[tokio::test]
@@ -558,7 +564,7 @@ async fn a_running_plan_does_not_block_single_confirmations_in_the_guild() {
         })
         .await
         .unwrap();
-    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
     let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &caller(true)).await.unwrap();
     let _busy = steps::Lane::take(&caller(false)).unwrap();
@@ -577,7 +583,7 @@ async fn remote_admin_runs_are_limited_per_guild_and_hour() {
         })
         .await
         .unwrap();
-    let who = Requester { guild_id: Some("limited".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: false };
+    let who = Requester { guild_id: Some("limited".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: false, ..Default::default() };
     let owner = Caller { surface: Discord, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let input = json!({ "guild": "limited", "sleeping": false });
     assert!(run(&state, "discord.settings.set", None, &input, None, &owner).await.is_ok());

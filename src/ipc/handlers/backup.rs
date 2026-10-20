@@ -387,6 +387,15 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     if body.backup_keep == Some(0) {
         problems.push("backup_keep must be at least 1".into());
     }
+    // 보관할 백업 수를 줄이면 다음 백업이 옛 백업을 지운다: 챗봇은 삭제를 하지 못하므로 줄이지 못한다.
+    // 쓰기 잠금 안에서 지금 값과 견준다 (계획을 확인하는 사이 이 PC에서 올린 값도 본다)
+    if crate::audit::current().via.as_deref() == Some("chatbot") {
+        if let Some(asked) = body.backup_keep {
+            if asked < instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32) {
+                problems.push("backup_keep: the chatbot cannot lower how many backups are kept".into());
+            }
+        }
+    }
     // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
     if crate::audit::current().source == "discord" {
         for (i, task) in body.schedule.iter().enumerate() {
@@ -962,6 +971,30 @@ mod tests {
         // 끄는 것은 된다
         let off = json!({ "action": "update", "at": "04:00", "enabled": false });
         assert_eq!(remote(json!({ "schedule": [off, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
+    }
+
+    /// 챗봇은 보관할 백업 수를 줄이지 못한다(줄이면 다음 백업이 옛 백업을 지운다). 쓰기 잠금 안에서 지금 값과 견주므로,
+    /// 계획을 확인하는 사이 이 PC에서 값을 올렸어도 챗봇이 그 값을 다시 내리지 못한다
+    #[tokio::test]
+    async fn the_chatbot_cannot_lower_how_many_backups_are_kept() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let put = |body: Value, origin: crate::audit::Origin| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(origin, async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            })
+        };
+        let keep = |n: u32| json!({ "schedule": [], "backup_keep": n });
+        let chatbot = || crate::audit::Origin { via: Some("chatbot".into()), ..crate::audit::Origin::new("discord") };
+        assert_eq!(put(keep(DEFAULT_KEEP as u32 - 1), chatbot()).await, StatusCode::BAD_REQUEST, "below the default");
+        assert_eq!(put(keep(12), chatbot()).await, StatusCode::OK, "raising is fine");
+        // 이 PC에서 20으로 올린 뒤 챗봇의 12는 줄이는 것이다
+        assert_eq!(put(keep(20), crate::audit::Origin::new("gui")).await, StatusCode::OK);
+        assert_eq!(put(keep(12), chatbot()).await, StatusCode::BAD_REQUEST);
+        assert_eq!(put(keep(20), chatbot()).await, StatusCode::OK, "the same value is fine");
+        // 사람이 직접 보낸 디스코드 요청은 줄일 수 있다 (30 이하)
+        assert_eq!(put(keep(5), crate::audit::Origin::new("discord")).await, StatusCode::OK);
     }
 
     /// 원격 제한은 작업 하나의 간격이 아니라 하루에 도는 횟수로 본다: 매일 시각 작업이나 간격이 다른 작업을 여럿 넣어도,

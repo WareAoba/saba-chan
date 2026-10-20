@@ -711,6 +711,7 @@ impl Session {
                 origin.guild = guild_id;
                 origin.user_name = text("userName");
                 origin.guild_name = text("guildName");
+                origin.via = who.via_chatbot.then(|| "chatbot".to_string());
                 let caller = crate::actions::Caller {
                     surface: if who.via_chatbot { crate::actions::Surface::Chatbot } else { crate::actions::Surface::Discord },
                     remote: Some(who),
@@ -767,6 +768,7 @@ impl Session {
             user_id,
             owner_id,
             via_chatbot: crate::chat::permissions::via_chatbot(payload.get("via").and_then(Value::as_str), reported.is_some()),
+            confirmed_by: payload.get("confirmedBy").and_then(Value::as_str).map(str::to_string),
         }
     }
 
@@ -1255,6 +1257,7 @@ mod tests {
             user_id: Some("owner".into()),
             owner_id: Some("owner".into()),
             via_chatbot: false,
+            confirmed_by: None,
         };
         let before = now_ms();
         let res = permission_action(&server, &who, &json!({ "op": "default_level", "level": 1 })).await;

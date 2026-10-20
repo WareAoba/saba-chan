@@ -99,7 +99,7 @@ fn settings() -> ChatSettings {
 }
 
 fn discord(user: &str) -> Option<permissions::Requester> {
-    Some(permissions::Requester { guild_id: Some("g1".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: false })
+    Some(permissions::Requester { guild_id: Some("g1".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: false, ..Default::default() })
 }
 
 async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
@@ -343,19 +343,29 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
     assert_eq!(api.calls().len(), 2);
 }
 
-/// 모듈은 명령의 표면을 선언하지 못하므로, danger 모듈 명령은 챗봇 경로에서 레벨·상한과 상관없이 막는다 (액션 경로 `command_view`와 같은 기준)
+/// 챗봇 경로의 danger 모듈 명령은 요청자 본인이 확인했다는 표지(`confirmedBy`가 요청자)가 있을 때만 실행한다 (사용자 결정 2026-10-20).
+/// 표지가 없거나 다른 사람이면 레벨·상한과 상관없이 막는다
 #[tokio::test]
-async fn the_chatbot_cannot_run_danger_module_commands() {
+async fn the_chatbot_runs_danger_module_commands_only_when_the_requester_confirmed() {
     let mut api = fixture();
     api.modules[0].commands[0].risk = Some("danger".into()); // kick
     let mut s = settings();
-    s.node_settings = json!({ "g1": { "chatbotCap": 2 } });
-    let mut bot = discord("owner");
-    bot.as_mut().unwrap().via_chatbot = true;
-    let req = ChatRequest { text: "mc kick steve".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() };
-    let r = process(&api, &s, &Catalog::for_language("en"), &req).await;
-    assert_eq!(r.code, Some("action_not_allowed"), "{}", r.text);
-    assert!(api.calls().is_empty());
+    s.node_settings = json!({ "g1": { "chatbotCap": 2, "preset": "loose" } });
+    let ask = |confirmed_by: Option<&str>| {
+        let mut bot = discord("owner");
+        let who = bot.as_mut().unwrap();
+        who.via_chatbot = true;
+        who.confirmed_by = confirmed_by.map(str::to_string);
+        ChatRequest { text: "mc kick steve".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() }
+    };
+    for confirmed_by in [None, Some("someone-else")] {
+        let r = process(&api, &s, &Catalog::for_language("en"), &ask(confirmed_by)).await;
+        assert_eq!(r.code, Some("action_not_allowed"), "{confirmed_by:?}: {}", r.text);
+        assert!(api.calls().is_empty());
+    }
+    let r = process(&api, &s, &Catalog::for_language("en"), &ask(Some("owner"))).await;
+    assert_ne!(r.code, Some("action_not_allowed"), "{}", r.text);
+    assert!(!api.calls().is_empty(), "the confirmed command runs");
 }
 
 #[tokio::test]

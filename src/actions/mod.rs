@@ -396,12 +396,9 @@ fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
 /// 모듈 명령 한 개 (`GET /api/instance/:id/commands`의 항목) → 액션
 fn command_view(cmd: &Value) -> Option<Value> {
     let name = cmd.get("name")?.as_str()?;
-    let risk = cmd.get("risk").and_then(Value::as_str).unwrap_or("caution");
-    let mut surfaces = vec!["gui", "cli", "discord"];
-    // 모듈이 표면을 선언할 길이 없으므로 danger 명령은 챗봇에서 뺀다
-    if risk != "danger" {
-        surfaces.push("chatbot");
-    }
+    let risk = crate::commands::risk_of(cmd.get("risk").and_then(Value::as_str));
+    // danger 명령도 챗봇이 고를 수 있다: 늘 확인 계획을 거치고 요청자가 확인한다 (`needs_confirm`)
+    let surfaces = vec!["gui", "cli", "discord", "chatbot"];
     let inputs = cmd.get("inputs").cloned().unwrap_or(json!([]));
     let props: Map<String, Value> = inputs
         .as_array()
@@ -855,15 +852,6 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
             }
         }
     }
-    // 보관할 백업 수를 줄이면 다음 백업이 옛 백업을 지운다: 챗봇은 삭제를 하지 못하므로 줄이지 못한다
-    if caller.surface == Chatbot && def.id == "instance.schedule.set" {
-        if let (Some(i), Some(asked)) = (&instance, input.get("backup_keep").and_then(Value::as_u64)) {
-            let current = server.supervisor.read().await.instance_store.get(i).and_then(|x| x.backup_keep).map(u64::from);
-            if asked < current.unwrap_or(crate::ipc::handlers::backup::DEFAULT_KEEP as u64) {
-                return Err(bad_input("backup_keep", "the chatbot cannot lower how many backups are kept"));
-            }
-        }
-    }
     let body = if def.method == "GET" || def.method == "DELETE" || (body.is_empty() && !def.open_input && def.fields.is_empty()) {
         None
     } else {
@@ -1223,6 +1211,11 @@ async fn admit(server: &IPCServer, caller: &Caller) -> Result<(), ActionError> {
     Ok(())
 }
 
+/// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
+fn chatbot_masked(id: &str) -> bool {
+    id == "server.console.tail" || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
+}
+
 /// 푼 액션 하나를 실행한다: 밑 라우트 응답을 `{success, actionId, status, result}`로.
 /// 원격 서버 설정 변경이 성공하면 바꾸기 전 값으로 되돌리는 계획을 함께 만든다 (`undoPlanId`)
 async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
@@ -1232,8 +1225,7 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     };
     let resp = crate::audit::with_origin(caller.origin.clone(), call_as(server, r.method, &r.uri, r.body.clone(), Some(caller.origin.clone()))).await;
     let mut result = resp.body;
-    // 콘솔과 모듈 조회 결과(접속자 목록 등)는 챗봇에 IP·비밀처럼 보이는 값을 가려 보낸다
-    if (r.id == "server.console.tail" || r.id.starts_with(QUERY_PREFIX)) && caller.surface == Chatbot {
+    if chatbot_masked(&r.id) && caller.surface == Chatbot {
         mask_console(&mut result);
     }
     if caller.remote.is_some() {
