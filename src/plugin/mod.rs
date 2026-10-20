@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde_json::Value;
 use tokio::process::Command;
-use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use crate::utils::apply_creation_flags;
 
 mod loopback;
