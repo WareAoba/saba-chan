@@ -1085,12 +1085,13 @@ mod tests {
     /// 동시에 온 요청은 Python을 한 번만 띄운다. 목록 응답은 느린 모듈을 짧게만 기다리고, 묻기는 뒤에서 마저 해 캐시에 남긴다
     #[tokio::test]
     async fn concurrent_asks_share_one_run_and_the_list_does_not_wait_for_a_slow_module() {
+        // Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다: 실행 횟수는 답에 실은 pid로 센다
         let dir = tempfile::tempdir().unwrap();
         let entry = dir.path().join("lifecycle.py");
         std::fs::write(
             &entry,
-            "import json, sys, time\nopen('runs.txt', 'a').write('x')\ntime.sleep(float(open('delay.txt').read()))\n\
-             print(json.dumps({'success': True, 'functions': ['validate']}))\n",
+            "import json, os, sys, time\ntime.sleep(float(open('delay.txt').read()))\n\
+             print(json.dumps({'success': True, 'functions': ['validate', str(os.getpid())]}))\n",
         )
         .unwrap();
         std::fs::write(dir.path().join("delay.txt"), "0.5").unwrap();
@@ -1099,21 +1100,30 @@ mod tests {
             let entry = entry.clone();
             tokio::spawn(async move { module_functions(&entry).await })
         }).collect();
+        let mut answers = Vec::new();
         for ask in asks {
-            assert_eq!(ask.await.unwrap(), Some(vec!["validate".to_string()]));
+            answers.push(ask.await.unwrap().expect("listed"));
         }
-        assert_eq!(std::fs::read_to_string(dir.path().join("runs.txt")).unwrap(), "x", "one run for concurrent asks");
+        assert_eq!(answers[0][0], "validate");
+        // 동시에 돈 실행이라면 pid가 서로 다르다
+        assert!(answers.iter().all(|a| a == &answers[0]), "one run for concurrent asks: {answers:?}");
 
         // 모듈이 바뀌었고 느리다: 목록은 기다리지 않고 null, 뒤에서 마친 답은 캐시에 남는다
-        std::fs::write(dir.path().join("delay.txt"), "4").unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        let delay = 4.0;
+        std::fs::write(dir.path().join("delay.txt"), delay.to_string()).unwrap();
         let text = std::fs::read_to_string(&entry).unwrap();
         std::fs::write(&entry, format!("{text}# changed\n")).unwrap();
+        // 수정 시각 해상도가 거친 파일 시스템에서도 바뀐 것으로 보이게
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::File::options().write(true).open(&entry).unwrap().set_modified(later).unwrap();
         let started = std::time::Instant::now();
         assert_eq!(module_functions_for_list(entry.clone()).await, None);
         assert!(started.elapsed() < std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS + 1500), "{:?}", started.elapsed());
-        assert_eq!(module_functions(&entry).await, Some(vec!["validate".to_string()]), "the background ask finishes and is shared");
-        assert_eq!(std::fs::read_to_string(dir.path().join("runs.txt")).unwrap(), "xx");
+        let shared = module_functions(&entry).await.expect("the background ask finishes");
+        assert_ne!(shared, answers[0], "the changed module was asked again");
+        // 새로 실행했다면 목록이 기다린 시간에 지연 전체가 더해진다
+        let limit = std::time::Duration::from_secs_f64(delay + 1.5);
+        assert!(started.elapsed() < limit, "the background ask is shared, not run again: {:?}", started.elapsed());
     }
 
     /// 공용 진입점 `run_lifecycle`은 표에 `functions`가 없으면 표의 키(자신 제외)로 답한다
