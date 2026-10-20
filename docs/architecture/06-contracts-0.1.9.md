@@ -12,16 +12,17 @@
   - `backup.restore`의 `name`: `{action:"backup.list", list:"backups", value:"name", label:"label"}`.
   - 릴레이는 이 표지가 있는 칸을 자동완성으로 만든다(최근 것부터 25개). 다른 액션도 같은 표지를 쓸 수 있다.
 - `backup.list` 액션 결과의 `backups[]` 항목마다 `label`을 더한다. 요청 언어와 PC 시간대로 `2026-10-20 21:03 · 수동 · 120MB` 같은 한 줄이다(종류 이름은 봇 locales). 라우트 `GET /api/instance/:id/backups`는 그대로다.
-- 서버가 켜져 있으면 `plan(backup.restore)`가 계획을 만들지 않고 409 `server_running`으로 답한다. 실행(`run`)도 같은 답이다(지금 라우트의 409).
+- 서버가 켜져 있으면 `plan(backup.restore)`가 계획을 만들지 않고 409 `server_running`으로 답한다. 여러 단계 계획에서 같은 인스턴스의 `server.stop` 단계가 앞에 있으면 계획 때는 이 검사를 하지 않고, 그 정지 단계가 끝난 뒤 복원 단계를 실행할 때 한다. 앞에 정지 단계가 없으면 계획 때 409다. 실행 때 검사(지금 라우트의 409)는 늘 남는다.
 - 릴레이가 "먼저 끄고 복원"을 고르면 여러 단계 계획 `POST /api/actions/plan {steps:[{id:"server.stop", instance}, {id:"backup.restore", instance, input:{name}}]}`을 보낸다. 데몬은 다음을 보장한다.
   - 정지 단계는 서버 프로세스가 끝난 것을 확인한 뒤에 성공한다. 그 뒤에 복원이 시작된다.
   - 정지가 실패하거나 `graceful_stop_unavailable`(MK10)이면 정지 단계가 실패로 끝나고 복원은 `skipped`다.
   - 원격 계획의 `server.stop`은 `force`를 받지 않는다(강제 종료는 GUI·CLI만).
+  - 정지 단계는 `stop_timeout`(최대 3600초)까지 걸릴 수 있다. 릴레이는 계획 실행 결과를 그만큼 기다리거나, 진행 중임을 먼저 알리고 결과를 뒤에 보낸다(05 문서의 액션 실행 절에 맞춘다).
 
 ## 2. 플레이어 목록 `server.players` (검수 13번)
 
 - 모듈 함수 `players(config)`(선택). 반환 `{success:true, online:int, max?:int, players:[{name}]}`. 서버가 꺼져 있으면 `{success:false, error_code:"server_not_running"}`. 이름 말고 IP·고유 ID는 싣지 않는다(실어도 데몬이 뺀다).
-  - 따로 선언하는 키는 없다. 모듈이 `functions`(MK1) 목록에 `players`를 넣으면 지원하는 것이다. `functions`를 모르면(`null`) 지원하지 않는 것으로 본다.
+  - 따로 선언하는 키는 없다. 모듈이 `functions`(MK1) 목록에 `players`를 넣으면 지원하는 것이다. `functions`를 모르면(`null`) 지원하지 않는 것으로 본다. 그래서 데몬은 MK1(`functions`)을 이 절보다 먼저 넣는다.
   - 통신은 모듈 규칙대로 STDIN → REST → RCON. 지원하는 게임과 출력 형식은 모듈 담당이 공식 문서로 확인한다.
 - 데몬 라우트 `GET /api/instance/:id/players` → 모듈 `players` 결과(`players[]`는 `{name}`만). 모듈에 함수가 없으면 200 `{success:false, error_code:"not_supported"}`, 서버가 꺼져 있으면 409 `server_not_running`.
 - 액션 `server.players`: Query, safe, 모든 표면, 인스턴스 액션. 요약 `text`는 `접속 3/20명` 다음 줄마다 이름(10명까지, 남은 수는 `외 N명`). 봇 locales `actions.server.players.title`(ko 플레이어, en Players, ja プレイヤー …)과 `actions.summary.players*`.
@@ -32,7 +33,7 @@
 
 - 로그 원천은 인스턴스의 콘솔 기록 세션이다(saba-runner가 남기는 세션 파일, `log_sessions_keep`개. 모듈 `[launch] log_files`도 콘솔에 합쳐져 있다). 원천 id는 세션 파일 이름(확장자 뺀 것), `label`은 그 세션의 시작 시각이다. 가장 최근 세션이 `latest`이기도 하다.
 - 라우트 `GET /api/instance/:id/logs?source=&lines=&before=`
-  - 응답 `{sources:[{id, label}], source, lines:[문자열], before?}`. `lines`는 기본 200, 최대 500. 끝에서부터 읽고 `before`(이전 응답이 준 커서)로 더 앞을 읽는다. 원천이 없으면 404 `not_found`.
+  - 응답 `{sources:[{id, label, startedAt}], source, lines:[문자열], before?}`. `startedAt`은 세션 시작 unix 초라 GUI·CLI가 자기 시간대·언어로 다시 그릴 수 있다. `lines`는 기본 200, 최대 500. 끝에서부터 읽고 `before`(이전 응답이 준 커서)로 더 앞을 읽는다. 원천이 없으면 404 `not_found`.
 - 라우트 `GET /api/instance/:id/logs/export?source=&since=&until=`
   - 응답 `{fileName, bytes, truncated, content}`. `fileName`은 `<서버 이름>-<source>-<YYYYMMDD-HHMM>.log`(파일 이름에 못 쓰는 글자는 `_`). `since`·`until`은 unix 초로 줄의 시각을 거른다(시각이 없는 줄은 앞 줄을 따른다).
   - `content`는 최대 4 MiB다. 넘으면 최근 쪽을 남기고 `truncated:true`. 릴레이 `/result`가 이 크기를 받아야 한다(JSON 이스케이프 여유를 두고 6 MiB 이상).
@@ -57,5 +58,5 @@
 ## 6. non-managed 정지 대기 시간 (모듈 #37과 합의)
 
 - 데몬은 모듈 `stop()`의 config에 이번 정지에 쓸 대기 시간 `stop_timeout`(초)을 늘 싣는다. 값은 인스턴스 설정 `stop_timeout`, 모듈 `[config] stop_timeout`, 기본 30 순이다(`supervisor::stop_timeout_of`, 1~3600).
-- non-managed 정지(`managed:false`)의 모듈 `stop()` 호출 시간 제한은 `stop_timeout + 30`초다(지금의 고정 120초 대신). 모듈은 자기 상한(90초 등)을 두지 않고 `stop_timeout`만큼 기다린 뒤 결과를 돌려준다. 30초는 저장 명령·프로세스 정리에 쓰는 여유다.
+- non-managed 정지(`managed:false`)의 모듈 `stop()` 호출 시간 제한은 `stop_timeout + 30`초다(지금의 고정 120초 대신). 모듈은 자기 상한(90초 등)을 두지 않고 `stop_timeout`만큼 기다린 뒤 결과를 돌려준다. 30초는 저장 명령·프로세스 정리에 쓰는 여유다. 0.1.8 데몬(고정 120초)과 섞이지 않게 모듈의 상한 제거는 이 데몬 변경이 든 릴리스(0.1.9)에 같이 싣는다.
 - managed 정지(`managed:true`)에서 모듈 `stop()`은 저장·종료 요청만 보내고 기다리지 않고 바로 `success`를 돌려준다. 끝나기를 기다리는 일과 시간이 지난 뒤 강제 종료는 데몬이 `stop_timeout`으로 한다. 이 호출의 시간 제한은 지금처럼 기본값(120초)이다.
