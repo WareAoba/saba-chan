@@ -211,9 +211,10 @@ impl ServerInstance {
 
     /// REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
     /// 변경이 발생하면 true를 반환합니다.
-    pub fn ensure_passwords(&mut self) -> bool {
+    /// `generate`: 빈 REST 비밀번호를 채우는가 (GUI "비밀번호 자동 생성")
+    pub fn ensure_passwords(&mut self, generate: bool) -> bool {
         let mut changed = false;
-        if self.rest_password.as_deref().unwrap_or("").is_empty() {
+        if generate && self.rest_password.as_deref().unwrap_or("").is_empty() {
             let pw = generate_random_password();
             tracing::info!("Auto-generated REST password for instance {}", self.id);
             self.rest_password = Some(pw);

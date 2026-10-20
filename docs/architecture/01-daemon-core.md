@@ -464,9 +464,8 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다. 원격(디스코드·챗봇) 요청이 만든 백업은 정리를 하지 않는다(원격 복원을 거듭해도 앞서 남긴 안전 백업이 밀려 지워지지 않는다. 넘친 것은 이 PC에서 만드는 다음 백업이 정리한다, D-B11) |
 
 - RCON 필드(`rcon_port`, `rcon_password`)는 없다. 예전 `instance.json`·`settings.json`에 남은 RCON 키는 로드할 때 한 번 지우고 다시 쓴다(`instance/mod.rs:439-468, 483-500`).
-- `ensure_passwords()`(`instance/mod.rs:210`)는 시작할 때(`server.rs:903`, `managed.rs:33`) 비어 있는 REST 비밀번호를 16자 영숫자로 채운다.
+- 시작할 때(`server.rs` `fill_passwords`, 두 시작 경로 공용) `ensure_passwords(generate)`가 비어 있는 REST 비밀번호를 16자 영숫자로 채운다. `generate`는 `GuiSettings.autoGeneratePasswords`(기본 true)다. 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만들어 `credential_map`으로 데몬에 돌려준다(Palworld는 INI `AdminPassword`가 비면 임의 값을 써 넣는다). 이미 있는 비밀번호는 켜져 있어도 바꾸지 않는다.
 - 비밀번호 생성은 `constants::generate_random_password`가 uuid v4 바이트에 `% 62`를 적용하는 방식이다(`constants.rs:188-201`). 모듈로 편향이 있고, 두 번째 uuid는 계산만 하고 쓰지 않는다.
-- `GuiSettings.autoGeneratePasswords`는 이 동작에 **반영되지 않는다.**
 
 ### 4.2 영속화 (`InstanceStore`, `instance/mod.rs:238-477`)
 
@@ -539,7 +538,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - `portConflictCheck`: 기동할 때 `skip_port_check` 원자 변수를 초기화하고(`ipc/mod.rs:822-828`), PUT·reset이 성공하면 갱신한다(`config.rs:28, 88-91`). start 경로와 모니터가 이 값 하나만 본다(`supervisor/mod.rs:269, 2555`).
 - `language`: Python 실행의 `SABA_LANG`, 채팅 응답, 예약 공지, 익스텐션 설명 언어에 쓴다(`plugin/mod.rs:28-36`, `chat/api.rs:129`, `backup.rs:402`, `extension.rs:74`).
 - `ipcPort`: `SABA_IPC_PORT`가 없을 때 데몬 포트로 쓴다(`main.rs:285-296`).
-- `autoGeneratePasswords`: 미사용.
+- `autoGeneratePasswords`: 시작할 때 빈 REST 비밀번호를 채우는가(§ 인스턴스 비밀번호).
 
 예전 `src/config/mod.rs`의 `GlobalConfig`는 지워졌다.
 
@@ -715,7 +714,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - ~~`plugin::run_extension*`, `RestClient::with_basic_auth`, `ServerResponse::success/error`, `CommandResponse`, `BotConfig`(ipc/mod.rs), `ExtensionInitTracker::is_initializing`, `InstanceStore::save`, `ServerInstance::ext_f64`, `process_monitor::find_by_name*` 동기 버전 미사용~~ → 해결: 모두 지워졌다(`ext_str`는 테스트 전용, `instance/mod.rs:128-131`).
 - ~~업데이트 설정의 `check_interval_hours`, `auto_download`, `auto_apply`는 저장만 되고 아무 동작이 없다~~ → 해결: `config.json`에 저장되고, 데몬 스케줄러가 주기와 `auto_download`를 쓴다(`updates.rs:256`, `:899-902`). `auto_apply`는 설정에서 지워졌고 적용은 언제나 사용자가 고른다(`updater/src/lib.rs:236-252`).
 - ~~`skip_port_check` 계열이 따로 논다~~ → 해결: 기동 시 `gui.portConflictCheck`로 초기화하고, start 경로와 모니터가 같은 원자 변수 하나만 본다(§4.4).
-- `GuiSettings.autoGeneratePasswords`는 데몬에서 효과가 없다. ~~`ipcPort`~~는 데몬 포트로 쓴다(§4.4).
+- ~~`GuiSettings.autoGeneratePasswords`는 데몬에서 효과가 없다~~ → 해결: 시작할 때 빈 REST 비밀번호를 채울지 이 값으로 정한다. ~~`ipcPort`~~는 데몬 포트로 쓴다(§4.4).
 - 비 Windows 부트 선택기는 키 입력을 지원하지 않는데도 DEL 안내를 표시한다(`boot_selector.rs:244-248, 308`).
 - `ServerStartRequest.module`이 필수 필드다(`ipc/mod.rs:132-136`). 인스턴스에 이미 모듈 정보가 있는데도 `/api/server/:name/start` 호출자가 다시 보내야 한다. `/api/instance/:id/start`는 이 값을 데몬이 채운다(`server.rs:696`).
 - `python_env`의 데이터 디렉토리가 `constants::resolve_data_dir()`와 어긋난다(§6). 같은 파일 상단 주석은 `<data_dir>`라고 적고 있다.
