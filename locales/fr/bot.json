@@ -100,7 +100,7 @@
     "unknown_input": "❌ Commande inconnue.",
     "command_not_found": "❌ La commande n'existe pas.",
     "permission_denied": "❌ Vous n'avez pas la permission d'utiliser cette commande.",
-    "chatbot_not_allowed": "❌ Le chatbot ne peut pas exécuter cette commande. Exécutez-la directement.",
+    "chatbot_not_allowed": "❌ Saba-chan qui parle ne peut pas exécuter cette commande. Exécutez-la directement.",
     "local_single_guild_only": "⚠️ Le bot local ne peut être utilisé que sur un seul serveur. Actuellement présent sur {{count}} serveurs. Veuillez retirer le bot des serveurs inutilisés."
   },
   "messages": {
@@ -256,11 +256,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "Voir les réglages du chatbot",
+          "title": "Voir les réglages de Saba-chan qui parle",
           "description": "Activation, mots d'appel, confirmation, outils"
         },
         "set": {
-          "title": "Modifier les réglages du chatbot",
+          "title": "Modifier les réglages de Saba-chan qui parle",
           "description": "Activation, mots d'appel, confirmation, outils"
         }
       }
