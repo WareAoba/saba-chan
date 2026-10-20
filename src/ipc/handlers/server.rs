@@ -1490,8 +1490,8 @@ mod tests {
         assert!(child.wait().is_ok());
     }
 
-    /// non-managed 정지에서 모듈 `stop()`은 이번 정지에 쓸 대기 시간(`stop_timeout`)을 config로 받는다.
-    /// 인스턴스 값이 없으면 모듈 값이다. 데몬은 그 호출을 `stop_timeout + 30`초까지 기다린다 (06 계약 6절)
+    /// non-managed 정지에서 모듈 `stop()`은 이번 정지에 쓸 대기 시간(`stop_timeout`)과 그 호출의 한도(`stop_call_limit`,
+    /// `stop_timeout + 30`초)를 config로 받는다. 인스턴스 값이 없으면 모듈 값이다 (06 계약 6절)
     #[cfg(unix)]
     #[tokio::test]
     async fn a_module_stop_is_told_how_long_to_wait() {
@@ -1511,7 +1511,7 @@ mod tests {
                 "import json, os, signal, sys\n\
                  config = json.load(sys.stdin)\n\
                  if sys.argv[1] == 'stop':\n    \
-                 open({seen:?}, 'w').write(str(config.get('stop_timeout')))\n    \
+                 open({seen:?}, 'w').write('%s %s' % (config.get('stop_timeout'), config.get('stop_call_limit')))\n    \
                  os.kill(config['pid'], signal.SIGKILL)\n    print(json.dumps({{'success': True}}))\n\
                  else:\n    print(json.dumps({{'success': True}}))\n",
                 seen = seen.to_string_lossy()
@@ -1530,7 +1530,7 @@ mod tests {
         let stopped = crate::ipc::internal::into_internal(stop_instance(state.clone(), "native", false).await).await.body;
         assert_eq!(stopped["success"], true, "{stopped}");
         assert!(child.wait().is_ok());
-        assert_eq!(std::fs::read_to_string(&seen).unwrap(), "200");
+        assert_eq!(std::fs::read_to_string(&seen).unwrap(), "200 230");
     }
 
     #[test]

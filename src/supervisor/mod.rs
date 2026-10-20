@@ -1222,6 +1222,7 @@ impl Supervisor {
                     config_obj.insert("pid".to_string(), json!(managed.pid));
                     config_obj.insert("managed".to_string(), json!(true));
                     config_obj.insert("force".to_string(), json!(false));
+                    config_obj.insert("stop_call_limit".to_string(), json!(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS));
                     if let Some(port) = instance.rest_port {
                         config_obj.insert("rest_port".to_string(), json!(port));
                     }
@@ -1327,10 +1328,12 @@ impl Supervisor {
         config_obj.insert("force".to_string(), json!(force));
         // managed 서버는 위에서 데몬이 직접 멈춘다. 여기까지 오면 항상 non-managed.
         config_obj.insert("managed".to_string(), json!(false));
+        // 모듈이 `stop_timeout`만큼 기다리므로 호출은 그보다 조금 더 기다린다. 그 한도를 모듈에도 알린다
+        let limit = module_stop_limit(stop_timeout_of(&instance, module.metadata.stop_timeout));
+        config_obj.insert("stop_call_limit".to_string(), json!(limit));
         let config = Value::Object(config_obj);
 
-        // Execute stop function. 모듈이 `stop_timeout`만큼 기다리므로 호출은 그보다 조금 더 기다린다
-        let limit = module_stop_limit(stop_timeout_of(&instance, module.metadata.stop_timeout));
+        // Execute stop function
         let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).timeout(limit).run().await?;
 
         // Check if the module actually succeeded
