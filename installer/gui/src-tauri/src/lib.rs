@@ -1175,9 +1175,10 @@ pub fn run() {
         init_logging();
 
         let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-        rt.block_on(async {
-            uninstall::do_silent_uninstall().await;
-        });
+        let code = rt.block_on(uninstall::do_silent_uninstall());
+        if code != 0 {
+            std::process::exit(code);
+        }
         return;
     }
 
