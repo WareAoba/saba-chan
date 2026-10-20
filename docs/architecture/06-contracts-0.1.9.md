@@ -102,3 +102,15 @@
 - 데몬이 콘솔을 읽는 시작(managed)에서 콘솔 줄이 맞으면 이벤트 `instance.player {at, instanceId, instance, player, change:"join"|"leave"}`를 낸다. 시스템 줄(`LogSource::System`)은 보지 않는다. non-managed 시작에서는 0.1.9에 이 이벤트가 없다.
 - 이름 말고 IP·고유 ID는 싣지 않는다. 모듈 패턴이 다른 그룹을 잡아도 `name`만 쓴다. 이름은 64자에서 자르고 제어 문자를 뺀다.
 - relay로 올리지 않는다(0.1.9). GUI·CLI 이벤트 스트림(`events --kind instance`)과 TUI 접속자 표시가 쓴다. 1분 접속자 수 갱신(`supervisor/players.rs`)은 그대로다.
+
+## 9. 무인 설치·업데이트의 데몬 몫 (사용자 결정 2026-10-20, 설계 문서 4단계)
+
+- 설치 구성 `profile`(`"desktop"`|`"headless"`)은 installed-manifest에 기록된다(설계 2단계, 인스톨러·`saba-chan-cli install`이 쓴다). 키가 없으면 `desktop`이다(0.1.8까지의 설치).
+- `GET /api/updates/status` 응답에 `profile`을 싣는다. GUI·CLI는 이 값으로 GUI 업데이트 안내를 보일지 정한다(헤드리스면 GUI 항목이 애초에 없다).
+- `POST /api/updates/launch-updater`는 `profile`이 `headless`이면 다음처럼 바뀐다.
+  - 업데이터 인자에 `--headless`를 더한다(`--apply --wait-pid … --launch-token … --headless`). 업데이터는 Tauri 없이 적용하고 지금과 같은 완료 표시를 남긴다.
+  - 다시 띄울 대상은 요청의 `relaunch`가 있으면 그것, 없으면 데몬 자신(지금 실행 파일과 실행 인자)이다. 떠 있는 GUI를 찾아 바꿔 넣는 동작(`relaunch_target`)과 업데이터의 GUI 찾기 예비 동작은 쓰지 않는다.
+  - 응답은 지금과 같다(`{ok, updater_launched, daemon_stopping}`).
+- `desktop`이면 지금 동작 그대로다.
+- CLI는 `update apply` 뒤 데몬이 다시 응답할 때까지(`GET /api/updates/last`가 이번 적용 결과를 줄 때까지) 기다렸다가 결과와 패치노트를 보인다. 데몬 API는 새로 늘지 않는다.
+- 데몬이 서비스(systemd·Windows 서비스)로 돌 때 다시 띄우기는 리눅스 배포 단계(이 설계 다음)에서 정한다.
