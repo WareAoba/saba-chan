@@ -111,6 +111,12 @@ pub struct ModuleMetadata {
     /// [detection] crash_artifacts — 크래시 때 생기는 파일 (작업 디렉터리 기준, 마지막 칸만 `*` `?`). A1용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crash_artifacts: Vec<String>,
+    /// [extensions.saba-core] ready_patterns — 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구 (정규식). R39 `instance.ready`용
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ready_patterns: Vec<String>,
+    /// [extensions.saba-core] ready_timeout — 준비 문구를 기다리는 시간(초). 없으면 600
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_timeout: Option<u64>,
     /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<ModulePreset>,
@@ -1185,6 +1191,8 @@ impl ModuleToml {
             crash_artifacts: self.detection
                 .map(|d| d.crash_artifacts)
                 .unwrap_or_default(),
+            ready_patterns: Vec::new(),
+            ready_timeout: None,
             module_aliases: self.aliases.as_ref()
                 .map(|a| a.module_aliases.clone())
                 .unwrap_or_default(),
@@ -1232,6 +1240,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     problems.extend(toml_data.value_problems());
 
     let mut meta = toml_data.into_metadata();
+    let daemon_warnings = read_daemon_table(&mut meta);
     problems.extend(preset_problems(&meta));
     let bad_queries = query_problems(&meta);
     // 스키마 이전 모듈도 잘못된 조회는 켜지 않는다: 조회는 확인 없이 모든 표면에 열린다
@@ -1267,7 +1276,42 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
             MODULE_SCHEMA_VERSION
         ),
     }
+    for w in &daemon_warnings {
+        tracing::warn!("module '{}': {}", meta.name, w);
+    }
+    meta.warnings.extend(daemon_warnings);
     Ok(meta)
+}
+
+/// 데몬이 읽는 `[extensions.<이름>]` 표. 0.1.8 로더가 내용을 검사하지 않는 자리라 새 키를 여기 둔다.
+/// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
+pub const DAEMON_TABLE: &str = "saba-core";
+
+/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`을 읽는다 (R39). 틀린 값은 그 값만 빼고 경고로 남긴다
+fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
+    let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
+    let mut warnings = Vec::new();
+    match table.get("ready_patterns") {
+        None => {}
+        Some(serde_json::Value::Array(items)) => {
+            for item in items {
+                match item.as_str() {
+                    Some(p) if regex::Regex::new(p).is_ok() => meta.ready_patterns.push(p.to_string()),
+                    Some(p) => warnings.push(format!("extensions.{}.ready_patterns '{}' is not a valid regex; ignored", DAEMON_TABLE, p)),
+                    None => warnings.push(format!("extensions.{}.ready_patterns must hold strings; ignored {}", DAEMON_TABLE, item)),
+                }
+            }
+        }
+        Some(_) => warnings.push(format!("extensions.{}.ready_patterns must be a list of strings; ignored", DAEMON_TABLE)),
+    }
+    match table.get("ready_timeout") {
+        None => {}
+        Some(v) => match v.as_u64().filter(|n| *n > 0) {
+            Some(n) => meta.ready_timeout = Some(n),
+            None => warnings.push(format!("extensions.{}.ready_timeout must be a positive number of seconds; using the default", DAEMON_TABLE)),
+        },
+    }
+    warnings
 }
 
 impl ModuleToml {
@@ -2222,6 +2266,20 @@ entry = "lifecycle.py"
         assert_eq!(meta.graceful_exit_patterns, vec!["Stopping"]);
         assert_eq!(meta.crash_artifacts, vec!["crash-reports/*.txt"]);
         assert_eq!(meta.extensions["backup"]["paths"][0], "world");
+    }
+
+    /// R39: 준비 문구는 `[extensions.saba-core]`에 둔다 (0.1.8 로더가 거부하지 않는 자리). 틀린 값은 그 값만 빼고 경고다
+    #[test]
+    fn schema_v1_reads_ready_patterns_from_the_daemon_table() {
+        let toml = format!("{V1}\n[extensions.saba-core]\nready_patterns = ['Done \\(', '(']\nready_timeout = 120\n");
+        let meta = parse_module_toml(&toml).unwrap();
+        assert_eq!((meta.ready_patterns.clone(), meta.ready_timeout), (vec!["Done \\(".to_string()], Some(120)));
+        assert!(meta.warnings.iter().any(|w| w.contains("'('")), "{:?}", meta.warnings);
+        let zero = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 0\n")).unwrap();
+        assert_eq!(zero.ready_timeout, None);
+        assert!(zero.warnings.iter().any(|w| w.contains("ready_timeout")));
+        assert_eq!(parse_module_toml(V1).unwrap().ready_patterns, Vec::<String>::new());
+        assert!(!crate::extension::is_valid_extension_id(DAEMON_TABLE), "the daemon table name is reserved");
     }
 
     #[test]

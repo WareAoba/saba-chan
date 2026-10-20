@@ -4,6 +4,7 @@ pub mod managed_process;
 pub mod crash;
 pub mod highlight;
 pub mod players;
+pub mod ready;
 
 use anyhow::Result;
 use process::ProcessTracker;
@@ -735,7 +736,23 @@ impl Supervisor {
             let id = s.instance_store.get(server_name).or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name)).map(|i| i.id.clone());
             id.and_then(|id| s.move_reserved_default_rest_port(&id))
         };
-        Self::start_server_inner(sup, server_name, module_name, config).await.map(|result| with_port_moved(result, moved))
+        let result = Self::start_server_inner(sup, server_name, module_name, config).await;
+        Self::announce_ready(sup, server_name, &result).await;
+        result.map(|result| with_port_moved(result, moved))
+    }
+
+    /// 시작 결과로 준비 알림을 시작한다 (R39, `ready.rs`). 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
+    async fn announce_ready(sup: &tokio::sync::RwLock<Self>, key: &str, result: &Result<Value>) {
+        let (id, name, console, patterns, timeout) = {
+            let s = sup.read().await;
+            let Some(instance) = s.instance_store.get(key).or_else(|| s.instance_store.list().iter().find(|i| i.name == key)) else { return };
+            let module = s.module_loader.get_module(&instance.module_name).ok();
+            let patterns = module.as_ref().map(|m| m.metadata.ready_patterns.clone()).unwrap_or_default();
+            let timeout = module.as_ref().and_then(|m| m.metadata.ready_timeout).unwrap_or(ready::DEFAULT_READY_TIMEOUT_SECS);
+            let console = s.managed_store.get(&instance.id).await.filter(|p| !p.log_follower);
+            (instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout))
+        };
+        ready::after_start(&id, &name, result, console, &patterns, timeout);
     }
 
     async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
@@ -1559,7 +1576,9 @@ impl Supervisor {
         config: Value,
     ) -> Result<Value> {
         let moved = sup.write().await.move_reserved_default_rest_port(instance_id);
-        Self::start_managed_server_inner(sup, instance_id, module_name, config).await.map(|result| with_port_moved(result, moved))
+        let result = Self::start_managed_server_inner(sup, instance_id, module_name, config).await;
+        Self::announce_ready(sup, instance_id, &result).await;
+        result.map(|result| with_port_moved(result, moved))
     }
 
     async fn start_managed_server_inner(
@@ -2595,6 +2614,8 @@ impl Supervisor {
         }
         let stop_requested = self.stop_requested.remove(instance_id);
         let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
+        // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다 (R39)
+        ready::exited(instance_id, &instance.name, stop_requested);
         let (graceful, artifacts) = self
             .module_loader
             .get_module(&instance.module_name)
@@ -3061,6 +3082,82 @@ fn is_daemon_entry(name: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// R39 준비 알림을 기다린다 (그 인스턴스의 것만)
+    async fn ready_event(sub: &mut crate::events::Subscription, id: &str) -> Value {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let e = tokio::time::timeout(left, sub.rx.recv()).await.expect("instance.ready arrives").unwrap();
+            if e.kind == "instance.ready" && e.data["instanceId"] == id {
+                return e.data.clone();
+            }
+        }
+    }
+
+    /// R39: 시작마다 한 번 `instance.ready`. 준비 문구가 콘솔에 찍히면 ok, 준비 전에 끝나면 start_failed,
+    /// 사용자가 끄면 stopped_while_starting, 시간이 지나면 ready_timeout. 선언이 없으면 시작이 성공한 때 ok
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn each_start_says_once_whether_the_server_became_ready() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let script = |sh: &str| format!(
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
+             else:\n    print(json.dumps({{'success': True}}))\n"
+        );
+        let games = [
+            ("ready", "ready_patterns = [\"^Done \\\\(\"]\n", "echo booting; sleep 0.5; echo 'Done (1.2s)'; sleep 30"),
+            ("dies", "ready_patterns = [\"^Done\"]\n", "echo booting; sleep 0.5; exit 3"),
+            ("slow", "ready_patterns = [\"^Done\"]\nready_timeout = 1\n", "echo booting; sleep 30"),
+            ("quiet", "ready_patterns = [\"^Done\"]\n", "echo booting; sleep 30"),
+            ("plain", "", "sleep 30"),
+        ];
+        for (name, detection, sh) in games {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\n{detection}")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), script(sh)).unwrap();
+        }
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for (id, module) in [("r-ready", "ready"), ("r-dies", "dies"), ("r-slow", "slow"), ("r-plain", "plain"), ("r-stopped", "quiet")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let mut sub = crate::events::bus().subscribe(None);
+        let start = |id: &'static str, module: &'static str| {
+            let sup = sup.clone();
+            async move { Supervisor::start_managed_server(&sup, id, module, json!({})).await.unwrap() }
+        };
+
+        assert_eq!(start("r-plain", "plain").await["success"], true);
+        assert_eq!(ready_event(&mut sub, "r-plain").await["ok"], true);
+
+        assert_eq!(start("r-ready", "ready").await["success"], true);
+        let ready = ready_event(&mut sub, "r-ready").await;
+        assert_eq!((ready["ok"].clone(), ready["instance"].clone(), ready.get("code").cloned()), (json!(true), json!("r-ready"), None));
+
+        let code = |e: Value| (e["ok"].clone(), e["code"].clone());
+        start("r-dies", "dies").await;
+        assert_eq!(code(ready_event(&mut sub, "r-dies").await), (json!(false), json!("start_failed")));
+
+        start("r-slow", "slow").await;
+        assert_eq!(code(ready_event(&mut sub, "r-slow").await), (json!(false), json!("ready_timeout")));
+
+        start("r-stopped", "quiet").await;
+        let stopped = Supervisor::stop_server(&sup, "r-stopped", "quiet", true).await.unwrap();
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert_eq!(code(ready_event(&mut sub, "r-stopped").await), (json!(false), json!("stopped_while_starting")));
+
+        for id in ["r-plain", "r-ready", "r-slow"] {
+            let _ = Supervisor::stop_server(&sup, id, "plain", true).await;
+        }
+    }
 
     #[tokio::test]
     async fn test_supervisor_initialization() {
