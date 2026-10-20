@@ -375,13 +375,24 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
         match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
             // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
-            Ok(Ok(done)) => Ok(Json(json!({
-                "success": true,
-                "restored": done.paths,
-                "pre_restore_backup": safety,
-                "links_not_restored": done.links_missed,
-            }))
-            .into_response()),
+            Ok(Ok(done)) => {
+                // 되돌린 게임 설정 파일(포트 등)을 다시 읽어 인스턴스 값과 맞춘다. 실패해도 복원은 끝난 것이다 (MK17)
+                let refreshed = match super::managed::refresh_settings_from_files(&state, &id).await {
+                    Ok(r) => r.get("success").and_then(Value::as_bool) == Some(true),
+                    Err(e) => {
+                        tracing::warn!("Settings refresh after restore failed for {}: {}", id, e);
+                        false
+                    }
+                };
+                Ok(Json(json!({
+                    "success": true,
+                    "restored": done.paths,
+                    "pre_restore_backup": safety,
+                    "links_not_restored": done.links_missed,
+                    "settings_refreshed": refreshed,
+                }))
+                .into_response())
+            }
             Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
             Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
         }
@@ -976,6 +987,41 @@ mod tests {
         }
         let p = plan(&state, &id).await.ok().flatten().unwrap();
         assert_eq!(p.targets, vec![tmp.path().join("server/world2")]);
+    }
+
+    /// 복원은 게임 설정 파일도 되돌린다: 복원 뒤 모듈 `import_settings`로 다시 읽어 인스턴스 값(포트 등)을 파일과 맞춘다 (MK17)
+    #[tokio::test]
+    async fn a_restore_reads_the_restored_game_settings_back() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"server.properties\"]\n");
+        let hook = "import json, os, sys\n\
+                    cfg = json.load(sys.stdin)\n\
+                    if sys.argv[1] == 'import_settings':\n    \
+                    line = open(os.path.join(cfg['working_dir'], 'server.properties')).read()\n    \
+                    print(json.dumps({'success': True, 'settings': {'port': int(line.split('=')[1])}}))\n\
+                    else:\n    print(json.dumps({'success': True}))\n";
+        let (state, id, tmp) = server_with(&toml, Some(hook)).await;
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        let set_port = |port: u16| {
+            let (state, id, server) = (state.clone(), id.clone(), server.clone());
+            async move {
+                std::fs::write(server.join("server.properties"), format!("server-port={port}")).unwrap();
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                inst.port = Some(port);
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+        };
+        set_port(25565).await;
+        let old = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+        set_port(25570).await;
+
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read_to_string(server.join("server.properties")).unwrap(), "server-port=25565");
+        assert_eq!(done.body["settings_refreshed"], true, "{:?}", done.body);
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.port, Some(25565), "the instance follows the restored file");
     }
 
     /// 모듈이 `[backup]`을 더는 선언하지 않아도(모듈 업데이트로 빠짐, 모듈을 못 읽음) 남은 백업을 복원하면

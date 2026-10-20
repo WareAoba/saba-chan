@@ -239,27 +239,32 @@ pub async fn read_live_settings_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    match Supervisor::manage_properties(&state.supervisor, &id, "import", None).await {
-        Ok(result) => {
-            let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
-            let settings = result.get("settings").and_then(|v| v.as_object()).filter(|s| !s.is_empty());
-            if let (true, Some(settings)) = (ok, settings) {
-                let mut supervisor = state.supervisor.write().await;
-                if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
-                    let (credential_map, types) = supervisor.module_loader.get_module(&inst.module_name)
-                        .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
-                        .unwrap_or_default();
-                    // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
-                    inst.apply_imported_settings(settings, &credential_map, &types);
-                    if let Err(e) = supervisor.instance_store.update(&id, inst) {
-                        tracing::warn!("Live settings read: cache refresh failed for {}: {}", id, e);
-                    }
-                }
-            }
-            (StatusCode::OK, Json(result)).into_response()
-        }
+    match refresh_settings_from_files(&state, &id).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
     }
+}
+
+/// 게임 설정 파일을 모듈 `import_settings`로 읽어 `module_settings`와 인스턴스 필드(포트·비밀번호)를 맞춘다.
+/// 모듈의 답을 그대로 돌려준다. `success`가 아니거나 설정이 비어 있으면 아무것도 바꾸지 않는다
+pub(crate) async fn refresh_settings_from_files(state: &IPCServer, id: &str) -> anyhow::Result<serde_json::Value> {
+    let result = Supervisor::manage_properties(&state.supervisor, id, "import", None).await?;
+    let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
+    let settings = result.get("settings").and_then(|v| v.as_object()).filter(|s| !s.is_empty());
+    if let (true, Some(settings)) = (ok, settings) {
+        let mut supervisor = state.supervisor.write().await;
+        if let Some(mut inst) = supervisor.instance_store.get(id).cloned() {
+            let (credential_map, types) = supervisor.module_loader.get_module(&inst.module_name)
+                .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
+                .unwrap_or_default();
+            // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
+            inst.apply_imported_settings(settings, &credential_map, &types);
+            if let Err(e) = supervisor.instance_store.update(id, inst) {
+                tracing::warn!("Settings refresh from game files failed for {}: {}", id, e);
+            }
+        }
+    }
+    Ok(result)
 }
 
 /// POST /api/instance/:id/properties/reset — 게임 설정 파일을 기본값으로
