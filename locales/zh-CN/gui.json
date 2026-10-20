@@ -495,6 +495,7 @@
     "stdin_disabled": "仅显示过去的日志（saba-chan 已重启）— 重启服务器以重新连接",
     "send": "发送",
     "popout": "在单独的窗口中打开",
+    "popout_failed": "无法在单独窗口中打开控制台。",
     "minimize": "最小化到停靠栏",
     "dock_restore": "还原：{{name}}",
     "dock_focus": "聚焦：{{name}}",
