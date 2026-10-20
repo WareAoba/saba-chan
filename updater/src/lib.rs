@@ -983,14 +983,25 @@ impl UpdateManager {
 
         // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
         let mut failure = None;
+        // 설치 기록은 끝에 한 번에 적으므로, 이 묶음에서 앞서 적용한 버전을 여기서 더해 requires를 본다
+        let mut installed = self.collect_local_versions();
         for comp in &components {
-            let result = match Self::verified_staged_path(comp) {
-                Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
-                Err(e) => Err(e),
+            let key = comp.component.manifest_key();
+            let issues = self.requires_of(&key).map(|r| unmet_requires(&key, r, &installed)).unwrap_or_default();
+            let result = if !issues.is_empty() {
+                Err(anyhow::anyhow!("{}", issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; ")))
+            } else {
+                match Self::verified_staged_path(comp) {
+                    Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
+                    Err(e) => Err(e),
+                }
             };
             match result {
                 Ok(files) => {
                     Self::record_files(&comp.component, &files);
+                    if let Some(version) = &comp.latest_version {
+                        installed.insert(key, version.clone());
+                    }
                     applied.push(comp.component.display_name());
                 }
                 Err(e) => {

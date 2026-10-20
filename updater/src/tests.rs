@@ -1575,3 +1575,54 @@ fn a_dependency_in_the_same_batch_is_applied_first() {
 
     assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), b.manifest_key(), a.manifest_key()]);
 }
+
+// 목록 없는 적용(`apply_components_report`)도 requires를 지킨다
+#[tokio::test]
+async fn an_unlisted_apply_also_refuses_unmet_requires() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("unlisted-needs-core-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![crate::ComponentVersion {
+        requires: Some([("saba-core".to_string(), ">=99.0.0".to_string())].into_iter().collect()),
+        ..staged(ext.clone(), &extension_zip(tmp.path()))
+    }];
+
+    let (applied, failure) = manager.apply_components_report(&[]).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert!(format!("{:#}", failure.unwrap()).contains("saba-core >=99.0.0"));
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// 같은 묶음에서 먼저 적용한 것은 기록 전이어도 뒤의 requires를 채운다
+#[tokio::test]
+async fn an_unlisted_apply_counts_what_it_applied_earlier() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let (first, second) = (format!("first-{}", std::process::id()), format!("second-{}", std::process::id()));
+    let (a, b) = (Component::Extension(first.clone()), Component::Extension(second.clone()));
+    let zip_dir = |name: &str| {
+        let dir = tmp.path().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    };
+    manager.status.components = vec![
+        crate::ComponentVersion {
+            requires: Some([(a.manifest_key(), ">=9.9.9".to_string())].into_iter().collect()),
+            ..staged(b.clone(), &extension_zip(&zip_dir("b")))
+        },
+        crate::ComponentVersion { latest_version: Some("9.9.9".into()), ..staged(a.clone(), &extension_zip(&zip_dir("a"))) },
+    ];
+
+    let (applied, failure) = manager.apply_components_report(&[]).await;
+
+    assert!(failure.is_none(), "{:?}", failure);
+    assert_eq!(applied, vec![a.display_name(), b.display_name()]);
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&first));
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&second));
+}
