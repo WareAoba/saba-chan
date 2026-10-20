@@ -116,7 +116,16 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
                 Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            settings.get(key).map(text).or_else(|| defaults.as_ref()?.get_setting_default::<String>(key))
+            let value = settings.get(key).map(text).or_else(|| defaults.as_ref()?.get_setting_default::<String>(key))?;
+            // 경로 형식이 아닌 설정(월드 이름 같은 글자, 원격에서도 바꿀 수 있다)은 서버 폴더 안 상대 경로만 받는다
+            let field = defaults.as_ref().and_then(|m| m.settings.as_ref()).and_then(|s| s.fields.iter().find(|f| f.name == key));
+            let path_field = field.is_none_or(|f| f.field_type == "file" || f.format.as_deref() == Some("path"));
+            let inside = std::path::Path::new(&value).components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
+            if !path_field && !inside {
+                tracing::warn!("Backup path setting '{}' must stay inside the server folder; skipping it", key);
+                return None;
+            }
+            Some(value)
         };
         let keep = instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP);
         (spec, base, backup::backups_dir(&supervisor.instance_store.instance_dir(id)), keep, hook_call, lookup)
@@ -884,6 +893,33 @@ mod tests {
         let refused = restore_backup(Path((id.clone(), old)), State(state.clone())).await;
         assert_eq!(code(refused).await, "restore_outside");
         assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
+    }
+
+    /// 경로 형식이 아닌 설정 값(월드 이름 같은 글자)은 백업 경로를 서버 폴더 밖으로 돌리지 못한다:
+    /// 원격에서도 바꿀 수 있는 값이라 절대 경로나 `..`이면 그 경로는 백업·복원 범위에서 뺀다
+    #[tokio::test]
+    async fn a_text_setting_cannot_point_backups_outside_the_server_folder() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{level_name}}\"]\n\n[[settings.fields]]\nname = \"level_name\"\ntype = \"text\"\ndefault = \"world\"\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let outside = tmp.path().join("user-data");
+        for value in ["..".to_string(), "world/../..".to_string(), outside.to_string_lossy().to_string()] {
+            {
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                inst.module_settings.insert("level_name".into(), json!(value));
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+            let p = plan(&state, &id).await.ok().flatten().expect("the module declares backups");
+            assert!(p.targets.is_empty(), "{value} must not become a backup target: {:?}", p.targets);
+        }
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("level_name".into(), json!("world2"));
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let p = plan(&state, &id).await.ok().flatten().unwrap();
+        assert_eq!(p.targets, vec![tmp.path().join("server/world2")]);
     }
 
     // 훅이나 설정이 서버 폴더 밖(예: 사용자 폴더의 게임 데이터)을 가리키면, 지금도 가리키는 동안은 복원할 수 있다
