@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} 서버를 만들고 설정도 저장했지만, 게임 설정 파일에 쓰지 못했어요: {{error}}",
     "ask_folder": "서버 폴더",
     "ask_name": "서버 이름",
     "ask_source": "어떻게 준비할까요?",

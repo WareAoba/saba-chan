@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "Se creó {{name}} y se guardaron sus ajustes, pero no se pudo escribir el archivo de configuración del juego: {{error}}",
     "ask_folder": "Carpeta del servidor",
     "ask_name": "Nombre del servidor",
     "ask_source": "¿Cómo quieres configurarlo?",

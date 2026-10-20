@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} was created and its settings were saved, but the game's config file could not be written: {{error}}",
     "ask_folder": "Server folder",
     "ask_name": "Server name",
     "ask_source": "How do you want to set it up?",

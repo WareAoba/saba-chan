@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} 已建立且設定已儲存，但無法寫入遊戲設定檔：{{error}}",
     "ask_folder": "伺服器資料夾",
     "ask_name": "伺服器名稱",
     "ask_source": "你想怎麼設定？",

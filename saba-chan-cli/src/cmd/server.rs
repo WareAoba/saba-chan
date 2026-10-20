@@ -512,12 +512,12 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         match ctx.api.update_instance(&id, Value::Object(patch)).await {
             Err(e) => {
                 ctx.out.warn(&t!("add.settings_failed", error = e));
-                settings_error = Some(e.to_string());
+                settings_error = Some(t!("add.created_settings_failed", name = name, error = e));
             }
             Ok(r) => {
                 if let Some(e) = sync_failure(&r) {
                     ctx.out.warn(&e);
-                    settings_error = Some(e);
+                    settings_error = add_settings_failure(&name, &r);
                 }
             }
         }
@@ -529,7 +529,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         if a.no_wait {
             if let Some(error) = settings_error {
                 return Err(CliError::Partial {
-                    message: t!("add.created_settings_failed", name = name, error = error),
+                    message: error,
                     data: json!({ "id": id, "name": name, "module": module_name, "provisioning": true }),
                 }
                 .into());
@@ -552,7 +552,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     let out = json!({ "success": true, "id": id, "name": name, "module": module_name, "provisioned": provisioning });
     if let Some(error) = settings_error {
         return Err(CliError::Partial {
-            message: t!("add.created_settings_failed", name = name, error = error),
+            message: error,
             data: json!({ "id": id, "name": name, "module": module_name, "provisioned": provisioning }),
         }
         .into());
@@ -982,6 +982,12 @@ fn ask_input(ask: &crate::prompt::Prompt, def: &Command, input: &Input) -> Resul
     }
 }
 
+/// `add --set` 저장 응답이 `synced: false`면 끝에 알릴 문구. 설정은 저장했으므로 "저장하지 못했다"가 아니다 (L63)
+fn add_settings_failure(name: &str, r: &Value) -> Option<String> {
+    (r.get("synced").and_then(Value::as_bool) == Some(false))
+        .then(|| t!("add.created_settings_unsynced", name = name, error = s(r, "sync_error")))
+}
+
 /// 설정은 저장했지만 게임 설정 파일에 쓰지 못했으면(`synced: false`) 그 이유
 fn sync_failure(r: &Value) -> Option<String> {
     (r.get("synced").and_then(Value::as_bool) == Some(false)).then(|| t!("set.sync_failed", error = s(r, "sync_error")))
@@ -1201,8 +1207,12 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
     let field = fields.iter().find(|f| s(f, "name") == key);
     if let Some(opts) = field.and_then(|f| f.get("options")).and_then(Value::as_array) {
         let opts: Vec<&str> = opts.iter().filter_map(Value::as_str).collect();
-        if !opts.is_empty() && !opts.iter().any(|o| o.eq_ignore_ascii_case(raw)) {
-            return Err(usage(t!("set.must_be_one_of", key = key, options = opts.join(", "))));
+        if !opts.is_empty() {
+            // 데몬은 선택지를 그대로 비교하므로, 대소문자만 다르게 친 값은 모듈이 정한 선택지로 보낸다 (L58)
+            let Some(opt) = opts.iter().find(|o| **o == raw).or_else(|| opts.iter().find(|o| o.eq_ignore_ascii_case(raw))) else {
+                return Err(usage(t!("set.must_be_one_of", key = key, options = opts.join(", "))));
+            };
+            return Ok((key.to_string(), typed(opt, &kind)?));
         }
     }
     Ok((key.to_string(), typed(raw, &kind)?))
@@ -1839,6 +1849,26 @@ mod tests {
         assert_eq!(options_line(&select).as_deref(), Some("easy | normal | hard"));
         assert_eq!(options_line(&json!({ "name": "max_players", "field_type": "number" })), None);
         assert_eq!(options_line(&json!({ "name": "x", "options": [] })), None);
+    }
+
+    /// `add --set`이 저장은 했지만 게임 설정 파일에 못 썼으면 "저장하지 못했다"고 하지 않는다 (L63)
+    #[test]
+    fn an_add_whose_settings_were_saved_but_not_synced_says_so() {
+        let msg = add_settings_failure("srv", &json!({ "success": true, "synced": false, "sync_error": "locked" })).unwrap();
+        assert!(msg.contains("srv") && msg.contains("locked"), "{msg}");
+        assert_ne!(msg, t!("add.created_settings_failed", name = "srv", error = "locked"));
+        assert!(!msg.contains(&t!("set.sync_failed", error = "locked")), "the sync reason is not nested in another sentence: {msg}");
+        assert!(add_settings_failure("srv", &json!({ "success": true, "synced": true })).is_none());
+    }
+
+    /// 선택형 설정은 대소문자를 가리지 않고 받되, 데몬에는 모듈이 정한 선택지 그대로 보낸다 (L58)
+    #[test]
+    fn a_select_setting_is_sent_as_the_option_it_matched() {
+        let fields = [json!({ "name": "difficulty", "field_type": "select", "options": ["easy", "Normal", "hard"] })];
+        let inst = json!({});
+        assert_eq!(typed_setting(&fields, &inst, "difficulty", "NORMAL").unwrap().1, json!("Normal"));
+        assert_eq!(typed_setting(&fields, &inst, "difficulty", "Hard").unwrap().1, json!("hard"));
+        assert!(typed_setting(&fields, &inst, "difficulty", "peaceful").is_err());
     }
 
     /// 초기화 확인에 무엇이 지워지는지(모듈 `reset.description`)를 붙인다 (C5)
