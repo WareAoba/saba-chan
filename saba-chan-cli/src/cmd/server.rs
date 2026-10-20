@@ -1605,7 +1605,7 @@ async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     }
     show_agreements(ctx, &pending);
     let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
-    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+    ctx.ask.agreed(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
     let r = accept(ctx, &sv.id, &pending).await?;
     ctx.out.done(&t!("agree.done", name = sv.name), &r);
     Ok(())
@@ -1851,5 +1851,14 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("8212") && lines[0].contains("8242"), "{}", lines[0]);
         assert!(port_moved_lines(&json!({ "success": true })).is_empty());
+    }
+
+    /// 약관 동의는 사람이 직접 답한다: `server agree`도 `--yes`로 동의하지 않는다 (확인 `ensure`가 아니라 동의 `agreed`)
+    #[test]
+    fn server_agree_asks_for_a_consent_not_a_confirmation() {
+        let src = include_str!("server.rs");
+        let body = &src[src.find("async fn agree(").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(body.contains("ctx.ask.agreed(") && !body.contains("ensure("), "{body}");
     }
 }
