@@ -187,12 +187,6 @@ pub async fn migrate_on_start(state: &IPCServer) {
     if bot.module_aliases.is_empty() && bot.command_aliases.is_empty() && bot.instance_aliases.is_empty() {
         return;
     }
-    let mut guilds: Vec<String> = bot.node_settings.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
-    for g in bot.cloud_nodes.iter().filter_map(|n| n.get("guildId").and_then(Value::as_str)) {
-        if !guilds.iter().any(|x| x == g) {
-            guilds.push(g.to_string());
-        }
-    }
     let servers = match state.servers().await {
         Ok(s) => s,
         Err(e) => {
@@ -200,17 +194,30 @@ pub async fn migrate_on_start(state: &IPCServer) {
             return;
         }
     };
-    let moved = words::migrate(
-        &bot.node_settings,
-        &guilds,
-        |g| guild_servers(&bot.node_settings, g, &servers),
-        &bot.instance_aliases,
-        &bot.module_aliases,
-        &bot.command_aliases,
-    );
-    let Some(node_settings) = moved else { return };
-    match state.config_store.finish_words_migration(node_settings).await {
-        Ok(()) => tracing::info!("[Chat] moved global aliases to {} guild(s)", guilds.len()),
+    // 옮길 값은 저장 잠금 안에서 지금 설정으로 만든다 (그사이 바뀐 길드 권한을 덮지 않게)
+    let moved = state
+        .config_store
+        .finish_words_migration(|bot| {
+            let mut guilds: Vec<String> = bot.node_settings.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+            for g in bot.cloud_nodes.iter().filter_map(|n| n.get("guildId").and_then(Value::as_str)) {
+                if !guilds.iter().any(|x| x == g) {
+                    guilds.push(g.to_string());
+                }
+            }
+            let node_settings = words::migrate(
+                &bot.node_settings,
+                &guilds,
+                |g| guild_servers(&bot.node_settings, g, &servers),
+                &bot.instance_aliases,
+                &bot.module_aliases,
+                &bot.command_aliases,
+            )?;
+            Some((node_settings, guilds.len()))
+        })
+        .await;
+    match moved {
+        Ok(Some(guilds)) => tracing::info!("[Chat] moved global aliases to {} guild(s)", guilds),
+        Ok(None) => {}
         Err(e) => tracing::warn!("[Chat] word migration not saved: {}", e),
     }
 }
@@ -240,6 +247,39 @@ mod tests {
         assert_eq!(stops.len(), 1, "{rows:?}");
         assert_eq!((stops[0]["label"].as_str(), stops[0]["risk"].as_str(), stops[0]["builtin"].as_bool()), (Some("서버 끄기"), Some("danger"), Some(true)));
         assert_eq!(rows.len(), BUILTIN_COMMANDS.len());
+    }
+
+    /// 옛 전역 별명 옮기기가 그사이 바뀐 길드 권한을 덮어쓰지 않는다: 옮길 값은 저장 잠금 안에서 지금 설정으로 만든다 (D-F5)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn moving_old_aliases_keeps_a_concurrent_permission_change() {
+        use std::sync::Arc;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(&modules).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "plain");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let guild = "alias-migration-race-guild";
+        for round in 0..200u32 {
+            state.config_store.set_bot_config_from_json(json!({ "instanceAliases": { id.clone(): format!("w{round}") } })).await.unwrap();
+            let (a, b) = (state.clone(), state.clone());
+            let migrate = tokio::spawn(async move { migrate_on_start(&a).await });
+            let grant = tokio::spawn(async move {
+                b.config_store
+                    .update_node_settings(guild, |node| {
+                        node.insert("members".into(), json!({ "x": round }));
+                        ((), true)
+                    })
+                    .await
+            });
+            migrate.await.unwrap();
+            grant.await.unwrap().unwrap();
+            let bot = state.config_store.get_bot_config().await;
+            assert_eq!(bot.node_settings[guild]["members"]["x"], round, "round {}", round);
+        }
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
-import { openWithNotice } from '../../utils/helpers';
+import { openWithNotice, safeShowToast } from '../../utils/helpers';
 import { useUIStore } from '../../stores/useUIStore';
 import {
     STATUS_TONE,
@@ -277,11 +277,16 @@ export function ServerDetail({
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
                                 poppedOut={consoleProps.consolePopoutIds.includes(server.id)}
                                 onPopout={async () => {
-                                    // 창이 열리면 셸이 console:popoutOpened로 알려 준다
+                                    // 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
                                     try {
-                                        await window.api.consolePopout(server.id, server.name);
+                                        const res = await window.api.consolePopout(server.id, server.name);
+                                        if (res?.ok === false) {
+                                            console.error('[ServerDetail] popout failed:', res.error);
+                                            safeShowToast(t('console.popout_failed'), 'error');
+                                        }
                                     } catch (err) {
                                         console.error('[ServerDetail] popout failed:', err);
+                                        safeShowToast(t('console.popout_failed'), 'error');
                                     }
                                 }}
                                 onPopin={() => consoleProps.popinConsole(server.id)}

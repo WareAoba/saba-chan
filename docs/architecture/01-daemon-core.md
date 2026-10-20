@@ -183,7 +183,7 @@
 | POST | `/api/server/:name/stop` | `server.rs:938` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
 | POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`(+ 옮긴 포트가 있으면 `port_moved`, 7.2). 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 409 `instance_busy`(백업·복원·업데이트 중), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다), `success:false` `start_cancelled`(시작 준비 중에 정지·삭제가 들어와 띄우지 않았거나 띄운 것을 바로 껐다. 정지는 시작 요청을 받을 때(약관·validate 점검 전, `supervisor::START_SINCE`)의 실행 세대(`run_generation`)가 바뀐 것으로 안다. 익스텐션이 맡은 시작(`server.pre_start` handled)이 끝났을 때 정지가 들어와 있었으면 정지를 한 번 더 불러 익스텐션이 띄운 서버를 끈다) |
 | POST | `/api/instance/:id/stop` | `server.rs:785` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
-| POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답(`port_moved` 포함) + `stopped`. 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 최대 30분 기다렸다 켠다(`backup::start_when_free`). 기다리는 시작은 따로 돌아 요청이 끊겨도 이어지고, 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 409 `restart_cancelled`(`stopped` 포함) |
+| POST | `/api/instance/:id/restart` | `server.rs:796` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답(`port_moved` 포함) + `stopped`. 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 최대 30분 기다렸다 켠다(`backup::start_when_free`). 기다리는 시작은 따로 돌아 요청이 끊겨도 이어지고, 정지 단계(서버가 끝나기를 기다리는 동안)에 다른 정지·시작이 들어왔거나, 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 409 `restart_cancelled`(`stopped` 포함) |
 | GET | `/api/instance/:id/events` | `server.rs:872` | - | `{events:[...]}` 최근 종료 이력 / 404. 한 건은 `at, kind, exit_code, signal, evidence, restart_in_secs, note`에 다시 띄우지 않은 이유가 있으면 `note_code`(`auto_restart_off` · `gave_up` + `note_args.count` · `restart_failed` + `note_args.reason`)·`note_args`. `note`는 영어 문장이라 화면 문구는 `note_code`로 고른다 |
 
 `GET /api/servers` 응답의 `ServerInfo` 필드(`ipc/mod.rs:160-209`):
@@ -461,7 +461,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `extension_data` | HashMap<String,Value> | 설치 방식 익스텐션 키(`install_method_<방식>`, `<방식>_<이름>`, `instance/mod.rs:142-166`) 등 |
 | `required_extensions` | Vec<String> | 모듈의 `install.requires_extensions`를 복사한다 |
 | `schedule` | Vec<ScheduledTask> | 예약 작업 (백업·재시작·공지·업데이트) |
-| `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10) |
+| `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다 |
 
 - RCON 필드(`rcon_port`, `rcon_password`)는 없다. 예전 `instance.json`·`settings.json`에 남은 RCON 키는 로드할 때 한 번 지우고 다시 쓴다(`instance/mod.rs:439-468, 483-500`).
 - `ensure_passwords()`(`instance/mod.rs:210`)는 시작할 때(`server.rs:903`, `managed.rs:33`) 비어 있는 REST 비밀번호를 16자 영숫자로 채운다.

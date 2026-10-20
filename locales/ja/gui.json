@@ -439,6 +439,7 @@
     "stdin_disabled": "サバちゃん再起動のため過去のログのみ表示中！サーバーを再起動すると復活します",
     "send": "送信",
     "popout": "別ウィンドウで分離",
+    "popout_failed": "コンソールを別ウィンドウで開けませんでした。",
     "minimize": "ドックに最小化",
     "dock_restore": "復元: {{name}}",
     "dock_focus": "フォーカス: {{name}}",

@@ -464,6 +464,66 @@ async fn finished(mut done: Value, caller: &Caller) -> Value {
     done
 }
 
+/// 같은 길드에서 여러 단계 계획 둘을 동시에 눌러도, 409를 받은 계획은 쓰이지 않고 남아 다시 누를 수 있다 (D-F6)
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_plan_refused_because_another_runs_can_be_pressed_again() {
+    let (state, id, _tmp) = server().await;
+    // 자리와 실행 횟수는 길드마다 전역이다: 다른 시험과 겹치지 않는 길드를 쓴다
+    let guild = "steps-lane-race";
+    state
+        .config_store
+        .update_node_settings(guild, |n| {
+            *n = json!({ "ownerDiscordId": "owner", "chatbotCap": 2, "adminRunsPerHour": 100000 }).as_object().cloned().unwrap();
+            ((), true)
+        })
+        .await
+        .unwrap();
+    let who = |chatbot| Requester { guild_id: Some(guild.into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
+    let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
+    let owner = caller(false);
+    for round in 0..40 {
+        let steps = json!([{ "id": "instance.settings.set", "instance": id, "input": { "players": 4 + round % 2 } }]);
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            ids.push(plan_steps(&state, &steps, &caller(true)).await.unwrap()["planId"].as_str().unwrap().to_string());
+        }
+        let runs: Vec<_> = ids
+            .iter()
+            .map(|pid| {
+                let (state, pid, owner) = (state.clone(), pid.clone(), owner.clone());
+                tokio::spawn(async move { run(&state, steps::PLAN_ID, None, &Value::Null, Some(&pid), &owner).await })
+            })
+            .collect();
+        let mut refused = Vec::new();
+        for (pid, r) in ids.iter().zip(runs) {
+            match r.await.unwrap() {
+                Ok(started) => {
+                    finished(started, &owner).await;
+                }
+                Err(e) => {
+                    assert_eq!(e.code, "plan_running", "round {round}");
+                    refused.push(pid.clone());
+                }
+            }
+        }
+        for pid in refused {
+            // 앞 실행이 자리를 놓을 때까지는 409가 날 수 있다. 계획이 사라졌으면(plan_expired) 버그다
+            let mut again = run(&state, steps::PLAN_ID, None, &Value::Null, Some(&pid), &owner).await;
+            for _ in 0..100 {
+                match &again {
+                    Err(e) if e.code == "plan_running" => {
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                        again = run(&state, steps::PLAN_ID, None, &Value::Null, Some(&pid), &owner).await;
+                    }
+                    _ => break,
+                }
+            }
+            let started = again.unwrap_or_else(|e| panic!("round {round}: the refused plan was used up: {}", e.code));
+            finished(started, &owner).await;
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     let (state, _id, _tmp) = server().await;

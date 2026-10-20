@@ -495,6 +495,7 @@
     "stdin_disabled": "Anciens journaux uniquement (saba-chan redémarré) — redémarrez le serveur pour reconnecter",
     "send": "Envoyer",
     "popout": "Ouvrir dans une fenêtre séparée",
+    "popout_failed": "Impossible d'ouvrir la console dans une fenêtre séparée.",
     "minimize": "Réduire dans le dock",
     "dock_restore": "Restaurer : {{name}}",
     "dock_focus": "Afficher : {{name}}",
