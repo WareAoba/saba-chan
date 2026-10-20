@@ -107,7 +107,8 @@ pub(crate) fn work_dir() -> PathBuf {
 pub(crate) const WORK_DIR_PREFIX: &str = "saba-chan-installer-";
 
 /// 모듈·익스텐션 하나를 받아(SHA-256 검증) `target`에 새로 푼다
-pub async fn install_addon(key: &str, info: &ManifestComponent, target: &Path) -> Result<(), String> {
+/// 크레이트 안에서만 쓴다: `info`는 `VerifiedRelease`에서 꺼낸 값이어야 공식으로 기록해도 된다
+pub(crate) async fn install_addon(key: &str, info: &ManifestComponent, target: &Path) -> Result<(), String> {
     let temp_dir = work_dir();
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     let zip = temp_dir.join(&info.filename);
