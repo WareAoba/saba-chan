@@ -3289,8 +3289,6 @@ mod tests {
         assert!(!supervisor.uses_managed_start(&inst("api-game", Some(json!(false)))));
     }
 
-    /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다 (A1)
-    #[cfg(unix)]
     /// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다 (D-S6)
     #[cfg(unix)]
     #[tokio::test]
@@ -3331,6 +3329,8 @@ mod tests {
         assert!(s.take_pending_restarts().iter().all(|(id, ..)| id != "crashed"), "but the stop keeps it down");
     }
 
+    /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다 (A1)
+    #[cfg(unix)]
     #[tokio::test]
     async fn exits_are_judged_and_only_crashes_restart() {
         let tmp = tempfile::tempdir().unwrap();
