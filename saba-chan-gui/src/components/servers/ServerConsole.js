@@ -40,7 +40,12 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
 /** 줄 목록. 입력칸을 칠 때는 줄 배열이 그대로라 통째로 건너뛴다 */
 const ConsoleLines = memo(function ConsoleLines({ lines, syntaxEnabled, compiledRules }) {
     return lines.map((line) => (
-        <ConsoleLine key={line.id} line={line} syntaxEnabled={syntaxEnabled} compiledRules={compiledRules} />
+        <ConsoleLine
+            key={line.key ?? line.id}
+            line={line}
+            syntaxEnabled={syntaxEnabled}
+            compiledRules={compiledRules}
+        />
     ));
 });
 
