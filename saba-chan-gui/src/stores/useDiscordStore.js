@@ -70,6 +70,8 @@ const initialState = () => ({
     // ── Internal ──
     // 연달아 실패한 릴레이 확인 수. 한 번 놓친 것으로 끊김·실패를 보이지 않는다
     _relayFailures: 0,
+    // 연달아 답을 받지 못한 에이전트 상태 확인 수. 한 번 늦은 것으로 꺼짐을 보이지 않는다
+    _agentFailures: 0,
     // 마지막 봇 설정 저장이 거절된 이유(error_code). 저장에 성공하면 비운다
     _saveErrorCode: null,
     _settingsReady: false,
@@ -267,16 +269,11 @@ export const useDiscordStore = create((set, get) => ({
         if (!get()._botConfigLoaded) await get().loadConfig({ attempts: 1 });
         if (generation !== statusGeneration) return;
         const state = get();
-        let agentRunning = false;
-        let agentReplaced = false;
-        let agentRelayUrlInvalid = false;
+        let agent = 'unknown';
         try {
-            const agent = await window.api.discordBotStatus();
-            agentRunning = agent === 'running';
-            agentReplaced = agent === 'replaced';
-            agentRelayUrlInvalid = agent === 'invalid_relay_url';
+            agent = await window.api.discordBotStatus();
         } catch {
-            /* stopped */
+            /* unknown */
         }
 
         let relayOk = false;
@@ -297,6 +294,14 @@ export const useDiscordStore = create((set, get) => ({
         // 그 사이 대상이 바뀌었거나 폴링이 멈췄으면 이 결과는 버린다
         if (generation !== statusGeneration) return;
 
+        // 에이전트도 두 번 연달아 모를 때만 꺼짐으로 본다 (그 전까지는 지금 상태를 유지한다)
+        const agentFailures = agent === 'unknown' ? get()._agentFailures + 1 : 0;
+        const prev = get();
+        const keepAgent = agent === 'unknown' && agentFailures < 2;
+        const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : agent === 'running';
+        const agentReplaced = keepAgent ? prev.discordAgentReplaced : agent === 'replaced';
+        const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : agent === 'invalid_relay_url';
+
         // 두 번 연달아 실패해야 끊김·실패로 본다 (그 전까지는 지금 상태를 유지한다)
         const failures = relayFailure ? get()._relayFailures + 1 : 0;
         const settled = !relayFailure || failures >= 2;
@@ -307,6 +312,7 @@ export const useDiscordStore = create((set, get) => ({
             relayConnected: relayOk,
             relayError: settled ? relayFailure : get().relayError,
             _relayFailures: failures,
+            _agentFailures: agentFailures,
             discordAgentReplaced: agentReplaced,
             discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
             discordBotStatus: agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped',
@@ -332,7 +338,14 @@ export const useDiscordStore = create((set, get) => ({
         clearInterval(state._statusInterval);
         clearTimeout(state._statusTimeout);
         statusGeneration += 1;
-        set({ _statusInterval: null, _statusTimeout: null, relayConnecting: false, relayError: '', _relayFailures: 0 });
+        set({
+            _statusInterval: null,
+            _statusTimeout: null,
+            relayConnecting: false,
+            relayError: '',
+            _relayFailures: 0,
+            _agentFailures: 0,
+        });
     },
 
     // Test-only: reset to initial state
