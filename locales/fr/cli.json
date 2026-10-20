@@ -212,7 +212,7 @@
     "not_found": "Aucun {{what}} nommé « {{query}} ».",
     "pair_expected": "KEY=VALUE attendu, reçu « {{got}} ».",
     "timeout": "Le daemon a mis trop de temps à répondre ({{path}}).",
-    "unknown_command": "Commande inconnue : {{path}}. Lance `saba-chan-cli help` pour voir les commandes."
+    "unknown_command": "Commande inconnue : {{path}}. Lancez `saba-chan-cli help` pour voir les commandes."
   },
   "agree": {
     "none": "{{name}} n'a aucun accord à accepter.",
