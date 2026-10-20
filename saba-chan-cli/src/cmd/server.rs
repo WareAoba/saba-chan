@@ -1845,6 +1845,8 @@ mod tests {
         crate::i18n::init("ko");
         let ctx = Ctx {
             api: crate::client::Api::new(1, None),
+            spawn_port: 1,
+            port_fixed: true,
             out: crate::output::Out::new(true, false),
             ask: crate::prompt::Prompt { enabled: false, yes: true },
             in_shell: false,

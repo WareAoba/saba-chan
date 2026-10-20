@@ -157,6 +157,7 @@
     "offer_start": "Le daemon Saba-chan n'est pas lancé. Le démarrer ?",
     "spawn_failed": "Impossible de démarrer le daemon : {{error}}",
     "start_timeout": "Le daemon n'a pas répondu à temps. Vérifiez : saba-chan-cli daemon logs",
+    "exited_early": "Le démon s'est arrêté juste après son démarrage (code de sortie {{code}}). Un autre démon est peut-être déjà en cours. Vérifiez : saba-chan-cli daemon status",
     "started": "Daemon démarré (v{{version}}).",
     "starting": "Démarrage du daemon...",
     "stop_no_pid": "Le daemon n'a pas indiqué son PID, il ne peut donc pas être arrêté d'ici.",
