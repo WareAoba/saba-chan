@@ -2,14 +2,17 @@ import clsx from 'clsx';
 import React, { useCallback, useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { moduleSupports } from '../utils/helpers';
-import { checkPortConflicts, validateAllSettings } from '../utils/validation';
+import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { CliLine, changedForCli } from './CliLine';
-import { CustomDropdown, ExtensionSlot, Icon, SabaToggle } from './index';
+import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 
-// 데몬이 받는 설정 type (module_loader SETTING_TYPES). 밖의 값은 글자 칸으로 그린다
-const FIELD_TYPES = ['text', 'password', 'number', 'file', 'select', 'boolean'];
+// 데몬이 받는 설정 type (module_loader SETTING_TYPES, 스키마 2의 list·multiline). 밖의 값은 글자 칸으로 그린다
+const FIELD_TYPES = ['text', 'password', 'number', 'file', 'select', 'boolean', 'list', 'multiline'];
+
+/** list 칸의 편집 중 값 (문자열 배열, 빈 줄 포함). 저장할 때 빈 항목을 뺀다 */
+const listDraft = (value) => (Array.isArray(value) ? value.map(String) : value ? String(value).split(',') : []);
 
 /**
  * SettingsField — Renders a single settings field based on field_type.
@@ -24,10 +27,12 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
     const hasError = !!validationError;
     const errorClass = hasError ? 'setting-input-error' : '';
     const fieldType = FIELD_TYPES.includes(field.field_type) ? field.field_type : 'text';
+    const labelId = `${inputId}-label`;
+    const picked = listDraft(value);
 
     return (
         <div className="settings-field">
-            <label htmlFor={inputId}>
+            <label id={labelId} htmlFor={inputId}>
                 {fieldLabel} {field.required ? '*' : ''}
             </label>
             {fieldType === 'text' && (
@@ -82,6 +87,49 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     options={(field.options || []).map((opt) => ({ value: opt, label: opt }))}
                 />
             )}
+            {fieldType === 'multiline' && (
+                <textarea
+                    id={inputId}
+                    className={clsx('setting-textarea', errorClass)}
+                    value={String(value ?? '')}
+                    onChange={(e) => onChange(field.name, e.target.value)}
+                    maxLength={field.max_length ?? undefined}
+                    rows={4}
+                    placeholder={fieldDesc}
+                />
+            )}
+            {/* 선택지가 있는 목록: 고른 것을 선택지 순서로 */}
+            {fieldType === 'list' && field.options?.length > 0 && (
+                <fieldset id={inputId} aria-labelledby={labelId} className="setting-list-options">
+                    {field.options.map((opt) => (
+                        <span key={opt} className="setting-list-option">
+                            <SabaCheckbox
+                                size="sm"
+                                aria-label={opt}
+                                checked={picked.includes(opt)}
+                                onChange={(on) =>
+                                    onChange(
+                                        field.name,
+                                        field.options.filter((o) => (o === opt ? on : picked.includes(o))),
+                                    )
+                                }
+                            />
+                            {opt}
+                        </span>
+                    ))}
+                </fieldset>
+            )}
+            {/* 선택지가 없는 목록: 한 줄에 하나씩 */}
+            {fieldType === 'list' && !(field.options?.length > 0) && (
+                <textarea
+                    id={inputId}
+                    className={clsx('setting-textarea', errorClass)}
+                    value={picked.join('\n')}
+                    onChange={(e) => onChange(field.name, e.target.value.split('\n'))}
+                    rows={4}
+                    placeholder={t('validation.list_hint')}
+                />
+            )}
             {fieldType === 'boolean' && (
                 <div className="toggle-row">
                     <SabaToggle
@@ -110,6 +158,14 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                             value: validationError.value,
                             defaultValue: `${fieldLabel} is out of range (${validationError.min ?? '−∞'} ~ ${validationError.max ?? '∞'})`,
                         })}
+                    {validationError.errorType === 'item_count' &&
+                        t('validation.item_count', {
+                            field: fieldLabel,
+                            min: validationError.min ?? 0,
+                            max: validationError.max ?? '∞',
+                        })}
+                    {validationError.errorType === 'too_long' &&
+                        t('validation.too_long', { field: fieldLabel, max: validationError.max })}
                     {validationError.errorType === 'invalid_option' &&
                         t('validation.invalid_option', {
                             field: fieldLabel,
@@ -273,7 +329,9 @@ function GeneralTab({
             {/* Module settings fields grouped */}
             {hasModuleSettings ? (
                 (() => {
-                    const fields = module.settings.fields;
+                    // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
+                    const hidden = new Set(hiddenFields(module.settings.fields, settingsValues));
+                    const fields = module.settings.fields.filter((f) => !hidden.has(f.name));
                     const sabaFields = fields.filter((f) => f.group === 'saba-chan');
                     const basicFields = fields.filter((f) => !f.group || f.group === 'basic');
                     const advancedFields = fields.filter((f) => f.group === 'advanced');

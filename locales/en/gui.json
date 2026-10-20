@@ -322,7 +322,10 @@
     "reset_server_running": "Stop the server before resetting it",
     "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes",
     "extension_required_for_install": "Required extension(s) missing: {{extensions}}. Install them from Saba Storage first.",
-    "install_settings_failed": "The version was installed, but saving the settings failed: {{error}}"
+    "install_settings_failed": "The version was installed, but saving the settings failed: {{error}}",
+    "restart_required": "Saved the settings for {{name}}. Restart the server to apply {{fields}}.",
+    "restart_now": "Restart now",
+    "restart_later": "Later"
   },
   "discord_bot": {
     "start_failed_toast": "Discord bot start failed: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Module load failed: {{error}}",
     "list_empty": "Module list is empty",
     "fetch_failed_toast": "Module search failed: {{error}}",
-    "load_error_title": "Module load exception"
+    "load_error_title": "Module load exception",
+    "schema_invalid": "module.toml does not match the format: {{problems}}",
+    "schema_unsupported": "This module needs a newer Saba-chan (module format {{required}}). Update Saba-chan."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,10 @@
     "required": "{{field}} is required",
     "type_mismatch": "{{field}} has an invalid type",
     "out_of_range": "{{field}} is out of range ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' is not a valid option"
+    "invalid_option": "{{field}}: '{{value}}' is not a valid option",
+    "list_hint": "One per line",
+    "item_count": "{{field}} needs {{min}} to {{max}} items",
+    "too_long": "{{field}} can be at most {{max}} characters"
   },
   "context_menu": {
     "settings": "Settings",
