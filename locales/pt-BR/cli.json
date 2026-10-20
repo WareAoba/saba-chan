@@ -426,7 +426,9 @@
     "done": "{{name}} parado.",
     "not_yet": "{{name}} ainda não parou. Force: saba-chan-cli stop --force {{name}}",
     "requested": "Parada solicitada para {{name}}.",
-    "waiting": "Parando {{name}}..."
+    "waiting": "Parando {{name}}...",
+    "no_graceful": "Não há como (sem console) pedir a {{name}} que salve e saia. Forçar o desligamento pode perder o progresso desde o último salvamento.",
+    "force_confirm": "Parar sem salvar?"
   },
   "time": {
     "day_ago": "há {{n}}d",

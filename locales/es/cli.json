@@ -426,7 +426,9 @@
     "done": "{{name}} detenido.",
     "not_yet": "{{name}} aún no se ha detenido. Fuérzalo: saba-chan-cli stop --force {{name}}",
     "requested": "Detención solicitada para {{name}}.",
-    "waiting": "Deteniendo {{name}}..."
+    "waiting": "Deteniendo {{name}}...",
+    "no_graceful": "No hay forma (no hay consola) de pedir a {{name}} que guarde y se cierre. Forzar el cierre puede perder el progreso desde el último guardado.",
+    "force_confirm": "¿Detener sin guardar?"
   },
   "time": {
     "day_ago": "hace {{n}} d",

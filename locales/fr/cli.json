@@ -426,7 +426,9 @@
     "done": "{{name}} arrêté.",
     "not_yet": "{{name}} n'est pas encore arrêté. Forcez l'arrêt : saba-chan-cli stop --force {{name}}",
     "requested": "Arrêt demandé pour {{name}}.",
-    "waiting": "Arrêt de {{name}}..."
+    "waiting": "Arrêt de {{name}}...",
+    "no_graceful": "Impossible (pas de console) de demander à {{name}} de sauvegarder et de s'arrêter. Forcer l'arrêt peut faire perdre la progression depuis la dernière sauvegarde.",
+    "force_confirm": "Arrêter sans sauvegarder ?"
   },
   "time": {
     "day_ago": "il y a {{n}} j",

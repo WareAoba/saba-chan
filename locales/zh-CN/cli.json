@@ -482,6 +482,8 @@
   "stop": {
     "already": "{{name}} 未运行。",
     "done": "{{name}} 已停止。",
+    "force_confirm": "不保存就停止吗？",
+    "no_graceful": "无法（没有控制台）请求 {{name}} 保存后退出。强制停止可能会丢失上次保存之后的进度。",
     "not_yet": "{{name}} 尚未停止。强制停止：saba-chan-cli stop --force {{name}}",
     "requested": "已请求停止 {{name}}。",
     "waiting": "正在停止 {{name}}..."
