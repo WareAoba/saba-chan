@@ -974,6 +974,7 @@
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
     "retry": "Réessayer",
+    "reload": "Recharger",
     "action_failed": "L'action a échoué.",
     "backups_title": "Sauvegardes",
     "backups_desc": "Compresse le monde et les fichiers de sauvegarde. Les sauvegardes que vous créez vous-même ne sont jamais supprimées automatiquement.",
@@ -988,6 +989,7 @@
     "restored": "Restauration effectuée. L'état précédent a aussi été sauvegardé.",
     "err_restore_outside": "Cette sauvegarde a été créée pour un autre dossier de serveur et ne peut pas être restaurée dans le dossier actuel. Si vous avez déplacé le dossier du serveur, remettez-le à son emplacement et réessayez.",
     "err_backup_busy": "Une autre tâche est en cours pour ce serveur (sauvegarde, restauration, mise à jour…). Réessayez une fois terminée.",
+    "err_schedule_changed": "La planification a été modifiée ailleurs, elle n'a donc pas été enregistrée. Rechargez-la puis refaites vos modifications.",
     "delete": "Supprimer",
     "delete_confirm": "Cliquez pour supprimer",
     "kind_manual": "Manuelle",
