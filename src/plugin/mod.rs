@@ -733,7 +733,7 @@ async fn drive(
         let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
             let mut reader = BufReader::new(pipe);
-            let mut raw = Vec::new();
+            let mut raw = crate::supervisor::managed_process::LineBuf::default();
             let mut relayed = 0;
             // UTF-8이 아닌 줄에서 멈추면 stderr 파이프가 차서 모듈이 시간 초과까지 멈춘다
             while let Some(line) = crate::supervisor::managed_process::next_line(&mut reader, &mut raw).await {

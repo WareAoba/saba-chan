@@ -20,7 +20,7 @@
 //! 쓰고, stdin을 로컬 포트로 받고, 종료 코드를 `exit.json`에 남긴다.
 //! 파일 형식은 `saba_runner`(lib.rs)에 있다.
 
-use saba_runner::{decode_line, exit_file, format_line, matching_files, now, runner_file, write_json, ExitInfo, RunnerInfo, Stream, TOKEN_ENV};
+use saba_runner::{decode_line, exit_file, Lines, format_line, matching_files, now, runner_file, write_json, ExitInfo, RunnerInfo, Stream, TOKEN_ENV};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -124,7 +124,9 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
         let mut reader = reader;
         let mut chunk = [0u8; 8192];
         let mut pending: Vec<u8> = Vec::new();
-        let emit = |line: &[u8]| {
+        // UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다 (D-S13)
+        let (mut lines, mut from) = (Lines::default(), 0);
+        let emit = |line: &[u8], lines: &Lines| {
             if console == Console::Pty {
                 let line = decode_line(&strip_ansi_escapes::strip(line));
                 // 화면을 다시 그린 자리(\r)는 마지막 내용만 남긴다
@@ -133,7 +135,7 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
                     write_log(&log, stream, line);
                 }
             } else {
-                write_log(&log, stream, &decode_line(line));
+                write_log(&log, stream, &lines.decode(line));
             }
         };
         loop {
@@ -157,13 +159,13 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
                     }
                 }
             }
-            while let Some(nl) = pending.iter().position(|b| *b == b'\n') {
-                let line: Vec<u8> = pending.drain(..=nl).collect();
-                emit(&line);
+            while let Some(end) = lines.line_end(&pending, &mut from) {
+                let line: Vec<u8> = pending.drain(..=end).collect();
+                emit(&line, &lines);
             }
         }
         if !pending.is_empty() {
-            emit(&pending);
+            emit(&pending, &lines);
         }
     })
 }
