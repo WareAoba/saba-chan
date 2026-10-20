@@ -68,8 +68,8 @@ pub fn backups_dir(instance_dir: &Path) -> PathBuf {
 }
 
 /// `[backup] paths` 패턴을 실제 경로로. `{설정 이름}`은 `lookup`으로 바꾸고(값이 비면 그 경로는 뺀다),
-/// 상대 경로는 `base`(서버 작업 폴더) 기준이다. 없는 경로도 뺀다
-pub fn resolve_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
+/// 상대 경로는 `base`(서버 작업 폴더) 기준이다. 지금 없는 경로도 남긴다(복원이 되살릴 수 있는 범위). 백업은 있는 것만 담는다
+pub fn fill_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
     let placeholder = regex::Regex::new(r"\{([A-Za-z0-9_]+)\}").expect("valid regex");
     let mut out: Vec<PathBuf> = Vec::new();
     for pattern in patterns {
@@ -87,7 +87,7 @@ pub fn resolve_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> 
             continue;
         }
         let path = base.join(filled.as_ref());
-        if path.exists() && !out.contains(&path) {
+        if !out.contains(&path) {
             out.push(path);
         }
     }
@@ -218,6 +218,18 @@ pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// 백업이 돌려놓을 경로 (백업할 때의 절대 경로)
+pub fn backed_up_paths(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
+    let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
+    let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
+    Ok(manifest.paths.into_iter().map(|e| e.path).collect())
+}
+
+/// `path`가 `roots` 중 하나의 안(그 자체 포함)이고 `..`가 없는가 (글자 경로로 본다)
+pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
+    !path.components().any(|c| matches!(c, std::path::Component::ParentDir)) && roots.iter().any(|r| path.starts_with(r))
+}
+
 /// 백업을 원래 자리로 돌려놓는다. 서버는 꺼져 있어야 한다 (호출자가 확인).
 /// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣는다. 치워 둔 것은 모두 성공한 뒤에 지우고,
 /// 도중에 실패하면 이미 풀어 넣은 경로까지 거꾸로 모두 되돌린다
@@ -318,12 +330,12 @@ mod tests {
     }
 
     #[test]
-    fn resolve_fills_settings_and_drops_missing() {
+    fn fill_replaces_settings_and_drops_unset_ones() {
         let tmp = tempfile::tempdir().unwrap();
         world(tmp.path());
         let patterns = vec!["{level_name}".to_string(), "{level_name}_nether".to_string(), "{unset}/x".to_string()];
-        let got = resolve_paths(&patterns, tmp.path(), |k| (k == "level_name").then(|| "world".to_string()));
-        assert_eq!(got, vec![tmp.path().join("world")]);
+        let got = fill_paths(&patterns, tmp.path(), |k| (k == "level_name").then(|| "world".to_string()));
+        assert_eq!(got, vec![tmp.path().join("world"), tmp.path().join("world_nether")]);
     }
 
     #[test]
