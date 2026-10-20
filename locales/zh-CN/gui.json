@@ -439,6 +439,10 @@
   "errors": {
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
     "console_input_full": "服务器仍在处理之前的输入，请稍后再发送。",
+    "rcon_unreachable": "无法连接到服务器的 RCON。请确认服务器已完全启动。",
+    "rcon_auth_failed": "服务器拒绝了 RCON 密码。请尝试重启服务器。",
+    "rcon_timeout": "服务器没有及时响应 RCON 命令。",
+    "rcon_failed": "服务器返回了无法识别的 RCON 响应。",
     "restart_cancelled": "重启期间服务器已在别处停止、启动或删除，因此没有重启。",
     "not_supported": "此服务器的模块不支持此功能。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",

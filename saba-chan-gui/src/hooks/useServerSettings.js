@@ -471,7 +471,14 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                             const updated = serverList.servers.find((s) => s.id === settingsServer.id);
                                             if (updated && request === openRequest.current) {
                                                 setSettingsServer(updated);
-                                                setSettingsValues(updated.module_settings || {});
+                                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
+                                                setSettingsValues((prev) => ({
+                                                    ...prev,
+                                                    ...updated.module_settings,
+                                                    ...restartFlagsOf(updated),
+                                                    memory_limit_mb: memoryLimitOf(updated),
+                                                    stop_timeout: stopTimeoutOf(updated),
+                                                }));
                                             }
                                         }
                                     } catch (_e) {

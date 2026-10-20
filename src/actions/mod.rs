@@ -95,8 +95,8 @@ pub struct Def {
     pub open_input: bool,
     /// 디스코드에서 고정 요구 레벨 (프리셋·덮어쓰기와 상관없이)
     pub discord_level: Option<i64>,
-    /// 원격 작업 목록(heartbeat: 디스코드 "/작업" 메뉴·챗봇 목록)에 싣는가. 전용 명령이 같은 액션을 부르는
-    /// 것(길드 설정은 "/사바쨩")은 빼고, 액션 자체는 그 표면에서 계속 부를 수 있다
+    /// 디스코드 작업 메뉴에 싣는가 (heartbeat `surfaces`에 discord를 넣는가). 전용 명령이 같은 액션을 부르는
+    /// 것(길드 설정은 "/사바쨩")과 메뉴에서 뺀 것은 false다. 챗봇 목록에는 그대로 남고, 액션 자체도 디스코드에서 계속 부를 수 있다
     pub remote_menu: bool,
 }
 
@@ -119,9 +119,11 @@ pub static ACTIONS: &[Def] = &[
     def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
     def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
-    def("instance.events", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/events"),
+    // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
+    def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
     def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
-    def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups"),
+    // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
+    Def { remote_menu: false, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
     def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups"),
     Def { fields: &[path_field("name")], ..def("backup.restore", Kind::Admin, "danger", LOCAL_AND_CHATBOT, true, "POST", "/api/instance/:id/backups/:name/restore") },
     Def {
@@ -155,7 +157,6 @@ pub static ACTIONS: &[Def] = &[
         ..def("chatbot.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/guilds/:guild")
     },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
-    Def { fields: &[path_field("guild")], remote_menu: false, ..def("discord.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/discord/:guild/settings") },
     Def {
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
@@ -527,7 +528,8 @@ pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 
 pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Value>, bool) {
     let cats: Vec<(&str, crate::chat::i18n::Catalog)> = locales.iter().map(|l| (*l, catalog(l))).collect();
-    let mut defs: Vec<&Def> = ACTIONS.iter().filter(|d| d.remote_menu && (d.surfaces.contains(&Discord) || d.surfaces.contains(&Chatbot))).collect();
+    let remote = |d: &Def| -> Vec<Surface> { d.surfaces.iter().copied().filter(|s| *s == Chatbot || (*s == Discord && d.remote_menu)).collect() };
+    let mut defs: Vec<&Def> = ACTIONS.iter().filter(|d| !remote(d).is_empty()).collect();
     defs.sort_by_key(|d| d.id);
     let mut out = Vec::new();
     let mut size = 2usize;
@@ -542,7 +544,7 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             "id": d.id,
             "kind": d.kind.name(),
             "risk": d.risk,
-            "surfaces": d.surfaces.iter().filter(|s| matches!(s, Discord | Chatbot)).map(|s| s.name()).collect::<Vec<_>>(),
+            "surfaces": remote(d).iter().map(|s| s.name()).collect::<Vec<_>>(),
             "scope": if d.instance { "instance" } else { "none" },
             "title": title,
             "input": with_field_titles(remote_schema(d), |name| {
