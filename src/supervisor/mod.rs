@@ -83,6 +83,9 @@ tokio::task_local! {
     /// 시작 요청을 받았을 때의 실행 세대. 시작 API는 모듈 validate(시작 전 점검)를 끝낸 뒤 시작을 부르므로,
     /// 점검 중에 들어온 정지도 잡도록 그 전에 잡은 세대를 `StartGuard`의 기준으로 쓴다
     pub static START_SINCE: u64;
+
+    /// 이 작업 안에서 부른 정지가 올린 뒤의 실행 세대. 재시작이 자기 정지 뒤의 기준으로 쓴다 (D-S10)
+    pub static STOPPED_AT: std::cell::Cell<Option<u64>>;
 }
 
 /// `StartGuard`의 기준 세대: 시작 API가 미리 잡아 두었으면 그 값, 아니면 지금 값
@@ -1096,7 +1099,9 @@ impl Supervisor {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
             s.stop_requested.insert(instance.id.clone());
-            *s.run_generation.entry(instance.id.clone()).or_default() += 1;
+            let generation = s.run_generation.entry(instance.id.clone()).or_default();
+            *generation += 1;
+            let _ = STOPPED_AT.try_with(|at| at.set(Some(*generation)));
             let hook = s.extension_manager.clone().map(|ext_mgr| {
                 let instance_dir = s.instance_store.instance_dir(&instance.id);
                 let ctx = json!({
@@ -3032,6 +3037,36 @@ mod tests {
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
         let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// D-S10: 정지는 자기가 올린 세대를 알려 준다. 재시작이 정지 전에 따로 읽은 세대를 기준으로 삼으면,
+    /// 그 틈에 끼어든 자동 재시작 시작을 "다른 정지·시작"으로 보고 스스로 취소해 서버가 꺼진 채 남았다
+    #[tokio::test]
+    async fn a_stop_reports_the_generation_it_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.module_loader.discover_modules().unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        // 정지 전에 다른 쪽(자동 재시작)이 세대를 올려 둔다
+        *sup.run_generation.entry(id.clone()).or_default() += 5;
+        let sup = tokio::sync::RwLock::new(sup);
+        let stopped_at = STOPPED_AT
+            .scope(std::cell::Cell::new(None), async {
+                let _ = Supervisor::stop_server(&sup, &id, "game", false).await;
+                STOPPED_AT.with(|c| c.get())
+            })
+            .await;
+        assert_eq!(stopped_at, Some(6));
+        assert_eq!(sup.read().await.run_generation_of(&id), 6);
     }
 
     /// 인스턴스 함수 호출은 추적 중인 서버 PID를 싣는다: 격리 실행의 루프백 중계가 그 서버의 포트로만 잇는다

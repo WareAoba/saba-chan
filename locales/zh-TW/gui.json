@@ -974,6 +974,7 @@
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
     "retry": "重試",
+    "reload": "重新讀取",
     "action_failed": "操作失敗。",
     "backups_title": "備份",
     "backups_desc": "將世界與存檔檔案壓縮保存。手動建立的備份不會被自動清理。",
@@ -988,6 +989,7 @@
     "restored": "已還原。還原前的狀態也已備份。",
     "err_restore_outside": "此備份是為另一個伺服器資料夾建立的，無法還原到目前的資料夾。如果你移動過伺服器資料夾，請把它移回原處後再試。",
     "err_backup_busy": "此伺服器正在進行其他工作（備份、還原、更新等）。請在完成後重試。",
+    "err_schedule_changed": "排程工作已在別處被修改，因此未儲存。請重新讀取後再修改。",
     "delete": "刪除",
     "delete_confirm": "點擊刪除",
     "kind_manual": "手動",

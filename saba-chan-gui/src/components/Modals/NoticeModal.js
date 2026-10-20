@@ -94,6 +94,16 @@ function removeNotice(id) {
     window.dispatchEvent(new CustomEvent('saba-notice-update'));
 }
 
+/** 출처와 액션이 같은 알림을 모두 삭제 (예: 받을 업데이트가 없어진 업데이트 알림) */
+function removeNoticesByAction(source, action) {
+    const all = loadNotices();
+    const notices = all.filter((n) => !(n.source === source && n.action === action));
+    if (notices.length === all.length) return;
+    acknowledgeRemoved(all.filter((n) => n.source === source && n.action === action));
+    saveNotices(notices);
+    window.dispatchEvent(new CustomEvent('saba-notice-update'));
+}
+
 /** 전체 알림 삭제 */
 function clearAllNotices() {
     acknowledgeRemoved(loadNotices());
@@ -114,7 +124,15 @@ function markAllRead() {
 }
 
 // 전역으로 내보내기 (Toast 등에서 사용)
-window.__sabaNotice = { addNotice, removeNotice, clearAllNotices, getUnreadCount, loadNotices, markAllRead };
+window.__sabaNotice = {
+    addNotice,
+    removeNotice,
+    removeNoticesByAction,
+    clearAllNotices,
+    getUnreadCount,
+    loadNotices,
+    markAllRead,
+};
 
 // ─── 알림 카드 ─────────────────────────────────────────
 

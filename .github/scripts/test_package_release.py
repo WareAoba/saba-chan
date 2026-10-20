@@ -64,6 +64,18 @@ class RequiredComponents(unittest.TestCase):
     def test_a_complete_release_passes(self):
         self.assertEqual(pr.missing_required({"saba-core": {}, "gui": {}, "updater": {}}), [])
 
+    def test_versions_file_is_found_from_any_working_folder(self):
+        import os
+        import tempfile
+        here = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            try:
+                self.assertEqual(pr.missing_required({"saba-core": {}}), ["gui", "updater"])
+                self.assertIsNotNone(pr.read_bundled_version("saba-core"))
+            finally:
+                os.chdir(here)
+
 
 if __name__ == "__main__":
     unittest.main()

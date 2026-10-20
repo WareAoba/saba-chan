@@ -974,6 +974,7 @@
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",
     "retry": "Reintentar",
+    "reload": "Volver a cargar",
     "action_failed": "La acción ha fallado.",
     "backups_title": "Copias de seguridad",
     "backups_desc": "Comprime el mundo y los archivos de guardado. Las copias que hagas tú nunca se eliminan automáticamente.",
@@ -988,6 +989,7 @@
     "restored": "Restaurado. También se guardó una copia del estado anterior.",
     "err_restore_outside": "Esta copia de seguridad se creó para otra carpeta del servidor, así que no se puede restaurar en la actual. Si moviste la carpeta del servidor, devuélvela a su lugar e inténtalo de nuevo.",
     "err_backup_busy": "Hay otra tarea en curso para este servidor (copia de seguridad, restauración, actualización…). Inténtalo de nuevo cuando termine.",
+    "err_schedule_changed": "La programación se cambió en otro lugar, así que no se guardó. Vuelve a cargarla y haz tus cambios de nuevo.",
     "delete": "Eliminar",
     "delete_confirm": "Haz clic para eliminar",
     "kind_manual": "Manual",

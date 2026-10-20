@@ -974,6 +974,7 @@
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
     "retry": "Tentar novamente",
+    "reload": "Recarregar",
     "action_failed": "A ação falhou.",
     "backups_title": "Backups",
     "backups_desc": "Compacta o mundo e os arquivos de salvamento. Backups feitos por você nunca são apagados automaticamente.",
@@ -988,6 +989,7 @@
     "restored": "Restaurado. O estado anterior também foi salvo em backup.",
     "err_restore_outside": "Este backup foi feito para outra pasta do servidor, então não pode ser restaurado na atual. Se você moveu a pasta do servidor, devolva-a ao lugar original e tente de novo.",
     "err_backup_busy": "Outra tarefa está em andamento para este servidor (backup, restauração, atualização…). Tente de novo quando terminar.",
+    "err_schedule_changed": "A programação foi alterada em outro lugar, então não foi salva. Recarregue e faça suas alterações de novo.",
     "delete": "Excluir",
     "delete_confirm": "Clique para excluir",
     "kind_manual": "Manual",
