@@ -167,7 +167,8 @@ pub fn kill_pid(pid: u64) -> Result<()> {
 }
 
 pub const START_TIMEOUT: Duration = Duration::from_secs(20);
-pub const STOP_TIMEOUT: Duration = Duration::from_secs(20);
+/// 데몬의 종료 hook 한도(30초, src/main.rs)보다 길게 기다린다: 그 전에 강제 종료를 묻지 않는다
+pub const STOP_TIMEOUT: Duration = Duration::from_secs(40);
 
 #[cfg(all(test, windows))]
 mod tests {

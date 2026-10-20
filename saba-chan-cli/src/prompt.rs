@@ -19,6 +19,10 @@ pub trait Asker: Send + Sync {
 
 static ASKER: std::sync::RwLock<Option<Box<dyn Asker>>> = std::sync::RwLock::new(None);
 
+/// 창구는 하나라서, 창구를 끼우는 시험은 이 잠금을 잡고 차례로 돈다
+#[cfg(test)]
+pub static ASKER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// 끼워 둔 창구로 묻는다. 없으면 None
 fn ask_with<T>(f: impl FnOnce(&dyn Asker) -> T) -> Option<T> {
     ASKER.read().ok().as_ref().and_then(|a| a.as_deref()).map(f)
@@ -235,6 +239,7 @@ mod tests {
     /// 끼운 창구가 묻는다. `--yes`는 동의를 대신하지 않고, 창구에서 취소하면 취소로 끝난다
     #[test]
     fn questions_go_to_the_installed_asker() {
+        let _lock = ASKER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _guard = AskerGuard::install(Box::new(Scripted));
         let ask = Prompt {
             enabled: true,

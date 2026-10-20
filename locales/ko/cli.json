@@ -206,6 +206,7 @@
     "starting": "데몬을 켜는 중...",
     "stop_no_pid": "데몬이 PID를 알려 주지 않아 여기서 강제 종료할 수 없어요.",
     "stop_timeout": "데몬이 제때 멈추지 않았어요.",
+    "shutdown_refused": "데몬이 종료 요청을 받지 않았어요: {{error}}",
     "stopped": "데몬을 껐어요.",
     "stopping": "데몬을 끄는 중..."
   },

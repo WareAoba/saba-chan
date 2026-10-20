@@ -206,6 +206,7 @@
     "starting": "Starting the daemon...",
     "stop_no_pid": "The daemon did not report its PID, so it can't be killed from here.",
     "stop_timeout": "The daemon did not stop in time.",
+    "shutdown_refused": "The daemon did not accept the shutdown request: {{error}}",
     "stopped": "Daemon stopped.",
     "stopping": "Stopping the daemon..."
   },

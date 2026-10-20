@@ -84,7 +84,16 @@ async fn stop(ctx: &Ctx, force: bool) -> Result<()> {
         Err(e) => return Err(e),
     };
     let pid = h.get("pid").and_then(Value::as_u64);
-    let asked = ctx.api.shutdown().await.is_ok();
+    // 끊김은 데몬이 이미 내려가는 중일 수 있어 아래에서 확인한다. 다른 거절은 이유를 남긴다
+    let refused = match ctx.api.shutdown().await {
+        Ok(_) => None,
+        Err(e) if is_down(&e) => None,
+        Err(e) => Some(t!("daemon.shutdown_refused", error = e)),
+    };
+    let asked = refused.is_none();
+    if let Some(why) = &refused {
+        ctx.out.warn(why);
+    }
     let spin = crate::progress::spinner(&t!("daemon.stopping"));
     let deadline = Instant::now() + bootstrap::STOP_TIMEOUT;
     while asked && Instant::now() < deadline {
@@ -98,7 +107,7 @@ async fn stop(ctx: &Ctx, force: bool) -> Result<()> {
     spin.finish_and_clear();
     let pid = pid.ok_or_else(|| failed(t!("daemon.stop_no_pid")))?;
     if !force && !ctx.ask.confirm(&t!("daemon.confirm_kill", pid = pid), false)? {
-        return Err(failed(t!("daemon.stop_timeout")));
+        return Err(failed(refused.unwrap_or_else(|| t!("daemon.stop_timeout"))));
     }
     bootstrap::kill_pid(pid)?;
     ctx.out.done(
@@ -198,6 +207,12 @@ fn diagnostics_rows(d: &Value) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬의 종료 hook 한도(30초)가 지나기 전에 강제 종료를 묻지 않는다 (L59)
+    #[test]
+    fn stop_waits_longer_than_the_daemon_shutdown_hooks() {
+        assert!(bootstrap::STOP_TIMEOUT > Duration::from_secs(30));
+    }
 
     /// GUI 진단과 같은 값을 빠짐없이 보인다: 없는 토큰 파일과 설치되지 않은 익스텐션이 눈에 띄어야 한다
     #[test]

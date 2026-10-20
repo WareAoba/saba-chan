@@ -509,9 +509,17 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
     let mut settings_error = None;
     if !patch.is_empty() {
-        if let Err(e) = ctx.api.update_instance(&id, Value::Object(patch)).await {
-            ctx.out.warn(&t!("add.settings_failed", error = e));
-            settings_error = Some(e.to_string());
+        match ctx.api.update_instance(&id, Value::Object(patch)).await {
+            Err(e) => {
+                ctx.out.warn(&t!("add.settings_failed", error = e));
+                settings_error = Some(e.to_string());
+            }
+            Ok(r) => {
+                if let Some(e) = sync_failure(&r) {
+                    ctx.out.warn(&e);
+                    settings_error = Some(e);
+                }
+            }
         }
     }
 
@@ -901,7 +909,7 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
     };
     let (mut args, missing) = def.bind(words).map_err(usage)?;
     for input in missing {
-        let v = ask_input(ctx, def, &input)?;
+        let v = ask_input(&ctx.ask, def, &input)?;
         args.insert(input.name.clone(), input.coerce(v).map_err(usage)?);
     }
     if def.risk == Risk::Danger {
@@ -945,10 +953,10 @@ fn api_code(e: &anyhow::Error) -> Option<&str> {
     }
 }
 
-fn ask_input(ctx: &Ctx, def: &Command, input: &Input) -> Result<Value> {
+fn ask_input(ask: &crate::prompt::Prompt, def: &Command, input: &Input) -> Result<Value> {
     let missing = || usage(t!("run.missing_arg", label = input.label, usage = def.usage()));
     if !input.options.is_empty() {
-        return match ctx.ask.select(&input.label, &input.options, 0)? {
+        return match ask.select(&input.label, &input.options, 0)? {
             Some(i) => Ok(Value::String(input.options[i].clone())),
             None => Err(missing()),
         };
@@ -957,10 +965,21 @@ fn ask_input(ctx: &Ctx, def: &Command, input: &Input) -> Result<Value> {
         Some(p) => format!("{} {}", input.label, output::dim(&format!("({})", p))),
         None => input.label.clone(),
     };
-    match ctx.ask.text(&prompt, None, false)? {
+    // 비밀번호 칸은 화면에 보이지 않게 묻는다
+    let answer = if input.kind == "password" {
+        ask.secret(&prompt)?.filter(|v| !v.is_empty())
+    } else {
+        ask.text(&prompt, None, false)?
+    };
+    match answer {
         Some(v) => Ok(Value::String(v)),
         None => Err(missing()),
     }
+}
+
+/// 설정은 저장했지만 게임 설정 파일에 쓰지 못했으면(`synced: false`) 그 이유
+fn sync_failure(r: &Value) -> Option<String> {
+    (r.get("synced").and_then(Value::as_bool) == Some(false)).then(|| t!("set.sync_failed", error = s(r, "sync_error")))
 }
 
 /// 명령 응답을 사람이 읽게: 문자열 → 그대로, 객체 배열 → 표, 객체 → 이름: 값
@@ -1336,12 +1355,11 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
         insert_patch(&mut patch, &key, value);
     }
     let r = ctx.api.update_instance(&sv.id, Value::Object(patch.clone())).await?;
-    ctx.out.done(
-        &t!("set.done", name = sv.name, count = pairs.len()),
-        &json!({ "success": true, "changed": patch, "response": r }),
-    );
-    if r.get("synced").and_then(Value::as_bool) == Some(false) {
-        ctx.out.warn(&t!("set.sync_failed", error = s(&r, "sync_error")));
+    let data = json!({ "success": true, "changed": patch, "response": r });
+    // 게임 설정 파일에 쓰지 못했으면 끝에 실패로 알린다 (--json은 오류 문서 하나에 결과를 싣는다)
+    let sync_error = sync_failure(&r);
+    if sync_error.is_none() || !ctx.out.json {
+        ctx.out.done(&t!("set.done", name = sv.name, count = pairs.len()), &data);
     }
     let ignored: Vec<&str> = r.get("ignored").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
     if !ignored.is_empty() {
@@ -1350,7 +1368,10 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
     if status_of(&runtime(ctx, &sv).await.unwrap_or(Value::Null)) == "running" {
         ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
     }
-    Ok(())
+    match sync_error {
+        Some(message) => Err(CliError::Partial { message, data }.into()),
+        None => Ok(()),
+    }
 }
 
 async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) -> Result<()> {
@@ -1740,6 +1761,52 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Typing;
+
+    impl crate::prompt::Asker for Typing {
+        fn confirm(&self, _q: &str, _d: bool) -> Option<bool> {
+            Some(true)
+        }
+        fn select(&self, _q: &str, _items: &[String], _d: usize) -> Option<usize> {
+            Some(0)
+        }
+        fn text(&self, _q: &str, _d: Option<&str>, _e: bool) -> Option<String> {
+            Some("shown".into())
+        }
+        fn secret(&self, _q: &str) -> Option<String> {
+            Some("hidden".into())
+        }
+    }
+
+    /// 게임 명령의 비밀번호 칸은 화면에 보이지 않게 묻는다 (L54)
+    #[test]
+    fn a_password_input_is_asked_without_echo() {
+        let cat = Catalog::from_module(
+            &json!({ "commands": { "fields": [
+                { "name": "login", "inputs": [
+                    { "name": "pw", "type": "password", "required": true },
+                    { "name": "who", "required": true }
+                ] }
+            ] } }),
+            None,
+        );
+        let def = cat.find("login").unwrap();
+        let _lock = crate::prompt::ASKER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::prompt::AskerGuard::install(Box::new(Typing));
+        let ask = crate::prompt::Prompt { enabled: true, yes: false };
+        assert_eq!(ask_input(&ask, def, &def.inputs[0]).unwrap(), json!("hidden"));
+        assert_eq!(ask_input(&ask, def, &def.inputs[1]).unwrap(), json!("shown"));
+    }
+
+    /// 게임 설정 파일에 쓰지 못한 저장(`synced: false`)은 실패로 알린다 (L57)
+    #[test]
+    fn an_unsynced_save_is_a_failure() {
+        let why = sync_failure(&json!({ "success": true, "synced": false, "sync_error": "locked" })).unwrap();
+        assert!(why.contains("locked"), "{why}");
+        assert!(sync_failure(&json!({ "success": true, "synced": true })).is_none());
+        assert!(sync_failure(&json!({ "success": true })).is_none());
+    }
 
     /// 데몬이 비우지 않는 칸에 빈 값을 주면 성공으로 알리지 않고 거절한다 (L33)
     #[test]
