@@ -341,7 +341,7 @@
 | POST | `/api/client/:id/heartbeat` | `client.rs:70` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:88` | query `shutdown=true\|false` | `{ok}` / 404 |
 | POST | `/api/daemon/shutdown` | `client.rs:12` | - | `{ok, message}`. 200ms 뒤 `stop_requested` cancel |
-| GET | `/api/daemon/console` | `client.rs:139` | `since, count=200` | `{lines:[{id,timestamp,level,target,message}], count}` |
+| GET | `/api/daemon/console` | `client.rs:139` | `since, count=200` | `{lines:[{id,timestamp,level,target,message}], count, epoch}`. `id`는 데몬을 켤 때마다 1부터 다시 센다. `epoch`(버퍼를 만든 시각 밀리초, 데몬을 다시 켜면 커진다)가 바뀌면 클라이언트는 이어 읽던 `since`를 버리고 처음부터 읽는다(L55) |
 
 `unregister`에 `shutdown=true`를 주고 남은 클라이언트가 0이면 데몬도 종료한다(`client.rs:99-103`). 둘 다 `request_shutdown`(`ipc/mod.rs:630-636`)을 거쳐 §1.1의 종료 경로로 간다.
 
