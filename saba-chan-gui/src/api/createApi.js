@@ -753,10 +753,11 @@ export function createApi({ invoke, hub }) {
         updaterCheck: async () => {
             try {
                 const { data } = await post('/api/updates/check', {}, { timeout: 30000 });
-                // 업데이트가 있으면 배너·알림 모달용 이벤트. Locales는 백그라운드 자동 적용이라 뺀다
+                // 배너·알림 모달용 이벤트. Locales는 백그라운드 자동 적용이라 뺀다. 받을 것이 없으면 count 0으로
+                // 알려 남은 업데이트 알림을 지운다
                 const visibleNames = (data?.update_names || []).filter((n) => n !== 'Locales');
                 const visibleComponents = (data?.components || []).filter((c) => c.display_name !== 'Locales');
-                if (data?.ok && visibleNames.length > 0) {
+                if (data?.ok && !data?.error) {
                     hub.dispatch('updates:available', {
                         count: visibleNames.length,
                         updates_available: visibleNames.length,

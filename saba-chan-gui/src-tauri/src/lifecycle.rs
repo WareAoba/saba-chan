@@ -623,6 +623,15 @@ async fn check_for_updates(app: &AppHandle) {
         Err(e) => return tracing::warn!("[UpdateChecker] Check failed: {}", e.message),
     };
     let Some(notice) = events::update_notice(&data) else {
+        if events::updates_cleared(&data) {
+            // 받을 것이 없어졌다: 남은 업데이트 알림을 지우고, 다시 생기면 OS 알림도 다시 띄운다
+            *state.life.last_update_key.lock().unwrap() = None;
+            emit_main(
+                app,
+                "updates:available",
+                json!({ "count": 0, "names": [], "components": [] }),
+            );
+        }
         return;
     };
     tracing::info!(
