@@ -274,7 +274,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 
 | Method | Path | 인증 | Body / Query | 응답 | 위치 |
 |---|---|---|---|---|---|
-| GET | `/info` | — | — | `{name, version, apiVersion:2, minAgentVersion:'0.1.0'}` | `app.ts` |
+| GET | `/info` | — | — | `{name, version, apiVersion:2, minAgentVersion}`. `minAgentVersion`은 환경 변수 `MIN_AGENT_VERSION`(SemVer, 없으면 `0.1.0`, SemVer가 아니면 릴레이가 시작하지 않는다). 앱은 연결할 때 이 값보다 낮으면 스스로 멈춘다(`relay_agent.rs`) | `app.ts`·`services/agentVersion.ts` |
 | GET | `/health` | — | — | `{status, uptime, db}` 200/503 | `app.ts` |
 | GET | `/bot-status` | 내부 | — | 봇 연결 상태 | `app.ts` |
 | GET | `/api/bot-invite` | — | — | `{clientId, inviteUrl, bot}` / 503 `BOT_NOT_CONFIGURED` | `app.ts` |
@@ -293,7 +293,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 | GET | `/poll` | 노드(60/30s) | — | `{commands:[{id, payload, requestedBy, guildId, channelId}]}`(10건까지) / 204 / 401 `TOKEN_REPLACED`(대기 중 재페어링) | `routes/poll.ts` |
 | POST | `/ack` | 노드 | `{ids: string[]}`(1~50개) | `{acked}`: 이 호스트에 전달된(`delivered`) 명령만 `acked`로 바꾼 수. 모르는 id·남의 id는 세지 않는다. 받으면 이 호스트에 다시 보내기를 켠다(heartbeat `agentVersion` 0.1.7 이상으로도 켠다, §4.4 (b) 3) | `routes/ack.ts` |
 | POST | `/result/:requestId` | 노드 | `{success:boolean, data}` | `{status:'ok'}` / 404 / 409. `pending`·`delivered`·`acked`·`timeout` 상태에서 받는다 | `routes/result.ts` |
-| POST | `/heartbeat` | 노드(4/min), 5MB | `{agentVersion?, os?, metadata?}`(§4.4 (c)) | `{status:'ok', warning?:'UPDATE_REQUIRED', minVersion?}`. DB에 쓰지 못하면 503 `DB_UPDATE_FAILED`(데몬은 상태 코드로 연결 오류를 남긴다). `metadata.language`가 바뀌면 그 PC 길드의 답 언어 캐시를 바로 비운다 | `routes/heartbeat.ts` |
+| POST | `/heartbeat` | 노드(4/min), 5MB | `{agentVersion?, os?, metadata?}`(§4.4 (c)) | `{status:'ok'}`. `agentVersion`이 `minAgentVersion`보다 낮으면(최소 버전을 `0.1.0`보다 올렸을 때는 `agentVersion`이 없어도) 426 `{error:'AGENT_TOO_OLD', minVersion, message}`이고 호스트를 오프라인으로 두며 `agentVersion`만 남긴다(`/사바쨩 상태`가 업데이트 안내를 보인다). 그 뒤 같은 노드의 다른 노드 인증 요청(poll·ack·result·events·link-requests)도 다음 heartbeat가 통과할 때까지 같은 426이다(`auth.ts`). `/info`·`/v1/updates/*`는 노드 인증을 쓰지 않아 막히지 않는다. DB에 쓰지 못하면 503 `DB_UPDATE_FAILED`(데몬은 상태 코드로 연결 오류를 남긴다). `metadata.language`가 바뀌면 그 PC 길드의 답 언어 캐시를 바로 비운다 | `routes/heartbeat.ts` |
 | POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 길드마다 따로 보내고, 디스코드 전송이 실패하면 2초·10초 뒤 다시 해 본다. 데몬은 2xx를 받은 이벤트를 다시 보내지 않으므로 끝내 실패한 길드는 그 알림을 놓친다(로그만) | `routes/events.ts`, `bot/notify.ts` |
 | GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
 | POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 묶을 수 없으면 409 `GUILD_TAKEN`·`HOST_NOT_FOUND`. 한 번만 쓴다(묶다가 DB 오류로 500이면 요청이 남아 다시 답할 수 있다) | `linkRequests.ts` |
