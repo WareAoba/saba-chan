@@ -6,7 +6,7 @@
   manifest  빌드된 에셋 폴더로 릴레이용 릴리즈 manifest(서명 전 JSON)를 만든다.
             서명은 `cargo run -p saba-chan-updater-lib --example release_signing -- sign`.
   registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
-            `release-notes/<version>.json`({언어: 본문})이 있으면 notes로 같이 싣는다.
+            `release-notes/<version>.json`({언어: 본문})을 notes로 같이 싣는다(stable은 필수).
 
 manifest에 --modules-repo / --extensions-repo를 주면 그 저장소의 모듈(module.toml이 있는
 폴더)과 익스텐션(manifest.json이 있는 폴더)을 zip으로 묶어 같은 manifest에 넣는다 (U9e).
@@ -327,13 +327,18 @@ def cmd_registration(args: argparse.Namespace) -> int:
     signed = json.loads(Path(args.signed).read_text(encoding="utf-8"))
     manifest = signed["manifest"]
     release = manifest["version"]
+    notes_path = Path(args.notes) if args.notes else ROOT / "release-notes" / f"{release}.json"
+    notes = load_notes(notes_path)
+    # 클라이언트는 받을 때의 노트를 보관해 적용 뒤 패치노트로 보여 준다. stable은 노트 없이 내지 않는다
+    if notes is None and manifest["channel"] == "stable":
+        raise SystemExit(f"{notes_path}: stable release needs release notes")
     body = {
         "version": release,
         "channel": manifest["channel"],
         "rolloutPercent": args.rollout,
         "isCritical": args.critical,
         "signedManifest": json.dumps(signed, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
-        "notes": load_notes(Path(args.notes) if args.notes else ROOT / "release-notes" / f"{release}.json"),
+        "notes": notes,
         "assets": [
             {
                 "component": key,
