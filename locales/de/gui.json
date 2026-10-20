@@ -987,6 +987,7 @@
     "restore_hint": "Der aktuelle Stand wird vorher gesichert.",
     "restore_stop_first": "Stoppe den Server vor dem Wiederherstellen.",
     "restored": "Wiederhergestellt. Der vorherige Stand wurde ebenfalls gesichert.",
+    "restored_links_missed": "Wiederhergestellt, aber {{count}} Verknüpfung(en) im Ordner konnten nicht neu erstellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Log.",
     "err_restore_outside": "Diese Sicherung wurde für einen anderen Serverordner erstellt und kann nicht in den aktuellen wiederhergestellt werden. Wenn du den Serverordner verschoben hast, verschiebe ihn zurück und versuche es erneut.",
     "err_backup_busy": "Für diesen Server läuft gerade eine andere Aufgabe (Sicherung, Wiederherstellung, Update …). Versuche es erneut, wenn sie fertig ist.",
     "err_schedule_changed": "Der Zeitplan wurde an anderer Stelle geändert und daher nicht gespeichert. Lade ihn neu und ändere ihn erneut.",

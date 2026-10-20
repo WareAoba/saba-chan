@@ -173,7 +173,10 @@ function BackupsCard({ server }) {
             if (res?.success === false) {
                 safeShowToast(errorText(res, t('maintenance.action_failed'), t), 'error', 6000);
             } else if (okMessage) {
-                safeShowToast(okMessage(res), 'success', 4000);
+                // 일부만 된 결과(예: 되살리지 못한 링크)는 경고로 알린다
+                const msg = okMessage(res);
+                if (typeof msg === 'string') safeShowToast(msg, 'success', 4000);
+                else safeShowToast(msg.text, msg.tone, 6000);
             }
         } catch (err) {
             safeShowToast(err.message || String(err), 'error', 6000);
@@ -255,7 +258,15 @@ function BackupsCard({ server }) {
                                             ? run(
                                                   restoreKey,
                                                   () => window.api.instanceBackupRestore(server.id, b.name),
-                                                  () => t('maintenance.restored'),
+                                                  (res) =>
+                                                      res?.links_not_restored > 0
+                                                          ? {
+                                                                text: t('maintenance.restored_links_missed', {
+                                                                    count: res.links_not_restored,
+                                                                }),
+                                                                tone: 'warning',
+                                                            }
+                                                          : t('maintenance.restored'),
                                               )
                                             : setArmed(restoreKey)
                                     }

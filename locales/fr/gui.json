@@ -987,6 +987,7 @@
     "restore_hint": "L'état actuel est sauvegardé au préalable.",
     "restore_stop_first": "Arrêtez le serveur avant de restaurer.",
     "restored": "Restauration effectuée. L'état précédent a aussi été sauvegardé.",
+    "restored_links_missed": "Restauration effectuée, mais {{count}} lien(s) du dossier n'ont pas pu être recréés (droits Windows, par exemple). Les chemins figurent dans le journal du daemon.",
     "err_restore_outside": "Cette sauvegarde a été créée pour un autre dossier de serveur et ne peut pas être restaurée dans le dossier actuel. Si vous avez déplacé le dossier du serveur, remettez-le à son emplacement et réessayez.",
     "err_backup_busy": "Une autre tâche est en cours pour ce serveur (sauvegarde, restauration, mise à jour…). Réessayez une fois terminée.",
     "err_schedule_changed": "La planification a été modifiée ailleurs, elle n'a donc pas été enregistrée. Rechargez-la puis refaites vos modifications.",
