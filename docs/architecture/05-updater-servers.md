@@ -134,7 +134,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 ### 1.6 다운로드 → apply → swap → rollback 흐름
 
-1. **확인**: `POST /api/updates/check`와 daemon의 주기 확인이 같은 `check_and_follow_up`을 거친다(`updates.rs:169, 217-253`) → `check_for_updates()` (`lib.rs:482-557`). 릴레이 manifest 하나로 모든 컴포넌트를 비교한다. 이미 받아 둔 파일이 있고 최신 버전이 그대로면 적용 대기 상태를 이어 간다(`keep_staged`, 다운로드 사이에 주기 확인이 끼어도 적용할 것이 사라지지 않는다). Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:225-231`, `silent_apply_locales` 279). Locales도 모듈처럼 백업한 뒤 폴더를 통째로 바꾼다(`replace_dir`, 실패하면 되돌린다). `auto_download`이면 나머지 업데이트도 미리 받아 두고 pending manifest를 저장한다(`updates.rs:234-250`). 여러 개를 받다 하나가 실패해도 나머지는 받고, 받은 것은 pending에 남긴 뒤 오류를 돌려준다. 상태의 `release_notes`는 GUI 언어(`config.json` `gui.language`, 없으면 영어)로 완료 마커와 같은 규칙(`notes_for`)으로 고른다. 적용은 언제나 사용자가 고른다.
+1. **확인**: `POST /api/updates/check`와 daemon의 주기 확인이 같은 `check_and_follow_up`을 거친다(`updates.rs:169, 217-253`) → `check_for_updates()` (`lib.rs:482-557`). 릴레이 manifest 하나로 모든 컴포넌트를 비교한다. 이미 받아 둔 파일이 있고 최신 버전이 그대로면 적용 대기 상태를 이어 간다(`keep_staged`, 다운로드 사이에 주기 확인이 끼어도 적용할 것이 사라지지 않는다). Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:225-231`, `silent_apply_locales` 279). Locales도 모듈처럼 백업한 뒤 폴더를 통째로 바꾼다(`replace_dir`, 실패하면 되돌린다). `auto_download`이면 나머지 업데이트도 미리 받아 두고 pending manifest를 저장한다(`updates.rs:234-250`). 여러 개를 받다 하나가 실패해도 나머지는 받고, 받은 것은 pending에 남긴 뒤 오류를 돌려준다. 상태의 `release_notes`는 GUI 언어(`config.json` `gui.language`, 없으면 OS 언어, 그것도 없으면 영어)로 완료 마커와 같은 규칙(`notes_for`)으로 고른다. 적용은 언제나 사용자가 고른다.
 2. **다운로드**: `POST /api/updates/download` → staging 디렉터리로 받는다.
    - Windows: `%APPDATA%/saba-chan/updates/`
    - Unix: `~/.cache/saba-chan/updates/` (`constants.rs:148-167`)
