@@ -101,7 +101,8 @@
     "rest_port": "Port REST",
     "author": "Auteur",
     "mode": "Mode",
-    "trust": "Origine"
+    "trust": "Origine",
+    "unsupported": "Non pris en charge"
   },
   "common": {
     "fetching": "Récupération...",
@@ -190,7 +191,7 @@
     "daemon_down_hint": "Démarrez-le avec : saba-chan-cli daemon start",
     "did_you_mean": "Vouliez-vous dire : {{names}} ?",
     "hint": {
-      "executable_missing": "Des fichiers du serveur sont manquants. Vérifiez le dossier ou réinstallez : saba-chan-cli server update",
+      "executable_missing": "Des fichiers du serveur sont manquants. Réinstallez (saba-chan-cli server update) ou indiquez le chemin de l'exécutable : saba-chan-cli server set SERVEUR executable_path=CHEMIN",
       "extension_required": "Installez les extensions requises : saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "Ces extensions ont été modifiées et n'ont pas pu être vérifiées : {{ids}}. Réinstallez-les ou restaurez les fichiers d'origine : saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Appairez d'abord ce PC : saba-chan-cli bot pair",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "Seules les adresses de relais https:// sont autorisées (http uniquement pour localhost, 127.0.0.1 ou [::1] pour tester sur ce PC).",
       "module_busy": "Ce module est déjà en cours d'installation ou de suppression. Réessayez une fois l'opération terminée.",
       "invalid_command": "Écrivez la clé de commande sous la forme `<server>/<command>`. Une clé sans serveur doit être un id d'action globale.",
-      "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>"
+      "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>",
+      "not_supported": "Consultez les commandes non prises en charge avec : saba-chan-cli module info"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
     "not_found": "Aucun {{what}} nommé « {{query}} ».",
     "pair_expected": "KEY=VALUE attendu, reçu « {{got}} ».",
     "timeout": "Le daemon a mis trop de temps à répondre ({{path}}).",
-    "unknown_command": "Commande inconnue : {{path}}. Lancez `saba-chan-cli help` pour voir les commandes."
+    "unknown_command": "Commande inconnue : {{path}}. Lancez `saba-chan-cli help` pour voir les commandes.",
+    "not_supported": "Le module {{module}} ne prend pas en charge cette fonction"
   },
   "agree": {
     "none": "{{name}} n'a aucun accord à accepter.",
@@ -455,6 +458,7 @@
     "not_installed": "non installé",
     "nothing_to_apply": "Rien à appliquer. Téléchargez d'abord : saba-chan-cli update download",
     "apply_failed": "La mise à jour n'a pas pu être appliquée. Vérifiez les erreurs ci-dessus.",
+    "download_failed": "Certaines mises à jour n'ont pas pu être téléchargées. Vérifiez les erreurs ci-dessus.",
     "ready": "prêt à installer",
     "up_to_date": "à jour",
     "updater_launched": "Programme de mise à jour lancé. Le daemon s'arrête pour la mise à jour.",
@@ -587,6 +591,7 @@
     "confirm_forget": "Faire oublier au chatbot ce qu'il a retenu sur tous les serveurs Discord ?",
     "confirm_forget_guild": "Faire oublier au chatbot ce qu'il a retenu sur le serveur Discord {{guild}} ?",
     "forgot": "La mémoire du chatbot a été effacée.",
+    "forget_failed": "La mémoire du chatbot n'a pas pu être effacée sur certains serveurs Discord. Vérifiez les erreurs ci-dessus.",
     "not_synced": "Enregistré sur ce PC. Le changement atteindra Discord une fois le bot connecté (saba-chan-cli bot status).",
     "sync_failed": "Le serveur Discord {{guild}} n'a pas reçu le changement : {{error}}",
     "read_failed": "Impossible de lire {{path}} : {{error}}"

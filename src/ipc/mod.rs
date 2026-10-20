@@ -261,6 +261,9 @@ pub struct ExtensionInfo {
     pub unmet_dependencies: Vec<UnmetDependency>,
     pub path: String,
     pub executable_path: Option<String>,
+    /// `[config] server_executable`: 모듈이 찾는 서버 실행 파일 이름. 클라이언트는 실행 파일 고르기의 파일 종류로 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_executable: Option<String>,
     pub icon: Option<String>,
     pub interaction_mode: Option<String>,
     pub protocols: Option<ProtocolsInfo>,
@@ -994,6 +997,7 @@ mod tests {
             unmet_dependencies: Vec::new(),
             path: "/modules/palworld".to_string(),
             executable_path: Some("PalServer.exe".to_string()),
+            server_executable: None,
             icon: None,
             interaction_mode: None,
             protocols: None,
@@ -1050,6 +1054,7 @@ mod tests {
             unmet_dependencies: Vec::new(),
             path: "/modules/test".to_string(),
             executable_path: None,
+            server_executable: None,
             icon: None,
             interaction_mode: None,
             protocols: None,
@@ -1090,6 +1095,7 @@ mod tests {
                     unmet_dependencies: Vec::new(),
                     path: "/modules/palworld".to_string(),
                     executable_path: None,
+                    server_executable: None,
                     icon: None,
                     interaction_mode: None,
                     protocols: None,

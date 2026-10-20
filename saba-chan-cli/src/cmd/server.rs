@@ -50,7 +50,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
 
 /// `/api/servers`에서 이 서버의 실행 상태
 pub async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
-    let list = ctx.api.servers().await?;
+    let list = ctx.api.servers(true).await?;
     Ok(list
         .get("servers")
         .and_then(Value::as_array)
@@ -151,7 +151,7 @@ async fn settle(ctx: &Ctx, sv: &Server, window: Duration) -> String {
 // ── 목록·정보 ──
 
 async fn list(ctx: &Ctx) -> Result<()> {
-    let (servers, modules) = tokio::join!(ctx.api.servers(), ctx.api.modules());
+    let (servers, modules) = tokio::join!(ctx.api.servers(true), ctx.api.modules());
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
     ctx.out.data(servers.get("servers").unwrap_or(&json!([])), |list| {
@@ -179,7 +179,8 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         .ok()
         .filter(|p| p.get("active").and_then(Value::as_bool) == Some(true));
 
-    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress });
+    let missing = crate::cmd::module::unsupported(&module);
+    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress, "unsupported": missing });
     ctx.out.data(&v, |_| {
         let game = s(&module, "display_name");
         output::heading(&format!(
@@ -237,6 +238,9 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         if let Some(e) = &last_exit {
             rows.push((t!("col.last_exit"), exit_line(e)));
+        }
+        if !missing.is_empty() {
+            rows.push((t!("col.unsupported"), missing.join(", ")));
         }
         output::print_kv(&rows);
         if let Some(p) = &progress {
@@ -405,11 +409,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         let label = d.get("label").and_then(Value::as_str).unwrap_or(field);
         let default = d.get("default").cloned().unwrap_or(Value::Null);
         let value = if s(d, "type") == "boolean" {
-            if ctx.ask.enabled {
-                Value::Bool(ctx.ask.confirm(label, default.as_bool().unwrap_or(false))?)
-            } else {
-                default
-            }
+            bool_option(&ctx.ask, label, &default)?
         } else {
             match ctx.ask.text(label, default.as_str(), true)? {
                 Some(v) if !v.is_empty() => Value::String(v),
@@ -630,8 +630,10 @@ async fn ensure_extensions(ctx: &Ctx, module: &Value) -> Result<()> {
             spin.finish_and_clear();
             r?;
         }
-        ctx.api.enable_extension(id).await?;
+        let r = ctx.api.enable_extension(id).await?;
         ctx.out.done(&t!("ext.enabled", id = id), &json!({ "id": id }));
+        // `extension enable`처럼 미확인·변경된 익스텐션이면 알린다
+        super::print_trust_warnings(ctx, &r);
     }
     Ok(())
 }
@@ -669,7 +671,7 @@ async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
 }
 
 async fn remove(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     let running = status_of(&runtime(ctx, &sv).await?) == "running";
     let question = if running {
         t!("remove.confirm_running", name = sv.name)
@@ -1380,6 +1382,9 @@ async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) ->
             ctx.out.done(&t!("props.saved", name = sv.name), &r);
         }
         PropsCmd::Reset => {
+            if let Ok(m) = module_info(ctx, &sv.module).await {
+                crate::cmd::module::ensure_supported(&m, "reset_properties")?;
+            }
             ctx.ask.ensure(&t!("props.confirm_reset", name = sv.name))?;
             let r = ctx.api.reset_properties(&sv.id).await?;
             ctx.out.done(&t!("props.reset_done", name = sv.name), &r);
@@ -1598,10 +1603,19 @@ async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     }
     show_agreements(ctx, &pending);
     let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
-    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+    ctx.ask.agreed(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
     let r = accept(ctx, &sv.id, &pending).await?;
     ctx.out.done(&t!("agree.done", name = sv.name), &r);
     Ok(())
+}
+
+/// 익스텐션이 묻는 예/아니오 칸 (AddServer.options). `--yes`는 확인을 넘길 뿐 값을 정하지 않으므로 기본값을 쓴다
+fn bool_option(ask: &crate::prompt::Prompt, label: &str, default: &Value) -> Result<Value> {
+    if ask.enabled && !ask.yes {
+        Ok(Value::Bool(ask.confirm(label, default.as_bool().unwrap_or(false))?))
+    } else {
+        Ok(default.clone())
+    }
 }
 
 /// 모듈이 선언했지만 아직 동의하지 않은 약관 (인스턴스 응답의 `agreements`)
@@ -1679,9 +1693,12 @@ async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
 }
 
 async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     if status_of(&runtime(ctx, &sv).await?) == "running" {
         return Err(failed(t!("err.hint.server_running")));
+    }
+    if let Ok(m) = module_info(ctx, &sv.module).await {
+        crate::cmd::module::ensure_supported(&m, "reset_server")?;
     }
     let locales = module_locales(ctx, &sv.module).await;
     ctx.ask.ensure(&reset_question(&sv.name, locales.as_ref()))?;
@@ -1841,5 +1858,25 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("8212") && lines[0].contains("8242"), "{}", lines[0]);
         assert!(port_moved_lines(&json!({ "success": true })).is_empty());
+    }
+
+    /// 약관 동의는 사람이 직접 답한다: `server agree`도 `--yes`로 동의하지 않는다 (확인 `ensure`가 아니라 동의 `agreed`)
+    #[test]
+    fn server_agree_asks_for_a_consent_not_a_confirmation() {
+        // Windows 체크아웃은 줄 끝이 CRLF일 수 있다
+        let src = include_str!("server.rs").replace("\r\n", "\n");
+        let body = &src[src.find("async fn agree(").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(body.contains("ctx.ask.agreed(") && !body.contains("ensure("), "{body}");
+    }
+
+    /// 익스텐션이 묻는 예/아니오 칸은 `--yes`여도 켜지 않는다: 기본값을 쓴다 (`--yes`는 확인을 넘길 뿐 값을 정하지 않는다)
+    #[test]
+    fn yes_keeps_the_default_of_a_yes_no_option() {
+        let ask = crate::prompt::Prompt { enabled: true, yes: true };
+        assert_eq!(bool_option(&ask, "q", &json!(false)).unwrap(), json!(false));
+        assert_eq!(bool_option(&ask, "q", &json!(true)).unwrap(), json!(true));
+        let quiet = crate::prompt::Prompt { enabled: false, yes: false };
+        assert_eq!(bool_option(&quiet, "q", &Value::Null).unwrap(), Value::Null);
     }
 }

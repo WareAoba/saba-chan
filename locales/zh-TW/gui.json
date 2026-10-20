@@ -375,11 +375,11 @@
     "delete_error_title": "實例刪除例外",
     "initializing_overlay": "正在檢查伺服器狀態...",
     "jar_not_found_title": "找不到伺服器檔案",
-    "jar_not_found_message": "伺服器可執行檔（server.jar）未配置。\n您可以指定路徑或安裝新的伺服器。",
+    "jar_not_found_message": "伺服器可執行檔未配置。\n您可以指定路徑或安裝新的伺服器。",
     "jar_not_found_message_with_path": "找不到伺服器檔案:\n{{path}}\n\n您可以更新路徑或安裝新的伺服器。",
     "jar_action_update_path": "更新路徑",
     "jar_action_install_new": "安裝新的",
-    "select_server_jar": "選擇伺服器 JAR 檔案",
+    "select_server_jar": "選擇伺服器可執行檔",
     "jar_path_updated": "✅ 伺服器路徑已更新",
     "installing_server": "⏳ 正在安裝伺服器...",
     "install_completed": "✅ {{game}} {{version}} 伺服器安裝完成！",
@@ -437,6 +437,7 @@
     "start_cancelled": "伺服器在啟動過程中被停止，因此未啟動。",
     "console_input_full": "伺服器仍在處理先前的輸入，請稍後再傳送。",
     "restart_cancelled": "等待期間伺服器已在別處啟動或刪除，因此沒有重新啟動。",
+    "not_supported": "此伺服器的模組不支援此功能。",
     "executable_not_found": "找不到遊戲伺服器可執行檔。請檢查設定中的路徑。",
     "file_not_found": "找不到檔案或資料夾。請檢查路徑。",
     "permission_denied": "權限被拒絕。請檢查檔案存取權限。",
@@ -607,7 +608,7 @@
     "restart_required_title": "需要重新啟動",
     "apply": "套用",
     "module_busy": "此模組的另一個安裝或移除仍在進行中。請在完成後再試一次。",
-    "remove_failed": "移除模組失敗：{{error}}"
+    "remove_failed": "無法移除模組：{{error}}"
   },
   "validation": {
     "required": "{{field}} 為必填欄位",

@@ -375,11 +375,11 @@
     "delete_error_title": "实例删除异常",
     "initializing_overlay": "正在检查服务器状态...",
     "jar_not_found_title": "未找到服务器文件",
-    "jar_not_found_message": "服务器可执行文件 (server.jar) 未配置。\n您可以指定路径或安装新的服务器。",
+    "jar_not_found_message": "服务器可执行文件未配置。\n您可以指定路径或安装新的服务器。",
     "jar_not_found_message_with_path": "未找到服务器文件:\n{{path}}\n\n您可以更新路径或安装新的服务器。",
     "jar_action_update_path": "更新路径",
     "jar_action_install_new": "安装新的",
-    "select_server_jar": "选择服务器 JAR 文件",
+    "select_server_jar": "选择服务器可执行文件",
     "jar_path_updated": "✅ 服务器路径已更新",
     "installing_server": "⏳ 正在安装服务器...",
     "install_completed": "✅ {{game}} {{version}} 服务器安装完成！",
@@ -437,6 +437,7 @@
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
     "console_input_full": "服务器仍在处理之前的输入，请稍后再发送。",
     "restart_cancelled": "等待期间服务器已在别处启动或删除，因此没有重启。",
+    "not_supported": "此服务器的模块不支持此功能。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",
     "file_not_found": "找不到文件或文件夹。请检查路径。",
     "permission_denied": "权限被拒绝。请检查文件访问权限。",
@@ -607,7 +608,7 @@
     "restart_required_title": "需要重启",
     "apply": "应用",
     "module_busy": "此模块的另一个安装或移除仍在进行中。请在完成后重试。",
-    "remove_failed": "移除模块失败：{{error}}"
+    "remove_failed": "无法移除模块：{{error}}"
   },
   "validation": {
     "required": "{{field}} 为必填项",

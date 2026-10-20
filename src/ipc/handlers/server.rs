@@ -384,6 +384,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         unmet_dependencies,
         path: m.path,
         executable_path: meta.executable_path,
+        server_executable: meta.server_executable,
         icon: icon_base64,
         interaction_mode: meta.interaction_mode,
         protocols: meta.protocols_supported.map(|supported| ProtocolsInfo {
@@ -1160,6 +1161,26 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다
+    #[tokio::test]
+    async fn the_module_list_carries_the_declared_server_executable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, config) in [("game", "\n[config]\nserver_executable = \"server.jar\"\n"), ("plain", "")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{config}")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let listed = crate::ipc::internal::into_internal(list_modules(State(state)).await).await.body;
+        let module = |name: &str| listed["modules"].as_array().unwrap().iter().find(|m| m["name"] == name).cloned().unwrap();
+        assert_eq!(module("game")["server_executable"], "server.jar", "{listed}");
+        assert!(module("plain").get("server_executable").is_none(), "{listed}");
+    }
 
     /// Windows 폴더 이름은 대소문자를 가리지 않는다: 대소문자만 다른 id도 같은 모듈 폴더다
     #[test]

@@ -9,7 +9,7 @@ import { localizedDescription } from '../../utils/localizedText';
 import { clearModuleAuditCache, ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
 import { SabaEmpty, SabaFail } from '../ui/SabaArt';
 import { TrustBadge } from '../ui/TrustBadge';
-import { safeShowToast } from '../../utils/helpers';
+import { createTranslateError, safeShowToast } from '../../utils/helpers';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -794,9 +794,9 @@ function ModulesTab() {
             const res = await window.api?.moduleRemove?.(id);
             if (res?.ok) await loadInstalledModules();
             else if (res?.error_code === 'module_busy') safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
-            else safeShowToast(t('saba_storage.remove_failed', { error: res?.error || '-' }), 'error', 5000);
+            else safeShowToast(t('saba_storage.remove_failed', { error: createTranslateError(t)(res?.error) }), 'error', 5000);
         } catch (e) {
-            safeShowToast(t('saba_storage.remove_failed', { error: e?.message || '-' }), 'error', 5000);
+            safeShowToast(t('saba_storage.remove_failed', { error: createTranslateError(t)(e?.message) }), 'error', 5000);
         }
         setRemovingIds((prev) => {
             const n = new Set(prev);

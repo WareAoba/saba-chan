@@ -101,7 +101,8 @@
     "rest_port": "Порт REST",
     "author": "Автор",
     "mode": "Режим",
-    "trust": "Источник"
+    "trust": "Источник",
+    "unsupported": "Не поддерживается"
   },
   "common": {
     "fetching": "Получение...",
@@ -190,7 +191,7 @@
     "daemon_down_hint": "Запустите его: saba-chan-cli daemon start",
     "did_you_mean": "Возможно, вы имели в виду: {{names}}?",
     "hint": {
-      "executable_missing": "Отсутствуют файлы сервера. Проверьте папку или переустановите: saba-chan-cli server update",
+      "executable_missing": "Отсутствуют файлы сервера. Переустановите (saba-chan-cli server update) или укажите путь к исполняемому файлу: saba-chan-cli server set СЕРВЕР executable_path=ПУТЬ",
       "extension_required": "Установите нужные расширения: saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "Файлы расширений изменены и не прошли проверку: {{ids}}. Переустановите их или верните исходные файлы: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Сначала привяжите этот ПК: saba-chan-cli bot pair",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "Разрешены только адреса ретранслятора https:// (http только для localhost, 127.0.0.1 или [::1] при тестах на этом ПК).",
       "module_busy": "Этот модуль уже устанавливается или удаляется. Повторите, когда это закончится.",
       "invalid_command": "Укажите ключ команды в виде `<server>/<command>`. Ключ без сервера должен быть id глобального действия.",
-      "no_command_path": "Этот сервер запущен не через Saba-chan, поэтому у него нет консоли для команд. Перезапустите его через Saba-chan: saba-chan-cli restart <server>"
+      "no_command_path": "Этот сервер запущен не через Saba-chan, поэтому у него нет консоли для команд. Перезапустите его через Saba-chan: saba-chan-cli restart <server>",
+      "not_supported": "Неподдерживаемые команды: saba-chan-cli module info"
     },
     "not_a_bool": "«{{value}}» — не да/нет (используйте true или false).",
     "not_a_number": "«{{value}}» — не число.",
     "not_found": "Не найдено ({{what}}): «{{query}}».",
     "pair_expected": "Ожидалось KEY=VALUE, получено «{{got}}».",
     "timeout": "Демон слишком долго не отвечал ({{path}}).",
-    "unknown_command": "Нет такой команды: {{path}}. Запустите `saba-chan-cli help`, чтобы увидеть команды."
+    "unknown_command": "Нет такой команды: {{path}}. Запустите `saba-chan-cli help`, чтобы увидеть команды.",
+    "not_supported": "Модуль {{module}} не поддерживает эту функцию"
   },
   "agree": {
     "none": "У {{name}} нет соглашений для принятия.",
@@ -455,6 +458,7 @@
     "not_installed": "не установлено",
     "nothing_to_apply": "Нечего применять. Сначала загрузите: saba-chan-cli update download",
     "apply_failed": "Не удалось применить обновление. Проверьте ошибки выше.",
+    "download_failed": "Не удалось скачать некоторые обновления. Проверьте ошибки выше.",
     "ready": "готово к установке",
     "up_to_date": "актуально",
     "updater_launched": "Программа обновления запущена. Демон завершается для обновления.",
@@ -587,6 +591,7 @@
     "confirm_forget": "Заставить чат-бота забыть всё, что он запомнил на всех серверах Discord?",
     "confirm_forget_guild": "Заставить чат-бота забыть всё, что он запомнил на сервере Discord {{guild}}?",
     "forgot": "Память чат-бота очищена.",
+    "forget_failed": "Не удалось очистить память чат-бота на некоторых серверах Discord. Проверьте ошибки выше.",
     "not_synced": "Сохранено на этом ПК. Изменения попадут в Discord, когда бот подключится (saba-chan-cli bot status).",
     "sync_failed": "Сервер Discord {{guild}} не получил изменение: {{error}}",
     "read_failed": "Не удалось прочитать {{path}}: {{error}}"

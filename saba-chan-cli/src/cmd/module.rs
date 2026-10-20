@@ -33,7 +33,7 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             Ok(())
         }
         ModuleCmd::Remove { id } => {
-            let m = resolve::module(ctx, Some(&id)).await?;
+            let m = resolve::module_exact(ctx, Some(&id)).await?;
             let name = s(&m, "name").to_string();
             let used: Vec<String> = resolve::servers(ctx)
                 .await?
@@ -87,14 +87,11 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             module,
             version,
             dir,
-            jar,
+            executable,
             accept,
         } => {
             let m = resolve::module(ctx, Some(&module)).await?;
-            let mut body = json!({ "version": version, "install_dir": dir, "accept_agreements": accept });
-            if let Some(j) = jar {
-                body["jar_name"] = json!(j);
-            }
+            let body = install_files_body(&version, &dir, executable.as_deref(), &accept);
             let spin = crate::progress::spinner(&t!("module.downloading_files"));
             let r = ctx.api.install_server_files(s(&m, "name"), body).await;
             spin.finish_and_clear();
@@ -103,6 +100,15 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// `POST /api/module/:name/install` 본문. 실행 파일 이름을 주지 않으면 모듈 `server_executable`로 받는다
+fn install_files_body(version: &str, dir: &str, executable: Option<&str>, accept: &[String]) -> Value {
+    let mut body = json!({ "version": version, "install_dir": dir, "accept_agreements": accept });
+    if let Some(e) = executable {
+        body["server_executable"] = json!(e);
+    }
+    body
 }
 
 async fn list(ctx: &Ctx) -> Result<()> {
@@ -212,6 +218,10 @@ async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {
         if !presets.is_empty() {
             rows.push((t!("col.presets"), presets.join(", ")));
         }
+        let missing = unsupported(m);
+        if !missing.is_empty() {
+            rows.push((t!("col.unsupported"), missing.join(", ")));
+        }
         output::print_kv(&rows);
         for w in m.get("warnings").and_then(Value::as_array).into_iter().flatten() {
             ctx.out.warn(&show(w));
@@ -272,6 +282,47 @@ async fn versions(
     Ok(())
 }
 
+/// 모듈이 구현하지 않아도 되는 lifecycle 함수와 그 함수를 쓰는 CLI 명령 (데몬 `plugin::OPTIONAL_MODULE_FUNCTIONS`, MK1).
+/// `import_settings`는 CLI 명령이 없다
+const OPTIONAL: &[(&str, &str)] = &[
+    ("reset_server", "server reset"),
+    ("list_versions", "module versions"),
+    ("get_installed_version", "server version"),
+    ("diagnose_log", "server diagnose"),
+    ("read_properties", "server properties"),
+    ("configure", "server properties set"),
+    ("reset_properties", "server properties reset"),
+    ("install_server", "module install-files"),
+    ("validate", "server validate"),
+];
+
+/// 모듈이 이 lifecycle 함수를 구현하는지. `functions`가 null이거나 없으면(옛 데몬·옛 모듈) 안다고 본다
+pub fn supported(module: &Value, function: &str) -> bool {
+    match module.get("functions").and_then(Value::as_array) {
+        Some(list) => list.iter().any(|f| f.as_str() == Some(function)),
+        None => true,
+    }
+}
+
+/// 이 모듈로는 쓸 수 없는 CLI 명령
+pub fn unsupported(module: &Value) -> Vec<&'static str> {
+    OPTIONAL.iter().filter(|(f, _)| !supported(module, f)).map(|(_, cmd)| *cmd).collect()
+}
+
+/// 확인을 묻기 전에, 모듈이 구현하지 않은 기능이면 데몬과 같은 `not_supported`로 멈춘다
+pub fn ensure_supported(module: &Value, function: &str) -> Result<()> {
+    if supported(module, function) {
+        return Ok(());
+    }
+    Err(crate::error::CliError::Api {
+        status: 200,
+        code: Some("not_supported".into()),
+        message: t!("err.not_supported", module = resolve::module_label(module)),
+        body: json!({ "success": false, "error_code": "not_supported", "function": function }),
+    }
+    .into())
+}
+
 /// 원격 목록: `{id: {...}}` 맵이든 배열이든 (id, 항목)으로
 pub fn entries(v: Option<&Value>) -> Vec<(String, Value)> {
     match v {
@@ -312,4 +363,37 @@ async fn available(ctx: &Ctx) -> Result<()> {
         say!("{}", output::dim("saba-chan-cli module install <NAME>"));
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다
+    #[test]
+    fn only_commands_of_unlisted_optional_functions_are_unsupported() {
+        assert!(unsupported(&json!({ "functions": null })).is_empty());
+        assert!(unsupported(&json!({})).is_empty());
+        let m = json!({ "functions": ["start", "stop", "validate", "list_versions", "get_version_details", "get_installed_version", "read_properties", "configure", "reset_properties", "install_server", "import_settings"] });
+        assert_eq!(unsupported(&m), vec!["server reset", "server diagnose"]);
+        assert!(supported(&m, "validate") && !supported(&m, "reset_server"));
+        assert!(supported(&json!({ "functions": null }), "reset_server"));
+    }
+
+    /// 받을 실행 파일 이름은 게임 중립적인 `--executable`로 받아 `server_executable`로 보낸다(MK7). 예전 `--jar`도 받는다
+    #[test]
+    fn install_files_sends_the_executable_name_as_server_executable() {
+        for flag in ["--executable", "--jar"] {
+            let cli = crate::cli::Cli::try_parse_from(["saba-chan-cli", "module", "install-files", "m", "--version", "1", "--dir", "d", flag, "x.jar"]).unwrap();
+            let Some(crate::cli::Cmd::Module(ModuleCmd::InstallFiles { version, dir, executable, accept, .. })) = cli.cmd else {
+                panic!("{}: not install-files", flag)
+            };
+            let body = install_files_body(&version, &dir, executable.as_deref(), &accept);
+            assert_eq!(body["server_executable"], "x.jar", "{}", flag);
+            assert!(body.get("jar_name").is_none());
+        }
+        let body = install_files_body("1", "d", None, &[]);
+        assert!(body.get("server_executable").is_none(), "without the flag the module default is used");
+    }
 }

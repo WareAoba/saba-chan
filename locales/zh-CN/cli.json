@@ -127,7 +127,8 @@
     "rest_port": "REST 端口",
     "author": "作者",
     "mode": "模式",
-    "trust": "来源"
+    "trust": "来源",
+    "unsupported": "不支持"
   },
   "common": {
     "fetching": "正在获取...",
@@ -237,7 +238,7 @@
     "daemon_down_hint": "启动方式：saba-chan-cli daemon start",
     "did_you_mean": "你是不是想要：{{names}}？",
     "hint": {
-      "executable_missing": "缺少服务器文件。请检查文件夹或重新安装：saba-chan-cli server update",
+      "executable_missing": "缺少服务器文件。请重新安装（saba-chan-cli server update）或指定可执行文件路径：saba-chan-cli server set 服务器 executable_path=路径",
       "extension_required": "请安装所需扩展：saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "扩展文件已被更改，无法验证：{{ids}}。请重新安装或恢复原文件：saba-chan-cli extension install {{ids}}",
       "node_token_missing": "请先配对此电脑：saba-chan-cli bot pair",
@@ -260,7 +261,8 @@
         "conflict": "已用于称呼其他对象",
         "unknown_command": "该服务器没有这个命令",
         "too_many": "最多 10 个称呼"
-      }
+      },
+      "not_supported": "可用 saba-chan-cli module info 查看不支持的命令。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -268,7 +270,8 @@
     "pair_expected": "应为 KEY=VALUE，实际为“{{got}}”。",
     "timeout": "守护进程响应时间过长（{{path}}）。",
     "body_read": "无法读取来自 {{path}} 的完整响应：{{error}}",
-    "unknown_command": "没有这个命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。"
+    "unknown_command": "没有这个命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。",
+    "not_supported": "{{module}} 模块不支持此功能"
   },
   "agree": {
     "none": "{{name}} 没有需要同意的协议。",
@@ -513,6 +516,7 @@
     "not_installed": "未安装",
     "nothing_to_apply": "没有可应用的内容。请先下载：saba-chan-cli update download",
     "apply_failed": "无法应用更新。请查看上面的错误。",
+    "download_failed": "部分更新无法下载。请查看上面的错误。",
     "ready": "可以安装",
     "up_to_date": "已是最新",
     "updater_launched": "更新程序已启动。守护进程正在关闭以进行更新。",
@@ -739,7 +743,7 @@
       "page": "页码",
       "per_page": "每页条数",
       "dir": "文件夹",
-      "jar": "jar 文件名",
+      "executable": "要下载的服务器可执行文件名（默认：模块的 server_executable）",
       "accept": "要同意的条款 id（仅限已阅读的）",
       "relay_url": "中继地址",
       "token": "节点令牌",
@@ -895,6 +899,7 @@
     "confirm_forget": "要让聊天机器人忘记它在所有 Discord 服务器中记住的内容吗？",
     "confirm_forget_guild": "要让聊天机器人忘记它在 Discord 服务器 {{guild}} 中记住的内容吗？",
     "forgot": "聊天机器人的记忆已清除。",
+    "forget_failed": "部分 Discord 服务器上的聊天机器人记忆无法清除。请查看上面的错误。",
     "not_synced": "已保存在此电脑上。机器人连接后会同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 服务器 {{guild}} 未收到此更改：{{error}}",
     "read_failed": "无法读取 {{path}}：{{error}}",
