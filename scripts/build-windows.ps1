@@ -33,12 +33,13 @@ $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 # 각 Cargo.toml·tauri.conf.json의 버전이 versions.toml과 맞아야 exe에 맞는 버전이 박힌다
 # python이 Microsoft Store 바로가기(실행되지 않는 스텁)일 수 있어 실제로 도는 것을 고른다
-$Python = @(@("py", "-3"), @("python")) | Where-Object {
-    $cmd = $_
-    try { & $cmd[0] @($cmd[1..9] + "--version") *> $null; $LASTEXITCODE -eq 0 } catch { $false }
-} | Select-Object -First 1
+# 파이프라인은 후보 배열을 펼칠 수 있어 foreach로 하나씩 시험한다
+$Python = $null
+foreach ($cmd in @(@{ Exe = "py"; Args = @("-3") }, @{ Exe = "python"; Args = @() })) {
+    try { & $cmd.Exe @($cmd.Args + "--version") *> $null; if ($LASTEXITCODE -eq 0) { $Python = $cmd; break } } catch {}
+}
 if ($Python) {
-    & $Python[0] @($Python[1..9] + @((Join-Path $ScriptDir "versions.py"), "check"))
+    & $Python.Exe @($Python.Args + @((Join-Path $ScriptDir "versions.py"), "check"))
     if ($LASTEXITCODE -ne 0) {
         Write-Host "versions.py check failed: run 'python scripts/versions.py sync' first" -ForegroundColor Red
         exit 1
