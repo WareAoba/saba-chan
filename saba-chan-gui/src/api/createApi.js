@@ -121,6 +121,9 @@ export function createApi({ invoke, hub }) {
     const maximizeWindow = () => send('window_maximize');
     const closeWindow = () => send('window_close');
 
+    // 본 마지막 포트 충돌 정지 알림 id. 데몬은 읽어도 알림을 지우지 않으므로 그 뒤 것만 받는다 (L50)
+    let noticesAfter = 0;
+
     const api = {
         serverList: async () => {
             const notifyConflicts = (data) => {
@@ -137,7 +140,17 @@ export function createApi({ invoke, hub }) {
                 }
             };
             try {
-                const { data } = await get('/api/servers');
+                const { data } = await get(`/api/servers?notices_after=${noticesAfter}`);
+                if (Array.isArray(data?.port_conflict_stops)) {
+                    // 겹친 조회는 같은 커서로 같은 알림을 받는다: 먼저 처리한 응답 뒤의 것만 남긴다
+                    const seen = noticesAfter;
+                    data.port_conflict_stops = data.port_conflict_stops.filter(
+                        (evt) => !Number.isSafeInteger(evt.id) || evt.id > seen,
+                    );
+                    for (const evt of data.port_conflict_stops) {
+                        if (Number.isSafeInteger(evt.id) && evt.id > noticesAfter) noticesAfter = evt.id;
+                    }
+                }
                 notifyConflicts(data);
                 return data;
             } catch (error) {
