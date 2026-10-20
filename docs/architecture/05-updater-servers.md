@@ -55,7 +55,7 @@ POST /events (알림, I3)
 |---|---|---|---|
 | `saba-chan-updater-lib` | `saba-chan/updater/` (`Cargo.toml` v0.1.2) | 0.1.2 | 실제 로직(`UpdateManager`). daemon이 **in-process로 링크**하고 updater exe·installer도 쓴다 |
 | `saba-chan-updater` (bin, Tauri) | `saba-chan/updater/gui/src-tauri/` | 0.1.2 (`tauri.conf.json:3`) | **apply 전용** GUI exe. `--apply` 없이 실행하면 종료한다 |
-| 루트 workspace | `saba-chan/Cargo.toml:12` | — | members = `.`, `runner`, `updater`, `updater/gui/src-tauri`, `installer/gui/src-tauri`, `saba-chan-cli` |
+| 루트 workspace | `saba-chan/Cargo.toml:12` | — | members = `.`, `runner`, `updater`, `updater/gui/src-tauri`, `installer/gui/src-tauri`, `installer/core`, `saba-chan-cli`, `saba-chan-gui/src-tauri` |
 
 버전의 원천은 저장소 루트 `versions.toml` 하나다. `scripts/versions.py sync`가 각 파일에 써 넣고 `check`가 CI에서 어긋남을 잡는다(`versions.toml:1-14`). updater-lib는 이 파일을 컴파일 때 그대로 묶는다(`updater/src/versions.rs:1-9`).
 
@@ -185,17 +185,21 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 ## 2. Installer (`saba-chan/installer/gui`, Tauri, v0.1.2)
 
-모듈 구성: `lib.rs`, `release.rs`(릴리즈 받기, 업데이터와 같은 relay 경로), `runtime_bootstrap.rs`, `registry.rs`, `shortcuts.rs`, `uninstall.rs`.
+크레이트 둘로 나뉜다(0.1.9, 무인 설치 설계 1단계).
+- `saba-chan-installer-core`(`installer/core`, Tauri 없음, 버전은 `versions.toml` installer와 같이 간다): 설치 순서 `install(InstallOptions, &dyn InstallHooks) -> InstallProgress`(마지막 진행을 돌려준다)와 `release.rs`(릴리즈 받기, 업데이터와 같은 relay 경로), `runtime_bootstrap.rs`, `registry.rs`, `shortcuts.rs`, `uninstall.rs`(`do_uninstall(keep_settings, on_progress)`). 진행은 `InstallHooks::progress`로 알리고, 쓸 수 없는 폴더는 `InstallHooks::elevate_create_dir`로 만든다. 기본 구현은 상승하지 않고 `elevation_failed`로 멈춘다(창 없는 설치). `InstallOptions.uninstaller_exe`가 있으면 그 exe를 설치 폴더의 `saba-chan-installer.exe`로 복사해 제거기로 등록하고 installed-manifest의 `installer`에 버전을 적는다. 없으면 둘 다 건너뛴다. `saba-chan-cli install`이 이 crate를 쓴다.
+- `saba-chan-installer`(`installer/gui/src-tauri`, Tauri): 화면 상태와 Tauri 커맨드, UAC 상승(`--elevate-mkdir`), 로그 초기화. `WindowHooks`가 진행을 `install:progress`·`uninstall:progress` 이벤트로 보내고 상승을 UAC로 한다. 제거기로 자기 exe를 넘긴다.
+
+아래 `lib.rs` 근거는 따로 적지 않으면 `installer/core/src/lib.rs`다.
 
 **설치 위치**
-- 기본 경로는 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`installer/gui/src-tauri/src/lib.rs:797-814`).
+- 기본 경로는 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`default_install_path`).
 - 고른 폴더가 비어 있지 않고 사바쨩 설치(`saba-core`나 GUI exe)도 아니면 그 아래 `Saba-chan` 폴더에 설치한다. 찾아보기·직접 입력 모두 `set_install_path`가 바꾼 경로를 돌려줘 화면에 보인다(`lib.rs` `dedicated_install_dir`).
 - 설치기가 새로 만든 폴더에만 `.saba-chan-install` 표시 파일을 둔다(원래 있던 빈 폴더는 나중에 다른 파일이 생길 수 있어 표시하지 않는다). 제거기는 이 표시가 있을 때만 폴더를 통째로 지우고, 없으면(0.1.4 이전 설치, 사용자 파일이 있던 기존 설치 폴더) 사바쨩 실행 파일·`locales` 폴더·공유 모듈 파일만 지운 뒤 폴더가 비었을 때만 지운다(`uninstall.rs` `remove_install_dir`).
-- 쓰기에 실패하면 UAC로 권한을 올려 디렉터리를 만든다(`elevate_create_dir`, `lib.rs:638-731`).
+- 쓰기에 실패하면 창 인스톨러는 UAC로 권한을 올려 디렉터리를 만든다(`installer/gui/src-tauri/src/lib.rs` `elevate_create_dir`). 창 없는 설치는 상승하지 않고 멈춘다.
 - 데이터는 `%APPDATA%/saba-chan`에 둔다(updater constants와 같다).
 - 로그는 `%TEMP%/saba-chan-installer.log`에 남는다(`lib.rs:1001-1016`).
 
-**`do_install` 단계** (`lib.rs:255-576`)
+**`install` 단계** (`installer/core/src/lib.rs` `install`)
 
 | 단계 | 내용 |
 |---|---|
@@ -241,7 +245,7 @@ Tauri 커맨드(`lib.rs:117-775`): `get_installer_state`, `set_install_path`, `s
 - GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
 - 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다. 버전은 `versions.toml`에서 읽고, 빌드 전에 `versions.py check`가 실패하면 멈춘다. 실제로 도는 Python(`py -3`, `python` 순, Store 스텁은 건너뜀)이 없으면 경고만 남기고 넘어가며, 발행 때 `versions.py manifest`가 exe 버전을 다시 대조한다(`build-windows.ps1:27-28`, 그 아래 check). GUI 화면을 `npm run build`(vite)로 먼저 만들고(`:59-72`, Tauri GUI가 `build/`를 exe에 넣는다), 이어서 `cargo build --release --workspace`(`:98`)가 데몬·CLI·업데이터·인스톨러와 함께 `target/release/saba-chan-gui.exe`를 만든다(`:127`).
 - `package-release.py`는 **windows-x64 asset만** 만든다. manifest도 `--platform windows-x64`로 만든다.
-- 필수 구성요소는 `versions.toml`의 `[components.<키>] required = true`(지금은 `saba-core`, `gui`, `updater`) 한 곳에서 정한다. 이번 릴리즈에도 이전 릴리즈에도 없으면 `package-release.py`가 실패한다(`missing_required`). 설치기는 같은 파일을 빌드에 담아 읽고, manifest에 하나라도 없으면 기존 데몬을 끄기 전에 `release_incomplete`로 멈춘다(`installer/gui/src-tauri/src/release.rs`의 `required_components`).
+- 필수 구성요소는 `versions.toml`의 `[components.<키>] required = true`(지금은 `saba-core`, `gui`, `updater`) 한 곳에서 정한다. 이번 릴리즈에도 이전 릴리즈에도 없으면 `package-release.py`가 실패한다(`missing_required`). 설치기는 같은 파일을 빌드에 담아 읽고, manifest에 하나라도 없으면 기존 데몬을 끄기 전에 `release_incomplete`로 멈춘다(`installer/core/src/release.rs`의 `required_components`).
 - `package-release.py`는 zip을 표준 형태로 다시 담는다: 경로 구분자를 `/`로 바꾸고, GUI zip 루트의 앱 exe를 `saba-chan-gui.exe`로 바꾸며(Tauri 빌드는 이미 `saba-chan-gui.exe`라 그대로다. `Saba-chan.exe` 개명은 옛 Electron zip에만 해당한다), 다른 컴포넌트의 exe는 뺀다(`package-release.py:147-184`). 다만 컴포넌트의 `bundles`에 적은 exe는 남기므로 raw saba-core zip에 든 `saba-runner.exe`가 재포장에서 빠지지 않는다(`:58-59, 166-169`). saba-core zip에는 `saba-runner.exe`와 공유 모듈(`i18n.py`, `daemon_rcon.py`)이 같이 들어간다(`package-release.py:48-60`).
 
 ### 3.2 modules / extensions repo

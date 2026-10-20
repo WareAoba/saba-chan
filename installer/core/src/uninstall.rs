@@ -14,7 +14,6 @@
 use saba_chan_updater_lib::constants;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use tauri::AppHandle;
 
 #[cfg(target_os = "windows")]
 use crate::registry;
@@ -33,10 +32,8 @@ pub struct UninstallProgress {
     pub left: Vec<String>,
 }
 
-/// GUI 모드 제거 실행
-pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
-    use tauri::Emitter;
-
+/// GUI 모드 제거 실행. 단계마다 `on_progress`로 알린다
+pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallProgress)) {
     let emit = |step: &str, msg: &str, pct: i32| {
         let p = UninstallProgress {
             step: step.to_string(),
@@ -46,7 +43,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
             error: None,
             left: Vec::new(),
         };
-        app.emit("uninstall:progress", &p).ok();
+        on_progress(&p);
     };
 
     let emit_complete = |msg: &str, left: &[PathBuf]| {
@@ -58,7 +55,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
             error: None,
             left: left.iter().map(|p| p.display().to_string()).collect(),
         };
-        app.emit("uninstall:progress", &p).ok();
+        on_progress(&p);
     };
 
     let _emit_err = |msg: &str| {
@@ -70,7 +67,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
             error: Some(msg.to_string()),
             left: Vec::new(),
         };
-        app.emit("uninstall:progress", &p).ok();
+        on_progress(&p);
     };
 
     // Step 1: 설치 경로 확인
@@ -1052,7 +1049,7 @@ fn remove_install_dir(dir: &PathBuf) -> anyhow::Result<()> {
 }
 
 /// 사바쨩이 설치한 폴더인지: 바로 안에 데몬이나 GUI 실행 파일이 있어야 한다
-pub(crate) fn looks_like_install_dir(dir: &Path) -> bool {
+pub fn looks_like_install_dir(dir: &Path) -> bool {
     let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
     dir.join(core).is_file() || saba_chan_updater_lib::find_gui_exe(dir).is_some()
 }

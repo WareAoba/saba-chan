@@ -33,7 +33,7 @@ pub fn required_installer_version(manifest: &ReleaseManifest) -> Option<&str> {
 
 /// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다)
 fn required_components() -> Vec<String> {
-    let versions: toml::Table = include_str!("../../../../versions.toml").parse().unwrap_or_default();
+    let versions: toml::Table = include_str!("../../../versions.toml").parse().unwrap_or_default();
     let Some(components) = versions.get("components").and_then(|c| c.as_table()) else {
         return Vec::new();
     };
@@ -126,28 +126,28 @@ pub fn target_dir(install_root: &Path, info: &ManifestComponent) -> PathBuf {
 pub async fn download(
     info: &ManifestComponent,
     dest: &Path,
-    on_progress: impl Fn(u64, Option<u64>) + Send + 'static,
+    on_progress: impl Fn(u64, Option<u64>),
 ) -> Result<(), String> {
     let http = reqwest::Client::builder()
         .user_agent(concat!("saba-chan-installer/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| e.to_string())?;
     let progress = Arc::new(Mutex::new(DownloadProgress::default()));
-    let ticker = {
-        let progress = progress.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-                let (received, total) = match progress.lock() {
-                    Ok(p) => (p.bytes_received, p.total_bytes),
-                    Err(_) => break,
-                };
-                on_progress(received, (total > 0).then_some(total));
-            }
-        })
+    // 같은 작업 안에서 받기와 함께 돈다: 진행 콜백이 호출한 쪽의 것을 빌려 쓸 수 있다
+    let ticker = async {
+        loop {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let Ok((received, total)) = progress.lock().map(|p| (p.bytes_received, p.total_bytes)) else {
+                // 진행을 못 읽어도 받기는 끝까지 간다
+                return std::future::pending::<()>().await;
+            };
+            on_progress(received, (total > 0).then_some(total));
+        }
     };
-    let result = download_verified(&http, &info.url, dest, Some(&info.sha256), info.size_bytes, Some(&progress)).await;
-    ticker.abort();
+    let result = tokio::select! {
+        r = download_verified(&http, &info.url, dest, Some(&info.sha256), info.size_bytes, Some(&progress)) => r,
+        _ = ticker => unreachable!("the ticker never finishes"),
+    };
     result.map(|_| ()).map_err(|e| e.to_string())
 }
 
