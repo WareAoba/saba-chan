@@ -197,7 +197,7 @@
 - `managed`는 saba-runner가 맡아 실행하는지다. 판정은 데몬의 `Supervisor::uses_managed_start` 하나이고(`server.rs:87`), 클라이언트는 이 값을 그대로 쓴다.
 - **REST 비밀번호가 평문으로 포함된다.**
 
-`port_conflict_stops`는 클라이언트(GUI·CLI)가 `GET /api/servers`로 한 번 읽으면 비워지는 drain 큐다(`server.rs` `server_list`). 데몬 안의 목록 호출(릴레이 하트비트·채팅, `list_servers_internal`)은 같은 목록을 보되 비우지 않는다.
+`port_conflict_stops`는 클라이언트(GUI·CLI)가 `GET /api/servers`로 한 번 읽으면 비워지는 drain 큐다(`server.rs` `server_list`). 데몬 안의 목록 호출(릴레이 하트비트·채팅, `list_servers_internal`)은 같은 목록을 보되 비우지 않는다. 클라이언트도 `?notices=keep`이면 비우지 않고 보기만 한다(알림을 사람에게 보이지 않는 대기 루프·목록용). 읽지 않은 알림은 최근 20개만 남는다(`PORT_CONFLICT_STOPS_KEPT`).
 
 `status` 값은 다음 중 하나다.
 
@@ -224,7 +224,7 @@
 
 - `ExtensionInfo`(이름과 달리 모듈 정보다, `ipc/mod.rs:237-287`) 필드: `name, version, description, schema_version, display_name?, game_name?, author?, warnings?, unmet_dependencies?, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
 - `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ...}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs:499-522`).
-- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다. 받은 zip과 staging은 요청마다 다른 이름(`.tmp-module-<id>-<uuid>.zip`, `.staging-<id>-<uuid>`)이고, 같은 모듈의 설치·제거(`DELETE /api/modules/:id`)는 한 번에 하나만 한다. 다른 요청이 진행 중이면 `{ok:false, error_code:"module_busy"}`다.
+- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다(`:524-591`). `id`의 `..`, `/`, `\`는 거부한다. 받은 zip과 staging은 요청마다 다른 이름(`.tmp-module-<id>-<uuid>.zip`, `.staging-<id>-<uuid>`)이고, 같은 모듈의 설치·제거(`DELETE /api/modules/:id`)·업데이트 적용(`POST /api/updates/apply`의 모듈)은 한 번에 하나만 한다(id는 대소문자를 가리지 않는다). 설치는 잠금을 쥔 채 따로 돌아, 요청이 끊겨도 받은 파일을 치우고 잠금을 푸는 일이 작업 끝에 함께 일어난다. 다른 요청이 진행 중이면 `{ok:false, error_code:"module_busy"}`다.
 
 #### 인스턴스 (handlers/instance.rs)
 
@@ -472,7 +472,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - 저장 형식(JSON, pretty):
   - `<root>/order.json`: id 배열
   - `<root>/<id>/instance.json`: `module_settings`를 뺀 메타데이터
-  - `<root>/<id>/settings.json`: `module_settings`. JSON이 아니면(손으로 고치다 깨진 경우) 빈 설정으로 올리고 경고를 남기며, 다음 저장이 덮기 전에 원본을 `settings.json.corrupt`(다른 내용이 이미 있으면 `.corrupt-<초>`)로 남긴다
+  - `<root>/<id>/settings.json`: `module_settings`. JSON이 아니면(손으로 고치다 깨진 경우) 빈 설정으로 올리고 경고를 남기며, 다음 저장이 덮기 전에 원본을 `settings.json.corrupt`(다른 내용이 이미 있으면 `.corrupt-<초>`, 같은 내용의 사본이 이미 있으면 새로 만들지 않는다, unix는 0600으로 만든다)로 남긴다. 사본을 남기지 못하면 그 인스턴스를 올리지 않는다(원본을 덮지 않게)
   - Unix에서는 두 파일 모두 0600으로 둔다.
 - `instance.json`·`settings.json`은 임시 파일에 쓰고 rename하는 원자적 쓰기다(`write_atomic`, `instance/mod.rs:502-513`). `order.json`은 그냥 덮어쓴다(`:472-476`).
 - 쓰거나 지울 폴더는 id가 경로 한 칸이고 심볼릭 링크가 아니어야 한다(`checked_dir`, `:399-409`).

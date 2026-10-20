@@ -1,5 +1,5 @@
 ﻿use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -22,9 +22,15 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token })))
 }
 
+#[derive(serde::Deserialize, Default)]
+pub struct ListServersQuery {
+    /// `keep`이면 포트 충돌 강제 정지 알림을 보여 주기만 하고 비우지 않는다 (알림을 사람에게 보이지 않는 조회용)
+    pub notices: Option<String>,
+}
+
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반). 클라이언트(GUI·CLI)가 부르며, 포트 충돌 강제 정지 알림을 읽어 비운다
-pub async fn list_servers(State(state): State<IPCServer>) -> axum::response::Response {
-    server_list(&state, true).await
+pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListServersQuery>) -> axum::response::Response {
+    server_list(&state, q.notices.as_deref() != Some("keep")).await
 }
 
 /// 데몬 안에서 부르는 서버 목록 (릴레이 하트비트·채팅). 강제 정지 알림은 클라이언트 몫이라 비우지 않는다
@@ -544,12 +550,23 @@ pub async fn install_module_from_manifest(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
-    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+    if !crate::utils::is_single_path_component(&module_id) {
         return fail("Invalid module ID".into());
     }
-    let Some(_installing) = module_install_guard(&module_id) else {
+    let Some(installing) = module_install_guard(&module_id) else {
         return module_busy(&module_id);
     };
+    // 잠금을 쥔 채 따로 돌린다: 요청이 끊겨도 받은 파일 정리와 잠금 해제가 작업 끝에 함께 일어난다
+    crate::audit::spawn(async move {
+        let _installing = installing;
+        install_module_locked(state, module_id).await
+    })
+    .await
+    .unwrap_or_else(|e| fail(e.to_string()))
+}
+
+async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
+    let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
     let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
         Ok(Some(m)) => m,
         Ok(None) => return fail("No release is published".into()),
@@ -601,12 +618,13 @@ pub async fn install_module_from_manifest(
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
 }
 
-/// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다)
-fn module_install_guard(module_id: &str) -> Option<super::backup::BusyGuard> {
-    super::backup::BusyGuard::take(&format!("module-install:{}", module_id))
+/// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
+/// 키는 소문자로: Windows에서는 대소문자만 다른 id가 같은 폴더다
+pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::BusyGuard> {
+    super::backup::BusyGuard::take(&format!("module-install:{}", module_id.to_lowercase()))
 }
 
-fn module_busy(module_id: &str) -> axum::response::Response {
+pub(crate) fn module_busy(module_id: &str) -> axum::response::Response {
     let error = format!("Module '{}' is already being installed or removed", module_id);
     (StatusCode::OK, Json(json!({ "ok": false, "error": error, "error_code": "module_busy" }))).into_response()
 }
@@ -651,7 +669,7 @@ pub async fn remove_module(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     // 경로 탐색 방지
-    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+    if !crate::utils::is_single_path_component(&module_id) {
         return (StatusCode::OK, Json(json!({ "ok": false, "error": "Invalid module ID" }))).into_response();
     }
     let Some(_removing) = module_install_guard(&module_id) else {
@@ -1134,6 +1152,30 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
+    /// Windows 폴더 이름은 대소문자를 가리지 않는다: 대소문자만 다른 id도 같은 모듈 폴더다
+    #[test]
+    fn module_ids_that_differ_only_in_case_share_one_install_lock() {
+        let held = module_install_guard("CaseMod");
+        assert!(held.is_some());
+        assert!(module_install_guard("casemod").is_none());
+    }
+
+    /// Windows는 끝의 "."·공백을 떼고 폴더를 찾는다: `game.`은 `game`과 같은 폴더라 잠금을 피해 가지 못하게 거절한다
+    #[tokio::test]
+    async fn module_ids_that_alias_another_folder_are_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(&modules).unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        for id in ["game.", "game "] {
+            let removed = crate::ipc::internal::into_internal(remove_module(Path(id.into()), State(state.clone())).await).await.body;
+            assert_eq!(removed["error"], "Invalid module ID", "{id:?}: {removed}");
+            let installed = crate::ipc::internal::into_internal(install_module_from_manifest(Path(id.into()), State(state.clone())).await).await.body;
+            assert_eq!(installed["error"], "Invalid module ID", "{id:?}: {installed}");
+        }
+    }
+
     /// 시작 전 점검(모듈 validate) 중에 들어온 정지도 시작을 취소한다: 그 정지는 PID가 없어 바로 성공으로 끝난다
     #[cfg(unix)]
     #[tokio::test]
@@ -1300,7 +1342,7 @@ mod tests {
         sup.instance_store.add(direct).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
-        let body = crate::ipc::internal::into_internal(list_servers(State(state)).await).await.body;
+        let body = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
         let managed = |name: &str| {
             body["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap()["managed"].clone()
         };
@@ -1330,10 +1372,38 @@ mod tests {
 
         let internal = crate::ipc::internal::into_internal(list_servers_internal(&state).await).await.body;
         assert_eq!(stops(internal), 1, "internal callers still see it");
-        let client = crate::ipc::internal::into_internal(list_servers(State(state.clone())).await).await.body;
+        // 대기 루프·목록 같은 클라이언트 조회는 `notices=keep`으로 비우지 않고 본다
+        let keep = Query(ListServersQuery { notices: Some("keep".into()) });
+        let peek = crate::ipc::internal::into_internal(list_servers(State(state.clone()), keep).await).await.body;
+        assert_eq!(stops(peek), 1, "notices=keep shows it without taking it");
+        let client = crate::ipc::internal::into_internal(list_servers(State(state.clone()), Query(ListServersQuery::default())).await).await.body;
         assert_eq!(stops(client), 1, "the client gets the notice the heartbeat did not take");
-        let again = crate::ipc::internal::into_internal(list_servers(State(state)).await).await.body;
+        let again = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
         assert_eq!(stops(again), 0, "a client reads it once");
+    }
+
+    /// 아무 클라이언트도 읽지 않는 헤드리스 데몬에서도 알림이 끝없이 쌓이지 않는다
+    #[tokio::test]
+    async fn forced_stop_notices_keep_only_the_latest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let event = |port: u16| crate::supervisor::PortConflictStopEvent {
+            stopped_name: "b".into(),
+            stopped_id: "b-id".into(),
+            existing_name: "a".into(),
+            existing_id: "a-id".into(),
+            port,
+            timestamp_ms: 1,
+        };
+        for port in 0..30 {
+            sup.record_port_conflict_stops([event(port)]);
+        }
+        let kept = sup.drain_port_conflict_stops();
+        assert_eq!(kept.len(), crate::supervisor::PORT_CONFLICT_STOPS_KEPT);
+        assert_eq!(kept.last().unwrap().port, 29, "the newest is kept");
     }
 
     /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)
