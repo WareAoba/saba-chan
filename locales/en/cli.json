@@ -40,6 +40,7 @@
     "requested_by": "Requested by",
     "username": "Username",
     "config_saved": "Bot settings saved.",
+    "config_ignored": "Permission keys are not changed by the bot config, so they kept their previous values: {{keys}}. Everything else was saved. Change permissions with saba-chan-cli perm",
     "confirm_unpair": "Disconnect this PC from the Discord bot and forget its pairing?",
     "connection": "Connection",
     "last_error": "Last error",

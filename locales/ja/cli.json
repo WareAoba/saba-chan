@@ -40,6 +40,7 @@
     "requested_by": "依頼者",
     "username": "ユーザー名",
     "config_saved": "ボットの設定を保存しました。",
+    "config_ignored": "権限キーはボット設定では変わらないため、以前の値のままです: {{keys}}。ほかは保存しました。権限は saba-chan-cli perm で変更してください",
     "confirm_unpair": "この PC を Discord ボットから切断し、ペアリングを解除しますか？",
     "connection": "接続",
     "last_error": "最後のエラー",

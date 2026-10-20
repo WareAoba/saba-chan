@@ -39,6 +39,7 @@
     "requested_by": "Angefragt von",
     "username": "Benutzername",
     "config_saved": "Bot-Einstellungen gespeichert.",
+    "config_ignored": "Berechtigungsschlüssel ändert die Bot-Konfiguration nicht, sie behalten ihren bisherigen Wert: {{keys}}. Alles andere wurde gespeichert. Berechtigungen änderst du mit saba-chan-cli perm",
     "confirm_unpair": "Diesen PC vom Discord-Bot trennen und die Kopplung vergessen?",
     "connection": "Verbindung",
     "last_error": "Letzter Fehler",
