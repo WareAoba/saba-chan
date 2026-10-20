@@ -53,3 +53,9 @@
 - 모듈 `backup_paths` 훅의 반환에 선택 필드 `restore_roots:[경로]`를 더한다. 경로 해석(작업 폴더 기준 상대, `..`·절대 경로 규칙)은 `paths`와 같다.
 - 복원은 백업에 든 경로가 서버 폴더·인스턴스 폴더·지금 `paths`의 대상·`restore_roots` 중 하나의 안에 있으면 허용한다. 그 밖이면 지금처럼 400 `restore_outside`다.
 - `restore_roots`는 백업 대상에 넣지 않는다(무엇을 담을지는 `paths`가 정한다). 데이터 폴더 단위로 옛 백업이 담겨 있는 모듈(좀보이드 `Server/`)이 쓴다.
+
+## 6. non-managed 정지 대기 시간 (모듈 #37과 합의)
+
+- 데몬은 모듈 `stop()`의 config에 이번 정지에 쓸 대기 시간 `stop_timeout`(초)을 늘 싣는다. 값은 인스턴스 설정 `stop_timeout`, 모듈 `[config] stop_timeout`, 기본 30 순이다(`supervisor::stop_timeout_of`, 1~3600).
+- non-managed 정지(`managed:false`)의 모듈 `stop()` 호출 시간 제한은 `stop_timeout + 30`초다(지금의 고정 120초 대신). 모듈은 자기 상한(90초 등)을 두지 않고 `stop_timeout`만큼 기다린 뒤 결과를 돌려준다. 30초는 저장 명령·프로세스 정리에 쓰는 여유다.
+- managed 정지(`managed:true`)에서 모듈 `stop()`은 저장·종료 요청만 보내고 기다리지 않고 바로 `success`를 돌려준다. 끝나기를 기다리는 일과 시간이 지난 뒤 강제 종료는 데몬이 `stop_timeout`으로 한다. 이 호출의 시간 제한은 지금처럼 기본값(120초)이다.
