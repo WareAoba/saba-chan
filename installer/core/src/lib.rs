@@ -406,7 +406,11 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         warn(problem);
     }
     // 업데이터·데몬이 이 구성에 드는 것만 받는다 (헤드리스 설치에 GUI가 끌려 들어오지 않게)
+    // 기록이 없으면 데스크톱으로 읽히므로, 헤드리스는 기록하지 못하면 설치를 실패로 끝낸다 (조용히 GUI를 받게 되지 않게)
     if let Err(e) = config.profile.save() {
+        if config.profile != Profile::Desktop {
+            return fail("profile_failed", &format!("Failed to write install profile: {}", e));
+        }
         warn(format!("Failed to write install profile: {}", e));
     }
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
