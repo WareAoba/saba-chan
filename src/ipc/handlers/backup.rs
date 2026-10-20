@@ -257,12 +257,14 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         }
     }
     let Plan { dir, paths, keep, .. } = plan;
+    // 원격(디스코드·챗봇)은 백업을 지우지 못한다: 원격 복원을 거듭해 앞서 남긴 안전 백업을 밀어내지 않게, 정리는 이 PC의 다음 백업에 맡긴다 (D-B11)
+    let remote = crate::audit::current().source == "discord";
     let result = tokio::task::spawn_blocking(move || {
         let made = backup::create(&dir, kind, &paths)?;
         // 방금 만든 백업은 보관 개수와 상관없이 남긴다
         let mut keep_names = vec![made.name.as_str()];
         keep_names.extend(protect.as_deref());
-        let pruned = backup::prune(&dir, keep, &keep_names);
+        let pruned = if remote { Vec::new() } else { backup::prune(&dir, keep, &keep_names) };
         anyhow::Ok((made, pruned))
     })
     .await;
@@ -1183,5 +1185,38 @@ mod tests {
         assert_eq!(put(json!({ "schedule": [restart("05:00")], "revision": fresh.clone() })).await.status(), StatusCode::OK);
         let after = body_of(read().await).await;
         assert_ne!(after["revision"], json!(fresh), "a saved change gives a new revision");
+    }
+
+    /// 원격(디스코드·챗봇)은 백업을 지우지 못한다: 복원을 거듭해도 앞서 남긴 복원 전 안전 백업이 보관 수만큼 밀려 지워지지 않는다.
+    /// 이 PC에서 한 작업은 그대로 보관 수만큼 정리한다 (D-B11)
+    #[tokio::test]
+    async fn remote_restores_do_not_push_out_earlier_safety_backups() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).unwrap().clone();
+            inst.backup_keep = Some(1);
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"old").unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let old = backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&world)).unwrap().name;
+        let restore = |origin: crate::audit::Origin| {
+            let (state, id, old) = (state.clone(), id.clone(), old.clone());
+            crate::audit::with_origin(origin, async move {
+                let done = crate::ipc::internal::into_internal(restore_backup(Path((id, old)), State(state)).await).await;
+                assert_eq!(done.body["success"], true, "{:?}", done.body);
+            })
+        };
+        let safety = || backup::list(&dir).into_iter().filter(|b| b.kind == BackupKind::PreRestore).count();
+        for _ in 0..3 {
+            restore(crate::audit::Origin::new("discord")).await;
+        }
+        assert_eq!(safety(), 3, "remote restores must keep every safety backup");
+        restore(crate::audit::Origin::new("gui")).await;
+        assert_eq!(safety(), 1, "a restore on this PC still keeps only backup_keep");
     }
 }

@@ -461,7 +461,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `extension_data` | HashMap<String,Value> | 설치 방식 익스텐션 키(`install_method_<방식>`, `<방식>_<이름>`, `instance/mod.rs:142-166`) 등 |
 | `required_extensions` | Vec<String> | 모듈의 `install.requires_extensions`를 복사한다 |
 | `schedule` | Vec<ScheduledTask> | 예약 작업 (백업·재시작·공지·업데이트) |
-| `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다 |
+| `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다. 원격(디스코드·챗봇) 요청이 만든 백업은 정리를 하지 않는다(원격 복원을 거듭해도 앞서 남긴 안전 백업이 밀려 지워지지 않는다. 넘친 것은 이 PC에서 만드는 다음 백업이 정리한다, D-B11) |
 
 - RCON 필드(`rcon_port`, `rcon_password`)는 없다. 예전 `instance.json`·`settings.json`에 남은 RCON 키는 로드할 때 한 번 지우고 다시 쓴다(`instance/mod.rs:439-468, 483-500`).
 - `ensure_passwords()`(`instance/mod.rs:210`)는 시작할 때(`server.rs:903`, `managed.rs:33`) 비어 있는 REST 비밀번호를 16자 영숫자로 채운다.
