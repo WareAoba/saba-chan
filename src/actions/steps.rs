@@ -122,7 +122,7 @@ pub async fn plan_steps(server: &IPCServer, steps: &Value, caller: &Caller) -> R
         "needsConfirm": confirm,
         "expiresAt": expires_at(),
     });
-    store_plan(plan_id, StoredPlan::new(PlanBody::Steps(planned), caller));
+    store_plan(plan_id, StoredPlan::new(PlanBody::Steps(planned), caller, confirm));
     Ok(view)
 }
 

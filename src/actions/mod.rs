@@ -994,12 +994,14 @@ struct StoredPlan {
     body: PlanBody,
     owner: String,
     via_chatbot: bool,
+    /// 확인을 거쳐야 하는 계획 (`needsConfirm`)
+    needs_confirm: bool,
     created: Instant,
 }
 
 impl StoredPlan {
-    fn new(body: PlanBody, caller: &Caller) -> Self {
-        Self { body, owner: caller.owner_key(), via_chatbot: caller.remote.as_ref().is_some_and(|w| w.via_chatbot), created: Instant::now() }
+    fn new(body: PlanBody, caller: &Caller, needs_confirm: bool) -> Self {
+        Self { body, owner: caller.owner_key(), via_chatbot: caller.remote.as_ref().is_some_and(|w| w.via_chatbot), needs_confirm, created: Instant::now() }
     }
 }
 
@@ -1048,7 +1050,7 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
         "needsConfirm": confirm,
         "expiresAt": expires_at(),
     });
-    store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller));
+    store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Ok(view)
 }
 
@@ -1214,6 +1216,10 @@ fn take_plan(pid: &str, id: &str, caller: &Caller) -> Result<StoredPlan, ActionE
     if p.owner != caller.owner_key() || !same_action {
         return Err(ActionError::new(403, "plan_not_yours", "This plan belongs to another request"));
     }
+    // 챗봇이 만든 확인 계획은 요청자 본인이 확인 버튼을 눌렀을 때만 (릴레이 `confirmedBy`). 계획은 버튼을 위해 남긴다
+    if p.via_chatbot && p.needs_confirm && !caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester()) {
+        return Err(ActionError::new(409, "confirm_required", "This plan needs the requester's confirmation"));
+    }
     Ok(store.remove(pid).expect("checked"))
 }
 
@@ -1309,7 +1315,8 @@ async fn undo_plan(server: &IPCServer, instance: &str, before: Map<String, Value
     }
     let r = resolve(server, "instance.settings.set", Some(instance), &Value::Object(input), caller).await.ok()?;
     let plan_id = new_plan_id();
-    store_plan(plan_id.clone(), StoredPlan::new(PlanBody::One(Box::new(r)), caller));
+    let confirm = needs_confirm(&r, caller);
+    store_plan(plan_id.clone(), StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Some(plan_id)
 }
 
