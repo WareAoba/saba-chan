@@ -159,6 +159,7 @@
     "starting": "正在啟動常駐程式...",
     "stop_no_pid": "常駐程式沒有回報 PID，因此無法從這裡結束它。",
     "stop_timeout": "常駐程式未及時停止。",
+    "shutdown_refused": "常駐程式未接受關閉要求：{{error}}",
     "stopped": "常駐程式已停止。",
     "stopping": "正在停止常駐程式..."
   },

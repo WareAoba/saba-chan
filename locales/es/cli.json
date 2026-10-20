@@ -159,6 +159,7 @@
     "starting": "Iniciando el daemon...",
     "stop_no_pid": "El daemon no informó su PID, así que no se puede cerrar desde aquí.",
     "stop_timeout": "El daemon no se detuvo a tiempo.",
+    "shutdown_refused": "El daemon no aceptó la solicitud de cierre: {{error}}",
     "stopped": "Daemon detenido.",
     "stopping": "Deteniendo el daemon..."
   },

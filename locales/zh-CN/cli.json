@@ -206,6 +206,7 @@
     "starting": "正在启动守护进程...",
     "stop_no_pid": "守护进程未报告其 PID，因此无法在此处结束它。",
     "stop_timeout": "守护进程未能及时停止。",
+    "shutdown_refused": "守护进程未接受关闭请求：{{error}}",
     "stopped": "守护进程已停止。",
     "stopping": "正在停止守护进程..."
   },
