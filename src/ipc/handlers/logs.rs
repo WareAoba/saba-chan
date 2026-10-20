@@ -70,6 +70,18 @@ fn not_found(what: &str) -> axum::response::Response {
     (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("{} not found", what), "error_code": "not_found" }))).into_response()
 }
 
+/// 숫자 query 값. 없으면 None, 숫자가 아니면 그 이름을 돌려준다
+fn number<'a>(params: &HashMap<String, String>, key: &'a str) -> Result<Option<u64>, &'a str> {
+    match params.get(key).filter(|v| !v.is_empty()) {
+        None => Ok(None),
+        Some(v) => v.parse::<u64>().map(Some).map_err(|_| key),
+    }
+}
+
+fn invalid_number(key: &str) -> axum::response::Response {
+    (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": format!("'{}' must be a non-negative integer", key), "error_code": "invalid_argument", "field": key }))).into_response()
+}
+
 /// 인스턴스 폴더와 이름. 없는 인스턴스면 None
 async fn instance_of(state: &IPCServer, id: &str) -> Option<(PathBuf, String)> {
     let sup = state.supervisor.read().await;
@@ -157,8 +169,10 @@ pub async fn logs_handler(Path(id): Path<String>, State(state): State<IPCServer>
         }
         return not_found("Log source");
     };
-    let n = params.get("lines").and_then(|v| v.parse::<usize>().ok()).unwrap_or(DEFAULT_LINES).clamp(1, MAX_LINES);
-    let before = params.get("before").and_then(|v| v.parse::<u64>().ok());
+    let (n, before) = match (number(&params, "lines"), number(&params, "before")) {
+        (Ok(n), Ok(before)) => (n.map_or(DEFAULT_LINES, |n| n.min(MAX_LINES as u64) as usize).max(1), before),
+        (Err(key), _) | (_, Err(key)) => return invalid_number(key),
+    };
     let path = session.path.clone();
     let read = tokio::task::spawn_blocking(move || lines_before(&path, before, n)).await;
     match read {
@@ -219,8 +233,10 @@ pub async fn export_handler(Path(id): Path<String>, State(state): State<IPCServe
     let Some((dir, name)) = instance_of(&state, &id).await else { return not_found("Instance") };
     let list = sessions(&dir);
     let Some(session) = pick(&list, params.get("source").map(String::as_str)) else { return not_found("Log source") };
-    let since = params.get("since").and_then(|v| v.parse::<u64>().ok());
-    let until = params.get("until").and_then(|v| v.parse::<u64>().ok());
+    let (since, until) = match (number(&params, "since"), number(&params, "until")) {
+        (Ok(since), Ok(until)) => (since, until),
+        (Err(key), _) | (_, Err(key)) => return invalid_number(key),
+    };
     let path = session.path.clone();
     match tokio::task::spawn_blocking(move || export_lines(&path, since, until)).await {
         Ok(Ok((content, truncated))) => {
@@ -299,6 +315,12 @@ mod tests {
         assert_eq!(old["lines"], json!(["old"]));
         assert!(old.get("before").is_none());
         assert_eq!(get(&state, &id, &[("source", "nope")], false).await.0, StatusCode::NOT_FOUND);
+        for bad in [("lines", "many"), ("before", "-1")] {
+            let (status, body) = get(&state, &id, &[bad], false).await;
+            assert_eq!((status, body["field"].as_str()), (StatusCode::BAD_REQUEST, Some(bad.0)), "{body}");
+        }
+        let (status, body) = get(&state, &id, &[("since", "2026-10-20")], true).await;
+        assert_eq!((status, body["error_code"].as_str()), (StatusCode::BAD_REQUEST, Some("invalid_argument")), "a date is not unix seconds: {body}");
         assert_eq!(get(&state, "missing", &[], false).await.0, StatusCode::NOT_FOUND);
     }
 

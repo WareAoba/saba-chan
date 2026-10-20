@@ -805,8 +805,9 @@ async fn the_chatbot_reads_logs_with_inputs_and_without_local_details() {
     assert!(!out.to_string().contains("10.1.2.3"));
 
     // 내보내기 결과는 줄마다 가린다: 앞 줄의 traceback이 뒤 줄을 지우지 않는다
-    let mut file = json!({ "fileName": "srv.log", "content": "Traceback (most recent call last):\n  File \"C:\\Users\\me\\a.py\", line 1\nValueError: x\nnext line\n" });
+    let mut file = json!({ "fileName": "srv.log", "content": "Traceback (most recent call last):\n  File \"C:\\Users\\me\\a.py\", line 1\nValueError: x\nnext line\n", "bytes": 79 });
     strip_local_details(&mut file);
     assert_eq!(file["content"], "Traceback (most recent call last):\n  File \"<path>\", line 1\nValueError: x\nnext line\n");
+    assert_eq!(file["bytes"], file["content"].as_str().unwrap().len(), "bytes follow the masked content");
     assert_eq!(file["fileName"], "srv.log");
 }

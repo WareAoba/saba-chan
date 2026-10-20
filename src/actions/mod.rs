@@ -282,6 +282,9 @@ pub(crate) fn strip_local_details(v: &mut Value) {
                     Value::String(text) => Value::String(text.split('\n').map(|line| mask_local_text(line).unwrap_or_else(|| line.to_string())).collect::<Vec<_>>().join("\n")),
                     other => other,
                 };
+                if let (Some(text), true) = (masked.as_str(), m.contains_key("bytes")) {
+                    m.insert("bytes".into(), text.len().into());
+                }
                 m.insert("content".into(), masked);
             }
         }
