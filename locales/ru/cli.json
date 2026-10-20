@@ -101,7 +101,8 @@
     "rest_port": "Порт REST",
     "author": "Автор",
     "mode": "Режим",
-    "trust": "Источник"
+    "trust": "Источник",
+    "unsupported": "Не поддерживается"
   },
   "common": {
     "fetching": "Получение...",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "Разрешены только адреса ретранслятора https:// (http только для localhost, 127.0.0.1 или [::1] при тестах на этом ПК).",
       "module_busy": "Этот модуль уже устанавливается или удаляется. Повторите, когда это закончится.",
       "invalid_command": "Укажите ключ команды в виде `<server>/<command>`. Ключ без сервера должен быть id глобального действия.",
-      "no_command_path": "Этот сервер запущен не через Saba-chan, поэтому у него нет консоли для команд. Перезапустите его через Saba-chan: saba-chan-cli restart <server>"
+      "no_command_path": "Этот сервер запущен не через Saba-chan, поэтому у него нет консоли для команд. Перезапустите его через Saba-chan: saba-chan-cli restart <server>",
+      "not_supported": "Неподдерживаемые команды: saba-chan-cli module info"
     },
     "not_a_bool": "«{{value}}» — не да/нет (используйте true или false).",
     "not_a_number": "«{{value}}» — не число.",
     "not_found": "Не найдено ({{what}}): «{{query}}».",
     "pair_expected": "Ожидалось KEY=VALUE, получено «{{got}}».",
     "timeout": "Демон слишком долго не отвечал ({{path}}).",
-    "unknown_command": "Нет такой команды: {{path}}. Запустите `saba-chan-cli help`, чтобы увидеть команды."
+    "unknown_command": "Нет такой команды: {{path}}. Запустите `saba-chan-cli help`, чтобы увидеть команды.",
+    "not_supported": "Модуль {{module}} не поддерживает эту функцию"
   },
   "agree": {
     "none": "У {{name}} нет соглашений для принятия.",

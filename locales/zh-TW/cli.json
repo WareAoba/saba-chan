@@ -101,7 +101,8 @@
     "rest_port": "REST 連接埠",
     "author": "作者",
     "mode": "模式",
-    "trust": "來源"
+    "trust": "來源",
+    "unsupported": "不支援"
   },
   "common": {
     "fetching": "正在取得...",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
-      "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>"
+      "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
+      "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
     "not_found": "沒有名為「{{query}}」的{{what}}。",
     "pair_expected": "應為 KEY=VALUE，實際為「{{got}}」。",
     "timeout": "常駐程式回應時間過長（{{path}}）。",
-    "unknown_command": "沒有這個命令：{{path}}。執行 `saba-chan-cli help` 查看命令列表。"
+    "unknown_command": "沒有這個命令：{{path}}。執行 `saba-chan-cli help` 查看命令列表。",
+    "not_supported": "{{module}} 模組不支援此功能"
   },
   "agree": {
     "none": "{{name}} 沒有需要同意的協議。",
