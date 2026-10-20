@@ -1396,7 +1396,7 @@ pub async fn update_instance_settings(
         }
     }
     let hook_instance = instance_for_hooks(module.as_ref().map(|m| &m.metadata), &updated_clone);
-    let hook_settings = settings_for_hooks(module.as_ref().map(|m| &m.metadata), Some(&updated_clone), &settings);
+    let hook_settings = settings_for_hooks(module.as_ref().map(|m| &m.metadata), &settings);
     let module_extensions = module
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));
@@ -1859,16 +1859,13 @@ fn install_dir_of(
 
 /// 익스텐션 hook에 넘기는 인스턴스: REST 비밀번호, 모듈이 password로 선언했거나 이름이 비밀스러운 설정 값은 가린다 (D-E2)
 fn instance_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, instance: &crate::instance::ServerInstance) -> Value {
-    settings_for_hooks(module, Some(instance), &serde_json::to_value(instance).unwrap_or_default())
+    settings_for_hooks(module, &serde_json::to_value(instance).unwrap_or_default())
 }
 
-/// hook에 넘기는 설정 값에서 같은 기준으로 비밀을 가린다
-fn settings_for_hooks(
-    module: Option<&crate::supervisor::module_loader::ModuleMetadata>,
-    instance: Option<&crate::instance::ServerInstance>,
-    settings: &Value,
-) -> Value {
-    crate::audit::redact(module, instance, None, Some(settings)).1.unwrap_or_default()
+/// hook에 넘기는 설정 값에서 같은 기준으로 비밀을 가린다. 키 이름으로만 가린다:
+/// 인스턴스를 넘기면 비밀값과 같은 글자가 이름·경로에서도 지워진다
+fn settings_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, settings: &Value) -> Value {
+    crate::audit::redact(module, None, None, Some(settings)).1.unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -1888,9 +1885,17 @@ mod tests {
         assert!(!text.contains("hunter2"), "{text}");
         assert_eq!(value["module_settings"]["max_players"], 16);
         assert_eq!(value["name"], "srv");
-        let settings = super::settings_for_hooks(None, Some(&inst), &json!({ "rest_password": "hunter2-new", "port": 7777 }));
+        let settings = super::settings_for_hooks(None, &json!({ "rest_password": "hunter2-new", "port": 7777 }));
         assert!(!settings.to_string().contains("hunter2"), "{settings}");
         assert_eq!(settings["port"], 7777);
+        // 비밀값과 같은 글자의 이름·경로는 비밀이 아니다: 값 대신 키 이름으로만 가린다
+        let mut same = crate::instance::ServerInstance::new("palworld", "game");
+        same.working_dir = Some("C:/srv/palworld/data".into());
+        same.rest_password = Some("palworld".into());
+        let value = super::instance_for_hooks(None, &same);
+        assert_eq!(value["name"], "palworld");
+        assert_eq!(value["working_dir"], "C:/srv/palworld/data");
+        assert_ne!(value["rest_password"], "palworld");
     }
 
     #[tokio::test]
