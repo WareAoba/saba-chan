@@ -419,11 +419,19 @@ pub async fn execute_rcon_command(
     // 마지막 경로다 (`rcon_route`). GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다
     let stdin_ok = supervisor.routes_commands_to_stdin(&id).await;
     let rcon = if stdin_ok { None } else { supervisor.rcon_route(&id) };
+    let running = supervisor.tracker.get_pid(&id).is_ok();
     drop(supervisor);
     if stdin_ok {
         return via_stdin(&state, &id, &payload).await;
     }
     if let Some(access) = rcon {
+        if !running {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({ "error": format!("Server '{}' is not running", instance.name), "error_code": "server_not_running" })),
+            )
+                .into_response();
+        }
         return via_rcon(&access, &payload).await;
     }
     (
@@ -786,7 +794,7 @@ mod tests {
             sup.instance_store.add(inst.clone()).unwrap();
             sup.tracker.track(&id, std::process::id()).unwrap();
             // 시작이 하는 준비: 접속 정보를 만들고 모듈 config에 싣는다
-            sup.ensure_rcon_access(&inst);
+            sup.ensure_rcon_access(&inst).unwrap();
             let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
             (state, id, tmp)
         }
@@ -817,6 +825,13 @@ mod tests {
         assert_eq!(reply["data"]["response"], "ran: say hi");
         assert_eq!(seen.lock().unwrap().as_slice(), ["say hi"]);
         assert!(!reply.to_string().contains(&access.password));
+
+        // 꺼진 서버에 직접 부른 /rcon: 접속을 시도하지 않고 409
+        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        let (status, reply) = body(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": "say hi" }))).await.into_response()).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(reply["error_code"], "server_not_running");
+        assert_eq!(seen.lock().unwrap().len(), 1);
 
         // stdin도 받는 모듈: RCON 접속 정보를 만들지 않고, 콘솔이 없으면 예전처럼 409
         let (state, id, _tmp2) = server_for("[\"stdin\", \"rcon\"]", port).await;

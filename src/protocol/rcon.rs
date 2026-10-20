@@ -26,6 +26,8 @@ const MAX_PACKET: usize = 64 * 1024;
 const MAX_REPLY: usize = 1024 * 1024;
 /// 접속·인증·답 전체의 시간 상한
 const TIMEOUT: Duration = Duration::from_secs(5);
+/// 명령 답이 온 뒤 이만큼 더 오지 않으면 답이 끝난 것으로 본다 (끝 표시에 답하지 않는 서버)
+const IDLE: Duration = Duration::from_millis(300);
 
 /// 데몬이 접속할 포트와 비밀번호
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -46,19 +48,23 @@ pub fn load(instance_dir: &Path) -> Option<Access> {
     serde_json::from_str::<Access>(&text).ok().filter(|a| a.port > 0 && !a.password.is_empty())
 }
 
-/// 접속 정보를 돌려준다. 없으면 `default_port`와 새 비밀번호로 만들어 저장한다 (주인만 읽기, 원자적 쓰기)
-pub fn ensure(instance_dir: &Path, default_port: u16) -> anyhow::Result<Access> {
+/// 접속 정보를 돌려준다. 없으면 포트를 골라 새 비밀번호와 함께 저장한다 (주인만 읽기, 원자적 쓰기).
+/// 포트는 `default_port`부터 차례로, `taken`(다른 인스턴스가 쓰는 포트)에 없고 지금 열 수 있는 첫 포트다.
+/// 같은 모듈의 인스턴스가 둘이어도 RCON 포트가 겹치지 않게 한다
+pub fn ensure(instance_dir: &Path, default_port: u16, taken: &[u16]) -> anyhow::Result<Access> {
     if let Some(access) = load(instance_dir) {
         return Ok(access);
     }
-    let access = Access { port: default_port, password: crate::instance::generate_random_password() };
+    let access = Access { port: pick_port(default_port, taken)?, password: crate::instance::generate_random_password() };
     std::fs::create_dir_all(instance_dir)?;
     let path = instance_dir.join(ACCESS_FILE);
     let tmp = instance_dir.join(format!("{}.tmp", ACCESS_FILE));
     {
         use std::io::Write;
+        // 앞선 실행이 남긴 tmp의 권한을 물려받지 않게 지우고 새로 만든다
+        let _ = std::fs::remove_file(&tmp);
         let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
+        options.write(true).create_new(true);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -70,6 +76,14 @@ pub fn ensure(instance_dir: &Path, default_port: u16) -> anyhow::Result<Access> 
     }
     std::fs::rename(&tmp, &path)?;
     Ok(access)
+}
+
+fn pick_port(default_port: u16, taken: &[u16]) -> anyhow::Result<u16> {
+    let free = |p: u16| p > 0 && !taken.contains(&p) && std::net::TcpListener::bind(("127.0.0.1", p)).is_ok();
+    (0..200u16)
+        .filter_map(|i| default_port.checked_add(i))
+        .find(|p| free(*p))
+        .ok_or_else(|| anyhow::anyhow!("no free RCON port from {}", default_port))
 }
 
 /// RCON 실패. 메시지에 비밀번호·서버 답을 넣지 않는다
@@ -125,18 +139,29 @@ async fn session(port: u16, password: &str, command: &str) -> Result<String, Rco
         }
     }
 
-    // 명령 뒤에 빈 RESPONSE_VALUE를 보내면 서버가 명령 답을 다 보낸 뒤 그 id로 답한다: 여러 패킷 답의 끝 표시
+    // 명령 뒤에 빈 RESPONSE_VALUE를 보내면 서버가 명령 답을 다 보낸 뒤 그 id로 답한다: 여러 패킷 답의 끝 표시.
+    // 끝 표시에 답하지 않는 서버도 있어, 첫 답 뒤에는 잠깐(IDLE) 조용하면 끝으로 본다
     write_packet(&mut stream, 2, EXEC, command.as_bytes()).await?;
     write_packet(&mut stream, 3, RESPONSE_VALUE, b"").await?;
     let mut reply = Vec::new();
+    let mut answered = false;
     loop {
-        let (id, _, body) = read_packet(&mut stream).await?;
+        let next = if answered {
+            match tokio::time::timeout(IDLE, read_packet(&mut stream)).await {
+                Ok(packet) => packet,
+                Err(_) => break,
+            }
+        } else {
+            read_packet(&mut stream).await
+        };
+        let (id, _, body) = next?;
         match id {
             2 => {
                 if reply.len() + body.len() > MAX_REPLY {
                     return Err(RconError::Protocol);
                 }
                 reply.extend_from_slice(&body);
+                answered = true;
             }
             3 => break,
             _ => {}
@@ -184,17 +209,30 @@ pub(crate) async fn fake_server(
 ) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    (port, serve(listener, password, source_style))
+    (port, serve(listener, password, source_style, true))
+}
+
+/// 끝 표시(빈 RESPONSE_VALUE)에 답하지 않는 시험용 서버
+#[cfg(test)]
+pub(crate) async fn silent_terminator_server(password: &str) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    (port, serve(listener, password, false, false))
 }
 
 /// `fake_server`를 정해 둔 포트에 띄운다
 #[cfg(test)]
 pub(crate) async fn fake_server_on(port: u16, password: &str) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
-    serve(tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap(), password, false)
+    serve(tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap(), password, false, true)
 }
 
 #[cfg(test)]
-fn serve(listener: tokio::net::TcpListener, password: &str, source_style: bool) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+fn serve(
+    listener: tokio::net::TcpListener,
+    password: &str,
+    source_style: bool,
+    echo_terminator: bool,
+) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let (password, log) = (password.to_string(), seen.clone());
     tokio::spawn(async move {
@@ -223,9 +261,10 @@ fn serve(listener: tokio::net::TcpListener, password: &str, source_style: bool) 
                                 let _ = write_packet(&mut stream, id, RESPONSE_VALUE, b).await;
                             }
                         }
-                        _ => {
+                        _ if echo_terminator => {
                             let _ = write_packet(&mut stream, id, RESPONSE_VALUE, b"").await;
                         }
+                        _ => {}
                     }
                 }
             });
@@ -248,6 +287,16 @@ mod tests {
         }
     }
 
+    /// 끝 표시에 답하지 않는 서버: 시간 초과(다시 보내 명령이 두 번 도는 일) 없이 받은 답을 돌려준다
+    #[tokio::test]
+    async fn a_server_that_ignores_the_end_marker_still_answers_once() {
+        let (port, seen) = silent_terminator_server("pw-123456").await;
+        let started = std::time::Instant::now();
+        assert_eq!(exec(port, "pw-123456", "list").await.unwrap(), "ran: list");
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        assert_eq!(seen.lock().unwrap().len(), 1);
+    }
+
     #[tokio::test]
     async fn a_wrong_password_or_a_closed_port_fails_without_naming_the_password() {
         let (port, seen) = fake_server("right-password", false).await;
@@ -265,10 +314,20 @@ mod tests {
     fn the_access_file_is_made_once_and_kept() {
         let dir = tempfile::tempdir().unwrap();
         assert!(load(dir.path()).is_none());
-        let first = ensure(dir.path(), 27015).unwrap();
-        assert_eq!(first.port, 27015);
+        let default = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let first = ensure(dir.path(), default, &[]).unwrap();
+        assert_eq!(first.port, default);
         assert_eq!(first.password.len(), 16);
-        assert_eq!(ensure(dir.path(), 1).unwrap(), first, "an existing file wins over the module default");
+        assert_eq!(ensure(dir.path(), 1, &[]).unwrap(), first, "an existing file wins over the module default");
+
+        // 같은 모듈의 다른 인스턴스: 이미 쓰는 포트와 지금 열려 있는 포트는 건너뛴다
+        let other = tempfile::tempdir().unwrap();
+        let busy = std::net::TcpListener::bind(("127.0.0.1", default.wrapping_add(1))).ok();
+        let second = ensure(other.path(), default, &[default]).unwrap();
+        assert_ne!(second.port, default);
+        if busy.is_some() {
+            assert_ne!(second.port, default + 1, "a port something already listens on is skipped");
+        }
         assert!(!format!("{first:?}").contains(&first.password));
         #[cfg(unix)]
         {

@@ -968,7 +968,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            s.ensure_rcon_access(&instance);
+            s.ensure_rcon_access(&instance)?;
             Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Non-managed → managed=false로 명시 (모듈이 실행 방식을 구분)
             cfg.insert("managed".to_string(), json!(false));
@@ -1753,7 +1753,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            s.ensure_rcon_access(&instance);
+            s.ensure_rcon_access(&instance)?;
             Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Managed mode indicator → 모듈이 실행 방식을 구분
             cfg.insert("managed".to_string(), json!(true));
@@ -1974,13 +1974,31 @@ impl Supervisor {
     }
 
     /// RCON만 받는 모듈의 인스턴스면 접속 정보를 만들어 둔다 (시작 전). 그 밖의 모듈은 아무것도 하지 않는다
-    pub(crate) fn ensure_rcon_access(&self, instance: &crate::instance::ServerInstance) {
+    /// 모듈이 RCON을 더 쓰지 않으면(업데이트로 stdin·rest가 생김) 남은 접속 정보를 지운다.
+    /// 준비하지 못하면 시작을 멈춘다: 비밀번호 없이 띄우면 명령을 보낼 길이 없다
+    pub(crate) fn ensure_rcon_access(&self, instance: &crate::instance::ServerInstance) -> Result<()> {
+        let dir = self.instance_store.instance_dir(&instance.id);
         let Some(port) = self.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.rcon_only_port()) else {
-            return;
+            let _ = std::fs::remove_file(dir.join(crate::protocol::rcon::ACCESS_FILE));
+            return Ok(());
         };
-        if let Err(e) = crate::protocol::rcon::ensure(&self.instance_store.instance_dir(&instance.id), port) {
-            tracing::warn!("Could not prepare RCON access for instance '{}': {}", instance.name, e);
-        }
+        // 다른 인스턴스의 RCON·게임·REST 포트는 고르지 않는다
+        let taken: Vec<u16> = self
+            .instance_store
+            .list()
+            .iter()
+            .filter(|other| other.id != instance.id)
+            .flat_map(|other| {
+                let rcon = crate::protocol::rcon::load(&self.instance_store.instance_dir(&other.id)).map(|a| a.port);
+                [rcon, other.port, other.rest_port]
+            })
+            .flatten()
+            .chain(instance.port)
+            .chain(instance.rest_port)
+            .collect();
+        crate::protocol::rcon::ensure(&dir, port, &taken)
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!("Could not prepare RCON access for '{}': {}", instance.name, e))
     }
 
     /// 명령을 RCON으로 보낼 인스턴스면 접속 정보 (모듈이 RCON만 받고, 시작할 때 접속 정보를 만들어 둔 경우)
