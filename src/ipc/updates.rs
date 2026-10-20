@@ -502,15 +502,8 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             .collect()
     };
 
-    // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
-    targets.sort_by_key(|comp| match comp {
-        Component::Updater => 0u8,
-        Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
-        Component::CoreDaemon => 3,
-        Component::Gui => 4,
-        Component::Cli => 4,
-    });
+    // 업데이터와 같은 적용 순서: Updater → CoreDaemon → 모듈/익스텐션/Locales → 인터페이스
+    targets.sort_by_key(UpdateManager::component_apply_priority);
 
     let mut applied = Vec::new();
     let mut applied_keys = Vec::new();

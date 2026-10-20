@@ -187,6 +187,9 @@ pub struct ComponentVersion {
     /// 받은 파일의 sha256 (manifest 값). 적용 직전에 다시 대조한다 (C13)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staged_sha256: Option<String>,
+    /// manifest의 `requires` (예: `{"saba-core": ">=0.1.9"}`). pending.json에 실어 업데이터 `--apply`도 적용 전에 본다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires: Option<HashMap<String, String>>,
     /// 해당 컴포넌트가 설치되어 있는지 여부 (false면 미설치 상태)
     pub installed: bool,
 }
@@ -223,6 +226,34 @@ pub struct DependencyIssue {
     pub installed_version: Option<String>,
     /// 사람이 읽을 수 있는 메시지
     pub message: String,
+}
+
+/// `requires`(`{"saba-core": ">=0.1.9"}`) 중 설치된 버전이 못 미치는 것. 업데이터 적용과 데몬의 카탈로그 설치가 같이 쓴다
+pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, installed: &HashMap<String, String>) -> Vec<DependencyIssue> {
+    requires
+        .iter()
+        .filter_map(|(dep_key, min_version_str)| {
+            let dep_version = installed.get(dep_key);
+            let satisfied = dep_version.is_some_and(|v| {
+                // ">=" 접두사 제거 후 SemVer 비교
+                let min_clean = min_version_str.trim_start_matches(">=").trim();
+                match (SemVer::parse(v), SemVer::parse(min_clean)) {
+                    (Some(installed_v), Some(required_v)) => installed_v >= required_v,
+                    _ => false,
+                }
+            });
+            (!satisfied).then(|| DependencyIssue {
+                required_component: dep_key.clone(),
+                required_version: min_version_str.clone(),
+                installed_version: dep_version.cloned(),
+                message: format!(
+                    "{} requires {} {} but {} is installed",
+                    component_key, dep_key, min_version_str,
+                    dep_version.map_or("not installed".to_string(), |v| v.clone())
+                ),
+            })
+        })
+        .collect()
 }
 
 // ══════════════════════════════════════════════════════
@@ -621,6 +652,7 @@ impl UpdateManager {
                     downloaded: false,
                     downloaded_path: None,
                     staged_sha256: None,
+                    requires: info.requires.clone(),
                     installed,
                 });
                 Self::keep_staged(&previous, components.last_mut().expect("just pushed"));
@@ -1015,6 +1047,9 @@ impl UpdateManager {
         keys: &[String],
         mut on_progress: impl FnMut(usize, &str, &[String]),
     ) -> (Vec<String>, Vec<String>) {
+        // 옛 데몬은 모듈을 코어보다 앞에 적는다: 적용 순서로 다시 세운다 (같은 순위는 받은 순서대로)
+        let mut keys = keys.to_vec();
+        keys.sort_by_key(|k| Self::component_apply_priority(&Component::from_manifest_key(k)));
         let mut applied = Vec::new();
         let mut failed = Vec::new();
         for (i, key) in keys.iter().enumerate() {
@@ -1096,15 +1131,15 @@ impl UpdateManager {
     ///
     /// 낮은 값일수록 먼저 적용됩니다:
     /// - 0: Updater (업데이트 방식 변경 대응 — 디스크의 바이너리를 먼저 교체)
-    /// - 1: 모듈, 익스텐션, Locales, Installer (프로세스 중단 불필요)
-    /// - 3: CoreDaemon (데몬 프로세스 종료 후 교체)
+    /// - 1: CoreDaemon (데몬 프로세스 종료 후 교체). 모듈·익스텐션이 새 코어를 `requires`할 수 있어 먼저
+    /// - 2: 모듈, 익스텐션, Locales, Installer (프로세스 중단 불필요)
     /// - 4: 사용하지 않는 인터페이스 (GUI 사용 중이면 CLI, 반대도 마찬가지)
     /// - 5: 현재 사용 중인 인터페이스 (재시작 필요)
-    fn component_apply_priority(component: &Component) -> u8 {
+    pub fn component_apply_priority(component: &Component) -> u8 {
         match component {
             Component::Updater => 0,
-            Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
-            Component::CoreDaemon => 3,
+            Component::CoreDaemon => 1,
+            Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 2,
             // GUI/CLI는 현재 실행 중인 인터페이스를 마지막에 적용
             Component::Gui => {
                 if ProcessChecker::is_gui_running() { 5 } else { 4 }
@@ -1183,39 +1218,12 @@ impl UpdateManager {
     ///     → saba-core이 0.3.0 미만이면 DependencyIssue 반환
     pub fn check_dependencies(&self, component_key: &str) -> DependencyCheck {
         let installed = Self::load_installed_manifest();
-        let mut issues = Vec::new();
-
-        // 캐시된 서버 매니페스트에서 requires 정보 조회
-        if let Some(ref manifest) = self.cached_manifest {
-            if let Some(info) = manifest.components.get(component_key) {
-                if let Some(ref requires) = info.requires {
-                    for (dep_key, min_version_str) in requires {
-                        let dep_version = installed.get(dep_key);
-                        let satisfied = dep_version.is_some_and(|v| {
-                            // ">=" 접두사 제거 후 SemVer 비교
-                            let min_clean = min_version_str.trim_start_matches(">=").trim();
-                            match (SemVer::parse(v), SemVer::parse(min_clean)) {
-                                (Some(installed_v), Some(required_v)) => installed_v >= required_v,
-                                _ => false,
-                            }
-                        });
-
-                        if !satisfied {
-                            issues.push(DependencyIssue {
-                                required_component: dep_key.clone(),
-                                required_version: min_version_str.clone(),
-                                installed_version: dep_version.cloned(),
-                                message: format!(
-                                    "{} requires {} {} but {} is installed",
-                                    component_key, dep_key, min_version_str,
-                                    dep_version.map_or("not installed".to_string(), |v| v.clone())
-                                ),
-                            });
-                        }
-                    }
-                }
-            }
-        }
+        // 받아 둔 상태의 requires (pending.json에서 읽은 업데이터 `--apply`도), 없으면 캐시된 서버 매니페스트
+        let requires = self.status.components.iter()
+            .find(|c| c.component.manifest_key() == component_key)
+            .and_then(|c| c.requires.as_ref())
+            .or_else(|| self.cached_manifest.as_ref()?.components.get(component_key)?.requires.as_ref());
+        let issues = requires.map(|r| unmet_requires(component_key, r, &installed)).unwrap_or_default();
 
         DependencyCheck {
             component: component_key.to_string(),
@@ -1245,6 +1253,11 @@ impl UpdateManager {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Component {:?} is not ready for apply", component))?;
 
+        // 같은 묶음의 코어는 먼저 적용되어(`component_apply_priority`) 설치 기록에 새 버전이 적혀 있다
+        let deps = self.check_dependencies(&component.manifest_key());
+        if !deps.satisfied {
+            anyhow::bail!("{}", deps.issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
+        }
         let staged_path = Self::verified_staged_path(&comp)?;
         let files = self.apply_one(component, staged_path).await?;
         Self::record_files(component, &files);

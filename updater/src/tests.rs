@@ -570,9 +570,9 @@ fn test_module_extension_no_restart_in_apply_result() {
 
 #[test]
 fn test_component_apply_priority_categories() {
-    // 모듈/익스텐션/Locales는 프로세스 중단 불필요 (우선순위 1)
+    // 모듈/익스텐션/Locales는 프로세스 중단 불필요 (우선순위 2)
     // GUI/CLI는 재시작 필요 (우선순위 4~5)
-    // CoreDaemon은 데몬 재시작 필요 (우선순위 3)
+    // CoreDaemon은 데몬 재시작 필요 (우선순위 1)
     let module = Component::Module("minecraft".to_string());
     let extension = Component::Extension("docker".to_string());
     let locales = Component::Locales;
@@ -598,11 +598,11 @@ fn test_component_apply_priority_categories() {
         "Updater가 모듈보다 먼저 적용"
     );
 
-    // 모듈/익스텐션은 CoreDaemon보다 먼저
+    // 모듈은 새 코어를 요구할 수 있다(`requires`): CoreDaemon이 모듈/익스텐션보다 먼저
     assert!(
-        UpdateManager::component_apply_priority_for_test(&module) <
-        UpdateManager::component_apply_priority_for_test(&core_daemon),
-        "모듈은 CoreDaemon보다 먼저 적용"
+        UpdateManager::component_apply_priority_for_test(&core_daemon) <
+        UpdateManager::component_apply_priority_for_test(&module),
+        "CoreDaemon은 모듈보다 먼저 적용"
     );
 
     println!("✓ 컴포넌트 적용 우선순위 카테고리 테스트 통과");
@@ -727,6 +727,7 @@ fn staged_file_is_rechecked_before_apply() {
         downloaded: true,
         downloaded_path: Some(file.to_string_lossy().to_string()),
         staged_sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+        requires: None,
         installed: true,
     };
     assert!(UpdateManager::verified_staged_path(&comp).is_ok());
@@ -819,6 +820,7 @@ fn downloaded_release_notes_reach_the_completion_marker() {
         downloaded: true,
         downloaded_path: Some(file.to_string_lossy().to_string()),
         staged_sha256: None,
+        requires: None,
         installed: true,
     });
     manager.latest_release = Some(crate::relay::LatestRelease {
@@ -853,6 +855,7 @@ fn recheck_keeps_downloads_of_the_same_version() {
         downloaded: true,
         downloaded_path: Some(path.to_string_lossy().to_string()),
         staged_sha256: Some("ab".into()),
+        requires: None,
         installed: true,
     };
     let fresh = |latest: &str| crate::ComponentVersion { downloaded: false, downloaded_path: None, staged_sha256: None, ..staged(latest, &file) };
@@ -986,6 +989,7 @@ fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersi
         downloaded: true,
         downloaded_path: Some(path.to_string_lossy().to_string()),
         staged_sha256: None,
+        requires: None,
         installed: true,
     }
 }
@@ -1363,6 +1367,83 @@ async fn target_keys_stop_at_the_first_failure() {
     assert!(!manager.resolve_ext_dir(&name).exists());
 }
 
+// 옛 데몬은 모듈을 코어보다 앞에 적어 넘긴다: 업데이터가 적용 순서로 다시 줄 세워 코어부터 적용한다
+#[tokio::test]
+async fn target_keys_apply_the_core_before_modules() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("order-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![
+        staged(ext.clone(), &extension_zip(tmp.path())),
+        staged(Component::CoreDaemon, &tmp.path().join("missing.zip")),
+    ];
+    let keys = vec![ext.manifest_key(), "saba-core".to_string()];
+
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert!(failed[0].starts_with("saba-core:"), "{:?}", failed);
+    assert!(failed[1].contains("skipped"), "{:?}", failed);
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// 새 코어를 요구하는 모듈·익스텐션은 코어가 그 버전이 아니면 적용하지 않는다 (0.1.8은 requires를 보지 않았다)
+#[tokio::test]
+async fn an_update_that_needs_a_newer_core_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("needs-core-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![crate::ComponentVersion {
+        requires: Some([("saba-core".to_string(), ">=99.0.0".to_string())].into_iter().collect()),
+        ..staged(ext.clone(), &extension_zip(tmp.path()))
+    }];
+
+    let (applied, failed) = manager.apply_target_keys(&[ext.manifest_key()], |_, _, _| {}).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert!(failed[0].contains("saba-core >=99.0.0"), "{:?}", failed);
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// 업데이터 `--apply`는 네트워크 없이 pending.json만 읽는다: requires도 거기에 실려야 한다
+#[test]
+fn pending_manifest_keeps_requires() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let file = tmp.path().join("m.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let requires: std::collections::HashMap<String, String> = [("saba-core".to_string(), ">=0.1.9".to_string())].into_iter().collect();
+    manager.status.components = vec![crate::ComponentVersion { requires: Some(requires.clone()), ..staged(Component::Module("m".into()), &file) }];
+    manager.save_pending_manifest().unwrap();
+
+    let mut loaded = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    loaded.staging_dir = manager.staging_dir.clone();
+    loaded.load_pending_manifest().unwrap();
+    assert_eq!(loaded.status.components[0].requires.as_ref(), Some(&requires));
+}
+
+#[test]
+fn unmet_requires_compares_installed_versions() {
+    let requires: std::collections::HashMap<String, String> =
+        [("saba-core".to_string(), ">=0.1.9".to_string()), ("gui".to_string(), ">=0.1.0".to_string())].into_iter().collect();
+    let installed = |core: &str| -> std::collections::HashMap<String, String> {
+        [("saba-core".to_string(), core.to_string())].into_iter().collect()
+    };
+    let unmet = crate::unmet_requires("module-x", &requires, &installed("0.1.8"));
+    let mut names: Vec<_> = unmet.iter().map(|i| i.required_component.as_str()).collect();
+    names.sort();
+    assert_eq!(names, vec!["gui", "saba-core"]);
+    let unmet = crate::unmet_requires("module-x", &requires, &installed("0.1.9"));
+    assert_eq!(unmet.iter().map(|i| i.required_component.as_str()).collect::<Vec<_>>(), vec!["gui"]);
+}
+
 // 목록 없는 적용도 키별로 적용·건너뜀을 남기도록, 받아 둔 것을 적용 순서대로 키 목록으로 준다
 #[test]
 fn pending_keys_come_in_apply_order() {
@@ -1374,7 +1455,7 @@ fn pending_keys_come_in_apply_order() {
         staged(ext.clone(), &tmp.path().join("ext.zip")),
     ];
 
-    assert_eq!(manager.pending_keys_in_apply_order(), vec![ext.manifest_key(), "saba-core".to_string()]);
+    assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), ext.manifest_key()]);
 }
 
 // U-9: 목록 없는 적용이 실패해도 그 전에 적용한 것을 돌려준다 (업데이터가 완료 마커에 싣고 pending을 지운다)
