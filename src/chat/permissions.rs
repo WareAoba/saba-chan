@@ -26,6 +26,9 @@ pub fn requirable(level: i64) -> bool {
 
 pub const PRESETS: [&str; 3] = ["loose", "default", "strict"];
 
+/// 액션(`server.<명령>`)이 따로 있는 내장 명령
+const BUILTIN_COMMANDS: [&str; 4] = ["start", "stop", "restart", "status"];
+
 /// 프리셋이 risk(safe/caution/danger)에 요구하는 레벨. 모르는 risk는 caution
 pub fn preset_level(preset: &str, risk: &str) -> i64 {
     let (safe, caution, danger) = match preset {
@@ -172,10 +175,13 @@ impl NodePermissions {
         self.command_levels.get(key).copied()
     }
 
-    /// 이 명령의 요구 레벨
+    /// 이 명령의 요구 레벨. 내장 명령은 `<instance>/<명령>`이 없으면 그 액션 키(`<instance>/server.<명령>`)도 본다:
+    /// 액션 경로와 같은 덮어쓰기를 따른다 (D-A2)
     pub fn required(&self, instance_id: &str, command: &str, risk: &str) -> i64 {
+        let action_key = || BUILTIN_COMMANDS.contains(&command).then(|| format!("{}/server.{}", instance_id, command));
         self.command_levels
             .get(&format!("{}/{}", instance_id, command))
+            .or_else(|| action_key().and_then(|k| self.command_levels.get(&k)))
             .copied()
             .unwrap_or_else(|| preset_level(&self.preset, risk))
     }
@@ -392,6 +398,16 @@ mod tests {
         let mut low = who("z");
         low.via_chatbot = true;
         assert_eq!(p.effective_level(&low), CHATBOT);
+    }
+
+    // D-A2: 내장 명령은 액션 경로처럼 `<instance>/server.<명령>` 덮어쓰기도 본다. `<instance>/<명령>`이 있으면 그쪽이 먼저다
+    #[test]
+    fn built_in_commands_also_take_the_level_set_for_their_actions() {
+        let p = NodePermissions::from_node(Some(&json!({ "preset": "loose", "defaultLevel": 2, "commandLevels": { "i/server.stop": 3, "i/server.start": 3, "i/start": 1 } })));
+        assert_eq!(p.check(&who("x"), "i", "stop", "caution"), Err(Denied { need: OWNER, level: ADMIN, via: None }));
+        assert!(p.check(&who("x"), "i", "start", "caution").is_ok(), "the command's own key wins");
+        assert!(p.check(&who("x"), "j", "stop", "caution").is_ok(), "only that instance");
+        assert_eq!(p.required("i", "kick", "caution"), preset_level("loose", "caution"), "module commands have no action key");
     }
 
     #[test]
