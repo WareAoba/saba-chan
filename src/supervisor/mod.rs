@@ -1200,8 +1200,11 @@ impl Supervisor {
                     if let Some(port) = instance.rest_port {
                         config_obj.insert("rest_port".to_string(), json!(port));
                     }
-                    if let Err(e) = crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).run().await {
-                        tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e);
+                    match crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).run().await {
+                        // 저장 후 종료를 요청할 길이 없다: 기다렸다 강제 종료하지 않고 사용자가 고르게 돌려준다 (MK10)
+                        Ok(result) if is_graceful_stop_unavailable(&result) => return Ok(graceful_stop_unavailable(server_name, &result)),
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e),
                     }
                 }
 
@@ -1311,6 +1314,9 @@ impl Supervisor {
             .unwrap_or("unknown")
             .to_string();
 
+        if !force && is_graceful_stop_unavailable(&result) {
+            return Ok(graceful_stop_unavailable(server_name, &result));
+        }
         if plugin_success {
             tracing::info!("Server '{}' stopped successfully: {}", server_name, plugin_message);
             // auto-detect 쿨다운 등록
@@ -2962,6 +2968,22 @@ impl Supervisor {
             .map(|mut events| std::mem::take(&mut *events))
             .unwrap_or_default()
     }
+}
+
+/// 모듈 `stop()`이 저장 후 종료를 요청할 길이 없다고 답했는가 (콘솔·REST가 없는 서버. 모듈은 이때 서버를 끝내지 않는다)
+fn is_graceful_stop_unavailable(result: &Value) -> bool {
+    result.get("success").and_then(Value::as_bool) != Some(true) && result.get("error_code").and_then(Value::as_str) == Some("graceful_stop_unavailable")
+}
+
+/// 정지하지 않았다는 응답. 강제 종료(저장 없음)는 사용자가 `force`로 다시 요청한다
+fn graceful_stop_unavailable(server_name: &str, result: &Value) -> Value {
+    tracing::warn!("Server '{}' has no way to save and exit; waiting for a force stop", server_name);
+    json!({
+        "success": false,
+        "server": server_name,
+        "error_code": "graceful_stop_unavailable",
+        "error": result.get("message").or_else(|| result.get("error")).and_then(Value::as_str).unwrap_or("graceful stop unavailable"),
+    })
 }
 
 /// 인스턴스 폴더 바로 아래 이름이 데몬 항목을 가리킬 수 있는가. Windows는 대소문자를 가리지 않고 끝의 점·공백을

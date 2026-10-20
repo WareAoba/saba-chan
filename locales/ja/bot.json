@@ -44,6 +44,7 @@
     "start_complete": "✅ **{{name}}** 起動リクエストが完了しました!",
     "stop_request": "⏳ **{{name}}** サーバーを停止しています...",
     "stop_complete": "✅ **{{name}}** 停止リクエストが完了しました!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** は保存して終了する手段（コンソール・REST）がないため停止しませんでした。保存せずに終了するには、このPCのsaba-chanで強制停止を選んでください。",
     "status_check": "📊 **{{name}}** ステータス: {{status}} {{pid_info}}",
     "not_found": "❌ モジュール \"{{alias}}\" のサーバーが見つかりません ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
