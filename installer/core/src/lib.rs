@@ -67,9 +67,13 @@ pub struct ModuleInfo {
     pub required_extensions: Vec<String>,
 }
 
-/// 받은 zip을 두는 임시 폴더 (프로세스마다 따로)
-fn work_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("saba-chan-installer-{}", std::process::id()))
+/// 설치가 어느 경로로 끝나든 임시 폴더를 지운다 (실패하고 다시 시도하면 새 프로세스는 다른 폴더를 쓴다)
+struct RemoveOnDrop(PathBuf);
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// 설치 설정 (스냅샷)
@@ -213,8 +217,8 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     let total = components.len().max(1);
     let mut installed = Vec::new();
     let mut installed_versions = UpdateManager::load_installed_manifest();
-    // 설치기 창과 CLI가 함께 돌아도 서로의 받는 파일을 지우지 않게 프로세스마다 따로 쓴다
-    let temp_dir = work_dir();
+    let temp_dir = release::work_dir();
+    let _cleanup = RemoveOnDrop(temp_dir.clone());
     let _ = std::fs::create_dir_all(&temp_dir);
 
     for (i, (key, info)) in components.iter().enumerate() {
@@ -405,7 +409,6 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     hooks.progress(&final_progress);
 
     // 임시 디렉토리 정리
-    let _ = std::fs::remove_dir_all(work_dir());
     final_progress
 }
 

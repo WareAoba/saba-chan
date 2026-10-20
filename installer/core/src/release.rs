@@ -98,9 +98,17 @@ pub fn modules(manifest: &ReleaseManifest) -> Vec<crate::ModuleInfo> {
         .collect()
 }
 
+/// 받은 zip을 두는 임시 폴더. 설치기 창과 CLI가 함께 돌아도 서로의 파일을 지우지 않게 프로세스마다 따로 쓴다
+pub(crate) fn work_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("{}{}", WORK_DIR_PREFIX, std::process::id()))
+}
+
+/// `work_dir`의 이름 앞부분 (제거기가 남은 폴더를 찾는다)
+pub(crate) const WORK_DIR_PREFIX: &str = "saba-chan-installer-";
+
 /// 모듈·익스텐션 하나를 받아(SHA-256 검증) `target`에 새로 푼다
 pub async fn install_addon(key: &str, info: &ManifestComponent, target: &Path) -> Result<(), String> {
-    let temp_dir = std::env::temp_dir().join("saba-chan-installer");
+    let temp_dir = work_dir();
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     let zip = temp_dir.join(&info.filename);
     download(info, &zip, |_, _| {}).await?;

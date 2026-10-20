@@ -1167,6 +1167,22 @@ fn remove_temp_files() {
             let _ = remove_dir_robust(&dir);
         }
     }
+    // 설치가 도중에 끊겨 남은 프로세스별 작업 폴더 (`saba-chan-installer-<pid>`)
+    for dir in std::fs::read_dir(&temp).into_iter().flatten().flatten().map(|e| e.path()) {
+        if is_installer_work_dir(&dir) {
+            tracing::info!("[Uninstall] Removing temp: {:?}", dir);
+            let _ = remove_dir_robust(&dir);
+        }
+    }
+}
+
+fn is_installer_work_dir(path: &Path) -> bool {
+    path.is_dir()
+        && path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_prefix(crate::release::WORK_DIR_PREFIX))
+            .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn remove_modules_dir() {
@@ -1322,6 +1338,21 @@ mod tests {
 
     // M15: 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
     // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다
+    #[test]
+    fn only_numbered_installer_work_dirs_are_cleaned() {
+        let tmp = tempfile::tempdir().unwrap();
+        let work = tmp.path().join("saba-chan-installer-1234");
+        std::fs::create_dir_all(&work).unwrap();
+        let other = tmp.path().join("saba-chan-installer-backup");
+        std::fs::create_dir_all(&other).unwrap();
+        let log = tmp.path().join("saba-chan-installer-99");
+        std::fs::write(&log, b"").unwrap();
+
+        assert!(is_installer_work_dir(&work));
+        assert!(!is_installer_work_dir(&other));
+        assert!(!is_installer_work_dir(&log), "a file is not a work dir");
+    }
+
     #[tokio::test]
     async fn stopped_processes_are_waited_for_until_they_are_gone() {
         let mut calls = 0;
