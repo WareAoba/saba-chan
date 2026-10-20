@@ -207,7 +207,7 @@
       "module_busy": "Этот модуль уже устанавливается или удаляется. Повторите, когда это закончится.",
       "invalid_command": "Укажите ключ команды в виде `<server>/<command>`. Ключ без сервера должен быть id глобального действия.",
       "no_command_path": "Этот сервер запущен не через Saba-chan, поэтому у него нет консоли для команд. Перезапустите его через Saba-chan: saba-chan-cli restart <server>",
-      "not_supported": "Этот модуль не поддерживает эту функцию. Неподдерживаемые команды: saba-chan-cli module info"
+      "not_supported": "Неподдерживаемые команды: saba-chan-cli module info"
     },
     "not_a_bool": "«{{value}}» — не да/нет (используйте true или false).",
     "not_a_number": "«{{value}}» — не число.",

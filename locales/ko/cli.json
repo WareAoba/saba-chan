@@ -262,7 +262,7 @@
         "unknown_command": "이 서버에 없는 명령이에요",
         "too_many": "낱말은 10개까지예요"
       },
-      "not_supported": "이 모듈은 이 기능을 지원하지 않아요. 지원하지 않는 명령은 saba-chan-cli module info에서 볼 수 있어요."
+      "not_supported": "지원하지 않는 명령은 saba-chan-cli module info에서 볼 수 있어요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",

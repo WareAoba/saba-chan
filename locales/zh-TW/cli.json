@@ -207,7 +207,7 @@
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
-      "not_supported": "此模組不支援此功能。可用 saba-chan-cli module info 查看不支援的指令。"
+      "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",

@@ -276,7 +276,6 @@ async fn versions(
     Ok(())
 }
 
-/// 원격 목록: `{id: {...}}` 맵이든 배열이든 (id, 항목)으로
 /// 모듈이 구현하지 않아도 되는 lifecycle 함수와 그 함수를 쓰는 CLI 명령 (데몬 `plugin::OPTIONAL_MODULE_FUNCTIONS`, MK1).
 /// `import_settings`는 CLI 명령이 없다
 const OPTIONAL: &[(&str, &str)] = &[
@@ -318,6 +317,7 @@ pub fn ensure_supported(module: &Value, function: &str) -> Result<()> {
     .into())
 }
 
+/// 원격 목록: `{id: {...}}` 맵이든 배열이든 (id, 항목)으로
 pub fn entries(v: Option<&Value>) -> Vec<(String, Value)> {
     match v {
         Some(Value::Object(map)) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),

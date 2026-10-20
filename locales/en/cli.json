@@ -262,7 +262,7 @@
         "unknown_command": "this server has no such command",
         "too_many": "at most 10 words"
       },
-      "not_supported": "This module does not support this feature. See unsupported commands with: saba-chan-cli module info"
+      "not_supported": "See unsupported commands with: saba-chan-cli module info"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",

@@ -262,7 +262,7 @@
         "unknown_command": "该服务器没有这个命令",
         "too_many": "最多 10 个称呼"
       },
-      "not_supported": "此模块不支持此功能。可用 saba-chan-cli module info 查看不支持的命令。"
+      "not_supported": "可用 saba-chan-cli module info 查看不支持的命令。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",

@@ -262,7 +262,7 @@
         "unknown_command": "このサーバーにないコマンドです",
         "too_many": "語は 10 個までです"
       },
-      "not_supported": "このモジュールはこの機能に対応していません。未対応のコマンドは saba-chan-cli module info で確認できます。"
+      "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
