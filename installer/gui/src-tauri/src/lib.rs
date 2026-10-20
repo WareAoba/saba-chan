@@ -1228,10 +1228,18 @@ pub fn run() {
         .manage(installer_state)
         .manage(app_mode)
         .setup(move |app| {
-            // 작업 표시줄·제목 표시줄 아이콘을 창 DPI에 맞는 크기로
+            // 작업 표시줄·제목 표시줄 아이콘을 창 DPI에 맞는 크기로. 배율이 바뀌면 다시 건다
             #[cfg(windows)]
-            if let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) {
-                saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+            if let Some(win) = app.get_webview_window("main") {
+                if let Ok(hwnd) = win.hwnd() {
+                    saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+                }
+                let w = win.clone();
+                win.on_window_event(move |event| {
+                    if let (tauri::WindowEvent::ScaleFactorChanged { .. }, Ok(hwnd)) = (event, w.hwnd()) {
+                        saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+                    }
+                });
             }
             if is_uninstall {
                 if let Some(win) = app.get_webview_window("main") {

@@ -66,11 +66,23 @@ fn open_external(app: &AppHandle, url: &str) {
     }
 }
 
-/// 제목 표시줄·작업 표시줄 아이콘을 exe 아이콘에서 창 DPI에 맞는 크기로 건다
+/// 제목 표시줄·작업 표시줄 아이콘을 exe 아이콘에서 창 DPI에 맞는 크기로 건다.
+/// 배율이 다른 모니터로 옮기거나 배율을 바꾸면 그 DPI에 맞게 다시 건다
 fn apply_icon(_win: &WebviewWindow) {
     #[cfg(windows)]
-    if let Ok(hwnd) = _win.hwnd() {
-        saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+    {
+        fn set(win: &WebviewWindow) {
+            if let Ok(hwnd) = win.hwnd() {
+                saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+            }
+        }
+        set(_win);
+        let win = _win.clone();
+        _win.on_window_event(move |event| {
+            if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
+                set(&win);
+            }
+        });
     }
 }
 
