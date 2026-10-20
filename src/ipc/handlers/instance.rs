@@ -2306,7 +2306,8 @@ mod tests {
         assert_eq!(renamed.status, 409, "{}", renamed.body);
         assert_eq!(renamed.body["error_code"], "instance_busy");
 
-        for _ in 0..200 {
+        // 처음 부르는 선택 함수 앞에는 함수 목록을 묻는 실행이 하나 더 있다: 느린 Windows CI에서도 넉넉히 기다린다
+        for _ in 0..600 {
             if state.provision_tracker.get("a").is_some_and(|p| p.done) {
                 break;
             }
