@@ -770,8 +770,12 @@ async fn start_instance(
             .into_response();
     };
 
-    // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다
-    let since = state.supervisor.read().await.run_generation_of(&instance.id);
+    // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다.
+    // 재시작처럼 부른 쪽이 이미 확인한 세대가 있으면 그 값을 쓴다 (`start_when_free`)
+    let since = match crate::supervisor::START_SINCE.try_with(|g| *g) {
+        Ok(checked) => checked,
+        Err(_) => state.supervisor.read().await.run_generation_of(&instance.id),
+    };
     crate::supervisor::START_SINCE.scope(since, start_checked(state, instance, managed)).await
 }
 
@@ -949,7 +953,7 @@ async fn restart_instance(
             let supervisor = state.supervisor.read().await;
             supervisor.instance_store.get(&inst_id).is_some() && supervisor.run_generation_of(&inst_id) == generation
         };
-        super::backup::start_when_free(&state, &inst_id, wanted).await
+        super::backup::start_when_free(&state, &inst_id, generation, wanted).await
     })
     .await;
     let start = match start {
@@ -979,7 +983,7 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
     tracing::info!("Auto restarting '{}' after a crash", instance_id);
     // 백업이 잠금을 쥐고 있으면 끝나기를 기다린다 (기다리는 동안 사용자가 정지·시작하면 그만둔다)
     let wanted = || async { state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await };
-    let Some(resp) = super::backup::start_when_free(&state, &instance_id, wanted).await else {
+    let Some(resp) = super::backup::start_when_free(&state, &instance_id, generation, wanted).await else {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
         state.supervisor.read().await.record_restart_outcome(&instance_id, generation, false);
         return;
@@ -1303,6 +1307,46 @@ mod tests {
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-during-check").is_err(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-check").await.is_none(), "no server was left running");
+    }
+
+    /// 재시작·자동 재시작은 세대를 확인한 뒤 시작한다. 확인과 시작 사이에 들어온 정지도 시작을 취소해야 한다:
+    /// 시작은 확인한 세대를 기준으로 삼는다(새로 읽으면 그 정지가 기준에 들어가 버린다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_between_the_restart_check_and_its_start_keeps_the_server_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-after-check".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let checked = state.supervisor.read().await.run_generation_of("stop-after-check");
+        let stopped = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-after-check", "game", false).await.unwrap();
+        assert_ne!(stopped["success"], false, "{stopped}");
+        let started = super::super::backup::start_when_free(&state, "stop-after-check", checked, || async { true }).await.unwrap().body;
+
+        assert_eq!(started["error_code"], "start_cancelled", "{started}");
+        let s = state.supervisor.read().await;
+        assert!(s.tracker.get_pid("stop-after-check").is_err(), "nothing is tracked");
+        assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
     }
 
     #[test]

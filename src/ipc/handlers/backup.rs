@@ -169,18 +169,17 @@ async fn detached<T: Send + 'static>(work: impl std::future::Future<Output = Res
 }
 
 /// 작업 잠금이 풀리면 시작한다. 재시작이 백업·복원과 겹쳐도 서버가 꺼진 채 남지 않게 한다.
-/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None
-pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
+/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None.
+/// `generation`은 부른 쪽이 확인한 실행 세대다: 시작도 이 값을 기준으로 삼아, 확인 뒤에 들어온 정지가 시작을 취소하게 한다
+pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, generation: u64, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = bool>,
 {
     let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
     loop {
-        let resp = crate::ipc::internal::into_internal(
-            super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await,
-        )
-        .await;
+        let start = super::server::start_instance_handler(Path(id.to_string()), State(state.clone()));
+        let resp = crate::ipc::internal::into_internal(crate::supervisor::START_SINCE.scope(generation, start).await).await;
         if resp.body["error_code"] != "instance_busy" || std::time::Instant::now() >= deadline {
             return Some(resp);
         }
@@ -212,14 +211,32 @@ fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
     }
 }
 
+/// `[backup]` 선언 없이 경로만 따로 담을 때의 계획: 이 인스턴스의 백업 폴더와 보관 개수
+async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
+    let supervisor = state.supervisor.read().await;
+    let Some(instance) = supervisor.instance_store.get(id) else {
+        return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+    };
+    Ok(Plan {
+        dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
+        paths: Vec::new(),
+        targets: Vec::new(),
+        save_command: None,
+        keep: instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP),
+    })
+}
+
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
 /// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
 async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Response> {
-    let Some(mut plan) = plan(state, id).await? else {
-        if kind == BackupKind::Manual {
+    let mut plan = match plan(state, id).await? {
+        Some(plan) => plan,
+        None if kind == BackupKind::Manual => {
             return Err(error(StatusCode::BAD_REQUEST, "backup_unsupported", "This module does not declare [backup] paths"));
         }
-        return Ok(None);
+        // 모듈이 `[backup]`을 더는 선언하지 않아도 복원이 덮을 경로는 남긴다
+        None if !also.is_empty() => bare_plan(state, id).await?,
+        None => return Ok(None),
     };
     add_paths(&mut plan.paths, also);
     if plan.paths.is_empty() {
@@ -692,7 +709,7 @@ async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
     };
-    match start_when_free(state, id, wanted).await {
+    match start_when_free(state, id, generation, wanted).await {
         None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
         Some(resp) if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) => {
             tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, resp.body)
@@ -920,6 +937,25 @@ mod tests {
         }
         let p = plan(&state, &id).await.ok().flatten().unwrap();
         assert_eq!(p.targets, vec![tmp.path().join("server/world2")]);
+    }
+
+    /// 모듈이 `[backup]`을 더는 선언하지 않아도(모듈 업데이트로 빠짐, 모듈을 못 읽음) 남은 백업을 복원하면
+    /// 덮을 경로의 지금 상태는 안전 백업으로 남긴다
+    #[tokio::test]
+    async fn a_restore_keeps_a_safety_backup_when_the_module_no_longer_declares_backups() {
+        let (state, id, tmp) = server_with(NO_BACKUP, None).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"old").unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let old = backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&world)).unwrap().name;
+        std::fs::write(world.join("level.dat"), b"progress").unwrap();
+
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        let safety = done.body["pre_restore_backup"].as_str().expect("the overwritten world needs a safety backup").to_string();
+        assert!(backup::backed_up_paths(&dir, &safety).unwrap().contains(&world));
+        assert_eq!(std::fs::read(world.join("level.dat")).unwrap(), b"old");
     }
 
     // 훅이나 설정이 서버 폴더 밖(예: 사용자 폴더의 게임 데이터)을 가리키면, 지금도 가리키는 동안은 복원할 수 있다

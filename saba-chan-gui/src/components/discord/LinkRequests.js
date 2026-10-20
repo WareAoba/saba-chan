@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDiscordStore } from '../../stores/useDiscordStore';
 import { subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
@@ -46,19 +47,20 @@ export function LinkRequests() {
         try {
             const res = await window.api.relayLinkRequestRespond(req.requestId, accept);
             if (res?.ok) {
-                if (accept)
+                if (accept) {
                     safeShowToast(
                         t('link_request.accepted', { guild: res.guildName || req.guildName }),
                         'success',
                         4000,
                     );
+                    // 새로 묶인 길드가 디스코드 화면 목록에 보이게
+                    useDiscordStore.getState().markCloudNodesStale();
+                }
             } else {
-                safeShowToast(
-                    t(res?.error === 'EXPIRED' ? 'link_request.expired' : 'link_request.failed'),
-                    'warning',
-                    4000,
-                );
-                if (res?.error !== 'EXPIRED') return;
+                const gone = ['EXPIRED', 'NOT_FOUND'].includes(res?.error);
+                safeShowToast(t(gone ? 'link_request.expired' : 'link_request.failed'), 'warning', 4000);
+                // 릴레이가 ok:false로 답했으면 요청은 이미 꺼내졌다 (410·404·409). 데몬에 닿지 못했을 때만 남긴다
+                if (res?.ok !== false) return;
             }
             setRequests((prev) => prev.filter((r) => r.requestId !== req.requestId));
         } catch {
