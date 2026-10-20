@@ -1346,6 +1346,13 @@
     "placeholder": "Sin límite",
     "restart_note": "Se aplica tras reiniciar."
   },
+  "stop_timeout": {
+    "title": "Tiempo de espera al detener",
+    "desc": "Tras pedir al servidor que guarde y se apague, se espera este tiempo. Si sigue en marcha, se apaga a la fuerza. Auméntalo para mundos grandes.",
+    "label": "Espera al detener (segundos)",
+    "hint": "De 1 a 3600 segundos. Déjalo vacío para usar el valor por defecto del módulo.",
+    "placeholder": "Valor por defecto del módulo"
+  },
   "loading": {
     "step_init": "Inicializando…",
     "step_ui": "Interfaz cargada",

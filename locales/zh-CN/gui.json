@@ -1346,6 +1346,13 @@
     "placeholder": "不限制",
     "restart_note": "重启后生效。"
   },
+  "stop_timeout": {
+    "title": "停止等待时间",
+    "desc": "请求服务器保存并关闭后，会等待这么长时间。仍未停止则强制关闭。世界较大时请调长。",
+    "label": "停止等待（秒）",
+    "hint": "1~3600 秒。留空则使用模块默认值。",
+    "placeholder": "模块默认值"
+  },
   "loading": {
     "step_init": "正在初始化…",
     "step_ui": "界面已加载",

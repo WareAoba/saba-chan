@@ -1346,6 +1346,13 @@
     "placeholder": "Sem limite",
     "restart_note": "Vale após reiniciar."
   },
+  "stop_timeout": {
+    "title": "Tempo de espera ao parar",
+    "desc": "Depois de pedir ao servidor para salvar e desligar, espera-se esse tempo. Se ainda estiver rodando, ele é desligado à força. Aumente para mundos grandes.",
+    "label": "Espera ao parar (segundos)",
+    "hint": "De 1 a 3600 segundos. Deixe vazio para usar o padrão do módulo.",
+    "placeholder": "Padrão do módulo"
+  },
   "loading": {
     "step_init": "Inicializando…",
     "step_ui": "Interface carregada",
