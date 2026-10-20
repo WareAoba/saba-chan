@@ -275,9 +275,11 @@ pub const PERMISSION_KEYS: &[&str] = &[
     "discord",
 ];
 
-/// `merged.nodeSettings`의 권한 키를 `current` 값으로 되돌린다 (없던 키는 지운다)
-fn keep_permission_keys(merged: &mut Value, current: &Value) {
-    let Some(merged) = merged.as_object_mut() else { return };
+/// `merged.nodeSettings`의 권한 키를 `current` 값으로 되돌린다 (없던 키는 지운다).
+/// 다른 값을 실어 왔다가 되돌린 키를 `nodeSettings.<길드>.<키>`로 돌려준다 (이름 순)
+fn keep_permission_keys(merged: &mut Value, current: &Value) -> Vec<String> {
+    let mut reverted = Vec::new();
+    let Some(merged) = merged.as_object_mut() else { return reverted };
     let nodes = merged.entry("nodeSettings").or_insert_with(|| Value::Object(serde_json::Map::new()));
     if !nodes.is_object() {
         *nodes = Value::Object(serde_json::Map::new());
@@ -291,6 +293,10 @@ fn keep_permission_keys(merged: &mut Value, current: &Value) {
         let Some(node) = node.as_object_mut() else { continue };
         let before = current.get("nodeSettings").and_then(|n| n.get(guild));
         for key in PERMISSION_KEYS {
+            // 빠진 키는 알리지 않는다: 얕은 머지라 다른 키만 고친 요청도 nodeSettings 전체를 싣고, 권한 키를 빼고 보낼 수 있다
+            if node.get(*key).is_some_and(|v| Some(v) != before.and_then(|b| b.get(*key))) {
+                reverted.push(format!("nodeSettings.{}.{}", guild, key));
+            }
             match before.and_then(|b| b.get(*key)) {
                 Some(v) => {
                     node.insert(key.to_string(), v.clone());
@@ -301,6 +307,8 @@ fn keep_permission_keys(merged: &mut Value, current: &Value) {
             }
         }
     }
+    reverted.sort();
+    reverted
 }
 
 impl ConfigStore {
@@ -397,19 +405,22 @@ impl ConfigStore {
 
     /// JSON Value로 봇 설정 교체 (API 요청 수용, 스키마 검증 포함)
     pub async fn set_bot_config_from_json(&self, json: Value) -> Result<BotConfig, ConfigStoreError> {
+        Ok(self.merge_bot_config(json, true).await?.0)
+    }
+
+    /// `set_bot_config_from_json`과 같고, 권한 키라 바꾸지 않고 둔 경로(`nodeSettings.<길드>.<키>`)도 돌려준다 (L61)
+    pub async fn save_bot_config_json(&self, json: Value) -> Result<(BotConfig, Vec<String>), ConfigStoreError> {
         self.merge_bot_config(json, true).await
     }
 
     /// 부분 업데이트. 읽기·병합·저장 동안 쓰기 잠금을 잡아 그사이의 권한 변경(주인 고정 등)을 덮지 않는다.
     /// `keep_permissions`면 권한 키는 권한 API(`update_node_settings`)로만 바뀐다 (가져오기는 로컬 동작이라 false)
-    async fn merge_bot_config(&self, json: Value, keep_permissions: bool) -> Result<BotConfig, ConfigStoreError> {
+    async fn merge_bot_config(&self, json: Value, keep_permissions: bool) -> Result<(BotConfig, Vec<String>), ConfigStoreError> {
         let mut current = self.bot_config.write().await;
         let current_json = serde_json::to_value(&*current).unwrap_or_default();
 
         let mut merged = merge_json(current_json.clone(), json);
-        if keep_permissions {
-            keep_permission_keys(&mut merged, &current_json);
-        }
+        let reverted = if keep_permissions { keep_permission_keys(&mut merged, &current_json) } else { Vec::new() };
 
         let mut config: BotConfig = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
@@ -424,7 +435,7 @@ impl ConfigStore {
         }
         self.file.set_section("relay", serde_json::to_value(&config)?)?;
         *current = config.clone();
-        Ok(config)
+        Ok((config, reverted))
     }
 
 
@@ -1282,7 +1293,9 @@ mod tests {
             "g": { "ownerDiscordId": "evil", "members": { "evil": 2 }, "allowedInstances": ["y"], "preset": "loose" },
             "k": {}
         } }));
-        keep_permission_keys(&mut merged, &current);
+        // 되돌린 키는 알린다: 저장이 성공해도 그 값은 바뀌지 않았다 (L61)
+        let ignored = keep_permission_keys(&mut merged, &current);
+        assert_eq!(ignored, ["nodeSettings.g.allowedInstances", "nodeSettings.g.members", "nodeSettings.g.ownerDiscordId", "nodeSettings.g.preset"]);
         assert_eq!(merged["nodeSettings"], serde_json::json!({
             "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["x"] },
             "h": { "defaultLevel": -1 },

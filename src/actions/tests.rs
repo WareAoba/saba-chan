@@ -174,7 +174,7 @@ fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
 #[test]
 fn the_remote_menu_has_no_guild_settings_and_no_guild_input() {
     let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
-    for id in ["chatbot.settings.get", "chatbot.settings.set", "discord.settings.get", "discord.settings.set"] {
+    for id in ["chatbot.settings.get", "chatbot.settings.set", "discord.settings.set"] {
         assert!(actions.iter().all(|a| a["id"] != id), "{id} is served by the /사바쨩 commands");
         assert!(find(id).unwrap().surfaces.contains(&Discord), "{id} stays callable from Discord");
     }
@@ -182,6 +182,22 @@ fn the_remote_menu_has_no_guild_settings_and_no_guild_input() {
         assert!(a["input"]["properties"].get(GUILD_FIELD).is_none(), "{} asks for a guild", a["id"]);
         assert!(a["input"]["required"].as_array().is_none_or(|r| !r.iter().any(|f| f == GUILD_FIELD)), "{}", a["id"]);
     }
+}
+
+// 사용자 디스코드 검수(2026-10-20): 시작·정지 기록(3)은 디스코드에서 빼고, 백업 목록(4)은 디스코드 메뉴에서만 뺀다
+// (챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다). 쓰는 곳 없는 길드 설정 조회(12)는 없앤다.
+// 백업 만들기(5)의 이름은 "백업"
+#[test]
+fn the_discord_review_trims_the_remote_menu() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = |id: &str| actions.iter().find(|a| a["id"] == id).unwrap().clone();
+    assert!(!find("instance.events").unwrap().surfaces.contains(&Discord));
+    assert_eq!(item("instance.events")["surfaces"], json!(["chatbot"]));
+    assert_eq!(item("backup.list")["surfaces"], json!(["chatbot"]), "off the Discord menu, still a chatbot tool");
+    assert!(find("backup.list").unwrap().surfaces.contains(&Discord), "Discord can still call it");
+    assert!(find("discord.settings.get").is_none());
+    assert_eq!(item("backup.create")["title"]["ko"], "백업");
+    assert_eq!(item("backup.create")["title"]["en"], "Backup");
 }
 
 // 릴레이 사전 검사가 데몬 판정과 같은 답을 내게, 고정 레벨이 있는 액션은 그 레벨을 싣는다
@@ -232,7 +248,7 @@ async fn remote_results_carry_a_readable_summary() {
     let text = listed["text"].as_str().unwrap();
     assert!(text.contains("srv") && text.contains("정지됨"), "{text}");
     assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업이 없어요"));
-    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("기록이 없어요"));
+    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"].as_str().unwrap().contains("기록이 없어요"));
     assert!(query(&state, "monitor.summary", None, &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("CPU"));
     // GUI·CLI는 자기 화면으로 그린다
     assert!(run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap().get("text").is_none());

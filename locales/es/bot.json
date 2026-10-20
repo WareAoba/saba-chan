@@ -212,7 +212,7 @@
         "title": "Copias de seguridad"
       },
       "create": {
-        "title": "Crear copia de seguridad"
+        "title": "Copia de seguridad"
       },
       "restore": {
         "title": "Restaurar copia de seguridad",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Ajustes de Discord",
-          "description": "Idioma, reposo y música"
-        },
         "set": {
           "title": "Cambiar ajustes de Discord",
           "description": "Idioma, reposo y música"

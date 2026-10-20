@@ -20,8 +20,8 @@ pub async fn save_bot_config(
     Json(config): Json<Value>,
 ) -> impl IntoResponse {
     let old_relay = state.config_store.get_bot_config().await.cloud.relay_url;
-    match state.config_store.set_bot_config_from_json(config).await {
-        Ok(saved) => {
+    match state.config_store.save_bot_config_json(config).await {
+        Ok((saved, ignored)) => {
             // 릴레이 주소가 바뀌면 에이전트 세션을 새 주소로 다시 시작한다 (예전 세션은 예전 주소에서 멈춘다)
             if saved.cloud.relay_url.trim() != old_relay.trim() && state.relay_agent.status().running {
                 crate::relay_agent::restart(&state).await;
@@ -30,14 +30,12 @@ pub async fn save_bot_config(
             let token_path = saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token");
             let token = std::fs::read_to_string(token_path).ok();
             super::relay::sync_host_id(&state, token.as_deref()).await;
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "message": "Bot config saved"
-                })),
-            )
-                .into_response()
+            let mut body = json!({ "success": true, "message": "Bot config saved" });
+            // 권한 키는 권한 API로만 바뀐다: 바꾸려던 값은 저장하지 않고 알린다 (L61)
+            if !ignored.is_empty() {
+                body["ignored"] = json!(ignored);
+            }
+            (StatusCode::OK, Json(body)).into_response()
         }
         Err(crate::config_store::ConfigStoreError::InvalidRelayUrl(msg)) => (
             StatusCode::BAD_REQUEST,
