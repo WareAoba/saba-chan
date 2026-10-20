@@ -40,6 +40,7 @@
     "requested_by": "请求者",
     "username": "用户名",
     "config_saved": "机器人设置已保存。",
+    "config_ignored": "机器人设置不会更改权限键，它们保留了原来的值：{{keys}}。其余已保存。请用 saba-chan-cli perm 更改权限",
     "confirm_unpair": "要断开此电脑与 Discord 机器人的连接并取消配对吗？",
     "connection": "连接",
     "last_error": "最近错误",

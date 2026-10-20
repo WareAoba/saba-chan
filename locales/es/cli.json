@@ -39,6 +39,7 @@
     "requested_by": "Solicitado por",
     "username": "Usuario",
     "config_saved": "Ajustes del bot guardados.",
+    "config_ignored": "La configuración del bot no cambia las claves de permisos, así que conservan su valor anterior: {{keys}}. Lo demás se guardó. Cambia los permisos con saba-chan-cli perm",
     "confirm_unpair": "¿Desconectar este PC del bot de Discord y olvidar su vinculación?",
     "connection": "Conexión",
     "last_error": "Último error",

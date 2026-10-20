@@ -39,6 +39,7 @@
     "requested_by": "請求者",
     "username": "使用者名稱",
     "config_saved": "機器人設定已儲存。",
+    "config_ignored": "機器人設定不會變更權限鍵，它們保留了原本的值：{{keys}}。其餘已儲存。請用 saba-chan-cli perm 變更權限",
     "confirm_unpair": "要中斷這台電腦與 Discord 機器人的連線並取消配對嗎？",
     "connection": "連線",
     "last_error": "最近錯誤",

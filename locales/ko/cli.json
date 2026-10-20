@@ -40,6 +40,7 @@
     "requested_by": "요청한 사람",
     "username": "사용자 이름",
     "config_saved": "봇 설정을 저장했어요.",
+    "config_ignored": "권한 키는 봇 설정으로 바꾸지 않아 이전 값 그대로예요: {{keys}}. 나머지는 저장했어요. 권한은 saba-chan-cli perm으로 바꾸세요",
     "confirm_unpair": "이 PC를 디스코드 봇에서 끊고 페어링을 잊을까요?",
     "connection": "연결",
     "last_error": "마지막 오류",
