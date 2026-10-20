@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} a été créé et ses paramètres enregistrés, mais le fichier de configuration du jeu n'a pas pu être écrit : {{error}}",
     "ask_folder": "Dossier du serveur",
     "ask_name": "Nom du serveur",
     "ask_source": "Comment voulez-vous le configurer ?",

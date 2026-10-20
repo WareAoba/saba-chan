@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} を作成して設定も保存しましたが、ゲームの設定ファイルに書き込めませんでした: {{error}}",
     "ask_folder": "サーバーフォルダー",
     "ask_name": "サーバー名",
     "ask_source": "どの方法でセットアップしますか？",
