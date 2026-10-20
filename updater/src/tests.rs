@@ -1540,3 +1540,38 @@ async fn a_failed_tar_gz_gui_extract_restores_the_previous_gui() {
     let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
     assert_eq!(left.len(), 2, "no new file or backup left behind: {left:?}");
 }
+
+// 카탈로그·수동 설치처럼 설치 기록에 없어도 디스크에 있는 모듈은 requires를 채운다
+#[test]
+fn requires_count_a_module_found_on_disk() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    std::fs::create_dir_all(modules.join("ondisk")).unwrap();
+    std::fs::write(modules.join("ondisk/module.toml"), "[module]\nname = \"ondisk\"\nversion = \"1.2.0\"\n").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), modules.to_str().unwrap());
+    let ext = Component::Extension("needs-module".into());
+    manager.status.components = vec![crate::ComponentVersion {
+        requires: Some([("module-ondisk".to_string(), ">=1.0.0".to_string())].into_iter().collect()),
+        ..staged(ext.clone(), &tmp.path().join("ext.zip"))
+    }];
+
+    assert!(manager.check_dependencies(&ext.manifest_key()).satisfied);
+}
+
+// 같은 묶음 안에서 requires하는 것을 먼저 적용한다 (같은 순위는 받은 순서보다 의존 관계가 앞선다)
+#[test]
+fn a_dependency_in_the_same_batch_is_applied_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    let (a, b) = (Component::Extension("a".into()), Component::Extension("b".into()));
+    manager.status.components = vec![
+        crate::ComponentVersion {
+            requires: Some([(b.manifest_key(), ">=1.0.0".to_string())].into_iter().collect()),
+            ..staged(a.clone(), &tmp.path().join("a.zip"))
+        },
+        staged(b.clone(), &tmp.path().join("b.zip")),
+        staged(Component::CoreDaemon, &tmp.path().join("core.zip")),
+    ];
+
+    assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), b.manifest_key(), a.manifest_key()]);
+}

@@ -502,8 +502,9 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             .collect()
     };
 
-    // 업데이터와 같은 적용 순서: Updater → CoreDaemon → 모듈/익스텐션/Locales → 인터페이스
-    targets.sort_by_key(UpdateManager::component_apply_priority);
+    // 업데이터와 같은 적용 순서: Updater → CoreDaemon → 모듈/익스텐션/Locales → 인터페이스, 같은 묶음의 requires가 먼저
+    let order = mgr.apply_order(&targets.iter().map(|c| c.manifest_key()).collect::<Vec<_>>());
+    targets.sort_by_key(|c| order.iter().position(|k| *k == c.manifest_key()));
 
     let mut applied = Vec::new();
     let mut applied_keys = Vec::new();

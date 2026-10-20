@@ -977,8 +977,9 @@ impl UpdateManager {
             .cloned()
             .collect();
 
-        // 적용 우선순위에 따라 정렬
-        components.sort_by_key(|c| Self::component_apply_priority(&c.component));
+        // 적용 우선순위와 같은 묶음의 requires에 따라 정렬
+        let order = self.apply_order(&components.iter().map(|c| c.component.manifest_key()).collect::<Vec<_>>());
+        components.sort_by_key(|c| order.iter().position(|k| *k == c.component.manifest_key()));
 
         // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
         let mut failure = None;
@@ -1048,8 +1049,7 @@ impl UpdateManager {
         mut on_progress: impl FnMut(usize, &str, &[String]),
     ) -> (Vec<String>, Vec<String>) {
         // 옛 데몬은 모듈을 코어보다 앞에 적는다: 적용 순서로 다시 세운다 (같은 순위는 받은 순서대로)
-        let mut keys = keys.to_vec();
-        keys.sort_by_key(|k| Self::component_apply_priority(&Component::from_manifest_key(k)));
+        let keys = self.apply_order(keys);
         let mut applied = Vec::new();
         let mut failed = Vec::new();
         for (i, key) in keys.iter().enumerate() {
@@ -1120,11 +1120,11 @@ impl UpdateManager {
 
     /// 받아 둔 업데이트의 키를 적용 순서대로. 목록 없는 적용도 `apply_target_keys`로 키마다 결과를 남긴다
     pub fn pending_keys_in_apply_order(&self) -> Vec<String> {
-        let mut pending: Vec<&ComponentVersion> = self.status.components.iter()
+        let pending: Vec<String> = self.status.components.iter()
             .filter(|c| c.downloaded && c.update_available)
+            .map(|c| c.component.manifest_key())
             .collect();
-        pending.sort_by_key(|c| Self::component_apply_priority(&c.component));
-        pending.iter().map(|c| c.component.manifest_key()).collect()
+        self.apply_order(&pending)
     }
 
     /// 컴포넌트의 적용 우선순위를 반환합니다.
@@ -1217,19 +1217,39 @@ impl UpdateManager {
     /// 예: GUI 0.3.0 → requires: { "saba-core": ">=0.3.0" }
     ///     → saba-core이 0.3.0 미만이면 DependencyIssue 반환
     pub fn check_dependencies(&self, component_key: &str) -> DependencyCheck {
-        let installed = Self::load_installed_manifest();
-        // 받아 둔 상태의 requires (pending.json에서 읽은 업데이터 `--apply`도), 없으면 캐시된 서버 매니페스트
-        let requires = self.status.components.iter()
-            .find(|c| c.component.manifest_key() == component_key)
-            .and_then(|c| c.requires.as_ref())
-            .or_else(|| self.cached_manifest.as_ref()?.components.get(component_key)?.requires.as_ref());
-        let issues = requires.map(|r| unmet_requires(component_key, r, &installed)).unwrap_or_default();
+        // 설치 기록에 없는 카탈로그·수동 설치 모듈과 익스텐션도 디스크에서 찾아 센다
+        let installed = self.collect_local_versions();
+        let issues = self.requires_of(component_key).map(|r| unmet_requires(component_key, r, &installed)).unwrap_or_default();
 
         DependencyCheck {
             component: component_key.to_string(),
             satisfied: issues.is_empty(),
             issues,
         }
+    }
+
+    /// 받아 둔 상태의 requires (pending.json에서 읽은 업데이터 `--apply`도), 없으면 캐시된 서버 매니페스트
+    fn requires_of(&self, component_key: &str) -> Option<&HashMap<String, String>> {
+        self.status.components.iter()
+            .find(|c| c.component.manifest_key() == component_key)
+            .and_then(|c| c.requires.as_ref())
+            .or_else(|| self.cached_manifest.as_ref()?.components.get(component_key)?.requires.as_ref())
+    }
+
+    /// 적용 순서: 종류별 우선순위로 세운 뒤, 같은 묶음 안에서 requires하는 것을 앞으로 당긴다 (그 밖은 순서 유지).
+    /// 순환하면 남은 것 중 맨 앞부터 적용한다
+    pub fn apply_order(&self, keys: &[String]) -> Vec<String> {
+        let mut rest = keys.to_vec();
+        rest.sort_by_key(|k| Self::component_apply_priority(&Component::from_manifest_key(k)));
+        let mut ordered = Vec::with_capacity(rest.len());
+        while !rest.is_empty() {
+            let waits = |key: &String| {
+                self.requires_of(key).is_some_and(|r| r.keys().any(|dep| dep != key && rest.contains(dep)))
+            };
+            let next = rest.iter().position(|k| !waits(k)).unwrap_or(0);
+            ordered.push(rest.remove(next));
+        }
+        ordered
     }
 
     /// 모든 업데이트 가능한 컴포넌트의 의존성을 일괄 확인합니다.
