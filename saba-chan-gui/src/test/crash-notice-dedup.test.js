@@ -59,4 +59,11 @@ describe('크래시 알림은 한 번만', () => {
         showEventToast({ type: 'instance.exit', data: { instanceId: 'c2', instance: 'Crashy', kind: 'crash' } }, t);
         expect(errorToasts()).toHaveLength(1);
     });
+    // 켜자마자 죽는 서버는 자동 재시작(5→10→20초) 사이 30초 안에 여러 번 크래시한다: 크래시마다 알린다
+    it('같은 서버의 크래시 이벤트가 연달아 오면 둘 다 알린다', () => {
+        const crash = { type: 'instance.exit', data: { instanceId: 'c3', instance: 'Loop', kind: 'crash' } };
+        showEventToast(crash, t);
+        showEventToast(crash, t);
+        expect(errorToasts()).toHaveLength(2);
+    });
 });
