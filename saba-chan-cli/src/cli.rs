@@ -1010,6 +1010,14 @@ mod tests {
         localized().debug_assert();
     }
 
+    /// 명령 본문 안의 `--lang=ko`는 전역 옵션이 아니다: 데몬 언어를 바꾸지 않게 실제 전역 옵션만 쓴다
+    #[test]
+    fn a_lang_inside_command_text_is_not_the_global_option() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();
+        assert_eq!(p(&["chat", "mc", "say", "--lang=ko"]).global.lang, None);
+        assert_eq!(p(&["--lang", "ko", "chat", "mc", "say", "hi"]).global.lang.as_deref(), Some("ko"));
+    }
+
     #[test]
     fn shortcuts_and_aliases_parse() {
         let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied()));

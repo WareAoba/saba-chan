@@ -24,11 +24,16 @@ pub fn ipc_port() -> u16 {
         .unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
-/// 표시 언어: `--lang` > `SABA_LANG` > 앱 설정 언어 > 시스템 로캘 > en
-pub fn language(flag: Option<&str>) -> String {
+/// 사용자가 직접 고른 언어: `--lang` > `SABA_LANG`
+pub fn requested_language(flag: Option<&str>) -> Option<String> {
     flag.map(str::to_string)
         .or_else(|| std::env::var("SABA_LANG").ok())
         .filter(|s| !s.is_empty())
+}
+
+/// 표시 언어: `--lang` > `SABA_LANG` > 앱 설정 언어 > 시스템 로캘 > en
+pub fn language(flag: Option<&str>) -> String {
+    requested_language(flag)
         .or_else(|| {
             gui_section()
                 .get("language")
