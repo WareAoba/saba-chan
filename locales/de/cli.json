@@ -101,7 +101,8 @@
     "rest_port": "REST-Port",
     "author": "Autor",
     "mode": "Modus",
-    "trust": "Herkunft"
+    "trust": "Herkunft",
+    "unsupported": "Nicht unterstützt"
   },
   "common": {
     "fetching": "Wird abgerufen...",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
       "module_busy": "Dieses Modul wird bereits installiert oder entfernt. Versuche es erneut, wenn das abgeschlossen ist.",
       "invalid_command": "Schreibe den Befehlsschlüssel als `<server>/<command>`. Ein Schlüssel ohne Server muss eine globale Aktions-ID sein.",
-      "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>"
+      "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>",
+      "not_supported": "Nicht unterstützte Befehle zeigt: saba-chan-cli module info"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
     "not_found": "Kein {{what}} namens „{{query}}“.",
     "pair_expected": "KEY=VALUE erwartet, erhalten: „{{got}}“.",
     "timeout": "Der Daemon hat zu lange für die Antwort gebraucht ({{path}}).",
-    "unknown_command": "Diesen Befehl gibt es nicht: {{path}}. Mit `saba-chan-cli help` siehst du alle Befehle."
+    "unknown_command": "Diesen Befehl gibt es nicht: {{path}}. Mit `saba-chan-cli help` siehst du alle Befehle.",
+    "not_supported": "Das Modul {{module}} unterstützt diese Funktion nicht"
   },
   "agree": {
     "none": "{{name}} hat keine Vereinbarungen zum Annehmen.",

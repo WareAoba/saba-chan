@@ -179,7 +179,8 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         .ok()
         .filter(|p| p.get("active").and_then(Value::as_bool) == Some(true));
 
-    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress });
+    let missing = crate::cmd::module::unsupported(&module);
+    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress, "unsupported": missing });
     ctx.out.data(&v, |_| {
         let game = s(&module, "display_name");
         output::heading(&format!(
@@ -237,6 +238,9 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         if let Some(e) = &last_exit {
             rows.push((t!("col.last_exit"), exit_line(e)));
+        }
+        if !missing.is_empty() {
+            rows.push((t!("col.unsupported"), missing.join(", ")));
         }
         output::print_kv(&rows);
         if let Some(p) = &progress {
@@ -1380,6 +1384,9 @@ async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) ->
             ctx.out.done(&t!("props.saved", name = sv.name), &r);
         }
         PropsCmd::Reset => {
+            if let Ok(m) = module_info(ctx, &sv.module).await {
+                crate::cmd::module::ensure_supported(&m, "reset_properties")?;
+            }
             ctx.ask.ensure(&t!("props.confirm_reset", name = sv.name))?;
             let r = ctx.api.reset_properties(&sv.id).await?;
             ctx.out.done(&t!("props.reset_done", name = sv.name), &r);
@@ -1682,6 +1689,9 @@ async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     if status_of(&runtime(ctx, &sv).await?) == "running" {
         return Err(failed(t!("err.hint.server_running")));
+    }
+    if let Ok(m) = module_info(ctx, &sv.module).await {
+        crate::cmd::module::ensure_supported(&m, "reset_server")?;
     }
     let locales = module_locales(ctx, &sv.module).await;
     ctx.ask.ensure(&reset_question(&sv.name, locales.as_ref()))?;
