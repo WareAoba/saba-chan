@@ -119,6 +119,8 @@ pub static ACTIONS: &[Def] = &[
     def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
     def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
+    // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
+    def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
     def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
@@ -490,8 +492,14 @@ pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option
         .map(|d| view(d, &cat))
         .collect();
     if let Some(id) = instance {
+        // 모듈이 지원해야 하는 액션은 그 인스턴스의 모듈이 지원할 때만
+        let module = instance_module(server, id).await;
+        actions.retain(|a| match a["id"].as_str().and_then(module_support) {
+            Some(supports) => module.as_ref().is_some_and(supports),
+            None => true,
+        });
         // 조회는 모든 표면에 열려 있다
-        if let Some(module) = instance_module(server, id).await {
+        if let Some(module) = module {
             let locale = module_locale(&module, &crate::chat::i18n::normalize_language(locale));
             actions.extend(module.metadata.queries.iter().map(|q| query_view(q, &locale)));
         }
@@ -526,6 +534,14 @@ fn with_field_titles(mut input: Value, titles: impl Fn(&str) -> Map<String, Valu
 pub const HEARTBEAT_MAX_ACTIONS: usize = 64;
 pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 
+/// 모듈이 지원해야 쓸 수 있는 고정 액션과 그 판정
+fn module_support(id: &str) -> Option<fn(&LoadedModule) -> bool> {
+    match id {
+        "server.players" => Some(|m| m.metadata.players_function.is_some()),
+        _ => None,
+    }
+}
+
 pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Value>, bool) {
     let cats: Vec<(&str, crate::chat::i18n::Catalog)> = locales.iter().map(|l| (*l, catalog(l))).collect();
     let remote = |d: &Def| -> Vec<Surface> { d.surfaces.iter().copied().filter(|s| *s == Chatbot || (*s == Discord && d.remote_menu)).collect() };
@@ -554,6 +570,12 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`)
         if let Some(level) = d.discord_level {
             item["level"] = json!(level);
+        }
+        // 모듈이 지원해야 하는 액션: 그 모듈 이름들 (릴레이는 이 모듈의 서버에만 하위 명령을 만든다)
+        if let Some(supports) = module_support(d.id) {
+            let mut names: Vec<&str> = modules.iter().filter(|m| supports(m)).map(|m| m.metadata.name.as_str()).collect();
+            names.sort_unstable();
+            item["modules"] = json!(names);
         }
         items.push(item);
     }
@@ -1214,7 +1236,7 @@ async fn admit(server: &IPCServer, caller: &Caller) -> Result<(), ActionError> {
 
 /// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
 fn chatbot_masked(id: &str) -> bool {
-    id == "server.console.tail" || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
+    id == "server.console.tail" || id == "server.players" || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
 }
 
 /// 푼 액션 하나를 실행한다: 밑 라우트 응답을 `{success, actionId, status, result}`로.

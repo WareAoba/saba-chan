@@ -2162,7 +2162,7 @@ impl Supervisor {
     }
 
     /// 인스턴스를 알아보는 config로 lifecycle 함수 호출을 만든다 (`validate`·조회가 같은 값을 받는다)
-    fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
+    pub(crate) fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 

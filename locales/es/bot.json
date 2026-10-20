@@ -199,6 +199,10 @@
           "title": "Final de la consola",
           "description": "Últimas 20 líneas de la consola"
         }
+      },
+      "players": {
+        "title": "Jugadores",
+        "description": "Quién está conectado"
       }
     },
     "monitor": {
@@ -319,7 +323,11 @@
       "updates_none": "✅ Todo está actualizado",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Memoria {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} conectados",
+      "players_max": "👥 {{online}}/{{max}} conectados",
+      "player_item": "• {{name}}",
+      "players_more": "…y {{count}} más"
     }
   }
 }

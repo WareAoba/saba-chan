@@ -199,6 +199,10 @@
           "title": "Console tail",
           "description": "Last 20 console lines"
         }
+      },
+      "players": {
+        "title": "Players",
+        "description": "Who is online"
       }
     },
     "monitor": {
@@ -319,7 +323,11 @@
       "updates_none": "✅ Everything is up to date",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Memory {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} online",
+      "players_max": "👥 {{online}}/{{max}} online",
+      "player_item": "• {{name}}",
+      "players_more": "…and {{count}} more"
     }
   }
 }
