@@ -88,6 +88,11 @@ pub async fn plan_steps(server: &IPCServer, steps: &Value, caller: &Caller) -> R
             None => {
                 let r = resolve(server, id, instance, &input, caller).await.map_err(|e| step_error(n, e))?;
                 authorize(server, &r, caller).await.map_err(|e| step_error(n, e))?;
+                // 같은 서버를 먼저 끄는 단계가 앞에 있으면 켜짐은 실행 때 본다 (끄고 복원)
+                let stopped_first = list[..n].iter().any(|p| p.get("id").and_then(Value::as_str) == Some("server.stop") && p.get("instance").and_then(Value::as_str) == instance);
+                if !stopped_first {
+                    refuse_restore_while_running(server, &r).await.map_err(|e| step_error(n, e))?;
+                }
                 (Step::Ready(r.clone()), r, None)
             }
         };

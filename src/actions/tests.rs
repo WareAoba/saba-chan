@@ -93,10 +93,6 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
     // 관리 액션은 릴레이에서 계획 없이 실행하지 않는다
     let err = run(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), None, &relay("admin", true)).await.unwrap_err();
     assert_eq!(err.code, "confirm_required");
-    // 복원은 디스코드 명령으로는 열려 있지 않다
-    let err = plan(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("admin", false)).await.unwrap_err();
-    assert_eq!(err.code, "action_not_allowed");
-
     let made = plan(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("admin", true)).await.unwrap();
     assert_eq!(made["needsConfirm"], true);
     let plan_id = made["planId"].as_str().unwrap().to_string();
@@ -165,8 +161,6 @@ fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
     assert_eq!(start["title"]["en"], "Start server");
     // 디스코드·챗봇에 없는 액션은 싣지 않는다
     assert!(actions.iter().all(|a| a["id"] != "instance.delete" && a["id"] != "extension.enable"));
-    let restore = actions.iter().find(|a| a["id"] == "backup.restore").unwrap();
-    assert_eq!(restore["surfaces"], json!(["chatbot"]));
 }
 
 // 실사용: 디스코드 "/작업"에 길드 설정 작업이 "guild" 필수 칸과 함께 보였다. 길드 설정은 "/사바쨩" 전용 명령이
@@ -786,4 +780,42 @@ async fn guilds_only_see_their_allowed_instances_in_any_listing() {
     let mut nested = json!({ "instances": [{ "id": id.clone() }, { "id": "other" }], "disks": [{ "instances": [{ "id": id.clone(), "bytes": 1 }] }] });
     retain_allowed(&mut nested, &["other".to_string()]);
     assert_eq!(nested, json!({ "instances": [{ "id": "other" }], "disks": [{ "instances": [] }] }));
+}
+
+/// 디스코드에서 백업 복원 (사용자 디스코드 검수 14번): 디스코드 메뉴에 싣고, 이름 칸은 백업 목록에서 고르며(`optionsFrom`),
+/// 목록 항목에는 사람이 읽을 이름(`label`)이 붙는다. 켜진 서버는 복원 계획만으로는 409이고, 먼저 끄는 단계가 앞에 있으면 계획된다
+#[tokio::test]
+async fn discord_restores_a_backup_picked_from_the_list() {
+    let (actions, _) = heartbeat_actions(&["ko"], &[]);
+    let restore = actions.iter().find(|a| a["id"] == "backup.restore").unwrap();
+    assert_eq!(restore["surfaces"], json!(["discord", "chatbot"]));
+    assert_eq!(
+        restore["input"]["properties"]["name"]["optionsFrom"],
+        json!({ "action": "backup.list", "list": "backups", "value": "name", "label": "label" })
+    );
+
+    let (state, id, tmp) = server().await;
+    let local = list(&state, None, None, "ko").await["actions"].as_array().unwrap().iter().find(|a| a["id"] == "backup.restore").cloned().unwrap();
+    assert_eq!(local["input"]["properties"]["name"]["optionsFrom"]["action"], "backup.list");
+    open_everything(&state).await;
+    let world = tmp.path().join("world");
+    std::fs::create_dir_all(&world).unwrap();
+    let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+    let made = crate::backup::create(&dir, crate::backup::BackupKind::Manual, &[world]).unwrap().name;
+    let listed = query(&state, "backup.list", Some(&id), &json!({}), &relay("owner", false)).await.unwrap();
+    let label = listed["result"]["backups"][0]["label"].as_str().unwrap();
+    assert!(label.contains("직접") && label.contains(" · "), "{label}");
+
+    // 켜진 서버
+    state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+    let err = plan(&state, "backup.restore", Some(&id), &json!({ "name": made }), &relay("owner", false)).await.unwrap_err();
+    assert_eq!((err.status, err.code), (409, "server_running"));
+    let alone = json!([{ "id": "backup.restore", "instance": id, "input": { "name": made } }]);
+    assert_eq!(plan_steps(&state, &alone, &relay("owner", false)).await.unwrap_err().code, "server_running");
+    let stop_first = json!([{ "id": "server.stop", "instance": id }, { "id": "backup.restore", "instance": id, "input": { "name": made } }]);
+    assert!(plan_steps(&state, &stop_first, &relay("owner", false)).await.is_ok());
+    // 원격 정지는 강제 종료를 받지 않는다
+    let forced = json!([{ "id": "server.stop", "instance": id, "input": { "force": true } }]);
+    assert!(plan_steps(&state, &forced, &relay("owner", false)).await.is_err());
+    let _ = state.supervisor.read().await.tracker.untrack(&id);
 }
