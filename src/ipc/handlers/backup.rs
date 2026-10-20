@@ -677,7 +677,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), None).await,
             )
             .await;
-            if !resp.status.is_success() {
+            if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
                 tracing::warn!("Scheduled restart of '{}' failed: {}", id, resp.body);
             }
         }
@@ -712,7 +712,8 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
     let was_running = is_running(state, id).await;
     if was_running {
         let stop = crate::ipc::internal::into_internal(super::server::stop_instance(state.clone(), id, false).await).await;
-        if !stop.status.is_success() {
+        // 콘솔이 없어 저장 후 종료를 못 하는 서버(`graceful_stop_unavailable`)도 여기서 멈춘다: 예약 작업은 강제 종료하지 않는다
+        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
             tracing::warn!("Scheduled update of '{}': stop failed: {}", id, stop.body);
             return;
         }
