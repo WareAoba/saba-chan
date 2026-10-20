@@ -32,15 +32,15 @@
 
 ## 3. 로그 전체 읽기·내보내기 (검수 9번)
 
-- 로그 원천은 인스턴스의 콘솔 기록 세션이다(saba-runner가 남기는 세션 파일, `log_sessions_keep`개. 모듈 `[launch] log_files`도 콘솔에 합쳐져 있다). 원천 id는 세션 파일 이름(확장자 뺀 것), `label`은 그 세션의 시작 시각이다. 가장 최근 세션이 `latest`이기도 하다.
+- 로그 원천은 인스턴스의 콘솔 기록이다: saba-runner가 남기는 세션 파일(`log_sessions_keep`개)과, 러너 없이 직접 실행했을 때의 `logs/console.log`·회전 파일. 모듈 `[launch] log_files`도 콘솔에 합쳐져 있다. 원천 id는 세션 파일 이름(확장자 뺀 것) 또는 `console`·`console.1`·`console.2`, `label`은 그 기록의 시작 시각이다. 목록은 최근에 쓴 것부터이고 맨 앞이 `latest`다.
 - 라우트 `GET /api/instance/:id/logs?source=&lines=&before=`
   - 응답 `{sources:[{id, label, startedAt}], source, lines:[문자열], before?}`. `startedAt`은 세션 시작 unix 초라 GUI·CLI가 자기 시간대·언어로 다시 그릴 수 있다. `lines`는 기본 200, 최대 500. 끝에서부터 읽고 `before`(이전 응답이 준 커서)로 더 앞을 읽는다. 원천이 없으면 404 `not_found`.
 - 라우트 `GET /api/instance/:id/logs/export?source=&since=&until=`
   - 응답 `{fileName, bytes, truncated, content}`. `fileName`은 `<서버 이름>-<source>-<YYYYMMDD-HHMM>.log`(파일 이름에 못 쓰는 글자는 `_`). `since`·`until`은 unix 초로 줄의 시각을 거른다(시각이 없는 줄은 앞 줄을 따른다).
-  - `content`는 최대 4 MiB다. 넘으면 최근 쪽을 남기고 `truncated:true`. 릴레이 `/result`가 이 크기를 받아야 한다(JSON 이스케이프 여유를 두고 6 MiB 이상).
+  - `content`는 JSON 문자열로 쓴 크기(이스케이프 포함)로 최대 4 MiB다. 넘으면 최근 쪽 온전한 줄을 남기고 `truncated:true`. 릴레이 `/result`는 결과 봉투와 가린 뒤 늘어난 만큼의 여유를 두고 6 MiB 이상을 받는다.
 - 액션: `server.logs.read`(Query, safe), `server.logs.export`(Query, caution). 둘 다 GUI·CLI·챗봇 표면이고 디스코드 메뉴에는 없다.
 - 가리기: 원격(챗봇·디스코드)으로 나가는 모든 줄은 콘솔 꼬리와 같은 가리기(IP·비밀값, 절대 경로 → `<path>`)를 거친다. 내보내기도 같다. GUI·CLI(로컬)는 원문이다.
-- 릴레이 규칙(05 문서에 같은 줄을 둔다): 액션 결과가 `{fileName, bytes, truncated, content}` 모양이면 릴레이는 `content`를 파일로 첨부하고 모델에는 `content`를 주지 않는다. 모델에는 `{ok, fileName, bytes, truncated}`만 간다.
+- 릴레이 규칙(05 문서에 같은 줄을 둔다): `/result` 본문은 `{success, data:{success, actionId, status, result}}`이고, 그 `data.result`가 `{fileName, bytes, truncated, content}` 모양이면 릴레이는 `content`를 파일로 첨부하고 모델에는 `content`를 주지 않는다. 모델에는 `{ok, fileName, bytes, truncated}`만 간다.
 
 ## 4. 서버 준비 알림 `instance.ready` (R39)
 
