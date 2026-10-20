@@ -409,9 +409,9 @@ fn log_epoch(r: &Value) -> Option<u64> {
     r.get("epoch").and_then(Value::as_u64)
 }
 
-/// 이어 읽는 사이 데몬이 다시 켜졌는가. 세대를 모르면 그렇다고 보지 않는다
+/// 이어 읽는 사이 데몬이 다시 켜졌는가. 세대가 바뀌거나 생기거나 없어지면 다른 데몬이다(옛 데몬은 세대를 주지 않는다)
 fn restarted(seen: Option<u64>, now: Option<u64>) -> bool {
-    matches!((seen, now), (Some(a), Some(b)) if a != b)
+    seen != now
 }
 
 #[cfg(test)]
@@ -425,9 +425,11 @@ mod tests {
         let seen = log_epoch(&json!({ "lines": [{ "id": 900 }], "epoch": 3 }));
         assert!(restarted(seen, log_epoch(&json!({ "lines": [], "epoch": 4 }))));
         assert!(!restarted(seen, log_epoch(&json!({ "lines": [{ "id": 901 }], "epoch": 3 }))));
-        // 옛 데몬은 세대를 주지 않는다
-        assert!(!restarted(seen, log_epoch(&json!({ "lines": [] }))));
-        assert!(!restarted(None, Some(4)));
+        // 세대가 생기거나 없어지면 다른 데몬이다 (옛 데몬에서 붙어 있다가 업데이트로 새 데몬이 뜬 경우)
+        assert!(restarted(None, Some(4)));
+        assert!(restarted(seen, log_epoch(&json!({ "lines": [] }))));
+        // 옛 데몬끼리는 세대로 알 수 없다
+        assert!(!restarted(None, None));
     }
 
     /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
