@@ -409,7 +409,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 |---|---|---|---|---|
 | GET | `/api/updates/status` | `updates.rs:129` | - | `{ok,last_check,next_check,checking,error,updates_available,components:[{component,display_name,current_version,latest_version,update_available,downloaded,installed}]}` (Locales 제외) |
 | POST | `/api/updates/check` | `updates.rs:169` | - | `{ok,updates_available,update_names,components(+release_notes),last_check}`. Locales 업데이트가 있으면 백그라운드에서 조용히 적용 |
-| POST | `/api/updates/download` | `updates.rs:366` | 선택 `{components?:[key]}`. 본문이 없거나 공백이면 전부, 깨진 JSON은 400 `invalid_body`(`updates.rs:348-357`) | `{ok,downloaded,count,errors?}` |
+| POST | `/api/updates/download` | `updates.rs:366` | 선택 `{components?:[key]}`. 본문이 없거나 공백이면 전부, 깨진 JSON은 400 `invalid_body`(`updates.rs:348-357`) | `{ok,downloaded,count,errors?}`. 전부 받기에서 일부가 실패해도 받은 것은 `downloaded`에, 실패한 것은 `errors[{component,error}]`에 싣고 `ok:false` |
 | GET | `/api/updates/download/progress` | `updates.rs:450` | - | `{ok,component,bytes_received,total_bytes,active}` |
 | POST | `/api/updates/apply` | `updates.rs:475` | download와 같은 본문 규칙 | `{ok,applied,needs_updater,requires_updater,errors}` |
 | POST | `/api/updates/launch-updater` | `updates.rs:609` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음). 등록된 GUI(`/api/client/register`의 `pid`, 실행 파일 이름이 GUI일 때만)가 떠 있으면 다시 띄울 것을 그 GUI로 바꾸고, 종료 전에 3초 기다려 남은 GUI를 끈다 |

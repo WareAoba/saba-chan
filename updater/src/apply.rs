@@ -139,15 +139,8 @@ impl UpdateManager {
         }
 
         tracing::info!("[Updater] Applying binary update: {} in {}", binary_name, exe_dir.display());
-        let mut files = Vec::new();
 
-        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            files = Self::extract_zip_or_restore(staged, &exe_dir, binary_name)?;
-        } else if Self::is_tar_gz(staged) {
-            Self::extract_tar_gz(staged, &exe_dir)?;
-        } else {
-            anyhow::bail!("Unsupported archive format: {}", staged.display());
-        }
+        let files = Self::extract_or_restore(staged, &exe_dir, binary_name)?;
 
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] Binary '{}' updated", binary_name);
@@ -186,11 +179,21 @@ impl UpdateManager {
     /// zip을 풀며 덮어쓸 파일을 비켜 두고(실행 파일은 `.old`, 나머지는 `.update-bak`), 풀다가 실패하면
     /// 새로 생긴 파일을 지우고 비켜 둔 파일을 모두 되돌린다 (C13). 성공하면 `.update-bak`만 지운다
     /// (`.old`는 아직 떠 있는 프로세스가 쥐고 있을 수 있어 `cleanup_old_files`가 지운다)
+    /// tar.gz도 같은 방식으로 되돌린다 (L3 b). 그 밖의 형식은 거절한다
+    fn extract_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
+        if staged.extension().is_some_and(|e| e == "zip") || Self::is_tar_gz(staged) {
+            Self::extract_zip_or_restore(staged, dir, what)
+        } else {
+            anyhow::bail!("Unsupported archive format: {}", staged.display())
+        }
+    }
+
     fn extract_zip_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
         // (원래 경로, 백업, 성공하면 백업을 지울지)
         let mut moved: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
         let mut created: Vec<PathBuf> = Vec::new();
-        let result = extract_zip(staged, dir, |out_path| {
+        let tar_gz = Self::is_tar_gz(staged);
+        let mut before_write = |out_path: &Path| -> Result<()> {
             // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
             // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
             if moved.iter().any(|(p, _, _)| same_path(p, out_path)) || created.iter().any(|p| same_path(p, out_path)) {
@@ -212,7 +215,12 @@ impl UpdateManager {
                 created.push(out_path.to_path_buf());
             }
             Ok(())
-        });
+        };
+        let result = if tar_gz {
+            Self::extract_tar_gz_with(staged, dir, &mut before_write)
+        } else {
+            extract_zip(staged, dir, &mut before_write)
+        };
         match &result {
             Ok(_) => {
                 for (_, backup, _) in moved.iter().filter(|m| m.2) {
@@ -242,14 +250,7 @@ impl UpdateManager {
         // 설치 폴더 바로 안에 GUI exe가 있으면 (portable exe, 또는 0.1.1의 Electron 폴더) 그 자리에 푼다
         if let Some(portable_exe) = find_gui_exe(&self.install_root) {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
-            let mut files = Vec::new();
-            if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-                files = Self::extract_zip_or_restore(staged, &self.install_root, "GUI")?;
-            } else if Self::is_tar_gz(staged) {
-                Self::extract_tar_gz(staged, &self.install_root)?;
-            } else {
-                anyhow::bail!("Unsupported archive format: {}", staged.display());
-            }
+            let files = Self::extract_or_restore(staged, &self.install_root, "GUI")?;
             std::fs::remove_file(staged).ok();
             self.retire_other_gui_exes(&files);
             tracing::info!("[Updater] GUI (portable exe) updated");
@@ -281,7 +282,7 @@ impl UpdateManager {
         if !staged.extension().map(|e| e == "zip").unwrap_or(false) {
             anyhow::bail!("Unsupported archive format: {}", staged.display());
         }
-        let files = extract_zip(staged, &extract_dir, |_| Ok(()))?;
+        let files = Self::extract_or_restore(staged, &extract_dir, "GUI")?;
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] GUI updated successfully");
         Ok(files)
@@ -523,12 +524,31 @@ impl UpdateManager {
 
     /// tar.gz アーカイブを展開
     pub(crate) fn extract_tar_gz(archive_path: &Path, target_dir: &Path) -> Result<()> {
+        Self::extract_tar_gz_with(archive_path, target_dir, |out_path| {
+            // 기존 바이너리를 .old로 백업
+            if out_path.exists() {
+                if out_path.extension().map(|e| e == "exe").unwrap_or(false) {
+                    let backup = out_path.with_extension("exe.old");
+                    let _ = Self::rename_with_retry(out_path, &backup, 5);
+                } else if cfg!(unix) && Self::is_known_binary(out_path) {
+                    let backup = out_path.with_extension("old");
+                    let _ = std::fs::rename(out_path, &backup);
+                }
+            }
+            Ok(())
+        })
+        .map(|_| ())
+    }
+
+    /// tar.gz를 풀며 파일을 쓰기 직전에 `before_write`를 부른다 (`extract_zip`과 같은 꼴). 쓴 파일을 돌려준다
+    fn extract_tar_gz_with(archive_path: &Path, target_dir: &Path, mut before_write: impl FnMut(&Path) -> Result<()>) -> Result<Vec<PathBuf>> {
         use flate2::read::GzDecoder;
         use tar::Archive;
 
         let file = std::fs::File::open(archive_path)?;
         let decoder = GzDecoder::new(file);
         let mut archive = Archive::new(decoder);
+        let mut written = Vec::new();
 
         for entry in archive.entries()? {
             let mut entry = entry?;
@@ -563,18 +583,9 @@ impl UpdateManager {
                     std::fs::create_dir_all(parent)?;
                 }
 
-                // 기존 바이너리를 .old로 백업
-                if out_path.exists() {
-                    if out_path.extension().map(|e| e == "exe").unwrap_or(false) {
-                        let backup = out_path.with_extension("exe.old");
-                        let _ = Self::rename_with_retry(&out_path, &backup, 5);
-                    } else if cfg!(unix) && Self::is_known_binary(&out_path) {
-                        let backup = out_path.with_extension("old");
-                        let _ = std::fs::rename(&out_path, &backup);
-                    }
-                }
-
+                before_write(&out_path)?;
                 entry.unpack(&out_path)?;
+                written.push(out_path.clone());
 
                 // Linux: 실행 파일에 실행 권한 부여
                 #[cfg(unix)]
@@ -587,7 +598,7 @@ impl UpdateManager {
             }
         }
 
-        Ok(())
+        Ok(written)
     }
 
     /// 경로가 saba-chan 바이너리인지 판별 (확장자 없는 비-바이너리 파일 오인 방지)
