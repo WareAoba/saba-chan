@@ -109,10 +109,10 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
         hashes.insert(file.to_string_lossy().to_string(), compute_sha256(file)?);
     }
     // 읽을 수 없는 기록을 이 키 하나로 덮어쓰면 다른 컴포넌트의 기록이 사라진다.
-    // 내용이 깨진 기록은 옆으로 옮겨 두고 새로 쓴다. 그대로 두면 기록이 영영 안 되어 모든 모듈·익스텐션이 다시 받기 대상으로 남는다
+    // 내용이 깨진 기록(UTF-8이 아닌 것 포함)은 옆으로 옮겨 두고 새로 쓴다. 그대로 두면 기록이 영영 안 되어 모든 모듈·익스텐션이 다시 받기 대상으로 남는다
     let mut records: InstalledFiles = match crate::read_json(path) {
         Ok(records) => records.unwrap_or_default(),
-        Err(e) if path.is_file() && std::fs::read_to_string(path).is_ok() => {
+        Err(e) if path.is_file() && std::fs::read(path).is_ok() => {
             let corrupt = path.with_extension(format!(
                 "json.corrupt-{}",
                 std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
@@ -395,20 +395,23 @@ mod tests {
     // U-13: 깨진 설치 기록 때문에 기록이 계속 실패하면 모든 모듈·익스텐션이 "다시 받기" 대상으로 남는다
     #[test]
     fn a_corrupt_record_file_is_set_aside_and_recording_continues() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("installed-files.json");
-        let file = tmp.path().join("lifecycle.py");
-        std::fs::write(&file, b"print()").unwrap();
-        std::fs::write(&path, b"{\"module-a\": {").unwrap();
+        // 잘린 JSON, UTF-8이 아닌 바이트
+        for broken in [&b"{\"module-a\": {"[..], &b"\xff\xfe{\"module-a\""[..]] {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("installed-files.json");
+            let file = tmp.path().join("lifecycle.py");
+            std::fs::write(&file, b"print()").unwrap();
+            std::fs::write(&path, broken).unwrap();
 
-        record_install_at(&path, "module-b", std::slice::from_ref(&file)).unwrap();
+            record_install_at(&path, "module-b", std::slice::from_ref(&file)).unwrap();
 
-        assert!(load_records(&path).contains_key("module-b"));
-        let kept: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().flatten()
-            .filter(|e| e.file_name().to_string_lossy().starts_with("installed-files.json.corrupt-"))
-            .collect();
-        assert_eq!(kept.len(), 1, "the broken record is kept for inspection");
-        assert_eq!(std::fs::read(kept[0].path()).unwrap(), b"{\"module-a\": {");
+            assert!(load_records(&path).contains_key("module-b"));
+            let kept: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with("installed-files.json.corrupt-"))
+                .collect();
+            assert_eq!(kept.len(), 1, "the broken record is kept for inspection");
+            assert_eq!(std::fs::read(kept[0].path()).unwrap(), broken);
+        }
     }
 
     #[test]

@@ -52,6 +52,8 @@ struct ApplyProgressEvent {
     message: String,
     percent: i32,
     applied: Vec<String>,
+    /// 실패하거나 건너뛴 키 수. 화면 문구는 GUI가 이 수로 번역하고, message는 진단용 원문이다
+    failed: usize,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -153,7 +155,7 @@ async fn start_apply(
             }
         }, 100, &applied);
     } else {
-        emit_progress(&app, "error", &format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; ")), 0, &applied);
+        emit_progress_with_failures(&app, "error", &format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; ")), 0, &applied, failed.len());
     }
 
     drop(mgr);
@@ -235,11 +237,16 @@ async fn check_after_update() -> Result<serde_json::Value, String> {
 // ═══════════════════════════════════════════════════════
 
 fn emit_progress(app: &AppHandle, step: &str, message: &str, percent: i32, applied: &[String]) {
+    emit_progress_with_failures(app, step, message, percent, applied, 0);
+}
+
+fn emit_progress_with_failures(app: &AppHandle, step: &str, message: &str, percent: i32, applied: &[String], failed: usize) {
     app.emit("apply:progress", ApplyProgressEvent {
         step: step.into(),
         message: message.into(),
         percent,
         applied: applied.to_vec(),
+        failed,
     }).ok();
 }
 

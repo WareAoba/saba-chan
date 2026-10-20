@@ -645,9 +645,10 @@ impl UpdateManager {
         marker::ReleaseSummary::from(latest).notes_for(lang).map(str::to_string)
     }
 
-    /// GUI에서 고른 언어. 없으면 영어
+    /// GUI에서 고른 언어. 없으면 OS 언어, 그것도 없으면 영어 (GUI·데몬과 같은 순서)
     fn user_language() -> String {
-        config_file::ConfigFile::default_location().section("gui")["language"].as_str().unwrap_or("en").to_string()
+        let chosen = config_file::ConfigFile::default_location().section("gui")["language"].as_str().map(str::to_string);
+        chosen.filter(|l| !l.trim().is_empty()).or_else(sys_locale::get_locale).unwrap_or_else(|| "en".to_string())
     }
 
     /// 다시 확인해도 같은 버전을 받아 둔 파일이 남아 있으면 적용 대기를 유지한다.
