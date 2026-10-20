@@ -61,7 +61,7 @@
     "relay_url_label": "Relay Server URL (Custom)",
     "relay_url_description": "URL of the relay server for cloud mode. Uses default server if empty.",
     "auto_generate_passwords_label": "Auto-generate Passwords",
-    "auto_generate_passwords_description": "Automatically generate random REST passwords on every server launch for security.",
+    "auto_generate_passwords_description": "If a server's REST password is empty, fill it with a random one when the server starts. Existing passwords are never changed.",
     "port_conflict_check_label": "Port Conflict Detection",
     "port_conflict_check_description": "Show warnings when multiple server instances use the same port.",
     "uninstall_label": "Uninstall Saba-chan",

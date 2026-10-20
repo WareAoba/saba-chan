@@ -61,7 +61,7 @@
     "relay_url_label": "URL do Servidor de Retransmissão (Personalizado)",
     "relay_url_description": "URL do servidor de retransmissão para o modo nuvem. Usa servidor padrão se vazio.",
     "auto_generate_passwords_label": "Gerar senhas automaticamente",
-    "auto_generate_passwords_description": "Gera automaticamente senhas REST aleatórias a cada inicialização do servidor para segurança.",
+    "auto_generate_passwords_description": "Se a senha REST de um servidor estiver vazia, ela é preenchida com uma aleatória ao iniciar. Senhas existentes nunca são alteradas.",
     "port_conflict_check_label": "Detecção de conflito de porta",
     "port_conflict_check_description": "Mostra avisos quando várias instâncias de servidor usam a mesma porta.",
     "uninstall_label": "Desinstalar Saba-chan",

@@ -61,7 +61,7 @@
     "relay_url_label": "Relay-Server-URL (Benutzerdefiniert)",
     "relay_url_description": "URL des Relay-Servers für Cloud-Modus. Verwendet Standardserver wenn leer.",
     "auto_generate_passwords_label": "Passwörter automatisch generieren",
-    "auto_generate_passwords_description": "Generiert bei jedem Serverstart automatisch zufällige REST-Passwörter für mehr Sicherheit.",
+    "auto_generate_passwords_description": "Ist das REST-Passwort eines Servers leer, wird es beim Start zufällig gesetzt. Vorhandene Passwörter werden nie geändert.",
     "port_conflict_check_label": "Portkonflikterkennung",
     "port_conflict_check_description": "Zeigt Warnungen an, wenn mehrere Serverinstanzen denselben Port verwenden.",
     "uninstall_label": "Saba-chan deinstallieren",
