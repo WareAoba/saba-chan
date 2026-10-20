@@ -3,7 +3,8 @@ saba-chan daemon helpers for Python lifecycle modules
 =====================================================
 Shared runtime helpers (every module may use them; the daemon ships this file).
 The file keeps its old name so existing ``from daemon_rcon import ...`` lines work;
-RCON itself is off on every server (security policy).
+it holds no RCON client. A module whose server only speaks RCON sends its stop
+command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
 
     daemon_post()                                call any daemon endpoint with the IPC token
     daemon_stdin_command()                       send a line to a managed server's stdin
