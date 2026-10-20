@@ -437,6 +437,7 @@
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
     "console_input_full": "服务器仍在处理之前的输入，请稍后再发送。",
     "restart_cancelled": "等待期间服务器已在别处启动或删除，因此没有重启。",
+    "not_supported": "此服务器的模块不支持此功能。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",
     "file_not_found": "找不到文件或文件夹。请检查路径。",
     "permission_denied": "权限被拒绝。请检查文件访问权限。",

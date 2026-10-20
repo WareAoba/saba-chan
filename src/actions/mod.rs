@@ -396,12 +396,9 @@ fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
 /// 모듈 명령 한 개 (`GET /api/instance/:id/commands`의 항목) → 액션
 fn command_view(cmd: &Value) -> Option<Value> {
     let name = cmd.get("name")?.as_str()?;
-    let risk = cmd.get("risk").and_then(Value::as_str).unwrap_or("caution");
-    let mut surfaces = vec!["gui", "cli", "discord"];
-    // 모듈이 표면을 선언할 길이 없으므로 danger 명령은 챗봇에서 뺀다
-    if risk != "danger" {
-        surfaces.push("chatbot");
-    }
+    let risk = crate::commands::risk_of(cmd.get("risk").and_then(Value::as_str));
+    // danger 명령도 챗봇이 고를 수 있다: 늘 확인 계획을 거치고 요청자가 확인한다 (`needs_confirm`)
+    let surfaces = vec!["gui", "cli", "discord", "chatbot"];
     let inputs = cmd.get("inputs").cloned().unwrap_or(json!([]));
     let props: Map<String, Value> = inputs
         .as_array()
@@ -541,7 +538,7 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             .iter()
             .map(|(l, c)| (l.to_string(), json!(translated(c, &format!("actions.{}.title", d.id)).unwrap_or_else(|| d.id.to_string()))))
             .collect();
-        items.push(json!({
+        let mut item = json!({
             "id": d.id,
             "kind": d.kind.name(),
             "risk": d.risk,
@@ -551,7 +548,12 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             "input": with_field_titles(remote_schema(d), |name| {
                 cats.iter().filter_map(|(l, c)| Some((l.to_string(), json!(translated(c, &format!("actions.field.{}", name))?)))).collect()
             }),
-        }));
+        });
+        // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`)
+        if let Some(level) = d.discord_level {
+            item["level"] = json!(level);
+        }
+        items.push(item);
     }
     let mut modules: Vec<&LoadedModule> = modules.iter().filter(|m| !m.metadata.queries.is_empty()).collect();
     modules.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
@@ -1123,6 +1125,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             }
             if stored.via_chatbot {
                 caller.surface = Chatbot;
+                caller.origin.via = Some("chatbot".to_string());
             }
             match stored.body {
                 PlanBody::Steps(steps) => {
@@ -1209,6 +1212,11 @@ async fn admit(server: &IPCServer, caller: &Caller) -> Result<(), ActionError> {
     Ok(())
 }
 
+/// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
+fn chatbot_masked(id: &str) -> bool {
+    id == "server.console.tail" || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
+}
+
 /// 푼 액션 하나를 실행한다: 밑 라우트 응답을 `{success, actionId, status, result}`로.
 /// 원격 서버 설정 변경이 성공하면 바꾸기 전 값으로 되돌리는 계획을 함께 만든다 (`undoPlanId`)
 async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
@@ -1218,8 +1226,7 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     };
     let resp = crate::audit::with_origin(caller.origin.clone(), call_as(server, r.method, &r.uri, r.body.clone(), Some(caller.origin.clone()))).await;
     let mut result = resp.body;
-    // 콘솔과 모듈 조회 결과(접속자 목록 등)는 챗봇에 IP·비밀처럼 보이는 값을 가려 보낸다
-    if (r.id == "server.console.tail" || r.id.starts_with(QUERY_PREFIX)) && caller.surface == Chatbot {
+    if chatbot_masked(&r.id) && caller.surface == Chatbot {
         mask_console(&mut result);
     }
     if caller.remote.is_some() {
@@ -1306,7 +1313,7 @@ pub async fn query(server: &IPCServer, id: &str, instance: Option<&str>, input: 
 
 /// 챗봇에 보내는 콘솔에서 IP 주소(IPv4·IPv6)와 비밀처럼 보이는 값을 가린다
 /// (`password=…`·`token: …`의 값, 글자와 숫자가 섞인 32자 이상 문자열)
-fn mask_console(result: &mut Value) {
+pub(crate) fn mask_console(result: &mut Value) {
     struct Masks {
         ipv4: regex::Regex,
         ipv6: regex::Regex,

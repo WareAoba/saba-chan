@@ -192,3 +192,14 @@ fn instance_commands_come_after_module_commands_and_bind_like_them() {
     assert_eq!(plan_with("말 hi"), plan(&module(), &Request::parse("말 hi", &Value::Null)));
     assert_eq!(plan_with("lp-user-info").unwrap_err().code, "missing_argument");
 }
+
+/// 위험도는 safe·caution·danger만 그대로 둔다. 없으면 caution, 모르는 값(오타·대소문자 다름)은 danger로 다룬다
+#[test]
+fn unknown_risk_values_count_as_danger() {
+    assert_eq!(risk_of(None), "caution");
+    for (given, want) in [("safe", "safe"), ("caution", "caution"), ("danger", "danger"), ("Safe", "danger"), ("dangerous", "danger"), ("", "danger")] {
+        assert_eq!(risk_of(Some(given)), want, "{given}");
+    }
+    let hooked = InstanceCommands::parse(&json!({ "commands": [{ "name": "wipe", "label": "Wipe", "method": "console", "console_template": "wipe", "risk": "DANGER" }] }));
+    assert_eq!(hooked.fields[0].risk.as_deref(), Some("danger"));
+}

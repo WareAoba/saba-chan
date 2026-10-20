@@ -50,7 +50,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
 
 /// `/api/servers`에서 이 서버의 실행 상태
 pub async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
-    let list = ctx.api.servers().await?;
+    let list = ctx.api.servers(true).await?;
     Ok(list
         .get("servers")
         .and_then(Value::as_array)
@@ -151,7 +151,7 @@ async fn settle(ctx: &Ctx, sv: &Server, window: Duration) -> String {
 // ── 목록·정보 ──
 
 async fn list(ctx: &Ctx) -> Result<()> {
-    let (servers, modules) = tokio::join!(ctx.api.servers(), ctx.api.modules());
+    let (servers, modules) = tokio::join!(ctx.api.servers(true), ctx.api.modules());
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
     ctx.out.data(servers.get("servers").unwrap_or(&json!([])), |list| {
@@ -179,7 +179,8 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         .ok()
         .filter(|p| p.get("active").and_then(Value::as_bool) == Some(true));
 
-    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress });
+    let missing = crate::cmd::module::unsupported(&module);
+    let v = json!({ "instance": sv.raw, "runtime": rt, "last_exit": last_exit, "provisioning": progress, "unsupported": missing });
     ctx.out.data(&v, |_| {
         let game = s(&module, "display_name");
         output::heading(&format!(
@@ -237,6 +238,9 @@ async fn info(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         if let Some(e) = &last_exit {
             rows.push((t!("col.last_exit"), exit_line(e)));
+        }
+        if !missing.is_empty() {
+            rows.push((t!("col.unsupported"), missing.join(", ")));
         }
         output::print_kv(&rows);
         if let Some(p) = &progress {
@@ -1380,6 +1384,9 @@ async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) ->
             ctx.out.done(&t!("props.saved", name = sv.name), &r);
         }
         PropsCmd::Reset => {
+            if let Ok(m) = module_info(ctx, &sv.module).await {
+                crate::cmd::module::ensure_supported(&m, "reset_properties")?;
+            }
             ctx.ask.ensure(&t!("props.confirm_reset", name = sv.name))?;
             let r = ctx.api.reset_properties(&sv.id).await?;
             ctx.out.done(&t!("props.reset_done", name = sv.name), &r);
@@ -1598,7 +1605,7 @@ async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     }
     show_agreements(ctx, &pending);
     let names: Vec<&str> = pending.iter().map(|a| s(a, "label")).collect();
-    ctx.ask.ensure(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
+    ctx.ask.agreed(&t!("agree.confirm", name = sv.name, names = names.join(", ")))?;
     let r = accept(ctx, &sv.id, &pending).await?;
     ctx.out.done(&t!("agree.done", name = sv.name), &r);
     Ok(())
@@ -1682,6 +1689,9 @@ async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     if status_of(&runtime(ctx, &sv).await?) == "running" {
         return Err(failed(t!("err.hint.server_running")));
+    }
+    if let Ok(m) = module_info(ctx, &sv.module).await {
+        crate::cmd::module::ensure_supported(&m, "reset_server")?;
     }
     let locales = module_locales(ctx, &sv.module).await;
     ctx.ask.ensure(&reset_question(&sv.name, locales.as_ref()))?;
@@ -1841,5 +1851,14 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("8212") && lines[0].contains("8242"), "{}", lines[0]);
         assert!(port_moved_lines(&json!({ "success": true })).is_empty());
+    }
+
+    /// 약관 동의는 사람이 직접 답한다: `server agree`도 `--yes`로 동의하지 않는다 (확인 `ensure`가 아니라 동의 `agreed`)
+    #[test]
+    fn server_agree_asks_for_a_consent_not_a_confirmation() {
+        let src = include_str!("server.rs");
+        let body = &src[src.find("async fn agree(").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(body.contains("ctx.ask.agreed(") && !body.contains("ensure("), "{body}");
     }
 }

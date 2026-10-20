@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { launchDraft } from '../components/servers/LaunchPreview';
-import { busyMessage, createTranslateError, safeShowToast } from '../utils/helpers';
+import { busyMessage, createTranslateError, moduleSupports, safeShowToast } from '../utils/helpers';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { useModalClose } from './useModalClose';
@@ -225,7 +225,12 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
         setAvailableVersions([]);
-        if (installMethod === 'download') {
+        // 버전 목록·설치를 구현한 모듈만 (MK1)
+        if (
+            installMethod === 'download' &&
+            moduleSupports(mod, 'list_versions') &&
+            moduleSupports(mod, 'install_server')
+        ) {
             setVersionsLoading(true);
             try {
                 const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
@@ -242,7 +247,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
             // Detect installed version from server binary if not already saved
             const hasSavedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
-            if (!hasSavedVersion && latestServer.id) {
+            if (!hasSavedVersion && latestServer.id && moduleSupports(mod, 'get_installed_version')) {
                 try {
                     const detected = await window.api.instanceGetInstalledVersion(latestServer.id);
                     if (request !== openRequest.current) return;

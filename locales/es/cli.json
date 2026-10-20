@@ -101,7 +101,8 @@
     "rest_port": "Puerto REST",
     "author": "Autor",
     "mode": "Modo",
-    "trust": "Origen"
+    "trust": "Origen",
+    "unsupported": "No compatible"
   },
   "common": {
     "fetching": "Obteniendo...",
@@ -190,7 +191,7 @@
     "daemon_down_hint": "Inícialo con: saba-chan-cli daemon start",
     "did_you_mean": "¿Quisiste decir: {{names}}?",
     "hint": {
-      "executable_missing": "Faltan archivos del servidor. Revisa la carpeta o reinstala: saba-chan-cli server update",
+      "executable_missing": "Faltan archivos del servidor. Reinstala (saba-chan-cli server update) o indica la ruta del ejecutable: saba-chan-cli server set SERVIDOR executable_path=RUTA",
       "extension_required": "Instala las extensiones necesarias: saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "Estas extensiones cambiaron y no se pudieron verificar: {{ids}}. Reinstálalas o restaura los archivos originales: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Primero vincula este PC: saba-chan-cli bot pair",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "Solo se permiten direcciones de relay https:// (http solo para localhost, 127.0.0.1 o [::1] al probar en este PC).",
       "module_busy": "Este módulo ya se está instalando o eliminando. Inténtalo de nuevo cuando termine.",
       "invalid_command": "Escribe la clave del comando como `<server>/<command>`. Una clave sin servidor debe ser un id de acción global.",
-      "no_command_path": "Este servidor se inició fuera de Saba-chan, así que no tiene consola para recibir comandos. Reinícialo desde Saba-chan: saba-chan-cli restart <server>"
+      "no_command_path": "Este servidor se inició fuera de Saba-chan, así que no tiene consola para recibir comandos. Reinícialo desde Saba-chan: saba-chan-cli restart <server>",
+      "not_supported": "Consulta los comandos no admitidos con: saba-chan-cli module info"
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
     "not_found": "No hay ningún {{what}} llamado «{{query}}».",
     "pair_expected": "Se esperaba KEY=VALUE, se recibió «{{got}}».",
     "timeout": "El daemon tardó demasiado en responder ({{path}}).",
-    "unknown_command": "No existe el comando: {{path}}. Ejecuta `saba-chan-cli help` para ver los comandos."
+    "unknown_command": "No existe el comando: {{path}}. Ejecuta `saba-chan-cli help` para ver los comandos.",
+    "not_supported": "El módulo {{module}} no admite esta función"
   },
   "agree": {
     "none": "{{name}} no tiene acuerdos que aceptar.",

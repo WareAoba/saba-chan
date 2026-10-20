@@ -127,7 +127,8 @@
     "rest_port": "REST 포트",
     "author": "만든이",
     "mode": "방식",
-    "trust": "출처"
+    "trust": "출처",
+    "unsupported": "지원하지 않음"
   },
   "common": {
     "fetching": "가져오는 중...",
@@ -237,7 +238,7 @@
     "daemon_down_hint": "켜기: saba-chan-cli daemon start",
     "did_you_mean": "혹시 이건가요: {{names}}?",
     "hint": {
-      "executable_missing": "서버 파일이 없어요. 폴더를 확인하거나 다시 설치하세요: saba-chan-cli server update",
+      "executable_missing": "서버 파일이 없어요. 다시 설치하거나(saba-chan-cli server update) 실행 파일 경로를 지정하세요: saba-chan-cli server set 서버 executable_path=경로",
       "extension_required": "필요한 익스텐션을 설치하세요: saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "확장 파일이 바뀌어 확인되지 않았습니다: {{ids}}. 다시 설치하거나 원래대로 되돌려 주세요: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "먼저 이 PC를 페어링하세요: saba-chan-cli bot pair",
@@ -260,7 +261,8 @@
         "conflict": "이미 다른 것을 부르는 낱말이에요",
         "unknown_command": "이 서버에 없는 명령이에요",
         "too_many": "낱말은 10개까지예요"
-      }
+      },
+      "not_supported": "지원하지 않는 명령은 saba-chan-cli module info에서 볼 수 있어요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -268,7 +270,8 @@
     "pair_expected": "KEY=VALUE 형식이어야 해요: \"{{got}}\"",
     "timeout": "데몬 응답이 너무 늦어요 ({{path}}).",
     "body_read": "{{path}} 응답을 끝까지 받지 못했어요: {{error}}",
-    "unknown_command": "없는 명령이에요: {{path}}. `saba-chan-cli help`로 명령 목록을 볼 수 있어요."
+    "unknown_command": "없는 명령이에요: {{path}}. `saba-chan-cli help`로 명령 목록을 볼 수 있어요.",
+    "not_supported": "{{module}} 모듈은 이 기능을 지원하지 않아요"
   },
   "agree": {
     "none": "{{name}}에 동의할 약관이 없어요.",
@@ -739,7 +742,7 @@
       "page": "페이지",
       "per_page": "페이지당 개수",
       "dir": "폴더",
-      "jar": "jar 파일 이름",
+      "executable": "받을 서버 실행 파일 이름 (기본: 모듈의 server_executable)",
       "accept": "동의할 약관 id (읽은 것만)",
       "relay_url": "릴레이 주소",
       "token": "노드 토큰",

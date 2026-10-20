@@ -524,6 +524,17 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     } else {
         // GUI/데몬 재시작 불필요 → 데몬이 직접 적용
         for comp in &targets {
+            // 같은 모듈을 받아 설치·제거하는 요청과 겹치면 서로의 파일을 지운다 (`module_install_guard`)
+            let _installing = match comp {
+                Component::Module(name) => match crate::ipc::handlers::server::module_install_guard(name) {
+                    Some(guard) => Some(guard),
+                    None => {
+                        errors.push(format!("{}: Module '{}' is already being installed or removed", comp.display_name(), name));
+                        continue;
+                    }
+                },
+                _ => None,
+            };
             match mgr.apply_single_component(comp).await {
                 Ok(result) if result.success => {
                     applied.push(comp.display_name());

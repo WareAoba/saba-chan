@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { busyMessage, createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
+import { busyMessage, createTranslateError, moduleSupports, retryWithBackoff, safeShowToast } from '../utils/helpers';
 import { showPortMoved } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
@@ -331,7 +331,10 @@ export function useServerActions({
                                 }
                             },
                         },
-                        {
+                        moduleSupports(
+                            modules.find((m) => m.name === module),
+                            'install_server',
+                        ) && {
                             label: t('servers.jar_action_install_new'),
                             action: async () => {
                                 setModal(null);
@@ -415,7 +418,7 @@ export function useServerActions({
                             label: t('modals.cancel'),
                             action: () => setModal(null),
                         },
-                    ],
+                    ].filter(Boolean),
                 });
                 return;
             }

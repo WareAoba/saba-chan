@@ -76,12 +76,16 @@ export const waitForDaemon = async (timeout = 10000) => {
     throw new Error('Daemon startup timeout');
 };
 
-/** 데몬이 켜져 있거나(server_running) 다른 작업 중이라(instance_busy) 거절한 이유. 그 밖의 코드는 null */
+/** 데몬이 켜져 있거나(server_running) 다른 작업 중이라(instance_busy), 모듈에 그 기능이 없어(not_supported) 거절한 이유. 그 밖의 코드는 null */
 export function busyMessage(t, code, runningKey) {
     if (code === 'server_running') return t(`server_settings.${runningKey}`);
     if (code === 'instance_busy') return t('server_settings.instance_busy');
+    if (code === 'not_supported') return t('errors.not_supported');
     return null;
 }
+
+/** 모듈이 lifecycle 함수 `fn`을 구현했는가 (`GET /api/modules`의 `functions`). 목록을 모르면(null) 있다고 본다 */
+export const moduleSupports = (module, fn) => !Array.isArray(module?.functions) || module.functions.includes(fn);
 
 /**
  * Creates an error translator function bound to the given i18n `t` function.

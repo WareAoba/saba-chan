@@ -437,6 +437,7 @@
     "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
     "console_input_full": "Der Server verarbeitet noch frühere Eingaben. Versuche es gleich noch einmal.",
     "restart_cancelled": "Der Server wurde während des Wartens an anderer Stelle gestartet oder entfernt, daher wurde er nicht neu gestartet.",
+    "not_supported": "Das Modul dieses Servers unterstützt diese Funktion nicht.",
     "executable_not_found": "Ausführbare Datei des Spielservers nicht gefunden. Bitte überprüfen Sie den Pfad in den Einstellungen.",
     "file_not_found": "Datei oder Ordner nicht gefunden. Bitte überprüfen Sie den Pfad.",
     "permission_denied": "Berechtigung verweigert. Bitte überprüfen Sie die Dateizugriffsberechtigung.",
