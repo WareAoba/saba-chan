@@ -268,15 +268,25 @@ pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
     !path.components().any(|c| matches!(c, std::path::Component::ParentDir)) && roots.iter().any(|r| path.starts_with(r))
 }
 
+/// 복원 결과
+#[derive(Debug)]
+pub struct Restored {
+    /// 돌려놓은 경로
+    pub paths: Vec<PathBuf>,
+    /// 되살리지 못한 링크 수 (Windows 권한 등). 나머지 복원은 끝났다 (D-B14)
+    pub links_missed: usize,
+}
+
 /// 백업을 원래 자리로 돌려놓는다. 서버는 꺼져 있어야 한다 (호출자가 확인).
 /// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣는다. 치워 둔 것은 모두 성공한 뒤에 지우고,
 /// 도중에 실패하면 이미 풀어 넣은 경로까지 거꾸로 모두 되돌린다
-pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
+pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
     let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
     let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
     // (경로, 기존 것을 치워 둔 곳). 실패하면 이 목록을 거꾸로 되돌린다
     let mut touched: Vec<(&Path, Option<PathBuf>)> = Vec::new();
     let mut failed = None;
+    let mut links_missed = 0;
     for entry in &manifest.paths {
         let aside = entry.path.exists().then(|| free_aside_path(&entry.path));
         if let Some(aside) = &aside {
@@ -294,6 +304,7 @@ pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
         for link in manifest.links.iter().filter(|l| !entry.is_file && is_inside(&l.path, std::slice::from_ref(&entry.path))) {
             if let Err(e) = make_link(link) {
                 tracing::warn!("Could not restore link {} -> {}: {}", link.path.display(), link.target.display(), e);
+                links_missed += 1;
             }
         }
     }
@@ -319,7 +330,7 @@ pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
             remove_any(aside);
         }
     }
-    Ok(touched.into_iter().map(|(p, _)| p.to_path_buf()).collect())
+    Ok(Restored { paths: touched.into_iter().map(|(p, _)| p.to_path_buf()).collect(), links_missed })
 }
 
 fn aside_path(path: &Path) -> PathBuf {
@@ -446,6 +457,38 @@ mod tests {
         assert!(outside.is_dir(), "restoring a link never touches where it points");
     }
 
+    /// 되살리지 못한 링크는 경고만 남기고 끝나지 않는다: 복원 결과에 그 수를 실어 사용자가 안다 (D-B14)
+    #[cfg(unix)]
+    #[test]
+    fn a_link_that_cannot_come_back_is_counted_in_the_result() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        std::os::unix::fs::symlink("level.dat", w.join("latest")).unwrap();
+        let dir = tmp.path().join("backups");
+        let b = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        // 파일 아래를 가리키는 링크 자리: 만들 수 없다
+        let crafted = dir.join("20000101-000000-000-manual.zip");
+        {
+            let mut src = zip::ZipArchive::new(File::open(dir.join(&b.name)).unwrap()).unwrap();
+            let mut manifest: Manifest = serde_json::from_reader(src.by_name(MANIFEST).unwrap()).unwrap();
+            manifest.links.push(LinkEntry { path: w.join("level.dat/inside"), target: "x".into(), dir: false });
+            let mut out = zip::ZipWriter::new(File::create(&crafted).unwrap());
+            for i in 0..src.len() {
+                let f = src.by_index(i).unwrap();
+                if f.name() != MANIFEST {
+                    out.raw_copy_file(f).unwrap();
+                }
+            }
+            out.start_file(MANIFEST, zip::write::FileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut out, &serde_json::to_vec(&manifest).unwrap()).unwrap();
+            out.finish().unwrap();
+        }
+        let done = restore(&dir, "20000101-000000-000-manual.zip").unwrap();
+        assert_eq!(done.paths, vec![w.clone()]);
+        assert_eq!(done.links_missed, 1);
+        assert_eq!(fs::read_link(w.join("latest")).unwrap(), Path::new("level.dat"), "the other link still comes back");
+    }
+
     #[test]
     fn create_restore_roundtrip_and_rollback_layout() {
         let tmp = tempfile::tempdir().unwrap();
@@ -460,7 +503,7 @@ mod tests {
         fs::write(w.join("new.dat"), b"x").unwrap();
         fs::write(&props, b"a=2").unwrap();
         let restored = restore(&dir, &b.name).unwrap();
-        assert_eq!(restored.len(), 2);
+        assert_eq!(restored.paths.len(), 2);
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(fs::read(w.join("region/r.0.0.mca")).unwrap(), b"chunks");
         assert!(!w.join("new.dat").exists(), "restore replaces the folder, not merges");
