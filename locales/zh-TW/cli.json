@@ -191,7 +191,7 @@
     "daemon_down_hint": "啟動方式：saba-chan-cli daemon start",
     "did_you_mean": "你是不是要找：{{names}}？",
     "hint": {
-      "executable_missing": "缺少伺服器檔案。請檢查資料夾或重新安裝：saba-chan-cli server update",
+      "executable_missing": "缺少伺服器檔案。請重新安裝（saba-chan-cli server update）或指定執行檔路徑：saba-chan-cli server set 伺服器 executable_path=路徑",
       "extension_required": "請安裝所需的擴充功能：saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "擴充功能檔案已變更，無法驗證：{{ids}}。請重新安裝或還原原始檔案：saba-chan-cli extension install {{ids}}",
       "node_token_missing": "請先配對這台電腦：saba-chan-cli bot pair",

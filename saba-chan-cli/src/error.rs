@@ -162,7 +162,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
         "node_token_missing" | "not_paired" | "node_not_found" | "missing_token" | "invalid_token" | "invalid_token_format" => Some(t!("err.hint.node_token_missing")),
-        "executable_missing" => Some(t!("err.hint.executable_missing")),
+        // 모듈이 실행 파일을 못 찾음: executable_not_found (MK7), 옛 모듈은 server_jar_not_found
+        "executable_missing" | "executable_not_found" | "server_jar_not_found" => Some(t!("err.hint.executable_missing")),
         "update_unsupported" => Some(t!("err.hint.update_unsupported")),
         "backup_unsupported" => Some(t!("err.hint.backup_unsupported")),
         "nothing_to_back_up" => Some(t!("err.hint.nothing_to_back_up")),

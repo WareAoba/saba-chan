@@ -239,6 +239,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - `slots.rs`: 데이터 slot(03-extensions 4.3)을 출력만 한다. 서버의 `slots`(`ServerCard.badge`, `ServerDetail.status`)와 익스텐션의 `slots["AddServer.options"]`를 읽고, 답은 서버를 만들 때 `extension_data`로 보낸다.
 - `i18n.rs`: 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 바이너리에 넣어 둔 en/ko를 쓴다(`:11-12, 36-52`). clap 도움말은 `help.cmd.*`·`help.arg.*` 키가 있으면 그 문구로 바꿔 끼운다(`cli.rs:811-839`).
 - 모듈이 구현하지 않은 기능(MK1): `GET /api/modules`의 `functions`가 배열이면 빠진 선택 함수를 쓰는 명령(`cmd/module.rs` `OPTIONAL`: `server reset`·`server version`·`server diagnose`·`server validate`·`server properties [set|reset]`·`module versions`·`module install-files`)을 `module info`·`server info`의 "지원하지 않음" 줄로 보이고(`server info --json`은 `unsupported`), `server reset`·`server properties reset`은 확인을 묻기 전에 `not_supported`로 멈춘다. 데몬의 `not_supported` 답에는 안내 한 줄이 붙는다(`error.rs` `api_hint`). `functions`가 null이거나 없으면 아무것도 숨기지 않는다.
+- 실행 파일 이름(MK7): `module install-files --executable FILE`(예전 `--jar`는 별칭)은 `POST /api/module/:name/install`에 `server_executable`로 보낸다. 시작 실패의 `action_required`(`client.rs` `check`)는 `error_code`가 없을 때 오류 코드가 되고, `executable_not_found`(옛 `server_jar_not_found`)에는 다시 설치하라는 안내가 붙는다(`error.rs` `api_hint`).
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
 - 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`.
 

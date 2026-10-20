@@ -87,14 +87,11 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             module,
             version,
             dir,
-            jar,
+            executable,
             accept,
         } => {
             let m = resolve::module(ctx, Some(&module)).await?;
-            let mut body = json!({ "version": version, "install_dir": dir, "accept_agreements": accept });
-            if let Some(j) = jar {
-                body["jar_name"] = json!(j);
-            }
+            let body = install_files_body(&version, &dir, executable.as_deref(), &accept);
             let spin = crate::progress::spinner(&t!("module.downloading_files"));
             let r = ctx.api.install_server_files(s(&m, "name"), body).await;
             spin.finish_and_clear();
@@ -103,6 +100,15 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// `POST /api/module/:name/install` 본문. 실행 파일 이름을 주지 않으면 모듈 `server_executable`로 받는다
+fn install_files_body(version: &str, dir: &str, executable: Option<&str>, accept: &[String]) -> Value {
+    let mut body = json!({ "version": version, "install_dir": dir, "accept_agreements": accept });
+    if let Some(e) = executable {
+        body["server_executable"] = json!(e);
+    }
+    body
 }
 
 async fn list(ctx: &Ctx) -> Result<()> {
@@ -362,6 +368,7 @@ async fn available(ctx: &Ctx) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다
     #[test]
@@ -372,5 +379,21 @@ mod tests {
         assert_eq!(unsupported(&m), vec!["server reset", "server diagnose"]);
         assert!(supported(&m, "validate") && !supported(&m, "reset_server"));
         assert!(supported(&json!({ "functions": null }), "reset_server"));
+    }
+
+    /// 받을 실행 파일 이름은 게임 중립적인 `--executable`로 받아 `server_executable`로 보낸다(MK7). 예전 `--jar`도 받는다
+    #[test]
+    fn install_files_sends_the_executable_name_as_server_executable() {
+        for flag in ["--executable", "--jar"] {
+            let cli = crate::cli::Cli::try_parse_from(["saba-chan-cli", "module", "install-files", "m", "--version", "1", "--dir", "d", flag, "x.jar"]).unwrap();
+            let Some(crate::cli::Cmd::Module(ModuleCmd::InstallFiles { version, dir, executable, accept, .. })) = cli.cmd else {
+                panic!("{}: not install-files", flag)
+            };
+            let body = install_files_body(&version, &dir, executable.as_deref(), &accept);
+            assert_eq!(body["server_executable"], "x.jar", "{}", flag);
+            assert!(body.get("jar_name").is_none());
+        }
+        let body = install_files_body("1", "d", None, &[]);
+        assert!(body.get("server_executable").is_none(), "without the flag the module default is used");
     }
 }

@@ -596,8 +596,9 @@ pub enum ModuleCmd {
         version: String,
         #[arg(long, value_name = "DIR")]
         dir: String,
-        #[arg(long)]
-        jar: Option<String>,
+        /// Server executable file name to download as (default: the module's `server_executable`)
+        #[arg(long, alias = "jar", value_name = "FILE")]
+        executable: Option<String>,
         /// Agreement id the module declares (`[[agreements]]`), repeatable. Only pass ones you have read
         #[arg(long = "accept", value_name = "ID")]
         accept: Vec<String>,
