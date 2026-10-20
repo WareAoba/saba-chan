@@ -289,21 +289,39 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
         ctx.out.done(&t!("update.updater_launched"), &Value::Null);
     }
     // 데몬이 다시 뜨면 결과와 패치노트를 바로 보인다 (GUI 없는 PC). 실행 중인 CLI 파일은 업데이터가 비켜 두고 바꾼다
-    let code = match wait_for_result(ctx, before.as_deref()).await {
-        Some(last) => {
-            let ok = last.pointer("/result/success").and_then(Value::as_bool) == Some(true);
-            ctx.out.data(&json!({ "apply": r, "launch": launched, "last": last }), |_| print_last(ctx, &last));
-            i32::from(failed || !ok)
+    let last = wait_for_result(ctx, before.as_deref()).await;
+    if let Some(l) = last.as_ref().filter(|_| !ctx.out.json) {
+        print_last(ctx, l);
+    }
+    let code = match apply_result(&r, &launched, last.as_ref(), failed) {
+        Ok(v) => {
+            if ctx.out.json {
+                ctx.out.data(&v, |_| {});
+            }
+            0
         }
-        None => {
-            ctx.out.data(&json!({ "apply": r, "launch": launched, "last": null }), |_| ctx.out.warn(&t!("update.result_timeout")));
-            ctx.out.hint(&t!("update.after_hint"));
-            1
+        Err(e) => {
+            ctx.out.error(&e);
+            if last.is_none() {
+                ctx.out.hint(&t!("update.after_hint"));
+            }
+            e.exit_code()
         }
     };
     // 이 셸은 옛 CLI 파일로 떠 있으니 셸 안에서도 여기서 끝낸다
     output::flush();
     std::process::exit(code);
+}
+
+/// 적용·실행·새 결과를 하나로. 구성요소 실패, 업데이터 실패, 시간 초과는 그 내용을 실은 오류다
+fn apply_result(apply: &Value, launch: &Value, last: Option<&Value>, failed: bool) -> std::result::Result<Value, crate::error::CliError> {
+    let data = json!({ "apply": apply, "launch": launch, "last": last });
+    let message = match last {
+        None => t!("update.result_timeout"),
+        Some(l) if failed || l.pointer("/result/success").and_then(Value::as_bool) != Some(true) => t!("update.apply_failed"),
+        Some(_) => return Ok(data),
+    };
+    Err(crate::error::CliError::Partial { message, data })
 }
 
 /// 업데이터가 적용하고 데몬을 다시 띄우기까지 기다리는 최대 시간
@@ -476,6 +494,26 @@ mod tests {
         // 적용 전에 결과가 없었으면 처음 생긴 결과가 새 결과다
         assert!(is_new_result(None, &new));
         assert!(!is_new_result(None, &json!({})));
+    }
+
+    /// 적용 뒤 실패나 시간 초과는 --json에서도 오류 문서({ok:false, error_code})로 끝나고, 적용 내용을 함께 싣는다
+    #[test]
+    fn a_failed_or_timed_out_apply_ends_as_an_error_document() {
+        let apply = json!({ "applied": ["saba-core"], "errors": [] });
+        let launch = json!({ "ok": true });
+        let good = json!({ "result": { "timestamp": "t", "success": true } });
+        let bad = json!({ "result": { "timestamp": "t", "success": false } });
+
+        let v = apply_result(&apply, &launch, Some(&good), false).unwrap();
+        assert_eq!(v["last"], good);
+
+        for (last, failed) in [(Some(&bad), false), (Some(&good), true), (None, false)] {
+            let doc = apply_result(&apply, &launch, last, failed).unwrap_err().to_json();
+            assert_eq!(doc["ok"], json!(false));
+            assert_eq!(doc["error_code"], json!("partial"));
+            assert_eq!(doc["apply"], apply);
+            assert_eq!(doc["last"], last.cloned().unwrap_or(Value::Null));
+        }
     }
 
     /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)
