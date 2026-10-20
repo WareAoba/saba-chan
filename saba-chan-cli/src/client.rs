@@ -25,6 +25,8 @@ pub struct Api {
     token: Arc<RwLock<Option<String>>>,
     /// 요청마다 싣는 `Accept-Language` (`--lang`·`SABA_LANG`으로 고른 언어). 없으면 데몬이 자기 설정을 따른다
     pub lang: Option<String>,
+    /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id (L50)
+    notices_seen: Arc<std::sync::atomic::AtomicU64>,
 }
 
 fn read_token() -> Option<String> {
@@ -65,6 +67,7 @@ impl Api {
             port,
             token: Arc::new(RwLock::new(read_token())),
             lang,
+            notices_seen: Arc::default(),
         }
     }
 
@@ -190,10 +193,14 @@ impl Api {
     // ── 서버 (런타임 상태) ──
 
     /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다).
-    /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 읽으면 비워진다: 알림을 보여 주는 `status`만 비우고,
-    /// 나머지는 `keep`으로 남겨 둔다
+    /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 데몬에 남는다: 알림을 보여 주는 `status`는 이 실행에서 본 것 뒤만,
+    /// 나머지는 `keep`으로 남은 것 모두를 받는다
     pub async fn servers(&self, keep_notices: bool) -> Result<Value> {
-        self.get_slow(if keep_notices { "/api/servers?notices=keep" } else { "/api/servers" }).await
+        let body = self.get_slow(&servers_path(keep_notices, &self.notices_seen)).await?;
+        if !keep_notices {
+            remember_notices(&self.notices_seen, &body);
+        }
+        Ok(body)
     }
     /// POST /api/instance/:id/start — managed 여부는 데몬이 고른다
     pub async fn start(&self, id: &str) -> Result<Value> {
@@ -866,6 +873,28 @@ impl Api {
     }
 }
 
+fn servers_path(keep_notices: bool, seen: &std::sync::atomic::AtomicU64) -> String {
+    if keep_notices {
+        "/api/servers?notices=keep".into()
+    } else {
+        format!("/api/servers?notices_after={}", seen.load(std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// 받은 알림 중 가장 큰 id를 본 것으로 적는다
+fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &Value) {
+    let newest = body
+        .get("port_conflict_stops")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|n| n.get("id").and_then(Value::as_u64))
+        .max();
+    if let Some(id) = newest {
+        seen.fetch_max(id, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
 fn last_result_path(lang: &str) -> String {
     with_query("/api/updates/last-result", &[("lang", Some(lang.to_string())), ("include_seen", Some("true".into()))])
@@ -961,6 +990,19 @@ mod tests {
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    /// 포트 충돌 정지 알림은 본 것 뒤만 받는다: 다른 클라이언트(GUI)가 읽어도 사라지지 않고,
+    /// 셸에서 `status`를 다시 불러도 이미 보인 알림을 또 보이지 않는다 (L50)
+    #[test]
+    fn port_conflict_notices_are_read_after_the_last_one_seen() {
+        let seen = std::sync::atomic::AtomicU64::new(0);
+        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=0");
+        remember_notices(&seen, &json!({ "port_conflict_stops": [{ "id": 9 }, { "id": 5 }] }));
+        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=9");
+        remember_notices(&seen, &json!({ "port_conflict_stops": [] }));
+        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=9");
+        assert_eq!(servers_path(true, &seen), "/api/servers?notices=keep");
     }
 
     /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
