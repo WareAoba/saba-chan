@@ -1057,7 +1057,7 @@
     "web_search": "웹 검색",
     "web_search_hint": "필요하면 인터넷에서 찾아보고 대답해요.",
     "guilds_title": "디스코드 서버별",
-    "guilds_desc": "서버마다 켜고 끄거나, 대답할 채널을 정할 수 있어요. 채널을 비워 두면 부를 때 어디서든 대답합니다.",
+    "guilds_desc": "서버마다 켜고 끌 수 있어요. 말하는 사바쨩은 각 디스코드 서버의 '채널' 탭에서 고른 채널에서만 대답해요.",
     "guilds_empty": "연결된 디스코드 서버가 없어요.",
     "guild_enabled_aria": "{{name}}에서 말하는 사바쨩 사용",
     "guild_inherit": "기본값 따름 ({{state}})",

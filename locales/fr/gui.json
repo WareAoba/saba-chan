@@ -1057,7 +1057,7 @@
     "web_search": "Recherche web",
     "web_search_hint": "Cherche des informations en ligne si nécessaire.",
     "guilds_title": "Par serveur Discord",
-    "guilds_desc": "Activez ou désactivez Saba-chan qui parle par serveur, ou limitez les salons où elle répond. Sans salon défini, elle répond partout où on l'appelle.",
+    "guilds_desc": "Activez ou désactivez Saba-chan qui parle par serveur. Elle ne répond que dans les salons choisis dans l'onglet Salons de chaque serveur Discord.",
     "guilds_empty": "Aucun serveur Discord connecté.",
     "guild_enabled_aria": "Saba-chan qui parle sur {{name}}",
     "guild_inherit": "Par défaut ({{state}})",

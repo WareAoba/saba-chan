@@ -1057,7 +1057,7 @@
     "web_search": "网络搜索",
     "web_search_hint": "需要时会上网查找后再回答。",
     "guilds_title": "按 Discord 服务器",
-    "guilds_desc": "可为每个服务器开启或关闭会说话的 Saba-chan，或指定回答的频道。频道留空时，在任何地方被呼叫都会回答。",
+    "guilds_desc": "可为每个服务器开启或关闭会说话的 Saba-chan。它只在各 Discord 服务器「频道」标签页中选择的频道里回答。",
     "guilds_empty": "没有已连接的 Discord 服务器。",
     "guild_enabled_aria": "在 {{name}} 中使用会说话的 Saba-chan",
     "guild_inherit": "跟随默认（{{state}}）",

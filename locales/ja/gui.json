@@ -1057,7 +1057,7 @@
     "web_search": "Web検索",
     "web_search_hint": "必要に応じてインターネットで調べてから答えます。",
     "guilds_title": "Discordサーバー別",
-    "guilds_desc": "サーバーごとにオン・オフしたり、返事をするチャンネルを指定したりできます。チャンネルを空欄にすると、呼ばれた場所ならどこでも返事をします。",
+    "guilds_desc": "サーバーごとにオン・オフできます。おしゃべりサバちゃんは、各 Discord サーバーの「チャンネル」タブで選んだチャンネルでだけ返事をします。",
     "guilds_empty": "接続中のDiscordサーバーはありません。",
     "guild_enabled_aria": "{{name}} でおしゃべりサバちゃんを使う",
     "guild_inherit": "既定値に従う（{{state}}）",
