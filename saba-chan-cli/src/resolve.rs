@@ -133,14 +133,25 @@ pub fn settle<T: Clone>(
 
 /// 이름을 안 줬을 때: 하나뿐이면 그것, 터미널이면 고르기, 아니면 사용법 오류
 pub fn choose<T: Clone>(ctx: &Ctx, what: &str, items: Vec<T>, label: impl Fn(&T) -> String) -> Result<T> {
+    choose_in(&ctx.ask, what, items, label, false)
+}
+
+/// `exact`(지우기·초기화 대상)면 하나뿐이어도 물을 수 없을 때 고르지 않는다: 이름을 대야 한다
+fn choose_in<T: Clone>(
+    ask: &crate::prompt::Prompt,
+    what: &str,
+    items: Vec<T>,
+    label: impl Fn(&T) -> String,
+    exact: bool,
+) -> Result<T> {
     if items.is_empty() {
         return Err(CliError::Failed(t!("resolve.none_exist", what = what)).into());
     }
-    if items.len() == 1 && !ctx.ask.enabled {
+    if items.len() == 1 && !ask.enabled && !exact {
         return Ok(items.into_iter().next().unwrap());
     }
     let labels: Vec<String> = items.iter().map(&label).collect();
-    match ctx.ask.select(&t!("resolve.pick", what = what), &labels, 0)? {
+    match ask.select(&t!("resolve.pick", what = what), &labels, 0)? {
         Some(i) => Ok(items[i].clone()),
         None => Err(usage(t!("resolve.name_required", what = what))),
     }
@@ -178,21 +189,23 @@ pub async fn servers(ctx: &Ctx) -> Result<Vec<Server>> {
 }
 
 pub async fn server(ctx: &Ctx, query: Option<&str>) -> Result<Server> {
-    server_by(ctx, query, find).await
+    server_by(ctx, query, false).await
 }
 
 /// 지우거나 초기화할 서버: 이름·id가 정확히(대소문자 무시) 맞아야 한다 (`find_exact`)
 pub async fn server_exact(ctx: &Ctx, query: Option<&str>) -> Result<Server> {
-    server_by(ctx, query, find_exact).await
+    server_by(ctx, query, true).await
 }
 
 type Finder<T> = fn(&[T], &str, fn(&T) -> Vec<String>, fn(&T) -> String) -> Found<T>;
 
-async fn server_by(ctx: &Ctx, query: Option<&str>, finder: Finder<Server>) -> Result<Server> {
+/// `exact`: 지우기·초기화 대상 (`find_exact`, 이름 없이 물을 수 없으면 고르지 않는다)
+async fn server_by(ctx: &Ctx, query: Option<&str>, exact: bool) -> Result<Server> {
+    let finder: Finder<Server> = if exact { find_exact } else { find };
     let all = servers(ctx).await?;
     let what = t!("noun.server");
     match query.filter(|q| !q.trim().is_empty()) {
-        None => choose(ctx, &what, all, Server::label),
+        None => choose_in(&ctx.ask, &what, all, Server::label, exact),
         Some(q) => {
             let found = finder(&all, q, |s| vec![s.name.clone(), s.id.clone()], |s| s.name.clone());
             settle(ctx, &what, q, found, Server::label)
@@ -234,19 +247,21 @@ pub async fn modules(ctx: &Ctx) -> Result<Vec<Value>> {
 }
 
 pub async fn module(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
-    module_by(ctx, query, find).await
+    module_by(ctx, query, false).await
 }
 
 /// 지울 모듈: 이름·별칭이 정확히(대소문자 무시) 맞아야 한다 (`find_exact`)
 pub async fn module_exact(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
-    module_by(ctx, query, find_exact).await
+    module_by(ctx, query, true).await
 }
 
-async fn module_by(ctx: &Ctx, query: Option<&str>, finder: Finder<Value>) -> Result<Value> {
+/// `exact`: 지우기·초기화 대상 (`find_exact`, 이름 없이 물을 수 없으면 고르지 않는다)
+async fn module_by(ctx: &Ctx, query: Option<&str>, exact: bool) -> Result<Value> {
+    let finder: Finder<Value> = if exact { find_exact } else { find };
     let all = modules(ctx).await?;
     let what = t!("noun.module");
     match query.filter(|q| !q.trim().is_empty()) {
-        None => choose(ctx, &what, all, module_label),
+        None => choose_in(&ctx.ask, &what, all, module_label, exact),
         Some(q) => {
             let found = finder(&all, q, module_names, |m| {
                 m.get("name").and_then(Value::as_str).unwrap_or("?").to_string()
@@ -278,15 +293,17 @@ pub fn extension_label(e: &Value) -> String {
 }
 
 pub async fn extension(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
-    extension_by(ctx, query, find).await
+    extension_by(ctx, query, false).await
 }
 
 /// 지울 익스텐션: id·이름이 정확히(대소문자 무시) 맞아야 한다 (`find_exact`)
 pub async fn extension_exact(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
-    extension_by(ctx, query, find_exact).await
+    extension_by(ctx, query, true).await
 }
 
-async fn extension_by(ctx: &Ctx, query: Option<&str>, finder: Finder<Value>) -> Result<Value> {
+/// `exact`: 지우기·초기화 대상 (`find_exact`, 이름 없이 물을 수 없으면 고르지 않는다)
+async fn extension_by(ctx: &Ctx, query: Option<&str>, exact: bool) -> Result<Value> {
+    let finder: Finder<Value> = if exact { find_exact } else { find };
     let all = extensions(ctx).await?;
     let what = t!("noun.extension");
     let names = |e: &Value| {
@@ -296,7 +313,7 @@ async fn extension_by(ctx: &Ctx, query: Option<&str>, finder: Finder<Value>) -> 
             .collect()
     };
     match query.filter(|q| !q.trim().is_empty()) {
-        None => choose(ctx, &what, all, extension_label),
+        None => choose_in(&ctx.ask, &what, all, extension_label, exact),
         Some(q) => {
             let found = finder(&all, q, names, |e| {
                 e.get("id").and_then(Value::as_str).unwrap_or("?").to_string()
@@ -486,6 +503,16 @@ mod tests {
         }
         let r = json!({ "members": [{ "id": "1", "username": "bobby", "displayName": "kimbob" }] });
         assert!(matches!(find_exact(&member_items(&r), "bob", member_names, member_label), Found::None(s) if s == vec!["kimbob (@bobby)".to_string()]));
+    }
+
+    /// 지우기·초기화는 이름 없이 하나뿐인 대상을 묻지 않고 고르지 않는다 (`--json --yes server remove`로 하나뿐인 서버가 지워지지 않게)
+    #[test]
+    fn an_exact_target_is_never_picked_without_a_name_when_no_one_can_be_asked() {
+        let quiet = crate::prompt::Prompt { enabled: false, yes: true };
+        let only = vec!["solo"];
+        let err = choose_in(&quiet, "server", only.clone(), |s| s.to_string(), true).unwrap_err();
+        assert!(matches!(err.downcast_ref::<CliError>(), Some(CliError::Usage(_))), "{err}");
+        assert_eq!(choose_in(&quiet, "server", only, |s| s.to_string(), false).unwrap(), "solo");
     }
 
     #[test]
