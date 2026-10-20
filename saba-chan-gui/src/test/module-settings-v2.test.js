@@ -163,7 +163,7 @@ describe('설정 저장 (list 값, restart_required)', () => {
         expect(modal.message).toMatch(/restart/i);
         expect(modal.message).toContain('motd');
         await act(async () => modal.buttons[0].action());
-        expect(onRestart).toHaveBeenCalledWith('S');
+        expect(onRestart).toHaveBeenCalledWith('S', { confirmed: true });
     });
 
     it('restart_required가 비어 있으면 평소처럼 저장 완료다', async () => {

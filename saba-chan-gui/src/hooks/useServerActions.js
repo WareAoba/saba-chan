@@ -814,7 +814,8 @@ export function useServerActions({
     };
 
     // ── handleRestart: 데몬이 프로세스가 끝나길 기다렸다가 다시 켠다 ──
-    const handleRestart = async (name) => {
+    // confirmed: 부른 곳에서 이미 재시작을 골랐다 (설정 저장 뒤 '지금 다시 시작') → 다시 묻지 않는다
+    const handleRestart = async (name, { confirmed = false } = {}) => {
         const srv = servers.find((s) => s.name === name);
         if (!srv?.id || !window.api.instanceRestart) return;
         const restartNow = async (forced) => {
@@ -855,6 +856,7 @@ export function useServerActions({
                 fetchServers();
             }
         };
+        if (confirmed) return restartNow(false);
         setModal({
             type: 'question',
             title: t('servers.restart_confirm_title'),

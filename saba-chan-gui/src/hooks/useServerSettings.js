@@ -658,7 +658,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                       label: t('server_settings.restart_now'),
                                       action: () => {
                                           setModal(null);
-                                          return onRestart(serverName);
+                                          return onRestart(serverName, { confirmed: true });
                                       },
                                   },
                                   { label: t('server_settings.restart_later'), action: () => setModal(null) },
