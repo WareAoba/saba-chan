@@ -1116,6 +1116,7 @@ mod tests {
         .unwrap();
         std::fs::write(dir.path().join("delay.txt"), "0.5").unwrap();
         let entry = entry.to_string_lossy().into_owned();
+        let first = std::time::Instant::now();
         let asks: Vec<_> = (0..3).map(|_| {
             let entry = entry.clone();
             tokio::spawn(async move { module_functions(&entry).await })
@@ -1124,6 +1125,8 @@ mod tests {
         for ask in asks {
             answers.push(ask.await.unwrap().expect("listed"));
         }
+        // 이 러너에서 Python 한 번을 띄우는 데 드는 시간 (느린 Windows 러너에서는 수 초)
+        let startup = first.elapsed().saturating_sub(std::time::Duration::from_millis(500));
         assert_eq!(answers[0][0], "validate");
         // 동시에 돈 실행이라면 pid가 서로 다르다
         assert!(answers.iter().all(|a| a == &answers[0]), "one run for concurrent asks: {answers:?}");
@@ -1141,8 +1144,9 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS + 1500), "{:?}", started.elapsed());
         let shared = module_functions(&entry).await.expect("the background ask finishes");
         assert_ne!(shared, answers[0], "the changed module was asked again");
-        // 새로 실행했다면 목록이 기다린 시간에 지연 전체가 더해진다
-        let limit = std::time::Duration::from_secs_f64(delay + 1.5);
+        // 새로 실행했다면 목록이 기다린 시간(FUNCTIONS_LIST_WAIT_MS)에 띄우는 시간과 지연 전체가 더해진다.
+        // 기준은 그 차이의 절반이다: 같은 실행이면 띄우는 시간 + 지연, 새 실행이면 그보다 2초 더
+        let limit = startup + std::time::Duration::from_secs_f64(delay) + std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS / 2);
         assert!(started.elapsed() < limit, "the background ask is shared, not run again: {:?}", started.elapsed());
     }
 
