@@ -894,7 +894,12 @@ pub fn parse(args: Vec<std::ffi::OsString>) -> Result<clap::ArgMatches, clap::Er
         Err(e) if e.kind() == clap::error::ErrorKind::InvalidSubcommand && args.iter().skip(1).any(|a| a == "help") => {
             let mut moved: Vec<std::ffi::OsString> = args.iter().filter(|a| *a != "help").cloned().collect();
             moved.insert(1.min(moved.len()), "help".into());
-            localized().try_get_matches_from(moved).map_err(|_| e)
+            // 옮긴 경로가 실제 명령일 때만: 오타면 clap의 원래 제안("혹시 start?")을 살린다
+            let real = |m: &clap::ArgMatches| {
+                let path: Vec<String> = m.subcommand_matches("help").and_then(|h| h.get_many::<String>("command")).into_iter().flatten().cloned().collect();
+                find(&Cli::command(), &path).is_some()
+            };
+            localized().try_get_matches_from(moved).ok().filter(real).ok_or(e)
         }
         r => r,
     }
@@ -1095,6 +1100,9 @@ mod tests {
         crate::i18n::init("en");
         let m = parse(["saba-chan-cli", "server", "help", "start"].map(Into::into).to_vec()).unwrap();
         assert!(matches!(<Cli as clap::FromArgMatches>::from_arg_matches(&m).unwrap().cmd, Some(Cmd::Help { command }) if command == ["server", "start"]));
+        // 오타는 옮겨 읽지 않고 clap의 원래 오류(제안 포함)를 낸다
+        let typo = parse(["saba-chan-cli", "server", "strat", "help"].map(Into::into).to_vec()).unwrap_err();
+        assert_eq!(typo.kind(), clap::error::ErrorKind::InvalidSubcommand);
     }
 
     #[test]

@@ -13,17 +13,18 @@ use serde_json::json;
 const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub async fn run(ctx: &Ctx, kinds: &[String], server: Option<&str>, since: Option<u64>) -> Result<()> {
-    let id = match server {
-        Some(q) => Some(crate::resolve::server(ctx, Some(q)).await?.id),
+    let target = match server {
+        Some(q) => Some(crate::resolve::server(ctx, Some(q)).await?),
         None => None,
     };
+    let target = target.as_ref().map(|t| (t.id.as_str(), t.name.as_str()));
     let mut stream = ctx.api.events(since).await?;
     let mut last = since;
     loop {
         match stream.next().await {
             Ok(Some(event)) => {
                 last = event.id.or(last);
-                if wanted(&event, kinds, id.as_deref()) {
+                if wanted(&event, kinds, target) {
                     say!("{}", line(&event, ctx.out.json));
                 }
             }
@@ -39,8 +40,8 @@ pub async fn run(ctx: &Ctx, kinds: &[String], server: Option<&str>, since: Optio
     }
 }
 
-/// `--kind instance`는 `instance.exit`처럼 그 아래 이벤트를 모두 받는다. 서버를 주면 그 서버 것만
-fn wanted(event: &DaemonEvent, kinds: &[String], server: Option<&str>) -> bool {
+/// `--kind instance`는 `instance.exit`처럼 그 아래 이벤트를 모두 받는다. 서버(id, 이름)를 주면 그 서버 것만
+fn wanted(event: &DaemonEvent, kinds: &[String], server: Option<(&str, &str)>) -> bool {
     if event.kind == "resync" {
         return true;
     }
@@ -52,9 +53,9 @@ fn wanted(event: &DaemonEvent, kinds: &[String], server: Option<&str>) -> bool {
                     .strip_prefix(k.as_str())
                     .is_some_and(|rest| rest.starts_with('.'))
         });
-    // `provision.progress`만 `instanceId` 없이 `instance`에 id를 싣는다
-    let of = |id: &str| match s(&event.data, "instanceId") {
-        "" => s(&event.data, "instance") == id,
+    // `provision.progress`만 `instanceId` 없이 `instance`에 인스턴스 이름을 싣는다
+    let of = |(id, name): (&str, &str)| match s(&event.data, "instanceId") {
+        "" => s(&event.data, "instance") == name,
         mine => mine == id,
     };
     kind_ok && server.is_none_or(of)
@@ -62,7 +63,7 @@ fn wanted(event: &DaemonEvent, kinds: &[String], server: Option<&str>) -> bool {
 
 fn line(event: &DaemonEvent, json: bool) -> String {
     if json {
-        json!({ "id": event.id, "event": event.kind, "data": event.data }).to_string()
+        output::event_line(json!({ "id": event.id, "event": event.kind, "data": event.data }))
     } else {
         format!("{}  {}", output::bold(&event.kind), event.data)
     }
@@ -91,15 +92,17 @@ mod tests {
         );
         assert!(!wanted(&ev("plan.done", "a"), &kinds, None));
         assert!(wanted(&ev("plan.done", "a"), &[], None));
-        assert!(!wanted(&ev("instance.exit", "b"), &kinds, Some("a")));
+        assert!(!wanted(&ev("instance.exit", "b"), &kinds, Some(("a", "mc"))));
+        assert!(wanted(&ev("instance.exit", "a"), &kinds, Some(("a", "mc"))));
+        // 설치 진행은 id가 아니라 이름으로 온다
         let progress = DaemonEvent {
             id: None,
             kind: "provision.progress".into(),
-            data: json!({ "instance": "a", "percent": 3 }),
+            data: json!({ "instance": "mc", "percent": 3 }),
         };
-        assert!(wanted(&progress, &[], Some("a")) && !wanted(&progress, &[], Some("b")));
+        assert!(wanted(&progress, &[], Some(("a", "mc"))) && !wanted(&progress, &[], Some(("mc", "other"))));
         // 놓친 이벤트 알림은 거르지 않는다
-        assert!(wanted(&ev("resync", ""), &kinds, Some("a")));
+        assert!(wanted(&ev("resync", ""), &kinds, Some(("a", "mc"))));
     }
 
     #[test]

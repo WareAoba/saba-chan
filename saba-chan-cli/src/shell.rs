@@ -241,12 +241,15 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
         Some(cmd) => {
             // `--no-color`(와 `--json`의 표준 출력)는 이 줄에만, 끝나면 되돌린다
             let colors = (console::colors_enabled(), console::colors_enabled_stderr());
-            if cli.global.no_color || cli.global.json {
+            if cli.global.no_color || cli.global.json || cli.global.json_stream {
                 console::set_colors_enabled(false);
             }
             if cli.global.no_color {
                 console::set_colors_enabled_stderr(false);
             }
+            // `--json-stream`도 이 줄에만
+            crate::output::set_stream(cli.global.json_stream);
+            let stream = cli.global.json_stream.then(crate::progress::stream_lines);
             let r = crate::cmd::dispatch(&ctx, cmd).await;
             console::set_colors_enabled(colors.0);
             console::set_colors_enabled_stderr(colors.1);
@@ -259,6 +262,8 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
                 r => r,
             };
             crate::output::flush();
+            drop(stream);
+            crate::output::set_stream(false);
             r
         }
     }

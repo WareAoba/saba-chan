@@ -84,6 +84,16 @@ pub fn set_stream(on: bool) {
     STREAM.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// 따라가기 명령(`events`, `audit -f`)의 JSON 한 줄. 스트림 모드면 진행·결과 줄과 나눌 수 있게 `type:"event"`를 붙인다
+pub fn event_line(mut v: Value) -> String {
+    if STREAM.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Some(o) = v.as_object_mut() {
+            o.insert("type".into(), "event".into());
+        }
+    }
+    v.to_string()
+}
+
 /// 모아 둔 JSON 문서를 찍는다 (명령 하나가 끝날 때)
 pub fn flush() {
     if let Some(v) = PENDING.lock().ok().and_then(|mut p| p.take()) {
