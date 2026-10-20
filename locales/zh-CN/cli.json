@@ -708,7 +708,8 @@
       "bot.link": "在 Discord 中不带代码使用 /사바쨩 연결 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
       "bot.words": "Discord 服务器中用来称呼这台电脑上的服务器及其命令的词。不指定服务器：全部，不带选项：查看",
       "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码",
-      "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止"
+      "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
+      "tui": "打开全屏菜单"
     },
     "arg": {
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
@@ -823,7 +824,7 @@
       "events.since": "从这个事件编号之后开始（守护进程仍保留的会重新发送）",
       "json_stream": "以 JSON 行（NDJSON）输出进度和结果（包含 --json）"
     },
-    "after": "名称可以只写一部分（例如 start pal）。不带参数运行会打开交互式 shell。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
+    "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
   "restart": {
     "waiting": "正在重启 {{name}}...",
@@ -1022,5 +1023,33 @@
     "io_requests": "IO 请求（含缓存）",
     "disk_io_process_note": "无法使用物理磁盘计数器；显示进程 IO 的总和（含缓存命中）。",
     "whole": "整台电脑（不拆分）"
+  },
+  "tui": {
+    "daemon_up": "守护进程 ● 已连接 (v{{version}})",
+    "daemon_down": "守护进程 ○ 未运行 · 启动: daemon start",
+    "servers_running": "{{total}} 个服务器中 {{running}} 个正在运行",
+    "menu": "菜单",
+    "output": "结果",
+    "enter_to_run": "按 Enter 运行",
+    "running_hint": "(运行中 · Ctrl+C 停止)",
+    "keys": "↑↓ 移动 · ←→ 菜单/列表 · Enter 运行 · : 命令 · PgUp/PgDn 结果 · ? 帮助 · q 退出",
+    "yes": "是",
+    "no": "否",
+    "question": "确认",
+    "dialog_keys": "Enter 选择 · Esc 取消",
+    "help_title": "快捷键",
+    "help": "↑↓  在菜单或列表中移动\n←→ / Tab  在菜单和列表之间切换\nEnter  运行所选项(需要参数时打开命令行)\n:  命令行(与 saba-chan-cli 后面输入的命令相同，↑↓ 查看历史)\nPgUp/PgDn、鼠标滚轮  滚动结果\nCtrl+C  停止正在运行的命令\nq  退出(守护进程和服务器继续运行)",
+    "too_narrow": "请将窗口加宽到至少 60 列。",
+    "not_here": "此命令无法在全屏菜单中运行。按 q 退出后在终端中运行。",
+    "cancelled": "已停止。",
+    "action": {
+      "start": "启动",
+      "stop": "停止",
+      "restart": "重启",
+      "console": "控制台最近几行",
+      "info": "信息",
+      "backup_create": "创建备份",
+      "backup_list": "备份列表"
+    }
   }
 }

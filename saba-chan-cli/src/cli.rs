@@ -11,7 +11,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
     version,
     about = "Saba-chan: run and manage your game servers from the terminal",
     disable_help_subcommand = true,
-    after_help = "Run without a command to open the interactive shell."
+    after_help = "Run without a command to open the full-screen menu (SABA_NO_TUI=1: the interactive shell)."
 )]
 pub struct Cli {
     #[command(flatten)]
@@ -145,6 +145,8 @@ pub enum Cmd {
     Version,
     /// Open the interactive shell
     Shell,
+    /// Open the full-screen menu (the default when run without a command in a terminal)
+    Tui,
     /// Show help for a command. With --json: the command tree, arguments and exit codes
     Help {
         /// Command path, e.g. `server start`

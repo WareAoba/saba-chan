@@ -629,7 +629,7 @@
       "events.since": "Start after this event id (replays what the daemon still keeps)",
       "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json"
     },
-    "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
+    "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
   "restart": {
     "waiting": "Restarting {{name}}...",
@@ -828,5 +828,33 @@
     "io_requests": "IO requests (incl. cache)",
     "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits).",
     "whole": "Whole machine (not split)"
+  },
+  "tui": {
+    "daemon_up": "Daemon ● connected (v{{version}})",
+    "daemon_down": "Daemon ○ off · start: daemon start",
+    "servers_running": "{{running}} of {{total}} servers running",
+    "menu": "Menu",
+    "output": "Output",
+    "enter_to_run": "Enter to run",
+    "running_hint": "(running · Ctrl+C to stop)",
+    "keys": "↑↓ move · ←→ menu/list · Enter run · : command · PgUp/PgDn output · ? help · q quit",
+    "yes": "Yes",
+    "no": "No",
+    "question": "Confirm",
+    "dialog_keys": "Enter choose · Esc cancel",
+    "help_title": "Keys",
+    "help": "↑↓  move in the menu or list\n←→ / Tab  switch between menu and list\nEnter  run the selected item (opens the command line when it needs arguments)\n:  command line (the same commands you type after saba-chan-cli, ↑↓ for earlier ones)\nPgUp/PgDn, mouse wheel  scroll the output\nCtrl+C  stop the running command\nq  quit (the daemon and servers keep running)",
+    "too_narrow": "Make the window at least 60 columns wide.",
+    "not_here": "This command can't run inside the full-screen menu. Quit with q and run it in the terminal.",
+    "cancelled": "Stopped.",
+    "action": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "console": "Recent console lines",
+      "info": "Info",
+      "backup_create": "Create backup",
+      "backup_list": "Backups"
+    }
   }
 }

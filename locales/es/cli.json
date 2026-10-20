@@ -514,7 +514,7 @@
       "events.since": "Empieza tras este id de evento (reenvía lo que el daemon aún guarda)",
       "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json"
     },
-    "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos se abre la shell interactiva.\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
+    "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
   "restart": {
     "waiting": "Reiniciando {{name}}...",
@@ -630,6 +630,34 @@
       "permission": "Capacidad",
       "where": "Dónde",
       "what": "Código"
+    }
+  },
+  "tui": {
+    "daemon_up": "Daemon ● conectado (v{{version}})",
+    "daemon_down": "Daemon ○ apagado · iniciar: daemon start",
+    "servers_running": "{{running}} de {{total}} servidores en marcha",
+    "menu": "Menú",
+    "output": "Resultado",
+    "enter_to_run": "Enter para ejecutar",
+    "running_hint": "(en curso · Ctrl+C para detener)",
+    "keys": "↑↓ mover · ←→ menú/lista · Enter ejecutar · : comando · PgUp/PgDn resultado · ? ayuda · q salir",
+    "yes": "Sí",
+    "no": "No",
+    "question": "Confirmar",
+    "dialog_keys": "Enter elegir · Esc cancelar",
+    "help_title": "Teclas",
+    "help": "↑↓  moverse por el menú o la lista\n←→ / Tab  cambiar entre menú y lista\nEnter  ejecutar lo elegido (abre la línea de comandos si necesita argumentos)\n:  línea de comandos (los mismos comandos que tras saba-chan-cli, ↑↓ para los anteriores)\nPgUp/PgDn, rueda del ratón  desplazar el resultado\nCtrl+C  detener el comando en curso\nq  salir (el daemon y los servidores siguen en marcha)",
+    "too_narrow": "Amplía la ventana a 60 columnas como mínimo.",
+    "not_here": "Este comando no puede ejecutarse dentro del menú a pantalla completa. Sal con q y ejecútalo en la terminal.",
+    "cancelled": "Detenido.",
+    "action": {
+      "start": "Iniciar",
+      "stop": "Detener",
+      "restart": "Reiniciar",
+      "console": "Últimas líneas de consola",
+      "info": "Información",
+      "backup_create": "Crear copia",
+      "backup_list": "Copias"
     }
   }
 }

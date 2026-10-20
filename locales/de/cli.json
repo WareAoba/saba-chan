@@ -514,7 +514,7 @@
       "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)",
       "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein"
     },
-    "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente startet die interaktive Shell.\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
+    "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
   "restart": {
     "waiting": "{{name}} wird neu gestartet...",
@@ -630,6 +630,34 @@
       "permission": "Fähigkeit",
       "where": "Ort",
       "what": "Code"
+    }
+  },
+  "tui": {
+    "daemon_up": "Daemon ● verbunden (v{{version}})",
+    "daemon_down": "Daemon ○ aus · starten: daemon start",
+    "servers_running": "{{running}} von {{total}} Servern laufen",
+    "menu": "Menü",
+    "output": "Ausgabe",
+    "enter_to_run": "Enter zum Ausführen",
+    "running_hint": "(läuft · Strg+C stoppt)",
+    "keys": "↑↓ bewegen · ←→ Menü/Liste · Enter ausführen · : Befehl · PgUp/PgDn Ausgabe · ? Hilfe · q beenden",
+    "yes": "Ja",
+    "no": "Nein",
+    "question": "Bestätigen",
+    "dialog_keys": "Enter wählen · Esc abbrechen",
+    "help_title": "Tasten",
+    "help": "↑↓  im Menü oder in der Liste bewegen\n←→ / Tab  zwischen Menü und Liste wechseln\nEnter  Auswahl ausführen (öffnet die Befehlszeile, wenn Argumente nötig sind)\n:  Befehlszeile (dieselben Befehle wie nach saba-chan-cli, ↑↓ für frühere)\nPgUp/PgDn, Mausrad  Ausgabe blättern\nStrg+C  laufenden Befehl stoppen\nq  beenden (Daemon und Server laufen weiter)",
+    "too_narrow": "Mach das Fenster mindestens 60 Spalten breit.",
+    "not_here": "Dieser Befehl läuft nicht im Vollbildmenü. Mit q beenden und im Terminal ausführen.",
+    "cancelled": "Gestoppt.",
+    "action": {
+      "start": "Starten",
+      "stop": "Stoppen",
+      "restart": "Neu starten",
+      "console": "Letzte Konsolenzeilen",
+      "info": "Info",
+      "backup_create": "Backup erstellen",
+      "backup_list": "Backups"
     }
   }
 }

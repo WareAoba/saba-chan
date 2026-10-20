@@ -19,6 +19,7 @@ mod progress;
 mod prompt;
 mod resolve;
 mod shell;
+mod tui;
 mod slots;
 
 use clap::FromArgMatches;
@@ -77,7 +78,14 @@ async fn main() {
     let cmd = match parsed.cmd {
         Some(c) => c,
         // 인자 없이 터미널에서 열면 셸, 아니면 상태 한 번
-        None if ctx.ask.enabled && std::io::stdout().is_terminal() => cli::Cmd::Shell,
+        // 터미널이면 전체 화면 메뉴. `SABA_NO_TUI=1`이면 예전 셸
+        None if ctx.ask.enabled && std::io::stdout().is_terminal() => {
+            if std::env::var_os("SABA_NO_TUI").is_some_and(|v| !v.is_empty() && v != "0") {
+                cli::Cmd::Shell
+            } else {
+                cli::Cmd::Tui
+            }
+        }
         None => cli::Cmd::Status,
     };
     let result = cmd::dispatch(&ctx, cmd).await;

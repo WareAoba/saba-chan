@@ -514,7 +514,7 @@
       "events.since": "Começar após este id de evento (reenvia o que o daemon ainda guarda)",
       "json_stream": "Mostra o progresso e depois o resultado como linhas JSON (NDJSON); implica --json"
     },
-    "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos, abre o shell interativo.\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
+    "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
   "restart": {
     "waiting": "Reiniciando {{name}}...",
@@ -630,6 +630,34 @@
       "permission": "Capacidade",
       "where": "Onde",
       "what": "Código"
+    }
+  },
+  "tui": {
+    "daemon_up": "Daemon ● conectado (v{{version}})",
+    "daemon_down": "Daemon ○ desligado · iniciar: daemon start",
+    "servers_running": "{{running}} de {{total}} servidores rodando",
+    "menu": "Menu",
+    "output": "Resultado",
+    "enter_to_run": "Enter para executar",
+    "running_hint": "(executando · Ctrl+C para parar)",
+    "keys": "↑↓ mover · ←→ menu/lista · Enter executar · : comando · PgUp/PgDn resultado · ? ajuda · q sair",
+    "yes": "Sim",
+    "no": "Não",
+    "question": "Confirmar",
+    "dialog_keys": "Enter escolher · Esc cancelar",
+    "help_title": "Teclas",
+    "help": "↑↓  mover no menu ou na lista\n←→ / Tab  alternar entre menu e lista\nEnter  executar o item escolhido (abre a linha de comando se precisar de argumentos)\n:  linha de comando (os mesmos comandos que depois de saba-chan-cli, ↑↓ para os anteriores)\nPgUp/PgDn, roda do mouse  rolar o resultado\nCtrl+C  parar o comando em execução\nq  sair (o daemon e os servidores continuam rodando)",
+    "too_narrow": "Aumente a janela para pelo menos 60 colunas.",
+    "not_here": "Este comando não pode rodar dentro do menu em tela cheia. Saia com q e execute no terminal.",
+    "cancelled": "Parado.",
+    "action": {
+      "start": "Iniciar",
+      "stop": "Parar",
+      "restart": "Reiniciar",
+      "console": "Últimas linhas do console",
+      "info": "Informações",
+      "backup_create": "Criar backup",
+      "backup_list": "Backups"
     }
   }
 }
