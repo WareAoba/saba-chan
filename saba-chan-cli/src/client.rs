@@ -214,7 +214,7 @@ impl Api {
         self.call(Method::POST, &format!("/api/instance/{}/stop", seg(id)), Some(json!({ "force": force })), STOP)
             .await
     }
-    /// POST /api/instance/:id/restart — 멈추고(최대 2분) 다시 켠다. 꺼져 있었으면 켜기만. 응답은 시작 응답 + `stopped`
+    /// POST /api/instance/:id/restart — 멈추고(stop_timeout까지) 다시 켠다. 꺼져 있었으면 켜기만. 응답은 시작 응답 + `stopped`
     pub async fn restart(&self, id: &str, force: bool) -> Result<Value> {
         self.call(Method::POST, &format!("/api/instance/{}/restart", seg(id)), Some(json!({ "force": force })), STOP)
             .await
