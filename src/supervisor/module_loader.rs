@@ -117,6 +117,11 @@ pub struct ModuleMetadata {
     /// [extensions.saba-core] ready_timeout — 준비 문구를 기다리는 시간(초). 없으면 600
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_timeout: Option<u64>,
+    /// [extensions.saba-core] player_join_patterns·player_leave_patterns — 접속·퇴장 때 콘솔에 찍히는 문구 (정규식, `(?P<name>…)` 필수). MK8 `instance.player`용
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub player_join_patterns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub player_leave_patterns: Vec<String>,
     /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<ModulePreset>,
@@ -1193,6 +1198,8 @@ impl ModuleToml {
                 .unwrap_or_default(),
             ready_patterns: Vec::new(),
             ready_timeout: None,
+            player_join_patterns: Vec::new(),
+            player_leave_patterns: Vec::new(),
             module_aliases: self.aliases.as_ref()
                 .map(|a| a.module_aliases.clone())
                 .unwrap_or_default(),
@@ -1287,9 +1294,30 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 /// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
-const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout"];
+const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns"];
 
-/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`을 읽는다 (R39). 틀린 값은 그 값만 빼고 경고로 남긴다
+/// `[extensions.saba-core]`의 정규식 목록 하나를 읽는다. `needs_name`이면 `(?P<name>…)`이 없는 항목도 버린다
+fn read_pattern_list(table: &serde_json::Value, key: &str, needs_name: bool, warnings: &mut Vec<String>) -> Vec<String> {
+    let mut out = Vec::new();
+    match table.get(key) {
+        None => {}
+        Some(serde_json::Value::Array(items)) => {
+            for item in items {
+                match item.as_str().map(|p| (p, regex::Regex::new(p))) {
+                    Some((p, Ok(re))) if !needs_name || re.capture_names().any(|n| n == Some("name")) => out.push(p.to_string()),
+                    Some((p, Ok(_))) => warnings.push(format!("extensions.{}.{} '{}' has no (?P<name>...) group; ignored", DAEMON_TABLE, key, p)),
+                    Some((p, Err(_))) => warnings.push(format!("extensions.{}.{} '{}' is not a valid regex; ignored", DAEMON_TABLE, key, p)),
+                    None => warnings.push(format!("extensions.{}.{} must hold strings; ignored {}", DAEMON_TABLE, key, item)),
+                }
+            }
+        }
+        Some(_) => warnings.push(format!("extensions.{}.{} must be a list of strings; ignored", DAEMON_TABLE, key)),
+    }
+    out
+}
+
+/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8)를 읽는다.
+/// 틀린 값은 그 값만 빼고 경고로 남긴다
 fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
     let mut warnings = Vec::new();
@@ -1299,19 +1327,9 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
             warnings.push(format!("extensions.{}.{} is not known to this saba-chan; ignored", DAEMON_TABLE, key));
         }
     }
-    match table.get("ready_patterns") {
-        None => {}
-        Some(serde_json::Value::Array(items)) => {
-            for item in items {
-                match item.as_str() {
-                    Some(p) if regex::Regex::new(p).is_ok() => meta.ready_patterns.push(p.to_string()),
-                    Some(p) => warnings.push(format!("extensions.{}.ready_patterns '{}' is not a valid regex; ignored", DAEMON_TABLE, p)),
-                    None => warnings.push(format!("extensions.{}.ready_patterns must hold strings; ignored {}", DAEMON_TABLE, item)),
-                }
-            }
-        }
-        Some(_) => warnings.push(format!("extensions.{}.ready_patterns must be a list of strings; ignored", DAEMON_TABLE)),
-    }
+    meta.ready_patterns.extend(read_pattern_list(&table, "ready_patterns", false, &mut warnings));
+    meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", true, &mut warnings));
+    meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", true, &mut warnings));
     match table.get("ready_timeout") {
         None => {}
         Some(v) => match v.as_u64().filter(|n| *n > 0) {
@@ -2310,6 +2328,20 @@ player_leave_patterns = ['\]: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
         assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO]: Done (0.267s)! For help, type "help""#));
         assert!(!ready.is_match(r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#), "a chat line is not the server");
         assert!(!ready.is_match("[20:06:58] [Server thread/INFO]: Preparing level \"world\""));
+        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+        assert_eq!((meta.player_join_patterns.len(), meta.player_leave_patterns.len()), (2, 1));
+    }
+
+    /// MK8 §8.3: 접속·퇴장 문구도 `[extensions.saba-core]`에 둔다. `(?P<name>…)`이 없거나 정규식이 아니면 그 항목만 버린다
+    #[test]
+    fn schema_v1_reads_player_patterns_from_the_daemon_table() {
+        let table = "[extensions.saba-core]\nplayer_join_patterns = ['(?P<name>\\w+) joined', '(\\w+) joined', '(']\nplayer_leave_patterns = '(?P<name>\\w+) left'\n";
+        let meta = parse_module_toml(&format!("{V1}\n{table}")).unwrap();
+        assert_eq!(meta.player_join_patterns, vec!["(?P<name>\\w+) joined".to_string()]);
+        assert_eq!(meta.player_leave_patterns, Vec::<String>::new());
+        for needle in ["'(\\w+) joined'", "'('", "player_leave_patterns must be a list"] {
+            assert!(meta.warnings.iter().any(|w| w.contains(needle)), "{needle}: {:?}", meta.warnings);
+        }
     }
 
     #[test]
