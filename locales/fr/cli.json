@@ -101,7 +101,8 @@
     "rest_port": "Port REST",
     "author": "Auteur",
     "mode": "Mode",
-    "trust": "Origine"
+    "trust": "Origine",
+    "unsupported": "Non pris en charge"
   },
   "common": {
     "fetching": "Récupération...",
@@ -205,14 +206,16 @@
       "invalid_relay_url": "Seules les adresses de relais https:// sont autorisées (http uniquement pour localhost, 127.0.0.1 ou [::1] pour tester sur ce PC).",
       "module_busy": "Ce module est déjà en cours d'installation ou de suppression. Réessayez une fois l'opération terminée.",
       "invalid_command": "Écrivez la clé de commande sous la forme `<server>/<command>`. Une clé sans serveur doit être un id d'action globale.",
-      "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>"
+      "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>",
+      "not_supported": "Ce module ne prend pas en charge cette fonction. Consultez les commandes non prises en charge avec : saba-chan-cli module info"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
     "not_found": "Aucun {{what}} nommé « {{query}} ».",
     "pair_expected": "KEY=VALUE attendu, reçu « {{got}} ».",
     "timeout": "Le daemon a mis trop de temps à répondre ({{path}}).",
-    "unknown_command": "Commande inconnue : {{path}}. Lancez `saba-chan-cli help` pour voir les commandes."
+    "unknown_command": "Commande inconnue : {{path}}. Lancez `saba-chan-cli help` pour voir les commandes.",
+    "not_supported": "Le module {{module}} ne prend pas en charge cette fonction"
   },
   "agree": {
     "none": "{{name}} n'a aucun accord à accepter.",

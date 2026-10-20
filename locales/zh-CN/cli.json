@@ -127,7 +127,8 @@
     "rest_port": "REST 端口",
     "author": "作者",
     "mode": "模式",
-    "trust": "来源"
+    "trust": "来源",
+    "unsupported": "不支持"
   },
   "common": {
     "fetching": "正在获取...",
@@ -260,7 +261,8 @@
         "conflict": "已用于称呼其他对象",
         "unknown_command": "该服务器没有这个命令",
         "too_many": "最多 10 个称呼"
-      }
+      },
+      "not_supported": "此模块不支持此功能。可用 saba-chan-cli module info 查看不支持的命令。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -268,7 +270,8 @@
     "pair_expected": "应为 KEY=VALUE，实际为“{{got}}”。",
     "timeout": "守护进程响应时间过长（{{path}}）。",
     "body_read": "无法读取来自 {{path}} 的完整响应：{{error}}",
-    "unknown_command": "没有这个命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。"
+    "unknown_command": "没有这个命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。",
+    "not_supported": "{{module}} 模块不支持此功能"
   },
   "agree": {
     "none": "{{name}} 没有需要同意的协议。",

@@ -127,7 +127,8 @@
     "rest_port": "REST port",
     "author": "Author",
     "mode": "Mode",
-    "trust": "Source"
+    "trust": "Source",
+    "unsupported": "Unsupported"
   },
   "common": {
     "fetching": "Fetching...",
@@ -260,7 +261,8 @@
         "conflict": "already calls something else",
         "unknown_command": "this server has no such command",
         "too_many": "at most 10 words"
-      }
+      },
+      "not_supported": "This module does not support this feature. See unsupported commands with: saba-chan-cli module info"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -268,7 +270,8 @@
     "pair_expected": "Expected KEY=VALUE, got \"{{got}}\".",
     "timeout": "The daemon took too long to answer ({{path}}).",
     "body_read": "Could not read the whole response from {{path}}: {{error}}",
-    "unknown_command": "No such command: {{path}}. Run `saba-chan-cli help` to see the commands."
+    "unknown_command": "No such command: {{path}}. Run `saba-chan-cli help` to see the commands.",
+    "not_supported": "The {{module}} module does not support this"
   },
   "agree": {
     "none": "{{name}} has no agreements to accept.",
