@@ -445,8 +445,11 @@ impl ConfigStore {
     }
 
     /// 예전 전역 별명을 길드·인스턴스 낱말로 옮긴 결과를 저장한다: `nodeSettings`를 바꾸고 옛 세 키를 비운다
-    pub async fn finish_words_migration(&self, node_settings: Value) -> Result<(), ConfigStoreError> {
+    /// `migrate`는 쓰기 잠금 안에서 지금 설정으로 옮긴 `nodeSettings`를 만든다: 그사이 바뀐 길드 권한을 덮지 않게 (D-F5).
+    /// 옮길 것이 없으면(None) 아무것도 바꾸지 않는다
+    pub async fn finish_words_migration<T>(&self, migrate: impl FnOnce(&BotConfig) -> Option<(Value, T)>) -> Result<Option<T>, ConfigStoreError> {
         let mut config = self.bot_config.write().await;
+        let Some((node_settings, out)) = migrate(&config) else { return Ok(None) };
         let mut next = config.clone();
         next.node_settings = node_settings;
         next.module_aliases.clear();
@@ -454,7 +457,7 @@ impl ConfigStore {
         next.instance_aliases.clear();
         self.file.set_section("relay", serde_json::to_value(&next)?)?;
         *config = next;
-        Ok(())
+        Ok(Some(out))
     }
 
     // ── 기본값 ──
@@ -482,17 +485,19 @@ impl ConfigStore {
         let defaults = Self::defaults_json(kind)
             .and_then(|d| d.as_object().cloned())
             .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown config: {}", kind)))?;
-        // GUI는 읽기부터 저장까지 쓰기 잠금을 잡는다 (봇 설정은 아래에서 잡는다)
+        // 읽기부터 저장까지 쓰기 잠금을 잡는다: 그사이 저장된 다른 키를 되돌리지 않게 (D-F4)
         let mut gui = if kind == "gui" { Some(self.gui_settings.write().await) } else { None };
+        let mut bot = if kind == "gui" { None } else { Some(self.bot_config.write().await) };
         let full = match keys {
             None => defaults,
             Some([]) => {
                 return Err(ConfigStoreError::InvalidData("keys is empty; omit keys to reset everything".into()))
             }
             Some(keys) => {
-                let current = match &gui {
-                    Some(g) => serde_json::to_value(&**g).unwrap_or_default(),
-                    None => self.get_bot_config_json().await,
+                let current = match (&gui, &bot) {
+                    (Some(g), _) => serde_json::to_value(&**g).unwrap_or_default(),
+                    (None, Some(b)) => serde_json::to_value(&**b).unwrap_or_default(),
+                    (None, None) => unreachable!("one of the two is held"),
                 };
                 let mut current = current.as_object().cloned().unwrap_or_default();
                 for key in keys {
@@ -515,7 +520,7 @@ impl ConfigStore {
             **gui = settings;
             Ok(serde_json::to_value(&**gui).unwrap_or_default())
         } else {
-            let mut current = self.bot_config.write().await;
+            let mut current = bot.take().expect("held above");
             // 초기화도 고정된 주인·부여값은 지우지 않는다 (권한 API로만 바뀐다)
             let mut full = Value::Object(full);
             keep_permission_keys(&mut full, &serde_json::to_value(&*current).unwrap_or_default());
@@ -998,6 +1003,22 @@ mod tests {
             tb.await.unwrap().unwrap();
             let now = store.get_gui_settings().await;
             assert_eq!((now.font_scale, now.ipc_port), (100 + round, 20000 + round as u16), "round {}", round);
+        }
+    }
+
+    /// 봇 설정 키 일부 초기화가 그사이 저장된 다른 키를 되돌리지 않는다: 지금 값은 쓰기 잠금 안에서 읽는다 (D-F4)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn resetting_some_bot_keys_keeps_a_concurrent_save() {
+        let tmp = TempDir::new().unwrap();
+        let store = std::sync::Arc::new(ConfigStore::new(tmp.path()));
+        for round in 0..200u32 {
+            let a = store.clone();
+            let b = store.clone();
+            let ta = tokio::spawn(async move { a.reset_to_defaults("bot", Some(&["cloud".to_string()])).await });
+            let tb = tokio::spawn(async move { b.set_bot_config_from_json(serde_json::json!({ "prefixes": [format!("p{round}")] })).await });
+            ta.await.unwrap().unwrap();
+            tb.await.unwrap().unwrap();
+            assert_eq!(store.get_bot_config().await.prefixes, vec![format!("p{round}")], "round {}", round);
         }
     }
 
