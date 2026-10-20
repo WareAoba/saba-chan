@@ -1365,7 +1365,7 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
 /// 데몬이 정해진 뜻으로 부르는 lifecycle 함수 중 상태를 바꾸는 것: 조회(`[[queries]]`)·`[status] players`의 함수가 될 수 없다
 const NON_QUERY_FUNCTIONS: &[&str] = &[
     "start", "stop", "command", "configure", "get_launch_command", "import_settings", "install_server",
-    "reset_properties", "reset_server", "accept_agreements",
+    "reset_properties", "reset_server", "accept_agreements", "functions",
 ];
 /// 조회 입력으로 쓸 수 있는 형식 (없으면 text)
 const QUERY_INPUT_TYPES: &[&str] = &["text", "number", "select"];

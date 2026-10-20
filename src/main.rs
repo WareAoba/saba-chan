@@ -360,6 +360,10 @@ async fn main() -> anyhow::Result<()> {
         let users = supervisor.read().await.user_runtimes();
         tokio::task::spawn_blocking(move || sandbox::reconcile_runtimes(&users));
     }
+    // 모듈이 구현한 함수 목록을 미리 물어 둔다 (GET /api/modules가 기다리지 않게)
+    if let Ok(modules) = supervisor.read().await.list_modules() {
+        plugin::prefetch_module_functions(modules.iter().map(|m| m.entry_path()).collect());
+    }
     // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서)
     tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
 
