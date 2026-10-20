@@ -1252,10 +1252,25 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
         let opts: Vec<&str> = opts.iter().filter_map(Value::as_str).collect();
         if !opts.is_empty() {
             // 데몬은 선택지를 그대로 비교하므로, 대소문자만 다르게 친 값은 모듈이 정한 선택지로 보낸다 (L58)
-            let Some(opt) = opts.iter().find(|o| **o == raw).or_else(|| opts.iter().find(|o| o.eq_ignore_ascii_case(raw))) else {
-                return Err(usage(t!("set.must_be_one_of", key = key, options = opts.join(", "))));
+            let pick = |raw: &str| {
+                opts.iter()
+                    .find(|o| **o == raw)
+                    .or_else(|| opts.iter().find(|o| o.eq_ignore_ascii_case(raw)))
+                    .map(|o| o.to_string())
+                    .ok_or_else(|| usage(t!("set.must_be_one_of", key = key, options = opts.join(", "))))
             };
-            return Ok((key.to_string(), typed(opt, &kind)?));
+            // 여러 개 고르는 목록은 항목마다
+            if kind == "list" {
+                let items = typed(raw, &kind)?;
+                let picked = items
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|i| pick(i.as_str().unwrap_or_default()).map(Value::String))
+                    .collect::<Result<Vec<_>>>()?;
+                return Ok((key.to_string(), Value::Array(picked)));
+            }
+            return Ok((key.to_string(), typed(&pick(raw)?, &kind)?));
         }
     }
     Ok((key.to_string(), typed(raw, &kind)?))
@@ -1265,6 +1280,40 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
 fn options_line(f: &Value) -> Option<String> {
     let opts: Vec<&str> = f.get("options")?.as_array()?.iter().filter_map(Value::as_str).collect();
     (!opts.is_empty()).then(|| opts.join(" | "))
+}
+
+/// 설정 값 한 줄: 목록은 쉼표로, 여러 줄은 ⏎로 잇는다. 비밀번호 같은 값은 가린다
+fn setting_text(name: &str, val: &Value) -> String {
+    match val {
+        Value::Array(items) if items.iter().all(Value::is_string) => output::mask(
+            name,
+            &json!(items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")),
+        ),
+        Value::String(text) if text.contains('\n') => {
+            output::mask(name, &json!(text.lines().collect::<Vec<_>>().join(" ⏎ ")))
+        }
+        _ => output::mask(name, val),
+    }
+}
+
+/// 설정 옆 표시: 켜져 있을 때 바꾸면 다시 켜야 적용되는 설정 (06 §8.2)
+fn setting_marks(f: &Value) -> String {
+    if f.get("restart_required").and_then(Value::as_bool) == Some(true) {
+        output::dim(&format!("({})", t!("set.restart_required_mark")))
+    } else {
+        String::new()
+    }
+}
+
+/// 저장 응답의 `restart_required`: 켜져 있을 때 값이 바뀌어 다시 켜야 적용되는 설정 이름
+fn restart_required(r: &Value) -> Vec<String> {
+    r.get("restart_required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect()
 }
 
 fn insert_patch(patch: &mut Map<String, Value>, key: &str, value: Value) {
@@ -1288,6 +1337,15 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     );
     let module = module.unwrap_or(Value::Null);
     let fields = setting_fields(&module);
+    // 다른 설정 값에 따라 지금 숨긴 설정 (저장된 값 기준, 06 §8.2)
+    let hidden: Vec<String> = ctx
+        .api
+        .instance(&sv.id)
+        .await
+        .ok()
+        .and_then(|r| r.get("hidden").cloned())
+        .and_then(|h| serde_json::from_value(h).ok())
+        .unwrap_or_default();
     // 실제 설정 파일 값이 우선. 못 읽으면 (설치 전, 모듈이 지원 안 함) 저장된 값으로.
     let live = live
         .ok()
@@ -1329,6 +1387,8 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         out_fields.push(json!({
             "key": name, "label": label(f), "type": s(f, "field_type"), "group": f.get("group"),
             "value": current(name), "default": f.get("default"), "options": f.get("options"),
+            "hidden": hidden.iter().any(|h| h == name),
+            "restart_required": f.get("restart_required").and_then(Value::as_bool).unwrap_or(false),
         }));
     }
     let v = json!({ "server": sv.name, "live": live.is_some(), "fields": out_fields, "instance": sv.raw });
@@ -1341,16 +1401,24 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         let mut seen: Vec<String> = Vec::new();
         for f in &fields {
             let name = s(f, "name");
+            if hidden.iter().any(|h| h == name) {
+                seen.push(name.to_string());
+                continue;
+            }
             let group = f.get("group").and_then(Value::as_str).unwrap_or("basic");
             let val = current(name);
-            let mut shown = output::mask(name, &val);
+            let mut shown = setting_text(name, &val);
             if val.is_null() {
                 if let Some(d) = f.get("default").filter(|d| !d.is_null()) {
-                    shown = output::dim(&format!("{} ({})", show(d), t!("set.default")));
+                    shown = output::dim(&format!("{} ({})", setting_text(name, d), t!("set.default")));
                 }
             }
             if let Some(line) = options_line(f) {
                 shown = format!("{}  {}", shown, output::dim(&format!("({})", line)));
+            }
+            let marks = setting_marks(f);
+            if !marks.is_empty() {
+                shown = format!("{}  {}", shown, marks);
             }
             push(
                 group,
@@ -1395,6 +1463,9 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             output::print_kv(&rows);
             say!();
         }
+        if !hidden.is_empty() {
+            say!("{}", output::dim(&t!("set.hidden", keys = hidden.join(", "))));
+        }
         say!(
             "{}",
             output::dim(&format!("saba-chan-cli server set {} KEY=VALUE", shell_word(&sv.name)))
@@ -1423,7 +1494,15 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
     if !ignored.is_empty() {
         ctx.out.warn(&t!("set.ignored", keys = ignored.join(", ")));
     }
-    if status_of(&runtime(ctx, &sv).await.unwrap_or(Value::Null)) == "running" {
+    // 다시 켜야 적용되는 설정은 데몬이 알려 준다 (06 §8.2). 모르는 옛 데몬이면 켜져 있을 때 늘 안내한다
+    let needs_restart = restart_required(&r);
+    if !needs_restart.is_empty() {
+        ctx.out
+            .warn(&t!("set.restart_required", keys = needs_restart.join(", ")));
+        ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
+    } else if r.get("restart_required").is_none()
+        && status_of(&runtime(ctx, &sv).await.unwrap_or(Value::Null)) == "running"
+    {
         ctx.out.hint(&t!("set.restart_hint", name = shell_word(&sv.name)));
     }
     match sync_error {
@@ -1997,6 +2076,40 @@ mod tests {
         assert_eq!(typed_setting(&fields, &inst, "memory_limit_mb", "").unwrap().1, Value::Null);
         let (k, v) = typed_setting(&fields, &inst, "ext.box", "").unwrap();
         assert_eq!((k.as_str(), v), ("extension_data.box", Value::Null));
+    }
+
+    /// 여러 개 고르는 `list`는 항목마다 선택지에 있어야 하고, 대소문자만 다른 항목은 선택지대로 보낸다
+    #[test]
+    fn each_item_of_a_list_setting_is_one_of_its_options() {
+        let fields = vec![json!({ "name": "maps", "field_type": "list", "options": ["Island", "Desert"] })];
+        let inst = json!({});
+        assert_eq!(
+            typed_setting(&fields, &inst, "maps", "island, Desert").unwrap().1,
+            json!(["Island", "Desert"])
+        );
+        assert!(typed_setting(&fields, &inst, "maps", "Island, Moon").is_err());
+        assert_eq!(typed_setting(&fields, &inst, "maps", "").unwrap().1, json!([]));
+    }
+
+    /// 목록과 여러 줄 값은 한 줄로 보이고, 켜져 있을 때 다시 켜야 하는 설정에는 표시가 붙는다
+    #[test]
+    fn list_and_multiline_values_are_shown_on_one_line() {
+        crate::i18n::init("ko");
+        assert_eq!(setting_text("admins", &json!(["a", "b"])), "a, b");
+        assert_eq!(setting_text("motd", &json!("hi\nthere")), "hi ⏎ there");
+        assert!(setting_marks(&json!({ "restart_required": true })).contains(&t!("set.restart_required_mark")));
+        assert!(setting_marks(&json!({})).is_empty());
+    }
+
+    /// 저장 응답의 `restart_required`(켜져 있을 때 바꾼, 다시 켜야 적용되는 설정)를 그대로 알린다
+    #[test]
+    fn settings_that_need_a_restart_are_named() {
+        assert_eq!(
+            restart_required(&json!({ "restart_required": ["admins", "motd"] })),
+            vec!["admins", "motd"]
+        );
+        assert!(restart_required(&json!({ "restart_required": [] })).is_empty());
+        assert!(restart_required(&json!({})).is_empty());
     }
 
     /// 새 서버(아직 값이 없음)에서도 데몬이 읽는 설정(auto_restart 등)과 공통 칸을 받는다 (C1)

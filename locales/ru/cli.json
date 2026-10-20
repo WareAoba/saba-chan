@@ -292,7 +292,11 @@
     "none": "Игровые модули не установлены. См.: saba-chan-cli module available",
     "refreshed": "Модули перезагружены.",
     "removed": "Модуль {{id}} удалён.",
-    "unmet": "Требуется {{component}} {{required}} (установлено: {{installed}})"
+    "unmet": "Требуется {{component}} {{required}} (установлено: {{installed}})",
+    "load_failed": {
+      "invalid": "Не удалось загрузить модуль {{module}}. Его module.toml не соответствует формату:",
+      "unsupported": "Не удалось загрузить модуль {{module}}. Обновите Saba-chan, чтобы читать формат модуля {{required}}."
+    }
   },
   "noun": {
     "command": "команда",
@@ -385,7 +389,10 @@
     "restart_hint": "Перезапустите {{name}}, чтобы применить: saba-chan-cli restart {{name}}",
     "sync_failed": "Сохранено, но не удалось записать файл настроек игры: {{error}}",
     "ignored": "Пропущено: saba-chan не использует эти настройки: {{keys}}",
-    "unknown_key": "{{key}} — новый ключ."
+    "unknown_key": "{{key}} — новый ключ.",
+    "restart_required_mark": "нужен перезапуск",
+    "restart_required": "Перезапустите сервер, чтобы применить: {{keys}}",
+    "hidden": "Скрыты, потому что другие настройки сейчас их не используют: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Незакрытая кавычка.",

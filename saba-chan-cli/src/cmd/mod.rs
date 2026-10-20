@@ -253,6 +253,36 @@ pub fn typed(raw: &str, kind: &str) -> Result<Value> {
         "boolean" | "bool" | "checkbox" | "toggle" => parse_bool(raw)
             .map(Value::Bool)
             .ok_or_else(|| usage(t!("err.not_a_bool", value = raw))),
+        // 스키마 2 목록: JSON 배열 그대로, 아니면 쉼표로 나눈 글자들 (빈 값은 빈 목록)
+        "list" => match guess(raw) {
+            Value::Array(a) => Ok(Value::Array(a)),
+            _ => Ok(Value::Array(
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| Value::String(p.to_string()))
+                    .collect(),
+            )),
+        },
+        // 한 줄로 치므로 `\n`을 줄바꿈으로, `\\`를 `\`로
+        "multiline" => {
+            let mut out = String::with_capacity(raw.len());
+            let mut chars = raw.chars();
+            while let Some(c) = chars.next() {
+                match (c, chars.clone().next()) {
+                    ('\\', Some('n')) => {
+                        out.push('\n');
+                        chars.next();
+                    }
+                    ('\\', Some('\\')) => {
+                        out.push('\\');
+                        chars.next();
+                    }
+                    _ => out.push(c),
+                }
+            }
+            Ok(Value::String(out))
+        }
         _ => Ok(Value::String(raw.to_string())),
     }
 }
@@ -394,6 +424,19 @@ mod tests {
         assert_eq!(typed("1234", "number").unwrap(), json!(1234));
         assert_eq!(typed("on", "boolean").unwrap(), json!(true));
         assert!(typed("maybe", "boolean").is_err());
+    }
+
+    /// 스키마 2 `list`는 문자열 배열로 (쉼표로 나누거나 JSON 배열), `multiline`은 `\\n`을 줄바꿈으로 보낸다 (06 §8.1)
+    #[test]
+    fn list_and_multiline_values_take_their_shape() {
+        assert_eq!(typed(" a, b ,,c", "list").unwrap(), json!(["a", "b", "c"]));
+        assert_eq!(typed("[\"a,b\", \"c\"]", "list").unwrap(), json!(["a,b", "c"]));
+        assert_eq!(typed("", "list").unwrap(), json!([]));
+        assert_eq!(
+            typed("Welcome\\nHave fun", "multiline").unwrap(),
+            json!("Welcome\nHave fun")
+        );
+        assert_eq!(typed("C:\\\\new", "multiline").unwrap(), json!("C:\\new"));
     }
 
     #[test]

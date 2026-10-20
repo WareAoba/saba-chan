@@ -292,7 +292,11 @@
     "none": "Aucun module de jeu installé. Voir : saba-chan-cli module available",
     "refreshed": "Modules rechargés.",
     "removed": "Module {{id}} supprimé.",
-    "unmet": "Nécessite {{component}} {{required}} (installé : {{installed}})"
+    "unmet": "Nécessite {{component}} {{required}} (installé : {{installed}})",
+    "load_failed": {
+      "invalid": "Impossible de charger le module {{module}}. Son module.toml ne respecte pas le format :",
+      "unsupported": "Impossible de charger le module {{module}}. Mettez à jour Saba-chan pour lire le format de module {{required}}."
+    }
   },
   "noun": {
     "command": "commande",
@@ -385,7 +389,10 @@
     "restart_hint": "Redémarrez {{name}} pour appliquer : saba-chan-cli restart {{name}}",
     "sync_failed": "Enregistré, mais le fichier de configuration du jeu n'a pas pu être écrit : {{error}}",
     "ignored": "Ignoré, car saba-chan n'utilise pas ces réglages : {{keys}}",
-    "unknown_key": "{{key}} est une nouvelle clé."
+    "unknown_key": "{{key}} est une nouvelle clé.",
+    "restart_required_mark": "redémarrage requis",
+    "restart_required": "Redémarrez le serveur pour appliquer : {{keys}}",
+    "hidden": "Masqués car d'autres paramètres ne les utilisent pas pour l'instant : {{keys}}"
   },
   "shell": {
     "bad_quotes": "Guillemet non fermé.",

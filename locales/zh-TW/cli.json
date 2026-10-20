@@ -292,7 +292,11 @@
     "none": "尚未安裝任何遊戲模組。請參考：saba-chan-cli module available",
     "refreshed": "已重新載入模組。",
     "removed": "已刪除模組 {{id}}。",
-    "unmet": "需要 {{component}} {{required}}（已安裝：{{installed}}）"
+    "unmet": "需要 {{component}} {{required}}（已安裝：{{installed}}）",
+    "load_failed": {
+      "invalid": "無法載入 {{module}} 模組。module.toml 不符合格式:",
+      "unsupported": "無法載入 {{module}} 模組。請更新 Saba-chan 以讀取模組格式 {{required}}。"
+    }
   },
   "noun": {
     "command": "指令",
@@ -385,7 +389,10 @@
     "restart_hint": "重新啟動 {{name}} 以套用：saba-chan-cli restart {{name}}",
     "sync_failed": "已儲存，但無法寫入遊戲設定檔：{{error}}",
     "ignored": "saba-chan 不使用這些設定，已忽略：{{keys}}",
-    "unknown_key": "{{key}} 是新的鍵。"
+    "unknown_key": "{{key}} 是新的鍵。",
+    "restart_required_mark": "修改後需重新啟動",
+    "restart_required": "重新啟動伺服器後生效: {{keys}}",
+    "hidden": "因其他設定目前未使用而隱藏的設定: {{keys}}"
   },
   "shell": {
     "bad_quotes": "引號未閉合。",

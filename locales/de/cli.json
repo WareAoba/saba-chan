@@ -292,7 +292,11 @@
     "none": "Keine Spielmodule installiert. Siehe: saba-chan-cli module available",
     "refreshed": "Module neu geladen.",
     "removed": "Modul {{id}} gelöscht.",
-    "unmet": "Benötigt {{component}} {{required}} (installiert: {{installed}})"
+    "unmet": "Benötigt {{component}} {{required}} (installiert: {{installed}})",
+    "load_failed": {
+      "invalid": "Das Modul {{module}} konnte nicht geladen werden. Seine module.toml entspricht nicht dem Format:",
+      "unsupported": "Das Modul {{module}} konnte nicht geladen werden. Aktualisiere Saba-chan, um das Modulformat {{required}} zu lesen."
+    }
   },
   "noun": {
     "command": "Befehl",
@@ -385,7 +389,10 @@
     "restart_hint": "Starte {{name}} neu, um es zu übernehmen: saba-chan-cli restart {{name}}",
     "sync_failed": "Gespeichert, aber die Einstellungsdatei des Spiels konnte nicht geschrieben werden: {{error}}",
     "ignored": "Ignoriert, weil saba-chan diese Einstellungen nicht verwendet: {{keys}}",
-    "unknown_key": "{{key}} ist ein neuer Schlüssel."
+    "unknown_key": "{{key}} ist ein neuer Schlüssel.",
+    "restart_required_mark": "Neustart nötig",
+    "restart_required": "Zum Übernehmen den Server neu starten: {{keys}}",
+    "hidden": "Ausgeblendet, weil andere Einstellungen sie gerade nicht nutzen: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
