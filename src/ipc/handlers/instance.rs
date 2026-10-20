@@ -997,6 +997,22 @@ pub async fn launch_preview(
     }
 }
 
+/// PATCH의 `stop_timeout`(정지 대기 초): 비움(null·""·0)은 모듈 값으로 되돌리기, 아니면 1~3600 정수 (숫자 글자도 받는다)
+fn stop_timeout_from(value: &Value) -> Result<Option<u64>, ()> {
+    let n = match value {
+        Value::Null => return Ok(None),
+        Value::String(s) if s.trim().is_empty() => return Ok(None),
+        Value::String(s) => s.trim().parse::<u64>().map_err(|_| ())?,
+        Value::Number(n) => n.as_u64().ok_or(())?,
+        _ => return Err(()),
+    };
+    match n {
+        0 => Ok(None),
+        1..=3600 => Ok(Some(n)),
+        _ => Err(()),
+    }
+}
+
 /// 이보다 작은 메모리 상한은 서버가 뜨지도 못하므로 받지 않는다
 const MIN_MEMORY_LIMIT_MB: u64 = 256;
 
@@ -1244,6 +1260,14 @@ pub async fn update_instance_settings(
             }
         }
     }
+    // 정지 대기 시간(초): 비우거나(null·"") 0이면 모듈 값을 쓴다
+    let stop_timeout = match settings.get("stop_timeout").map(stop_timeout_from) {
+        Some(Err(())) => {
+            let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "stop_timeout must be empty or a whole number of seconds from 1 to 3600", "fields": [{"field": "stop_timeout"}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
+        other => other.map(Result::unwrap_or_default),
+    };
     // credential_map 범용 역동기화: module_settings 키 → daemon first-class 필드
     // 예: Palworld credential_map { rest_password = "AdminPassword" }
     //   → module_settings의 "admin_password" (snake_case) 값을 instance.rest_password에 동기화
@@ -1350,6 +1374,16 @@ pub async fn update_instance_settings(
                 updated.module_settings.insert(key.clone(), value.clone());
             }
         }
+    }
+    match stop_timeout {
+        Some(Some(n)) => {
+            updated.module_settings.insert("stop_timeout".into(), json!(n));
+        }
+        Some(None) => {
+            updated.module_settings.remove("stop_timeout");
+            updated.user_settings.remove("stop_timeout");
+        }
+        None => {}
     }
 
     tracing::info!(
@@ -1870,7 +1904,7 @@ fn settings_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMe
 
 #[cfg(test)]
 mod tests {
-    use super::memory_limit_from;
+    use super::{memory_limit_from, stop_timeout_from};
     use serde_json::json;
 
     /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
@@ -2453,6 +2487,41 @@ mod tests {
         assert!(user_settings(id.clone()).await.contains("java_path"));
     }
 
+    /// 정지 대기 시간은 잘못된 값을 저장하지 않고 400으로 알린다. 숫자 글자는 숫자로, 빈 값은 모듈 값으로 되돌린다
+    #[tokio::test]
+    async fn a_stop_timeout_patch_is_checked_before_it_is_saved() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        let saved = || async { state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings.get("stop_timeout").cloned() };
+
+        assert!(patch(json!({ "stop_timeout": "60" })).await.status.is_success());
+        assert_eq!(saved().await, Some(json!(60)));
+        let bad = patch(json!({ "stop_timeout": -5 })).await;
+        assert_eq!(bad.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(bad.body["error_code"], "invalid_format");
+        assert_eq!(bad.body["fields"][0]["field"], "stop_timeout");
+        assert_eq!(saved().await, Some(json!(60)), "a rejected value changes nothing");
+        assert!(patch(json!({ "stop_timeout": null })).await.status.is_success());
+        assert_eq!(saved().await, None);
+    }
+
     #[tokio::test]
     async fn null_clears_the_executable_and_rest_overrides() {
         use axum::extract::{Path, State};
@@ -2506,6 +2575,19 @@ mod tests {
         let after = serde_json::to_value(state.supervisor.read().await.instance_store.get(&id).cloned().unwrap()).unwrap();
         for key in saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS {
             assert_eq!(after[*key], set[*key], "{key}");
+        }
+    }
+
+    #[test]
+    fn stop_timeout_is_empty_or_whole_seconds_up_to_an_hour() {
+        for empty in [json!(null), json!(""), json!(0), json!(" ")] {
+            assert_eq!(stop_timeout_from(&empty), Ok(None), "{empty}");
+        }
+        assert_eq!(stop_timeout_from(&json!(60)), Ok(Some(60)));
+        assert_eq!(stop_timeout_from(&json!(" 90 ")), Ok(Some(90)));
+        assert_eq!(stop_timeout_from(&json!(3600)), Ok(Some(3600)));
+        for bad in [json!(-5), json!("abc"), json!(1.5), json!(true), json!(99999), json!("3601")] {
+            assert!(stop_timeout_from(&bad).is_err(), "{bad}");
         }
     }
 

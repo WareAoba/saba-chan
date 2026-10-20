@@ -1223,8 +1223,8 @@ impl Supervisor {
                     }
                 }
 
-                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 모듈 설정값 또는 기본 30초)
-                let timeout_secs = if force { 5 } else { module.metadata.stop_timeout.unwrap_or(30) };
+                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 인스턴스 설정 `stop_timeout`, 모듈 값, 기본 30초 순)
+                let timeout_secs = if force { 5 } else { stop_timeout_of(&instance, module.metadata.stop_timeout) };
                 let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
                 loop {
                     if !managed.is_running() {
@@ -2969,6 +2969,17 @@ impl Supervisor {
             })
             .unwrap_or_default()
     }
+}
+
+/// 저장 후 종료를 기다리는 시간(초): 인스턴스 설정 `stop_timeout`(큰 월드는 저장이 길다, MK14), 모듈 `stop_timeout`, 기본 30.
+/// 인스턴스 값은 1~3600초로 맞춘다
+pub(crate) fn stop_timeout_of(instance: &crate::instance::ServerInstance, module_value: Option<u64>) -> u64 {
+    instance.module_settings.get("stop_timeout")
+        .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())))
+        .filter(|n| *n > 0)
+        .map(|n| n.min(3600))
+        .or(module_value)
+        .unwrap_or(30)
 }
 
 /// 모듈 `stop()`이 저장 후 종료를 요청할 길이 없다고 답했는가 (콘솔·REST가 없는 서버. 모듈은 이때 서버를 끝내지 않는다)

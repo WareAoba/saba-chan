@@ -1394,6 +1394,44 @@ mod tests {
         assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
     }
 
+    /// 정지 대기 시간은 인스턴스 설정 `stop_timeout`(초)이 모듈 값보다 앞선다: 큰 월드는 늘리고, 여기서는 줄여 바로 끝나는지 본다 (MK14)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_instance_stop_timeout_overrides_the_module_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n[config]\nstop_timeout = 60\n",
+        )
+        .unwrap();
+        // stop()은 아무것도 하지 않는다: 서버는 대기 시간이 지나 강제 종료돼야 끝난다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 60'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "short-stop".into();
+        inst.module_settings.insert("stop_timeout".into(), json!(1));
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let started = crate::ipc::internal::into_internal(start_instance(Path("short-stop".into()), State(state.clone())).await).await.body;
+        assert_eq!(started["success"], true, "{started}");
+
+        let begun = std::time::Instant::now();
+        let stopped = crate::ipc::internal::into_internal(stop_instance(state.clone(), "short-stop", false).await).await.body;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert!(begun.elapsed() < std::time::Duration::from_secs(15), "waited {:?}, not the instance's 1s", begun.elapsed());
+    }
+
     /// 콘솔이 없어 저장 후 종료를 요청할 길이 없으면 모듈 `stop()`은 `graceful_stop_unavailable`로 답한다. 데몬은 그때
     /// 서버를 죽이지 않고 그 코드를 돌려준다: 강제 종료(저장 없음)는 사용자가 `force`로 고른다 (MK10)
     #[cfg(unix)]
