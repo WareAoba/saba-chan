@@ -10,6 +10,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
     name = "saba-chan-cli",
     version,
     about = "Saba-chan: run and manage your game servers from the terminal",
+    disable_help_subcommand = true,
     after_help = "Run without a command to open the interactive shell."
 )]
 pub struct Cli {
@@ -24,6 +25,9 @@ pub struct Global {
     /// Print machine-readable JSON instead of text
     #[arg(long, global = true, display_order = 900)]
     pub json: bool,
+    /// Print progress and then the result as JSON lines (NDJSON); implies --json
+    #[arg(long, global = true, display_order = 900)]
+    pub json_stream: bool,
     /// Answer yes to confirmation questions
     #[arg(short = 'y', long, global = true, display_order = 900)]
     pub yes: bool,
@@ -105,6 +109,18 @@ pub enum Cmd {
         #[arg(short, long)]
         follow: bool,
     },
+    /// Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop
+    Events {
+        /// Only these events; `instance` also takes `instance.exit` and the like
+        #[arg(long, value_name = "EVENT")]
+        kind: Vec<String>,
+        /// Only events of this server
+        #[arg(long, short)]
+        server: Option<String>,
+        /// Start after this event id (replays what the daemon still keeps)
+        #[arg(long, value_name = "ID")]
+        since: Option<u64>,
+    },
     /// Who may run which commands from Discord (levels per member, preset, overrides)
     #[command(subcommand, visible_alias = "permissions")]
     Perm(PermCmd),
@@ -129,6 +145,12 @@ pub enum Cmd {
     Version,
     /// Open the interactive shell
     Shell,
+    /// Show help for a command. With --json: the command tree, arguments and exit codes
+    Help {
+        /// Command path, e.g. `server start`
+        #[arg(value_name = "COMMAND")]
+        command: Vec<String>,
+    },
     /// Print a shell completion script
     Completions {
         #[arg(value_name = "SHELL")]
@@ -865,6 +887,92 @@ pub fn localized() -> clap::Command {
     cmd
 }
 
+/// 인자를 읽는다. 맨 위 `help`는 우리 명령이라 clap의 하위 `help`가 꺼진다:
+/// `server help start`처럼 하위 명령 자리에 온 `help`는 맨 앞으로 옮겨 다시 읽는다
+pub fn parse(args: Vec<std::ffi::OsString>) -> Result<clap::ArgMatches, clap::Error> {
+    match localized().try_get_matches_from(&args) {
+        Err(e) if e.kind() == clap::error::ErrorKind::InvalidSubcommand && args.iter().skip(1).any(|a| a == "help") => {
+            let mut moved: Vec<std::ffi::OsString> = args.iter().filter(|a| *a != "help").cloned().collect();
+            moved.insert(1.min(moved.len()), "help".into());
+            // 옮긴 경로가 실제 명령일 때만: 오타면 clap의 원래 제안("혹시 start?")을 살린다
+            let real = |m: &clap::ArgMatches| {
+                let path: Vec<String> = m.subcommand_matches("help").and_then(|h| h.get_many::<String>("command")).into_iter().flatten().cloned().collect();
+                find(&Cli::command(), &path).is_some()
+            };
+            localized().try_get_matches_from(moved).ok().filter(real).ok_or(e)
+        }
+        r => r,
+    }
+}
+
+/// 이름이나 별칭으로 하위 명령 경로를 따라간다. 없으면 None
+pub fn find<'c>(root: &'c clap::Command, path: &[String]) -> Option<&'c clap::Command> {
+    path.iter().try_fold(root, |cmd, word| cmd.find_subcommand(word))
+}
+
+/// `help --json`: 명령 트리·인자·종료 코드. 전역 플래그는 `globalArgs`에 한 번만 싣는다
+pub fn schema(root: &clap::Command, path: &[String]) -> Option<serde_json::Value> {
+    use serde_json::{json, Value};
+    fn text(s: Option<&clap::builder::StyledStr>) -> Value {
+        s.map_or(Value::Null, |s| json!(s.to_string()))
+    }
+    fn arg(a: &clap::Arg) -> Value {
+        let takes_value = a.get_action().takes_values();
+        json!({
+            "name": a.get_id().as_str(),
+            "long": a.get_long(),
+            "short": a.get_short().map(String::from),
+            "positional": a.is_positional(),
+            "required": a.is_required_set(),
+            "takesValue": takes_value,
+            "multiple": matches!(a.get_action(), clap::ArgAction::Append | clap::ArgAction::Count)
+                || a.get_num_args().is_some_and(|n| n.max_values() > 1),
+            // 켜고 끄는 플래그는 값 이름·기본값(false)이 뜻이 없다
+            "valueName": a.get_value_names().and_then(|v| v.first()).filter(|_| takes_value).map(|v| v.as_str()),
+            "default": if takes_value { a.get_default_values().iter().map(|v| v.to_string_lossy()).collect::<Vec<_>>() } else { vec![] },
+            "choices": if takes_value { a.get_possible_values().iter().map(|v| v.get_name().to_string()).collect::<Vec<_>>() } else { vec![] },
+            "help": text(a.get_help()),
+        })
+    }
+    fn node(cmd: &clap::Command, path: &str, top: bool) -> Value {
+        let args: Vec<Value> = cmd
+            .get_arguments()
+            .filter(|a| !a.is_global_set() && !a.is_hide_set() && !matches!(a.get_id().as_str(), "help" | "version"))
+            .map(arg)
+            .collect();
+        // clap이 붙이는 하위 `help`는 뺀다. 맨 위 `help`만 우리 명령이다
+        let subs: Vec<Value> = cmd
+            .get_subcommands()
+            .filter(|s| !s.is_hide_set() && (top || s.get_name() != "help"))
+            .map(|s| node(s, format!("{} {}", path, s.get_name()).trim(), false))
+            .collect();
+        json!({
+            "path": path,
+            "name": cmd.get_name(),
+            "aliases": cmd.get_visible_aliases().collect::<Vec<_>>(),
+            "about": text(cmd.get_about()),
+            "args": args,
+            "subcommands": subs,
+        })
+    }
+    let target = find(root, path)?;
+    // 별칭으로 찾아도 경로는 본 이름으로
+    let canonical: Vec<&str> = (1..=path.len()).filter_map(|n| find(root, &path[..n]).map(|c| c.get_name())).collect();
+    let globals: Vec<Value> = root.get_arguments().filter(|a| a.is_global_set()).map(arg).collect();
+    let exit_codes: Vec<Value> = crate::error::EXIT_CODES
+        .iter()
+        .map(|(exit, codes)| json!({ "exit": exit, "codes": codes }))
+        .collect();
+    Some(json!({
+        "name": root.get_name(),
+        "version": env!("CARGO_PKG_VERSION"),
+        "command": node(target, &canonical.join(" "), path.is_empty()),
+        "globalArgs": globals,
+        "exitCodes": exit_codes,
+        "notes": "--json prints one JSON document on stdout. A failure prints {\"ok\":false,\"error\",\"error_code\"} and exits with a code below; for exit 1 error_code may also be the daemon's own code.",
+    }))
+}
+
 /// 셸 자동완성·검사용 명령 이름 목록 (경로 포함)
 pub fn command_words() -> Vec<String> {
     fn walk(cmd: &clap::Command, prefix: &str, out: &mut Vec<String>) {
@@ -945,6 +1053,56 @@ mod tests {
         assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
+    }
+
+    /// AI가 명령을 추측하지 않게 명령 트리·인자·종료 코드를 JSON으로 낸다
+    #[test]
+    fn help_json_describes_the_command_tree() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied()));
+        let h = p(&["help", "--json", "server", "start"]).unwrap();
+        assert!(h.global.json);
+        assert!(matches!(h.cmd, Some(Cmd::Help { command }) if command == ["server", "start"]));
+
+        let all = schema(&Cli::command(), &[]).unwrap();
+        fn paths(node: &serde_json::Value, out: &mut Vec<String>) {
+            for s in node["subcommands"].as_array().unwrap() {
+                out.push(s["path"].as_str().unwrap().to_string());
+                paths(s, out);
+            }
+        }
+        let mut seen = Vec::new();
+        paths(&all["command"], &mut seen);
+        fn names(cmd: &clap::Command, prefix: &str, out: &mut Vec<String>) {
+            for s in cmd.get_subcommands().filter(|s| s.get_name() != "help") {
+                let p = format!("{} {}", prefix, s.get_name()).trim().to_string();
+                out.push(p.clone());
+                names(s, &p, out);
+            }
+        }
+        let mut words = Vec::new();
+        names(&Cli::command(), "", &mut words);
+        assert!(words.len() > 50 && seen.iter().any(|p| p == "help"));
+        for w in &words {
+            assert!(seen.contains(w), "{} is not described", w);
+        }
+        assert!(all["globalArgs"].as_array().unwrap().iter().any(|a| a["long"] == "json"));
+        assert!(all["exitCodes"].as_array().unwrap().iter().any(|e| e["exit"] == 3 && e["codes"][0] == "daemon_unreachable"));
+
+        // 별칭으로도 찾는다
+        let start = schema(&Cli::command(), &["servers".into(), "start".into()]).unwrap();
+        assert_eq!(start["command"]["path"], "server start");
+        let server = start["command"]["args"].as_array().unwrap().iter().find(|a| a["name"] == "server").unwrap();
+        assert_eq!(server["positional"], true);
+        assert!(start["command"]["args"].as_array().unwrap().iter().all(|a| a["long"] != "json"), "global flags are listed once");
+        assert_eq!(schema(&Cli::command(), &["nope".into()]), None);
+
+        // 예전 모양 `server help start`도 같은 명령이 된다
+        crate::i18n::init("en");
+        let m = parse(["saba-chan-cli", "server", "help", "start"].map(Into::into).to_vec()).unwrap();
+        assert!(matches!(<Cli as clap::FromArgMatches>::from_arg_matches(&m).unwrap().cmd, Some(Cmd::Help { command }) if command == ["server", "start"]));
+        // 오타는 옮겨 읽지 않고 clap의 원래 오류(제안 포함)를 낸다
+        let typo = parse(["saba-chan-cli", "server", "strat", "help"].map(Into::into).to_vec()).unwrap_err();
+        assert_eq!(typo.kind(), clap::error::ErrorKind::InvalidSubcommand);
     }
 
     #[test]

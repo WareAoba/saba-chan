@@ -203,13 +203,16 @@
       "nothing_to_back_up": "Die Welt existiert noch nicht. Starte den Server einmal, um sie zu erstellen.",
       "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist.",
       "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
+      "module_busy": "Dieses Modul wird bereits installiert oder entfernt. Versuche es erneut, wenn das abgeschlossen ist.",
+      "invalid_command": "Schreibe den Befehlsschlüssel als `<server>/<command>`. Ein Schlüssel ohne Server muss eine globale Aktions-ID sein.",
       "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
     "not_found": "Kein {{what}} namens „{{query}}“.",
     "pair_expected": "KEY=VALUE erwartet, erhalten: „{{got}}“.",
-    "timeout": "Der Daemon hat zu lange für die Antwort gebraucht ({{path}})."
+    "timeout": "Der Daemon hat zu lange für die Antwort gebraucht ({{path}}).",
+    "unknown_command": "Diesen Befehl gibt es nicht: {{path}}. Mit `saba-chan-cli help` siehst du alle Befehle."
   },
   "agree": {
     "none": "{{name}} hat keine Vereinbarungen zum Annehmen.",
@@ -469,7 +472,10 @@
     "ok": "{{name}} sieht startbereit aus."
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
+      "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden"
+    },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
       "bot.channels.no_notify": "Benachrichtigungskanal entfernen",
@@ -480,7 +486,12 @@
       "do.plan": "Nur die Eingabe prüfen und zeigen, was passieren würde",
       "do.input": "Eingabe als key=value (Werte, die als JSON lesbar sind, bleiben JSON)",
       "server": "Servername (ein Teil genügt)",
-      "ids": "Eine oder mehrere Erweiterungs-IDs"
+      "ids": "Eine oder mehrere Erweiterungs-IDs",
+      "help.command": "Befehlspfad, z. B. `server start`",
+      "events.kind": "Nur diese Ereignisse; `instance` umfasst auch `instance.exit` usw.",
+      "events.server": "Nur Ereignisse dieses Servers",
+      "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)",
+      "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente startet die interaktive Shell.\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

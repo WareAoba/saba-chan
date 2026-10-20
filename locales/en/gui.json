@@ -605,7 +605,9 @@
     "switch_to_mock": "Switched to Mock server (localhost:9876)",
     "switch_to_real": "Switched to real GitHub API",
     "mock_server_label": "Mock server (test)",
-    "real_api_label": "Real GitHub API"
+    "real_api_label": "Real GitHub API",
+    "module_busy": "Another install or removal of this module is still in progress. Try again when it finishes.",
+    "remove_failed": "Couldn't remove the module: {{error}}"
   },
   "validation": {
     "required": "{{field}} is required",
@@ -725,7 +727,9 @@
     "check_failed": "Couldn't run the check: {{error}}",
     "exit_note_auto_off": "Auto restart is off",
     "exit_note_gave_up": "Gave up after {{count}} restarts in 10 minutes",
-    "exit_note_restart_failed": "Couldn't restart: {{reason}}"
+    "exit_note_restart_failed": "Couldn't restart: {{reason}}",
+    "parent_job_short": "Core is tied to another app",
+    "parent_job": "The saba-chan core is running tied to the program that opened this app. If that program closes, the core and server management may stop with it. Quit saba-chan completely and open it again from the Start menu."
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1042,8 +1046,8 @@
     "enabled_hint": "You can also turn it on or off per server.",
     "model": "Model",
     "seconds": "seconds",
-    "confirm_commands": "Confirm before running commands",
-    "confirm_commands_hint": "Commands the AI picks run only after confirmation on Discord.",
+    "confirm_commands": "Always ask for caution commands",
+    "confirm_commands_hint": "When on, caution commands such as start, stop and restart run only after confirmation on Discord; when off, they are always allowed. Safe commands always run right away and dangerous ones always ask. The user permissions set in the app always come first.",
     "memory": "Long-term memory",
     "memory_hint": "Remembers what it learns for later conversations.",
     "web_search": "Web search",

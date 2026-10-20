@@ -109,13 +109,14 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `paths`(`{설정 이름}` 치환), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
+- 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더 밖이면 복원은 400 `restore_outside`다.
 - 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`).
 
 #### `[[settings.fields]]` (`SettingFieldToml` `:784-822` → `SettingField` `:393-444`)
 | 키 | 타입 | 기본값 |
 |---|---|---|
 | `name` | String | ✔ |
-| `type` | String | `"text"` (`default_field_type`) |
+| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`). 밖이면 스키마 v1 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다 |
 | `label` | String | 없으면 `name`으로 대체 |
 | `description` | String | — |
 | `required` | bool | — |
@@ -150,7 +151,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 
 `[commands] hook = true`면 lifecycle `instance_commands()`가 인스턴스마다 명령을 더 준다(설치된 플러그인 명령처럼 서버 폴더에 따라 달라지는 것). 결과는 `{success, commands:[명령 필드와 같은 모양 + group?], components?}`이다. 데몬(`crate::commands::InstanceCommands`)은 module.toml 명령 뒤에 붙여 같은 방식으로 해석하고, module.toml의 이름·별명과 겹치는 것과 이름에 공백이 있는 것은 뺀다. 명령 실행은 module.toml에서 못 찾은 이름일 때만 이 목록을 보며 60초 동안 기억한 값을 쓰고, `GET /api/instance/:id/commands`는 매번 새로 읽는다(`D:src/ipc/handlers/command.rs` `instance_commands`). `fields` 없이 `hook`만 있어도 된다.
 
-`[[commands.fields.inputs]]` (`CommandInputToml` `:953-972`)의 허용 키: `name`✔, `label`, `type`, `required`, `placeholder`, `default`, `min`, `max`, `options`. 데몬이 입력을 묶고 검사할 때 이 값을 쓴다 (`commands/mod.rs:196-`).
+`[[commands.fields.inputs]]` (`CommandInputToml` `:953-972`)의 허용 키: `name`✔, `label`, `type`, `required`, `placeholder`, `default`, `min`, `max`, `options`. `type`은 `text`·`password`·`number`·`select`·`boolean` 중 하나다(`COMMAND_INPUT_TYPES`, 어기면 설정 `type`과 같이 처리한다). 데몬이 입력을 묶고 검사할 때 이 값을 쓴다 (`commands/mod.rs:196-`).
 
 #### `[[syntax_highlight.rules]]` (`HighlightRuleToml` `:999-1015`)
 `name`✔, `pattern`✔(regex, `(?P<hl>…)` 선택), `color`✔(시맨틱 토큰), `background`, `bold`=false, `italic`=false, `underline`=false, `priority`=0. `/api/modules`로 GUI에 그대로 전달되고, 데몬은 Python 전용 정규식 문법에 경고만 남긴다 (`:1017-1035`).
@@ -645,4 +646,4 @@ players = "player_count"
 ### 부록: 핵심 수치
 - 모듈 크기: minecraft lifecycle 1,876줄 / toml 1,138줄, palworld 1,507 / 1,338, zomboid 1,492 / 1,554, example 511 / 336.
 - settings 필드 수: minecraft 66, palworld 117, zomboid 117, example 9. commands 수: 17 / 10 / 23 / 3.
-- 데몬의 lifecycle 호출 함수: 17종(§2.3). 모듈의 `start`는 지워졌다.
+- 데몬의 lifecycle 호출 함수: 19종(§2.3). 모듈의 `start`는 지워졌다.

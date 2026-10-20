@@ -203,13 +203,16 @@
       "nothing_to_back_up": "世界尚不存在。請先啟動一次伺服器來建立它。",
       "backup_busy": "此伺服器已有備份或還原正在進行。請在完成後再試一次。",
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
+      "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
+      "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
     "not_found": "沒有名為「{{query}}」的{{what}}。",
     "pair_expected": "應為 KEY=VALUE，實際為「{{got}}」。",
-    "timeout": "常駐程式回應時間過長（{{path}}）。"
+    "timeout": "常駐程式回應時間過長（{{path}}）。",
+    "unknown_command": "沒有這個命令：{{path}}。執行 `saba-chan-cli help` 查看命令列表。"
   },
   "agree": {
     "none": "{{name}} 沒有需要同意的協議。",
@@ -469,7 +472,10 @@
     "ok": "{{name}} 看起來可以啟動了。"
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
+      "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止"
+    },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
       "bot.channels.no_notify": "取消通知頻道",
@@ -480,7 +486,12 @@
       "do.plan": "只檢查輸入並顯示將會發生什麼",
       "do.input": "輸入 key=value (可依 JSON 讀取的值維持為 JSON)",
       "server": "伺服器名稱（部分即可）",
-      "ids": "一個或多個擴充功能 ID"
+      "ids": "一個或多個擴充功能 ID",
+      "help.command": "命令路徑（例如 `server start`）",
+      "events.kind": "只看這些事件；`instance` 也包括 `instance.exit` 等下層事件",
+      "events.server": "只看這個伺服器的事件",
+      "events.since": "從這個事件編號之後開始（常駐程式仍保留的會重新傳送）",
+      "json_stream": "以 JSON 行（NDJSON）輸出進度與結果（包含 --json）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。不帶參數執行會開啟互動式 shell。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

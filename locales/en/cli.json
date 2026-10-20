@@ -250,6 +250,8 @@
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
       "invalid_relay_url": "Only https:// relay addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
+      "module_busy": "This module is already being installed or removed. Try again when it finishes.",
+      "invalid_command": "Write the command key as `<server>/<command>`. A key without a server must be a global action id.",
       "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>",
       "conflict_with": "clashes with {{name}}",
       "word": {
@@ -265,7 +267,8 @@
     "not_found": "No {{what}} named \"{{query}}\".",
     "pair_expected": "Expected KEY=VALUE, got \"{{got}}\".",
     "timeout": "The daemon took too long to answer ({{path}}).",
-    "body_read": "Could not read the whole response from {{path}}: {{error}}"
+    "body_read": "Could not read the whole response from {{path}}: {{error}}",
+    "unknown_command": "No such command: {{path}}. Run `saba-chan-cli help` to see the commands."
   },
   "agree": {
     "none": "{{name}} has no agreements to accept.",
@@ -556,7 +559,9 @@
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
       "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
-      "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show"
+      "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show",
+      "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
+      "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
@@ -595,7 +600,12 @@
       "bot.music.normalize": "Even out loudness between tracks (on or off)",
       "bot.words.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
       "bot.words.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
-      "bot.words.clear": "Remove every word of this server"
+      "bot.words.clear": "Remove every word of this server",
+      "help.command": "Command path, e.g. `server start`",
+      "events.kind": "Only these events; `instance` also takes `instance.exit` and the like",
+      "events.server": "Only events of this server",
+      "events.since": "Start after this event id (replays what the daemon still keeps)",
+      "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

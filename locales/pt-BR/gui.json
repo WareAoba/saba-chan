@@ -605,7 +605,9 @@
     "bot_replacing": "Substituindo arquivos do Discord Bot...",
     "update_done": "Processamento de atualização concluído",
     "restart_required_title": "Reinicialização necessária",
-    "apply": "Aplicar"
+    "apply": "Aplicar",
+    "module_busy": "Outra instalação ou remoção deste módulo ainda está em andamento. Tente de novo quando terminar.",
+    "remove_failed": "Não foi possível remover o módulo: {{error}}"
   },
   "validation": {
     "required": "{{field}} é obrigatório",
@@ -725,7 +727,9 @@
     "check_failed": "Não foi possível verificar: {{error}}",
     "exit_note_auto_off": "O reinício automático está desligado",
     "exit_note_gave_up": "Desistiu após {{count}} reinícios em 10 minutos",
-    "exit_note_restart_failed": "Não foi possível reiniciar: {{reason}}"
+    "exit_note_restart_failed": "Não foi possível reiniciar: {{reason}}",
+    "parent_job_short": "Núcleo preso a outro app",
+    "parent_job": "O núcleo do saba-chan está rodando preso ao programa que abriu este app. Se esse programa fechar, o núcleo e o gerenciamento de servidores podem parar junto. Feche o saba-chan por completo e abra de novo pelo menu Iniciar."
   },
   "discord": {
     "nav_connection": "Conexão",
@@ -1042,8 +1046,8 @@
     "enabled_hint": "Você também pode ligá-lo ou desligá-lo por servidor.",
     "model": "Modelo",
     "seconds": "segundos",
-    "confirm_commands": "Confirmar antes de executar comandos",
-    "confirm_commands_hint": "Os comandos escolhidos pela IA só são executados após confirmação no Discord.",
+    "confirm_commands": "Sempre perguntar em comandos de cuidado",
+    "confirm_commands_hint": "Ligado, comandos de cuidado como iniciar, parar e reiniciar só rodam depois de confirmados no Discord; desligado, são sempre permitidos. Comandos seguros sempre rodam na hora e os perigosos sempre pedem confirmação. As permissões de usuário definidas no app sempre têm prioridade.",
     "memory": "Memória de longo prazo",
     "memory_hint": "Lembra o que aprende para usar em conversas futuras.",
     "web_search": "Pesquisa na web",

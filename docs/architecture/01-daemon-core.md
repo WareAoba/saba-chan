@@ -35,7 +35,7 @@
 3. **로그 버퍼와 tracing 초기화** (`main.rs:222-278`)
    - `DaemonLogBuffer`(링 버퍼 10,000줄, `daemon_log.rs:21`)와 `DaemonLogLayer`를 모든 모드에 합성한다.
    - 필터는 `RUST_LOG`이며 기본값은 `info`다.
-   - CLI 모드는 CLI 대화형 셸이 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs:239-247`). 나머지 모드는 stderr로 보낸다.
+   - CLI 모드는 CLI 대화형 셸이 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs:239-247`). 나머지 모드는 stderr와 `<data_dir>/logs/daemon.log`(이어 쓰기, 5 MiB를 넘으면 `daemon.log.1`로 넘김, `daemon_log::LogFile`)에 함께 보낸다. GUI가 띄운 데몬의 stderr는 GUI의 파이프라 GUI가 먼저 끝나면 남지 않기 때문이다. 이 모드는 패닉도 tracing을 거치지 않고 같은 파일에 `PANIC` 줄로 남긴다.
 4. **IPC 포트 결정** (`main.rs:285-298`)
    - `SABA_IPC_PORT` 환경변수, 없으면 `config.json`의 `gui.ipcPort`, 둘 다 없으면 `DEFAULT_IPC_PORT = 57474`(`constants.rs:32`)다.
    - **바인드 주소는 `127.0.0.1`로 고정이다.** 포트는 `plugin::set_ipc_port`로 Python 실행 환경에도 넘긴다.
@@ -119,6 +119,7 @@
   settings.json 등           예전 개별 파일. 한 번 config.json으로 이관하고 원본은 두며 .migrated 사본을 남긴다
   daemon.lock (+ .owner)    단일 인스턴스 잠금과 실행 중 데몬 pid·주소    instance_lock.rs
   daemon.log                CLI 부트 모드에서만 생성
+  logs/daemon.log (+ .1)    그 밖의 모드의 데몬 로그·패닉 (GUI 로그 saba-chan-<시각>.log와 같은 폴더)    daemon_log.rs
   python-guard/sitecustomize.py   활성 익스텐션만 import하게 하는 가드    plugin/mod.rs:113-125
   installed-manifest.json, updater-state.json, update-complete.json (updater)
   modules/<module>/module.toml, lifecycle.py, locales/*.json
@@ -291,7 +292,7 @@
 |---|---|---|---|---|
 | GET/POST | `/api/instance/:id/backups` | `backup.rs:203/210` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
 | DELETE | `/api/instance/:id/backups/:name` | `backup.rs:218` | - | `{success}` / 404 `backup_not_found` / 409 `backup_busy` |
-| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`) |
+| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:232` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:244-246`). 백업은 만들 때의 절대 경로로 돌아가므로, 그 경로가 지금 서버 폴더·인스턴스 폴더·모듈이 지금 백업하는 경로(`[backup] paths`·`backup_paths` 훅이 가리키는 경로, 지금 없어도 된다) 밖이면 아무것도 바꾸지 않고 400 `restore_outside`다. 복원 전 안전 백업은 지금 설정의 경로와 함께 복원이 덮을 경로(예: 이름을 바꾸기 전 월드 폴더)도 담는다 |
 | GET/PUT | `/api/instance/:id/schedule` | `backup.rs` `get_schedule`/`put_schedule` | `{schedule:[...], backup_keep}` | 400 `validation_failed {details}`. `backup_keep`은 1 이상이다(자동 백업 정리는 방금 만든 백업을 지우지 않는다). 원격(디스코드·챗봇) 출처는 이미 있는 작업과 같지 않은 작업에 대해 켜진 `update` 작업을 받지 않고(끄는 것은 받는다) `every_minutes`가 30 이상이어야 하며, 바꾸는 `backup_keep`은 30 이하여야 한다. 또 작업 종류별로 켜진 작업들이 하루에 도는 횟수(매일 시각 작업 1번, N분마다 ⌈1440/N⌉번)를 48번(30분에 한 번) 넘게 올리지 못한다(이 PC에서 이미 그보다 잦게 정했으면 늘리지만 못한다, `daily_runs`). 예약 `update`가 끈 서버는 업데이트 뒤 다시 켜는데, 작업 잠금이 잡혀 있으면(백업·복원 중) 풀릴 때까지 기다리고 그사이 켜거나 끄거나 지우면 그만둔다(`start_after_update`) |
 
 인스턴스마다 작업 잠금 하나(`backup.rs` `BusyGuard`)를 백업·복원·백업 삭제·업데이트(`begin_server_update`, 작업이 끝날 때까지. 서버가 도는 `working_dir`에 쓰므로 그 폴더를 쓰는 다른 인스턴스의 잠금도 함께 잡고, 그중 켜져 있는 것이 있으면 409 `server_running`)·시작(`start_server_handler`·`start_managed_handler`, 시작을 마칠 때까지)·인스턴스 삭제·서버 초기화(`reset_server_handler`)·버전 설치(`install_server_handler`, 그 폴더를 쓰는 인스턴스 전부, 설치를 마칠 때까지)가 함께 쓴다. 초기화와 버전 설치는 잠금을 잡은 뒤 실행 중이면 409 `server_running`으로 거절한다. 잡혀 있으면 백업 API는 409 `backup_busy`, 나머지는 409 `instance_busy`를 준다. 복원은 잠금을 잡은 뒤 실행 여부를 본다. 백업·복원·서버 초기화·버전 설치·인스턴스 삭제는 잠금을 쥔 채 따로 돌아(`audit::spawn`, 출처 유지) 요청이 끊겨도 파일 작업이 끝날 때까지 잠금이 남는다.

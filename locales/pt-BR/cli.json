@@ -203,13 +203,16 @@
       "nothing_to_back_up": "O mundo ainda não existe. Inicie o servidor uma vez para criá-lo.",
       "backup_busy": "Já há um backup ou restauração deste servidor em andamento. Tente de novo quando terminar.",
       "invalid_relay_url": "Só são permitidos endereços de relay https:// (http apenas para localhost, 127.0.0.1 ou [::1] ao testar neste PC).",
+      "module_busy": "Este módulo já está sendo instalado ou removido. Tente de novo quando terminar.",
+      "invalid_command": "Escreva a chave do comando como `<server>/<command>`. Uma chave sem servidor deve ser um id de ação global.",
       "no_command_path": "Este servidor foi iniciado fora do Saba-chan, então não tem console para receber comandos. Reinicie-o pelo Saba-chan: saba-chan-cli restart <server>"
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
     "not_found": "Nenhum {{what}} chamado \"{{query}}\".",
     "pair_expected": "Esperado KEY=VALUE, recebido \"{{got}}\".",
-    "timeout": "O daemon demorou demais para responder ({{path}})."
+    "timeout": "O daemon demorou demais para responder ({{path}}).",
+    "unknown_command": "Comando inexistente: {{path}}. Rode `saba-chan-cli help` para ver os comandos."
   },
   "agree": {
     "none": "{{name}} não tem termos para aceitar.",
@@ -469,7 +472,10 @@
     "ok": "{{name}} parece pronto para iniciar."
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "Mostra a ajuda de um comando. Com --json: a árvore de comandos, os argumentos e os códigos de saída",
+      "events": "Acompanha os eventos do daemon ao vivo (com --json: um JSON por linha). Ctrl+C para parar"
+    },
     "arg": {
       "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
       "bot.channels.no_notify": "Remover o canal de avisos",
@@ -480,7 +486,12 @@
       "do.plan": "Só verificar a entrada e mostrar o que aconteceria",
       "do.input": "Entrada como key=value (valores que podem ser lidos como JSON continuam JSON)",
       "server": "Nome do servidor (uma parte basta)",
-      "ids": "Um ou mais IDs de extensão"
+      "ids": "Um ou mais IDs de extensão",
+      "help.command": "Caminho do comando, ex.: `server start`",
+      "events.kind": "Só estes eventos; `instance` também inclui `instance.exit` e afins",
+      "events.server": "Só eventos deste servidor",
+      "events.since": "Começar após este id de evento (reenvia o que o daemon ainda guarda)",
+      "json_stream": "Mostra o progresso e depois o resultado como linhas JSON (NDJSON); implica --json"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos, abre o shell interativo.\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

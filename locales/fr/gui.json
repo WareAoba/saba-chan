@@ -605,7 +605,9 @@
     "bot_replacing": "Remplacement des fichiers Discord Bot...",
     "update_done": "Traitement des mises à jour terminé",
     "restart_required_title": "Redémarrage requis",
-    "apply": "Appliquer"
+    "apply": "Appliquer",
+    "module_busy": "Une autre installation ou suppression de ce module est encore en cours. Réessayez quand elle sera terminée.",
+    "remove_failed": "Impossible de supprimer le module : {{error}}"
   },
   "validation": {
     "required": "{{field}} est requis",
@@ -725,7 +727,9 @@
     "check_failed": "Vérification impossible : {{error}}",
     "exit_note_auto_off": "Le redémarrage automatique est désactivé",
     "exit_note_gave_up": "Abandon après {{count}} redémarrages en 10 minutes",
-    "exit_note_restart_failed": "Redémarrage impossible : {{reason}}"
+    "exit_note_restart_failed": "Redémarrage impossible : {{reason}}",
+    "parent_job_short": "Le cœur dépend d'une autre app",
+    "parent_job": "Le cœur de saba-chan tourne rattaché au programme qui a ouvert cette app. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Quittez complètement saba-chan puis rouvrez-le depuis le menu Démarrer."
   },
   "discord": {
     "nav_connection": "Connexion",
@@ -1042,8 +1046,8 @@
     "enabled_hint": "Vous pouvez aussi l'activer ou le désactiver par serveur.",
     "model": "Modèle",
     "seconds": "secondes",
-    "confirm_commands": "Confirmer avant d'exécuter des commandes",
-    "confirm_commands_hint": "Les commandes choisies par l'IA ne s'exécutent qu'après confirmation sur Discord.",
+    "confirm_commands": "Toujours demander pour les commandes sensibles",
+    "confirm_commands_hint": "Activé, les commandes sensibles comme démarrer, arrêter et redémarrer ne s'exécutent qu'après confirmation sur Discord ; désactivé, elles sont toujours autorisées. Les commandes sûres s'exécutent toujours directement et les dangereuses demandent toujours confirmation. Les permissions utilisateur définies dans l'app priment toujours.",
     "memory": "Mémoire à long terme",
     "memory_hint": "Retient ce qu'elle apprend pour les conversations suivantes.",
     "web_search": "Recherche web",

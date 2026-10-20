@@ -116,6 +116,8 @@ function App() {
         if (daemonRunning) announceLastUpdateResult(t);
     }, [daemonRunning]); // eslint-disable-line react-hooks/exhaustive-deps
     const setBackgroundDaemonStatus = useUIStore((s) => s.setBackgroundDaemonStatus);
+    // 데몬이 GUI를 띄운 프로그램의 job 안에서 돈다 (그 프로그램이 꺼지면 함께 꺼질 수 있다)
+    const [daemonInParentJob, setDaemonInParentJob] = useState(false);
     const showWaitingImage = useUIStore((s) => s.showWaitingImage);
     const setShowWaitingImage = useUIStore((s) => s.setShowWaitingImage);
 
@@ -447,6 +449,7 @@ function App() {
                 if (window.api && window.api.daemonStatus) {
                     const status = await window.api.daemonStatus();
                     setBackgroundDaemonStatus(daemonStateOf(status));
+                    setDaemonInParentJob(status?.in_parent_job === true);
                 } else {
                     setBackgroundDaemonStatus('error');
                 }
@@ -775,6 +778,7 @@ function App() {
                             setPage(p);
                         }}
                         daemonStatus={backgroundDaemonStatus}
+                        daemonInParentJob={daemonInParentJob}
                         discordStatus={discordBotStatus}
                         unreadCount={unreadNoticeCount}
                         extInitializing={extInitializing}

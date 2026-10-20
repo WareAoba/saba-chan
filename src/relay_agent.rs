@@ -1109,26 +1109,56 @@ async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::pe
         Ok(Ok(node)) => {
             let p = crate::chat::permissions::NodePermissions::from_node(Some(&Value::Object(node)));
             // 저장을 마친 뒤의 시각: 릴레이는 이보다 먼저 읽은 heartbeat 권한을 버린다
-            json!({ "success": true, "data": { "defaultLevel": p.default_level, "members": p.members, "permissionsAt": now_ms() } })
+            let mut data = permission_entry(&p);
+            data["permissionsAt"] = json!(now_ms());
+            json!({ "success": true, "data": data })
         }
         Ok(Err(code)) => fail(&code.to_uppercase()),
         Err(e) => json!({ "success": false, "data": { "code": "SAVE_FAILED", "error": e.to_string() } }),
     }
 }
 
-/// 길드별 `{defaultLevel, members}` (릴레이 바깥 검사 캐시용). `nodeSettings`에 있는 길드는 값이 없어도 늘 싣는다
-/// (부여값을 다 지운 길드도 릴레이가 데몬 행을 지우게). 릴레이에서만 부여한 행은 릴레이가 남긴다
+/// 길드당 싣는 명령별 덮어쓰기 수. 넘으면 키 순으로 자르고 `commandLevelsTruncated`를 둔다 (릴레이는 데몬 판정에 맡긴다)
+const COMMAND_LEVELS_PER_GUILD: usize = 200;
+
+/// 길드별 `{defaultLevel, members, chatbotCap, levels, commandLevels}` (릴레이 바깥 검사용). `nodeSettings`에 있는 길드는
+/// 값이 없어도 늘 싣는다 (부여값을 다 지운 길드도 릴레이가 데몬 행을 지우게). 릴레이에서만 부여한 행은 릴레이가 남긴다.
+/// `levels`는 그 길드 프리셋으로 푼 risk별 요구 레벨이다. 최종 판정은 데몬이 다시 한다
 fn permissions_by_guild(node_settings: &Value) -> Value {
     let map: serde_json::Map<String, Value> = node_settings
         .as_object()
         .into_iter()
         .flatten()
-        .map(|(guild, node)| {
-            let p = crate::chat::permissions::NodePermissions::from_node(Some(node));
-            (guild.clone(), json!({ "defaultLevel": p.default_level, "members": p.members }))
-        })
+        .map(|(guild, node)| (guild.clone(), permission_entry(&crate::chat::permissions::NodePermissions::from_node(Some(node)))))
         .collect();
     Value::Object(map)
+}
+
+/// 한 길드의 권한 스냅샷 (heartbeat `permissions[guild]`, `permission` action 응답이 같은 모양)
+fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
+    use crate::chat::permissions::preset_level;
+    let mut keys: Vec<&String> = p.command_levels.keys().collect();
+    keys.sort();
+    let command_levels: serde_json::Map<String, Value> =
+        keys.iter().take(COMMAND_LEVELS_PER_GUILD).map(|k| ((*k).clone(), json!(p.command_levels[*k]))).collect();
+    let levels = json!({
+        "safe": preset_level(&p.preset, "safe"),
+        "caution": preset_level(&p.preset, "caution"),
+        "danger": preset_level(&p.preset, "danger"),
+        // 관리(Kind::Admin) 액션은 risk 대신 이 레벨이다 (`actions::authorize`)
+        "admin": crate::actions::admin_level(&p.preset),
+    });
+    let mut entry = json!({
+        "defaultLevel": p.default_level,
+        "members": p.members,
+        "chatbotCap": p.chatbot_cap,
+        "levels": levels,
+        "commandLevels": command_levels,
+    });
+    if keys.len() > COMMAND_LEVELS_PER_GUILD {
+        entry["commandLevelsTruncated"] = json!(true);
+    }
+    entry
 }
 
 /// `bot.node_settings[guild].allowedInstances` → `{ guild: [instance id, ...] }`. 하나도 없으면 None
@@ -1226,6 +1256,10 @@ mod tests {
         assert_eq!(res["success"], true, "{res}");
         let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
         assert!(at >= before && at <= now_ms());
+        // 응답은 heartbeat `permissions[guild]`와 같은 모양이다
+        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels"] {
+            assert!(res["data"].get(key).is_some(), "no {key}: {res}");
+        }
     }
 
     /// 노드 토큰이 평문으로 나가지 않게: 이미 저장된 http 주소(루프백 제외)로는 세션을 열지 않는다
@@ -1302,18 +1336,24 @@ mod tests {
     #[test]
     fn heartbeat_carries_permissions_for_every_known_guild() {
         let nodes = json!({
-            "g1": { "members": { "a": 2, "bad": 7 }, "ownerDiscordId": "o" },
-            "g2": { "ownerDiscordId": "o", "allowedInstances": ["x"] },
+            "g1": { "members": { "a": 2, "bad": 7 }, "ownerDiscordId": "o", "chatbotCap": 1, "commandLevels": { "i/stop": 3 } },
+            "g2": { "ownerDiscordId": "o", "allowedInstances": ["x"], "preset": "strict" },
             "g3": { "defaultLevel": -1 }
         });
+        // 릴레이가 요구 레벨을 미리 셀 수 있게 프리셋을 푼 risk별 레벨, 챗봇 상한, 명령별 덮어쓰기도 싣는다
+        let default_levels = json!({ "safe": 0, "caution": 1, "danger": 2, "admin": 2 });
         assert_eq!(
             permissions_by_guild(&nodes),
             json!({
-                "g1": { "defaultLevel": 1, "members": { "a": 2 } },
-                "g2": { "defaultLevel": 1, "members": {} },
-                "g3": { "defaultLevel": -1, "members": {} }
+                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 } },
+                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {} },
+                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {} }
             })
         );
+        let many: serde_json::Map<String, Value> = (0..COMMAND_LEVELS_PER_GUILD + 5).map(|i| (format!("i/c{i:04}"), json!(2))).collect();
+        let big = permissions_by_guild(&json!({ "g": { "commandLevels": many } }));
+        assert_eq!(big["g"]["commandLevels"].as_object().unwrap().len(), COMMAND_LEVELS_PER_GUILD);
+        assert_eq!(big["g"]["commandLevelsTruncated"], true);
     }
 
     #[test]

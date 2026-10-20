@@ -43,7 +43,7 @@ async fn main() {
     }
     i18n::init(&bootstrap::language(lang_flag().as_deref()));
 
-    let matches = match cli::localized().try_get_matches() {
+    let matches = match cli::parse(std::env::args_os().collect()) {
         Ok(m) => m,
         Err(e) => e.exit(),
     };
@@ -52,12 +52,16 @@ async fn main() {
         Err(e) => e.exit(),
     };
     let g = parsed.global;
+    let json = g.json || g.json_stream;
+    // `--json-stream`: 진행은 한 줄씩, 결과는 마지막 한 줄
+    output::set_stream(g.json_stream);
+    let _stream = g.json_stream.then(progress::stream_lines);
     let port = g.port.unwrap_or_else(bootstrap::ipc_port);
     let color = !g.no_color && std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal();
     let ctx = ctx::Ctx {
         api: client::Api::new(port),
-        out: output::Out::new(g.json, color),
-        ask: prompt::Prompt::new(g.json, g.yes),
+        out: output::Out::new(json, color),
+        ask: prompt::Prompt::new(json, g.yes),
         in_shell: false,
         attached: false,
     };

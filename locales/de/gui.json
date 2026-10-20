@@ -605,7 +605,9 @@
     "bot_replacing": "Discord Bot-Dateien werden ersetzt...",
     "update_done": "Update-Verarbeitung abgeschlossen",
     "restart_required_title": "Neustart erforderlich",
-    "apply": "Anwenden"
+    "apply": "Anwenden",
+    "module_busy": "Eine andere Installation oder Entfernung dieses Moduls läuft noch. Versuche es erneut, wenn sie fertig ist.",
+    "remove_failed": "Modul konnte nicht entfernt werden: {{error}}"
   },
   "validation": {
     "required": "{{field}} ist erforderlich",
@@ -725,7 +727,9 @@
     "check_failed": "Prüfung fehlgeschlagen: {{error}}",
     "exit_note_auto_off": "Automatischer Neustart ist aus",
     "exit_note_gave_up": "Nach {{count}} Neustarts in 10 Minuten aufgegeben",
-    "exit_note_restart_failed": "Neustart fehlgeschlagen: {{reason}}"
+    "exit_note_restart_failed": "Neustart fehlgeschlagen: {{reason}}",
+    "parent_job_short": "Kern hängt an anderer App",
+    "parent_job": "Der saba-chan-Kern läuft an das Programm gebunden, das diese App geöffnet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende saba-chan vollständig und öffne es erneut über das Startmenü."
   },
   "discord": {
     "nav_connection": "Verbindung",
@@ -1042,8 +1046,8 @@
     "enabled_hint": "Du kannst ihn auch pro Server ein- oder ausschalten.",
     "model": "Modell",
     "seconds": "Sekunden",
-    "confirm_commands": "Vor dem Ausführen von Befehlen bestätigen",
-    "confirm_commands_hint": "Von der KI gewählte Befehle werden erst nach Bestätigung auf Discord ausgeführt.",
+    "confirm_commands": "Bei Vorsicht-Befehlen immer fragen",
+    "confirm_commands_hint": "Wenn aktiv, laufen Vorsicht-Befehle wie Starten, Stoppen und Neustarten erst nach Bestätigung auf Discord; wenn aus, sind sie immer erlaubt. Sichere Befehle laufen immer sofort, gefährliche fragen immer nach. Die in der App festgelegten Benutzerrechte haben immer Vorrang.",
     "memory": "Langzeitgedächtnis",
     "memory_hint": "Merkt sich Gelerntes für spätere Gespräche.",
     "web_search": "Websuche",

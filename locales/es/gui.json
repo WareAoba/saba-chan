@@ -605,7 +605,9 @@
     "bot_replacing": "Reemplazando archivos de Discord Bot...",
     "update_done": "Procesamiento de actualización completado",
     "restart_required_title": "Reinicio requerido",
-    "apply": "Aplicar"
+    "apply": "Aplicar",
+    "module_busy": "Otra instalación o eliminación de este módulo sigue en curso. Vuelve a intentarlo cuando termine.",
+    "remove_failed": "No se pudo eliminar el módulo: {{error}}"
   },
   "validation": {
     "required": "{{field}} es obligatorio",
@@ -725,7 +727,9 @@
     "check_failed": "No se pudo revisar: {{error}}",
     "exit_note_auto_off": "El reinicio automático está desactivado",
     "exit_note_gave_up": "Se abandonó tras {{count}} reinicios en 10 minutos",
-    "exit_note_restart_failed": "No se pudo reiniciar: {{reason}}"
+    "exit_note_restart_failed": "No se pudo reiniciar: {{reason}}",
+    "parent_job_short": "El núcleo depende de otra app",
+    "parent_job": "El núcleo de saba-chan se está ejecutando ligado al programa que abrió esta app. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Cierra saba-chan por completo y vuelve a abrirlo desde el menú Inicio."
   },
   "discord": {
     "nav_connection": "Conexión",
@@ -1042,8 +1046,8 @@
     "enabled_hint": "También puedes activarlo o desactivarlo por servidor.",
     "model": "Modelo",
     "seconds": "segundos",
-    "confirm_commands": "Confirmar antes de ejecutar comandos",
-    "confirm_commands_hint": "Los comandos que elija la IA solo se ejecutan tras confirmarlos en Discord.",
+    "confirm_commands": "Preguntar siempre en comandos de precaución",
+    "confirm_commands_hint": "Si está activado, los comandos de precaución como iniciar, detener y reiniciar se ejecutan solo tras confirmarlos en Discord; si está desactivado, siempre se permiten. Los comandos seguros siempre se ejecutan al momento y los peligrosos siempre piden confirmación. Los permisos de usuario definidos en la app siempre tienen prioridad.",
     "memory": "Memoria a largo plazo",
     "memory_hint": "Recuerda lo que aprende para próximas conversaciones.",
     "web_search": "Búsqueda web",

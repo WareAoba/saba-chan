@@ -549,7 +549,9 @@
     "bot_replacing": "Discord Bot ファイルを置換中...",
     "update_done": "更新処理が完了しました",
     "restart_required_title": "再起動必要",
-    "apply": "適用"
+    "apply": "適用",
+    "module_busy": "このモジュールの別のインストールまたは削除がまだ進行中です。終わってからもう一度お試しください。",
+    "remove_failed": "モジュールの削除に失敗しました: {{error}}"
   },
   "add_instance_modal": {
     "title": "インスタンスを追加",
@@ -725,7 +727,9 @@
     "check_failed": "点検できませんでした: {{error}}",
     "exit_note_auto_off": "自動再起動はオフ",
     "exit_note_gave_up": "10分以内に{{count}}回再起動したため中止",
-    "exit_note_restart_failed": "再起動できませんでした: {{reason}}"
+    "exit_note_restart_failed": "再起動できませんでした: {{reason}}",
+    "parent_job_short": "コアが他のアプリに依存中",
+    "parent_job": "サバちゃんのコアが、このアプリを起動した別のプログラムに結び付いて動いています。そのプログラムが終了すると、コアとサーバー管理も一緒に止まることがあります。サバちゃんを完全に終了してから、スタートメニューで開き直してください。"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1042,8 +1046,8 @@
     "enabled_hint": "サーバーごとに個別にオン・オフもできます。",
     "model": "モデル",
     "seconds": "秒",
-    "confirm_commands": "コマンド実行前に確認",
-    "confirm_commands_hint": "AIが選んだコマンドは、Discordで確認を受けてから実行します。",
+    "confirm_commands": "注意コマンドは常に確認する",
+    "confirm_commands_hint": "オンにすると、起動・停止・再起動などの注意コマンドはDiscordで確認してから実行します。オフにすると常に許可します。安全なコマンドは常にすぐ実行し、危険なコマンドは常に確認します。アプリで設定したユーザー権限が常に優先されます。",
     "memory": "長期記憶",
     "memory_hint": "会話で知ったことを覚えて、次の会話に活かします。",
     "web_search": "Web検索",
