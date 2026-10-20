@@ -199,6 +199,16 @@
           "title": "Konsolenende",
           "description": "Letzte 20 Konsolenzeilen"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "Logs lesen",
+          "description": "Eine Server-Logsitzung vom Ende her lesen"
+        },
+        "export": {
+          "title": "Logs exportieren",
+          "description": "Eine Server-Logsitzung als .log-Datei exportieren"
+        }
       }
     },
     "monitor": {

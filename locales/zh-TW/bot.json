@@ -199,6 +199,16 @@
           "title": "主控台末尾",
           "description": "主控台最後 20 行"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "讀取日誌",
+          "description": "從結尾讀取伺服器日誌工作階段"
+        },
+        "export": {
+          "title": "匯出日誌",
+          "description": "將一個伺服器日誌工作階段匯出為 .log 檔案"
+        }
       }
     },
     "monitor": {

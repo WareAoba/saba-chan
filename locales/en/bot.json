@@ -199,6 +199,16 @@
           "title": "Console tail",
           "description": "Last 20 console lines"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "Read logs",
+          "description": "Read a server log session from the end"
+        },
+        "export": {
+          "title": "Export logs",
+          "description": "Export one server log session as a .log file"
+        }
       }
     },
     "monitor": {

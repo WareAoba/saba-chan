@@ -199,6 +199,16 @@
           "title": "Fin de la console",
           "description": "20 dernières lignes de la console"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "Lire les journaux",
+          "description": "Lit une session de journal du serveur depuis la fin"
+        },
+        "export": {
+          "title": "Exporter les journaux",
+          "description": "Exporte une session de journal du serveur en fichier .log"
+        }
       }
     },
     "monitor": {

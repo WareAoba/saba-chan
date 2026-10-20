@@ -199,6 +199,16 @@
           "title": "控制台末尾",
           "description": "控制台最后 20 行"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "读取日志",
+          "description": "从末尾读取服务器日志会话"
+        },
+        "export": {
+          "title": "导出日志",
+          "description": "将一个服务器日志会话导出为 .log 文件"
+        }
       }
     },
     "monitor": {

@@ -199,6 +199,16 @@
           "title": "콘솔 끝부분",
           "description": "콘솔 마지막 20줄"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "로그 읽기",
+          "description": "서버 로그 세션을 끝에서부터 읽습니다"
+        },
+        "export": {
+          "title": "로그 내보내기",
+          "description": "서버 로그 세션 하나를 .log 파일로 내보냅니다"
+        }
       }
     },
     "monitor": {

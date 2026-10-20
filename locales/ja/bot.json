@@ -199,6 +199,16 @@
           "title": "コンソールの末尾",
           "description": "コンソールの最後の20行"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "ログを読む",
+          "description": "サーバーのログセッションを末尾から読みます"
+        },
+        "export": {
+          "title": "ログを書き出す",
+          "description": "サーバーのログセッションを .log ファイルに書き出します"
+        }
       }
     },
     "monitor": {
