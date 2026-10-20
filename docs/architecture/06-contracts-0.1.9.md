@@ -46,8 +46,9 @@
 
 - 모듈은 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구를 `module.toml`의 `[extensions.saba-core] ready_patterns`(정규식 목록)로 선언할 수 있다. 같은 표의 `ready_timeout`(초, 기본 600)은 그 문구를 기다리는 시간이다.
   - `[extensions.saba-core]`는 데몬이 읽는 예약 표다. 0.1.8 로더는 `[extensions.*]`의 내용을 보지 않으므로 이 키가 있는 모듈도 0.1.8에서 그대로 로드된다(`[detection]`에 두면 스키마 v1 0.1.8 로더가 모르는 키로 거부한다).
+  - 이 표는 버전 사이를 잇는 자리다. 0.1.9부터 데몬은 이 표의 모르는 키(더 새 데몬의 키)를 거부하지 않고 경고만 남긴다. 그래서 다음 버전이 키를 더해도 0.1.9가 그 모듈을 읽는다.
   - `saba-core`라는 id의 익스텐션은 만들 수 없다. 데몬은 그 id의 익스텐션을 설치·인식하지 않는다.
-  - 값 검사: `ready_patterns`는 문자열 배열이고, 정규식이 아닌 항목은 버리고 그 모듈에 경고만 남긴다(로드는 실패하지 않는다). `ready_timeout`이 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다.
+  - 값 검사(아는 키의 값이 틀리면 그 항목만 버리고 경고한다): `ready_patterns`는 문자열 배열이고, 정규식이 아닌 항목은 버리고 그 모듈에 경고만 남긴다(로드는 실패하지 않는다). `ready_timeout`이 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다.
 - 데몬 이벤트 `instance.ready {at, instanceId, instance, ok, code?}`를 시작 한 번(자동 재시작 포함)마다 한 번 낸다.
   - `ok:true`: `ready_patterns` 중 하나가 콘솔 줄과 맞았을 때. 선언이 없으면 시작이 성공한 때(managed는 프로세스가 뜨고 시작 가드가 풀린 때, non-managed는 모듈 `start` 성공).
   - `ok:false`: 준비되기 전에 끝났을 때. `code`는 `start_failed`(시작 실패나 준비 전에 프로세스가 끝남), `stopped_while_starting`(준비 전에 사용자가 정지), `ready_timeout`(`ready_timeout`이 지남). 원문·경로·콘솔 줄은 싣지 않는다.
