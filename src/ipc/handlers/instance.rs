@@ -1360,29 +1360,18 @@ pub async fn update_instance_settings(
         updated.module_settings.len()
     );
 
-    // 모든 설정을 server.properties에 동기화 (configure lifecycle 호출)
+    // 게임 설정 파일로 넘길 값 (configure lifecycle 호출). 데몬 필드와 모듈이 사바쨩 설정으로 선언한 값은 뺀다
+    const DAEMON_FIELDS: &[&str] = &[
+        "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "managed_start",
+        "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
+    ];
+    let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
+        .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
+        .unwrap_or_default();
     let mut props_sync = serde_json::Map::new();
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
-            // protocol_mode, executable_path 등은 server.properties에 관련 없으므로 제외
-            if key == "protocol_mode"
-                || key == "executable_path"
-                || key == "working_dir"
-                || key == "server_version"
-                || key == "rest_host"
-                || key == "rest_port"
-                || key == "rest_username"
-                || key == "rest_password"
-                || key == "java_path"
-                || key == "ram"
-                || key == "use_aikar_flags"
-                || key == "managed_start"
-                || key == "graceful_stop"
-                || key == "extension_data"
-                || key == "rcon_port"
-                || key == "rcon_password"
-                || key == "enable_rcon"
-            {
+            if DAEMON_FIELDS.contains(&key.as_str()) || saba_fields.contains(key) {
                 continue;
             }
             props_sync.insert(key.clone(), value.clone());
@@ -1410,12 +1399,12 @@ pub async fn update_instance_settings(
         .unwrap_or_else(|| serde_json::json!({}));
     drop(supervisor);
 
-    // server.properties 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
+    // 게임 설정 파일 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
     let mut sync_error: Option<String> = None;
     if !props_sync.is_empty() {
         // 값에는 비밀번호가 들 수 있어 키만 남긴다
         tracing::info!(
-            "Syncing settings to server.properties for instance {}: {:?}",
+            "Syncing settings to the game config for instance {}: {:?}",
             id,
             props_sync.keys().collect::<Vec<_>>()
         );
@@ -1428,9 +1417,9 @@ pub async fn update_instance_settings(
                 tracing::warn!("Module could not write game settings for instance {}: {}", id, message);
                 sync_error = Some(message.to_string());
             }
-            Ok(_) => tracing::info!("server.properties synced successfully for instance {}", id),
+            Ok(_) => tracing::info!("Game config synced for instance {}", id),
             Err(e) => {
-                tracing::warn!("Failed to sync server.properties for instance {}: {}", id, e);
+                tracing::warn!("Failed to sync the game config for instance {}: {}", id, e);
                 sync_error = Some(e.to_string());
             }
         }
@@ -2035,6 +2024,49 @@ mod tests {
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
+    }
+
+    /// 게임 설정 파일로 넘기는 값(configure)에서 사바쨩 설정(`group = "saba-chan"`)과 데몬 필드는 뺀다.
+    /// 어느 키가 사바쨩 설정인지는 모듈 선언이 정한다: 데몬은 게임별 키 이름을 모른다 (MK6)
+    #[tokio::test]
+    async fn only_game_settings_are_passed_to_configure() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n\n\
+             [[settings.fields]]\nname = \"heap\"\ntype = \"text\"\ngroup = \"saba-chan\"\n\n\
+             [[settings.fields]]\nname = \"ram\"\ntype = \"text\"\ngroup = \"advanced\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\n\
+             print(json.dumps({'success': False, 'message': json.dumps(sorted(config.get('settings', {})))}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let body = json!({ "motd": "hi", "heap": "4G", "ram": "8", "protocol_mode": "rest" });
+        let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await;
+        assert!(saved.status.is_success(), "{:?}", saved.body);
+        // 받은 키는 실패 메시지로 돌려받는다: Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다
+        let configured: Vec<String> = serde_json::from_str(saved.body["sync_error"].as_str().unwrap()).unwrap();
+        assert_eq!(configured, vec!["motd", "ram"], "a saba-chan setting and daemon fields stay out; a game setting named like another game's launcher setting goes in");
     }
 
     /// 처음 설치(30분까지 걸린다)하는 동안 업데이트·삭제·복원이 같은 폴더에 끼어들지 못한다

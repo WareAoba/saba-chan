@@ -448,10 +448,18 @@ pub const COMMAND_INPUT_TYPES: &[&str] = &["text", "password", "number", "select
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
 pub const CORE_PORT_FIELDS: &[&str] = &["port", "rest_port"];
 
+/// 사바쨩 설정 묶음: 실행 방식(Java 경로·메모리·실행 인자 등)처럼 사바쨩이 쓰는 값. 게임 설정 파일로 넘기지 않는다
+pub const SABA_SETTINGS_GROUP: &str = "saba-chan";
+
 impl ModuleSettings {
     /// 포트로 표시된 설정 이름 (`port = true`)
     pub fn port_fields(&self) -> Vec<&str> {
         self.fields.iter().filter(|f| f.port).map(|f| f.name.as_str()).collect()
+    }
+
+    /// 사바쨩 설정 이름 (`group = "saba-chan"`)
+    pub fn saba_fields(&self) -> Vec<&str> {
+        self.fields.iter().filter(|f| f.group.as_deref() == Some(SABA_SETTINGS_GROUP)).map(|f| f.name.as_str()).collect()
     }
 }
 

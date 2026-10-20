@@ -92,11 +92,11 @@ def command(config):
 
 
 def get_installed_version(config):
-    """설치된 버전 감지 — mock: install_dir 내 version.txt 읽기"""
-    install_dir = config.get("install_dir", "")
-    if not install_dir:
-        return {"success": False, "message": "No install_dir specified"}
-    version_file = os.path.join(install_dir, "version.txt")
+    """설치된 버전 감지 — mock: working_dir 내 version.txt 읽기"""
+    working_dir = config.get("working_dir", "")
+    if not working_dir:
+        return {"success": False, "message": "No working_dir specified"}
+    version_file = os.path.join(working_dir, "version.txt")
     if not os.path.isfile(version_file):
         return {"success": False, "message": "version.txt not found"}
     with open(version_file, "r", encoding="utf-8") as f:
@@ -108,7 +108,7 @@ def install_server(config):
     """서버 설치 — mock: version.txt 작성 + server.jar 생성"""
     version = config.get("version", "")
     install_dir = config.get("install_dir", "")
-    jar_name = config.get("jar_name", "server.jar")
+    jar_name = config.get("server_executable") or "server.jar"
     if not version or not install_dir:
         return {"success": False, "message": "Missing version or install_dir"}
     os.makedirs(install_dir, exist_ok=True)

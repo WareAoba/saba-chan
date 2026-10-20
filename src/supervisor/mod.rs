@@ -588,7 +588,6 @@ impl Supervisor {
     fn insert_resolved_exe(&self, config: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, module_name: &str) {
         if let Some(exe_path) = self.resolve_executable(instance, module_name) {
             config.insert("server_executable".to_string(), json!(&exe_path));
-            config.entry("server_jar".to_string()).or_insert_with(|| json!(&exe_path));
         }
         if let Some(work_dir) = &instance.working_dir {
             config.insert("working_dir".to_string(), json!(work_dir));
@@ -2090,9 +2089,8 @@ impl Supervisor {
 
         let mut cfg = serde_json::Map::new();
         if let Some(exe_path) = &instance.executable_path {
-            // 시작 때와 같은 두 키 (모듈마다 읽는 키가 다르다)
+            // 시작 때와 같은 키
             cfg.insert("server_executable".to_string(), json!(exe_path));
-            cfg.insert("server_jar".to_string(), json!(exe_path));
         }
         if let Some(work_dir) = &instance.working_dir {
             cfg.insert("working_dir".to_string(), json!(work_dir));
@@ -2111,7 +2109,7 @@ impl Supervisor {
         Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).serving(server))
     }
 
-    /// Read or update server.properties (via module's configure/read_properties)
+    /// 게임 설정 파일 읽기·쓰기·초기화·가져오기 (모듈 configure/read_properties/reset_properties/import_settings)
     pub async fn manage_properties(
         sup: &tokio::sync::RwLock<Self>,
         instance_id: &str,
@@ -2317,7 +2315,7 @@ impl Supervisor {
         module_name: &str,
         version: &str,
         install_dir: &str,
-        jar_name: Option<&str>,
+        executable: Option<&str>,
         accepted_agreements: &[String],
         initial_settings: Option<Value>,
         instance: Option<(Value, Vec<String>)>,
@@ -2325,8 +2323,8 @@ impl Supervisor {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
 
-        // jar_name 결정: 명시 > 모듈 metadata.server_executable > 기본값 없음
-        let effective_jar = jar_name
+        // 서버 실행 파일 이름: 명시 > 모듈 metadata.server_executable > 기본값 없음
+        let effective_jar = executable
             .map(|s| s.to_string())
             .or_else(|| {
                 module.metadata.server_executable.clone()
@@ -2361,7 +2359,7 @@ impl Supervisor {
         });
 
         if let Some(ref name) = effective_jar {
-            config["jar_name"] = json!(name);
+            config["server_executable"] = json!(name);
         }
         if let Some(settings) = initial_settings {
             config["initial_settings"] = settings;
@@ -2424,36 +2422,17 @@ impl Supervisor {
         module_name: &str,
         instance_id: &str,
     ) -> Result<Value> {
+        // 시작·점검과 같은 값(`server_executable`·`working_dir` 등)을 받는다
         let call = {
             let s = sup.read().await;
-            let module = s.module_loader.get_module(module_name)?;
-            let module_path = module.entry_path();
-
-            let instance = s.instance_store.list()
-                .iter()
-                .find(|i| i.id == instance_id)
+            let instance = s.instance_store.get(instance_id)
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", instance_id))?;
-
-            let install_dir = instance.module_settings
-                .get("working_dir")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .or(instance.working_dir.as_deref())
-                .unwrap_or("");
-            let jar_name = instance.module_settings
-                .get("server_jar")
-                .and_then(|v| v.as_str())
-                .unwrap_or("server.jar");
-
-            let config = json!({
-                "install_dir": install_dir,
-                "jar_name": jar_name,
-            });
-
-            crate::plugin::PluginCall::new(module_path, "get_installed_version", config)
+            if instance.module_name != module_name {
+                anyhow::bail!("Instance '{}' is not a '{}' server", instance_id, module_name);
+            }
+            s.instance_call(instance_id, "get_installed_version")?
         };
-        let result = call.run().await?;
-        Ok(result)
+        call.run().await
     }
 
     /// 인스턴스마다 사용자가 정한 `java_path`: `(모듈 진입 파일, java_path)` (`sandbox::reconcile_runtimes`)
@@ -3071,6 +3050,38 @@ mod tests {
         let call = sup.instance_call(&id, "status").unwrap();
         assert_eq!(call.server(), Some(4_000_001));
         assert_eq!(call.config()["running"], true);
+    }
+
+    /// 데몬이 모듈에 넘기는 값은 범용 키뿐이다: 실행 파일은 `server_executable`, 폴더는 `working_dir` (MK7).
+    /// 설치된 버전 확인도 시작·점검과 같은 값을 받는다
+    #[tokio::test]
+    async fn module_calls_carry_only_generic_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\nprint(json.dumps({'success': True, 'config': json.load(sys.stdin)}))\n").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.module_loader.discover_modules().unwrap();
+        let server_dir = tmp.path().join("server");
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.working_dir = Some(server_dir.to_string_lossy().into_owned());
+        inst.executable_path = Some(server_dir.join("paper-1.21.jar").to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let validate = sup.instance_call(&id, "validate").unwrap();
+        let sup = tokio::sync::RwLock::new(sup);
+        let installed = Supervisor::get_installed_version(&sup, "game", &id).await.unwrap();
+        for config in [validate.config(), &installed["config"]] {
+            assert_eq!(config["server_executable"], json!(server_dir.join("paper-1.21.jar").to_string_lossy()));
+            assert_eq!(config["working_dir"], json!(server_dir.to_string_lossy()));
+            for key in ["server_jar", "jar_name", "install_dir"] {
+                assert!(config.get(key).is_none(), "{key} in {config}");
+            }
+        }
     }
 
     /// 데몬보다 새 saba-core를 요구해 로드되지 못한 모듈도 시작 응답과 목록이 이유를 준다
