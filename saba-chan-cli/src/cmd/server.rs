@@ -673,7 +673,7 @@ async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
 }
 
 async fn remove(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     let running = status_of(&runtime(ctx, &sv).await?) == "running";
     let question = if running {
         t!("remove.confirm_running", name = sv.name)
@@ -1686,7 +1686,7 @@ async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
 }
 
 async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     if status_of(&runtime(ctx, &sv).await?) == "running" {
         return Err(failed(t!("err.hint.server_running")));
     }
@@ -1856,7 +1856,8 @@ mod tests {
     /// 약관 동의는 사람이 직접 답한다: `server agree`도 `--yes`로 동의하지 않는다 (확인 `ensure`가 아니라 동의 `agreed`)
     #[test]
     fn server_agree_asks_for_a_consent_not_a_confirmation() {
-        let src = include_str!("server.rs");
+        // Windows 체크아웃은 줄 끝이 CRLF일 수 있다
+        let src = include_str!("server.rs").replace("\r\n", "\n");
         let body = &src[src.find("async fn agree(").unwrap()..];
         let body = &body[..body.find("\n}\n").unwrap()];
         assert!(body.contains("ctx.ask.agreed(") && !body.contains("ensure("), "{body}");

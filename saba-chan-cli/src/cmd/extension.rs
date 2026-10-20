@@ -31,7 +31,7 @@ pub async fn run(ctx: &Ctx, cmd: ExtCmd) -> Result<()> {
         ExtCmd::Install { ids, url, sha256 } => install_many(ctx, &ids, url, sha256).await,
         ExtCmd::Update { extension } => update(ctx, extension.as_deref()).await,
         ExtCmd::Remove { extension } => {
-            let e = resolve::extension(ctx, extension.as_deref()).await?;
+            let e = resolve::extension_exact(ctx, extension.as_deref()).await?;
             let id = s(&e, "id").to_string();
             ctx.ask.ensure(&t!("ext.confirm_remove", id = id))?;
             let r = ctx.api.remove_extension(&id).await?;
