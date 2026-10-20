@@ -439,6 +439,10 @@
   "errors": {
     "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
     "console_input_full": "El servidor todavía está procesando la entrada anterior. Inténtalo de nuevo en un momento.",
+    "rcon_unreachable": "No se pudo conectar al RCON del servidor. Comprueba que el servidor haya terminado de iniciarse.",
+    "rcon_auth_failed": "El servidor rechazó la contraseña de RCON. Prueba a reiniciar el servidor.",
+    "rcon_timeout": "El servidor no respondió a tiempo al comando RCON.",
+    "rcon_failed": "El servidor envió una respuesta RCON que no se pudo leer.",
     "restart_cancelled": "El servidor se detuvo, se inició o se eliminó en otro lugar durante el reinicio, así que no se reinició.",
     "not_supported": "El módulo de este servidor no admite esta función.",
     "executable_not_found": "Ejecutable del servidor de juegos no encontrado. Por favor verifique la ruta en configuración.",

@@ -4,7 +4,7 @@ import { TITLEBAR_HEIGHT } from '../constants/layout';
 import { useConsoleStore } from '../stores/useConsoleStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { commandReplyLines, isNoCommandPath } from '../utils/commandReply';
+import { commandErrorText, commandReplyLines } from '../utils/commandReply';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
 /** @constant 서버 Running 시 polling 간격 (ms) */
@@ -385,7 +385,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                 });
                 if (cmdResult?.error) {
                     safeShowToast(
-                        isNoCommandPath(cmdResult) ? t('servers.no_command_path') : translateError(cmdResult.error),
+                        commandErrorText(cmdResult, t) ?? translateError(cmdResult.error),
                         'error',
                         5000,
                     );

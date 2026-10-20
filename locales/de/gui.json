@@ -439,6 +439,10 @@
   "errors": {
     "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
     "console_input_full": "Der Server verarbeitet noch frühere Eingaben. Versuche es gleich noch einmal.",
+    "rcon_unreachable": "Keine Verbindung zum RCON des Servers. Prüfe, ob der Server fertig gestartet ist.",
+    "rcon_auth_failed": "Der Server hat das RCON-Passwort abgelehnt. Starte den Server neu.",
+    "rcon_timeout": "Der Server hat nicht rechtzeitig auf den RCON-Befehl geantwortet.",
+    "rcon_failed": "Der Server hat eine unlesbare RCON-Antwort geschickt.",
     "restart_cancelled": "Der Server wurde während des Neustarts an anderer Stelle gestoppt, gestartet oder entfernt, daher wurde er nicht neu gestartet.",
     "not_supported": "Das Modul dieses Servers unterstützt diese Funktion nicht.",
     "executable_not_found": "Ausführbare Datei des Spielservers nicht gefunden. Bitte überprüfen Sie den Pfad in den Einstellungen.",
