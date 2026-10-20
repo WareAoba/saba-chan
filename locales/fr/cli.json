@@ -201,7 +201,7 @@
       "server_running": "Arrêtez d'abord le serveur : saba-chan-cli stop NAME",
       "rcon_unreachable": "Impossible de se connecter au RCON du serveur. Vérifiez que le serveur a fini de démarrer et réessayez dans un instant : saba-chan-cli status",
       "rcon_auth_failed": "Le serveur a refusé le mot de passe RCON. Redémarrez le serveur pour que Saba-chan réécrive le mot de passe : saba-chan-cli restart NAME",
-      "rcon_timeout": "Le serveur n'a pas répondu à temps via RCON. Il est peut-être occupé ; réessayez dans un instant",
+      "rcon_timeout": "Le serveur n'a pas répondu à temps via RCON. La commande a peut-être déjà été exécutée ; consultez la console du serveur avant de la renvoyer : saba-chan-cli console NAME",
       "rcon_failed": "Le serveur a envoyé une réponse RCON que Saba-chan ne peut pas lire. Consultez la console du serveur : saba-chan-cli console NAME",
       "update_unsupported": "Ce serveur ne peut pas être mis à jour depuis Saba-chan. Mettez ses fichiers à jour vous-même.",
       "dependency_outdated": "Mettez à jour vers des versions plus récentes : saba-chan-cli update check",
