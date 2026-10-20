@@ -15,6 +15,8 @@ const QUICK: Duration = Duration::from_secs(10);
 const SLOW: Duration = Duration::from_secs(60);
 /// 설치·다운로드
 const LONG: Duration = Duration::from_secs(30 * 60);
+/// 정지·재시작: 데몬은 인스턴스 `stop_timeout`(최대 3600초)까지 저장 후 종료를 기다린 뒤 답한다 (MK14, L74)
+const STOP: Duration = Duration::from_secs(3600 + 10 * 60);
 
 #[derive(Clone)]
 pub struct Api {
@@ -209,12 +211,12 @@ impl Api {
     }
     /// POST /api/instance/:id/stop
     pub async fn stop(&self, id: &str, force: bool) -> Result<Value> {
-        self.post_long(&format!("/api/instance/{}/stop", seg(id)), json!({ "force": force }))
+        self.call(Method::POST, &format!("/api/instance/{}/stop", seg(id)), Some(json!({ "force": force })), STOP)
             .await
     }
     /// POST /api/instance/:id/restart — 멈추고(최대 2분) 다시 켠다. 꺼져 있었으면 켜기만. 응답은 시작 응답 + `stopped`
     pub async fn restart(&self, id: &str, force: bool) -> Result<Value> {
-        self.post_long(&format!("/api/instance/{}/restart", seg(id)), json!({ "force": force }))
+        self.call(Method::POST, &format!("/api/instance/{}/restart", seg(id)), Some(json!({ "force": force })), STOP)
             .await
     }
     /// POST /api/instance/:id/rename — 409 name_taken / server_running
@@ -1006,6 +1008,12 @@ mod tests {
         remember_notices(&seen, &mut json!({ "port_conflict_stops": [] }));
         assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=12");
         assert_eq!(servers_path(true, &seen), "/api/servers?notices=keep");
+    }
+
+    /// 정지·재시작 요청은 데몬이 가장 긴 정지 대기(인스턴스 stop_timeout 최대 3600초)를 다 기다릴 때까지 끊지 않는다 (L74)
+    #[test]
+    fn a_stop_request_outlasts_the_longest_stop_timeout() {
+        assert!(STOP > Duration::from_secs(3600 + 5), "{STOP:?}");
     }
 
     /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
