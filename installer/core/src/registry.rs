@@ -20,6 +20,13 @@ pub fn register_uninstall_entry(
     use winreg::enums::*;
     use winreg::RegKey;
 
+    // 제거기 없이 처음 설치한 폴더는 항목을 만들지 않는다: 제거 버튼이 실행할 명령이 없다
+    let installer_copy = install_dir.join("saba-chan-installer.exe");
+    if uninstaller.is_none() && !installer_copy.exists() {
+        tracing::info!("[Registry] No uninstaller for {}, skipping uninstall entry", install_dir.display());
+        return Ok(());
+    }
+
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let key_name = uninstall_entry::pick_key_name(&uninstall_entry::entries(), install_dir);
     let (key, _) = hkcu.create_subkey(uninstall_entry::key_path(&key_name))?;
@@ -41,7 +48,6 @@ pub fn register_uninstall_entry(
     }
 
     // 설치 디렉토리의 인스톨러로 언인스톨 커맨드 설정
-    let installer_copy = install_dir.join("saba-chan-installer.exe");
     let uninstall_cmd = if installer_copy.exists() {
         format!("\"{}\" --uninstall", installer_copy.to_string_lossy())
     } else {
