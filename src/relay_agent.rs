@@ -90,15 +90,22 @@ impl RelayAgent {
     }
 
     /// 에이전트를 시작합니다. 이미 돌고 있으면 그대로 둡니다.
-    pub async fn start(&self, server: IPCServer) -> Result<(), String> {
+    pub async fn start(&self, server: IPCServer) -> Result<(), StartError> {
         // 세션은 시작할 때의 주소·토큰 쌍만 쓴다: 주소나 토큰이 바뀌면 새 세션이 시작된다
         let Some(node_token) = load_node_token().filter(|t| parse_node_token(t).is_some()) else {
-            return Err("node token missing or malformed — pair this node first".into());
+            return Err(StartError { code: "node_token_missing", message: "node token missing or malformed — pair this node first".into() });
         };
-        let relay_url = {
-            let bot = server.config_store.get_bot_config().await;
-            let url = bot.cloud.relay_url.trim().to_string();
-            resolve_relay_url(Some(url.as_str()))
+        let relay_url = match session_relay_url(&server.config_store.get_bot_config().await.cloud.relay_url) {
+            Ok(url) => url,
+            Err(e) => {
+                // 돌던 세션은 없다: 상태에 이유를 남겨 클라이언트가 보이게 한다
+                let mut inner = self.lock();
+                if inner.cancel.is_none() {
+                    inner.status.last_error = Some(e.message.clone());
+                    inner.status.last_error_code = Some(e.code);
+                }
+                return Err(e);
+            }
         };
         let (cancel, generation) = {
             let mut inner = self.lock();
@@ -202,7 +209,23 @@ pub async fn restart(server: &IPCServer) {
 
 pub async fn auto_start(server: &IPCServer) {
     if let Err(e) = server.relay_agent.start(server.clone()).await {
-        tracing::info!("[RelayAgent] not started: {}", e);
+        tracing::info!("[RelayAgent] not started: {}", e.message);
+    }
+}
+
+/// 에이전트를 띄우지 못한 이유. `code`는 API의 `error_code`다
+#[derive(Debug)]
+pub struct StartError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+/// 세션의 릴레이 주소. 노드 토큰이 평문으로 나가지 않게 https(또는 루프백 http 모의 릴레이)만 쓴다.
+/// 저장할 때 막는 규칙(`relay_url_problem`)을 예전에 저장된 값에도 적용한다
+fn session_relay_url(configured: &str) -> Result<String, StartError> {
+    match crate::config_store::relay_url_problem(configured) {
+        Some(message) => Err(StartError { code: "invalid_relay_url", message }),
+        None => Ok(resolve_relay_url(Some(configured.trim()))),
     }
 }
 
@@ -431,7 +454,7 @@ impl Session {
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
-            crate::ipc::handlers::server::list_servers(axum::extract::State(self.server.clone())).await,
+            crate::ipc::handlers::server::list_servers_internal(&self.server).await,
         )
         .await
         .body
@@ -463,6 +486,8 @@ impl Session {
             })
             .collect();
 
+        // 권한을 읽기 직전의 시각 (권한 변경 응답의 `permissionsAt`과 같은 PC 시계)
+        let permissions_at = now_ms();
         let bot = self.server.config_store.get_bot_config().await;
         // 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열)
         let command_aliases: serde_json::Map<String, Value> = bot
@@ -503,11 +528,12 @@ impl Session {
         }
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
+        meta["permissionsAt"] = json!(permissions_at);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
         // (릴레이 스키마는 10자까지. 넘으면 heartbeat 전체가 거절되므로 싣지 않는다)
-        if let Some(language) = Some(self.server.config_store.ui_language().await).filter(|l| l.len() <= 10) {
+        if let Some(language) = Some(self.server.config_store.pc_language().await).filter(|l| l.len() <= 10) {
             meta["language"] = Value::String(language);
         }
         // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
@@ -663,8 +689,9 @@ impl Session {
                 };
                 // 감사 로그 (A10): 디스코드에서 누가 보냈는지 (이름은 릴레이가 payload에 실어 보낸 것)
                 let origin = crate::audit::Origin::new("discord").requested_by(&req);
+                let via_chatbot = req.remote.as_ref().is_some_and(|w| w.via_chatbot);
                 let reply = crate::audit::with_origin(origin, crate::chat::api::run_with_daemon_settings(&self.server, &req)).await;
-                raw_command_result(reply)
+                raw_command_result(reply, via_chatbot)
             }
             "permission" => {
                 let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
@@ -684,6 +711,7 @@ impl Session {
                 origin.guild = guild_id;
                 origin.user_name = text("userName");
                 origin.guild_name = text("guildName");
+                origin.via = who.via_chatbot.then(|| "chatbot".to_string());
                 let caller = crate::actions::Caller {
                     surface: if who.via_chatbot { crate::actions::Surface::Chatbot } else { crate::actions::Surface::Discord },
                     remote: Some(who),
@@ -740,6 +768,7 @@ impl Session {
             user_id,
             owner_id,
             via_chatbot: crate::chat::permissions::via_chatbot(payload.get("via").and_then(Value::as_str), reported.is_some()),
+            confirmed_by: payload.get("confirmedBy").and_then(Value::as_str).map(str::to_string),
         }
     }
 
@@ -1003,12 +1032,19 @@ fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
     }
 }
 
-/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다
-fn raw_command_result(reply: crate::chat::Reply) -> Value {
-    match reply.code {
+/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다.
+/// 답 문구는 실행 오류 원문을 담을 수 있어 액션 결과와 같은 기준으로 로컬 정보를 뺀다 (I3).
+/// 챗봇이 부른 것이면 모듈 답의 IP·비밀처럼 보이는 값도 가린다 (액션 경로의 콘솔·조회 결과와 같다)
+fn raw_command_result(reply: crate::chat::Reply, via_chatbot: bool) -> Value {
+    let mut out = match reply.code {
         Some(code) => json!({ "success": false, "data": { "code": code, "error": reply.text, "args": reply.args } }),
         None => json!({ "success": true, "data": { "text": reply.text } }),
+    };
+    crate::actions::strip_local_details(&mut out);
+    if via_chatbot {
+        crate::actions::mask_console(&mut out);
     }
+    out
 }
 
 fn backoff(failures: u32) -> Duration {
@@ -1079,26 +1115,57 @@ async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::pe
     match result {
         Ok(Ok(node)) => {
             let p = crate::chat::permissions::NodePermissions::from_node(Some(&Value::Object(node)));
-            json!({ "success": true, "data": { "defaultLevel": p.default_level, "members": p.members } })
+            // 저장을 마친 뒤의 시각: 릴레이는 이보다 먼저 읽은 heartbeat 권한을 버린다
+            let mut data = permission_entry(&p);
+            data["permissionsAt"] = json!(now_ms());
+            json!({ "success": true, "data": data })
         }
         Ok(Err(code)) => fail(&code.to_uppercase()),
         Err(e) => json!({ "success": false, "data": { "code": "SAVE_FAILED", "error": e.to_string() } }),
     }
 }
 
-/// 길드별 `{defaultLevel, members}` (릴레이 바깥 검사 캐시용). `nodeSettings`에 있는 길드는 값이 없어도 늘 싣는다
-/// (부여값을 다 지운 길드도 릴레이가 데몬 행을 지우게). 릴레이에서만 부여한 행은 릴레이가 남긴다
+/// 길드당 싣는 명령별 덮어쓰기 수. 넘으면 키 순으로 자르고 `commandLevelsTruncated`를 둔다 (릴레이는 데몬 판정에 맡긴다)
+const COMMAND_LEVELS_PER_GUILD: usize = 200;
+
+/// 길드별 `{defaultLevel, members, chatbotCap, levels, commandLevels}` (릴레이 바깥 검사용). `nodeSettings`에 있는 길드는
+/// 값이 없어도 늘 싣는다 (부여값을 다 지운 길드도 릴레이가 데몬 행을 지우게). 릴레이에서만 부여한 행은 릴레이가 남긴다.
+/// `levels`는 그 길드 프리셋으로 푼 risk별 요구 레벨이다. 최종 판정은 데몬이 다시 한다
 fn permissions_by_guild(node_settings: &Value) -> Value {
     let map: serde_json::Map<String, Value> = node_settings
         .as_object()
         .into_iter()
         .flatten()
-        .map(|(guild, node)| {
-            let p = crate::chat::permissions::NodePermissions::from_node(Some(node));
-            (guild.clone(), json!({ "defaultLevel": p.default_level, "members": p.members }))
-        })
+        .map(|(guild, node)| (guild.clone(), permission_entry(&crate::chat::permissions::NodePermissions::from_node(Some(node)))))
         .collect();
     Value::Object(map)
+}
+
+/// 한 길드의 권한 스냅샷 (heartbeat `permissions[guild]`, `permission` action 응답이 같은 모양)
+fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
+    use crate::chat::permissions::preset_level;
+    let mut keys: Vec<&String> = p.command_levels.keys().collect();
+    keys.sort();
+    let command_levels: serde_json::Map<String, Value> =
+        keys.iter().take(COMMAND_LEVELS_PER_GUILD).map(|k| ((*k).clone(), json!(p.command_levels[*k]))).collect();
+    let levels = json!({
+        "safe": preset_level(&p.preset, "safe"),
+        "caution": preset_level(&p.preset, "caution"),
+        "danger": preset_level(&p.preset, "danger"),
+        // 관리(Kind::Admin) 액션은 risk 대신 이 레벨이다 (`actions::authorize`)
+        "admin": crate::actions::admin_level(&p.preset),
+    });
+    let mut entry = json!({
+        "defaultLevel": p.default_level,
+        "members": p.members,
+        "chatbotCap": p.chatbot_cap,
+        "levels": levels,
+        "commandLevels": command_levels,
+    });
+    if keys.len() > COMMAND_LEVELS_PER_GUILD {
+        entry["commandLevelsTruncated"] = json!(true);
+    }
+    entry
 }
 
 /// `bot.node_settings[guild].allowedInstances` → `{ guild: [instance id, ...] }`. 하나도 없으면 None
@@ -1174,6 +1241,45 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
 mod tests {
     use super::*;
 
+    /// 디스코드에서 바꾼 권한의 응답과 heartbeat는 같은 PC 시계의 `permissionsAt`을 싣는다.
+    /// 릴레이는 바꾼 뒤보다 먼저 읽은 heartbeat 권한을 버린다 (늦게 와서 옛 레벨로 되돌리지 않게)
+    #[tokio::test]
+    async fn a_permission_change_reports_when_it_was_saved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let who = crate::chat::permissions::Requester {
+            guild_id: Some("r8-permissions-at".into()),
+            user_id: Some("owner".into()),
+            owner_id: Some("owner".into()),
+            via_chatbot: false,
+            confirmed_by: None,
+        };
+        let before = now_ms();
+        let res = permission_action(&server, &who, &json!({ "op": "default_level", "level": 1 })).await;
+        assert_eq!(res["success"], true, "{res}");
+        let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
+        assert!(at >= before && at <= now_ms());
+        // 응답은 heartbeat `permissions[guild]`와 같은 모양이다
+        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels"] {
+            assert!(res["data"].get(key).is_some(), "no {key}: {res}");
+        }
+    }
+
+    /// 노드 토큰이 평문으로 나가지 않게: 이미 저장된 http 주소(루프백 제외)로는 세션을 열지 않는다
+    #[test]
+    fn a_session_only_opens_to_an_https_or_loopback_relay() {
+        assert_eq!(session_relay_url("").unwrap(), "https://saba-chan.online");
+        assert_eq!(session_relay_url(" https://my.relay/ ").unwrap(), "https://my.relay");
+        assert_eq!(session_relay_url("http://127.0.0.1:9000").unwrap(), "http://127.0.0.1:9000");
+        let err = session_relay_url("http://old.example").unwrap_err();
+        assert_eq!(err.code, "invalid_relay_url");
+    }
+
     #[test]
     fn heartbeat_commands_leave_templates_on_the_pc() {
         let field: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
@@ -1238,18 +1344,24 @@ mod tests {
     #[test]
     fn heartbeat_carries_permissions_for_every_known_guild() {
         let nodes = json!({
-            "g1": { "members": { "a": 2, "bad": 7 }, "ownerDiscordId": "o" },
-            "g2": { "ownerDiscordId": "o", "allowedInstances": ["x"] },
+            "g1": { "members": { "a": 2, "bad": 7 }, "ownerDiscordId": "o", "chatbotCap": 1, "commandLevels": { "i/stop": 3 } },
+            "g2": { "ownerDiscordId": "o", "allowedInstances": ["x"], "preset": "strict" },
             "g3": { "defaultLevel": -1 }
         });
+        // 릴레이가 요구 레벨을 미리 셀 수 있게 프리셋을 푼 risk별 레벨, 챗봇 상한, 명령별 덮어쓰기도 싣는다
+        let default_levels = json!({ "safe": 0, "caution": 1, "danger": 2, "admin": 2 });
         assert_eq!(
             permissions_by_guild(&nodes),
             json!({
-                "g1": { "defaultLevel": 1, "members": { "a": 2 } },
-                "g2": { "defaultLevel": 1, "members": {} },
-                "g3": { "defaultLevel": -1, "members": {} }
+                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 } },
+                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {} },
+                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {} }
             })
         );
+        let many: serde_json::Map<String, Value> = (0..COMMAND_LEVELS_PER_GUILD + 5).map(|i| (format!("i/c{i:04}"), json!(2))).collect();
+        let big = permissions_by_guild(&json!({ "g": { "commandLevels": many } }));
+        assert_eq!(big["g"]["commandLevels"].as_object().unwrap().len(), COMMAND_LEVELS_PER_GUILD);
+        assert_eq!(big["g"]["commandLevelsTruncated"], true);
     }
 
     #[test]
@@ -1303,10 +1415,34 @@ mod tests {
             args: json!({ "command": "dance" }),
         };
         assert_eq!(
-            raw_command_result(unknown),
+            raw_command_result(unknown, false),
             json!({ "success": false, "data": { "code": "UNKNOWN_COMMAND", "error": "Unknown command", "args": { "command": "dance" } } })
         );
-        assert_eq!(raw_command_result("done".to_string().into()), json!({ "success": true, "data": { "text": "done" } }));
+        assert_eq!(raw_command_result("done".to_string().into(), false), json!({ "success": true, "data": { "text": "done" } }));
+    }
+
+    /// 채팅 명령 답도 액션 결과와 같이 PC의 경로를 가린 채 나간다 (I3)
+    #[test]
+    fn raw_command_replies_keep_local_paths_on_the_pc() {
+        let failed: crate::chat::Reply = "❌ 오류: Failed to start server: Failed to spawn process 'C:\\Users\\me\\java\\bin\\java.exe': not found".to_string().into();
+        let out = raw_command_result(failed, false).to_string();
+        assert!(!out.contains("Users") && out.contains("<path>"), "{out}");
+        let denied = crate::chat::Reply {
+            text: "no access to /home/me/servers/world".into(),
+            code: Some("PERMISSION_DENIED"),
+            args: json!({ "path": "D:\\Games\\mc" }),
+        };
+        let out = raw_command_result(denied, false).to_string();
+        assert!(!out.contains("/home/me") && !out.contains("Games"), "{out}");
+    }
+
+    /// 챗봇이 부른 채팅 명령의 답은 액션 경로의 콘솔·조회 결과처럼 IP와 비밀처럼 보이는 값을 가린다
+    #[test]
+    fn raw_command_replies_to_the_chatbot_hide_secrets() {
+        let reply = || -> crate::chat::Reply { "joined from 10.0.0.5, password=hunter2".to_string().into() };
+        let out = raw_command_result(reply(), true).to_string();
+        assert!(!out.contains("10.0.0.5") && !out.contains("hunter2"), "{out}");
+        assert!(raw_command_result(reply(), false).to_string().contains("hunter2"), "a person asking directly sees the module's reply");
     }
 
     #[test]

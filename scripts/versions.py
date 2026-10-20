@@ -6,7 +6,7 @@
   manifest  빌드된 에셋 폴더로 릴레이용 릴리즈 manifest(서명 전 JSON)를 만든다.
             서명은 `cargo run -p saba-chan-updater-lib --example release_signing -- sign`.
   registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
-            `release-notes/<version>.json`({언어: 본문})이 있으면 notes로 같이 싣는다.
+            `release-notes/<version>.json`({언어: 본문})을 notes로 같이 싣는다(stable은 필수).
 
 manifest에 --modules-repo / --extensions-repo를 주면 그 저장소의 모듈(module.toml이 있는
 폴더)과 익스텐션(manifest.json이 있는 폴더)을 zip으로 묶어 같은 manifest에 넣는다 (U9e).
@@ -22,9 +22,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import io
 import re
+import struct
 import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -267,6 +270,48 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
     return found
 
 
+def exe_file_version(blob: bytes) -> str | None:
+    """exe의 파일 버전 리소스(VS_FIXEDFILEINFO)의 FILEVERSION을 `major.minor.patch`로. 리소스가 없으면 None"""
+    start = 0
+    while (i := blob.find(b"\xbd\x04\xef\xfe", start)) >= 0:
+        start = i + 4
+        if len(blob) < i + 16:
+            break
+        struc, ms, ls = struct.unpack_from("<III", blob, i + 4)
+        if struc == 0x00010000:
+            return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}"
+    return None
+
+
+def asset_exe_versions(name: str, blob: bytes) -> dict[str, str]:
+    """에셋(exe 또는 zip 루트의 exe)마다 박힌 파일 버전. 버전 리소스가 없는 exe(saba-runner 등)는 빠진다"""
+    exes = {}
+    if name.lower().endswith(".exe"):
+        exes[name] = blob
+    elif name.lower().endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+            for info in zf.infolist():
+                inner = info.filename.replace("\\", "/")
+                if inner.lower().endswith(".exe") and "/" not in inner:
+                    exes[inner] = zf.read(info)
+    return {n: v for n, b in exes.items() if (v := exe_file_version(b))}
+
+
+def check_exe_versions(key: str, name: str, blob: bytes, version: str) -> None:
+    """서명할 버전과 올린 실행 파일의 버전이 다르면 멈춘다 (다른 판으로 빌드한 exe를 새 버전으로 서명하지 않게)"""
+    has_exe = name.lower().endswith(".exe") or (
+        name.lower().endswith(".zip") and any(n.lower().endswith(".exe") for n in zipfile.ZipFile(io.BytesIO(blob)).namelist()))
+    if not has_exe:
+        return
+    found = asset_exe_versions(name, blob)
+    if not found:
+        sys.exit(f"{key}: no executable in {name} carries a file version to compare with {version}")
+    expected = ".".join(str(int(p)) for p in re.findall(r"\d+", version.split("-")[0])[:3])
+    wrong = {n: v for n, v in found.items() if v != expected}
+    if wrong:
+        sys.exit(f"{key}: {name} was built as {wrong}, not {version}")
+
+
 def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다."""
     assets = Path(args.assets)
@@ -294,6 +339,7 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
             if pkg.get("version") and pkg["version"] != version:
                 print(f"{key}: reused asset is {pkg['version']}, not {version}; signing it as {pkg['version']}", file=sys.stderr)
                 version = pkg["version"]
+        check_exe_versions(key, name, blob, version)
         components[key] = {
             "asset": name,
             "install_dir": comp.get("install_dir", "."),
@@ -327,13 +373,18 @@ def cmd_registration(args: argparse.Namespace) -> int:
     signed = json.loads(Path(args.signed).read_text(encoding="utf-8"))
     manifest = signed["manifest"]
     release = manifest["version"]
+    notes_path = Path(args.notes) if args.notes else ROOT / "release-notes" / f"{release}.json"
+    notes = load_notes(notes_path)
+    # 클라이언트는 받을 때의 노트를 보관해 적용 뒤 패치노트로 보여 준다. stable은 노트 없이 내지 않는다
+    if notes is None and manifest["channel"] == "stable":
+        raise SystemExit(f"{notes_path}: stable release needs release notes")
     body = {
         "version": release,
         "channel": manifest["channel"],
         "rolloutPercent": args.rollout,
         "isCritical": args.critical,
         "signedManifest": json.dumps(signed, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
-        "notes": load_notes(Path(args.notes) if args.notes else ROOT / "release-notes" / f"{release}.json"),
+        "notes": notes,
         "assets": [
             {
                 "component": key,

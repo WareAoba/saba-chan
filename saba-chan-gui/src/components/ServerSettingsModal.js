@@ -1,30 +1,38 @@
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { moduleSupports } from '../utils/helpers';
 import { checkPortConflicts, validateAllSettings } from '../utils/validation';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 
+// 데몬이 받는 설정 type (module_loader SETTING_TYPES). 밖의 값은 글자 칸으로 그린다
+const FIELD_TYPES = ['text', 'password', 'number', 'file', 'select', 'boolean'];
+
 /**
  * SettingsField — Renders a single settings field based on field_type.
  * validationError가 있으면 필드 아래에 빨간 경고를 표시합니다.
  */
-function SettingsField({ field, value, modNs, onChange, validationError }) {
+export function SettingsField({ field, value, modNs, onChange, validationError }) {
     const { t } = useTranslation('gui');
+    // 이름표를 입력 칸에 잇는다 (화면 낭독기, 이름표 눌러 칸으로 가기)
+    const inputId = useId();
     const fieldLabel = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label });
     const fieldDesc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
     const hasError = !!validationError;
     const errorClass = hasError ? 'setting-input-error' : '';
+    const fieldType = FIELD_TYPES.includes(field.field_type) ? field.field_type : 'text';
 
     return (
         <div className="settings-field">
-            <label>
+            <label htmlFor={inputId}>
                 {fieldLabel} {field.required ? '*' : ''}
             </label>
-            {field.field_type === 'text' && (
+            {fieldType === 'text' && (
                 <input
+                    id={inputId}
                     type="text"
                     className={clsx(errorClass)}
                     value={String(value || '')}
@@ -32,8 +40,9 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'password' && (
+            {fieldType === 'password' && (
                 <input
+                    id={inputId}
                     type="password"
                     className={clsx(errorClass)}
                     value={String(value || '')}
@@ -41,8 +50,9 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'number' && (
+            {fieldType === 'number' && (
                 <input
+                    id={inputId}
                     type="number"
                     className={clsx('setting-input-number', errorClass)}
                     value={String(value || '')}
@@ -53,8 +63,9 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'file' && (
+            {fieldType === 'file' && (
                 <input
+                    id={inputId}
                     type="text"
                     className={clsx(errorClass)}
                     value={String(value || '')}
@@ -62,17 +73,19 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
                     placeholder={fieldDesc}
                 />
             )}
-            {field.field_type === 'select' && (
+            {fieldType === 'select' && (
                 <CustomDropdown
+                    id={inputId}
                     value={String(value || '')}
                     onChange={(val) => onChange(field.name, val)}
                     placeholder={fieldLabel}
                     options={(field.options || []).map((opt) => ({ value: opt, label: opt }))}
                 />
             )}
-            {field.field_type === 'boolean' && (
+            {fieldType === 'boolean' && (
                 <div className="toggle-row">
                     <SabaToggle
+                        id={inputId}
                         checked={value === true || value === 'true'}
                         onChange={(checked) => onChange(field.name, checked)}
                     />
@@ -147,6 +160,7 @@ function GeneralTab({
     serverRunning,
 }) {
     const { t } = useTranslation('gui');
+    const versionId = useId();
     const module = modules.find((m) => m.name === settingsServer.module);
     const hasModuleSettings = module?.settings?.fields?.length > 0;
     const protocols = module?.protocols || {};
@@ -228,6 +242,34 @@ function GeneralTab({
                     )}
             </div>
 
+            {/* 정지 대기 시간 (데몬 MK14 module_settings.stop_timeout, 초). 비우면 모듈 값, 지나면 강제로 끈다.
+                데몬이 띄우지 않는 서버(managed:false)는 모듈 stop()이 정지를 맡아 이 값을 쓰지 않는다 */}
+            {settingsServer.managed !== false && (
+                <div className="protocol-mode-section stop-timeout-section">
+                    <div className="protocol-mode-header">
+                        <span className="protocol-mode-title">
+                            <Icon name="clock" size="sm" /> {t('stop_timeout.title')}
+                        </span>
+                    </div>
+                    <p className="protocol-mode-description">{t('stop_timeout.desc')}</p>
+                    <div className="restart-row">
+                        <span>
+                            <strong>{t('stop_timeout.label')}</strong>
+                            <small>{t('stop_timeout.hint')}</small>
+                        </span>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            className="input memory-limit-input"
+                            value={settingsValues.stop_timeout ?? ''}
+                            placeholder={t('stop_timeout.placeholder')}
+                            aria-label={t('stop_timeout.label')}
+                            onChange={(e) => handleSettingChange('stop_timeout', e.target.value)}
+                        />
+                    </div>
+                </div>
+            )}
+
             {/* Module settings fields grouped */}
             {hasModuleSettings ? (
                 (() => {
@@ -262,76 +304,82 @@ function GeneralTab({
                                         <Icon name="settings" size="sm" />{' '}
                                         {t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
                                     </h4>
-                                    {/* Server version selector — only for download-based modules */}
-                                    {module?.install?.method === 'download' && (
-                                        <div className="settings-field">
-                                            <label>
-                                                {t('server_settings.server_version', {
-                                                    defaultValue: 'Server Version',
-                                                })}
-                                            </label>
-                                            {versionsLoading ? (
-                                                <div className="version-loading">
-                                                    <Icon name="loader" size="sm" />{' '}
-                                                    {t('server_settings.loading_versions', {
-                                                        defaultValue: 'Loading versions...',
+                                    {/* Server version selector — only for download-based modules that list and install versions */}
+                                    {module?.install?.method === 'download' &&
+                                        moduleSupports(module, 'list_versions') &&
+                                        moduleSupports(module, 'install_server') && (
+                                            <div className="settings-field">
+                                                <label htmlFor={versionId}>
+                                                    {t('server_settings.server_version', {
+                                                        defaultValue: 'Server Version',
                                                     })}
-                                                </div>
-                                            ) : (
-                                                <div className="version-select-row">
-                                                    <CustomDropdown
-                                                        value={settingsValues.server_version || ''}
-                                                        onChange={(val) => handleSettingChange('server_version', val)}
-                                                        placeholder={t('server_settings.select_version', {
-                                                            defaultValue: 'Select version',
+                                                </label>
+                                                {versionsLoading ? (
+                                                    <div className="version-loading">
+                                                        <Icon name="loader" size="sm" />{' '}
+                                                        {t('server_settings.loading_versions', {
+                                                            defaultValue: 'Loading versions...',
                                                         })}
-                                                        options={availableVersions.map((v) => ({
-                                                            value: v.id || v.version || v,
-                                                            label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
-                                                        }))}
-                                                    />
-                                                    <button
-                                                        className="btn btn-sm btn-primary version-install-btn"
-                                                        onClick={handleInstallVersion}
-                                                        disabled={
-                                                            !settingsValues.server_version ||
-                                                            versionInstalling ||
-                                                            serverRunning
-                                                        }
-                                                        title={
-                                                            serverRunning
-                                                                ? t('server_settings.install_server_running')
-                                                                : t('server_settings.install_version_tooltip', {
-                                                                      defaultValue: 'Download and install this version',
-                                                                  })
-                                                        }
-                                                    >
-                                                        {versionInstalling ? (
-                                                            <>
-                                                                <Icon name="loader" size="sm" />{' '}
-                                                                {t('server_settings.installing', {
-                                                                    defaultValue: 'Installing...',
-                                                                })}
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <Icon name="download" size="sm" />{' '}
-                                                                {t('server_settings.install_version_button', {
-                                                                    defaultValue: 'Install',
-                                                                })}
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            )}
-                                            <small className="field-description">
-                                                {t('server_settings.version_description_install', {
-                                                    defaultValue:
-                                                        'Select a version and click Install to download the server JAR.',
-                                                })}
-                                            </small>
-                                        </div>
-                                    )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="version-select-row">
+                                                        <CustomDropdown
+                                                            id={versionId}
+                                                            value={settingsValues.server_version || ''}
+                                                            onChange={(val) =>
+                                                                handleSettingChange('server_version', val)
+                                                            }
+                                                            placeholder={t('server_settings.select_version', {
+                                                                defaultValue: 'Select version',
+                                                            })}
+                                                            options={availableVersions.map((v) => ({
+                                                                value: v.id || v.version || v,
+                                                                label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
+                                                            }))}
+                                                        />
+                                                        <button
+                                                            className="btn btn-sm btn-primary version-install-btn"
+                                                            onClick={handleInstallVersion}
+                                                            disabled={
+                                                                !settingsValues.server_version ||
+                                                                versionInstalling ||
+                                                                serverRunning
+                                                            }
+                                                            title={
+                                                                serverRunning
+                                                                    ? t('server_settings.install_server_running')
+                                                                    : t('server_settings.install_version_tooltip', {
+                                                                          defaultValue:
+                                                                              'Download and install this version',
+                                                                      })
+                                                            }
+                                                        >
+                                                            {versionInstalling ? (
+                                                                <>
+                                                                    <Icon name="loader" size="sm" />{' '}
+                                                                    {t('server_settings.installing', {
+                                                                        defaultValue: 'Installing...',
+                                                                    })}
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Icon name="download" size="sm" />{' '}
+                                                                    {t('server_settings.install_version_button', {
+                                                                        defaultValue: 'Install',
+                                                                    })}
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                <small className="field-description">
+                                                    {t('server_settings.version_description_install', {
+                                                        defaultValue:
+                                                            'Select a version and click Install to download the server files.',
+                                                    })}
+                                                </small>
+                                            </div>
+                                        )}
                                     {sabaFields.map((f) => (
                                         <SettingsField
                                             key={f.name}
@@ -390,42 +438,46 @@ function GeneralTab({
                                 </div>
                             )}
 
-                            {/* Danger zone */}
-                            <div className="settings-group settings-group-danger">
-                                <h4 className="settings-group-title settings-danger-title">
-                                    <Icon name="alert-triangle" size="sm" />{' '}
-                                    {t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })}
-                                </h4>
-                                <div className="danger-zone-content">
-                                    <div className="danger-zone-item">
-                                        <div className="danger-zone-info">
-                                            {/* 무엇을 지우는지는 모듈마다 다르다: 모듈 locales의 reset.label·description이 먼저 */}
-                                            <span className="danger-zone-label">
-                                                {t(`mod_${settingsServer.module}:reset.label`, {
-                                                    defaultValue: t('server_settings.reset_server_label'),
-                                                })}
-                                            </span>
-                                            <span className="danger-zone-desc">
-                                                {t(`mod_${settingsServer.module}:reset.description`, {
-                                                    defaultValue: t('server_settings.reset_server_desc'),
-                                                })}
-                                            </span>
+                            {/* Danger zone: 초기화를 구현한 모듈만 (MK1) */}
+                            {moduleSupports(module, 'reset_server') && (
+                                <div className="settings-group settings-group-danger">
+                                    <h4 className="settings-group-title settings-danger-title">
+                                        <Icon name="alert-triangle" size="sm" />{' '}
+                                        {t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })}
+                                    </h4>
+                                    <div className="danger-zone-content">
+                                        <div className="danger-zone-item">
+                                            <div className="danger-zone-info">
+                                                {/* 무엇을 지우는지는 모듈마다 다르다: 모듈 locales의 reset.label·description이 먼저 */}
+                                                <span className="danger-zone-label">
+                                                    {t(`mod_${settingsServer.module}:reset.label`, {
+                                                        defaultValue: t('server_settings.reset_server_label'),
+                                                    })}
+                                                </span>
+                                                <span className="danger-zone-desc">
+                                                    {t(`mod_${settingsServer.module}:reset.description`, {
+                                                        defaultValue: t('server_settings.reset_server_desc'),
+                                                    })}
+                                                </span>
+                                            </div>
+                                            <button
+                                                className="danger-zone-btn"
+                                                onClick={handleResetServer}
+                                                disabled={resettingServer || serverRunning}
+                                                title={
+                                                    serverRunning
+                                                        ? t('server_settings.reset_server_running')
+                                                        : undefined
+                                                }
+                                            >
+                                                {resettingServer
+                                                    ? t('server_settings.resetting', { defaultValue: 'Resetting...' })
+                                                    : t('server_settings.reset_button', { defaultValue: 'Reset' })}
+                                            </button>
                                         </div>
-                                        <button
-                                            className="danger-zone-btn"
-                                            onClick={handleResetServer}
-                                            disabled={resettingServer || serverRunning}
-                                            title={
-                                                serverRunning ? t('server_settings.reset_server_running') : undefined
-                                            }
-                                        >
-                                            {resettingServer
-                                                ? t('server_settings.resetting', { defaultValue: 'Resetting...' })
-                                                : t('server_settings.reset_button', { defaultValue: 'Reset' })}
-                                        </button>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </>
                     );
                 })()
@@ -458,6 +510,7 @@ export function ServerSettingsModal({
     handleSaveSettings,
     handleResetServer,
     resettingServer,
+    savingSettings,
     isClosing,
     onClose,
     embedded = false,
@@ -615,7 +668,7 @@ export function ServerSettingsModal({
 
             <div className="modal-footer">
                 <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
-                <button className="btn btn-confirm" onClick={handleSaveSettings}>
+                <button className="btn btn-confirm" onClick={handleSaveSettings} disabled={savingSettings}>
                     <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                 </button>
                 {!embedded && (

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\nlabel = \"pw\"\n\n[[settings.fields]]\nname = \"java_path\"\ntype = \"file\"\nlabel = \"java\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\nlabel = \"motd\"\narg = \"-motd={value}\"\n\n[[settings.fields]]\nname = \"players\"\ntype = \"number\"\nlabel = \"players\"\narg = \"-players={value}\"\n\n[[queries]]\nname = \"players\"\nlabel = \"Players\"\nfunction = \"list_players\"\ninputs = [{ name = \"limit\", type = \"number\", min = 1, max = 10 }]\n";
-const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람" } } }"#;
+const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람", "inputs": { "limit": { "label": "최대 인원" } } } } }"#;
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
     // 토큰은 한 번만 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
@@ -33,7 +33,7 @@ async fn server() -> (IPCServer, String, tempfile::TempDir) {
 }
 
 fn relay(user: &str, chatbot: bool) -> Caller {
-    let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
     Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "ko".into() }
 }
 
@@ -110,6 +110,19 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
     assert_eq!(err.data["args"]["via"], "chatbot");
 }
 
+/// 챗봇이 만든 계획은 확인한 쪽이 via를 보내지 않아도 챗봇 출처로 실행된다 (보관 백업 수 줄이기 같은 챗봇 제한이 그 출처를 본다)
+#[tokio::test]
+async fn a_chatbot_plan_runs_as_the_chatbot_whoever_confirms_it() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let lower = json!({ "schedule": [], "backup_keep": 1 });
+    let made = plan(&state, "instance.schedule.set", Some(&id), &lower, &relay("owner", true)).await.unwrap();
+    let plan_id = made["planId"].as_str().unwrap().to_string();
+    let ran = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("owner", false)).await.unwrap();
+    assert_eq!(ran["success"], false, "{ran}");
+    assert_eq!(ran["status"], 400, "{ran}");
+}
+
 #[tokio::test]
 async fn direct_admin_commands_skip_confirmation_but_chatbot_and_danger_do_not() {
     let (state, id, _tmp) = server().await;
@@ -156,6 +169,124 @@ fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
     assert_eq!(restore["surfaces"], json!(["chatbot"]));
 }
 
+// 실사용: 디스코드 "/작업"에 길드 설정 작업이 "guild" 필수 칸과 함께 보였다. 길드 설정은 "/사바쨩" 전용 명령이
+// 같은 액션을 부르므로 메뉴에는 싣지 않고, 원격 요청이 스스로 채우는 길드 칸은 어느 메뉴 입력에도 두지 않는다
+#[test]
+fn the_remote_menu_has_no_guild_settings_and_no_guild_input() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    for id in ["chatbot.settings.get", "chatbot.settings.set", "discord.settings.set"] {
+        assert!(actions.iter().all(|a| a["id"] != id), "{id} is served by the /사바쨩 commands");
+        assert!(find(id).unwrap().surfaces.contains(&Discord), "{id} stays callable from Discord");
+    }
+    for a in &actions {
+        assert!(a["input"]["properties"].get(GUILD_FIELD).is_none(), "{} asks for a guild", a["id"]);
+        assert!(a["input"]["required"].as_array().is_none_or(|r| !r.iter().any(|f| f == GUILD_FIELD)), "{}", a["id"]);
+    }
+}
+
+// 사용자 디스코드 검수(2026-10-20): 시작·정지 기록(3)은 디스코드에서 빼고, 백업 목록(4)은 디스코드 메뉴에서만 뺀다
+// (챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다). 쓰는 곳 없는 길드 설정 조회(12)는 없앤다.
+// 백업 만들기(5)의 이름은 "백업"
+#[test]
+fn the_discord_review_trims_the_remote_menu() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = |id: &str| actions.iter().find(|a| a["id"] == id).unwrap().clone();
+    assert!(!find("instance.events").unwrap().surfaces.contains(&Discord));
+    assert_eq!(item("instance.events")["surfaces"], json!(["chatbot"]));
+    assert_eq!(item("backup.list")["surfaces"], json!(["chatbot"]), "off the Discord menu, still a chatbot tool");
+    assert!(find("backup.list").unwrap().surfaces.contains(&Discord), "Discord can still call it");
+    assert!(find("discord.settings.get").is_none());
+    assert_eq!(item("backup.create")["title"]["ko"], "백업");
+    assert_eq!(item("backup.create")["title"]["en"], "Backup");
+}
+
+// 릴레이 사전 검사가 데몬 판정과 같은 답을 내게, 고정 레벨이 있는 액션은 그 레벨을 싣는다
+#[test]
+fn remote_menu_items_carry_their_fixed_level() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = |id: &str| actions.iter().find(|a| a["id"] == id).unwrap().clone();
+    assert_eq!(item("update.apply")["level"], crate::chat::permissions::OWNER);
+    assert!(item("server.start").get("level").is_none());
+}
+
+// 실사용: 디스코드 입력칸이 "name"·"backup_keep" 같은 내부 이름으로 보였다. 칸마다 언어별 제목을 싣는다
+#[test]
+fn remote_inputs_carry_localized_field_titles() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let field = |id: &str, name: &str| actions.iter().find(|a| a["id"] == id).unwrap()["input"]["properties"][name]["title"].clone();
+    assert_eq!((field("backup.restore", "name")["ko"].as_str(), field("backup.restore", "name")["en"].as_str()), (Some("이름"), Some("Name")));
+    assert_eq!(field("instance.schedule.set", "backup_keep")["ko"], "보관할 백업 수");
+    assert_eq!(field("instance.schedule.set", "backup_keep").as_object().unwrap().len(), crate::chat::i18n::languages().len());
+}
+
+// 상한을 넘으면 칸 제목부터 빼서 액션을 덜 잃는다
+#[test]
+fn field_titles_go_first_when_the_heartbeat_is_too_big() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("big");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut toml = String::from("[module]\nschema_version = 1\nname = \"big\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n");
+    let label = "x".repeat(120);
+    for q in 0..30 {
+        toml.push_str(&format!("\n[[queries]]\nname = \"q{q:02}\"\nfunction = \"f\"\ninputs = [{{ name = \"a\", label = \"{label}\" }}, {{ name = \"b\", label = \"{label}\" }}]\n"));
+    }
+    std::fs::write(dir.join("module.toml"), toml).unwrap();
+    std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+    let modules = vec![crate::supervisor::module_loader::load_module_dir(&dir).unwrap()];
+    let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
+    assert!(!truncated, "every action still fits without field titles");
+    assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
+    assert!(actions.iter().all(|a| a["input"]["properties"].as_object().is_none_or(|p| p.values().all(|f| f.get("title").is_none()))));
+}
+
+// 실사용: 디스코드에 결과가 JSON 그대로 보였다. 원격 결과에는 요청 언어의 사람용 요약을 붙인다
+#[tokio::test]
+async fn remote_results_carry_a_readable_summary() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let listed = query(&state, "instance.list", None, &json!({}), &relay("someone", false)).await.unwrap();
+    let text = listed["text"].as_str().unwrap();
+    assert!(text.contains("srv") && text.contains("정지됨"), "{text}");
+    assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업이 없어요"));
+    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"].as_str().unwrap().contains("기록이 없어요"));
+    assert!(query(&state, "monitor.summary", None, &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("CPU"));
+    // GUI·CLI는 자기 화면으로 그린다
+    assert!(run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap().get("text").is_none());
+}
+
+#[test]
+fn summaries_read_like_sentences() {
+    let ko = crate::chat::i18n::Catalog::for_language("ko");
+    let backups: Vec<Value> = (0..12).map(|n| json!({ "name": format!("b{n:02}"), "kind": "scheduled", "created": 1_700_000_000 + n * 60, "size": 1_536 * 1024 * 1024 })).collect();
+    let text = summary::text("backup.list", &json!({ "success": true, "backups": backups }), &ko).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[0].contains("12"), "{text}");
+    assert!(lines[1].contains("b11") && lines[1].contains("예약") && lines[1].contains("1.5 GB"), "newest first: {text}");
+    assert!(lines.len() <= 12 && lines.last().unwrap().contains('2'), "the rest is counted: {text}");
+
+    let updates = json!({ "ok": true, "updates_available": 1, "components": [
+        { "display_name": "Saba-chan GUI", "current_version": "0.1.7", "latest_version": "0.1.8", "update_available": true },
+        { "display_name": "Saba-chan CLI", "current_version": "0.1.7", "latest_version": "0.1.7", "update_available": false },
+    ] });
+    let text = summary::text("update.check", &updates, &ko).unwrap();
+    assert!(text.contains("Saba-chan GUI") && text.contains("0.1.7 → 0.1.8") && !text.contains("CLI"), "{text}");
+    assert!(summary::text("update.check", &json!({ "ok": true, "updates_available": 0, "components": [] }), &ko).unwrap().contains("최신"));
+
+    let events = json!({ "events": [{ "at": 1_700_000_000, "kind": "crash" }, { "at": 1_700_000_600, "kind": "user_stop" }] });
+    let text = summary::text("instance.events", &events, &ko).unwrap();
+    assert!(text.lines().nth(1).unwrap().contains("정지") && text.contains("비정상 종료"), "newest first: {text}");
+
+    // 시각을 모르면 1970년으로 찍지 않는다
+    let unknown = summary::text("backup.list", &json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] }), &ko).unwrap();
+    assert!(!unknown.contains("1970"), "{unknown}");
+
+    // 모듈 조회는 범용 포맷으로 (모양이 모듈마다 다르다)
+    let players = summary::text("server.query:players", &json!({ "success": true, "players": [{ "name": "steve" }] }), &ko).unwrap();
+    assert!(players.contains("steve") && !players.contains("success"), "{players}");
+    // 모르는 액션은 요약하지 않는다 (릴레이가 결과를 그대로 보인다)
+    assert!(summary::text("server.status", &json!({}), &ko).is_none());
+}
+
 #[test]
 fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
     for d in ACTIONS.iter().filter(|d| d.surfaces.contains(&Chatbot)) {
@@ -163,7 +294,19 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
             assert!(!d.id.contains(word), "{} must not be open to the chatbot", d.id);
         }
     }
-    assert!(command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap()["surfaces"].as_array().unwrap().iter().all(|s| s != "chatbot"));
+}
+
+/// 모듈의 위험 명령도 챗봇이 고를 수 있지만 늘 확인 계획을 거친다(요청자 본인이 확인 버튼을 누른다, 사용자 결정 2026-10-20).
+/// 결과는 콘솔·조회처럼 IP·비밀처럼 보이는 값을 가려 보낸다
+#[test]
+fn danger_module_commands_reach_the_chatbot_only_through_a_confirmation() {
+    let wipe = command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap();
+    assert!(wipe["surfaces"].as_array().unwrap().iter().any(|s| s == "chatbot"));
+    assert_eq!(wipe["risk"], "danger", "danger always needs a confirmed plan (needs_confirm)");
+    for id in ["server.console.tail", "server.query:players", "server.command:kick"] {
+        assert!(chatbot_masked(id), "{id}");
+    }
+    assert!(!chatbot_masked("server.status"));
 }
 
 #[tokio::test]
@@ -318,7 +461,83 @@ async fn module_queries_are_safe_read_actions_on_every_surface() {
     assert_eq!((q["module"].as_str(), q["kind"].as_str()), (Some("plain"), Some("query")));
     assert_eq!((q["title"]["ko"].as_str(), q["title"]["en"].as_str()), (Some("접속자 목록"), Some("Players")));
     assert_eq!(q["description"]["ko"], "지금 접속한 사람");
+    // 입력 칸 이름도 모듈 locales 문구로 (없는 언어는 module.toml label, 그것도 없으면 싣지 않는다)
+    assert_eq!(q["input"]["properties"]["limit"]["title"], json!({ "ko": "최대 인원" }));
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
+}
+
+/// 느린 러너에서는 계획 실행이 뒤로 넘어간다(`running`): 끝날 때까지 보고 결과를 돌려준다
+async fn finished(mut done: Value, caller: &Caller) -> Value {
+    let waited = std::time::Instant::now();
+    while done["running"] == true {
+        assert!(waited.elapsed() < std::time::Duration::from_secs(180), "the plan never finished: {}", done);
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let status = run_status(done["runId"].as_str().unwrap(), caller).unwrap();
+        if status["done"] == true {
+            done = status["result"].clone();
+        }
+    }
+    done
+}
+
+/// 같은 길드에서 여러 단계 계획 둘을 동시에 눌러도, 409를 받은 계획은 쓰이지 않고 남아 다시 누를 수 있다 (D-F6)
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_plan_refused_because_another_runs_can_be_pressed_again() {
+    let (state, id, _tmp) = server().await;
+    // 자리와 실행 횟수는 길드마다 전역이다: 다른 시험과 겹치지 않는 길드를 쓴다
+    let guild = "steps-lane-race";
+    state
+        .config_store
+        .update_node_settings(guild, |n| {
+            *n = json!({ "ownerDiscordId": "owner", "chatbotCap": 2, "adminRunsPerHour": 100000 }).as_object().cloned().unwrap();
+            ((), true)
+        })
+        .await
+        .unwrap();
+    let who = |chatbot| Requester { guild_id: Some(guild.into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
+    let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
+    let owner = caller(false);
+    for round in 0..40 {
+        let steps = json!([{ "id": "instance.settings.set", "instance": id, "input": { "players": 4 + round % 2 } }]);
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            ids.push(plan_steps(&state, &steps, &caller(true)).await.unwrap()["planId"].as_str().unwrap().to_string());
+        }
+        let runs: Vec<_> = ids
+            .iter()
+            .map(|pid| {
+                let (state, pid, owner) = (state.clone(), pid.clone(), owner.clone());
+                tokio::spawn(async move { run(&state, steps::PLAN_ID, None, &Value::Null, Some(&pid), &owner).await })
+            })
+            .collect();
+        let mut refused = Vec::new();
+        for (pid, r) in ids.iter().zip(runs) {
+            match r.await.unwrap() {
+                Ok(started) => {
+                    finished(started, &owner).await;
+                }
+                Err(e) => {
+                    assert_eq!(e.code, "plan_running", "round {round}");
+                    refused.push(pid.clone());
+                }
+            }
+        }
+        for pid in refused {
+            // 앞 실행이 자리를 놓을 때까지는 409가 날 수 있다. 계획이 사라졌으면(plan_expired) 버그다
+            let mut again = run(&state, steps::PLAN_ID, None, &Value::Null, Some(&pid), &owner).await;
+            for _ in 0..100 {
+                match &again {
+                    Err(e) if e.code == "plan_running" => {
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                        again = run(&state, steps::PLAN_ID, None, &Value::Null, Some(&pid), &owner).await;
+                    }
+                    _ => break,
+                }
+            }
+            let started = again.unwrap_or_else(|e| panic!("round {round}: the refused plan was used up: {}", e.code));
+            finished(started, &owner).await;
+        }
+    }
 }
 
 #[tokio::test]
@@ -348,7 +567,8 @@ async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     // 다른 사람은 실행하지 못하고, 요청자가 누르면 순서대로 한 번에
     let plan_id = planned["planId"].as_str().unwrap();
     assert_eq!(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("someone", false)).await.unwrap_err().code, "plan_not_yours");
-    let done = run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("owner", false)).await.unwrap();
+    let owner = relay("owner", false);
+    let done = finished(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &owner).await.unwrap(), &owner).await;
     assert_eq!(done["success"], true, "{}", done);
     let new_id = done["steps"][0]["instance"].as_str().unwrap().to_string();
     assert_eq!(done["steps"][1]["status"], "done");
@@ -368,7 +588,7 @@ async fn a_failed_step_stops_the_plan_and_the_rest_is_skipped() {
     ]);
     let planned = plan_steps(&state, &steps, &gui()).await.unwrap();
     // 빈 lifecycle.py라 시작이 실패한다
-    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap();
+    let done = finished(run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap(), &gui()).await;
     assert_eq!((done["success"].as_bool(), done["stoppedAt"].as_i64()), (Some(false), Some(2)), "{}", done);
     let statuses: Vec<&str> = done["steps"].as_array().unwrap().iter().map(|s| s["status"].as_str().unwrap()).collect();
     assert_eq!(statuses, ["done", "failed", "skipped"]);
@@ -433,7 +653,7 @@ async fn a_running_plan_does_not_block_single_confirmations_in_the_guild() {
         })
         .await
         .unwrap();
-    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
     let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &caller(true)).await.unwrap();
     let _busy = steps::Lane::take(&caller(false)).unwrap();
@@ -452,7 +672,7 @@ async fn remote_admin_runs_are_limited_per_guild_and_hour() {
         })
         .await
         .unwrap();
-    let who = Requester { guild_id: Some("limited".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: false };
+    let who = Requester { guild_id: Some("limited".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: false, ..Default::default() };
     let owner = Caller { surface: Discord, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let input = json!({ "guild": "limited", "sleeping": false });
     assert!(run(&state, "discord.settings.set", None, &input, None, &owner).await.is_ok());

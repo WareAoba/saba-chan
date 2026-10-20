@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
+import { CHATBOT_TOOLS, ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
 import { pickOption } from './dropdown';
 
@@ -103,6 +103,59 @@ describe('MaintenanceTab', () => {
         });
     });
 
+    it('복원·백업 거절은 데몬의 영어 원문 대신 이유를 알린다', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            backups: [{ name: 'a-manual.zip', kind: 'manual', created: 1, size: 1 }],
+        });
+        window.api.instanceBackupRestore = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'This backup points outside the server folders',
+            error_code: 'restore_outside',
+        });
+        window.api.instanceBackupCreate = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'A backup or restore is already running for this instance',
+            error_code: 'backup_busy',
+        });
+        render(<MaintenanceTab server={stopped} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Click to restore' }));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalled());
+        expect(window.showToast.mock.calls[0][0]).toMatch(/server folder/);
+        expect(window.showToast.mock.calls[0][0]).not.toMatch(/points outside/);
+
+        fireEvent.click(await screen.findByRole('button', { name: /Back up now/ }));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalledTimes(2));
+        expect(window.showToast.mock.calls[1][0]).not.toMatch(/already running for this instance/);
+        delete window.showToast;
+    });
+
+    it('되살리지 못한 링크가 있으면 복원 뒤 그 수를 경고로 알린다 (D-B14)', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            backups: [{ name: 'a-manual.zip', kind: 'manual', created: 1, size: 1 }],
+        });
+        window.api.instanceBackupRestore = vi
+            .fn()
+            .mockResolvedValue({ success: true, restored: ['/w'], pre_restore_backup: 'p.zip', links_not_restored: 2 });
+        render(<MaintenanceTab server={stopped} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Click to restore' }));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalled());
+        const [text, tone] = window.showToast.mock.calls[0];
+        expect(tone).toBe('warning');
+        expect(text).toMatch(/2/);
+        expect(text).toMatch(/link/i);
+        delete window.showToast;
+    });
+
     it('켜져 있으면 복원 버튼이 잠긴다', async () => {
         window.api.instanceScheduleGet = vi
             .fn()
@@ -126,6 +179,11 @@ describe('챗봇 설정 변환', () => {
         // 계약 순서로 정리, 비면 null
         expect(p.disabledTools).toEqual(['lol', 'images']);
         expect(settingsPatch(d).disabledTools).toBeNull();
+    });
+
+    it('눈치 메모는 끌 수 없는 기본 사양이라 도구 목록에 없고, 예전에 꺼 둔 값은 다음 저장 때 지운다', () => {
+        expect(CHATBOT_TOOLS).not.toContain('social_notes');
+        expect(settingsPatch({ ...settingsDraft(), disabledTools: ['social_notes'] }).disabledTools).toBeNull();
     });
 
     it('릴레이 400을 읽을 수 있는 줄로', () => {
@@ -161,7 +219,7 @@ describe('ChatbotView', () => {
         await screen.findByText('No Discord servers connected.');
         fireEvent.click(screen.getByLabelText('Image generation'));
         rerender(<ChatbotView nodes={nodes} />);
-        const sel = await screen.findByLabelText('Chatbot in My Guild');
+        const sel = await screen.findByLabelText('Talking Saba-chan in My Guild');
         expect(screen.getByLabelText('Image generation').checked).toBe(false);
         pickOption(sel, 'Off');
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -224,7 +282,7 @@ describe('ChatbotView', () => {
         });
         window.api.chatbotClearMemory = vi.fn().mockResolvedValue({ success: true });
         render(<ChatbotView nodes={nodes} />);
-        const sel = await screen.findByLabelText('Chatbot in My Guild');
+        const sel = await screen.findByLabelText('Talking Saba-chan in My Guild');
         pickOption(sel, 'On');
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText(/channelIds too long/);

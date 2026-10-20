@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **伺服器清單**",
     "empty": "📭 未登錄伺服器",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 執行中",
@@ -44,11 +44,13 @@
     "start_complete": "✅ **{{name}}** 啟動要求已完成！",
     "stop_request": "⏳ 正在停止 **{{name}}** 伺服器...",
     "stop_complete": "✅ **{{name}}** 停止要求已完成！",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** 未停止：它沒有可以儲存並結束的途徑（主控台或 REST）。如需不儲存直接結束，請在這台電腦上的 saba-chan 中選擇強制停止。",
     "status_check": "📊 **{{name}}** 狀態：{{status}} {{pid_info}}",
     "not_found": "❌ 找不到模組 \"{{alias}}\" 的伺服器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
     "not_running_default": "伺服器未執行。請先啟動伺服器",
-    "module_missing": "❌ 模組 '{{module}}' 未安裝。此伺服器無法控制。"
+    "module_missing": "❌ 模組 '{{module}}' 未安裝。此伺服器無法控制。",
+    "port_moved": "🔀 Windows 保留了管理用 REST 連接埠 {{from}}，已改為 {{to}}。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 執行中...",
@@ -99,6 +101,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您沒有使用此命令的權限。",
+    "chatbot_not_allowed": "❌ 「會說話的 Saba-chan」無法執行此命令。請直接執行。",
     "local_single_guild_only": "⚠️ 本地機器人只能在一個伺服器中使用。目前已加入{{count}}個伺服器，請從不使用的伺服器中移除機器人。"
   },
   "messages": {
@@ -209,7 +212,7 @@
         "title": "備份列表"
       },
       "create": {
-        "title": "建立備份"
+        "title": "備份"
       },
       "restore": {
         "title": "還原備份",
@@ -241,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "查看 Discord 設定",
-          "description": "語言、睡眠與音樂功能"
-        },
         "set": {
           "title": "變更 Discord 設定",
           "description": "語言、睡眠與音樂功能"
@@ -254,11 +253,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "查看聊天機器人設定",
+          "title": "查看「會說話的 Saba-chan」設定",
           "description": "開關、喚醒詞、確認、工具組"
         },
         "set": {
-          "title": "變更聊天機器人設定",
+          "title": "變更「會說話的 Saba-chan」設定",
           "description": "開關、喚醒詞、確認、工具組"
         }
       }
@@ -288,11 +287,39 @@
       "enabled": "開啟",
       "model": "模型",
       "memo": "伺服器提示詞",
-      "confirmCommands": "確認指令",
+      "confirmCommands": "注意指令一律詢問",
       "memory": "記憶",
       "webSearch": "網頁搜尋",
       "disabledTools": "已關閉的工具組",
       "step": "步驟"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…另有 {{count}} 項",
+      "backups": "💾 **{{count}} 個備份**",
+      "backups_empty": "📭 沒有備份",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "手動",
+        "scheduled": "排程",
+        "pre-update": "更新前",
+        "pre-restore": "還原前"
+      },
+      "events": "📜 **最近的啟動與停止紀錄**",
+      "events_empty": "📭 沒有紀錄",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "已停止",
+        "in_game_stop": "在遊戲內停止",
+        "crash": "異常結束",
+        "start_failed": "啟動失敗",
+        "unknown_exit": "不明原因結束"
+      },
+      "updates": "⬆️ **{{count}} 個更新**",
+      "updates_none": "✅ 全部已是最新",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · 記憶體 {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

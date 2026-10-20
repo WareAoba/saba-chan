@@ -40,7 +40,7 @@
 - 로드에 실패한 모듈은 `warn` 로그를 남기고 `load_errors`에 기록한다. `GET /api/modules`가 `failed[]`로 돌려준다 (`:1511-1539`, `D:src/ipc/handlers/server.rs:391-392`).
 - `.py` 파일(`daemon_rcon.py`, `i18n.py`)이 같은 루트에 있어도 무시된다. 이 둘은 PYTHONPATH용 공용 라이브러리다 (§2.1).
 
-**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader.rs:462-464`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader.rs:467-481`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면 거부한다(`:1250-1256`). (qcza9f 기준)
+**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader.rs:462-464`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader.rs:467-481`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`:1250-1256`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
 
 ### 1.2 module.toml 스키마 (Rust 역직렬화 기준, 전체)
 
@@ -72,11 +72,12 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[protocols]` (`ProtocolsSection` `:725-735`)
 | 키 | 타입 | 사용처 |
 |---|---|---|
-| `supported` | Vec<String> | `stdin`/`rest` (`rcon`도 문법상 받지만 데몬이 RCON을 쓰지 않는다). 이 셋 밖의 값은 로드 때 거부한다(`PROTOCOLS`, `value_problems`). 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:255-306`), 인스턴스 생성 시 rest_port 기본값 결정(`instance.rs:112-116`), 명령·정지를 stdin으로 보낼지 판단(`mod.rs:957-959, 1700-1722`) |
+| `supported` | Vec<String> | `stdin`/`rest`/`rcon`. `rcon`은 `stdin`·`rest`가 없을 때만 쓴다(아래 RCON 정책, `ModuleMetadata::rcon_only_port`). 이 셋 밖의 값은 로드 때 거부한다(`PROTOCOLS`, `value_problems`). 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:255-306`), 인스턴스 생성 시 rest_port 기본값 결정(`instance.rs:112-116`), 명령·정지를 stdin으로 보낼지 판단(`mod.rs:957-959, 1700-1722`) |
+| `rcon_port` | u16 | 게임의 기본 RCON 포트. `supported`에 `rcon`만 있으면 필수다(없으면 로드 때 거부, `value_problems`). 데몬이 처음 시작할 때 이 값으로 인스턴스의 RCON 접속 정보를 만든다 |
 | `default` | String | GUI로 전달만 함 (`ProtocolsInfo`). `supported`와 같은 값만 받는다 |
 | `interaction_mode` | String | `console` 또는 `commands`. GUI가 콘솔 버튼 같은 UI를 고르는 데 쓴다 (`saba-chan-gui/src/components/ServerCard.js:417-421`, `App.js:494-500`). 데몬은 해석하지 않는다. 데몬은 모든 모듈을 기본 managed로 시작하고(`mod.rs:1690-1700`), 그 판정을 `GET /api/servers`의 `ServerInfo.managed`로 알려 준다(`D:src/ipc/mod.rs:185-187`, `server.rs:87`). 그런데 GUI는 이 값을 쓰지 않고 아직 `managed_start`가 없으면 `console`만 managed로 본다(`ServerCard.js:418-421`, `App.js:494-500`). 그래서 palworld 같은 `commands` 모듈은 데몬은 managed로, GUI(콘솔 버튼·종료 확인)는 non-managed로 다룬다 |
 
-> **RCON 정책**: 보안상 saba-chan은 RCON을 쓰지 않는다. 데몬에는 RCON 클라이언트가 없고, 게임 명령은 모두 서버 콘솔(stdin)로 간다. `/api/instance/:id/rcon`은 이름만 남은 호환 경로로, 한 줄을 stdin에 쓰고 콘솔 출력을 약 1.5초 모아 `data.response`로 돌려준다(`D:src/ipc/handlers/command.rs:392-436`). 콘솔이 없는 서버(관리하지 않는 모드, runner 없이 붙은 프로세스)는 409 `no_command_path`를 받으므로 saba-chan에서 명령을 보낼 수 없다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목, RCON 폴백(stop·status·command), `get_credentials`는 지워졌고 `supported = ["stdin"]`이다. palworld도 RCON 명령 경로(RCON 클라이언트, `protocol_mode=rcon` 분기, `rcon_enabled`·`rcon_port` 키 매핑, `rcon_password` 반환)를 지웠다. 명령은 늘 데몬 REST 경로로 가고, `configure()`는 저장할 때마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:933, 1224-`). 콘솔 명령은 `method = "console"` + `console_template`이다(예전 이름 `rcon`·`rcon_template`도 별칭으로 읽힌다).
+> **RCON 정책**: 명령 경로의 우선순위는 STDIN → REST → RCON이다. 다른 경로가 있으면 RCON을 쓰지 않는다. 데몬의 RCON 클라이언트(`D:src/protocol/rcon.rs`, Source RCON 프로토콜)는 `[protocols] supported`에 `rcon`만 있고 `stdin`·`rest`가 없는 모듈(정말 RCON만 받는 서버)에만 쓰인다. 지금 저장소의 모듈은 모두 `stdin`이나 `rest`라 RCON을 쓰지 않는다. 그런 모듈의 인스턴스를 시작하면 데몬이 인스턴스 폴더에 `rcon.json`(`{port, password}`, 주인만 읽기, 원자적 쓰기)을 한 번 만든다(`Supervisor::ensure_rcon_access`). 포트는 `[protocols] rcon_port`부터 차례로 보아 다른 인스턴스의 RCON·게임·REST 포트가 아니고 지금 열 수 있는 첫 포트(최대 200개)다. 그래서 같은 모듈의 인스턴스 둘이 같은 포트를 받지 않는다. 비밀번호는 무작위 16자다. 준비하지 못하면 시작이 실패한다. 모듈이 업데이트로 `stdin`·`rest`를 갖게 되면 다음 시작 때 `rcon.json`을 지운다. 모듈 config에는 `rcon_port`·`rcon_password`로 이 값이 실린다(모듈 설정·요청의 같은 키보다 앞선다, `insert_instance_fields`). 모듈은 시작 때 이 값을 게임 설정에 쓰고 RCON을 127.0.0.1에서만 받게 한다. 데몬은 늘 `127.0.0.1:<port>`에만 접속한다. 비밀번호는 `rcon.json`에만 저장하고 인스턴스 API 응답·로그·알림에 넣지 않는다. 실행 인자 미리보기에서는 `***`로 가리고, config 로그는 키 이름으로 가린다. `rcon.json`은 데몬 항목(`DAEMON_ENTRIES`)이라 모듈 데이터 폴더로 넘기지 않는다. 콘솔 명령(`method = "console"`)과 정의에 없는 한 줄은 콘솔이 있으면 stdin으로, 없고 RCON 경로가 있으면 RCON으로 간다. 명령 뒤에 끝 표시(빈 RESPONSE_VALUE)를 보내 그 답으로 여러 패킷 답의 끝을 알고, 끝 표시에 답하지 않는 서버는 첫 답 뒤 0.3초 조용하면 끝으로 본다(시간 초과로 다시 보내 명령이 두 번 도는 일을 막는다). 답은 모은 바이트를 한 번에 UTF-8로 바꿔 `data.response`에 담고 `protocol: "rcon"`을 붙인다. 실패는 400 `invalid_argument`(빈 줄·여러 줄·4096바이트 초과) 또는 502 `rcon_unreachable`·`rcon_auth_failed`·`rcon_timeout`(접속·인증·답 전체 5초)·`rcon_failed`다. 오류 문구에는 비밀번호와 서버 답을 넣지 않는다. RCON 경로가 있어도 서버가 꺼져 있으면 접속하지 않고 409 `server_not_running`이다. RCON 경로가 없는 서버(콘솔 없음)는 예전처럼 409 `no_command_path`다. 서버가 콘솔 입력을 읽지 않아 대기열이 차 있으면 기다리지 않고 503 `console_input_full`을 받는다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. 정지는 데몬이 RCON으로 `stop_command`를 보내지 않는다. RCON만 받는 모듈의 `stop()`이 `daemon_post(f"/api/instance/{instance_id}/rcon", {"command": <정지 명령>})`로 데몬 `/rcon`을 불러 정지 명령을 보낸다. 데몬이 4xx·5xx로 답하면 `daemon_post`가 `ConnectionError`를 내므로, 모듈은 그때 `graceful_stop_unavailable`로 답한다(MK10). 별도 RCON 도우미 함수는 없다. 한계: 정해진 RCON 포트를 바꾸는 API는 아직 없다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목, RCON 폴백(stop·status·command), `get_credentials`는 지워졌고 `supported = ["stdin"]`이다. palworld도 RCON 명령 경로(RCON 클라이언트, `protocol_mode=rcon` 분기, `rcon_enabled`·`rcon_port` 키 매핑, `rcon_password` 반환)를 지웠다. 명령은 늘 데몬 REST 경로로 가고, `configure()`는 저장할 때마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:933, 1224-`). 콘솔 명령은 `method = "console"` + `console_template`이다(예전 이름 `rcon`·`rcon_template`도 별칭으로 읽힌다).
 
 #### `[config]` (`ConfigSection` `:738-755`)
 | 키 | 타입 | 사용처 |
@@ -86,7 +87,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance.rs:109`, `mod.rs:2514-2524`) |
 | `default_port` | u16 | 인스턴스 생성 시 `instance.port` 기본값 |
 | `stop_command` | String | managed stop 때 stdin으로 전송. 기본값 `"stop"` (`mod.rs:961`) |
-| `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30 (`mod.rs:986`) |
+| `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30. 인스턴스 설정 `stop_timeout`이 있으면 그 값이 앞선다(§ 데몬이 읽는 setting) |
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
 
 `java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 schema v1에서 로드 오류다.
@@ -106,23 +107,24 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
 
 #### `[backup]` (`ModuleBackup` `:215-230`)
-`paths`(`{설정 이름}` 치환), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
+`paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
+- 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더 밖이면 복원은 400 `restore_outside`다.
 - 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`).
 
 #### `[[settings.fields]]` (`SettingFieldToml` `:784-822` → `SettingField` `:393-444`)
 | 키 | 타입 | 기본값 |
 |---|---|---|
 | `name` | String | ✔ |
-| `type` | String | `"text"` (`default_field_type`) |
+| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`). 밖이면 스키마 v1 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다 |
 | `label` | String | 없으면 `name`으로 대체 |
 | `description` | String | — |
 | `required` | bool | — |
 | `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱) |
 | `min`, `max`, `step` | f64 | — |
 | `options` | **Vec<String>** | 문자열만 허용 |
-| `group` | String | 관례상 `saba-chan` / `advanced` / 없음(basic) |
+| `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다(MK6). 그 밖의 묶음은 표시용이다 |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
 | `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일이 달라지는 값). GUI 새 서버 화면과 CLI `server add`가 묻고 `POST /api/instances`의 `module_settings`로 보낸다. GUI는 select만 보인다 |
 | `arg` | String 또는 Vec<String> | — 이 값이 실행 인자로 들어가는 모양. 공백으로 나눈 토큰, `{value}`는 많아야 한 번(`"-port={value}"`, `"-servername {value}"`, `["-Xmx{value}", "-Xms{value}"]`). `{value}`가 없으면 boolean 플래그(있으면 true). `{value}`뿐인 모양은 로드 오류. 실행 인자 미리보기가 사용자가 친 추가 인자를 이 필드로 되돌릴 때 쓴다(`src/launch_args.rs`). 실제 실행 줄은 여전히 `get_launch_command`가 만든다 |
@@ -130,7 +132,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `pattern` | String | — 값 전체가 맞아야 하는 정규식(잘못된 정규식은 로드 오류). `format`과 함께 PATCH 저장과 미리보기에서 검사한다(`validator::validate_format`) |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
-- 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`)이다.
+- 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`), 정지 대기 시간(초) `stop_timeout`(모듈 `[config] stop_timeout`보다 앞선다, 1~3600, `supervisor::stop_timeout_of`, MK14. 데몬이 기다리는 managed 정지에 쓴다. non-managed 정지는 모듈 `stop()` 호출 하나라서 모듈 호출 시간 제한에 묶여 120초를 넘는 값은 효과가 없다)이다. 이 값들도 module_settings라서 모듈 함수 config에 펼쳐 들어간다(모듈 `stop()`이 직접 기다릴 때도 `stop_timeout`을 쓸 수 있다).
 - 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file`.
 
 #### `[[commands.fields]]` (`CommandFieldToml` `:928-949` → `CommandField` `:352-370`)
@@ -150,7 +152,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 
 `[commands] hook = true`면 lifecycle `instance_commands()`가 인스턴스마다 명령을 더 준다(설치된 플러그인 명령처럼 서버 폴더에 따라 달라지는 것). 결과는 `{success, commands:[명령 필드와 같은 모양 + group?], components?}`이다. 데몬(`crate::commands::InstanceCommands`)은 module.toml 명령 뒤에 붙여 같은 방식으로 해석하고, module.toml의 이름·별명과 겹치는 것과 이름에 공백이 있는 것은 뺀다. 명령 실행은 module.toml에서 못 찾은 이름일 때만 이 목록을 보며 60초 동안 기억한 값을 쓰고, `GET /api/instance/:id/commands`는 매번 새로 읽는다(`D:src/ipc/handlers/command.rs` `instance_commands`). `fields` 없이 `hook`만 있어도 된다.
 
-`[[commands.fields.inputs]]` (`CommandInputToml` `:953-972`)의 허용 키: `name`✔, `label`, `type`, `required`, `placeholder`, `default`, `min`, `max`, `options`. 데몬이 입력을 묶고 검사할 때 이 값을 쓴다 (`commands/mod.rs:196-`).
+`[[commands.fields.inputs]]` (`CommandInputToml` `:953-972`)의 허용 키: `name`✔, `label`, `type`, `required`, `placeholder`, `default`, `min`, `max`, `options`. `type`은 `text`·`password`·`number`·`select`·`boolean` 중 하나다(`COMMAND_INPUT_TYPES`, 어기면 설정 `type`과 같이 처리한다). 데몬이 입력을 묶고 검사할 때 이 값을 쓴다 (`commands/mod.rs:196-`).
 
 #### `[[syntax_highlight.rules]]` (`HighlightRuleToml` `:999-1015`)
 `name`✔, `pattern`✔(regex, `(?P<hl>…)` 선택), `color`✔(시맨틱 토큰), `background`, `bold`=false, `italic`=false, `underline`=false, `priority`=0. `/api/modules`로 GUI에 그대로 전달되고, 데몬은 Python 전용 정규식 문법에 경고만 남긴다 (`:1017-1035`).
@@ -191,7 +193,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 서버를 만들 때 고르는 추천 설정 묶음(예: "친구용 소규모", "하드코어"). `id`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `[presets.settings]`(`[[settings.fields]]` 이름 → 값). 값은 그 설정의 규칙(형식·범위·select 선택지)을 따라야 하고, `password`·`file`·`path` 형식 설정은 넣지 못한다. 어기면 스키마 v1 모듈은 로드에 실패한다. 표시 문구는 모듈 locales의 `presets.<id>.label`·`description`이 덮는다. `GET /api/modules`의 각 모듈 `presets`, heartbeat `modules[].presets`(`{id, label}`만)에 실리고, `POST /api/instances`의 `preset`으로 고른다(01 §`POST /api/instances`). CLI는 `server add --preset <id>`(주지 않으면 새 서버일 때 묻는다), `module info`가 id를 보여 준다.
 
 #### `[[queries]]` (`QueryToml` → `ModuleQuery`)
-읽기 전용 조회(예: 접속자 목록). 액션 `server.query:<name>`(`kind=query`, risk `safe`, 모든 표면)이 되어 GUI·CLI·디스코드·챗봇 도구로 쓰인다(01 §액션 카탈로그). 키: `name`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `function`(lifecycle.py `FUNCTIONS`의 함수 이름, Python 식별자), `inputs`(`[[commands.fields]]`의 입력과 같은 모양: `name`·`type`·`required`·`label`·`placeholder`·`default`·`min`·`max`·`options`). 로드 때 검사: 이름 형식·중복, `function`이 식별자인지, 데몬이 정해진 뜻으로 부르며 상태를 바꾸는 함수(`start`·`stop`·`command`·`configure`·`get_launch_command`·`import_settings`·`install_server`·`reset_properties`·`reset_server`·`accept_agreements`)가 아닌지, 입력 이름 형식·중복, 입력 `type`이 `text`(기본)·`number`·`select`인지, `select`에 `options`가 있는지, `min ≤ max`. 어기면 스키마 v1 모듈은 로드에 실패하고, `schema_version`이 없는 모듈은 경고만 남기되 `[[queries]]`를 모두 끈다. 표시 문구는 모듈 locales의 `queries.<name>.label`·`description`이 덮는다(없으면 `label`·`description`, 그것도 없으면 `name`). `GET /api/modules`의 각 모듈 `queries`에 실린다.
+읽기 전용 조회(예: 접속자 목록). 액션 `server.query:<name>`(`kind=query`, risk `safe`, 모든 표면)이 되어 GUI·CLI·디스코드·챗봇 도구로 쓰인다(01 §액션 카탈로그). 키: `name`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `function`(lifecycle.py `FUNCTIONS`의 함수 이름, Python 식별자), `inputs`(`[[commands.fields]]`의 입력과 같은 모양: `name`·`type`·`required`·`label`·`placeholder`·`default`·`min`·`max`·`options`). 로드 때 검사: 이름 형식·중복, `function`이 식별자인지, 데몬이 정해진 뜻으로 부르며 상태를 바꾸는 함수(`start`·`stop`·`command`·`configure`·`get_launch_command`·`import_settings`·`install_server`·`reset_properties`·`reset_server`·`accept_agreements`·`functions`)가 아닌지, 입력 이름 형식·중복, 입력 `type`이 `text`(기본)·`number`·`select`인지, `select`에 `options`가 있는지, `min ≤ max`. 어기면 스키마 v1 모듈은 로드에 실패하고, `schema_version`이 없는 모듈은 경고만 남기되 `[[queries]]`를 모두 끈다. 표시 문구는 모듈 locales의 `queries.<name>.label`·`description`이 덮는다(없으면 `label`·`description`, 그것도 없으면 `name`). `GET /api/modules`의 각 모듈 `queries`에 실린다.
 
 ```toml
 [[queries]]
@@ -237,7 +239,7 @@ spawn_process = true
 ```
 
 #### `[status]` (`StatusSection`)
-켜진 서버의 상태를 더 알려 주는 함수(Q-5). 지금 키는 `players` 하나다: 접속자 수를 돌려주는 lifecycle 함수 이름(`[[queries]]`의 `function`과 같은 검사: Python 식별자, 상태를 바꾸는 함수가 아님. 어기면 스키마 v1은 로드 실패, 스키마 이전 모듈은 경고만 남기고 부르지 않는다). 데몬은 켜진(트래커에 PID가 있는) 서버마다 1분에 한 번, 10초 제한으로 부르고 마지막 값을 기억한다(`supervisor/players.rs`). 실패하거나 서버가 꺼지면 값을 지운다. 값은 `GET /api/servers`의 `players`와 relay 하트비트 `servers[].players`(05 §4)로 나간다. 함수 계약은 §2.3.
+켜진 서버의 상태를 더 알려 주는 함수(Q-5). 지금 키는 `players` 하나다: 접속자 수를 돌려주는 lifecycle 함수 이름(`[[queries]]`의 `function`과 같은 검사: Python 식별자, 상태를 바꾸는 함수가 아님. 어기면 스키마 v1은 로드 실패, 스키마 이전 모듈은 경고만 남기고 부르지 않는다). 데몬은 켜진(트래커에 PID가 있는) 서버마다 1분에 한 번, 10초 제한으로 부르고 마지막 값을 기억한다(`supervisor/players.rs`). 실패하거나 서버가 꺼지면 값을 지운다. 값은 `GET /api/servers`의 `players`와 relay 하트비트 `servers[].players`(05 §4)로 나간다. 같은 프로세스에서 5분 넘게 계속 실패하면(시간 초과 포함) 마지막 실패 `message`가 `GET /api/servers`의 `unresponsive`로 나가고 GUI에 응답 없음 경고로 보인다(01 §ServerInfo). 수를 알 수 없는 설정이면 실패 대신 `{"success": true}`를 돌려줘야 경고가 뜨지 않는다. 함수 계약은 §2.3.
 
 ```toml
 [status]
@@ -264,7 +266,7 @@ players = "player_count"
 - **확인되지 않은 구성요소 (Windows)**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션은 Python을 격리해서 띄운다(`D:src/sandbox/`). 백신 검사(Defender `MpCmdRun`·AMSI)는 하지 않는다: 깨끗한 파일 오판정과 큰 jar 검사로 시작이 몇 분씩 멈추는 문제가 있어 0.1.7에서 뺐다. 예전 데몬이 남긴 `<data_dir>/scan-verdicts.json`은 읽지 않는다. 신뢰 표시의 키는 모듈이면 `module-<폴더 이름>`, 익스텐션이면 `ext-<manifest id>`다(폴더 이름은 id의 `-`를 `_`로 바꾼 것이라 다를 수 있다. 그 폴더 이름에 맞지 않는 id는 받지 않고 폴더 이름을 쓴다, `sandbox::component_of`).
   - Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만. 루프백 예외를 주지 않으므로 같은 PC의 데몬 API·로컬 프록시에는 닿지 못한다) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
-    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`, 그리고 데몬이 아는 Java 런타임 설치 폴더(`sandbox::runtime_homes`: 데몬 환경의 `JAVA_HOME`, 데몬 PATH의 모든 `java`, 알려진 설치 위치의 JDK·JRE(`SABA_JAVA_RUNTIMES`와 같은 목록). 링크를 따라간 실제 실행 파일이 `<폴더>/bin/java(w)`이고 그 폴더에 `release` 파일이 있을 때만. 모듈은 `java -version`으로 런타임을 확인하는데 AppContainer는 Program Files 밖 폴더를 읽지 못한다). 이 런타임 폴더는 권한을 주지 못하면(관리자가 설치한 폴더 등) 경고만 하고 빼고 띄운다. 사용자가 정한 `java_path`(인스턴스 `user_settings`에 있는 것, 아래)는 설정을 저장할 때 같은 판정으로 그 구성요소 프로필에 읽기를 준다(`sandbox::open_user_runtime`. 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없어 쓰지 않는다). `java_path`는 파일 시스템에 묻기 전에 로컬 드라이브의 절대 경로이고 `..`가 없는지 본다(UNC·장치 경로는 거부, `\\?\C:\` 같은 로컬 드라이브 경로는 받는다, `sandbox::plain_local_path`). 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서), 그리고 이 실행이 import한 익스텐션이 쓸 `<data_dir>/sandbox-data/<꼬리표>/extension-data`(`SABA_EXTENSION_DATA_ROOT`, 아래). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 표시를 바꾸려면 그 폴더의 WRITE_OWNER가 있어야 하는데, 사용자가 `C:\` 바로 아래 만든 폴더(`C:\Games` 등)는 상속받은 "수정" 권한뿐이라 소유자에게도 없다. 이때는 소유자가 데몬 사용자일 때만, 소유자가 원래 가진 DACL 고치기 권한으로 그 폴더에 OWNER RIGHTS(`S-1-3-4`) `READ_CONTROL`·`WRITE_DAC`·`WRITE_OWNER` ACE를 잠깐 더해 핸들을 열고, 표시를 붙이기 전에 원래 DACL로 되돌린다(ACE는 남지 않는다). 그래서 사용자가 서버 폴더로 고른 `C:\` 바로 아래 폴더도 그 구성요소가 실제로 쓸 수 있게 된다(쓰기를 준 다른 폴더와 같다). 표시를 지원하지 않는 볼륨이라 붙이지 못하면 경고만 남기고 계속한다(그 폴더 쓰기가 안 될 수 있다). 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다. 낮은 수준 표시는 아래 "서버 폴더의 낮은 수준 표시 걷기"에서 서버를 띄우기 전에 걷힌다). 런타임 폴더 읽기 권한(데몬 런타임, 사용자 `java_path`) 중 그 프로필 SID의 명시 ACE로 열린 것(지금 더한 것, 예전 데몬이 더해 둔 것. 데몬이 더하는 권한·상속 표시와 똑같은 ACE만 데몬 것으로 보고, 관리자가 따로 준 다른 모양의 ACE는 기록하지 않는다. 위 폴더에서 상속받았거나 ALL APPLICATION PACKAGES로 이미 읽을 수 있는 폴더는 이 폴더에서 거둘 것이 없어 빼고, 판정은 격리 실행마다 `[Sandbox] runtime …` 로그 한 줄)은 `<data_dir>/sandbox-grants.json`(프로필 → 폴더)에 기록하고, 데몬이 시작할 때 지금 데몬이 아는 런타임도 아니고 그 프로필 모듈의 인스턴스가 쓰는 사용자 `java_path`도 아닌 것은 거둔다(`sandbox::reconcile_runtimes`, 그 SID의 명시 ACE를 뺀다). 폴더가 남아 있는데 거두지 못한 것은 기록에 두고 다음 시작 때 다시 시도한다. 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 재분석 지점이면 실행을 멈춘다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
+    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`, 그리고 데몬이 아는 Java 런타임 설치 폴더(`sandbox::runtime_homes`: 데몬 환경의 `JAVA_HOME`, 데몬 PATH의 모든 `java`, 알려진 설치 위치의 JDK·JRE(`SABA_JAVA_RUNTIMES`와 같은 목록). 링크를 따라간 실제 실행 파일이 `<폴더>/bin/java(w)`이고 그 폴더에 `release` 파일이 있을 때만. 모듈은 `java -version`으로 런타임을 확인하는데 AppContainer는 Program Files 밖 폴더를 읽지 못한다). 이 런타임 폴더는 권한을 주지 못하면(관리자가 설치한 폴더 등) 경고만 하고 빼고 띄운다. 사용자가 정한 `java_path`(인스턴스 `user_settings`에 있는 것, 아래)는 설정을 저장할 때 같은 판정으로 그 구성요소 프로필에 읽기를 준다(`sandbox::open_user_runtime`. 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없어 쓰지 않는다). `java_path`는 파일 시스템에 묻기 전에 로컬 드라이브의 절대 경로이고 `..`가 없는지 본다(UNC·장치 경로는 거부, `\\?\C:\` 같은 로컬 드라이브 경로는 받는다, `sandbox::plain_local_path`). 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`와 `instance_data_dirs`(이 폴더 키들은 데몬만 정하고 모듈 설정의 같은 키는 config에 싣지 않는다. `import_settings`로 아무 경로나 넣을 수 있어서다. `instance_data_dirs`는 데몬이 인스턴스를 가리키는 호출(처음 설치하는 `install_server` 포함)마다 모듈 설정 값 중 그 인스턴스 폴더 안을 가리키는 경로를 인스턴스 폴더 바로 아래 항목 단위로 모은 목록이다(`Supervisor::insert_instance_fields`): 좀보이드 `cache_dir`처럼 서버 폴더 옆에 둔 모듈 데이터를 쓸 수 있게 한다. 인스턴스 폴더 자체, `..`가 든 경로, 데몬 항목 `instance::DAEMON_ENTRIES`(`instance.json`·`settings.json`·`managed.pid`·`run`·`logs`·`backups`·`rcon.json`. 대소문자(유니코드)와 끝의 점·공백을 가리지 않고, `~`·`:`가 든 이름도 같은 항목으로 본다, `is_daemon_entry`)와 이미 있는 파일은 넣지 않는다. 익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서), 그리고 이 실행이 import한 익스텐션이 쓸 `<data_dir>/sandbox-data/<꼬리표>/extension-data`(`SABA_EXTENSION_DATA_ROOT`, 아래). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 표시를 바꾸려면 그 폴더의 WRITE_OWNER가 있어야 하는데, 사용자가 `C:\` 바로 아래 만든 폴더(`C:\Games` 등)는 상속받은 "수정" 권한뿐이라 소유자에게도 없다. 이때는 소유자가 데몬 사용자일 때만, 소유자가 원래 가진 DACL 고치기 권한으로 그 폴더에 OWNER RIGHTS(`S-1-3-4`) `READ_CONTROL`·`WRITE_DAC`·`WRITE_OWNER` ACE를 잠깐 더해 핸들을 열고, 표시를 붙이기 전에 원래 DACL로 되돌린다(ACE는 남지 않는다). 그래서 사용자가 서버 폴더로 고른 `C:\` 바로 아래 폴더도 그 구성요소가 실제로 쓸 수 있게 된다(쓰기를 준 다른 폴더와 같다). 표시를 지원하지 않는 볼륨이라 붙이지 못하면 경고만 남기고 계속한다(그 폴더 쓰기가 안 될 수 있다). 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다. 서버 실행 파일의 낮은 수준은 아래 "서버 폴더의 낮은 수준 표시 걷기"에서 서버를 띄우기 전에 덮인다). 런타임 폴더 읽기 권한(데몬 런타임, 사용자 `java_path`) 중 그 프로필 SID의 명시 ACE로 열린 것(지금 더한 것, 예전 데몬이 더해 둔 것. 데몬이 더하는 권한·상속 표시와 똑같은 ACE만 데몬 것으로 보고, 관리자가 따로 준 다른 모양의 ACE는 기록하지 않는다. 위 폴더에서 상속받았거나 ALL APPLICATION PACKAGES로 이미 읽을 수 있는 폴더는 이 폴더에서 거둘 것이 없어 빼고, 판정은 격리 실행마다 `[Sandbox] runtime …` 로그 한 줄)은 `<data_dir>/sandbox-grants.json`(프로필 → 폴더)에 기록하고, 데몬이 시작할 때 지금 데몬이 아는 런타임도 아니고 그 프로필 모듈의 인스턴스가 쓰는 사용자 `java_path`도 아닌 것은 거둔다(`sandbox::reconcile_runtimes`, 그 SID의 명시 ACE를 뺀다). 폴더가 남아 있는데 거두지 못한 것은 기록에 두고 다음 시작 때 다시 시도한다. 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 링크류 재분석 지점이면 실행을 멈춘다. 압축(WOF)·중복 제거처럼 이름 대리 표시가 없는 재분석 지점은 같은 파일이라 보통처럼 다룬다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다.
     - 환경: `SABA_TOKEN_PATH`를 뺀다. `PYTHONPYCACHEPREFIX`는 `pycache-sandbox/<꼬리표>`, `TEMP`·`TMP`는 `sandbox-temp/<꼬리표>`.
     - 시간 초과면 Job째 끝낸다.
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.
@@ -276,10 +278,12 @@ players = "player_count"
   - `PYTHONPATH` = `<python-guard>` + `<extensions_dir의 부모>` + `<modules_dir>` + 기존 `PYTHONPATH`.
     - 그래서 `import extensions.steamcmd`, `import daemon_rcon`, `import i18n`이 가능하다.
     - `python-guard/sitecustomize.py`는 활성 목록에 없는 `extensions.<이름>` import를 막는다 (`:114-126`).
+    - 격리 없이 도는 실행(확인된 모듈·익스텐션, Windows)은 확인된 익스텐션만 import한다: 확인되지 않은(공식이 아니거나 고쳐진) 활성 익스텐션은 `SABA_ENABLED_EXTENSIONS`에서 빠지고 `SABA_UNVERIFIED_EXTENSIONS`에 들어가, import하면 "not verified" `ModuleNotFoundError`가 난다(`plugin::importable_extensions`). 그 코드가 격리 없이 그 실행의 권한(토큰 경로 등)으로 돌지 않게 한다. 격리된 실행은 활성 익스텐션을 모두 import한다(같은 격리 안에서 돈다). 격리 준비가 실패해 사용자 동의로 격리 없이 도는 실행(`Spawned::Unisolated`)은 격리 없는 실행과 같이 확인된 익스텐션만 import한다(동의는 그 구성요소 하나에 대한 것이다). 단, 동의한 구성요소가 익스텐션이면 자기 패키지(`extensions.<자기 id>`)는 import할 수 있다(이미 그 실행의 코드다).
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:126-147`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:315-322`). 목록이 없으면 빈 값이다.
-  - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-38`).
+  - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-38`).
   - `SABA_EXTENSION_DATA_ROOT` = 모듈이 import한 익스텐션(SteamCMD 등)이 받은 파일을 `<뿌리>/<익스텐션 id>`에 두는 뿌리(`sandbox::extension_data_root`). 보통은 `<data_dir>/extension-data`, 격리 실행은 구성요소마다 따로인 `<data_dir>/sandbox-data/<꼬리표>/extension-data`다(공용 폴더에 쓰게 하면 확인된 실행이 그 파일을 격리 없이 실행할 수 있다). 데몬이 만들고 격리 실행에는 쓰기를 준다.
+  - `SABA_LOOPBACK_DIR` = 격리 실행에만 둔다. AppContainer는 127.0.0.1에 닿지 못하므로(능력은 `internetClient`뿐) 공용 도우미 `daemon_rcon.loopback_exchange`·`loopback_http`가 이 값이 있으면 직접 연결하지 않고 데몬에 맡긴다(`plugin/loopback.rs`). 도우미는 stderr에 `LOOPBACK:{id, port, data(base64), timeout, idle_ms?}` 한 줄을 쓰고, 데몬은 `127.0.0.1:port`와 주고받은 결과를 `<SABA_LOOPBACK_DIR>/<id>.json`(`{ok:true, data}` 또는 `{ok:false, error}`)으로 둔다. 도우미가 읽고 지운다. 허용 포트는 데몬이 만든 config의 `port`·`rest_port`뿐이고(다른 `*_port` 모듈 설정은 모듈이 `import_settings`로 바꿀 수 있어 넣지 않는다), 밖이면 `port_not_allowed`로 거절하고 로그만 남긴다. 그 포트에서 듣는 프로세스가 데몬이 추적하는 그 인스턴스의 서버이거나 그 자식이 아니면(서버가 꺼져 있을 때 포함) `port_not_served`로 거절한다. 서버 PID는 데몬이 `PluginCall::serving`으로 넘긴 값이고 config의 `pid`는 쓰지 않는다. 상한은 보내기 64 KiB, 받기 1 MiB, 요청당 30초, `idle_ms` 2초, 한 실행 64건이고, 넘친 요청은 `too_many_requests`로 바로 거절한다. 받기는 서버가 닫을 때까지이고, `idle_ms`가 있으면 답이 온 뒤 그만큼 조용할 때 끝난다(마인크래프트 상태 핑처럼 닫지 않는 프로토콜). `LOOPBACK:` 줄은 인증 머리글이 들 수 있어 로그에 남기지 않는다. 격리 준비에 실패해 사용자 동의로 격리 없이 도는 실행에는 두지 않는다.
   - `SABA_JAVA_RUNTIMES` = 데몬이 찾은 Java 런타임의 JSON 배열 `[{java, home, version, major, arch}]`(`sandbox::java_runtimes`). 순서는 데몬 환경의 `JAVA_HOME`, PATH의 모든 `java`, 알려진 설치 위치(Windows는 Program Files 두 곳, 그 밖은 `/usr/lib`의 `<공급자>/<jdk>`, 공급자 폴더는 `JAVA_VENDOR_DIRS`)다. `release` 파일이 있는 실제 JDK·JRE만 들고(Oracle `javapath` 같은 바로가기는 빠진다), `version`은 그 `JAVA_VERSION`, `major`는 주 버전(`1.8.0_381`→8), `arch`는 `release`의 `OS_ARCH`(`amd64`·`x86` 등, 없으면 빈 문자열)다. 모듈은 필요한 주 버전 이상의 64비트 런타임을 여기서 고르고, 격리 실행에서도 이 폴더들은 읽을 수 있다. 사용자가 정한 `java_path`는 따로 config로 온다.
     - ~~문서는 `DAEMON_API_URL`을 주입한다고 한다~~ → 해결: 다시 쓴 개발 가이드는 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`이라고 적는다(`M:docs/module-development-guide.md:31`). `daemon_rcon.py`는 `DAEMON_API_URL`이 있으면 그것을, 없으면 `SABA_IPC_URL`을, 둘 다 없으면 `http://127.0.0.1:57474`를 쓴다 (`D:modules/daemon_rcon.py:36-42`).
 
@@ -294,6 +298,8 @@ players = "player_count"
 
 모르는 함수 이름이 오면 `{"success":false,"message":"Unknown function: X"}`를 돌려주고 종료 코드는 네 모듈 모두 0이다 (zomboid는 `return`, `M:zomboid/lifecycle.py:1466-1473`).
 
+예약 함수 `functions`(MK1): 모듈이 구현한 lifecycle 함수 이름(`FUNCTIONS`의 키, `functions` 자신은 빼고)을 `{"success": true, "functions": [...]}`로 돌려준다. 공용 진입점 `daemon_rcon.run_lifecycle(FUNCTIONS)`은 표에 `functions`가 없으면 이렇게 자동으로 답한다. 데몬은 이 목록을 `GET /api/modules`의 `functions`로 내보내고, 목록에 없는 선택 함수는 부르지 않고 `not_supported`로 답한다(01 §`GET /api/modules`). 답하지 못하는 옛 모듈은 목록을 모르는 것으로 다뤄 아무것도 숨기지 않는다. `functions`는 `[[queries]]`·`[status] players`의 `function`으로 쓸 수 없다.
+
 **에러 관례 (코드에서 관찰한 것)**:
 - 공통 응답: `success: bool`, `message: str`.
 - `get_launch_command` 성공: `program`, `args[]`, `working_dir`, `env_vars{}`. 그 밖의 선택 키:
@@ -302,27 +308,28 @@ players = "player_count"
   - `extra_args_placed: true`: 받은 `extra_args`를 모듈이 알맞은 자리(예: JVM 인자는 `-jar` 앞)에 넣었다. 없으면 데몬이 `args` 끝에 붙인다(`supervisor::launch_args`).
 - `get_launch_command` 사용자 조치 필요: `action_required: "<code>"`를 넣으면 데몬이 결과를 그대로 GUI에 넘긴다 (`mod.rs:795-799, 1524-1527`). minecraft는 `server_jar_not_found` + `options:["update_path","install_new"]`를 쓴다.
 - 익스텐션 누락: `error_code: "extension_required"`, `missing_extensions[]`.
+- 데몬은 그 실행에서 확인되지 않아 import를 막은 익스텐션(`SABA_UNVERIFIED_EXTENSIONS`)만으로 `missing_extensions`가 채워진 `extension_required`를 `error_code: "extension_not_verified"`, `unverified_extensions[]`, 영문 `message`로 바꿔 돌려준다(`plugin/mod.rs` `explain_unverified_extensions`). 모듈이 import 실패를 삼켜도 설치·활성화 안내 대신 "파일이 바뀌어 확인되지 않음"이 보이게 하려는 것이다.
 - `status`: `status` 문자열과 `pid`를 데몬이 읽는다. 나머지 키는 버린다 (`mod.rs:1182-1197`).
 - `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance.rs:531-559`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
-- `list_versions`: 데몬은 `latest.release` 또는 `latest_release`만 읽는다 (`instance.rs:461-476`).
 - `get_installed_version`: `version`.
 - `get_credentials`: `success`, `rest_username`, `rest_password`. 데몬은 REST 자격증명만 쓴다 (`command.rs:579-581, 660-687`). 지금은 palworld만 구현한다. minecraft·zomboid는 RCON 값만 돌려주던 이 함수를 지웠다.
 - `import_settings`: `success`, `settings{}`. `port`·`rest_port`와 credential_map의 게임 키(→ `rest_password`)는 인스턴스 필드로도 맞춘다 (`D:src/instance/mod.rs:172-206`). 마이그레이션에서는 `executable_path`(작업 폴더 기준 상대 경로, 모듈이 찾은 서버 실행 파일)와 `detected`(판정 결과, 데몬은 내용을 보지 않고 생성 응답에 넘긴다)도 읽는다.
 - `instance_commands`: `success`, `commands[]`(명령 필드 + `group`), `components` (`[commands] hook = true`일 때).
-- `install_server`: config에 인스턴스 설정 `settings{}`가 온다(프로비저닝·업데이트).
+- `install_server`: config에 인스턴스 설정 `settings{}`가 온다(프로비저닝·업데이트, `instance_id`를 준 `POST /api/module/:name/install`).
+- `list_versions`: config `settings{}`(인스턴스 설정)로 그 설정에서 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 Paper·Folia는 안정 빌드가 나온 가장 새 버전. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다).
 - `backup_paths`: `success`, `paths[]` (`[backup] hook = true`일 때).
 
 ### 2.3 데몬이 호출하는 함수 전체 목록과 전달 config
 
 | 함수 | 호출 지점 | 데몬이 넣는 config 키 |
 |---|---|---|
-| `get_launch_command` | managed 시작 `mod.rs:1500-1520`, non-managed 시작 `mod.rs:773-792`, 실행 인자 미리보기(`Supervisor::launch_preview`) | (요청 payload.config) + `server_executable`, `server_jar`(없을 때), `working_dir`, `port`, **`module_settings`를 최상위로 펼침**, `rest_host`, `rest_port`, `rest_username`, `rest_password`, `protocol_mode`, `server_version`, `instance_id`, `extra_args`(사용자가 더한 인자, 문자열 배열), `managed: true/false` (`insert_instance_fields`). 미리보기에서는 `preview: true`도 온다: 이때 모듈은 설정 파일을 쓰는 등 부작용을 내지 않는다 |
-| `stop` | non-managed 정지 `mod.rs:1068-1077`, stdin을 쓸 수 없는 managed 서버(REST 전용, stdin 없는 재부착)의 정지 `mod.rs:971-982` | `server_executable`, `server_jar`, `working_dir`, `module_settings`(펼침), `rest_*`, `protocol_mode`, `server_version`, `instance_id`(`insert_instance_fields`, `mod.rs:481-498`), `pid`, `force`, `managed`. 추적 중인 PID가 없으면 non-managed에서는 부르지 않는다 (`mod.rs:1057-1066`). 콘솔이 있는 managed 서버는 이 함수를 부르지 않고 데몬이 `stop_command`를 stdin으로 보낸 뒤 기다린다 (`mod.rs:949-969`) |
-| `status` | non-managed 상태 조회 `mod.rs:1160-1178` | `server_executable`, `server_jar`, `working_dir`, `pid`, `module_settings`(펼침) |
+| `get_launch_command` | managed 시작 `mod.rs:1500-1520`, non-managed 시작 `mod.rs:773-792`, 실행 인자 미리보기(`Supervisor::launch_preview`) | (요청 payload.config) + `server_executable`, `working_dir`, `port`, **`module_settings`를 최상위로 펼침**, `rest_host`, `rest_port`, `rest_username`, `rest_password`, `protocol_mode`, `server_version`, `instance_id`, `extra_args`(사용자가 더한 인자, 문자열 배열), `managed: true/false` (`insert_instance_fields`). 미리보기에서는 `preview: true`도 온다: 이때 모듈은 설정 파일을 쓰는 등 부작용을 내지 않는다 |
+| `stop` | non-managed 정지 `mod.rs:1068-1077`, stdin을 쓸 수 없는 managed 서버(REST 전용, stdin 없는 재부착)의 정지 `mod.rs:971-982` | `server_executable`, `working_dir`, `module_settings`(펼침), `rest_*`, `protocol_mode`, `server_version`, `instance_id`(`insert_instance_fields`, `mod.rs:481-498`), `pid`, `force`, `managed`. 추적 중인 PID가 없으면 non-managed에서는 부르지 않는다 (`mod.rs:1057-1066`). 콘솔이 있는 managed 서버는 이 함수를 부르지 않고 데몬이 `stop_command`를 stdin으로 보낸 뒤 기다린다 (`mod.rs:949-969`) |
+| `status` | non-managed 상태 조회 `mod.rs:1160-1178` | `server_executable`, `working_dir`, `pid`, `module_settings`(펼침) |
 | `command` | `POST /api/instance/:id/command`에서 명령의 `method`가 `module`일 때 → `mod.rs:1220-1279` | `command`, `args`, `protocol_mode`, `working_dir`, `rest_host`, `rest_port`, `pid`, `instance_id` |
 | `get_credentials` | `/rest` 요청 시. 결과를 캐시하므로 캐시가 있으면 Python을 띄우지 않는다 (`command.rs:660-687`) | `working_dir` |
-| `validate` | `POST /api/instance/:id/validate`, 그리고 `POST /api/instance/:id/start`의 시작 전 점검(`server.rs:712-764`) → `mod.rs:1818-1859` | `server_executable`·`server_jar`(=executable_path), `working_dir`, `port`, `extension_data`, 인스턴스 값(위와 같음), `running` |
-| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance.rs:1276-1349`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}` |
+| `validate` | `POST /api/instance/:id/validate`, 그리고 `POST /api/instance/:id/start`의 시작 전 점검(`server.rs:712-764`) → `mod.rs:1818-1859` | `server_executable`(=executable_path), `working_dir`, `port`, `extension_data`, 인스턴스 값(위와 같음), `running` |
+| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance.rs:1276-1349`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rest_*`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
 | `read_properties` | `GET /properties` | `working_dir`, `extension_data`, 인스턴스 값, `port` |
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
 | `reset_server` | `POST /server/reset` | 위와 같음 |
@@ -330,12 +337,12 @@ players = "player_count"
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
 | `accept_agreements` | `POST /api/instance/:id/agreements` (동의를 기록한 뒤) | `validate`와 같은 config + `accepted_agreements:[id]`(지금까지 동의한 전부). 모듈은 자기 파일에 동의를 쓴다(예: minecraft eula.txt). 함수가 없으면 기록만 남는다 |
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1982-1990`) |
-| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식) | `include_snapshots`, `page`, `per_page` 또는 `{}` |
+| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page` 또는 최신을 고를 때 `{settings}` |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
-| `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때 인스턴스 `module_settings`), `jar_name`, `initial_settings` 등 |
-| `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `install_dir`, `jar_name`(**기본값 `"server.jar"` 하드코딩**, `mod.rs:2168-2171`) |
+| `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때, 그리고 `POST /api/module/:name/install`에 `instance_id`가 있을 때 그 인스턴스 `module_settings`), `instance_data_dirs`(같은 때), `server_executable`(요청 값, 없으면 모듈 `server_executable`), `initial_settings` 등 |
+| `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `validate`와 같은 config(`Supervisor::instance_call`: `server_executable`, `working_dir` 등). `server_executable`은 시작과 같이 `resolve_executable`로 정한다(인스턴스 경로, 옛 `module_settings.executable_path`, `working_dir` + 모듈 `server_executable` 순) |
 | `[[queries]]`의 `function` | `POST /api/instance/:id/query/:name`(액션 `server.query:<name>`) → `Supervisor::query_instance` | `validate`와 같은 config(`Supervisor::instance_call`) + `args{입력 이름: 값}`(명령 입력과 같이 검사·기본값 채움, 숫자는 숫자로). 돌려줄 것: `{"success": true, "data": <JSON>}` 또는 실패 `{"success": false, "message": "..."}`. `data`가 없으면 `success`·`message`를 뺀 나머지를 data로 본다. 읽기만 해야 한다(감사에 남지 않고 챗봇·일반 사용자도 부른다) |
-| `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한) | `validate`와 같은 config. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?}`(`max`가 없거나 0이면 최대를 모른다고 본다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 읽기만 해야 한다 |
+| `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한) | `validate`와 같은 config. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?}`(`max`가 없거나 0이면 최대를 모른다고 본다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 실패가 5분 넘게 이어지면 `message`가 `unresponsive`로 GUI에 보인다. 서버는 정상인데 수를 알 수 없으면(예: 상태 응답을 끈 설정) `online` 없이 `{"success": true}`를 돌려준다: 값은 비우고 실패로 세지 않는다. 읽기만 해야 한다 |
 | `backup_paths` | 백업 때 `[backup] hook = true`인 모듈 (`D:src/ipc/handlers/backup.rs:94-99`) | `working_dir`, `extension_data`, 인스턴스 값 |
 
 모듈의 `start` 함수는 모든 모듈에서 지워졌다(FUNCTIONS에 없음). non-managed 모드도 `get_launch_command`로 데몬이 직접 spawn한다 (`mod.rs:773-847`).
@@ -369,7 +376,7 @@ players = "player_count"
 | install_server (호출) | ✔ | ✔ | ✔ | ✔ |
 | get_installed_version (호출) | ✔ | – | – | – |
 | import_settings (호출) | ✔ | ✔ | ✔ | ✔ |
-| backup_paths (hook일 때 호출) | – | – | ✔ | – |
+| backup_paths (hook일 때 호출) | – | ✔ | ✔ | – |
 
 출처: `M:minecraft/lifecycle.py:1834-1851`, `M:palworld/lifecycle.py:1473-1490`, `M:zomboid/lifecycle.py:1432-1445`, `M:__example/__example__lifecycle.py:478-488`.
 
@@ -380,11 +387,10 @@ players = "player_count"
 ### 2.5 공용 Python 유틸 (`D:modules/`)
 
 - `i18n.py`: `I18n(module_dir)`가 `locales/<lang>.json`을 읽는다. 언어는 `SABA_LANG`으로 정하고 기본값은 `en`이다. 점 표기 키와 `{{var}}` 보간을 지원한다. `__example/i18n.py`는 같은 파일의 복사본이다.
-- `daemon_rcon.py`: 데몬 HTTP `/api/instance/:id/rcon`(실제로는 stdin)을 감싸는 래퍼다. 이름만 RCON이고 RCON 소켓은 열지 않는다. 임의 경로용 `daemon_post`, stdin 전송, PID 확인·강제 종료, 설정값 조회·형 변환, `run_lifecycle` 진입점 같은 공용 헬퍼도 들어 있다 (`D:modules/daemon_rcon.py:8-13`).
-  - 주소는 `DAEMON_API_URL` → `SABA_IPC_URL` → `http://127.0.0.1:57474` 순서다 (`:36-42`).
-  - `SABA_TOKEN_PATH` 파일의 토큰을 `X-Saba-Token` 헤더로 보낸다 (`:45-57`). palworld(`execute_rest_via_daemon` `M:palworld/lifecycle.py:1414-`)는 `daemon_post`를, minecraft·zomboid·__example은 공용 `daemon_stdin_command`(`/stdin`에 `{"command"}`, `D:modules/daemon_rcon.py:83-85`)와 PID 헬퍼 `is_process_alive`·`wait_for_exit`·`force_kill`을 쓴다 (`M:zomboid/lifecycle.py:36`).
-  - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다.
-  - 예전 호환 함수 `rcon_command(host,port,pw,cmd)`는 `instance_id`가 있으면 데몬 경로로 보내고, 없으면 `ConnectionError`를 낸다. 직접 소켓 RCON 폴백은 지워졌다.
+- `daemon_rcon.py`: 모듈 공용 헬퍼다. 이름은 예전 `from daemon_rcon import ...` 줄을 살리려고 남겼고 RCON 소켓은 열지 않는다. 임의 경로용 `daemon_post`, stdin 전송(`daemon_stdin_command`), 루프백 중계, PID 확인·강제 종료, 설정값 조회·형 변환, `run_lifecycle` 진입점이 들어 있다 (`D:modules/daemon_rcon.py:9-15`). RCON 명령 전용 함수는 없다. RCON만 받는 모듈은 `daemon_post`로 `/api/instance/:id/rcon`을 부른다(RCON 정책).
+  - 주소는 `DAEMON_API_URL` → `SABA_IPC_URL` → `http://127.0.0.1:57474` 순서다 (`:40-46`).
+  - `SABA_TOKEN_PATH` 파일의 토큰을 `X-Saba-Token` 헤더로 보낸다 (`:49-61`). palworld(`execute_rest_via_daemon` `M:palworld/lifecycle.py:1414-`)는 `daemon_post`를, minecraft·zomboid·__example은 공용 `daemon_stdin_command`(`/stdin`에 `{"command"}`, `D:modules/daemon_rcon.py:87-89`)와 PID 헬퍼 `is_process_alive`·`wait_for_exit`·`force_kill`을 쓴다 (`M:zomboid/lifecycle.py:36`).
+  - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다. RCON 접속에는 데몬이 만든 `rcon.json` 값만 쓴다(RCON 정책).
 - 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/gui/src-tauri/src/lib.rs:433-435, 856-876`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
 
 ---
@@ -399,7 +405,7 @@ players = "player_count"
 |---|---|---|
 | 엔트리 | `Supervisor::start_managed_server` `mod.rs:1298-1686` | `Supervisor::start_server` `mod.rs:550-855` |
 | 사전 검사 | 중복 실행 방지(managed_store와 tracker PID 생존 확인), 모듈 의존성, 포트 충돌, 시작 중 표시(`StartGuard`), extension `server.pre_start` hook | 포트 충돌, 모듈 의존성, `requires_extensions` 검증, 시작 중 표시, `server.pre_start` hook |
-| spawn | saba-runner가 있으면 `ManagedProcess::spawn_with_runner`, 없으면 `ManagedProcess::spawn`(stdin, stdout, stderr 파이프) (`mod.rs:1622-1660`) | `TokioCommand` — stdio 모두 `null`, 콘솔 없음 |
+| spawn | saba-runner가 있으면 `ManagedProcess::spawn_with_runner`(러너가 10초 안에 `runner.json`을 쓰지 못하면 러너와 그 자식을 끝내고 시작 실패), 없으면 `ManagedProcess::spawn`(stdin, stdout, stderr 파이프) (`mod.rs:1622-1660`) | `TokioCommand` — stdio 모두 `null`, 콘솔 없음 |
 | 추적 키 | `tracker.track(instance.id, pid)` | `tracker.track(instance.id, pid)` (`mod.rs:846-847`) |
 | PID 영속화 | `<instance_dir>/managed.pid`, runner면 `<instance_dir>/run/` | 없음 |
 | 자격증명 동기화 | `rest_credentials` 또는 `credential_map` | 없음 |
@@ -409,12 +415,12 @@ players = "player_count"
 - **확인되지 않은 모듈의 실행 대상 (Windows)**: `get_launch_command`가 돌려준 `program`은 두 경로 모두 띄우기 전에 검사한다(`Supervisor::guard_launch`, `sandbox::check_launch`). 신뢰 표시가 `verified`인 모듈은 검사하지 않는다.
   - 허용: 실제 경로(링크·`..`를 푼 것)가 인스턴스 폴더나 사용자가 정한 서버 폴더(`working_dir`) 안에 있는 파일. 모듈이 돌려준 `working_dir`은 허용 위치로 쓰지 않는다.
   - 경로가 있는 상대 `program`은 데몬 폴더가 아니라 모듈이 돌려준 `working_dir` 기준으로 풀어 검사하고, 검사한 그 절대 경로로 띄운다.
-  - 허용: 경로 없는 `java`·`javaw`, 그리고 사용자가 정한 설정 `java_path`(인스턴스 `user_settings`에 있고 로컬 드라이브 절대 경로인 것)가 가리키는 java. 인스턴스 `user_settings`는 사용자가 직접 정한 `module_settings` 키다: 만들 때 보낸 값이 모듈 기본값(`{instance_dir}`을 바꾼 값 포함)·고른 프리셋과 다를 때, 설정 저장(`PATCH`)에서 값이 바뀐 키만 기록하고, 게임 파일에서 읽어 온 값(`import_settings`)은 기록에서 뺀다. 원격(디스코드·챗봇)은 `java_path`를 바꿀 수 없다(05 문서 액션 원격 규칙). 이 기록이 생기기 전에 만든 인스턴스는 `user_settings`가 비어 있어, 사용자가 정한 `java_path`도 데몬의 `JAVA_HOME`·PATH JDK가 아니면 `launch_outside_instance`가 된다(기본값과 구별할 수 없어 자동으로 옮기지 않는다). 서버 설정에서 Java 경로를 다시 골라 저장하면 기록된다(값이 바뀐 저장만 기록하므로 같은 경로면 한 번 비워 저장한 뒤 다시 고른다. 오류 문구도 다시 고르라고 안내한다). 실행 대상·인자 파일 검사는 모듈이 준 경로가 로컬 드라이브 절대 경로가 아니면 파일 시스템에 묻지 않고 거부하거나 건너뛴다(`plain_local_path`). 데몬의 `JAVA_HOME`·PATH가 가리키는 JDK의 `bin/java(w)`도 인정한다(§2.1의 읽기를 주는 런타임과 같은 판정, `sandbox::daemon_runtimes`).
+  - 허용: 경로 없는 `java`·`javaw`, 그리고 사용자가 정한 설정 `java_path`(인스턴스 `user_settings`에 있고 로컬 드라이브 절대 경로인 것)가 가리키는 java. 인스턴스 `user_settings`는 사용자가 직접 정한 `module_settings` 키다: 만들 때 보낸 값이 모듈 기본값(`{instance_dir}`을 바꾼 값 포함)·고른 프리셋과 다를 때, 설정 저장(`PATCH`)에서 값이 바뀐 키만 기록하고, 게임 파일에서 읽어 온 값(`import_settings`)은 기록에서 뺀다. 원격(디스코드·챗봇)은 `java_path`를 바꿀 수 없다(05 문서 액션 원격 규칙). 이 기록이 생기기 전에 만든 인스턴스는 `user_settings`가 비어 있어, 사용자가 정한 `java_path`도 데몬의 `JAVA_HOME`·PATH JDK가 아니면 `launch_outside_instance`가 된다(기본값과 구별할 수 없어 자동으로 옮기지 않는다). 서버 설정에서 Java 경로를 다시 골라 저장하면 기록된다(값이 바뀐 저장만 기록하므로 같은 경로면 한 번 비워 저장한 뒤 다시 고른다. 오류 문구도 다시 고르라고 안내한다). 실행 대상·인자 파일 검사는 모듈이 준 경로가 로컬 드라이브 절대 경로가 아니면 파일 시스템에 묻지 않고 거부하거나 건너뛴다(`plain_local_path`). 인자는 그대로, `@파일`, `-옵션=값`·`-옵션:값`의 값, 그리고 Windows에서는 `;`로 나눈 경로 목록(클래스 경로 `-cp a.jar;b.jar`, `-Djava.class.path=…`)의 항목마다 본다(`sandbox::argument_files`). Java가 인자처럼 읽는 것도 같이 본다: `env_vars`의 `JAVA_TOOL_OPTIONS`·`JDK_JAVA_OPTIONS`·`_JAVA_OPTIONS`, `CLASSPATH`(경로 목록), 그리고 인자·이 변수들이 가리키는 인자 파일(`@파일`, `-XX:VMOptionsFile=파일`)의 내용(한 단계만. 로컬 경로가 아니거나 1 MiB를 넘거나 읽지 못하면 막는다)(`sandbox::indirect_arguments`). 낱말은 Java처럼 나눈다: 따옴표(`"`·`'`)는 낱말 중간에서도 벗기고, 따옴표 안 `\`를 이스케이프로 보는 규칙과 글자 그대로 보는 규칙 둘 다로 나눈 낱말을 모두 본다(`java_tokens`). 폴더·와일드카드(`-cp .`, `lib\*`)는 인스턴스 폴더 안이면 막지 않는다: 확인되지 않은 모듈이 서버 폴더에 둔 코드는 서버로 돌 수 있다(§2.1 격리 범위, 게임 서버는 격리하지 않는다). 데몬의 `JAVA_HOME`·PATH가 가리키는 JDK의 `bin/java(w)`도 인정한다(§2.1의 읽기를 주는 런타임과 같은 판정, `sandbox::daemon_runtimes`).
   - 모듈이 돌려준 `env_vars`의 `PATH`·`PATHEXT`(대소문자 무시)는 버린다. 경로 없는 `java`는 데몬의 PATH로 찾는다.
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
   - 실행 인자가 가리키는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준)도 로컬 드라이브 경로여야 한다. 아니면 `launch_outside_instance`다.
-- **서버 폴더의 낮은 수준 표시 걷기 (Windows)**: 격리 실행에 쓰기를 준 폴더에는 낮은 수준 표시가 붙고, 그 안에 받은 서버 파일(Java 등)도 표시를 상속한다. 낮은 수준 표시가 붙은 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 뜨지 못한다(예: `0xC0000135`, `0xC0000022`). 그래서 데몬은 서버를 띄우기 전에(모듈이 띄우든 익스텐션 시작 훅이 띄우든, 모든 실행이 지나는 `sandbox::guard_launch_for`에서) 신뢰 표시와 상관없이 인스턴스 폴더와 사용자가 정한 서버 폴더, 그 아래 폴더에서 낮은 수준 표시를 걷는다(위 폴더부터 걷어 상속받은 표시도 함께 빠진다. 그래도 남은 상속 표시는 표시가 붙은 다른 폴더(sandbox-temp 등)에서 옮겨 온 폴더의 것이라 그 폴더도 비운다, `sandbox::restore_server_folders` → `appcontainer::clear_low_labels`). 0.1.6까지 격리되어 표시가 남은 폴더도 다음 시작 때 고쳐진다. 격리된 모듈의 다음 Python 실행은 표시를 다시 붙이므로, 확인되지 않은 모듈은 시작할 때마다 걷고 붙인다. 걷기부터 서버 프로세스를 띄울 때까지는 격리 실행이 권한을 주지 못하게 잠근다(`sandbox::LaunchGate`, 격리 실행은 권한을 주기 전에 같은 잠금을 잡는다). 한 폴더에서 실패해도 나머지를 마저 걷고, 표시가 붙어 있는데 걷지 못했거나 표시를 읽지 못한 폴더가 남으면(읽지 못하면 표시가 남았는지 알 수 없다) 띄우지 않고 `{success:false, action_required:"server_folder_label", file, detail}`을 돌려준다. 볼륨이 파일 보안 정보를 두지 않으면(FAT·exFAT, `GetVolumeInformationW`에 `FILE_PERSISTENT_ACLS` 없음) 표시가 있을 수 없으므로 걷지 않고 넘어간다. 목록을 읽지 못한 폴더는 경고만 남긴다. 걷기는 실제 경로(`canonicalize`, `\\?\` 긴 이름)에서 시작하고, 각 경로를 열 때 `GetFinalPathNameByHandleW` 결과와 비교해 중간 폴더가 정션이면 고치지 않는다(`\\?\` 머리·짧은 이름(8.3)·대소문자·끝 구분자는 같게 본다, `appcontainer::same_final_path`).
+- **서버 폴더의 낮은 수준 표시 걷기 (Windows)**: 격리 실행에 쓰기를 준 폴더에는 낮은 수준 표시가 붙고, 그 안에 받은 서버 파일(Java 등)도 표시를 상속한다. 낮은 수준 표시가 걸린 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 뜨지 못한다(예: `0xC0000135`, `0xC0000022`). 프로세스 수준은 실행 파일의 표시만 따르므로, 데몬은 서버를 띄우기 전에(모듈이 띄우든 익스텐션 시작 훅이 띄우든, 모든 실행이 지나는 `sandbox::guard_launch_for`에서) 신뢰 표시와 상관없이 인스턴스 폴더와 사용자가 정한 서버 폴더, 그 아래 폴더의 실행 파일(`.exe`·`.com`, 대소문자 무시) 중 낮은 수준이 걸린 것에 중간 수준 표시를 직접 붙인다(`sandbox::restore_server_folders` → `appcontainer::clear_low_labels`). 직접 붙인 표시는 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고, 위 폴더 표시가 다시 퍼져도 남는다. 폴더와 다른 파일의 표시는 그대로 둔다: 폴더 표시를 걷으면 모든 하위 파일에 상속 계산이 퍼지고 다음 격리 실행이 다시 붙이며 또 퍼져, 큰 서버 폴더(파일 4만 개)는 시작마다 수십 초가 걸렸다. 그래서 격리된 모듈은 서버 설정 파일 등을 계속 쓸 수 있고, 중간 수준이 된 실행 파일은 낮은 수준 프로세스가 고치지 못한다(지우고 새로 만든 파일은 상속 표시를 받아 다음 시작 때 다시 덮인다). 0.1.6까지 격리되어 표시가 남은 폴더도 다음 시작 때 고쳐진다. 덮기부터 서버 프로세스를 띄울 때까지는 격리 실행이 권한을 주지 못하게 잠근다(`sandbox::LaunchGate`, 격리 실행은 권한을 주기 전에 같은 잠금을 잡는다). 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 걸린 실행 파일을 덮지 못했거나 그 표시를 읽지 못했거나 폴더 목록을 읽지 못했으면(실행 파일이 남았는지 알 수 없다) 띄우지 않고 `{success:false, action_required:"server_folder_label", file, detail}`을 돌려준다. 볼륨이 파일 보안 정보를 두지 않으면(FAT·exFAT, `GetVolumeInformationW`에 `FILE_PERSISTENT_ACLS` 없음) 표시가 있을 수 없으므로 넘어간다. 걷기는 실제 경로(`canonicalize`, `\\?\` 긴 이름)에서 시작하고, 각 경로를 열 때 `GetFinalPathNameByHandleW` 결과와 비교해 중간 폴더가 정션이면 고치지 않는다(`\\?\` 머리·짧은 이름(8.3)·대소문자·끝 구분자는 같게 본다, `appcontainer::same_final_path`). 링크가 아닌 재분석 지점(목록의 속성으로 거른다)은 실행 파일이 아니어도 열어 보고(압축(WOF)·중복 제거 파일·폴더는 보통처럼 다룬다), 폴더 자체나 그 아래 파일·폴더가 동기화 폴더(OneDrive 등)의 클라우드 파일(재분석 태그 `0x9000_?01A`)이면 실행 파일 여부와 상관없이 막되 `action_required: "server_in_sync_folder"`(file은 그 파일)로 알린다. 사용자 결정으로 동기화 폴더 아래 서버는 지원하지 않는다(폴더를 옮기라고 안내).
 
 **잠금**: `start_managed_handler`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:29-68`, `mod.rs:1289-1297`, C12).
 
@@ -451,19 +457,20 @@ players = "player_count"
 - **managed stop** (`mod.rs:951-1026`):
   1. `force`이면 `force_kill`을 한다.
   2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다.
-  3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다.
-  4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 `stop_timeout`(기본 30초), force면 5초다.
+  3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다. 모듈이 `{success:false, error_code:"graceful_stop_unavailable"}`로 답하면 기다리거나 강제 종료하지 않고 그 응답을 돌려준다(아래).
+  4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 인스턴스 설정 `stop_timeout`, 모듈 `stop_timeout`, 기본 30초 순이고, force면 5초다.
   5. 시간이 지나면 강제 종료하고 2초 더 기다린다.
   6. `managed_store`에서 제거하고 종료를 판정·기록하고, `managed.pid`를 삭제하고, 30초짜리 stop cooldown(`STOP_COOLDOWN_SECS`)을 등록한다.
   - palworld는 stdin이 없어 3번 경로로 간다. 모듈 `stop()`이 REST로 저장·종료를 요청한다 (`M:palworld/lifecycle.py:399-426`).
-- **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:1056-1099`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(콘솔이 없을 때 불리므로 보통 실패, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows에는 보낼 정상 종료 신호가 없어 바로 강제 종료한다.
+- **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:1056-1099`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(콘솔이 없을 때 불리므로 보통 실패, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows처럼 보낼 정상 종료 신호가 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(아래).
+- **저장 후 종료를 요청할 길이 없을 때** (MK10): 콘솔도 REST도 없는 서버(runner 없이 다시 붙은 서버 등)에서 `force: false`인 `stop()`은 서버를 끝내지 말고 `{success:false, error_code:"graceful_stop_unavailable", message}`를 돌려준다(message는 모듈 locales). 데몬은 두 경로(managed 3번, non-managed) 모두 서버를 그대로 두고 HTTP 200 `{success:false, server, error_code:"graceful_stop_unavailable", error}`로 답한다. 클라이언트는 저장 없이 끝난다는 것을 알리고 사용자가 고르면 `force: true`로 다시 요청한다. 예약 작업(재시작·업데이트)은 강제 종료하지 않고 그만둔다.
 - **extension 위임**: `server.stop` hook은 정지 전에 불린다. `handled`를 돌려주면 그대로 반환하고, 정지를 맡을 익스텐션이 실패하면 실패를 돌려준다 (`mod.rs:908-933`).
 
-### 3.5 명령 경로 (stdin/REST)
+### 3.5 명령 경로 (stdin/REST/RCON)
 
-- 데몬의 프로토콜 계층에는 REST(`rest.rs`, `client.rs`)만 남았다. RCON 코드는 지워졌다.
+- 데몬의 프로토콜 계층에는 REST(`rest.rs`, `client.rs`)와 RCON만 받는 모듈용 RCON 클라이언트(`rcon.rs`)가 있다.
 - **명령 해석**: `POST /api/instance/:id/command`가 모든 인터페이스의 단일 경로다. `crate::commands`가 module.toml 정의로 이름·별명·입력을 해석하고 `method`에 따라 콘솔·REST·모듈 `command()`로 보낸다. 정의에 없는 명령은 한 줄 그대로 콘솔로 간다 (`D:src/commands/mod.rs:1-17`, `command.rs:11-`).
-- **콘솔 경로**: `/api/instance/:id/rcon`과 `/stdin`은 서버 콘솔(stdin)에 쓰고, 콘솔 출력을 잠깐 모아 답으로 돌려준다. 콘솔이 없으면 409 `no_command_path` (위 RCON 정책).
+- **콘솔 경로**: `/api/instance/:id/rcon`과 `/stdin`은 서버 콘솔(stdin)에 쓰고, 콘솔 출력을 잠깐 모아 답으로 돌려준다. `/rcon`은 콘솔이 없고 모듈이 RCON만 받으면 RCON으로 보낸다. 둘 다 없으면 409 `no_command_path`, 서버가 입력을 읽지 않아 대기열이 차 있으면 503 `console_input_full` (위 RCON 정책).
 - **REST 경로**: `/api/instance/:id/rest`. `get_credentials`(캐시)로 게임 설정 파일의 계정을 읽는다. Basic Auth의 username 기본값은 `"admin"`이다.
 - **RCON 끄기**: minecraft는 모든 모드와 설치 때 `enable-rcon=false`를 강제한다 (`M:minecraft/lifecycle.py:526, 990-995, 1712`). zomboid는 `RCONPassword`를 비운다 (`M:zomboid/lifecycle.py:817-827`). palworld는 실행 전과 `configure()` 저장마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:256-258, 933`).
 - `SupervisorError`(`error.rs`)는 지워졌다. 핸들러는 `anyhow` + 수동 JSON을 쓴다.
@@ -500,7 +507,7 @@ players = "player_count"
 | 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, 실행 대상(`server_types.launch_target`: `-jar <서버 jar> nogui` 또는 Forge/NeoForge 인자 파일)을 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
-| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
+| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
 | 기타 | `EulaManager`(accept_agreements), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:24-41`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:196-208`) |
@@ -512,7 +519,7 @@ players = "player_count"
 | protocols | `supported=["rest"]`, `interaction_mode=commands`, `credential_map.rest_password="AdminPassword"` |
 | 설치 | `steamcmd`, app_id 2394010, `requires_extensions=["steamcmd","ue4-ini"]`. `extensions.steamcmd.SteamCMD`를 사용한다 |
 | 실행 | `--port=<port>`. 실제 서버 `Pal/Binaries/Win64/PalServer-Win64-Shipping-Cmd.exe`가 있으면 런처 대신 그것을 직접 띄운다(`:322-331`). `[launch] console = "pty"`. 시작 전 `_enforce_rest_policy`로 INI에 RESTAPIEnabled와 AdminPassword를 보장하고, `AdminPassword`를 최상위로 돌려주어 데몬이 rest_password를 동기화하게 한다 (`:216-346`) |
-| 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. REST로 저장·종료를 요청하고 60초 안에 안 끝나면 강제 종료한다 (`:399-426`) |
+| 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. REST로 저장·종료를 요청하고 60초 안에 안 끝나면 강제 종료한다 (`:399-426`). REST를 쓸 수 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4) |
 | 설정 | `PalWorldSettings.ini`의 `OptionSettings=(...)`를 **`extensions.ue4_ini`** 익스텐션으로 파싱한다. 동봉된 `DefaultPalWorldSettings.ini`가 기본값이다. settings 117개. 목록 값 키(`_LIST_KEYS`, 지금은 `DenyTechnologyList`)는 화면의 `PALBOX,RepairBench`를 INI에 `("PALBOX","RepairBench")`로 쓰고 읽을 때 쉼표 형태로 되돌린다 (`:884-904, 927-928, 975-977`). `configure()`는 저장마다 `RCONEnabled=False`를 쓴다 (`:933`) |
 | 명령 | 10개, 전부 `method="rest"`(`/v1/api/...`): announce, info, players, metrics, settings, save, shutdown, kick, ban, unban. `resolve_player_id`가 닉네임을 SteamID로 해석한다 (`:112`). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
 | 의존성 | `extensions.ue4_ini`는 `try`로 불러온다(`:33-36`). 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 (`:742-757, 1494-1502`) |
@@ -528,7 +535,7 @@ players = "player_count"
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 `Zomboid/Server/<servername>.ini`를 다룬다. `_INI_KEY_MAP`(saba 키 → INI 키). settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개, 전부 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
-| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 force가 아니면 콘솔 `save`→`quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 강제 종료한다. PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
+| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 force가 아니면 콘솔 `save`→`quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 강제 종료한다. 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
 | 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
 ### 4.4 __example (`M:__example/`)
@@ -607,7 +614,7 @@ players = "player_count"
 4. ~~zomboid `stop`의 stdin 콜백은 payload 키가 틀리고(`input` vs `command`), managed 판정도 틀렸다~~ → 해결: 공용 `daemon_stdin_command`(`{"command": ...}`)를 쓰고 `managed` 분기는 없어졌다 (`M:zomboid/lifecycle.py:1052-1092`).
 5. ~~palworld가 최상위에서 `extensions.ue4_ini`를 import해서 익스텐션에 하드 의존한다~~ → 해결: `try`로 불러오고 없으면 해당 함수만 `extension_required`를 돌려준다 (`M:palworld/lifecycle.py:33-36, 742-757`).
 6. ~~`__example`의 `install_server`가 쓰는 steamcmd API(`install_game`)가 실제 모듈과 다르다~~ → 해결: `SteamCMD` 클래스를 쓴다 (`M:__example/__example__lifecycle.py:394-395`).
-7. `get_installed_version`의 `jar_name` 기본값이 `"server.jar"`다. 데몬 코드 안의 Minecraft 전용 가정이다 (`mod.rs:2168-2171`).
+7. ~~`get_installed_version`의 `jar_name` 기본값이 `"server.jar"`다~~ → 해결(MK7): `validate`와 같은 config를 받는다.
 8. ~~데몬의 `stop` config에 `instance_id`가 없어 모듈 `stop()`의 콘솔 정지가 실행되지 않는다~~ → 해결: 모듈 호출에 `instance_id`가 들어간다(`D:src/supervisor/mod.rs:494-495`, 59a93b8). 정지 경로는 이렇다. 콘솔이 있는 managed 서버는 데몬이 `stop_command`를 stdin으로 보내고 끝나기를 기다린다(`mod.rs:949-969`, 테스트 `normal_stop_asks_the_console_and_waits`). 모듈 `stop()`은 콘솔이 없을 때(non-managed, REST 전용, stdin 없는 재부착)만 불리므로, 그 안의 콘솔 정지 시도는 보통 실패하고 SIGTERM(POSIX)이나 대기 후 강제 종료로 넘어간다.
 
 ### 6.4 데몬 프로토콜과 운영 문제
@@ -630,8 +637,8 @@ players = "player_count"
 | 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migrationScanDir`가 데몬 `POST /api/modules/detect`(`server.rs:423-443`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/src/api/createApi.js:825-833`, `AddInstanceMigration.js:75-76`) | |
 | 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:185-193`, `cmd/module.rs:108-109`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:467-487`) | — |
-| 6 | `D:src/ipc/handlers/instance.rs:1276-1303` | 설정 동기화 제외 목록에 `java_path`, `ram`, `use_aikar_flags`(Minecraft 전용 키)와 `managed_start`, `graceful_stop`이 **데몬에 하드코딩**돼 있다. `rcon_port`·`rcon_password`·`enable_rcon`은 게임 파일로 넘기지 않으려고 뺀다. 주석·로그는 "server.properties"(Minecraft 파일명) | 게임별 지식이 데몬에 있음 (모듈 매뉴얼 소관) |
-| 7 | `D:src/supervisor/mod.rs:472, 1846, 2168-2171, 1865, 1942` | `server_jar` 키 주입, `jar_name="server.jar"` 기본값, `manage_properties`라는 Minecraft식 명명이 데몬 공용 API에 들어가 있음 | 동일 |
+| 6 | ~~`D:src/ipc/handlers/instance.rs:1276-1303`~~ | ~~설정 동기화 제외 목록에 Minecraft 전용 키가 데몬에 하드코딩~~ → 해결(MK6): 데몬 필드만 데몬이 알고, 나머지는 모듈이 `group = "saba-chan"`으로 선언한 설정을 뺀다 | — |
+| 7 | ~~`D:src/supervisor/mod.rs`~~ | ~~`server_jar` 키 주입, `jar_name="server.jar"` 기본값~~ → 해결(MK7): 모듈에는 `server_executable`·`working_dir`만 넘기고, 설치 요청·config의 실행 파일 이름도 `server_executable`이다. 함수 이름 `manage_properties`·라우트 `/properties`는 남았지만 게임 설정 파일 일반을 뜻한다 | — |
 | 8 | `saba-chan-gui/src/components/ServerSettingsModal.js:354,363` (`module === 'palworld'`), `useServerSettings.js:275` ("Install Minecraft …" 문자열) | GUI가 특정 게임 이름으로 분기 | 인터페이스에 게임 지식 |
 | 9 | `M:palworld/lifecycle.py:33-36`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs:114-126`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). ~~인증 없이 호출하고 포트도 하드코딩~~ → 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
@@ -642,4 +649,4 @@ players = "player_count"
 ### 부록: 핵심 수치
 - 모듈 크기: minecraft lifecycle 1,876줄 / toml 1,138줄, palworld 1,507 / 1,338, zomboid 1,492 / 1,554, example 511 / 336.
 - settings 필드 수: minecraft 66, palworld 117, zomboid 117, example 9. commands 수: 17 / 10 / 23 / 3.
-- 데몬의 lifecycle 호출 함수: 17종(§2.3). 모듈의 `start`는 지워졌다.
+- 데몬의 lifecycle 호출 함수: 19종(§2.3). 모듈의 `start`는 지워졌다.

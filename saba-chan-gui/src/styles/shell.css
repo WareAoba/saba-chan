@@ -453,6 +453,9 @@
     color: var(--info);
     display: inline-flex;
 }
+.server-row-flag.tone-warn {
+    color: var(--warn);
+}
 .server-row-action {
     border-color: var(--line);
     background: var(--surface-gradient);
@@ -1297,6 +1300,12 @@ button.activity-line:hover {
     color: var(--chip-color);
 }
 .bg-pop-title span {
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.4;
+}
+.bg-pop-note {
+    margin: 0;
     font-size: 12px;
     color: var(--text-2);
     line-height: 1.4;

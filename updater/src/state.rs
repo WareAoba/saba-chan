@@ -44,6 +44,11 @@ impl UpdateManager {
         Ok(())
     }
 
+    /// 지금 적용하는 릴리즈 (버전·패치노트): 확인한 최신 릴리즈, 없으면 받아 둘 때 남긴 것. 데몬이 바로 적용한 결과에 싣는다
+    pub fn applying_release(&self) -> Option<crate::marker::ReleaseSummary> {
+        self.latest_release.as_ref().map(crate::marker::ReleaseSummary::from).or_else(|| self.pending_release())
+    }
+
     /// 받아 둔 업데이트의 릴리즈 (버전·패치노트). 업데이터가 완료 마커에 싣는다
     pub fn pending_release(&self) -> Option<crate::marker::ReleaseSummary> {
         let text = std::fs::read_to_string(self.staging_dir.join(PENDING_RELEASE)).ok()?;

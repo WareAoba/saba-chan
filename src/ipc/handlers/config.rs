@@ -82,6 +82,7 @@ pub async fn reset_config(
             Err(_) => return bad("keys must be an array of setting names"),
         },
     };
+    let old_relay = state.config_store.get_bot_config().await.cloud.relay_url;
     match state.config_store.reset_to_defaults(&kind, keys.as_deref()).await {
         Ok(config) => {
             // 저장에 성공한 뒤에만 런타임 플래그(포트 검사)를 맞춘다
@@ -89,6 +90,11 @@ pub async fn reset_config(
                 if let Some(check) = config.get("portConflictCheck").and_then(Value::as_bool) {
                     state.supervisor.read().await.skip_port_check.store(!check, std::sync::atomic::Ordering::Relaxed);
                 }
+            }
+            // 봇 설정 저장과 같이, 릴레이 주소가 바뀌면 에이전트를 새 주소로 다시 시작한다
+            let new_relay = config.pointer("/cloud/relayUrl").and_then(Value::as_str).unwrap_or("");
+            if kind == "bot" && new_relay.trim() != old_relay.trim() && state.relay_agent.status().running {
+                crate::relay_agent::restart(&state).await;
             }
             (StatusCode::OK, Json(json!({ "ok": true, "config": config }))).into_response()
         }

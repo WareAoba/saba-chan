@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **Server List**",
     "empty": "📭 No servers registered",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 Running",
@@ -44,11 +44,13 @@
     "start_complete": "✅ **{{name}}** start request completed!",
     "stop_request": "⏳ Stopping **{{name}}** server...",
     "stop_complete": "✅ **{{name}}** stop request completed!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** was not stopped: it has no way (console or REST) to save and exit. To end it without saving, choose a force stop in saba-chan on this PC.",
     "status_check": "📊 **{{name}}** status: {{status}} {{pid_info}}",
     "not_found": "❌ No server found for module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Server is not running. Please start the server first",
-    "module_missing": "❌ Module '{{module}}' is not installed. This server cannot be controlled."
+    "module_missing": "❌ Module '{{module}}' is not installed. This server cannot be controlled.",
+    "port_moved": "🔀 Windows reserved the REST port {{from}}, so it was changed to {{to}}."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executing...",
@@ -99,6 +101,7 @@
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
     "permission_denied": "❌ You don't have permission to use this command.",
+    "chatbot_not_allowed": "❌ Talking Saba-chan can't run this command. Please run it directly.",
     "local_single_guild_only": "⚠️ Local bots can only be used in one server. Currently in {{count}} servers. Please remove the bot from unused servers."
   },
   "messages": {
@@ -209,7 +212,7 @@
         "title": "Backups"
       },
       "create": {
-        "title": "Create backup"
+        "title": "Backup"
       },
       "restore": {
         "title": "Restore backup",
@@ -241,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Discord settings",
-          "description": "Language, sleep and music"
-        },
         "set": {
           "title": "Change Discord settings",
           "description": "Language, sleep and music"
@@ -254,11 +253,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "Show chatbot settings",
+          "title": "Show Talking Saba-chan settings",
           "description": "On/off, wake words, confirmation, tool sets"
         },
         "set": {
-          "title": "Change chatbot settings",
+          "title": "Change Talking Saba-chan settings",
           "description": "On/off, wake words, confirmation, tool sets"
         }
       }
@@ -288,11 +287,39 @@
       "enabled": "On",
       "model": "Model",
       "memo": "Server prompt",
-      "confirmCommands": "Confirm commands",
+      "confirmCommands": "Always ask for caution commands",
       "memory": "Memory",
       "webSearch": "Web search",
       "disabledTools": "Disabled tool sets",
       "step": "Step"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…and {{count}} more",
+      "backups": "💾 **{{count}} backups**",
+      "backups_empty": "📭 No backups",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "manual",
+        "scheduled": "scheduled",
+        "pre-update": "before update",
+        "pre-restore": "before restore"
+      },
+      "events": "📜 **Recent starts and stops**",
+      "events_empty": "📭 No records",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "stopped",
+        "in_game_stop": "stopped in game",
+        "crash": "crashed",
+        "start_failed": "failed to start",
+        "unknown_exit": "exited for an unknown reason"
+      },
+      "updates": "⬆️ **{{count}} updates**",
+      "updates_none": "✅ Everything is up to date",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · Memory {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

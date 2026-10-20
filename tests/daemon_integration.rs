@@ -81,14 +81,23 @@ async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
     panic!("IPC server did not become ready: {}", base_url);
 }
 
-/// 테스트용 모듈이 없으면 자동 생성 (로컬/CI 모두 대응)
+/// 테스트용 모듈이 없으면 자동 생성 (로컬/CI 모두 대응).
+/// 병렬 시험이 덜 쓴 모듈을 보지 않게 한 번만 만들고, lifecycle.py를 먼저 쓴 뒤 module.toml을 rename으로 놓는다 (L47)
 fn ensure_test_module() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(write_test_module);
+}
+
+fn write_test_module() {
     let module_dir = std::path::Path::new("./modules/test-module");
     let toml_path = module_dir.join("module.toml");
     if !toml_path.exists() {
         fs::create_dir_all(module_dir).expect("failed to create test-module dir");
+        fs::write(module_dir.join("lifecycle.py"), "# minimal test lifecycle\n")
+            .expect("failed to write lifecycle.py");
+        let tmp_path = module_dir.join(format!("module.toml.{}.tmp", std::process::id()));
         fs::write(
-            &toml_path,
+            &tmp_path,
             r#"[module]
 name = "test-module"
 version = "0.0.1"
@@ -100,8 +109,7 @@ entry = "lifecycle.py"
 "#,
         )
         .expect("failed to write module.toml");
-        fs::write(module_dir.join("lifecycle.py"), "# minimal test lifecycle\n")
-            .expect("failed to write lifecycle.py");
+        fs::rename(&tmp_path, &toml_path).expect("failed to place module.toml");
     }
 }
 
@@ -303,7 +311,7 @@ async fn test_monitoring_loop_is_stable_under_idle() {
     let empty_snapshot: Vec<saba_core::process_monitor::RunningProcess> = vec![];
     for iteration in 0..10 {
         let mut sup = supervisor.write().await;
-        let result = sup.monitor_processes(&empty_snapshot).await;
+        let result = sup.monitor_processes_taken_at(&empty_snapshot, u64::MAX).await;
         assert!(
             result.is_ok(),
             "Monitoring iteration {} should succeed: {:?}",

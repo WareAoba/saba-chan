@@ -32,11 +32,17 @@ pub struct Origin {
     pub user_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guild_name: Option<String>,
+    /// 요청을 고른 길: 챗봇이면 "chatbot" (라우트가 챗봇에만 거는 제한을 잠금 안에서 판정한다)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+    /// 요청이 고른 언어 (`Accept-Language`의 첫 태그). 있으면 그 요청의 데몬·모듈 문구가 따른다(`ConfigStore::ui_language`). 기록하지 않는다
+    #[serde(skip)]
+    pub lang: Option<String>,
 }
 
 impl Origin {
     pub fn new(source: &str) -> Self {
-        Self { source: source.to_string(), user: None, guild: None, user_name: None, guild_name: None }
+        Self { source: source.to_string(), user: None, guild: None, user_name: None, guild_name: None, via: None, lang: None }
     }
 
     /// 채팅 명령을 보낸 사람·서버를 붙인다
@@ -59,8 +65,15 @@ impl Origin {
             .map(|v| v.trim().to_ascii_lowercase())
             .filter(|v| !v.is_empty() && v.len() <= 16 && v.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
             .filter(|v| !INTERNAL_SOURCES.contains(&v.as_str()));
-        Self::new(client.as_deref().unwrap_or("api"))
+        Self { lang: accept_language(headers), ..Self::new(client.as_deref().unwrap_or("api")) }
     }
+}
+
+/// `Accept-Language`의 첫 언어 태그 (`ko-KR,ko;q=0.9` → `ko-KR`). 영문자·숫자·`-`만, 16자까지
+fn accept_language(headers: &axum::http::HeaderMap) -> Option<String> {
+    let value = headers.get(axum::http::header::ACCEPT_LANGUAGE)?.to_str().ok()?;
+    let tag = value.split(',').next()?.split(';').next()?.trim();
+    (!tag.is_empty() && tag.len() <= 16 && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).then(|| tag.to_string())
 }
 
 /// 데몬이 스스로 정하는 출처: HTTP 헤더로 흉내 낼 수 없다
@@ -461,5 +474,24 @@ inputs = [{ name = "message", type = "text" }]
         assert_eq!(args["module_settings"]["admin_password"], MASK);
         assert_eq!(args["module_settings"]["port"], 8211);
         assert_eq!(args["name"], "p");
+    }
+
+    /// Accept-Language는 첫 언어 태그만 받는다. 모양이 이상하거나 `*`면 없는 것으로 본다. 감사 기록에는 남기지 않는다
+    #[test]
+    fn the_request_language_comes_from_accept_language() {
+        let lang = |v: &str| {
+            let mut h = axum::http::HeaderMap::new();
+            h.insert("Accept-Language", v.parse().unwrap());
+            Origin::from_headers(&h).lang
+        };
+        assert_eq!(lang("ko-KR,ko;q=0.9").as_deref(), Some("ko-KR"));
+        assert_eq!(lang(" en ").as_deref(), Some("en"));
+        assert_eq!(lang("zh-CN;q=0.8").as_deref(), Some("zh-CN"));
+        assert_eq!(lang("*"), None);
+        assert_eq!(lang("ko/../x"), None);
+        assert_eq!(lang(""), None);
+        assert_eq!(Origin::from_headers(&axum::http::HeaderMap::new()).lang, None);
+        let origin = Origin { lang: Some("ko".into()), ..Origin::new("cli") };
+        assert!(serde_json::to_value(&origin).unwrap().get("lang").is_none());
     }
 }

@@ -1,6 +1,6 @@
 //! 데몬 액션 카탈로그 (P2) 라우트: 목록·계획·실행. 판정과 실행은 `crate::actions`
 //!
-//! HTTP로 오는 요청은 GUI·CLI(로컬)다. 출처는 `X-Saba-Client`, 언어는 `locale` 쿼리 → `gui.language` → en.
+//! HTTP로 오는 요청은 GUI·CLI(로컬)다. 출처는 `X-Saba-Client`, 언어는 `locale` 쿼리 → `Accept-Language` → `gui.language` → en.
 
 use super::super::IPCServer;
 use crate::actions::{self, Caller, Surface};

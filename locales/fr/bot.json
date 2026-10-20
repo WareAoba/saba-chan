@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **Liste des serveurs**",
     "empty": "📭 Aucun serveur enregistré",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 En cours d'exécution",
@@ -44,11 +44,13 @@
     "start_complete": "✅ Demande de démarrage de **{{name}}** terminée!",
     "stop_request": "⏳ Arrêt du serveur **{{name}}**...",
     "stop_complete": "✅ Demande d'arrêt de **{{name}}** terminée!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** n'a pas été arrêté : il n'a aucun moyen (console ou REST) de sauvegarder et de quitter. Pour l'arrêter sans sauvegarder, choisissez un arrêt forcé dans saba-chan sur ce PC.",
     "status_check": "📊 Statut de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Le serveur n'est pas en cours d'exécution. Veuillez d'abord démarrer le serveur",
-    "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé."
+    "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé.",
+    "port_moved": "🔀 Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
@@ -99,6 +101,7 @@
     "unknown_input": "❌ Commande inconnue.",
     "command_not_found": "❌ La commande n'existe pas.",
     "permission_denied": "❌ Vous n'avez pas la permission d'utiliser cette commande.",
+    "chatbot_not_allowed": "❌ Saba-chan qui parle ne peut pas exécuter cette commande. Exécutez-la directement.",
     "local_single_guild_only": "⚠️ Le bot local ne peut être utilisé que sur un seul serveur. Actuellement présent sur {{count}} serveurs. Veuillez retirer le bot des serveurs inutilisés."
   },
   "messages": {
@@ -209,7 +212,7 @@
         "title": "Sauvegardes"
       },
       "create": {
-        "title": "Créer une sauvegarde"
+        "title": "Sauvegarde"
       },
       "restore": {
         "title": "Restaurer une sauvegarde",
@@ -241,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Paramètres Discord",
-          "description": "Langue, veille et musique"
-        },
         "set": {
           "title": "Modifier les paramètres Discord",
           "description": "Langue, veille et musique"
@@ -254,11 +253,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "Voir les réglages du chatbot",
+          "title": "Voir les réglages de Saba-chan qui parle",
           "description": "Activation, mots d'appel, confirmation, outils"
         },
         "set": {
-          "title": "Modifier les réglages du chatbot",
+          "title": "Modifier les réglages de Saba-chan qui parle",
           "description": "Activation, mots d'appel, confirmation, outils"
         }
       }
@@ -288,11 +287,39 @@
       "enabled": "Activé",
       "model": "Modèle",
       "memo": "Prompt du serveur",
-      "confirmCommands": "Confirmer les commandes",
+      "confirmCommands": "Toujours demander pour les commandes sensibles",
       "memory": "Mémoire",
       "webSearch": "Recherche web",
       "disabledTools": "Outils désactivés",
       "step": "Étape"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…et {{count}} de plus",
+      "backups": "💾 **{{count}} sauvegardes**",
+      "backups_empty": "📭 Aucune sauvegarde",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "manuelle",
+        "scheduled": "planifiée",
+        "pre-update": "avant mise à jour",
+        "pre-restore": "avant restauration"
+      },
+      "events": "📜 **Démarrages et arrêts récents**",
+      "events_empty": "📭 Aucun enregistrement",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "arrêté",
+        "in_game_stop": "arrêté en jeu",
+        "crash": "plantage",
+        "start_failed": "échec du démarrage",
+        "unknown_exit": "arrêt pour une raison inconnue"
+      },
+      "updates": "⬆️ **{{count}} mises à jour**",
+      "updates_none": "✅ Tout est à jour",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · Mémoire {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

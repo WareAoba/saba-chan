@@ -12,7 +12,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         Err(e) if matches!(e.downcast_ref::<CliError>(), Some(CliError::DaemonDown { .. })) => {
             let v = json!({ "daemon": { "running": false, "url": ctx.api.base_url() } });
             ctx.out.data(&v, |_| {
-                println!(
+                say!(
                     "{}  {}",
                     output::bold(&t!("status.daemon")),
                     output::status_badge("stopped")
@@ -25,7 +25,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     };
 
     let (servers, modules, agent, updates, preflight, onboarding) = tokio::join!(
-        ctx.api.servers(),
+        ctx.api.servers(false),
         ctx.api.modules(),
         ctx.api.agent(),
         ctx.api.update_status(),
@@ -48,7 +48,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         "onboarding": onboarding,
     });
     ctx.out.data(&v, |_| {
-        println!(
+        say!(
             "{}  {}  {}",
             output::bold(&t!("status.daemon")),
             output::status_badge("running"),
@@ -58,7 +58,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 health.get("pid").and_then(Value::as_u64).unwrap_or(0)
             ))
         );
-        println!();
+        say!();
         print_server_table(
             servers
                 .get("servers")
@@ -73,12 +73,19 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             .into_iter()
             .flatten()
         {
-            ctx.out.warn(&t!(
+            // 새 실행마다 남은 알림(최근 10분)을 다시 보이므로 언제 일인지 붙인다
+            let when = stop
+                .get("timestamp_ms")
+                .and_then(Value::as_u64)
+                .map(|ms| format!(" {}", output::dim(&output::ago(ms / 1000))))
+                .unwrap_or_default();
+            let msg = t!(
                 "status.port_conflict_stop",
                 name = s(stop, "stopped_name"),
                 other = s(stop, "existing_name"),
                 port = stop.get("port").map(output::show).unwrap_or_default()
-            ));
+            );
+            ctx.out.warn(&format!("{msg}{when}"));
         }
         let failed = modules
             .get("failed")
@@ -100,9 +107,9 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 ));
             }
         }
-        println!();
+        say!();
         if let Ok(a) = &agent {
-            println!("{}  {}", output::bold(&t!("status.discord")), discord_line(a));
+            say!("{}  {}", output::bold(&t!("status.discord")), discord_line(a));
         }
         if let Ok(u) = &updates {
             let n = u.get("updates_available").and_then(Value::as_u64).unwrap_or(0);
@@ -113,7 +120,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             } else {
                 output::dim(&t!("status.up_to_date"))
             };
-            println!("{}  {}", output::bold(&t!("status.updates")), line);
+            say!("{}  {}", output::bold(&t!("status.updates")), line);
             if n > 0 {
                 ctx.out.hint("saba-chan-cli update status");
             }
@@ -127,12 +134,21 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             _ => None,
         };
         if let Some((text, cmd)) = step {
-            println!();
+            say!();
             ctx.out.note(&text);
             ctx.out.hint(cmd);
         }
     });
     Ok(())
+}
+
+/// 서버 상태 표시. 켜져 있지만 상태 질문에 답하지 않으면(`unresponsive`) 그것도 붙인다 (GUI 목록과 같게)
+pub fn state_badge(sv: &Value) -> String {
+    let mut state = output::status_badge(s(sv, "status"));
+    if sv.get("unresponsive").and_then(Value::as_str).is_some() {
+        state.push_str(&console::style(format!("  ⚠ {}", t!("server.unresponsive"))).yellow().to_string());
+    }
+    state
 }
 
 pub fn discord_line(a: &Value) -> String {
@@ -179,7 +195,7 @@ pub fn module_display(modules: &Value) -> HashMap<String, String> {
 
 pub fn print_server_table(servers: &[Value], modules: &Value) {
     if servers.is_empty() {
-        println!("{}", output::dim(&t!("server.none_yet")));
+        say!("{}", output::dim(&t!("server.none_yet")));
         return;
     }
     let names = module_display(modules);
@@ -209,7 +225,7 @@ pub fn print_server_table(servers: &[Value], modules: &Value) {
                 output::duration(now.saturating_sub(st))
             })
             .unwrap_or_default();
-        let mut state = output::status_badge(s(sv, "status"));
+        let mut state = state_badge(sv);
         if let Some(p) = output::players(sv) {
             state.push_str(&format!("  👥 {p}"));
         }
@@ -278,4 +294,19 @@ pub async fn version(ctx: &Ctx) -> Result<()> {
         output::print_kv(&rows);
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 켜져 있지만 응답이 없는 서버(H1)를 목록·상태에서도 알 수 있게 (C3)
+    #[test]
+    fn an_unresponsive_server_is_marked() {
+        crate::i18n::init("ko");
+        let plain = |v: Value| console::strip_ansi_codes(&state_badge(&v)).to_string();
+        assert!(plain(json!({ "status": "running", "unresponsive": "timed out" })).contains(&t!("server.unresponsive")));
+        assert!(!plain(json!({ "status": "running" })).contains(&t!("server.unresponsive")));
+    }
 }

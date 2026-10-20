@@ -21,6 +21,7 @@ import { CommandPalette, paletteAvailable } from './components/shell/CommandPale
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
+import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
@@ -33,15 +34,21 @@ import { useServerSettings } from './hooks/useServerSettings';
 import { useConsoleStore } from './stores/useConsoleStore';
 import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
-import { useSettingsStore } from './stores/useSettingsStore';
+import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, isManaged } from './utils/serverView';
 import { openWithNotice } from './utils/helpers';
+import { syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
 import './styles/motion.css';
+/** 로딩 화면이 사라지는 움직임 길이 (App.css의 loading-leave와 같다) */
+const LOADING_LEAVE_MS = 700;
+/** 초기화 단계 소식이 이만큼 없으면 멈춘 것으로 본다. main의 가장 긴 단계(새 데몬 기다리기)는 30초를 넘지 않는다 */
+const INIT_STALL_MS = 60_000;
+
 function App() {
     const { t, i18n } = useTranslation('gui');
 
@@ -102,6 +109,7 @@ function App() {
     const backgroundDaemonStatus = useUIStore((s) => s.backgroundDaemonStatus);
     const [patchNotes, setPatchNotes] = useState(null);
     const [initFailed, setInitFailed] = useState(null); // 데몬 기동 실패 문구
+    const [initSeen, setInitSeen] = useState(0); // 받은 초기화 단계 수 (멈춤 감시를 다시 센다)
     const daemonRunning = backgroundDaemonStatus === 'running';
 
     // 마지막 업데이트 결과 (데몬 last-result): 데몬이 뜨면 한 번 묻고 알림을 남긴다. 알림을 누르면 패치노트
@@ -109,6 +117,8 @@ function App() {
         if (daemonRunning) announceLastUpdateResult(t);
     }, [daemonRunning]); // eslint-disable-line react-hooks/exhaustive-deps
     const setBackgroundDaemonStatus = useUIStore((s) => s.setBackgroundDaemonStatus);
+    // 데몬이 GUI를 띄운 프로그램의 job 안에서 돈다 (그 프로그램이 꺼지면 함께 꺼질 수 있다)
+    const [daemonInParentJob, setDaemonInParentJob] = useState(false);
     const showWaitingImage = useUIStore((s) => s.showWaitingImage);
     const setShowWaitingImage = useUIStore((s) => s.setShowWaitingImage);
 
@@ -189,6 +199,7 @@ function App() {
         versionsLoading,
         versionInstalling,
         resettingServer,
+        savingSettings,
         isSettingsClosing,
         handleOpenSettings,
         handleSettingChange,
@@ -294,14 +305,12 @@ function App() {
                 .catch(() => {});
         }
 
-        // Remove any previously stacked listeners (prevents duplicates on Fast Refresh)
-        if (window.api && window.api.offStatusUpdate) {
-            window.api.offStatusUpdate();
-        }
-
+        // 이 구독만 정리할 함수 (다른 화면의 상태 구독은 건드리지 않는다)
+        let offStatus;
         if (window.api && window.api.onStatusUpdate) {
-            window.api.onStatusUpdate((data) => {
+            offStatus = window.api.onStatusUpdate((data) => {
                 console.log('[Init Status]', data.step, ':', data.message);
+                setInitSeen((n) => n + 1);
 
                 const progressValues = {
                     init: 10,
@@ -337,17 +346,7 @@ function App() {
         if (window.api && window.api.onUpdatesAvailable) {
             window.api.onUpdatesAvailable((data) => {
                 console.log('[Updater] Updates available notification:', data);
-                const count = data.count || data.updates_available || 0;
-                const names = data.names || data.update_names || [];
-                if (count > 0 && window.__sabaNotice) {
-                    window.__sabaNotice.addNotice({
-                        message: `📦 ${t('updates.found', { count, names: names.join(', ') || t('updates.check_required') })}`,
-                        type: 'info',
-                        source: 'Updater',
-                        action: 'openUpdateModal',
-                        dedup: true,
-                    });
-                }
+                syncUpdateNotice(data, t);
             });
         }
 
@@ -375,9 +374,7 @@ function App() {
 
         return () => {
             // Cleanup IPC listeners on unmount / Fast Refresh re-run
-            if (window.api && window.api.offStatusUpdate) {
-                window.api.offStatusUpdate();
-            }
+            if (typeof offStatus === 'function') offStatus();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -414,6 +411,7 @@ function App() {
     useEffect(() => {
         setDiscordI18n(t);
         setServerI18n(t, i18n);
+        setSettingsI18n(t);
     }, [t, i18n]);
 
     // Finalize loading screen when server initialization completes
@@ -425,6 +423,16 @@ function App() {
         }
     }, [serversInitializing, daemonReady]);
 
+    // 초기화가 소식 없이 멈추면(M11) 진행 화면에 묶어 두지 않고 이유와 [다시 시도]·[그대로 열기]를 보인다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: initSeen은 단계가 올 때마다 다시 세려고 둔다
+    useEffect(() => {
+        if (daemonReady || initFailed || window.__sabaReadyReceived) return undefined;
+        const timer = setTimeout(() => {
+            if (!window.__sabaReadyReceived) setInitFailed(t('loading.daemon_stalled'));
+        }, INIT_STALL_MS);
+        return () => clearTimeout(timer);
+    }, [daemonReady, initFailed, initSeen, t]);
+
     // Background Daemon status polling
     // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable
     useEffect(() => {
@@ -433,7 +441,8 @@ function App() {
             try {
                 if (window.api && window.api.daemonStatus) {
                     const status = await window.api.daemonStatus();
-                    setBackgroundDaemonStatus(status.running ? 'running' : 'stopped');
+                    setBackgroundDaemonStatus(daemonStateOf(status));
+                    setDaemonInParentJob(status?.in_parent_job === true);
                 } else {
                     setBackgroundDaemonStatus('error');
                 }
@@ -483,8 +492,9 @@ function App() {
         fetchServers();
 
         // App close request handler
+        let offClose;
         if (window.api.onCloseRequest) {
-            window.api.onCloseRequest(() => {
+            offClose = window.api.onCloseRequest(() => {
                 // managed 모드로 실행 중인 인스턴스 검출
                 const currentServers = useServerStore.getState().servers;
                 const runningManaged = currentServers.filter((srv) => srv.status === 'running' && isManaged(srv));
@@ -565,7 +575,7 @@ function App() {
 
         return () => {
             clearInterval(interval);
-            if (window.api.offCloseRequest) window.api.offCloseRequest();
+            if (typeof offClose === 'function') offClose();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
 
@@ -592,8 +602,21 @@ function App() {
         setServersInitializing(false);
     };
 
+    // 로딩이 끝나면 로딩 화면을 바로 지우지 않고 메인 화면 위에서 잠깐 사라지게 둔다
+    const showLoading = !daemonReady || serversInitializing;
+    const [loadingLeaving, setLoadingLeaving] = useState(false);
+    const wasLoadingRef = useRef(showLoading);
+    useEffect(() => {
+        const was = wasLoadingRef.current;
+        wasLoadingRef.current = showLoading;
+        if (!was || showLoading) return undefined;
+        setLoadingLeaving(true);
+        const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
+        return () => clearTimeout(timer);
+    }, [showLoading]);
+
     // Loading screen (daemon not ready or servers still initializing)
-    if (!daemonReady || serversInitializing) {
+    if (showLoading) {
         return (
             <>
                 <LoadingScreen
@@ -718,6 +741,7 @@ function App() {
         handleSaveSettings,
         handleResetServer,
         resettingServer,
+        savingSettings,
         isClosing: isSettingsClosing,
         onOpenDiscordWords: (server) => {
             setDiscordView({ kind: 'words', server });
@@ -748,12 +772,13 @@ function App() {
                             setPage(p);
                         }}
                         daemonStatus={backgroundDaemonStatus}
+                        daemonInParentJob={daemonInParentJob}
                         discordStatus={discordBotStatus}
                         unreadCount={unreadNoticeCount}
                         extInitializing={extInitializing}
                         extInitLabel={
                             Object.values(extInitInProgress).join(', ') ||
-                            t('common:initializing', { defaultValue: 'Initializing extensions…' })
+                            t('common:init.extensions')
                         }
                         showNotice={showNoticeSection}
                         onToggleNotice={() => (showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true))}
@@ -873,7 +898,7 @@ function App() {
                                     }}
                                 >
                                     <Icon name="folder" size="sm" />
-                                    {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
+                                    {t('shell.open_folder')}
                                 </div>
                                 <div className="context-menu-separator" />
                                 <div
@@ -922,6 +947,9 @@ function App() {
 
                     {/* 작업 진행은 상단 바(TaskIndicator)가 보여 준다 */}
                 </div>
+                {loadingLeaving && (
+                    <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={100} leaving />
+                )}
             </TooltipProvider>
         </ExtensionProvider>
     );

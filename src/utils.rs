@@ -16,12 +16,21 @@ pub fn apply_creation_flags(cmd: &mut Command) -> &mut Command {
 }
 
 /// 경로 한 칸으로만 쓸 수 있는 이름인지 (인스턴스 id, 모듈 이름, 로케일 등).
-/// 구분자·`.`/`..`·드라이브 표기(`C:`)·NUL이 있으면 다른 폴더를 가리킬 수 있어 거부한다
+/// 구분자·`.`/`..`·드라이브 표기(`C:`)·NUL이 있으면 다른 폴더를 가리킬 수 있어 거부한다.
+/// 끝의 `.`·공백도 거부한다: Windows가 버려서 `x.`가 `x` 폴더를 가리킨다
 pub fn is_single_path_component(name: &str) -> bool {
     !name.is_empty()
         && name != "."
         && name != ".."
+        && !name.ends_with(['.', ' '])
         && !name.contains(['/', '\\', ':', '\0'])
+}
+
+/// 구성요소 폴더 안을 가리키는 상대 경로인가 (`module.entry`, 익스텐션 `python_modules` 값).
+/// 비었거나 절대 경로이거나 `..`·`.`·드라이브 같은 성분이 있으면 아니다
+pub fn is_inner_relative_path(path: &str) -> bool {
+    let p = std::path::Path::new(path);
+    !path.is_empty() && !p.is_absolute() && p.components().all(|c| matches!(c, std::path::Component::Normal(_)))
 }
 
 /// 설치 도중 데몬이 끝나 남은 준비·옛 폴더와 받다 만 파일 (`.staging-*`·`.old-*`·`.tmp-*`)을 지운다.
@@ -71,7 +80,8 @@ mod tests {
         for ok in ["minecraft", "ko", "zh-TW", "a1b2-c3", "my.server"] {
             assert!(is_single_path_component(ok), "{ok}");
         }
-        for bad in ["", ".", "..", "../x", "a/b", "a\\b", "C:", "C:x", "a\0b"] {
+        // Windows는 끝의 `.`·공백을 버려 `x.`와 `x `가 `x` 폴더를 가리킨다 (백로그 L17c)
+        for bad in ["", ".", "..", "../x", "a/b", "a\\b", "C:", "C:x", "a\0b", "x.", "x ", "x. "] {
             assert!(!is_single_path_component(bad), "{bad:?}");
         }
     }

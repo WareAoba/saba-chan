@@ -30,19 +30,7 @@ pub async fn start_managed_handler(
     let Some(_guard) = super::backup::BusyGuard::take(&id) else {
         return super::backup::instance_busy();
     };
-    // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
-    {
-        let mut supervisor = state.supervisor.write().await;
-        if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
-            let changed = inst.ensure_passwords();
-
-            if changed {
-                if let Err(e) = supervisor.instance_store.update(&id, inst) {
-                    tracing::warn!("Failed to save auto-generated passwords for {}: {}", id, e);
-                }
-            }
-        }
-    }
+    super::server::fill_passwords(&state, &id).await;
 
     let (module_name, config) = {
         let supervisor = state.supervisor.read().await;
@@ -209,7 +197,7 @@ pub async fn query_instance_handler(
     }
 }
 
-/// GET /api/instance/:id/properties — Read server.properties
+/// GET /api/instance/:id/properties — 게임 설정 파일 읽기
 pub async fn read_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -224,7 +212,7 @@ pub async fn read_properties_handler(
     }
 }
 
-/// PUT /api/instance/:id/properties — Update server.properties
+/// PUT /api/instance/:id/properties — 게임 설정 파일 쓰기
 pub async fn write_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -251,30 +239,35 @@ pub async fn read_live_settings_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    match Supervisor::manage_properties(&state.supervisor, &id, "import", None).await {
-        Ok(result) => {
-            let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
-            let settings = result.get("settings").and_then(|v| v.as_object()).filter(|s| !s.is_empty());
-            if let (true, Some(settings)) = (ok, settings) {
-                let mut supervisor = state.supervisor.write().await;
-                if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
-                    let (credential_map, types) = supervisor.module_loader.get_module(&inst.module_name)
-                        .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
-                        .unwrap_or_default();
-                    // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
-                    inst.apply_imported_settings(settings, &credential_map, &types);
-                    if let Err(e) = supervisor.instance_store.update(&id, inst) {
-                        tracing::warn!("Live settings read: cache refresh failed for {}: {}", id, e);
-                    }
-                }
-            }
-            (StatusCode::OK, Json(result)).into_response()
-        }
+    match refresh_settings_from_files(&state, &id).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
     }
 }
 
-/// POST /api/instance/:id/properties/reset — Reset server.properties to defaults
+/// 게임 설정 파일을 모듈 `import_settings`로 읽어 `module_settings`와 인스턴스 필드(포트·비밀번호)를 맞춘다.
+/// 모듈의 답을 그대로 돌려준다. `success`가 아니거나 설정이 비어 있으면 아무것도 바꾸지 않는다
+pub(crate) async fn refresh_settings_from_files(state: &IPCServer, id: &str) -> anyhow::Result<serde_json::Value> {
+    let result = Supervisor::manage_properties(&state.supervisor, id, "import", None).await?;
+    let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
+    let settings = result.get("settings").and_then(|v| v.as_object()).filter(|s| !s.is_empty());
+    if let (true, Some(settings)) = (ok, settings) {
+        let mut supervisor = state.supervisor.write().await;
+        if let Some(mut inst) = supervisor.instance_store.get(id).cloned() {
+            let (credential_map, types) = supervisor.module_loader.get_module(&inst.module_name)
+                .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
+                .unwrap_or_default();
+            // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
+            inst.apply_imported_settings(settings, &credential_map, &types);
+            if let Err(e) = supervisor.instance_store.update(id, inst) {
+                tracing::warn!("Settings refresh from game files failed for {}: {}", id, e);
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// POST /api/instance/:id/properties/reset — 게임 설정 파일을 기본값으로
 pub async fn reset_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -295,23 +288,17 @@ fn server_running() -> axum::response::Response {
     (StatusCode::CONFLICT, Json(error)).into_response()
 }
 
-/// `dir`을 쓰는 인스턴스(working_dir 또는 인스턴스 폴더)의 작업 잠금을 모두 잡는다.
-/// 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
+/// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스의 작업 잠금을 모두 잡는다.
+/// `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 #[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
-async fn hold_instances_using(state: &IPCServer, dir: &str) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
-    hold_other_instances_using(state, dir, None).await
-}
-
-/// `hold_instances_using`과 같되 `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다
-#[allow(clippy::result_large_err)]
 pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
     let ids: Vec<String> = {
         let supervisor = state.supervisor.read().await;
         let dir = std::path::Path::new(dir);
         supervisor.instance_store.list().iter()
             .filter(|i| {
-                i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), dir))
-                    || saba_chan_updater_lib::same_path(&supervisor.instance_store.instance_dir(&i.id), dir)
+                i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(std::path::Path::new(d), dir))
+                    || saba_chan_updater_lib::paths_overlap(&supervisor.instance_store.instance_dir(&i.id), dir)
             })
             .filter(|i| except != Some(i.id.as_str()))
             .map(|i| i.id.clone())
@@ -482,7 +469,7 @@ pub async fn get_installed_version_handler(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     // Phase 1: 감지 (모듈 호출은 락 밖에서)
-    let (_module_name, result) = {
+    let (_module_name, seen, result) = {
         let found = state.supervisor.read().await.instance_store.list().iter().find(|i| i.id == id).cloned();
         let instance = match found {
             Some(i) => i,
@@ -497,24 +484,20 @@ pub async fn get_installed_version_handler(
 
         let module_name = instance.module_name.clone();
         let res = Supervisor::get_installed_version(&state.supervisor, &module_name, &id).await;
-        (module_name, res)
+        (module_name, instance.server_version, res)
     };
 
     match result {
         Ok(result) => {
-            // Phase 2: 감지 성공 시 write lock으로 인스턴스에 버전 저장
+            // Phase 2: 감지 성공 시 write lock으로 인스턴스에 버전 저장.
+            // 설치·업데이트가 인스턴스를 잡고 있으면 파일이 바뀌는 중이라 저장하지 않는다 (D-S12)
             if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
-                    let mut supervisor = state.supervisor.write().await;
-                    if let Some(mut instance) = supervisor.instance_store.get(&id).cloned() {
-                        let already_set = instance.server_version.as_deref() == Some(version);
-                        if !already_set {
-                            instance.server_version = Some(version.to_string());
-                            if let Err(e) = supervisor.instance_store.update(&id, instance) {
-                                tracing::warn!("Failed to persist detected version for '{}': {}", id, e);
-                            } else {
-                                tracing::info!("Auto-saved detected server version '{}' for instance '{}'", version, id);
-                            }
+                    if !super::backup::BusyGuard::held(&id) {
+                        match state.supervisor.write().await.save_detected_version(&id, seen.as_deref(), version) {
+                            Ok(true) => tracing::info!("Auto-saved detected server version '{}' for instance '{}'", version, id),
+                            Ok(false) => {}
+                            Err(e) => tracing::warn!("Failed to persist detected version for '{}': {}", id, e),
                         }
                     }
                 }
@@ -531,21 +514,29 @@ pub async fn get_installed_version_handler(
 
 /// POST /api/module/:name/install — Install a server
 /// Body: { "version": "1.21.11", "install_dir": "/path/to/server",
-///         "jar_name": "server.jar", "accept_agreements": ["eula"], "initial_settings": {...} }
+///         "server_executable": "server.jar", "accept_agreements": ["eula"], "initial_settings": {...} }
 pub async fn install_server_handler(
     Path(module_name): Path<String>,
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let version = match payload.get("version").and_then(|v| v.as_str()) {
-        Some(v) => v.to_string(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Missing 'version' field"})),
-            )
-                .into_response()
+    // 있으면 문자열이어야 한다 (형식이 틀린 값을 "비움"으로 받아 다른 버전을 설치하지 않게)
+    let text_field = |field: &str| match payload.get(field) {
+        None => Ok(None),
+        Some(Value::String(v)) => Ok(Some(v.clone())),
+        Some(_) => {
+            let error = json!({ "error": format!("'{}' must be a string", field), "error_code": "invalid_format", "fields": [{"field": field}] });
+            Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()))
         }
+    };
+    // 비우면 아래에서 그 인스턴스 설정으로 최신을 고른다
+    let version = match text_field("version") {
+        Ok(v) => v.filter(|v| !v.is_empty()),
+        Err(resp) => return *resp,
+    };
+    let instance_id = match text_field("instance_id") {
+        Ok(v) => v,
+        Err(resp) => return *resp,
     };
 
     let install_dir = match payload.get("install_dir").and_then(|v| v.as_str()) {
@@ -559,12 +550,41 @@ pub async fn install_server_handler(
         }
     };
 
-    let jar_name = payload.get("jar_name").and_then(|v| v.as_str());
+    // 서버 실행 파일 이름 (없으면 모듈 `server_executable`)
+    let executable = payload.get("server_executable").and_then(|v| v.as_str());
     let accepted_agreements = match requested_agreements(&payload, "accept_agreements") {
         Ok(ids) => ids,
         Err(resp) => return *resp,
     };
     let initial_settings = payload.get("initial_settings").cloned();
+    // 어느 인스턴스의 설치인가: 그 설정(서버 종류 등)으로 버전을 고르고 설치한다. 그 인스턴스의 데이터 폴더를
+    // 모듈에 넘기므로 설치가 끝날 때까지 잡아 둔다(켜져 있거나 백업·복원·삭제 중이면 409). 설정은 잡은 뒤에 읽는다
+    let (instance, own_guard) = match instance_id.as_deref() {
+        Some(id) => {
+            match state.supervisor.read().await.instance_store.get(id) {
+                Some(inst) if inst.module_name == module_name => {}
+                Some(_) => {
+                    let error = json!({ "error": format!("Instance '{}' is not a '{}' server", id, module_name), "error_code": "invalid_format", "fields": [{"field": "instance_id"}] });
+                    return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                }
+                None => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response(),
+            }
+            let Some(guard) = super::backup::BusyGuard::take(id) else {
+                return super::backup::instance_busy();
+            };
+            if super::backup::is_running(&state, id).await {
+                return server_running();
+            }
+            let sup = state.supervisor.read().await;
+            // 잡기 전에 지워졌을 수 있다
+            let Some(inst) = sup.instance_store.get(id) else {
+                return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+            };
+            let dir = sup.instance_store.instance_dir(id);
+            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir))), Some(guard))
+        }
+        None => (None, None),
+    };
 
     // ── 필수 익스텐션 의존성 검증 ──
     {
@@ -628,15 +648,35 @@ pub async fn install_server_handler(
         }
     }
 
+    let version = match version {
+        Some(v) => v,
+        None => {
+            let module_path = match state.supervisor.read().await.module_loader.get_module(&module_name) {
+                Ok(m) => m.entry_path(),
+                Err(e) => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)}))).into_response(),
+            };
+            let settings = instance.as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| json!({}));
+            match Supervisor::latest_version(&module_path, &settings).await {
+                Ok(v) => v,
+                Err(e) => {
+                    let error = json!({ "error": format!("Could not find the latest version of this server: {}", e), "error_code": "version_unknown" });
+                    return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+                }
+            }
+        }
+    };
+
     // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다.
     // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
-    let guards = match hold_instances_using(&state, &install_dir).await {
+    let mut guards = match hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
         Ok(guards) => guards,
         Err(resp) => return resp,
     };
-    let jar_name = jar_name.map(str::to_string);
+    guards.extend(own_guard);
+    let executable = executable.map(str::to_string);
     let install = {
         let state = state.clone();
+        let version = version.clone();
         crate::audit::spawn(async move {
             let _guards = guards;
             Supervisor::install_server(
@@ -644,16 +684,21 @@ pub async fn install_server_handler(
                 &module_name,
                 &version,
                 &install_dir,
-                jar_name.as_deref(),
+                executable.as_deref(),
                 &accepted_agreements,
                 initial_settings,
+                instance,
             )
             .await
             .map_err(|e| e.to_string())
         })
     };
     match install.await.unwrap_or_else(|e| Err(e.to_string())) {
-        Ok(result) => {
+        Ok(mut result) => {
+            // 버전을 비운 클라이언트도 무엇을 설치했는지 안다
+            if let Some(obj) = result.as_object_mut() {
+                obj.entry("version").or_insert_with(|| json!(version));
+            }
             let status = if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 StatusCode::OK
             } else {
@@ -666,5 +711,126 @@ pub async fn install_server_handler(
             Json(json!({"error": e.to_string()})),
         )
             .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    // 실사용(L23): GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의
+    // 파일을 받을 수 있었다. 버전을 비우면 데몬이 그 인스턴스 설정으로 최신을 고르고, 설치에도 그 설정을 넘긴다
+    #[tokio::test]
+    async fn an_install_without_a_version_takes_the_latest_for_the_instance_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        // 종류가 "b"일 때만 최신이 2.0이고, 설치는 그 버전과 그 종류로 불렸을 때만 성공한다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\nkind = (config.get('settings') or {}).get('kind')\n\
+             if sys.argv[1] == 'list_versions':\n    print(json.dumps({'success': True, 'latest': {'release': '2.0' if kind == 'b' else '1.0'}}))\n\
+             else:\n    ok = config.get('version') == '2.0' and kind == 'b'\n    print(json.dumps({'success': ok, 'message': 'version %s kind %s' % (config.get('version'), kind)}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.module_settings.insert("kind".into(), json!("b"));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let install = |body: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state), Json(body)).await.into_response()).await }
+        };
+        let files = tmp.path().join("files");
+
+        let done = install(json!({ "install_dir": files, "instance_id": id })).await;
+        assert!(done.status.is_success(), "{}", done.body);
+        assert_eq!(done.body["version"], "2.0", "the client learns which version the daemon chose");
+        // 없는 인스턴스, 다른 모듈의 인스턴스, 문자열이 아닌 값은 받지 않는다
+        let missing = install(json!({ "install_dir": files, "instance_id": "nope" })).await;
+        assert_eq!(missing.status, StatusCode::NOT_FOUND, "{}", missing.body);
+        let foreign = crate::instance::ServerInstance::new("other", "elsewhere");
+        let foreign_id = foreign.id.clone();
+        state.supervisor.write().await.instance_store.add(foreign).unwrap();
+        let other = install(json!({ "install_dir": files, "instance_id": foreign_id })).await;
+        assert_eq!(other.status, StatusCode::BAD_REQUEST, "{}", other.body);
+        for body in [json!({ "install_dir": files, "instance_id": 123 }), json!({ "install_dir": files, "version": 1.2 })] {
+            let wrong = install(body).await;
+            assert_eq!(wrong.status, StatusCode::BAD_REQUEST, "{}", wrong.body);
+            assert_eq!(wrong.body["error_code"], "invalid_format");
+        }
+        // 그 인스턴스가 다른 작업(백업·복원·삭제 등)에 잡혀 있으면 그 데이터 폴더를 모듈에 넘기지 않는다
+        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let held = install(json!({ "install_dir": tmp.path().join("elsewhere"), "instance_id": id })).await;
+        assert_eq!(held.status, StatusCode::CONFLICT, "{}", held.body);
+        drop(busy);
+        // 버전을 정해 보내면 그대로 쓴다 (예전 클라이언트)
+        let pinned = install(json!({ "install_dir": files, "instance_id": id, "version": "1.0" })).await;
+        assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
+    }
+
+    // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
+    // 감지가 끝난 뒤 옛 값으로 덮을 수 있었다. 감지 사이에 값이 바뀌었거나 인스턴스가 작업 중이면 저장하지 않는다
+    #[tokio::test]
+    async fn a_version_detected_while_the_server_changes_does_not_overwrite_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\njson.load(sys.stdin)\ntime.sleep(0.6)\nprint(json.dumps({'success': True, 'version': '1.0'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let detect = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(get_installed_version_handler(Path(id), State(state)).await.into_response()).await }
+        };
+        let saved = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { state.supervisor.read().await.instance_store.get(&id).unwrap().server_version.clone() }
+        };
+        let set = |version: &'static str| {
+            let (state, id) = (state.clone(), id.clone());
+            async move {
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                inst.server_version = Some(version.into());
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+        };
+
+        // 감지하는 사이 새 버전이 저장되면 그 값을 남긴다
+        let running = tokio::spawn(detect());
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        set("2.0").await;
+        let done = running.await.unwrap();
+        assert_eq!(done.body["version"], "1.0", "{}", done.body);
+        assert_eq!(saved().await.as_deref(), Some("2.0"), "a stale detection must not overwrite a newer version");
+
+        // 설치·업데이트 같은 작업이 인스턴스를 잡고 있으면 감지 결과는 알려 주되 저장하지 않는다
+        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let held = detect().await;
+        assert_eq!(held.body["version"], "1.0", "{}", held.body);
+        assert_eq!(saved().await.as_deref(), Some("2.0"), "files may be mid-change while the instance is busy");
+        drop(busy);
+
+        // 아무 일도 없으면 감지한 값을 저장한다
+        detect().await;
+        assert_eq!(saved().await.as_deref(), Some("1.0"));
     }
 }

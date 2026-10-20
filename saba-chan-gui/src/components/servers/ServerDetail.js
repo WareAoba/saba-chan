@@ -5,11 +5,12 @@ import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
-import { openWithNotice } from '../../utils/helpers';
+import { openWithNotice, safeShowToast } from '../../utils/helpers';
 import { useUIStore } from '../../stores/useUIStore';
 import {
     STATUS_TONE,
     consoleQuickCommands,
+    gameNameOf,
     initials,
     interactionOf,
     playersText,
@@ -62,9 +63,7 @@ export function ServerDetail({
     );
     const action = primaryAction(status);
     const interaction = interactionOf(server, moduleData);
-    const gameName = t(`mod_${server.module}:module.display_name`, {
-        defaultValue: moduleData?.game_name || server.module,
-    });
+    const gameName = gameNameOf(t, server.module, moduleData);
 
     const tabs = [
         interaction.console && {
@@ -121,11 +120,7 @@ export function ServerDetail({
                     className="btn btn-info"
                     disabled={updatingServer}
                     onClick={() => applyInstanceUpdate(server, setServers)}
-                    title={t('server_status.update_available', {
-                        local: updateInfo.local_buildid,
-                        remote: updateInfo.remote_buildid,
-                        defaultValue: `${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`,
-                    })}
+                    title={`${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`}
                 >
                     <Icon name="arrowUp" size="sm" /> {updatingServer ? t('shell.updating') : t('shell.update')}
                 </button>
@@ -231,6 +226,13 @@ export function ServerDetail({
 
             {status !== 'missing' && <ModuleAuditNotice moduleName={server.module} />}
 
+            {server.unresponsive && status === 'running' && (
+                <div className="notice tone-warn" role="status">
+                    <Icon name="alertTriangle" size="sm" />
+                    <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
+                </div>
+            )}
+
             {conflicts.length > 0 && (
                 <div className="notice tone-warn">
                     <Icon name="alertCircle" size="sm" />
@@ -275,11 +277,16 @@ export function ServerDetail({
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
                                 poppedOut={consoleProps.consolePopoutIds.includes(server.id)}
                                 onPopout={async () => {
-                                    // 창이 열리면 셸이 console:popoutOpened로 알려 준다
+                                    // 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
                                     try {
-                                        await window.api.consolePopout(server.id, server.name);
+                                        const res = await window.api.consolePopout(server.id, server.name);
+                                        if (res?.ok === false) {
+                                            console.error('[ServerDetail] popout failed:', res.error);
+                                            safeShowToast(t('console.popout_failed'), 'error');
+                                        }
                                     } catch (err) {
                                         console.error('[ServerDetail] popout failed:', err);
+                                        safeShowToast(t('console.popout_failed'), 'error');
                                     }
                                 }}
                                 onPopin={() => consoleProps.popinConsole(server.id)}

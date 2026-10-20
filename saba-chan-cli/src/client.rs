@@ -15,6 +15,8 @@ const QUICK: Duration = Duration::from_secs(10);
 const SLOW: Duration = Duration::from_secs(60);
 /// 설치·다운로드
 const LONG: Duration = Duration::from_secs(30 * 60);
+/// 정지·재시작: 데몬은 인스턴스 `stop_timeout`(최대 3600초)까지 저장 후 종료를 기다린 뒤 답한다 (MK14, L74)
+const STOP: Duration = Duration::from_secs(3600 + 10 * 60);
 
 #[derive(Clone)]
 pub struct Api {
@@ -23,6 +25,10 @@ pub struct Api {
     /// 데몬 포트 (데몬을 띄울 때 그대로 넘긴다)
     pub port: u16,
     token: Arc<RwLock<Option<String>>>,
+    /// 요청마다 싣는 `Accept-Language` (`--lang`·`SABA_LANG`으로 고른 언어). 없으면 데몬이 자기 설정을 따른다
+    pub lang: Option<String>,
+    /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id (L50)
+    notices_seen: Arc<std::sync::atomic::AtomicU64>,
 }
 
 fn read_token() -> Option<String> {
@@ -46,10 +52,15 @@ pub fn seg(s: &str) -> String {
 }
 
 impl Api {
-    pub fn new(port: u16) -> Self {
+    pub fn new(port: u16, lang: Option<String>) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(v) = lang.as_deref().and_then(|l| reqwest::header::HeaderValue::from_str(l).ok()) {
+            headers.insert(reqwest::header::ACCEPT_LANGUAGE, v);
+        }
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(2))
             .no_proxy()
+            .default_headers(headers)
             .build()
             .expect("http client");
         Self {
@@ -57,6 +68,8 @@ impl Api {
             base: format!("http://127.0.0.1:{}", port),
             port,
             token: Arc::new(RwLock::new(read_token())),
+            lang,
+            notices_seen: Arc::default(),
         }
     }
 
@@ -181,9 +194,15 @@ impl Api {
 
     // ── 서버 (런타임 상태) ──
 
-    /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다)
-    pub async fn servers(&self) -> Result<Value> {
-        self.get_slow("/api/servers").await
+    /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다).
+    /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 데몬에 남는다: 알림을 보여 주는 `status`는 이 실행에서 본 것 뒤만,
+    /// 나머지는 `keep`으로 남은 것 모두를 받는다
+    pub async fn servers(&self, keep_notices: bool) -> Result<Value> {
+        let mut body = self.get_slow(&servers_path(keep_notices, &self.notices_seen)).await?;
+        if !keep_notices {
+            remember_notices(&self.notices_seen, &mut body);
+        }
+        Ok(body)
     }
     /// POST /api/instance/:id/start — managed 여부는 데몬이 고른다
     pub async fn start(&self, id: &str) -> Result<Value> {
@@ -192,12 +211,12 @@ impl Api {
     }
     /// POST /api/instance/:id/stop
     pub async fn stop(&self, id: &str, force: bool) -> Result<Value> {
-        self.post_long(&format!("/api/instance/{}/stop", seg(id)), json!({ "force": force }))
+        self.call(Method::POST, &format!("/api/instance/{}/stop", seg(id)), Some(json!({ "force": force })), STOP)
             .await
     }
     /// POST /api/instance/:id/restart — 멈추고(최대 2분) 다시 켠다. 꺼져 있었으면 켜기만. 응답은 시작 응답 + `stopped`
     pub async fn restart(&self, id: &str, force: bool) -> Result<Value> {
-        self.post_long(&format!("/api/instance/{}/restart", seg(id)), json!({ "force": force }))
+        self.call(Method::POST, &format!("/api/instance/{}/restart", seg(id)), Some(json!({ "force": force })), STOP)
             .await
     }
     /// POST /api/instance/:id/rename — 409 name_taken / server_running
@@ -340,6 +359,10 @@ impl Api {
     pub async fn preflight(&self) -> Result<Value> {
         self.get("/api/runtime/preflight").await
     }
+    /// GET /api/diagnostics — 데몬 진단 (경로·토큰 파일·모듈·익스텐션·최근 경고)
+    pub async fn diagnostics(&self) -> Result<Value> {
+        self.get("/api/diagnostics").await
+    }
     /// GET /api/onboarding — 다음 할 일 `{steps, next}`
     pub async fn onboarding(&self) -> Result<Value> {
         self.get("/api/onboarding").await
@@ -418,7 +441,7 @@ impl Api {
         self.get_slow(&format!("/api/module/{}/version/{}", seg(name), seg(version)))
             .await
     }
-    /// POST /api/module/:name/install — 서버 파일만 받는다 `{version, install_dir, jar_name?, accept_agreements?}`
+    /// POST /api/module/:name/install — 서버 파일만 받는다 `{version, install_dir, server_executable?, accept_agreements?}`
     pub async fn install_server_files(&self, name: &str, body: Value) -> Result<Value> {
         self.post_long(&format!("/api/module/{}/install", seg(name)), body)
             .await
@@ -548,9 +571,13 @@ impl Api {
             None => self.delete(&path).await,
         }
     }
-    /// POST/DELETE /api/sandbox/unisolated/:component (격리 없이 돌리기 동의)
-    pub async fn set_unisolated(&self, component: &str, allow: bool) -> Result<Value> {
-        let path = format!("/api/sandbox/unisolated/{}", seg(component));
+    /// GET /api/sandbox/{unisolated|extension-gui} — `{components:[{component, fingerprint, current}]}`
+    pub async fn consents(&self, kind: &str) -> Result<Value> {
+        self.get(&format!("/api/sandbox/{}", kind)).await
+    }
+    /// POST/DELETE /api/sandbox/{unisolated|extension-gui}/:component (격리 없이 돌리기, 익스텐션 GUI 번들 싣기 동의)
+    pub async fn set_consent(&self, kind: &str, component: &str, allow: bool) -> Result<Value> {
+        let path = format!("/api/sandbox/{}/{}", kind, seg(component));
         if allow {
             self.post(&path, json!({})).await
         } else {
@@ -656,9 +683,36 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/relay/node/:guild/members?withStatus=1 — `{members: [{id, username, displayName}], partial, reason?}`
+    /// (`partial`: 디스코드 전체 목록을 못 받아 권한을 등록한 멤버만)
     pub async fn node_members(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
         self.get(&with_query(
             &format!("/api/relay/node/{}/members", seg(guild_id)),
+            &[("withStatus", Some("1".to_string())), ("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// GET /api/relay/node/:guildId/legacy-members — 릴레이에 남은 권한 부여값 `[{id, username, displayName, level}]`
+    pub async fn legacy_members(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/legacy-members", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// GET /api/relay/host/:id/status — 릴레이가 이 PC(호스트)를 아는지. 실패하면 오류
+    pub async fn host_status(&self, host_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/host/{}/status", seg(host_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// GET /api/relay/node/:guild/chatbot/models — `{provider, models: [이름], selected, effectiveModel}`
+    /// (409 NO_API_KEY, 422 INVALID_API_KEY·QUOTA_EXCEEDED, 503 PROVIDER_UNAVAILABLE)
+    pub async fn chatbot_models(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/chatbot/models", seg(guild_id)),
             &[("relayUrl", relay_url.map(str::to_string))],
         ))
         .await
@@ -725,11 +779,11 @@ impl Api {
         )
         .await
     }
-    /// GET /api/instance/:id/schedule — `{schedule, backup_keep, backup_supported, announce_supported}`
+    /// GET /api/instance/:id/schedule — `{schedule, backup_keep, revision, backup_supported, announce_supported}`
     pub async fn schedule(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/schedule", seg(id))).await
     }
-    /// PUT /api/instance/:id/schedule — `{schedule: [...], backup_keep?}` (목록 전체를 바꾼다)
+    /// PUT /api/instance/:id/schedule — `{schedule: [...], backup_keep?, revision?}` (목록 전체를 바꾼다. 읽은 뒤 바뀌었으면 409 `schedule_changed`)
     pub async fn save_schedule(&self, id: &str, body: Value) -> Result<Value> {
         self.put(&format!("/api/instance/{}/schedule", seg(id)), body).await
     }
@@ -803,8 +857,9 @@ impl Api {
         self.post("/api/updates/launch-updater", json!({ "relaunch": relaunch }))
             .await
     }
-    pub async fn update_last_result(&self) -> Result<Value> {
-        self.get("/api/updates/last-result").await
+    /// GET /api/updates/last-result?lang&include_seen=true — `{result, version, notes, acknowledged}` (notes: 그 언어의 패치노트)
+    pub async fn update_last_result(&self, lang: &str) -> Result<Value> {
+        self.get(&last_result_path(lang)).await
     }
     pub async fn clear_update_last_result(&self) -> Result<Value> {
         self.delete("/api/updates/last-result").await
@@ -820,6 +875,30 @@ impl Api {
     }
 }
 
+fn servers_path(keep_notices: bool, seen: &std::sync::atomic::AtomicU64) -> String {
+    if keep_notices {
+        "/api/servers?notices=keep".into()
+    } else {
+        format!("/api/servers?notices_after={}", seen.load(std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// 받은 알림 중 가장 큰 id를 본 것으로 적고, 겹친 조회로 이미 본 것(id가 커서 이하)은 거른다 (GUI serverList와 같은 규칙)
+fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &mut Value) {
+    let Some(list) = body.get_mut("port_conflict_stops").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let newest = list.iter().filter_map(|n| n.get("id").and_then(Value::as_u64)).max().unwrap_or(0);
+    let before = seen.fetch_max(newest, std::sync::atomic::Ordering::Relaxed);
+    // id가 없는 알림(옛 데몬)은 그대로 둔다
+    list.retain(|n| n.get("id").and_then(Value::as_u64).is_none_or(|id| id > before));
+}
+
+/// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
+fn last_result_path(lang: &str) -> String {
+    with_query("/api/updates/last-result", &[("lang", Some(lang.to_string())), ("include_seen", Some("true".into()))])
+}
+
 fn with_query(path: &str, params: &[(&str, Option<String>)]) -> String {
     let q: Vec<String> = params
         .iter()
@@ -829,6 +908,19 @@ fn with_query(path: &str, params: &[(&str, Option<String>)]) -> String {
         path.to_string()
     } else {
         format!("{}?{}", path, q.join("&"))
+    }
+}
+
+/// 일부만 된 작업의 결과(2xx에 `ok`/`success: false`)는 오류 대신 본문을 돌려준다.
+/// 무엇이 되고 무엇이 실패했는지는 부른 명령이 보이고 실패로 끝낸다 (데몬이 오류 문구 없이 결과만 싣는다)
+pub fn partial(r: Result<Value>) -> Result<Value> {
+    match r {
+        Err(e) => match e.downcast::<CliError>() {
+            Ok(CliError::Api { status, body, .. }) if (200..300).contains(&status) => Ok(body),
+            Ok(other) => Err(other.into()),
+            Err(e) => Err(e),
+        },
+        ok => ok,
     }
 }
 
@@ -865,7 +957,8 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
         });
         return Err(CliError::Api { status, code: Some(code), message, body }.into());
     }
-    let code = pick("error_code");
+    // 모듈이 사용자 조치를 바라는 실패(`action_required`, 예: 실행 파일 없음)는 그 코드가 오류 코드다
+    let code = pick("error_code").or_else(|| pick("action_required"));
     // 내부 오류일 때 error_message는 뭉뚱그린 문구라 구체적인 error가 낫다
     let generic = code.as_deref() == Some("internal_server_error") && pick("error").is_some();
     let message = pick("error_message")
@@ -888,8 +981,89 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
 mod tests {
     use super::*;
 
+    /// GUI가 패치노트를 열어 확인한 뒤에도 `update last`가 결과와 노트를 보인다 (L70)
+    #[test]
+    fn the_last_result_includes_one_already_seen_elsewhere() {
+        assert_eq!(last_result_path("ko"), "/api/updates/last-result?lang=ko&include_seen=true");
+    }
+
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    /// 포트 충돌 정지 알림은 본 것 뒤만 받는다: 다른 클라이언트(GUI)가 읽어도 사라지지 않고,
+    /// 셸에서 `status`를 다시 불러도 이미 보인 알림을 또 보이지 않는다 (L50)
+    #[test]
+    fn port_conflict_notices_are_read_after_the_last_one_seen() {
+        let seen = std::sync::atomic::AtomicU64::new(0);
+        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=0");
+        let mut first = json!({ "port_conflict_stops": [{ "id": 9 }, { "id": 5 }] });
+        remember_notices(&seen, &mut first);
+        assert_eq!(first["port_conflict_stops"].as_array().unwrap().len(), 2);
+        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=9");
+        // 겹친 조회가 같은 알림을 늦게 받아도 본 것은 다시 보이지 않는다
+        let mut late = json!({ "port_conflict_stops": [{ "id": 9 }, { "id": 12 }] });
+        remember_notices(&seen, &mut late);
+        assert_eq!(late["port_conflict_stops"], json!([{ "id": 12 }]));
+        remember_notices(&seen, &mut json!({ "port_conflict_stops": [] }));
+        assert_eq!(servers_path(false, &seen), "/api/servers?notices_after=12");
+        assert_eq!(servers_path(true, &seen), "/api/servers?notices=keep");
+    }
+
+    /// 정지·재시작 요청은 데몬이 가장 긴 정지 대기(인스턴스 stop_timeout 최대 3600초)를 다 기다릴 때까지 끊지 않는다 (L74)
+    #[test]
+    fn a_stop_request_outlasts_the_longest_stop_timeout() {
+        assert!(STOP > Duration::from_secs(3600 + 5), "{STOP:?}");
+    }
+
+    /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
+    async fn request_head(lang: Option<&str>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            // 머리가 여러 조각으로 올 수 있으니 빈 줄까지 읽는다
+            let (mut head, mut buf) = (Vec::new(), [0; 1024]);
+            while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = sock.read(&mut buf).await.unwrap();
+                assert!(n > 0, "connection closed before the request head ended");
+                head.extend_from_slice(&buf[..n]);
+            }
+            sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
+            String::from_utf8_lossy(&head).to_ascii_lowercase()
+        });
+        Api::new(port, lang.map(str::to_string)).call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
+        server.await.unwrap()
+    }
+
+    /// `--lang`을 주면 데몬 문구도 그 언어로 오게 요청마다 `Accept-Language`를 싣는다. 안 주면 데몬 설정을 따른다
+    #[tokio::test]
+    async fn the_chosen_language_goes_to_the_daemon() {
+        assert!(request_head(Some("ko")).await.contains("\r\naccept-language: ko\r\n"));
+        assert!(!request_head(None).await.contains("accept-language"));
+    }
+
+    /// 일부만 된 작업(2xx에 `ok`/`success: false`, 예: 업데이트 받기·적용, 챗봇 기억 지우기)은 본문을 명령에 돌려준다:
+    /// 무엇이 되고 무엇이 실패했는지는 명령이 보이고 실패로 끝낸다. 2xx가 아닌 실패는 그대로 오류다
+    #[test]
+    fn a_partly_done_result_is_handed_back_to_the_command() {
+        let body = json!({ "ok": false, "applied": ["gui"], "errors": [{ "component": "cli", "error": "boom" }] });
+        assert_eq!(partial(check(200, body.clone())).unwrap(), body);
+        assert!(partial(check(500, json!({ "error": "boom" }))).is_err());
+        assert_eq!(partial(check(200, json!({ "ok": true }))).unwrap(), json!({ "ok": true }));
+    }
+
+    /// 모듈이 실행 파일을 못 찾은 시작 실패(`action_required`)는 그 코드로 다루고 다시 설치하라고 안내한다 (MK7, 옛 server_jar_not_found 포함)
+    #[test]
+    fn a_missing_executable_is_reported_by_its_action_code() {
+        crate::i18n::init("en");
+        for code in ["executable_not_found", "server_jar_not_found"] {
+            let e = api_err(check(200, json!({ "success": false, "action_required": code, "message": "server.jar not found" })));
+            assert_eq!(e.code(), code);
+            assert_eq!(e.to_string(), "server.jar not found");
+            assert!(e.hint().is_some_and(|h| h.contains("server update")), "{}", code);
+        }
     }
 
     #[test]
@@ -910,6 +1084,9 @@ mod tests {
         let offline = api_err(check(503, json!({ "error": "BOT_OFFLINE" }))).to_string();
         assert_eq!(offline, api_err(check(503, json!({ "error": "BOT_NOT_READY" }))).to_string());
         assert_eq!(offline, crate::i18n::try_t("err.relay.bot_unavailable").unwrap());
+        // 확인한 뒤 그 디스코드 서버가 다른 PC로 옮겨 갔다 (릴레이 409, 감사 R6)
+        let moved = api_err(check(409, json!({ "error": "NODE_MOVED" })));
+        assert_eq!(moved.to_string(), crate::i18n::try_t("err.relay.node_moved").unwrap_or_default(), "{}", moved);
     }
 
     #[test]

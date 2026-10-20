@@ -573,6 +573,12 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
 
     // Step 10.5: 설치한 버전 기록 (업데이터가 같은 파일을 읽는다)
     emit("manifest", "Recording installed versions...", 98);
+    // 설치 폴더에 남긴 자기 사본도 기록한다. 업데이터가 이 버전을 보고 사본을 바꾼다
+    // 복사가 실패해 옛 사본이 남았으면 기록하지 않는다 (새 버전으로 적으면 업데이터가 옛 사본을 안 바꾼다)
+    let copy = install_dir.join(saba_chan_updater_lib::INSTALLER_EXE);
+    if std::env::current_exe().is_ok_and(|me| is_copy_of(&copy, &me)) {
+        installed_versions.insert("installer".to_string(), env!("CARGO_PKG_VERSION").to_string());
+    }
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
         warn(format!("Failed to write installed manifest: {}", e));
     }
@@ -671,6 +677,31 @@ async fn launch_app(state: State<'_, SharedState>) -> Result<(), String> {
 // 관리자 권한 상승 (UAC) — 디렉토리 생성 전용
 // ═══════════════════════════════════════════════════════
 
+/// Windows 명령줄 인자 하나로 따옴표를 씌운다 (CommandLineToArgvW 규칙: `"` 앞과 끝의 `\`는 두 배로)
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn quote_arg(arg: &str) -> String {
+    let mut out = String::from("\"");
+    let mut backslashes = 0;
+    for c in arg.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                out.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
+                out.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                out.extend(std::iter::repeat_n('\\', backslashes));
+                out.push(c);
+                backslashes = 0;
+            }
+        }
+    }
+    out.extend(std::iter::repeat_n('\\', backslashes * 2));
+    out.push('"');
+    out
+}
+
 /// UAC 프롬프트로 디렉토리를 생성하고 현재 사용자에게 쓰기 권한을 부여한다.
 /// 앱 전체를 재시작하지 않고 디렉토리만 상승 처리한다.
 /// ShellExecuteExW("runas")로 자기 자신을 --elevate-mkdir 모드로 실행하므로
@@ -701,7 +732,7 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
         (_, Ok(u)) => u,
         _ => return Err("Cannot determine the current user".into()),
     };
-    let params = to_wide(&format!("--elevate-mkdir \"{}\" --grant \"{}\"", dir.to_string_lossy(), user));
+    let params = to_wide(&format!("--elevate-mkdir {} --grant {}", quote_arg(&dir.to_string_lossy()), quote_arg(&user)));
 
     let mut sei: SHELLEXECUTEINFOW = unsafe { zeroed() };
     sei.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
@@ -1169,9 +1200,10 @@ pub fn run() {
         init_logging();
 
         let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-        rt.block_on(async {
-            uninstall::do_silent_uninstall().await;
-        });
+        let code = rt.block_on(uninstall::do_silent_uninstall());
+        if code != 0 {
+            std::process::exit(code);
+        }
         return;
     }
 
@@ -1227,9 +1259,42 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+/// `copy`가 `original` 자신이거나 내용이 같은지
+fn is_copy_of(copy: &Path, original: &Path) -> bool {
+    if copy == original {
+        return copy.is_file();
+    }
+    matches!((std::fs::read(copy), std::fs::read(original)), (Ok(a), Ok(b)) if a == b)
+}
+
 #[cfg(test)]
 mod tests {
+    // L15(a): `\`로 끝나는 경로는 그대로 따옴표로 감싸면 `\"`가 되어 다음 인자까지 먹는다
+    #[test]
+    fn elevation_arguments_survive_trailing_backslashes_and_quotes() {
+        assert_eq!(quote_arg(r"C:\Program Files\Saba-chan"), r#""C:\Program Files\Saba-chan""#);
+        assert_eq!(quote_arg(r"D:\"), r#""D:\\""#);
+        assert_eq!(quote_arg(r#"a\"b"#), r#""a\\\"b""#);
+    }
+
     use super::*;
+
+    // M1: 설치 폴더 사본이 이 설치기와 다르면(복사 실패로 옛 사본이 남음) 새 버전으로 기록하지 않는다
+    #[test]
+    fn only_a_matching_installer_copy_is_recorded() {
+        let root = std::env::temp_dir().join(format!("saba-installer-copy-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let me = root.join("me.exe");
+        let copy = root.join("copy.exe");
+        std::fs::write(&me, b"new").unwrap();
+        std::fs::write(&copy, b"old").unwrap();
+        assert!(!is_copy_of(&copy, &me));
+        std::fs::write(&copy, b"new").unwrap();
+        assert!(is_copy_of(&copy, &me));
+        assert!(is_copy_of(&me, &me));
+        assert!(!is_copy_of(&root.join("missing.exe"), &me));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn only_one_install_or_uninstall_runs_at_a_time() {

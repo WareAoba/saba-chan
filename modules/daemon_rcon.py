@@ -3,10 +3,12 @@ saba-chan daemon helpers for Python lifecycle modules
 =====================================================
 Shared runtime helpers (every module may use them; the daemon ships this file).
 The file keeps its old name so existing ``from daemon_rcon import ...`` lines work;
-RCON itself is off on every server (security policy).
+it holds no RCON client. A module whose server only speaks RCON sends its stop
+command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
 
     daemon_post()                                call any daemon endpoint with the IPC token
     daemon_stdin_command()                       send a line to a managed server's stdin
+    loopback_exchange() / loopback_http()        talk to this instance's own port on 127.0.0.1
     is_process_alive() / wait_for_exit() / force_kill()   PID-safe process checks and kills
     config_value()                               top level -> module_settings -> settings lookup
     load_setting_types() / coerce_setting()      cast file values by module.toml field type
@@ -15,6 +17,8 @@ RCON itself is off on every server (security policy).
 Environment (the daemon sets these for every Python run):
     SABA_IPC_URL     — base URL of the daemon (DAEMON_API_URL still overrides it)
     SABA_TOKEN_PATH  — file holding the X-Saba-Token value
+    SABA_LOOPBACK_DIR — set only for sandboxed runs, which cannot reach 127.0.0.1: the loopback
+                        helpers then ask the daemon to make the connection (its own ports only)
 """
 
 import json
@@ -83,6 +87,96 @@ def daemon_post(path, payload, timeout=10):
 def daemon_stdin_command(instance_id, command, *, timeout=10):
     """Send a line to a managed server's stdin via ``/api/instance/:id/stdin``."""
     return daemon_post(f"/api/instance/{instance_id}/stdin", {"command": command}, timeout=timeout)
+
+
+# ─── Loopback ─────────────────────────────────────────────────
+# A sandboxed run (AppContainer) cannot open 127.0.0.1. The daemon relays requests to this
+# instance's own ports: the request goes out as one stderr line, the reply comes back as a file.
+
+def _read_until_done(sock, idle_ms, limit=1024 * 1024):
+    chunks, size = [], 0
+    while size < limit:
+        if idle_ms is not None and chunks:
+            sock.settimeout(idle_ms / 1000)
+        try:
+            chunk = sock.recv(8192)
+        except TimeoutError:
+            if idle_ms is not None and chunks:
+                break
+            raise
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    return b"".join(chunks)[:limit]
+
+
+def loopback_exchange(port, data, *, timeout=5, idle_ms=None):
+    """Send ``data`` to ``127.0.0.1:port`` and return what comes back.
+
+    Reading stops when the server closes the connection, or, with ``idle_ms``, once the
+    server has been quiet that long after answering (for protocols that keep the
+    connection open). Raises OSError on failure, including a refused port.
+    """
+    relay = os.environ.get("SABA_LOOPBACK_DIR")
+    if not relay:
+        import socket
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=timeout) as sock:
+            sock.sendall(data)
+            return _read_until_done(sock, idle_ms)
+    import base64
+    import uuid
+    request_id = uuid.uuid4().hex
+    request = {"id": request_id, "port": int(port), "data": base64.b64encode(data).decode("ascii"), "timeout": timeout}
+    if idle_ms is not None:
+        request["idle_ms"] = int(idle_ms)
+    print("LOOPBACK:" + json.dumps(request), file=sys.stderr, flush=True)
+    reply_path = Path(relay) / f"{request_id}.json"
+    deadline = time.monotonic() + timeout + 2
+    while not reply_path.exists():
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"no reply from the daemon for 127.0.0.1:{port}")
+        time.sleep(0.02)
+    try:
+        reply = json.loads(reply_path.read_text(encoding="utf-8"))
+    finally:
+        try:
+            reply_path.unlink()
+        except OSError:
+            pass
+    if not reply.get("ok"):
+        raise OSError(f"127.0.0.1:{port}: {reply.get('error')}")
+    return base64.b64decode(reply.get("data") or "")
+
+
+def loopback_http(port, method, path, *, headers=None, body=None, timeout=5):
+    """HTTP/1.1 request to ``127.0.0.1:port`` through ``loopback_exchange``.
+
+    Returns ``(status, body_bytes)``. Raises OSError on connection failures or an
+    unreadable response.
+    """
+    body = body or b""
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    lines = [f"{method} {path} HTTP/1.1", f"Host: 127.0.0.1:{port}", "Connection: close",
+             f"Content-Length: {len(body)}"]
+    lines += [f"{k}: {v}" for k, v in (headers or {}).items()]
+    raw = loopback_exchange(port, ("\r\n".join(lines) + "\r\n\r\n").encode("utf-8") + body, timeout=timeout)
+    head, sep, payload = raw.partition(b"\r\n\r\n")
+    status_line = head.split(b"\r\n", 1)[0].decode("latin-1")
+    parts = status_line.split(" ", 2)
+    if not sep or len(parts) < 2 or not parts[1].isdigit():
+        raise OSError(f"127.0.0.1:{port}: unreadable HTTP response")
+    if b"transfer-encoding: chunked" in head.lower():
+        decoded, rest = b"", payload
+        while rest:
+            size_line, _, rest = rest.partition(b"\r\n")
+            size = int(size_line.split(b";")[0] or b"0", 16)
+            if size == 0:
+                break
+            decoded, rest = decoded + rest[:size], rest[size + 2:]
+        payload = decoded
+    return int(parts[1]), payload
 
 
 # ─── Processes ────────────────────────────────────────────────
@@ -273,6 +367,10 @@ def run_lifecycle(functions):
         return
 
     name = sys.argv[1]
+    # 예약 함수: 데몬이 구현된 함수 목록을 묻는다 (자신은 넣지 않는다)
+    if name == "functions" and name not in functions:
+        emit({"success": True, "functions": list(functions)})
+        return
     fn = functions.get(name)
     if fn is None:
         emit({"success": False, "message": f"Unknown function: {name}", "available": list(functions)})

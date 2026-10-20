@@ -5,6 +5,12 @@
 import i18n from 'i18next';
 import { createDaemonClient, queryString } from './daemon';
 
+/** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
+const START_TIMEOUT_MS = 30 * 60_000;
+
+/** 정지·재시작 요청을 기다리는 시간: 데몬은 인스턴스 stop_timeout(최대 3600초)까지 기다린 뒤 답한다 (CLI와 같다, L74) */
+const STOP_TIMEOUT_MS = 70 * 60_000;
+
 // 오류·상태 문구는 main.js처럼 common 네임스페이스
 const t = (key, vars = {}) => i18n.t(key, { ns: 'common', ...vars });
 
@@ -118,6 +124,9 @@ export function createApi({ invoke, hub }) {
     const maximizeWindow = () => send('window_maximize');
     const closeWindow = () => send('window_close');
 
+    // 본 마지막 포트 충돌 정지 알림 id. 데몬은 읽어도 알림을 지우지 않으므로 그 뒤 것만 받는다 (L50)
+    let noticesAfter = 0;
+
     const api = {
         serverList: async () => {
             const notifyConflicts = (data) => {
@@ -134,7 +143,17 @@ export function createApi({ invoke, hub }) {
                 }
             };
             try {
-                const { data } = await get('/api/servers');
+                const { data } = await get(`/api/servers?notices_after=${noticesAfter}`);
+                if (Array.isArray(data?.port_conflict_stops)) {
+                    // 겹친 조회는 같은 커서로 같은 알림을 받는다: 먼저 처리한 응답 뒤의 것만 남긴다
+                    const seen = noticesAfter;
+                    data.port_conflict_stops = data.port_conflict_stops.filter(
+                        (evt) => !Number.isSafeInteger(evt.id) || evt.id > seen,
+                    );
+                    for (const evt of data.port_conflict_stops) {
+                        if (Number.isSafeInteger(evt.id) && evt.id > noticesAfter) noticesAfter = evt.id;
+                    }
+                }
                 notifyConflicts(data);
                 return data;
             } catch (error) {
@@ -147,11 +166,17 @@ export function createApi({ invoke, hub }) {
                 return connectionError(error);
             }
         },
-        // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
+        // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다.
+        // 첫 시작은 준비에 몇 분이 걸릴 수 있어 CLI처럼 30분까지 기다린다 (중간에 끊으면 시작 중인데 실패로 보인다)
         instanceStart: async (instanceId) => {
             try {
-                return (await post(`/api/instance/${encodeURIComponent(instanceId)}/start`, {}, { timeout: 30000 }))
-                    .data;
+                return (
+                    await post(
+                        `/api/instance/${encodeURIComponent(instanceId)}/start`,
+                        {},
+                        { timeout: START_TIMEOUT_MS },
+                    )
+                ).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -171,8 +196,11 @@ export function createApi({ invoke, hub }) {
         },
         serverStop: async (name, options = {}) => {
             try {
-                return (await post(`/api/server/${encodeURIComponent(name)}/stop`, options || {}, { timeout: 30000 }))
-                    .data;
+                return (
+                    await post(`/api/server/${encodeURIComponent(name)}/stop`, options || {}, {
+                        timeout: STOP_TIMEOUT_MS,
+                    })
+                ).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -482,11 +510,14 @@ export function createApi({ invoke, hub }) {
                                 }),
                             };
                         default:
+                            // 409(working_dir_in_use·instance_busy)는 이유를 넘겨 설정 화면이 문구로 보이게 한다
                             return {
                                 error: t('errors.settings_http', {
                                     status: String(status),
                                     error: data.error || error.message,
                                 }),
+                                error_code: data.error_code,
+                                instance: data.instance,
                             };
                     }
                 }
@@ -540,12 +571,25 @@ export function createApi({ invoke, hub }) {
             }
         },
         instanceStop: (id, opts = {}) =>
-            daemonCall('post', `/api/instance/${encodeURIComponent(id)}/stop`, { force: !!opts?.force }),
-        // 재시작은 데몬이 프로세스 종료를 최대 2분 기다린다
+            daemonCall(
+                'post',
+                `/api/instance/${encodeURIComponent(id)}/stop`,
+                { force: !!opts?.force },
+                STOP_TIMEOUT_MS,
+            ),
+        // 재시작은 데몬이 프로세스 종료를 stop_timeout까지 기다린 뒤 다시 켠다
         instanceRestart: (id, opts = {}) =>
-            daemonCall('post', `/api/instance/${encodeURIComponent(id)}/restart`, { force: !!opts?.force }, 150000),
+            daemonCall(
+                'post',
+                `/api/instance/${encodeURIComponent(id)}/restart`,
+                { force: !!opts?.force },
+                STOP_TIMEOUT_MS,
+            ),
         instanceRename: (id, name) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/rename`, { name }),
         instanceCommands: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/commands`),
+        // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
+        instanceValidate: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
+        instanceDiagnose: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),
         // 설정 화면용: 디스크의 실제 설정 (실패하면 success:false)
         instanceReadLiveSettings: (id) =>
             daemonCall('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),
@@ -564,7 +608,8 @@ export function createApi({ invoke, hub }) {
                 return (await get('/api/extensions')).data;
             } catch (error) {
                 console.warn('[Extension] Failed to list extensions:', error.message);
-                return { extensions: [] };
+                // error가 있으면 받은 목록이 아니다: 받아 둔 목록을 빈 목록으로 덮지 않게
+                return { extensions: [], error: error.message || 'extension list unavailable' };
             }
         },
         extensionEnable: async (extId) => {
@@ -588,6 +633,10 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error);
             }
         },
+        // 익스텐션 설정 (manifest config_fields). Set은 값 객체를 그대로 보낸다(키 단위 병합, null이면 삭제)
+        extensionConfigGet: (extId) => daemonCall('get', `/api/extensions/${encodeURIComponent(extId)}/config`),
+        extensionConfigSet: (extId, config) =>
+            daemonCall('put', `/api/extensions/${encodeURIComponent(extId)}/config`, config),
         extensionI18n: async (extId, locale) => {
             try {
                 return (await get(`/api/extensions/${encodeURIComponent(extId)}/i18n/${encodeURIComponent(locale)}`))
@@ -724,27 +773,20 @@ export function createApi({ invoke, hub }) {
         consolePopin: (instanceId) => invoke('console_popin', { instanceId }),
         consoleToggleAlwaysOnTop: (instanceId, pinned) =>
             invoke('console_toggle_always_on_top', { instanceId, pinned }),
-        onConsolePopoutOpened: (callback) => {
-            hub.on('console:popoutOpened', callback);
-        },
-        offConsolePopoutOpened: () => hub.offAll('console:popoutOpened'),
-        onConsolePopoutClosed: (callback) => {
-            hub.on('console:popoutClosed', callback);
-        },
-        offConsolePopoutClosed: () => hub.offAll('console:popoutClosed'),
-        onConsolePopinRequest: (callback) => {
-            hub.on('console:popinRequest', callback);
-        },
-        offConsolePopinRequest: () => hub.offAll('console:popinRequest'),
+        // 셸 이벤트 구독은 그 구독만 떼는 함수를 돌려준다 (다른 화면의 구독은 남는다)
+        onConsolePopoutOpened: (callback) => hub.on('console:popoutOpened', callback),
+        onConsolePopoutClosed: (callback) => hub.on('console:popoutClosed', callback),
+        onConsolePopinRequest: (callback) => hub.on('console:popinRequest', callback),
 
         // ── 업데이터 (데몬 HTTP API) ──
         updaterCheck: async () => {
             try {
                 const { data } = await post('/api/updates/check', {}, { timeout: 30000 });
-                // 업데이트가 있으면 배너·알림 모달용 이벤트. Locales는 백그라운드 자동 적용이라 뺀다
+                // 배너·알림 모달용 이벤트. Locales는 백그라운드 자동 적용이라 뺀다. 받을 것이 없으면 count 0으로
+                // 알려 남은 업데이트 알림을 지운다
                 const visibleNames = (data?.update_names || []).filter((n) => n !== 'Locales');
                 const visibleComponents = (data?.components || []).filter((c) => c.display_name !== 'Locales');
-                if (data?.ok && visibleNames.length > 0) {
+                if (data?.ok && !data?.error) {
                     hub.dispatch('updates:available', {
                         count: visibleNames.length,
                         updates_available: visibleNames.length,
@@ -773,7 +815,8 @@ export function createApi({ invoke, hub }) {
             try {
                 const body = { components: Array.isArray(components) ? components : [] };
                 const { data } = await post('/api/updates/apply', body, { timeout: 120000 });
-                if (data?.applied && data.applied.length > 0) {
+                // 일부만 적용됐으면(ok:false) 성공 알림을 띄우지 않는다: 실패는 부른 화면이 보인다 (G-U9)
+                if (data?.ok !== false && data?.applied && data.applied.length > 0) {
                     hub.dispatch('updates:completed', {
                         count: data.applied.length,
                         names: data.applied,
@@ -845,9 +888,12 @@ export function createApi({ invoke, hub }) {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
                 if (data?.running) return 'running';
                 // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
-                return data?.lastErrorCode === 'token_replaced' ? 'replaced' : 'stopped';
+                if (data?.lastErrorCode === 'token_replaced') return 'replaced';
+                // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
+                return data?.lastErrorCode === 'invalid_relay_url' ? 'invalid_relay_url' : 'stopped';
             } catch (_e) {
-                return 'stopped';
+                // 늦거나 닿지 못했다: 꺼졌는지 모른다 (스토어가 두 번 연달아 모를 때만 꺼짐으로 본다)
+                return 'unknown';
             }
         },
         discordBotStart: async () => {
@@ -856,6 +902,7 @@ export function createApi({ invoke, hub }) {
             } catch (e) {
                 const errData = e.response?.data;
                 if (errData?.error_code === 'node_token_missing') return { error: 'cloud_token_not_found' };
+                if (errData?.error_code === 'invalid_relay_url') return { error: 'invalid_relay_url' };
                 return { error: errData?.error || e.message };
             }
         },
@@ -875,7 +922,8 @@ export function createApi({ invoke, hub }) {
                 return { success: true, message: 'Bot config saved' };
             } catch (error) {
                 console.error('Failed to save bot config via daemon:', error.message);
-                return { error: 'Failed to save bot config' };
+                // error_code(invalid_relay_url 등)를 렌더러가 쓸 수 있게 본문을 넘긴다
+                return errorBody(error);
             }
         },
         saveNodeToken: async (token) => {
@@ -1032,6 +1080,8 @@ export function createApi({ invoke, hub }) {
         // ── 동의·온보딩·백업·예약·챗봇 ──
         instanceAgreements: (id, accept) => daemonJson('post', instancePath(id, '/agreements'), { accept }),
         onboarding: () => daemonJson('get', '/api/onboarding'),
+        // 문제를 물어볼 때 붙여 넣는 데몬 진단 (비밀은 데몬이 싣지 않는다)
+        daemonDiagnostics: () => daemonJson('get', '/api/diagnostics'),
         instanceBackups: (id) => daemonJson('get', instancePath(id, '/backups')),
         instanceBackupCreate: (id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT),
         instanceBackupDelete: (id, name) =>
@@ -1098,15 +1148,9 @@ export function createApi({ invoke, hub }) {
         },
 
         // ── 앱 수명 ──
-        onCloseRequest: (callback) => {
-            hub.on('app:closeRequest', callback);
-        },
-        offCloseRequest: () => hub.offAll('app:closeRequest'),
+        onCloseRequest: (callback) => hub.on('app:closeRequest', callback),
         closeResponse: (choice) => send('app_close_response', { choice }),
-        onStatusUpdate: (callback) => {
-            hub.on('status:update', callback);
-        },
-        offStatusUpdate: () => hub.offAll('status:update'),
+        onStatusUpdate: (callback) => hub.on('status:update', callback),
         daemonStatus: () => invoke('daemon_status'),
         daemonRestart: () => invoke('daemon_restart'),
 

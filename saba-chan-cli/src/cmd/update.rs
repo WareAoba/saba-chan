@@ -27,8 +27,8 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
             ctx.out.data(&r, |r| {
                 print_status(r);
                 if r.get("updates_available").and_then(Value::as_u64).unwrap_or(0) > 0 {
-                    println!();
-                    println!(
+                    say!();
+                    say!(
                         "{}",
                         output::dim("saba-chan-cli update download && saba-chan-cli update apply")
                     );
@@ -44,13 +44,23 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                 ctx.out.done(&t!("update.last_cleared"), &r);
                 return Ok(());
             }
-            let r = ctx.api.update_last_result().await?;
-            let res = r.get("result").cloned().unwrap_or(Value::Null);
-            ctx.out.data(&res, |v| {
-                if v.is_null() {
-                    println!("{}", output::dim(&t!("update.no_last")));
-                } else {
-                    crate::cmd::server::print_value(v);
+            let r = ctx.api.update_last_result(crate::i18n::lang()).await?;
+            ctx.out.data(&r, |r| {
+                let rows = last_rows(r);
+                if rows.is_empty() {
+                    say!("{}", output::dim(&t!("update.no_last")));
+                    return;
+                }
+                output::print_kv(&rows);
+                // 패치노트는 GUI처럼 앱 언어로 (없으면 데몬이 영어·한국어 순으로 고른다)
+                if let Some(notes) = r.get("notes").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
+                    say!();
+                    output::heading(&t!("update.notes"));
+                    say!("{}", notes.trim_end());
+                }
+                // 이미 확인한 결과(GUI가 패치노트를 열었다)는 확인 안내를 하지 않는다
+                if r.get("acknowledged").and_then(Value::as_bool) != Some(true) {
+                    ctx.out.hint("saba-chan-cli update last --clear");
                 }
             });
             Ok(())
@@ -68,7 +78,7 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                     .unwrap_or_default();
                 // 업데이터가 설치한 컴포넌트만 기록이 있다 (설치기로 처음 깐 것은 빠진다)
                 if comps.is_empty() {
-                    println!("{}", output::dim(&t!("update.integrity_empty")));
+                    say!("{}", output::dim(&t!("update.integrity_empty")));
                     return;
                 }
                 let mut t = output::table(&[t!("col.name"), t!("col.state"), t!("col.what")]);
@@ -97,8 +107,8 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                     t.add_row(vec![name.to_string(), mark, what]);
                 }
                 output::print_table(t);
-                println!();
-                println!(
+                say!();
+                say!(
                     "{}",
                     t!(
                         "update.integrity_summary",
@@ -121,7 +131,7 @@ fn print_status(r: &Value) {
         .cloned()
         .unwrap_or_default();
     if comps.is_empty() {
-        println!("{}", output::dim(&t!("update.not_checked")));
+        say!("{}", output::dim(&t!("update.not_checked")));
     }
     let mut t = output::table(&[
         t!("col.name"),
@@ -157,11 +167,35 @@ fn print_status(r: &Value) {
     }
     let err = s(r, "error");
     if !err.is_empty() {
-        eprintln!("{} {}", console::style("!").yellow().bold(), err);
+        tell!("{} {}", console::style("!").yellow().bold(), err);
     }
     if let Some(at) = r.get("last_check").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-        println!("{}", output::dim(&t!("update.last_check", at = at)));
+        say!("{}", output::dim(&t!("update.last_check", at = at)));
     }
+}
+
+/// 받기 결과의 실패들. 구성요소를 고르지 않은 받기는 실패해도 `errors` 없이 `{ok:false, error}`만 온다
+fn download_errors(r: &Value) -> Vec<String> {
+    let mut errors: Vec<String> = r
+        .get("errors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|e| {
+            if e.is_string() {
+                output::show(e)
+            } else {
+                format!("{}: {}", s(e, "component"), s(e, "error"))
+            }
+        })
+        .collect();
+    if errors.is_empty() && r.get("ok").and_then(Value::as_bool) == Some(false) {
+        errors.push(match s(r, "error") {
+            "" => t!("update.download_failed"),
+            e => e.to_string(),
+        });
+    }
+    errors
 }
 
 async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
@@ -186,24 +220,19 @@ async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
         }
     };
     bar.finish_and_clear();
-    let r = r?;
-    let errors: Vec<String> = r
-        .get("errors")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|e| {
-            if e.is_string() {
-                output::show(e)
-            } else {
-                format!("{}: {}", s(e, "component"), s(e, "error"))
-            }
-        })
-        .collect();
+    let r = crate::client::partial(r)?;
+    let errors = download_errors(&r);
     for e in &errors {
         ctx.out.warn(e);
     }
     let n = r.get("downloaded").and_then(Value::as_array).map_or(0, |a| a.len());
+    if !errors.is_empty() {
+        // 일부만 받았으면 받은 것은 사람에게 알리고 실패로 끝낸다 (--json은 오류 문서 하나에 결과를 싣는다)
+        if n > 0 && !ctx.out.json {
+            ctx.out.done(&t!("update.downloaded", n = n), &r);
+        }
+        return Err(crate::error::CliError::Partial { message: t!("update.download_failed"), data: r }.into());
+    }
     ctx.out.done(&t!("update.downloaded", n = n), &r);
     if n > 0 {
         ctx.out.hint("saba-chan-cli update apply");
@@ -211,28 +240,52 @@ async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// 업데이터 없이 끝난 적용의 결과: (알릴 문구, 실패 여부). 오류가 있으면 일부만 적용됐어도 실패다
+fn apply_outcome(r: &Value) -> (Option<String>, bool) {
+    let applied: Vec<String> = r
+        .get("applied")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(output::show)
+        .collect();
+    let failed = r.get("errors").and_then(Value::as_array).is_some_and(|e| !e.is_empty());
+    let done = if !applied.is_empty() {
+        Some(t!("update.applied", list = applied.join(", ")))
+    } else if failed {
+        None
+    } else {
+        Some(t!("update.nothing_to_apply"))
+    };
+    (done, failed)
+}
+
 async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     let spin = crate::progress::spinner(&t!("update.applying"));
     let r = ctx.api.update_apply(components).await;
     spin.finish_and_clear();
-    let r = r?;
+    let r = crate::client::partial(r)?;
     for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
         ctx.out.warn(&output::show(e));
     }
     if r.get("requires_updater").and_then(Value::as_bool) != Some(true) {
-        let applied: Vec<String> = r
-            .get("applied")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(output::show)
-            .collect();
-        if applied.is_empty() {
-            ctx.out.done(&t!("update.nothing_to_apply"), &r);
-        } else {
-            ctx.out.done(&t!("update.applied", list = applied.join(", ")), &r);
+        let (done, failed) = apply_outcome(&r);
+        if failed {
+            // 일부 적용은 사람에게만 따로 알리고, --json은 오류 문서 하나에 결과를 싣는다
+            if let Some(msg) = done.filter(|_| !ctx.out.json) {
+                ctx.out.done(&msg, &r);
+            }
+            return Err(crate::error::CliError::Partial { message: t!("update.apply_failed"), data: r }.into());
+        }
+        if let Some(msg) = done {
+            ctx.out.done(&msg, &r);
         }
         return Ok(());
+    }
+    // 실패한 구성요소가 있어도 코어 업데이트는 막지 않는다 (GUI와 같다): 알리고 종료 코드로 실패를 남긴다
+    let (_, failed) = apply_outcome(&r);
+    if failed {
+        ctx.out.warn(&t!("update.apply_failed"));
     }
     let list: Vec<String> = r
         .get("needs_updater")
@@ -254,7 +307,7 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     ctx.out.hint(&t!("update.after_hint"));
     // 이 CLI 파일도 교체 대상일 수 있으니 셸 안에서도 여기서 끝낸다
     output::flush();
-    std::process::exit(0);
+    std::process::exit(i32::from(failed));
 }
 
 async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
@@ -304,4 +357,78 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     let r = ctx.api.save_update_config(Value::Object(patch)).await?;
     ctx.out.done(&t!("update.config_saved"), &r);
     Ok(())
+}
+
+/// 마지막 적용 결과 (`{result: {timestamp, success, updated_components, failed, message}, version}`). 결과가 없으면 빈 목록
+fn last_rows(r: &Value) -> Vec<(String, String)> {
+    let Some(res) = r.get("result").filter(|v| v.is_object()) else {
+        return Vec::new();
+    };
+    let list = |key: &str| -> Vec<String> {
+        res.get(key).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect()
+    };
+    let ok = res.get("success").and_then(Value::as_bool) == Some(true);
+    let mut rows = Vec::new();
+    if let Some(v) = r.get("version").and_then(Value::as_str) {
+        rows.push((t!("col.version"), v.to_string()));
+    }
+    rows.push((
+        t!("update.result"),
+        if ok { console::style(t!("update.result_ok")).green().to_string() } else { console::style(t!("update.result_failed")).red().to_string() },
+    ));
+    rows.push((t!("update.when"), s(res, "timestamp").to_string()));
+    let updated = list("updated_components");
+    if !updated.is_empty() {
+        rows.push((t!("update.updated"), updated.join(", ")));
+    }
+    for f in list("failed") {
+        rows.push((t!("update.failed_one"), console::style(f).red().to_string()));
+    }
+    if let Some(m) = res.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()) {
+        rows.push((t!("col.what"), m.to_string()));
+    }
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 고르지 않은 받기가 실패하면 `errors` 없이 `{ok:false, error}`만 온다: 0개 받음으로 끝내지 않는다 (cloud-review-426 P2)
+    #[test]
+    fn a_failed_full_download_is_a_failure() {
+        assert_eq!(download_errors(&json!({ "ok": false, "error": "net down" })), vec!["net down".to_string()]);
+        assert_eq!(download_errors(&json!({ "ok": false })).len(), 1);
+        assert!(download_errors(&json!({ "ok": true, "downloaded": [], "count": 0 })).is_empty());
+        assert_eq!(
+            download_errors(&json!({ "ok": false, "errors": [{ "component": "gui", "error": "x" }] })),
+            vec!["gui: x".to_string()]
+        );
+    }
+
+    /// 데몬이 오류를 돌려준 적용은 "적용할 게 없어요"로 성공 처리하지 않는다 (cloud-review-300 P3-4)
+    #[test]
+    fn an_apply_with_errors_fails() {
+        let (done, failed) = apply_outcome(&json!({ "applied": [], "errors": ["boom"] }));
+        assert!(done.is_none() && failed);
+        let (done, failed) = apply_outcome(&json!({ "applied": ["gui"], "errors": ["boom"] }));
+        assert!(done.unwrap().contains("gui") && failed);
+        let (done, failed) = apply_outcome(&json!({ "applied": [], "errors": [] }));
+        assert!(done.is_some() && !failed);
+    }
+
+    /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)
+    #[test]
+    fn the_last_result_reads_as_rows() {
+        let r = json!({ "ok": true, "version": "0.1.7", "notes": "고친 것", "result": {
+            "timestamp": "2026-10-19T13:05:00Z", "success": false, "updated_components": ["saba-core", "cli"],
+            "failed": ["gui: 파일이 쓰기 중"], "message": null
+        } });
+        let rows: Vec<(String, String)> = last_rows(&r).into_iter().map(|(k, v)| (k, console::strip_ansi_codes(&v).to_string())).collect();
+        assert_eq!(rows[0], (t!("col.version"), "0.1.7".to_string()));
+        assert_eq!(rows[1].1, t!("update.result_failed"));
+        assert!(rows.contains(&(t!("update.updated"), "saba-core, cli".to_string())));
+        assert!(rows.contains(&(t!("update.failed_one"), "gui: 파일이 쓰기 중".to_string())));
+        assert!(last_rows(&json!({ "ok": true, "result": null })).is_empty());
+    }
 }

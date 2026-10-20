@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **서버 목록**",
     "empty": "📭 등록된 서버가 없습니다",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 실행 중",
@@ -44,11 +44,13 @@
     "start_complete": "✅ **{{name}}** 시작 요청 완료!",
     "stop_request": "⏳ **{{name}}** 서버를 정지합니다...",
     "stop_complete": "✅ **{{name}}** 정지 요청 완료!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** 서버는 저장 후 종료를 요청할 길(콘솔·REST)이 없어 정지하지 않았습니다. 저장 없이 끝내려면 이 PC의 사바쨩에서 강제 종료를 고르세요.",
     "status_check": "📊 **{{name}}** 상태: {{status}} {{pid_info}}",
     "not_found": "❌ 모듈 \"{{alias}}\" ({{resolved}})에 해당하는 서버를 찾을 수 없습니다",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요",
-    "module_missing": "❌ 모듈 '{{module}}'을(를) 찾을 수 없습니다. 이 서버를 제어할 수 없습니다."
+    "module_missing": "❌ 모듈 '{{module}}'을(를) 찾을 수 없습니다. 이 서버를 제어할 수 없습니다.",
+    "port_moved": "🔀 Windows가 관리용 REST 포트 {{from}}을(를) 예약해 두어 {{to}}(으)로 바꿨어요."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 실행 중...",
@@ -99,6 +101,7 @@
     "unknown_input": "❌ 알 수 없는 명령어입니다.",
     "command_not_found": "❌ 존재하지 않는 명령어입니다.",
     "permission_denied": "❌ 해당 명령어를 사용할 권한이 없습니다.",
+    "chatbot_not_allowed": "❌ 이 명령은 말하는 사바쨩으로는 실행할 수 없어요. 직접 명령어로 실행해 주세요.",
     "local_single_guild_only": "⚠️ 로컬 봇은 하나의 서버에서만 사용할 수 있어요. 현재 {{count}}개의 서버에 소속되어 있어요. 사용하지 않는 서버에서 봇을 제거해 주세요."
   },
   "messages": {
@@ -209,7 +212,7 @@
         "title": "백업 목록"
       },
       "create": {
-        "title": "백업 만들기"
+        "title": "백업"
       },
       "restore": {
         "title": "백업 복원",
@@ -241,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "디스코드 설정 보기",
-          "description": "언어·잠자기·음악 기능"
-        },
         "set": {
           "title": "디스코드 설정 바꾸기",
           "description": "언어·잠자기·음악 기능"
@@ -254,11 +253,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "챗봇 설정 보기",
+          "title": "말하는 사바쨩 설정 보기",
           "description": "켜기·호출어·확인·도구 묶음"
         },
         "set": {
-          "title": "챗봇 설정 바꾸기",
+          "title": "말하는 사바쨩 설정 바꾸기",
           "description": "켜기·호출어·확인·도구 묶음"
         }
       }
@@ -288,11 +287,39 @@
       "enabled": "켜기",
       "model": "모델",
       "memo": "서버 프롬프트",
-      "confirmCommands": "명령 확인",
+      "confirmCommands": "주의 명령 항상 묻기",
       "memory": "기억",
       "webSearch": "웹 검색",
       "disabledTools": "끈 도구 묶음",
       "step": "단계"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…외 {{count}}개",
+      "backups": "💾 **백업 {{count}}개**",
+      "backups_empty": "📭 백업이 없어요",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "직접",
+        "scheduled": "예약",
+        "pre-update": "업데이트 전",
+        "pre-restore": "복원 전"
+      },
+      "events": "📜 **최근 시작·종료 기록**",
+      "events_empty": "📭 기록이 없어요",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "정지",
+        "in_game_stop": "게임 안에서 끔",
+        "crash": "비정상 종료",
+        "start_failed": "시작 실패",
+        "unknown_exit": "알 수 없는 종료"
+      },
+      "updates": "⬆️ **업데이트 {{count}}개**",
+      "updates_none": "✅ 모두 최신이에요",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · 메모리 {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

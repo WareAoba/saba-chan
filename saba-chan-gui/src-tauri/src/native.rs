@@ -97,11 +97,29 @@ pub fn app_ready(app: AppHandle) {
     lifecycle::app_ready(&app);
 }
 
+/// `/health`는 토큰 없이도 200을 준다. 보낸 토큰이 맞을 때만 실행 중으로 본다: 토큰이 어긋나면 API가 모두 401이다
 #[tauri::command]
 pub async fn daemon_status(app: AppHandle) -> Value {
-    match app.state::<AppState>().client.get("/health", 1000).await {
-        Ok(_) => json!({ "running": true, "message": "Daemon is running" }),
-        Err(e) => json!({ "running": false, "message": format!("Daemon not responding: {}", e.message) }),
+    let client = &app.state::<AppState>().client;
+    let mut health = client.get("/health", 1000).await.map_err(|e| e.message);
+    // 데몬이 다시 떠서 토큰이 바뀌었으면 한 번 다시 읽어 본다
+    if matches!(&health, Ok(v) if !lifecycle::token_valid(v)) {
+        client.load_token();
+        health = client.get("/health", 1000).await.map_err(|e| e.message);
+    }
+    daemon_status_body(health, app.state::<AppState>().life.daemon_in_parent_job())
+}
+
+/// `in_parent_job`: 이 GUI가 띄운 데몬이 job에서 떨어지지 못해, GUI를 띄운 프로그램이 꺼지면 함께 꺼질 수 있다
+fn daemon_status_body(health: Result<Value, String>, in_parent_job: bool) -> Value {
+    match health {
+        Ok(v) if lifecycle::token_valid(&v) => {
+            json!({ "running": true, "message": "Daemon is running", "in_parent_job": in_parent_job })
+        }
+        Ok(_) => {
+            json!({ "running": false, "error_code": "token_invalid", "message": "Daemon is running but rejects this app's token" })
+        }
+        Err(e) => json!({ "running": false, "message": format!("Daemon not responding: {}", e) }),
     }
 }
 
@@ -526,6 +544,32 @@ mod tests {
     }
 
     use super::*;
+
+    /// `/health`는 토큰 없이도 200이다: 토큰이 맞을 때만 실행 중으로 본다 (L18 a)
+    #[test]
+    fn the_daemon_counts_as_running_only_when_our_token_is_valid() {
+        let running = |r: Result<Value, String>| daemon_status_body(r, false)["running"].clone();
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "valid" }))), json!(true));
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "invalid" }))), json!(false));
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "missing" }))), json!(false));
+        assert_eq!(running(Err("connection refused".into())), json!(false));
+        assert_eq!(
+            daemon_status_body(Ok(json!({ "token": "invalid" })), false)["error_code"],
+            json!("token_invalid")
+        );
+    }
+
+    /// 데몬을 job에서 떼어 내지 못해 GUI를 띄운 프로그램 안에서 돌면, 화면이 경고할 수 있게 알린다
+    #[test]
+    fn the_status_says_when_the_daemon_runs_inside_the_launchers_job() {
+        let valid = || Ok(json!({ "ok": true, "token": "valid" }));
+        assert_eq!(daemon_status_body(valid(), true)["in_parent_job"], json!(true));
+        assert_eq!(daemon_status_body(valid(), false)["in_parent_job"], json!(false));
+        assert_eq!(
+            daemon_status_body(Err("connection refused".into()), true)["in_parent_job"],
+            Value::Null
+        );
+    }
 
     #[test]
     fn consent_path_takes_only_known_kinds_and_plain_names() {

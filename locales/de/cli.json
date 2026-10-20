@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} wurde erstellt und die Einstellungen wurden gespeichert, aber die Konfigurationsdatei des Spiels konnte nicht geschrieben werden: {{error}}",
     "ask_folder": "Serverordner",
     "ask_name": "Servername",
     "ask_source": "Wie möchtest du ihn einrichten?",
@@ -29,6 +30,14 @@
   },
   "bot": {
     "ask_token": "Node-Token",
+    "relay_check": "Relay-Prüfung",
+    "relay_ok": "antwortet",
+    "relay_failed": "antwortet nicht: {{error}}",
+    "expired": "abgelaufen",
+    "expires_in": "Verbleibend",
+    "members_partial": "Die vollständige Discord-Mitgliederliste war nicht verfügbar; es werden nur Mitglieder mit gespeicherter Stufe angezeigt.",
+    "requested_by": "Angefragt von",
+    "username": "Benutzername",
     "config_saved": "Bot-Einstellungen gespeichert.",
     "confirm_unpair": "Diesen PC vom Discord-Bot trennen und die Kopplung vergessen?",
     "connection": "Verbindung",
@@ -40,6 +49,7 @@
     "offer_start": "Jetzt mit dem Bot verbinden?",
     "pair_enter": "Führe in Discord `/saba connect` aus und gib diesen Code ein:",
     "pair_expired": "Der Kopplungscode ist abgelaufen. Führe bot pair erneut aus.",
+    "pair_token_not_saved": "Discord ist verbunden, aber die Verbindungsdaten konnten auf diesem PC nicht gespeichert werden. Führe bot pair erneut aus.",
     "pair_no_code": "Das Relay hat keinen Kopplungscode zurückgegeben.",
     "pair_polling": "Warte auf Discord...",
     "pair_waiting": "Drücke Strg+C zum Abbrechen.",
@@ -61,7 +71,9 @@
     "allow_saved": "{{guild}} sieht jetzt nur: {{servers}}",
     "link_accepted": "{{guild}} ist jetzt mit diesem PC verbunden.",
     "link_declined": "Verbindungsanfrage abgelehnt.",
-    "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI."
+    "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
+    "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
+    "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}"
   },
   "col": {
     "players": "Spieler",
@@ -90,7 +102,8 @@
     "rest_port": "REST-Port",
     "author": "Autor",
     "mode": "Modus",
-    "trust": "Herkunft"
+    "trust": "Herkunft",
+    "unsupported": "Nicht unterstützt"
   },
   "common": {
     "fetching": "Wird abgerufen...",
@@ -115,11 +128,27 @@
     "meta_help": ":q verlassen · :commands Spielbefehle anzeigen · :start / :stop den Server · alles andere wird als Spielbefehl gesendet",
     "not_running": "{{name}} läuft nicht. Das letzte Log wird angezeigt; neue Zeilen erscheinen, sobald er startet.",
     "started": "── Server gestartet ──",
+    "reattached": "── Daemon neu verbunden (letzte Zeilen) ──",
     "stopped": "── Server gestoppt ──",
     "unknown_meta": "Unbekannt: :{{cmd}}. Versuche :help."
   },
   "daemon": {
     "already": "Der Daemon läuft bereits (v{{version}}).",
+    "diag": {
+      "version": "Version",
+      "uptime": "Laufzeit",
+      "listen": "Adresse",
+      "data_dir": "Datenordner",
+      "token": "Token-Datei",
+      "token_missing": "fehlt ({{path}})",
+      "audit_log": "Audit-Protokoll",
+      "modules": "Module",
+      "modules_error": "nicht lesbar: {{error}}",
+      "extensions": "Aktive Erweiterungen",
+      "extensions_missing": "Aktiv, aber nicht installiert",
+      "problems": "Letzte Warnungen und Fehler",
+      "no_problems": "Keine aktuellen Warnungen oder Fehler"
+    },
     "binary_not_found": "Das Daemon-Programm (saba-core) wurde nicht gefunden. Setze SABA_CORE_PATH oder installiere neu.",
     "confirm_kill": "Der Daemon hat nicht rechtzeitig gestoppt. Beenden erzwingen (PID {{pid}})?",
     "killed": "Daemon zwangsweise beendet (PID {{pid}}).",
@@ -131,6 +160,7 @@
     "starting": "Daemon wird gestartet...",
     "stop_no_pid": "Der Daemon hat seine PID nicht gemeldet und kann daher nicht von hier beendet werden.",
     "stop_timeout": "Der Daemon hat nicht rechtzeitig gestoppt.",
+    "shutdown_refused": "Der Daemon hat die Beendigungsanfrage nicht angenommen: {{error}}",
     "stopped": "Daemon gestoppt.",
     "stopping": "Daemon wird gestoppt..."
   },
@@ -139,7 +169,7 @@
   },
   "err": {
     "relay": {
-      "channel_conflict": "Ein Kanal kann nur eine Rolle haben (Chatbot, Musik oder Benachrichtigungen).",
+      "channel_conflict": "Ein Kanal kann nur eine Rolle haben (Sprechende Saba-chan, Musik oder Benachrichtigungen).",
       "unknown_channel": "Dieser Kanal wurde auf dem Discord-Server nicht gefunden. Prüfe Kanalname oder ID.",
       "bot_unavailable": "Der saba-chan-Bot antwortet gerade nicht. Versuche es gleich noch einmal.",
       "node_not_found": "Das Relay kennt diesen PC nicht. Er wurde getrennt oder durch einen anderen PC ersetzt.",
@@ -149,6 +179,7 @@
       "invalid_token_format": "Das Verbindungstoken dieses PCs ist fehlerhaft.",
       "token_replaced": "Mit demselben Discord-Konto wurde ein anderer PC gekoppelt, daher wurde dieser PC getrennt.",
       "guild_taken": "Dieser Discord-Server ist bereits mit einem anderen PC verbunden.",
+      "node_moved": "Dieser Discord-Server ist inzwischen auf einen anderen PC umgezogen, daher wurde nichts gespeichert.",
       "forbidden": "Du hast auf diesem Discord-Server keine Berechtigung dafür.",
       "expired": "Der Code ist abgelaufen. Fang von vorne an.",
       "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
@@ -162,8 +193,9 @@
     "daemon_down_hint": "Starte ihn mit: saba-chan-cli daemon start",
     "did_you_mean": "Meintest du: {{names}}?",
     "hint": {
-      "executable_missing": "Serverdateien fehlen. Prüfe den Ordner oder installiere neu: saba-chan-cli server update",
+      "executable_missing": "Serverdateien fehlen. Neu installieren (saba-chan-cli server update) oder den Pfad zur ausführbaren Datei angeben: saba-chan-cli server set SERVER executable_path=PFAD",
       "extension_required": "Installiere die benötigten Erweiterungen: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "Diese Erweiterungen wurden verändert und konnten nicht geprüft werden: {{ids}}. Installiere sie neu oder stelle die Originaldateien wieder her: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Kopple diesen PC zuerst: saba-chan-cli bot pair",
       "server_not_running": "Starte zuerst den Server: saba-chan-cli start NAME",
       "server_running": "Stoppe zuerst den Server: saba-chan-cli stop NAME",
@@ -173,16 +205,24 @@
       "backup_unsupported": "Das Modul dieses Spiels gibt nicht an, was gesichert werden soll. Ein neueres Modul kann es vielleicht: saba-chan-cli update check",
       "nothing_to_back_up": "Die Welt existiert noch nicht. Starte den Server einmal, um sie zu erstellen.",
       "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist.",
-      "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>"
+      "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
+      "module_busy": "Dieses Modul wird bereits installiert oder entfernt. Versuche es erneut, wenn das abgeschlossen ist.",
+      "schedule_changed": "Der Zeitplan wurde an anderer Stelle geändert. Prüfe ihn mit saba-chan-cli schedule show und versuche es erneut.",
+      "invalid_command": "Schreibe den Befehlsschlüssel als `<server>/<command>`. Ein Schlüssel ohne Server muss eine globale Aktions-ID sein.",
+      "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>",
+      "not_supported": "Nicht unterstützte Befehle zeigt: saba-chan-cli module info"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
     "not_found": "Kein {{what}} namens „{{query}}“.",
     "pair_expected": "KEY=VALUE erwartet, erhalten: „{{got}}“.",
-    "timeout": "Der Daemon hat zu lange für die Antwort gebraucht ({{path}})."
+    "timeout": "Der Daemon hat zu lange für die Antwort gebraucht ({{path}}).",
+    "unknown_command": "Diesen Befehl gibt es nicht: {{path}}. Mit `saba-chan-cli help` siehst du alle Befehle.",
+    "not_supported": "Das Modul {{module}} unterstützt diese Funktion nicht"
   },
   "agree": {
     "none": "{{name}} hat keine Vereinbarungen zum Annehmen.",
+    "unknown_id": "Übersprungene Bedingungs-IDs, die dieser Server nicht hat: {{ids}} (vorhanden: {{known}})",
     "confirm": "{{name}}: {{names}} annehmen? Du stimmst den Bedingungen unter den Links oben zu.",
     "done": "Vereinbarungen für {{name}} angenommen."
   },
@@ -247,6 +287,8 @@
   },
   "noun": {
     "command": "Befehl",
+    "guild": "Discord-Server",
+    "member": "Mitglied",
     "extension": "Erweiterung",
     "game": "Spiel",
     "module": "Modul",
@@ -257,6 +299,7 @@
   "progress": {
     "dismissed": "Fortschritt von {{name}} gelöscht.",
     "finished": "{{name}} ist fertig installiert.",
+    "lost": "Die Installation von {{name}} lässt sich nicht mehr verfolgen. Der Daemon wurde vielleicht neu gestartet oder der Server woanders umbenannt oder entfernt. Prüfe es mit server list.",
     "none": "Für {{name}} läuft keine Installation.",
     "rolled_back": "{{name}} konnte nicht installiert werden und wurde entfernt."
   },
@@ -278,7 +321,7 @@
     "done": "Reihenfolge gespeichert."
   },
   "reset": {
-    "confirm": "Alle Dateien von {{name}} löschen und neu beginnen? Das kann nicht rückgängig gemacht werden.",
+    "confirm": "{{name}} zurücksetzen? Das kann nicht rückgängig gemacht werden.",
     "done": "{{name}} wurde zurückgesetzt."
   },
   "resolve": {
@@ -313,10 +356,13 @@
     },
     "updated": "{{name}} aktualisiert.",
     "updating": "{{name}} wird aktualisiert...",
-    "version_unknown": "unbekannt"
+    "version_unknown": "unbekannt",
+    "unresponsive": "Reagiert nicht",
+    "unresponsive_reason": "Läuft, reagiert aber nicht: {{reason}}"
   },
   "set": {
     "default": "Standard",
+    "cannot_clear": "{{key}} darf nicht leer sein. Gib einen neuen Wert an.",
     "done": "{{count}} Einstellung(en) für {{name}} gespeichert.",
     "group": {
       "advanced": "Erweitert",
@@ -336,7 +382,7 @@
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
     "bye": "Tschüss. Daemon und Server laufen weiter.",
     "ctrl_c": "(drücke erneut Strg+C oder gib exit ein, um zu beenden)",
-    "help_line": "Gib einen Befehl ein (help, Tab zum Vervollständigen) oder schreib wie in Discord (z. B. \"palworld start\"). exit zum Beenden.",
+    "help_line": "Gib einen Befehl ein (help, Tab zum Vervollständigen) oder schreib wie in Discord (z. B. \"my-server-1 start\"). exit zum Beenden.",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {
@@ -345,6 +391,7 @@
     "not_yet": "{{name}} läuft noch nicht ({{status}}). Prüfe: saba-chan-cli console {{name}}",
     "provisioning": "{{name}} wird noch installiert.",
     "requested": "Start für {{name}} angefordert.",
+    "port_moved": "Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert.",
     "waiting": "{{name}} wird gestartet...",
     "exited": "{{name}} hat sich direkt nach dem Start beendet. Letzte Zeilen siehe oben."
   },
@@ -379,7 +426,9 @@
     "done": "{{name}} gestoppt.",
     "not_yet": "{{name}} wurde noch nicht gestoppt. Erzwingen: saba-chan-cli stop --force {{name}}",
     "requested": "Stopp für {{name}} angefordert.",
-    "waiting": "{{name}} wird gestoppt..."
+    "waiting": "{{name}} wird gestoppt...",
+    "no_graceful": "{{name}} kann nicht zum Speichern und Beenden aufgefordert werden (keine Konsole). Ein erzwungenes Beenden kann den Fortschritt seit dem letzten Speichern verlieren.",
+    "force_confirm": "Ohne Speichern stoppen?"
   },
   "time": {
     "day_ago": "vor {{n}} T",
@@ -392,6 +441,13 @@
   },
   "update": {
     "after_hint": "Saba-chan startet nach dem Update neu. Prüfe dann: saba-chan-cli update last",
+    "notes": "Versionshinweise",
+    "result": "Ergebnis",
+    "result_ok": "erfolgreich",
+    "result_failed": "fehlgeschlagen",
+    "when": "Angewendet am",
+    "updated": "Aktualisiert",
+    "failed_one": "Fehlgeschlagen",
     "applied": "Angewendet: {{list}}",
     "applying": "Updates werden angewendet...",
     "checking": "Suche nach Updates...",
@@ -402,11 +458,13 @@
     "downloading": "Wird heruntergeladen",
     "integrity_summary": "{{verified}} intakt · {{failed}} geändert oder unlesbar · {{skipped}} mit fehlenden Dateien",
     "last_check": "Zuletzt geprüft: {{at}}",
-    "last_cleared": "Gelöscht.",
+    "last_cleared": "Als gesehen markiert.",
     "latest": "Neueste",
     "no_last": "Kein Update-Ergebnis gespeichert.",
     "not_installed": "nicht installiert",
     "nothing_to_apply": "Nichts anzuwenden. Zuerst herunterladen: saba-chan-cli update download",
+    "apply_failed": "Das Update konnte nicht angewendet werden. Prüfen Sie die Fehler oben.",
+    "download_failed": "Einige Updates konnten nicht heruntergeladen werden. Prüfen Sie die Fehler oben.",
     "ready": "bereit zur Installation",
     "up_to_date": "aktuell",
     "updater_launched": "Updater gestartet. Der Daemon wird für das Update beendet.",
@@ -424,7 +482,10 @@
     "ok": "{{name}} sieht startbereit aus."
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
+      "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden"
+    },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
       "bot.channels.no_notify": "Benachrichtigungskanal entfernen",
@@ -435,7 +496,12 @@
       "do.plan": "Nur die Eingabe prüfen und zeigen, was passieren würde",
       "do.input": "Eingabe als key=value (Werte, die als JSON lesbar sind, bleiben JSON)",
       "server": "Servername (ein Teil genügt)",
-      "ids": "Eine oder mehrere Erweiterungs-IDs"
+      "ids": "Eine oder mehrere Erweiterungs-IDs",
+      "help.command": "Befehlspfad, z. B. `server start`",
+      "events.kind": "Nur diese Ereignisse; `instance` umfasst auch `instance.exit` usw.",
+      "events.server": "Nur Ereignisse dieses Servers",
+      "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)",
+      "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente startet die interaktive Shell.\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -473,6 +539,7 @@
     "restoring": "{{backup}} wird wiederhergestellt...",
     "restored": "{{name}} ist wieder auf dem Stand von {{backup}}.",
     "pre_restore": "Die vorherige Welt bleibt als Backup {{backup}} erhalten.",
+    "links_not_restored": "Die Wiederherstellung ist fertig, aber {{count}} Verknüpfung(en) im Ordner konnten nicht wiederhergestellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Protokoll.",
     "start_again": "{{name}} wieder starten?"
   },
   "schedule": {
@@ -500,6 +567,8 @@
     "enabled": "Eingeschaltet: {{task}}",
     "disabled": "Ausgeschaltet: {{task}}",
     "no_such": "Es gibt keine Aufgabe {{number}} (es gibt {{count}}).",
+    "edited": "Aufgabe geändert: {{task}}",
+    "nothing_to_edit": "Gib mindestens eine Änderung an (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Behalte mindestens 1 Backup.",
     "keep_set": "Die letzten {{count}} geplanten Backups werden behalten.",
     "confirm_clear": "Alle geplanten Aufgaben von {{name}} entfernen?",
@@ -513,20 +582,23 @@
   },
   "chatbot": {
     "api_key": "API-Schlüssel gespeichert",
+    "provider": "Anbieter",
+    "model_replaced": "Das gewählte Modell {{selected}} ist nicht verfügbar; stattdessen wird {{effective}} verwendet.",
     "common": "Einstellungen für alle Discord-Server",
     "guild": "Discord-Server {{guild}}",
     "defaults": "(Standardwerte)",
-    "saved": "Chatbot-Einstellungen gespeichert.",
+    "saved": "Einstellungen der Sprechenden Saba-chan gespeichert.",
     "ask_key": "API-Schlüssel (verborgen)",
     "key_required": "Kein API-Schlüssel angegeben. Gib ihn bei der Abfrage ein oder leite ihn weiter: cat key.txt | saba-chan-cli chatbot key",
     "key_saved": "API-Schlüssel gespeichert. Er wird nie wieder angezeigt.",
-    "confirm_delete_key": "Den gespeicherten API-Schlüssel löschen? Der Chatbot antwortet nicht mehr, bis ein neuer Schlüssel gespeichert ist.",
+    "confirm_delete_key": "Den gespeicherten API-Schlüssel löschen? Die Sprechende Saba-chan antwortet nicht mehr, bis ein neuer Schlüssel gespeichert ist.",
     "key_deleted": "API-Schlüssel gelöscht.",
-    "confirm_clear": "Alle Chatbot-Einstellungen und den API-Schlüssel löschen?",
-    "cleared": "Chatbot-Einstellungen und Schlüssel gelöscht.",
-    "confirm_forget": "Soll der Chatbot vergessen, was er sich auf allen Discord-Servern gemerkt hat?",
-    "confirm_forget_guild": "Soll der Chatbot vergessen, was er sich auf dem Discord-Server {{guild}} gemerkt hat?",
-    "forgot": "Das Gedächtnis des Chatbots wurde gelöscht.",
+    "confirm_clear": "Alle Einstellungen der Sprechenden Saba-chan und den API-Schlüssel löschen?",
+    "cleared": "Einstellungen und Schlüssel der Sprechenden Saba-chan gelöscht.",
+    "confirm_forget": "Soll die Sprechende Saba-chan vergessen, was sie sich auf allen Discord-Servern gemerkt hat?",
+    "confirm_forget_guild": "Soll die Sprechende Saba-chan vergessen, was sie sich auf dem Discord-Server {{guild}} gemerkt hat?",
+    "forgot": "Das Gedächtnis der Sprechenden Saba-chan wurde gelöscht.",
+    "forget_failed": "Das Gedächtnis der Sprechenden Saba-chan konnte auf einigen Discord-Servern nicht gelöscht werden. Prüfen Sie die Fehler oben.",
     "not_synced": "Auf diesem PC gespeichert. Es erreicht Discord, sobald der Bot verbunden ist (saba-chan-cli bot status).",
     "sync_failed": "Discord-Server {{guild}} hat die Änderung nicht erhalten: {{error}}",
     "read_failed": "{{path}} konnte nicht gelesen werden: {{error}}"

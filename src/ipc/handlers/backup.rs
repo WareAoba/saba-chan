@@ -22,10 +22,12 @@ use super::super::{CommandRequest, IPCServer};
 use crate::backup::{self, BackupInfo, BackupKind};
 use crate::scheduler::{Clock, ScheduledTask, TaskAction};
 
-const DEFAULT_KEEP: usize = 10;
+pub(crate) const DEFAULT_KEEP: usize = 10;
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
 const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
 const REMOTE_MAX_BACKUP_KEEP: u32 = 30;
+/// 원격(디스코드·챗봇)이 만드는 백업의 종류별 상한. 원격 백업은 정리하지 않으므로(D-B11) 끝없이 쌓이지 않게 막는다 (D-B7)
+const REMOTE_BACKUP_CAP: usize = 50;
 /// 재시작이 작업 잠금이 풀리기를 기다리는 가장 긴 시간 (큰 월드의 백업·업데이트)
 const START_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
@@ -39,6 +41,11 @@ impl BusyGuard {
     pub(crate) fn take(id: &str) -> Option<Self> {
         let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
         busy.get_or_insert_with(HashSet::new).insert(id.to_string()).then(|| Self(id.to_string()))
+    }
+
+    /// 잡지 않고 잡혀 있는지만 본다 (잠깐 잡아 보는 것만으로 다른 작업이 409를 받지 않게)
+    pub(crate) fn held(id: &str) -> bool {
+        BUSY.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|set| set.contains(id))
     }
 }
 
@@ -73,8 +80,20 @@ async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bo
 struct Plan {
     dir: PathBuf,
     paths: Vec<PathBuf>,
+    /// 패턴이 가리키는 경로 전부 (지금 없는 것 포함). 복원이 되살려도 되는 범위
+    targets: Vec<PathBuf>,
     save_command: Option<String>,
     keep: usize,
+}
+
+/// 백업 경로의 기준 폴더: 작업 폴더, 없으면 실행 파일 폴더, 없으면 인스턴스 폴더
+fn server_base(instance: &crate::instance::ServerInstance, instance_dir: &FsPath) -> PathBuf {
+    instance
+        .working_dir
+        .clone()
+        .or_else(|| instance.executable_path.as_ref().and_then(|p| FsPath::new(p).parent()).map(|p| p.to_string_lossy().to_string()))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| instance_dir.to_path_buf())
 }
 
 /// 모듈이 `[backup]`을 선언하지 않았으면 Ok(None)
@@ -88,17 +107,12 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
         let Some(spec) = module.as_ref().and_then(|m| m.metadata.backup.clone()) else {
             return Ok(None);
         };
-        let base = instance
-            .working_dir
-            .clone()
-            .or_else(|| instance.executable_path.as_ref().and_then(|p| FsPath::new(p).parent()).map(|p| p.to_string_lossy().to_string()))
-            .map(PathBuf::from)
-            .unwrap_or_else(|| supervisor.instance_store.instance_dir(id));
+        let base = server_base(&instance, &supervisor.instance_store.instance_dir(id));
         let hook_call = module.as_ref().filter(|_| spec.hook).map(|m| {
             let mut cfg = serde_json::Map::new();
             cfg.insert("working_dir".into(), json!(base.to_string_lossy()));
             cfg.insert("extension_data".into(), json!(&instance.extension_data));
-            crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &instance);
+            crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &instance, &supervisor.instance_store.instance_dir(id));
             crate::plugin::PluginCall::new(m.entry_path(), "backup_paths", Value::Object(cfg))
         });
         // `{설정}` 자리: 인스턴스 설정 값, 없으면 module.toml 기본값
@@ -109,7 +123,16 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
                 Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            settings.get(key).map(text).or_else(|| defaults.as_ref()?.get_setting_default::<String>(key))
+            let value = settings.get(key).map(text).or_else(|| defaults.as_ref()?.get_setting_default::<String>(key))?;
+            // 경로 형식이 아닌 설정(월드 이름 같은 글자, 원격에서도 바꿀 수 있다)은 서버 폴더 안 상대 경로만 받는다
+            let field = defaults.as_ref().and_then(|m| m.settings.as_ref()).and_then(|s| s.fields.iter().find(|f| f.name == key));
+            let path_field = field.is_none_or(|f| f.field_type == "file" || f.format.as_deref() == Some("path"));
+            let inside = std::path::Path::new(&value).components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
+            if !path_field && !inside {
+                tracing::warn!("Backup path setting '{}' must stay inside the server folder; skipping it", key);
+                return None;
+            }
+            Some(value)
         };
         let keep = instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP);
         (spec, base, backup::backups_dir(&supervisor.instance_store.instance_dir(id)), keep, hook_call, lookup)
@@ -128,8 +151,9 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
             Err(e) => return Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", format!("backup_paths failed: {:#}", e))),
         }
     }
-    let paths = backup::resolve_paths(&patterns, &base, lookup);
-    Ok(Some(Plan { dir, paths, save_command: spec.save_command, keep }))
+    let targets = backup::fill_paths(&patterns, &base, lookup);
+    let paths = targets.iter().filter(|p| p.exists()).cloned().collect();
+    Ok(Some(Plan { dir, paths, targets, save_command: spec.save_command, keep }))
 }
 
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
@@ -141,7 +165,7 @@ pub async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Resul
     let (state, id) = (state.clone(), id.to_string());
     detached(async move {
         let _guard = guard;
-        take_backup_locked(&state, &id, kind, None).await
+        take_backup_locked(&state, &id, kind, None, &[]).await
     })
     .await
 }
@@ -152,18 +176,17 @@ async fn detached<T: Send + 'static>(work: impl std::future::Future<Output = Res
 }
 
 /// 작업 잠금이 풀리면 시작한다. 재시작이 백업·복원과 겹쳐도 서버가 꺼진 채 남지 않게 한다.
-/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None
-pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
+/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None.
+/// `generation`은 부른 쪽이 확인한 실행 세대다: 시작도 이 값을 기준으로 삼아, 확인 뒤에 들어온 정지가 시작을 취소하게 한다
+pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, generation: u64, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = bool>,
 {
     let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
     loop {
-        let resp = crate::ipc::internal::into_internal(
-            super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await,
-        )
-        .await;
+        let start = super::server::start_instance_handler(Path(id.to_string()), State(state.clone()));
+        let resp = crate::ipc::internal::into_internal(crate::supervisor::START_SINCE.scope(generation, start).await).await;
         if resp.body["error_code"] != "instance_busy" || std::time::Instant::now() >= deadline {
             return Some(resp);
         }
@@ -176,7 +199,7 @@ where
 
 /// 이미 작업 잠금을 잡은 호출자(업데이트)용 `take_backup`
 pub(crate) async fn take_backup_held(state: &IPCServer, id: &str, kind: BackupKind, _guard: &BusyGuard) -> Result<Option<BackupInfo>, Response> {
-    take_backup_locked(state, id, kind, None).await
+    take_backup_locked(state, id, kind, None, &[]).await
 }
 
 /// 다른 작업이 잡고 있을 때의 응답 (시작·업데이트·삭제)
@@ -184,16 +207,55 @@ pub(crate) fn instance_busy() -> Response {
     error(StatusCode::CONFLICT, "instance_busy", "A backup, restore or update is running for this instance")
 }
 
+/// `also`의 경로를 더한다. 이미 담는 경로 안에 있는 것은 빼고, 담는 경로를 품는 것은 그 경로들을 대신한다
+fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
+    for path in also {
+        if !path.exists() || paths.iter().any(|p| path.starts_with(p)) {
+            continue;
+        }
+        paths.retain(|p| !p.starts_with(path));
+        paths.push(path.clone());
+    }
+}
+
+/// `[backup]` 선언 없이 경로만 따로 담을 때의 계획: 이 인스턴스의 백업 폴더와 보관 개수
+async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
+    let supervisor = state.supervisor.read().await;
+    let Some(instance) = supervisor.instance_store.get(id) else {
+        return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+    };
+    Ok(Plan {
+        dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
+        paths: Vec::new(),
+        targets: Vec::new(),
+        save_command: None,
+        keep: instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP),
+    })
+}
+
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
-async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>) -> Result<Option<BackupInfo>, Response> {
-    let Some(plan) = plan(state, id).await? else {
-        if kind == BackupKind::Manual {
+/// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
+async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Response> {
+    let mut plan = match plan(state, id).await? {
+        Some(plan) => plan,
+        None if kind == BackupKind::Manual => {
             return Err(error(StatusCode::BAD_REQUEST, "backup_unsupported", "This module does not declare [backup] paths"));
         }
-        return Ok(None);
+        // 모듈이 `[backup]`을 더는 선언하지 않아도 복원이 덮을 경로는 남긴다
+        None if !also.is_empty() => bare_plan(state, id).await?,
+        None => return Ok(None),
     };
+    add_paths(&mut plan.paths, also);
     if plan.paths.is_empty() {
         return Ok(None);
+    }
+    let remote = crate::audit::current().source == "discord";
+    if remote && backup::list(&plan.dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
+        return Err(error(
+            StatusCode::CONFLICT,
+            "backup_limit",
+            format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP),
+        ));
     }
     if let Some(cmd) = plan.save_command.as_deref() {
         if is_running(state, id).await {
@@ -205,12 +267,13 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         }
     }
     let Plan { dir, paths, keep, .. } = plan;
+    // 원격(디스코드·챗봇)은 백업을 지우지 못한다: 원격 복원을 거듭해 앞서 남긴 안전 백업을 밀어내지 않게, 정리는 이 PC의 다음 백업에 맡긴다 (D-B11)
     let result = tokio::task::spawn_blocking(move || {
         let made = backup::create(&dir, kind, &paths)?;
         // 방금 만든 백업은 보관 개수와 상관없이 남긴다
         let mut keep_names = vec![made.name.as_str()];
         keep_names.extend(protect.as_deref());
-        let pruned = backup::prune(&dir, keep, &keep_names);
+        let pruned = if remote { Vec::new() } else { backup::prune(&dir, keep, &keep_names) };
         anyhow::Ok((made, pruned))
     })
     .await;
@@ -281,11 +344,55 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
     }
     let work = async move {
         let _guard = guard;
-        // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게
+        // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
+        let mut roots = {
+            let supervisor = state.supervisor.read().await;
+            let Some(instance) = supervisor.instance_store.get(&id) else {
+                return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            };
+            let instance_dir = supervisor.instance_store.instance_dir(&id);
+            vec![server_base(instance, &instance_dir), instance_dir]
+        };
+        // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
+        match plan(&state, &id).await {
+            Ok(Some(p)) => roots.extend(p.targets),
+            Ok(None) => {}
+            Err(r) => return Err(r),
+        }
+        let targets = match backup::backed_up_paths(&dir, &name) {
+            Ok(t) => t,
+            Err(e) => return Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+        };
+        if targets.iter().any(|t| !backup::is_inside(t, &roots)) {
+            return Err(error(
+                StatusCode::BAD_REQUEST,
+                "restore_outside",
+                "This backup was made for a different server folder; it can no longer be restored here",
+            ));
+        }
+        // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게. 지금 설정이 가리키지 않아도 복원이 덮을 경로는 함께 담는다
         // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
-        let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone())).await?.map(|b| b.name);
+        let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
         match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
-            Ok(Ok(paths)) => Ok(Json(json!({ "success": true, "restored": paths, "pre_restore_backup": safety })).into_response()),
+            // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
+            Ok(Ok(done)) => {
+                // 되돌린 게임 설정 파일(포트 등)을 다시 읽어 인스턴스 값과 맞춘다. 실패해도 복원은 끝난 것이다 (MK17)
+                let refreshed = match super::managed::refresh_settings_from_files(&state, &id).await {
+                    Ok(r) => r.get("success").and_then(Value::as_bool) == Some(true),
+                    Err(e) => {
+                        tracing::warn!("Settings refresh after restore failed for {}: {}", id, e);
+                        false
+                    }
+                };
+                Ok(Json(json!({
+                    "success": true,
+                    "restored": done.paths,
+                    "pre_restore_backup": safety,
+                    "links_not_restored": done.links_missed,
+                    "settings_refreshed": refreshed,
+                }))
+                .into_response())
+            }
             Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
             Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
         }
@@ -300,6 +407,17 @@ pub struct ScheduleBody {
     schedule: Vec<ScheduledTask>,
     #[serde(default)]
     backup_keep: Option<u32>,
+    /// GET에서 받은 `revision`. 있으면 그사이 일정이 바뀌었을 때 덮어쓰지 않고 409로 거절한다 (L51)
+    #[serde(default)]
+    revision: Option<String>,
+}
+
+/// 일정과 보관 수의 지문. 목록 전체를 다시 보내는 편집이 그사이 바뀐 일정을 덮어쓰지 않게 한다
+fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
+    use sha2::{Digest, Sha256};
+    let value = json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep });
+    let digest = Sha256::digest(value.to_string().as_bytes());
+    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
@@ -312,6 +430,7 @@ pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         "success": true,
         "schedule": instance.schedule,
         "backup_keep": instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32),
+        "revision": schedule_revision(instance),
         "backup_supported": meta.as_ref().is_some_and(|m| m.backup.is_some()),
         "announce_supported": meta.as_ref().is_some_and(|m| m.announce_command.is_some()),
     }))
@@ -323,6 +442,9 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
         return error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
     };
+    if body.revision.as_ref().is_some_and(|r| *r != schedule_revision(&instance)) {
+        return error(StatusCode::CONFLICT, "schedule_changed", "The schedule was changed elsewhere; read it again");
+    }
     let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
     let can_backup = meta.as_ref().is_some_and(|m| m.backup.is_some());
     let can_announce = meta.as_ref().is_some_and(|m| m.announce_command.is_some());
@@ -340,6 +462,24 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     if body.backup_keep == Some(0) {
         problems.push("backup_keep must be at least 1".into());
     }
+    // 보관할 백업 수를 줄이면 다음 백업이 옛 백업을 지운다: 챗봇은 삭제를 하지 못하므로 줄이지 못한다.
+    // 쓰기 잠금 안에서 지금 값과 견준다 (계획을 확인하는 사이 이 PC에서 올린 값도 본다)
+    if crate::audit::current().via.as_deref() == Some("chatbot") {
+        if let Some(asked) = body.backup_keep {
+            if asked < instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32) {
+                problems.push("backup_keep: the chatbot cannot lower how many backups are kept".into());
+            }
+        }
+        // 더 자주 돌려도 옛 백업이 더 빨리 밀려 지워진다: 보관 수가 덮는 기간(보관 수 ÷ 하루 횟수)이 줄면 거절한다.
+        // 지금 백업이 없거나 드물면 하루 한 번까지는 넣을 수 있다
+        let keep_before = instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32) as u64;
+        let keep_after = body.backup_keep.map_or(keep_before, u64::from);
+        let base = daily_runs(&instance.schedule, TaskAction::Backup).max(1) as u64;
+        let after = daily_runs(&body.schedule, TaskAction::Backup) as u64;
+        if after > base && keep_after * base < keep_before * after {
+            problems.push("schedule: the chatbot cannot make backups run so often that older ones are removed sooner".into());
+        }
+    }
     // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
     if crate::audit::current().source == "discord" {
         for (i, task) in body.schedule.iter().enumerate() {
@@ -352,6 +492,22 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             }
             if task.every_minutes.is_some_and(|m| m < REMOTE_MIN_EVERY_MINUTES) {
                 problems.push(format!("schedule[{}]: every_minutes must be at least {} from Discord", i, REMOTE_MIN_EVERY_MINUTES));
+            }
+        }
+        // 작업 하나의 간격만 보면 매일 시각 작업이나 간격이 다른 작업 여럿으로 우회한다: 종류별 하루 실행 횟수로 본다.
+        // 원격은 그 횟수를 30분에 한 번(하루 48번) 넘게 올리지 못한다 (이 PC에서 이미 그보다 잦게 정했으면 늘리지만 못한다)
+        let remote_max = 24 * 60 / REMOTE_MIN_EVERY_MINUTES;
+        let mut actions: Vec<TaskAction> = Vec::new();
+        for task in &body.schedule {
+            if !actions.contains(&task.action) {
+                actions.push(task.action);
+            }
+        }
+        for action in actions {
+            let after = daily_runs(&body.schedule, action);
+            if after > remote_max && after > daily_runs(&instance.schedule, action) {
+                let name = serde_json::to_value(action).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+                problems.push(format!("{} would run {} times a day; at most {} from Discord", name, after, remote_max));
             }
         }
         if body.backup_keep.is_some_and(|k| k > REMOTE_MAX_BACKUP_KEEP && Some(k) != instance.backup_keep) {
@@ -532,13 +688,22 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), None).await,
             )
             .await;
-            if !resp.status.is_success() {
+            if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
                 tracing::warn!("Scheduled restart of '{}' failed: {}", id, resp.body);
             }
         }
         TaskAction::Update => run_update(state, id, task, fire, key).await,
         _ => {}
     }
+}
+
+/// 켜진 `action` 작업들이 하루에 도는 횟수 (매일 시각 작업은 1번, N분마다는 하루를 N으로 나눈 만큼)
+fn daily_runs(schedule: &[ScheduledTask], action: TaskAction) -> u32 {
+    schedule
+        .iter()
+        .filter(|t| t.enabled && t.action == action)
+        .map(|t| t.every_minutes.map_or(1, |m| (24 * 60u32).div_ceil(m.max(1))))
+        .sum()
 }
 
 /// 업데이트가 있으면: (켜져 있으면) 예고 → 정지 → 업데이트(업데이트 전 백업 포함) → 다시 시작.
@@ -558,7 +723,8 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
     let was_running = is_running(state, id).await;
     if was_running {
         let stop = crate::ipc::internal::into_internal(super::server::stop_instance(state.clone(), id, false).await).await;
-        if !stop.status.is_success() {
+        // 콘솔이 없어 저장 후 종료를 못 하는 서버(`graceful_stop_unavailable`)도 여기서 멈춘다: 예약 작업은 강제 종료하지 않는다
+        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
             tracing::warn!("Scheduled update of '{}': stop failed: {}", id, stop.body);
             return;
         }
@@ -570,6 +736,7 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
         }
     }
     tracing::info!("Scheduled update of '{}'", id);
+    let generation = state.supervisor.read().await.run_generation_of(id);
     let updated = match super::instance::begin_server_update(state, id).await {
         Ok(job) => job.await.unwrap_or(false),
         Err(r) => {
@@ -581,7 +748,23 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
         if !updated {
             tracing::warn!("Scheduled update of '{}' failed; starting the old version again", id);
         }
-        let _ = super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await;
+        start_after_update(state, id, generation).await;
+    }
+}
+
+/// 예약 업데이트가 끈 서버를 다시 켠다. 그 순간 다른 작업(백업·복원)이 잠금을 쥐고 있으면 끝나기를 기다린다.
+/// 그사이 사용자가 켜거나 끄거나 인스턴스를 지우면(`generation`이 바뀌면) 그만둔다
+async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
+    let wanted = || async {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
+    };
+    match start_when_free(state, id, generation, wanted).await {
+        None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
+        Some(resp) if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) => {
+            tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, resp.body)
+        }
+        Some(_) => {}
     }
 }
 
@@ -609,6 +792,22 @@ mod tests {
         sup.instance_store.add(inst).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         (state, id, tmp)
+    }
+
+    /// 모듈 호출이 끝나기를 기다리는 한도. 여기서 재는 것은 "끝나면 풀린다"이지 빠르기가 아니다: Windows 전체 실행에서는
+    /// 첫 격리 호출(venv 만들기)과 병렬 시험 부하로 Python이 10초 넘게 걸리기도 한다 (L24)
+    const WORK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
+
+    /// 잠금이 풀릴 때까지 (WORK_DEADLINE까지) 기다린다. 풀려서 잡았으면 true
+    async fn lock_freed(id: &str) -> bool {
+        let deadline = std::time::Instant::now() + WORK_DEADLINE;
+        while std::time::Instant::now() < deadline {
+            if BusyGuard::take(id).is_some() {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        false
     }
 
     async fn code(r: Response) -> String {
@@ -671,28 +870,41 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
         drop(guard);
-        tokio::time::timeout(std::time::Duration::from_secs(10), restart).await.expect("starts once the lock is free").unwrap();
+        tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
+    }
+
+    /// 예약 업데이트가 끝난 뒤 다시 켤 때도, 그 순간 다른 작업(백업)이 잠금을 쥐면 끝나기를 기다린다 (꺼진 채 남지 않게)
+    #[tokio::test]
+    async fn a_scheduled_update_restart_waits_for_a_running_backup() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let generation = state.supervisor.read().await.run_generation_of(&id);
+        let guard = BusyGuard::take(&id).expect("free");
+        let restart = tokio::spawn({
+            let (state, id) = (state.clone(), id.clone());
+            async move { start_after_update(&state, &id, generation).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(!restart.is_finished(), "the restart must wait for the backup, not fail with instance_busy");
+        drop(guard);
+        tokio::time::timeout(WORK_DEADLINE, restart).await.expect("starts once the lock is free").unwrap();
     }
 
     #[tokio::test]
     async fn a_dropped_restore_request_keeps_the_lock_until_the_work_ends() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
         let hook = "import json, time\ntime.sleep(1.5)\nprint(json.dumps({'success': True, 'paths': []}))\n";
-        let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
-        let request = restore_backup(Path((id.clone(), "none.zip".into())), State(state.clone()));
+        let (state, id, tmp) = server_with(&toml, Some(hook)).await;
+        // 복원은 백업이 돌아갈 경로부터 확인하니 실제 백업이 있어야 안전 백업 단계까지 간다
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let made = backup::create(&dir, BackupKind::Manual, &[world]).unwrap().name;
+        let request = restore_backup(Path((id.clone(), made)), State(state.clone()));
         if let Ok(done) = tokio::time::timeout(std::time::Duration::from_millis(300), request).await {
             panic!("still in the safety backup: {:?}", crate::ipc::internal::into_internal(done).await.body);
         }
         assert!(BusyGuard::take(&id).is_none(), "a client that hangs up must not free the lock while files are still being written");
-        let mut freed = false;
-        for _ in 0..100 {
-            if BusyGuard::take(&id).is_some() {
-                freed = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        assert!(freed, "the lock is released when the work ends");
+        assert!(lock_freed(&id).await, "the lock is released when the work ends");
     }
 
     #[tokio::test]
@@ -702,15 +914,170 @@ mod tests {
         let request = super::super::managed::reset_server_handler(Path(id.clone()), State(state.clone()));
         assert!(tokio::time::timeout(std::time::Duration::from_millis(300), request).await.is_err(), "the module is still running");
         assert!(BusyGuard::take(&id).is_none(), "a client that hangs up must not free the lock mid-reset");
-        let mut freed = false;
-        for _ in 0..100 {
-            if BusyGuard::take(&id).is_some() {
-                freed = true;
-                break;
+        assert!(lock_freed(&id).await, "the lock is released when the reset ends");
+    }
+
+    /// 복원은 지금 서버 폴더·인스턴스 폴더 밖에 쓰지 않고, 복원 전 안전 백업은 백업이 덮을 경로까지 담는다 (D-B1)
+    #[tokio::test]
+    async fn a_restore_keeps_what_it_overwrites_and_stays_inside_the_server_folders() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{level_name}}\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let set = |key: &'static str, value: String| {
+            let state = state.clone();
+            let id = id.clone();
+            async move {
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                if key == "working_dir" {
+                    inst.working_dir = Some(value);
+                } else {
+                    inst.module_settings.insert(key.into(), json!(value));
+                }
+                sup.instance_store.update(&id, inst).unwrap();
             }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        };
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(server.join("world")).unwrap();
+        std::fs::write(server.join("world/level.dat"), b"old").unwrap();
+        set("level_name", "world".into()).await;
+        let old = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+
+        // 월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 그사이 진행분은 안전 백업에 남는다
+        std::fs::write(server.join("world/level.dat"), b"progress").unwrap();
+        std::fs::create_dir_all(server.join("world2")).unwrap();
+        set("level_name", "world2".into()).await;
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old.clone())), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        let safety = done.body["pre_restore_backup"].as_str().expect("a safety backup").to_string();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert!(backup::backed_up_paths(&dir, &safety).unwrap().contains(&server.join("world")), "the overwritten world must be kept");
+
+        // 서버 폴더를 옮긴 뒤에는 옛 폴더에 쓰지 않는다
+        let moved = tmp.path().join("moved");
+        std::fs::create_dir_all(moved.join("world")).unwrap();
+        set("working_dir", moved.to_string_lossy().to_string()).await;
+        std::fs::write(server.join("world/level.dat"), b"someone else").unwrap();
+        let refused = restore_backup(Path((id.clone(), old)), State(state.clone())).await;
+        assert_eq!(code(refused).await, "restore_outside");
+        assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
+    }
+
+    /// 경로 형식이 아닌 설정 값(월드 이름 같은 글자)은 백업 경로를 서버 폴더 밖으로 돌리지 못한다:
+    /// 원격에서도 바꿀 수 있는 값이라 절대 경로나 `..`이면 그 경로는 백업·복원 범위에서 뺀다
+    #[tokio::test]
+    async fn a_text_setting_cannot_point_backups_outside_the_server_folder() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{level_name}}\"]\n\n[[settings.fields]]\nname = \"level_name\"\ntype = \"text\"\ndefault = \"world\"\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let outside = tmp.path().join("user-data");
+        for value in ["..".to_string(), "world/../..".to_string(), outside.to_string_lossy().to_string()] {
+            {
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                inst.module_settings.insert("level_name".into(), json!(value));
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+            let p = plan(&state, &id).await.ok().flatten().expect("the module declares backups");
+            assert!(p.targets.is_empty(), "{value} must not become a backup target: {:?}", p.targets);
         }
-        assert!(freed, "the lock is released when the reset ends");
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("level_name".into(), json!("world2"));
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let p = plan(&state, &id).await.ok().flatten().unwrap();
+        assert_eq!(p.targets, vec![tmp.path().join("server/world2")]);
+    }
+
+    /// 복원은 게임 설정 파일도 되돌린다: 복원 뒤 모듈 `import_settings`로 다시 읽어 인스턴스 값(포트 등)을 파일과 맞춘다 (MK17)
+    #[tokio::test]
+    async fn a_restore_reads_the_restored_game_settings_back() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"server.properties\"]\n");
+        let hook = "import json, os, sys\n\
+                    cfg = json.load(sys.stdin)\n\
+                    if sys.argv[1] == 'import_settings':\n    \
+                    line = open(os.path.join(cfg['working_dir'], 'server.properties')).read()\n    \
+                    print(json.dumps({'success': True, 'settings': {'port': int(line.split('=')[1])}}))\n\
+                    else:\n    print(json.dumps({'success': True}))\n";
+        let (state, id, tmp) = server_with(&toml, Some(hook)).await;
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        let set_port = |port: u16| {
+            let (state, id, server) = (state.clone(), id.clone(), server.clone());
+            async move {
+                std::fs::write(server.join("server.properties"), format!("server-port={port}")).unwrap();
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                inst.port = Some(port);
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+        };
+        set_port(25565).await;
+        let old = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+        set_port(25570).await;
+
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read_to_string(server.join("server.properties")).unwrap(), "server-port=25565");
+        assert_eq!(done.body["settings_refreshed"], true, "{:?}", done.body);
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.port, Some(25565), "the instance follows the restored file");
+    }
+
+    /// 모듈이 `[backup]`을 더는 선언하지 않아도(모듈 업데이트로 빠짐, 모듈을 못 읽음) 남은 백업을 복원하면
+    /// 덮을 경로의 지금 상태는 안전 백업으로 남긴다
+    #[tokio::test]
+    async fn a_restore_keeps_a_safety_backup_when_the_module_no_longer_declares_backups() {
+        let (state, id, tmp) = server_with(NO_BACKUP, None).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"old").unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let old = backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&world)).unwrap().name;
+        std::fs::write(world.join("level.dat"), b"progress").unwrap();
+
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        let safety = done.body["pre_restore_backup"].as_str().expect("the overwritten world needs a safety backup").to_string();
+        assert!(backup::backed_up_paths(&dir, &safety).unwrap().contains(&world));
+        assert_eq!(std::fs::read(world.join("level.dat")).unwrap(), b"old");
+    }
+
+    // 훅이나 설정이 서버 폴더 밖(예: 사용자 폴더의 게임 데이터)을 가리키면, 지금도 가리키는 동안은 복원할 수 있다
+    #[tokio::test]
+    async fn a_backup_of_a_folder_the_module_still_points_outside_can_be_restored() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{cache_dir}}\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let outside = tmp.path().join("user-data");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("save.bin"), b"old").unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("cache_dir".into(), json!(outside.to_string_lossy()));
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let name = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+        std::fs::write(outside.join("save.bin"), b"new").unwrap();
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), name.clone())), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read(outside.join("save.bin")).unwrap(), b"old");
+
+        // 그 폴더가 통째로 지워진 뒤에도 그 백업으로 되살린다
+        std::fs::remove_dir_all(&outside).unwrap();
+        let revived = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), name)), State(state.clone())).await).await;
+        assert_eq!(revived.body["success"], true, "{:?}", revived.body);
+        assert_eq!(std::fs::read(outside.join("save.bin")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn a_restore_target_that_holds_a_planned_path_replaces_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let world = tmp.path().join("world");
+        std::fs::create_dir_all(world.join("region")).unwrap();
+        let mut paths = vec![world.join("region")];
+        add_paths(&mut paths, &[world.clone(), world.join("region"), tmp.path().join("missing")]);
+        assert_eq!(paths, vec![world]);
     }
 
     #[tokio::test]
@@ -764,9 +1131,179 @@ mod tests {
         assert_eq!(put(json!({ "schedule": [], "backup_keep": 0 })).await, StatusCode::BAD_REQUEST);
         // 이 PC에서 정한 작업은 디스코드에서 그대로 다시 보내도 된다
         assert_eq!(put(json!({ "schedule": [update, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
-        assert_eq!(remote(json!({ "schedule": [update, restart(1), restart(60)], "backup_keep": 100 })).await, StatusCode::OK);
+        assert_eq!(remote(json!({ "schedule": [update, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
+        // 이미 30분에 한 번보다 잦은 작업에 원격이 더 얹을 수는 없다
+        assert_eq!(remote(json!({ "schedule": [update, restart(1), restart(60)], "backup_keep": 100 })).await, StatusCode::BAD_REQUEST);
         // 끄는 것은 된다
         let off = json!({ "action": "update", "at": "04:00", "enabled": false });
         assert_eq!(remote(json!({ "schedule": [off, restart(1)], "backup_keep": 100 })).await, StatusCode::OK);
+    }
+
+    /// 챗봇은 보관할 백업 수를 줄이지 못한다(줄이면 다음 백업이 옛 백업을 지운다). 쓰기 잠금 안에서 지금 값과 견주므로,
+    /// 계획을 확인하는 사이 이 PC에서 값을 올렸어도 챗봇이 그 값을 다시 내리지 못한다
+    #[tokio::test]
+    async fn the_chatbot_cannot_lower_how_many_backups_are_kept() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let put = |body: Value, origin: crate::audit::Origin| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(origin, async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            })
+        };
+        let keep = |n: u32| json!({ "schedule": [], "backup_keep": n });
+        let chatbot = || crate::audit::Origin { via: Some("chatbot".into()), ..crate::audit::Origin::new("discord") };
+        assert_eq!(put(keep(DEFAULT_KEEP as u32 - 1), chatbot()).await, StatusCode::BAD_REQUEST, "below the default");
+        assert_eq!(put(keep(12), chatbot()).await, StatusCode::OK, "raising is fine");
+        // 이 PC에서 20으로 올린 뒤 챗봇의 12는 줄이는 것이다
+        assert_eq!(put(keep(20), crate::audit::Origin::new("gui")).await, StatusCode::OK);
+        assert_eq!(put(keep(12), chatbot()).await, StatusCode::BAD_REQUEST);
+        assert_eq!(put(keep(20), chatbot()).await, StatusCode::OK, "the same value is fine");
+        // 사람이 직접 보낸 디스코드 요청은 줄일 수 있다 (30 이하)
+        assert_eq!(put(keep(5), crate::audit::Origin::new("discord")).await, StatusCode::OK);
+    }
+
+    /// 챗봇은 백업을 더 자주 돌려 옛 백업이 더 빨리 밀려 지워지게 하지도 못한다: 보관 수가 덮는 기간이 줄면 거절한다.
+    /// 하루 한 번까지는 새로 넣을 수 있고, 보관 수를 함께 올려 기간을 지키면 된다 (L49)
+    #[tokio::test]
+    async fn the_chatbot_cannot_make_backups_push_old_ones_out_sooner() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        let (state, id, _tmp) = server_with(&toml, None).await;
+        let put = |body: Value, origin: crate::audit::Origin| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(origin, async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            })
+        };
+        let chatbot = || crate::audit::Origin { via: Some("chatbot".into()), ..crate::audit::Origin::new("discord") };
+        let every = |m: u32| json!({ "action": "backup", "every_minutes": m });
+        let daily = json!({ "action": "backup", "at": "04:00" });
+        assert_eq!(put(json!({ "schedule": [daily.clone()] }), chatbot()).await, StatusCode::OK, "once a day is fine");
+        assert_eq!(put(json!({ "schedule": [every(60)] }), chatbot()).await, StatusCode::BAD_REQUEST, "24 a day pushes ten backups out in ten hours");
+        assert_eq!(put(json!({ "schedule": [every(720)], "backup_keep": 20 }), chatbot()).await, StatusCode::OK, "twice a day with twice the keep covers the same days");
+        // 이 PC에서 정한 잦은 백업은 챗봇이 그대로 다시 보낼 수 있다
+        assert_eq!(put(json!({ "schedule": [every(60)], "backup_keep": 20 }), crate::audit::Origin::new("gui")).await, StatusCode::OK);
+        assert_eq!(put(json!({ "schedule": [every(60)], "backup_keep": 20 }), chatbot()).await, StatusCode::OK);
+        assert_eq!(put(json!({ "schedule": [every(30)], "backup_keep": 20 }), chatbot()).await, StatusCode::BAD_REQUEST);
+    }
+
+    /// 원격 제한은 작업 하나의 간격이 아니라 하루에 도는 횟수로 본다: 매일 시각 작업이나 간격이 다른 작업을 여럿 넣어도,
+    /// 나눠서 보내도 30분에 한 번보다 자주 돌지 않는다
+    #[tokio::test]
+    async fn remote_schedules_cannot_add_up_to_running_more_often() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let remote = |body: Value| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(crate::audit::Origin::new("discord"), async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            })
+        };
+        let at = |t: &str| json!({ "action": "restart", "at": t });
+        let every = |m: u32| json!({ "action": "restart", "every_minutes": m });
+        let daily: Vec<Value> = (0..49).map(|m| at(&format!("{:02}:{:02}", m / 60, m % 60))).collect();
+        assert_eq!(remote(json!({ "schedule": daily })).await, StatusCode::BAD_REQUEST, "49 daily restarts");
+        let many: Vec<Value> = (30..33).map(every).collect();
+        assert_eq!(remote(json!({ "schedule": many })).await, StatusCode::BAD_REQUEST, "three restarts of about 30 minutes each");
+        // 하루 48번까지는 된다 (30분마다 하나와 같다)
+        let ok: Vec<Value> = (0..48).map(|m| at(&format!("{:02}:{:02}", m / 60, m % 60))).collect();
+        assert_eq!(remote(json!({ "schedule": ok.clone() })).await, StatusCode::OK);
+        // 이미 받은 작업 위에 하나 더 보내는 것도 막는다
+        let mut more = ok;
+        more.push(at("23:59"));
+        assert_eq!(remote(json!({ "schedule": more })).await, StatusCode::BAD_REQUEST);
+        // 다른 종류의 작업은 따로 센다
+        let announce_free = json!({ "action": "restart", "every_minutes": 30 });
+        assert_eq!(remote(json!({ "schedule": [announce_free] })).await, StatusCode::OK);
+    }
+
+    /// 목록 전체를 다시 보내는 편집이 그사이 다른 곳에서 바꾼 일정을 덮어쓰지 않는다: 읽을 때 받은 revision이
+    /// 지금 일정과 다르면 409 `schedule_changed`로 거절하고, revision을 보내지 않으면 예전처럼 받는다 (L51)
+    #[tokio::test]
+    async fn a_schedule_edit_from_a_stale_read_is_refused() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let read = || async { get_schedule(Path(id.clone()), State(state.clone())).await };
+        let put = |body: Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await
+            }
+        };
+        let body_of = |r: Response| async move { serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap() };
+        let restart = |t: &str| json!({ "action": "restart", "at": t });
+
+        let seen = body_of(read().await).await["revision"].as_str().expect("revision").to_string();
+        // 다른 클라이언트가 그사이 작업을 넣었다
+        assert_eq!(put(json!({ "schedule": [restart("04:00")] })).await.status(), StatusCode::OK, "without a revision it is taken as before");
+        let stale = put(json!({ "schedule": [restart("05:00")], "revision": seen })).await;
+        assert_eq!(stale.status(), StatusCode::CONFLICT);
+        let stale = body_of(stale).await;
+        assert_eq!(stale["error_code"], "schedule_changed", "{stale}");
+        let now = body_of(read().await).await;
+        assert_eq!(now["schedule"][0]["at"], "04:00", "the other client's task is kept");
+        // 새로 읽은 revision이면 받는다
+        let fresh = now["revision"].as_str().unwrap().to_string();
+        assert_eq!(put(json!({ "schedule": [restart("05:00")], "revision": fresh.clone() })).await.status(), StatusCode::OK);
+        let after = body_of(read().await).await;
+        assert_ne!(after["revision"], json!(fresh), "a saved change gives a new revision");
+    }
+
+    /// 원격(디스코드·챗봇)은 백업을 지우지 못한다: 복원을 거듭해도 앞서 남긴 복원 전 안전 백업이 보관 수만큼 밀려 지워지지 않는다.
+    /// 이 PC에서 한 작업은 그대로 보관 수만큼 정리한다 (D-B11)
+    #[tokio::test]
+    async fn remote_restores_do_not_push_out_earlier_safety_backups() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).unwrap().clone();
+            inst.backup_keep = Some(1);
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"old").unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let old = backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&world)).unwrap().name;
+        let restore = |origin: crate::audit::Origin| {
+            let (state, id, old) = (state.clone(), id.clone(), old.clone());
+            crate::audit::with_origin(origin, async move {
+                let done = crate::ipc::internal::into_internal(restore_backup(Path((id, old)), State(state)).await).await;
+                assert_eq!(done.body["success"], true, "{:?}", done.body);
+            })
+        };
+        let safety = || backup::list(&dir).into_iter().filter(|b| b.kind == BackupKind::PreRestore).count();
+        for _ in 0..3 {
+            restore(crate::audit::Origin::new("discord")).await;
+        }
+        assert_eq!(safety(), 3, "remote restores must keep every safety backup");
+        restore(crate::audit::Origin::new("gui")).await;
+        assert_eq!(safety(), 1, "a restore on this PC still keeps only backup_keep");
+    }
+
+    /// 원격은 백업을 지우지 못하므로 원격이 쌓는 백업에는 종류마다 상한이 있다: 넘으면 409 `backup_limit`로 거절하고
+    /// 이 PC에서는 그대로 만든다 (D-B7)
+    #[tokio::test]
+    async fn remote_backups_stop_at_a_cap_because_remote_cannot_delete_them() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"x").unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        for _ in 0..REMOTE_BACKUP_CAP {
+            backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&world)).unwrap();
+        }
+        let create = |origin: crate::audit::Origin| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(origin, async move { create_backup(Path(id), State(state)).await })
+        };
+        let refused = create(crate::audit::Origin::new("discord")).await;
+        assert_eq!(refused.status(), StatusCode::CONFLICT);
+        assert_eq!(code(refused).await, "backup_limit");
+        let local = create(crate::audit::Origin::new("gui")).await;
+        assert_eq!(local.status(), StatusCode::OK, "this PC can still back up");
     }
 }

@@ -2,8 +2,8 @@
 //!
 //! relay가 주는 Ed25519 서명 manifest를 검증하고, 각 컴포넌트를 R2에서 받으며
 //! SHA-256을 확인한다. 어떤 컴포넌트를 설치할지도 업데이터의 규칙
-//! (`Component::try_from_manifest_key`)을 따르므로 `installer`처럼 업데이터가
-//! 모르는 키는 설치하지 않는다.
+//! (`Component::try_from_manifest_key`)을 따르므로 업데이터가 모르는 키는 설치하지 않는다.
+//! `installer`는 받지 않고 실행 중인 자기 자신을 설치 폴더에 복사한다(`registry.rs`).
 
 use saba_chan_updater_lib::download::download_verified;
 use saba_chan_updater_lib::relay::{self, ManifestComponent, ReleaseManifest, RelayClient};
@@ -56,7 +56,9 @@ pub fn installable(manifest: &ReleaseManifest) -> Result<Vec<(&String, &Manifest
         .components
         .iter()
         .filter(|(key, _)| !key.starts_with(relay::MODULE_PREFIX) && !key.starts_with(relay::EXTENSION_PREFIX))
-        .filter(|(key, _)| Component::try_from_manifest_key(key).is_some())
+        .filter(|(key, _)| {
+            Component::try_from_manifest_key(key).is_some_and(|c| c != Component::Installer)
+        })
         .collect();
     list.sort_by(|a, b| a.0.cmp(b.0));
     Ok(list)
@@ -151,6 +153,14 @@ pub async fn download(
 
 #[cfg(test)]
 mod tests {
+    // L15(c): 빌드에 담긴 versions.toml을 못 읽으면 필수 목록이 비어 반쪽 릴리스를 막지 못한다
+    #[test]
+    fn the_bundled_versions_file_names_the_required_components() {
+        let mut required = super::required_components();
+        required.sort();
+        assert_eq!(required, ["gui", "saba-core", "updater"]);
+    }
+
     use super::*;
     use std::collections::HashMap;
 

@@ -61,6 +61,20 @@ pub(crate) fn signed_relay_url(configured: &str, requested: Option<&str>) -> Str
     }
 }
 
+/// 페어링 주소. 서명 요청과 같은 규칙에 더해, https(또는 루프백 http)가 아니면 거절한다:
+/// 요청한 주소가 평문 http면 설정 주소로 바꿔 치우지 않고 알린다
+pub(crate) fn pairing_relay_url(configured: &str, requested: Option<&str>) -> Result<String, String> {
+    if let Some(problem) = requested.and_then(crate::config_store::relay_url_problem) {
+        return Err(problem);
+    }
+    let base = signed_relay_url(configured, requested);
+    crate::config_store::relay_url_problem(&base).map_or(Ok(base), Err)
+}
+
+fn invalid_relay_url(problem: String) -> Response {
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": problem, "error_code": "invalid_relay_url" }))).into_response()
+}
+
 async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
     signed_relay_url(&configured, requested)
@@ -458,8 +472,12 @@ pub async fn initiate_pairing(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .or(params.relay_url);
-    // 페어링이 받은 노드 토큰은 그 릴레이 것이다: 설정한 릴레이(또는 모의 릴레이)와만 페어링한다
-    let base = signed_base(&state, relay_url.as_deref()).await;
+    // 페어링이 받은 노드 토큰은 그 릴레이 것이다: 설정한 릴레이(또는 모의 릴레이)와만, https로만 페어링한다
+    let configured = state.config_store.get_bot_config().await.cloud.relay_url;
+    let base = match pairing_relay_url(&configured, relay_url.as_deref()) {
+        Ok(base) => base,
+        Err(problem) => return invalid_relay_url(problem),
+    };
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
@@ -487,7 +505,11 @@ pub async fn poll_pairing_status(
     Query(params): Query<PairStatusQuery>,
     State(state): State<IPCServer>,
 ) -> Response {
-    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let configured = state.config_store.get_bot_config().await.cloud.relay_url;
+    let base = match pairing_relay_url(&configured, params.relay_url.as_deref()) {
+        Ok(base) => base,
+        Err(problem) => return invalid_relay_url(problem),
+    };
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
@@ -500,33 +522,77 @@ pub async fn poll_pairing_status(
         request = request.header("x-poll-secret", secret);
     }
 
-    let (code_status, data) = match send(request).await {
+    let (code_status, mut data) = match send(request).await {
         Ok((code, Some(data))) => (code, data),
         Ok((code, None)) => return invalid_response(code),
         Err(r) => return r,
     };
-    // Auto-save node token on successful pairing
+    // 페어링이 끝났으면 노드 토큰을 저장하고, 저장했는지를 `tokenSaved`로 알린다 (클라이언트는 이 값으로 "연결됨"을 보인다)
     if let Some("claimed") = data.get("status").and_then(|s| s.as_str()) {
-        if let Some(token) = data.get("nodeToken").and_then(|t| t.as_str()) {
-            let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-            let token_path = data_dir.join(".node_token");
-            if let Some(parent) = token_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if let Err(e) = std::fs::write(&token_path, token) {
-                tracing::warn!("Failed to auto-save node token: {}", e);
-            } else {
-                tracing::info!("Node token saved via pairing completion");
-                sync_host_id(&state, Some(token)).await;
-                crate::relay_agent::restart(&state).await;
-            }
+        let token_path = saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token");
+        let token = data.get("nodeToken").and_then(|t| t.as_str()).map(str::to_string);
+        let stored = store_node_token(&token_path, token.as_deref());
+        if stored.changed {
+            tracing::info!("Node token saved via pairing completion");
+            sync_host_id(&state, token.as_deref()).await;
+            crate::relay_agent::restart(&state).await;
+        }
+        if let Some(obj) = data.as_object_mut() {
+            obj.insert("tokenSaved".into(), json!(stored.saved));
         }
     }
     (code_status, Json(data)).into_response()
 }
 
+/// 페어링으로 받은 노드 토큰을 저장한 결과
+#[derive(Debug, PartialEq)]
+struct StoredToken {
+    /// 이 PC에 그 토큰이 저장돼 있다 (방금 썼거나 이미 같은 값)
+    saved: bool,
+    /// 파일을 새 값으로 바꿨다 (이때만 호스트 id를 맞추고 relay agent를 다시 띄운다)
+    changed: bool,
+}
+
+/// 받은 토큰을 `.node_token`에 쓴다. 토큰이 없거나(수령 기한이 지남) 쓰지 못하면 저장하지 않은 것이고,
+/// 같은 값이 이미 있으면 다시 쓰지 않는다 (폴링이 claimed를 여러 번 받는다)
+fn store_node_token(path: &std::path::Path, token: Option<&str>) -> StoredToken {
+    let Some(token) = token.filter(|t| !t.trim().is_empty()) else {
+        tracing::warn!("Pairing was claimed but the relay no longer hands out the node token");
+        return StoredToken { saved: false, changed: false };
+    };
+    if std::fs::read_to_string(path).is_ok_and(|t| t.trim() == token.trim()) {
+        return StoredToken { saved: true, changed: false };
+    }
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::write(path, token) {
+        Ok(()) => StoredToken { saved: true, changed: true },
+        Err(e) => {
+            tracing::warn!("Failed to auto-save node token: {}", e);
+            StoredToken { saved: false, changed: false }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    /// 토큰을 저장하지 못했으면 연결된 것으로 보이면 안 된다. 같은 토큰을 다시 받으면 다시 쓰지 않는다
+    #[test]
+    fn a_claimed_pairing_reports_whether_the_token_was_saved() {
+        use super::{store_node_token, StoredToken};
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("data").join(".node_token");
+        assert_eq!(store_node_token(&path, None), StoredToken { saved: false, changed: false }, "claimed after the token expired");
+        assert_eq!(store_node_token(&path, Some("sbn_a.x")), StoredToken { saved: true, changed: true });
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "sbn_a.x");
+        assert_eq!(store_node_token(&path, Some("sbn_a.x")), StoredToken { saved: true, changed: false }, "the next poll sees claimed again");
+        // 쓸 수 없는 곳(폴더 자리에 파일)이면 저장하지 않은 것이다
+        let blocked = tmp.path().join("file");
+        std::fs::write(&blocked, "").unwrap();
+        assert_eq!(store_node_token(&blocked.join(".node_token"), Some("sbn_b.y")), StoredToken { saved: false, changed: false });
+    }
+
     #[test]
     fn signing_uses_the_token_it_is_given() {
         let headers = signed_headers_with("sbn_node1.secret", "GET", "/poll", None).unwrap();
@@ -543,6 +609,15 @@ mod tests {
         assert_eq!(signed_relay_url(cfg, Some("https://saba-chan.online")), "https://saba-chan.online");
         assert_eq!(signed_relay_url(cfg, Some("http://127.0.0.1:9000/")), "http://127.0.0.1:9000", "mock relay");
         assert_eq!(signed_relay_url("https://my.relay", None), "https://my.relay");
+    }
+
+    /// 페어링은 받은 노드 토큰이 평문으로 오가지 않게 https(또는 루프백 모의 릴레이)에서만 한다
+    #[test]
+    fn pairing_only_goes_to_an_https_or_loopback_relay() {
+        assert_eq!(pairing_relay_url("", None).unwrap(), "https://saba-chan.online");
+        assert_eq!(pairing_relay_url("https://my.relay", Some("http://127.0.0.1:9000")).unwrap(), "http://127.0.0.1:9000");
+        assert!(pairing_relay_url("https://my.relay", Some("http://evil.example")).is_err(), "a plain-http request is refused, not silently replaced");
+        assert!(pairing_relay_url("http://old.example", None).is_err(), "a stored plain-http relay is not used for pairing");
     }
 
     use super::*;

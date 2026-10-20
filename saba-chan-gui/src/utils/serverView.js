@@ -113,3 +113,8 @@ export function protocolLabel(server, moduleData) {
     }
     return proto?.toUpperCase() || 'AUTO';
 }
+
+/** 화면에 보일 게임 이름: 모듈 번역(display_name), 없으면 모듈의 game_name, 그것도 없으면 모듈 id */
+export function gameNameOf(t, moduleName, moduleData) {
+    return t(`mod_${moduleName}:module.display_name`, { defaultValue: moduleData?.game_name || moduleName });
+}

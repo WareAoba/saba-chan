@@ -7,6 +7,14 @@ import { Icon } from '../Icon';
 /** 업데이트 결과 알림의 액션: 누르면 패치노트를 연다 */
 export const PATCH_NOTES_ACTION = 'openPatchNotes';
 
+/** 업데이트 결과 마커 → 알림 한 줄 */
+export function updateResultMessage(res, t) {
+    const r = res?.result || {};
+    const version = res?.version || '';
+    if (r.success) return t('patch_notes.notice_success', { version: version || t('patch_notes.unknown_version') });
+    return t('patch_notes.notice_failed', { count: (r.failed || []).length || 1 });
+}
+
 // ─── localStorage 키 ───────────────────────────────────
 const STORAGE_KEY = 'saba-chan-notices';
 
@@ -86,6 +94,16 @@ function removeNotice(id) {
     window.dispatchEvent(new CustomEvent('saba-notice-update'));
 }
 
+/** 출처와 액션이 같은 알림을 모두 삭제 (예: 받을 업데이트가 없어진 업데이트 알림) */
+function removeNoticesByAction(source, action) {
+    const all = loadNotices();
+    const notices = all.filter((n) => !(n.source === source && n.action === action));
+    if (notices.length === all.length) return;
+    acknowledgeRemoved(all.filter((n) => n.source === source && n.action === action));
+    saveNotices(notices);
+    window.dispatchEvent(new CustomEvent('saba-notice-update'));
+}
+
 /** 전체 알림 삭제 */
 function clearAllNotices() {
     acknowledgeRemoved(loadNotices());
@@ -106,7 +124,15 @@ function markAllRead() {
 }
 
 // 전역으로 내보내기 (Toast 등에서 사용)
-window.__sabaNotice = { addNotice, removeNotice, clearAllNotices, getUnreadCount, loadNotices, markAllRead };
+window.__sabaNotice = {
+    addNotice,
+    removeNotice,
+    removeNoticesByAction,
+    clearAllNotices,
+    getUnreadCount,
+    loadNotices,
+    markAllRead,
+};
 
 // ─── 알림 카드 ─────────────────────────────────────────
 
@@ -140,7 +166,12 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
                 <Icon name={icon} size="sm" />
             </div>
             <div className="notice-card-body">
-                <p className="notice-card-message">{notice.message}</p>
+                <p className="notice-card-message">
+                    {/* 업데이트 결과는 보일 때 번역한다 (만들 때 아직 사용자 언어가 아니었을 수 있다) */}
+                    {notice.action === PATCH_NOTES_ACTION && notice.data?.result
+                        ? updateResultMessage(notice.data, t)
+                        : notice.message}
+                </p>
                 <span className="notice-card-time">
                     {timeStr}
                     {clickable && <span className="notice-action-hint"> {t('notice_modal.click_to_open')}</span>}

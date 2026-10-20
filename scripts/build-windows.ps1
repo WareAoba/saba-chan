@@ -31,6 +31,24 @@ $DistDir = Join-Path $ReleaseDir "saba-chan-v$ReleaseVersion"
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
+# 각 Cargo.toml·tauri.conf.json의 버전이 versions.toml과 맞아야 exe에 맞는 버전이 박힌다
+# python이 Microsoft Store 바로가기(실행되지 않는 스텁)일 수 있어 실제로 도는 것을 고른다
+# 파이프라인은 후보 배열을 펼칠 수 있어 foreach로 하나씩 시험한다
+$Python = $null
+foreach ($cmd in @(@{ Exe = "py"; Args = @("-3") }, @{ Exe = "python"; Args = @() })) {
+    try { & $cmd.Exe @($cmd.Args + "--version") *> $null; if ($LASTEXITCODE -eq 0) { $Python = $cmd; break } } catch {}
+}
+if ($Python) {
+    & $Python.Exe @($Python.Args + @((Join-Path $ScriptDir "versions.py"), "check"))
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "versions.py check failed: run 'python scripts/versions.py sync' first" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    # 발행 때 versions.py manifest가 exe 버전을 다시 대조한다
+    Write-Host "Python not found: skipping versions.py check" -ForegroundColor DarkYellow
+}
+
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "Saba-chan Windows Release Build" -ForegroundColor Cyan
 Write-Host "  (Parallel Mode)" -ForegroundColor DarkCyan

@@ -96,11 +96,8 @@ function createApiMock(overrides = {}) {
         onUpdatesAvailable: vi.fn(),
         onUpdateCompleted: vi.fn(),
         onCloseRequest: vi.fn(),
-        offCloseRequest: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
-        offConsolePopoutOpened: vi.fn(),
-        offConsolePopoutClosed: vi.fn(),
         loadNodeToken: vi.fn().mockResolvedValue(null),
         saveNodeToken: vi.fn().mockResolvedValue({ success: true }),
     };
@@ -357,6 +354,44 @@ describe('로딩 스크린 상태 머신', () => {
         });
         // 이후는 보통 기동과 같은 흐름 (위 테스트가 메인 UI까지 확인한다)
         expect(screen.getByText(/Checking servers/i)).toBeInTheDocument();
+    });
+
+    it('데몬 단계가 1분 넘게 소식이 없으면 멈춘 채 두지 않고 이유와 [다시 시도]를 보인다 (M11)', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        // 앞선 시험이 ready를 받아 남긴 표시를 지운다
+        window.__sabaReadyReceived = false;
+        try {
+            window.api = createApiMock({
+                daemonStatus: vi.fn().mockRejectedValue(new Error('not running')),
+                onStatusUpdate: vi.fn((cb) => {
+                    statusCallback = cb;
+                }),
+            });
+            await act(async () => {
+                render(<App />);
+            });
+            await act(async () => {
+                statusCallback({ step: 'daemon', message: '데몬을 시작합니다...' });
+            });
+            // 단계가 바뀌면 다시 센다
+            await act(async () => {
+                vi.advanceTimersByTime(50_000);
+            });
+            await act(async () => {
+                statusCallback({ step: 'daemon', message: '데몬을 시작했어요' });
+            });
+            await act(async () => {
+                vi.advanceTimersByTime(50_000);
+            });
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            await act(async () => {
+                vi.advanceTimersByTime(15_000);
+            });
+            expect(screen.getByRole('alert')).toHaveTextContent(/not responding/i);
+            expect(screen.getByRole('button', { name: /Try again/i })).toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('로딩 중에 창을 닫으면 종료 질문이 뜬다', async () => {

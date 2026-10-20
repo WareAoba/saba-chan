@@ -26,9 +26,18 @@ export function formatBytes(n) {
     return `${i === 0 ? v : v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
 }
 
-const errorText = (res, fallback) => {
+// 데몬 원문(영어) 대신 보일 문구가 있는 거절 코드
+const CODE_TEXT = {
+    restore_outside: 'maintenance.err_restore_outside',
+    backup_busy: 'maintenance.err_backup_busy',
+    schedule_changed: 'maintenance.err_schedule_changed',
+    server_running: 'maintenance.restore_stop_first',
+};
+
+const errorText = (res, fallback, t) => {
     const details = Array.isArray(res?.details) ? res.details.filter(Boolean) : [];
-    return [res?.error || fallback, ...details].filter(Boolean).join('\n');
+    const known = CODE_TEXT[res?.error_code];
+    return [known ? t(known) : res?.error || fallback, ...details].filter(Boolean).join('\n');
 };
 
 // ── 예약 작업 초안 ↔ 데몬 형식 ──
@@ -91,12 +100,14 @@ export function MaintenanceTab({ server }) {
         setLoadError(null);
         try {
             const res = await window.api.instanceScheduleGet(server.id);
-            if (res?.success === false) throw new Error(errorText(res, t('maintenance.load_failed')));
+            if (res?.success === false) throw new Error(errorText(res, t('maintenance.load_failed'), t));
             setInfo({
                 schedule: Array.isArray(res?.schedule) ? res.schedule : [],
                 backupKeep: res?.backup_keep ?? 10,
                 backupSupported: !!res?.backup_supported,
                 announceSupported: !!res?.announce_supported,
+                // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다 (L51)
+                revision: res?.revision,
             });
         } catch (err) {
             setLoadError(err.message || String(err));
@@ -160,9 +171,12 @@ function BackupsCard({ server }) {
         try {
             const res = await call();
             if (res?.success === false) {
-                safeShowToast(errorText(res, t('maintenance.action_failed')), 'error', 6000);
+                safeShowToast(errorText(res, t('maintenance.action_failed'), t), 'error', 6000);
             } else if (okMessage) {
-                safeShowToast(okMessage(res), 'success', 4000);
+                // 일부만 된 결과(예: 되살리지 못한 링크)는 경고로 알린다
+                const msg = okMessage(res);
+                if (typeof msg === 'string') safeShowToast(msg, 'success', 4000);
+                else safeShowToast(msg.text, msg.tone, 6000);
             }
         } catch (err) {
             safeShowToast(err.message || String(err), 'error', 6000);
@@ -244,7 +258,15 @@ function BackupsCard({ server }) {
                                             ? run(
                                                   restoreKey,
                                                   () => window.api.instanceBackupRestore(server.id, b.name),
-                                                  () => t('maintenance.restored'),
+                                                  (res) =>
+                                                      res?.links_not_restored > 0
+                                                          ? {
+                                                                text: t('maintenance.restored_links_missed', {
+                                                                    count: res.links_not_restored,
+                                                                }),
+                                                                tone: 'warning',
+                                                            }
+                                                          : t('maintenance.restored'),
                                               )
                                             : setArmed(restoreKey)
                                     }
@@ -280,11 +302,15 @@ function ScheduleCard({ server, info, onSaved }) {
     const [keep, setKeep] = useState(String(info.backupKeep));
     const [saving, setSaving] = useState(false);
     const [serverErrors, setServerErrors] = useState([]);
+    // 다른 곳에서 바뀌어 거절됨: 고친 내용은 두고 다시 읽기를 보인다
+    const [stale, setStale] = useState(false);
 
     useEffect(() => {
         const next = info.schedule.map(toDraft);
         setDrafts(next);
         setKeep(String(info.backupKeep));
+        setServerErrors([]);
+        setStale(false);
         base.current = JSON.stringify({ d: next.map(({ key, ...r }) => r), k: String(info.backupKeep) });
     }, [info]);
 
@@ -307,10 +333,12 @@ function ScheduleCard({ server, info, onSaved }) {
         try {
             const body = { schedule: drafts.map((d) => fromDraft(d, { announce: info.announceSupported })) };
             if (info.backupSupported) body.backup_keep = keepNum;
+            if (info.revision) body.revision = info.revision;
             const res = await window.api.instanceScheduleSave(server.id, body);
             if (res?.success === false) {
+                setStale(res.error_code === 'schedule_changed');
                 setServerErrors(
-                    Array.isArray(res.details) && res.details.length ? res.details : [res.error || 'error'],
+                    Array.isArray(res.details) && res.details.length ? res.details : [errorText(res, 'error', t)],
                 );
                 return;
             }
@@ -467,6 +495,11 @@ function ScheduleCard({ server, info, onSaved }) {
                 <div className="notice tone-warn" role="alert">
                     <Icon name="alertTriangle" size="sm" />
                     <span className="mt-pre">{serverErrors.join('\n')}</span>
+                    {stale && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onSaved}>
+                            {t('maintenance.reload')}
+                        </button>
+                    )}
                 </div>
             )}
 

@@ -52,13 +52,10 @@ function createApiMock(overrides = {}) {
         onUpdatesAvailable: vi.fn(),
         onUpdateCompleted: vi.fn(),
         onCloseRequest: vi.fn(),
-        offCloseRequest: vi.fn(),
         onBotRelaunch: vi.fn(),
         offBotRelaunch: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
-        offConsolePopoutOpened: vi.fn(),
-        offConsolePopoutClosed: vi.fn(),
         loadNodeToken: vi.fn().mockResolvedValue(null),
         saveNodeToken: vi.fn().mockResolvedValue({ success: true }),
     };
@@ -198,6 +195,21 @@ describe('서버 페이지', () => {
         await waitFor(() => expect(document.querySelector('.empty-state')).not.toBeNull(), { timeout: 8000 });
         await act(async () => fireEvent.click(document.querySelector('.empty-state .btn-primary')));
         expect(useUIStore.getState().showModuleManager).toBe(true);
+    }, 20000);
+
+    /** GUI를 띄운 프로그램의 job이 떼어 내기를 막아 데몬이 그 안에서 돌면, 그 프로그램이 꺼질 때 데몬도 꺼진다: 상단 바에 경고 */
+    it('데몬이 GUI를 띄운 프로그램에 묶여 돌면 상단 바에 경고를 띄운다', async () => {
+        await boot({ daemonStatus: vi.fn().mockResolvedValue({ running: true, in_parent_job: true }) });
+        await waitFor(() => expect(document.querySelector('.appbar-parent-job')).not.toBeNull(), { timeout: 8000 });
+        const toast = vi.spyOn(window, 'showToast');
+        await act(async () => fireEvent.click(document.querySelector('.appbar-parent-job')));
+        expect(toast).toHaveBeenCalledWith(expect.stringContaining('Start menu'), 'warning', 10000, undefined);
+    }, 20000);
+
+    it('평소에는 묶임 경고가 없다', async () => {
+        await boot();
+        await new Promise((r) => setTimeout(r, 300));
+        expect(document.querySelector('.appbar-parent-job')).toBeNull();
     }, 20000);
 
     it('우클릭 메뉴의 설정은 그 서버 상세의 설정 탭을 연다', async () => {

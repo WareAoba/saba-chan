@@ -57,7 +57,8 @@
     "modules": "正在準備模組清單...",
     "instances": "正在準備伺服器清單...",
     "ready": "準備就緒",
-    "ui_loaded": "介面已就緒"
+    "ui_loaded": "介面已就緒",
+    "extensions": "正在準備擴充功能..."
   },
   "tray": {
     "tooltip": "Saba醬 - 遊戲伺服器管理",

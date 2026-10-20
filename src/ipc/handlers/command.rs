@@ -38,7 +38,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         );
     }
 
-    let (instance, module, running, stdin_route) = {
+    let (instance, module, running, stdin_route, rcon_route) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
             return command_reply(
@@ -53,7 +53,8 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let running = supervisor.tracker.get_pid(&instance.id).is_ok();
         let stdin_route = supervisor.routes_commands_to_stdin(&instance.id).await;
-        (instance, module, running, stdin_route)
+        let rcon_route = !stdin_route && supervisor.rcon_route(&instance.id).is_some();
+        (instance, module, running, stdin_route, rcon_route)
     };
     let errors = match &module {
         Some(module) => module_errors(module, &state.config_store.ui_language().await),
@@ -178,6 +179,10 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             )
             .await
         }
+        // RCON만 받는 서버: 정의에 없는 한 줄도 콘솔 입력처럼 RCON으로 보낸다
+        Plan::Raw { line } if rcon_route => {
+            into_internal(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": line }))).await).await
+        }
         Plan::Raw { line } => match &request.args {
             Args::Named(args) if !args.is_empty() => {
                 run_module_command(&state, &instance, &request.name, Value::Object(args.clone())).await
@@ -209,10 +214,10 @@ async fn instance_commands(
             }
         }
     }
-    let entry = {
+    let (entry, instance_dir) = {
         let supervisor = state.supervisor.read().await;
         match supervisor.module_loader.get_module(&instance.module_name) {
-            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => m.entry_path(),
+            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => (m.entry_path(), supervisor.instance_store.instance_dir(&instance.id)),
             _ => return Default::default(),
         }
     };
@@ -220,7 +225,7 @@ async fn instance_commands(
     if let Some(dir) = &instance.working_dir {
         config.insert("working_dir".into(), json!(dir));
     }
-    crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance);
+    crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance, &instance_dir);
     let loaded = match crate::plugin::run_plugin(&entry, "instance_commands", Value::Object(config)).await {
         Ok(value) if value.get("success").and_then(Value::as_bool) != Some(false) => {
             crate::commands::InstanceCommands::parse(&value)
@@ -266,7 +271,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "name": field.name,
                 "label": field.label,
                 "description": field.description,
-                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "risk": crate::commands::risk_of(field.risk.as_deref()),
                 "inputs": field.inputs,
                 "source": "module",
                 "aliases": aliases,
@@ -286,7 +291,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "name": field.name,
                 "label": field.label,
                 "description": field.description,
-                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "risk": crate::commands::risk_of(field.risk.as_deref()),
                 "inputs": field.inputs,
                 "source": "module",
                 "group": extra.groups.get(&field.name),
@@ -302,7 +307,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
             "name": cmd.name,
             "label": cmd.label.as_deref().unwrap_or(&cmd.name),
             "description": cmd.description,
-            "risk": cmd.risk.as_deref().unwrap_or("caution"),
+            "risk": crate::commands::risk_of(cmd.risk.as_deref()),
             "inputs": cmd.inputs,
             "source": "extension",
             "extension": ext_id,
@@ -410,12 +415,24 @@ pub async fn execute_rcon_command(
         }
     };
 
-    // 명령은 언제나 stdin으로 보낸다 (콘솔 출력을 잠깐 모아 답으로 돌려준다). RCON은 보안상 쓰지 않는다.
-    // GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다. 경로 이름(`/rcon`)은 예전 호출자와의 호환용이다.
+    // 콘솔 한 줄은 stdin으로 보낸다 (콘솔 출력을 잠깐 모아 답으로 돌려준다). RCON은 모듈이 RCON만 받을 때의
+    // 마지막 경로다 (`rcon_route`). GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다
     let stdin_ok = supervisor.routes_commands_to_stdin(&id).await;
+    let rcon = if stdin_ok { None } else { supervisor.rcon_route(&id) };
+    let running = supervisor.tracker.get_pid(&id).is_ok();
     drop(supervisor);
     if stdin_ok {
         return via_stdin(&state, &id, &payload).await;
+    }
+    if let Some(access) = rcon {
+        if !running {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({ "error": format!("Server '{}' is not running", instance.name), "error_code": "server_not_running" })),
+            )
+                .into_response();
+        }
+        return via_rcon(&access, &payload).await;
     }
     (
         StatusCode::CONFLICT,
@@ -425,6 +442,30 @@ pub async fn execute_rcon_command(
         })),
     )
         .into_response()
+}
+
+/// RCON으로 한 줄을 실행한다. 답은 `data.response`. 실패 응답에 비밀번호·서버 답을 싣지 않는다
+async fn via_rcon(access: &crate::protocol::rcon::Access, payload: &serde_json::Value) -> axum::response::Response {
+    use crate::protocol::rcon::RconError;
+    let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
+    };
+    match crate::protocol::rcon::exec(access.port, &access.password, command).await {
+        Ok(response) => Json(json!({
+            "success": true,
+            "message": format!("Sent over RCON: {}", command),
+            "protocol": "rcon",
+            "data": { "response": response },
+        }))
+        .into_response(),
+        Err(e) => {
+            let status = match e {
+                RconError::InvalidCommand => StatusCode::BAD_REQUEST,
+                _ => StatusCode::BAD_GATEWAY,
+            };
+            (status, Json(json!({ "success": false, "error": e.to_string(), "error_code": e.code(), "protocol": "rcon" }))).into_response()
+        }
+    }
 }
 
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
@@ -443,6 +484,13 @@ pub(crate) async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json:
     let sent = state.supervisor.read().await.send_stdin_command(id, command).await;
     let message = match sent {
         Ok(m) => m,
+        Err(e) if e.downcast_ref::<crate::supervisor::managed_process::StdinFull>().is_some() => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": format!("stdin command failed: {}", e), "error_code": "console_input_full" })),
+            )
+                .into_response()
+        }
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -609,16 +657,16 @@ pub async fn execute_rest_command(
     // 연결 확인과 요청은 블로킹 I/O라 async 런타임 밖에서 실행한다
     enum RestFailure {
         Connect(String),
-        Execute(String),
+        Execute(crate::protocol::ProtocolError),
     }
     let outcome = tokio::task::spawn_blocking(move || {
         client
             .connect_rest(std::time::Duration::from_secs(5))
             .map_err(|e| RestFailure::Connect(e.to_string()))?;
-        client.execute(cmd).map_err(|e| RestFailure::Execute(e.to_string()))
+        client.execute(cmd).map_err(RestFailure::Execute)
     })
     .await
-    .unwrap_or_else(|e| Err(RestFailure::Execute(format!("task failed: {}", e))));
+    .unwrap_or_else(|e| Err(RestFailure::Execute(crate::protocol::ProtocolError::Protocol(format!("task failed: {}", e)))));
 
     // 인증 실패 등으로 접속 정보가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
     if !matches!(&outcome, Ok(response) if response.success) {
@@ -647,14 +695,18 @@ pub async fn execute_rest_command(
             })),
         )
             .into_response(),
-        Err(RestFailure::Execute(e)) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": format!("REST execution failed: {}", e)
-            })),
-        )
-            .into_response(),
+        Err(RestFailure::Execute(e)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(rest_execute_failure(&e))).into_response(),
     }
+}
+
+/// REST 요청 실패의 응답 본문. 게임 서버가 401·403으로 거절하면(관리자 비밀번호가 다름) `auth_failed`로 나눠
+/// `/command`가 모듈의 `errors.auth_failed` 문구를 붙이게 한다 (데몬 토큰 실패와 섞이지 않게 HTTP 상태는 500 그대로)
+fn rest_execute_failure(e: &crate::protocol::ProtocolError) -> Value {
+    let mut body = json!({ "error": format!("REST execution failed: {}", e) });
+    if matches!(e, crate::protocol::ProtocolError::HttpStatus(401 | 403, _)) {
+        body["error_code"] = json!("auth_failed");
+    }
+    body
 }
 
 /// 게임 설정 파일의 접속 정보 (lifecycle.py `get_credentials`). 캐시가 있으면 Python을 띄우지 않는다.
@@ -691,6 +743,105 @@ async fn instance_credentials(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 팰월드 관리자 비밀번호가 틀려 REST가 401로 거절되면 일반 "내부 오류" 대신 모듈의 인증 실패 문구가 붙는다
+    #[tokio::test]
+    async fn a_rest_command_the_game_rejects_gets_the_modules_auth_text() {
+        use crate::protocol::ProtocolError;
+        let errors: std::collections::HashMap<String, String> = [
+            ("auth_failed".to_string(), "비밀번호를 확인하세요".to_string()),
+            ("internal_server_error".to_string(), "내부 오류".to_string()),
+        ]
+        .into();
+        let reply = |e: ProtocolError| {
+            command_reply(
+                crate::ipc::internal::InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: rest_execute_failure(&e) },
+                "info",
+                &errors,
+            )
+        };
+        let body = |r: axum::response::Response| async move {
+            serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap()
+        };
+        let rejected = body(reply(ProtocolError::HttpStatus(401, "HTTP GET x failed with status 401: ".into()))).await;
+        assert_eq!(rejected["error_code"], "auth_failed");
+        assert_eq!(rejected["error_message"], "비밀번호를 확인하세요");
+        let other = body(reply(ProtocolError::HttpStatus(500, "boom".into()))).await;
+        assert_eq!(other["error_code"], "internal_server_error");
+    }
+
+    /// RCON만 받는 모듈: 시작 때 만든 접속 정보로 127.0.0.1 RCON에 명령을 보낸다. stdin도 받는 모듈은 RCON을 쓰지 않는다
+    #[tokio::test]
+    async fn commands_reach_a_server_that_only_speaks_rcon() {
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+        async fn server_for(protocols: &str, port: u16) -> (IPCServer, String, tempfile::TempDir) {
+            let tmp = tempfile::tempdir().unwrap();
+            let modules = tmp.path().join("modules");
+            let dir = modules.join("plain");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!("[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n[protocols]\nsupported = {protocols}\nrcon_port = {port}\n"),
+            )
+            .unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+            let instances = tmp.path().join("instances");
+            let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
+            sup.initialize().await.unwrap();
+            let inst = crate::instance::ServerInstance::new("srv", "plain");
+            let id = inst.id.clone();
+            sup.instance_store.add(inst.clone()).unwrap();
+            sup.tracker.track(&id, std::process::id()).unwrap();
+            // 시작이 하는 준비: 접속 정보를 만들고 모듈 config에 싣는다
+            sup.ensure_rcon_access(&inst).unwrap();
+            let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+            (state, id, tmp)
+        }
+        let body = |r: axum::response::Response| async move {
+            let status = r.status();
+            (status, serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap())
+        };
+        let request = |line: &str| CommandRequest { command: line.into(), args: Value::Null };
+
+        // 포트를 먼저 정해야 module.toml에 쓸 수 있다: 비밀번호는 데몬이 만든 것을 읽어 같은 포트에 서버를 띄운다
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let (state, id, _tmp) = server_for("[\"rcon\"]", port).await;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        let access = crate::protocol::rcon::load(&dir).expect("access is prepared for an rcon-only module");
+        assert_eq!(access.port, port);
+        let mut cfg = serde_json::Map::new();
+        cfg.insert("rcon_password".into(), json!("from-settings"));
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &inst, &dir);
+        assert_eq!(cfg["rcon_password"], json!(access.password), "the module writes the daemon's password into the game config");
+
+        let seen = crate::protocol::rcon::fake_server_on(port, &access.password).await;
+        let (status, reply) = body(run_command(&id, &state, request("say hi")).await).await;
+        assert_eq!(status, StatusCode::OK, "{reply}");
+        assert_eq!(reply["protocol"], "rcon");
+        assert_eq!(reply["data"]["response"], "ran: say hi");
+        assert_eq!(seen.lock().unwrap().as_slice(), ["say hi"]);
+        assert!(!reply.to_string().contains(&access.password));
+
+        // 꺼진 서버에 직접 부른 /rcon: 접속을 시도하지 않고 409
+        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        let (status, reply) = body(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": "say hi" }))).await.into_response()).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(reply["error_code"], "server_not_running");
+        assert_eq!(seen.lock().unwrap().len(), 1);
+
+        // stdin도 받는 모듈: RCON 접속 정보를 만들지 않고, 콘솔이 없으면 예전처럼 409
+        let (state, id, _tmp2) = server_for("[\"stdin\", \"rcon\"]", port).await;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        assert!(crate::protocol::rcon::load(&dir).is_none());
+        let (status, reply) = body(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": "say hi" }))).await.into_response()).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(reply["error_code"], "no_command_path");
+        assert_eq!(seen.lock().unwrap().len(), 1, "nothing more went over RCON");
+    }
 
     #[test]
     fn module_error_text_follows_the_gui_language() {

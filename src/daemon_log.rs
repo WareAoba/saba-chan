@@ -43,6 +43,8 @@ pub struct DaemonLogBuffer {
     inner: Arc<Mutex<VecDeque<DaemonLogEntry>>>,
     next_id: Arc<AtomicU64>,
     capacity: usize,
+    /// 버퍼 세대. 번호는 데몬을 켤 때마다 1부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다 (L55)
+    epoch: u64,
 }
 
 impl DaemonLogBuffer {
@@ -55,26 +57,30 @@ impl DaemonLogBuffer {
             inner: Arc::new(Mutex::new(VecDeque::with_capacity(capacity.min(1024)))),
             next_id: Arc::new(AtomicU64::new(1)),
             capacity,
+            epoch: crate::supervisor::managed_process::next_epoch(),
         }
+    }
+
+    pub fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     /// Push a new log entry into the buffer, evicting the oldest if at capacity.
     pub fn push(&self, level: String, target: String, message: String) {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
 
+        // 번호는 잠금 안에서 매긴다: 버퍼 순서와 번호 순서가 같아야 since 폴링이 줄을 건너뛰지 않는다 (D-S14)
+        let mut buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let entry = DaemonLogEntry {
-            id,
+            id: self.next_id.fetch_add(1, Ordering::Relaxed),
             timestamp,
             level,
             target,
             message,
         };
-
-        let mut buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if buf.len() >= self.capacity {
             buf.pop_front();
         }
@@ -224,24 +230,27 @@ pub async fn daemon_terminal_loop(
         for inst in instances {
             let cursor = process_cursors.get(&inst.id).copied();
             if let Ok(result) = sup.get_console_output(&inst.id, cursor, Some(200)).await {
-                if let Some(lines) = result.get("lines").and_then(|v| v.as_array()) {
-                    for line in lines {
-                        let id = line.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let content = line.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                        let level = line.get("level").and_then(|v| v.as_str()).unwrap_or("info");
-                        let level_tag = match level {
-                            "error" => "\x1b[31mERROR\x1b[0m",
-                            "warn" => "\x1b[33m WARN\x1b[0m",
-                            _ => " INFO",
-                        };
-                        output_lines.push(format!(
-                            " {} \x1b[35m[{}]\x1b[0m {}",
-                            level_tag,
-                            inst.name,
-                            content
-                        ));
-                        process_cursors.insert(inst.id.clone(), id + 1);
-                    }
+                let lines = live_console_lines(&result);
+                if lines.is_empty() && result.get("source").is_some() {
+                    // 꺼졌다: 다시 켜면 줄 번호가 처음부터라 커서를 버린다
+                    process_cursors.remove(&inst.id);
+                }
+                for line in lines {
+                    let id = line.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let content = line.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    let level = line.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+                    let level_tag = match level {
+                        "error" => "\x1b[31mERROR\x1b[0m",
+                        "warn" => "\x1b[33m WARN\x1b[0m",
+                        _ => " INFO",
+                    };
+                    output_lines.push(format!(
+                        " {} \x1b[35m[{}]\x1b[0m {}",
+                        level_tag,
+                        inst.name,
+                        content
+                    ));
+                    process_cursors.insert(inst.id.clone(), id + 1);
                 }
             }
         }
@@ -258,11 +267,132 @@ pub async fn daemon_terminal_loop(
     }
 }
 
+/// 콘솔 조회 결과 중 터미널에 찍을 줄. 꺼진 인스턴스의 디스크 로그(`source: "disk"`)는 지난 기록이고
+/// `since`를 무시하므로 찍지 않는다 (찍으면 같은 줄을 매번 다시 찍는다)
+fn live_console_lines(result: &serde_json::Value) -> &[serde_json::Value] {
+    if result.get("source").and_then(|v| v.as_str()) == Some("disk") {
+        return &[];
+    }
+    result.get("lines").and_then(|v| v.as_array()).map_or(&[], Vec::as_slice)
+}
+
 // ─── Tests ───────────────────────────────────────────────────
+
+// ─── Log File ────────────────────────────────────────────────
+
+/// 데몬 자신의 로그 파일 (`<data>/logs/daemon.log`). GUI가 띄운 데몬의 stderr는 GUI의 파이프라
+/// GUI가 사라지면 로그가 아무 데도 남지 않는다. `cap` 바이트를 넘으면 `.1`로 넘기고 새로 쓴다
+pub struct LogFile {
+    path: std::path::PathBuf,
+    cap: u64,
+    file: Mutex<Option<(std::fs::File, u64)>>,
+}
+
+impl LogFile {
+    pub fn open(path: &std::path::Path, cap: u64) -> Arc<Self> {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let file = Self::append(path);
+        Arc::new(Self { path: path.to_path_buf(), cap, file: Mutex::new(file) })
+    }
+
+    fn append(path: &std::path::Path) -> Option<(std::fs::File, u64)> {
+        let file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        Some((file, len))
+    }
+
+    /// tracing `with_writer`에 넘길 쓰기 핸들
+    pub fn writer(self: &Arc<Self>) -> LogFileWriter {
+        LogFileWriter(self.clone())
+    }
+
+    /// 패닉 훅에서 부른다: tracing을 거치지 않고 바로 쓴다
+    pub fn write_panic(&self, message: &str) {
+        let line = format!("{} PANIC {}\n", chrono::Utc::now().to_rfc3339(), message);
+        self.write_line(line.as_bytes());
+    }
+
+    /// 쓰기 실패는 삼킨다: 로그 때문에 데몬이 멈추거나 죽지 않게
+    fn write_line(&self, buf: &[u8]) {
+        let Ok(mut guard) = self.file.lock() else { return };
+        if guard.as_ref().is_some_and(|(_, len)| *len > 0 && len + buf.len() as u64 > self.cap) {
+            *guard = None;
+            let mut rolled = self.path.as_os_str().to_os_string();
+            rolled.push(".1");
+            if std::fs::rename(&self.path, rolled).is_err() {
+                // 넘기지 못하면 비우고 새로 쓴다: 상한을 지키는 쪽이 낫다
+                let _ = std::fs::OpenOptions::new().write(true).truncate(true).open(&self.path);
+            }
+        }
+        if guard.is_none() {
+            *guard = Self::append(&self.path);
+        }
+        if let Some((file, len)) = guard.as_mut() {
+            if std::io::Write::write_all(file, buf).is_ok() {
+                *len += buf.len() as u64;
+            }
+        }
+    }
+}
+
+pub struct LogFileWriter(Arc<LogFile>);
+
+impl std::io::Write for LogFileWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write_line(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬 자신의 로그 파일: 크기 상한을 넘으면 `.1`로 넘기고, 패닉도 같은 파일에 남는다
+    #[test]
+    fn the_log_file_rolls_over_and_keeps_panics() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("logs").join("daemon.log");
+        let log = LogFile::open(&path, 32);
+        let mut w = log.writer();
+        std::io::Write::write_all(&mut w, b"first line that is long enough to fill the cap..\n").unwrap();
+        std::io::Write::write_all(&mut w, b"second\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "second\n");
+        assert!(std::fs::read_to_string(path.with_extension("log.1")).unwrap().starts_with("first line"));
+        log.write_panic("boom at src/x.rs:1");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("PANIC boom at src/x.rs:1"));
+    }
+
+    /// `.1`로 넘기지 못해도(이름 바꾸기 실패) 파일이 끝없이 커지지 않는다
+    #[test]
+    fn the_log_file_stays_capped_when_it_cannot_roll_over() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("daemon.log");
+        let blocker = path.with_extension("log.1");
+        std::fs::create_dir_all(blocker.join("busy")).unwrap();
+        let log = LogFile::open(&path, 32);
+        let mut w = log.writer();
+        for _ in 0..20 {
+            std::io::Write::write_all(&mut w, b"a line of about twenty\n").unwrap();
+        }
+        assert!(std::fs::metadata(&path).unwrap().len() <= 32, "the file must not grow past the cap");
+    }
+
+    // 백로그 L6: 꺼진 인스턴스는 디스크 로그로 답하는데, 그 답은 since를 무시해 같은 200줄을 0.5초마다 다시 찍었다
+    #[test]
+    fn the_terminal_shows_only_live_console_lines() {
+        let line = serde_json::json!({ "id": 3, "content": "hi" });
+        let live = serde_json::json!({ "success": true, "lines": [line.clone()], "running": true });
+        assert_eq!(live_console_lines(&live), &[line.clone()][..]);
+        let disk = serde_json::json!({ "success": true, "lines": [line], "running": false, "source": "disk" });
+        assert!(live_console_lines(&disk).is_empty(), "past log on disk is not live output");
+    }
 
     #[test]
     fn test_buffer_push_and_get() {
@@ -277,6 +407,27 @@ mod tests {
         assert_eq!(entries[0].message, "hello world");
         assert_eq!(entries[1].id, 2);
         assert_eq!(entries[1].level, "warn");
+    }
+
+    // D-S14: 번호를 잠금 밖에서 매기면 늦은 번호가 먼저 들어가, since 폴링이 이른 번호 한 줄을 건너뛴다
+    #[test]
+    fn ids_follow_buffer_order_when_threads_log_at_once() {
+        let buf = DaemonLogBuffer::new();
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let buf = buf.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..1000 {
+                        buf.push("info".into(), "t".into(), "x".into());
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let ids: Vec<u64> = buf.get_since(Some(1), Some(10_000)).iter().map(|e| e.id).collect();
+        assert_eq!(ids, (1..=8000).collect::<Vec<_>>(), "ids must rise in the order lines enter the buffer");
     }
 
     #[test]

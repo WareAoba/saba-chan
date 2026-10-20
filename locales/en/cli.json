@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} was created and its settings were saved, but the game's config file could not be written: {{error}}",
     "ask_folder": "Server folder",
     "ask_name": "Server name",
     "ask_source": "How do you want to set it up?",
@@ -30,6 +31,14 @@
   },
   "bot": {
     "ask_token": "Node token",
+    "relay_check": "Relay check",
+    "relay_ok": "responding",
+    "relay_failed": "not responding: {{error}}",
+    "expired": "expired",
+    "expires_in": "Time left",
+    "members_partial": "Couldn't get the full Discord member list; showing only members with a saved level.",
+    "requested_by": "Requested by",
+    "username": "Username",
     "config_saved": "Bot settings saved.",
     "confirm_unpair": "Disconnect this PC from the Discord bot and forget its pairing?",
     "connection": "Connection",
@@ -41,6 +50,7 @@
     "offer_start": "Connect to the bot now?",
     "pair_enter": "In Discord, run `/saba connect` and enter this code:",
     "pair_expired": "The pairing code expired. Run bot pair again.",
+    "pair_token_not_saved": "Discord accepted the code, but the connection could not be saved on this PC. Run bot pair again.",
     "pair_no_code": "The relay did not return a pairing code.",
     "pair_polling": "Waiting for Discord...",
     "pair_waiting": "Press Ctrl+C to cancel.",
@@ -59,7 +69,7 @@
     "channel": "channel",
     "channel_ambiguous": "More than one channel is named {{name}}. Use its id.",
     "channel_none": "none",
-    "chatbot_channels": "Chatbot channels",
+    "chatbot_channels": "Talking Saba-chan channels",
     "music_channel": "Music channel",
     "notify_channel": "Notification channel",
     "confirm_music_channel": "Making #{{name}} the music channel deletes ordinary messages in it. Continue?",
@@ -87,7 +97,9 @@
     "words": "Words",
     "command_words": "Command words",
     "words_saved": "Saved the chat words of {{server}}.",
-    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them)."
+    "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
+    "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
   },
   "col": {
     "players": "Players",
@@ -116,7 +128,8 @@
     "rest_port": "REST port",
     "author": "Author",
     "mode": "Mode",
-    "trust": "Source"
+    "trust": "Source",
+    "unsupported": "Unsupported"
   },
   "common": {
     "fetching": "Fetching...",
@@ -133,7 +146,7 @@
     "confirm_reset_all": "Reset every setting to its default?",
     "confirm_reset": "Reset {{keys}} to the default?",
     "all": "all settings",
-    "confirm_export_secrets": "Passwords, the chatbot API key and the bot pairing go into the file as they are. Continue?",
+    "confirm_export_secrets": "Passwords, the Talking Saba-chan API key and the bot pairing go into the file as they are. Continue?",
     "exported": "Saved settings and {{count}} servers to {{path}}.",
     "export_no_secrets": "Passwords, API keys and the bot pairing were left out. Add --secrets to include them.",
     "import_preview": "Importing would change this (nothing changed yet).",
@@ -149,7 +162,9 @@
       "running": "running",
       "working_dir_in_use": "another server uses the same folder",
       "invalid_id": "invalid id",
-      "save_failed": "could not save"
+      "save_failed": "could not save",
+      "name_taken": "a server with this name exists",
+      "busy": "being installed, updated, backed up or restored"
     },
     "import_token_moved": "The bot pairing moved too. Disconnect the old PC (on the old PC: saba-chan-cli bot unpair)."
   },
@@ -160,11 +175,27 @@
     "meta_help": ":q leave · :commands list game commands · :start / :stop the server · anything else is sent as a game command",
     "not_running": "{{name}} is not running. Showing the last log; new lines appear once it starts.",
     "started": "── server started ──",
+    "reattached": "── daemon reattached (showing recent lines) ──",
     "stopped": "── server stopped ──",
     "unknown_meta": "Unknown :{{cmd}}. Try :help."
   },
   "daemon": {
     "already": "The daemon is already running (v{{version}}).",
+    "diag": {
+      "version": "Version",
+      "uptime": "Uptime",
+      "listen": "Address",
+      "data_dir": "Data folder",
+      "token": "Token file",
+      "token_missing": "missing ({{path}})",
+      "audit_log": "Audit log",
+      "modules": "Modules",
+      "modules_error": "could not read: {{error}}",
+      "extensions": "Enabled extensions",
+      "extensions_missing": "Enabled but not installed",
+      "problems": "Recent warnings and errors",
+      "no_problems": "No recent warnings or errors"
+    },
     "binary_not_found": "Could not find the daemon program (saba-core). Set SABA_CORE_PATH or reinstall.",
     "confirm_kill": "The daemon did not stop in time. Kill it (PID {{pid}})?",
     "killed": "Daemon killed (PID {{pid}}).",
@@ -176,6 +207,7 @@
     "starting": "Starting the daemon...",
     "stop_no_pid": "The daemon did not report its PID, so it can't be killed from here.",
     "stop_timeout": "The daemon did not stop in time.",
+    "shutdown_refused": "The daemon did not accept the shutdown request: {{error}}",
     "stopped": "Daemon stopped.",
     "stopping": "Stopping the daemon..."
   },
@@ -184,7 +216,7 @@
   },
   "err": {
     "relay": {
-      "channel_conflict": "A channel can have only one role (chatbot, music or notifications).",
+      "channel_conflict": "A channel can have only one role (Talking Saba-chan, music or notifications).",
       "unknown_channel": "That channel wasn't found in the Discord server. Check the channel name or id.",
       "bot_unavailable": "The saba-chan bot isn't responding right now. Try again shortly.",
       "node_not_found": "The relay doesn't know this PC. It was unpaired or replaced by another PC.",
@@ -194,6 +226,7 @@
       "invalid_token_format": "This PC's connection token is malformed.",
       "token_replaced": "Another PC was paired with the same Discord account, so this PC was disconnected.",
       "guild_taken": "That Discord server is already connected to another PC.",
+      "node_moved": "That Discord server moved to another PC in the meantime, so nothing was saved.",
       "forbidden": "You don't have permission to do that in that Discord server.",
       "expired": "The code has expired. Start again.",
       "rate_limited": "Too many requests. Try again in about a minute.",
@@ -207,8 +240,9 @@
     "daemon_down_hint": "Start it with: saba-chan-cli daemon start",
     "did_you_mean": "Did you mean: {{names}}?",
     "hint": {
-      "executable_missing": "Server files are missing. Check the folder or reinstall: saba-chan-cli server update",
+      "executable_missing": "Server files are missing. Reinstall (saba-chan-cli server update) or point to the executable: saba-chan-cli server set SERVER executable_path=PATH",
       "extension_required": "Install the required extensions: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "These extensions changed and could not be verified: {{ids}}. Reinstall them or restore the original files: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
@@ -218,6 +252,10 @@
       "backup_unsupported": "This game's module does not say what to back up. A newer module may: saba-chan-cli update check",
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
+      "invalid_relay_url": "Only https:// relay addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
+      "module_busy": "This module is already being installed or removed. Try again when it finishes.",
+      "schedule_changed": "The schedule was changed elsewhere. Check it again with saba-chan-cli schedule show, then retry.",
+      "invalid_command": "Write the command key as `<server>/<command>`. A key without a server must be a global action id.",
       "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>",
       "conflict_with": "clashes with {{name}}",
       "word": {
@@ -226,17 +264,21 @@
         "conflict": "already calls something else",
         "unknown_command": "this server has no such command",
         "too_many": "at most 10 words"
-      }
+      },
+      "not_supported": "See unsupported commands with: saba-chan-cli module info"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
     "not_found": "No {{what}} named \"{{query}}\".",
     "pair_expected": "Expected KEY=VALUE, got \"{{got}}\".",
     "timeout": "The daemon took too long to answer ({{path}}).",
-    "body_read": "Could not read the whole response from {{path}}: {{error}}"
+    "body_read": "Could not read the whole response from {{path}}: {{error}}",
+    "unknown_command": "No such command: {{path}}. Run `saba-chan-cli help` to see the commands.",
+    "not_supported": "The {{module}} module does not support this"
   },
   "agree": {
     "none": "{{name}} has no agreements to accept.",
+    "unknown_id": "Skipped agreement ids this server doesn't have: {{ids}} (it has: {{known}})",
     "confirm": "{{name}}: accept {{names}}? You agree to the terms at the links above.",
     "done": "Agreements accepted for {{name}}."
   },
@@ -302,6 +344,8 @@
   },
   "noun": {
     "command": "command",
+    "guild": "Discord server",
+    "member": "member",
     "extension": "extension",
     "game": "game",
     "module": "module",
@@ -312,6 +356,7 @@
   "progress": {
     "dismissed": "Cleared the progress of {{name}}.",
     "finished": "{{name}} finished installing.",
+    "lost": "Can no longer follow the install of {{name}}. The daemon may have restarted, or the server was renamed or removed elsewhere. Check with server list.",
     "none": "{{name}} has no install in progress.",
     "rolled_back": "{{name}} failed to install and was removed."
   },
@@ -333,7 +378,7 @@
     "done": "Order saved."
   },
   "reset": {
-    "confirm": "Wipe all of {{name}}'s files and start fresh? This can't be undone.",
+    "confirm": "Reset {{name}}? This can't be undone.",
     "done": "{{name}} was reset."
   },
   "resolve": {
@@ -368,10 +413,13 @@
     },
     "updated": "{{name}} updated.",
     "updating": "Updating {{name}}...",
-    "version_unknown": "unknown"
+    "version_unknown": "unknown",
+    "unresponsive": "Not responding",
+    "unresponsive_reason": "Running but not responding: {{reason}}"
   },
   "set": {
     "default": "default",
+    "cannot_clear": "{{key}} can't be left empty. Give a new value.",
     "done": "Saved {{count}} setting(s) for {{name}}.",
     "group": {
       "advanced": "Advanced",
@@ -391,7 +439,7 @@
     "bad_quotes": "Unclosed quote.",
     "bye": "Bye. The daemon and servers keep running.",
     "ctrl_c": "(press Ctrl+C again or type exit to leave)",
-    "help_line": "Type a command (help, Tab to complete) or talk like in Discord (e.g. \"palworld start\"). exit to leave.",
+    "help_line": "Type a command (help, Tab to complete) or talk like in Discord (e.g. \"my-server-1 start\"). exit to leave.",
     "welcome": "Saba-chan CLI {{version}}",
     "lang_fixed": "The language cannot change inside the shell; staying in {{lang}}."
   },
@@ -401,6 +449,7 @@
     "not_yet": "{{name}} is not running yet ({{status}}). Check: saba-chan-cli console {{name}}",
     "provisioning": "{{name}} is still installing.",
     "requested": "Start requested for {{name}}.",
+    "port_moved": "Windows reserved the REST port {{from}}, so it was changed to {{to}}.",
     "waiting": "Starting {{name}}...",
     "exited": "{{name}} exited right after starting. Last lines above."
   },
@@ -433,6 +482,8 @@
   "stop": {
     "already": "{{name}} is not running.",
     "done": "{{name}} stopped.",
+    "force_confirm": "Stop without saving?",
+    "no_graceful": "There is no way (no console) to ask {{name}} to save and exit. Forcing it off may lose progress since the last save.",
     "not_yet": "{{name}} has not stopped yet. Force it: saba-chan-cli stop --force {{name}}",
     "requested": "Stop requested for {{name}}.",
     "waiting": "Stopping {{name}}..."
@@ -448,6 +499,13 @@
   },
   "update": {
     "after_hint": "Saba-chan will restart after the update. Then check: saba-chan-cli update last",
+    "notes": "Release notes",
+    "result": "Result",
+    "result_ok": "succeeded",
+    "result_failed": "failed",
+    "when": "Applied at",
+    "updated": "Updated",
+    "failed_one": "Failed",
     "applied": "Applied: {{list}}",
     "applying": "Applying updates...",
     "checking": "Checking for updates...",
@@ -458,11 +516,13 @@
     "downloading": "Downloading",
     "integrity_summary": "{{verified}} intact · {{failed}} changed or unreadable · {{skipped}} with missing files",
     "last_check": "Last checked: {{at}}",
-    "last_cleared": "Cleared.",
+    "last_cleared": "Marked as seen.",
     "latest": "Latest",
     "no_last": "No update result recorded.",
     "not_installed": "not installed",
     "nothing_to_apply": "Nothing to apply. Download first: saba-chan-cli update download",
+    "apply_failed": "The update could not be applied. Check the errors above.",
+    "download_failed": "Some updates could not be downloaded. Check the errors above.",
     "ready": "ready to install",
     "up_to_date": "up to date",
     "updater_launched": "Updater started. The daemon is shutting down to update.",
@@ -487,7 +547,7 @@
     "cmd": {
       "config.export": "Save settings and the server list to a zip, to move to another PC (game files not included)",
       "config.import": "Bring in settings and servers from an export zip",
-      "bot.channels": "Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show",
+      "bot.channels": "Talking Saba-chan channels (several) and the music channel (one) of a paired Discord server. No options: show",
       "monitor": "CPU, memory, disk and network use, and each server's share",
       "audit": "Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)",
       "perm": "Who may run which commands from Discord (levels per member, preset, overrides)",
@@ -496,7 +556,7 @@
       "perm.revoke": "Take a member's own level away (they get the default level)",
       "perm.default": "Level for members without their own level",
       "perm.preset": "Command level preset: loose, default or strict",
-      "perm.cap": "Highest level a request through the chatbot can use",
+      "perm.cap": "Highest level a request through Talking Saba-chan can use",
       "perm.command": "Level one command needs (`<server id>/<command>`); leave the level out to go back to the preset",
       "perm.owner": "Change the pinned owner of this Discord server",
       "sandbox": "Isolated runs of unverified modules and extensions",
@@ -509,7 +569,9 @@
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
       "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
-      "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show"
+      "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show",
+      "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
+      "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
@@ -522,15 +584,16 @@
       "do.input": "Input as key=value (values that read as JSON stay JSON)",
       "member": "Discord user ID",
       "level": "Level (admin, user, chatbot, banned or a number 2..-1)",
-      "preset": "loose, default or strict",
+      "perm.preset.preset": "loose, default or strict",
+      "server.add.preset": "A preset of the game (`module info` lists them)",
       "server": "Server name (a part is enough)",
       "ids": "One or more extension ids",
       "file": "zip file path",
-      "secrets": "Also save passwords, the chatbot API key and the bot pairing",
+      "secrets": "Also save passwords, the Talking Saba-chan API key and the bot pairing",
       "dry_run": "Only show what would change",
       "overwrite": "Replace servers that already exist (running ones are skipped)",
-      "bot.channels.chatbot": "Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list",
-      "bot.channels.no_chatbot": "Unassign every chatbot channel",
+      "bot.channels.chatbot": "Channels Talking Saba-chan talks in, by name or id (comma-separated). Replaces the current list",
+      "bot.channels.no_chatbot": "Unassign every Talking Saba-chan channel",
       "bot.channels.music": "The music player channel, by name or id. Other messages in it get deleted",
       "bot.channels.no_music": "Unassign the music channel",
       "monitor.watch": "Keep refreshing until Ctrl+C",
@@ -548,7 +611,12 @@
       "bot.music.normalize": "Even out loudness between tracks (on or off)",
       "bot.words.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
       "bot.words.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
-      "bot.words.clear": "Remove every word of this server"
+      "bot.words.clear": "Remove every word of this server",
+      "help.command": "Command path, e.g. `server start`",
+      "events.kind": "Only these events; `instance` also takes `instance.exit` and the like",
+      "events.server": "Only events of this server",
+      "events.since": "Start after this event id (replays what the daemon still keeps)",
+      "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -586,6 +654,7 @@
     "restoring": "Restoring {{backup}}...",
     "restored": "{{name}} is back to {{backup}}.",
     "pre_restore": "The world from before is kept as backup {{backup}}.",
+    "links_not_restored": "The restore finished, but {{count}} link(s) inside the folder could not be recreated (Windows permissions, for example). The daemon log lists the paths.",
     "start_again": "Start {{name}} again?"
   },
   "schedule": {
@@ -613,6 +682,8 @@
     "enabled": "Turned on: {{task}}",
     "disabled": "Turned off: {{task}}",
     "no_such": "There is no task {{number}} (there are {{count}}).",
+    "edited": "Task changed: {{task}}",
+    "nothing_to_edit": "Give at least one thing to change (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Keep at least 1 backup.",
     "keep_set": "Keeping the last {{count}} scheduled backups.",
     "confirm_clear": "Remove every scheduled task of {{name}}?",
@@ -626,24 +697,27 @@
   },
   "chatbot": {
     "api_key": "API key saved",
+    "provider": "Provider",
+    "model_replaced": "The chosen model {{selected}} isn't available; {{effective}} is used instead.",
     "common": "Settings for every Discord server",
     "guild": "Discord server {{guild}}",
     "defaults": "(defaults)",
-    "saved": "Chatbot settings saved.",
+    "saved": "Talking Saba-chan settings saved.",
     "ask_key": "API key (hidden)",
     "key_required": "No API key given. Type it at the prompt, or pipe it in: cat key.txt | saba-chan-cli chatbot key",
     "key_saved": "API key saved. It is never shown again.",
-    "confirm_delete_key": "Delete the saved API key? The chatbot stops answering until a new key is saved.",
+    "confirm_delete_key": "Delete the saved API key? Talking Saba-chan stops answering until a new key is saved.",
     "key_deleted": "API key deleted.",
-    "confirm_clear": "Delete all chatbot settings and the API key?",
-    "cleared": "Chatbot settings and key deleted.",
-    "confirm_forget": "Make the chatbot forget what it remembers in every Discord server?",
-    "confirm_forget_guild": "Make the chatbot forget what it remembers in Discord server {{guild}}?",
-    "forgot": "The chatbot's memory is cleared.",
+    "confirm_clear": "Delete all Talking Saba-chan settings and the API key?",
+    "cleared": "Talking Saba-chan settings and key deleted.",
+    "confirm_forget": "Make Talking Saba-chan forget what she remembers in every Discord server?",
+    "confirm_forget_guild": "Make Talking Saba-chan forget what she remembers in Discord server {{guild}}?",
+    "forgot": "Talking Saba-chan's memory is cleared.",
+    "forget_failed": "Talking Saba-chan's memory could not be cleared on some Discord servers. Check the errors above.",
     "not_synced": "Saved on this PC. It reaches Discord once the bot is connected (saba-chan-cli bot status).",
     "sync_failed": "Discord server {{guild}} did not get the change: {{error}}",
     "read_failed": "Could not read {{path}}: {{error}}",
-    "cleared_pending": "Cleared the chatbot settings and key on this PC. The relay was not reached; it will be cleared on the next connection."
+    "cleared_pending": "Cleared the Talking Saba-chan settings and key on this PC. The relay was not reached; it will be cleared on the next connection."
   },
   "trust": {
     "verified": "verified",
@@ -659,6 +733,17 @@
   },
   "sandbox": {
     "allowed": "{{component}} will run without isolation. You will be asked again if its files change.",
+    "confirm_allow": "Run {{component}} without isolation? Unverified code will reach this PC's files and network without limits. You'll be asked again if its files change.",
+    "confirm_gui": "Load {{component}}'s GUI bundle into the app? Unverified code will run inside the app window.",
+    "gui_allowed": "{{component}}'s GUI bundle will be loaded.",
+    "gui_revoked": "Removed the consent to load {{component}}'s GUI bundle.",
+    "none": "No consents are recorded on this PC.",
+    "component": "Component",
+    "kind_unisolated": "Run without isolation",
+    "kind_gui": "GUI bundle",
+    "stale": "files changed, not in use",
+    "in_use": "in use",
+    "needs_terminal": "Answer the consent yourself in a terminal. --yes or --json cannot stand in for it.",
     "revoked": "Removed the consent to run {{component}} without isolation."
   },
   "do": {
@@ -677,17 +762,22 @@
     "owner_conflict": "The relay reported a different owner ({{id}}). The pinned owner is kept; use `saba-chan-cli perm owner` to change it.",
     "default": "Default level",
     "preset": "Preset",
-    "cap": "Chatbot cap",
+    "cap": "Talking Saba-chan cap",
     "member": "Member",
     "command": "Command",
     "level_col": "Level",
     "saved": "Saved permissions for {{guild}}",
     "bad_level": "Unknown level: {{level}} (admin, user, chatbot, banned)",
+    "import_none": "No levels left on the relay to bring in.",
+    "import_confirm": "Bring the levels of the {{count}} member(s) above into this PC?",
+    "import_not_candidate": "{{member}} has nothing to bring in. See the list with `saba-chan-cli perm import <server>`.",
+    "import_partial": "Brought in {{ok}}, {{failed}} failed.",
+    "imported": "Brought in levels for {{count}} member(s) of {{guild}}",
     "level": {
       "owner": "owner",
       "admin": "admin",
       "user": "user",
-      "chatbot": "chatbot",
+      "chatbot": "Talking Saba-chan",
       "banned": "banned"
     }
   },
@@ -696,7 +786,18 @@
     "when": "When",
     "from": "From",
     "what": "What",
-    "result": "Result"
+    "result": "Result",
+    "scanning": "Checking the code of {{name}}...",
+    "declared": "Declared",
+    "none_declared": "(none)",
+    "no_findings": "The code uses none of the checked capabilities.",
+    "clean": "Everything the code uses is declared.",
+    "undeclared": "{{count}} undeclared use(s): {{permissions}}. Use it only if you trust where it came from.",
+    "col": {
+      "permission": "Capability",
+      "where": "Where",
+      "what": "Code"
+    }
   },
   "monitor": {
     "cpu": "CPU",

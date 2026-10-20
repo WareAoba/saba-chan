@@ -10,6 +10,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
     name = "saba-chan-cli",
     version,
     about = "Saba-chan: run and manage your game servers from the terminal",
+    disable_help_subcommand = true,
     after_help = "Run without a command to open the interactive shell."
 )]
 pub struct Cli {
@@ -24,6 +25,9 @@ pub struct Global {
     /// Print machine-readable JSON instead of text
     #[arg(long, global = true, display_order = 900)]
     pub json: bool,
+    /// Print progress and then the result as JSON lines (NDJSON); implies --json
+    #[arg(long, global = true, display_order = 900)]
+    pub json_stream: bool,
     /// Answer yes to confirmation questions
     #[arg(short = 'y', long, global = true, display_order = 900)]
     pub yes: bool,
@@ -73,7 +77,7 @@ pub enum Cmd {
     /// Scheduled tasks of a server (backup, restart, announce, update)
     #[command(subcommand, visible_alias = "schedules")]
     Schedule(ScheduleCmd),
-    /// AI chatbot for Discord (API key, settings, memory)
+    /// Talking Saba-chan, the AI for Discord (API key, settings, memory)
     #[command(subcommand, visible_alias = "ai")]
     Chatbot(ChatbotCmd),
     /// Saba-chan updates
@@ -105,6 +109,18 @@ pub enum Cmd {
         #[arg(short, long)]
         follow: bool,
     },
+    /// Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop
+    Events {
+        /// Only these events; `instance` also takes `instance.exit` and the like
+        #[arg(long, value_name = "EVENT")]
+        kind: Vec<String>,
+        /// Only events of this server
+        #[arg(long, short)]
+        server: Option<String>,
+        /// Start after this event id (replays what the daemon still keeps)
+        #[arg(long, value_name = "ID")]
+        since: Option<u64>,
+    },
     /// Who may run which commands from Discord (levels per member, preset, overrides)
     #[command(subcommand, visible_alias = "permissions")]
     Perm(PermCmd),
@@ -129,6 +145,12 @@ pub enum Cmd {
     Version,
     /// Open the interactive shell
     Shell,
+    /// Show help for a command. With --json: the command tree, arguments and exit codes
+    Help {
+        /// Command path, e.g. `server start`
+        #[arg(value_name = "COMMAND")]
+        command: Vec<String>,
+    },
     /// Print a shell completion script
     Completions {
         #[arg(value_name = "SHELL")]
@@ -156,18 +178,18 @@ pub enum BackupCmd {
     /// Back up now
     #[command(visible_alias = "new")]
     Create { server: Option<String> },
-    /// Delete one backup
+    /// Delete one backup (no name: pick from the list)
     #[command(visible_alias = "rm")]
-    Delete { server: String, backup: String },
-    /// Put a backup back (the server must be stopped; asks to stop it)
-    Restore { server: String, backup: String },
+    Delete { server: String, backup: Option<String> },
+    /// Put a backup back (the server must be stopped; asks to stop it). No name: pick from the list
+    Restore { server: String, backup: Option<String> },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum PermCmd {
-    /// Levels, preset and overrides of one Discord server
-    Show { guild: String },
-    /// Give a member a level: admin, user, chatbot or banned
+    /// Levels, preset and overrides of one Discord server (name or id; without it: the only paired server)
+    Show { guild: Option<String> },
+    /// Give a member (name or id) a level: admin, user, chatbot (Talking Saba-chan) or banned
     Grant { guild: String, member: String, level: String },
     /// Take a member's own level away (they get the default level)
     Revoke { guild: String, member: String },
@@ -175,20 +197,34 @@ pub enum PermCmd {
     Default { guild: String, level: String },
     /// Command level preset: loose, default or strict
     Preset { guild: String, preset: String },
-    /// Highest level a request through the chatbot can use
+    /// Highest level a request through Talking Saba-chan can use
     Cap { guild: String, level: String },
-    /// Level one command needs (`<server id>/<command>`); leave the level out to go back to the preset
+    /// Level one command needs (`<server>/<command>`, server by name or id); leave the level out to go back to the preset
     Command { guild: String, key: String, level: Option<String> },
     /// Change the pinned owner of this Discord server
     Owner { guild: String, member: String },
+    /// Bring levels still kept on the relay (from before) into this PC. No members: all of them, after asking
+    Import { guild: String, members: Vec<String> },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum SandboxCmd {
-    /// Run this component without isolation when isolation cannot be prepared (asked again when its files change)
-    Allow { component: String },
-    /// Remove the consent to run without isolation
-    Revoke { component: String },
+    /// Consents given on this PC (run without isolation, extension GUI bundles)
+    #[command(visible_alias = "ls")]
+    List,
+    /// Run this component without isolation when isolation cannot be prepared (asked again when its files change).
+    /// `--gui`: load this extension's GUI bundle instead (component is the `ext-<id>` name shown by `sandbox list`)
+    Allow {
+        component: String,
+        #[arg(long)]
+        gui: bool,
+    },
+    /// Remove the consent (`--gui`: the GUI bundle consent)
+    Revoke {
+        component: String,
+        #[arg(long)]
+        gui: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -214,6 +250,26 @@ pub enum ScheduleCmd {
         #[arg(long)]
         message: Option<String>,
     },
+    /// Change task number N in place: only the options given change (see `schedule show`)
+    Edit {
+        server: String,
+        number: usize,
+        /// Repeat every N minutes instead (30, 30m, 2h)
+        #[arg(long, value_name = "TIME", conflicts_with = "at")]
+        every: Option<String>,
+        /// Every day at this time instead (HH:MM, this PC's clock)
+        #[arg(long, value_name = "HH:MM")]
+        at: Option<String>,
+        /// New warnings in minutes before (restart/update), e.g. 10,5,1
+        #[arg(long, value_name = "MINUTES", value_delimiter = ',', conflicts_with = "no_warn")]
+        warn: Vec<u32>,
+        /// Remove the warnings
+        #[arg(long)]
+        no_warn: bool,
+        /// New message to announce
+        #[arg(long)]
+        message: Option<String>,
+    },
     /// Remove task number N (see `schedule show`)
     #[command(visible_alias = "rm")]
     Remove { server: String, number: usize },
@@ -231,11 +287,11 @@ pub enum ScheduleCmd {
 pub enum ChatbotCmd {
     /// Settings and whether an API key is saved
     Show,
-    /// Change settings: KEY=VALUE ... (empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
+    /// Change settings: KEY=VALUE ... (keys and their defaults: `chatbot show`; e.g. enabled=true; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
         pairs: Vec<String>,
-        /// Only for this Discord server (guild id)
+        /// Only for this Discord server (name or id)
         #[arg(long)]
         guild: Option<String>,
     },
@@ -245,9 +301,11 @@ pub enum ChatbotCmd {
         #[arg(long)]
         delete: bool,
     },
-    /// Delete all chatbot settings and the key
+    /// Delete all Talking Saba-chan settings and the key
     Clear,
-    /// Forget what the chatbot remembers (all Discord servers, or one)
+    /// Models the saved API key can use (name or id of the Discord server; without it: the only paired server)
+    Models { guild: Option<String> },
+    /// Forget what Talking Saba-chan remembers (all Discord servers, or one)
     Forget {
         #[arg(long)]
         guild: Option<String>,
@@ -402,6 +460,10 @@ pub struct AddArgs {
     /// Don't wait for the install to finish
     #[arg(long)]
     pub no_wait: bool,
+    /// Agreement id the module declares (`[[agreements]]`, e.g. a game EULA), repeatable. Only pass ones you have read.
+    /// `--yes` never accepts an agreement
+    #[arg(long = "accept", value_name = "ID")]
+    pub accept: Vec<String>,
 }
 
 #[derive(Args, Debug, Clone, Default)]
@@ -477,6 +539,8 @@ pub enum DaemonCmd {
         #[arg(long)]
         force: bool,
     },
+    /// Self-check to paste when asking for help: version, paths, token file, modules, extensions, recent warnings
+    Diagnostics,
     /// The daemon's own log
     Logs {
         #[arg(short = 'n', long, default_value_t = 100)]
@@ -532,8 +596,9 @@ pub enum ModuleCmd {
         version: String,
         #[arg(long, value_name = "DIR")]
         dir: String,
-        #[arg(long)]
-        jar: Option<String>,
+        /// Server executable file name to download as (default: the module's `server_executable`)
+        #[arg(long, alias = "jar", value_name = "FILE")]
+        executable: Option<String>,
         /// Agreement id the module declares (`[[agreements]]`), repeatable. Only pass ones you have read
         #[arg(long = "accept", value_name = "ID")]
         accept: Vec<String>,
@@ -607,8 +672,8 @@ pub enum BotCmd {
     },
     /// Forget this PC's pairing
     Unpair,
-    /// Set the node token by hand (from a pairing done elsewhere)
-    Token { token: Option<String> },
+    /// Set the node token by hand (from a pairing done elsewhere). Asked for without showing it, or one line on stdin; never an argument
+    Token,
     /// Show or change the chat prefixes: `prefix`, `prefix A B`, `prefix --default`
     Prefix {
         values: Vec<String>,
@@ -618,15 +683,16 @@ pub enum BotCmd {
     },
     /// Discord servers paired with this PC
     Nodes,
-    /// Members of a paired Discord server
-    Members { guild: String },
-    /// Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show
+    /// Members of a paired Discord server (name or id; without it: the only paired server)
+    Members { guild: Option<String> },
+    /// Talking Saba-chan channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
     Channels {
-        guild: String,
-        /// Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list
+        /// Without it: every paired Discord server (changing needs exactly one)
+        guild: Option<String>,
+        /// Channels Talking Saba-chan talks in, by name or id (comma-separated). Replaces the current list
         #[arg(long, value_delimiter = ',', conflicts_with = "no_chatbot")]
         chatbot: Vec<String>,
-        /// Unassign every chatbot channel
+        /// Unassign every Talking Saba-chan channel
         #[arg(long)]
         no_chatbot: bool,
         /// The music player channel, by name or id. Other messages in it get deleted
@@ -645,12 +711,12 @@ pub enum BotCmd {
     /// The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show
     Lang { guild: String, value: Option<String> },
     /// Put the bot to sleep on a Discord server (it ignores commands until woken)
-    Sleep { guild: String },
+    Sleep { guild: Option<String> },
     /// Wake the bot on a Discord server
-    Wake { guild: String },
+    Wake { guild: Option<String> },
     /// Music player settings of a Discord server. No options: show
     Music {
-        guild: String,
+        guild: Option<String>,
         /// Turn music on
         #[arg(long, conflicts_with = "off")]
         on: bool,
@@ -705,7 +771,7 @@ pub enum BotCmd {
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
 
-    /// Show or change any bot setting: KEY=VALUE (dotted keys, JSON values)
+    /// Show or change a bot setting: KEY=VALUE (dotted keys as shown with no arguments, lists comma-separated)
     Config {
         #[arg(value_name = "KEY=VALUE")]
         pairs: Vec<String>,
@@ -768,7 +834,7 @@ pub enum ConfigCmd {
     /// Save settings and the server list to a zip, to move to another PC (game files not included)
     Export {
         file: std::path::PathBuf,
-        /// Also save passwords, the chatbot API key and the bot pairing
+        /// Also save passwords, the Talking Saba-chan API key and the bot pairing
         #[arg(long)]
         secrets: bool,
     },
@@ -822,6 +888,92 @@ pub fn localized() -> clap::Command {
     cmd
 }
 
+/// 인자를 읽는다. 맨 위 `help`는 우리 명령이라 clap의 하위 `help`가 꺼진다:
+/// `server help start`처럼 하위 명령 자리에 온 `help`는 맨 앞으로 옮겨 다시 읽는다
+pub fn parse(args: Vec<std::ffi::OsString>) -> Result<clap::ArgMatches, clap::Error> {
+    match localized().try_get_matches_from(&args) {
+        Err(e) if e.kind() == clap::error::ErrorKind::InvalidSubcommand && args.iter().skip(1).any(|a| a == "help") => {
+            let mut moved: Vec<std::ffi::OsString> = args.iter().filter(|a| *a != "help").cloned().collect();
+            moved.insert(1.min(moved.len()), "help".into());
+            // 옮긴 경로가 실제 명령일 때만: 오타면 clap의 원래 제안("혹시 start?")을 살린다
+            let real = |m: &clap::ArgMatches| {
+                let path: Vec<String> = m.subcommand_matches("help").and_then(|h| h.get_many::<String>("command")).into_iter().flatten().cloned().collect();
+                find(&Cli::command(), &path).is_some()
+            };
+            localized().try_get_matches_from(moved).ok().filter(real).ok_or(e)
+        }
+        r => r,
+    }
+}
+
+/// 이름이나 별칭으로 하위 명령 경로를 따라간다. 없으면 None
+pub fn find<'c>(root: &'c clap::Command, path: &[String]) -> Option<&'c clap::Command> {
+    path.iter().try_fold(root, |cmd, word| cmd.find_subcommand(word))
+}
+
+/// `help --json`: 명령 트리·인자·종료 코드. 전역 플래그는 `globalArgs`에 한 번만 싣는다
+pub fn schema(root: &clap::Command, path: &[String]) -> Option<serde_json::Value> {
+    use serde_json::{json, Value};
+    fn text(s: Option<&clap::builder::StyledStr>) -> Value {
+        s.map_or(Value::Null, |s| json!(s.to_string()))
+    }
+    fn arg(a: &clap::Arg) -> Value {
+        let takes_value = a.get_action().takes_values();
+        json!({
+            "name": a.get_id().as_str(),
+            "long": a.get_long(),
+            "short": a.get_short().map(String::from),
+            "positional": a.is_positional(),
+            "required": a.is_required_set(),
+            "takesValue": takes_value,
+            "multiple": matches!(a.get_action(), clap::ArgAction::Append | clap::ArgAction::Count)
+                || a.get_num_args().is_some_and(|n| n.max_values() > 1),
+            // 켜고 끄는 플래그는 값 이름·기본값(false)이 뜻이 없다
+            "valueName": a.get_value_names().and_then(|v| v.first()).filter(|_| takes_value).map(|v| v.as_str()),
+            "default": if takes_value { a.get_default_values().iter().map(|v| v.to_string_lossy()).collect::<Vec<_>>() } else { vec![] },
+            "choices": if takes_value { a.get_possible_values().iter().map(|v| v.get_name().to_string()).collect::<Vec<_>>() } else { vec![] },
+            "help": text(a.get_help()),
+        })
+    }
+    fn node(cmd: &clap::Command, path: &str, top: bool) -> Value {
+        let args: Vec<Value> = cmd
+            .get_arguments()
+            .filter(|a| !a.is_global_set() && !a.is_hide_set() && !matches!(a.get_id().as_str(), "help" | "version"))
+            .map(arg)
+            .collect();
+        // clap이 붙이는 하위 `help`는 뺀다. 맨 위 `help`만 우리 명령이다
+        let subs: Vec<Value> = cmd
+            .get_subcommands()
+            .filter(|s| !s.is_hide_set() && (top || s.get_name() != "help"))
+            .map(|s| node(s, format!("{} {}", path, s.get_name()).trim(), false))
+            .collect();
+        json!({
+            "path": path,
+            "name": cmd.get_name(),
+            "aliases": cmd.get_visible_aliases().collect::<Vec<_>>(),
+            "about": text(cmd.get_about()),
+            "args": args,
+            "subcommands": subs,
+        })
+    }
+    let target = find(root, path)?;
+    // 별칭으로 찾아도 경로는 본 이름으로
+    let canonical: Vec<&str> = (1..=path.len()).filter_map(|n| find(root, &path[..n]).map(|c| c.get_name())).collect();
+    let globals: Vec<Value> = root.get_arguments().filter(|a| a.is_global_set()).map(arg).collect();
+    let exit_codes: Vec<Value> = crate::error::EXIT_CODES
+        .iter()
+        .map(|(exit, codes)| json!({ "exit": exit, "codes": codes }))
+        .collect();
+    Some(json!({
+        "name": root.get_name(),
+        "version": env!("CARGO_PKG_VERSION"),
+        "command": node(target, &canonical.join(" "), path.is_empty()),
+        "globalArgs": globals,
+        "exitCodes": exit_codes,
+        "notes": "--json prints one JSON document on stdout. A failure prints {\"ok\":false,\"error\",\"error_code\"} and exits with a code below; for exit 1 error_code may also be the daemon's own code.",
+    }))
+}
+
 /// 셸 자동완성·검사용 명령 이름 목록 (경로 포함)
 pub fn command_words() -> Vec<String> {
     fn walk(cmd: &clap::Command, prefix: &str, out: &mut Vec<String>) {
@@ -856,6 +1008,14 @@ mod tests {
         Cli::command().debug_assert();
         // 도움말을 바꿔 끼워도 위치 인자 순서가 그대로여야 한다
         localized().debug_assert();
+    }
+
+    /// 명령 본문 안의 `--lang=ko`는 전역 옵션이 아니다: 데몬 언어를 바꾸지 않게 실제 전역 옵션만 쓴다
+    #[test]
+    fn a_lang_inside_command_text_is_not_the_global_option() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();
+        assert_eq!(p(&["chat", "mc", "say", "--lang=ko"]).global.lang, None);
+        assert_eq!(p(&["--lang", "ko", "chat", "mc", "say", "hi"]).global.lang.as_deref(), Some("ko"));
     }
 
     #[test]
@@ -895,8 +1055,63 @@ mod tests {
         }
         assert!(p(&["bot", "words", "123", "--word", "크리"]).is_err(), "--word needs a server");
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
+        assert!(matches!(p(&["bot", "channels"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Channels { guild: None, .. }))));
+        assert!(matches!(p(&["bot", "members"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Members { guild: None }))));
+        // 토큰은 셸 기록에 남지 않게 인자로 받지 않는다 (C15)
+        assert!(p(&["bot", "token", "secret-token"]).is_err());
+        assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
+    }
+
+    /// AI가 명령을 추측하지 않게 명령 트리·인자·종료 코드를 JSON으로 낸다
+    #[test]
+    fn help_json_describes_the_command_tree() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied()));
+        let h = p(&["help", "--json", "server", "start"]).unwrap();
+        assert!(h.global.json);
+        assert!(matches!(h.cmd, Some(Cmd::Help { command }) if command == ["server", "start"]));
+
+        let all = schema(&Cli::command(), &[]).unwrap();
+        fn paths(node: &serde_json::Value, out: &mut Vec<String>) {
+            for s in node["subcommands"].as_array().unwrap() {
+                out.push(s["path"].as_str().unwrap().to_string());
+                paths(s, out);
+            }
+        }
+        let mut seen = Vec::new();
+        paths(&all["command"], &mut seen);
+        fn names(cmd: &clap::Command, prefix: &str, out: &mut Vec<String>) {
+            for s in cmd.get_subcommands().filter(|s| s.get_name() != "help") {
+                let p = format!("{} {}", prefix, s.get_name()).trim().to_string();
+                out.push(p.clone());
+                names(s, &p, out);
+            }
+        }
+        let mut words = Vec::new();
+        names(&Cli::command(), "", &mut words);
+        assert!(words.len() > 50 && seen.iter().any(|p| p == "help"));
+        for w in &words {
+            assert!(seen.contains(w), "{} is not described", w);
+        }
+        assert!(all["globalArgs"].as_array().unwrap().iter().any(|a| a["long"] == "json"));
+        assert!(all["exitCodes"].as_array().unwrap().iter().any(|e| e["exit"] == 3 && e["codes"][0] == "daemon_unreachable"));
+
+        // 별칭으로도 찾는다
+        let start = schema(&Cli::command(), &["servers".into(), "start".into()]).unwrap();
+        assert_eq!(start["command"]["path"], "server start");
+        let server = start["command"]["args"].as_array().unwrap().iter().find(|a| a["name"] == "server").unwrap();
+        assert_eq!(server["positional"], true);
+        assert!(start["command"]["args"].as_array().unwrap().iter().all(|a| a["long"] != "json"), "global flags are listed once");
+        assert_eq!(schema(&Cli::command(), &["nope".into()]), None);
+
+        // 예전 모양 `server help start`도 같은 명령이 된다
+        crate::i18n::init("en");
+        let m = parse(["saba-chan-cli", "server", "help", "start"].map(Into::into).to_vec()).unwrap();
+        assert!(matches!(<Cli as clap::FromArgMatches>::from_arg_matches(&m).unwrap().cmd, Some(Cmd::Help { command }) if command == ["server", "start"]));
+        // 오타는 옮겨 읽지 않고 clap의 원래 오류(제안 포함)를 낸다
+        let typo = parse(["saba-chan-cli", "server", "strat", "help"].map(Into::into).to_vec()).unwrap_err();
+        assert_eq!(typo.kind(), clap::error::ErrorKind::InvalidSubcommand);
     }
 
     #[test]
@@ -922,6 +1137,23 @@ mod tests {
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.cmd keys missing: {:?}", missing);
     }
+    /// `server add --preset`은 게임의 추천 설정 id다. 권한 프리셋(`perm preset`)의 설명을 빌려 쓰면 안 된다 (L73)
+    #[test]
+    fn server_add_preset_is_explained_as_a_game_preset() {
+        crate::i18n::init("ko");
+        let cmd = localized();
+        let help = |path: &[&str]| {
+            let mut c = &cmd;
+            for name in &path[..path.len() - 1] {
+                c = c.find_subcommand(name).unwrap();
+            }
+            let arg = c.get_arguments().find(|a| a.get_id() == path[path.len() - 1]).unwrap();
+            arg.get_help().map(|h| h.to_string()).unwrap_or_default()
+        };
+        assert!(!help(&["server", "add", "preset"]).contains("loose"));
+        assert!(help(&["perm", "preset", "preset"]).contains("loose"));
+    }
+
     #[test]
     fn every_argument_has_a_korean_help_line() {
         crate::i18n::init("ko");

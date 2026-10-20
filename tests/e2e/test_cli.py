@@ -34,10 +34,11 @@ def test_status_json(cli, daemon):
 
 def test_full_server_flow_through_cli(cli, daemon, fake_server):
     folder, port = fake_server("cli1")
-    r = cli.run("server", "add", "cli1", "-m", "minecraft", "--from", str(folder), "--set", "ram=256M")
+    # 약관은 읽은 것을 --accept로 이름을 대어 동의한다 (--yes는 동의가 아니다)
+    r = cli.run("server", "add", "cli1", "-m", "minecraft", "--from", str(folder), "--set", "ram=256M", "--accept", "eula")
     assert r.code == 0, r
     iid = next(i["id"] for i in daemon.instances() if i["name"] == "cli1")
-    assert cli.run("server", "agree", "cli1", "--yes").code == 0
+    assert _eula_accepted(daemon, iid), "add --accept eula가 약관 동의를 남기지 않음"
 
     listing = cli.run("server", "list", check=0).json()
     assert "cli1" in str(listing)
@@ -72,8 +73,24 @@ def test_eula_preflight_reported_by_cli(cli, daemon, fake_server):
     r = cli.run("start", "noeula", json_out=False)
     assert r.code == 1, r
     assert "server agree" in (r.stdout + r.stderr), r
-    assert cli.run("server", "agree", "noeula", "--yes").code == 0
+    # restart도 start와 같은 점검·안내를 한다 (L56)
+    r = cli.run("restart", "noeula", json_out=False)
+    assert r.code == 1, r
+    assert "server agree" in (r.stdout + r.stderr), r
+    # --yes는 약관 동의가 아니다: 터미널에서 직접 답해야 한다며 사용법 오류(2)로 끝나고 동의는 남지 않는다
+    r = cli.run("server", "agree", "noeula", "--yes")
+    assert r.code == 2, r
+    iid = next(i["id"] for i in daemon.instances() if i["name"] == "noeula")
+    assert not _eula_accepted(daemon, iid), "--yes만으로 약관 동의가 기록됨"
+    assert cli.run("start", "noeula").code == 1
+    # 사람이 동의한 것으로 치는 길(데몬 동의 API, GUI·터미널 질문이 부르는 것)로 동의하면 시작된다
+    daemon.api.ok("POST", f"/api/instance/{iid}/agreements", {"accept": ["eula"]})
     assert cli.run("start", "noeula").code == 0
+
+
+def _eula_accepted(daemon, iid) -> bool:
+    inst = daemon.api.ok("GET", f"/api/instance/{iid}")
+    return any(a["id"] == "eula" and a.get("accepted") for a in inst.get("agreements", []))
 
 
 def test_cli_refuses_second_server_on_same_folder(cli, daemon, fake_server):

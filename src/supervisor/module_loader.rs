@@ -53,6 +53,9 @@ pub struct ModuleMetadata {
     pub protocols_supported: Option<Vec<String>>,  // ["rcon", "stdin", "rest"] etc.
     #[serde(default)]
     pub protocols_default: Option<String>,  // default protocol mode
+    /// `[protocols] rcon_port`: 게임의 기본 RCON 포트. `rcon`만 받는 모듈에서만 쓴다 (`rcon_only_port`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rcon_port: Option<u16>,
     #[serde(default)]
     pub settings: Option<ModuleSettings>,  // 설정 스키마
     #[serde(default)]
@@ -239,6 +242,14 @@ pub struct CommandAliasInfo {
 }
 
 impl ModuleMetadata {
+    /// 명령을 RCON으로 보내는 모듈이면 그 기본 RCON 포트. `supported`에 rcon이 있고 stdin·rest가 없을 때만이다
+    /// (명령 경로 우선순위 STDIN → REST → RCON: 다른 경로가 있으면 RCON을 쓰지 않는다)
+    pub fn rcon_only_port(&self) -> Option<u16> {
+        let supported = self.protocols_supported.as_deref()?;
+        let only_rcon = supported.iter().any(|p| p == "rcon") && !supported.iter().any(|p| p == "stdin" || p == "rest");
+        self.rcon_port.filter(|p| only_rcon && *p > 0)
+    }
+
     /// 설정 필드의 기본값을 가져옵니다
     pub fn get_setting_default<T: std::str::FromStr>(&self, field_name: &str) -> Option<T> {
         self.settings.as_ref().and_then(|s| {
@@ -440,14 +451,26 @@ impl OneOrMany {
 
 /// 설정 값 형식 이름 (`format`)
 pub const SETTING_FORMATS: &[&str] = &["memory_size", "port", "integer", "path"];
+/// 설정 필드 `type`으로 받는 값 (GUI·CLI가 그리는 것)
+pub const SETTING_TYPES: &[&str] = &["text", "password", "number", "file", "select", "boolean"];
+/// 명령 입력 `inputs[].type`으로 받는 값
+pub const COMMAND_INPUT_TYPES: &[&str] = &["text", "password", "number", "select", "boolean"];
 
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
 pub const CORE_PORT_FIELDS: &[&str] = &["port", "rest_port"];
+
+/// 사바쨩 설정 묶음: 실행 방식(Java 경로·메모리·실행 인자 등)처럼 사바쨩이 쓰는 값. 게임 설정 파일로 넘기지 않는다
+pub const SABA_SETTINGS_GROUP: &str = "saba-chan";
 
 impl ModuleSettings {
     /// 포트로 표시된 설정 이름 (`port = true`)
     pub fn port_fields(&self) -> Vec<&str> {
         self.fields.iter().filter(|f| f.port).map(|f| f.name.as_str()).collect()
+    }
+
+    /// 사바쨩 설정 이름 (`group = "saba-chan"`)
+    pub fn saba_fields(&self) -> Vec<&str> {
+        self.fields.iter().filter(|f| f.group.as_deref() == Some(SABA_SETTINGS_GROUP)).map(|f| f.name.as_str()).collect()
     }
 }
 
@@ -731,6 +754,9 @@ struct ProtocolsSection {
     /// "console" | "commands"
     #[serde(default)]
     interaction_mode: Option<String>,
+    /// 게임의 기본 RCON 포트. `supported`에 rcon만 있을 때 데몬이 이 포트로 접속한다
+    #[serde(default)]
+    rcon_port: Option<u16>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1123,6 +1149,7 @@ impl ModuleToml {
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
             protocols_supported: self.protocols.as_ref().and_then(|p| p.supported.clone()),
             protocols_default: self.protocols.as_ref().and_then(|p| p.default.clone()),
+            rcon_port: self.protocols.as_ref().and_then(|p| p.rcon_port),
             settings,
             commands,
             syntax_highlight,
@@ -1247,14 +1274,13 @@ impl ModuleToml {
     /// 키는 맞지만 값이 계약을 벗어난 곳
     fn value_problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
-        let entry = Path::new(&self.module.entry);
-        if self.module.entry.is_empty()
-            || entry.is_absolute()
-            || entry.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
-        {
+        if !crate::utils::is_inner_relative_path(&self.module.entry) {
             problems.push(format!("module.entry '{}' must be a path inside the module folder", self.module.entry));
         }
         for field in self.settings.iter().flat_map(|s| &s.fields) {
+            if !SETTING_TYPES.contains(&field.field_type.as_str()) {
+                problems.push(format!("settings field '{}': type '{}' must be one of {}", field.name, field.field_type, SETTING_TYPES.join(", ")));
+            }
             if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
                 problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
             }
@@ -1273,6 +1299,17 @@ impl ModuleToml {
             }
         }
         for cmd in self.commands.iter().flat_map(|c| &c.fields) {
+            for input in &cmd.inputs {
+                if let Some(ty) = input.input_type.as_deref().filter(|t| !COMMAND_INPUT_TYPES.contains(t)) {
+                    problems.push(format!(
+                        "commands '{}': input '{}' type '{}' must be one of {}",
+                        cmd.name,
+                        input.name,
+                        ty,
+                        COMMAND_INPUT_TYPES.join(", ")
+                    ));
+                }
+            }
             if let Some(risk) = &cmd.risk {
                 if !COMMAND_RISKS.contains(&risk.as_str()) {
                     problems.push(format!(
@@ -1289,6 +1326,10 @@ impl ModuleToml {
                 if !PROTOCOLS.contains(&value.as_str()) {
                     problems.push(format!("protocols: '{}' must be one of {}", value, PROTOCOLS.join(", ")));
                 }
+            }
+            let only_rcon = p.supported.as_ref().is_some_and(|s| s.iter().any(|v| v == "rcon") && !s.iter().any(|v| v == "stdin" || v == "rest"));
+            if only_rcon && p.rcon_port.unwrap_or(0) == 0 {
+                problems.push("protocols: rcon_port is required when rcon is the only protocol".to_string());
             }
         }
         // 공지·저장 명령은 [commands.fields]의 이름을 가리킨다
@@ -1343,7 +1384,7 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
 /// 데몬이 정해진 뜻으로 부르는 lifecycle 함수 중 상태를 바꾸는 것: 조회(`[[queries]]`)·`[status] players`의 함수가 될 수 없다
 const NON_QUERY_FUNCTIONS: &[&str] = &[
     "start", "stop", "command", "configure", "get_launch_command", "import_settings", "install_server",
-    "reset_properties", "reset_server", "accept_agreements",
+    "reset_properties", "reset_server", "accept_agreements", "functions",
 ];
 /// 조회 입력으로 쓸 수 있는 형식 (없으면 text)
 const QUERY_INPUT_TYPES: &[&str] = &["text", "number", "select"];
@@ -1905,6 +1946,16 @@ interaction_mode = "commands"
 "#;
         let meta = parse_module_toml(toml).unwrap();
         assert_eq!(meta.interaction_mode.as_deref(), Some("commands"));
+        assert_eq!(meta.rcon_only_port(), None, "rest is there: rcon is never used");
+    }
+
+    #[test]
+    fn rcon_is_used_only_when_it_is_the_only_protocol_and_needs_a_port() {
+        let with = |protocols: &str| parse_module_toml(&format!("[module]\nschema_version = 1\nname = \"g\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[protocols]\n{protocols}\n"));
+        assert_eq!(with("supported = [\"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), Some(27015));
+        assert_eq!(with("supported = [\"stdin\", \"rcon\"]\nrcon_port = 27015").unwrap().rcon_only_port(), None);
+        let err = with("supported = [\"rcon\"]").unwrap_err().to_string();
+        assert!(err.contains("rcon_port"), "{err}");
     }
 
     #[test]
@@ -2141,6 +2192,23 @@ entry = "lifecycle.py"
             assert!(err.contains("protocols"), "{err}");
         }
         assert!(parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"rest\", \"stdin\"]\ndefault = \"rest\"\n")).is_ok());
+    }
+
+    /// 클라이언트가 그리지 못하는 설정·명령 입력 type은 화면에서 조용히 사라진다: 로드할 때 알린다 (MK2)
+    #[test]
+    fn schema_v1_checks_setting_and_command_input_types() {
+        let setting = |ty: &str| format!("{V1}\n[[settings.fields]]\nname = \"motd\"\ntype = \"{ty}\"\n");
+        let err = parse_module_toml(&setting("textarea")).unwrap_err().to_string();
+        assert!(err.contains("settings field 'motd'") && err.contains("textarea"), "{err}");
+        for ty in SETTING_TYPES {
+            assert!(parse_module_toml(&setting(ty)).is_ok(), "{ty}");
+        }
+        let input = |ty: &str| format!("{V1}\n[[commands.fields]]\nname = \"kick\"\ninputs = [{{ name = \"player\", type = \"{ty}\" }}]\n");
+        let err = parse_module_toml(&input("slider")).unwrap_err().to_string();
+        assert!(err.contains("commands 'kick'") && err.contains("slider"), "{err}");
+        assert!(parse_module_toml(&input("password")).is_ok());
+        // 스키마 이전 모듈은 경고만 하고 올린다
+        assert!(parse_module_toml(&setting("textarea").replace("schema_version = 1\n", "")).is_ok());
     }
 
     #[test]
