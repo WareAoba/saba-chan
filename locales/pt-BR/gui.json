@@ -495,6 +495,7 @@
     "stdin_disabled": "Apenas registros anteriores (saba-chan reiniciou) — reinicie o servidor para reconectar",
     "send": "Enviar",
     "popout": "Abrir em janela separada",
+    "popout_failed": "Não foi possível abrir o console em uma janela separada.",
     "minimize": "Minimizar para o dock",
     "dock_restore": "Restaurar: {{name}}",
     "dock_focus": "Focar: {{name}}",
