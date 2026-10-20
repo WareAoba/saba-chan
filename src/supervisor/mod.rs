@@ -2926,8 +2926,11 @@ impl Supervisor {
     /// 포트 충돌 강제 정지 이벤트를 남긴다. 번호를 붙이고, 읽는 클라이언트가 없어도 최근 것만 둔다
     pub fn record_port_conflict_stops(&self, new: impl IntoIterator<Item = PortConflictStopEvent>) {
         if let Ok(mut stops) = self.port_conflict_stops.lock() {
+            // 번호는 지금 시각(µs, JS 숫자로도 정확하다)보다 작지 않게 붙인다: 데몬을 다시 켜도 앞 실행의 번호보다 커서,
+            // 클라이언트가 들고 있는 번호로 새 알림을 거르지 않는다
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0);
             for mut event in new {
-                stops.last_id += 1;
+                stops.last_id = (stops.last_id + 1).max(now);
                 event.id = stops.last_id;
                 stops.events.push(event);
             }
@@ -3976,5 +3979,27 @@ mod tests {
         assert!(StartGuard::claim(&set, "b", 0).is_some(), "other instances are not blocked");
         drop(first);
         assert!(StartGuard::claim(&set, "a", 0).is_some());
+    }
+
+    /// 데몬을 다시 켜도 알림 번호는 앞 실행보다 크다: 클라이언트가 들고 있는 번호 뒤의 새 알림을 놓치지 않는다 (L50)
+    #[test]
+    fn notice_ids_keep_growing_across_a_daemon_restart() {
+        let tmp = tempfile::tempdir().unwrap();
+        let event = || PortConflictStopEvent {
+            id: 0,
+            stopped_name: "b".into(),
+            stopped_id: "b-id".into(),
+            existing_name: "a".into(),
+            existing_id: "a-id".into(),
+            port: 1,
+            timestamp_ms: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+        };
+        let daemon = || Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let first = daemon();
+        first.record_port_conflict_stops([event(), event()]);
+        let seen = first.port_conflict_stops_after(0).last().unwrap().id;
+        let restarted = daemon();
+        restarted.record_port_conflict_stops([event()]);
+        assert_eq!(restarted.port_conflict_stops_after(seen).len(), 1, "a client that saw id {seen} gets the new notice");
     }
 }

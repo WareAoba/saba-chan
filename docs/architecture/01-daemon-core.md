@@ -197,7 +197,7 @@
 - `managed`는 saba-runner가 맡아 실행하는지다. 판정은 데몬의 `Supervisor::uses_managed_start` 하나이고(`server.rs:87`), 클라이언트는 이 값을 그대로 쓴다.
 - **REST 비밀번호가 평문으로 포함된다.**
 
-`port_conflict_stops`는 포트 충돌로 멈춘 알림 목록이다. 알림마다 `id`(데몬이 켜진 뒤 1부터 늘어나는 번호)와 `timestamp_ms`가 있고, 읽어도 지우지 않고 10분(`PORT_CONFLICT_STOPS_TTL_MS`)·최근 20개(`PORT_CONFLICT_STOPS_KEPT`)까지 둔다. 클라이언트는 `?notices_after=<본 마지막 id>`로 그 뒤 알림만 받는다(처음엔 0). 이렇게 읽으면 다른 클라이언트 몫을 지우지 않으므로 GUI와 CLI가 각자 본다(L50). `?notices=keep`은 `notices_after=0`과 같다(남은 알림 모두, 대기 루프·목록용). 매개변수가 없는 옛 클라이언트에는 그 방식으로 아직 보이지 않은 알림만 한 번 준다(예전 drain 동작, 알림은 지우지 않는다). 데몬 안의 목록 호출(릴레이 하트비트·채팅, `list_servers_internal`)은 남은 알림 모두를 본다(`server.rs` `server_list`).
+`port_conflict_stops`는 포트 충돌로 멈춘 알림 목록이다. 알림마다 `id`(늘어나기만 하는 번호. 붙일 때의 Unix 시각(µs)보다 작지 않아 데몬을 다시 켜도 앞 번호보다 크다)와 `timestamp_ms`가 있고, 읽어도 지우지 않고 10분(`PORT_CONFLICT_STOPS_TTL_MS`)·최근 20개(`PORT_CONFLICT_STOPS_KEPT`)까지 둔다. 클라이언트는 `?notices_after=<본 마지막 id>`로 그 뒤 알림만 받는다(처음엔 0). 이렇게 읽으면 다른 클라이언트 몫을 지우지 않으므로 GUI와 CLI가 각자 본다(L50). `?notices=keep`은 `notices_after=0`과 같다(남은 알림 모두, 대기 루프·목록용). 매개변수가 없는 옛 클라이언트에는 그 방식으로 아직 보이지 않은 알림만 한 번 준다(예전 drain 동작, 알림은 지우지 않는다). 데몬 안의 목록 호출(릴레이 하트비트·채팅, `list_servers_internal`)은 남은 알림 모두를 본다(`server.rs` `server_list`).
 
 `status` 값은 다음 중 하나다.
 
