@@ -44,6 +44,8 @@ export function useServerActions({
     const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp, pending }
     const lastErrorToastRef = useRef(0);
     const firstFetchDoneRef = useRef(false);
+    // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다 (G-S4)
+    const fetchSeqRef = useRef({ sent: 0, applied: 0 });
     const bootGraceRef = useRef(true); // suppress notifications during app boot
     const bootGraceTimerRef = useRef(null);
 
@@ -55,10 +57,14 @@ export function useServerActions({
 
     // ── fetchServers ────────────────────────────────────────
     const fetchServers = async () => {
+        const seq = ++fetchSeqRef.current.sent;
         try {
             const data = await retryWithBackoff(() => window.api.serverList(), 3, 800);
             if (data && data.servers) {
+                const stale = seq < fetchSeqRef.current.applied;
+                if (!stale) fetchSeqRef.current.applied = seq;
                 setServers((prev) => {
+                    if (stale) return prev;
                     if (!firstFetchDoneRef.current) {
                         firstFetchDoneRef.current = true;
                         // Start boot grace period — suppress state-change

@@ -201,7 +201,7 @@
       "server_running": "Сначала остановите сервер: saba-chan-cli stop NAME",
       "rcon_unreachable": "Не удалось подключиться к RCON сервера. Убедитесь, что сервер полностью запустился, и повторите чуть позже: saba-chan-cli status",
       "rcon_auth_failed": "Сервер отклонил пароль RCON. Перезапустите сервер, чтобы Saba-chan снова записала пароль: saba-chan-cli restart NAME",
-      "rcon_timeout": "Сервер не ответил по RCON вовремя. Возможно, он занят; повторите чуть позже",
+      "rcon_timeout": "Сервер не ответил по RCON вовремя. Команда могла уже выполниться; прежде чем отправлять её снова, проверьте консоль сервера: saba-chan-cli console NAME",
       "rcon_failed": "Сервер прислал ответ RCON, который Saba-chan не может прочитать. Проверьте консоль сервера: saba-chan-cli console NAME",
       "update_unsupported": "Этот сервер нельзя обновить через Saba-chan. Обновите его файлы вручную.",
       "dependency_outdated": "Обновите до новых версий: saba-chan-cli update check",

@@ -1184,6 +1184,8 @@ impl Supervisor {
             let mut config_obj = serde_json::Map::new();
             s.insert_resolved_exe(&mut config_obj, &instance, module_name);
             Self::insert_instance_fields(&mut config_obj, &instance, &s.instance_store.instance_dir(&instance.id));
+            // 모듈이 기다릴 시간은 데몬이 기다리는 시간과 같다 (인스턴스 값, 모듈 값, 기본 30초 순)
+            config_obj.insert("stop_timeout".to_string(), json!(stop_timeout_of(&instance, module.metadata.stop_timeout)));
             // 추적표는 id로만 찾는다 (다른 인스턴스 id와 이름이 같아도 섞이지 않게)
             let tracked_pid = s.tracker.get_pid(&instance.id).ok();
             (module, config_obj, tracked_pid)
@@ -1220,6 +1222,7 @@ impl Supervisor {
                     config_obj.insert("pid".to_string(), json!(managed.pid));
                     config_obj.insert("managed".to_string(), json!(true));
                     config_obj.insert("force".to_string(), json!(false));
+                    config_obj.insert("stop_call_limit".to_string(), json!(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS));
                     if let Some(port) = instance.rest_port {
                         config_obj.insert("rest_port".to_string(), json!(port));
                     }
@@ -1325,10 +1328,13 @@ impl Supervisor {
         config_obj.insert("force".to_string(), json!(force));
         // managed 서버는 위에서 데몬이 직접 멈춘다. 여기까지 오면 항상 non-managed.
         config_obj.insert("managed".to_string(), json!(false));
+        // 모듈이 `stop_timeout`만큼 기다리므로 호출은 그보다 조금 더 기다린다. 그 한도를 모듈에도 알린다
+        let limit = module_stop_limit(stop_timeout_of(&instance, module.metadata.stop_timeout));
+        config_obj.insert("stop_call_limit".to_string(), json!(limit));
         let config = Value::Object(config_obj);
 
         // Execute stop function
-        let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).run().await?;
+        let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).timeout(limit).run().await?;
 
         // Check if the module actually succeeded
         let plugin_success = result.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
@@ -3027,6 +3033,11 @@ pub(crate) fn stop_timeout_of(instance: &crate::instance::ServerInstance, module
         .map(|n| n.min(3600))
         .or(module_value)
         .unwrap_or(30)
+}
+
+/// non-managed 정지에서 모듈 `stop()` 호출의 시간 제한: 모듈이 기다리는 `stop_timeout`에 저장·정리 여유 30초
+pub(crate) fn module_stop_limit(stop_timeout: u64) -> u64 {
+    stop_timeout + 30
 }
 
 /// 모듈 `stop()`이 저장 후 종료를 요청할 길이 없다고 답했는가 (콘솔·REST가 없는 서버. 모듈은 이때 서버를 끝내지 않는다)
