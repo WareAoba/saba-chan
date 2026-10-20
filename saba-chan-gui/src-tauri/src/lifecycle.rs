@@ -38,6 +38,8 @@ pub struct Lifecycle {
     heartbeat_task: Mutex<Option<JoinHandle<()>>>,
     events_task: Mutex<Option<JoinHandle<()>>>,
     update_task: Mutex<Option<JoinHandle<()>>>,
+    /// 데몬 재시작은 한 번에 하나만. 겹치면 child가 이미 죽은 프로세스를 가리킬 수 있다 (G-U10)
+    restart_lock: tokio::sync::Mutex<()>,
 }
 
 fn sleep(ms: u64) -> tokio::time::Sleep {
@@ -667,6 +669,7 @@ pub fn show_notification(app: &AppHandle, title: &str, body: &str) {
 /// main.js daemon:restart
 pub async fn daemon_restart(app: &AppHandle) -> Value {
     let state = app.state::<AppState>();
+    let _turn = state.life.restart_lock.lock().await;
     stop_daemon(app).await;
     // 이 GUI가 띄우지 않은 데몬이면 프로세스를 기다릴 수 없으니, 응답이 멎을 때까지 기다린다
     for _ in 0..30 {
