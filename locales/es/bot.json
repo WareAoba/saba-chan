@@ -44,6 +44,7 @@
     "start_complete": "✅ ¡Solicitud de inicio de **{{name}}** completada!",
     "stop_request": "⏳ Deteniendo servidor **{{name}}**...",
     "stop_complete": "✅ ¡Solicitud de detención de **{{name}}** completada!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** no se detuvo: no tiene forma (consola o REST) de guardar y salir. Para cerrarlo sin guardar, elige una detención forzada en saba-chan en este PC.",
     "status_check": "📊 Estado de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ No se encontró servidor para el módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
@@ -100,7 +101,7 @@
     "unknown_input": "❌ Comando desconocido.",
     "command_not_found": "❌ El comando no existe.",
     "permission_denied": "❌ No tienes permiso para usar este comando.",
-    "chatbot_not_allowed": "❌ El chatbot no puede ejecutar este comando. Ejecútalo directamente.",
+    "chatbot_not_allowed": "❌ Saba-chan parlante no puede ejecutar este comando. Ejecútalo directamente.",
     "local_single_guild_only": "⚠️ El bot local solo puede usarse en un servidor. Actualmente está en {{count}} servidores. Elimina el bot de los servidores no utilizados."
   },
   "messages": {
@@ -256,11 +257,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "Ver ajustes del chatbot",
+          "title": "Ver ajustes de Saba-chan parlante",
           "description": "Activar, palabras de llamada, confirmación, herramientas"
         },
         "set": {
-          "title": "Cambiar ajustes del chatbot",
+          "title": "Cambiar ajustes de Saba-chan parlante",
           "description": "Activar, palabras de llamada, confirmación, herramientas"
         }
       }

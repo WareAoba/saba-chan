@@ -39,6 +39,7 @@ import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, isManaged } from './utils/serverView';
 import { openWithNotice } from './utils/helpers';
+import { syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
@@ -345,17 +346,7 @@ function App() {
         if (window.api && window.api.onUpdatesAvailable) {
             window.api.onUpdatesAvailable((data) => {
                 console.log('[Updater] Updates available notification:', data);
-                const count = data.count || data.updates_available || 0;
-                const names = data.names || data.update_names || [];
-                if (count > 0 && window.__sabaNotice) {
-                    window.__sabaNotice.addNotice({
-                        message: `📦 ${t('updates.found', { count, names: names.join(', ') || t('updates.check_required') })}`,
-                        type: 'info',
-                        source: 'Updater',
-                        action: 'openUpdateModal',
-                        dedup: true,
-                    });
-                }
+                syncUpdateNotice(data, t);
             });
         }
 

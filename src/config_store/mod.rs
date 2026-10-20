@@ -344,8 +344,16 @@ impl ConfigStore {
         self.gui_settings.read().await.clone()
     }
 
-    /// 데몬이 쓰는 화면 언어: 설정한 언어, 없으면 OS 언어 (GUI와 같은 규칙, 지원하지 않으면 en)
+    /// 데몬이 쓰는 화면 언어: 요청이 고른 언어(Accept-Language), 설정한 언어, 없으면 OS 언어 (GUI와 같은 규칙, 지원하지 않으면 en)
     pub async fn ui_language(&self) -> String {
+        match crate::audit::current().lang {
+            Some(lang) => lang,
+            None => self.pc_language().await,
+        }
+    }
+
+    /// 이 PC의 언어: 설정한 언어, 없으면 OS 언어. 요청 언어와 상관없이 릴레이에 알리는 값 (하트비트·디스코드 설정의 `language`)
+    pub async fn pc_language(&self) -> String {
         match self.gui_settings.read().await.language.as_deref() {
             Some(l) if !l.trim().is_empty() => l.to_string(),
             _ => crate::chat::i18n::os_language(),
@@ -749,6 +757,20 @@ mod tests {
         assert_eq!(store.ui_language().await, os);
         store.set_gui_settings_from_json(serde_json::json!({"language": "ja"})).await.unwrap();
         assert_eq!(store.ui_language().await, "ja");
+    }
+
+    /// 요청이 Accept-Language로 언어를 고르면 그 요청의 데몬 문구는 그 언어를 따른다 (CLI `--lang`)
+    #[tokio::test]
+    async fn a_request_language_wins_over_the_gui_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.set_gui_settings_from_json(serde_json::json!({"language": "ja"})).await.unwrap();
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8".parse().unwrap());
+        let origin = crate::audit::Origin::from_headers(&headers);
+        assert_eq!(crate::audit::with_origin(origin.clone(), store.ui_language()).await, "ko-KR");
+        assert_eq!(crate::audit::with_origin(origin, store.pc_language()).await, "ja", "what this PC sends the relay ignores the request");
+        assert_eq!(store.ui_language().await, "ja", "without a request language the GUI language stays");
     }
 
     #[test]

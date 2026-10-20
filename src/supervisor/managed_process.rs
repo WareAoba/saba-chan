@@ -348,8 +348,8 @@ impl ManagedProcess {
             let re = log_regex.clone();
             readers.push(tokio::spawn(async move {
                 let mut reader = BufReader::new(stdout);
-                let mut raw = Vec::new();
-                while let Some(line) = next_line(&mut reader, &mut raw).await {
+                let mut lines = saba_runner::Lines::default();
+                while let Some(line) = next_line(&mut reader, &mut lines).await {
                     let level = parse_log_level(&line, re.as_deref());
                     buf.lock().await.push(LogSource::Stdout, line, level);
                 }
@@ -362,8 +362,8 @@ impl ManagedProcess {
             let re = log_regex.clone();
             readers.push(tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr);
-                let mut raw = Vec::new();
-                while let Some(line) = next_line(&mut reader, &mut raw).await {
+                let mut lines = saba_runner::Lines::default();
+                while let Some(line) = next_line(&mut reader, &mut lines).await {
                     let level = parse_log_level(&line, re.as_deref());
                     // stderr lines default to at least Warn
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
@@ -525,8 +525,8 @@ impl ManagedProcess {
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stdout);
-                let mut raw = Vec::new();
-                while let Some(line) = next_line(&mut reader, &mut raw).await {
+                let mut lines = saba_runner::Lines::default();
+                while let Some(line) = next_line(&mut reader, &mut lines).await {
                     let content = if let Some(ref sep) = prefix {
                         if let Some(pos) = line.find(sep.as_str()) {
                             line[pos + sep.len()..].to_string()
@@ -549,8 +549,8 @@ impl ManagedProcess {
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr);
-                let mut raw = Vec::new();
-                while let Some(line) = next_line(&mut reader, &mut raw).await {
+                let mut lines = saba_runner::Lines::default();
+                while let Some(line) = next_line(&mut reader, &mut lines).await {
                     let content = if let Some(ref sep) = prefix {
                         if let Some(pos) = line.find(sep.as_str()) {
                             line[pos + sep.len()..].to_string()
@@ -1088,12 +1088,20 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 // ─── Tests ───────────────────────────────────────────────────
 
 /// 자식 출력 한 줄. UTF-8이 아닌 줄도 끊지 않고 러너와 같은 방식으로 글자로 바꾼다 (D-S7).
-/// 끝(EOF)이나 읽기 오류면 None
-pub(crate) async fn next_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, raw: &mut Vec<u8>) -> Option<String> {
-    raw.clear();
-    match reader.read_until(b'\n', raw).await {
-        Ok(0) | Err(_) => None,
-        Ok(_) => Some(saba_runner::decode_line(raw)),
+/// UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다 (D-S13). 끝(EOF)이나 읽기 오류면 None
+pub(crate) async fn next_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, lines: &mut saba_runner::Lines) -> Option<String> {
+    loop {
+        if let Some(line) = lines.next_line() {
+            return Some(lines.decode(&line));
+        }
+        let n = match reader.fill_buf().await {
+            Ok(chunk) if !chunk.is_empty() => {
+                lines.push(chunk);
+                chunk.len()
+            }
+            _ => return lines.finish().map(|rest| lines.decode(&rest)),
+        };
+        reader.consume(n);
     }
 }
 
@@ -1118,6 +1126,19 @@ mod tests {
         assert!(seen.iter().any(|l| l == "after") && seen.iter().any(|l| l == "err-after"), "{seen:?}");
         assert!(seen.iter().any(|l| l.starts_with("bad ") && l.contains('\u{fffd}')), "{seen:?}");
         let _ = proc.force_kill();
+    }
+
+    /// UTF-16LE로 쓰는 서버의 줄은 0A·00이 낀 글자(上 = 0A 4E, 一 = 00 4E)에서 끊기지 않는다. 읽기가 조각나도 같다 (D-S13)
+    #[tokio::test]
+    async fn utf16_output_keeps_lines_whole() {
+        let bytes: Vec<u8> = "\u{feff}Ready 上\r\n一番 上\r\nend\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        let mut reader = BufReader::with_capacity(3, bytes.as_slice());
+        let mut buf = saba_runner::Lines::default();
+        let mut seen = Vec::new();
+        while let Some(line) = next_line(&mut reader, &mut buf).await {
+            seen.push(line);
+        }
+        assert_eq!(seen, ["Ready 上", "一番 上", "end"]);
     }
 
     /// 서버가 콘솔 입력을 읽지 않으면 보내기가 기다리지 않고 바로 실패한다.

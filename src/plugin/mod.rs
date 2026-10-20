@@ -16,7 +16,7 @@ pub fn set_ipc_port(port: u16) {
 /// Python 실행마다 넣는 데몬 연결 정보.
 /// - `SABA_IPC_PORT`, `SABA_IPC_URL`: 데몬 API 주소
 /// - `SABA_TOKEN_PATH`: `X-Saba-Token` 값이 든 파일 (토큰 자체는 env에 넣지 않는다)
-/// - `SABA_LANG`: 지금 GUI 언어(고르기 전에는 OS 언어). 언어를 바꿔도 데몬은 재시작하지 않으므로 매번 읽는다.
+/// - `SABA_LANG`: 요청이 고른 언어(Accept-Language), 없으면 지금 GUI 언어(고르기 전에는 OS 언어). 언어를 바꿔도 데몬은 재시작하지 않으므로 매번 읽는다.
 fn daemon_env() -> Vec<(&'static str, String)> {
     let port = *IPC_PORT.get().unwrap_or(&saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
     let mut env = vec![
@@ -27,14 +27,16 @@ fn daemon_env() -> Vec<(&'static str, String)> {
             saba_chan_updater_lib::constants::token_file_path().to_string_lossy().into_owned(),
         ),
     ];
-    let lang = saba_chan_updater_lib::config_file::ConfigFile::default_location()
-        .section("gui")
-        .get("language")
-        .and_then(|v| v.as_str())
-        .filter(|l| !l.trim().is_empty())
-        .map(str::to_string)
-        // 언어를 고르기 전에는 GUI처럼 OS 언어를 따른다
-        .unwrap_or_else(crate::chat::i18n::os_language);
+    let lang = crate::audit::current().lang.unwrap_or_else(|| {
+        saba_chan_updater_lib::config_file::ConfigFile::default_location()
+            .section("gui")
+            .get("language")
+            .and_then(|v| v.as_str())
+            .filter(|l| !l.trim().is_empty())
+            .map(str::to_string)
+            // 언어를 고르기 전에는 GUI처럼 OS 언어를 따른다
+            .unwrap_or_else(crate::chat::i18n::os_language)
+    });
     env.push(("SABA_LANG", lang));
     env
 }
@@ -733,10 +735,10 @@ async fn drive(
         let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
             let mut reader = BufReader::new(pipe);
-            let mut raw = Vec::new();
+            let mut lines = saba_runner::Lines::default();
             let mut relayed = 0;
             // UTF-8이 아닌 줄에서 멈추면 stderr 파이프가 차서 모듈이 시간 초과까지 멈춘다
-            while let Some(line) = crate::supervisor::managed_process::next_line(&mut reader, &mut raw).await {
+            while let Some(line) = crate::supervisor::managed_process::next_line(&mut reader, &mut lines).await {
                 // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
                 if let Some(request) = line.strip_prefix(loopback::PREFIX) {
                     match &loopback {
@@ -818,6 +820,14 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 모듈·익스텐션 문구도 그 요청의 언어를 따른다 (CLI `--lang`, Accept-Language)
+    #[tokio::test]
+    async fn python_gets_the_request_language() {
+        let origin = crate::audit::Origin { lang: Some("ko".into()), ..crate::audit::Origin::new("cli") };
+        let env = crate::audit::with_origin(origin, async { super::daemon_env() }).await;
+        assert!(env.iter().any(|(k, v)| *k == "SABA_LANG" && v == "ko"), "{env:?}");
+    }
 
     /// 격리 없이 도는 실행은 확인된 익스텐션만 import한다. 격리된 실행은 활성 익스텐션을 모두 쓴다(같은 격리 안에서 돈다)
     #[test]

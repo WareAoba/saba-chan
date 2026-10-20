@@ -44,6 +44,7 @@
     "start_complete": "✅ Start-Anfrage für **{{name}}** abgeschlossen!",
     "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
     "stop_complete": "✅ Stop-Anfrage für **{{name}}** abgeschlossen!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** wurde nicht gestoppt: Es gibt keinen Weg (Konsole oder REST), zu speichern und zu beenden. Um ihn ohne Speichern zu beenden, wähle in saba-chan auf diesem PC einen erzwungenen Stopp.",
     "status_check": "📊 Status von **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
@@ -100,7 +101,7 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
-    "chatbot_not_allowed": "❌ Der Chatbot kann diesen Befehl nicht ausführen. Bitte führe ihn direkt aus.",
+    "chatbot_not_allowed": "❌ Sprechende Saba-chan kann diesen Befehl nicht ausführen. Bitte führe ihn direkt aus.",
     "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Aktuell auf {{count}} Servern. Bitte entferne den Bot von ungenutzten Servern."
   },
   "messages": {
@@ -256,11 +257,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "Chatbot-Einstellungen anzeigen",
+          "title": "Einstellungen von „Sprechende Saba-chan“ anzeigen",
           "description": "Ein/Aus, Rufwörter, Bestätigung, Werkzeuge"
         },
         "set": {
-          "title": "Chatbot-Einstellungen ändern",
+          "title": "Einstellungen von „Sprechende Saba-chan“ ändern",
           "description": "Ein/Aus, Rufwörter, Bestätigung, Werkzeuge"
         }
       }

@@ -44,6 +44,7 @@
     "start_complete": "✅ Solicitação de início de **{{name}}** concluída!",
     "stop_request": "⏳ Parando servidor **{{name}}**...",
     "stop_complete": "✅ Solicitação de parada de **{{name}}** concluída!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** não foi parado: não há como (console ou REST) salvar e sair. Para encerrá-lo sem salvar, escolha uma parada forçada no saba-chan neste PC.",
     "status_check": "📊 Status de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
@@ -100,7 +101,7 @@
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Você não tem permissão para usar este comando.",
-    "chatbot_not_allowed": "❌ O chatbot não pode executar este comando. Execute-o diretamente.",
+    "chatbot_not_allowed": "❌ A Saba-chan falante não pode executar este comando. Execute-o diretamente.",
     "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Atualmente em {{count}} servidores. Remova o bot dos servidores não utilizados."
   },
   "messages": {
@@ -256,11 +257,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "Ver configurações do chatbot",
+          "title": "Ver configurações da Saba-chan falante",
           "description": "Ligar, palavras de chamada, confirmação, ferramentas"
         },
         "set": {
-          "title": "Alterar configurações do chatbot",
+          "title": "Alterar configurações da Saba-chan falante",
           "description": "Ligar, palavras de chamada, confirmação, ferramentas"
         }
       }

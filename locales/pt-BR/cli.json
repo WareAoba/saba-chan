@@ -1,5 +1,6 @@
 {
   "add": {
+    "created_settings_unsynced": "{{name}} foi criado e as configurações foram salvas, mas não foi possível gravar o arquivo de configuração do jogo: {{error}}",
     "ask_folder": "Pasta do servidor",
     "ask_name": "Nome do servidor",
     "ask_source": "Como você quer configurar?",
@@ -168,7 +169,7 @@
   },
   "err": {
     "relay": {
-      "channel_conflict": "Um canal pode ter só uma função (chatbot, música ou notificações).",
+      "channel_conflict": "Um canal pode ter só uma função (Saba-chan falante, música ou notificações).",
       "unknown_channel": "Esse canal não foi encontrado no servidor do Discord. Confira o nome ou o id do canal.",
       "bot_unavailable": "O bot do saba-chan não está respondendo agora. Tente de novo em instantes.",
       "node_not_found": "O relay não conhece este PC. Ele foi desvinculado ou substituído por outro PC.",
@@ -425,7 +426,9 @@
     "done": "{{name}} parado.",
     "not_yet": "{{name}} ainda não parou. Force: saba-chan-cli stop --force {{name}}",
     "requested": "Parada solicitada para {{name}}.",
-    "waiting": "Parando {{name}}..."
+    "waiting": "Parando {{name}}...",
+    "no_graceful": "Não há como (sem console) pedir a {{name}} que salve e saia. Forçar o desligamento pode perder o progresso desde o último salvamento.",
+    "force_confirm": "Parar sem salvar?"
   },
   "time": {
     "day_ago": "há {{n}}d",
@@ -455,7 +458,7 @@
     "downloading": "Baixando",
     "integrity_summary": "{{verified}} íntegros · {{failed}} alterados ou ilegíveis · {{skipped}} com arquivos faltando",
     "last_check": "Última verificação: {{at}}",
-    "last_cleared": "Limpo.",
+    "last_cleared": "Marcado como visto.",
     "latest": "Mais recente",
     "no_last": "Nenhum resultado de atualização registrado.",
     "not_installed": "não instalado",
@@ -536,6 +539,7 @@
     "restoring": "Restaurando {{backup}}...",
     "restored": "{{name}} voltou para {{backup}}.",
     "pre_restore": "O mundo anterior foi mantido como backup {{backup}}.",
+    "links_not_restored": "A restauração terminou, mas {{count}} link(s) dentro da pasta não puderam ser recriados (permissões do Windows, por exemplo). Os caminhos estão no log do daemon.",
     "start_again": "Iniciar {{name}} novamente?"
   },
   "schedule": {
@@ -583,18 +587,18 @@
     "common": "Configurações para todos os servidores do Discord",
     "guild": "Servidor do Discord {{guild}}",
     "defaults": "(padrões)",
-    "saved": "Configurações do chatbot salvas.",
+    "saved": "Configurações da Saba-chan falante salvas.",
     "ask_key": "Chave de API (oculta)",
     "key_required": "Nenhuma chave de API informada. Digite-a no prompt ou envie por pipe: cat key.txt | saba-chan-cli chatbot key",
     "key_saved": "Chave de API salva. Ela nunca mais será exibida.",
-    "confirm_delete_key": "Excluir a chave de API salva? O chatbot para de responder até que uma nova chave seja salva.",
+    "confirm_delete_key": "Excluir a chave de API salva? A Saba-chan falante para de responder até que uma nova chave seja salva.",
     "key_deleted": "Chave de API excluída.",
-    "confirm_clear": "Excluir todas as configurações do chatbot e a chave de API?",
-    "cleared": "Configurações e chave do chatbot excluídas.",
-    "confirm_forget": "Fazer o chatbot esquecer o que lembra em todos os servidores do Discord?",
-    "confirm_forget_guild": "Fazer o chatbot esquecer o que lembra no servidor do Discord {{guild}}?",
-    "forgot": "A memória do chatbot foi apagada.",
-    "forget_failed": "Não foi possível apagar a memória do chatbot em alguns servidores do Discord. Verifique os erros acima.",
+    "confirm_clear": "Excluir todas as configurações da Saba-chan falante e a chave de API?",
+    "cleared": "Configurações e chave da Saba-chan falante excluídas.",
+    "confirm_forget": "Fazer a Saba-chan falante esquecer o que lembra em todos os servidores do Discord?",
+    "confirm_forget_guild": "Fazer a Saba-chan falante esquecer o que lembra no servidor do Discord {{guild}}?",
+    "forgot": "A memória da Saba-chan falante foi apagada.",
+    "forget_failed": "Não foi possível apagar a memória da Saba-chan falante em alguns servidores do Discord. Verifique os erros acima.",
     "not_synced": "Salvo neste PC. Chega ao Discord assim que o bot estiver conectado (saba-chan-cli bot status).",
     "sync_failed": "O servidor do Discord {{guild}} não recebeu a alteração: {{error}}",
     "read_failed": "Não foi possível ler {{path}}: {{error}}"

@@ -801,7 +801,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.auto_generate_passwords_label', 'Auto-generate Passwords')}
                                     </span>
                                     <span className="setting-description">
-                                        {t('gui:settings_modal.auto_generate_passwords_description', 'Automatically generate random REST passwords on every server launch for security.')}
+                                        {t('gui:settings_modal.auto_generate_passwords_description', 'If a server\'s REST password is empty, fill it with a random one when the server starts. Existing passwords are never changed.')}
                                     </span>
                                 </label>
                                 <SabaToggle

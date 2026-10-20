@@ -44,6 +44,7 @@
     "start_complete": "✅ **{{name}}** 啟動要求已完成！",
     "stop_request": "⏳ 正在停止 **{{name}}** 伺服器...",
     "stop_complete": "✅ **{{name}}** 停止要求已完成！",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** 未停止：它沒有可以儲存並結束的途徑（主控台或 REST）。如需不儲存直接結束，請在這台電腦上的 saba-chan 中選擇強制停止。",
     "status_check": "📊 **{{name}}** 狀態：{{status}} {{pid_info}}",
     "not_found": "❌ 找不到模組 \"{{alias}}\" 的伺服器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
@@ -100,7 +101,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您沒有使用此命令的權限。",
-    "chatbot_not_allowed": "❌ 聊天機器人無法執行此命令。請直接執行。",
+    "chatbot_not_allowed": "❌ 「會說話的 Saba-chan」無法執行此命令。請直接執行。",
     "local_single_guild_only": "⚠️ 本地機器人只能在一個伺服器中使用。目前已加入{{count}}個伺服器，請從不使用的伺服器中移除機器人。"
   },
   "messages": {
@@ -256,11 +257,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "查看聊天機器人設定",
+          "title": "查看「會說話的 Saba-chan」設定",
           "description": "開關、喚醒詞、確認、工具組"
         },
         "set": {
-          "title": "變更聊天機器人設定",
+          "title": "變更「會說話的 Saba-chan」設定",
           "description": "開關、喚醒詞、確認、工具組"
         }
       }

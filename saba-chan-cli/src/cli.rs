@@ -77,7 +77,7 @@ pub enum Cmd {
     /// Scheduled tasks of a server (backup, restart, announce, update)
     #[command(subcommand, visible_alias = "schedules")]
     Schedule(ScheduleCmd),
-    /// AI chatbot for Discord (API key, settings, memory)
+    /// Talking Saba-chan, the AI for Discord (API key, settings, memory)
     #[command(subcommand, visible_alias = "ai")]
     Chatbot(ChatbotCmd),
     /// Saba-chan updates
@@ -189,7 +189,7 @@ pub enum BackupCmd {
 pub enum PermCmd {
     /// Levels, preset and overrides of one Discord server (name or id; without it: the only paired server)
     Show { guild: Option<String> },
-    /// Give a member (name or id) a level: admin, user, chatbot or banned
+    /// Give a member (name or id) a level: admin, user, chatbot (Talking Saba-chan) or banned
     Grant { guild: String, member: String, level: String },
     /// Take a member's own level away (they get the default level)
     Revoke { guild: String, member: String },
@@ -197,7 +197,7 @@ pub enum PermCmd {
     Default { guild: String, level: String },
     /// Command level preset: loose, default or strict
     Preset { guild: String, preset: String },
-    /// Highest level a request through the chatbot can use
+    /// Highest level a request through Talking Saba-chan can use
     Cap { guild: String, level: String },
     /// Level one command needs (`<server>/<command>`, server by name or id); leave the level out to go back to the preset
     Command { guild: String, key: String, level: Option<String> },
@@ -301,11 +301,11 @@ pub enum ChatbotCmd {
         #[arg(long)]
         delete: bool,
     },
-    /// Delete all chatbot settings and the key
+    /// Delete all Talking Saba-chan settings and the key
     Clear,
     /// Models the saved API key can use (name or id of the Discord server; without it: the only paired server)
     Models { guild: Option<String> },
-    /// Forget what the chatbot remembers (all Discord servers, or one)
+    /// Forget what Talking Saba-chan remembers (all Discord servers, or one)
     Forget {
         #[arg(long)]
         guild: Option<String>,
@@ -685,14 +685,14 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server (name or id; without it: the only paired server)
     Members { guild: Option<String> },
-    /// Chatbot channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
+    /// Talking Saba-chan channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
     Channels {
         /// Without it: every paired Discord server (changing needs exactly one)
         guild: Option<String>,
-        /// Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list
+        /// Channels Talking Saba-chan talks in, by name or id (comma-separated). Replaces the current list
         #[arg(long, value_delimiter = ',', conflicts_with = "no_chatbot")]
         chatbot: Vec<String>,
-        /// Unassign every chatbot channel
+        /// Unassign every Talking Saba-chan channel
         #[arg(long)]
         no_chatbot: bool,
         /// The music player channel, by name or id. Other messages in it get deleted
@@ -834,7 +834,7 @@ pub enum ConfigCmd {
     /// Save settings and the server list to a zip, to move to another PC (game files not included)
     Export {
         file: std::path::PathBuf,
-        /// Also save passwords, the chatbot API key and the bot pairing
+        /// Also save passwords, the Talking Saba-chan API key and the bot pairing
         #[arg(long)]
         secrets: bool,
     },
@@ -1010,6 +1010,14 @@ mod tests {
         localized().debug_assert();
     }
 
+    /// 명령 본문 안의 `--lang=ko`는 전역 옵션이 아니다: 데몬 언어를 바꾸지 않게 실제 전역 옵션만 쓴다
+    #[test]
+    fn a_lang_inside_command_text_is_not_the_global_option() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();
+        assert_eq!(p(&["chat", "mc", "say", "--lang=ko"]).global.lang, None);
+        assert_eq!(p(&["--lang", "ko", "chat", "mc", "say", "hi"]).global.lang.as_deref(), Some("ko"));
+    }
+
     #[test]
     fn shortcuts_and_aliases_parse() {
         let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied()));
@@ -1129,6 +1137,23 @@ mod tests {
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.cmd keys missing: {:?}", missing);
     }
+    /// `server add --preset`은 게임의 추천 설정 id다. 권한 프리셋(`perm preset`)의 설명을 빌려 쓰면 안 된다 (L73)
+    #[test]
+    fn server_add_preset_is_explained_as_a_game_preset() {
+        crate::i18n::init("ko");
+        let cmd = localized();
+        let help = |path: &[&str]| {
+            let mut c = &cmd;
+            for name in &path[..path.len() - 1] {
+                c = c.find_subcommand(name).unwrap();
+            }
+            let arg = c.get_arguments().find(|a| a.get_id() == path[path.len() - 1]).unwrap();
+            arg.get_help().map(|h| h.to_string()).unwrap_or_default()
+        };
+        assert!(!help(&["server", "add", "preset"]).contains("loose"));
+        assert!(help(&["perm", "preset", "preset"]).contains("loose"));
+    }
+
     #[test]
     fn every_argument_has_a_korean_help_line() {
         crate::i18n::init("ko");

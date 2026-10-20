@@ -30,6 +30,7 @@ export function formatBytes(n) {
 const CODE_TEXT = {
     restore_outside: 'maintenance.err_restore_outside',
     backup_busy: 'maintenance.err_backup_busy',
+    schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',
 };
 
@@ -105,6 +106,8 @@ export function MaintenanceTab({ server }) {
                 backupKeep: res?.backup_keep ?? 10,
                 backupSupported: !!res?.backup_supported,
                 announceSupported: !!res?.announce_supported,
+                // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다 (L51)
+                revision: res?.revision,
             });
         } catch (err) {
             setLoadError(err.message || String(err));
@@ -299,11 +302,15 @@ function ScheduleCard({ server, info, onSaved }) {
     const [keep, setKeep] = useState(String(info.backupKeep));
     const [saving, setSaving] = useState(false);
     const [serverErrors, setServerErrors] = useState([]);
+    // 다른 곳에서 바뀌어 거절됨: 고친 내용은 두고 다시 읽기를 보인다
+    const [stale, setStale] = useState(false);
 
     useEffect(() => {
         const next = info.schedule.map(toDraft);
         setDrafts(next);
         setKeep(String(info.backupKeep));
+        setServerErrors([]);
+        setStale(false);
         base.current = JSON.stringify({ d: next.map(({ key, ...r }) => r), k: String(info.backupKeep) });
     }, [info]);
 
@@ -326,10 +333,12 @@ function ScheduleCard({ server, info, onSaved }) {
         try {
             const body = { schedule: drafts.map((d) => fromDraft(d, { announce: info.announceSupported })) };
             if (info.backupSupported) body.backup_keep = keepNum;
+            if (info.revision) body.revision = info.revision;
             const res = await window.api.instanceScheduleSave(server.id, body);
             if (res?.success === false) {
+                setStale(res.error_code === 'schedule_changed');
                 setServerErrors(
-                    Array.isArray(res.details) && res.details.length ? res.details : [res.error || 'error'],
+                    Array.isArray(res.details) && res.details.length ? res.details : [errorText(res, 'error', t)],
                 );
                 return;
             }
@@ -486,6 +495,11 @@ function ScheduleCard({ server, info, onSaved }) {
                 <div className="notice tone-warn" role="alert">
                     <Icon name="alertTriangle" size="sm" />
                     <span className="mt-pre">{serverErrors.join('\n')}</span>
+                    {stale && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onSaved}>
+                            {t('maintenance.reload')}
+                        </button>
+                    )}
                 </div>
             )}
 

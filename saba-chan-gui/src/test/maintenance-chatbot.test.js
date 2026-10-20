@@ -219,7 +219,7 @@ describe('ChatbotView', () => {
         await screen.findByText('No Discord servers connected.');
         fireEvent.click(screen.getByLabelText('Image generation'));
         rerender(<ChatbotView nodes={nodes} />);
-        const sel = await screen.findByLabelText('Chatbot in My Guild');
+        const sel = await screen.findByLabelText('Talking Saba-chan in My Guild');
         expect(screen.getByLabelText('Image generation').checked).toBe(false);
         pickOption(sel, 'Off');
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -282,7 +282,7 @@ describe('ChatbotView', () => {
         });
         window.api.chatbotClearMemory = vi.fn().mockResolvedValue({ success: true });
         render(<ChatbotView nodes={nodes} />);
-        const sel = await screen.findByLabelText('Chatbot in My Guild');
+        const sel = await screen.findByLabelText('Talking Saba-chan in My Guild');
         pickOption(sel, 'On');
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText(/channelIds too long/);

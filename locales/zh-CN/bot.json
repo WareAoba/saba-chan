@@ -44,6 +44,7 @@
     "start_complete": "✅ **{{name}}** 启动请求已完成！",
     "stop_request": "⏳ 正在停止 **{{name}}** 服务器...",
     "stop_complete": "✅ **{{name}}** 停止请求已完成！",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** 未停止：它没有可以保存并退出的途径（控制台或 REST）。如需不保存直接结束，请在这台电脑上的 saba-chan 中选择强制停止。",
     "status_check": "📊 **{{name}}** 状态：{{status}} {{pid_info}}",
     "not_found": "❌ 找不到模块 \"{{alias}}\" 的服务器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
@@ -100,7 +101,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您没有使用此命令的权限。",
-    "chatbot_not_allowed": "❌ 聊天机器人无法执行此命令。请直接执行。",
+    "chatbot_not_allowed": "❌ “会说话的 Saba-chan”无法执行此命令。请直接执行。",
     "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前已加入{{count}}个服务器，请从不使用的服务器中移除机器人。"
   },
   "messages": {
@@ -256,11 +257,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "查看聊天机器人设置",
+          "title": "查看“会说话的 Saba-chan”设置",
           "description": "开关、唤醒词、确认、工具组"
         },
         "set": {
-          "title": "更改聊天机器人设置",
+          "title": "更改“会说话的 Saba-chan”设置",
           "description": "开关、唤醒词、确认、工具组"
         }
       }

@@ -509,6 +509,10 @@ impl<D: DaemonApi> Ctx<'_, D> {
     async fn stop(&self, server: &ServerView) -> String {
         let resp = self.api.stop(server).await;
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
+        // 저장 후 종료를 요청할 길이 없어 서버를 그대로 두었다 (MK10). 강제 종료는 이 PC에서만 고른다
+        if resp.str_field("error_code") == Some("graceful_stop_unavailable") {
+            return self.t("server.graceful_stop_unavailable", &[("name", &server.name)]);
+        }
         if failed {
             let detail = resp.str_field("error").or(resp.str_field("message")).unwrap_or_default();
             tracing::warn!("[Chat] 정지 실패 {}: {}", server.name, detail);

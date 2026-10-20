@@ -24,11 +24,16 @@ pub fn ipc_port() -> u16 {
         .unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
-/// 표시 언어: `--lang` > `SABA_LANG` > 앱 설정 언어 > 시스템 로캘 > en
-pub fn language(flag: Option<&str>) -> String {
+/// 사용자가 직접 고른 언어: `--lang` > `SABA_LANG`
+pub fn requested_language(flag: Option<&str>) -> Option<String> {
     flag.map(str::to_string)
         .or_else(|| std::env::var("SABA_LANG").ok())
         .filter(|s| !s.is_empty())
+}
+
+/// 표시 언어: `--lang` > `SABA_LANG` > 앱 설정 언어 > 시스템 로캘 > en
+pub fn language(flag: Option<&str>) -> String {
+    requested_language(flag)
         .or_else(|| {
             gui_section()
                 .get("language")
@@ -182,6 +187,20 @@ mod tests {
     /// 쥐면 CLI가 끝나도 부른 쪽이 출력의 끝을 받지 못해 `daemon start`가 끝나지 않는 것처럼 보인다
     #[test]
     fn a_detached_child_does_not_hold_our_output_pipe() {
+        // 표준 출력 핸들은 프로세스 전체가 함께 쓴다: 바꾸는 동안 다른 시험과 시험 틀의 출력이 이 파이프로 새거나
+        // 닫힌 핸들에 쓰다 멈춘다 (L71). 이 시험만 도는 자식 프로세스에서 바꾼다
+        const ALONE: &str = "SABA_TEST_STD_HANDLE_ALONE";
+        if std::env::var_os(ALONE).is_none() {
+            let out = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "bootstrap::tests::a_detached_child_does_not_hold_our_output_pipe", "--test-threads=1"])
+                .env(ALONE, "1")
+                .stdin(Stdio::null())
+                .output()
+                .unwrap();
+            let text = String::from_utf8_lossy(&out.stdout);
+            assert!(out.status.success() && text.contains("1 passed"), "{text}{}", String::from_utf8_lossy(&out.stderr));
+            return;
+        }
         let (mut reader, writer) = std::io::pipe().unwrap();
         let raw = writer.as_raw_handle() as HANDLE;
         // 부른 쪽이 넘겨준 파이프처럼 상속 가능하게 해서 표준 출력으로 둔다

@@ -14,7 +14,7 @@ fn parse_level(raw: &str) -> Result<i64> {
         "owner" | "소유자" => 3,
         "admin" | "관리자" => 2,
         "user" | "유저" => 1,
-        "chatbot" | "챗봇" => 0,
+        "chatbot" | "챗봇" | "말하는 사바쨩" | "talking saba-chan" => 0,
         "banned" | "금지" => -1,
         n => n.parse().map_err(|_| usage(t!("perm.bad_level", level = raw)))?,
     };
@@ -289,6 +289,10 @@ mod tests {
         assert_eq!(parse_level("금지").unwrap(), -1);
         assert_eq!(parse_level("0").unwrap(), 0);
         assert!(parse_level("boss").is_err());
+        // 서비스 이름이 바뀌어도(말하는 사바쨩) 예전 입력 낱말은 그대로 받는다
+        for name in ["chatbot", "챗봇", "말하는 사바쨩", "Talking Saba-chan"] {
+            assert_eq!(parse_level(name).unwrap(), 0, "{name}");
+        }
     }
 
     /// 권한 표는 디스코드 id 대신 멤버·서버 이름을 보인다 (C8). 모르는 id는 그대로
