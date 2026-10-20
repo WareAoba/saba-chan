@@ -230,6 +230,9 @@ pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServ
                     .into_iter()
                     .flatten()
                     .filter_map(|p| p.get("name").and_then(serde_json::Value::as_str))
+                    // 게임이 이름을 자유롭게 두는 경우: 제어 문자를 빼고 64자까지 (요약 줄이 깨지지 않게)
+                    .map(|name| name.chars().filter(|c| !c.is_control()).take(64).collect::<String>())
+                    .filter(|name| !name.is_empty())
                     .map(|name| json!({ "name": name }))
                     .collect();
                 let mut body = json!({ "success": true, "online": count.online, "players": names });
@@ -786,7 +789,7 @@ mod tests {
             std::fs::write(
                 dir.join("lifecycle.py"),
                 "import json, sys\nconfig = json.load(sys.stdin)\n\
-                 names = [{'name': 'Steve', 'ip': '10.0.0.5'}, {'name': 'Alex', 'uuid': 'x'}] if config.get('players_detail') else []\n\
+                 names = [{'name': 'Steve', 'ip': '10.0.0.5'}, {'name': 'Al\\nex', 'uuid': 'x'}, {'name': 'x' * 70}] if config.get('players_detail') else []\n\
                  print(json.dumps({'success': True, 'online': 2, 'max': 20, 'players': names}))\n",
             )
             .unwrap();
@@ -808,7 +811,7 @@ mod tests {
         assert_eq!((off.status, off.body["error_code"].as_str()), (StatusCode::CONFLICT, Some("server_not_running")), "{}", off.body);
         state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
         let on = players("with").await;
-        assert_eq!(on.body, json!({ "success": true, "online": 2, "max": 20, "players": [{ "name": "Steve" }, { "name": "Alex" }] }));
+        assert_eq!(on.body, json!({ "success": true, "online": 2, "max": 20, "players": [{ "name": "Steve" }, { "name": "Alex" }, { "name": "x".repeat(64) }] }));
         let _ = state.supervisor.read().await.tracker.untrack("with");
 
         let unsupported = players("without").await;
