@@ -25,7 +25,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     };
 
     let (servers, modules, agent, updates, preflight, onboarding) = tokio::join!(
-        ctx.api.servers(),
+        ctx.api.servers(false),
         ctx.api.modules(),
         ctx.api.agent(),
         ctx.api.update_status(),
