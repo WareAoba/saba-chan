@@ -203,14 +203,32 @@ fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
     }
 }
 
+/// `[backup]` 선언 없이 경로만 따로 담을 때의 계획: 이 인스턴스의 백업 폴더와 보관 개수
+async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
+    let supervisor = state.supervisor.read().await;
+    let Some(instance) = supervisor.instance_store.get(id) else {
+        return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+    };
+    Ok(Plan {
+        dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
+        paths: Vec::new(),
+        targets: Vec::new(),
+        save_command: None,
+        keep: instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP),
+    })
+}
+
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
 /// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
 async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Response> {
-    let Some(mut plan) = plan(state, id).await? else {
-        if kind == BackupKind::Manual {
+    let mut plan = match plan(state, id).await? {
+        Some(plan) => plan,
+        None if kind == BackupKind::Manual => {
             return Err(error(StatusCode::BAD_REQUEST, "backup_unsupported", "This module does not declare [backup] paths"));
         }
-        return Ok(None);
+        // 모듈이 `[backup]`을 더는 선언하지 않아도 복원이 덮을 경로는 남긴다
+        None if !also.is_empty() => bare_plan(state, id).await?,
+        None => return Ok(None),
     };
     add_paths(&mut plan.paths, also);
     if plan.paths.is_empty() {
@@ -884,6 +902,25 @@ mod tests {
         let refused = restore_backup(Path((id.clone(), old)), State(state.clone())).await;
         assert_eq!(code(refused).await, "restore_outside");
         assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
+    }
+
+    /// 모듈이 `[backup]`을 더는 선언하지 않아도(모듈 업데이트로 빠짐, 모듈을 못 읽음) 남은 백업을 복원하면
+    /// 덮을 경로의 지금 상태는 안전 백업으로 남긴다
+    #[tokio::test]
+    async fn a_restore_keeps_a_safety_backup_when_the_module_no_longer_declares_backups() {
+        let (state, id, tmp) = server_with(NO_BACKUP, None).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"old").unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let old = backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&world)).unwrap().name;
+        std::fs::write(world.join("level.dat"), b"progress").unwrap();
+
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        let safety = done.body["pre_restore_backup"].as_str().expect("the overwritten world needs a safety backup").to_string();
+        assert!(backup::backed_up_paths(&dir, &safety).unwrap().contains(&world));
+        assert_eq!(std::fs::read(world.join("level.dat")).unwrap(), b"old");
     }
 
     // 훅이나 설정이 서버 폴더 밖(예: 사용자 폴더의 게임 데이터)을 가리키면, 지금도 가리키는 동안은 복원할 수 있다
