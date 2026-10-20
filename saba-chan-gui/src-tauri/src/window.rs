@@ -22,9 +22,11 @@ static CLOSE_ASKED_AT: AtomicU64 = AtomicU64::new(0);
 /// 이만큼 답이 없는데 OS 닫기(Alt+F4·작업 표시줄)가 다시 오면 렌더러가 멈춘 것으로 보고 인터페이스만 끝낸다 (L18c).
 /// 창 안의 X는 렌더러 버튼이라 멈추면 이 경로로 오지 않는다(그때는 트레이 메뉴가 끝낸다)
 const CLOSE_ANSWER_TIMEOUT_MS: u64 = 5000;
+/// 이보다 오래된 물음은 렌더러가 못 받은 것(구독 전·재로드 중)으로 보고 새로 묻는다
+const CLOSE_ASK_STALE_MS: u64 = 60_000;
 
 fn renderer_unresponsive(asked_at: u64, now: u64) -> bool {
-    asked_at != 0 && now.saturating_sub(asked_at) >= CLOSE_ANSWER_TIMEOUT_MS
+    asked_at != 0 && (CLOSE_ANSWER_TIMEOUT_MS..CLOSE_ASK_STALE_MS).contains(&now.saturating_sub(asked_at))
 }
 
 /// 렌더러가 닫기 요청에 답했다 (받음 확인 포함)
@@ -162,7 +164,7 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
                 tauri::async_runtime::spawn(async move { crate::lifecycle::interface_only_quit(&app).await });
                 return;
             }
-            if asked == 0 {
+            if asked == 0 || now.saturating_sub(asked) >= CLOSE_ASK_STALE_MS {
                 CLOSE_ASKED_AT.store(now, Ordering::SeqCst);
             }
             emit_main(&handle, "app:closeRequest", Value::Null);
@@ -319,6 +321,8 @@ mod tests {
         assert!(!renderer_unresponsive(asked, asked + CLOSE_ANSWER_TIMEOUT_MS - 1));
         // 답 없이 지났으면 멈춘 것으로 본다
         assert!(renderer_unresponsive(asked, asked + CLOSE_ANSWER_TIMEOUT_MS));
+        // 오래된 물음은 렌더러가 못 받은 것: 확인 없이 끝내지 않고 다시 묻는다
+        assert!(!renderer_unresponsive(asked, asked + CLOSE_ASK_STALE_MS));
     }
 
     #[test]
