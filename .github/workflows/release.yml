@@ -41,7 +41,7 @@ name: Release — Package & Manifest
 #   패키징 뒤 같은 zip으로 manifest를 만들고(scripts/versions.py) 기존 키로 서명해
 #   R2 releases/<version>/ 에 올리고 릴레이 POST /admin/releases 로 등록한다.
 #   이미 R2에 있거나 릴레이에 등록된 버전이면 아무것도 덮어쓰지 않고 실패한다.
-#   필요한 설정 (없으면 R2 단계는 건너뜀):
+#   필요한 설정 (없으면 R2 단계는 건너뜀. 단 정식판 published 실행은 실패):
 #     secrets:   UPDATER_SIGNING_KEY (64자리 hex seed), R2_ACCESS_KEY_ID,
 #                R2_SECRET_ACCESS_KEY, RELAY_INTERNAL_SECRET
 #     variables: R2_ENDPOINT, R2_BUCKET, R2_PUBLIC_BASE, RELAY_URL
@@ -143,12 +143,23 @@ jobs:
       - name: Check R2 publish settings
         id: r2
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ACTION: ${{ github.event.action }}
           HAS_KEY: ${{ secrets.UPDATER_SIGNING_KEY != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.RELAY_INTERNAL_SECRET != '' }}
           PRERELEASE: ${{ github.event.release.prerelease || false }}
           HAS_VARS: ${{ vars.R2_ENDPOINT != '' && vars.R2_BUCKET != '' && vars.R2_PUBLIC_BASE != '' && vars.RELAY_URL != '' }}
         run: |
+          # 수동 실행에는 release 이벤트가 없으므로 GitHub의 prerelease 표시를 직접 읽는다
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            PRERELEASE=$(gh release view "$TARGET_TAG" --repo "${{ github.repository }}" \
+              --json isPrerelease -q .isPrerelease)
+          fi
           if [ "$HAS_KEY" = "true" ] && [ "$HAS_VARS" = "true" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
+          elif [ "$RELEASE_ACTION" = "published" ] && [ "$PRERELEASE" != "true" ]; then
+            # 정식판 발행이 R2·릴레이 없이 성공으로 끝나면 업데이터가 새 버전을 받지 못한다
+            echo "::error::R2 secrets/variables are not set; a stable release cannot skip R2 publish"
+            exit 1
           else
             echo "::warning::R2 secrets/variables are not set; skipping R2 publish"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -327,8 +338,10 @@ jobs:
           done
           echo "✓ Cleanup complete"
 
-      # 정리 단계가 output/에 없는 에셋을 지우므로 맨 마지막에 붙인다
+      # 정리 단계가 output/에 없는 에셋을 지우므로 맨 마지막에 붙인다.
+      # edited 재실행(publish=false)이면 이미 붙은 노트를 바꾸지 않는다
       - name: Attach release notes
+        if: steps.guard.outputs.publish != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
