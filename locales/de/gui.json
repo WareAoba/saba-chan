@@ -725,7 +725,9 @@
     "check_failed": "Prüfung fehlgeschlagen: {{error}}",
     "exit_note_auto_off": "Automatischer Neustart ist aus",
     "exit_note_gave_up": "Nach {{count}} Neustarts in 10 Minuten aufgegeben",
-    "exit_note_restart_failed": "Neustart fehlgeschlagen: {{reason}}"
+    "exit_note_restart_failed": "Neustart fehlgeschlagen: {{reason}}",
+    "parent_job_short": "Kern hängt an anderer App",
+    "parent_job": "Der saba-chan-Kern läuft an das Programm gebunden, das diese App geöffnet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende saba-chan vollständig und öffne es erneut über das Startmenü."
   },
   "discord": {
     "nav_connection": "Verbindung",

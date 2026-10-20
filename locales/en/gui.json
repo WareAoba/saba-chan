@@ -725,7 +725,9 @@
     "check_failed": "Couldn't run the check: {{error}}",
     "exit_note_auto_off": "Auto restart is off",
     "exit_note_gave_up": "Gave up after {{count}} restarts in 10 minutes",
-    "exit_note_restart_failed": "Couldn't restart: {{reason}}"
+    "exit_note_restart_failed": "Couldn't restart: {{reason}}",
+    "parent_job_short": "Core is tied to another app",
+    "parent_job": "The saba-chan core is running tied to the program that opened this app. If that program closes, the core and server management may stop with it. Quit saba-chan completely and open it again from the Start menu."
   },
   "discord": {
     "nav_connection": "Connection",

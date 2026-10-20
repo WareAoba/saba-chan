@@ -5,6 +5,7 @@ import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { ConnectionRail } from './ConnectionRail';
+import { ParentJobNotice } from './ParentJobNotice';
 import { RuntimePreflight } from './RuntimePreflight';
 import { TaskIndicator } from './TaskIndicator';
 
@@ -36,6 +37,7 @@ export function AppBar({
     page,
     onNavigate,
     daemonStatus,
+    daemonInParentJob,
     discordStatus,
     unreadCount,
     extInitializing,
@@ -85,6 +87,7 @@ export function AppBar({
                 <ExtensionSlot slotId="AppBar.status" />
                 <TaskIndicator />
                 <RuntimePreflight daemonStatus={daemonStatus} />
+                {daemonInParentJob && <ParentJobNotice />}
                 {extInitializing && (
                     <span className="appbar-ext-init" title={extInitLabel}>
                         <span className="spinner" aria-hidden="true" />

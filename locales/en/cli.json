@@ -250,6 +250,8 @@
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
       "invalid_relay_url": "Only https:// relay addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
+      "module_busy": "This module is already being installed or removed. Try again when it finishes.",
+      "invalid_command": "Write the command key as `<server>/<command>`. A key without a server must be a global action id.",
       "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>",
       "conflict_with": "clashes with {{name}}",
       "word": {

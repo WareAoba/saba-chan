@@ -250,6 +250,8 @@
       "nothing_to_back_up": "아직 월드가 없어요. 서버를 한 번 켜면 만들어져요.",
       "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요.",
       "invalid_relay_url": "릴레이 주소는 https:// 주소만 쓸 수 있어요(이 PC에서 시험할 때만 localhost·127.0.0.1·[::1]의 http를 쓸 수 있어요).",
+      "module_busy": "이 모듈을 이미 설치하거나 지우는 중이에요. 끝난 뒤 다시 해 주세요.",
+      "invalid_command": "명령 키는 `<서버>/<명령>` 모양으로 써 주세요. 서버 없이 쓰는 키는 전역 액션 id만 돼요.",
       "no_command_path": "이 서버는 사바쨩 밖에서 켜져서 명령을 받을 콘솔이 없어요. 사바쨩에서 다시 켜 주세요: saba-chan-cli restart <서버>",
       "conflict_with": "겹치는 곳: {{name}}",
       "word": {
