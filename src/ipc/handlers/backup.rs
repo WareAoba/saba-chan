@@ -73,6 +73,8 @@ async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bo
 struct Plan {
     dir: PathBuf,
     paths: Vec<PathBuf>,
+    /// 패턴이 가리키는 경로 전부 (지금 없는 것 포함). 복원이 되살려도 되는 범위
+    targets: Vec<PathBuf>,
     save_command: Option<String>,
     keep: usize,
 }
@@ -133,8 +135,9 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
             Err(e) => return Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", format!("backup_paths failed: {:#}", e))),
         }
     }
-    let paths = backup::resolve_paths(&patterns, &base, lookup);
-    Ok(Some(Plan { dir, paths, save_command: spec.save_command, keep }))
+    let targets = backup::fill_paths(&patterns, &base, lookup);
+    let paths = targets.iter().filter(|p| p.exists()).cloned().collect();
+    Ok(Some(Plan { dir, paths, targets, save_command: spec.save_command, keep }))
 }
 
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
@@ -308,9 +311,9 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
             let instance_dir = supervisor.instance_store.instance_dir(&id);
             vec![server_base(instance, &instance_dir), instance_dir]
         };
-        // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다
+        // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
         match plan(&state, &id).await {
-            Ok(Some(p)) => roots.extend(p.paths),
+            Ok(Some(p)) => roots.extend(p.targets),
             Ok(None) => {}
             Err(r) => return Err(r),
         }
@@ -881,8 +884,14 @@ mod tests {
         }
         let name = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
         std::fs::write(outside.join("save.bin"), b"new").unwrap();
-        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), name)), State(state.clone())).await).await;
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), name.clone())), State(state.clone())).await).await;
         assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read(outside.join("save.bin")).unwrap(), b"old");
+
+        // 그 폴더가 통째로 지워진 뒤에도 그 백업으로 되살린다
+        std::fs::remove_dir_all(&outside).unwrap();
+        let revived = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), name)), State(state.clone())).await).await;
+        assert_eq!(revived.body["success"], true, "{:?}", revived.body);
         assert_eq!(std::fs::read(outside.join("save.bin")).unwrap(), b"old");
     }
 

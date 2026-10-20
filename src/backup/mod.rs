@@ -68,8 +68,8 @@ pub fn backups_dir(instance_dir: &Path) -> PathBuf {
 }
 
 /// `[backup] paths` 패턴을 실제 경로로. `{설정 이름}`은 `lookup`으로 바꾸고(값이 비면 그 경로는 뺀다),
-/// 상대 경로는 `base`(서버 작업 폴더) 기준이다. 없는 경로도 뺀다
-pub fn resolve_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
+/// 상대 경로는 `base`(서버 작업 폴더) 기준이다. 지금 없는 경로도 남긴다(복원이 되살릴 수 있는 범위). 백업은 있는 것만 담는다
+pub fn fill_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
     let placeholder = regex::Regex::new(r"\{([A-Za-z0-9_]+)\}").expect("valid regex");
     let mut out: Vec<PathBuf> = Vec::new();
     for pattern in patterns {
@@ -87,7 +87,7 @@ pub fn resolve_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> 
             continue;
         }
         let path = base.join(filled.as_ref());
-        if path.exists() && !out.contains(&path) {
+        if !out.contains(&path) {
             out.push(path);
         }
     }
@@ -330,12 +330,12 @@ mod tests {
     }
 
     #[test]
-    fn resolve_fills_settings_and_drops_missing() {
+    fn fill_replaces_settings_and_drops_unset_ones() {
         let tmp = tempfile::tempdir().unwrap();
         world(tmp.path());
         let patterns = vec!["{level_name}".to_string(), "{level_name}_nether".to_string(), "{unset}/x".to_string()];
-        let got = resolve_paths(&patterns, tmp.path(), |k| (k == "level_name").then(|| "world".to_string()));
-        assert_eq!(got, vec![tmp.path().join("world")]);
+        let got = fill_paths(&patterns, tmp.path(), |k| (k == "level_name").then(|| "world".to_string()));
+        assert_eq!(got, vec![tmp.path().join("world"), tmp.path().join("world_nether")]);
     }
 
     #[test]
