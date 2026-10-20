@@ -86,7 +86,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance.rs:109`, `mod.rs:2514-2524`) |
 | `default_port` | u16 | 인스턴스 생성 시 `instance.port` 기본값 |
 | `stop_command` | String | managed stop 때 stdin으로 전송. 기본값 `"stop"` (`mod.rs:961`) |
-| `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30 (`mod.rs:986`) |
+| `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30. 인스턴스 설정 `stop_timeout`이 있으면 그 값이 앞선다(§ 데몬이 읽는 setting) |
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
 
 `java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 schema v1에서 로드 오류다.
@@ -131,7 +131,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `pattern` | String | — 값 전체가 맞아야 하는 정규식(잘못된 정규식은 로드 오류). `format`과 함께 PATCH 저장과 미리보기에서 검사한다(`validator::validate_format`) |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
-- 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`)이다.
+- 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`), 정지 대기 시간(초) `stop_timeout`(모듈 `[config] stop_timeout`보다 앞선다, 1~3600, `supervisor::stop_timeout_of`, MK14)이다. 이 값들도 module_settings라서 모듈 함수 config에 펼쳐 들어간다(모듈 `stop()`이 직접 기다릴 때도 `stop_timeout`을 쓸 수 있다).
 - 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file`.
 
 #### `[[commands.fields]]` (`CommandFieldToml` `:928-949` → `CommandField` `:352-370`)
@@ -458,7 +458,7 @@ players = "player_count"
   1. `force`이면 `force_kill`을 한다.
   2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다.
   3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다.
-  4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 `stop_timeout`(기본 30초), force면 5초다.
+  4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 인스턴스 설정 `stop_timeout`, 모듈 `stop_timeout`, 기본 30초 순이고, force면 5초다.
   5. 시간이 지나면 강제 종료하고 2초 더 기다린다.
   6. `managed_store`에서 제거하고 종료를 판정·기록하고, `managed.pid`를 삭제하고, 30초짜리 stop cooldown(`STOP_COOLDOWN_SECS`)을 등록한다.
   - palworld는 stdin이 없어 3번 경로로 간다. 모듈 `stop()`이 REST로 저장·종료를 요청한다 (`M:palworld/lifecycle.py:399-426`).
