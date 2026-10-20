@@ -181,9 +181,11 @@ impl Api {
 
     // ── 서버 (런타임 상태) ──
 
-    /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다)
-    pub async fn servers(&self) -> Result<Value> {
-        self.get_slow("/api/servers").await
+    /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다).
+    /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 읽으면 비워진다: 알림을 보여 주는 `status`만 비우고,
+    /// 나머지는 `keep`으로 남겨 둔다
+    pub async fn servers(&self, keep_notices: bool) -> Result<Value> {
+        self.get_slow(if keep_notices { "/api/servers?notices=keep" } else { "/api/servers" }).await
     }
     /// POST /api/instance/:id/start — managed 여부는 데몬이 고른다
     pub async fn start(&self, id: &str) -> Result<Value> {

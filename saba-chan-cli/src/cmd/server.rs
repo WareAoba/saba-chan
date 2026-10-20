@@ -50,7 +50,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
 
 /// `/api/servers`에서 이 서버의 실행 상태
 pub async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
-    let list = ctx.api.servers().await?;
+    let list = ctx.api.servers(true).await?;
     Ok(list
         .get("servers")
         .and_then(Value::as_array)
@@ -151,7 +151,7 @@ async fn settle(ctx: &Ctx, sv: &Server, window: Duration) -> String {
 // ── 목록·정보 ──
 
 async fn list(ctx: &Ctx) -> Result<()> {
-    let (servers, modules) = tokio::join!(ctx.api.servers(), ctx.api.modules());
+    let (servers, modules) = tokio::join!(ctx.api.servers(true), ctx.api.modules());
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
     ctx.out.data(servers.get("servers").unwrap_or(&json!([])), |list| {
