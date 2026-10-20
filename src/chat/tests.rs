@@ -448,3 +448,17 @@ async fn help_shows_the_language_default_when_no_prefix_is_set() {
     let en = process(&api, &empty, &Catalog::for_language("en"), &req).await.text;
     assert!(en.contains("Saba-chan <"), "{}", en);
 }
+
+/// 콘솔이 없어 저장 후 종료를 못 하는 서버는 정지가 거절된다(MK10): 디스코드에서는 강제 종료하지 않고 그 이유와 이 PC에서 할 일을 알린다
+#[tokio::test]
+async fn a_stop_that_cannot_save_explains_itself() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::OK,
+        body: json!({"success": false, "error_code": "graceful_stop_unavailable", "error": "no console"}),
+    });
+    let out = run(&api, &settings(), "mc stop").await;
+    let cat = Catalog::for_language("en");
+    assert_eq!(out, cat.t("server.graceful_stop_unavailable", &[("name", "survival")]));
+    assert!(!out.contains("no console"), "{out}");
+}

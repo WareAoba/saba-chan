@@ -44,6 +44,7 @@
     "start_complete": "✅ Start-Anfrage für **{{name}}** abgeschlossen!",
     "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
     "stop_complete": "✅ Stop-Anfrage für **{{name}}** abgeschlossen!",
+    "graceful_stop_unavailable": "⚠️ **{{name}}** wurde nicht gestoppt: Es gibt keinen Weg (Konsole oder REST), zu speichern und zu beenden. Um ihn ohne Speichern zu beenden, wähle in saba-chan auf diesem PC einen erzwungenen Stopp.",
     "status_check": "📊 Status von **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
