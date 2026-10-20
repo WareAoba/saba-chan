@@ -128,7 +128,7 @@ pub static ACTIONS: &[Def] = &[
     },
     Def {
         fields: &[field("source", "string", false), field("since", "integer", false), field("until", "integer", false)],
-        ..def("server.logs.export", Kind::Query, "caution", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/logs/export")
+        ..def("server.logs.export", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/logs/export")
     },
     def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다

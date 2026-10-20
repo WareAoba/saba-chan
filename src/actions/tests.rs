@@ -810,4 +810,6 @@ async fn the_chatbot_reads_logs_with_inputs_and_without_local_details() {
     assert_eq!(file["content"], "Traceback (most recent call last):\n  File \"<path>\", line 1\nValueError: x\nnext line\n");
     assert_eq!(file["bytes"], file["content"].as_str().unwrap().len(), "bytes follow the masked content");
     assert_eq!(file["fileName"], "srv.log");
+    // 말하는 사바쨩 상한 기본값(0)에서도 "로그 파일 줘"가 된다: 가린 읽기 전용이라 읽기와 같은 safe
+    assert_eq!((find("server.logs.read").unwrap().risk, find("server.logs.export").unwrap().risk), ("safe", "safe"));
 }
