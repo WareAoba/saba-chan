@@ -1319,7 +1319,10 @@ async fn a_failed_download_keeps_the_ones_already_downloaded() {
     };
     manager.status.components = vec![pending(Component::Gui, "gui.zip"), pending(Component::Cli, "cli.zip")];
 
-    assert!(manager.download_available_updates().await.is_err());
+    // 데몬이 받은 것과 실패한 것을 응답에 함께 싣는다
+    let (downloaded, failed) = manager.download_available_updates_report().await.unwrap();
+    assert_eq!(downloaded, vec!["cli.zip".to_string()]);
+    assert_eq!(failed.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), vec!["gui"]);
 
     let cli = manager.status.components.iter().find(|c| c.component == Component::Cli).unwrap();
     assert!(cli.downloaded, "cli was downloaded before gui failed");

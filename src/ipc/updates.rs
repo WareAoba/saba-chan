@@ -393,29 +393,25 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
     }
 
     if body.components.is_empty() {
-        // 전체 다운로드
-        match mgr.download_available_updates().await {
-            Ok(downloaded) => {
+        // 전체 다운로드. 하나가 실패해도 받은 것은 적용할 수 있게 남기고, 선택 다운로드처럼 받은 것과 실패한 것을 함께 알린다
+        match mgr.download_available_updates_report().await {
+            Ok((downloaded, failed)) => {
                 // 업데이터 --apply 모드를 위해 매니페스트 저장
                 if let Err(e) = mgr.save_pending_manifest() {
                     tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
                 }
+                let errors: Vec<Value> = failed.iter().map(|(k, e)| json!({ "component": k, "error": e })).collect();
                 Json(json!({
-                    "ok": true,
+                    "ok": errors.is_empty(),
                     "downloaded": downloaded,
                     "count": downloaded.len(),
+                    "errors": errors,
                 }))
             }
-            Err(e) => {
-                // 실패 전에 받은 것은 적용할 수 있게 남긴다
-                if let Err(e) = mgr.save_pending_manifest() {
-                    tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
-                }
-                Json(json!({
-                    "ok": false,
-                    "error": e.to_string(),
-                }))
-            }
+            Err(e) => Json(json!({
+                "ok": false,
+                "error": e.to_string(),
+            })),
         }
     } else {
         // 선택 컴포넌트만 다운로드

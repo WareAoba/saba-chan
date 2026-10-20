@@ -770,6 +770,18 @@ impl UpdateManager {
 
     /// 업데이트 가능한 모든 컴포넌트를 staging 디렉터리로 다운로드
     pub async fn download_available_updates(&mut self) -> Result<Vec<String>> {
+        let total = self.status.components.iter().filter(|c| c.update_available && !c.downloaded).count();
+        let (downloaded, failed) = self.download_available_updates_report().await?;
+        if !failed.is_empty() {
+            let detail: Vec<String> = failed.iter().map(|(k, e)| format!("{}: {}", k, e)).collect();
+            anyhow::bail!("Failed to download {} of {} updates: {}", failed.len(), total, detail.join("; "));
+        }
+        Ok(downloaded)
+    }
+
+    /// 받을 수 있는 업데이트를 모두 받고 `(받은 파일 이름, 실패한 (키, 이유))`를 돌려준다.
+    /// 하나가 실패해도 나머지는 받고, 받은 것은 상태에 남긴다. 받기 전 준비가 안 되면 Err
+    pub async fn download_available_updates_report(&mut self) -> Result<(Vec<String>, Vec<(String, String)>)> {
         std::fs::create_dir_all(&self.staging_dir)?;
 
         let mut downloaded = Vec::new();
@@ -783,7 +795,7 @@ impl UpdateManager {
             })
             .collect();
 
-        // 하나가 실패해도 나머지는 받고, 받은 것은 아래에서 상태에 남긴 뒤 오류를 돌려준다
+        // 하나가 실패해도 나머지는 받고, 받은 것은 아래에서 상태에 남긴다
         let client = reqwest::Client::new();
         let mut failed = Vec::new();
         for (key, rc) in &to_download {
@@ -796,7 +808,7 @@ impl UpdateManager {
                 }
                 Err(e) => {
                     tracing::warn!("[Updater] Download of {} failed: {}", key, e);
-                    failed.push(format!("{}: {}", key, e));
+                    failed.push((key.clone(), e.to_string()));
                 }
             }
         }
@@ -816,10 +828,7 @@ impl UpdateManager {
             }
         }
 
-        if !failed.is_empty() {
-            anyhow::bail!("Failed to download {} of {} updates: {}", failed.len(), to_download.len(), failed.join("; "));
-        }
-        Ok(downloaded)
+        Ok((downloaded, failed))
     }
 
     /// 특정 컴포넌트만 다운로드
