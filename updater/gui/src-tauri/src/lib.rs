@@ -154,14 +154,16 @@ async fn check_after_update() -> Result<serde_json::Value, String> {
 // ═══════════════════════════════════════════════════════
 
 /// 다시 띄운다: `--relaunch`로 받은 것, 없으면 `installed_gui`(헤드리스는 `None`을 넘겨 아무것도 띄우지 않는다)
-async fn relaunch_now(relaunch_exe: Option<String>, relaunch_extra: Vec<String>, installed_gui: Option<PathBuf>, applied: bool) {
+/// 다시 띄웠으면 true (띄울 것이 없거나 모두 실패하면 false)
+async fn relaunch_now(relaunch_exe: Option<String>, relaunch_extra: Vec<String>, installed_gui: Option<PathBuf>, applied: bool) -> bool {
     let requested = relaunch_exe.is_some();
-    if let Some(cmd) = relaunch_command(relaunch_exe, installed_gui) {
-        // 받은 인자는 받은 프로그램의 것이다. --relaunch 없이 찾은 GUI에는 넘기지 않는다
-        let extra: &[String] = if requested { &relaunch_extra } else { &[] };
-        wait_for_exe(&cmd).await;
-        launch_with_retry(&cmd, extra, applied).await;
-    }
+    let Some(cmd) = relaunch_command(relaunch_exe, installed_gui) else {
+        return false;
+    };
+    // 받은 인자는 받은 프로그램의 것이다. --relaunch 없이 찾은 GUI에는 넘기지 않는다
+    let extra: &[String] = if requested { &relaunch_extra } else { &[] };
+    wait_for_exe(&cmd).await;
+    launch_with_retry(&cmd, extra, applied).await
 }
 
 /// GUI 설정(`config.json`의 `gui`)에서 키 값 읽기
@@ -225,12 +227,12 @@ async fn wait_for_exe(cmd: &str) {
 }
 
 /// 프로세스 재실행 (최대 3회 재시도)
-async fn launch_with_retry(cmd: &str, extra_args: &[String], after_update: bool) {
+async fn launch_with_retry(cmd: &str, extra_args: &[String], after_update: bool) -> bool {
     for attempt in 0..3 {
         match spawn_detached(cmd, extra_args, after_update) {
             Ok(()) => {
                 tracing::info!("[Apply] Relaunch succeeded (attempt {})", attempt + 1);
-                return;
+                return true;
             }
             Err(e) => {
                 tracing::warn!("[Apply] Relaunch attempt {} failed: {}", attempt + 1, e);
@@ -239,6 +241,7 @@ async fn launch_with_retry(cmd: &str, extra_args: &[String], after_update: bool)
         }
     }
     tracing::error!("[Apply] All relaunch attempts failed for: {}", cmd);
+    false
 }
 
 /// 완전히 분리된 자식 프로세스 생성
@@ -472,8 +475,12 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
         let result = manager.apply_staged(|p| tracing::info!("[Apply] {} {}% {}", p.step, p.percent, p.message)).await;
         let applied = matches!(&result, Ok((_, failed)) if failed.is_empty());
         // 다시 띄울 것은 데몬이 넘긴 것뿐이다 (헤드리스에는 GUI가 없다)
-        relaunch_now(relaunch_exe, relaunch_extra, None, applied).await;
-        if applied { 0 } else { 1 }
+        if relaunch_exe.is_none() {
+            tracing::warn!("[Apply] --headless without --relaunch: nothing is restarted");
+        }
+        // 데몬을 다시 띄우지 못하면 적용이 성공해도 실패로 끝낸다 (데몬이 내려간 채 남는다)
+        let relaunched = relaunch_exe.is_none() || relaunch_now(relaunch_exe, relaunch_extra, None, applied).await;
+        if applied && relaunched { 0 } else { 1 }
     })
 }
 
