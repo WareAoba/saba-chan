@@ -482,6 +482,8 @@
   "stop": {
     "already": "{{name}} は動いていません。",
     "done": "{{name}} を停止しました。",
+    "force_confirm": "それでも止めますか？保存していない進行は失われることがあります。",
+    "no_graceful": "{{name}} には保存してから止める方法がありません。保存せずに強制終了します。",
     "not_yet": "{{name}} はまだ停止していません。強制停止: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} の停止をリクエストしました。",
     "waiting": "{{name}} を停止しています..."
