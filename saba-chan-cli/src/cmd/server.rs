@@ -673,7 +673,7 @@ async fn follow_provision(ctx: &Ctx, name: &str) -> Result<Value> {
 }
 
 async fn remove(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     let running = status_of(&runtime(ctx, &sv).await?) == "running";
     let question = if running {
         t!("remove.confirm_running", name = sv.name)
@@ -1686,7 +1686,7 @@ async fn offer_agreements(ctx: &Ctx, id: &str, name: &str, named: &[String]) {
 }
 
 async fn reset(ctx: &Ctx, query: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
+    let sv = resolve::server_exact(ctx, query).await?;
     if status_of(&runtime(ctx, &sv).await?) == "running" {
         return Err(failed(t!("err.hint.server_running")));
     }

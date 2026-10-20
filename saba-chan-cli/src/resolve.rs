@@ -2,7 +2,7 @@
 //!
 //! 순서: 정확히 같음 → 대소문자 무시 같음 → 앞부분 일치 → 포함. 처음으로 결과가 나온 단계에서 멈춘다.
 //! 여럿이면 터미널에서는 고르게 하고, 아니면 후보를 보여 주며 실패한다.
-//! 없으면 비슷한 이름을 제안한다.
+//! 없으면 비슷한 이름을 제안한다. 지우기·권한처럼 되돌리기 어려운 대상(`find_exact`)은 앞의 두 단계만 쓴다.
 
 use crate::ctx::Ctx;
 use crate::error::{usage, CliError, Result};
@@ -21,6 +21,34 @@ pub fn find<T: Clone>(
     names: impl Fn(&T) -> Vec<String>,
     label: impl Fn(&T) -> String,
 ) -> Found<T> {
+    find_upto(items, query, names, label, 4)
+}
+
+/// 지우기·권한 대상: 정확히(대소문자 무시) 맞을 때만 고른다. 앞부분·포함으로만 맞는 이름은 고르지 않고 제안으로 보인다
+/// ("bob"으로 "bobby"를 지우거나 권한을 주지 않게)
+pub fn find_exact<T: Clone>(
+    items: &[T],
+    query: &str,
+    names: impl Fn(&T) -> Vec<String>,
+    label: impl Fn(&T) -> String,
+) -> Found<T> {
+    match find_upto(items, query, &names, &label, 2) {
+        Found::None(close) => match find(items, query, &names, &label) {
+            Found::One(t) => Found::None(vec![label(&t)]),
+            Found::Many(list) => Found::None(list.iter().map(&label).collect()),
+            Found::None(_) => Found::None(close),
+        },
+        found => found,
+    }
+}
+
+fn find_upto<T: Clone>(
+    items: &[T],
+    query: &str,
+    names: impl Fn(&T) -> Vec<String>,
+    label: impl Fn(&T) -> String,
+    stages_used: usize,
+) -> Found<T> {
     let q = query.trim();
     let ql = q.to_lowercase();
     type Stage = fn(&str, &str, &str) -> bool;
@@ -30,7 +58,7 @@ pub fn find<T: Clone>(
         |n, _, ql| n.to_lowercase().starts_with(ql),
         |n, _, ql| n.to_lowercase().contains(ql),
     ];
-    for stage in stages {
+    for stage in stages.into_iter().take(stages_used) {
         let hits: Vec<T> = items
             .iter()
             .filter(|it| names(it).iter().any(|n| stage(n, q, &ql)))
@@ -150,12 +178,23 @@ pub async fn servers(ctx: &Ctx) -> Result<Vec<Server>> {
 }
 
 pub async fn server(ctx: &Ctx, query: Option<&str>) -> Result<Server> {
+    server_by(ctx, query, find).await
+}
+
+/// 지우거나 초기화할 서버: 이름·id가 정확히(대소문자 무시) 맞아야 한다 (`find_exact`)
+pub async fn server_exact(ctx: &Ctx, query: Option<&str>) -> Result<Server> {
+    server_by(ctx, query, find_exact).await
+}
+
+type Finder<T> = fn(&[T], &str, fn(&T) -> Vec<String>, fn(&T) -> String) -> Found<T>;
+
+async fn server_by(ctx: &Ctx, query: Option<&str>, finder: Finder<Server>) -> Result<Server> {
     let all = servers(ctx).await?;
     let what = t!("noun.server");
     match query.filter(|q| !q.trim().is_empty()) {
         None => choose(ctx, &what, all, Server::label),
         Some(q) => {
-            let found = find(&all, q, |s| vec![s.name.clone(), s.id.clone()], |s| s.name.clone());
+            let found = finder(&all, q, |s| vec![s.name.clone(), s.id.clone()], |s| s.name.clone());
             settle(ctx, &what, q, found, Server::label)
         }
     }
@@ -195,12 +234,21 @@ pub async fn modules(ctx: &Ctx) -> Result<Vec<Value>> {
 }
 
 pub async fn module(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
+    module_by(ctx, query, find).await
+}
+
+/// 지울 모듈: 이름·별칭이 정확히(대소문자 무시) 맞아야 한다 (`find_exact`)
+pub async fn module_exact(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
+    module_by(ctx, query, find_exact).await
+}
+
+async fn module_by(ctx: &Ctx, query: Option<&str>, finder: Finder<Value>) -> Result<Value> {
     let all = modules(ctx).await?;
     let what = t!("noun.module");
     match query.filter(|q| !q.trim().is_empty()) {
         None => choose(ctx, &what, all, module_label),
         Some(q) => {
-            let found = find(&all, q, module_names, |m| {
+            let found = finder(&all, q, module_names, |m| {
                 m.get("name").and_then(Value::as_str).unwrap_or("?").to_string()
             });
             settle(ctx, &what, q, found, module_label)
@@ -230,6 +278,15 @@ pub fn extension_label(e: &Value) -> String {
 }
 
 pub async fn extension(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
+    extension_by(ctx, query, find).await
+}
+
+/// 지울 익스텐션: id·이름이 정확히(대소문자 무시) 맞아야 한다 (`find_exact`)
+pub async fn extension_exact(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
+    extension_by(ctx, query, find_exact).await
+}
+
+async fn extension_by(ctx: &Ctx, query: Option<&str>, finder: Finder<Value>) -> Result<Value> {
     let all = extensions(ctx).await?;
     let what = t!("noun.extension");
     let names = |e: &Value| {
@@ -241,7 +298,7 @@ pub async fn extension(ctx: &Ctx, query: Option<&str>) -> Result<Value> {
     match query.filter(|q| !q.trim().is_empty()) {
         None => choose(ctx, &what, all, extension_label),
         Some(q) => {
-            let found = find(&all, q, names, |e| {
+            let found = finder(&all, q, names, |e| {
                 e.get("id").and_then(Value::as_str).unwrap_or("?").to_string()
             });
             settle(ctx, &what, q, found, extension_label)
@@ -314,14 +371,15 @@ pub fn member_label(m: &Value) -> String {
     }
 }
 
-/// 멤버 이름(표시 이름·사용자 이름, 앞의 `@` 무시)이나 id → 디스코드 id
+/// 멤버 이름(표시 이름·사용자 이름, 앞의 `@` 무시)이나 id → 디스코드 id.
+/// 권한을 줄 사람이라 이름이 정확히(대소문자 무시) 맞아야 한다 (`find_exact`, 멤버 목록이 일부만 와도 다른 사람을 고르지 않게)
 pub async fn member(ctx: &Ctx, guild: &str, query: &str) -> Result<String> {
     let q = query.trim().trim_start_matches('@');
     if let Some(id) = discord_id(q) {
         return Ok(id.to_string());
     }
     let items = member_items(&crate::cmd::bot::members(ctx, guild).await?);
-    let found = find(&items, q, member_names, member_label);
+    let found = find_exact(&items, q, member_names, member_label);
     settle(ctx, &t!("noun.member"), q, found, member_label).map(|m| s(&m, "id").to_string())
 }
 
@@ -415,6 +473,19 @@ mod tests {
             find(&items, "마크", module_names, |_| String::new()),
             Found::One(_)
         ));
+    }
+
+    /// 지우기·권한 대상은 앞부분·포함 일치로 고르지 않는다: "bob"이 "bobby"를 가리키면 고르지 않고 제안으로 보인다
+    #[test]
+    fn exact_targets_are_not_picked_by_a_partial_match() {
+        let items = ["bobby", "Saba"];
+        assert_eq!(one(find_exact(&items, "saba", names, |s| s.to_string())), Some("Saba"));
+        match find_exact(&items, "bob", names, |s| s.to_string()) {
+            Found::None(s) => assert_eq!(s, vec!["bobby".to_string()]),
+            _ => panic!("a prefix match must not be picked"),
+        }
+        let r = json!({ "members": [{ "id": "1", "username": "bobby", "displayName": "kimbob" }] });
+        assert!(matches!(find_exact(&member_items(&r), "bob", member_names, member_label), Found::None(s) if s == vec!["kimbob (@bobby)".to_string()]));
     }
 
     #[test]

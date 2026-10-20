@@ -33,7 +33,7 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             Ok(())
         }
         ModuleCmd::Remove { id } => {
-            let m = resolve::module(ctx, Some(&id)).await?;
+            let m = resolve::module_exact(ctx, Some(&id)).await?;
             let name = s(&m, "name").to_string();
             let used: Vec<String> = resolve::servers(ctx)
                 .await?
