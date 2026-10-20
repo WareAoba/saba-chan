@@ -1490,6 +1490,49 @@ mod tests {
         assert!(child.wait().is_ok());
     }
 
+    /// non-managed 정지에서 모듈 `stop()`은 이번 정지에 쓸 대기 시간(`stop_timeout`)과 그 호출의 한도(`stop_call_limit`,
+    /// `stop_timeout + 30`초)를 config로 받는다. 인스턴스 값이 없으면 모듈 값이다 (06 계약 6절)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_module_stop_is_told_how_long_to_wait() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_timeout = 200\n",
+        )
+        .unwrap();
+        let seen = tmp.path().join("seen.txt");
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, os, signal, sys\n\
+                 config = json.load(sys.stdin)\n\
+                 if sys.argv[1] == 'stop':\n    \
+                 open({seen:?}, 'w').write('%s %s' % (config.get('stop_timeout'), config.get('stop_call_limit')))\n    \
+                 os.kill(config['pid'], signal.SIGKILL)\n    print(json.dumps({{'success': True}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n",
+                seen = seen.to_string_lossy()
+            ),
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("native", "game");
+        inst.id = "native".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("native", child.id()).unwrap();
+        let stopped = crate::ipc::internal::into_internal(stop_instance(state.clone(), "native", false).await).await.body;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert!(child.wait().is_ok());
+        assert_eq!(std::fs::read_to_string(&seen).unwrap(), "200 230");
+    }
+
     #[test]
     fn only_unofficial_or_changed_components_get_a_notice() {
         use saba_chan_updater_lib::integrity::Trust;
