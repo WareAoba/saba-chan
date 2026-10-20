@@ -605,7 +605,9 @@
     "switch_to_mock": "Switched to Mock server (localhost:9876)",
     "switch_to_real": "Switched to real GitHub API",
     "mock_server_label": "Mock server (test)",
-    "real_api_label": "Real GitHub API"
+    "real_api_label": "Real GitHub API",
+    "module_busy": "Another install or removal of this module is still in progress. Try again when it finishes.",
+    "remove_failed": "Couldn't remove the module: {{error}}"
   },
   "validation": {
     "required": "{{field}} is required",

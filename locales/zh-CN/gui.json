@@ -605,7 +605,9 @@
     "bot_replacing": "正在替换 Discord Bot 文件...",
     "update_done": "更新处理完成",
     "restart_required_title": "需要重启",
-    "apply": "应用"
+    "apply": "应用",
+    "module_busy": "此模块的另一个安装或移除仍在进行中。请在完成后重试。",
+    "remove_failed": "移除模块失败：{{error}}"
   },
   "validation": {
     "required": "{{field}} 为必填项",

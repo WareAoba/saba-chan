@@ -605,7 +605,9 @@
     "bot_replacing": "Discord Bot-Dateien werden ersetzt...",
     "update_done": "Update-Verarbeitung abgeschlossen",
     "restart_required_title": "Neustart erforderlich",
-    "apply": "Anwenden"
+    "apply": "Anwenden",
+    "module_busy": "Eine andere Installation oder Entfernung dieses Moduls läuft noch. Versuche es erneut, wenn sie fertig ist.",
+    "remove_failed": "Modul konnte nicht entfernt werden: {{error}}"
   },
   "validation": {
     "required": "{{field}} ist erforderlich",
