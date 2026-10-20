@@ -123,9 +123,8 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut chunk = [0u8; 8192];
-        let mut pending: Vec<u8> = Vec::new();
         // UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다 (D-S13)
-        let (mut lines, mut from) = (Lines::default(), 0);
+        let mut lines = Lines::default();
         let emit = |line: &[u8], lines: &Lines| {
             if console == Console::Pty {
                 let line = decode_line(&strip_ansi_escapes::strip(line));
@@ -144,10 +143,10 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
                 Ok(n) => n,
             };
             // 요청이 두 번 읽기에 걸쳐 올 수 있어 남은 앞부분과 이어서 찾는다
-            let scan_from = pending.len().saturating_sub(CURSOR_QUERY.len() - 1);
-            pending.extend_from_slice(&chunk[..n]);
+            let scan_from = lines.pending().len().saturating_sub(CURSOR_QUERY.len() - 1);
+            lines.push(&chunk[..n]);
             if let Some(stdin) = &reply {
-                let asked = pending[scan_from..].windows(CURSOR_QUERY.len()).filter(|w| *w == CURSOR_QUERY).count();
+                let asked = lines.pending()[scan_from..].windows(CURSOR_QUERY.len()).filter(|w| *w == CURSOR_QUERY).count();
                 if asked > 0 {
                     if let Ok(mut guard) = stdin.lock() {
                         if let Some(pipe) = guard.as_mut() {
@@ -159,13 +158,12 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
                     }
                 }
             }
-            while let Some(end) = lines.line_end(&pending, &mut from) {
-                let line: Vec<u8> = pending.drain(..=end).collect();
+            while let Some(line) = lines.next_line() {
                 emit(&line, &lines);
             }
         }
-        if !pending.is_empty() {
-            emit(&pending, &lines);
+        if let Some(rest) = lines.finish() {
+            emit(&rest, &lines);
         }
     })
 }
