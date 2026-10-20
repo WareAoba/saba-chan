@@ -27,6 +27,7 @@
 | [03-extensions.md](03-extensions.md) | 플러그인(코드상 extension) `manifest.json` 스키마, hook 전수 목록과 hook×익스텐션 매트릭스, 설치·활성화 수명주기, GUI 컴포넌트 주입(UMD/slot) 계약 |
 | [04-clients.md](04-clients.md) | GUI(Tauri 셸 + `window.api` 브리지) 전수표, CLI(하위 명령·대화형 셸·`--json`), 디스코드 연동(데몬 쪽), 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
 | [05-updater-servers.md](05-updater-servers.md) | 업데이터·인스톨러·언인스톨러·CI, server-chan relay API·DB·프로토콜 (운영 결함·비밀 파일은 server-chan 비공개 문서) |
+| [06-contracts-0.1.9.md](06-contracts-0.1.9.md) | 0.1.9에 넣기로 하고 아직 구현 중인 계약(디스코드 복원, 플레이어 목록, 로그 읽기·내보내기, 서버 준비 알림, 복원 허용 범위). 구현이 머지되면 01·02·05로 옮긴다 |
 
 ---
 

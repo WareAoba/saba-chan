@@ -1,0 +1,55 @@
+# 0.1.9 합의 계약 (구현 중)
+
+> 이 문서는 0.1.9에 넣기로 한 계약을 구현보다 먼저 적는다. 모듈·릴레이·GUI·CLI는 이 문서를 보고 시작한다.
+> 데몬 구현이 머지되면 해당 절을 01·02·05 문서의 제자리로 옮기고 여기서는 지운다. 이름이나 모양을 바꿔야 하면 이 문서를 먼저 고친다.
+> 근거: 사용자 디스코드 검수(2026-10-20, 9·13·14번), 릴레이 설계(`relay/discord-9-13-14-design.md`), R39 제안, 모듈 감사 MA3.
+
+## 1. 디스코드에서 백업 복원 (검수 14번)
+
+- 액션 `backup.restore`의 표면에 Discord를 더한다(GUI·CLI·Discord·챗봇). Kind admin, risk danger 그대로라 늘 확인을 거친다. 요구 레벨은 지금 규칙(`levels.admin`, 프리셋 strict면 3)이다.
+- 입력 칸이 다른 액션의 결과에서 고르는 값이면 칸에 범용 표지 `optionsFrom`을 싣는다. heartbeat `actions[].input.properties.<칸>.optionsFrom`과 `GET /api/actions`의 `input`에 같이 싣는다.
+  - 모양: `{action, list, value, label?}`. `action`이 부를 조회 액션(같은 인스턴스), `list`가 결과에서 항목 배열의 키, `value`가 칸에 넣을 항목 키, `label`이 사람에게 보일 항목 키다.
+  - `backup.restore`의 `name`: `{action:"backup.list", list:"backups", value:"name", label:"label"}`.
+  - 릴레이는 이 표지가 있는 칸을 자동완성으로 만든다(최근 것부터 25개). 다른 액션도 같은 표지를 쓸 수 있다.
+- `backup.list` 액션 결과의 `backups[]` 항목마다 `label`을 더한다. 요청 언어와 PC 시간대로 `2026-10-20 21:03 · 수동 · 120MB` 같은 한 줄이다(종류 이름은 봇 locales). 라우트 `GET /api/instance/:id/backups`는 그대로다.
+- 서버가 켜져 있으면 `plan(backup.restore)`가 계획을 만들지 않고 409 `server_running`으로 답한다. 실행(`run`)도 같은 답이다(지금 라우트의 409).
+- 릴레이가 "먼저 끄고 복원"을 고르면 여러 단계 계획 `POST /api/actions/plan {steps:[{id:"server.stop", instance}, {id:"backup.restore", instance, input:{name}}]}`을 보낸다. 데몬은 다음을 보장한다.
+  - 정지 단계는 서버 프로세스가 끝난 것을 확인한 뒤에 성공한다. 그 뒤에 복원이 시작된다.
+  - 정지가 실패하거나 `graceful_stop_unavailable`(MK10)이면 정지 단계가 실패로 끝나고 복원은 `skipped`다.
+  - 원격 계획의 `server.stop`은 `force`를 받지 않는다(강제 종료는 GUI·CLI만).
+
+## 2. 플레이어 목록 `server.players` (검수 13번)
+
+- 모듈 함수 `players(config)`(선택). 반환 `{success:true, online:int, max?:int, players:[{name}]}`. 서버가 꺼져 있으면 `{success:false, error_code:"server_not_running"}`. 이름 말고 IP·고유 ID는 싣지 않는다(실어도 데몬이 뺀다).
+  - 따로 선언하는 키는 없다. 모듈이 `functions`(MK1) 목록에 `players`를 넣으면 지원하는 것이다. `functions`를 모르면(`null`) 지원하지 않는 것으로 본다.
+  - 통신은 모듈 규칙대로 STDIN → REST → RCON. 지원하는 게임과 출력 형식은 모듈 담당이 공식 문서로 확인한다.
+- 데몬 라우트 `GET /api/instance/:id/players` → 모듈 `players` 결과(`players[]`는 `{name}`만). 모듈에 함수가 없으면 200 `{success:false, error_code:"not_supported"}`, 서버가 꺼져 있으면 409 `server_not_running`.
+- 액션 `server.players`: Query, safe, 모든 표면, 인스턴스 액션. 요약 `text`는 `접속 3/20명` 다음 줄마다 이름(10명까지, 남은 수는 `외 N명`). 봇 locales `actions.server.players.title`(ko 플레이어, en Players, ja プレイヤー …)과 `actions.summary.players*`.
+- heartbeat `actions[]`의 `server.players` 항목에는 `modules:[이름]`(이 함수를 가진 모듈)을 싣는다. 릴레이는 모듈이 목록에 있는 서버에만 하위 명령 `플레이어`를 만든다. `GET /api/actions?instance=`는 그 인스턴스의 모듈이 지원할 때만 싣는다.
+- 챗봇에 가는 결과는 콘솔과 같이 IP·비밀값을 가린다(`mask_console`).
+
+## 3. 로그 전체 읽기·내보내기 (검수 9번)
+
+- 로그 원천은 인스턴스의 콘솔 기록 세션이다(saba-runner가 남기는 세션 파일, `log_sessions_keep`개. 모듈 `[launch] log_files`도 콘솔에 합쳐져 있다). 원천 id는 세션 파일 이름(확장자 뺀 것), `label`은 그 세션의 시작 시각이다. 가장 최근 세션이 `latest`이기도 하다.
+- 라우트 `GET /api/instance/:id/logs?source=&lines=&before=`
+  - 응답 `{sources:[{id, label}], source, lines:[문자열], before?}`. `lines`는 기본 200, 최대 500. 끝에서부터 읽고 `before`(이전 응답이 준 커서)로 더 앞을 읽는다. 원천이 없으면 404 `not_found`.
+- 라우트 `GET /api/instance/:id/logs/export?source=&since=&until=`
+  - 응답 `{fileName, bytes, truncated, content}`. `fileName`은 `<서버 이름>-<source>-<YYYYMMDD-HHMM>.log`(파일 이름에 못 쓰는 글자는 `_`). `since`·`until`은 unix 초로 줄의 시각을 거른다(시각이 없는 줄은 앞 줄을 따른다).
+  - `content`는 최대 4 MiB다. 넘으면 최근 쪽을 남기고 `truncated:true`. 릴레이 `/result`가 이 크기를 받아야 한다(JSON 이스케이프 여유를 두고 6 MiB 이상).
+- 액션: `server.logs.read`(Query, safe), `server.logs.export`(Query, caution). 둘 다 GUI·CLI·챗봇 표면이고 디스코드 메뉴에는 없다.
+- 가리기: 원격(챗봇·디스코드)으로 나가는 모든 줄은 콘솔 꼬리와 같은 가리기(IP·비밀값, 절대 경로 → `<path>`)를 거친다. 내보내기도 같다. GUI·CLI(로컬)는 원문이다.
+- 릴레이 규칙(05 문서에 같은 줄을 둔다): 액션 결과가 `{fileName, bytes, truncated, content}` 모양이면 릴레이는 `content`를 파일로 첨부하고 모델에는 `content`를 주지 않는다. 모델에는 `{ok, fileName, bytes, truncated}`만 간다.
+
+## 4. 서버 준비 알림 `instance.ready` (R39)
+
+- 모듈은 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구를 `[detection] ready_patterns`(정규식 목록)로 선언할 수 있다. `[detection] ready_timeout`(초, 기본 600)은 그 문구를 기다리는 시간이다.
+- 데몬 이벤트 `instance.ready {at, instanceId, instance, ok, code?}`를 시작 한 번(자동 재시작 포함)마다 한 번 낸다.
+  - `ok:true`: `ready_patterns` 중 하나가 콘솔 줄과 맞았을 때. 선언이 없으면 시작이 성공한 때(managed는 프로세스가 뜨고 시작 가드가 풀린 때, non-managed는 모듈 `start` 성공).
+  - `ok:false`: 준비되기 전에 끝났을 때. `code`는 `start_failed`(시작 실패나 준비 전에 프로세스가 끝남), `stopped_while_starting`(준비 전에 사용자가 정지), `ready_timeout`(`ready_timeout`이 지남). 원문·경로·콘솔 줄은 싣지 않는다.
+- relay_event 허용 목록에 넣는다(`instance.ready`는 위 필드만). 지금 `instance.exit`(start_failed)는 그대로 나간다.
+
+## 5. 복원 허용 범위 `restore_roots` (모듈 감사 MA3)
+
+- 모듈 `backup_paths` 훅의 반환에 선택 필드 `restore_roots:[경로]`를 더한다. 경로 해석(작업 폴더 기준 상대, `..`·절대 경로 규칙)은 `paths`와 같다.
+- 복원은 백업에 든 경로가 서버 폴더·인스턴스 폴더·지금 `paths`의 대상·`restore_roots` 중 하나의 안에 있으면 허용한다. 그 밖이면 지금처럼 400 `restore_outside`다.
+- `restore_roots`는 백업 대상에 넣지 않는다(무엇을 담을지는 `paths`가 정한다). 데이터 폴더 단위로 옛 백업이 담겨 있는 모듈(좀보이드 `Server/`)이 쓴다.
