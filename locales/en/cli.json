@@ -531,6 +531,8 @@
     "ready": "ready to install",
     "up_to_date": "up to date",
     "updater_launched": "Updater started. The daemon is shutting down to update.",
+    "waiting_result": "Waiting for the update to apply and Saba-chan to restart…",
+    "result_timeout": "No update result arrived within 15 minutes. Check the updater window or whether Saba-chan restarted",
     "verifying": "Verifying files...",
     "unknown_key": "{{key}} is not an update setting. Settings: {{keys}}",
     "integrity_empty": "No files recorded yet. Only parts installed by the updater are checked.",

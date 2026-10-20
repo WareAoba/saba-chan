@@ -473,6 +473,8 @@
     "ready": "prêt à installer",
     "up_to_date": "à jour",
     "updater_launched": "Programme de mise à jour lancé. Le daemon s'arrête pour la mise à jour.",
+    "waiting_result": "En attente de l'application de la mise à jour et du redémarrage de Saba-chan…",
+    "result_timeout": "Aucun résultat de mise à jour en 15 minutes. Vérifiez la fenêtre du programme de mise à jour ou si Saba-chan a redémarré",
     "verifying": "Vérification des fichiers...",
     "unknown_key": "{{key}} n'est pas un paramètre de mise à jour. Paramètres : {{keys}}",
     "integrity_empty": "Aucun fichier enregistré pour l'instant. Seuls les éléments installés par le programme de mise à jour sont vérifiés.",

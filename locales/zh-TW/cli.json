@@ -473,6 +473,8 @@
     "ready": "可以安裝",
     "up_to_date": "已是最新",
     "updater_launched": "更新程式已啟動。常駐程式正在關閉以進行更新。",
+    "waiting_result": "正在等待更新套用並重新啟動 Saba-chan…",
+    "result_timeout": "15 分鐘內沒有收到更新結果。請檢查更新程式視窗或 Saba-chan 是否已重新啟動",
     "verifying": "正在驗證檔案...",
     "unknown_key": "{{key}} 不是更新設定。可用設定：{{keys}}",
     "integrity_empty": "尚未記錄任何檔案。只會檢查由更新程式安裝的部分。",

@@ -473,6 +473,8 @@
     "ready": "bereit zur Installation",
     "up_to_date": "aktuell",
     "updater_launched": "Updater gestartet. Der Daemon wird für das Update beendet.",
+    "waiting_result": "Warte, bis das Update angewendet ist und Saba-chan neu startet…",
+    "result_timeout": "Innerhalb von 15 Minuten kam kein Update-Ergebnis. Prüfe das Updater-Fenster oder ob Saba-chan neu gestartet ist",
     "verifying": "Dateien werden geprüft...",
     "unknown_key": "{{key}} ist keine Update-Einstellung. Einstellungen: {{keys}}",
     "integrity_empty": "Noch keine Dateien erfasst. Nur vom Updater installierte Teile werden geprüft.",
