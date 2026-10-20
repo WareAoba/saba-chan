@@ -476,7 +476,7 @@ pub async fn get_installed_version_handler(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     // Phase 1: 감지 (모듈 호출은 락 밖에서)
-    let (_module_name, result) = {
+    let (_module_name, seen, result) = {
         let found = state.supervisor.read().await.instance_store.list().iter().find(|i| i.id == id).cloned();
         let instance = match found {
             Some(i) => i,
@@ -491,24 +491,20 @@ pub async fn get_installed_version_handler(
 
         let module_name = instance.module_name.clone();
         let res = Supervisor::get_installed_version(&state.supervisor, &module_name, &id).await;
-        (module_name, res)
+        (module_name, instance.server_version, res)
     };
 
     match result {
         Ok(result) => {
-            // Phase 2: 감지 성공 시 write lock으로 인스턴스에 버전 저장
+            // Phase 2: 감지 성공 시 write lock으로 인스턴스에 버전 저장.
+            // 설치·업데이트가 인스턴스를 잡고 있으면 파일이 바뀌는 중이라 저장하지 않는다 (D-S12)
             if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
-                    let mut supervisor = state.supervisor.write().await;
-                    if let Some(mut instance) = supervisor.instance_store.get(&id).cloned() {
-                        let already_set = instance.server_version.as_deref() == Some(version);
-                        if !already_set {
-                            instance.server_version = Some(version.to_string());
-                            if let Err(e) = supervisor.instance_store.update(&id, instance) {
-                                tracing::warn!("Failed to persist detected version for '{}': {}", id, e);
-                            } else {
-                                tracing::info!("Auto-saved detected server version '{}' for instance '{}'", version, id);
-                            }
+                    if !super::backup::BusyGuard::held(&id) {
+                        match state.supervisor.write().await.save_detected_version(&id, seen.as_deref(), version) {
+                            Ok(true) => tracing::info!("Auto-saved detected server version '{}' for instance '{}'", version, id),
+                            Ok(false) => {}
+                            Err(e) => tracing::warn!("Failed to persist detected version for '{}': {}", id, e),
                         }
                     }
                 }
@@ -785,5 +781,63 @@ mod tests {
         // 버전을 정해 보내면 그대로 쓴다 (예전 클라이언트)
         let pinned = install(json!({ "install_dir": files, "instance_id": id, "version": "1.0" })).await;
         assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
+    }
+
+    // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
+    // 감지가 끝난 뒤 옛 값으로 덮을 수 있었다. 감지 사이에 값이 바뀌었거나 인스턴스가 작업 중이면 저장하지 않는다
+    #[tokio::test]
+    async fn a_version_detected_while_the_server_changes_does_not_overwrite_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\njson.load(sys.stdin)\ntime.sleep(0.6)\nprint(json.dumps({'success': True, 'version': '1.0'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let detect = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(get_installed_version_handler(Path(id), State(state)).await.into_response()).await }
+        };
+        let saved = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { state.supervisor.read().await.instance_store.get(&id).unwrap().server_version.clone() }
+        };
+        let set = |version: &'static str| {
+            let (state, id) = (state.clone(), id.clone());
+            async move {
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                inst.server_version = Some(version.into());
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+        };
+
+        // 감지하는 사이 새 버전이 저장되면 그 값을 남긴다
+        let running = tokio::spawn(detect());
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        set("2.0").await;
+        let done = running.await.unwrap();
+        assert_eq!(done.body["version"], "1.0", "{}", done.body);
+        assert_eq!(saved().await.as_deref(), Some("2.0"), "a stale detection must not overwrite a newer version");
+
+        // 설치·업데이트 같은 작업이 인스턴스를 잡고 있으면 감지 결과는 알려 주되 저장하지 않는다
+        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let held = detect().await;
+        assert_eq!(held.body["version"], "1.0", "{}", held.body);
+        assert_eq!(saved().await.as_deref(), Some("2.0"), "files may be mid-change while the instance is busy");
+        drop(busy);
+
+        // 아무 일도 없으면 감지한 값을 저장한다
+        detect().await;
+        assert_eq!(saved().await.as_deref(), Some("1.0"));
     }
 }

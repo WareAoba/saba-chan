@@ -40,6 +40,11 @@ impl BusyGuard {
         let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
         busy.get_or_insert_with(HashSet::new).insert(id.to_string()).then(|| Self(id.to_string()))
     }
+
+    /// 잡지 않고 잡혀 있는지만 본다 (잠깐 잡아 보는 것만으로 다른 작업이 409를 받지 않게)
+    pub(crate) fn held(id: &str) -> bool {
+        BUSY.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|set| set.contains(id))
+    }
 }
 
 impl Drop for BusyGuard {

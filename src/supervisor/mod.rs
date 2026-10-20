@@ -2436,6 +2436,17 @@ impl Supervisor {
         call.run().await
     }
 
+    /// 감지한 서버 버전을 저장한다. 감지를 시작할 때 본 값(`seen`)에서 그사이 바뀌었으면 더 새 값이므로 두고 false (D-S12)
+    pub fn save_detected_version(&mut self, instance_id: &str, seen: Option<&str>, version: &str) -> Result<bool> {
+        let Some(mut instance) = self.instance_store.get(instance_id).cloned() else { return Ok(false) };
+        if instance.server_version.as_deref() != seen || seen == Some(version) {
+            return Ok(false);
+        }
+        instance.server_version = Some(version.to_string());
+        self.instance_store.update(instance_id, instance)?;
+        Ok(true)
+    }
+
     /// 인스턴스마다 사용자가 정한 `java_path`: `(모듈 진입 파일, java_path)` (`sandbox::reconcile_runtimes`)
     pub fn user_runtimes(&self) -> Vec<(String, String)> {
         self.instance_store
@@ -2479,14 +2490,11 @@ impl Supervisor {
                 Ok(result) => {
                     if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                         if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
-                            let mut this = sup.write().await;
-                            if let Some(mut instance) = this.instance_store.get(&id).cloned() {
-                                instance.server_version = Some(version.to_string());
-                                if let Err(e) = this.instance_store.update(&id, instance) {
-                                    tracing::warn!("Failed to save backfilled version for '{}': {}", name, e);
-                                } else {
-                                    tracing::info!("Backfilled server version '{}' for instance '{}'", version, name);
-                                }
+                            // 모으던 때 비어 있던 값만 채운다. 그사이 저장된 버전은 덮지 않는다
+                            match sup.write().await.save_detected_version(&id, None, version) {
+                                Ok(true) => tracing::info!("Backfilled server version '{}' for instance '{}'", version, name),
+                                Ok(false) => {}
+                                Err(e) => tracing::warn!("Failed to save backfilled version for '{}': {}", name, e),
                             }
                         }
                     }
