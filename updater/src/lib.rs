@@ -624,7 +624,7 @@ impl UpdateManager {
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
         // 헤드리스 설치는 GUI처럼 그 구성에 들지 않는 컴포넌트를 받지 않는다
-        let profile = profile::Profile::from_installed(&Self::load_installed_manifest());
+        let profile = profile::Profile::load();
         if let Some(release) = release {
             let notes = Self::release_notes_in(&release.latest, &Self::user_language());
             for (key, info) in &release.manifest.components {

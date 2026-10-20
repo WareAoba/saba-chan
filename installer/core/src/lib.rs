@@ -12,6 +12,7 @@ pub mod shortcuts;
 pub mod uninstall;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants;
@@ -77,12 +78,28 @@ impl Drop for RemoveOnDrop {
     }
 }
 
+/// 이 구성에 들지 않는 구성요소의 설치 기록과 GUI 실행 파일·바로가기를 지운다. 지우지 못한 것은 경고로 돌려준다
+fn drop_parts_outside(profile: Profile, install_dir: &Path, installed: &mut HashMap<String, String>) -> Vec<String> {
+    installed.retain(|key, _| profile.includes(key));
+    if profile.includes("gui") {
+        return Vec::new();
+    }
+    #[cfg(target_os = "windows")]
+    shortcuts::remove_shortcuts_into(install_dir, shortcuts::ALL_SHORTCUT_NAMES);
+    saba_chan_updater_lib::GUI_EXE_NAMES
+        .iter()
+        .map(|name| install_dir.join(name))
+        .filter(|exe| exe.is_file())
+        .filter_map(|exe| std::fs::remove_file(&exe).err().map(|e| format!("Failed to remove {}: {}", exe.display(), e)))
+        .collect()
+}
+
 /// 설치 설정 (스냅샷)
 #[derive(Debug, Clone)]
 pub struct InstallOptions {
     pub install_path: PathBuf,
     pub language: String,
-    /// 데스크톱이면 GUI와 바로가기까지, 헤드리스면 GUI 없이 설치한다. installed-manifest의 `profile`에 적는다
+    /// 데스크톱이면 GUI와 바로가기까지, 헤드리스면 GUI 없이 설치한다. `install-profile.json`에 적는다
     pub profile: Profile,
     // 바로가기는 Windows에서만 만든다
     pub create_desktop_shortcut: bool,
@@ -384,8 +401,14 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     if config.uninstaller_exe.as_deref().is_some_and(|me| is_copy_of(&copy, me)) {
         installed_versions.insert("installer".to_string(), INSTALLER_VERSION.to_string());
     }
+    // 데스크톱 설치 위에 헤드리스로 덮으면 남은 GUI와 그 기록을 지운다 (업데이터가 다시 손대지 않아 낡은 채 남는다)
+    for problem in drop_parts_outside(config.profile, &install_dir, &mut installed_versions) {
+        warn(problem);
+    }
     // 업데이터·데몬이 이 구성에 드는 것만 받는다 (헤드리스 설치에 GUI가 끌려 들어오지 않게)
-    installed_versions.insert(Profile::MANIFEST_KEY.to_string(), config.profile.as_str().to_string());
+    if let Err(e) = config.profile.save() {
+        warn(format!("Failed to write install profile: {}", e));
+    }
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
         warn(format!("Failed to write installed manifest: {}", e));
     }
@@ -713,6 +736,22 @@ mod tests {
         std::fs::write(root.join(core), b"").unwrap();
         assert_eq!(dedicated_install_dir(&root), root, "an existing install is updated in place");
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_headless_install_over_a_desktop_one_drops_the_gui() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gui = tmp.path().join(saba_chan_updater_lib::GUI_EXE_NAMES[0]);
+        std::fs::write(&gui, b"").unwrap();
+        let mut installed: HashMap<String, String> =
+            [("gui", "0.1.8"), ("saba-core", "0.1.9")].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+
+        assert!(drop_parts_outside(Profile::Desktop, tmp.path(), &mut installed).is_empty());
+        assert!(gui.is_file() && installed.contains_key("gui"), "a desktop install keeps the GUI");
+
+        assert!(drop_parts_outside(Profile::Headless, tmp.path(), &mut installed).is_empty());
+        assert!(!gui.exists());
+        assert_eq!(installed.keys().collect::<Vec<_>>(), ["saba-core"]);
     }
 
     #[cfg(unix)]
