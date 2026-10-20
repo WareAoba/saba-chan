@@ -184,7 +184,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - `ready_patterns` (Vec<String>, 정규식): 콘솔에 이 중 하나가 찍히면 서버가 준비된 것이다. 데몬이 콘솔을 읽는 시작(managed)에만 쓰인다. 정규식이 아니거나 목록이 아니면 그 항목만 버리고 모듈 경고(`warnings`)를 남긴다(로드는 실패하지 않는다).
 - `ready_timeout` (u64, 초, 기본 600): 시작 뒤 이 시간 안에 준비 문구가 없으면 `ready_timeout`으로 닫는다. 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다.
 
-시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}` 이벤트가 한 번 나온다(`supervisor/ready.rs`, 01 §`GET /api/events`). 패턴이 없거나 콘솔을 읽지 않는 시작은 시작이 성공한 때 바로 `ok:true`다. 준비되기 전에 끝나면 `ok:false`와 `code`: `start_failed`, `stopped_while_starting`, `ready_timeout`.
+시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}` 이벤트가 한 번 나온다(`supervisor/ready.rs`, 01 §`GET /api/events`). 패턴이 없거나 콘솔을 읽지 않는 시작은 시작이 성공한 때 바로 `ok:true`다. 준비되기 전에 끝나면 `ok:false`와 `code`: `start_failed`, `stopped_while_starting`, `ready_timeout`. 데몬이 띄운 프로세스가 준비 문구 전에 끝나 이미 치워졌으면 `start_failed`다. 감독자가 시작을 시도하지 않은 요청(사전 점검에 막힘, 다른 작업 중, 이미 켜짐, 시작 중)에는 알림이 없다. `ready_timeout`이 시계로 나타낼 수 없을 만큼 크면 시간 초과 없이 기다린다. relay로도 올린다(01 §relay 이벤트).
 
 #### `[credential_map]` (`HashMap<String,String>`)
 데몬 키(`rest_password` / `rest_username`) → 게임 설정 키. 사용처는 managed start 후 동기화(`mod.rs:1554-1619`), import_settings 결과 반영(`D:src/instance/mod.rs:172-206`), 설정 PATCH 때 역동기화(`instance.rs:1162-1189`)다. **non-managed `start_server`에서는 동기화하지 않는다**.

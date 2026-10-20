@@ -72,8 +72,13 @@ pub fn after_start(instance_id: &str, instance: &str, result: &anyhow::Result<Va
         return;
     }
     let regexes: Vec<regex::Regex> = patterns.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
-    let Some(proc) = console.filter(|_| !regexes.is_empty()) else {
+    if regexes.is_empty() {
         return emit(instance_id, instance, None);
+    }
+    // 데몬이 띄운 프로세스(`managed:true`)인데 콘솔이 없으면 그 사이 끝나 치워진 것이다
+    let Some(proc) = console else {
+        let managed = body.get("managed").and_then(Value::as_bool) == Some(true);
+        return emit(instance_id, instance, managed.then_some("start_failed"));
     };
     let token = next_token();
     pending().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), token);
@@ -81,9 +86,14 @@ pub fn after_start(instance_id: &str, instance: &str, result: &anyhow::Result<Va
     tokio::spawn(async move { watch(id, name, token, proc, regexes, timeout).await });
 }
 
+/// 기다림이 끝나는 때. 너무 커서 시계로 나타낼 수 없으면 끝이 없다
+fn deadline_after(timeout: Duration) -> Option<tokio::time::Instant> {
+    tokio::time::Instant::now().checked_add(timeout)
+}
+
 /// 준비 문구·종료·시간 초과 중 먼저 오는 것으로 닫는다
 async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, patterns: Vec<regex::Regex>, timeout: Duration) {
-    let deadline = tokio::time::Instant::now() + timeout;
+    let deadline = deadline_after(timeout);
     let mut next_line = 0;
     loop {
         if !pending().lock().unwrap_or_else(|e| e.into_inner()).get(&id).is_some_and(|t| *t == token) {
@@ -102,7 +112,7 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
             finish(&id, &name, Some(token), Some("start_failed"));
             return;
         }
-        if tokio::time::Instant::now() >= deadline {
+        if deadline.is_some_and(|d| tokio::time::Instant::now() >= d) {
             finish(&id, &name, Some(token), Some("ready_timeout"));
             return;
         }
@@ -113,4 +123,30 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
 /// managed 프로세스의 종료를 판정했을 때: 준비 전이었으면 닫는다
 pub fn exited(instance_id: &str, instance: &str, stop_requested: bool) {
     finish(instance_id, instance, None, Some(if stop_requested { "stopped_while_starting" } else { "start_failed" }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_huge_ready_timeout_means_no_deadline_instead_of_a_panic() {
+        assert!(deadline_after(Duration::from_secs(u64::MAX)).is_none());
+        assert!(deadline_after(Duration::from_secs(600)).is_some());
+    }
+
+    /// managed 시작이 성공했는데 그 사이 프로세스가 끝나 치워졌으면 준비가 아니다
+    #[tokio::test]
+    async fn a_managed_start_whose_process_is_already_gone_is_not_ready() {
+        let mut sub = crate::events::bus().subscribe(None);
+        let ok = Ok(json!({ "success": true, "managed": true }));
+        after_start("gone-1", "gone", &ok, None, &["^Done".to_string()], Duration::from_secs(5));
+        loop {
+            let e = sub.rx.recv().await.unwrap();
+            if e.kind == "instance.ready" && e.data["instanceId"] == "gone-1" {
+                assert_eq!((e.data["ok"].clone(), e.data["code"].clone()), (json!(false), json!("start_failed")));
+                break;
+            }
+        }
+    }
 }
