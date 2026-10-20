@@ -160,9 +160,10 @@ pub fn update_notice(data: &Value) -> Option<UpdateNotice> {
     })
 }
 
-/// 데몬이 확인에 성공했고 알릴 업데이트가 없다 (적용을 마쳤거나 Locales만 남았다)
+/// 데몬이 확인에 성공했고 알릴 업데이트가 없다 (적용을 마쳤거나 Locales만 남았다).
+/// 데몬이 막 떠 아직 확인하지 않았으면(`last_check` 없음) 목록이 비어 있어도 "없음"이 아니다
 pub fn updates_cleared(data: &Value) -> bool {
-    let ok = data["ok"].as_bool().unwrap_or(false);
+    let ok = data["ok"].as_bool().unwrap_or(false) && data["last_check"].is_string();
     let has_error = data.get("error").is_some_and(|e| !e.is_null() && e != "" && e != false);
     ok && !has_error && update_notice(data).is_none()
 }
@@ -226,16 +227,25 @@ mod tests {
     /// 받을 업데이트가 없어지면 알림함의 업데이트 알림을 지우도록 알린다. 확인 실패는 "없음"이 아니다
     #[test]
     fn updates_cleared_only_when_the_check_succeeded_with_nothing_to_show() {
+        let at = "2026-10-20T07:00:00Z";
         assert!(updates_cleared(
-            &json!({"ok": true, "updates_available": 0, "components": []})
+            &json!({"ok": true, "last_check": at, "updates_available": 0, "components": []})
         ));
-        assert!(updates_cleared(&json!({"ok": true, "updates_available": 1,
-            "components": [{"display_name": "Locales", "update_available": true}]})));
-        assert!(!updates_cleared(&json!({"ok": true, "updates_available": 1,
-            "components": [{"display_name": "GUI", "update_available": true}]})));
+        assert!(updates_cleared(
+            &json!({"ok": true, "last_check": at, "updates_available": 1,
+            "components": [{"display_name": "Locales", "update_available": true}]})
+        ));
         assert!(!updates_cleared(
-            &json!({"ok": true, "updates_available": 0, "error": "relay down"})
+            &json!({"ok": true, "last_check": at, "updates_available": 1,
+            "components": [{"display_name": "GUI", "update_available": true}]})
+        ));
+        assert!(!updates_cleared(
+            &json!({"ok": true, "last_check": at, "updates_available": 0, "error": "relay down"})
         ));
         assert!(!updates_cleared(&json!({"ok": false})));
+        // 데몬이 막 떠서 아직 확인한 적이 없으면(last_check 없음) "없음"이 아니다
+        assert!(!updates_cleared(
+            &json!({"ok": true, "last_check": null, "updates_available": 0, "components": []})
+        ));
     }
 }
