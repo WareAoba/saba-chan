@@ -394,18 +394,26 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         presets: meta.presets,
         queries: meta.queries,
         agreements: meta.agreements,
+        functions: None,
     }
 }
 
-fn module_list_response(
-    supervisor: &crate::supervisor::Supervisor,
+async fn module_list_response(
     modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
+    failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
     versions: &std::collections::BTreeMap<String, String>,
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
-            let modules = modules.into_iter().map(|m| module_info(m, versions)).collect();
-            let failed = supervisor.module_loader.load_errors();
+            // 구현한 함수 목록 (MK1): 모듈마다 처음 한 번 묻고 진입 파일이 바뀔 때까지 캐시한다. 데몬 락 밖에서, 모듈끼리 동시에
+            let asks: Vec<_> = modules.iter().map(|m| {
+                let entry = m.entry_path();
+                tokio::spawn(async move { crate::plugin::module_functions(&entry).await })
+            }).collect();
+            let mut modules: Vec<ExtensionInfo> = modules.into_iter().map(|m| module_info(m, versions)).collect();
+            for (info, ask) in modules.iter_mut().zip(asks) {
+                info.functions = ask.await.ok().flatten();
+            }
             (StatusCode::OK, Json(ExtensionListResponse { modules, failed })).into_response()
         }
         Err(e) => {
@@ -417,8 +425,11 @@ fn module_list_response(
 
 pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
     let versions = component_versions(&state).await;
-    let supervisor = state.supervisor.read().await;
-    module_list_response(&supervisor, supervisor.list_modules(), &versions)
+    let (modules, failed) = {
+        let supervisor = state.supervisor.read().await;
+        (supervisor.list_modules(), supervisor.module_loader.load_errors())
+    };
+    module_list_response(modules, failed, &versions).await
 }
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
@@ -428,8 +439,8 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
         tracing::info!("Module cache refreshed. Found {} modules", m.len());
     }
     let versions = component_versions(&state).await;
-    let supervisor = state.supervisor.read().await;
-    module_list_response(&supervisor, modules, &versions)
+    let failed = state.supervisor.read().await.module_loader.load_errors();
+    module_list_response(modules, failed, &versions).await
 }
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)

@@ -191,7 +191,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 서버를 만들 때 고르는 추천 설정 묶음(예: "친구용 소규모", "하드코어"). `id`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `[presets.settings]`(`[[settings.fields]]` 이름 → 값). 값은 그 설정의 규칙(형식·범위·select 선택지)을 따라야 하고, `password`·`file`·`path` 형식 설정은 넣지 못한다. 어기면 스키마 v1 모듈은 로드에 실패한다. 표시 문구는 모듈 locales의 `presets.<id>.label`·`description`이 덮는다. `GET /api/modules`의 각 모듈 `presets`, heartbeat `modules[].presets`(`{id, label}`만)에 실리고, `POST /api/instances`의 `preset`으로 고른다(01 §`POST /api/instances`). CLI는 `server add --preset <id>`(주지 않으면 새 서버일 때 묻는다), `module info`가 id를 보여 준다.
 
 #### `[[queries]]` (`QueryToml` → `ModuleQuery`)
-읽기 전용 조회(예: 접속자 목록). 액션 `server.query:<name>`(`kind=query`, risk `safe`, 모든 표면)이 되어 GUI·CLI·디스코드·챗봇 도구로 쓰인다(01 §액션 카탈로그). 키: `name`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `function`(lifecycle.py `FUNCTIONS`의 함수 이름, Python 식별자), `inputs`(`[[commands.fields]]`의 입력과 같은 모양: `name`·`type`·`required`·`label`·`placeholder`·`default`·`min`·`max`·`options`). 로드 때 검사: 이름 형식·중복, `function`이 식별자인지, 데몬이 정해진 뜻으로 부르며 상태를 바꾸는 함수(`start`·`stop`·`command`·`configure`·`get_launch_command`·`import_settings`·`install_server`·`reset_properties`·`reset_server`·`accept_agreements`)가 아닌지, 입력 이름 형식·중복, 입력 `type`이 `text`(기본)·`number`·`select`인지, `select`에 `options`가 있는지, `min ≤ max`. 어기면 스키마 v1 모듈은 로드에 실패하고, `schema_version`이 없는 모듈은 경고만 남기되 `[[queries]]`를 모두 끈다. 표시 문구는 모듈 locales의 `queries.<name>.label`·`description`이 덮는다(없으면 `label`·`description`, 그것도 없으면 `name`). `GET /api/modules`의 각 모듈 `queries`에 실린다.
+읽기 전용 조회(예: 접속자 목록). 액션 `server.query:<name>`(`kind=query`, risk `safe`, 모든 표면)이 되어 GUI·CLI·디스코드·챗봇 도구로 쓰인다(01 §액션 카탈로그). 키: `name`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `function`(lifecycle.py `FUNCTIONS`의 함수 이름, Python 식별자), `inputs`(`[[commands.fields]]`의 입력과 같은 모양: `name`·`type`·`required`·`label`·`placeholder`·`default`·`min`·`max`·`options`). 로드 때 검사: 이름 형식·중복, `function`이 식별자인지, 데몬이 정해진 뜻으로 부르며 상태를 바꾸는 함수(`start`·`stop`·`command`·`configure`·`get_launch_command`·`import_settings`·`install_server`·`reset_properties`·`reset_server`·`accept_agreements`·`functions`)가 아닌지, 입력 이름 형식·중복, 입력 `type`이 `text`(기본)·`number`·`select`인지, `select`에 `options`가 있는지, `min ≤ max`. 어기면 스키마 v1 모듈은 로드에 실패하고, `schema_version`이 없는 모듈은 경고만 남기되 `[[queries]]`를 모두 끈다. 표시 문구는 모듈 locales의 `queries.<name>.label`·`description`이 덮는다(없으면 `label`·`description`, 그것도 없으면 `name`). `GET /api/modules`의 각 모듈 `queries`에 실린다.
 
 ```toml
 [[queries]]
@@ -295,6 +295,8 @@ players = "player_count"
 4. `print(json.dumps(result))`로 결과를 출력한다.
 
 모르는 함수 이름이 오면 `{"success":false,"message":"Unknown function: X"}`를 돌려주고 종료 코드는 네 모듈 모두 0이다 (zomboid는 `return`, `M:zomboid/lifecycle.py:1466-1473`).
+
+예약 함수 `functions`(MK1): 모듈이 구현한 lifecycle 함수 이름(`FUNCTIONS`의 키, `functions` 자신은 빼고)을 `{"success": true, "functions": [...]}`로 돌려준다. 공용 진입점 `daemon_rcon.run_lifecycle(FUNCTIONS)`은 표에 `functions`가 없으면 이렇게 자동으로 답한다. 데몬은 이 목록을 `GET /api/modules`의 `functions`로 내보내고, 목록에 없는 선택 함수는 부르지 않고 `not_supported`로 답한다(01 §`GET /api/modules`). 답하지 못하는 옛 모듈은 목록을 모르는 것으로 다뤄 아무것도 숨기지 않는다. `functions`는 `[[queries]]`·`[status] players`의 `function`으로 쓸 수 없다.
 
 **에러 관례 (코드에서 관찰한 것)**:
 - 공통 응답: `success: bool`, `message: str`.

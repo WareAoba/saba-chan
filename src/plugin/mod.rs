@@ -401,7 +401,77 @@ fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
     ));
 }
 
+/// 모듈이 구현하지 않아도 되는 lifecycle 함수 (MK1). 모듈이 `functions`로 밝힌 목록에 없으면 데몬은 Python을 띄우지 않고
+/// `not_supported`로 답하고, 클라이언트는 `GET /api/modules`의 `functions`를 보고 그 기능을 숨긴다
+pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
+    "reset_server", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
+    "read_properties", "reset_properties", "configure", "import_settings", "install_server", "validate",
+];
+
+/// 예약 함수: 모듈이 구현한 lifecycle 함수 이름(자신 제외)을 `{"success": true, "functions": [...]}`로 답한다
+pub const FUNCTIONS_QUERY: &str = "functions";
+const FUNCTIONS_TIMEOUT_SECS: u64 = 15;
+
+type FunctionCache = std::collections::HashMap<String, (Option<std::time::SystemTime>, Option<Vec<String>>)>;
+/// 진입 파일 경로 → (그때의 수정 시각, 목록). 모듈을 업데이트해 진입 파일이 바뀌면 다시 묻는다
+static MODULE_FUNCTIONS: std::sync::LazyLock<std::sync::Mutex<FunctionCache>> = std::sync::LazyLock::new(Default::default);
+
+/// `functions` 응답에서 목록을 읽는다. 옛 모듈("Unknown function")·실패·모양이 다른 답은 모름(None): 아무것도 숨기지 않는다
+fn function_list(result: Result<Value>) -> Option<Vec<String>> {
+    let value = result.ok()?;
+    if value.get("success").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    value.get("functions")?.as_array()?.iter().map(|f| f.as_str().map(str::to_string)).collect()
+}
+
+/// 모듈이 구현한 lifecycle 함수 목록. 진입 파일마다 처음 한 번 `functions`를 불러 두고, 모르면 None
+pub async fn module_functions(entry: &str) -> Option<Vec<String>> {
+    let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
+    if let Some((at, list)) = MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).get(entry) {
+        if *at == modified {
+            return list.clone();
+        }
+    }
+    let list = function_list(spawn_plugin(entry, FUNCTIONS_QUERY, serde_json::json!({}), None, FUNCTIONS_TIMEOUT_SECS, None).await);
+    MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(entry.to_string(), (modified, list.clone()));
+    list
+}
+
+/// 모듈이 밝힌 목록에 없는 선택 함수에 대한 답. 목록을 모르거나 필수 함수면 None(그대로 부른다)
+fn unsupported_reply(function: &str, known: Option<&[String]>) -> Option<Value> {
+    let known = known?;
+    if !OPTIONAL_MODULE_FUNCTIONS.contains(&function) || known.iter().any(|f| f == function) {
+        return None;
+    }
+    Some(serde_json::json!({
+        "success": false,
+        "error_code": "not_supported",
+        "function": function,
+        "message": format!("This module does not implement '{}'", function),
+    }))
+}
+
 async fn run_plugin_inner(
+    module_path: &str,
+    function: &str,
+    config: Value,
+    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    timeout_secs: u64,
+    server: Option<u32>,
+) -> Result<Value> {
+    // 모듈(옆에 module.toml이 있는 진입 파일)만: 익스텐션 hook 이름은 이 표와 상관없다
+    let is_module = std::path::Path::new(module_path).parent().is_some_and(|d| d.join("module.toml").is_file());
+    if is_module && OPTIONAL_MODULE_FUNCTIONS.contains(&function) {
+        if let Some(reply) = unsupported_reply(function, module_functions(module_path).await.as_deref()) {
+            tracing::debug!("Module {} does not implement {}", module_path, function);
+            return Ok(reply);
+        }
+    }
+    spawn_plugin(module_path, function, config, on_progress, timeout_secs, server).await
+}
+
+async fn spawn_plugin(
     module_path: &str,
     function: &str,
     config: Value,
@@ -905,6 +975,50 @@ mod tests {
         assert_eq!(parse_plugin_output("{\n  \"ok\": 1\n}\n").unwrap(), json!({"ok": 1}));
         assert_eq!(parse_plugin_output("debug print\n{\"ok\": 2}\n\n").unwrap(), json!({"ok": 2}));
         assert!(parse_plugin_output("{\"ok\": 3}\nnot json\n").is_err());
+    }
+
+    /// 모듈이 `functions`로 밝힌 목록에 없는 선택 함수는 Python을 띄우지 않고 not_supported로 답한다 (MK1).
+    /// 목록을 모르는 옛 모듈과 필수 함수는 그대로 부른다
+    #[test]
+    fn optional_functions_a_module_does_not_list_are_refused_without_running_it() {
+        let known = vec!["validate".to_string(), "list_versions".to_string()];
+        let refused = unsupported_reply("reset_server", Some(&known)).expect("reset_server is not listed");
+        assert_eq!(refused["success"], false);
+        assert_eq!(refused["error_code"], "not_supported");
+        assert_eq!(refused["function"], "reset_server");
+        assert!(unsupported_reply("list_versions", Some(&known)).is_none(), "listed");
+        assert!(unsupported_reply("reset_server", None).is_none(), "an old module without the list is asked anyway");
+        assert!(unsupported_reply("start", Some(&known)).is_none(), "required functions are never refused");
+        assert!(unsupported_reply("functions", Some(&known)).is_none());
+    }
+
+    /// 목록은 성공 응답의 문자열 배열에서만 읽는다. `functions`를 모르는 모듈("Unknown function")·실패·모양이 다른 답은 모름(None)
+    #[test]
+    fn the_function_list_is_read_only_from_a_successful_reply() {
+        assert_eq!(
+            function_list(Ok(json!({ "success": true, "functions": ["validate", "diagnose_log"] }))),
+            Some(vec!["validate".to_string(), "diagnose_log".to_string()])
+        );
+        assert_eq!(function_list(Ok(json!({ "success": false, "message": "Unknown function: functions" }))), None);
+        assert_eq!(function_list(Ok(json!({ "success": true, "functions": "validate" }))), None);
+        assert_eq!(function_list(Ok(json!({ "success": true, "functions": ["validate", 3] }))), None);
+        assert_eq!(function_list(Err(anyhow::anyhow!("timed out"))), None);
+    }
+
+    /// 공용 진입점 `run_lifecycle`은 표에 `functions`가 없으면 표의 키(자신 제외)로 답한다
+    #[test]
+    fn run_lifecycle_answers_functions_with_its_table() {
+        let script = format!(
+            "import sys; sys.path.insert(0, {:?}); sys.argv = ['lifecycle.py', 'functions']; import daemon_rcon; \
+             daemon_rcon.run_lifecycle({{'validate': lambda c: {{}}, 'reset_server': lambda c: {{}}}})",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/modules"),
+        );
+        let out = std::process::Command::new("python3").arg("-c").arg(script).stdin(std::process::Stdio::null()).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(
+            parse_plugin_output(&String::from_utf8_lossy(&out.stdout)).unwrap(),
+            json!({ "success": true, "functions": ["validate", "reset_server"] })
+        );
     }
 
     #[tokio::test]

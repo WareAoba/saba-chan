@@ -288,6 +288,9 @@ pub struct ExtensionInfo {
     /// `[[agreements]]` 켜기 전에 동의할 약관 (이름은 모듈 locales `agreements.<id>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agreements: Vec<crate::supervisor::module_loader::ModuleAgreement>,
+    /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
+    #[serde(default)]
+    pub functions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1003,6 +1006,7 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            functions: None,
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
                     crate::supervisor::module_loader::CommandField {
@@ -1058,12 +1062,14 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            functions: None,
             commands: None,
         };
 
         let json = serde_json::to_value(&module_info).unwrap();
         assert!(json.get("commands").is_some());
         assert!(json.get("commands").unwrap().is_null());
+        assert!(json["functions"].is_null(), "unknown functions are sent as null, not left out");
     }
 
     #[test]
@@ -1096,6 +1102,7 @@ mod tests {
                     presets: Vec::new(),
                     queries: Vec::new(),
                     agreements: Vec::new(),
+                    functions: None,
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![
                             crate::supervisor::module_loader::CommandField {

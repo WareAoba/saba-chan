@@ -1423,6 +1423,7 @@ pub async fn update_instance_settings(
         match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &id, "write", Some(props_value)).await {
             // 모듈에 configure가 없으면 쓸 게임 설정 파일도 없다
             Ok(r) if r.get("success").and_then(|v| v.as_bool()) == Some(false)
+                && r.get("error_code").and_then(|v| v.as_str()) != Some("not_supported")
                 && !r.get("message").and_then(|v| v.as_str()).is_some_and(|m| m.starts_with("Unknown function")) => {
                 let message = r.get("message").or(r.get("error")).and_then(|v| v.as_str()).unwrap_or("configure failed");
                 tracing::warn!("Module could not write game settings for instance {}: {}", id, message);

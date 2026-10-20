@@ -366,6 +366,10 @@ def run_lifecycle(functions):
         return
 
     name = sys.argv[1]
+    # 예약 함수: 데몬이 구현된 함수 목록을 묻는다 (자신은 넣지 않는다)
+    if name == "functions" and name not in functions:
+        emit({"success": True, "functions": list(functions)})
+        return
     fn = functions.get(name)
     if fn is None:
         emit({"success": False, "message": f"Unknown function: {name}", "available": list(functions)})
