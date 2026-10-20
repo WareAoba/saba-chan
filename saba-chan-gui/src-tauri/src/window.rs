@@ -19,7 +19,8 @@ static BOUNDS_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// 닫기 요청을 렌더러에 보내고 답(app_close_response)을 아직 못 받은 시각(ms). 0이면 기다리는 요청이 없다
 static CLOSE_ASKED_AT: AtomicU64 = AtomicU64::new(0);
-/// 이만큼 답이 없는데 다시 닫으면 렌더러가 멈춘 것으로 보고 인터페이스만 끝낸다 (L18c)
+/// 이만큼 답이 없는데 OS 닫기(Alt+F4·작업 표시줄)가 다시 오면 렌더러가 멈춘 것으로 보고 인터페이스만 끝낸다 (L18c).
+/// 창 안의 X는 렌더러 버튼이라 멈추면 이 경로로 오지 않는다(그때는 트레이 메뉴가 끝낸다)
 const CLOSE_ANSWER_TIMEOUT_MS: u64 = 5000;
 
 fn renderer_unresponsive(asked_at: u64, now: u64) -> bool {
