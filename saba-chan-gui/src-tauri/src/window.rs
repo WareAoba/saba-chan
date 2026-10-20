@@ -325,7 +325,10 @@ mod tests {
         // 묻지 않았거나 답을 받았으면(0) 렌더러가 묻는다
         assert!(!renderer_unresponsive(0, 1_000_000));
         let first = monotonic_ms();
-        assert!(first > 0 && monotonic_ms() >= first, "0 means no request, and the clock never goes back");
+        assert!(
+            first > 0 && monotonic_ms() >= first,
+            "0 means no request, and the clock never goes back"
+        );
         // 물은 지 얼마 안 됐으면 기다린다
         let asked = 1_000_000;
         assert!(!renderer_unresponsive(asked, asked + CLOSE_ANSWER_TIMEOUT_MS - 1));
