@@ -1626,3 +1626,19 @@ async fn an_unlisted_apply_counts_what_it_applied_earlier() {
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&first));
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&second));
 }
+
+// 카탈로그로 지우거나 바꾼 모듈은 설치 기록에 옛 값이 남는다: requires는 디스크에 있는 것만 센다
+#[test]
+fn requires_ignore_recorded_addons_missing_from_disk() {
+    let recorded: std::collections::HashMap<String, String> = [("saba-core", "0.1.9"), ("module-gone", "1.0.0"), ("module-kept", "1.0.0")]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    let disk = [("module-kept".to_string(), "2.0.0".to_string())].into_iter().collect();
+
+    let versions = crate::merge_addons_from_disk(recorded, disk);
+
+    assert_eq!(versions.get("saba-core").map(String::as_str), Some("0.1.9"));
+    assert_eq!(versions.get("module-kept").map(String::as_str), Some("2.0.0"), "the version on disk wins");
+    assert!(!versions.contains_key("module-gone"));
+}

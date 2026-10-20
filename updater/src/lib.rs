@@ -228,6 +228,13 @@ pub struct DependencyIssue {
     pub message: String,
 }
 
+/// 설치 기록의 모듈·익스텐션 항목을 디스크에서 찾은 것으로 바꾼다 (사라진 것은 빠진다)
+fn merge_addons_from_disk(mut versions: HashMap<String, String>, disk: HashMap<String, String>) -> HashMap<String, String> {
+    versions.retain(|key, _| !key.starts_with("module-") && !key.starts_with("ext-"));
+    versions.extend(disk);
+    versions
+}
+
 /// `requires`(`{"saba-core": ">=0.1.9"}`) 중 설치된 버전이 못 미치는 것. 업데이터 적용과 데몬의 카탈로그 설치가 같이 쓴다
 pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, installed: &HashMap<String, String>) -> Vec<DependencyIssue> {
     requires
@@ -742,36 +749,47 @@ impl UpdateManager {
         // 2. 매니페스트에 없는 앱 컴포넌트는 빌드에 묶인 versions.toml 버전 (폴백)
         Self::fill_bundled_versions(&mut versions);
 
-        // 모듈: modules/*/module.toml에서 감지
-        if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    let module_toml = path.join("module.toml");
-                    if let Some((name, version)) = self.read_module_version(&module_toml) {
-                        let key = format!("module-{}", name);
-                        versions.entry(key).or_insert(version);
-                    }
-                }
-            }
-        }
-
-        // 익스텐션: extensions/*/manifest.json의 id·version
-        let extensions_dir = &self.extensions_dir;
-        if let Ok(entries) = std::fs::read_dir(extensions_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    if let Some((name, version)) = read_extension_version(&path.join("manifest.json")) {
-                        let key = format!("ext-{}", name);
-                        versions.entry(key).or_insert(version);
-                    }
-                }
-            }
+        // 3. 모듈·익스텐션: 디스크에서 감지 (기록에 없는 것만)
+        for (key, version) in self.disk_addon_versions() {
+            versions.entry(key).or_insert(version);
         }
 
         tracing::debug!("[UpdateManager] Local versions: {:?}", versions);
         versions
+    }
+
+    /// 디스크에 있는 모듈(`modules/*/module.toml`)과 익스텐션(`extensions/*/manifest.json`)의 키·버전
+    fn disk_addon_versions(&self) -> HashMap<String, String> {
+        let mut versions = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some((name, version)) = self.read_module_version(&path.join("module.toml")) {
+                        versions.insert(format!("module-{}", name), version);
+                    }
+                }
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(&self.extensions_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some((name, version)) = read_extension_version(&path.join("manifest.json")) {
+                        versions.insert(format!("ext-{}", name), version);
+                    }
+                }
+            }
+        }
+        versions
+    }
+
+    /// requires를 비교할 버전: 앱 컴포넌트는 설치 기록(없으면 번들 버전), 모듈·익스텐션은 디스크에 실제로 있는 것만.
+    /// 카탈로그 설치·삭제는 설치 기록을 고치지 않으므로 그 기록의 모듈·익스텐션은 믿지 않는다
+    fn dependency_versions(&self) -> HashMap<String, String> {
+        let mut versions = Self::load_installed_manifest();
+        Self::fill_bundled_versions(&mut versions);
+        merge_addons_from_disk(versions, self.disk_addon_versions())
     }
 
     fn read_module_version(&self, module_toml: &Path) -> Option<(String, String)> {
@@ -984,7 +1002,7 @@ impl UpdateManager {
         // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
         let mut failure = None;
         // 설치 기록은 끝에 한 번에 적으므로, 이 묶음에서 앞서 적용한 버전을 여기서 더해 requires를 본다
-        let mut installed = self.collect_local_versions();
+        let mut installed = self.dependency_versions();
         for comp in &components {
             let key = comp.component.manifest_key();
             let issues = self.requires_of(&key).map(|r| unmet_requires(&key, r, &installed)).unwrap_or_default();
@@ -1228,8 +1246,8 @@ impl UpdateManager {
     /// 예: GUI 0.3.0 → requires: { "saba-core": ">=0.3.0" }
     ///     → saba-core이 0.3.0 미만이면 DependencyIssue 반환
     pub fn check_dependencies(&self, component_key: &str) -> DependencyCheck {
-        // 설치 기록에 없는 카탈로그·수동 설치 모듈과 익스텐션도 디스크에서 찾아 센다
-        let installed = self.collect_local_versions();
+        // 모듈·익스텐션은 디스크에 실제로 있는 버전으로 센다 (카탈로그·수동 설치, 삭제 포함)
+        let installed = self.dependency_versions();
         let issues = self.requires_of(component_key).map(|r| unmet_requires(component_key, r, &installed)).unwrap_or_default();
 
         DependencyCheck {
