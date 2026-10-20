@@ -782,6 +782,8 @@
     "chain_discord": "Discord",
     "agent_desc": "Ce PC reçoit et exécute les commandes envoyées depuis Discord. Tant qu'il est désactivé, le bot ne répond pas.",
     "agent_replaced": "La connexion PC de ce compte Discord a été déplacée vers un autre PC, elle s'est donc arrêtée ici. Pour réutiliser ce PC, appairez-le à nouveau depuis ce PC.",
+    "agent_too_old": "Le serveur relais n'accepte plus cette version de l'application. Mettez l'application à jour vers {{version}} ou plus récent.",
+    "agent_check_update": "Rechercher des mises à jour",
     "agent_running": "Activé",
     "agent_connecting": "Démarrage",
     "agent_stopped": "Désactivé",

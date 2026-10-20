@@ -59,6 +59,8 @@ const initialState = () => ({
     // 다른 PC가 같은 계정으로 페어링해서 이 PC의 에이전트가 멈췄다
     discordAgentReplaced: false,
     discordAgentRelayUrlInvalid: false,
+    // 릴레이가 이 앱 버전을 받지 않을 때 요구하는 최소 버전. 받으면 null
+    discordAgentMinVersion: null,
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
@@ -298,7 +300,14 @@ export const useDiscordStore = create((set, get) => ({
         const agentFailures = agent === 'unknown' ? get()._agentFailures + 1 : 0;
         const prev = get();
         const keepAgent = agent === 'unknown' && agentFailures < 2;
-        const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : agent === 'running';
+        // too_old는 { status, running, minVersion }으로 온다
+        const tooOld = agent?.status === 'too_old';
+        const agentRunning = keepAgent
+            ? prev.discordBotStatus !== 'stopped'
+            : tooOld
+              ? agent.running
+              : agent === 'running';
+        const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? agent.minVersion || '-' : null;
         const agentReplaced = keepAgent ? prev.discordAgentReplaced : agent === 'replaced';
         const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : agent === 'invalid_relay_url';
 
@@ -315,7 +324,10 @@ export const useDiscordStore = create((set, get) => ({
             _agentFailures: agentFailures,
             discordAgentReplaced: agentReplaced,
             discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
-            discordBotStatus: agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped',
+            discordAgentMinVersion: agentMinVersion,
+            // 릴레이가 거절하는 동안은 명령이 흐르지 않으니 '실행 중'으로 보이지 않는다
+            discordBotStatus:
+                agentRunning && relayOk && !agentMinVersion ? 'running' : agentRunning ? 'connecting' : 'stopped',
         });
     },
 

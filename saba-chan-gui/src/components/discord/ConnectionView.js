@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUIStore } from '../../stores/useUIStore';
 import { safeShowToast } from '../../utils/helpers';
 import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
@@ -226,6 +227,7 @@ export function ConnectionView({
     botStatus,
     agentReplaced,
     agentRelayUrlInvalid,
+    agentMinVersion,
     pairing,
     onStartPairing,
     onCancelPairing,
@@ -344,6 +346,19 @@ export function ConnectionView({
                     <div className="notice tone-warn">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('discord.agent_replaced')}</span>
+                    </div>
+                )}
+                {agentMinVersion && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('discord.agent_too_old', { version: agentMinVersion })}</span>
+                        <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => useUIStore.getState().openSettings('update')}
+                        >
+                            {t('discord.agent_check_update')}
+                        </button>
                     </div>
                 )}
                 {agentRelayUrlInvalid && !agentRunning && (
