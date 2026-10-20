@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **Serverliste**",
     "empty": "📭 Keine Server registriert",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 Läuft",
@@ -48,7 +48,8 @@
     "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Server läuft nicht. Bitte starten Sie zuerst den Server",
-    "module_missing": "❌ Das Modul '{{module}}' ist nicht installiert. Dieser Server kann nicht gesteuert werden."
+    "module_missing": "❌ Das Modul '{{module}}' ist nicht installiert. Dieser Server kann nicht gesteuert werden.",
+    "port_moved": "🔀 Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` wird ausgeführt...",
@@ -99,6 +100,7 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
+    "chatbot_not_allowed": "❌ Der Chatbot kann diesen Befehl nicht ausführen. Bitte führe ihn direkt aus.",
     "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Aktuell auf {{count}} Servern. Bitte entferne den Bot von ungenutzten Servern."
   },
   "messages": {
@@ -288,11 +290,39 @@
       "enabled": "Ein",
       "model": "Modell",
       "memo": "Server-Prompt",
-      "confirmCommands": "Befehle bestätigen",
+      "confirmCommands": "Bei Vorsicht-Befehlen immer fragen",
       "memory": "Gedächtnis",
       "webSearch": "Websuche",
       "disabledTools": "Deaktivierte Werkzeuge",
       "step": "Schritt"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…und {{count}} weitere",
+      "backups": "💾 **{{count}} Backups**",
+      "backups_empty": "📭 Keine Backups",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "manuell",
+        "scheduled": "geplant",
+        "pre-update": "vor Update",
+        "pre-restore": "vor Wiederherstellung"
+      },
+      "events": "📜 **Letzte Starts und Stopps**",
+      "events_empty": "📭 Keine Einträge",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "gestoppt",
+        "in_game_stop": "im Spiel gestoppt",
+        "crash": "abgestürzt",
+        "start_failed": "Start fehlgeschlagen",
+        "unknown_exit": "aus unbekanntem Grund beendet"
+      },
+      "updates": "⬆️ **{{count}} Updates**",
+      "updates_none": "✅ Alles ist aktuell",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · Speicher {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

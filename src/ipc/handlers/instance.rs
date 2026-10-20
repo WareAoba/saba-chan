@@ -301,10 +301,7 @@ pub async fn create_instance(
         };
         // 한 폴더에 서버 둘이면 서로의 월드·설정을 덮어쓴다
         if let Some(dir) = instance.working_dir.as_deref() {
-            let taken = supervisor.instance_store.list().iter().find(|o| {
-                o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), std::path::Path::new(dir)))
-            });
-            if let Some(other) = taken {
+            if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(dir), &instance.id) {
                 let error = json!({
                     "success": false,
                     "error": format!("Server '{}' already uses this folder", other.name),
@@ -377,16 +374,21 @@ pub async fn create_instance(
         let module_name_owned = module.to_string();
         let instance_dir = supervisor.instance_store.instance_dir(&id);
 
+        // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다.
+        // 목록에 보이기 전에 잡는다 (보인 뒤에 잡으면 그 틈의 삭제가 먼저 잡아 설치가 지워지는 폴더로 돈다)
+        let install_guard = super::backup::BusyGuard::take(&id);
+
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
                 // ── Extension hook: server.post_create (결과를 기다리지 않는다) ──
                 {
                     let ext_mgr = state.extension_manager.clone();
+                    let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
                     let ctx = serde_json::json!({
                         "instance_id": &id,
                         "instance_dir": instance_dir.to_string_lossy(),
-                        "instance": serde_json::to_value(&instance).unwrap_or_default(),
+                        "instance": instance_for_hooks(meta.as_ref(), &instance),
                         "module": &module_name_owned,
                         "migration": migration_mode,
                     });
@@ -452,12 +454,11 @@ pub async fn create_instance(
                         // install_server가 보는 인스턴스 설정 (서버 종류처럼 받을 파일을 바꾸는 값)
                         let install_settings = instance.module_settings.clone();
                         let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+                        // 설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈(좀보이드 첫 INI)도 격리 실행에서 쓸 수 있게 넘긴다
+                        let instance_data_dirs = crate::supervisor::Supervisor::instance_data_dirs(&instance, &instance_dir);
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
-                        // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다
-                        // (방금 만든 인스턴스라 다른 작업이 쥐고 있을 수 없다)
-                        let install_guard = super::backup::BusyGuard::take(&id);
 
                         tokio::spawn(async move {
                             let mut install_guard = install_guard;
@@ -490,25 +491,7 @@ pub async fn create_instance(
                                 // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
                                 // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
                                 let version = if install_config.method == "download" {
-                                    match crate::plugin::run_plugin(
-                                        &module_path, "list_versions", serde_json::json!({ "settings": &install_settings }),
-                                    ).await {
-                                        Ok(ver_result) => {
-                                            ver_result.get("latest")
-                                                .and_then(|l| l.get("release"))
-                                                .and_then(|r| r.as_str())
-                                                .map(|s| s.to_string())
-                                                .or_else(|| {
-                                                    ver_result.get("latest_release")
-                                                        .and_then(|r| r.as_str())
-                                                        .map(|s| s.to_string())
-                                                })
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("Failed to fetch versions for '{}': {}", module_name_owned, e);
-                                            None
-                                        }
-                                    }
+                                    crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await.ok()
                                 } else {
                                     None // 익스텐션 방식은 version 불필요
                                 };
@@ -532,6 +515,7 @@ pub async fn create_instance(
                                     "install_dir": &install_dir_str,
                                     "accepted_agreements": &accepted_agreements,
                                     "settings": &install_settings,
+                                    crate::sandbox::INSTANCE_DATA_DIRS: &instance_data_dirs,
                                 });
                                 if let Some(ref ver) = version {
                                     config["version"] = serde_json::json!(ver);
@@ -1053,31 +1037,20 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
     (!args.iter().any(|a| a.contains(['\r', '\n', '\0']))).then_some(args)
 }
 
-/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로)
-const KNOWN_FIELDS: &[&str] = &[
-    "port",
-    "rest_host",
-    "rest_port",
-    "rest_username",
-    "rest_password",
-    "executable_path",
-    "working_dir",
-    "protocol_mode",
-    "server_version",
-    "extension_data",
-    "extra_args",
-    "memory_limit_mb",
-    // RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
-    "rcon_port",
-    "rcon_password",
-    "enable_rcon",
-];
+/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
+/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
+fn is_known_field(key: &str) -> bool {
+    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || key == "extension_data" || IGNORED_FIELDS.contains(&key)
+}
 
-/// 받지만 쓰지 않는 이름 (응답 `ignored`)
+/// 받지만 쓰지 않는 이름 (응답 `ignored`).
+/// RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
 const IGNORED_FIELDS: &[&str] = &["rcon_port", "rcon_password", "enable_rcon"];
 
 /// 모듈이 선언하지 않아도 데몬이 `module_settings`에서 읽는 설정
-const DAEMON_SETTING_KEYS: &[&str] = &["auto_restart", "restart_on_unknown_exit", "managed_start", "log_sessions_keep"];
+fn is_daemon_setting(key: &str) -> bool {
+    saba_chan_updater_lib::constants::DAEMON_SETTINGS.iter().any(|(k, _)| *k == key)
+}
 
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
@@ -1095,6 +1068,27 @@ pub async fn update_instance_settings(
             return (StatusCode::NOT_FOUND, Json(error)).into_response();
         }
     };
+
+    // 서버 폴더를 옮기는 저장은 설치·업데이트·백업·복원이 그 폴더를 쓰지 않을 때만 (업데이트는 시작할 때
+    // 계산한 폴더로 다른 인스턴스를 잠그고 받는다). 같은 값을 다시 보내는 저장은 막지 않는다
+    let moves_folder = settings.get("working_dir").is_some_and(|v| v.as_str() != instance.working_dir.as_deref());
+    let _guard = match moves_folder.then(|| super::backup::BusyGuard::take(&id)) {
+        Some(None) => return super::backup::instance_busy(),
+        held => held.flatten(),
+    };
+    // 다른 인스턴스가 쓰는 폴더(서버 폴더나 인스턴스 폴더, 그 안이나 바깥)로는 옮기지 않는다: 만들 때처럼 한 폴더에 서버 둘을 두지 않는다.
+    // 그 인스턴스의 서버·설치·업데이트가 옮긴 서버의 파일을 덮어쓴다
+    if let Some(dir) = settings.get("working_dir").and_then(|v| v.as_str()).filter(|d| moves_folder && !d.is_empty()) {
+        if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(dir), &id) {
+            let error = json!({
+                "success": false,
+                "error": format!("Server '{}' already uses this folder", other.name),
+                "error_code": "working_dir_in_use",
+                "instance": other.name,
+            });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
+        }
+    }
 
     // ── 설정값 타입/범위 스키마 검증 ──
     if let Some(settings_obj) = settings.as_object() {
@@ -1135,12 +1129,12 @@ pub async fn update_instance_settings(
     }
 
     // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
-    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`DAEMON_SETTING_KEYS`)은 받는다
+    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`constants::DAEMON_SETTINGS`)은 받는다
     if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
         if let Some(ref settings_meta) = module.metadata.settings {
             let unknown: Vec<&String> = settings_obj
                 .keys()
-                .filter(|k| !KNOWN_FIELDS.contains(&k.as_str()) && !DAEMON_SETTING_KEYS.contains(&k.as_str()))
+                .filter(|k| !is_known_field(k) && !is_daemon_setting(k))
                 .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
                 .collect();
             if !unknown.is_empty() {
@@ -1348,7 +1342,7 @@ pub async fn update_instance_settings(
     // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
-            if !KNOWN_FIELDS.contains(&key.as_str()) {
+            if !is_known_field(key) {
                 // 설정 화면은 고치지 않은 값도 함께 보낸다: 값이 바뀐 키만 사용자가 정한 것으로 기록한다
                 if updated.module_settings.get(key) != Some(value) {
                     updated.user_settings.insert(key.clone());
@@ -1367,29 +1361,18 @@ pub async fn update_instance_settings(
         updated.module_settings.len()
     );
 
-    // 모든 설정을 server.properties에 동기화 (configure lifecycle 호출)
+    // 게임 설정 파일로 넘길 값 (configure lifecycle 호출). 데몬 필드와 모듈이 사바쨩 설정으로 선언한 값은 뺀다
+    const DAEMON_FIELDS: &[&str] = &[
+        "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "managed_start",
+        "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
+    ];
+    let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
+        .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
+        .unwrap_or_default();
     let mut props_sync = serde_json::Map::new();
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
-            // protocol_mode, executable_path 등은 server.properties에 관련 없으므로 제외
-            if key == "protocol_mode"
-                || key == "executable_path"
-                || key == "working_dir"
-                || key == "server_version"
-                || key == "rest_host"
-                || key == "rest_port"
-                || key == "rest_username"
-                || key == "rest_password"
-                || key == "java_path"
-                || key == "ram"
-                || key == "use_aikar_flags"
-                || key == "managed_start"
-                || key == "graceful_stop"
-                || key == "extension_data"
-                || key == "rcon_port"
-                || key == "rcon_password"
-                || key == "enable_rcon"
-            {
+            if DAEMON_FIELDS.contains(&key.as_str()) || saba_fields.contains(key) {
                 continue;
             }
             props_sync.insert(key.clone(), value.clone());
@@ -1412,17 +1395,19 @@ pub async fn update_instance_settings(
             open_user_runtime(m.entry_path(), &updated_clone);
         }
     }
+    let hook_instance = instance_for_hooks(module.as_ref().map(|m| &m.metadata), &updated_clone);
+    let hook_settings = settings_for_hooks(module.as_ref().map(|m| &m.metadata), &settings);
     let module_extensions = module
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));
     drop(supervisor);
 
-    // server.properties 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
+    // 게임 설정 파일 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
     let mut sync_error: Option<String> = None;
     if !props_sync.is_empty() {
         // 값에는 비밀번호가 들 수 있어 키만 남긴다
         tracing::info!(
-            "Syncing settings to server.properties for instance {}: {:?}",
+            "Syncing settings to the game config for instance {}: {:?}",
             id,
             props_sync.keys().collect::<Vec<_>>()
         );
@@ -1430,14 +1415,15 @@ pub async fn update_instance_settings(
         match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &id, "write", Some(props_value)).await {
             // 모듈에 configure가 없으면 쓸 게임 설정 파일도 없다
             Ok(r) if r.get("success").and_then(|v| v.as_bool()) == Some(false)
+                && r.get("error_code").and_then(|v| v.as_str()) != Some("not_supported")
                 && !r.get("message").and_then(|v| v.as_str()).is_some_and(|m| m.starts_with("Unknown function")) => {
                 let message = r.get("message").or(r.get("error")).and_then(|v| v.as_str()).unwrap_or("configure failed");
                 tracing::warn!("Module could not write game settings for instance {}: {}", id, message);
                 sync_error = Some(message.to_string());
             }
-            Ok(_) => tracing::info!("server.properties synced successfully for instance {}", id),
+            Ok(_) => tracing::info!("Game config synced for instance {}", id),
             Err(e) => {
-                tracing::warn!("Failed to sync server.properties for instance {}: {}", id, e);
+                tracing::warn!("Failed to sync the game config for instance {}: {}", id, e);
                 sync_error = Some(e.to_string());
             }
         }
@@ -1450,10 +1436,10 @@ pub async fn update_instance_settings(
         let ctx = serde_json::json!({
             "instance_id": &id,
             "instance_dir": instance_dir.to_string_lossy(),
-            "instance": serde_json::to_value(&updated_clone).unwrap_or_default(),
+            "instance": hook_instance,
             "module_extensions": module_extensions,
             "extension_data": &updated_clone.extension_data,
-            "settings": &settings,
+            "settings": hook_settings,
         });
         let _results = crate::extension::run_hook(&ext_mgr, "server.settings_changed", ctx).await;
     }
@@ -1871,10 +1857,46 @@ fn install_dir_of(
     instance_dir.join(subdir)
 }
 
+/// 익스텐션 hook에 넘기는 인스턴스: REST 비밀번호, 모듈이 password로 선언했거나 이름이 비밀스러운 설정 값은 가린다 (D-E2)
+fn instance_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, instance: &crate::instance::ServerInstance) -> Value {
+    settings_for_hooks(module, &serde_json::to_value(instance).unwrap_or_default())
+}
+
+/// hook에 넘기는 설정 값에서 같은 기준으로 비밀을 가린다. 키 이름으로만 가린다:
+/// 인스턴스를 넘기면 비밀값과 같은 글자가 이름·경로에서도 지워진다
+fn settings_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, settings: &Value) -> Value {
+    crate::audit::redact(module, None, None, Some(settings)).1.unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::memory_limit_from;
     use serde_json::json;
+
+    /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
+    #[test]
+    fn hooks_get_the_instance_without_its_secrets() {
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.rest_password = Some("hunter2-rest".into());
+        inst.module_settings.insert("server_password".into(), json!("hunter2-join"));
+        inst.module_settings.insert("max_players".into(), json!(16));
+        let value = super::instance_for_hooks(None, &inst);
+        let text = value.to_string();
+        assert!(!text.contains("hunter2"), "{text}");
+        assert_eq!(value["module_settings"]["max_players"], 16);
+        assert_eq!(value["name"], "srv");
+        let settings = super::settings_for_hooks(None, &json!({ "rest_password": "hunter2-new", "port": 7777 }));
+        assert!(!settings.to_string().contains("hunter2"), "{settings}");
+        assert_eq!(settings["port"], 7777);
+        // 비밀값과 같은 글자의 이름·경로는 비밀이 아니다: 값 대신 키 이름으로만 가린다
+        let mut same = crate::instance::ServerInstance::new("palworld", "game");
+        same.working_dir = Some("C:/srv/palworld/data".into());
+        same.rest_password = Some("palworld".into());
+        let value = super::instance_for_hooks(None, &same);
+        assert_eq!(value["name"], "palworld");
+        assert_eq!(value["working_dir"], "C:/srv/palworld/data");
+        assert_ne!(value["rest_password"], "palworld");
+    }
 
     #[tokio::test]
     async fn create_applies_the_chosen_preset_under_explicit_settings() {
@@ -2044,6 +2066,49 @@ mod tests {
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
     }
 
+    /// 게임 설정 파일로 넘기는 값(configure)에서 사바쨩 설정(`group = "saba-chan"`)과 데몬 필드는 뺀다.
+    /// 어느 키가 사바쨩 설정인지는 모듈 선언이 정한다: 데몬은 게임별 키 이름을 모른다 (MK6)
+    #[tokio::test]
+    async fn only_game_settings_are_passed_to_configure() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n\n\
+             [[settings.fields]]\nname = \"heap\"\ntype = \"text\"\ngroup = \"saba-chan\"\n\n\
+             [[settings.fields]]\nname = \"ram\"\ntype = \"text\"\ngroup = \"advanced\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\n\
+             print(json.dumps({'success': False, 'message': json.dumps(sorted(config.get('settings', {})))}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let body = json!({ "motd": "hi", "heap": "4G", "ram": "8", "protocol_mode": "rest" });
+        let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await;
+        assert!(saved.status.is_success(), "{:?}", saved.body);
+        // 받은 키는 실패 메시지로 돌려받는다: Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다
+        let configured: Vec<String> = serde_json::from_str(saved.body["sync_error"].as_str().unwrap()).unwrap();
+        assert_eq!(configured, vec!["motd", "ram"], "a saba-chan setting and daemon fields stay out; a game setting named like another game's launcher setting goes in");
+    }
+
     /// 처음 설치(30분까지 걸린다)하는 동안 업데이트·삭제·복원이 같은 폴더에 끼어들지 못한다
     /// 가져온(마이그레이션) 서버는 working_dir이 실제 서버 폴더다. 업데이트 확인·적용이 빈 `instance_dir/server`를
     /// 보면 늘 "업데이트 있음"이 나오고, 적용하면 그 빈 폴더에 서버를 새로 받은 뒤 옛 서버를 다시 켠다
@@ -2056,7 +2121,7 @@ mod tests {
         assert_eq!(super::install_dir_of(&instance, dir, None), std::path::PathBuf::from("D:/Steam/steamapps/common/PalServer"));
     }
 
-    // 업데이트는 서버가 도는 working_dir에 쓴다: 같은 폴더를 쓰는 다른 인스턴스가 작업 중이면 덮어쓰지 않는다
+    // 업데이트는 서버가 도는 working_dir에 쓴다: 같은 폴더(그 안이나 바깥)를 쓰는 다른 인스턴스가 작업 중이면 덮어쓰지 않는다
     #[tokio::test]
     async fn an_update_waits_for_other_instances_sharing_the_server_folder() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2072,10 +2137,12 @@ mod tests {
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let shared = tmp.path().join("PalServer").to_string_lossy().to_string();
+        // 예전에 만든 인스턴스는 다른 서버 폴더 안에 있을 수 있다: 같은 폴더처럼 잠근다
+        let inside = tmp.path().join("PalServer").join("Pal").to_string_lossy().to_string();
         let mut ids = Vec::new();
-        for name in ["a", "b"] {
+        for (name, dir) in [("a", &shared), ("b", &inside)] {
             let mut inst = crate::instance::ServerInstance::new(name, "game");
-            inst.working_dir = Some(shared.clone());
+            inst.working_dir = Some(dir.clone());
             inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
             ids.push(inst.id.clone());
             sup.instance_store.add(inst).unwrap();
@@ -2135,6 +2202,113 @@ mod tests {
         }
         let progress = progress.expect("provisioning finished");
         assert_eq!(progress.error, None, "list_versions did not get the instance settings");
+    }
+
+    #[tokio::test]
+    async fn the_first_install_may_write_the_module_data_folder() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"cache_dir\"\ntype = \"text\"\ndefault = \"{instance_dir}/data\"\n\n[install]\nmethod = \"manual\"\n",
+        )
+        .unwrap();
+        // 설치 중에 데이터 폴더에 첫 설정 파일을 쓰는 모듈 (좀보이드 첫 INI). 격리 실행은 그 폴더를 넘겨받아야 쓸 수 있다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nnorm = lambda p: os.path.normcase(os.path.normpath(p))\n\
+             ok = norm(config['settings']['cache_dir']) in [norm(d) for d in config.get('instance_data_dirs', [])]\n\
+             print(json.dumps({'success': ok, 'message': 'no data folder'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
+        let mut progress = None;
+        for _ in 0..1200 {
+            progress = state.provision_tracker.get("a").filter(|p| p.done);
+            if progress.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let progress = progress.expect("provisioning finished");
+        assert_eq!(progress.error, None, "install_server did not get the instance data folder");
+    }
+
+    /// 설치·업데이트·백업·복원이 그 폴더를 쓰는 동안 서버 폴더(`working_dir`)를 옮기지 않는다:
+    /// 업데이트는 시작할 때 계산한 폴더를 기준으로 다른 인스턴스를 잠그고 받는다
+    #[tokio::test]
+    async fn the_server_folder_does_not_move_while_a_task_holds_the_instance() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(modules.join("game")).unwrap();
+        std::fs::write(
+            modules.join("game").join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(modules.join("game").join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        let here = tmp.path().join("here").to_string_lossy().into_owned();
+        inst.working_dir = Some(here.clone());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let elsewhere = tmp.path().join("elsewhere").to_string_lossy().into_owned();
+        let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
+        assert_eq!(moved.status, 409, "{}", moved.body);
+        assert_eq!(moved.body["error_code"], "instance_busy");
+        // 같은 값을 다시 보내는 저장(GUI는 설정 전체를 보낸다)은 막지 않는다
+        let same = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": here }))).await).await;
+        assert_eq!(same.status, 200, "{}", same.body);
+        drop(busy);
+        let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
+        assert_eq!(moved.status, 200, "{}", moved.body);
+
+        // 다른 인스턴스가 쓰는 폴더로는 옮기지 않는다: 만들 때처럼 한 폴더에 서버 둘을 두지 않는다
+        // (켜져 있거나 작업 중이면 그 서버가 옮긴 서버의 파일을 덮어쓴다)
+        let mut other = crate::instance::ServerInstance::new("other", "game");
+        let theirs = tmp.path().join("theirs").to_string_lossy().into_owned();
+        other.working_dir = Some(theirs.clone());
+        let other_id = other.id.clone();
+        let their_instance_dir = {
+            let mut sup = state.supervisor.write().await;
+            sup.instance_store.add(other).unwrap();
+            sup.instance_store.instance_dir(&other_id).to_string_lossy().into_owned()
+        };
+        // 그 폴더의 안이나 바깥도 같다: 한쪽의 복원·삭제가 다른 쪽 서버 파일까지 치운다
+        let inside = tmp.path().join("theirs").join("sub").to_string_lossy().into_owned();
+        let outside = tmp.path().to_string_lossy().into_owned();
+        for dir in [&theirs, &their_instance_dir, &inside, &outside] {
+            let taken = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": dir }))).await).await;
+            assert_eq!(taken.status, 409, "{dir}: {}", taken.body);
+            assert_eq!(taken.body["error_code"], "working_dir_in_use");
+            assert_eq!(taken.body["instance"], "other");
+            let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "new", "module_name": "game", "working_dir": dir }))).await).await;
+            assert_eq!(made.status, 409, "{dir}: {}", made.body);
+            assert_eq!(made.body["error_code"], "working_dir_in_use");
+        }
+        // 이름만 비슷한 옆 폴더는 다른 폴더다
+        let beside = tmp.path().join("theirs2").to_string_lossy().into_owned();
+        let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": beside }))).await).await;
+        assert_eq!(moved.status, 200, "{}", moved.body);
     }
 
     #[tokio::test]
@@ -2203,7 +2377,8 @@ mod tests {
         assert_eq!(renamed.status, 409, "{}", renamed.body);
         assert_eq!(renamed.body["error_code"], "instance_busy");
 
-        for _ in 0..200 {
+        // 처음 부르는 선택 함수 앞에는 함수 목록을 묻는 실행이 하나 더 있다: 느린 Windows CI에서도 넉넉히 기다린다
+        for _ in 0..600 {
             if state.provision_tracker.get("a").is_some_and(|p| p.done) {
                 break;
             }
@@ -2321,6 +2496,17 @@ mod tests {
         assert!(patch(json!({ "executable_path": null })).await.status.is_success());
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((inst.executable_path, inst.working_dir), (None, None));
+
+        // 비울 수 없는 칸은 null이어도 지금 값을 둔다 (CLI가 이 표로 빈 값을 거절한다)
+        let set = json!({ "port": 25000, "working_dir": "/srv/game", "protocol_mode": "rest", "server_version": "1.2" });
+        assert!(patch(set.clone()).await.status.is_success());
+        for key in saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS {
+            assert!(patch(json!({ *key: null })).await.status.is_success());
+        }
+        let after = serde_json::to_value(state.supervisor.read().await.instance_store.get(&id).cloned().unwrap()).unwrap();
+        for key in saba_chan_updater_lib::constants::UNCLEARABLE_INSTANCE_FIELDS {
+            assert_eq!(after[*key], set[*key], "{key}");
+        }
     }
 
     #[test]

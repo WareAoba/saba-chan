@@ -15,13 +15,18 @@ import * as P from './nodePermissions';
 import { permissionsAvailable } from './PermissionsTab';
 import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
-import { persistNodeToken, usePairing } from './usePairing';
+import { claimSavedToken, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 const AUTOSAVE_MS = 600;
 
 /** 짝짓기 전에 릴레이 주소(설정 화면에서 바꿨을 수 있다)를 config에 저장한다. 실패하면 false */
 const saveRelayUrl = () => useDiscordStore.getState().saveConfig();
+// 페어링 전에 주소를 저장한다. 거절되면 그 이유(error_code)를 페어링 카드에 넘긴다
+const saveRelayUrlForPairing = async () => {
+    if (await saveRelayUrl()) return true;
+    throw Object.assign(new Error('relay url not saved'), { code: useDiscordStore.getState()._saveErrorCode });
+};
 
 /** 연결 상태 머신: (checking →) no_host → connecting → connected | error */
 export function cloudStateOf({ hostId, connected, connecting, error, loaded }) {
@@ -135,6 +140,7 @@ export function DiscordPage({
     // 끊긴 동안은 릴레이 실패가 이유다 (연결됐을 때 남은 노드 목록 오류는 지난 일)
     const connectionError = relayConnected ? cloudError : relayError;
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
+    const agentRelayUrlInvalid = useDiscordStore((s) => s.discordAgentRelayUrlInvalid);
     const botConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
     const [membersLoading, setMembersLoading] = useState(null);
     const [membersFailed, setMembersFailed] = useState({});
@@ -150,6 +156,12 @@ export function DiscordPage({
         const node = cloudNodes.find((n) => P.isInstanceAllowed(nodeSettings || {}, n.guildId, view.server));
         setView(node ? { kind: 'node', id: node.guildId, tab: 'words' } : { kind: 'connection' });
     }, [view, cloudNodes, nodeSettings]);
+
+    // 화면을 열 때 데몬 설정을 다시 읽는다: GUI가 켜진 동안 CLI로 짝짓거나 가져온 설정을 보인다
+    // (기동 때 읽기가 끝나기 전이면 그쪽이 읽는다. 화면에서 고친 값은 loadConfig가 덮지 않는다)
+    useEffect(() => {
+        if (useDiscordStore.getState()._botConfigLoaded) useDiscordStore.getState().loadConfig({ attempts: 1 });
+    }, []);
 
     useEffect(() => {
         if (initialView) {
@@ -202,6 +214,14 @@ export function DiscordPage({
     useEffect(() => {
         if (discordCloudHostId && relayConnected) loadNodes();
     }, [discordCloudHostId, relayConnected, loadNodes]);
+    // 연결 요청을 수락하는 등 다른 곳에서 길드가 늘면 다시 읽는다
+    useEffect(
+        () =>
+            useDiscordStore.subscribe((s, prev) => {
+                if (s.cloudNodesStale !== prev.cloudNodesStale) loadNodes();
+            }),
+        [loadNodes],
+    );
 
     const loadMembers = useCallback(
         async (guildId) => {
@@ -250,32 +270,39 @@ export function DiscordPage({
     useEffect(() => () => clearTimeout(saveTimer.current), []);
 
     // ── 길드가 쓸 서버 제한: 데몬 길드 API로 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
+    // 하나씩 저장하고, 다음 목록은 앞 저장이 반영된 스토어 값으로 만든다 (빠르게 두 번 바꿔도 앞 변경이 남는다)
+    const allowedQueue = useRef(Promise.resolve());
     const updateAllowed = useCallback(
-        async (guildId, fn) => {
-            const next = P.nodeConfig(fn(nodeSettings || {}), guildId).allowedInstances;
-            setSaveState('saving');
-            try {
-                const res = await window.api.guildAllowedInstancesSave(guildId, Array.isArray(next) ? next : null);
-                if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
-                useDiscordStore
-                    .getState()
-                    .applySavedNodeValue(guildId, 'allowedInstances', res.allowedInstances ?? null);
-                setSaveState('saved');
-            } catch (e) {
-                setSaveState(null);
-                safeShowToast(t('discord.allowed_save_failed', { error: e.message }), 'error', 5000);
-            }
+        (guildId, fn) => {
+            const run = allowedQueue.current.then(async () => {
+                setSaveState('saving');
+                try {
+                    const current = useDiscordStore.getState().nodeSettings;
+                    const next = P.nodeConfig(fn(current || {}), guildId).allowedInstances;
+                    const res = await window.api.guildAllowedInstancesSave(guildId, Array.isArray(next) ? next : null);
+                    if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
+                    useDiscordStore
+                        .getState()
+                        .applySavedNodeValue(guildId, 'allowedInstances', res.allowedInstances ?? null);
+                    setSaveState('saved');
+                } catch (e) {
+                    setSaveState(null);
+                    safeShowToast(t('discord.allowed_save_failed', { error: e.message }), 'error', 5000);
+                }
+            });
+            allowedQueue.current = run;
+            return run;
         },
-        [nodeSettings, t],
+        [t],
     );
 
     // ── 페어링 ──
     const pairing = usePairing({
         relayUrl,
-        beforeStart: saveRelayUrl,
+        beforeStart: saveRelayUrlForPairing,
         onClaimed: async (s) => {
             // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
-            if (s.nodeToken && window.api?.saveNodeToken && !(await persistNodeToken(s.nodeToken))) return false;
+            if (!(await claimSavedToken(s))) return false;
             if (s.hostId) setDiscordCloudHostId(s.hostId);
             await saveCurrentSettings();
             loadNodes();
@@ -348,7 +375,7 @@ export function DiscordPage({
         P.parseAliasList(discordModuleAliases?.[sampleModule])[0] ||
         moduleAliasesPerModule?.[sampleModule]?.module_aliases?.[0] ||
         sampleModule ||
-        'minecraft';
+        t('discord.usage_module_word');
 
     // 노드가 사라졌으면 연결 화면으로
     useEffect(() => {
@@ -507,6 +534,7 @@ export function DiscordPage({
                                 nodeCount={cloudNodes.length}
                                 botStatus={discordBotStatus}
                                 agentReplaced={agentReplaced}
+                                agentRelayUrlInvalid={agentRelayUrlInvalid}
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}

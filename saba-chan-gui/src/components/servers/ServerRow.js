@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useInstanceMaintenance, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
 import { useServerStore } from '../../stores/useServerStore';
-import { STATUS_TONE, initials, playersText, primaryAction, viewStatus } from '../../utils/serverView';
+import { STATUS_TONE, gameNameOf, initials, playersText, primaryAction, viewStatus } from '../../utils/serverView';
 import { DataBadges } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
@@ -31,9 +31,7 @@ export function ServerRow({
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);
     const action = primaryAction(status);
-    const gameName = t(`mod_${server.module}:module.display_name`, {
-        defaultValue: moduleData?.game_name || server.module,
-    });
+    const gameName = gameNameOf(t, server.module, moduleData);
     const statusLabel = t(`shell.status_${status}`);
     const players = playersText(server);
 
@@ -87,6 +85,15 @@ export function ServerRow({
                     )}
                 </div>
             </div>
+            {/* 켜져 있지만 상태 질문에 계속 답하지 않는다 (데몬 unresponsive: 모듈의 마지막 실패 이유) */}
+            {server.unresponsive && status === 'running' && (
+                <span
+                    className="server-row-flag tone-warn"
+                    title={t('server_status.unresponsive', { reason: server.unresponsive })}
+                >
+                    <Icon name="alertTriangle" size={14} />
+                </span>
+            )}
             {updateInfo && status === 'stopped' && (
                 <span className="server-row-flag" title={t('shell.update_available')}>
                     <Icon name="arrowUp" size={14} />

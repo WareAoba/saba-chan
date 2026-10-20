@@ -3,6 +3,7 @@
 //! 데몬은 줄마다 순번(`id`)을 주고 `?since=<id>`(그 번호 포함)로 이어 받게 한다.
 //! 서버가 다시 뜨면 순번이 0부터 다시 시작하고, 꺼져 있을 때는 디스크 로그(`source: "disk"`)를 주며
 //! 이때는 `since`가 무시된다. 그래서 실행 여부·출처가 바뀌면 처음부터 다시 읽는다.
+//! 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대(`epoch`)가 바뀌고 순번도 새로 매겨진다.
 //!
 //! 입력 모드에서는 친 줄을 게임 명령으로 보낸다 (정의된 명령이면 인자를 묶고, 아니면 콘솔 한 줄).
 //! `:`로 시작하는 줄은 CLI가 처리한다 (`:help`).
@@ -19,6 +20,8 @@ use serde_json::Value;
 use std::time::Duration;
 
 const POLL: Duration = Duration::from_millis(500);
+/// 다시 붙은 버퍼는 디스크 기록을 다시 담는다: 이미 본 줄을 모두 다시 찍지 않고 최근 줄만 보인다
+const REATTACH_LINES: usize = 20;
 
 pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
@@ -44,7 +47,7 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         .cloned()
         .unwrap_or_default();
     for l in &lines {
-        println!("{}", format_line(l));
+        say!("{}", format_line(l));
     }
     let mut cursor = Cursor::from(&first);
     // `--lines 0`이면 보인 줄이 없어도 지금까지의 줄은 건너뛴다: 마지막 순번만 알아 둔다
@@ -56,7 +59,7 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     let interactive = !a.follow && !a.print && ctx.ask.enabled;
     if a.print || (!a.follow && !interactive) {
         if lines.is_empty() {
-            println!("{}", crate::output::dim(&t!("console.empty")));
+            say!("{}", crate::output::dim(&t!("console.empty")));
         }
         return Ok(());
     }
@@ -67,30 +70,41 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         attach(ctx, &sv, cursor).await
     } else {
         ctx.out.note(&t!("console.following", name = sv.name));
-        follow_printing(ctx, &sv, cursor, |line| println!("{}", line)).await
+        follow_printing(ctx, &sv, cursor, |line| say!("{}", line)).await
     }
 }
 
 /// 다음에 어디서부터 읽을지
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Cursor {
     next: Option<u64>,
+    /// 받은 가장 새 줄의 내용 (디스크 기록으로 바뀔 때 어디까지 찍었는지 찾는다)
+    last: Option<String>,
     running: bool,
     disk: bool,
+    /// 콘솔 버퍼 세대. 모르는 응답(옛 데몬, 디스크 기록)이면 None
+    epoch: Option<u64>,
 }
 
 impl Cursor {
     fn from(resp: &Value) -> Self {
-        let last = resp
+        let newest = resp
             .get("lines")
             .and_then(Value::as_array)
-            .and_then(|l| l.iter().filter_map(|x| x.get("id")?.as_u64()).max());
+            .and_then(|l| l.iter().filter(|x| x.get("id").and_then(Value::as_u64).is_some()).max_by_key(|x| x.get("id").and_then(Value::as_u64)));
         Self {
-            next: last.map(|id| id + 1),
+            next: newest.and_then(|x| x.get("id")?.as_u64()).map(|id| id + 1),
+            last: newest.map(|x| s(x, "content").to_string()),
             running: resp.get("running").and_then(Value::as_bool).unwrap_or(false),
             disk: s(resp, "source") == "disk",
+            epoch: resp.get("epoch").and_then(Value::as_u64),
         }
     }
+}
+
+/// 실행 중인 채로 버퍼 세대가 바뀌었다: 데몬이 다시 붙었다 (같음 비교만, 크기는 보지 않는다)
+fn reattached(cur: &Cursor, fresh: &Cursor) -> bool {
+    cur.running && !cur.disk && fresh.running && matches!((cur.epoch, fresh.epoch), (Some(a), Some(b)) if a != b)
 }
 
 /// 새 줄을 받아 `emit`으로 넘긴다. Ctrl+C로 끝.
@@ -122,6 +136,21 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
         return cur;
     };
     let fresh = Cursor::from(&resp);
+    if reattached(&cur, &fresh) {
+        // 옛 순번으로 받은 줄은 버리고, 새 버퍼의 최근 줄부터 이어 읽는다
+        if let Ok(recent) = ctx.api.console(&sv.id, None, Some(REATTACH_LINES)).await {
+            emit(style(t!("console.reattached")).cyan().dim().to_string());
+            for l in recent.get("lines").and_then(Value::as_array).into_iter().flatten() {
+                emit(format_line(l));
+            }
+            let next = Cursor::from(&recent);
+            return Cursor {
+                next: next.next.or(Some(0)),
+                ..next
+            };
+        }
+        return cur;
+    }
     let restarted = fresh.running && (!cur.running || cur.disk);
     if restarted {
         // 새 프로세스: 순번이 새로 시작한다 → 최근 줄부터 다시
@@ -137,16 +166,30 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
     if cur.running && !fresh.running {
         emit(style(t!("console.stopped")).cyan().dim().to_string());
     }
-    if since.is_some() {
-        for l in resp.get("lines").and_then(Value::as_array).into_iter().flatten() {
-            emit(format_line(l));
-        }
+    let lines = resp.get("lines").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    for l in new_lines(since, &cur, &fresh, lines) {
+        emit(format_line(l));
     }
     Cursor {
         next: fresh.next.or(cur.next),
+        last: fresh.last.or(cur.last),
         running: fresh.running,
         disk: fresh.disk,
+        epoch: fresh.epoch.or(cur.epoch),
     }
+}
+
+/// 받은 줄 중 아직 찍지 않은 것. 디스크 기록은 since를 무시하고 최근 줄을 주므로(멈춘 직후), 마지막으로 본 줄
+/// 뒤의 것(멈추기 직전 출력)만 찍는다. 그 줄을 찾지 못하면 어디까지 찍었는지 모르니 찍지 않는다
+fn new_lines<'a>(since: Option<u64>, cur: &Cursor, fresh: &Cursor, lines: &'a [Value]) -> &'a [Value] {
+    if since.is_none() || cur.disk {
+        return &[];
+    }
+    if !fresh.disk {
+        return lines;
+    }
+    let seen = cur.last.as_deref().and_then(|last| lines.iter().rposition(|l| s(l, "content") == last));
+    seen.map_or(&[], |i| &lines[i + 1..])
 }
 
 pub fn format_line(l: &Value) -> String {
@@ -230,33 +273,6 @@ fn token_style(token: &str, t: &str) -> String {
     .to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn spans_convert_utf16_offsets_to_byte_ranges() {
-        let text = "안녕 😀 <철수>";
-        let spans = json!([[7, 9, "player"], [100, 101, "error"], [8, 9, "warn"]]);
-        let got = span_ranges(text, Some(&spans));
-        assert_eq!(got.len(), 1, "out-of-range and overlapping spans are dropped");
-        let (st, en, tok) = got[0];
-        assert_eq!((&text[st..en], tok), ("철수", "player"));
-    }
-
-    #[test]
-    fn format_line_keeps_text_and_colors_spans() {
-        console::set_colors_enabled(true);
-        let line = json!({"content": "Steve joined", "source": "stdout", "level": "info", "spans": [[0, 5, "player"]]});
-        let out = format_line(&line);
-        assert!(out.starts_with("\u{1b}["), "the player token is styled: {:?}", out);
-        assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
-        let plain = json!({"content": "x", "source": "system", "level": "info"});
-        assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
-    }
-}
-
 /// 보면서 입력하기. 새 줄은 입력 줄을 건드리지 않고 위에 찍힌다.
 async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
     let ctx = &Ctx {
@@ -292,7 +308,7 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
         }
     });
 
-    eprintln!("{}", style(t!("console.attach_help", name = sv.name)).dim());
+    tell!("{}", style(t!("console.attach_help", name = sv.name)).dim());
     let prompt = format!("{}> ", sv.name);
     loop {
         let line = tokio::task::block_in_place(|| rl.readline(&prompt));
@@ -312,7 +328,7 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
         if let Some(meta) = text.strip_prefix(':') {
             match meta.trim() {
                 "q" | "quit" | "exit" => break,
-                "help" | "h" | "?" => eprintln!("{}", t!("console.meta_help")),
+                "help" | "h" | "?" => tell!("{}", t!("console.meta_help")),
                 "commands" | "c" => {
                     let _ = crate::cmd::server::print_commands(ctx, &sv.module, &cat);
                 }
@@ -372,7 +388,7 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
             "warn" => style(format!("{:5}", lvl.to_uppercase())).yellow().to_string(),
             _ => style(format!("{:5}", lvl.to_uppercase())).dim().to_string(),
         };
-        println!("{} {}", lvl_s, s(l, "message"));
+        say!("{} {}", lvl_s, s(l, "message"));
     };
     let mut next = None;
     for l in first.get("lines").and_then(Value::as_array).into_iter().flatten() {
@@ -382,6 +398,7 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
     if !follow {
         return Ok(());
     }
+    let mut epoch = log_epoch(&first);
     loop {
         tokio::select! {
             _ = tokio::time::sleep(POLL) => {}
@@ -390,9 +407,100 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
         let Ok(r) = ctx.api.daemon_console(Some(next.unwrap_or(0)), Some(500)).await else {
             continue;
         };
+        // 데몬이 다시 켜지면 번호가 1부터 다시 매겨진다: 옛 번호로 받은 답은 버리고 처음부터 다시 읽는다
+        if restarted(epoch, log_epoch(&r)) {
+            epoch = log_epoch(&r);
+            next = None;
+            continue;
+        }
         for l in r.get("lines").and_then(Value::as_array).into_iter().flatten() {
             print(l);
             next = l.get("id").and_then(Value::as_u64).map(|id| id + 1);
         }
+    }
+}
+
+/// 데몬 로그 버퍼의 세대 (옛 데몬은 주지 않는다)
+fn log_epoch(r: &Value) -> Option<u64> {
+    r.get("epoch").and_then(Value::as_u64)
+}
+
+/// 이어 읽는 사이 데몬이 다시 켜졌는가. 세대가 바뀌거나 생기거나 없어지면 다른 데몬이다(옛 데몬은 세대를 주지 않는다)
+fn restarted(seen: Option<u64>, now: Option<u64>) -> bool {
+    seen != now
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 서버가 멈추면 데몬은 디스크 로그로 바꿔 since를 무시하고 최근 줄을 준다: 이미 찍은 줄은 다시 찍지 않고,
+    /// 마지막으로 본 줄 뒤에 남은 줄(멈추기 직전 출력)만 찍는다 (L53)
+    #[test]
+    fn a_stop_prints_only_the_disk_lines_after_the_last_one_seen() {
+        let memory = Cursor::from(&json!({ "lines": [{ "id": 900, "content": "a" }, { "id": 901, "content": "b" }], "running": true }));
+        let disk_resp = json!({ "lines": [{ "id": 0, "content": "a" }, { "id": 1, "content": "b" }, { "id": 2, "content": "Stopping" }], "running": false, "source": "disk" });
+        let disk = Cursor::from(&disk_resp);
+        let lines = disk_resp["lines"].as_array().unwrap();
+        let contents = |v: &[Value]| v.iter().map(|l| s(l, "content").to_string()).collect::<Vec<_>>();
+        assert_eq!(contents(new_lines(Some(902), &memory, &disk, lines)), vec!["Stopping"]);
+        // 마지막으로 본 줄이 디스크 기록에 없으면 어디까지 찍었는지 모른다: 다시 찍지 않는다
+        let unknown = Cursor::from(&json!({ "lines": [{ "id": 901, "content": "zzz" }], "running": true }));
+        assert!(new_lines(Some(902), &unknown, &disk, lines).is_empty());
+        // 메모리 버퍼에서 받은 줄은 그대로, 디스크에 머무는 동안은 찍지 않는다
+        let mem_resp = json!({ "lines": [{ "id": 902, "content": "c" }], "running": true });
+        let mem_lines = mem_resp["lines"].as_array().unwrap();
+        assert_eq!(contents(new_lines(Some(902), &memory, &Cursor::from(&mem_resp), mem_lines)), vec!["c"]);
+        assert!(new_lines(None, &disk, &disk, lines).is_empty());
+    }
+
+    /// `daemon logs -f`는 데몬이 다시 켜져 번호가 1부터 다시 시작하면 처음부터 다시 읽는다 (L55)
+    #[test]
+    fn a_new_daemon_log_epoch_means_the_daemon_restarted() {
+        let seen = log_epoch(&json!({ "lines": [{ "id": 900 }], "epoch": 3 }));
+        assert!(restarted(seen, log_epoch(&json!({ "lines": [], "epoch": 4 }))));
+        assert!(!restarted(seen, log_epoch(&json!({ "lines": [{ "id": 901 }], "epoch": 3 }))));
+        // 세대가 생기거나 없어지면 다른 데몬이다 (옛 데몬에서 붙어 있다가 업데이트로 새 데몬이 뜬 경우)
+        assert!(restarted(None, Some(4)));
+        assert!(restarted(seen, log_epoch(&json!({ "lines": [] }))));
+        // 옛 데몬끼리는 세대로 알 수 없다
+        assert!(!restarted(None, None));
+    }
+
+    /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
+    /// 실행 여부만 보면 이어 읽던 순번을 그대로 써서 콘솔이 멈춘다
+    #[test]
+    fn a_new_console_epoch_while_running_means_reattached() {
+        let before = Cursor::from(&json!({"lines": [{"id": 900}], "running": true, "epoch": 1}));
+        let after = Cursor::from(&json!({"lines": [], "running": true, "epoch": 2}));
+        assert!(reattached(&before, &after));
+        let same = Cursor::from(&json!({"lines": [{"id": 901}], "running": true, "epoch": 1}));
+        assert!(!reattached(&before, &same));
+        // 세대를 모르는 응답(옛 데몬, 디스크 기록)은 다시 붙은 것으로 보지 않는다
+        let old = Cursor::from(&json!({"lines": [], "running": true}));
+        assert!(!reattached(&before, &old));
+        assert!(!reattached(&old, &after));
+    }
+
+    #[test]
+    fn spans_convert_utf16_offsets_to_byte_ranges() {
+        let text = "안녕 😀 <철수>";
+        let spans = json!([[7, 9, "player"], [100, 101, "error"], [8, 9, "warn"]]);
+        let got = span_ranges(text, Some(&spans));
+        assert_eq!(got.len(), 1, "out-of-range and overlapping spans are dropped");
+        let (st, en, tok) = got[0];
+        assert_eq!((&text[st..en], tok), ("철수", "player"));
+    }
+
+    #[test]
+    fn format_line_keeps_text_and_colors_spans() {
+        console::set_colors_enabled(true);
+        let line = json!({"content": "Steve joined", "source": "stdout", "level": "info", "spans": [[0, 5, "player"]]});
+        let out = format_line(&line);
+        assert!(out.starts_with("\u{1b}["), "the player token is styled: {:?}", out);
+        assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
+        let plain = json!({"content": "x", "source": "system", "level": "info"});
+        assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
     }
 }

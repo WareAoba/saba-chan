@@ -29,6 +29,14 @@
   },
   "bot": {
     "ask_token": "Token do nó",
+    "relay_check": "Verificação do relay",
+    "relay_ok": "respondendo",
+    "relay_failed": "sem resposta: {{error}}",
+    "expired": "expirado",
+    "expires_in": "Tempo restante",
+    "members_partial": "Não foi possível obter a lista completa do Discord; mostrando só membros com nível salvo.",
+    "requested_by": "Pedido por",
+    "username": "Usuário",
     "config_saved": "Configurações do bot salvas.",
     "confirm_unpair": "Desconectar este PC do bot do Discord e esquecer o pareamento?",
     "connection": "Conexão",
@@ -40,6 +48,7 @@
     "offer_start": "Conectar ao bot agora?",
     "pair_enter": "No Discord, execute `/saba connect` e digite este código:",
     "pair_expired": "O código de pareamento expirou. Execute bot pair novamente.",
+    "pair_token_not_saved": "O Discord aceitou o código, mas não foi possível salvar a conexão neste PC. Execute bot pair novamente.",
     "pair_no_code": "O relay não retornou um código de pareamento.",
     "pair_polling": "Aguardando o Discord...",
     "pair_waiting": "Pressione Ctrl+C para cancelar.",
@@ -61,7 +70,9 @@
     "allow_saved": "{{guild}} agora vê apenas: {{servers}}",
     "link_accepted": "{{guild}} foi conectado a este PC.",
     "link_declined": "Pedido de conexão recusado.",
-    "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI."
+    "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI.",
+    "no_paired_servers": "Nenhum servidor do Discord está pareado com este PC ainda. Execute: saba-chan-cli bot pair",
+    "pick_server": "Vários servidores do Discord estão pareados. Informe o id do que deseja alterar: {{servers}}"
   },
   "col": {
     "players": "Jogadores",
@@ -90,7 +101,8 @@
     "rest_port": "Porta REST",
     "author": "Autor",
     "mode": "Modo",
-    "trust": "Origem"
+    "trust": "Origem",
+    "unsupported": "Sem suporte"
   },
   "common": {
     "fetching": "Buscando...",
@@ -115,11 +127,27 @@
     "meta_help": ":q sair · :commands listar comandos do jogo · :start / :stop o servidor · qualquer outra coisa é enviada como comando do jogo",
     "not_running": "{{name}} não está rodando. Mostrando o último log; novas linhas aparecem quando ele iniciar.",
     "started": "── servidor iniciado ──",
+    "reattached": "── daemon reconectado (linhas recentes) ──",
     "stopped": "── servidor parado ──",
     "unknown_meta": ":{{cmd}} desconhecido. Tente :help."
   },
   "daemon": {
     "already": "O daemon já está rodando (v{{version}}).",
+    "diag": {
+      "version": "Versão",
+      "uptime": "Tempo ativo",
+      "listen": "Endereço",
+      "data_dir": "Pasta de dados",
+      "token": "Arquivo de token",
+      "token_missing": "ausente ({{path}})",
+      "audit_log": "Log de auditoria",
+      "modules": "Módulos",
+      "modules_error": "não foi possível ler: {{error}}",
+      "extensions": "Extensões ativas",
+      "extensions_missing": "Ativas mas não instaladas",
+      "problems": "Avisos e erros recentes",
+      "no_problems": "Nenhum aviso ou erro recente"
+    },
     "binary_not_found": "Não foi possível encontrar o programa do daemon (saba-core). Defina SABA_CORE_PATH ou reinstale.",
     "confirm_kill": "O daemon não parou a tempo. Forçar o encerramento (PID {{pid}})?",
     "killed": "Daemon encerrado à força (PID {{pid}}).",
@@ -131,6 +159,7 @@
     "starting": "Iniciando o daemon...",
     "stop_no_pid": "O daemon não informou o PID, então não dá para encerrá-lo daqui.",
     "stop_timeout": "O daemon não parou a tempo.",
+    "shutdown_refused": "O daemon não aceitou o pedido de encerramento: {{error}}",
     "stopped": "Daemon parado.",
     "stopping": "Parando o daemon..."
   },
@@ -149,6 +178,7 @@
       "invalid_token_format": "O token de conexão deste PC está mal formado.",
       "token_replaced": "Outro PC foi pareado com a mesma conta do Discord, então este PC foi desconectado.",
       "guild_taken": "Esse servidor do Discord já está conectado a outro PC.",
+      "node_moved": "Enquanto isso, esse servidor do Discord passou para outro PC, então nada foi salvo.",
       "forbidden": "Você não tem permissão para fazer isso nesse servidor do Discord.",
       "expired": "O código expirou. Comece de novo.",
       "rate_limited": "Muitas solicitações. Tente de novo em cerca de um minuto.",
@@ -162,7 +192,7 @@
     "daemon_down_hint": "Inicie com: saba-chan-cli daemon start",
     "did_you_mean": "Você quis dizer: {{names}}?",
     "hint": {
-      "executable_missing": "Faltam arquivos do servidor. Verifique a pasta ou reinstale: saba-chan-cli server update",
+      "executable_missing": "Faltam arquivos do servidor. Reinstale (saba-chan-cli server update) ou informe o caminho do executável: saba-chan-cli server set SERVIDOR executable_path=CAMINHO",
       "extension_required": "Instale as extensões necessárias: saba-chan-cli extension install {{ids}}",
       "extension_not_verified": "Estas extensões foram alteradas e não puderam ser verificadas: {{ids}}. Reinstale-as ou restaure os arquivos originais: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "Primeiro pareie este PC: saba-chan-cli bot pair",
@@ -174,16 +204,24 @@
       "backup_unsupported": "O módulo deste jogo não informa o que deve ser salvo no backup. Um módulo mais novo pode informar: saba-chan-cli update check",
       "nothing_to_back_up": "O mundo ainda não existe. Inicie o servidor uma vez para criá-lo.",
       "backup_busy": "Já há um backup ou restauração deste servidor em andamento. Tente de novo quando terminar.",
-      "no_command_path": "Este servidor foi iniciado fora do Saba-chan, então não tem console para receber comandos. Reinicie-o pelo Saba-chan: saba-chan-cli restart <server>"
+      "invalid_relay_url": "Só são permitidos endereços de relay https:// (http apenas para localhost, 127.0.0.1 ou [::1] ao testar neste PC).",
+      "module_busy": "Este módulo já está sendo instalado ou removido. Tente de novo quando terminar.",
+      "schedule_changed": "O agendamento foi alterado em outro lugar. Confira com saba-chan-cli schedule show e tente de novo.",
+      "invalid_command": "Escreva a chave do comando como `<server>/<command>`. Uma chave sem servidor deve ser um id de ação global.",
+      "no_command_path": "Este servidor foi iniciado fora do Saba-chan, então não tem console para receber comandos. Reinicie-o pelo Saba-chan: saba-chan-cli restart <server>",
+      "not_supported": "Veja os comandos sem suporte com: saba-chan-cli module info"
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
     "not_found": "Nenhum {{what}} chamado \"{{query}}\".",
     "pair_expected": "Esperado KEY=VALUE, recebido \"{{got}}\".",
-    "timeout": "O daemon demorou demais para responder ({{path}})."
+    "timeout": "O daemon demorou demais para responder ({{path}}).",
+    "unknown_command": "Comando inexistente: {{path}}. Rode `saba-chan-cli help` para ver os comandos.",
+    "not_supported": "O módulo {{module}} não oferece suporte a este recurso"
   },
   "agree": {
     "none": "{{name}} não tem termos para aceitar.",
+    "unknown_id": "Ids de termos ignorados que este servidor não tem: {{ids}} (ele tem: {{known}})",
     "confirm": "{{name}}: aceitar {{names}}? Você concorda com os termos dos links acima.",
     "done": "Termos aceitos para {{name}}."
   },
@@ -248,6 +286,8 @@
   },
   "noun": {
     "command": "comando",
+    "guild": "servidor do Discord",
+    "member": "membro",
     "extension": "extensão",
     "game": "jogo",
     "module": "módulo",
@@ -258,6 +298,7 @@
   "progress": {
     "dismissed": "Progresso de {{name}} limpo.",
     "finished": "{{name}} terminou de instalar.",
+    "lost": "Não é mais possível acompanhar a instalação de {{name}}. O daemon pode ter reiniciado ou o servidor foi renomeado ou removido em outro lugar. Confira com server list.",
     "none": "{{name}} não tem instalação em andamento.",
     "rolled_back": "{{name}} falhou ao instalar e foi removido."
   },
@@ -279,7 +320,7 @@
     "done": "Ordem salva."
   },
   "reset": {
-    "confirm": "Apagar todos os arquivos de {{name}} e começar do zero? Isso não pode ser desfeito.",
+    "confirm": "Redefinir {{name}}? Isso não pode ser desfeito.",
     "done": "{{name}} foi redefinido."
   },
   "resolve": {
@@ -314,10 +355,13 @@
     },
     "updated": "{{name}} atualizado.",
     "updating": "Atualizando {{name}}...",
-    "version_unknown": "desconhecida"
+    "version_unknown": "desconhecida",
+    "unresponsive": "Sem resposta",
+    "unresponsive_reason": "Em execução, mas sem resposta: {{reason}}"
   },
   "set": {
     "default": "padrão",
+    "cannot_clear": "{{key}} não pode ficar vazio. Informe um novo valor.",
     "done": "{{count}} configuração(ões) de {{name}} salva(s).",
     "group": {
       "advanced": "Avançado",
@@ -337,7 +381,7 @@
     "bad_quotes": "Aspas não fechadas.",
     "bye": "Tchau. O daemon e os servidores continuam rodando.",
     "ctrl_c": "(pressione Ctrl+C de novo ou digite exit para sair)",
-    "help_line": "Digite um comando (help, Tab para completar) ou fale como no Discord (ex.: \"palworld start\"). exit para sair.",
+    "help_line": "Digite um comando (help, Tab para completar) ou fale como no Discord (ex.: \"my-server-1 start\"). exit para sair.",
     "welcome": "Saba-chan CLI {{version}}"
   },
   "start": {
@@ -346,6 +390,7 @@
     "not_yet": "{{name}} ainda não está rodando ({{status}}). Verifique: saba-chan-cli console {{name}}",
     "provisioning": "{{name}} ainda está sendo instalado.",
     "requested": "Início solicitado para {{name}}.",
+    "port_moved": "O Windows reservou a porta REST {{from}}, então ela foi alterada para {{to}}.",
     "waiting": "Iniciando {{name}}...",
     "exited": "{{name}} encerrou logo após iniciar. Veja as últimas linhas acima."
   },
@@ -393,6 +438,13 @@
   },
   "update": {
     "after_hint": "O Saba-chan vai reiniciar após a atualização. Depois verifique: saba-chan-cli update last",
+    "notes": "Notas da versão",
+    "result": "Resultado",
+    "result_ok": "sucesso",
+    "result_failed": "falhou",
+    "when": "Aplicado em",
+    "updated": "Atualizado",
+    "failed_one": "Falhou",
     "applied": "Aplicado: {{list}}",
     "applying": "Aplicando atualizações...",
     "checking": "Verificando atualizações...",
@@ -408,6 +460,8 @@
     "no_last": "Nenhum resultado de atualização registrado.",
     "not_installed": "não instalado",
     "nothing_to_apply": "Nada para aplicar. Baixe primeiro: saba-chan-cli update download",
+    "apply_failed": "Não foi possível aplicar a atualização. Verifique os erros acima.",
+    "download_failed": "Não foi possível baixar algumas atualizações. Verifique os erros acima.",
     "ready": "pronto para instalar",
     "up_to_date": "atualizado",
     "updater_launched": "Atualizador iniciado. O daemon está sendo encerrado para atualizar.",
@@ -425,7 +479,10 @@
     "ok": "{{name}} parece pronto para iniciar."
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "Mostra a ajuda de um comando. Com --json: a árvore de comandos, os argumentos e os códigos de saída",
+      "events": "Acompanha os eventos do daemon ao vivo (com --json: um JSON por linha). Ctrl+C para parar"
+    },
     "arg": {
       "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
       "bot.channels.no_notify": "Remover o canal de avisos",
@@ -436,7 +493,12 @@
       "do.plan": "Só verificar a entrada e mostrar o que aconteceria",
       "do.input": "Entrada como key=value (valores que podem ser lidos como JSON continuam JSON)",
       "server": "Nome do servidor (uma parte basta)",
-      "ids": "Um ou mais IDs de extensão"
+      "ids": "Um ou mais IDs de extensão",
+      "help.command": "Caminho do comando, ex.: `server start`",
+      "events.kind": "Só estes eventos; `instance` também inclui `instance.exit` e afins",
+      "events.server": "Só eventos deste servidor",
+      "events.since": "Começar após este id de evento (reenvia o que o daemon ainda guarda)",
+      "json_stream": "Mostra o progresso e depois o resultado como linhas JSON (NDJSON); implica --json"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos, abre o shell interativo.\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
@@ -501,6 +563,8 @@
     "enabled": "Ativada: {{task}}",
     "disabled": "Desativada: {{task}}",
     "no_such": "Não existe a tarefa {{number}} (há {{count}}).",
+    "edited": "Tarefa alterada: {{task}}",
+    "nothing_to_edit": "Informe pelo menos uma alteração (--every, --at, --warn, --no-warn, --message).",
     "keep_zero": "Mantenha pelo menos 1 backup.",
     "keep_set": "Mantendo os últimos {{count}} backups agendados.",
     "confirm_clear": "Remover todas as tarefas agendadas de {{name}}?",
@@ -514,6 +578,8 @@
   },
   "chatbot": {
     "api_key": "Chave de API salva",
+    "provider": "Provedor",
+    "model_replaced": "O modelo escolhido {{selected}} não está disponível; {{effective}} é usado no lugar.",
     "common": "Configurações para todos os servidores do Discord",
     "guild": "Servidor do Discord {{guild}}",
     "defaults": "(padrões)",
@@ -528,6 +594,7 @@
     "confirm_forget": "Fazer o chatbot esquecer o que lembra em todos os servidores do Discord?",
     "confirm_forget_guild": "Fazer o chatbot esquecer o que lembra no servidor do Discord {{guild}}?",
     "forgot": "A memória do chatbot foi apagada.",
+    "forget_failed": "Não foi possível apagar a memória do chatbot em alguns servidores do Discord. Verifique os erros acima.",
     "not_synced": "Salvo neste PC. Chega ao Discord assim que o bot estiver conectado (saba-chan-cli bot status).",
     "sync_failed": "O servidor do Discord {{guild}} não recebeu a alteração: {{error}}",
     "read_failed": "Não foi possível ler {{path}}: {{error}}"

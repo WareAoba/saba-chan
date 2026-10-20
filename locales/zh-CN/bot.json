@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **服务器列表**",
     "empty": "📭 未注册服务器",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 运行中",
@@ -48,7 +48,8 @@
     "not_found": "❌ 找不到模块 \"{{alias}}\" 的服务器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
     "not_running_default": "服务器未运行。请先启动服务器",
-    "module_missing": "❌ 模块 '{{module}}' 未安装。此服务器无法控制。"
+    "module_missing": "❌ 模块 '{{module}}' 未安装。此服务器无法控制。",
+    "port_moved": "🔀 Windows 预留了管理用 REST 端口 {{from}}，已改为 {{to}}。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 执行中...",
@@ -99,6 +100,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您没有使用此命令的权限。",
+    "chatbot_not_allowed": "❌ 聊天机器人无法执行此命令。请直接执行。",
     "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前已加入{{count}}个服务器，请从不使用的服务器中移除机器人。"
   },
   "messages": {
@@ -288,11 +290,39 @@
       "enabled": "开启",
       "model": "模型",
       "memo": "服务器提示词",
-      "confirmCommands": "确认命令",
+      "confirmCommands": "注意命令总是询问",
       "memory": "记忆",
       "webSearch": "网页搜索",
       "disabledTools": "已关闭的工具组",
       "step": "步骤"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…另有 {{count}} 项",
+      "backups": "💾 **{{count}} 个备份**",
+      "backups_empty": "📭 没有备份",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "手动",
+        "scheduled": "计划",
+        "pre-update": "更新前",
+        "pre-restore": "恢复前"
+      },
+      "events": "📜 **最近的启动与停止记录**",
+      "events_empty": "📭 没有记录",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "已停止",
+        "in_game_stop": "在游戏内停止",
+        "crash": "异常退出",
+        "start_failed": "启动失败",
+        "unknown_exit": "未知原因退出"
+      },
+      "updates": "⬆️ **{{count}} 个更新**",
+      "updates_none": "✅ 全部已是最新",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ CPU {{cpu}}% · 内存 {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
     }
   }
 }

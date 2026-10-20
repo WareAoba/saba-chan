@@ -26,6 +26,9 @@ pub fn requirable(level: i64) -> bool {
 
 pub const PRESETS: [&str; 3] = ["loose", "default", "strict"];
 
+/// 액션(`server.<명령>`)이 따로 있는 내장 명령
+const BUILTIN_COMMANDS: [&str; 4] = ["start", "stop", "restart", "status"];
+
 /// 프리셋이 risk(safe/caution/danger)에 요구하는 레벨. 모르는 risk는 caution
 pub fn preset_level(preset: &str, risk: &str) -> i64 {
     let (safe, caution, danger) = match preset {
@@ -60,6 +63,15 @@ pub struct Requester {
     /// 릴레이가 알려 준 노드 주인. 없으면 소유자가 없는 것으로 본다
     pub owner_id: Option<String>,
     pub via_chatbot: bool,
+    /// 챗봇이 올린 확인을 누른 사람 (릴레이 `confirmedBy`, 누른 사람이 요청자일 때만 싣는다)
+    pub confirmed_by: Option<String>,
+}
+
+impl Requester {
+    /// 요청자 본인이 확인했는가 (릴레이의 말을 다시 견준다)
+    pub fn confirmed_by_requester(&self) -> bool {
+        self.confirmed_by.is_some() && self.confirmed_by == self.user_id
+    }
 }
 
 /// 거부 이유 (`PERMISSION_DENIED`)
@@ -163,10 +175,13 @@ impl NodePermissions {
         self.command_levels.get(key).copied()
     }
 
-    /// 이 명령의 요구 레벨
+    /// 이 명령의 요구 레벨. 내장 명령은 `<instance>/<명령>`이 없으면 그 액션 키(`<instance>/server.<명령>`)도 본다:
+    /// 액션 경로와 같은 덮어쓰기를 따른다 (D-A2)
     pub fn required(&self, instance_id: &str, command: &str, risk: &str) -> i64 {
+        let action_key = || BUILTIN_COMMANDS.contains(&command).then(|| format!("{}/server.{}", instance_id, command));
         self.command_levels
             .get(&format!("{}/{}", instance_id, command))
+            .or_else(|| action_key().and_then(|k| self.command_levels.get(&k)))
             .copied()
             .unwrap_or_else(|| preset_level(&self.preset, risk))
     }
@@ -309,10 +324,10 @@ pub fn apply(node: &mut Map<String, Value>, change: &Change, owner_id: Option<&s
             }
         }
         Change::CommandLevel { key, level } => {
-            // `<instance>/<명령·액션 id>` 또는 전역 액션 덮어쓰기 `<action id>`
+            // `<instance>/<명령·액션 id>` 또는 전역 액션 덮어쓰기 `<action id>`. 지우기는 예전에 저장된 키도 받는다
             let well_formed = match key.split_once('/') {
                 Some((i, c)) => !i.is_empty() && !c.is_empty(),
-                None => crate::actions::overridable(key),
+                None => level.is_none() || crate::actions::overridable(key),
             };
             if !well_formed {
                 return Err("invalid_command");
@@ -336,7 +351,7 @@ mod tests {
     use super::*;
 
     fn who(user: &str) -> Requester {
-        Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("own".into()), via_chatbot: false }
+        Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("own".into()), via_chatbot: false, ..Default::default() }
     }
 
     #[test]
@@ -383,6 +398,16 @@ mod tests {
         let mut low = who("z");
         low.via_chatbot = true;
         assert_eq!(p.effective_level(&low), CHATBOT);
+    }
+
+    // D-A2: 내장 명령은 액션 경로처럼 `<instance>/server.<명령>` 덮어쓰기도 본다. `<instance>/<명령>`이 있으면 그쪽이 먼저다
+    #[test]
+    fn built_in_commands_also_take_the_level_set_for_their_actions() {
+        let p = NodePermissions::from_node(Some(&json!({ "preset": "loose", "defaultLevel": 2, "commandLevels": { "i/server.stop": 3, "i/server.start": 3, "i/start": 1 } })));
+        assert_eq!(p.check(&who("x"), "i", "stop", "caution"), Err(Denied { need: OWNER, level: ADMIN, via: None }));
+        assert!(p.check(&who("x"), "i", "start", "caution").is_ok(), "the command's own key wins");
+        assert!(p.check(&who("x"), "j", "stop", "caution").is_ok(), "only that instance");
+        assert_eq!(p.required("i", "kick", "caution"), preset_level("loose", "caution"), "module commands have no action key");
     }
 
     #[test]
@@ -435,6 +460,11 @@ mod tests {
         // 전역 액션 덮어쓰기는 원격에서 부를 수 있고 레벨이 고정되지 않은 액션 id만
         for fixed in ["update.apply", "instance.delete"] {
             assert_eq!(apply(&mut node, &Change::CommandLevel { key: fixed.into(), level: Some(0) }, owner), Err("invalid_command"));
+        }
+        // 인스턴스 액션은 `<instance>/<action id>`로만 판정하므로 전역 키는 받지 않는다. 예전에 저장된 것은 지울 수 있다
+        for per_instance in ["server.stop", "backup.restore"] {
+            assert_eq!(apply(&mut node, &Change::CommandLevel { key: per_instance.into(), level: Some(3) }, owner), Err("invalid_command"));
+            apply(&mut node, &Change::CommandLevel { key: per_instance.into(), level: None }, owner).unwrap();
         }
         apply(&mut node, &Change::CommandLevel { key: "instance.create".into(), level: Some(3) }, owner).unwrap();
         apply(&mut node, &Change::CommandLevel { key: "instance.create".into(), level: None }, owner).unwrap();

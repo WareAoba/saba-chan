@@ -72,6 +72,8 @@ fn view(cfg: &ChatbotConfig) -> Map<String, Value> {
     out.insert("guilds".into(), json!(cfg.guilds));
     out.insert("hasApiKey".into(), json!(cfg.api_key.as_deref().is_some_and(|k| !k.is_empty())));
     out.insert("pendingRelayDelete".into(), json!(cfg.pending_relay_delete));
+    // 바꿀 수 있는 키와 그 기본값. 클라이언트가 키 이름을 따로 두지 않는다
+    out.insert("defaults".into(), Value::Object(relay_defaults()));
     out
 }
 
@@ -199,18 +201,60 @@ pub(super) fn result_row(guild: &str, outcome: &Result<(StatusCode, Value), Stri
     }
 }
 
-/// 설정 전체를 길드마다 PUT. 노드 토큰이 없으면 아무것도 하지 않는다
-pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig) -> Vec<(String, Result<(StatusCode, Value), String>)> {
+/// 길드 하나에 보낸 결과: (릴레이 상태, 본문) 또는 연결 실패
+type PushOutcome = Result<(StatusCode, Value), String>;
+
+/// 설정 전체를 길드마다 PUT. 노드 토큰이 없으면 아무것도 하지 않는다.
+/// `previous`가 있으면 거절(400)된 길드에서 멈추고 이미 받은 길드를 그 값으로 되돌린다
+pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig, previous: Option<&ChatbotConfig>) -> Vec<(String, PushOutcome)> {
     if super::relay::load_node_token().is_none() {
         return Vec::new();
     }
     let base = relay_base(state).await;
-    let mut out = Vec::new();
-    for guild in guild_ids(state, &base, cfg).await.0 {
-        let body = put_body(cfg, &guild);
-        let path = format!("/api/nodes/{}/chatbot", encode_path_segment(&guild));
-        let outcome = call(&base, reqwest::Method::PUT, &path, Some(Value::Object(body).to_string())).await;
+    let guilds = guild_ids(state, &base, cfg).await.0;
+    let put = |guild: String, body: Map<String, Value>| {
+        let base = base.clone();
+        async move {
+            let path = format!("/api/nodes/{}/chatbot", encode_path_segment(&guild));
+            call(&base, reqwest::Method::PUT, &path, Some(Value::Object(body).to_string())).await
+        }
+    };
+    match previous {
+        Some(old) => push_or_restore(guilds, cfg, old, put).await,
+        None => {
+            let mut out = Vec::new();
+            for guild in guilds {
+                let outcome = put(guild.clone(), put_body(cfg, &guild)).await;
+                out.push((guild, outcome));
+            }
+            out
+        }
+    }
+}
+
+/// 길드마다 `new`를 보낸다. 한 길드가 값을 거절(400)하면 거기서 멈추고, 이미 받은 길드에 `old`를 다시 보낸다.
+/// 거절되면 데몬은 저장하지 않으므로 받은 길드만 새 값으로 남지 않게 한다 (D-F7)
+async fn push_or_restore<F, Fut>(guilds: impl IntoIterator<Item = String>, new: &ChatbotConfig, old: &ChatbotConfig, put: F) -> Vec<(String, PushOutcome)>
+where
+    F: Fn(String, Map<String, Value>) -> Fut,
+    Fut: std::future::Future<Output = PushOutcome>,
+{
+    let mut out: Vec<(String, PushOutcome)> = Vec::new();
+    for guild in guilds {
+        let outcome = put(guild.clone(), put_body(new, &guild)).await;
+        let rejected = matches!(&outcome, Ok((c, _)) if *c == StatusCode::BAD_REQUEST);
         out.push((guild, outcome));
+        if rejected {
+            for (guild, outcome) in &out {
+                if matches!(outcome, Ok((c, _)) if c.is_success()) {
+                    let undo = put(guild.clone(), put_body(old, guild)).await;
+                    if !matches!(&undo, Ok((c, _)) if c.is_success()) {
+                        tracing::warn!("[Chatbot] could not put guild {} back after a rejected save: {}", guild, result_row(guild, &undo));
+                    }
+                }
+            }
+            break;
+        }
     }
     out
 }
@@ -238,6 +282,7 @@ async fn delete_remote(state: &IPCServer, cfg: &ChatbotConfig) -> (bool, Vec<Val
 
 /// 릴레이 에이전트가 연결된 직후 한 번
 pub async fn sync_on_connect(state: &IPCServer) {
+    let _turn = SAVE_LOCK.lock().await;
     let cfg = state.config_store.get_chatbot();
     if cfg.pending_relay_delete {
         let (done, rows) = delete_remote(state, &cfg).await;
@@ -255,20 +300,25 @@ pub async fn sync_on_connect(state: &IPCServer) {
     if cfg == ChatbotConfig::default() {
         return;
     }
-    for (guild, outcome) in push_all(state, &cfg).await {
+    for (guild, outcome) in push_all(state, &cfg, None).await {
         if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
             tracing::warn!("[Chatbot] sync to guild {} failed: {}", guild, result_row(&guild, &outcome));
         }
     }
 }
 
+/// 챗봇 설정의 읽고-바꾸고-저장하기를 한 번에 하나씩 (키 교체와 설정 저장이 겹쳐도 서로의 값을 지우지 않게)
+pub(super) static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 pub async fn put_chatbot(State(state): State<IPCServer>, Json(patch): Json<ChatbotPatch>) -> Response {
+    let _turn = SAVE_LOCK.lock().await;
     let mut cfg = state.config_store.get_chatbot();
+    let previous = cfg.clone();
     if let Err(e) = apply(&mut cfg, patch) {
         return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": e, "error_code": "validation_failed" }))).into_response();
     }
-    let pushed = push_all(&state, &cfg).await;
-    // 릴레이가 값을 거절했으면 저장하지 않는다 (연결 실패는 저장하고 다음 연결 때 맞춘다)
+    let pushed = push_all(&state, &cfg, Some(&previous)).await;
+    // 릴레이가 값을 거절했으면 저장하지 않는다(받은 길드는 push_all이 되돌렸다). 연결 실패는 저장하고 다음 연결 때 맞춘다
     if let Some((guild, outcome)) = pushed.iter().find(|(_, o)| matches!(o, Ok((c, _)) if *c == StatusCode::BAD_REQUEST)) {
         let mut body = result_row(guild, outcome);
         body["success"] = json!(false);
@@ -285,6 +335,7 @@ pub async fn put_chatbot(State(state): State<IPCServer>, Json(patch): Json<Chatb
 }
 
 pub async fn delete_chatbot(State(state): State<IPCServer>) -> Response {
+    let _turn = SAVE_LOCK.lock().await;
     let cfg = state.config_store.get_chatbot();
     let (done, rows) = delete_remote(&state, &cfg).await;
     let cleared = ChatbotConfig { pending_relay_delete: !done, ..ChatbotConfig::default() };
@@ -357,6 +408,53 @@ mod tests {
         serde_json::from_value(v).unwrap()
     }
 
+    /// 읽고-바꾸고-저장하기는 한 번에 하나씩: 키 교체와 설정 저장이 겹치면 나중 것이 옛 값으로 새 키를 지운다
+    #[tokio::test]
+    async fn a_save_waits_for_the_one_in_progress() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            dir.path().join("modules").to_str().unwrap(),
+            dir.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let turn = SAVE_LOCK.lock().await;
+        // 거절되는 값이라 공유 설정 파일은 바뀌지 않는다
+        let save = tokio::spawn(put_chatbot(State(state), Json(patch(json!({"guilds": {"g1": 1}})))));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!save.is_finished(), "a save read the settings while another save was between its read and its write");
+        drop(turn);
+        let res = tokio::time::timeout(std::time::Duration::from_secs(5), save).await.unwrap().unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// D-F7: 길드 하나가 값을 거절하면 저장하지 않으므로, 이미 받은 길드도 옛 값으로 되돌려 데몬과 어긋나지 않게 한다
+    #[tokio::test]
+    async fn a_value_one_guild_rejects_is_rolled_back_on_the_guilds_that_took_it() {
+        let old = ChatbotConfig::default();
+        let mut new = old.clone();
+        apply(&mut new, patch(json!({"settings": {"model": "m2"}}))).unwrap();
+        let calls = std::sync::Mutex::new(Vec::new());
+        let guilds = vec!["g1".to_string(), "g2".to_string(), "g3".to_string()];
+        let pushed = push_or_restore(guilds, &new, &old, |guild, body| {
+            let model = body["model"].clone();
+            calls.lock().unwrap().push((guild.clone(), model.clone()));
+            async move {
+                let code = if guild == "g2" && model == json!("m2") { StatusCode::BAD_REQUEST } else { StatusCode::OK };
+                Ok((code, Value::Null))
+            }
+        })
+        .await;
+        assert!(pushed.iter().any(|(g, o)| g == "g2" && matches!(o, Ok((c, _)) if *c == StatusCode::BAD_REQUEST)));
+        let calls = calls.into_inner().unwrap();
+        let old_model = put_body(&old, "g1")["model"].clone();
+        assert_eq!(
+            calls,
+            vec![("g1".to_string(), json!("m2")), ("g2".to_string(), json!("m2")), ("g1".to_string(), old_model)],
+            "stop at the rejection, leave g3 untouched and put g1 back"
+        );
+    }
+
     #[test]
     fn settings_reset_to_default_still_reach_the_relay() {
         let mut cfg = ChatbotConfig::default();
@@ -421,5 +519,13 @@ mod tests {
         let text = Value::Object(view(&cfg)).to_string();
         assert!(!text.contains("sk-secret"));
         assert!(text.contains("\"hasApiKey\":true"));
+    }
+
+    /// 클라이언트가 키 이름을 따로 두지 않게, 바꿀 수 있는 키와 기본값을 함께 준다
+    #[test]
+    fn view_lists_every_key_with_its_default() {
+        let v = view(&ChatbotConfig::default());
+        assert_eq!(v["defaults"], Value::Object(relay_defaults()));
+        assert_eq!(v["defaults"]["enabled"], json!(false));
     }
 }

@@ -79,6 +79,22 @@ struct LogBuffer {
     max_size: usize,
     /// Async sender for disk persistence (None = no persistence)
     file_tx: Option<mpsc::UnboundedSender<String>>,
+    /// 이 버퍼의 세대. 줄 번호는 버퍼마다 0부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다
+    epoch: u64,
+}
+
+/// 버퍼 세대: 만든 시각(밀리초). 데몬을 다시 켜도 앞 세대보다 크고, 한 프로세스 안에서도 겹치지 않는다
+pub(crate) fn next_epoch() -> u64 {
+    static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let mut last = LAST.load(std::sync::atomic::Ordering::Relaxed);
+    loop {
+        let next = now.max(last + 1);
+        match LAST.compare_exchange_weak(last, next, std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed) {
+            Ok(_) => return next,
+            Err(seen) => last = seen,
+        }
+    }
 }
 
 impl LogBuffer {
@@ -92,6 +108,7 @@ impl LogBuffer {
             next_id: 0,
             max_size,
             file_tx: None,
+            epoch: next_epoch(),
         }
     }
 
@@ -330,9 +347,9 @@ impl ManagedProcess {
             let buf = log_buffer.clone();
             let re = log_regex.clone();
             readers.push(tokio::spawn(async move {
-                let reader = BufReader::new(stdout);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stdout);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let level = parse_log_level(&line, re.as_deref());
                     buf.lock().await.push(LogSource::Stdout, line, level);
                 }
@@ -344,9 +361,9 @@ impl ManagedProcess {
             let buf = log_buffer.clone();
             let re = log_regex.clone();
             readers.push(tokio::spawn(async move {
-                let reader = BufReader::new(stderr);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stderr);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let level = parse_log_level(&line, re.as_deref());
                     // stderr lines default to at least Warn
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
@@ -507,9 +524,9 @@ impl ManagedProcess {
             let re = log_regex.clone();
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
-                let reader = BufReader::new(stdout);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stdout);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let content = if let Some(ref sep) = prefix {
                         if let Some(pos) = line.find(sep.as_str()) {
                             line[pos + sep.len()..].to_string()
@@ -531,9 +548,9 @@ impl ManagedProcess {
             let re = log_regex;
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
-                let reader = BufReader::new(stderr);
-                let mut lines = reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stderr);
+                let mut raw = Vec::new();
+                while let Some(line) = next_line(&mut reader, &mut raw).await {
                     let content = if let Some(ref sep) = prefix {
                         if let Some(pos) = line.find(sep.as_str()) {
                             line[pos + sep.len()..].to_string()
@@ -592,6 +609,11 @@ impl ManagedProcess {
     /// Get all log lines with `id >= since_id`.
     pub async fn get_console_since(&self, since_id: u64) -> Vec<LogLine> {
         self.log_buffer.lock().await.get_since(since_id)
+    }
+
+    /// 콘솔 버퍼의 세대 (`LogBuffer::epoch`)
+    pub async fn console_epoch(&self) -> u64 {
+        self.log_buffer.lock().await.epoch
     }
 
     /// 지금 이후의 콘솔 줄만 보려면 이 값으로 `get_console_since`를 부른다
@@ -1065,9 +1087,38 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 
 // ─── Tests ───────────────────────────────────────────────────
 
+/// 자식 출력 한 줄. UTF-8이 아닌 줄도 끊지 않고 러너와 같은 방식으로 글자로 바꾼다 (D-S7).
+/// 끝(EOF)이나 읽기 오류면 None
+pub(crate) async fn next_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, raw: &mut Vec<u8>) -> Option<String> {
+    raw.clear();
+    match reader.read_until(b'\n', raw).await {
+        Ok(0) | Err(_) => None,
+        Ok(_) => Some(saba_runner::decode_line(raw)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UTF-8이 아닌 줄 하나로 콘솔 읽기가 끝나지 않는다: 끝나면 파이프가 차서 서버가 멈춘다 (D-S7)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_line_that_is_not_utf8_does_not_stop_the_console() {
+        let script = r"printf 'bad \377\376 line\n'; printf 'err \377\n' >&2; echo after; echo err-after >&2; sleep 5";
+        let proc = ManagedProcess::spawn("/bin/sh", &["-c".into(), script.into()], ".", Vec::new(), None, None).await.unwrap();
+        let mut seen = Vec::new();
+        for _ in 0..50 {
+            seen = proc.get_recent_console(10).await.into_iter().map(|l| l.content).collect();
+            if seen.iter().any(|l| l == "after") && seen.iter().any(|l| l == "err-after") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(seen.iter().any(|l| l == "after") && seen.iter().any(|l| l == "err-after"), "{seen:?}");
+        assert!(seen.iter().any(|l| l.starts_with("bad ") && l.contains('\u{fffd}')), "{seen:?}");
+        let _ = proc.force_kill();
+    }
 
     /// 서버가 콘솔 입력을 읽지 않으면 보내기가 기다리지 않고 바로 실패한다.
     /// 기다리면 그 사이 데몬 락을 쥔 호출(콘솔 명령 API)이 데몬 전체를 멈춘다

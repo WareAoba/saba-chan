@@ -35,6 +35,8 @@ const MONITOR_INTERVAL_SECS: u64 = 2;
 const HEARTBEAT_REAPER_INTERVAL_SECS: u64 = 30;
 /// 모니터 연속 실패 허용 횟수
 const MONITOR_MAX_CONSECUTIVE_ERRORS: u32 = 10;
+/// 데몬 로그 파일 상한. 넘으면 `daemon.log.1`로 넘긴다 (둘이 합쳐 이 값의 두 배까지)
+const DAEMON_LOG_CAP: u64 = 5 * 1024 * 1024;
 
 /// `saba-core module schema` — module.toml JSON Schema 출력
 /// `saba-core module validate <모듈 폴더>...` — 데몬과 같은 규칙으로 검사 (실패하면 종료 코드 1)
@@ -267,12 +269,23 @@ async fn main() -> anyhow::Result<()> {
             _ => {
                 // GUI / DaemonOnly / spawned 모드: stderr 출력
                 // DaemonLogLayer가 함께 합성되어 버퍼에도 캡처
+                // stderr는 대개 GUI의 파이프라 GUI가 사라지면 남지 않으니 데몬 자신의 파일에도 쓴다. 패닉도 거기 남긴다
+                let log_file = daemon_log::LogFile::open(&constants::resolve_data_dir().join("logs").join("daemon.log"), DAEMON_LOG_CAP);
+                let file_writer = log_file.clone();
                 tracing_subscriber::registry()
                     .with(env_filter)
                     .with(tracing_subscriber::fmt::layer()
                         .with_writer(std::io::stderr))
+                    .with(tracing_subscriber::fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(move || file_writer.writer()))
                     .with(daemon_log_layer)
                     .init();
+                let default_hook = std::panic::take_hook();
+                std::panic::set_hook(Box::new(move |info| {
+                    log_file.write_panic(&info.to_string());
+                    default_hook(info);
+                }));
             }
         }
     }
@@ -346,6 +359,10 @@ async fn main() -> anyhow::Result<()> {
     {
         let users = supervisor.read().await.user_runtimes();
         tokio::task::spawn_blocking(move || sandbox::reconcile_runtimes(&users));
+    }
+    // 모듈이 구현한 함수 목록을 미리 물어 둔다 (GET /api/modules가 기다리지 않게)
+    if let Ok(modules) = supervisor.read().await.list_modules() {
+        plugin::prefetch_module_functions(modules.iter().map(|m| m.entry_path()).collect());
     }
     // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서)
     tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));

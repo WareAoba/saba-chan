@@ -37,6 +37,9 @@ pub struct PortConflictStopEvent {
     pub timestamp_ms: u64,
 }
 
+/// 읽지 않은 포트 충돌 강제 정지 알림을 몇 개까지 두는가 (헤드리스 데몬에서 끝없이 쌓이지 않게)
+pub const PORT_CONFLICT_STOPS_KEPT: usize = 20;
+
 pub struct Supervisor {
     pub tracker: ProcessTracker,
     pub module_loader: ModuleLoader,
@@ -80,6 +83,9 @@ tokio::task_local! {
     /// 시작 요청을 받았을 때의 실행 세대. 시작 API는 모듈 validate(시작 전 점검)를 끝낸 뒤 시작을 부르므로,
     /// 점검 중에 들어온 정지도 잡도록 그 전에 잡은 세대를 `StartGuard`의 기준으로 쓴다
     pub static START_SINCE: u64;
+
+    /// 이 작업 안에서 부른 정지가 올린 뒤의 실행 세대. 재시작이 자기 정지 뒤의 기준으로 쓴다 (D-S10)
+    pub static STOPPED_AT: std::cell::Cell<Option<u64>>;
 }
 
 /// `StartGuard`의 기준 세대: 시작 API가 미리 잡아 두었으면 그 값, 아니면 지금 값
@@ -488,7 +494,7 @@ impl Supervisor {
             if let Some(port) = settings.get("port").cloned().or_else(|| instance.port.map(|p| json!(p))) {
                 cfg.insert("port".to_string(), port);
             }
-            Self::insert_instance_fields(&mut cfg, &preview_instance);
+            Self::insert_instance_fields(&mut cfg, &preview_instance, &s.instance_store.instance_dir(&instance.id));
             cfg.insert("managed".to_string(), json!(s.uses_managed_start(&preview_instance)));
             cfg.insert("preview".to_string(), json!(true));
             let call = crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", Value::Object(cfg));
@@ -585,7 +591,6 @@ impl Supervisor {
     fn insert_resolved_exe(&self, config: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, module_name: &str) {
         if let Some(exe_path) = self.resolve_executable(instance, module_name) {
             config.insert("server_executable".to_string(), json!(&exe_path));
-            config.entry("server_jar".to_string()).or_insert_with(|| json!(&exe_path));
         }
         if let Some(work_dir) = &instance.working_dir {
             config.insert("working_dir".to_string(), json!(work_dir));
@@ -594,7 +599,9 @@ impl Supervisor {
 
     /// 모듈 함수가 인스턴스를 알아보는 데 쓰는 값 (포트·비밀번호·모듈 설정·REST·데이터 폴더 등).
     /// 시작·정지·설정·초기화 모두 같은 값을 받아야 같은 서버 파일을 다룬다. 이미 있는 키는 두다.
-    pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance) {
+    pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) {
+        // 모듈이 서버 폴더 옆에 둔 데이터(좀보이드 cache_dir 등): 격리 실행이 쓸 수 있는 폴더로 싣는다
+        cfg.insert(crate::sandbox::INSTANCE_DATA_DIRS.to_string(), json!(Self::instance_data_dirs(instance, instance_dir)));
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
@@ -602,7 +609,10 @@ impl Supervisor {
         // (예: 설치가 기본 INI에서 읽어 온 8212)이 먼저 들어가면 모듈이 INI를 그 값으로 맞춰 데몬이 못 붙는다
         if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         for (key, value) in &instance.module_settings {
-            put(key, value.clone());
+            // 격리 실행이 쓰기를 받는 폴더 키는 데몬만 정한다 (모듈은 import_settings로 아무 값이나 넣을 수 있다)
+            if !crate::sandbox::grants_write(key) {
+                put(key, value.clone());
+            }
         }
         if let Some(v) = &instance.rest_host { put("rest_host", json!(v)); }
         if let Some(v) = &instance.rest_username { put("rest_username", json!(v)); }
@@ -613,6 +623,28 @@ impl Supervisor {
         put("instance_id", json!(&instance.id));
         // 사용자가 더한 실행 인자. 넣을 자리를 아는 모듈은 직접 넣고 `extra_args_placed: true`를 돌려준다
         put("extra_args", json!(&instance.extra_args));
+    }
+
+    /// 모듈 설정 중 인스턴스 폴더 안을 가리키는 폴더: 그 인스턴스 폴더 바로 아래 항목 단위로 돌려준다.
+    /// 인스턴스 폴더 자체, `..`가 든 경로, 데몬이 쓰는 항목(`instance.json`·`run/` 등)은 뺀다
+    pub(crate) fn instance_data_dirs(instance: &crate::instance::ServerInstance, instance_dir: &std::path::Path) -> Vec<String> {
+        use std::path::Component;
+        let mut dirs: Vec<String> = instance
+            .module_settings
+            .values()
+            .filter_map(Value::as_str)
+            .filter_map(|value| {
+                let rel = std::path::Path::new(value).strip_prefix(instance_dir).ok()?;
+                if !rel.components().all(|c| matches!(c, Component::Normal(_))) {
+                    return None;
+                }
+                let first = rel.components().next()?.as_os_str().to_str()?;
+                (!is_daemon_entry(first)).then(|| instance_dir.join(first).to_string_lossy().into_owned())
+            })
+            .collect();
+        dirs.sort();
+        dirs.dedup();
+        dirs
     }
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
@@ -929,7 +961,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            Self::insert_instance_fields(&mut cfg, &instance);
+            Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Non-managed → managed=false로 명시 (모듈이 실행 방식을 구분)
             cfg.insert("managed".to_string(), json!(false));
             let final_config = Value::Object(cfg);
@@ -1067,7 +1099,9 @@ impl Supervisor {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
             s.stop_requested.insert(instance.id.clone());
-            *s.run_generation.entry(instance.id.clone()).or_default() += 1;
+            let generation = s.run_generation.entry(instance.id.clone()).or_default();
+            *generation += 1;
+            let _ = STOPPED_AT.try_with(|at| at.set(Some(*generation)));
             let hook = s.extension_manager.clone().map(|ext_mgr| {
                 let instance_dir = s.instance_store.instance_dir(&instance.id);
                 let ctx = json!({
@@ -1118,7 +1152,7 @@ impl Supervisor {
             let module = s.module_loader.get_module(module_name)?;
             let mut config_obj = serde_json::Map::new();
             s.insert_resolved_exe(&mut config_obj, &instance, module_name);
-            Self::insert_instance_fields(&mut config_obj, &instance);
+            Self::insert_instance_fields(&mut config_obj, &instance, &s.instance_store.instance_dir(&instance.id));
             // 추적표는 id로만 찾는다 (다른 인스턴스 id와 이름이 같아도 섞이지 않게)
             let tracked_pid = s.tracker.get_pid(&instance.id).ok();
             (module, config_obj, tracked_pid)
@@ -1158,7 +1192,7 @@ impl Supervisor {
                     if let Some(port) = instance.rest_port {
                         config_obj.insert("rest_port".to_string(), json!(port));
                     }
-                    if let Err(e) = crate::plugin::run_plugin(&module_path, "stop", Value::Object(config_obj)).await {
+                    if let Err(e) = crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).run().await {
                         tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e);
                     }
                 }
@@ -1189,7 +1223,7 @@ impl Supervisor {
                 if s.managed_store.get(&instance.id).await.is_some_and(|p| Arc::ptr_eq(&p, &managed)) {
                     s.managed_store.remove(&instance.id).await;
                     // 종료 기록 (user_stop)과 정지 표시 정리
-                    s.judge_exit(&instance.id, &managed).await;
+                    s.judge_exit(&instance.id, &managed, false).await;
                     if force {
                         if let Some(last) = s.exit_events.get_mut(&instance.id).and_then(|e| e.back_mut()) {
                             last.verdict.evidence = "force stop requested through saba-chan".into();
@@ -1220,8 +1254,9 @@ impl Supervisor {
                 let mut s = sup.write().await;
                 // 이미 스스로 끝났다: 정지 요청 때문이 아니므로 표시를 지우고 기록한다
                 s.stop_requested.remove(&instance.id);
+                // 크래시였어도 다시 켜지 않는다: 사용자가 정지를 눌렀다 (D-S6)
                 if let Some(proc) = s.managed_store.remove(&instance.id).await {
-                    s.judge_exit(&instance.id, &proc).await;
+                    s.judge_exit(&instance.id, &proc, false).await;
                 }
                 let pid_file = s.instance_store.instance_dir(&instance.id).join("managed.pid");
                 let _ = std::fs::remove_file(&pid_file);
@@ -1259,7 +1294,7 @@ impl Supervisor {
         let config = Value::Object(config_obj);
 
         // Execute stop function
-        let result = crate::plugin::run_plugin(&module_path, "stop", config).await?;
+        let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).run().await?;
 
         // Check if the module actually succeeded
         let plugin_success = result.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
@@ -1357,10 +1392,10 @@ impl Supervisor {
                 config_obj.insert("pid".to_string(), json!(pid));
             }
             // module_settings 포함 (server_name 등 Python이 INI 경로 해석에 사용)
-            for (key, value) in &instance.module_settings {
+            for (key, value) in instance.module_settings.iter().filter(|(key, _)| !crate::sandbox::grants_write(key)) {
                 config_obj.entry(key.clone()).or_insert_with(|| value.clone());
             }
-            crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj))
+            crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj)).serving(tracked_pid)
         };
 
         // Ask module for status
@@ -1447,7 +1482,7 @@ impl Supervisor {
             });
 
             // 플러그인 실행
-            crate::plugin::PluginCall::new(module_path, "command", config)
+            crate::plugin::PluginCall::new(module_path, "command", config).serving(pid)
         };
         let result = call.run().await?;
 
@@ -1710,7 +1745,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            Self::insert_instance_fields(&mut cfg, &instance);
+            Self::insert_instance_fields(&mut cfg, &instance, &s.instance_store.instance_dir(&instance.id));
             // Managed mode indicator → 모듈이 실행 방식을 구분
             cfg.insert("managed".to_string(), json!(true));
             let final_config = Value::Object(cfg);
@@ -1973,6 +2008,7 @@ impl Supervisor {
             return Ok(json!({
                 "success": true,
                 "lines": lines,
+                "epoch": proc.console_epoch().await,
                 "running": proc.is_running(),
                 "stdin_available": proc.is_stdin_available(),
             }));
@@ -2043,7 +2079,7 @@ impl Supervisor {
     /// 모듈 `[[queries]]` 조회 (X-2): `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다
     pub async fn query_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str, function: &str, args: serde_json::Map<String, Value>) -> Result<Value> {
         let mut call = sup.read().await.instance_call(instance_id, function)?;
-        if let Value::Object(cfg) = &mut call.config {
+        if let Value::Object(cfg) = call.config_mut() {
             cfg.insert("args".to_string(), Value::Object(args));
         }
         call.run().await
@@ -2058,28 +2094,23 @@ impl Supervisor {
         let module_path = module.entry_path();
 
         let mut cfg = serde_json::Map::new();
-        if let Some(exe_path) = &instance.executable_path {
-            // 시작 때와 같은 두 키 (모듈마다 읽는 키가 다르다)
-            cfg.insert("server_executable".to_string(), json!(exe_path));
-            cfg.insert("server_jar".to_string(), json!(exe_path));
-        }
-        if let Some(work_dir) = &instance.working_dir {
-            cfg.insert("working_dir".to_string(), json!(work_dir));
-        }
+        // 시작 때와 같은 키와 같은 해석 (옛 module_settings 경로, 작업 폴더 + 모듈 server_executable) (D-S11)
+        self.insert_resolved_exe(&mut cfg, instance, &instance.module_name);
         if let Some(port) = instance.port {
             cfg.insert("port".to_string(), json!(port));
         }
         // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
         cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
         // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
-        Self::insert_instance_fields(&mut cfg, instance);
+        Self::insert_instance_fields(&mut cfg, instance, &self.instance_store.instance_dir(instance_id));
         // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
-        cfg.insert("running".to_string(), json!(self.tracker.get_pid(instance_id).is_ok()));
+        let server = self.tracker.get_pid(instance_id).ok();
+        cfg.insert("running".to_string(), json!(server.is_some()));
 
-        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)))
+        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).serving(server))
     }
 
-    /// Read or update server.properties (via module's configure/read_properties)
+    /// 게임 설정 파일 읽기·쓰기·초기화·가져오기 (모듈 configure/read_properties/reset_properties/import_settings)
     pub async fn manage_properties(
         sup: &tokio::sync::RwLock<Self>,
         instance_id: &str,
@@ -2108,7 +2139,7 @@ impl Supervisor {
             // Extension 데이터 전달 — Python lifecycle 스크립트가 플랫폼 경로를 올바르게 판단하도록
             cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
             // 시작 때와 같은 인스턴스 값 (예: zomboid cache_dir — 다른 서버의 파일을 건드리지 않게)
-            Self::insert_instance_fields(&mut cfg, instance);
+            Self::insert_instance_fields(&mut cfg, instance, &s.instance_store.instance_dir(instance_id));
             if let Some(port) = instance.port {
                 cfg.entry("port".to_string()).or_insert(json!(port));
             }
@@ -2173,7 +2204,7 @@ impl Supervisor {
             let accepted: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
             s.instance_store.update(instance_id, instance)?;
             let mut call = s.instance_call(instance_id, "accept_agreements")?;
-            if let Value::Object(cfg) = &mut call.config {
+            if let Value::Object(cfg) = call.config_mut() {
                 cfg.insert("accepted_agreements".to_string(), json!(accepted));
             }
             call
@@ -2259,22 +2290,42 @@ impl Supervisor {
         Ok(result)
     }
 
+    /// 모듈 `list_versions`로 그 설정(서버 종류 등)에서 받을 수 있는 최신 버전 (`latest.release`, 예전 모양 `latest_release`).
+    /// 찾지 못하면 그 까닭(모듈 실행 오류, 모듈이 준 메시지)
+    pub async fn latest_version(module_path: &str, settings: &Value) -> std::result::Result<String, String> {
+        match crate::plugin::run_plugin(module_path, "list_versions", json!({ "settings": settings })).await {
+            Ok(v) => v
+                .pointer("/latest/release")
+                .or_else(|| v.get("latest_release"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .ok_or_else(|| v.get("message").and_then(Value::as_str).unwrap_or("list_versions gave no latest release").to_string()),
+            Err(e) => {
+                tracing::warn!("Failed to fetch versions from '{}': {}", module_path, e);
+                Err(e.to_string())
+            }
+        }
+    }
+
     /// Install a server: download binary, setup directory, optional initial settings.
     /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
+    /// `instance`: 그 인스턴스의 설정과 격리 실행이 쓸 데이터 폴더 (처음 설치와 같은 값을 받는다)
+    #[allow(clippy::too_many_arguments)]
     pub async fn install_server(
         sup: &tokio::sync::RwLock<Self>,
         module_name: &str,
         version: &str,
         install_dir: &str,
-        jar_name: Option<&str>,
+        executable: Option<&str>,
         accepted_agreements: &[String],
         initial_settings: Option<Value>,
+        instance: Option<(Value, Vec<String>)>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
 
-        // jar_name 결정: 명시 > 모듈 metadata.server_executable > 기본값 없음
-        let effective_jar = jar_name
+        // 서버 실행 파일 이름: 명시 > 모듈 metadata.server_executable > 기본값 없음
+        let effective_jar = executable
             .map(|s| s.to_string())
             .or_else(|| {
                 module.metadata.server_executable.clone()
@@ -2309,10 +2360,14 @@ impl Supervisor {
         });
 
         if let Some(ref name) = effective_jar {
-            config["jar_name"] = json!(name);
+            config["server_executable"] = json!(name);
         }
         if let Some(settings) = initial_settings {
             config["initial_settings"] = settings;
+        }
+        if let Some((settings, data_dirs)) = instance {
+            config["settings"] = settings;
+            config[crate::sandbox::INSTANCE_DATA_DIRS] = json!(data_dirs);
         }
 
         // 서버 파일과 Java를 받는다: 기본 120초로는 느린 회선에서 중간에 끊긴다 (처음 설치와 같은 한도)
@@ -2368,36 +2423,28 @@ impl Supervisor {
         module_name: &str,
         instance_id: &str,
     ) -> Result<Value> {
+        // 시작·점검과 같은 값(`server_executable`·`working_dir` 등)을 받는다
         let call = {
             let s = sup.read().await;
-            let module = s.module_loader.get_module(module_name)?;
-            let module_path = module.entry_path();
-
-            let instance = s.instance_store.list()
-                .iter()
-                .find(|i| i.id == instance_id)
+            let instance = s.instance_store.get(instance_id)
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", instance_id))?;
-
-            let install_dir = instance.module_settings
-                .get("working_dir")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .or(instance.working_dir.as_deref())
-                .unwrap_or("");
-            let jar_name = instance.module_settings
-                .get("server_jar")
-                .and_then(|v| v.as_str())
-                .unwrap_or("server.jar");
-
-            let config = json!({
-                "install_dir": install_dir,
-                "jar_name": jar_name,
-            });
-
-            crate::plugin::PluginCall::new(module_path, "get_installed_version", config)
+            if instance.module_name != module_name {
+                anyhow::bail!("Instance '{}' is not a '{}' server", instance_id, module_name);
+            }
+            s.instance_call(instance_id, "get_installed_version")?
         };
-        let result = call.run().await?;
-        Ok(result)
+        call.run().await
+    }
+
+    /// 감지한 서버 버전을 저장한다. 감지를 시작할 때 본 값(`seen`)에서 그사이 바뀌었으면 더 새 값이므로 두고 false (D-S12)
+    pub fn save_detected_version(&mut self, instance_id: &str, seen: Option<&str>, version: &str) -> Result<bool> {
+        let Some(mut instance) = self.instance_store.get(instance_id).cloned() else { return Ok(false) };
+        if instance.server_version.as_deref() != seen || seen == Some(version) {
+            return Ok(false);
+        }
+        instance.server_version = Some(version.to_string());
+        self.instance_store.update(instance_id, instance)?;
+        Ok(true)
     }
 
     /// 인스턴스마다 사용자가 정한 `java_path`: `(모듈 진입 파일, java_path)` (`sandbox::reconcile_runtimes`)
@@ -2443,14 +2490,11 @@ impl Supervisor {
                 Ok(result) => {
                     if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                         if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
-                            let mut this = sup.write().await;
-                            if let Some(mut instance) = this.instance_store.get(&id).cloned() {
-                                instance.server_version = Some(version.to_string());
-                                if let Err(e) = this.instance_store.update(&id, instance) {
-                                    tracing::warn!("Failed to save backfilled version for '{}': {}", name, e);
-                                } else {
-                                    tracing::info!("Backfilled server version '{}' for instance '{}'", version, name);
-                                }
+                            // 모으던 때 비어 있던 값만 채운다. 그사이 저장된 버전은 덮지 않는다
+                            match sup.write().await.save_detected_version(&id, None, version) {
+                                Ok(true) => tracing::info!("Backfilled server version '{}' for instance '{}'", version, name),
+                                Ok(false) => {}
+                                Err(e) => tracing::warn!("Failed to save backfilled version for '{}': {}", name, e),
                             }
                         }
                     }
@@ -2467,8 +2511,8 @@ impl Supervisor {
     /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
     /// 이를 통해 비용이 큰 시스템 콜(sysinfo)이 write lock 밖에서 실행되어
     /// GUI read 요청에 대한 블로킹을 최소화합니다.
-    /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1)
-    async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess) {
+    /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1). `may_restart`가 false면 예약하지 않는다
+    async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
         use managed_process::{LogLevel, LogSource};
         if proc.log_follower {
             return;
@@ -2504,7 +2548,7 @@ impl Supervisor {
         let auto_restart = setting_flag(&instance, "auto_restart", true);
         let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
         let mut attempt = None;
-        let (restart_in, note, note_code) = if crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
+        let (restart_in, note, note_code) = if may_restart && crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
             let history = self.restart_history.entry(instance_id.to_string()).or_default();
             match crash::next_restart_delay(history, Instant::now()) {
                 Some(delay) => {
@@ -2686,7 +2730,7 @@ impl Supervisor {
         // Clean up dead managed processes and their PID files
         let dead = self.managed_store.cleanup_dead().await;
         for (dead_id, proc) in &dead {
-            self.judge_exit(dead_id, proc).await;
+            self.judge_exit(dead_id, proc, true).await;
             let pid_file = self.instance_store.instance_dir(dead_id).join("managed.pid");
             let _ = std::fs::remove_file(&pid_file);
             // 죽은 managed process에 대해 stop cooldown 등록 → auto_detect 재탐색 억제
@@ -2836,18 +2880,14 @@ impl Supervisor {
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .map(|d| d.as_millis() as u64)
                                         .unwrap_or(0);
-                                    if let Ok(mut events) = self.port_conflict_stops.lock() {
-                                        for conflict in &conflicts {
-                                            events.push(PortConflictStopEvent {
-                                                stopped_name: instance.name.clone(),
-                                                stopped_id: instance.id.clone(),
-                                                existing_name: conflict.conflicting_instance_name.clone(),
-                                                existing_id: conflict.conflicting_instance_id.clone(),
-                                                port: conflict.port,
-                                                timestamp_ms: ts,
-                                            });
-                                        }
-                                    }
+                                    self.record_port_conflict_stops(conflicts.iter().map(|conflict| PortConflictStopEvent {
+                                        stopped_name: instance.name.clone(),
+                                        stopped_id: instance.id.clone(),
+                                        existing_name: conflict.conflicting_instance_name.clone(),
+                                        existing_id: conflict.conflicting_instance_id.clone(),
+                                        port: conflict.port,
+                                        timestamp_ms: ts,
+                                    }));
                                 } // if !skip_port_check
                                 }
                             }
@@ -2859,6 +2899,15 @@ impl Supervisor {
         Ok(())
     }
 
+    /// 포트 충돌 강제 정지 이벤트를 남긴다. 읽는 클라이언트가 없어도 최근 `PORT_CONFLICT_STOPS_KEPT`개만 둔다
+    pub fn record_port_conflict_stops(&self, new: impl IntoIterator<Item = PortConflictStopEvent>) {
+        if let Ok(mut events) = self.port_conflict_stops.lock() {
+            events.extend(new);
+            let over = events.len().saturating_sub(PORT_CONFLICT_STOPS_KEPT);
+            events.drain(..over);
+        }
+    }
+
     /// 포트 충돌 강제 정지 이벤트를 drain (GUI 폴링에서 한 번 읽으면 비움)
     pub fn drain_port_conflict_stops(&self) -> Vec<PortConflictStopEvent> {
         self.port_conflict_stops
@@ -2866,6 +2915,18 @@ impl Supervisor {
             .map(|mut events| std::mem::take(&mut *events))
             .unwrap_or_default()
     }
+}
+
+/// 인스턴스 폴더 바로 아래 이름이 데몬 항목을 가리킬 수 있는가. Windows는 대소문자를 가리지 않고 끝의 점·공백을
+/// 떼며, 짧은 이름(`SETTIN~1.JSO`)과 스트림 표기(`run:x`)로도 같은 항목을 연다. 그런 이름은 모두 데몬 항목으로 본다.
+/// 대소문자는 유니코드로 견준다 (`ſ`도 대문자로는 `S`다)
+fn is_daemon_entry(name: &str) -> bool {
+    if name.contains(['~', ':']) {
+        return true;
+    }
+    let name = name.trim_end_matches(['.', ' ']);
+    let same = |a: &str, b: &str| a.to_uppercase() == b.to_uppercase() || a.to_lowercase() == b.to_lowercase();
+    crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
 }
 
 #[cfg(test)]
@@ -2976,6 +3037,120 @@ mod tests {
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
         let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// D-S10: 정지는 자기가 올린 세대를 알려 준다. 재시작이 정지 전에 따로 읽은 세대를 기준으로 삼으면,
+    /// 그 틈에 끼어든 자동 재시작 시작을 "다른 정지·시작"으로 보고 스스로 취소해 서버가 꺼진 채 남았다
+    #[tokio::test]
+    async fn a_stop_reports_the_generation_it_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.module_loader.discover_modules().unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        // 정지 전에 다른 쪽(자동 재시작)이 세대를 올려 둔다
+        *sup.run_generation.entry(id.clone()).or_default() += 5;
+        let sup = tokio::sync::RwLock::new(sup);
+        let stopped_at = STOPPED_AT
+            .scope(std::cell::Cell::new(None), async {
+                let _ = Supervisor::stop_server(&sup, &id, "game", false).await;
+                STOPPED_AT.with(|c| c.get())
+            })
+            .await;
+        assert_eq!(stopped_at, Some(6));
+        assert_eq!(sup.read().await.run_generation_of(&id), 6);
+    }
+
+    /// 인스턴스 함수 호출은 추적 중인 서버 PID를 싣는다: 격리 실행의 루프백 중계가 그 서버의 포트로만 잇는다
+    #[tokio::test]
+    async fn an_instance_call_carries_the_tracked_server_pid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        assert_eq!(sup.instance_call(&id, "status").unwrap().server(), None);
+        sup.tracker.track(&id, 4_000_001).unwrap();
+        let call = sup.instance_call(&id, "status").unwrap();
+        assert_eq!(call.server(), Some(4_000_001));
+        assert_eq!(call.config()["running"], true);
+    }
+
+    /// 데몬이 모듈에 넘기는 값은 범용 키뿐이다: 실행 파일은 `server_executable`, 폴더는 `working_dir` (MK7).
+    /// 설치된 버전 확인도 시작·점검과 같은 값을 받는다
+    #[tokio::test]
+    async fn module_calls_carry_only_generic_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\nprint(json.dumps({'success': True, 'config': json.load(sys.stdin)}))\n").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.module_loader.discover_modules().unwrap();
+        let server_dir = tmp.path().join("server");
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.working_dir = Some(server_dir.to_string_lossy().into_owned());
+        inst.executable_path = Some(server_dir.join("paper-1.21.jar").to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let validate = sup.instance_call(&id, "validate").unwrap();
+        let sup = tokio::sync::RwLock::new(sup);
+        let installed = Supervisor::get_installed_version(&sup, "game", &id).await.unwrap();
+        for config in [validate.config(), &installed["config"]] {
+            assert_eq!(config["server_executable"], json!(server_dir.join("paper-1.21.jar").to_string_lossy()));
+            assert_eq!(config["working_dir"], json!(server_dir.to_string_lossy()));
+            for key in ["server_jar", "jar_name", "install_dir"] {
+                assert!(config.get(key).is_none(), "{key} in {config}");
+            }
+        }
+    }
+
+    /// D-S11: 모듈 함수(설치 버전 확인 등)도 시작과 같은 실행 파일을 받는다. 옛 인스턴스의 module_settings 경로,
+    /// 작업 폴더와 모듈의 server_executable로 정해지는 경로를 시작만 보고 이쪽은 보지 않았다
+    #[test]
+    fn module_calls_get_the_executable_the_start_uses() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"server.jar\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.module_loader.discover_modules().unwrap();
+        let server_dir = tmp.path().join("server");
+        let mut legacy = crate::instance::ServerInstance::new("old", "game");
+        legacy.working_dir = Some(server_dir.to_string_lossy().into_owned());
+        legacy.module_settings.insert("executable_path".into(), json!(server_dir.join("custom.jar").to_string_lossy()));
+        let mut plain = crate::instance::ServerInstance::new("new", "game");
+        plain.working_dir = Some(server_dir.to_string_lossy().into_owned());
+        for (inst, jar) in [(legacy, "custom.jar"), (plain, "server.jar")] {
+            let id = inst.id.clone();
+            let expected = sup.resolve_executable(&inst, "game");
+            sup.instance_store.add(inst).unwrap();
+            assert_eq!(expected.as_deref(), Some(server_dir.join(jar).to_string_lossy().as_ref()));
+            let call = sup.instance_call(&id, "get_installed_version").unwrap();
+            assert_eq!(call.config()["server_executable"], json!(expected), "{jar}");
+        }
     }
 
     /// 데몬보다 새 saba-core를 요구해 로드되지 못한 모듈도 시작 응답과 목록이 이유를 준다
@@ -3103,8 +3278,47 @@ mod tests {
         inst.rest_port = Some(8242);
         inst.module_settings.insert("rest_port".into(), json!(8212));
         let mut cfg = serde_json::Map::new();
-        Supervisor::insert_instance_fields(&mut cfg, &inst);
+        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pal"));
         assert_eq!(cfg["rest_port"], json!(8242));
+    }
+
+    // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라 격리 실행이 쓰지 못했다.
+    // 인스턴스 폴더 안을 가리키는 모듈 설정 폴더만 쓰기 대상으로 싣고, 데몬 파일(instance.json 등)과 인스턴스
+    // 폴더 자체는 싣지 않는다. 모듈 설정에서 온 폴더 키(리뷰 312: import_settings로 아무 경로나)는 config에 넣지 않는다
+    #[test]
+    fn modules_get_write_folders_only_inside_their_instance() {
+        let root = std::path::Path::new("/data/instances/pz");
+        let at = |rel: &str| root.join(rel).to_string_lossy().into_owned();
+        let mut inst = crate::instance::ServerInstance::new("pz", "zomboid");
+        for (key, value) in [
+            ("cache_dir", at("zomboid")),
+            ("save_dir", at("zomboid/Saves")),
+            ("meta", at("instance.json")),
+            ("runner", at("run/x")),
+            // Windows는 이름의 대소문자, 끝의 점·공백, 짧은 이름(8.3), 스트림 표기를 같은 항목으로 연다
+            ("runner_upper", at("RUN/x")),
+            ("meta_dot", at("Instance.json.")),
+            ("logs_space", at("logs /x")),
+            ("short", at("SETTIN~1.JSO")),
+            ("stream", at("run:x")),
+            ("long_s", at("ſettings.json.tmp")),
+            ("korean", at("세이브")),
+            ("up", at("../other")),
+            ("whole", root.to_string_lossy().into_owned()),
+            ("outside", "/home/user/Documents".to_string()),
+            ("install_dir", "/home/user".to_string()),
+            ("working_dir", "/home/user".to_string()),
+            ("instance_dir", "/home/user".to_string()),
+        ] {
+            inst.module_settings.insert(key.into(), json!(value));
+        }
+        let mut cfg = serde_json::Map::new();
+        Supervisor::insert_instance_fields(&mut cfg, &inst, root);
+        assert_eq!(cfg["instance_data_dirs"], json!([at("zomboid"), at("세이브")]));
+        for key in ["install_dir", "working_dir", "instance_dir"] {
+            assert!(cfg.get(key).is_none(), "{key} from module settings");
+        }
+        assert_eq!(cfg["cache_dir"], json!(at("zomboid")), "the setting itself still reaches the module");
     }
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
@@ -3141,6 +3355,46 @@ mod tests {
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!(false)))));
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!("false")))));
         assert!(!supervisor.uses_managed_start(&inst("api-game", Some(json!(false)))));
+    }
+
+    /// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다 (D-S6)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_right_after_a_crash_does_not_restart_the_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[detection]\ncrash_artifacts = [\"hs_err_pid*.log\"]\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "crashed".into();
+        supervisor.instance_store.add(inst).unwrap();
+        let work = tmp.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let mut proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), "touch hs_err_pid1.log; exit 1".into()], work.to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        proc.started_at -= 600;
+        supervisor.managed_store.insert("crashed", proc).await;
+        for _ in 0..50 {
+            if supervisor.managed_store.running_instance_ids().await.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let sup = tokio::sync::RwLock::new(supervisor);
+        Supervisor::stop_server(&sup, "crashed", "game", false).await.unwrap();
+
+        let mut s = sup.write().await;
+        assert_eq!(s.exit_events("crashed").last().map(|e| e.verdict.kind), Some(crash::ExitKind::Crash), "it did crash");
+        assert!(s.take_pending_restarts().iter().all(|(id, ..)| id != "crashed"), "but the stop keeps it down");
     }
 
     /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다 (A1)
@@ -3399,6 +3653,23 @@ mod tests {
         assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
         assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
         assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
+    }
+
+    /// 데몬이 다시 붙으면 콘솔 줄 번호가 0부터 다시 매겨진다. PID가 같아도 클라이언트가 이어 읽던 번호를
+    /// 버리게 콘솔 응답의 `epoch`가 바뀐다 (그대로면 새 줄이 옛 번호를 넘을 때까지 콘솔이 멈추거나 줄이 겹친다)
+    #[tokio::test]
+    async fn a_reattached_console_reports_a_new_epoch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let supervisor = Supervisor::new_with_instances_dir("./modules", tmp.path().to_str().unwrap());
+        let inst_dir = tmp.path().join("srv");
+        let mut epochs = Vec::new();
+        for _ in 0..2 {
+            let stub = managed_process::ManagedProcess::create_reattached_stub(std::process::id(), &inst_dir).await;
+            supervisor.managed_store.insert("srv", stub).await;
+            let out = supervisor.get_console_output("srv", Some(0), None).await.unwrap();
+            epochs.push(out["epoch"].as_u64().unwrap_or_else(|| panic!("no epoch: {out}")));
+        }
+        assert_ne!(epochs[0], epochs[1]);
     }
 
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여

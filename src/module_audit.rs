@@ -74,6 +74,24 @@ pub fn tool_python() -> std::path::PathBuf {
 mod tests {
     use super::*;
 
+    /// 실제로 도는 Python이 있는지. Windows의 `python` 앱 실행 별칭(스토어 스텁)은 실행은 되지만 실패한다
+    fn python_runs(python: &Path) -> bool {
+        std::process::Command::new(python).arg("--version").output().is_ok_and(|o| o.status.success())
+    }
+
+    // L25: PATH의 첫 python이 스토어 스텁이면 검사 시험이 건너뛰지 않고 실패했다
+    #[cfg(unix)]
+    #[test]
+    fn a_python_that_only_prints_an_install_hint_is_not_used() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("python");
+        std::fs::write(&stub, "#!/bin/sh\necho 'Python was not found' >&2\nexit 9009\n").unwrap();
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!python_runs(&stub));
+        assert!(!python_runs(&dir.path().join("missing")));
+    }
+
     fn finding(permission: &str) -> Finding {
         Finding { permission: permission.into(), file: "lifecycle.py".into(), line: 1, detail: String::new() }
     }
@@ -89,7 +107,7 @@ mod tests {
     #[tokio::test]
     async fn the_scanner_finds_capabilities_in_module_code() {
         let python = tool_python();
-        if std::process::Command::new(&python).arg("--version").output().is_err() {
+        if !python_runs(&python) {
             return; // Python 없는 환경
         }
         let dir = tempfile::tempdir().unwrap();
@@ -111,7 +129,7 @@ mod tests {
     #[tokio::test]
     async fn sourceless_bytecode_and_native_libraries_are_reported() {
         let python = tool_python();
-        if std::process::Command::new(&python).arg("--version").output().is_err() {
+        if !python_runs(&python) {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
@@ -150,7 +168,7 @@ mod tests {
     #[tokio::test]
     async fn code_hidden_behind_helper_or_test_names_is_still_found() {
         let python = tool_python();
-        if std::process::Command::new(&python).arg("--version").output().is_err() {
+        if !python_runs(&python) {
             return;
         }
         let dir = tempfile::tempdir().unwrap();

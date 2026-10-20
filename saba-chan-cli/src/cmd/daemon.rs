@@ -17,6 +17,7 @@ pub async fn run(ctx: &Ctx, cmd: DaemonCmd) -> Result<()> {
             stop(ctx, force).await?;
             start(ctx).await
         }
+        DaemonCmd::Diagnostics => diagnostics(ctx).await,
         DaemonCmd::Logs { lines, follow } => {
             ctx.ensure_daemon().await?;
             crate::cmd::console::daemon_logs(ctx, lines, follow).await
@@ -34,7 +35,7 @@ async fn status(ctx: &Ctx) -> Result<()> {
             let v =
                 json!({ "running": true, "version": h.get("version"), "pid": h.get("pid"), "url": ctx.api.base_url() });
             ctx.out.data(&v, |_| {
-                println!(
+                say!(
                     "{}  {}",
                     output::status_badge("running"),
                     output::dim(&format!(
@@ -50,7 +51,7 @@ async fn status(ctx: &Ctx) -> Result<()> {
         Err(e) if is_down(&e) => {
             let v = json!({ "running": false, "url": ctx.api.base_url() });
             ctx.out.data(&v, |_| {
-                println!(
+                say!(
                     "{}  {}",
                     output::status_badge("stopped"),
                     output::dim(ctx.api.base_url())
@@ -83,7 +84,16 @@ async fn stop(ctx: &Ctx, force: bool) -> Result<()> {
         Err(e) => return Err(e),
     };
     let pid = h.get("pid").and_then(Value::as_u64);
-    let asked = ctx.api.shutdown().await.is_ok();
+    // 끊김은 데몬이 이미 내려가는 중일 수 있어 아래에서 확인한다. 다른 거절은 이유를 남긴다
+    let refused = match ctx.api.shutdown().await {
+        Ok(_) => None,
+        Err(e) if is_down(&e) => None,
+        Err(e) => Some(t!("daemon.shutdown_refused", error = e)),
+    };
+    let asked = refused.is_none();
+    if let Some(why) = &refused {
+        ctx.out.warn(why);
+    }
     let spin = crate::progress::spinner(&t!("daemon.stopping"));
     let deadline = Instant::now() + bootstrap::STOP_TIMEOUT;
     while asked && Instant::now() < deadline {
@@ -97,7 +107,7 @@ async fn stop(ctx: &Ctx, force: bool) -> Result<()> {
     spin.finish_and_clear();
     let pid = pid.ok_or_else(|| failed(t!("daemon.stop_no_pid")))?;
     if !force && !ctx.ask.confirm(&t!("daemon.confirm_kill", pid = pid), false)? {
-        return Err(failed(t!("daemon.stop_timeout")));
+        return Err(failed(refused.unwrap_or_else(|| t!("daemon.stop_timeout"))));
     }
     bootstrap::kill_pid(pid)?;
     ctx.out.done(
@@ -105,4 +115,142 @@ async fn stop(ctx: &Ctx, force: bool) -> Result<()> {
         &json!({ "running": false, "killed": pid }),
     );
     Ok(())
+}
+
+/// 도움을 청할 때 붙여 넣을 진단 (GUI 설정의 진단 정보와 같은 `GET /api/diagnostics`)
+async fn diagnostics(ctx: &Ctx) -> Result<()> {
+    let d = ctx.api.diagnostics().await?;
+    ctx.out.data(&d, |d| {
+        output::print_kv(&diagnostics_rows(d));
+        let problems = d
+            .get("recent_problems")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        say!();
+        if problems.is_empty() {
+            say!("{}", output::dim(&t!("daemon.diag.no_problems")));
+            return;
+        }
+        output::heading(&t!("daemon.diag.problems"));
+        for p in &problems {
+            let lvl = s(p, "level").to_uppercase();
+            let lvl = if lvl == "ERROR" {
+                console::style(lvl).red()
+            } else {
+                console::style(lvl).yellow()
+            };
+            say!("  {:5} {}", lvl, s(p, "message"));
+        }
+    });
+    Ok(())
+}
+
+fn diagnostics_rows(d: &Value) -> Vec<(String, String)> {
+    let list = |v: Option<&Value>| {
+        let names: Vec<&str> = v
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        if names.is_empty() {
+            "-".to_string()
+        } else {
+            names.join(", ")
+        }
+    };
+    let token = &d["token_file"];
+    let mut rows = vec![
+        (t!("daemon.diag.version"), s(d, "version").to_string()),
+        (
+            t!("daemon.diag.uptime"),
+            d.get("uptime_secs")
+                .and_then(Value::as_u64)
+                .map(output::duration)
+                .unwrap_or_else(|| "-".into()),
+        ),
+        (
+            "PID".to_string(),
+            d.get("pid")
+                .and_then(Value::as_u64)
+                .map(|p| p.to_string())
+                .unwrap_or_default(),
+        ),
+        (t!("daemon.diag.listen"), s(d, "listen_addr").to_string()),
+        (t!("daemon.diag.data_dir"), s(d, "data_dir").to_string()),
+        (
+            t!("daemon.diag.token"),
+            if token.get("exists").and_then(Value::as_bool) == Some(true) {
+                s(token, "path").to_string()
+            } else {
+                t!("daemon.diag.token_missing", path = s(token, "path"))
+            },
+        ),
+        (t!("daemon.diag.audit_log"), s(d, "audit_log").to_string()),
+        (
+            t!("daemon.diag.modules"),
+            match d["modules"].get("count").and_then(Value::as_u64) {
+                Some(n) => n.to_string(),
+                None => t!("daemon.diag.modules_error", error = s(&d["modules"], "error")),
+            },
+        ),
+        (t!("daemon.diag.extensions"), list(d["extensions"].get("enabled"))),
+    ];
+    let missing = list(d["extensions"].get("enabled_but_missing"));
+    if missing != "-" {
+        rows.push((t!("daemon.diag.extensions_missing"), missing));
+    }
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 데몬의 종료 hook 한도(30초)가 지나기 전에 강제 종료를 묻지 않는다 (L59)
+    #[test]
+    fn stop_waits_longer_than_the_daemon_shutdown_hooks() {
+        assert!(bootstrap::STOP_TIMEOUT > Duration::from_secs(30));
+    }
+
+    /// GUI 진단과 같은 값을 빠짐없이 보인다: 없는 토큰 파일과 설치되지 않은 익스텐션이 눈에 띄어야 한다
+    #[test]
+    fn diagnostics_show_what_the_gui_shows() {
+        let d = json!({
+            "ok": true, "version": "0.1.7", "pid": 42, "uptime_secs": 3700,
+            "listen_addr": "127.0.0.1:57474", "data_dir": "/data",
+            "token_file": { "path": "/data/.ipc_token", "exists": false },
+            "audit_log": "/data/audit.log",
+            "extensions": { "enabled": ["backup", "music"], "enabled_but_missing": ["ghost"] },
+            "modules": { "error": "bad toml" },
+            "recent_problems": []
+        });
+        let rows = diagnostics_rows(&d);
+        let text: Vec<&str> = rows.iter().map(|(_, v)| v.as_str()).collect();
+        for want in [
+            "0.1.7",
+            "42",
+            "127.0.0.1:57474",
+            "/data",
+            "/data/audit.log",
+            "backup, music",
+            "ghost",
+        ] {
+            assert!(text.contains(&want), "{want} missing from {rows:?}");
+        }
+        assert!(
+            text.iter()
+                .any(|v| v.contains("/data/.ipc_token") && *v != "/data/.ipc_token"),
+            "missing token is marked: {rows:?}"
+        );
+        assert!(
+            text.iter().any(|v| v.contains("bad toml")),
+            "module error is shown: {rows:?}"
+        );
+        let healthy = json!({ "token_file": { "path": "/t", "exists": true }, "modules": { "count": 3 }, "extensions": { "enabled": [] } });
+        let rows = diagnostics_rows(&healthy);
+        assert!(rows.iter().any(|(_, v)| v == "/t") && rows.iter().any(|(_, v)| v == "3"));
+        assert_eq!(rows.len(), 9, "no missing-extensions row when nothing is missing");
+    }
 }

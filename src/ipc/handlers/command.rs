@@ -209,10 +209,10 @@ async fn instance_commands(
             }
         }
     }
-    let entry = {
+    let (entry, instance_dir) = {
         let supervisor = state.supervisor.read().await;
         match supervisor.module_loader.get_module(&instance.module_name) {
-            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => m.entry_path(),
+            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => (m.entry_path(), supervisor.instance_store.instance_dir(&instance.id)),
             _ => return Default::default(),
         }
     };
@@ -220,7 +220,7 @@ async fn instance_commands(
     if let Some(dir) = &instance.working_dir {
         config.insert("working_dir".into(), json!(dir));
     }
-    crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance);
+    crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance, &instance_dir);
     let loaded = match crate::plugin::run_plugin(&entry, "instance_commands", Value::Object(config)).await {
         Ok(value) if value.get("success").and_then(Value::as_bool) != Some(false) => {
             crate::commands::InstanceCommands::parse(&value)
@@ -266,7 +266,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "name": field.name,
                 "label": field.label,
                 "description": field.description,
-                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "risk": crate::commands::risk_of(field.risk.as_deref()),
                 "inputs": field.inputs,
                 "source": "module",
                 "aliases": aliases,
@@ -286,7 +286,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "name": field.name,
                 "label": field.label,
                 "description": field.description,
-                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "risk": crate::commands::risk_of(field.risk.as_deref()),
                 "inputs": field.inputs,
                 "source": "module",
                 "group": extra.groups.get(&field.name),
@@ -302,7 +302,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
             "name": cmd.name,
             "label": cmd.label.as_deref().unwrap_or(&cmd.name),
             "description": cmd.description,
-            "risk": cmd.risk.as_deref().unwrap_or("caution"),
+            "risk": crate::commands::risk_of(cmd.risk.as_deref()),
             "inputs": cmd.inputs,
             "source": "extension",
             "extension": ext_id,

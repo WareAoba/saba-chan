@@ -150,6 +150,7 @@ pub async fn daemon_console(
         Json(json!({
             "lines": lines,
             "count": lines.len(),
+            "epoch": state.daemon_log_buffer.epoch(),
         })),
     )
         .into_response()
@@ -244,5 +245,34 @@ mod launch_tests {
         assert_eq!(field(json!({ "kind": "cli", "view": "console", "instance": 5 })), "instance");
         assert_eq!(field(json!({ "kind": "cli", "view": "shell", "instance": "abc" })), "instance");
         assert_eq!(field(json!({ "kind": "cli", "view": "run", "instance": "abc" })), "view");
+    }
+}
+
+#[cfg(test)]
+mod console_tests {
+    use super::*;
+
+    /// 데몬 로그 번호는 데몬을 켤 때마다 1부터 다시 센다: 답에 버퍼 세대 `epoch`를 실어,
+    /// 이어 읽던 클라이언트가 바뀐 것을 알고 번호를 버리게 한다 (L55)
+    #[tokio::test]
+    async fn the_daemon_console_carries_an_epoch_that_changes_with_the_buffer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let read = |buffer: crate::daemon_log::DaemonLogBuffer| {
+            let state = IPCServer::new(sup.clone(), "127.0.0.1:0", buffer);
+            async move {
+                let res = daemon_console(State(state), axum::extract::Query(Default::default())).await.into_response();
+                crate::ipc::internal::into_internal(res).await.body
+            }
+        };
+        let first = read(crate::daemon_log::DaemonLogBuffer::new()).await;
+        let again = read(crate::daemon_log::DaemonLogBuffer::new()).await;
+        let (a, b) = (first["epoch"].as_u64().expect("epoch"), again["epoch"].as_u64().expect("epoch"));
+        assert!(b > a, "a restarted daemon's buffer has a newer epoch: {a} then {b}");
     }
 }

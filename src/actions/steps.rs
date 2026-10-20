@@ -146,11 +146,6 @@ fn lanes() -> &'static Mutex<std::collections::HashSet<String>> {
     LANES.get_or_init(Default::default)
 }
 
-/// 이 자리에서 여러 단계 실행이 돌고 있으면 409 (계획을 쓰기 전에 본다)
-pub(super) fn lane_free(caller: &Caller) -> Result<(), ActionError> {
-    drop(Lane::take(caller)?);
-    Ok(())
-}
 
 impl Lane {
     pub(super) fn take(caller: &Caller) -> Result<Self, ActionError> {
@@ -175,8 +170,12 @@ fn lock(rec: &Mutex<Record>) -> std::sync::MutexGuard<'_, Record> {
     rec.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub(super) async fn run_steps(server: &IPCServer, steps: Vec<Step>, caller: Caller) -> Result<Value, ActionError> {
-    let lane = Lane::take(&caller)?;
+/// `lane`은 계획을 꺼내기 전에 잡아 둔 자리다: 꺼낸 뒤에 잡다가 409가 나면 계획만 쓰이고 사라진다 (D-F6)
+pub(super) async fn run_steps(server: &IPCServer, steps: Vec<Step>, caller: Caller, lane: Option<Lane>) -> Result<Value, ActionError> {
+    let lane = match lane {
+        Some(lane) => lane,
+        None => Lane::take(&caller)?,
+    };
     let run_id = new_plan_id();
     let rows = steps
         .iter()

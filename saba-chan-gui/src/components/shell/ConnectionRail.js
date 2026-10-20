@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 
-const DAEMON_TONE = { running: 'ok', checking: 'warn', stopped: 'stop', error: 'stop' };
+const DAEMON_TONE = { running: 'ok', checking: 'warn', stopped: 'stop', error: 'stop', token_invalid: 'stop' };
 const BOT_TONE = { running: 'ok', connecting: 'warn', stopped: 'idle' };
 
 /**

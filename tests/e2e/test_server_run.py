@@ -4,6 +4,7 @@
 """
 
 import os
+import re
 import socket
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ import pytest
 
 from harness import procs
 from harness.daemon import E2EError, EventStream, wait_until
-from harness.paths import IS_WINDOWS
+from harness.paths import IS_WINDOWS, MODULES_REPO
 
 DONE = r"Done \([^)]+\)!"
 
@@ -155,13 +156,18 @@ def test_hung_server_is_force_stopped(mc):
     daemon.wait_console(iid, DONE)
     daemon.stdin(iid, "e2e-hang")
     daemon.wait_console(iid, "e2e-hang on")
+    # 데몬은 모듈 [config] stop_timeout(기본 30초)만큼 기다린 뒤 강제 종료한다
+    # (tomllib은 3.11부터라 3.10 실행기를 위해 그 줄만 읽는다)
+    toml = (MODULES_REPO / "minecraft" / "module.toml").read_text(encoding="utf-8")
+    found = re.search(r"^stop_timeout\s*=\s*(\d+)", toml, re.M)
+    grace = int(found.group(1)) if found else 30
     t0 = time.monotonic()
-    daemon.stop_instance(iid, timeout=120)
+    daemon.stop_instance(iid, timeout=grace + 60)
     daemon.wait_status(iid, "stopped", timeout=90)
     elapsed = time.monotonic() - t0
     assert not procs.processes_mentioning(str(folder)), "강제 정지 뒤 프로세스가 남음"
     assert not _listening(port)
-    assert elapsed < 60, f"멈춘 서버 정지에 {elapsed:.0f}초"
+    assert elapsed < grace + 30, f"멈춘 서버 정지에 {elapsed:.0f}초 (stop_timeout {grace}초)"
 
 
 def test_force_stop_kills_immediately(mc):

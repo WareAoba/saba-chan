@@ -61,6 +61,7 @@ impl InstanceCommands {
             if field.method.as_deref() == Some("rcon") {
                 field.method = Some("console".into());
             }
+            field.risk = Some(risk_of(field.risk.as_deref()).to_string());
             if let Some(group) = group {
                 out.groups.insert(field.name.clone(), group);
             }
@@ -286,6 +287,16 @@ fn check(input: &CommandInput, label: &str, value: Value) -> Result<Value, PlanE
 
 fn toml_to_json(v: &toml::Value) -> Option<Value> {
     serde_json::to_value(v).ok()
+}
+
+/// 명령 위험도: safe·caution·danger만 그대로, 없으면 caution. 모르는 값(오타·대소문자 다름)은 danger로 다룬다
+pub fn risk_of(risk: Option<&str>) -> &'static str {
+    match risk {
+        None => "caution",
+        Some("safe") => "safe",
+        Some("caution") => "caution",
+        Some(_) => "danger",
+    }
 }
 
 /// 콘솔 한 줄을 여러 줄로 쪼갤 수 있는 문자(`\r`, `\n`, NUL)가 있는지

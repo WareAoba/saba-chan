@@ -1,5 +1,5 @@
 ﻿use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -22,8 +22,24 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token })))
 }
 
-/// GET /api/servers - 모든 서버 목록 (인스턴스 기반)
-pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
+#[derive(serde::Deserialize, Default)]
+pub struct ListServersQuery {
+    /// `keep`이면 포트 충돌 강제 정지 알림을 보여 주기만 하고 비우지 않는다 (알림을 사람에게 보이지 않는 조회용)
+    pub notices: Option<String>,
+}
+
+/// GET /api/servers - 모든 서버 목록 (인스턴스 기반). 클라이언트(GUI·CLI)가 부르며, 포트 충돌 강제 정지 알림을 읽어 비운다
+pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListServersQuery>) -> axum::response::Response {
+    server_list(&state, q.notices.as_deref() != Some("keep")).await
+}
+
+/// 데몬 안에서 부르는 서버 목록 (릴레이 하트비트·채팅). 강제 정지 알림은 클라이언트 몫이라 비우지 않는다
+pub async fn list_servers_internal(state: &IPCServer) -> axum::response::Response {
+    server_list(state, false).await
+}
+
+async fn server_list(state: &IPCServer, take_notices: bool) -> axum::response::Response {
+    let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
     struct InstanceSnapshot {
         id: String,
@@ -178,6 +194,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     port_conflicts: vec![],
                     slots: Default::default(),
                     players: None,
+                    unresponsive: None,
                 });
                 ext_handled = true;
             }
@@ -232,6 +249,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             port_conflicts: vec![],
             slots: Default::default(),
             players: None,
+            unresponsive: None,
         });
     }
 
@@ -246,6 +264,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
     // ── 접속자 수 (Q-5): 모듈이 알려 준 마지막 값, 켜진 서버만 ──
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
         srv.players = crate::supervisor::players::get(&srv.id);
+        srv.unresponsive = crate::supervisor::players::unresponsive(&srv.id, srv.pid, std::time::Instant::now());
     }
 
     // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
@@ -274,13 +293,17 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         }
     }
 
-    // 포트 충돌 강제 정지 이벤트 drain (짧은 read lock)
+    // 포트 충돌 강제 정지 이벤트 (짧은 read lock). 클라이언트 요청만 비운다
     let port_conflict_stops = {
         let supervisor = state.supervisor.read().await;
-        supervisor.drain_port_conflict_stops()
+        if take_notices {
+            supervisor.drain_port_conflict_stops()
+        } else {
+            supervisor.port_conflict_stops.lock().map(|e| e.clone()).unwrap_or_default()
+        }
     };
 
-    Json(ServerListResponse { servers, port_conflict_stops })
+    Json(ServerListResponse { servers, port_conflict_stops }).into_response()
 }
 
 /// GET /api/modules - 모든 모듈 목록
@@ -361,6 +384,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         unmet_dependencies,
         path: m.path,
         executable_path: meta.executable_path,
+        server_executable: meta.server_executable,
         icon: icon_base64,
         interaction_mode: meta.interaction_mode,
         protocols: meta.protocols_supported.map(|supported| ProtocolsInfo {
@@ -377,18 +401,23 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         presets: meta.presets,
         queries: meta.queries,
         agreements: meta.agreements,
+        functions: None,
     }
 }
 
-fn module_list_response(
-    supervisor: &crate::supervisor::Supervisor,
+async fn module_list_response(
     modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
+    failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
     versions: &std::collections::BTreeMap<String, String>,
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
-            let modules = modules.into_iter().map(|m| module_info(m, versions)).collect();
-            let failed = supervisor.module_loader.load_errors();
+            // 구현한 함수 목록 (MK1): 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
+            let asks: Vec<_> = modules.iter().map(|m| tokio::spawn(crate::plugin::module_functions_for_list(m.entry_path()))).collect();
+            let mut modules: Vec<ExtensionInfo> = modules.into_iter().map(|m| module_info(m, versions)).collect();
+            for (info, ask) in modules.iter_mut().zip(asks) {
+                info.functions = ask.await.ok().flatten();
+            }
             (StatusCode::OK, Json(ExtensionListResponse { modules, failed })).into_response()
         }
         Err(e) => {
@@ -400,8 +429,11 @@ fn module_list_response(
 
 pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
     let versions = component_versions(&state).await;
-    let supervisor = state.supervisor.read().await;
-    module_list_response(&supervisor, supervisor.list_modules(), &versions)
+    let (modules, failed) = {
+        let supervisor = state.supervisor.read().await;
+        (supervisor.list_modules(), supervisor.module_loader.load_errors())
+    };
+    module_list_response(modules, failed, &versions).await
 }
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
@@ -409,10 +441,11 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
     let modules = state.supervisor.read().await.refresh_modules();
     if let Ok(m) = &modules {
         tracing::info!("Module cache refreshed. Found {} modules", m.len());
+        crate::plugin::prefetch_module_functions(m.iter().map(|m| m.entry_path()).collect());
     }
     let versions = component_versions(&state).await;
-    let supervisor = state.supervisor.read().await;
-    module_list_response(&supervisor, modules, &versions)
+    let failed = state.supervisor.read().await.module_loader.load_errors();
+    module_list_response(modules, failed, &versions).await
 }
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)
@@ -527,9 +560,23 @@ pub async fn install_module_from_manifest(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
-    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+    if !crate::utils::is_single_path_component(&module_id) {
         return fail("Invalid module ID".into());
     }
+    let Some(installing) = module_install_guard(&module_id) else {
+        return module_busy(&module_id);
+    };
+    // 잠금을 쥔 채 따로 돌린다: 요청이 끊겨도 받은 파일 정리와 잠금 해제가 작업 끝에 함께 일어난다
+    crate::audit::spawn(async move {
+        let _installing = installing;
+        install_module_locked(state, module_id).await
+    })
+    .await
+    .unwrap_or_else(|e| fail(e.to_string()))
+}
+
+async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
+    let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
     let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
         Ok(Some(m)) => m,
         Ok(None) => return fail("No release is published".into()),
@@ -552,8 +599,7 @@ pub async fn install_module_from_manifest(
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
     };
-    let zip_path = modules_dir.join(format!(".tmp-module-{}.zip", module_id));
-    let staging = modules_dir.join(format!(".staging-{}", module_id));
+    let (zip_path, staging) = module_install_paths(&modules_dir, &module_id);
     let target_dir = modules_dir.join(&module_id);
 
     let result: anyhow::Result<()> = async {
@@ -580,6 +626,26 @@ pub async fn install_module_from_manifest(
     let supervisor = state.supervisor.read().await;
     let _ = supervisor.refresh_modules();
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
+}
+
+/// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
+/// 키는 소문자로: Windows에서는 대소문자만 다른 id가 같은 폴더다
+pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::BusyGuard> {
+    super::backup::BusyGuard::take(&format!("module-install:{}", module_id.to_lowercase()))
+}
+
+pub(crate) fn module_busy(module_id: &str) -> axum::response::Response {
+    let error = format!("Module '{}' is already being installed or removed", module_id);
+    (StatusCode::OK, Json(json!({ "ok": false, "error": error, "error_code": "module_busy" }))).into_response()
+}
+
+/// 설치 요청마다 따로 쓰는 받은 zip과 압축 해제 폴더 (`.tmp-`·`.staging-`로 시작해 남으면 다음 기동이 지운다)
+fn module_install_paths(modules_dir: &std::path::Path, module_id: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    (
+        modules_dir.join(format!(".tmp-module-{}-{}.zip", module_id, tag)),
+        modules_dir.join(format!(".staging-{}-{}", module_id, tag)),
+    )
 }
 
 /// 풀어 둔 모듈 패키지를 데몬과 같은 규칙으로 읽어 본 뒤 설치 폴더와 바꾼다.
@@ -613,9 +679,12 @@ pub async fn remove_module(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     // 경로 탐색 방지
-    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+    if !crate::utils::is_single_path_component(&module_id) {
         return (StatusCode::OK, Json(json!({ "ok": false, "error": "Invalid module ID" }))).into_response();
     }
+    let Some(_removing) = module_install_guard(&module_id) else {
+        return module_busy(&module_id);
+    };
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
@@ -701,8 +770,12 @@ async fn start_instance(
             .into_response();
     };
 
-    // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다
-    let since = state.supervisor.read().await.run_generation_of(&instance.id);
+    // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다.
+    // 재시작처럼 부른 쪽이 이미 확인한 세대가 있으면 그 값을 쓴다 (`start_when_free`)
+    let since = match crate::supervisor::START_SINCE.try_with(|g| *g) {
+        Ok(checked) => checked,
+        Err(_) => state.supervisor.read().await.run_generation_of(&instance.id),
+    };
     crate::supervisor::START_SINCE.scope(since, start_checked(state, instance, managed)).await
 }
 
@@ -844,10 +917,20 @@ async fn restart_instance(
         return instance_not_found(&id);
     };
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
+    // 이 재시작의 정지가 올린 세대보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다 (D-S8).
+    // 기준은 정지가 알려 준 값이다: 정지 전에 따로 읽으면 그 틈에 끼어든 자동 재시작 시작까지 세어 스스로 취소한다 (D-S10)
+    let before_stop = state.supervisor.read().await.run_generation_of(&inst_id);
     let running;
+    let stopped_at;
     {
         // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
-        let stop = crate::ipc::internal::into_internal(stop_instance(state.clone(), &inst_id, force).await).await;
+        let stopping = async {
+            let resp = stop_instance(state.clone(), &inst_id, force).await;
+            (resp, crate::supervisor::STOPPED_AT.with(|at| at.get()))
+        };
+        let (stop, at) = crate::supervisor::STOPPED_AT.scope(std::cell::Cell::new(None), stopping).await;
+        stopped_at = at.unwrap_or(before_stop + 1);
+        let stop = crate::ipc::internal::into_internal(stop).await;
         // 꺼져 있던 일반 인스턴스는 정지가 아무것도 하지 않고 was_running=false를 준다
         let ok = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
         if !ok {
@@ -869,12 +952,16 @@ async fn restart_instance(
     // 백업·복원이 잠금을 쥐고 있으면 끝나기를 기다렸다 켠다. 요청이 끊겨도 꺼진 채 남지 않게 따로 돌린다.
     // 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 그만둔다
     let generation = state.supervisor.read().await.run_generation_of(&inst_id);
+    if generation > stopped_at {
+        let error = json!({ "success": false, "error": "The server was stopped or started while restarting", "error_code": "restart_cancelled", "stopped": running });
+        return (StatusCode::CONFLICT, Json(error)).into_response();
+    }
     let start = crate::audit::spawn(async move {
         let wanted = || async {
             let supervisor = state.supervisor.read().await;
             supervisor.instance_store.get(&inst_id).is_some() && supervisor.run_generation_of(&inst_id) == generation
         };
-        super::backup::start_when_free(&state, &inst_id, wanted).await
+        super::backup::start_when_free(&state, &inst_id, generation, wanted).await
     })
     .await;
     let start = match start {
@@ -904,7 +991,7 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
     tracing::info!("Auto restarting '{}' after a crash", instance_id);
     // 백업이 잠금을 쥐고 있으면 끝나기를 기다린다 (기다리는 동안 사용자가 정지·시작하면 그만둔다)
     let wanted = || async { state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await };
-    let Some(resp) = super::backup::start_when_free(&state, &instance_id, wanted).await else {
+    let Some(resp) = super::backup::start_when_free(&state, &instance_id, generation, wanted).await else {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
         state.supervisor.read().await.record_restart_outcome(&instance_id, generation, false);
         return;
@@ -1093,6 +1180,97 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
+    /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다
+    #[tokio::test]
+    async fn the_module_list_carries_the_declared_server_executable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, config) in [("game", "\n[config]\nserver_executable = \"server.jar\"\n"), ("plain", "")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{config}")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let listed = crate::ipc::internal::into_internal(list_modules(State(state)).await).await.body;
+        let module = |name: &str| listed["modules"].as_array().unwrap().iter().find(|m| m["name"] == name).cloned().unwrap();
+        assert_eq!(module("game")["server_executable"], "server.jar", "{listed}");
+        assert!(module("plain").get("server_executable").is_none(), "{listed}");
+    }
+
+    /// Windows 폴더 이름은 대소문자를 가리지 않는다: 대소문자만 다른 id도 같은 모듈 폴더다
+    #[test]
+    fn module_ids_that_differ_only_in_case_share_one_install_lock() {
+        let held = module_install_guard("CaseMod");
+        assert!(held.is_some());
+        assert!(module_install_guard("casemod").is_none());
+    }
+
+    /// Windows는 끝의 "."·공백을 떼고 폴더를 찾는다: `game.`은 `game`과 같은 폴더라 잠금을 피해 가지 못하게 거절한다
+    #[tokio::test]
+    async fn module_ids_that_alias_another_folder_are_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(&modules).unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        for id in ["game.", "game "] {
+            let removed = crate::ipc::internal::into_internal(remove_module(Path(id.into()), State(state.clone())).await).await.body;
+            assert_eq!(removed["error"], "Invalid module ID", "{id:?}: {removed}");
+            let installed = crate::ipc::internal::into_internal(install_module_from_manifest(Path(id.into()), State(state.clone())).await).await.body;
+            assert_eq!(installed["error"], "Invalid module ID", "{id:?}: {installed}");
+        }
+    }
+
+    /// 재시작의 정지 단계(서버가 끝나기를 기다리는 동안)에 들어온 정지도 재시작을 취소한다 (D-S8)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_during_a_restart_keeps_the_server_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_timeout = 3\n",
+        )
+        .unwrap();
+        // 정상 종료 요청(TERM)을 무시해 정지가 stop_timeout까지 걸리는 서버
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', \"trap '' TERM; sleep 60\"], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-during-restart".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let started = crate::ipc::internal::into_internal(start_instance(Path("stop-during-restart".into()), State(state.clone())).await).await.body;
+        assert_ne!(started["success"], false, "{started}");
+
+        let restarter = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                crate::ipc::internal::into_internal(restart_instance(Path("stop-during-restart".into()), State(state), None).await).await.body
+            })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        let _ = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-during-restart", "game", false).await;
+
+        let restarted = restarter.await.unwrap();
+        assert_eq!(restarted["error_code"], "restart_cancelled", "{restarted}");
+        let s = state.supervisor.read().await;
+        assert!(s.tracker.get_pid("stop-during-restart").is_err(), "nothing is tracked");
+        assert!(s.managed_store.get("stop-during-restart").await.is_none(), "the restart did not bring the server back");
+    }
+
     /// 시작 전 점검(모듈 validate) 중에 들어온 정지도 시작을 취소한다: 그 정지는 PID가 없어 바로 성공으로 끝난다
     #[cfg(unix)]
     #[tokio::test]
@@ -1137,6 +1315,46 @@ mod tests {
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-during-check").is_err(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-check").await.is_none(), "no server was left running");
+    }
+
+    /// 재시작·자동 재시작은 세대를 확인한 뒤 시작한다. 확인과 시작 사이에 들어온 정지도 시작을 취소해야 한다:
+    /// 시작은 확인한 세대를 기준으로 삼는다(새로 읽으면 그 정지가 기준에 들어가 버린다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_between_the_restart_check_and_its_start_keeps_the_server_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-after-check".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let checked = state.supervisor.read().await.run_generation_of("stop-after-check");
+        let stopped = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-after-check", "game", false).await.unwrap();
+        assert_ne!(stopped["success"], false, "{stopped}");
+        let started = super::super::backup::start_when_free(&state, "stop-after-check", checked, || async { true }).await.unwrap().body;
+
+        assert_eq!(started["error_code"], "start_cancelled", "{started}");
+        let s = state.supervisor.read().await;
+        assert!(s.tracker.get_pid("stop-after-check").is_err(), "nothing is tracked");
+        assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
     }
 
     #[test]
@@ -1259,12 +1477,96 @@ mod tests {
         sup.instance_store.add(direct).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
-        let body = crate::ipc::internal::into_internal(list_servers(State(state)).await).await.body;
+        let body = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
         let managed = |name: &str| {
             body["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap()["managed"].clone()
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    /// 포트 충돌 강제 정지 알림은 클라이언트가 읽을 몫이다: 데몬 안 호출(릴레이 하트비트·채팅)은 비우지 않는다 (D-S3)
+    #[tokio::test]
+    async fn internal_server_lists_leave_forced_stop_notices_for_the_clients() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        sup.port_conflict_stops.lock().unwrap().push(crate::supervisor::PortConflictStopEvent {
+            stopped_name: "b".into(),
+            stopped_id: "b-id".into(),
+            existing_name: "a".into(),
+            existing_id: "a-id".into(),
+            port: 25565,
+            timestamp_ms: 1,
+        });
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let stops = |body: Value| body["port_conflict_stops"].as_array().map(Vec::len).unwrap_or(0);
+
+        let internal = crate::ipc::internal::into_internal(list_servers_internal(&state).await).await.body;
+        assert_eq!(stops(internal), 1, "internal callers still see it");
+        // 대기 루프·목록 같은 클라이언트 조회는 `notices=keep`으로 비우지 않고 본다
+        let keep = Query(ListServersQuery { notices: Some("keep".into()) });
+        let peek = crate::ipc::internal::into_internal(list_servers(State(state.clone()), keep).await).await.body;
+        assert_eq!(stops(peek), 1, "notices=keep shows it without taking it");
+        let client = crate::ipc::internal::into_internal(list_servers(State(state.clone()), Query(ListServersQuery::default())).await).await.body;
+        assert_eq!(stops(client), 1, "the client gets the notice the heartbeat did not take");
+        let again = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
+        assert_eq!(stops(again), 0, "a client reads it once");
+    }
+
+    /// 아무 클라이언트도 읽지 않는 헤드리스 데몬에서도 알림이 끝없이 쌓이지 않는다
+    #[tokio::test]
+    async fn forced_stop_notices_keep_only_the_latest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let event = |port: u16| crate::supervisor::PortConflictStopEvent {
+            stopped_name: "b".into(),
+            stopped_id: "b-id".into(),
+            existing_name: "a".into(),
+            existing_id: "a-id".into(),
+            port,
+            timestamp_ms: 1,
+        };
+        for port in 0..30 {
+            sup.record_port_conflict_stops([event(port)]);
+        }
+        let kept = sup.drain_port_conflict_stops();
+        assert_eq!(kept.len(), crate::supervisor::PORT_CONFLICT_STOPS_KEPT);
+        assert_eq!(kept.last().unwrap().port, 29, "the newest is kept");
+    }
+
+    /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)
+    #[tokio::test]
+    async fn a_module_is_installed_by_one_request_at_a_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let held = module_install_guard("plain").expect("free");
+        let body = crate::ipc::internal::into_internal(
+            install_module_from_manifest(Path("plain".into()), State(state.clone())).await.into_response(),
+        )
+        .await
+        .body;
+        assert_eq!(body["error_code"], "module_busy", "{body}");
+        let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state)).await.into_response()).await.body;
+        assert_eq!(removed["error_code"], "module_busy", "{removed}");
+        drop(held);
+        assert!(module_install_guard("plain").is_some(), "refused requests must not keep the lock");
+
+        let (zip_a, staging_a) = module_install_paths(tmp.path(), "plain");
+        let (zip_b, staging_b) = module_install_paths(tmp.path(), "plain");
+        assert!(zip_a != zip_b && staging_a != staging_b);
+        let name = staging_a.file_name().unwrap().to_string_lossy().to_string();
+        assert!(name.starts_with(".staging-plain-") && zip_a.file_name().unwrap().to_string_lossy().starts_with(".tmp-module-plain-"));
     }
 
     #[test]

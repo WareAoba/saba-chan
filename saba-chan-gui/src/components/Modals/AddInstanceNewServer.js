@@ -133,7 +133,7 @@ export function AddInstanceNewServer({
                         {extensions.length === 0 ? (
                             <p className="as-empty-hint">
                                 <Icon name="alertCircle" size="sm" />
-                                {t('add_server_modal.no_extensions')}
+                                {t('add_server_modal.no_modules')}
                             </p>
                         ) : (
                             <div className="as-grid-wrap">

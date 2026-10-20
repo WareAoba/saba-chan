@@ -99,6 +99,10 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             let sinceId = 0;
             // 마지막으로 본 실행 PID. 바뀌면 새 프로세스라 줄 번호가 0부터 다시 시작한다
             let seenPid = null;
+            // 마지막으로 본 콘솔 버퍼 세대(epoch). PID가 같아도 데몬이 다시 붙으면 바뀌고 줄 번호가 0부터 다시 시작한다
+            let seenEpoch = null;
+            // 세대가 바뀐 뒤 처음 받는 줄은 이어 붙이지 않고 그 버퍼로 바꾼다 (다시 붙은 버퍼는 이미 본 줄을 다시 담는다)
+            let replaceLines = false;
             let diskLoaded = false;
             let polling = false;
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
@@ -115,14 +119,32 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     polling = true;
                     try {
                         const pid = useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid;
+                        let pidChanged = false;
                         if (pid > 0) {
-                            if (seenPid !== null && pid !== seenPid) sinceId = 0;
+                            if (seenPid !== null && pid !== seenPid) {
+                                pidChanged = true;
+                                // 세대를 주는 데몬이면 아래 세대 비교가 정한다 (PID가 늦게 바뀌어도 줄이 겹치지 않게)
+                                if (seenEpoch === null) sinceId = 0;
+                            }
                             seenPid = pid;
                         }
                         // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
                         const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
                         const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
                         if (!isMine()) return;
+                        // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
+                        if (typeof data?.epoch === 'number') {
+                            const epochChanged = seenEpoch !== null && data.epoch !== seenEpoch;
+                            seenEpoch = data.epoch;
+                            // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고(지난 실행 기록을 남긴다),
+                            // 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
+                            if (epochChanged) {
+                                sinceId = 0;
+                                replaceLines = !pidChanged;
+                                schedulePoll();
+                                return;
+                            }
+                        }
                         // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
                         // 이미 한 번 로드했으면 다시 append하지 않음
                         if (data?.source === 'disk') {
@@ -143,10 +165,12 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                             }
                         } else if (data?.lines?.length > 0) {
                             diskLoaded = false; // managed process가 복구됨 → 리셋
+                            const replace = replaceLines;
+                            replaceLines = false;
                             setConsoles((prev) => {
                                 if (!prev[instanceId]) return prev;
                                 const maxLines = consoleBufferRef.current || 2000;
-                                const newLines = [...prev[instanceId].lines, ...data.lines];
+                                const newLines = replace ? data.lines : [...prev[instanceId].lines, ...data.lines];
                                 return {
                                     ...prev,
                                     [instanceId]: {
@@ -451,13 +475,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // PiP → 인앱 전환: 인앱 콘솔 창 열기
             openConsole(instanceId, serverName);
         };
-        if (window.api.onConsolePopoutOpened) window.api.onConsolePopoutOpened(handlePopoutOpened);
-        if (window.api.onConsolePopoutClosed) window.api.onConsolePopoutClosed(handlePopoutClosed);
-        if (window.api.onConsolePopinRequest) window.api.onConsolePopinRequest(handlePopinRequest);
+        const offs = [
+            window.api.onConsolePopoutOpened?.(handlePopoutOpened),
+            window.api.onConsolePopoutClosed?.(handlePopoutClosed),
+            window.api.onConsolePopinRequest?.(handlePopinRequest),
+        ];
         return () => {
-            if (window.api.offConsolePopoutOpened) window.api.offConsolePopoutOpened();
-            if (window.api.offConsolePopoutClosed) window.api.offConsolePopoutClosed();
-            if (window.api.offConsolePopinRequest) window.api.offConsolePopinRequest();
+            for (const off of offs) if (typeof off === 'function') off();
         };
     }, [isPopoutMode, openConsole, closeConsole]);
 

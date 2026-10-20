@@ -57,7 +57,8 @@
     "modules": "Préparation des modules...",
     "instances": "Préparation des serveurs...",
     "ready": "Prêt",
-    "ui_loaded": "Interface prête"
+    "ui_loaded": "Interface prête",
+    "extensions": "Préparation des extensions..."
   },
   "tray": {
     "tooltip": "Saba-chan - Gestion de serveurs de jeu",

@@ -15,6 +15,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// 인스턴스 폴더 바로 아래에서 데몬이 쓰는 항목. 격리된 모듈에게 쓰기를 주지 않는다
+/// (instance.json을 고칠 수 있으면 다음 로드 때 실행 파일·사용자 설정까지 바꾼다)
+pub const DAEMON_ENTRIES: &[&str] = &["instance.json", "settings.json", "settings.json.tmp", "managed.pid", "run", "logs", "backups"];
+
 // ═══════════════════════════════════════════════════════════════
 //  ServerInstance — 인스턴스 메타데이터
 // ═══════════════════════════════════════════════════════════════
@@ -396,6 +400,16 @@ impl InstanceStore {
         self.root_dir.join(id)
     }
 
+    /// `dir`과 겹치는 폴더(서버 폴더나 인스턴스 폴더, 그 안이나 바깥)를 쓰는 다른 인스턴스.
+    /// 한 폴더에 서버 둘을 두면 서로의 파일을 덮어쓰고, 한쪽의 복원·삭제가 다른 쪽 파일까지 치운다
+    pub fn folder_user(&self, dir: &Path, except: &str) -> Option<&ServerInstance> {
+        self.instances.iter().find(|i| {
+            i.id != except
+                && (i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(Path::new(d), dir))
+                    || saba_chan_updater_lib::paths_overlap(&self.instance_dir(&i.id), dir))
+        })
+    }
+
     /// 쓰거나 지울 인스턴스 폴더: id가 경로 한 칸이고, 폴더가 심볼릭 링크가 아니어야 한다
     fn checked_dir(&self, id: &str) -> Result<PathBuf> {
         if !crate::utils::is_single_path_component(id) {
@@ -468,8 +482,22 @@ impl InstanceStore {
         let settings_path = dir.join("settings.json");
         if settings_path.exists() {
             let settings_content = fs::read_to_string(&settings_path)?;
-            let mut settings: HashMap<String, serde_json::Value> =
-                serde_json::from_str(&settings_content).unwrap_or_default();
+            let mut settings: HashMap<String, serde_json::Value> = match serde_json::from_str(&settings_content) {
+                Ok(s) => s,
+                Err(e) => {
+                    // 다음 저장이 빈 설정으로 덮기 전에 원본을 남긴다. 남기지 못하면 이 인스턴스를 올리지 않는다
+                    let Some(kept) = keep_corrupt_copy(&settings_path, &settings_content) else {
+                        anyhow::bail!("settings.json is not valid JSON ({}) and could not be copied aside; fix or move it", e);
+                    };
+                    tracing::warn!(
+                        "settings.json of instance '{}' is not valid JSON ({}); starting with empty settings, original kept as {}",
+                        instance.name,
+                        e,
+                        kept.display()
+                    );
+                    HashMap::new()
+                }
+            };
             stale |= drop_legacy_rcon_keys(&mut settings);
             instance.module_settings = settings;
         }
@@ -508,6 +536,33 @@ const LEGACY_RCON_KEYS: &[&str] = &[
     "enable-rcon",
     "broadcast-rcon-to-ops",
 ];
+
+/// 깨진 설정 파일의 사본 `<이름>.corrupt`(이미 있으면 `<이름>.corrupt-<초>`). 같은 내용의 사본이 이미 있으면 그 경로
+fn keep_corrupt_copy(path: &Path, content: &str) -> Option<PathBuf> {
+    let base = path.file_name()?.to_string_lossy().to_string() + ".corrupt";
+    let dir = path.parent()?;
+    let same = fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| {
+        p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&base)) && fs::read_to_string(p).is_ok_and(|c| c == content)
+    });
+    if same.is_some() {
+        return same;
+    }
+    let mut target = dir.join(&base);
+    if target.exists() {
+        target = dir.join(format!("{}-{}", base, chrono::Utc::now().timestamp()));
+    }
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // 원본처럼 비밀번호가 들어 있을 수 있다: 처음부터 주인만 읽게 만든다
+        options.mode(0o600);
+    }
+    let mut file = options.open(&target).ok()?;
+    std::io::Write::write_all(&mut file, content.as_bytes()).ok()?;
+    Some(target)
+}
 
 /// 남은 RCON 키를 지운다. 하나라도 지웠으면 true
 fn drop_legacy_rcon_keys(settings: &mut HashMap<String, serde_json::Value>) -> bool {
@@ -770,6 +825,66 @@ mod tests {
         let meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
         assert!(meta.get("rcon_port").is_none() && meta.get("rcon_password").is_none());
         assert!(!dir.join("settings.json.tmp").exists());
+    }
+
+    /// 손으로 고치다 깨진 settings.json은 다음 저장이 덮기 전에 사본으로 남긴다 (D-S5)
+    #[test]
+    fn a_broken_settings_file_is_kept_before_anything_overwrites_it() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("hand-edited", "minecraft");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+        let dir = store.instance_dir(&id);
+        let broken = r#"{"motd": "hi", "max_players": 20,}"#;
+        fs::write(dir.join("settings.json"), broken).unwrap();
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let loaded = store.get(&id).cloned().unwrap();
+        store.update(&id, loaded).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("settings.json.corrupt")).unwrap(), broken);
+
+        // 같은 내용이면 사본을 더 만들지 않는다
+        fs::write(dir.join("settings.json"), broken).unwrap();
+        InstanceStore::new(instances_dir.to_str().unwrap()).load().unwrap();
+        let copies = || fs::read_dir(&dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("settings.json.corrupt")).count();
+        assert_eq!(copies(), 1);
+
+        // 다른 내용도 이미 남긴 사본(`-<초>`)과 같으면 기동마다 늘지 않는다
+        let other = r#"{"motd": "bye",,}"#;
+        fs::write(dir.join("settings.json.corrupt-1"), other).unwrap();
+        fs::write(dir.join("settings.json"), other).unwrap();
+        InstanceStore::new(instances_dir.to_str().unwrap()).load().unwrap();
+        assert_eq!(copies(), 2);
+    }
+
+    /// 사본을 남기지 못하면 빈 설정으로 올리지 않는다: 다음 저장이 원본을 덮는다
+    #[test]
+    fn a_broken_settings_file_that_cannot_be_kept_is_left_alone() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("unkeepable", "minecraft");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+        let dir = store.instance_dir(&id);
+        let broken = r#"{"motd": "hi",}"#;
+        fs::write(dir.join("settings.json"), broken).unwrap();
+        // 사본 자리를 모두 막는다 (`.corrupt`와 지금부터 몇 초 동안의 `.corrupt-<초>`)
+        fs::create_dir_all(dir.join("settings.json.corrupt")).unwrap();
+        let now = chrono::Utc::now().timestamp();
+        for t in now..now + 10 {
+            fs::create_dir_all(dir.join(format!("settings.json.corrupt-{t}"))).unwrap();
+        }
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        assert!(store.get(&id).is_none(), "an instance whose settings could not be kept must not load with empty settings");
+        assert_eq!(fs::read_to_string(dir.join("settings.json")).unwrap(), broken);
     }
 
     #[test]

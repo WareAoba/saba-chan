@@ -57,7 +57,8 @@
     "modules": "Module werden vorbereitet...",
     "instances": "Server werden vorbereitet...",
     "ready": "Bereit",
-    "ui_loaded": "Oberfläche bereit"
+    "ui_loaded": "Oberfläche bereit",
+    "extensions": "Erweiterungen werden vorbereitet..."
   },
   "tray": {
     "tooltip": "Saba-chan - Gameserver-Verwaltung",

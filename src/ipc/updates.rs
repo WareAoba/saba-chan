@@ -524,6 +524,17 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     } else {
         // GUI/데몬 재시작 불필요 → 데몬이 직접 적용
         for comp in &targets {
+            // 같은 모듈을 받아 설치·제거하는 요청과 겹치면 서로의 파일을 지운다 (`module_install_guard`)
+            let _installing = match comp {
+                Component::Module(name) => match crate::ipc::handlers::server::module_install_guard(name) {
+                    Some(guard) => Some(guard),
+                    None => {
+                        errors.push(format!("{}: Module '{}' is already being installed or removed", comp.display_name(), name));
+                        continue;
+                    }
+                },
+                _ => None,
+            };
             match mgr.apply_single_component(comp).await {
                 Ok(result) if result.success => {
                     applied.push(comp.display_name());
@@ -546,12 +557,13 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     // 1) pending manifest 재저장 (데몬이 적용한 것들은 downloaded=false로 제외됨)
     // 2) apply-targets.json에 업데이터가 적용해야 할 정확한 컴포넌트 목록 저장
     //    (GUI가 CLI 인자로 일부만 전달해도 업데이터가 정확한 목록을 알 수 있도록)
+    // 둘 중 하나라도 못 쓰면 업데이터에 넘기지 않는다: 목록 없이 뜬 업데이터는 받아 둔 것을 모두 적용한다
     if !needs_updater.is_empty() {
-        if let Err(e) = mgr.save_pending_manifest() {
-            tracing::warn!("[Updates] Failed to save pending manifest for updater: {}", e);
-        }
-        if let Err(e) = mgr.save_updater_apply_targets(&needs_updater) {
-            tracing::warn!("[Updates] Failed to save apply targets for updater: {}", e);
+        let saved = mgr.save_pending_manifest().and_then(|_| mgr.save_updater_apply_targets(&needs_updater));
+        if let Err(e) = saved {
+            tracing::warn!("[Updates] Cannot hand the update to the updater: {}", e);
+            errors.push(format!("Could not prepare the update for the updater: {}", e));
+            needs_updater.clear();
         }
     }
 

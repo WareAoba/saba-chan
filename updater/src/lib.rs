@@ -324,16 +324,23 @@ pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
 /// 같은 파일을 가리키는 경로인지. 구성 요소로 비교해 `./`는 무시하고,
 /// Windows 파일 이름은 대소문자를 가리지 않는다
 pub fn same_path(a: &Path, b: &Path) -> bool {
-    let parts = |p: &Path| -> Vec<String> {
-        p.components()
-            .filter(|c| !matches!(c, std::path::Component::CurDir))
-            .map(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                if cfg!(windows) { s.to_lowercase() } else { s.into_owned() }
-            })
-            .collect()
-    };
-    parts(a) == parts(b)
+    path_parts(a) == path_parts(b)
+}
+
+/// 같은 폴더이거나 한쪽이 다른 쪽 안에 있는지 (`same_path`와 같은 비교). 빈 경로는 어디와도 겹치지 않는다
+pub fn paths_overlap(a: &Path, b: &Path) -> bool {
+    let (a, b) = (path_parts(a), path_parts(b));
+    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.starts_with(&a))
+}
+
+fn path_parts(p: &Path) -> Vec<String> {
+    p.components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .map(|c| {
+            let s = c.as_os_str().to_string_lossy();
+            if cfg!(windows) { s.to_lowercase() } else { s.into_owned() }
+        })
+        .collect()
 }
 
 /// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
@@ -375,8 +382,19 @@ pub fn extract_zip(
             std::fs::create_dir_all(parent)?;
         }
         before_write(&out_path)?;
-        let mut outfile = std::fs::File::create(&out_path)?;
-        std::io::copy(&mut entry, &mut outfile)?;
+        // 옆 이름에 다 쓴 뒤 바꾼다. 쓰다 꺼져도 원래 이름에는 반쯤 쓴 파일이 생기지 않아,
+        // 다음 정리(`cleanup_old_files`)가 비켜 둔 `.update-bak`을 믿고 되돌릴 수 있다
+        let mut partial = out_path.clone().into_os_string();
+        partial.push(".update-new");
+        let partial = PathBuf::from(partial);
+        let wrote = std::fs::File::create(&partial).and_then(|mut f| {
+            std::io::copy(&mut entry, &mut f)?;
+            f.sync_all()
+        });
+        if let Err(e) = wrote.and_then(|_| std::fs::rename(&partial, &out_path)) {
+            let _ = std::fs::remove_file(&partial);
+            return Err(e.into());
+        }
         written.push(out_path);
     }
     Ok(written)
@@ -877,6 +895,7 @@ impl UpdateManager {
     /// 이 순서를 지키면 업데이트 도중 프로세스 충돌이 방지됩니다.
     pub async fn apply_components(&mut self, keys: &[String]) -> Result<Vec<String>> {
         let mut applied = Vec::new();
+        self.settle_interrupted_updates();
 
         let mut components: Vec<ComponentVersion> = self.status.components.iter()
             .filter(|c| c.downloaded && c.update_available)
@@ -887,11 +906,23 @@ impl UpdateManager {
         // 적용 우선순위에 따라 정렬
         components.sort_by_key(|c| Self::component_apply_priority(&c.component));
 
+        // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
+        let mut failure = None;
         for comp in &components {
-            let staged_path = Self::verified_staged_path(comp)?;
-            let files = self.apply_one(&comp.component, staged_path).await?;
-            Self::record_files(&comp.component, &files);
-            applied.push(comp.component.display_name());
+            let result = match Self::verified_staged_path(comp) {
+                Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
+                Err(e) => Err(e),
+            };
+            match result {
+                Ok(files) => {
+                    Self::record_files(&comp.component, &files);
+                    applied.push(comp.component.display_name());
+                }
+                Err(e) => {
+                    failure = Some(e.context(format!("Applying {} failed", comp.component.display_name())));
+                    break;
+                }
+            }
         }
 
         // 적용 완료된 컴포넌트의 상태 업데이트
@@ -928,6 +959,12 @@ impl UpdateManager {
             self.cleanup_old_files();
         }
 
+        if let Some(e) = failure {
+            if !applied.is_empty() {
+                tracing::warn!("[UpdateManager] Applied before the failure: {:?}", applied);
+            }
+            return Err(e);
+        }
         Ok(applied)
     }
 
@@ -1005,6 +1042,31 @@ impl UpdateManager {
     }
 
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
+
+    /// 적용 중 꺼져 남은 파일을 정리한다 (설치 폴더 바로 안만). 적용하는 프로세스만 적용 직전에 부른다:
+    /// 다른 프로세스(데몬 시작 등)가 적용 도중에 부르면 비켜 둔 백업을 되돌리고 쓰는 중인 파일을 지운다
+    pub fn settle_interrupted_updates(&self) {
+        let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
+        for path in entries.flatten().map(|e| e.path()) {
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            // 쓰다 꺼져 남은 `extract_zip`의 반쪽 파일
+            if name.ends_with(".update-new") {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    tracing::debug!("[Updater] Cannot remove partial file {}: {}", path.display(), e);
+                }
+                continue;
+            }
+            // `extract_zip_or_restore`가 남긴 `.update-bak`: 원래 파일이 있으면 새 판이 다 들어간 것이라
+            // (`extract_zip`은 다 쓴 뒤에만 원래 이름을 만든다) 지우고, 없으면 비켜 둔 채 끝난 것이라 되돌린다
+            if let Some(original) = name.strip_suffix(".update-bak").filter(|o| !o.is_empty()) {
+                let original = self.install_root.join(original);
+                let done = if original.exists() { std::fs::remove_file(&path) } else { std::fs::rename(&path, &original) };
+                if let Err(e) = done {
+                    tracing::debug!("[Updater] Cannot settle leftover backup {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
 
     /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old`(`.exe.old.<n>` 포함) 백업을 지운다 (설치 폴더 바로 안만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
@@ -1096,6 +1158,8 @@ impl UpdateManager {
     /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
     /// Flow 2 (GUI/CLI): 직접 적용, self-update flow로 전환
     pub async fn apply_single_component(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+        // 업데이터·데몬의 개별 적용도 지난 적용이 남긴 것부터 정리한다 (같은 프로세스가 적용하므로 안전하다)
+        self.settle_interrupted_updates();
         let comp = self.status.components.iter()
             .find(|c| &c.component == component && c.downloaded && c.update_available)
             .cloned()

@@ -6,7 +6,7 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 export const dataTransferAvailable = () => Boolean(window.api?.dataExport && window.api?.dataImport);
 
 const KNOWN_ERRORS = ['INVALID_PATH', 'INVALID_ARCHIVE', 'INVALID_CONFIG', 'WRITE_FAILED'];
-const SKIP_REASONS = ['exists', 'running', 'working_dir_in_use', 'invalid_id', 'save_failed'];
+const SKIP_REASONS = ['exists', 'running', 'working_dir_in_use', 'invalid_id', 'save_failed', 'name_taken', 'busy'];
 
 const failed = (res) => !res || res.success === false || Boolean(res.error_code) || (res.error && !res.success);
 

@@ -31,11 +31,11 @@ export function createDaemonClient(invoke) {
         return { status, data: res.data };
     }
 
-    /** 데몬이 준 오류 본문(error_code, details 등)을 버리지 않고 렌더러에 넘긴다 */
+    /** 데몬이 준 오류 본문(error_code, details 등)을 버리지 않고 렌더러에 넘긴다 (error가 없으면 모듈이 준 message) */
     function errorBody(err, extra = {}) {
         const data = err.response?.data;
         const body = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
-        return { ...body, ...extra, error: body.error || err.message };
+        return { ...body, ...extra, error: body.error || body.message || err.message };
     }
 
     // 데몬 응답 본문을 그대로 돌려준다. HTTP 오류면 데몬이 준 본문({ok, error, error_code})을 돌려준다.

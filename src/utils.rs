@@ -26,6 +26,13 @@ pub fn is_single_path_component(name: &str) -> bool {
         && !name.contains(['/', '\\', ':', '\0'])
 }
 
+/// 구성요소 폴더 안을 가리키는 상대 경로인가 (`module.entry`, 익스텐션 `python_modules` 값).
+/// 비었거나 절대 경로이거나 `..`·`.`·드라이브 같은 성분이 있으면 아니다
+pub fn is_inner_relative_path(path: &str) -> bool {
+    let p = std::path::Path::new(path);
+    !path.is_empty() && !p.is_absolute() && p.components().all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
 /// 설치 도중 데몬이 끝나 남은 준비·옛 폴더와 받다 만 파일 (`.staging-*`·`.old-*`·`.tmp-*`)을 지운다.
 /// 옛 폴더를 옆으로 옮긴 뒤 새 폴더를 두기 전에 끝났으면(제자리가 비었으면) 옛 폴더를 되돌린다.
 /// 설치가 돌 수 없는 기동 때만 부른다

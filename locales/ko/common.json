@@ -57,7 +57,8 @@
     "modules": "모듈 목록 준비 중...",
     "instances": "서버 목록 준비 중...",
     "ready": "준비 완료",
-    "ui_loaded": "화면 준비 완료"
+    "ui_loaded": "화면 준비 완료",
+    "extensions": "익스텐션 준비 중..."
   },
   "tray": {
     "tooltip": "사바쨩 - 게임 서버 관리",

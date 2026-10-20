@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PairingCard } from '../components/discord/ConnectionView';
 import { LinkRequests, linkRequestsAvailable } from '../components/discord/LinkRequests';
+import { useDiscordStore } from '../stores/useDiscordStore';
 
 const later = () => new Date(Date.now() + 600_000).toISOString();
 
@@ -49,6 +50,47 @@ describe('디스코드에서 온 연결 요청 (J1-b)', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Decline/i })));
         expect(window.api.relayLinkRequestRespond).toHaveBeenCalledWith('r2', false);
         expect(screen.queryByText(/Pals/)).toBeNull();
+    });
+
+    // G-D4: 릴레이는 404·409로 답할 때도 요청을 이미 꺼냈다. 카드가 남으면 다시 눌러도 계속 실패한다
+    it('릴레이가 404·409로 답하면 카드를 지우고, 데몬에 닿지 못했을 때만 남긴다', async () => {
+        window.api.relayLinkRequests = vi.fn().mockResolvedValue({
+            requests: [
+                { requestId: 'r4', guildId: 'g4', guildName: 'Gone', expiresAt: later() },
+                { requestId: 'r5', guildId: 'g5', guildName: 'Taken', expiresAt: later() },
+                { requestId: 'r6', guildId: 'g6', guildName: 'Offline', expiresAt: later() },
+            ],
+        });
+        window.api.relayLinkRequestRespond = vi.fn(async (id) =>
+            id === 'r4'
+                ? { ok: false, error: 'NOT_FOUND' }
+                : id === 'r5'
+                  ? { ok: false, error: 'GUILD_TAKEN' }
+                  : { success: false, error: 'connect ECONNREFUSED' },
+        );
+        render(<LinkRequests />);
+        await act(async () => {});
+        for (const name of ['Gone', 'Taken', 'Offline']) {
+            const card = screen.getByText(new RegExp(name)).closest('.link-request');
+            await act(async () => fireEvent.click(card.querySelector('.btn-primary')));
+        }
+        expect(screen.queryByText(/Gone/)).toBeNull();
+        expect(screen.queryByText(/Taken/)).toBeNull();
+        expect(screen.getByText(/Offline/)).toBeInTheDocument();
+        expect(window.showToast).toHaveBeenCalledTimes(3);
+    });
+
+    // G-D5: 수락으로 길드가 묶였으니 디스코드 화면의 길드 목록을 다시 읽게 한다
+    it('수락에 성공하면 길드 목록을 다시 읽으라고 알린다', async () => {
+        window.api.relayLinkRequests = vi.fn().mockResolvedValue({
+            requests: [{ requestId: 'r7', guildId: 'g7', guildName: 'New', expiresAt: later() }],
+        });
+        window.api.relayLinkRequestRespond = vi.fn().mockResolvedValue({ ok: true, guildId: 'g7', guildName: 'New' });
+        const before = useDiscordStore.getState().cloudNodesStale;
+        render(<LinkRequests />);
+        await act(async () => {});
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Accept/i })));
+        expect(useDiscordStore.getState().cloudNodesStale).toBe(before + 1);
     });
 
     it('expiresAt이 초 단위 숫자여도 만료 전이면 보인다', async () => {

@@ -26,9 +26,17 @@ export function formatBytes(n) {
     return `${i === 0 ? v : v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
 }
 
-const errorText = (res, fallback) => {
+// 데몬 원문(영어) 대신 보일 문구가 있는 거절 코드
+const CODE_TEXT = {
+    restore_outside: 'maintenance.err_restore_outside',
+    backup_busy: 'maintenance.err_backup_busy',
+    server_running: 'maintenance.restore_stop_first',
+};
+
+const errorText = (res, fallback, t) => {
     const details = Array.isArray(res?.details) ? res.details.filter(Boolean) : [];
-    return [res?.error || fallback, ...details].filter(Boolean).join('\n');
+    const known = CODE_TEXT[res?.error_code];
+    return [known ? t(known) : res?.error || fallback, ...details].filter(Boolean).join('\n');
 };
 
 // ── 예약 작업 초안 ↔ 데몬 형식 ──
@@ -91,7 +99,7 @@ export function MaintenanceTab({ server }) {
         setLoadError(null);
         try {
             const res = await window.api.instanceScheduleGet(server.id);
-            if (res?.success === false) throw new Error(errorText(res, t('maintenance.load_failed')));
+            if (res?.success === false) throw new Error(errorText(res, t('maintenance.load_failed'), t));
             setInfo({
                 schedule: Array.isArray(res?.schedule) ? res.schedule : [],
                 backupKeep: res?.backup_keep ?? 10,
@@ -160,7 +168,7 @@ function BackupsCard({ server }) {
         try {
             const res = await call();
             if (res?.success === false) {
-                safeShowToast(errorText(res, t('maintenance.action_failed')), 'error', 6000);
+                safeShowToast(errorText(res, t('maintenance.action_failed'), t), 'error', 6000);
             } else if (okMessage) {
                 safeShowToast(okMessage(res), 'success', 4000);
             }

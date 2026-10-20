@@ -206,6 +206,10 @@ pub struct ServerInfo {
     /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
+    /// 켜져 있지만 상태 질문(접속자 수)에 `UNRESPONSIVE_AFTER` 넘게 답하지 않을 때 마지막 실패 이유.
+    /// REST로 명령을 보내는 서버라면 명령·정상 종료도 닿지 않는다 (`supervisor::players::unresponsive`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unresponsive: Option<String>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -257,6 +261,9 @@ pub struct ExtensionInfo {
     pub unmet_dependencies: Vec<UnmetDependency>,
     pub path: String,
     pub executable_path: Option<String>,
+    /// `[config] server_executable`: 모듈이 찾는 서버 실행 파일 이름. 클라이언트는 실행 파일 고르기의 파일 종류로 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_executable: Option<String>,
     pub icon: Option<String>,
     pub interaction_mode: Option<String>,
     pub protocols: Option<ProtocolsInfo>,
@@ -284,6 +291,9 @@ pub struct ExtensionInfo {
     /// `[[agreements]]` 켜기 전에 동의할 약관 (이름은 모듈 locales `agreements.<id>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agreements: Vec<crate::supervisor::module_loader::ModuleAgreement>,
+    /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
+    #[serde(default)]
+    pub functions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -987,6 +997,7 @@ mod tests {
             unmet_dependencies: Vec::new(),
             path: "/modules/palworld".to_string(),
             executable_path: Some("PalServer.exe".to_string()),
+            server_executable: None,
             icon: None,
             interaction_mode: None,
             protocols: None,
@@ -999,6 +1010,7 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            functions: None,
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
                     crate::supervisor::module_loader::CommandField {
@@ -1042,6 +1054,7 @@ mod tests {
             unmet_dependencies: Vec::new(),
             path: "/modules/test".to_string(),
             executable_path: None,
+            server_executable: None,
             icon: None,
             interaction_mode: None,
             protocols: None,
@@ -1054,12 +1067,14 @@ mod tests {
             presets: Vec::new(),
             queries: Vec::new(),
             agreements: Vec::new(),
+            functions: None,
             commands: None,
         };
 
         let json = serde_json::to_value(&module_info).unwrap();
         assert!(json.get("commands").is_some());
         assert!(json.get("commands").unwrap().is_null());
+        assert!(json["functions"].is_null(), "unknown functions are sent as null, not left out");
     }
 
     #[test]
@@ -1080,6 +1095,7 @@ mod tests {
                     unmet_dependencies: Vec::new(),
                     path: "/modules/palworld".to_string(),
                     executable_path: None,
+                    server_executable: None,
                     icon: None,
                     interaction_mode: None,
                     protocols: None,
@@ -1092,6 +1108,7 @@ mod tests {
                     presets: Vec::new(),
                     queries: Vec::new(),
                     agreements: Vec::new(),
+                    functions: None,
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![
                             crate::supervisor::module_loader::CommandField {

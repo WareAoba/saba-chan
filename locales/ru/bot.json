@@ -33,7 +33,7 @@
   "list": {
     "title": "🎮 **Список серверов**",
     "empty": "📭 Нет зарегистрированных серверов",
-    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+    "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
     "running": "🟢 Запущен",
@@ -48,7 +48,8 @@
     "not_found": "❌ Сервер не найден для модуля \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Сервер не запущен. Пожалуйста, сначала запустите сервер",
-    "module_missing": "❌ Модуль '{{module}}' не установлен. Этот сервер не может быть управляем."
+    "module_missing": "❌ Модуль '{{module}}' не установлен. Этот сервер не может быть управляем.",
+    "port_moved": "🔀 Windows зарезервировала REST-порт {{from}}, поэтому он изменён на {{to}}."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` выполняется...",
@@ -99,6 +100,7 @@
     "unknown_input": "❌ Неизвестная команда.",
     "command_not_found": "❌ Команда не существует.",
     "permission_denied": "❌ У вас нет прав для использования этой команды.",
+    "chatbot_not_allowed": "❌ Чат-бот не может выполнить эту команду. Выполните её напрямую.",
     "local_single_guild_only": "⚠️ Локальный бот может использоваться только на одном сервере. Сейчас он находится на {{count}} серверах. Удалите бота с неиспользуемых серверов."
   },
   "messages": {
@@ -288,11 +290,39 @@
       "enabled": "Включён",
       "model": "Модель",
       "memo": "Промпт сервера",
-      "confirmCommands": "Подтверждать команды",
+      "confirmCommands": "Всегда спрашивать для осторожных команд",
       "memory": "Память",
       "webSearch": "Веб-поиск",
       "disabledTools": "Отключённые инструменты",
       "step": "Шаг"
+    },
+    "summary": {
+      "server_item": "• **{{name}}** ({{module}}) · {{status}}",
+      "more": "…и ещё {{count}}",
+      "backups": "💾 **Резервных копий: {{count}}**",
+      "backups_empty": "📭 Резервных копий нет",
+      "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_kind": {
+        "manual": "вручную",
+        "scheduled": "по расписанию",
+        "pre-update": "перед обновлением",
+        "pre-restore": "перед восстановлением"
+      },
+      "events": "📜 **Последние запуски и остановки**",
+      "events_empty": "📭 Записей нет",
+      "event_item": "• {{when}} · {{kind}}",
+      "event_kind": {
+        "user_stop": "остановлен",
+        "in_game_stop": "остановлен в игре",
+        "crash": "аварийно завершился",
+        "start_failed": "не удалось запустить",
+        "unknown_exit": "завершился по неизвестной причине"
+      },
+      "updates": "⬆️ **Обновлений: {{count}}**",
+      "updates_none": "✅ Всё обновлено",
+      "update_item": "• {{name}} {{current}} → {{latest}}",
+      "monitor": "🖥️ ЦП {{cpu}}% · Память {{used}} / {{total}}",
+      "monitor_item": "• {{name}} · ЦП {{cpu}}% · {{memory}}"
     }
   }
 }

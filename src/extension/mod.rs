@@ -123,7 +123,7 @@ impl std::fmt::Display for ExtensionError {
 impl std::error::Error for ExtensionError {}
 
 impl ExtensionError {
-    fn not_found(ext_id: &str) -> Self {
+    pub(crate) fn not_found(ext_id: &str) -> Self {
         Self {
             error_code: "not_found".to_string(),
             message: format!("Extension '{}' not found in discovered extensions", ext_id),
@@ -413,6 +413,12 @@ pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)>
     })?;
     de.end()?;
     ensure_valid_extension_id(&manifest.id)?;
+    // 파이썬 모듈은 익스텐션 폴더 안의 파일이어야 한다: 예전 형식(경고만)이어도 받지 않는다
+    let mut modules: Vec<_> = manifest.python_modules.iter().collect();
+    modules.sort();
+    if let Some((name, path)) = modules.into_iter().find(|(_, path)| !crate::utils::is_inner_relative_path(path)) {
+        anyhow::bail!("python module '{}' path '{}' must be a file inside the extension folder", name, path);
+    }
 
     let mut problems: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}'", k)).collect();
     let mut hooks: Vec<_> = manifest.hooks.iter().collect();
@@ -1967,6 +1973,18 @@ mod tests {
         assert!(m.permissions.network && m.permissions.spawn_process && !m.permissions.native_code);
         perms["permissions"]["netwrok"] = json!(true);
         assert!(parse_manifest(&perms.to_string()).unwrap_err().to_string().contains("netwrok"));
+
+        // 파이썬 모듈 경로는 익스텐션 폴더 안이어야 한다 (예전 형식도 경고가 아니라 오류)
+        for bad in ["../other/m.py", "sub/../../m.py", "/abs/m.py", ""] {
+            let mut outside = ok.clone();
+            outside["python_modules"]["m"] = json!(bad);
+            assert!(parse_manifest(&outside.to_string()).is_err(), "{bad}");
+            outside.as_object_mut().unwrap().remove("schema_version");
+            assert!(parse_manifest(&outside.to_string()).is_err(), "legacy {bad}");
+        }
+        let mut nested = ok.clone();
+        nested["python_modules"]["m"] = json!("src/py/m.py");
+        assert!(parse_manifest(&nested.to_string()).is_ok());
 
         let mut newer = ok.clone();
         newer["schema_version"] = json!(2);

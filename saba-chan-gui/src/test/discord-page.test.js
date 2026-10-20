@@ -70,7 +70,7 @@ const aliases = {
     palworld: { module_aliases: ['pal'], commands: {} },
 };
 
-function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostId = () => {} }) {
+function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostId = () => {}, mods = modules }) {
     const [nodeSettings, setNodeSettings] = useState({});
     const [cloudNodes, setCloudNodes] = useState([]);
     const [cloudMembers, setCloudMembers] = useState({});
@@ -89,7 +89,7 @@ function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostI
             relayConnecting={false}
             saveCurrentSettings={save}
             servers={servers}
-            modules={modules}
+            modules={mods}
             moduleAliasesPerModule={aliases}
             discordModuleAliases={ma}
             discordCommandAliases={ca}
@@ -115,6 +115,13 @@ describe('DiscordPage', () => {
             botConfigLoad: vi.fn().mockResolvedValue({ prefix: '!saba', moduleAliases: {}, commandAliases: {} }),
         };
         window.showToast = vi.fn();
+    });
+
+    it('모듈이 없으면 사용법 예시에 특정 게임 이름 대신 모듈이라는 말을 쓴다', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        await act(async () => render(<Harness save={vi.fn()} initialView={{ kind: 'bot' }} mods={[]} />));
+        expect(screen.queryByText(/minecraft/)).toBeNull();
+        expect(screen.getByText(/ module start$/)).toBeInTheDocument();
     });
 
     it('설정을 아직 읽지 못했으면 연결 버튼 없이 연결 확인 중을 보인다', async () => {
@@ -265,6 +272,15 @@ describe('DiscordPage', () => {
         await act(async () => fireEvent.click(line.querySelector('button')));
         expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(1);
         await waitFor(() => expect(document.querySelector('.dc-nav-empty.dc-field-error')).toBeNull());
+    });
+
+    // G-D5: 연결 요청을 수락하면(LinkRequests) 새 길드가 목록에 보이도록 다시 읽는다
+    it('길드 목록이 낡았다는 알림을 받으면 노드 목록을 다시 읽는다', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(1);
+        await act(async () => useDiscordStore.getState().markCloudNodesStale());
+        expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(2);
     });
 
     it('호스트가 바뀐 뒤 늦게 온 옛 노드 목록은 버린다', async () => {
