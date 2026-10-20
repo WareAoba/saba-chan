@@ -71,4 +71,9 @@ describe('릴레이가 받지 않는 앱 버전', () => {
         );
         expect(screen.queryByText(/AGENT_TOO_OLD/)).toBeNull();
     });
+
+    it('거절로 세션이 끝났으면 다시 켜 볼 수 있게 시작 버튼을 둔다', () => {
+        render(<ConnectionView {...viewProps} botStatus="stopped" agentMinVersion="0.1.9" />);
+        expect(screen.getByRole('button', { name: /turn on/i })).toBeInTheDocument();
+    });
 });

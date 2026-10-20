@@ -320,7 +320,7 @@ export function ConnectionView({
                             )}
                             {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
                         </div>
-                        {refused ? null : agentRunning ? (
+                        {refused && agentRunning ? null : agentRunning ? (
                             <SleepAllButton nodes={nodes} onAsleepChange={setAsleep} />
                         ) : (
                             <button
