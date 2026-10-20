@@ -160,18 +160,17 @@ async fn detached<T: Send + 'static>(work: impl std::future::Future<Output = Res
 }
 
 /// 작업 잠금이 풀리면 시작한다. 재시작이 백업·복원과 겹쳐도 서버가 꺼진 채 남지 않게 한다.
-/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None
-pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
+/// 기다리는 동안 `still_wanted`가 false가 되면 그만두고 None.
+/// `generation`은 부른 쪽이 확인한 실행 세대다: 시작도 이 값을 기준으로 삼아, 확인 뒤에 들어온 정지가 시작을 취소하게 한다
+pub(crate) async fn start_when_free<F, Fut>(state: &IPCServer, id: &str, generation: u64, still_wanted: F) -> Option<crate::ipc::internal::InternalResponse>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = bool>,
 {
     let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
     loop {
-        let resp = crate::ipc::internal::into_internal(
-            super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await,
-        )
-        .await;
+        let start = super::server::start_instance_handler(Path(id.to_string()), State(state.clone()));
+        let resp = crate::ipc::internal::into_internal(crate::supervisor::START_SINCE.scope(generation, start).await).await;
         if resp.body["error_code"] != "instance_busy" || std::time::Instant::now() >= deadline {
             return Some(resp);
         }
@@ -683,7 +682,7 @@ async fn start_after_update(state: &IPCServer, id: &str, generation: u64) {
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
     };
-    match start_when_free(state, id, wanted).await {
+    match start_when_free(state, id, generation, wanted).await {
         None => tracing::info!("Scheduled update of '{}': not starting again, the server was started, stopped or removed meanwhile", id),
         Some(resp) if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) => {
             tracing::warn!("Scheduled update of '{}': could not start the server again: {}", id, resp.body)
