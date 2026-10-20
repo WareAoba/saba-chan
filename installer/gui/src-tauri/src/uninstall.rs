@@ -1020,6 +1020,11 @@ fn is_dedicated(dir: &Path) -> bool {
 
 fn is_installed_entry(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
+    // 업데이터의 백업은 `.old`, 그 이름이 잡혀 있으면 `.old.<번호>`다
+    let lower = match lower.rsplit_once('.') {
+        Some((head, n)) if head.ends_with(".old") && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => head.to_string(),
+        _ => lower,
+    };
     let base = lower.strip_suffix(".old").unwrap_or(&lower);
     let base = base.strip_suffix(".exe").unwrap_or(base);
     INSTALLED_ENTRIES.iter().any(|e| e.eq_ignore_ascii_case(base))
@@ -1065,8 +1070,14 @@ fn install_leftovers(dir: &Path, dedicated: bool, self_exe: Option<&Path>) -> Ve
         .flatten()
         .map(|e| e.path())
         .filter(|p| dedicated || is_ours(p))
-        .filter(|p| self_exe != Some(p.as_path()))
+        .filter(|p| !self_exe.is_some_and(|me| same_name(me, p)))
         .collect()
+}
+
+/// 같은 파일 이름인지 (Windows 파일 이름은 대소문자를 가리지 않는다. 실행할 때 적은 이름이 그대로 `current_exe`에 남는다)
+fn same_name(a: &Path, b: &Path) -> bool {
+    a.parent() == b.parent()
+        && a.file_name().zip(b.file_name()).is_some_and(|(x, y)| x.to_string_lossy().eq_ignore_ascii_case(&y.to_string_lossy()))
 }
 
 /// 사바쨩이 설치한 폴더인지: 바로 안에 데몬이나 GUI 실행 파일이 있어야 한다
@@ -1560,13 +1571,13 @@ mod tests {
         std::fs::create_dir_all(dir.join("locales")).unwrap();
         std::fs::create_dir_all(dir.join("MyGame")).unwrap();
         std::fs::create_dir_all(dir.join("Saba-chan")).unwrap();
-        for f in ["saba-core.exe", "saba-chan-gui.exe.old", "i18n.py", "notes.txt"] {
+        for f in ["saba-core.exe", "saba-chan-gui.exe.old", "saba-runner.exe.old.1", "i18n.py", "notes.txt", "notes.old.1"] {
             std::fs::write(dir.join(f), b"").unwrap();
         }
         assert!(remove_install_dir(&dir, false).is_empty());
         let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         left.sort();
-        assert_eq!(left, ["MyGame", "Saba-chan", "notes.txt"]);
+        assert_eq!(left, ["MyGame", "Saba-chan", "notes.old.1", "notes.txt"]);
 
         // 전용 표시가 있으면 폴더째 지운다
         std::fs::write(dir.join(INSTALL_MARKER), b"").unwrap();
@@ -1583,7 +1594,8 @@ mod tests {
         for f in ["saba-core.exe", "saba-chan-installer.exe", "notes.txt"] {
             std::fs::write(dir.join(f), b"").unwrap();
         }
-        let me = dir.join("saba-chan-installer.exe");
+        // 실행할 때 적은 이름의 대소문자가 달라도 제거기 자신이다
+        let me = dir.join("SABA-CHAN-INSTALLER.exe");
         let names = |left: Vec<PathBuf>| {
             let mut n: Vec<_> = left.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
             n.sort();
