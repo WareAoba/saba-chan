@@ -1346,6 +1346,13 @@
     "placeholder": "Kein Limit",
     "restart_note": "Gilt nach einem Neustart."
   },
+  "stop_timeout": {
+    "title": "Wartezeit beim Stoppen",
+    "desc": "Nachdem der Server zum Speichern und Beenden aufgefordert wurde, wird so lange gewartet. Läuft er danach noch, wird er zwangsweise beendet. Bei großen Welten erhöhen.",
+    "label": "Wartezeit (Sekunden)",
+    "hint": "1 bis 3600 Sekunden. Leer lassen für den Standardwert des Moduls.",
+    "placeholder": "Standardwert des Moduls"
+  },
   "loading": {
     "step_init": "Wird initialisiert…",
     "step_ui": "Oberfläche geladen",

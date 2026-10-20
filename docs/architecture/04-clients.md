@@ -58,7 +58,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 |---|---|---|
 | serverList (90) | GET /api/servers (port_conflict_stops가 있으면 `notify` 명령으로 OS 알림). 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs:185-187`, `handlers/server.rs:87`) | ✓ 643 |
 | instanceStart (119) | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다) | ✓ 646 |
-| serverStop (139) | POST /api/server/:name/stop | ✓ 650 |
+| serverStop (139) | POST /api/server/:name/stop (70분 timeout, L74) | ✓ 650 |
 | serverStatus (160) | GET /api/server/:name/status | ✓ 644 |
 | moduleList (181) | GET /api/modules | ✓ 651 |
 | moduleRefresh (192) | POST /api/modules/refresh | ✓ 652 |
@@ -83,7 +83,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceLaunchPreview (452) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
 | instanceResetServer (457) | POST /api/instance/:id/server/reset | ✓ 686 |
 | executeCommand (465) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
-| instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(restart는 150초 timeout), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 (미사용) |
+| instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(둘 다 70분 timeout: 데몬이 stop_timeout까지 기다린 뒤 답한다, L74), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 (미사용) |
 | instanceValidate / instanceDiagnose | POST /api/instance/:id/validate · /diagnose `{}` (60초 timeout). 모듈 결과 `{success, issues:[{code, severity, message, solution}]}`를 그대로 돌려준다(서버 상세 `ServerCheck`) | ✓ 717, 724 |
 | instanceReadLiveSettings (500) | GET /api/instance/:id/settings/live | ✓ 685 (미사용) |
 | runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 (미사용) |

@@ -1346,6 +1346,13 @@
     "placeholder": "No limit",
     "restart_note": "Takes effect after a restart."
   },
+  "stop_timeout": {
+    "title": "Stop wait time",
+    "desc": "After asking the server to save and shut down, Saba-chan waits this long. If it still hasn't stopped, it is forced off. Raise it for large worlds.",
+    "label": "Stop wait (seconds)",
+    "hint": "1 to 3600 seconds. Leave empty to use the module default.",
+    "placeholder": "Module default"
+  },
   "loading": {
     "step_init": "Initializing…",
     "step_ui": "Interface loaded",

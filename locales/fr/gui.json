@@ -1346,6 +1346,13 @@
     "placeholder": "Aucune limite",
     "restart_note": "S'applique après un redémarrage."
   },
+  "stop_timeout": {
+    "title": "Délai d'arrêt",
+    "desc": "Après avoir demandé au serveur de sauvegarder et de s'arrêter, on attend ce délai. S'il tourne encore, il est arrêté de force. Augmentez-le pour les grands mondes.",
+    "label": "Délai d'arrêt (secondes)",
+    "hint": "De 1 à 3600 secondes. Laissez vide pour la valeur par défaut du module.",
+    "placeholder": "Valeur par défaut du module"
+  },
   "loading": {
     "step_init": "Initialisation…",
     "step_ui": "Interface chargée",

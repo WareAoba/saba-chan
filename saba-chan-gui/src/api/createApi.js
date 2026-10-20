@@ -8,6 +8,9 @@ import { createDaemonClient, queryString } from './daemon';
 /** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
 const START_TIMEOUT_MS = 30 * 60_000;
 
+/** 정지·재시작 요청을 기다리는 시간: 데몬은 인스턴스 stop_timeout(최대 3600초)까지 기다린 뒤 답한다 (CLI와 같다, L74) */
+const STOP_TIMEOUT_MS = 70 * 60_000;
+
 // 오류·상태 문구는 main.js처럼 common 네임스페이스
 const t = (key, vars = {}) => i18n.t(key, { ns: 'common', ...vars });
 
@@ -180,8 +183,11 @@ export function createApi({ invoke, hub }) {
         },
         serverStop: async (name, options = {}) => {
             try {
-                return (await post(`/api/server/${encodeURIComponent(name)}/stop`, options || {}, { timeout: 30000 }))
-                    .data;
+                return (
+                    await post(`/api/server/${encodeURIComponent(name)}/stop`, options || {}, {
+                        timeout: STOP_TIMEOUT_MS,
+                    })
+                ).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -552,10 +558,20 @@ export function createApi({ invoke, hub }) {
             }
         },
         instanceStop: (id, opts = {}) =>
-            daemonCall('post', `/api/instance/${encodeURIComponent(id)}/stop`, { force: !!opts?.force }),
-        // 재시작은 데몬이 프로세스 종료를 최대 2분 기다린다
+            daemonCall(
+                'post',
+                `/api/instance/${encodeURIComponent(id)}/stop`,
+                { force: !!opts?.force },
+                STOP_TIMEOUT_MS,
+            ),
+        // 재시작은 데몬이 프로세스 종료를 stop_timeout까지 기다린 뒤 다시 켠다
         instanceRestart: (id, opts = {}) =>
-            daemonCall('post', `/api/instance/${encodeURIComponent(id)}/restart`, { force: !!opts?.force }, 150000),
+            daemonCall(
+                'post',
+                `/api/instance/${encodeURIComponent(id)}/restart`,
+                { force: !!opts?.force },
+                STOP_TIMEOUT_MS,
+            ),
         instanceRename: (id, name) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/rename`, { name }),
         instanceCommands: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/commands`),
         // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
