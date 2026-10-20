@@ -260,10 +260,13 @@ function SettingsModal({
         setSelectedLanguage(lng);
         // 1. config.json의 gui에 먼저 확실히 저장 (데몬과 공유하는 원천)
         if (window.electron) {
+            // 저장하지 못하면 알린다: 화면은 바뀌어도 다음 실행에 옛 언어로 돌아간다 (G-U6)
             try {
-                await window.electron.setLanguage(lng);
+                const res = await window.electron.setLanguage(lng);
+                if (res?.success === false) safeShowToast(t('gui:settings.save_error'), 'error');
             } catch (err) {
                 console.error('Failed to save language to Electron settings:', err);
+                safeShowToast(t('gui:settings.save_error'), 'error');
             }
         }
         // 2. localStorage 동기화 (캐시)

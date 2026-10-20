@@ -1,5 +1,13 @@
 import { create } from 'zustand';
+import { safeShowToast } from '../utils/helpers';
 import { THEME_DEFAULTS, clearStoredTheme, getTheme, resetCustomTheme, setCustomTheme, setTheme } from '../utils/themeManager';
+
+// i18n translate function — set after store creation
+let _t = (key) => key;
+
+export const setSettingsI18n = (t) => {
+    _t = t;
+};
 
 export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
 
@@ -207,8 +215,9 @@ useSettingsStore.subscribe((state, prevState) => {
     if (!changed) return;
     console.log('[Settings] Settings changed, saving...');
     clearTimeout(settingsSaveTimer);
-    settingsSaveTimer = setTimeout(() => {
-        useSettingsStore.getState().save();
+    settingsSaveTimer = setTimeout(async () => {
+        // 자동 저장 실패는 조용히 넘기지 않는다 (G-U6)
+        if ((await useSettingsStore.getState().save()) === false) safeShowToast(_t('settings.save_error'), 'error');
     }, 500);
 });
 
