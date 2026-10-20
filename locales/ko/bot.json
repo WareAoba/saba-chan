@@ -100,7 +100,7 @@
     "unknown_input": "❌ 알 수 없는 명령어입니다.",
     "command_not_found": "❌ 존재하지 않는 명령어입니다.",
     "permission_denied": "❌ 해당 명령어를 사용할 권한이 없습니다.",
-    "chatbot_not_allowed": "❌ 이 명령은 챗봇으로는 실행할 수 없어요. 직접 명령어로 실행해 주세요.",
+    "chatbot_not_allowed": "❌ 이 명령은 말하는 사바쨩으로는 실행할 수 없어요. 직접 명령어로 실행해 주세요.",
     "local_single_guild_only": "⚠️ 로컬 봇은 하나의 서버에서만 사용할 수 있어요. 현재 {{count}}개의 서버에 소속되어 있어요. 사용하지 않는 서버에서 봇을 제거해 주세요."
   },
   "messages": {
@@ -256,11 +256,11 @@
     "chatbot": {
       "settings": {
         "get": {
-          "title": "챗봇 설정 보기",
+          "title": "말하는 사바쨩 설정 보기",
           "description": "켜기·호출어·확인·도구 묶음"
         },
         "set": {
-          "title": "챗봇 설정 바꾸기",
+          "title": "말하는 사바쨩 설정 바꾸기",
           "description": "켜기·호출어·확인·도구 묶음"
         }
       }
