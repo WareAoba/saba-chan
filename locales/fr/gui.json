@@ -437,6 +437,7 @@
     "start_cancelled": "Le serveur a été arrêté pendant son démarrage ; il n'a donc pas été lancé.",
     "console_input_full": "Le serveur traite encore les saisies précédentes. Réessayez dans un instant.",
     "restart_cancelled": "Le serveur a été démarré ou supprimé ailleurs pendant l'attente, il n'a donc pas été redémarré.",
+    "not_supported": "Le module de ce serveur ne prend pas en charge cette fonction.",
     "executable_not_found": "Exécutable du serveur de jeux non trouvé. Veuillez vérifier le chemin dans les paramètres.",
     "file_not_found": "Fichier ou dossier non trouvé. Veuillez vérifier le chemin.",
     "permission_denied": "Permission refusée. Veuillez vérifier les autorisations d'accès aux fichiers.",
