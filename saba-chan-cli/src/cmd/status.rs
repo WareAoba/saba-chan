@@ -73,12 +73,19 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             .into_iter()
             .flatten()
         {
-            ctx.out.warn(&t!(
+            // 새 실행마다 남은 알림(최근 10분)을 다시 보이므로 언제 일인지 붙인다
+            let when = stop
+                .get("timestamp_ms")
+                .and_then(Value::as_u64)
+                .map(|ms| format!(" {}", output::dim(&output::ago(ms / 1000))))
+                .unwrap_or_default();
+            let msg = t!(
                 "status.port_conflict_stop",
                 name = s(stop, "stopped_name"),
                 other = s(stop, "existing_name"),
                 port = stop.get("port").map(output::show).unwrap_or_default()
-            ));
+            );
+            ctx.out.warn(&format!("{msg}{when}"));
         }
         let failed = modules
             .get("failed")
