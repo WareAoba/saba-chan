@@ -711,56 +711,9 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
         }
         "provisioning" => return Err(failed(t!("start.provisioning", name = sv.name))),
         _ => {
-            // 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법.
             let res = ctx.api.start(&sv.id).await;
             tell_moved_ports(ctx, &res);
-            let r = match res {
-                Err(e) if api_code(&e) == Some("preflight_failed") => {
-                    return checkup(ctx, Err(e), "", &sv.name).await;
-                }
-                Err(e) if api_code(&e) == Some("agreement_required") => {
-                    ctx.out.hint(&format!("saba-chan-cli server agree {}", shlex::try_quote(&sv.name).unwrap_or_else(|_| sv.name.as_str().into())));
-                    return Err(e);
-                }
-                r => r?,
-            };
-            if a.no_wait {
-                ctx.out.done(&t!("start.requested", name = sv.name), &r);
-            } else {
-                let st = wait_status(
-                    ctx,
-                    &sv,
-                    &["running"],
-                    Duration::from_secs(90),
-                    &t!("start.waiting", name = sv.name),
-                )
-                .await?;
-                // 프로세스가 떴다가 바로 꺼지는 경우를 잡는다 (설정 오류, 약관 등)
-                let st = if st == "running" {
-                    settle(ctx, &sv, Duration::from_secs(3)).await
-                } else {
-                    st
-                };
-                if st == "running" {
-                    ctx.out.done(&t!("start.done", name = sv.name), &r);
-                } else if matches!(st.as_str(), "stopped" | "crashed") {
-                    if !ctx.out.json {
-                        let tail = ctx.api.console(&sv.id, None, Some(6)).await.unwrap_or(Value::Null);
-                        for l in tail.get("lines").and_then(Value::as_array).into_iter().flatten() {
-                            tell!("  {}", crate::cmd::console::format_line(l));
-                        }
-                    }
-                    ctx.out
-                        .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
-                    return Err(CliError::Failed(t!("start.exited", name = sv.name)).into());
-                } else {
-                    ctx.out.warn(&t!("start.not_yet", name = sv.name, status = st));
-                    ctx.out.hint(&format!("saba-chan-cli console {}", shell_word(&sv.name)));
-                    ctx.out
-                        .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
-                    return Err(CliError::Failed(t!("start.not_yet", name = sv.name, status = st)).into());
-                }
-            }
+            finish_start(ctx, &sv, res, a.no_wait, t!("start.done", name = sv.name)).await?;
         }
     }
     if a.console {
@@ -773,6 +726,59 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
             },
         ))
         .await;
+    }
+    Ok(())
+}
+
+/// 시작 요청의 결과를 마무리한다: 점검 실패·약관 안내, 켜질 때까지 기다리고 바로 꺼지지 않는지 본다.
+/// 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법. `start`와 `restart`가 같이 쓴다 (L56)
+async fn finish_start(ctx: &Ctx, sv: &Server, res: Result<Value>, no_wait: bool, done: String) -> Result<()> {
+    let r = match res {
+        Err(e) if api_code(&e) == Some("preflight_failed") => {
+            return checkup(ctx, Err(e), "", &sv.name).await;
+        }
+        Err(e) if api_code(&e) == Some("agreement_required") => {
+            ctx.out.hint(&format!("saba-chan-cli server agree {}", shlex::try_quote(&sv.name).unwrap_or_else(|_| sv.name.as_str().into())));
+            return Err(e);
+        }
+        r => r?,
+    };
+    if no_wait {
+        ctx.out.done(&t!("start.requested", name = sv.name), &r);
+    } else {
+        let st = wait_status(
+            ctx,
+            sv,
+            &["running"],
+            Duration::from_secs(90),
+            &t!("start.waiting", name = sv.name),
+        )
+        .await?;
+        // 프로세스가 떴다가 바로 꺼지는 경우를 잡는다 (설정 오류, 약관 등)
+        let st = if st == "running" {
+            settle(ctx, sv, Duration::from_secs(3)).await
+        } else {
+            st
+        };
+        if st == "running" {
+            ctx.out.done(&done, &r);
+        } else if matches!(st.as_str(), "stopped" | "crashed") {
+            if !ctx.out.json {
+                let tail = ctx.api.console(&sv.id, None, Some(6)).await.unwrap_or(Value::Null);
+                for l in tail.get("lines").and_then(Value::as_array).into_iter().flatten() {
+                    tell!("  {}", crate::cmd::console::format_line(l));
+                }
+            }
+            ctx.out
+                .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
+            return Err(CliError::Failed(t!("start.exited", name = sv.name)).into());
+        } else {
+            ctx.out.warn(&t!("start.not_yet", name = sv.name, status = st));
+            ctx.out.hint(&format!("saba-chan-cli console {}", shell_word(&sv.name)));
+            ctx.out
+                .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
+            return Err(CliError::Failed(t!("start.not_yet", name = sv.name, status = st)).into());
+        }
     }
     Ok(())
 }
@@ -819,21 +825,7 @@ pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let r = ctx.api.restart(&sv.id, a.force).await;
     spin.finish_and_clear();
     tell_moved_ports(ctx, &r);
-    let r = r?;
-    let st = wait_status(
-        ctx,
-        &sv,
-        &["running"],
-        Duration::from_secs(90),
-        &t!("start.waiting", name = sv.name),
-    )
-    .await?;
-    if st == "running" {
-        ctx.out.done(&t!("restart.done", name = sv.name), &r);
-        Ok(())
-    } else {
-        Err(failed(t!("start.not_yet", name = sv.name, status = st)))
-    }
+    finish_start(ctx, &sv, r, false, t!("restart.done", name = sv.name)).await
 }
 
 pub async fn rename(ctx: &Ctx, query: Option<&str>, new_name: &str) -> Result<()> {
