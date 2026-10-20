@@ -58,6 +58,6 @@
 
 ## 6. non-managed 정지 대기 시간 (모듈 #37과 합의)
 
-- 데몬은 모듈 `stop()`의 config에 이번 정지에 쓸 대기 시간 `stop_timeout`(초)을 늘 싣는다. 값은 인스턴스 설정 `stop_timeout`, 모듈 `[config] stop_timeout`, 기본 30 순이다(`supervisor::stop_timeout_of`, 1~3600).
+- 데몬은 모듈 `stop()`의 config에 이번 정지에 쓸 대기 시간 `stop_timeout`(초)과 그 호출의 시간 제한 `stop_call_limit`(초, non-managed면 `stop_timeout + 30`, managed면 120)을 늘 싣는다. 모듈은 `stop_call_limit`의 30초 앞까지만 기다린다. 키가 없으면(0.1.8 데몬) 지금처럼 90초 상한을 지킨다(modules #40). 값은 인스턴스 설정 `stop_timeout`, 모듈 `[config] stop_timeout`, 기본 30 순이다(`supervisor::stop_timeout_of`, 1~3600).
 - non-managed 정지(`managed:false`)의 모듈 `stop()` 호출 시간 제한은 `stop_timeout + 30`초다(지금의 고정 120초 대신). 모듈은 자기 상한(90초 등)을 두지 않고 `stop_timeout`만큼 기다린 뒤 결과를 돌려준다. 30초는 저장 명령·프로세스 정리에 쓰는 여유다. 0.1.8 데몬(고정 120초)과 섞이지 않게 모듈의 상한 제거는 이 데몬 변경이 든 릴리스(0.1.9)에 같이 싣는다.
 - managed 정지(`managed:true`)에서 모듈 `stop()`은 저장·종료 요청만 보내고 기다리지 않고 바로 `success`를 돌려준다. 끝나기를 기다리는 일과 시간이 지난 뒤 강제 종료는 데몬이 `stop_timeout`으로 한다. 이 호출의 시간 제한은 지금처럼 기본값(120초)이다.
