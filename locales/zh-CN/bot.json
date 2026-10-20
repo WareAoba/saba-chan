@@ -100,6 +100,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您没有使用此命令的权限。",
+    "chatbot_not_allowed": "❌ 聊天机器人无法执行此命令。请直接执行。",
     "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前已加入{{count}}个服务器，请从不使用的服务器中移除机器人。"
   },
   "messages": {

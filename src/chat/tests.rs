@@ -343,6 +343,21 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
     assert_eq!(api.calls().len(), 2);
 }
 
+/// 모듈은 명령의 표면을 선언하지 못하므로, danger 모듈 명령은 챗봇 경로에서 레벨·상한과 상관없이 막는다 (액션 경로 `command_view`와 같은 기준)
+#[tokio::test]
+async fn the_chatbot_cannot_run_danger_module_commands() {
+    let mut api = fixture();
+    api.modules[0].commands[0].risk = Some("danger".into()); // kick
+    let mut s = settings();
+    s.node_settings = json!({ "g1": { "chatbotCap": 2 } });
+    let mut bot = discord("owner");
+    bot.as_mut().unwrap().via_chatbot = true;
+    let req = ChatRequest { text: "mc kick steve".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() };
+    let r = process(&api, &s, &Catalog::for_language("en"), &req).await;
+    assert_eq!(r.code, Some("action_not_allowed"), "{}", r.text);
+    assert!(api.calls().is_empty());
+}
+
 #[tokio::test]
 async fn ambiguous_alias_is_rejected() {
     let mut api = fixture();

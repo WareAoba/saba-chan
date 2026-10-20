@@ -100,6 +100,7 @@
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Você não tem permissão para usar este comando.",
+    "chatbot_not_allowed": "❌ O chatbot não pode executar este comando. Execute-o diretamente.",
     "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Atualmente em {{count}} servidores. Remova o bot dos servidores não utilizados."
   },
   "messages": {

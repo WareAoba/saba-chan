@@ -73,6 +73,12 @@ async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
         assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{:?}", err);
     }
     assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
+    // 보관할 백업 수를 줄이면 다음 백업이 옛 백업을 지운다: 챗봇은 줄이지 못한다 (늘리거나 그대로는 된다)
+    let keep = |n: u32| json!({ "schedule": [], "backup_keep": n });
+    let err = plan(&state, "instance.schedule.set", Some(&id), &keep(1), &owner_bot).await.unwrap_err();
+    assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("backup_keep")), "{:?}", err);
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &keep(12), &owner_bot).await.is_ok());
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &keep(1), &gui()).await.is_ok());
 }
 
 #[tokio::test]

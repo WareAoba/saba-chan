@@ -22,7 +22,7 @@ use super::super::{CommandRequest, IPCServer};
 use crate::backup::{self, BackupInfo, BackupKind};
 use crate::scheduler::{Clock, ScheduledTask, TaskAction};
 
-const DEFAULT_KEEP: usize = 10;
+pub(crate) const DEFAULT_KEEP: usize = 10;
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
 const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
 const REMOTE_MAX_BACKUP_KEEP: u32 = 30;

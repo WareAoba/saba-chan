@@ -850,6 +850,15 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
             }
         }
     }
+    // 보관할 백업 수를 줄이면 다음 백업이 옛 백업을 지운다: 챗봇은 삭제를 하지 못하므로 줄이지 못한다
+    if caller.surface == Chatbot && def.id == "instance.schedule.set" {
+        if let (Some(i), Some(asked)) = (&instance, input.get("backup_keep").and_then(Value::as_u64)) {
+            let current = server.supervisor.read().await.instance_store.get(i).and_then(|x| x.backup_keep).map(u64::from);
+            if asked < current.unwrap_or(crate::ipc::handlers::backup::DEFAULT_KEEP as u64) {
+                return Err(bad_input("backup_keep", "the chatbot cannot lower how many backups are kept"));
+            }
+        }
+    }
     let body = if def.method == "GET" || def.method == "DELETE" || (body.is_empty() && !def.open_input && def.fields.is_empty()) {
         None
     } else {
@@ -1306,7 +1315,7 @@ pub async fn query(server: &IPCServer, id: &str, instance: Option<&str>, input: 
 
 /// 챗봇에 보내는 콘솔에서 IP 주소(IPv4·IPv6)와 비밀처럼 보이는 값을 가린다
 /// (`password=…`·`token: …`의 값, 글자와 숫자가 섞인 32자 이상 문자열)
-fn mask_console(result: &mut Value) {
+pub(crate) fn mask_console(result: &mut Value) {
     struct Masks {
         ipv4: regex::Regex,
         ipv6: regex::Regex,

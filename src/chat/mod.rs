@@ -433,6 +433,10 @@ impl<D: DaemonApi> Ctx<'_, D> {
         if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
             return self.permission_denied(denied);
         }
+        // 모듈은 명령의 표면을 선언하지 못한다: danger 명령은 챗봇 경로에서 막는다 (액션 경로 `command_view`와 같은 기준)
+        if risk == "danger" && self.req.remote.as_ref().is_some_and(|w| w.via_chatbot) {
+            return Reply::unrecognized("action_not_allowed", self.t("errors.chatbot_not_allowed", &[]), json!({ "command": command }));
+        }
 
         match command.as_str() {
             "start" => self.start(server).await,
