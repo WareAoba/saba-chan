@@ -286,8 +286,14 @@ export function useServerActions({
             if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
             notifyPortMoved(result, srv);
 
-            // ── action_required: server jar not found ──
-            if (result.action_required === 'server_jar_not_found') {
+            // ── action_required: 서버 실행 파일 없음 (범용 코드, 예전 모듈은 server_jar_not_found) ──
+            if (
+                result.action_required === 'executable_not_found' ||
+                result.action_required === 'server_jar_not_found'
+            ) {
+                // 파일 종류는 설정된 경로의 확장자로 (없으면 모든 파일)
+                const configuredName = (result.configured_path || '').split(/[/\\]/).pop();
+                const ext = configuredName.includes('.') ? configuredName.split('.').pop() : '';
                 revertOptimistic(name);
                 setModal({
                     type: 'question',
@@ -302,7 +308,7 @@ export function useServerActions({
                                 setModal(null);
                                 try {
                                     const filePath = await window.api.openFileDialog({
-                                        filters: [{ name: 'JAR', extensions: ['jar'] }],
+                                        filters: ext ? [{ name: configuredName, extensions: [ext] }] : undefined,
                                         title: t('servers.select_server_jar'),
                                     });
                                     if (filePath) {
