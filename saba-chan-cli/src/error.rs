@@ -171,6 +171,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "no_command_path" => Some(t!("err.hint.no_command_path")),
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
         "module_busy" => Some(t!("err.hint.module_busy")),
+        "schedule_changed" => Some(t!("err.hint.schedule_changed")),
         "not_supported" => Some(t!("err.hint.not_supported")),
         "invalid_command" => Some(t!("err.hint.invalid_command")),
         // `details: [{field, reason, word?, conflictWith?}]` — 칸마다 한 줄
@@ -250,7 +251,7 @@ mod tests {
     #[test]
     fn busy_modules_and_malformed_command_keys_get_a_hint() {
         crate::i18n::init("en");
-        for code in ["module_busy", "invalid_command", "not_supported"] {
+        for code in ["module_busy", "invalid_command", "not_supported", "schedule_changed"] {
             let hint = api_hint(code, &json!({})).unwrap_or_default();
             assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
         }

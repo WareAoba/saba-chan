@@ -206,6 +206,7 @@
       "backup_busy": "Une sauvegarde ou une restauration de ce serveur est déjà en cours. Réessayez quand elle sera terminée.",
       "invalid_relay_url": "Seules les adresses de relais https:// sont autorisées (http uniquement pour localhost, 127.0.0.1 ou [::1] pour tester sur ce PC).",
       "module_busy": "Ce module est déjà en cours d'installation ou de suppression. Réessayez une fois l'opération terminée.",
+      "schedule_changed": "La planification a été modifiée ailleurs. Vérifiez-la avec saba-chan-cli schedule show, puis réessayez.",
       "invalid_command": "Écrivez la clé de commande sous la forme `<server>/<command>`. Une clé sans serveur doit être un id d'action globale.",
       "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>",
       "not_supported": "Consultez les commandes non prises en charge avec : saba-chan-cli module info"

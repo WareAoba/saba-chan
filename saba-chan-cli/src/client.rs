@@ -762,11 +762,11 @@ impl Api {
         )
         .await
     }
-    /// GET /api/instance/:id/schedule — `{schedule, backup_keep, backup_supported, announce_supported}`
+    /// GET /api/instance/:id/schedule — `{schedule, backup_keep, revision, backup_supported, announce_supported}`
     pub async fn schedule(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/schedule", seg(id))).await
     }
-    /// PUT /api/instance/:id/schedule — `{schedule: [...], backup_keep?}` (목록 전체를 바꾼다)
+    /// PUT /api/instance/:id/schedule — `{schedule: [...], backup_keep?, revision?}` (목록 전체를 바꾼다. 읽은 뒤 바뀌었으면 409 `schedule_changed`)
     pub async fn save_schedule(&self, id: &str, body: Value) -> Result<Value> {
         self.put(&format!("/api/instance/{}/schedule", seg(id)), body).await
     }

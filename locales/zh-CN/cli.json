@@ -253,6 +253,7 @@
       "backup_busy": "此服务器已有备份或恢复正在进行。请在完成后重试。",
       "invalid_relay_url": "中继地址只能使用 https://(仅在本机测试时可对 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模块正在安装或删除中。请在完成后重试。",
+      "schedule_changed": "计划任务已在别处更改。请用 saba-chan-cli schedule show 重新确认后再试。",
       "invalid_command": "命令键请写成 `<服务器>/<命令>`。不带服务器的键只能是全局操作 id。",
       "no_command_path": "此服务器是在 Saba-chan 之外启动的，没有可接收命令的控制台。请通过 Saba-chan 重新启动：saba-chan-cli restart <server>",
       "conflict_with": "与 {{name}} 冲突",
