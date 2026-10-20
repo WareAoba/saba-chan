@@ -970,10 +970,15 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = tokio::spawn(async move {
             let (mut sock, _) = listener.accept().await.unwrap();
-            let mut buf = vec![0; 4096];
-            let n = sock.read(&mut buf).await.unwrap();
+            // 머리가 여러 조각으로 올 수 있으니 빈 줄까지 읽는다
+            let (mut head, mut buf) = (Vec::new(), [0; 1024]);
+            while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = sock.read(&mut buf).await.unwrap();
+                assert!(n > 0, "connection closed before the request head ended");
+                head.extend_from_slice(&buf[..n]);
+            }
             sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
-            String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase()
+            String::from_utf8_lossy(&head).to_ascii_lowercase()
         });
         Api::new(port, lang.map(str::to_string)).call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
         server.await.unwrap()

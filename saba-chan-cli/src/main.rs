@@ -43,8 +43,6 @@ async fn main() {
     }
     let flag = lang_flag();
     i18n::init(&bootstrap::language(flag.as_deref()));
-    // 언어를 직접 골랐을 때만 데몬에도 알린다: 아니면 데몬은 앱 설정 언어를 따른다
-    let daemon_lang = bootstrap::requested_language(flag.as_deref()).map(|_| i18n::lang().to_string());
 
     let matches = match cli::parse(std::env::args_os().collect()) {
         Ok(m) => m,
@@ -55,6 +53,9 @@ async fn main() {
         Err(e) => e.exit(),
     };
     let g = parsed.global;
+    // 언어를 직접 골랐을 때만 데몬에도 알린다: 아니면 데몬은 앱 설정 언어를 따른다.
+    // 앞의 훑기는 `chat … --lang=ko` 같은 명령 본문도 잡으므로 실제로 인식된 전역 옵션을 쓴다
+    let daemon_lang = bootstrap::requested_language(g.lang.as_deref()).map(|l| i18n::normalize(&l));
     let json = g.json || g.json_stream;
     // `--json-stream`: 진행은 한 줄씩, 결과는 마지막 한 줄
     output::set_stream(g.json_stream);
