@@ -60,6 +60,15 @@ pub struct Requester {
     /// 릴레이가 알려 준 노드 주인. 없으면 소유자가 없는 것으로 본다
     pub owner_id: Option<String>,
     pub via_chatbot: bool,
+    /// 챗봇이 올린 확인을 누른 사람 (릴레이 `confirmedBy`, 누른 사람이 요청자일 때만 싣는다)
+    pub confirmed_by: Option<String>,
+}
+
+impl Requester {
+    /// 요청자 본인이 확인했는가 (릴레이의 말을 다시 견준다)
+    pub fn confirmed_by_requester(&self) -> bool {
+        self.confirmed_by.is_some() && self.confirmed_by == self.user_id
+    }
 }
 
 /// 거부 이유 (`PERMISSION_DENIED`)
@@ -336,7 +345,7 @@ mod tests {
     use super::*;
 
     fn who(user: &str) -> Requester {
-        Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("own".into()), via_chatbot: false }
+        Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("own".into()), via_chatbot: false, ..Default::default() }
     }
 
     #[test]

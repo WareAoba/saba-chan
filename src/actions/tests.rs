@@ -33,7 +33,7 @@ async fn server() -> (IPCServer, String, tempfile::TempDir) {
 }
 
 fn relay(user: &str, chatbot: bool) -> Caller {
-    let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
     Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "ko".into() }
 }
 
@@ -108,6 +108,19 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
     let err = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("admin", false)).await.unwrap_err();
     assert_eq!(err.code, "PERMISSION_DENIED");
     assert_eq!(err.data["args"]["via"], "chatbot");
+}
+
+/// 챗봇이 만든 계획은 확인한 쪽이 via를 보내지 않아도 챗봇 출처로 실행된다 (보관 백업 수 줄이기 같은 챗봇 제한이 그 출처를 본다)
+#[tokio::test]
+async fn a_chatbot_plan_runs_as_the_chatbot_whoever_confirms_it() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let lower = json!({ "schedule": [], "backup_keep": 1 });
+    let made = plan(&state, "instance.schedule.set", Some(&id), &lower, &relay("owner", true)).await.unwrap();
+    let plan_id = made["planId"].as_str().unwrap().to_string();
+    let ran = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("owner", false)).await.unwrap();
+    assert_eq!(ran["success"], false, "{ran}");
+    assert_eq!(ran["status"], 400, "{ran}");
 }
 
 #[tokio::test]
@@ -265,7 +278,19 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
             assert!(!d.id.contains(word), "{} must not be open to the chatbot", d.id);
         }
     }
-    assert!(command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap()["surfaces"].as_array().unwrap().iter().all(|s| s != "chatbot"));
+}
+
+/// 모듈의 위험 명령도 챗봇이 고를 수 있지만 늘 확인 계획을 거친다(요청자 본인이 확인 버튼을 누른다, 사용자 결정 2026-10-20).
+/// 결과는 콘솔·조회처럼 IP·비밀처럼 보이는 값을 가려 보낸다
+#[test]
+fn danger_module_commands_reach_the_chatbot_only_through_a_confirmation() {
+    let wipe = command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap();
+    assert!(wipe["surfaces"].as_array().unwrap().iter().any(|s| s == "chatbot"));
+    assert_eq!(wipe["risk"], "danger", "danger always needs a confirmed plan (needs_confirm)");
+    for id in ["server.console.tail", "server.query:players", "server.command:kick"] {
+        assert!(chatbot_masked(id), "{id}");
+    }
+    assert!(!chatbot_masked("server.status"));
 }
 
 #[tokio::test]
@@ -552,7 +577,7 @@ async fn a_running_plan_does_not_block_single_confirmations_in_the_guild() {
         })
         .await
         .unwrap();
-    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
     let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &caller(true)).await.unwrap();
     let _busy = steps::Lane::take(&caller(false)).unwrap();
@@ -571,7 +596,7 @@ async fn remote_admin_runs_are_limited_per_guild_and_hour() {
         })
         .await
         .unwrap();
-    let who = Requester { guild_id: Some("limited".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: false };
+    let who = Requester { guild_id: Some("limited".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: false, ..Default::default() };
     let owner = Caller { surface: Discord, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let input = json!({ "guild": "limited", "sleeping": false });
     assert!(run(&state, "discord.settings.set", None, &input, None, &owner).await.is_ok());
