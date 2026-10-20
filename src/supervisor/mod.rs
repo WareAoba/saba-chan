@@ -2089,13 +2089,8 @@ impl Supervisor {
         let module_path = module.entry_path();
 
         let mut cfg = serde_json::Map::new();
-        if let Some(exe_path) = &instance.executable_path {
-            // 시작 때와 같은 키
-            cfg.insert("server_executable".to_string(), json!(exe_path));
-        }
-        if let Some(work_dir) = &instance.working_dir {
-            cfg.insert("working_dir".to_string(), json!(work_dir));
-        }
+        // 시작 때와 같은 키와 같은 해석 (옛 module_settings 경로, 작업 폴더 + 모듈 server_executable) (D-S11)
+        self.insert_resolved_exe(&mut cfg, instance, &instance.module_name);
         if let Some(port) = instance.port {
             cfg.insert("port".to_string(), json!(port));
         }
@@ -3090,6 +3085,36 @@ mod tests {
             for key in ["server_jar", "jar_name", "install_dir"] {
                 assert!(config.get(key).is_none(), "{key} in {config}");
             }
+        }
+    }
+
+    /// D-S11: 모듈 함수(설치 버전 확인 등)도 시작과 같은 실행 파일을 받는다. 옛 인스턴스의 module_settings 경로,
+    /// 작업 폴더와 모듈의 server_executable로 정해지는 경로를 시작만 보고 이쪽은 보지 않았다
+    #[test]
+    fn module_calls_get_the_executable_the_start_uses() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"server.jar\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.module_loader.discover_modules().unwrap();
+        let server_dir = tmp.path().join("server");
+        let mut legacy = crate::instance::ServerInstance::new("old", "game");
+        legacy.working_dir = Some(server_dir.to_string_lossy().into_owned());
+        legacy.module_settings.insert("executable_path".into(), json!(server_dir.join("custom.jar").to_string_lossy()));
+        let mut plain = crate::instance::ServerInstance::new("new", "game");
+        plain.working_dir = Some(server_dir.to_string_lossy().into_owned());
+        for (inst, jar) in [(legacy, "custom.jar"), (plain, "server.jar")] {
+            let id = inst.id.clone();
+            let expected = sup.resolve_executable(&inst, "game");
+            sup.instance_store.add(inst).unwrap();
+            assert_eq!(expected.as_deref(), Some(server_dir.join(jar).to_string_lossy().as_ref()));
+            let call = sup.instance_call(&id, "get_installed_version").unwrap();
+            assert_eq!(call.config()["server_executable"], json!(expected), "{jar}");
         }
     }
 
