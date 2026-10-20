@@ -974,6 +974,7 @@
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",
     "retry": "Retry",
+    "reload": "Reload",
     "action_failed": "The action failed.",
     "backups_title": "Backups",
     "backups_desc": "Zips up the world and save files. Backups you make yourself are never pruned.",
@@ -988,6 +989,7 @@
     "restored": "Restored. The state just before was backed up too.",
     "err_restore_outside": "This backup was made for a different server folder, so it can't be restored into the current one. If you moved the server folder, move it back and try again.",
     "err_backup_busy": "Another task (backup, restore, update, ...) is running for this server. Try again when it finishes.",
+    "err_schedule_changed": "The schedule was changed elsewhere, so it wasn't saved. Reload it and make your changes again.",
     "delete": "Delete",
     "delete_confirm": "Click to delete",
     "kind_manual": "Manual",

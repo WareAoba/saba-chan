@@ -974,6 +974,7 @@
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",
     "retry": "Erneut versuchen",
+    "reload": "Neu laden",
     "action_failed": "Die Aktion ist fehlgeschlagen.",
     "backups_title": "Backups",
     "backups_desc": "Packt Welt- und Speicherdateien in ein Archiv. Selbst erstellte Backups werden nie automatisch gelöscht.",
@@ -988,6 +989,7 @@
     "restored": "Wiederhergestellt. Der vorherige Stand wurde ebenfalls gesichert.",
     "err_restore_outside": "Diese Sicherung wurde für einen anderen Serverordner erstellt und kann nicht in den aktuellen wiederhergestellt werden. Wenn du den Serverordner verschoben hast, verschiebe ihn zurück und versuche es erneut.",
     "err_backup_busy": "Für diesen Server läuft gerade eine andere Aufgabe (Sicherung, Wiederherstellung, Update …). Versuche es erneut, wenn sie fertig ist.",
+    "err_schedule_changed": "Der Zeitplan wurde an anderer Stelle geändert und daher nicht gespeichert. Lade ihn neu und ändere ihn erneut.",
     "delete": "Löschen",
     "delete_confirm": "Zum Löschen klicken",
     "kind_manual": "Manuell",

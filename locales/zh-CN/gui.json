@@ -974,6 +974,7 @@
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",
     "retry": "重试",
+    "reload": "重新读取",
     "action_failed": "操作失败。",
     "backups_title": "备份",
     "backups_desc": "将世界和存档文件压缩保存。手动创建的备份不会被自动清理。",
@@ -988,6 +989,7 @@
     "restored": "已恢复。恢复前的状态也已备份。",
     "err_restore_outside": "此备份是为另一个服务器文件夹创建的，无法恢复到当前文件夹。如果你移动过服务器文件夹，请把它移回原处后再试。",
     "err_backup_busy": "此服务器正在进行其他任务（备份、恢复、更新等）。请在完成后重试。",
+    "err_schedule_changed": "计划任务已在别处被修改，因此未保存。请重新读取后再修改。",
     "delete": "删除",
     "delete_confirm": "点击删除",
     "kind_manual": "手动",
