@@ -1,6 +1,7 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, render, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
+import { ServerSettingsModal } from '../components/ServerSettingsModal';
 import { useServerSettings } from '../hooks/useServerSettings';
 
 const modules = [{ name: 'game', settings: { fields: [{ name: 'title', field_type: 'text' }] } }];
@@ -72,5 +73,37 @@ describe('정지·재시작 요청 시간 제한', () => {
         expect(await timeoutOf((api) => api.instanceStop('s'))).toBeGreaterThan(longest);
         expect(await timeoutOf((api) => api.instanceRestart('s'))).toBeGreaterThan(longest);
         expect(await timeoutOf((api) => api.serverStop('S'))).toBeGreaterThan(longest);
+    });
+});
+
+// 데몬이 직접 띄우지 않는 서버(managed:false)는 모듈 stop()이 정지를 맡아 stop_timeout을 쓰지 않는다
+describe('설정 창의 정지 대기 칸', () => {
+    const props = (managed) => ({
+        settingsServer: { id: 's', name: 'S', module: 'game', status: 'stopped', managed },
+        settingsValues: {},
+        settingsSource: 'live',
+        settingsActiveTab: 'general',
+        setSettingsActiveTab: vi.fn(),
+        modules,
+        advancedExpanded: false,
+        setAdvancedExpanded: vi.fn(),
+        availableVersions: [],
+        versionsLoading: false,
+        versionInstalling: false,
+        handleSettingChange: vi.fn(),
+        handleInstallVersion: vi.fn(),
+        handleSaveSettings: vi.fn(),
+        handleResetServer: vi.fn(),
+        resettingServer: false,
+        onClose: vi.fn(),
+        servers: [],
+    });
+
+    it('데몬이 띄우는 서버에만 보인다', () => {
+        const { unmount } = render(<ServerSettingsModal {...props(true)} />);
+        expect(document.querySelector('.stop-timeout-section')).not.toBeNull();
+        unmount();
+        render(<ServerSettingsModal {...props(false)} />);
+        expect(document.querySelector('.stop-timeout-section')).toBeNull();
     });
 });
