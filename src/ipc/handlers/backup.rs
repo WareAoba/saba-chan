@@ -395,6 +395,15 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
                 problems.push("backup_keep: the chatbot cannot lower how many backups are kept".into());
             }
         }
+        // 더 자주 돌려도 옛 백업이 더 빨리 밀려 지워진다: 보관 수가 덮는 기간(보관 수 ÷ 하루 횟수)이 줄면 거절한다.
+        // 지금 백업이 없거나 드물면 하루 한 번까지는 넣을 수 있다
+        let keep_before = instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32) as u64;
+        let keep_after = body.backup_keep.map_or(keep_before, u64::from);
+        let base = daily_runs(&instance.schedule, TaskAction::Backup).max(1) as u64;
+        let after = daily_runs(&body.schedule, TaskAction::Backup) as u64;
+        if after > base && keep_after * base < keep_before * after {
+            problems.push("schedule: the chatbot cannot make backups run so often that older ones are removed sooner".into());
+        }
     }
     // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
     if crate::audit::current().source == "discord" {
@@ -995,6 +1004,31 @@ mod tests {
         assert_eq!(put(keep(20), chatbot()).await, StatusCode::OK, "the same value is fine");
         // 사람이 직접 보낸 디스코드 요청은 줄일 수 있다 (30 이하)
         assert_eq!(put(keep(5), crate::audit::Origin::new("discord")).await, StatusCode::OK);
+    }
+
+    /// 챗봇은 백업을 더 자주 돌려 옛 백업이 더 빨리 밀려 지워지게 하지도 못한다: 보관 수가 덮는 기간이 줄면 거절한다.
+    /// 하루 한 번까지는 새로 넣을 수 있고, 보관 수를 함께 올려 기간을 지키면 된다 (L49)
+    #[tokio::test]
+    async fn the_chatbot_cannot_make_backups_push_old_ones_out_sooner() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        let (state, id, _tmp) = server_with(&toml, None).await;
+        let put = |body: Value, origin: crate::audit::Origin| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(origin, async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            })
+        };
+        let chatbot = || crate::audit::Origin { via: Some("chatbot".into()), ..crate::audit::Origin::new("discord") };
+        let every = |m: u32| json!({ "action": "backup", "every_minutes": m });
+        let daily = json!({ "action": "backup", "at": "04:00" });
+        assert_eq!(put(json!({ "schedule": [daily.clone()] }), chatbot()).await, StatusCode::OK, "once a day is fine");
+        assert_eq!(put(json!({ "schedule": [every(60)] }), chatbot()).await, StatusCode::BAD_REQUEST, "24 a day pushes ten backups out in ten hours");
+        assert_eq!(put(json!({ "schedule": [every(720)], "backup_keep": 20 }), chatbot()).await, StatusCode::OK, "twice a day with twice the keep covers the same days");
+        // 이 PC에서 정한 잦은 백업은 챗봇이 그대로 다시 보낼 수 있다
+        assert_eq!(put(json!({ "schedule": [every(60)], "backup_keep": 20 }), crate::audit::Origin::new("gui")).await, StatusCode::OK);
+        assert_eq!(put(json!({ "schedule": [every(60)], "backup_keep": 20 }), chatbot()).await, StatusCode::OK);
+        assert_eq!(put(json!({ "schedule": [every(30)], "backup_keep": 20 }), chatbot()).await, StatusCode::BAD_REQUEST);
     }
 
     /// 원격 제한은 작업 하나의 간격이 아니라 하루에 도는 횟수로 본다: 매일 시각 작업이나 간격이 다른 작업을 여럿 넣어도,
