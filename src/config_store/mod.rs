@@ -346,9 +346,14 @@ impl ConfigStore {
 
     /// 데몬이 쓰는 화면 언어: 요청이 고른 언어(Accept-Language), 설정한 언어, 없으면 OS 언어 (GUI와 같은 규칙, 지원하지 않으면 en)
     pub async fn ui_language(&self) -> String {
-        if let Some(lang) = crate::audit::current().lang {
-            return lang;
+        match crate::audit::current().lang {
+            Some(lang) => lang,
+            None => self.pc_language().await,
         }
+    }
+
+    /// 이 PC의 언어: 설정한 언어, 없으면 OS 언어. 요청 언어와 상관없이 릴레이에 알리는 값 (하트비트·디스코드 설정의 `language`)
+    pub async fn pc_language(&self) -> String {
         match self.gui_settings.read().await.language.as_deref() {
             Some(l) if !l.trim().is_empty() => l.to_string(),
             _ => crate::chat::i18n::os_language(),
@@ -763,7 +768,8 @@ mod tests {
         let mut headers = axum::http::HeaderMap::new();
         headers.insert("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8".parse().unwrap());
         let origin = crate::audit::Origin::from_headers(&headers);
-        assert_eq!(crate::audit::with_origin(origin, store.ui_language()).await, "ko-KR");
+        assert_eq!(crate::audit::with_origin(origin.clone(), store.ui_language()).await, "ko-KR");
+        assert_eq!(crate::audit::with_origin(origin, store.pc_language()).await, "ja", "what this PC sends the relay ignores the request");
         assert_eq!(store.ui_language().await, "ja", "without a request language the GUI language stays");
     }
 
