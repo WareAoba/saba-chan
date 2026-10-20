@@ -84,7 +84,7 @@ struct LogBuffer {
 }
 
 /// 버퍼 세대: 만든 시각(밀리초). 데몬을 다시 켜도 앞 세대보다 크고, 한 프로세스 안에서도 겹치지 않는다
-fn next_epoch() -> u64 {
+pub(crate) fn next_epoch() -> u64 {
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
     let mut last = LAST.load(std::sync::atomic::Ordering::Relaxed);

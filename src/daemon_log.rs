@@ -43,6 +43,8 @@ pub struct DaemonLogBuffer {
     inner: Arc<Mutex<VecDeque<DaemonLogEntry>>>,
     next_id: Arc<AtomicU64>,
     capacity: usize,
+    /// 버퍼 세대. 번호는 데몬을 켤 때마다 1부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다 (L55)
+    epoch: u64,
 }
 
 impl DaemonLogBuffer {
@@ -55,7 +57,12 @@ impl DaemonLogBuffer {
             inner: Arc::new(Mutex::new(VecDeque::with_capacity(capacity.min(1024)))),
             next_id: Arc::new(AtomicU64::new(1)),
             capacity,
+            epoch: crate::supervisor::managed_process::next_epoch(),
         }
+    }
+
+    pub fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     /// Push a new log entry into the buffer, evicting the oldest if at capacity.
