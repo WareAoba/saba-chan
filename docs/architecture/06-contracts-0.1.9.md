@@ -38,7 +38,7 @@
 - 라우트 `GET /api/instance/:id/logs/export?source=&since=&until=`
   - 응답 `{fileName, bytes, truncated, content}`. `fileName`은 `<서버 이름>-<source>-<YYYYMMDD-HHMM>.log`(파일 이름에 못 쓰는 글자는 `_`). `since`·`until`은 unix 초로 줄의 시각을 거른다(시각이 없는 줄은 앞 줄을 따른다).
   - `content`는 JSON 문자열로 쓴 크기(이스케이프 포함)로 최대 4 MiB다. 넘으면 최근 쪽 온전한 줄을 남기고 `truncated:true`. 릴레이 `/result`는 결과 봉투와 가린 뒤 늘어난 만큼의 여유를 두고 6 MiB 이상을 받는다.
-- 액션: `server.logs.read`(Query, safe), `server.logs.export`(Query, caution). 둘 다 GUI·CLI·챗봇 표면이고 디스코드 메뉴에는 없다.
+- 액션: `server.logs.read`(Query, safe), `server.logs.export`(Query, safe: `server.logs.read`와 같은 가린 읽기 전용이고, 말하는 사바쨩 상한 기본값 0에서도 "로그 파일 줘"가 되게). 둘 다 GUI·CLI·챗봇 표면이고 디스코드 메뉴에는 없다.
 - 가리기: 원격(챗봇·디스코드)으로 나가는 모든 줄은 콘솔 꼬리와 같은 가리기(IP·비밀값, 절대 경로 → `<path>`)를 거친다. 내보내기도 같다. GUI·CLI(로컬)는 원문이다.
 - 릴레이 규칙(05 문서에 같은 줄을 둔다): `/result` 본문은 `{success, data:{success, actionId, status, result}}`이고, 그 `data.result`가 `{fileName, bytes, truncated, content}` 모양이면 릴레이는 `content`를 파일로 첨부하고 모델에는 `content`를 주지 않는다. 모델에는 `{ok, fileName, bytes, truncated}`만 간다.
 
@@ -52,6 +52,8 @@
 - 데몬 이벤트 `instance.ready {at, instanceId, instance, ok, code?}`를 시작 한 번(자동 재시작 포함)마다 한 번 낸다.
   - `ok:true`: `ready_patterns` 중 하나가 콘솔 줄과 맞았을 때. 선언이 없으면 시작이 성공한 때(managed는 프로세스가 뜨고 시작 가드가 풀린 때, non-managed는 모듈 `start` 성공).
   - `ok:false`: 준비되기 전에 끝났을 때. `code`는 `start_failed`(시작 실패나 준비 전에 프로세스가 끝남), `stopped_while_starting`(준비 전에 사용자가 정지), `ready_timeout`(`ready_timeout`이 지남). 원문·경로·콘솔 줄은 싣지 않는다.
+  - 데몬이 띄운 프로세스가 알림 전에 끝나 이미 치워졌으면 `start_failed`다. `ready_timeout`이 시계로 나타낼 수 없을 만큼 크면 시간 초과 없이 기다린다.
+  - 감독자가 시작을 시도하지 않은 요청(사전 점검에 막힘, 다른 작업 중, 이미 켜짐, 시작 중)에는 알림이 없다. 자동 재시작이 사전 점검에 막히면 `instance.restart_failed`·`instance.restart_cancelled`가 끝을 알린다.
 - relay_event 허용 목록에 넣는다(`instance.ready`는 위 필드만). 지금 `instance.exit`(start_failed)는 그대로 나간다.
 
 ## 5. 복원 허용 범위 `restore_roots` (모듈 감사 MA3)
