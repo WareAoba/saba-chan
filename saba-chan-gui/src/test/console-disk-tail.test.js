@@ -44,6 +44,27 @@ describe('콘솔 디스크 꼬리', () => {
         result.current.closeConsole('a');
     });
 
+    it('같은 줄이 되풀이돼도 못 본 줄을 버리지 않는다 (시각까지 맞춰 본다)', async () => {
+        vi.useFakeTimers();
+        useServerStore.setState({ servers: [{ id: 'a', name: 'A', pid: 10 }] });
+        const at = (content, timestamp, id) => ({ id, content, timestamp, source: 'Stdout' });
+        const live = [at('ready', 100, 0), at('tick', 101, 1)];
+        window.api.managedConsole = vi.fn(async (_id, since) => ({
+            epoch: 1,
+            lines: live.filter((l) => l.id >= since),
+        }));
+        const { result } = open();
+        await act(async () => vi.advanceTimersByTimeAsync(600));
+
+        // 마지막 폴링 뒤에 같은 두 줄이 한 번 더 찍히고 죽었다. 디스크는 앞 공백을 지운다
+        useServerStore.setState({ servers: [{ id: 'a', name: 'A', pid: 0 }] });
+        const tail = [at('ready', 100), at('tick', 101), at('ready', 102), at('tick', 103), at('panic', 103)];
+        window.api.managedConsole = vi.fn(async () => ({ source: 'disk', lines: tail.map((l, id) => ({ ...l, id })) }));
+        await act(async () => vi.advanceTimersByTimeAsync(11_000));
+        expect(lines().map((l) => l.content)).toEqual(['ready', 'tick', 'ready', 'tick', 'panic']);
+        result.current.closeConsole('a');
+    });
+
     it('디스크 꼬리 뒤에 새 프로세스 줄이 와도 줄 key가 겹치지 않는다', async () => {
         vi.useFakeTimers();
         useServerStore.setState({ servers: [{ id: 'a', name: 'A', pid: 0 }] });

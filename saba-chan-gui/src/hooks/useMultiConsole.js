@@ -19,17 +19,22 @@ const setConsoles = (consolesOrUpdater) => useConsoleStore.getState().setConsole
 let lineSeq = 0;
 const keyed = (lines) => lines.map((line) => ({ ...line, key: ++lineSeq }));
 
+/** 디스크 줄과 실행 중에 받은 줄을 맞춰 보는 값. 디스크 기록은 내용 앞 공백을 지우고 시각은 초까지 남긴다 */
+const lineMark = (line) => `${line.timestamp ?? ''}|${line.source ?? ''}|${String(line.content ?? '').trimStart()}`;
+
 /**
- * 디스크 꼬리에서 이미 본 줄 뒤의 것만 (G-C3). 마지막으로 본 실행 줄들(seen)과 내용이 겹치는 곳을
- * 뒤에서부터 찾는다. 못 찾으면 다른 기록이라 보고 전부 준다
+ * 디스크 꼬리에서 이미 본 줄 뒤의 것만 (G-C3). 마지막으로 본 실행 줄들(seen)과 겹치는 곳을
+ * 앞에서부터 찾는다: 같은 줄이 되풀이된 로그에서 모호하면 못 본 줄을 버리기보다 다시 보이는 쪽을 고른다.
+ * 못 찾으면 다른 기록이라 보고 전부 준다
  */
 function unseenDiskTail(seen, tail) {
     if (seen.length === 0) return tail;
-    for (let end = tail.length - 1; end >= 0; end--) {
+    const marks = tail.map(lineMark);
+    for (let end = 0; end < tail.length; end++) {
         const span = Math.min(seen.length, end + 1);
         let match = true;
         for (let k = 0; k < span; k++) {
-            if (tail[end - k].content !== seen[seen.length - 1 - k]) {
+            if (marks[end - k] !== seen[seen.length - 1 - k]) {
                 match = false;
                 break;
             }
@@ -128,7 +133,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // 세대가 바뀐 뒤 처음 받는 줄은 이어 붙이지 않고 그 버퍼로 바꾼다 (다시 붙은 버퍼는 이미 본 줄을 다시 담는다)
             let replaceLines = false;
             let diskLoaded = false;
-            // 실행 중에 받은 마지막 몇 줄의 내용. 꺼진 뒤 디스크 꼬리와 겹치는 곳을 찾는 데 쓴다
+            // 실행 중에 받은 마지막 몇 줄의 표시(lineMark). 꺼진 뒤 디스크 꼬리와 겹치는 곳을 찾는 데 쓴다
             let seenTail = [];
             let polling = false;
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
@@ -196,7 +201,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                             const replace = replaceLines;
                             replaceLines = false;
                             const received = keyed(data.lines);
-                            seenTail = [...(replace ? [] : seenTail), ...data.lines.map((l) => l.content)].slice(-5);
+                            seenTail = [...(replace ? [] : seenTail), ...data.lines.map(lineMark)].slice(-5);
                             setConsoles((prev) => {
                                 if (!prev[instanceId]) return prev;
                                 const maxLines = consoleBufferRef.current || 2000;
