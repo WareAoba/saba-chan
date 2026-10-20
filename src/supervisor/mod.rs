@@ -1982,6 +1982,9 @@ impl Supervisor {
             let _ = std::fs::remove_file(dir.join(crate::protocol::rcon::ACCESS_FILE));
             return Ok(());
         };
+        // 두 인스턴스가 동시에 처음 켜져도 같은 포트를 고르지 않게, 고르고 저장하는 동안 하나씩만
+        static PICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _picking = PICKING.lock().unwrap_or_else(|e| e.into_inner());
         // 다른 인스턴스의 RCON·게임·REST 포트는 고르지 않는다
         let taken: Vec<u16> = self
             .instance_store
