@@ -164,8 +164,9 @@ impl Lines {
         let end = match self.line_end() {
             Some(end) => end,
             None if self.pending.len() >= MAX_LINE => {
-                self.utf16 = judge(&self.pending[..MAX_LINE], self.utf16, &mut self.odd);
-                MAX_LINE - 1
+                let head = &self.pending[..MAX_LINE];
+                self.utf16 = judge(head, self.utf16, &mut self.odd);
+                if self.utf16 { MAX_LINE - 1 } else { utf8_cut(head) }
             }
             None => return None,
         };
@@ -191,6 +192,12 @@ impl Lines {
         while let Some(i) = buf.get(self.from..)?.iter().position(|b| *b == b'\n') {
             let nl = self.from + i;
             let body = &buf[..nl];
+            let even = nl.is_multiple_of(2) != self.odd;
+            // UTF-16 줄 뒤 짝수 자리의 0A 00은 줄 끝이다: NUL 없는 글자만 쓴 줄(한글 등)도 UTF-16으로 이어 본다. UTF-8에는 0A 뒤 0이 오지 않는다
+            if self.utf16 && even && buf.get(nl + 1) == Some(&0) {
+                self.from = 0;
+                return Some(nl + 1);
+            }
             match body.len() {
                 // 빈 앞부분은 뒤따르는 바이트까지 본다
                 0 => {
@@ -208,7 +215,6 @@ impl Lines {
                 return Some(nl);
             }
             // 홀수 자리 0A는 글자의 윗바이트다. 짝수 자리는 다음 바이트가 0일 때만 줄 끝이다
-            let even = nl.is_multiple_of(2) != self.odd;
             match buf.get(nl + 1) {
                 Some(0) if even => {
                     self.from = 0;
@@ -233,6 +239,21 @@ impl Lines {
             decode_line(line)
         }
     }
+}
+
+/// `head`를 끊을 자리(포함). 끝의 UTF-8 글자가 잘리면 그 글자 앞에서 끊는다
+fn utf8_cut(head: &[u8]) -> usize {
+    let last = head.len() - 1;
+    let Some(start) = (last.saturating_sub(3)..=last).rev().find(|&i| head[i] & 0xc0 != 0x80) else {
+        return last;
+    };
+    let need = match head[start] {
+        b if b >= 0xf0 => 4,
+        b if b >= 0xe0 => 3,
+        b if b >= 0xc0 => 2,
+        _ => 1,
+    };
+    if start + need > head.len() && start > 0 { start - 1 } else { last }
 }
 
 /// `seen`(줄 처음부터)이 UTF-16LE인가. `odd`: `seen[0]`이 스트림의 홀수 자리인가
@@ -365,6 +386,7 @@ mod tests {
         ansi_first.extend(utf16("ok 上\r\nend\r\n"));
         assert_eq!(split(&[&ansi_first]), ["echo off", ".", "ok 上", "end"]);
         assert_eq!(split(&[b"plain\r\nb\n\nlast"]), ["plain", "b", "", "last"]);
+        assert_eq!(split(&[&utf16("Ready\n다음\nend\n")]), ["Ready", "다음", "end"], "a line with no NUL after a UTF-16 line");
     }
 
     /// BOM 없이 0A로 시작하는 UTF-16LE 출력(上 = 0A 4E): 한꺼번에 오면 그대로 읽고, 한 바이트씩 와서 처음을 잘못 잘라도
@@ -382,6 +404,9 @@ mod tests {
         let lines = split(&[&endless]);
         assert_eq!(lines.len(), 2);
         assert!(lines.iter().all(|l| l.chars().all(|c| c == 'a' || c == '一')), "a cut keeps whole characters");
+        let endless = "가".repeat(MAX_LINE);
+        let lines = split(&[endless.as_bytes()]);
+        assert!(lines.len() > 1 && lines.iter().all(|l| l.chars().all(|c| c == '가')), "a UTF-8 cut keeps whole characters");
     }
 
     #[test]
