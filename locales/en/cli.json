@@ -355,6 +355,7 @@
   "progress": {
     "dismissed": "Cleared the progress of {{name}}.",
     "finished": "{{name}} finished installing.",
+    "lost": "Can no longer follow the install of {{name}}. The daemon may have restarted, or the server was renamed or removed elsewhere. Check with server list.",
     "none": "{{name}} has no install in progress.",
     "rolled_back": "{{name}} failed to install and was removed."
   },

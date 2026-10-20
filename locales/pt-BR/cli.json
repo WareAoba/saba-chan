@@ -298,6 +298,7 @@
   "progress": {
     "dismissed": "Progresso de {{name}} limpo.",
     "finished": "{{name}} terminou de instalar.",
+    "lost": "Não é mais possível acompanhar a instalação de {{name}}. O daemon pode ter reiniciado ou o servidor foi renomeado ou removido em outro lugar. Confira com server list.",
     "none": "{{name}} não tem instalação em andamento.",
     "rolled_back": "{{name}} falhou ao instalar e foi removido."
   },

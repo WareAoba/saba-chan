@@ -163,7 +163,7 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
     if cur.running && !fresh.running {
         emit(style(t!("console.stopped")).cyan().dim().to_string());
     }
-    if since.is_some() {
+    if prints_lines(since, &fresh) {
         for l in resp.get("lines").and_then(Value::as_array).into_iter().flatten() {
             emit(format_line(l));
         }
@@ -174,6 +174,11 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
         disk: fresh.disk,
         epoch: fresh.epoch.or(cur.epoch),
     }
+}
+
+/// 받은 줄을 찍을까. 디스크 기록은 since를 무시하고 최근 줄을 주므로(멈춘 직후) 이미 찍은 줄이다
+fn prints_lines(since: Option<u64>, fresh: &Cursor) -> bool {
+    since.is_some() && !fresh.disk
 }
 
 pub fn format_line(l: &Value) -> String {
@@ -418,6 +423,16 @@ fn restarted(seen: Option<u64>, now: Option<u64>) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 서버가 멈추면 데몬은 디스크 로그로 바꿔 since를 무시하고 최근 줄을 준다: 이미 찍은 줄을 다시 찍지 않는다 (L53)
+    #[test]
+    fn a_stop_does_not_reprint_the_disk_log() {
+        let disk = Cursor::from(&json!({ "lines": [{ "id": 1, "content": "old" }], "running": false, "source": "disk" }));
+        assert!(!prints_lines(Some(901), &disk));
+        let memory = Cursor::from(&json!({ "lines": [{ "id": 901 }], "running": true }));
+        assert!(prints_lines(Some(901), &memory));
+        assert!(!prints_lines(None, &memory));
+    }
 
     /// `daemon logs -f`는 데몬이 다시 켜져 번호가 1부터 다시 시작하면 처음부터 다시 읽는다 (L55)
     #[test]
