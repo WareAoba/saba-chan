@@ -1113,10 +1113,8 @@ async fn summarize(server: &IPCServer, r: &Resolved, locale: &str) -> Vec<Value>
 pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, plan_id: Option<&str>, caller: &Caller) -> Result<Value, ActionError> {
     let (r, caller) = match plan_id {
         Some(pid) => {
-            // 여러 단계 실행이 돌고 있으면 계획을 쓰기 전에 409 (한 액션·되돌리기 계획은 막지 않는다)
-            if is_steps_plan(pid) {
-                steps::lane_free(caller)?;
-            }
+            // 여러 단계 실행이 돌고 있으면 계획을 쓰기 전에 409. 자리는 실행이 끝날 때까지 쥔다 (한 액션·되돌리기 계획은 막지 않는다)
+            let lane = if is_steps_plan(pid) { Some(steps::Lane::take(caller)?) } else { None };
             let stored = take_plan(pid, id, caller)?;
             // 계획을 만든 경로의 상한을 쓴다 (챗봇이 만든 계획은 사람이 확인해도 챗봇 상한)
             let mut caller = caller.clone();
@@ -1138,7 +1136,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
                     if steps.iter().any(steps::Step::is_admin) {
                         admit(server, &caller).await?;
                     }
-                    return steps::run_steps(server, steps, caller).await;
+                    return steps::run_steps(server, steps, caller, lane).await;
                 }
                 PlanBody::One(r) => {
                     authorize(server, &r, &caller).await?;

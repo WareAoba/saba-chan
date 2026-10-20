@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 const MANIFEST: &str = "saba-backup.json";
 
 /// 백업 종류. `Manual`만 정리(prune)에서 빠진다
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackupKind {
     Manual,
@@ -208,10 +208,16 @@ pub fn delete(dir: &Path, name: &str) -> Result<()> {
 
 /// 자동 백업(수동 제외)을 새것 `keep`개만 남긴다. `protect`는 넘쳐도 지우지 않는다 (방금 만든 백업, 복원 중인 백업). 지운 이름을 돌려준다
 pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
+    // 종류마다 따로 센다: 업데이트 전·복원 전 안전 백업이 예약 백업을 밀어내지 않게
+    let mut seen: std::collections::HashMap<BackupKind, usize> = std::collections::HashMap::new();
     list(dir)
         .into_iter()
         .filter(|b| b.kind != BackupKind::Manual)
-        .skip(keep)
+        .filter(|b| {
+            let n = seen.entry(b.kind).or_default();
+            *n += 1;
+            *n > keep
+        })
         .filter(|b| !protect.contains(&b.name.as_str()))
         .filter(|b| fs::remove_file(dir.join(&b.name)).is_ok())
         .map(|b| b.name)
@@ -236,18 +242,18 @@ pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
 pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
     let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
     let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
-    // (경로, 기존 것을 치워 뒀는가). 실패하면 이 목록을 거꾸로 되돌린다
-    let mut touched: Vec<(&Path, bool)> = Vec::new();
+    // (경로, 기존 것을 치워 둔 곳). 실패하면 이 목록을 거꾸로 되돌린다
+    let mut touched: Vec<(&Path, Option<PathBuf>)> = Vec::new();
     let mut failed = None;
     for entry in &manifest.paths {
-        let had_old = entry.path.exists();
-        if had_old {
-            if let Err(e) = fs::rename(&entry.path, aside_path(&entry.path)) {
+        let aside = entry.path.exists().then(|| free_aside_path(&entry.path));
+        if let Some(aside) = &aside {
+            if let Err(e) = fs::rename(&entry.path, aside) {
                 failed = Some(anyhow::Error::from(e).context(format!("move aside {}", entry.path.display())));
                 break;
             }
         }
-        touched.push((&entry.path, had_old));
+        touched.push((&entry.path, aside));
         if let Err(e) = extract_entry(&mut zip, entry) {
             failed = Some(e.context(format!("restore {}", entry.path.display())));
             break;
@@ -256,12 +262,12 @@ pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
     if let Some(e) = failed {
         // 되돌리지 못한 경로는 오류에 붙인다 (원래 내용은 `.saba-restore-old`와 복원 전 안전 백업에 남아 있다)
         let mut stuck = Vec::new();
-        for (path, had_old) in touched.into_iter().rev() {
+        for (path, aside) in touched.into_iter().rev() {
             remove_any(path);
-            if had_old {
-                if let Err(r) = fs::rename(aside_path(path), path) {
+            if let Some(aside) = aside {
+                if let Err(r) = fs::rename(&aside, path) {
                     tracing::warn!("Could not put {} back after a failed restore: {}", path.display(), r);
-                    stuck.push(aside_path(path).display().to_string());
+                    stuck.push(aside.display().to_string());
                 }
             }
         }
@@ -270,9 +276,9 @@ pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
         }
         return Err(e);
     }
-    for (path, had_old) in &touched {
-        if *had_old {
-            remove_any(&aside_path(path));
+    for (_, aside) in &touched {
+        if let Some(aside) = aside {
+            remove_any(aside);
         }
     }
     Ok(touched.into_iter().map(|(p, _)| p.to_path_buf()).collect())
@@ -282,6 +288,15 @@ fn aside_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
     name.push(".saba-restore-old");
     path.with_file_name(name)
+}
+
+/// 치워 둘 자리. 지난 복원이 남긴 것(지우지 못했거나 되돌리지 못한 원본)은 건드리지 않고 다음 번호를 쓴다
+fn free_aside_path(path: &Path) -> PathBuf {
+    let base = aside_path(path);
+    (1..)
+        .map(|n| if n == 1 { base.clone() } else { PathBuf::from(format!("{}.{}", base.display(), n)) })
+        .find(|p| !p.exists() && p.symlink_metadata().is_err())
+        .expect("a free name")
 }
 
 fn remove_any(path: &Path) {
@@ -415,6 +430,35 @@ mod tests {
         fs::write(tmp.path().join(&second), b"").unwrap();
         let third = unique_name(tmp.path(), stamp, BackupKind::Scheduled);
         assert!(third > second, "{third} should sort after {second}");
+    }
+
+    /// 안전 백업(업데이트 전·복원 전)은 예약 백업과 따로 센다: 업데이트를 몇 번 하면 예약 백업이 밀려 지워지지 않게
+    #[test]
+    fn safety_backups_do_not_push_out_scheduled_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let scheduled = create(&dir, BackupKind::Scheduled, &[w.clone()]).unwrap().name;
+        let updates: Vec<_> = (0..3).map(|_| create(&dir, BackupKind::PreUpdate, &[w.clone()]).unwrap().name).collect();
+        let removed = prune(&dir, 2, &[]);
+        assert_eq!(removed, vec![updates[0].clone()], "only the oldest pre-update backup goes");
+        assert!(dir.join(&scheduled).exists());
+    }
+
+    /// 지난 복원이 치워 둔 것(`.saba-restore-old`)이 남아 있어도 복원된다. 남은 것은 지우지 않는다: 되돌리지 못한 원본일 수 있다
+    #[test]
+    fn a_leftover_from_an_earlier_restore_does_not_block_the_next() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let made = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap().name;
+        let leftover = aside_path(&w);
+        fs::create_dir_all(&leftover).unwrap();
+        fs::write(leftover.join("kept.txt"), b"original").unwrap();
+        fs::write(w.join("level.dat"), b"changed").unwrap();
+        restore(&dir, &made).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
+        assert_eq!(fs::read(leftover.join("kept.txt")).unwrap(), b"original");
     }
 
     #[test]

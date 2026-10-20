@@ -176,6 +176,7 @@ impl ManagedProcess {
             }
             other => other,
         };
+        #[cfg_attr(not(windows), allow(unused_mut))] // 살아 있는지 보는 try_wait는 Windows에서만
         let mut child = spawned
             .map_err(|e| anyhow::anyhow!("Failed to spawn saba-runner '{}': {}", runner.display(), e))?;
         let runner_pid = child.id();

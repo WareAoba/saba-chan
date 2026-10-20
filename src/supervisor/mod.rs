@@ -1218,7 +1218,7 @@ impl Supervisor {
                 if s.managed_store.get(&instance.id).await.is_some_and(|p| Arc::ptr_eq(&p, &managed)) {
                     s.managed_store.remove(&instance.id).await;
                     // 종료 기록 (user_stop)과 정지 표시 정리
-                    s.judge_exit(&instance.id, &managed).await;
+                    s.judge_exit(&instance.id, &managed, false).await;
                     if force {
                         if let Some(last) = s.exit_events.get_mut(&instance.id).and_then(|e| e.back_mut()) {
                             last.verdict.evidence = "force stop requested through saba-chan".into();
@@ -1249,8 +1249,9 @@ impl Supervisor {
                 let mut s = sup.write().await;
                 // 이미 스스로 끝났다: 정지 요청 때문이 아니므로 표시를 지우고 기록한다
                 s.stop_requested.remove(&instance.id);
+                // 크래시였어도 다시 켜지 않는다: 사용자가 정지를 눌렀다 (D-S6)
                 if let Some(proc) = s.managed_store.remove(&instance.id).await {
-                    s.judge_exit(&instance.id, &proc).await;
+                    s.judge_exit(&instance.id, &proc, false).await;
                 }
                 let pid_file = s.instance_store.instance_dir(&instance.id).join("managed.pid");
                 let _ = std::fs::remove_file(&pid_file);
@@ -2502,8 +2503,8 @@ impl Supervisor {
     /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
     /// 이를 통해 비용이 큰 시스템 콜(sysinfo)이 write lock 밖에서 실행되어
     /// GUI read 요청에 대한 블로킹을 최소화합니다.
-    /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1)
-    async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess) {
+    /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1). `may_restart`가 false면 예약하지 않는다
+    async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
         use managed_process::{LogLevel, LogSource};
         if proc.log_follower {
             return;
@@ -2539,7 +2540,7 @@ impl Supervisor {
         let auto_restart = setting_flag(&instance, "auto_restart", true);
         let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
         let mut attempt = None;
-        let (restart_in, note, note_code) = if crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
+        let (restart_in, note, note_code) = if may_restart && crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
             let history = self.restart_history.entry(instance_id.to_string()).or_default();
             match crash::next_restart_delay(history, Instant::now()) {
                 Some(delay) => {
@@ -2721,7 +2722,7 @@ impl Supervisor {
         // Clean up dead managed processes and their PID files
         let dead = self.managed_store.cleanup_dead().await;
         for (dead_id, proc) in &dead {
-            self.judge_exit(dead_id, proc).await;
+            self.judge_exit(dead_id, proc, true).await;
             let pid_file = self.instance_store.instance_dir(dead_id).join("managed.pid");
             let _ = std::fs::remove_file(&pid_file);
             // 죽은 managed process에 대해 stop cooldown 등록 → auto_detect 재탐색 억제
@@ -3286,6 +3287,46 @@ mod tests {
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!(false)))));
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!("false")))));
         assert!(!supervisor.uses_managed_start(&inst("api-game", Some(json!(false)))));
+    }
+
+    /// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다 (D-S6)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_right_after_a_crash_does_not_restart_the_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[detection]\ncrash_artifacts = [\"hs_err_pid*.log\"]\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "crashed".into();
+        supervisor.instance_store.add(inst).unwrap();
+        let work = tmp.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let mut proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), "touch hs_err_pid1.log; exit 1".into()], work.to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        proc.started_at -= 600;
+        supervisor.managed_store.insert("crashed", proc).await;
+        for _ in 0..50 {
+            if supervisor.managed_store.running_instance_ids().await.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let sup = tokio::sync::RwLock::new(supervisor);
+        Supervisor::stop_server(&sup, "crashed", "game", false).await.unwrap();
+
+        let mut s = sup.write().await;
+        assert_eq!(s.exit_events("crashed").last().map(|e| e.verdict.kind), Some(crash::ExitKind::Crash), "it did crash");
+        assert!(s.take_pending_restarts().iter().all(|(id, ..)| id != "crashed"), "but the stop keeps it down");
     }
 
     /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다 (A1)

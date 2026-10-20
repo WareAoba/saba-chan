@@ -436,7 +436,7 @@
   "errors": {
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
     "console_input_full": "服务器仍在处理之前的输入，请稍后再发送。",
-    "restart_cancelled": "等待期间服务器已在别处启动或删除，因此没有重启。",
+    "restart_cancelled": "重启期间服务器已在别处停止、启动或删除，因此没有重启。",
     "not_supported": "此服务器的模块不支持此功能。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",
     "file_not_found": "找不到文件或文件夹。请检查路径。",
@@ -495,6 +495,7 @@
     "stdin_disabled": "仅显示过去的日志（saba-chan 已重启）— 重启服务器以重新连接",
     "send": "发送",
     "popout": "在单独的窗口中打开",
+    "popout_failed": "无法在单独窗口中打开控制台。",
     "minimize": "最小化到停靠栏",
     "dock_restore": "还原：{{name}}",
     "dock_focus": "聚焦：{{name}}",
