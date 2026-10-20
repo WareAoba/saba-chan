@@ -68,6 +68,8 @@ fn status_t(app: &AppHandle, step: &str, key: &str) {
 
 /// 렌더러가 리스너를 단 뒤 부른다. 처음이면 초기화 시작, 다시 부르면(새로고침) 마지막 상태를 다시 보낸다
 pub fn app_ready(app: &AppHandle) {
+    // 새로 뜬(재로드한) 렌더러는 그 전 닫기 요청을 받지 못했다: 멈춘 것으로 보지 않는다
+    crate::window::close_answered();
     let life = &app.state::<AppState>().life;
     if life.init_started.swap(true, Ordering::SeqCst) {
         if let Some(last) = life.last_status.lock().unwrap().clone() {
