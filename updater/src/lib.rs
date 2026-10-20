@@ -30,6 +30,7 @@ pub mod version;
 pub mod versions;
 pub mod window_icon;
 mod apply;
+pub mod apply_session;
 mod state;
 mod time;
 

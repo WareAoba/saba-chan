@@ -5,8 +5,11 @@
 //!
 //! ## 실행
 //! ```text
-//! saba-chan-updater --apply [--wait-pid <pid>] --launch-token <t> [--relaunch <exe> [extra...]]
+//! saba-chan-updater --apply [--wait-pid <pid>] --launch-token <t> [--headless] [--relaunch <exe> [extra...]]
 //! ```
+//!
+//! `--headless`(헤드리스 설치에서 데몬이 붙인다)면 창을 띄우지 않고 바로 적용한 뒤 `--relaunch`만 다시 띄운다.
+//! 설치된 GUI를 찾아 띄우는 예비 동작은 쓰지 않는다. 종료 코드는 적용이 다 됐으면 0, 아니면 1이다.
 //!
 //! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`, U7). `--wait-pid`는 데몬 PID로,
 //! 데몬이 끝날 때까지(최대 30초) 기다린 뒤 적용한다. 결과는 성공·실패 모두
@@ -23,7 +26,6 @@
 //! - 테마는 CSS `data-theme="auto"` + `prefers-color-scheme` 미디어 쿼리로 자동 처리
 
 use saba_chan_updater_lib::{UpdateManager, UpdateCompletionMarker};
-use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -43,17 +45,6 @@ type ManagerState = Arc<RwLock<UpdateManager>>;
 struct ApplyConfig {
     relaunch_exe: Option<String>,
     relaunch_extra: Vec<String>,
-}
-
-/// Apply 진행 이벤트 페이로드
-#[derive(Debug, Clone, Serialize)]
-struct ApplyProgressEvent {
-    step: String,
-    message: String,
-    percent: i32,
-    applied: Vec<String>,
-    /// 실패하거나 건너뛴 키 수. 화면 문구는 GUI가 이 수로 번역하고, message는 진단용 원문이다
-    failed: usize,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -78,77 +69,24 @@ async fn start_apply(
     apply_config: tauri::State<'_, ApplyConfig>,
     manager: tauri::State<'_, ManagerState>,
 ) -> Result<Vec<String>, String> {
-    // 1. 매니페스트 로드
-    emit_progress(&app, "manifest", "Loading manifest...", 10, &[]);
-
-    let count = {
+    let result = {
         let mut mgr = manager.write().await;
-        mgr.load_pending_manifest()
-            .map_err(|e| {
-                let msg = format!("Failed to load manifest: {}", e);
-                emit_progress_with_failures(&app, "error", &msg, 0, &[], 1);
-                UpdateCompletionMarker::failure(msg.clone()).save().ok();
-                relaunch(&app, &apply_config, false);
-                msg
-            })?
+        mgr.apply_staged(|p| {
+            app.emit("apply:progress", p).ok();
+        })
+        .await
     };
-
-    emit_progress(&app, "manifest", &format!("{} components ready", count), 25, &[]);
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-
-    // 2. apply-targets.json에서 적용 대상 결정
-    let mut mgr = manager.write().await;
-    let mut target_keys: Vec<String> = mgr
-        .load_updater_apply_targets()
-        .unwrap_or_default();
-
-    tracing::info!("[Apply] Targets: {:?}", target_keys);
-
-    // 3. 적용
-    // apply-targets.json이 없거나 비어있으면 받아 둔 것 전체를 적용 순서대로. 실패하면 남은 것은 건너뛴 것으로 남긴다
-    if target_keys.is_empty() {
-        target_keys = mgr.pending_keys_in_apply_order();
+    match result {
+        Err(msg) => {
+            relaunch(&app, &apply_config, false);
+            Err(msg)
+        }
+        Ok((applied, failed)) => {
+            // GUI 재실행 → 업데이터 종료 (하나라도 실패했으면 완료 알림 없이 띄우고 오류 화면을 남긴다)
+            relaunch(&app, &apply_config, failed.is_empty());
+            Ok(applied)
+        }
     }
-    let total = target_keys.len();
-    let (applied, failed) = mgr.apply_target_keys(&target_keys, |i, key, done| {
-        let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
-        emit_progress(&app, "applying", &format!("Applying {} ({}/{})...", key, i + 1, total), pct, done);
-    }).await;
-
-    // 4. 완료 마커 저장 — 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
-    let marker = UpdateCompletionMarker {
-        message: Some(if failed.is_empty() {
-            format!("{} updates applied: {}", applied.len(), applied.join(", "))
-        } else {
-            format!("{} applied, {} failed", applied.len(), failed.len())
-        }),
-        success: failed.is_empty(),
-        failed: failed.clone(),
-        // 적용한 릴리즈의 버전·패치노트: 앱이 결과 알림을 누르면 보여 준다 (A5)
-        release: mgr.pending_release(),
-        ..UpdateCompletionMarker::success(applied.clone())
-    };
-    marker.save().ok();
-    mgr.clear_pending_manifest();
-
-    if failed.is_empty() {
-        emit_progress(&app, "complete", &{
-            if applied.is_empty() {
-                "No updates to apply.".to_string()
-            } else {
-                format!("{} updates applied!", applied.len())
-            }
-        }, 100, &applied);
-    } else {
-        emit_progress_with_failures(&app, "error", &format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; ")), 0, &applied, failed.len());
-    }
-
-    drop(mgr);
-
-    // 5. GUI 재실행 → 업데이터 종료 (하나라도 실패했으면 완료 알림 없이 띄우고 오류 화면을 남긴다)
-    relaunch(&app, &apply_config, failed.is_empty());
-
-    Ok(applied)
 }
 
 /// 업데이트를 띄운 프로그램(없으면 GUI)을 다시 띄운다. 적용이 실패해도 띄운다:
@@ -163,13 +101,7 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
-        let requested = relaunch_exe.is_some();
-        if let Some(cmd) = relaunch_command(relaunch_exe, resolve_gui_exe()) {
-            // 받은 인자는 받은 프로그램의 것이다. --relaunch 없이 찾은 GUI에는 넘기지 않는다
-            let extra: &[String] = if requested { &relaunch_extra } else { &[] };
-            wait_for_exe(&cmd).await;
-            launch_with_retry(&cmd, extra, applied).await;
-        }
+        relaunch_now(relaunch_exe, relaunch_extra, resolve_gui_exe(), applied).await;
 
         if applied {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -221,18 +153,15 @@ async fn check_after_update() -> Result<serde_json::Value, String> {
 // 헬퍼
 // ═══════════════════════════════════════════════════════
 
-fn emit_progress(app: &AppHandle, step: &str, message: &str, percent: i32, applied: &[String]) {
-    emit_progress_with_failures(app, step, message, percent, applied, 0);
-}
-
-fn emit_progress_with_failures(app: &AppHandle, step: &str, message: &str, percent: i32, applied: &[String], failed: usize) {
-    app.emit("apply:progress", ApplyProgressEvent {
-        step: step.into(),
-        message: message.into(),
-        percent,
-        applied: applied.to_vec(),
-        failed,
-    }).ok();
+/// 다시 띄운다: `--relaunch`로 받은 것, 없으면 `installed_gui`(헤드리스는 `None`을 넘겨 아무것도 띄우지 않는다)
+async fn relaunch_now(relaunch_exe: Option<String>, relaunch_extra: Vec<String>, installed_gui: Option<PathBuf>, applied: bool) {
+    let requested = relaunch_exe.is_some();
+    if let Some(cmd) = relaunch_command(relaunch_exe, installed_gui) {
+        // 받은 인자는 받은 프로그램의 것이다. --relaunch 없이 찾은 GUI에는 넘기지 않는다
+        let extra: &[String] = if requested { &relaunch_extra } else { &[] };
+        wait_for_exe(&cmd).await;
+        launch_with_retry(&cmd, extra, applied).await;
+    }
 }
 
 /// GUI 설정(`config.json`의 `gui`)에서 키 값 읽기
@@ -364,7 +293,7 @@ pub fn run() {
     if !args.iter().any(|a| a == "--apply") {
         eprintln!("사바쨩 업데이터 — 업데이트 적용 전용");
         eprintln!();
-        eprintln!("사용법: saba-chan-updater --apply [--relaunch <exe> [extra...]]");
+        eprintln!("사용법: saba-chan-updater --apply [--headless] [--relaunch <exe> [extra...]]");
         eprintln!();
         eprintln!("이 프로그램은 메인 GUI에서 자동으로 실행됩니다.");
         eprintln!("직접 실행할 필요가 없습니다.");
@@ -451,7 +380,8 @@ pub fn run() {
         None => std::thread::sleep(std::time::Duration::from_millis(500)),
     }
 
-    let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
+    // --relaunch 앞의 인자만 업데이터의 것이다
+    let headless = after_apply.iter().take(relaunch_pos.unwrap_or(after_apply.len())).any(|a| a == "--headless");
 
     // install_root: exe 위치에서 자동 추론
     let mut cfg = config::load_config_for_gui();
@@ -460,8 +390,14 @@ pub fn run() {
         tracing::info!("[Apply] Install root (from exe): {}", root_str);
         cfg.install_root = Some(root_str);
     }
-
     let modules_dir = resolve_modules_dir();
+
+    if headless {
+        std::process::exit(run_headless(UpdateManager::new(cfg, &modules_dir), relaunch_exe, relaunch_extra));
+    }
+
+    let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
+
     let manager: ManagerState = Arc::new(RwLock::new(UpdateManager::new(cfg, &modules_dir)));
 
     tauri::Builder::default()
@@ -520,6 +456,25 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 창 없이 적용한다 (Tauri를 시작하지 않는다). 결과는 창 업데이터와 같은 완료 마커에 남는다
+fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaunch_extra: Vec<String>) -> i32 {
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            tracing::error!("[Apply] Cannot start the runtime: {}", e);
+            UpdateCompletionMarker::failure(format!("Cannot start the updater: {}", e)).save().ok();
+            return 1;
+        }
+    };
+    rt.block_on(async {
+        let result = manager.apply_staged(|p| tracing::info!("[Apply] {} {}% {}", p.step, p.percent, p.message)).await;
+        let applied = matches!(&result, Ok((_, failed)) if failed.is_empty());
+        // 다시 띄울 것은 데몬이 넘긴 것뿐이다 (헤드리스에는 GUI가 없다)
+        relaunch_now(relaunch_exe, relaunch_extra, None, applied).await;
+        if applied { 0 } else { 1 }
+    })
 }
 
 #[cfg(test)]

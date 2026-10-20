@@ -1654,3 +1654,40 @@ fn a_headless_install_does_not_count_the_bundled_gui_for_requires() {
     assert!(!headless.contains_key("gui"));
     assert!(headless.contains_key("saba-core"));
 }
+
+// 업데이터 `--apply` 한 번(창·창 없음 공통): 받아 둔 것을 적용하고 목록을 지운다
+#[tokio::test]
+async fn apply_staged_applies_the_pending_list_and_clears_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("staged-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![staged(ext.clone(), &extension_zip(tmp.path()))];
+    manager.save_pending_manifest().unwrap();
+    manager.status.components.clear();
+
+    let mut steps = Vec::new();
+    let (applied, failed) = manager.apply_staged(|p| steps.push((p.step.clone(), p.failed))).await.unwrap();
+
+    assert_eq!(applied, vec![ext.manifest_key()]);
+    assert!(failed.is_empty(), "{:?}", failed);
+    assert_eq!(steps.last(), Some(&("complete".to_string(), 0)));
+    assert!(!manager.staging_dir.join("pending.json").exists(), "the pending list is cleared");
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
+#[tokio::test]
+async fn apply_staged_without_a_pending_list_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+
+    let mut last = None;
+    let result = manager.apply_staged(|p| last = Some((p.step.clone(), p.failed))).await;
+
+    assert!(result.unwrap_err().contains("Failed to load manifest"));
+    assert_eq!(last, Some(("error".to_string(), 1)));
+}
