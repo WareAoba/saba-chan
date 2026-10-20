@@ -22,9 +22,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import io
 import re
+import struct
 import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -267,6 +270,48 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
     return found
 
 
+def exe_file_version(blob: bytes) -> str | None:
+    """exe의 파일 버전 리소스(VS_FIXEDFILEINFO)의 FILEVERSION을 `major.minor.patch`로. 리소스가 없으면 None"""
+    start = 0
+    while (i := blob.find(b"\xbd\x04\xef\xfe", start)) >= 0:
+        start = i + 4
+        if len(blob) < i + 16:
+            break
+        struc, ms, ls = struct.unpack_from("<III", blob, i + 4)
+        if struc == 0x00010000:
+            return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}"
+    return None
+
+
+def asset_exe_versions(name: str, blob: bytes) -> dict[str, str]:
+    """에셋(exe 또는 zip 루트의 exe)마다 박힌 파일 버전. 버전 리소스가 없는 exe(saba-runner 등)는 빠진다"""
+    exes = {}
+    if name.lower().endswith(".exe"):
+        exes[name] = blob
+    elif name.lower().endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+            for info in zf.infolist():
+                inner = info.filename.replace("\\", "/")
+                if inner.lower().endswith(".exe") and "/" not in inner:
+                    exes[inner] = zf.read(info)
+    return {n: v for n, b in exes.items() if (v := exe_file_version(b))}
+
+
+def check_exe_versions(key: str, name: str, blob: bytes, version: str) -> None:
+    """서명할 버전과 올린 실행 파일의 버전이 다르면 멈춘다 (다른 판으로 빌드한 exe를 새 버전으로 서명하지 않게)"""
+    has_exe = name.lower().endswith(".exe") or (
+        name.lower().endswith(".zip") and any(n.lower().endswith(".exe") for n in zipfile.ZipFile(io.BytesIO(blob)).namelist()))
+    if not has_exe:
+        return
+    found = asset_exe_versions(name, blob)
+    if not found:
+        sys.exit(f"{key}: no executable in {name} carries a file version to compare with {version}")
+    expected = ".".join(str(int(p)) for p in re.findall(r"\d+", version.split("-")[0])[:3])
+    wrong = {n: v for n, v in found.items() if v != expected}
+    if wrong:
+        sys.exit(f"{key}: {name} was built as {wrong}, not {version}")
+
+
 def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다."""
     assets = Path(args.assets)
@@ -294,6 +339,7 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
             if pkg.get("version") and pkg["version"] != version:
                 print(f"{key}: reused asset is {pkg['version']}, not {version}; signing it as {pkg['version']}", file=sys.stderr)
                 version = pkg["version"]
+        check_exe_versions(key, name, blob, version)
         components[key] = {
             "asset": name,
             "install_dir": comp.get("install_dir", "."),
