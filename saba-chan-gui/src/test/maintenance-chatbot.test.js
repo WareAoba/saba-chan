@@ -134,6 +134,28 @@ describe('MaintenanceTab', () => {
         delete window.showToast;
     });
 
+    it('되살리지 못한 링크가 있으면 복원 뒤 그 수를 경고로 알린다 (D-B14)', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            backups: [{ name: 'a-manual.zip', kind: 'manual', created: 1, size: 1 }],
+        });
+        window.api.instanceBackupRestore = vi
+            .fn()
+            .mockResolvedValue({ success: true, restored: ['/w'], pre_restore_backup: 'p.zip', links_not_restored: 2 });
+        render(<MaintenanceTab server={stopped} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Click to restore' }));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalled());
+        const [text, tone] = window.showToast.mock.calls[0];
+        expect(tone).toBe('warning');
+        expect(text).toMatch(/2/);
+        expect(text).toMatch(/link/i);
+        delete window.showToast;
+    });
+
     it('켜져 있으면 복원 버튼이 잠긴다', async () => {
         window.api.instanceScheduleGet = vi
             .fn()
