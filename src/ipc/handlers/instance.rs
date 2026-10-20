@@ -384,10 +384,11 @@ pub async fn create_instance(
                 // ── Extension hook: server.post_create (결과를 기다리지 않는다) ──
                 {
                     let ext_mgr = state.extension_manager.clone();
+                    let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
                     let ctx = serde_json::json!({
                         "instance_id": &id,
                         "instance_dir": instance_dir.to_string_lossy(),
-                        "instance": serde_json::to_value(&instance).unwrap_or_default(),
+                        "instance": instance_for_hooks(meta.as_ref(), &instance),
                         "module": &module_name_owned,
                         "migration": migration_mode,
                     });
@@ -1394,6 +1395,8 @@ pub async fn update_instance_settings(
             open_user_runtime(m.entry_path(), &updated_clone);
         }
     }
+    let hook_instance = instance_for_hooks(module.as_ref().map(|m| &m.metadata), &updated_clone);
+    let hook_settings = settings_for_hooks(module.as_ref().map(|m| &m.metadata), Some(&updated_clone), &settings);
     let module_extensions = module
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));
@@ -1433,10 +1436,10 @@ pub async fn update_instance_settings(
         let ctx = serde_json::json!({
             "instance_id": &id,
             "instance_dir": instance_dir.to_string_lossy(),
-            "instance": serde_json::to_value(&updated_clone).unwrap_or_default(),
+            "instance": hook_instance,
             "module_extensions": module_extensions,
             "extension_data": &updated_clone.extension_data,
-            "settings": &settings,
+            "settings": hook_settings,
         });
         let _results = crate::extension::run_hook(&ext_mgr, "server.settings_changed", ctx).await;
     }
@@ -1854,10 +1857,41 @@ fn install_dir_of(
     instance_dir.join(subdir)
 }
 
+/// 익스텐션 hook에 넘기는 인스턴스: REST 비밀번호, 모듈이 password로 선언했거나 이름이 비밀스러운 설정 값은 가린다 (D-E2)
+fn instance_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, instance: &crate::instance::ServerInstance) -> Value {
+    settings_for_hooks(module, Some(instance), &serde_json::to_value(instance).unwrap_or_default())
+}
+
+/// hook에 넘기는 설정 값에서 같은 기준으로 비밀을 가린다
+fn settings_for_hooks(
+    module: Option<&crate::supervisor::module_loader::ModuleMetadata>,
+    instance: Option<&crate::instance::ServerInstance>,
+    settings: &Value,
+) -> Value {
+    crate::audit::redact(module, instance, None, Some(settings)).1.unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::memory_limit_from;
     use serde_json::json;
+
+    /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
+    #[test]
+    fn hooks_get_the_instance_without_its_secrets() {
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.rest_password = Some("hunter2-rest".into());
+        inst.module_settings.insert("server_password".into(), json!("hunter2-join"));
+        inst.module_settings.insert("max_players".into(), json!(16));
+        let value = super::instance_for_hooks(None, &inst);
+        let text = value.to_string();
+        assert!(!text.contains("hunter2"), "{text}");
+        assert_eq!(value["module_settings"]["max_players"], 16);
+        assert_eq!(value["name"], "srv");
+        let settings = super::settings_for_hooks(None, Some(&inst), &json!({ "rest_password": "hunter2-new", "port": 7777 }));
+        assert!(!settings.to_string().contains("hunter2"), "{settings}");
+        assert_eq!(settings["port"], 7777);
+    }
 
     #[tokio::test]
     async fn create_applies_the_chosen_preset_under_explicit_settings() {
