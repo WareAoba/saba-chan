@@ -110,9 +110,28 @@ export function showPortMoved({ instanceId, name, from, to }, t) {
     });
 }
 
+// 서버의 예기치 않은 멈춤 하나는 이벤트(instance.exit)와 목록 폴링이 따로 알아챈다.
+// 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다 (G-S6).
+// 같은 쪽이 연달아 알리면(재시작 사이 크래시가 거듭되면) 모두 알린다
+const stopNotices = new Map();
+const STOP_NOTICE_PAIR_MS = 30_000;
+
+/** 이 서버의 예기치 않은 멈춤을 지금 알려도 되는지. source: 'event' | 'poll' */
+export function claimStopNotice(instanceId, source) {
+    if (!instanceId) return true;
+    const mark = stopNotices.get(instanceId);
+    if (mark && mark.source !== source && Date.now() - mark.at < STOP_NOTICE_PAIR_MS) {
+        stopNotices.delete(instanceId);
+        return false;
+    }
+    stopNotices.set(instanceId, { source, at: Date.now() });
+    return true;
+}
+
 /** 토스트를 띄우고 알림 보기에도 남긴다 */
 export function showEventToast(ev, t, nameOf) {
     const toast = eventToast(ev, t, nameOf);
+    if (toast && ev.type === 'instance.exit' && !claimStopNotice(ev.data.instanceId, 'event')) return null;
     if (toast) safeShowToast(toast.message, toast.type, toast.duration, { isNotice: true, source: 'saba-chan' });
     return toast;
 }
