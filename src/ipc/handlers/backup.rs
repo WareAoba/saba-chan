@@ -373,6 +373,17 @@ pub struct ScheduleBody {
     schedule: Vec<ScheduledTask>,
     #[serde(default)]
     backup_keep: Option<u32>,
+    /// GET에서 받은 `revision`. 있으면 그사이 일정이 바뀌었을 때 덮어쓰지 않고 409로 거절한다 (L51)
+    #[serde(default)]
+    revision: Option<String>,
+}
+
+/// 일정과 보관 수의 지문. 목록 전체를 다시 보내는 편집이 그사이 바뀐 일정을 덮어쓰지 않게 한다
+fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
+    use sha2::{Digest, Sha256};
+    let value = json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep });
+    let digest = Sha256::digest(value.to_string().as_bytes());
+    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
@@ -385,6 +396,7 @@ pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         "success": true,
         "schedule": instance.schedule,
         "backup_keep": instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32),
+        "revision": schedule_revision(instance),
         "backup_supported": meta.as_ref().is_some_and(|m| m.backup.is_some()),
         "announce_supported": meta.as_ref().is_some_and(|m| m.announce_command.is_some()),
     }))
@@ -396,6 +408,9 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
         return error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
     };
+    if body.revision.as_ref().is_some_and(|r| *r != schedule_revision(&instance)) {
+        return error(StatusCode::CONFLICT, "schedule_changed", "The schedule was changed elsewhere; read it again");
+    }
     let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
     let can_backup = meta.as_ref().is_some_and(|m| m.backup.is_some());
     let can_announce = meta.as_ref().is_some_and(|m| m.announce_command.is_some());
@@ -1131,5 +1146,37 @@ mod tests {
         // 다른 종류의 작업은 따로 센다
         let announce_free = json!({ "action": "restart", "every_minutes": 30 });
         assert_eq!(remote(json!({ "schedule": [announce_free] })).await, StatusCode::OK);
+    }
+
+    /// 목록 전체를 다시 보내는 편집이 그사이 다른 곳에서 바꾼 일정을 덮어쓰지 않는다: 읽을 때 받은 revision이
+    /// 지금 일정과 다르면 409 `schedule_changed`로 거절하고, revision을 보내지 않으면 예전처럼 받는다 (L51)
+    #[tokio::test]
+    async fn a_schedule_edit_from_a_stale_read_is_refused() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let read = || async { get_schedule(Path(id.clone()), State(state.clone())).await };
+        let put = |body: Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await
+            }
+        };
+        let body_of = |r: Response| async move { serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap() };
+        let restart = |t: &str| json!({ "action": "restart", "at": t });
+
+        let seen = body_of(read().await).await["revision"].as_str().expect("revision").to_string();
+        // 다른 클라이언트가 그사이 작업을 넣었다
+        assert_eq!(put(json!({ "schedule": [restart("04:00")] })).await.status(), StatusCode::OK, "without a revision it is taken as before");
+        let stale = put(json!({ "schedule": [restart("05:00")], "revision": seen })).await;
+        assert_eq!(stale.status(), StatusCode::CONFLICT);
+        let stale = body_of(stale).await;
+        assert_eq!(stale["error_code"], "schedule_changed", "{stale}");
+        let now = body_of(read().await).await;
+        assert_eq!(now["schedule"][0]["at"], "04:00", "the other client's task is kept");
+        // 새로 읽은 revision이면 받는다
+        let fresh = now["revision"].as_str().unwrap().to_string();
+        assert_eq!(put(json!({ "schedule": [restart("05:00")], "revision": fresh.clone() })).await.status(), StatusCode::OK);
+        let after = body_of(read().await).await;
+        assert_ne!(after["revision"], json!(fresh), "a saved change gives a new revision");
     }
 }
