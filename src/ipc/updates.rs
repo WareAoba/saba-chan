@@ -507,6 +507,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     });
 
     let mut applied = Vec::new();
+    let mut applied_keys = Vec::new();
     let mut errors = Vec::new();
     let mut needs_updater: Vec<String> = Vec::new();
 
@@ -538,6 +539,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             match mgr.apply_single_component(comp).await {
                 Ok(result) if result.success => {
                     applied.push(comp.display_name());
+                    applied_keys.push(comp.manifest_key());
                 }
                 Ok(result) => {
                     errors.push(format!("{}: {}", comp.display_name(), result.message));
@@ -565,6 +567,11 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             errors.push(format!("Could not prepare the update for the updater: {}", e));
             needs_updater.clear();
         }
+    }
+
+    // 데몬이 바로 적용했으면 결과와 패치노트를 남긴다 (업데이터에 넘기면 업데이터가 남긴다). CLI만으로 적용해도 `update last`로 본다
+    if needs_updater.is_empty() && !targets.is_empty() {
+        record_daemon_apply(&saba_chan_updater_lib::UpdateCompletionMarker::path(), &applied_keys, &errors, mgr.applying_release());
     }
 
     // UpdateManager lock 해제 (supervisor/extension_manager lock과 교차 잠금 방지)
@@ -809,16 +816,45 @@ fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result
     }
 }
 
-/// GET /api/updates/last-result — 마지막 적용 결과 (업데이터가 남긴 완료 마커). 없으면 `result: null`.
-/// `?lang=ko`면 그 언어의 패치노트를 `notes`에 고른다 (없으면 영어·한국어 순). 언어별 원문은 `result.release.notes`
+/// GET /api/updates/last-result — 마지막 적용 결과 (업데이터나 데몬이 남긴 완료 마커). 없으면 `result: null`.
+/// `?lang=ko`면 그 언어의 패치노트를 `notes`에 고른다 (없으면 영어·한국어 순). 언어별 원문은 `result.release.notes`.
+/// 클라이언트가 확인한(DELETE) 결과는 `?include_seen=true`일 때만 `acknowledged: true`와 함께 준다
 async fn get_last_result(Query(q): Query<LastResultQuery>) -> impl IntoResponse {
-    let marker = saba_chan_updater_lib::UpdateCompletionMarker::load();
-    Json(last_result_body(marker, q.lang.as_deref().unwrap_or("en")))
+    let path = saba_chan_updater_lib::UpdateCompletionMarker::path();
+    Json(last_result_at(&path, q.include_seen, q.lang.as_deref().unwrap_or("en")))
 }
 
 #[derive(Deserialize, Default)]
 struct LastResultQuery {
     lang: Option<String>,
+    #[serde(default)]
+    include_seen: bool,
+}
+
+fn last_result_at(path: &std::path::Path, include_seen: bool, lang: &str) -> Value {
+    let marker = saba_chan_updater_lib::UpdateCompletionMarker::load_from(path).filter(|m| include_seen || !m.acknowledged);
+    let acknowledged = marker.as_ref().is_some_and(|m| m.acknowledged);
+    let mut body = last_result_body(marker, lang);
+    body["acknowledged"] = json!(acknowledged);
+    body
+}
+
+/// 데몬이 바로 적용한 결과를 완료 마커로 남긴다 (업데이터가 적용할 때와 같은 모양). 클라이언트가 결과·패치노트를 본다
+fn record_daemon_apply(path: &std::path::Path, applied: &[String], errors: &[String], release: Option<saba_chan_updater_lib::marker::ReleaseSummary>) {
+    let marker = saba_chan_updater_lib::UpdateCompletionMarker {
+        message: Some(if errors.is_empty() {
+            format!("{} updates applied: {}", applied.len(), applied.join(", "))
+        } else {
+            format!("{} applied, {} failed", applied.len(), errors.len())
+        }),
+        success: errors.is_empty(),
+        failed: errors.to_vec(),
+        release,
+        ..saba_chan_updater_lib::UpdateCompletionMarker::success(applied.to_vec())
+    };
+    if let Err(e) = marker.save_to(path) {
+        tracing::warn!("[Updates] Cannot record the update result: {}", e);
+    }
 }
 
 fn last_result_body(marker: Option<saba_chan_updater_lib::UpdateCompletionMarker>, lang: &str) -> Value {
@@ -827,9 +863,10 @@ fn last_result_body(marker: Option<saba_chan_updater_lib::UpdateCompletionMarker
     json!({ "ok": true, "result": marker, "version": version, "notes": notes })
 }
 
-/// DELETE /api/updates/last-result — 사용자가 결과를 확인했다
+/// DELETE /api/updates/last-result — 사용자가 결과를 확인했다. 결과는 지우지 않고 확인했다고만 적는다
+/// (다른 클라이언트도 `?include_seen=true`로 패치노트를 다시 본다)
 async fn clear_last_result() -> impl IntoResponse {
-    match saba_chan_updater_lib::UpdateCompletionMarker::clear() {
+    match saba_chan_updater_lib::UpdateCompletionMarker::acknowledge_at(&saba_chan_updater_lib::UpdateCompletionMarker::path()) {
         Ok(()) => Json(json!({ "ok": true })),
         Err(e) => Json(json!({ "ok": false, "error": e })),
     }
@@ -1060,6 +1097,31 @@ mod tests {
         assert_eq!(super::relaunch_target(daemon.clone(), &[]), daemon);
         let own = vec![format!("/other/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0])];
         assert_eq!(super::relaunch_target(own.clone(), &guis), own);
+    }
+
+    /// 데몬이 바로 적용한 업데이트(재시작 없는 모듈·익스텐션·설치기)도 결과와 패치노트를 남긴다.
+    /// 한 클라이언트가 확인해도 결과를 지우지 않아 `?include_seen=true`로 다시 볼 수 있다(CLI `update last`).
+    /// 매개변수 없는 조회는 예전처럼 확인한 결과를 보지 않는다(확인 뒤 GUI가 다시 띄우지 않게)
+    #[test]
+    fn applied_updates_keep_their_notes_after_a_client_acknowledges_them() {
+        use saba_chan_updater_lib::marker::ReleaseSummary;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("update-complete.json");
+        let release = ReleaseSummary { version: "0.1.8".into(), released_at: None, notes: [("ko".to_string(), "고침".to_string())].into() };
+        super::record_daemon_apply(&path, &["module-minecraft".into()], &["ext-steamcmd: busy".into()], Some(release));
+
+        let first = super::last_result_at(&path, false, "ko");
+        assert_eq!((first["version"].as_str(), first["notes"].as_str()), (Some("0.1.8"), Some("고침")), "{first}");
+        assert_eq!(first["result"]["updated_components"], json!(["module-minecraft"]));
+        assert_eq!(first["result"]["failed"], json!(["ext-steamcmd: busy"]));
+        assert_eq!(first["result"]["success"], false);
+        assert_eq!(first["acknowledged"], false);
+
+        saba_chan_updater_lib::UpdateCompletionMarker::acknowledge_at(&path).unwrap();
+        assert!(super::last_result_at(&path, false, "ko")["result"].is_null(), "an acknowledged result is not shown as new");
+        let again = super::last_result_at(&path, true, "ko");
+        assert_eq!(again["notes"], "고침", "the notes stay readable after a client acknowledged them");
+        assert_eq!(again["acknowledged"], true);
     }
 
     #[test]

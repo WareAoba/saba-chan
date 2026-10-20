@@ -413,7 +413,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | GET | `/api/updates/download/progress` | `updates.rs:450` | - | `{ok,component,bytes_received,total_bytes,active}` |
 | POST | `/api/updates/apply` | `updates.rs:475` | download와 같은 본문 규칙 | `{ok,applied,needs_updater,requires_updater,errors}` |
 | POST | `/api/updates/launch-updater` | `updates.rs:609` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음). 등록된 GUI(`/api/client/register`의 `pid`, 실행 파일 이름이 GUI일 때만)가 떠 있으면 다시 띄울 것을 그 GUI로 바꾸고, 종료 전에 3초 기다려 남은 GUI를 끈다 |
-| GET/DELETE | `/api/updates/last-result` | `updates.rs` `get_last_result`/`clear_last_result` | GET `?lang=` | 마지막 적용 결과 `{result, version, notes}` / 확인 처리 |
+| GET/DELETE | `/api/updates/last-result` | `updates.rs` `get_last_result`/`clear_last_result` | GET `?lang=`, `?include_seen=true` | 마지막 적용 결과 `{result, version, notes, acknowledged}` / 확인 처리(마커는 남기고 `acknowledged`만 적는다, 05 참고) |
 | GET | `/api/updates/integrity` | `updates.rs:814` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
 | GET | `/api/updates/config` | `updates.rs:844` | - | `{ok, config, mock_relay}` |
 | PUT | `/api/updates/config` | `updates.rs:859` | 부분 `{enabled,check_interval_hours(1-8),auto_download,install_root,relay_url,channel}` | `{ok, config}`. `config.json`의 `updates` 절에 저장한다(`:899-902, 936-942`). 비어 있지 않은 `relay_url`은 개발 빌드(`mock-relay`)만 받고, 릴리즈 빌드는 403 `relay_url_not_settable`(D7: 출처는 config.json에서만) |

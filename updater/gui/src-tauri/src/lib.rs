@@ -238,8 +238,8 @@ async fn get_theme() -> Result<String, String> {
 /// 업데이트 완료 마커 확인 (프론트엔드 호환용)
 #[tauri::command]
 async fn check_after_update() -> Result<serde_json::Value, String> {
-    // 지우지 않는다: 다음 데몬이 /api/updates/last-result로 보여 주고, 클라이언트가 확인하면 지운다
-    if let Some(marker) = UpdateCompletionMarker::load() {
+    // 지우지 않는다: 다음 데몬이 /api/updates/last-result로 보여 주고, 클라이언트가 확인하면 확인했다고 적는다
+    if let Some(marker) = UpdateCompletionMarker::load().filter(|m| !m.acknowledged) {
         Ok(serde_json::json!({
             "updated": marker.success,
             "components": marker.updated_components,
