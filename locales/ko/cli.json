@@ -204,6 +204,7 @@
     "offer_start": "사바쨩 데몬이 꺼져 있어요. 켤까요?",
     "spawn_failed": "데몬을 켜지 못했어요: {{error}}",
     "start_timeout": "데몬이 제때 응답하지 않았어요. 확인: saba-chan-cli daemon logs",
+    "exited_early": "데몬이 켜지자마자 꺼졌어요(종료 코드 {{code}}). 이미 다른 데몬이 돌고 있을 수 있어요. 확인: saba-chan-cli daemon status",
     "started": "데몬을 켰어요 (v{{version}}).",
     "starting": "데몬을 켜는 중...",
     "stop_no_pid": "데몬이 PID를 알려 주지 않아 여기서 강제 종료할 수 없어요.",

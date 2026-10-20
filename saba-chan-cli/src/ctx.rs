@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 #[derive(Clone)]
 pub struct Ctx {
     pub api: Api,
+    /// 데몬을 새로 띄울 포트 (`--port` 또는 설정). 옛 포트에 남은 데몬에 붙어 있으면 `api.port`와 다르다
+    pub spawn_port: u16,
     pub out: Out,
     pub ask: Prompt,
     /// 대화형 셸 안에서 실행 중
@@ -45,14 +47,25 @@ impl Ctx {
         if let Ok(h) = self.api.health().await {
             return Ok(h);
         }
-        bootstrap::spawn_daemon(self.api.port)?;
+        let mut child = bootstrap::spawn_daemon(self.spawn_port)?;
+        let api = if self.spawn_port == self.api.port {
+            self.api.clone()
+        } else {
+            Api::new(self.spawn_port, self.api.lang.clone())
+        };
         let spin = crate::progress::spinner(&t!("daemon.starting"));
         let deadline = Instant::now() + bootstrap::START_TIMEOUT;
         while Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(300)).await;
-            if let Ok(h) = self.api.health().await {
+            if let Ok(h) = api.health().await {
                 spin.finish_and_clear();
                 return Ok(h);
+            }
+            // 곧바로 끝난 데몬(다른 데몬이 잠금을 쥔 경우 등)은 시간 초과까지 기다리지 않는다
+            if let Ok(Some(status)) = child.try_wait() {
+                spin.finish_and_clear();
+                let code = status.code().map(|c| c.to_string()).unwrap_or_else(|| "-".into());
+                return Err(crate::error::failed(t!("daemon.exited_early", code = code)));
             }
         }
         spin.finish_and_clear();

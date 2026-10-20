@@ -24,6 +24,29 @@ pub fn ipc_port() -> u16 {
         .unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
+/// 붙을 데몬 포트: 설정 포트가 응답하지 않는데 실행 중인 데몬이 남긴 기록(`daemon.lock.owner`)의 포트가
+/// 응답하면 그쪽이다. 설정에서 포트를 바꾸고 데몬을 아직 다시 켜지 않았을 때 그 데몬을 끄고 다시 켤 수 있게 한다 (L62)
+pub fn live_port(configured: u16) -> u16 {
+    let record = saba_chan_updater_lib::constants::resolve_data_dir().join("daemon.lock.owner");
+    let recorded = std::fs::read_to_string(record).ok().and_then(|t| recorded_port(&t));
+    choose_port(configured, recorded, |p| {
+        std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], p).into(), Duration::from_millis(300)).is_ok()
+    })
+}
+
+/// 데몬 잠금 기록(`pid=…\naddr=127.0.0.1:포트`, src/instance_lock.rs)의 포트
+fn recorded_port(text: &str) -> Option<u16> {
+    let addr = text.lines().find_map(|l| l.strip_prefix("addr="))?;
+    addr.trim().rsplit_once(':')?.1.parse().ok()
+}
+
+fn choose_port(configured: u16, recorded: Option<u16>, reachable: impl Fn(u16) -> bool) -> u16 {
+    match recorded {
+        Some(old) if old != configured && !reachable(configured) && reachable(old) => old,
+        _ => configured,
+    }
+}
+
 /// 사용자가 직접 고른 언어: `--lang` > `SABA_LANG`
 pub fn requested_language(flag: Option<&str>) -> Option<String> {
     flag.map(str::to_string)
@@ -74,7 +97,7 @@ pub fn daemon_binary() -> Option<PathBuf> {
 
 /// 데몬을 분리 실행한다 (CLI가 끝나도 살아 있게)
 /// `port`는 CLI가 붙을 포트 (`--port`까지 반영된 값)
-pub fn spawn_daemon(port: u16) -> Result<PathBuf> {
+pub fn spawn_daemon(port: u16) -> Result<std::process::Child> {
     let binary = daemon_binary().ok_or_else(|| failed(t!("daemon.binary_not_found")))?;
     let mut cmd = Command::new(&binary);
     cmd.arg("--spawned")
@@ -92,8 +115,7 @@ pub fn spawn_daemon(port: u16) -> Result<PathBuf> {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
-    spawn_detached(&mut cmd).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))?;
-    Ok(binary)
+    spawn_detached(&mut cmd).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))
 }
 
 /// 이 프로세스의 표준 입출력 핸들을 물려주지 않고 띄운다 (자식의 입출력은 `cmd`에 정한 대로).
@@ -227,5 +249,25 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
         assert!(closed, "the child still holds the write end of our output pipe");
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+
+    /// 설정 파일의 포트를 바꾼 뒤에도 옛 포트에서 도는 데몬을 찾는다 (L62).
+    /// 설정 포트가 응답하면 그대로, 기록된 포트만 응답할 때만 그쪽으로 붙는다
+    #[test]
+    fn a_daemon_still_on_its_old_port_is_found_from_its_lock_record() {
+        assert_eq!(recorded_port("pid=42\naddr=127.0.0.1:57474\n"), Some(57474));
+        assert_eq!(recorded_port("pid=42\n"), None);
+        assert_eq!(recorded_port("addr=garbage\n"), None);
+
+        let up = |live: &'static [u16]| move |p: u16| live.contains(&p);
+        assert_eq!(choose_port(58000, Some(57474), up(&[57474])), 57474);
+        assert_eq!(choose_port(58000, Some(57474), up(&[58000, 57474])), 58000);
+        assert_eq!(choose_port(58000, Some(57474), up(&[])), 58000);
+        assert_eq!(choose_port(58000, None, up(&[57474])), 58000);
     }
 }

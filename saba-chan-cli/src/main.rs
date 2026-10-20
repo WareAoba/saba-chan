@@ -60,10 +60,13 @@ async fn main() {
     // `--json-stream`: 진행은 한 줄씩, 결과는 마지막 한 줄
     output::set_stream(g.json_stream);
     let _stream = g.json_stream.then(progress::stream_lines);
-    let port = g.port.unwrap_or_else(bootstrap::ipc_port);
+    // 새로 띄울 데몬의 포트와, 지금 붙을 데몬의 포트(설정을 바꾼 뒤 옛 포트에 남은 데몬일 수 있다)
+    let spawn_port = g.port.unwrap_or_else(bootstrap::ipc_port);
+    let port = g.port.unwrap_or_else(|| bootstrap::live_port(spawn_port));
     let color = !g.no_color && std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal();
     let ctx = ctx::Ctx {
         api: client::Api::new(port, daemon_lang),
+        spawn_port,
         out: output::Out::new(json, color),
         ask: prompt::Prompt::new(json, g.yes),
         in_shell: false,

@@ -204,6 +204,7 @@
     "offer_start": "The Saba-chan daemon is not running. Start it?",
     "spawn_failed": "Could not start the daemon: {{error}}",
     "start_timeout": "The daemon did not respond in time. Check: saba-chan-cli daemon logs",
+    "exited_early": "The daemon exited right after starting (exit code {{code}}). Another daemon may already be running. Check: saba-chan-cli daemon status",
     "started": "Daemon started (v{{version}}).",
     "starting": "Starting the daemon...",
     "stop_no_pid": "The daemon did not report its PID, so it can't be killed from here.",

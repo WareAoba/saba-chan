@@ -157,6 +157,7 @@
     "offer_start": "Saba-chan 常駐程式未執行。要啟動嗎？",
     "spawn_failed": "無法啟動常駐程式：{{error}}",
     "start_timeout": "常駐程式未及時回應。請檢查：saba-chan-cli daemon logs",
+    "exited_early": "常駐程式啟動後立即結束(結束代碼 {{code}})。可能已有另一個常駐程式在執行。檢查: saba-chan-cli daemon status",
     "started": "常駐程式已啟動（v{{version}}）。",
     "starting": "正在啟動常駐程式...",
     "stop_no_pid": "常駐程式沒有回報 PID，因此無法從這裡結束它。",

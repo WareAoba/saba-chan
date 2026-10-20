@@ -204,6 +204,7 @@
     "offer_start": "サバちゃんのデーモンが動いていません。起動しますか？",
     "spawn_failed": "デーモンを起動できませんでした: {{error}}",
     "start_timeout": "デーモンが時間内に応答しませんでした。確認: saba-chan-cli daemon logs",
+    "exited_early": "デーモンが起動直後に終了しました(終了コード {{code}})。別のデーモンがすでに動いている可能性があります。確認: saba-chan-cli daemon status",
     "started": "デーモンを起動しました（v{{version}}）。",
     "starting": "デーモンを起動しています...",
     "stop_no_pid": "デーモンが PID を報告しなかったため、ここからは強制終了できません。",
