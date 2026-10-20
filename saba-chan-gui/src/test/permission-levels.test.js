@@ -99,7 +99,7 @@ describe('권한 화면', () => {
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1002', -1);
         expect(window.api.permissionsGet).toHaveBeenCalledTimes(2);
 
-        pickOption(screen.getByLabelText('Default level'), 'Chatbot');
+        pickOption(screen.getByLabelText('Default level'), 'Talking Saba-chan');
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { defaultLevel: 0 });
 

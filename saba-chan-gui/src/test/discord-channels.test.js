@@ -93,13 +93,13 @@ describe('ChannelsTab', () => {
             .mockResolvedValue({ error: 'UNKNOWN_CHANNEL', error_code: 'UNKNOWN_CHANNEL', channelId: '999' });
         render(<ChannelsTab node={node} />);
         expect(await screen.findByText(/You can only unassign/)).toBeTruthy();
-        expect(screen.getByLabelText('Use #music as a chatbot channel').disabled).toBe(true);
+        expect(screen.getByLabelText('Use #music as a Talking Saba-chan channel').disabled).toBe(true);
         for (const label of ['Music channel', 'Alert channel']) {
             const list = openDropdown(screen.getByLabelText(label));
             expect(within(list).getByRole('option', { name: '#music' })).toHaveAttribute('aria-disabled', 'true');
             fireEvent.keyDown(screen.getByLabelText(label), { key: 'Escape' });
         }
-        fireEvent.click(screen.getByLabelText('Use #111 as a chatbot channel'));
+        fireEvent.click(screen.getByLabelText('Use #111 as a Talking Saba-chan channel'));
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
         await waitFor(() => expect(window.api.relayNodeChannelsSave).toHaveBeenCalledWith('g1', { chatbot: [] }));
         expect(await screen.findByText(/999 isn't a text channel/)).toBeTruthy();
