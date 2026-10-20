@@ -1264,3 +1264,145 @@ async fn a_single_component_apply_restores_a_backup_left_by_an_interrupted_apply
     assert_eq!(std::fs::read(tmp.path().join("resources.pak")).unwrap(), b"old");
     assert!(!tmp.path().join("resources.pak.update-bak").exists());
 }
+
+// U-10: 상태의 패치노트도 사용자 언어로 고른다 (예전에는 늘 한국어, 없으면 영어)
+#[test]
+fn status_release_notes_follow_the_user_language() {
+    let latest = crate::relay::LatestRelease {
+        version: "0.2.0".into(),
+        notes: Some([("ko", "한"), ("en", "E"), ("ja", "J"), ("zh", "Z")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()),
+        ..Default::default()
+    };
+    assert_eq!(UpdateManager::release_notes_in(&latest, "ja").as_deref(), Some("J"));
+    assert_eq!(UpdateManager::release_notes_in(&latest, "zh-CN").as_deref(), Some("Z"));
+    assert_eq!(UpdateManager::release_notes_in(&latest, "de").as_deref(), Some("E"));
+}
+
+/// 한 번만 응답하는 가짜 다운로드 서버
+async fn serve_once(response: Vec<u8>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = sock.read(&mut buf).await;
+        let _ = sock.write_all(&response).await;
+    });
+    format!("http://{}/asset.zip", addr)
+}
+
+// U-4: 여러 개를 받다 하나가 실패해도 이미 받은 것은 받은 것으로 남긴다 (그래야 pending에 실린다)
+#[tokio::test]
+async fn a_failed_download_keeps_the_ones_already_downloaded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let body = b"cli bytes";
+    let good = serve_once([format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes(), body.to_vec()].concat()).await;
+    let bad = serve_once(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec()).await;
+    let entry = |name: &str, url: String, sha: &str| crate::relay::ManifestComponent {
+        version: "0.2.0".into(), filename: name.into(), size_bytes: None, sha256: sha.into(), url,
+        install_dir: None, requires: None, meta: None,
+    };
+    let sha = {
+        use sha2::Digest;
+        sha2::Sha256::digest(body).iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    };
+    manager.cached_manifest = Some(crate::relay::ReleaseManifest {
+        version: "0.2.0".into(), channel: "stable".into(), platform: "windows-x64".into(), released_at: None, is_critical: false,
+        components: [("gui".to_string(), entry("gui.zip", bad, &sha)), ("cli".to_string(), entry("cli.zip", good, &sha))].into_iter().collect(),
+    });
+    let pending = |component: Component, asset: &str| crate::ComponentVersion {
+        asset_name: Some(asset.into()), downloaded: false, downloaded_path: None,
+        ..staged(component, tmp.path())
+    };
+    manager.status.components = vec![pending(Component::Gui, "gui.zip"), pending(Component::Cli, "cli.zip")];
+
+    assert!(manager.download_available_updates().await.is_err());
+
+    let cli = manager.status.components.iter().find(|c| c.component == Component::Cli).unwrap();
+    assert!(cli.downloaded, "cli was downloaded before gui failed");
+    assert_eq!(cli.staged_sha256.as_deref(), Some(sha.as_str()));
+    assert!(!manager.status.components.iter().find(|c| c.component == Component::Gui).unwrap().downloaded);
+}
+
+fn extension_zip(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::io::Write;
+    let path = dir.join("ext.zip");
+    let mut zw = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    zw.start_file("manifest.json", zip::write::FileOptions::default()).unwrap();
+    zw.write_all(b"{}").unwrap();
+    zw.finish().unwrap();
+    path
+}
+
+// U-3: 데몬이 정한 목록으로 적용할 때도 첫 실패에서 멈춘다 (데몬이 실패했는데 뒤의 것만 바뀌지 않게)
+#[tokio::test]
+async fn target_keys_stop_at_the_first_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("u3-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![
+        staged(Component::CoreDaemon, &tmp.path().join("missing.zip")),
+        staged(ext.clone(), &extension_zip(tmp.path())),
+    ];
+    let keys = vec!["saba-core".to_string(), ext.manifest_key()];
+
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert_eq!(failed.len(), 2, "{:?}", failed);
+    assert!(failed[1].contains("skipped"), "{:?}", failed);
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// U-9: 목록 없는 적용이 실패해도 그 전에 적용한 것을 돌려준다 (업데이터가 완료 마커에 싣고 pending을 지운다)
+#[tokio::test]
+async fn a_failed_apply_reports_what_it_applied_before() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("u9-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![staged(ext.clone(), &extension_zip(tmp.path())), staged(Component::Cli, &tmp.path().join("missing.zip"))];
+
+    let (applied, failure) = manager.apply_components_report(&[]).await;
+
+    assert!(failure.is_some());
+    assert_eq!(applied, vec![ext.display_name()]);
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
+// U-5: locales도 모듈처럼 백업 뒤 통째로 바꾼다. 새 판에 없는 옛 파일은 남지 않고, 풀다 실패하면 되돌린다
+#[tokio::test]
+async fn locales_are_replaced_with_a_backup() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    let locales = manager.install_root.join("locales");
+    std::fs::create_dir_all(locales.join("ko")).unwrap();
+    std::fs::write(locales.join("ko/old.json"), b"{}").unwrap();
+
+    let broken = tmp.path().join("broken.zip");
+    std::fs::write(&broken, b"not a zip").unwrap();
+    assert!(manager.apply_one(&Component::Locales, broken.to_str().unwrap()).await.is_err());
+    assert!(locales.join("ko/old.json").exists(), "a failed apply restores the old locales");
+
+    let zip_path = tmp.path().join("locales.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("ko/gui.json", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"{\"a\":1}").unwrap();
+        zw.finish().unwrap();
+    }
+    manager.apply_one(&Component::Locales, zip_path.to_str().unwrap()).await.unwrap();
+    assert!(locales.join("ko/gui.json").exists());
+    assert!(!locales.join("ko/old.json").exists(), "files dropped from the new release are removed");
+}

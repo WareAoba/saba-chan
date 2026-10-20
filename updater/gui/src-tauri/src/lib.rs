@@ -103,49 +103,29 @@ async fn start_apply(
     tracing::info!("[Apply] Targets: {:?}", target_keys);
 
     // 3. 적용
-    let mut applied = Vec::new();
+    let applied: Vec<String>;
     let mut failed: Vec<String> = Vec::new();
 
     if target_keys.is_empty() {
-        // apply-targets.json이 없거나 비어있으면 전체 적용
+        // apply-targets.json이 없거나 비어있으면 전체 적용. 실패해도 그 전에 적용한 것과 함께 아래에서 마커를 남기고 정리한다
         let total = mgr.get_pending_components().len();
         emit_progress(&app, "applying", &format!("Applying {} components...", total), 50, &[]);
 
-        match mgr.apply_updates().await {
-            Ok(a) => applied = a,
-            Err(e) => {
-                let msg = format!("Apply failed: {}", e);
-                emit_progress(&app, "error", &msg, 0, &[]);
-                UpdateCompletionMarker::failure(msg.clone()).save().ok();
-                relaunch(&app, &apply_config, false);
-                return Err(msg);
-            }
+        let all_keys: Vec<String> = mgr.get_pending_components().iter().map(|c| c.component.manifest_key()).collect();
+        let (a, failure) = mgr.apply_components_report(&all_keys).await;
+        applied = a;
+        if let Some(e) = failure {
+            failed.push(format!("Apply failed: {:#}", e));
         }
     } else {
         // 개별 컴포넌트 순차 적용 (진행률 이벤트 발행)
         let total = target_keys.len();
-        for (i, key) in target_keys.iter().enumerate() {
+        let (a, f) = mgr.apply_target_keys(&target_keys, |i, key, done| {
             let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
-            emit_progress(&app, "applying",
-                &format!("Applying {} ({}/{})...", key, i + 1, total), pct, &applied);
-
-            match mgr.apply_single_component(
-                &saba_chan_updater_lib::Component::from_manifest_key(key),
-            ).await {
-                Ok(result) if result.success => {
-                    tracing::info!("[Apply] {} ✓", key);
-                    applied.push(key.clone());
-                }
-                Ok(result) => {
-                    tracing::warn!("[Apply] {} failed: {}", key, result.message);
-                    failed.push(format!("{}: {}", key, result.message));
-                }
-                Err(e) => {
-                    tracing::error!("[Apply] {} error: {}", key, e);
-                    failed.push(format!("{}: {}", key, e));
-                }
-            }
-        }
+            emit_progress(&app, "applying", &format!("Applying {} ({}/{})...", key, i + 1, total), pct, done);
+        }).await;
+        applied = a;
+        failed = f;
     }
 
     // 4. 완료 마커 저장 — 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
@@ -447,11 +427,10 @@ pub fn run() {
         .filter(|&i| relaunch_pos.is_none_or(|r| i < r))
         .and_then(|i| after_apply.get(i + 1))
         .cloned();
-    let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
     let accepted = match token {
         Some(t) => launch_ticket::redeem(&saba_chan_updater_lib::constants::resolve_staging_dir(), &t),
         None => {
-            launch_ticket::core_predates_tickets(installed.get("saba-core").map(String::as_str))
+            launch_ticket::installed_core_predates_tickets()
                 && launch_ticket::claim_legacy_apply(&saba_chan_updater_lib::constants::resolve_staging_dir())
         }
     };

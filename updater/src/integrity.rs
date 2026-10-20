@@ -108,8 +108,21 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
     for file in files {
         hashes.insert(file.to_string_lossy().to_string(), compute_sha256(file)?);
     }
-    // 읽을 수 없는 기록을 이 키 하나로 덮어쓰면 다른 컴포넌트의 기록이 사라진다
-    let mut records: InstalledFiles = crate::read_json(path)?.unwrap_or_default();
+    // 읽을 수 없는 기록을 이 키 하나로 덮어쓰면 다른 컴포넌트의 기록이 사라진다.
+    // 내용이 깨진 기록은 옆으로 옮겨 두고 새로 쓴다. 그대로 두면 기록이 영영 안 되어 모든 모듈·익스텐션이 다시 받기 대상으로 남는다
+    let mut records: InstalledFiles = match crate::read_json(path) {
+        Ok(records) => records.unwrap_or_default(),
+        Err(e) if path.is_file() && std::fs::read_to_string(path).is_ok() => {
+            let corrupt = path.with_extension(format!(
+                "json.corrupt-{}",
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+            ));
+            std::fs::rename(path, &corrupt).map_err(|e| e.to_string())?;
+            tracing::warn!("[Integrity] {} was unreadable ({}); moved to {}", path.display(), e, corrupt.display());
+            InstalledFiles::default()
+        }
+        Err(e) => return Err(e),
+    };
     records.insert(component_key.to_string(), hashes);
     let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
     crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
@@ -379,6 +392,25 @@ fn component_sort_key(key: &str) -> (u8, String) {
 mod tests {
     use super::*;
 
+    // U-13: 깨진 설치 기록 때문에 기록이 계속 실패하면 모든 모듈·익스텐션이 "다시 받기" 대상으로 남는다
+    #[test]
+    fn a_corrupt_record_file_is_set_aside_and_recording_continues() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("installed-files.json");
+        let file = tmp.path().join("lifecycle.py");
+        std::fs::write(&file, b"print()").unwrap();
+        std::fs::write(&path, b"{\"module-a\": {").unwrap();
+
+        record_install_at(&path, "module-b", std::slice::from_ref(&file)).unwrap();
+
+        assert!(load_records(&path).contains_key("module-b"));
+        let kept: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("installed-files.json.corrupt-"))
+            .collect();
+        assert_eq!(kept.len(), 1, "the broken record is kept for inspection");
+        assert_eq!(std::fs::read(kept[0].path()).unwrap(), b"{\"module-a\": {");
+    }
+
     #[test]
     fn test_sha256_hello() {
         let tmp = tempfile::tempdir().unwrap();
@@ -497,20 +529,15 @@ mod tests {
         assert_eq!(report.overall, OverallIntegrity::Partial);
     }
 
-    /// 읽을 수 없는 기록 파일을 새 키 하나만으로 덮어쓰면 다른 컴포넌트의 기록이 모두 사라진다
+    /// 읽을 수 없는 공식 표시 파일을 새 키 하나만으로 덮어쓰면 다른 컴포넌트의 표시가 모두 사라진다
+    /// (깨진 설치 기록은 옆으로 옮겨 두고 새로 쓴다: a_corrupt_record_file_is_set_aside_and_recording_continues)
     #[test]
-    fn an_unreadable_record_file_is_not_overwritten() {
+    fn an_unreadable_official_file_is_not_overwritten() {
         let tmp = tempfile::tempdir().unwrap();
-        let file = tmp.path().join("a.py");
-        std::fs::write(&file, b"x").unwrap();
-        let records = tmp.path().join("installed-files.json");
         let official = tmp.path().join("official-components.json");
-        std::fs::write(&records, b"{\"module-a\": {").unwrap();
         std::fs::write(&official, b"[\"module-a\"").unwrap();
 
-        assert!(record_install_at(&records, "module-b", std::slice::from_ref(&file)).is_err());
         assert!(set_official_at(&official, "module-b", true).is_err());
-        assert_eq!(std::fs::read(&records).unwrap(), b"{\"module-a\": {");
         assert_eq!(std::fs::read(&official).unwrap(), b"[\"module-a\"");
     }
 

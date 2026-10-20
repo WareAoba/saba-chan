@@ -247,7 +247,13 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
                         tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
                     }
                 }
-                Err(e) => tracing::warn!("[Updates] Auto-download failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("[Updates] Auto-download failed: {}", e);
+                    // 실패 전에 받은 것은 적용할 수 있게 남긴다
+                    if let Err(e) = mgr.save_pending_manifest() {
+                        tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
+                    }
+                }
             }
         });
     }
@@ -401,6 +407,10 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
                 }))
             }
             Err(e) => {
+                // 실패 전에 받은 것은 적용할 수 있게 남긴다
+                if let Err(e) = mgr.save_pending_manifest() {
+                    tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
+                }
                 Json(json!({
                     "ok": false,
                     "error": e.to_string(),
