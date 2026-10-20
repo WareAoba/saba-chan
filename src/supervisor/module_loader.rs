@@ -440,6 +440,10 @@ impl OneOrMany {
 
 /// 설정 값 형식 이름 (`format`)
 pub const SETTING_FORMATS: &[&str] = &["memory_size", "port", "integer", "path"];
+/// 설정 필드 `type`으로 받는 값 (GUI·CLI가 그리는 것)
+pub const SETTING_TYPES: &[&str] = &["text", "password", "number", "file", "select", "boolean"];
+/// 명령 입력 `inputs[].type`으로 받는 값
+pub const COMMAND_INPUT_TYPES: &[&str] = &["text", "password", "number", "select", "boolean"];
 
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
 pub const CORE_PORT_FIELDS: &[&str] = &["port", "rest_port"];
@@ -1251,6 +1255,9 @@ impl ModuleToml {
             problems.push(format!("module.entry '{}' must be a path inside the module folder", self.module.entry));
         }
         for field in self.settings.iter().flat_map(|s| &s.fields) {
+            if !SETTING_TYPES.contains(&field.field_type.as_str()) {
+                problems.push(format!("settings field '{}': type '{}' must be one of {}", field.name, field.field_type, SETTING_TYPES.join(", ")));
+            }
             if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
                 problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
             }
@@ -1269,6 +1276,17 @@ impl ModuleToml {
             }
         }
         for cmd in self.commands.iter().flat_map(|c| &c.fields) {
+            for input in &cmd.inputs {
+                if let Some(ty) = input.input_type.as_deref().filter(|t| !COMMAND_INPUT_TYPES.contains(t)) {
+                    problems.push(format!(
+                        "commands '{}': input '{}' type '{}' must be one of {}",
+                        cmd.name,
+                        input.name,
+                        ty,
+                        COMMAND_INPUT_TYPES.join(", ")
+                    ));
+                }
+            }
             if let Some(risk) = &cmd.risk {
                 if !COMMAND_RISKS.contains(&risk.as_str()) {
                     problems.push(format!(
@@ -2137,6 +2155,23 @@ entry = "lifecycle.py"
             assert!(err.contains("protocols"), "{err}");
         }
         assert!(parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"rest\", \"stdin\"]\ndefault = \"rest\"\n")).is_ok());
+    }
+
+    /// 클라이언트가 그리지 못하는 설정·명령 입력 type은 화면에서 조용히 사라진다: 로드할 때 알린다 (MK2)
+    #[test]
+    fn schema_v1_checks_setting_and_command_input_types() {
+        let setting = |ty: &str| format!("{V1}\n[[settings.fields]]\nname = \"motd\"\ntype = \"{ty}\"\n");
+        let err = parse_module_toml(&setting("textarea")).unwrap_err().to_string();
+        assert!(err.contains("settings field 'motd'") && err.contains("textarea"), "{err}");
+        for ty in SETTING_TYPES {
+            assert!(parse_module_toml(&setting(ty)).is_ok(), "{ty}");
+        }
+        let input = |ty: &str| format!("{V1}\n[[commands.fields]]\nname = \"kick\"\ninputs = [{{ name = \"player\", type = \"{ty}\" }}]\n");
+        let err = parse_module_toml(&input("slider")).unwrap_err().to_string();
+        assert!(err.contains("commands 'kick'") && err.contains("slider"), "{err}");
+        assert!(parse_module_toml(&input("password")).is_ok());
+        // 스키마 이전 모듈은 경고만 하고 올린다
+        assert!(parse_module_toml(&setting("textarea").replace("schema_version = 1\n", "")).is_ok());
     }
 
     #[test]
