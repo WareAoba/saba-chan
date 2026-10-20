@@ -26,6 +26,8 @@ pub(crate) const DEFAULT_KEEP: usize = 10;
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
 const REMOTE_MIN_EVERY_MINUTES: u32 = 30;
 const REMOTE_MAX_BACKUP_KEEP: u32 = 30;
+/// 원격(디스코드·챗봇)이 만드는 백업의 종류별 상한. 원격 백업은 정리하지 않으므로(D-B11) 끝없이 쌓이지 않게 막는다 (D-B7)
+const REMOTE_BACKUP_CAP: usize = 50;
 /// 재시작이 작업 잠금이 풀리기를 기다리는 가장 긴 시간 (큰 월드의 백업·업데이트)
 const START_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
@@ -247,6 +249,14 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     if plan.paths.is_empty() {
         return Ok(None);
     }
+    let remote = crate::audit::current().source == "discord";
+    if remote && backup::list(&plan.dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
+        return Err(error(
+            StatusCode::CONFLICT,
+            "backup_limit",
+            format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP),
+        ));
+    }
     if let Some(cmd) = plan.save_command.as_deref() {
         if is_running(state, id).await {
             if !run_command(state, id, cmd, json!({})).await {
@@ -258,7 +268,6 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     }
     let Plan { dir, paths, keep, .. } = plan;
     // 원격(디스코드·챗봇)은 백업을 지우지 못한다: 원격 복원을 거듭해 앞서 남긴 안전 백업을 밀어내지 않게, 정리는 이 PC의 다음 백업에 맡긴다 (D-B11)
-    let remote = crate::audit::current().source == "discord";
     let result = tokio::task::spawn_blocking(move || {
         let made = backup::create(&dir, kind, &paths)?;
         // 방금 만든 백업은 보관 개수와 상관없이 남긴다
@@ -1218,5 +1227,29 @@ mod tests {
         assert_eq!(safety(), 3, "remote restores must keep every safety backup");
         restore(crate::audit::Origin::new("gui")).await;
         assert_eq!(safety(), 1, "a restore on this PC still keeps only backup_keep");
+    }
+
+    /// 원격은 백업을 지우지 못하므로 원격이 쌓는 백업에는 종류마다 상한이 있다: 넘으면 409 `backup_limit`로 거절하고
+    /// 이 PC에서는 그대로 만든다 (D-B7)
+    #[tokio::test]
+    async fn remote_backups_stop_at_a_cap_because_remote_cannot_delete_them() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), b"x").unwrap();
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        for _ in 0..REMOTE_BACKUP_CAP {
+            backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&world)).unwrap();
+        }
+        let create = |origin: crate::audit::Origin| {
+            let (state, id) = (state.clone(), id.clone());
+            crate::audit::with_origin(origin, async move { create_backup(Path(id), State(state)).await })
+        };
+        let refused = create(crate::audit::Origin::new("discord")).await;
+        assert_eq!(refused.status(), StatusCode::CONFLICT);
+        assert_eq!(code(refused).await, "backup_limit");
+        let local = create(crate::audit::Origin::new("gui")).await;
+        assert_eq!(local.status(), StatusCode::OK, "this PC can still back up");
     }
 }
