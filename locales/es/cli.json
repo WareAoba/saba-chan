@@ -211,7 +211,8 @@
     "not_a_number": "«{{value}}» no es un número.",
     "not_found": "No hay ningún {{what}} llamado «{{query}}».",
     "pair_expected": "Se esperaba KEY=VALUE, se recibió «{{got}}».",
-    "timeout": "El daemon tardó demasiado en responder ({{path}})."
+    "timeout": "El daemon tardó demasiado en responder ({{path}}).",
+    "unknown_command": "No existe el comando: {{path}}. Ejecuta `saba-chan-cli help` para ver los comandos."
   },
   "agree": {
     "none": "{{name}} no tiene acuerdos que aceptar.",
@@ -471,7 +472,10 @@
     "ok": "{{name}} parece listo para iniciarse."
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
+      "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar"
+    },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
       "bot.channels.no_notify": "Quitar el canal de avisos",
@@ -482,7 +486,12 @@
       "do.plan": "Solo comprobar la entrada y mostrar lo que pasaría",
       "do.input": "Entrada como key=value (los valores que se leen como JSON siguen siendo JSON)",
       "server": "Nombre del servidor (basta con una parte)",
-      "ids": "Uno o más ID de extensión"
+      "ids": "Uno o más ID de extensión",
+      "help.command": "Ruta del comando, p. ej. `server start`",
+      "events.kind": "Solo estos eventos; `instance` también incluye `instance.exit` y similares",
+      "events.server": "Solo eventos de este servidor",
+      "events.since": "Empieza tras este id de evento (reenvía lo que el daemon aún guarda)",
+      "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos se abre la shell interactiva.\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },

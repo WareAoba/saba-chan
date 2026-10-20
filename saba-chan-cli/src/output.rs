@@ -77,10 +77,35 @@ fn emit(value: Value) {
     }
 }
 
+/// `--json-stream`: 결과도 진행 줄처럼 한 줄로
+static STREAM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_stream(on: bool) {
+    STREAM.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// 따라가기 명령(`events`, `audit -f`)의 JSON 한 줄. 스트림 모드면 진행·결과 줄과 나눌 수 있게 `type:"event"`를 붙인다
+pub fn event_line(mut v: Value) -> String {
+    if STREAM.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Some(o) = v.as_object_mut() {
+            o.insert("type".into(), "event".into());
+        }
+    }
+    v.to_string()
+}
+
 /// 모아 둔 JSON 문서를 찍는다 (명령 하나가 끝날 때)
 pub fn flush() {
     if let Some(v) = PENDING.lock().ok().and_then(|mut p| p.take()) {
-        say!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+        say!("{}", document(v, STREAM.load(std::sync::atomic::Ordering::Relaxed)));
+    }
+}
+
+fn document(v: Value, stream: bool) -> String {
+    if stream {
+        serde_json::json!({ "type": "result", "data": v }).to_string()
+    } else {
+        serde_json::to_string_pretty(&v).unwrap_or_default()
     }
 }
 
@@ -326,6 +351,18 @@ pub fn players(server: &Value) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// `--json-stream`의 마지막 줄은 결과(실패면 오류 문서)를 한 줄로 싣는다
+    #[test]
+    fn stream_result_is_one_line() {
+        let line = document(json!({ "ok": false, "error_code": "usage" }), true);
+        assert!(!line.contains('\n'));
+        assert_eq!(
+            serde_json::from_str::<Value>(&line).unwrap(),
+            json!({ "type": "result", "data": { "ok": false, "error_code": "usage" } })
+        );
+        assert!(document(json!({ "a": 1 }), false).contains('\n'));
+    }
 
     /// 사람용 출력은 모두 한 창구를 지난다: 나중에 TUI가 창구를 바꿔 끼우면 명령 결과를 패널에 그릴 수 있다
     #[test]

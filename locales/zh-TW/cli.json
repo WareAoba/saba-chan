@@ -211,7 +211,8 @@
     "not_a_number": "「{{value}}」不是數字。",
     "not_found": "沒有名為「{{query}}」的{{what}}。",
     "pair_expected": "應為 KEY=VALUE，實際為「{{got}}」。",
-    "timeout": "常駐程式回應時間過長（{{path}}）。"
+    "timeout": "常駐程式回應時間過長（{{path}}）。",
+    "unknown_command": "沒有這個命令：{{path}}。執行 `saba-chan-cli help` 查看命令列表。"
   },
   "agree": {
     "none": "{{name}} 沒有需要同意的協議。",
@@ -471,7 +472,10 @@
     "ok": "{{name}} 看起來可以啟動了。"
   },
   "help": {
-    "cmd": {},
+    "cmd": {
+      "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
+      "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止"
+    },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
       "bot.channels.no_notify": "取消通知頻道",
@@ -482,7 +486,12 @@
       "do.plan": "只檢查輸入並顯示將會發生什麼",
       "do.input": "輸入 key=value (可依 JSON 讀取的值維持為 JSON)",
       "server": "伺服器名稱（部分即可）",
-      "ids": "一個或多個擴充功能 ID"
+      "ids": "一個或多個擴充功能 ID",
+      "help.command": "命令路徑（例如 `server start`）",
+      "events.kind": "只看這些事件；`instance` 也包括 `instance.exit` 等下層事件",
+      "events.server": "只看這個伺服器的事件",
+      "events.since": "從這個事件編號之後開始（常駐程式仍保留的會重新傳送）",
+      "json_stream": "以 JSON 行（NDJSON）輸出進度與結果（包含 --json）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。不帶參數執行會開啟互動式 shell。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

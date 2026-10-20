@@ -8,6 +8,7 @@ pub mod config;
 pub mod console;
 pub mod daemon;
 pub mod do_action;
+pub mod events;
 pub mod extension;
 pub mod module;
 pub mod monitor;
@@ -51,6 +52,8 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Update(c) => update::run(ctx, c).await,
         Cmd::Config(c) => config::run(ctx, c).await,
         Cmd::Chat { text } => chat(ctx, &text.join(" ")).await,
+        Cmd::Events { kind, server, since } => events::run(ctx, &kind, server.as_deref(), since).await,
+        Cmd::Help { command } => help(ctx, &command),
         Cmd::Completions { shell } => {
             let mut cmd = crate::cli::localized();
             clap_complete::generate(shell, &mut cmd, "saba-chan-cli", &mut std::io::stdout());
@@ -58,6 +61,26 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         }
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
     }
+}
+
+/// `help [명령…]`: 번역된 도움말. `--json`이면 명령 트리·인자·종료 코드
+fn help(ctx: &Ctx, path: &[String]) -> Result<()> {
+    let mut root = crate::cli::localized();
+    root.build();
+    let unknown = || usage(t!("err.unknown_command", path = path.join(" ")));
+    if ctx.out.json {
+        let v = crate::cli::schema(&root, path).ok_or_else(unknown)?;
+        ctx.out.data(&v, |_| {});
+        return Ok(());
+    }
+    let mut cmd = &mut root;
+    for word in path {
+        cmd = cmd.find_subcommand_mut(word).ok_or_else(unknown)?;
+    }
+    let text = cmd.render_help();
+    let text = if ::console::colors_enabled() { text.ansi().to_string() } else { text.to_string() };
+    say!("{}", text.trim_end());
+    Ok(())
 }
 
 /// 데몬 없이도 되는 명령은 데몬을 깨우지 않는다
@@ -68,6 +91,7 @@ fn needs_daemon(cmd: &Cmd) -> bool {
         Cmd::Status
             | Cmd::Version
             | Cmd::Completions { .. }
+            | Cmd::Help { .. }
             | Cmd::Shell
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )

@@ -40,12 +40,10 @@ fn send(id: u64, update: Update) -> bool {
     }
 }
 
-/// 창구를 바꿔 끼운다. 놓으면 터미널 막대로 돌아간다 (TUI가 끼운다. 그 전까지는 시험만 쓴다)
+/// 창구를 바꿔 끼운다. 놓으면 터미널 막대로 돌아간다 (`--json-stream`, 나중에 TUI가 끼운다)
 #[must_use]
-#[cfg_attr(not(test), allow(dead_code))]
 pub struct SinkGuard(());
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl SinkGuard {
     pub fn install(sink: Sink) -> Self {
         if let Ok(mut s) = SINK.write() {
@@ -125,6 +123,68 @@ impl Drop for Progress {
     }
 }
 
+/// `--json-stream`에서 같은 막대의 위치를 내보내는 최소 간격
+const GAP: Duration = Duration::from_millis(250);
+
+/// 진행 변화 하나를 JSON 한 줄로
+fn line(id: u64, update: &Update) -> serde_json::Value {
+    use serde_json::json;
+    let mut v = json!({ "type": "progress", "id": id });
+    match update {
+        Update::Start { kind, message } => {
+            let kind = match kind {
+                Kind::Spinner => "spinner",
+                Kind::Percent => "percent",
+                Kind::Bytes => "bytes",
+            };
+            v["kind"] = json!(kind);
+            v["message"] = json!(message);
+        }
+        Update::Message(m) => v["message"] = json!(m),
+        Update::Position(p) => v["position"] = json!(p),
+        Update::Length(l) => v["length"] = json!(l),
+        Update::Done => v["done"] = json!(true),
+    }
+    v
+}
+
+/// 막대마다 위치를 마지막으로 내보낸 때. 끝나면 지운다
+#[derive(Default)]
+struct Gate(std::collections::HashMap<u64, std::time::Instant>);
+
+impl Gate {
+    fn pass(&mut self, id: u64, update: &Update, now: std::time::Instant) -> bool {
+        match update {
+            Update::Position(_) => {
+                if self.0.get(&id).is_some_and(|last| now.duration_since(*last) < GAP) {
+                    return false;
+                }
+                self.0.insert(id, now);
+                true
+            }
+            Update::Done => {
+                self.0.remove(&id);
+                true
+            }
+            _ => true,
+        }
+    }
+}
+
+/// `--json-stream`: 진행을 막대 대신 stdout에 JSON 한 줄씩 낸다
+pub fn stream_lines() -> SinkGuard {
+    let gate = std::sync::Mutex::new(Gate::default());
+    SinkGuard::install(Box::new(move |id, update| {
+        let pass = gate
+            .lock()
+            .map(|mut g| g.pass(id, &update, std::time::Instant::now()))
+            .unwrap_or(true);
+        if pass {
+            say!("{}", line(id, &update));
+        }
+    }))
+}
+
 fn target() -> ProgressDrawTarget {
     ProgressDrawTarget::stderr()
 }
@@ -172,6 +232,44 @@ pub fn bytes_bar(msg: &str) -> Progress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `--json-stream`: 진행 변화가 JSON 한 줄씩. 위치는 자주 바뀌어 사이를 두고 내보낸다
+    #[test]
+    fn stream_lines_describe_progress_and_skip_rapid_positions() {
+        assert_eq!(
+            line(
+                3,
+                &Update::Start {
+                    kind: Kind::Bytes,
+                    message: "down".into()
+                }
+            ),
+            serde_json::json!({ "type": "progress", "id": 3, "kind": "bytes", "message": "down" })
+        );
+        assert_eq!(
+            line(3, &Update::Position(5)),
+            serde_json::json!({ "type": "progress", "id": 3, "position": 5 })
+        );
+        assert_eq!(
+            line(3, &Update::Done),
+            serde_json::json!({ "type": "progress", "id": 3, "done": true })
+        );
+
+        let mut gate = Gate::default();
+        let t0 = std::time::Instant::now();
+        assert!(gate.pass(1, &Update::Position(1), t0));
+        assert!(!gate.pass(1, &Update::Position(2), t0 + Duration::from_millis(50)));
+        assert!(
+            gate.pass(2, &Update::Position(1), t0 + Duration::from_millis(50)),
+            "each bar has its own gap"
+        );
+        assert!(
+            gate.pass(1, &Update::Message("x".into()), t0 + Duration::from_millis(60)),
+            "only positions wait"
+        );
+        assert!(gate.pass(1, &Update::Position(3), t0 + GAP));
+        assert!(gate.pass(1, &Update::Done, t0 + GAP));
+    }
 
     /// 창구가 끼워져 있으면 막대 대신 변화가 창구로 간다. 끝내기를 잊어도 놓을 때 끝을 알린다
     #[test]
