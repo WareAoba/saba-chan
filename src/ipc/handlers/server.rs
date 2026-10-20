@@ -917,12 +917,20 @@ async fn restart_instance(
         return instance_not_found(&id);
     };
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
-    // 이 재시작의 정지는 세대를 한 번 올린다. 그보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다 (D-S8)
+    // 이 재시작의 정지가 올린 세대보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다 (D-S8).
+    // 기준은 정지가 알려 준 값이다: 정지 전에 따로 읽으면 그 틈에 끼어든 자동 재시작 시작까지 세어 스스로 취소한다 (D-S10)
     let before_stop = state.supervisor.read().await.run_generation_of(&inst_id);
     let running;
+    let stopped_at;
     {
         // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
-        let stop = crate::ipc::internal::into_internal(stop_instance(state.clone(), &inst_id, force).await).await;
+        let stopping = async {
+            let resp = stop_instance(state.clone(), &inst_id, force).await;
+            (resp, crate::supervisor::STOPPED_AT.with(|at| at.get()))
+        };
+        let (stop, at) = crate::supervisor::STOPPED_AT.scope(std::cell::Cell::new(None), stopping).await;
+        stopped_at = at.unwrap_or(before_stop + 1);
+        let stop = crate::ipc::internal::into_internal(stop).await;
         // 꺼져 있던 일반 인스턴스는 정지가 아무것도 하지 않고 was_running=false를 준다
         let ok = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
         if !ok {
@@ -944,7 +952,7 @@ async fn restart_instance(
     // 백업·복원이 잠금을 쥐고 있으면 끝나기를 기다렸다 켠다. 요청이 끊겨도 꺼진 채 남지 않게 따로 돌린다.
     // 그사이 다른 쪽에서 켜거나 인스턴스를 지우면 그만둔다
     let generation = state.supervisor.read().await.run_generation_of(&inst_id);
-    if generation > before_stop + 1 {
+    if generation > stopped_at {
         let error = json!({ "success": false, "error": "The server was stopped or started while restarting", "error_code": "restart_cancelled", "stopped": running });
         return (StatusCode::CONFLICT, Json(error)).into_response();
     }
