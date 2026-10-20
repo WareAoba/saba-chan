@@ -212,7 +212,7 @@
         "title": "Sauvegardes"
       },
       "create": {
-        "title": "Créer une sauvegarde"
+        "title": "Sauvegarde"
       },
       "restore": {
         "title": "Restaurer une sauvegarde",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Paramètres Discord",
-          "description": "Langue, veille et musique"
-        },
         "set": {
           "title": "Modifier les paramètres Discord",
           "description": "Langue, veille et musique"

@@ -212,7 +212,7 @@
         "title": "Backups"
       },
       "create": {
-        "title": "Backup erstellen"
+        "title": "Backup"
       },
       "restore": {
         "title": "Backup wiederherstellen",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Discord-Einstellungen",
-          "description": "Sprache, Ruhemodus und Musik"
-        },
         "set": {
           "title": "Discord-Einstellungen ändern",
           "description": "Sprache, Ruhemodus und Musik"
