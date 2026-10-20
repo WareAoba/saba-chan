@@ -16,6 +16,9 @@ pub struct UpdateCompletionMarker {
     /// 적용한 릴리즈의 버전과 패치노트 (A5). 예전 업데이터가 남긴 마커에는 없다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<ReleaseSummary>,
+    /// 클라이언트가 결과를 확인했다. 확인해도 지우지 않아 패치노트를 다시 볼 수 있다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub acknowledged: bool,
 }
 
 /// 릴리즈 버전과 언어별 패치노트
@@ -56,6 +59,7 @@ impl UpdateCompletionMarker {
             message: None,
             failed: Vec::new(),
             release: None,
+            acknowledged: false,
         }
     }
 
@@ -67,16 +71,21 @@ impl UpdateCompletionMarker {
             message: Some(message),
             failed: Vec::new(),
             release: None,
+            acknowledged: false,
         }
     }
 
-    fn marker_path() -> PathBuf {
+    /// 마커 파일 경로 (`update-complete.json`)
+    pub fn path() -> PathBuf {
         crate::constants::resolve_update_complete_path()
     }
 
     /// 마커 저장
     pub fn save(&self) -> Result<(), String> {
-        let path = Self::marker_path();
+        self.save_to(&Self::path())
+    }
+
+    pub fn save_to(&self, path: &std::path::Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create directory: {}", e))?;
@@ -85,20 +94,31 @@ impl UpdateCompletionMarker {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Serialize error: {}", e))?;
 
-        std::fs::write(&path, json)
+        std::fs::write(path, json)
             .map_err(|e| format!("Write error: {}", e))
     }
 
     /// 마커 로드
     pub fn load() -> Option<Self> {
-        let path = Self::marker_path();
-        let content = std::fs::read_to_string(&path).ok()?;
+        Self::load_from(&Self::path())
+    }
+
+    pub fn load_from(path: &std::path::Path) -> Option<Self> {
+        let content = std::fs::read_to_string(path).ok()?;
         serde_json::from_str(&content).ok()
+    }
+
+    /// 클라이언트가 결과를 확인했다고 적는다. 마커는 남긴다 (없으면 할 일 없음)
+    pub fn acknowledge_at(path: &std::path::Path) -> Result<(), String> {
+        match Self::load_from(path) {
+            Some(marker) if !marker.acknowledged => Self { acknowledged: true, ..marker }.save_to(path),
+            _ => Ok(()),
+        }
     }
 
     /// 마커 삭제
     pub fn clear() -> Result<(), String> {
-        let path = Self::marker_path();
+        let path = Self::path();
         if path.exists() {
             std::fs::remove_file(&path)
                 .map_err(|e| format!("Delete error: {}", e))?;
@@ -108,6 +128,6 @@ impl UpdateCompletionMarker {
 
     /// 마커 존재 여부
     pub fn exists() -> bool {
-        Self::marker_path().exists()
+        Self::path().exists()
     }
 }
