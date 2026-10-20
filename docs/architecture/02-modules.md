@@ -110,7 +110,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
-- 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더 밖이면 복원은 400 `restore_outside`다.
+- 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더·백업 경로·훅의 `restore_roots` 밖이면 복원은 400 `restore_outside`다.
 - 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`).
 
 #### `[[settings.fields]]` (`SettingFieldToml` `:784-822` → `SettingField` `:393-444`)
@@ -317,7 +317,7 @@ players = "player_count"
 - `instance_commands`: `success`, `commands[]`(명령 필드 + `group`), `components` (`[commands] hook = true`일 때).
 - `install_server`: config에 인스턴스 설정 `settings{}`가 온다(프로비저닝·업데이트, `instance_id`를 준 `POST /api/module/:name/install`).
 - `list_versions`: config `settings{}`(인스턴스 설정)로 그 설정에서 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 Paper·Folia는 안정 빌드가 나온 가장 새 버전. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다).
-- `backup_paths`: `success`, `paths[]` (`[backup] hook = true`일 때).
+- `backup_paths`: `success`, `paths[]`, 선택 `restore_roots[]` (`[backup] hook = true`일 때). `restore_roots`는 `paths`와 같이 해석하는 복원 허용 범위다. 그 폴더 안을 담은 옛 백업(데이터 폴더를 통째로 담던 예전 모듈의 백업 등)도 복원되게 하고, 백업 대상에는 넣지 않는다 (MA3).
 
 ### 2.3 데몬이 호출하는 함수 전체 목록과 전달 config
 
