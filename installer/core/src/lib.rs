@@ -18,6 +18,7 @@ use saba_chan_updater_lib::constants;
 use saba_chan_updater_lib::relay::{self, ReleaseManifest};
 pub use release::VerifiedRelease;
 use saba_chan_updater_lib::UpdateManager;
+pub use saba_chan_updater_lib::profile::Profile;
 
 /// 설치기 버전 — 설치기 컴포넌트(`versions.toml` installer)와 같이 간다
 const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -81,6 +82,8 @@ impl Drop for RemoveOnDrop {
 pub struct InstallOptions {
     pub install_path: PathBuf,
     pub language: String,
+    /// 데스크톱이면 GUI와 바로가기까지, 헤드리스면 GUI 없이 설치한다. installed-manifest의 `profile`에 적는다
+    pub profile: Profile,
     // 바로가기는 Windows에서만 만든다
     pub create_desktop_shortcut: bool,
     pub create_start_menu_shortcut: bool,
@@ -204,7 +207,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
     // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
     // 필수 컴포넌트가 빠진 릴리즈는 기존 설치를 건드리기 전에 멈춘다
-    let components = match release::installable(&manifest) {
+    let components = match release::installable(&manifest, config.profile) {
         Ok(c) => c,
         Err(missing) => {
             let msg = format!("The release is missing required components: {}", missing.join(", "));
@@ -345,10 +348,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     }
 
-    // Step 10: 바로가기 (95-100%)
-    emit("shortcuts", "Creating shortcuts...", 96);
+    // Step 10: 바로가기 (95-100%). 헤드리스 설치는 GUI가 없어 만들지 않는다
     #[cfg(target_os = "windows")]
-    {
+    if config.profile == Profile::Desktop {
+        emit("shortcuts", "Creating shortcuts...", 96);
         let gui_exe = saba_chan_updater_lib::find_gui_exe(&install_dir);
         let app_name = localized_app_name(&config.language);
 
@@ -381,6 +384,8 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     if config.uninstaller_exe.as_deref().is_some_and(|me| is_copy_of(&copy, me)) {
         installed_versions.insert("installer".to_string(), INSTALLER_VERSION.to_string());
     }
+    // 업데이터·데몬이 이 구성에 드는 것만 받는다 (헤드리스 설치에 GUI가 끌려 들어오지 않게)
+    installed_versions.insert(Profile::MANIFEST_KEY.to_string(), config.profile.as_str().to_string());
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
         warn(format!("Failed to write installed manifest: {}", e));
     }
@@ -740,6 +745,7 @@ mod tests {
         let options = InstallOptions {
             install_path: root.join("Saba-chan"),
             language: "en".into(),
+            profile: Profile::Headless,
             create_desktop_shortcut: false,
             create_start_menu_shortcut: false,
             selected_modules: Vec::new(),

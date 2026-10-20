@@ -22,6 +22,7 @@ pub mod error;
 pub mod integrity;
 pub mod marker;
 pub mod process;
+pub mod profile;
 pub mod relay;
 pub mod signature;
 pub mod uninstall_entry;
@@ -622,6 +623,8 @@ impl UpdateManager {
 
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
+        // 헤드리스 설치는 GUI처럼 그 구성에 들지 않는 컴포넌트를 받지 않는다
+        let profile = profile::Profile::from_installed(&Self::load_installed_manifest());
         if let Some(release) = release {
             let notes = Self::release_notes_in(&release.latest, &Self::user_language());
             for (key, info) in &release.manifest.components {
@@ -629,6 +632,9 @@ impl UpdateManager {
                     tracing::debug!("[Updater] Skipping unknown manifest key: {}", key);
                     continue;
                 };
+                if !profile.includes(key) {
+                    continue;
+                }
                 let current = local_versions.get(key).cloned().unwrap_or_default();
                 let installed = self.is_component_installed(&component);
                 // 모듈·익스텐션은 설치한 것만 업데이트한다. 새로 받는 건 목록 화면의 몫
