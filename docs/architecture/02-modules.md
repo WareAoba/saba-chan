@@ -457,12 +457,13 @@ players = "player_count"
 - **managed stop** (`mod.rs:951-1026`):
   1. `force`이면 `force_kill`을 한다.
   2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다.
-  3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다.
+  3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다. 모듈이 `{success:false, error_code:"graceful_stop_unavailable"}`로 답하면 기다리거나 강제 종료하지 않고 그 응답을 돌려준다(아래).
   4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 `stop_timeout`(기본 30초), force면 5초다.
   5. 시간이 지나면 강제 종료하고 2초 더 기다린다.
   6. `managed_store`에서 제거하고 종료를 판정·기록하고, `managed.pid`를 삭제하고, 30초짜리 stop cooldown(`STOP_COOLDOWN_SECS`)을 등록한다.
   - palworld는 stdin이 없어 3번 경로로 간다. 모듈 `stop()`이 REST로 저장·종료를 요청한다 (`M:palworld/lifecycle.py:399-426`).
 - **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:1056-1099`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(콘솔이 없을 때 불리므로 보통 실패, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows에는 보낼 정상 종료 신호가 없어 바로 강제 종료한다.
+- **저장 후 종료를 요청할 길이 없을 때** (MK10): 콘솔도 REST도 없는 서버(runner 없이 다시 붙은 서버 등)에서 `force: false`인 `stop()`은 서버를 끝내지 말고 `{success:false, error_code:"graceful_stop_unavailable", message}`를 돌려준다(message는 모듈 locales). 데몬은 두 경로(managed 3번, non-managed) 모두 서버를 그대로 두고 HTTP 200 `{success:false, server, error_code:"graceful_stop_unavailable", error}`로 답한다. 클라이언트는 저장 없이 끝난다는 것을 알리고 사용자가 고르면 `force: true`로 다시 요청한다. 예약 작업(재시작·업데이트)은 강제 종료하지 않고 그만둔다.
 - **extension 위임**: `server.stop` hook은 정지 전에 불린다. `handled`를 돌려주면 그대로 반환하고, 정지를 맡을 익스텐션이 실패하면 실패를 돌려준다 (`mod.rs:908-933`).
 
 ### 3.5 명령 경로 (stdin/REST)

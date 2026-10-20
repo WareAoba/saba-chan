@@ -1357,6 +1357,64 @@ mod tests {
         assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
     }
 
+    /// 콘솔이 없어 저장 후 종료를 요청할 길이 없으면 모듈 `stop()`은 `graceful_stop_unavailable`로 답한다. 데몬은 그때
+    /// 서버를 죽이지 않고 그 코드를 돌려준다: 강제 종료(저장 없음)는 사용자가 `force`로 고른다 (MK10)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_server_that_cannot_save_and_exit_is_not_killed_by_a_plain_stop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, signal, sys\n\
+             config = json.load(sys.stdin)\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             elif sys.argv[1] == 'stop' and not config.get('force'):\n    \
+             print(json.dumps({'success': False, 'error_code': 'graceful_stop_unavailable', 'message': 'no console'}))\n\
+             elif sys.argv[1] == 'stop':\n    os.kill(config['pid'], signal.SIGKILL)\n    print(json.dumps({'success': True}))\n\
+             else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for id in ["no-console-managed", "no-console-native"] {
+            let mut inst = crate::instance::ServerInstance::new(id, "game");
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let stop = |id: &'static str, force: bool| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(stop_instance(state, id, force).await).await.body }
+        };
+
+        // managed인데 모듈이 stdin을 받지 않는다: 데몬은 모듈 stop()에 맡긴다
+        let started = crate::ipc::internal::into_internal(start_instance(Path("no-console-managed".into()), State(state.clone())).await).await.body;
+        assert_eq!(started["success"], true, "{started}");
+        let refused = stop("no-console-managed", false).await;
+        assert_eq!((refused["success"].clone(), refused["error_code"].clone()), (json!(false), json!("graceful_stop_unavailable")), "{refused}");
+        let managed = state.supervisor.read().await.managed_store.get("no-console-managed").await.expect("still managed");
+        assert!(managed.is_running(), "a plain stop does not kill it");
+        assert_eq!(stop("no-console-managed", true).await["success"], true);
+
+        // non-managed(데몬이 PID만 안다): 모듈 stop()의 답을 그대로 전한다
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("no-console-native", child.id()).unwrap();
+        let refused = stop("no-console-native", false).await;
+        assert_eq!(refused["error_code"], "graceful_stop_unavailable", "{refused}");
+        assert!(child.try_wait().unwrap().is_none(), "a plain stop does not kill it");
+        assert_eq!(stop("no-console-native", true).await["success"], true);
+        assert!(child.wait().is_ok());
+    }
+
     #[test]
     fn only_unofficial_or_changed_components_get_a_notice() {
         use saba_chan_updater_lib::integrity::Trust;
