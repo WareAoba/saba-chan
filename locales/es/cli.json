@@ -456,7 +456,7 @@
     "downloading": "Descargando",
     "integrity_summary": "{{verified}} intactos · {{failed}} modificados o ilegibles · {{skipped}} con archivos faltantes",
     "last_check": "Última comprobación: {{at}}",
-    "last_cleared": "Borrado.",
+    "last_cleared": "Marcado como visto.",
     "latest": "Más reciente",
     "no_last": "No hay resultados de actualización registrados.",
     "not_installed": "no instalado",

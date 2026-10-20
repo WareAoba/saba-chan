@@ -456,7 +456,7 @@
     "downloading": "正在下載",
     "integrity_summary": "{{verified}} 個完好 · {{failed}} 個已變更或無法讀取 · {{skipped}} 個缺少檔案",
     "last_check": "上次檢查：{{at}}",
-    "last_cleared": "已清除。",
+    "last_cleared": "已標記為已查看。",
     "latest": "最新",
     "no_last": "沒有更新結果記錄。",
     "not_installed": "未安裝",

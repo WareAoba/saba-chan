@@ -514,7 +514,7 @@
     "downloading": "ダウンロード中",
     "integrity_summary": "{{verified}} 件正常 · {{failed}} 件変更または読み取り不可 · {{skipped}} 件ファイル欠落",
     "last_check": "最終確認: {{at}}",
-    "last_cleared": "消去しました。",
+    "last_cleared": "確認済みにしました。",
     "latest": "最新",
     "no_last": "アップデート結果の記録はありません。",
     "not_installed": "未インストール",

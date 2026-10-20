@@ -514,7 +514,7 @@
     "downloading": "받는 중",
     "integrity_summary": "정상 {{verified}} · 바뀜/읽기 실패 {{failed}} · 파일 없음 {{skipped}}",
     "last_check": "마지막 확인: {{at}}",
-    "last_cleared": "지웠어요.",
+    "last_cleared": "확인했어요.",
     "latest": "최신",
     "no_last": "기록된 업데이트 결과가 없어요.",
     "not_installed": "설치 안 됨",

@@ -456,7 +456,7 @@
     "downloading": "Wird heruntergeladen",
     "integrity_summary": "{{verified}} intakt · {{failed}} geändert oder unlesbar · {{skipped}} mit fehlenden Dateien",
     "last_check": "Zuletzt geprüft: {{at}}",
-    "last_cleared": "Gelöscht.",
+    "last_cleared": "Als gesehen markiert.",
     "latest": "Neueste",
     "no_last": "Kein Update-Ergebnis gespeichert.",
     "not_installed": "nicht installiert",
