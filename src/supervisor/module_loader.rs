@@ -2295,20 +2295,27 @@ entry = "lifecycle.py"
 
     #[test]
     fn the_minecraft_ready_line_matches_what_the_console_holds() {
-        // minecraft/module.toml 표 원문. 콘솔 줄은 게임 stdout 그대로다(러너 머리 `[날짜] [STDOUT/INFO]`는 파일에만 붙는다)
+        // minecraft/module.toml 표 원문 (모듈 f3a3fb7). 콘솔 줄은 게임 stdout 한 줄 그대로다(러너 머리 `[날짜] [STDOUT/INFO]`는 떼고 준다)
         let table = r#"
 [extensions.saba-core]
-ready_patterns = ['\]: Done \(\d+(\.\d+)?s\)! For help, type "help"']
+ready_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: Done \(\d+(\.\d+)?s\)! For help, type "help"']
 player_join_patterns = [
-    '\]: (?P<name>[A-Za-z0-9_]{1,16}) joined the game\s*$',
-    '\]: (?P<name>[A-Za-z0-9_]{1,16}) \(formerly known as [A-Za-z0-9_]{1,16}\) joined the game\s*$',
+    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name>[A-Za-z0-9_]{1,16}) joined the game\s*$',
+    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name>[A-Za-z0-9_]{1,16}) \(formerly known as [A-Za-z0-9_]{1,16}\) joined the game\s*$',
 ]
-player_leave_patterns = ['\]: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
+player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
 "#;
         let meta = parse_module_toml(&format!("{V1}{table}")).unwrap();
         let ready = regex::Regex::new(&meta.ready_patterns[0]).unwrap();
         assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO]: Done (0.267s)! For help, type "help""#));
-        assert!(!ready.is_match(r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#), "a chat line is not the server");
+        assert!(ready.is_match(r#"[20:07:01 INFO]: Done (12.5s)! For help, type "help""#), "Paper's header");
+        for chat in [
+            r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#,
+            r#"[20:07:05] [Server thread/INFO]: <Steve> ]: Done (0.267s)! For help, type "help""#,
+            r#"[20:07:05] [Server thread/INFO]: [Not Secure] <Steve> ]: Done (0.267s)! For help, type "help""#,
+        ] {
+            assert!(!ready.is_match(chat), "a chat line is not the server: {chat}");
+        }
         assert!(!ready.is_match("[20:06:58] [Server thread/INFO]: Preparing level \"world\""));
     }
 
