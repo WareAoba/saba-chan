@@ -233,7 +233,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 ### 3.2 구조
 - `client.rs`: 데몬 HTTP 클라이언트. 토큰 파일을 읽어 `X-Saba-Token`을 보내고, 401이면 토큰을 다시 읽어 1회 재시도한다(`client.rs:28-33, 97-106`). 업데이터 실행도 데몬 API로 요청한다(`launch_updater` `:785-789`).
-- `bootstrap.rs`: 데몬이 뜨기 전에 필요한 것만 직접 한다. `config.json`의 `gui.ipcPort`·`gui.language` 읽기(포트는 `SABA_IPC_PORT` > 파일 > 기본값, 언어는 `--lang` > `SABA_LANG` > 파일 > 시스템 로캘 > en, `:18-46`), `saba-core` 실행 파일 찾기와 분리 실행(`:49-90`), 정상 종료가 안 될 때 **그 PID만** 강제 종료(`:92`).
+- `bootstrap.rs`: 데몬이 뜨기 전에 필요한 것만 직접 한다. `config.json`의 `gui.ipcPort`·`gui.language` 읽기(포트는 `SABA_IPC_PORT` > 파일 > 기본값, 언어는 `--lang` > `SABA_LANG` > 파일 > 시스템 로캘 > en, `:18-46`. `--lang`이나 `SABA_LANG`으로 직접 골랐을 때만 그 언어를 요청마다 `Accept-Language`로 실어(`client.rs` `Api::new`) 데몬 문구와 그 요청이 부르는 모듈도 같은 언어로 오게 한다. 고르지 않았으면 싣지 않아 데몬이 앱 설정 언어를 따른다), `saba-core` 실행 파일 찾기와 분리 실행(`:49-90`), 정상 종료가 안 될 때 **그 PID만** 강제 종료(`:92`).
 - `ctx.rs`: 데몬이 필요한 명령 앞에서 `ensure_daemon`이 데몬을 확인한다. 꺼져 있으면 물을 수 있을 때(대화형, `--yes` 아님) 켤지 묻고 `start_daemon`으로 띄운다(`:22-41, 43-61`).
 - `catalog.rs`: 게임 명령을 하드코딩하지 않는다. `GET /api/modules`의 `commands`·`command_aliases`와 `GET /api/instance/:id/commands`로 목록·사용법·입력 칸을 만든다(`:1-9`). 인자 검사의 최종 판단은 데몬이 한다. 명령의 `method`는 데몬이 준 값을 그대로 보여 줄 뿐 분기하지 않는다(`server commands --json`, `cmd/server.rs:983`). 데몬은 콘솔 명령의 method를 `console`(`console_template`)이라 부르고 예전 이름 `rcon`·`rcon_template`도 별칭으로 받는다(09b8e4f, 02 §1.2).
 - `slots.rs`: 데이터 slot(03-extensions 4.3)을 출력만 한다. 서버의 `slots`(`ServerCard.badge`, `ServerDetail.status`)와 익스텐션의 `slots["AddServer.options"]`를 읽고, 답은 서버를 만들 때 `extension_data`로 보낸다.

@@ -23,6 +23,8 @@ pub struct Api {
     /// 데몬 포트 (데몬을 띄울 때 그대로 넘긴다)
     pub port: u16,
     token: Arc<RwLock<Option<String>>>,
+    /// 요청마다 싣는 `Accept-Language` (`--lang`·`SABA_LANG`으로 고른 언어). 없으면 데몬이 자기 설정을 따른다
+    pub lang: Option<String>,
 }
 
 fn read_token() -> Option<String> {
@@ -46,10 +48,15 @@ pub fn seg(s: &str) -> String {
 }
 
 impl Api {
-    pub fn new(port: u16) -> Self {
+    pub fn new(port: u16, lang: Option<String>) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(v) = lang.as_deref().and_then(|l| reqwest::header::HeaderValue::from_str(l).ok()) {
+            headers.insert(reqwest::header::ACCEPT_LANGUAGE, v);
+        }
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(2))
             .no_proxy()
+            .default_headers(headers)
             .build()
             .expect("http client");
         Self {
@@ -57,6 +64,7 @@ impl Api {
             base: format!("http://127.0.0.1:{}", port),
             port,
             token: Arc::new(RwLock::new(read_token())),
+            lang,
         }
     }
 
@@ -953,6 +961,29 @@ mod tests {
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
+    async fn request_head(lang: Option<&str>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0; 4096];
+            let n = sock.read(&mut buf).await.unwrap();
+            sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
+            String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase()
+        });
+        Api::new(port, lang.map(str::to_string)).call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
+        server.await.unwrap()
+    }
+
+    /// `--lang`을 주면 데몬 문구도 그 언어로 오게 요청마다 `Accept-Language`를 싣는다. 안 주면 데몬 설정을 따른다
+    #[tokio::test]
+    async fn the_chosen_language_goes_to_the_daemon() {
+        assert!(request_head(Some("ko")).await.contains("\r\naccept-language: ko\r\n"));
+        assert!(!request_head(None).await.contains("accept-language"));
     }
 
     /// 일부만 된 작업(2xx에 `ok`/`success: false`, 예: 업데이트 받기·적용, 챗봇 기억 지우기)은 본문을 명령에 돌려준다:
