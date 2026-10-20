@@ -99,6 +99,16 @@ fn players(result: &Value, cat: &Catalog) -> String {
     out.join("\n")
 }
 
+/// `backups[]` 항목마다 `label` (`2026-10-20 21:03 · 직접 · 120MB`, PC 시간대)
+pub(super) fn label_backups(result: &mut Value, cat: &Catalog) {
+    for b in result.get_mut("backups").and_then(Value::as_array_mut).into_iter().flatten() {
+        let kind = cat.t(&format!("actions.summary.backup_kind.{}", str_of(b, "kind")), &[]);
+        let when = local_time(b.get("created").and_then(Value::as_u64).unwrap_or(0));
+        let size = bytes(b.get("size").and_then(Value::as_u64).unwrap_or(0));
+        b["label"] = Value::String(format!("{} · {} · {}", when, kind, size));
+    }
+}
+
 fn events(result: &Value, cat: &Catalog) -> String {
     let mut events = items(result, "events");
     if events.is_empty() {

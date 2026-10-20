@@ -495,6 +495,8 @@ function App() {
         let offClose;
         if (window.api.onCloseRequest) {
             offClose = window.api.onCloseRequest(() => {
+                // 받았다고 먼저 답한다. 답이 없으면 셸은 렌더러가 멈춘 것으로 보고 다음 닫기에 인터페이스만 끝낸다
+                window.api.closeResponse('ack');
                 // managed 모드로 실행 중인 인스턴스 검출
                 const currentServers = useServerStore.getState().servers;
                 const runningManaged = currentServers.filter((srv) => srv.status === 'running' && isManaged(srv));

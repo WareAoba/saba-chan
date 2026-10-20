@@ -6,18 +6,22 @@ fn main() {
 
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let res_dir = PathBuf::from(&manifest_dir).join("resources");
-        let ico_path = res_dir.join("core-icon.ico");
+        // 저장소에 들어 있는 아이콘이다 (원본 icons/saba-core.png, scripts/make-icons.py로 만든다)
+        let ico_path = PathBuf::from(&manifest_dir).join("icons").join("saba-core.ico");
 
-        println!("cargo:rerun-if-changed=resources/core-icon.ico");
+        println!("cargo:rerun-if-changed=icons/saba-core.ico");
         println!("cargo:rerun-if-changed=build.rs");
 
         // 버전 정보는 아이콘이 없어도 넣는다: 발행 때 versions.py manifest가 이 파일 버전을 대조한다
         let icon = ico_path.exists().then_some(ico_path.as_path());
         if icon.is_none() {
+            // 아이콘 없는 데몬이 릴리스로 나가지 않게 멈춘다
+            if env::var("PROFILE").as_deref() == Ok("release") {
+                panic!("아이콘 파일이 없습니다: {}", ico_path.display());
+            }
             println!(
-                "cargo:warning=Icon file not found, embedding version info only. Place core-icon.ico in: {}",
-                res_dir.display()
+                "cargo:warning=Icon file not found, embedding version info only: {}",
+                ico_path.display()
             );
         }
         {
@@ -162,6 +166,8 @@ fn compile_with_winres(icon: Option<&std::path::Path>) {
     res.set("LegalCopyright", "Copyright (c) 2025 Saba-chan Contributors");
     match res.compile() {
         Ok(_) => println!("cargo:warning=winres fallback: resources embedded"),
+        // 아이콘·버전 정보 없는 데몬이 릴리스로 나가지 않게 멈춘다
+        Err(e) if std::env::var("PROFILE").as_deref() == Ok("release") => panic!("winres fallback failed: {e}"),
         Err(e) => println!("cargo:warning=winres fallback failed: {}", e),
     }
 }

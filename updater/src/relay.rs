@@ -227,9 +227,13 @@ impl RelayClient {
         let manifest = match verify_release(&signed, platform, channel, current) {
             Ok(manifest) => manifest,
             // 최신일 때는 버전만으로 manifest를 찾아서, 같은 버전이 다른 채널에도 있으면 그쪽 것이 온다.
-            // 지금 깔린 그 버전이면 컴포넌트 비교용으로 받는다 (더 높은 버전은 bind_release가 막는다)
-            Err(RelayError::WrongChannel { got, .. }) if check.up_to_date => {
-                verify_release(&signed, platform, &got, current)?
+            // 지금 깔린 그 버전일 때만 컴포넌트 비교용으로 받는다. 다른 채널의 다른 버전은 받지 않는다
+            Err(RelayError::WrongChannel { expected, got }) if check.up_to_date => {
+                let other = verify_release(&signed, platform, &got, current)?;
+                if other.version != current {
+                    return Err(RelayError::WrongChannel { expected, got });
+                }
+                other
             }
             Err(e) => return Err(e),
         };
@@ -427,6 +431,14 @@ mod tests {
         let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.1", "t").await;
         assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
+    }
+
+    // U-11: 최신이라는 답에 다른 버전이 붙어 와도, 다른 채널의 그 버전 manifest는 받지 않는다
+    #[tokio::test]
+    async fn an_up_to_date_answer_does_not_bring_another_channels_newer_version() {
+        let base = fake_relay(r#"{"upToDate":true,"latest":{"version":"0.1.1"}}"#.into(), PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.0", "t").await;
+        assert!(matches!(got, Err(RelayError::WrongChannel { .. })), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
     }
 
     #[test]

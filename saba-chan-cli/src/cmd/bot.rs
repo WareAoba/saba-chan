@@ -853,8 +853,19 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
         .map(|k| (k.clone(), full.get(k).cloned().unwrap_or(Value::Null)))
         .collect();
     let r = ctx.api.save_bot_config(Value::Object(patch)).await?;
+    saved(&r)?;
     ctx.out.done(&t!("bot.config_saved"), &r);
     Ok(())
+}
+
+/// 데몬이 권한 키라 저장하지 않고 이전 값으로 둔 경로(`ignored`, L61)가 있으면 일부 실패다(--json에 응답을 싣는다). 권한은 `perm`으로만 바뀐다
+fn saved(r: &Value) -> Result<()> {
+    let ignored: Vec<&str> = r.get("ignored").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+    if ignored.is_empty() {
+        return Ok(());
+    }
+    let message = t!("bot.config_ignored", keys = ignored.join(", "));
+    Err(crate::error::CliError::Partial { message, data: r.clone() }.into())
 }
 
 /// `bot config` 한 칸의 값 (C14). 키는 데몬 기본값의 모양으로 확인한다: 정해진 칸 아래는 있는 키만,
@@ -890,6 +901,22 @@ fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(L61, 데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고
+    /// 실패로 끝내 그 키와 권한 명령을 보인다. 목록이 없거나 비면(옛 데몬 포함) 저장한 것이다
+    #[test]
+    fn permission_keys_the_daemon_kept_are_not_reported_as_saved() {
+        crate::i18n::init("en");
+        assert!(saved(&json!({ "success": true })).is_ok());
+        assert!(saved(&json!({ "success": true, "ignored": [] })).is_ok());
+        let e = saved(&json!({ "success": true, "ignored": ["nodeSettings.g1.defaultLevel", "nodeSettings.g1.members"] })).unwrap_err();
+        let err = e.to_string();
+        assert!(err.contains("nodeSettings.g1.defaultLevel") && err.contains("nodeSettings.g1.members"), "{err}");
+        assert!(err.contains("saba-chan-cli perm"), "{err}");
+        // --json도 유지된 키를 기계가 읽을 수 있게 싣는다
+        let doc = e.downcast_ref::<crate::error::CliError>().unwrap().to_json();
+        assert_eq!(doc["ignored"], json!(["nodeSettings.g1.defaultLevel", "nodeSettings.g1.members"]), "{doc}");
+    }
 
     /// 페어링 결과: 이 PC에 노드 토큰이 저장됐을 때만 연결됨 (R15). 옛 데몬은 tokenSaved 없이 nodeToken만 준다
     #[test]
