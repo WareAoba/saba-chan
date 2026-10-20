@@ -23,8 +23,9 @@
 
 - 새 함수 이름을 만들지 않고 이미 있는 `[status] players`(02 §`[status]`, 접속자 수 함수)를 넓힌다. 그 함수의 반환에 선택 필드 `players:[{name}]`를 더한다: `{success:true, online:int, max?:int, players?:[{name}]}`. 이름 말고 IP·고유 ID는 싣지 않는다(실어도 데몬이 뺀다). 서버가 꺼져 있으면 지금처럼 실패를 돌려준다.
   - 지원 판정: 모듈이 `[status] players`를 선언하면 이 액션을 지원한다. 이름을 주지 않는 모듈은 수만 보인다. 따로 선언하는 키는 없다.
+  - 데몬은 이름이 필요할 때(아래 라우트·액션)만 config에 `players_detail: true`를 싣는다. 1분마다 도는 갱신에는 싣지 않는다. 이름을 콘솔 명령으로만 얻을 수 있는 모듈은 이 키가 있을 때만 그 명령을 보내고, 없으면 콘솔에 아무것도 찍지 않는 방법으로 수만 읽는다.
   - 통신은 모듈 규칙대로 STDIN → REST → RCON. 지원하는 게임과 출력 형식은 모듈 담당이 공식 문서로 확인한다.
-- 데몬 라우트 `GET /api/instance/:id/players` → 그 함수를 바로 불러(10초 제한) `{success, online, max?, players:[{name}]}`(`players`는 `{name}`만, 없으면 빈 배열). `[status] players`가 없으면 200 `{success:false, error_code:"not_supported"}`, 서버가 꺼져 있으면 409 `server_not_running`. 1분마다 도는 접속자 수 갱신(`supervisor/players.rs`)은 이름을 기억하지 않는다.
+- 데몬 라우트 `GET /api/instance/:id/players` → 그 함수를 `players_detail: true`로 바로 불러(10초 제한) `{success, online, max?, players:[{name}]}`(`players`는 `{name}`만, 없으면 빈 배열). `[status] players`가 없으면 200 `{success:false, error_code:"not_supported"}`, 서버가 꺼져 있으면 409 `server_not_running`. 1분마다 도는 접속자 수 갱신(`supervisor/players.rs`)은 이름을 기억하지 않는다.
 - 액션 `server.players`: Query, safe, 모든 표면, 인스턴스 액션. 요약 `text`는 `접속 3/20명` 다음 줄마다 이름(10명까지, 남은 수는 `외 N명`). 봇 locales `actions.server.players.title`(ko 플레이어, en Players, ja プレイヤー …)과 `actions.summary.players*`.
 - heartbeat `actions[]`의 `server.players` 항목에는 `modules:[이름]`(`[status] players`를 선언한 모듈)을 싣는다. 릴레이는 모듈이 목록에 있는 서버에만 하위 명령 `플레이어`를 만든다. `GET /api/actions?instance=`는 그 인스턴스의 모듈이 지원할 때만 싣는다.
 - 챗봇에 가는 결과는 콘솔과 같이 IP·비밀값을 가린다(`mask_console`).
