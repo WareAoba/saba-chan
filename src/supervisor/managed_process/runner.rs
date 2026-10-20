@@ -179,27 +179,35 @@ impl ManagedProcess {
         let mut child = spawned
             .map_err(|e| anyhow::anyhow!("Failed to spawn saba-runner '{}': {}", runner.display(), e))?;
         let runner_pid = child.id();
-        let reaped = tokio::spawn(async move {
-            let _ = child.wait().await; // 데몬이 사는 동안 좀비를 남기지 않는다
-        });
+        // 러너를 다 볼 때까지 거두지 않는다: 거두지 않은 러너의 pid(Unix는 프로세스 그룹 id)는 다른 프로세스가 받지 못한다
+        let reap = |mut child: tokio::process::Child| {
+            tokio::spawn(async move {
+                let _ = child.wait().await; // 데몬이 사는 동안 좀비를 남기지 않는다
+            })
+        };
 
         // 러너가 서버를 띄우고 runner.json을 쓸 때까지
         for _ in 0..RUNNER_START_TICKS {
             if let Some(info) = read_json::<RunnerInfo>(&runner_file(&run)) {
+                reap(child);
                 return Ok(Self::from_runner(info, token, run, log_pattern, Vec::new(), 0, None));
             }
             if exit_file(&run).exists() {
+                reap(child);
                 return Err(start_failure(&run, &log));
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         // 늦게라도 서버를 띄우면 데몬이 모르는 서버가 남고, 다시 시작하면 같은 폴더·포트에 두 번째 서버가 뜬다.
-        // 러너와 그 자식을 끝내고(Unix는 러너의 프로세스 그룹, Windows는 트리) 러너가 끝난 것을 본 뒤 실패를 돌려준다
-        // 이미 거둔 러너의 pid는 다른 프로세스가 받았을 수 있다: 살아 있을 때만 끝낸다
-        if let Some(pid) = runner_pid.filter(|_| !reaped.is_finished()) {
+        // 러너와 그 자식을 끝내고(Unix는 러너의 프로세스 그룹, Windows는 트리) 러너가 끝난 것을 본 뒤 실패를 돌려준다.
+        // Unix: 러너가 보고 없이 먼저 죽었어도 아직 거두지 않았으니 그 그룹에 남은 서버만 끝난다.
+        // Windows: 트리는 살아 있는 러너에서만 따라갈 수 있다
+        #[cfg(windows)]
+        let runner_pid = runner_pid.filter(|_| matches!(child.try_wait(), Ok(None)));
+        if let Some(pid) = runner_pid {
             let _ = tokio::task::spawn_blocking(move || crate::plugin::kill_tree(pid)).await;
         }
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reaped).await;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reap(child)).await;
         Err(anyhow::anyhow!("saba-runner did not start '{}' in time", program))
     }
 
@@ -409,6 +417,24 @@ mod tests {
             let zombie = std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
             assert!(zombie || !crate::supervisor::process::is_process_alive(pid), "process {pid} must be gone after the failed start");
         }
+    }
+
+    /// 서버만 띄우고 보고 없이 먼저 죽은 러너도 그 서버를 남기지 않는다
+    #[tokio::test]
+    async fn a_runner_that_dies_without_reporting_does_not_leave_its_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let pids = inst.join("pids");
+        let fake = inst.join("fake-runner.sh");
+        std::fs::write(&fake, format!("#!/bin/sh\nsleep 60 &\necho \"$!\" > '{}'\nexit 0\n", pids.display())).unwrap();
+        std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+
+        let started = ManagedProcess::spawn_with_runner(&fake, "server", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3, RunnerLaunch::default()).await;
+        assert!(started.is_err());
+        let server: u32 = std::fs::read_to_string(&pids).unwrap().trim().parse().unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let zombie = std::fs::read_to_string(format!("/proc/{server}/stat")).is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
+        assert!(zombie || !crate::supervisor::process::is_process_alive(server), "server {server} must be gone after the failed start");
     }
 
     /// 데몬이 떨어졌다 다시 붙어도 콘솔 기록과 stdin이 이어지고, 끝나면 종료 기록이 남는다
