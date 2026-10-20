@@ -158,6 +158,24 @@ pub enum Cmd {
         #[arg(value_name = "SHELL")]
         shell: clap_complete::Shell,
     },
+    /// Install Saba-chan on this PC without the window installer
+    Install(InstallArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct InstallArgs {
+    /// Install folder (asked when omitted)
+    #[arg(long, value_name = "PATH")]
+    pub dir: Option<std::path::PathBuf>,
+    /// Game modules to install, comma separated (asked when omitted)
+    #[arg(long, value_name = "NAMES", num_args = 1..)]
+    pub modules: Vec<String>,
+    /// Install the desktop app too, even without a display
+    #[arg(long, conflicts_with = "no_gui")]
+    pub gui: bool,
+    /// Install without the desktop app, even with a display
+    #[arg(long)]
+    pub no_gui: bool,
 }
 
 #[derive(Args, Debug)]

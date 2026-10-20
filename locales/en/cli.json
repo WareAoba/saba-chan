@@ -589,7 +589,8 @@
       "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
       "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
-      "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop"
+      "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
+      "install": "Install Saba-chan on this PC without the window installer"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
@@ -634,7 +635,11 @@
       "events.kind": "Only these events; `instance` also takes `instance.exit` and the like",
       "events.server": "Only events of this server",
       "events.since": "Start after this event id (replays what the daemon still keeps)",
-      "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json"
+      "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json",
+      "install.dir": "Install folder (asked when omitted)",
+      "install.modules": "Game modules to install, comma separated (asked when omitted)",
+      "install.gui": "Install the desktop app too, even without a display",
+      "install.no_gui": "Install without the desktop app, even with a display"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -865,5 +870,21 @@
     },
     "needs_terminal": "The full-screen menu needs a terminal. In scripts, use the subcommands.",
     "command_panicked": "The command stopped unexpectedly. You can keep using other commands."
+  },
+  "install": {
+    "fetching": "Checking the latest release…",
+    "fetch_failed": "Could not get the latest release: {{reason}}",
+    "ask_dir": "Install folder",
+    "unknown_module": "Unknown module: {{name}}. Available modules: {{list}}",
+    "ask_module": "Install the {{name}} module too?",
+    "confirm": "Install Saba-chan to {{dir}}? Setup: {{profile}}, modules: {{modules}}",
+    "profile_desktop": "desktop (with the app)",
+    "profile_headless": "no display (daemon and CLI only)",
+    "no_modules": "none",
+    "installing": "Installing",
+    "not_writable": "Cannot write to {{dir}}. Run again as administrator or pick another folder with --dir",
+    "failed": "Install failed: {{reason}} (details: {{log}})",
+    "done": "Installed to {{dir}}",
+    "next": "Next: {{cli}} daemon start"
   }
 }

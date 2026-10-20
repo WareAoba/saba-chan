@@ -502,7 +502,8 @@
   "help": {
     "cmd": {
       "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
-      "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止"
+      "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
+      "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan"
     },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
@@ -519,7 +520,11 @@
       "events.kind": "只看這些事件；`instance` 也包括 `instance.exit` 等下層事件",
       "events.server": "只看這個伺服器的事件",
       "events.since": "從這個事件編號之後開始（常駐程式仍保留的會重新傳送）",
-      "json_stream": "以 JSON 行（NDJSON）輸出進度與結果（包含 --json）"
+      "json_stream": "以 JSON 行（NDJSON）輸出進度與結果（包含 --json）",
+      "install.dir": "安裝資料夾（省略時會詢問）",
+      "install.modules": "要安裝的遊戲模組，以逗號分隔（省略時會詢問）",
+      "install.gui": "即使沒有螢幕也安裝桌面應用程式",
+      "install.no_gui": "即使有螢幕也不安裝桌面應用程式"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -668,5 +673,21 @@
     },
     "needs_terminal": "全螢幕選單只能在終端機中開啟。指令碼中請使用子指令。",
     "command_panicked": "指令意外停止了。其他指令仍可繼續使用。"
+  },
+  "install": {
+    "fetching": "正在檢查最新版本…",
+    "fetch_failed": "無法取得最新版本：{{reason}}",
+    "ask_dir": "安裝資料夾",
+    "unknown_module": "未知的模組：{{name}}。可選模組：{{list}}",
+    "ask_module": "也要安裝 {{name}} 模組嗎？",
+    "confirm": "要將 Saba-chan 安裝到 {{dir}} 嗎？配置：{{profile}}，模組：{{modules}}",
+    "profile_desktop": "桌面（含應用程式）",
+    "profile_headless": "無螢幕（僅常駐程式和 CLI）",
+    "no_modules": "無",
+    "installing": "正在安裝",
+    "not_writable": "無法寫入 {{dir}}。請以系統管理員身分重新執行，或用 --dir 選擇其他資料夾",
+    "failed": "安裝失敗：{{reason}}（詳細記錄：{{log}}）",
+    "done": "已安裝到 {{dir}}",
+    "next": "下一步：{{cli}} daemon start"
   }
 }

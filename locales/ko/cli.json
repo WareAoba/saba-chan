@@ -716,7 +716,8 @@
       "bot.words": "디스코드 서버에서 이 PC의 서버와 그 명령을 부르는 낱말. 서버 없이: 전부, 옵션 없이: 보기",
       "help": "명령 도움말 보기. --json이면 명령 트리·인자·종료 코드",
       "events": "데몬 이벤트를 실시간으로 따라가기 (--json이면 한 줄에 JSON 하나). Ctrl+C로 멈춰요",
-      "tui": "전체 화면 메뉴 열기"
+      "tui": "전체 화면 메뉴 열기",
+      "install": "창 인스톨러 없이 이 PC에 사바쨩 설치"
     },
     "arg": {
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
@@ -829,7 +830,11 @@
       "events.kind": "이 이벤트만. `instance`는 `instance.exit` 같은 아래 이벤트도 받아요",
       "events.server": "이 서버의 이벤트만",
       "events.since": "이 이벤트 번호 다음부터 (데몬이 아직 가진 것은 다시 보내요)",
-      "json_stream": "진행 상황과 결과를 JSON 줄(NDJSON)로 출력 (--json 포함)"
+      "json_stream": "진행 상황과 결과를 JSON 줄(NDJSON)로 출력 (--json 포함)",
+      "install.dir": "설치 폴더 (없으면 물어봄)",
+      "install.modules": "설치할 게임 모듈, 쉼표로 구분 (없으면 물어봄)",
+      "install.gui": "화면이 없어도 데스크톱 앱까지 설치",
+      "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1060,5 +1065,21 @@
     },
     "needs_terminal": "이 메뉴는 터미널에서만 열려요. 스크립트에서는 하위 명령을 쓰세요.",
     "command_panicked": "명령이 예기치 않게 멈췄어요. 다른 명령은 계속 쓸 수 있어요."
+  },
+  "install": {
+    "fetching": "최신 릴리스를 확인하고 있어요…",
+    "fetch_failed": "최신 릴리스를 받지 못했어요: {{reason}}",
+    "ask_dir": "설치 폴더",
+    "unknown_module": "모르는 모듈이에요: {{name}}. 고를 수 있는 모듈: {{list}}",
+    "ask_module": "{{name}} 모듈도 설치할까요?",
+    "confirm": "{{dir}}에 사바쨩을 설치할까요? 구성: {{profile}}, 모듈: {{modules}}",
+    "profile_desktop": "데스크톱 (앱 포함)",
+    "profile_headless": "화면 없음 (데몬·CLI만)",
+    "no_modules": "없음",
+    "installing": "설치하고 있어요",
+    "not_writable": "{{dir}}에 쓸 수 없어요. 관리자 권한으로 다시 실행하거나 --dir로 다른 폴더를 고르세요",
+    "failed": "설치하지 못했어요: {{reason}} (자세한 기록: {{log}})",
+    "done": "{{dir}}에 설치했어요",
+    "next": "다음: {{cli}} daemon start"
   }
 }

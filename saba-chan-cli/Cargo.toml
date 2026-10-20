@@ -29,6 +29,7 @@ shlex = "1.3"
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../updater" }
 ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+saba-chan-installer-core = { path = "../installer/core" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

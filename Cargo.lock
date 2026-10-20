@@ -4222,6 +4222,7 @@ dependencies = [
  "ratatui",
  "reqwest 0.11.27",
  "rustyline",
+ "saba-chan-installer-core",
  "saba-chan-updater-lib",
  "serde",
  "serde_json",
