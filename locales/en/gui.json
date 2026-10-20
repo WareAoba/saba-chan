@@ -1059,7 +1059,7 @@
     "model": "Model",
     "seconds": "seconds",
     "confirm_commands": "Always ask before running server commands",
-    "confirm_commands_hint": "When on, server commands such as start, stop and restart run only after confirmation on Discord. When off, they run right away and only dangerous ones ask. The user permissions set in the app always come first.",
+    "confirm_commands_hint": "When on, server commands such as start, stop and restart run only after confirmation on Discord. When off, server commands you ask for directly run right away, while dangerous commands and admin tasks still ask. The user permissions set in the app always come first.",
     "memory": "Long-term memory",
     "memory_hint": "Remembers what it learns for later conversations.",
     "web_search": "Web search",

@@ -1059,7 +1059,7 @@
     "model": "Modell",
     "seconds": "Sekunden",
     "confirm_commands": "Vor Serverbefehlen immer fragen",
-    "confirm_commands_hint": "Wenn aktiv, laufen Serverbefehle wie Starten, Stoppen und Neustarten erst nach Bestätigung auf Discord. Wenn aus, laufen sie sofort und nur gefährliche fragen nach. Die in der App festgelegten Benutzerrechte haben immer Vorrang.",
+    "confirm_commands_hint": "Wenn aktiv, laufen Serverbefehle wie Starten, Stoppen und Neustarten erst nach Bestätigung auf Discord. Wenn aus, laufen direkt angefragte Serverbefehle sofort, gefährliche Befehle und Verwaltungsaufgaben fragen aber weiterhin nach. Die in der App festgelegten Benutzerrechte haben immer Vorrang.",
     "memory": "Langzeitgedächtnis",
     "memory_hint": "Merkt sich Gelerntes für spätere Gespräche.",
     "web_search": "Websuche",

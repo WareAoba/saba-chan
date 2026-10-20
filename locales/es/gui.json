@@ -1059,7 +1059,7 @@
     "model": "Modelo",
     "seconds": "segundos",
     "confirm_commands": "Preguntar siempre antes de ejecutar comandos del servidor",
-    "confirm_commands_hint": "Si está activado, los comandos del servidor como iniciar, detener y reiniciar se ejecutan solo tras confirmarlos en Discord. Si está desactivado, se ejecutan al momento y solo los peligrosos piden confirmación. Los permisos de usuario definidos en la app siempre tienen prioridad.",
+    "confirm_commands_hint": "Si está activado, los comandos del servidor como iniciar, detener y reiniciar se ejecutan solo tras confirmarlos en Discord. Si está desactivado, los comandos del servidor que pidas directamente se ejecutan al momento, pero los peligrosos y las tareas de administración siguen pidiendo confirmación. Los permisos de usuario definidos en la app siempre tienen prioridad.",
     "memory": "Memoria a largo plazo",
     "memory_hint": "Recuerda lo que aprende para próximas conversaciones.",
     "web_search": "Búsqueda web",
