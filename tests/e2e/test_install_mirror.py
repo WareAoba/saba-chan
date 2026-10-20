@@ -137,9 +137,10 @@ def test_checksum_mismatch_is_refused(mdaemon, mirror, game_ports):
     # 반쯤 받은 파일이 서버 폴더에 남지 않는다 (인스턴스 기록은 남아 사용자가 다시 시도하거나 지울 수 있다)
     leftovers = [p.name for p in Path(inst["working_dir"]).rglob("*") if p.is_file()] if Path(inst["working_dir"]).exists() else []
     assert leftovers == [], f"설치 실패 뒤 남은 파일: {leftovers}"
-    # 설치가 안 된 서버를 켜면 서버 오류(5xx)가 아니라 이유가 있는 거절
+    # 설치가 안 된 서버를 켜면 서버 오류(5xx)가 아니라 이유가 있는 거절.
+    # 모듈은 시작과 같은 경로(작업 폴더 + server.jar)를 받으므로 그 파일이 없다고 답한다 (#421)
     r = mdaemon.api.post(f"/api/instance/{iid}/start")
-    assert r.status_code == 409 and r.json().get("issue_code") == "NO_SERVER_JAR", f"{r.status_code} {r.text}"
+    assert r.status_code == 409 and r.json().get("issue_code") == "JAR_NOT_FOUND", f"{r.status_code} {r.text}"
 
 
 def test_mojang_unreachable_gives_clear_error(mdaemon, mirror, game_ports):
