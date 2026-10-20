@@ -198,6 +198,7 @@ function App() {
         versionsLoading,
         versionInstalling,
         resettingServer,
+        savingSettings,
         isSettingsClosing,
         handleOpenSettings,
         handleSettingChange,
@@ -748,6 +749,7 @@ function App() {
         handleSaveSettings,
         handleResetServer,
         resettingServer,
+        savingSettings,
         isClosing: isSettingsClosing,
         onOpenDiscordWords: (server) => {
             setDiscordView({ kind: 'words', server });

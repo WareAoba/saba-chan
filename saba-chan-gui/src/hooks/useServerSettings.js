@@ -75,6 +75,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionInstalling, setVersionInstalling] = useState(false);
     const [resettingServer, setResettingServer] = useState(false);
+    const [savingSettings, setSavingSettings] = useState(false);
+    // 저장 응답을 기다리는 동안 다시 누른 저장은 버린다 (G-U5)
+    const savingRef = useRef(false);
     // 실제 설정으로 확인하지 못한 칸 (저장된 캐시나 module.toml 기본값). 사용자가 고치지 않으면 저장하지 않는다
     // (그대로 저장하면 게임 안이나 파일에서 바꾼 값을 덮어쓴다)
     const unconfirmedFields = useRef(new Set());
@@ -489,7 +492,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
     // ── handleSaveSettings ──────────────────────────────────
     const handleSaveSettings = async () => {
-        if (!settingsServer) return;
+        if (!settingsServer || savingRef.current) return;
+        savingRef.current = true;
+        setSavingSettings(true);
         // 첫 await 전에 잡는다: 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
         const request = openRequest.current;
 
@@ -629,6 +634,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 title: t('settings.save_error_title'),
                 message: translateError(error.message),
             });
+        } finally {
+            savingRef.current = false;
+            setSavingSettings(false);
         }
     };
 
@@ -646,6 +654,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         versionsLoading,
         versionInstalling,
         resettingServer,
+        savingSettings,
         // Close animation
         isSettingsClosing,
         requestSettingsClose,

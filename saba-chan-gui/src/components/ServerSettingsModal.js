@@ -482,6 +482,7 @@ export function ServerSettingsModal({
     handleSaveSettings,
     handleResetServer,
     resettingServer,
+    savingSettings,
     isClosing,
     onClose,
     embedded = false,
@@ -639,7 +640,7 @@ export function ServerSettingsModal({
 
             <div className="modal-footer">
                 <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
-                <button className="btn btn-confirm" onClick={handleSaveSettings}>
+                <button className="btn btn-confirm" onClick={handleSaveSettings} disabled={savingSettings}>
                     <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                 </button>
                 {!embedded && (
