@@ -141,8 +141,15 @@ export function createApi({ invoke, hub }) {
             };
             try {
                 const { data } = await get(`/api/servers?notices_after=${noticesAfter}`);
-                for (const evt of data?.port_conflict_stops || []) {
-                    if (Number.isSafeInteger(evt.id) && evt.id > noticesAfter) noticesAfter = evt.id;
+                if (Array.isArray(data?.port_conflict_stops)) {
+                    // 겹친 조회는 같은 커서로 같은 알림을 받는다: 먼저 처리한 응답 뒤의 것만 남긴다
+                    const seen = noticesAfter;
+                    data.port_conflict_stops = data.port_conflict_stops.filter(
+                        (evt) => !Number.isSafeInteger(evt.id) || evt.id > seen,
+                    );
+                    for (const evt of data.port_conflict_stops) {
+                        if (Number.isSafeInteger(evt.id) && evt.id > noticesAfter) noticesAfter = evt.id;
+                    }
                 }
                 notifyConflicts(data);
                 return data;

@@ -34,6 +34,24 @@ describe('포트 충돌 강제 정지 알림', () => {
         expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(2);
     });
 
+    it('겹친 조회가 같은 알림을 받아도 한 번만 알리고 늦은 응답에서는 뺀다', async () => {
+        const evt = stop(1760000000000003, 25565);
+        const pending = [];
+        const invoke = vi.fn((cmd) =>
+            cmd === 'daemon_request' ? new Promise((resolve) => pending.push(resolve)) : Promise.resolve(),
+        );
+        const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } });
+        const first = api.serverList();
+        const second = api.serverList();
+        await vi.waitFor(() => expect(pending).toHaveLength(2));
+        pending[0]({ status: 200, data: { servers: [], port_conflict_stops: [evt] } });
+        pending[1]({ status: 200, data: { servers: [], port_conflict_stops: [evt] } });
+        const [a, b] = await Promise.all([first, second]);
+        expect(a.port_conflict_stops).toHaveLength(1);
+        expect(b.port_conflict_stops).toHaveLength(0);
+        expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(1);
+    });
+
     it('id가 없는 옛 데몬의 알림도 그대로 알리고 커서는 움직이지 않는다', async () => {
         const invoke = vi.fn(async (cmd) =>
             cmd === 'daemon_request'
