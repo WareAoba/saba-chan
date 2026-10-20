@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { listItems } from '../utils/validation';
 import { Icon } from './Icon';
 
 /**
@@ -45,11 +46,25 @@ const SECRET_KEY = /(password|passwd|token|secret)$/i;
  */
 export function changedForCli(values, openedWith, fields = []) {
     const secret = new Set(fields.filter((f) => f.field_type === 'password').map((f) => f.name));
+    const types = Object.fromEntries(fields.map((f) => [f.name, f.field_type]));
     return Object.fromEntries(
         Object.entries(values)
             .filter(([k, v]) => !k.startsWith('_') && String(v ?? '') !== String(openedWith[k] ?? ''))
-            .map(([k, v]) => [k, secret.has(k) || SECRET_KEY.test(k) ? `<${k}>` : v]),
+            .map(([k, v]) => [k, secret.has(k) || SECRET_KEY.test(k) ? `<${k}>` : cliValue(types[k], v)]),
     );
+}
+
+/** CLI `server set` 문법: list는 `a,b`(항목에 쉼표가 있으면 JSON 배열), multiline은 `\`→`\\` 뒤 줄바꿈→`\n` */
+function cliValue(fieldType, v) {
+    if (fieldType === 'list') {
+        const items = listItems(v);
+        return items.some((i) => i.includes(',')) ? JSON.stringify(items) : items.join(',');
+    }
+    if (fieldType === 'multiline')
+        return String(v ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/\n/g, '\\n');
+    return v;
 }
 
 export function fillCli(template, { server, values = {}, extra = {} }) {

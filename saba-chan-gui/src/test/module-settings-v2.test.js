@@ -1,5 +1,6 @@
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { changedForCli } from '../components/CliLine';
 import { SettingsField } from '../components/ServerSettingsModal';
 import { useServerSettings } from '../hooks/useServerSettings';
 import { failedModuleReason } from '../utils/failedModules';
@@ -194,5 +195,24 @@ describe('모듈 로드 실패 이유 (MK2)', () => {
         const text = failedModuleReason(f, t);
         expect(text).toContain('modules.schema_unsupported');
         expect(text).toContain('3');
+    });
+});
+
+describe('CLI로 보기: list·multiline 값 (CLI server set 문법)', () => {
+    const fields = [
+        { name: 'admins', field_type: 'list' },
+        { name: 'motd', field_type: 'multiline' },
+    ];
+
+    it('목록은 쉼표로 잇고, 항목에 쉼표가 있으면 JSON 배열로 쓴다. 빈 줄은 뺀다', () => {
+        expect(changedForCli({ admins: ['Steve', '', 'Alex'] }, { admins: [] }, fields)).toEqual({
+            admins: 'Steve,Alex',
+        });
+        expect(changedForCli({ admins: ['a,b', 'c'] }, {}, fields)).toEqual({ admins: '["a,b","c"]' });
+        expect(changedForCli({ admins: [] }, { admins: ['x'] }, fields)).toEqual({ admins: '' });
+    });
+
+    it('여러 줄 글은 역슬래시를 두 번 쓴 뒤 줄바꿈을 \\n으로 쓴다', () => {
+        expect(changedForCli({ motd: 'a\\b\nc' }, {}, fields)).toEqual({ motd: 'a\\\\b\\nc' });
     });
 });
