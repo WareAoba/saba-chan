@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { SettingsField } from '../components/ServerSettingsModal';
 
@@ -17,4 +17,23 @@ describe('서버 설정 칸의 이름표', () => {
             expect(screen.getByLabelText(/Message/)).toBeTruthy();
         });
     }
+});
+
+// 그리지 못하는 type(스키마 이전 모듈의 'textarea' 등)도 글자 칸으로 보여야 설정이 화면에서 사라지지 않는다 (MK2)
+describe('모르는 설정 타입', () => {
+    it('글자 칸으로 보이고 값을 바꿀 수 있다', () => {
+        const onChange = vi.fn();
+        render(
+            <SettingsField
+                field={{ name: 'motd', label: 'Message', field_type: 'textarea' }}
+                value="hello"
+                modNs="game"
+                onChange={onChange}
+            />,
+        );
+        const input = screen.getByLabelText(/Message/);
+        expect(input.value).toBe('hello');
+        fireEvent.change(input, { target: { value: 'bye' } });
+        expect(onChange).toHaveBeenCalledWith('motd', 'bye');
+    });
 });

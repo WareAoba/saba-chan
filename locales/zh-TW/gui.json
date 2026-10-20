@@ -608,7 +608,7 @@
     "restart_required_title": "需要重新啟動",
     "apply": "套用",
     "module_busy": "此模組的另一個安裝或移除仍在進行中。請在完成後再試一次。",
-    "remove_failed": "移除模組失敗：{{error}}"
+    "remove_failed": "無法移除模組：{{error}}"
   },
   "validation": {
     "required": "{{field}} 為必填欄位",
