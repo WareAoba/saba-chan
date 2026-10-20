@@ -29,6 +29,10 @@ const restartFlagsOf = (server) => ({
 /** 램 상한 칸 값 (MiB, 비면 제한 없음): 데몬 인스턴스 최상위 memory_limit_mb */
 const memoryLimitOf = (server) => (server?.memory_limit_mb == null ? '' : String(server.memory_limit_mb));
 
+/** 정지 대기 칸 값 (초, 비면 모듈 값): 데몬 MK14 module_settings.stop_timeout */
+const stopTimeoutOf = (server) =>
+    server?.module_settings?.stop_timeout == null ? '' : String(server.module_settings.stop_timeout);
+
 /** 문자열 칸 값으로 (없으면 null) */
 const fieldValue = (v) => (v === undefined || v === null ? null : String(v));
 
@@ -161,6 +165,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
             Object.assign(initial, restartFlagsOf(latestServer));
             initial.memory_limit_mb = memoryLimitOf(latestServer);
+            initial.stop_timeout = stopTimeoutOf(latestServer);
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -179,6 +184,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     : {}),
                 ...restartFlagsOf(latestServer),
                 memory_limit_mb: memoryLimitOf(latestServer),
+                stop_timeout: stopTimeoutOf(latestServer),
             });
         }
 
@@ -552,6 +558,12 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             const memoryLimit = String(settingsValues.memory_limit_mb ?? '').trim();
             if (settingsValues.memory_limit_mb !== undefined && memoryLimit !== memoryLimitOf(settingsServer)) {
                 convertedSettings.memory_limit_mb = memoryLimit === '' ? null : memoryLimit;
+            }
+
+            // 정지 대기 시간: 바꿨을 때만 보낸다. 비우면 모듈 값(null), 범위 검사(1~3600)는 데몬이 한다
+            const stopTimeout = String(settingsValues.stop_timeout ?? '').trim();
+            if (settingsValues.stop_timeout !== undefined && stopTimeout !== stopTimeoutOf(settingsServer)) {
+                convertedSettings.stop_timeout = stopTimeout === '' ? null : stopTimeout;
             }
 
             // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)

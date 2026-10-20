@@ -358,6 +358,9 @@
     "start_timeout_toast": "⚠️ 正在启动 {{name}} 服务器...（可能需要一些时间）",
     "stop_confirm_title": "停止服务器",
     "stop_confirm_message": "确定要停止 {{name}} 服务器吗？",
+    "force_stop_title": "不保存就停止吗？",
+    "force_stop_message": "无法（没有控制台）请求 {{name}} 保存后退出。强制停止可能会丢失上次保存之后的进度。",
+    "force_stop_confirm": "不保存直接停止",
     "stop_failed_toast": "❌ 服务器停止失败：{{error}}",
     "stopping_toast": "⏳ 正在停止 {{name}} 服务器...",
     "stop_completed_toast": "✅ {{name}} 服务器已停止！",
@@ -436,6 +439,10 @@
   "errors": {
     "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
     "console_input_full": "服务器仍在处理之前的输入，请稍后再发送。",
+    "rcon_unreachable": "无法连接到服务器的 RCON。请确认服务器已完全启动。",
+    "rcon_auth_failed": "服务器拒绝了 RCON 密码。请尝试重启服务器。",
+    "rcon_timeout": "服务器没有及时响应 RCON 命令。",
+    "rcon_failed": "服务器返回了无法识别的 RCON 响应。",
     "restart_cancelled": "重启期间服务器已在别处停止、启动或删除，因此没有重启。",
     "not_supported": "此服务器的模块不支持此功能。",
     "executable_not_found": "找不到游戏服务器可执行文件。请检查设置中的路径。",
@@ -987,6 +994,7 @@
     "restore_hint": "恢复前会先备份当前状态。",
     "restore_stop_first": "请先停止服务器再恢复。",
     "restored": "已恢复。恢复前的状态也已备份。",
+    "restored_links_missed": "已恢复，但文件夹中有 {{count}} 个链接未能重建（例如 Windows 权限）。路径见守护进程日志。",
     "err_restore_outside": "此备份是为另一个服务器文件夹创建的，无法恢复到当前文件夹。如果你移动过服务器文件夹，请把它移回原处后再试。",
     "err_backup_busy": "此服务器正在进行其他任务（备份、恢复、更新等）。请在完成后重试。",
     "err_schedule_changed": "计划任务已在别处被修改，因此未保存。请重新读取后再修改。",
@@ -1345,6 +1353,13 @@
     "hint": "留空表示不限制。Java 服务器请设为比 -Xmx 大 1~2GB。仅在 Windows 上生效。",
     "placeholder": "不限制",
     "restart_note": "重启后生效。"
+  },
+  "stop_timeout": {
+    "title": "停止等待时间",
+    "desc": "请求服务器保存并关闭后，会等待这么长时间。仍未停止则强制关闭。世界较大时请调长。",
+    "label": "停止等待（秒）",
+    "hint": "1~3600 秒。留空则使用模块默认值。",
+    "placeholder": "模块默认值"
   },
   "loading": {
     "step_init": "正在初始化…",

@@ -242,6 +242,34 @@ function GeneralTab({
                     )}
             </div>
 
+            {/* 정지 대기 시간 (데몬 MK14 module_settings.stop_timeout, 초). 비우면 모듈 값, 지나면 강제로 끈다.
+                데몬이 띄우지 않는 서버(managed:false)는 모듈 stop()이 정지를 맡아 이 값을 쓰지 않는다 */}
+            {settingsServer.managed !== false && (
+                <div className="protocol-mode-section stop-timeout-section">
+                    <div className="protocol-mode-header">
+                        <span className="protocol-mode-title">
+                            <Icon name="clock" size="sm" /> {t('stop_timeout.title')}
+                        </span>
+                    </div>
+                    <p className="protocol-mode-description">{t('stop_timeout.desc')}</p>
+                    <div className="restart-row">
+                        <span>
+                            <strong>{t('stop_timeout.label')}</strong>
+                            <small>{t('stop_timeout.hint')}</small>
+                        </span>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            className="input memory-limit-input"
+                            value={settingsValues.stop_timeout ?? ''}
+                            placeholder={t('stop_timeout.placeholder')}
+                            aria-label={t('stop_timeout.label')}
+                            onChange={(e) => handleSettingChange('stop_timeout', e.target.value)}
+                        />
+                    </div>
+                </div>
+            )}
+
             {/* Module settings fields grouped */}
             {hasModuleSettings ? (
                 (() => {

@@ -212,7 +212,7 @@
         "title": "Backups"
       },
       "create": {
-        "title": "Criar backup"
+        "title": "Backup"
       },
       "restore": {
         "title": "Restaurar backup",
@@ -244,10 +244,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Configurações do Discord",
-          "description": "Idioma, repouso e música"
-        },
         "set": {
           "title": "Alterar configurações do Discord",
           "description": "Idioma, repouso e música"

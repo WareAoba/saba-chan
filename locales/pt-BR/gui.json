@@ -358,6 +358,9 @@
     "start_timeout_toast": "⚠️ Iniciando servidor {{name}}... (pode levar algum tempo)",
     "stop_confirm_title": "Parar Servidor",
     "stop_confirm_message": "Tem certeza de que deseja parar o servidor {{name}}?",
+    "force_stop_title": "Parar sem salvar?",
+    "force_stop_message": "Não há como (sem console) pedir a {{name}} que salve e saia. Forçar o desligamento pode perder o progresso desde o último salvamento.",
+    "force_stop_confirm": "Parar sem salvar",
     "stop_failed_toast": "❌ Falha ao parar servidor: {{error}}",
     "stopping_toast": "⏳ Parando servidor {{name}}...",
     "stop_completed_toast": "✅ Servidor {{name}} parado!",
@@ -436,6 +439,10 @@
   "errors": {
     "start_cancelled": "O servidor foi parado enquanto iniciava, então não foi iniciado.",
     "console_input_full": "O servidor ainda está processando a entrada anterior. Tente novamente em instantes.",
+    "rcon_unreachable": "Não foi possível conectar ao RCON do servidor. Verifique se o servidor terminou de iniciar.",
+    "rcon_auth_failed": "O servidor recusou a senha do RCON. Tente reiniciar o servidor.",
+    "rcon_timeout": "O servidor não respondeu ao comando RCON a tempo.",
+    "rcon_failed": "O servidor enviou uma resposta RCON que não pôde ser lida.",
     "restart_cancelled": "O servidor foi parado, iniciado ou removido em outro lugar durante a reinicialização, então não foi reiniciado.",
     "not_supported": "O módulo deste servidor não oferece suporte a este recurso.",
     "executable_not_found": "Executável do servidor de jogos não encontrado. Verifique o caminho nas configurações.",
@@ -987,6 +994,7 @@
     "restore_hint": "O estado atual é salvo em backup antes.",
     "restore_stop_first": "Pare o servidor antes de restaurar.",
     "restored": "Restaurado. O estado anterior também foi salvo em backup.",
+    "restored_links_missed": "Restaurado, mas {{count}} link(s) dentro da pasta não puderam ser recriados (por exemplo, permissões do Windows). Os caminhos estão no log do daemon.",
     "err_restore_outside": "Este backup foi feito para outra pasta do servidor, então não pode ser restaurado na atual. Se você moveu a pasta do servidor, devolva-a ao lugar original e tente de novo.",
     "err_backup_busy": "Outra tarefa está em andamento para este servidor (backup, restauração, atualização…). Tente de novo quando terminar.",
     "err_schedule_changed": "A programação foi alterada em outro lugar, então não foi salva. Recarregue e faça suas alterações de novo.",
@@ -1345,6 +1353,13 @@
     "hint": "Deixe vazio para não limitar. Em servidores Java, defina 1–2 GB acima do -Xmx. Só vale no Windows.",
     "placeholder": "Sem limite",
     "restart_note": "Vale após reiniciar."
+  },
+  "stop_timeout": {
+    "title": "Tempo de espera ao parar",
+    "desc": "Depois de pedir ao servidor para salvar e desligar, espera-se esse tempo. Se ainda estiver rodando, ele é desligado à força. Aumente para mundos grandes.",
+    "label": "Espera ao parar (segundos)",
+    "hint": "De 1 a 3600 segundos. Deixe vazio para usar o padrão do módulo.",
+    "placeholder": "Padrão do módulo"
   },
   "loading": {
     "step_init": "Inicializando…",

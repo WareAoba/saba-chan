@@ -358,6 +358,9 @@
     "start_timeout_toast": "⚠️ Starten von Server {{name}}... (kann eine Weile dauern)",
     "stop_confirm_title": "Server stoppen",
     "stop_confirm_message": "Sind Sie sicher, dass Sie Server {{name}} stoppen möchten?",
+    "force_stop_title": "Ohne Speichern stoppen?",
+    "force_stop_message": "{{name}} kann nicht zum Speichern und Beenden aufgefordert werden (keine Konsole). Ein erzwungenes Beenden kann den Fortschritt seit dem letzten Speichern verlieren.",
+    "force_stop_confirm": "Ohne Speichern stoppen",
     "stop_failed_toast": "❌ Server-Stopp fehlgeschlagen: {{error}}",
     "stopping_toast": "⏳ Stoppen von Server {{name}}...",
     "stop_completed_toast": "✅ Server {{name}} gestoppt!",
@@ -436,6 +439,10 @@
   "errors": {
     "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
     "console_input_full": "Der Server verarbeitet noch frühere Eingaben. Versuche es gleich noch einmal.",
+    "rcon_unreachable": "Keine Verbindung zum RCON des Servers. Prüfe, ob der Server fertig gestartet ist.",
+    "rcon_auth_failed": "Der Server hat das RCON-Passwort abgelehnt. Starte den Server neu.",
+    "rcon_timeout": "Der Server hat nicht rechtzeitig auf den RCON-Befehl geantwortet.",
+    "rcon_failed": "Der Server hat eine unlesbare RCON-Antwort geschickt.",
     "restart_cancelled": "Der Server wurde während des Neustarts an anderer Stelle gestoppt, gestartet oder entfernt, daher wurde er nicht neu gestartet.",
     "not_supported": "Das Modul dieses Servers unterstützt diese Funktion nicht.",
     "executable_not_found": "Ausführbare Datei des Spielservers nicht gefunden. Bitte überprüfen Sie den Pfad in den Einstellungen.",
@@ -987,6 +994,7 @@
     "restore_hint": "Der aktuelle Stand wird vorher gesichert.",
     "restore_stop_first": "Stoppe den Server vor dem Wiederherstellen.",
     "restored": "Wiederhergestellt. Der vorherige Stand wurde ebenfalls gesichert.",
+    "restored_links_missed": "Wiederhergestellt, aber {{count}} Verknüpfung(en) im Ordner konnten nicht neu erstellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Log.",
     "err_restore_outside": "Diese Sicherung wurde für einen anderen Serverordner erstellt und kann nicht in den aktuellen wiederhergestellt werden. Wenn du den Serverordner verschoben hast, verschiebe ihn zurück und versuche es erneut.",
     "err_backup_busy": "Für diesen Server läuft gerade eine andere Aufgabe (Sicherung, Wiederherstellung, Update …). Versuche es erneut, wenn sie fertig ist.",
     "err_schedule_changed": "Der Zeitplan wurde an anderer Stelle geändert und daher nicht gespeichert. Lade ihn neu und ändere ihn erneut.",
@@ -1345,6 +1353,13 @@
     "hint": "Leer lassen für kein Limit. Bei Java-Servern 1–2 GB über -Xmx setzen. Gilt nur unter Windows.",
     "placeholder": "Kein Limit",
     "restart_note": "Gilt nach einem Neustart."
+  },
+  "stop_timeout": {
+    "title": "Wartezeit beim Stoppen",
+    "desc": "Nachdem der Server zum Speichern und Beenden aufgefordert wurde, wird so lange gewartet. Läuft er danach noch, wird er zwangsweise beendet. Bei großen Welten erhöhen.",
+    "label": "Wartezeit (Sekunden)",
+    "hint": "1 bis 3600 Sekunden. Leer lassen für den Standardwert des Moduls.",
+    "placeholder": "Standardwert des Moduls"
   },
   "loading": {
     "step_init": "Wird initialisiert…",
