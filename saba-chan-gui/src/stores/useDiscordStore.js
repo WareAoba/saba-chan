@@ -64,6 +64,8 @@ const initialState = () => ({
     relayConnecting: false,
     // 릴레이 확인이 연달아 실패한 이유. 비어 있지 않으면 화면이 '연결 중' 대신 실패를 보인다
     relayError: '',
+    // 길드 목록을 다시 읽어야 할 때 올린다 (연결 요청 수락 등). 디스코드 화면이 보고 다시 읽는다
+    cloudNodesStale: 0,
 
     // ── Internal ──
     // 연달아 실패한 릴레이 확인 수. 한 번 놓친 것으로 끊김·실패를 보이지 않는다
@@ -208,6 +210,8 @@ export const useDiscordStore = create((set, get) => ({
         synced.nodeSettings = put(synced.nodeSettings ?? initialState().nodeSettings);
         set({ nodeSettings: put(get().nodeSettings) });
     },
+
+    markCloudNodesStale: () => set({ cloudNodesStale: get().cloudNodesStale + 1 }),
 
     startBot: async () => {
         try {

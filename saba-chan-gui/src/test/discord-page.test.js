@@ -274,6 +274,15 @@ describe('DiscordPage', () => {
         await waitFor(() => expect(document.querySelector('.dc-nav-empty.dc-field-error')).toBeNull());
     });
 
+    // G-D5: 연결 요청을 수락하면(LinkRequests) 새 길드가 목록에 보이도록 다시 읽는다
+    it('길드 목록이 낡았다는 알림을 받으면 노드 목록을 다시 읽는다', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(1);
+        await act(async () => useDiscordStore.getState().markCloudNodesStale());
+        expect(window.api.relayListHostNodes).toHaveBeenCalledTimes(2);
+    });
+
     it('호스트가 바뀐 뒤 늦게 온 옛 노드 목록은 버린다', async () => {
         let resolveOld;
         window.api.relayListHostNodes = vi.fn((host) =>
