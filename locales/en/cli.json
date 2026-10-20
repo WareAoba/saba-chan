@@ -100,7 +100,8 @@
     "words_saved": "Saved the chat words of {{server}}.",
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
-    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
+    "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
   },
   "col": {
     "players": "Players",
@@ -232,7 +233,8 @@
       "forbidden": "You don't have permission to do that in that Discord server.",
       "expired": "The code has expired. Start again.",
       "rate_limited": "Too many requests. Try again in about a minute.",
-      "other": "The relay refused the request ({{code}})."
+      "other": "The relay refused the request ({{code}}).",
+      "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
     },
     "ambiguous": "More than one {{what}} matches \"{{query}}\".",
     "ambiguous_hint": "Be more specific: {{names}}",
@@ -271,7 +273,8 @@
         "unknown_command": "this server has no such command",
         "too_many": "at most 10 words"
       },
-      "not_supported": "See unsupported commands with: saba-chan-cli module info"
+      "not_supported": "See unsupported commands with: saba-chan-cli module info",
+      "agent_too_old": "Check for updates: saba-chan-cli update check"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",

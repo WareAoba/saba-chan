@@ -74,7 +74,8 @@
     "link_declined": "已拒絕連接請求。",
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
-    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}"
+    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
+    "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。"
   },
   "col": {
     "players": "線上玩家",
@@ -185,7 +186,8 @@
       "forbidden": "你沒有在該 Discord 伺服器執行此操作的權限。",
       "expired": "代碼已過期。請重新開始。",
       "rate_limited": "請求過於頻繁。請約一分鐘後再試。",
-      "other": "中繼拒絕了請求（{{code}}）。"
+      "other": "中繼拒絕了請求（{{code}}）。",
+      "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。"
     },
     "ambiguous": "有多個{{what}}符合「{{query}}」。",
     "ambiguous_hint": "請更明確一點：{{names}}",
@@ -216,7 +218,8 @@
       "schedule_changed": "排程工作已在別處變更。請用 saba-chan-cli schedule show 重新確認後再試。",
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
-      "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。"
+      "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。",
+      "agent_too_old": "檢查更新：saba-chan-cli update check"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
