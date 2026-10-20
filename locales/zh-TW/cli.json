@@ -537,6 +537,7 @@
     "restoring": "正在還原 {{backup}}...",
     "restored": "{{name}} 已還原到 {{backup}}。",
     "pre_restore": "先前的世界已保留為備份 {{backup}}。",
+    "links_not_restored": "還原已完成，但資料夾中有 {{count}} 個連結無法重新建立（例如 Windows 權限）。路徑請見守護程式記錄。",
     "start_again": "要再次啟動 {{name}} 嗎？"
   },
   "schedule": {

@@ -537,6 +537,7 @@
     "restoring": "Restauration de {{backup}}...",
     "restored": "{{name}} est revenu à {{backup}}.",
     "pre_restore": "Le monde précédent est conservé dans la sauvegarde {{backup}}.",
+    "links_not_restored": "La restauration est terminée, mais {{count}} lien(s) du dossier n'ont pas pu être recréés (droits Windows, par exemple). Les chemins figurent dans le journal du daemon.",
     "start_again": "Redémarrer {{name}} ?"
   },
   "schedule": {

@@ -537,6 +537,7 @@
     "restoring": "Restaurando {{backup}}...",
     "restored": "{{name}} voltou para {{backup}}.",
     "pre_restore": "O mundo anterior foi mantido como backup {{backup}}.",
+    "links_not_restored": "A restauração terminou, mas {{count}} link(s) dentro da pasta não puderam ser recriados (permissões do Windows, por exemplo). Os caminhos estão no log do daemon.",
     "start_again": "Iniciar {{name}} novamente?"
   },
   "schedule": {

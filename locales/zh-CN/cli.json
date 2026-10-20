@@ -845,6 +845,7 @@
     "restoring": "正在恢复 {{backup}}...",
     "restored": "{{name}} 已恢复到 {{backup}}。",
     "pre_restore": "之前的世界已保留为备份 {{backup}}。",
+    "links_not_restored": "恢复已完成，但文件夹中有 {{count}} 个链接未能重新创建（例如 Windows 权限）。路径见守护进程日志。",
     "start_again": "要再次启动 {{name}} 吗？"
   },
   "schedule": {
