@@ -17,6 +17,20 @@ const BOUNDS_DEBOUNCE_MS: u64 = 500;
 /// 창 크기 저장 디바운스용 세대 번호
 static BOUNDS_GEN: AtomicU64 = AtomicU64::new(0);
 
+/// 닫기 요청을 렌더러에 보내고 답(app_close_response)을 아직 못 받은 시각(ms). 0이면 기다리는 요청이 없다
+static CLOSE_ASKED_AT: AtomicU64 = AtomicU64::new(0);
+/// 이만큼 답이 없는데 다시 닫으면 렌더러가 멈춘 것으로 보고 인터페이스만 끝낸다 (L18c)
+const CLOSE_ANSWER_TIMEOUT_MS: u64 = 5000;
+
+fn renderer_unresponsive(asked_at: u64, now: u64) -> bool {
+    asked_at != 0 && now.saturating_sub(asked_at) >= CLOSE_ANSWER_TIMEOUT_MS
+}
+
+/// 렌더러가 닫기 요청에 답했다 (받음 확인 포함)
+pub fn close_answered() {
+    CLOSE_ASKED_AT.store(0, Ordering::SeqCst);
+}
+
 /// 팝아웃 창 라벨: instanceId를 hex로 (라벨에 쓸 수 있는 글자만 남게)
 pub fn popout_label(instance_id: &str) -> String {
     let hex: String = instance_id.bytes().map(|b| format!("{b:02x}")).collect();
@@ -138,6 +152,18 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // 닫기는 React 확인 창으로 (app_close_response가 답한다)
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
+            let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
+            let asked = CLOSE_ASKED_AT.load(Ordering::SeqCst);
+            if renderer_unresponsive(asked, now) {
+                // 멈춘 렌더러는 확인 창을 띄울 수 없다: 데몬과 서버는 두고 창만 끝낸다
+                tracing::warn!("Renderer did not answer the close request; quitting the interface only");
+                let app = handle.clone();
+                tauri::async_runtime::spawn(async move { crate::lifecycle::interface_only_quit(&app).await });
+                return;
+            }
+            if asked == 0 {
+                CLOSE_ASKED_AT.store(now, Ordering::SeqCst);
+            }
             emit_main(&handle, "app:closeRequest", Value::Null);
         }
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => schedule_save_bounds(&handle),
@@ -282,6 +308,17 @@ pub fn toggle_always_on_top(app: &AppHandle, instance_id: &str, pinned: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_falls_through_only_when_the_renderer_never_answered() {
+        // 묻지 않았거나 답을 받았으면(0) 렌더러가 묻는다
+        assert!(!renderer_unresponsive(0, 1_000_000));
+        // 물은 지 얼마 안 됐으면 기다린다
+        let asked = 1_000_000;
+        assert!(!renderer_unresponsive(asked, asked + CLOSE_ANSWER_TIMEOUT_MS - 1));
+        // 답 없이 지났으면 멈춘 것으로 본다
+        assert!(renderer_unresponsive(asked, asked + CLOSE_ANSWER_TIMEOUT_MS));
+    }
 
     #[test]
     fn popout_label_round_trips() {
