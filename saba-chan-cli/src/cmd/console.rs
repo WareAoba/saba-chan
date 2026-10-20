@@ -382,6 +382,7 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
     if !follow {
         return Ok(());
     }
+    let mut epoch = log_epoch(&first);
     loop {
         tokio::select! {
             _ = tokio::time::sleep(POLL) => {}
@@ -390,6 +391,12 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
         let Ok(r) = ctx.api.daemon_console(Some(next.unwrap_or(0)), Some(500)).await else {
             continue;
         };
+        // 데몬이 다시 켜지면 번호가 1부터 다시 매겨진다: 옛 번호로 받은 답은 버리고 처음부터 다시 읽는다
+        if restarted(epoch, log_epoch(&r)) {
+            epoch = log_epoch(&r);
+            next = None;
+            continue;
+        }
         for l in r.get("lines").and_then(Value::as_array).into_iter().flatten() {
             print(l);
             next = l.get("id").and_then(Value::as_u64).map(|id| id + 1);
@@ -397,10 +404,31 @@ pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
     }
 }
 
+/// 데몬 로그 버퍼의 세대 (옛 데몬은 주지 않는다)
+fn log_epoch(r: &Value) -> Option<u64> {
+    r.get("epoch").and_then(Value::as_u64)
+}
+
+/// 이어 읽는 사이 데몬이 다시 켜졌는가. 세대를 모르면 그렇다고 보지 않는다
+fn restarted(seen: Option<u64>, now: Option<u64>) -> bool {
+    matches!((seen, now), (Some(a), Some(b)) if a != b)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// `daemon logs -f`는 데몬이 다시 켜져 번호가 1부터 다시 시작하면 처음부터 다시 읽는다 (L55)
+    #[test]
+    fn a_new_daemon_log_epoch_means_the_daemon_restarted() {
+        let seen = log_epoch(&json!({ "lines": [{ "id": 900 }], "epoch": 3 }));
+        assert!(restarted(seen, log_epoch(&json!({ "lines": [], "epoch": 4 }))));
+        assert!(!restarted(seen, log_epoch(&json!({ "lines": [{ "id": 901 }], "epoch": 3 }))));
+        // 옛 데몬은 세대를 주지 않는다
+        assert!(!restarted(seen, log_epoch(&json!({ "lines": [] }))));
+        assert!(!restarted(None, Some(4)));
+    }
 
     /// 데몬이 다시 뜨며 살아 있는 서버에 다시 붙으면 버퍼 세대가 바뀌고 순번도 새로 매겨진다.
     /// 실행 여부만 보면 이어 읽던 순번을 그대로 써서 콘솔이 멈춘다
