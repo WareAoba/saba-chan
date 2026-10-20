@@ -67,6 +67,7 @@ async fn main() {
     let ctx = ctx::Ctx {
         api: client::Api::new(port, daemon_lang),
         spawn_port,
+        port_fixed: g.port.is_some(),
         out: output::Out::new(json, color),
         ask: prompt::Prompt::new(json, g.yes),
         in_shell: false,
