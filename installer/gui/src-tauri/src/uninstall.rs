@@ -108,29 +108,27 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     // Step 4: 설치 디렉토리 삭제
     emit("files", "Removing installation files...", 35);
     let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
+    let mut left = Vec::new();
     if let Some(ref dir) = install_dir {
         if dir.exists() {
-            match remove_install_dir(dir) {
-                Ok(_) => tracing::info!("[Uninstall] Removed install dir: {:?}", dir),
-                Err(e) => {
-                    tracing::warn!("[Uninstall] Partial removal of install dir: {}", e);
-                }
+            left = remove_install_dir(dir, dedicated);
+            if left.is_empty() {
+                tracing::info!("[Uninstall] Removed install dir: {:?}", dir);
             }
         }
     }
 
     // Step 5: 사용자 데이터 삭제 (%APPDATA%/saba-chan)
     // python-standalone, python-env, node-portable 등 런타임 디렉토리도 포함
-    let left = if !last_install {
+    if !last_install {
         emit("data-shared", "Keeping user data: another Saba-chan install still uses it", 55);
-        Vec::new()
     } else if keep_settings {
         emit("data-keep", "Removing runtime environments (keeping settings)...", 55);
-        remove_appdata_dir_keep_settings()
+        left.extend(remove_appdata_dir_keep_settings());
     } else {
         emit("data", "Removing user data and runtime environments...", 55);
-        remove_appdata_dir()
-    };
+        left.extend(remove_appdata_dir());
+    }
 
     // Step 6: 임시 파일 삭제
     emit("temp", "Cleaning temporary files...", 70);
@@ -201,9 +199,10 @@ pub async fn do_silent_uninstall() -> i32 {
 
     // 설치 디렉토리 삭제
     let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
+    let mut left = Vec::new();
     if let Some(dir) = &install_dir {
         eprintln!("  Removing install directory: {}", dir.display());
-        let _ = remove_install_dir(dir);
+        left = remove_install_dir(dir, dedicated);
     }
 
     // 사용자 데이터: 다른 설치본이 남아 있으면 그대로 둔다
@@ -211,13 +210,9 @@ pub async fn do_silent_uninstall() -> i32 {
         &saba_chan_updater_lib::uninstall_entry::entries(),
         install_dir.as_deref(),
     );
-    let mut left = Vec::new();
     if last_install {
         eprintln!("  Removing user data and runtime environments...");
-        left = remove_appdata_dir();
-        for path in &left {
-            eprintln!("  Could not remove {}", path.display());
-        }
+        left.extend(remove_appdata_dir());
     } else if install_dir.is_none() {
         eprintln!("  Keeping user data: no Saba-chan install was found next to this uninstaller");
     } else {
@@ -248,6 +243,9 @@ pub async fn do_silent_uninstall() -> i32 {
     }
 
     if !left.is_empty() {
+        for path in &left {
+            eprintln!("  Could not remove {}", path.display());
+        }
         eprintln!("[WARN] Saba-chan was removed, but {} item(s) listed above could not be deleted.", left.len());
         return 1;
     }
@@ -1028,27 +1026,47 @@ fn is_installed_entry(name: &str) -> bool {
 }
 
 /// 설치 폴더 정리: 전용 폴더면 통째로, 아니면 사바쨩이 설치한 항목만 지우고 폴더는 비었을 때만 지운다
-fn remove_install_dir(dir: &PathBuf) -> anyhow::Result<()> {
-    if is_dedicated(dir) {
-        return remove_dir_robust(dir);
-    }
-    tracing::info!("[Uninstall] {:?} is not a dedicated install folder: removing Saba-chan files only", dir);
-    for entry in std::fs::read_dir(dir)?.flatten() {
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
-        // 폴더는 locales만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
-        let ours = if path.is_dir() { name.eq_ignore_ascii_case("locales") } else { is_installed_entry(&name) };
-        if !ours {
-            continue;
+/// 지우지 못하고 남은 항목을 돌려준다 (실행 중인 제거기 자신은 정리 스크립트가 지우므로 빼고)
+fn remove_install_dir(dir: &PathBuf, dedicated: bool) -> Vec<PathBuf> {
+    if dedicated {
+        let _ = remove_dir_robust(dir);
+    } else {
+        tracing::info!("[Uninstall] {:?} is not a dedicated install folder: removing Saba-chan files only", dir);
+        for path in std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()) {
+            if !is_ours(&path) {
+                continue;
+            }
+            if path.is_dir() {
+                let _ = remove_dir_robust(&path);
+            } else {
+                let _ = std::fs::remove_file(&path);
+            }
         }
-        if path.is_dir() {
-            let _ = remove_dir_robust(&path);
-        } else {
-            let _ = std::fs::remove_file(&path);
-        }
+        let _ = std::fs::remove_dir(dir);
     }
-    let _ = std::fs::remove_dir(dir);
-    Ok(())
+    let left = install_leftovers(dir, dedicated, std::env::current_exe().ok().as_deref());
+    for path in &left {
+        tracing::warn!("[Uninstall] Could not remove {:?}", path);
+    }
+    left
+}
+
+/// 설치 폴더 바로 안의 사바쨩 항목인지. 폴더는 locales만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
+fn is_ours(path: &Path) -> bool {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if path.is_dir() { name.eq_ignore_ascii_case("locales") } else { is_installed_entry(&name) }
+}
+
+/// 설치 폴더에 아직 남은 지울 항목: 전용 폴더면 전부, 아니면 사바쨩 항목만. `self_exe`는 뺀다
+fn install_leftovers(dir: &Path, dedicated: bool, self_exe: Option<&Path>) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| dedicated || is_ours(p))
+        .filter(|p| self_exe != Some(p.as_path()))
+        .collect()
 }
 
 /// 사바쨩이 설치한 폴더인지: 바로 안에 데몬이나 GUI 실행 파일이 있어야 한다
@@ -1545,15 +1563,38 @@ mod tests {
         for f in ["saba-core.exe", "saba-chan-gui.exe.old", "i18n.py", "notes.txt"] {
             std::fs::write(dir.join(f), b"").unwrap();
         }
-        remove_install_dir(&dir).unwrap();
+        assert!(remove_install_dir(&dir, false).is_empty());
         let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         left.sort();
         assert_eq!(left, ["MyGame", "Saba-chan", "notes.txt"]);
 
         // 전용 표시가 있으면 폴더째 지운다
         std::fs::write(dir.join(INSTALL_MARKER), b"").unwrap();
-        remove_install_dir(&dir).unwrap();
+        assert!(remove_install_dir(&dir, is_dedicated(&dir)).is_empty());
         assert!(!dir.exists());
+    }
+
+    // L15 (b): 지우지 못한 설치 파일은 완료 화면에 남은 항목으로 보인다. 실행 중인 제거기 자신은 정리 스크립트가 지운다
+    #[test]
+    fn install_files_that_could_not_be_removed_are_reported_except_the_running_uninstaller() {
+        let dir = std::env::temp_dir().join(format!("saba-uninstall-left-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        for f in ["saba-core.exe", "saba-chan-installer.exe", "notes.txt"] {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+        let me = dir.join("saba-chan-installer.exe");
+        let names = |left: Vec<PathBuf>| {
+            let mut n: Vec<_> = left.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+            n.sort();
+            n
+        };
+        // 사용자 파일이 섞인 폴더에서는 사바쨩 항목만 남은 것으로 센다
+        assert_eq!(names(install_leftovers(&dir, false, Some(&me))), ["locales", "saba-core.exe"]);
+        // 전용 폴더는 남은 것 전부
+        assert_eq!(names(install_leftovers(&dir, true, Some(&me))), ["locales", "notes.txt", "saba-core.exe"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(install_leftovers(&dir, true, Some(&me)).is_empty());
     }
 
     #[test]
