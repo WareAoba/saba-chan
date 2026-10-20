@@ -436,6 +436,10 @@
   "errors": {
     "start_cancelled": "伺服器在啟動過程中被停止，因此未啟動。",
     "console_input_full": "伺服器仍在處理先前的輸入，請稍後再傳送。",
+    "rcon_unreachable": "無法連線到伺服器的 RCON。請確認伺服器已完全啟動。",
+    "rcon_auth_failed": "伺服器拒絕了 RCON 密碼。請嘗試重新啟動伺服器。",
+    "rcon_timeout": "伺服器沒有及時回應 RCON 指令。",
+    "rcon_failed": "伺服器傳回了無法辨識的 RCON 回應。",
     "restart_cancelled": "重新啟動期間伺服器已在別處停止、啟動或刪除，因此沒有重新啟動。",
     "not_supported": "此伺服器的模組不支援此功能。",
     "executable_not_found": "找不到遊戲伺服器可執行檔。請檢查設定中的路徑。",
