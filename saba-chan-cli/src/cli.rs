@@ -77,7 +77,7 @@ pub enum Cmd {
     /// Scheduled tasks of a server (backup, restart, announce, update)
     #[command(subcommand, visible_alias = "schedules")]
     Schedule(ScheduleCmd),
-    /// AI chatbot for Discord (API key, settings, memory)
+    /// Talking Saba-chan, the AI for Discord (API key, settings, memory)
     #[command(subcommand, visible_alias = "ai")]
     Chatbot(ChatbotCmd),
     /// Saba-chan updates
@@ -189,7 +189,7 @@ pub enum BackupCmd {
 pub enum PermCmd {
     /// Levels, preset and overrides of one Discord server (name or id; without it: the only paired server)
     Show { guild: Option<String> },
-    /// Give a member (name or id) a level: admin, user, chatbot or banned
+    /// Give a member (name or id) a level: admin, user, chatbot (Talking Saba-chan) or banned
     Grant { guild: String, member: String, level: String },
     /// Take a member's own level away (they get the default level)
     Revoke { guild: String, member: String },
@@ -197,7 +197,7 @@ pub enum PermCmd {
     Default { guild: String, level: String },
     /// Command level preset: loose, default or strict
     Preset { guild: String, preset: String },
-    /// Highest level a request through the chatbot can use
+    /// Highest level a request through Talking Saba-chan can use
     Cap { guild: String, level: String },
     /// Level one command needs (`<server>/<command>`, server by name or id); leave the level out to go back to the preset
     Command { guild: String, key: String, level: Option<String> },
@@ -301,11 +301,11 @@ pub enum ChatbotCmd {
         #[arg(long)]
         delete: bool,
     },
-    /// Delete all chatbot settings and the key
+    /// Delete all Talking Saba-chan settings and the key
     Clear,
     /// Models the saved API key can use (name or id of the Discord server; without it: the only paired server)
     Models { guild: Option<String> },
-    /// Forget what the chatbot remembers (all Discord servers, or one)
+    /// Forget what Talking Saba-chan remembers (all Discord servers, or one)
     Forget {
         #[arg(long)]
         guild: Option<String>,
@@ -685,14 +685,14 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server (name or id; without it: the only paired server)
     Members { guild: Option<String> },
-    /// Chatbot channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
+    /// Talking Saba-chan channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
     Channels {
         /// Without it: every paired Discord server (changing needs exactly one)
         guild: Option<String>,
-        /// Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list
+        /// Channels Talking Saba-chan talks in, by name or id (comma-separated). Replaces the current list
         #[arg(long, value_delimiter = ',', conflicts_with = "no_chatbot")]
         chatbot: Vec<String>,
-        /// Unassign every chatbot channel
+        /// Unassign every Talking Saba-chan channel
         #[arg(long)]
         no_chatbot: bool,
         /// The music player channel, by name or id. Other messages in it get deleted
@@ -834,7 +834,7 @@ pub enum ConfigCmd {
     /// Save settings and the server list to a zip, to move to another PC (game files not included)
     Export {
         file: std::path::PathBuf,
-        /// Also save passwords, the chatbot API key and the bot pairing
+        /// Also save passwords, the Talking Saba-chan API key and the bot pairing
         #[arg(long)]
         secrets: bool,
     },
