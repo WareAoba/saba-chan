@@ -514,7 +514,7 @@
     "downloading": "Downloading",
     "integrity_summary": "{{verified}} intact · {{failed}} changed or unreadable · {{skipped}} with missing files",
     "last_check": "Last checked: {{at}}",
-    "last_cleared": "Cleared.",
+    "last_cleared": "Marked as seen.",
     "latest": "Latest",
     "no_last": "No update result recorded.",
     "not_installed": "not installed",

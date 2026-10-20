@@ -58,7 +58,10 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                     output::heading(&t!("update.notes"));
                     say!("{}", notes.trim_end());
                 }
-                ctx.out.hint("saba-chan-cli update last --clear");
+                // 이미 확인한 결과(GUI가 패치노트를 열었다)는 확인 안내를 하지 않는다
+                if r.get("acknowledged").and_then(Value::as_bool) != Some(true) {
+                    ctx.out.hint("saba-chan-cli update last --clear");
+                }
             });
             Ok(())
         }

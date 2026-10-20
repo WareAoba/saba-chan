@@ -840,9 +840,9 @@ impl Api {
         self.post("/api/updates/launch-updater", json!({ "relaunch": relaunch }))
             .await
     }
-    /// GET /api/updates/last-result?lang — `{result, version, notes}` (notes: 그 언어의 패치노트)
+    /// GET /api/updates/last-result?lang&include_seen=true — `{result, version, notes, acknowledged}` (notes: 그 언어의 패치노트)
     pub async fn update_last_result(&self, lang: &str) -> Result<Value> {
-        self.get(&with_query("/api/updates/last-result", &[("lang", Some(lang.to_string()))])).await
+        self.get(&last_result_path(lang)).await
     }
     pub async fn clear_update_last_result(&self) -> Result<Value> {
         self.delete("/api/updates/last-result").await
@@ -856,6 +856,11 @@ impl Api {
     pub async fn save_update_config(&self, patch: Value) -> Result<Value> {
         self.put("/api/updates/config", patch).await
     }
+}
+
+/// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
+fn last_result_path(lang: &str) -> String {
+    with_query("/api/updates/last-result", &[("lang", Some(lang.to_string())), ("include_seen", Some("true".into()))])
 }
 
 fn with_query(path: &str, params: &[(&str, Option<String>)]) -> String {
@@ -939,6 +944,12 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GUI가 패치노트를 열어 확인한 뒤에도 `update last`가 결과와 노트를 보인다 (L70)
+    #[test]
+    fn the_last_result_includes_one_already_seen_elsewhere() {
+        assert_eq!(last_result_path("ko"), "/api/updates/last-result?lang=ko&include_seen=true");
+    }
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()

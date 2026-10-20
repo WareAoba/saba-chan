@@ -514,7 +514,7 @@
     "downloading": "正在下载",
     "integrity_summary": "{{verified}} 个完好 · {{failed}} 个已更改或无法读取 · {{skipped}} 个缺少文件",
     "last_check": "上次检查：{{at}}",
-    "last_cleared": "已清除。",
+    "last_cleared": "已标记为已查看。",
     "latest": "最新",
     "no_last": "没有更新结果记录。",
     "not_installed": "未安装",
