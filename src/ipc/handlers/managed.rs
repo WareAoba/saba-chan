@@ -209,7 +209,7 @@ pub async fn query_instance_handler(
     }
 }
 
-/// GET /api/instance/:id/properties — Read server.properties
+/// GET /api/instance/:id/properties — 게임 설정 파일 읽기
 pub async fn read_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -224,7 +224,7 @@ pub async fn read_properties_handler(
     }
 }
 
-/// PUT /api/instance/:id/properties — Update server.properties
+/// PUT /api/instance/:id/properties — 게임 설정 파일 쓰기
 pub async fn write_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -274,7 +274,7 @@ pub async fn read_live_settings_handler(
     }
 }
 
-/// POST /api/instance/:id/properties/reset — Reset server.properties to defaults
+/// POST /api/instance/:id/properties/reset — 게임 설정 파일을 기본값으로
 pub async fn reset_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -525,7 +525,7 @@ pub async fn get_installed_version_handler(
 
 /// POST /api/module/:name/install — Install a server
 /// Body: { "version": "1.21.11", "install_dir": "/path/to/server",
-///         "jar_name": "server.jar", "accept_agreements": ["eula"], "initial_settings": {...} }
+///         "server_executable": "server.jar", "accept_agreements": ["eula"], "initial_settings": {...} }
 pub async fn install_server_handler(
     Path(module_name): Path<String>,
     State(state): State<IPCServer>,
@@ -561,7 +561,8 @@ pub async fn install_server_handler(
         }
     };
 
-    let jar_name = payload.get("jar_name").and_then(|v| v.as_str());
+    // 서버 실행 파일 이름 (없으면 모듈 `server_executable`)
+    let executable = payload.get("server_executable").and_then(|v| v.as_str());
     let accepted_agreements = match requested_agreements(&payload, "accept_agreements") {
         Ok(ids) => ids,
         Err(resp) => return *resp,
@@ -683,7 +684,7 @@ pub async fn install_server_handler(
         Err(resp) => return resp,
     };
     guards.extend(own_guard);
-    let jar_name = jar_name.map(str::to_string);
+    let executable = executable.map(str::to_string);
     let install = {
         let state = state.clone();
         let version = version.clone();
@@ -694,7 +695,7 @@ pub async fn install_server_handler(
                 &module_name,
                 &version,
                 &install_dir,
-                jar_name.as_deref(),
+                executable.as_deref(),
                 &accepted_agreements,
                 initial_settings,
                 instance,

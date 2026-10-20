@@ -122,7 +122,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱) |
 | `min`, `max`, `step` | f64 | — |
 | `options` | **Vec<String>** | 문자열만 허용 |
-| `group` | String | 관례상 `saba-chan` / `advanced` / 없음(basic) |
+| `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다(MK6). 그 밖의 묶음은 표시용이다 |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
 | `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일이 달라지는 값). GUI 새 서버 화면과 CLI `server add`가 묻고 `POST /api/instances`의 `module_settings`로 보낸다. GUI는 select만 보인다 |
 | `arg` | String 또는 Vec<String> | — 이 값이 실행 인자로 들어가는 모양. 공백으로 나눈 토큰, `{value}`는 많아야 한 번(`"-port={value}"`, `"-servername {value}"`, `["-Xmx{value}", "-Xms{value}"]`). `{value}`가 없으면 boolean 플래그(있으면 true). `{value}`뿐인 모양은 로드 오류. 실행 인자 미리보기가 사용자가 친 추가 인자를 이 필드로 되돌릴 때 쓴다(`src/launch_args.rs`). 실제 실행 줄은 여전히 `get_launch_command`가 만든다 |
@@ -319,13 +319,13 @@ players = "player_count"
 
 | 함수 | 호출 지점 | 데몬이 넣는 config 키 |
 |---|---|---|
-| `get_launch_command` | managed 시작 `mod.rs:1500-1520`, non-managed 시작 `mod.rs:773-792`, 실행 인자 미리보기(`Supervisor::launch_preview`) | (요청 payload.config) + `server_executable`, `server_jar`(없을 때), `working_dir`, `port`, **`module_settings`를 최상위로 펼침**, `rest_host`, `rest_port`, `rest_username`, `rest_password`, `protocol_mode`, `server_version`, `instance_id`, `extra_args`(사용자가 더한 인자, 문자열 배열), `managed: true/false` (`insert_instance_fields`). 미리보기에서는 `preview: true`도 온다: 이때 모듈은 설정 파일을 쓰는 등 부작용을 내지 않는다 |
-| `stop` | non-managed 정지 `mod.rs:1068-1077`, stdin을 쓸 수 없는 managed 서버(REST 전용, stdin 없는 재부착)의 정지 `mod.rs:971-982` | `server_executable`, `server_jar`, `working_dir`, `module_settings`(펼침), `rest_*`, `protocol_mode`, `server_version`, `instance_id`(`insert_instance_fields`, `mod.rs:481-498`), `pid`, `force`, `managed`. 추적 중인 PID가 없으면 non-managed에서는 부르지 않는다 (`mod.rs:1057-1066`). 콘솔이 있는 managed 서버는 이 함수를 부르지 않고 데몬이 `stop_command`를 stdin으로 보낸 뒤 기다린다 (`mod.rs:949-969`) |
-| `status` | non-managed 상태 조회 `mod.rs:1160-1178` | `server_executable`, `server_jar`, `working_dir`, `pid`, `module_settings`(펼침) |
+| `get_launch_command` | managed 시작 `mod.rs:1500-1520`, non-managed 시작 `mod.rs:773-792`, 실행 인자 미리보기(`Supervisor::launch_preview`) | (요청 payload.config) + `server_executable`, `working_dir`, `port`, **`module_settings`를 최상위로 펼침**, `rest_host`, `rest_port`, `rest_username`, `rest_password`, `protocol_mode`, `server_version`, `instance_id`, `extra_args`(사용자가 더한 인자, 문자열 배열), `managed: true/false` (`insert_instance_fields`). 미리보기에서는 `preview: true`도 온다: 이때 모듈은 설정 파일을 쓰는 등 부작용을 내지 않는다 |
+| `stop` | non-managed 정지 `mod.rs:1068-1077`, stdin을 쓸 수 없는 managed 서버(REST 전용, stdin 없는 재부착)의 정지 `mod.rs:971-982` | `server_executable`, `working_dir`, `module_settings`(펼침), `rest_*`, `protocol_mode`, `server_version`, `instance_id`(`insert_instance_fields`, `mod.rs:481-498`), `pid`, `force`, `managed`. 추적 중인 PID가 없으면 non-managed에서는 부르지 않는다 (`mod.rs:1057-1066`). 콘솔이 있는 managed 서버는 이 함수를 부르지 않고 데몬이 `stop_command`를 stdin으로 보낸 뒤 기다린다 (`mod.rs:949-969`) |
+| `status` | non-managed 상태 조회 `mod.rs:1160-1178` | `server_executable`, `working_dir`, `pid`, `module_settings`(펼침) |
 | `command` | `POST /api/instance/:id/command`에서 명령의 `method`가 `module`일 때 → `mod.rs:1220-1279` | `command`, `args`, `protocol_mode`, `working_dir`, `rest_host`, `rest_port`, `pid`, `instance_id` |
 | `get_credentials` | `/rest` 요청 시. 결과를 캐시하므로 캐시가 있으면 Python을 띄우지 않는다 (`command.rs:660-687`) | `working_dir` |
-| `validate` | `POST /api/instance/:id/validate`, 그리고 `POST /api/instance/:id/start`의 시작 전 점검(`server.rs:712-764`) → `mod.rs:1818-1859` | `server_executable`·`server_jar`(=executable_path), `working_dir`, `port`, `extension_data`, 인스턴스 값(위와 같음), `running` |
-| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance.rs:1276-1349`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}` |
+| `validate` | `POST /api/instance/:id/validate`, 그리고 `POST /api/instance/:id/start`의 시작 전 점검(`server.rs:712-764`) → `mod.rs:1818-1859` | `server_executable`(=executable_path), `working_dir`, `port`, `extension_data`, 인스턴스 값(위와 같음), `running` |
+| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance.rs:1276-1349`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rest_*`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
 | `read_properties` | `GET /properties` | `working_dir`, `extension_data`, 인스턴스 값, `port` |
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
 | `reset_server` | `POST /server/reset` | 위와 같음 |
@@ -335,8 +335,8 @@ players = "player_count"
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1982-1990`) |
 | `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page` 또는 최신을 고를 때 `{settings}` |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
-| `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때, 그리고 `POST /api/module/:name/install`에 `instance_id`가 있을 때 그 인스턴스 `module_settings`), `instance_data_dirs`(같은 때), `jar_name`, `initial_settings` 등 |
-| `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `install_dir`, `jar_name`(**기본값 `"server.jar"` 하드코딩**, `mod.rs:2168-2171`) |
+| `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때, 그리고 `POST /api/module/:name/install`에 `instance_id`가 있을 때 그 인스턴스 `module_settings`), `instance_data_dirs`(같은 때), `server_executable`(요청 값, 없으면 모듈 `server_executable`), `initial_settings` 등 |
+| `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `validate`와 같은 config(`Supervisor::instance_call`: `server_executable`, `working_dir` 등) |
 | `[[queries]]`의 `function` | `POST /api/instance/:id/query/:name`(액션 `server.query:<name>`) → `Supervisor::query_instance` | `validate`와 같은 config(`Supervisor::instance_call`) + `args{입력 이름: 값}`(명령 입력과 같이 검사·기본값 채움, 숫자는 숫자로). 돌려줄 것: `{"success": true, "data": <JSON>}` 또는 실패 `{"success": false, "message": "..."}`. `data`가 없으면 `success`·`message`를 뺀 나머지를 data로 본다. 읽기만 해야 한다(감사에 남지 않고 챗봇·일반 사용자도 부른다) |
 | `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한) | `validate`와 같은 config. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?}`(`max`가 없거나 0이면 최대를 모른다고 본다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 실패가 5분 넘게 이어지면 `message`가 `unresponsive`로 GUI에 보인다. 서버는 정상인데 수를 알 수 없으면(예: 상태 응답을 끈 설정) `online` 없이 `{"success": true}`를 돌려준다: 값은 비우고 실패로 세지 않는다. 읽기만 해야 한다 |
 | `backup_paths` | 백업 때 `[backup] hook = true`인 모듈 (`D:src/ipc/handlers/backup.rs:94-99`) | `working_dir`, `extension_data`, 인스턴스 값 |
@@ -610,7 +610,7 @@ players = "player_count"
 4. ~~zomboid `stop`의 stdin 콜백은 payload 키가 틀리고(`input` vs `command`), managed 판정도 틀렸다~~ → 해결: 공용 `daemon_stdin_command`(`{"command": ...}`)를 쓰고 `managed` 분기는 없어졌다 (`M:zomboid/lifecycle.py:1052-1092`).
 5. ~~palworld가 최상위에서 `extensions.ue4_ini`를 import해서 익스텐션에 하드 의존한다~~ → 해결: `try`로 불러오고 없으면 해당 함수만 `extension_required`를 돌려준다 (`M:palworld/lifecycle.py:33-36, 742-757`).
 6. ~~`__example`의 `install_server`가 쓰는 steamcmd API(`install_game`)가 실제 모듈과 다르다~~ → 해결: `SteamCMD` 클래스를 쓴다 (`M:__example/__example__lifecycle.py:394-395`).
-7. `get_installed_version`의 `jar_name` 기본값이 `"server.jar"`다. 데몬 코드 안의 Minecraft 전용 가정이다 (`mod.rs:2168-2171`).
+7. ~~`get_installed_version`의 `jar_name` 기본값이 `"server.jar"`다~~ → 해결(MK7): `validate`와 같은 config를 받는다.
 8. ~~데몬의 `stop` config에 `instance_id`가 없어 모듈 `stop()`의 콘솔 정지가 실행되지 않는다~~ → 해결: 모듈 호출에 `instance_id`가 들어간다(`D:src/supervisor/mod.rs:494-495`, 59a93b8). 정지 경로는 이렇다. 콘솔이 있는 managed 서버는 데몬이 `stop_command`를 stdin으로 보내고 끝나기를 기다린다(`mod.rs:949-969`, 테스트 `normal_stop_asks_the_console_and_waits`). 모듈 `stop()`은 콘솔이 없을 때(non-managed, REST 전용, stdin 없는 재부착)만 불리므로, 그 안의 콘솔 정지 시도는 보통 실패하고 SIGTERM(POSIX)이나 대기 후 강제 종료로 넘어간다.
 
 ### 6.4 데몬 프로토콜과 운영 문제
@@ -633,8 +633,8 @@ players = "player_count"
 | 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migrationScanDir`가 데몬 `POST /api/modules/detect`(`server.rs:423-443`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/src/api/createApi.js:825-833`, `AddInstanceMigration.js:75-76`) | |
 | 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:185-193`, `cmd/module.rs:108-109`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:467-487`) | — |
-| 6 | `D:src/ipc/handlers/instance.rs:1276-1303` | 설정 동기화 제외 목록에 `java_path`, `ram`, `use_aikar_flags`(Minecraft 전용 키)와 `managed_start`, `graceful_stop`이 **데몬에 하드코딩**돼 있다. `rcon_port`·`rcon_password`·`enable_rcon`은 게임 파일로 넘기지 않으려고 뺀다. 주석·로그는 "server.properties"(Minecraft 파일명) | 게임별 지식이 데몬에 있음 (모듈 매뉴얼 소관) |
-| 7 | `D:src/supervisor/mod.rs:472, 1846, 2168-2171, 1865, 1942` | `server_jar` 키 주입, `jar_name="server.jar"` 기본값, `manage_properties`라는 Minecraft식 명명이 데몬 공용 API에 들어가 있음 | 동일 |
+| 6 | ~~`D:src/ipc/handlers/instance.rs:1276-1303`~~ | ~~설정 동기화 제외 목록에 Minecraft 전용 키가 데몬에 하드코딩~~ → 해결(MK6): 데몬 필드만 데몬이 알고, 나머지는 모듈이 `group = "saba-chan"`으로 선언한 설정을 뺀다 | — |
+| 7 | ~~`D:src/supervisor/mod.rs`~~ | ~~`server_jar` 키 주입, `jar_name="server.jar"` 기본값~~ → 해결(MK7): 모듈에는 `server_executable`·`working_dir`만 넘기고, 설치 요청·config의 실행 파일 이름도 `server_executable`이다. 함수 이름 `manage_properties`·라우트 `/properties`는 남았지만 게임 설정 파일 일반을 뜻한다 | — |
 | 8 | `saba-chan-gui/src/components/ServerSettingsModal.js:354,363` (`module === 'palworld'`), `useServerSettings.js:275` ("Install Minecraft …" 문자열) | GUI가 특정 게임 이름으로 분기 | 인터페이스에 게임 지식 |
 | 9 | `M:palworld/lifecycle.py:33-36`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs:114-126`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). ~~인증 없이 호출하고 포트도 하드코딩~~ → 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
