@@ -45,24 +45,7 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
                 return Ok(());
             }
             let r = ctx.api.update_last_result(crate::i18n::lang()).await?;
-            ctx.out.data(&r, |r| {
-                let rows = last_rows(r);
-                if rows.is_empty() {
-                    say!("{}", output::dim(&t!("update.no_last")));
-                    return;
-                }
-                output::print_kv(&rows);
-                // 패치노트는 GUI처럼 앱 언어로 (없으면 데몬이 영어·한국어 순으로 고른다)
-                if let Some(notes) = r.get("notes").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
-                    say!();
-                    output::heading(&t!("update.notes"));
-                    say!("{}", notes.trim_end());
-                }
-                // 이미 확인한 결과(GUI가 패치노트를 열었다)는 확인 안내를 하지 않는다
-                if r.get("acknowledged").and_then(Value::as_bool) != Some(true) {
-                    ctx.out.hint("saba-chan-cli update last --clear");
-                }
-            });
+            ctx.out.data(&r, |r| print_last(ctx, r));
             Ok(())
         }
         UpdateCmd::Integrity => {
@@ -299,16 +282,50 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     let relaunch: Vec<String> = crate::bootstrap::daemon_binary()
         .map(|p| vec![p.display().to_string(), "--spawned".to_string()])
         .unwrap_or_default();
+    // 적용 전 결과를 기억해 두어야 업데이터가 남긴 새 결과를 가려낸다
+    let before = ctx.api.update_last_result(crate::i18n::lang()).await.ok().and_then(|l| result_stamp(&l));
     let launched = ctx.api.launch_updater(&relaunch).await?;
-    ctx.out.done(
-        &t!("update.updater_launched"),
-        &json!({ "apply": r, "launch": launched }),
-    );
-    ctx.out.hint(&t!("update.after_hint"));
-    // 이 CLI 파일도 교체 대상일 수 있으니 셸 안에서도 여기서 끝낸다
+    if !ctx.out.json {
+        ctx.out.done(&t!("update.updater_launched"), &Value::Null);
+    }
+    // 데몬이 다시 뜨면 결과와 패치노트를 바로 보인다 (GUI 없는 PC). 실행 중인 CLI 파일은 업데이터가 비켜 두고 바꾼다
+    let last = wait_for_result(ctx, before.as_deref()).await;
+    if let Some(l) = last.as_ref().filter(|_| !ctx.out.json) {
+        print_last(ctx, l);
+    }
+    let code = match apply_result(&r, &launched, last.as_ref(), failed) {
+        Ok(v) => {
+            if ctx.out.json {
+                ctx.out.data(&v, |_| {});
+            }
+            0
+        }
+        Err(e) => {
+            ctx.out.error(&e);
+            if last.is_none() {
+                ctx.out.hint(&t!("update.after_hint"));
+            }
+            e.exit_code()
+        }
+    };
+    // 이 셸은 옛 CLI 파일로 떠 있으니 셸 안에서도 여기서 끝낸다
     output::flush();
-    std::process::exit(i32::from(failed));
+    std::process::exit(code);
 }
+
+/// 적용·실행·새 결과를 하나로. 구성요소 실패, 업데이터 실패, 시간 초과는 그 내용을 실은 오류다
+fn apply_result(apply: &Value, launch: &Value, last: Option<&Value>, failed: bool) -> std::result::Result<Value, crate::error::CliError> {
+    let data = json!({ "apply": apply, "launch": launch, "last": last });
+    let message = match last {
+        None => t!("update.result_timeout"),
+        Some(l) if failed || l.pointer("/result/success").and_then(Value::as_bool) != Some(true) => t!("update.apply_failed"),
+        Some(_) => return Ok(data),
+    };
+    Err(crate::error::CliError::Partial { message, data })
+}
+
+/// 업데이터가 적용하고 데몬을 다시 띄우기까지 기다리는 최대 시간
+const APPLY_WAIT: Duration = Duration::from_secs(15 * 60);
 
 async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     if pairs.is_empty() {
@@ -357,6 +374,53 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     let r = ctx.api.save_update_config(Value::Object(patch)).await?;
     ctx.out.done(&t!("update.config_saved"), &r);
     Ok(())
+}
+
+/// `update last`와 적용 뒤 기다리기가 함께 쓰는 결과 표시: 줄 + 앱 언어 패치노트
+fn print_last(ctx: &Ctx, r: &Value) {
+    let rows = last_rows(r);
+    if rows.is_empty() {
+        say!("{}", output::dim(&t!("update.no_last")));
+        return;
+    }
+    output::print_kv(&rows);
+    // 패치노트는 GUI처럼 앱 언어로 (없으면 데몬이 영어·한국어 순으로 고른다)
+    if let Some(notes) = r.get("notes").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
+        say!();
+        output::heading(&t!("update.notes"));
+        say!("{}", notes.trim_end());
+    }
+    // 이미 확인한 결과(GUI가 패치노트를 열었다)는 확인 안내를 하지 않는다
+    if r.get("acknowledged").and_then(Value::as_bool) != Some(true) {
+        ctx.out.hint("saba-chan-cli update last --clear");
+    }
+}
+
+/// 결과의 시각. 업데이터가 남긴 결과마다 다르므로 적용 전 결과와 새 결과를 가른다
+fn result_stamp(r: &Value) -> Option<String> {
+    r.get("result").and_then(|v| v.get("timestamp")).and_then(Value::as_str).map(str::to_string)
+}
+
+fn is_new_result(before: Option<&str>, r: &Value) -> bool {
+    result_stamp(r).is_some_and(|t| before != Some(t.as_str()))
+}
+
+/// 업데이터가 끝나고 데몬이 다시 떠서 새 결과를 줄 때까지 기다린다. 그 사이 데몬이 꺼져 있는 오류는 기다림의 일부다
+async fn wait_for_result(ctx: &Ctx, before: Option<&str>) -> Option<Value> {
+    let spin = crate::progress::spinner(&t!("update.waiting_result"));
+    let deadline = tokio::time::Instant::now() + APPLY_WAIT;
+    let mut found = None;
+    while tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        if let Ok(r) = ctx.api.update_last_result(crate::i18n::lang()).await {
+            if is_new_result(before, &r) {
+                found = Some(r);
+                break;
+            }
+        }
+    }
+    spin.finish_and_clear();
+    found
 }
 
 /// 마지막 적용 결과 (`{result: {timestamp, success, updated_components, failed, message}, version}`). 결과가 없으면 빈 목록
@@ -415,6 +479,41 @@ mod tests {
         assert!(done.unwrap().contains("gui") && failed);
         let (done, failed) = apply_outcome(&json!({ "applied": [], "errors": [] }));
         assert!(done.is_some() && !failed);
+    }
+
+    /// 적용 뒤 기다리기는 업데이터가 남긴 새 결과에서만 끝난다: 적용 전 결과나 결과 없음은 아직이다
+    #[test]
+    fn waiting_ends_only_on_a_result_newer_than_the_one_before_apply() {
+        let old = json!({ "result": { "timestamp": "2026-10-20T10:00:00Z", "success": true } });
+        let new = json!({ "result": { "timestamp": "2026-10-20T13:40:00Z", "success": false } });
+        let before = result_stamp(&old);
+        assert_eq!(before.as_deref(), Some("2026-10-20T10:00:00Z"));
+        assert!(!is_new_result(before.as_deref(), &old));
+        assert!(!is_new_result(before.as_deref(), &json!({ "result": null })));
+        assert!(is_new_result(before.as_deref(), &new));
+        // 적용 전에 결과가 없었으면 처음 생긴 결과가 새 결과다
+        assert!(is_new_result(None, &new));
+        assert!(!is_new_result(None, &json!({})));
+    }
+
+    /// 적용 뒤 실패나 시간 초과는 --json에서도 오류 문서({ok:false, error_code})로 끝나고, 적용 내용을 함께 싣는다
+    #[test]
+    fn a_failed_or_timed_out_apply_ends_as_an_error_document() {
+        let apply = json!({ "applied": ["saba-core"], "errors": [] });
+        let launch = json!({ "ok": true });
+        let good = json!({ "result": { "timestamp": "t", "success": true } });
+        let bad = json!({ "result": { "timestamp": "t", "success": false } });
+
+        let v = apply_result(&apply, &launch, Some(&good), false).unwrap();
+        assert_eq!(v["last"], good);
+
+        for (last, failed) in [(Some(&bad), false), (Some(&good), true), (None, false)] {
+            let doc = apply_result(&apply, &launch, last, failed).unwrap_err().to_json();
+            assert_eq!(doc["ok"], json!(false));
+            assert_eq!(doc["error_code"], json!("partial"));
+            assert_eq!(doc["apply"], apply);
+            assert_eq!(doc["last"], last.cloned().unwrap_or(Value::Null));
+        }
     }
 
     /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)

@@ -531,6 +531,8 @@
     "ready": "可以安装",
     "up_to_date": "已是最新",
     "updater_launched": "更新程序已启动。守护进程正在关闭以进行更新。",
+    "waiting_result": "正在等待更新应用并重启 Saba-chan…",
+    "result_timeout": "15 分钟内没有收到更新结果。请检查更新程序窗口或 Saba-chan 是否已重启",
     "verifying": "正在校验文件...",
     "unknown_key": "{{key}} 不是更新设置。可用设置：{{keys}}",
     "integrity_empty": "尚未记录任何文件。只会检查由更新程序安装的部分。",
