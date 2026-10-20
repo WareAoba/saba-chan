@@ -99,6 +99,9 @@ async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
     if !pre.is_empty() {
         ctx.out.note(&t!("backup.pre_restore", backup = pre));
     }
+    if let Some(msg) = links_missed(&r) {
+        ctx.out.warn(&msg);
+    }
     if was_running
         && ctx
             .ask
@@ -150,6 +153,12 @@ async fn pick(ctx: &Ctx, sv: &Server, query: Option<&str>) -> Result<String> {
     Ok(s(&b, "name").to_string())
 }
 
+/// 되살리지 못한 링크가 있으면 그 수 (경로는 데몬 로그에만 남는다)
+fn links_missed(r: &Value) -> Option<String> {
+    let n = r.get("links_not_restored").and_then(Value::as_u64).filter(|n| *n > 0)?;
+    Some(t!("backup.links_not_restored", count = n))
+}
+
 fn newest_first(items: &mut [Value]) {
     items.sort_by_key(|b| std::cmp::Reverse(b.get("created").and_then(Value::as_u64).unwrap_or(0)));
 }
@@ -180,5 +189,19 @@ pub fn size(bytes: u64) -> String {
         format!("{} B", bytes)
     } else {
         format!("{:.1} {}", v, UNITS[i])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 복원은 끝났어도 되살리지 못한 링크가 있으면 그 수를 알린다. 경로는 데몬 로그에만 있다 (D-B14)
+    #[test]
+    fn a_restore_that_missed_links_says_how_many() {
+        assert!(links_missed(&json!({ "links_not_restored": 2 })).is_some_and(|m| m.contains('2')));
+        assert_eq!(links_missed(&json!({ "links_not_restored": 0 })), None);
+        assert_eq!(links_missed(&json!({})), None, "an older daemon does not report it");
     }
 }

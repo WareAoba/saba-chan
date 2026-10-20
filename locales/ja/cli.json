@@ -845,6 +845,7 @@
     "restoring": "{{backup}} を復元しています...",
     "restored": "{{name}} を {{backup}} の状態に戻しました。",
     "pre_restore": "以前のワールドはバックアップ {{backup}} として残してあります。",
+    "links_not_restored": "復元は終わりましたが、フォルダー内のリンク {{count}} 個は作り直せませんでした（Windows の権限など）。パスはデーモンのログにあります。",
     "start_again": "{{name}} をもう一度起動しますか？"
   },
   "schedule": {

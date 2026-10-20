@@ -537,6 +537,7 @@
     "restoring": "Restaurando {{backup}}...",
     "restored": "{{name}} ha vuelto a {{backup}}.",
     "pre_restore": "El mundo anterior se conserva como copia de seguridad {{backup}}.",
+    "links_not_restored": "La restauración terminó, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, por permisos de Windows). Las rutas están en el registro del daemon.",
     "start_again": "¿Iniciar {{name}} de nuevo?"
   },
   "schedule": {

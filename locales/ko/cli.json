@@ -845,6 +845,7 @@
     "restoring": "{{backup}} 되돌리는 중...",
     "restored": "{{name}}을(를) {{backup}}으로 되돌렸어요.",
     "pre_restore": "되돌리기 전 월드는 백업 {{backup}}으로 남겨 뒀어요.",
+    "links_not_restored": "복원은 끝났지만 폴더 안 링크 {{count}}개는 되살리지 못했어요(Windows 권한 등). 자세한 경로는 데몬 로그에 있어요.",
     "start_again": "{{name}}을(를) 다시 켤까요?"
   },
   "schedule": {

@@ -651,6 +651,7 @@
     "restoring": "Restoring {{backup}}...",
     "restored": "{{name}} is back to {{backup}}.",
     "pre_restore": "The world from before is kept as backup {{backup}}.",
+    "links_not_restored": "The restore finished, but {{count}} link(s) inside the folder could not be recreated (Windows permissions, for example). The daemon log lists the paths.",
     "start_again": "Start {{name}} again?"
   },
   "schedule": {
