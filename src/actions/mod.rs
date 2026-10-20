@@ -541,7 +541,7 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             .iter()
             .map(|(l, c)| (l.to_string(), json!(translated(c, &format!("actions.{}.title", d.id)).unwrap_or_else(|| d.id.to_string()))))
             .collect();
-        items.push(json!({
+        let mut item = json!({
             "id": d.id,
             "kind": d.kind.name(),
             "risk": d.risk,
@@ -551,7 +551,12 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             "input": with_field_titles(remote_schema(d), |name| {
                 cats.iter().filter_map(|(l, c)| Some((l.to_string(), json!(translated(c, &format!("actions.field.{}", name))?)))).collect()
             }),
-        }));
+        });
+        // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`)
+        if let Some(level) = d.discord_level {
+            item["level"] = json!(level);
+        }
+        items.push(item);
     }
     let mut modules: Vec<&LoadedModule> = modules.iter().filter(|m| !m.metadata.queries.is_empty()).collect();
     modules.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
