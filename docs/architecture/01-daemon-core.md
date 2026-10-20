@@ -304,7 +304,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/config/bot` | `bot.rs:12` | - | BotConfig JSON (`config.json`의 `relay`) |
-| PUT | `/api/config/bot` | `bot.rs:18` | 부분 JSON (얕은 머지) | `{success, message}` / 400 `{success:false, error, error_code}`(`invalid_relay_url`: 바뀐 `cloud.relayUrl`이 https나 루프백 http가 아니다, `invalid_request`: 그 밖의 형식·접두사 규칙) / 500 `{error}` |
+| PUT | `/api/config/bot` | `bot.rs:18` | 부분 JSON (얕은 머지) | `{success, message, ignored?}`(`ignored`: 권한 키라 저장하지 않고 이전 값으로 둔 경로 `nodeSettings.<길드>.<키>` 목록, 이름 순. 요청에 그 키가 없거나 값이 지금 값과 같으면 싣지 않는다. 클라이언트는 이 목록을 보여 주고 권한 API를 안내한다) / 400 `{success:false, error, error_code}`(`invalid_relay_url`: 바뀐 `cloud.relayUrl`이 https나 루프백 http가 아니다, `invalid_request`: 그 밖의 형식·접두사 규칙) / 500 `{error}` |
 | GET | `/api/config/gui` | `config.rs:15` | - | GuiSettings JSON |
 | PUT | `/api/config/gui` | `config.rs:21` | 부분 JSON | `{ok:true}` / 400 / 500. 저장에 성공하면 `supervisor.skip_port_check`도 갱신 |
 | GET | `/api/config/:kind/defaults` | `config.rs:47` | - | `{ok, defaults}` (`gui`, `bot`) / 404 |
@@ -523,7 +523,7 @@ Relay 서명 방식(`relay.rs:115-161`):
   - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 인스턴스 액션은 `<instanceId>/<action id>`로, 인스턴스를 받지 않는 액션은 `<action id>`로 덮어쓴다. 내장 `server.start`·`server.stop`·`server.restart`·`server.status`는 명령 경로·GUI 권한 편집기와 같은 `<instanceId>/start|stop|restart|status`를 먼저 보고, 없으면 `<instanceId>/<action id>`를 본다. `PATCH /api/permissions/:guildId`의 `commandLevels`는 `/`가 없는 키를 디스코드·챗봇에서 부를 수 있고 레벨이 코드에 고정되지 않았으며 인스턴스를 받지 않는 액션 id일 때만 받는다(아니면 `invalid_command`, `actions::overridable`). 지우기(`null`)는 예전에 저장된 키도 받는다. 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
   - 판정: 릴레이에서 온 요청(`ChatRequest.remote`)만 판정한다. GUI·CLI 요청은 하지 않는다. 금지는 help·list도 못 쓴다. 챗봇 경로는 `min(작성자 레벨, chatbotCap)`이다. 거부는 `PERMISSION_DENIED {need, level, via?}`.
   - 설정이 없는 길드도 같은 기본값으로 판정한다(제한 없음이 아니다).
-  - 이 키들은 권한 API로만 바뀐다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 이전 값으로 되돌린다(`config_store::keep_permission_keys`).
+  - 이 키들은 권한 API로만 바뀐다. 봇 설정 저장(`PUT /api/config/bot`)은 이 키들을 이전 값으로 되돌리고, 바꾸려던 키를 응답 `ignored`로 알린다(`config_store::keep_permission_keys`).
 - `nodeSettings[guildId].discord`: 디스코드 길드 설정(I2, `ipc/handlers/discord.rs`). 원본은 이것 하나고 릴레이 값은 사본이다.
   - `{locale: "auto"|언어 코드, sleeping, music: {enabled, ui, queueLines 1-20, refreshInterval 2000-10000, normalize}}`. 기본값은 `auto`, false, `{true, true, 5, 4000, true}`(릴레이 기본값과 같다).
   - `/api/discord/:guild/settings`로만 바뀐다. 봇 설정 저장은 이 블록도 되돌린다(`PERMISSION_KEYS`).
