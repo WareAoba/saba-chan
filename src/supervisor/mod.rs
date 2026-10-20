@@ -640,7 +640,8 @@ impl Supervisor {
         if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         for (key, value) in &instance.module_settings {
             // 격리 실행이 쓰기를 받는 폴더 키는 데몬만 정한다 (모듈은 import_settings로 아무 값이나 넣을 수 있다)
-            if !crate::sandbox::grants_write(key) {
+            // 호출마다 데몬이 정하는 키(`RESERVED_CALL_KEYS`)도 모듈 설정 값으로는 싣지 않는다
+            if !crate::sandbox::grants_write(key) && !module_loader::RESERVED_CALL_KEYS.contains(&key.as_str()) {
                 put(key, value.clone());
             }
         }
@@ -3419,6 +3420,17 @@ mod tests {
         let mut cfg = serde_json::Map::new();
         Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pal"));
         assert_eq!(cfg["rest_port"], json!(8242));
+    }
+
+    /// 06 §2: 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다
+    #[test]
+    fn a_module_setting_never_stands_in_for_a_daemon_call_key() {
+        let mut inst = crate::instance::ServerInstance::new("mc", "minecraft");
+        inst.module_settings.insert("players_detail".into(), json!(true));
+        inst.module_settings.insert("stop_call_limit".into(), json!(9999));
+        let mut cfg = serde_json::Map::new();
+        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/mc"));
+        assert!(cfg.get("players_detail").is_none() && cfg.get("stop_call_limit").is_none(), "{cfg:?}");
     }
 
     // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라 격리 실행이 쓰지 못했다.

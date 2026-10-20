@@ -132,6 +132,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `pattern` | String | — 값 전체가 맞아야 하는 정규식(잘못된 정규식은 로드 오류). `format`과 함께 PATCH 저장과 미리보기에서 검사한다(`validator::validate_format`) |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
+- `players_detail`·`stop_call_limit`은 데몬이 호출마다 정해 넣는 키다(`RESERVED_CALL_KEYS`). 같은 이름의 설정은 로드하되 경고하고, 그 값은 모듈 config에 싣지 않는다(`insert_instance_fields`).
 - 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`), 정지 대기 시간(초) `stop_timeout`(모듈 `[config] stop_timeout`보다 앞선다, 1~3600, `supervisor::stop_timeout_of`, MK14. 데몬이 기다리는 managed 정지에 쓴다. non-managed 정지는 모듈 `stop()` 호출 하나이고, 그 호출의 시간 제한이 `stop_timeout + 30`초다(`supervisor::module_stop_limit`))이다. 이 값들도 module_settings라서 모듈 함수 config에 펼쳐 들어간다. 모듈 `stop()`의 config에는 데몬이 실제로 쓸 `stop_timeout`(인스턴스 값, 모듈 값, 기본 30 순)과 그 호출의 시간 제한 `stop_call_limit`(초, non-managed면 `stop_timeout + 30`, managed면 120)이 늘 실린다. `stop_call_limit`이 없으면(0.1.8 데몬) 모듈은 120초 안에 끝나게 기다린다. non-managed 정지(`managed:false`)의 모듈은 이 값만큼 기다리고 자기 상한을 두지 않는다. managed 정지(`managed:true`)의 모듈은 저장·종료 요청만 보내고 바로 `success`를 돌려준다(기다림과 강제 종료는 데몬이 한다).
 - 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file`.
 
