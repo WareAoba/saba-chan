@@ -44,7 +44,10 @@
 
 ## 4. 서버 준비 알림 `instance.ready` (R39)
 
-- 모듈은 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구를 `[detection] ready_patterns`(정규식 목록)로 선언할 수 있다. `[detection] ready_timeout`(초, 기본 600)은 그 문구를 기다리는 시간이다.
+- 모듈은 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구를 `module.toml`의 `[extensions.saba-core] ready_patterns`(정규식 목록)로 선언할 수 있다. 같은 표의 `ready_timeout`(초, 기본 600)은 그 문구를 기다리는 시간이다.
+  - `[extensions.saba-core]`는 데몬이 읽는 예약 표다. 0.1.8 로더는 `[extensions.*]`의 내용을 보지 않으므로 이 키가 있는 모듈도 0.1.8에서 그대로 로드된다(`[detection]`에 두면 스키마 v1 0.1.8 로더가 모르는 키로 거부한다).
+  - `saba-core`라는 id의 익스텐션은 만들 수 없다. 데몬은 그 id의 익스텐션을 설치·인식하지 않는다.
+  - 값 검사: `ready_patterns`는 문자열 배열이고, 정규식이 아닌 항목은 버리고 그 모듈에 경고만 남긴다(로드는 실패하지 않는다). `ready_timeout`이 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다.
 - 데몬 이벤트 `instance.ready {at, instanceId, instance, ok, code?}`를 시작 한 번(자동 재시작 포함)마다 한 번 낸다.
   - `ok:true`: `ready_patterns` 중 하나가 콘솔 줄과 맞았을 때. 선언이 없으면 시작이 성공한 때(managed는 프로세스가 뜨고 시작 가드가 풀린 때, non-managed는 모듈 `start` 성공).
   - `ok:false`: 준비되기 전에 끝났을 때. `code`는 `start_failed`(시작 실패나 준비 전에 프로세스가 끝남), `stopped_while_starting`(준비 전에 사용자가 정지), `ready_timeout`(`ready_timeout`이 지남). 원문·경로·콘솔 줄은 싣지 않는다.
@@ -61,3 +64,40 @@
 - 데몬은 모듈 `stop()`의 config에 이번 정지에 쓸 대기 시간 `stop_timeout`(초)과 그 호출의 시간 제한 `stop_call_limit`(초, non-managed면 `stop_timeout + 30`, managed면 120)을 늘 싣는다. 모듈은 `stop_call_limit`의 30초 앞까지만 기다린다. 키가 없으면(0.1.8 데몬) 지금처럼 90초 상한을 지킨다(modules #40). 값은 인스턴스 설정 `stop_timeout`, 모듈 `[config] stop_timeout`, 기본 30 순이다(`supervisor::stop_timeout_of`, 1~3600).
 - non-managed 정지(`managed:false`)의 모듈 `stop()` 호출 시간 제한은 `stop_timeout + 30`초다(지금의 고정 120초 대신). 모듈은 자기 상한(90초 등)을 두지 않고 `stop_timeout`만큼 기다린 뒤 결과를 돌려준다. 30초는 저장 명령·프로세스 정리에 쓰는 여유다. 0.1.8 데몬(고정 120초)과 섞이지 않게 모듈의 상한 제거는 이 데몬 변경이 든 릴리스(0.1.9)에 같이 싣는다.
 - managed 정지(`managed:true`)에서 모듈 `stop()`은 저장·종료 요청만 보내고 기다리지 않고 바로 `success`를 돌려준다. 끝나기를 기다리는 일과 시간이 지난 뒤 강제 종료는 데몬이 `stop_timeout`으로 한다. 이 호출의 시간 제한은 지금처럼 기본값(120초)이다.
+
+## 7. 설정 타입 목록과 스키마 2 (MK2)
+
+- 0.1.8까지의 규칙(#374)은 그대로다. 스키마 1 모듈의 설정 `type`은 `text`·`password`·`number`·`file`·`select`·`boolean`(`SETTING_TYPES`), 명령 입력 `type`은 `text`·`password`·`number`·`select`·`boolean`(`COMMAND_INPUT_TYPES`) 중 하나이고, 밖이면 로드에 실패한다(스키마 이전 모듈은 경고).
+- 0.1.9는 `schema_version = 2`를 받는다. 스키마 2는 스키마 1에 8절의 키·타입을 더한 것이다. 8절의 키·타입은 스키마 2 모듈에서만 받고, 스키마 1 모듈에 있으면 모르는 키·타입으로 로드에 실패한다(쓰는 쪽이 버전 표시를 잊지 않게).
+  - 0.1.8 데몬은 스키마 2 모듈을 지금 규칙대로 `module.toml schema_version 2 is not supported by this saba-chan (supports 1); update saba-chan`으로 로드하지 않는다. 값 모양이 바뀌는(목록) 설정을 0.1.8이 잘못 다루는 것보다 낫다.
+  - 스키마 2 모듈은 `[module.dependencies] saba-core = ">=0.1.9"`도 적고, 릴리스 매니페스트의 모듈 항목 `requires`에 같은 값을 싣는다. 0.1.9 업데이터는 `requires`를 못 맞춘 모듈 업데이트를 코어보다 먼저 적용하지 않는다(같이 받으면 코어 먼저).
+- 로드 실패를 화면에 보인다: `GET /api/modules`의 `failed[]` 항목에 `error_code:"module_schema_invalid"`와 `problems:[문자열]`(필드 이름과 무엇이 틀렸는지, 경로 없음)을 싣는다. 스키마 버전이 높아 못 읽으면 `error_code:"module_schema_unsupported"`, `required:<버전>`. GUI·CLI는 모듈 목록에 "이 모듈을 읽지 못했습니다"와 `problems`를 보인다(locales `modules.load_failed.*`).
+
+## 8. 설정 표현력과 플레이어 접속·퇴장 이벤트 (MK8)
+
+### 8.1 새 설정 타입 (스키마 2)
+
+- `list`: 문자열 목록. API·저장·모듈 config 모두 JSON 문자열 배열이다. `default`는 TOML 문자열 배열.
+  - `options`가 있으면 각 항목이 그중 하나여야 한다(여러 개 고르기). 없으면 자유 입력 항목이다.
+  - `format`·`pattern`은 항목마다 검사한다. 빈 문자열 항목과 같은 값 두 번은 400 `invalid_format`.
+  - `min_items`·`max_items`(정수, 선택): 항목 수 범위.
+  - 옮기기: 저장된 값이 문자열인 설정이 모듈 업데이트로 `list`가 되면, 데몬이 인스턴스를 읽을 때 쉼표로 나누고 앞뒤 공백·빈 항목을 버려 배열로 바꿔 저장한다. 게임 파일에 쓰는 모양(팰월드 `("A","B")` 등)은 모듈 `configure`가 정한다.
+- `multiline`: 줄바꿈이 있는 문자열. `format`·`pattern`은 값 전체에 쓴다(`pattern`은 여러 줄 모드 없이 그대로). `max_length`(정수, 선택)로 글자 수 상한.
+- 명령 입력 `type`에는 0.1.9에서 새 타입을 더하지 않는다.
+
+### 8.2 새 설정 키 (스키마 2)
+
+- `restart_required = true`(bool, 기본 false): 서버가 켜져 있을 때 바꾸면 다시 켜야 적용되는 설정이다.
+  - `PATCH /api/instance/:id`(설정 저장) 응답에 `restart_required:[설정 이름]`을 싣는다. 이번 저장에서 값이 바뀐 이 키의 설정이고, 서버가 켜져 있을 때만 채운다(꺼져 있으면 빈 배열). GUI·CLI는 "다시 시작해야 적용됩니다"를 보이고 재시작 버튼을 함께 낸다. 데몬이 스스로 재시작하지 않는다.
+  - `GET /api/modules`의 필드에 그대로 실려 GUI가 설정 옆에 표시를 단다.
+- `visible_when`(표, 선택): 다른 설정 값에 따라 이 설정을 보일지. `{ field = "<설정 이름>", equals = <값> }` 또는 `{ field = "<설정 이름>", in = [<값>…] }`.
+  - 로드 검사: `field`가 같은 모듈의 설정이어야 하고 자기 자신이나 순환이면 안 된다. 값은 그 설정의 타입에 맞아야 한다. 어기면 로드 실패(7절 `problems`).
+  - 숨긴 설정은 값을 지우지 않는다. 숨겨진 동안 `required` 검사를 하지 않는다. 숨겨져 있어도 값이 오면 지금처럼 검사해 저장한다.
+  - 판단은 데몬이 한다: `GET /api/instance/:id`의 설정 응답에 `hidden:[설정 이름]`을 싣는다(저장된 값 기준). GUI는 입력 중 값으로 같은 규칙을 다시 계산해 바로 숨기되, 저장 결과는 데몬 응답을 따른다.
+
+### 8.3 플레이어 접속·퇴장 이벤트
+
+- 모듈은 `[extensions.saba-core]`(4절과 같은 예약 표)에 `player_join_patterns`·`player_leave_patterns`(정규식 목록)를 선언할 수 있다. 각 정규식은 이름 그룹 `(?P<name>…)`이 있어야 하고, 없거나 정규식이 아니면 그 항목만 버리고 경고를 남긴다. 표에 두는 까닭은 4절과 같다(0.1.8도 로드).
+- 데몬이 콘솔을 읽는 시작(managed)에서 콘솔 줄이 맞으면 이벤트 `instance.player {at, instanceId, instance, player, change:"join"|"leave"}`를 낸다. 시스템 줄(`LogSource::System`)은 보지 않는다. non-managed 시작에서는 0.1.9에 이 이벤트가 없다.
+- 이름 말고 IP·고유 ID는 싣지 않는다. 모듈 패턴이 다른 그룹을 잡아도 `name`만 쓴다. 이름은 64자에서 자르고 제어 문자를 뺀다.
+- relay로 올리지 않는다(0.1.9). GUI·CLI 이벤트 스트림(`events --kind instance`)과 TUI 접속자 표시가 쓴다. 1분 접속자 수 갱신(`supervisor/players.rs`)은 그대로다.
