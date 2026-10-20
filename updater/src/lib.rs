@@ -1251,7 +1251,8 @@ impl UpdateManager {
     /// 순환하면 남은 것 중 맨 앞부터 적용한다
     pub fn apply_order(&self, keys: &[String]) -> Vec<String> {
         let mut rest = keys.to_vec();
-        rest.sort_by_key(|k| Self::component_apply_priority(&Component::from_manifest_key(k)));
+        // 순위는 GUI·CLI 실행 여부를 프로세스 목록에서 읽으므로 키마다 한 번만 구한다
+        rest.sort_by_cached_key(|k| Self::component_apply_priority(&Component::from_manifest_key(k)));
         let mut ordered = Vec::with_capacity(rest.len());
         while !rest.is_empty() {
             let waits = |key: &String| {
