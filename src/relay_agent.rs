@@ -991,6 +991,7 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "backup.done" => pick(&["at", "instanceId", "instance", "kind", "ok", "name"]),
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
+        "instance.ready" => pick(&["at", "instanceId", "instance", "ok", "code"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         _ => return None,
@@ -1647,6 +1648,9 @@ mod tests {
         assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
+        // R39 준비 알림은 계약 필드만 (디스코드 "다 켜졌어요")
+        let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
+        assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));
         // 여러 단계 실행은 디스코드에서 시작한 것만
         assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
         assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");

@@ -1177,6 +1177,13 @@ mod tests {
         assert_eq!(line.content, "경고");
     }
 
+    /// 러너 파일의 줄은 머리를 떼고 게임 stdout 한 줄 처음부터 콘솔에 들어간다: 모듈 패턴(`^`로 게임 로그 머리부터)이 그대로 맞는다 (R39·MK8)
+    #[test]
+    fn a_runner_line_reaches_the_console_as_the_game_wrote_it() {
+        let line = parse_disk_log_line(0, "[2026-10-20 20:07:01] [STDOUT/INFO] [20:07:01] [Server thread/INFO]: Steve joined the game");
+        assert_eq!((line.source, line.content.as_str()), (LogSource::Stdout, "[20:07:01] [Server thread/INFO]: Steve joined the game"));
+    }
+
     // ═══════════════════════════════════════════════════════
     // LogBuffer 단위 테스트
     // ═══════════════════════════════════════════════════════

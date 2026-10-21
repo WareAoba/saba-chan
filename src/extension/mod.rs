@@ -389,8 +389,12 @@ pub struct ExtensionLoadError {
 }
 
 /// 익스텐션 id는 폴더 이름이 되므로 한 단계 이름이어야 한다: 영문·숫자·`-`·`_`만.
+/// `saba-core`는 모듈의 `[extensions.saba-core]`가 데몬 몫이라 쓸 수 없다
 pub fn is_valid_extension_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    !id.is_empty()
+        && id.len() <= 64
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && id != crate::supervisor::module_loader::DAEMON_TABLE
 }
 
 fn ensure_valid_extension_id(id: &str) -> Result<()> {

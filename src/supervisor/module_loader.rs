@@ -111,6 +111,12 @@ pub struct ModuleMetadata {
     /// [detection] crash_artifacts — 크래시 때 생기는 파일 (작업 디렉터리 기준, 마지막 칸만 `*` `?`). A1용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crash_artifacts: Vec<String>,
+    /// [extensions.saba-core] ready_patterns — 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구 (정규식). R39 `instance.ready`용
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ready_patterns: Vec<String>,
+    /// [extensions.saba-core] ready_timeout — 준비 문구를 기다리는 시간(초). 없으면 600
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_timeout: Option<u64>,
     /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<ModulePreset>,
@@ -1306,6 +1312,8 @@ impl ModuleToml {
             crash_artifacts: self.detection
                 .map(|d| d.crash_artifacts)
                 .unwrap_or_default(),
+            ready_patterns: Vec::new(),
+            ready_timeout: None,
             module_aliases: self.aliases.as_ref()
                 .map(|a| a.module_aliases.clone())
                 .unwrap_or_default(),
@@ -1360,6 +1368,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     problems.extend(toml_data.value_problems());
 
     let mut meta = toml_data.into_metadata();
+    let daemon_warnings = read_daemon_table(&mut meta);
     if meta.schema_version >= 2 {
         problems.extend(list_default_problems(&meta));
     }
@@ -1408,7 +1417,57 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     for f in meta.settings.iter().flat_map(|s| &s.fields).filter(|f| RESERVED_CALL_KEYS.contains(&f.name.as_str())) {
         meta.warnings.push(format!("settings field '{}' is a name saba-chan sets on each call; its value is not passed to the module", f.name));
     }
+    for w in &daemon_warnings {
+        tracing::warn!("module '{}': {}", meta.name, w);
+    }
+    meta.warnings.extend(daemon_warnings);
     Ok(meta)
+}
+
+/// 데몬이 읽는 `[extensions.<이름>]` 표. 0.1.8 로더가 내용을 검사하지 않는 자리라 새 키를 여기 둔다.
+/// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
+pub const DAEMON_TABLE: &str = "saba-core";
+/// 이 데몬이 읽는 `[extensions.saba-core]` 키
+const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout"];
+/// `ready_timeout` 상한(초)
+pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
+
+/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`을 읽는다 (R39). 틀린 값은 그 값만 빼고 경고로 남긴다
+fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
+    let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
+    let mut warnings = Vec::new();
+    // 이 표는 버전 사이를 잇는 자리라, 더 새 데몬의 키가 있어도 모듈을 거부하지 않는다
+    if let Some(obj) = table.as_object() {
+        for key in obj.keys().filter(|k| !DAEMON_TABLE_KEYS.contains(&k.as_str())) {
+            warnings.push(format!("extensions.{}.{} is not known to this saba-chan; ignored", DAEMON_TABLE, key));
+        }
+    }
+    match table.get("ready_patterns") {
+        None => {}
+        Some(serde_json::Value::Array(items)) => {
+            for item in items {
+                match item.as_str() {
+                    Some(p) if regex::Regex::new(p).is_ok() => meta.ready_patterns.push(p.to_string()),
+                    Some(p) => warnings.push(format!("extensions.{}.ready_patterns '{}' is not a valid regex; ignored", DAEMON_TABLE, p)),
+                    None => warnings.push(format!("extensions.{}.ready_patterns must hold strings; ignored {}", DAEMON_TABLE, item)),
+                }
+            }
+        }
+        Some(_) => warnings.push(format!("extensions.{}.ready_patterns must be a list of strings; ignored", DAEMON_TABLE)),
+    }
+    match table.get("ready_timeout") {
+        None => {}
+        Some(v) => match v.as_u64().filter(|n| *n > 0) {
+            // 디스코드는 시작을 시킨 채널을 READY_TIMEOUT_MAX_SECS 동안만 기억한다 (05 §4.4): 더 길면 알림이 사라진다
+            Some(n) if n > READY_TIMEOUT_MAX_SECS => {
+                meta.ready_timeout = Some(READY_TIMEOUT_MAX_SECS);
+                warnings.push(format!("extensions.{}.ready_timeout is at most {} seconds; using {}", DAEMON_TABLE, READY_TIMEOUT_MAX_SECS, READY_TIMEOUT_MAX_SECS));
+            }
+            Some(n) => meta.ready_timeout = Some(n),
+            None => warnings.push(format!("extensions.{}.ready_timeout must be a positive number of seconds; using the default", DAEMON_TABLE)),
+        },
+    }
+    warnings
 }
 
 /// list 기본값은 PATCH와 같은 검사(항목 수·중복·options·형식)를 받는다: 새 인스턴스가 그대로 받는 값이다
@@ -2548,6 +2607,53 @@ entry = "lifecycle.py"
         assert_eq!(meta.graceful_exit_patterns, vec!["Stopping"]);
         assert_eq!(meta.crash_artifacts, vec!["crash-reports/*.txt"]);
         assert_eq!(meta.extensions["backup"]["paths"][0], "world");
+    }
+
+    /// R39: 준비 문구는 `[extensions.saba-core]`에 둔다 (0.1.8 로더가 거부하지 않는 자리). 틀린 값은 그 값만 빼고 경고다
+    #[test]
+    fn schema_v1_reads_ready_patterns_from_the_daemon_table() {
+        let toml = format!("{V1}\n[extensions.saba-core]\nready_patterns = ['Done \\(', '(']\nready_timeout = 120\n");
+        let meta = parse_module_toml(&toml).unwrap();
+        assert_eq!((meta.ready_patterns.clone(), meta.ready_timeout), (vec!["Done \\(".to_string()], Some(120)));
+        assert!(meta.warnings.iter().any(|w| w.contains("'('")), "{:?}", meta.warnings);
+        let zero = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 0\n")).unwrap();
+        assert_eq!(zero.ready_timeout, None);
+        assert!(zero.warnings.iter().any(|w| w.contains("ready_timeout")));
+        let long = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 3600\n")).unwrap();
+        assert_eq!(long.ready_timeout, Some(900), "a start notice is only remembered for 15 minutes");
+        assert!(long.warnings.iter().any(|w| w.contains("at most 900")), "{:?}", long.warnings);
+        assert_eq!(parse_module_toml(V1).unwrap().ready_patterns, Vec::<String>::new());
+        let later = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 30\nfrom_a_later_core = true\n")).unwrap();
+        assert_eq!(later.ready_timeout, Some(30), "a key from a newer daemon does not stop the module from loading");
+        assert!(later.warnings.iter().any(|w| w.contains("from_a_later_core")), "{:?}", later.warnings);
+        assert!(!crate::extension::is_valid_extension_id(DAEMON_TABLE), "the daemon table name is reserved");
+    }
+
+    #[test]
+    fn the_minecraft_ready_line_matches_what_the_console_holds() {
+        // minecraft/module.toml 표 원문 (모듈 edc7004). 콘솔 줄은 게임 stdout 한 줄 그대로다(러너 머리 `[날짜] [STDOUT/INFO]`는 떼고 준다)
+        let table = r#"
+[extensions.saba-core]
+ready_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: Done \(\d+(\.\d+)?s\)! For help, type "help"']
+player_join_patterns = [
+    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: (?P<name>[A-Za-z0-9_]{1,16}) joined the game\s*$',
+    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: (?P<name>[A-Za-z0-9_]{1,16}) \(formerly known as [A-Za-z0-9_]{1,16}\) joined the game\s*$',
+]
+player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
+"#;
+        let meta = parse_module_toml(&format!("{V1}{table}")).unwrap();
+        let ready = regex::Regex::new(&meta.ready_patterns[0]).unwrap();
+        assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO]: Done (0.267s)! For help, type "help""#));
+        assert!(ready.is_match(r#"[20:07:01 INFO]: Done (12.5s)! For help, type "help""#), "Paper's header");
+        assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO] [minecraft/DedicatedServer]: Done (9.8s)! For help, type "help""#), "Forge's logger");
+        for chat in [
+            r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#,
+            r#"[20:07:05] [Server thread/INFO]: <Steve> ]: Done (0.267s)! For help, type "help""#,
+            r#"[20:07:05] [Server thread/INFO]: [Not Secure] <Steve> ]: Done (0.267s)! For help, type "help""#,
+        ] {
+            assert!(!ready.is_match(chat), "a chat line is not the server: {chat}");
+        }
+        assert!(!ready.is_match("[20:06:58] [Server thread/INFO]: Preparing level \"world\""));
     }
 
     #[test]
