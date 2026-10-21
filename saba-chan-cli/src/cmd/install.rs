@@ -253,22 +253,23 @@ fn next_command(dir: &Path, windows: bool) -> String {
     if windows {
         format!("pushd \"{}\"\n.\\saba-chan-cli daemon start", dir.display())
     } else {
-        let cli = dir.join(cli_file()).display().to_string();
+        // 유닉스 셸 꼴이라 구분자와 파일 이름도 유닉스 것으로 (`dir.join`은 Windows에서 `\`를 넣는다)
+        let cli = format!("{}/saba-chan-cli", dir.display().to_string().trim_end_matches('/'));
         format!("'{}' daemon start", cli.replace('\'', r"'\''"))
-    }
-}
-
-fn cli_file() -> &'static str {
-    if cfg!(windows) {
-        "saba-chan-cli.exe"
-    } else {
-        "saba-chan-cli"
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cli_file() -> &'static str {
+        if cfg!(windows) {
+            "saba-chan-cli.exe"
+        } else {
+            "saba-chan-cli"
+        }
+    }
 
     fn env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
         move |k| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
