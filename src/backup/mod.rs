@@ -62,6 +62,9 @@ pub struct BackupInfo {
     pub size: u64,
     /// 이 백업이 만들어질 때 디스크에 새로 쓴 바이트 (앞 백업과 같은 내용은 다시 쓰지 않는다. 판 1은 zip 파일 크기)
     pub stored: u64,
+    /// 만든 시각 (유닉스 나노초, 판 2는 요약의 시작 시각, 판 1은 파일 수정 시각). 이름은 지역 시각이라 서머타임 끝에 뒤바뀔 수 있어 순서는 이것으로 정한다 (D-B12)
+    #[serde(skip)]
+    made: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -111,6 +114,8 @@ struct StoredDir {
 struct SummaryV2 {
     size: u64,
     stored: u64,
+    #[serde(default)]
+    started: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -361,11 +366,12 @@ impl V2Writer<'_> {
 }
 
 fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
+    let started = now_ns();
     let mut w = V2Writer {
         dir,
         known: known_files(dir),
-        manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started: now_ns() },
-        summary: SummaryV2::default(),
+        manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started },
+        summary: SummaryV2 { started, ..Default::default() },
     };
     for (i, path) in paths.iter().enumerate() {
         let entry = i.to_string();
@@ -489,13 +495,13 @@ fn info(path: &Path) -> Option<BackupInfo> {
     let name = path.file_name()?.to_str()?.to_string();
     let kind = BackupKind::from_name(&name)?;
     let meta = fs::metadata(path).ok()?;
-    let created = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    let modified = mtime_ns(&meta);
     // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기
     let summary = zip::ZipArchive::new(File::open(path).ok()?)
         .ok()
         .and_then(|mut zip| zip.by_name(SUMMARY_V2).ok().and_then(|f| serde_json::from_reader::<_, SummaryV2>(f).ok()));
-    let (size, stored) = summary.map_or((meta.len(), meta.len()), |s| (s.size, s.stored));
-    Some(BackupInfo { name, kind, created, size, stored })
+    let (size, stored, made) = summary.map_or((meta.len(), meta.len(), modified), |s| (s.size, s.stored, if s.started > 0 { s.started } else { modified }));
+    Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, made })
 }
 
 /// 새것부터
@@ -506,7 +512,7 @@ pub fn list(dir: &Path) -> Vec<BackupInfo> {
         .flatten()
         .filter_map(|e| info(&e.path()))
         .collect();
-    out.sort_by(|a, b| b.name.cmp(&a.name));
+    out.sort_by(|a, b| b.made.cmp(&a.made).then_with(|| b.name.cmp(&a.name)));
     out
 }
 
@@ -1128,5 +1134,20 @@ mod tests {
         restore(&dir, &b.name).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(backed_up_paths(&dir, &b.name).unwrap(), vec![w]);
+    }
+
+    /// D-B12: 이름은 지역 시각이라 서머타임이 끝나는 시간에는 나중 백업의 이름이 앞설 수 있다. 순서는 만든 시각으로 정한다
+    #[test]
+    fn backups_are_ordered_by_when_they_were_made_not_by_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let earlier = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        let later = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        // 시계가 한 시간 뒤로 간 뒤 만든 것처럼 이름만 앞으로
+        let renamed = "20000101-000000-000-scheduled.zip";
+        fs::rename(dir.join(&later), dir.join(renamed)).unwrap();
+        assert_eq!(list(&dir).into_iter().map(|b| b.name).collect::<Vec<_>>(), vec![renamed.to_string(), earlier.clone()]);
+        assert_eq!(prune(&dir, 1, &[]), vec![earlier]);
     }
 }
