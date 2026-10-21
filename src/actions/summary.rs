@@ -11,6 +11,7 @@ pub(super) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
     match id {
         "instance.list" => Some(servers(result, cat)),
         "backup.list" => Some(backups(result, cat)),
+        "server.players" => Some(players(result, cat)),
         "instance.events" => Some(events(result, cat)),
         "update.check" => updates(result, cat),
         "monitor.summary" => monitor(result, cat),
@@ -76,6 +77,26 @@ fn backups(result: &Value, cat: &Catalog) -> String {
         })
         .collect();
     with_rest(cat.t("actions.summary.backups", &[("count", &backups.len().to_string())]), lines, cat)
+}
+
+/// `접속 3/20명` 다음 줄마다 이름 (최대를 모르면 `접속 3명`)
+fn players(result: &Value, cat: &Catalog) -> String {
+    let online = result.get("online").and_then(Value::as_u64).unwrap_or(0).to_string();
+    let head = match result.get("max").and_then(Value::as_u64) {
+        Some(max) => cat.t("actions.summary.players_max", &[("online", &online), ("max", &max.to_string())]),
+        None => cat.t("actions.summary.players", &[("online", &online)]),
+    };
+    let lines: Vec<String> = items(result, "players").iter().map(|p| cat.t("actions.summary.player_item", &[("name", str_of(p, "name"))])).collect();
+    if lines.is_empty() {
+        return head;
+    }
+    let rest = lines.len().saturating_sub(MAX_ITEMS);
+    let mut out = vec![head];
+    out.extend(lines.into_iter().take(MAX_ITEMS));
+    if rest > 0 {
+        out.push(cat.t("actions.summary.players_more", &[("count", &rest.to_string())]));
+    }
+    out.join("\n")
 }
 
 /// `backups[]` 항목마다 `label` (`2026-10-20 21:03 · 직접 · 120MB`, PC 시간대)

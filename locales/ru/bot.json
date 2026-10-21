@@ -209,6 +209,10 @@
           "title": "Экспорт журнала",
           "description": "Экспортирует одну сессию журнала сервера в файл .log"
         }
+      },
+      "players": {
+        "title": "Игроки",
+        "description": "Кто сейчас в игре"
       }
     },
     "monitor": {
@@ -301,7 +305,7 @@
       "enabled": "Включён",
       "model": "Модель",
       "memo": "Промпт сервера",
-      "confirmCommands": "Всегда спрашивать для осторожных команд",
+      "confirmCommands": "Всегда спрашивать перед командами сервера",
       "memory": "Память",
       "webSearch": "Веб-поиск",
       "disabledTools": "Отключённые инструменты",
@@ -333,7 +337,11 @@
       "updates_none": "✅ Всё обновлено",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ ЦП {{cpu}}% · Память {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · ЦП {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · ЦП {{cpu}}% · {{memory}}",
+      "players": "👥 В игре: {{online}}",
+      "players_max": "👥 В игре: {{online}}/{{max}}",
+      "player_item": "• {{name}}",
+      "players_more": "…и ещё {{count}}"
     }
   }
 }

@@ -15,9 +15,17 @@ use saba_chan_updater_lib::uninstall_entry;
 pub fn register_uninstall_entry(
     install_dir: &Path,
     version: &str,
+    uninstaller: Option<&Path>,
 ) -> anyhow::Result<()> {
     use winreg::enums::*;
     use winreg::RegKey;
+
+    // 제거기 없이 처음 설치한 폴더는 항목을 만들지 않는다: 제거 버튼이 실행할 명령이 없다
+    let installer_copy = install_dir.join("saba-chan-installer.exe");
+    if uninstaller.is_none() && !installer_copy.exists() {
+        tracing::info!("[Registry] No uninstaller for {}, skipping uninstall entry", install_dir.display());
+        return Ok(());
+    }
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let key_name = uninstall_entry::pick_key_name(&uninstall_entry::entries(), install_dir);
@@ -31,18 +39,15 @@ pub fn register_uninstall_entry(
     };
     let install_location = install_dir.to_string_lossy().to_string();
 
-    // 인스톨러 자체 경로 (언인스톨에 사용)
-    let uninstall_string = if let Ok(exe) = std::env::current_exe() {
-        format!("\"{}\" --uninstall", exe.to_string_lossy())
-    } else {
-        String::new()
-    };
+    // 제거기 경로 (언인스톨에 사용)
+    let uninstall_string = uninstaller.map(|exe| format!("\"{}\" --uninstall", exe.to_string_lossy())).unwrap_or_default();
 
-    // 인스톨러를 설치 디렉토리에 복사 (제거 시 사용)
-    copy_installer_to_install_dir(install_dir);
+    // 제거기를 설치 디렉토리에 복사 (제거 시 사용)
+    if let Some(exe) = uninstaller {
+        copy_installer_to_install_dir(install_dir, exe);
+    }
 
     // 설치 디렉토리의 인스톨러로 언인스톨 커맨드 설정
-    let installer_copy = install_dir.join("saba-chan-installer.exe");
     let uninstall_cmd = if installer_copy.exists() {
         format!("\"{}\" --uninstall", installer_copy.to_string_lossy())
     } else {
@@ -94,13 +99,11 @@ pub fn remove_uninstall_entry(install_dir: &Path) -> anyhow::Result<()> {
 
 /// 인스톨러를 설치 디렉토리에 복사 (언인스톨 시 사용)
 #[cfg(target_os = "windows")]
-fn copy_installer_to_install_dir(install_dir: &Path) {
-    if let Ok(exe) = std::env::current_exe() {
-        let dest = install_dir.join("saba-chan-installer.exe");
-        if exe != dest {
-            if let Err(e) = std::fs::copy(&exe, &dest) {
-                tracing::warn!("[Registry] Could not copy the installer to {}: {}", dest.display(), e);
-            }
+fn copy_installer_to_install_dir(install_dir: &Path, exe: &Path) {
+    let dest = install_dir.join("saba-chan-installer.exe");
+    if exe != dest {
+        if let Err(e) = std::fs::copy(exe, &dest) {
+            tracing::warn!("[Registry] Could not copy the installer to {}: {}", dest.display(), e);
         }
     }
 }
@@ -128,6 +131,7 @@ fn estimate_dir_size(dir: &Path) -> anyhow::Result<u64> {
 pub fn register_uninstall_entry(
     _install_dir: &std::path::Path,
     _version: &str,
+    _uninstaller: Option<&std::path::Path>,
 ) -> anyhow::Result<()> {
     Ok(())
 }

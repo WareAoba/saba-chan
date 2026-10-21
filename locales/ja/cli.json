@@ -100,7 +100,8 @@
     "words_saved": "{{server}} のチャット用の語を保存しました。",
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
-    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}"
+    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
+    "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
   },
   "col": {
     "players": "接続者",
@@ -232,7 +233,8 @@
       "forbidden": "そのDiscordサーバーでこの操作をする権限がありません。",
       "expired": "コードの有効期限が切れました。最初からやり直してください。",
       "rate_limited": "リクエストが多すぎます。1分ほどしてからもう一度お試しください。",
-      "other": "リレーがリクエストを拒否しました（{{code}}）。"
+      "other": "リレーがリクエストを拒否しました（{{code}}）。",
+      "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
     },
     "ambiguous": "「{{query}}」に一致する{{what}}が複数あります。",
     "ambiguous_hint": "もっと具体的に指定してください: {{names}}",
@@ -271,7 +273,8 @@
         "unknown_command": "このサーバーにないコマンドです",
         "too_many": "語は 10 個までです"
       },
-      "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。"
+      "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。",
+      "agent_too_old": "更新を確認: saba-chan-cli update check"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",

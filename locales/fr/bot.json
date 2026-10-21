@@ -209,6 +209,10 @@
           "title": "Exporter les journaux",
           "description": "Exporte une session de journal du serveur en fichier .log"
         }
+      },
+      "players": {
+        "title": "Joueurs",
+        "description": "Qui est connecté"
       }
     },
     "monitor": {
@@ -301,7 +305,7 @@
       "enabled": "Activé",
       "model": "Modèle",
       "memo": "Prompt du serveur",
-      "confirmCommands": "Toujours demander pour les commandes sensibles",
+      "confirmCommands": "Toujours demander avant les commandes serveur",
       "memory": "Mémoire",
       "webSearch": "Recherche web",
       "disabledTools": "Outils désactivés",
@@ -333,7 +337,11 @@
       "updates_none": "✅ Tout est à jour",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Mémoire {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} connectés",
+      "players_max": "👥 {{online}}/{{max}} connectés",
+      "player_item": "• {{name}}",
+      "players_more": "…et {{count}} de plus"
     }
   }
 }

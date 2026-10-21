@@ -74,7 +74,8 @@
     "link_declined": "Solicitud de conexión rechazada.",
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
-    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}"
+    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
+    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
   },
   "col": {
     "players": "Jugadores",
@@ -185,7 +186,8 @@
       "forbidden": "No tienes permiso para hacer eso en ese servidor de Discord.",
       "expired": "El código caducó. Empieza de nuevo.",
       "rate_limited": "Demasiadas solicitudes. Inténtalo de nuevo en un minuto.",
-      "other": "El relay rechazó la solicitud ({{code}})."
+      "other": "El relay rechazó la solicitud ({{code}}).",
+      "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
     },
     "ambiguous": "Hay más de un {{what}} que coincide con «{{query}}».",
     "ambiguous_hint": "Sé más específico: {{names}}",
@@ -216,7 +218,8 @@
       "schedule_changed": "La programación se cambió en otro lugar. Revísala con saba-chan-cli schedule show y vuelve a intentarlo.",
       "invalid_command": "Escribe la clave del comando como `<server>/<command>`. Una clave sin servidor debe ser un id de acción global.",
       "no_command_path": "Este servidor se inició fuera de Saba-chan, así que no tiene consola para recibir comandos. Reinícialo desde Saba-chan: saba-chan-cli restart <server>",
-      "not_supported": "Consulta los comandos no admitidos con: saba-chan-cli module info"
+      "not_supported": "Consulta los comandos no admitidos con: saba-chan-cli module info",
+      "agent_too_old": "Buscar actualizaciones: saba-chan-cli update check"
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",

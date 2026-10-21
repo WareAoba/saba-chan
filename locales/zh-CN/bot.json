@@ -209,6 +209,10 @@
           "title": "导出日志",
           "description": "将一个服务器日志会话导出为 .log 文件"
         }
+      },
+      "players": {
+        "title": "玩家",
+        "description": "在线玩家及名字"
       }
     },
     "monitor": {
@@ -301,7 +305,7 @@
       "enabled": "开启",
       "model": "模型",
       "memo": "服务器提示词",
-      "confirmCommands": "注意命令总是询问",
+      "confirmCommands": "执行服务器命令前总是询问",
       "memory": "记忆",
       "webSearch": "网页搜索",
       "disabledTools": "已关闭的工具组",
@@ -333,7 +337,11 @@
       "updates_none": "✅ 全部已是最新",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · 内存 {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 在线 {{online}} 人",
+      "players_max": "👥 在线 {{online}}/{{max}} 人",
+      "player_item": "• {{name}}",
+      "players_more": "…另外 {{count}} 人"
     }
   }
 }

@@ -502,15 +502,9 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             .collect()
     };
 
-    // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
-    targets.sort_by_key(|comp| match comp {
-        Component::Updater => 0u8,
-        Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
-        Component::CoreDaemon => 3,
-        Component::Gui => 4,
-        Component::Cli => 4,
-    });
+    // 업데이터와 같은 적용 순서: Updater → CoreDaemon → 모듈/익스텐션/Locales → 인터페이스, 같은 묶음의 requires가 먼저
+    let order = mgr.apply_order(&targets.iter().map(|c| c.manifest_key()).collect::<Vec<_>>());
+    targets.sort_by_key(|c| order.iter().position(|k| *k == c.manifest_key()));
 
     let mut applied = Vec::new();
     let mut applied_keys = Vec::new();
@@ -587,10 +581,11 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     if needs_updater.is_empty() {
         if has_module_updates {
             if let Some(ref sup) = state.supervisor {
-                let sup = sup.read().await;
+                let mut sup = sup.write().await;
                 match sup.refresh_modules() {
                     Ok(modules) => {
                         tracing::info!("[Updates] Hot-reloaded {} module(s) after update", modules.len());
+                        sup.migrate_list_settings();
                     }
                     Err(e) => {
                         tracing::warn!("[Updates] Failed to hot-reload modules after update: {}", e);

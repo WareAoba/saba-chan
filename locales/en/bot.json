@@ -209,6 +209,10 @@
           "title": "Export logs",
           "description": "Export one server log session as a .log file"
         }
+      },
+      "players": {
+        "title": "Players",
+        "description": "Who is online"
       }
     },
     "monitor": {
@@ -301,7 +305,7 @@
       "enabled": "On",
       "model": "Model",
       "memo": "Server prompt",
-      "confirmCommands": "Always ask for caution commands",
+      "confirmCommands": "Always ask before running server commands",
       "memory": "Memory",
       "webSearch": "Web search",
       "disabledTools": "Disabled tool sets",
@@ -333,7 +337,11 @@
       "updates_none": "✅ Everything is up to date",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Memory {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} online",
+      "players_max": "👥 {{online}}/{{max}} online",
+      "player_item": "• {{name}}",
+      "players_more": "…and {{count}} more"
     }
   }
 }

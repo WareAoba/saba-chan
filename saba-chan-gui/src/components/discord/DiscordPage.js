@@ -141,6 +141,7 @@ export function DiscordPage({
     const connectionError = relayConnected ? cloudError : relayError;
     const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
     const agentRelayUrlInvalid = useDiscordStore((s) => s.discordAgentRelayUrlInvalid);
+    const agentMinVersion = useDiscordStore((s) => s.discordAgentMinVersion);
     const botConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
     const [membersLoading, setMembersLoading] = useState(null);
     const [membersFailed, setMembersFailed] = useState({});
@@ -535,6 +536,7 @@ export function DiscordPage({
                                 botStatus={discordBotStatus}
                                 agentReplaced={agentReplaced}
                                 agentRelayUrlInvalid={agentRelayUrlInvalid}
+                                agentMinVersion={agentMinVersion}
                                 pairing={pairing}
                                 onStartPairing={pairing.start}
                                 onCancelPairing={pairing.reset}

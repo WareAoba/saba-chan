@@ -430,6 +430,38 @@ pub struct SettingField {
     /// 값 전체가 맞아야 하는 정규식
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
+    /// `list`의 항목 수 범위 (스키마 2)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_items: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<u32>,
+    /// `multiline`의 글자 수 상한 (스키마 2)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<u32>,
+    /// 서버가 켜져 있을 때 바꾸면 다시 켜야 적용된다 (스키마 2). 데몬은 스스로 재시작하지 않는다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub restart_required: bool,
+    /// 다른 설정 값에 따라 보일지 (스키마 2)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible_when: Option<VisibleWhen>,
+}
+
+/// `visible_when = { field, equals }` 또는 `{ field, in = [...] }` (06 §8.2)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct VisibleWhen {
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equals: Option<serde_json::Value>,
+    #[serde(default, rename = "in", skip_serializing_if = "Option::is_none")]
+    pub any_of: Option<Vec<serde_json::Value>>,
+}
+
+impl VisibleWhen {
+    /// 비교할 값들 (`equals` 하나 또는 `in` 목록)
+    pub fn values(&self) -> Vec<&serde_json::Value> {
+        self.equals.iter().chain(self.any_of.iter().flatten()).collect()
+    }
 }
 
 /// 문자열 하나 또는 여럿 (`arg = "-x"` / `arg = ["-a", "-b"]`)
@@ -453,6 +485,10 @@ impl OneOrMany {
 pub const SETTING_FORMATS: &[&str] = &["memory_size", "port", "integer", "path"];
 /// 설정 필드 `type`으로 받는 값 (GUI·CLI가 그리는 것)
 pub const SETTING_TYPES: &[&str] = &["text", "password", "number", "file", "select", "boolean"];
+/// 스키마 2에서 더한 설정 `type` (06 §8.1)
+pub const SETTING_TYPES_V2: &[&str] = &["list", "multiline"];
+/// `visible_when`이 가리킬 수 없는 설정 타입 (값을 하나로 비교할 수 없다)
+const NOT_A_CONDITION: &[&str] = &["list", "multiline", "password", "file"];
 /// 명령 입력 `inputs[].type`으로 받는 값
 pub const COMMAND_INPUT_TYPES: &[&str] = &["text", "password", "number", "select", "boolean"];
 
@@ -540,21 +576,55 @@ pub struct ModuleLoadError {
     /// 못 맞춘 의존성 (`"saba-core >=0.3.0 (installed 0.1.1)"` 꼴)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub missing_dependencies: Vec<String>,
+    /// `module_schema_invalid`일 때 무엇이 틀렸는지 (필드 이름과 이유, 경로 없음)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub problems: Vec<String>,
+    /// `module_schema_unsupported`일 때 모듈이 요구한 스키마 버전
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<u32>,
 }
 
 impl ModuleLoadError {
     fn new(path: &Path, e: &anyhow::Error) -> Self {
         let unmet = e.downcast_ref::<UnmetCoreDependency>();
+        let invalid = e.downcast_ref::<SchemaInvalid>();
+        let unsupported = e.downcast_ref::<SchemaUnsupported>();
+        let error_code = if unmet.is_some() {
+            Some("module_dependency_unsatisfied")
+        } else if invalid.is_some() {
+            Some("module_schema_invalid")
+        } else if unsupported.is_some() {
+            Some("module_schema_unsupported")
+        } else {
+            None
+        };
         Self {
             path: path.to_string_lossy().to_string(),
             error: e.to_string(),
             module: unmet.map(|u| u.module.clone()),
-            error_code: unmet.map(|_| "module_dependency_unsatisfied".to_string()),
+            error_code: error_code.map(str::to_string),
             missing_dependencies: unmet
                 .map(|u| vec![format!("{} {} (installed {})", CORE_COMPONENT, u.required, DAEMON_VERSION)])
                 .unwrap_or_default(),
+            problems: invalid.map(|i| i.problems.clone()).unwrap_or_default(),
+            required: unsupported.map(|u| u.version),
         }
     }
+}
+
+/// module.toml이 선언한 스키마에 맞지 않는다 (`failed[]`의 `module_schema_invalid`)
+#[derive(Debug, thiserror::Error)]
+#[error("module.toml does not match schema v{version}: {joined}", joined = .problems.join("; "))]
+pub struct SchemaInvalid {
+    pub version: u32,
+    pub problems: Vec<String>,
+}
+
+/// 이 데몬이 모르는 더 새 스키마 (`failed[]`의 `module_schema_unsupported`)
+#[derive(Debug, thiserror::Error)]
+#[error("module.toml schema_version {version} is not supported by this saba-chan (supports {MODULE_SCHEMA_VERSION}); update saba-chan")]
+pub struct SchemaUnsupported {
+    pub version: u32,
 }
 
 /// 모듈이 이 데몬보다 새 saba-core를 요구한다 (로드하지 않는다)
@@ -571,8 +641,10 @@ pub struct UnmetCoreDependency {
 // 내보내는 JSON Schema(saba-chan-modules/schema/module.schema.json)도 같이 바뀐다.
 // 모르는 키: schema_version = 1 이면 로드 거부, 없으면(스키마 이전 모듈) 경고만 남긴다.
 
-/// 이 데몬이 아는 module.toml 스키마 버전
-pub const MODULE_SCHEMA_VERSION: u32 = 1;
+/// 이 데몬이 아는 가장 새 module.toml 스키마 버전. 1과 2를 받는다 (2는 1에 06 §8의 설정 타입·키를 더한 것)
+pub const MODULE_SCHEMA_VERSION: u32 = 2;
+/// 스키마 표시가 없는 모듈에게 권하는 버전. 0.1.8 데몬도 읽는 1이다 (06 §7)
+const BASE_SCHEMA_VERSION: u32 = 1;
 
 /// 명령 위험도로 쓸 수 있는 값
 /// 모듈 `[module.dependencies]`에서 데몬을 가리키는 키
@@ -586,8 +658,8 @@ pub const PROTOCOLS: [&str; 3] = ["rcon", "rest", "stdin"];
 /// JSON 스키마에서도 로더와 같은 값만 받게 한다 (적합성 검사가 데몬과 어긋나지 않게)
 fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
     serde_json::from_value(serde_json::json!({
-        "description": "이 파일이 따르는 스키마 버전. 지금은 1",
-        "enum": [MODULE_SCHEMA_VERSION, null]
+        "description": "이 파일이 따르는 스키마 버전. 1, 또는 list·multiline 설정과 restart_required·visible_when 등을 쓰면 2(saba-core >=0.1.9)",
+        "enum": [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION, null]
     }))
     .expect("static schema")
 }
@@ -602,7 +674,7 @@ fn risk_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Sche
 
 /// module.toml 최상위 구조
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[schemars(deny_unknown_fields, title = "saba-chan module.toml (schema v1)")]
+#[schemars(deny_unknown_fields, title = "saba-chan module.toml (schema v1, v2)")]
 struct ModuleToml {
     module: ModuleSection,
     #[serde(default)]
@@ -845,6 +917,46 @@ struct SettingFieldToml {
     format: Option<String>,
     #[serde(default)]
     pattern: Option<String>,
+    /// 스키마 2: `list` 항목 수 범위
+    #[serde(default)]
+    min_items: Option<u32>,
+    #[serde(default)]
+    max_items: Option<u32>,
+    /// 스키마 2: `multiline` 글자 수 상한
+    #[serde(default)]
+    max_length: Option<u32>,
+    /// 스키마 2: 켜져 있을 때 바꾸면 다시 켜야 적용된다
+    #[serde(default)]
+    restart_required: Option<bool>,
+    /// 스키마 2: 다른 설정 값에 따라 보일지
+    #[serde(default)]
+    #[schemars(with = "Option<VisibleWhen>")]
+    visible_when: Option<VisibleWhenToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleWhenToml {
+    field: String,
+    #[serde(default)]
+    equals: Option<toml::Value>,
+    #[serde(default, rename = "in")]
+    any_of: Option<Vec<toml::Value>>,
+}
+
+impl SettingFieldToml {
+    /// 스키마 2에서 더한 키 중 이 필드에 있는 것
+    fn v2_keys(&self) -> Vec<&'static str> {
+        [
+            ("min_items", self.min_items.is_some()),
+            ("max_items", self.max_items.is_some()),
+            ("max_length", self.max_length.is_some()),
+            ("restart_required", self.restart_required.is_some()),
+            ("visible_when", self.visible_when.is_some()),
+        ]
+        .into_iter()
+        .filter_map(|(k, set)| set.then_some(k))
+        .collect()
+    }
 }
 
 fn default_field_type() -> String { "text".to_string() }
@@ -1079,6 +1191,15 @@ impl ModuleToml {
                 arg: f.arg.map(OneOrMany::into_vec).unwrap_or_default(),
                 format: f.format,
                 pattern: f.pattern,
+                min_items: f.min_items,
+                max_items: f.max_items,
+                max_length: f.max_length,
+                restart_required: f.restart_required.unwrap_or(false),
+                visible_when: f.visible_when.map(|v| VisibleWhen {
+                    field: v.field,
+                    equals: v.equals.and_then(|e| serde_json::to_value(e).ok()),
+                    any_of: v.any_of.map(|list| list.into_iter().filter_map(|e| serde_json::to_value(e).ok()).collect()),
+                }),
             }).collect();
             if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
         } else {
@@ -1245,6 +1366,16 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         meta.players_function = None;
         problems.push(problem);
     }
+    if meta.schema_version < 2 {
+        // 스키마 2 키는 스키마 1·이전 모듈에서 켜지 않는다 (위 problems에 이미 실렸다)
+        for f in meta.settings.iter_mut().flat_map(|s| s.fields.iter_mut()) {
+            (f.min_items, f.max_items, f.max_length, f.restart_required, f.visible_when) = (None, None, None, false, None);
+            // 스키마 이전 모듈의 새 타입은 0.1.8처럼 글자로 다룬다 (스키마 1은 위에서 실패한다)
+            if SETTING_TYPES_V2.contains(&f.field_type.as_str()) {
+                f.field_type = "text".into();
+            }
+        }
+    }
     match meta.schema_version {
         0 => {
             for p in &problems {
@@ -1253,22 +1384,90 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
             meta.warnings = problems;
             meta.warnings.push(format!(
                 "no schema_version; add `schema_version = {}` under [module]",
-                MODULE_SCHEMA_VERSION
+                BASE_SCHEMA_VERSION
             ));
         }
-        MODULE_SCHEMA_VERSION => {
+        version @ 1..=MODULE_SCHEMA_VERSION => {
             if !problems.is_empty() {
-                anyhow::bail!("module.toml does not match schema v{}: {}", MODULE_SCHEMA_VERSION, problems.join("; "));
+                return Err(SchemaInvalid { version, problems }.into());
             }
         }
-        v => anyhow::bail!(
-            "module.toml schema_version {} is not supported by this saba-chan (supports {}); update saba-chan",
-            v,
-            MODULE_SCHEMA_VERSION
-        ),
+        version => return Err(SchemaUnsupported { version }.into()),
+    }
+    // 데몬이 호출마다 정해 넣는 이름: 모듈 설정 값은 넘기지 않는다 (06 §2·§6, `RESERVED_CALL_KEYS`)
+    for f in meta.settings.iter().flat_map(|s| &s.fields).filter(|f| RESERVED_CALL_KEYS.contains(&f.name.as_str())) {
+        meta.warnings.push(format!("settings field '{}' is a name saba-chan sets on each call; its value is not passed to the module", f.name));
     }
     Ok(meta)
 }
+
+/// 스키마 2 설정 키의 값 검사 (06 §8.1·8.2)
+fn v2_field_problems(field: &SettingFieldToml, fields: &[&SettingFieldToml]) -> Vec<String> {
+    let mut problems = Vec::new();
+    let name = &field.name;
+    let ty = field.field_type.as_str();
+    if ty != "list" && (field.min_items.is_some() || field.max_items.is_some()) {
+        problems.push(format!("settings field '{}': min_items/max_items are only for type 'list'", name));
+    }
+    if let (Some(min), Some(max)) = (field.min_items, field.max_items) {
+        if min > max {
+            problems.push(format!("settings field '{}': min_items is larger than max_items", name));
+        }
+    }
+    if ty != "multiline" && field.max_length.is_some() {
+        problems.push(format!("settings field '{}': max_length is only for type 'multiline'", name));
+    }
+    if ty == "list" {
+        let default_ok = match &field.default {
+            None => true,
+            Some(toml::Value::Array(items)) => items.iter().all(|i| i.as_str().is_some_and(|v| field.options.as_ref().is_none_or(|o| o.iter().any(|x| x == v)))),
+            Some(_) => false,
+        };
+        if !default_ok {
+            problems.push(format!("settings field '{}': default must be a list of strings (from options when given)", name));
+        }
+    }
+    let Some(cond) = &field.visible_when else { return problems };
+    let Some(target) = fields.iter().find(|f| f.name == cond.field) else {
+        problems.push(format!("settings field '{}': visible_when.field '{}' is not a setting of this module", name, cond.field));
+        return problems;
+    };
+    if target.name == *name {
+        problems.push(format!("settings field '{}': visible_when cannot point at itself", name));
+        return problems;
+    }
+    if NOT_A_CONDITION.contains(&target.field_type.as_str()) {
+        problems.push(format!("settings field '{}': visible_when.field '{}' is a {} setting", name, target.name, target.field_type));
+    }
+    let values: Vec<&toml::Value> = cond.equals.iter().chain(cond.any_of.iter().flatten()).collect();
+    if cond.equals.is_some() == cond.any_of.is_some() || values.is_empty() {
+        problems.push(format!("settings field '{}': visible_when needs exactly one of equals or in", name));
+    }
+    let fits = |v: &toml::Value| match target.field_type.as_str() {
+        "boolean" => v.is_bool(),
+        "number" => v.is_integer() || v.is_float(),
+        "select" => v.as_str().is_some_and(|s| target.options.as_ref().is_none_or(|o| o.iter().any(|x| x == s))),
+        _ => v.is_str(),
+    };
+    if values.iter().any(|v| !fits(v)) {
+        problems.push(format!("settings field '{}': visible_when value does not fit the {} setting '{}'", name, target.field_type, target.name));
+    }
+    // 순환: 조건을 따라가다 자기에게 돌아오면 안 된다
+    let mut seen = vec![name.as_str()];
+    let mut next = Some(cond.field.as_str());
+    while let Some(current) = next {
+        if seen.contains(&current) {
+            problems.push(format!("settings field '{}': visible_when forms a cycle", name));
+            break;
+        }
+        seen.push(current);
+        next = fields.iter().find(|f| f.name == current).and_then(|f| f.visible_when.as_ref()).map(|c| c.field.as_str());
+    }
+    problems
+}
+
+/// 데몬이 모듈 호출 config에 직접 넣는 키. 같은 이름의 모듈 설정 값은 config에 싣지 않는다
+pub const RESERVED_CALL_KEYS: &[&str] = &["players_detail", "stop_call_limit"];
 
 impl ModuleToml {
     /// 키는 맞지만 값이 계약을 벗어난 곳
@@ -1277,9 +1476,22 @@ impl ModuleToml {
         if !crate::utils::is_inner_relative_path(&self.module.entry) {
             problems.push(format!("module.entry '{}' must be a path inside the module folder", self.module.entry));
         }
-        for field in self.settings.iter().flat_map(|s| &s.fields) {
-            if !SETTING_TYPES.contains(&field.field_type.as_str()) {
-                problems.push(format!("settings field '{}': type '{}' must be one of {}", field.name, field.field_type, SETTING_TYPES.join(", ")));
+        let v2 = self.module.schema_version == Some(2);
+        let fields: Vec<&SettingFieldToml> = self.settings.iter().flat_map(|s| &s.fields).collect();
+        for field in &fields {
+            let ty = field.field_type.as_str();
+            if SETTING_TYPES_V2.contains(&ty) && !v2 {
+                problems.push(format!("settings field '{}': type '{}' needs schema_version = 2", field.name, ty));
+            } else if !SETTING_TYPES.contains(&ty) && !SETTING_TYPES_V2.contains(&ty) {
+                let known = if v2 { [SETTING_TYPES, SETTING_TYPES_V2].concat() } else { SETTING_TYPES.to_vec() };
+                problems.push(format!("settings field '{}': type '{}' must be one of {}", field.name, ty, known.join(", ")));
+            }
+            if !v2 {
+                for key in field.v2_keys() {
+                    problems.push(format!("settings field '{}': {} needs schema_version = 2", field.name, key));
+                }
+            } else {
+                problems.extend(v2_field_problems(field, &fields));
             }
             if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
                 problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
@@ -1368,7 +1580,8 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
                 problems.push(format!("presets '{}': '{}' cannot be set by a preset", preset.id, key));
                 continue;
             }
-            let option_ok = match (&field.options, value.as_str()) {
+            // list는 항목마다 options를 본다 (validate_setting_value)
+            let option_ok = (field.field_type == "list" && value.is_array()) || match (&field.options, value.as_str()) {
                 (Some(options), Some(v)) => options.iter().any(|o| o == v),
                 (Some(_), None) => false,
                 (None, _) => !value.is_object() && !value.is_array(),
@@ -2171,11 +2384,61 @@ entry = "lifecycle.py"
         assert!(meta.warnings.iter().any(|w| w.contains("schema_version")));
     }
 
+    /// 06 §2·§6: players_detail·stop_call_limit은 데몬 몫이다. 같은 이름의 설정은 로드하되 경고한다
+    #[test]
+    fn settings_named_like_daemon_call_keys_are_warned_about() {
+        let meta = parse_module_toml(&format!("{V1}\n[[settings.fields]]\nname = \"players_detail\"\ntype = \"boolean\"\n")).unwrap();
+        assert!(meta.warnings.iter().any(|w| w.contains("players_detail")), "{:?}", meta.warnings);
+    }
+
     #[test]
     fn newer_schema_version_is_refused() {
-        let toml = V1.replace("schema_version = 1", "schema_version = 2");
-        let err = parse_module_toml(&toml).unwrap_err().to_string();
-        assert!(err.contains("schema_version 2"), "{err}");
+        let toml = V1.replace("schema_version = 1", "schema_version = 3");
+        let err = parse_module_toml(&toml).unwrap_err();
+        assert!(err.to_string().contains("schema_version 3"), "{err}");
+        let failed = ModuleLoadError::new(Path::new("m"), &err);
+        assert_eq!((failed.error_code.as_deref(), failed.required), (Some("module_schema_unsupported"), Some(3)));
+    }
+
+    /// MK2 (06 §7): 스키마 2는 스키마 1에 list·multiline 타입과 설정 키를 더한 것이다. 스키마 1에 있으면 로드 실패이고,
+    /// 실패한 모듈은 `failed[]`에 `module_schema_invalid`와 `problems`로 보인다
+    #[test]
+    fn schema_v2_adds_setting_types_and_keys_that_schema_v1_refuses() {
+        let fields = "[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\nmax_items = 5\nrestart_required = true\n\n\
+                      [[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\nmax_length = 200\n";
+        let v2 = parse_module_toml(&format!("{}\n{fields}", V1.replace("schema_version = 1", "schema_version = 2"))).unwrap();
+        assert_eq!(v2.schema_version, 2);
+        let admins = &v2.settings.as_ref().unwrap().fields[0];
+        assert_eq!((admins.field_type.as_str(), admins.max_items, admins.restart_required), ("list", Some(5), true));
+
+        let err = parse_module_toml(&format!("{V1}\n{fields}")).unwrap_err();
+        let failed = ModuleLoadError::new(Path::new("m"), &err);
+        assert_eq!(failed.error_code.as_deref(), Some("module_schema_invalid"));
+        for needle in ["'list'", "'multiline'", "max_items", "restart_required", "max_length"] {
+            assert!(failed.problems.iter().any(|p| p.contains(needle)), "{needle}: {:?}", failed.problems);
+        }
+        assert!(failed.error.contains("schema v1"), "{}", failed.error);
+    }
+
+    /// 리뷰 554: 스키마 이전 모듈의 list·multiline은 0.1.8처럼 글자로 다루고, list 프리셋 값도 로드 때 검사한다
+    #[test]
+    fn pre_schema_list_types_stay_text_and_list_presets_are_checked() {
+        let old = format!("{}\n[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\n", V1.replace("schema_version = 1\n", ""));
+        let meta = parse_module_toml(&old).unwrap();
+        let types: Vec<&str> = meta.settings.as_ref().unwrap().fields.iter().map(|f| f.field_type.as_str()).collect();
+        assert_eq!(types, ["text", "text"]);
+
+        let v2 = V1.replace("schema_version = 1", "schema_version = 2");
+        let preset = |value: &str| {
+            parse_module_toml(&format!(
+                "{v2}\n[[settings.fields]]\nname = \"mode\"\ntype = \"list\"\noptions = [\"a\", \"b\"]\n\n[[presets]]\nid = \"p\"\nlabel = \"P\"\nsettings = {{ mode = {value} }}\n"
+            ))
+        };
+        assert!(preset("[\"a\"]").is_ok());
+        for bad in ["\"a\"", "[\"c\"]", "[\"a\", \"a\"]"] {
+            let err = preset(bad).unwrap_err().to_string();
+            assert!(err.contains("presets 'p'"), "{bad}: {err}");
+        }
     }
 
     #[test]
@@ -2209,6 +2472,36 @@ entry = "lifecycle.py"
         assert!(parse_module_toml(&input("password")).is_ok());
         // 스키마 이전 모듈은 경고만 하고 올린다
         assert!(parse_module_toml(&setting("textarea").replace("schema_version = 1\n", "")).is_ok());
+    }
+
+    /// 06 §8.2: visible_when은 같은 모듈의 값 하나짜리 설정을 가리키고, 값은 그 설정 타입에 맞아야 하며, 순환하면 안 된다
+    #[test]
+    fn visible_when_is_checked_when_the_module_loads() {
+        let v2 = V1.replace("schema_version = 1", "schema_version = 2");
+        let module = |cond: &str| {
+            parse_module_toml(&format!(
+                "{v2}\n[[settings.fields]]\nname = \"pvp\"\ntype = \"boolean\"\n\n[[settings.fields]]\nname = \"port\"\ntype = \"number\"\n\n\
+                 [[settings.fields]]\nname = \"admins\"\ntype = \"list\"\n\n[[settings.fields]]\nname = \"pvp_damage\"\ntype = \"text\"\nvisible_when = {cond}\n"
+            ))
+        };
+        let ok = module("{ field = \"pvp\", equals = true }").unwrap();
+        let cond = ok.settings.unwrap().fields[3].visible_when.clone().unwrap();
+        assert_eq!((cond.field.as_str(), cond.equals), ("pvp", Some(serde_json::json!(true))));
+        assert!(module("{ field = \"port\", in = [25565, 25566] }").is_ok());
+        for (cond, needle) in [
+            ("{ field = \"nope\", equals = 1 }", "not a setting"),
+            ("{ field = \"pvp_damage\", equals = \"x\" }", "itself"),
+            ("{ field = \"admins\", equals = \"a\" }", "list setting"),
+            ("{ field = \"pvp\", equals = \"yes\" }", "does not fit"),
+            ("{ field = \"pvp\" }", "exactly one"),
+        ] {
+            let err = module(cond).unwrap_err().to_string();
+            assert!(err.contains(needle), "{cond}: {err}");
+        }
+        let cycle = format!(
+            "{v2}\n[[settings.fields]]\nname = \"a\"\nvisible_when = {{ field = \"b\", equals = \"x\" }}\n\n[[settings.fields]]\nname = \"b\"\nvisible_when = {{ field = \"a\", equals = \"x\" }}\n"
+        );
+        assert!(parse_module_toml(&cycle).unwrap_err().to_string().contains("cycle"));
     }
 
     #[test]

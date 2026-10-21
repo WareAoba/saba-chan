@@ -9,6 +9,11 @@ export const setSettingsI18n = (t) => {
     _t = t;
 };
 
+// 화면에서 바꿨지만 아직 저장하지 않은 칸. 저장은 이 칸만 보낸다 (CLI가 저장한 다른 값을 옛 값으로 덮지 않게)
+const dirtyKeys = new Set();
+// 데몬에서 읽은 값을 넣는 중: 바꾼 칸으로 치지 않는다
+let applyingLoad = false;
+
 export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
 
 export const useSettingsStore = create((set, get) => ({
@@ -73,7 +78,13 @@ export const useSettingsStore = create((set, get) => ({
             if (!isTest) console.log('[Settings] GUI settings loaded from:', path);
 
             patch.settingsReady = true;
-            set(patch);
+            applyingLoad = true;
+            try {
+                set(patch);
+            } finally {
+                applyingLoad = false;
+            }
+            for (const k of Object.keys(patch)) dirtyKeys.delete(k);
             if (settings) {
                 // config.json 값을 화면에 적용하고 캐시도 맞춘다
                 setTheme(patch.theme);
@@ -90,7 +101,10 @@ export const useSettingsStore = create((set, get) => ({
                     sidebarCompact: patch.sidebarCompact,
                 });
                 // 예전 버전은 테마 모드를 브라우저 저장소에만 뒀다 — 한 번 config.json으로 옮긴다
-                if (settings.theme == null && !isTest) get().save();
+                if (settings.theme == null && !isTest) {
+                    dirtyKeys.add('theme');
+                    get().save();
+                }
             }
             if (!isTest) console.log('[Settings] Ready flag set to true');
             return settings; // Return raw settings for discord token etc.
@@ -124,32 +138,17 @@ export const useSettingsStore = create((set, get) => ({
             console.warn('[Settings] Settings path not initialized, skipping save');
             return;
         }
+        const keys = [...dirtyKeys];
+        if (keys.length === 0) return true;
+        dirtyKeys.clear();
         try {
-            const saved = await window.api.settingsSave({
-                autoRefresh: state.autoRefresh,
-                refreshInterval: state.refreshInterval,
-                ipcPort: state.ipcPort,
-                consoleBufferSize: state.consoleBufferSize,
-                autoGeneratePasswords: state.autoGeneratePasswords,
-                portConflictCheck: state.portConflictCheck,
-                // Theme customization
-                theme: state.theme,
-                accentColor: state.accentColor,
-                accentSecondary: state.accentSecondary,
-                useGradient: state.useGradient,
-                fontScale: state.fontScale,
-                enableTransitions: state.enableTransitions,
-                consoleSyntaxHighlight: state.consoleSyntaxHighlight,
-                consoleBgColor: state.consoleBgColor,
-                consoleTextColor: state.consoleTextColor,
-                sidebarCompact: state.sidebarCompact,
-                consoleFontScale: state.consoleFontScale,
-                systemMonitorOpen: state.systemMonitorOpen,
-            });
-            if (saved === false) return false;
+            const saved = await window.api.settingsSave(Object.fromEntries(keys.map((k) => [k, state[k]])));
+            if (saved === false) throw new Error('settings not saved');
             console.log('[Settings] GUI settings saved');
             return true;
         } catch (error) {
+            // 저장하지 못한 칸은 다음 저장에 다시 싣는다
+            for (const k of keys) dirtyKeys.add(k);
             console.error('[Settings] Failed to save GUI settings:', error);
             return false;
         }
@@ -161,7 +160,7 @@ export const useSettingsStore = create((set, get) => ({
     },
 
     // Test-only: reset to initial state
-    _resetForTest: () =>
+    _resetForTest: () => {
         set({
             autoRefresh: true,
             refreshInterval: 2000,
@@ -183,7 +182,9 @@ export const useSettingsStore = create((set, get) => ({
             sidebarCompact: THEME_DEFAULTS.sidebarCompact,
             consoleFontScale: THEME_DEFAULTS.consoleFontScale,
             systemMonitorOpen: true,
-        }),
+        });
+        dirtyKeys.clear();
+    },
 }));
 
 // ── Auto-save subscription (Zustand v5 single-listener) ──
@@ -210,9 +211,11 @@ const _settingsKeys = [
     'systemMonitorOpen',
 ];
 useSettingsStore.subscribe((state, prevState) => {
+    if (applyingLoad) return;
+    const changed = _settingsKeys.filter((k) => state[k] !== prevState[k]);
+    for (const k of changed) dirtyKeys.add(k);
     if (!state.settingsReady || !state.settingsPath) return;
-    const changed = _settingsKeys.some((k) => state[k] !== prevState[k]);
-    if (!changed) return;
+    if (changed.length === 0) return;
     console.log('[Settings] Settings changed, saving...');
     clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(async () => {
