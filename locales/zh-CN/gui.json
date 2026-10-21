@@ -989,6 +989,7 @@
     "backups_desc": "将世界和存档文件压缩保存。手动创建的备份不会被自动清理。",
     "backups_empty": "还没有备份。",
     "backup_now": "立即备份",
+    "backup_size_stored": "{{size}} · 新存储 {{stored}}",
     "backup_created": "已创建备份。",
     "backup_nothing": "还没有可备份的文件。",
     "restore": "恢复",

@@ -1,6 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CHATBOT_TOOLS, ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
+import {
+    CHATBOT_TOOLS,
+    ChatbotView,
+    relayErrorLines,
+    settingsDraft,
+    settingsPatch,
+} from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
 import { pickOption } from './dropdown';
 
@@ -101,6 +107,23 @@ describe('MaintenanceTab', () => {
             schedule: [{ action: 'backup', enabled: true, every_minutes: 60 }],
             backup_keep: 5,
         });
+    });
+
+    // 증분 백업(MK16): size는 담은 내용 크기, stored는 그 백업이 새로 디스크에 쓴 크기. 다르면 둘 다 보인다
+    it('백업이 새로 저장한 크기가 담은 크기와 다르면 함께 보인다', async () => {
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            success: true,
+            backups: [
+                { name: 'b-manual', kind: 'manual', created: 2, size: 120 * 1024 * 1024, stored: 2 * 1024 * 1024 },
+                { name: 'a-manual.zip', kind: 'manual', created: 1, size: 2048, stored: 2048 },
+            ],
+        });
+        render(<MaintenanceTab server={stopped} />);
+        expect(await screen.findByText(/120(\.0)? MB · 2(\.0)? MB new/)).toBeTruthy();
+        expect(screen.getByText(/2(\.0)? KB · a-manual\.zip/).textContent).not.toMatch(/new/);
     });
 
     it('복원·백업 거절은 데몬의 영어 원문 대신 이유를 알린다', async () => {

@@ -989,6 +989,7 @@
     "backups_desc": "Zips up the world and save files. Backups you make yourself are never pruned.",
     "backups_empty": "No backups yet.",
     "backup_now": "Back up now",
+    "backup_size_stored": "{{size}} · {{stored}} new",
     "backup_created": "Backup created.",
     "backup_nothing": "There are no files to back up yet.",
     "restore": "Restore",

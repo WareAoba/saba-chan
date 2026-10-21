@@ -989,6 +989,7 @@
     "backups_desc": "ワールドとセーブファイルを圧縮して保存します。手動で作成したバックアップは自動整理の対象外です。",
     "backups_empty": "まだバックアップがありません。",
     "backup_now": "今すぐバックアップ",
+    "backup_size_stored": "{{size}} · 新規保存 {{stored}}",
     "backup_created": "バックアップを作成しました。",
     "backup_nothing": "バックアップするファイルがまだありません。",
     "restore": "復元",

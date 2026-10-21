@@ -989,6 +989,7 @@
     "backups_desc": "Compresse le monde et les fichiers de sauvegarde. Les sauvegardes que vous créez vous-même ne sont jamais supprimées automatiquement.",
     "backups_empty": "Aucune sauvegarde pour le moment.",
     "backup_now": "Sauvegarder",
+    "backup_size_stored": "{{size}} · {{stored}} nouveaux",
     "backup_created": "Sauvegarde créée.",
     "backup_nothing": "Il n'y a encore aucun fichier à sauvegarder.",
     "restore": "Restaurer",
