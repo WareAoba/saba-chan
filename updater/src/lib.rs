@@ -793,8 +793,14 @@ impl UpdateManager {
     /// requires를 비교할 버전: 앱 컴포넌트는 설치 기록(없으면 번들 버전), 모듈·익스텐션은 디스크에 실제로 있는 것만.
     /// 카탈로그 설치·삭제는 설치 기록을 고치지 않으므로 그 기록의 모듈·익스텐션은 믿지 않는다
     fn dependency_versions(&self) -> HashMap<String, String> {
+        self.dependency_versions_for(profile::Profile::load())
+    }
+
+    /// 설치 구성에 들지 않는 컴포넌트(헤드리스의 GUI)는 번들 버전으로 채우지 않는다
+    pub(crate) fn dependency_versions_for(&self, profile: profile::Profile) -> HashMap<String, String> {
         let mut versions = Self::load_installed_manifest();
         Self::fill_bundled_versions(&mut versions);
+        versions.retain(|key, _| profile.includes(key));
         merge_addons_from_disk(versions, self.disk_addon_versions())
     }
 
