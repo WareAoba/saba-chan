@@ -36,6 +36,16 @@ describe('visible_when 숨김 (데몬 validator::hidden_fields와 같은 계산)
         expect(hiddenFields(fields, { port: '' })).toEqual(['pvp_rules', 'mode_note']);
     });
 
+    // 저장 값도 기본값도 없어 ''로 연 글자 칸은 저장 때 보내지 않는다: 데몬처럼 값이 없는 것으로 비교한다 (리뷰 598 P3-1)
+    it("열 때 비어 있던 글자 칸('')은 건드리기 전까지 값이 없는 것으로 비교한다", () => {
+        const text = [
+            { name: 'mode', field_type: 'text' },
+            { name: 'seed', field_type: 'text', visible_when: { field: 'mode', equals: '' } },
+        ];
+        expect(hiddenFields(text, { mode: '' }, new Set(['mode']))).toEqual(['seed']);
+        expect(hiddenFields(text, { mode: '' })).toEqual([]);
+    });
+
     it('숨긴 설정은 필수여도 검사하지 않는다', () => {
         const required = [
             { name: 'pvp', field_type: 'boolean', default: false },
@@ -325,5 +335,33 @@ describe('공통 칸을 가리키는 visible_when', () => {
         );
         await act(async () => result.current.handleOpenSettings(server));
         expect(hiddenFields(fields, result.current.settingsValues)).toEqual([]);
+    });
+});
+
+describe('열 때 비어 있던 글자 칸', () => {
+    it('저장 값이 없는 글자 칸은 데몬처럼 숨기고, 사용자가 지우면 빈 값으로 보인다', async () => {
+        const fields = [
+            { name: 'mode', field_type: 'text' },
+            { name: 'seed', field_type: 'text', visible_when: { field: 'mode', equals: '' } },
+        ];
+        const server = { id: 's', name: 'S', module: 'game', status: 'stopped', module_settings: {} };
+        window.api = {
+            serverList: vi.fn().mockResolvedValue(null),
+            instanceReadLiveSettings: vi.fn().mockResolvedValue({ success: true, settings: {} }),
+        };
+        const { result } = renderHook(() =>
+            useServerSettings({
+                servers: [server],
+                modules: [{ name: 'game', settings: { fields } }],
+                setModal: vi.fn(),
+                setProgressBar: vi.fn(),
+                fetchServers: vi.fn(),
+            }),
+        );
+        await act(async () => result.current.handleOpenSettings(server));
+        const hidden = () => hiddenFields(fields, result.current.settingsValues, result.current.unsetSettings);
+        expect(hidden()).toEqual(['seed']);
+        act(() => result.current.handleSettingChange('mode', ''));
+        expect(hidden()).toEqual([]);
     });
 });

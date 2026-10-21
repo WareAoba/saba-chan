@@ -202,6 +202,7 @@ export function ProtocolNotice({ protocol }) {
 function GeneralTab({
     settingsServer,
     settingsValues,
+    unsetSettings,
     modules,
     advancedExpanded,
     setAdvancedExpanded,
@@ -331,7 +332,7 @@ function GeneralTab({
             {hasModuleSettings ? (
                 (() => {
                     // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
-                    const hidden = new Set(hiddenFields(module.settings.fields, settingsValues));
+                    const hidden = new Set(hiddenFields(module.settings.fields, settingsValues, unsetSettings));
                     const fields = module.settings.fields.filter((f) => !hidden.has(f.name));
                     const sabaFields = fields.filter((f) => f.group === 'saba-chan');
                     const basicFields = fields.filter((f) => !f.group || f.group === 'basic');
@@ -555,6 +556,7 @@ function GeneralTab({
 export function ServerSettingsModal({
     settingsServer,
     settingsValues,
+    unsetSettings,
     settingsSource,
     settingsActiveTab,
     setSettingsActiveTab,
@@ -594,8 +596,8 @@ export function ServerSettingsModal({
     const changedSettings = changedForCli(settingsValues, openedWith.current.values, module?.settings?.fields);
     const { valid: _settingsValid, errors: validationErrors } = React.useMemo(() => {
         if (!module?.settings?.fields) return { valid: true, errors: {} };
-        return validateAllSettings(module.settings.fields, settingsValues);
-    }, [module, settingsValues]);
+        return validateAllSettings(module.settings.fields, settingsValues, unsetSettings);
+    }, [module, settingsValues, unsetSettings]);
 
     // ── Validation: 포트 충돌 검사 (모듈 프로토콜 인지) ──
     const moduleProtocols = React.useMemo(() => {
@@ -699,6 +701,7 @@ export function ServerSettingsModal({
                     <GeneralTab
                         settingsServer={settingsServer}
                         settingsValues={settingsValues}
+                        unsetSettings={unsetSettings}
                         modules={modules}
                         advancedExpanded={advancedExpanded}
                         setAdvancedExpanded={setAdvancedExpanded}
