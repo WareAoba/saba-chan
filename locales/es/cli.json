@@ -165,7 +165,8 @@
     "stop_timeout": "El daemon no se detuvo a tiempo.",
     "shutdown_refused": "El daemon no aceptó la solicitud de cierre: {{error}}",
     "stopped": "Daemon detenido.",
-    "stopping": "Deteniendo el daemon..."
+    "stopping": "Deteniendo el daemon...",
+    "stops_with_launcher": "El núcleo de saba-chan se está ejecutando ligado al programa que lo inició. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Detén el daemon (saba-chan-cli daemon stop) y vuelve a iniciarlo desde el menú Inicio o una terminal normal."
   },
   "diagnose": {
     "ok": "No se encontraron problemas conocidos en los registros de {{name}}."

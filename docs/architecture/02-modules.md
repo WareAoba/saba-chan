@@ -113,7 +113,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
 - 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더·백업 경로·훅의 `restore_roots` 밖이면 복원은 400 `restore_outside`다.
-- 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`).
+- 백업 형식(MK16, 0.1.9~): 파일 내용은 `backups/objects/<해시 앞 두 글자>/<sha256>`에 한 번만 두고(deflate), 백업 zip에는 매니페스트 `saba-backup-v2.json`(항목별 원래 절대 경로, 파일마다 상대 경로·해시·크기·수정 시각·내용 파일 크기, 하위 폴더, 링크)과 요약 `saba-backup-v2-summary.json`(`size`·`stored`)만 담는다. 가장 새 백업과 크기·수정 시각이 같은 파일(그 백업 시작 2초 전보다 먼저 바뀐 것)은 내용 파일의 크기가 적어 둔 그대로일 때만 다시 읽지 않는다. 같은 해시의 내용 파일이 있는데 크기가 다르면 망가진 것으로 보고 새로 쓴 것으로 바꾼다. 새로 쓴 내용 파일은 매니페스트를 쓰기 전에 몇 갈래로 나눠 한꺼번에 디스크에 내린다. 백업을 지우거나 정리하면 남은 백업이 쓰지 않는 내용을 치운다. 이때 목록이 아니라 폴더의 백업 이름을 모두 보고, 열거나 읽지 못하는 백업이 하나라도 있으면 치우지 않는다. 복원은 내용의 해시·크기를 확인하고 맞지 않으면 실패해 되돌린다. 0.1.8까지의 백업(`saba-backup.json`과 파일을 zip에 담은 판 1)도 그대로 복원한다. 판 2에는 `saba-backup.json`이 없어 0.1.8 데몬은 복원을 거절한다(`backup/mod.rs`). 만들기·지우기·정리·복원은 백업 폴더마다 하나씩 돈다.
+- 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`). 다만 이름은 지역 시각이라 서머타임이 끝나는 시간에는 뒤바뀔 수 있어, 목록·정리의 순서는 만든 시각(판 2는 요약의 시작 시각, 판 1은 이름의 시각과 파일 수정 시각 중 이른 것. 판 1은 모두 0.1.8까지 만든 것이라 옮겼다 되돌려 수정 시각이 새로 찍혀도 판 2보다 새것으로 보지 않는다)으로 정하고 같으면 이름으로 정한다 (D-B12).
 
 #### `[[settings.fields]]` (`SettingFieldToml` `:784-822` → `SettingField` `:393-444`)
 | 키 | 타입 | 기본값 |
@@ -193,7 +194,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - `ready_timeout` (u64, 초, 기본 600, 최대 900): 시작 뒤 이 시간 안에 준비 문구가 없으면 `ready_timeout`으로 닫는다. 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다. 900보다 크면 경고를 남기고 900을 쓴다(디스코드가 시작을 시킨 채널을 15분 기억한다, 05 §4.4).
 - `player_join_patterns`·`player_leave_patterns` (Vec<String>, 정규식, MK8): 콘솔 줄이 맞으면 그 플레이어가 들어오거나 나간 것이다. 각 정규식에 이름 그룹 `(?P<name>…)`이 있어야 하고, 없거나 정규식이 아니면 그 항목만 버리고 경고한다.
 
-시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}` 이벤트가 한 번 나온다(`supervisor/ready.rs`, 01 §`GET /api/events`). 패턴이 없거나 콘솔을 읽지 않는 시작은 시작이 성공한 때 바로 `ok:true`다. 준비되기 전에 끝나면 `ok:false`와 `code`: `start_failed`, `stopped_while_starting`, `ready_timeout`. 데몬이 띄운 프로세스가 준비 문구 전에 끝나 이미 치워졌으면 `start_failed`다. 감독자가 시작을 시도하지 않은 요청(사전 점검에 막힘, 다른 작업 중, 이미 켜짐, 시작 중)에는 알림이 없다. `ready_timeout`이 시계로 나타낼 수 없을 만큼 크면 시간 초과 없이 기다린다. relay로도 올린다(01 §relay 이벤트).
+시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}` 이벤트가 한 번 나온다(`supervisor/ready.rs`, 01 §`GET /api/events`). 패턴이 없거나 콘솔을 읽지 않는 시작은 시작이 성공한 때 바로 `ok:true`다. 준비되기 전에 끝나면 `ok:false`와 `code`: `start_failed`, `stopped_while_starting`, `ready_timeout`. 데몬이 띄운 프로세스가 준비 문구 전에 끝나 이미 치워졌으면 `start_failed`다. 감독자가 시작을 시도하지 않은 요청(사전 점검에 막힘, 다른 작업 중, 이미 켜짐, 시작 중)에는 알림이 없다. relay로도 올린다(01 §relay 이벤트).
 
 접속·퇴장 문구가 있으면 managed 시작마다 프로세스가 끝날 때까지 콘솔을 보고, 맞는 줄마다 `instance.player {instanceId, instance, player, change:"join"|"leave"}`를 낸다(`supervisor/player_events.rs`). 시스템 줄은 보지 않고, `name` 그룹만 싣는다(64자에서 자르고 제어 문자를 뺀다). non-managed 시작에는 없고, relay로 올리지 않는다. 1분 접속자 수 갱신(`supervisor/players.rs`)과는 따로다.
 

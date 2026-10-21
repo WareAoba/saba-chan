@@ -58,6 +58,9 @@ impl Ctx {
                     let h = self.start_daemon().await?;
                     self.out
                         .note(&t!("daemon.started", version = crate::output::s(&h, "version")));
+                    if let Some(w) = crate::cmd::daemon::launcher_warning(&h) {
+                        self.out.warn(&w);
+                    }
                     return Ok(());
                 }
                 Err(e)

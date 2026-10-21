@@ -109,6 +109,8 @@ async fn agent_round_trips_a_relay_command() {
     std::fs::create_dir_all(&data_dir).unwrap();
     std::env::set_var("SABA_DATA_DIR", &data_dir);
     std::fs::write(data_dir.join(".node_token"), format!("sbn_{}.{}", NODE_ID, SECRET)).unwrap();
+    // 답 문구는 PC 언어를 따른다(고르기 전에는 OS 언어): OS 언어가 무엇이든 영어로 고정한다
+    std::fs::write(data_dir.join("config.json"), json!({ "gui": { "language": "en" } }).to_string()).unwrap();
 
     let relay_state: Shared = Arc::default();
     let relay_url = start_mock_relay(relay_state.clone()).await;

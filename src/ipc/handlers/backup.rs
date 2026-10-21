@@ -331,9 +331,11 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
     let Some(_guard) = BusyGuard::take(&id) else {
         return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
     };
-    match backup::delete(&dir, &name) {
-        Ok(()) => Json(json!({ "success": true })).into_response(),
-        Err(e) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
+    // 지운 뒤 쓰지 않는 내용을 치우느라 모든 백업을 읽는다: 비동기 작업자를 막지 않게
+    match tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await {
+        Ok(Ok(())) => Json(json!({ "success": true })).into_response(),
+        Ok(Err(e)) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string()),
     }
 }
 

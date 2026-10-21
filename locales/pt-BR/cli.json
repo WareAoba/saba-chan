@@ -165,7 +165,8 @@
     "stop_timeout": "O daemon não parou a tempo.",
     "shutdown_refused": "O daemon não aceitou o pedido de encerramento: {{error}}",
     "stopped": "Daemon parado.",
-    "stopping": "Parando o daemon..."
+    "stopping": "Parando o daemon...",
+    "stops_with_launcher": "O núcleo do saba-chan está rodando preso ao programa que o iniciou. Se esse programa fechar, o núcleo e o gerenciamento de servidores podem parar junto. Pare o daemon (saba-chan-cli daemon stop) e inicie de novo pelo menu Iniciar ou por um terminal comum."
   },
   "diagnose": {
     "ok": "Nenhum problema conhecido encontrado nos logs de {{name}}."

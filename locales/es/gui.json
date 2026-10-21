@@ -747,7 +747,7 @@
     "exit_note_gave_up": "Se abandonó tras {{count}} reinicios en 10 minutos",
     "exit_note_restart_failed": "No se pudo reiniciar: {{reason}}",
     "parent_job_short": "El núcleo depende de otra app",
-    "parent_job": "El núcleo de saba-chan se está ejecutando ligado al programa que abrió esta app. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Cierra saba-chan por completo y vuelve a abrirlo desde el menú Inicio."
+    "parent_job": "El núcleo de saba-chan se está ejecutando ligado al programa que lo inició. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Cierra saba-chan por completo y vuelve a abrirlo desde el menú Inicio."
   },
   "discord": {
     "nav_connection": "Conexión",

@@ -165,7 +165,8 @@
     "stop_timeout": "常駐程式未及時停止。",
     "shutdown_refused": "常駐程式未接受關閉要求：{{error}}",
     "stopped": "常駐程式已停止。",
-    "stopping": "正在停止常駐程式..."
+    "stopping": "正在停止常駐程式...",
+    "stops_with_launcher": "saba-chan 核心正依附於啟動它的程式執行。該程式關閉時，核心和伺服器管理可能會一起停止。請停止常駐程式（saba-chan-cli daemon stop），再從開始功能表或一般終端機重新啟動。"
   },
   "diagnose": {
     "ok": "{{name}} 的記錄中沒有發現已知問題。"
