@@ -2606,24 +2606,27 @@ entry = "lifecycle.py"
 
     #[test]
     fn the_minecraft_ready_line_matches_what_the_console_holds() {
-        // minecraft/module.toml 표 원문 (모듈 f3a3fb7). 콘솔 줄은 게임 stdout 한 줄 그대로다(러너 머리 `[날짜] [STDOUT/INFO]`는 떼고 준다)
+        // minecraft/module.toml 표 원문 (모듈 main edc7004). 콘솔 줄은 게임 stdout 한 줄 그대로다(러너 머리 `[날짜] [STDOUT/INFO]`는 떼고 준다).
+        // 바닐라·Paper 머리에 Forge·NeoForge의 로거 칸 ` [minecraft/로거]`까지 받는다
         let table = r#"
 [extensions.saba-core]
-ready_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: Done \(\d+(\.\d+)?s\)! For help, type "help"']
+ready_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: Done \(\d+(\.\d+)?s\)! For help, type "help"']
 player_join_patterns = [
-    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name>[A-Za-z0-9_]{1,16}) joined the game\s*$',
-    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name>[A-Za-z0-9_]{1,16}) \(formerly known as [A-Za-z0-9_]{1,16}\) joined the game\s*$',
+    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: (?P<name>[A-Za-z0-9_]{1,16}) joined the game\s*$',
+    '^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: (?P<name>[A-Za-z0-9_]{1,16}) \(formerly known as [A-Za-z0-9_]{1,16}\) joined the game\s*$',
 ]
-player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
+player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]]*\])?: (?P<name>[A-Za-z0-9_]{1,16}) left the game\s*$']
 "#;
         let meta = parse_module_toml(&format!("{V1}{table}")).unwrap();
         let ready = regex::Regex::new(&meta.ready_patterns[0]).unwrap();
         assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO]: Done (0.267s)! For help, type "help""#));
         assert!(ready.is_match(r#"[20:07:01 INFO]: Done (12.5s)! For help, type "help""#), "Paper's header");
+        assert!(ready.is_match(r#"[20:07:01] [Server thread/INFO] [minecraft/DedicatedServer]: Done (9.1s)! For help, type "help""#), "Forge's logger field");
         for chat in [
             r#"[20:07:05] [Server thread/INFO]: <Steve> Done (0.267s)! For help, type "help""#,
             r#"[20:07:05] [Server thread/INFO]: <Steve> ]: Done (0.267s)! For help, type "help""#,
             r#"[20:07:05] [Server thread/INFO]: [Not Secure] <Steve> ]: Done (0.267s)! For help, type "help""#,
+            r#"[20:07:05] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> [x]: Done (0.267s)! For help, type "help""#,
         ] {
             assert!(!ready.is_match(chat), "a chat line is not the server: {chat}");
         }
@@ -2634,12 +2637,16 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\]: (?P<name
         use crate::supervisor::player_events::Change::{Join, Leave};
         assert_eq!(players.parse("[20:07:05] [Server thread/INFO]: Steve joined the game"), Some(("Steve".into(), Join)));
         assert_eq!(players.parse("[20:07:05 INFO]: Steve joined the game"), Some(("Steve".into(), Join)), "Paper's header");
+        assert_eq!(players.parse("[20:07:05] [Server thread/INFO] [minecraft/MinecraftServer]: Steve joined the game"), Some(("Steve".into(), Join)), "Forge's logger field");
         assert_eq!(players.parse("[20:07:06] [Server thread/INFO]: Alex (formerly known as Al) joined the game"), Some(("Alex".into(), Join)));
         assert_eq!(players.parse("[20:07:09] [Server thread/INFO]: Steve left the game"), Some(("Steve".into(), Leave)));
         for chat in [
             "[20:07:07] [Server thread/INFO]: <Steve> ]: Notch joined the game",
             "[20:07:07] [Server thread/INFO]: [Not Secure] <Steve> ]: Notch joined the game",
             "[20:07:07] [Server thread/INFO]: <Steve> Notch left the game",
+            "[20:07:07] [Server thread/INFO]: <Steve> [x]: Notch joined the game",
+            "[20:07:07] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> Notch joined the game",
+            "[20:07:07] [Server thread/INFO] [minecraft/MinecraftServer]: <Steve> [20:07:07] [Server thread/INFO]: Notch joined the game",
         ] {
             assert_eq!(players.parse(chat), None, "chat is not a player: {chat}");
         }
