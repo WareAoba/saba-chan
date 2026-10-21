@@ -174,6 +174,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "backup_busy" => Some(t!("err.hint.backup_busy")),
         "no_command_path" => Some(t!("err.hint.no_command_path")),
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
+        "agent_too_old" => Some(t!("err.hint.agent_too_old")),
         "module_busy" => Some(t!("err.hint.module_busy")),
         "schedule_changed" => Some(t!("err.hint.schedule_changed")),
         "not_supported" => Some(t!("err.hint.not_supported")),
@@ -271,6 +272,9 @@ mod tests {
             let hint = api_hint(code, &json!({ "protocol": "rcon" })).unwrap_or_default();
             assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
         }
+        // 시간 초과는 서버가 이미 실행했을 수 있다: 다시 보내라고 하지 않고 콘솔에서 확인하게 한다 (지급·차단이 두 번 되지 않게)
+        let hint = api_hint("rcon_timeout", &json!({ "protocol": "rcon" })).unwrap();
+        assert!(hint.contains("saba-chan-cli console") && !hint.to_lowercase().contains("try again"), "{}", hint);
     }
 
     /// `help --json`의 종료 코드 표가 실제 종료 코드와 맞는다

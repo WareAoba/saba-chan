@@ -570,9 +570,9 @@ fn test_module_extension_no_restart_in_apply_result() {
 
 #[test]
 fn test_component_apply_priority_categories() {
-    // 모듈/익스텐션/Locales는 프로세스 중단 불필요 (우선순위 1)
+    // 모듈/익스텐션/Locales는 프로세스 중단 불필요 (우선순위 2)
     // GUI/CLI는 재시작 필요 (우선순위 4~5)
-    // CoreDaemon은 데몬 재시작 필요 (우선순위 3)
+    // CoreDaemon은 데몬 재시작 필요 (우선순위 1)
     let module = Component::Module("minecraft".to_string());
     let extension = Component::Extension("docker".to_string());
     let locales = Component::Locales;
@@ -598,11 +598,11 @@ fn test_component_apply_priority_categories() {
         "Updater가 모듈보다 먼저 적용"
     );
 
-    // 모듈/익스텐션은 CoreDaemon보다 먼저
+    // 모듈은 새 코어를 요구할 수 있다(`requires`): CoreDaemon이 모듈/익스텐션보다 먼저
     assert!(
-        UpdateManager::component_apply_priority_for_test(&module) <
-        UpdateManager::component_apply_priority_for_test(&core_daemon),
-        "모듈은 CoreDaemon보다 먼저 적용"
+        UpdateManager::component_apply_priority_for_test(&core_daemon) <
+        UpdateManager::component_apply_priority_for_test(&module),
+        "CoreDaemon은 모듈보다 먼저 적용"
     );
 
     println!("✓ 컴포넌트 적용 우선순위 카테고리 테스트 통과");
@@ -727,6 +727,7 @@ fn staged_file_is_rechecked_before_apply() {
         downloaded: true,
         downloaded_path: Some(file.to_string_lossy().to_string()),
         staged_sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+        requires: None,
         installed: true,
     };
     assert!(UpdateManager::verified_staged_path(&comp).is_ok());
@@ -819,6 +820,7 @@ fn downloaded_release_notes_reach_the_completion_marker() {
         downloaded: true,
         downloaded_path: Some(file.to_string_lossy().to_string()),
         staged_sha256: None,
+        requires: None,
         installed: true,
     });
     manager.latest_release = Some(crate::relay::LatestRelease {
@@ -853,6 +855,7 @@ fn recheck_keeps_downloads_of_the_same_version() {
         downloaded: true,
         downloaded_path: Some(path.to_string_lossy().to_string()),
         staged_sha256: Some("ab".into()),
+        requires: None,
         installed: true,
     };
     let fresh = |latest: &str| crate::ComponentVersion { downloaded: false, downloaded_path: None, staged_sha256: None, ..staged(latest, &file) };
@@ -986,6 +989,7 @@ fn staged(component: Component, path: &std::path::Path) -> crate::ComponentVersi
         downloaded: true,
         downloaded_path: Some(path.to_string_lossy().to_string()),
         staged_sha256: None,
+        requires: None,
         installed: true,
     }
 }
@@ -1263,4 +1267,378 @@ async fn a_single_component_apply_restores_a_backup_left_by_an_interrupted_apply
 
     assert_eq!(std::fs::read(tmp.path().join("resources.pak")).unwrap(), b"old");
     assert!(!tmp.path().join("resources.pak.update-bak").exists());
+}
+
+// U-10: 상태의 패치노트도 사용자 언어로 고른다 (예전에는 늘 한국어, 없으면 영어)
+#[test]
+fn status_release_notes_follow_the_user_language() {
+    let latest = crate::relay::LatestRelease {
+        version: "0.2.0".into(),
+        notes: Some([("ko", "한"), ("en", "E"), ("ja", "J"), ("zh", "Z")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()),
+        ..Default::default()
+    };
+    assert_eq!(UpdateManager::release_notes_in(&latest, "ja").as_deref(), Some("J"));
+    assert_eq!(UpdateManager::release_notes_in(&latest, "zh-CN").as_deref(), Some("Z"));
+    assert_eq!(UpdateManager::release_notes_in(&latest, "de").as_deref(), Some("E"));
+}
+
+/// 한 번만 응답하는 가짜 다운로드 서버
+async fn serve_once(response: Vec<u8>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = sock.read(&mut buf).await;
+        let _ = sock.write_all(&response).await;
+    });
+    format!("http://{}/asset.zip", addr)
+}
+
+// U-4: 여러 개를 받다 하나가 실패해도 이미 받은 것은 받은 것으로 남긴다 (그래야 pending에 실린다)
+#[tokio::test]
+async fn a_failed_download_keeps_the_ones_already_downloaded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let body = b"cli bytes";
+    let good = serve_once([format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes(), body.to_vec()].concat()).await;
+    let bad = serve_once(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec()).await;
+    let entry = |name: &str, url: String, sha: &str| crate::relay::ManifestComponent {
+        version: "0.2.0".into(), filename: name.into(), size_bytes: None, sha256: sha.into(), url,
+        install_dir: None, requires: None, meta: None,
+    };
+    let sha = {
+        use sha2::Digest;
+        sha2::Sha256::digest(body).iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    };
+    manager.cached_manifest = Some(crate::relay::ReleaseManifest {
+        version: "0.2.0".into(), channel: "stable".into(), platform: "windows-x64".into(), released_at: None, is_critical: false,
+        components: [("gui".to_string(), entry("gui.zip", bad, &sha)), ("cli".to_string(), entry("cli.zip", good, &sha))].into_iter().collect(),
+    });
+    let pending = |component: Component, asset: &str| crate::ComponentVersion {
+        asset_name: Some(asset.into()), downloaded: false, downloaded_path: None,
+        ..staged(component, tmp.path())
+    };
+    manager.status.components = vec![pending(Component::Gui, "gui.zip"), pending(Component::Cli, "cli.zip")];
+
+    // 데몬이 받은 것과 실패한 것을 응답에 함께 싣는다
+    let (downloaded, failed) = manager.download_available_updates_report().await.unwrap();
+    assert_eq!(downloaded, vec!["cli.zip".to_string()]);
+    assert_eq!(failed.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), vec!["gui"]);
+
+    let cli = manager.status.components.iter().find(|c| c.component == Component::Cli).unwrap();
+    assert!(cli.downloaded, "cli was downloaded before gui failed");
+    assert_eq!(cli.staged_sha256.as_deref(), Some(sha.as_str()));
+    assert!(!manager.status.components.iter().find(|c| c.component == Component::Gui).unwrap().downloaded);
+}
+
+fn extension_zip(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::io::Write;
+    let path = dir.join("ext.zip");
+    let mut zw = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    zw.start_file("manifest.json", zip::write::FileOptions::default()).unwrap();
+    zw.write_all(b"{}").unwrap();
+    zw.finish().unwrap();
+    path
+}
+
+// U-3: 데몬이 정한 목록으로 적용할 때도 첫 실패에서 멈춘다 (데몬이 실패했는데 뒤의 것만 바뀌지 않게)
+#[tokio::test]
+async fn target_keys_stop_at_the_first_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("u3-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![
+        staged(Component::CoreDaemon, &tmp.path().join("missing.zip")),
+        staged(ext.clone(), &extension_zip(tmp.path())),
+    ];
+    let keys = vec!["saba-core".to_string(), ext.manifest_key()];
+
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert_eq!(failed.len(), 2, "{:?}", failed);
+    assert!(failed[1].contains("skipped"), "{:?}", failed);
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// 옛 데몬은 모듈을 코어보다 앞에 적어 넘긴다: 업데이터가 적용 순서로 다시 줄 세워 코어부터 적용한다
+#[tokio::test]
+async fn target_keys_apply_the_core_before_modules() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("order-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![
+        staged(ext.clone(), &extension_zip(tmp.path())),
+        staged(Component::CoreDaemon, &tmp.path().join("missing.zip")),
+    ];
+    let keys = vec![ext.manifest_key(), "saba-core".to_string()];
+
+    let (applied, failed) = manager.apply_target_keys(&keys, |_, _, _| {}).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert!(failed[0].starts_with("saba-core:"), "{:?}", failed);
+    assert!(failed[1].contains("skipped"), "{:?}", failed);
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// 새 코어를 요구하는 모듈·익스텐션은 코어가 그 버전이 아니면 적용하지 않는다 (0.1.8은 requires를 보지 않았다)
+#[tokio::test]
+async fn an_update_that_needs_a_newer_core_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("needs-core-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![crate::ComponentVersion {
+        requires: Some([("saba-core".to_string(), ">=99.0.0".to_string())].into_iter().collect()),
+        ..staged(ext.clone(), &extension_zip(tmp.path()))
+    }];
+
+    let (applied, failed) = manager.apply_target_keys(&[ext.manifest_key()], |_, _, _| {}).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert!(failed[0].contains("saba-core >=99.0.0"), "{:?}", failed);
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// 업데이터 `--apply`는 네트워크 없이 pending.json만 읽는다: requires도 거기에 실려야 한다
+#[test]
+fn pending_manifest_keeps_requires() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let file = tmp.path().join("m.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let requires: std::collections::HashMap<String, String> = [("saba-core".to_string(), ">=0.1.9".to_string())].into_iter().collect();
+    manager.status.components = vec![crate::ComponentVersion { requires: Some(requires.clone()), ..staged(Component::Module("m".into()), &file) }];
+    manager.save_pending_manifest().unwrap();
+
+    let mut loaded = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    loaded.staging_dir = manager.staging_dir.clone();
+    loaded.load_pending_manifest().unwrap();
+    assert_eq!(loaded.status.components[0].requires.as_ref(), Some(&requires));
+}
+
+#[test]
+fn unmet_requires_compares_installed_versions() {
+    let requires: std::collections::HashMap<String, String> =
+        [("saba-core".to_string(), ">=0.1.9".to_string()), ("gui".to_string(), ">=0.1.0".to_string())].into_iter().collect();
+    let installed = |core: &str| -> std::collections::HashMap<String, String> {
+        [("saba-core".to_string(), core.to_string())].into_iter().collect()
+    };
+    let unmet = crate::unmet_requires("module-x", &requires, &installed("0.1.8"));
+    let mut names: Vec<_> = unmet.iter().map(|i| i.required_component.as_str()).collect();
+    names.sort();
+    assert_eq!(names, vec!["gui", "saba-core"]);
+    let unmet = crate::unmet_requires("module-x", &requires, &installed("0.1.9"));
+    assert_eq!(unmet.iter().map(|i| i.required_component.as_str()).collect::<Vec<_>>(), vec!["gui"]);
+}
+
+// 목록 없는 적용도 키별로 적용·건너뜀을 남기도록, 받아 둔 것을 적용 순서대로 키 목록으로 준다
+#[test]
+fn pending_keys_come_in_apply_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    let ext = Component::Extension("order".into());
+    manager.status.components = vec![
+        staged(Component::CoreDaemon, &tmp.path().join("core.zip")),
+        staged(ext.clone(), &tmp.path().join("ext.zip")),
+    ];
+
+    assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), ext.manifest_key()]);
+}
+
+// U-9: 목록 없는 적용이 실패해도 그 전에 적용한 것을 돌려준다 (업데이터가 완료 마커에 싣고 pending을 지운다)
+#[tokio::test]
+async fn a_failed_apply_reports_what_it_applied_before() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("u9-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![staged(ext.clone(), &extension_zip(tmp.path())), staged(Component::Cli, &tmp.path().join("missing.zip"))];
+
+    let (applied, failure) = manager.apply_components_report(&[]).await;
+
+    assert!(failure.is_some());
+    assert_eq!(applied, vec![ext.display_name()]);
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
+// U-5: locales도 모듈처럼 백업 뒤 통째로 바꾼다. 새 판에 없는 옛 파일은 남지 않고, 풀다 실패하면 되돌린다
+#[tokio::test]
+async fn locales_are_replaced_with_a_backup() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    let locales = manager.install_root.join("locales");
+    std::fs::create_dir_all(locales.join("ko")).unwrap();
+    std::fs::write(locales.join("ko/old.json"), b"{}").unwrap();
+
+    let broken = tmp.path().join("broken.zip");
+    std::fs::write(&broken, b"not a zip").unwrap();
+    assert!(manager.apply_one(&Component::Locales, broken.to_str().unwrap()).await.is_err());
+    assert!(locales.join("ko/old.json").exists(), "a failed apply restores the old locales");
+
+    let zip_path = tmp.path().join("locales.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("ko/gui.json", zip::write::FileOptions::default()).unwrap();
+        zw.write_all(b"{\"a\":1}").unwrap();
+        zw.finish().unwrap();
+    }
+    manager.apply_one(&Component::Locales, zip_path.to_str().unwrap()).await.unwrap();
+    assert!(locales.join("ko/gui.json").exists());
+    assert!(!locales.join("ko/old.json").exists(), "files dropped from the new release are removed");
+}
+
+// L3(b): tar.gz로 받은 GUI도 풀다 실패하면 zip처럼 원래대로 되돌린다
+#[tokio::test]
+async fn a_failed_tar_gz_gui_extract_restores_the_previous_gui() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let gui = manager.install_root.join(crate::GUI_EXE_NAMES[0]);
+    std::fs::write(&gui, b"old gui").unwrap();
+    std::fs::write(manager.install_root.join("resources.pak"), b"old pak").unwrap();
+    let tar_path = tmp.path().join("gui.tar.gz");
+    {
+        let gz = flate2::write::GzEncoder::new(std::fs::File::create(&tar_path).unwrap(), flate2::Compression::default());
+        let mut tb = tar::Builder::new(gz);
+        let mut add = |name: &str, data: &[u8]| {
+            let mut h = tar::Header::new_gnu();
+            h.set_size(data.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            tb.append_data(&mut h, name, data).unwrap();
+        };
+        add(crate::GUI_EXE_NAMES[0], b"new gui");
+        add("resources.pak", b"new pak");
+        add("new.dll", b"new dll");
+        // new.dll은 파일이라 그 아래에 쓸 수 없다: 여기서 실패한다
+        add("new.dll/inner.txt", b"x");
+        tb.into_inner().unwrap().finish().unwrap();
+    }
+
+    assert!(manager.apply_gui_update(&tar_path.to_string_lossy()).await.is_err());
+    assert_eq!(std::fs::read(&gui).unwrap(), b"old gui");
+    assert_eq!(std::fs::read(manager.install_root.join("resources.pak")).unwrap(), b"old pak");
+    let left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left.len(), 2, "no new file or backup left behind: {left:?}");
+}
+
+// 카탈로그·수동 설치처럼 설치 기록에 없어도 디스크에 있는 모듈은 requires를 채운다
+#[test]
+fn requires_count_a_module_found_on_disk() {
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    std::fs::create_dir_all(modules.join("ondisk")).unwrap();
+    std::fs::write(modules.join("ondisk/module.toml"), "[module]\nname = \"ondisk\"\nversion = \"1.2.0\"\n").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), modules.to_str().unwrap());
+    let ext = Component::Extension("needs-module".into());
+    manager.status.components = vec![crate::ComponentVersion {
+        requires: Some([("module-ondisk".to_string(), ">=1.0.0".to_string())].into_iter().collect()),
+        ..staged(ext.clone(), &tmp.path().join("ext.zip"))
+    }];
+
+    assert!(manager.check_dependencies(&ext.manifest_key()).satisfied);
+}
+
+// 같은 묶음 안에서 requires하는 것을 먼저 적용한다 (같은 순위는 받은 순서보다 의존 관계가 앞선다)
+#[test]
+fn a_dependency_in_the_same_batch_is_applied_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    let (a, b) = (Component::Extension("a".into()), Component::Extension("b".into()));
+    manager.status.components = vec![
+        crate::ComponentVersion {
+            requires: Some([(b.manifest_key(), ">=1.0.0".to_string())].into_iter().collect()),
+            ..staged(a.clone(), &tmp.path().join("a.zip"))
+        },
+        staged(b.clone(), &tmp.path().join("b.zip")),
+        staged(Component::CoreDaemon, &tmp.path().join("core.zip")),
+    ];
+
+    assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), b.manifest_key(), a.manifest_key()]);
+}
+
+// 목록 없는 적용(`apply_components_report`)도 requires를 지킨다
+#[tokio::test]
+async fn an_unlisted_apply_also_refuses_unmet_requires() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("unlisted-needs-core-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    manager.status.components = vec![crate::ComponentVersion {
+        requires: Some([("saba-core".to_string(), ">=99.0.0".to_string())].into_iter().collect()),
+        ..staged(ext.clone(), &extension_zip(tmp.path()))
+    }];
+
+    let (applied, failure) = manager.apply_components_report(&[]).await;
+
+    assert!(applied.is_empty(), "{:?}", applied);
+    assert!(format!("{:#}", failure.unwrap()).contains("saba-core >=99.0.0"));
+    assert!(!manager.resolve_ext_dir(&name).exists());
+}
+
+// 같은 묶음에서 먼저 적용한 것은 기록 전이어도 뒤의 requires를 채운다
+#[tokio::test]
+async fn an_unlisted_apply_counts_what_it_applied_earlier() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let (first, second) = (format!("first-{}", std::process::id()), format!("second-{}", std::process::id()));
+    let (a, b) = (Component::Extension(first.clone()), Component::Extension(second.clone()));
+    let zip_dir = |name: &str| {
+        let dir = tmp.path().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    };
+    manager.status.components = vec![
+        crate::ComponentVersion {
+            requires: Some([(a.manifest_key(), ">=9.9.9".to_string())].into_iter().collect()),
+            ..staged(b.clone(), &extension_zip(&zip_dir("b")))
+        },
+        crate::ComponentVersion { latest_version: Some("9.9.9".into()), ..staged(a.clone(), &extension_zip(&zip_dir("a"))) },
+    ];
+
+    let (applied, failure) = manager.apply_components_report(&[]).await;
+
+    assert!(failure.is_none(), "{:?}", failure);
+    assert_eq!(applied, vec![a.display_name(), b.display_name()]);
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&first));
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&second));
+}
+
+// 카탈로그로 지우거나 바꾼 모듈은 설치 기록에 옛 값이 남는다: requires는 디스크에 있는 것만 센다
+#[test]
+fn requires_ignore_recorded_addons_missing_from_disk() {
+    let recorded: std::collections::HashMap<String, String> = [("saba-core", "0.1.9"), ("module-gone", "1.0.0"), ("module-kept", "1.0.0")]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    let disk = [("module-kept".to_string(), "2.0.0".to_string())].into_iter().collect();
+
+    let versions = crate::merge_addons_from_disk(recorded, disk);
+
+    assert_eq!(versions.get("saba-core").map(String::as_str), Some("0.1.9"));
+    assert_eq!(versions.get("module-kept").map(String::as_str), Some("2.0.0"), "the version on disk wins");
+    assert!(!versions.contains_key("module-gone"));
 }

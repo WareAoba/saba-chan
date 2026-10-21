@@ -69,4 +69,18 @@ describe('서버 파일이 없을 때 새로 설치', () => {
         expect(modal.buttons.map((b) => b.label)).not.toContain(i18n.t('gui:servers.jar_action_install_new'));
         expect(modal.buttons).toHaveLength(2);
     });
+
+    // 예전 실행 파일 경로(paper-…-130.jar)가 남아 있으면 새로 받은 파일 대신 그것을 켠다 (외부 감사 10-20 #5)
+    it('새로 받은 실행 파일을 그 인스턴스의 실행 파일로 기록한다', async () => {
+        await installNew({
+            success: true,
+            version: '1.21.4',
+            install_path: '/srv/a',
+            executable_path: '/srv/a/server.jar',
+        });
+        expect(window.api.instanceUpdateSettings).toHaveBeenCalledWith('a', {
+            working_dir: '/srv/a',
+            executable_path: '/srv/a/server.jar',
+        });
+    });
 });

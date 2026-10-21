@@ -61,6 +61,7 @@ asset = "saba-chan-installer.exe"
 install_dir = "."
 files = [
     "installer/gui/src-tauri/Cargo.toml",
+    "installer/core/Cargo.toml",
     "installer/gui/src-tauri/tauri.conf.json",
 ]
 

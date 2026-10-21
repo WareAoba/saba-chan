@@ -82,6 +82,8 @@ struct Plan {
     paths: Vec<PathBuf>,
     /// 패턴이 가리키는 경로 전부 (지금 없는 것 포함). 복원이 되살려도 되는 범위
     targets: Vec<PathBuf>,
+    /// 훅이 더 돌려준 복원 허용 범위 (`restore_roots`). 백업 대상은 아니다 (MA3)
+    restore_roots: Vec<PathBuf>,
     save_command: Option<String>,
     keep: usize,
 }
@@ -138,10 +140,13 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
         (spec, base, backup::backups_dir(&supervisor.instance_store.instance_dir(id)), keep, hook_call, lookup)
     };
     let mut patterns = spec.paths.clone();
+    let mut root_patterns = Vec::new();
     if let Some(call) = hook_call {
         match call.run().await {
             Ok(v) if v.get("success").and_then(Value::as_bool) == Some(true) => {
-                patterns.extend(v["paths"].as_array().into_iter().flatten().filter_map(|p| p.as_str().map(str::to_string)));
+                let strings = |key: &str| v[key].as_array().into_iter().flatten().filter_map(|p| p.as_str().map(str::to_string)).collect::<Vec<_>>();
+                patterns.extend(strings("paths"));
+                root_patterns = strings("restore_roots");
             }
             // 경로를 모르면 안전 백업 없이 업데이트·복원이 진행되니 여기서 멈춘다
             Ok(v) => {
@@ -151,9 +156,10 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
             Err(e) => return Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", format!("backup_paths failed: {:#}", e))),
         }
     }
+    let restore_roots = backup::fill_paths(&root_patterns, &base, &lookup);
     let targets = backup::fill_paths(&patterns, &base, lookup);
     let paths = targets.iter().filter(|p| p.exists()).cloned().collect();
-    Ok(Some(Plan { dir, paths, targets, save_command: spec.save_command, keep }))
+    Ok(Some(Plan { dir, paths, targets, restore_roots, save_command: spec.save_command, keep }))
 }
 
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
@@ -228,6 +234,7 @@ async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
         dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
         paths: Vec::new(),
         targets: Vec::new(),
+        restore_roots: Vec::new(),
         save_command: None,
         keep: instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP),
     })
@@ -355,7 +362,7 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         };
         // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
         match plan(&state, &id).await {
-            Ok(Some(p)) => roots.extend(p.targets),
+            Ok(Some(p)) => roots.extend(p.targets.into_iter().chain(p.restore_roots)),
             Ok(None) => {}
             Err(r) => return Err(r),
         }
@@ -960,6 +967,34 @@ mod tests {
         let refused = restore_backup(Path((id.clone(), old)), State(state.clone())).await;
         assert_eq!(code(refused).await, "restore_outside");
         assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
+    }
+
+    /// 훅이 `restore_roots`로 넓힌 폴더 안의 옛 백업은 복원된다. 그 폴더는 새 백업 대상이 되지 않는다 (MA3)
+    #[tokio::test]
+    async fn restore_roots_let_an_older_backup_of_the_whole_data_folder_come_back() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
+        let data = tempfile::tempdir().unwrap();
+        let server = data.path().join("Server");
+        std::fs::create_dir_all(&server).unwrap();
+        std::fs::write(server.join("srv.ini"), b"old").unwrap();
+        std::fs::write(server.join("srv_SandboxVars.lua"), b"old").unwrap();
+        let hook = format!(
+            "import json\nprint(json.dumps({{'success': True, 'paths': [{ini:?}], 'restore_roots': [{root:?}]}}))\n",
+            ini = server.join("srv.ini").to_string_lossy(),
+            root = server.to_string_lossy(),
+        );
+        let (state, id, _tmp) = server_with(&toml, Some(&hook)).await;
+        // 예전 모듈은 데이터 폴더를 통째로 담았다
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let old = backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&server)).unwrap().name;
+        std::fs::write(server.join("srv_SandboxVars.lua"), b"new").unwrap();
+
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), old)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read(server.join("srv_SandboxVars.lua")).unwrap(), b"old");
+
+        let made = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+        assert_eq!(backup::backed_up_paths(&dir, &made).unwrap(), vec![server.join("srv.ini")], "restore_roots are not backed up");
     }
 
     /// 경로 형식이 아닌 설정 값(월드 이름 같은 글자)은 백업 경로를 서버 폴더 밖으로 돌리지 못한다:

@@ -39,6 +39,7 @@
     "requested_by": "Angefragt von",
     "username": "Benutzername",
     "config_saved": "Bot-Einstellungen gespeichert.",
+    "config_ignored": "Berechtigungsschlüssel ändert die Bot-Konfiguration nicht, sie behalten ihren bisherigen Wert: {{keys}}. Alles andere wurde gespeichert. Berechtigungen änderst du mit saba-chan-cli perm",
     "confirm_unpair": "Diesen PC vom Discord-Bot trennen und die Kopplung vergessen?",
     "connection": "Verbindung",
     "last_error": "Letzter Fehler",
@@ -73,7 +74,8 @@
     "link_declined": "Verbindungsanfrage abgelehnt.",
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
-    "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}"
+    "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
+    "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
   },
   "col": {
     "players": "Spieler",
@@ -156,6 +158,7 @@
     "offer_start": "Der Saba-chan-Daemon läuft nicht. Starten?",
     "spawn_failed": "Der Daemon konnte nicht gestartet werden: {{error}}",
     "start_timeout": "Der Daemon hat nicht rechtzeitig geantwortet. Prüfe: saba-chan-cli daemon logs",
+    "exited_early": "Der Daemon wurde direkt nach dem Start beendet (Exit-Code {{code}}). Möglicherweise läuft bereits ein anderer Daemon. Prüfen: saba-chan-cli daemon status",
     "started": "Daemon gestartet (v{{version}}).",
     "starting": "Daemon wird gestartet...",
     "stop_no_pid": "Der Daemon hat seine PID nicht gemeldet und kann daher nicht von hier beendet werden.",
@@ -183,7 +186,8 @@
       "forbidden": "Du hast auf diesem Discord-Server keine Berechtigung dafür.",
       "expired": "Der Code ist abgelaufen. Fang von vorne an.",
       "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
-      "other": "Das Relay hat die Anfrage abgelehnt ({{code}})."
+      "other": "Das Relay hat die Anfrage abgelehnt ({{code}}).",
+      "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
     },
     "ambiguous": "Mehr als ein {{what}} passt zu „{{query}}“.",
     "ambiguous_hint": "Sei genauer: {{names}}",
@@ -201,7 +205,7 @@
       "server_running": "Stoppe zuerst den Server: saba-chan-cli stop NAME",
       "rcon_unreachable": "Keine Verbindung zum RCON des Servers. Prüfe, ob der Server fertig gestartet ist, und versuche es gleich noch einmal: saba-chan-cli status",
       "rcon_auth_failed": "Der Server hat das RCON-Passwort abgelehnt. Starte den Server neu, damit Saba-chan das Passwort erneut einträgt: saba-chan-cli restart NAME",
-      "rcon_timeout": "Der Server hat über RCON nicht rechtzeitig geantwortet. Er ist vielleicht ausgelastet; versuche es gleich noch einmal",
+      "rcon_timeout": "Der Server hat über RCON nicht rechtzeitig geantwortet. Der Befehl wurde vielleicht schon ausgeführt; sieh vor dem erneuten Senden in die Serverkonsole: saba-chan-cli console NAME",
       "rcon_failed": "Der Server hat eine RCON-Antwort geschickt, die Saba-chan nicht lesen kann. Sieh in die Serverkonsole: saba-chan-cli console NAME",
       "update_unsupported": "Dieser Server kann nicht über Saba-chan aktualisiert werden. Aktualisiere seine Dateien selbst.",
       "dependency_outdated": "Auf neuere Versionen aktualisieren: saba-chan-cli update check",
@@ -214,7 +218,8 @@
       "schedule_changed": "Der Zeitplan wurde an anderer Stelle geändert. Prüfe ihn mit saba-chan-cli schedule show und versuche es erneut.",
       "invalid_command": "Schreibe den Befehlsschlüssel als `<server>/<command>`. Ein Schlüssel ohne Server muss eine globale Aktions-ID sein.",
       "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>",
-      "not_supported": "Nicht unterstützte Befehle zeigt: saba-chan-cli module info"
+      "not_supported": "Nicht unterstützte Befehle zeigt: saba-chan-cli module info",
+      "agent_too_old": "Nach Updates suchen: saba-chan-cli update check"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -472,6 +477,8 @@
     "ready": "bereit zur Installation",
     "up_to_date": "aktuell",
     "updater_launched": "Updater gestartet. Der Daemon wird für das Update beendet.",
+    "waiting_result": "Warte, bis das Update angewendet ist und Saba-chan neu startet…",
+    "result_timeout": "Innerhalb von 15 Minuten kam kein Update-Ergebnis. Prüfe das Updater-Fenster oder ob Saba-chan neu gestartet ist",
     "verifying": "Dateien werden geprüft...",
     "unknown_key": "{{key}} ist keine Update-Einstellung. Einstellungen: {{keys}}",
     "integrity_empty": "Noch keine Dateien erfasst. Nur vom Updater installierte Teile werden geprüft.",

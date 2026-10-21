@@ -4072,6 +4072,23 @@ dependencies = [
 name = "saba-chan-installer"
 version = "0.1.8"
 dependencies = [
+ "saba-chan-installer-core",
+ "saba-chan-updater-lib",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-shell",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "saba-chan-installer-core"
+version = "0.1.8"
+dependencies = [
  "anyhow",
  "dirs 5.0.1",
  "futures-util",
@@ -4080,14 +4097,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sys-locale",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-shell",
+ "tempfile",
  "tokio",
  "toml 0.8.2",
  "tracing",
- "tracing-subscriber",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
  "zip",
@@ -4126,6 +4139,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sys-locale",
  "tar",
  "tempfile",
  "thiserror 1.0.69",
@@ -4133,6 +4147,7 @@ dependencies = [
  "toml 0.5.11",
  "tracing",
  "uuid",
+ "windows-sys 0.59.0",
  "winreg 0.52.0",
  "zip",
 ]
@@ -4186,6 +4201,7 @@ dependencies = [
 name = "saba-runner"
 version = "0.1.8"
 dependencies = [
+ "embed-resource",
  "portable-pty",
  "serde",
  "serde_json",

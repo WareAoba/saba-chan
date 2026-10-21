@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUIStore } from '../../stores/useUIStore';
 import { safeShowToast } from '../../utils/helpers';
 import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
@@ -226,6 +227,7 @@ export function ConnectionView({
     botStatus,
     agentReplaced,
     agentRelayUrlInvalid,
+    agentMinVersion,
     pairing,
     onStartPairing,
     onCancelPairing,
@@ -285,21 +287,23 @@ export function ConnectionView({
 
     const connected = cloudState === 'connected';
     const agentRunning = botStatus === 'running' || botStatus === 'connecting';
+    // 릴레이가 이 앱 버전을 거절하면 세션이 살아 있어도 명령이 오지 않는다
+    const refused = !!agentMinVersion;
     // 모든 서버를 재웠으면 명령이 흐르지 않으니 사바쨩 쪽 흐름을 끈다
-    const flowing = agentRunning && connected && !asleep;
+    const flowing = agentRunning && connected && !asleep && !refused;
     // 릴레이에 닿지 못한 것은 "실패": 끊긴 자리를 빨간 X로 보인다 (재우기·연결 중은 그냥 이음줄이 없다)
     const relayFailed = cloudState === 'error';
     return (
         <div className="dc-view">
             {/* 연결 카드: 제목·상태·재우기 + 사바쨩 → 릴레이 서버 → 디스코드 흐름 + 그림 칸 (여러 카드를 하나로) */}
-            <section className={clsx('dc-card dc-conn-card', { off: !agentRunning })}>
+            <section className={clsx('dc-card dc-conn-card', { off: !agentRunning || refused })}>
                 <div className="dc-conn-head">
                     <div className="dc-conn-title">
                         <h1>{t('discord.connection_title')}</h1>
                         <p className="muted">
                             {t(
                                 connected
-                                    ? agentRunning
+                                    ? agentRunning && !refused
                                         ? 'discord.conn_sub_connected'
                                         : 'discord.conn_sub_paused'
                                     : cloudState === 'connecting'
@@ -316,7 +320,7 @@ export function ConnectionView({
                             )}
                             {cloudState === 'error' && <StatusChip tone="stop" label={t('discord.relay_failed')} />}
                         </div>
-                        {agentRunning ? (
+                        {refused && agentRunning ? null : agentRunning ? (
                             <SleepAllButton nodes={nodes} onAsleepChange={setAsleep} />
                         ) : (
                             <button
@@ -331,7 +335,8 @@ export function ConnectionView({
                     </div>
                 </div>
 
-                {cloudState === 'error' && (
+                {/* 거절 이유는 아래 업데이트 안내가 말한다 */}
+                {cloudState === 'error' && !refused && (
                     <div className="notice tone-stop">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('discord.relay_failed_body', { error: cloudError || '-' })}</span>
@@ -344,6 +349,19 @@ export function ConnectionView({
                     <div className="notice tone-warn">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('discord.agent_replaced')}</span>
+                    </div>
+                )}
+                {agentMinVersion && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('discord.agent_too_old', { version: agentMinVersion })}</span>
+                        <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => useUIStore.getState().openSettings('update')}
+                        >
+                            {t('discord.agent_check_update')}
+                        </button>
                     </div>
                 )}
                 {agentRelayUrlInvalid && !agentRunning && (

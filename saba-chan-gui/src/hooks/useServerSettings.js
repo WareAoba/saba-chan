@@ -1,7 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { launchDraft } from '../components/servers/LaunchPreview';
-import { busyMessage, createTranslateError, moduleSupports, safeShowToast } from '../utils/helpers';
+import {
+    busyMessage,
+    createTranslateError,
+    installedExecutable,
+    moduleSupports,
+    safeShowToast,
+} from '../utils/helpers';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { useModalClose } from './useModalClose';
@@ -371,10 +377,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
                             // 설치한 버전만 기록한다 (설정 저장은 버전을 보내지 않는다)
                             const update = { server_version: version };
-                            if (installResult.jar_path) {
-                                // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
-                                update.working_dir =
-                                    installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
+                            // 받은 파일로 켠다: 예전 실행 파일 경로(paper-…-130.jar 등)가 남아 있으면 옛 버전이 뜬다
+                            const exe = installedExecutable(installResult);
+                            if (exe) {
+                                update.working_dir = installResult.install_path || exe.replace(/[/\\][^/\\]+$/, '');
+                                update.executable_path = exe;
                             }
                             const saved = await window.api.instanceUpdateSettings(settingsServer.id, update);
                             if (!saved || saved.error || saved.success === false) {
@@ -471,7 +478,14 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                             const updated = serverList.servers.find((s) => s.id === settingsServer.id);
                                             if (updated && request === openRequest.current) {
                                                 setSettingsServer(updated);
-                                                setSettingsValues(updated.module_settings || {});
+                                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
+                                                setSettingsValues((prev) => ({
+                                                    ...prev,
+                                                    ...updated.module_settings,
+                                                    ...restartFlagsOf(updated),
+                                                    memory_limit_mb: memoryLimitOf(updated),
+                                                    stop_timeout: stopTimeoutOf(updated),
+                                                }));
                                             }
                                         }
                                     } catch (_e) {

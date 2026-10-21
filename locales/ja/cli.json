@@ -40,6 +40,7 @@
     "requested_by": "依頼者",
     "username": "ユーザー名",
     "config_saved": "ボットの設定を保存しました。",
+    "config_ignored": "権限キーはボット設定では変わらないため、以前の値のままです: {{keys}}。ほかは保存しました。権限は saba-chan-cli perm で変更してください",
     "confirm_unpair": "この PC を Discord ボットから切断し、ペアリングを解除しますか？",
     "connection": "接続",
     "last_error": "最後のエラー",
@@ -99,7 +100,8 @@
     "words_saved": "{{server}} のチャット用の語を保存しました。",
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
-    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}"
+    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
+    "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
   },
   "col": {
     "players": "接続者",
@@ -203,6 +205,7 @@
     "offer_start": "サバちゃんのデーモンが動いていません。起動しますか？",
     "spawn_failed": "デーモンを起動できませんでした: {{error}}",
     "start_timeout": "デーモンが時間内に応答しませんでした。確認: saba-chan-cli daemon logs",
+    "exited_early": "デーモンが起動直後に終了しました(終了コード {{code}})。別のデーモンがすでに動いている可能性があります。確認: saba-chan-cli daemon status",
     "started": "デーモンを起動しました（v{{version}}）。",
     "starting": "デーモンを起動しています...",
     "stop_no_pid": "デーモンが PID を報告しなかったため、ここからは強制終了できません。",
@@ -230,7 +233,8 @@
       "forbidden": "そのDiscordサーバーでこの操作をする権限がありません。",
       "expired": "コードの有効期限が切れました。最初からやり直してください。",
       "rate_limited": "リクエストが多すぎます。1分ほどしてからもう一度お試しください。",
-      "other": "リレーがリクエストを拒否しました（{{code}}）。"
+      "other": "リレーがリクエストを拒否しました（{{code}}）。",
+      "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
     },
     "ambiguous": "「{{query}}」に一致する{{what}}が複数あります。",
     "ambiguous_hint": "もっと具体的に指定してください: {{names}}",
@@ -248,7 +252,7 @@
       "server_running": "先にサーバーを停止してください: saba-chan-cli stop NAME",
       "rcon_unreachable": "サーバーのRCONに接続できませんでした。サーバーの起動が終わったか確認し、少し待ってからもう一度試してください: saba-chan-cli status",
       "rcon_auth_failed": "サーバーがRCONパスワードを受け付けませんでした。サーバーを再起動するとサバちゃんがパスワードを書き直します: saba-chan-cli restart NAME",
-      "rcon_timeout": "サーバーがRCONに時間内に応答しませんでした。混んでいる可能性があります。少し待ってからもう一度試してください",
+      "rcon_timeout": "サーバーがRCONに時間内に応答しませんでした。コマンドはすでに実行された可能性があるため、もう一度送る前にサーバーのコンソールを確認してください: saba-chan-cli console NAME",
       "rcon_failed": "サーバーから読めないRCON応答が返りました。サーバーのコンソールを確認してください: saba-chan-cli console NAME",
       "update_unsupported": "このサーバーはサバちゃんから更新できません。ファイルを手動で更新してください。",
       "dependency_outdated": "新しいバージョンに更新してください: saba-chan-cli update check",
@@ -269,7 +273,8 @@
         "unknown_command": "このサーバーにないコマンドです",
         "too_many": "語は 10 個までです"
       },
-      "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。"
+      "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。",
+      "agent_too_old": "更新を確認: saba-chan-cli update check"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -530,6 +535,8 @@
     "ready": "インストール準備完了",
     "up_to_date": "最新",
     "updater_launched": "アップデーターを起動しました。更新のためデーモンを終了しています。",
+    "waiting_result": "アップデートの適用とサバちゃんの再起動を待っています…",
+    "result_timeout": "15分以内にアップデート結果が届きませんでした。アップデーターの画面か、サバちゃんが再起動したか確認してください",
     "verifying": "ファイルを検証しています...",
     "unknown_key": "{{key}} はアップデートの設定ではありません。設定: {{keys}}",
     "integrity_empty": "記録されたファイルはまだありません。アップデーターがインストールした部分だけを確認します。",
