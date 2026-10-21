@@ -221,11 +221,23 @@ static LABEL_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 /// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 그 안 실행 파일에서 덮는다 (Windows). 그 표시가 걸린
 /// 실행 파일로 띄운 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
 /// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 남은 실행 파일이 있으면 `server_folder_label`로 막는다
-async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
+/// `program`: 띄울 파일. 서버 폴더 안에 있으면 확장자와 상관없이 그 파일의 표시도 덮는다 (L38)
+async fn restore_server_folders(dirs: Vec<PathBuf>, program: Option<PathBuf>) -> Result<(), Blocked> {
     #[cfg(windows)]
     {
         let stuck = tokio::task::spawn_blocking(move || {
             let mut stuck = Vec::new();
+            let inside = |file: &Path| {
+                let Ok(file) = std::fs::canonicalize(file) else { return false };
+                dirs.iter().filter_map(|d| std::fs::canonicalize(d).ok()).any(|d| file.starts_with(d))
+            };
+            if let Some(program) = program.filter(|p| p.is_file() && inside(p)) {
+                match appcontainer::clear_low_label_of(&program) {
+                    Ok(true) => tracing::info!("[Sandbox] set {} to medium integrity", program.display()),
+                    Ok(false) => {}
+                    Err(failed) => stuck.extend(failed),
+                }
+            }
             for dir in dirs.iter().filter(|d| d.is_dir()) {
                 let started = std::time::Instant::now();
                 match appcontainer::clear_low_labels(dir) {
@@ -256,7 +268,7 @@ async fn restore_server_folders(dirs: Vec<PathBuf>) -> Result<(), Blocked> {
         }
     }
     #[cfg(not(windows))]
-    let _ = dirs;
+    let _ = (dirs, program);
     Ok(())
 }
 
@@ -291,7 +303,8 @@ pub fn strip_search_path(env: &mut Vec<(String, String)>) {
 pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(String, LaunchGate), Blocked> {
     // 모듈이 띄우든 익스텐션이 띄우든 서버를 실행하는 모든 길이 여기를 지난다
     let gate = LaunchGate(LABEL_GATE.lock().await);
-    restore_server_folders(roots.dirs.clone()).await?;
+    let target = Path::new(&resolve_program(program, cwd)).to_path_buf();
+    restore_server_folders(roots.dirs.clone(), target.is_absolute().then_some(target)).await?;
     if !ENFORCED || !restricted(trust()) {
         return Ok((program.to_string(), gate));
     }
