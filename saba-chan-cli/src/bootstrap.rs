@@ -204,7 +204,7 @@ pub fn kill_pid(pid: u64) -> Result<()> {
     let pid = pid.to_string();
     let status = if cfg!(windows) {
         // /T 없이: 게임 서버는 saba-runner가 붙들고 있다
-        Command::new("taskkill")
+        Command::new(saba_chan_updater_lib::process::system_tool("taskkill"))
             .args(["/PID", &pid, "/F"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
