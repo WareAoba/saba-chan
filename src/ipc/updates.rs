@@ -162,6 +162,7 @@ async fn get_status(
         "error": status.error,
         "updates_available": visible_update_count,
         "components": components,
+        "profile": saba_chan_updater_lib::profile::Profile::load().as_str(),
     }))
 }
 
@@ -502,15 +503,9 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             .collect()
     };
 
-    // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
-    targets.sort_by_key(|comp| match comp {
-        Component::Updater => 0u8,
-        Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
-        Component::CoreDaemon => 3,
-        Component::Gui => 4,
-        Component::Cli => 4,
-    });
+    // 업데이터와 같은 적용 순서: Updater → CoreDaemon → 모듈/익스텐션/Locales → 인터페이스, 같은 묶음의 requires가 먼저
+    let order = mgr.apply_order(&targets.iter().map(|c| c.manifest_key()).collect::<Vec<_>>());
+    targets.sort_by_key(|c| order.iter().position(|k| *k == c.manifest_key()));
 
     let mut applied = Vec::new();
     let mut applied_keys = Vec::new();
@@ -587,10 +582,11 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     if needs_updater.is_empty() {
         if has_module_updates {
             if let Some(ref sup) = state.supervisor {
-                let sup = sup.read().await;
+                let mut sup = sup.write().await;
                 match sup.refresh_modules() {
                     Ok(modules) => {
                         tracing::info!("[Updates] Hot-reloaded {} module(s) after update", modules.len());
+                        sup.migrate_list_settings();
                     }
                     Err(e) => {
                         tracing::warn!("[Updates] Failed to hot-reload modules after update: {}", e);
@@ -681,17 +677,7 @@ async fn launch_updater(
         None => Vec::new(),
     };
     let relaunch = relaunch_target(body.relaunch, &guis);
-    let mut args = vec![
-        "--apply".to_string(),
-        "--wait-pid".to_string(),
-        std::process::id().to_string(),
-        "--launch-token".to_string(),
-        ticket,
-    ];
-    if !relaunch.is_empty() {
-        args.push("--relaunch".to_string());
-        args.extend(relaunch);
-    }
+    let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch);
     if let Err(e) = spawn_detached(&updater, &args) {
         state.updater_launched.store(false, Ordering::SeqCst);
         return (
@@ -710,6 +696,31 @@ async fn launch_updater(
         });
     }
     Json(json!({ "ok": true, "updater_launched": true, "daemon_stopping": true })).into_response()
+}
+
+/// 업데이터 실행 인자. 헤드리스 설치는 창 없이 적용하게 `--headless`를 붙이고,
+/// 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄우게 한다 (GUI가 없어 데몬을 띄워 줄 쪽이 없다)
+fn updater_args(ticket: String, profile: saba_chan_updater_lib::profile::Profile, mut relaunch: Vec<String>) -> Vec<String> {
+    let mut args = vec![
+        "--apply".to_string(),
+        "--wait-pid".to_string(),
+        std::process::id().to_string(),
+        "--launch-token".to_string(),
+        ticket,
+    ];
+    if profile == saba_chan_updater_lib::profile::Profile::Headless {
+        args.push("--headless".to_string());
+        if relaunch.is_empty() {
+            if let Ok(me) = std::env::current_exe() {
+                relaunch = vec![me.to_string_lossy().into_owned(), "--spawned".to_string()];
+            }
+        }
+    }
+    if !relaunch.is_empty() {
+        args.push("--relaunch".to_string());
+        args.extend(relaunch);
+    }
+    args
 }
 
 /// 등록된 GUI 중 지금도 GUI 실행 파일로 떠 있는 것의 PID와 실행 파일 (PID 재사용 대비)
@@ -1103,6 +1114,24 @@ mod tests {
         assert_eq!(super::relaunch_target(daemon.clone(), &[]), daemon);
         let own = vec![format!("/other/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0])];
         assert_eq!(super::relaunch_target(own.clone(), &guis), own);
+    }
+
+    /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로
+    #[test]
+    fn a_headless_install_applies_without_a_window_and_relaunches_the_daemon() {
+        use saba_chan_updater_lib::profile::Profile;
+        let me = std::env::current_exe().unwrap().to_string_lossy().into_owned();
+        let args = super::updater_args("t".into(), Profile::Headless, Vec::new());
+        let relaunch = args.iter().position(|a| a == "--relaunch").expect("relaunches something");
+        assert!(args[..relaunch].contains(&"--headless".to_string()), "{args:?}");
+        assert_eq!(args[relaunch + 1..], [me, "--spawned".to_string()]);
+
+        let cli = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
+        let args = super::updater_args("t".into(), Profile::Headless, cli.clone());
+        assert_eq!(args[args.len() - 2..], cli[..]);
+
+        let args = super::updater_args("t".into(), Profile::Desktop, Vec::new());
+        assert!(!args.iter().any(|a| a == "--headless" || a == "--relaunch"), "{args:?}");
     }
 
     /// 데몬이 바로 적용한 업데이트(재시작 없는 모듈·익스텐션·설치기)도 결과와 패치노트를 남긴다.

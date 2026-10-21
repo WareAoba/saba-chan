@@ -74,7 +74,8 @@
     "link_declined": "Solicitud de conexión rechazada.",
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
-    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}"
+    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
+    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
   },
   "col": {
     "players": "Jugadores",
@@ -157,6 +158,7 @@
     "offer_start": "El daemon de Saba-chan no está en marcha. ¿Iniciarlo?",
     "spawn_failed": "No se pudo iniciar el daemon: {{error}}",
     "start_timeout": "El daemon no respondió a tiempo. Revisa: saba-chan-cli daemon logs",
+    "exited_early": "El daemon se cerró justo después de iniciarse (código de salida {{code}}). Puede que ya haya otro daemon en ejecución. Comprueba: saba-chan-cli daemon status",
     "started": "Daemon iniciado (v{{version}}).",
     "starting": "Iniciando el daemon...",
     "stop_no_pid": "El daemon no informó su PID, así que no se puede cerrar desde aquí.",
@@ -184,7 +186,8 @@
       "forbidden": "No tienes permiso para hacer eso en ese servidor de Discord.",
       "expired": "El código caducó. Empieza de nuevo.",
       "rate_limited": "Demasiadas solicitudes. Inténtalo de nuevo en un minuto.",
-      "other": "El relay rechazó la solicitud ({{code}})."
+      "other": "El relay rechazó la solicitud ({{code}}).",
+      "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
     },
     "ambiguous": "Hay más de un {{what}} que coincide con «{{query}}».",
     "ambiguous_hint": "Sé más específico: {{names}}",
@@ -215,7 +218,8 @@
       "schedule_changed": "La programación se cambió en otro lugar. Revísala con saba-chan-cli schedule show y vuelve a intentarlo.",
       "invalid_command": "Escribe la clave del comando como `<server>/<command>`. Una clave sin servidor debe ser un id de acción global.",
       "no_command_path": "Este servidor se inició fuera de Saba-chan, así que no tiene consola para recibir comandos. Reinícialo desde Saba-chan: saba-chan-cli restart <server>",
-      "not_supported": "Consulta los comandos no admitidos con: saba-chan-cli module info"
+      "not_supported": "Consulta los comandos no admitidos con: saba-chan-cli module info",
+      "agent_too_old": "Buscar actualizaciones: saba-chan-cli update check"
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
@@ -510,7 +514,7 @@
       "events.since": "Empieza tras este id de evento (reenvía lo que el daemon aún guarda)",
       "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json"
     },
-    "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos se abre la shell interactiva.\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
+    "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
   "restart": {
     "waiting": "Reiniciando {{name}}...",
@@ -627,5 +631,35 @@
       "where": "Dónde",
       "what": "Código"
     }
+  },
+  "tui": {
+    "daemon_up": "Daemon ● conectado (v{{version}})",
+    "daemon_down": "Daemon ○ apagado · iniciar: daemon start",
+    "servers_running": "{{running}} de {{total}} servidores en marcha",
+    "menu": "Menú",
+    "output": "Resultado",
+    "enter_to_run": "Enter para ejecutar",
+    "running_hint": "(en curso · Ctrl+C para detener)",
+    "keys": "↑↓ mover · ←→ menú/lista · Enter ejecutar · : comando · PgUp/PgDn resultado · ? ayuda · q salir",
+    "yes": "Sí",
+    "no": "No",
+    "question": "Confirmar",
+    "dialog_keys": "Enter elegir · Esc cancelar",
+    "help_title": "Teclas",
+    "help": "↑↓  moverse por el menú o la lista\n←→ / Tab  cambiar entre menú y lista\nEnter  ejecutar lo elegido (abre la línea de comandos si necesita argumentos)\n:  línea de comandos (los mismos comandos que tras saba-chan-cli, ↑↓ para los anteriores)\nPgUp/PgDn, rueda del ratón  desplazar el resultado\nCtrl+C  detener el comando en curso\nq  salir (el daemon y los servidores siguen en marcha)",
+    "too_narrow": "Amplía la ventana a 60 columnas como mínimo.",
+    "not_here": "Este comando no puede ejecutarse dentro del menú a pantalla completa. Sal con q y ejecútalo en la terminal.",
+    "cancelled": "Detenido.",
+    "action": {
+      "start": "Iniciar",
+      "stop": "Detener",
+      "restart": "Reiniciar",
+      "console": "Últimas líneas de consola",
+      "info": "Información",
+      "backup_create": "Crear copia",
+      "backup_list": "Copias"
+    },
+    "needs_terminal": "El menú a pantalla completa necesita una terminal. En scripts, usa los subcomandos.",
+    "command_panicked": "El comando se detuvo de forma inesperada. Puedes seguir usando otros comandos."
   }
 }

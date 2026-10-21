@@ -22,6 +22,7 @@ pub mod error;
 pub mod integrity;
 pub mod marker;
 pub mod process;
+pub mod profile;
 pub mod relay;
 pub mod signature;
 pub mod uninstall_entry;
@@ -29,6 +30,7 @@ pub mod version;
 pub mod versions;
 pub mod window_icon;
 mod apply;
+pub mod apply_session;
 mod state;
 mod time;
 
@@ -187,6 +189,9 @@ pub struct ComponentVersion {
     /// 받은 파일의 sha256 (manifest 값). 적용 직전에 다시 대조한다 (C13)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staged_sha256: Option<String>,
+    /// manifest의 `requires` (예: `{"saba-core": ">=0.1.9"}`). pending.json에 실어 업데이터 `--apply`도 적용 전에 본다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires: Option<HashMap<String, String>>,
     /// 해당 컴포넌트가 설치되어 있는지 여부 (false면 미설치 상태)
     pub installed: bool,
 }
@@ -223,6 +228,41 @@ pub struct DependencyIssue {
     pub installed_version: Option<String>,
     /// 사람이 읽을 수 있는 메시지
     pub message: String,
+}
+
+/// 설치 기록의 모듈·익스텐션 항목을 디스크에서 찾은 것으로 바꾼다 (사라진 것은 빠진다)
+fn merge_addons_from_disk(mut versions: HashMap<String, String>, disk: HashMap<String, String>) -> HashMap<String, String> {
+    versions.retain(|key, _| !key.starts_with("module-") && !key.starts_with("ext-"));
+    versions.extend(disk);
+    versions
+}
+
+/// `requires`(`{"saba-core": ">=0.1.9"}`) 중 설치된 버전이 못 미치는 것. 업데이터 적용과 데몬의 카탈로그 설치가 같이 쓴다
+pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, installed: &HashMap<String, String>) -> Vec<DependencyIssue> {
+    requires
+        .iter()
+        .filter_map(|(dep_key, min_version_str)| {
+            let dep_version = installed.get(dep_key);
+            let satisfied = dep_version.is_some_and(|v| {
+                // ">=" 접두사 제거 후 SemVer 비교
+                let min_clean = min_version_str.trim_start_matches(">=").trim();
+                match (SemVer::parse(v), SemVer::parse(min_clean)) {
+                    (Some(installed_v), Some(required_v)) => installed_v >= required_v,
+                    _ => false,
+                }
+            });
+            (!satisfied).then(|| DependencyIssue {
+                required_component: dep_key.clone(),
+                required_version: min_version_str.clone(),
+                installed_version: dep_version.cloned(),
+                message: format!(
+                    "{} requires {} {} but {} is installed",
+                    component_key, dep_key, min_version_str,
+                    dep_version.map_or("not installed".to_string(), |v| v.clone())
+                ),
+            })
+        })
+        .collect()
 }
 
 // ══════════════════════════════════════════════════════
@@ -584,6 +624,8 @@ impl UpdateManager {
 
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
+        // 헤드리스 설치는 GUI처럼 그 구성에 들지 않는 컴포넌트를 받지 않는다
+        let profile = profile::Profile::load();
         if let Some(release) = release {
             let notes = Self::release_notes_in(&release.latest, &Self::user_language());
             for (key, info) in &release.manifest.components {
@@ -591,6 +633,9 @@ impl UpdateManager {
                     tracing::debug!("[Updater] Skipping unknown manifest key: {}", key);
                     continue;
                 };
+                if !profile.includes(key) {
+                    continue;
+                }
                 let current = local_versions.get(key).cloned().unwrap_or_default();
                 let installed = self.is_component_installed(&component);
                 // 모듈·익스텐션은 설치한 것만 업데이트한다. 새로 받는 건 목록 화면의 몫
@@ -621,6 +666,7 @@ impl UpdateManager {
                     downloaded: false,
                     downloaded_path: None,
                     staged_sha256: None,
+                    requires: info.requires.clone(),
                     installed,
                 });
                 Self::keep_staged(&previous, components.last_mut().expect("just pushed"));
@@ -710,36 +756,53 @@ impl UpdateManager {
         // 2. 매니페스트에 없는 앱 컴포넌트는 빌드에 묶인 versions.toml 버전 (폴백)
         Self::fill_bundled_versions(&mut versions);
 
-        // 모듈: modules/*/module.toml에서 감지
-        if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    let module_toml = path.join("module.toml");
-                    if let Some((name, version)) = self.read_module_version(&module_toml) {
-                        let key = format!("module-{}", name);
-                        versions.entry(key).or_insert(version);
-                    }
-                }
-            }
-        }
-
-        // 익스텐션: extensions/*/manifest.json의 id·version
-        let extensions_dir = &self.extensions_dir;
-        if let Ok(entries) = std::fs::read_dir(extensions_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    if let Some((name, version)) = read_extension_version(&path.join("manifest.json")) {
-                        let key = format!("ext-{}", name);
-                        versions.entry(key).or_insert(version);
-                    }
-                }
-            }
+        // 3. 모듈·익스텐션: 디스크에서 감지 (기록에 없는 것만)
+        for (key, version) in self.disk_addon_versions() {
+            versions.entry(key).or_insert(version);
         }
 
         tracing::debug!("[UpdateManager] Local versions: {:?}", versions);
         versions
+    }
+
+    /// 디스크에 있는 모듈(`modules/*/module.toml`)과 익스텐션(`extensions/*/manifest.json`)의 키·버전
+    fn disk_addon_versions(&self) -> HashMap<String, String> {
+        let mut versions = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some((name, version)) = self.read_module_version(&path.join("module.toml")) {
+                        versions.insert(format!("module-{}", name), version);
+                    }
+                }
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(&self.extensions_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some((name, version)) = read_extension_version(&path.join("manifest.json")) {
+                        versions.insert(format!("ext-{}", name), version);
+                    }
+                }
+            }
+        }
+        versions
+    }
+
+    /// requires를 비교할 버전: 앱 컴포넌트는 설치 기록(없으면 번들 버전), 모듈·익스텐션은 디스크에 실제로 있는 것만.
+    /// 카탈로그 설치·삭제는 설치 기록을 고치지 않으므로 그 기록의 모듈·익스텐션은 믿지 않는다
+    fn dependency_versions(&self) -> HashMap<String, String> {
+        self.dependency_versions_for(profile::Profile::load())
+    }
+
+    /// 설치 구성에 들지 않는 컴포넌트(헤드리스의 GUI)는 번들 버전으로 채우지 않는다
+    pub(crate) fn dependency_versions_for(&self, profile: profile::Profile) -> HashMap<String, String> {
+        let mut versions = Self::load_installed_manifest();
+        Self::fill_bundled_versions(&mut versions);
+        versions.retain(|key, _| profile.includes(key));
+        merge_addons_from_disk(versions, self.disk_addon_versions())
     }
 
     fn read_module_version(&self, module_toml: &Path) -> Option<(String, String)> {
@@ -945,19 +1008,31 @@ impl UpdateManager {
             .cloned()
             .collect();
 
-        // 적용 우선순위에 따라 정렬
-        components.sort_by_key(|c| Self::component_apply_priority(&c.component));
+        // 적용 우선순위와 같은 묶음의 requires에 따라 정렬
+        let order = self.apply_order(&components.iter().map(|c| c.component.manifest_key()).collect::<Vec<_>>());
+        components.sort_by_key(|c| order.iter().position(|k| *k == c.component.manifest_key()));
 
         // 실패하면 거기서 멈추되, 먼저 적용한 것은 아래에서 버전을 기록한 뒤 오류를 돌려준다
         let mut failure = None;
+        // 설치 기록은 끝에 한 번에 적으므로, 이 묶음에서 앞서 적용한 버전을 여기서 더해 requires를 본다
+        let mut installed = self.dependency_versions();
         for comp in &components {
-            let result = match Self::verified_staged_path(comp) {
-                Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
-                Err(e) => Err(e),
+            let key = comp.component.manifest_key();
+            let issues = self.requires_of(&key).map(|r| unmet_requires(&key, r, &installed)).unwrap_or_default();
+            let result = if !issues.is_empty() {
+                Err(anyhow::anyhow!("{}", issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; ")))
+            } else {
+                match Self::verified_staged_path(comp) {
+                    Ok(staged_path) => self.apply_one(&comp.component, staged_path).await,
+                    Err(e) => Err(e),
+                }
             };
             match result {
                 Ok(files) => {
                     Self::record_files(&comp.component, &files);
+                    if let Some(version) = &comp.latest_version {
+                        installed.insert(key, version.clone());
+                    }
                     applied.push(comp.component.display_name());
                 }
                 Err(e) => {
@@ -1015,6 +1090,8 @@ impl UpdateManager {
         keys: &[String],
         mut on_progress: impl FnMut(usize, &str, &[String]),
     ) -> (Vec<String>, Vec<String>) {
+        // 옛 데몬은 모듈을 코어보다 앞에 적는다: 적용 순서로 다시 세운다 (같은 순위는 받은 순서대로)
+        let keys = self.apply_order(keys);
         let mut applied = Vec::new();
         let mut failed = Vec::new();
         for (i, key) in keys.iter().enumerate() {
@@ -1085,26 +1162,26 @@ impl UpdateManager {
 
     /// 받아 둔 업데이트의 키를 적용 순서대로. 목록 없는 적용도 `apply_target_keys`로 키마다 결과를 남긴다
     pub fn pending_keys_in_apply_order(&self) -> Vec<String> {
-        let mut pending: Vec<&ComponentVersion> = self.status.components.iter()
+        let pending: Vec<String> = self.status.components.iter()
             .filter(|c| c.downloaded && c.update_available)
+            .map(|c| c.component.manifest_key())
             .collect();
-        pending.sort_by_key(|c| Self::component_apply_priority(&c.component));
-        pending.iter().map(|c| c.component.manifest_key()).collect()
+        self.apply_order(&pending)
     }
 
     /// 컴포넌트의 적용 우선순위를 반환합니다.
     ///
     /// 낮은 값일수록 먼저 적용됩니다:
     /// - 0: Updater (업데이트 방식 변경 대응 — 디스크의 바이너리를 먼저 교체)
-    /// - 1: 모듈, 익스텐션, Locales, Installer (프로세스 중단 불필요)
-    /// - 3: CoreDaemon (데몬 프로세스 종료 후 교체)
+    /// - 1: CoreDaemon (데몬 프로세스 종료 후 교체). 모듈·익스텐션이 새 코어를 `requires`할 수 있어 먼저
+    /// - 2: 모듈, 익스텐션, Locales, Installer (프로세스 중단 불필요)
     /// - 4: 사용하지 않는 인터페이스 (GUI 사용 중이면 CLI, 반대도 마찬가지)
     /// - 5: 현재 사용 중인 인터페이스 (재시작 필요)
-    fn component_apply_priority(component: &Component) -> u8 {
+    pub fn component_apply_priority(component: &Component) -> u8 {
         match component {
             Component::Updater => 0,
-            Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
-            Component::CoreDaemon => 3,
+            Component::CoreDaemon => 1,
+            Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 2,
             // GUI/CLI는 현재 실행 중인 인터페이스를 마지막에 적용
             Component::Gui => {
                 if ProcessChecker::is_gui_running() { 5 } else { 4 }
@@ -1182,46 +1259,40 @@ impl UpdateManager {
     /// 예: GUI 0.3.0 → requires: { "saba-core": ">=0.3.0" }
     ///     → saba-core이 0.3.0 미만이면 DependencyIssue 반환
     pub fn check_dependencies(&self, component_key: &str) -> DependencyCheck {
-        let installed = Self::load_installed_manifest();
-        let mut issues = Vec::new();
-
-        // 캐시된 서버 매니페스트에서 requires 정보 조회
-        if let Some(ref manifest) = self.cached_manifest {
-            if let Some(info) = manifest.components.get(component_key) {
-                if let Some(ref requires) = info.requires {
-                    for (dep_key, min_version_str) in requires {
-                        let dep_version = installed.get(dep_key);
-                        let satisfied = dep_version.is_some_and(|v| {
-                            // ">=" 접두사 제거 후 SemVer 비교
-                            let min_clean = min_version_str.trim_start_matches(">=").trim();
-                            match (SemVer::parse(v), SemVer::parse(min_clean)) {
-                                (Some(installed_v), Some(required_v)) => installed_v >= required_v,
-                                _ => false,
-                            }
-                        });
-
-                        if !satisfied {
-                            issues.push(DependencyIssue {
-                                required_component: dep_key.clone(),
-                                required_version: min_version_str.clone(),
-                                installed_version: dep_version.cloned(),
-                                message: format!(
-                                    "{} requires {} {} but {} is installed",
-                                    component_key, dep_key, min_version_str,
-                                    dep_version.map_or("not installed".to_string(), |v| v.clone())
-                                ),
-                            });
-                        }
-                    }
-                }
-            }
-        }
+        // 모듈·익스텐션은 디스크에 실제로 있는 버전으로 센다 (카탈로그·수동 설치, 삭제 포함)
+        let installed = self.dependency_versions();
+        let issues = self.requires_of(component_key).map(|r| unmet_requires(component_key, r, &installed)).unwrap_or_default();
 
         DependencyCheck {
             component: component_key.to_string(),
             satisfied: issues.is_empty(),
             issues,
         }
+    }
+
+    /// 받아 둔 상태의 requires (pending.json에서 읽은 업데이터 `--apply`도), 없으면 캐시된 서버 매니페스트
+    fn requires_of(&self, component_key: &str) -> Option<&HashMap<String, String>> {
+        self.status.components.iter()
+            .find(|c| c.component.manifest_key() == component_key)
+            .and_then(|c| c.requires.as_ref())
+            .or_else(|| self.cached_manifest.as_ref()?.components.get(component_key)?.requires.as_ref())
+    }
+
+    /// 적용 순서: 종류별 우선순위로 세운 뒤, 같은 묶음 안에서 requires하는 것을 앞으로 당긴다 (그 밖은 순서 유지).
+    /// 순환하면 남은 것 중 맨 앞부터 적용한다
+    pub fn apply_order(&self, keys: &[String]) -> Vec<String> {
+        let mut rest = keys.to_vec();
+        // 순위는 GUI·CLI 실행 여부를 프로세스 목록에서 읽으므로 키마다 한 번만 구한다
+        rest.sort_by_cached_key(|k| Self::component_apply_priority(&Component::from_manifest_key(k)));
+        let mut ordered = Vec::with_capacity(rest.len());
+        while !rest.is_empty() {
+            let waits = |key: &String| {
+                self.requires_of(key).is_some_and(|r| r.keys().any(|dep| dep != key && rest.contains(dep)))
+            };
+            let next = rest.iter().position(|k| !waits(k)).unwrap_or(0);
+            ordered.push(rest.remove(next));
+        }
+        ordered
     }
 
     /// 모든 업데이트 가능한 컴포넌트의 의존성을 일괄 확인합니다.
@@ -1245,6 +1316,11 @@ impl UpdateManager {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Component {:?} is not ready for apply", component))?;
 
+        // 같은 묶음의 코어는 먼저 적용되어(`component_apply_priority`) 설치 기록에 새 버전이 적혀 있다
+        let deps = self.check_dependencies(&component.manifest_key());
+        if !deps.satisfied {
+            anyhow::bail!("{}", deps.issues.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
+        }
         let staged_path = Self::verified_staged_path(&comp)?;
         let files = self.apply_one(component, staged_path).await?;
         Self::record_files(component, &files);

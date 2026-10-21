@@ -199,6 +199,10 @@
           "title": "Final do console",
           "description": "Últimas 20 linhas do console"
         }
+      },
+      "players": {
+        "title": "Jogadores",
+        "description": "Quem está online"
       }
     },
     "monitor": {
@@ -287,7 +291,7 @@
       "enabled": "Ligado",
       "model": "Modelo",
       "memo": "Prompt do servidor",
-      "confirmCommands": "Sempre perguntar em comandos de cuidado",
+      "confirmCommands": "Sempre perguntar antes de executar comandos do servidor",
       "memory": "Memória",
       "webSearch": "Busca na web",
       "disabledTools": "Ferramentas desativadas",
@@ -319,7 +323,11 @@
       "updates_none": "✅ Tudo está atualizado",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Memória {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} online",
+      "players_max": "👥 {{online}}/{{max}} online",
+      "player_item": "• {{name}}",
+      "players_more": "…e mais {{count}}"
     }
   }
 }

@@ -153,7 +153,16 @@ pub fn state_badge(sv: &Value) -> String {
 
 pub fn discord_line(a: &Value) -> String {
     let flag = |k: &str| a.get(k).and_then(Value::as_bool).unwrap_or(false);
-    if flag("running") {
+    // 에이전트는 돌고 있어도 릴레이가 이 앱 버전을 받지 않는다
+    if a.get("lastErrorCode").and_then(Value::as_str) == Some("agent_too_old") {
+        let min = a.get("minVersion").and_then(Value::as_str).unwrap_or("?");
+        format!(
+            "{} {}  {}",
+            console::style("●").red(),
+            console::style(t!("bot.agent_too_old", min = min)).red(),
+            output::dim("saba-chan-cli update check")
+        )
+    } else if flag("running") {
         let mut line = output::status_badge("connected");
         if let Some(n) = a.get("commandsHandled").and_then(Value::as_u64).filter(|n| *n > 0) {
             line.push_str(&output::dim(&format!("  {}", t!("status.commands_handled", count = n))));
@@ -308,5 +317,16 @@ mod tests {
         let plain = |v: Value| console::strip_ansi_codes(&state_badge(&v)).to_string();
         assert!(plain(json!({ "status": "running", "unresponsive": "timed out" })).contains(&t!("server.unresponsive")));
         assert!(!plain(json!({ "status": "running" })).contains(&t!("server.unresponsive")));
+    }
+
+    /// 릴레이가 앱 버전을 받지 않으면 에이전트가 돌고 있어도 연결됨이 아니라 업데이트 안내를 보인다
+    #[test]
+    fn an_agent_the_relay_refuses_asks_for_an_update() {
+        crate::i18n::init("ko");
+        let line = |v: Value| console::strip_ansi_codes(&discord_line(&v)).to_string();
+        let old = line(json!({ "running": true, "hasToken": true, "lastErrorCode": "agent_too_old", "minVersion": "0.1.9" }));
+        assert!(old.contains("0.1.9") && old.contains("saba-chan-cli update check"), "{old}");
+        assert!(!old.contains(&t!("status.connected")), "{old}");
+        assert!(line(json!({ "running": true, "hasToken": true })).contains(&t!("status.connected")));
     }
 }

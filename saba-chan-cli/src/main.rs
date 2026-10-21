@@ -19,6 +19,7 @@ mod progress;
 mod prompt;
 mod resolve;
 mod shell;
+mod tui;
 mod slots;
 
 use clap::FromArgMatches;
@@ -34,8 +35,27 @@ fn lang_flag() -> Option<String> {
     })
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
+/// 명령 처리는 큰 async 상태 기계라 디버그 빌드에서 스택을 많이 쓴다. 셸·메뉴 안에서 명령을 한 겹 더
+/// 부르면 Windows 기본 주 스레드 스택(1MB)을 넘으므로, 넉넉한 스택의 스레드에서 돌린다
+const STACK: usize = 16 * 1024 * 1024;
+
+fn main() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(STACK)
+        .build()
+        .expect("tokio runtime");
+    let main = std::thread::Builder::new()
+        .name("main".into())
+        .stack_size(STACK)
+        .spawn(move || runtime.block_on(run()))
+        .expect("main thread");
+    if main.join().is_err() {
+        std::process::exit(101);
+    }
+}
+
+async fn run() {
     // `| head`처럼 파이프가 먼저 닫혀도 패닉 대신 조용히 끝나게
     #[cfg(unix)]
     unsafe {
@@ -60,10 +80,14 @@ async fn main() {
     // `--json-stream`: 진행은 한 줄씩, 결과는 마지막 한 줄
     output::set_stream(g.json_stream);
     let _stream = g.json_stream.then(progress::stream_lines);
-    let port = g.port.unwrap_or_else(bootstrap::ipc_port);
+    // 새로 띄울 데몬의 포트와, 지금 붙을 데몬의 포트(설정을 바꾼 뒤 옛 포트에 남은 데몬일 수 있다)
+    let spawn_port = g.port.unwrap_or_else(bootstrap::ipc_port);
+    let port = g.port.unwrap_or_else(|| bootstrap::live_port(spawn_port));
     let color = !g.no_color && std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal();
     let ctx = ctx::Ctx {
         api: client::Api::new(port, daemon_lang),
+        spawn_port,
+        port_fixed: g.port.is_some(),
         out: output::Out::new(json, color),
         ask: prompt::Prompt::new(json, g.yes),
         in_shell: false,
@@ -73,7 +97,14 @@ async fn main() {
     let cmd = match parsed.cmd {
         Some(c) => c,
         // 인자 없이 터미널에서 열면 셸, 아니면 상태 한 번
-        None if ctx.ask.enabled && std::io::stdout().is_terminal() => cli::Cmd::Shell,
+        // 터미널이면 전체 화면 메뉴. `SABA_NO_TUI=1`이면 예전 셸
+        None if ctx.ask.enabled && std::io::stdout().is_terminal() => {
+            if std::env::var_os("SABA_NO_TUI").is_some_and(|v| !v.is_empty() && v != "0") {
+                cli::Cmd::Shell
+            } else {
+                cli::Cmd::Tui
+            }
+        }
         None => cli::Cmd::Status,
     };
     let result = cmd::dispatch(&ctx, cmd).await;

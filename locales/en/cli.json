@@ -100,7 +100,8 @@
     "words_saved": "Saved the chat words of {{server}}.",
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
-    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
+    "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
   },
   "col": {
     "players": "Players",
@@ -204,6 +205,7 @@
     "offer_start": "The Saba-chan daemon is not running. Start it?",
     "spawn_failed": "Could not start the daemon: {{error}}",
     "start_timeout": "The daemon did not respond in time. Check: saba-chan-cli daemon logs",
+    "exited_early": "The daemon exited right after starting (exit code {{code}}). Another daemon may already be running. Check: saba-chan-cli daemon status",
     "started": "Daemon started (v{{version}}).",
     "starting": "Starting the daemon...",
     "stop_no_pid": "The daemon did not report its PID, so it can't be killed from here.",
@@ -231,7 +233,8 @@
       "forbidden": "You don't have permission to do that in that Discord server.",
       "expired": "The code has expired. Start again.",
       "rate_limited": "Too many requests. Try again in about a minute.",
-      "other": "The relay refused the request ({{code}})."
+      "other": "The relay refused the request ({{code}}).",
+      "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
     },
     "ambiguous": "More than one {{what}} matches \"{{query}}\".",
     "ambiguous_hint": "Be more specific: {{names}}",
@@ -270,7 +273,8 @@
         "unknown_command": "this server has no such command",
         "too_many": "at most 10 words"
       },
-      "not_supported": "See unsupported commands with: saba-chan-cli module info"
+      "not_supported": "See unsupported commands with: saba-chan-cli module info",
+      "agent_too_old": "Check for updates: saba-chan-cli update check"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -625,7 +629,7 @@
       "events.since": "Start after this event id (replays what the daemon still keeps)",
       "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json"
     },
-    "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
+    "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
   "restart": {
     "waiting": "Restarting {{name}}...",
@@ -824,5 +828,35 @@
     "io_requests": "IO requests (incl. cache)",
     "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits).",
     "whole": "Whole machine (not split)"
+  },
+  "tui": {
+    "daemon_up": "Daemon ● connected (v{{version}})",
+    "daemon_down": "Daemon ○ off · start: daemon start",
+    "servers_running": "{{running}} of {{total}} servers running",
+    "menu": "Menu",
+    "output": "Output",
+    "enter_to_run": "Enter to run",
+    "running_hint": "(running · Ctrl+C to stop)",
+    "keys": "↑↓ move · ←→ menu/list · Enter run · : command · PgUp/PgDn output · ? help · q quit",
+    "yes": "Yes",
+    "no": "No",
+    "question": "Confirm",
+    "dialog_keys": "Enter choose · Esc cancel",
+    "help_title": "Keys",
+    "help": "↑↓  move in the menu or list\n←→ / Tab  switch between menu and list\nEnter  run the selected item (opens the command line when it needs arguments)\n:  command line (the same commands you type after saba-chan-cli, ↑↓ for earlier ones)\nPgUp/PgDn, mouse wheel  scroll the output\nCtrl+C  stop the running command\nq  quit (the daemon and servers keep running)",
+    "too_narrow": "Make the window at least 60 columns wide.",
+    "not_here": "This command can't run inside the full-screen menu. Quit with q and run it in the terminal.",
+    "cancelled": "Stopped.",
+    "action": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "console": "Recent console lines",
+      "info": "Info",
+      "backup_create": "Create backup",
+      "backup_list": "Backups"
+    },
+    "needs_terminal": "The full-screen menu needs a terminal. In scripts, use the subcommands.",
+    "command_panicked": "The command stopped unexpectedly. You can keep using other commands."
   }
 }

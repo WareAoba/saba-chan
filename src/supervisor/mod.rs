@@ -233,10 +233,22 @@ impl Supervisor {
         self.instance_store.load()?;
         tracing::info!("Loaded {} server instances", self.instance_store.list().len());
 
+        self.migrate_list_settings();
+
         // 고아 managed 프로세스 재연결
         self.reattach_orphaned_managed().await;
         
         Ok(())
+    }
+
+    /// 모듈이 `list`로 바꾼 설정의 옛 문자열 값을 배열로 읽는다 (06 §8.1). 모듈을 다시 읽은 뒤에도 부른다
+    pub fn migrate_list_settings(&mut self) {
+        let loader = &self.module_loader;
+        self.instance_store.adjust_in_memory(|instance| {
+            if let Some(settings) = loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()) {
+                crate::validator::migrate_list_values(&settings.fields, &mut instance.module_settings);
+            }
+        });
     }
 
     /// Detect orphaned managed processes from a previous daemon run and restore
@@ -640,7 +652,8 @@ impl Supervisor {
         if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         for (key, value) in &instance.module_settings {
             // 격리 실행이 쓰기를 받는 폴더 키는 데몬만 정한다 (모듈은 import_settings로 아무 값이나 넣을 수 있다)
-            if !crate::sandbox::grants_write(key) {
+            // 호출마다 데몬이 정하는 키(`RESERVED_CALL_KEYS`)도 모듈 설정 값으로는 싣지 않는다
+            if !crate::sandbox::grants_write(key) && !module_loader::RESERVED_CALL_KEYS.contains(&key.as_str()) {
                 put(key, value.clone());
             }
         }
@@ -2168,7 +2181,7 @@ impl Supervisor {
     }
 
     /// 인스턴스를 알아보는 config로 lifecycle 함수 호출을 만든다 (`validate`·조회가 같은 값을 받는다)
-    fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
+    pub(crate) fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
@@ -3419,6 +3432,17 @@ mod tests {
         let mut cfg = serde_json::Map::new();
         Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pal"));
         assert_eq!(cfg["rest_port"], json!(8242));
+    }
+
+    /// 06 §2: 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다
+    #[test]
+    fn a_module_setting_never_stands_in_for_a_daemon_call_key() {
+        let mut inst = crate::instance::ServerInstance::new("mc", "minecraft");
+        inst.module_settings.insert("players_detail".into(), json!(true));
+        inst.module_settings.insert("stop_call_limit".into(), json!(9999));
+        let mut cfg = serde_json::Map::new();
+        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/mc"));
+        assert!(cfg.get("players_detail").is_none() && cfg.get("stop_call_limit").is_none(), "{cfg:?}");
     }
 
     // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라 격리 실행이 쓰지 못했다.
