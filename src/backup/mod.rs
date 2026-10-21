@@ -101,6 +101,9 @@ struct StoredFile {
     size: u64,
     /// 수정 시각 (유닉스 나노초)
     mtime: u64,
+    /// 내용 파일(압축)의 크기. 다음 백업이 이어 쓰기 전에 그 파일이 그대로인지 본다
+    #[serde(default)]
+    stored_size: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -257,20 +260,22 @@ fn inner_path(base: &Path, rel: &str) -> Result<PathBuf> {
 }
 
 /// 가장 새 판 2 백업이 적은 파일 (원래 절대 경로 → 크기, 수정 시각, 해시). 그 백업 직전에 바뀐 파일은 뺀다
-fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, String)> {
+fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, String, u64)> {
     let newest = list(dir).into_iter().find_map(|b| read_v2(&dir.join(&b.name)).ok().flatten());
     let Some(m) = newest else { return Default::default() };
     let mut out = std::collections::HashMap::new();
     for f in m.files.iter().filter(|f| f.mtime.saturating_add(MTIME_SLACK_NS) < m.started) {
         let Some(entry) = m.paths.iter().find(|p| p.entry == f.entry) else { continue };
         let path = if f.rel.is_empty() { entry.path.clone() } else if let Ok(p) = inner_path(&entry.path, &f.rel) { p } else { continue };
-        out.insert(path, (f.size, f.mtime, f.hash.clone()));
+        out.insert(path, (f.size, f.mtime, f.hash.clone(), f.stored_size));
     }
     out
 }
 
-/// 파일 내용을 저장소에 넣는다: (해시, 읽은 바이트, 새로 쓴 바이트). 이미 있는 내용이면 새로 쓰지 않는다
-fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64)> {
+/// 파일 내용을 저장소에 넣는다: (해시, 읽은 바이트, 내용 파일 크기, 새로 쓴 파일). 같은 내용이 이미 있으면 새로 쓰지 않는다.
+/// 이미 있는 파일의 크기가 방금 만든 것과 다르면 망가진 것으로 보고 바꿔 넣는다 (망가진 내용을 다음 백업이 물려받지 않게).
+/// 디스크에 내리는 일(fsync)은 부른 쪽이 백업을 마치기 전에 한꺼번에 한다
+fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
     use sha2::Digest;
     use std::io::{Read, Write};
     let objects = dir.join(OBJECTS);
@@ -292,7 +297,7 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64)> {
             out.write_all(&buf[..n])?;
             read += n as u64;
         }
-        out.finish()?.sync_all()?;
+        out.finish()?;
         Ok((hex::encode(hasher.finalize()), read))
     })();
     let (hash, read) = match written {
@@ -303,23 +308,28 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64)> {
         }
     };
     let target = object_path(dir, &hash)?;
-    if target.is_file() {
-        let _ = fs::remove_file(&tmp);
-        return Ok((hash, read, 0));
-    }
     let added = fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    if fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == added) {
+        let _ = fs::remove_file(&tmp);
+        return Ok((hash, read, added, None));
+    }
+    if target.is_file() {
+        tracing::warn!("Backup content {} was damaged; replacing it", &hash[..12]);
+    }
     let moved = target.parent().map_or(Ok(()), fs::create_dir_all).and_then(|_| fs::rename(&tmp, &target));
     if let Err(e) = moved {
         let _ = fs::remove_file(&tmp);
         return Err(e.into());
     }
-    Ok((hash, read, added))
+    Ok((hash, read, added, Some(target)))
 }
 
 /// 판 2 백업 쓰기 중의 상태
 struct V2Writer<'a> {
     dir: &'a Path,
-    known: std::collections::HashMap<PathBuf, (u64, u64, String)>,
+    known: std::collections::HashMap<PathBuf, (u64, u64, String, u64)>,
+    /// 이번에 새로 쓴 내용 파일 (매니페스트를 쓰기 전에 한꺼번에 디스크에 내린다)
+    written: Vec<PathBuf>,
     manifest: ManifestV2,
     summary: SummaryV2,
 }
@@ -328,20 +338,26 @@ impl V2Writer<'_> {
     fn add_file(&mut self, path: &Path, entry: &str, rel: &str) -> Result<()> {
         let meta = fs::metadata(path).with_context(|| format!("read {}", path.display()))?;
         let mtime = mtime_ns(&meta);
+        // 이어 쓰는 내용 파일은 크기가 적어 둔 그대로일 때만 (망가졌으면 다시 읽어 바꿔 넣는다)
         let reuse = match self.known.get(path) {
-            Some((size, known_mtime, hash)) if *size == meta.len() && *known_mtime == mtime && object_path(self.dir, hash)?.is_file() => Some((hash.clone(), *size)),
+            Some((size, known_mtime, hash, stored_size)) if *size == meta.len() && *known_mtime == mtime && fs::metadata(object_path(self.dir, hash)?).is_ok_and(|m| m.is_file() && m.len() == *stored_size) => {
+                Some((hash.clone(), *size, *stored_size))
+            }
             _ => None,
         };
-        let (hash, size) = match reuse {
+        let (hash, size, stored_size) = match reuse {
             Some(v) => v,
             None => {
-                let (hash, read, added) = put_object(self.dir, path)?;
-                self.summary.stored += added;
-                (hash, read)
+                let (hash, read, stored_size, written) = put_object(self.dir, path)?;
+                if let Some(written) = written {
+                    self.summary.stored += stored_size;
+                    self.written.push(written);
+                }
+                (hash, read, stored_size)
             }
         };
         self.summary.size += size;
-        self.manifest.files.push(StoredFile { entry: entry.to_string(), rel: rel.to_string(), hash, size, mtime });
+        self.manifest.files.push(StoredFile { entry: entry.to_string(), rel: rel.to_string(), hash, size, mtime, stored_size });
         Ok(())
     }
 
@@ -370,6 +386,7 @@ fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
     let mut w = V2Writer {
         dir,
         known: known_files(dir),
+        written: Vec::new(),
         manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started },
         summary: SummaryV2 { started, ..Default::default() },
     };
@@ -383,6 +400,7 @@ fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
         }
         w.manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file });
     }
+    sync_all(&w.written)?;
     let mut zip = zip::ZipWriter::new(File::create(target)?);
     let opts = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated).large_file(true);
     zip.start_file(SUMMARY_V2, opts)?;
@@ -390,6 +408,20 @@ fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
     zip.start_file(MANIFEST_V2, opts)?;
     serde_json::to_writer(&mut zip, &w.manifest)?;
     zip.finish()?.sync_all()?;
+    Ok(())
+}
+
+/// 새로 쓴 내용 파일을 디스크에 내린다. 파일마다 차례로 기다리면 작은 파일이 많은 서버의 첫 백업이 아주 느려서 몇 갈래로 나눠 한다
+fn sync_all(files: &[PathBuf]) -> Result<()> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    let lanes = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 16);
+    let chunk = files.len().div_ceil(lanes);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = files.chunks(chunk).map(|part| scope.spawn(move || part.iter().try_for_each(|f| File::open(f).and_then(|f| f.sync_all())))).collect();
+        handles.into_iter().try_for_each(|h| h.join().unwrap_or_else(|_| Err(io::Error::other("sync thread panicked"))))
+    })?;
     Ok(())
 }
 
@@ -411,13 +443,15 @@ fn collect_garbage(dir: &Path) {
     if !objects.is_dir() {
         return;
     }
+    // 목록이 아니라 폴더의 백업 이름을 모두 본다: 목록에서 빠진(열지 못한) 백업의 내용도 지우지 않게
     let mut used = std::collections::HashSet::new();
-    for b in list(dir) {
-        match read_v2(&dir.join(&b.name)) {
+    let names = fs::read_dir(dir).into_iter().flatten().flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|n| BackupKind::from_name(n).is_some());
+    for name in names {
+        match read_v2(&dir.join(&name)) {
             Ok(Some(m)) => used.extend(m.files.into_iter().map(|f| f.hash)),
             Ok(None) => {}
             Err(e) => {
-                tracing::warn!("Not clearing unused backup content: could not read {}: {}", b.name, e);
+                tracing::warn!("Not clearing unused backup content: could not read {}: {}", name, e);
                 return;
             }
         }
@@ -500,8 +534,17 @@ fn info(path: &Path) -> Option<BackupInfo> {
     let summary = zip::ZipArchive::new(File::open(path).ok()?)
         .ok()
         .and_then(|mut zip| zip.by_name(SUMMARY_V2).ok().and_then(|f| serde_json::from_reader::<_, SummaryV2>(f).ok()));
-    let (size, stored, made) = summary.map_or((meta.len(), meta.len(), modified), |s| (s.size, s.stored, if s.started > 0 { s.started } else { modified }));
+    // 판 1은 0.1.8까지 만든 것이다: 수정 시각이 새로 찍힌 사본(옮겼다 되돌린 것)도 이름의 시각보다 새것으로 보지 않는다
+    let v1_made = name_time_ns(&name).map_or(modified, |named| named.min(modified));
+    let (size, stored, made) = summary.map_or((meta.len(), meta.len(), v1_made), |s| (s.size, s.stored, if s.started > 0 { s.started } else { modified }));
     Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, made })
+}
+
+/// 이름 앞의 지역 시각(`YYYYMMDD-HHMMSS`)을 유닉스 나노초로
+fn name_time_ns(name: &str) -> Option<u64> {
+    let naive = chrono::NaiveDateTime::parse_from_str(name.get(..15)?, "%Y%m%d-%H%M%S").ok()?;
+    let local = naive.and_local_timezone(chrono::Local).earliest()?;
+    u64::try_from(local.timestamp_nanos_opt()?).ok()
 }
 
 /// 새것부터
@@ -1149,5 +1192,62 @@ mod tests {
         fs::rename(dir.join(&later), dir.join(renamed)).unwrap();
         assert_eq!(list(&dir).into_iter().map(|b| b.name).collect::<Vec<_>>(), vec![renamed.to_string(), earlier.clone()]);
         assert_eq!(prune(&dir, 1, &[]), vec![earlier]);
+    }
+
+    /// 리뷰 603: 열지 못하는 백업이 있으면 그 백업이 쓰는 내용을 지우지 않는다
+    #[cfg(unix)]
+    #[test]
+    fn a_backup_that_cannot_be_opened_keeps_its_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        fs::write(w.join("level.dat"), b"changed").unwrap();
+        let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        // 다른 프로그램이 잡고 있어 열리지 않는 것처럼: 그 자리를 갈 곳 없는 링크로
+        let aside = tmp.path().join("aside.zip");
+        fs::rename(dir.join(&first), &aside).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("gone.zip"), dir.join(&first)).unwrap();
+        delete(&dir, &second).unwrap();
+        fs::remove_file(dir.join(&first)).unwrap();
+        fs::rename(&aside, dir.join(&first)).unwrap();
+        fs::write(w.join("level.dat"), b"broken").unwrap();
+        restore(&dir, &first).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
+    }
+
+    /// 리뷰 603: 망가진 내용 파일은 같은 내용을 다시 읽는 다음 백업이 바꿔 넣는다 (그대로 물려받지 않는다)
+    #[test]
+    fn a_damaged_content_file_is_replaced_by_the_next_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        // 바뀌지 않은 파일로 다시 읽지 않고 이어 쓰는 경로도 지나게
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        File::options().write(true).open(w.join("level.dat")).unwrap().set_modified(old).unwrap();
+        let dir = tmp.path().join("backups");
+        let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        let m = read_v2(&dir.join(&first)).unwrap().unwrap();
+        let level = &m.files.iter().find(|f| f.rel == "level.dat").unwrap().hash;
+        fs::write(object_path(&dir, level).unwrap(), b"damaged content").unwrap();
+        let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        for name in [&first, &second] {
+            fs::write(w.join("level.dat"), b"broken").unwrap();
+            restore(&dir, name).unwrap();
+            assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level", "{name}");
+        }
+    }
+
+    /// 리뷰 603: 판 1은 모두 0.1.8까지 만든 것이다. 수정 시각이 새로 찍힌 사본도 이름의 시각보다 새것으로 보지 않는다
+    #[test]
+    fn a_copied_back_old_backup_does_not_push_out_newer_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let a = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        let copied = "20100101-000000-000-scheduled.zip";
+        write_zip(&dir.join(copied), std::slice::from_ref(&w)).unwrap();
+        let c = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        assert_eq!(list(&dir).into_iter().map(|b| b.name).collect::<Vec<_>>(), vec![c.clone(), a, copied.to_string()]);
+        assert_eq!(prune(&dir, 2, &[&c]), vec![copied.to_string()]);
     }
 }
