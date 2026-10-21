@@ -37,7 +37,7 @@ const stopTimeoutOf = (server) =>
 /** 칸 값으로 (없으면 null). list 설정의 문자열 배열은 배열 그대로 */
 const fieldValue = (v) => (v === undefined || v === null ? null : Array.isArray(v) ? v.map(String) : String(v));
 
-/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (src/ipc/handlers/instance.rs known_fields). 이 값들은 module_settings가 낡았을 수 있다 */
+/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (updater constants::INSTANCE_FIELDS, memory_limit_mb는 따로 읽는다). 이 값들은 module_settings가 낡았을 수 있다 */
 const TOP_LEVEL_FIELDS = new Set([
     'port',
     'rest_host',
@@ -45,8 +45,10 @@ const TOP_LEVEL_FIELDS = new Set([
     'rest_username',
     'rest_password',
     'executable_path',
+    'working_dir',
     'protocol_mode',
     'server_version',
+    'extra_args',
 ]);
 
 /** 저장된 값: 공통 필드는 최상위가, 나머지는 module_settings가 진짜다 */

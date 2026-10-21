@@ -274,3 +274,39 @@ describe('데몬과 같은 기준 (리뷰 후속)', () => {
         expect(res.settings).toEqual({ admins: ['a,b', 'c'], ram: '6' });
     });
 });
+
+// 데몬 #498 b55e95e3: visible_when이 공통 칸(INSTANCE_FIELDS)을 가리키면 인스턴스 칸의 지금 값으로 숨김을 정한다
+describe('공통 칸을 가리키는 visible_when', () => {
+    it.each([
+        ['memory_limit_mb', 'number', 2048, 1024],
+        ['working_dir', 'text', 'D:/new', 'C:/old'],
+    ])('%s는 module_settings에 남은 옛 값이 아니라 인스턴스 칸 값을 쓴다', async (name, field_type, now, stale) => {
+        const fields = [
+            { name, field_type },
+            { name: 'note', field_type: 'text', visible_when: { field: name, equals: now } },
+        ];
+        const server = {
+            id: 's',
+            name: 'S',
+            module: 'game',
+            status: 'stopped',
+            [name]: now,
+            module_settings: { [name]: stale },
+        };
+        window.api = {
+            serverList: vi.fn().mockResolvedValue(null),
+            instanceReadLiveSettings: vi.fn().mockResolvedValue({ success: true, settings: {} }),
+        };
+        const { result } = renderHook(() =>
+            useServerSettings({
+                servers: [server],
+                modules: [{ name: 'game', settings: { fields } }],
+                setModal: vi.fn(),
+                setProgressBar: vi.fn(),
+                fetchServers: vi.fn(),
+            }),
+        );
+        await act(async () => result.current.handleOpenSettings(server));
+        expect(hiddenFields(fields, result.current.settingsValues)).toEqual([]);
+    });
+});
