@@ -928,11 +928,12 @@ mod tests {
         let dir = modules.join("game");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"PalServer\"\n").unwrap();
-        // write: 실행 파일을 고친 뒤 실패, break: 실행 파일 자리를 폴더로 바꿔 두고 실패(어떤 방법으로도 되돌릴 수 없다), 그 밖: 아무것도 안 하고 실패
+        // write: 실행 파일을 고친 뒤 실패, replace: 새 파일로 바꿔 넣은 뒤 실패, break: 실행 파일 자리를 폴더로 바꿔 두고 실패(어떤 방법으로도 되돌릴 수 없다), 그 밖: 아무것도 안 하고 실패
         std::fs::write(
             dir.join("lifecycle.py"),
             "import json, os, sys\nconfig = json.load(sys.stdin)\nexe = os.path.join(config['install_dir'], 'PalServer')\n\
              if config['version'] == 'write':\n    open(exe, 'w').write('new')\n\
+             elif config['version'] == 'replace':\n    open(exe + '.part', 'w').write('new')\n    os.replace(exe + '.part', exe)\n\
              elif config['version'] == 'break':\n    os.remove(exe)\n    os.makedirs(os.path.join(exe, 'x'))\n\
              print(json.dumps({'success': False, 'message': 'download failed'}))\n",
         )
@@ -999,6 +1000,30 @@ mod tests {
             assert_eq!(done.body["success"], false, "{}", done.body);
             assert!(std::fs::symlink_metadata(files.join("PalServer")).unwrap().file_type().is_symlink());
             assert_eq!(std::fs::read_to_string(files.join("real")).unwrap(), "old");
+
+            // 모듈이 링크를 새 파일로 바꿔 넣었으면 그 자리에 옛 내용을 되돌린다
+            let done = install(&inside, "replace").await;
+            assert_eq!(done.body["restore_failed"], Value::Null, "{}", done.body);
+            assert_eq!(std::fs::read_to_string(files.join("PalServer")).unwrap(), "old");
+
+            // 링크 자리를 폴더로 바꿨으면 되돌리지 못했다고 알린다
+            std::fs::remove_file(files.join("PalServer")).unwrap();
+            std::os::unix::fs::symlink(files.join("real"), files.join("PalServer")).unwrap();
+            let done = install(&inside, "break").await;
+            assert_eq!(done.body["restore_failed"], json!(["PalServer"]), "{}", done.body);
+
+            // 설치 폴더 밖을 가리키는 링크는 백업하지 않는다: 링크도 밖의 파일도 그대로다
+            std::fs::remove_dir_all(files.join("PalServer")).unwrap();
+            std::fs::write(elsewhere.join("outside"), "old").unwrap();
+            std::os::unix::fs::symlink(elsewhere.join("outside"), files.join("PalServer")).unwrap();
+            let before = std::fs::metadata(elsewhere.join("outside")).unwrap().modified().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let done = install(&inside, "keep").await;
+            assert_eq!(done.body["restore_failed"], Value::Null, "{}", done.body);
+            assert_eq!(std::fs::metadata(elsewhere.join("outside")).unwrap().modified().unwrap(), before);
+            assert_eq!(std::fs::read_to_string(elsewhere.join("outside")).unwrap(), "old");
+            assert!(std::fs::symlink_metadata(files.join("PalServer")).unwrap().file_type().is_symlink());
+            assert_eq!(backups(), ["PalServer.1.bak", "PalServer.2.bak", "PalServer.bak"], "only the failed restores keep a backup");
         }
     }
 

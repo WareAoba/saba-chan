@@ -192,7 +192,6 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
     )
 }
 
-/// 같은 파일을 가리키는가 (있으면 실제 경로로, 없으면 쓴 그대로 비교한다)
 /// `original` 옆의 비어 있는 이름(`이름.bak`, `이름.1.bak`, …)에 복사본을 만든다. 이미 있는 파일은 덮지 않는다
 fn backup_beside(original: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
     let name = original.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -219,6 +218,7 @@ fn backup_beside(original: &std::path::Path) -> std::io::Result<std::path::PathB
     Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("no free backup name next to {name}")))
 }
 
+/// 같은 파일을 가리키는가 (있으면 실제 경로로, 없으면 쓴 그대로 비교한다)
 fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
         (Ok(a), Ok(b)) => a == b,
@@ -2451,21 +2451,21 @@ impl Supervisor {
             });
 
         // ── 기존 바이너리 백업: 모듈 실행 파일과 인스턴스가 실제로 띄우는 파일 (모듈이 어느 쪽을 바꾸다 실패해도 되돌린다) ──
-        // 설치 폴더 밖의 파일은 이 설치가 바꾸는 대상이 아니므로 건드리지 않는다
+        // 설치 폴더 밖의 파일(밖을 가리키는 링크 포함)은 이 설치가 바꾸는 대상이 아니므로 건드리지 않는다
+        let inside = |path: &std::path::Path| match (std::fs::canonicalize(path), std::fs::canonicalize(install_dir)) {
+            (Ok(path), Ok(dir)) => path.starts_with(dir),
+            _ => false,
+        };
         let mut originals: Vec<std::path::PathBuf> = effective_jar.iter().map(|jar| std::path::Path::new(install_dir).join(jar)).collect();
         if let Some(exe) = keep_executable {
             let exe = std::path::Path::new(install_dir).join(exe);
-            let inside = match (std::fs::canonicalize(&exe), std::fs::canonicalize(install_dir)) {
-                (Ok(exe), Ok(dir)) => exe.starts_with(dir),
-                _ => false,
-            };
-            if inside && !originals.iter().any(|o| same_file_path(o, &exe)) {
+            if !originals.iter().any(|o| same_file_path(o, &exe)) {
                 originals.push(exe);
             }
         }
         // (원래 경로, 백업, 심볼릭 링크면 그 대상): 백업은 비어 있는 새 이름에만 만든다 (사용자의 기존 .bak를 덮지 않는다)
         let mut backups: Vec<(std::path::PathBuf, std::path::PathBuf, Option<std::path::PathBuf>)> = Vec::new();
-        for original in originals.into_iter().filter(|original| original.is_file()) {
+        for original in originals.into_iter().filter(|original| original.is_file() && inside(original)) {
             let link_target = match std::fs::symlink_metadata(&original) {
                 Ok(meta) if meta.file_type().is_symlink() => std::fs::canonicalize(&original).ok(),
                 _ => None,
@@ -2490,11 +2490,15 @@ impl Supervisor {
             }
         }
         // 되돌리지 못한 파일은 백업을 남기고 그 이름을 돌려준다 (rename은 같은 폴더라 공간이 필요 없다).
-        // 심볼릭 링크는 링크를 그대로 두고 백업 내용을 링크 대상에 쓴다
+        // 심볼릭 링크가 그대로 있으면 링크를 두고 백업 내용을 링크 대상에 쓴다. 모듈이 링크를 바꿨으면 그 자리에 되돌린다
         let restore = |why: &str| -> Vec<String> {
             let mut failed = Vec::new();
             for (original, backup, link_target) in &backups {
-                let put_back = match link_target {
+                let still_linked = |target: &std::path::PathBuf| {
+                    std::fs::symlink_metadata(original).is_ok_and(|m| m.file_type().is_symlink())
+                        && std::fs::canonicalize(original).is_ok_and(|now| now == *target)
+                };
+                let put_back = match link_target.as_ref().filter(|target| still_linked(target)) {
                     Some(target) => std::fs::copy(backup, target).map(|_| ()),
                     None => std::fs::rename(backup, original).or_else(|_| std::fs::copy(backup, original).map(|_| ())),
                 };
