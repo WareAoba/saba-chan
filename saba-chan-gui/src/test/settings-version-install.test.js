@@ -70,4 +70,20 @@ describe('서버 설정의 버전', () => {
             expect.objectContaining({ server_version: '3.0' }),
         );
     });
+
+    // 예전 실행 파일 경로가 남아 있으면 새 버전을 받아도 옛 jar를 켠다 (외부 감사 10-20 #5)
+    it('새 버전을 받으면 받은 실행 파일을 실행 파일로 기록한다', async () => {
+        window.api.moduleInstallServer.mockResolvedValue({ success: true, jar_path: 'C:/a/server.jar' });
+        const { result, setModal } = setup();
+        await act(async () => result.current.handleOpenSettings(srv));
+        act(() => result.current.handleSettingChange('server_version', '3.0'));
+        await act(async () => result.current.handleInstallVersion());
+        await act(async () => setModal.mock.calls.at(-1)[0].buttons[0].action());
+        expect(window.api.instanceUpdateSettings).toHaveBeenCalledWith('a', {
+            server_version: '3.0',
+            working_dir: 'C:/a',
+            executable_path: 'C:/a/server.jar',
+        });
+    });
 });
+

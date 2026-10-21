@@ -388,11 +388,12 @@ export function useServerActions({
                                     setProgressBar({ message: t('servers.progress_configuring'), percent: 90 });
 
                                     if (s && installResult.jar_path) {
-                                        // working_dir만 설정 — 실행 파일은 모듈에서 자동 해석됨
+                                        // 받은 파일로 켠다: 예전 실행 파일 경로가 남아 있으면 그 파일을 다시 찾는다
                                         const saved = await window.api.instanceUpdateSettings(s.id, {
                                             working_dir:
                                                 installResult.install_path ||
                                                 installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
+                                            executable_path: installResult.jar_path,
                                         });
                                         if (!saved || saved.error || saved.success === false) {
                                             setProgressBar(null);

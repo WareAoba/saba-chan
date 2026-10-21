@@ -372,9 +372,10 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             // 설치한 버전만 기록한다 (설정 저장은 버전을 보내지 않는다)
                             const update = { server_version: version };
                             if (installResult.jar_path) {
-                                // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
+                                // 받은 파일로 켠다: 예전 실행 파일 경로(paper-…-130.jar 등)가 남아 있으면 옛 버전이 뜬다
                                 update.working_dir =
                                     installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
+                                update.executable_path = installResult.jar_path;
                             }
                             const saved = await window.api.instanceUpdateSettings(settingsServer.id, update);
                             if (!saved || saved.error || saved.success === false) {
