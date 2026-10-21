@@ -349,7 +349,11 @@
     "none": "ゲームモジュールはインストールされていません。参照: saba-chan-cli module available",
     "refreshed": "モジュールを再読み込みしました。",
     "removed": "モジュール {{id}} を削除しました。",
-    "unmet": "{{component}} {{required}} が必要です（インストール済み: {{installed}}）"
+    "unmet": "{{component}} {{required}} が必要です（インストール済み: {{installed}}）",
+    "load_failed": {
+      "invalid": "{{module}} モジュールを読み込めませんでした。module.toml が形式に合っていません:",
+      "unsupported": "{{module}} モジュールを読み込めませんでした。モジュール形式 {{required}} を読むには Saba-chan を更新してください。"
+    }
   },
   "noun": {
     "command": "コマンド",
@@ -442,7 +446,10 @@
     "restart_hint": "反映するには {{name}} を再起動してください: saba-chan-cli restart {{name}}",
     "sync_failed": "保存しましたが、ゲームの設定ファイルに書き込めませんでした: {{error}}",
     "ignored": "saba-chanが使わない設定のため無視しました: {{keys}}",
-    "unknown_key": "{{key}} は新しいキーです。"
+    "unknown_key": "{{key}} は新しいキーです。",
+    "restart_required_mark": "変更後に再起動",
+    "restart_required": "再起動すると反映されます: {{keys}}",
+    "hidden": "ほかの設定により現在使われないため非表示の設定: {{keys}}"
   },
   "shell": {
     "bad_quotes": "引用符が閉じられていません。",

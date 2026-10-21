@@ -349,7 +349,11 @@
     "none": "설치된 게임 모듈이 없어요. 보기: saba-chan-cli module available",
     "refreshed": "모듈을 다시 불러왔어요.",
     "removed": "모듈 {{id}}를 지웠어요.",
-    "unmet": "{{component}} {{required}} 필요 (설치됨: {{installed}})"
+    "unmet": "{{component}} {{required}} 필요 (설치됨: {{installed}})",
+    "load_failed": {
+      "invalid": "{{module}} 모듈을 읽지 못했어요. module.toml이 형식에 맞지 않아요:",
+      "unsupported": "{{module}} 모듈을 읽지 못했어요. 모듈 형식 {{required}}을(를) 읽으려면 사바쨩을 업데이트하세요."
+    }
   },
   "noun": {
     "command": "명령",
@@ -442,7 +446,10 @@
     "restart_hint": "적용하려면 {{name}}을(를) 다시 시작하세요: saba-chan-cli restart {{name}}",
     "sync_failed": "저장은 했지만 게임 설정 파일에 쓰지 못했어요: {{error}}",
     "ignored": "사바쨩이 쓰지 않는 설정이라 무시했어요: {{keys}}",
-    "unknown_key": "{{key}}는 새 키예요."
+    "unknown_key": "{{key}}는 새 키예요.",
+    "restart_required_mark": "바꾸면 다시 시작",
+    "restart_required": "다시 시작해야 적용돼요: {{keys}}",
+    "hidden": "다른 설정에 따라 지금 쓰지 않아 숨긴 설정: {{keys}}"
   },
   "shell": {
     "bad_quotes": "따옴표가 닫히지 않았어요.",

@@ -292,7 +292,11 @@
     "none": "Nenhum módulo de jogo instalado. Veja: saba-chan-cli module available",
     "refreshed": "Módulos recarregados.",
     "removed": "Módulo {{id}} excluído.",
-    "unmet": "Requer {{component}} {{required}} (instalado: {{installed}})"
+    "unmet": "Requer {{component}} {{required}} (instalado: {{installed}})",
+    "load_failed": {
+      "invalid": "Não foi possível carregar o módulo {{module}}. O module.toml dele não segue o formato:",
+      "unsupported": "Não foi possível carregar o módulo {{module}}. Atualize o Saba-chan para ler o formato de módulo {{required}}."
+    }
   },
   "noun": {
     "command": "comando",
@@ -385,7 +389,10 @@
     "restart_hint": "Reinicie {{name}} para aplicar: saba-chan-cli restart {{name}}",
     "sync_failed": "Salvo, mas não foi possível gravar o arquivo de configuração do jogo: {{error}}",
     "ignored": "Ignorado porque o saba-chan não usa estas configurações: {{keys}}",
-    "unknown_key": "{{key}} é uma chave nova."
+    "unknown_key": "{{key}} é uma chave nova.",
+    "restart_required_mark": "requer reinício",
+    "restart_required": "Reinicie o servidor para aplicar: {{keys}}",
+    "hidden": "Ocultas porque outras configurações não as usam agora: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Aspas não fechadas.",
