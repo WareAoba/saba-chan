@@ -100,7 +100,8 @@ pub struct Clock {
 impl Clock {
     /// 이번 차례에 시작할 작업. 시작한 작업은 끝날 때 `finish`로 알린다
     pub fn due(&mut self, key: &str, task: &ScheduledTask, started: NaiveDateTime, now: NaiveDateTime) -> Option<NaiveDateTime> {
-        if !task.enabled || self.running.contains(key) {
+        // 저장 검사를 거치지 않은 틀린 작업(손으로 고친 파일의 `every_minutes: 0` 등)은 건너뛴다
+        if !task.enabled || self.running.contains(key) || !task.problems().is_empty() {
             return None;
         }
         // 처음 보는 작업: 데몬이 켜질 때 있던 것(첫 차례)은 시작부터, 뒤에 더하거나 고친 것은 지금부터 센다
@@ -120,6 +121,12 @@ impl Clock {
             }
         } else {
             while let Some(next) = task.next_fire(fire).filter(|next| *next <= now) {
+                fire = next;
+            }
+        }
+        // 따라잡은 차례 바로 뒤 차례의 예고가 이미 시작됐으면, 밀린 것은 건너뛰고 그 차례를 한다 (연달아 두 번 하지 않게)
+        if fire < now {
+            if let Some(next) = task.next_fire(fire).filter(|next| now >= *next - task.lead()) {
                 fire = next;
             }
         }
@@ -219,7 +226,7 @@ mod tests {
 
         // 시각 작업도 며칠 밀렸으면 가장 최근 시각 한 번만
         let daily = task(serde_json::json!({"action": "backup", "at": "04:00"}));
-        let fire = c.due("d", &daily, start, t("2026-10-17 10:00")).map(|f| { c.finish("d", f); f });
+        let fire = c.due("d", &daily, start, t("2026-10-17 10:00")).inspect(|f| c.finish("d", *f));
         assert_eq!(fire, None);
         let fire = c.due("d", &daily, start, t("2026-10-18 04:00")).unwrap();
         c.finish("d", fire);
@@ -227,6 +234,27 @@ mod tests {
         assert_eq!(fire, t("2026-10-21 04:00"));
         c.finish("d", fire);
         assert_eq!(c.due("d", &daily, start, t("2026-10-21 12:01")), None);
+    }
+
+    /// 리뷰 594: 손으로 고친 파일의 `every_minutes: 0` 같은 틀린 작업은 건너뛴다(실행기가 멈추지 않게).
+    /// 밀린 차례를 따라잡을 때 다음 차례의 예고가 이미 시작됐으면 밀린 것은 건너뛰고 다음 차례만 한다
+    #[test]
+    fn bad_tasks_are_skipped_and_a_catch_up_inside_the_next_warning_waits_for_it() {
+        let mut c = Clock::default();
+        let start = t("2026-10-17 10:00");
+        let zero = task(serde_json::json!({"action": "backup", "every_minutes": 0}));
+        assert_eq!(c.due("z", &zero, start, t("2026-10-17 10:30")), None);
+        assert_eq!(c.due("z", &zero, start, t("2026-10-17 11:30")), None);
+
+        let job = task(serde_json::json!({"action": "restart", "every_minutes": 60, "warn_minutes": [10]}));
+        c.finish("k", t("2026-10-17 15:00"));
+        assert_eq!(c.due("k", &job, start, t("2026-10-17 18:55")), Some(t("2026-10-17 19:00")));
+        c.finish("k", t("2026-10-17 19:00"));
+        assert_eq!(c.due("k", &job, start, t("2026-10-17 19:01")), None);
+
+        let daily = task(serde_json::json!({"action": "restart", "at": "04:00", "warn_minutes": [10]}));
+        c.finish("d", t("2026-10-17 04:00"));
+        assert_eq!(c.due("d", &daily, start, t("2026-10-19 03:55")), Some(t("2026-10-19 04:00")));
     }
 
     #[test]
