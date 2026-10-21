@@ -69,17 +69,18 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 `enum Component` (`updater/src/lib.rs:75-83`)와 manifest key의 대응(`lib.rs:87-120`):
 
-| Component | manifest key | 적용 방식 | 적용 우선순위 (`lib.rs:896-909`) |
+| Component | manifest key | 적용 방식 | 적용 우선순위 (`lib.rs` `component_apply_priority`) |
 |---|---|---|---|
 | `Updater` | `updater` | `apply_binary_update("saba-chan-updater")` | 0 |
-| `Module(name)` | `module-{name}` | `modules_dir/{name}`을 zip 내용으로 교체. 백업은 `staging/{name}_backup` (`apply.rs:7-13`, `replace_dir` 24-62) | 1 |
-| `Extension(name)` | `ext-{name}` | `extensions_dir`에 교체. 하이픈은 언더스코어로 변환(`lib.rs:426-442`, `apply.rs:16-22`). 백업은 `{name}_ext_backup` | 1 |
-| `Locales` | `locales` | `install_root/locales`에 해제(`lib.rs:855-858`) | 1 |
-| `Installer` | `installer` | 설치 폴더의 `saba-chan-installer.exe`를 받은 exe로 교체(`apply.rs` `apply_installer_update`) | 1 |
-| `CoreDaemon` | `saba-core` | `apply_binary_update("saba-core")` | 3 |
+| `Module(name)` | `module-{name}` | `modules_dir/{name}`을 zip 내용으로 교체. 백업은 `staging/{name}_backup` (`apply.rs:7-13`, `replace_dir` 24-62) | 2 |
+| `Extension(name)` | `ext-{name}` | `extensions_dir`에 교체. 하이픈은 언더스코어로 변환(`lib.rs:426-442`, `apply.rs:16-22`). 백업은 `{name}_ext_backup` | 2 |
+| `Locales` | `locales` | `install_root/locales`에 해제(`lib.rs:855-858`) | 2 |
+| `Installer` | `installer` | 설치 폴더의 `saba-chan-installer.exe`를 받은 exe로 교체(`apply.rs` `apply_installer_update`) | 2 |
+| `CoreDaemon` | `saba-core` | `apply_binary_update("saba-core")` | 1 |
 | `Gui` / `Cli` | `gui` / `cli` | 프로세스가 돌고 있으면 5, 아니면 4 | 4/5 |
 
-- `DiscordBot` 컴포넌트는 로컬 bot과 함께 없어졌다. 우선순위 2는 비어 있다.
+- `DiscordBot` 컴포넌트는 로컬 bot과 함께 없어졌다. 우선순위 3은 비어 있다.
+- 코어가 모듈·익스텐션보다 먼저다(0.1.9). 0.1.9 모듈부터 `requires`로 새 코어를 요구할 수 있어서, 같은 묶음의 코어를 먼저 적용해 installed-manifest에 새 버전이 적힌 뒤 모듈을 적용한다. 데몬 `apply_updates`의 정렬도 이 함수를 쓰고(`updates.rs`), 업데이터의 `apply_target_keys`는 받은 키 목록을 이 순서로 다시 세운다(옛 데몬은 모듈을 코어 앞에 적는다. 같은 순위는 받은 순서). 그 위에 `apply_order`가 같은 묶음 안에서 `requires`하는 키를 앞으로 당긴다(순환하면 남은 것 중 맨 앞부터). 데몬 `apply_updates`, 목록 없는 적용, `pending_keys_in_apply_order`가 모두 이 함수를 쓴다. 코어를 먼저 적용하므로, 뒤의 모듈이 실패하면 코어만 새것이고 남은 것(GUI·CLI 포함)은 건너뛴 채 옛것으로 남는다(첫 실패에서 멈추는 규칙. 결과에 건너뛴 키가 남는다).
 - 알 수 없는 key는 업데이트 대상에서 빠진다(`lib.rs` `try_from_manifest_key`). `installer`는 `Component::Installer`로, 설치 폴더의 `saba-chan-installer.exe`(제거기)를 받은 exe로 바꾸고 복사가 실패하면 원래 사본을 되돌린다(`apply.rs` `apply_installer_update`). `from_manifest_key`는 모르는 key를 `Module`로 폴백한다(`lib.rs:118-120`).
 - 설치하지 않은 모듈·익스텐션은 업데이트 목록에 넣지 않는다. 새로 받는 것은 목록 화면의 몫이다(`lib.rs:515-518`).
 - **로컬 버전 판정 순서**(`collect_local_versions`, `lib.rs:585-624`): 먼저 `installed-manifest.json`(`<data_dir>/installed-manifest.json`)을 본다. 앱 컴포넌트가 거기 없으면 빌드에 묶인 `versions.toml` 버전을 쓰고(설치기는 빼고. 0.1.7까지 기록하지 않아 깔려 있는데 기록이 없으면 옛 사본으로 보고 바꾼다, `fill_bundled_versions`·`unknown_version_needs_update`), 모듈은 `module.toml`, 익스텐션은 `manifest.json`의 id·version을 읽는다.
@@ -107,7 +108,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 - 컴포넌트 키는 `saba-core`, `cli`, `gui`, `updater`, `installer`, `locales`, `module-<name>`, `ext-<id>`다. 업데이터가 모르는 키는 건너뛴다.
 - `installer`는 0.1.5부터 zip이 아닌 `saba-chan-installer.exe` 그대로다(`versions.toml`, `.github/scripts/package-release.py`). 소개 페이지 다운로드(relay `/v1/updates/download/installer`)가 최신 stable manifest의 이 `url`로 보낸다. 설치기는 이 항목의 `version`만 읽고(2.5단계) 자기 자신을 설치 폴더에 복사하며 그 버전을 installed-manifest의 `installer`로 적는다. 업데이터는 이 기록이 manifest보다 낮으면 사본을 바꾼다. 0.1.4 이전 릴리스는 zip 그대로 둔다.
-- `requires`(다른 컴포넌트 최소 버전)와 `meta`(목록 화면용)는 선택이다.
+- `requires`(다른 컴포넌트 최소 버전)와 `meta`(목록 화면용)는 선택이다. `scripts/versions.py`가 모듈은 `[module.dependencies] saba-core`에서, 익스텐션은 `dependencies."saba-core"`(없거나 `"*"`이면 `min_app_version`을 `>=`로)에서 `requires.saba-core`를 만든다(`extension_core_requirement`). 0.1.9부터 지킨다: `check_for_updates`가 `requires`를 `ComponentVersion.requires`에 싣고 `pending.json`에도 실어(없으면 생략, 옛 업데이터는 무시) 업데이터 `--apply`도 네트워크 없이 본다. `apply_single_component`는 적용 전에 `check_dependencies`(앱 컴포넌트는 installed-manifest와 번들 버전, 모듈·익스텐션은 디스크에 실제로 있는 버전만. 카탈로그 설치·삭제는 installed-manifest를 고치지 않기 때문이다. `dependency_versions`, `unmet_requires`)로 확인하고, 못 미치면 `"<key> requires saba-core >=0.1.9 but 0.1.8 is installed"`로 실패한다(첫 실패에서 멈추는 규칙에 따라 뒤는 건너뛴다). 데몬의 카탈로그 설치(`POST /api/modules/manifest/:id/install`)도 같은 함수로 데몬이 아는 버전(`component_versions`)과 비교해 받기 전에 `{ok:false, error}`로 거절한다. 0.1.8 이하 업데이터·데몬은 `requires`를 보지 않으므로 이 검사는 0.1.10 적용부터 효과가 있다.
 - 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이나 채널이 요청과 다르거나, 현재보다 낮은 버전이면 거부한다(`relay.rs` `verify_release`). 서명이 맞아도 컴포넌트 키, `asset` 파일 이름, `install_dir`의 각 칸이 영문·숫자·`.`·`_`·`-`만으로 되어 있지 않거나 `.`으로 시작하면(`..`, 절대 경로, 드라이브 `:`) manifest 전체를 거부한다(`check_manifest_paths`). `module-`·`ext-` 키는 접두사를 뗀 이름도 같은 규칙을 지켜야 한다(`module-..`, `ext-` 거부). 이 값들은 그대로 모듈·익스텐션 폴더, 받을 파일, 설치 폴더 경로에 붙는다. 단 이미 최신이라 버전만으로 manifest를 받은 경우에는 채널이 달라도(같은 버전이 stable·beta 둘 다에 있으면 릴레이는 늦게 등록한 행을 준다) 그 버전이 지금 깔린 버전과 같으면 받아서 컴포넌트를 비교한다. check 응답의 `latest`는 서명 밖이라, 그 `version`이 서명된 manifest의 `version`과 다르면 거부한다(`bind_release`). 그래서 적용 결과에 싣는 릴리즈 버전은 서명된 값이다. 패치노트(`notes`)는 릴레이에 등록하는 값이라 서명 밖에 있다.
 
 ### 1.4 어디서 가져오는가
