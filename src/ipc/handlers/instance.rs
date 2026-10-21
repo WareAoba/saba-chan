@@ -2506,7 +2506,12 @@ mod tests {
             "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"download\"\n",
         )
         .unwrap();
-        std::fs::write(dir.join("lifecycle.py"), "import json, sys, time\ntime.sleep(3)\nprint(json.dumps({'success': True}))\n").unwrap();
+        // 설치만 느리다: 버전 조회 같은 다른 호출까지 기다리면 부하가 큰 Windows에서 끝나는 시각이 크게 밀린다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\nif sys.argv[1] == 'install_server':\n    time.sleep(2)\nprint(json.dumps({'success': True, 'latest': {'release': '1.0'}}))\n",
+        )
+        .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
@@ -2516,13 +2521,18 @@ mod tests {
         let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         let id = created.body["id"].as_str().unwrap().to_string();
         assert!(super::super::backup::BusyGuard::take(&id).is_none(), "the install holds the lock");
-        for _ in 0..200 {
-            if let Some(_guard) = super::super::backup::BusyGuard::take(&id) {
-                return;
+        // 시간이 아니라 설치가 끝났다는 표시를 기다린다. 잠금은 그 표시보다 먼저 풀린다
+        let mut done = None;
+        for _ in 0..2400 {
+            done = state.provision_tracker.get("a").filter(|p| p.done);
+            if done.is_some() {
+                break;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        panic!("the lock was never released after the install");
+        let done = done.expect("the install never finished");
+        assert!(done.error.is_none(), "{:?}", done.error);
+        assert!(super::super::backup::BusyGuard::take(&id).is_some(), "the lock is released once the install is done");
     }
 
     /// 설치 실패를 dismiss하면 그 설치의 인스턴스만 지운다: 그 사이 이름이 바뀌고 같은 이름의 다른 인스턴스가 생겨도

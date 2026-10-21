@@ -1160,15 +1160,17 @@ mod tests {
         assert!(started.elapsed() < limit, "the background ask is shared, not run again: {:?}", started.elapsed());
     }
 
-    /// 공용 진입점 `run_lifecycle`은 표에 `functions`가 없으면 표의 키(자신 제외)로 답한다
-    #[test]
-    fn run_lifecycle_answers_functions_with_its_table() {
+    /// 공용 진입점 `run_lifecycle`은 표에 `functions`가 없으면 표의 키(자신 제외)로 답한다.
+    /// 데몬이 모듈을 돌리는 그 Python으로 돌린다 (PATH의 `python3`는 Windows에서 스토어 안내 스텁일 수 있다)
+    #[tokio::test]
+    async fn run_lifecycle_answers_functions_with_its_table() {
         let script = format!(
             "import sys; sys.path.insert(0, {:?}); sys.argv = ['lifecycle.py', 'functions']; import daemon_rcon; \
              daemon_rcon.run_lifecycle({{'validate': lambda c: {{}}, 'reset_server': lambda c: {{}}}})",
             concat!(env!("CARGO_MANIFEST_DIR"), "/modules"),
         );
-        let out = std::process::Command::new("python3").arg("-c").arg(script).stdin(std::process::Stdio::null()).output().unwrap();
+        let python = crate::python_env::get_python_path().await.unwrap();
+        let out = std::process::Command::new(python).arg("-c").arg(script).stdin(std::process::Stdio::null()).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         assert_eq!(
             parse_plugin_output(&String::from_utf8_lossy(&out.stdout)).unwrap(),
