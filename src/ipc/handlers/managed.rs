@@ -637,7 +637,7 @@ pub async fn install_server_handler(
                 return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
             };
             let dir = sup.instance_store.instance_dir(id);
-            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir))), Some(guard))
+            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir), sup.resolve_executable(inst, &module_name))), Some(guard))
         }
         None => (None, None),
     };
@@ -711,7 +711,7 @@ pub async fn install_server_handler(
                 Ok(m) => m.entry_path(),
                 Err(e) => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)}))).into_response(),
             };
-            let settings = instance.as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| json!({}));
+            let settings = instance.as_ref().map(|(s, _, _)| s.clone()).unwrap_or_else(|| json!({}));
             match Supervisor::latest_version(&module_path, &settings).await {
                 Ok(v) => v,
                 Err(e) => {
@@ -730,6 +730,7 @@ pub async fn install_server_handler(
     };
     guards.extend(own_guard);
     let executable = executable.map(str::to_string);
+    let keep_executable = instance.as_ref().and_then(|(_, _, exe)| exe.clone());
     let install = {
         let state = state.clone();
         let version = version.clone();
@@ -743,7 +744,8 @@ pub async fn install_server_handler(
                 executable.as_deref(),
                 &accepted_agreements,
                 initial_settings,
-                instance,
+                instance.map(|(settings, dirs, _)| (settings, dirs)),
+                keep_executable.as_deref(),
             )
             .await
             .map_err(|e| e.to_string())
@@ -873,6 +875,48 @@ mod tests {
         // 버전을 정해 보내면 그대로 쓴다 (예전 클라이언트)
         let pinned = install(json!({ "install_dir": files, "instance_id": id, "version": "1.0" })).await;
         assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
+    }
+
+    // 외부 감사 P1: 업데이트 전 백업이 모듈 `server_executable`(server.jar)만 담아, 모듈이 인스턴스의 실제 실행 파일
+    // (예: Fabric 런처)을 바꾸다 실패하면 그 파일은 되돌리지 못했다. 인스턴스 실행 파일도 함께 백업하고 되돌린다
+    #[tokio::test]
+    async fn a_failed_install_puts_back_the_instance_executable_too() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"server.jar\"\n").unwrap();
+        // 두 파일을 반쯤 바꾼 뒤 실패한다 (한 번은 success=false, 한 번은 오류로 끝남)
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nd = config['install_dir']\n\
+             for name in ('server.jar', 'launch.jar'):\n    open(os.path.join(d, name), 'w').write('half')\n\
+             if config.get('version') == 'crash':\n    sys.exit(3)\n\
+             print(json.dumps({'success': False, 'message': 'download failed'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let files = tmp.path().join("files");
+        std::fs::create_dir_all(&files).unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.executable_path = Some(files.join("launch.jar").to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        for version in ["1.1", "crash"] {
+            for name in ["server.jar", "launch.jar"] {
+                std::fs::write(files.join(name), "old").unwrap();
+            }
+            let body = json!({ "install_dir": files, "instance_id": id, "version": version });
+            let done = crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state.clone()), Json(body)).await.into_response()).await;
+            assert!(!done.status.is_success() || done.body["success"] == false, "{}", done.body);
+            for name in ["server.jar", "launch.jar"] {
+                assert_eq!(std::fs::read_to_string(files.join(name)).unwrap(), "old", "{version}: {name}");
+            }
+            let left: Vec<_> = std::fs::read_dir(&files).unwrap().map(|e| e.unwrap().file_name()).filter(|n| n.to_string_lossy().ends_with(".bak")).collect();
+            assert!(left.is_empty(), "{version}: {left:?}");
+        }
     }
 
     // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을

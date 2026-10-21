@@ -192,6 +192,14 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
     )
 }
 
+/// 같은 파일을 가리키는가 (있으면 실제 경로로, 없으면 쓴 그대로 비교한다)
+fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
 impl Supervisor {
     pub fn new(modules_dir: &str) -> Self {
         let instances_dir = saba_chan_updater_lib::constants::resolve_instances_dir()
@@ -449,7 +457,7 @@ impl Supervisor {
     ///
     /// 모듈에 `server_executable`이 정의되어 있으면 `working_dir`만으로 실행 파일을 찾을 수 있으므로
     /// 사용자가 별도로 `executable_path`를 설정할 필요가 없습니다.
-    fn resolve_executable(&self, instance: &crate::instance::ServerInstance, module_name: &str) -> Option<String> {
+    pub(crate) fn resolve_executable(&self, instance: &crate::instance::ServerInstance, module_name: &str) -> Option<String> {
         // 1. 사용자 명시 경로 우선
         if let Some(ref exe_path) = instance.executable_path {
             if !exe_path.is_empty() {
@@ -2393,6 +2401,7 @@ impl Supervisor {
     /// Install a server: download binary, setup directory, optional initial settings.
     /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
     /// `instance`: 그 인스턴스의 설정과 격리 실행이 쓸 데이터 폴더 (처음 설치와 같은 값을 받는다)
+    /// `keep_executable`: 그 인스턴스가 실제로 띄우는 파일 (모듈 실행 파일과 다르면 함께 백업한다)
     #[allow(clippy::too_many_arguments)]
     pub async fn install_server(
         sup: &tokio::sync::RwLock<Self>,
@@ -2403,6 +2412,7 @@ impl Supervisor {
         accepted_agreements: &[String],
         initial_settings: Option<Value>,
         instance: Option<(Value, Vec<String>)>,
+        keep_executable: Option<&str>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
@@ -2414,26 +2424,39 @@ impl Supervisor {
                 module.metadata.server_executable.clone()
             });
 
-        // ── 기존 바이너리 백업 ──
-        let backup_path = if let Some(ref jar) = effective_jar {
-            let original = std::path::Path::new(install_dir).join(jar);
-            if original.is_file() {
-                let backup = original.with_extension(format!(
-                    "{}.bak",
-                    original.extension().unwrap_or_default().to_string_lossy()
-                ));
-                if let Err(e) = std::fs::copy(&original, &backup) {
-                    tracing::warn!("Failed to backup '{}': {}", original.display(), e);
-                    None
-                } else {
-                    tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
-                    Some(backup)
-                }
-            } else {
-                None
+        // ── 기존 바이너리 백업: 모듈 실행 파일과 인스턴스가 실제로 띄우는 파일 (모듈이 어느 쪽을 바꾸다 실패해도 되돌린다) ──
+        let mut originals: Vec<std::path::PathBuf> = effective_jar.iter().map(|jar| std::path::Path::new(install_dir).join(jar)).collect();
+        if let Some(exe) = keep_executable {
+            let exe = std::path::Path::new(install_dir).join(exe);
+            if !originals.iter().any(|o| same_file_path(o, &exe)) {
+                originals.push(exe);
             }
-        } else {
-            None
+        }
+        let backups: Vec<(std::path::PathBuf, std::path::PathBuf)> = originals
+            .into_iter()
+            .filter(|original| original.is_file())
+            .filter_map(|original| {
+                let backup = original.with_extension(format!("{}.bak", original.extension().unwrap_or_default().to_string_lossy()));
+                match std::fs::copy(&original, &backup) {
+                    Ok(_) => {
+                        tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
+                        Some((original, backup))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to backup '{}': {}", original.display(), e);
+                        None
+                    }
+                }
+            })
+            .collect();
+        let restore = |why: &str| {
+            for (original, backup) in &backups {
+                match std::fs::copy(backup, original) {
+                    Ok(_) => tracing::info!("Restored backup after {}: {}", why, original.display()),
+                    Err(e) => tracing::error!("Failed to restore backup '{}': {}", backup.display(), e),
+                }
+                let _ = std::fs::remove_file(backup);
+            }
         };
 
         let mut config = json!({
@@ -2458,42 +2481,21 @@ impl Supervisor {
 
         match result {
             Ok(ref val) => {
-                let success = val.get("success").and_then(|s| s.as_bool()) == Some(true);
-                if success {
+                if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
                     // 설치 성공 → 백업 파일 정리
-                    if let Some(ref bp) = backup_path {
-                        let _ = std::fs::remove_file(bp);
-                        tracing::info!("Removed backup after successful install: {}", bp.display());
+                    for (_, backup) in &backups {
+                        let _ = std::fs::remove_file(backup);
+                        tracing::info!("Removed backup after successful install: {}", backup.display());
                     }
                 } else {
                     // 모듈이 success=false 반환 → 복원
-                    if let Some(ref bp) = backup_path {
-                        if let Some(ref jar) = effective_jar {
-                            let original = std::path::Path::new(install_dir).join(jar);
-                            if let Err(e) = std::fs::copy(bp, &original) {
-                                tracing::error!("Failed to restore backup '{}': {}", bp.display(), e);
-                            } else {
-                                tracing::info!("Restored backup after failed install: {}", original.display());
-                            }
-                        }
-                        let _ = std::fs::remove_file(bp);
-                    }
+                    restore("failed install");
                 }
                 result
             }
             Err(e) => {
                 // 플러그인 에러 → 복원
-                if let Some(ref bp) = backup_path {
-                    if let Some(ref jar) = effective_jar {
-                        let original = std::path::Path::new(install_dir).join(jar);
-                        if let Err(re) = std::fs::copy(bp, &original) {
-                            tracing::error!("Failed to restore backup '{}': {}", bp.display(), re);
-                        } else {
-                            tracing::info!("Restored backup after plugin error: {}", original.display());
-                        }
-                    }
-                    let _ = std::fs::remove_file(bp);
-                }
+                restore("plugin error");
                 Err(e)
             }
         }
