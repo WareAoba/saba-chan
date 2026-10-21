@@ -320,7 +320,7 @@ async fn download_file(url: &str, dest: &Path) -> Result<()> {
             let script = "$ProgressPreference = 'SilentlyContinue'; \
                  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
                  Invoke-WebRequest -Uri $env:SABA_DL_URL -OutFile $env:SABA_DL_DEST -UseBasicParsing";
-            let mut cmd = Command::new("powershell");
+            let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("powershell"));
             cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
                 .env("SABA_DL_URL", url)
                 .env("SABA_DL_DEST", dest);
@@ -370,7 +370,7 @@ async fn download_file(url: &str, dest: &Path) -> Result<()> {
 async fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<()> {
     std::fs::create_dir_all(dest)?;
 
-    let mut cmd = Command::new("tar");
+    let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("tar"));
     cmd.args([
         "-xzf",
         &archive.to_string_lossy(),
