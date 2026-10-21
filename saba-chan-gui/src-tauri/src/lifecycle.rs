@@ -355,7 +355,8 @@ fn force_kill(child: &mut Child) {
     #[cfg(windows)]
     {
         // /T 없이: 서버는 saba-runner가 쥐고 있어 데몬만 끊고, 다음 기동 때 다시 붙는다
-        let _ = saba_chan_updater_lib::process::hide_console(&mut Command::new("taskkill"))
+        use saba_chan_updater_lib::process::{hide_console, system_tool};
+        let _ = hide_console(&mut Command::new(system_tool("taskkill")))
             .args(["/PID", &child.id().to_string(), "/F"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())

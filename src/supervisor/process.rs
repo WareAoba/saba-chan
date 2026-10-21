@@ -90,7 +90,7 @@ fn kill(pid: u32, tree: bool) -> Result<()> {
         if tree {
             args.insert(1, "/T");
         }
-        let out = std::process::Command::new("taskkill")
+        let out = std::process::Command::new(saba_chan_updater_lib::process::system_tool("taskkill"))
             .args(&args)
             .creation_flags(CREATE_NO_WINDOW)
             .output()
@@ -333,7 +333,7 @@ mod tests {
     #[cfg(windows)]
     async fn launcher_with_child() -> (std::process::Child, u32) {
         use std::os::windows::process::CommandExt;
-        let launcher = std::process::Command::new("cmd")
+        let launcher = std::process::Command::new(saba_chan_updater_lib::process::system_tool("cmd"))
             .args(["/C", "ping -n 60 127.0.0.1 > nul"])
             .creation_flags(0x08000000)
             .spawn()

@@ -1,6 +1,6 @@
 //! 창 — 메인 창(크기 기억·닫기 가로채기), 콘솔 팝아웃(PiP), 탐색 잠금
 
-use crate::{emit_main, settings, AppState};
+use crate::{emit_main, AppState};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -236,12 +236,11 @@ fn schedule_save_bounds(app: &AppHandle) {
         };
         let (pos, size) = (pos.to_logical::<f64>(scale), size.to_logical::<f64>(scale));
         let state = app.state::<AppState>();
-        let mut s = settings::load_settings(&state.data_dir);
-        s["windowBounds"] = json!({
+        let bounds = json!({ "windowBounds": {
             "width": size.width.round() as i64, "height": size.height.round() as i64,
             "x": pos.x.round() as i64, "y": pos.y.round() as i64,
-        });
-        crate::native::save_settings(&state, &s).await;
+        }});
+        crate::native::save_settings(&state, &bounds).await;
     });
 }
 

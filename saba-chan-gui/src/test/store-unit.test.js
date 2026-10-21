@@ -152,6 +152,31 @@ describe('useSettingsStore', () => {
         expect(state.refreshInterval).toBe(2000); // 기본값
     });
 
+    // CLI가 저장한 값(ipcPort·portConflictCheck)을 GUI가 들고 있던 옛 값으로 덮지 않는다 (외부 감사 10-21 #2)
+    it('save() — 연 뒤 바꾼 칸만 보낸다', async () => {
+        mockApi({ settingsLoad: vi.fn().mockResolvedValue({ ipcPort: 57474, portConflictCheck: true }) });
+        await useSettingsStore.getState().load();
+        // 그 사이 CLI가 ipcPort=58000, portConflictCheck=false를 저장했다. GUI에서는 테마만 바꾼다
+        useSettingsStore.getState().update({ theme: 'dark' });
+        await useSettingsStore.getState().save();
+        expect(window.api.settingsSave).toHaveBeenCalledTimes(1);
+        expect(window.api.settingsSave.mock.calls[0][0]).toEqual({ theme: 'dark' });
+        // 저장한 칸은 다음 저장에 다시 싣지 않는다
+        useSettingsStore.getState().update({ fontScale: 120 });
+        await useSettingsStore.getState().save();
+        expect(window.api.settingsSave.mock.calls[1][0]).toEqual({ fontScale: 120 });
+    });
+
+    it('save() — 저장이 실패한 칸은 다음 저장에 다시 싣는다', async () => {
+        useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
+        useSettingsStore.getState().update({ theme: 'dark' });
+        window.api.settingsSave.mockResolvedValueOnce(false);
+        expect(await useSettingsStore.getState().save()).toBe(false);
+        useSettingsStore.getState().update({ fontScale: 120 });
+        await useSettingsStore.getState().save();
+        expect(window.api.settingsSave.mock.calls[1][0]).toEqual({ theme: 'dark', fontScale: 120 });
+    });
+
     it('save() — settingsPath 미설정 시 저장 스킵', async () => {
         // settingsPath가 빈 문자열
         await useSettingsStore.getState().save();
@@ -273,7 +298,7 @@ describe('useSettingsStore', () => {
     });
 
     it('save() — 저장이 실패하면 false를 돌려준다 (호출자가 저장됨으로 표시하지 않게)', async () => {
-        useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
+        useSettingsStore.setState({ settingsPath: '/mock/settings.json', theme: 'dark' });
         window.api.settingsSave.mockRejectedValueOnce(new Error('disk full'));
         expect(await useSettingsStore.getState().save()).toBe(false);
         window.api.settingsSave.mockResolvedValueOnce(false);
@@ -291,13 +316,7 @@ describe('useSettingsStore', () => {
         await useSettingsStore.getState().save();
 
         const callArgs = window.api.settingsSave.mock.calls[0][0];
-        expect(callArgs.accentColor).toBe('#eb3349');
-        expect(callArgs.fontScale).toBe(150);
-        expect(callArgs.useGradient).toBe(false);
-        expect(callArgs.consoleSyntaxHighlight).toBe(true);
-        expect(callArgs.consoleBgColor).toBe('#1e1e2e');
-        expect(callArgs.consoleTextColor).toBe('#cdd6f4');
-        expect(callArgs.consoleFontScale).toBe(100);
+        expect(callArgs).toEqual({ accentColor: '#eb3349', fontScale: 150 });
     });
 });
 
@@ -563,7 +582,7 @@ describe('useDiscordStore', () => {
 
 describe('bot-config 저장 계약', () => {
     it('settings save payload에는 디스코드 필드가 없다', async () => {
-        useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
+        useSettingsStore.setState({ settingsPath: '/mock/settings.json', theme: 'dark' });
         await useSettingsStore.getState().save();
 
         const payload = window.api.settingsSave.mock.calls[0][0];
@@ -601,7 +620,7 @@ describe('에지 케이스', () => {
         expect(useDiscordStore.getState().discordBotStatus).toBe('running');
     });
 
-    it('settings load() → save() 왕복 — 저장된 값이 로드된 값과 동일', async () => {
+    it('settings load() → save() — 바꾼 칸이 없으면 저장하지 않는다', async () => {
         const original = {
             autoRefresh: false,
             refreshInterval: 7777,
@@ -625,11 +644,9 @@ describe('에지 케이스', () => {
         await useSettingsStore.getState().load();
         await useSettingsStore.getState().save();
 
-        expect(savedPayload.autoRefresh).toBe(original.autoRefresh);
-        expect(savedPayload.refreshInterval).toBe(original.refreshInterval);
-        expect(savedPayload.ipcPort).toBe(original.ipcPort);
-        expect(savedPayload.consoleBufferSize).toBe(original.consoleBufferSize);
-        expect(savedPayload.modulesPath).toBeUndefined();
+        // 읽기만 하고 바꾼 칸이 없으면 다시 쓰지 않는다 (그 사이 CLI가 바꾼 값을 덮지 않게)
+        expect(savedPayload).toBeNull();
+        expect(useSettingsStore.getState().ipcPort).toBe(original.ipcPort);
     });
 
     it('serverStore.setServers — 빈 배열 설정 가능', () => {

@@ -45,12 +45,10 @@ pub fn write_line(stream: Stream, text: &str) {
     }
 }
 
-/// 창구를 바꿔 끼운다. 놓으면 터미널로 돌아간다 (TUI가 끼운다. 그 전까지는 시험만 쓴다)
+/// 창구를 바꿔 끼운다. 놓으면 터미널로 돌아간다 (TUI가 끼운다)
 #[must_use]
-#[cfg_attr(not(test), allow(dead_code))]
 pub struct SinkGuard(());
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl SinkGuard {
     pub fn install(sink: Sink) -> Self {
         if let Ok(mut s) = SINK.write() {

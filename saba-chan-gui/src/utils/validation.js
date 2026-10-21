@@ -16,6 +16,8 @@
 function validateSettingValue(field, value) {
     const name = field.name || field.label || 'unknown';
 
+    if (field.field_type === 'list') return validateList(field, listItems(value));
+
     // 1. 필수 필드 검사
     if (value === undefined || value === null || value === '') {
         if (field.required) {
@@ -32,6 +34,11 @@ function validateSettingValue(field, value) {
             return validateBoolean(field, value);
         case 'select':
             return validateSelect(field, value);
+        case 'multiline':
+            // 데몬처럼 글자(코드 포인트) 수로 센다
+            return field.max_length != null && [...String(value)].length > field.max_length
+                ? { valid: false, errorType: 'too_long', field: name, max: field.max_length }
+                : { valid: true };
         case 'text':
         case 'password':
         case 'file':
@@ -115,6 +122,76 @@ function validateSelect(field, value) {
     return { valid: true };
 }
 
+/** list 칸 값: 문자열 배열에서 빈 항목을 뺀다 (편집 중에는 빈 줄이 남는다). 저장할 때도 이 값을 보낸다 */
+export function listItems(value) {
+    // 배열 항목은 데몬처럼 그대로 둔다(앞뒤 공백도 값). 쉼표 글자(옛 값)만 다듬는다
+    if (Array.isArray(value)) return value.map(String).filter((v) => v.trim() !== '');
+    if (value == null || value === '') return [];
+    return String(value)
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+}
+
+/** 목록 검증: 항목 수(min_items·max_items), 선택지가 있으면 항목마다 그중 하나 */
+function validateList(field, items) {
+    const name = field.name || 'unknown';
+    if (items.length === 0 && field.required) return { valid: false, errorType: 'required', field: name };
+    const tooFew = field.min_items != null && items.length < field.min_items;
+    const tooMany = field.max_items != null && items.length > field.max_items;
+    if (tooFew || tooMany) {
+        return { valid: false, errorType: 'item_count', field: name, min: field.min_items, max: field.max_items };
+    }
+    const bad = field.options?.length ? items.find((v) => !field.options.includes(v)) : undefined;
+    if (bad !== undefined) return { valid: false, errorType: 'invalid_option', field: name, value: bad };
+    // 같은 항목 두 번은 데몬이 invalid_format으로 거절한다
+    const twice = items.find((v, i) => items.indexOf(v) !== i);
+    if (twice !== undefined) return { valid: false, errorType: 'duplicate_item', field: name, value: twice };
+    return { valid: true };
+}
+
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/** 설정 타입으로 바꾼 값끼리 같은가 (데몬 validator::same_setting_value) */
+function sameSettingValue(fieldType, a, b) {
+    const flag = (v) => {
+        if (typeof v === 'boolean') return v;
+        const word = String(v).trim();
+        return word === 'true' ? true : word === 'false' ? false : null;
+    };
+    // 글자는 십진수만 수로 본다 (Rust f64 파싱처럼 0x… 는 수가 아니다)
+    const num = (v) =>
+        typeof v === 'number' ? v : typeof v === 'string' && DECIMAL.test(v.trim()) ? Number(v.trim()) : NaN;
+    if (fieldType === 'boolean') return flag(a) !== null && flag(a) === flag(b);
+    if (fieldType === 'number') return !Number.isNaN(num(a)) && num(a) === num(b);
+    const text = (v) => (typeof v === 'string' ? v.trim() : JSON.stringify(v));
+    return text(a) === text(b);
+}
+
+/**
+ * `visible_when`으로 지금 숨겨진 설정 이름 (데몬 validator::hidden_fields와 같은 계산, 02 §1.2).
+ * 값이 없으면(글자 칸이 아닌 빈 칸 포함) 그 설정의 default로 비교하고, default도 없으면 숨긴다.
+ */
+const STRING_TYPES = ['text', 'password', 'multiline'];
+
+export function hiddenFields(fields, values) {
+    return (fields || [])
+        .filter((f) => {
+            const cond = f.visible_when;
+            if (!cond) return false;
+            const target = fields.find((t) => t.name === cond.field);
+            if (!target) return false;
+            const raw = values?.[target.name];
+            // 지운 글자 칸은 ''로 저장되므로 데몬도 ''로 비교한다. 다른 칸의 ''는 보내지 않으니 값이 없는 것
+            const cleared = raw === '' && !STRING_TYPES.includes(target.field_type);
+            const current = raw === undefined || raw === null || cleared ? target.default : raw;
+            if (current === undefined || current === null) return true;
+            const wanted = Array.isArray(cond.in) ? cond.in : [cond.equals];
+            return !wanted.some((want) => sameSettingValue(target.field_type, current, want));
+        })
+        .map((f) => f.name);
+}
+
 /**
  * 모듈의 전체 설정 필드를 한꺼번에 검증합니다.
  *
@@ -125,8 +202,11 @@ function validateSelect(field, value) {
 export function validateAllSettings(fields, values) {
     const errors = {};
     let valid = true;
+    // 숨긴 설정은 required를 보지 않는다 (데몬과 같다)
+    const hidden = new Set(hiddenFields(fields, values));
 
     for (const field of fields) {
+        if (hidden.has(field.name)) continue;
         const result = validateSettingValue(field, values[field.name]);
         if (!result.valid) {
             errors[field.name] = result;

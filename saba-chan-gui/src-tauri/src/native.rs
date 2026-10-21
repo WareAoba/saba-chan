@@ -255,7 +255,8 @@ pub fn launch_uninstaller(app: AppHandle) -> Value {
 
 // ── 설정·언어 ──
 
-/// 데몬이 응답하면 API로만 저장한다(단일 원천). 데몬이 아예 응답하지 않을 때만 파일에 쓴다
+/// 바꾼 키만 받는다. 데몬이 응답하면 API로만 저장한다(단일 원천, 데몬이 잠근 채 합친다).
+/// 데몬이 아예 응답하지 않을 때만 지금 로컬 설정에 합쳐 파일에 쓴다
 pub async fn save_settings(state: &AppState, s: &Value) -> bool {
     match state.client.put("/api/config/gui", s, 5000).await {
         Ok(_) => return true,
@@ -265,7 +266,7 @@ pub async fn save_settings(state: &AppState, s: &Value) -> bool {
         }
         Err(_) => {}
     }
-    save_local(state, s)
+    save_local(state, &settings::merge(state.settings(), s))
 }
 
 fn save_local(state: &AppState, s: &Value) -> bool {
@@ -317,9 +318,7 @@ pub fn language_get(app: AppHandle) -> String {
 #[tauri::command]
 pub async fn language_set(app: AppHandle, language: String) -> Value {
     let state = app.state::<AppState>();
-    let mut s = state.settings();
-    s["language"] = Value::String(language.clone());
-    let success = save_settings(&state, &s).await;
+    let success = save_settings(&state, &json!({ "language": language })).await;
     state.reload_i18n(&language);
     tray::update_menu(&app);
     json!({ "success": success, "language": language })
@@ -590,6 +589,33 @@ mod tests {
         ] {
             assert!(consent_path(kind, component).is_none(), "{kind} {component:?}");
         }
+    }
+
+    /// 셸도 바꾼 키만 넘긴다. 데몬이 없으면 지금 로컬 설정에 합쳐 써서 다른 값을 지우지 않는다
+    #[tokio::test]
+    async fn a_local_save_keeps_the_settings_it_was_not_given() {
+        let dir = tempfile::tempdir().unwrap();
+        settings::write_gui_section(dir.path(), &json!({ "theme": "dark" })).unwrap();
+        let closed = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap();
+        let state = AppState {
+            client: std::sync::Arc::new(crate::daemon::DaemonClient::new(
+                format!("http://{closed}"),
+                dir.path().join("token"),
+            )),
+            data_dir: dir.path().to_path_buf(),
+            install_root: dir.path().to_path_buf(),
+            log_path: None,
+            after_update: false,
+            i18n: std::sync::RwLock::new(crate::i18n::I18n::load("ko", None)),
+            life: crate::lifecycle::Lifecycle::default(),
+        };
+        assert!(save_settings(&state, &json!({ "language": "ja" })).await);
+        let saved = state.settings();
+        assert_eq!(saved["theme"], "dark");
+        assert_eq!(saved["language"], "ja");
     }
 
     #[test]

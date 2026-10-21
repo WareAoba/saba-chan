@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { listItems } from '../utils/validation';
 import { Icon } from './Icon';
 
 /**
@@ -45,11 +46,30 @@ const SECRET_KEY = /(password|passwd|token|secret)$/i;
  */
 export function changedForCli(values, openedWith, fields = []) {
     const secret = new Set(fields.filter((f) => f.field_type === 'password').map((f) => f.name));
+    const types = Object.fromEntries(fields.map((f) => [f.name, f.field_type]));
+    // CLI에 낼 모양으로 비교한다 (목록 ['a,b']와 ['a','b']는 다른 값)
+    const same = (k, v) => String(cliValue(types[k], v) ?? '') === String(cliValue(types[k], openedWith[k]) ?? '');
     return Object.fromEntries(
         Object.entries(values)
-            .filter(([k, v]) => !k.startsWith('_') && String(v ?? '') !== String(openedWith[k] ?? ''))
-            .map(([k, v]) => [k, secret.has(k) || SECRET_KEY.test(k) ? `<${k}>` : v]),
+            .filter(([k, v]) => !k.startsWith('_') && !same(k, v))
+            .map(([k, v]) => [k, secret.has(k) || SECRET_KEY.test(k) ? `<${k}>` : cliValue(types[k], v)]),
     );
+}
+
+/** CLI `server set` 문법: list는 `a,b`(항목에 쉼표가 있으면 JSON 배열), multiline은 `\`→`\\` 뒤 줄바꿈→`\n` */
+function cliValue(fieldType, v) {
+    if (fieldType === 'list') {
+        const items = listItems(v);
+        // 쉼표나 앞뒤 공백이 든 항목, [로 시작하는 목록은 CLI 쉼표 경로가 그대로 두지 않아 JSON 배열로
+        return items.some((i) => i.includes(',') || i !== i.trim()) || items[0]?.startsWith('[')
+            ? JSON.stringify(items)
+            : items.join(',');
+    }
+    if (fieldType === 'multiline')
+        return String(v ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/\n/g, '\\n');
+    return v;
 }
 
 export function fillCli(template, { server, values = {}, extra = {} }) {

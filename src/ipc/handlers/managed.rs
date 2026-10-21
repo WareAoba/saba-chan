@@ -640,7 +640,7 @@ pub async fn install_server_handler(
                 return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
             };
             let dir = sup.instance_store.instance_dir(id);
-            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir))), Some(guard))
+            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir), sup.resolve_executable(inst, &module_name))), Some(guard))
         }
         None => (None, None),
     };
@@ -714,7 +714,7 @@ pub async fn install_server_handler(
                 Ok(m) => m.entry_path(),
                 Err(e) => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)}))).into_response(),
             };
-            let settings = instance.as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| json!({}));
+            let settings = instance.as_ref().map(|(s, _, _)| s.clone()).unwrap_or_else(|| json!({}));
             match Supervisor::latest_version(&module_path, &settings).await {
                 Ok(v) => v,
                 Err(e) => {
@@ -733,6 +733,7 @@ pub async fn install_server_handler(
     };
     guards.extend(own_guard);
     let executable = executable.map(str::to_string);
+    let keep_executable = instance.as_ref().and_then(|(_, _, exe)| exe.clone());
     let install = {
         let state = state.clone();
         let version = version.clone();
@@ -746,7 +747,8 @@ pub async fn install_server_handler(
                 executable.as_deref(),
                 &accepted_agreements,
                 initial_settings,
-                instance,
+                instance.map(|(settings, dirs, _)| (settings, dirs)),
+                keep_executable.as_deref(),
             )
             .await
             .map_err(|e| e.to_string())
@@ -876,6 +878,156 @@ mod tests {
         // 버전을 정해 보내면 그대로 쓴다 (예전 클라이언트)
         let pinned = install(json!({ "install_dir": files, "instance_id": id, "version": "1.0" })).await;
         assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
+    }
+
+    // 외부 감사 P1: 업데이트 전 백업이 모듈 `server_executable`(server.jar)만 담아, 모듈이 인스턴스의 실제 실행 파일
+    // (예: Fabric 런처)을 바꾸다 실패하면 그 파일은 되돌리지 못했다. 인스턴스 실행 파일도 함께 백업하고 되돌린다
+    #[tokio::test]
+    async fn a_failed_install_puts_back_the_instance_executable_too() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"server.jar\"\n").unwrap();
+        // 두 파일을 반쯤 바꾼 뒤 실패한다 (한 번은 success=false, 한 번은 오류로 끝남)
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nd = config['install_dir']\n\
+             for name in ('server.jar', 'launch.jar'):\n    open(os.path.join(d, name), 'w').write('half')\n\
+             if config.get('version') == 'crash':\n    sys.exit(3)\n\
+             print(json.dumps({'success': False, 'message': 'download failed'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let files = tmp.path().join("files");
+        std::fs::create_dir_all(&files).unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.executable_path = Some(files.join("launch.jar").to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        for version in ["1.1", "crash"] {
+            for name in ["server.jar", "launch.jar"] {
+                std::fs::write(files.join(name), "old").unwrap();
+            }
+            let body = json!({ "install_dir": files, "instance_id": id, "version": version });
+            let done = crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state.clone()), Json(body)).await.into_response()).await;
+            assert!(!done.status.is_success() || done.body["success"] == false, "{}", done.body);
+            for name in ["server.jar", "launch.jar"] {
+                assert_eq!(std::fs::read_to_string(files.join(name)).unwrap(), "old", "{version}: {name}");
+            }
+            let left: Vec<_> = std::fs::read_dir(&files).unwrap().map(|e| e.unwrap().file_name()).filter(|n| n.to_string_lossy().ends_with(".bak")).collect();
+            assert!(left.is_empty(), "{version}: {left:?}");
+        }
+    }
+
+    // 되돌리기가 실패하면 백업을 남기고 응답에 알린다. 사용자의 기존 .bak는 덮지 않는다. 설치 폴더 밖 실행 파일은 건드리지 않는다.
+    // 심볼릭 링크는 링크를 둔 채 대상 내용을 되돌린다
+    #[tokio::test]
+    async fn an_install_that_cannot_be_put_back_keeps_the_backup_and_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"PalServer\"\n").unwrap();
+        // write: 실행 파일을 고친 뒤 실패, replace: 새 파일로 바꿔 넣은 뒤 실패, break: 실행 파일 자리를 폴더로 바꿔 두고 실패(어떤 방법으로도 되돌릴 수 없다), 그 밖: 아무것도 안 하고 실패
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nexe = os.path.join(config['install_dir'], 'PalServer')\n\
+             if config['version'] == 'write':\n    open(exe, 'w').write('new')\n\
+             elif config['version'] == 'replace':\n    open(exe + '.part', 'w').write('new')\n    os.replace(exe + '.part', exe)\n\
+             elif config['version'] == 'break':\n    os.remove(exe)\n    os.makedirs(os.path.join(exe, 'x'))\n\
+             print(json.dumps({'success': False, 'message': 'download failed'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let files = tmp.path().join("files");
+        let elsewhere = tmp.path().join("elsewhere");
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("tool.exe"), "tool").unwrap();
+        std::fs::write(elsewhere.join("tool.exe.bak"), "user backup").unwrap();
+        let mut instance = |name: &str, exe: std::path::PathBuf| {
+            let mut inst = crate::instance::ServerInstance::new(name, "game");
+            inst.executable_path = Some(exe.to_string_lossy().into_owned());
+            let id = inst.id.clone();
+            sup.instance_store.add(inst).unwrap();
+            id
+        };
+        let inside = instance("srv", files.join("PalServer"));
+        let outside = instance("other", elsewhere.join("tool.exe"));
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let install = |id: &str, version: &str| {
+            let body = json!({ "install_dir": files, "instance_id": id, "version": version });
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state), Json(body)).await.into_response()).await }
+        };
+        let backups = || -> Vec<String> {
+            let mut names: Vec<String> = std::fs::read_dir(&files).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".bak")).collect();
+            names.sort();
+            names
+        };
+
+        // 사용자가 둔 PalServer.bak는 백업 자리로 쓰지 않는다: 설치가 실패해도 그대로 남고 실행 파일은 되돌아온다
+        std::fs::write(files.join("PalServer"), "old").unwrap();
+        std::fs::write(files.join("PalServer.bak"), "user backup").unwrap();
+        let done = install(&inside, "write").await;
+        assert_eq!(done.body["success"], false, "{}", done.body);
+        assert_eq!(std::fs::read_to_string(files.join("PalServer")).unwrap(), "old");
+        assert_eq!(std::fs::read_to_string(files.join("PalServer.bak")).unwrap(), "user backup");
+        assert_eq!(backups(), ["PalServer.bak"]);
+
+        // 설치 폴더 밖의 실행 파일과 그 옆의 사용자 파일은 그대로다
+        let done = install(&outside, "keep").await;
+        assert_eq!(done.body["success"], false, "{}", done.body);
+        assert_eq!(std::fs::read_to_string(elsewhere.join("tool.exe.bak")).unwrap(), "user backup");
+        assert_eq!(std::fs::read_to_string(elsewhere.join("tool.exe")).unwrap(), "tool");
+
+        // 되돌리지 못하면 백업을 남기고 그 파일을 알린다
+        let done = install(&inside, "break").await;
+        assert_eq!(done.body["success"], false, "{}", done.body);
+        assert_eq!(done.body["restore_failed"], json!(["PalServer"]), "{}", done.body);
+        assert_eq!(backups(), ["PalServer.1.bak", "PalServer.bak"]);
+        assert_eq!(std::fs::read_to_string(files.join("PalServer.1.bak")).unwrap(), "old");
+        assert_eq!(std::fs::read_to_string(files.join("PalServer.bak")).unwrap(), "user backup");
+
+        // 심볼릭 링크로 둔 실행 파일은 링크를 둔 채 대상 내용이 돌아온다
+        #[cfg(unix)]
+        {
+            std::fs::remove_dir_all(files.join("PalServer")).unwrap();
+            std::fs::write(files.join("real"), "old").unwrap();
+            std::os::unix::fs::symlink(files.join("real"), files.join("PalServer")).unwrap();
+            let done = install(&inside, "write").await;
+            assert_eq!(done.body["success"], false, "{}", done.body);
+            assert!(std::fs::symlink_metadata(files.join("PalServer")).unwrap().file_type().is_symlink());
+            assert_eq!(std::fs::read_to_string(files.join("real")).unwrap(), "old");
+
+            // 모듈이 링크를 새 파일로 바꿔 넣었으면 그 자리에 옛 내용을 되돌린다
+            let done = install(&inside, "replace").await;
+            assert_eq!(done.body["restore_failed"], Value::Null, "{}", done.body);
+            assert_eq!(std::fs::read_to_string(files.join("PalServer")).unwrap(), "old");
+
+            // 링크 자리를 폴더로 바꿨으면 되돌리지 못했다고 알린다
+            std::fs::remove_file(files.join("PalServer")).unwrap();
+            std::os::unix::fs::symlink(files.join("real"), files.join("PalServer")).unwrap();
+            let done = install(&inside, "break").await;
+            assert_eq!(done.body["restore_failed"], json!(["PalServer"]), "{}", done.body);
+
+            // 설치 폴더 밖을 가리키는 링크는 백업하지 않는다: 링크도 밖의 파일도 그대로다
+            std::fs::remove_dir_all(files.join("PalServer")).unwrap();
+            std::fs::write(elsewhere.join("outside"), "old").unwrap();
+            std::os::unix::fs::symlink(elsewhere.join("outside"), files.join("PalServer")).unwrap();
+            let before = std::fs::metadata(elsewhere.join("outside")).unwrap().modified().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let done = install(&inside, "keep").await;
+            assert_eq!(done.body["restore_failed"], Value::Null, "{}", done.body);
+            assert_eq!(std::fs::metadata(elsewhere.join("outside")).unwrap().modified().unwrap(), before);
+            assert_eq!(std::fs::read_to_string(elsewhere.join("outside")).unwrap(), "old");
+            assert!(std::fs::symlink_metadata(files.join("PalServer")).unwrap().file_type().is_symlink());
+            assert_eq!(backups(), ["PalServer.1.bak", "PalServer.2.bak", "PalServer.bak"], "only the failed restores keep a backup");
+        }
     }
 
     // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
