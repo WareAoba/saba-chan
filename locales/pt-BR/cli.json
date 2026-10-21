@@ -686,6 +686,7 @@
     "no_modules": "nenhum",
     "installing": "Instalando",
     "not_writable": "Não é possível gravar em {{dir}}. Execute de novo como administrador ou escolha outra pasta com --dir",
+    "running_inside": "Esta CLI está em execução dentro de {{dir}}, então não pode instalar lá. Execute um saba-chan-cli fora da pasta de instalação.",
     "failed": "A instalação falhou: {{reason}} (detalhes: {{log}})",
     "done": "Instalado em {{dir}}",
     "next": "Próximo: {{cli}} daemon start"

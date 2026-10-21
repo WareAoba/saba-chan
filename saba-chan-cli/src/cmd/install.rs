@@ -8,7 +8,7 @@ use crate::ctx::Ctx;
 use crate::error::{failed, usage, Result};
 use saba_chan_installer_core::{self as core, release, InstallHooks, InstallOptions, InstallProgress, Profile};
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 화면이 없는 환경인지: 리눅스는 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 SSH로 들어왔거나
 /// 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
@@ -93,6 +93,11 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         },
     };
 
+    // 설치는 그 폴더의 CLI를 모두 끄고 덮어쓴다: 거기서 도는 자신도 꺼지므로 다른 곳의 CLI로 하게 한다
+    if std::env::current_exe().is_ok_and(|exe| runs_inside(&dir, &exe)) {
+        return Err(usage(t!("install.running_inside", dir = dir.display())));
+    }
+
     let modules = if !args.modules.is_empty() {
         pick_modules(&args.modules, &available).map_err(|name| {
             let ids: Vec<&str> = available.iter().map(|m| m.id.as_str()).collect();
@@ -169,6 +174,14 @@ fn ask_modules(ctx: &Ctx, available: &[core::ModuleInfo]) -> Result<Vec<String>>
     Ok(picked)
 }
 
+/// 이 실행 파일이 설치 폴더 안에 있는지. 두 경로 모두 실제 경로로 비교한다 (폴더가 아직 없으면 밖이다)
+fn runs_inside(dir: &Path, exe: &Path) -> bool {
+    match (std::fs::canonicalize(dir), std::fs::canonicalize(exe)) {
+        (Ok(dir), Ok(exe)) => exe.starts_with(dir),
+        _ => false,
+    }
+}
+
 fn cli_file() -> &'static str {
     if cfg!(windows) {
         "saba-chan-cli.exe"
@@ -235,5 +248,33 @@ mod tests {
         );
         assert_eq!(pick_modules(&["zomboid".into()], &available).unwrap_err(), "zomboid");
         assert!(pick_modules(&[" , ".into()], &available).unwrap().is_empty());
+    }
+
+    /// 설치 폴더 안에서 도는 CLI로 그 폴더에 다시 깔면, 설치 라이브러리가 그 폴더의 CLI를 모두 끄므로 자신도 꺼진다.
+    /// 그래서 시작하기 전에 거절한다 (#516 리뷰)
+    #[test]
+    fn a_cli_running_from_the_target_folder_refuses_to_install_there() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("Saba-chan");
+        std::fs::create_dir_all(target.join("bin")).unwrap();
+        std::fs::create_dir_all(root.path().join("x")).unwrap();
+        let inside = target.join(cli_file());
+        let nested = target.join("bin").join(cli_file());
+        std::fs::write(&inside, b"").unwrap();
+        std::fs::write(&nested, b"").unwrap();
+        assert!(runs_inside(&target, &inside));
+        assert!(runs_inside(&target, &nested));
+        // 표기가 달라도 같은 폴더면 안이다
+        assert!(runs_inside(
+            &root.path().join("x").join("..").join("Saba-chan"),
+            &inside
+        ));
+        let outside = root.path().join(cli_file());
+        std::fs::write(&outside, b"").unwrap();
+        assert!(!runs_inside(&target, &outside));
+        // 이름만 겹치는 옆 폴더는 밖이다
+        assert!(!runs_inside(&root.path().join("Saba"), &inside));
+        // 아직 없는 폴더에 새로 깔 때
+        assert!(!runs_inside(&root.path().join("new"), &outside));
     }
 }

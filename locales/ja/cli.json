@@ -1078,6 +1078,7 @@
     "no_modules": "なし",
     "installing": "インストールしています",
     "not_writable": "{{dir}} に書き込めません。管理者として再実行するか、--dir で別のフォルダーを選んでください",
+    "running_inside": "この CLI は {{dir}} の中で実行中のため、そのフォルダーにはインストールできません。インストール先の外にある saba-chan-cli で実行してください。",
     "failed": "インストールできませんでした: {{reason}}（詳細: {{log}}）",
     "done": "{{dir}} にインストールしました",
     "next": "次: {{cli}} daemon start"

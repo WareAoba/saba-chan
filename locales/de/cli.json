@@ -686,6 +686,7 @@
     "no_modules": "keine",
     "installing": "Installiere",
     "not_writable": "In {{dir}} kann nicht geschrieben werden. Als Administrator erneut ausführen oder mit --dir einen anderen Ordner wählen",
+    "running_inside": "Diese CLI läuft innerhalb von {{dir}} und kann dort nicht installieren. Starte eine saba-chan-cli außerhalb des Installationsordners.",
     "failed": "Installation fehlgeschlagen: {{reason}} (Details: {{log}})",
     "done": "Nach {{dir}} installiert",
     "next": "Weiter: {{cli}} daemon start"
