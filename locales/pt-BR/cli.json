@@ -74,7 +74,8 @@
     "link_declined": "Pedido de conexão recusado.",
     "pair_gui_hint": "Você também pode ver a conexão do Discord na tela Discord da GUI.",
     "no_paired_servers": "Nenhum servidor do Discord está pareado com este PC ainda. Execute: saba-chan-cli bot pair",
-    "pick_server": "Vários servidores do Discord estão pareados. Informe o id do que deseja alterar: {{servers}}"
+    "pick_server": "Vários servidores do Discord estão pareados. Informe o id do que deseja alterar: {{servers}}",
+    "agent_too_old": "O relay não aceita mais esta versão do app. Atualize o app para {{min}} ou mais recente."
   },
   "col": {
     "players": "Jogadores",
@@ -157,6 +158,7 @@
     "offer_start": "O daemon do Saba-chan não está rodando. Iniciar?",
     "spawn_failed": "Não foi possível iniciar o daemon: {{error}}",
     "start_timeout": "O daemon não respondeu a tempo. Verifique: saba-chan-cli daemon logs",
+    "exited_early": "O daemon fechou logo após iniciar (código de saída {{code}}). Outro daemon pode já estar em execução. Verifique: saba-chan-cli daemon status",
     "started": "Daemon iniciado (v{{version}}).",
     "starting": "Iniciando o daemon...",
     "stop_no_pid": "O daemon não informou o PID, então não dá para encerrá-lo daqui.",
@@ -184,7 +186,8 @@
       "forbidden": "Você não tem permissão para fazer isso nesse servidor do Discord.",
       "expired": "O código expirou. Comece de novo.",
       "rate_limited": "Muitas solicitações. Tente de novo em cerca de um minuto.",
-      "other": "O relay recusou a solicitação ({{code}})."
+      "other": "O relay recusou a solicitação ({{code}}).",
+      "agent_too_old": "O relay não aceita mais esta versão do app. Atualize o app para {{min}} ou mais recente."
     },
     "ambiguous": "Mais de um {{what}} corresponde a \"{{query}}\".",
     "ambiguous_hint": "Seja mais específico: {{names}}",
@@ -215,7 +218,8 @@
       "schedule_changed": "O agendamento foi alterado em outro lugar. Confira com saba-chan-cli schedule show e tente de novo.",
       "invalid_command": "Escreva a chave do comando como `<server>/<command>`. Uma chave sem servidor deve ser um id de ação global.",
       "no_command_path": "Este servidor foi iniciado fora do Saba-chan, então não tem console para receber comandos. Reinicie-o pelo Saba-chan: saba-chan-cli restart <server>",
-      "not_supported": "Veja os comandos sem suporte com: saba-chan-cli module info"
+      "not_supported": "Veja os comandos sem suporte com: saba-chan-cli module info",
+      "agent_too_old": "Verificar atualizações: saba-chan-cli update check"
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
@@ -473,6 +477,8 @@
     "ready": "pronto para instalar",
     "up_to_date": "atualizado",
     "updater_launched": "Atualizador iniciado. O daemon está sendo encerrado para atualizar.",
+    "waiting_result": "Aguardando a atualização ser aplicada e o Saba-chan reiniciar…",
+    "result_timeout": "Nenhum resultado da atualização chegou em 15 minutos. Verifique a janela do atualizador ou se o Saba-chan reiniciou",
     "verifying": "Verificando arquivos...",
     "unknown_key": "{{key}} não é uma configuração de atualização. Configurações: {{keys}}",
     "integrity_empty": "Nenhum arquivo registrado ainda. Só as partes instaladas pelo atualizador são verificadas.",

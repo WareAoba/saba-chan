@@ -1390,6 +1390,10 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         }
         version => return Err(SchemaUnsupported { version }.into()),
     }
+    // 데몬이 호출마다 정해 넣는 이름: 모듈 설정 값은 넘기지 않는다 (06 §2·§6, `RESERVED_CALL_KEYS`)
+    for f in meta.settings.iter().flat_map(|s| &s.fields).filter(|f| RESERVED_CALL_KEYS.contains(&f.name.as_str())) {
+        meta.warnings.push(format!("settings field '{}' is a name saba-chan sets on each call; its value is not passed to the module", f.name));
+    }
     Ok(meta)
 }
 
@@ -1457,6 +1461,9 @@ fn v2_field_problems(field: &SettingFieldToml, fields: &[&SettingFieldToml]) -> 
     }
     problems
 }
+
+/// 데몬이 모듈 호출 config에 직접 넣는 키. 같은 이름의 모듈 설정 값은 config에 싣지 않는다
+pub const RESERVED_CALL_KEYS: &[&str] = &["players_detail", "stop_call_limit"];
 
 impl ModuleToml {
     /// 키는 맞지만 값이 계약을 벗어난 곳
@@ -2370,6 +2377,13 @@ entry = "lifecycle.py"
         assert_eq!(meta.schema_version, 0);
         assert!(meta.warnings.iter().any(|w| w.contains("config.ram")), "{:?}", meta.warnings);
         assert!(meta.warnings.iter().any(|w| w.contains("schema_version")));
+    }
+
+    /// 06 §2·§6: players_detail·stop_call_limit은 데몬 몫이다. 같은 이름의 설정은 로드하되 경고한다
+    #[test]
+    fn settings_named_like_daemon_call_keys_are_warned_about() {
+        let meta = parse_module_toml(&format!("{V1}\n[[settings.fields]]\nname = \"players_detail\"\ntype = \"boolean\"\n")).unwrap();
+        assert!(meta.warnings.iter().any(|w| w.contains("players_detail")), "{:?}", meta.warnings);
     }
 
     #[test]

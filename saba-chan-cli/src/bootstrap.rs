@@ -24,6 +24,59 @@ pub fn ipc_port() -> u16 {
         .unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
+/// 붙을 데몬 포트: 설정 포트에 데몬이 없는데 실행 중인 데몬이 남긴 기록(`daemon.lock.owner`)의 포트에서
+/// 그 데몬(같은 pid)이 답하면 그쪽이다. 설정에서 포트를 바꾸고 데몬을 아직 다시 켜지 않았을 때 그 데몬을 끄고
+/// 다시 켤 수 있게 한다 (L62)
+pub fn live_port(configured: u16) -> u16 {
+    let record = saba_chan_updater_lib::constants::resolve_data_dir().join("daemon.lock.owner");
+    let record = std::fs::read_to_string(record).ok().and_then(|t| recorded(&t));
+    choose_port(configured, record, daemon_pid_at)
+}
+
+/// 데몬 잠금 기록(`pid=…\naddr=127.0.0.1:포트`, src/instance_lock.rs)의 pid와 포트
+fn recorded(text: &str) -> Option<(u32, u16)> {
+    let field = |key: &str| text.lines().find_map(|l| l.strip_prefix(key)).map(str::trim);
+    let pid = field("pid=")?.parse().ok()?;
+    let port = field("addr=")?.rsplit_once(':')?.1.parse().ok()?;
+    Some((pid, port))
+}
+
+fn choose_port(configured: u16, record: Option<(u32, u16)>, daemon_at: impl Fn(u16) -> Option<u32>) -> u16 {
+    match record {
+        Some((pid, old)) if old != configured && daemon_at(configured).is_none() && daemon_at(old) == Some(pid) => old,
+        _ => configured,
+    }
+}
+
+/// 이 포트에서 답하는 사바쨩 데몬의 pid (토큰이 필요 없는 `/health`로 묻는다). 데몬을 띄우기 전이라 짧게 끝낸다
+fn daemon_pid_at(port: u16) -> Option<u32> {
+    use std::io::{Read, Write};
+    let limit = Duration::from_millis(300);
+    let mut stream = std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), limit).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(1))).ok()?;
+    stream.set_write_timeout(Some(limit)).ok()?;
+    stream
+        .write_all(b"GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .ok()?;
+    let mut raw = Vec::new();
+    // 응답은 작다: 그보다 길면 데몬이 아니다
+    stream.take(64 * 1024).read_to_end(&mut raw).ok()?;
+    health_pid(&String::from_utf8_lossy(&raw))
+}
+
+/// `/health` HTTP 응답에서 데몬 pid. 200이고 `ok:true`인 JSON일 때만
+fn health_pid(response: &str) -> Option<u32> {
+    let (head, body) = response.split_once("\r\n\r\n")?;
+    if head.split_whitespace().nth(1) != Some("200") {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_str(body.trim()).ok()?;
+    if v.get("ok").and_then(|o| o.as_bool()) != Some(true) {
+        return None;
+    }
+    v.get("pid")?.as_u64()?.try_into().ok()
+}
+
 /// 사용자가 직접 고른 언어: `--lang` > `SABA_LANG`
 pub fn requested_language(flag: Option<&str>) -> Option<String> {
     flag.map(str::to_string)
@@ -74,7 +127,7 @@ pub fn daemon_binary() -> Option<PathBuf> {
 
 /// 데몬을 분리 실행한다 (CLI가 끝나도 살아 있게)
 /// `port`는 CLI가 붙을 포트 (`--port`까지 반영된 값)
-pub fn spawn_daemon(port: u16) -> Result<PathBuf> {
+pub fn spawn_daemon(port: u16) -> Result<std::process::Child> {
     let binary = daemon_binary().ok_or_else(|| failed(t!("daemon.binary_not_found")))?;
     let mut cmd = Command::new(&binary);
     cmd.arg("--spawned")
@@ -92,8 +145,7 @@ pub fn spawn_daemon(port: u16) -> Result<PathBuf> {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
-    spawn_detached(&mut cmd).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))?;
-    Ok(binary)
+    spawn_detached(&mut cmd).map_err(|e| failed(t!("daemon.spawn_failed", error = e)))
 }
 
 /// 이 프로세스의 표준 입출력 핸들을 물려주지 않고 띄운다 (자식의 입출력은 `cmd`에 정한 대로).
@@ -227,5 +279,47 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
         assert!(closed, "the child still holds the write end of our output pipe");
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+
+    /// 설정 파일의 포트를 바꾼 뒤에도 옛 포트에서 도는 데몬을 찾는다 (L62).
+    /// 설정 포트에 데몬이 없고, 기록된 포트에서 기록된 그 데몬(pid)이 답할 때만 그쪽으로 붙는다
+    #[test]
+    fn a_daemon_still_on_its_old_port_is_found_from_its_lock_record() {
+        assert_eq!(recorded("pid=42\naddr=127.0.0.1:57474\n"), Some((42, 57474)));
+        assert_eq!(recorded("pid=42\n"), None);
+        assert_eq!(recorded("addr=127.0.0.1:57474\n"), None);
+        assert_eq!(recorded("pid=42\naddr=garbage\n"), None);
+
+        // 포트마다 답하는 데몬의 pid
+        let up =
+            |live: &'static [(u16, u32)]| move |p: u16| live.iter().find(|(port, _)| *port == p).map(|(_, pid)| *pid);
+        assert_eq!(choose_port(58000, Some((42, 57474)), up(&[(57474, 42)])), 57474);
+        assert_eq!(
+            choose_port(58000, Some((42, 57474)), up(&[(58000, 7), (57474, 42)])),
+            58000
+        );
+        assert_eq!(choose_port(58000, Some((42, 57474)), up(&[])), 58000);
+        assert_eq!(choose_port(58000, None, up(&[(57474, 42)])), 58000);
+        // 옛 포트를 이제 다른 데몬(다른 pid)이 쓰면 붙지 않는다
+        assert_eq!(choose_port(58000, Some((42, 57474)), up(&[(57474, 99)])), 58000);
+    }
+
+    /// 포트에서 답하는 것이 사바쨩 데몬인지는 `/health` 응답으로 본다: 연결만 받는 다른 프로그램은 아니다
+    #[test]
+    fn only_a_daemon_health_answer_counts() {
+        let ok = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"version\":\"0.1.9\",\"pid\":42,\"token\":\"missing\"}";
+        assert_eq!(health_pid(ok), Some(42));
+        assert_eq!(
+            health_pid("HTTP/1.1 404 Not Found\r\n\r\n{\"ok\":true,\"pid\":42}"),
+            None
+        );
+        assert_eq!(health_pid("HTTP/1.1 200 OK\r\n\r\n<html>hello</html>"), None);
+        assert_eq!(health_pid("HTTP/1.1 200 OK\r\n\r\n{\"ok\":false,\"pid\":42}"), None);
+        assert_eq!(health_pid(""), None);
     }
 }

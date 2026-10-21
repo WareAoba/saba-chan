@@ -190,6 +190,8 @@ async fn status(ctx: &Ctx) -> Result<()> {
     // 데몬이 코드를 주면 현지화한 문구로
     let err = match s(&agent, "lastErrorCode") {
         "token_replaced" => t!("bot.token_replaced"),
+        // 연결 줄이 이미 업데이트를 안내한다
+        "agent_too_old" => String::new(),
         _ => s(&agent, "lastError").to_string(),
     };
     if !err.is_empty() {

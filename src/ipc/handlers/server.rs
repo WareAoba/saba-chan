@@ -608,6 +608,15 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &comp.version)) {
         return fail(format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
     }
+    // 새 코어를 요구하는 판은 받지 않는다 (업데이터 적용과 같은 검사)
+    if let Some(requires) = &comp.requires {
+        let installed: std::collections::HashMap<String, String> = component_versions(&state).await.into_iter().collect();
+        let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
+        let unmet = saba_chan_updater_lib::unmet_requires(&key, requires, &installed);
+        if !unmet.is_empty() {
+            return fail(unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
+        }
+    }
 
     let modules_dir = {
         let supervisor = state.supervisor.read().await;

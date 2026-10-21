@@ -100,7 +100,8 @@
     "words_saved": "{{server}}의 채팅 낱말을 저장했어요.",
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
-    "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}"
+    "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
+    "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
   },
   "col": {
     "players": "접속자",
@@ -204,6 +205,7 @@
     "offer_start": "사바쨩 데몬이 꺼져 있어요. 켤까요?",
     "spawn_failed": "데몬을 켜지 못했어요: {{error}}",
     "start_timeout": "데몬이 제때 응답하지 않았어요. 확인: saba-chan-cli daemon logs",
+    "exited_early": "데몬이 켜지자마자 꺼졌어요(종료 코드 {{code}}). 이미 다른 데몬이 돌고 있을 수 있어요. 확인: saba-chan-cli daemon status",
     "started": "데몬을 켰어요 (v{{version}}).",
     "starting": "데몬을 켜는 중...",
     "stop_no_pid": "데몬이 PID를 알려 주지 않아 여기서 강제 종료할 수 없어요.",
@@ -231,7 +233,8 @@
       "forbidden": "그 디스코드 서버에서 이 작업을 할 권한이 없어요.",
       "expired": "코드가 만료됐어요. 처음부터 다시 시도하세요.",
       "rate_limited": "요청이 너무 잦아요. 1분쯤 뒤 다시 시도하세요.",
-      "other": "릴레이가 요청을 거절했어요 ({{code}})."
+      "other": "릴레이가 요청을 거절했어요 ({{code}}).",
+      "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
     },
     "ambiguous": "\"{{query}}\"에 맞는 {{what}} 후보가 여럿이에요.",
     "ambiguous_hint": "더 정확히 적어 주세요: {{names}}",
@@ -270,7 +273,8 @@
         "unknown_command": "이 서버에 없는 명령이에요",
         "too_many": "낱말은 10개까지예요"
       },
-      "not_supported": "지원하지 않는 명령은 saba-chan-cli module info에서 볼 수 있어요."
+      "not_supported": "지원하지 않는 명령은 saba-chan-cli module info에서 볼 수 있어요.",
+      "agent_too_old": "업데이트 확인: saba-chan-cli update check"
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -531,6 +535,8 @@
     "ready": "설치 준비됨",
     "up_to_date": "최신",
     "updater_launched": "업데이터를 띄웠어요. 업데이트를 위해 데몬이 꺼져요.",
+    "waiting_result": "업데이트를 적용하고 사바쨩이 다시 켜지기를 기다려요…",
+    "result_timeout": "15분 안에 업데이트 결과가 오지 않았어요. 업데이터 창이나 사바쨩이 다시 켜졌는지 확인하세요",
     "verifying": "파일 확인 중...",
     "unknown_key": "{{key}}는 업데이트 설정이 아니에요. 설정 목록: {{keys}}",
     "integrity_empty": "아직 기록된 파일이 없어요. 업데이터가 설치한 구성요소만 검사해요.",

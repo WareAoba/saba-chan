@@ -110,7 +110,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | settingsGetPath (775) | Rust `settings_get_path` (`<dataDir>/config.json`) | n/a |
 | openFileDialog / openFolderDialog (778-779) | Rust `dialog_open_file` / `dialog_open_folder` | n/a |
 | migrationScanDir (782) | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 655 |
-| discordBotStatus / Start / Stop (793-816) | GET /api/relay/agent, POST /api/relay/agent/start·stop. Status는 `running`·`stopped`, 다른 PC가 같은 계정으로 페어링해 멈췄으면(`lastErrorCode: token_replaced`) `replaced`(연결 화면에 다시 페어링 안내), 저장된 릴레이 주소가 거절돼 멈췄으면(`lastErrorCode: invalid_relay_url`) `invalid_relay_url`(연결 화면에 주소 형식 안내). 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found`, Start가 409 `invalid_relay_url`이면 `{error: 'invalid_relay_url'}`(`discord.invalid_relay_url` 문구) | ✓ 787-789 |
+| discordBotStatus / Start / Stop (793-816) | GET /api/relay/agent, POST /api/relay/agent/start·stop. Status는 `running`·`stopped`, 다른 PC가 같은 계정으로 페어링해 멈췄으면(`lastErrorCode: token_replaced`) `replaced`(연결 화면에 다시 페어링 안내), 저장된 릴레이 주소가 거절돼 멈췄으면(`lastErrorCode: invalid_relay_url`) `invalid_relay_url`(연결 화면에 주소 형식 안내), 릴레이가 앱 버전을 거절하면(`lastErrorCode: agent_too_old`) `{status: 'too_old', running, minVersion}`(연결 화면에 `discord.agent_too_old` 안내와 업데이트 화면을 여는 버튼, '실행 중'으로 보이지 않음). 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found`, Start가 409 `invalid_relay_url`이면 `{error: 'invalid_relay_url'}`(`discord.invalid_relay_url` 문구) | ✓ 787-789 |
 | botConfigLoad (817) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
 | botConfigSave (826) | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (835-853) | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
@@ -233,7 +233,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 ### 3.2 구조
 - `client.rs`: 데몬 HTTP 클라이언트. 토큰 파일을 읽어 `X-Saba-Token`을 보내고, 401이면 토큰을 다시 읽어 1회 재시도한다(`client.rs:28-33, 97-106`). 업데이터 실행도 데몬 API로 요청한다(`launch_updater` `:785-789`).
-- `bootstrap.rs`: 데몬이 뜨기 전에 필요한 것만 직접 한다. `config.json`의 `gui.ipcPort`·`gui.language` 읽기(포트는 `SABA_IPC_PORT` > 파일 > 기본값, 언어는 `--lang` > `SABA_LANG` > 파일 > 시스템 로캘 > en, `:18-46`. `--lang`이나 `SABA_LANG`으로 직접 골랐을 때만 그 언어를 요청마다 `Accept-Language`로 실어(`client.rs` `Api::new`) 데몬 문구와 그 요청이 부르는 모듈도 같은 언어로 오게 한다. 고르지 않았으면 싣지 않아 데몬이 앱 설정 언어를 따른다), `saba-core` 실행 파일 찾기와 분리 실행(`:49-90`), 정상 종료가 안 될 때 **그 PID만** 강제 종료(`:92`).
+- `bootstrap.rs`: 데몬이 뜨기 전에 필요한 것만 직접 한다. `config.json`의 `gui.ipcPort`·`gui.language` 읽기(포트는 `SABA_IPC_PORT` > 파일 > 기본값, 언어는 `--lang` > `SABA_LANG` > 파일 > 시스템 로캘 > en, `:18-46`. `--lang`이나 `SABA_LANG`으로 직접 골랐을 때만 그 언어를 요청마다 `Accept-Language`로 실어(`client.rs` `Api::new`) 데몬 문구와 그 요청이 부르는 모듈도 같은 언어로 오게 한다. 고르지 않았으면 싣지 않아 데몬이 앱 설정 언어를 따른다), 설정 포트에 데몬이 없을 때 실행 중인 데몬이 남긴 `<dataDir>/daemon.lock.owner`(`src/instance_lock.rs`)의 포트에서 그 데몬(같은 pid)이 토큰 없는 `/health`로 답하면 그 데몬에 붙기(`live_port`: 포트를 바꾸고 데몬을 아직 다시 켜지 않았을 때 그 데몬을 끄고 새 포트로 다시 켤 수 있게 한다. 새 데몬은 언제나 `--port` 또는 설정 포트로 띄운다. 셸은 `--port` 없이 열었으면 줄마다 설정 포트와 붙을 포트를 다시 찾고, 한 줄에 준 `--port`는 그 줄의 붙을 곳과 띄울 곳 모두에 쓴다), `saba-core` 실행 파일 찾기와 분리 실행(띄운 데몬이 응답 전에 끝나면 시간 초과를 기다리지 않고 종료 코드를 알린다), 정상 종료가 안 될 때 **그 PID만** 강제 종료(`:92`).
 - `ctx.rs`: 데몬이 필요한 명령 앞에서 `ensure_daemon`이 데몬을 확인한다. 꺼져 있으면 물을 수 있을 때(대화형, `--yes` 아님) 켤지 묻고 `start_daemon`으로 띄운다(`:22-41, 43-61`).
 - `catalog.rs`: 게임 명령을 하드코딩하지 않는다. `GET /api/modules`의 `commands`·`command_aliases`와 `GET /api/instance/:id/commands`로 목록·사용법·입력 칸을 만든다(`:1-9`). 인자 검사의 최종 판단은 데몬이 한다. 명령의 `method`는 데몬이 준 값을 그대로 보여 줄 뿐 분기하지 않는다(`server commands --json`, `cmd/server.rs:983`). 데몬은 콘솔 명령의 method를 `console`(`console_template`)이라 부르고 예전 이름 `rcon`·`rcon_template`도 별칭으로 받는다(09b8e4f, 02 §1.2).
 - `slots.rs`: 데이터 slot(03-extensions 4.3)을 출력만 한다. 서버의 `slots`(`ServerCard.badge`, `ServerDetail.status`)와 익스텐션의 `slots["AddServer.options"]`를 읽고, 답은 서버를 만들 때 `extension_data`로 보낸다.
@@ -242,7 +242,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - 실행 파일 이름(MK7): `module install-files --executable FILE`(예전 `--jar`는 별칭)은 `POST /api/module/:name/install`에 `server_executable`로 보낸다. 시작 실패의 `action_required`(`client.rs` `check`)는 `error_code`가 없을 때 오류 코드가 되고, `executable_not_found`(옛 `server_jar_not_found`)에는 다시 설치하라는 안내가 붙는다(`error.rs` `api_hint`).
 - 사람이 직접 하는 동의(약관 `server agree`·`server add`, 격리 없이 돌리기·익스텐션 GUI `sandbox allow`)는 `prompt.rs` `agreed`·`consent`로만 받는다. `--yes`·`--json`은 동의가 아니고, 물을 수 없으면 터미널에서 하라는 오류다. 묻지 않고 동의하는 길은 읽은 약관 id를 대는 `server add --accept ID`뿐이다.
 - 이름으로 대상 찾기(`resolve.rs`): 정확히 같음 → 대소문자 무시 → 앞부분 → 포함 순서로 찾는다. 지우기·초기화(`server remove`·`server reset`·`module remove`·`extension remove`)와 권한 대상 멤버(`perm`)는 앞의 두 단계만 쓴다(`find_exact`). 앞부분·포함으로만 맞는 이름은 고르지 않고 제안으로 보인다. 이 명령들은 이름 없이 물을 수 없으면(`--json`, 파이프) 대상이 하나뿐이어도 고르지 않고 이름을 대라고 한다.
-- 일부만 된 결과: 데몬이 2xx에 `ok`/`success: false`와 결과만 싣는 응답(`update download`·`update apply`의 `errors`, `chatbot forget`의 `sync`, `server set`·`server add --set`의 `synced: false`)은 `client::partial`로 본문을 받아 된 것과 실패한 것을 보이고 `partial`(종료 코드 1)로 끝낸다. 구성요소를 고르지 않은 받기가 `errors` 없이 `{ok:false, error}`로 실패해도 실패로 끝낸다. 적용에 실패한 구성요소가 있어도 코어 업데이트가 있으면 GUI처럼 경고하고 업데이터를 띄우며, 종료 코드 1로 실패를 남긴다. `monitor --watch --json`은 표본마다 JSON 한 줄을 낸다(`events`와 같다).
+- 일부만 된 결과: 데몬이 2xx에 `ok`/`success: false`와 결과만 싣는 응답(`update download`·`update apply`의 `errors`, `chatbot forget`의 `sync`, `server set`·`server add --set`의 `synced: false`)은 `client::partial`로 본문을 받아 된 것과 실패한 것을 보이고 `partial`(종료 코드 1)로 끝낸다. 구성요소를 고르지 않은 받기가 `errors` 없이 `{ok:false, error}`로 실패해도 실패로 끝낸다. 적용에 실패한 구성요소가 있어도 코어 업데이트가 있으면 GUI처럼 경고하고 업데이터를 띄우며, 종료 코드 1로 실패를 남긴다. 업데이터를 띄운 뒤에는 `GET /api/updates/last-result`가 적용 전과 다른 결과(시각)를 줄 때까지 2초마다 묻고(최대 15분, 그 사이 데몬이 꺼져 있는 오류는 기다림의 일부다) 결과와 패치노트를 보인 뒤 끝낸다. 결과가 실패이거나 15분이 지나면 종료 코드 1이다(`cmd/update.rs` `wait_for_result`, 06 §9). `monitor --watch --json`은 표본마다 JSON 한 줄을 낸다(`events`와 같다).
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
 - 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`.
 
@@ -387,6 +387,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 |---|---|---|---|---|
 | C1 | client.rs:28-33 | FS-R | `.ipc_token` 읽기 (한 곳) | 불가피 |
 | C2 | bootstrap.rs:14-46 | FS-R/CFG | `config.json`에서 `gui.ipcPort`·`gui.language` 읽기 | 불가피 |
+| C2b | bootstrap.rs `live_port` | FS-R | `daemon.lock.owner`에서 실행 중 데몬의 pid·포트 읽기(설정 포트에 데몬이 없을 때만, `/health`의 pid로 확인) | 불가피(데몬을 찾는 단계) |
 | C8 | i18n.rs:36-52 | FS-R | 설치 폴더 `locales/<lang>/cli.json` 읽기 (없으면 내장본) | |
 | C9 | bootstrap.rs:49-90 | PROC | saba-core 분리 실행 | 불가피(부트스트랩) |
 | C10 | bootstrap.rs:92, cmd/daemon.rs:102 | PROC | API 종료가 안 될 때 데몬 PID만 강제 종료 | 이름 기반 kill 아님 |

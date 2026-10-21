@@ -197,6 +197,62 @@ pub async fn query_instance_handler(
     }
 }
 
+/// GET /api/instance/:id/players — 접속자 수와 이름 (디스코드 검수 13번). 모듈 `[status] players` 함수를
+/// `players_detail: true`로 바로 부른다(1분 갱신은 이 키 없이 수만 읽는다). 항목은 `{name}`만 남긴다
+pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let call = {
+        let sup = state.supervisor.read().await;
+        let Some(instance) = sup.instance_store.get(&id) else {
+            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+        };
+        let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
+            return fail(StatusCode::OK, "not_supported", "This server's module cannot list players".into());
+        };
+        if sup.tracker.get_pid(&id).is_err() {
+            return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
+        }
+        sup.instance_call(&id, &function)
+    };
+    let mut call = match call {
+        Ok(c) => c,
+        Err(e) => return fail(StatusCode::INTERNAL_SERVER_ERROR, "players_failed", e.to_string()),
+    };
+    if let serde_json::Value::Object(cfg) = call.config_mut() {
+        cfg.insert("players_detail".to_string(), json!(true));
+    }
+    match call.timeout(crate::supervisor::players::CALL_TIMEOUT_SECS).run().await {
+        Ok(result) => match crate::supervisor::players::parse(&result) {
+            Some(count) => {
+                let names: Vec<serde_json::Value> = result
+                    .get("players")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|p| p.get("name").and_then(serde_json::Value::as_str))
+                    // 게임이 이름을 자유롭게 두는 경우: 제어 문자를 빼고 64자까지 (요약 줄이 깨지지 않게)
+                    .map(|name| name.chars().filter(|c| !c.is_control()).take(64).collect::<String>())
+                    .filter(|name| !name.is_empty())
+                    .map(|name| json!({ "name": name }))
+                    .collect();
+                let mut body = json!({ "success": true, "online": count.online, "players": names });
+                if let Some(max) = count.max {
+                    body["max"] = json!(max);
+                }
+                (StatusCode::OK, Json(body)).into_response()
+            }
+            None => {
+                let message = result.get("message").and_then(serde_json::Value::as_str).unwrap_or("The module did not report players");
+                fail(StatusCode::OK, "players_failed", message.to_string())
+            }
+        },
+        Err(e) => {
+            tracing::warn!("Player list for '{}' failed: {}", id, e);
+            fail(StatusCode::OK, "players_failed", "The module did not answer".into())
+        }
+    }
+}
+
 /// GET /api/instance/:id/properties — 게임 설정 파일 읽기
 pub async fn read_properties_handler(
     Path(id): Path<String>,
@@ -719,6 +775,49 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// 플레이어 목록 (디스코드 검수 13번): 모듈 `[status] players` 함수를 `players_detail`로 불러 이름까지 받는다.
+    /// 이름 말고 다른 값(IP 등)은 싣지 않는다. 함수가 없으면 not_supported, 꺼진 서버는 409
+    #[tokio::test]
+    async fn players_come_from_the_status_function_with_names_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, status) in [("game", "\n[status]\nplayers = \"player_count\"\n"), ("plain", "")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{status}")).unwrap();
+            std::fs::write(
+                dir.join("lifecycle.py"),
+                "import json, sys\nconfig = json.load(sys.stdin)\n\
+                 names = [{'name': 'Steve', 'ip': '10.0.0.5'}, {'name': 'Al\\nex', 'uuid': 'x'}, {'name': 'x' * 70}] if config.get('players_detail') else []\n\
+                 print(json.dumps({'success': True, 'online': 2, 'max': 20, 'players': names}))\n",
+            )
+            .unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for (id, module) in [("with", "game"), ("without", "plain")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let players = |id: &'static str| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(players_handler(Path(id.into()), State(state)).await.into_response()).await }
+        };
+
+        let off = players("with").await;
+        assert_eq!((off.status, off.body["error_code"].as_str()), (StatusCode::CONFLICT, Some("server_not_running")), "{}", off.body);
+        state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
+        let on = players("with").await;
+        assert_eq!(on.body, json!({ "success": true, "online": 2, "max": 20, "players": [{ "name": "Steve" }, { "name": "Alex" }, { "name": "x".repeat(64) }] }));
+        let _ = state.supervisor.read().await.tracker.untrack("with");
+
+        let unsupported = players("without").await;
+        assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
+        assert_eq!(players("missing").await.status, StatusCode::NOT_FOUND);
+    }
 
     // 실사용(L23): GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의
     // 파일을 받을 수 있었다. 버전을 비우면 데몬이 그 인스턴스 설정으로 최신을 고르고, 설치에도 그 설정을 넘긴다

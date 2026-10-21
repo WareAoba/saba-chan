@@ -100,7 +100,8 @@
     "words_saved": "已保存 {{server}} 的聊天称呼。",
     "words_bad_command": "{{spec}}：请写成 命令=称呼,称呼（命令= 表示删除）。",
     "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
-    "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}"
+    "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}",
+    "agent_too_old": "中继不再接受此应用版本。请将应用更新到 {{min}} 或更高版本。"
   },
   "col": {
     "players": "在线玩家",
@@ -204,6 +205,7 @@
     "offer_start": "Saba-chan 守护进程未运行。要启动吗？",
     "spawn_failed": "无法启动守护进程：{{error}}",
     "start_timeout": "守护进程未能及时响应。请检查：saba-chan-cli daemon logs",
+    "exited_early": "守护进程启动后立即退出(退出代码 {{code}})。可能已有另一个守护进程在运行。检查: saba-chan-cli daemon status",
     "started": "守护进程已启动（v{{version}}）。",
     "starting": "正在启动守护进程...",
     "stop_no_pid": "守护进程未报告其 PID，因此无法在此处结束它。",
@@ -231,7 +233,8 @@
       "forbidden": "你没有在该 Discord 服务器上执行此操作的权限。",
       "expired": "代码已过期。请重新开始。",
       "rate_limited": "请求过于频繁。请约一分钟后再试。",
-      "other": "中继拒绝了请求（{{code}}）。"
+      "other": "中继拒绝了请求（{{code}}）。",
+      "agent_too_old": "中继不再接受此应用版本。请将应用更新到 {{min}} 或更高版本。"
     },
     "ambiguous": "有多个{{what}}匹配“{{query}}”。",
     "ambiguous_hint": "请更具体一些：{{names}}",
@@ -270,7 +273,8 @@
         "unknown_command": "该服务器没有这个命令",
         "too_many": "最多 10 个称呼"
       },
-      "not_supported": "可用 saba-chan-cli module info 查看不支持的命令。"
+      "not_supported": "可用 saba-chan-cli module info 查看不支持的命令。",
+      "agent_too_old": "检查更新：saba-chan-cli update check"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -531,6 +535,8 @@
     "ready": "可以安装",
     "up_to_date": "已是最新",
     "updater_launched": "更新程序已启动。守护进程正在关闭以进行更新。",
+    "waiting_result": "正在等待更新应用并重启 Saba-chan…",
+    "result_timeout": "15 分钟内没有收到更新结果。请检查更新程序窗口或 Saba-chan 是否已重启",
     "verifying": "正在校验文件...",
     "unknown_key": "{{key}} 不是更新设置。可用设置：{{keys}}",
     "integrity_empty": "尚未记录任何文件。只会检查由更新程序安装的部分。",
