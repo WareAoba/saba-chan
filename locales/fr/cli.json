@@ -688,6 +688,7 @@
     "not_writable": "Impossible d'écrire dans {{dir}}. Relancez en tant qu'administrateur ou choisissez un autre dossier avec --dir",
     "running_inside": "Cette CLI s'exécute depuis {{dir}} et ne peut donc pas y installer. Lancez un saba-chan-cli situé hors du dossier d'installation.",
     "failed": "L'installation a échoué : {{reason}} (détails : {{log}})",
+    "failed_no_log": "L'installation a échoué : {{reason}}",
     "done": "Installé dans {{dir}}",
     "next": "Ensuite : {{cli}} daemon start"
   }

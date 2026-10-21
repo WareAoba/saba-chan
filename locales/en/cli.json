@@ -885,6 +885,7 @@
     "not_writable": "Cannot write to {{dir}}. Run again as administrator or pick another folder with --dir",
     "running_inside": "This CLI is running from inside {{dir}}, so it cannot install there. Run a saba-chan-cli from outside the install folder.",
     "failed": "Install failed: {{reason}} (details: {{log}})",
+    "failed_no_log": "Install failed: {{reason}}",
     "done": "Installed to {{dir}}",
     "next": "Next: {{cli}} daemon start"
   }

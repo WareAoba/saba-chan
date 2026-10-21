@@ -1,4 +1,4 @@
-//! `install` — 창 인스톨러 없이 이 PC에 사바쨩을 설치한다 (SSH·Server Core·GUI 없는 리눅스)
+//! `install` — 창 인스톨러 없이 이 PC에 사바쨩을 설치한다 (SSH·Server Core. 리눅스는 그 플랫폼 릴리스가 게시된 뒤부터)
 //!
 //! 데몬이 아직 없으므로 데몬 API 대신 창 인스톨러와 같은 설치 라이브러리(`saba-chan-installer-core`)를 부른다.
 //! 받기·서명 확인·압축 풀기는 그 라이브러리가 하고, 여기서는 값을 모으고 진행을 보인다.
@@ -139,6 +139,9 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         // 창 제거기를 두지 않는다: Windows 앱 목록에도 나오지 않고, 지울 때는 데몬을 끄고 설치 폴더를 지운다
         uninstaller_exe: None,
     };
+    // 한 번만 도는 명령이라 전역으로 둔다: 설치 라이브러리는 띄운 작업 안에서도 기록한다
+    let logged =
+        install_log(&core::log_file_path()).is_some_and(|log| tracing::subscriber::set_global_default(log).is_ok());
     let last = core::install(options, &hooks).await;
     hooks.bar.finish_and_clear();
 
@@ -146,8 +149,10 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         if last.error_code.as_deref() == Some("elevation_failed") {
             return Err(failed(t!("install.not_writable", dir = dir.display())));
         }
-        let log = last.log_path.clone().unwrap_or_default();
-        return Err(failed(t!("install.failed", reason = err, log = log)));
+        return Err(failed(match last.log_path.as_deref().filter(|_| logged) {
+            Some(log) => t!("install.failed", reason = err, log = log),
+            None => t!("install.failed_no_log", reason = err),
+        }));
     }
     for w in &last.warnings {
         ctx.out.warn(w);
@@ -172,6 +177,20 @@ fn ask_modules(ctx: &Ctx, available: &[core::ModuleInfo]) -> Result<Vec<String>>
         }
     }
     Ok(picked)
+}
+
+/// 설치 라이브러리의 기록을 창 인스톨러와 같은 파일에 덧붙인다. 열지 못하면 `None`(실패 때 경로를 안내하지 않는다)
+fn install_log(path: &Path) -> Option<impl tracing::Subscriber + Send + Sync> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+    writeln!(file, "saba-chan-cli install {} started", env!("CARGO_PKG_VERSION")).ok()?;
+    let log = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
+        .with_target(false)
+        .with_ansi(false)
+        .with_writer(std::sync::Mutex::new(file))
+        .finish();
+    Some(log)
 }
 
 /// 이 실행 파일이 설치 폴더 안에 있는지. 두 경로 모두 실제 경로로 비교한다 (폴더가 아직 없으면 밖이다)
@@ -276,5 +295,18 @@ mod tests {
         assert!(!runs_inside(&root.path().join("Saba"), &inside));
         // 아직 없는 폴더에 새로 깔 때
         assert!(!runs_inside(&root.path().join("new"), &outside));
+    }
+
+    /// 실패 때 안내하는 기록 파일에는 이번 CLI 설치의 기록이 실제로 남는다. 열지 못하면 경로를 안내하지 않는다 (#516 리뷰)
+    #[test]
+    fn the_install_log_it_points_to_is_written_by_this_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("saba-chan-installer.log");
+        let log = install_log(&path).expect("log opens");
+        tracing::subscriber::with_default(log, || tracing::info!("[Install] step from core"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("saba-chan-cli install"), "{text}");
+        assert!(text.contains("step from core"), "{text}");
+        assert!(install_log(&dir.path().join("missing").join("x.log")).is_none());
     }
 }

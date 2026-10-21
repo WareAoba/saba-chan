@@ -1080,6 +1080,7 @@
     "not_writable": "{{dir}}에 쓸 수 없어요. 관리자 권한으로 다시 실행하거나 --dir로 다른 폴더를 고르세요",
     "running_inside": "이 CLI는 {{dir}} 안에서 실행 중이라 그 폴더에 설치할 수 없습니다. 설치 폴더 밖에 있는 saba-chan-cli로 다시 실행해 주세요.",
     "failed": "설치하지 못했어요: {{reason}} (자세한 기록: {{log}})",
+    "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음: {{cli}} daemon start"
   }

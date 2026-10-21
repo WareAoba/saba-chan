@@ -1080,6 +1080,7 @@
     "not_writable": "无法写入 {{dir}}。请以管理员身份重新运行，或用 --dir 选择其他文件夹",
     "running_inside": "此 CLI 正在 {{dir}} 内运行，无法安装到该文件夹。请使用安装文件夹之外的 saba-chan-cli 运行。",
     "failed": "安装失败：{{reason}}（详情：{{log}}）",
+    "failed_no_log": "安装失败：{{reason}}",
     "done": "已安装到 {{dir}}",
     "next": "下一步：{{cli}} daemon start"
   }
