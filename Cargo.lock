@@ -4161,6 +4161,7 @@ dependencies = [
  "base64 0.21.7",
  "byteorder",
  "chrono",
+ "flate2",
  "futures-util",
  "glob",
  "hex",
