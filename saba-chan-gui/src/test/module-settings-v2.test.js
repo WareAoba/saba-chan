@@ -25,6 +25,17 @@ describe('visible_when 숨김 (데몬 validator::hidden_fields와 같은 계산)
         expect(hiddenFields(fields, { pvp: 'false', port: 25566, mode: 'a' })).toEqual(['pvp_rules', 'port_note']);
     });
 
+    // 글자 칸을 지우면 GUI는 ''를 보내고 데몬은 그 ''로 비교한다(기본값은 값이 없을 때만). 보내지 않는 칸의 ''는 기본값으로
+    it("지운 글자 칸('')은 기본값 대신 빈 값으로 비교한다", () => {
+        const text = [
+            { name: 'motd_mode', field_type: 'text', default: 'on' },
+            { name: 'motd', field_type: 'text', visible_when: { field: 'motd_mode', equals: 'on' } },
+        ];
+        expect(hiddenFields(text, { motd_mode: '' })).toEqual(['motd']);
+        expect(hiddenFields(text, {})).toEqual([]);
+        expect(hiddenFields(fields, { port: '' })).toEqual(['pvp_rules', 'mode_note']);
+    });
+
     it('숨긴 설정은 필수여도 검사하지 않는다', () => {
         const required = [
             { name: 'pvp', field_type: 'boolean', default: false },

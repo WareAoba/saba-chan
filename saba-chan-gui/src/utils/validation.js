@@ -170,8 +170,10 @@ function sameSettingValue(fieldType, a, b) {
 
 /**
  * `visible_when`으로 지금 숨겨진 설정 이름 (데몬 validator::hidden_fields와 같은 계산, 02 §1.2).
- * 값이 없으면(빈 칸 포함) 그 설정의 default로 비교하고, default도 없으면 숨긴다.
+ * 값이 없으면(글자 칸이 아닌 빈 칸 포함) 그 설정의 default로 비교하고, default도 없으면 숨긴다.
  */
+const STRING_TYPES = ['text', 'password', 'multiline'];
+
 export function hiddenFields(fields, values) {
     return (fields || [])
         .filter((f) => {
@@ -180,7 +182,9 @@ export function hiddenFields(fields, values) {
             const target = fields.find((t) => t.name === cond.field);
             if (!target) return false;
             const raw = values?.[target.name];
-            const current = raw === undefined || raw === null || raw === '' ? target.default : raw;
+            // 지운 글자 칸은 ''로 저장되므로 데몬도 ''로 비교한다. 다른 칸의 ''는 보내지 않으니 값이 없는 것
+            const cleared = raw === '' && !STRING_TYPES.includes(target.field_type);
+            const current = raw === undefined || raw === null || cleared ? target.default : raw;
             if (current === undefined || current === null) return true;
             const wanted = Array.isArray(cond.in) ? cond.in : [cond.equals];
             return !wanted.some((want) => sameSettingValue(target.field_type, current, want));
