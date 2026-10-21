@@ -28,12 +28,10 @@ fn ask_with<T>(f: impl FnOnce(&dyn Asker) -> T) -> Option<T> {
     ASKER.read().ok().as_ref().and_then(|a| a.as_deref()).map(f)
 }
 
-/// 창구를 바꿔 끼운다. 놓으면 터미널로 돌아간다 (TUI가 끼운다. 그 전까지는 시험만 쓴다)
+/// 창구를 바꿔 끼운다. 놓으면 터미널로 돌아간다 (TUI가 끼운다)
 #[must_use]
-#[cfg_attr(not(test), allow(dead_code))]
 pub struct AskerGuard(());
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl AskerGuard {
     pub fn install(asker: Box<dyn Asker>) -> Self {
         if let Ok(mut a) = ASKER.write() {

@@ -200,6 +200,16 @@
           "description": "主控台最後 20 行"
         }
       },
+      "logs": {
+        "read": {
+          "title": "讀取日誌",
+          "description": "從結尾讀取伺服器日誌工作階段"
+        },
+        "export": {
+          "title": "匯出日誌",
+          "description": "將一個伺服器日誌工作階段匯出為 .log 檔案"
+        }
+      },
       "players": {
         "title": "玩家",
         "description": "在線玩家及名字"
@@ -280,6 +290,10 @@
       "overwrites": "覆寫對象",
       "overwrites_instance": "目前的伺服器檔案",
       "source": "來源",
+      "lines": "行數",
+      "before": "之前位置",
+      "since": "開始時間",
+      "until": "結束時間",
       "trust": "信任",
       "version": "要安裝的版本",
       "installed": "目前版本",

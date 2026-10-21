@@ -200,6 +200,16 @@
           "description": "Letzte 20 Konsolenzeilen"
         }
       },
+      "logs": {
+        "read": {
+          "title": "Logs lesen",
+          "description": "Eine Server-Logsitzung vom Ende her lesen"
+        },
+        "export": {
+          "title": "Logs exportieren",
+          "description": "Eine Server-Logsitzung als .log-Datei exportieren"
+        }
+      },
       "players": {
         "title": "Spieler",
         "description": "Wer gerade online ist"
@@ -280,6 +290,10 @@
       "overwrites": "Überschreibt",
       "overwrites_instance": "aktuelle Serverdateien",
       "source": "Quelle",
+      "lines": "Zeilen",
+      "before": "Vor Position",
+      "since": "Von",
+      "until": "Bis",
       "trust": "Vertrauen",
       "version": "Zu installierende Version",
       "installed": "Installierte Version",

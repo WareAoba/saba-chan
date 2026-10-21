@@ -200,6 +200,16 @@
           "description": "Last 20 console lines"
         }
       },
+      "logs": {
+        "read": {
+          "title": "Read logs",
+          "description": "Read a server log session from the end"
+        },
+        "export": {
+          "title": "Export logs",
+          "description": "Export one server log session as a .log file"
+        }
+      },
       "players": {
         "title": "Players",
         "description": "Who is online"
@@ -280,6 +290,10 @@
       "overwrites": "Overwrites",
       "overwrites_instance": "current server files",
       "source": "Source",
+      "lines": "Lines",
+      "before": "Before",
+      "since": "From",
+      "until": "Until",
       "trust": "Trust",
       "version": "Version to install",
       "installed": "Installed version",

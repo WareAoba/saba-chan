@@ -16,6 +16,8 @@ pub struct BundledVersions {
     pub channel: String,
     /// 컴포넌트 키 → 버전
     pub components: BTreeMap<String, String>,
+    /// 컴포넌트 키 → 드는 설치 구성 (`profiles`. 표시가 있는 것만, `crate::profile`)
+    pub profiles: BTreeMap<String, Vec<String>>,
 }
 
 /// `versions.toml`을 파싱한 결과. 형식은 `scripts/versions.py check`가 CI에서 보장한다.
@@ -40,6 +42,8 @@ fn parse(source: &str) -> Result<BundledVersions, toml::de::Error> {
     #[derive(serde::Deserialize)]
     struct Component {
         version: String,
+        #[serde(default)]
+        profiles: Option<Vec<String>>,
     }
     fn default_channel() -> String {
         crate::relay::DEFAULT_CHANNEL.to_string()
@@ -49,6 +53,7 @@ fn parse(source: &str) -> Result<BundledVersions, toml::de::Error> {
     Ok(BundledVersions {
         release: file.release.version,
         channel: file.release.channel,
+        profiles: file.components.iter().filter_map(|(k, c)| Some((k.clone(), c.profiles.clone()?))).collect(),
         components: file.components.into_iter().map(|(k, c)| (k, c.version)).collect(),
     })
 }
@@ -56,6 +61,11 @@ fn parse(source: &str) -> Result<BundledVersions, toml::de::Error> {
 /// 컴포넌트의 빌드 버전. 표에 없으면 `None`.
 pub fn component(key: &str) -> Option<&'static str> {
     bundled().components.get(key).map(String::as_str)
+}
+
+/// 컴포넌트가 드는 설치 구성. 표시가 없으면 `None`(모든 구성)
+pub fn profiles(key: &str) -> Option<&'static [String]> {
+    bundled().profiles.get(key).map(Vec::as_slice)
 }
 
 #[cfg(test)]

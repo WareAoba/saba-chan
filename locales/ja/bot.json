@@ -200,6 +200,16 @@
           "description": "コンソールの最後の20行"
         }
       },
+      "logs": {
+        "read": {
+          "title": "ログを読む",
+          "description": "サーバーのログセッションを末尾から読みます"
+        },
+        "export": {
+          "title": "ログを書き出す",
+          "description": "サーバーのログセッションを .log ファイルに書き出します"
+        }
+      },
       "players": {
         "title": "プレイヤー",
         "description": "接続中のプレイヤーと名前"
@@ -280,6 +290,10 @@
       "overwrites": "上書き対象",
       "overwrites_instance": "現在のサーバーファイル",
       "source": "入手元",
+      "lines": "行数",
+      "before": "前の位置",
+      "since": "開始時刻",
+      "until": "終了時刻",
       "trust": "信頼",
       "version": "インストールするバージョン",
       "installed": "現在のバージョン",

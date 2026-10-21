@@ -349,7 +349,11 @@
     "none": "No game modules installed. See: saba-chan-cli module available",
     "refreshed": "Modules reloaded.",
     "removed": "Module {{id}} deleted.",
-    "unmet": "Needs {{component}} {{required}} (installed: {{installed}})"
+    "unmet": "Needs {{component}} {{required}} (installed: {{installed}})",
+    "load_failed": {
+      "invalid": "Couldn't load the {{module}} module. Its module.toml doesn't match the format:",
+      "unsupported": "Couldn't load the {{module}} module. Update Saba-chan to read module format {{required}}."
+    }
   },
   "noun": {
     "command": "command",
@@ -442,7 +446,10 @@
     "restart_hint": "Restart {{name}} to apply: saba-chan-cli restart {{name}}",
     "sync_failed": "Saved, but the game's settings file could not be written: {{error}}",
     "ignored": "Ignored because saba-chan doesn't use these settings: {{keys}}",
-    "unknown_key": "{{key}} is a new key."
+    "unknown_key": "{{key}} is a new key.",
+    "restart_required_mark": "restart to apply",
+    "restart_required": "Restart the server to apply: {{keys}}",
+    "hidden": "Hidden because other settings don't use them now: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Unclosed quote.",
@@ -582,7 +589,8 @@
       "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
       "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
-      "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop"
+      "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
+      "install": "Install Saba-chan on this PC without the window installer"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
@@ -627,9 +635,13 @@
       "events.kind": "Only these events; `instance` also takes `instance.exit` and the like",
       "events.server": "Only events of this server",
       "events.since": "Start after this event id (replays what the daemon still keeps)",
-      "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json"
+      "json_stream": "Print progress and then the result as JSON lines (NDJSON); implies --json",
+      "install.dir": "Install folder (asked when omitted)",
+      "install.modules": "Game modules to install, comma separated (asked when omitted)",
+      "install.gui": "Install the desktop app too, even without a display",
+      "install.no_gui": "Install without the desktop app, even with a display"
     },
-    "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
+    "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
   "restart": {
     "waiting": "Restarting {{name}}...",
@@ -666,7 +678,8 @@
     "restored": "{{name}} is back to {{backup}}.",
     "pre_restore": "The world from before is kept as backup {{backup}}.",
     "links_not_restored": "The restore finished, but {{count}} link(s) inside the folder could not be recreated (Windows permissions, for example). The daemon log lists the paths.",
-    "start_again": "Start {{name}} again?"
+    "start_again": "Start {{name}} again?",
+    "stored": "{{size}} newly stored"
   },
   "schedule": {
     "col": {
@@ -828,5 +841,54 @@
     "io_requests": "IO requests (incl. cache)",
     "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits).",
     "whole": "Whole machine (not split)"
+  },
+  "tui": {
+    "daemon_up": "Daemon ● connected (v{{version}})",
+    "daemon_down": "Daemon ○ off · start: daemon start",
+    "servers_running": "{{running}} of {{total}} servers running",
+    "menu": "Menu",
+    "output": "Output",
+    "enter_to_run": "Enter to run",
+    "running_hint": "(running · Ctrl+C to stop)",
+    "keys": "↑↓ move · ←→ menu/list · Enter run · : command · PgUp/PgDn output · ? help · q quit",
+    "yes": "Yes",
+    "no": "No",
+    "question": "Confirm",
+    "dialog_keys": "Enter choose · Esc cancel",
+    "help_title": "Keys",
+    "help": "↑↓  move in the menu or list\n←→ / Tab  switch between menu and list\nEnter  run the selected item (opens the command line when it needs arguments)\n:  command line (the same commands you type after saba-chan-cli, ↑↓ for earlier ones)\nPgUp/PgDn, mouse wheel  scroll the output\nCtrl+C  stop the running command\nq  quit (the daemon and servers keep running)",
+    "too_narrow": "Make the window at least 60 columns wide.",
+    "not_here": "This command can't run inside the full-screen menu. Quit with q and run it in the terminal.",
+    "cancelled": "Stopped.",
+    "action": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "console": "Recent console lines",
+      "info": "Info",
+      "backup_create": "Create backup",
+      "backup_list": "Backups"
+    },
+    "needs_terminal": "The full-screen menu needs a terminal. In scripts, use the subcommands.",
+    "command_panicked": "The command stopped unexpectedly. You can keep using other commands."
+  },
+  "install": {
+    "fetching": "Checking the latest release…",
+    "fetch_failed": "Could not get the latest release: {{reason}}",
+    "ask_dir": "Install folder",
+    "unknown_module": "Unknown module: {{name}}. Available modules: {{list}}",
+    "ask_module": "Install the {{name}} module too?",
+    "confirm": "Install Saba-chan to {{dir}}? Setup: {{profile}}, modules: {{modules}}",
+    "profile_desktop": "desktop (with the app)",
+    "profile_headless": "no display (daemon and CLI only)",
+    "no_modules": "none",
+    "installing": "Installing",
+    "not_writable": "Cannot write to {{dir}}. Pick a folder you can write to with --dir (for example under your user folder)",
+    "running_inside": "This CLI is running from inside {{dir}}, so it cannot install there. Run a saba-chan-cli from outside the install folder.",
+    "empty_dir": "The install folder is empty. Give a folder with --dir",
+    "failed": "Install failed: {{reason}} (details: {{log}})",
+    "failed_no_log": "Install failed: {{reason}}",
+    "done": "Installed to {{dir}}",
+    "next": "Start the daemon with:\n{{command}}"
   }
 }

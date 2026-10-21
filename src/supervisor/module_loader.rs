@@ -1347,12 +1347,22 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         let key: Vec<String> = path.to_string().split('.').filter(|p| *p != "?").map(str::to_string).collect();
         unknown.push(key.join("."))
     })
-        .map_err(|e| anyhow::anyhow!("Failed to parse module.toml: {}", e))?;
+    .map_err(|e| {
+        // 스키마를 밝힌 모듈의 키 타입 오류도 `module_schema_invalid`로 알린다 (`failed[].problems`)
+        let declared = content.parse::<toml::Value>().ok().and_then(|v| v.get("module")?.get("schema_version")?.as_integer());
+        match declared.and_then(|v| u32::try_from(v).ok()).filter(|v| (1..=MODULE_SCHEMA_VERSION).contains(v)) {
+            Some(version) => SchemaInvalid { version, problems: vec![e.to_string()] }.into(),
+            None => anyhow::anyhow!("Failed to parse module.toml: {}", e),
+        }
+    })?;
 
     let mut problems: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}'", k)).collect();
     problems.extend(toml_data.value_problems());
 
     let mut meta = toml_data.into_metadata();
+    if meta.schema_version >= 2 {
+        problems.extend(list_default_problems(&meta));
+    }
     problems.extend(preset_problems(&meta));
     let bad_queries = query_problems(&meta);
     // 스키마 이전 모듈도 잘못된 조회는 켜지 않는다: 조회는 확인 없이 모든 표면에 열린다
@@ -1401,6 +1411,20 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     Ok(meta)
 }
 
+/// list 기본값은 PATCH와 같은 검사(항목 수·중복·options·형식)를 받는다: 새 인스턴스가 그대로 받는 값이다
+fn list_default_problems(meta: &ModuleMetadata) -> Vec<String> {
+    meta.settings
+        .iter()
+        .flat_map(|s| &s.fields)
+        .filter(|f| f.field_type == "list")
+        .filter_map(|f| {
+            let default = serde_json::to_value(f.default.as_ref()?).ok()?;
+            let e = crate::validator::validate_setting_value(f, Some(&default)).err()?;
+            Some(format!("settings field '{}': default {}", f.name, e.message))
+        })
+        .collect()
+}
+
 /// 스키마 2 설정 키의 값 검사 (06 §8.1·8.2)
 fn v2_field_problems(field: &SettingFieldToml, fields: &[&SettingFieldToml]) -> Vec<String> {
     let mut problems = Vec::new();
@@ -1416,16 +1440,6 @@ fn v2_field_problems(field: &SettingFieldToml, fields: &[&SettingFieldToml]) -> 
     }
     if ty != "multiline" && field.max_length.is_some() {
         problems.push(format!("settings field '{}': max_length is only for type 'multiline'", name));
-    }
-    if ty == "list" {
-        let default_ok = match &field.default {
-            None => true,
-            Some(toml::Value::Array(items)) => items.iter().all(|i| i.as_str().is_some_and(|v| field.options.as_ref().is_none_or(|o| o.iter().any(|x| x == v)))),
-            Some(_) => false,
-        };
-        if !default_ok {
-            problems.push(format!("settings field '{}': default must be a list of strings (from options when given)", name));
-        }
     }
     let Some(cond) = &field.visible_when else { return problems };
     let Some(target) = fields.iter().find(|f| f.name == cond.field) else {
@@ -2418,6 +2432,25 @@ entry = "lifecycle.py"
             assert!(failed.problems.iter().any(|p| p.contains(needle)), "{needle}: {:?}", failed.problems);
         }
         assert!(failed.error.contains("schema v1"), "{}", failed.error);
+    }
+
+    /// 스키마를 밝힌 모듈은 알려진 키의 타입 오류도 `module_schema_invalid`와 `problems`로 보이고,
+    /// list 기본값은 항목 수·중복·형식까지 PATCH와 같은 검사를 받는다
+    #[test]
+    fn schema_type_errors_and_bad_list_defaults_are_schema_problems() {
+        let v2 = V1.replace("schema_version = 1", "schema_version = 2");
+        let err = parse_module_toml(&format!("{v2}\n[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\nmin_items = \"two\"\n")).unwrap_err();
+        let failed = ModuleLoadError::new(Path::new("m"), &err);
+        assert_eq!(failed.error_code.as_deref(), Some("module_schema_invalid"), "{}", failed.error);
+        assert!(failed.problems.iter().any(|p| p.contains("min_items")), "{:?}", failed.problems);
+
+        let list = |keys: &str, default: &str| parse_module_toml(&format!("{v2}\n[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\n{keys}\ndefault = {default}\n"));
+        assert!(list("max_items = 2\npattern = \"[a-z]+\"", "[\"a\", \"b\"]").is_ok());
+        for (keys, default) in [("max_items = 1", "[\"a\", \"b\"]"), ("min_items = 2", "[\"a\"]"), ("", "[\"a\", \"a\"]"), ("pattern = \"[a-z]+\"", "[\"A\"]")] {
+            let err = list(keys, default).unwrap_err();
+            let failed = ModuleLoadError::new(Path::new("m"), &err);
+            assert!(failed.problems.iter().any(|p| p.contains("'admins'") && p.contains("default")), "{keys} {default}: {:?}", failed.problems);
+        }
     }
 
     /// 리뷰 554: 스키마 이전 모듈의 list·multiline은 0.1.8처럼 글자로 다루고, list 프리셋 값도 로드 때 검사한다

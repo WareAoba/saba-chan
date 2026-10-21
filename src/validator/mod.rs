@@ -1290,7 +1290,7 @@ mod tests {
     /// 예약 범위 안에서 지금 아무 프로그램도 쥐고 있지 않은 포트. 예약한 쪽(WinNAT 등)이 범위 안 포트를 실제로
     /// 듣고 있기도 해서(CI 러너) 사용 중 포트 목록에 있는 것은 건너뛴다
     fn an_excluded_tcp_port() -> Option<u16> {
-        let out = std::process::Command::new("netsh").args(["int", "ipv4", "show", "excludedportrange", "protocol=tcp"]).output().ok()?;
+        let out = std::process::Command::new(saba_chan_updater_lib::process::system_tool("netsh")).args(["int", "ipv4", "show", "excludedportrange", "protocol=tcp"]).output().ok()?;
         let held = held_ports::read();
         String::from_utf8_lossy(&out.stdout).lines().find_map(|line| {
             let mut nums = line.split_whitespace().map(str::parse::<u16>);

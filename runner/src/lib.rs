@@ -161,14 +161,15 @@ impl Lines {
 
     /// 다음 줄 (줄 끝 포함). 아직 줄이 끝나지 않았으면 None. `MAX_LINE`을 넘으면 거기서 끊는다
     pub fn next_line(&mut self) -> Option<Vec<u8>> {
+        // 줄 끝이 `MAX_LINE` 뒤에 있어도(한 번에 많이 들어온 긴 줄) 같은 자리에서 끊는다
         let end = match self.line_end() {
-            Some(end) => end,
-            None if self.pending.len() >= MAX_LINE => {
+            Some(end) if end < MAX_LINE => end,
+            None if self.pending.len() < MAX_LINE => return None,
+            _ => {
                 let head = &self.pending[..MAX_LINE];
                 self.utf16 = judge(head, self.utf16, &mut self.odd);
                 if self.utf16 { MAX_LINE - 1 } else { utf8_cut(head) }
             }
-            None => return None,
         };
         let mut line: Vec<u8> = self.pending.drain(..=end).collect();
         self.from = 0;
@@ -179,6 +180,13 @@ impl Lines {
             line.remove(0);
         }
         Some(line)
+    }
+
+    /// 한때 크게 쌓였던 자리를 돌려준다 (`drain`은 용량을 줄이지 않는다)
+    pub fn shrink(&mut self) {
+        if self.pending.capacity() > 2 * MAX_LINE {
+            self.pending.shrink_to(MAX_LINE);
+        }
     }
 
     /// 스트림이 끝났을 때 남은 바이트
