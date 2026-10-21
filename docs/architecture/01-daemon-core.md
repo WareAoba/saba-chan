@@ -408,12 +408,12 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET | `/api/updates/status` | `updates.rs:129` | - | `{ok,last_check,next_check,checking,error,updates_available,components:[{component,display_name,current_version,latest_version,update_available,downloaded,installed}]}` (Locales 제외) |
+| GET | `/api/updates/status` | `updates.rs:129` | - | `{ok,last_check,next_check,checking,error,updates_available,components:[{component,display_name,current_version,latest_version,update_available,downloaded,installed}],profile}` (Locales 제외. `profile`은 설치 구성 `"desktop"`\|`"headless"`, `install-profile.json`, 05 §1) |
 | POST | `/api/updates/check` | `updates.rs:169` | - | `{ok,updates_available,update_names,components(+release_notes),last_check}`. Locales 업데이트가 있으면 백그라운드에서 조용히 적용 |
 | POST | `/api/updates/download` | `updates.rs:366` | 선택 `{components?:[key]}`. 본문이 없거나 공백이면 전부, 깨진 JSON은 400 `invalid_body`(`updates.rs:348-357`) | `{ok,downloaded,count,errors?}`. 전부 받기에서 일부가 실패해도 받은 것은 `downloaded`에, 실패한 것은 `errors[{component,error}]`에 싣고 `ok:false` |
 | GET | `/api/updates/download/progress` | `updates.rs:450` | - | `{ok,component,bytes_received,total_bytes,active}` |
 | POST | `/api/updates/apply` | `updates.rs:475` | download와 같은 본문 규칙 | `{ok,applied,needs_updater,requires_updater,errors}` |
-| POST | `/api/updates/launch-updater` | `updates.rs:609` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음). 등록된 GUI(`/api/client/register`의 `pid`, 실행 파일 이름이 GUI일 때만)가 떠 있으면 다시 띄울 것을 그 GUI로 바꾸고, 종료 전에 3초 기다려 남은 GUI를 끈다 |
+| POST | `/api/updates/launch-updater` | `updates.rs:609` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음). 등록된 GUI(`/api/client/register`의 `pid`, 실행 파일 이름이 GUI일 때만)가 떠 있으면 다시 띄울 것을 그 GUI로 바꾸고, 종료 전에 3초 기다려 남은 GUI를 끈다. 헤드리스 설치면 `--headless`를 붙이고, 다시 띄울 것을 받지 않았으면 데몬 자신(`<saba-core> --spawned`)을 다시 띄우게 한다(`updater_args`) |
 | GET/DELETE | `/api/updates/last-result` | `updates.rs` `get_last_result`/`clear_last_result` | GET `?lang=`, `?include_seen=true` | 마지막 적용 결과 `{result, version, notes, acknowledged}` / 확인 처리(마커는 남기고 `acknowledged`만 적는다, 05 참고) |
 | GET | `/api/updates/integrity` | `updates.rs:814` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
 | GET | `/api/updates/config` | `updates.rs:844` | - | `{ok, config, mock_relay}` |
@@ -669,7 +669,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - **apply 규칙**(`updates.rs:475-596`)
   - 대상에 GUI, Updater, CoreDaemon 중 하나라도 있으면 **전부** 업데이터 exe에 맡긴다. 이때 `needs_updater`를 채우고 `requires_updater:true`를 돌려준다.
   - 그렇지 않으면 데몬이 직접 적용하고, 모듈은 refresh, 익스텐션은 rescan으로 핫 리로드한다.
-  - 업데이터 실행은 클라이언트가 `POST /api/updates/launch-updater`로 데몬에 맡긴다(`updates.rs:598-675`). 데몬이 이번 적용에만 쓰는 실행 표(`launch_ticket::issue`)를 만들어 `--apply --wait-pid <pid> --launch-token <표>`로 업데이터를 detach로 띄우고, 0.5초 뒤 등록된 GUI를 끄고(스스로 끝날 틈 3초) `stop_requested`로 스스로 종료한다. GUI가 떠 있었으면 `--relaunch`는 그 GUI다(GUI가 뜨면서 데몬을 띄운다).
+  - 업데이터 실행은 클라이언트가 `POST /api/updates/launch-updater`로 데몬에 맡긴다(`updates.rs:598-675`). 데몬이 이번 적용에만 쓰는 실행 표(`launch_ticket::issue`)를 만들어 `--apply --wait-pid <pid> --launch-token <표>`로 업데이터를 detach로 띄우고, 0.5초 뒤 등록된 GUI를 끄고(스스로 끝날 틈 3초) `stop_requested`로 스스로 종료한다. GUI가 떠 있었으면 `--relaunch`는 그 GUI다(GUI가 뜨면서 데몬을 띄운다). 헤드리스 설치(`install-profile.json`)면 `--headless`를 붙여 창 없이 적용하게 하고, 다시 띄울 것이 없으면 데몬 자신을 `--spawned`로 다시 띄우게 한다.
 - `/api/updates/*`도 다른 라우트처럼 토큰 인증을 거친다(`ipc/mod.rs:812-816`). `relay_url`을 바꿔도 manifest 서명 검증은 그대로라 다른 서버가 파일을 바꿔 끼울 수는 없다.
 
 ---
