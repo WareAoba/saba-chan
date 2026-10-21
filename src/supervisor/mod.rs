@@ -5,6 +5,7 @@ pub mod crash;
 pub mod highlight;
 pub mod players;
 pub mod ready;
+pub mod player_events;
 
 use anyhow::Result;
 use process::ProcessTracker;
@@ -788,17 +789,21 @@ impl Supervisor {
         result.map(|result| with_port_moved(result, moved))
     }
 
-    /// 시작 결과로 준비 알림을 시작한다 (R39, `ready.rs`). 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
+    /// 시작 결과로 준비 알림(R39, `ready.rs`)과 접속·퇴장 알림(MK8, `player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
     async fn announce_ready(sup: &tokio::sync::RwLock<Self>, key: &str, result: &Result<Value>) {
-        let (id, name, console, patterns, timeout) = {
+        let (id, name, console, patterns, timeout, join, leave) = {
             let s = sup.read().await;
             let Some(instance) = s.instance_store.get(key).or_else(|| s.instance_store.list().iter().find(|i| i.name == key)) else { return };
             let module = s.module_loader.get_module(&instance.module_name).ok();
-            let patterns = module.as_ref().map(|m| m.metadata.ready_patterns.clone()).unwrap_or_default();
-            let timeout = module.as_ref().and_then(|m| m.metadata.ready_timeout).unwrap_or(ready::DEFAULT_READY_TIMEOUT_SECS);
+            let meta = module.as_ref().map(|m| &m.metadata);
+            let patterns = meta.map(|m| m.ready_patterns.clone()).unwrap_or_default();
+            let timeout = meta.and_then(|m| m.ready_timeout).unwrap_or(ready::DEFAULT_READY_TIMEOUT_SECS);
+            let (join, leave) = meta.map(|m| (m.player_join_patterns.clone(), m.player_leave_patterns.clone())).unwrap_or_default();
             let console = s.managed_store.get(&instance.id).await.filter(|p| !p.log_follower);
-            (instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout))
+            (instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout), join, leave)
         };
+        // 접속·퇴장 알림(MK8)도 같은 콘솔을 본다
+        player_events::after_start(&id, &name, result, console.clone(), &join, &leave);
         ready::after_start(&id, &name, result, console, &patterns, timeout);
     }
 
@@ -3249,6 +3254,50 @@ mod tests {
         for id in ["r-plain", "r-ready", "r-slow"] {
             let _ = Supervisor::stop_server(&sup, id, "plain", true).await;
         }
+    }
+
+    /// MK8 §8.3: managed 시작에서 접속·퇴장 문구가 콘솔에 찍히면 `instance.player`. 시스템 줄과 다른 그룹은 싣지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_managed_server_says_who_joined_and_left() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("chatty");
+        std::fs::create_dir_all(&dir).unwrap();
+        let head = "^\\[\\d{2}:\\d{2}:\\d{2}(?:\\] \\[[^\\]]*/| )INFO\\]: ";
+        let table = format!("player_join_patterns = ['{head}(?P<name>[A-Za-z0-9_]{{1,16}}) joined the game\\s*$']\nplayer_leave_patterns = ['{head}(?P<name>[A-Za-z0-9_]{{1,16}}) left the game\\s*$']\n");
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"chatty\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\n{table}")).unwrap();
+        let sh = "echo '[20:07:05] [Server thread/INFO]: Steve joined the game'; echo '[20:07:06] [Server thread/INFO]: <Alex> ]: Bob joined the game'; sleep 0.6; echo '[20:07:09] [Server thread/INFO]: Steve left the game'; sleep 30";
+        std::fs::write(dir.join("lifecycle.py"), format!(
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
+             else:\n    print(json.dumps({{'success': True}}))\n"
+        )).unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("p-chatty", "chatty");
+        inst.id = "p-chatty".into();
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let mut sub = crate::events::bus().subscribe(None);
+        assert_eq!(Supervisor::start_managed_server(&sup, "p-chatty", "chatty", json!({})).await.unwrap()["success"], true);
+        if let Some(proc) = sup.read().await.managed_store.get("p-chatty").await {
+            proc.push_system_line("[20:07:07] [Server thread/INFO]: Mallory joined the game".into(), crate::supervisor::managed_process::LogLevel::Info).await;
+        }
+
+        let mut seen = Vec::new();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        while seen.len() < 2 {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let e = tokio::time::timeout(left, sub.rx.recv()).await.expect("instance.player arrives").unwrap();
+            if e.kind == "instance.player" && e.data["instanceId"] == "p-chatty" {
+                assert_eq!(e.data["instance"], "p-chatty");
+                assert!(e.data["at"].is_u64());
+                seen.push((e.data["player"].clone(), e.data["change"].clone()));
+            }
+        }
+        assert_eq!(seen, vec![(json!("Steve"), json!("join")), (json!("Steve"), json!("leave"))], "a chat line and a system line are no player");
+        let _ = Supervisor::stop_server(&sup, "p-chatty", "chatty", true).await;
     }
 
     #[tokio::test]

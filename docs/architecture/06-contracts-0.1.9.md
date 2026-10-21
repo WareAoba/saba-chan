@@ -52,7 +52,7 @@
 - 데몬 이벤트 `instance.ready {at, instanceId, instance, ok, code?}`를 시작 한 번(자동 재시작 포함)마다 한 번 낸다.
   - `ok:true`: `ready_patterns` 중 하나가 콘솔 줄과 맞았을 때. 선언이 없으면 시작이 성공한 때(managed는 프로세스가 뜨고 시작 가드가 풀린 때, non-managed는 모듈 `start` 성공).
   - `ok:false`: 준비되기 전에 끝났을 때. `code`는 `start_failed`(시작 실패나 준비 전에 프로세스가 끝남), `stopped_while_starting`(준비 전에 사용자가 정지), `ready_timeout`(`ready_timeout`이 지남). 원문·경로·콘솔 줄은 싣지 않는다.
-  - 데몬이 띄운 프로세스가 알림 전에 끝나 이미 치워졌으면 `start_failed`다. `ready_timeout`이 시계로 나타낼 수 없을 만큼 크면 시간 초과 없이 기다린다.
+  - 데몬이 띄운 프로세스가 알림 전에 끝나 이미 치워졌으면 `start_failed`다.
   - 감독자가 시작을 시도하지 않은 요청(사전 점검에 막힘, 다른 작업 중, 이미 켜짐, 시작 중)에는 알림이 없다. 자동 재시작이 사전 점검에 막히면 `instance.restart_failed`·`instance.restart_cancelled`가 끝을 알린다.
 - relay_event 허용 목록에 넣는다(`instance.ready`는 위 필드만). 지금 `instance.exit`(start_failed)는 그대로 나간다.
 
