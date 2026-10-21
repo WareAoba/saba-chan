@@ -564,7 +564,7 @@ pub fn spawn_scheduler(state: IPCServer) {
             {
                 let mut c = clock.lock().unwrap_or_else(|e| e.into_inner());
                 let keys: HashSet<String> = tasks.iter().map(|(id, t)| crate::scheduler::task_key(id, t)).collect();
-                c.retain(&keys);
+                c.retain(&keys, now);
                 for (id, task) in tasks {
                     let key = crate::scheduler::task_key(&id, &task);
                     if let Some(fire) = c.due(&key, &task, started, now) {
