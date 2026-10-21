@@ -78,20 +78,26 @@ impl Drop for RemoveOnDrop {
     }
 }
 
-/// 이 구성에 들지 않는 구성요소의 설치 기록과 GUI 실행 파일·바로가기를 지운다. 지우지 못한 것은 경고로 돌려준다
-fn drop_parts_outside(profile: Profile, install_dir: &Path, installed: &mut HashMap<String, String>) -> Vec<String> {
-    installed.retain(|key, _| profile.includes(key));
-    if profile.includes("gui") {
-        return Vec::new();
+/// 이 구성에 들지 않는 GUI 실행 파일·바로가기를 지우고, 그 구성요소의 설치 기록(installed-manifest, `records`의 파일 해시)을 뺀다.
+/// GUI를 지우지 못하면 기록을 그대로 두고 실패한다: 남은 GUI를 업데이터가 더는 손대지 않게 되기 때문이다.
+/// 파일 해시 기록을 고치지 못한 것은 경고로 돌려준다 (무결성 검사에 "파일 없음"으로 보일 뿐이다)
+fn drop_parts_outside(
+    profile: Profile,
+    install_dir: &Path,
+    records: &Path,
+    installed: &mut HashMap<String, String>,
+) -> Result<Option<String>, String> {
+    if !profile.includes("gui") {
+        #[cfg(target_os = "windows")]
+        shortcuts::remove_shortcuts_into(install_dir, shortcuts::ALL_SHORTCUT_NAMES);
+        for exe in saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|name| install_dir.join(name)).filter(|exe| exe.is_file()) {
+            std::fs::remove_file(&exe).map_err(|e| format!("Failed to remove {}: {}", exe.display(), e))?;
+        }
     }
-    #[cfg(target_os = "windows")]
-    shortcuts::remove_shortcuts_into(install_dir, shortcuts::ALL_SHORTCUT_NAMES);
-    saba_chan_updater_lib::GUI_EXE_NAMES
-        .iter()
-        .map(|name| install_dir.join(name))
-        .filter(|exe| exe.is_file())
-        .filter_map(|exe| std::fs::remove_file(&exe).err().map(|e| format!("Failed to remove {}: {}", exe.display(), e)))
-        .collect()
+    installed.retain(|key, _| profile.includes(key));
+    Ok(saba_chan_updater_lib::integrity::retain_at(records, |key| profile.includes(key))
+        .err()
+        .map(|e| format!("Failed to update {}: {}", records.display(), e)))
 }
 
 /// 설치 설정 (스냅샷)
@@ -402,8 +408,9 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         installed_versions.insert("installer".to_string(), INSTALLER_VERSION.to_string());
     }
     // 데스크톱 설치 위에 헤드리스로 덮으면 남은 GUI와 그 기록을 지운다 (업데이터가 다시 손대지 않아 낡은 채 남는다)
-    for problem in drop_parts_outside(config.profile, &install_dir, &mut installed_versions) {
-        warn(problem);
+    match drop_parts_outside(config.profile, &install_dir, &saba_chan_updater_lib::integrity::records_path(), &mut installed_versions) {
+        Ok(problem) => problem.into_iter().for_each(&warn),
+        Err(e) => return fail("profile_failed", &e),
     }
     // 업데이터·데몬이 이 구성에 드는 것만 받는다 (헤드리스 설치에 GUI가 끌려 들어오지 않게)
     // 기록이 없으면 데스크톱으로 읽히므로, 헤드리스는 기록하지 못하면 설치를 실패로 끝낸다 (조용히 GUI를 받게 되지 않게)
@@ -750,13 +757,18 @@ mod tests {
         std::fs::write(&gui, b"").unwrap();
         let mut installed: HashMap<String, String> =
             [("gui", "0.1.8"), ("saba-core", "0.1.9")].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        // 업데이터가 적용한 GUI는 파일 해시 기록이 있다: 남기면 무결성 검사가 지운 GUI를 "파일 없음"으로 보인다
+        let records = tmp.path().join("installed-files.json");
+        std::fs::write(&records, r#"{"gui":{"a":"0"},"saba-core":{"b":"1"}}"#).unwrap();
 
-        assert!(drop_parts_outside(Profile::Desktop, tmp.path(), &mut installed).is_empty());
+        assert_eq!(drop_parts_outside(Profile::Desktop, tmp.path(), &records, &mut installed), Ok(None));
         assert!(gui.is_file() && installed.contains_key("gui"), "a desktop install keeps the GUI");
 
-        assert!(drop_parts_outside(Profile::Headless, tmp.path(), &mut installed).is_empty());
+        assert_eq!(drop_parts_outside(Profile::Headless, tmp.path(), &records, &mut installed), Ok(None));
         assert!(!gui.exists());
         assert_eq!(installed.keys().collect::<Vec<_>>(), ["saba-core"]);
+        let kept: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&records).unwrap()).unwrap();
+        assert_eq!(kept.as_object().unwrap().keys().collect::<Vec<_>>(), ["saba-core"]);
     }
 
     #[cfg(unix)]
