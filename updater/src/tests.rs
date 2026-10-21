@@ -1642,3 +1642,15 @@ fn requires_ignore_recorded_addons_missing_from_disk() {
     assert_eq!(versions.get("module-kept").map(String::as_str), Some("2.0.0"), "the version on disk wins");
     assert!(!versions.contains_key("module-gone"));
 }
+
+// 헤드리스 설치에는 GUI가 없으니 requires의 GUI 버전도 채워지지 않는다
+#[test]
+fn a_headless_install_does_not_count_the_bundled_gui_for_requires() {
+    let tmp = tempfile::tempdir().unwrap();
+    let manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+
+    assert!(manager.dependency_versions_for(crate::profile::Profile::Desktop).contains_key("gui"));
+    let headless = manager.dependency_versions_for(crate::profile::Profile::Headless);
+    assert!(!headless.contains_key("gui"));
+    assert!(headless.contains_key("saba-core"));
+}

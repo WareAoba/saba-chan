@@ -12,12 +12,14 @@ pub mod shortcuts;
 pub mod uninstall;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants;
 use saba_chan_updater_lib::relay::{self, ReleaseManifest};
 pub use release::VerifiedRelease;
 use saba_chan_updater_lib::UpdateManager;
+pub use saba_chan_updater_lib::profile::Profile;
 
 /// 설치기 버전 — 설치기 컴포넌트(`versions.toml` installer)와 같이 간다
 const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -76,11 +78,35 @@ impl Drop for RemoveOnDrop {
     }
 }
 
+/// 이 구성에 들지 않는 GUI 실행 파일·바로가기를 지우고, 그 구성요소의 설치 기록(installed-manifest, `records`의 파일 해시)을 뺀다.
+/// GUI를 지우지 못하면 기록을 그대로 두고 실패한다: 남은 GUI를 업데이터가 더는 손대지 않게 되기 때문이다.
+/// 파일 해시 기록을 고치지 못한 것은 경고로 돌려준다 (무결성 검사에 "파일 없음"으로 보일 뿐이다)
+fn drop_parts_outside(
+    profile: Profile,
+    install_dir: &Path,
+    records: &Path,
+    installed: &mut HashMap<String, String>,
+) -> Result<Option<String>, String> {
+    if !profile.includes("gui") {
+        #[cfg(target_os = "windows")]
+        shortcuts::remove_shortcuts_into(install_dir, shortcuts::ALL_SHORTCUT_NAMES);
+        for exe in saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|name| install_dir.join(name)).filter(|exe| exe.is_file()) {
+            std::fs::remove_file(&exe).map_err(|e| format!("Failed to remove {}: {}", exe.display(), e))?;
+        }
+    }
+    installed.retain(|key, _| profile.includes(key));
+    Ok(saba_chan_updater_lib::integrity::retain_at(records, |key| profile.includes(key))
+        .err()
+        .map(|e| format!("Failed to update {}: {}", records.display(), e)))
+}
+
 /// 설치 설정 (스냅샷)
 #[derive(Debug, Clone)]
 pub struct InstallOptions {
     pub install_path: PathBuf,
     pub language: String,
+    /// 데스크톱이면 GUI와 바로가기까지, 헤드리스면 GUI 없이 설치한다. `install-profile.json`에 적는다
+    pub profile: Profile,
     // 바로가기는 Windows에서만 만든다
     pub create_desktop_shortcut: bool,
     pub create_start_menu_shortcut: bool,
@@ -204,7 +230,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
     // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
     // 필수 컴포넌트가 빠진 릴리즈는 기존 설치를 건드리기 전에 멈춘다
-    let components = match release::installable(&manifest) {
+    let components = match release::installable(&manifest, config.profile) {
         Ok(c) => c,
         Err(missing) => {
             let msg = format!("The release is missing required components: {}", missing.join(", "));
@@ -345,10 +371,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     }
 
-    // Step 10: 바로가기 (95-100%)
-    emit("shortcuts", "Creating shortcuts...", 96);
+    // Step 10: 바로가기 (95-100%). 헤드리스 설치는 GUI가 없어 만들지 않는다
     #[cfg(target_os = "windows")]
-    {
+    if config.profile == Profile::Desktop {
+        emit("shortcuts", "Creating shortcuts...", 96);
         let gui_exe = saba_chan_updater_lib::find_gui_exe(&install_dir);
         let app_name = localized_app_name(&config.language);
 
@@ -380,6 +406,20 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     let copy = install_dir.join(saba_chan_updater_lib::INSTALLER_EXE);
     if config.uninstaller_exe.as_deref().is_some_and(|me| is_copy_of(&copy, me)) {
         installed_versions.insert("installer".to_string(), INSTALLER_VERSION.to_string());
+    }
+    // 데스크톱 설치 위에 헤드리스로 덮으면 남은 GUI와 그 기록을 지운다 (업데이터가 다시 손대지 않아 낡은 채 남는다)
+    match drop_parts_outside(config.profile, &install_dir, &saba_chan_updater_lib::integrity::records_path(), &mut installed_versions) {
+        Ok(problem) => problem.into_iter().for_each(&warn),
+        Err(e) => return fail("profile_failed", &e),
+    }
+    // 업데이터·데몬이 이 구성에 드는 것만 받는다 (헤드리스 설치에 GUI가 끌려 들어오지 않게)
+    // 기록이 없으면 데스크톱으로 읽히므로, 헤드리스는 기록하지 못하면 설치를 실패로 끝낸다 (조용히 GUI를 받게 되지 않게)
+    // 헤드리스 위에 데스크톱으로 덮다가 기록하지 못해도 실패다 (헤드리스 기록이 남아 새 GUI가 업데이트에서 빠진다)
+    if let Err(e) = config.profile.save() {
+        if config.profile != Profile::Desktop || Profile::load() != Profile::Desktop {
+            return fail("profile_failed", &format!("Failed to write install profile: {}", e));
+        }
+        warn(format!("Failed to write install profile: {}", e));
     }
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
         warn(format!("Failed to write installed manifest: {}", e));
@@ -710,6 +750,27 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
+    #[test]
+    fn a_headless_install_over_a_desktop_one_drops_the_gui() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gui = tmp.path().join(saba_chan_updater_lib::GUI_EXE_NAMES[0]);
+        std::fs::write(&gui, b"").unwrap();
+        let mut installed: HashMap<String, String> =
+            [("gui", "0.1.8"), ("saba-core", "0.1.9")].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        // 업데이터가 적용한 GUI는 파일 해시 기록이 있다: 남기면 무결성 검사가 지운 GUI를 "파일 없음"으로 보인다
+        let records = tmp.path().join("installed-files.json");
+        std::fs::write(&records, r#"{"gui":{"a":"0"},"saba-core":{"b":"1"}}"#).unwrap();
+
+        assert_eq!(drop_parts_outside(Profile::Desktop, tmp.path(), &records, &mut installed), Ok(None));
+        assert!(gui.is_file() && installed.contains_key("gui"), "a desktop install keeps the GUI");
+
+        assert_eq!(drop_parts_outside(Profile::Headless, tmp.path(), &records, &mut installed), Ok(None));
+        assert!(!gui.exists());
+        assert_eq!(installed.keys().collect::<Vec<_>>(), ["saba-core"]);
+        let kept: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&records).unwrap()).unwrap();
+        assert_eq!(kept.as_object().unwrap().keys().collect::<Vec<_>>(), ["saba-core"]);
+    }
+
     #[cfg(unix)]
     struct Recorder(std::sync::Mutex<Vec<InstallProgress>>);
 
@@ -740,6 +801,7 @@ mod tests {
         let options = InstallOptions {
             install_path: root.join("Saba-chan"),
             language: "en".into(),
+            profile: Profile::Headless,
             create_desktop_shortcut: false,
             create_start_menu_shortcut: false,
             selected_modules: Vec::new(),

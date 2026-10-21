@@ -90,7 +90,7 @@ pub enum OverallIntegrity {
 // 기록과 검증
 // ══════════════════════════════════════════════════════
 
-fn records_path() -> PathBuf {
+pub fn records_path() -> PathBuf {
     crate::constants::resolve_data_dir().join("installed-files.json")
 }
 
@@ -124,6 +124,18 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
         Err(e) => return Err(e),
     };
     records.insert(component_key.to_string(), hashes);
+    let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
+    crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
+}
+
+/// `keep`이 아닌 컴포넌트의 파일 기록을 뺀다 (지운 컴포넌트를 남기면 무결성 검사가 지운 파일을 "없음"으로 보인다). 뺄 것이 없으면 그대로 둔다
+pub fn retain_at(path: &Path, keep: impl Fn(&str) -> bool) -> Result<(), String> {
+    let mut records: InstalledFiles = crate::read_json(path)?.unwrap_or_default();
+    let before = records.len();
+    records.retain(|key, _| keep(key));
+    if records.len() == before {
+        return Ok(());
+    }
     let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
     crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
 }

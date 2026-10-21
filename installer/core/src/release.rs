@@ -8,6 +8,7 @@
 use saba_chan_updater_lib::download::download_verified;
 use saba_chan_updater_lib::relay::{self, ManifestComponent, ReleaseManifest, RelayClient};
 use saba_chan_updater_lib::{Component, DownloadProgress};
+use crate::Profile;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -43,8 +44,9 @@ pub fn required_installer_version(manifest: &ReleaseManifest) -> Option<&str> {
     manifest.components.get("installer").map(|c| c.version.as_str())
 }
 
-/// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다)
-fn required_components() -> Vec<String> {
+/// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다).
+/// 이 구성에 들지 않는 것(`profiles`)은 뺀다
+fn required_components(profile: Profile) -> Vec<String> {
     let versions: toml::Table = include_str!("../../../versions.toml").parse().unwrap_or_default();
     let Some(components) = versions.get("components").and_then(|c| c.as_table()) else {
         return Vec::new();
@@ -52,15 +54,16 @@ fn required_components() -> Vec<String> {
     components
         .iter()
         .filter(|(_, c)| c.get("required").and_then(|r| r.as_bool()) == Some(true))
+        .filter(|(k, _)| profile.includes(k))
         .map(|(k, _)| k.clone())
         .collect()
 }
 
 /// 설치 폴더에 풀 컴포넌트 (키 순서로 정렬). 모듈·익스텐션은 고른 것만 데이터 폴더에 따로 설치한다.
-/// 필수 컴포넌트가 빠진 릴리즈는 반쪽 설치가 되므로 빠진 키 목록을 오류로 돌려준다
-pub fn installable(manifest: &ReleaseManifest) -> Result<Vec<(&String, &ManifestComponent)>, Vec<String>> {
+/// 필수 컴포넌트가 빠진 릴리즈는 반쪽 설치가 되므로 빠진 키 목록을 오류로 돌려준다. 이 구성에 들지 않는 것은 받지 않는다
+pub fn installable(manifest: &ReleaseManifest, profile: Profile) -> Result<Vec<(&String, &ManifestComponent)>, Vec<String>> {
     let missing: Vec<String> =
-        required_components().into_iter().filter(|k| !manifest.components.contains_key(k)).collect();
+        required_components(profile).into_iter().filter(|k| !manifest.components.contains_key(k)).collect();
     if !missing.is_empty() {
         return Err(missing);
     }
@@ -71,6 +74,7 @@ pub fn installable(manifest: &ReleaseManifest) -> Result<Vec<(&String, &Manifest
         .filter(|(key, _)| {
             Component::try_from_manifest_key(key).is_some_and(|c| c != Component::Installer)
         })
+        .filter(|(key, _)| profile.includes(key))
         .collect();
     list.sort_by(|a, b| a.0.cmp(b.0));
     Ok(list)
@@ -200,9 +204,13 @@ mod tests {
     // L15(c): 빌드에 담긴 versions.toml을 못 읽으면 필수 목록이 비어 반쪽 릴리스를 막지 못한다
     #[test]
     fn the_bundled_versions_file_names_the_required_components() {
-        let mut required = super::required_components();
+        let mut required = super::required_components(super::Profile::Desktop);
         required.sort();
         assert_eq!(required, ["gui", "saba-core", "updater"]);
+        // 헤드리스 설치는 GUI 없이 돈다
+        let mut required = super::required_components(super::Profile::Headless);
+        required.sort();
+        assert_eq!(required, ["saba-core", "updater"]);
     }
 
     use super::*;
@@ -235,8 +243,10 @@ mod tests {
             is_critical: false,
             components,
         };
-        let keys: Vec<_> = installable(&manifest).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
+        let keys: Vec<_> = installable(&manifest, Profile::Desktop).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(keys, ["cli", "gui", "locales", "saba-core", "updater"], "installer, the legacy bot and add-ons are skipped");
+        let keys: Vec<_> = installable(&manifest, Profile::Headless).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["cli", "locales", "saba-core", "updater"], "a headless install skips the GUI");
         assert_eq!(required_installer_version(&manifest), Some("0.2.0"));
 
         let root = Path::new("/opt/saba");
@@ -275,7 +285,8 @@ mod tests {
             is_critical: false,
             components,
         };
-        assert_eq!(installable(&manifest).unwrap_err(), ["gui", "updater"]);
+        assert_eq!(installable(&manifest, Profile::Desktop).unwrap_err(), ["gui", "updater"]);
+        assert_eq!(installable(&manifest, Profile::Headless).unwrap_err(), ["updater"]);
     }
 
     /// 깨끗한 설치로 받은 공식 모듈이 데몬에서 "verified"로 보여야 격리·검사 없이 돈다
