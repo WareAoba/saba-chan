@@ -10,6 +10,7 @@ pub mod daemon;
 pub mod do_action;
 pub mod events;
 pub mod extension;
+pub mod install;
 pub mod module;
 pub mod monitor;
 pub mod perm;
@@ -61,6 +62,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         }
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
         Cmd::Tui => Box::pin(crate::tui::run(ctx)).await,
+        Cmd::Install(a) => install::run(ctx, a).await,
     }
 }
 
@@ -95,6 +97,7 @@ fn needs_daemon(cmd: &Cmd) -> bool {
             | Cmd::Help { .. }
             | Cmd::Shell
             | Cmd::Tui
+            | Cmd::Install(_)
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
 }

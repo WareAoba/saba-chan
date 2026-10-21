@@ -29,12 +29,16 @@ shlex = "1.3"
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../updater" }
 ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+saba-chan-installer-core = { path = "../installer/core" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Console"] }
+winreg = "0.52"
 
 [build-dependencies]
 winres = "0.1"

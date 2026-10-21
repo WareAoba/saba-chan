@@ -502,7 +502,8 @@
   "help": {
     "cmd": {
       "help": "Afficher l'aide d'une commande. Avec --json : l'arbre des commandes, les arguments et les codes de sortie",
-      "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter"
+      "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter",
+      "install": "Installer Saba-chan sur ce PC sans le programme d'installation fenêtré"
     },
     "arg": {
       "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
@@ -519,7 +520,11 @@
       "events.kind": "Seulement ces événements ; `instance` inclut aussi `instance.exit` et similaires",
       "events.server": "Seulement les événements de ce serveur",
       "events.since": "Commencer après cet id d'événement (renvoie ce que le démon garde encore)",
-      "json_stream": "Afficher la progression puis le résultat en lignes JSON (NDJSON) ; implique --json"
+      "json_stream": "Afficher la progression puis le résultat en lignes JSON (NDJSON) ; implique --json",
+      "install.dir": "Dossier d'installation (demandé s'il est omis)",
+      "install.modules": "Modules de jeu à installer, séparés par des virgules (demandés s'ils sont omis)",
+      "install.gui": "Installer aussi l'application de bureau, même sans écran",
+      "install.no_gui": "Installer sans l'application de bureau, même avec un écran"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
@@ -668,5 +673,24 @@
     },
     "needs_terminal": "Le menu plein écran a besoin d'un terminal. Dans un script, utilisez les sous-commandes.",
     "command_panicked": "La commande s'est arrêtée de façon inattendue. Les autres commandes restent utilisables."
+  },
+  "install": {
+    "fetching": "Vérification de la dernière version…",
+    "fetch_failed": "Impossible d'obtenir la dernière version : {{reason}}",
+    "ask_dir": "Dossier d'installation",
+    "unknown_module": "Module inconnu : {{name}}. Modules disponibles : {{list}}",
+    "ask_module": "Installer aussi le module {{name}} ?",
+    "confirm": "Installer Saba-chan dans {{dir}} ? Configuration : {{profile}}, modules : {{modules}}",
+    "profile_desktop": "bureau (avec l'application)",
+    "profile_headless": "sans écran (daemon et CLI seulement)",
+    "no_modules": "aucun",
+    "installing": "Installation",
+    "not_writable": "Impossible d'écrire dans {{dir}}. Choisissez avec --dir un dossier accessible en écriture (par exemple dans votre dossier utilisateur)",
+    "running_inside": "Cette CLI s'exécute depuis {{dir}} et ne peut donc pas y installer. Lancez un saba-chan-cli situé hors du dossier d'installation.",
+    "empty_dir": "Le dossier d'installation est vide. Indiquez un dossier avec --dir",
+    "failed": "L'installation a échoué : {{reason}} (détails : {{log}})",
+    "failed_no_log": "L'installation a échoué : {{reason}}",
+    "done": "Installé dans {{dir}}",
+    "next": "Démarrez le démon avec :\n{{command}}"
   }
 }

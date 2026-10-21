@@ -716,7 +716,8 @@
       "bot.words": "Discord 服务器中用来称呼这台电脑上的服务器及其命令的词。不指定服务器：全部，不带选项：查看",
       "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码",
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
-      "tui": "打开全屏菜单"
+      "tui": "打开全屏菜单",
+      "install": "不使用窗口安装程序，在此电脑上安装 Saba-chan"
     },
     "arg": {
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
@@ -829,7 +830,11 @@
       "events.kind": "只看这些事件；`instance` 也包括 `instance.exit` 等下级事件",
       "events.server": "只看这个服务器的事件",
       "events.since": "从这个事件编号之后开始（守护进程仍保留的会重新发送）",
-      "json_stream": "以 JSON 行（NDJSON）输出进度和结果（包含 --json）"
+      "json_stream": "以 JSON 行（NDJSON）输出进度和结果（包含 --json）",
+      "install.dir": "安装文件夹（省略时会询问）",
+      "install.modules": "要安装的游戏模块，用逗号分隔（省略时会询问）",
+      "install.gui": "即使没有显示器也安装桌面应用",
+      "install.no_gui": "即使有显示器也不安装桌面应用"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1060,5 +1065,24 @@
     },
     "needs_terminal": "全屏菜单只能在终端中打开。脚本中请使用子命令。",
     "command_panicked": "命令意外停止了。其他命令仍可继续使用。"
+  },
+  "install": {
+    "fetching": "正在检查最新版本…",
+    "fetch_failed": "无法获取最新版本：{{reason}}",
+    "ask_dir": "安装文件夹",
+    "unknown_module": "未知模块：{{name}}。可选模块：{{list}}",
+    "ask_module": "也安装 {{name}} 模块吗？",
+    "confirm": "将 Saba-chan 安装到 {{dir}} 吗？配置：{{profile}}，模块：{{modules}}",
+    "profile_desktop": "桌面（含应用）",
+    "profile_headless": "无显示器（仅守护进程和 CLI）",
+    "no_modules": "无",
+    "installing": "正在安装",
+    "not_writable": "无法写入 {{dir}}。请用 --dir 选择可写入的文件夹（例如用户文件夹下）",
+    "running_inside": "此 CLI 正在 {{dir}} 内运行，无法安装到该文件夹。请使用安装文件夹之外的 saba-chan-cli 运行。",
+    "empty_dir": "安装文件夹为空。请用 --dir 指定文件夹",
+    "failed": "安装失败：{{reason}}（详情：{{log}}）",
+    "failed_no_log": "安装失败：{{reason}}",
+    "done": "已安装到 {{dir}}",
+    "next": "用以下命令启动守护进程：\n{{command}}"
   }
 }

@@ -4222,6 +4222,7 @@ dependencies = [
  "ratatui",
  "reqwest 0.11.27",
  "rustyline",
+ "saba-chan-installer-core",
  "saba-chan-updater-lib",
  "serde",
  "serde_json",
@@ -4229,7 +4230,10 @@ dependencies = [
  "sys-locale",
  "tempfile",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "windows-sys 0.59.0",
+ "winreg 0.52.0",
  "winres",
 ]
 

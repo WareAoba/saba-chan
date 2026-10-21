@@ -502,7 +502,8 @@
   "help": {
     "cmd": {
       "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
-      "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden"
+      "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
+      "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren"
     },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
@@ -519,7 +520,11 @@
       "events.kind": "Nur diese Ereignisse; `instance` umfasst auch `instance.exit` usw.",
       "events.server": "Nur Ereignisse dieses Servers",
       "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)",
-      "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein"
+      "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein",
+      "install.dir": "Installationsordner (wird gefragt, wenn weggelassen)",
+      "install.modules": "Zu installierende Spielmodule, durch Kommas getrennt (wird gefragt, wenn weggelassen)",
+      "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
+      "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -668,5 +673,24 @@
     },
     "needs_terminal": "Das Vollbildmenü braucht ein Terminal. In Skripten die Unterbefehle verwenden.",
     "command_panicked": "Der Befehl wurde unerwartet beendet. Andere Befehle funktionieren weiter."
+  },
+  "install": {
+    "fetching": "Prüfe die neueste Version…",
+    "fetch_failed": "Die neueste Version konnte nicht geladen werden: {{reason}}",
+    "ask_dir": "Installationsordner",
+    "unknown_module": "Unbekanntes Modul: {{name}}. Verfügbare Module: {{list}}",
+    "ask_module": "Das Modul {{name}} auch installieren?",
+    "confirm": "Saba-chan nach {{dir}} installieren? Einrichtung: {{profile}}, Module: {{modules}}",
+    "profile_desktop": "Desktop (mit App)",
+    "profile_headless": "ohne Bildschirm (nur Daemon und CLI)",
+    "no_modules": "keine",
+    "installing": "Installiere",
+    "not_writable": "In {{dir}} kann nicht geschrieben werden. Wähle mit --dir einen beschreibbaren Ordner (zum Beispiel im Benutzerordner)",
+    "running_inside": "Diese CLI läuft innerhalb von {{dir}} und kann dort nicht installieren. Starte eine saba-chan-cli außerhalb des Installationsordners.",
+    "empty_dir": "Der Installationsordner ist leer. Gib mit --dir einen Ordner an",
+    "failed": "Installation fehlgeschlagen: {{reason}} (Details: {{log}})",
+    "failed_no_log": "Installation fehlgeschlagen: {{reason}}",
+    "done": "Nach {{dir}} installiert",
+    "next": "Starte den Daemon mit:\n{{command}}"
   }
 }

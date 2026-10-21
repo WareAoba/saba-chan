@@ -28,7 +28,7 @@ pub struct Sub {
 }
 
 /// 메뉴에 두지 않는 명령: 화면을 따로 차지하거나(셸, 자동완성 스크립트) 메뉴 자체와 같은 것
-pub const NOT_IN_MENU: &[&str] = &["shell", "tui", "help", "completions"];
+pub const NOT_IN_MENU: &[&str] = &["shell", "tui", "help", "completions", "install"];
 
 /// 메뉴 = 명령 표. 새 명령을 더하면 메뉴에도 생긴다
 pub fn menu_from(cmd: &clap::Command) -> Vec<MenuItem> {
@@ -418,7 +418,7 @@ fn parsed(words: &[String]) -> Option<crate::cli::Cli> {
 pub fn refuse(words: &[String]) -> Option<String> {
     use crate::cli::{Cmd, UpdateCmd};
     match parsed(words)?.cmd? {
-        Cmd::Shell | Cmd::Tui | Cmd::Completions { .. } => Some(t!("tui.not_here")),
+        Cmd::Shell | Cmd::Tui | Cmd::Completions { .. } | Cmd::Install(_) => Some(t!("tui.not_here")),
         Cmd::Monitor(a) if a.watch => Some(t!("tui.not_here")),
         Cmd::Update(UpdateCmd::Apply { .. }) => Some(t!("tui.not_here")),
         _ => None,
@@ -550,6 +550,7 @@ mod tests {
         assert!(refuse(&w("shell")).is_some());
         assert!(refuse(&w("monitor --watch")).is_some());
         assert!(refuse(&w("update apply")).is_some());
+        assert!(refuse(&w("install --dir x")).is_some());
         assert!(refuse(&w("monitor")).is_none());
         assert_eq!(adapt(w("console pal")), w("console pal --follow"));
         assert_eq!(adapt(w("console pal --print")), w("console pal --print"));

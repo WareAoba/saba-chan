@@ -502,7 +502,8 @@
   "help": {
     "cmd": {
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
-      "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar"
+      "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
+      "install": "Instalar Saba-chan en este PC sin el instalador con ventana"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -519,7 +520,11 @@
       "events.kind": "Solo estos eventos; `instance` también incluye `instance.exit` y similares",
       "events.server": "Solo eventos de este servidor",
       "events.since": "Empieza tras este id de evento (reenvía lo que el daemon aún guarda)",
-      "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json"
+      "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json",
+      "install.dir": "Carpeta de instalación (se pregunta si se omite)",
+      "install.modules": "Módulos de juego a instalar, separados por comas (se pregunta si se omite)",
+      "install.gui": "Instalar también la app de escritorio aunque no haya pantalla",
+      "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -668,5 +673,24 @@
     },
     "needs_terminal": "El menú a pantalla completa necesita una terminal. En scripts, usa los subcomandos.",
     "command_panicked": "El comando se detuvo de forma inesperada. Puedes seguir usando otros comandos."
+  },
+  "install": {
+    "fetching": "Comprobando la última versión…",
+    "fetch_failed": "No se pudo obtener la última versión: {{reason}}",
+    "ask_dir": "Carpeta de instalación",
+    "unknown_module": "Módulo desconocido: {{name}}. Módulos disponibles: {{list}}",
+    "ask_module": "¿Instalar también el módulo {{name}}?",
+    "confirm": "¿Instalar Saba-chan en {{dir}}? Configuración: {{profile}}, módulos: {{modules}}",
+    "profile_desktop": "escritorio (con la app)",
+    "profile_headless": "sin pantalla (solo daemon y CLI)",
+    "no_modules": "ninguno",
+    "installing": "Instalando",
+    "not_writable": "No se puede escribir en {{dir}}. Elige con --dir una carpeta en la que puedas escribir (por ejemplo, dentro de tu carpeta de usuario)",
+    "running_inside": "Esta CLI se está ejecutando dentro de {{dir}}, por lo que no puede instalar ahí. Ejecuta un saba-chan-cli que esté fuera de la carpeta de instalación.",
+    "empty_dir": "La carpeta de instalación está vacía. Indica una carpeta con --dir",
+    "failed": "La instalación falló: {{reason}} (detalles: {{log}})",
+    "failed_no_log": "La instalación falló: {{reason}}",
+    "done": "Instalado en {{dir}}",
+    "next": "Inicia el daemon con:\n{{command}}"
   }
 }
