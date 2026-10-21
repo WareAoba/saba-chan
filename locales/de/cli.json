@@ -691,6 +691,6 @@
     "failed": "Installation fehlgeschlagen: {{reason}} (Details: {{log}})",
     "failed_no_log": "Installation fehlgeschlagen: {{reason}}",
     "done": "Nach {{dir}} installiert",
-    "next": "Weiter: {{cli}} daemon start"
+    "next": "Starte den Daemon mit:\n{{command}}"
   }
 }

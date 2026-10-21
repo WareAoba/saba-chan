@@ -888,6 +888,6 @@
     "failed": "Install failed: {{reason}} (details: {{log}})",
     "failed_no_log": "Install failed: {{reason}}",
     "done": "Installed to {{dir}}",
-    "next": "Next: {{cli}} daemon start"
+    "next": "Start the daemon with:\n{{command}}"
   }
 }

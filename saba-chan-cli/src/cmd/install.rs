@@ -10,9 +10,43 @@ use saba_chan_installer_core::{self as core, release, InstallHooks, InstallOptio
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
-/// 화면이 없는 환경인지: 리눅스는 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 SSH로 들어왔거나
-/// 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
-fn detect_profile(gui: bool, no_gui: bool, windows: bool, env: impl Fn(&str) -> Option<String>) -> Profile {
+/// 설치 판정에 쓰는 운영체제. Server Core는 GUI 셸이 없는 Windows다
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Os {
+    Unix,
+    Windows,
+    ServerCore,
+}
+
+impl Os {
+    fn current() -> Os {
+        if !cfg!(windows) {
+            Os::Unix
+        } else if is_server_core() {
+            Os::ServerCore
+        } else {
+            Os::Windows
+        }
+    }
+}
+
+/// 레지스트리의 설치 유형이 "Server Core"인지 (읽지 못하면 아니다)
+#[cfg(windows)]
+fn is_server_core() -> bool {
+    winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
+        .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion")
+        .and_then(|k| k.get_value::<String, _>("InstallationType"))
+        .is_ok_and(|t| t.eq_ignore_ascii_case("Server Core"))
+}
+
+#[cfg(not(windows))]
+fn is_server_core() -> bool {
+    false
+}
+
+/// 화면이 없는 환경인지: 리눅스는 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
+/// 들어왔거나 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
+fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<String>) -> Profile {
     if gui {
         return Profile::Desktop;
     }
@@ -20,10 +54,10 @@ fn detect_profile(gui: bool, no_gui: bool, windows: bool, env: impl Fn(&str) -> 
         return Profile::Headless;
     }
     let set = |k: &str| env(k).is_some_and(|v| !v.is_empty());
-    let headless = if windows {
-        set("SSH_CONNECTION") || !set("SESSIONNAME")
-    } else {
-        !set("DISPLAY") && !set("WAYLAND_DISPLAY")
+    let headless = match os {
+        Os::ServerCore => true,
+        Os::Windows => set("SSH_CONNECTION") || !set("SESSIONNAME"),
+        Os::Unix => !set("DISPLAY") && !set("WAYLAND_DISPLAY"),
     };
     if headless {
         Profile::Headless
@@ -72,7 +106,7 @@ impl InstallHooks for Hooks {
 }
 
 pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
-    let profile = detect_profile(args.gui, args.no_gui, cfg!(windows), |k| std::env::var(k).ok());
+    let profile = detect_profile(args.gui, args.no_gui, Os::current(), |k| std::env::var(k).ok());
 
     let spin = crate::progress::spinner(&t!("install.fetching"));
     let manifest = release::fetch_latest().await;
@@ -162,7 +196,8 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         &t!("install.done", dir = dir.display()),
         &json!({ "ok": true, "dir": dir, "modules": modules, "components": last.installed_components, "warnings": last.warnings }),
     );
-    ctx.out.hint(&t!("install.next", cli = dir.join(cli_file()).display()));
+    ctx.out
+        .hint(&t!("install.next", command = next_command(&dir, cfg!(windows))));
     Ok(())
 }
 
@@ -212,6 +247,17 @@ fn runs_inside(dir: &Path, exe: &Path) -> bool {
     }
 }
 
+/// 설치 뒤 데몬을 켜는 명령. 공백 든 경로도 그대로 붙여 실행할 수 있게: Windows는 cmd·PowerShell 모두 되는
+/// `cd "폴더"` + `.\saba-chan-cli`, 그 밖은 작은따옴표로 싼 경로
+fn next_command(dir: &Path, windows: bool) -> String {
+    if windows {
+        format!("cd \"{}\"\n.\\saba-chan-cli daemon start", dir.display())
+    } else {
+        let cli = dir.join(cli_file()).display().to_string();
+        format!("'{}' daemon start", cli.replace('\'', r"'\''"))
+    }
+}
+
 fn cli_file() -> &'static str {
     if cfg!(windows) {
         "saba-chan-cli.exe"
@@ -231,32 +277,32 @@ mod tests {
     /// 화면이 없는 서버는 GUI 없이 깐다. `--gui`·`--no-gui`가 감지보다 먼저다 (무인 설치 설계 2단계)
     #[test]
     fn a_machine_without_a_display_installs_without_the_gui() {
-        assert_eq!(detect_profile(false, false, false, env(&[])), Profile::Headless);
+        assert_eq!(detect_profile(false, false, Os::Unix, env(&[])), Profile::Headless);
         assert_eq!(
-            detect_profile(false, false, false, env(&[("DISPLAY", ":0")])),
+            detect_profile(false, false, Os::Unix, env(&[("DISPLAY", ":0")])),
             Profile::Desktop
         );
         assert_eq!(
-            detect_profile(false, false, false, env(&[("WAYLAND_DISPLAY", "wayland-0")])),
+            detect_profile(false, false, Os::Unix, env(&[("WAYLAND_DISPLAY", "wayland-0")])),
             Profile::Desktop
         );
         assert_eq!(
-            detect_profile(false, false, true, env(&[("SESSIONNAME", "Console")])),
+            detect_profile(false, false, Os::Windows, env(&[("SESSIONNAME", "Console")])),
             Profile::Desktop
         );
         assert_eq!(
             detect_profile(
                 false,
                 false,
-                true,
+                Os::Windows,
                 env(&[("SESSIONNAME", "Console"), ("SSH_CONNECTION", "1 2 3 4")])
             ),
             Profile::Headless
         );
-        assert_eq!(detect_profile(false, false, true, env(&[])), Profile::Headless);
-        assert_eq!(detect_profile(true, false, false, env(&[])), Profile::Desktop);
+        assert_eq!(detect_profile(false, false, Os::Windows, env(&[])), Profile::Headless);
+        assert_eq!(detect_profile(true, false, Os::Unix, env(&[])), Profile::Desktop);
         assert_eq!(
-            detect_profile(false, true, false, env(&[("DISPLAY", ":0")])),
+            detect_profile(false, true, Os::Unix, env(&[("DISPLAY", ":0")])),
             Profile::Headless
         );
     }
@@ -329,5 +375,31 @@ mod tests {
         let rel = install_target(Path::new("saba-test-relative")).unwrap();
         assert!(rel.is_absolute(), "{}", rel.display());
         assert!(rel.starts_with(std::env::current_dir().unwrap()), "{}", rel.display());
+    }
+
+    /// Server Core는 로컬 콘솔(SESSIONNAME=Console)에서도 GUI 셸이 없다: 헤드리스로 깐다 (#516 리뷰)
+    #[test]
+    fn server_core_installs_without_the_gui_even_at_its_console() {
+        assert_eq!(
+            detect_profile(false, false, Os::ServerCore, env(&[("SESSIONNAME", "Console")])),
+            Profile::Headless
+        );
+        assert_eq!(
+            detect_profile(true, false, Os::ServerCore, env(&[])),
+            Profile::Desktop,
+            "--gui still wins"
+        );
+    }
+
+    /// 다음 단계 안내는 기본 경로(`C:\Program Files\…`)처럼 공백이 있어도 복사해 실행할 수 있다 (#516 리뷰)
+    #[test]
+    fn the_next_step_can_be_pasted_even_with_spaces_in_the_path() {
+        let win = next_command(Path::new(r"C:\Program Files\Saba-chan"), true);
+        assert_eq!(
+            win,
+            "cd \"C:\\Program Files\\Saba-chan\"\n.\\saba-chan-cli daemon start"
+        );
+        let unix = next_command(Path::new("/home/me/my apps/saba-chan"), false);
+        assert_eq!(unix, "'/home/me/my apps/saba-chan/saba-chan-cli' daemon start");
     }
 }

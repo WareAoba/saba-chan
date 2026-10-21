@@ -1083,6 +1083,6 @@
     "failed": "インストールできませんでした: {{reason}}（詳細: {{log}}）",
     "failed_no_log": "インストールできませんでした: {{reason}}",
     "done": "{{dir}} にインストールしました",
-    "next": "次: {{cli}} daemon start"
+    "next": "次のコマンドでデーモンを起動してください:\n{{command}}"
   }
 }

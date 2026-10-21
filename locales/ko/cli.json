@@ -1083,6 +1083,6 @@
     "failed": "설치하지 못했어요: {{reason}} (자세한 기록: {{log}})",
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
-    "next": "다음: {{cli}} daemon start"
+    "next": "다음 명령으로 데몬을 켜세요:\n{{command}}"
   }
 }

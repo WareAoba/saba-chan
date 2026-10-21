@@ -691,6 +691,6 @@
     "failed": "L'installation a échoué : {{reason}} (détails : {{log}})",
     "failed_no_log": "L'installation a échoué : {{reason}}",
     "done": "Installé dans {{dir}}",
-    "next": "Ensuite : {{cli}} daemon start"
+    "next": "Démarrez le démon avec :\n{{command}}"
   }
 }

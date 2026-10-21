@@ -691,6 +691,6 @@
     "failed": "安裝失敗：{{reason}}（詳細記錄：{{log}}）",
     "failed_no_log": "安裝失敗：{{reason}}",
     "done": "已安裝到 {{dir}}",
-    "next": "下一步：{{cli}} daemon start"
+    "next": "用以下指令啟動常駐程式：\n{{command}}"
   }
 }

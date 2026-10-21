@@ -1083,6 +1083,6 @@
     "failed": "安装失败：{{reason}}（详情：{{log}}）",
     "failed_no_log": "安装失败：{{reason}}",
     "done": "已安装到 {{dir}}",
-    "next": "下一步：{{cli}} daemon start"
+    "next": "用以下命令启动守护进程：\n{{command}}"
   }
 }
