@@ -202,38 +202,46 @@ fn follow_files(patterns: Vec<PathBuf>, log: Log) {
                 (f, len)
             })
             .collect();
-        let mut partial: std::collections::HashMap<PathBuf, Vec<u8>> = Default::default();
+        let mut partial: std::collections::HashMap<PathBuf, Lines> = Default::default();
         loop {
             std::thread::sleep(std::time::Duration::from_millis(500));
             for file in patterns.iter().flat_map(|p| matching_files(p)) {
-                let len = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
                 let pos = offsets.entry(file.clone()).or_insert(0);
-                if len < *pos {
-                    *pos = 0;
-                }
-                if len == *pos {
-                    continue;
-                }
-                let Ok(mut f) = File::open(&file) else { continue };
-                use std::io::Seek;
-                if f.seek(std::io::SeekFrom::Start(*pos)).is_err() {
-                    continue;
-                }
-                let mut bytes = Vec::new();
-                if f.read_to_end(&mut bytes).is_err() {
-                    continue;
-                }
-                *pos += bytes.len() as u64;
-                let buf = partial.entry(file.clone()).or_default();
-                buf.extend_from_slice(&bytes);
-                while let Some(nl) = buf.iter().position(|b| *b == b'\n') {
-                    let line: Vec<u8> = buf.drain(..=nl).collect();
-                    let line = String::from_utf8_lossy(&line);
-                    write_log(&log, Stream::Stdout, line.trim_end_matches(['\r', '\n']));
+                for line in read_new(&file, pos, partial.entry(file.clone()).or_default()) {
+                    write_log(&log, Stream::Stdout, &line);
                 }
             }
         }
     });
+}
+
+/// 파일에서 `pos` 뒤에 새로 쓰인 줄들. 줄은 `Lines`로 자른다(끝나지 않는 줄은 `MAX_LINE`에서 끊는다).
+/// 파일이 줄어들었으면(새로 쓰기 시작) 처음부터 읽고, 끝나지 않았던 앞 조각은 버린다
+fn read_new(file: &std::path::Path, pos: &mut u64, lines: &mut Lines) -> Vec<String> {
+    let len = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+    if len < *pos {
+        *pos = 0;
+        *lines = Lines::default();
+    }
+    if len == *pos {
+        return Vec::new();
+    }
+    let Ok(mut f) = File::open(file) else { return Vec::new() };
+    use std::io::Seek;
+    if f.seek(std::io::SeekFrom::Start(*pos)).is_err() {
+        return Vec::new();
+    }
+    let mut bytes = Vec::new();
+    if f.read_to_end(&mut bytes).is_err() {
+        return Vec::new();
+    }
+    *pos += bytes.len() as u64;
+    lines.push(&bytes);
+    let mut out = Vec::new();
+    while let Some(line) = lines.next_line() {
+        out.push(lines.decode(&line));
+    }
+    out
 }
 
 /// 띄운 서버
@@ -506,6 +514,24 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(text.contains("REST API started"), "{text}");
+    }
+
+    // 외부 감사: 따라 읽는 로그 파일의 끝나지 않은 줄이 끝없이 쌓였고, 파일을 새로 쓰기 시작해도 옛 조각이 새 줄 앞에 붙었다
+    #[test]
+    fn a_followed_file_cuts_endless_lines_and_forgets_them_when_it_starts_over() {
+        let path = std::env::temp_dir().join(format!("saba-runner-follow-{}.log", std::process::id()));
+        std::fs::write(&path, "x".repeat(saba_runner::MAX_LINE * 3)).unwrap();
+        let (mut pos, mut lines) = (0u64, saba_runner::Lines::default());
+        let read = super::read_new(&path, &mut pos, &mut lines);
+        assert_eq!(read.len(), 3, "cut at MAX_LINE");
+        assert!(read.iter().all(|l| l.len() <= saba_runner::MAX_LINE));
+        std::fs::write(&path, "y".repeat(100)).unwrap();
+        let _ = super::read_new(&path, &mut pos, &mut lines);
+        // 짧아졌다: 처음부터, 앞의 조각 없이
+        std::fs::write(&path, "new\n").unwrap();
+        let read = super::read_new(&path, &mut pos, &mut lines);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(read, vec!["new".to_string()]);
     }
 
     #[test]
