@@ -9,6 +9,7 @@ import {
     safeShowToast,
 } from '../utils/helpers';
 import { gameNameOf } from '../utils/serverView';
+import { listItems } from '../utils/validation';
 import { blockedText } from '../utils/trustNotice';
 import { useModalClose } from './useModalClose';
 
@@ -39,10 +40,10 @@ const memoryLimitOf = (server) => (server?.memory_limit_mb == null ? '' : String
 const stopTimeoutOf = (server) =>
     server?.module_settings?.stop_timeout == null ? '' : String(server.module_settings.stop_timeout);
 
-/** 문자열 칸 값으로 (없으면 null) */
-const fieldValue = (v) => (v === undefined || v === null ? null : String(v));
+/** 칸 값으로 (없으면 null). list 설정의 문자열 배열은 배열 그대로 */
+const fieldValue = (v) => (v === undefined || v === null ? null : Array.isArray(v) ? v.map(String) : String(v));
 
-/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (src/ipc/handlers/instance.rs known_fields). 이 값들은 module_settings가 낡았을 수 있다 */
+/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (updater constants::INSTANCE_FIELDS, memory_limit_mb는 따로 읽는다). 이 값들은 module_settings가 낡았을 수 있다 */
 const TOP_LEVEL_FIELDS = new Set([
     'port',
     'rest_host',
@@ -50,8 +51,10 @@ const TOP_LEVEL_FIELDS = new Set([
     'rest_username',
     'rest_password',
     'executable_path',
+    'working_dir',
     'protocol_mode',
     'server_version',
+    'extra_args',
 ]);
 
 /** 저장된 값: 공통 필드는 최상위가, 나머지는 module_settings가 진짜다 */
@@ -70,7 +73,7 @@ const liveFieldValue = (field, v, saved) => {
     return fieldValue(v);
 };
 
-export function useServerSettings({ servers, modules, setModal, setProgressBar, fetchServers }) {
+export function useServerSettings({ servers, modules, setModal, setProgressBar, fetchServers, onRestart }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
 
@@ -285,7 +288,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     // ── handleSettingChange ─────────────────────────────────
     const handleSettingChange = (fieldName, value) => {
         touchedFields.current.add(fieldName);
-        setSettingsValues((prev) => ({ ...prev, [fieldName]: String(value) }));
+        setSettingsValues((prev) => ({ ...prev, [fieldName]: Array.isArray(value) ? value : String(value) }));
     };
 
     // ── handleInstallVersion ────────────────────────────────
@@ -546,6 +549,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         convertedSettings[field.name] = value === true || value === 'true';
                         return;
                     }
+                    // 목록은 빈 줄을 뺀 문자열 배열로 (데몬은 빈 항목을 invalid_format으로 거절한다)
+                    if (field.field_type === 'list') {
+                        convertedSettings[field.name] = listItems(value);
+                        return;
+                    }
 
                     if (value === '' || value === null || value === undefined) {
                         // 사용자가 지운 선택 문자열 칸은 빈 값으로 보내야 이전 값이 지워진다
@@ -553,7 +561,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             value === '' &&
                             touchedFields.current.has(field.name) &&
                             !field.required &&
-                            (field.field_type === 'text' || field.field_type === 'password')
+                            ['text', 'password', 'multiline'].includes(field.field_type)
                         ) {
                             convertedSettings[field.name] = '';
                         }
@@ -637,11 +645,40 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 }
                 console.error('Error response:', result.error);
             } else {
-                setModal({
-                    type: 'success',
-                    title: t('command_modal.success'),
-                    message: t('server_actions.settings_saved', { name: settingsServer.name }),
+                // 켜져 있는 서버에서 다시 켜야 적용되는 설정을 바꿨다: 데몬은 스스로 다시 켜지 않는다
+                const pending = (result.restart_required || []).map((name) => {
+                    const field = module?.settings?.fields?.find((f) => f.name === name);
+                    return t(`mod_${settingsServer.module}:settings.${name}.label`, {
+                        defaultValue: field?.label || name,
+                    });
                 });
+                const serverName = settingsServer.name;
+                setModal(
+                    pending.length && onRestart
+                        ? {
+                              type: 'question',
+                              title: t('command_modal.success'),
+                              message: t('server_settings.restart_required', {
+                                  name: serverName,
+                                  fields: pending.join(', '),
+                              }),
+                              buttons: [
+                                  {
+                                      label: t('server_settings.restart_now'),
+                                      action: () => {
+                                          setModal(null);
+                                          return onRestart(serverName, { confirmed: true });
+                                      },
+                                  },
+                                  { label: t('server_settings.restart_later'), action: () => setModal(null) },
+                              ],
+                          }
+                        : {
+                              type: 'success',
+                              title: t('command_modal.success'),
+                              message: t('server_actions.settings_saved', { name: serverName }),
+                          },
+                );
                 // 저장은 됐지만 모듈이 게임 설정 파일에 쓰지 못했다
                 if (result.synced === false) {
                     safeShowToast(t('settings.sync_failed', { error: result.sync_error || '' }), 'warning', 6000);
@@ -711,7 +748,9 @@ export async function settleLaunchArgs(id, fields, values) {
             return { failed: true, error_code: 'invalid_format' };
         if (!res?.has_launch_args || !Array.isArray(res.extra_args)) return null;
         const settings = {};
-        for (const [k, v] of Object.entries(res.settings_from_args || {})) settings[k] = String(v);
+        // 목록은 배열 그대로 (쉼표가 든 항목이 나뉘지 않게)
+        for (const [k, v] of Object.entries(res.settings_from_args || {}))
+            settings[k] = Array.isArray(v) ? v : String(v);
         return { extra_args: res.extra_args, settings };
     } catch {
         return values._launch_extra_args !== undefined ? { failed: true } : null;

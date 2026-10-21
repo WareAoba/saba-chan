@@ -11,7 +11,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
     version,
     about = "Saba-chan: run and manage your game servers from the terminal",
     disable_help_subcommand = true,
-    after_help = "Run without a command to open the interactive shell."
+    after_help = "Run without a command to open the full-screen menu (SABA_NO_TUI=1: the interactive shell)."
 )]
 pub struct Cli {
     #[command(flatten)]
@@ -145,6 +145,8 @@ pub enum Cmd {
     Version,
     /// Open the interactive shell
     Shell,
+    /// Open the full-screen menu (the default when run without a command in a terminal)
+    Tui,
     /// Show help for a command. With --json: the command tree, arguments and exit codes
     Help {
         /// Command path, e.g. `server start`
@@ -156,6 +158,24 @@ pub enum Cmd {
         #[arg(value_name = "SHELL")]
         shell: clap_complete::Shell,
     },
+    /// Install Saba-chan on this PC without the window installer
+    Install(InstallArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct InstallArgs {
+    /// Install folder (asked when omitted)
+    #[arg(long, value_name = "PATH")]
+    pub dir: Option<std::path::PathBuf>,
+    /// Game modules to install, comma separated (asked when omitted)
+    #[arg(long, value_name = "NAMES", num_args = 1..)]
+    pub modules: Vec<String>,
+    /// Install the desktop app too, even without a display
+    #[arg(long, conflicts_with = "no_gui")]
+    pub gui: bool,
+    /// Install without the desktop app, even with a display
+    #[arg(long)]
+    pub no_gui: bool,
 }
 
 #[derive(Args, Debug)]
@@ -1127,7 +1147,7 @@ mod tests {
                 } else {
                     format!("{}.{}", path, s.get_name())
                 };
-                if crate::i18n::try_t(&format!("help.cmd.{}", p)).is_none() {
+                if crate::i18n::try_t_in("ko", &format!("help.cmd.{}", p)).is_none() {
                     missing.push(p.clone());
                 }
                 walk(s, &p, missing);
@@ -1163,7 +1183,8 @@ mod tests {
                 if matches!(id, "help" | "version") || a.is_hide_set() {
                     continue;
                 }
-                let found = crate::i18n::try_t(&format!("help.arg.{}.{}", path, id)).or_else(|| crate::i18n::try_t(&format!("help.arg.{}", id)));
+                let found = crate::i18n::try_t_in("ko", &format!("help.arg.{}.{}", path, id))
+                    .or_else(|| crate::i18n::try_t_in("ko", &format!("help.arg.{}", id)));
                 if found.is_none() {
                     missing.push(format!("{} --{}", path, id));
                 }

@@ -322,7 +322,10 @@
     "reset_server_running": "Pare o servidor antes de redefini-lo",
     "instance_busy": "Outra tarefa (backup ou restauração) está em andamento neste servidor. Tente novamente quando terminar",
     "extension_required_for_install": "Faltam extensões necessárias: {{extensions}}. Instale-as primeiro pelo Saba Storage.",
-    "install_settings_failed": "A versão foi instalada, mas não foi possível salvar as configurações: {{error}}"
+    "install_settings_failed": "A versão foi instalada, mas não foi possível salvar as configurações: {{error}}",
+    "restart_required": "As configurações de {{name}} foram salvas. Reinicie o servidor para aplicar {{fields}}.",
+    "restart_now": "Reiniciar agora",
+    "restart_later": "Depois"
   },
   "discord_bot": {
     "start_failed_toast": "Falha ao iniciar o bot Discord: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Falha no carregamento do módulo: {{error}}",
     "list_empty": "A lista de módulos está vazia",
     "fetch_failed_toast": "Falha na busca de módulos: {{error}}",
-    "load_error_title": "Exceção no carregamento do módulo"
+    "load_error_title": "Exceção no carregamento do módulo",
+    "schema_invalid": "O module.toml não segue o formato: {{problems}}",
+    "schema_unsupported": "Este módulo precisa de um Saba-chan mais novo (formato de módulo {{required}}). Atualize o Saba-chan."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} é obrigatório",
     "type_mismatch": "{{field}} tem um tipo inválido",
     "out_of_range": "{{field}} está fora do intervalo ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' não é uma opção válida"
+    "invalid_option": "{{field}}: '{{value}}' não é uma opção válida",
+    "duplicate_item": "{{field}}: '{{value}}' aparece mais de uma vez",
+    "list_hint": "Um por linha",
+    "item_count": "{{field}} precisa de {{min}} a {{max}} itens",
+    "too_long": "{{field}} pode ter no máximo {{max}} caracteres"
   },
   "context_menu": {
     "settings": "Configurações do servidor",
@@ -989,6 +998,7 @@
     "backups_desc": "Compacta o mundo e os arquivos de salvamento. Backups feitos por você nunca são apagados automaticamente.",
     "backups_empty": "Ainda não há backups.",
     "backup_now": "Fazer backup agora",
+    "backup_size_stored": "{{size}} · {{stored}} novos",
     "backup_created": "Backup criado.",
     "backup_nothing": "Ainda não há arquivos para fazer backup.",
     "restore": "Restaurar",

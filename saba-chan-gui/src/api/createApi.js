@@ -59,7 +59,8 @@ export function createApi({ invoke, hub }) {
         return invoke('settings_local_load');
     }
 
-    // 데몬이 응답하면 API로만 저장한다(단일 원천). 데몬이 아예 응답하지 않을 때만 로컬에 쓴다
+    // 데몬이 응답하면 바꾼 키만 PUT한다: 데몬이 잠근 채 최상위 키로 합치므로, 미리 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다.
+    // 데몬이 아예 응답하지 않을 때만 로컬에 쓴다(셸이 저장 직전 상태에 합친다)
     async function saveSettings(settings) {
         try {
             await put('/api/config/gui', settings, { timeout: 5000 });
@@ -79,23 +80,9 @@ export function createApi({ invoke, hub }) {
         }
     }
 
-    // GET으로 합친 뒤 통째로 PUT한다: 겹치면 늦게 끝난 앞 저장이 뒤 저장을 덮으므로 차례로 한다
+    // 겹치면 늦게 끝난 앞 저장이 뒤 저장을 덮으므로 차례로 한다
+    // IPC 포트를 바꿔도 연결 주소는 그대로 둔다: 지금 데몬은 옛 포트에 있고, 셸이 데몬을 다시 띄울 때 맞춘다
     let settingsQueue = Promise.resolve();
-    async function mergeAndSaveSettings(settings) {
-        // 데몬이 응답하면 merge base도 API에서 읽는다 (단일 원천)
-        let existing;
-        try {
-            existing = (await get('/api/config/gui', { timeout: 5000 })).data || {};
-        } catch (err) {
-            if (err.response) {
-                console.warn('[settings:save] Daemon API failed:', err.message);
-                return false;
-            }
-            existing = await loadLocalSettings(); // 데몬 없음 — 부트스트랩
-        }
-        // IPC 포트를 바꿔도 연결 주소는 그대로 둔다: 지금 데몬은 옛 포트에 있고, 셸이 데몬을 다시 띄울 때 맞춘다
-        return saveSettings({ ...existing, ...settings });
-    }
 
     const permPath = (guildId, discordId) =>
         `/api/permissions/${encodeURIComponent(guildId)}${discordId === undefined ? '' : `/members/${encodeURIComponent(discordId)}`}`;
@@ -861,7 +848,7 @@ export function createApi({ invoke, hub }) {
             return loadLocalSettings();
         },
         settingsSave: (settings) => {
-            const run = settingsQueue.then(() => mergeAndSaveSettings(settings));
+            const run = settingsQueue.then(() => saveSettings(settings));
             settingsQueue = run.catch(() => {});
             return run;
         },

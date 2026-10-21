@@ -186,6 +186,8 @@ async fn start_install(
         let s = state.read().await;
         InstallOptions {
             install_path: s.install_path.clone().into(),
+            // 창 인스톨러는 데스크톱 설치다
+            profile: saba_chan_installer_core::Profile::Desktop,
             language: s.language.clone(),
             create_desktop_shortcut: s.create_desktop_shortcut,
             create_start_menu_shortcut: s.create_start_menu_shortcut,
@@ -490,7 +492,7 @@ pub fn run() {
                 eprintln!("elevate-mkdir: missing --grant user");
                 std::process::exit(1);
             };
-            let icacls = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new("icacls"))
+            let icacls = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new(saba_chan_updater_lib::process::system_tool("icacls")))
                 .args([
                     dir_str.as_str(),
                     "/grant",

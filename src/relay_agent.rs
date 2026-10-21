@@ -42,6 +42,15 @@ const COMMANDS_IN_FLIGHT: usize = 4;
 /// 받은 명령 id를 기억하는 기간과 개수. 릴레이가 같은 명령을 다시 보내도 한 번만 실행한다
 const SEEN_FOR: Duration = Duration::from_secs(600);
 const SEEN_MAX: usize = 1000;
+/// 결과 전송(`POST /result/:id`)이 일시적으로 실패했을 때 다시 보내는 횟수. 그사이 그 명령의 실행 자리를 쥔다
+const RESULT_RETRIES: u32 = 5;
+
+/// 결과를 다시 보내기 전 기다림: 1·2·4·8·16초 (시험에서는 짧게)
+fn result_retry_delay(attempt: u32) -> Duration {
+    let unit = if cfg!(test) { Duration::from_millis(10) } else { Duration::from_secs(1) };
+    unit * 2u32.pow(attempt.saturating_sub(1).min(4))
+}
+
 /// `POST /ack` 한 번에 싣는 id 수 (릴레이 상한)
 const ACK_BATCH: usize = 50;
 
@@ -920,16 +929,32 @@ impl Session {
 
     async fn post_result(&self, id: &str, result: &Value) {
         let path = format!("/result/{}", encode_segment(id));
-        // 실행한 명령의 결과는 연결이 끝난 뒤에도 끝까지 보낸다: ack한 명령이라 릴레이가 다시 보내 주지 않는다
-        let sent = match self.request(reqwest::Method::POST, &path, Some(result.to_string())) {
-            Ok(req) => req.send().await.map_err(|e| e.to_string()),
-            Err(e) => Err(e),
-        };
-        match sent {
-            Ok(r) if r.status().is_success() => {}
-            Ok(r) => tracing::warn!("[RelayAgent] result {} rejected: {}", id, r.status()),
-            Err(e) => tracing::warn!("[RelayAgent] result {} failed: {}", id, e),
+        // 실행한 명령의 결과는 연결이 끝난 뒤에도 끝까지 보낸다: ack한 명령이라 릴레이가 다시 보내 주지 않는다.
+        // 연결 오류·5xx·408·429는 `RESULT_RETRIES`번까지 간격을 늘려 다시 보낸다. 그 밖의 4xx는 릴레이가 받지 않는 것이라 그만둔다
+        let body = result.to_string();
+        for attempt in 0..=RESULT_RETRIES {
+            if attempt > 0 {
+                tokio::time::sleep(result_retry_delay(attempt)).await;
+            }
+            let sent = match self.request(reqwest::Method::POST, &path, Some(body.clone())) {
+                Ok(req) => req.send().await.map_err(|e| e.to_string()),
+                Err(e) => Err(e),
+            };
+            let status = match sent {
+                Ok(r) if r.status().is_success() => return,
+                Ok(r) => r.status(),
+                Err(e) => {
+                    tracing::warn!("[RelayAgent] result {} failed (try {}): {}", id, attempt + 1, e);
+                    continue;
+                }
+            };
+            let retry = status.is_server_error() || matches!(status.as_u16(), 408 | 429);
+            tracing::warn!("[RelayAgent] result {} rejected (try {}): {}", id, attempt + 1, status);
+            if !retry {
+                return;
+            }
         }
+        tracing::warn!("[RelayAgent] result {} not delivered after {} tries", id, RESULT_RETRIES + 1);
     }
 }
 
@@ -1350,6 +1375,50 @@ mod tests {
         reported("poll");
         assert_eq!(poll_retry(&polled, 1), HEARTBEAT_INTERVAL);
         assert_eq!(poll_retry("poll 502 Bad Gateway: ", 1), backoff(1), "other failures keep the short backoff");
+    }
+
+    /// 외부 감사: ack한 명령의 결과 전송이 한 번 실패하면(503 등) 릴레이가 다시 보내 주지 않아 결과가 사라졌다.
+    /// 일시적인 실패는 몇 번 다시 보내고, 릴레이가 그 명령을 모르면(4xx) 그만둔다
+    #[tokio::test]
+    async fn a_result_the_relay_did_not_take_is_sent_again() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        async fn result(axum::extract::Path(id): axum::extract::Path<String>) -> axum::http::StatusCode {
+            let n = CALLS.fetch_add(1, Ordering::SeqCst);
+            match id.as_str() {
+                "gone" => axum::http::StatusCode::NOT_FOUND,
+                _ if n < 2 => axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                _ => axum::http::StatusCode::OK,
+            }
+        }
+        let app = axum::Router::new().route("/result/:id", post(result));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let session = Session {
+            agent: RelayAgent::new(),
+            server,
+            client: http_client().unwrap(),
+            base,
+            token: "sbn_host.secret".into(),
+            cancel: CancellationToken::new(),
+            generation: 1,
+            seen: Arc::default(),
+            ack_supported: std::sync::atomic::AtomicBool::new(true),
+        };
+        session.post_result("c1", &json!({ "success": true })).await;
+        assert_eq!(CALLS.swap(0, Ordering::SeqCst), 3, "two 503s, then taken");
+        session.post_result("gone", &json!({ "success": true })).await;
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1, "a command the relay no longer has is not sent again");
     }
 
     /// 디스코드에서 바꾼 권한의 응답과 heartbeat는 같은 PC 시계의 `permissionsAt`을 싣는다.

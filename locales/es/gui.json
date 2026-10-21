@@ -322,7 +322,10 @@
     "reset_server_running": "Detén el servidor antes de restablecerlo",
     "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",
     "extension_required_for_install": "Faltan extensiones necesarias: {{extensions}}. Instálalas primero desde Saba Storage.",
-    "install_settings_failed": "La versión se instaló, pero no se pudo guardar la configuración: {{error}}"
+    "install_settings_failed": "La versión se instaló, pero no se pudo guardar la configuración: {{error}}",
+    "restart_required": "Se guardaron los ajustes de {{name}}. Reinicia el servidor para aplicar {{fields}}.",
+    "restart_now": "Reiniciar ahora",
+    "restart_later": "Más tarde"
   },
   "discord_bot": {
     "start_failed_toast": "Falló el inicio del bot de Discord: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Fallo la carga del módulo: {{error}}",
     "list_empty": "La lista de módulos está vacía",
     "fetch_failed_toast": "Falló la búsqueda de módulos: {{error}}",
-    "load_error_title": "Excepción de carga de módulo"
+    "load_error_title": "Excepción de carga de módulo",
+    "schema_invalid": "module.toml no cumple el formato: {{problems}}",
+    "schema_unsupported": "Este módulo necesita una versión más nueva de Saba-chan (formato de módulo {{required}}). Actualiza Saba-chan."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} es obligatorio",
     "type_mismatch": "{{field}} tiene un tipo no válido",
     "out_of_range": "{{field}} está fuera del rango ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' no es una opción válida"
+    "invalid_option": "{{field}}: '{{value}}' no es una opción válida",
+    "duplicate_item": "{{field}}: '{{value}}' aparece más de una vez",
+    "list_hint": "Uno por línea",
+    "item_count": "{{field}} necesita entre {{min}} y {{max}} elementos",
+    "too_long": "{{field}} admite como máximo {{max}} caracteres"
   },
   "context_menu": {
     "settings": "Configuración del servidor",
@@ -989,6 +998,7 @@
     "backups_desc": "Comprime el mundo y los archivos de guardado. Las copias que hagas tú nunca se eliminan automáticamente.",
     "backups_empty": "Aún no hay copias de seguridad.",
     "backup_now": "Copiar ahora",
+    "backup_size_stored": "{{size}} · {{stored}} nuevos",
     "backup_created": "Copia de seguridad creada.",
     "backup_nothing": "Todavía no hay archivos que copiar.",
     "restore": "Restaurar",
