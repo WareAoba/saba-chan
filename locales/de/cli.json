@@ -563,7 +563,8 @@
     "restored": "{{name}} ist wieder auf dem Stand von {{backup}}.",
     "pre_restore": "Die vorherige Welt bleibt als Backup {{backup}} erhalten.",
     "links_not_restored": "Die Wiederherstellung ist fertig, aber {{count}} Verknüpfung(en) im Ordner konnten nicht wiederhergestellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Protokoll.",
-    "start_again": "{{name}} wieder starten?"
+    "start_again": "{{name}} wieder starten?",
+    "stored": "{{size}} neu gespeichert"
   },
   "schedule": {
     "col": {
