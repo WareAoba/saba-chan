@@ -1,8 +1,12 @@
 //! 월드·세이브 백업 (A2)
 //!
-//! 모듈 `[backup] paths`가 가리키는 폴더·파일을 `<인스턴스 폴더>/backups/<시각>-<종류>.zip` 하나로 묶는다.
-//! zip 안에는 `saba-backup.json`(항목 번호 → 원래 절대 경로)과 `<번호>/...` 파일이 들어 있어
-//! 복원 때 원래 자리로 돌려놓는다. 폴더 안의 심볼릭 링크는 가리키는 곳을 담지 않고 `links`에 링크로만 적는다.
+//! 모듈 `[backup] paths`가 가리키는 폴더·파일을 `<인스턴스 폴더>/backups/<시각>-<종류>.zip` 하나로 적는다.
+//! 판 2(MK16, 0.1.9~)는 증분이다: 파일 내용은 `backups/objects/<해시 앞 두 글자>/<sha256>`에 한 번만 두고(deflate),
+//! zip에는 `saba-backup-v2.json`(항목 번호 → 원래 절대 경로, 파일마다 상대 경로·해시·크기·수정 시각)만 담는다.
+//! 지난 백업과 크기·수정 시각이 같은 파일은 다시 읽지 않는다. 백업을 지우면 어느 백업도 쓰지 않는 내용을 치운다.
+//! 판 1(0.1.8까지)은 zip 안에 `saba-backup.json`과 `<번호>/...` 파일을 담는다. 읽기·복원은 두 판 모두 한다.
+//! 0.1.8 데몬은 판 2의 매니페스트 이름을 몰라 복원을 거절한다(빈 폴더로 바꿔 넣지 않는다).
+//! 폴더 안의 심볼릭 링크는 가리키는 곳을 담지 않고 `links`에 링크로만 적는다.
 //! 이 파일의 함수는 모두 블로킹이다 (호출자가 spawn_blocking).
 
 use anyhow::{bail, Context, Result};
@@ -12,6 +16,13 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 const MANIFEST: &str = "saba-backup.json";
+/// 판 2 매니페스트와 목록용 요약 (요약은 큰 파일 목록을 읽지 않고 크기를 보이려고 따로 둔다)
+const MANIFEST_V2: &str = "saba-backup-v2.json";
+const SUMMARY_V2: &str = "saba-backup-v2-summary.json";
+/// 판 2의 내용 저장소 (백업 폴더 안)
+const OBJECTS: &str = "objects";
+/// 이보다 최근에 바뀐 파일은 크기·수정 시각이 같아도 다시 읽는다 (같은 시각 안에 또 바뀌었을 수 있다)
+const MTIME_SLACK_NS: u64 = 2_000_000_000;
 
 /// 백업 종류. `Manual`만 정리(prune)에서 빠진다
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -47,7 +58,13 @@ pub struct BackupInfo {
     pub kind: BackupKind,
     /// 유닉스 시각 (초)
     pub created: u64,
+    /// 담은 내용의 크기 (복원하면 쓰는 바이트. 판 1은 zip 파일 크기)
     pub size: u64,
+    /// 이 백업이 만들어질 때 디스크에 새로 쓴 바이트 (앞 백업과 같은 내용은 다시 쓰지 않는다. 판 1은 zip 파일 크기)
+    pub stored: u64,
+    /// 만든 시각 (유닉스 나노초, 판 2는 요약의 시작 시각, 판 1은 파일 수정 시각). 이름은 지역 시각이라 서머타임 끝에 뒤바뀔 수 있어 순서는 이것으로 정한다 (D-B12)
+    #[serde(skip)]
+    made: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -59,7 +76,52 @@ struct Manifest {
     links: Vec<LinkEntry>,
 }
 
+/// 판 2 매니페스트
 #[derive(Serialize, Deserialize)]
+struct ManifestV2 {
+    version: u32,
+    paths: Vec<ManifestEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    links: Vec<LinkEntry>,
+    files: Vec<StoredFile>,
+    /// 폴더 항목 안의 하위 폴더 (빈 폴더도 되살린다)
+    #[serde(default)]
+    dirs: Vec<StoredDir>,
+    /// 백업을 시작한 시각 (유닉스 나노초). 이보다 조금 앞서 바뀐 파일은 다음 백업이 다시 읽는다
+    started: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct StoredFile {
+    /// `paths`의 항목 번호
+    entry: String,
+    /// 그 항목 폴더 안의 상대 경로(`/`로 잇는다). 파일 항목이면 빈 문자열
+    rel: String,
+    hash: String,
+    size: u64,
+    /// 수정 시각 (유닉스 나노초)
+    mtime: u64,
+    /// 내용 파일(압축)의 크기. 다음 백업이 이어 쓰기 전에 그 파일이 그대로인지 본다
+    #[serde(default)]
+    stored_size: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct StoredDir {
+    entry: String,
+    rel: String,
+}
+
+/// 목록에 보이는 크기 (`BackupInfo`)
+#[derive(Serialize, Deserialize, Default)]
+struct SummaryV2 {
+    size: u64,
+    stored: u64,
+    #[serde(default)]
+    started: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct LinkEntry {
     path: PathBuf,
     target: PathBuf,
@@ -70,7 +132,7 @@ struct LinkEntry {
 /// 이보다 오래된 `*.partial`은 강제 종료가 남긴 것으로 본다 (쓰는 중이면 수정 시각이 계속 새로워진다)
 const STALE_PARTIAL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct ManifestEntry {
     entry: String,
     path: PathBuf,
@@ -109,21 +171,33 @@ pub fn fill_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> Opt
     out
 }
 
+/// 백업 폴더마다 하나: 만들기·지우기·정리·복원이 내용 저장소를 함께 쓰므로 한 번에 하나만 한다
+/// (정리가 만드는 중인 백업의 새 내용을 지우거나 복원이 읽는 내용을 지우지 않게)
+fn dir_lock(dir: &Path) -> std::sync::Arc<std::sync::Mutex<()>> {
+    type Locks = std::collections::HashMap<PathBuf, std::sync::Arc<std::sync::Mutex<()>>>;
+    static LOCKS: std::sync::LazyLock<std::sync::Mutex<Locks>> = std::sync::LazyLock::new(Default::default);
+    LOCKS.lock().unwrap_or_else(|e| e.into_inner()).entry(dir.to_path_buf()).or_default().clone()
+}
+
 /// 새 백업을 만든다. 같은 초에 두 번 만들면 이름 뒤에 번호를 붙인다
 pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupInfo> {
     if paths.is_empty() {
         bail!("nothing to back up: none of the module's backup paths exist");
     }
     fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    let lock = dir_lock(dir);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     clear_stale_partials(dir);
     // 밀리초까지 넣어 이름순이 곧 만든 순서가 되게 한다 (같은 초에 만든 복원 전 백업이 더 오래돼 보이지 않게)
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
     let name = unique_name(dir, &stamp, kind);
     let final_path = dir.join(&name);
     let partial = dir.join(format!("{}.partial", name));
-    let written = write_zip(&partial, paths);
+    let written = write_v2(dir, &partial, paths);
     if let Err(e) = written {
         let _ = fs::remove_file(&partial);
+        // 이번에 넣은 내용은 어느 백업도 쓰지 않는다
+        collect_garbage(dir);
         return Err(e);
     }
     fs::rename(&partial, &final_path)?;
@@ -157,6 +231,275 @@ fn unique_name(dir: &Path, stamp: &str, kind: BackupKind) -> String {
     format!("{}-{}.zip", candidate, kind.as_str())
 }
 
+fn now_ns() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
+}
+
+fn mtime_ns(meta: &fs::Metadata) -> u64 {
+    meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0)
+}
+
+fn is_hash(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+fn object_path(dir: &Path, hash: &str) -> Result<PathBuf> {
+    if !is_hash(hash) {
+        bail!("backup content id is not valid");
+    }
+    Ok(dir.join(OBJECTS).join(&hash[..2]).join(hash))
+}
+
+/// 매니페스트의 상대 경로를 그 항목 폴더 안의 경로로 (`..`·절대 경로·드라이브는 받지 않는다)
+fn inner_path(base: &Path, rel: &str) -> Result<PathBuf> {
+    let rel_path: PathBuf = rel.split('/').collect();
+    if rel.is_empty() || !rel_path.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+        bail!("backup entry path is not valid: {}", rel);
+    }
+    Ok(base.join(rel_path))
+}
+
+/// 가장 새 판 2 백업이 적은 파일 (원래 절대 경로 → 크기, 수정 시각, 해시). 그 백업 직전에 바뀐 파일은 뺀다
+fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, String, u64)> {
+    let newest = list(dir).into_iter().find_map(|b| read_v2(&dir.join(&b.name)).ok().flatten());
+    let Some(m) = newest else { return Default::default() };
+    let mut out = std::collections::HashMap::new();
+    for f in m.files.iter().filter(|f| f.mtime.saturating_add(MTIME_SLACK_NS) < m.started) {
+        let Some(entry) = m.paths.iter().find(|p| p.entry == f.entry) else { continue };
+        let path = if f.rel.is_empty() { entry.path.clone() } else if let Ok(p) = inner_path(&entry.path, &f.rel) { p } else { continue };
+        out.insert(path, (f.size, f.mtime, f.hash.clone(), f.stored_size));
+    }
+    out
+}
+
+/// 파일 내용을 저장소에 넣는다: (해시, 읽은 바이트, 내용 파일 크기, 새로 쓴 파일). 같은 내용이 이미 있으면 새로 쓰지 않는다.
+/// 이미 있는 파일의 크기가 방금 만든 것과 다르면 망가진 것으로 보고 바꿔 넣는다 (망가진 내용을 다음 백업이 물려받지 않게).
+/// 디스크에 내리는 일(fsync)은 부른 쪽이 백업을 마치기 전에 한꺼번에 한다
+fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
+    use sha2::Digest;
+    use std::io::{Read, Write};
+    let objects = dir.join(OBJECTS);
+    fs::create_dir_all(&objects)?;
+    let tmp = objects.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
+    let written = (|| -> Result<(String, u64)> {
+        // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
+        let mut src = File::open(path).with_context(|| format!("read {}", path.display()))?;
+        let mut out = flate2::write::DeflateEncoder::new(File::create(&tmp)?, flate2::Compression::default());
+        let mut hasher = sha2::Sha256::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        let mut read = 0u64;
+        loop {
+            let n = src.read(&mut buf).with_context(|| format!("read {}", path.display()))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+            out.write_all(&buf[..n])?;
+            read += n as u64;
+        }
+        out.finish()?;
+        Ok((hex::encode(hasher.finalize()), read))
+    })();
+    let (hash, read) = match written {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            return Err(e);
+        }
+    };
+    let target = object_path(dir, &hash)?;
+    let added = fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    if fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == added) {
+        let _ = fs::remove_file(&tmp);
+        return Ok((hash, read, added, None));
+    }
+    if target.is_file() {
+        tracing::warn!("Backup content {} was damaged; replacing it", &hash[..12]);
+    }
+    let moved = target.parent().map_or(Ok(()), fs::create_dir_all).and_then(|_| fs::rename(&tmp, &target));
+    if let Err(e) = moved {
+        let _ = fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    Ok((hash, read, added, Some(target)))
+}
+
+/// 판 2 백업 쓰기 중의 상태
+struct V2Writer<'a> {
+    dir: &'a Path,
+    known: std::collections::HashMap<PathBuf, (u64, u64, String, u64)>,
+    /// 이번에 새로 쓴 내용 파일 (매니페스트를 쓰기 전에 한꺼번에 디스크에 내린다)
+    written: Vec<PathBuf>,
+    manifest: ManifestV2,
+    summary: SummaryV2,
+}
+
+impl V2Writer<'_> {
+    fn add_file(&mut self, path: &Path, entry: &str, rel: &str) -> Result<()> {
+        let meta = fs::metadata(path).with_context(|| format!("read {}", path.display()))?;
+        let mtime = mtime_ns(&meta);
+        // 이어 쓰는 내용 파일은 크기가 적어 둔 그대로일 때만 (망가졌으면 다시 읽어 바꿔 넣는다)
+        let reuse = match self.known.get(path) {
+            Some((size, known_mtime, hash, stored_size)) if *size == meta.len() && *known_mtime == mtime && fs::metadata(object_path(self.dir, hash)?).is_ok_and(|m| m.is_file() && m.len() == *stored_size) => {
+                Some((hash.clone(), *size, *stored_size))
+            }
+            _ => None,
+        };
+        let (hash, size, stored_size) = match reuse {
+            Some(v) => v,
+            None => {
+                let (hash, read, stored_size, written) = put_object(self.dir, path)?;
+                if let Some(written) = written {
+                    self.summary.stored += stored_size;
+                    self.written.push(written);
+                }
+                (hash, read, stored_size)
+            }
+        };
+        self.summary.size += size;
+        self.manifest.files.push(StoredFile { entry: entry.to_string(), rel: rel.to_string(), hash, size, mtime, stored_size });
+        Ok(())
+    }
+
+    fn add_dir(&mut self, dir: &Path, entry: &str, rel: &str) -> Result<()> {
+        for item in fs::read_dir(dir)? {
+            let item = item?;
+            let name = item.file_name().to_string_lossy().into_owned();
+            let child = if rel.is_empty() { name } else { format!("{}/{}", rel, name) };
+            let kind = item.file_type()?;
+            if kind.is_dir() {
+                self.manifest.dirs.push(StoredDir { entry: entry.to_string(), rel: child.clone() });
+                self.add_dir(&item.path(), entry, &child)?;
+            } else if kind.is_symlink() {
+                let path = item.path();
+                self.manifest.links.push(LinkEntry { target: fs::read_link(&path)?, dir: path.is_dir(), path });
+            } else if kind.is_file() {
+                self.add_file(&item.path(), entry, &child)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
+    let started = now_ns();
+    let mut w = V2Writer {
+        dir,
+        known: known_files(dir),
+        written: Vec::new(),
+        manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started },
+        summary: SummaryV2 { started, ..Default::default() },
+    };
+    for (i, path) in paths.iter().enumerate() {
+        let entry = i.to_string();
+        let is_file = path.is_file();
+        if is_file {
+            w.add_file(path, &entry, "")?;
+        } else {
+            w.add_dir(path, &entry, "")?;
+        }
+        w.manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file });
+    }
+    sync_all(&w.written)?;
+    let mut zip = zip::ZipWriter::new(File::create(target)?);
+    let opts = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated).large_file(true);
+    zip.start_file(SUMMARY_V2, opts)?;
+    serde_json::to_writer(&mut zip, &w.summary)?;
+    zip.start_file(MANIFEST_V2, opts)?;
+    serde_json::to_writer(&mut zip, &w.manifest)?;
+    zip.finish()?.sync_all()?;
+    Ok(())
+}
+
+/// 새로 쓴 내용 파일을 디스크에 내린다. Windows는 쓰기 권한 핸들이어야 내릴 수 있다. 파일마다 차례로 기다리면 작은 파일이 많은 서버의 첫 백업이 아주 느려서 몇 갈래로 나눠 한다
+fn sync_all(files: &[PathBuf]) -> Result<()> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    let lanes = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 16);
+    let chunk = files.len().div_ceil(lanes);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = files.chunks(chunk).map(|part| scope.spawn(move || part.iter().try_for_each(|f| fs::OpenOptions::new().write(true).open(f).and_then(|f| f.sync_all())))).collect();
+        handles.into_iter().try_for_each(|h| h.join().unwrap_or_else(|_| Err(io::Error::other("sync thread panicked"))))
+    })?;
+    Ok(())
+}
+
+/// 판 2 매니페스트. 판 1이면 `None`
+fn read_v2(path: &Path) -> Result<Option<ManifestV2>> {
+    let mut zip = zip::ZipArchive::new(File::open(path)?)?;
+    let found = zip.by_name(MANIFEST_V2);
+    match found {
+        Ok(file) => Ok(Some(serde_json::from_reader(file)?)),
+        Err(zip::result::ZipError::FileNotFound) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// 폴더에 있는 백업 이름 꼴의 파일 (목록이나 항목을 하나라도 읽지 못하면 오류)
+fn backup_names(dir: &Path) -> io::Result<Vec<String>> {
+    let mut names = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        if let Ok(name) = entry?.file_name().into_string() {
+            if BackupKind::from_name(&name).is_some() {
+                names.push(name);
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// 어느 백업도 쓰지 않는 내용과 끝나지 않은 임시 파일을 치운다. 호출자가 `dir_lock`을 쥐고 있어야 한다.
+/// 백업 하나라도 읽지 못하면 무엇을 쓰는지 모르니 아무것도 지우지 않는다
+fn collect_garbage(dir: &Path) {
+    let objects = dir.join(OBJECTS);
+    if !objects.is_dir() {
+        return;
+    }
+    // 목록이 아니라 폴더의 백업 이름을 모두 본다: 목록에서 빠진(열지 못한) 백업의 내용도 지우지 않게
+    let mut used = std::collections::HashSet::new();
+    let names = match backup_names(dir) {
+        Ok(names) => names,
+        Err(e) => {
+            tracing::warn!("Not clearing unused backup content: could not list {}: {}", dir.display(), e);
+            return;
+        }
+    };
+    for name in names {
+        match read_v2(&dir.join(&name)) {
+            Ok(Some(m)) => used.extend(m.files.into_iter().map(|f| f.hash)),
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!("Not clearing unused backup content: could not read {}: {}", name, e);
+                return;
+            }
+        }
+    }
+    for shard in fs::read_dir(&objects).into_iter().flatten().flatten() {
+        let path = shard.path();
+        let name = shard.file_name().to_string_lossy().into_owned();
+        if name.starts_with(".tmp-") {
+            let _ = fs::remove_file(&path);
+            continue;
+        }
+        if !path.is_dir() {
+            continue;
+        }
+        for object in fs::read_dir(&path).into_iter().flatten().flatten() {
+            let hash = object.file_name().to_string_lossy().into_owned();
+            if !used.contains(&hash) {
+                if let Err(e) = fs::remove_file(object.path()) {
+                    tracing::warn!("Could not remove unused backup content {}: {}", object.path().display(), e);
+                }
+            }
+        }
+        let _ = fs::remove_dir(&path); // 비었을 때만 지워진다
+    }
+}
+
+/// 판 1 백업 쓰기 (0.1.8까지의 모양. 시험이 옛 백업을 만드는 데 쓴다)
+#[cfg(test)]
 fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
     let mut zip = zip::ZipWriter::new(File::create(target)?);
     let opts = zip::write::FileOptions::default()
@@ -181,6 +524,7 @@ fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::write::FileOptions, links: &mut Vec<LinkEntry>) -> Result<()> {
     for item in fs::read_dir(dir)? {
         let item = item?;
@@ -205,8 +549,22 @@ fn info(path: &Path) -> Option<BackupInfo> {
     let name = path.file_name()?.to_str()?.to_string();
     let kind = BackupKind::from_name(&name)?;
     let meta = fs::metadata(path).ok()?;
-    let created = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-    Some(BackupInfo { name, kind, created, size: meta.len() })
+    let modified = mtime_ns(&meta);
+    // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기
+    let summary = zip::ZipArchive::new(File::open(path).ok()?)
+        .ok()
+        .and_then(|mut zip| zip.by_name(SUMMARY_V2).ok().and_then(|f| serde_json::from_reader::<_, SummaryV2>(f).ok()));
+    // 판 1은 0.1.8까지 만든 것이다: 수정 시각이 새로 찍힌 사본(옮겼다 되돌린 것)도 이름의 시각보다 새것으로 보지 않는다
+    let v1_made = name_time_ns(&name).map_or(modified, |named| named.min(modified));
+    let (size, stored, made) = summary.map_or((meta.len(), meta.len(), v1_made), |s| (s.size, s.stored, if s.started > 0 { s.started } else { modified }));
+    Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, made })
+}
+
+/// 이름 앞의 지역 시각(`YYYYMMDD-HHMMSS`)을 유닉스 나노초로
+fn name_time_ns(name: &str) -> Option<u64> {
+    let naive = chrono::NaiveDateTime::parse_from_str(name.get(..15)?, "%Y%m%d-%H%M%S").ok()?;
+    let local = naive.and_local_timezone(chrono::Local).earliest()?;
+    u64::try_from(local.timestamp_nanos_opt()?).ok()
 }
 
 /// 새것부터
@@ -217,7 +575,7 @@ pub fn list(dir: &Path) -> Vec<BackupInfo> {
         .flatten()
         .filter_map(|e| info(&e.path()))
         .collect();
-    out.sort_by(|a, b| b.name.cmp(&a.name));
+    out.sort_by(|a, b| b.made.cmp(&a.made).then_with(|| b.name.cmp(&a.name)));
     out
 }
 
@@ -234,15 +592,20 @@ fn checked(dir: &Path, name: &str) -> Result<PathBuf> {
 }
 
 pub fn delete(dir: &Path, name: &str) -> Result<()> {
+    let lock = dir_lock(dir);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     fs::remove_file(checked(dir, name)?)?;
+    collect_garbage(dir);
     Ok(())
 }
 
 /// 자동 백업(수동 제외)을 새것 `keep`개만 남긴다. `protect`는 넘쳐도 지우지 않는다 (방금 만든 백업, 복원 중인 백업). 지운 이름을 돌려준다
 pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
+    let lock = dir_lock(dir);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     // 종류마다 따로 센다: 업데이트 전·복원 전 안전 백업이 예약 백업을 밀어내지 않게
     let mut seen: std::collections::HashMap<BackupKind, usize> = std::collections::HashMap::new();
-    list(dir)
+    let removed: Vec<String> = list(dir)
         .into_iter()
         .filter(|b| b.kind != BackupKind::Manual)
         .filter(|b| {
@@ -253,14 +616,48 @@ pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
         .filter(|b| !protect.contains(&b.name.as_str()))
         .filter(|b| fs::remove_file(dir.join(&b.name)).is_ok())
         .map(|b| b.name)
-        .collect()
+        .collect();
+    if !removed.is_empty() {
+        collect_garbage(dir);
+    }
+    removed
 }
 
 /// 백업이 돌려놓을 경로 (백업할 때의 절대 경로)
 pub fn backed_up_paths(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
-    let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
+    Ok(open(dir, name)?.paths().iter().map(|e| e.path.clone()).collect())
+}
+
+/// 읽은 백업 (두 판)
+enum Opened {
+    V1(zip::ZipArchive<File>, Manifest),
+    V2(ManifestV2),
+}
+
+impl Opened {
+    fn paths(&self) -> &[ManifestEntry] {
+        match self {
+            Opened::V1(_, m) => &m.paths,
+            Opened::V2(m) => &m.paths,
+        }
+    }
+
+    fn links(&self) -> &[LinkEntry] {
+        match self {
+            Opened::V1(_, m) => &m.links,
+            Opened::V2(m) => &m.links,
+        }
+    }
+}
+
+fn open(dir: &Path, name: &str) -> Result<Opened> {
+    let path = checked(dir, name)?;
+    if let Some(m) = read_v2(&path)? {
+        return Ok(Opened::V2(m));
+    }
+    let mut zip = zip::ZipArchive::new(File::open(&path)?)?;
     let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
-    Ok(manifest.paths.into_iter().map(|e| e.path).collect())
+    Ok(Opened::V1(zip, manifest))
 }
 
 /// `path`가 `roots` 중 하나의 안(그 자체 포함)이고 `..`가 없는가 (글자 경로로 본다)
@@ -281,13 +678,16 @@ pub struct Restored {
 /// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣는다. 치워 둔 것은 모두 성공한 뒤에 지우고,
 /// 도중에 실패하면 이미 풀어 넣은 경로까지 거꾸로 모두 되돌린다
 pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
-    let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
-    let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
+    let lock = dir_lock(dir);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let mut opened = open(dir, name)?;
+    let entries: Vec<ManifestEntry> = opened.paths().to_vec();
+    let links: Vec<LinkEntry> = opened.links().to_vec();
     // (경로, 기존 것을 치워 둔 곳). 실패하면 이 목록을 거꾸로 되돌린다
     let mut touched: Vec<(&Path, Option<PathBuf>)> = Vec::new();
     let mut failed = None;
     let mut links_missed = 0;
-    for entry in &manifest.paths {
+    for entry in &entries {
         let aside = entry.path.exists().then(|| free_aside_path(&entry.path));
         if let Some(aside) = &aside {
             if let Err(e) = fs::rename(&entry.path, aside) {
@@ -296,12 +696,16 @@ pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
             }
         }
         touched.push((&entry.path, aside));
-        if let Err(e) = extract_entry(&mut zip, entry) {
+        let extracted = match &mut opened {
+            Opened::V1(zip, _) => extract_entry(zip, entry),
+            Opened::V2(m) => extract_v2(dir, m, entry),
+        };
+        if let Err(e) = extracted {
             failed = Some(e.context(format!("restore {}", entry.path.display())));
             break;
         }
         // 링크는 그 폴더 안에 있던 것만, 링크 자체로 되살린다. 만들지 못하면(Windows 권한 등) 알리고 나머지 복원은 이어 간다
-        for link in manifest.links.iter().filter(|l| !entry.is_file && is_inside(&l.path, std::slice::from_ref(&entry.path))) {
+        for link in links.iter().filter(|l| !entry.is_file && is_inside(&l.path, std::slice::from_ref(&entry.path))) {
             if let Err(e) = make_link(link) {
                 tracing::warn!("Could not restore link {} -> {}: {}", link.path.display(), link.target.display(), e);
                 links_missed += 1;
@@ -371,6 +775,54 @@ fn remove_any(path: &Path) {
     let _ = if path.is_dir() { fs::remove_dir_all(path) } else { fs::remove_file(path) };
 }
 
+/// 저장소의 내용 하나를 `out`에 쓴다. 해시·크기가 맞지 않으면(망가진 내용) 실패한다
+fn write_object(dir: &Path, file: &StoredFile, out: &Path) -> Result<()> {
+    use sha2::Digest;
+    use std::io::{Read, Write};
+    let object = object_path(dir, &file.hash)?;
+    let mut src = flate2::read::DeflateDecoder::new(File::open(&object).context("backup content is missing")?);
+    let mut dst = File::create(out)?;
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut written = 0u64;
+    loop {
+        let n = src.read(&mut buf).context("backup content is damaged")?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        dst.write_all(&buf[..n])?;
+        written += n as u64;
+    }
+    if written != file.size || hex::encode(hasher.finalize()) != file.hash {
+        bail!("backup content is damaged");
+    }
+    Ok(())
+}
+
+fn extract_v2(dir: &Path, m: &ManifestV2, entry: &ManifestEntry) -> Result<()> {
+    let files = m.files.iter().filter(|f| f.entry == entry.entry);
+    if entry.is_file {
+        let file = m.files.iter().find(|f| f.entry == entry.entry && f.rel.is_empty()).context("backup content is missing")?;
+        if let Some(parent) = entry.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        return write_object(dir, file, &entry.path);
+    }
+    fs::create_dir_all(&entry.path)?;
+    for d in m.dirs.iter().filter(|d| d.entry == entry.entry) {
+        fs::create_dir_all(inner_path(&entry.path, &d.rel)?)?;
+    }
+    for file in files {
+        let out = inner_path(&entry.path, &file.rel)?;
+        if let Some(parent) = out.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write_object(dir, file, &out)?;
+    }
+    Ok(())
+}
+
 fn extract_entry(zip: &mut zip::ZipArchive<File>, entry: &ManifestEntry) -> Result<()> {
     if entry.is_file {
         if let Some(parent) = entry.path.parent() {
@@ -403,6 +855,20 @@ fn extract_entry(zip: &mut zip::ZipArchive<File>, entry: &ManifestEntry) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 0.1.8까지 만든 모양(판 1)의 백업
+    fn v1_backup(dir: &Path, paths: &[PathBuf]) -> BackupInfo {
+        fs::create_dir_all(dir).unwrap();
+        let path = dir.join("20100101-000000-000-manual.zip");
+        write_zip(&path, paths).unwrap();
+        info(&path).unwrap()
+    }
+
+    fn objects(dir: &Path) -> Vec<String> {
+        let mut out: Vec<String> = fs::read_dir(dir.join(OBJECTS)).into_iter().flatten().flatten().flat_map(|s| fs::read_dir(s.path()).into_iter().flatten().flatten()).map(|o| o.file_name().to_string_lossy().into_owned()).collect();
+        out.sort();
+        out
+    }
 
     fn world(root: &Path) -> PathBuf {
         let w = root.join("world");
@@ -465,7 +931,7 @@ mod tests {
         let w = world(tmp.path());
         std::os::unix::fs::symlink("level.dat", w.join("latest")).unwrap();
         let dir = tmp.path().join("backups");
-        let b = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        let b = v1_backup(&dir, std::slice::from_ref(&w));
         // 파일 아래를 가리키는 링크 자리: 만들 수 없다
         let crafted = dir.join("20000101-000000-000-manual.zip");
         {
@@ -518,7 +984,7 @@ mod tests {
         let props = tmp.path().join("server.properties");
         fs::write(&props, b"a=1").unwrap();
         let dir = tmp.path().join("backups");
-        let b = create(&dir, BackupKind::Manual, &[w.clone(), props.clone()]).unwrap();
+        let b = v1_backup(&dir, &[w.clone(), props.clone()]);
         // 두 번째 항목의 파일이 빠진 백업: 첫 경로는 풀리고 두 번째에서 실패한다
         let broken = dir.join("20000101-000000-000-manual.zip");
         {
@@ -629,5 +1095,201 @@ mod tests {
             assert!(delete(tmp.path(), bad).is_err(), "{}", bad);
         }
         assert!(create(tmp.path(), BackupKind::Manual, &[]).is_err());
+    }
+
+    /// MK16: 바뀌지 않은 파일은 다시 쓰지 않고, 어느 백업이든 그때 내용으로 돌아온다. 0.1.8은 판 2를 백업으로 보지 않는다
+    #[test]
+    fn unchanged_files_are_stored_once_and_every_backup_restores_its_own_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        fs::create_dir_all(w.join("empty")).unwrap();
+        let props = tmp.path().join("server.properties");
+        fs::write(&props, b"a=1").unwrap();
+        let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(60 * 60);
+        for f in [w.join("level.dat"), w.join("region/r.0.0.mca"), props.clone()] {
+            File::options().write(true).open(f).unwrap().set_modified(hour_ago).unwrap();
+        }
+        let dir = tmp.path().join("backups");
+        let paths = [w.clone(), props.clone()];
+        let first = create(&dir, BackupKind::Manual, &paths).unwrap();
+        assert_eq!(first.size, 5 + 6 + 3);
+        assert!(first.stored > 0);
+        let mut zip = zip::ZipArchive::new(File::open(dir.join(&first.name)).unwrap()).unwrap();
+        assert!(zip.by_name(MANIFEST).is_err(), "a 0.1.8 daemon must refuse it instead of restoring empty folders");
+
+        let second = create(&dir, BackupKind::Scheduled, &paths).unwrap();
+        assert_eq!((second.size, second.stored), (first.size, 0));
+        fs::write(w.join("level.dat"), b"level 2").unwrap();
+        let third = create(&dir, BackupKind::Scheduled, &paths).unwrap();
+        assert!(third.stored > 0 && third.stored < first.stored, "only the changed file is written: {third:?}");
+        assert_eq!(objects(&dir).len(), 4);
+
+        fs::remove_dir_all(w.join("empty")).unwrap();
+        restore(&dir, &first.name).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
+        assert_eq!(fs::read(w.join("region/r.0.0.mca")).unwrap(), b"chunks");
+        assert!(w.join("empty").is_dir(), "empty folders come back too");
+        restore(&dir, &third.name).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level 2");
+        assert_eq!(fs::read(&props).unwrap(), b"a=1");
+    }
+
+    /// 지우거나 정리하면 남은 백업이 쓰지 않는 내용만 치운다. 읽지 못하는 백업이 있으면 아무것도 치우지 않는다
+    #[test]
+    fn deleting_backups_clears_only_content_no_backup_uses() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let old = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        let before = objects(&dir);
+        fs::write(w.join("level.dat"), b"level 2").unwrap();
+        let new = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        assert_eq!(objects(&dir).len(), 3);
+        fs::write(dir.join(OBJECTS).join(".tmp-left"), b"half").unwrap();
+
+        assert_eq!(prune(&dir, 1, &[]), vec![old]);
+        let after = objects(&dir);
+        assert_eq!(after.len(), 2, "the old level.dat goes, the shared chunk file stays");
+        assert!(before.iter().filter(|h| after.contains(h)).count() == 1);
+        assert!(!dir.join(OBJECTS).join(".tmp-left").exists());
+        fs::write(w.join("level.dat"), b"broken").unwrap();
+        restore(&dir, &new).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level 2");
+
+        fs::write(dir.join("20000101-000000-000-manual.zip"), b"not a zip").unwrap();
+        delete(&dir, &new).unwrap();
+        assert_eq!(objects(&dir).len(), 2, "an unreadable backup might use any content");
+        delete(&dir, "20000101-000000-000-manual.zip").unwrap();
+        assert!(objects(&dir).is_empty());
+    }
+
+    /// 망가진 내용이 있으면 복원이 실패하고 이미 풀어 넣은 경로도 되돌린다
+    #[test]
+    fn damaged_content_fails_the_restore_and_rolls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let props = tmp.path().join("server.properties");
+        fs::write(&props, b"a=1").unwrap();
+        let dir = tmp.path().join("backups");
+        let b = create(&dir, BackupKind::Manual, &[w.clone(), props.clone()]).unwrap();
+        let m = read_v2(&dir.join(&b.name)).unwrap().unwrap();
+        let props_hash = &m.files.iter().find(|f| f.entry == "1").unwrap().hash;
+        let mut enc = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut enc, b"a=9").unwrap();
+        fs::write(object_path(&dir, props_hash).unwrap(), enc.finish().unwrap()).unwrap();
+        fs::write(w.join("level.dat"), b"current").unwrap();
+        fs::write(&props, b"a=2").unwrap();
+        assert!(restore(&dir, &b.name).is_err());
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"current");
+        assert_eq!(fs::read(&props).unwrap(), b"a=2");
+    }
+
+    /// 0.1.8까지 만든 백업도 그대로 목록에 보이고 복원된다
+    #[test]
+    fn backups_from_before_still_restore() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let b = v1_backup(&dir, std::slice::from_ref(&w));
+        assert_eq!(b.size, b.stored);
+        create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
+        fs::write(w.join("level.dat"), b"broken").unwrap();
+        restore(&dir, &b.name).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
+        assert_eq!(backed_up_paths(&dir, &b.name).unwrap(), vec![w]);
+    }
+
+    /// D-B12: 이름은 지역 시각이라 서머타임이 끝나는 시간에는 나중 백업의 이름이 앞설 수 있다. 순서는 만든 시각으로 정한다
+    #[test]
+    fn backups_are_ordered_by_when_they_were_made_not_by_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let earlier = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        let later = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        // 시계가 한 시간 뒤로 간 뒤 만든 것처럼 이름만 앞으로
+        let renamed = "20000101-000000-000-scheduled.zip";
+        fs::rename(dir.join(&later), dir.join(renamed)).unwrap();
+        assert_eq!(list(&dir).into_iter().map(|b| b.name).collect::<Vec<_>>(), vec![renamed.to_string(), earlier.clone()]);
+        assert_eq!(prune(&dir, 1, &[]), vec![earlier]);
+    }
+
+    /// 리뷰 603: 열지 못하는 백업이 있으면 그 백업이 쓰는 내용을 지우지 않는다
+    #[cfg(unix)]
+    #[test]
+    fn a_backup_that_cannot_be_opened_keeps_its_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        fs::write(w.join("level.dat"), b"changed").unwrap();
+        let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        // 다른 프로그램이 잡고 있어 열리지 않는 것처럼: 그 자리를 갈 곳 없는 링크로
+        let aside = tmp.path().join("aside.zip");
+        fs::rename(dir.join(&first), &aside).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("gone.zip"), dir.join(&first)).unwrap();
+        delete(&dir, &second).unwrap();
+        fs::remove_file(dir.join(&first)).unwrap();
+        fs::rename(&aside, dir.join(&first)).unwrap();
+        fs::write(w.join("level.dat"), b"broken").unwrap();
+        restore(&dir, &first).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
+    }
+
+    /// 리뷰 603: 망가진 내용 파일은 같은 내용을 다시 읽는 다음 백업이 바꿔 넣는다 (그대로 물려받지 않는다)
+    #[test]
+    fn a_damaged_content_file_is_replaced_by_the_next_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        // 바뀌지 않은 파일로 다시 읽지 않고 이어 쓰는 경로도 지나게
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        File::options().write(true).open(w.join("level.dat")).unwrap().set_modified(old).unwrap();
+        let dir = tmp.path().join("backups");
+        let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        let m = read_v2(&dir.join(&first)).unwrap().unwrap();
+        let level = &m.files.iter().find(|f| f.rel == "level.dat").unwrap().hash;
+        fs::write(object_path(&dir, level).unwrap(), b"damaged content").unwrap();
+        let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        for name in [&first, &second] {
+            fs::write(w.join("level.dat"), b"broken").unwrap();
+            restore(&dir, name).unwrap();
+            assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level", "{name}");
+        }
+    }
+
+    /// 리뷰 603: 판 1은 모두 0.1.8까지 만든 것이다. 수정 시각이 새로 찍힌 사본도 이름의 시각보다 새것으로 보지 않는다
+    #[test]
+    fn a_copied_back_old_backup_does_not_push_out_newer_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let a = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        let copied = "20100101-000000-000-scheduled.zip";
+        write_zip(&dir.join(copied), std::slice::from_ref(&w)).unwrap();
+        let c = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
+        assert_eq!(list(&dir).into_iter().map(|b| b.name).collect::<Vec<_>>(), vec![c.clone(), a, copied.to_string()]);
+        assert_eq!(prune(&dir, 2, &[&c]), vec![copied.to_string()]);
+    }
+
+    #[test]
+    fn new_content_is_flushed_on_every_platform() {
+        // Windows는 쓰기 권한이 있는 핸들이어야 디스크에 내릴 수 있다
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("object");
+        fs::write(&file, b"x").unwrap();
+        sync_all(&[file]).unwrap();
+    }
+
+    #[test]
+    fn content_is_kept_when_the_backup_folder_cannot_be_listed() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 폴더가 아니라 파일이면 목록을 읽지 못한다
+        let not_a_folder = tmp.path().join("backups");
+        fs::write(&not_a_folder, b"").unwrap();
+        assert!(backup_names(&not_a_folder).is_err());
+        let dir = tmp.path().join("ok");
+        let w = world(tmp.path());
+        let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        assert_eq!(backup_names(&dir).unwrap(), vec![made]);
     }
 }
