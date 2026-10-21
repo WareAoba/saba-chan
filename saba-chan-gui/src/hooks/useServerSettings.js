@@ -739,7 +739,9 @@ export async function settleLaunchArgs(id, fields, values) {
             return { failed: true, error_code: 'invalid_format' };
         if (!res?.has_launch_args || !Array.isArray(res.extra_args)) return null;
         const settings = {};
-        for (const [k, v] of Object.entries(res.settings_from_args || {})) settings[k] = String(v);
+        // 목록은 배열 그대로 (쉼표가 든 항목이 나뉘지 않게)
+        for (const [k, v] of Object.entries(res.settings_from_args || {}))
+            settings[k] = Array.isArray(v) ? v : String(v);
         return { extra_args: res.extra_args, settings };
     } catch {
         return values._launch_extra_args !== undefined ? { failed: true } : null;

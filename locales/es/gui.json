@@ -628,6 +628,7 @@
     "type_mismatch": "{{field}} tiene un tipo no válido",
     "out_of_range": "{{field}} está fuera del rango ({{min}} ~ {{max}})",
     "invalid_option": "{{field}}: '{{value}}' no es una opción válida",
+    "duplicate_item": "{{field}}: '{{value}}' aparece más de una vez",
     "list_hint": "Uno por línea",
     "item_count": "{{field}} necesita entre {{min}} y {{max}} elementos",
     "too_long": "{{field}} admite como máximo {{max}} caracteres"

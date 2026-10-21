@@ -628,6 +628,7 @@
     "type_mismatch": "{{field}}の型が正しくありません",
     "out_of_range": "{{field}}が範囲外です ({{min}} ~ {{max}})",
     "invalid_option": "{{field}}: ''{{value}}'' は有効なオプションではありません",
+    "duplicate_item": "{{field}}: '{{value}}' が重複しています",
     "list_hint": "1行に1つずつ",
     "item_count": "{{field}}は{{min}}～{{max}}個にしてください",
     "too_long": "{{field}}は{{max}}文字までです"

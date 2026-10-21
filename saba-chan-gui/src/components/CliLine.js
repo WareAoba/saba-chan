@@ -47,9 +47,11 @@ const SECRET_KEY = /(password|passwd|token|secret)$/i;
 export function changedForCli(values, openedWith, fields = []) {
     const secret = new Set(fields.filter((f) => f.field_type === 'password').map((f) => f.name));
     const types = Object.fromEntries(fields.map((f) => [f.name, f.field_type]));
+    // CLI에 낼 모양으로 비교한다 (목록 ['a,b']와 ['a','b']는 다른 값)
+    const same = (k, v) => String(cliValue(types[k], v) ?? '') === String(cliValue(types[k], openedWith[k]) ?? '');
     return Object.fromEntries(
         Object.entries(values)
-            .filter(([k, v]) => !k.startsWith('_') && String(v ?? '') !== String(openedWith[k] ?? ''))
+            .filter(([k, v]) => !k.startsWith('_') && !same(k, v))
             .map(([k, v]) => [k, secret.has(k) || SECRET_KEY.test(k) ? `<${k}>` : cliValue(types[k], v)]),
     );
 }
@@ -58,7 +60,10 @@ export function changedForCli(values, openedWith, fields = []) {
 function cliValue(fieldType, v) {
     if (fieldType === 'list') {
         const items = listItems(v);
-        return items.some((i) => i.includes(',')) ? JSON.stringify(items) : items.join(',');
+        // 쉼표가 든 항목이나 [로 시작하는 목록은 CLI가 글자 그대로 나눌 수 없어 JSON 배열로
+        return items.some((i) => i.includes(',')) || items[0]?.startsWith('[')
+            ? JSON.stringify(items)
+            : items.join(',');
     }
     if (fieldType === 'multiline')
         return String(v ?? '')

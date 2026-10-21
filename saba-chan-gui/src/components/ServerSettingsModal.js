@@ -101,11 +101,11 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
             {/* 선택지가 있는 목록: 고른 것을 선택지 순서로 */}
             {fieldType === 'list' && field.options?.length > 0 && (
                 <fieldset id={inputId} aria-labelledby={labelId} className="setting-list-options">
-                    {field.options.map((opt) => (
+                    {field.options.map((opt, i) => (
                         <span key={opt} className="setting-list-option">
                             <SabaCheckbox
                                 size="sm"
-                                aria-label={opt}
+                                id={`${inputId}-${i}`}
                                 checked={picked.includes(opt)}
                                 onChange={(on) =>
                                     onChange(
@@ -114,7 +114,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                                     )
                                 }
                             />
-                            {opt}
+                            <label htmlFor={`${inputId}-${i}`}>{opt}</label>
                         </span>
                     ))}
                 </fieldset>
@@ -166,6 +166,8 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                         })}
                     {validationError.errorType === 'too_long' &&
                         t('validation.too_long', { field: fieldLabel, max: validationError.max })}
+                    {validationError.errorType === 'duplicate_item' &&
+                        t('validation.duplicate_item', { field: fieldLabel, value: validationError.value })}
                     {validationError.errorType === 'invalid_option' &&
                         t('validation.invalid_option', {
                             field: fieldLabel,

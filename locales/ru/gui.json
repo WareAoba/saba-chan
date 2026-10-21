@@ -628,6 +628,7 @@
     "type_mismatch": "{{field}} имеет недопустимый тип",
     "out_of_range": "{{field}} вне диапазона ({{min}} ~ {{max}})",
     "invalid_option": "{{field}}: '{{value}}' не является допустимым вариантом",
+    "duplicate_item": "{{field}}: «{{value}}» встречается несколько раз",
     "list_hint": "По одному в строке",
     "item_count": "{{field}}: нужно от {{min}} до {{max}} элементов",
     "too_long": "{{field}}: не больше {{max}} символов"

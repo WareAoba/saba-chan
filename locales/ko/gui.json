@@ -628,6 +628,7 @@
     "type_mismatch": "{{field}}의 타입이 올바르지 않습니다",
     "out_of_range": "{{field}}이(가) 범위를 벗어났습니다 ({{min}} ~ {{max}})",
     "invalid_option": "{{field}}: '{{value}}'은(는) 유효한 옵션이 아닙니다",
+    "duplicate_item": "{{field}}: '{{value}}'이(가) 두 번 들어 있습니다",
     "list_hint": "한 줄에 하나씩",
     "item_count": "{{field}}은(는) {{min}}~{{max}}개여야 합니다",
     "too_long": "{{field}}은(는) {{max}}자까지 쓸 수 있습니다"

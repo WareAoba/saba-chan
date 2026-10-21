@@ -35,7 +35,8 @@ function validateSettingValue(field, value) {
         case 'select':
             return validateSelect(field, value);
         case 'multiline':
-            return field.max_length != null && String(value).length > field.max_length
+            // 데몬처럼 글자(코드 포인트) 수로 센다
+            return field.max_length != null && [...String(value)].length > field.max_length
                 ? { valid: false, errorType: 'too_long', field: name, max: field.max_length }
                 : { valid: true };
         case 'text':
@@ -138,8 +139,13 @@ function validateList(field, items) {
     }
     const bad = field.options?.length ? items.find((v) => !field.options.includes(v)) : undefined;
     if (bad !== undefined) return { valid: false, errorType: 'invalid_option', field: name, value: bad };
+    // 같은 항목 두 번은 데몬이 invalid_format으로 거절한다
+    const twice = items.find((v, i) => items.indexOf(v) !== i);
+    if (twice !== undefined) return { valid: false, errorType: 'duplicate_item', field: name, value: twice };
     return { valid: true };
 }
+
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /** 설정 타입으로 바꾼 값끼리 같은가 (데몬 validator::same_setting_value) */
 function sameSettingValue(fieldType, a, b) {
@@ -148,7 +154,9 @@ function sameSettingValue(fieldType, a, b) {
         const word = String(v).trim();
         return word === 'true' ? true : word === 'false' ? false : null;
     };
-    const num = (v) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v.trim()) : NaN);
+    // 글자는 십진수만 수로 본다 (Rust f64 파싱처럼 0x… 는 수가 아니다)
+    const num = (v) =>
+        typeof v === 'number' ? v : typeof v === 'string' && DECIMAL.test(v.trim()) ? Number(v.trim()) : NaN;
     if (fieldType === 'boolean') return flag(a) !== null && flag(a) === flag(b);
     if (fieldType === 'number') return !Number.isNaN(num(a)) && num(a) === num(b);
     const text = (v) => (typeof v === 'string' ? v.trim() : JSON.stringify(v));

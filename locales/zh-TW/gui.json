@@ -628,6 +628,7 @@
     "type_mismatch": "{{field}} 的類型無效",
     "out_of_range": "{{field}} 超出範圍 ({{min}} ~ {{max}})",
     "invalid_option": "{{field}}：'{{value}}' 不是有效選項",
+    "duplicate_item": "{{field}}：'{{value}}' 重複出現",
     "list_hint": "每行一個",
     "item_count": "{{field}} 需要 {{min}}~{{max}} 項",
     "too_long": "{{field}} 最多 {{max}} 個字元"

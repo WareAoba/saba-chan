@@ -2,7 +2,7 @@ import { act, fireEvent, render, renderHook, screen } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { changedForCli } from '../components/CliLine';
 import { SettingsField } from '../components/ServerSettingsModal';
-import { useServerSettings } from '../hooks/useServerSettings';
+import { settleLaunchArgs, useServerSettings } from '../hooks/useServerSettings';
 import { failedModuleReason } from '../utils/failedModules';
 import { hiddenFields, validateAllSettings } from '../utils/validation';
 
@@ -214,5 +214,63 @@ describe('CLI로 보기: list·multiline 값 (CLI server set 문법)', () => {
 
     it('여러 줄 글은 역슬래시를 두 번 쓴 뒤 줄바꿈을 \\n으로 쓴다', () => {
         expect(changedForCli({ motd: 'a\\b\nc' }, {}, fields)).toEqual({ motd: 'a\\\\b\\nc' });
+    });
+});
+
+// 리뷰 559 P3와 Codex 지적: 데몬과 같은 기준으로 미리 막고, 값 모양을 잃지 않는다
+describe('데몬과 같은 기준 (리뷰 후속)', () => {
+    it('같은 항목이 두 번이면 칸에 오류를 단다 (데몬은 invalid_format으로 거절)', () => {
+        const fields = [{ name: 'admins', field_type: 'list' }];
+        const res = validateAllSettings(fields, { admins: ['a', 'b', 'a'] });
+        expect(res.errors.admins).toMatchObject({ errorType: 'duplicate_item', value: 'a' });
+    });
+
+    it('여러 줄 글자 수는 데몬처럼 글자 단위로 센다', () => {
+        const fields = [{ name: 'motd', field_type: 'multiline', max_length: 2 }];
+        expect(validateAllSettings(fields, { motd: '😀😀' }).valid).toBe(true);
+        expect(validateAllSettings(fields, { motd: '😀😀😀' }).valid).toBe(false);
+    });
+
+    it('숫자 비교는 십진수만 수로 본다 (Rust f64 파싱과 같게)', () => {
+        const fields = [
+            { name: 'port', field_type: 'number' },
+            { name: 'note', field_type: 'text', visible_when: { field: 'port', equals: 25565 } },
+        ];
+        expect(hiddenFields(fields, { port: '0x63DD' })).toEqual(['note']);
+        expect(hiddenFields(fields, { port: '25565.0' })).toEqual([]);
+    });
+
+    it('CLI로 보기: 쉼표 위치만 바뀐 목록도 바뀐 값이고, [로 시작하는 항목은 JSON 배열로 낸다', () => {
+        const fields = [{ name: 'admins', field_type: 'list' }];
+        expect(changedForCli({ admins: ['a', 'b'] }, { admins: ['a,b'] }, fields)).toEqual({ admins: 'a,b' });
+        expect(changedForCli({ admins: ['[1]'] }, {}, fields)).toEqual({ admins: '["[1]"]' });
+        expect(changedForCli({ admins: ['a', ''] }, { admins: ['a'] }, fields)).toEqual({});
+    });
+
+    it('선택지 글자를 눌러도 체크된다', () => {
+        const onChange = vi.fn();
+        render(
+            <SettingsField
+                field={{ name: 'perms', label: 'Perms', field_type: 'list', options: ['read', 'write'] }}
+                value={[]}
+                modNs="game"
+                onChange={onChange}
+            />,
+        );
+        fireEvent.click(screen.getByText('write'));
+        expect(onChange).toHaveBeenCalledWith('perms', ['write']);
+    });
+
+    it('실행 인자에서 읽은 목록 값은 배열 그대로 둔다', async () => {
+        window.api = {
+            instanceLaunchPreview: vi.fn().mockResolvedValue({
+                success: true,
+                has_launch_args: true,
+                settings_from_args: { admins: ['a,b', 'c'], ram: 6 },
+                extra_args: [],
+            }),
+        };
+        const res = await settleLaunchArgs('s1', [], {});
+        expect(res.settings).toEqual({ admins: ['a,b', 'c'], ram: '6' });
     });
 });
