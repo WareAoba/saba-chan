@@ -932,7 +932,7 @@ fn list_all() -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn powershell_lines(script: &str) -> Option<String> {
-    let mut cmd = std::process::Command::new("powershell");
+    let mut cmd = std::process::Command::new(saba_chan_updater_lib::process::system_tool("powershell"));
     saba_chan_updater_lib::process::hide_console(&mut cmd).args(["-NoProfile", "-NonInteractive", "-Command", script]);
     match output_within(&mut cmd, COMMAND_LIMIT) {
         Some(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
@@ -987,7 +987,7 @@ fn kill_pid(pid: u32, tree: bool) {
         args.push("/T");
     }
     args.push("/F");
-    let mut cmd = std::process::Command::new("taskkill");
+    let mut cmd = std::process::Command::new(saba_chan_updater_lib::process::system_tool("taskkill"));
     saba_chan_updater_lib::process::hide_console(&mut cmd).args(&args);
     let _ = output_within(&mut cmd, COMMAND_LIMIT);
 }
@@ -1316,7 +1316,7 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        match std::process::Command::new("cmd")
+        match std::process::Command::new(saba_chan_updater_lib::process::system_tool("cmd"))
             .args(CLEANUP_CMD_ARGS)
             .arg(&script_path)
             .creation_flags(CREATE_NO_WINDOW)

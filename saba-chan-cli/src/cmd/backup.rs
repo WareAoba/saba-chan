@@ -59,7 +59,7 @@ async fn list(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                     .and_then(Value::as_u64)
                     .map(output::ago)
                     .unwrap_or_default(),
-                b.get("size").and_then(Value::as_u64).map(size).unwrap_or_default(),
+                size_cell(b, |stored| t!("backup.stored", size = stored)),
             ]);
         }
         output::print_table(t);
@@ -176,6 +176,17 @@ fn kind_label(kind: &str) -> String {
     crate::i18n::try_t(&format!("backup.kind.{}", kind)).unwrap_or_else(|| kind.to_string())
 }
 
+/// 목록의 크기 칸. 증분 백업은 담은 크기(`size`)와 이번에 새로 저장한 크기(`stored`)가 다르면 둘 다
+fn size_cell(b: &Value, stored_label: impl Fn(String) -> String) -> String {
+    let Some(total) = b.get("size").and_then(Value::as_u64) else {
+        return String::new();
+    };
+    match b.get("stored").and_then(Value::as_u64) {
+        Some(stored) if stored != total => format!("{} · {}", size(total), stored_label(size(stored))),
+        _ => size(total),
+    }
+}
+
 /// 바이트 → 사람이 읽는 크기
 pub fn size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
@@ -204,5 +215,31 @@ mod tests {
         assert!(links_missed(&json!({ "links_not_restored": 2 })).is_some_and(|m| m.contains('2')));
         assert_eq!(links_missed(&json!({ "links_not_restored": 0 })), None);
         assert_eq!(links_missed(&json!({})), None, "an older daemon does not report it");
+    }
+
+    /// 증분 백업(MK16)은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업이나 옛 데몬은 크기만
+    #[test]
+    fn an_incremental_backup_shows_what_it_newly_stored() {
+        let ko = |b: &Value| {
+            size_cell(b, |stored| {
+                crate::i18n::try_t_in("ko", "backup.stored")
+                    .unwrap()
+                    .replace("{{size}}", &stored)
+            })
+        };
+        let mb = 1024 * 1024;
+        let cell = ko(&json!({ "size": 120 * mb, "stored": 2 * mb }));
+        assert!(
+            cell.starts_with("120.0 MB") && cell.contains("2.0 MB") && cell.contains("새로"),
+            "{cell}"
+        );
+        assert_eq!(ko(&json!({ "size": 120 * mb, "stored": 120 * mb })), "120.0 MB");
+        assert_eq!(
+            ko(&json!({ "size": 120 * mb })),
+            "120.0 MB",
+            "an older daemon does not send stored"
+        );
+        assert_eq!(ko(&json!({ "size": 120 * mb, "stored": "2" })), "120.0 MB");
+        assert_eq!(ko(&json!({})), "");
     }
 }

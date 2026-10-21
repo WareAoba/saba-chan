@@ -43,4 +43,30 @@ describe('재시작이 끝난 뒤 상태', () => {
         await act(async () => result.current.fetchServers());
         expect(servers[0].status).toBe('running');
     });
+
+    it('이미 재시작을 고른 곳에서 부르면 다시 묻지 않고 바로 재시작한다', async () => {
+        window.api = {
+            serverList: vi.fn(async () => ({ servers: [] })),
+            instanceRestart: vi.fn(async () => ({ success: true })),
+        };
+        const setModal = vi.fn();
+        const { result } = renderHook(() =>
+            useServerActions({
+                servers: [{ id: 'a', name: 'A', module: 'game', status: 'running' }],
+                setServers: vi.fn(),
+                modules: [],
+                loading: false,
+                setLoading: vi.fn(),
+                setModal,
+                setProgressBar: vi.fn(),
+                openConsole: vi.fn(),
+                closeConsole: vi.fn(),
+                setShowModuleManager: vi.fn(),
+                formatUptime: vi.fn(),
+            }),
+        );
+        await act(async () => result.current.handleRestart('A', { confirmed: true }));
+        expect(setModal).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'question' }));
+        expect(window.api.instanceRestart).toHaveBeenCalledWith('a', { force: false });
+    });
 });

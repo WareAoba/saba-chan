@@ -59,7 +59,7 @@ pub(crate) fn kill_tree(pid: u32) {
     }
     #[cfg(windows)]
     {
-        let mut cmd = std::process::Command::new("taskkill");
+        let mut cmd = std::process::Command::new(saba_chan_updater_lib::process::system_tool("taskkill"));
         cmd.args(["/T", "/F", "/PID", &pid.to_string()]);
         {
             use std::os::windows::process::CommandExt;
@@ -987,7 +987,7 @@ mod tests {
             "$p = Start-Process ping -ArgumentList '-n','60','127.0.0.1' -PassThru -WindowStyle Hidden; Set-Content -Encoding ascii -Path '{}' -Value $p.Id",
             pidfile.display()
         );
-        let mut cmd = Command::new("powershell");
+        let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("powershell"));
         cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
         let mut child = plain(cmd.spawn().unwrap());
         let pid = match &child {

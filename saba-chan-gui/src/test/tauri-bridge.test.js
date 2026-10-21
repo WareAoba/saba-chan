@@ -108,17 +108,13 @@ describe('데몬 응답 가공', () => {
 
     it('GUI 설정 저장은 부른 순서대로 한다 (앞 저장이 늦게 끝나 뒤 저장을 덮지 않게)', async () => {
         let releaseFirst;
-        let gets = 0;
         const puts = [];
         const { api } = await install({
             daemon_request: daemon({
-                'GET /api/config/gui': () => {
-                    gets += 1;
-                    if (gets === 1) return new Promise((r) => (releaseFirst = () => r({ status: 200, data: {} })));
-                    return { status: 200, data: {} };
-                },
                 'PUT /api/config/gui': (args) => {
                     puts.push(args.body.theme);
+                    if (puts.length === 1)
+                        return new Promise((r) => (releaseFirst = () => r({ status: 200, data: { success: true } })));
                     return { status: 200, data: { success: true } };
                 },
             }),
@@ -127,15 +123,52 @@ describe('데몬 응답 가공', () => {
         const first = api.settingsSave({ theme: 'old' });
         const second = api.settingsSave({ theme: 'new' });
         await flush();
+        expect(puts).toEqual(['old']);
         releaseFirst();
         await Promise.all([first, second]);
         expect(puts).toEqual(['old', 'new']);
     });
 
+    // 데몬이 잠근 채 합친다. GET으로 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다 (Codex 10-21 #2)
+    it('데몬이 응답하면 바꾼 키만 PUT하고 미리 읽지 않는다', async () => {
+        const bodies = [];
+        const get = vi.fn(() => ({ status: 200, data: { theme: 'light', language: 'en' } }));
+        const { api } = await install({
+            daemon_request: daemon({
+                'GET /api/config/gui': get,
+                'PUT /api/config/gui': (args) => {
+                    bodies.push(args.body);
+                    return { status: 200, data: { success: true } };
+                },
+            }),
+        });
+        expect(await api.settingsSave({ theme: 'dark' })).toBe(true);
+        expect(bodies).toEqual([{ theme: 'dark' }]);
+        expect(get).not.toHaveBeenCalled();
+    });
+
+    // 셸이 저장 직전 상태에 합친다. 여기서 미리 읽어 합치면 그 사이 셸이 바꾼 값(창 위치 등)을 되돌린다
+    it('데몬이 응답하지 않으면 바꾼 키만 셸 로컬 저장에 넘긴다', async () => {
+        let saved;
+        const { api } = await install({
+            daemon_request: daemon({
+                'PUT /api/config/gui': { status: 0, error: 'connect refused', code: 'ECONNREFUSED' },
+            }),
+            settings_local_load: () => {
+                throw new Error('미리 읽지 않는다');
+            },
+            settings_local_save: (args) => {
+                saved = args.settings;
+                return true;
+            },
+        });
+        expect(await api.settingsSave({ theme: 'dark' })).toBe(true);
+        expect(saved).toEqual({ theme: 'dark' });
+    });
+
     it('IPC 포트를 저장해도 지금 데몬과의 연결 주소는 바꾸지 않는다 (데몬은 다시 켤 때 새 포트를 쓴다)', async () => {
         const { api, tauri } = await install({
             daemon_request: daemon({
-                'GET /api/config/gui': { status: 200, data: { ipcPort: 57474 } },
                 'PUT /api/config/gui': { status: 200, data: { success: true } },
             }),
             refresh_ipc_base: null,

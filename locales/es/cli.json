@@ -292,7 +292,11 @@
     "none": "No hay módulos de juego instalados. Consulta: saba-chan-cli module available",
     "refreshed": "Módulos recargados.",
     "removed": "Módulo {{id}} eliminado.",
-    "unmet": "Requiere {{component}} {{required}} (instalado: {{installed}})"
+    "unmet": "Requiere {{component}} {{required}} (instalado: {{installed}})",
+    "load_failed": {
+      "invalid": "No se pudo cargar el módulo {{module}}. Su module.toml no coincide con el formato:",
+      "unsupported": "No se pudo cargar el módulo {{module}}. Actualiza Saba-chan para leer el formato de módulo {{required}}."
+    }
   },
   "noun": {
     "command": "comando",
@@ -385,7 +389,10 @@
     "restart_hint": "Reinicia {{name}} para aplicarlo: saba-chan-cli restart {{name}}",
     "sync_failed": "Guardado, pero no se pudo escribir el archivo de configuración del juego: {{error}}",
     "ignored": "Se ignoraron porque saba-chan no usa estos ajustes: {{keys}}",
-    "unknown_key": "{{key}} es una clave nueva."
+    "unknown_key": "{{key}} es una clave nueva.",
+    "restart_required_mark": "requiere reinicio",
+    "restart_required": "Reinicia el servidor para aplicar: {{keys}}",
+    "hidden": "Ocultos porque otros ajustes no los usan ahora: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Comilla sin cerrar.",
@@ -495,7 +502,8 @@
   "help": {
     "cmd": {
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
-      "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar"
+      "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
+      "install": "Instalar Saba-chan en este PC sin el instalador con ventana"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -512,9 +520,13 @@
       "events.kind": "Solo estos eventos; `instance` también incluye `instance.exit` y similares",
       "events.server": "Solo eventos de este servidor",
       "events.since": "Empieza tras este id de evento (reenvía lo que el daemon aún guarda)",
-      "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json"
+      "json_stream": "Imprime el progreso y luego el resultado como líneas JSON (NDJSON); implica --json",
+      "install.dir": "Carpeta de instalación (se pregunta si se omite)",
+      "install.modules": "Módulos de juego a instalar, separados por comas (se pregunta si se omite)",
+      "install.gui": "Instalar también la app de escritorio aunque no haya pantalla",
+      "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla"
     },
-    "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos se abre la shell interactiva.\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
+    "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
   "restart": {
     "waiting": "Reiniciando {{name}}...",
@@ -551,7 +563,8 @@
     "restored": "{{name}} ha vuelto a {{backup}}.",
     "pre_restore": "El mundo anterior se conserva como copia de seguridad {{backup}}.",
     "links_not_restored": "La restauración terminó, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, por permisos de Windows). Las rutas están en el registro del daemon.",
-    "start_again": "¿Iniciar {{name}} de nuevo?"
+    "start_again": "¿Iniciar {{name}} de nuevo?",
+    "stored": "{{size}} guardados nuevos"
   },
   "schedule": {
     "col": {
@@ -631,5 +644,54 @@
       "where": "Dónde",
       "what": "Código"
     }
+  },
+  "tui": {
+    "daemon_up": "Daemon ● conectado (v{{version}})",
+    "daemon_down": "Daemon ○ apagado · iniciar: daemon start",
+    "servers_running": "{{running}} de {{total}} servidores en marcha",
+    "menu": "Menú",
+    "output": "Resultado",
+    "enter_to_run": "Enter para ejecutar",
+    "running_hint": "(en curso · Ctrl+C para detener)",
+    "keys": "↑↓ mover · ←→ menú/lista · Enter ejecutar · : comando · PgUp/PgDn resultado · ? ayuda · q salir",
+    "yes": "Sí",
+    "no": "No",
+    "question": "Confirmar",
+    "dialog_keys": "Enter elegir · Esc cancelar",
+    "help_title": "Teclas",
+    "help": "↑↓  moverse por el menú o la lista\n←→ / Tab  cambiar entre menú y lista\nEnter  ejecutar lo elegido (abre la línea de comandos si necesita argumentos)\n:  línea de comandos (los mismos comandos que tras saba-chan-cli, ↑↓ para los anteriores)\nPgUp/PgDn, rueda del ratón  desplazar el resultado\nCtrl+C  detener el comando en curso\nq  salir (el daemon y los servidores siguen en marcha)",
+    "too_narrow": "Amplía la ventana a 60 columnas como mínimo.",
+    "not_here": "Este comando no puede ejecutarse dentro del menú a pantalla completa. Sal con q y ejecútalo en la terminal.",
+    "cancelled": "Detenido.",
+    "action": {
+      "start": "Iniciar",
+      "stop": "Detener",
+      "restart": "Reiniciar",
+      "console": "Últimas líneas de consola",
+      "info": "Información",
+      "backup_create": "Crear copia",
+      "backup_list": "Copias"
+    },
+    "needs_terminal": "El menú a pantalla completa necesita una terminal. En scripts, usa los subcomandos.",
+    "command_panicked": "El comando se detuvo de forma inesperada. Puedes seguir usando otros comandos."
+  },
+  "install": {
+    "fetching": "Comprobando la última versión…",
+    "fetch_failed": "No se pudo obtener la última versión: {{reason}}",
+    "ask_dir": "Carpeta de instalación",
+    "unknown_module": "Módulo desconocido: {{name}}. Módulos disponibles: {{list}}",
+    "ask_module": "¿Instalar también el módulo {{name}}?",
+    "confirm": "¿Instalar Saba-chan en {{dir}}? Configuración: {{profile}}, módulos: {{modules}}",
+    "profile_desktop": "escritorio (con la app)",
+    "profile_headless": "sin pantalla (solo daemon y CLI)",
+    "no_modules": "ninguno",
+    "installing": "Instalando",
+    "not_writable": "No se puede escribir en {{dir}}. Elige con --dir una carpeta en la que puedas escribir (por ejemplo, dentro de tu carpeta de usuario)",
+    "running_inside": "Esta CLI se está ejecutando dentro de {{dir}}, por lo que no puede instalar ahí. Ejecuta un saba-chan-cli que esté fuera de la carpeta de instalación.",
+    "empty_dir": "La carpeta de instalación está vacía. Indica una carpeta con --dir",
+    "failed": "La instalación falló: {{reason}} (detalles: {{log}})",
+    "failed_no_log": "La instalación falló: {{reason}}",
+    "done": "Instalado en {{dir}}",
+    "next": "Inicia el daemon con:\n{{command}}"
   }
 }

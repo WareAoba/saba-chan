@@ -91,6 +91,13 @@ pub fn try_t(key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 정해진 언어의 내장 문구에서 찾는다. 시험은 병렬로 돌고 `init`은 처음 한 번만 먹으므로,
+/// 특정 언어 문구를 확인하는 시험은 전역 카탈로그 대신 이것을 쓴다
+#[cfg(test)]
+pub fn try_t_in(lang: &str, key: &str) -> Option<String> {
+    lookup(&embedded(lang)?, key).map(str::to_string)
+}
+
 /// `{{name}}` 자리를 채운다
 pub fn fill(template: &str, vars: &[(&str, String)]) -> String {
     vars.iter().fold(template.to_string(), |s, (k, v)| {

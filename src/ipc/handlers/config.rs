@@ -243,13 +243,13 @@ pub async fn get_module_locales(
 /// GET /api/system/components — 설치된 컴포넌트 버전
 ///
 /// `installed-manifest.json`(업데이터가 적용할 때마다 기록)이 기준이고, 거기에 없는
-/// 컴포넌트는 이 빌드에 묶인 `versions.toml` 버전으로 채운다.
+/// 컴포넌트는 이 빌드에 묶인 `versions.toml` 버전으로 채운다. 설치 구성에 들지 않는 것(헤드리스의 GUI)은 뺀다.
 pub async fn get_system_components(State(_state): State<IPCServer>) -> impl IntoResponse {
-    use saba_chan_updater_lib::{versions, UpdateManager};
+    use saba_chan_updater_lib::{profile::Profile, versions, UpdateManager};
 
     let bundled = versions::bundled();
-    let mut components: std::collections::BTreeMap<String, String> = bundled.components.clone();
-    components.extend(UpdateManager::load_installed_manifest());
+    let components =
+        installed_components(&bundled.components, UpdateManager::load_installed_manifest(), Profile::load());
 
     let manifest_path = saba_chan_updater_lib::constants::resolve_installed_manifest_path();
     let last_updated = std::fs::metadata(&manifest_path)
@@ -267,6 +267,37 @@ pub async fn get_system_components(State(_state): State<IPCServer>) -> impl Into
         })),
     )
         .into_response()
+}
+
+fn installed_components(
+    bundled: &std::collections::BTreeMap<String, String>,
+    installed: std::collections::HashMap<String, String>,
+    profile: saba_chan_updater_lib::profile::Profile,
+) -> std::collections::BTreeMap<String, String> {
+    let mut components = bundled.clone();
+    components.extend(installed);
+    components.retain(|key, _| profile.includes(key));
+    components
+}
+
+#[cfg(test)]
+mod system_components_tests {
+    use super::installed_components;
+    use saba_chan_updater_lib::profile::Profile;
+
+    #[test]
+    fn a_headless_install_does_not_report_a_gui() {
+        let bundled = [("gui", "0.1.9"), ("saba-core", "0.1.9")].into_iter().map(|(k, v)| (k.into(), v.into())).collect();
+        let installed: std::collections::HashMap<_, _> =
+            [("saba-core".to_string(), "0.1.8".to_string())].into_iter().collect();
+
+        let desktop = installed_components(&bundled, installed.clone(), Profile::Desktop);
+        assert_eq!(desktop.get("gui").map(String::as_str), Some("0.1.9"));
+        assert_eq!(desktop.get("saba-core").map(String::as_str), Some("0.1.8"), "the install record wins");
+
+        let headless = installed_components(&bundled, installed, Profile::Headless);
+        assert_eq!(headless.keys().collect::<Vec<_>>(), ["saba-core"]);
+    }
 }
 
 // ── Directory Scan (migration) ──

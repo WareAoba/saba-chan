@@ -212,6 +212,7 @@ function App() {
         setModal,
         setProgressBar,
         fetchServers,
+        onRestart: handleRestart,
     });
 
     // ── Modal Close Animations ─────────────────────────────
