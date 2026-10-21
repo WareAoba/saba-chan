@@ -751,7 +751,7 @@ pub async fn install_server_handler(
                 keep_executable.as_deref(),
             )
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|e| format!("{:#}", e))
         })
     };
     match install.await.unwrap_or_else(|e| Err(e.to_string())) {
@@ -941,7 +941,8 @@ mod tests {
             "import json, os, sys\nconfig = json.load(sys.stdin)\nexe = os.path.join(config['install_dir'], 'PalServer')\n\
              if config['version'] == 'write':\n    open(exe, 'w').write('new')\n\
              elif config['version'] == 'replace':\n    open(exe + '.part', 'w').write('new')\n    os.replace(exe + '.part', exe)\n\
-             elif config['version'] == 'break':\n    os.remove(exe)\n    os.makedirs(os.path.join(exe, 'x'))\n\
+             elif config['version'] in ('break', 'crash'):\n    os.remove(exe)\n    os.makedirs(os.path.join(exe, 'x'))\n\
+             if config['version'] == 'crash':\n    raise RuntimeError('boom')\n\
              print(json.dumps({'success': False, 'message': 'download failed'}))\n",
         )
         .unwrap();
@@ -993,6 +994,8 @@ mod tests {
         let done = install(&inside, "break").await;
         assert_eq!(done.body["success"], false, "{}", done.body);
         assert_eq!(done.body["restore_failed"], json!(["PalServer"]), "{}", done.body);
+        // 어느 .bak이 이번 시도 직전 사본인지도 알린다 (607 P3-2)
+        assert_eq!(done.body["kept_backups"], json!(["PalServer.1.bak"]), "{}", done.body);
         assert_eq!(backups(), ["PalServer.1.bak", "PalServer.bak"]);
         assert_eq!(std::fs::read_to_string(files.join("PalServer.1.bak")).unwrap(), "old");
         assert_eq!(std::fs::read_to_string(files.join("PalServer.bak")).unwrap(), "user backup");
@@ -1032,6 +1035,30 @@ mod tests {
             assert!(std::fs::symlink_metadata(files.join("PalServer")).unwrap().file_type().is_symlink());
             assert_eq!(backups(), ["PalServer.1.bak", "PalServer.2.bak", "PalServer.bak"], "only the failed restores keep a backup");
         }
+
+        // 모듈이 오류로 끝나고 되돌리지도 못하면 500 `error`에 모듈 오류와 남긴 백업 이름이 함께 있다 (600 P3-2)
+        let reset = || {
+            let exe = files.join("PalServer");
+            let _ = std::fs::remove_dir_all(&exe);
+            let _ = std::fs::remove_file(&exe);
+            std::fs::write(&exe, "old").unwrap();
+        };
+        reset();
+        let before = backups();
+        let done = install(&inside, "crash").await;
+        let error = done.body["error"].as_str().unwrap_or_default();
+        let kept: Vec<String> = backups().into_iter().filter(|b| !before.contains(b)).collect();
+        assert_eq!(kept.len(), 1, "{}", done.body);
+        assert!(error.contains("boom") && error.contains(&kept[0]), "{}", done.body);
+
+        // 백업할 이름이 모두 차 있으면 설치하지 않고 어느 파일을 백업하지 못했는지 알린다 (607 P3-3)
+        reset();
+        for n in 1..100 {
+            std::fs::write(files.join(format!("PalServer.{n}.bak")), "x").unwrap();
+        }
+        let done = install(&inside, "write").await;
+        assert_eq!((done.body["error_code"].as_str(), done.body["file"].as_str()), (Some("backup_failed"), Some("PalServer")), "{}", done.body);
+        assert_eq!(std::fs::read_to_string(files.join("PalServer")).unwrap(), "old", "the module never ran");
     }
 
     // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
