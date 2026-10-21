@@ -14,22 +14,28 @@ pub fn hide_console(cmd: &mut std::process::Command) -> &mut std::process::Comma
 
 /// Windows 시스템 도구(powershell·taskkill·tasklist·tar·cmd·icacls)를 띄울 경로. 다른 OS는 이름 그대로다.
 /// 이름만 주면 실행 파일이 있는 폴더부터 찾으므로, 같은 이름의 다른 파일이 아니라 시스템 폴더의 것을 띄운다.
+/// 시스템 폴더는 OS에 묻는다(`GetSystemDirectoryW`). 사용자가 바꿀 수 있는 SystemRoot·windir 환경변수는 보지 않는다.
 pub fn system_tool(name: &str) -> std::path::PathBuf {
     #[cfg(target_os = "windows")]
     {
-        let root = std::env::var_os("SystemRoot")
-            .or_else(|| std::env::var_os("windir"))
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
-        system_tool_in(&root, name)
+        system_tool_in(system_directory(), name)
     }
     #[cfg(not(target_os = "windows"))]
     std::path::PathBuf::from(name)
 }
 
+#[cfg(target_os = "windows")]
+fn system_directory() -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    let mut buf = [0u16; 260];
+    // SAFETY: buf는 길이를 함께 넘기는 쓰기 버퍼다. 0이나 길이 이상이 돌아오면 쓰지 않는다
+    let len = unsafe { windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
+    (len > 0 && len < buf.len()).then(|| std::ffi::OsString::from_wide(&buf[..len]).into())
+}
+
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-fn system_tool_in(root: &std::path::Path, name: &str) -> std::path::PathBuf {
-    let sys = root.join("System32");
+fn system_tool_in(sys: Option<std::path::PathBuf>, name: &str) -> std::path::PathBuf {
+    let sys = sys.filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows\System32"));
     match name {
         "powershell" => sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"),
         _ => sys.join(format!("{name}.exe")),
@@ -124,10 +130,17 @@ mod tests {
     // 시스템 도구는 이름으로 찾지 않고 Windows 시스템 폴더의 절대 경로로 띄운다
     #[test]
     fn system_tools_resolve_inside_the_windows_folder() {
-        let root = std::path::Path::new(r"D:\Win");
-        let sys = root.join("System32");
-        assert_eq!(system_tool_in(root, "taskkill"), sys.join("taskkill.exe"));
-        assert_eq!(system_tool_in(root, "tar"), sys.join("tar.exe"));
-        assert_eq!(system_tool_in(root, "powershell"), sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"));
+        let sys = std::path::PathBuf::from(r"D:\Win\system32");
+        assert_eq!(system_tool_in(Some(sys.clone()), "taskkill"), sys.join("taskkill.exe"));
+        assert_eq!(system_tool_in(Some(sys.clone()), "tar"), sys.join("tar.exe"));
+        assert_eq!(system_tool_in(Some(sys.clone()), "powershell"), sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"));
+    }
+
+    // 시스템 폴더를 묻지 못했거나 빈 답이면 상대 경로가 되지 않게 기본 위치로 간다 (환경변수는 보지 않는다)
+    #[test]
+    fn an_unknown_system_folder_falls_back_to_the_default() {
+        let default = std::path::PathBuf::from(r"C:\Windows\System32");
+        assert_eq!(system_tool_in(None, "cmd"), default.join("cmd.exe"));
+        assert_eq!(system_tool_in(Some(std::path::PathBuf::new()), "cmd"), default.join("cmd.exe"));
     }
 }
