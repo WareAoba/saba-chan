@@ -248,10 +248,10 @@ fn runs_inside(dir: &Path, exe: &Path) -> bool {
 }
 
 /// 설치 뒤 데몬을 켜는 명령. 공백 든 경로도 그대로 붙여 실행할 수 있게: Windows는 cmd·PowerShell 모두 되는
-/// `cd "폴더"` + `.\saba-chan-cli`, 그 밖은 작은따옴표로 싼 경로
+/// `pushd "폴더"`(cmd에서도 드라이브까지 옮긴다) + `.\saba-chan-cli`, 그 밖은 작은따옴표로 싼 경로
 fn next_command(dir: &Path, windows: bool) -> String {
     if windows {
-        format!("cd \"{}\"\n.\\saba-chan-cli daemon start", dir.display())
+        format!("pushd \"{}\"\n.\\saba-chan-cli daemon start", dir.display())
     } else {
         let cli = dir.join(cli_file()).display().to_string();
         format!("'{}' daemon start", cli.replace('\'', r"'\''"))
@@ -397,7 +397,7 @@ mod tests {
         let win = next_command(Path::new(r"C:\Program Files\Saba-chan"), true);
         assert_eq!(
             win,
-            "cd \"C:\\Program Files\\Saba-chan\"\n.\\saba-chan-cli daemon start"
+            "pushd \"C:\\Program Files\\Saba-chan\"\n.\\saba-chan-cli daemon start"
         );
         let unix = next_command(Path::new("/home/me/my apps/saba-chan"), false);
         assert_eq!(unix, "'/home/me/my apps/saba-chan/saba-chan-cli' daemon start");
