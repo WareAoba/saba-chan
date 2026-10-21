@@ -317,6 +317,7 @@
       "backups": "💾 **{{count}} sauvegardes**",
       "backups_empty": "📭 Aucune sauvegarde",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_unreadable": "⚠️ impossible à ouvrir",
       "backup_kind": {
         "manual": "manuelle",
         "scheduled": "planifiée",

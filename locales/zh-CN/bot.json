@@ -317,6 +317,7 @@
       "backups": "💾 **{{count}} 个备份**",
       "backups_empty": "📭 没有备份",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_unreadable": "⚠️ 无法打开",
       "backup_kind": {
         "manual": "手动",
         "scheduled": "计划",

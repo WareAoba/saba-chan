@@ -317,6 +317,7 @@
       "backups": "💾 **{{count}} copias de seguridad**",
       "backups_empty": "📭 No hay copias de seguridad",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_unreadable": "⚠️ no se puede abrir",
       "backup_kind": {
         "manual": "manual",
         "scheduled": "programada",
