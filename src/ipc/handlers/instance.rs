@@ -1971,6 +1971,17 @@ mod tests {
     use super::{memory_limit_from, stop_timeout_from};
     use serde_json::json;
 
+    /// 설치가 끝났다는 표시를 기다린다. 상한은 멈춘 설치를 알아채려는 것이라, 병렬 테스트로 느려진 PC·CI에서도 넉넉히 둔다
+    async fn provisioned(state: &crate::ipc::IPCServer, name: &str) -> Option<crate::ipc::ProvisionProgress> {
+        for _ in 0..2400 {
+            if let Some(progress) = state.provision_tracker.get(name).filter(|p| p.done) {
+                return Some(progress);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        None
+    }
+
     /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
     #[test]
     fn hooks_get_the_instance_without_its_secrets() {
@@ -2066,14 +2077,7 @@ mod tests {
         let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         assert!(made.status.is_success(), "{:?}", made.body);
 
-        let mut progress = None;
-        for _ in 0..200 {
-            progress = state.provision_tracker.get("a").filter(|p| p.done);
-            if progress.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        let progress = provisioned(&state, "a").await;
         let error = progress.expect("provisioning finished").error.unwrap();
         let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
         assert_eq!(error, text.t("provision.script_failed", &[]));
@@ -2520,14 +2524,7 @@ mod tests {
         )
         .await;
         // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
-        let mut progress = None;
-        for _ in 0..1200 {
-            progress = state.provision_tracker.get("a").filter(|p| p.done);
-            if progress.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        let progress = provisioned(&state, "a").await;
         let progress = progress.expect("provisioning finished");
         assert_eq!(progress.error, None, "list_versions did not get the instance settings");
     }
@@ -2562,14 +2559,7 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
-        let mut progress = None;
-        for _ in 0..1200 {
-            progress = state.provision_tracker.get("a").filter(|p| p.done);
-            if progress.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        let progress = provisioned(&state, "a").await;
         let progress = progress.expect("provisioning finished");
         assert_eq!(progress.error, None, "install_server did not get the instance data folder");
     }
@@ -2668,14 +2658,7 @@ mod tests {
         let id = created.body["id"].as_str().unwrap().to_string();
         assert!(super::super::backup::BusyGuard::take(&id).is_none(), "the install holds the lock");
         // 시간이 아니라 설치가 끝났다는 표시를 기다린다. 잠금은 그 표시보다 먼저 풀린다
-        let mut done = None;
-        for _ in 0..2400 {
-            done = state.provision_tracker.get("a").filter(|p| p.done);
-            if done.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        let done = provisioned(&state, "a").await;
         let done = done.expect("the install never finished");
         assert!(done.error.is_none(), "{:?}", done.error);
         assert!(super::super::backup::BusyGuard::take(&id).is_some(), "the lock is released once the install is done");
@@ -2716,12 +2699,7 @@ mod tests {
         assert_eq!(renamed.body["error_code"], "instance_busy");
 
         // 처음 부르는 선택 함수 앞에는 함수 목록을 묻는 실행이 하나 더 있다: 느린 Windows CI에서도 넉넉히 기다린다
-        for _ in 0..600 {
-            if state.provision_tracker.get("a").is_some_and(|p| p.done) {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        provisioned(&state, "a").await;
         assert!(state.provision_tracker.get("a").is_some_and(|p| p.error.is_some()), "the install should have failed");
 
         // 실패 뒤 dismiss 전에 이름을 바꾸고, 그 이름으로 다른 인스턴스를 만든다

@@ -212,7 +212,8 @@
     "stop_timeout": "守护进程未能及时停止。",
     "shutdown_refused": "守护进程未接受关闭请求：{{error}}",
     "stopped": "守护进程已停止。",
-    "stopping": "正在停止守护进程..."
+    "stopping": "正在停止守护进程...",
+    "stops_with_launcher": "saba-chan 核心正依附于启动它的程序运行。该程序关闭时，核心和服务器管理可能会一起停止。请停止守护进程（saba-chan-cli daemon stop），然后从开始菜单或普通终端重新启动。"
   },
   "diagnose": {
     "ok": "{{name}} 的日志中未发现已知问题。"
