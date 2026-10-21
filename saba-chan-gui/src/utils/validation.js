@@ -124,8 +124,13 @@ function validateSelect(field, value) {
 
 /** list 칸 값: 문자열 배열에서 빈 항목을 뺀다 (편집 중에는 빈 줄이 남는다). 저장할 때도 이 값을 보낸다 */
 export function listItems(value) {
-    const items = Array.isArray(value) ? value : value == null || value === '' ? [] : String(value).split(',');
-    return items.map((v) => String(v).trim()).filter(Boolean);
+    // 배열 항목은 데몬처럼 그대로 둔다(앞뒤 공백도 값). 쉼표 글자(옛 값)만 다듬는다
+    if (Array.isArray(value)) return value.map(String).filter((v) => v.trim() !== '');
+    if (value == null || value === '') return [];
+    return String(value)
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
 }
 
 /** 목록 검증: 항목 수(min_items·max_items), 선택지가 있으면 항목마다 그중 하나 */

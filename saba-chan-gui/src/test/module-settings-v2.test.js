@@ -139,13 +139,14 @@ describe('설정 저장 (list 값, restart_required)', () => {
         };
     });
 
-    it('목록 값은 문자열 배열로 열고, 빈 줄을 뺀 배열로 저장한다', async () => {
+    // 데몬은 배열 항목을 그대로 둔다. 앞뒤 공백도 값이다 (공백만 있는 줄은 빈 줄로 본다)
+    it('목록 값은 문자열 배열로 열고, 빈 줄만 뺀 배열로 저장한다', async () => {
         const { result } = setup(vi.fn());
         await act(async () => result.current.handleOpenSettings(server));
         expect(result.current.settingsValues.ops).toEqual(['alice']);
-        act(() => result.current.handleSettingChange('ops', ['alice', '', 'bob ']));
+        act(() => result.current.handleSettingChange('ops', ['alice', '', '  ', ' bob ']));
         await act(async () => result.current.handleSaveSettings());
-        expect(window.api.instanceUpdateSettings.mock.calls[0][1].ops).toEqual(['alice', 'bob']);
+        expect(window.api.instanceUpdateSettings.mock.calls[0][1].ops).toEqual(['alice', ' bob ']);
     });
 
     it('다시 켜야 적용되는 설정을 바꿨으면 그렇다고 알리고 바로 다시 켤 수 있게 한다', async () => {
@@ -211,6 +212,10 @@ describe('CLI로 보기: list·multiline 값 (CLI server set 문법)', () => {
         });
         expect(changedForCli({ admins: ['a,b', 'c'] }, {}, fields)).toEqual({ admins: '["a,b","c"]' });
         expect(changedForCli({ admins: [] }, { admins: ['x'] }, fields)).toEqual({ admins: '' });
+    });
+
+    it('앞뒤 공백이 있는 항목은 CLI가 쉼표 경로에서 다듬으므로 JSON 배열로 쓴다', () => {
+        expect(changedForCli({ admins: [' a', 'b'] }, {}, fields)).toEqual({ admins: '[" a","b"]' });
     });
 
     it('여러 줄 글은 역슬래시를 두 번 쓴 뒤 줄바꿈을 \\n으로 쓴다', () => {

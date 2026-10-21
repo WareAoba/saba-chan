@@ -60,8 +60,8 @@ export function changedForCli(values, openedWith, fields = []) {
 function cliValue(fieldType, v) {
     if (fieldType === 'list') {
         const items = listItems(v);
-        // 쉼표가 든 항목이나 [로 시작하는 목록은 CLI가 글자 그대로 나눌 수 없어 JSON 배열로
-        return items.some((i) => i.includes(',')) || items[0]?.startsWith('[')
+        // 쉼표나 앞뒤 공백이 든 항목, [로 시작하는 목록은 CLI 쉼표 경로가 그대로 두지 않아 JSON 배열로
+        return items.some((i) => i.includes(',') || i !== i.trim()) || items[0]?.startsWith('[')
             ? JSON.stringify(items)
             : items.join(',');
     }
