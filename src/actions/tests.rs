@@ -782,6 +782,32 @@ async fn guilds_only_see_their_allowed_instances_in_any_listing() {
     assert_eq!(nested, json!({ "instances": [{ "id": "other" }], "disks": [{ "instances": [] }] }));
 }
 
+#[tokio::test]
+async fn the_chatbot_reads_logs_with_inputs_and_without_local_details() {
+    let (state, id, _tmp) = server().await;
+    let dir = crate::supervisor::managed_process::sessions_dir(&state.supervisor.read().await.instance_store.instance_dir(&id));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("20261020-110000.log"),
+        "[2026-10-20 11:00:00] [STDOUT/INFO] Steve joined from 10.1.2.3\n[2026-10-20 11:00:01] [STDOUT/INFO] saved C:\\Games\\srv\\world\n[2026-10-20 11:00:02] [STDOUT/INFO] ready\n",
+    )
+    .unwrap();
+    let out = query(&state, "server.logs.read", Some(&id), &json!({ "lines": 2 }), &relay("owner", true)).await.unwrap();
+    let lines = &out["result"]["lines"];
+    assert_eq!(lines.as_array().unwrap().len(), 2, "the input reached the route: {}", out);
+    assert_eq!(lines[0], "[2026-10-20 11:00:01] [STDOUT/INFO] saved <path>");
+    assert!(!out.to_string().contains("10.1.2.3"));
+
+    // 내보내기 결과는 줄마다 가린다: 앞 줄의 traceback이 뒤 줄을 지우지 않는다
+    let mut file = json!({ "fileName": "srv.log", "content": "Traceback (most recent call last):\n  File \"C:\\Users\\me\\a.py\", line 1\nValueError: x\nnext line\n", "bytes": 79 });
+    strip_local_details(&mut file);
+    assert_eq!(file["content"], "Traceback (most recent call last):\n  File \"<path>\", line 1\nValueError: x\nnext line\n");
+    assert_eq!(file["bytes"], file["content"].as_str().unwrap().len(), "bytes follow the masked content");
+    assert_eq!(file["fileName"], "srv.log");
+    // 말하는 사바쨩 상한 기본값(0)에서도 "로그 파일 줘"가 된다: 가린 읽기 전용이라 읽기와 같은 safe
+    assert_eq!((find("server.logs.read").unwrap().risk, find("server.logs.export").unwrap().risk), ("safe", "safe"));
+}
+
 /// 플레이어 (검수 13번): 접속자 수와 이름을 한 문장으로, heartbeat 항목은 지원하는 모듈(`[status] players`)만 이름으로 싣는다
 #[tokio::test]
 async fn players_read_as_a_count_and_names_for_supporting_modules() {

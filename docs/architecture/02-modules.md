@@ -47,7 +47,7 @@
 파서는 `parse_module_toml()` → `serde_ignored::deserialize::<ModuleToml>` → `into_metadata()`이다 (`module_loader.rs:1193-1246, 1037-1189`). 이 구조체들이 계약 그 자체이고, 같은 구조체에서 JSON Schema가 나온다(`module_json_schema()` `:1444-1446`, `GET /api/modules/schema`, `saba-core module schema`). 모듈 저장소는 이것을 `M:schema/module.schema.json`으로 두고 `M:.github/workflows/check-modules.yml`에서 검사한다.
 
 - **스키마 2** (0.1.9, MK2·MK8): `schema_version = 2`는 스키마 1에 설정 타입 `list`·`multiline`과 설정 키 `min_items`·`max_items`·`max_length`·`restart_required`·`visible_when`을 더한 것이다(`MODULE_SCHEMA_VERSION = 2`, `SETTING_TYPES_V2`). 이 타입·키가 스키마 1 모듈에 있으면 로드에 실패하고, 스키마 이전 모듈은 경고만 남기고 이 키를 끄며, `list`·`multiline` 타입은 0.1.8처럼 `text`로 다룬다. 0.1.8 데몬은 스키마 2 모듈을 로드하지 않으므로 스키마 2 모듈은 `[module.dependencies] saba-core = ">=0.1.9"`도 적는다. 0.1.9로 내는 공식 모듈은 스키마 1이다. 표시 없는 모듈에게 권하는 버전은 1이다.
-- **로드 실패 표시**: 스키마에 맞지 않으면 `failed[]`에 `error_code:"module_schema_invalid"`와 `problems`(`SchemaInvalid`), 데몬보다 새 스키마면 `"module_schema_unsupported"`와 `required`(`SchemaUnsupported`)가 실린다.
+- **로드 실패 표시**: 스키마에 맞지 않으면 `failed[]`에 `error_code:"module_schema_invalid"`와 `problems`(`SchemaInvalid`. `schema_version`을 밝힌 모듈은 알려진 키의 타입 오류도 여기에 실린다), 데몬보다 새 스키마면 `"module_schema_unsupported"`와 `required`(`SchemaUnsupported`)가 실린다.
 - **모르는 키·잘못된 값**: `[module] schema_version = 1`(또는 2)이면 모듈 로드가 실패한다. `schema_version`이 없으면(스키마 이전 모듈) `warnings`에만 남기고 로드한다. 데몬보다 새 버전이면 거부한다 (`:1222-1243`). 값 검사는 `entry` 경로, `risk` 값, `config.announce_command`·`backup.save_command`가 `[[commands.fields]]` 이름을 가리키는지다 (`:1248-1307`). 세 실제 모듈은 모두 `schema_version = 1`이다.
 - **알고 있는 키의 타입이 틀리면 모듈 전체 로드가 실패**한다. 예를 들어 settings의 `options`에 숫자를 넣으면 `Vec<String>`이라 실패한다.
 - BOM: 파서가 앞의 UTF-8 BOM을 떼고 읽는다 (`:1194`). 지금 `palworld/module.toml`에는 BOM이 없다.
@@ -106,7 +106,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `common_paths`와 `[detection.linux]`는 스키마에 없고, 실제 모듈에서도 지워졌다.
 
 #### `[launch]` (`LaunchSection` `:694-702`)
-`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
+`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다. 줄은 출력과 같이 `MAX_LINE`(64 KiB)에서 끊고, 파일이 줄어들면 처음부터 읽으며 끝나지 않았던 앞 조각은 버린다, `runner/src/main.rs` `read_new`), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
 
 #### `[backup]` (`ModuleBackup` `:215-230`)
 `paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
@@ -123,7 +123,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `label` | String | 없으면 `name`으로 대체 |
 | `description` | String | — |
 | `required` | bool | — |
-| `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱) |
+| `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱). 스키마 2 `list`의 기본값은 PATCH와 같은 검사(`validate_setting_value`: 항목 수·중복·`options`·형식)를 받고, 맞지 않으면 로드 오류 |
 | `min`, `max`, `step` | f64 | — |
 | `options` | **Vec<String>** | 문자열만 허용 |
 | `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다(MK6). 그 밖의 묶음은 표시용이다 |

@@ -19,7 +19,42 @@ use super::super::{
 pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
     let token = super::super::auth::token_status(&headers);
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token })))
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token, "stops_with_launcher": stops_with_launcher() })))
+}
+
+/// 데몬이 닫히면 함께 끝내는 job 안에 있는가 (L46). GUI가 job breakaway를 거절당해 그대로 띄우면, GUI를 띄운 프로그램이
+/// 끝날 때 데몬도 끝날 수 있다. 시작 뒤 바뀌지 않으므로 한 번만 본다. 바로 위 job만 본다 (중첩 job의 바깥 job은 알 수 없다)
+pub fn stops_with_launcher() -> bool {
+    static FOUND: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FOUND.get_or_init(|| {
+        #[cfg(windows)]
+        unsafe {
+            use winapi::um::jobapi2::QueryInformationJobObject;
+            use winapi::um::winnt::{JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION};
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            // 핸들 없이 부르면 이 프로세스의 job을 본다. job 밖이면 실패한다
+            let read = QueryInformationJobObject(
+                std::ptr::null_mut(),
+                JobObjectExtendedLimitInformation,
+                &mut info as *mut _ as *mut _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                std::ptr::null_mut(),
+            );
+            job_stops_with_it(read != 0, info.BasicLimitInformation.LimitFlags)
+        }
+        #[cfg(not(windows))]
+        false
+    })
+}
+
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` (winnt.h)
+#[cfg(any(windows, test))]
+const KILL_ON_JOB_CLOSE: u32 = 0x2000;
+
+/// 이 프로세스가 든 job이 닫힐 때 함께 끝나는가. 이미 job 안에 있으면 breakaway 허용 여부(새로 띄우는 프로세스의 일)와 상관없다
+#[cfg(any(windows, test))]
+fn job_stops_with_it(in_job: bool, limit_flags: u32) -> bool {
+    in_job && limit_flags & KILL_ON_JOB_CLOSE != 0
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -1210,6 +1245,21 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// L46: 데몬이 자기를 띄운 프로그램과 함께 끝나는 job 안에 있는지 /health에 싣는다 (GUI·CLI가 알린다)
+    #[tokio::test]
+    async fn health_says_whether_the_daemon_stops_with_its_launcher() {
+        let done = crate::ipc::internal::into_internal(health_check(axum::http::HeaderMap::new()).await.into_response()).await;
+        assert!(done.body["stops_with_launcher"].is_boolean(), "{}", done.body);
+        #[cfg(not(windows))]
+        assert_eq!(done.body["stops_with_launcher"], false);
+        // job 밖이면 false, kill-on-close job 안이면 breakaway를 허용하든 말든 true (BREAKAWAY_OK 0x800, SILENT_BREAKAWAY_OK 0x1000)
+        assert!(!job_stops_with_it(false, KILL_ON_JOB_CLOSE));
+        assert!(!job_stops_with_it(true, 0x800 | 0x1000));
+        assert!(job_stops_with_it(true, KILL_ON_JOB_CLOSE));
+        assert!(job_stops_with_it(true, KILL_ON_JOB_CLOSE | 0x800));
+        assert!(job_stops_with_it(true, KILL_ON_JOB_CLOSE | 0x1000));
+    }
 
     /// GUI "비밀번호 자동 생성"을 끄면 시작할 때 빈 REST 비밀번호를 채우지 않는다. 켜져 있으면(기본) 채운다
     #[tokio::test]

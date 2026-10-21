@@ -322,7 +322,10 @@
     "reset_server_running": "Arrêtez le serveur avant de le réinitialiser",
     "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours sur ce serveur. Réessayez quand elle sera terminée",
     "extension_required_for_install": "Extension(s) requise(s) manquante(s) : {{extensions}}. Installez-les d'abord depuis Saba Storage.",
-    "install_settings_failed": "La version a été installée, mais l'enregistrement des paramètres a échoué : {{error}}"
+    "install_settings_failed": "La version a été installée, mais l'enregistrement des paramètres a échoué : {{error}}",
+    "restart_required": "Les paramètres de {{name}} ont été enregistrés. Redémarrez le serveur pour appliquer {{fields}}.",
+    "restart_now": "Redémarrer maintenant",
+    "restart_later": "Plus tard"
   },
   "discord_bot": {
     "start_failed_toast": "Échec du démarrage du bot Discord: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Échec du chargement du module: {{error}}",
     "list_empty": "La liste des modules est vide",
     "fetch_failed_toast": "Échec de la recherche de module: {{error}}",
-    "load_error_title": "Exception de chargement du module"
+    "load_error_title": "Exception de chargement du module",
+    "schema_invalid": "module.toml ne respecte pas le format : {{problems}}",
+    "schema_unsupported": "Ce module nécessite un Saba-chan plus récent (format de module {{required}}). Mettez Saba-chan à jour."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} est requis",
     "type_mismatch": "{{field}} a un type invalide",
     "out_of_range": "{{field}} est hors plage ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}} : '{{value}}' n’est pas une option valide"
+    "invalid_option": "{{field}} : '{{value}}' n’est pas une option valide",
+    "duplicate_item": "{{field}} : '{{value}}' apparaît plusieurs fois",
+    "list_hint": "Un par ligne",
+    "item_count": "{{field}} doit contenir entre {{min}} et {{max}} éléments",
+    "too_long": "{{field}} ne peut pas dépasser {{max}} caractères"
   },
   "context_menu": {
     "settings": "Paramètres du serveur",
@@ -989,6 +998,7 @@
     "backups_desc": "Compresse le monde et les fichiers de sauvegarde. Les sauvegardes que vous créez vous-même ne sont jamais supprimées automatiquement.",
     "backups_empty": "Aucune sauvegarde pour le moment.",
     "backup_now": "Sauvegarder",
+    "backup_size_stored": "{{size}} · {{stored}} nouveaux",
     "backup_created": "Sauvegarde créée.",
     "backup_nothing": "Il n'y a encore aucun fichier à sauvegarder.",
     "restore": "Restaurer",

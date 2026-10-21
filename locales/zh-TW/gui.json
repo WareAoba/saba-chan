@@ -322,7 +322,10 @@
     "reset_server_running": "請先停止伺服器再重設",
     "instance_busy": "此伺服器上正在進行其他工作（備份或還原）。完成後請再試一次",
     "extension_required_for_install": "缺少必要的擴充功能：{{extensions}}。請先在 Saba 儲存中安裝。",
-    "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}"
+    "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}",
+    "restart_required": "已儲存 {{name}} 的設定。{{fields}} 需要重新啟動伺服器才會生效。",
+    "restart_now": "立即重新啟動",
+    "restart_later": "稍後"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 機器人啟動失敗：{{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "模組載入失敗：{{error}}",
     "list_empty": "模組清單為空",
     "fetch_failed_toast": "模組搜尋失敗：{{error}}",
-    "load_error_title": "模組載入例外"
+    "load_error_title": "模組載入例外",
+    "schema_invalid": "module.toml 不符合格式：{{problems}}",
+    "schema_unsupported": "此模組需要更新版本的 Saba-chan（模組格式 {{required}}）。請更新 Saba-chan。"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} 為必填欄位",
     "type_mismatch": "{{field}} 的類型無效",
     "out_of_range": "{{field}} 超出範圍 ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}：'{{value}}' 不是有效選項"
+    "invalid_option": "{{field}}：'{{value}}' 不是有效選項",
+    "duplicate_item": "{{field}}：'{{value}}' 重複出現",
+    "list_hint": "每行一個",
+    "item_count": "{{field}} 需要 {{min}}~{{max}} 項",
+    "too_long": "{{field}} 最多 {{max}} 個字元"
   },
   "context_menu": {
     "settings": "伺服器設定",
@@ -989,6 +998,7 @@
     "backups_desc": "將世界與存檔檔案壓縮保存。手動建立的備份不會被自動清理。",
     "backups_empty": "還沒有備份。",
     "backup_now": "立即備份",
+    "backup_size_stored": "{{size}} · 新儲存 {{stored}}",
     "backup_created": "已建立備份。",
     "backup_nothing": "還沒有可備份的檔案。",
     "restore": "還原",

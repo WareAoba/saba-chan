@@ -200,6 +200,16 @@
           "description": "控制台最后 20 行"
         }
       },
+      "logs": {
+        "read": {
+          "title": "读取日志",
+          "description": "从末尾读取服务器日志会话"
+        },
+        "export": {
+          "title": "导出日志",
+          "description": "将一个服务器日志会话导出为 .log 文件"
+        }
+      },
       "players": {
         "title": "玩家",
         "description": "在线玩家及名字"
@@ -280,6 +290,10 @@
       "overwrites": "覆盖对象",
       "overwrites_instance": "当前的服务器文件",
       "source": "来源",
+      "lines": "行数",
+      "before": "之前位置",
+      "since": "开始时间",
+      "until": "结束时间",
       "trust": "信任",
       "version": "要安装的版本",
       "installed": "当前版本",
