@@ -411,7 +411,7 @@ fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-/// 새로 쓴 내용 파일을 디스크에 내린다. 파일마다 차례로 기다리면 작은 파일이 많은 서버의 첫 백업이 아주 느려서 몇 갈래로 나눠 한다
+/// 새로 쓴 내용 파일을 디스크에 내린다. Windows는 쓰기 권한 핸들이어야 내릴 수 있다. 파일마다 차례로 기다리면 작은 파일이 많은 서버의 첫 백업이 아주 느려서 몇 갈래로 나눠 한다
 fn sync_all(files: &[PathBuf]) -> Result<()> {
     if files.is_empty() {
         return Ok(());
@@ -419,7 +419,7 @@ fn sync_all(files: &[PathBuf]) -> Result<()> {
     let lanes = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 16);
     let chunk = files.len().div_ceil(lanes);
     std::thread::scope(|scope| {
-        let handles: Vec<_> = files.chunks(chunk).map(|part| scope.spawn(move || part.iter().try_for_each(|f| File::open(f).and_then(|f| f.sync_all())))).collect();
+        let handles: Vec<_> = files.chunks(chunk).map(|part| scope.spawn(move || part.iter().try_for_each(|f| fs::OpenOptions::new().write(true).open(f).and_then(|f| f.sync_all())))).collect();
         handles.into_iter().try_for_each(|h| h.join().unwrap_or_else(|_| Err(io::Error::other("sync thread panicked"))))
     })?;
     Ok(())
@@ -436,6 +436,20 @@ fn read_v2(path: &Path) -> Result<Option<ManifestV2>> {
     }
 }
 
+/// 폴더에 있는 백업 이름 꼴의 파일 (목록이나 항목을 하나라도 읽지 못하면 오류)
+fn backup_names(dir: &Path) -> io::Result<Vec<String>> {
+    let mut names = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        if let Ok(name) = entry?.file_name().into_string() {
+            if BackupKind::from_name(&name).is_some() {
+                names.push(name);
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
 /// 어느 백업도 쓰지 않는 내용과 끝나지 않은 임시 파일을 치운다. 호출자가 `dir_lock`을 쥐고 있어야 한다.
 /// 백업 하나라도 읽지 못하면 무엇을 쓰는지 모르니 아무것도 지우지 않는다
 fn collect_garbage(dir: &Path) {
@@ -445,7 +459,13 @@ fn collect_garbage(dir: &Path) {
     }
     // 목록이 아니라 폴더의 백업 이름을 모두 본다: 목록에서 빠진(열지 못한) 백업의 내용도 지우지 않게
     let mut used = std::collections::HashSet::new();
-    let names = fs::read_dir(dir).into_iter().flatten().flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|n| BackupKind::from_name(n).is_some());
+    let names = match backup_names(dir) {
+        Ok(names) => names,
+        Err(e) => {
+            tracing::warn!("Not clearing unused backup content: could not list {}: {}", dir.display(), e);
+            return;
+        }
+    };
     for name in names {
         match read_v2(&dir.join(&name)) {
             Ok(Some(m)) => used.extend(m.files.into_iter().map(|f| f.hash)),
@@ -1249,5 +1269,27 @@ mod tests {
         let c = create(&dir, BackupKind::Scheduled, std::slice::from_ref(&w)).unwrap().name;
         assert_eq!(list(&dir).into_iter().map(|b| b.name).collect::<Vec<_>>(), vec![c.clone(), a, copied.to_string()]);
         assert_eq!(prune(&dir, 2, &[&c]), vec![copied.to_string()]);
+    }
+
+    #[test]
+    fn new_content_is_flushed_on_every_platform() {
+        // Windows는 쓰기 권한이 있는 핸들이어야 디스크에 내릴 수 있다
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("object");
+        fs::write(&file, b"x").unwrap();
+        sync_all(&[file]).unwrap();
+    }
+
+    #[test]
+    fn content_is_kept_when_the_backup_folder_cannot_be_listed() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 폴더가 아니라 파일이면 목록을 읽지 못한다
+        let not_a_folder = tmp.path().join("backups");
+        fs::write(&not_a_folder, b"").unwrap();
+        assert!(backup_names(&not_a_folder).is_err());
+        let dir = tmp.path().join("ok");
+        let w = world(tmp.path());
+        let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        assert_eq!(backup_names(&dir).unwrap(), vec![made]);
     }
 }
