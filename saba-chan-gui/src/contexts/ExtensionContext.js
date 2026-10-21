@@ -20,6 +20,8 @@ const ExtensionContext = createContext(null);
 
 /** 데몬이 번들을 내주지 않았다: 확인되지 않았고 이 PC에서 허락하지 않음 (허락 뒤 파일이 바뀐 경우 포함) */
 const GUI_UNAPPROVED = Symbol('extension_gui_unapproved');
+// 번들을 받지 못했다(데몬 응답 없음 등): 로드됨으로 기억하지 않아 다음에 다시 받는다
+const LOAD_FAILED = Symbol('load_failed');
 
 /**
  * 익스텐션 GUI 번들 동적 로드
@@ -43,7 +45,7 @@ async function loadExtensionBundle(ext) {
         // IPC를 통해 번들 JS 소스 가져오기 (인증 포함)
         const jsSource = await window.api.extensionGuiBundle(ext.id);
         if (jsSource?.error_code === 'extension_gui_unapproved') return GUI_UNAPPROVED;
-        if (typeof jsSource !== 'string' || !jsSource) return null;
+        if (typeof jsSource !== 'string' || !jsSource) return LOAD_FAILED;
 
         // blob URL로 <script> 태그 삽입
         await new Promise((resolve, reject) => {
@@ -75,7 +77,7 @@ async function loadExtensionBundle(ext) {
         return window[globalName] || null;
     } catch (e) {
         console.warn(`[Extension] Failed to load GUI bundle for '${ext.id}':`, e);
-        return null;
+        return LOAD_FAILED;
     }
 }
 
@@ -229,6 +231,7 @@ export function ExtensionProvider({ children }) {
                     pending.push(ext);
                     return;
                 }
+                if (mod === LOAD_FAILED) return;
                 loadedRef.current.add(ext.id);
                 loadedVersionsRef.current[ext.id] = ext.version;
 

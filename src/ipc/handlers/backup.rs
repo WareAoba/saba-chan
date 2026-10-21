@@ -331,9 +331,11 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
     let Some(_guard) = BusyGuard::take(&id) else {
         return error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance");
     };
-    match backup::delete(&dir, &name) {
-        Ok(()) => Json(json!({ "success": true })).into_response(),
-        Err(e) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
+    // 지운 뒤 쓰지 않는 내용을 치우느라 모든 백업을 읽는다: 비동기 작업자를 막지 않게
+    match tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await {
+        Ok(Ok(())) => Json(json!({ "success": true })).into_response(),
+        Ok(Err(e)) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string()),
     }
 }
 
@@ -380,6 +382,8 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게. 지금 설정이 가리키지 않아도 복원이 덮을 경로는 함께 담는다
         // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
         let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
+        // 설정 저장이 게임 파일을 쓰는 중이면 기다리고, 복원과 다시 읽기를 마칠 때까지 저장이 끼어들지 않게 한다
+        let _files = super::instance::settings_files_lock(&id).await;
         match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
             // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
             Ok(Ok(done)) => {
@@ -564,7 +568,7 @@ pub fn spawn_scheduler(state: IPCServer) {
             {
                 let mut c = clock.lock().unwrap_or_else(|e| e.into_inner());
                 let keys: HashSet<String> = tasks.iter().map(|(id, t)| crate::scheduler::task_key(id, t)).collect();
-                c.retain(&keys);
+                c.retain(&keys, now);
                 for (id, task) in tasks {
                     let key = crate::scheduler::task_key(&id, &task);
                     if let Some(fire) = c.due(&key, &task, started, now) {

@@ -322,7 +322,10 @@
     "reset_server_running": "Stop the server before resetting it",
     "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes",
     "extension_required_for_install": "Required extension(s) missing: {{extensions}}. Install them from Saba Storage first.",
-    "install_settings_failed": "The version was installed, but saving the settings failed: {{error}}"
+    "install_settings_failed": "The version was installed, but saving the settings failed: {{error}}",
+    "restart_required": "Saved the settings for {{name}}. Restart the server to apply {{fields}}.",
+    "restart_now": "Restart now",
+    "restart_later": "Later"
   },
   "discord_bot": {
     "start_failed_toast": "Discord bot start failed: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Module load failed: {{error}}",
     "list_empty": "Module list is empty",
     "fetch_failed_toast": "Module search failed: {{error}}",
-    "load_error_title": "Module load exception"
+    "load_error_title": "Module load exception",
+    "schema_invalid": "module.toml does not match the format: {{problems}}",
+    "schema_unsupported": "This module needs a newer Saba-chan (module format {{required}}). Update Saba-chan."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} is required",
     "type_mismatch": "{{field}} has an invalid type",
     "out_of_range": "{{field}} is out of range ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' is not a valid option"
+    "invalid_option": "{{field}}: '{{value}}' is not a valid option",
+    "duplicate_item": "{{field}}: '{{value}}' appears more than once",
+    "list_hint": "One per line",
+    "item_count": "{{field}} needs {{min}} to {{max}} items",
+    "too_long": "{{field}} can be at most {{max}} characters"
   },
   "context_menu": {
     "settings": "Settings",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "Gave up after {{count}} restarts in 10 minutes",
     "exit_note_restart_failed": "Couldn't restart: {{reason}}",
     "parent_job_short": "Core is tied to another app",
-    "parent_job": "The saba-chan core is running tied to the program that opened this app. If that program closes, the core and server management may stop with it. Quit saba-chan completely and open it again from the Start menu."
+    "parent_job": "The saba-chan core is running tied to the program that started it. If that program closes, the core and server management may stop with it. Quit saba-chan completely and open it again from the Start menu."
   },
   "discord": {
     "nav_connection": "Connection",
@@ -789,6 +798,8 @@
     "chain_discord": "Discord",
     "agent_desc": "This PC receives and runs the commands sent from Discord. While it is off, the bot won't answer.",
     "agent_replaced": "This Discord account's PC connection moved to another PC, so it stopped here. To use this PC again, pair it again from this PC.",
+    "agent_too_old": "The relay server no longer accepts this app version. Please update the app to {{version}} or later.",
+    "agent_check_update": "Check for updates",
     "agent_running": "On",
     "agent_connecting": "Starting",
     "agent_stopped": "Off",
@@ -987,6 +998,7 @@
     "backups_desc": "Zips up the world and save files. Backups you make yourself are never pruned.",
     "backups_empty": "No backups yet.",
     "backup_now": "Back up now",
+    "backup_size_stored": "{{size}} · {{stored}} new",
     "backup_created": "Backup created.",
     "backup_nothing": "There are no files to back up yet.",
     "restore": "Restore",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "You can also turn it on or off per server.",
     "model": "Model",
     "seconds": "seconds",
-    "confirm_commands": "Always ask for caution commands",
-    "confirm_commands_hint": "When on, caution commands such as start, stop and restart run only after confirmation on Discord; when off, they are always allowed. Safe commands always run right away and dangerous ones always ask. The user permissions set in the app always come first.",
+    "confirm_commands": "Always ask before running server commands",
+    "confirm_commands_hint": "When on, server commands such as start, stop and restart run only after confirmation on Discord. When off, server commands you ask for directly run right away, while dangerous commands and admin tasks still ask. The user permissions set in the app always come first.",
     "memory": "Long-term memory",
     "memory_hint": "Remembers what it learns for later conversations.",
     "web_search": "Web search",

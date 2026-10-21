@@ -4,6 +4,8 @@ pub mod managed_process;
 pub mod crash;
 pub mod highlight;
 pub mod players;
+pub mod ready;
+pub mod player_events;
 
 use anyhow::Result;
 use process::ProcessTracker;
@@ -192,6 +194,40 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
     )
 }
 
+/// `original` 옆의 비어 있는 이름(`이름.bak`, `이름.1.bak`, …)에 복사본을 만든다. 이미 있는 파일은 덮지 않는다
+fn backup_beside(original: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let name = original.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    for n in 0..100 {
+        let backup = original.with_file_name(if n == 0 { format!("{name}.bak") } else { format!("{name}.{n}.bak") });
+        let mut out = match std::fs::OpenOptions::new().write(true).create_new(true).open(&backup) {
+            Ok(out) => out,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        };
+        let copied = std::fs::File::open(original)
+            .and_then(|mut input| std::io::copy(&mut input, &mut out))
+            .and_then(|_| out.sync_all())
+            .and_then(|_| std::fs::set_permissions(&backup, std::fs::metadata(original)?.permissions()));
+        return match copied {
+            Ok(()) => Ok(backup),
+            Err(e) => {
+                drop(out);
+                let _ = std::fs::remove_file(&backup);
+                Err(e)
+            }
+        };
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("no free backup name next to {name}")))
+}
+
+/// 같은 파일을 가리키는가 (있으면 실제 경로로, 없으면 쓴 그대로 비교한다)
+fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
 impl Supervisor {
     pub fn new(modules_dir: &str) -> Self {
         let instances_dir = saba_chan_updater_lib::constants::resolve_instances_dir()
@@ -233,10 +269,22 @@ impl Supervisor {
         self.instance_store.load()?;
         tracing::info!("Loaded {} server instances", self.instance_store.list().len());
 
+        self.migrate_list_settings();
+
         // 고아 managed 프로세스 재연결
         self.reattach_orphaned_managed().await;
         
         Ok(())
+    }
+
+    /// 모듈이 `list`로 바꾼 설정의 옛 문자열 값을 배열로 읽는다 (06 §8.1). 모듈을 다시 읽은 뒤에도 부른다
+    pub fn migrate_list_settings(&mut self) {
+        let loader = &self.module_loader;
+        self.instance_store.adjust_in_memory(|instance| {
+            if let Some(settings) = loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()) {
+                crate::validator::migrate_list_values(&settings.fields, &mut instance.module_settings);
+            }
+        });
     }
 
     /// Detect orphaned managed processes from a previous daemon run and restore
@@ -449,7 +497,7 @@ impl Supervisor {
     ///
     /// 모듈에 `server_executable`이 정의되어 있으면 `working_dir`만으로 실행 파일을 찾을 수 있으므로
     /// 사용자가 별도로 `executable_path`를 설정할 필요가 없습니다.
-    fn resolve_executable(&self, instance: &crate::instance::ServerInstance, module_name: &str) -> Option<String> {
+    pub(crate) fn resolve_executable(&self, instance: &crate::instance::ServerInstance, module_name: &str) -> Option<String> {
         // 1. 사용자 명시 경로 우선
         if let Some(ref exe_path) = instance.executable_path {
             if !exe_path.is_empty() {
@@ -640,7 +688,8 @@ impl Supervisor {
         if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
         for (key, value) in &instance.module_settings {
             // 격리 실행이 쓰기를 받는 폴더 키는 데몬만 정한다 (모듈은 import_settings로 아무 값이나 넣을 수 있다)
-            if !crate::sandbox::grants_write(key) {
+            // 호출마다 데몬이 정하는 키(`RESERVED_CALL_KEYS`)도 모듈 설정 값으로는 싣지 않는다
+            if !crate::sandbox::grants_write(key) && !module_loader::RESERVED_CALL_KEYS.contains(&key.as_str()) {
                 put(key, value.clone());
             }
         }
@@ -735,7 +784,27 @@ impl Supervisor {
             let id = s.instance_store.get(server_name).or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name)).map(|i| i.id.clone());
             id.and_then(|id| s.move_reserved_default_rest_port(&id))
         };
-        Self::start_server_inner(sup, server_name, module_name, config).await.map(|result| with_port_moved(result, moved))
+        let result = Self::start_server_inner(sup, server_name, module_name, config).await;
+        Self::announce_ready(sup, server_name, &result).await;
+        result.map(|result| with_port_moved(result, moved))
+    }
+
+    /// 시작 결과로 준비 알림(R39, `ready.rs`)과 접속·퇴장 알림(MK8, `player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
+    async fn announce_ready(sup: &tokio::sync::RwLock<Self>, key: &str, result: &Result<Value>) {
+        let (id, name, console, patterns, timeout, join, leave) = {
+            let s = sup.read().await;
+            let Some(instance) = s.instance_store.get(key).or_else(|| s.instance_store.list().iter().find(|i| i.name == key)) else { return };
+            let module = s.module_loader.get_module(&instance.module_name).ok();
+            let meta = module.as_ref().map(|m| &m.metadata);
+            let patterns = meta.map(|m| m.ready_patterns.clone()).unwrap_or_default();
+            let timeout = meta.and_then(|m| m.ready_timeout).unwrap_or(ready::DEFAULT_READY_TIMEOUT_SECS);
+            let (join, leave) = meta.map(|m| (m.player_join_patterns.clone(), m.player_leave_patterns.clone())).unwrap_or_default();
+            let console = s.managed_store.get(&instance.id).await.filter(|p| !p.log_follower);
+            (instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout), join, leave)
+        };
+        // 접속·퇴장 알림(MK8)도 같은 콘솔을 본다
+        player_events::after_start(&id, &name, result, console.clone(), &join, &leave);
+        ready::after_start(&id, &name, result, console, &patterns, timeout);
     }
 
     async fn start_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
@@ -1565,7 +1634,9 @@ impl Supervisor {
         config: Value,
     ) -> Result<Value> {
         let moved = sup.write().await.move_reserved_default_rest_port(instance_id);
-        Self::start_managed_server_inner(sup, instance_id, module_name, config).await.map(|result| with_port_moved(result, moved))
+        let result = Self::start_managed_server_inner(sup, instance_id, module_name, config).await;
+        Self::announce_ready(sup, instance_id, &result).await;
+        result.map(|result| with_port_moved(result, moved))
     }
 
     async fn start_managed_server_inner(
@@ -2168,7 +2239,7 @@ impl Supervisor {
     }
 
     /// 인스턴스를 알아보는 config로 lifecycle 함수 호출을 만든다 (`validate`·조회가 같은 값을 받는다)
-    fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
+    pub(crate) fn instance_call(&self, instance_id: &str, function: &str) -> Result<crate::plugin::PluginCall> {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
@@ -2392,6 +2463,7 @@ impl Supervisor {
     /// Install a server: download binary, setup directory, optional initial settings.
     /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
     /// `instance`: 그 인스턴스의 설정과 격리 실행이 쓸 데이터 폴더 (처음 설치와 같은 값을 받는다)
+    /// `keep_executable`: 그 인스턴스가 실제로 띄우는 파일 (모듈 실행 파일과 다르면 함께 백업한다)
     #[allow(clippy::too_many_arguments)]
     pub async fn install_server(
         sup: &tokio::sync::RwLock<Self>,
@@ -2402,6 +2474,7 @@ impl Supervisor {
         accepted_agreements: &[String],
         initial_settings: Option<Value>,
         instance: Option<(Value, Vec<String>)>,
+        keep_executable: Option<&str>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
@@ -2413,26 +2486,70 @@ impl Supervisor {
                 module.metadata.server_executable.clone()
             });
 
-        // ── 기존 바이너리 백업 ──
-        let backup_path = if let Some(ref jar) = effective_jar {
-            let original = std::path::Path::new(install_dir).join(jar);
-            if original.is_file() {
-                let backup = original.with_extension(format!(
-                    "{}.bak",
-                    original.extension().unwrap_or_default().to_string_lossy()
-                ));
-                if let Err(e) = std::fs::copy(&original, &backup) {
-                    tracing::warn!("Failed to backup '{}': {}", original.display(), e);
-                    None
-                } else {
-                    tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
-                    Some(backup)
-                }
-            } else {
-                None
+        // ── 기존 바이너리 백업: 모듈 실행 파일과 인스턴스가 실제로 띄우는 파일 (모듈이 어느 쪽을 바꾸다 실패해도 되돌린다) ──
+        // 설치 폴더 밖의 파일(밖을 가리키는 링크 포함)은 이 설치가 바꾸는 대상이 아니므로 건드리지 않는다
+        let inside = |path: &std::path::Path| match (std::fs::canonicalize(path), std::fs::canonicalize(install_dir)) {
+            (Ok(path), Ok(dir)) => path.starts_with(dir),
+            _ => false,
+        };
+        let mut originals: Vec<std::path::PathBuf> = effective_jar.iter().map(|jar| std::path::Path::new(install_dir).join(jar)).collect();
+        if let Some(exe) = keep_executable {
+            let exe = std::path::Path::new(install_dir).join(exe);
+            if !originals.iter().any(|o| same_file_path(o, &exe)) {
+                originals.push(exe);
             }
-        } else {
-            None
+        }
+        // (원래 경로, 백업, 심볼릭 링크면 그 대상): 백업은 비어 있는 새 이름에만 만든다 (사용자의 기존 .bak를 덮지 않는다)
+        let mut backups: Vec<(std::path::PathBuf, std::path::PathBuf, Option<std::path::PathBuf>)> = Vec::new();
+        for original in originals.into_iter().filter(|original| original.is_file() && inside(original)) {
+            let link_target = match std::fs::symlink_metadata(&original) {
+                Ok(meta) if meta.file_type().is_symlink() => std::fs::canonicalize(&original).ok(),
+                _ => None,
+            };
+            match backup_beside(&original) {
+                Ok(backup) => {
+                    tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
+                    backups.push((original, backup, link_target));
+                }
+                Err(e) => {
+                    // 되돌릴 수 없는 채로 모듈을 부르지 않는다
+                    tracing::warn!("Failed to backup '{}': {}", original.display(), e);
+                    for (_, made, _) in &backups {
+                        let _ = std::fs::remove_file(made);
+                    }
+                    return Ok(json!({
+                        "success": false,
+                        "error_code": "backup_failed",
+                        "message": format!("Could not back up {} before installing: {}", original.file_name().unwrap_or_default().to_string_lossy(), e),
+                    }));
+                }
+            }
+        }
+        // 되돌리지 못한 파일은 백업을 남기고 그 이름을 돌려준다 (rename은 같은 폴더라 공간이 필요 없다).
+        // 심볼릭 링크가 그대로 있으면 링크를 두고 백업 내용을 링크 대상에 쓴다. 모듈이 링크를 바꿨으면 그 자리에 되돌린다
+        let restore = |why: &str| -> Vec<String> {
+            let mut failed = Vec::new();
+            for (original, backup, link_target) in &backups {
+                let still_linked = |target: &std::path::PathBuf| {
+                    std::fs::symlink_metadata(original).is_ok_and(|m| m.file_type().is_symlink())
+                        && std::fs::canonicalize(original).is_ok_and(|now| now == *target)
+                };
+                let put_back = match link_target.as_ref().filter(|target| still_linked(target)) {
+                    Some(target) => std::fs::copy(backup, target).map(|_| ()),
+                    None => std::fs::rename(backup, original).or_else(|_| std::fs::copy(backup, original).map(|_| ())),
+                };
+                match put_back {
+                    Ok(()) => {
+                        tracing::info!("Restored backup after {}: {}", why, original.display());
+                        let _ = std::fs::remove_file(backup);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to restore backup '{}': {}", backup.display(), e);
+                        failed.push(original.file_name().unwrap_or_default().to_string_lossy().into_owned());
+                    }
+                }
+            }
+            failed
         };
 
         let mut config = json!({
@@ -2457,43 +2574,31 @@ impl Supervisor {
 
         match result {
             Ok(ref val) => {
-                let success = val.get("success").and_then(|s| s.as_bool()) == Some(true);
-                if success {
+                if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
                     // 설치 성공 → 백업 파일 정리
-                    if let Some(ref bp) = backup_path {
-                        let _ = std::fs::remove_file(bp);
-                        tracing::info!("Removed backup after successful install: {}", bp.display());
+                    for (_, backup, _) in &backups {
+                        let _ = std::fs::remove_file(backup);
+                        tracing::info!("Removed backup after successful install: {}", backup.display());
                     }
+                    result
                 } else {
                     // 모듈이 success=false 반환 → 복원
-                    if let Some(ref bp) = backup_path {
-                        if let Some(ref jar) = effective_jar {
-                            let original = std::path::Path::new(install_dir).join(jar);
-                            if let Err(e) = std::fs::copy(bp, &original) {
-                                tracing::error!("Failed to restore backup '{}': {}", bp.display(), e);
-                            } else {
-                                tracing::info!("Restored backup after failed install: {}", original.display());
-                            }
-                        }
-                        let _ = std::fs::remove_file(bp);
+                    let failed = restore("failed install");
+                    let mut val = val.clone();
+                    if let (false, Some(obj)) = (failed.is_empty(), val.as_object_mut()) {
+                        obj.insert("restore_failed".into(), json!(failed));
                     }
+                    Ok(val)
                 }
-                result
             }
             Err(e) => {
                 // 플러그인 에러 → 복원
-                if let Some(ref bp) = backup_path {
-                    if let Some(ref jar) = effective_jar {
-                        let original = std::path::Path::new(install_dir).join(jar);
-                        if let Err(re) = std::fs::copy(bp, &original) {
-                            tracing::error!("Failed to restore backup '{}': {}", bp.display(), re);
-                        } else {
-                            tracing::info!("Restored backup after plugin error: {}", original.display());
-                        }
-                    }
-                    let _ = std::fs::remove_file(bp);
+                let failed = restore("plugin error");
+                if failed.is_empty() {
+                    Err(e)
+                } else {
+                    Err(e.context(format!("could not put back {} (the .bak file is kept)", failed.join(", "))))
                 }
-                Err(e)
             }
         }
     }
@@ -2601,6 +2706,8 @@ impl Supervisor {
         }
         let stop_requested = self.stop_requested.remove(instance_id);
         let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
+        // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다 (R39)
+        ready::exited(instance_id, &instance.name, stop_requested);
         let (graceful, artifacts) = self
             .module_loader
             .get_module(&instance.module_name)
@@ -3073,6 +3180,126 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// R39 준비 알림을 기다린다 (그 인스턴스의 것만)
+    async fn ready_event(sub: &mut crate::events::Subscription, id: &str) -> Value {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let e = tokio::time::timeout(left, sub.rx.recv()).await.expect("instance.ready arrives").unwrap();
+            if e.kind == "instance.ready" && e.data["instanceId"] == id {
+                return e.data.clone();
+            }
+        }
+    }
+
+    /// R39: 시작마다 한 번 `instance.ready`. 준비 문구가 콘솔에 찍히면 ok, 준비 전에 끝나면 start_failed,
+    /// 사용자가 끄면 stopped_while_starting, 시간이 지나면 ready_timeout. 선언이 없으면 시작이 성공한 때 ok
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn each_start_says_once_whether_the_server_became_ready() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let script = |sh: &str| format!(
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
+             else:\n    print(json.dumps({{'success': True}}))\n"
+        );
+        let games = [
+            ("ready", "ready_patterns = [\"^Done \\\\(\"]\n", "echo booting; sleep 0.5; echo 'Done (1.2s)'; sleep 30"),
+            ("dies", "ready_patterns = [\"^Done\"]\n", "echo booting; sleep 0.5; exit 3"),
+            ("slow", "ready_patterns = [\"^Done\"]\nready_timeout = 1\n", "echo booting; sleep 30"),
+            ("quiet", "ready_patterns = [\"^Done\"]\n", "echo booting; sleep 30"),
+            ("plain", "", "sleep 30"),
+        ];
+        for (name, detection, sh) in games {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\n{detection}")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), script(sh)).unwrap();
+        }
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for (id, module) in [("r-ready", "ready"), ("r-dies", "dies"), ("r-slow", "slow"), ("r-plain", "plain"), ("r-stopped", "quiet")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let mut sub = crate::events::bus().subscribe(None);
+        let start = |id: &'static str, module: &'static str| {
+            let sup = sup.clone();
+            async move { Supervisor::start_managed_server(&sup, id, module, json!({})).await.unwrap() }
+        };
+
+        assert_eq!(start("r-plain", "plain").await["success"], true);
+        assert_eq!(ready_event(&mut sub, "r-plain").await["ok"], true);
+
+        assert_eq!(start("r-ready", "ready").await["success"], true);
+        let ready = ready_event(&mut sub, "r-ready").await;
+        assert_eq!((ready["ok"].clone(), ready["instance"].clone(), ready.get("code").cloned()), (json!(true), json!("r-ready"), None));
+
+        let code = |e: Value| (e["ok"].clone(), e["code"].clone());
+        start("r-dies", "dies").await;
+        assert_eq!(code(ready_event(&mut sub, "r-dies").await), (json!(false), json!("start_failed")));
+
+        start("r-slow", "slow").await;
+        assert_eq!(code(ready_event(&mut sub, "r-slow").await), (json!(false), json!("ready_timeout")));
+
+        start("r-stopped", "quiet").await;
+        let stopped = Supervisor::stop_server(&sup, "r-stopped", "quiet", true).await.unwrap();
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert_eq!(code(ready_event(&mut sub, "r-stopped").await), (json!(false), json!("stopped_while_starting")));
+
+        for id in ["r-plain", "r-ready", "r-slow"] {
+            let _ = Supervisor::stop_server(&sup, id, "plain", true).await;
+        }
+    }
+
+    /// MK8 §8.3: managed 시작에서 접속·퇴장 문구가 콘솔에 찍히면 `instance.player`. 시스템 줄과 다른 그룹은 싣지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_managed_server_says_who_joined_and_left() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("chatty");
+        std::fs::create_dir_all(&dir).unwrap();
+        let head = "^\\[\\d{2}:\\d{2}:\\d{2}(?:\\] \\[[^\\]]*/| )INFO\\]: ";
+        let table = format!("player_join_patterns = ['{head}(?P<name>[A-Za-z0-9_]{{1,16}}) joined the game\\s*$']\nplayer_leave_patterns = ['{head}(?P<name>[A-Za-z0-9_]{{1,16}}) left the game\\s*$']\n");
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"chatty\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\n{table}")).unwrap();
+        let sh = "echo '[20:07:05] [Server thread/INFO]: Steve joined the game'; echo '[20:07:06] [Server thread/INFO]: <Alex> ]: Bob joined the game'; sleep 0.6; echo '[20:07:09] [Server thread/INFO]: Steve left the game'; sleep 30";
+        std::fs::write(dir.join("lifecycle.py"), format!(
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
+             else:\n    print(json.dumps({{'success': True}}))\n"
+        )).unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("p-chatty", "chatty");
+        inst.id = "p-chatty".into();
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let mut sub = crate::events::bus().subscribe(None);
+        assert_eq!(Supervisor::start_managed_server(&sup, "p-chatty", "chatty", json!({})).await.unwrap()["success"], true);
+        if let Some(proc) = sup.read().await.managed_store.get("p-chatty").await {
+            proc.push_system_line("[20:07:07] [Server thread/INFO]: Mallory joined the game".into(), crate::supervisor::managed_process::LogLevel::Info).await;
+        }
+
+        let mut seen = Vec::new();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        while seen.len() < 2 {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let e = tokio::time::timeout(left, sub.rx.recv()).await.expect("instance.player arrives").unwrap();
+            if e.kind == "instance.player" && e.data["instanceId"] == "p-chatty" {
+                assert_eq!(e.data["instance"], "p-chatty");
+                assert!(e.data["at"].is_u64());
+                seen.push((e.data["player"].clone(), e.data["change"].clone()));
+            }
+        }
+        assert_eq!(seen, vec![(json!("Steve"), json!("join")), (json!("Steve"), json!("leave"))], "a chat line and a system line are no player");
+        let _ = Supervisor::stop_server(&sup, "p-chatty", "chatty", true).await;
+    }
+
     #[tokio::test]
     async fn test_supervisor_initialization() {
         let supervisor = Supervisor::new("./modules");
@@ -3419,6 +3646,17 @@ mod tests {
         let mut cfg = serde_json::Map::new();
         Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/pal"));
         assert_eq!(cfg["rest_port"], json!(8242));
+    }
+
+    /// 06 §2: 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다
+    #[test]
+    fn a_module_setting_never_stands_in_for_a_daemon_call_key() {
+        let mut inst = crate::instance::ServerInstance::new("mc", "minecraft");
+        inst.module_settings.insert("players_detail".into(), json!(true));
+        inst.module_settings.insert("stop_call_limit".into(), json!(9999));
+        let mut cfg = serde_json::Map::new();
+        Supervisor::insert_instance_fields(&mut cfg, &inst, std::path::Path::new("/data/instances/mc"));
+        assert!(cfg.get("players_detail").is_none() && cfg.get("stop_call_limit").is_none(), "{cfg:?}");
     }
 
     // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라 격리 실행이 쓰지 못했다.

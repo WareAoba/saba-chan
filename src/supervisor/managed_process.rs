@@ -20,14 +20,14 @@ use regex::Regex;
 mod runner;
 pub use runner::runner_server_pid;
 pub use runner::{MemoryLimitAtStart, RunnerLaunch};
-pub use runner::{latest_session_log, runner_binary, DEFAULT_LOG_SESSIONS};
+pub use runner::{latest_session_log, runner_binary, sessions_dir, DEFAULT_LOG_SESSIONS};
 
 /// Console log file name within the instance's logs directory.
 const CONSOLE_LOG_FILENAME: &str = "console.log";
 /// Maximum console log file size before rotation (10 MB).
 const CONSOLE_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
 /// Number of rotated files to keep.
-const CONSOLE_LOG_ROTATIONS: usize = 2;
+pub(crate) const CONSOLE_LOG_ROTATIONS: usize = 2;
 
 /// Default maximum number of log lines to keep in the ring buffer.
 const DEFAULT_LOG_BUFFER: usize = 10_000;
@@ -1175,6 +1175,13 @@ mod tests {
         let _ = parse_disk_log_line(0, "]x [STDOUT/INFO] hi");
         let line = parse_disk_log_line(0, "[가나다] [STDERR/WARN] 경고");
         assert_eq!(line.content, "경고");
+    }
+
+    /// 러너 파일의 줄은 머리를 떼고 게임 stdout 한 줄 처음부터 콘솔에 들어간다: 모듈 패턴(`^`로 게임 로그 머리부터)이 그대로 맞는다 (R39·MK8)
+    #[test]
+    fn a_runner_line_reaches_the_console_as_the_game_wrote_it() {
+        let line = parse_disk_log_line(0, "[2026-10-20 20:07:01] [STDOUT/INFO] [20:07:01] [Server thread/INFO]: Steve joined the game");
+        assert_eq!((line.source, line.content.as_str()), (LogSource::Stdout, "[20:07:01] [Server thread/INFO]: Steve joined the game"));
     }
 
     // ═══════════════════════════════════════════════════════

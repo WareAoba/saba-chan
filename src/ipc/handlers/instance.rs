@@ -58,6 +58,9 @@ pub async fn get_instance(
             // 모듈 약관과 동의 여부 (`agreements`)를 붙인다
             let mut body = serde_json::to_value(instance).unwrap_or_default();
             body["agreements"] = json!(supervisor.agreement_views(instance, &language));
+            // 06 §8.2: 저장된 값 기준으로 지금 숨겨진 설정 (CLI가 쓴다)
+            let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
+            body["hidden"] = json!(crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k)));
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
@@ -159,7 +162,7 @@ pub async fn create_instance(
             if let Some(settings) = loaded_module.metadata.settings.as_ref() {
                 for field in &settings.fields {
                     let Some(value) = chosen.get(&field.name).filter(|v| !v.is_null()) else { continue };
-                    let allowed = match (&field.options, value.as_str()) {
+                    let allowed = field.field_type == "list" || match (&field.options, value.as_str()) {
                         (Some(options), Some(v)) => options.iter().any(|o| o == v),
                         (Some(_), None) => false,
                         (None, _) => !value.is_object() && !value.is_array(),
@@ -208,6 +211,11 @@ pub async fn create_instance(
                                 toml::Value::Integer(n) => serde_json::json!(n),
                                 toml::Value::Float(f) => serde_json::json!(f),
                                 toml::Value::Boolean(b) => serde_json::json!(b),
+                                // list 기본값 (06 §8.1: TOML 문자열 배열)
+                                toml::Value::Array(_) if field.field_type == "list" => match serde_json::to_value(default_val) {
+                                    Ok(v) => v,
+                                    Err(_) => continue,
+                                },
                                 _ => continue,
                             };
                             instance.module_settings.insert(field.name.clone(), json_val);
@@ -1053,6 +1061,13 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
     (!args.iter().any(|a| a.contains(['\r', '\n', '\0']))).then_some(args)
 }
 
+/// 설정의 저장된 값: 공통 칸(`constants::INSTANCE_FIELDS`, 예: port)은 PATCH가 인스턴스 칸에 쓰므로 그 값을,
+/// 아니면 `module_settings`를 본다. `view`는 그 인스턴스를 JSON으로 펼친 것
+fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key: &str) -> Option<Value> {
+    let own = saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key);
+    own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
+}
+
 /// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
 /// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
 fn is_known_field(key: &str) -> bool {
@@ -1068,12 +1083,53 @@ fn is_daemon_setting(key: &str) -> bool {
     saba_chan_updater_lib::constants::DAEMON_SETTINGS.iter().any(|(k, _)| *k == key)
 }
 
+type SaveLocks = std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>;
+static SETTINGS_SAVES: std::sync::LazyLock<std::sync::Mutex<SaveLocks>> = std::sync::LazyLock::new(Default::default);
+
+/// 인스턴스의 게임 설정 파일을 읽거나 쓰는 데몬 작업 하나를 쥔 동안의 잠금 (`settings_files_lock`)
+pub(crate) struct SettingsFilesGuard {
+    id: String,
+    lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    _held: tokio::sync::OwnedMutexGuard<()>,
+}
+
+impl Drop for SettingsFilesGuard {
+    fn drop(&mut self) {
+        // 기다리는 쪽이 없으면 항목을 지운다: 지운 인스턴스·없는 id의 항목이 쌓이지 않게 (맵, 이 guard, 쥔 잠금이 센다)
+        let mut locks = SETTINGS_SAVES.lock().unwrap_or_else(|e| e.into_inner());
+        if std::sync::Arc::strong_count(&self.lock) == 3 && locks.get(&self.id).is_some_and(|l| std::sync::Arc::ptr_eq(l, &self.lock)) {
+            locks.remove(&self.id);
+        }
+    }
+}
+
+/// 인스턴스마다 하나: 설정 저장(게임 파일 쓰기 configure와 hook까지), 실제 값 읽기(`settings/live`), 속성 쓰기·초기화,
+/// 백업 복원이 한 줄로 선다. 늦게 끝난 파일 쓰기가 나중 저장을 덮거나, 쓰기 전의 파일 값으로 캐시를 되돌리지 않게
+pub(crate) async fn settings_files_lock(id: &str) -> SettingsFilesGuard {
+    let lock = SETTINGS_SAVES.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone();
+    let held = lock.clone().lock_owned().await;
+    SettingsFilesGuard { id: id.to_string(), lock, _held: held }
+}
+
+/// 포트 값: 1~65535의 수 또는 그런 숫자 문자열. 다른 값은 `None`
+fn port_value(value: &Value) -> Option<u16> {
+    match value {
+        Value::Number(n) => n.as_u64(),
+        Value::String(s) => s.trim().parse::<u64>().ok(),
+        _ => None,
+    }
+    .and_then(|p| u16::try_from(p).ok())
+    .filter(|&p| p > 0)
+}
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
     State(state): State<IPCServer>,
     Path(id): Path<String>,
     Json(settings): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    // 같은 서버의 저장이 겹치면 늦게 끝난 게임 파일 쓰기가 나중 저장을 덮는다
+    let _saving = settings_files_lock(&id).await;
     let mut supervisor = state.supervisor.write().await;
 
     // 인스턴스 찾기
@@ -1111,10 +1167,16 @@ pub async fn update_instance_settings(
         if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
             if let Some(ref settings_meta) = module.metadata.settings {
                 // 부분 변경이므로 보낸 필드만 검증한다
-                let errors = crate::validator::validate_settings_patch(
+                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
+                let view = serde_json::to_value(instance).unwrap_or_default();
+                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                let errors: Vec<_> = crate::validator::validate_settings_patch(
                     &settings_meta.fields,
                     settings_obj,
-                );
+                )
+                .into_iter()
+                .filter(|e| !(e.error_type == crate::validator::ValidationErrorType::Required && hidden.contains(&e.field)))
+                .collect();
                 if !errors.is_empty() {
                     let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
                     let fields: Vec<Value> = errors
@@ -1183,21 +1245,17 @@ pub async fn update_instance_settings(
 
 
     // common settings
-    // port: 숫자 또는 문자열 수용
-    if let Some(port_value) = settings.get("port") {
-        match port_value {
-            serde_json::Value::Number(n) => {
-                if let Some(port) = n.as_u64() {
-                    updated.port = Some(port as u16);
-                }
-            }
-            serde_json::Value::String(s) => {
-                if let Ok(port) = s.parse::<u16>() {
-                    updated.port = Some(port);
-                }
-            }
-            _ => {}
+    // port·rest_port: 1~65535의 숫자 또는 숫자 문자열 (범위 밖 값을 다른 숫자로 저장하지 않는다)
+    for key in ["port", "rest_port"] {
+        // null(rest_port 지우기)과 빈 문자열(바꾸지 않음)은 예전처럼 받는다
+        let given = settings.get(key).filter(|v| !v.is_null() && v.as_str() != Some(""));
+        if given.is_some_and(|v| port_value(v).is_none()) {
+            let error = json!({ "error": format!("{} must be a number from 1 to 65535", key), "error_code": "invalid_format", "fields": [{"field": key}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
         }
+    }
+    if let Some(port) = settings.get("port").and_then(port_value) {
+        updated.port = Some(port);
     }
 
     // NOTE: REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
@@ -1219,20 +1277,8 @@ pub async fn update_instance_settings(
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
     }
-    if let Some(rest_port_value) = settings.get("rest_port") {
-        match rest_port_value {
-            serde_json::Value::Number(n) => {
-                if let Some(rest_port) = n.as_u64() {
-                    updated.rest_port = Some(rest_port as u16);
-                }
-            }
-            serde_json::Value::String(s) => {
-                if let Ok(rest_port) = s.parse::<u16>() {
-                    updated.rest_port = Some(rest_port);
-                }
-            }
-            _ => {}
-        }
+    if let Some(rest_port) = settings.get("rest_port").and_then(port_value) {
+        updated.rest_port = Some(rest_port);
     }
     if let Some(rest_username) = settings.get("rest_username").and_then(|v| v.as_str()) {
         updated.rest_username = Some(rest_username.to_string());
@@ -1363,6 +1409,23 @@ pub async fn update_instance_settings(
         }
     }
 
+    // 06 §8.2: 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
+    let running = supervisor.tracker.get_pid(&id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id);
+    let restart_required: Vec<String> = if running {
+        // 공통 칸(port 등)은 PATCH 전 인스턴스 칸의 값과, 그 밖에는 module_settings와 비교한다
+        let before = serde_json::to_value(instance).unwrap_or_default();
+        supervisor.module_loader.get_module(&updated.module_name).ok()
+            .and_then(|m| m.metadata.settings.clone())
+            .map(|s| s.fields)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| f.restart_required && settings.get(&f.name).is_some_and(|v| stored_setting(&before, instance, &f.name).as_ref() != Some(v)))
+            .map(|f| f.name)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
@@ -1481,7 +1544,7 @@ pub async fn update_instance_settings(
 
     // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
     state.credentials.invalidate(&id);
-    let mut body = json!({ "success": true, "synced": sync_error.is_none() });
+    let mut body = json!({ "success": true, "synced": sync_error.is_none(), "restart_required": restart_required });
     if let Some(e) = sync_error {
         body["sync_error"] = json!(e);
     }
@@ -1908,6 +1971,17 @@ mod tests {
     use super::{memory_limit_from, stop_timeout_from};
     use serde_json::json;
 
+    /// 설치가 끝났다는 표시를 기다린다. 상한은 멈춘 설치를 알아채려는 것이라, 병렬 테스트로 느려진 PC·CI에서도 넉넉히 둔다
+    async fn provisioned(state: &crate::ipc::IPCServer, name: &str) -> Option<crate::ipc::ProvisionProgress> {
+        for _ in 0..2400 {
+            if let Some(progress) = state.provision_tracker.get(name).filter(|p| p.done) {
+                return Some(progress);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        None
+    }
+
     /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
     #[test]
     fn hooks_get_the_instance_without_its_secrets() {
@@ -2003,14 +2077,7 @@ mod tests {
         let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         assert!(made.status.is_success(), "{:?}", made.body);
 
-        let mut progress = None;
-        for _ in 0..200 {
-            progress = state.provision_tracker.get("a").filter(|p| p.done);
-            if progress.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        let progress = provisioned(&state, "a").await;
         let error = progress.expect("provisioning finished").error.unwrap();
         let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
         assert_eq!(error, text.t("provision.script_failed", &[]));
@@ -2052,6 +2119,120 @@ mod tests {
             let bad = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(body)).await).await;
             assert_eq!((bad.status.as_u16(), &bad.body["error_code"]), (400, &json!("invalid_format")), "{port}");
         }
+    }
+
+    /// 외부 감사 10-21: 같은 서버의 저장 둘이 겹치면 늦게 끝난 게임 파일 쓰기가 나중 저장을 덮었다(데몬과 파일이 달라짐).
+    /// 저장은 인스턴스마다 하나씩, 게임 파일 쓰기까지 마친 뒤 다음 저장이 시작된다. 범위 밖 포트는 다른 숫자로 저장하지 않고 거절한다
+    /// 저장이 게임 파일을 쓰는 동안 설정 창이 실제 값을 읽으면(`settings/live`) 저장이 끝난 뒤 읽는다:
+    /// 아직 쓰지 않은 옛 파일 값으로 캐시를 덮지 않게
+    #[tokio::test]
+    async fn a_live_read_during_a_save_waits_for_the_game_file_write() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 인스턴스 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("live-read-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(
+            dir.join("module.toml"),
+            format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n"),
+        )
+        .unwrap();
+        let file = tmp.path().join("motd.txt");
+        std::fs::write(&file, "old").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, sys, time\nconfig = json.load(sys.stdin)\nf = {:?}\n\
+                 if sys.argv[1] == 'import_settings':\n    print(json.dumps({{'success': True, 'settings': {{'motd': open(f).read()}}}}))\n\
+                 else:\n    time.sleep(1.0)\n    open(f, 'w').write((config.get('properties') or config.get('settings') or {{}}).get('motd', ''))\n    print(json.dumps({{'success': True}}))\n",
+                file.to_string_lossy()
+            ),
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", &name);
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let save = {
+            let (state, id) = (state.clone(), id.clone());
+            tokio::spawn(async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(json!({ "motd": "new" }))).await).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let live = crate::ipc::internal::into_internal(super::super::managed::read_live_settings_handler(Path(id.clone()), State(state.clone())).await).await;
+        assert!(save.await.unwrap().status.is_success());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "new");
+        assert_eq!(live.body["settings"]["motd"], "new", "{}", live.body);
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "new");
+        assert!(!super::SETTINGS_SAVES.lock().unwrap().contains_key(&id), "a lock nobody waits for is dropped");
+    }
+
+    #[tokio::test]
+    async fn saves_of_one_server_run_one_after_another_and_ports_stay_in_range() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        // 첫 저장의 게임 파일 쓰기는 늦게 끝난다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\nconfig = json.load(sys.stdin)\n\
+             if (config.get('properties') or config.get('settings') or {}).get('motd') == 'first':\n    time.sleep(1.0)\n\
+             print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+
+        let done = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let save = |motd: &'static str| {
+            let (done, call) = (done.clone(), patch(json!({ "motd": motd })));
+            tokio::spawn(async move {
+                let r = call.await;
+                assert!(r.status.is_success(), "{:?}", r.body);
+                done.lock().unwrap().push(motd);
+            })
+        };
+        let first = save("first");
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let second = save("second");
+        first.await.unwrap();
+        second.await.unwrap();
+        assert_eq!(*done.lock().unwrap(), ["first", "second"], "the second save waited for the first one's game file write");
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "second");
+
+        for (key, value) in [("port", json!(65537)), ("port", json!(0)), ("port", json!("70000")), ("rest_port", json!(65537)), ("rest_port", json!("x"))] {
+            let bad = patch(json!({ key: value.clone() })).await;
+            assert_eq!((bad.status.as_u16(), bad.body["error_code"].as_str(), bad.body["fields"][0]["field"].as_str()), (400, Some("invalid_format"), Some(key)), "{key}={value}");
+        }
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_ne!(inst.port, Some(1));
+        assert_eq!(inst.rest_port, None);
+        assert!(patch(json!({ "port": 25570, "rest_port": "8213" })).await.status.is_success());
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!((inst.port, inst.rest_port), (Some(25570), Some(8213)));
     }
 
     #[tokio::test]
@@ -2099,6 +2280,118 @@ mod tests {
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
+    }
+
+    /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.
+    /// 켜져 있을 때 바꾼 restart_required 설정은 응답 `restart_required`에 실린다
+    #[tokio::test]
+    async fn schema_v2_settings_migrate_hide_and_ask_for_a_restart() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 2\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"pvp\"\ntype = \"boolean\"\ndefault = false\n\n\
+             [[settings.fields]]\nname = \"damage\"\ntype = \"text\"\nrequired = true\nvisible_when = { field = \"pvp\", equals = true }\n\n\
+             [[settings.fields]]\nname = \"admins\"\ntype = \"list\"\nrestart_required = true\n\n\
+             [[settings.fields]]\nname = \"rest_host\"\ntype = \"text\"\nrestart_required = true\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.module_settings.insert("admins".into(), json!("Steve, Alex"));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        sup.migrate_list_settings();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let get = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await }
+        };
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+
+        let read = get().await;
+        assert_eq!(read.body["module_settings"]["admins"], json!(["Steve", "Alex"]), "an old string value is read as a list");
+        assert_eq!(read.body["hidden"], json!(["damage"]));
+
+        let saved = patch(json!({ "damage": "", "motd": "line one\nline two", "admins": ["Steve"] })).await;
+        assert!(saved.status.is_success(), "a hidden setting is not required: {:?}", saved.body);
+        assert_eq!(saved.body["restart_required"], json!([]), "the server is off");
+        let shown = patch(json!({ "pvp": true, "damage": "" })).await;
+        assert_eq!(shown.status.as_u16(), 400, "shown again, it is required: {:?}", shown.body);
+
+        state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        let running = patch(json!({ "admins": ["Steve"], "motd": "x" })).await;
+        assert_eq!(running.body["restart_required"], json!([]), "unchanged values ask for nothing");
+        let running = patch(json!({ "admins": ["Alex"], "motd": "y" })).await;
+        assert_eq!(running.body["restart_required"], json!(["admins"]));
+        // 인스턴스 칸에 저장되는 설정(rest_host)은 그 칸의 지금 값과 비교한다
+        let running = patch(json!({ "rest_host": "10.0.0.2" })).await;
+        assert_eq!(running.body["restart_required"], json!(["rest_host"]));
+        let running = patch(json!({ "rest_host": "10.0.0.2" })).await;
+        assert_eq!(running.body["restart_required"], json!([]), "saving the same value again asks for nothing");
+        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
+        assert!(stored.contains("\"Alex\""), "{stored}");
+    }
+
+    /// 리뷰 554: 숨김 조건은 인스턴스 칸에 저장되는 설정(port 등)의 지금 값을 보고, list 기본값은 만들 때 채우며,
+    /// list에 빈 문자열은 받지 않는다. 모듈을 다시 읽어 문자열 설정이 list가 되면 그때 옮긴다
+    #[tokio::test]
+    async fn list_defaults_instance_field_conditions_and_refresh_follow_the_contract() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        let toml = |admins_type: &str| {
+            format!(
+                "[module]\nschema_version = 2\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+                 [[settings.fields]]\nname = \"port\"\ntype = \"number\"\ndefault = 25565\n\n\
+                 [[settings.fields]]\nname = \"note\"\ntype = \"text\"\nvisible_when = {{ field = \"port\", equals = 25565 }}\n\n\
+                 [[settings.fields]]\nname = \"ops\"\ntype = \"list\"\ndefault = [\"a\", \"b\"]\n\n\
+                 [[settings.fields]]\nname = \"admins\"\ntype = \"{admins_type}\"\n"
+            )
+        };
+        std::fs::write(dir.join("module.toml"), toml("text")).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game", "port": 25565 }))).await).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let get = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await }
+        };
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        assert_eq!(get().await.body["module_settings"]["ops"], json!(["a", "b"]), "a list default is filled in");
+        assert_eq!(get().await.body["hidden"], json!([]));
+        assert!(patch(json!({ "port": 26000 })).await.status.is_success());
+        assert_eq!(get().await.body["hidden"], json!(["note"]), "the condition reads the port the instance has now");
+        let empty = patch(json!({ "ops": "" })).await;
+        assert_eq!(empty.status.as_u16(), 400, "a list is never a string: {:?}", empty.body);
+
+        patch(json!({ "admins": "Steve, Alex" })).await;
+        std::fs::write(dir.join("module.toml"), toml("list")).unwrap();
+        let refreshed = crate::ipc::internal::into_internal(crate::ipc::handlers::server::refresh_modules(State(state.clone())).await).await;
+        assert!(refreshed.status.is_success(), "{:?}", refreshed.body);
+        assert_eq!(get().await.body["module_settings"]["admins"], json!(["Steve", "Alex"]), "moved when the modules are read again");
     }
 
     /// 게임 설정 파일로 넘기는 값(configure)에서 사바쨩 설정(`group = "saba-chan"`)과 데몬 필드는 뺀다.
@@ -2232,14 +2525,7 @@ mod tests {
         )
         .await;
         // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
-        let mut progress = None;
-        for _ in 0..1200 {
-            progress = state.provision_tracker.get("a").filter(|p| p.done);
-            if progress.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        let progress = provisioned(&state, "a").await;
         let progress = progress.expect("provisioning finished");
         assert_eq!(progress.error, None, "list_versions did not get the instance settings");
     }
@@ -2274,14 +2560,7 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         // Windows CI는 첫 격리 호출에서 venv를 만들어 오래 걸린다
-        let mut progress = None;
-        for _ in 0..1200 {
-            progress = state.provision_tracker.get("a").filter(|p| p.done);
-            if progress.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        let progress = provisioned(&state, "a").await;
         let progress = progress.expect("provisioning finished");
         assert_eq!(progress.error, None, "install_server did not get the instance data folder");
     }
@@ -2364,7 +2643,12 @@ mod tests {
             "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"download\"\n",
         )
         .unwrap();
-        std::fs::write(dir.join("lifecycle.py"), "import json, sys, time\ntime.sleep(3)\nprint(json.dumps({'success': True}))\n").unwrap();
+        // 설치만 느리다: 버전 조회 같은 다른 호출까지 기다리면 부하가 큰 Windows에서 끝나는 시각이 크게 밀린다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\nif sys.argv[1] == 'install_server':\n    time.sleep(2)\nprint(json.dumps({'success': True, 'latest': {'release': '1.0'}}))\n",
+        )
+        .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
@@ -2374,13 +2658,11 @@ mod tests {
         let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         let id = created.body["id"].as_str().unwrap().to_string();
         assert!(super::super::backup::BusyGuard::take(&id).is_none(), "the install holds the lock");
-        for _ in 0..200 {
-            if let Some(_guard) = super::super::backup::BusyGuard::take(&id) {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        panic!("the lock was never released after the install");
+        // 시간이 아니라 설치가 끝났다는 표시를 기다린다. 잠금은 그 표시보다 먼저 풀린다
+        let done = provisioned(&state, "a").await;
+        let done = done.expect("the install never finished");
+        assert!(done.error.is_none(), "{:?}", done.error);
+        assert!(super::super::backup::BusyGuard::take(&id).is_some(), "the lock is released once the install is done");
     }
 
     /// 설치 실패를 dismiss하면 그 설치의 인스턴스만 지운다: 그 사이 이름이 바뀌고 같은 이름의 다른 인스턴스가 생겨도
@@ -2418,12 +2700,7 @@ mod tests {
         assert_eq!(renamed.body["error_code"], "instance_busy");
 
         // 처음 부르는 선택 함수 앞에는 함수 목록을 묻는 실행이 하나 더 있다: 느린 Windows CI에서도 넉넉히 기다린다
-        for _ in 0..600 {
-            if state.provision_tracker.get("a").is_some_and(|p| p.done) {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        provisioned(&state, "a").await;
         assert!(state.provision_tracker.get("a").is_some_and(|p| p.error.is_some()), "the install should have failed");
 
         // 실패 뒤 dismiss 전에 이름을 바꾸고, 그 이름으로 다른 인스턴스를 만든다

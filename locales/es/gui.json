@@ -322,7 +322,10 @@
     "reset_server_running": "Detén el servidor antes de restablecerlo",
     "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",
     "extension_required_for_install": "Faltan extensiones necesarias: {{extensions}}. Instálalas primero desde Saba Storage.",
-    "install_settings_failed": "La versión se instaló, pero no se pudo guardar la configuración: {{error}}"
+    "install_settings_failed": "La versión se instaló, pero no se pudo guardar la configuración: {{error}}",
+    "restart_required": "Se guardaron los ajustes de {{name}}. Reinicia el servidor para aplicar {{fields}}.",
+    "restart_now": "Reiniciar ahora",
+    "restart_later": "Más tarde"
   },
   "discord_bot": {
     "start_failed_toast": "Falló el inicio del bot de Discord: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Fallo la carga del módulo: {{error}}",
     "list_empty": "La lista de módulos está vacía",
     "fetch_failed_toast": "Falló la búsqueda de módulos: {{error}}",
-    "load_error_title": "Excepción de carga de módulo"
+    "load_error_title": "Excepción de carga de módulo",
+    "schema_invalid": "module.toml no cumple el formato: {{problems}}",
+    "schema_unsupported": "Este módulo necesita una versión más nueva de Saba-chan (formato de módulo {{required}}). Actualiza Saba-chan."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} es obligatorio",
     "type_mismatch": "{{field}} tiene un tipo no válido",
     "out_of_range": "{{field}} está fuera del rango ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' no es una opción válida"
+    "invalid_option": "{{field}}: '{{value}}' no es una opción válida",
+    "duplicate_item": "{{field}}: '{{value}}' aparece más de una vez",
+    "list_hint": "Uno por línea",
+    "item_count": "{{field}} necesita entre {{min}} y {{max}} elementos",
+    "too_long": "{{field}} admite como máximo {{max}} caracteres"
   },
   "context_menu": {
     "settings": "Configuración del servidor",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "Se abandonó tras {{count}} reinicios en 10 minutos",
     "exit_note_restart_failed": "No se pudo reiniciar: {{reason}}",
     "parent_job_short": "El núcleo depende de otra app",
-    "parent_job": "El núcleo de saba-chan se está ejecutando ligado al programa que abrió esta app. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Cierra saba-chan por completo y vuelve a abrirlo desde el menú Inicio."
+    "parent_job": "El núcleo de saba-chan se está ejecutando ligado al programa que lo inició. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Cierra saba-chan por completo y vuelve a abrirlo desde el menú Inicio."
   },
   "discord": {
     "nav_connection": "Conexión",
@@ -789,6 +798,8 @@
     "chain_discord": "Discord",
     "agent_desc": "Este PC recibe y ejecuta los comandos enviados desde Discord. Mientras esté apagada, el bot no responderá.",
     "agent_replaced": "La conexión de PC de esta cuenta de Discord se movió a otro PC, así que se detuvo aquí. Para volver a usar este PC, vuelve a emparejarlo desde este PC.",
+    "agent_too_old": "El servidor de retransmisión ya no acepta esta versión de la aplicación. Actualiza la aplicación a {{version}} o posterior.",
+    "agent_check_update": "Buscar actualizaciones",
     "agent_running": "Activada",
     "agent_connecting": "Iniciando",
     "agent_stopped": "Desactivada",
@@ -987,6 +998,7 @@
     "backups_desc": "Comprime el mundo y los archivos de guardado. Las copias que hagas tú nunca se eliminan automáticamente.",
     "backups_empty": "Aún no hay copias de seguridad.",
     "backup_now": "Copiar ahora",
+    "backup_size_stored": "{{size}} · {{stored}} nuevos",
     "backup_created": "Copia de seguridad creada.",
     "backup_nothing": "Todavía no hay archivos que copiar.",
     "restore": "Restaurar",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "También puedes activarlo o desactivarlo por servidor.",
     "model": "Modelo",
     "seconds": "segundos",
-    "confirm_commands": "Preguntar siempre en comandos de precaución",
-    "confirm_commands_hint": "Si está activado, los comandos de precaución como iniciar, detener y reiniciar se ejecutan solo tras confirmarlos en Discord; si está desactivado, siempre se permiten. Los comandos seguros siempre se ejecutan al momento y los peligrosos siempre piden confirmación. Los permisos de usuario definidos en la app siempre tienen prioridad.",
+    "confirm_commands": "Preguntar siempre antes de ejecutar comandos del servidor",
+    "confirm_commands_hint": "Si está activado, los comandos del servidor como iniciar, detener y reiniciar se ejecutan solo tras confirmarlos en Discord. Si está desactivado, los comandos del servidor que pidas directamente se ejecutan al momento, pero los peligrosos y las tareas de administración siguen pidiendo confirmación. Los permisos de usuario definidos en la app siempre tienen prioridad.",
     "memory": "Memoria a largo plazo",
     "memory_hint": "Recuerda lo que aprende para próximas conversaciones.",
     "web_search": "Búsqueda web",

@@ -199,6 +199,20 @@
           "title": "コンソールの末尾",
           "description": "コンソールの最後の20行"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "ログを読む",
+          "description": "サーバーのログセッションを末尾から読みます"
+        },
+        "export": {
+          "title": "ログを書き出す",
+          "description": "サーバーのログセッションを .log ファイルに書き出します"
+        }
+      },
+      "players": {
+        "title": "プレイヤー",
+        "description": "接続中のプレイヤーと名前"
       }
     },
     "monitor": {
@@ -276,6 +290,10 @@
       "overwrites": "上書き対象",
       "overwrites_instance": "現在のサーバーファイル",
       "source": "入手元",
+      "lines": "行数",
+      "before": "前の位置",
+      "since": "開始時刻",
+      "until": "終了時刻",
       "trust": "信頼",
       "version": "インストールするバージョン",
       "installed": "現在のバージョン",
@@ -287,7 +305,7 @@
       "enabled": "オン",
       "model": "モデル",
       "memo": "サーバープロンプト",
-      "confirmCommands": "注意コマンドを常に確認",
+      "confirmCommands": "サーバーコマンドの実行前に常に確認する",
       "memory": "記憶",
       "webSearch": "ウェブ検索",
       "disabledTools": "無効なツール",
@@ -319,7 +337,11 @@
       "updates_none": "✅ すべて最新です",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · メモリ {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 接続 {{online}}人",
+      "players_max": "👥 接続 {{online}}/{{max}}人",
+      "player_item": "• {{name}}",
+      "players_more": "…ほか {{count}}人"
     }
   }
 }

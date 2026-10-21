@@ -130,8 +130,19 @@ pub static ACTIONS: &[Def] = &[
     def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
     def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
+    // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
+    def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
+    // 로그 전체 읽기·내보내기 (검수 9번). 디스코드 메뉴에는 없고 내보내기는 파일로 첨부된다
+    Def {
+        fields: &[field("source", "string", false), field("lines", "integer", false), field("before", "integer", false)],
+        ..def("server.logs.read", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/logs")
+    },
+    Def {
+        fields: &[field("source", "string", false), field("since", "integer", false), field("until", "integer", false)],
+        ..def("server.logs.export", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/logs/export")
+    },
     def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
     Def { remote_menu: false, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
@@ -274,6 +285,8 @@ pub(crate) fn strip_local_details(v: &mut Value) {
     match v {
         Value::Object(m) => {
             m.retain(|k, _| !LOCAL_KEYS.contains(&k.as_str()));
+            // 파일로 첨부되는 결과(로그 내보내기)는 줄마다 가린다: 통째로 보면 traceback 규칙이 내용을 한 줄로 줄인다
+            let file = m.contains_key("fileName").then(|| m.remove("content")).flatten();
             if m.get("evidence").and_then(Value::as_str).is_some_and(|e| !crate::supervisor::crash::shareable_evidence(e)) {
                 m.remove("evidence");
             }
@@ -281,6 +294,16 @@ pub(crate) fn strip_local_details(v: &mut Value) {
                 args.remove("reason");
             }
             m.values_mut().for_each(strip_local_details);
+            if let Some(content) = file {
+                let masked = match content {
+                    Value::String(text) => Value::String(text.split('\n').map(|line| mask_local_text(line).unwrap_or_else(|| line.to_string())).collect::<Vec<_>>().join("\n")),
+                    other => other,
+                };
+                if let (Some(text), true) = (masked.as_str(), m.contains_key("bytes")) {
+                    m.insert("bytes".into(), text.len().into());
+                }
+                m.insert("content".into(), masked);
+            }
         }
         Value::Array(a) => a.iter_mut().for_each(strip_local_details),
         Value::String(s) => {
@@ -515,8 +538,14 @@ pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option
         .map(|d| view(d, &cat))
         .collect();
     if let Some(id) = instance {
+        // 모듈이 지원해야 하는 액션은 그 인스턴스의 모듈이 지원할 때만
+        let module = instance_module(server, id).await;
+        actions.retain(|a| match a["id"].as_str().and_then(module_support) {
+            Some(supports) => module.as_ref().is_some_and(supports),
+            None => true,
+        });
         // 조회는 모든 표면에 열려 있다
-        if let Some(module) = instance_module(server, id).await {
+        if let Some(module) = module {
             let locale = module_locale(&module, &crate::chat::i18n::normalize_language(locale));
             actions.extend(module.metadata.queries.iter().map(|q| query_view(q, &locale)));
         }
@@ -551,6 +580,14 @@ fn with_field_titles(mut input: Value, titles: impl Fn(&str) -> Map<String, Valu
 pub const HEARTBEAT_MAX_ACTIONS: usize = 64;
 pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 
+/// 모듈이 지원해야 쓸 수 있는 고정 액션과 그 판정
+fn module_support(id: &str) -> Option<fn(&LoadedModule) -> bool> {
+    match id {
+        "server.players" => Some(|m| m.metadata.players_function.is_some()),
+        _ => None,
+    }
+}
+
 pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Value>, bool) {
     let cats: Vec<(&str, crate::chat::i18n::Catalog)> = locales.iter().map(|l| (*l, catalog(l))).collect();
     let remote = |d: &Def| -> Vec<Surface> { d.surfaces.iter().copied().filter(|s| *s == Chatbot || (*s == Discord && d.remote_menu)).collect() };
@@ -579,6 +616,12 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`)
         if let Some(level) = d.discord_level {
             item["level"] = json!(level);
+        }
+        // 모듈이 지원해야 하는 액션: 그 모듈 이름들 (릴레이는 이 모듈의 서버에만 하위 명령을 만든다)
+        if let Some(supports) = module_support(d.id) {
+            let mut names: Vec<&str> = modules.iter().filter(|m| supports(m)).map(|m| m.metadata.name.as_str()).collect();
+            names.sort_unstable();
+            item["modules"] = json!(names);
         }
         items.push(item);
     }
@@ -878,6 +921,15 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
                 return Err(bad_input(key, "this value cannot be changed remotely"));
             }
         }
+    }
+    // GET은 본문이 없으므로 남은 입력을 쿼리로 싣는다
+    if def.method == "GET" && !body.is_empty() {
+        let query: Vec<String> = body
+            .iter()
+            .map(|(k, v)| format!("{}={}", seg(k), seg(&v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()))))
+            .collect();
+        uri.push(if uri.contains('?') { '&' } else { '?' });
+        uri.push_str(&query.join("&"));
     }
     let body = if def.method == "GET" || def.method == "DELETE" || (body.is_empty() && !def.open_input && def.fields.is_empty()) {
         None
@@ -1256,7 +1308,7 @@ async fn admit(server: &IPCServer, caller: &Caller) -> Result<(), ActionError> {
 
 /// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
 fn chatbot_masked(id: &str) -> bool {
-    id == "server.console.tail" || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
+    matches!(id, "server.console.tail" | "server.players" | "server.logs.read" | "server.logs.export") || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
 }
 
 /// 푼 액션 하나를 실행한다: 밑 라우트 응답을 `{success, actionId, status, result}`로.
@@ -1437,7 +1489,7 @@ async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value
 }
 
 mod steps;
-mod summary;
+pub(crate) mod summary;
 pub use steps::{plan_steps, run_status};
 
 #[cfg(test)]

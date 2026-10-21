@@ -10,6 +10,7 @@ pub mod daemon;
 pub mod do_action;
 pub mod events;
 pub mod extension;
+pub mod install;
 pub mod module;
 pub mod monitor;
 pub mod perm;
@@ -60,6 +61,8 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
             Ok(())
         }
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
+        Cmd::Tui => Box::pin(crate::tui::run(ctx)).await,
+        Cmd::Install(a) => install::run(ctx, a).await,
     }
 }
 
@@ -93,6 +96,8 @@ fn needs_daemon(cmd: &Cmd) -> bool {
             | Cmd::Completions { .. }
             | Cmd::Help { .. }
             | Cmd::Shell
+            | Cmd::Tui
+            | Cmd::Install(_)
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
 }
@@ -251,6 +256,37 @@ pub fn typed(raw: &str, kind: &str) -> Result<Value> {
         "boolean" | "bool" | "checkbox" | "toggle" => parse_bool(raw)
             .map(Value::Bool)
             .ok_or_else(|| usage(t!("err.not_a_bool", value = raw))),
+        // 스키마 2 목록: JSON 배열 그대로, 아니면 쉼표로 나눈 글자들 (빈 값은 빈 목록)
+        "list" => match guess(raw) {
+            // 글자만 든 JSON 배열만 그대로. `[1]` 같은 한 항목은 글자 "[1]"이다
+            Value::Array(a) if a.iter().all(Value::is_string) => Ok(Value::Array(a)),
+            _ => Ok(Value::Array(
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| Value::String(p.to_string()))
+                    .collect(),
+            )),
+        },
+        // 한 줄로 치므로 `\n`을 줄바꿈으로, `\\`를 `\`로
+        "multiline" => {
+            let mut out = String::with_capacity(raw.len());
+            let mut chars = raw.chars();
+            while let Some(c) = chars.next() {
+                match (c, chars.clone().next()) {
+                    ('\\', Some('n')) => {
+                        out.push('\n');
+                        chars.next();
+                    }
+                    ('\\', Some('\\')) => {
+                        out.push('\\');
+                        chars.next();
+                    }
+                    _ => out.push(c),
+                }
+            }
+            Ok(Value::String(out))
+        }
         _ => Ok(Value::String(raw.to_string())),
     }
 }
@@ -392,6 +428,20 @@ mod tests {
         assert_eq!(typed("1234", "number").unwrap(), json!(1234));
         assert_eq!(typed("on", "boolean").unwrap(), json!(true));
         assert!(typed("maybe", "boolean").is_err());
+    }
+
+    /// 스키마 2 `list`는 문자열 배열로 (쉼표로 나누거나 JSON 배열), `multiline`은 `\\n`을 줄바꿈으로 보낸다 (06 §8.1)
+    #[test]
+    fn list_and_multiline_values_take_their_shape() {
+        assert_eq!(typed(" a, b ,,c", "list").unwrap(), json!(["a", "b", "c"]));
+        assert_eq!(typed("[\"a,b\", \"c\"]", "list").unwrap(), json!(["a,b", "c"]));
+        assert_eq!(typed("", "list").unwrap(), json!([]));
+        assert_eq!(typed("[1]", "list").unwrap(), json!(["[1]"]));
+        assert_eq!(
+            typed("Welcome\\nHave fun", "multiline").unwrap(),
+            json!("Welcome\nHave fun")
+        );
+        assert_eq!(typed("C:\\\\new", "multiline").unwrap(), json!("C:\\new"));
     }
 
     #[test]

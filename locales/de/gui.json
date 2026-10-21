@@ -322,7 +322,10 @@
     "reset_server_running": "Stoppen Sie den Server, bevor Sie ihn zurücksetzen",
     "instance_busy": "Auf diesem Server läuft gerade eine andere Aufgabe (Sicherung oder Wiederherstellung). Versuchen Sie es erneut, wenn sie fertig ist",
     "extension_required_for_install": "Benötigte Erweiterung(en) fehlen: {{extensions}}. Installiere sie zuerst über Saba Storage.",
-    "install_settings_failed": "Die Version wurde installiert, aber die Einstellungen konnten nicht gespeichert werden: {{error}}"
+    "install_settings_failed": "Die Version wurde installiert, aber die Einstellungen konnten nicht gespeichert werden: {{error}}",
+    "restart_required": "Die Einstellungen für {{name}} wurden gespeichert. Starte den Server neu, damit {{fields}} wirksam wird.",
+    "restart_now": "Jetzt neu starten",
+    "restart_later": "Später"
   },
   "discord_bot": {
     "start_failed_toast": "Discord-Bot-Start fehlgeschlagen: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Modulladung fehlgeschlagen: {{error}}",
     "list_empty": "Modulliste ist leer",
     "fetch_failed_toast": "Modulsuche fehlgeschlagen: {{error}}",
-    "load_error_title": "Modul-Ladungs-Ausnahme"
+    "load_error_title": "Modul-Ladungs-Ausnahme",
+    "schema_invalid": "module.toml entspricht nicht dem Format: {{problems}}",
+    "schema_unsupported": "Dieses Modul braucht ein neueres Saba-chan (Modulformat {{required}}). Aktualisiere Saba-chan."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} ist erforderlich",
     "type_mismatch": "{{field}} hat einen ungültigen Typ",
     "out_of_range": "{{field}} liegt außerhalb des Bereichs ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' ist keine gültige Option"
+    "invalid_option": "{{field}}: '{{value}}' ist keine gültige Option",
+    "duplicate_item": "{{field}}: '{{value}}' kommt mehrfach vor",
+    "list_hint": "Ein Eintrag pro Zeile",
+    "item_count": "{{field}} braucht {{min}} bis {{max}} Einträge",
+    "too_long": "{{field}} darf höchstens {{max}} Zeichen lang sein"
   },
   "context_menu": {
     "settings": "Server-Einstellungen",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "Nach {{count}} Neustarts in 10 Minuten aufgegeben",
     "exit_note_restart_failed": "Neustart fehlgeschlagen: {{reason}}",
     "parent_job_short": "Kern hängt an anderer App",
-    "parent_job": "Der saba-chan-Kern läuft an das Programm gebunden, das diese App geöffnet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende saba-chan vollständig und öffne es erneut über das Startmenü."
+    "parent_job": "Der saba-chan-Kern läuft an das Programm gebunden, das ihn gestartet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende saba-chan vollständig und öffne es erneut über das Startmenü."
   },
   "discord": {
     "nav_connection": "Verbindung",
@@ -789,6 +798,8 @@
     "chain_discord": "Discord",
     "agent_desc": "Dieser PC empfängt und führt die aus Discord gesendeten Befehle aus. Solange sie aus ist, antwortet der Bot nicht.",
     "agent_replaced": "Die PC-Verbindung dieses Discord-Kontos wurde auf einen anderen PC verschoben und hier beendet. Um diesen PC wieder zu nutzen, kopple ihn erneut von diesem PC aus.",
+    "agent_too_old": "Der Relay-Server akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{version}} oder neuer.",
+    "agent_check_update": "Nach Updates suchen",
     "agent_running": "An",
     "agent_connecting": "Startet",
     "agent_stopped": "Aus",
@@ -987,6 +998,7 @@
     "backups_desc": "Packt Welt- und Speicherdateien in ein Archiv. Selbst erstellte Backups werden nie automatisch gelöscht.",
     "backups_empty": "Noch keine Backups.",
     "backup_now": "Jetzt sichern",
+    "backup_size_stored": "{{size}} · {{stored}} neu",
     "backup_created": "Backup erstellt.",
     "backup_nothing": "Es gibt noch keine Dateien zum Sichern.",
     "restore": "Wiederherstellen",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "Du kannst ihn auch pro Server ein- oder ausschalten.",
     "model": "Modell",
     "seconds": "Sekunden",
-    "confirm_commands": "Bei Vorsicht-Befehlen immer fragen",
-    "confirm_commands_hint": "Wenn aktiv, laufen Vorsicht-Befehle wie Starten, Stoppen und Neustarten erst nach Bestätigung auf Discord; wenn aus, sind sie immer erlaubt. Sichere Befehle laufen immer sofort, gefährliche fragen immer nach. Die in der App festgelegten Benutzerrechte haben immer Vorrang.",
+    "confirm_commands": "Vor Serverbefehlen immer fragen",
+    "confirm_commands_hint": "Wenn aktiv, laufen Serverbefehle wie Starten, Stoppen und Neustarten erst nach Bestätigung auf Discord. Wenn aus, laufen direkt angefragte Serverbefehle sofort, gefährliche Befehle und Verwaltungsaufgaben fragen aber weiterhin nach. Die in der App festgelegten Benutzerrechte haben immer Vorrang.",
     "memory": "Langzeitgedächtnis",
     "memory_hint": "Merkt sich Gelerntes für spätere Gespräche.",
     "web_search": "Websuche",

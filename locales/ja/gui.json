@@ -266,7 +266,10 @@
     "reset_server_running": "起動中のサーバーは初期化できません。先に停止してください",
     "instance_busy": "このサーバーで別の作業（バックアップまたは復元）が実行中です。終わってからもう一度お試しください",
     "extension_required_for_install": "必要な拡張機能がありません: {{extensions}}。先にサバ ストレージからインストールしてください。",
-    "install_settings_failed": "バージョンはインストールしましたが、設定を保存できませんでした: {{error}}"
+    "install_settings_failed": "バージョンはインストールしましたが、設定を保存できませんでした: {{error}}",
+    "restart_required": "{{name}}の設定を保存しました。{{fields}}はサーバーを再起動すると反映されます。",
+    "restart_now": "今すぐ再起動",
+    "restart_later": "あとで"
   },
   "discord_bot": {
     "start_failed_toast": "Discordボット起動失敗: {{error}}",
@@ -291,7 +294,9 @@
     "load_failed_toast": "モジュール読み込み失敗: {{error}}",
     "list_empty": "モジュールリストが空です",
     "fetch_failed_toast": "モジュール検索失敗: {{error}}",
-    "load_error_title": "モジュール読み込み例外"
+    "load_error_title": "モジュール読み込み例外",
+    "schema_invalid": "module.tomlが形式に合っていません: {{problems}}",
+    "schema_unsupported": "このモジュールには新しいサバちゃんが必要です(モジュール形式 {{required}})。サバちゃんを更新してください。"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}}は必須項目です",
     "type_mismatch": "{{field}}の型が正しくありません",
     "out_of_range": "{{field}}が範囲外です ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: ''{{value}}'' は有効なオプションではありません"
+    "invalid_option": "{{field}}: ''{{value}}'' は有効なオプションではありません",
+    "duplicate_item": "{{field}}: '{{value}}' が重複しています",
+    "list_hint": "1行に1つずつ",
+    "item_count": "{{field}}は{{min}}～{{max}}個にしてください",
+    "too_long": "{{field}}は{{max}}文字までです"
   },
   "context_menu": {
     "settings": "サーバー設定",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "10分以内に{{count}}回再起動したため中止",
     "exit_note_restart_failed": "再起動できませんでした: {{reason}}",
     "parent_job_short": "コアが他のアプリに依存中",
-    "parent_job": "サバちゃんのコアが、このアプリを起動した別のプログラムに結び付いて動いています。そのプログラムが終了すると、コアとサーバー管理も一緒に止まることがあります。サバちゃんを完全に終了してから、スタートメニューで開き直してください。"
+    "parent_job": "サバちゃんのコアが、コアを起動したプログラムに結び付いて動いています。そのプログラムが終了すると、コアとサーバー管理も一緒に止まることがあります。サバちゃんを完全に終了してから、スタートメニューで開き直してください。"
   },
   "discord": {
     "nav_connection": "接続",
@@ -789,6 +798,8 @@
     "chain_discord": "Discord",
     "agent_desc": "Discordから送られたコマンドをこのPCが受け取って実行します。オフの間はボットが応答しません。",
     "agent_replaced": "このDiscordアカウントのPC接続が別のPCに移ったため、ここでは停止しました。このPCをまた使うには、このPCで再度ペアリングしてください。",
+    "agent_too_old": "リレーサーバーがこのアプリのバージョンを受け付けません。アプリを {{version}} 以上に更新してください。",
+    "agent_check_update": "アップデートを確認",
     "agent_running": "オン",
     "agent_connecting": "起動中",
     "agent_stopped": "オフ",
@@ -987,6 +998,7 @@
     "backups_desc": "ワールドとセーブファイルを圧縮して保存します。手動で作成したバックアップは自動整理の対象外です。",
     "backups_empty": "まだバックアップがありません。",
     "backup_now": "今すぐバックアップ",
+    "backup_size_stored": "{{size}} · 新規保存 {{stored}}",
     "backup_created": "バックアップを作成しました。",
     "backup_nothing": "バックアップするファイルがまだありません。",
     "restore": "復元",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "サーバーごとに個別にオン・オフもできます。",
     "model": "モデル",
     "seconds": "秒",
-    "confirm_commands": "注意コマンドは常に確認する",
-    "confirm_commands_hint": "オンにすると、起動・停止・再起動などの注意コマンドはDiscordで確認してから実行します。オフにすると常に許可します。安全なコマンドは常にすぐ実行し、危険なコマンドは常に確認します。アプリで設定したユーザー権限が常に優先されます。",
+    "confirm_commands": "サーバーコマンドの実行前に常に確認する",
+    "confirm_commands_hint": "オンにすると、起動・停止・再起動などのサーバーコマンドはDiscordで確認してから実行します。オフにすると、直接頼んだサーバーコマンドはすぐ実行し、危険なコマンドと管理作業はそれでも確認します。アプリで設定したユーザー権限が常に優先されます。",
     "memory": "長期記憶",
     "memory_hint": "会話で知ったことを覚えて、次の会話に活かします。",
     "web_search": "Web検索",

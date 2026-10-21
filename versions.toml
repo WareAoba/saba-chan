@@ -37,6 +37,8 @@ version = "0.1.8"
 asset = "saba-chan-gui-{platform}.zip"
 install_dir = "."
 required = true
+# 데스크톱 설치에만 든다 (헤드리스 설치·업데이트는 받지 않는다). 표시가 없는 컴포넌트는 모든 구성에 든다
+profiles = ["desktop"]
 files = [
     "saba-chan-gui/package.json",
     "saba-chan-gui/package-lock.json",
@@ -61,6 +63,7 @@ asset = "saba-chan-installer.exe"
 install_dir = "."
 files = [
     "installer/gui/src-tauri/Cargo.toml",
+    "installer/core/Cargo.toml",
     "installer/gui/src-tauri/tauri.conf.json",
 ]
 

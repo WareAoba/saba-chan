@@ -199,6 +199,20 @@
           "title": "Final de la consola",
           "description": "Últimas 20 líneas de la consola"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "Leer registros",
+          "description": "Lee una sesión de registro del servidor desde el final"
+        },
+        "export": {
+          "title": "Exportar registros",
+          "description": "Exporta una sesión de registro del servidor como archivo .log"
+        }
+      },
+      "players": {
+        "title": "Jugadores",
+        "description": "Quién está conectado"
       }
     },
     "monitor": {
@@ -276,6 +290,10 @@
       "overwrites": "Sobrescribe",
       "overwrites_instance": "archivos actuales del servidor",
       "source": "Origen",
+      "lines": "Líneas",
+      "before": "Antes de",
+      "since": "Desde",
+      "until": "Hasta",
       "trust": "Confianza",
       "version": "Versión a instalar",
       "installed": "Versión instalada",
@@ -287,7 +305,7 @@
       "enabled": "Activado",
       "model": "Modelo",
       "memo": "Prompt del servidor",
-      "confirmCommands": "Preguntar siempre en comandos de precaución",
+      "confirmCommands": "Preguntar siempre antes de ejecutar comandos del servidor",
       "memory": "Memoria",
       "webSearch": "Búsqueda web",
       "disabledTools": "Herramientas desactivadas",
@@ -319,7 +337,11 @@
       "updates_none": "✅ Todo está actualizado",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Memoria {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} conectados",
+      "players_max": "👥 {{online}}/{{max}} conectados",
+      "player_item": "• {{name}}",
+      "players_more": "…y {{count}} más"
     }
   }
 }

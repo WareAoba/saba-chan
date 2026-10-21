@@ -322,7 +322,10 @@
     "reset_server_running": "켜져 있는 서버는 초기화할 수 없어요. 먼저 정지해 주세요",
     "instance_busy": "이 서버에서 다른 작업(백업이나 복원)이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요",
     "extension_required_for_install": "필요한 익스텐션이 없어요: {{extensions}}. 먼저 사바 스토리지에서 설치하세요.",
-    "install_settings_failed": "버전은 설치했지만 설정을 저장하지 못했어요: {{error}}"
+    "install_settings_failed": "버전은 설치했지만 설정을 저장하지 못했어요: {{error}}",
+    "restart_required": "{{name}} 설정을 저장했어요. {{fields}}은(는) 서버를 다시 시작해야 적용돼요.",
+    "restart_now": "지금 다시 시작",
+    "restart_later": "나중에"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 봇 시작 실패: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "모듈 로드 실패: {{error}}",
     "list_empty": "모듈 목록이 비어있습니다",
     "fetch_failed_toast": "모듈 검색 실패: {{error}}",
-    "load_error_title": "모듈 로드 예외"
+    "load_error_title": "모듈 로드 예외",
+    "schema_invalid": "module.toml이 형식에 맞지 않습니다: {{problems}}",
+    "schema_unsupported": "이 모듈은 더 새 사바쨩이 필요합니다(모듈 형식 {{required}}). 사바쨩을 업데이트하세요."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}}은(는) 필수 항목입니다",
     "type_mismatch": "{{field}}의 타입이 올바르지 않습니다",
     "out_of_range": "{{field}}이(가) 범위를 벗어났습니다 ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}'은(는) 유효한 옵션이 아닙니다"
+    "invalid_option": "{{field}}: '{{value}}'은(는) 유효한 옵션이 아닙니다",
+    "duplicate_item": "{{field}}: '{{value}}'이(가) 두 번 들어 있습니다",
+    "list_hint": "한 줄에 하나씩",
+    "item_count": "{{field}}은(는) {{min}}~{{max}}개여야 합니다",
+    "too_long": "{{field}}은(는) {{max}}자까지 쓸 수 있습니다"
   },
   "context_menu": {
     "settings": "서버 설정",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "10분 안에 {{count}}번 다시 켜서 포기함",
     "exit_note_restart_failed": "다시 켜지 못함: {{reason}}",
     "parent_job_short": "코어가 묶여 실행 중",
-    "parent_job": "사바쨩 코어가 이 앱을 띄운 다른 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 사바쨩을 완전히 종료한 뒤 시작 메뉴에서 다시 열어 주세요."
+    "parent_job": "사바쨩 코어가 코어를 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 사바쨩을 완전히 종료한 뒤 시작 메뉴에서 다시 열어 주세요."
   },
   "discord": {
     "nav_connection": "연결",
@@ -789,6 +798,8 @@
     "chain_discord": "디스코드",
     "agent_desc": "디스코드에서 보낸 명령을 이 PC가 받아서 실행해요. 꺼 두면 봇이 대답하지 않아요.",
     "agent_replaced": "이 디스코드 계정의 PC 연결이 다른 PC로 옮겨져서 여기서는 멈췄어요. 이 PC를 다시 쓰려면 이 PC에서 다시 페어링하세요.",
+    "agent_too_old": "릴레이 서버가 이 앱 버전을 받지 않아요. 앱을 {{version}} 이상으로 업데이트해 주세요.",
+    "agent_check_update": "업데이트 확인",
     "agent_running": "켜짐",
     "agent_connecting": "켜는 중",
     "agent_stopped": "꺼짐",
@@ -987,6 +998,7 @@
     "backups_desc": "월드와 세이브 파일을 압축해 둡니다. 직접 만든 백업은 자동 정리에서 빠져요.",
     "backups_empty": "아직 백업이 없어요.",
     "backup_now": "지금 백업",
+    "backup_size_stored": "{{size}} · 새로 저장 {{stored}}",
     "backup_created": "백업을 만들었어요.",
     "backup_nothing": "백업할 파일이 아직 없어요.",
     "restore": "복원",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "서버별로 따로 켜고 끌 수도 있어요.",
     "model": "모델",
     "seconds": "초",
-    "confirm_commands": "주의 명령은 항상 묻기",
-    "confirm_commands_hint": "켜면 실행·정지·재시작 같은 주의 명령은 디스코드에서 확인을 받은 뒤 실행하고, 끄면 항상 허용해요. 안전한 명령은 늘 바로 실행하고 위험한 명령은 늘 확인을 받아요. 앱에서 정한 사용자 권한이 항상 우선해요.",
+    "confirm_commands": "서버 명령 실행 전에 항상 묻기",
+    "confirm_commands_hint": "켜면 실행·정지·재시작 같은 서버 명령을 디스코드에서 확인을 받은 뒤 실행해요. 끄면 직접 요청한 서버 명령은 바로 실행하고, 위험한 명령과 관리 작업은 그래도 확인을 받아요. 앱에서 정한 사용자 권한이 항상 우선해요.",
     "memory": "장기 기억",
     "memory_hint": "대화에서 알게 된 것을 기억해 다음 대화에 씁니다.",
     "web_search": "웹 검색",

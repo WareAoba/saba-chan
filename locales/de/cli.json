@@ -74,7 +74,8 @@
     "link_declined": "Verbindungsanfrage abgelehnt.",
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
-    "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}"
+    "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
+    "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
   },
   "col": {
     "players": "Spieler",
@@ -157,13 +158,15 @@
     "offer_start": "Der Saba-chan-Daemon läuft nicht. Starten?",
     "spawn_failed": "Der Daemon konnte nicht gestartet werden: {{error}}",
     "start_timeout": "Der Daemon hat nicht rechtzeitig geantwortet. Prüfe: saba-chan-cli daemon logs",
+    "exited_early": "Der Daemon wurde direkt nach dem Start beendet (Exit-Code {{code}}). Möglicherweise läuft bereits ein anderer Daemon. Prüfen: saba-chan-cli daemon status",
     "started": "Daemon gestartet (v{{version}}).",
     "starting": "Daemon wird gestartet...",
     "stop_no_pid": "Der Daemon hat seine PID nicht gemeldet und kann daher nicht von hier beendet werden.",
     "stop_timeout": "Der Daemon hat nicht rechtzeitig gestoppt.",
     "shutdown_refused": "Der Daemon hat die Beendigungsanfrage nicht angenommen: {{error}}",
     "stopped": "Daemon gestoppt.",
-    "stopping": "Daemon wird gestoppt..."
+    "stopping": "Daemon wird gestoppt...",
+    "stops_with_launcher": "Der saba-chan-Kern läuft an das Programm gebunden, das ihn gestartet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende den Daemon (saba-chan-cli daemon stop) und starte ihn erneut über das Startmenü oder ein normales Terminal."
   },
   "diagnose": {
     "ok": "In den Logs von {{name}} wurden keine bekannten Probleme gefunden."
@@ -184,7 +187,8 @@
       "forbidden": "Du hast auf diesem Discord-Server keine Berechtigung dafür.",
       "expired": "Der Code ist abgelaufen. Fang von vorne an.",
       "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
-      "other": "Das Relay hat die Anfrage abgelehnt ({{code}})."
+      "other": "Das Relay hat die Anfrage abgelehnt ({{code}}).",
+      "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
     },
     "ambiguous": "Mehr als ein {{what}} passt zu „{{query}}“.",
     "ambiguous_hint": "Sei genauer: {{names}}",
@@ -215,7 +219,8 @@
       "schedule_changed": "Der Zeitplan wurde an anderer Stelle geändert. Prüfe ihn mit saba-chan-cli schedule show und versuche es erneut.",
       "invalid_command": "Schreibe den Befehlsschlüssel als `<server>/<command>`. Ein Schlüssel ohne Server muss eine globale Aktions-ID sein.",
       "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>",
-      "not_supported": "Nicht unterstützte Befehle zeigt: saba-chan-cli module info"
+      "not_supported": "Nicht unterstützte Befehle zeigt: saba-chan-cli module info",
+      "agent_too_old": "Nach Updates suchen: saba-chan-cli update check"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -288,7 +293,11 @@
     "none": "Keine Spielmodule installiert. Siehe: saba-chan-cli module available",
     "refreshed": "Module neu geladen.",
     "removed": "Modul {{id}} gelöscht.",
-    "unmet": "Benötigt {{component}} {{required}} (installiert: {{installed}})"
+    "unmet": "Benötigt {{component}} {{required}} (installiert: {{installed}})",
+    "load_failed": {
+      "invalid": "Das Modul {{module}} konnte nicht geladen werden. Seine module.toml entspricht nicht dem Format:",
+      "unsupported": "Das Modul {{module}} konnte nicht geladen werden. Aktualisiere Saba-chan, um das Modulformat {{required}} zu lesen."
+    }
   },
   "noun": {
     "command": "Befehl",
@@ -381,7 +390,10 @@
     "restart_hint": "Starte {{name}} neu, um es zu übernehmen: saba-chan-cli restart {{name}}",
     "sync_failed": "Gespeichert, aber die Einstellungsdatei des Spiels konnte nicht geschrieben werden: {{error}}",
     "ignored": "Ignoriert, weil saba-chan diese Einstellungen nicht verwendet: {{keys}}",
-    "unknown_key": "{{key}} ist ein neuer Schlüssel."
+    "unknown_key": "{{key}} ist ein neuer Schlüssel.",
+    "restart_required_mark": "Neustart nötig",
+    "restart_required": "Zum Übernehmen den Server neu starten: {{keys}}",
+    "hidden": "Ausgeblendet, weil andere Einstellungen sie gerade nicht nutzen: {{keys}}"
   },
   "shell": {
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
@@ -491,7 +503,8 @@
   "help": {
     "cmd": {
       "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
-      "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden"
+      "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
+      "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren"
     },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
@@ -508,9 +521,13 @@
       "events.kind": "Nur diese Ereignisse; `instance` umfasst auch `instance.exit` usw.",
       "events.server": "Nur Ereignisse dieses Servers",
       "events.since": "Nach dieser Ereignis-ID beginnen (was der Daemon noch hat, wird erneut gesendet)",
-      "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein"
+      "json_stream": "Fortschritt und danach das Ergebnis als JSON-Zeilen (NDJSON) ausgeben; schließt --json ein",
+      "install.dir": "Installationsordner (wird gefragt, wenn weggelassen)",
+      "install.modules": "Zu installierende Spielmodule, durch Kommas getrennt (wird gefragt, wenn weggelassen)",
+      "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
+      "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren"
     },
-    "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente startet die interaktive Shell.\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
+    "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
   "restart": {
     "waiting": "{{name}} wird neu gestartet...",
@@ -547,7 +564,8 @@
     "restored": "{{name}} ist wieder auf dem Stand von {{backup}}.",
     "pre_restore": "Die vorherige Welt bleibt als Backup {{backup}} erhalten.",
     "links_not_restored": "Die Wiederherstellung ist fertig, aber {{count}} Verknüpfung(en) im Ordner konnten nicht wiederhergestellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Protokoll.",
-    "start_again": "{{name}} wieder starten?"
+    "start_again": "{{name}} wieder starten?",
+    "stored": "{{size}} neu gespeichert"
   },
   "schedule": {
     "col": {
@@ -627,5 +645,54 @@
       "where": "Ort",
       "what": "Code"
     }
+  },
+  "tui": {
+    "daemon_up": "Daemon ● verbunden (v{{version}})",
+    "daemon_down": "Daemon ○ aus · starten: daemon start",
+    "servers_running": "{{running}} von {{total}} Servern laufen",
+    "menu": "Menü",
+    "output": "Ausgabe",
+    "enter_to_run": "Enter zum Ausführen",
+    "running_hint": "(läuft · Strg+C stoppt)",
+    "keys": "↑↓ bewegen · ←→ Menü/Liste · Enter ausführen · : Befehl · PgUp/PgDn Ausgabe · ? Hilfe · q beenden",
+    "yes": "Ja",
+    "no": "Nein",
+    "question": "Bestätigen",
+    "dialog_keys": "Enter wählen · Esc abbrechen",
+    "help_title": "Tasten",
+    "help": "↑↓  im Menü oder in der Liste bewegen\n←→ / Tab  zwischen Menü und Liste wechseln\nEnter  Auswahl ausführen (öffnet die Befehlszeile, wenn Argumente nötig sind)\n:  Befehlszeile (dieselben Befehle wie nach saba-chan-cli, ↑↓ für frühere)\nPgUp/PgDn, Mausrad  Ausgabe blättern\nStrg+C  laufenden Befehl stoppen\nq  beenden (Daemon und Server laufen weiter)",
+    "too_narrow": "Mach das Fenster mindestens 60 Spalten breit.",
+    "not_here": "Dieser Befehl läuft nicht im Vollbildmenü. Mit q beenden und im Terminal ausführen.",
+    "cancelled": "Gestoppt.",
+    "action": {
+      "start": "Starten",
+      "stop": "Stoppen",
+      "restart": "Neu starten",
+      "console": "Letzte Konsolenzeilen",
+      "info": "Info",
+      "backup_create": "Backup erstellen",
+      "backup_list": "Backups"
+    },
+    "needs_terminal": "Das Vollbildmenü braucht ein Terminal. In Skripten die Unterbefehle verwenden.",
+    "command_panicked": "Der Befehl wurde unerwartet beendet. Andere Befehle funktionieren weiter."
+  },
+  "install": {
+    "fetching": "Prüfe die neueste Version…",
+    "fetch_failed": "Die neueste Version konnte nicht geladen werden: {{reason}}",
+    "ask_dir": "Installationsordner",
+    "unknown_module": "Unbekanntes Modul: {{name}}. Verfügbare Module: {{list}}",
+    "ask_module": "Das Modul {{name}} auch installieren?",
+    "confirm": "Saba-chan nach {{dir}} installieren? Einrichtung: {{profile}}, Module: {{modules}}",
+    "profile_desktop": "Desktop (mit App)",
+    "profile_headless": "ohne Bildschirm (nur Daemon und CLI)",
+    "no_modules": "keine",
+    "installing": "Installiere",
+    "not_writable": "In {{dir}} kann nicht geschrieben werden. Wähle mit --dir einen beschreibbaren Ordner (zum Beispiel im Benutzerordner)",
+    "running_inside": "Diese CLI läuft innerhalb von {{dir}} und kann dort nicht installieren. Starte eine saba-chan-cli außerhalb des Installationsordners.",
+    "empty_dir": "Der Installationsordner ist leer. Gib mit --dir einen Ordner an",
+    "failed": "Installation fehlgeschlagen: {{reason}} (Details: {{log}})",
+    "failed_no_log": "Installation fehlgeschlagen: {{reason}}",
+    "done": "Nach {{dir}} installiert",
+    "next": "Starte den Daemon mit:\n{{command}}"
   }
 }

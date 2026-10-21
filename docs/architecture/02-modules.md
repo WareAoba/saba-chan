@@ -46,7 +46,9 @@
 
 파서는 `parse_module_toml()` → `serde_ignored::deserialize::<ModuleToml>` → `into_metadata()`이다 (`module_loader.rs:1193-1246, 1037-1189`). 이 구조체들이 계약 그 자체이고, 같은 구조체에서 JSON Schema가 나온다(`module_json_schema()` `:1444-1446`, `GET /api/modules/schema`, `saba-core module schema`). 모듈 저장소는 이것을 `M:schema/module.schema.json`으로 두고 `M:.github/workflows/check-modules.yml`에서 검사한다.
 
-- **모르는 키·잘못된 값**: `[module] schema_version = 1`이면 모듈 로드가 실패한다. `schema_version`이 없으면(스키마 이전 모듈) `warnings`에만 남기고 로드한다. 데몬보다 새 버전이면 거부한다 (`:1222-1243`). 값 검사는 `entry` 경로, `risk` 값, `config.announce_command`·`backup.save_command`가 `[[commands.fields]]` 이름을 가리키는지다 (`:1248-1307`). 세 실제 모듈은 모두 `schema_version = 1`이다.
+- **스키마 2** (0.1.9, MK2·MK8): `schema_version = 2`는 스키마 1에 설정 타입 `list`·`multiline`과 설정 키 `min_items`·`max_items`·`max_length`·`restart_required`·`visible_when`을 더한 것이다(`MODULE_SCHEMA_VERSION = 2`, `SETTING_TYPES_V2`). 이 타입·키가 스키마 1 모듈에 있으면 로드에 실패하고, 스키마 이전 모듈은 경고만 남기고 이 키를 끄며, `list`·`multiline` 타입은 0.1.8처럼 `text`로 다룬다. 0.1.8 데몬은 스키마 2 모듈을 로드하지 않으므로 스키마 2 모듈은 `[module.dependencies] saba-core = ">=0.1.9"`도 적는다. 0.1.9로 내는 공식 모듈은 스키마 1이다. 표시 없는 모듈에게 권하는 버전은 1이다.
+- **로드 실패 표시**: 스키마에 맞지 않으면 `failed[]`에 `error_code:"module_schema_invalid"`와 `problems`(`SchemaInvalid`. `schema_version`을 밝힌 모듈은 알려진 키의 타입 오류도 여기에 실린다), 데몬보다 새 스키마면 `"module_schema_unsupported"`와 `required`(`SchemaUnsupported`)가 실린다.
+- **모르는 키·잘못된 값**: `[module] schema_version = 1`(또는 2)이면 모듈 로드가 실패한다. `schema_version`이 없으면(스키마 이전 모듈) `warnings`에만 남기고 로드한다. 데몬보다 새 버전이면 거부한다 (`:1222-1243`). 값 검사는 `entry` 경로, `risk` 값, `config.announce_command`·`backup.save_command`가 `[[commands.fields]]` 이름을 가리키는지다 (`:1248-1307`). 세 실제 모듈은 모두 `schema_version = 1`이다.
 - **알고 있는 키의 타입이 틀리면 모듈 전체 로드가 실패**한다. 예를 들어 settings의 `options`에 숫자를 넣으면 `Vec<String>`이라 실패한다.
 - BOM: 파서가 앞의 UTF-8 BOM을 떼고 읽는다 (`:1194`). 지금 `palworld/module.toml`에는 BOM이 없다.
 
@@ -56,7 +58,7 @@
 
 | 키 | 타입 | 필수 | 기본값 / 비고 |
 |---|---|---|---|
-| `schema_version` | u32 | ○ | 지금은 1. 위 규칙 참조 |
+| `schema_version` | u32 | ○ | 1 또는 2. 위 규칙 참조 |
 | `name` | String | ✔ | 모듈 ID. 인스턴스의 `module_name`과 매칭됨 |
 | `version` | String | ✔ | semver 형식 기대(검증 없음) |
 | `entry` | String | ✔ | 실행할 Python 파일. 파일이 없으면 모듈 로드 실패 (위 1.1 참조) |
@@ -104,24 +106,25 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `common_paths`와 `[detection.linux]`는 스키마에 없고, 실제 모듈에서도 지워졌다.
 
 #### `[launch]` (`LaunchSection` `:694-702`)
-`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
+`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다. 줄은 출력과 같이 `MAX_LINE`(64 KiB)에서 끊고, 파일이 줄어들면 처음부터 읽으며 끝나지 않았던 앞 조각은 버린다, `runner/src/main.rs` `read_new`), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
 
 #### `[backup]` (`ModuleBackup` `:215-230`)
 `paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
 - 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더·백업 경로·훅의 `restore_roots` 밖이면 복원은 400 `restore_outside`다.
-- 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`).
+- 백업 형식(MK16, 0.1.9~): 파일 내용은 `backups/objects/<해시 앞 두 글자>/<sha256>`에 한 번만 두고(deflate), 백업 zip에는 매니페스트 `saba-backup-v2.json`(항목별 원래 절대 경로, 파일마다 상대 경로·해시·크기·수정 시각·내용 파일 크기, 하위 폴더, 링크)과 요약 `saba-backup-v2-summary.json`(`size`·`stored`)만 담는다. 가장 새 백업과 크기·수정 시각이 같은 파일(그 백업 시작 2초 전보다 먼저 바뀐 것)은 내용 파일의 크기가 적어 둔 그대로일 때만 다시 읽지 않는다. 같은 해시의 내용 파일이 있는데 크기가 다르면 망가진 것으로 보고 새로 쓴 것으로 바꾼다. 새로 쓴 내용 파일은 매니페스트를 쓰기 전에 몇 갈래로 나눠 한꺼번에 디스크에 내린다. 백업을 지우거나 정리하면 남은 백업이 쓰지 않는 내용을 치운다. 이때 목록이 아니라 폴더의 백업 이름을 모두 보고, 열거나 읽지 못하는 백업이 하나라도 있으면 치우지 않는다. 복원은 내용의 해시·크기를 확인하고 맞지 않으면 실패해 되돌린다. 0.1.8까지의 백업(`saba-backup.json`과 파일을 zip에 담은 판 1)도 그대로 복원한다. 판 2에는 `saba-backup.json`이 없어 0.1.8 데몬은 복원을 거절한다(`backup/mod.rs`). 만들기·지우기·정리·복원은 백업 폴더마다 하나씩 돈다.
+- 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`). 다만 이름은 지역 시각이라 서머타임이 끝나는 시간에는 뒤바뀔 수 있어, 목록·정리의 순서는 만든 시각(판 2는 요약의 시작 시각, 판 1은 이름의 시각과 파일 수정 시각 중 이른 것. 판 1은 모두 0.1.8까지 만든 것이라 옮겼다 되돌려 수정 시각이 새로 찍혀도 판 2보다 새것으로 보지 않는다)으로 정하고 같으면 이름으로 정한다 (D-B12).
 
 #### `[[settings.fields]]` (`SettingFieldToml` `:784-822` → `SettingField` `:393-444`)
 | 키 | 타입 | 기본값 |
 |---|---|---|
 | `name` | String | ✔ |
-| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`). 밖이면 스키마 v1 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다 |
+| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`), 스키마 2는 `list`·`multiline`도(`SETTING_TYPES_V2`). 밖이면 스키마 v1·v2 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다. `list`는 문자열 배열(API·저장·모듈 config 모두): `options`가 있으면 항목마다 그중 하나, `format`·`pattern`은 항목마다, 빈 항목·같은 값 두 번은 `invalid_format`, `default`는 문자열 배열(만들 때 채운다), 빈 문자열은 받지 않는다(빈 목록은 `[]`), 프리셋 값도 로드 때 같은 규칙으로 검사한다. `multiline`은 줄바꿈을 받는 문자열이고 `format`·`pattern`은 값 전체에 쓴다 |
 | `label` | String | 없으면 `name`으로 대체 |
 | `description` | String | — |
 | `required` | bool | — |
-| `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱) |
+| `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱). 스키마 2 `list`의 기본값은 PATCH와 같은 검사(`validate_setting_value`: 항목 수·중복·`options`·형식)를 받고, 맞지 않으면 로드 오류 |
 | `min`, `max`, `step` | f64 | — |
 | `options` | **Vec<String>** | 문자열만 허용 |
 | `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다(MK6). 그 밖의 묶음은 표시용이다 |
@@ -130,10 +133,16 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `arg` | String 또는 Vec<String> | — 이 값이 실행 인자로 들어가는 모양. 공백으로 나눈 토큰, `{value}`는 많아야 한 번(`"-port={value}"`, `"-servername {value}"`, `["-Xmx{value}", "-Xms{value}"]`). `{value}`가 없으면 boolean 플래그(있으면 true). `{value}`뿐인 모양은 로드 오류. 실행 인자 미리보기가 사용자가 친 추가 인자를 이 필드로 되돌릴 때 쓴다(`src/launch_args.rs`). 실제 실행 줄은 여전히 `get_launch_command`가 만든다 |
 | `format` | String | — 값 형식: `memory_size`(숫자+K/M/G 한 글자, `4G`·`1024M`), `port`(1~65535 정수), `integer`, `path`(비어 있지 않고 줄바꿈 없음). 모르는 이름은 로드 오류 |
 | `pattern` | String | — 값 전체가 맞아야 하는 정규식(잘못된 정규식은 로드 오류). `format`과 함께 PATCH 저장과 미리보기에서 검사한다(`validator::validate_format`) |
+| `min_items`, `max_items` | u32 | 스키마 2, `list`만. 항목 수 범위(밖이면 400 `validation_failed`) |
+| `max_length` | u32 | 스키마 2, `multiline`만. 글자 수 상한 |
+| `restart_required` | bool | 스키마 2, `false`. 켜져 있을 때 바꾸면 다시 켜야 적용된다. PATCH 응답 `restart_required`에 실린다(01) |
+| `visible_when` | `{field, equals}` 또는 `{field, in=[...]}` | 스키마 2. 다른 설정 값에 따라 보일지. `field`는 같은 모듈의 설정이고 자기 자신·순환·`list`·`multiline`·`password`·`file` 설정이면 로드 오류, 값은 그 설정 타입에 맞아야 한다. 비교는 타입으로 바꾼 값끼리(`number`는 "25565"와 25565가 같다), 값이 없으면 `default`로. 숨긴 설정은 값을 지우지 않고 `required`를 보지 않는다. `GET /api/instance/:id`의 `hidden`(CLI)과 GUI의 같은 계산이 쓴다(`validator::hidden_fields`) |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
+- 옮기기(06 §8.1): 문자열로 저장된 값의 설정이 모듈 업데이트로 `list`가 되면, 데몬이 인스턴스를 읽을 때(시작, 모듈 다시 읽기) 쉼표로 나누고 앞뒤 공백·빈 항목을 버려 배열로 바꾼다(`validator::migrate_list_values`, `Supervisor::migrate_list_settings`). 파일에는 다음 저장 때 쓴다.
+- `players_detail`·`stop_call_limit`은 데몬이 호출마다 정해 넣는 키다(`RESERVED_CALL_KEYS`). 같은 이름의 설정은 로드하되 경고하고, 그 값은 모듈 config에 싣지 않는다(`insert_instance_fields`).
 - 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`), 정지 대기 시간(초) `stop_timeout`(모듈 `[config] stop_timeout`보다 앞선다, 1~3600, `supervisor::stop_timeout_of`, MK14. 데몬이 기다리는 managed 정지에 쓴다. non-managed 정지는 모듈 `stop()` 호출 하나이고, 그 호출의 시간 제한이 `stop_timeout + 30`초다(`supervisor::module_stop_limit`))이다. 이 값들도 module_settings라서 모듈 함수 config에 펼쳐 들어간다. 모듈 `stop()`의 config에는 데몬이 실제로 쓸 `stop_timeout`(인스턴스 값, 모듈 값, 기본 30 순)과 그 호출의 시간 제한 `stop_call_limit`(초, non-managed면 `stop_timeout + 30`, managed면 120)이 늘 실린다. `stop_call_limit`이 없으면(0.1.8 데몬) 모듈은 120초 안에 끝나게 기다린다. non-managed 정지(`managed:false`)의 모듈은 이 값만큼 기다리고 자기 상한을 두지 않는다. managed 정지(`managed:true`)의 모듈은 저장·종료 요청만 보내고 바로 `success`를 돌려준다(기다림과 강제 종료는 데몬이 한다).
-- 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file`.
+- 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file` (0.1.9 공식 모듈은 스키마 1).
 
 #### `[[commands.fields]]` (`CommandFieldToml` `:928-949` → `CommandField` `:352-370`)
 | 키 | 타입 | 비고 |
@@ -178,6 +187,16 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 
 #### `[extensions.<익스텐션 id>]`
 익스텐션이 읽는 모듈별 설정. 데몬은 내용을 보지 않고 `ModuleMetadata.extensions`에 그대로 넘긴다 (`:618-622, 1139-1145`). 예전 `[docker]` 섹션(`ContainerSectionToml`)은 Docker 익스텐션과 함께 지워졌다.
+
+`[extensions.saba-core]`는 데몬이 읽는 예약 표다(R39, 0.1.9). 이 이름은 데몬 몫이라 `saba-core`라는 id의 익스텐션은 설치·인식하지 않는다(`extension::is_valid_extension_id`). 0.1.8 로더도 `[extensions.*]`는 내용을 보지 않으므로 이 키가 있는 모듈을 그대로 로드한다.
+이 표는 버전 사이를 잇는 자리라, 이 데몬이 모르는 키(더 새 데몬의 키)가 있어도 모듈을 거부하지 않고 경고만 남긴다(`DAEMON_TABLE_KEYS`). 아는 키의 값이 틀리면 그 항목만 버리고 경고한다.
+- `ready_patterns` (Vec<String>, 정규식): 콘솔에 이 중 하나가 찍히면 서버가 준비된 것이다. 데몬이 콘솔을 읽는 시작(managed)에만 쓰인다. 정규식이 아니거나 목록이 아니면 그 항목만 버리고 모듈 경고(`warnings`)를 남긴다(로드는 실패하지 않는다).
+- `ready_timeout` (u64, 초, 기본 600, 최대 900): 시작 뒤 이 시간 안에 준비 문구가 없으면 `ready_timeout`으로 닫는다. 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다. 900보다 크면 경고를 남기고 900을 쓴다(디스코드가 시작을 시킨 채널을 15분 기억한다, 05 §4.4).
+- `player_join_patterns`·`player_leave_patterns` (Vec<String>, 정규식, MK8): 콘솔 줄이 맞으면 그 플레이어가 들어오거나 나간 것이다. 각 정규식에 이름 그룹 `(?P<name>…)`이 있어야 하고, 없거나 정규식이 아니면 그 항목만 버리고 경고한다.
+
+시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}` 이벤트가 한 번 나온다(`supervisor/ready.rs`, 01 §`GET /api/events`). 패턴이 없거나 콘솔을 읽지 않는 시작은 시작이 성공한 때 바로 `ok:true`다. 준비되기 전에 끝나면 `ok:false`와 `code`: `start_failed`, `stopped_while_starting`, `ready_timeout`. 데몬이 띄운 프로세스가 준비 문구 전에 끝나 이미 치워졌으면 `start_failed`다. 감독자가 시작을 시도하지 않은 요청(사전 점검에 막힘, 다른 작업 중, 이미 켜짐, 시작 중)에는 알림이 없다. relay로도 올린다(01 §relay 이벤트).
+
+접속·퇴장 문구가 있으면 managed 시작마다 프로세스가 끝날 때까지 콘솔을 보고, 맞는 줄마다 `instance.player {instanceId, instance, player, change:"join"|"leave"}`를 낸다(`supervisor/player_events.rs`). 시스템 줄은 보지 않고, `name` 그룹만 싣는다(64자에서 자르고 제어 문자를 뺀다). non-managed 시작에는 없고, relay로 올리지 않는다. 1분 접속자 수 갱신(`supervisor/players.rs`)과는 따로다.
 
 #### `[credential_map]` (`HashMap<String,String>`)
 데몬 키(`rest_password` / `rest_username`) → 게임 설정 키. 사용처는 managed start 후 동기화(`mod.rs:1554-1619`), import_settings 결과 반영(`D:src/instance/mod.rs:172-206`), 설정 PATCH 때 역동기화(`instance.rs:1162-1189`)다. **non-managed `start_server`에서는 동기화하지 않는다**.
@@ -239,7 +258,7 @@ spawn_process = true
 ```
 
 #### `[status]` (`StatusSection`)
-켜진 서버의 상태를 더 알려 주는 함수(Q-5). 지금 키는 `players` 하나다: 접속자 수를 돌려주는 lifecycle 함수 이름(`[[queries]]`의 `function`과 같은 검사: Python 식별자, 상태를 바꾸는 함수가 아님. 어기면 스키마 v1은 로드 실패, 스키마 이전 모듈은 경고만 남기고 부르지 않는다). 데몬은 켜진(트래커에 PID가 있는) 서버마다 1분에 한 번, 10초 제한으로 부르고 마지막 값을 기억한다(`supervisor/players.rs`). 실패하거나 서버가 꺼지면 값을 지운다. 값은 `GET /api/servers`의 `players`와 relay 하트비트 `servers[].players`(05 §4)로 나간다. 같은 프로세스에서 5분 넘게 계속 실패하면(시간 초과 포함) 마지막 실패 `message`가 `GET /api/servers`의 `unresponsive`로 나가고 GUI에 응답 없음 경고로 보인다(01 §ServerInfo). 수를 알 수 없는 설정이면 실패 대신 `{"success": true}`를 돌려줘야 경고가 뜨지 않는다. 함수 계약은 §2.3.
+켜진 서버의 상태를 더 알려 주는 함수(Q-5). 지금 키는 `players` 하나다: 접속자 수를 돌려주는 lifecycle 함수 이름(`[[queries]]`의 `function`과 같은 검사: Python 식별자, 상태를 바꾸는 함수가 아님. 어기면 스키마 v1은 로드 실패, 스키마 이전 모듈은 경고만 남기고 부르지 않는다). 데몬은 켜진(트래커에 PID가 있는) 서버마다 1분에 한 번, 10초 제한으로 부르고 마지막 값을 기억한다(`supervisor/players.rs`). 실패하거나 서버가 꺼지면 값을 지운다. 값은 `GET /api/servers`의 `players`와 relay 하트비트 `servers[].players`(05 §4)로 나간다. 같은 프로세스에서 5분 넘게 계속 실패하면(시간 초과 포함) 마지막 실패 `message`가 `GET /api/servers`의 `unresponsive`로 나가고 GUI에 응답 없음 경고로 보인다(01 §ServerInfo). 수를 알 수 없는 설정이면 실패 대신 `{"success": true}`를 돌려줘야 경고가 뜨지 않는다. 같은 함수가 플레이어 목록(`GET /api/instance/:id/players`, 액션 `server.players`)도 맡는다: 데몬은 그때만 config에 `players_detail: true`를 싣고, 모듈은 그때 `players:[{name}]`를 더해 돌려준다. 이름을 콘솔 명령으로만 얻는 모듈은 이 키가 있을 때만 그 명령을 보내서 1분 갱신이 콘솔을 어지럽히지 않게 한다. 함수 계약은 §2.3.
 
 ```toml
 [status]
@@ -342,7 +361,7 @@ players = "player_count"
 | `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때, 그리고 `POST /api/module/:name/install`에 `instance_id`가 있을 때 그 인스턴스 `module_settings`), `instance_data_dirs`(같은 때), `server_executable`(요청 값, 없으면 모듈 `server_executable`), `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `validate`와 같은 config(`Supervisor::instance_call`: `server_executable`, `working_dir` 등). `server_executable`은 시작과 같이 `resolve_executable`로 정한다(인스턴스 경로, 옛 `module_settings.executable_path`, `working_dir` + 모듈 `server_executable` 순) |
 | `[[queries]]`의 `function` | `POST /api/instance/:id/query/:name`(액션 `server.query:<name>`) → `Supervisor::query_instance` | `validate`와 같은 config(`Supervisor::instance_call`) + `args{입력 이름: 값}`(명령 입력과 같이 검사·기본값 채움, 숫자는 숫자로). 돌려줄 것: `{"success": true, "data": <JSON>}` 또는 실패 `{"success": false, "message": "..."}`. `data`가 없으면 `success`·`message`를 뺀 나머지를 data로 본다. 읽기만 해야 한다(감사에 남지 않고 챗봇·일반 사용자도 부른다) |
-| `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한) | `validate`와 같은 config. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?}`(`max`가 없거나 0이면 최대를 모른다고 본다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 실패가 5분 넘게 이어지면 `message`가 `unresponsive`로 GUI에 보인다. 서버는 정상인데 수를 알 수 없으면(예: 상태 응답을 끈 설정) `online` 없이 `{"success": true}`를 돌려준다: 값은 비우고 실패로 세지 않는다. 읽기만 해야 한다 |
+| `[status] players`의 함수 | 켜진 서버마다 1분에 한 번(`supervisor::players::refresh`, 10초 제한), 그리고 플레이어 목록 요청 때(`GET /api/instance/:id/players`·액션 `server.players`, 10초 제한) | `validate`와 같은 config. 목록 요청 때만 config에 `players_detail: true`가 더 실린다. 돌려줄 것: `{"success": true, "online": <0 이상 정수>, "max": <정수>?, "players": [{"name": "..."}]?}`(`max`가 없거나 0이면 최대를 모른다고 본다. `players`는 `players_detail`이 있을 때만 의미가 있고, 이름 말고 다른 필드는 데몬이 뺀다. 이름은 제어 문자를 빼고 64자로 자른다). 실패 `{"success": false, "message": "..."}`이거나 정수가 아니면 값을 비운다(0으로 보이지 않는다). 실패가 5분 넘게 이어지면 `message`가 `unresponsive`로 GUI에 보인다. 서버는 정상인데 수를 알 수 없으면(예: 상태 응답을 끈 설정) `online` 없이 `{"success": true}`를 돌려준다: 값은 비우고 실패로 세지 않는다. 읽기만 해야 한다 |
 | `backup_paths` | 백업 때 `[backup] hook = true`인 모듈 (`D:src/ipc/handlers/backup.rs:94-99`) | `working_dir`, `extension_data`, 인스턴스 값 |
 
 모듈의 `start` 함수는 모든 모듈에서 지워졌다(FUNCTIONS에 없음). non-managed 모드도 `get_launch_command`로 데몬이 직접 spawn한다 (`mod.rs:773-847`).
@@ -391,7 +410,7 @@ players = "player_count"
   - 주소는 `DAEMON_API_URL` → `SABA_IPC_URL` → `http://127.0.0.1:57474` 순서다 (`:40-46`).
   - `SABA_TOKEN_PATH` 파일의 토큰을 `X-Saba-Token` 헤더로 보낸다 (`:49-61`). palworld(`execute_rest_via_daemon` `M:palworld/lifecycle.py:1414-`)는 `daemon_post`를, minecraft·zomboid·__example은 공용 `daemon_stdin_command`(`/stdin`에 `{"command"}`, `D:modules/daemon_rcon.py:87-89`)와 PID 헬퍼 `is_process_alive`·`wait_for_exit`·`force_kill`을 쓴다 (`M:zomboid/lifecycle.py:36`).
   - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다. RCON 접속에는 데몬이 만든 `rcon.json` 값만 쓴다(RCON 정책).
-- 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/gui/src-tauri/src/lib.rs:433-435, 856-876`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
+- 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/core/src/lib.rs` `install_shared_modules`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
 
 ---
 
@@ -420,7 +439,7 @@ players = "player_count"
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
   - 실행 인자가 가리키는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준)도 로컬 드라이브 경로여야 한다. 아니면 `launch_outside_instance`다.
-- **서버 폴더의 낮은 수준 표시 걷기 (Windows)**: 격리 실행에 쓰기를 준 폴더에는 낮은 수준 표시가 붙고, 그 안에 받은 서버 파일(Java 등)도 표시를 상속한다. 낮은 수준 표시가 걸린 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 뜨지 못한다(예: `0xC0000135`, `0xC0000022`). 프로세스 수준은 실행 파일의 표시만 따르므로, 데몬은 서버를 띄우기 전에(모듈이 띄우든 익스텐션 시작 훅이 띄우든, 모든 실행이 지나는 `sandbox::guard_launch_for`에서) 신뢰 표시와 상관없이 인스턴스 폴더와 사용자가 정한 서버 폴더, 그 아래 폴더의 실행 파일(`.exe`·`.com`, 대소문자 무시) 중 낮은 수준이 걸린 것에 중간 수준 표시를 직접 붙인다(`sandbox::restore_server_folders` → `appcontainer::clear_low_labels`). 직접 붙인 표시는 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고, 위 폴더 표시가 다시 퍼져도 남는다. 폴더와 다른 파일의 표시는 그대로 둔다: 폴더 표시를 걷으면 모든 하위 파일에 상속 계산이 퍼지고 다음 격리 실행이 다시 붙이며 또 퍼져, 큰 서버 폴더(파일 4만 개)는 시작마다 수십 초가 걸렸다. 그래서 격리된 모듈은 서버 설정 파일 등을 계속 쓸 수 있고, 중간 수준이 된 실행 파일은 낮은 수준 프로세스가 고치지 못한다(지우고 새로 만든 파일은 상속 표시를 받아 다음 시작 때 다시 덮인다). 0.1.6까지 격리되어 표시가 남은 폴더도 다음 시작 때 고쳐진다. 덮기부터 서버 프로세스를 띄울 때까지는 격리 실행이 권한을 주지 못하게 잠근다(`sandbox::LaunchGate`, 격리 실행은 권한을 주기 전에 같은 잠금을 잡는다). 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 걸린 실행 파일을 덮지 못했거나 그 표시를 읽지 못했거나 폴더 목록을 읽지 못했으면(실행 파일이 남았는지 알 수 없다) 띄우지 않고 `{success:false, action_required:"server_folder_label", file, detail}`을 돌려준다. 볼륨이 파일 보안 정보를 두지 않으면(FAT·exFAT, `GetVolumeInformationW`에 `FILE_PERSISTENT_ACLS` 없음) 표시가 있을 수 없으므로 넘어간다. 걷기는 실제 경로(`canonicalize`, `\\?\` 긴 이름)에서 시작하고, 각 경로를 열 때 `GetFinalPathNameByHandleW` 결과와 비교해 중간 폴더가 정션이면 고치지 않는다(`\\?\` 머리·짧은 이름(8.3)·대소문자·끝 구분자는 같게 본다, `appcontainer::same_final_path`). 링크가 아닌 재분석 지점(목록의 속성으로 거른다)은 실행 파일이 아니어도 열어 보고(압축(WOF)·중복 제거 파일·폴더는 보통처럼 다룬다), 폴더 자체나 그 아래 파일·폴더가 동기화 폴더(OneDrive 등)의 클라우드 파일(재분석 태그 `0x9000_?01A`)이면 실행 파일 여부와 상관없이 막되 `action_required: "server_in_sync_folder"`(file은 그 파일)로 알린다. 사용자 결정으로 동기화 폴더 아래 서버는 지원하지 않는다(폴더를 옮기라고 안내).
+- **서버 폴더의 낮은 수준 표시 걷기 (Windows)**: 격리 실행에 쓰기를 준 폴더에는 낮은 수준 표시가 붙고, 그 안에 받은 서버 파일(Java 등)도 표시를 상속한다. 낮은 수준 표시가 걸린 실행 파일로 띄운 프로세스는 낮은 무결성으로 돌아 뜨지 못한다(예: `0xC0000135`, `0xC0000022`). 프로세스 수준은 실행 파일의 표시만 따르므로, 데몬은 서버를 띄우기 전에(모듈이 띄우든 익스텐션 시작 훅이 띄우든, 모든 실행이 지나는 `sandbox::guard_launch_for`에서) 신뢰 표시와 상관없이 인스턴스 폴더와 사용자가 정한 서버 폴더, 그 아래 폴더의 실행 파일(`.exe`·`.com`, 대소문자 무시) 중 낮은 수준이 걸린 것에 중간 수준 표시를 직접 붙인다(`sandbox::restore_server_folders` → `appcontainer::clear_low_labels`). 띄울 파일 자체가 그 폴더 안에 있으면 확장자와 상관없이 그 파일도 덮는다(확장자가 다른 PE도 Windows가 띄운다, `appcontainer::clear_low_label_of`, L38). 직접 붙인 표시는 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고, 위 폴더 표시가 다시 퍼져도 남는다. 폴더와 다른 파일의 표시는 그대로 둔다: 폴더 표시를 걷으면 모든 하위 파일에 상속 계산이 퍼지고 다음 격리 실행이 다시 붙이며 또 퍼져, 큰 서버 폴더(파일 4만 개)는 시작마다 수십 초가 걸렸다. 그래서 격리된 모듈은 서버 설정 파일 등을 계속 쓸 수 있고, 중간 수준이 된 실행 파일은 낮은 수준 프로세스가 고치지 못한다(지우고 새로 만든 파일은 상속 표시를 받아 다음 시작 때 다시 덮인다). 0.1.6까지 격리되어 표시가 남은 폴더도 다음 시작 때 고쳐진다. 덮기부터 서버 프로세스를 띄울 때까지는 격리 실행이 권한을 주지 못하게 잠근다(`sandbox::LaunchGate`, 격리 실행은 권한을 주기 전에 같은 잠금을 잡는다). 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 걸린 실행 파일을 덮지 못했거나 그 표시를 읽지 못했거나 폴더 목록을 읽지 못했으면(실행 파일이 남았는지 알 수 없다) 띄우지 않고 `{success:false, action_required:"server_folder_label", file, detail}`을 돌려준다. 볼륨이 파일 보안 정보를 두지 않으면(FAT·exFAT, `GetVolumeInformationW`에 `FILE_PERSISTENT_ACLS` 없음) 표시가 있을 수 없으므로 넘어간다. 걷기는 실제 경로(`canonicalize`, `\\?\` 긴 이름)에서 시작하고, 각 경로를 열 때 `GetFinalPathNameByHandleW` 결과와 비교해 중간 폴더가 정션이면 고치지 않는다(`\\?\` 머리·짧은 이름(8.3)·대소문자·끝 구분자는 같게 본다, `appcontainer::same_final_path`). 링크가 아닌 재분석 지점(목록의 속성으로 거른다)은 실행 파일이 아니어도 열어 보고(압축(WOF)·중복 제거 파일·폴더는 보통처럼 다룬다), 폴더 자체나 그 아래 파일·폴더가 동기화 폴더(OneDrive 등)의 클라우드 파일(재분석 태그 `0x9000_?01A`)이면 실행 파일 여부와 상관없이 막되 `action_required: "server_in_sync_folder"`(file은 그 파일)로 알린다. 사용자 결정으로 동기화 폴더 아래 서버는 지원하지 않는다(폴더를 옮기라고 안내).
 
 **잠금**: `start_managed_handler`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:29-68`, `mod.rs:1289-1297`, C12).
 
@@ -580,7 +599,7 @@ players = "player_count"
 
 - `check_for_updates`가 같은 manifest에서 **설치된 모듈만** 골라 버전을 비교한다(`D:updater/src/lib.rs:482-557`). 새 모듈 설치는 목록 화면(§5.2)의 몫이다.
 - 무결성 검사는 업데이터가 적용할 때 zip에서 푼 파일마다 기록한 SHA-256(`<data_dir>/installed-files.json`)과 디스크 파일을 비교한다. manifest의 zip 해시와는 비교하지 않는다 (`D:updater/src/integrity.rs:1-6, 105-152, 235-239`). 설치기로 처음 깐 모듈은 기록이 없어 결과에 나오지 않는다.
-- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs:169-188`, `release.rs`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
+- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs` `get_available_modules`, `installer/core/src/release.rs` `modules`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
 
 ---
 

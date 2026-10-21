@@ -322,7 +322,10 @@
     "reset_server_running": "Arrêtez le serveur avant de le réinitialiser",
     "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours sur ce serveur. Réessayez quand elle sera terminée",
     "extension_required_for_install": "Extension(s) requise(s) manquante(s) : {{extensions}}. Installez-les d'abord depuis Saba Storage.",
-    "install_settings_failed": "La version a été installée, mais l'enregistrement des paramètres a échoué : {{error}}"
+    "install_settings_failed": "La version a été installée, mais l'enregistrement des paramètres a échoué : {{error}}",
+    "restart_required": "Les paramètres de {{name}} ont été enregistrés. Redémarrez le serveur pour appliquer {{fields}}.",
+    "restart_now": "Redémarrer maintenant",
+    "restart_later": "Plus tard"
   },
   "discord_bot": {
     "start_failed_toast": "Échec du démarrage du bot Discord: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Échec du chargement du module: {{error}}",
     "list_empty": "La liste des modules est vide",
     "fetch_failed_toast": "Échec de la recherche de module: {{error}}",
-    "load_error_title": "Exception de chargement du module"
+    "load_error_title": "Exception de chargement du module",
+    "schema_invalid": "module.toml ne respecte pas le format : {{problems}}",
+    "schema_unsupported": "Ce module nécessite un Saba-chan plus récent (format de module {{required}}). Mettez Saba-chan à jour."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} est requis",
     "type_mismatch": "{{field}} a un type invalide",
     "out_of_range": "{{field}} est hors plage ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}} : '{{value}}' n’est pas une option valide"
+    "invalid_option": "{{field}} : '{{value}}' n’est pas une option valide",
+    "duplicate_item": "{{field}} : '{{value}}' apparaît plusieurs fois",
+    "list_hint": "Un par ligne",
+    "item_count": "{{field}} doit contenir entre {{min}} et {{max}} éléments",
+    "too_long": "{{field}} ne peut pas dépasser {{max}} caractères"
   },
   "context_menu": {
     "settings": "Paramètres du serveur",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "Abandon après {{count}} redémarrages en 10 minutes",
     "exit_note_restart_failed": "Redémarrage impossible : {{reason}}",
     "parent_job_short": "Le cœur dépend d'une autre app",
-    "parent_job": "Le cœur de saba-chan tourne rattaché au programme qui a ouvert cette app. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Quittez complètement saba-chan puis rouvrez-le depuis le menu Démarrer."
+    "parent_job": "Le cœur de saba-chan tourne rattaché au programme qui l'a lancé. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Quittez complètement saba-chan puis rouvrez-le depuis le menu Démarrer."
   },
   "discord": {
     "nav_connection": "Connexion",
@@ -789,6 +798,8 @@
     "chain_discord": "Discord",
     "agent_desc": "Ce PC reçoit et exécute les commandes envoyées depuis Discord. Tant qu'il est désactivé, le bot ne répond pas.",
     "agent_replaced": "La connexion PC de ce compte Discord a été déplacée vers un autre PC, elle s'est donc arrêtée ici. Pour réutiliser ce PC, appairez-le à nouveau depuis ce PC.",
+    "agent_too_old": "Le serveur relais n'accepte plus cette version de l'application. Mettez l'application à jour vers {{version}} ou plus récent.",
+    "agent_check_update": "Rechercher des mises à jour",
     "agent_running": "Activé",
     "agent_connecting": "Démarrage",
     "agent_stopped": "Désactivé",
@@ -987,6 +998,7 @@
     "backups_desc": "Compresse le monde et les fichiers de sauvegarde. Les sauvegardes que vous créez vous-même ne sont jamais supprimées automatiquement.",
     "backups_empty": "Aucune sauvegarde pour le moment.",
     "backup_now": "Sauvegarder",
+    "backup_size_stored": "{{size}} · {{stored}} nouveaux",
     "backup_created": "Sauvegarde créée.",
     "backup_nothing": "Il n'y a encore aucun fichier à sauvegarder.",
     "restore": "Restaurer",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "Vous pouvez aussi l'activer ou le désactiver par serveur.",
     "model": "Modèle",
     "seconds": "secondes",
-    "confirm_commands": "Toujours demander pour les commandes sensibles",
-    "confirm_commands_hint": "Activé, les commandes sensibles comme démarrer, arrêter et redémarrer ne s'exécutent qu'après confirmation sur Discord ; désactivé, elles sont toujours autorisées. Les commandes sûres s'exécutent toujours directement et les dangereuses demandent toujours confirmation. Les permissions utilisateur définies dans l'app priment toujours.",
+    "confirm_commands": "Toujours demander avant les commandes serveur",
+    "confirm_commands_hint": "Activé, les commandes serveur comme démarrer, arrêter et redémarrer ne s'exécutent qu'après confirmation sur Discord. Désactivé, les commandes serveur demandées directement s'exécutent tout de suite, mais les commandes dangereuses et les tâches d'administration demandent toujours confirmation. Les permissions utilisateur définies dans l'app priment toujours.",
     "memory": "Mémoire à long terme",
     "memory_hint": "Retient ce qu'elle apprend pour les conversations suivantes.",
     "web_search": "Recherche web",

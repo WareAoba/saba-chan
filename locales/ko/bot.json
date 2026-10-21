@@ -199,6 +199,20 @@
           "title": "콘솔 끝부분",
           "description": "콘솔 마지막 20줄"
         }
+      },
+      "logs": {
+        "read": {
+          "title": "로그 읽기",
+          "description": "서버 로그 세션을 끝에서부터 읽습니다"
+        },
+        "export": {
+          "title": "로그 내보내기",
+          "description": "서버 로그 세션 하나를 .log 파일로 내보냅니다"
+        }
+      },
+      "players": {
+        "title": "플레이어",
+        "description": "접속한 사람과 이름"
       }
     },
     "monitor": {
@@ -276,6 +290,10 @@
       "overwrites": "덮어쓸 대상",
       "overwrites_instance": "지금 서버 파일",
       "source": "출처",
+      "lines": "줄 수",
+      "before": "이전 위치",
+      "since": "시작 시각",
+      "until": "끝 시각",
       "trust": "신뢰",
       "version": "받을 판",
       "installed": "지금 판",
@@ -287,7 +305,7 @@
       "enabled": "켜기",
       "model": "모델",
       "memo": "서버 프롬프트",
-      "confirmCommands": "주의 명령 항상 묻기",
+      "confirmCommands": "서버 명령 실행 전에 항상 묻기",
       "memory": "기억",
       "webSearch": "웹 검색",
       "disabledTools": "끈 도구 묶음",
@@ -319,7 +337,11 @@
       "updates_none": "✅ 모두 최신이에요",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · 메모리 {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 접속 {{online}}명",
+      "players_max": "👥 접속 {{online}}/{{max}}명",
+      "player_item": "• {{name}}",
+      "players_more": "…외 {{count}}명"
     }
   }
 }

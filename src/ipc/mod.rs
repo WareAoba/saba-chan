@@ -719,9 +719,12 @@ impl IPCServer {
             // ── Managed-process & module-feature endpoints ──
             .route("/api/instance/:id/managed/start", post(handlers::managed::start_managed_route))
             .route("/api/instance/:id/console", get(handlers::managed::get_console_handler))
+            .route("/api/instance/:id/logs", get(handlers::logs::logs_handler))
+            .route("/api/instance/:id/logs/export", get(handlers::logs::export_handler))
             .route("/api/instance/:id/stdin", post(handlers::managed::send_stdin_handler))
             .route("/api/instance/:id/validate", post(handlers::managed::validate_instance_handler))
             .route("/api/instance/:id/query/:name", post(handlers::managed::query_instance_handler))
+            .route("/api/instance/:id/players", get(handlers::managed::players_handler))
             .route("/api/instance/:id/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
             .route("/api/instance/:id/properties/reset", post(handlers::managed::reset_properties_handler))
             .route("/api/instance/:id/settings/live", get(handlers::managed::read_live_settings_handler))

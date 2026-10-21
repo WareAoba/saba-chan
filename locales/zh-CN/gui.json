@@ -322,7 +322,10 @@
     "reset_server_running": "请先停止服务器再重置",
     "instance_busy": "此服务器上正在进行其他任务（备份或恢复）。完成后请重试",
     "extension_required_for_install": "缺少所需的扩展：{{extensions}}。请先在 Saba 存储中安装。",
-    "install_settings_failed": "版本已安装，但保存设置失败：{{error}}"
+    "install_settings_failed": "版本已安装，但保存设置失败：{{error}}",
+    "restart_required": "已保存 {{name}} 的设置。{{fields}} 需要重启服务器才会生效。",
+    "restart_now": "立即重启",
+    "restart_later": "稍后"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 机器人启动失败：{{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "模块加载失败：{{error}}",
     "list_empty": "模块列表为空",
     "fetch_failed_toast": "模块搜索失败：{{error}}",
-    "load_error_title": "模块加载异常"
+    "load_error_title": "模块加载异常",
+    "schema_invalid": "module.toml 不符合格式：{{problems}}",
+    "schema_unsupported": "此模块需要更新版本的 Saba-chan（模块格式 {{required}}）。请更新 Saba-chan。"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} 为必填项",
     "type_mismatch": "{{field}} 的类型无效",
     "out_of_range": "{{field}} 超出范围 ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' 不是有效选项"
+    "invalid_option": "{{field}}: '{{value}}' 不是有效选项",
+    "duplicate_item": "{{field}}：'{{value}}' 重复出现",
+    "list_hint": "每行一个",
+    "item_count": "{{field}} 需要 {{min}}~{{max}} 项",
+    "too_long": "{{field}} 最多 {{max}} 个字符"
   },
   "context_menu": {
     "settings": "服务器设置",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "10 分钟内重启 {{count}} 次后放弃",
     "exit_note_restart_failed": "无法重启：{{reason}}",
     "parent_job_short": "核心依附于其他程序",
-    "parent_job": "saba-chan 核心正依附于启动本应用的另一个程序运行。该程序关闭时，核心和服务器管理可能会一起停止。请完全退出 saba-chan，然后从开始菜单重新打开。"
+    "parent_job": "saba-chan 核心正依附于启动它的程序运行。该程序关闭时，核心和服务器管理可能会一起停止。请完全退出 saba-chan，然后从开始菜单重新打开。"
   },
   "discord": {
     "nav_connection": "连接",
@@ -789,6 +798,8 @@
     "chain_discord": "Discord",
     "agent_desc": "由这台电脑接收并执行从 Discord 发来的命令。关闭时机器人不会回应。",
     "agent_replaced": "此 Discord 账号的 PC 连接已移到另一台 PC,因此这里已停止。要再次使用这台 PC,请在这台 PC 上重新配对。",
+    "agent_too_old": "中继服务器不再接受此应用版本。请将应用更新到 {{version}} 或更高版本。",
+    "agent_check_update": "检查更新",
     "agent_running": "已开启",
     "agent_connecting": "启动中",
     "agent_stopped": "已关闭",
@@ -987,6 +998,7 @@
     "backups_desc": "将世界和存档文件压缩保存。手动创建的备份不会被自动清理。",
     "backups_empty": "还没有备份。",
     "backup_now": "立即备份",
+    "backup_size_stored": "{{size}} · 新存储 {{stored}}",
     "backup_created": "已创建备份。",
     "backup_nothing": "还没有可备份的文件。",
     "restore": "恢复",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "也可以按服务器单独开启或关闭。",
     "model": "模型",
     "seconds": "秒",
-    "confirm_commands": "注意命令总是询问",
-    "confirm_commands_hint": "开启后，启动、停止、重启等注意命令需在 Discord 上确认后才执行；关闭后总是允许。安全命令总是立即执行，危险命令总是需要确认。应用中设置的用户权限始终优先。",
+    "confirm_commands": "执行服务器命令前总是询问",
+    "confirm_commands_hint": "开启后，启动、停止、重启等服务器命令需在 Discord 上确认后才执行。关闭后，直接请求的服务器命令会立即执行，但危险命令和管理操作仍需确认。应用中设置的用户权限始终优先。",
     "memory": "长期记忆",
     "memory_hint": "记住对话中了解到的内容，用于之后的对话。",
     "web_search": "网络搜索",

@@ -152,18 +152,55 @@ async fn list(ctx: &Ctx) -> Result<()> {
             output::print_table(t);
         }
         for f in r.get("failed").and_then(Value::as_array).into_iter().flatten() {
-            let what = if s(f, "module").is_empty() {
-                s(f, "path")
-            } else {
-                s(f, "module")
-            };
-            ctx.out.warn(&t!("module.failed", path = what, error = s(f, "error")));
+            let lines = failed_lines(f);
+            ctx.out.warn(&lines[0]);
+            for problem in &lines[1..] {
+                say!("  · {}", problem);
+            }
             if let Some(h) = crate::error::api_hint(s(f, "error_code"), f) {
                 ctx.out.hint(&h);
             }
         }
     });
     Ok(())
+}
+
+/// 읽지 못한 모듈 한 건: 첫 줄은 무엇을 왜, 나머지는 스키마에서 틀린 곳 (06 §7)
+fn failed_lines(f: &Value) -> Vec<String> {
+    let folder = || {
+        let path = s(f, "path").trim_end_matches(['/', '\\']);
+        path.rsplit(['/', '\\']).next().unwrap_or(path).to_string()
+    };
+    let module = if s(f, "module").is_empty() {
+        folder()
+    } else {
+        s(f, "module").to_string()
+    };
+    match s(f, "error_code") {
+        "module_schema_invalid" => std::iter::once(t!("module.load_failed.invalid", module = module))
+            .chain(
+                f.get("problems")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string),
+            )
+            .collect(),
+        "module_schema_unsupported" => vec![t!(
+            "module.load_failed.unsupported",
+            module = module,
+            required = f.get("required").map(show).unwrap_or_default()
+        )],
+        _ => {
+            let what = if s(f, "module").is_empty() {
+                s(f, "path")
+            } else {
+                s(f, "module")
+            };
+            vec![t!("module.failed", path = what, error = s(f, "error"))]
+        }
+    }
 }
 
 async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {
@@ -369,6 +406,32 @@ async fn available(ctx: &Ctx) -> Result<()> {
 mod tests {
     use super::*;
     use clap::Parser;
+
+    /// 스키마에 맞지 않거나 너무 새 스키마라 읽지 못한 모듈은 무엇이 틀렸는지·필요한 버전을 보인다 (06 §7)
+    #[test]
+    fn a_module_that_does_not_match_its_schema_lists_the_problems() {
+        crate::i18n::init("ko");
+        let invalid = json!({ "path": "/m/palworld", "error": "x", "error_code": "module_schema_invalid", "problems": ["settings.fields[2].type: unknown type 'list'", "unknown key 'restart_required'"] });
+        let lines = failed_lines(&invalid);
+        assert_eq!(lines[0], t!("module.load_failed.invalid", module = "palworld"));
+        assert_eq!(
+            &lines[1..],
+            [
+                "settings.fields[2].type: unknown type 'list'",
+                "unknown key 'restart_required'"
+            ]
+        );
+        let newer = json!({ "path": "/m/ark", "error": "x", "error_code": "module_schema_unsupported", "required": 2 });
+        assert_eq!(
+            failed_lines(&newer),
+            vec![t!("module.load_failed.unsupported", module = "ark", required = 2)]
+        );
+        let other = json!({ "path": "/m/zz", "error": "boom" });
+        assert_eq!(
+            failed_lines(&other),
+            vec![t!("module.failed", path = "/m/zz", error = "boom")]
+        );
+    }
 
     /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다
     #[test]

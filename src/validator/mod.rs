@@ -88,7 +88,18 @@ pub fn validate_setting_value(
             // 필수가 아니면 값이 없어도 OK
             return Ok(());
         }
-        Some(Value::String(s)) if s.is_empty() => {
+        Some(Value::Array(items)) if items.is_empty() && field.field_type == "list" => {
+            if field.required == Some(true) {
+                return Err(ValidationError {
+                    field: field_name.clone(),
+                    message: format!("Required field '{}' is empty", field_name),
+                    error_type: ValidationErrorType::Required,
+                });
+            }
+            return validate_list(field, &[]);
+        }
+        // 목록은 문자열 배열만 (빈 목록은 `[]`)
+        Some(Value::String(s)) if s.is_empty() && field.field_type != "list" => {
             if field.required == Some(true) {
                 return Err(ValidationError {
                     field: field_name.clone(),
@@ -109,6 +120,9 @@ pub fn validate_setting_value(
         "boolean" => validate_boolean(field, val),
         "select" => validate_select(field, val),
         "text" | "password" | "file" => validate_string(field, val),
+        // 목록은 항목마다 형식을 보므로 여기서 끝난다
+        "list" => return validate_list_value(field, val),
+        "multiline" => validate_multiline(field, val),
         _ => Ok(()), // 알 수 없는 타입은 통과
     }?;
 
@@ -281,6 +295,100 @@ fn validate_string(field: &SettingField, value: &Value) -> Result<(), Validation
             ),
             error_type: ValidationErrorType::TypeMismatch,
         }),
+    }
+}
+
+/// 목록 타입 (06 §8.1): 문자열 배열. 항목마다 `options`·`format`·`pattern`을 보고, 빈 항목·같은 값 두 번은 형식 오류다
+fn validate_list_value(field: &SettingField, value: &Value) -> Result<(), ValidationError> {
+    let items: Option<Vec<&str>> = value.as_array().and_then(|a| a.iter().map(Value::as_str).collect());
+    let Some(items) = items else {
+        return Err(ValidationError {
+            field: field.name.clone(),
+            message: format!("'{}' must be a list of strings, got: {}", field.name, value),
+            error_type: ValidationErrorType::TypeMismatch,
+        });
+    };
+    validate_list(field, &items)
+}
+
+fn validate_list(field: &SettingField, items: &[&str]) -> Result<(), ValidationError> {
+    let error = |message: String, error_type| Err(ValidationError { field: field.name.clone(), message, error_type });
+    let count = items.len() as u32;
+    if field.min_items.is_some_and(|min| count < min) || field.max_items.is_some_and(|max| count > max) {
+        return error(format!("'{}' has {} items, outside {:?}..={:?}", field.name, count, field.min_items, field.max_items), ValidationErrorType::OutOfRange);
+    }
+    for (i, item) in items.iter().enumerate() {
+        if item.is_empty() || item.contains(['\r', '\n', '\0']) || items[..i].contains(item) {
+            return error(format!("'{}' items must be non-empty, single-line and different", field.name), ValidationErrorType::InvalidFormat);
+        }
+        if let Some(options) = field.options.as_ref().filter(|o| !o.iter().any(|x| x == item)) {
+            return error(format!("'{}' item '{}' is not a valid option. Valid options: {:?}", field.name, item, options), ValidationErrorType::InvalidOption);
+        }
+        validate_format(field, &Value::from(*item))?;
+    }
+    Ok(())
+}
+
+/// 여러 줄 타입 (06 §8.1): 줄바꿈을 받는 문자열. `max_length`는 글자 수
+fn validate_multiline(field: &SettingField, value: &Value) -> Result<(), ValidationError> {
+    let error = |message: String, error_type| Err(ValidationError { field: field.name.clone(), message, error_type });
+    let Some(s) = value.as_str() else {
+        return error(format!("'{}' must be a string, got: {}", field.name, value), ValidationErrorType::TypeMismatch);
+    };
+    if s.contains('\0') {
+        return error(format!("'{}' cannot contain a NUL character", field.name), ValidationErrorType::InvalidFormat);
+    }
+    if field.max_length.is_some_and(|max| s.chars().count() > max as usize) {
+        return error(format!("'{}' is longer than {:?} characters", field.name, field.max_length), ValidationErrorType::OutOfRange);
+    }
+    Ok(())
+}
+
+/// 06 §8.1 옮기기: 문자열로 저장된 값이 모듈 업데이트로 `list` 설정이 됐으면 쉼표로 나눠 배열로 바꾼다
+/// (앞뒤 공백·빈 항목은 버린다). 바꾼 것이 있으면 true. 파일에는 다음 저장 때 쓴다
+pub fn migrate_list_values(fields: &[SettingField], settings: &mut std::collections::HashMap<String, Value>) -> bool {
+    let mut changed = false;
+    for field in fields.iter().filter(|f| f.field_type == "list") {
+        if let Some(Value::String(text)) = settings.get(&field.name) {
+            let items: Vec<Value> = text.split(',').map(str::trim).filter(|i| !i.is_empty()).map(Value::from).collect();
+            settings.insert(field.name.clone(), Value::Array(items));
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// 06 §8.2: `visible_when`에 따라 지금 숨겨진 설정 이름. 값이 없으면 그 설정의 `default`로 비교한다
+pub fn hidden_fields(fields: &[SettingField], value_of: impl Fn(&str) -> Option<Value>) -> Vec<String> {
+    fields
+        .iter()
+        .filter(|f| {
+            let Some(cond) = &f.visible_when else { return false };
+            let Some(target) = fields.iter().find(|t| t.name == cond.field) else { return false };
+            let current = value_of(&target.name).filter(|v| !v.is_null()).or_else(|| target.default.as_ref().and_then(|d| serde_json::to_value(d).ok()));
+            let Some(current) = current else { return true };
+            !cond.values().into_iter().any(|want| same_setting_value(&target.field_type, &current, want))
+        })
+        .map(|f| f.name.clone())
+        .collect()
+}
+
+/// 설정 타입으로 바꾼 값끼리 비교한다: boolean은 참·거짓, number는 수 값("25565"와 25565는 같다), 나머지는 문자열
+fn same_setting_value(field_type: &str, a: &Value, b: &Value) -> bool {
+    let text = |v: &Value| match v {
+        Value::String(s) => s.trim().to_string(),
+        other => other.to_string(),
+    };
+    match field_type {
+        "boolean" => {
+            let flag = |v: &Value| v.as_bool().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()));
+            flag(a).is_some() && flag(a) == flag(b)
+        }
+        "number" => {
+            let num = |v: &Value| v.as_f64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()));
+            num(a).is_some() && num(a) == num(b)
+        }
+        _ => text(a) == text(b),
     }
 }
 
@@ -668,6 +776,62 @@ mod tests {
             port: false,
             ..Default::default()
         }
+    }
+
+    /// 06 §8.1: 목록은 문자열 배열이고 항목마다 검사한다. 여러 줄은 줄바꿈을 받는다
+    #[test]
+    fn list_and_multiline_values_follow_the_contract() {
+        use serde_json::json;
+        let mut admins = make_field("admins", "list");
+        admins.pattern = Some("[A-Za-z0-9_]+".into());
+        admins.max_items = Some(2);
+        let check = |f: &SettingField, v: Value| validate_setting_value(f, Some(&v)).map_err(|e| e.error_type);
+        assert_eq!(check(&admins, json!(["Steve", "Alex"])), Ok(()));
+        assert_eq!(check(&admins, json!([])), Ok(()));
+        assert_eq!(check(&admins, json!("Steve")), Err(ValidationErrorType::TypeMismatch));
+        assert_eq!(check(&admins, json!(["Steve", 3])), Err(ValidationErrorType::TypeMismatch));
+        for bad in [json!(["Steve", ""]), json!(["Steve", "Steve"]), json!(["a b"]), json!(["a\nb"])] {
+            assert_eq!(check(&admins, bad.clone()), Err(ValidationErrorType::InvalidFormat), "{bad}");
+        }
+        assert_eq!(check(&admins, json!(["a", "b", "c"])), Err(ValidationErrorType::OutOfRange));
+        let mut maps = make_field("maps", "list");
+        maps.options = Some(vec!["forest".into(), "desert".into()]);
+        maps.min_items = Some(1);
+        maps.required = Some(true);
+        assert_eq!(check(&maps, json!(["desert", "forest"])), Ok(()));
+        assert_eq!(check(&maps, json!(["sea"])), Err(ValidationErrorType::InvalidOption));
+        assert_eq!(check(&maps, json!([])), Err(ValidationErrorType::Required));
+
+        let mut motd = make_field("motd", "multiline");
+        motd.max_length = Some(5);
+        assert_eq!(check(&motd, json!("가나\n다")), Ok(()), "five characters, not bytes");
+        assert_eq!(check(&motd, json!("123456")), Err(ValidationErrorType::OutOfRange));
+        assert_eq!(check(&motd, json!("a\u{0}")), Err(ValidationErrorType::InvalidFormat));
+        assert_eq!(check(&motd, json!(["a"])), Err(ValidationErrorType::TypeMismatch));
+    }
+
+    /// 06 §8.1 옮기기와 §8.2 숨김 계산
+    #[test]
+    fn list_values_migrate_and_hidden_follows_typed_values() {
+        use serde_json::json;
+        let fields = vec![make_field("admins", "list"), make_field("motd", "text")];
+        let mut settings = std::collections::HashMap::from([("admins".to_string(), json!(" Steve, ,Alex,")), ("motd".to_string(), json!("a,b"))]);
+        assert!(migrate_list_values(&fields, &mut settings));
+        assert_eq!((settings["admins"].clone(), settings["motd"].clone()), (json!(["Steve", "Alex"]), json!("a,b")));
+        assert!(!migrate_list_values(&fields, &mut settings), "already a list");
+
+        let mut pvp = make_field("pvp", "boolean");
+        pvp.default = Some(toml::Value::Boolean(false));
+        let port = make_field("port", "number");
+        let mut damage = make_field("damage", "text");
+        damage.visible_when = Some(crate::supervisor::module_loader::VisibleWhen { field: "pvp".into(), equals: Some(json!(true)), any_of: None });
+        let mut bind = make_field("bind", "text");
+        bind.visible_when = Some(crate::supervisor::module_loader::VisibleWhen { field: "port".into(), equals: None, any_of: Some(vec![json!(25565)]) });
+        let fields = vec![pvp, port, damage, bind];
+        let hidden = |values: Value| hidden_fields(&fields, |k| values.get(k).cloned());
+        assert_eq!(hidden(json!({})), vec!["damage", "bind"], "pvp falls back to its default; port has none");
+        assert_eq!(hidden(json!({"pvp": "true", "port": "25565"})), Vec::<String>::new(), "typed comparison");
+        assert_eq!(hidden(json!({"pvp": true, "port": 25566})), vec!["bind"]);
     }
 
     #[test]
@@ -1126,7 +1290,7 @@ mod tests {
     /// 예약 범위 안에서 지금 아무 프로그램도 쥐고 있지 않은 포트. 예약한 쪽(WinNAT 등)이 범위 안 포트를 실제로
     /// 듣고 있기도 해서(CI 러너) 사용 중 포트 목록에 있는 것은 건너뛴다
     fn an_excluded_tcp_port() -> Option<u16> {
-        let out = std::process::Command::new("netsh").args(["int", "ipv4", "show", "excludedportrange", "protocol=tcp"]).output().ok()?;
+        let out = std::process::Command::new(saba_chan_updater_lib::process::system_tool("netsh")).args(["int", "ipv4", "show", "excludedportrange", "protocol=tcp"]).output().ok()?;
         let held = held_ports::read();
         String::from_utf8_lossy(&out.stdout).lines().find_map(|line| {
             let mut nums = line.split_whitespace().map(str::parse::<u16>);

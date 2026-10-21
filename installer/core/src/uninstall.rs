@@ -14,7 +14,6 @@
 use saba_chan_updater_lib::constants;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use tauri::AppHandle;
 
 #[cfg(target_os = "windows")]
 use crate::registry;
@@ -33,10 +32,8 @@ pub struct UninstallProgress {
     pub left: Vec<String>,
 }
 
-/// GUI 모드 제거 실행
-pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
-    use tauri::Emitter;
-
+/// GUI 모드 제거 실행. 단계마다 `on_progress`로 알린다
+pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallProgress)) {
     let emit = |step: &str, msg: &str, pct: i32| {
         let p = UninstallProgress {
             step: step.to_string(),
@@ -46,7 +43,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
             error: None,
             left: Vec::new(),
         };
-        app.emit("uninstall:progress", &p).ok();
+        on_progress(&p);
     };
 
     let emit_complete = |msg: &str, left: &[PathBuf]| {
@@ -58,7 +55,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
             error: None,
             left: left.iter().map(|p| p.display().to_string()).collect(),
         };
-        app.emit("uninstall:progress", &p).ok();
+        on_progress(&p);
     };
 
     let _emit_err = |msg: &str| {
@@ -70,7 +67,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
             error: Some(msg.to_string()),
             left: Vec::new(),
         };
-        app.emit("uninstall:progress", &p).ok();
+        on_progress(&p);
     };
 
     // Step 1: 설치 경로 확인
@@ -554,12 +551,18 @@ impl DaemonApi {
         format!("http://127.0.0.1:{}{}", self.port, path)
     }
 
-    /// 설정된 포트의 데몬이 이 설치 폴더의 것이면 그 PID (경로를 모르면 아니라고 본다)
-    async fn daemon_is_in(&self, dirs: &[PathBuf]) -> Option<u32> {
+    /// 설정된 포트에 답하는 데몬의 PID. 답이 없거나 PID를 모르면 None
+    async fn health_pid(&self) -> Option<u32> {
         let health = self.client.get(self.url("/health")).header("X-Saba-Token", &self.token).send().await;
-        let r = health.ok()?;
+        let r = health.map_err(|e| tracing::info!("No daemon answers on port {} ({})", self.port, e)).ok()?;
         let pid = r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
         pid.and_then(|p| u32::try_from(p).ok())
+    }
+
+    /// 설정된 포트의 데몬이 이 설치 폴더의 것이면 그 PID (경로를 모르면 아니라고 본다)
+    async fn daemon_is_in(&self, dirs: &[PathBuf]) -> Option<u32> {
+        self.health_pid()
+            .await
             .filter(|pid| daemon_owner(&list_named(&["saba-core"]).unwrap_or_default(), *pid, dirs) == Owner::Here)
     }
 
@@ -735,6 +738,11 @@ fn descendants_of(roots: &[u32], install_dir: &Path) -> Vec<u32> {
 }
 
 /// 포터블 실행기는 Windows에만 있다
+/// 종료 API는 포트에 답하는 데몬에게 간다: 그 데몬이 이 설치에서 찾은 데몬일 때만 부탁한다
+fn asks_to_shut_down(daemons: &[u32], answering: Option<u32>) -> bool {
+    answering.is_some_and(|pid| daemons.contains(&pid))
+}
+
 #[cfg(not(target_os = "windows"))]
 fn descendants_of(_roots: &[u32], _install_dir: &Path) -> Vec<u32> {
     Vec::new()
@@ -764,15 +772,7 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
 
     // 실행 파일 경로로 못 찾았으면 (경로를 못 읽는 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다
     if daemons.is_empty() {
-        let health = api.client.get(api.url("/health")).header("X-Saba-Token", &api.token).send().await;
-        let pid = match health {
-            Ok(r) => r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64())),
-            Err(e) => {
-                tracing::info!("[Install] No daemon answers on port {} ({})", port, e);
-                None
-            }
-        };
-        if let Some(pid) = pid.and_then(|p| u32::try_from(p).ok()) {
+        if let Some(pid) = api.health_pid().await {
             match daemon_owner(&listing, pid, &dirs) {
                 Owner::Here => daemons.push(pid),
                 Owner::Unknown => {
@@ -790,7 +790,12 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
         tracing::info!("[Install] No daemon from this install is running");
     } else {
         tracing::info!("[Install] A daemon from this install is running (PID {:?}); asking it to shut down", daemons);
-        let left = if api.shutdown("[Install]").await {
+        // 설정된 포트(이 설치기의 데이터 폴더 기준)에 다른 설치의 데몬이 답할 수 있다: 찾은 데몬이 답할 때만 부탁한다
+        let answering = api.health_pid().await;
+        if !asks_to_shut_down(&daemons, answering) {
+            tracing::info!("[Install] Port {} is answered by PID {:?}, not this install's daemon; not asking it to shut down", port, answering);
+        }
+        let left = if asks_to_shut_down(&daemons, answering) && api.shutdown("[Install]").await {
             let named: Vec<(u32, String)> = daemons.iter().map(|pid| (*pid, "saba-core".to_string())).collect();
             let procs = identify(list_all().as_deref(), &named);
             let left = wait_for_exit(&procs, list_all, DAEMON_EXIT_WAIT, std::time::Duration::from_millis(500)).await;
@@ -927,7 +932,7 @@ fn list_all() -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn powershell_lines(script: &str) -> Option<String> {
-    let mut cmd = std::process::Command::new("powershell");
+    let mut cmd = std::process::Command::new(saba_chan_updater_lib::process::system_tool("powershell"));
     saba_chan_updater_lib::process::hide_console(&mut cmd).args(["-NoProfile", "-NonInteractive", "-Command", script]);
     match output_within(&mut cmd, COMMAND_LIMIT) {
         Some(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
@@ -982,7 +987,7 @@ fn kill_pid(pid: u32, tree: bool) {
         args.push("/T");
     }
     args.push("/F");
-    let mut cmd = std::process::Command::new("taskkill");
+    let mut cmd = std::process::Command::new(saba_chan_updater_lib::process::system_tool("taskkill"));
     saba_chan_updater_lib::process::hide_console(&mut cmd).args(&args);
     let _ = output_within(&mut cmd, COMMAND_LIMIT);
 }
@@ -1052,7 +1057,7 @@ fn remove_install_dir(dir: &PathBuf) -> anyhow::Result<()> {
 }
 
 /// 사바쨩이 설치한 폴더인지: 바로 안에 데몬이나 GUI 실행 파일이 있어야 한다
-pub(crate) fn looks_like_install_dir(dir: &Path) -> bool {
+pub fn looks_like_install_dir(dir: &Path) -> bool {
     let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
     dir.join(core).is_file() || saba_chan_updater_lib::find_gui_exe(dir).is_some()
 }
@@ -1170,6 +1175,35 @@ fn remove_temp_files() {
             let _ = remove_dir_robust(&dir);
         }
     }
+    // 설치가 도중에 끊겨 남은 프로세스별 작업 폴더 (`saba-chan-installer-<pid>`)
+    for dir in stale_work_dirs(&temp, list_all().as_deref()) {
+        tracing::info!("[Uninstall] Removing temp: {:?}", dir);
+        let _ = remove_dir_robust(&dir);
+    }
+}
+
+/// `temp`의 설치기 작업 폴더 중 그 PID가 프로세스 목록(`list_all`)에 없는 것. 다른 설치기가 아직 받고 있으면 둔다.
+/// 목록을 못 읽으면 어느 것이 끝났는지 모르므로 하나도 고르지 않는다
+fn stale_work_dirs(temp: &Path, listing: Option<&str>) -> Vec<PathBuf> {
+    let Some(listing) = listing else { return Vec::new() };
+    let running: Vec<u32> = proc_rows(listing).iter().map(|r| r.pid).collect();
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(temp)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|dir| installer_work_dir_pid(dir).is_some_and(|pid| !running.contains(&pid)))
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+fn installer_work_dir_pid(path: &Path) -> Option<u32> {
+    if !path.is_dir() {
+        return None;
+    }
+    let pid = path.file_name()?.to_str()?.strip_prefix(crate::release::WORK_DIR_PREFIX)?;
+    pid.bytes().all(|b| b.is_ascii_digit()).then(|| pid.parse().ok()).flatten()
 }
 
 fn remove_modules_dir() {
@@ -1282,7 +1316,7 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        match std::process::Command::new("cmd")
+        match std::process::Command::new(saba_chan_updater_lib::process::system_tool("cmd"))
             .args(CLEANUP_CMD_ARGS)
             .arg(&script_path)
             .creation_flags(CREATE_NO_WINDOW)
@@ -1325,6 +1359,42 @@ mod tests {
 
     // M15: 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
     // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다
+    #[test]
+    fn only_numbered_installer_work_dirs_are_cleaned() {
+        let tmp = tempfile::tempdir().unwrap();
+        let work = tmp.path().join("saba-chan-installer-1234");
+        std::fs::create_dir_all(&work).unwrap();
+        let other = tmp.path().join("saba-chan-installer-backup");
+        std::fs::create_dir_all(&other).unwrap();
+        let log = tmp.path().join("saba-chan-installer-99");
+        std::fs::write(&log, b"").unwrap();
+
+        assert_eq!(stale_work_dirs(tmp.path(), Some("")), [work]);
+    }
+
+    /// 다른 설치기가 아직 돌고 있으면 그 작업 폴더는 두고, 프로세스 목록을 못 읽으면 아무것도 지우지 않는다
+    #[test]
+    fn a_running_installers_work_dir_is_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let live = tmp.path().join("saba-chan-installer-1234");
+        let gone = tmp.path().join("saba-chan-installer-5678");
+        for dir in [&live, &gone] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let listing = "1234|1|5|saba-chan-cli.exe|C:/Saba/saba-chan-cli.exe\n";
+
+        assert_eq!(stale_work_dirs(tmp.path(), Some(listing)), [gone]);
+        assert!(stale_work_dirs(tmp.path(), None).is_empty());
+    }
+
+    /// 설정된 포트에 다른 설치의 데몬이 답하면 그 데몬에 종료를 부탁하지 않는다 (찾은 PID만 끝낸다)
+    #[test]
+    fn only_this_installs_daemon_is_asked_to_shut_down() {
+        assert!(asks_to_shut_down(&[100], Some(100)));
+        assert!(!asks_to_shut_down(&[100], Some(200)), "another install's daemon answers on the port");
+        assert!(!asks_to_shut_down(&[100], None));
+    }
+
     #[tokio::test]
     async fn stopped_processes_are_waited_for_until_they_are_gone() {
         let mut calls = 0;

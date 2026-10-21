@@ -9,7 +9,7 @@ license = "MIT"
 keywords = ["game-server", "palworld", "minecraft", "management"]
 
 [workspace]
-members = [".", "runner", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "saba-chan-cli", "saba-chan-gui/src-tauri"]
+members = [".", "runner", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "installer/core", "saba-chan-cli", "saba-chan-gui/src-tauri"]
 
 [[bin]]
 name = "saba-core"
@@ -52,6 +52,8 @@ tokio-util = "0.7"
 futures-util = { version = "0.3", default-features = false }
 hmac = "0.12"
 sha2 = "0.10"
+# 증분 백업의 내용 저장소 (MK16). zip이 이미 쓰는 판
+flate2 = "1"
 hex = "0.4"
 saba-chan-updater-lib = { path = "updater" }
 saba-runner = { path = "runner", default-features = false }

@@ -322,7 +322,10 @@
     "reset_server_running": "請先停止伺服器再重設",
     "instance_busy": "此伺服器上正在進行其他工作（備份或還原）。完成後請再試一次",
     "extension_required_for_install": "缺少必要的擴充功能：{{extensions}}。請先在 Saba 儲存中安裝。",
-    "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}"
+    "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}",
+    "restart_required": "已儲存 {{name}} 的設定。{{fields}} 需要重新啟動伺服器才會生效。",
+    "restart_now": "立即重新啟動",
+    "restart_later": "稍後"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 機器人啟動失敗：{{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "模組載入失敗：{{error}}",
     "list_empty": "模組清單為空",
     "fetch_failed_toast": "模組搜尋失敗：{{error}}",
-    "load_error_title": "模組載入例外"
+    "load_error_title": "模組載入例外",
+    "schema_invalid": "module.toml 不符合格式：{{problems}}",
+    "schema_unsupported": "此模組需要更新版本的 Saba-chan（模組格式 {{required}}）。請更新 Saba-chan。"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} 為必填欄位",
     "type_mismatch": "{{field}} 的類型無效",
     "out_of_range": "{{field}} 超出範圍 ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}：'{{value}}' 不是有效選項"
+    "invalid_option": "{{field}}：'{{value}}' 不是有效選項",
+    "duplicate_item": "{{field}}：'{{value}}' 重複出現",
+    "list_hint": "每行一個",
+    "item_count": "{{field}} 需要 {{min}}~{{max}} 項",
+    "too_long": "{{field}} 最多 {{max}} 個字元"
   },
   "context_menu": {
     "settings": "伺服器設定",
@@ -738,7 +747,7 @@
     "exit_note_gave_up": "10 分鐘內重啟 {{count}} 次後放棄",
     "exit_note_restart_failed": "無法重啟：{{reason}}",
     "parent_job_short": "核心依附於其他程式",
-    "parent_job": "saba-chan 核心正依附於啟動本應用程式的另一個程式執行。該程式關閉時，核心和伺服器管理可能會一起停止。請完全結束 saba-chan，再從開始功能表重新開啟。"
+    "parent_job": "saba-chan 核心正依附於啟動它的程式執行。該程式關閉時，核心和伺服器管理可能會一起停止。請完全結束 saba-chan，再從開始功能表重新開啟。"
   },
   "discord": {
     "nav_connection": "連線",
@@ -789,6 +798,8 @@
     "chain_discord": "Discord",
     "agent_desc": "由這台電腦接收並執行從 Discord 傳來的命令。關閉時機器人不會回應。",
     "agent_replaced": "此 Discord 帳號的 PC 連線已移到另一台 PC,因此這裡已停止。要再次使用這台 PC,請在這台 PC 上重新配對。",
+    "agent_too_old": "中繼伺服器不再接受此應用程式版本。請將應用程式更新至 {{version}} 或更新版本。",
+    "agent_check_update": "檢查更新",
     "agent_running": "已開啟",
     "agent_connecting": "啟動中",
     "agent_stopped": "已關閉",
@@ -987,6 +998,7 @@
     "backups_desc": "將世界與存檔檔案壓縮保存。手動建立的備份不會被自動清理。",
     "backups_empty": "還沒有備份。",
     "backup_now": "立即備份",
+    "backup_size_stored": "{{size}} · 新儲存 {{stored}}",
     "backup_created": "已建立備份。",
     "backup_nothing": "還沒有可備份的檔案。",
     "restore": "還原",
@@ -1058,8 +1070,8 @@
     "enabled_hint": "也可以依伺服器個別開啟或關閉。",
     "model": "模型",
     "seconds": "秒",
-    "confirm_commands": "注意指令一律詢問",
-    "confirm_commands_hint": "開啟後，啟動、停止、重新啟動等注意指令需在 Discord 上確認後才執行；關閉後一律允許。安全指令一律立即執行，危險指令一律需要確認。應用程式中設定的使用者權限一律優先。",
+    "confirm_commands": "執行伺服器指令前一律詢問",
+    "confirm_commands_hint": "開啟後，啟動、停止、重新啟動等伺服器指令需在 Discord 上確認後才執行。關閉後，直接要求的伺服器指令會立即執行，但危險指令和管理作業仍需確認。應用程式中設定的使用者權限一律優先。",
     "memory": "長期記憶",
     "memory_hint": "記住對話中得知的內容，用於之後的對話。",
     "web_search": "網路搜尋",

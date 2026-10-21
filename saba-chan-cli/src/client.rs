@@ -158,7 +158,7 @@ impl Api {
 
     // ── 데몬 ──
 
-    /// GET /health — 락 없이 답하는 ping (`{ok, version, pid}`)
+    /// GET /health — 락 없이 답하는 ping (`{ok, version, pid, token, stops_with_launcher}`)
     pub async fn health(&self) -> Result<Value> {
         // 연결 제한(2초)보다 길게 둔다: Windows는 닫힌 루프백 포트 거부에 2초쯤 걸려서,
         // 같으면 "데몬 꺼짐"이 아니라 "응답 늦음"으로 끝난다
@@ -947,7 +947,12 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
             "invalid_channel" => "unknown_channel",
             other => other,
         };
-        let message = crate::i18n::try_t(&format!("err.relay.{}", key)).unwrap_or_else(|| {
+        let message = match key {
+            // 릴레이가 요구하는 최소 버전을 그대로 보인다
+            "agent_too_old" => Some(t!("err.relay.agent_too_old", min = pick("minVersion").unwrap_or_else(|| "?".into()))),
+            key => crate::i18n::try_t(&format!("err.relay.{}", key)),
+        }
+        .unwrap_or_else(|| {
             // 모르는 코드는 릴레이가 붙인 설명이 있으면 같이 보인다
             let other = t!("err.relay.other", code = rc);
             match pick("message") {
@@ -1087,6 +1092,16 @@ mod tests {
         // 확인한 뒤 그 디스코드 서버가 다른 PC로 옮겨 갔다 (릴레이 409, 감사 R6)
         let moved = api_err(check(409, json!({ "error": "NODE_MOVED" })));
         assert_eq!(moved.to_string(), crate::i18n::try_t("err.relay.node_moved").unwrap_or_default(), "{}", moved);
+    }
+
+    // 릴레이가 최소 버전보다 낮은 앱을 거절하면(426) 올려야 할 버전과 확인 명령을 알려 준다
+    #[test]
+    fn a_relay_that_wants_a_newer_app_names_the_version() {
+        crate::i18n::init("ko");
+        let e = api_err(check(426, json!({ "error": "AGENT_TOO_OLD", "minVersion": "0.1.9", "message": "Update Saba-chan to 0.1.9 or later." })));
+        assert_eq!(e.code(), "agent_too_old");
+        assert!(e.to_string().contains("0.1.9") && !e.to_string().contains("AGENT_TOO_OLD"), "{}", e);
+        assert!(e.hint().is_some_and(|h| h.contains("saba-chan-cli update check")), "{:?}", e.hint());
     }
 
     #[test]
