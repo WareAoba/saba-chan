@@ -106,7 +106,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | updaterGetConfig (737) | GET /api/updates/config | ✓ 108 |
 | updaterSetConfig (738) | PUT /api/updates/config | ✓ 109 |
 | settingsLoad (747) | GET /api/config/gui. 데몬이 응답하지 않을 때만 Rust `settings_local_load`(config.json `gui` 직접 읽기) | ✓ 702 |
-| settingsSave (755) | GET /api/config/gui로 merge base를 읽고 PUT. 데몬이 **응답하지 않을 때만** Rust `settings_local_save`로 config.json `gui`에 직접 쓴다. 데몬이 오류 응답을 주면 저장 실패로 끝난다. 여러 번 부르면 차례로 처리한다. 연결 주소는 바꾸지 않는다: 바꾼 `ipcPort`는 셸이 데몬을 띄울 때(`lifecycle::start_daemon`) 적용한다 | ✓ 702 |
+| settingsSave (755) | 바꾼 키만 PUT /api/config/gui로 보낸다(데몬이 잠근 채 최상위 키로 합친다). 데몬이 **응답하지 않을 때만** Rust `settings_local_save`로 바꾼 키만 넘기고, 셸이 저장 직전 상태에 합쳐 config.json `gui`에 쓴다. 데몬이 오류 응답을 주면 저장 실패로 끝난다. 여러 번 부르면 차례로 처리한다. 연결 주소는 바꾸지 않는다: 바꾼 `ipcPort`는 셸이 데몬을 띄울 때(`lifecycle::start_daemon`) 적용한다 | ✓ 702 |
 | settingsGetPath (775) | Rust `settings_get_path` (`<dataDir>/config.json`) | n/a |
 | openFileDialog / openFolderDialog (778-779) | Rust `dialog_open_file` / `dialog_open_folder` | n/a |
 | migrationScanDir (782) | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 655 |
