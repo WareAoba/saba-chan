@@ -106,7 +106,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `common_paths`와 `[detection.linux]`는 스키마에 없고, 실제 모듈에서도 지워졌다.
 
 #### `[launch]` (`LaunchSection` `:694-702`)
-`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
+`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다. 줄은 출력과 같이 `MAX_LINE`(64 KiB)에서 끊고, 파일이 줄어들면 처음부터 읽으며 끝나지 않았던 앞 조각은 버린다, `runner/src/main.rs` `read_new`), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
 
 #### `[backup]` (`ModuleBackup` `:215-230`)
 `paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
