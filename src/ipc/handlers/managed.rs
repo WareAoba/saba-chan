@@ -919,6 +919,61 @@ mod tests {
         }
     }
 
+    // 되돌리기가 실패하면 백업을 남기고 응답에 알린다. 백업을 못 만들면 모듈을 부르지 않는다. 설치 폴더 밖 실행 파일은 건드리지 않는다
+    #[tokio::test]
+    async fn an_install_that_cannot_be_put_back_keeps_the_backup_and_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"PalServer\"\n").unwrap();
+        // 실행 파일 자리를 폴더로 바꿔 두고 실패한다: 어떤 방법으로도 되돌릴 수 없다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nd = config['install_dir']\n\
+             os.remove(os.path.join(d, 'PalServer'))\nos.makedirs(os.path.join(d, 'PalServer', 'x'))\n\
+             print(json.dumps({'success': False, 'message': 'download failed'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let files = tmp.path().join("files");
+        let elsewhere = tmp.path().join("elsewhere");
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("tool.exe"), "tool").unwrap();
+        std::fs::write(elsewhere.join("tool.exe.bak"), "user backup").unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.executable_path = Some(elsewhere.join("tool.exe").to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let install = || {
+            let body = json!({ "install_dir": files, "instance_id": id, "version": "1.1" });
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state), Json(body)).await.into_response()).await }
+        };
+
+        // 백업 자리에 폴더가 있어 백업을 만들 수 없다 → 모듈을 부르지 않는다
+        std::fs::write(files.join("PalServer"), "old").unwrap();
+        std::fs::create_dir(files.join("PalServer.bak")).unwrap();
+        let done = install().await;
+        assert_eq!(done.body["success"], false, "{}", done.body);
+        assert_eq!(done.body["error_code"], "backup_failed", "{}", done.body);
+        assert_eq!(std::fs::read_to_string(files.join("PalServer")).unwrap(), "old");
+        std::fs::remove_dir(files.join("PalServer.bak")).unwrap();
+
+        // 되돌리지 못하면 백업을 남기고 그 파일을 알린다
+        let done = install().await;
+        assert_eq!(done.body["success"], false, "{}", done.body);
+        assert_eq!(done.body["restore_failed"], json!(["PalServer"]), "{}", done.body);
+        assert_eq!(std::fs::read_to_string(files.join("PalServer.bak")).unwrap(), "old");
+
+        // 설치 폴더 밖의 실행 파일과 그 옆의 사용자 파일은 그대로다
+        assert_eq!(std::fs::read_to_string(elsewhere.join("tool.exe.bak")).unwrap(), "user backup");
+        assert_eq!(std::fs::read_to_string(elsewhere.join("tool.exe")).unwrap(), "tool");
+    }
+
     // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
     // 감지가 끝난 뒤 옛 값으로 덮을 수 있었다. 감지 사이에 값이 바뀌었거나 인스턴스가 작업 중이면 저장하지 않는다
     #[tokio::test]

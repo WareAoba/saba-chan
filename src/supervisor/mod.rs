@@ -2425,38 +2425,55 @@ impl Supervisor {
             });
 
         // ── 기존 바이너리 백업: 모듈 실행 파일과 인스턴스가 실제로 띄우는 파일 (모듈이 어느 쪽을 바꾸다 실패해도 되돌린다) ──
+        // 설치 폴더 밖의 파일은 이 설치가 바꾸는 대상이 아니므로 건드리지 않는다
         let mut originals: Vec<std::path::PathBuf> = effective_jar.iter().map(|jar| std::path::Path::new(install_dir).join(jar)).collect();
         if let Some(exe) = keep_executable {
             let exe = std::path::Path::new(install_dir).join(exe);
-            if !originals.iter().any(|o| same_file_path(o, &exe)) {
+            let inside = match (std::fs::canonicalize(&exe), std::fs::canonicalize(install_dir)) {
+                (Ok(exe), Ok(dir)) => exe.starts_with(dir),
+                _ => false,
+            };
+            if inside && !originals.iter().any(|o| same_file_path(o, &exe)) {
                 originals.push(exe);
             }
         }
-        let backups: Vec<(std::path::PathBuf, std::path::PathBuf)> = originals
-            .into_iter()
-            .filter(|original| original.is_file())
-            .filter_map(|original| {
-                let backup = original.with_extension(format!("{}.bak", original.extension().unwrap_or_default().to_string_lossy()));
-                match std::fs::copy(&original, &backup) {
-                    Ok(_) => {
-                        tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
-                        Some((original, backup))
+        let mut backups: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+        for original in originals.into_iter().filter(|original| original.is_file()) {
+            let mut name = original.file_name().unwrap_or_default().to_os_string();
+            name.push(".bak");
+            let backup = original.with_file_name(name);
+            if let Err(e) = std::fs::copy(&original, &backup) {
+                // 되돌릴 수 없는 채로 모듈을 부르지 않는다
+                tracing::warn!("Failed to backup '{}': {}", original.display(), e);
+                for (_, made) in &backups {
+                    let _ = std::fs::remove_file(made);
+                }
+                return Ok(json!({
+                    "success": false,
+                    "error_code": "backup_failed",
+                    "message": format!("Could not back up {} before installing: {}", original.file_name().unwrap_or_default().to_string_lossy(), e),
+                }));
+            }
+            tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
+            backups.push((original, backup));
+        }
+        // 되돌리지 못한 파일은 백업을 남기고 그 이름을 돌려준다 (rename은 같은 폴더라 공간이 필요 없다)
+        let restore = |why: &str| -> Vec<String> {
+            let mut failed = Vec::new();
+            for (original, backup) in &backups {
+                let put_back = std::fs::rename(backup, original).or_else(|_| std::fs::copy(backup, original).map(|_| ()));
+                match put_back {
+                    Ok(()) => {
+                        tracing::info!("Restored backup after {}: {}", why, original.display());
+                        let _ = std::fs::remove_file(backup);
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to backup '{}': {}", original.display(), e);
-                        None
+                        tracing::error!("Failed to restore backup '{}': {}", backup.display(), e);
+                        failed.push(original.file_name().unwrap_or_default().to_string_lossy().into_owned());
                     }
                 }
-            })
-            .collect();
-        let restore = |why: &str| {
-            for (original, backup) in &backups {
-                match std::fs::copy(backup, original) {
-                    Ok(_) => tracing::info!("Restored backup after {}: {}", why, original.display()),
-                    Err(e) => tracing::error!("Failed to restore backup '{}': {}", backup.display(), e),
-                }
-                let _ = std::fs::remove_file(backup);
             }
+            failed
         };
 
         let mut config = json!({
@@ -2487,16 +2504,25 @@ impl Supervisor {
                         let _ = std::fs::remove_file(backup);
                         tracing::info!("Removed backup after successful install: {}", backup.display());
                     }
+                    result
                 } else {
                     // 모듈이 success=false 반환 → 복원
-                    restore("failed install");
+                    let failed = restore("failed install");
+                    let mut val = val.clone();
+                    if let (false, Some(obj)) = (failed.is_empty(), val.as_object_mut()) {
+                        obj.insert("restore_failed".into(), json!(failed));
+                    }
+                    Ok(val)
                 }
-                result
             }
             Err(e) => {
                 // 플러그인 에러 → 복원
-                restore("plugin error");
-                Err(e)
+                let failed = restore("plugin error");
+                if failed.is_empty() {
+                    Err(e)
+                } else {
+                    Err(e.context(format!("could not put back {} (the .bak file is kept)", failed.join(", "))))
+                }
             }
         }
     }
