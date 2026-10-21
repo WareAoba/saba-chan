@@ -492,7 +492,7 @@ pub fn run() {
                 eprintln!("elevate-mkdir: missing --grant user");
                 std::process::exit(1);
             };
-            let icacls = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new("icacls"))
+            let icacls = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new(saba_chan_updater_lib::process::system_tool("icacls")))
                 .args([
                     dir_str.as_str(),
                     "/grant",

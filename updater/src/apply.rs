@@ -635,7 +635,7 @@ foreach ($f in 'Desktop','Programs','CommonDesktopDirectory','CommonPrograms') {
 }"#;
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let out = std::process::Command::new("powershell")
+        let out = std::process::Command::new(crate::process::system_tool("powershell"))
             .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
             .env("SABA_OLD_EXE", old)
             .env("SABA_NEW_EXE", new)

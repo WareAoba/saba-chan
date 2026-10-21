@@ -87,7 +87,7 @@ foreach ($d in ($env:SABA_DIRS -split '\|')) {
         .iter()
         .flat_map(|d| names.iter().map(move |n| d.join(n).to_string_lossy().into_owned()))
         .collect();
-    let out = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new("powershell"))
+    let out = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new(saba_chan_updater_lib::process::system_tool("powershell")))
         .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
         .env("SABA_INSTALL_DIR", install_dir)
         .env("SABA_LNKS", lnks.join("|"))
@@ -121,7 +121,7 @@ fn create_shortcut_via_powershell(
     let ps_script = r#"$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut($env:SABA_LNK); $sc.TargetPath = $env:SABA_TARGET; $sc.WorkingDirectory = $env:SABA_WORKDIR; $sc.Description = $env:SABA_DESC; $sc.Save()"#;
 
     let output = saba_chan_updater_lib::process::hide_console(
-        std::process::Command::new("powershell")
+        std::process::Command::new(saba_chan_updater_lib::process::system_tool("powershell"))
             .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
             .env("SABA_LNK", lnk_str.as_ref())
             .env("SABA_TARGET", target_str.as_ref())

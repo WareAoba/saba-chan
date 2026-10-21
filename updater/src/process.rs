@@ -12,6 +12,30 @@ pub fn hide_console(cmd: &mut std::process::Command) -> &mut std::process::Comma
     cmd
 }
 
+/// Windows 시스템 도구(powershell·taskkill·tasklist·tar·cmd·icacls)를 띄울 경로. 다른 OS는 이름 그대로다.
+/// 이름만 주면 실행 파일이 있는 폴더부터 찾으므로, 같은 이름의 다른 파일이 아니라 시스템 폴더의 것을 띄운다.
+pub fn system_tool(name: &str) -> std::path::PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot")
+            .or_else(|| std::env::var_os("windir"))
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+        system_tool_in(&root, name)
+    }
+    #[cfg(not(target_os = "windows"))]
+    std::path::PathBuf::from(name)
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn system_tool_in(root: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let sys = root.join("System32");
+    match name {
+        "powershell" => sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"),
+        _ => sys.join(format!("{name}.exe")),
+    }
+}
+
 /// 프로세스 체커 — 특정 프로세스가 실행 중인지 확인
 pub struct ProcessChecker;
 
@@ -21,7 +45,7 @@ impl ProcessChecker {
     pub fn is_running(process_name: &str) -> bool {
         use std::process::Command;
 
-        let output = hide_console(Command::new("tasklist").args(["/FI", &format!("IMAGENAME eq {}", process_name)])).output();
+        let output = hide_console(Command::new(system_tool("tasklist")).args(["/FI", &format!("IMAGENAME eq {}", process_name)])).output();
 
         match output {
             Ok(output) => {
@@ -51,7 +75,7 @@ impl ProcessChecker {
     pub fn is_pid_running(pid: u32) -> bool {
         use std::process::Command;
         if cfg!(target_os = "windows") {
-            hide_console(Command::new("tasklist").args(["/FI", &format!("PID eq {}", pid), "/NH"]))
+            hide_console(Command::new(system_tool("tasklist")).args(["/FI", &format!("PID eq {}", pid), "/NH"]))
                 .output()
                 .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().any(|w| w == pid.to_string()))
                 .unwrap_or(false)
@@ -90,5 +114,20 @@ impl ProcessChecker {
         {
             Self::is_running("saba-chan-cli")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 시스템 도구는 이름으로 찾지 않고 Windows 시스템 폴더의 절대 경로로 띄운다
+    #[test]
+    fn system_tools_resolve_inside_the_windows_folder() {
+        let root = std::path::Path::new(r"D:\Win");
+        let sys = root.join("System32");
+        assert_eq!(system_tool_in(root, "taskkill"), sys.join("taskkill.exe"));
+        assert_eq!(system_tool_in(root, "tar"), sys.join("tar.exe"));
+        assert_eq!(system_tool_in(root, "powershell"), sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"));
     }
 }
