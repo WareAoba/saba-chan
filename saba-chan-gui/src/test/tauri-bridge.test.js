@@ -147,20 +147,23 @@ describe('데몬 응답 가공', () => {
         expect(get).not.toHaveBeenCalled();
     });
 
-    it('데몬이 응답하지 않으면 로컬 설정에 합쳐 쓴다', async () => {
+    // 셸이 저장 직전 상태에 합친다. 여기서 미리 읽어 합치면 그 사이 셸이 바꾼 값(창 위치 등)을 되돌린다
+    it('데몬이 응답하지 않으면 바꾼 키만 셸 로컬 저장에 넘긴다', async () => {
         let saved;
         const { api } = await install({
             daemon_request: daemon({
                 'PUT /api/config/gui': { status: 0, error: 'connect refused', code: 'ECONNREFUSED' },
             }),
-            settings_local_load: { language: 'ko', theme: 'light' },
+            settings_local_load: () => {
+                throw new Error('미리 읽지 않는다');
+            },
             settings_local_save: (args) => {
                 saved = args.settings;
                 return true;
             },
         });
         expect(await api.settingsSave({ theme: 'dark' })).toBe(true);
-        expect(saved).toEqual({ language: 'ko', theme: 'dark' });
+        expect(saved).toEqual({ theme: 'dark' });
     });
 
     it('IPC 포트를 저장해도 지금 데몬과의 연결 주소는 바꾸지 않는다 (데몬은 다시 켤 때 새 포트를 쓴다)', async () => {

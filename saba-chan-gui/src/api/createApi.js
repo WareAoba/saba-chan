@@ -60,7 +60,7 @@ export function createApi({ invoke, hub }) {
     }
 
     // 데몬이 응답하면 바꾼 키만 PUT한다: 데몬이 잠근 채 최상위 키로 합치므로, 미리 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다.
-    // 데몬이 아예 응답하지 않을 때만 로컬 설정에 합쳐 쓴다
+    // 데몬이 아예 응답하지 않을 때만 로컬에 쓴다(셸이 저장 직전 상태에 합친다)
     async function saveSettings(settings) {
         try {
             await put('/api/config/gui', settings, { timeout: 5000 });
@@ -72,8 +72,7 @@ export function createApi({ invoke, hub }) {
             }
         }
         try {
-            const existing = (await loadLocalSettings()) || {};
-            const res = await invoke('settings_local_save', { settings: { ...existing, ...settings } });
+            const res = await invoke('settings_local_save', { settings });
             return res !== false;
         } catch (e) {
             console.error('[saveSettings] Local save failed:', e);
