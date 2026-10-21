@@ -37,6 +37,13 @@ fn relay(user: &str, chatbot: bool) -> Caller {
     Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "ko".into() }
 }
 
+/// 확인 버튼을 누른 요청자 (릴레이 `confirmedBy`)
+fn pressed(user: &str) -> Caller {
+    let mut c = relay(user, false);
+    c.remote.as_mut().unwrap().confirmed_by = Some(user.into());
+    c
+}
+
 fn gui() -> Caller {
     Caller::local(crate::audit::Origin::new("gui"), "en".into())
 }
@@ -101,7 +108,7 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
 
     // 챗봇이 만든 계획: 사람이 확인 버튼을 눌러도 챗봇 상한을 쓴다
     set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 0, "members": { "admin": 2 } })).await;
-    let err = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("admin", false)).await.unwrap_err();
+    let err = run(&state, "", None, &Value::Null, Some(&plan_id), &pressed("admin")).await.unwrap_err();
     assert_eq!(err.code, "PERMISSION_DENIED");
     assert_eq!(err.data["args"]["via"], "chatbot");
 }
@@ -114,9 +121,33 @@ async fn a_chatbot_plan_runs_as_the_chatbot_whoever_confirms_it() {
     let lower = json!({ "schedule": [], "backup_keep": 1 });
     let made = plan(&state, "instance.schedule.set", Some(&id), &lower, &relay("owner", true)).await.unwrap();
     let plan_id = made["planId"].as_str().unwrap().to_string();
-    let ran = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("owner", false)).await.unwrap();
+    let ran = run(&state, "", None, &Value::Null, Some(&plan_id), &pressed("owner")).await.unwrap();
     assert_eq!(ran["success"], false, "{ran}");
     assert_eq!(ran["status"], 400, "{ran}");
+}
+
+/// 챗봇이 만든 확인 계획은 요청자 본인이 확인 버튼을 눌렀을 때만 실행된다 (`confirmedBy`). 막힌 시도는 계획을 쓰지 않는다
+#[tokio::test]
+async fn a_chatbot_plan_that_needs_confirmation_runs_only_from_the_requesters_button() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let made = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &relay("owner", true)).await.unwrap();
+    assert_eq!(made["needsConfirm"], true);
+    let plan_id = made["planId"].as_str().unwrap();
+    let mut someone_else = relay("owner", false);
+    someone_else.remote.as_mut().unwrap().confirmed_by = Some("admin".into());
+    for caller in [relay("owner", true), relay("owner", false), someone_else] {
+        let err = run(&state, "", None, &Value::Null, Some(plan_id), &caller).await.unwrap_err();
+        assert_eq!((err.status, err.code), (409, "confirm_required"));
+    }
+    assert_eq!(run(&state, "", None, &Value::Null, Some(plan_id), &pressed("owner")).await.unwrap()["success"], true);
+
+    // 확인이 필요 없는 챗봇 계획과 사람이 직접 만든 계획은 그대로
+    let quick = plan(&state, "server.status", Some(&id), &json!({}), &relay("owner", true)).await.unwrap();
+    assert_eq!(quick["needsConfirm"], false);
+    assert!(run(&state, "", None, &Value::Null, quick["planId"].as_str(), &relay("owner", true)).await.is_ok());
+    let direct = plan(&state, "discord.settings.set", None, &json!({ "guild": "g", "sleeping": true }), &relay("owner", false)).await.unwrap();
+    assert!(run(&state, "", None, &Value::Null, direct["planId"].as_str(), &relay("owner", false)).await.is_ok());
 }
 
 #[tokio::test]
@@ -488,7 +519,7 @@ async fn a_plan_refused_because_another_runs_can_be_pressed_again() {
         })
         .await
         .unwrap();
-    let who = |chatbot| Requester { guild_id: Some(guild.into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
+    let who = |chatbot| Requester { guild_id: Some(guild.into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, confirmed_by: (!chatbot).then(|| "owner".into()), ..Default::default() };
     let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let owner = caller(false);
     for round in 0..40 {
@@ -561,7 +592,7 @@ async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     // 다른 사람은 실행하지 못하고, 요청자가 누르면 순서대로 한 번에
     let plan_id = planned["planId"].as_str().unwrap();
     assert_eq!(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &relay("someone", false)).await.unwrap_err().code, "plan_not_yours");
-    let owner = relay("owner", false);
+    let owner = pressed("owner");
     let done = finished(run(&state, steps::PLAN_ID, None, &Value::Null, Some(plan_id), &owner).await.unwrap(), &owner).await;
     assert_eq!(done["success"], true, "{}", done);
     let new_id = done["steps"][0]["instance"].as_str().unwrap().to_string();
@@ -601,7 +632,7 @@ async fn remote_settings_show_the_old_value_and_can_be_undone() {
     let row = planned["summary"].as_array().unwrap().iter().find(|r| r["labelKey"] == "actions.field.players").cloned().unwrap();
     assert_eq!((row["before"].clone(), row["value"].clone()), (json!(2), json!(4)));
 
-    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &relay("owner", false)).await.unwrap();
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &pressed("owner")).await.unwrap();
     let players = |state: &IPCServer| {
         let state = state.clone();
         let id = id.clone();
@@ -611,7 +642,8 @@ async fn remote_settings_show_the_old_value_and_can_be_undone() {
     // 되돌리기는 같은 요청자만, 한 번
     let undo = done["undoPlanId"].as_str().unwrap();
     assert_eq!(run(&state, "", None, &Value::Null, Some(undo), &relay("admin", false)).await.unwrap_err().code, "plan_not_yours");
-    assert_eq!(run(&state, "", None, &Value::Null, Some(undo), &relay("owner", false)).await.unwrap()["success"], true);
+    assert_eq!(run(&state, "", None, &Value::Null, Some(undo), &relay("owner", false)).await.unwrap_err().code, "confirm_required", "the chatbot's change is undone from the button too");
+    assert_eq!(run(&state, "", None, &Value::Null, Some(undo), &pressed("owner")).await.unwrap()["success"], true);
     assert_eq!(players(&state).await, Some(json!(2)));
     // GUI·CLI는 되돌리기 계획을 만들지 않는다 (자기 화면이 있다)
     assert!(run(&state, "instance.settings.set", Some(&id), &json!({ "players": 3 }), None, &gui()).await.unwrap().get("undoPlanId").is_none());
@@ -647,7 +679,7 @@ async fn a_running_plan_does_not_block_single_confirmations_in_the_guild() {
         })
         .await
         .unwrap();
-    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
+    let who = |chatbot| Requester { guild_id: Some("lanes".into()), user_id: Some("owner".into()), owner_id: Some("owner".into()), via_chatbot: chatbot, confirmed_by: (!chatbot).then(|| "owner".into()), ..Default::default() };
     let caller = |chatbot| Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who(chatbot)), origin: crate::audit::Origin::new("discord"), locale: "en".into() };
     let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &caller(true)).await.unwrap();
     let _busy = steps::Lane::take(&caller(false)).unwrap();
