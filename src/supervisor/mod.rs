@@ -193,6 +193,32 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
 }
 
 /// 같은 파일을 가리키는가 (있으면 실제 경로로, 없으면 쓴 그대로 비교한다)
+/// `original` 옆의 비어 있는 이름(`이름.bak`, `이름.1.bak`, …)에 복사본을 만든다. 이미 있는 파일은 덮지 않는다
+fn backup_beside(original: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let name = original.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    for n in 0..100 {
+        let backup = original.with_file_name(if n == 0 { format!("{name}.bak") } else { format!("{name}.{n}.bak") });
+        let mut out = match std::fs::OpenOptions::new().write(true).create_new(true).open(&backup) {
+            Ok(out) => out,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        };
+        let copied = std::fs::File::open(original)
+            .and_then(|mut input| std::io::copy(&mut input, &mut out))
+            .and_then(|_| out.sync_all())
+            .and_then(|_| std::fs::set_permissions(&backup, std::fs::metadata(original)?.permissions()));
+        return match copied {
+            Ok(()) => Ok(backup),
+            Err(e) => {
+                drop(out);
+                let _ = std::fs::remove_file(&backup);
+                Err(e)
+            }
+        };
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("no free backup name next to {name}")))
+}
+
 fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
         (Ok(a), Ok(b)) => a == b,
@@ -2437,31 +2463,41 @@ impl Supervisor {
                 originals.push(exe);
             }
         }
-        let mut backups: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+        // (원래 경로, 백업, 심볼릭 링크면 그 대상): 백업은 비어 있는 새 이름에만 만든다 (사용자의 기존 .bak를 덮지 않는다)
+        let mut backups: Vec<(std::path::PathBuf, std::path::PathBuf, Option<std::path::PathBuf>)> = Vec::new();
         for original in originals.into_iter().filter(|original| original.is_file()) {
-            let mut name = original.file_name().unwrap_or_default().to_os_string();
-            name.push(".bak");
-            let backup = original.with_file_name(name);
-            if let Err(e) = std::fs::copy(&original, &backup) {
-                // 되돌릴 수 없는 채로 모듈을 부르지 않는다
-                tracing::warn!("Failed to backup '{}': {}", original.display(), e);
-                for (_, made) in &backups {
-                    let _ = std::fs::remove_file(made);
+            let link_target = match std::fs::symlink_metadata(&original) {
+                Ok(meta) if meta.file_type().is_symlink() => std::fs::canonicalize(&original).ok(),
+                _ => None,
+            };
+            match backup_beside(&original) {
+                Ok(backup) => {
+                    tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
+                    backups.push((original, backup, link_target));
                 }
-                return Ok(json!({
-                    "success": false,
-                    "error_code": "backup_failed",
-                    "message": format!("Could not back up {} before installing: {}", original.file_name().unwrap_or_default().to_string_lossy(), e),
-                }));
+                Err(e) => {
+                    // 되돌릴 수 없는 채로 모듈을 부르지 않는다
+                    tracing::warn!("Failed to backup '{}': {}", original.display(), e);
+                    for (_, made, _) in &backups {
+                        let _ = std::fs::remove_file(made);
+                    }
+                    return Ok(json!({
+                        "success": false,
+                        "error_code": "backup_failed",
+                        "message": format!("Could not back up {} before installing: {}", original.file_name().unwrap_or_default().to_string_lossy(), e),
+                    }));
+                }
             }
-            tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
-            backups.push((original, backup));
         }
-        // 되돌리지 못한 파일은 백업을 남기고 그 이름을 돌려준다 (rename은 같은 폴더라 공간이 필요 없다)
+        // 되돌리지 못한 파일은 백업을 남기고 그 이름을 돌려준다 (rename은 같은 폴더라 공간이 필요 없다).
+        // 심볼릭 링크는 링크를 그대로 두고 백업 내용을 링크 대상에 쓴다
         let restore = |why: &str| -> Vec<String> {
             let mut failed = Vec::new();
-            for (original, backup) in &backups {
-                let put_back = std::fs::rename(backup, original).or_else(|_| std::fs::copy(backup, original).map(|_| ()));
+            for (original, backup, link_target) in &backups {
+                let put_back = match link_target {
+                    Some(target) => std::fs::copy(backup, target).map(|_| ()),
+                    None => std::fs::rename(backup, original).or_else(|_| std::fs::copy(backup, original).map(|_| ())),
+                };
                 match put_back {
                     Ok(()) => {
                         tracing::info!("Restored backup after {}: {}", why, original.display());
@@ -2500,7 +2536,7 @@ impl Supervisor {
             Ok(ref val) => {
                 if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
                     // 설치 성공 → 백업 파일 정리
-                    for (_, backup) in &backups {
+                    for (_, backup, _) in &backups {
                         let _ = std::fs::remove_file(backup);
                         tracing::info!("Removed backup after successful install: {}", backup.display());
                     }
