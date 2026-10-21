@@ -685,7 +685,7 @@
     "profile_headless": "sin pantalla (solo daemon y CLI)",
     "no_modules": "ninguno",
     "installing": "Instalando",
-    "not_writable": "No se puede escribir en {{dir}}. Vuelve a ejecutarlo como administrador o elige otra carpeta con --dir",
+    "not_writable": "No se puede escribir en {{dir}}. Elige con --dir una carpeta en la que puedas escribir (por ejemplo, dentro de tu carpeta de usuario)",
     "running_inside": "Esta CLI se está ejecutando dentro de {{dir}}, por lo que no puede instalar ahí. Ejecuta un saba-chan-cli que esté fuera de la carpeta de instalación.",
     "failed": "La instalación falló: {{reason}} (detalles: {{log}})",
     "failed_no_log": "La instalación falló: {{reason}}",

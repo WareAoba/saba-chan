@@ -882,7 +882,7 @@
     "profile_headless": "no display (daemon and CLI only)",
     "no_modules": "none",
     "installing": "Installing",
-    "not_writable": "Cannot write to {{dir}}. Run again as administrator or pick another folder with --dir",
+    "not_writable": "Cannot write to {{dir}}. Pick a folder you can write to with --dir (for example under your user folder)",
     "running_inside": "This CLI is running from inside {{dir}}, so it cannot install there. Run a saba-chan-cli from outside the install folder.",
     "failed": "Install failed: {{reason}} (details: {{log}})",
     "failed_no_log": "Install failed: {{reason}}",
