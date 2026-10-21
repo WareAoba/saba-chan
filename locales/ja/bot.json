@@ -291,7 +291,7 @@
       "enabled": "オン",
       "model": "モデル",
       "memo": "サーバープロンプト",
-      "confirmCommands": "注意コマンドを常に確認",
+      "confirmCommands": "サーバーコマンドの実行前に常に確認する",
       "memory": "記憶",
       "webSearch": "ウェブ検索",
       "disabledTools": "無効なツール",
