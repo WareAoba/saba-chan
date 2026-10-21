@@ -1061,7 +1061,6 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
     (!args.iter().any(|a| a.contains(['\r', '\n', '\0']))).then_some(args)
 }
 
-/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
 /// 설정의 저장된 값: 공통 칸(`constants::INSTANCE_FIELDS`, 예: port)은 PATCH가 인스턴스 칸에 쓰므로 그 값을,
 /// 아니면 `module_settings`를 본다. `view`는 그 인스턴스를 JSON으로 펼친 것
 fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key: &str) -> Option<Value> {
@@ -1069,6 +1068,7 @@ fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key:
     own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
 }
 
+/// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
 /// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
 fn is_known_field(key: &str) -> bool {
     saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || key == "extension_data" || IGNORED_FIELDS.contains(&key)
@@ -1387,12 +1387,14 @@ pub async fn update_instance_settings(
     // 06 §8.2: 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
     let running = supervisor.tracker.get_pid(&id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id);
     let restart_required: Vec<String> = if running {
+        // 공통 칸(port 등)은 PATCH 전 인스턴스 칸의 값과, 그 밖에는 module_settings와 비교한다
+        let before = serde_json::to_value(instance).unwrap_or_default();
         supervisor.module_loader.get_module(&updated.module_name).ok()
             .and_then(|m| m.metadata.settings.clone())
             .map(|s| s.fields)
             .unwrap_or_default()
             .into_iter()
-            .filter(|f| f.restart_required && settings.get(&f.name).is_some_and(|v| updated.module_settings.get(&f.name) != Some(v)))
+            .filter(|f| f.restart_required && settings.get(&f.name).is_some_and(|v| stored_setting(&before, instance, &f.name).as_ref() != Some(v)))
             .map(|f| f.name)
             .collect()
     } else {
@@ -2153,6 +2155,7 @@ mod tests {
              [[settings.fields]]\nname = \"pvp\"\ntype = \"boolean\"\ndefault = false\n\n\
              [[settings.fields]]\nname = \"damage\"\ntype = \"text\"\nrequired = true\nvisible_when = { field = \"pvp\", equals = true }\n\n\
              [[settings.fields]]\nname = \"admins\"\ntype = \"list\"\nrestart_required = true\n\n\
+             [[settings.fields]]\nname = \"rest_host\"\ntype = \"text\"\nrestart_required = true\n\n\
              [[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\n",
         )
         .unwrap();
@@ -2189,6 +2192,11 @@ mod tests {
         assert_eq!(running.body["restart_required"], json!([]), "unchanged values ask for nothing");
         let running = patch(json!({ "admins": ["Alex"], "motd": "y" })).await;
         assert_eq!(running.body["restart_required"], json!(["admins"]));
+        // 인스턴스 칸에 저장되는 설정(rest_host)은 그 칸의 지금 값과 비교한다
+        let running = patch(json!({ "rest_host": "10.0.0.2" })).await;
+        assert_eq!(running.body["restart_required"], json!(["rest_host"]));
+        let running = patch(json!({ "rest_host": "10.0.0.2" })).await;
+        assert_eq!(running.body["restart_required"], json!([]), "saving the same value again asks for nothing");
         state.supervisor.read().await.tracker.untrack(&id).unwrap();
         let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
         assert!(stored.contains("\"Alex\""), "{stored}");
