@@ -1419,6 +1419,8 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
 const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout"];
+/// `ready_timeout` 상한(초)
+pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
 
 /// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`을 읽는다 (R39). 틀린 값은 그 값만 빼고 경고로 남긴다
 fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
@@ -1446,6 +1448,11 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     match table.get("ready_timeout") {
         None => {}
         Some(v) => match v.as_u64().filter(|n| *n > 0) {
+            // 디스코드는 시작을 시킨 채널을 READY_TIMEOUT_MAX_SECS 동안만 기억한다 (05 §4.4): 더 길면 알림이 사라진다
+            Some(n) if n > READY_TIMEOUT_MAX_SECS => {
+                meta.ready_timeout = Some(READY_TIMEOUT_MAX_SECS);
+                warnings.push(format!("extensions.{}.ready_timeout is at most {} seconds; using {}", DAEMON_TABLE, READY_TIMEOUT_MAX_SECS, READY_TIMEOUT_MAX_SECS));
+            }
             Some(n) => meta.ready_timeout = Some(n),
             None => warnings.push(format!("extensions.{}.ready_timeout must be a positive number of seconds; using the default", DAEMON_TABLE)),
         },
@@ -2579,6 +2586,9 @@ entry = "lifecycle.py"
         let zero = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 0\n")).unwrap();
         assert_eq!(zero.ready_timeout, None);
         assert!(zero.warnings.iter().any(|w| w.contains("ready_timeout")));
+        let long = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 3600\n")).unwrap();
+        assert_eq!(long.ready_timeout, Some(900), "a start notice is only remembered for 15 minutes");
+        assert!(long.warnings.iter().any(|w| w.contains("at most 900")), "{:?}", long.warnings);
         assert_eq!(parse_module_toml(V1).unwrap().ready_patterns, Vec::<String>::new());
         let later = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nready_timeout = 30\nfrom_a_later_core = true\n")).unwrap();
         assert_eq!(later.ready_timeout, Some(30), "a key from a newer daemon does not stop the module from loading");
