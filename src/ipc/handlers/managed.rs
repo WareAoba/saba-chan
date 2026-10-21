@@ -275,6 +275,7 @@ pub async fn write_properties_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let settings = payload.get("settings").cloned();
+    let _files = super::instance::settings_files_lock(&id).await;
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "write", settings.clone()).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
@@ -295,6 +296,7 @@ pub async fn read_live_settings_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    let _files = super::instance::settings_files_lock(&id).await;
     match refresh_settings_from_files(&state, &id).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
@@ -302,7 +304,7 @@ pub async fn read_live_settings_handler(
 }
 
 /// 게임 설정 파일을 모듈 `import_settings`로 읽어 `module_settings`와 인스턴스 필드(포트·비밀번호)를 맞춘다.
-/// 모듈의 답을 그대로 돌려준다. `success`가 아니거나 설정이 비어 있으면 아무것도 바꾸지 않는다
+/// 호출자가 `settings_files_lock`을 쥐고 있어야 한다. 모듈의 답을 그대로 돌려준다. `success`가 아니거나 설정이 비어 있으면 아무것도 바꾸지 않는다
 pub(crate) async fn refresh_settings_from_files(state: &IPCServer, id: &str) -> anyhow::Result<serde_json::Value> {
     let result = Supervisor::manage_properties(&state.supervisor, id, "import", None).await?;
     let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
@@ -328,6 +330,7 @@ pub async fn reset_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    let _files = super::instance::settings_files_lock(&id).await;
     match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (

@@ -1083,12 +1083,53 @@ fn is_daemon_setting(key: &str) -> bool {
     saba_chan_updater_lib::constants::DAEMON_SETTINGS.iter().any(|(k, _)| *k == key)
 }
 
+type SaveLocks = std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>;
+static SETTINGS_SAVES: std::sync::LazyLock<std::sync::Mutex<SaveLocks>> = std::sync::LazyLock::new(Default::default);
+
+/// 인스턴스의 게임 설정 파일을 읽거나 쓰는 데몬 작업 하나를 쥔 동안의 잠금 (`settings_files_lock`)
+pub(crate) struct SettingsFilesGuard {
+    id: String,
+    lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    _held: tokio::sync::OwnedMutexGuard<()>,
+}
+
+impl Drop for SettingsFilesGuard {
+    fn drop(&mut self) {
+        // 기다리는 쪽이 없으면 항목을 지운다: 지운 인스턴스·없는 id의 항목이 쌓이지 않게 (맵, 이 guard, 쥔 잠금이 센다)
+        let mut locks = SETTINGS_SAVES.lock().unwrap_or_else(|e| e.into_inner());
+        if std::sync::Arc::strong_count(&self.lock) == 3 && locks.get(&self.id).is_some_and(|l| std::sync::Arc::ptr_eq(l, &self.lock)) {
+            locks.remove(&self.id);
+        }
+    }
+}
+
+/// 인스턴스마다 하나: 설정 저장(게임 파일 쓰기 configure와 hook까지), 실제 값 읽기(`settings/live`), 속성 쓰기·초기화,
+/// 백업 복원이 한 줄로 선다. 늦게 끝난 파일 쓰기가 나중 저장을 덮거나, 쓰기 전의 파일 값으로 캐시를 되돌리지 않게
+pub(crate) async fn settings_files_lock(id: &str) -> SettingsFilesGuard {
+    let lock = SETTINGS_SAVES.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone();
+    let held = lock.clone().lock_owned().await;
+    SettingsFilesGuard { id: id.to_string(), lock, _held: held }
+}
+
+/// 포트 값: 1~65535의 수 또는 그런 숫자 문자열. 다른 값은 `None`
+fn port_value(value: &Value) -> Option<u16> {
+    match value {
+        Value::Number(n) => n.as_u64(),
+        Value::String(s) => s.trim().parse::<u64>().ok(),
+        _ => None,
+    }
+    .and_then(|p| u16::try_from(p).ok())
+    .filter(|&p| p > 0)
+}
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
     State(state): State<IPCServer>,
     Path(id): Path<String>,
     Json(settings): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    // 같은 서버의 저장이 겹치면 늦게 끝난 게임 파일 쓰기가 나중 저장을 덮는다
+    let _saving = settings_files_lock(&id).await;
     let mut supervisor = state.supervisor.write().await;
 
     // 인스턴스 찾기
@@ -1204,21 +1245,17 @@ pub async fn update_instance_settings(
 
 
     // common settings
-    // port: 숫자 또는 문자열 수용
-    if let Some(port_value) = settings.get("port") {
-        match port_value {
-            serde_json::Value::Number(n) => {
-                if let Some(port) = n.as_u64() {
-                    updated.port = Some(port as u16);
-                }
-            }
-            serde_json::Value::String(s) => {
-                if let Ok(port) = s.parse::<u16>() {
-                    updated.port = Some(port);
-                }
-            }
-            _ => {}
+    // port·rest_port: 1~65535의 숫자 또는 숫자 문자열 (범위 밖 값을 다른 숫자로 저장하지 않는다)
+    for key in ["port", "rest_port"] {
+        // null(rest_port 지우기)과 빈 문자열(바꾸지 않음)은 예전처럼 받는다
+        let given = settings.get(key).filter(|v| !v.is_null() && v.as_str() != Some(""));
+        if given.is_some_and(|v| port_value(v).is_none()) {
+            let error = json!({ "error": format!("{} must be a number from 1 to 65535", key), "error_code": "invalid_format", "fields": [{"field": key}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
         }
+    }
+    if let Some(port) = settings.get("port").and_then(port_value) {
+        updated.port = Some(port);
     }
 
     // NOTE: REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
@@ -1240,20 +1277,8 @@ pub async fn update_instance_settings(
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
     }
-    if let Some(rest_port_value) = settings.get("rest_port") {
-        match rest_port_value {
-            serde_json::Value::Number(n) => {
-                if let Some(rest_port) = n.as_u64() {
-                    updated.rest_port = Some(rest_port as u16);
-                }
-            }
-            serde_json::Value::String(s) => {
-                if let Ok(rest_port) = s.parse::<u16>() {
-                    updated.rest_port = Some(rest_port);
-                }
-            }
-            _ => {}
-        }
+    if let Some(rest_port) = settings.get("rest_port").and_then(port_value) {
+        updated.rest_port = Some(rest_port);
     }
     if let Some(rest_username) = settings.get("rest_username").and_then(|v| v.as_str()) {
         updated.rest_username = Some(rest_username.to_string());
@@ -2090,6 +2115,119 @@ mod tests {
             let bad = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(body)).await).await;
             assert_eq!((bad.status.as_u16(), &bad.body["error_code"]), (400, &json!("invalid_format")), "{port}");
         }
+    }
+
+    /// 외부 감사 10-21: 같은 서버의 저장 둘이 겹치면 늦게 끝난 게임 파일 쓰기가 나중 저장을 덮었다(데몬과 파일이 달라짐).
+    /// 저장은 인스턴스마다 하나씩, 게임 파일 쓰기까지 마친 뒤 다음 저장이 시작된다. 범위 밖 포트는 다른 숫자로 저장하지 않고 거절한다
+    /// 저장이 게임 파일을 쓰는 동안 설정 창이 실제 값을 읽으면(`settings/live`) 저장이 끝난 뒤 읽는다:
+    /// 아직 쓰지 않은 옛 파일 값으로 캐시를 덮지 않게
+    #[tokio::test]
+    async fn a_live_read_during_a_save_waits_for_the_game_file_write() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        let file = tmp.path().join("motd.txt");
+        std::fs::write(&file, "old").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, sys, time\nconfig = json.load(sys.stdin)\nf = {:?}\n\
+                 if sys.argv[1] == 'import_settings':\n    print(json.dumps({{'success': True, 'settings': {{'motd': open(f).read()}}}}))\n\
+                 else:\n    time.sleep(1.0)\n    open(f, 'w').write((config.get('properties') or config.get('settings') or {{}}).get('motd', ''))\n    print(json.dumps({{'success': True}}))\n",
+                file.to_string_lossy()
+            ),
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let save = {
+            let (state, id) = (state.clone(), id.clone());
+            tokio::spawn(async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(json!({ "motd": "new" }))).await).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let live = crate::ipc::internal::into_internal(super::super::managed::read_live_settings_handler(Path(id.clone()), State(state.clone())).await).await;
+        assert!(save.await.unwrap().status.is_success());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "new");
+        assert_eq!(live.body["settings"]["motd"], "new", "{}", live.body);
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "new");
+        assert!(!super::SETTINGS_SAVES.lock().unwrap().contains_key(&id), "a lock nobody waits for is dropped");
+    }
+
+    #[tokio::test]
+    async fn saves_of_one_server_run_one_after_another_and_ports_stay_in_range() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        // 첫 저장의 게임 파일 쓰기는 늦게 끝난다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\nconfig = json.load(sys.stdin)\n\
+             if (config.get('properties') or config.get('settings') or {}).get('motd') == 'first':\n    time.sleep(1.0)\n\
+             print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+
+        let done = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let save = |motd: &'static str| {
+            let (done, call) = (done.clone(), patch(json!({ "motd": motd })));
+            tokio::spawn(async move {
+                let r = call.await;
+                assert!(r.status.is_success(), "{:?}", r.body);
+                done.lock().unwrap().push(motd);
+            })
+        };
+        let first = save("first");
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let second = save("second");
+        first.await.unwrap();
+        second.await.unwrap();
+        assert_eq!(*done.lock().unwrap(), ["first", "second"], "the second save waited for the first one's game file write");
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "second");
+
+        for (key, value) in [("port", json!(65537)), ("port", json!(0)), ("port", json!("70000")), ("rest_port", json!(65537)), ("rest_port", json!("x"))] {
+            let bad = patch(json!({ key: value.clone() })).await;
+            assert_eq!((bad.status.as_u16(), bad.body["error_code"].as_str(), bad.body["fields"][0]["field"].as_str()), (400, Some("invalid_format"), Some(key)), "{key}={value}");
+        }
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_ne!(inst.port, Some(1));
+        assert_eq!(inst.rest_port, None);
+        assert!(patch(json!({ "port": 25570, "rest_port": "8213" })).await.status.is_success());
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!((inst.port, inst.rest_port), (Some(25570), Some(8213)));
     }
 
     #[tokio::test]
