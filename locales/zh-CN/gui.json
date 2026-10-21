@@ -789,6 +789,8 @@
     "chain_discord": "Discord",
     "agent_desc": "由这台电脑接收并执行从 Discord 发来的命令。关闭时机器人不会回应。",
     "agent_replaced": "此 Discord 账号的 PC 连接已移到另一台 PC,因此这里已停止。要再次使用这台 PC,请在这台 PC 上重新配对。",
+    "agent_too_old": "中继服务器不再接受此应用版本。请将应用更新到 {{version}} 或更高版本。",
+    "agent_check_update": "检查更新",
     "agent_running": "已开启",
     "agent_connecting": "启动中",
     "agent_stopped": "已关闭",

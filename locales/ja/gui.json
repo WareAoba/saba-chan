@@ -789,6 +789,8 @@
     "chain_discord": "Discord",
     "agent_desc": "Discordから送られたコマンドをこのPCが受け取って実行します。オフの間はボットが応答しません。",
     "agent_replaced": "このDiscordアカウントのPC接続が別のPCに移ったため、ここでは停止しました。このPCをまた使うには、このPCで再度ペアリングしてください。",
+    "agent_too_old": "リレーサーバーがこのアプリのバージョンを受け付けません。アプリを {{version}} 以上に更新してください。",
+    "agent_check_update": "アップデートを確認",
     "agent_running": "オン",
     "agent_connecting": "起動中",
     "agent_stopped": "オフ",

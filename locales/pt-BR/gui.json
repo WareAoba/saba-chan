@@ -789,6 +789,8 @@
     "chain_discord": "Discord",
     "agent_desc": "Este PC recebe e executa os comandos enviados pelo Discord. Enquanto estiver desligado, o bot não responde.",
     "agent_replaced": "A conexão de PC desta conta do Discord foi movida para outro PC, então parou aqui. Para usar este PC de novo, pareie-o novamente a partir deste PC.",
+    "agent_too_old": "O servidor de retransmissão não aceita mais esta versão do aplicativo. Atualize o aplicativo para {{version}} ou mais recente.",
+    "agent_check_update": "Verificar atualizações",
     "agent_running": "Ligado",
     "agent_connecting": "Iniciando",
     "agent_stopped": "Desligado",

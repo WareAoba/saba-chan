@@ -789,6 +789,8 @@
     "chain_discord": "Discord",
     "agent_desc": "This PC receives and runs the commands sent from Discord. While it is off, the bot won't answer.",
     "agent_replaced": "This Discord account's PC connection moved to another PC, so it stopped here. To use this PC again, pair it again from this PC.",
+    "agent_too_old": "The relay server no longer accepts this app version. Please update the app to {{version}} or later.",
+    "agent_check_update": "Check for updates",
     "agent_running": "On",
     "agent_connecting": "Starting",
     "agent_stopped": "Off",
