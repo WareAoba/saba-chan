@@ -93,7 +93,6 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     className={clsx('setting-textarea', errorClass)}
                     value={String(value ?? '')}
                     onChange={(e) => onChange(field.name, e.target.value)}
-                    maxLength={field.max_length ?? undefined}
                     rows={4}
                     placeholder={fieldDesc}
                 />

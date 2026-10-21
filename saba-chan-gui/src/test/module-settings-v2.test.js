@@ -84,7 +84,7 @@ describe('list·multiline 칸', () => {
         expect(onChange).toHaveBeenCalledWith('ops', ['alice', 'bob', '']);
     });
 
-    it('여러 줄 글은 줄바꿈을 받는 칸이고 max_length를 넘겨 쓸 수 없다', () => {
+    it('여러 줄 글은 줄바꿈을 받는 칸이다 (글자 수는 브라우저 maxLength가 아니라 검사가 데몬처럼 센다)', () => {
         render(
             <SettingsField
                 field={{ name: 'motd', label: 'Message', field_type: 'multiline', max_length: 80 }}
@@ -96,7 +96,8 @@ describe('list·multiline 칸', () => {
         const box = screen.getByLabelText(/Message/);
         expect(box.tagName).toBe('TEXTAREA');
         expect(box.value).toBe('a\nb');
-        expect(box.maxLength).toBe(80);
+        // 브라우저 maxLength는 UTF-16 단위라 한도 2인 칸에 이모지 두 글자를 막는다
+        expect(box.hasAttribute('maxlength')).toBe(false);
     });
 });
 
