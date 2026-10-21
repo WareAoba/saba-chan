@@ -452,7 +452,13 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
 pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
-    let modules = state.supervisor.read().await.refresh_modules();
+    // 문자열로 저장된 값의 설정이 list가 되었으면 옮긴다 (06 §8.1)
+    let modules = {
+        let mut supervisor = state.supervisor.write().await;
+        let modules = supervisor.refresh_modules();
+        supervisor.migrate_list_settings();
+        modules
+    };
     if let Ok(m) = &modules {
         tracing::info!("Module cache refreshed. Found {} modules", m.len());
         crate::plugin::prefetch_module_functions(m.iter().map(|m| m.entry_path()).collect());
@@ -646,8 +652,9 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     if let Err(e) = result {
         return fail(format!("{:#}", e));
     }
-    let supervisor = state.supervisor.read().await;
+    let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
+    supervisor.migrate_list_settings();
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
 }
 
@@ -721,8 +728,9 @@ pub async fn remove_module(
     }
     let _ = saba_chan_updater_lib::integrity::set_official(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id), false);
     // 캐시 갱신 (write lock)
-    let supervisor = state.supervisor.write().await;
+    let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
+    supervisor.migrate_list_settings();
     (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
 }
 

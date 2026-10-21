@@ -359,6 +359,11 @@ impl InstanceStore {
         Ok(())
     }
 
+    /// 저장하지 않고 메모리의 인스턴스를 고친다 (읽을 때의 값 옮기기. 파일에는 다음 저장 때 쓴다)
+    pub fn adjust_in_memory(&mut self, mut adjust: impl FnMut(&mut ServerInstance)) {
+        self.instances.iter_mut().for_each(&mut adjust);
+    }
+
     pub fn update(&mut self, id: &str, instance: ServerInstance) -> Result<()> {
         let pos = self
             .instances
