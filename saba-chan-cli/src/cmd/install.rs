@@ -131,7 +131,7 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         selected_modules: modules.clone(),
         module_metadata: available,
         release: Some(manifest),
-        // 창 제거기를 두지 않는다: 지울 때는 설치 폴더의 saba-chan-cli uninstall
+        // 창 제거기를 두지 않는다: Windows 앱 목록에도 나오지 않고, 지울 때는 데몬을 끄고 설치 폴더를 지운다
         uninstaller_exe: None,
     };
     let last = core::install(options, &hooks).await;
