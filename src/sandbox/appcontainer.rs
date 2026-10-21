@@ -274,7 +274,7 @@ fn same_final_path(final_path: &str, requested: &str) -> bool {
 }
 
 #[cfg(windows)]
-pub use imp::{clear_low_labels, grant, revoke_stale_runtimes, spawn, Contained};
+pub use imp::{clear_low_label_of, clear_low_labels, grant, revoke_stale_runtimes, spawn, Contained};
 
 #[cfg(windows)]
 mod imp {
@@ -865,6 +865,29 @@ mod imp {
         }
     }
 
+    /// 띄울 파일 하나에 걸린 낮은 수준 표시를 덮는다. 확장자가 `.exe`·`.com`이 아닌 PE도 Windows가 그대로 띄우므로,
+    /// 폴더 걷기가 보지 않는 실행 대상 자체를 따로 덮는다 (L38). 덮었으면 true
+    pub fn clear_low_label_of(path: &Path) -> Result<bool, Vec<(PathBuf, String)>> {
+        let _guard = acl_lock();
+        let path = std::fs::canonicalize(path).map_err(|e| vec![(path.to_path_buf(), format!("resolve: {e}"))])?;
+        match persistent_acls(&path) {
+            Ok(false) => return Ok(false),
+            Ok(true) => {}
+            Err(e) => return Err(vec![(path, e)]),
+        }
+        use std::os::windows::fs::MetadataExt;
+        if let Some(e) = std::fs::metadata(&path).ok().and_then(|m| reparse_refusal(&path, m.file_attributes())) {
+            return Err(vec![(path, e)]);
+        }
+        let (mut cleared, mut failed) = (0, Vec::new());
+        clear_one(&path, &mut cleared, &mut failed);
+        if failed.is_empty() {
+            Ok(cleared > 0)
+        } else {
+            Err(failed)
+        }
+    }
+
     /// 재분석 지점이 동기화 폴더의 클라우드 파일·폴더(또는 링크)면 막는 까닭. 실행 파일이 아니어도 막는다
     /// (사용자 결정: 동기화 폴더 아래 서버는 지원하지 않는다). 압축(WOF) 같은 다른 재분석 지점은 막지 않고 보통처럼
     /// 다룬다. 목록의 속성으로 거르므로 다른 파일은 열지 않는다. 그 사이 지워졌으면 막지 않는다
@@ -1025,6 +1048,21 @@ mod imp {
             assert_eq!(launch_integrity(&exe), 0x1000, "the inherited low label makes the launch low integrity");
             super::clear_low_labels(&dir).unwrap();
             assert!(launch_integrity(&exe) >= 0x2000, "after the labels go the server starts at the daemon's level");
+        }
+
+        /// L38: 확장자가 `.exe`가 아닌 실행 대상(PE)은 폴더 걷기가 보지 않는다. 그 파일을 띄우기 전에 따로 덮는다
+        #[test]
+        fn a_launch_target_without_an_exe_extension_also_runs_at_medium_integrity() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            super::label_low(&dir).unwrap();
+            let target = dir.join("probe.bin");
+            std::fs::copy(std::env::current_exe().unwrap(), &target).unwrap();
+            assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "the walk only looks at .exe and .com");
+            assert_eq!(launch_integrity(&target), 0x1000);
+            assert!(super::clear_low_label_of(&target).unwrap());
+            assert!(launch_integrity(&target) >= 0x2000);
+            assert!(!super::clear_low_label_of(&target).unwrap(), "nothing left to clear");
         }
 
         /// 격리 실행에 쓰기를 준 폴더(낮은 수준 표시)에 받은 서버 실행 파일은, 서버를 띄우기 전에 중간 수준이 된다.
