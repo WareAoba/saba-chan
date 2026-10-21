@@ -205,7 +205,11 @@ fn follow_files(patterns: Vec<PathBuf>, log: Log) {
         let mut partial: std::collections::HashMap<PathBuf, Lines> = Default::default();
         loop {
             std::thread::sleep(std::time::Duration::from_millis(500));
-            for file in patterns.iter().flat_map(|p| matching_files(p)) {
+            let files: Vec<PathBuf> = patterns.iter().flat_map(|p| matching_files(p)).collect();
+            // 회전으로 사라진 파일은 잊는다 (날짜 붙은 로그가 쌓여도 맵이 늘지 않게)
+            offsets.retain(|f, _| files.contains(f));
+            partial.retain(|f, _| files.contains(f));
+            for file in files {
                 let pos = offsets.entry(file.clone()).or_insert(0);
                 for line in read_new(&file, pos, partial.entry(file.clone()).or_default()) {
                     write_log(&log, Stream::Stdout, &line);
@@ -231,16 +235,21 @@ fn read_new(file: &std::path::Path, pos: &mut u64, lines: &mut Lines) -> Vec<Str
     if f.seek(std::io::SeekFrom::Start(*pos)).is_err() {
         return Vec::new();
     }
-    let mut bytes = Vec::new();
-    if f.read_to_end(&mut bytes).is_err() {
-        return Vec::new();
-    }
-    *pos += bytes.len() as u64;
-    lines.push(&bytes);
+    // 조각씩 읽어 그때마다 줄로 내보낸다: 한 번에 많이 쓰인 로그도 남은 조각이 `MAX_LINE`+조각 크기를 넘지 않는다
+    let mut buf = vec![0u8; 64 * 1024];
     let mut out = Vec::new();
-    while let Some(line) = lines.next_line() {
-        out.push(lines.decode(&line));
+    loop {
+        let n = match f.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        *pos += n as u64;
+        lines.push(&buf[..n]);
+        while let Some(line) = lines.next_line() {
+            out.push(lines.decode(&line));
+        }
     }
+    lines.shrink();
     out
 }
 
@@ -532,6 +541,22 @@ mod tests {
         let read = super::read_new(&path, &mut pos, &mut lines);
         let _ = std::fs::remove_file(&path);
         assert_eq!(read, vec!["new".to_string()]);
+    }
+
+    /// 한 번 읽은 양 안에서 긴 줄이 끝나도 `MAX_LINE`에서 끊고, 많이 쌓인 파일도 조각씩 읽어 남은 조각이 상한을 넘지 않는다
+    #[test]
+    fn a_long_line_that_ends_within_one_read_is_still_cut() {
+        let path = std::env::temp_dir().join(format!("saba-runner-long-{}.log", std::process::id()));
+        let mut text = "x".repeat(saba_runner::MAX_LINE * 4);
+        text.push_str("\nnext\n");
+        std::fs::write(&path, &text).unwrap();
+        let (mut pos, mut lines) = (0u64, saba_runner::Lines::default());
+        let read = super::read_new(&path, &mut pos, &mut lines);
+        let _ = std::fs::remove_file(&path);
+        assert!(read.iter().all(|l| l.len() <= saba_runner::MAX_LINE), "{:?}", read.iter().map(String::len).collect::<Vec<_>>());
+        assert_eq!(read.iter().map(String::len).sum::<usize>(), saba_runner::MAX_LINE * 4 + 4);
+        assert_eq!(read.last().map(String::as_str), Some("next"));
+        assert!(lines.pending().is_empty());
     }
 
     #[test]
