@@ -989,6 +989,7 @@
     "backups_desc": "Comprime el mundo y los archivos de guardado. Las copias que hagas tú nunca se eliminan automáticamente.",
     "backups_empty": "Aún no hay copias de seguridad.",
     "backup_now": "Copiar ahora",
+    "backup_size_stored": "{{size}} · {{stored}} nuevos",
     "backup_created": "Copia de seguridad creada.",
     "backup_nothing": "Todavía no hay archivos que copiar.",
     "restore": "Restaurar",

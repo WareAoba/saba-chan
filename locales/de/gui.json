@@ -989,6 +989,7 @@
     "backups_desc": "Packt Welt- und Speicherdateien in ein Archiv. Selbst erstellte Backups werden nie automatisch gelöscht.",
     "backups_empty": "Noch keine Backups.",
     "backup_now": "Jetzt sichern",
+    "backup_size_stored": "{{size}} · {{stored}} neu",
     "backup_created": "Backup erstellt.",
     "backup_nothing": "Es gibt noch keine Dateien zum Sichern.",
     "restore": "Wiederherstellen",

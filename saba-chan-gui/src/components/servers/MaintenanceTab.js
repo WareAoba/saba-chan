@@ -239,7 +239,13 @@ function BackupsCard({ server }) {
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">{fmt(b.created)}</span>
                                     <span className="dc-list-sub" title={b.name}>
-                                        {formatBytes(b.size)} · {b.name}
+                                        {typeof b.stored === 'number' && b.stored !== b.size
+                                            ? t('maintenance.backup_size_stored', {
+                                                  size: formatBytes(b.size),
+                                                  stored: formatBytes(b.stored),
+                                              })
+                                            : formatBytes(b.size)}{' '}
+                                        · {b.name}
                                     </span>
                                 </span>
                                 <StatusChip

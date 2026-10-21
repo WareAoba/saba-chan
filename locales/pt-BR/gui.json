@@ -989,6 +989,7 @@
     "backups_desc": "Compacta o mundo e os arquivos de salvamento. Backups feitos por você nunca são apagados automaticamente.",
     "backups_empty": "Ainda não há backups.",
     "backup_now": "Fazer backup agora",
+    "backup_size_stored": "{{size}} · {{stored}} novos",
     "backup_created": "Backup criado.",
     "backup_nothing": "Ainda não há arquivos para fazer backup.",
     "restore": "Restaurar",

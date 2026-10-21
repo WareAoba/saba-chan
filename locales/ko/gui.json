@@ -989,6 +989,7 @@
     "backups_desc": "월드와 세이브 파일을 압축해 둡니다. 직접 만든 백업은 자동 정리에서 빠져요.",
     "backups_empty": "아직 백업이 없어요.",
     "backup_now": "지금 백업",
+    "backup_size_stored": "{{size}} · 새로 저장 {{stored}}",
     "backup_created": "백업을 만들었어요.",
     "backup_nothing": "백업할 파일이 아직 없어요.",
     "restore": "복원",

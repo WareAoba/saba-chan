@@ -989,6 +989,7 @@
     "backups_desc": "將世界與存檔檔案壓縮保存。手動建立的備份不會被自動清理。",
     "backups_empty": "還沒有備份。",
     "backup_now": "立即備份",
+    "backup_size_stored": "{{size}} · 新儲存 {{stored}}",
     "backup_created": "已建立備份。",
     "backup_nothing": "還沒有可備份的檔案。",
     "restore": "還原",
