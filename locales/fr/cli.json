@@ -165,7 +165,8 @@
     "stop_timeout": "Le daemon ne s'est pas arrêté à temps.",
     "shutdown_refused": "Le daemon n'a pas accepté la demande d'arrêt : {{error}}",
     "stopped": "Daemon arrêté.",
-    "stopping": "Arrêt du daemon..."
+    "stopping": "Arrêt du daemon...",
+    "stops_with_launcher": "Le cœur de saba-chan tourne rattaché au programme qui l'a lancé. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Arrêtez le démon (saba-chan-cli daemon stop) puis relancez-le depuis le menu Démarrer ou un terminal normal."
   },
   "diagnose": {
     "ok": "Aucun problème connu trouvé dans les journaux de {{name}}."
