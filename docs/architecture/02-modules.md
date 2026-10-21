@@ -46,7 +46,7 @@
 
 파서는 `parse_module_toml()` → `serde_ignored::deserialize::<ModuleToml>` → `into_metadata()`이다 (`module_loader.rs:1193-1246, 1037-1189`). 이 구조체들이 계약 그 자체이고, 같은 구조체에서 JSON Schema가 나온다(`module_json_schema()` `:1444-1446`, `GET /api/modules/schema`, `saba-core module schema`). 모듈 저장소는 이것을 `M:schema/module.schema.json`으로 두고 `M:.github/workflows/check-modules.yml`에서 검사한다.
 
-- **스키마 2** (0.1.9, MK2·MK8): `schema_version = 2`는 스키마 1에 설정 타입 `list`·`multiline`과 설정 키 `min_items`·`max_items`·`max_length`·`restart_required`·`visible_when`을 더한 것이다(`MODULE_SCHEMA_VERSION = 2`, `SETTING_TYPES_V2`). 이 타입·키가 스키마 1 모듈에 있으면 로드에 실패하고, 스키마 이전 모듈은 경고만 남기고 이 키를 끈다. 0.1.8 데몬은 스키마 2 모듈을 로드하지 않으므로 스키마 2 모듈은 `[module.dependencies] saba-core = ">=0.1.9"`도 적는다. 0.1.9로 내는 공식 모듈은 스키마 1이다. 표시 없는 모듈에게 권하는 버전은 1이다.
+- **스키마 2** (0.1.9, MK2·MK8): `schema_version = 2`는 스키마 1에 설정 타입 `list`·`multiline`과 설정 키 `min_items`·`max_items`·`max_length`·`restart_required`·`visible_when`을 더한 것이다(`MODULE_SCHEMA_VERSION = 2`, `SETTING_TYPES_V2`). 이 타입·키가 스키마 1 모듈에 있으면 로드에 실패하고, 스키마 이전 모듈은 경고만 남기고 이 키를 끄며, `list`·`multiline` 타입은 0.1.8처럼 `text`로 다룬다. 0.1.8 데몬은 스키마 2 모듈을 로드하지 않으므로 스키마 2 모듈은 `[module.dependencies] saba-core = ">=0.1.9"`도 적는다. 0.1.9로 내는 공식 모듈은 스키마 1이다. 표시 없는 모듈에게 권하는 버전은 1이다.
 - **로드 실패 표시**: 스키마에 맞지 않으면 `failed[]`에 `error_code:"module_schema_invalid"`와 `problems`(`SchemaInvalid`), 데몬보다 새 스키마면 `"module_schema_unsupported"`와 `required`(`SchemaUnsupported`)가 실린다.
 - **모르는 키·잘못된 값**: `[module] schema_version = 1`(또는 2)이면 모듈 로드가 실패한다. `schema_version`이 없으면(스키마 이전 모듈) `warnings`에만 남기고 로드한다. 데몬보다 새 버전이면 거부한다 (`:1222-1243`). 값 검사는 `entry` 경로, `risk` 값, `config.announce_command`·`backup.save_command`가 `[[commands.fields]]` 이름을 가리키는지다 (`:1248-1307`). 세 실제 모듈은 모두 `schema_version = 1`이다.
 - **알고 있는 키의 타입이 틀리면 모듈 전체 로드가 실패**한다. 예를 들어 settings의 `options`에 숫자를 넣으면 `Vec<String>`이라 실패한다.
@@ -119,7 +119,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | 키 | 타입 | 기본값 |
 |---|---|---|
 | `name` | String | ✔ |
-| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`), 스키마 2는 `list`·`multiline`도(`SETTING_TYPES_V2`). 밖이면 스키마 v1·v2 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다. `list`는 문자열 배열(API·저장·모듈 config 모두): `options`가 있으면 항목마다 그중 하나, `format`·`pattern`은 항목마다, 빈 항목·같은 값 두 번은 `invalid_format`, `default`는 문자열 배열. `multiline`은 줄바꿈을 받는 문자열이고 `format`·`pattern`은 값 전체에 쓴다 |
+| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`), 스키마 2는 `list`·`multiline`도(`SETTING_TYPES_V2`). 밖이면 스키마 v1·v2 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다. `list`는 문자열 배열(API·저장·모듈 config 모두): `options`가 있으면 항목마다 그중 하나, `format`·`pattern`은 항목마다, 빈 항목·같은 값 두 번은 `invalid_format`, `default`는 문자열 배열(만들 때 채운다), 빈 문자열은 받지 않는다(빈 목록은 `[]`), 프리셋 값도 로드 때 같은 규칙으로 검사한다. `multiline`은 줄바꿈을 받는 문자열이고 `format`·`pattern`은 값 전체에 쓴다 |
 | `label` | String | 없으면 `name`으로 대체 |
 | `description` | String | — |
 | `required` | bool | — |

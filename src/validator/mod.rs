@@ -98,7 +98,8 @@ pub fn validate_setting_value(
             }
             return validate_list(field, &[]);
         }
-        Some(Value::String(s)) if s.is_empty() => {
+        // 목록은 문자열 배열만 (빈 목록은 `[]`)
+        Some(Value::String(s)) if s.is_empty() && field.field_type != "list" => {
             if field.required == Some(true) {
                 return Err(ValidationError {
                     field: field_name.clone(),

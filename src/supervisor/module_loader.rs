@@ -1370,6 +1370,10 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         // 스키마 2 키는 스키마 1·이전 모듈에서 켜지 않는다 (위 problems에 이미 실렸다)
         for f in meta.settings.iter_mut().flat_map(|s| s.fields.iter_mut()) {
             (f.min_items, f.max_items, f.max_length, f.restart_required, f.visible_when) = (None, None, None, false, None);
+            // 스키마 이전 모듈의 새 타입은 0.1.8처럼 글자로 다룬다 (스키마 1은 위에서 실패한다)
+            if SETTING_TYPES_V2.contains(&f.field_type.as_str()) {
+                f.field_type = "text".into();
+            }
         }
     }
     match meta.schema_version {
@@ -1576,7 +1580,8 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
                 problems.push(format!("presets '{}': '{}' cannot be set by a preset", preset.id, key));
                 continue;
             }
-            let option_ok = field.field_type == "list" || match (&field.options, value.as_str()) {
+            // list는 항목마다 options를 본다 (validate_setting_value)
+            let option_ok = (field.field_type == "list" && value.is_array()) || match (&field.options, value.as_str()) {
                 (Some(options), Some(v)) => options.iter().any(|o| o == v),
                 (Some(_), None) => false,
                 (None, _) => !value.is_object() && !value.is_array(),
@@ -2413,6 +2418,27 @@ entry = "lifecycle.py"
             assert!(failed.problems.iter().any(|p| p.contains(needle)), "{needle}: {:?}", failed.problems);
         }
         assert!(failed.error.contains("schema v1"), "{}", failed.error);
+    }
+
+    /// 리뷰 554: 스키마 이전 모듈의 list·multiline은 0.1.8처럼 글자로 다루고, list 프리셋 값도 로드 때 검사한다
+    #[test]
+    fn pre_schema_list_types_stay_text_and_list_presets_are_checked() {
+        let old = format!("{}\n[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\n", V1.replace("schema_version = 1\n", ""));
+        let meta = parse_module_toml(&old).unwrap();
+        let types: Vec<&str> = meta.settings.as_ref().unwrap().fields.iter().map(|f| f.field_type.as_str()).collect();
+        assert_eq!(types, ["text", "text"]);
+
+        let v2 = V1.replace("schema_version = 1", "schema_version = 2");
+        let preset = |value: &str| {
+            parse_module_toml(&format!(
+                "{v2}\n[[settings.fields]]\nname = \"mode\"\ntype = \"list\"\noptions = [\"a\", \"b\"]\n\n[[presets]]\nid = \"p\"\nlabel = \"P\"\nsettings = {{ mode = {value} }}\n"
+            ))
+        };
+        assert!(preset("[\"a\"]").is_ok());
+        for bad in ["\"a\"", "[\"c\"]", "[\"a\", \"a\"]"] {
+            let err = preset(bad).unwrap_err().to_string();
+            assert!(err.contains("presets 'p'"), "{bad}: {err}");
+        }
     }
 
     #[test]
