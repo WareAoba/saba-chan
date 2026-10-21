@@ -1,7 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { launchDraft } from '../components/servers/LaunchPreview';
-import { busyMessage, createTranslateError, moduleSupports, safeShowToast } from '../utils/helpers';
+import {
+    busyMessage,
+    createTranslateError,
+    installedExecutable,
+    moduleSupports,
+    safeShowToast,
+} from '../utils/helpers';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
 import { useModalClose } from './useModalClose';
@@ -371,11 +377,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
                             // 설치한 버전만 기록한다 (설정 저장은 버전을 보내지 않는다)
                             const update = { server_version: version };
-                            if (installResult.jar_path) {
-                                // 받은 파일로 켠다: 예전 실행 파일 경로(paper-…-130.jar 등)가 남아 있으면 옛 버전이 뜬다
-                                update.working_dir =
-                                    installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
-                                update.executable_path = installResult.jar_path;
+                            // 받은 파일로 켠다: 예전 실행 파일 경로(paper-…-130.jar 등)가 남아 있으면 옛 버전이 뜬다
+                            const exe = installedExecutable(installResult);
+                            if (exe) {
+                                update.working_dir = installResult.install_path || exe.replace(/[/\\][^/\\]+$/, '');
+                                update.executable_path = exe;
                             }
                             const saved = await window.api.instanceUpdateSettings(settingsServer.id, update);
                             if (!saved || saved.error || saved.success === false) {

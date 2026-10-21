@@ -1,6 +1,13 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { busyMessage, createTranslateError, moduleSupports, retryWithBackoff, safeShowToast } from '../utils/helpers';
+import {
+    busyMessage,
+    createTranslateError,
+    installedExecutable,
+    moduleSupports,
+    retryWithBackoff,
+    safeShowToast,
+} from '../utils/helpers';
 import { claimStopNotice, showPortMoved } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
@@ -387,13 +394,12 @@ export function useServerActions({
 
                                     setProgressBar({ message: t('servers.progress_configuring'), percent: 90 });
 
-                                    if (s && installResult.jar_path) {
+                                    const exe = installedExecutable(installResult);
+                                    if (s && exe) {
                                         // 받은 파일로 켠다: 예전 실행 파일 경로가 남아 있으면 그 파일을 다시 찾는다
                                         const saved = await window.api.instanceUpdateSettings(s.id, {
-                                            working_dir:
-                                                installResult.install_path ||
-                                                installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
-                                            executable_path: installResult.jar_path,
+                                            working_dir: installResult.install_path || exe.replace(/[/\\][^/\\]+$/, ''),
+                                            executable_path: exe,
                                         });
                                         if (!saved || saved.error || saved.success === false) {
                                             setProgressBar(null);
