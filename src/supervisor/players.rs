@@ -12,7 +12,7 @@ use super::Supervisor;
 /// 다시 묻는 간격
 pub const REFRESH_SECS: u64 = 60;
 /// 함수 하나를 기다리는 시간. 넘기면 그 서버의 값은 비운다
-const CALL_TIMEOUT_SECS: u64 = 10;
+pub const CALL_TIMEOUT_SECS: u64 = 10;
 /// 켜진 서버가 이만큼 계속 답하지 않으면 응답 없음으로 알린다. 첫 월드 생성(Minecraft)처럼 늦게 여는 서버를 기다린다
 pub const UNRESPONSIVE_AFTER: std::time::Duration = std::time::Duration::from_secs(300);
 

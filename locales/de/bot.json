@@ -199,6 +199,10 @@
           "title": "Konsolenende",
           "description": "Letzte 20 Konsolenzeilen"
         }
+      },
+      "players": {
+        "title": "Spieler",
+        "description": "Wer gerade online ist"
       }
     },
     "monitor": {
@@ -319,7 +323,11 @@
       "updates_none": "✅ Alles ist aktuell",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Speicher {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} online",
+      "players_max": "👥 {{online}}/{{max}} online",
+      "player_item": "• {{name}}",
+      "players_more": "…und {{count}} weitere"
     }
   }
 }

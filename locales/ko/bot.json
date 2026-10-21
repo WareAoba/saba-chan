@@ -199,6 +199,10 @@
           "title": "콘솔 끝부분",
           "description": "콘솔 마지막 20줄"
         }
+      },
+      "players": {
+        "title": "플레이어",
+        "description": "접속한 사람과 이름"
       }
     },
     "monitor": {
@@ -319,7 +323,11 @@
       "updates_none": "✅ 모두 최신이에요",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · 메모리 {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 접속 {{online}}명",
+      "players_max": "👥 접속 {{online}}/{{max}}명",
+      "player_item": "• {{name}}",
+      "players_more": "…외 {{count}}명"
     }
   }
 }

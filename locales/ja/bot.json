@@ -199,6 +199,10 @@
           "title": "コンソールの末尾",
           "description": "コンソールの最後の20行"
         }
+      },
+      "players": {
+        "title": "プレイヤー",
+        "description": "接続中のプレイヤーと名前"
       }
     },
     "monitor": {
@@ -319,7 +323,11 @@
       "updates_none": "✅ すべて最新です",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · メモリ {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 接続 {{online}}人",
+      "players_max": "👥 接続 {{online}}/{{max}}人",
+      "player_item": "• {{name}}",
+      "players_more": "…ほか {{count}}人"
     }
   }
 }
