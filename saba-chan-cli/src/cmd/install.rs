@@ -82,15 +82,16 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
 
     // 설치 폴더: 고르지 않으면 기본 위치. 비어 있지 않은 폴더면 그 아래 Saba-chan 폴더에 푼다(제거기가 폴더째 지운다)
     let default_dir = core::dedicated_install_dir(&PathBuf::from(core::default_install_path()));
-    let dir = match args.dir {
-        Some(d) => core::dedicated_install_dir(&d),
-        None => match ctx
+    let chosen = match args.dir {
+        Some(d) => Some(d),
+        None => ctx
             .ask
             .text(&t!("install.ask_dir"), Some(&default_dir.display().to_string()), false)?
-        {
-            Some(d) => core::dedicated_install_dir(&PathBuf::from(d.trim())),
-            None => default_dir,
-        },
+            .map(|d| PathBuf::from(d.trim())),
+    };
+    let dir = match chosen {
+        Some(d) => install_target(&d).ok_or_else(|| usage(t!("install.empty_dir")))?,
+        None => default_dir,
     };
 
     // 설치는 그 폴더의 CLI를 모두 끄고 덮어쓴다: 거기서 도는 자신도 꺼지므로 다른 곳의 CLI로 하게 한다
@@ -177,6 +178,16 @@ fn ask_modules(ctx: &Ctx, available: &[core::ModuleInfo]) -> Result<Vec<String>>
         }
     }
     Ok(picked)
+}
+
+/// 고른 설치 폴더를 절대 경로로 (빈 경로는 `None`: 지금 폴더에 풀지 않는다). 비어 있지 않으면 그 아래 Saba-chan 폴더
+fn install_target(chosen: &Path) -> Option<PathBuf> {
+    if chosen.as_os_str().to_string_lossy().trim().is_empty() {
+        return None;
+    }
+    std::path::absolute(chosen)
+        .ok()
+        .map(|d| core::dedicated_install_dir(&d))
 }
 
 /// 설치 라이브러리의 기록을 창 인스톨러와 같은 파일에 덧붙인다. 열지 못하면 `None`(실패 때 경로를 안내하지 않는다)
@@ -308,5 +319,15 @@ mod tests {
         assert!(text.contains("saba-chan-cli install"), "{text}");
         assert!(text.contains("step from core"), "{text}");
         assert!(install_log(&dir.path().join("missing").join("x.log")).is_none());
+    }
+
+    /// 빈 경로(`--dir "$INSTALL_DIR"`의 빈 변수)는 거절하고, 상대 경로는 절대 경로로 바꿔 쓴다 (#516 리뷰)
+    #[test]
+    fn an_empty_install_dir_is_refused_and_a_relative_one_is_made_absolute() {
+        assert_eq!(install_target(Path::new("")), None);
+        assert_eq!(install_target(Path::new("  ")), None);
+        let rel = install_target(Path::new("saba-test-relative")).unwrap();
+        assert!(rel.is_absolute(), "{}", rel.display());
+        assert!(rel.starts_with(std::env::current_dir().unwrap()), "{}", rel.display());
     }
 }

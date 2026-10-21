@@ -687,6 +687,7 @@
     "installing": "正在安裝",
     "not_writable": "無法寫入 {{dir}}。請用 --dir 選擇可寫入的資料夾（例如使用者資料夾下）",
     "running_inside": "此 CLI 正在 {{dir}} 內執行，無法安裝到該資料夾。請使用安裝資料夾以外的 saba-chan-cli 執行。",
+    "empty_dir": "安裝資料夾為空。請用 --dir 指定資料夾",
     "failed": "安裝失敗：{{reason}}（詳細記錄：{{log}}）",
     "failed_no_log": "安裝失敗：{{reason}}",
     "done": "已安裝到 {{dir}}",

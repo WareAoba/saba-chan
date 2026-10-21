@@ -687,6 +687,7 @@
     "installing": "Installiere",
     "not_writable": "In {{dir}} kann nicht geschrieben werden. Wähle mit --dir einen beschreibbaren Ordner (zum Beispiel im Benutzerordner)",
     "running_inside": "Diese CLI läuft innerhalb von {{dir}} und kann dort nicht installieren. Starte eine saba-chan-cli außerhalb des Installationsordners.",
+    "empty_dir": "Der Installationsordner ist leer. Gib mit --dir einen Ordner an",
     "failed": "Installation fehlgeschlagen: {{reason}} (Details: {{log}})",
     "failed_no_log": "Installation fehlgeschlagen: {{reason}}",
     "done": "Nach {{dir}} installiert",
