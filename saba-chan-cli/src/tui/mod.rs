@@ -31,6 +31,8 @@ enum Msg {
     Refreshed(Option<Value>, Vec<Value>),
     /// 몇 번째로 시작한 명령이 끝났는지 (취소 뒤 늦게 온 끝 소식이 새 명령을 끝내지 않게)
     Done(u64),
+    /// 명령 작업이 패닉함. 기본 훅이 대체 화면 위에 직접 쓴 글자를 지우도록 화면을 통째로 다시 그린다
+    Panicked,
     Tick,
 }
 
@@ -239,6 +241,11 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 ctx.follow_daemon_port();
                 refreshing = refresh(&ctx, tx.clone(), refreshing);
             }
+            Msg::Panicked => {
+                app.push_line(&t!("tui.command_panicked"));
+                app.scroll = 0;
+                term.clear()?;
+            }
             Msg::Tick => refreshing = refresh(&ctx, tx.clone(), refreshing),
             Msg::Refreshed(h, servers) => {
                 refreshing = false;
@@ -320,7 +327,7 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>
     // 명령이 패닉해도 결과 창에 알리고 "실행 중"을 푼다
     tokio::spawn(async move {
         if work.await.is_err_and(|e| e.is_panic()) {
-            let _ = tx.send(Msg::Line(t!("tui.command_panicked")));
+            let _ = tx.send(Msg::Panicked);
         }
         let _ = tx.send(Msg::Done(id));
     });
