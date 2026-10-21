@@ -247,7 +247,13 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
                         tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
                     }
                 }
-                Err(e) => tracing::warn!("[Updates] Auto-download failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("[Updates] Auto-download failed: {}", e);
+                    // 실패 전에 받은 것은 적용할 수 있게 남긴다
+                    if let Err(e) = mgr.save_pending_manifest() {
+                        tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
+                    }
+                }
             }
         });
     }
@@ -387,25 +393,25 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
     }
 
     if body.components.is_empty() {
-        // 전체 다운로드
-        match mgr.download_available_updates().await {
-            Ok(downloaded) => {
+        // 전체 다운로드. 하나가 실패해도 받은 것은 적용할 수 있게 남기고, 선택 다운로드처럼 받은 것과 실패한 것을 함께 알린다
+        match mgr.download_available_updates_report().await {
+            Ok((downloaded, failed)) => {
                 // 업데이터 --apply 모드를 위해 매니페스트 저장
                 if let Err(e) = mgr.save_pending_manifest() {
                     tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
                 }
+                let errors: Vec<Value> = failed.iter().map(|(k, e)| json!({ "component": k, "error": e })).collect();
                 Json(json!({
-                    "ok": true,
+                    "ok": errors.is_empty(),
                     "downloaded": downloaded,
                     "count": downloaded.len(),
+                    "errors": errors,
                 }))
             }
-            Err(e) => {
-                Json(json!({
-                    "ok": false,
-                    "error": e.to_string(),
-                }))
-            }
+            Err(e) => Json(json!({
+                "ok": false,
+                "error": e.to_string(),
+            })),
         }
     } else {
         // 선택 컴포넌트만 다운로드
@@ -496,15 +502,9 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             .collect()
     };
 
-    // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
-    targets.sort_by_key(|comp| match comp {
-        Component::Updater => 0u8,
-        Component::Module(_) | Component::Extension(_) | Component::Locales | Component::Installer => 1,
-        Component::CoreDaemon => 3,
-        Component::Gui => 4,
-        Component::Cli => 4,
-    });
+    // 업데이터와 같은 적용 순서: Updater → CoreDaemon → 모듈/익스텐션/Locales → 인터페이스, 같은 묶음의 requires가 먼저
+    let order = mgr.apply_order(&targets.iter().map(|c| c.manifest_key()).collect::<Vec<_>>());
+    targets.sort_by_key(|c| order.iter().position(|k| *k == c.manifest_key()));
 
     let mut applied = Vec::new();
     let mut applied_keys = Vec::new();
@@ -581,10 +581,11 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     if needs_updater.is_empty() {
         if has_module_updates {
             if let Some(ref sup) = state.supervisor {
-                let sup = sup.read().await;
+                let mut sup = sup.write().await;
                 match sup.refresh_modules() {
                     Ok(modules) => {
                         tracing::info!("[Updates] Hot-reloaded {} module(s) after update", modules.len());
+                        sup.migrate_list_settings();
                     }
                     Err(e) => {
                         tracing::warn!("[Updates] Failed to hot-reload modules after update: {}", e);

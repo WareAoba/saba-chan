@@ -52,6 +52,8 @@ struct ApplyProgressEvent {
     message: String,
     percent: i32,
     applied: Vec<String>,
+    /// 실패하거나 건너뛴 키 수. 화면 문구는 GUI가 이 수로 번역하고, message는 진단용 원문이다
+    failed: usize,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -84,7 +86,7 @@ async fn start_apply(
         mgr.load_pending_manifest()
             .map_err(|e| {
                 let msg = format!("Failed to load manifest: {}", e);
-                emit_progress(&app, "error", &msg, 0, &[]);
+                emit_progress_with_failures(&app, "error", &msg, 0, &[], 1);
                 UpdateCompletionMarker::failure(msg.clone()).save().ok();
                 relaunch(&app, &apply_config, false);
                 msg
@@ -96,57 +98,22 @@ async fn start_apply(
 
     // 2. apply-targets.json에서 적용 대상 결정
     let mut mgr = manager.write().await;
-    let target_keys: Vec<String> = mgr
+    let mut target_keys: Vec<String> = mgr
         .load_updater_apply_targets()
         .unwrap_or_default();
 
     tracing::info!("[Apply] Targets: {:?}", target_keys);
 
     // 3. 적용
-    let mut applied = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-
+    // apply-targets.json이 없거나 비어있으면 받아 둔 것 전체를 적용 순서대로. 실패하면 남은 것은 건너뛴 것으로 남긴다
     if target_keys.is_empty() {
-        // apply-targets.json이 없거나 비어있으면 전체 적용
-        let total = mgr.get_pending_components().len();
-        emit_progress(&app, "applying", &format!("Applying {} components...", total), 50, &[]);
-
-        match mgr.apply_updates().await {
-            Ok(a) => applied = a,
-            Err(e) => {
-                let msg = format!("Apply failed: {}", e);
-                emit_progress(&app, "error", &msg, 0, &[]);
-                UpdateCompletionMarker::failure(msg.clone()).save().ok();
-                relaunch(&app, &apply_config, false);
-                return Err(msg);
-            }
-        }
-    } else {
-        // 개별 컴포넌트 순차 적용 (진행률 이벤트 발행)
-        let total = target_keys.len();
-        for (i, key) in target_keys.iter().enumerate() {
-            let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
-            emit_progress(&app, "applying",
-                &format!("Applying {} ({}/{})...", key, i + 1, total), pct, &applied);
-
-            match mgr.apply_single_component(
-                &saba_chan_updater_lib::Component::from_manifest_key(key),
-            ).await {
-                Ok(result) if result.success => {
-                    tracing::info!("[Apply] {} ✓", key);
-                    applied.push(key.clone());
-                }
-                Ok(result) => {
-                    tracing::warn!("[Apply] {} failed: {}", key, result.message);
-                    failed.push(format!("{}: {}", key, result.message));
-                }
-                Err(e) => {
-                    tracing::error!("[Apply] {} error: {}", key, e);
-                    failed.push(format!("{}: {}", key, e));
-                }
-            }
-        }
+        target_keys = mgr.pending_keys_in_apply_order();
     }
+    let total = target_keys.len();
+    let (applied, failed) = mgr.apply_target_keys(&target_keys, |i, key, done| {
+        let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
+        emit_progress(&app, "applying", &format!("Applying {} ({}/{})...", key, i + 1, total), pct, done);
+    }).await;
 
     // 4. 완료 마커 저장 — 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
     let marker = UpdateCompletionMarker {
@@ -173,7 +140,7 @@ async fn start_apply(
             }
         }, 100, &applied);
     } else {
-        emit_progress(&app, "error", &format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; ")), 0, &applied);
+        emit_progress_with_failures(&app, "error", &format!("{} applied, {} failed: {}", applied.len(), failed.len(), failed.join("; ")), 0, &applied, failed.len());
     }
 
     drop(mgr);
@@ -255,11 +222,16 @@ async fn check_after_update() -> Result<serde_json::Value, String> {
 // ═══════════════════════════════════════════════════════
 
 fn emit_progress(app: &AppHandle, step: &str, message: &str, percent: i32, applied: &[String]) {
+    emit_progress_with_failures(app, step, message, percent, applied, 0);
+}
+
+fn emit_progress_with_failures(app: &AppHandle, step: &str, message: &str, percent: i32, applied: &[String], failed: usize) {
     app.emit("apply:progress", ApplyProgressEvent {
         step: step.into(),
         message: message.into(),
         percent,
         applied: applied.to_vec(),
+        failed,
     }).ok();
 }
 
@@ -447,11 +419,10 @@ pub fn run() {
         .filter(|&i| relaunch_pos.is_none_or(|r| i < r))
         .and_then(|i| after_apply.get(i + 1))
         .cloned();
-    let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
     let accepted = match token {
         Some(t) => launch_ticket::redeem(&saba_chan_updater_lib::constants::resolve_staging_dir(), &t),
         None => {
-            launch_ticket::core_predates_tickets(installed.get("saba-core").map(String::as_str))
+            launch_ticket::installed_core_predates_tickets()
                 && launch_ticket::claim_legacy_apply(&saba_chan_updater_lib::constants::resolve_staging_dir())
         }
     };
@@ -499,6 +470,19 @@ pub fn run() {
         .manage(apply_config)
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
+                // 작업 표시줄·제목 표시줄 아이콘을 창 DPI에 맞는 크기로. 배율이 바뀌면 다시 건다
+                #[cfg(windows)]
+                {
+                    if let Ok(hwnd) = win.hwnd() {
+                        saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+                    }
+                    let w = win.clone();
+                    win.on_window_event(move |event| {
+                        if let (tauri::WindowEvent::ScaleFactorChanged { .. }, Ok(hwnd)) = (event, w.hwnd()) {
+                            saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+                        }
+                    });
+                }
                 // 사용자 언어에 맞는 타이틀
                 let title = match load_setting("language").as_deref() {
                     Some("ko") => "사바쨩 — 업데이트중!",

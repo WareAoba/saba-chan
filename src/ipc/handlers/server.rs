@@ -452,7 +452,13 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
 pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
-    let modules = state.supervisor.read().await.refresh_modules();
+    // 문자열로 저장된 값의 설정이 list가 되었으면 옮긴다 (06 §8.1)
+    let modules = {
+        let mut supervisor = state.supervisor.write().await;
+        let modules = supervisor.refresh_modules();
+        supervisor.migrate_list_settings();
+        modules
+    };
     if let Ok(m) = &modules {
         tracing::info!("Module cache refreshed. Found {} modules", m.len());
         crate::plugin::prefetch_module_functions(m.iter().map(|m| m.entry_path()).collect());
@@ -608,6 +614,15 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &comp.version)) {
         return fail(format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
     }
+    // 새 코어를 요구하는 판은 받지 않는다 (업데이터 적용과 같은 검사)
+    if let Some(requires) = &comp.requires {
+        let installed: std::collections::HashMap<String, String> = component_versions(&state).await.into_iter().collect();
+        let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
+        let unmet = saba_chan_updater_lib::unmet_requires(&key, requires, &installed);
+        if !unmet.is_empty() {
+            return fail(unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
+        }
+    }
 
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
@@ -637,8 +652,9 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     if let Err(e) = result {
         return fail(format!("{:#}", e));
     }
-    let supervisor = state.supervisor.read().await;
+    let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
+    supervisor.migrate_list_settings();
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
 }
 
@@ -712,8 +728,9 @@ pub async fn remove_module(
     }
     let _ = saba_chan_updater_lib::integrity::set_official(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id), false);
     // 캐시 갱신 (write lock)
-    let supervisor = state.supervisor.write().await;
+    let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
+    supervisor.migrate_list_settings();
     (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
 }
 
@@ -1488,6 +1505,49 @@ mod tests {
         assert!(child.try_wait().unwrap().is_none(), "a plain stop does not kill it");
         assert_eq!(stop("no-console-native", true).await["success"], true);
         assert!(child.wait().is_ok());
+    }
+
+    /// non-managed 정지에서 모듈 `stop()`은 이번 정지에 쓸 대기 시간(`stop_timeout`)과 그 호출의 한도(`stop_call_limit`,
+    /// `stop_timeout + 30`초)를 config로 받는다. 인스턴스 값이 없으면 모듈 값이다 (06 계약 6절)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_module_stop_is_told_how_long_to_wait() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_timeout = 200\n",
+        )
+        .unwrap();
+        let seen = tmp.path().join("seen.txt");
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, os, signal, sys\n\
+                 config = json.load(sys.stdin)\n\
+                 if sys.argv[1] == 'stop':\n    \
+                 open({seen:?}, 'w').write('%s %s' % (config.get('stop_timeout'), config.get('stop_call_limit')))\n    \
+                 os.kill(config['pid'], signal.SIGKILL)\n    print(json.dumps({{'success': True}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n",
+                seen = seen.to_string_lossy()
+            ),
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("native", "game");
+        inst.id = "native".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("native", child.id()).unwrap();
+        let stopped = crate::ipc::internal::into_internal(stop_instance(state.clone(), "native", false).await).await.body;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert!(child.wait().is_ok());
+        assert_eq!(std::fs::read_to_string(&seen).unwrap(), "200 230");
     }
 
     #[test]

@@ -39,6 +39,7 @@
     "requested_by": "請求者",
     "username": "使用者名稱",
     "config_saved": "機器人設定已儲存。",
+    "config_ignored": "機器人設定不會變更權限鍵，它們保留了原本的值：{{keys}}。其餘已儲存。請用 saba-chan-cli perm 變更權限",
     "confirm_unpair": "要中斷這台電腦與 Discord 機器人的連線並取消配對嗎？",
     "connection": "連線",
     "last_error": "最近錯誤",
@@ -73,7 +74,8 @@
     "link_declined": "已拒絕連接請求。",
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
-    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}"
+    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
+    "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。"
   },
   "col": {
     "players": "線上玩家",
@@ -156,6 +158,7 @@
     "offer_start": "Saba-chan 常駐程式未執行。要啟動嗎？",
     "spawn_failed": "無法啟動常駐程式：{{error}}",
     "start_timeout": "常駐程式未及時回應。請檢查：saba-chan-cli daemon logs",
+    "exited_early": "常駐程式啟動後立即結束(結束代碼 {{code}})。可能已有另一個常駐程式在執行。檢查: saba-chan-cli daemon status",
     "started": "常駐程式已啟動（v{{version}}）。",
     "starting": "正在啟動常駐程式...",
     "stop_no_pid": "常駐程式沒有回報 PID，因此無法從這裡結束它。",
@@ -183,7 +186,8 @@
       "forbidden": "你沒有在該 Discord 伺服器執行此操作的權限。",
       "expired": "代碼已過期。請重新開始。",
       "rate_limited": "請求過於頻繁。請約一分鐘後再試。",
-      "other": "中繼拒絕了請求（{{code}}）。"
+      "other": "中繼拒絕了請求（{{code}}）。",
+      "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。"
     },
     "ambiguous": "有多個{{what}}符合「{{query}}」。",
     "ambiguous_hint": "請更明確一點：{{names}}",
@@ -201,7 +205,7 @@
       "server_running": "請先停止伺服器：saba-chan-cli stop NAME",
       "rcon_unreachable": "無法連線到伺服器的 RCON。請確認伺服器已完全啟動，稍後再試：saba-chan-cli status",
       "rcon_auth_failed": "伺服器拒絕了 RCON 密碼。重新啟動伺服器後 Saba-chan 會重新寫入密碼：saba-chan-cli restart NAME",
-      "rcon_timeout": "伺服器未及時透過 RCON 回應。伺服器可能正忙，請稍後再試",
+      "rcon_timeout": "伺服器未及時透過 RCON 回應。指令可能已經執行，請先查看伺服器主控台再重新傳送：saba-chan-cli console NAME",
       "rcon_failed": "伺服器回傳了無法讀取的 RCON 回應。請查看伺服器主控台：saba-chan-cli console NAME",
       "update_unsupported": "此伺服器無法透過 Saba-chan 更新。請自行更新它的檔案。",
       "dependency_outdated": "請更新到較新的版本：saba-chan-cli update check",
@@ -214,7 +218,8 @@
       "schedule_changed": "排程工作已在別處變更。請用 saba-chan-cli schedule show 重新確認後再試。",
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
-      "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。"
+      "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。",
+      "agent_too_old": "檢查更新：saba-chan-cli update check"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -472,6 +477,8 @@
     "ready": "可以安裝",
     "up_to_date": "已是最新",
     "updater_launched": "更新程式已啟動。常駐程式正在關閉以進行更新。",
+    "waiting_result": "正在等待更新套用並重新啟動 Saba-chan…",
+    "result_timeout": "15 分鐘內沒有收到更新結果。請檢查更新程式視窗或 Saba-chan 是否已重新啟動",
     "verifying": "正在驗證檔案...",
     "unknown_key": "{{key}} 不是更新設定。可用設定：{{keys}}",
     "integrity_empty": "尚未記錄任何檔案。只會檢查由更新程式安裝的部分。",

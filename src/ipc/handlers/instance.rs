@@ -58,6 +58,9 @@ pub async fn get_instance(
             // 모듈 약관과 동의 여부 (`agreements`)를 붙인다
             let mut body = serde_json::to_value(instance).unwrap_or_default();
             body["agreements"] = json!(supervisor.agreement_views(instance, &language));
+            // 06 §8.2: 저장된 값 기준으로 지금 숨겨진 설정 (CLI가 쓴다)
+            let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
+            body["hidden"] = json!(crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k)));
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
@@ -159,7 +162,7 @@ pub async fn create_instance(
             if let Some(settings) = loaded_module.metadata.settings.as_ref() {
                 for field in &settings.fields {
                     let Some(value) = chosen.get(&field.name).filter(|v| !v.is_null()) else { continue };
-                    let allowed = match (&field.options, value.as_str()) {
+                    let allowed = field.field_type == "list" || match (&field.options, value.as_str()) {
                         (Some(options), Some(v)) => options.iter().any(|o| o == v),
                         (Some(_), None) => false,
                         (None, _) => !value.is_object() && !value.is_array(),
@@ -208,6 +211,11 @@ pub async fn create_instance(
                                 toml::Value::Integer(n) => serde_json::json!(n),
                                 toml::Value::Float(f) => serde_json::json!(f),
                                 toml::Value::Boolean(b) => serde_json::json!(b),
+                                // list 기본값 (06 §8.1: TOML 문자열 배열)
+                                toml::Value::Array(_) if field.field_type == "list" => match serde_json::to_value(default_val) {
+                                    Ok(v) => v,
+                                    Err(_) => continue,
+                                },
                                 _ => continue,
                             };
                             instance.module_settings.insert(field.name.clone(), json_val);
@@ -1054,6 +1062,13 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
 }
 
 /// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
+/// 설정의 저장된 값: 공통 칸(`constants::INSTANCE_FIELDS`, 예: port)은 PATCH가 인스턴스 칸에 쓰므로 그 값을,
+/// 아니면 `module_settings`를 본다. `view`는 그 인스턴스를 JSON으로 펼친 것
+fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key: &str) -> Option<Value> {
+    let own = saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key);
+    own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
+}
+
 /// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
 fn is_known_field(key: &str) -> bool {
     saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || key == "extension_data" || IGNORED_FIELDS.contains(&key)
@@ -1111,10 +1126,16 @@ pub async fn update_instance_settings(
         if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
             if let Some(ref settings_meta) = module.metadata.settings {
                 // 부분 변경이므로 보낸 필드만 검증한다
-                let errors = crate::validator::validate_settings_patch(
+                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
+                let view = serde_json::to_value(instance).unwrap_or_default();
+                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                let errors: Vec<_> = crate::validator::validate_settings_patch(
                     &settings_meta.fields,
                     settings_obj,
-                );
+                )
+                .into_iter()
+                .filter(|e| !(e.error_type == crate::validator::ValidationErrorType::Required && hidden.contains(&e.field)))
+                .collect();
                 if !errors.is_empty() {
                     let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
                     let fields: Vec<Value> = errors
@@ -1363,6 +1384,21 @@ pub async fn update_instance_settings(
         }
     }
 
+    // 06 §8.2: 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
+    let running = supervisor.tracker.get_pid(&id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id);
+    let restart_required: Vec<String> = if running {
+        supervisor.module_loader.get_module(&updated.module_name).ok()
+            .and_then(|m| m.metadata.settings.clone())
+            .map(|s| s.fields)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| f.restart_required && settings.get(&f.name).is_some_and(|v| updated.module_settings.get(&f.name) != Some(v)))
+            .map(|f| f.name)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
@@ -1481,7 +1517,7 @@ pub async fn update_instance_settings(
 
     // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
     state.credentials.invalidate(&id);
-    let mut body = json!({ "success": true, "synced": sync_error.is_none() });
+    let mut body = json!({ "success": true, "synced": sync_error.is_none(), "restart_required": restart_required });
     if let Some(e) = sync_error {
         body["sync_error"] = json!(e);
     }
@@ -2099,6 +2135,112 @@ mod tests {
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
+    }
+
+    /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.
+    /// 켜져 있을 때 바꾼 restart_required 설정은 응답 `restart_required`에 실린다
+    #[tokio::test]
+    async fn schema_v2_settings_migrate_hide_and_ask_for_a_restart() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 2\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"pvp\"\ntype = \"boolean\"\ndefault = false\n\n\
+             [[settings.fields]]\nname = \"damage\"\ntype = \"text\"\nrequired = true\nvisible_when = { field = \"pvp\", equals = true }\n\n\
+             [[settings.fields]]\nname = \"admins\"\ntype = \"list\"\nrestart_required = true\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.module_settings.insert("admins".into(), json!("Steve, Alex"));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        sup.migrate_list_settings();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let get = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await }
+        };
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+
+        let read = get().await;
+        assert_eq!(read.body["module_settings"]["admins"], json!(["Steve", "Alex"]), "an old string value is read as a list");
+        assert_eq!(read.body["hidden"], json!(["damage"]));
+
+        let saved = patch(json!({ "damage": "", "motd": "line one\nline two", "admins": ["Steve"] })).await;
+        assert!(saved.status.is_success(), "a hidden setting is not required: {:?}", saved.body);
+        assert_eq!(saved.body["restart_required"], json!([]), "the server is off");
+        let shown = patch(json!({ "pvp": true, "damage": "" })).await;
+        assert_eq!(shown.status.as_u16(), 400, "shown again, it is required: {:?}", shown.body);
+
+        state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        let running = patch(json!({ "admins": ["Steve"], "motd": "x" })).await;
+        assert_eq!(running.body["restart_required"], json!([]), "unchanged values ask for nothing");
+        let running = patch(json!({ "admins": ["Alex"], "motd": "y" })).await;
+        assert_eq!(running.body["restart_required"], json!(["admins"]));
+        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
+        assert!(stored.contains("\"Alex\""), "{stored}");
+    }
+
+    /// 리뷰 554: 숨김 조건은 인스턴스 칸에 저장되는 설정(port 등)의 지금 값을 보고, list 기본값은 만들 때 채우며,
+    /// list에 빈 문자열은 받지 않는다. 모듈을 다시 읽어 문자열 설정이 list가 되면 그때 옮긴다
+    #[tokio::test]
+    async fn list_defaults_instance_field_conditions_and_refresh_follow_the_contract() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        let toml = |admins_type: &str| {
+            format!(
+                "[module]\nschema_version = 2\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+                 [[settings.fields]]\nname = \"port\"\ntype = \"number\"\ndefault = 25565\n\n\
+                 [[settings.fields]]\nname = \"note\"\ntype = \"text\"\nvisible_when = {{ field = \"port\", equals = 25565 }}\n\n\
+                 [[settings.fields]]\nname = \"ops\"\ntype = \"list\"\ndefault = [\"a\", \"b\"]\n\n\
+                 [[settings.fields]]\nname = \"admins\"\ntype = \"{admins_type}\"\n"
+            )
+        };
+        std::fs::write(dir.join("module.toml"), toml("text")).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game", "port": 25565 }))).await).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let get = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await }
+        };
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        assert_eq!(get().await.body["module_settings"]["ops"], json!(["a", "b"]), "a list default is filled in");
+        assert_eq!(get().await.body["hidden"], json!([]));
+        assert!(patch(json!({ "port": 26000 })).await.status.is_success());
+        assert_eq!(get().await.body["hidden"], json!(["note"]), "the condition reads the port the instance has now");
+        let empty = patch(json!({ "ops": "" })).await;
+        assert_eq!(empty.status.as_u16(), 400, "a list is never a string: {:?}", empty.body);
+
+        patch(json!({ "admins": "Steve, Alex" })).await;
+        std::fs::write(dir.join("module.toml"), toml("list")).unwrap();
+        let refreshed = crate::ipc::internal::into_internal(crate::ipc::handlers::server::refresh_modules(State(state.clone())).await).await;
+        assert!(refreshed.status.is_success(), "{:?}", refreshed.body);
+        assert_eq!(get().await.body["module_settings"]["admins"], json!(["Steve", "Alex"]), "moved when the modules are read again");
     }
 
     /// 게임 설정 파일로 넘기는 값(configure)에서 사바쨩 설정(`group = "saba-chan"`)과 데몬 필드는 뺀다.

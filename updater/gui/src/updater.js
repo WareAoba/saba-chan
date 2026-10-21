@@ -33,7 +33,7 @@ const TRANSLATIONS = {
         applyUpdatedCount: '{{count}} components updated',
         applyRestartingGui: 'Restarting GUI...',
         applyFailed: 'Update failed',
-        applyStartFailed: 'Apply failed: {{error}}',
+        applyFailedCount: '{{applied}} applied, {{failed}} failed or skipped',
     },
     ko: {
         appTitle: '사바쨩 업데이터',
@@ -57,7 +57,7 @@ const TRANSLATIONS = {
         applyUpdatedCount: '{{count}}개 컴포넌트 업데이트 완료',
         applyRestartingGui: 'GUI를 재시작합니다…',
         applyFailed: '업데이트 실패',
-        applyStartFailed: '적용 실패: {{error}}',
+        applyFailedCount: '{{applied}}개 적용, {{failed}}개 실패하거나 건너뜀',
     },
     ja: {
         appTitle: 'Saba-chan アップデーター',
@@ -81,7 +81,7 @@ const TRANSLATIONS = {
         applyUpdatedCount: '{{count}} コンポーネント更新完了',
         applyRestartingGui: 'GUIを再起動しています...',
         applyFailed: '更新失敗',
-        applyStartFailed: '適用失敗: {{error}}',
+        applyFailedCount: '{{applied}} 件適用、{{failed}} 件失敗またはスキップ',
     },
 };
 
@@ -354,7 +354,7 @@ async function enterApplyMode(mode) {
     // 진행 이벤트 리스닝 — 프로그레스 링 + 프로그레스 바 + 토스트 활용
     // 등록이 끝난 뒤에 적용을 시작한다: 먼저 시작하면 첫 이벤트(빠른 실패 포함)를 놓친다
     await listen('apply:progress', (event) => {
-        const { step, message, percent, applied } = event.payload;
+        const { step, message, percent, applied, failed } = event.payload;
 
         let localizedMessage = message;
         if (step === 'manifest') {
@@ -407,16 +407,20 @@ async function enterApplyMode(mode) {
                 }, 1500);
             }
         } else if (step === 'error') {
-            showRing('error', tr('applyFailed'), message);
+            // message는 진단용 원문(영어)이라 화면에는 번역한 요약만 보인다
+            console.warn('[Apply]', message);
+            const summary = tr('applyFailedCount', { applied: applied ? applied.length : 0, failed: failed || 0 });
+            showRing('error', tr('applyFailed'), summary);
             hideProgress();
-            showToast(message, 'error', 8000);
+            showToast(summary, 'error', 8000);
         }
     });
 
     // apply 실행
+    // 거부 사유는 진단용 원문이라 화면에는 번역한 요약만 보인다
     invoke('start_apply').catch(err => {
-        showRing('error', tr('applyFailed'), String(err));
+        console.warn('[Apply]', err);
+        showRing('error', tr('applyFailed'), tr('applyFailedCount', { applied: 0, failed: 1 }));
         hideProgress();
-        showToast(tr('applyStartFailed', { error: err }), 'error', 8000);
     });
 }

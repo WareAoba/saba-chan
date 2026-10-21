@@ -222,3 +222,19 @@ describe('서버 페이지', () => {
         );
     }, 20000);
 });
+
+describe('창 닫기 요청', () => {
+    it('받자마자 셸에 받았다고 답한다 (렌더러가 멈췄는지 셸이 알 수 있게, L18c)', async () => {
+        let onClose;
+        const closeResponse = vi.fn();
+        await boot({
+            onCloseRequest: vi.fn((cb) => {
+                onClose = cb;
+                return () => {};
+            }),
+            closeResponse,
+        });
+        act(() => onClose());
+        expect(closeResponse).toHaveBeenCalledWith('ack');
+    });
+});

@@ -886,6 +886,9 @@ export function createApi({ invoke, hub }) {
         discordBotStatus: async () => {
             try {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
+                // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
+                if (data?.lastErrorCode === 'agent_too_old')
+                    return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null };
                 if (data?.running) return 'running';
                 // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
                 if (data?.lastErrorCode === 'token_replaced') return 'replaced';
