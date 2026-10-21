@@ -119,16 +119,39 @@ pub(crate) async fn install_addon(key: &str, info: &ManifestComponent, target: &
 }
 
 /// 받은 zip을 `target`에 새로 풀고, 서명된 카탈로그에서 받은 것으로 기록한다.
-/// 기록이 없으면 데몬이 "unverified"로 보고 격리해 실행한다 (데몬 카탈로그 설치와 같은 기록)
+/// 기록이 없으면 데몬이 "unverified"로 보고 격리해 실행한다 (데몬 카탈로그 설치와 같은 기록).
+/// 옆 폴더에 다 푼 뒤에 바꿔 넣는다: 풀다가 실패하면(깨진 zip, 디스크 부족) 있던 폴더를 그대로 둔다
 fn install_addon_zip(key: &str, zip: &Path, target: &Path) -> Result<(), String> {
-    (|| {
-        if target.exists() {
-            std::fs::remove_dir_all(target)?;
+    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let staged = target.with_file_name(format!(".{}.new-{}", name, std::process::id()));
+    let old = target.with_file_name(format!(".{}.old-{}", name, std::process::id()));
+    let extracted = (|| {
+        if staged.exists() {
+            std::fs::remove_dir_all(&staged)?;
         }
-        std::fs::create_dir_all(target)?;
-        saba_chan_updater_lib::extract_zip(zip, target, |_| Ok(())).map(|_| ())
-    })()
-    .map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&staged)?;
+        saba_chan_updater_lib::extract_zip(zip, &staged, |_| Ok(())).map(|_| ())
+    })();
+    if let Err(e) = extracted {
+        let _ = std::fs::remove_dir_all(&staged);
+        return Err(e.to_string());
+    }
+    let swapped = (|| {
+        if target.exists() {
+            std::fs::rename(target, &old)?;
+        }
+        if let Err(e) = std::fs::rename(&staged, target) {
+            // 새 폴더를 못 넣었으면 있던 폴더를 되돌린다
+            if old.exists() {
+                let _ = std::fs::rename(&old, target);
+            }
+            return Err(e);
+        }
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&staged);
+    swapped.map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_dir_all(&old);
     saba_chan_updater_lib::integrity::record_dir(key, target)
         .and_then(|_| saba_chan_updater_lib::integrity::set_official(key, true))
         .map_err(|e| format!("Could not record installed files: {}", e))
@@ -219,6 +242,22 @@ mod tests {
         let root = Path::new("/opt/saba");
         assert_eq!(target_dir(root, &component("1", Some("."))), root);
         assert_eq!(target_dir(root, &component("1", Some("locales"))), root.join("locales"));
+    }
+
+    /// 풀다가 실패하면(깨진 zip, 디스크 부족) 이미 설치돼 있던 모듈·익스텐션을 그대로 둔다
+    #[test]
+    fn a_failed_extraction_keeps_the_installed_addon() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("modules").join("palworld");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("lifecycle.py"), b"old").unwrap();
+        let zip = tmp.path().join("broken.zip");
+        std::fs::write(&zip, b"not a zip").unwrap();
+
+        assert!(install_addon_zip("module-palworld", &zip, &target).is_err());
+        assert_eq!(std::fs::read(target.join("lifecycle.py")).unwrap(), b"old");
+        let left: Vec<_> = std::fs::read_dir(target.parent().unwrap()).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left, ["palworld"], "no staging folder is left behind");
     }
 
     /// 데몬·GUI·업데이터가 빠진 릴리즈는 반쪽 설치가 된다. 설치하지 않고 실패한다
