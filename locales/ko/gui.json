@@ -322,7 +322,10 @@
     "reset_server_running": "켜져 있는 서버는 초기화할 수 없어요. 먼저 정지해 주세요",
     "instance_busy": "이 서버에서 다른 작업(백업이나 복원)이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요",
     "extension_required_for_install": "필요한 익스텐션이 없어요: {{extensions}}. 먼저 사바 스토리지에서 설치하세요.",
-    "install_settings_failed": "버전은 설치했지만 설정을 저장하지 못했어요: {{error}}"
+    "install_settings_failed": "버전은 설치했지만 설정을 저장하지 못했어요: {{error}}",
+    "restart_required": "{{name}} 설정을 저장했어요. {{fields}}은(는) 서버를 다시 시작해야 적용돼요.",
+    "restart_now": "지금 다시 시작",
+    "restart_later": "나중에"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 봇 시작 실패: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "모듈 로드 실패: {{error}}",
     "list_empty": "모듈 목록이 비어있습니다",
     "fetch_failed_toast": "모듈 검색 실패: {{error}}",
-    "load_error_title": "모듈 로드 예외"
+    "load_error_title": "모듈 로드 예외",
+    "schema_invalid": "module.toml이 형식에 맞지 않습니다: {{problems}}",
+    "schema_unsupported": "이 모듈은 더 새 사바쨩이 필요합니다(모듈 형식 {{required}}). 사바쨩을 업데이트하세요."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}}은(는) 필수 항목입니다",
     "type_mismatch": "{{field}}의 타입이 올바르지 않습니다",
     "out_of_range": "{{field}}이(가) 범위를 벗어났습니다 ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}'은(는) 유효한 옵션이 아닙니다"
+    "invalid_option": "{{field}}: '{{value}}'은(는) 유효한 옵션이 아닙니다",
+    "duplicate_item": "{{field}}: '{{value}}'이(가) 두 번 들어 있습니다",
+    "list_hint": "한 줄에 하나씩",
+    "item_count": "{{field}}은(는) {{min}}~{{max}}개여야 합니다",
+    "too_long": "{{field}}은(는) {{max}}자까지 쓸 수 있습니다"
   },
   "context_menu": {
     "settings": "서버 설정",

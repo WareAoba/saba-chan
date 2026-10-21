@@ -2892,6 +2892,40 @@ span[style*="--icon-loader"] svg {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* list·multiline settings (module schema 2) */
+.settings-field .setting-textarea {
+    padding: var(--sp-2-5);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    font-size: calc(14px * var(--font-scale));
+    font-family: inherit;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    resize: vertical;
+}
+
+.settings-field .setting-textarea:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px var(--brand-shadow-subtle);
+}
+
+.settings-field .setting-list-options {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-4);
+}
+
+.settings-field .setting-list-option {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-primary);
+}
+
 /* Boolean toggle in settings */
 .settings-field .toggle-row {
     display: flex;

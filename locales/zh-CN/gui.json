@@ -322,7 +322,10 @@
     "reset_server_running": "请先停止服务器再重置",
     "instance_busy": "此服务器上正在进行其他任务（备份或恢复）。完成后请重试",
     "extension_required_for_install": "缺少所需的扩展：{{extensions}}。请先在 Saba 存储中安装。",
-    "install_settings_failed": "版本已安装，但保存设置失败：{{error}}"
+    "install_settings_failed": "版本已安装，但保存设置失败：{{error}}",
+    "restart_required": "已保存 {{name}} 的设置。{{fields}} 需要重启服务器才会生效。",
+    "restart_now": "立即重启",
+    "restart_later": "稍后"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 机器人启动失败：{{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "模块加载失败：{{error}}",
     "list_empty": "模块列表为空",
     "fetch_failed_toast": "模块搜索失败：{{error}}",
-    "load_error_title": "模块加载异常"
+    "load_error_title": "模块加载异常",
+    "schema_invalid": "module.toml 不符合格式：{{problems}}",
+    "schema_unsupported": "此模块需要更新版本的 Saba-chan（模块格式 {{required}}）。请更新 Saba-chan。"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} 为必填项",
     "type_mismatch": "{{field}} 的类型无效",
     "out_of_range": "{{field}} 超出范围 ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' 不是有效选项"
+    "invalid_option": "{{field}}: '{{value}}' 不是有效选项",
+    "duplicate_item": "{{field}}：'{{value}}' 重复出现",
+    "list_hint": "每行一个",
+    "item_count": "{{field}} 需要 {{min}}~{{max}} 项",
+    "too_long": "{{field}} 最多 {{max}} 个字符"
   },
   "context_menu": {
     "settings": "服务器设置",

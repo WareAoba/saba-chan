@@ -322,7 +322,10 @@
     "reset_server_running": "Остановите сервер перед сбросом",
     "instance_busy": "На этом сервере выполняется другая задача (резервное копирование или восстановление). Повторите попытку, когда она завершится",
     "extension_required_for_install": "Не хватает нужных расширений: {{extensions}}. Сначала установите их через Saba Хранилище.",
-    "install_settings_failed": "Версия установлена, но сохранить настройки не удалось: {{error}}"
+    "install_settings_failed": "Версия установлена, но сохранить настройки не удалось: {{error}}",
+    "restart_required": "Настройки {{name}} сохранены. Перезапустите сервер, чтобы применить {{fields}}.",
+    "restart_now": "Перезапустить сейчас",
+    "restart_later": "Позже"
   },
   "discord_bot": {
     "start_failed_toast": "Ошибка запуска бота Discord: {{error}}",
@@ -347,7 +350,9 @@
     "load_failed_toast": "Ошибка загрузки модуля: {{error}}",
     "list_empty": "Список модулей пуст",
     "fetch_failed_toast": "Ошибка поиска модулей: {{error}}",
-    "load_error_title": "Исключение загрузки модуля"
+    "load_error_title": "Исключение загрузки модуля",
+    "schema_invalid": "module.toml не соответствует формату: {{problems}}",
+    "schema_unsupported": "Этому модулю нужна более новая версия Saba-chan (формат модуля {{required}}). Обновите Saba-chan."
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -622,7 +627,11 @@
     "required": "{{field}} обязательно",
     "type_mismatch": "{{field}} имеет недопустимый тип",
     "out_of_range": "{{field}} вне диапазона ({{min}} ~ {{max}})",
-    "invalid_option": "{{field}}: '{{value}}' не является допустимым вариантом"
+    "invalid_option": "{{field}}: '{{value}}' не является допустимым вариантом",
+    "duplicate_item": "{{field}}: «{{value}}» встречается несколько раз",
+    "list_hint": "По одному в строке",
+    "item_count": "{{field}}: нужно от {{min}} до {{max}} элементов",
+    "too_long": "{{field}}: не больше {{max}} символов"
   },
   "context_menu": {
     "settings": "Настройки сервера",
