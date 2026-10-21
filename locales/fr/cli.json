@@ -74,7 +74,8 @@
     "link_declined": "Demande de connexion refusée.",
     "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI.",
     "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
-    "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}"
+    "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}",
+    "agent_too_old": "Le relais n'accepte plus cette version de l'application. Mettez l'application à jour en {{min}} ou plus récent."
   },
   "col": {
     "players": "Joueurs",
@@ -185,7 +186,8 @@
       "forbidden": "Vous n'avez pas la permission de faire cela sur ce serveur Discord.",
       "expired": "Le code a expiré. Recommencez.",
       "rate_limited": "Trop de requêtes. Réessayez dans une minute environ.",
-      "other": "Le relais a refusé la requête ({{code}})."
+      "other": "Le relais a refusé la requête ({{code}}).",
+      "agent_too_old": "Le relais n'accepte plus cette version de l'application. Mettez l'application à jour en {{min}} ou plus récent."
     },
     "ambiguous": "Plusieurs {{what}} correspondent à « {{query}} ».",
     "ambiguous_hint": "Soyez plus précis : {{names}}",
@@ -216,7 +218,8 @@
       "schedule_changed": "La planification a été modifiée ailleurs. Vérifiez-la avec saba-chan-cli schedule show, puis réessayez.",
       "invalid_command": "Écrivez la clé de commande sous la forme `<server>/<command>`. Une clé sans serveur doit être un id d'action globale.",
       "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>",
-      "not_supported": "Consultez les commandes non prises en charge avec : saba-chan-cli module info"
+      "not_supported": "Consultez les commandes non prises en charge avec : saba-chan-cli module info",
+      "agent_too_old": "Rechercher les mises à jour : saba-chan-cli update check"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
