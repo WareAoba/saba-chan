@@ -291,7 +291,7 @@
       "enabled": "On",
       "model": "Model",
       "memo": "Server prompt",
-      "confirmCommands": "Always ask for caution commands",
+      "confirmCommands": "Always ask before running server commands",
       "memory": "Memory",
       "webSearch": "Web search",
       "disabledTools": "Disabled tool sets",

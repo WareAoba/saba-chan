@@ -46,7 +46,9 @@
 
 파서는 `parse_module_toml()` → `serde_ignored::deserialize::<ModuleToml>` → `into_metadata()`이다 (`module_loader.rs:1193-1246, 1037-1189`). 이 구조체들이 계약 그 자체이고, 같은 구조체에서 JSON Schema가 나온다(`module_json_schema()` `:1444-1446`, `GET /api/modules/schema`, `saba-core module schema`). 모듈 저장소는 이것을 `M:schema/module.schema.json`으로 두고 `M:.github/workflows/check-modules.yml`에서 검사한다.
 
-- **모르는 키·잘못된 값**: `[module] schema_version = 1`이면 모듈 로드가 실패한다. `schema_version`이 없으면(스키마 이전 모듈) `warnings`에만 남기고 로드한다. 데몬보다 새 버전이면 거부한다 (`:1222-1243`). 값 검사는 `entry` 경로, `risk` 값, `config.announce_command`·`backup.save_command`가 `[[commands.fields]]` 이름을 가리키는지다 (`:1248-1307`). 세 실제 모듈은 모두 `schema_version = 1`이다.
+- **스키마 2** (0.1.9, MK2·MK8): `schema_version = 2`는 스키마 1에 설정 타입 `list`·`multiline`과 설정 키 `min_items`·`max_items`·`max_length`·`restart_required`·`visible_when`을 더한 것이다(`MODULE_SCHEMA_VERSION = 2`, `SETTING_TYPES_V2`). 이 타입·키가 스키마 1 모듈에 있으면 로드에 실패하고, 스키마 이전 모듈은 경고만 남기고 이 키를 끄며, `list`·`multiline` 타입은 0.1.8처럼 `text`로 다룬다. 0.1.8 데몬은 스키마 2 모듈을 로드하지 않으므로 스키마 2 모듈은 `[module.dependencies] saba-core = ">=0.1.9"`도 적는다. 0.1.9로 내는 공식 모듈은 스키마 1이다. 표시 없는 모듈에게 권하는 버전은 1이다.
+- **로드 실패 표시**: 스키마에 맞지 않으면 `failed[]`에 `error_code:"module_schema_invalid"`와 `problems`(`SchemaInvalid`), 데몬보다 새 스키마면 `"module_schema_unsupported"`와 `required`(`SchemaUnsupported`)가 실린다.
+- **모르는 키·잘못된 값**: `[module] schema_version = 1`(또는 2)이면 모듈 로드가 실패한다. `schema_version`이 없으면(스키마 이전 모듈) `warnings`에만 남기고 로드한다. 데몬보다 새 버전이면 거부한다 (`:1222-1243`). 값 검사는 `entry` 경로, `risk` 값, `config.announce_command`·`backup.save_command`가 `[[commands.fields]]` 이름을 가리키는지다 (`:1248-1307`). 세 실제 모듈은 모두 `schema_version = 1`이다.
 - **알고 있는 키의 타입이 틀리면 모듈 전체 로드가 실패**한다. 예를 들어 settings의 `options`에 숫자를 넣으면 `Vec<String>`이라 실패한다.
 - BOM: 파서가 앞의 UTF-8 BOM을 떼고 읽는다 (`:1194`). 지금 `palworld/module.toml`에는 BOM이 없다.
 
@@ -56,7 +58,7 @@
 
 | 키 | 타입 | 필수 | 기본값 / 비고 |
 |---|---|---|---|
-| `schema_version` | u32 | ○ | 지금은 1. 위 규칙 참조 |
+| `schema_version` | u32 | ○ | 1 또는 2. 위 규칙 참조 |
 | `name` | String | ✔ | 모듈 ID. 인스턴스의 `module_name`과 매칭됨 |
 | `version` | String | ✔ | semver 형식 기대(검증 없음) |
 | `entry` | String | ✔ | 실행할 Python 파일. 파일이 없으면 모듈 로드 실패 (위 1.1 참조) |
@@ -117,7 +119,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | 키 | 타입 | 기본값 |
 |---|---|---|
 | `name` | String | ✔ |
-| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`). 밖이면 스키마 v1 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다 |
+| `type` | String | `"text"` (`default_field_type`). `text`·`password`·`number`·`file`·`select`·`boolean` 중 하나(`SETTING_TYPES`), 스키마 2는 `list`·`multiline`도(`SETTING_TYPES_V2`). 밖이면 스키마 v1·v2 모듈은 로드에 실패하고, 스키마 이전 모듈은 경고만 남긴다. `list`는 문자열 배열(API·저장·모듈 config 모두): `options`가 있으면 항목마다 그중 하나, `format`·`pattern`은 항목마다, 빈 항목·같은 값 두 번은 `invalid_format`, `default`는 문자열 배열(만들 때 채운다), 빈 문자열은 받지 않는다(빈 목록은 `[]`), 프리셋 값도 로드 때 같은 규칙으로 검사한다. `multiline`은 줄바꿈을 받는 문자열이고 `format`·`pattern`은 값 전체에 쓴다 |
 | `label` | String | 없으면 `name`으로 대체 |
 | `description` | String | — |
 | `required` | bool | — |
@@ -130,11 +132,16 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `arg` | String 또는 Vec<String> | — 이 값이 실행 인자로 들어가는 모양. 공백으로 나눈 토큰, `{value}`는 많아야 한 번(`"-port={value}"`, `"-servername {value}"`, `["-Xmx{value}", "-Xms{value}"]`). `{value}`가 없으면 boolean 플래그(있으면 true). `{value}`뿐인 모양은 로드 오류. 실행 인자 미리보기가 사용자가 친 추가 인자를 이 필드로 되돌릴 때 쓴다(`src/launch_args.rs`). 실제 실행 줄은 여전히 `get_launch_command`가 만든다 |
 | `format` | String | — 값 형식: `memory_size`(숫자+K/M/G 한 글자, `4G`·`1024M`), `port`(1~65535 정수), `integer`, `path`(비어 있지 않고 줄바꿈 없음). 모르는 이름은 로드 오류 |
 | `pattern` | String | — 값 전체가 맞아야 하는 정규식(잘못된 정규식은 로드 오류). `format`과 함께 PATCH 저장과 미리보기에서 검사한다(`validator::validate_format`) |
+| `min_items`, `max_items` | u32 | 스키마 2, `list`만. 항목 수 범위(밖이면 400 `validation_failed`) |
+| `max_length` | u32 | 스키마 2, `multiline`만. 글자 수 상한 |
+| `restart_required` | bool | 스키마 2, `false`. 켜져 있을 때 바꾸면 다시 켜야 적용된다. PATCH 응답 `restart_required`에 실린다(01) |
+| `visible_when` | `{field, equals}` 또는 `{field, in=[...]}` | 스키마 2. 다른 설정 값에 따라 보일지. `field`는 같은 모듈의 설정이고 자기 자신·순환·`list`·`multiline`·`password`·`file` 설정이면 로드 오류, 값은 그 설정 타입에 맞아야 한다. 비교는 타입으로 바꾼 값끼리(`number`는 "25565"와 25565가 같다), 값이 없으면 `default`로. 숨긴 설정은 값을 지우지 않고 `required`를 보지 않는다. `GET /api/instance/:id`의 `hidden`(CLI)과 GUI의 같은 계산이 쓴다(`validator::hidden_fields`) |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
+- 옮기기(06 §8.1): 문자열로 저장된 값의 설정이 모듈 업데이트로 `list`가 되면, 데몬이 인스턴스를 읽을 때(시작, 모듈 다시 읽기) 쉼표로 나누고 앞뒤 공백·빈 항목을 버려 배열로 바꾼다(`validator::migrate_list_values`, `Supervisor::migrate_list_settings`). 파일에는 다음 저장 때 쓴다.
 - `players_detail`·`stop_call_limit`은 데몬이 호출마다 정해 넣는 키다(`RESERVED_CALL_KEYS`). 같은 이름의 설정은 로드하되 경고하고, 그 값은 모듈 config에 싣지 않는다(`insert_instance_fields`).
 - 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:259-267`), 시작 경로를 고르는 `managed_start`(`mod.rs:1690-1700`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:2285-2286`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1628-1631`), 정지 대기 시간(초) `stop_timeout`(모듈 `[config] stop_timeout`보다 앞선다, 1~3600, `supervisor::stop_timeout_of`, MK14. 데몬이 기다리는 managed 정지에 쓴다. non-managed 정지는 모듈 `stop()` 호출 하나이고, 그 호출의 시간 제한이 `stop_timeout + 30`초다(`supervisor::module_stop_limit`))이다. 이 값들도 module_settings라서 모듈 함수 config에 펼쳐 들어간다. 모듈 `stop()`의 config에는 데몬이 실제로 쓸 `stop_timeout`(인스턴스 값, 모듈 값, 기본 30 순)과 그 호출의 시간 제한 `stop_call_limit`(초, non-managed면 `stop_timeout + 30`, managed면 120)이 늘 실린다. `stop_call_limit`이 없으면(0.1.8 데몬) 모듈은 120초 안에 끝나게 기다린다. non-managed 정지(`managed:false`)의 모듈은 이 값만큼 기다리고 자기 상한을 두지 않는다. managed 정지(`managed:true`)의 모듈은 저장·종료 요청만 보내고 바로 `success`를 돌려준다(기다림과 강제 종료는 데몬이 한다).
-- 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file`.
+- 실제 모듈에서 쓰이는 type 값: `text`, `number`, `boolean`, `select`, `password`, `file` (0.1.9 공식 모듈은 스키마 1).
 
 #### `[[commands.fields]]` (`CommandFieldToml` `:928-949` → `CommandField` `:352-370`)
 | 키 | 타입 | 비고 |
@@ -392,7 +399,7 @@ players = "player_count"
   - 주소는 `DAEMON_API_URL` → `SABA_IPC_URL` → `http://127.0.0.1:57474` 순서다 (`:40-46`).
   - `SABA_TOKEN_PATH` 파일의 토큰을 `X-Saba-Token` 헤더로 보낸다 (`:49-61`). palworld(`execute_rest_via_daemon` `M:palworld/lifecycle.py:1414-`)는 `daemon_post`를, minecraft·zomboid·__example은 공용 `daemon_stdin_command`(`/stdin`에 `{"command"}`, `D:modules/daemon_rcon.py:87-89`)와 PID 헬퍼 `is_process_alive`·`wait_for_exit`·`force_kill`을 쓴다 (`M:zomboid/lifecycle.py:36`).
   - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다. RCON 접속에는 데몬이 만든 `rcon.json` 값만 쓴다(RCON 정책).
-- 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/gui/src-tauri/src/lib.rs:433-435, 856-876`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
+- 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/core/src/lib.rs` `install_shared_modules`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
 
 ---
 
@@ -581,7 +588,7 @@ players = "player_count"
 
 - `check_for_updates`가 같은 manifest에서 **설치된 모듈만** 골라 버전을 비교한다(`D:updater/src/lib.rs:482-557`). 새 모듈 설치는 목록 화면(§5.2)의 몫이다.
 - 무결성 검사는 업데이터가 적용할 때 zip에서 푼 파일마다 기록한 SHA-256(`<data_dir>/installed-files.json`)과 디스크 파일을 비교한다. manifest의 zip 해시와는 비교하지 않는다 (`D:updater/src/integrity.rs:1-6, 105-152, 235-239`). 설치기로 처음 깐 모듈은 기록이 없어 결과에 나오지 않는다.
-- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs:169-188`, `release.rs`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
+- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs` `get_available_modules`, `installer/core/src/release.rs` `modules`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
 
 ---
 
