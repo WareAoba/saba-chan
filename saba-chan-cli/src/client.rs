@@ -158,7 +158,7 @@ impl Api {
 
     // ── 데몬 ──
 
-    /// GET /health — 락 없이 답하는 ping (`{ok, version, pid}`)
+    /// GET /health — 락 없이 답하는 ping (`{ok, version, pid, token, stops_with_launcher}`)
     pub async fn health(&self) -> Result<Value> {
         // 연결 제한(2초)보다 길게 둔다: Windows는 닫힌 루프백 포트 거부에 2초쯤 걸려서,
         // 같으면 "데몬 꺼짐"이 아니라 "응답 늦음"으로 끝난다

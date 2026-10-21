@@ -212,7 +212,8 @@
     "stop_timeout": "데몬이 제때 멈추지 않았어요.",
     "shutdown_refused": "데몬이 종료 요청을 받지 않았어요: {{error}}",
     "stopped": "데몬을 껐어요.",
-    "stopping": "데몬을 끄는 중..."
+    "stopping": "데몬을 끄는 중...",
+    "stops_with_launcher": "사바쨩 코어가 이 데몬을 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 데몬을 끈 뒤(saba-chan-cli daemon stop) 시작 메뉴의 사바쨩이나 일반 터미널에서 다시 켜 주세요."
   },
   "diagnose": {
     "ok": "{{name}} 로그에서 알려진 문제를 찾지 못했어요."

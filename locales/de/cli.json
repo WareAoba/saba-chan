@@ -165,7 +165,8 @@
     "stop_timeout": "Der Daemon hat nicht rechtzeitig gestoppt.",
     "shutdown_refused": "Der Daemon hat die Beendigungsanfrage nicht angenommen: {{error}}",
     "stopped": "Daemon gestoppt.",
-    "stopping": "Daemon wird gestoppt..."
+    "stopping": "Daemon wird gestoppt...",
+    "stops_with_launcher": "Der saba-chan-Kern läuft an das Programm gebunden, das ihn gestartet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende den Daemon (saba-chan-cli daemon stop) und starte ihn erneut über das Startmenü oder ein normales Terminal."
   },
   "diagnose": {
     "ok": "In den Logs von {{name}} wurden keine bekannten Probleme gefunden."

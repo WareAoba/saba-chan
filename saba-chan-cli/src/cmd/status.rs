@@ -38,7 +38,13 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     let modules = modules.unwrap_or(Value::Null);
 
     let v = json!({
-        "daemon": { "running": true, "version": health.get("version"), "pid": health.get("pid"), "url": ctx.api.base_url() },
+        "daemon": {
+            "running": true,
+            "version": health.get("version"),
+            "pid": health.get("pid"),
+            "url": ctx.api.base_url(),
+            "stops_with_launcher": health.get("stops_with_launcher"),
+        },
         "servers": servers.get("servers"),
         "port_conflict_stops": servers.get("port_conflict_stops"),
         "modules_failed": modules.get("failed"),
@@ -58,6 +64,9 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 health.get("pid").and_then(Value::as_u64).unwrap_or(0)
             ))
         );
+        if let Some(w) = crate::cmd::daemon::launcher_warning(&health) {
+            ctx.out.warn(&w);
+        }
         say!();
         print_server_table(
             servers
