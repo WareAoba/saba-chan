@@ -199,6 +199,10 @@
           "title": "コンソールの末尾",
           "description": "コンソールの最後の20行"
         }
+      },
+      "players": {
+        "title": "プレイヤー",
+        "description": "接続中のプレイヤーと名前"
       }
     },
     "monitor": {
@@ -212,7 +216,7 @@
         "title": "バックアップ一覧"
       },
       "create": {
-        "title": "バックアップを作成"
+        "title": "バックアップ"
       },
       "restore": {
         "title": "バックアップを復元",
@@ -244,10 +248,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Discord設定を見る",
-          "description": "言語・スリープ・音楽機能"
-        },
         "set": {
           "title": "Discord設定を変更",
           "description": "言語・スリープ・音楽機能"
@@ -323,7 +323,11 @@
       "updates_none": "✅ すべて最新です",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · メモリ {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 接続 {{online}}人",
+      "players_max": "👥 接続 {{online}}/{{max}}人",
+      "player_item": "• {{name}}",
+      "players_more": "…ほか {{count}}人"
     }
   }
 }

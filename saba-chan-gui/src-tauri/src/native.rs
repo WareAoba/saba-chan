@@ -131,6 +131,7 @@ pub async fn daemon_restart(app: AppHandle) -> Value {
 /// React 종료 확인 창의 답
 #[tauri::command]
 pub fn app_close_response(app: AppHandle, choice: String) {
+    window::close_answered();
     match choice.as_str() {
         // 인터페이스만 종료 — GUI 프로세스 종료, 데몬 유지
         "exit-interface" => {

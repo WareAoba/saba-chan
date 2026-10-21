@@ -40,6 +40,7 @@
     "requested_by": "Requested by",
     "username": "Username",
     "config_saved": "Bot settings saved.",
+    "config_ignored": "Permission keys are not changed by the bot config, so they kept their previous values: {{keys}}. Everything else was saved. Change permissions with saba-chan-cli perm",
     "confirm_unpair": "Disconnect this PC from the Discord bot and forget its pairing?",
     "connection": "Connection",
     "last_error": "Last error",
@@ -99,7 +100,8 @@
     "words_saved": "Saved the chat words of {{server}}.",
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
-    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
+    "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
   },
   "col": {
     "players": "Players",
@@ -203,6 +205,7 @@
     "offer_start": "The Saba-chan daemon is not running. Start it?",
     "spawn_failed": "Could not start the daemon: {{error}}",
     "start_timeout": "The daemon did not respond in time. Check: saba-chan-cli daemon logs",
+    "exited_early": "The daemon exited right after starting (exit code {{code}}). Another daemon may already be running. Check: saba-chan-cli daemon status",
     "started": "Daemon started (v{{version}}).",
     "starting": "Starting the daemon...",
     "stop_no_pid": "The daemon did not report its PID, so it can't be killed from here.",
@@ -230,7 +233,8 @@
       "forbidden": "You don't have permission to do that in that Discord server.",
       "expired": "The code has expired. Start again.",
       "rate_limited": "Too many requests. Try again in about a minute.",
-      "other": "The relay refused the request ({{code}})."
+      "other": "The relay refused the request ({{code}}).",
+      "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
     },
     "ambiguous": "More than one {{what}} matches \"{{query}}\".",
     "ambiguous_hint": "Be more specific: {{names}}",
@@ -246,6 +250,10 @@
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
+      "rcon_unreachable": "Could not connect to the server's RCON. Check that the server has finished starting and try again shortly: saba-chan-cli status",
+      "rcon_auth_failed": "The server rejected the RCON password. Restart the server so Saba-chan writes the password again: saba-chan-cli restart NAME",
+      "rcon_timeout": "The server did not answer over RCON in time. The command may already have run, so check the server console before sending it again: saba-chan-cli console NAME",
+      "rcon_failed": "The server sent an RCON reply Saba-chan could not read. Check the server console: saba-chan-cli console NAME",
       "update_unsupported": "This server can't be updated from Saba-chan. Update its files yourself.",
       "dependency_outdated": "Update to newer versions: saba-chan-cli update check",
       "port_conflict": "Give one of them other ports: saba-chan-cli server set NAME port=PORT",
@@ -265,7 +273,8 @@
         "unknown_command": "this server has no such command",
         "too_many": "at most 10 words"
       },
-      "not_supported": "See unsupported commands with: saba-chan-cli module info"
+      "not_supported": "See unsupported commands with: saba-chan-cli module info",
+      "agent_too_old": "Check for updates: saba-chan-cli update check"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -526,6 +535,8 @@
     "ready": "ready to install",
     "up_to_date": "up to date",
     "updater_launched": "Updater started. The daemon is shutting down to update.",
+    "waiting_result": "Waiting for the update to apply and Saba-chan to restart…",
+    "result_timeout": "No update result arrived within 15 minutes. Check the updater window or whether Saba-chan restarted",
     "verifying": "Verifying files...",
     "unknown_key": "{{key}} is not an update setting. Settings: {{keys}}",
     "integrity_empty": "No files recorded yet. Only parts installed by the updater are checked.",

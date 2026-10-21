@@ -188,6 +188,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         if words.is_empty() {
             continue;
         }
+        ctx.follow_daemon_port();
         let is_cmd = top.contains(&words[0]) || words[0] == "help" || words[0].starts_with('-');
         let result = if is_cmd {
             one(&ctx, &words).await
@@ -223,7 +224,7 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     let mut ctx = ctx.clone();
     // 셸을 연 뒤에 준 `--port`는 이 줄에만 쓴다. `--lang`은 문구를 이미 불러와 바꿀 수 없다
     if let Some(port) = cli.global.port {
-        ctx.api = crate::client::Api::new(port, ctx.api.lang.clone());
+        ctx = ctx.on_port(port);
     }
     if cli.global.lang.as_deref().is_some_and(|l| crate::i18n::normalize(l) != crate::i18n::lang()) {
         ctx.out.warn(&t!("shell.lang_fixed", lang = crate::i18n::lang()));

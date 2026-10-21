@@ -199,6 +199,10 @@
           "title": "主控台末尾",
           "description": "主控台最後 20 行"
         }
+      },
+      "players": {
+        "title": "玩家",
+        "description": "在線玩家及名字"
       }
     },
     "monitor": {
@@ -212,7 +216,7 @@
         "title": "備份列表"
       },
       "create": {
-        "title": "建立備份"
+        "title": "備份"
       },
       "restore": {
         "title": "還原備份",
@@ -244,10 +248,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "查看 Discord 設定",
-          "description": "語言、睡眠與音樂功能"
-        },
         "set": {
           "title": "變更 Discord 設定",
           "description": "語言、睡眠與音樂功能"
@@ -323,7 +323,11 @@
       "updates_none": "✅ 全部已是最新",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · 記憶體 {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 在線 {{online}} 人",
+      "players_max": "👥 在線 {{online}}/{{max}} 人",
+      "player_item": "• {{name}}",
+      "players_more": "…另外 {{count}} 人"
     }
   }
 }

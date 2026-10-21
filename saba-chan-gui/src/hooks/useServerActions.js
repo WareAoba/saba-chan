@@ -44,6 +44,8 @@ export function useServerActions({
     const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp, pending }
     const lastErrorToastRef = useRef(0);
     const firstFetchDoneRef = useRef(false);
+    // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다 (G-S4)
+    const fetchSeqRef = useRef({ sent: 0, applied: 0 });
     const bootGraceRef = useRef(true); // suppress notifications during app boot
     const bootGraceTimerRef = useRef(null);
 
@@ -55,10 +57,14 @@ export function useServerActions({
 
     // ── fetchServers ────────────────────────────────────────
     const fetchServers = async () => {
+        const seq = ++fetchSeqRef.current.sent;
         try {
             const data = await retryWithBackoff(() => window.api.serverList(), 3, 800);
             if (data && data.servers) {
+                const stale = seq < fetchSeqRef.current.applied;
+                if (!stale) fetchSeqRef.current.applied = seq;
                 setServers((prev) => {
+                    if (stale) return prev;
                     if (!firstFetchDoneRef.current) {
                         firstFetchDoneRef.current = true;
                         // Start boot grace period — suppress state-change
@@ -659,122 +665,149 @@ export function useServerActions({
         }
     };
 
+    // 콘솔도 REST도 없어 저장 후 종료를 요청할 수 없는 서버는 데몬이 그대로 둔다 (MK10). 저장 없이 끈다고 알리고 고를 때만 force로
+    const askForceStop = (name, retry) =>
+        setModal({
+            type: 'question',
+            title: t('servers.force_stop_title'),
+            message: t('servers.force_stop_message', { name }),
+            buttons: [
+                {
+                    label: t('servers.force_stop_confirm'),
+                    action: () => {
+                        setModal(null);
+                        retry();
+                    },
+                },
+                { label: t('modals.cancel'), action: () => setModal(null) },
+            ],
+        });
+
     // ── handleStop ──────────────────────────────────────────
     const handleStop = async (name) => {
+        const stopNow = async (forced) => {
+            try {
+                // Optimistic update: 즉시 'stopping' 상태 표시
+                optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
+                setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
+
+                const srv = servers.find((s) => s.name === name);
+                const useGraceful = srv?.module_settings?.graceful_stop;
+                const forceStop = forced || useGraceful === false;
+
+                // id로 정지 (이름이 바뀌어도 안전). 옛 데몬·IPC면 이름으로
+                const result =
+                    srv?.id && window.api.instanceStop
+                        ? await window.api.instanceStop(srv.id, { force: forceStop })
+                        : await window.api.serverStop(name, { force: forceStop });
+
+                // ── extension_required 처리 ──
+                if (result.action_required === 'extension_required') {
+                    revertOptimistic(name);
+                    setModal({
+                        type: 'question',
+                        title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
+                        message:
+                            result.message ||
+                            t('servers.extension_required_message', {
+                                name,
+                                defaultValue: `Server '${name}' requires an extension that is not enabled.`,
+                            }),
+                        buttons: [
+                            {
+                                label: t('servers.extension_open_settings', {
+                                    defaultValue: 'Open Extension Settings',
+                                }),
+                                action: () => {
+                                    setModal(null);
+                                    if (openSettingsToExtensions) {
+                                        openSettingsToExtensions();
+                                    }
+                                },
+                            },
+                            {
+                                label: t('modals.cancel'),
+                                action: () => setModal(null),
+                            },
+                        ],
+                    });
+                    return;
+                }
+
+                if (result.error_code === 'graceful_stop_unavailable') {
+                    revertOptimistic(name);
+                    askForceStop(name, () => stopNow(true));
+                    return;
+                }
+
+                const blocked = blockedText(result, t);
+                if (result.success === false && (result.message || blocked)) {
+                    revertOptimistic(name);
+                    safeShowToast(
+                        blocked ? t('servers.stop_failed_toast', { error: blocked }) : result.message,
+                        'error',
+                        blocked ? 8000 : 5000,
+                    );
+                    return;
+                }
+
+                if (result.error) {
+                    revertOptimistic(name);
+                    const errorMsg = translateError(result.error);
+                    safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
+                } else {
+                    guiInitiatedOpsRef.current.add(name);
+                    if (srv) {
+                        closeConsole(srv.id);
+                    }
+                    setProgressBar({ message: t('servers.stopping_toast', { name }), indeterminate: true });
+
+                    // Poll until stopped (max 10s)
+                    let attempts = 0;
+                    const maxAttempts = 20;
+                    const delay = 500;
+                    let resolved = false;
+
+                    const checkStatus = async () => {
+                        if (resolved) return;
+                        attempts++;
+                        try {
+                            const statusResult = await window.api.serverStatus(name);
+                            if (statusResult.status === 'stopped') {
+                                resolved = true;
+                                setProgressBar(null);
+                                safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
+                                fetchServers();
+                                return;
+                            }
+                        } catch (_error) {
+                            /* ignore */
+                        }
+                        if (attempts >= maxAttempts) {
+                            resolved = true;
+                            setProgressBar(null);
+                            safeShowToast(t('servers.stop_timeout_toast', { name }), 'warning', 3000);
+                            fetchServers();
+                            return;
+                        }
+                        if (!resolved) setTimeout(checkStatus, delay);
+                    };
+                    setTimeout(checkStatus, delay);
+                }
+            } catch (error) {
+                setProgressBar(null);
+                revertOptimistic(name);
+                const errorMsg = translateError(error.message);
+                safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
+            }
+        };
         setModal({
             type: 'question',
             title: t('servers.stop_confirm_title'),
             message: t('servers.stop_confirm_message', { name }),
             onConfirm: async () => {
                 setModal(null);
-                try {
-                    // Optimistic update: 즉시 'stopping' 상태 표시
-                    optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
-                    setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
-
-                    const srv = servers.find((s) => s.name === name);
-                    const useGraceful = srv?.module_settings?.graceful_stop;
-                    const forceStop = useGraceful === false;
-
-                    // id로 정지 (이름이 바뀌어도 안전). 옛 데몬·IPC면 이름으로
-                    const result =
-                        srv?.id && window.api.instanceStop
-                            ? await window.api.instanceStop(srv.id, { force: forceStop })
-                            : await window.api.serverStop(name, { force: forceStop });
-
-                    // ── extension_required 처리 ──
-                    if (result.action_required === 'extension_required') {
-                        revertOptimistic(name);
-                        setModal({
-                            type: 'question',
-                            title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                            message:
-                                result.message ||
-                                t('servers.extension_required_message', {
-                                    name,
-                                    defaultValue: `Server '${name}' requires an extension that is not enabled.`,
-                                }),
-                            buttons: [
-                                {
-                                    label: t('servers.extension_open_settings', {
-                                        defaultValue: 'Open Extension Settings',
-                                    }),
-                                    action: () => {
-                                        setModal(null);
-                                        if (openSettingsToExtensions) {
-                                            openSettingsToExtensions();
-                                        }
-                                    },
-                                },
-                                {
-                                    label: t('modals.cancel'),
-                                    action: () => setModal(null),
-                                },
-                            ],
-                        });
-                        return;
-                    }
-
-                    const blocked = blockedText(result, t);
-                    if (result.success === false && (result.message || blocked)) {
-                        revertOptimistic(name);
-                        safeShowToast(
-                            blocked ? t('servers.stop_failed_toast', { error: blocked }) : result.message,
-                            'error',
-                            blocked ? 8000 : 5000,
-                        );
-                        return;
-                    }
-
-                    if (result.error) {
-                        revertOptimistic(name);
-                        const errorMsg = translateError(result.error);
-                        safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
-                    } else {
-                        guiInitiatedOpsRef.current.add(name);
-                        if (srv) {
-                            closeConsole(srv.id);
-                        }
-                        setProgressBar({ message: t('servers.stopping_toast', { name }), indeterminate: true });
-
-                        // Poll until stopped (max 10s)
-                        let attempts = 0;
-                        const maxAttempts = 20;
-                        const delay = 500;
-                        let resolved = false;
-
-                        const checkStatus = async () => {
-                            if (resolved) return;
-                            attempts++;
-                            try {
-                                const statusResult = await window.api.serverStatus(name);
-                                if (statusResult.status === 'stopped') {
-                                    resolved = true;
-                                    setProgressBar(null);
-                                    safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
-                                    fetchServers();
-                                    return;
-                                }
-                            } catch (_error) {
-                                /* ignore */
-                            }
-                            if (attempts >= maxAttempts) {
-                                resolved = true;
-                                setProgressBar(null);
-                                safeShowToast(t('servers.stop_timeout_toast', { name }), 'warning', 3000);
-                                fetchServers();
-                                return;
-                            }
-                            if (!resolved) setTimeout(checkStatus, delay);
-                        };
-                        setTimeout(checkStatus, delay);
-                    }
-                } catch (error) {
-                    setProgressBar(null);
-                    revertOptimistic(name);
-                    const errorMsg = translateError(error.message);
-                    safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
-                }
+                await stopNow(false);
             },
             onCancel: () => setModal(null),
         });
@@ -784,45 +817,51 @@ export function useServerActions({
     const handleRestart = async (name) => {
         const srv = servers.find((s) => s.name === name);
         if (!srv?.id || !window.api.instanceRestart) return;
+        const restartNow = async (forced) => {
+            optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
+            setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
+            guiInitiatedOpsRef.current.add(name);
+            setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
+            try {
+                const force = forced || srv.module_settings?.graceful_stop === false;
+                const result = await window.api.instanceRestart(srv.id, { force });
+                notifyPortMoved(result, srv);
+                const code = result?.error_code;
+                if (code === 'graceful_stop_unavailable') {
+                    revertOptimistic(name);
+                    askForceStop(name, () => restartNow(true));
+                } else if (code === 'start_cancelled' || code === 'restart_cancelled') {
+                    // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
+                    revertOptimistic(name);
+                    safeShowToast(t(`errors.${code}`), 'info', 4000);
+                } else if (result?.error || result?.success === false) {
+                    revertOptimistic(name);
+                    const msg = translateError(result.error || result.message || '');
+                    safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
+                } else {
+                    // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다
+                    optimisticStatusRef.current.delete(name);
+                    safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
+                }
+            } catch (error) {
+                revertOptimistic(name);
+                safeShowToast(
+                    t('servers.restart_failed_toast', { error: translateError(error.message) }),
+                    'error',
+                    4000,
+                );
+            } finally {
+                setProgressBar(null);
+                fetchServers();
+            }
+        };
         setModal({
             type: 'question',
             title: t('servers.restart_confirm_title'),
             message: t('servers.restart_confirm_message', { name }),
             onConfirm: async () => {
                 setModal(null);
-                optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
-                setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
-                guiInitiatedOpsRef.current.add(name);
-                setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
-                try {
-                    const force = srv.module_settings?.graceful_stop === false;
-                    const result = await window.api.instanceRestart(srv.id, { force });
-                    notifyPortMoved(result, srv);
-                    const code = result?.error_code;
-                    if (code === 'start_cancelled' || code === 'restart_cancelled') {
-                        // 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것
-                        revertOptimistic(name);
-                        safeShowToast(t(`errors.${code}`), 'info', 4000);
-                    } else if (result?.error || result?.success === false) {
-                        revertOptimistic(name);
-                        const msg = translateError(result.error || result.message || '');
-                        safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
-                    } else {
-                        // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다
-                        optimisticStatusRef.current.delete(name);
-                        safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
-                    }
-                } catch (error) {
-                    revertOptimistic(name);
-                    safeShowToast(
-                        t('servers.restart_failed_toast', { error: translateError(error.message) }),
-                        'error',
-                        4000,
-                    );
-                } finally {
-                    setProgressBar(null);
-                    fetchServers();
-                }
+                await restartNow(false);
             },
             onCancel: () => setModal(null),
         });

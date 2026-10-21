@@ -171,9 +171,17 @@ pub fn plan(module: &ModuleMetadata, req: &Request) -> Result<Plan, PlanError> {
     };
     let inputs = bind(&field.inputs, &req.args)?;
     match field.method.as_deref().unwrap_or("module") {
-        "console" | "rcon" => Ok(Plan::Console {
-            line: render_template(field.console_template.as_deref().unwrap_or(&field.name), &inputs),
-        }),
+        "console" | "rcon" => {
+            let template = field.console_template.as_deref().unwrap_or(&field.name);
+            for input in &field.inputs {
+                let Some(value) = inputs.get(&input.name).and_then(Value::as_str) else { continue };
+                if let Some(rule) = console_place_problem(template, &input.name, value) {
+                    let label = input.label.as_deref().unwrap_or(&input.name);
+                    return Err(PlanError::new("invalid_argument", Some(&input.name), format!("'{}' {}", label, rule)));
+                }
+            }
+            Ok(Plan::Console { line: render_template(template, &inputs) })
+        }
         "rest" => Ok(Plan::Rest {
             endpoint: field
                 .endpoint_template
@@ -302,6 +310,24 @@ pub fn risk_of(risk: Option<&str>) -> &'static str {
 /// 콘솔 한 줄을 여러 줄로 쪼갤 수 있는 문자(`\r`, `\n`, NUL)가 있는지
 pub fn has_line_break(text: &str) -> bool {
     text.contains(['\r', '\n', '\0'])
+}
+
+/// 값이 콘솔 템플릿에서 자기 자리를 넘는가. 따옴표로 감싼 자리(`"{key}"`)는 따옴표를, 뒤에 템플릿 글자가 더 있는
+/// 자리는 공백을 받지 않는다 (값이 다음 인자가 되어 명령의 뜻을 바꾸지 않게). 마지막 자리는 남은 말을 모두 받는다
+fn console_place_problem(template: &str, key: &str, value: &str) -> Option<&'static str> {
+    let place = format!("{{{}}}", key);
+    for (start, _) in template.match_indices(&place) {
+        let end = start + place.len();
+        let quoted = template[..start].ends_with('"') && template[end..].starts_with('"');
+        if quoted {
+            if value.contains('"') {
+                return Some("must not contain quotes");
+            }
+        } else if !template[end..].trim().is_empty() && value.contains(char::is_whitespace) {
+            return Some("must be one word");
+        }
+    }
+    None
 }
 
 /// `{key}` 자리를 값으로 채우고, 남은 `{key}` 자리는 앞 공백과 함께 지운다.

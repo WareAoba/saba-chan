@@ -8,6 +8,7 @@
 //! - `state.rs`: 적용 대기 목록, 설치된 버전 기록
 //! - `apply.rs`: 받은 파일을 설치 폴더에 적용
 //! - `relay.rs`·`signature.rs`·`download.rs`: relay manifest 확인, 서명 검증, R2 다운로드
+//! - `window_icon.rs`: Tauri 창(GUI·업데이터·인스톨러)의 Windows 아이콘
 //!
 //! 경로는 모두 `install_root` 기준입니다.
 
@@ -26,6 +27,7 @@ pub mod signature;
 pub mod uninstall_entry;
 pub mod version;
 pub mod versions;
+pub mod window_icon;
 mod apply;
 mod state;
 mod time;
@@ -583,7 +585,7 @@ impl UpdateManager {
         let previous = std::mem::take(&mut self.status.components);
         let mut components = Vec::new();
         if let Some(release) = release {
-            let notes = release.latest.notes.as_ref().and_then(|n| n.get("ko").or_else(|| n.get("en")).cloned());
+            let notes = Self::release_notes_in(&release.latest, &Self::user_language());
             for (key, info) in &release.manifest.components {
                 let Some(component) = Component::try_from_manifest_key(key) else {
                     tracing::debug!("[Updater] Skipping unknown manifest key: {}", key);
@@ -638,6 +640,17 @@ impl UpdateManager {
             error: None,
         };
         Ok(self.status.clone())
+    }
+
+    /// 상태에 싣는 패치노트: 적용 뒤 결과 마커와 같은 규칙(`ReleaseSummary::notes_for`)으로 고른다
+    pub(crate) fn release_notes_in(latest: &relay::LatestRelease, lang: &str) -> Option<String> {
+        marker::ReleaseSummary::from(latest).notes_for(lang).map(str::to_string)
+    }
+
+    /// GUI에서 고른 언어. 없으면 OS 언어, 그것도 없으면 영어 (GUI·데몬과 같은 순서)
+    fn user_language() -> String {
+        let chosen = config_file::ConfigFile::default_location().section("gui")["language"].as_str().map(str::to_string);
+        chosen.filter(|l| !l.trim().is_empty()).or_else(sys_locale::get_locale).unwrap_or_else(|| "en".to_string())
     }
 
     /// 다시 확인해도 같은 버전을 받아 둔 파일이 남아 있으면 적용 대기를 유지한다.
@@ -759,6 +772,18 @@ impl UpdateManager {
 
     /// 업데이트 가능한 모든 컴포넌트를 staging 디렉터리로 다운로드
     pub async fn download_available_updates(&mut self) -> Result<Vec<String>> {
+        let total = self.status.components.iter().filter(|c| c.update_available && !c.downloaded).count();
+        let (downloaded, failed) = self.download_available_updates_report().await?;
+        if !failed.is_empty() {
+            let detail: Vec<String> = failed.iter().map(|(k, e)| format!("{}: {}", k, e)).collect();
+            anyhow::bail!("Failed to download {} of {} updates: {}", failed.len(), total, detail.join("; "));
+        }
+        Ok(downloaded)
+    }
+
+    /// 받을 수 있는 업데이트를 모두 받고 `(받은 파일 이름, 실패한 (키, 이유))`를 돌려준다.
+    /// 하나가 실패해도 나머지는 받고, 받은 것은 상태에 남긴다. 받기 전 준비가 안 되면 Err
+    pub async fn download_available_updates_report(&mut self) -> Result<(Vec<String>, Vec<(String, String)>)> {
         std::fs::create_dir_all(&self.staging_dir)?;
 
         let mut downloaded = Vec::new();
@@ -772,13 +797,22 @@ impl UpdateManager {
             })
             .collect();
 
+        // 하나가 실패해도 나머지는 받고, 받은 것은 아래에서 상태에 남긴다
         let client = reqwest::Client::new();
+        let mut failed = Vec::new();
         for (key, rc) in &to_download {
             let dest = self.staging_dir.join(&rc.filename);
             tracing::info!("[Updater] Downloading {}", key);
-            download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), rc.size_bytes, None).await?;
-            tracing::info!("[Updater] Downloaded {}", rc.filename);
-            downloaded.push(rc.filename.clone());
+            match download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), rc.size_bytes, None).await {
+                Ok(_) => {
+                    tracing::info!("[Updater] Downloaded {}", rc.filename);
+                    downloaded.push(rc.filename.clone());
+                }
+                Err(e) => {
+                    tracing::warn!("[Updater] Download of {} failed: {}", key, e);
+                    failed.push((key.clone(), e.to_string()));
+                }
+            }
         }
 
         // 상태 업데이트: downloaded 플래그 설정
@@ -796,7 +830,7 @@ impl UpdateManager {
             }
         }
 
-        Ok(downloaded)
+        Ok((downloaded, failed))
     }
 
     /// 특정 컴포넌트만 다운로드
@@ -894,6 +928,14 @@ impl UpdateManager {
     ///
     /// 이 순서를 지키면 업데이트 도중 프로세스 충돌이 방지됩니다.
     pub async fn apply_components(&mut self, keys: &[String]) -> Result<Vec<String>> {
+        match self.apply_components_report(keys).await {
+            (applied, None) => Ok(applied),
+            (_, Some(e)) => Err(e),
+        }
+    }
+
+    /// `apply_components`와 같지만 실패해도 그 전에 적용한 목록을 돌려준다 (업데이터가 완료 마커에 싣는다)
+    pub async fn apply_components_report(&mut self, keys: &[String]) -> (Vec<String>, Option<anyhow::Error>) {
         let mut applied = Vec::new();
         self.settle_interrupted_updates();
 
@@ -959,13 +1001,44 @@ impl UpdateManager {
             self.cleanup_old_files();
         }
 
-        if let Some(e) = failure {
-            if !applied.is_empty() {
-                tracing::warn!("[UpdateManager] Applied before the failure: {:?}", applied);
-            }
-            return Err(e);
+        if failure.is_some() && !applied.is_empty() {
+            tracing::warn!("[UpdateManager] Applied before the failure: {:?}", applied);
         }
-        Ok(applied)
+        (applied, failure)
+    }
+
+    /// 데몬이 정한 키 목록(apply-targets)을 차례로 적용한다. 목록 없는 적용처럼 첫 실패에서 멈춘다:
+    /// 데몬·업데이터가 실패했는데 인터페이스만 새것으로 바뀌면 서로 맞지 않는다.
+    /// `(적용한 키, 실패·건너뛴 키와 이유)`. `on_progress(순번, 키, 지금까지 적용한 키)`
+    pub async fn apply_target_keys(
+        &mut self,
+        keys: &[String],
+        mut on_progress: impl FnMut(usize, &str, &[String]),
+    ) -> (Vec<String>, Vec<String>) {
+        let mut applied = Vec::new();
+        let mut failed = Vec::new();
+        for (i, key) in keys.iter().enumerate() {
+            if !failed.is_empty() {
+                failed.push(format!("{}: skipped after an earlier failure", key));
+                continue;
+            }
+            on_progress(i, key, &applied);
+            match self.apply_single_component(&Component::from_manifest_key(key)).await {
+                Ok(result) if result.success => {
+                    tracing::info!("[Apply] {} ✓", key);
+                    applied.push(key.clone());
+                }
+                Ok(result) => {
+                    tracing::warn!("[Apply] {} failed: {}", key, result.message);
+                    failed.push(format!("{}: {}", key, result.message));
+                }
+                Err(e) => {
+                    tracing::error!("[Apply] {} error: {}", key, e);
+                    failed.push(format!("{}: {}", key, e));
+                }
+            }
+        }
+        (applied, failed)
     }
 
     /// 컴포넌트 하나를 적용하고 쓴 파일을 돌려준다
@@ -979,10 +1052,8 @@ impl UpdateManager {
             Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
             Component::Gui => self.apply_gui_update(staged_path).await,
             Component::Installer => self.apply_installer_update(staged_path),
-            Component::Locales => {
-                let target = self.install_root.join("locales");
-                self.extract_to_directory(Path::new(staged_path), &target).await
-            }
+            // 모듈처럼 백업 뒤 통째로 바꾼다: 새 판에 없는 옛 파일이 남지 않고, 실패하면 되돌린다
+            Component::Locales => self.replace_dir(&self.install_root.join("locales"), Path::new(staged_path), "locales_backup"),
         }
     }
 
@@ -1010,6 +1081,15 @@ impl UpdateManager {
             }
         }
         Ok(path)
+    }
+
+    /// 받아 둔 업데이트의 키를 적용 순서대로. 목록 없는 적용도 `apply_target_keys`로 키마다 결과를 남긴다
+    pub fn pending_keys_in_apply_order(&self) -> Vec<String> {
+        let mut pending: Vec<&ComponentVersion> = self.status.components.iter()
+            .filter(|c| c.downloaded && c.update_available)
+            .collect();
+        pending.sort_by_key(|c| Self::component_apply_priority(&c.component));
+        pending.iter().map(|c| c.component.manifest_key()).collect()
     }
 
     /// 컴포넌트의 적용 우선순위를 반환합니다.

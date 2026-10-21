@@ -25,6 +25,21 @@ pub fn core_predates_tickets(installed_core: Option<&str>) -> bool {
     }
 }
 
+/// 설치 버전 기록으로 판정한다. 기록이 없으면 옛 설치, 기록을 읽을 수 없으면 거부
+pub fn installed_core_predates_tickets() -> bool {
+    installed_core_predates_tickets_at(&crate::constants::resolve_installed_manifest_path())
+}
+
+fn installed_core_predates_tickets_at(path: &Path) -> bool {
+    match crate::read_json::<std::collections::HashMap<String, String>>(path) {
+        Ok(installed) => core_predates_tickets(installed.as_ref().and_then(|m| m.get("saba-core")).map(String::as_str)),
+        Err(e) => {
+            tracing::warn!("[Updater] Cannot read installed versions, refusing an apply without a ticket: {}", e);
+            false
+        }
+    }
+}
+
 /// 데몬 기동 때 부른다: 표를 끊는 데몬이라는 기록
 pub fn record_core_version(version: &str) {
     if let Err(e) = crate::UpdateManager::update_installed_version("saba-core", version) {
@@ -94,6 +109,20 @@ mod tests {
         assert!(!core_predates_tickets(Some("garbage")));
         assert!(!core_predates_tickets(Some("0.1.2")));
         assert!(!core_predates_tickets(Some("0.2.0")));
+    }
+
+    // U-12: 깨진 설치 버전 기록을 "코어 버전 없음(옛 데몬)"으로 읽으면 표 없는 적용을 받아 준다
+    #[test]
+    fn an_unreadable_installed_manifest_does_not_allow_an_apply_without_a_ticket() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("installed-manifest.json");
+        assert!(installed_core_predates_tickets_at(&path), "no record = 0.1.1 install");
+        std::fs::write(&path, br#"{"saba-core": "0.1"#).unwrap();
+        assert!(!installed_core_predates_tickets_at(&path));
+        std::fs::write(&path, br#"{"saba-core": "0.1.8"}"#).unwrap();
+        assert!(!installed_core_predates_tickets_at(&path));
+        std::fs::write(&path, br#"{"gui": "0.1.1"}"#).unwrap();
+        assert!(installed_core_predates_tickets_at(&path));
     }
 
     #[test]

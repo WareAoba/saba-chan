@@ -199,6 +199,10 @@
           "title": "Final de la consola",
           "description": "Últimas 20 líneas de la consola"
         }
+      },
+      "players": {
+        "title": "Jugadores",
+        "description": "Quién está conectado"
       }
     },
     "monitor": {
@@ -212,7 +216,7 @@
         "title": "Copias de seguridad"
       },
       "create": {
-        "title": "Crear copia de seguridad"
+        "title": "Copia de seguridad"
       },
       "restore": {
         "title": "Restaurar copia de seguridad",
@@ -244,10 +248,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Ajustes de Discord",
-          "description": "Idioma, reposo y música"
-        },
         "set": {
           "title": "Cambiar ajustes de Discord",
           "description": "Idioma, reposo y música"
@@ -323,7 +323,11 @@
       "updates_none": "✅ Todo está actualizado",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ CPU {{cpu}}% · Memoria {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · CPU {{cpu}}% · {{memory}}",
+      "players": "👥 {{online}} conectados",
+      "players_max": "👥 {{online}}/{{max}} conectados",
+      "player_item": "• {{name}}",
+      "players_more": "…y {{count}} más"
     }
   }
 }

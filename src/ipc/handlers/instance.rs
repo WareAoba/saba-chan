@@ -1395,9 +1395,10 @@ pub async fn update_instance_settings(
         updated.module_settings.len()
     );
 
-    // 게임 설정 파일로 넘길 값 (configure lifecycle 호출). 데몬 필드와 모듈이 사바쨩 설정으로 선언한 값은 뺀다
+    // 게임 설정 파일로 넘길 값 (configure lifecycle 호출). 데몬 필드, 데몬이 읽는 설정(DAEMON_SETTINGS),
+    // 모듈이 사바쨩 설정으로 선언한 값은 뺀다
     const DAEMON_FIELDS: &[&str] = &[
-        "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "managed_start",
+        "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "extra_args", "memory_limit_mb",
         "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
     ];
     let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
@@ -1406,7 +1407,7 @@ pub async fn update_instance_settings(
     let mut props_sync = serde_json::Map::new();
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
-            if DAEMON_FIELDS.contains(&key.as_str()) || saba_fields.contains(key) {
+            if DAEMON_FIELDS.contains(&key.as_str()) || is_daemon_setting(key) || saba_fields.contains(key) {
                 continue;
             }
             props_sync.insert(key.clone(), value.clone());
@@ -2135,7 +2136,12 @@ mod tests {
         sup.instance_store.add(inst).unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
-        let body = json!({ "motd": "hi", "heap": "4G", "ram": "8", "protocol_mode": "rest" });
+        // 데몬이 읽는 설정(DAEMON_SETTINGS)과 실행 칸도 게임 설정 파일로 가지 않는다: GUI는 저장마다 auto_restart를 함께 보낸다
+        let body = json!({
+            "motd": "hi", "heap": "4G", "ram": "8", "protocol_mode": "rest",
+            "auto_restart": true, "restart_on_unknown_exit": false, "managed_start": true, "log_sessions_keep": 5,
+            "stop_timeout": 90, "memory_limit_mb": "", "extra_args": "-Dx=1",
+        });
         let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await;
         assert!(saved.status.is_success(), "{:?}", saved.body);
         // 받은 키는 실패 메시지로 돌려받는다: Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다

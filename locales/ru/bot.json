@@ -199,6 +199,10 @@
           "title": "Конец консоли",
           "description": "Последние 20 строк консоли"
         }
+      },
+      "players": {
+        "title": "Игроки",
+        "description": "Кто сейчас в игре"
       }
     },
     "monitor": {
@@ -212,7 +216,7 @@
         "title": "Резервные копии"
       },
       "create": {
-        "title": "Создать резервную копию"
+        "title": "Резервная копия"
       },
       "restore": {
         "title": "Восстановить резервную копию",
@@ -244,10 +248,6 @@
     },
     "discord": {
       "settings": {
-        "get": {
-          "title": "Настройки Discord",
-          "description": "Язык, сон и музыка"
-        },
         "set": {
           "title": "Изменить настройки Discord",
           "description": "Язык, сон и музыка"
@@ -323,7 +323,11 @@
       "updates_none": "✅ Всё обновлено",
       "update_item": "• {{name}} {{current}} → {{latest}}",
       "monitor": "🖥️ ЦП {{cpu}}% · Память {{used}} / {{total}}",
-      "monitor_item": "• {{name}} · ЦП {{cpu}}% · {{memory}}"
+      "monitor_item": "• {{name}} · ЦП {{cpu}}% · {{memory}}",
+      "players": "👥 В игре: {{online}}",
+      "players_max": "👥 В игре: {{online}}/{{max}}",
+      "player_item": "• {{name}}",
+      "players_more": "…и ещё {{count}}"
     }
   }
 }

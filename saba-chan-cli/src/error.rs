@@ -161,6 +161,10 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         }
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
+        "rcon_unreachable" => Some(t!("err.hint.rcon_unreachable")),
+        "rcon_auth_failed" => Some(t!("err.hint.rcon_auth_failed")),
+        "rcon_timeout" => Some(t!("err.hint.rcon_timeout")),
+        "rcon_failed" => Some(t!("err.hint.rcon_failed")),
         "node_token_missing" | "not_paired" | "node_not_found" | "missing_token" | "invalid_token" | "invalid_token_format" => Some(t!("err.hint.node_token_missing")),
         // 모듈이 실행 파일을 못 찾음: executable_not_found (MK7), 옛 모듈은 server_jar_not_found
         "executable_missing" | "executable_not_found" | "server_jar_not_found" => Some(t!("err.hint.executable_missing")),
@@ -170,6 +174,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "backup_busy" => Some(t!("err.hint.backup_busy")),
         "no_command_path" => Some(t!("err.hint.no_command_path")),
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
+        "agent_too_old" => Some(t!("err.hint.agent_too_old")),
         "module_busy" => Some(t!("err.hint.module_busy")),
         "schedule_changed" => Some(t!("err.hint.schedule_changed")),
         "not_supported" => Some(t!("err.hint.not_supported")),
@@ -257,6 +262,19 @@ mod tests {
         }
         // 언어는 다른 시험이 먼저 정할 수 있어 모양만 본다
         assert!(api_hint("invalid_command", &json!({})).unwrap().contains(">/<"));
+    }
+
+    /// RCON만 받는 서버의 명령 실패(데몬 #457)는 데몬 영어 문구만 남기지 않고 할 일을 알려 준다
+    #[test]
+    fn rcon_failures_say_what_to_do() {
+        crate::i18n::init("en");
+        for code in ["rcon_unreachable", "rcon_auth_failed", "rcon_timeout", "rcon_failed"] {
+            let hint = api_hint(code, &json!({ "protocol": "rcon" })).unwrap_or_default();
+            assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
+        }
+        // 시간 초과는 서버가 이미 실행했을 수 있다: 다시 보내라고 하지 않고 콘솔에서 확인하게 한다 (지급·차단이 두 번 되지 않게)
+        let hint = api_hint("rcon_timeout", &json!({ "protocol": "rcon" })).unwrap();
+        assert!(hint.contains("saba-chan-cli console") && !hint.to_lowercase().contains("try again"), "{}", hint);
     }
 
     /// `help --json`의 종료 코드 표가 실제 종료 코드와 맞는다
