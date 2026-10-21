@@ -110,10 +110,12 @@ pub async fn daemon_status(app: AppHandle) -> Value {
     daemon_status_body(health, app.state::<AppState>().life.daemon_in_parent_job())
 }
 
-/// `in_parent_job`: 이 GUI가 띄운 데몬이 job에서 떨어지지 못해, GUI를 띄운 프로그램이 꺼지면 함께 꺼질 수 있다
-fn daemon_status_body(health: Result<Value, String>, in_parent_job: bool) -> Value {
+/// `in_parent_job`: 데몬을 띄운 프로그램이 꺼지면 데몬도 함께 꺼질 수 있다. 데몬의 `/health` `stops_with_launcher`가
+/// 먼저이고, 그 키가 없는 옛 데몬이면 이 GUI가 띄울 때 job에서 떨어지지 못했는지(`launched_in_job`)를 쓴다
+fn daemon_status_body(health: Result<Value, String>, launched_in_job: bool) -> Value {
     match health {
         Ok(v) if lifecycle::token_valid(&v) => {
+            let in_parent_job = v["stops_with_launcher"].as_bool().unwrap_or(launched_in_job);
             json!({ "running": true, "message": "Daemon is running", "in_parent_job": in_parent_job })
         }
         Ok(_) => {
@@ -569,6 +571,24 @@ mod tests {
             daemon_status_body(Err("connection refused".into()), true)["in_parent_job"],
             Value::Null
         );
+    }
+
+    /// 데몬이 알려 주는 `stops_with_launcher`가 먼저다: CLI가 job 안에서 띄운 데몬도 경고한다.
+    /// 그 키가 없는 옛 데몬이면 이 GUI가 띄울 때 본 값을 쓴다 (L46)
+    #[test]
+    fn the_daemons_own_answer_decides_whether_it_stops_with_its_launcher() {
+        let health = |stops: Value| Ok(json!({ "ok": true, "token": "valid", "stops_with_launcher": stops }));
+        assert_eq!(
+            daemon_status_body(health(json!(true)), false)["in_parent_job"],
+            json!(true)
+        );
+        assert_eq!(
+            daemon_status_body(health(json!(false)), true)["in_parent_job"],
+            json!(false)
+        );
+        let old = || Ok(json!({ "ok": true, "token": "valid" }));
+        assert_eq!(daemon_status_body(old(), true)["in_parent_job"], json!(true));
+        assert_eq!(daemon_status_body(old(), false)["in_parent_job"], json!(false));
     }
 
     #[test]

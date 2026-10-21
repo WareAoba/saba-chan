@@ -747,7 +747,7 @@
     "exit_note_gave_up": "Abandon après {{count}} redémarrages en 10 minutes",
     "exit_note_restart_failed": "Redémarrage impossible : {{reason}}",
     "parent_job_short": "Le cœur dépend d'une autre app",
-    "parent_job": "Le cœur de saba-chan tourne rattaché au programme qui a ouvert cette app. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Quittez complètement saba-chan puis rouvrez-le depuis le menu Démarrer."
+    "parent_job": "Le cœur de saba-chan tourne rattaché au programme qui l'a lancé. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Quittez complètement saba-chan puis rouvrez-le depuis le menu Démarrer."
   },
   "discord": {
     "nav_connection": "Connexion",
