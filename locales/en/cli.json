@@ -855,6 +855,8 @@
       "info": "Info",
       "backup_create": "Create backup",
       "backup_list": "Backups"
-    }
+    },
+    "needs_terminal": "The full-screen menu needs a terminal. In scripts, use the subcommands.",
+    "command_panicked": "The command stopped unexpectedly. You can keep using other commands."
   }
 }

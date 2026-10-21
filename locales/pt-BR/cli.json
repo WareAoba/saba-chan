@@ -658,6 +658,8 @@
       "info": "Informações",
       "backup_create": "Criar backup",
       "backup_list": "Backups"
-    }
+    },
+    "needs_terminal": "O menu em tela cheia precisa de um terminal. Em scripts, use os subcomandos.",
+    "command_panicked": "O comando parou inesperadamente. Você pode continuar usando outros comandos."
   }
 }

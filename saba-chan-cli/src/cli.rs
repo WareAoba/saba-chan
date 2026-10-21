@@ -1129,7 +1129,7 @@ mod tests {
                 } else {
                     format!("{}.{}", path, s.get_name())
                 };
-                if crate::i18n::try_t(&format!("help.cmd.{}", p)).is_none() {
+                if crate::i18n::try_t_in("ko", &format!("help.cmd.{}", p)).is_none() {
                     missing.push(p.clone());
                 }
                 walk(s, &p, missing);
@@ -1165,7 +1165,8 @@ mod tests {
                 if matches!(id, "help" | "version") || a.is_hide_set() {
                     continue;
                 }
-                let found = crate::i18n::try_t(&format!("help.arg.{}.{}", path, id)).or_else(|| crate::i18n::try_t(&format!("help.arg.{}", id)));
+                let found = crate::i18n::try_t_in("ko", &format!("help.arg.{}.{}", path, id))
+                    .or_else(|| crate::i18n::try_t_in("ko", &format!("help.arg.{}", id)));
                 if found.is_none() {
                     missing.push(format!("{} --{}", path, id));
                 }

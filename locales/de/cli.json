@@ -658,6 +658,8 @@
       "info": "Info",
       "backup_create": "Backup erstellen",
       "backup_list": "Backups"
-    }
+    },
+    "needs_terminal": "Das Vollbildmenü braucht ein Terminal. In Skripten die Unterbefehle verwenden.",
+    "command_panicked": "Der Befehl wurde unerwartet beendet. Andere Befehle funktionieren weiter."
   }
 }

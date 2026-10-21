@@ -215,6 +215,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Paragraph::new(t!("tui.too_narrow")).alignment(Alignment::Center).wrap(Wrap { trim: true }),
             body,
         );
+        // 명령이 묻는 중이면 좁아도 질문은 그린다
+        draw_overlays(f, app, body);
         return;
     }
     if area.width < 80 {
@@ -288,5 +290,32 @@ mod tests {
         let narrow = screen(50, 20);
         assert!(narrow.contains(&t!("tui.too_narrow").replace(' ', "").chars().take(4).collect::<String>()), "{narrow}");
         assert!(!narrow.contains("pal-1"));
+    }
+
+    /// 좁아도 묻는 말은 보인다: 보지 못한 질문에 Enter로 답하지 않게
+    #[test]
+    fn a_question_is_shown_even_on_a_narrow_screen() {
+        crate::i18n::init("ko");
+        let mut app = App::new(menu_from(&crate::cli::localized()));
+        let (reply, _rx) = std::sync::mpsc::channel();
+        app.dialog = Some(super::super::app::Dialog {
+            question: "데몬을켤까요".into(),
+            kind: super::super::app::AskKind::Confirm { default: true },
+            cursor: 0,
+            input: String::new(),
+            reply,
+        });
+        let mut term = Terminal::new(TestBackend::new(50, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let text: String = (0..20)
+            .map(|y| {
+                (0..50)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+                    .replace(' ', "")
+            })
+            .collect();
+        assert!(text.contains("데몬을켤까요"), "{text}");
     }
 }

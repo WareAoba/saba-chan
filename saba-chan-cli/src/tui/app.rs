@@ -246,6 +246,11 @@ impl App {
             return None;
         }
         if ctrl && key.code == KeyCode::Char('c') {
+            // 쓰던 줄이 있으면 그 줄만 닫는다
+            if self.input.take().is_some() {
+                self.history_pos = None;
+                return None;
+            }
             return Some(if self.running { Action::Cancel } else { Action::Quit });
         }
         if self.show_help {
@@ -324,8 +329,11 @@ impl App {
 
     fn dialog_key(&mut self, key: KeyEvent) {
         let Some(d) = self.dialog.as_mut() else { return };
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let answer: Option<Option<Answer>> = match (&d.kind, key.code) {
             (_, KeyCode::Esc) => Some(None),
+            (_, KeyCode::Char('c')) if ctrl => Some(None),
+            (_, KeyCode::Char(_)) if ctrl => None,
             (AskKind::Confirm { .. }, KeyCode::Char('y' | 'Y')) => Some(Some(Answer::Yes(true))),
             (AskKind::Confirm { .. }, KeyCode::Char('n' | 'N')) => Some(Some(Answer::Yes(false))),
             (AskKind::Confirm { .. }, KeyCode::Left | KeyCode::Right | KeyCode::Tab) => {
@@ -396,21 +404,36 @@ impl App {
     }
 }
 
+/// 한 줄을 명령 표로 읽는다. 전역 옵션이 앞에 오거나 별칭으로 불러도 같은 명령으로 본다
+fn parsed(words: &[String]) -> Option<crate::cli::Cli> {
+    use clap::FromArgMatches;
+    let args = std::iter::once("saba-chan-cli".into())
+        .chain(words.iter().map(Into::into))
+        .collect();
+    let m = crate::cli::parse(args).ok()?;
+    crate::cli::Cli::from_arg_matches(&m).ok()
+}
+
 /// TUI 안에서 바로 돌릴 수 없는 명령이면 그 까닭. 화면을 통째로 쓰거나(셸, 화면 지우기) 프로그램을 끝낸다
 pub fn refuse(words: &[String]) -> Option<String> {
-    let has = |flags: &[&str]| words.iter().any(|w| flags.contains(&w.as_str()));
-    match words.first().map(String::as_str) {
-        Some("shell" | "tui" | "completions") => Some(t!("tui.not_here")),
-        Some("monitor") if has(&["-w", "--watch"]) => Some(t!("tui.not_here")),
-        Some("update") if words.get(1).map(String::as_str) == Some("apply") => Some(t!("tui.not_here")),
+    use crate::cli::{Cmd, UpdateCmd};
+    match parsed(words)?.cmd? {
+        Cmd::Shell | Cmd::Tui | Cmd::Completions { .. } => Some(t!("tui.not_here")),
+        Cmd::Monitor(a) if a.watch => Some(t!("tui.not_here")),
+        Cmd::Update(UpdateCmd::Apply { .. }) => Some(t!("tui.not_here")),
         _ => None,
     }
 }
 
 /// TUI에서 쓰도록 고친 명령: 콘솔은 입력 줄을 열지 않고 따라 읽는다 (명령은 `run`으로 보낸다)
 pub fn adapt(mut words: Vec<String>) -> Vec<String> {
-    let has = |w: &[String], flags: &[&str]| w.iter().any(|x| flags.contains(&x.as_str()));
-    if words.first().map(String::as_str) == Some("console") && !has(&words, &["-f", "--follow", "--print", "--json"]) {
+    use crate::cli::{Cmd, ServerCmd};
+    let Some(cli) = parsed(&words) else { return words };
+    let console = match cli.cmd {
+        Some(Cmd::Console(a)) | Some(Cmd::Server(ServerCmd::Console(a))) => Some(a),
+        _ => None,
+    };
+    if console.is_some_and(|a| !a.follow && !a.print) && !cli.global.json && !cli.global.json_stream {
         words.push("--follow".into());
     }
     words
@@ -530,5 +553,46 @@ mod tests {
         assert!(refuse(&w("monitor")).is_none());
         assert_eq!(adapt(w("console pal")), w("console pal --follow"));
         assert_eq!(adapt(w("console pal --print")), w("console pal --print"));
+    }
+
+    /// Ctrl+C는 대화상자에서는 취소, 입력 줄에서는 줄 닫기다 (TUI를 끝내지 않는다)
+    #[test]
+    fn ctrl_c_cancels_the_dialog_or_the_input_line() {
+        let ctrl_c = KeyEvent {
+            modifiers: KeyModifiers::CONTROL,
+            ..key(KeyCode::Char('c'))
+        };
+        let mut a = app();
+        let (reply, rx) = std::sync::mpsc::channel();
+        a.dialog = Some(Dialog {
+            question: "?".into(),
+            kind: AskKind::Text {
+                allow_empty: true,
+                secret: false,
+            },
+            cursor: 0,
+            input: String::new(),
+            reply,
+        });
+        assert_eq!(a.on_key(ctrl_c), None);
+        assert!(a.dialog.is_none());
+        assert!(rx.recv().unwrap().is_none(), "취소는 답 없음");
+        a.input = Some("server".into());
+        assert_eq!(a.on_key(ctrl_c), None);
+        assert!(a.input.is_none());
+    }
+
+    /// 전역 옵션을 앞에 두거나 별칭으로 불러도 같은 명령이다
+    #[test]
+    fn global_options_and_aliases_do_not_get_past_the_check() {
+        crate::i18n::init("ko");
+        let w = |s: &str| shlex::split(s).unwrap();
+        assert!(refuse(&w("--yes update apply")).is_some());
+        assert!(refuse(&w("updates apply")).is_some());
+        assert!(refuse(&w("--lang en monitor -w")).is_some());
+        assert!(refuse(&w("--yes update status")).is_none());
+        assert_eq!(adapt(w("-y console pal")), w("-y console pal --follow"));
+        assert_eq!(adapt(w("server logs pal")), w("server logs pal --follow"));
+        assert_eq!(adapt(w("--json console pal")), w("--json console pal"));
     }
 }

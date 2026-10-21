@@ -658,6 +658,8 @@
       "info": "Infos",
       "backup_create": "Créer une sauvegarde",
       "backup_list": "Sauvegardes"
-    }
+    },
+    "needs_terminal": "Le menu plein écran a besoin d'un terminal. Dans un script, utilisez les sous-commandes.",
+    "command_panicked": "La commande s'est arrêtée de façon inattendue. Les autres commandes restent utilisables."
   }
 }

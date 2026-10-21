@@ -658,6 +658,8 @@
       "info": "資訊",
       "backup_create": "建立備份",
       "backup_list": "備份清單"
-    }
+    },
+    "needs_terminal": "全螢幕選單只能在終端機中開啟。指令碼中請使用子指令。",
+    "command_panicked": "指令意外停止了。其他指令仍可繼續使用。"
   }
 }

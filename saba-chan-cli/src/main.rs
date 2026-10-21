@@ -35,8 +35,27 @@ fn lang_flag() -> Option<String> {
     })
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
+/// 명령 처리는 큰 async 상태 기계라 디버그 빌드에서 스택을 많이 쓴다. 셸·메뉴 안에서 명령을 한 겹 더
+/// 부르면 Windows 기본 주 스레드 스택(1MB)을 넘으므로, 넉넉한 스택의 스레드에서 돌린다
+const STACK: usize = 16 * 1024 * 1024;
+
+fn main() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(STACK)
+        .build()
+        .expect("tokio runtime");
+    let main = std::thread::Builder::new()
+        .name("main".into())
+        .stack_size(STACK)
+        .spawn(move || runtime.block_on(run()))
+        .expect("main thread");
+    if main.join().is_err() {
+        std::process::exit(101);
+    }
+}
+
+async fn run() {
     // `| head`처럼 파이프가 먼저 닫혀도 패닉 대신 조용히 끝나게
     #[cfg(unix)]
     unsafe {

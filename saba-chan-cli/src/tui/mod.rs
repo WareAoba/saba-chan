@@ -29,7 +29,8 @@ enum Msg {
     Progress(u64, crate::progress::Update),
     Ask(Dialog),
     Refreshed(Option<Value>, Vec<Value>),
-    Done,
+    /// 몇 번째로 시작한 명령이 끝났는지 (취소 뒤 늦게 온 끝 소식이 새 명령을 끝내지 않게)
+    Done(u64),
     Tick,
 }
 
@@ -92,6 +93,11 @@ impl Drop for Restore {
 }
 
 pub async fn run(ctx: &Ctx) -> Result<()> {
+    use std::io::IsTerminal;
+    // `saba-chan-cli tui`로 불러도 인자 없을 때와 같은 조건에서만 연다
+    if !ctx.ask.enabled || !std::io::stdout().is_terminal() || !std::io::stdin().is_terminal() {
+        return Err(crate::error::CliError::Usage(t!("tui.needs_terminal")).into());
+    }
     let mut ctx = ctx.clone();
     ctx.in_shell = true;
     let menu = app::menu_from(&crate::cli::localized());
@@ -112,14 +118,21 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     }));
     let _asker = crate::prompt::AskerGuard::install(Box::new(TuiAsker(tx.clone())));
 
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        restore();
-        prev_hook(info);
-    }));
+    // 화면을 그리는 이 스레드가 패닉할 때만 터미널을 되돌린다 (명령 작업의 패닉은 결과 창에 알린다)
+    let prev_hook: Arc<dyn Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync> = std::panic::take_hook().into();
+    let ui_thread = std::thread::current().id();
+    {
+        let prev_hook = prev_hook.clone();
+        std::panic::set_hook(Box::new(move |info| {
+            if std::thread::current().id() == ui_thread {
+                restore();
+            }
+            prev_hook(info);
+        }));
+    }
     enable_raw_mode()?;
-    execute!(std::io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     let _restore = Restore;
+    execute!(std::io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     let mut term = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(std::io::stdout()))?;
 
     // 키·마우스·창 크기는 따로 읽어 넘긴다. 끝나면 멈춘다
@@ -153,7 +166,8 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         })
     };
 
-    let mut task: Option<tokio::task::JoinHandle<()>> = None;
+    let mut task: Option<tokio::task::AbortHandle> = None;
+    let mut seq = 0u64;
     let mut refreshing = false;
     term.draw(|f| view::draw(f, &mut app))?;
     while let Some(msg) = rx.recv().await {
@@ -171,14 +185,16 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 Some(Action::Run(line)) => {
                     // 셸처럼 줄마다 포트를 다시 찾는다: 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다 (L62)
                     ctx.follow_daemon_port();
-                    task = start(&ctx, &mut app, &line, tx.clone());
+                    seq += 1;
+                    task = start(&ctx, &mut app, &line, seq, tx.clone()).or(task);
                 }
                 None => {}
             },
             Msg::Term(Event::Mouse(m)) => {
                 if let Some(Action::Run(line)) = app.on_mouse(m) {
                     ctx.follow_daemon_port();
-                    task = start(&ctx, &mut app, &line, tx.clone());
+                    seq += 1;
+                    task = start(&ctx, &mut app, &line, seq, tx.clone()).or(task);
                 }
             }
             Msg::Term(_) => {}
@@ -213,7 +229,10 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 }
             }
             Msg::Ask(d) => app.dialog = Some(d),
-            Msg::Done => {
+            Msg::Done(id) => {
+                if id != seq {
+                    continue;
+                }
                 task = None;
                 app.running = false;
                 // 명령이 상태를 바꿨을 수 있으니(데몬 포트까지) 곧바로 다시 읽는다
@@ -240,7 +259,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     drop(_restore);
     console::set_colors_enabled(colors.0);
     console::set_colors_enabled_stderr(colors.1);
-    let _ = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| prev_hook(info)));
     Ok(())
 }
 
@@ -268,7 +287,7 @@ fn refresh(ctx: &Ctx, tx: UnboundedSender<Msg>, busy: bool) -> bool {
 }
 
 /// 명령 한 줄을 실행한다. 결과 창 제목에 그 명령을 남긴다
-fn start(ctx: &Ctx, app: &mut App, line: &str, tx: UnboundedSender<Msg>) -> Option<tokio::task::JoinHandle<()>> {
+fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>) -> Option<tokio::task::AbortHandle> {
     if app.running {
         return None;
     }
@@ -291,13 +310,21 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, tx: UnboundedSender<Msg>) -> Opti
     app.running = true;
     app.scroll = 0;
     let ctx = ctx.clone();
-    Some(tokio::spawn(async move {
+    let work = tokio::spawn(async move {
         if let Err(e) = one(&ctx, &words).await {
             ctx.out.error(&classify(&e));
         }
         crate::output::flush();
-        let _ = tx.send(Msg::Done);
-    }))
+    });
+    let abort = work.abort_handle();
+    // 명령이 패닉해도 결과 창에 알리고 "실행 중"을 푼다
+    tokio::spawn(async move {
+        if work.await.is_err_and(|e| e.is_panic()) {
+            let _ = tx.send(Msg::Line(t!("tui.command_panicked")));
+        }
+        let _ = tx.send(Msg::Done(id));
+    });
+    Some(abort)
 }
 
 /// 셸과 같은 규칙으로 한 줄을 실행: 명령이 아니면 디스코드와 같은 채팅 처리기로

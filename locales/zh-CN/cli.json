@@ -1050,6 +1050,8 @@
       "info": "信息",
       "backup_create": "创建备份",
       "backup_list": "备份列表"
-    }
+    },
+    "needs_terminal": "全屏菜单只能在终端中打开。脚本中请使用子命令。",
+    "command_panicked": "命令意外停止了。其他命令仍可继续使用。"
   }
 }

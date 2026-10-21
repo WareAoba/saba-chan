@@ -658,6 +658,8 @@
       "info": "Información",
       "backup_create": "Crear copia",
       "backup_list": "Copias"
-    }
+    },
+    "needs_terminal": "El menú a pantalla completa necesita una terminal. En scripts, usa los subcomandos.",
+    "command_panicked": "El comando se detuvo de forma inesperada. Puedes seguir usando otros comandos."
   }
 }
