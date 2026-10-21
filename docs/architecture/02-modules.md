@@ -392,7 +392,7 @@ players = "player_count"
   - 주소는 `DAEMON_API_URL` → `SABA_IPC_URL` → `http://127.0.0.1:57474` 순서다 (`:40-46`).
   - `SABA_TOKEN_PATH` 파일의 토큰을 `X-Saba-Token` 헤더로 보낸다 (`:49-61`). palworld(`execute_rest_via_daemon` `M:palworld/lifecycle.py:1414-`)는 `daemon_post`를, minecraft·zomboid·__example은 공용 `daemon_stdin_command`(`/stdin`에 `{"command"}`, `D:modules/daemon_rcon.py:87-89`)와 PID 헬퍼 `is_process_alive`·`wait_for_exit`·`force_kill`을 쓴다 (`M:zomboid/lifecycle.py:36`).
   - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다. RCON 접속에는 데몬이 만든 `rcon.json` 값만 쓴다(RCON 정책).
-- 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/gui/src-tauri/src/lib.rs:433-435, 856-876`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
+- 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/core/src/lib.rs` `install_shared_modules`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
 
 ---
 
@@ -581,7 +581,7 @@ players = "player_count"
 
 - `check_for_updates`가 같은 manifest에서 **설치된 모듈만** 골라 버전을 비교한다(`D:updater/src/lib.rs:482-557`). 새 모듈 설치는 목록 화면(§5.2)의 몫이다.
 - 무결성 검사는 업데이터가 적용할 때 zip에서 푼 파일마다 기록한 SHA-256(`<data_dir>/installed-files.json`)과 디스크 파일을 비교한다. manifest의 zip 해시와는 비교하지 않는다 (`D:updater/src/integrity.rs:1-6, 105-152, 235-239`). 설치기로 처음 깐 모듈은 기록이 없어 결과에 나오지 않는다.
-- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs:169-188`, `release.rs`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
+- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs` `get_available_modules`, `installer/core/src/release.rs` `modules`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
 
 ---
 
