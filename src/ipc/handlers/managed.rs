@@ -885,10 +885,12 @@ mod tests {
     #[tokio::test]
     async fn a_failed_install_puts_back_the_instance_executable_too() {
         let tmp = tempfile::tempdir().unwrap();
-        let modules = tmp.path().join("modules");
-        let dir = modules.join("game");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"server.jar\"\n").unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 설치 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("put-back-exe-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let game = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{game}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"server.jar\"\n")).unwrap();
         // 두 파일을 반쯤 바꾼 뒤 실패한다 (한 번은 success=false, 한 번은 오류로 끝남)
         std::fs::write(
             dir.join("lifecycle.py"),
@@ -902,7 +904,7 @@ mod tests {
         sup.initialize().await.unwrap();
         let files = tmp.path().join("files");
         std::fs::create_dir_all(&files).unwrap();
-        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        let mut inst = crate::instance::ServerInstance::new("srv", &game);
         inst.executable_path = Some(files.join("launch.jar").to_string_lossy().into_owned());
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
@@ -912,7 +914,7 @@ mod tests {
                 std::fs::write(files.join(name), "old").unwrap();
             }
             let body = json!({ "install_dir": files, "instance_id": id, "version": version });
-            let done = crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state.clone()), Json(body)).await.into_response()).await;
+            let done = crate::ipc::internal::into_internal(install_server_handler(Path(game.clone()), State(state.clone()), Json(body)).await.into_response()).await;
             assert!(!done.status.is_success() || done.body["success"] == false, "{}", done.body);
             for name in ["server.jar", "launch.jar"] {
                 assert_eq!(std::fs::read_to_string(files.join(name)).unwrap(), "old", "{version}: {name}");
@@ -927,10 +929,12 @@ mod tests {
     #[tokio::test]
     async fn an_install_that_cannot_be_put_back_keeps_the_backup_and_says_so() {
         let tmp = tempfile::tempdir().unwrap();
-        let modules = tmp.path().join("modules");
-        let dir = modules.join("game");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"PalServer\"\n").unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 설치 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("put-back-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let game = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{game}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nserver_executable = \"PalServer\"\n")).unwrap();
         // write: 실행 파일을 고친 뒤 실패, replace: 새 파일로 바꿔 넣은 뒤 실패, break: 실행 파일 자리를 폴더로 바꿔 두고 실패(어떤 방법으로도 되돌릴 수 없다), 그 밖: 아무것도 안 하고 실패
         std::fs::write(
             dir.join("lifecycle.py"),
@@ -950,7 +954,7 @@ mod tests {
         std::fs::write(elsewhere.join("tool.exe"), "tool").unwrap();
         std::fs::write(elsewhere.join("tool.exe.bak"), "user backup").unwrap();
         let mut instance = |name: &str, exe: std::path::PathBuf| {
-            let mut inst = crate::instance::ServerInstance::new(name, "game");
+            let mut inst = crate::instance::ServerInstance::new(name, &game);
             inst.executable_path = Some(exe.to_string_lossy().into_owned());
             let id = inst.id.clone();
             sup.instance_store.add(inst).unwrap();
@@ -961,8 +965,8 @@ mod tests {
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let install = |id: &str, version: &str| {
             let body = json!({ "install_dir": files, "instance_id": id, "version": version });
-            let state = state.clone();
-            async move { crate::ipc::internal::into_internal(install_server_handler(Path("game".into()), State(state), Json(body)).await.into_response()).await }
+            let (state, game) = (state.clone(), game.clone());
+            async move { crate::ipc::internal::into_internal(install_server_handler(Path(game), State(state), Json(body)).await.into_response()).await }
         };
         let backups = || -> Vec<String> {
             let mut names: Vec<String> = std::fs::read_dir(&files).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".bak")).collect();

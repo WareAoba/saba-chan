@@ -2130,13 +2130,14 @@ mod tests {
         use axum::extract::{Path, State};
         use axum::Json;
         let tmp = tempfile::tempdir().unwrap();
-        let modules = tmp.path().join("modules");
-        let dir = modules.join("game");
-        std::fs::create_dir_all(&dir).unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 인스턴스 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("live-read-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
         std::fs::write(
             dir.join("module.toml"),
-            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
-             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n",
+            format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n"),
         )
         .unwrap();
         let file = tmp.path().join("motd.txt");
@@ -2153,7 +2154,7 @@ mod tests {
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
-        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        let mut inst = crate::instance::ServerInstance::new("a", &name);
         inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
