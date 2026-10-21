@@ -514,7 +514,7 @@
       "events.since": "Commencer après cet id d'événement (renvoie ce que le démon garde encore)",
       "json_stream": "Afficher la progression puis le résultat en lignes JSON (NDJSON) ; implique --json"
     },
-    "after": "Les noms peuvent être partiels (ex. start pal). Sans argument, le shell interactif s'ouvre.\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
+    "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
   "restart": {
     "waiting": "Redémarrage de {{name}}...",
@@ -631,5 +631,35 @@
       "where": "Emplacement",
       "what": "Code"
     }
+  },
+  "tui": {
+    "daemon_up": "Démon ● connecté (v{{version}})",
+    "daemon_down": "Démon ○ arrêté · démarrer : daemon start",
+    "servers_running": "{{running}} serveur(s) sur {{total}} en marche",
+    "menu": "Menu",
+    "output": "Résultat",
+    "enter_to_run": "Entrée pour lancer",
+    "running_hint": "(en cours · Ctrl+C pour arrêter)",
+    "keys": "↑↓ déplacer · ←→ menu/liste · Entrée lancer · : commande · PgUp/PgDn résultat · ? aide · q quitter",
+    "yes": "Oui",
+    "no": "Non",
+    "question": "Confirmer",
+    "dialog_keys": "Entrée choisir · Échap annuler",
+    "help_title": "Touches",
+    "help": "↑↓  se déplacer dans le menu ou la liste\n←→ / Tab  passer du menu à la liste\nEntrée  lancer l'élément choisi (ouvre la ligne de commande s'il faut des arguments)\n:  ligne de commande (les mêmes commandes qu'après saba-chan-cli, ↑↓ pour les précédentes)\nPgUp/PgDn, molette  faire défiler le résultat\nCtrl+C  arrêter la commande en cours\nq  quitter (le démon et les serveurs continuent)",
+    "too_narrow": "Élargissez la fenêtre à au moins 60 colonnes.",
+    "not_here": "Cette commande ne peut pas s'exécuter dans le menu plein écran. Quittez avec q et lancez-la dans le terminal.",
+    "cancelled": "Arrêté.",
+    "action": {
+      "start": "Démarrer",
+      "stop": "Arrêter",
+      "restart": "Redémarrer",
+      "console": "Dernières lignes de console",
+      "info": "Infos",
+      "backup_create": "Créer une sauvegarde",
+      "backup_list": "Sauvegardes"
+    },
+    "needs_terminal": "Le menu plein écran a besoin d'un terminal. Dans un script, utilisez les sous-commandes.",
+    "command_panicked": "La commande s'est arrêtée de façon inattendue. Les autres commandes restent utilisables."
   }
 }

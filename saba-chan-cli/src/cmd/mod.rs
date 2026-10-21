@@ -60,6 +60,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
             Ok(())
         }
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
+        Cmd::Tui => Box::pin(crate::tui::run(ctx)).await,
     }
 }
 
@@ -93,6 +94,7 @@ fn needs_daemon(cmd: &Cmd) -> bool {
             | Cmd::Completions { .. }
             | Cmd::Help { .. }
             | Cmd::Shell
+            | Cmd::Tui
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
 }
