@@ -162,7 +162,7 @@ fn monitor(result: &Value, cat: &Catalog) -> Option<String> {
 }
 
 /// 이 PC의 시각 (디스코드 사용자는 대개 PC 주인과 같은 시간대다)
-fn local_time(unix_secs: u64) -> String {
+pub(crate) fn local_time(unix_secs: u64) -> String {
     use chrono::TimeZone;
     if unix_secs == 0 {
         return "?".into();

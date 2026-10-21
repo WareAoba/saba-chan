@@ -9,6 +9,7 @@ pub mod extension;
 pub mod relay;
 pub mod chat;
 pub mod backup;
+pub mod logs;
 pub mod chatbot;
 pub mod discord;
 pub mod guild_words;

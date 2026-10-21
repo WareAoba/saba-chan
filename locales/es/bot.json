@@ -200,6 +200,16 @@
           "description": "Últimas 20 líneas de la consola"
         }
       },
+      "logs": {
+        "read": {
+          "title": "Leer registros",
+          "description": "Lee una sesión de registro del servidor desde el final"
+        },
+        "export": {
+          "title": "Exportar registros",
+          "description": "Exporta una sesión de registro del servidor como archivo .log"
+        }
+      },
       "players": {
         "title": "Jugadores",
         "description": "Quién está conectado"
@@ -280,6 +290,10 @@
       "overwrites": "Sobrescribe",
       "overwrites_instance": "archivos actuales del servidor",
       "source": "Origen",
+      "lines": "Líneas",
+      "before": "Antes de",
+      "since": "Desde",
+      "until": "Hasta",
       "trust": "Confianza",
       "version": "Versión a instalar",
       "installed": "Versión instalada",
