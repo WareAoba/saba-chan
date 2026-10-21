@@ -4,6 +4,8 @@ use crate::{emit_main, settings, AppState};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
+use std::time::Instant;
 use tauri::webview::NewWindowResponse;
 use tauri::window::Color;
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
@@ -16,6 +18,29 @@ const BOUNDS_DEBOUNCE_MS: u64 = 500;
 
 /// 창 크기 저장 디바운스용 세대 번호
 static BOUNDS_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// 닫기 요청을 렌더러에 보내고 답(app_close_response)을 아직 못 받은 시각(`monotonic_ms`). 0이면 기다리는 요청이 없다
+static CLOSE_ASKED_AT: AtomicU64 = AtomicU64::new(0);
+/// 이만큼 답이 없는데 OS 닫기(Alt+F4·작업 표시줄)가 다시 오면 렌더러가 멈춘 것으로 보고 인터페이스만 끝낸다 (L18c).
+/// 창 안의 X는 렌더러 버튼이라 멈추면 이 경로로 오지 않는다(그때는 트레이 메뉴가 끝낸다)
+const CLOSE_ANSWER_TIMEOUT_MS: u64 = 5000;
+/// 이보다 오래된 물음은 렌더러가 못 받은 것(구독 전·재로드 중)으로 보고 새로 묻는다
+const CLOSE_ASK_STALE_MS: u64 = 60_000;
+
+/// 이 셸이 뜬 뒤 지난 ms + 1 (0은 "기다리는 요청 없음"). 단조 시계라 OS 시각을 바꿔도 대기 시간이 틀어지지 않는다
+fn monotonic_ms() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+}
+
+fn renderer_unresponsive(asked_at: u64, now: u64) -> bool {
+    asked_at != 0 && (CLOSE_ANSWER_TIMEOUT_MS..CLOSE_ASK_STALE_MS).contains(&now.saturating_sub(asked_at))
+}
+
+/// 렌더러가 닫기 요청에 답했다 (받음 확인 포함)
+pub fn close_answered() {
+    CLOSE_ASKED_AT.store(0, Ordering::SeqCst);
+}
 
 /// 팝아웃 창 라벨: instanceId를 hex로 (라벨에 쓸 수 있는 글자만 남게)
 pub fn popout_label(instance_id: &str) -> String {
@@ -63,6 +88,26 @@ pub fn is_app_url(url: &Url, dev_origin: Option<&Url>) -> bool {
 fn open_external(app: &AppHandle, url: &str) {
     if let Err(e) = app.opener().open_url(url, None::<&str>) {
         tracing::warn!("[Window] Failed to open external url: {}", e);
+    }
+}
+
+/// 제목 표시줄·작업 표시줄 아이콘을 exe 아이콘에서 창 DPI에 맞는 크기로 건다.
+/// 배율이 다른 모니터로 옮기거나 배율을 바꾸면 그 DPI에 맞게 다시 건다
+fn apply_icon(_win: &WebviewWindow) {
+    #[cfg(windows)]
+    {
+        fn set(win: &WebviewWindow) {
+            if let Ok(hwnd) = win.hwnd() {
+                saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+            }
+        }
+        set(_win);
+        let win = _win.clone();
+        _win.on_window_event(move |event| {
+            if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
+                set(&win);
+            }
+        });
     }
 }
 
@@ -132,12 +177,25 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         builder = builder.position(x, y);
     }
     let win = lock_navigation(app, builder).build()?;
+    apply_icon(&win);
 
     let handle = app.clone();
     win.on_window_event(move |event| match event {
         // 닫기는 React 확인 창으로 (app_close_response가 답한다)
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
+            let now = monotonic_ms();
+            let asked = CLOSE_ASKED_AT.load(Ordering::SeqCst);
+            if renderer_unresponsive(asked, now) {
+                // 멈춘 렌더러는 확인 창을 띄울 수 없다: 데몬과 서버는 두고 창만 끝낸다
+                tracing::warn!("Renderer did not answer the close request; quitting the interface only");
+                let app = handle.clone();
+                tauri::async_runtime::spawn(async move { crate::lifecycle::interface_only_quit(&app).await });
+                return;
+            }
+            if asked == 0 || now.saturating_sub(asked) >= CLOSE_ASK_STALE_MS {
+                CLOSE_ASKED_AT.store(now, Ordering::SeqCst);
+            }
             emit_main(&handle, "app:closeRequest", Value::Null);
         }
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => schedule_save_bounds(&handle),
@@ -210,6 +268,7 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         .decorations(false)
         .always_on_top(true);
     let win = lock_navigation(app, builder).build()?;
+    apply_icon(&win);
 
     // 메인 창에 팝아웃 열림/닫힘 알림 → 임베디드 콘솔 숨김 제어
     emit_main(app, "console:popoutOpened", instance_id);
@@ -282,6 +341,24 @@ pub fn toggle_always_on_top(app: &AppHandle, instance_id: &str, pinned: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_falls_through_only_when_the_renderer_never_answered() {
+        // 묻지 않았거나 답을 받았으면(0) 렌더러가 묻는다
+        assert!(!renderer_unresponsive(0, 1_000_000));
+        let first = monotonic_ms();
+        assert!(
+            first > 0 && monotonic_ms() >= first,
+            "0 means no request, and the clock never goes back"
+        );
+        // 물은 지 얼마 안 됐으면 기다린다
+        let asked = 1_000_000;
+        assert!(!renderer_unresponsive(asked, asked + CLOSE_ANSWER_TIMEOUT_MS - 1));
+        // 답 없이 지났으면 멈춘 것으로 본다
+        assert!(renderer_unresponsive(asked, asked + CLOSE_ANSWER_TIMEOUT_MS));
+        // 오래된 물음은 렌더러가 못 받은 것: 확인 없이 끝내지 않고 다시 묻는다
+        assert!(!renderer_unresponsive(asked, asked + CLOSE_ASK_STALE_MS));
+    }
 
     #[test]
     fn popout_label_round_trips() {

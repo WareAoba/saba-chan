@@ -35,6 +35,8 @@ const EVENT_PROBE: Duration = Duration::from_secs(600);
 
 /// 세션 안에서 토큰 대체를 알리는 오류 표시 (밖으로 나가지 않는다)
 const REPLACED: &str = "token_replaced";
+/// 릴레이가 이 PC의 버전을 받지 않는다 (최소 버전 미달). 업데이트 전에는 다시 시도해도 같다
+const TOO_OLD: &str = "agent_too_old";
 /// 동시에 처리하는 릴레이 명령 수 (넘으면 끝나기를 기다렸다가 더 받는다)
 const COMMANDS_IN_FLIGHT: usize = 4;
 /// 받은 명령 id를 기억하는 기간과 개수. 릴레이가 같은 명령을 다시 보내도 한 번만 실행한다
@@ -57,6 +59,9 @@ pub struct AgentStatus {
     /// 끊긴 이유를 클라이언트가 현지화할 수 있게 주는 코드. `token_replaced`: 같은 디스코드 계정이 다른 PC를 페어링했다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error_code: Option<&'static str>,
+    /// `agent_too_old`일 때 릴레이가 요구하는 최소 버전
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_version: Option<String>,
     pub commands_handled: u64,
 }
 
@@ -235,6 +240,22 @@ fn token_replaced(status: reqwest::StatusCode, body: &Value) -> bool {
         && body.get("error").and_then(|v| v.as_str()).is_some_and(|e| e.eq_ignore_ascii_case("TOKEN_REPLACED"))
 }
 
+/// relay가 이 PC의 버전이 최소 버전보다 낮다고 거절했는가 (426 `AGENT_TOO_OLD`). 요구하는 최소 버전을 돌려준다
+fn agent_too_old(status: reqwest::StatusCode, body: &Value) -> Option<String> {
+    let rejected = status == reqwest::StatusCode::UPGRADE_REQUIRED
+        && body.get("error").and_then(|v| v.as_str()).is_some_and(|e| e.eq_ignore_ascii_case("AGENT_TOO_OLD"));
+    rejected.then(|| body.get("minVersion").and_then(|v| v.as_str()).unwrap_or("").to_string())
+}
+
+/// 받기(poll)가 실패한 뒤 다시 묻기까지. 버전 미달은 업데이트 전에는 같은 답이라 heartbeat 주기로만 묻는다
+fn poll_retry(error: &str, failures: u32) -> Duration {
+    if error == TOO_OLD {
+        HEARTBEAT_INTERVAL
+    } else {
+        backoff(failures)
+    }
+}
+
 fn http_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
@@ -364,6 +385,16 @@ impl Session {
         self.cancel.cancel();
     }
 
+    /// 릴레이가 이 버전을 받지 않는다: 클라이언트가 업데이트를 안내하게 코드와 최소 버전을 남긴다
+    fn report_too_old(&self, min: &str) {
+        tracing::warn!("[RelayAgent] relay requires agent {} or later (this is {}) — update saba-chan", min, AGENT_VERSION);
+        self.agent.update(self.generation, |s| {
+            s.last_error = Some(format!("agent {} is older than relay minimum {} — update saba-chan", AGENT_VERSION, min));
+            s.last_error_code = Some(TOO_OLD);
+            s.min_version = Some(min.to_string());
+        });
+    }
+
     /// 상태에 마지막 오류를 남긴다. 세션이 끝난 뒤(연결 해제·토큰 대체)에는 끝난 이유를 덮어쓰지 않는다
     fn report_error(&self, e: String) {
         if !self.cancel.is_cancelled() {
@@ -385,6 +416,7 @@ impl Session {
         };
         if let Some(min) = info.get("minAgentVersion").and_then(|v| v.as_str()) {
             if semver_lt(AGENT_VERSION, min) {
+                self.report_too_old(min);
                 return Err(format!("agent {} is older than relay minimum {} — update saba-chan", AGENT_VERSION, min));
             }
         }
@@ -414,6 +446,10 @@ impl Session {
             if token_replaced(status, &data) {
                 return Err(REPLACED.to_string());
             }
+            if let Some(min) = agent_too_old(status, &data) {
+                self.report_too_old(&min);
+                return Err(TOO_OLD.to_string());
+            }
             if !status.is_success() {
                 let hint = if status.as_u16() == 401 || status.as_u16() == 403 { " (node token rejected)" } else { "" };
                 return Err(format!("heartbeat {}{}: {}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or("")));
@@ -430,6 +466,8 @@ impl Session {
                 self.agent.update(self.generation, |s| {
                     s.last_heartbeat_at = Some(now_ms());
                     s.last_error = None;
+                    s.last_error_code = None;
+                    s.min_version = None;
                 });
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
                 if crate::ipc::handlers::discord::take_pending_sync() {
@@ -443,6 +481,8 @@ impl Session {
                 }
             }
             Err(e) if e == REPLACED => self.give_up_replaced(),
+            // 이미 상태에 남겼다
+            Err(e) if e == TOO_OLD => {}
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
                 self.report_error(e);
@@ -602,9 +642,11 @@ impl Session {
                         Err(e) if e == REPLACED => self.give_up_replaced(),
                         Err(e) => {
                             failures += 1;
-                            let backoff = backoff(failures);
+                            let backoff = poll_retry(&e, failures);
                             tracing::warn!("[RelayAgent] poll failed ({}), retry in {}s", e, backoff.as_secs());
-                            self.report_error(e);
+                            if e != TOO_OLD {
+                                self.report_error(e);
+                            }
                             next = Some(Box::pin(async move {
                                 self.pause(backoff).await;
                                 self.poll_once().await
@@ -659,6 +701,10 @@ impl Session {
         let body = decode_poll(&text);
         if token_replaced(status, &body) {
             return Err(REPLACED.to_string());
+        }
+        if let Some(min) = agent_too_old(status, &body) {
+            self.report_too_old(&min);
+            return Err(TOO_OLD.to_string());
         }
         if !status.is_success() {
             return Err(format!("poll {}: {}", status, body.get("error").and_then(|v| v.as_str()).unwrap_or("")));
@@ -1240,6 +1286,70 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
+    /// GUI·CLI가 업데이트를 안내하게 하고, 받기는 업데이트 전에는 같은 답이므로 heartbeat 주기로만 다시 묻는다
+    #[tokio::test]
+    async fn a_relay_that_needs_a_newer_agent_is_reported_and_asked_slowly() {
+        use axum::routing::{get, post};
+        async fn too_old() -> (axum::http::StatusCode, axum::Json<Value>) {
+            let body = json!({ "error": "AGENT_TOO_OLD", "minVersion": "99.0.0", "message": "Update Saba-chan to 99.0.0 or later." });
+            (axum::http::StatusCode::UPGRADE_REQUIRED, axum::Json(body))
+        }
+        let app = axum::Router::new()
+            .route("/info", get(|| async { axum::Json(json!({ "minAgentVersion": "99.0.0" })) }))
+            .route("/heartbeat", post(too_old))
+            .route("/poll", get(too_old));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let agent = RelayAgent::new();
+        let cancel = CancellationToken::new();
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(cancel.clone());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        let session = Session {
+            agent: agent.clone(),
+            server,
+            client: http_client().unwrap(),
+            base,
+            token: "sbn_host.secret".into(),
+            cancel,
+            generation: 1,
+            seen: Arc::default(),
+            ack_supported: std::sync::atomic::AtomicBool::new(true),
+        };
+        let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
+        let reported = |what: &str| {
+            let status = agent.status();
+            assert_eq!(status.last_error_code, Some("agent_too_old"), "{what}: {status:?}");
+            assert_eq!(status.min_version.as_deref(), Some("99.0.0"), "{what}");
+            let json = serde_json::to_value(&status).unwrap();
+            assert_eq!((json["lastErrorCode"].clone(), json["minVersion"].clone()), (json!("agent_too_old"), json!("99.0.0")));
+        };
+
+        assert!(session.check_version().await.is_err());
+        reported("/info");
+        reset();
+        session.heartbeat().await;
+        reported("heartbeat");
+        reset();
+        let polled = session.poll_once().await.unwrap_err();
+        reported("poll");
+        assert_eq!(poll_retry(&polled, 1), HEARTBEAT_INTERVAL);
+        assert_eq!(poll_retry("poll 502 Bad Gateway: ", 1), backoff(1), "other failures keep the short backoff");
+    }
 
     /// 디스코드에서 바꾼 권한의 응답과 heartbeat는 같은 PC 시계의 `permissionsAt`을 싣는다.
     /// 릴레이는 바꾼 뒤보다 먼저 읽은 heartbeat 권한을 버린다 (늦게 와서 옛 레벨로 되돌리지 않게)
