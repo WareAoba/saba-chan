@@ -97,6 +97,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     // 'loading' 실제 설정 읽는 중 / 'live' 실제 설정 / 'stored' 못 읽어 저장된 값을 보여 주는 중
     const [settingsSource, setSettingsSource] = useState('loading');
     const touchedFields = useRef(new Set());
+    // 저장 값이 없어 기본값('' 포함)으로 연 뒤 실제 값도 사용자 입력도 없는 칸 (visible_when 비교에서 값 없음)
+    const unsetFields = useRef(new Set());
     const openRequest = useRef(0);
 
     // ── Close animation ─────────────────────────────────────
@@ -127,6 +129,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         touchedFields.current = new Set();
         setSettingsSource('loading');
         const defaulted = new Set();
+        unsetFields.current = new Set();
 
         // Initialize settings values from module schema
         // 우선순위: 실제 설정(아래에서 비동기로 덮음) > 저장된 값(savedValue) > 기본값.
@@ -138,6 +141,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 if (value === null) {
                     value = fieldValue(field.default) ?? '';
                     defaulted.add(field.name);
+                    unsetFields.current.add(field.name);
                 }
                 unconfirmedFields.current.add(field.name);
                 initial[field.name] = value;
@@ -221,6 +225,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         // 읽기에 성공하면 데몬이 캐시도 맞춘다: 실제 값이 없는 칸은 캐시가 확인된 값이다 (기본값만 아니면)
                         if (v !== null || !defaulted.has(field.name)) unconfirmedFields.current.delete(field.name);
                         if (v === null || touchedFields.current.has(field.name)) continue;
+                        unsetFields.current.delete(field.name);
                         patch[field.name] = v;
                     }
                     setSettingsValues((prev) => ({ ...prev, ...patch }));
@@ -288,6 +293,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     // ── handleSettingChange ─────────────────────────────────
     const handleSettingChange = (fieldName, value) => {
         touchedFields.current.add(fieldName);
+        unsetFields.current.delete(fieldName);
         setSettingsValues((prev) => ({ ...prev, [fieldName]: Array.isArray(value) ? value : String(value) }));
     };
 
@@ -708,6 +714,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         showSettingsModal,
         settingsServer,
         settingsValues,
+        unsetSettings: unsetFields.current,
         settingsSource,
         settingsActiveTab,
         setSettingsActiveTab,

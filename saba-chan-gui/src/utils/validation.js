@@ -171,10 +171,11 @@ function sameSettingValue(fieldType, a, b) {
 /**
  * `visible_when`으로 지금 숨겨진 설정 이름 (데몬 validator::hidden_fields와 같은 계산, 02 §1.2).
  * 값이 없으면(글자 칸이 아닌 빈 칸 포함) 그 설정의 default로 비교하고, default도 없으면 숨긴다.
+ * `unset`: 저장 값이 없어 ''로 연 뒤 건드리지 않은 칸 이름. 저장 때 보내지 않으니 값이 없는 것으로 본다.
  */
 const STRING_TYPES = ['text', 'password', 'multiline'];
 
-export function hiddenFields(fields, values) {
+export function hiddenFields(fields, values, unset) {
     return (fields || [])
         .filter((f) => {
             const cond = f.visible_when;
@@ -183,7 +184,7 @@ export function hiddenFields(fields, values) {
             if (!target) return false;
             const raw = values?.[target.name];
             // 지운 글자 칸은 ''로 저장되므로 데몬도 ''로 비교한다. 다른 칸의 ''는 보내지 않으니 값이 없는 것
-            const cleared = raw === '' && !STRING_TYPES.includes(target.field_type);
+            const cleared = raw === '' && (!STRING_TYPES.includes(target.field_type) || unset?.has(target.name));
             const current = raw === undefined || raw === null || cleared ? target.default : raw;
             if (current === undefined || current === null) return true;
             const wanted = Array.isArray(cond.in) ? cond.in : [cond.equals];
@@ -199,11 +200,11 @@ export function hiddenFields(fields, values) {
  * @param {Object} values - 현재 설정값 맵 { fieldName: value }
  * @returns {Object} { valid: boolean, errors: { [fieldName]: { error, errorType, ... } } }
  */
-export function validateAllSettings(fields, values) {
+export function validateAllSettings(fields, values, unset) {
     const errors = {};
     let valid = true;
     // 숨긴 설정은 required를 보지 않는다 (데몬과 같다)
-    const hidden = new Set(hiddenFields(fields, values));
+    const hidden = new Set(hiddenFields(fields, values, unset));
 
     for (const field of fields) {
         if (hidden.has(field.name)) continue;
