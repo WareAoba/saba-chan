@@ -52,7 +52,7 @@ beforeEach(() => {
 describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => {
     // ── 저장 시 모든 7 필드가 payload에 포함되는지 검증 ──
 
-    it('save() payload에 GUI 18필드만 포함 (token/autoStart는 bot-config으로 이전)', async () => {
+    it('save() payload에는 바꾼 GUI 칸만 실린다 (token/autoStart는 bot-config, 바꾸지 않은 칸은 CLI 값을 덮지 않게)', async () => {
         mockApi();
         const _store = useSettingsStore.getState();
         // Prepare: settingsPath 필요
@@ -72,21 +72,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             refreshInterval: 9999,
             ipcPort: 11111,
             consoleBufferSize: 500,
-            autoGeneratePasswords: true,
-            portConflictCheck: true,
-            // Theme customization defaults
-            theme: 'auto',
-            accentColor: '#667eea',
-            accentSecondary: '#764ba2',
-            useGradient: false,
-            fontScale: 100,
-            enableTransitions: true,
-            consoleSyntaxHighlight: true,
-            consoleBgColor: '#1e1e2e',
-            consoleTextColor: '#cdd6f4',
-            sidebarCompact: false,
-            consoleFontScale: 100,
-            systemMonitorOpen: true,
         });
         // discordToken/discordAutoStart가 포함되지 않음을 확인
         expect(payload.discordToken).toBeUndefined();
@@ -161,22 +146,12 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         });
         await useSettingsStore.getState().save();
 
-        // Verify payload (token/autoStart는 더 이상 포함되지 않음)
+        // 바꾼 칸만 실린다 (token/autoStart는 더 이상 포함되지 않음)
         expect(captured).toEqual({
-            ...custom,
-            // Theme customization defaults
-            theme: 'auto',
-            accentColor: '#667eea',
-            accentSecondary: '#764ba2',
-            useGradient: false,
-            fontScale: 100,
-            enableTransitions: true,
-            consoleSyntaxHighlight: true,
-            consoleBgColor: '#1e1e2e',
-            consoleTextColor: '#cdd6f4',
-            sidebarCompact: false,
-            consoleFontScale: 100,
-            systemMonitorOpen: true,
+            autoRefresh: custom.autoRefresh,
+            refreshInterval: custom.refreshInterval,
+            ipcPort: custom.ipcPort,
+            consoleBufferSize: custom.consoleBufferSize,
         });
 
         // Reset
@@ -484,21 +459,6 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             refreshInterval: 3000,
             ipcPort: 9999,
             consoleBufferSize: 1000,
-            autoGeneratePasswords: true,
-            portConflictCheck: true,
-            // Theme customization defaults
-            theme: 'auto',
-            accentColor: '#667eea',
-            accentSecondary: '#764ba2',
-            useGradient: false,
-            fontScale: 100,
-            enableTransitions: true,
-            consoleSyntaxHighlight: true,
-            consoleBgColor: '#1e1e2e',
-            consoleTextColor: '#cdd6f4',
-            sidebarCompact: false,
-            consoleFontScale: 100,
-            systemMonitorOpen: true,
         });
         expect(settingsPayload.discordToken).toBeUndefined();
         expect(settingsPayload.discordAutoStart).toBeUndefined();
@@ -692,7 +652,7 @@ describe('설정 에러 핸들링', () => {
         mockApi({
             settingsSave: vi.fn().mockRejectedValue(new Error('disk full')),
         });
-        useSettingsStore.setState({ settingsPath: '/s.json' });
+        useSettingsStore.setState({ settingsPath: '/s.json', theme: 'dark' });
 
         // Should not throw, and tells the caller it failed
         await expect(useSettingsStore.getState().save()).resolves.toBe(false);
