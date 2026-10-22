@@ -2,7 +2,7 @@
 //!
 //! - `GET /api/system/paths` — 데이터·설치·인스턴스·모듈·익스텐션 폴더의 지금 값과 기본값, 모듈·익스텐션 폴더의 출처
 //! - `POST /api/system/paths/move` `{kind: "modules"|"extensions", target}` — 고른 폴더 아래로 옮긴다
-//!   (`saba_chan_updater_lib::component_dirs`). 실패는 HTTP 200 `{ok: false, error_code, error}`
+//!   (`saba_chan_updater_lib::component_dirs`). 실패는 HTTP 200 `{ok: false, error_code: "paths_<PathError 코드>", error}`
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use saba_chan_updater_lib::component_dirs::{self, Kind, Layout, PathError};
@@ -49,7 +49,8 @@ pub struct MoveRequest {
 }
 
 fn refused(e: PathError) -> axum::response::Response {
-    (StatusCode::OK, Json(json!({ "ok": false, "error_code": e.code, "error": e.detail }))).into_response()
+    let code = format!("paths_{}", e.code);
+    (StatusCode::OK, Json(json!({ "ok": false, "error_code": code, "error": e.detail }))).into_response()
 }
 
 /// POST /api/system/paths/move

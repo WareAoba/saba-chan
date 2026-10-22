@@ -217,6 +217,22 @@ pub fn save_choice(config: &crate::config_file::ConfigFile, kind: Kind, dir: &Pa
         .map(|_| ())
 }
 
+/// 고른 폴더로 옮기고 설정에 적는다. 이미 그 폴더면 아무것도 하지 않는다 (`Ok(None)`).
+/// 아무것도 그 폴더를 쓰지 않을 때만 부른다 (설치기는 데몬을 끈 뒤, 데몬은 [`relocate`]를 잠금 안에서 직접 부른다)
+pub fn move_to(
+    kind: Kind,
+    chosen: &Path,
+    layout: &Layout,
+    config: &crate::config_file::ConfigFile,
+) -> Result<Option<(PathBuf, Relocated)>, PathError> {
+    let target = match target_for(kind, chosen, layout) {
+        Err(e) if e.code == "same_as_current" => return Ok(None),
+        other => other?,
+    };
+    let moved = relocate(layout.dir(kind), &target, || save_choice(config, kind, &target, &layout.data_dir))?;
+    Ok(Some((target, moved)))
+}
+
 /// 옮긴 결과
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Relocated {
@@ -515,6 +531,29 @@ mod tests {
         save_choice(&config, Kind::Modules, &data.join("modules"), &data).unwrap();
         assert_eq!(resolve_from(Kind::Modules, None, &config.peek_section(PATHS_SECTION), &data).1, Source::Default);
         assert_eq!(config.section("gui"), json!({"language": "ko"}), "other settings are kept");
+    }
+
+    #[test]
+    fn move_to_moves_both_kinds_under_one_folder_and_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let config = crate::config_file::ConfigFile::at(&data);
+        let mut l = Layout { data_dir: data.clone(), home: None, modules: data.join("modules"), extensions: data.join("extensions") };
+        tree(&l.modules);
+        let chosen = tmp.path().join("Games").join("Saba");
+        for kind in Kind::ALL {
+            let (path, _) = move_to(kind, &chosen, &l, &config).unwrap().unwrap();
+            match kind {
+                Kind::Modules => l.modules = path,
+                Kind::Extensions => l.extensions = path,
+            }
+        }
+        assert!(chosen.join("modules").join("i18n.py").is_file());
+        assert!(chosen.join("extensions").is_dir());
+        let paths = config.peek_section(PATHS_SECTION);
+        assert_eq!(resolve_from(Kind::Extensions, None, &paths, &data), (chosen.join("extensions"), Source::Config));
+        // 같은 폴더를 다시 고르면 그대로 둔다
+        assert_eq!(move_to(Kind::Modules, &chosen, &l, &config), Ok(None));
     }
 
     #[test]

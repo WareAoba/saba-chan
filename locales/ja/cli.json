@@ -168,7 +168,23 @@
       "name_taken": "同じ名前のサーバーがあります",
       "busy": "インストール・更新・バックアップ・復元の最中です"
     },
-    "import_token_moved": "ボットのペアリングも移しました。古い PC の接続を切ってください (古い PC で: saba-chan-cli bot unpair)。"
+    "import_token_moved": "ボットのペアリングも移しました。古い PC の接続を切ってください (古い PC で: saba-chan-cli bot unpair)。",
+    "paths": {
+      "data": "データ・設定",
+      "install": "プログラム",
+      "default_install": "既定のプログラムフォルダー",
+      "instances": "ゲームサーバー",
+      "modules": "モジュール",
+      "extensions": "拡張機能",
+      "source_default": "既定",
+      "source_config": "選択",
+      "source_env": "環境変数で固定",
+      "default_is": "既定: {{path}}"
+    },
+    "confirm_move_modules": "モジュールを {{dir}} へ移しますか？インストール済みのモジュールをコピーして確認したあと、元のフォルダーから削除します。",
+    "confirm_move_extensions": "拡張機能を {{dir}} へ移しますか？インストール済みの拡張機能をコピーして確認したあと、元のフォルダーから削除します。",
+    "moved": "{{path}} へ移しました。",
+    "move_left_behind": "元のフォルダーの次のファイルを削除できませんでした。手動で削除してください: {{files}}"
   },
   "console": {
     "attach_help": "{{name}} に接続しました。コマンドを入力してください。:help でヘルプ、:q で抜けます（サーバーは動き続けます）。",
@@ -277,7 +293,23 @@
       "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。",
       "agent_too_old": "更新を確認: saba-chan-cli update check",
       "install_backup_failed": "インストール前に {{file}} をバックアップできなかったため、インストールしませんでした。ディスクの空き容量と同じフォルダーの .bak ファイルを確認してください。",
-      "kept_backups": "元に戻せなかったファイルは、インストール前のコピーを残しました: {{files}}"
+      "kept_backups": "元に戻せなかったファイルは、インストール前のコピーを残しました: {{files}}",
+      "paths_busy": "インストール・更新・バックアップなどの作業中です。終わってからもう一度試してください。",
+      "paths_servers_running": "先にこれらのサーバーを停止してから、もう一度試してください。",
+      "paths_env_fixed": "環境変数で固定されたフォルダーです。変数を消すとフォルダーを選べます。",
+      "paths_not_absolute": "D:\\Games\\Saba のようにフルパスで指定してください。",
+      "paths_root_or_home": "ドライブやユーザーフォルダーそのものではなく、その中のフォルダーを選んでください。",
+      "paths_contains_data_dir": "そのフォルダーにはサバちゃんのデータフォルダーが入っています。別のフォルダーを選んでください。",
+      "paths_same_as_current": "すでにそのフォルダーにあります。",
+      "paths_overlaps_current": "現在のフォルダーの中、または現在のフォルダーを含むフォルダーです。別のフォルダーを選んでください。",
+      "paths_overlaps_other": "モジュールまたは拡張機能のフォルダーと重なっています。別のフォルダーを選んでください。",
+      "paths_not_empty": "そこの modules または extensions フォルダーにはすでにファイルがあります。空の場所を選んでください。",
+      "paths_not_writable": "そのフォルダーに書き込めません。書き込めるフォルダーを選んでください。",
+      "paths_has_link": "フォルダーの中にリンク（ショートカットフォルダー）があります。削除してからもう一度試してください。",
+      "paths_copy_failed": "コピーできませんでした。何も変更していません。空き容量を確認してもう一度試してください。",
+      "paths_verify_failed": "コピーが元と一致しませんでした。何も変更していません。もう一度試してください。",
+      "paths_commit_failed": "設定を保存できなかったため、ファイルを元の場所に戻しました。",
+      "paths_unknown_kind": "modules または extensions を選んでください。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -721,7 +753,9 @@
       "events": "デーモンのイベントをリアルタイムで追う(--json なら 1 行に JSON 1 つ)。Ctrl+C で止めます",
       "tui": "全画面メニューを開く",
       "install": "ウィンドウのインストーラーなしでこのPCにサバちゃんをインストール",
-      "uninstall": "この PC からサバちゃんを削除（指定しなければ設定とサーバーは残す）"
+      "uninstall": "この PC からサバちゃんを削除（指定しなければ設定とサーバーは残す）",
+      "config.paths": "データ・モジュール・拡張機能フォルダーの場所と既定のフォルダー",
+      "config.move": "モジュールや拡張機能を別のフォルダーへ移す。インストール済みのファイルも移す。サーバーはすべて停止が必要"
     },
     "arg": {
       "bot.channels.notify": "通知チャンネル(クラッシュ・バックアップ・更新・予約再起動)、名前またはID",
@@ -840,7 +874,10 @@
       "install.gui": "画面がなくてもデスクトップアプリまでインストール",
       "install.no_gui": "画面があってもデスクトップアプリなしでインストール",
       "uninstall.remove_settings": "設定と Discord 連携も削除",
-      "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）"
+      "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）",
+      "config.move.kind": "移すもの: modules（モジュール）または extensions（拡張機能）",
+      "config.move.folder": "使うフォルダー。その中に modules または extensions フォルダーを作る",
+      "components_dir": "モジュール・拡張機能を置くフォルダー。その中に modules と extensions を作り、インストール済みのファイルを移す"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1095,7 +1132,9 @@
     "failed": "インストールできませんでした: {{reason}}（詳細: {{log}}）",
     "failed_no_log": "インストールできませんでした: {{reason}}",
     "done": "{{dir}} にインストールしました",
-    "next": "次のコマンドでデーモンを起動してください:\n{{command}}"
+    "next": "次のコマンドでデーモンを起動してください:\n{{command}}",
+    "components_dir": "モジュール・拡張機能は {{dir}} に置きます。",
+    "components_dir_invalid": "{{dir}} はモジュール・拡張機能の場所に使えません: {{reason}}"
   },
   "uninstall": {
     "not_installed": "このコマンドはサバちゃんのインストールフォルダーから実行されていないため、削除するものがありません。",

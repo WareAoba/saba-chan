@@ -195,6 +195,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
         "agent_too_old" => Some(t!("err.hint.agent_too_old")),
         "module_busy" => Some(t!("err.hint.module_busy")),
+        // 폴더 옮기기 (`/api/system/paths/move`)
+        c if c.starts_with("paths_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
         "schedule_changed" => Some(t!("err.hint.schedule_changed")),
         "not_supported" => Some(t!("err.hint.not_supported")),
         "invalid_command" => Some(t!("err.hint.invalid_command")),

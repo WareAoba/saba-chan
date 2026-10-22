@@ -13,6 +13,7 @@ pub mod traces;
 pub mod uninstall;
 
 pub use release::VerifiedRelease;
+use saba_chan_updater_lib::component_dirs;
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants;
 pub use saba_chan_updater_lib::profile::Profile;
@@ -124,6 +125,8 @@ pub struct InstallOptions {
     pub module_metadata: Vec<ModuleInfo>,
     /// 설치 폴더에 `saba-chan-installer.exe`로 남길 제거기 (창 인스톨러는 자기 exe). 없으면 남기지 않는다
     pub uninstaller_exe: Option<PathBuf>,
+    /// 모듈·익스텐션을 둘 폴더 (그 아래 `modules`·`extensions`). 없으면 지금 위치(처음이면 데이터 폴더). 있던 파일은 옮긴다
+    pub components_dir: Option<PathBuf>,
 }
 
 /// 설치가 부르는 바깥 동작
@@ -216,6 +219,13 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         emit("elevate", "Requesting administrator privileges...", 1);
         if let Err(elev_err) = hooks.elevate_create_dir(&install_dir) {
             return fail("elevation_failed", &format!("Failed to create directory: {}", elev_err));
+        }
+    }
+
+    // 모듈·익스텐션 위치는 받기 전에 확인한다 (옮기기는 데몬을 끈 뒤)
+    if let Some(chosen) = &config.components_dir {
+        if let Err(e) = check_components_dir(chosen, &component_dirs::Layout::current()) {
+            return fail("components_dir_invalid", &format!("Cannot use {} for modules and extensions ({})", chosen.display(), e));
         }
     }
 
@@ -326,6 +336,15 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         installed.push(key.to_string());
     }
 
+    // Step 3.4: 고른 위치로 모듈·익스텐션 폴더를 옮긴다 (있던 파일은 복사·검증 뒤 옮기고, 실패하면 그대로 둔다)
+    if let Some(chosen) = &config.components_dir {
+        emit("components-dir", "Moving modules and extensions...", 45);
+        match move_components(chosen) {
+            Ok(left) => left.into_iter().for_each(|p| warn(format!("Could not remove {} after moving it", p.display()))),
+            Err(e) => return fail("components_dir_failed", &format!("Could not move modules and extensions to {}: {}", chosen.display(), e)),
+        }
+    }
+
     // Step 3.5: 공유 모듈 유틸리티(i18n.py, daemon_rcon.py)를 APPDATA/modules/로 설치
     emit("modules-shared", "Installing shared module utilities...", 46);
     for failure in install_shared_modules(&install_dir) {
@@ -336,7 +355,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     if !config.selected_modules.is_empty() {
         emit("modules-download", "Downloading game modules...", 47);
 
-        let data_dir = resolve_data_dir();
+        let modules_dir = constants::resolve_modules_dir();
         for module_id in &config.selected_modules {
             let key = format!("{}{}", relay::MODULE_PREFIX, module_id);
             let Some(info) = manifest.components.get(&key) else {
@@ -344,7 +363,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
                 continue;
             };
             emit("modules-download", &format!("Installing module: {}...", module_id), 49);
-            match release::install_addon(&key, info, &data_dir.join("modules").join(module_id)).await {
+            match release::install_addon(&key, info, &modules_dir.join(module_id)).await {
                 Ok(()) => installed.push(format!("module:{}", module_id)),
                 Err(e) => warn(format!("Failed to install module '{}': {}", module_id, e)),
             }
@@ -506,6 +525,37 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 // 설치 폴더·언어
 // ═══════════════════════════════════════════════════════
 
+/// 모듈·익스텐션 위치로 `chosen`을 쓸 수 있는가 (지금 위치와 같으면 된다)
+pub fn check_components_dir(chosen: &Path, layout: &component_dirs::Layout) -> Result<(), component_dirs::PathError> {
+    for kind in component_dirs::Kind::ALL {
+        match component_dirs::target_for(kind, chosen, layout) {
+            Ok(_) => {}
+            Err(e) if e.code == "same_as_current" => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+/// 모듈·익스텐션 폴더를 `chosen` 아래로 옮긴다 (데몬이 꺼진 뒤). 지우지 못하고 남은 원래 파일을 돌려준다.
+/// 환경 변수로 고정된 폴더는 건드리지 않는다
+fn move_components(chosen: &Path) -> Result<Vec<PathBuf>, component_dirs::PathError> {
+    let config = ConfigFile::default_location();
+    let mut left = Vec::new();
+    for kind in component_dirs::Kind::ALL {
+        if component_dirs::resolve(kind).1 == component_dirs::Source::Env {
+            tracing::warn!("{} is fixed by {}; not moving it", kind.dir_name(), kind.env_var());
+            continue;
+        }
+        // 앞에서 옮긴 폴더가 반영되게 매번 다시 읽는다
+        if let Some((path, moved)) = component_dirs::move_to(kind, chosen, &component_dirs::Layout::current(), &config)? {
+            tracing::info!("Moved {} to {}", kind.dir_name(), path.display());
+            left.extend(moved.left_behind);
+        }
+    }
+    Ok(left)
+}
+
 /// 설치에 쓸 폴더: 고른 폴더가 비어 있지 않고 사바쨩 설치도 아니면 그 아래 `Saba-chan` 폴더.
 /// 제거기가 설치 폴더를 지우므로 사용자 파일이 든 폴더에 바로 풀지 않는다
 pub fn dedicated_install_dir(chosen: &Path) -> PathBuf {
@@ -562,27 +612,9 @@ fn install_entries() -> Vec<(String, String)> {
     saba_chan_updater_lib::uninstall_entry::entries()
 }
 
-/// 기본 설치 폴더: 이미 설치돼 있으면 그 자리 (그 자리를 업데이트한다)
+/// 기본 설치 폴더: 이미 설치돼 있으면 그 자리 (그 자리를 업데이트한다), 아니면 `constants::default_install_dir`
 pub fn default_install_path() -> String {
-    if let Some(dir) = existing_install() {
-        return dir.to_string_lossy().into_owned();
-    }
-    #[cfg(target_os = "windows")]
-    {
-        r"C:\Program Files\Saba-chan".to_string()
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home)
-                .join(".local")
-                .join("share")
-                .join("saba-chan")
-                .to_string_lossy()
-                .to_string();
-        }
-        "saba-chan".to_string()
-    }
+    existing_install().unwrap_or_else(constants::default_install_dir).to_string_lossy().into_owned()
 }
 
 /// 설치 화면의 처음 언어: 앱에서 고른 언어, 없으면 OS 언어, 그것도 없으면 영어
@@ -610,12 +642,6 @@ fn localized_app_name(language: &str) -> &'static str {
         "ja" => "サバちゃん",
         _ => "Saba-chan",
     }
-}
-
-/// saba-core와 동일한 데이터 디렉토리 경로 해석
-/// Windows: `%APPDATA%/saba-chan`, Linux/macOS: `~/.config/saba-chan`
-fn resolve_data_dir() -> PathBuf {
-    constants::resolve_data_dir()
 }
 
 fn load_main_app_language() -> Option<String> {
@@ -691,8 +717,7 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
 fn install_shared_modules(install_dir: &Path) -> Vec<String> {
     const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py"];
 
-    let data_dir = resolve_data_dir();
-    let modules_dir = data_dir.join("modules");
+    let modules_dir = constants::resolve_modules_dir();
     let _ = std::fs::create_dir_all(&modules_dir);
     let mut failures = Vec::new();
 
@@ -719,8 +744,7 @@ fn setup_config(install_dir: &Path, config: &InstallOptions) {
     // 설정은 코드에 내장되므로 config 파일 생성 불필요
     // 필수 디렉터리만 생성
     let _ = std::fs::create_dir_all(install_dir.join("locales"));
-    let data_dir = resolve_data_dir();
-    let _ = std::fs::create_dir_all(data_dir.join("modules"));
+    let _ = std::fs::create_dir_all(constants::resolve_modules_dir());
 
     // 언어 설정만 별도 저장
     save_language_setting(&config.language);
@@ -791,7 +815,7 @@ async fn install_required_extensions(
     manifest: &ReleaseManifest,
     required_extensions: &[String],
 ) -> (Vec<String>, Vec<String>) {
-    let data_dir = resolve_data_dir();
+    let extensions_dir = constants::resolve_extensions_dir();
     let mut installed = Vec::new();
     let mut failed = Vec::new();
     for ext_id in required_extensions {
@@ -808,8 +832,7 @@ async fn install_required_extensions(
             ..Default::default()
         });
 
-        let default_dir = format!("extensions/{}", ext_id.replace('-', "_"));
-        let target_dir = data_dir.join(info.install_dir.as_deref().unwrap_or(&default_dir));
+        let target_dir = extension_target(&extensions_dir, ext_id, info.install_dir.as_deref());
         match release::install_addon(&key, info, &target_dir).await {
             Ok(()) => {
                 tracing::info!("익스텐션 '{}' 설치 완료: {}", ext_id, target_dir.display());
@@ -819,6 +842,16 @@ async fn install_required_extensions(
         }
     }
     (installed, failed)
+}
+
+/// 익스텐션을 풀 폴더: 익스텐션 폴더 아래, manifest `install_dir`(`extensions/<이름>`)의 마지막 이름이나 id.
+/// Python이 `import extensions.<이름>`으로 부르므로 하이픈은 밑줄로 (업데이터 `resolve_install_dir`와 같은 규칙)
+fn extension_target(extensions_dir: &Path, ext_id: &str, install_dir: Option<&str>) -> PathBuf {
+    let name = install_dir
+        .and_then(|d| Path::new(d).file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| ext_id.to_string());
+    extensions_dir.join(name.replace('-', "_"))
 }
 
 /// `copy`가 `original` 자신이거나 내용이 같은지
@@ -832,6 +865,24 @@ fn is_copy_of(copy: &Path, original: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extensions_land_in_the_chosen_extensions_folder() {
+        let ext = Path::new("/games/saba/extensions");
+        assert_eq!(extension_target(ext, "ue4-ini", Some("extensions/ue4_ini")), ext.join("ue4_ini"));
+        assert_eq!(extension_target(ext, "steam-cmd", None), ext.join("steam_cmd"));
+    }
+
+    #[test]
+    fn components_dir_is_checked_for_both_kinds() {
+        let root = std::env::temp_dir().join("saba-components-check");
+        let data = root.join("data");
+        let layout = component_dirs::Layout { data_dir: data.clone(), home: None, modules: data.join("modules"), extensions: root.join("x").join("extensions") };
+        assert_eq!(check_components_dir(&root.join("games"), &layout), Ok(()));
+        // 모듈은 이미 그 자리(기본)여도 익스텐션을 옮길 수 있으면 된다
+        assert_eq!(check_components_dir(&data, &layout), Ok(()));
+        assert_eq!(check_components_dir(Path::new("relative"), &layout).unwrap_err().code, "not_absolute");
+    }
 
     // M1: 설치 폴더 사본이 이 설치기와 다르면(복사 실패로 옛 사본이 남음) 새 버전으로 기록하지 않는다
     #[test]
@@ -1035,6 +1086,7 @@ mod tests {
             release: None,
             module_metadata: Vec::new(),
             uninstaller_exe: None,
+            components_dir: None,
         };
 
         let last = install(options, &hooks).await;

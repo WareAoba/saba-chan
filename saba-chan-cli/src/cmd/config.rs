@@ -59,7 +59,47 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
         ConfigCmd::Reset { keys } => reset(ctx, &keys).await,
         ConfigCmd::Export { file, secrets } => export(ctx, &file, secrets).await,
         ConfigCmd::Import { file, dry_run, overwrite } => import(ctx, &file, dry_run, overwrite).await,
+        ConfigCmd::Paths => paths(ctx).await,
+        ConfigCmd::Move { kind, folder } => move_dir(ctx, kind, &folder).await,
     }
+}
+
+/// 폴더 위치와 기본값 (GUI 설정의 "폴더" 칸과 같은 값)
+async fn paths(ctx: &Ctx) -> Result<()> {
+    let r = ctx.api.paths().await?;
+    ctx.out.data(&r, |r| {
+        let s = |v: &Value| v.as_str().unwrap_or("-").to_string();
+        let dir = |v: &Value| {
+            let source = v["source"].as_str().unwrap_or("default");
+            let mut line = format!("{}  ({})", s(&v["path"]), t!(&format!("config.paths.source_{}", source)));
+            if source != "default" {
+                line.push_str(&format!("  {}", t!("config.paths.default_is", path = s(&v["default"]))));
+            }
+            line
+        };
+        output::print_kv(&[
+            (t!("config.paths.data"), s(&r["data_dir"])),
+            (t!("config.paths.install"), s(&r["install_dir"])),
+            (t!("config.paths.default_install"), s(&r["default_install_dir"])),
+            (t!("config.paths.instances"), s(&r["instances_dir"])),
+            (t!("config.paths.modules"), dir(&r["modules"])),
+            (t!("config.paths.extensions"), dir(&r["extensions"])),
+        ]);
+    });
+    Ok(())
+}
+
+async fn move_dir(ctx: &Ctx, kind: crate::cli::DirKind, folder: &std::path::Path) -> Result<()> {
+    let target = absolute(folder);
+    ctx.ask.ensure(&t!(&format!("config.confirm_move_{}", kind.as_str()), dir = target))?;
+    let r = ctx.api.move_dir(kind.as_str(), &target).await?;
+    let path = r["path"].as_str().unwrap_or(&target).to_string();
+    ctx.out.done(&t!("config.moved", path = path), &r);
+    let left: Vec<&str> = r["left_behind"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    if !left.is_empty() {
+        ctx.out.warn(&t!("config.move_left_behind", files = left.join(", ")));
+    }
+    Ok(())
 }
 
 /// 데몬은 절대 경로만 받는다 (CLI와 같은 PC)
