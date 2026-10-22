@@ -145,8 +145,11 @@ impl UpdateManager {
 
     /// 로컬 설치 매니페스트 로드 — 설치된 컴포넌트 버전 맵 반환
     pub fn load_installed_manifest() -> HashMap<String, String> {
-        let manifest: HashMap<String, String> =
-            crate::read_json(&Self::installed_manifest_path()).ok().flatten().unwrap_or_default();
+        Self::load_installed_manifest_at(&Self::installed_manifest_path())
+    }
+
+    pub(crate) fn load_installed_manifest_at(path: &Path) -> HashMap<String, String> {
+        let manifest: HashMap<String, String> = crate::read_json(path).ok().flatten().unwrap_or_default();
         tracing::debug!("[UpdateManager] Loaded installed manifest: {} components", manifest.len());
         manifest
     }
@@ -173,7 +176,7 @@ impl UpdateManager {
         Self::update_installed_version_at(&Self::installed_manifest_path(), component_key, version)
     }
 
-    fn update_installed_version_at(path: &Path, component_key: &str, version: &str) -> Result<()> {
+    pub(crate) fn update_installed_version_at(path: &Path, component_key: &str, version: &str) -> Result<()> {
         let mut manifest = Self::read_installed_manifest(path)?;
         manifest.insert(component_key.to_string(), version.to_string());
         Self::save_installed_manifest_at(path, &manifest)
@@ -181,7 +184,7 @@ impl UpdateManager {
 
     /// apply 성공 후 적용된 컴포넌트들의 버전을 일괄 업데이트
     pub fn update_installed_versions_batch(&self, applied_keys: &[String]) -> Result<()> {
-        let mut manifest = Self::read_installed_manifest(&Self::installed_manifest_path())?;
+        let mut manifest = Self::read_installed_manifest(&self.installed_manifest_file)?;
         let mut updated = false;
 
         for comp in &self.status.components {
@@ -197,7 +200,7 @@ impl UpdateManager {
         }
 
         if updated {
-            Self::save_installed_manifest(&manifest)?;
+            Self::save_installed_manifest_at(&self.installed_manifest_file, &manifest)?;
         }
         Ok(())
     }

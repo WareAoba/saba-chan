@@ -477,6 +477,8 @@ pub struct UpdateManager {
     staging_dir: PathBuf,
     /// 설치 루트 디렉터리 (다운로드/적용 기준)
     install_root: PathBuf,
+    /// 설치 기록(installed-manifest.json). 적용 결과를 여기에 적는다
+    installed_manifest_file: PathBuf,
     /// 마지막으로 받은 서명 검증된 manifest. 무결성·의존성 검사와 다운로드가 같이 쓴다
     cached_manifest: Option<ReleaseManifest>,
     /// 마지막으로 확인한 릴리즈 (버전·패치노트). 받아 둘 때 적용 결과에 실으려고 남긴다 (A5)
@@ -524,6 +526,7 @@ impl UpdateManager {
             extensions_dir,
             staging_dir,
             install_root,
+            installed_manifest_file: crate::constants::resolve_installed_manifest_path(),
             cached_manifest: None,
             latest_release: None,
             download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
@@ -1348,7 +1351,8 @@ impl UpdateManager {
             if let Some(comp_state) = self.status.components.iter()
                 .find(|c| &c.component == component)
             {
-                if let Err(e) = Self::update_installed_version(
+                if let Err(e) = Self::update_installed_version_at(
+                    &self.installed_manifest_file,
                     &component.manifest_key(),
                     &comp_state.current_version,
                 ) {

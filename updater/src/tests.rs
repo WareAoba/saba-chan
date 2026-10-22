@@ -1001,6 +1001,7 @@ async fn components_applied_before_a_failure_are_recorded() {
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
     std::fs::create_dir_all(&manager.install_root).unwrap();
     let ext = Component::Extension(format!("l3-{}", std::process::id()));
     let ext_zip = tmp.path().join("ext.zip");
@@ -1014,7 +1015,8 @@ async fn components_applied_before_a_failure_are_recorded() {
 
     assert!(manager.apply_components(&[]).await.is_err());
 
-    assert_eq!(UpdateManager::load_installed_manifest().get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
+    let recorded = UpdateManager::load_installed_manifest_at(&manager.installed_manifest_file);
+    assert_eq!(recorded.get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&format!("l3-{}", std::process::id())));
 }
 
