@@ -20,7 +20,7 @@
     "existing_running": "Existing daemon is running",
     "starting": "Starting daemon...",
     "started": "Daemon started",
-    "preparing": "Preparing daemon... (timeout)",
+    "preparing": "Preparing daemon... (timed out)",
     "failed_to_start": "Couldn't start the daemon",
     "check_warning": "Warning checking daemon: {{error}}"
   },
@@ -44,12 +44,12 @@
     "settings_save_failed": "Failed to save settings: {{error}}"
   },
   "network": {
-    "connection_refused": "Cannot connect to daemon. Please check if daemon is running",
+    "connection_refused": "Cannot connect to the daemon. Check that the daemon is running",
     "timeout": "Request timeout: Server did not respond",
-    "not_found": "Server not found. Please check network settings"
+    "not_found": "Server not found. Check the network settings"
   },
   "port_conflict": {
-    "force_stop_title": "Port Conflict — {{name}} stopped",
+    "force_stop_title": "Port conflict: {{name}} stopped",
     "force_stop_body": "{{stopped}} was force-stopped because port {{port}} conflicts with {{existing}}"
   },
   "init": {
@@ -72,7 +72,7 @@
     "quit_all": "❌ Quit completely"
   },
   "updates": {
-    "notification_title": "Saba-chan — Updates",
+    "notification_title": "Saba-chan updates",
     "notification_body": "{{count}} updates: {{names}}",
     "completed": "Update complete!"
   },
