@@ -14,11 +14,11 @@
 # R2 경로는 releases/<release version>/<asset> (운영 0.1.1과 같은 규칙).
 
 [release]
-version = "0.1.8"
+version = "0.1.9"
 channel = "stable"
 
 [components.saba-core]
-version = "0.1.8"
+version = "0.1.9"
 asset = "saba-core-{platform}.zip"
 install_dir = "."
 # 빠지면 앱이 돌지 않는다: 패키징이 실패하고 설치기가 설치하지 않는다
@@ -27,13 +27,13 @@ required = true
 files = ["Cargo.toml", "runner/Cargo.toml"]
 
 [components.cli]
-version = "0.1.8"
+version = "0.1.9"
 asset = "saba-chan-cli-{platform}.zip"
 install_dir = "."
 files = ["saba-chan-cli/Cargo.toml"]
 
 [components.gui]
-version = "0.1.8"
+version = "0.1.9"
 asset = "saba-chan-gui-{platform}.zip"
 install_dir = "."
 required = true
@@ -47,7 +47,7 @@ files = [
 ]
 
 [components.updater]
-version = "0.1.8"
+version = "0.1.9"
 asset = "saba-chan-updater-{platform}.zip"
 install_dir = "."
 required = true
@@ -58,7 +58,7 @@ files = [
 ]
 
 [components.installer]
-version = "0.1.8"
+version = "0.1.9"
 asset = "saba-chan-installer.exe"
 install_dir = "."
 files = [
@@ -68,7 +68,7 @@ files = [
 ]
 
 [components.locales]
-version = "0.1.8"
+version = "0.1.9"
 asset = "locales.zip"
 install_dir = "locales"
 
