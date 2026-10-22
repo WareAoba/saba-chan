@@ -184,6 +184,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = config.install_path.clone();
+    // 설치 폴더는 제거기가 통째로 지울 수 있다: 상대 경로나 사용자 데이터·모듈·익스텐션 폴더와 겹치는 곳은 받지 않는다
+    if let Err(reason) = check_install_dir(&install_dir, &component_dirs::Layout::current()) {
+        return fail("invalid_install_dir", &format!("Cannot install into {} ({})", install_dir.display(), reason));
+    }
     // 한 PC에는 설치본 하나만 둔다: 설치본들이 사용자 데이터 폴더(설정·인스턴스·기록)를 함께 쓴다
     if let Some(other) = other_install(&install_dir) {
         return fail(
@@ -524,6 +528,24 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 // ═══════════════════════════════════════════════════════
 // 설치 폴더·언어
 // ═══════════════════════════════════════════════════════
+
+/// 설치 폴더로 쓸 수 있는가: 절대 경로이고, 드라이브 루트가 아니며, 사용자 데이터·모듈·익스텐션 폴더와 겹치지 않는다
+pub fn check_install_dir(dir: &Path, layout: &component_dirs::Layout) -> Result<(), &'static str> {
+    if !dir.is_absolute() {
+        return Err("not_absolute");
+    }
+    if dir.parent().is_none() {
+        return Err("root_or_home");
+    }
+    if layout.home.as_deref().is_some_and(|h| saba_chan_updater_lib::same_path(h, dir)) {
+        return Err("root_or_home");
+    }
+    let overlaps = |p: &Path| saba_chan_updater_lib::paths_overlap(p, dir);
+    if overlaps(&layout.data_dir) || overlaps(&layout.modules) || overlaps(&layout.extensions) {
+        return Err("overlaps_data");
+    }
+    Ok(())
+}
 
 /// 모듈·익스텐션 위치로 `chosen`을 쓸 수 있는가 (지금 위치와 같으면 된다)
 pub fn check_components_dir(chosen: &Path, layout: &component_dirs::Layout) -> Result<(), component_dirs::PathError> {
@@ -871,6 +893,27 @@ mod tests {
         let ext = Path::new("/games/saba/extensions");
         assert_eq!(extension_target(ext, "ue4-ini", Some("extensions/ue4_ini")), ext.join("ue4_ini"));
         assert_eq!(extension_target(ext, "steam-cmd", None), ext.join("steam_cmd"));
+    }
+
+    #[test]
+    fn install_dir_must_be_absolute_and_apart_from_user_data() {
+        let root = std::env::temp_dir().join("saba-install-check");
+        let data = root.join("AppData").join("saba-chan");
+        let layout = component_dirs::Layout {
+            data_dir: data.clone(),
+            home: Some(root.join("home")),
+            modules: data.join("modules"),
+            extensions: root.join("Games").join("extensions"),
+        };
+        assert_eq!(check_install_dir(&root.join("Programs").join("Saba-chan"), &layout), Ok(()));
+        assert_eq!(check_install_dir(Path::new("Saba-chan"), &layout), Err("not_absolute"));
+        assert_eq!(check_install_dir(&root.join("home"), &layout), Err("root_or_home"));
+        // 제거기가 설치 폴더를 지울 때 사용자 데이터가 함께 지워지지 않게
+        assert_eq!(check_install_dir(&data, &layout), Err("overlaps_data"));
+        assert_eq!(check_install_dir(&root.join("AppData"), &layout), Err("overlaps_data"));
+        assert_eq!(check_install_dir(&root.join("Games"), &layout), Err("overlaps_data"));
+        let drive_root = std::env::temp_dir().ancestors().last().unwrap().to_path_buf();
+        assert_eq!(check_install_dir(&drive_root, &layout), Err("root_or_home"));
     }
 
     #[test]
