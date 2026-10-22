@@ -219,7 +219,8 @@ describe('useSettingsStore', () => {
         const state = useSettingsStore.getState();
         expect(state.accentColor).toBe('#667eea');
         expect(state.accentSecondary).toBe('#764ba2');
-        expect(state.useGradient).toBe(false);
+        // 데몬 기본값(GuiSettings::default)과 같다
+        expect(state.useGradient).toBe(true);
         expect(state.fontScale).toBe(100);
         expect(state.enableTransitions).toBe(true);
         expect(state.consoleSyntaxHighlight).toBe(true);
@@ -249,7 +250,7 @@ describe('useSettingsStore', () => {
         const state = useSettingsStore.getState();
         expect(state.accentColor).toBe('#ff5500');
         expect(state.fontScale).toBe(120);
-        expect(state.useGradient).toBe(false); // 변경 안 됨
+        expect(state.useGradient).toBe(true); // 변경 안 됨
     });
 
     it('load() — 테마 설정이 서버 응답에 포함되면 반영되어야 한다', async () => {

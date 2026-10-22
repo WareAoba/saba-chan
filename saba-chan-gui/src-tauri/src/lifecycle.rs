@@ -14,7 +14,8 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
-const STOP_TIMEOUT: Duration = Duration::from_secs(15);
+/// 데몬의 종료 hook 한도(30초, src/main.rs)보다 길게 기다린다: hook이 끝나기 전에 강제 종료하지 않는다 (CLI와 같다)
+const STOP_TIMEOUT: Duration = Duration::from_secs(40);
 
 #[derive(Default)]
 pub struct Lifecycle {

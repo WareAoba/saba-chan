@@ -72,6 +72,23 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Copy/i })));
         expect(writeText).toHaveBeenCalledWith('saba do instance.settings.set --server mc port=25566');
     });
+
+    // 데몬이 아직 안 떠서 카탈로그를 못 받은 실패는 기억하지 않는다: 다음에 다시 묻는다
+    it('카탈로그 요청이 실패로 답하면 다음 화면에서 다시 묻는다', async () => {
+        window.api.actionsList = vi.fn().mockResolvedValue({ error: 'daemon not ready' });
+        const first = render(<CliLine actionId="instance.settings.set" server="mc" />);
+        await act(async () => {});
+        expect(first.container).toBeEmptyDOMElement();
+        first.unmount();
+
+        window.api.actionsList.mockResolvedValue({
+            actions: [{ id: 'instance.settings.set', cli: 'saba do instance.settings.set --server <server>' }],
+        });
+        render(<CliLine actionId="instance.settings.set" server="mc" />);
+        await act(async () => {});
+        expect(screen.getByText('saba do instance.settings.set --server mc')).toBeInTheDocument();
+        expect(window.api.actionsList).toHaveBeenCalledTimes(2);
+    });
 });
 
 describe('명령 화면의 CLI 줄', () => {

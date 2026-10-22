@@ -628,7 +628,9 @@ pub async fn save_extension_config(
     if mgr.discovered(&ext_id).is_none() {
         return Err(extension_err_response(&ExtensionError::not_found(&ext_id).into()));
     }
-    mgr.set_extension_config(&ext_id, values);
+    if let Err(e) = mgr.set_extension_config(&ext_id, values) {
+        return Err(extension_err_response(&e));
+    }
     let updated = mgr.get_extension_config(&ext_id);
     Ok(Json(json!({ "success": true, "config": updated })))
 }

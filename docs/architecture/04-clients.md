@@ -28,7 +28,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | **Daemon spawn** | `start_daemon()` `lifecycle.rs:158-218` | debug는 `target/release`(없으면 `target/debug`)의 `saba-core(.exe)`, 배포는 설치 루트의 것을 `--spawned`로 띄운다(`daemon_path` `:129-138`). cwd는 설치 루트, env는 `RUST_LOG=info, SABA_LANG, SABA_IPC_PORT, SABA_INSTANCES_PATH=<data>/instances, SABA_MODULES_PATH`(`constants::resolve_modules_dir()`). stdout/stderr는 GUI 로그로 넘긴다(`pipe_log` `:247-265`) |
 | 분리 실행 | `detach()` `lifecycle.rs:222-244`, `:188-200` | Windows는 `CREATE_NO_WINDOW`·`CREATE_NEW_PROCESS_GROUP`·`CREATE_BREAKAWAY_FROM_JOB`로 띄운다. GUI를 띄운 쪽의 job이 breakaway를 막아 spawn이 거부되면 breakaway 없이 다시 띄운다. 그때는 GUI 로그에 경고를 남긴다. `daemon_status`의 `in_parent_job`이 true면 상단 바가 경고한다(`ParentJobNotice`: 코어를 띄운 프로그램이 꺼지면 데몬도 꺼질 수 있으니 시작 메뉴에서 다시 열라는 안내). 값은 데몬 `/health`의 `stops_with_launcher`(CLI가 job 안에서 띄운 데몬도 포함)이고, 그 키가 없는 옛 데몬이면 이 GUI가 breakaway 없이 띄운 데몬이 살아 있는지다. Unix는 `process_group(0)` |
 | Daemon 재사용/기동 판단 | `ensure_daemon()` `lifecycle.rs:389-436` | `GET /health`가 200이면 기존 daemon을 재사용한다. 응답의 `token`이 `valid`가 아니거나(A6) 예전 데몬이 401을 주면 토큰을 다시 읽으며 최대 3회 확인한다(`reload_token_until_valid` `:345-361`). ECONNREFUSED/ETIMEDOUT이면 `start_daemon()` 뒤 500ms 간격으로 최대 20회(10초) 폴링한다(`wait_for_new_daemon` `:370-386`) |
-| Daemon 종료 | `stop_daemon()` `lifecycle.rs:311-338`, `force_kill()` `:292-307` | 먼저 `POST /api/daemon/shutdown`을 보내고 최대 15초 기다린다. 그래도 안 끝나면 **이 GUI가 띄운 PID만** 강제 종료한다(Windows `taskkill /PID … /F`, `/T` 없음. Unix `Child::kill`(SIGKILL)). 이름 기반 kill은 하지 않는다(`:309-310` 주석) |
+| Daemon 종료 | `stop_daemon()` `lifecycle.rs:311-338`, `force_kill()` `:292-307` | 먼저 `POST /api/daemon/shutdown`을 보내고 최대 40초 기다린다(데몬 종료 hook 한도 30초보다 길게). 그래도 안 끝나면 **이 GUI가 띄운 PID만** 강제 종료한다(Windows `taskkill /PID … /F`, `/T` 없음. Unix `Child::kill`(SIGKILL)). 이름 기반 kill은 하지 않는다(`:309-310` 주석) |
 | 클라이언트 등록/heartbeat | `lifecycle.rs:454-522` | `POST /api/client/register {kind:'gui', pid, installRoot}`(인스톨러가 이 설치의 GUI를 찾는 데 쓴다), 이후 30초마다 `POST /api/client/:id/heartbeat`. 404나 연결 거부면 다시 등록하고, 처음 등록이 실패해 id가 없으면 주기마다 등록을 다시 시도한다. 종료 시 `DELETE /api/client/:id/unregister[?shutdown=true]` |
 | install_root 동기화 | `sync_install_root()` `lifecycle.rs:439-450` | `PUT /api/updates/config {install_root}` |
 | 백그라운드 초기화 | `app_ready()` `lifecycle.rs:64-75`, `:77-116` | 렌더러가 리스너를 단 뒤 `app_ready`를 부르면 처음 한 번 `ensure_daemon` → 등록·heartbeat·이벤트·업데이트 확인을 시작하고 `status:update` `ready`를 보낸다. 데몬이 뜨지 않으면 `daemon_failed`만 보내고 멈춘다. `--after-update`면 첫 ready 뒤 `updates:completed` |
@@ -52,7 +52,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 ### 1.2 window.api 전수표 (`src/api/createApi.js` → daemon endpoint)
 
-`window.api.*`는 `createApi.js:103-1083`, `window.electron.*`는 `:1085-1097`에 있다. 데몬 호출은 모두 `daemon_request` 명령(§1.1)을 거친다. 네이티브 작업은 Rust 명령 이름을 적었다(계약 §2, `native.rs`). "라우트 존재"는 `src/ipc/mod.rs`와 `updates.rs` 기준으로 대조했다(숫자는 줄). `tests/api_contract.rs`가 `createApi.js`를 읽어 GUI가 부르는 경로가 데몬 라우트에 있는지 검사한다(`:60-69`). "미사용"은 renderer(`src/`, 테스트 제외)가 부르지 않는다는 뜻이다.
+`window.api.*`는 `createApi.js:117-1152`, `window.electron.*`는 `:1153-1167`에 있다. 표의 줄 번호는 작성 당시 기준이라 어긋날 수 있다(함수 이름으로 찾는다). 데몬 호출은 모두 `daemon_request` 명령(§1.1)을 거친다. 네이티브 작업은 Rust 명령 이름을 적었다(계약 §2, `native.rs`). "라우트 존재"는 `src/ipc/mod.rs`와 `updates.rs` 기준으로 대조했다(숫자는 줄). `tests/api_contract.rs`가 `createApi.js`를 읽어 GUI가 부르는 경로가 데몬 라우트에 있는지 검사한다(`:60-69`). "미사용"은 renderer(`src/`, 테스트 제외)가 부르지 않는다는 뜻이다.
 
 | window.api 함수 (createApi.js 줄) | 호출 대상 | 라우트 존재 |
 |---|---|---|
@@ -64,7 +64,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | moduleRefresh (192) | POST /api/modules/refresh | ✓ 652 |
 | moduleGetMetadata (212) | GET /api/module/:name | ✓ 659 |
 | moduleAudit (225) | GET /api/module/:name/audit (위험 능력과 `[permissions]` 선언 비교) | ✓ 660 |
-| instanceEvents (233) | GET /api/instance/:id/events (최근 종료 이력) | ✓ 647 (미사용) |
+| instanceEvents (233) | GET /api/instance/:id/events (최근 종료 이력) | ✓ 647 |
 | moduleGetLocales (240) | GET /api/module/:name/locales | ✓ 712 |
 | moduleListVersions (248) | GET /api/module/:name/versions?… | ✓ 695 |
 | moduleInstallServer (260) | POST /api/module/:name/install | ✓ 697 |
@@ -83,12 +83,12 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceLaunchPreview (452) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
 | instanceResetServer (457) | POST /api/instance/:id/server/reset | ✓ 686 |
 | executeCommand (465) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
-| instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(둘 다 70분 timeout: 데몬이 stop_timeout까지 기다린 뒤 답한다, L74), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 (미사용) |
+| instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(둘 다 70분 timeout: 데몬이 stop_timeout까지 기다린 뒤 답한다, L74), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 |
 | instanceValidate / instanceDiagnose | POST /api/instance/:id/validate · /diagnose `{}` (60초 timeout). 모듈 결과 `{success, issues:[{code, severity, message, solution}]}`를 그대로 돌려준다(서버 상세 `ServerCheck`) | ✓ 717, 724 |
-| instanceReadLiveSettings (500) | GET /api/instance/:id/settings/live | ✓ 685 (미사용) |
-| runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 (미사용) |
+| instanceReadLiveSettings (500) | GET /api/instance/:id/settings/live | ✓ 685 |
+| runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 |
 | systemMetrics (503) | GET /api/system/metrics[?sizes=false] | ✓ 715 (`SystemMonitor`) |
-| configDefaults / configReset (505-507) | GET /api/config/:kind/defaults, POST /api/config/:kind/reset {keys?} | ✓ 704-705 (미사용) |
+| configDefaults / configReset (505-507) | GET /api/config/:kind/defaults, POST /api/config/:kind/reset {keys?} | ✓ 704-705 (configDefaults 미사용) |
 | extensionList…extensionInitStatus (510-630) | /api/extensions, /:id/enable, /disable, /audit, /i18n/:locale, /gui, /gui/styles(`responseType:'text'`), /icon(`responseType:'base64'`), /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 754-771 (확장 UI 로딩은 03 §4.1). `gui_allowed:false`면 번들·스타일을 요청하지 않고 사용자에게 한 번 묻는다(`ExtensionContext`). `/gui`가 403 `extension_gui_unapproved`면 `extensionGuiBundle`은 `{error_code:'extension_gui_unapproved'}`를 돌려주고 다시 묻는다 |
 | extensionConfigGet / extensionConfigSet | GET /api/extensions/:id/config(`{config}`) · PUT 같은 경로에 값 객체 그대로(키 단위 병합, null이면 삭제). 실패하면 데몬 본문을 그대로 돌려준다(설정 > 익스텐션 `ExtensionConfigForm`) | ✓ 807 |
 | managedConsole (634) | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 679 |
@@ -102,7 +102,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | updaterDownloadProgress (705) | GET /api/updates/download/progress | ✓ 103 |
 | updaterApply (707) | POST /api/updates/apply `{components}` (빈 배열이면 전부) | ✓ 104 |
 | updaterLaunchApply (725) | Rust `updater_launch_apply` → POST /api/updates/launch-updater {relaunch:[current_exe]}. 업데이터는 데몬이 띄운다 | ✓ 105 |
-| updaterLastResult (727) | GET/DELETE /api/updates/last-result (GET은 `?lang=`, 언어는 `language_get`) | ✓ 106 (미사용) |
+| updaterLastResult (727) | GET/DELETE /api/updates/last-result (GET은 `?lang=`, 언어는 `language_get`) | ✓ 106 |
 | updaterGetConfig (737) | GET /api/updates/config | ✓ 108 |
 | updaterSetConfig (738) | PUT /api/updates/config | ✓ 109 |
 | settingsLoad (747) | GET /api/config/gui. 데몬이 응답하지 않을 때만 Rust `settings_local_load`(config.json `gui` 직접 읽기) | ✓ 702 |
@@ -112,7 +112,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | migrationScanDir (782) | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 655 |
 | discordBotStatus / Start / Stop (793-816) | GET /api/relay/agent, POST /api/relay/agent/start·stop. Status는 `running`·`stopped`, 다른 PC가 같은 계정으로 페어링해 멈췄으면(`lastErrorCode: token_replaced`) `replaced`(연결 화면에 다시 페어링 안내), 저장된 릴레이 주소가 거절돼 멈췄으면(`lastErrorCode: invalid_relay_url`) `invalid_relay_url`(연결 화면에 주소 형식 안내), 릴레이가 앱 버전을 거절하면(`lastErrorCode: agent_too_old`) `{status: 'too_old', running, minVersion}`(연결 화면에 `discord.agent_too_old` 안내와 업데이트 화면을 여는 버튼, '실행 중'으로 보이지 않음). 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found`, Start가 409 `invalid_relay_url`이면 `{error: 'invalid_relay_url'}`(`discord.invalid_relay_url` 문구) | ✓ 787-789 |
 | botConfigLoad (817) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
-| botConfigSave (826) | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
+| botConfigSave (826) | PUT /api/config/bot(최상위 키 단위 병합). 데몬 본문을 그대로 돌려준다: 권한 키라 저장하지 않은 경로는 `ignored`로 오고 화면이 알린다(CLI와 같다). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (835-853) | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
 | auditList (855) | GET /api/audit?limit&instance (A10). `{entries}` 최신이 먼저 | ✓ 640 |
 | permissionsGet (860) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
@@ -140,13 +140,13 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceAgreements (956) | POST /api/instance/:id/agreements `{accept:[id]}` (모듈 약관 동의) | ✓ 687 |
 | onboarding (957) | GET /api/onboarding (J1-a 다음 할 일) | ✓ 639 |
 | daemonDiagnostics | GET /api/diagnostics(버전·pid·데이터 폴더·토큰 파일 유무·최근 경고). 실패하면 `{success:false, error}`(설정 > 고급 `DiagnosticsPanel`) | ✓ 674 |
-| instanceBackups…instanceScheduleSave (958-970) | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 690-693 (미사용) |
-| chatbotGet/Save/Clear/ClearMemory (971-975) | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 793-794 (미사용) |
+| instanceBackups…instanceScheduleSave (958-970) | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 690-693 |
+| chatbotGet/Save/Clear/ClearMemory (971-975) | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 793-794 (chatbotClear 미사용) |
 | chatbotModels | GET /api/relay/node/:guildId/chatbot/models (릴레이 답 그대로: `{models, selected, effectiveModel}`, 409 NO_API_KEY·422·503) | ✓ 챗봇 화면 모델 드롭다운. 고른 모델을 대신 쓰는 중이면(`effectiveModel`≠`model`) 알리고 그 모델을 고른 상태로 둔다 |
 | relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 782-783 |
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | shellOpenPath (997) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
-| logsGetPath / logsOpenFolder (1001-1002) | Rust `logs_get_path` / `logs_open_folder` | n/a (미사용) |
+| logsGetPath / logsOpenFolder (1001-1002) | Rust `logs_get_path` / `logs_open_folder` | n/a (logsGetPath 미사용) |
 | launchUninstaller (1003) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
 | getAppVersion (1004) | Rust `app_get_version` (패키지 버전) | n/a |
 | getComponentInfo (1005) | GET /api/system/components (실패하면 `app_get_version`만) | ✓ 714 |
@@ -160,7 +160,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 셸에서 renderer로 가는 push 이벤트는 Tauri 이벤트로, 메인 창(라벨 `main`)에만 보낸다(`emit_main` `lib.rs:60-64`). 팝아웃 창의 브리지는 구독하지 않는다(`install.js:19-21`). 브리지는 모듈을 읽을 때 8개 채널을 한 번 구독한 뒤(`events.js:5-14, 63-65`) `app_ready`를 부른다(`install.js:23-32`). 렌더러를 새로고침하면 `app_ready`가 다시 와서 셸이 마지막 `status:update`를 다시 보낸다(`lifecycle.rs:66-71`). 채널: `status:update`(로딩 단계 `{step, message, ts}`. `message`는 `common.json`의 `daemon.*`·`init.*`로 번역된다. 데몬이 10초 안에 응답하지 않으면 `step:'daemon_failed'`를 보내고 `ready`는 보내지 않는다. 그 뒤 `daemon_restart`가 성공하면 멈춘 초기화를 이어서 끝내고 `ready`를 보낸다. 실패하면 `{success:false, error}`), `events:message`, `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
 
-**renderer(src/, 테스트 제외)에서 쓰지 않는 window.api**: 위 표의 "미사용" 항목(`instanceEvents`, `instanceStop/Restart/Rename/Commands`, `instanceReadLiveSettings`, `runtimePreflight`, `configDefaults/Reset`, `updaterLastResult`, 백업·예약 6개, `chatbot*` 4개, `logsGetPath`, `logsOpenFolder`)과 `loadNodeToken`, `deleteNodeToken`, `relayBotInvite`. 반대로 **GUI가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
+**renderer(src/, 테스트 제외)에서 쓰지 않는 window.api**: `configDefaults`, `chatbotClear`, `logsGetPath`, `loadNodeToken`(2026-10-22 renderer 대조). 나머지 표 항목은 모두 화면에서 부른다. 반대로 **GUI가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
 
 ### 1.3 GUI가 읽고 쓰는 설정 파일
 
@@ -358,7 +358,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | G5 | logging.rs:10-45 | FS-W | 로그 디렉터리 생성과 로그 파일 쓰기 | GUI 자체 로그 |
 | G6 | i18n.rs:50-62 | FS-R | `locales/<lang>/common.json` 직접 읽기(없으면 exe 내장본) | |
 | G7 | lifecycle.rs:158-244, 389-436 | PROC | **saba-core spawn** (`--spawned`, env 주입). 콘솔 창 없이 분리해 띄운다(Windows `CREATE_NO_WINDOW`·`CREATE_NEW_PROCESS_GROUP`·`CREATE_BREAKAWAY_FROM_JOB`, job이 막으면 breakaway 없이 다시, Unix `process_group(0)`). 로그는 GUI가 사는 동안 파이프로 받는다. 인터페이스만 종료하면(`interface_only_quit` `:630-644`) 자식 핸들만 놓아 데몬이 남는다. GUI가 죽거나 강제 종료돼도 데몬은 남고, 다음 GUI 실행 때 `ensure_daemon`이 `/health`로 떠 있는 데몬을 찾아 다시 붙는다. 데몬을 끄는 것은 전체 종료(`clean_quit`, G8)뿐이다 | 불가피(daemon 부재 시 부트스트랩) |
-| G8 | lifecycle.rs:292-338 | PROC | daemon 종료: `POST /api/daemon/shutdown` 후 15초 안에 안 끝나면 **자기 PID만** kill(`taskkill /PID /F`, SIGKILL) | API 우선, kill은 대비책 |
+| G8 | lifecycle.rs:292-338 | PROC | daemon 종료: `POST /api/daemon/shutdown` 후 40초 안에 안 끝나면 **자기 PID만** kill(`taskkill /PID /F`, SIGKILL) | API 우선, kill은 대비책 |
 | G9 | — | — | ~~cleanQuit의 이름 기반 `taskkill /IM saba-core.exe`·`pkill -f saba-core`~~ → 해결: `clean_quit`(`lifecycle.rs:647-674`)은 unregister(shutdown=true) 후 `stop_daemon()`만 부르고, 이름 기반 kill은 없다(`:309-310` 주석) | |
 | G10 | lifecycle.rs:592-618 | PROC | `daemon_restart`: `stop_daemon()`(API 우선) 후 `start_daemon()`으로 직접 spawn | 재기동 API가 없다 |
 | G11 | tray.rs:447-459 | PROC | 트레이 메뉴: "데몬 종료"는 `stop_daemon()`, "데몬 시작"은 `start_daemon()` 직접 호출 | |

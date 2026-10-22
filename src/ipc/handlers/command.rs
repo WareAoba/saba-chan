@@ -596,12 +596,19 @@ pub async fn execute_rest_command(
         .or_else(|| instance.rest_host.clone())
         .unwrap_or(default_rest_host);
 
-    let rest_port = payload
-        .get("rest_port")
-        .and_then(|v| v.as_u64())
-        .map(|p| p as u16)
-        .or(instance.rest_port)
-        .unwrap_or(default_rest_port);
+    let rest_port = match payload_rest_port(&payload) {
+        Ok(port) => port.or(instance.rest_port).unwrap_or(default_rest_port),
+        Err(given) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("rest_port out of range: {}", given),
+                    "error_code": "invalid_port"
+                })),
+            )
+                .into_response();
+        }
+    };
 
     let use_https = payload
         .get("use_https")
@@ -699,6 +706,19 @@ pub async fn execute_rest_command(
     }
 }
 
+/// 요청이 준 `rest_port`. 숫자가 아니면 없는 것으로 보고, 1~65535 밖의 숫자는 `Err`(받은 값)로 돌려준다
+fn payload_rest_port(payload: &Value) -> Result<Option<u16>, String> {
+    match payload.get("rest_port") {
+        Some(v) if v.is_number() => v
+            .as_u64()
+            .and_then(|p| u16::try_from(p).ok())
+            .filter(|p| *p != 0)
+            .map(Some)
+            .ok_or_else(|| v.to_string()),
+        _ => Ok(None),
+    }
+}
+
 /// REST 요청 실패의 응답 본문. 게임 서버가 401·403으로 거절하면(관리자 비밀번호가 다름) `auth_failed`로 나눠
 /// `/command`가 모듈의 `errors.auth_failed` 문구를 붙이게 한다 (데몬 토큰 실패와 섞이지 않게 HTTP 상태는 500 그대로)
 fn rest_execute_failure(e: &crate::protocol::ProtocolError) -> Value {
@@ -743,6 +763,17 @@ async fn instance_credentials(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 요청이 준 REST 포트는 자르지 않는다: 범위 밖이면 다른 포트로 보내지 않고 거절한다
+    #[test]
+    fn a_rest_port_out_of_range_is_rejected_not_truncated() {
+        assert_eq!(payload_rest_port(&json!({})), Ok(None));
+        assert_eq!(payload_rest_port(&json!({ "rest_port": 8212 })), Ok(Some(8212)));
+        assert_eq!(payload_rest_port(&json!({ "rest_port": 65535 })), Ok(Some(65535)));
+        assert!(payload_rest_port(&json!({ "rest_port": 70000 })).is_err());
+        assert!(payload_rest_port(&json!({ "rest_port": 0 })).is_err());
+        assert!(payload_rest_port(&json!({ "rest_port": -1 })).is_err());
+    }
 
     /// 팰월드 관리자 비밀번호가 틀려 REST가 401로 거절되면 일반 "내부 오류" 대신 모듈의 인증 실패 문구가 붙는다
     #[tokio::test]
