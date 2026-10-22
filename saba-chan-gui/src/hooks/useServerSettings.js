@@ -4,6 +4,7 @@ import { launchDraft } from '../components/servers/LaunchPreview';
 import {
     busyMessage,
     createTranslateError,
+    installFailureText,
     installedExecutable,
     moduleSupports,
     safeShowToast,
@@ -376,9 +377,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 setProgressBar(null);
                                 safeShowToast(
                                     busyMessage(t, installResult.error_code, 'install_server_running') ||
-                                        translateError(installResult.error || installResult.message),
+                                        installFailureText(t, installResult, translateError),
                                     'error',
-                                    4000,
+                                    8000,
                                 );
                                 setVersionInstalling(false);
                                 return;

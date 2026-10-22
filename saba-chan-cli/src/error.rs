@@ -83,9 +83,15 @@ impl CliError {
                 Some(t!("err.did_you_mean", names = suggestions.join(", ")))
             }
             CliError::Ambiguous { candidates, .. } => Some(t!("err.ambiguous_hint", names = candidates.join(", "))),
-            CliError::Api {
-                code: Some(code), body, ..
-            } => api_hint(code, body),
+            CliError::Api { code, body, .. } => {
+                let hints: Vec<String> = code
+                    .as_deref()
+                    .and_then(|c| api_hint(c, body))
+                    .into_iter()
+                    .chain(kept_backups(body))
+                    .collect();
+                (!hints.is_empty()).then(|| hints.join("\n  "))
+            }
             _ => None,
         }
     }
@@ -108,6 +114,17 @@ impl CliError {
         }
         v
     }
+}
+
+/// 실패한 설치가 되돌리지 못한 파일과 남긴 사본 (`restore_failed`·`kept_backups`는 같은 순서, 오류 코드와 상관없이 온다)
+fn kept_backups(body: &Value) -> Option<String> {
+    let names = |key: &str| body.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let pairs: Vec<String> = names("restore_failed")
+        .iter()
+        .zip(names("kept_backups").iter())
+        .filter_map(|(f, b)| Some(format!("{} → {}", f.as_str()?, b.as_str()?)))
+        .collect();
+    (!pairs.is_empty()).then(|| t!("err.hint.kept_backups", files = pairs.join(", ")))
 }
 
 /// 데몬 오류 코드별 안내. 새 코드는 여기 한 줄.
@@ -172,6 +189,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "backup_unsupported" => Some(t!("err.hint.backup_unsupported")),
         "nothing_to_back_up" => Some(t!("err.hint.nothing_to_back_up")),
         "backup_busy" => Some(t!("err.hint.backup_busy")),
+        // 설치 전 실행 파일 백업을 못 해 모듈을 부르지 않았다 (`file`: 그 파일 이름. 백업 만들기의 backup_failed에는 없다)
+        "backup_failed" => body.get("file").and_then(Value::as_str).map(|f| t!("err.hint.install_backup_failed", file = f)),
         "no_command_path" => Some(t!("err.hint.no_command_path")),
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
         "agent_too_old" => Some(t!("err.hint.agent_too_old")),
@@ -295,6 +314,22 @@ mod tests {
         }
         let api = CliError::Api { status: 409, code: Some("backup_busy".into()), message: String::new(), body: json!({}) };
         assert_eq!(api.exit_code(), 1);
+    }
+
+    /// 설치 전 백업을 못 해 설치하지 않았으면 어느 파일인지, 되돌리지 못한 파일은 남긴 사본 이름을 알린다 (데몬 #533)
+    #[test]
+    fn a_failed_install_names_the_file_it_could_not_back_up_or_put_back() {
+        crate::i18n::init("en");
+        let hint = api_hint("backup_failed", &json!({ "file": "PalServer" })).unwrap();
+        assert!(hint.contains("PalServer") && !hint.contains("err.hint"), "{}", hint);
+        assert_eq!(api_hint("backup_failed", &json!({})), None, "a backup that failed for other reasons has no file");
+
+        let body = json!({ "success": false, "restore_failed": ["PalServer", "java"], "kept_backups": ["PalServer.1.bak", "java.bak"] });
+        let api = |code: Option<&str>| CliError::Api { status: 422, code: code.map(str::to_string), message: String::new(), body: body.clone() };
+        for e in [api(None), api(Some("download_failed"))] {
+            let hint = e.hint().unwrap_or_default();
+            assert!(hint.contains("PalServer → PalServer.1.bak") && hint.contains("java → java.bak"), "{}", hint);
+        }
     }
 
     #[test]

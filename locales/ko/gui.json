@@ -325,7 +325,9 @@
     "install_settings_failed": "버전은 설치했지만 설정을 저장하지 못했어요: {{error}}",
     "restart_required": "{{name}} 설정을 저장했어요. {{fields}}은(는) 서버를 다시 시작해야 적용돼요.",
     "restart_now": "지금 다시 시작",
-    "restart_later": "나중에"
+    "restart_later": "나중에",
+    "install_backup_failed": "설치 전에 {{file}}을(를) 백업하지 못해 설치하지 않았어요. 디스크 공간과 같은 폴더의 .bak 파일을 확인해 주세요.",
+    "install_kept_backups": "되돌리지 못한 파일은 설치 전 사본을 남겨 뒀어요: {{files}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 봇 시작 실패: {{error}}",
@@ -1041,7 +1043,9 @@
     "backup_keep_hint": "개까지 남기고 오래된 것부터 지웁니다",
     "err_every": "주기는 1분 이상 정수로 적어 주세요.",
     "err_at": "시각은 HH:MM 형식이어야 해요.",
-    "err_message": "공지 내용을 적어 주세요."
+    "err_message": "공지 내용을 적어 주세요.",
+    "backup_unreadable": "⚠ 열 수 없음",
+    "backup_unreadable_hint": "열 수 없는 백업이에요. 복원할 수 없고, 지울 때까지 쓰지 않는 백업 내용이 정리되지 않아요. 지워 주세요."
   },
   "chatbot": {
     "nav": "말하는 사바쨩",

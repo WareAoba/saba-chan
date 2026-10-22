@@ -325,7 +325,9 @@
     "install_settings_failed": "Die Version wurde installiert, aber die Einstellungen konnten nicht gespeichert werden: {{error}}",
     "restart_required": "Die Einstellungen für {{name}} wurden gespeichert. Starte den Server neu, damit {{fields}} wirksam wird.",
     "restart_now": "Jetzt neu starten",
-    "restart_later": "Später"
+    "restart_later": "Später",
+    "install_backup_failed": "{{file}} konnte vor der Installation nicht gesichert werden, daher wurde nichts installiert. Prüfe den freien Speicherplatz und die .bak-Dateien in diesem Ordner.",
+    "install_kept_backups": "Dateien, die nicht zurückgesetzt werden konnten, wurden als Kopie vor der Installation behalten: {{files}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord-Bot-Start fehlgeschlagen: {{error}}",
@@ -1041,7 +1043,9 @@
     "backup_keep_hint": "ältere werden zuerst gelöscht",
     "err_every": "Gib eine ganze Zahl von mindestens 1 Minute ein.",
     "err_at": "Die Uhrzeit muss im Format HH:MM sein.",
-    "err_message": "Gib eine Nachricht für die Ankündigung ein."
+    "err_message": "Gib eine Nachricht für die Ankündigung ein.",
+    "backup_unreadable": "⚠ kann nicht geöffnet werden",
+    "backup_unreadable_hint": "Dieses Backup kann nicht geöffnet werden. Es lässt sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Bitte lösche es."
   },
   "chatbot": {
     "nav": "Sprechende Saba-chan",
