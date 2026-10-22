@@ -321,6 +321,7 @@
     "install_server_running": "請先停止伺服器再安裝版本",
     "reset_server_running": "請先停止伺服器再重設",
     "instance_busy": "此伺服器上正在進行其他工作（備份或還原）。完成後請再試一次",
+    "settings_changed": "開啟此視窗後，此伺服器的設定已在其他地方被變更。請關閉並重新開啟視窗查看新值，然後再儲存。",
     "extension_required_for_install": "缺少必要的擴充功能：{{extensions}}。請先在 Saba 儲存中安裝。",
     "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}",
     "restart_required": "已儲存 {{name}} 的設定。{{fields}} 需要重新啟動伺服器才會生效。",

@@ -321,6 +321,7 @@
     "install_server_running": "켜져 있는 서버에는 버전을 설치할 수 없어요. 먼저 정지해 주세요",
     "reset_server_running": "켜져 있는 서버는 초기화할 수 없어요. 먼저 정지해 주세요",
     "instance_busy": "이 서버에서 다른 작업(백업이나 복원)이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요",
+    "settings_changed": "창을 연 뒤 다른 곳에서 이 서버 설정이 바뀌었어요. 창을 닫고 다시 열어 바뀐 값을 확인한 뒤 저장해 주세요.",
     "extension_required_for_install": "필요한 익스텐션이 없어요: {{extensions}}. 먼저 사바 스토리지에서 설치하세요.",
     "install_settings_failed": "버전은 설치했지만 설정을 저장하지 못했어요: {{error}}",
     "restart_required": "{{name}} 설정을 저장했어요. {{fields}}은(는) 서버를 다시 시작해야 적용돼요.",

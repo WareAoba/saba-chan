@@ -366,6 +366,31 @@ pub fn get_path<'v>(root: &'v Value, path: &str) -> Option<&'v Value> {
 }
 
 /// 중첩 객체를 `a.b = 값` 줄로 펼친다
+/// 고친 경로만 담은 merge patch (null은 그 키를 지운다). 읽은 때의 revision을 실어, 그사이 다른 곳이 바꿨으면
+/// 데몬이 409 `settings_changed`로 거절한다
+pub fn config_patch(cfg: &Value, changes: Vec<(String, Value)>) -> Value {
+    let mut patch = Map::new();
+    if let Some(revision) = cfg.get("revision") {
+        patch.insert("revision".into(), revision.clone());
+    }
+    for (key, value) in changes {
+        let mut cur = &mut patch;
+        let mut parts = key.split('.').peekable();
+        while let Some(part) = parts.next() {
+            if parts.peek().is_none() {
+                cur.insert(part.to_string(), value);
+                break;
+            }
+            let next = cur.entry(part.to_string()).or_insert_with(|| Value::Object(Map::new()));
+            if !next.is_object() {
+                *next = Value::Object(Map::new());
+            }
+            cur = next.as_object_mut().expect("object");
+        }
+    }
+    Value::Object(patch)
+}
+
 pub fn flatten(v: &Value, prefix: &str, out: &mut Vec<(String, Value)>) {
     match v {
         Value::Object(map) if !map.is_empty() => {

@@ -82,6 +82,7 @@ features = ["full"]
 mock-relay = ["saba-chan-updater-lib/mock-relay"]
 
 [dev-dependencies]
+proptest = "1"
 regex-lite = "0.1"
 saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
 

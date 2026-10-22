@@ -321,6 +321,7 @@
     "install_server_running": "Arrêtez le serveur avant d'installer une version",
     "reset_server_running": "Arrêtez le serveur avant de le réinitialiser",
     "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours sur ce serveur. Réessayez quand elle sera terminée",
+    "settings_changed": "Les paramètres de ce serveur ont été modifiés ailleurs après l'ouverture de cette fenêtre. Fermez-la et rouvrez-la pour voir les nouvelles valeurs, puis enregistrez à nouveau.",
     "extension_required_for_install": "Extension(s) requise(s) manquante(s) : {{extensions}}. Installez-les d'abord depuis Saba Storage.",
     "install_settings_failed": "La version a été installée, mais l'enregistrement des paramètres a échoué : {{error}}",
     "restart_required": "Les paramètres de {{name}} ont été enregistrés. Redémarrez le serveur pour appliquer {{fields}}.",

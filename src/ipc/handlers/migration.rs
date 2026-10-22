@@ -126,12 +126,12 @@ pub(crate) fn read_bundle(path: &Path) -> anyhow::Result<Bundle> {
     Ok(Bundle { meta, config, instances, node_token })
 }
 
-/// 릴레이 연결 정보(`relay.cloud`의 relayUrl·hostId, 노드 캐시)는 노드 토큰과 한 묶음이다.
+/// 릴레이 연결 정보(`relay.cloud`의 relayUrl·hostId, 노드 캐시, 길드 설정 `nodeSettings`)는 노드 토큰과 한 묶음이다.
 /// 토큰을 가져오지 않을 때는 이 PC 것을 둔다: 이 PC 토큰에 옛 PC hostId가 붙거나, 낯선 zip이
 /// relayUrl을 바꿔 이 PC 토큰을 다른 곳으로 보내지 않게
 pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
     if let Some(Value::Object(relay)) = sections.get_mut("relay") {
-        for key in ["cloud", "cloudNodes", "cloudMembers"] {
+        for key in ["cloud", "cloudNodes", "cloudMembers", "nodeSettings"] {
             relay.remove(key);
         }
     }
@@ -604,8 +604,9 @@ mod tests {
         let mut sections = Map::new();
         sections.insert(
             "relay".into(),
-            json!({ "prefix": "!s", "cloud": { "hostId": "old", "relayUrl": "https://x" }, "cloudNodes": [1], "cloudMembers": {} }),
+            json!({ "prefix": "!s", "cloud": { "hostId": "old", "relayUrl": "https://x" }, "cloudNodes": [1], "cloudMembers": {}, "nodeSettings": { "g": { "members": {} } } }),
         );
+        // 길드 설정(금지 멤버·주인·허용 서버·명령 레벨)도 그 페어링의 것이다 (EE8)
         keep_local_pairing(&mut sections);
         assert_eq!(sections["relay"], json!({ "prefix": "!s" }));
     }

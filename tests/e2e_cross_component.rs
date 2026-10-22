@@ -460,12 +460,15 @@ async fn e2e_config_roundtrip() {
 async fn e2e_launch_preview_binds_typed_args_and_saves_extra_args() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = reqwest::Client::new();
+    let name = format!("preview-{}", pick_free_port());
     let created: Value = client
         .post(format!("{}/api/instances", base_url))
-        .json(&json!({ "name": format!("preview-{}", pick_free_port()), "module_name": "e2e-mock" }))
+        .json(&json!({ "name": name, "module_name": "e2e-mock" }))
         .send().await.unwrap()
         .json().await.unwrap();
     let id = created["id"].as_str().expect("instance id").to_string();
+    // 설치 중에는 설정 저장이 409 instance_busy다 (작업 잠금)
+    wait_for_provision(&base_url, &client, &name).await;
     let preview = |body: Value| {
         let (client, url) = (client.clone(), format!("{}/api/instance/{}/launch-preview", base_url, id));
         async move { client.post(url).json(&body).send().await.unwrap().json::<Value>().await.unwrap() }

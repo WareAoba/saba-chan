@@ -94,6 +94,16 @@ pub fn install_method_key(method: &str) -> String {
 }
 
 impl ServerInstance {
+    /// 설정 저장의 revision: 인스턴스 기록의 지문 (일정·백업 보관 수는 일정 API의 revision이 따로 본다)
+    pub fn settings_revision(&self) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Some(map) = value.as_object_mut() {
+            map.remove("schedule");
+            map.remove("backup_keep");
+        }
+        crate::config_store::patch::revision(&value)
+    }
+
     pub fn new(name: &str, module_name: &str) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),

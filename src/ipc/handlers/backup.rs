@@ -399,10 +399,7 @@ pub struct ScheduleBody {
 
 /// 일정과 보관 수의 지문. 목록 전체를 다시 보내는 편집이 그사이 바뀐 일정을 덮어쓰지 않게 한다
 fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
-    use sha2::{Digest, Sha256};
-    let value = json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep });
-    let digest = Sha256::digest(value.to_string().as_bytes());
-    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+    crate::config_store::patch::revision(&json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep }))
 }
 
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {

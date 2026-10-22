@@ -79,7 +79,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceApplyUpdate (355) | POST /api/instance/:id/apply-update | ✓ 671 |
 | instanceDelete (363) | DELETE /api/instance/:id | ✓ 665 |
 | instanceReorder (394) | PUT /api/instances/reorder {order} | ✓ 663 |
-| instanceUpdateSettings (408) | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림) | ✓ 665 |
+| instanceUpdateSettings (408) | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림). 설정 창은 연 때의 `ServerInfo.revision`(그 뒤 실제 값 읽기·버전 감지·설치 저장이 준 `revision`이 있으면 그 값)을 싣고, 409 `settings_changed`면 다른 곳에서 바뀌었다고 알린 뒤 목록을 다시 읽는다 | ✓ 665 |
 | instanceLaunchPreview (452) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
 | instanceResetServer (457) | POST /api/instance/:id/server/reset | ✓ 686 |
 | executeCommand (465) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
@@ -112,7 +112,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | migrationScanDir (782) | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 655 |
 | discordBotStatus / Start / Stop (793-816) | GET /api/relay/agent, POST /api/relay/agent/start·stop. Status는 `running`·`stopped`, 다른 PC가 같은 계정으로 페어링해 멈췄으면(`lastErrorCode: token_replaced`) `replaced`(연결 화면에 다시 페어링 안내), 저장된 릴레이 주소가 거절돼 멈췄으면(`lastErrorCode: invalid_relay_url`) `invalid_relay_url`(연결 화면에 주소 형식 안내), 릴레이가 앱 버전을 거절하면(`lastErrorCode: agent_too_old`) `{status: 'too_old', running, minVersion}`(연결 화면에 `discord.agent_too_old` 안내와 업데이트 화면을 여는 버튼, '실행 중'으로 보이지 않음). 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found`, Start가 409 `invalid_relay_url`이면 `{error: 'invalid_relay_url'}`(`discord.invalid_relay_url` 문구) | ✓ 787-789 |
 | botConfigLoad (817) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
-| botConfigSave (826) | PUT /api/config/bot(최상위 키 단위 병합). 데몬 본문을 그대로 돌려준다: 권한 키라 저장하지 않은 경로는 `ignored`로 오고 화면이 알린다(CLI와 같다). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
+| botConfigSave (826) | PATCH /api/config/bot. 디스코드 저장은 마지막으로 저장한 값과 비교한 merge patch(`utils/mergePatch.js` `mergePatchDiff`, 지운 키는 `null`)만 보낸다. 칸마다 자동 저장하므로 `revision`은 싣지 않는다. 데몬 본문을 그대로 돌려준다: 권한 키라 저장하지 않은 경로는 `ignored`로 오고 화면이 알린다(CLI와 같다). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (835-853) | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
 | auditList (855) | GET /api/audit?limit&instance (A10). `{entries}` 최신이 먼저 | ✓ 640 |
 | permissionsGet (860) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
@@ -168,7 +168,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 | 파일 | 경로 | 접근 방식 | 스키마 |
 |---|---|---|---|
-| config.json `gui` | `<dataDir>/config.json` (`settings.rs:12-14`) | 셸 `load_settings()`(`settings.rs:71-84`, 명령 `settings_local_load`)는 **항상 파일을 직접 읽는다**(깨졌으면 `.bak`, `gui`가 아직 없으면 예전 `settings.json`, `:28-39`). 저장은 브리지 `saveSettings()`(`createApi.js:57-74`)와 셸 `save_settings()`(언어·창 크기)가 바꾼 키만 `PUT /api/config/gui`로 보내고(데몬이 잠근 채 최상위 키로 합친다), 데몬이 **응답하지 않을 때만** 지금 로컬 설정에 합쳐 `write_gui_section()`(명령 `settings_local_save`)으로 `gui` 키만 바꾼다. 데몬과 같은 writer(`updater/src/config_file.rs` `ConfigFile::set_section`: tmp→fsync→rename, 직전 정상본은 `.bak`, 깨진 파일은 `.corrupt-<시각>`)를 쓴다 | 기본값(`settings.rs:53-68`): `autoRefresh, refreshInterval(2000), windowBounds{width,height,x,y}, language, ipcPort(57474), consoleBufferSize(2000), autoGeneratePasswords, portConflictCheck`. renderer가 추가로 저장하는 키(useSettingsStore.js:120-140): `accentColor, accentSecondary, useGradient, fontScale, enableTransitions, consoleSyntaxHighlight, consoleBgColor, consoleTextColor, sidebarCompact, consoleFontScale` |
+| config.json `gui` | `<dataDir>/config.json` (`settings.rs:12-14`) | 셸 `load_settings()`(`settings.rs:71-84`, 명령 `settings_local_load`)는 **항상 파일을 직접 읽는다**(깨졌으면 `.bak`, `gui`가 아직 없으면 예전 `settings.json`, `:28-39`). 저장은 브리지 `saveSettings()`(`createApi.js:57-74`, `PATCH`)와 셸 `save_settings()`(언어·창 크기, `PUT`)가 바꾼 키만 `/api/config/gui`로 보내고(데몬이 잠근 채 합친다), 데몬이 **응답하지 않을 때만** 지금 로컬 설정에 합쳐 `write_gui_section()`(명령 `settings_local_save`)으로 `gui` 키만 바꾼다. 데몬과 같은 writer(`updater/src/config_file.rs` `ConfigFile::set_section`: tmp→fsync→rename, 직전 정상본은 `.bak`, 깨진 파일은 `.corrupt-<시각>`)를 쓴다 | 기본값(`settings.rs:53-68`): `autoRefresh, refreshInterval(2000), windowBounds{width,height,x,y}, language, ipcPort(57474), consoleBufferSize(2000), autoGeneratePasswords, portConflictCheck`. renderer가 추가로 저장하는 키(useSettingsStore.js:120-140): `accentColor, accentSecondary, useGradient, fontScale, enableTransitions, consoleSyntaxHighlight, consoleBgColor, consoleTextColor, sidebarCompact, consoleFontScale` |
 | config.json `relay` | daemon이 관리(`/api/config/bot`, `src/config_store/mod.rs:293, 393`) | GUI는 API만 사용 | `prefixes[], cloud{relayUrl,hostId}, moduleAliases·commandAliases·instanceAliases(예전 전역 별명, 시작할 때 nodeSettings[guild].instances로 옮겨져 빈다), nodeSettings, cloudNodes[], cloudMembers{}`. 로컬 봇 필드(`token`, `autoStart`, `mode`, `music*`)는 없다(01 §4 BotConfig) |
 | config.json `chatbot` | daemon이 관리(`/api/chatbot`) | API | 응답에는 API 키 대신 `hasApiKey`만 온다(`src/ipc/handlers/chatbot.rs:1-15`) |
 | node token | `/api/config/node-token` | API | `{token: "sbn_<nodeId>.<secret>"}` |
@@ -260,6 +260,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - `audit [SERVER] [--limit N] [-f]`(A10, 별명 `activity`): `GET /api/audit`를 표로 보여 준다. `-f`는 목록을 읽기 전에 `GET /api/events`에 붙고, 이어서 `action.run`을 한 줄씩 따라간다(서버를 주면 그 서버 것만, `--json`이면 data 한 줄씩). 끊기면 2초 뒤 마지막 번호로 다시 붙는다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
 - `events [--kind EVENT…] [--server S] [--since ID]`: `GET /api/events`를 한 줄씩 흘려보낸다(`--json`이면 `{id, event, data}` 한 줄씩, NDJSON). `--kind instance`는 `instance.exit` 같은 아래 이벤트도 받는다. 서버를 주면 `data.instanceId`를 id와, `instanceId`가 없는 `provision.progress`는 `instance`(인스턴스 이름)를 이름과 비교해 거른다. `resync`는 거르지 않는다(받은 쪽이 목록을 다시 읽는다). 끊기면 2초 뒤 마지막 번호로 다시 붙는다.
 - `do [ACTION] [--server S] [--plan] [KEY=VALUE…]`(P2): 액션 카탈로그. 액션 없이 부르면 `GET /api/actions?surface=cli` 표. 있으면 `plan`을 부르고, `needsConfirm`이면 요약을 보이고 묻은 뒤 `planId`로 `run`한다. `--plan`은 요약만. 값이 JSON으로 읽히면(숫자·참거짓·배열·객체) 그대로 보낸다.
+- `config set KEY=VALUE…`(앱 칸)·`bot config KEY=VALUE…`: 고친 경로만 담은 merge patch(빈 값은 `null`로 지우기)를 읽은 때의 `revision`과 함께 `PATCH /api/config/gui`·`PATCH /api/config/bot`으로 보낸다(`cmd/mod.rs` `config_patch`). 같은 최상위 키 아래 다른 값(다른 길드의 `nodeSettings` 등)을 읽은 때의 값으로 덮지 않고, 그사이 바뀌었으면 409 `settings_changed`로 끝난다. `cli.` 칸은 그대로 `PUT /api/config/client/cli`. 목록 출력에서 `revision`은 뺀다
 - `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 
 사용자 안내서는 `saba-chan-cli/README.md`에 있다.

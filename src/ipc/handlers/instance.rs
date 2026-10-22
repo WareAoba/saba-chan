@@ -61,6 +61,7 @@ pub async fn get_instance(
             // 06 §8.2: 저장된 값 기준으로 지금 숨겨진 설정 (CLI가 쓴다)
             let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
             body["hidden"] = json!(crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k)));
+            body["revision"] = json!(instance.settings_revision());
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
@@ -1112,12 +1113,14 @@ fn port_value(value: &Value) -> Option<u16> {
     .filter(|&p| p > 0)
 }
 
-/// PATCH /api/instance/:id - 인스턴스 설정 업데이트
+/// PATCH /api/instance/:id - 인스턴스 설정 업데이트 (보낸 키만). `revision`(GET에서 받은 값)을 주면
+/// 그사이 다른 곳에서 바뀐 인스턴스에는 쓰지 않고 409 `settings_changed`로 거절한다
 pub async fn update_instance_settings(
     State(state): State<IPCServer>,
     Path(id): Path<String>,
-    Json(settings): Json<serde_json::Value>,
+    Json(mut settings): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    let revision = crate::config_store::patch::take_revision(&mut settings);
     // 서버 폴더를 옮기는 저장은 설치·업데이트·백업·복원이 그 폴더를 쓰지 않을 때만 (업데이트는 시작할 때
     // 계산한 폴더로 다른 인스턴스를 잠그고 받는다). 같은 값을 다시 보내는 저장은 막지 않는다.
     // 그 밖의 저장은 설정 파일 줄에 선다: 겹치면 늦게 끝난 게임 파일 쓰기가 나중 저장을 덮는다. 서버 파일을 바꾸는 작업 중이면 거절한다
@@ -1146,6 +1149,12 @@ pub async fn update_instance_settings(
             return (StatusCode::NOT_FOUND, Json(error)).into_response();
         }
     };
+
+    let now = instance.settings_revision();
+    if revision.is_some_and(|seen| seen != now) {
+        let error = json!({ "success": false, "error": "The server settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": now });
+        return (StatusCode::CONFLICT, Json(error)).into_response();
+    }
 
     // 잠근 뒤 다시 본다: 폴더를 옮기는 다른 저장·작업은 위 잠금을 지나야 한다
     let moves_folder = settings.get("working_dir").is_some_and(|v| v.as_str() != instance.working_dir.as_deref());
@@ -1483,6 +1492,7 @@ pub async fn update_instance_settings(
 
     // 저장
     let updated_clone = updated.clone();
+    let new_revision = updated_clone.settings_revision();
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
         let error = json!({ "error": format!("Failed to update instance: {}", e) });
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
@@ -1548,7 +1558,7 @@ pub async fn update_instance_settings(
 
     // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
     state.credentials.invalidate(&id);
-    let mut body = json!({ "success": true, "synced": sync_error.is_none(), "restart_required": restart_required });
+    let mut body = json!({ "success": true, "synced": sync_error.is_none(), "restart_required": restart_required, "revision": new_revision });
     if let Some(e) = sync_error {
         body["sync_error"] = json!(e);
     }
@@ -2093,12 +2103,14 @@ mod tests {
         use axum::extract::State;
         use axum::Json;
         let tmp = tempfile::tempdir().unwrap();
-        let modules = tmp.path().join("modules");
-        let dir = modules.join("game");
-        std::fs::create_dir_all(&dir).unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 인스턴스 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("save-failed-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
         std::fs::write(
             dir.join("module.toml"),
-            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"manual\"\n",
+            format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"manual\"\n"),
         )
         .unwrap();
         // 설치는 끝났다고 답하지만, 그 사이 인스턴스 기록 자리가 폴더가 되어 실행 경로를 저장하지 못한다
@@ -2114,7 +2126,7 @@ mod tests {
         );
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": name }))).await).await;
         assert!(made.status.is_success(), "{:?}", made.body);
 
         let progress = provisioned(&state, "a").await.expect("provisioning finished");
@@ -2206,7 +2218,10 @@ mod tests {
         assert!(save.await.unwrap().status.is_success());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "new");
         assert_eq!(live.body["settings"]["motd"], "new", "{}", live.body);
-        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "new");
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.module_settings["motd"], "new");
+        // 읽기가 캐시를 맞춘 뒤의 revision을 준다: 설정 창은 이 값으로 저장한다 (연 때의 값이면 409가 된다)
+        assert_eq!(live.body["revision"], json!(inst.settings_revision()), "{}", live.body);
             }
 
     /// 설정 저장은 게임 파일을 쓴다: 업데이트·복원처럼 서버 파일을 바꾸는 작업 중에는 거절하고(409),
@@ -2363,6 +2378,53 @@ mod tests {
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
+    }
+
+    /// 설정 저장에 GET의 revision을 실으면, 그사이 다른 곳에서 바뀐 인스턴스에는 쓰지 않는다 (0.1.10 결정 1)
+    #[tokio::test]
+    async fn a_settings_save_with_a_stale_revision_is_refused() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("a", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        let read = || {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::get_instance(Path(id), State(state)).await).await.body }
+        };
+
+        let seen = read().await["revision"].as_str().unwrap().to_string();
+        let first = patch(json!({ "motd": "one", "revision": seen })).await;
+        assert!(first.status.is_success(), "{:?}", first.body);
+        assert_eq!(first.body["revision"], read().await["revision"], "the reply carries the new revision");
+        let stale = patch(json!({ "motd": "two", "revision": seen })).await;
+        assert_eq!((stale.status.as_u16(), stale.body["error_code"].as_str()), (409, Some("settings_changed")));
+        assert_eq!(stale.body["revision"], first.body["revision"]);
+        let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(instance.module_settings["motd"], json!("one"));
+        // revision 없이 보내면 예전처럼 받는다
+        assert!(patch(json!({ "motd": "three" })).await.status.is_success());
     }
 
     /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.

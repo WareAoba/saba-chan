@@ -111,7 +111,7 @@ describe('데몬 응답 가공', () => {
         const puts = [];
         const { api } = await install({
             daemon_request: daemon({
-                'PUT /api/config/gui': (args) => {
+                'PATCH /api/config/gui': (args) => {
                     puts.push(args.body.theme);
                     if (puts.length === 1)
                         return new Promise((r) => (releaseFirst = () => r({ status: 200, data: { success: true } })));
@@ -130,13 +130,13 @@ describe('데몬 응답 가공', () => {
     });
 
     // 데몬이 잠근 채 합친다. GET으로 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다 (Codex 10-21 #2)
-    it('데몬이 응답하면 바꾼 키만 PUT하고 미리 읽지 않는다', async () => {
+    it('데몬이 응답하면 바꾼 키만 PATCH하고 미리 읽지 않는다', async () => {
         const bodies = [];
         const get = vi.fn(() => ({ status: 200, data: { theme: 'light', language: 'en' } }));
         const { api } = await install({
             daemon_request: daemon({
                 'GET /api/config/gui': get,
-                'PUT /api/config/gui': (args) => {
+                'PATCH /api/config/gui': (args) => {
                     bodies.push(args.body);
                     return { status: 200, data: { success: true } };
                 },
@@ -152,7 +152,7 @@ describe('데몬 응답 가공', () => {
         let saved;
         const { api } = await install({
             daemon_request: daemon({
-                'PUT /api/config/gui': { status: 0, error: 'connect refused', code: 'ECONNREFUSED' },
+                'PATCH /api/config/gui': { status: 0, error: 'connect refused', code: 'ECONNREFUSED' },
             }),
             settings_local_load: () => {
                 throw new Error('미리 읽지 않는다');
@@ -169,7 +169,7 @@ describe('데몬 응답 가공', () => {
     it('IPC 포트를 저장해도 지금 데몬과의 연결 주소는 바꾸지 않는다 (데몬은 다시 켤 때 새 포트를 쓴다)', async () => {
         const { api, tauri } = await install({
             daemon_request: daemon({
-                'PUT /api/config/gui': { status: 200, data: { success: true } },
+                'PATCH /api/config/gui': { status: 200, data: { success: true } },
             }),
             refresh_ipc_base: null,
         });

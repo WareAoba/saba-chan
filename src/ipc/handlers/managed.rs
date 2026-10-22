@@ -302,7 +302,13 @@ pub async fn read_live_settings_handler(
         return super::backup::instance_busy();
     };
     match refresh_settings_from_files(&state, &id).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Ok(mut result) => {
+            // 캐시를 맞춘 뒤의 revision: 설정 창이 연 때의 값으로 저장하면 이 읽기 때문에 409가 된다
+            if let (Some(inst), true) = (state.supervisor.read().await.instance_store.get(&id), result.is_object()) {
+                result["revision"] = json!(inst.settings_revision());
+            }
+            (StatusCode::OK, Json(result)).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
     }
 }
@@ -570,6 +576,11 @@ pub async fn get_installed_version_handler(
                         }
                     }
                 }
+            }
+            let mut result = result;
+            // 저장한 버전까지 반영한 revision (settings/live와 같다)
+            if let (Some(inst), true) = (state.supervisor.read().await.instance_store.get(&id), result.is_object()) {
+                result["revision"] = json!(inst.settings_revision());
             }
             (StatusCode::OK, Json(result)).into_response()
         }

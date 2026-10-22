@@ -5,7 +5,7 @@
 //! 봇 설정(`/api/config/bot`)은 최상위 키 단위로 머지되므로, 맵(`nodeSettings`)은 통째로 보낸다.
 
 use crate::cli::BotCmd;
-use crate::cmd::{coerce, flatten, get_path, set_path, split_pairs};
+use crate::cmd::{coerce, config_patch, flatten, get_path, split_pairs};
 use crate::ctx::Ctx;
 use crate::error::{failed, usage, Result};
 use crate::output::{self, s};
@@ -828,6 +828,8 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
         ctx.out.data(&cfg, |c| {
             let mut rows = Vec::new();
             flatten(c, "", &mut rows);
+            // revision은 저장 확인용 표식이라 설정 칸이 아니다
+            rows.retain(|(k, _)| k != "revision");
             output::print_kv(
                 &rows
                     .iter()
@@ -839,22 +841,12 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     }
     let defaults = ctx.api.config_defaults("bot").await?;
     let defaults = defaults.get("defaults").cloned().unwrap_or(Value::Null);
-    // 최상위 키 단위로 머지되므로, 바뀐 최상위 키는 현재 값 전체에 덮어써서 보낸다
-    let mut full = cfg.clone();
-    let mut touched = Vec::new();
+    let mut changes = Vec::new();
     for (k, raw) in split_pairs(pairs)? {
         let v = bot_value(&cfg, &defaults, &k, &raw)?;
-        set_path(&mut full, &k, v);
-        let top = k.split('.').next().unwrap_or("").to_string();
-        if !touched.contains(&top) {
-            touched.push(top);
-        }
+        changes.push((k, v));
     }
-    let patch: Map<String, Value> = touched
-        .iter()
-        .map(|k| (k.clone(), full.get(k).cloned().unwrap_or(Value::Null)))
-        .collect();
-    let r = ctx.api.save_bot_config(Value::Object(patch)).await?;
+    let r = ctx.api.patch_bot_config(config_patch(&cfg, changes)).await?;
     saved(&r)?;
     ctx.out.done(&t!("bot.config_saved"), &r);
     Ok(())
@@ -970,6 +962,17 @@ mod tests {
         // 모르는 키는 거절 (최상위 오타, 정해진 칸 아래 오타)
         assert!(bot_value(&cfg, &defaults, "prefix", "x").is_err());
         assert!(bot_value(&cfg, &defaults, "cloud.relayurl", "x").is_err());
+    }
+
+    /// `bot config` 저장은 고친 경로만 싣는 merge patch다: 같은 최상위 키 아래 다른 길드 값을 읽은 때의 값으로
+    /// 덮어쓰지 않는다. 읽은 때의 revision을 실어 그사이 바뀌었으면 데몬이 거절한다. 빈 값(null)은 그 키를 지운다
+    #[test]
+    fn bot_config_saves_only_the_changed_paths_with_the_read_revision() {
+        let cfg = json!({ "revision": "r1", "nodeSettings": { "g1": { "a": 1 }, "g2": { "a": 2 } } });
+        let patch = config_patch(&cfg, vec![("nodeSettings.g1.a".into(), json!(5)), ("moduleAliases.pal".into(), Value::Null)]);
+        assert_eq!(patch, json!({ "revision": "r1", "nodeSettings": { "g1": { "a": 5 } }, "moduleAliases": { "pal": null } }));
+        // 옛 데몬은 revision을 주지 않는다: 그때는 싣지 않는다
+        assert_eq!(config_patch(&json!({}), vec![("prefixes".into(), json!(["x"]))]), json!({ "prefixes": ["x"] }));
     }
 
     /// 릴레이가 이 PC를 아는지 한 줄로 (C11)

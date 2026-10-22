@@ -321,6 +321,7 @@
     "install_server_running": "Stoppen Sie den Server, bevor Sie eine Version installieren",
     "reset_server_running": "Stoppen Sie den Server, bevor Sie ihn zurücksetzen",
     "instance_busy": "Auf diesem Server läuft gerade eine andere Aufgabe (Sicherung oder Wiederherstellung). Versuchen Sie es erneut, wenn sie fertig ist",
+    "settings_changed": "Die Einstellungen dieses Servers wurden woanders geändert, nachdem du dieses Fenster geöffnet hast. Schließe es und öffne es erneut, um die neuen Werte zu sehen, und speichere dann noch einmal.",
     "extension_required_for_install": "Benötigte Erweiterung(en) fehlen: {{extensions}}. Installiere sie zuerst über Saba Storage.",
     "install_settings_failed": "Die Version wurde installiert, aber die Einstellungen konnten nicht gespeichert werden: {{error}}",
     "restart_required": "Die Einstellungen für {{name}} wurden gespeichert. Starte den Server neu, damit {{fields}} wirksam wird.",
