@@ -27,7 +27,7 @@ pub async fn start_managed_handler(
     payload: Option<Json<serde_json::Value>>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
-    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+    let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
     super::server::fill_passwords(&state, &id).await;
@@ -275,7 +275,9 @@ pub async fn write_properties_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let settings = payload.get("settings").cloned();
-    let _files = super::instance::settings_files_lock(&id).await;
+    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+        return super::backup::instance_busy();
+    };
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "write", settings.clone()).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
@@ -296,7 +298,9 @@ pub async fn read_live_settings_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let _files = super::instance::settings_files_lock(&id).await;
+    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+        return super::backup::instance_busy();
+    };
     match refresh_settings_from_files(&state, &id).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
@@ -304,7 +308,7 @@ pub async fn read_live_settings_handler(
 }
 
 /// 게임 설정 파일을 모듈 `import_settings`로 읽어 `module_settings`와 인스턴스 필드(포트·비밀번호)를 맞춘다.
-/// 호출자가 `settings_files_lock`을 쥐고 있어야 한다. 모듈의 답을 그대로 돌려준다. `success`가 아니거나 설정이 비어 있으면 아무것도 바꾸지 않는다
+/// 호출자가 설정 파일 잠금(`InstanceLock::files`나 `take_for_writes`)을 쥐고 있어야 한다. 모듈의 답을 그대로 돌려준다. `success`가 아니거나 설정이 비어 있으면 아무것도 바꾸지 않는다
 pub(crate) async fn refresh_settings_from_files(state: &IPCServer, id: &str) -> anyhow::Result<serde_json::Value> {
     let result = Supervisor::manage_properties(&state.supervisor, id, "import", None).await?;
     let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
@@ -330,7 +334,9 @@ pub async fn reset_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let _files = super::instance::settings_files_lock(&id).await;
+    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+        return super::backup::instance_busy();
+    };
     match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
@@ -350,7 +356,7 @@ fn server_running() -> axum::response::Response {
 /// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스의 작업 잠금을 모두 잡는다.
 /// `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
 #[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
-pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::BusyGuard>, axum::response::Response> {
+pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<super::backup::InstanceLock>, axum::response::Response> {
     let ids: Vec<String> = {
         let supervisor = state.supervisor.read().await;
         let dir = std::path::Path::new(dir);
@@ -365,7 +371,7 @@ pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, exc
     };
     let mut guards = Vec::new();
     for id in ids {
-        let Some(guard) = super::backup::BusyGuard::take(&id) else {
+        let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
             return Err(super::backup::instance_busy());
         };
         guards.push(guard);
@@ -382,7 +388,7 @@ pub async fn reset_server_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let Some(guard) = super::backup::BusyGuard::take(&id) else {
+    let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
     if super::backup::is_running(&state, &id).await {
@@ -436,6 +442,10 @@ pub async fn accept_agreements_handler(
     let ids = match requested_agreements(&payload, "accept") {
         Ok(ids) => ids,
         Err(resp) => return *resp,
+    };
+    // 모듈이 eula.txt 같은 게임 파일을 쓴다: 설정 저장과 한 줄로, 서버 파일을 바꾸는 작업 중에는 거절
+    let Some(_files) = super::backup::InstanceLock::files(&id).await else {
+        return super::backup::instance_busy();
     };
     match Supervisor::accept_agreements(&state.supervisor, &id, &ids).await {
         Ok(Ok(module_result)) => {
@@ -552,7 +562,7 @@ pub async fn get_installed_version_handler(
             // 설치·업데이트가 인스턴스를 잡고 있으면 파일이 바뀌는 중이라 저장하지 않는다 (D-S12)
             if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
-                    if !super::backup::BusyGuard::held(&id) {
+                    if !super::backup::InstanceLock::held(&id) {
                         match state.supervisor.write().await.save_detected_version(&id, seen.as_deref(), version) {
                             Ok(true) => tracing::info!("Auto-saved detected server version '{}' for instance '{}'", version, id),
                             Ok(false) => {}
@@ -628,7 +638,7 @@ pub async fn install_server_handler(
                 }
                 None => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response(),
             }
-            let Some(guard) = super::backup::BusyGuard::take(id) else {
+            let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await else {
                 return super::backup::instance_busy();
             };
             if super::backup::is_running(&state, id).await {
@@ -875,7 +885,7 @@ mod tests {
             assert_eq!(wrong.body["error_code"], "invalid_format");
         }
         // 그 인스턴스가 다른 작업(백업·복원·삭제 등)에 잡혀 있으면 그 데이터 폴더를 모듈에 넘기지 않는다
-        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let busy = super::super::backup::InstanceLock::take(&id).unwrap();
         let held = install(json!({ "install_dir": tmp.path().join("elsewhere"), "instance_id": id })).await;
         assert_eq!(held.status, StatusCode::CONFLICT, "{}", held.body);
         drop(busy);
@@ -1114,7 +1124,7 @@ mod tests {
         assert_eq!(saved().await.as_deref(), Some("2.0"), "a stale detection must not overwrite a newer version");
 
         // 설치·업데이트 같은 작업이 인스턴스를 잡고 있으면 감지 결과는 알려 주되 저장하지 않는다
-        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let busy = super::super::backup::InstanceLock::take(&id).unwrap();
         let held = detect().await;
         assert_eq!(held.body["version"], "1.0", "{}", held.body);
         assert_eq!(saved().await.as_deref(), Some("2.0"), "files may be mid-change while the instance is busy");

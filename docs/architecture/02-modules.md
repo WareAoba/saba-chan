@@ -281,7 +281,7 @@ players = "player_count"
 - **종료 코드**: 0이 아니면, stdout에 `{"success":false,...}`가 있더라도 `Err("Plugin execution failed (exit ..)")`가 된다 (`:432-435`). 그래서 실제 모듈은 모르는 함수·예외도 JSON으로 답하고 종료 코드 0을 지킨다 (공용 `run_lifecycle`, `D:modules/daemon_rcon.py:260-`).
 - **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120` (`:150`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
   - `install_server`는 어디서 부르든(프로비저닝, 업데이트, `POST /api/module/:name/install` → `Supervisor::install_server`) 1800초(`plugin::INSTALL_TIMEOUT_SECS`)를 쓴다.
-  - 프로비저닝 설치는 끝날 때까지 인스턴스 작업 잠금(`BusyGuard`)을 쥔다: 그동안 시작·업데이트·삭제·복원은 `instance_busy`다.
+  - 프로비저닝 설치는 끝날 때까지 인스턴스 작업 잠금(`InstanceLock`)을 쥔다: 그동안 시작·업데이트·삭제·복원은 `instance_busy`다.
 - **확인되지 않은 구성요소 (Windows)**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션은 Python을 격리해서 띄운다(`D:src/sandbox/`). 백신 검사(Defender `MpCmdRun`·AMSI)는 하지 않는다: 깨끗한 파일 오판정과 큰 jar 검사로 시작이 몇 분씩 멈추는 문제가 있어 0.1.7에서 뺐다. 예전 데몬이 남긴 `<data_dir>/scan-verdicts.json`은 읽지 않는다. 신뢰 표시의 키는 모듈이면 `module-<폴더 이름>`, 익스텐션이면 `ext-<manifest id>`다(폴더 이름은 id의 `-`를 `_`로 바꾼 것이라 다를 수 있다. 그 폴더 이름에 맞지 않는 id는 받지 않고 폴더 이름을 쓴다, `sandbox::component_of`).
   - Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만. 루프백 예외를 주지 않으므로 같은 PC의 데몬 API·로컬 프록시에는 닿지 못한다) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.

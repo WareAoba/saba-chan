@@ -306,7 +306,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             // 설치·백업·복원이 쥔 인스턴스는 바꾸지 않는다. 잠금은 저장하는 동안만 쥔다
             let guard = match verdict {
                 Verdict::Skip(_) => None,
-                _ => super::backup::BusyGuard::take(&inst.id),
+                _ => super::backup::InstanceLock::try_take_for_writes(&inst.id),
             };
             if guard.is_none() && !matches!(verdict, Verdict::Skip(_)) {
                 verdict = Verdict::Skip("busy");
@@ -522,7 +522,7 @@ mod tests {
         new.name = "new".into();
         let bundle = Bundle { meta: meta(), config: Map::new(), instances: vec![new], node_token: None };
         let (state, path) = import_state(dir.path(), bundle, Some(old)).await;
-        let _task = super::super::backup::BusyGuard::take("held-by-import-test").unwrap();
+        let _task = super::super::backup::InstanceLock::take("held-by-import-test").unwrap();
         for dry in [true, false] {
             let req: ImportRequest = serde_json::from_value(json!({ "path": path, "overwrite": true, "dryRun": dry })).unwrap();
             let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;

@@ -9,6 +9,8 @@
 //!     settings.json          ← 모듈별 동적 게임 설정
 //! ```
 
+pub mod lock;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

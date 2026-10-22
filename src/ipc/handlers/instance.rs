@@ -384,7 +384,7 @@ pub async fn create_instance(
 
         // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다.
         // 목록에 보이기 전에 잡는다 (보인 뒤에 잡으면 그 틈의 삭제가 먼저 잡아 설치가 지워지는 폴더로 돈다)
-        let install_guard = super::backup::BusyGuard::take(&id);
+        let install_guard = super::backup::InstanceLock::try_take_for_writes(&id);
 
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
@@ -765,7 +765,7 @@ pub async fn dismiss_provision_progress(
     let mut rolled_back = false;
     if let Some(id) = rollback {
         // 다른 작업(업데이트·복원·삭제)이 그 폴더를 쓰는 중이면 지우지 않는다
-        match super::backup::BusyGuard::take(&id) {
+        match super::backup::InstanceLock::take_for_writes(&id).await {
             None => tracing::warn!("Skipping rollback of '{}' (id={}): another task holds the instance", name, id),
             Some(_guard) => {
                 let mut supervisor = state.supervisor.write().await;
@@ -820,7 +820,7 @@ pub async fn delete_instance(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
-    let Some(guard) = super::backup::BusyGuard::take(&id) else {
+    let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
     // 요청이 끊겨도 정지·삭제를 끝까지 한다: 추적을 뺀 채 멈추면 돌던 서버가 추적 밖에 남는다
@@ -950,7 +950,7 @@ pub async fn rename_instance(
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
     };
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 표시와 실패 정리가 이름으로 이어진다
-    let Some(_guard) = super::backup::BusyGuard::take(&id) else {
+    let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
     let mut supervisor = state.supervisor.write().await;
@@ -1083,34 +1083,6 @@ fn is_daemon_setting(key: &str) -> bool {
     saba_chan_updater_lib::constants::DAEMON_SETTINGS.iter().any(|(k, _)| *k == key)
 }
 
-type SaveLocks = std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>;
-static SETTINGS_SAVES: std::sync::LazyLock<std::sync::Mutex<SaveLocks>> = std::sync::LazyLock::new(Default::default);
-
-/// 인스턴스의 게임 설정 파일을 읽거나 쓰는 데몬 작업 하나를 쥔 동안의 잠금 (`settings_files_lock`)
-pub(crate) struct SettingsFilesGuard {
-    id: String,
-    lock: std::sync::Arc<tokio::sync::Mutex<()>>,
-    _held: tokio::sync::OwnedMutexGuard<()>,
-}
-
-impl Drop for SettingsFilesGuard {
-    fn drop(&mut self) {
-        // 기다리는 쪽이 없으면 항목을 지운다: 지운 인스턴스·없는 id의 항목이 쌓이지 않게 (맵, 이 guard, 쥔 잠금이 센다)
-        let mut locks = SETTINGS_SAVES.lock().unwrap_or_else(|e| e.into_inner());
-        if std::sync::Arc::strong_count(&self.lock) == 3 && locks.get(&self.id).is_some_and(|l| std::sync::Arc::ptr_eq(l, &self.lock)) {
-            locks.remove(&self.id);
-        }
-    }
-}
-
-/// 인스턴스마다 하나: 설정 저장(게임 파일 쓰기 configure와 hook까지), 실제 값 읽기(`settings/live`), 속성 쓰기·초기화,
-/// 백업 복원이 한 줄로 선다. 늦게 끝난 파일 쓰기가 나중 저장을 덮거나, 쓰기 전의 파일 값으로 캐시를 되돌리지 않게
-pub(crate) async fn settings_files_lock(id: &str) -> SettingsFilesGuard {
-    let lock = SETTINGS_SAVES.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone();
-    let held = lock.clone().lock_owned().await;
-    SettingsFilesGuard { id: id.to_string(), lock, _held: held }
-}
-
 /// 포트 값: 1~65535의 수 또는 그런 숫자 문자열. 다른 값은 `None`
 fn port_value(value: &Value) -> Option<u16> {
     match value {
@@ -1128,8 +1100,24 @@ pub async fn update_instance_settings(
     Path(id): Path<String>,
     Json(settings): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    // 같은 서버의 저장이 겹치면 늦게 끝난 게임 파일 쓰기가 나중 저장을 덮는다
-    let _saving = settings_files_lock(&id).await;
+    // 서버 폴더를 옮기는 저장은 설치·업데이트·백업·복원이 그 폴더를 쓰지 않을 때만 (업데이트는 시작할 때
+    // 계산한 폴더로 다른 인스턴스를 잠그고 받는다). 같은 값을 다시 보내는 저장은 막지 않는다.
+    // 그 밖의 저장은 설정 파일 줄에 선다: 겹치면 늦게 끝난 게임 파일 쓰기가 나중 저장을 덮는다. 서버 파일을 바꾸는 작업 중이면 거절한다
+    let moves_folder = {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.get(&id).is_some_and(|i| settings.get("working_dir").is_some_and(|v| v.as_str() != i.working_dir.as_deref()))
+    };
+    let (_task, _saving) = if moves_folder {
+        match super::backup::InstanceLock::take_for_writes(&id).await {
+            Some(task) => (Some(task), None),
+            None => return super::backup::instance_busy(),
+        }
+    } else {
+        match super::backup::InstanceLock::files(&id).await {
+            Some(files) => (None, Some(files)),
+            None => return super::backup::instance_busy(),
+        }
+    };
     let mut supervisor = state.supervisor.write().await;
 
     // 인스턴스 찾기
@@ -1141,13 +1129,11 @@ pub async fn update_instance_settings(
         }
     };
 
-    // 서버 폴더를 옮기는 저장은 설치·업데이트·백업·복원이 그 폴더를 쓰지 않을 때만 (업데이트는 시작할 때
-    // 계산한 폴더로 다른 인스턴스를 잠그고 받는다). 같은 값을 다시 보내는 저장은 막지 않는다
+    // 잠근 뒤 다시 본다: 폴더를 옮기는 다른 저장·작업은 위 잠금을 지나야 한다
     let moves_folder = settings.get("working_dir").is_some_and(|v| v.as_str() != instance.working_dir.as_deref());
-    let _guard = match moves_folder.then(|| super::backup::BusyGuard::take(&id)) {
-        Some(None) => return super::backup::instance_busy(),
-        held => held.flatten(),
-    };
+    if moves_folder && _task.is_none() {
+        return super::backup::instance_busy();
+    }
     // 다른 인스턴스가 쓰는 폴더(서버 폴더나 인스턴스 폴더, 그 안이나 바깥)로는 옮기지 않는다: 만들 때처럼 한 폴더에 서버 둘을 두지 않는다.
     // 그 인스턴스의 서버·설치·업데이트가 옮긴 서버의 파일을 덮어쓴다
     if let Some(dir) = settings.get("working_dir").and_then(|v| v.as_str()).filter(|d| moves_folder && !d.is_empty()) {
@@ -1670,7 +1656,7 @@ pub async fn apply_server_update(
 #[allow(clippy::result_large_err)]
 pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
     // 업데이트가 끝날 때까지 시작·복원·삭제를 막는다 (작업 안으로 넘긴다)
-    let Some(guard) = super::backup::BusyGuard::take(id) else {
+    let Some(guard) = super::backup::InstanceLock::take_for_writes(id).await else {
         return Err(super::backup::instance_busy());
     };
     let supervisor = state.supervisor.read().await;
@@ -2169,7 +2155,52 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "new");
         assert_eq!(live.body["settings"]["motd"], "new", "{}", live.body);
         assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "new");
-        assert!(!super::SETTINGS_SAVES.lock().unwrap().contains_key(&id), "a lock nobody waits for is dropped");
+            }
+
+    /// 설정 저장은 게임 파일을 쓴다: 업데이트·복원처럼 서버 파일을 바꾸는 작업 중에는 거절하고(409),
+    /// 파일을 읽기만 하는 백업 중에는 저장한다. 약관 동의도 같은 줄에 선다
+    #[tokio::test]
+    async fn settings_writes_are_refused_while_server_files_change() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\njson.load(sys.stdin)\nprint(json.dumps({'success': True}))\n").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let save = |motd: &'static str| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(json!({ "motd": motd }))).await).await }
+        };
+
+        let update = super::super::backup::InstanceLock::take_for_writes(&id).await.unwrap();
+        let refused = save("during update").await;
+        assert_eq!(refused.status, axum::http::StatusCode::CONFLICT);
+        assert_eq!(refused.body["error_code"], "instance_busy");
+        let agreement = crate::ipc::internal::into_internal(
+            super::super::managed::accept_agreements_handler(Path(id.clone()), State(state.clone()), Json(json!({ "accept": ["eula"] }))).await,
+        )
+        .await;
+        assert_eq!(agreement.status, axum::http::StatusCode::CONFLICT);
+        drop(update);
+
+        let backup = super::super::backup::InstanceLock::take(&id).unwrap();
+        assert!(save("during backup").await.status.is_success());
+        drop(backup);
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings["motd"], "during backup");
     }
 
     #[tokio::test]
@@ -2481,12 +2512,12 @@ mod tests {
             sup.instance_store.add(inst).unwrap();
         }
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
-        let other = super::super::backup::BusyGuard::take(&ids[1]).expect("free");
+        let other = super::super::backup::InstanceLock::take(&ids[1]).expect("free");
         let refused = super::begin_server_update(&state, &ids[0]).await.err().expect("the other instance is busy");
         let body = crate::ipc::internal::into_internal(refused).await.body;
         assert_eq!(body["error_code"], "instance_busy");
         drop(other);
-        assert!(super::super::backup::BusyGuard::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
+        assert!(super::super::backup::InstanceLock::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
     }
 
     /// 새 인스턴스의 버전을 고를 때 인스턴스 설정(서버 종류 등)을 넘긴다: 그 종류로 받을 수 있는 최신이 다르다
@@ -2589,7 +2620,7 @@ mod tests {
         sup.instance_store.add(inst).unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
-        let busy = super::super::backup::BusyGuard::take(&id).unwrap();
+        let busy = super::super::backup::InstanceLock::take(&id).unwrap();
         let elsewhere = tmp.path().join("elsewhere").to_string_lossy().into_owned();
         let moved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "working_dir": elsewhere }))).await).await;
         assert_eq!(moved.status, 409, "{}", moved.body);
@@ -2657,12 +2688,12 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         let id = created.body["id"].as_str().unwrap().to_string();
-        assert!(super::super::backup::BusyGuard::take(&id).is_none(), "the install holds the lock");
+        assert!(super::super::backup::InstanceLock::take(&id).is_none(), "the install holds the lock");
         // 시간이 아니라 설치가 끝났다는 표시를 기다린다. 잠금은 그 표시보다 먼저 풀린다
         let done = provisioned(&state, "a").await;
         let done = done.expect("the install never finished");
         assert!(done.error.is_none(), "{:?}", done.error);
-        assert!(super::super::backup::BusyGuard::take(&id).is_some(), "the lock is released once the install is done");
+        assert!(super::super::backup::InstanceLock::take(&id).is_some(), "the lock is released once the install is done");
     }
 
     /// 설치 실패를 dismiss하면 그 설치의 인스턴스만 지운다: 그 사이 이름이 바뀌고 같은 이름의 다른 인스턴스가 생겨도

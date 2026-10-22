@@ -695,8 +695,8 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
 
 /// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
 /// 키는 소문자로: Windows에서는 대소문자만 다른 id가 같은 폴더다
-pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::BusyGuard> {
-    super::backup::BusyGuard::take(&format!("module-install:{}", module_id.to_lowercase()))
+pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::InstanceLock> {
+    super::backup::InstanceLock::take(&format!("module-install:{}", module_id.to_lowercase()))
 }
 
 pub(crate) fn module_busy(module_id: &str) -> axum::response::Response {
@@ -1099,9 +1099,11 @@ pub async fn start_server_handler(
         id
     };
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
-    let _guard = match inst_id.as_deref().map(super::backup::BusyGuard::take) {
-        Some(None) => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
-        Some(guard) => guard,
+    let _guard = match inst_id.as_deref() {
+        Some(id) => match super::backup::InstanceLock::take_for_writes(id).await {
+            None => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
+            guard => guard,
+        },
         None => None,
     };
 
