@@ -173,6 +173,17 @@ fn a_console_value_fills_only_its_own_place() {
     assert_eq!(err.field.as_deref(), Some("player"));
 }
 
+/// 값 안의 `{자리}`는 다시 채우지 않는다: 앞 값이 뒤 자리를 불러와 여러 낱말 값을 중간에 넣으면 안 된다
+#[test]
+fn a_value_cannot_pull_another_input_into_its_place() {
+    let mut meta = module();
+    let mut check = field("check", "console", vec![input("group", "text", true), input("node", "text", true)]);
+    check.console_template = Some("lp group {group} permission check {node}".into());
+    meta.commands.as_mut().unwrap().fields.push(check);
+    let line = plan(&meta, &Request::parse("check", &json!({ "group": "{node}", "node": "a b c" })));
+    assert_eq!(line, Ok(Plan::Console { line: "lp group {node} permission check a b c".into() }));
+}
+
 #[test]
 fn a_line_break_inside_an_argument_cannot_add_a_second_console_command() {
     for value in ["hi\nop attacker", "hi\rop attacker", "hi\0op attacker"] {
