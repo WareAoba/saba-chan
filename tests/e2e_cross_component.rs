@@ -301,6 +301,18 @@ async fn e2e_instance_lifecycle_with_python_module() {
     let instance_id = create_json["id"].as_str().expect("must have instance id");
     assert!(!instance_id.is_empty());
 
+    // 설치가 서버 파일을 쓰는 동안 설정 저장은 instance_busy로 거절되므로 (GUI도 설치 중엔 설정을 열지 않는다) 끝나기를 기다린다
+    for _ in 0..600 {
+        let progress: Value = client
+            .get(format!("{}/api/provision-progress/{}", base_url, instance_name))
+            .send().await.unwrap()
+            .json().await.unwrap();
+        if progress["active"] == json!(false) || progress["done"] == json!(true) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
     // ── 2) 인스턴스 조회 — 필드 정합성
     let get_resp = client
         .get(format!("{}/api/instance/{}", base_url, instance_id))
