@@ -32,6 +32,18 @@ pub struct UninstallProgress {
     pub left: Vec<String>,
 }
 
+/// 이 설치본이 마지막인지. 제거 항목(레지스트리)과, 항목 없이 설치된 폴더 목록(CLI `install --dir`)을 함께 본다.
+/// 지우는 폴더는 목록에서 뺀다
+fn last_install(install_dir: Option<&Path>) -> bool {
+    use saba_chan_updater_lib::uninstall_entry as entry;
+    let Some(dir) = install_dir else { return false };
+    let file = entry::installs_file();
+    if let Err(e) = entry::forget_install(&file, dir) {
+        tracing::warn!("[Uninstall] Could not update the install list: {}", e);
+    }
+    entry::is_last_install(&entry::entries(), Some(dir)) && !entry::other_listed_install(&file, dir)
+}
+
 /// GUI 모드 제거 실행. 단계마다 `on_progress`로 알린다
 pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallProgress)) {
     let emit = |step: &str, msg: &str, pct: i32| {
@@ -80,10 +92,7 @@ pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallPr
     }
 
     // 사용자 데이터는 설치본들이 함께 쓴다: 다른 설치본이 남아 있으면 지우지 않는다
-    let last_install = saba_chan_updater_lib::uninstall_entry::is_last_install(
-        &saba_chan_updater_lib::uninstall_entry::entries(),
-        install_dir.as_deref(),
-    );
+    let last_install = last_install(install_dir.as_deref());
 
     // Step 2: 프로세스 종료
     emit("stop", "Stopping saba-chan processes...", 10);
@@ -204,10 +213,7 @@ pub async fn do_silent_uninstall() -> i32 {
     }
 
     // 사용자 데이터: 다른 설치본이 남아 있으면 그대로 둔다
-    let last_install = saba_chan_updater_lib::uninstall_entry::is_last_install(
-        &saba_chan_updater_lib::uninstall_entry::entries(),
-        install_dir.as_deref(),
-    );
+    let last_install = last_install(install_dir.as_deref());
     let mut left = Vec::new();
     if last_install {
         eprintln!("  Removing user data and runtime environments...");
