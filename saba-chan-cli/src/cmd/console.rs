@@ -56,7 +56,7 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         cursor.next = last.next.or(Some(0));
     }
 
-    let interactive = !a.follow && !a.print && ctx.ask.enabled;
+    let interactive = opens_input_line(&a, ctx.ask.enabled, crate::output::redirected());
     if a.print || (!a.follow && !interactive) {
         if lines.is_empty() {
             say!("{}", crate::output::dim(&t!("console.empty")));
@@ -274,6 +274,11 @@ fn token_style(token: &str, t: &str) -> String {
 }
 
 /// 보면서 입력하기. 새 줄은 입력 줄을 건드리지 않고 위에 찍힌다.
+/// 입력 줄을 열고 붙을지. 출력 창구를 바꿔 끼웠으면(TUI) 입력 줄이 화면과 키를 가로채므로 따라 읽기만 한다
+fn opens_input_line(a: &ConsoleArgs, can_ask: bool, redirected: bool) -> bool {
+    !a.follow && !a.print && can_ask && !redirected
+}
+
 async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
     let ctx = &Ctx {
         attached: true,
@@ -502,5 +507,16 @@ mod tests {
         assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
         let plain = json!({"content": "x", "source": "system", "level": "info"});
         assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
+    }
+
+    /// TUI처럼 출력 창구를 바꿔 끼웠으면 입력 줄을 열지 않고 따라 읽는다: 입력 줄이 화면과 키를 가로챈다 (`start --console`)
+    #[test]
+    fn a_redirected_output_follows_instead_of_opening_the_input_line() {
+        let a = ConsoleArgs::default();
+        assert!(opens_input_line(&a, true, false));
+        assert!(!opens_input_line(&a, true, true));
+        assert!(!opens_input_line(&a, false, false));
+        let follow = ConsoleArgs { follow: true, ..Default::default() };
+        assert!(!opens_input_line(&follow, true, false));
     }
 }
