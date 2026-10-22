@@ -557,11 +557,21 @@ fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::
 fn info(path: &Path) -> Option<BackupInfo> {
     let name = path.file_name()?.to_str()?.to_string();
     let kind = BackupKind::from_name(&name)?;
-    let meta = fs::metadata(path).ok().filter(|m| m.is_file())?;
+    let meta = match fs::metadata(path) {
+        Ok(meta) if meta.is_file() => meta,
+        Ok(_) => return None,
+        // 대상이 없는 링크: 정리를 멈추니 열 수 없는 백업으로 보인다
+        Err(_) => {
+            fs::symlink_metadata(path).ok()?;
+            let made = name_time_ns(&name).unwrap_or(0);
+            return Some(BackupInfo { name, kind, created: made / 1_000_000_000, size: 0, stored: 0, readable: false, made });
+        }
+    };
     let modified = mtime_ns(&meta);
-    // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기
+    // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기.
+    // 열리고 매니페스트가 있어야 읽을 수 있다 (매니페스트 내용까지 읽지는 않는다: 목록마다 모두 풀면 느리다)
     let zip = File::open(path).ok().and_then(|f| zip::ZipArchive::new(f).ok());
-    let readable = zip.is_some();
+    let readable = zip.as_ref().is_some_and(|z| z.file_names().any(|n| n == MANIFEST_V2 || n == MANIFEST));
     let summary = zip.and_then(|mut zip| zip.by_name(SUMMARY_V2).ok().and_then(|f| serde_json::from_reader::<_, SummaryV2>(f).ok()));
     // 판 1은 0.1.8까지 만든 것이다: 수정 시각이 새로 찍힌 사본(옮겼다 되돌린 것)도 이름의 시각보다 새것으로 보지 않는다
     let v1_made = name_time_ns(&name).map_or(modified, |named| named.min(modified));
@@ -1333,5 +1343,22 @@ mod tests {
         delete(&dir, "notes-manual.zip").unwrap();
         delete(&dir, &good).unwrap();
         assert!(objects(&dir).is_empty(), "a folder named like a backup must not keep unused content");
+    }
+
+    /// 리뷰 630 P3-2: 매니페스트가 없는 zip과 대상이 없는 링크도 정리를 멈추거나 복원할 수 없으니 열 수 없다고 표시한다
+    #[test]
+    fn a_zip_without_a_manifest_and_a_dangling_link_are_marked_unreadable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("backups");
+        fs::create_dir_all(&dir).unwrap();
+        let mut zip = zip::ZipWriter::new(File::create(dir.join("20200101-000000-000-manual.zip")).unwrap());
+        zip.start_file("other.txt", zip::write::FileOptions::default()).unwrap();
+        zip.finish().unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(tmp.path().join("gone.zip"), dir.join("20200102-000000-000-manual.zip")).unwrap();
+        let listed: Vec<(String, bool)> = list(&dir).into_iter().map(|b| (b.name, b.readable)).collect();
+        assert!(listed.contains(&("20200101-000000-000-manual.zip".to_string(), false)), "{listed:?}");
+        #[cfg(unix)]
+        assert!(listed.contains(&("20200102-000000-000-manual.zip".to_string(), false)), "{listed:?}");
     }
 }
