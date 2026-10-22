@@ -1134,7 +1134,8 @@
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
-    "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}"
+    "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
+    "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"
   },
   "uninstall": {
     "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",

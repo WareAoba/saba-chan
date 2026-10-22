@@ -127,6 +127,9 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         Some(d) => install_target(&d).ok_or_else(|| usage(t!("install.empty_dir")))?,
         None => default_dir,
     };
+    if core::check_install_dir(&dir, &saba_chan_updater_lib::component_dirs::Layout::current()).is_err() {
+        return Err(usage(t!("install.invalid_dir", dir = dir.display())));
+    }
 
     // 한 PC에는 설치본 하나만 둔다: 다른 폴더에 있으면 무엇도 받기 전에 그 설치본을 안내한다
     if let Some(other) = core::other_install(&dir) {
