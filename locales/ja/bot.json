@@ -152,7 +152,10 @@
     "no_latest_version": "最新のサーバーバージョンを取得できませんでした",
     "script_failed": "インストールスクリプトがエラーで終了しました。詳しくはデーモンのログを確認してください",
     "save_failed": "サーバーファイルは取得しましたが、サーバー情報を保存できませんでした。詳しくはデーモンのログを確認してください",
-    "backup_failed": "更新前のバックアップに失敗しました: {{reason}}"
+    "backup_failed": "更新前のバックアップに失敗しました: {{reason}}",
+    "version_installing": "バージョン {{version}} をインストールしています…",
+    "version_installed": "バージョンをインストールしました",
+    "install_backup_failed": "インストール前のバックアップに失敗したため、インストールしませんでした: {{reason}}"
   },
   "actions": {
     "instance": {

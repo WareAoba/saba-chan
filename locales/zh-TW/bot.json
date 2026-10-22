@@ -152,7 +152,10 @@
     "no_latest_version": "無法取得最新的伺服器版本",
     "script_failed": "安裝腳本發生錯誤而結束。詳細內容請查看常駐程式記錄",
     "save_failed": "伺服器檔案已下載，但無法儲存伺服器資訊。詳細內容請查看常駐程式記錄",
-    "backup_failed": "更新前備份失敗: {{reason}}"
+    "backup_failed": "更新前備份失敗: {{reason}}",
+    "version_installing": "正在安裝版本 {{version}}…",
+    "version_installed": "已安裝該版本",
+    "install_backup_failed": "安裝前備份失敗，因此未進行安裝：{{reason}}"
   },
   "actions": {
     "instance": {

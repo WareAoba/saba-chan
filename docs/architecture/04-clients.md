@@ -67,7 +67,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceEvents (233) | GET /api/instance/:id/events (최근 종료 이력) | ✓ 647 |
 | moduleGetLocales (240) | GET /api/module/:name/locales | ✓ 712 |
 | moduleListVersions (248) | GET /api/module/:name/versions?… | ✓ 695 |
-| moduleInstallServer (260) | POST /api/module/:name/install | ✓ 697 |
+| moduleInstallServer (260) | POST /api/module/:name/install. 설정 창의 버전 설치는 `instance_id`·`background:true`로 시작만 시키고 창을 닫는다(진행은 서버 목록의 설치 표시). 받은 실행 파일·작업 폴더 기록은 데몬이 한다 | ✓ 697 |
 | instanceGetInstalledVersion (268) | GET /api/instance/:id/installed-version | ✓ 698 |
 | moduleManifest (275) | GET /api/modules/manifest | ✓ 656 |
 | moduleInstallFromManifest (282) | POST /api/modules/manifest/:id/install | ✓ 657 |

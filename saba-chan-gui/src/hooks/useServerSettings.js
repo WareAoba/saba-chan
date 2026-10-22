@@ -5,7 +5,6 @@ import {
     busyMessage,
     createTranslateError,
     installFailureText,
-    installedExecutable,
     moduleSupports,
     safeShowToast,
 } from '../utils/helpers';
@@ -359,6 +358,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 version,
                                 install_dir: targetDir,
                                 instance_id: settingsServer.id,
+                                background: true,
                             });
 
                             const blocked = blockedText(installResult, t);
@@ -394,39 +394,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 return;
                             }
 
-                            // 설치한 버전만 기록한다 (설정 저장은 버전을 보내지 않는다)
-                            const update = { server_version: version };
-                            // 받은 파일로 켠다: 예전 실행 파일 경로(paper-…-130.jar 등)가 남아 있으면 옛 버전이 뜬다
-                            const exe = installedExecutable(installResult);
-                            if (exe) {
-                                update.working_dir = installResult.install_path || exe.replace(/[/\\][^/\\]+$/, '');
-                                update.executable_path = exe;
-                            }
-                            const saved = await window.api.instanceUpdateSettings(settingsServer.id, update);
-                            if (!saved || saved.error || saved.success === false) {
-                                setProgressBar(null);
-                                safeShowToast(
-                                    t('server_settings.install_settings_failed', {
-                                        error: translateError(saved?.error || saved?.message || ''),
-                                    }),
-                                    'error',
-                                    6000,
-                                );
-                                await fetchServers();
-                                return;
-                            }
-                            if (request === openRequest.current) {
-                                if (saved.revision) revision.current = saved.revision;
-                                handleSettingChange('server_version', version);
-                            }
-
-                            setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
-                            setTimeout(() => setProgressBar(null), 2000);
-
-                            const msg = installResult.java_warning
-                                ? `${t('servers.install_completed', { game, version })}\n⚠️ ${installResult.java_warning}`
-                                : t('servers.install_completed', { game, version });
-                            safeShowToast(msg, 'success', 5000);
+                            // 데몬이 뒤에서 설치하고(설치 전 백업·실패 시 복원) 버전·실행 파일·작업 폴더를 기록한다.
+                            // 진행은 서버 목록의 설치 표시로 본다
+                            setProgressBar(null);
+                            safeShowToast(t('server_settings.install_started', { game, version }), 'info', 5000);
+                            if (request === openRequest.current) setShowSettingsModal(false);
                             await fetchServers();
                         } catch (err) {
                             setProgressBar(null);

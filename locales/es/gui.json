@@ -322,6 +322,7 @@
     "reset_server_running": "Detén el servidor antes de restablecerlo",
     "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",
     "settings_changed": "La configuración de este servidor se cambió en otro lugar después de abrir esta ventana. Ciérrala y vuelve a abrirla para ver los nuevos valores y guarda de nuevo.",
+    "install_started": "Se empezó a instalar {{game}} {{version}}. Primero se hace una copia de seguridad y, si falla, se restaura. Sigue el progreso en la lista de servidores.",
     "extension_required_for_install": "Faltan extensiones necesarias: {{extensions}}. Instálalas primero desde Saba Storage.",
     "install_settings_failed": "La versión se instaló, pero no se pudo guardar la configuración: {{error}}",
     "restart_required": "Se guardaron los ajustes de {{name}}. Reinicia el servidor para aplicar {{fields}}.",

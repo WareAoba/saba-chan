@@ -152,7 +152,10 @@
     "no_latest_version": "Impossible de trouver la dernière version du serveur",
     "script_failed": "Le script d'installation s'est terminé par une erreur. Consultez le journal du daemon pour plus de détails",
     "save_failed": "Les fichiers du serveur ont été téléchargés, mais ses informations n'ont pas pu être enregistrées. Consultez le journal du daemon pour plus de détails",
-    "backup_failed": "Échec de la sauvegarde avant mise à jour : {{reason}}"
+    "backup_failed": "Échec de la sauvegarde avant mise à jour : {{reason}}",
+    "version_installing": "Installation de la version {{version}}…",
+    "version_installed": "Version installée",
+    "install_backup_failed": "La sauvegarde avant installation a échoué, rien n'a été installé : {{reason}}"
   },
   "actions": {
     "instance": {

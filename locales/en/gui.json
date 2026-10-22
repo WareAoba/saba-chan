@@ -322,6 +322,7 @@
     "reset_server_running": "Stop the server before resetting it",
     "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes",
     "settings_changed": "This server's settings were changed elsewhere after you opened this window. Close and reopen it to see the new values, then save again.",
+    "install_started": "Started installing {{game}} {{version}}. It backs up first and puts things back if the install fails. Follow the progress in the server list.",
     "extension_required_for_install": "Required extension(s) missing: {{extensions}}. Install them from Saba Storage first.",
     "install_settings_failed": "The version was installed, but saving the settings failed: {{error}}",
     "restart_required": "Saved the settings for {{name}}. Restart the server to apply {{fields}}.",

@@ -315,10 +315,9 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
 }
 
 pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>) -> Response {
-    let dir = match backups_dir(&state, &id).await {
-        Ok(d) => d,
-        Err(r) => return r,
-    };
+    if let Err(r) = backups_dir(&state, &id).await {
+        return r;
+    }
     // 잠금을 먼저 잡고 실행 여부를 본다: 시작도 같은 잠금을 잡으니 확인 뒤에 켜지지 않는다.
     // 진행 중인 설정 저장이 게임 파일을 쓰는 중이면 기다리고, 복원과 다시 읽기를 마칠 때까지 저장이 끼어들지 않게 한다
     let Some(guard) = InstanceLock::take_for_writes(&id).await else {
@@ -328,61 +327,69 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         return error(StatusCode::CONFLICT, "server_running", "Stop the server before restoring a backup");
     }
     let work = async move {
-        let _guard = guard;
-        // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
-        let mut roots = {
-            let supervisor = state.supervisor.read().await;
-            let Some(instance) = supervisor.instance_store.get(&id) else {
-                return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
-            };
-            let instance_dir = supervisor.instance_store.instance_dir(&id);
-            vec![server_base(instance, &instance_dir), instance_dir]
-        };
-        // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
-        match plan(&state, &id).await {
-            Ok(Some(p)) => roots.extend(p.targets.into_iter().chain(p.restore_roots)),
-            Ok(None) => {}
-            Err(r) => return Err(r),
-        }
-        let targets = match backup::backed_up_paths(&dir, &name) {
-            Ok(t) => t,
-            Err(e) => return Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
-        };
-        if targets.iter().any(|t| !backup::is_inside(t, &roots)) {
-            return Err(error(
-                StatusCode::BAD_REQUEST,
-                "restore_outside",
-                "This backup was made for a different server folder; it can no longer be restored here",
-            ));
-        }
-        // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게. 지금 설정이 가리키지 않아도 복원이 덮을 경로는 함께 담는다
-        // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
-        let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
-        match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
-            // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
-            Ok(Ok(done)) => {
-                // 되돌린 게임 설정 파일(포트 등)을 다시 읽어 인스턴스 값과 맞춘다. 실패해도 복원은 끝난 것이다 (MK17)
-                let refreshed = match super::managed::refresh_settings_from_files(&state, &id).await {
-                    Ok(r) => r.get("success").and_then(Value::as_bool) == Some(true),
-                    Err(e) => {
-                        tracing::warn!("Settings refresh after restore failed for {}: {}", id, e);
-                        false
-                    }
-                };
-                Ok(Json(json!({
-                    "success": true,
-                    "restored": done.paths,
-                    "pre_restore_backup": safety,
-                    "links_not_restored": done.links_missed,
-                    "settings_refreshed": refreshed,
-                }))
-                .into_response())
-            }
-            Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
-            Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
-        }
+        let response = restore_held(&state, &id, &name, &guard, true).await?;
+        drop(guard);
+        Ok(Json(response).into_response())
     };
     detached(work).await.unwrap_or_else(|r| r)
+}
+
+/// 작업 잠금을 쥔 채 백업 하나를 되돌린다. `safety`면 덮기 전에 지금 상태를 안전 백업으로 남긴다
+/// (설치 실패 뒤 자동 복원은 반쯤 바뀐 상태를 남길 까닭이 없어 남기지 않는다)
+pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard: &InstanceLock, safety: bool) -> Result<Value, Response> {
+    let dir = backups_dir(state, id).await?;
+    // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
+    let mut roots = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(id) else {
+            return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        };
+        let instance_dir = supervisor.instance_store.instance_dir(id);
+        vec![server_base(instance, &instance_dir), instance_dir]
+    };
+    // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
+    match plan(state, id).await {
+        Ok(Some(p)) => roots.extend(p.targets.into_iter().chain(p.restore_roots)),
+        Ok(None) => {}
+        Err(r) => return Err(r),
+    }
+    let targets = match backup::backed_up_paths(&dir, name) {
+        Ok(t) => t,
+        Err(e) => return Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+    };
+    if targets.iter().any(|t| !backup::is_inside(t, &roots)) {
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "restore_outside",
+            "This backup was made for a different server folder; it can no longer be restored here",
+        ));
+    }
+    // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게. 지금 설정이 가리키지 않아도 복원이 덮을 경로는 함께 담는다
+    // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
+    let safety = if safety { take_backup_locked(state, id, BackupKind::PreRestore, Some(name.to_string()), &targets).await?.map(|b| b.name) } else { None };
+    let (dir, name) = (dir, name.to_string());
+    match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
+        // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
+        Ok(Ok(done)) => {
+            // 되돌린 게임 설정 파일(포트 등)을 다시 읽어 인스턴스 값과 맞춘다. 실패해도 복원은 끝난 것이다 (MK17)
+            let refreshed = match super::managed::refresh_settings_from_files(state, id).await {
+                Ok(r) => r.get("success").and_then(Value::as_bool) == Some(true),
+                Err(e) => {
+                    tracing::warn!("Settings refresh after restore failed for {}: {}", id, e);
+                    false
+                }
+            };
+            Ok(json!({
+                "success": true,
+                "restored": done.paths,
+                "pre_restore_backup": safety,
+                "links_not_restored": done.links_missed,
+                "settings_refreshed": refreshed,
+            }))
+        }
+        Ok(Err(e)) => Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
+    }
 }
 
 // ── 예약 작업 ──────────────────────────────────────────────

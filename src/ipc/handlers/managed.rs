@@ -639,7 +639,7 @@ pub async fn install_server_handler(
     let initial_settings = payload.get("initial_settings").cloned();
     // 어느 인스턴스의 설치인가: 그 설정(서버 종류 등)으로 버전을 고르고 설치한다. 그 인스턴스의 데이터 폴더를
     // 모듈에 넘기므로 설치가 끝날 때까지 잡아 둔다(켜져 있거나 백업·복원·삭제 중이면 409). 설정은 잡은 뒤에 읽는다
-    let (instance, own_guard) = match instance_id.as_deref() {
+    let (instance, own_guard, instance_name) = match instance_id.as_deref() {
         Some(id) => {
             match state.supervisor.read().await.instance_store.get(id) {
                 Some(inst) if inst.module_name == module_name => {}
@@ -661,9 +661,9 @@ pub async fn install_server_handler(
                 return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
             };
             let dir = sup.instance_store.instance_dir(id);
-            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir), sup.resolve_executable(inst, &module_name))), Some(guard))
+            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir), sup.resolve_executable(inst, &module_name))), Some(guard), Some(inst.name.clone()))
         }
-        None => (None, None),
+        None => (None, None, None),
     };
 
     // ── 필수 익스텐션 의존성 검증 ──
@@ -748,19 +748,38 @@ pub async fn install_server_handler(
 
     // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다.
     // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
-    let mut guards = match hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
+    let others = match hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
         Ok(guards) => guards,
         Err(resp) => return resp,
     };
-    guards.extend(own_guard);
+    // 인스턴스의 버전 설치는 뒤에서 돌릴 수 있다: 설치 전 백업이 길어도 요청 한도에 걸리지 않게 (진행은 provision-progress)
+    let background = instance_id.is_some() && payload.get("background").and_then(Value::as_bool) == Some(true);
     let executable = executable.map(str::to_string);
     let keep_executable = instance.as_ref().and_then(|(_, _, exe)| exe.clone());
+    let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
+    if let (true, Some(name)) = (background, &instance_name) {
+        state.provision_tracker.take_creating(name);
+        state.provision_tracker.update(name, version_progress(text.t("provision.version_installing", &[("version", &version)]), false, None));
+    }
     let install = {
         let state = state.clone();
         let version = version.clone();
+        let instance_id = instance_id.clone();
         crate::audit::spawn(async move {
-            let _guards = guards;
-            Supervisor::install_server(
+            let _others = others;
+            let own = instance_id.as_deref().zip(own_guard.as_ref());
+            // 설치 전 백업 (결정 3): 백업할 것이 없으면 그냥 진행하고, 실패하면 설치하지 않는다
+            let before = match own {
+                Some((id, guard)) => match super::backup::take_backup_held(&state, id, crate::backup::BackupKind::PreUpdate, guard).await {
+                    Ok(made) => made.map(|b| b.name),
+                    Err(r) => {
+                        let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
+                        return Err(json!({ "success": false, "error": format!("Pre-install backup failed: {}", reason), "error_code": "backup_failed", "reason": reason }));
+                    }
+                },
+                None => None,
+            };
+            let result = Supervisor::install_server(
                 &state.supervisor,
                 &module_name,
                 &version,
@@ -780,15 +799,94 @@ pub async fn install_server_handler(
                     body["kept_backups"] = json!(put_back.kept);
                 }
                 body
-            })
+            });
+            let Some((id, guard)) = own else {
+                return result;
+            };
+            let succeeded = result.as_ref().is_ok_and(|r| r.get("success").and_then(Value::as_bool) == Some(true));
+            if let (true, Ok(installed)) = (succeeded, &result) {
+                // 받은 파일로 켜도록 버전·실행 파일·작업 폴더를 함께 맞춘다 (클라이언트가 따로 저장하지 않는다)
+                let saved = save_installed(&mut *state.supervisor.write().await, id, &version, installed, &install_dir);
+                if let Err(e) = saved {
+                    tracing::error!("Installed '{}' but could not save it: {:#}", id, e);
+                    return Err(json!({ "success": false, "error": format!("The server files were installed, but the server details could not be saved: {}", e), "error_code": "save_failed" }));
+                }
+                return result;
+            }
+            // 실패: 설치 전 백업으로 되돌린다
+            let mut result = result;
+            if let Some(name) = before {
+                let restored = super::backup::restore_held(&state, id, &name, guard, false).await;
+                let body = match &mut result {
+                    Ok(body) | Err(body) => body,
+                };
+                if body.is_object() {
+                    match restored {
+                        Ok(_) => body["restored_backup"] = json!(name),
+                        Err(r) => {
+                            let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("restore failed").to_string();
+                            tracing::error!("Could not put back the pre-install backup '{}' for '{}': {}", name, id, reason);
+                            body["kept_backup"] = json!(name);
+                        }
+                    }
+                }
+            }
+            result
         })
     };
-    match install.await.unwrap_or_else(|e| Err(json!({ "error": e.to_string() }))) {
+    let version_label = version.clone();
+    let finish = move |outcome: Result<Result<Value, Value>, tokio::task::JoinError>| match outcome.unwrap_or_else(|e| Err(json!({ "error": e.to_string() }))) {
         Ok(mut result) => {
             // 버전을 비운 클라이언트도 무엇을 설치했는지 안다
             if let Some(obj) = result.as_object_mut() {
                 obj.entry("version").or_insert_with(|| json!(version));
             }
+            Ok(result)
+        }
+        Err(body) => Err(body),
+    };
+    if let (true, Some(name)) = (background, instance_name) {
+        let tracker = state.provision_tracker.clone();
+        tokio::spawn(async move {
+            // 주의가 붙었거나 실패했으면 사용자가 닫을 때까지 남긴다
+            let mut keep = true;
+            let progress = match finish(install.await) {
+                Ok(r) if r.get("success").and_then(Value::as_bool) == Some(true) => {
+                    // 모듈이 붙인 주의 한 줄 (`java_warning`은 예전 이름)
+                    let warning = ["warning", "java_warning"].iter().find_map(|k| r.get(*k).and_then(Value::as_str)).filter(|w| !w.is_empty());
+                    keep = warning.is_some();
+                    let message = match warning {
+                        Some(w) => format!("{}\n⚠️ {}", text.t("provision.version_installed", &[]), w),
+                        None => text.t("provision.version_installed", &[]),
+                    };
+                    version_progress(message, true, None)
+                }
+                // 모듈이 정한 실패 문구는 그대로, 스크립트 오류(stderr·경로)는 로그에만
+                Ok(r) => version_progress(
+                    text.t("provision.install_failed", &[]),
+                    true,
+                    Some(r.get("message").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| text.t("provision.install_failed", &[]))),
+                ),
+                Err(body) => {
+                    let error = match body["error_code"].as_str() {
+                        Some("backup_failed") => text.t("provision.install_backup_failed", &[("reason", body["reason"].as_str().unwrap_or_default())]),
+                        Some("save_failed") => text.t("provision.save_failed", &[]),
+                        _ => text.t("provision.script_failed", &[]),
+                    };
+                    version_progress(text.t("provision.install_failed", &[]), true, Some(error))
+                }
+            };
+            tracker.update(&name, progress);
+            if !keep {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tracker.remove(&name);
+            }
+        });
+        let body = json!({ "success": true, "provisioning": true, "id": instance_id, "version": version_label });
+        return (StatusCode::OK, Json(body)).into_response();
+    }
+    match finish(install.await) {
+        Ok(result) => {
             let status = if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 StatusCode::OK
             } else {
@@ -796,8 +894,46 @@ pub async fn install_server_handler(
             };
             (status, Json(result)).into_response()
         }
-        Err(body) => (StatusCode::INTERNAL_SERVER_ERROR, Json(body)).into_response(),
+        Err(body) => {
+            let status = if body["error_code"] == "backup_failed" { StatusCode::UNPROCESSABLE_ENTITY } else { StatusCode::INTERNAL_SERVER_ERROR };
+            (status, Json(body)).into_response()
+        }
     }
+}
+
+/// 버전 설치의 진행 표시 한 줄 (인스턴스 업데이트와 같은 모양)
+fn version_progress(message: String, done: bool, error: Option<String>) -> crate::ipc::ProvisionProgress {
+    crate::ipc::ProvisionProgress {
+        step: 0,
+        total: 1,
+        label: if done { "done".to_string() } else { "install".to_string() },
+        message,
+        done,
+        error,
+        percent: done.then_some(100),
+        steps: None,
+    }
+}
+
+/// 설치가 끝난 인스턴스에 버전과 받은 실행 파일·작업 폴더를 저장한다. 모듈이 경로를 알려 주지 않으면 버전만
+fn save_installed(sup: &mut Supervisor, id: &str, version: &str, result: &Value, install_dir: &str) -> anyhow::Result<()> {
+    let Some(mut inst) = sup.instance_store.get(id).cloned() else {
+        anyhow::bail!("instance {} is gone", id);
+    };
+    inst.server_version = Some(version.to_string());
+    let exe = ["executable_path", "jar_path"].iter().find_map(|k| result.get(*k).and_then(Value::as_str)).filter(|p| !p.is_empty());
+    if let Some(exe) = exe {
+        let folder = result
+            .get("install_path")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .or_else(|| std::path::Path::new(exe).parent().map(|p| p.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| install_dir.to_string());
+        inst.executable_path = Some(exe.to_string());
+        inst.working_dir = Some(folder);
+    }
+    sup.instance_store.update(id, inst)
 }
 
 #[cfg(test)]
@@ -1086,6 +1222,71 @@ mod tests {
         let done = install(&inside, "write").await;
         assert_eq!((done.body["error_code"].as_str(), done.body["file"].as_str()), (Some("backup_failed"), Some("PalServer")), "{}", done.body);
         assert_eq!(std::fs::read_to_string(files.join("PalServer")).unwrap(), "old", "the module never ran");
+    }
+
+    // 0.1.10 결정 3: 버전 설치는 뒤에서 돌고(GUI 요청 한도에 걸리지 않게) 설치 전에 백업한다. 실패하면 그 백업으로
+    // 되돌리고, 성공하면 데몬이 버전·실행 파일·작업 폴더를 함께 저장한다(클라이언트가 따로 맞추지 않는다)
+    #[tokio::test]
+    async fn a_background_version_install_backs_up_first_and_puts_it_back_on_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 설치 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("version-install-").tempdir_in(&modules).unwrap();
+        let dir = module.path();
+        let game = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{game}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[backup]\npaths = [\"world\"]\n")).unwrap();
+        // 월드를 망가뜨린 뒤, bad면 실패하고 아니면 새 폴더에 받았다고 답한다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nd = config['install_dir']\n\
+             open(os.path.join(d, 'world', 'level.dat'), 'w').write('broken')\n\
+             if config.get('version') == 'bad':\n    print(json.dumps({'success': False, 'message': 'download failed'}))\n\
+             else:\n    new = os.path.join(d, 'v2')\n    os.makedirs(new, exist_ok=True)\n    open(os.path.join(d, 'world', 'level.dat'), 'w').write('migrated')\n    print(json.dumps({'success': True, 'install_path': new, 'executable_path': os.path.join(new, 'server.bin'), 'warning': 'Java 21 needed'}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let files = tmp.path().join("files");
+        std::fs::create_dir_all(files.join("world")).unwrap();
+        std::fs::write(files.join("world").join("level.dat"), "old").unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", &game);
+        inst.working_dir = Some(files.to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let install = |version: &str| {
+            let body = json!({ "install_dir": files, "instance_id": id, "version": version, "background": true });
+            let (state, game) = (state.clone(), game.clone());
+            async move { crate::ipc::internal::into_internal(install_server_handler(Path(game), State(state), Json(body)).await.into_response()).await }
+        };
+        let finished = || async {
+            for _ in 0..2400 {
+                if let Some(p) = state.provision_tracker.get("srv").filter(|p| p.done) {
+                    return p;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            panic!("the install never finished");
+        };
+
+        let started = install("bad").await;
+        assert_eq!((started.status, &started.body["provisioning"]), (StatusCode::OK, &json!(true)), "{}", started.body);
+        let failed = finished().await;
+        assert_eq!(failed.error.as_deref(), Some("download failed"), "{failed:?}");
+        assert_eq!(std::fs::read_to_string(files.join("world").join("level.dat")).unwrap(), "old", "the world comes back from the pre-install backup");
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().server_version, None);
+        state.provision_tracker.remove("srv");
+
+        install("2.0").await;
+        let done = finished().await;
+        assert_eq!(done.error, None, "{done:?}");
+        // 모듈이 붙인 주의(필요한 Java 등)는 끝난 표시에 남는다
+        assert!(done.message.contains("Java 21 needed"), "{done:?}");
+        let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!(inst.server_version.as_deref(), Some("2.0"));
+        assert_eq!(inst.working_dir, Some(files.join("v2").to_string_lossy().into_owned()));
+        assert_eq!(inst.executable_path, Some(files.join("v2").join("server.bin").to_string_lossy().into_owned()));
+        assert_eq!(std::fs::read_to_string(files.join("world").join("level.dat")).unwrap(), "migrated");
     }
 
     // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
