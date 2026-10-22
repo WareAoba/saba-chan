@@ -138,12 +138,8 @@ pub async fn save_client_config(
 
 /// GET /api/config/node-token
 pub async fn get_node_token(State(_state): State<IPCServer>) -> impl IntoResponse {
-    let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-    let token_path = data_dir.join(".node_token");
-    match std::fs::read_to_string(&token_path) {
-        Ok(token) => (StatusCode::OK, Json(json!({ "token": token.trim() }))).into_response(),
-        Err(_) => (StatusCode::OK, Json(json!({ "token": "" }))).into_response(),
-    }
+    let token = super::relay::load_node_token().unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "token": token }))).into_response()
 }
 
 /// PUT /api/config/node-token
@@ -155,19 +151,11 @@ pub async fn save_node_token(
         .get("token")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-    let token_path = data_dir.join(".node_token");
-
-    if let Some(parent) = token_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
-    let unchanged = std::fs::read_to_string(&token_path).is_ok_and(|t| t.trim() == token.trim());
-
-    match std::fs::write(&token_path, token) {
-        Ok(_) => {
+    match super::relay::write_node_token(Some(token)) {
+        Ok(changed) => {
             super::relay::sync_host_id(&state, Some(token)).await;
-            if !unchanged {
+            if changed {
                 crate::relay_agent::restart(&state).await;
             }
             (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
@@ -185,17 +173,12 @@ pub async fn save_node_token(
 /// 토큰이 없으면 다음 기동 때도 자동 시작하지 않는다.
 pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
     state.relay_agent.stop();
-    let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-    let token_path = data_dir.join(".node_token");
-
-    if token_path.exists() {
-        if let Err(e) = std::fs::remove_file(&token_path) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("Failed to delete node token: {}", e) })),
-            )
-                .into_response();
-        }
+    if let Err(e) = super::relay::write_node_token(None) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to delete node token: {}", e) })),
+        )
+            .into_response();
     }
     super::relay::sync_host_id(&state, None).await;
     (StatusCode::OK, Json(json!({ "ok": true }))).into_response()

@@ -46,10 +46,6 @@ fn absolute_path(path: &str) -> Result<PathBuf, Response> {
     Ok(p)
 }
 
-fn node_token_path() -> PathBuf {
-    saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token")
-}
-
 /// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정.
 /// 모듈을 읽지 못해 설정 종류를 모르면(`types`가 None) 모듈 설정을 모두 뺀다
 pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: Option<&HashMap<String, String>>) {
@@ -143,7 +139,7 @@ pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
 
 /// zip의 노드 토큰을 이 PC에 쓸 것인가: 이 PC가 아직 페어링되지 않았을 때만
 fn takes_node_token(bundle: &Bundle) -> bool {
-    bundle.node_token.is_some() && !std::fs::read_to_string(node_token_path()).is_ok_and(|t| !t.trim().is_empty())
+    bundle.node_token.is_some() && super::relay::load_node_token().is_none()
 }
 
 /// 가져올 인스턴스마다 넣을지 건너뛸지
@@ -220,7 +216,7 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
     };
     let config = state.config_store.portable_sections(req.secrets);
     let node_token = if req.secrets {
-        std::fs::read_to_string(node_token_path()).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+        super::relay::load_node_token()
     } else {
         None
     };
@@ -343,8 +339,8 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         None => Value::Null,
         Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
-        Some(token) => match std::fs::write(node_token_path(), token) {
-            Ok(()) => json!("imported"),
+        Some(token) => match super::relay::write_node_token(Some(&token)) {
+            Ok(_) => json!("imported"),
             Err(e) => {
                 tracing::warn!("Import: could not write node token: {}", e);
                 Value::Null

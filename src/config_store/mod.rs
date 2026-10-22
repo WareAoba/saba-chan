@@ -253,11 +253,12 @@ pub struct ConfigStore {
     bot_config: RwLock<BotConfig>,
 }
 
-/// 이 PC에만 맞는 네임스페이스. 내보내기에서 뺀다 (`sandbox`: 이 PC 사용자가 확인한 동의)
-const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extensions", "sandbox"];
+/// 이 PC에만 맞는 네임스페이스. 내보내기에서 뺀다 (`sandbox`: 이 PC 사용자가 확인한 동의,
+/// `node`: 노드 토큰. 비밀값까지 내보낼 때만 zip의 `node_token`으로 따로 옮긴다)
+const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extensions", "sandbox", "node"];
 
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
-const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox"];
+const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox", "node"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
 /// 길드·인스턴스 낱말 API(`instances`), 길드가 쓸 서버 API(`allowedInstances`)
@@ -740,6 +741,10 @@ mod tests {
         assert!(out["chatbot"].get("apiKey").is_none());
         assert_eq!(out["cli"], serde_json::json!({"color": false}));
         assert!(store.portable_sections(true)["chatbot"].get("apiKey").is_some());
+        // 노드 토큰은 설정 절로 나가지 않는다 (비밀값 내보내기는 zip의 node_token으로 따로 옮긴다)
+        store.file.set_section("node", serde_json::json!({"token": "sbn_a.x"})).unwrap();
+        assert!(!store.portable_sections(true).contains_key("node"));
+        assert!(!ConfigStore::is_client_section("node"));
 
         let mut incoming = serde_json::Map::new();
         incoming.insert("chatbot".into(), serde_json::json!({"settings": {"model": "n"}}));

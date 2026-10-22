@@ -27,8 +27,7 @@ pub async fn save_bot_config(
                 crate::relay_agent::restart(&state).await;
             }
             // hostId는 노드 토큰이 기준이다: 클라이언트가 예전 값을 다시 보내도 토큰에 맞춘다
-            let token_path = saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token");
-            let token = std::fs::read_to_string(token_path).ok();
+            let token = super::relay::load_node_token();
             super::relay::sync_host_id(&state, token.as_deref()).await;
             let mut body = json!({ "success": true, "message": "Bot config saved" });
             // 권한 키는 권한 API로만 바뀐다: 바꾸려던 값은 저장하지 않고 알린다 (L61)

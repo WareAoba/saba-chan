@@ -8,7 +8,7 @@
 //!   5. POST /result/:id        — 채팅 처리기(`crate::chat`) 결과 반환
 //!   6. POST /events            — 디스코드 알림 채널(I3)에 띄울 이벤트 (`relay_event`)
 //!
-//! 인증은 노드 토큰(`<data_dir>/.node_token`, sbn_<id>.<secret>) HMAC 서명입니다.
+//! 인증은 노드 토큰(`config.json` `node.token`, sbn_<id>.<secret>) HMAC 서명입니다.
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
 use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_headers_with};
