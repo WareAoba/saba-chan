@@ -386,11 +386,7 @@ export function useServerActions({
                                             busyMessage(t, code, 'install_server_running') ||
                                                 (code === 'version_unknown'
                                                     ? t('servers.version_unknown', { error: installResult.error })
-                                                    : installFailureText(
-                                                          t,
-                                                          installResult,
-                                                          translateError(installResult.error || installResult.message),
-                                                      )),
+                                                    : installFailureText(t, installResult, translateError)),
                                             'error',
                                             8000,
                                         );

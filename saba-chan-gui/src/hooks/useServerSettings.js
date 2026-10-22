@@ -377,11 +377,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 setProgressBar(null);
                                 safeShowToast(
                                     busyMessage(t, installResult.error_code, 'install_server_running') ||
-                                        installFailureText(
-                                            t,
-                                            installResult,
-                                            translateError(installResult.error || installResult.message),
-                                        ),
+                                        installFailureText(t, installResult, translateError),
                                     'error',
                                     8000,
                                 );

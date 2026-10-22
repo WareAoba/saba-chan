@@ -84,16 +84,27 @@ export function busyMessage(t, code, runningKey) {
     return null;
 }
 
-/** 설치 실패 문구: 백업을 못 해 설치하지 않았으면 그 파일(`backup_failed`의 `file`), 되돌리지 못한 파일은 남긴 사본(`kept_backups`)을 덧붙인다 */
-export function installFailureText(t, result, base) {
-    const text =
-        result?.error_code === 'backup_failed' && result.file
-            ? t('server_settings.install_backup_failed', { file: result.file })
-            : base;
+/**
+ * 설치 실패 문구. 백업을 못 해 설치하지 않았으면 그 파일(`backup_failed`의 `file`), 되돌리지 못한 파일은 남긴 사본을 덧붙인다:
+ * 422는 `restore_failed`·`kept_backups`, 모듈 오류 500은 `error`의 `could not put back X (kept as Y): <모듈 오류>`(01 install 행).
+ * `translate`(translateError)에는 모듈 오류만 넘긴다: 그 낱말로 문구 전체가 바뀌어 사본 안내가 사라지지 않게
+ */
+export function installFailureText(t, result, translate) {
+    if (result?.error_code === 'backup_failed' && result.file)
+        return t('server_settings.install_backup_failed', { file: result.file });
+    let message = result?.error || result?.message;
+    let pairs = [];
     const kept = Array.isArray(result?.kept_backups) ? result.kept_backups : [];
-    const pairs = (Array.isArray(result?.restore_failed) ? result.restore_failed : [])
-        .map((file, i) => kept[i] && `${file} → ${kept[i]}`)
-        .filter(Boolean);
+    if (kept.length && Array.isArray(result?.restore_failed)) {
+        pairs = result.restore_failed.map((file, i) => kept[i] && `${file} → ${kept[i]}`).filter(Boolean);
+    } else {
+        const m = /^could not put back (.*? \(kept as [^)]+\))(?:: ([\s\S]*))?$/.exec(String(message ?? ''));
+        if (m) {
+            pairs = [...m[1].matchAll(/(.+?) \(kept as ([^)]+)\)(?:, |$)/g)].map(([, file, bak]) => `${file} → ${bak}`);
+            message = m[2];
+        }
+    }
+    const text = translate(message);
     return pairs.length ? `${text} ${t('server_settings.install_kept_backups', { files: pairs.join(', ') })}` : text;
 }
 
