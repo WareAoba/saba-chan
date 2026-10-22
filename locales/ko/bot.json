@@ -151,6 +151,7 @@
     "module_missing": "모듈을 찾지 못했어요: {{error}}",
     "no_latest_version": "최신 서버 버전을 알아내지 못했어요",
     "script_failed": "설치 스크립트가 오류로 끝났어요. 자세한 내용은 데몬 로그에 있어요",
+    "save_failed": "서버 파일은 받았지만 서버 정보를 저장하지 못했어요. 자세한 내용은 데몬 로그에 있어요",
     "backup_failed": "업데이트 전 백업에 실패했어요: {{reason}}"
   },
   "actions": {

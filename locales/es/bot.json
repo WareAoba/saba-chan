@@ -151,6 +151,7 @@
     "module_missing": "Módulo no encontrado: {{error}}",
     "no_latest_version": "No se pudo obtener la última versión del servidor",
     "script_failed": "El script de instalación terminó con un error. Consulta el registro del daemon para más detalles",
+    "save_failed": "Se descargaron los archivos del servidor, pero no se pudieron guardar sus datos. Consulta el registro del daemon para más detalles",
     "backup_failed": "Falló la copia de seguridad previa a la actualización: {{reason}}"
   },
   "actions": {

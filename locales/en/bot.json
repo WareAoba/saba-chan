@@ -151,6 +151,7 @@
     "module_missing": "Module not found: {{error}}",
     "no_latest_version": "Couldn't find the latest server version",
     "script_failed": "The install script ended with an error. See the daemon log for details",
+    "save_failed": "The server files were downloaded, but the server details could not be saved. See the daemon log for details",
     "backup_failed": "Pre-update backup failed: {{reason}}"
   },
   "actions": {

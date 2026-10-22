@@ -564,30 +564,48 @@ pub async fn create_instance(
                                             .and_then(|v| v.as_str())
                                             .map(|s| s.to_string());
 
-                                        {
+                                        let saved = {
                                             let mut sup = supervisor_arc.write().await;
-                                            if let Some(inst) = sup.instance_store.get(&id_done).cloned() {
-                                                let mut updated = inst;
-                                                if let Some(ref exe) = exe_path {
-                                                    if !exe.is_empty() {
-                                                        updated.executable_path = Some(exe.clone());
+                                            match sup.instance_store.get(&id_done).cloned() {
+                                                Some(inst) => {
+                                                    let mut updated = inst;
+                                                    if let Some(ref exe) = exe_path {
+                                                        if !exe.is_empty() {
+                                                            updated.executable_path = Some(exe.clone());
+                                                        }
                                                     }
-                                                }
-                                                if let Some(ref ip) = install_path {
-                                                    // 확인되지 않은 모듈은 인스턴스 폴더 안만 (서버 폴더는 다음 격리 실행에 쓰기를 받는다)
-                                                    let root = sup.instance_store.instance_dir(&id_done);
-                                                    if crate::sandbox::accepts_module_dir(std::path::Path::new(&module_path), ip, &root) {
-                                                        updated.working_dir = Some(ip.clone());
-                                                    } else {
-                                                        tracing::warn!("Ignoring install_path outside the instance folder from unverified module: {}", ip);
+                                                    if let Some(ref ip) = install_path {
+                                                        // 확인되지 않은 모듈은 인스턴스 폴더 안만 (서버 폴더는 다음 격리 실행에 쓰기를 받는다)
+                                                        let root = sup.instance_store.instance_dir(&id_done);
+                                                        if crate::sandbox::accepts_module_dir(std::path::Path::new(&module_path), ip, &root) {
+                                                            updated.working_dir = Some(ip.clone());
+                                                        } else {
+                                                            tracing::warn!("Ignoring install_path outside the instance folder from unverified module: {}", ip);
+                                                        }
                                                     }
+                                                    sup.instance_store.update(&id_done, updated)
                                                 }
-                                                let _ = sup.instance_store.update(&id_done, updated);
+                                                // 그 사이 지워졌다
+                                                None => Ok(()),
                                             }
-                                        }
+                                        };
 
-                                        tracing::info!("Native provisioning completed for '{}'", name_done);
                                         drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
+                                        // 실행 경로를 저장하지 못했으면 설치했다고 알리지 않는다 (시작할 실행 파일을 모른다)
+                                        if let Err(e) = saved {
+                                            tracing::warn!("Native provisioning for '{}' finished but the instance could not be saved: {}", name_done, e);
+                                            tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                                                step: 0, total: 1,
+                                                label: "done".to_string(),
+                                                message: text.t("provision.install_failed", &[]),
+                                                done: true,
+                                                error: Some(text.t("provision.save_failed", &[])),
+                                                percent: Some(100),
+                                                steps: None,
+                                            });
+                                            return;
+                                        }
+                                        tracing::info!("Native provisioning completed for '{}'", name_done);
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
                                             label: "done".to_string(),
@@ -2068,6 +2086,40 @@ mod tests {
         let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
         assert_eq!(error, text.t("provision.script_failed", &[]));
         assert!(!error.contains("Traceback") && !error.contains("stderr"));
+    }
+
+    #[tokio::test]
+    async fn an_install_whose_result_cannot_be_saved_is_reported_as_failed() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"manual\"\n",
+        )
+        .unwrap();
+        // 설치는 끝났다고 답하지만, 그 사이 인스턴스 기록 자리가 폴더가 되어 실행 경로를 저장하지 못한다
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nctx = json.load(sys.stdin)\nrecord = os.path.join(os.path.dirname(ctx['install_dir']), 'instance.json')\n\
+             os.remove(record)\nos.mkdir(record)\nprint(json.dumps({'success': True, 'executable_path': os.path.join(ctx['install_dir'], 'server.bin')}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+
+        let progress = provisioned(&state, "a").await.expect("provisioning finished");
+        let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
+        assert_eq!(progress.error.as_deref(), Some(text.t("provision.save_failed", &[]).as_str()));
     }
 
     #[tokio::test]
