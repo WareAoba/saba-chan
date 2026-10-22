@@ -186,7 +186,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     let install_dir = config.install_path.clone();
     // 설치 폴더는 제거기가 통째로 지울 수 있다: 상대 경로나 사용자 데이터·모듈·익스텐션 폴더와 겹치는 곳은 받지 않는다
     if let Err(reason) = check_install_dir(&install_dir, &component_dirs::Layout::current()) {
-        return fail("invalid_install_dir", &format!("Cannot install into {} ({})", install_dir.display(), reason));
+        return fail(
+            "invalid_install_dir",
+            &format!("Cannot install into {} ({})", install_dir.display(), reason),
+        );
     }
     // 한 PC에는 설치본 하나만 둔다: 설치본들이 사용자 데이터 폴더(설정·인스턴스·기록)를 함께 쓴다
     if let Some(other) = other_install(&install_dir) {
@@ -229,7 +232,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // 모듈·익스텐션 위치는 받기 전에 확인한다 (옮기기는 데몬을 끈 뒤)
     if let Some(chosen) = &config.components_dir {
         if let Err(e) = check_components_dir(chosen, &component_dirs::Layout::current()) {
-            return fail("components_dir_invalid", &format!("Cannot use {} for modules and extensions ({})", chosen.display(), e));
+            return fail(
+                "components_dir_invalid",
+                &format!("Cannot use {} for modules and extensions ({})", chosen.display(), e),
+            );
         }
     }
 
@@ -344,8 +350,15 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     if let Some(chosen) = &config.components_dir {
         emit("components-dir", "Moving modules and extensions...", 45);
         match move_components(chosen) {
-            Ok(left) => left.into_iter().for_each(|p| warn(format!("Could not remove {} after moving it", p.display()))),
-            Err(e) => return fail("components_dir_failed", &format!("Could not move modules and extensions to {}: {}", chosen.display(), e)),
+            Ok(left) => left
+                .into_iter()
+                .for_each(|p| warn(format!("Could not remove {} after moving it", p.display()))),
+            Err(e) => {
+                return fail(
+                    "components_dir_failed",
+                    &format!("Could not move modules and extensions to {}: {}", chosen.display(), e),
+                )
+            }
         }
     }
 
@@ -537,7 +550,11 @@ pub fn check_install_dir(dir: &Path, layout: &component_dirs::Layout) -> Result<
     if dir.parent().is_none() {
         return Err("root_or_home");
     }
-    if layout.home.as_deref().is_some_and(|h| saba_chan_updater_lib::same_path(h, dir)) {
+    if layout
+        .home
+        .as_deref()
+        .is_some_and(|h| saba_chan_updater_lib::same_path(h, dir))
+    {
         return Err("root_or_home");
     }
     let overlaps = |p: &Path| saba_chan_updater_lib::paths_overlap(p, dir);
@@ -570,7 +587,8 @@ fn move_components(chosen: &Path) -> Result<Vec<PathBuf>, component_dirs::PathEr
             continue;
         }
         // 앞에서 옮긴 폴더가 반영되게 매번 다시 읽는다
-        if let Some((path, moved)) = component_dirs::move_to(kind, chosen, &component_dirs::Layout::current(), &config)? {
+        if let Some((path, moved)) = component_dirs::move_to(kind, chosen, &component_dirs::Layout::current(), &config)?
+        {
             tracing::info!("Moved {} to {}", kind.dir_name(), path.display());
             left.extend(moved.left_behind);
         }
@@ -636,7 +654,10 @@ fn install_entries() -> Vec<(String, String)> {
 
 /// 기본 설치 폴더: 이미 설치돼 있으면 그 자리 (그 자리를 업데이트한다), 아니면 `constants::default_install_dir`
 pub fn default_install_path() -> String {
-    existing_install().unwrap_or_else(constants::default_install_dir).to_string_lossy().into_owned()
+    existing_install()
+        .unwrap_or_else(constants::default_install_dir)
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// 설치 화면의 처음 언어: 앱에서 고른 언어, 없으면 OS 언어, 그것도 없으면 영어
@@ -891,7 +912,10 @@ mod tests {
     #[test]
     fn extensions_land_in_the_chosen_extensions_folder() {
         let ext = Path::new("/games/saba/extensions");
-        assert_eq!(extension_target(ext, "ue4-ini", Some("extensions/ue4_ini")), ext.join("ue4_ini"));
+        assert_eq!(
+            extension_target(ext, "ue4-ini", Some("extensions/ue4_ini")),
+            ext.join("ue4_ini")
+        );
         assert_eq!(extension_target(ext, "steam-cmd", None), ext.join("steam_cmd"));
     }
 
@@ -905,7 +929,10 @@ mod tests {
             modules: data.join("modules"),
             extensions: root.join("Games").join("extensions"),
         };
-        assert_eq!(check_install_dir(&root.join("Programs").join("Saba-chan"), &layout), Ok(()));
+        assert_eq!(
+            check_install_dir(&root.join("Programs").join("Saba-chan"), &layout),
+            Ok(())
+        );
         assert_eq!(check_install_dir(Path::new("Saba-chan"), &layout), Err("not_absolute"));
         assert_eq!(check_install_dir(&root.join("home"), &layout), Err("root_or_home"));
         // 제거기가 설치 폴더를 지울 때 사용자 데이터가 함께 지워지지 않게
@@ -920,11 +947,19 @@ mod tests {
     fn components_dir_is_checked_for_both_kinds() {
         let root = std::env::temp_dir().join("saba-components-check");
         let data = root.join("data");
-        let layout = component_dirs::Layout { data_dir: data.clone(), home: None, modules: data.join("modules"), extensions: root.join("x").join("extensions") };
+        let layout = component_dirs::Layout {
+            data_dir: data.clone(),
+            home: None,
+            modules: data.join("modules"),
+            extensions: root.join("x").join("extensions"),
+        };
         assert_eq!(check_components_dir(&root.join("games"), &layout), Ok(()));
         // 모듈은 이미 그 자리(기본)여도 익스텐션을 옮길 수 있으면 된다
         assert_eq!(check_components_dir(&data, &layout), Ok(()));
-        assert_eq!(check_components_dir(Path::new("relative"), &layout).unwrap_err().code, "not_absolute");
+        assert_eq!(
+            check_components_dir(Path::new("relative"), &layout).unwrap_err().code,
+            "not_absolute"
+        );
     }
 
     // M1: 설치 폴더 사본이 이 설치기와 다르면(복사 실패로 옛 사본이 남음) 새 버전으로 기록하지 않는다

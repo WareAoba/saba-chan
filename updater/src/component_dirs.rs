@@ -84,12 +84,20 @@ pub fn resolve_from(kind: Kind, env: Option<&str>, paths: &Value, data_dir: &Pat
     if let Some(p) = env.filter(|p| !p.is_empty()) {
         return (PathBuf::from(p), Source::Env);
     }
-    if let Some(p) = paths.get(kind.dir_name()).and_then(Value::as_str).filter(|p| !p.is_empty()) {
+    if let Some(p) = paths
+        .get(kind.dir_name())
+        .and_then(Value::as_str)
+        .filter(|p| !p.is_empty())
+    {
         let path = PathBuf::from(p);
         if usable_config_path(kind, &path) {
             return (path, Source::Config);
         }
-        tracing::warn!("[Paths] Ignoring {} path {:?} in config.json; using the default", kind.dir_name(), p);
+        tracing::warn!(
+            "[Paths] Ignoring {} path {:?} in config.json; using the default",
+            kind.dir_name(),
+            p
+        );
     }
     (default_dir(kind, data_dir), Source::Default)
 }
@@ -109,7 +117,10 @@ pub struct PathError {
 
 impl PathError {
     pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
-        PathError { code, detail: detail.into() }
+        PathError {
+            code,
+            detail: detail.into(),
+        }
     }
 }
 
@@ -161,7 +172,10 @@ pub fn target_for(kind: Kind, chosen: &Path, layout: &Layout) -> Result<PathBuf,
     if chosen.components().any(|c| matches!(c, PathComponent::ParentDir)) {
         return Err(PathError::new("not_absolute", shown));
     }
-    let chosen: PathBuf = chosen.components().filter(|c| !matches!(c, PathComponent::CurDir)).collect();
+    let chosen: PathBuf = chosen
+        .components()
+        .filter(|c| !matches!(c, PathComponent::CurDir))
+        .collect();
     let target = if chosen.file_name().is_some_and(|n| n == kind.dir_name()) {
         chosen
     } else {
@@ -199,11 +213,18 @@ fn normal_parts(p: &Path) -> usize {
 }
 
 /// 고른 폴더를 `config.json`의 `paths.<종류>`에 적는다. 기본 위치면 칸을 지운다 (기본값이 바뀌면 따라가게)
-pub fn save_choice(config: &crate::config_file::ConfigFile, kind: Kind, dir: &Path, data_dir: &Path) -> std::io::Result<()> {
+pub fn save_choice(
+    config: &crate::config_file::ConfigFile,
+    kind: Kind,
+    dir: &Path,
+    data_dir: &Path,
+) -> std::io::Result<()> {
     let is_default = crate::same_path(dir, &default_dir(kind, data_dir));
     config
         .update(|doc| {
-            let paths = doc.entry(PATHS_SECTION.to_string()).or_insert_with(|| Value::Object(Default::default()));
+            let paths = doc
+                .entry(PATHS_SECTION.to_string())
+                .or_insert_with(|| Value::Object(Default::default()));
             if !paths.is_object() {
                 *paths = Value::Object(Default::default());
             }
@@ -211,7 +232,10 @@ pub fn save_choice(config: &crate::config_file::ConfigFile, kind: Kind, dir: &Pa
             if is_default {
                 paths.remove(kind.dir_name());
             } else {
-                paths.insert(kind.dir_name().to_string(), Value::from(dir.to_string_lossy().into_owned()));
+                paths.insert(
+                    kind.dir_name().to_string(),
+                    Value::from(dir.to_string_lossy().into_owned()),
+                );
             }
         })
         .map(|_| ())
@@ -229,7 +253,9 @@ pub fn move_to(
         Err(e) if e.code == "same_as_current" => return Ok(None),
         other => other?,
     };
-    let moved = relocate(layout.dir(kind), &target, || save_choice(config, kind, &target, &layout.data_dir))?;
+    let moved = relocate(layout.dir(kind), &target, || {
+        save_choice(config, kind, &target, &layout.data_dir)
+    })?;
     Ok(Some((target, moved)))
 }
 
@@ -261,7 +287,9 @@ fn relocate_inner(
     }
     match std::fs::symlink_metadata(dst) {
         Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {
-            let empty = std::fs::read_dir(dst).map(|mut it| it.next().is_none()).unwrap_or(false);
+            let empty = std::fs::read_dir(dst)
+                .map(|mut it| it.next().is_none())
+                .unwrap_or(false);
             if !empty {
                 return Err(PathError::new("not_empty", shown));
             }
@@ -270,8 +298,11 @@ fn relocate_inner(
         Ok(_) => return Err(PathError::new("not_empty", shown)),
         Err(_) => {}
     }
-    let parent = dst.parent().ok_or_else(|| PathError::new("not_absolute", shown.clone()))?;
-    std::fs::create_dir_all(parent).map_err(|e| PathError::new("not_writable", format!("{}: {}", parent.display(), e)))?;
+    let parent = dst
+        .parent()
+        .ok_or_else(|| PathError::new("not_absolute", shown.clone()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| PathError::new("not_writable", format!("{}: {}", parent.display(), e)))?;
 
     if !src.exists() {
         std::fs::create_dir(dst).map_err(|e| PathError::new("not_writable", format!("{}: {}", shown, e)))?;
@@ -314,12 +345,17 @@ fn relocate_inner(
         return Err(PathError::new("commit_failed", e.to_string()));
     }
     let _ = std::fs::remove_dir_all(src);
-    Ok(Relocated { left_behind: remaining(src) })
+    Ok(Relocated {
+        left_behind: remaining(src),
+    })
 }
 
 /// 복사 중인 폴더: `dst` 옆에 숨겨 둔다 (같은 드라이브라 마지막 이름 바꾸기가 원자적이다)
 pub fn staging_dir(dst: &Path) -> PathBuf {
-    let name = dst.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = dst
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     dst.with_file_name(format!(".{}.saba-moving", name))
 }
 
@@ -338,7 +374,9 @@ fn first_link(root: &Path) -> Option<PathBuf> {
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let path = entry.path();
-            let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
             if meta.file_type().is_symlink() || is_junction(&meta) {
                 return Some(path);
             }
@@ -382,7 +420,10 @@ fn verify_copy(src: &Path, copy: &Path) -> Result<(), PathError> {
     let a = files_under(src).map_err(|e| PathError::new("verify_failed", e.to_string()))?;
     let b = files_under(copy).map_err(|e| PathError::new("verify_failed", e.to_string()))?;
     if a.len() != b.len() {
-        return Err(PathError::new("verify_failed", format!("{} files copied of {}", b.len(), a.len())));
+        return Err(PathError::new(
+            "verify_failed",
+            format!("{} files copied of {}", b.len(), a.len()),
+        ));
     }
     for rel in &a {
         let (x, y) = (src.join(rel), copy.join(rel));
@@ -424,7 +465,11 @@ fn remaining(src: &Path) -> Vec<PathBuf> {
     if !src.exists() {
         return Vec::new();
     }
-    let mut left: Vec<PathBuf> = files_under(src).unwrap_or_default().into_iter().map(|r| src.join(r)).collect();
+    let mut left: Vec<PathBuf> = files_under(src)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| src.join(r))
+        .collect();
     if left.is_empty() {
         left.push(src.to_path_buf());
     }
@@ -457,32 +502,67 @@ mod tests {
     fn env_wins_then_config_then_default() {
         let data = abs("data");
         let paths = json!({"modules": abs("games/modules").to_str().unwrap()});
-        assert_eq!(resolve_from(Kind::Modules, Some("/dev/mods"), &paths, &data), (PathBuf::from("/dev/mods"), Source::Env));
-        assert_eq!(resolve_from(Kind::Modules, None, &paths, &data), (abs("games/modules"), Source::Config));
-        assert_eq!(resolve_from(Kind::Extensions, None, &paths, &data), (data.join("extensions"), Source::Default));
-        assert_eq!(resolve_from(Kind::Modules, Some(""), &Value::Null, &data), (data.join("modules"), Source::Default));
+        assert_eq!(
+            resolve_from(Kind::Modules, Some("/dev/mods"), &paths, &data),
+            (PathBuf::from("/dev/mods"), Source::Env)
+        );
+        assert_eq!(
+            resolve_from(Kind::Modules, None, &paths, &data),
+            (abs("games/modules"), Source::Config)
+        );
+        assert_eq!(
+            resolve_from(Kind::Extensions, None, &paths, &data),
+            (data.join("extensions"), Source::Default)
+        );
+        assert_eq!(
+            resolve_from(Kind::Modules, Some(""), &Value::Null, &data),
+            (data.join("modules"), Source::Default)
+        );
     }
 
     #[test]
     fn unusable_config_values_fall_back_to_the_default() {
         let data = abs("data");
-        for bad in [json!("relative/modules"), json!(abs("games/other").to_str().unwrap()), json!(abs("a/../modules").to_str().unwrap()), json!(3), json!("")] {
+        for bad in [
+            json!("relative/modules"),
+            json!(abs("games/other").to_str().unwrap()),
+            json!(abs("a/../modules").to_str().unwrap()),
+            json!(3),
+            json!(""),
+        ] {
             let paths = json!({ "modules": bad });
-            assert_eq!(resolve_from(Kind::Modules, None, &paths, &data).1, Source::Default, "{:?}", paths);
+            assert_eq!(
+                resolve_from(Kind::Modules, None, &paths, &data).1,
+                Source::Default,
+                "{:?}",
+                paths
+            );
         }
     }
 
     #[test]
     fn chosen_folder_gets_the_fixed_leaf_name() {
         let l = layout();
-        assert_eq!(target_for(Kind::Modules, &abs("Games/Saba"), &l), Ok(abs("Games/Saba/modules")));
-        assert_eq!(target_for(Kind::Extensions, &abs("Games/Saba"), &l), Ok(abs("Games/Saba/extensions")));
+        assert_eq!(
+            target_for(Kind::Modules, &abs("Games/Saba"), &l),
+            Ok(abs("Games/Saba/modules"))
+        );
+        assert_eq!(
+            target_for(Kind::Extensions, &abs("Games/Saba"), &l),
+            Ok(abs("Games/Saba/extensions"))
+        );
         // 이미 이름이 맞으면 한 번 더 붙이지 않는다
-        assert_eq!(target_for(Kind::Modules, &abs("Games/modules"), &l), Ok(abs("Games/modules")));
+        assert_eq!(
+            target_for(Kind::Modules, &abs("Games/modules"), &l),
+            Ok(abs("Games/modules"))
+        );
         // 기본 위치로 되돌리기
         let mut moved = layout();
         moved.modules = abs("Games/Saba/modules");
-        assert_eq!(target_for(Kind::Modules, &l.data_dir, &moved), Ok(l.data_dir.join("modules")));
+        assert_eq!(
+            target_for(Kind::Modules, &l.data_dir, &moved),
+            Ok(l.data_dir.join("modules"))
+        );
     }
 
     #[test]
@@ -500,7 +580,10 @@ mod tests {
         assert_eq!(code(Kind::Modules, l.extensions.clone()), "overlaps_other");
         assert_eq!(code(Kind::Modules, l.extensions.join("x")), "overlaps_other");
         // 사용자 폴더 안 깊은 곳은 된다
-        assert_eq!(target_for(Kind::Modules, &abs("home/me/Games"), &l), Ok(abs("home/me/Games/modules")));
+        assert_eq!(
+            target_for(Kind::Modules, &abs("home/me/Games"), &l),
+            Ok(abs("home/me/Games/modules"))
+        );
     }
 
     #[test]
@@ -508,7 +591,10 @@ mod tests {
         let mut l = layout();
         l.home = None;
         l.data_dir = abs("srv/modules/data");
-        assert_eq!(target_for(Kind::Modules, &abs("srv"), &l).unwrap_err().code, "contains_data_dir");
+        assert_eq!(
+            target_for(Kind::Modules, &abs("srv"), &l).unwrap_err().code,
+            "contains_data_dir"
+        );
     }
 
     fn tree(root: &Path) {
@@ -527,10 +613,20 @@ mod tests {
         let chosen = tmp.path().join("games").join("modules");
         save_choice(&config, Kind::Modules, &chosen, &data).unwrap();
         let paths = config.peek_section(PATHS_SECTION);
-        assert_eq!(resolve_from(Kind::Modules, None, &paths, &data), (chosen, Source::Config));
+        assert_eq!(
+            resolve_from(Kind::Modules, None, &paths, &data),
+            (chosen, Source::Config)
+        );
         save_choice(&config, Kind::Modules, &data.join("modules"), &data).unwrap();
-        assert_eq!(resolve_from(Kind::Modules, None, &config.peek_section(PATHS_SECTION), &data).1, Source::Default);
-        assert_eq!(config.section("gui"), json!({"language": "ko"}), "other settings are kept");
+        assert_eq!(
+            resolve_from(Kind::Modules, None, &config.peek_section(PATHS_SECTION), &data).1,
+            Source::Default
+        );
+        assert_eq!(
+            config.section("gui"),
+            json!({"language": "ko"}),
+            "other settings are kept"
+        );
     }
 
     #[test]
@@ -538,7 +634,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let data = tmp.path().join("data");
         let config = crate::config_file::ConfigFile::at(&data);
-        let mut l = Layout { data_dir: data.clone(), home: None, modules: data.join("modules"), extensions: data.join("extensions") };
+        let mut l = Layout {
+            data_dir: data.clone(),
+            home: None,
+            modules: data.join("modules"),
+            extensions: data.join("extensions"),
+        };
         tree(&l.modules);
         let chosen = tmp.path().join("Games").join("Saba");
         for kind in Kind::ALL {
@@ -551,7 +652,10 @@ mod tests {
         assert!(chosen.join("modules").join("i18n.py").is_file());
         assert!(chosen.join("extensions").is_dir());
         let paths = config.peek_section(PATHS_SECTION);
-        assert_eq!(resolve_from(Kind::Extensions, None, &paths, &data), (chosen.join("extensions"), Source::Config));
+        assert_eq!(
+            resolve_from(Kind::Extensions, None, &paths, &data),
+            (chosen.join("extensions"), Source::Config)
+        );
         // 같은 폴더를 다시 고르면 그대로 둔다
         assert_eq!(move_to(Kind::Modules, &chosen, &l, &config), Ok(None));
     }
@@ -570,7 +674,10 @@ mod tests {
         assert!(committed);
         assert!(r.left_behind.is_empty());
         assert!(!src.exists());
-        assert_eq!(std::fs::read_to_string(dst.join("minecraft/locales/ko.json")).unwrap(), "{}");
+        assert_eq!(
+            std::fs::read_to_string(dst.join("minecraft/locales/ko.json")).unwrap(),
+            "{}"
+        );
         assert!(is_owned(&dst));
     }
 
@@ -609,7 +716,10 @@ mod tests {
         let r = relocate_inner(&src, &dst, || Ok(()), false).unwrap();
         assert!(r.left_behind.is_empty());
         assert!(!src.exists() && !staging_dir(&dst).exists());
-        assert_eq!(std::fs::read_to_string(dst.join("minecraft/module.toml")).unwrap(), "name = 'mc'");
+        assert_eq!(
+            std::fs::read_to_string(dst.join("minecraft/module.toml")).unwrap(),
+            "name = 'mc'"
+        );
 
         let (src2, dst2) = (tmp.path().join("old2/modules"), tmp.path().join("new2/modules"));
         tree(&src2);

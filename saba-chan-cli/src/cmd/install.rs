@@ -167,7 +167,11 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         let dir = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
         if let Err(e) = core::check_components_dir(&dir, &saba_chan_updater_lib::component_dirs::Layout::current()) {
             let hint = crate::i18n::try_t(&format!("err.hint.paths_{}", e.code)).unwrap_or(e.detail);
-            return Err(usage(t!("install.components_dir_invalid", dir = dir.display(), reason = hint)));
+            return Err(usage(t!(
+                "install.components_dir_invalid",
+                dir = dir.display(),
+                reason = hint
+            )));
         }
         ctx.out.hint(&t!("install.components_dir", dir = dir.display()));
     }
@@ -188,7 +192,10 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         release: Some(manifest),
         // 창 제거기를 두지 않는다: Windows 앱 목록에도 나오지 않고, 지울 때는 데몬을 끄고 설치 폴더를 지운다
         uninstaller_exe: None,
-        components_dir: args.components_dir.as_ref().map(|d| std::path::absolute(d).unwrap_or_else(|_| d.clone())),
+        components_dir: args
+            .components_dir
+            .as_ref()
+            .map(|d| std::path::absolute(d).unwrap_or_else(|_| d.clone())),
     };
     // 한 번만 도는 명령이라 전역으로 둔다: 설치 라이브러리는 띄운 작업 안에서도 기록한다
     let logged =

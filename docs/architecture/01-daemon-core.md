@@ -77,8 +77,8 @@
 | `RUST_LOG` | `main.rs:233` | tracing 필터 |
 | `SABA_DATA_DIR` | `constants.rs:56`, `python_env/mod.rs:397` | 데이터 루트 |
 | `SABA_TOKEN_PATH` | `constants.rs:83` | IPC 토큰 파일 경로 |
-| `SABA_MODULES_PATH` | `constants.rs:95` | 모듈 디렉토리 |
-| `SABA_EXTENSIONS_DIR` | `constants.rs:107` | 익스텐션 디렉토리 |
+| `SABA_MODULES_PATH` | `component_dirs.rs` `Kind::env_var` | 모듈 디렉토리 (있으면 `config.json` `paths`보다 먼저, §1.5) |
+| `SABA_EXTENSIONS_DIR` | `component_dirs.rs` `Kind::env_var` | 익스텐션 디렉토리 (같음) |
 | `SABA_INSTANCES_PATH` | `constants.rs:119` | 인스턴스 루트 |
 | `SABA_AUTH_DISABLED=1` | `ipc/auth.rs:120` | 토큰 검사 비활성화. **디버그 빌드에서만** 듣는다 |
 | `SABA_PYTHON_URL`, `SABA_PYTHON_SHA256` | `updater/src/python_pin.rs:32-38` | 포터블 Python 미러 주소와 그 해시 |
@@ -133,6 +133,9 @@
   saba-chan-updater[.exe]   /api/updates/launch-updater가 스폰
 ```
 
+- 모듈·익스텐션 폴더(`updater/src/component_dirs.rs` `resolve`)는 `SABA_MODULES_PATH`/`SABA_EXTENSIONS_DIR` → `config.json`의 `paths.modules`/`paths.extensions`(절대 경로만, 아니면 기본값) → `<data_dir>/modules`·`<data_dir>/extensions` 순이다. 기본 폴더 이름과 기본 설치 폴더(`default_install_dir`: Windows `%ProgramW6432%`(없으면 `%ProgramFiles%`, `C:\Program Files`)`\Saba-chan`, Unix `~/.local/share/saba-chan`)는 `constants.rs`에 한 번만 둔다.
+- 사용자는 폴더 하나(X)를 고르고 실제 폴더는 `X/modules`, `X/extensions`다(익스텐션은 `import extensions.<id>` 때문에 이름이 `extensions`여야 한다). 고를 수 없는 폴더: 상대 경로, 드라이브 루트·홈 폴더, 데이터 폴더를 품는 폴더, 지금 폴더와 겹치거나 다른 종류 폴더와 겹치는 폴더(`target_for`, 오류 코드 `not_absolute`·`root_or_home`·`contains_data_dir`·`same_as_current`·`overlaps_current`·`overlaps_other`).
+- 옮기기(`relocate`): 같은 볼륨이면 rename 한 번. 아니면 옆 `.<이름>.saba-moving`에 복사하고 파일마다 크기와 SHA-256을 맞춘 뒤 대상 이름으로 바꾸고, 그다음 `config.json`을 쓴다. 어느 단계든 실패하면 만든 것을 지우고 설정을 바꾸지 않는다. 원본은 설정을 쓴 뒤에만 지우고, 지우지 못한 것은 `left_behind`로 알린다. 대상이 비어 있지 않거나(`not_empty`), 쓸 수 없거나(`not_writable`), 원본에 링크가 있으면(`has_link`) 거절한다. 사바쨩이 만든 폴더에는 `.saba-chan-dir` 표시를 두고, 제거기는 표시가 있는 폴더만 지운다(05 §제거). 0.1.8·0.1.9 데몬은 `paths`를 읽지 않는다.
 - 업데이트 스테이징 디렉토리: Windows는 `<data_dir>/updates`, Unix는 `~/.cache/saba-chan/updates`(`constants.rs:149-166`).
 - Python 런타임은 **위의 `<data_dir>`와 다른 경로**를 쓴다(§6).
 
@@ -321,6 +324,8 @@
 | DELETE | `/api/config/node-token` | `config.rs:180` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다 |
 | POST | `/api/migration/export` | `migration.rs:184` | `{path(절대 경로), secrets?}` | `{success, path, secrets, instances:[{id,name}], config:[네임스페이스]}` / 400 `INVALID_PATH` / 500 `WRITE_FAILED`. A9: 데몬이 `path`에 zip(`saba-export.json`, `config.json`, `instances.json`, `secrets`면 `node_token`)을 쓴다. `updates`·`boot`·`extensions`·`sandbox`(동의 기록)·`schemaVersion`은 이 PC 것이라 뺀다(가져오기도 받지 않는다). `secrets`가 아니면 챗봇 API 키, REST 비밀번호, 모듈이 `password`로 선언한 설정을 뺀다(모듈을 읽지 못한 인스턴스는 모듈 설정을 모두 뺀다). 게임 서버 파일은 넣지 않는다 |
 | POST | `/api/migration/import` | `migration.rs:257` | `{path, dryRun?, overwrite?}` | `{success, dryRun, appVersion, secrets, instances:{added, replaced, skipped:[{id,name,reason}]}, missingModules, config:[네임스페이스], nodeToken:"imported"\|"kept"\|null}` / 400 `INVALID_PATH`·`INVALID_ARCHIVE`·`INVALID_CONFIG`. 인스턴스는 같은 id가 있으면 `exists`(`overwrite`면 덮어씀, 켜져 있으면 `running`), 다른 인스턴스의 서버 폴더나 인스턴스 폴더와 같거나 그 안·바깥이면 `working_dir_in_use`, 이름이 같으면 `name_taken`, 설치·업데이트·백업·복원이 그 id를 쥐고 있으면(`BusyGuard`) `busy`로 건너뛴다(같은 묶음 안에서 앞서 더한 인스턴스도 본다. `dryRun`도 같은 판정). 설정은 지금 값 위에 최상위 키 머지(파일에 없는 API 키는 남는다). 설정은 다른 것을 바꾸기 전에 저장과 같은 규칙(봇 접두사 포함)으로 먼저 검사한다(`check_sections`, 잘못되면 아무것도 바꾸지 않고 `INVALID_CONFIG`). 노드 토큰을 가져오지 않으면 버려질 릴레이 연결 정보는 검사하지 않는다(`takes_node_token`). `gui`를 가져오면 실행 중인 포트 충돌 검사(`skip_port_check`)도 바로 맞춘다. 노드 토큰은 이 PC에 없을 때만 쓰고, 토큰을 실제로 가져올 때만 `relay.cloud`(relayUrl·hostId)·`cloudNodes`·`cloudMembers`도 바꾼다(아니면 이 PC 값 유지). `added`·`replaced` 항목에는 `working_dir`·`executable_path`가 붙는다 |
+| GET | `/api/system/paths` | `paths.rs` `get_paths` | - | `{ok, data_dir, install_dir, default_install_dir, instances_dir, modules:{path,default,source}, extensions:{…}}`. `source`는 `"env"`·`"config"`·`"default"` (§1.5) |
+| POST | `/api/system/paths/move` | `paths.rs` `move_dir` | `{kind:"modules"\|"extensions", target}` | 고른 폴더 아래로 옮기고 데몬이 새 폴더를 다시 읽는다(모듈 다시 읽기, 익스텐션 다시 찾기, 업데이트 매니저 폴더). 성공 `{ok:true, path, left_behind:[]}`. 실패는 200 `{ok:false, error_code:"paths_<코드>", error}`: §1.5의 코드, `unknown_kind`, `env_fixed`(환경변수로 정한 폴더), `busy`(`error`가 `install`·`update`·`instance <id>`: 모듈·익스텐션 설치·제거, 업데이트, 인스턴스 작업 중), `servers_running`(켜진 서버 id 목록). 설치·제거는 옮기는 동안 기다린다(`components_in_use`) |
 | GET | `/api/system/components` | `config.rs:241` | - | `{version, components:{key:ver}, lastUpdated}` (`installed-manifest.json` + 번들 `versions.toml`). `lastUpdated`는 설치 manifest를 마지막으로 쓴 시각의 unix 초를 담은 문자열이고, 없으면 null |
 | GET | `/api/system/metrics` | `system.rs:52` | `?sizes=false` | 시스템 모니터 표본 `{sampled_at_ms, window_ms, cpu:{cores,total_percent,others_percent}, memory:{total_bytes,used_bytes,others_bytes}, disk_io:{read_bps,write_bps,source:"physical"|"process",per_instance:false}, network:{rx_bps,tx_bps,per_instance:false}, disks:[{mount,total_bytes,available_bytes,others_bytes,instances:[{id,bytes}],sizes_at_ms}], instances:[{id,name,running,process_count,cpu_percent,memory_bytes,disk_read_bps,disk_write_bps}]}` (§10) |
 | GET | `/api/runtime/preflight` | `ipc/mod.rs:766` | - | `{phase, percent, complete, error, components:{python}}` |
@@ -687,7 +692,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(Tauri 셸 `saba-chan-gui/src-tauri/src/settings.rs:71-84`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`saba-chan-gui/src/api/createApi.js:57-74`, `src-tauri/src/native.rs:189-212`, `write_gui_section` `settings.rs:49-51`).
 2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src`, 브리지 `saba-chan-gui/src/api`)에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
 3. ~~**봇 실행 로직이 GUI에 중복돼 있다.**~~ → 해결: 로컬 봇과 범용 `/api/ext-process/*`가 지워졌다(L1). 디스코드 연동은 데몬의 `relay_agent.rs` 하나뿐이다.
-4. **GUI가 데몬의 경로 정책을 결정한다.** `saba-chan-gui/src-tauri/src/lifecycle.rs:173-183`에서 `SABA_INSTANCES_PATH`, `SABA_MODULES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다.
+4. **GUI가 데몬의 경로 일부를 정한다.** `saba-chan-gui/src-tauri/src/lifecycle.rs`에서 `SABA_INSTANCES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다. ~~`SABA_MODULES_PATH`~~ → 해결: 모듈 폴더는 데몬이 `config.json` `paths`로 정한다(§1.5).
 5. **CLI가 로컬 파일을 직접 읽는다.** (CLI 참조는 PR #6 리메이크 기준)
    - 데몬을 찾고 띄우는 `saba-chan-cli/src/bootstrap.rs`만 `config.json`의 `gui` 섹션을 직접 읽는다(`ipcPort`, `language`, `:14-46`). 파일 머리 주석이 이를 유일한 예외로 적어 둔다(`:1-6`).
    - ~~데몬은 `SABA_IPC_PORT`를 먼저 보므로 포트가 다를 수 있다~~ → 해결: CLI도 `SABA_IPC_PORT` > `gui.ipcPort` > 기본값 순으로 읽어 데몬(`main.rs:285-296`)과 같다(`bootstrap.rs:18-25`). 다만 GUI가 데몬에만 넣어 준 환경변수는 따로 띄운 CLI가 보지 못한다.
