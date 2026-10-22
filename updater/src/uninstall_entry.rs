@@ -46,6 +46,56 @@ pub fn is_last_install(entries: &[(String, String)], install_dir: Option<&Path>)
     entries.iter().all(|(_, loc)| crate::same_path(Path::new(loc), dir))
 }
 
+/// 데몬 실행 파일 이름: 목록의 폴더에 이것이 남아 있어야 설치본으로 친다
+pub const CORE_EXE: &str = if cfg!(windows) { "saba-core.exe" } else { "saba-core" };
+
+/// 설치한 폴더 목록 (사용자 데이터 폴더의 `installs.json`). 제거 항목이 없는 설치(CLI `install --dir`)도 여기에 남는다
+pub fn installs_file() -> std::path::PathBuf {
+    crate::constants::resolve_data_dir().join("installs.json")
+}
+
+pub fn listed_installs(file: &Path) -> Vec<String> {
+    std::fs::read(file)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
+        .unwrap_or_default()
+}
+
+fn write_installs(file: &Path, list: &[String]) -> std::io::Result<()> {
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    crate::write_atomic(file, &serde_json::to_vec_pretty(list).unwrap_or_default())
+}
+
+/// 설치를 마친 폴더를 목록에 더한다 (같은 폴더는 한 번)
+pub fn remember_install(file: &Path, install_dir: &Path) -> std::io::Result<()> {
+    let mut list = listed_installs(file);
+    if list.iter().any(|d| crate::same_path(Path::new(d), install_dir)) {
+        return Ok(());
+    }
+    list.push(install_dir.to_string_lossy().to_string());
+    write_installs(file, &list)
+}
+
+/// 지우는 폴더를 목록에서 뺀다
+pub fn forget_install(file: &Path, install_dir: &Path) -> std::io::Result<()> {
+    let mut list = listed_installs(file);
+    let before = list.len();
+    list.retain(|d| !crate::same_path(Path::new(d), install_dir));
+    if list.len() == before {
+        return Ok(());
+    }
+    write_installs(file, &list)
+}
+
+/// 목록에 이 폴더 말고 데몬 실행 파일이 남은 설치본이 있는지
+pub fn other_listed_install(file: &Path, install_dir: &Path) -> bool {
+    listed_installs(file)
+        .iter()
+        .any(|d| !crate::same_path(Path::new(d), install_dir) && Path::new(d).join(CORE_EXE).is_file())
+}
+
 /// 사용자 데이터 폴더에서 앱이 만들지 않는 항목: 제거기는 어떤 경우에도 지우지 않는다 (업데이트 서명 키)
 const NEVER_REMOVED: &[&str] = &[".keys"];
 
@@ -159,6 +209,32 @@ mod tests {
         let two = vec![entry(BASE_KEY, "/opt/saba-a"), entry("Saba-chan-1234abcd", "/opt/saba-b")];
         assert!(!is_last_install(&two, Some(a)));
         assert!(!is_last_install(&[entry(BASE_KEY, "/opt/saba-a")], None));
+    }
+
+    /// 항목 없이 설치된 사본(CLI `install --dir`)도 다른 설치본으로 친다: 공용 사용자 데이터를 남긴다
+    #[test]
+    fn an_install_without_an_entry_still_keeps_shared_data() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("installs.json");
+        let gui = tmp.path().join("gui");
+        let cli = tmp.path().join("cli");
+        for dir in [&gui, &cli] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join(CORE_EXE), b"").unwrap();
+            remember_install(&file, dir).unwrap();
+        }
+        remember_install(&file, &cli).unwrap();
+        assert_eq!(listed_installs(&file).len(), 2, "the same folder is listed once");
+        assert!(other_listed_install(&file, &gui), "the CLI copy is another install");
+
+        // 지운 폴더(데몬 실행 파일이 없는 폴더)는 남은 설치본이 아니다
+        std::fs::remove_file(cli.join(CORE_EXE)).unwrap();
+        assert!(!other_listed_install(&file, &gui));
+
+        std::fs::write(cli.join(CORE_EXE), b"").unwrap();
+        forget_install(&file, &cli).unwrap();
+        assert!(!other_listed_install(&file, &gui));
+        assert!(!other_listed_install(&tmp.path().join("missing.json"), &gui), "no list: nothing else known");
     }
 
     #[test]

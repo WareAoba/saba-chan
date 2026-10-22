@@ -1727,12 +1727,15 @@ impl Supervisor {
             // ── Extension hook: server.pre_start (managed) ──
             let hook = s.extension_manager.clone().map(|ext_mgr| {
                 let instance_dir = s.instance_store.instance_dir(&instance.id);
+                // 인스턴스와 시작 설정의 비밀 값은 post_create·settings_changed와 같은 기준으로 가린다 (D-E2)
+                let module = s.module_loader.get_module(module_name).ok();
+                let hidden = |v: &Value| crate::audit::redact(module.as_ref().map(|m| &m.metadata), None, None, Some(v)).1.unwrap_or_default();
                 let ctx = json!({
                     "instance_id": instance_id,
                     "instance_dir": instance_dir.to_string_lossy(),
                     "module": module_name,
-                    "instance": serde_json::to_value(&instance).unwrap_or_default(),
-                    "config": &config,
+                    "instance": hidden(&serde_json::to_value(&instance).unwrap_or_default()),
+                    "config": hidden(&config),
                     "managed": true,
                     "extension_data": &instance.extension_data,
                 });
@@ -4307,6 +4310,56 @@ mod tests {
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
         let calls = std::fs::read_to_string(&log).unwrap();
         assert_eq!(calls.lines().collect::<Vec<_>>(), ["stop", "start", "stop"], "the extension's server is stopped again");
+    }
+
+    /// managed 시작의 server.pre_start hook도 인스턴스와 시작 설정의 비밀 값을 가려서 넘긴다 (D-E2와 같은 기준)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_managed_pre_start_hook_gets_no_secrets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        let ext_root = tmp.path().join("extensions");
+        let ext = ext_root.join("box");
+        std::fs::create_dir_all(&ext).unwrap();
+        let manifest = json!({
+            "id": "box", "name": "box", "version": "0.1.0",
+            "python_modules": { "m": "m.py" },
+            "hooks": { "server.pre_start": { "module": "m", "function": "start" } },
+        });
+        std::fs::write(ext.join("manifest.json"), manifest.to_string()).unwrap();
+        let seen = tmp.path().join("seen.txt");
+        std::fs::write(
+            ext.join("m.py"),
+            format!(
+                "import json, sys\nopen({seen:?}, 'w').write(' '.join(sys.argv) + sys.stdin.read())\n\
+                 print(json.dumps({{'handled': True, 'success': False, 'error': 'stop here'}}))\n",
+                seen = seen.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enable("box").unwrap();
+        sup.extension_manager = Some(std::sync::Arc::new(tokio::sync::RwLock::new(mgr)));
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "pre-start-secrets".into();
+        inst.rest_password = Some("hunter2-rest".into());
+        inst.module_settings.insert("server_password".into(), json!("hunter2-join"));
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+
+        let config = json!({ "server_password": "hunter2-join", "rest_password": "hunter2-rest", "port": 1 });
+        let started = Supervisor::start_managed_server(&sup, "pre-start-secrets", "game", config).await.unwrap();
+        assert_eq!(started["success"], false, "{started}");
+        let ctx = std::fs::read_to_string(&seen).unwrap();
+        assert!(ctx.contains("pre-start-secrets"), "the hook ran with the context: {ctx}");
+        assert!(!ctx.contains("hunter2"), "secrets reached the extension: {ctx}");
     }
 
     // 백로그 M13: 예약 범위 때문에 옮긴 REST 포트를 알리지 않고 저장값만 바꿨다

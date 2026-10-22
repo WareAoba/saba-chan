@@ -45,6 +45,11 @@ pub fn write_line(stream: Stream, text: &str) {
     }
 }
 
+/// 창구를 바꿔 끼웠는지 (TUI 안에서 도는 명령인지)
+pub fn redirected() -> bool {
+    SINK.read().map(|s| s.is_some()).unwrap_or(false)
+}
+
 /// 창구를 바꿔 끼운다. 놓으면 터미널로 돌아간다 (TUI가 끼운다)
 #[must_use]
 pub struct SinkGuard(());

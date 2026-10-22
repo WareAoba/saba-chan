@@ -362,8 +362,14 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     emit("config-lang", "Saving language settings...", 89);
     save_language_setting(&config.language);
 
-    // Step 9: 레지스트리 등록 (90-95%)
+    // Step 9: 레지스트리 등록 (90-95%). 제거 항목이 없는 설치(CLI)도 폴더 목록에는 남겨, 다른 설치본을 지울 때 공용 데이터를 지키게 한다
     emit("registry", "Registering application...", 92);
+    if let Err(e) = saba_chan_updater_lib::uninstall_entry::remember_install(
+        &saba_chan_updater_lib::uninstall_entry::installs_file(),
+        &install_dir,
+    ) {
+        warn(format!("Failed to record the install folder: {}", e));
+    }
     #[cfg(target_os = "windows")]
     {
         if let Err(e) = registry::register_uninstall_entry(&install_dir, &manifest.version, config.uninstaller_exe.as_deref()) {

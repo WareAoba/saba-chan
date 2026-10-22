@@ -56,8 +56,8 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         cursor.next = last.next.or(Some(0));
     }
 
-    let interactive = !a.follow && !a.print && ctx.ask.enabled;
-    if a.print || (!a.follow && !interactive) {
+    let mode = mode_of(&a, ctx.ask.enabled, crate::output::redirected());
+    if mode == Mode::Print {
         if lines.is_empty() {
             say!("{}", crate::output::dim(&t!("console.empty")));
         }
@@ -66,7 +66,7 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     if first.get("running").and_then(Value::as_bool) != Some(true) {
         ctx.out.note(&t!("console.not_running", name = sv.name));
     }
-    if interactive {
+    if mode == Mode::Input {
         attach(ctx, &sv, cursor).await
     } else {
         ctx.out.note(&t!("console.following", name = sv.name));
@@ -274,6 +274,29 @@ fn token_style(token: &str, t: &str) -> String {
 }
 
 /// 보면서 입력하기. 새 줄은 입력 줄을 건드리지 않고 위에 찍힌다.
+#[derive(Debug, PartialEq, Eq)]
+enum Mode {
+    /// 지금까지의 줄만 찍고 끝낸다
+    Print,
+    /// 새 줄을 따라 찍는다
+    Follow,
+    /// 입력 줄을 열고 붙는다
+    Input,
+}
+
+/// 콘솔을 어떻게 열지. 출력 창구를 바꿔 끼웠으면(TUI) 입력 줄이 화면과 키를 가로채므로 입력 줄 대신 따라 읽는다
+fn mode_of(a: &ConsoleArgs, can_ask: bool, redirected: bool) -> Mode {
+    if a.print {
+        Mode::Print
+    } else if a.follow || redirected {
+        Mode::Follow
+    } else if can_ask {
+        Mode::Input
+    } else {
+        Mode::Print
+    }
+}
+
 async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
     let ctx = &Ctx {
         attached: true,
@@ -502,5 +525,19 @@ mod tests {
         assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
         let plain = json!({"content": "x", "source": "system", "level": "info"});
         assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
+    }
+
+    /// TUI처럼 출력 창구를 바꿔 끼웠으면 입력 줄을 열지 않고 따라 읽는다: 입력 줄이 화면과 키를 가로챈다 (`start --console`)
+    #[test]
+    fn a_redirected_output_follows_instead_of_opening_the_input_line() {
+        let a = ConsoleArgs::default();
+        assert_eq!(mode_of(&a, true, false), Mode::Input);
+        assert_eq!(mode_of(&a, true, true), Mode::Follow, "start --console in the TUI follows");
+        assert_eq!(mode_of(&a, false, true), Mode::Follow);
+        assert_eq!(mode_of(&a, false, false), Mode::Print);
+        let follow = ConsoleArgs { follow: true, ..Default::default() };
+        assert_eq!(mode_of(&follow, true, false), Mode::Follow);
+        let print = ConsoleArgs { print: true, ..Default::default() };
+        assert_eq!(mode_of(&print, true, true), Mode::Print);
     }
 }
