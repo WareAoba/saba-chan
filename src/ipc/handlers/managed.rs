@@ -751,10 +751,18 @@ pub async fn install_server_handler(
                 keep_executable.as_deref(),
             )
             .await
-            .map_err(|e| format!("{:#}", e))
+            .map_err(|e| {
+                // 되돌리지 못한 파일은 422와 같은 칸으로도 싣는다
+                let mut body = json!({ "error": format!("{:#}", e) });
+                if let Some(put_back) = e.downcast_ref::<crate::supervisor::PutBackFailed>() {
+                    body["restore_failed"] = json!(put_back.files);
+                    body["kept_backups"] = json!(put_back.kept);
+                }
+                body
+            })
         })
     };
-    match install.await.unwrap_or_else(|e| Err(e.to_string())) {
+    match install.await.unwrap_or_else(|e| Err(json!({ "error": e.to_string() }))) {
         Ok(mut result) => {
             // 버전을 비운 클라이언트도 무엇을 설치했는지 안다
             if let Some(obj) = result.as_object_mut() {
@@ -767,11 +775,7 @@ pub async fn install_server_handler(
             };
             (status, Json(result)).into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
+        Err(body) => (StatusCode::INTERNAL_SERVER_ERROR, Json(body)).into_response(),
     }
 }
 
@@ -1050,6 +1054,8 @@ mod tests {
         let kept: Vec<String> = backups().into_iter().filter(|b| !before.contains(b)).collect();
         assert_eq!(kept.len(), 1, "{}", done.body);
         assert!(error.contains("boom") && error.contains(&kept[0]), "{}", done.body);
+        // 422와 같은 칸으로도 알린다: 클라이언트가 원문을 풀지 않고 현지화 문구를 고른다 (리뷰 631 P3-1)
+        assert_eq!((&done.body["restore_failed"], &done.body["kept_backups"]), (&json!(["PalServer"]), &json!(kept)), "{}", done.body);
 
         // 백업할 이름이 모두 차 있으면 설치하지 않고 어느 파일을 백업하지 못했는지 알린다 (607 P3-3)
         reset();

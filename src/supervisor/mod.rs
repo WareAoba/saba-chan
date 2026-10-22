@@ -194,6 +194,20 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
     )
 }
 
+/// 설치가 모듈 오류로 끝났는데 되돌리지도 못한 파일 (`restore_failed`와 같은 순서의 남긴 백업 이름). 핸들러가 응답 칸으로 옮긴다
+#[derive(Debug)]
+pub struct PutBackFailed {
+    pub files: Vec<String>,
+    pub kept: Vec<String>,
+}
+
+impl std::fmt::Display for PutBackFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kept: Vec<String> = self.files.iter().zip(&self.kept).map(|(file, backup)| format!("{file} (kept as {backup})")).collect();
+        write!(f, "could not put back {}", kept.join(", "))
+    }
+}
+
 /// `original` 옆의 비어 있는 이름(`이름.bak`, `이름.1.bak`, …)에 복사본을 만든다. 이미 있는 파일은 덮지 않는다
 fn backup_beside(original: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
     let name = original.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -2601,8 +2615,8 @@ impl Supervisor {
                 if failed.is_empty() {
                     Err(e)
                 } else {
-                    let kept: Vec<String> = failed.iter().map(|(file, backup)| format!("{file} (kept as {backup})")).collect();
-                    Err(e.context(format!("could not put back {}", kept.join(", "))))
+                    let (files, kept) = failed.into_iter().unzip();
+                    Err(e.context(PutBackFailed { files, kept }))
                 }
             }
         }
