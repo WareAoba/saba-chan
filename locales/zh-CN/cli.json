@@ -720,7 +720,8 @@
       "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码",
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
       "tui": "打开全屏菜单",
-      "install": "不使用窗口安装程序，在此电脑上安装 Saba-chan"
+      "install": "不使用窗口安装程序，在此电脑上安装 Saba-chan",
+      "uninstall": "从此电脑删除 Saba-chan（除非指定，否则保留设置和服务器）"
     },
     "arg": {
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
@@ -837,7 +838,9 @@
       "install.dir": "安装文件夹（省略时会询问）",
       "install.modules": "要安装的游戏模块，用逗号分隔（省略时会询问）",
       "install.gui": "即使没有显示器也安装桌面应用",
-      "install.no_gui": "即使有显示器也不安装桌面应用"
+      "install.no_gui": "即使有显示器也不安装桌面应用",
+      "uninstall.remove_settings": "同时删除设置和 Discord 连接",
+      "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1093,5 +1096,15 @@
     "failed_no_log": "安装失败：{{reason}}",
     "done": "已安装到 {{dir}}",
     "next": "用以下命令启动守护进程：\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "此命令不是从 Saba-chan 安装文件夹运行的，没有可删除的安装。",
+    "confirm": "要删除 {{dir}} 中的 Saba-chan 吗？程序及其创建的文件将全部删除，{{kept}}。",
+    "kept_both": "设置和游戏服务器将保留",
+    "kept_settings": "设置将保留，游戏服务器将删除",
+    "kept_instances": "游戏服务器将保留，设置将删除",
+    "kept_nothing": "设置和游戏服务器也将删除",
+    "done": "已删除 Saba-chan，{{kept}}。",
+    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}"
   }
 }

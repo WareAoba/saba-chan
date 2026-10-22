@@ -506,7 +506,8 @@
     "cmd": {
       "help": "Mostra a ajuda de um comando. Com --json: a árvore de comandos, os argumentos e os códigos de saída",
       "events": "Acompanha os eventos do daemon ao vivo (com --json: um JSON por linha). Ctrl+C para parar",
-      "install": "Instalar o Saba-chan neste PC sem o instalador com janela"
+      "install": "Instalar o Saba-chan neste PC sem o instalador com janela",
+      "uninstall": "Remover o Saba-chan deste PC (configurações e servidores são mantidos, salvo indicação)"
     },
     "arg": {
       "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
@@ -527,7 +528,9 @@
       "install.dir": "Pasta de instalação (perguntada se omitida)",
       "install.modules": "Módulos de jogo a instalar, separados por vírgula (perguntados se omitidos)",
       "install.gui": "Instalar também o app de desktop mesmo sem tela",
-      "install.no_gui": "Instalar sem o app de desktop mesmo com tela"
+      "install.no_gui": "Instalar sem o app de desktop mesmo com tela",
+      "uninstall.remove_settings": "Remover também as configurações e a conexão com o Discord",
+      "uninstall.remove_instances": "Remover também os servidores (arquivos, mundos, backups)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
@@ -701,5 +704,15 @@
     "failed_no_log": "A instalação falhou: {{reason}}",
     "done": "Instalado em {{dir}}",
     "next": "Inicie o daemon com:\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "Este comando não está sendo executado de uma pasta de instalação do Saba-chan; não há nada para remover.",
+    "confirm": "Remover o Saba-chan de {{dir}}? O programa e todos os arquivos dele serão apagados; {{kept}}.",
+    "kept_both": "as configurações e os servidores são mantidos",
+    "kept_settings": "as configurações são mantidas e os servidores removidos",
+    "kept_instances": "os servidores são mantidos e as configurações removidas",
+    "kept_nothing": "as configurações e os servidores também são removidos",
+    "done": "O Saba-chan foi removido; {{kept}}.",
+    "left": "O Saba-chan foi removido, mas não foi possível apagar estes itens. Feche os programas que os usam e apague-os você mesmo:\n{{paths}}"
   }
 }

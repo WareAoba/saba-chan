@@ -99,8 +99,22 @@ pub fn other_listed_install(file: &Path, install_dir: &Path) -> bool {
 /// 사용자 데이터 폴더에서 앱이 만들지 않는 항목: 제거기는 어떤 경우에도 지우지 않는다 (업데이트 서명 키)
 const NEVER_REMOVED: &[&str] = &[".keys"];
 
-/// 설정을 남기는 제거에서 지우는 항목: 다시 받거나 다시 만들 수 있는 런타임·캐시만.
-/// 여기 없는 것(설정, 인스턴스, 토큰, 앞으로 생길 파일)은 남긴다
+/// 제거할 때 사용자 데이터 폴더에 남길 것. 아무것도 정하지 않으면 둘 다 남긴다 (사용자 지정 10-22)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Keep {
+    /// 설정·연결 토큰 등 아래 두 목록에 없는 모든 항목
+    pub settings: bool,
+    /// 인스턴스 폴더 (서버 파일, 월드, 백업, 인스턴스별 설정)
+    pub instances: bool,
+}
+
+impl Keep {
+    pub const ALL: Keep = Keep { settings: true, instances: true };
+    pub const NOTHING: Keep = Keep { settings: false, instances: false };
+}
+
+/// 무엇을 남기든 지우는 항목: 다시 받거나 다시 만들 수 있는 런타임·캐시·상태 파일.
+/// 여기와 [`INSTANCE_ENTRIES`]에 없는 것(설정, 토큰, 앞으로 생길 파일)은 설정으로 친다
 const RUNTIME_ENTRIES: &[&str] = &[
     "python-standalone",
     "python-env",
@@ -115,22 +129,32 @@ const RUNTIME_ENTRIES: &[&str] = &[
     "sandbox-temp",
     "_python_download.tar.gz",
     "daemon.lock",
+    "daemon.lock.owner",
     "daemon.log",
     "update-complete.json",
     "updater-state.json",
     "installed-files.json",
     "installed-manifest.json",
+    "installs.json",
     "official-components.json",
     "scan-verdicts.json",
     "sandbox-grants.json",
 ];
 
+/// 인스턴스를 남기면 두는 항목
+const INSTANCE_ENTRIES: &[&str] = &["instances"];
+
 /// 제거기가 사용자 데이터 폴더의 `name` 항목을 지울지
-pub fn removable_data_entry(name: &str, keep_settings: bool) -> bool {
+pub fn removable_data_entry(name: &str, keep: Keep) -> bool {
     if NEVER_REMOVED.contains(&name) {
-        return false;
+        false
+    } else if RUNTIME_ENTRIES.contains(&name) {
+        true
+    } else if INSTANCE_ENTRIES.contains(&name) {
+        !keep.instances
+    } else {
+        !keep.settings
     }
-    !keep_settings || RUNTIME_ENTRIES.contains(&name)
 }
 
 /// 레지스트리에 있는 사바쨩 항목들 `(키 이름, InstallLocation)`
@@ -238,21 +262,31 @@ mod tests {
     }
 
     #[test]
-    fn signing_keys_and_unknown_files_are_never_user_data_to_wipe() {
-        assert!(!removable_data_entry(".keys", false), "the app never writes .keys");
-        assert!(!removable_data_entry(".keys", true));
-        assert!(removable_data_entry("instances", false));
-        assert!(removable_data_entry("config.json", false));
+    fn signing_keys_are_never_removed() {
+        for keep in [Keep::NOTHING, Keep::ALL, Keep { settings: true, instances: false }, Keep { settings: false, instances: true }] {
+            assert!(!removable_data_entry(".keys", keep), "the app never writes .keys");
+        }
     }
 
     #[test]
-    fn keeping_settings_removes_only_runtime_entries() {
-        for name in ["python-standalone", "python-env", "modules", "extensions", "updates", "daemon.log"] {
-            assert!(removable_data_entry(name, true), "{name} is runtime");
+    fn runtime_entries_go_whatever_is_kept() {
+        for name in ["python-standalone", "python-env", "modules", "extensions", "updates", "daemon.log", "installs.json"] {
+            assert!(removable_data_entry(name, Keep::ALL), "{name} is runtime");
         }
-        for name in ["config.json", "instances", ".node_token", ".ipc_token", ".anon_id", "audit.log", "something-new"] {
-            assert!(!removable_data_entry(name, true), "{name} is kept");
+    }
+
+    #[test]
+    fn settings_and_instances_are_kept_separately() {
+        let settings = ["config.json", ".node_token", ".ipc_token", ".anon_id", "audit.log", "something-new"];
+        let only_settings = Keep { settings: true, instances: false };
+        let only_instances = Keep { settings: false, instances: true };
+        for name in settings {
+            assert!(!removable_data_entry(name, only_settings), "{name} is a setting");
+            assert!(removable_data_entry(name, only_instances), "{name} goes without settings");
         }
+        assert!(removable_data_entry("instances", only_settings));
+        assert!(!removable_data_entry("instances", only_instances));
+        assert!(removable_data_entry("instances", Keep::NOTHING) && removable_data_entry("config.json", Keep::NOTHING));
     }
 
     #[test]

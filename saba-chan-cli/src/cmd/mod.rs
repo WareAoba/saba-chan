@@ -18,6 +18,7 @@ pub mod sandbox;
 pub mod schedule;
 pub mod server;
 pub mod status;
+pub mod uninstall;
 pub mod update;
 
 use crate::cli::Cmd;
@@ -63,6 +64,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
         Cmd::Tui => Box::pin(crate::tui::run(ctx)).await,
         Cmd::Install(a) => install::run(ctx, a).await,
+        Cmd::Uninstall(a) => uninstall::run(ctx, a).await,
     }
 }
 
@@ -98,6 +100,7 @@ fn needs_daemon(cmd: &Cmd) -> bool {
             | Cmd::Shell
             | Cmd::Tui
             | Cmd::Install(_)
+            | Cmd::Uninstall(_)
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
 }

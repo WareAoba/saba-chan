@@ -160,6 +160,18 @@ pub enum Cmd {
     },
     /// Install Saba-chan on this PC without the window installer
     Install(InstallArgs),
+    /// Remove Saba-chan from this PC. Settings and servers are kept unless removed
+    Uninstall(UninstallArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct UninstallArgs {
+    /// Remove settings and the Discord connection too
+    #[arg(long)]
+    pub remove_settings: bool,
+    /// Remove game servers too (server files, worlds, backups)
+    #[arg(long)]
+    pub remove_instances: bool,
 }
 
 #[derive(Args, Debug)]

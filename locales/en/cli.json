@@ -593,7 +593,8 @@
       "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
       "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
-      "install": "Install Saba-chan on this PC without the window installer"
+      "install": "Install Saba-chan on this PC without the window installer",
+      "uninstall": "Remove Saba-chan from this PC (settings and servers are kept unless removed)"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
@@ -642,7 +643,9 @@
       "install.dir": "Install folder (asked when omitted)",
       "install.modules": "Game modules to install, comma separated (asked when omitted)",
       "install.gui": "Install the desktop app too, even without a display",
-      "install.no_gui": "Install without the desktop app, even with a display"
+      "install.no_gui": "Install without the desktop app, even with a display",
+      "uninstall.remove_settings": "Remove settings and the Discord connection too",
+      "uninstall.remove_instances": "Remove game servers too (server files, worlds, backups)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -898,5 +901,15 @@
     "failed_no_log": "Install failed: {{reason}}",
     "done": "Installed to {{dir}}",
     "next": "Start the daemon with:\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "This command is not running from a Saba-chan install folder, so there is nothing to remove.",
+    "confirm": "Remove Saba-chan from {{dir}}? The program and every file it made go; {{kept}}.",
+    "kept_both": "settings and game servers are kept",
+    "kept_settings": "settings are kept, game servers are removed",
+    "kept_instances": "game servers are kept, settings are removed",
+    "kept_nothing": "settings and game servers are removed too",
+    "done": "Saba-chan was removed; {{kept}}.",
+    "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}"
   }
 }

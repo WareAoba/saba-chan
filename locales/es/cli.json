@@ -506,7 +506,8 @@
     "cmd": {
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
-      "install": "Instalar Saba-chan en este PC sin el instalador con ventana"
+      "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
+      "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -527,7 +528,9 @@
       "install.dir": "Carpeta de instalación (se pregunta si se omite)",
       "install.modules": "Módulos de juego a instalar, separados por comas (se pregunta si se omite)",
       "install.gui": "Instalar también la app de escritorio aunque no haya pantalla",
-      "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla"
+      "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla",
+      "uninstall.remove_settings": "Eliminar también los ajustes y la conexión con Discord",
+      "uninstall.remove_instances": "Eliminar también los servidores (archivos, mundos, copias)"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -701,5 +704,15 @@
     "failed_no_log": "La instalación falló: {{reason}}",
     "done": "Instalado en {{dir}}",
     "next": "Inicia el daemon con:\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "Este comando no se ejecuta desde una carpeta de instalación de Saba-chan; no hay nada que eliminar.",
+    "confirm": "¿Eliminar Saba-chan de {{dir}}? Se borran el programa y todos sus archivos; {{kept}}.",
+    "kept_both": "se conservan los ajustes y los servidores",
+    "kept_settings": "se conservan los ajustes y se eliminan los servidores",
+    "kept_instances": "se conservan los servidores y se eliminan los ajustes",
+    "kept_nothing": "también se eliminan los ajustes y los servidores",
+    "done": "Se eliminó Saba-chan; {{kept}}.",
+    "left": "Se eliminó Saba-chan, pero no se pudieron borrar estos elementos. Cierre los programas que los usan y bórrelos usted:\n{{paths}}"
   }
 }

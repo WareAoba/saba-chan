@@ -46,9 +46,11 @@ const T = {
         installFailed: 'Installation failed',
         fetchFailed: 'Failed to fetch releases',
         uninstallTitle: 'Uninstall Saba-chan',
-        uninstallDesc: 'This removes Saba-chan along with its data: game server files, worlds (saves), backups, settings and registry entries. Running servers are stopped first.',
-        uninstallKeepSettings: 'Keep game servers and settings',
-        uninstallKeepSettingsHint: 'Keeps server files, worlds, backups, settings and the Discord connection so a reinstall picks them up. Modules and runtimes are removed and downloaded again.',
+        uninstallDesc: 'This removes the Saba-chan program and every file it made: runtimes, modules, caches, logs, temporary files, shortcuts and registry entries. Running servers are stopped first. Choose below what to keep.',
+        uninstallKeepInstances: 'Keep game servers',
+        uninstallKeepInstancesHint: 'Keeps server files, worlds, backups and each server\'s settings so a reinstall picks them up.',
+        uninstallKeepSettings: 'Keep settings',
+        uninstallKeepSettingsHint: 'Keeps app settings and the Discord connection so a reinstall picks them up.',
         uninstallPath: 'Install location: {{path}}',
         btnCancel: 'Cancel',
         btnUninstall: 'Uninstall',
@@ -82,7 +84,7 @@ const T = {
         uninstallProgressShortcuts: 'Removing shortcuts...',
         uninstallProgressFiles: 'Removing installation files...',
         uninstallProgressData: 'Removing user data and runtime environments...',
-        uninstallProgressDataKeep: 'Removing runtime environments (keeping settings)...',
+        uninstallProgressDataKeep: 'Removing runtime environments (keeping what you chose)...',
         uninstallProgressTemp: 'Cleaning temporary files...',
         uninstallProgressModules: 'Cleaning modules directory...',
         uninstallProgressModulesKeep: 'Keeping module settings...',
@@ -123,9 +125,11 @@ const T = {
         installFailed: '설치 실패',
         fetchFailed: '릴리즈 정보를 가져올 수 없습니다',
         uninstallTitle: '사바쨩 제거',
-        uninstallDesc: '사바쨩과 데이터를 함께 제거합니다. 게임 서버 파일, 월드(세이브), 백업, 설정, 레지스트리 항목이 삭제됩니다. 켜져 있는 서버는 먼저 정상 종료합니다.',
-        uninstallKeepSettings: '게임 서버와 설정 남기기',
-        uninstallKeepSettingsHint: '서버 파일, 월드, 백업, 설정, 디스코드 연결을 남겨 다시 설치하면 그대로 이어집니다. 모듈과 런타임은 지우고 다시 받습니다.',
+        uninstallDesc: '사바쨩 프로그램과 사바쨩이 만든 파일을 모두 지웁니다. 런타임, 모듈, 캐시, 로그, 임시 파일, 바로가기, 레지스트리 항목이 삭제됩니다. 켜져 있는 서버는 먼저 정상 종료합니다. 남길 것은 아래에서 고르세요.',
+        uninstallKeepInstances: '게임 서버 남기기',
+        uninstallKeepInstancesHint: '서버 파일, 월드, 백업, 서버별 설정을 남겨 다시 설치하면 그대로 이어집니다.',
+        uninstallKeepSettings: '설정 남기기',
+        uninstallKeepSettingsHint: '앱 설정과 디스코드 연결을 남겨 다시 설치하면 그대로 이어집니다.',
         uninstallPath: '설치 위치: {{path}}',
         btnCancel: '취소',
         btnUninstall: '제거',
@@ -159,7 +163,7 @@ const T = {
         uninstallProgressShortcuts: '바로가기 제거 중...',
         uninstallProgressFiles: '설치 파일 제거 중...',
         uninstallProgressData: '사용자 데이터 및 런타임 환경 제거 중...',
-        uninstallProgressDataKeep: '런타임 환경 제거 중 (설정 유지)...',
+        uninstallProgressDataKeep: '런타임 환경 제거 중 (고른 항목은 남김)...',
         uninstallProgressTemp: '임시 파일 정리 중...',
         uninstallProgressModules: '모듈 디렉토리 정리 중...',
         uninstallProgressModulesKeep: '모듈 설정 유지 중...',
@@ -199,9 +203,11 @@ const T = {
         installFailed: 'インストール失敗',
         fetchFailed: 'リリース情報の取得に失敗',
         uninstallTitle: 'サバちゃん アンインストール',
-        uninstallDesc: 'サバちゃんとデータを削除します。ゲームサーバーのファイル、ワールド（セーブ）、バックアップ、設定、レジストリが削除されます。起動中のサーバーは先に正常終了します。',
-        uninstallKeepSettings: 'ゲームサーバーと設定を残す',
-        uninstallKeepSettingsHint: 'サーバーファイル、ワールド、バックアップ、設定、Discord 連携を残し、再インストール後もそのまま使えます。モジュールとランタイムは削除して再取得します。',
+        uninstallDesc: 'サバちゃんのプログラムと、サバちゃんが作ったファイルをすべて削除します。ランタイム、モジュール、キャッシュ、ログ、一時ファイル、ショートカット、レジストリが削除されます。起動中のサーバーは先に正常終了します。残すものを下で選んでください。',
+        uninstallKeepInstances: 'ゲームサーバーを残す',
+        uninstallKeepInstancesHint: 'サーバーファイル、ワールド、バックアップ、サーバーごとの設定を残し、再インストール後もそのまま使えます。',
+        uninstallKeepSettings: '設定を残す',
+        uninstallKeepSettingsHint: 'アプリの設定と Discord 連携を残し、再インストール後もそのまま使えます。',
         uninstallPath: 'インストール先: {{path}}',
         btnCancel: 'キャンセル',
         btnUninstall: 'アンインストール',
@@ -235,7 +241,7 @@ const T = {
         uninstallProgressShortcuts: 'ショートカットを削除中...',
         uninstallProgressFiles: 'インストールファイルを削除中...',
         uninstallProgressData: 'ユーザーデータとランタイム環境を削除中...',
-        uninstallProgressDataKeep: 'ランタイム環境を削除中（設定は保持）...',
+        uninstallProgressDataKeep: 'ランタイム環境を削除中（選んだものは残します）...',
         uninstallProgressTemp: '一時ファイルをクリーンアップ中...',
         uninstallProgressModules: 'モジュールディレクトリをクリーンアップ中...',
         uninstallProgressModulesKeep: 'モジュール設定を保持中...',
@@ -275,9 +281,11 @@ const T = {
         installFailed: '安装失败',
         fetchFailed: '无法获取版本信息',
         uninstallTitle: '卸载 Saba-chan',
-        uninstallDesc: '将删除 Saba-chan 及其数据：游戏服务器文件、世界（存档）、备份、设置和注册表项。正在运行的服务器会先正常停止。',
-        uninstallKeepSettings: '保留游戏服务器和设置',
-        uninstallKeepSettingsHint: '保留服务器文件、世界、备份、设置和 Discord 连接，重新安装后可继续使用。模块和运行环境会删除并重新下载。',
+        uninstallDesc: '这会删除 Saba-chan 程序及其创建的所有文件：运行环境、模块、缓存、日志、临时文件、快捷方式和注册表项。正在运行的服务器会先正常关闭。请在下方选择要保留的内容。',
+        uninstallKeepInstances: '保留游戏服务器',
+        uninstallKeepInstancesHint: '保留服务器文件、世界、备份和各服务器的设置，重新安装后可继续使用。',
+        uninstallKeepSettings: '保留设置',
+        uninstallKeepSettingsHint: '保留应用设置和 Discord 连接，重新安装后可继续使用。',
         uninstallPath: '安装位置：{{path}}',
         btnCancel: '取消',
         btnUninstall: '卸载',
@@ -311,7 +319,7 @@ const T = {
         uninstallProgressShortcuts: '正在删除快捷方式...',
         uninstallProgressFiles: '正在删除安装文件...',
         uninstallProgressData: '正在删除用户数据和运行时环境...',
-        uninstallProgressDataKeep: '正在删除运行时环境（保留设置）...',
+        uninstallProgressDataKeep: '正在删除运行环境（保留所选内容）...',
         uninstallProgressTemp: '正在清理临时文件...',
         uninstallProgressModules: '正在清理模块目录...',
         uninstallProgressModulesKeep: '正在保留模块设置...',
@@ -351,9 +359,11 @@ const T = {
         installFailed: '安裝失敗',
         fetchFailed: '無法取得版本資訊',
         uninstallTitle: '解除安裝 Saba-chan',
-        uninstallDesc: '將移除 Saba-chan 及其資料：遊戲伺服器檔案、世界（存檔）、備份、設定和登錄檔項目。執行中的伺服器會先正常停止。',
-        uninstallKeepSettings: '保留遊戲伺服器和設定',
-        uninstallKeepSettingsHint: '保留伺服器檔案、世界、備份、設定和 Discord 連線，重新安裝後可繼續使用。模組和執行環境會刪除並重新下載。',
+        uninstallDesc: '這會刪除 Saba-chan 程式及其建立的所有檔案：執行環境、模組、快取、記錄、暫存檔、捷徑和登錄項目。執行中的伺服器會先正常關閉。請在下方選擇要保留的內容。',
+        uninstallKeepInstances: '保留遊戲伺服器',
+        uninstallKeepInstancesHint: '保留伺服器檔案、世界、備份和各伺服器的設定，重新安裝後可繼續使用。',
+        uninstallKeepSettings: '保留設定',
+        uninstallKeepSettingsHint: '保留應用程式設定和 Discord 連線，重新安裝後可繼續使用。',
         uninstallPath: '安裝位置：{{path}}',
         btnCancel: '取消',
         btnUninstall: '解除安裝',
@@ -387,7 +397,7 @@ const T = {
         uninstallProgressShortcuts: '正在刪除捷徑...',
         uninstallProgressFiles: '正在刪除安裝檔案...',
         uninstallProgressData: '正在刪除使用者資料和執行環境...',
-        uninstallProgressDataKeep: '正在刪除執行環境（保留設定）...',
+        uninstallProgressDataKeep: '正在刪除執行環境（保留所選內容）...',
         uninstallProgressTemp: '正在清理暫存檔案...',
         uninstallProgressModules: '正在清理模組目錄...',
         uninstallProgressModulesKeep: '正在保留模組設定...',
@@ -427,9 +437,11 @@ const T = {
         installFailed: 'Error en la instalación',
         fetchFailed: 'No se pudieron obtener las versiones',
         uninstallTitle: 'Desinstalar Saba-chan',
-        uninstallDesc: 'Se eliminará Saba-chan junto con sus datos: archivos de servidores, mundos (partidas guardadas), copias de seguridad, ajustes y entradas del registro. Los servidores en marcha se detienen antes.',
-        uninstallKeepSettings: 'Conservar servidores y ajustes',
-        uninstallKeepSettingsHint: 'Conserva los archivos de servidor, mundos, copias de seguridad, ajustes y la conexión con Discord para una reinstalación. Los módulos y entornos se eliminan y se descargan de nuevo.',
+        uninstallDesc: 'Esto elimina el programa Saba-chan y todos los archivos que creó: entornos, módulos, cachés, registros, archivos temporales, accesos directos y entradas del registro. Los servidores en marcha se detienen antes. Elija abajo qué conservar.',
+        uninstallKeepInstances: 'Conservar los servidores',
+        uninstallKeepInstancesHint: 'Conserva los archivos de servidor, mundos, copias de seguridad y los ajustes de cada servidor para una reinstalación.',
+        uninstallKeepSettings: 'Conservar los ajustes',
+        uninstallKeepSettingsHint: 'Conserva los ajustes de la aplicación y la conexión con Discord para una reinstalación.',
         uninstallPath: 'Ubicación de instalación: {{path}}',
         btnCancel: 'Cancelar',
         btnUninstall: 'Desinstalar',
@@ -463,7 +475,7 @@ const T = {
         uninstallProgressShortcuts: 'Eliminando accesos directos...',
         uninstallProgressFiles: 'Eliminando archivos de instalación...',
         uninstallProgressData: 'Eliminando datos de usuario y entornos de ejecución...',
-        uninstallProgressDataKeep: 'Eliminando entornos de ejecución (conservando ajustes)...',
+        uninstallProgressDataKeep: 'Eliminando entornos (se conserva lo elegido)...',
         uninstallProgressTemp: 'Limpiando archivos temporales...',
         uninstallProgressModules: 'Limpiando directorio de módulos...',
         uninstallProgressModulesKeep: 'Conservando ajustes de módulos...',
@@ -503,9 +515,11 @@ const T = {
         installFailed: 'Falha na instalação',
         fetchFailed: 'Não foi possível obter as versões',
         uninstallTitle: 'Desinstalar Saba-chan',
-        uninstallDesc: 'Isso remove o Saba-chan com seus dados: arquivos dos servidores, mundos (saves), backups, configurações e entradas do registro. Servidores em execução são parados antes.',
-        uninstallKeepSettings: 'Manter servidores e configurações',
-        uninstallKeepSettingsHint: 'Mantém arquivos dos servidores, mundos, backups, configurações e a conexão com o Discord para uma reinstalação. Módulos e ambientes são removidos e baixados de novo.',
+        uninstallDesc: 'Isto remove o programa Saba-chan e todos os arquivos que ele criou: ambientes, módulos, caches, logs, arquivos temporários, atalhos e entradas do registro. Os servidores em execução são parados antes. Escolha abaixo o que manter.',
+        uninstallKeepInstances: 'Manter os servidores',
+        uninstallKeepInstancesHint: 'Mantém arquivos dos servidores, mundos, backups e as configurações de cada servidor para uma reinstalação.',
+        uninstallKeepSettings: 'Manter as configurações',
+        uninstallKeepSettingsHint: 'Mantém as configurações do aplicativo e a conexão com o Discord para uma reinstalação.',
         uninstallPath: 'Local de instalação: {{path}}',
         btnCancel: 'Cancelar',
         btnUninstall: 'Desinstalar',
@@ -539,7 +553,7 @@ const T = {
         uninstallProgressShortcuts: 'Removendo atalhos...',
         uninstallProgressFiles: 'Removendo arquivos de instalação...',
         uninstallProgressData: 'Removendo dados do usuário e ambientes de execução...',
-        uninstallProgressDataKeep: 'Removendo ambientes de execução (mantendo configurações)...',
+        uninstallProgressDataKeep: 'Removendo ambientes (mantendo o que você escolheu)...',
         uninstallProgressTemp: 'Limpando arquivos temporários...',
         uninstallProgressModules: 'Limpando diretório de módulos...',
         uninstallProgressModulesKeep: 'Mantendo configurações de módulos...',
@@ -579,9 +593,11 @@ const T = {
         installFailed: 'Ошибка установки',
         fetchFailed: 'Не удалось получить информацию о версиях',
         uninstallTitle: 'Удаление Saba-chan',
-        uninstallDesc: 'Saba-chan будет удалён вместе с данными: файлами серверов, мирами (сохранениями), резервными копиями, настройками и записями реестра. Запущенные серверы сначала будут корректно остановлены.',
-        uninstallKeepSettings: 'Сохранить серверы и настройки',
-        uninstallKeepSettingsHint: 'Сохраняет файлы серверов, миры, резервные копии, настройки и подключение к Discord для переустановки. Модули и среды выполнения удаляются и загружаются заново.',
+        uninstallDesc: 'Будут удалены программа Saba-chan и все созданные ею файлы: среды выполнения, модули, кэши, журналы, временные файлы, ярлыки и записи реестра. Запущенные серверы сначала останавливаются. Ниже выберите, что сохранить.',
+        uninstallKeepInstances: 'Сохранить серверы',
+        uninstallKeepInstancesHint: 'Сохраняет файлы серверов, миры, резервные копии и настройки каждого сервера для переустановки.',
+        uninstallKeepSettings: 'Сохранить настройки',
+        uninstallKeepSettingsHint: 'Сохраняет настройки приложения и подключение к Discord для переустановки.',
         uninstallPath: 'Путь установки: {{path}}',
         btnCancel: 'Отмена',
         btnUninstall: 'Удалить',
@@ -615,7 +631,7 @@ const T = {
         uninstallProgressShortcuts: 'Удаление ярлыков...',
         uninstallProgressFiles: 'Удаление файлов установки...',
         uninstallProgressData: 'Удаление пользовательских данных и сред выполнения...',
-        uninstallProgressDataKeep: 'Удаление сред выполнения (сохранение настроек)...',
+        uninstallProgressDataKeep: 'Удаление сред выполнения (выбранное сохраняется)...',
         uninstallProgressTemp: 'Очистка временных файлов...',
         uninstallProgressModules: 'Очистка каталога модулей...',
         uninstallProgressModulesKeep: 'Сохранение настроек модулей...',
@@ -655,9 +671,11 @@ const T = {
         installFailed: 'Installation fehlgeschlagen',
         fetchFailed: 'Versionsinformationen konnten nicht abgerufen werden',
         uninstallTitle: 'Saba-chan deinstallieren',
-        uninstallDesc: 'Saba-chan wird mit seinen Daten entfernt: Serverdateien, Welten (Spielstände), Backups, Einstellungen und Registrierungseinträge. Laufende Server werden vorher ordnungsgemäß beendet.',
-        uninstallKeepSettings: 'Server und Einstellungen behalten',
-        uninstallKeepSettingsHint: 'Behält Serverdateien, Welten, Backups, Einstellungen und die Discord-Verbindung für eine Neuinstallation. Module und Laufzeitumgebungen werden entfernt und neu geladen.',
+        uninstallDesc: 'Entfernt das Programm Saba-chan und alle Dateien, die es angelegt hat: Laufzeitumgebungen, Module, Caches, Protokolle, temporäre Dateien, Verknüpfungen und Registrierungseinträge. Laufende Server werden zuerst beendet. Wählen Sie unten, was erhalten bleibt.',
+        uninstallKeepInstances: 'Server behalten',
+        uninstallKeepInstancesHint: 'Behält Serverdateien, Welten, Backups und die Einstellungen jedes Servers für eine Neuinstallation.',
+        uninstallKeepSettings: 'Einstellungen behalten',
+        uninstallKeepSettingsHint: 'Behält die App-Einstellungen und die Discord-Verbindung für eine Neuinstallation.',
         uninstallPath: 'Installationsort: {{path}}',
         btnCancel: 'Abbrechen',
         btnUninstall: 'Deinstallieren',
@@ -691,7 +709,7 @@ const T = {
         uninstallProgressShortcuts: 'Verknüpfungen werden entfernt...',
         uninstallProgressFiles: 'Installationsdateien werden entfernt...',
         uninstallProgressData: 'Benutzerdaten und Laufzeitumgebungen werden entfernt...',
-        uninstallProgressDataKeep: 'Laufzeitumgebungen werden entfernt (Einstellungen werden beibehalten)...',
+        uninstallProgressDataKeep: 'Laufzeitumgebungen werden entfernt (Ausgewähltes bleibt)...',
         uninstallProgressTemp: 'Temporäre Dateien werden bereinigt...',
         uninstallProgressModules: 'Modulverzeichnis wird bereinigt...',
         uninstallProgressModulesKeep: 'Moduleinstellungen werden beibehalten...',
@@ -731,9 +749,11 @@ const T = {
         installFailed: 'Échec de l\'installation',
         fetchFailed: 'Impossible de récupérer les versions',
         uninstallTitle: 'Désinstaller Saba-chan',
-        uninstallDesc: 'Saba-chan sera supprimé avec ses données : fichiers des serveurs, mondes (sauvegardes), copies de sécurité, paramètres et entrées de registre. Les serveurs en cours sont d\'abord arrêtés proprement.',
-        uninstallKeepSettings: 'Conserver les serveurs et les paramètres',
-        uninstallKeepSettingsHint: 'Conserve les fichiers des serveurs, les mondes, les copies de sécurité, les paramètres et la connexion Discord pour une réinstallation. Les modules et environnements sont supprimés puis retéléchargés.',
+        uninstallDesc: 'Ceci supprime le programme Saba-chan et tous les fichiers qu\'il a créés : environnements, modules, caches, journaux, fichiers temporaires, raccourcis et entrées du registre. Les serveurs en cours sont d\'abord arrêtés. Choisissez ci-dessous ce qu\'il faut conserver.',
+        uninstallKeepInstances: 'Conserver les serveurs',
+        uninstallKeepInstancesHint: 'Conserve les fichiers des serveurs, les mondes, les copies de sécurité et les paramètres de chaque serveur pour une réinstallation.',
+        uninstallKeepSettings: 'Conserver les paramètres',
+        uninstallKeepSettingsHint: 'Conserve les paramètres de l\'application et la connexion Discord pour une réinstallation.',
         uninstallPath: 'Emplacement d\'installation : {{path}}',
         btnCancel: 'Annuler',
         btnUninstall: 'Désinstaller',
@@ -767,7 +787,7 @@ const T = {
         uninstallProgressShortcuts: 'Suppression des raccourcis...',
         uninstallProgressFiles: 'Suppression des fichiers d\'installation...',
         uninstallProgressData: 'Suppression des données utilisateur et des environnements d\'exécution...',
-        uninstallProgressDataKeep: 'Suppression des environnements d\'exécution (conservation des paramètres)...',
+        uninstallProgressDataKeep: 'Suppression des environnements (ce que vous avez choisi est conservé)...',
         uninstallProgressTemp: 'Nettoyage des fichiers temporaires...',
         uninstallProgressModules: 'Nettoyage du répertoire des modules...',
         uninstallProgressModulesKeep: 'Conservation des paramètres des modules...',
@@ -843,6 +863,8 @@ function applyTranslations() {
     s('uninstall-desc', 'uninstallDesc');
     s('btn-cancel-text', 'btnCancel');
     s('btn-uninstall-text', 'btnUninstall');
+    s('label-keep-instances', 'uninstallKeepInstances');
+    s('hint-keep-instances', 'uninstallKeepInstancesHint');
     s('label-keep-settings', 'uninstallKeepSettings');
     s('hint-keep-settings', 'uninstallKeepSettingsHint');
 }
@@ -1227,8 +1249,9 @@ document.getElementById('btn-uninstall')?.addEventListener('click', async () => 
     $progressBar.style.display = '';
     currentState = 'uninstalling';
 
-    const keepSettings = document.getElementById('chk-keep-settings')?.checked ?? false;
-    try { await invoke('start_uninstall', { keepSettings }); } catch (e) {
+    const keepSettings = document.getElementById('chk-keep-settings')?.checked ?? true;
+    const keepInstances = document.getElementById('chk-keep-instances')?.checked ?? true;
+    try { await invoke('start_uninstall', { keepSettings, keepInstances }); } catch (e) {
         if (String(e) === 'busy') return;
         enterError({ message: String(e) }, 'uninstallFailed', false);
     }
@@ -1416,7 +1439,14 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     // 모드 확인
     try {
         const mode = await invoke('get_app_mode');
-        if (mode.uninstall) { enterUninstallMode(); return; }
+        if (mode.uninstall) {
+            // 처음 값은 인자에서 (`--remove-*`가 없으면 둘 다 남김)
+            const check = (id, on) => { const el = document.getElementById(id); if (el) el.checked = on !== false; };
+            check('chk-keep-settings', mode.keepSettings);
+            check('chk-keep-instances', mode.keepInstances);
+            enterUninstallMode();
+            return;
+        }
     } catch (_) {}
 
     // 설치 경로 로드

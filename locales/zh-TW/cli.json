@@ -506,7 +506,8 @@
     "cmd": {
       "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
-      "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan"
+      "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan",
+      "uninstall": "從此電腦刪除 Saba-chan（除非指定，否則保留設定和伺服器）"
     },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
@@ -527,7 +528,9 @@
       "install.dir": "安裝資料夾（省略時會詢問）",
       "install.modules": "要安裝的遊戲模組，以逗號分隔（省略時會詢問）",
       "install.gui": "即使沒有螢幕也安裝桌面應用程式",
-      "install.no_gui": "即使有螢幕也不安裝桌面應用程式"
+      "install.no_gui": "即使有螢幕也不安裝桌面應用程式",
+      "uninstall.remove_settings": "同時刪除設定和 Discord 連線",
+      "uninstall.remove_instances": "同時刪除遊戲伺服器（伺服器檔案、世界、備份）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -701,5 +704,15 @@
     "failed_no_log": "安裝失敗：{{reason}}",
     "done": "已安裝到 {{dir}}",
     "next": "用以下指令啟動常駐程式：\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "此命令不是從 Saba-chan 安裝資料夾執行的，沒有可刪除的安裝。",
+    "confirm": "要刪除 {{dir}} 中的 Saba-chan 嗎？程式及其建立的檔案將全部刪除，{{kept}}。",
+    "kept_both": "設定和遊戲伺服器將保留",
+    "kept_settings": "設定將保留，遊戲伺服器將刪除",
+    "kept_instances": "遊戲伺服器將保留，設定將刪除",
+    "kept_nothing": "設定和遊戲伺服器也將刪除",
+    "done": "已刪除 Saba-chan，{{kept}}。",
+    "left": "已刪除 Saba-chan，但無法刪除以下項目。請關閉正在使用它們的程式後手動刪除：\n{{paths}}"
   }
 }

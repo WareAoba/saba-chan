@@ -506,7 +506,8 @@
     "cmd": {
       "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
       "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
-      "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren"
+      "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren",
+      "uninstall": "Saba-chan von diesem PC entfernen (Einstellungen und Server bleiben, sofern nicht anders angegeben)"
     },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
@@ -527,7 +528,9 @@
       "install.dir": "Installationsordner (wird gefragt, wenn weggelassen)",
       "install.modules": "Zu installierende Spielmodule, durch Kommas getrennt (wird gefragt, wenn weggelassen)",
       "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
-      "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren"
+      "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
+      "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
+      "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -701,5 +704,15 @@
     "failed_no_log": "Installation fehlgeschlagen: {{reason}}",
     "done": "Nach {{dir}} installiert",
     "next": "Starte den Daemon mit:\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "Dieser Befehl läuft nicht aus einem Saba-chan-Installationsordner, es gibt nichts zu entfernen.",
+    "confirm": "Saba-chan aus {{dir}} entfernen? Das Programm und alle seine Dateien werden gelöscht; {{kept}}.",
+    "kept_both": "Einstellungen und Server bleiben erhalten",
+    "kept_settings": "Einstellungen bleiben, Server werden entfernt",
+    "kept_instances": "Server bleiben, Einstellungen werden entfernt",
+    "kept_nothing": "Einstellungen und Server werden ebenfalls entfernt",
+    "done": "Saba-chan wurde entfernt; {{kept}}.",
+    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}"
   }
 }
