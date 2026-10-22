@@ -109,7 +109,7 @@ impl ReleaseManifest {
 pub async fn latest_catalog(relay_url: Option<&str>) -> Result<Option<ReleaseManifest>, RelayError> {
     let client = RelayClient::new(relay_url.unwrap_or(DEFAULT_RELAY_URL));
     let release = client
-        .fetch_verified_release(DEFAULT_CHANNEL, &current_platform(), "", &anon_client_id())
+        .fetch_verified_catalog(DEFAULT_CHANNEL, &current_platform(), &crate::versions::bundled().release, &anon_client_id())
         .await?;
     Ok(release.map(|r| r.manifest))
 }
@@ -237,6 +237,23 @@ impl RelayClient {
             }
             Err(e) => return Err(e),
         };
+        bind_release(latest, manifest).map(Some)
+    }
+
+    /// 아무것도 깔리지 않은 상태의 확인(모듈·익스텐션 카탈로그, 설치기): 릴레이에는 현재 버전 없이 묻되,
+    /// `floor`(이 빌드의 릴리즈 버전)보다 옛 manifest는 다운그레이드로 거절한다. 릴레이가 옛 서명 manifest를 내주어도
+    /// 새 설치가 옛 코어를, 처음 받는 모듈이 옛 판을 공식으로 받지 않게
+    pub async fn fetch_verified_catalog(
+        &self,
+        channel: &str,
+        platform: &str,
+        floor: &str,
+        client_id: &str,
+    ) -> Result<Option<VerifiedRelease>, RelayError> {
+        let check = self.check(channel, platform, "", client_id).await?;
+        let Some(latest) = check.latest else { return Ok(None) };
+        let signed = self.fetch_manifest(&latest).await?;
+        let manifest = verify_release(&signed, platform, channel, floor)?;
         bind_release(latest, manifest).map(Some)
     }
 
@@ -436,6 +453,18 @@ mod tests {
         let base = fake_relay(r#"{"upToDate":true,"latest":{"version":"0.1.1"}}"#.into(), PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.0", "t").await;
         assert!(matches!(got, Err(RelayError::WrongChannel { .. })), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
+    }
+
+    // EE3: 아무것도 깔리지 않은 확인(카탈로그·설치기)도 이 빌드보다 옛 릴리즈는 받지 않는다
+    #[tokio::test]
+    async fn a_catalog_check_refuses_a_release_older_than_this_build() {
+        let check = r#"{"upToDate":false,"latest":{"version":"0.1.1"}}"#.to_string();
+        let base = fake_relay(check.clone(), PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_catalog("stable", "windows-x64", "0.2.0", "t").await;
+        assert!(matches!(got, Err(RelayError::Downgrade { .. })), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
+        let base = fake_relay(check, PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_catalog("stable", "windows-x64", "0.1.0", "t").await;
+        assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
     }
 
     #[test]
