@@ -259,7 +259,7 @@ mod tests {
         unsafe { SetHandleInformation(raw, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
         let old = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
         unsafe { SetStdHandle(STD_OUTPUT_HANDLE, raw) };
-        let mut cmd = Command::new("ping");
+        let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("ping"));
         cmd.args(["-n", "6", "127.0.0.1"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())

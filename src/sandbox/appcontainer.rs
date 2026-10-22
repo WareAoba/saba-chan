@@ -1086,7 +1086,7 @@ mod imp {
             assert_eq!(super::low_label(&ini).unwrap(), Some(true), "the module still writes its settings");
             assert_eq!(super::low_label(&dir).unwrap(), Some(false), "the folder keeps its label");
             // 폴더 표시가 다시 하위로 퍼져도(다른 데몬·도구가 다시 붙임) 실행 파일은 중간 수준 그대로다
-            let out = std::process::Command::new("icacls").arg(&dir).args(["/setintegritylevel", "(OI)(CI)L"]).output().unwrap();
+            let out = std::process::Command::new(saba_chan_updater_lib::process::system_tool("icacls")).arg(&dir).args(["/setintegritylevel", "(OI)(CI)L"]).output().unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
             assert_eq!(super::low_label(&ini).unwrap(), Some(true));
             assert_eq!(super::low_label(&exe).unwrap(), None);
@@ -1106,7 +1106,7 @@ mod imp {
             std::fs::write(dir.join("data.pak"), vec![0u8; 1 << 20]).unwrap();
             // compact는 `\\?\` 경로를 받지 않는다: 실행 파일 하나를 보통 경로로 넘긴다
             let plain_exe = tmp.path().join("bin").join("server.exe");
-            let out = std::process::Command::new("compact").args(["/c", "/exe:xpress4k"]).arg(&plain_exe).output().unwrap();
+            let out = std::process::Command::new(saba_chan_updater_lib::process::system_tool("compact")).args(["/c", "/exe:xpress4k"]).arg(&plain_exe).output().unwrap();
             let said = String::from_utf8_lossy(&out.stdout).into_owned();
             assert!(out.status.success(), "{said}");
             // WOF 필터가 붙어 있으면 재분석 지점 속성은 어떤 열기로도 보이지 않는다(CI 러너에서 확인). 그래도 압축된
@@ -1142,7 +1142,7 @@ mod imp {
             std::fs::create_dir_all(root.join("target").join("sub")).unwrap();
             let target = root.join("target");
             let link = tmp.path().join("link");
-            let made = std::process::Command::new("cmd")
+            let made = std::process::Command::new(saba_chan_updater_lib::process::system_tool("cmd"))
                 .args(["/C", "mklink", "/J"])
                 .arg(&link)
                 .arg(&target)
@@ -1179,7 +1179,7 @@ mod imp {
             let dir = std::fs::canonicalize(tmp.path()).unwrap().join("instance");
             std::fs::create_dir_all(&dir).unwrap();
             let icacls = |path: &std::path::Path, args: &[&str]| {
-                let out = std::process::Command::new("icacls").arg(path).args(args).output().unwrap();
+                let out = std::process::Command::new(saba_chan_updater_lib::process::system_tool("icacls")).arg(path).args(args).output().unwrap();
                 (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned())
             };
             // 준비하는 동안은 Administrators 모든 권한도 둔다: 관리자 토큰(CI)이 만든 항목은 소유자가 Administrators라

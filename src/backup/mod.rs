@@ -62,6 +62,8 @@ pub struct BackupInfo {
     pub size: u64,
     /// 이 백업이 만들어질 때 디스크에 새로 쓴 바이트 (앞 백업과 같은 내용은 다시 쓰지 않는다. 판 1은 zip 파일 크기)
     pub stored: u64,
+    /// zip으로 열리는가. 열리지 않는 백업은 복원할 수 없고, 지울 때까지 쓰지 않는 내용의 정리(GC)를 멈춘다
+    pub readable: bool,
     /// 만든 시각 (유닉스 나노초, 판 2는 요약의 시작 시각, 판 1은 파일 수정 시각). 이름은 지역 시각이라 서머타임 끝에 뒤바뀔 수 있어 순서는 이것으로 정한다 (D-B12)
     #[serde(skip)]
     made: u64,
@@ -327,6 +329,8 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathB
 /// 판 2 백업 쓰기 중의 상태
 struct V2Writer<'a> {
     dir: &'a Path,
+    /// 백업 폴더의 실제 경로. 백업할 폴더 안에 있으면 담지 않는다 (지난 백업을 다시 담아 백업마다 커지지 않게)
+    own_dir: Option<PathBuf>,
     known: std::collections::HashMap<PathBuf, (u64, u64, String, u64)>,
     /// 이번에 새로 쓴 내용 파일 (매니페스트를 쓰기 전에 한꺼번에 디스크에 내린다)
     written: Vec<PathBuf>,
@@ -368,6 +372,9 @@ impl V2Writer<'_> {
             let child = if rel.is_empty() { name } else { format!("{}/{}", rel, name) };
             let kind = item.file_type()?;
             if kind.is_dir() {
+                if self.own_dir.is_some() && fs::canonicalize(item.path()).ok() == self.own_dir {
+                    continue;
+                }
                 self.manifest.dirs.push(StoredDir { entry: entry.to_string(), rel: child.clone() });
                 self.add_dir(&item.path(), entry, &child)?;
             } else if kind.is_symlink() {
@@ -385,6 +392,7 @@ fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
     let started = now_ns();
     let mut w = V2Writer {
         dir,
+        own_dir: fs::canonicalize(dir).ok(),
         known: known_files(dir),
         written: Vec::new(),
         manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started },
@@ -436,12 +444,13 @@ fn read_v2(path: &Path) -> Result<Option<ManifestV2>> {
     }
 }
 
-/// 폴더에 있는 백업 이름 꼴의 파일 (목록이나 항목을 하나라도 읽지 못하면 오류)
+/// 폴더에 있는 백업 이름 꼴의 파일 (목록이나 항목을 하나라도 읽지 못하면 오류). 그 이름의 폴더는 백업이 아니다
 fn backup_names(dir: &Path) -> io::Result<Vec<String>> {
     let mut names = Vec::new();
     for entry in fs::read_dir(dir)? {
-        if let Ok(name) = entry?.file_name().into_string() {
-            if BackupKind::from_name(&name).is_some() {
+        let entry = entry?;
+        if let Ok(name) = entry.file_name().into_string() {
+            if BackupKind::from_name(&name).is_some() && !entry.path().is_dir() {
                 names.push(name);
             }
         }
@@ -548,16 +557,26 @@ fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::
 fn info(path: &Path) -> Option<BackupInfo> {
     let name = path.file_name()?.to_str()?.to_string();
     let kind = BackupKind::from_name(&name)?;
-    let meta = fs::metadata(path).ok()?;
+    let meta = match fs::metadata(path) {
+        Ok(meta) if meta.is_file() => meta,
+        Ok(_) => return None,
+        // 대상이 없는 링크: 정리를 멈추니 열 수 없는 백업으로 보인다
+        Err(_) => {
+            fs::symlink_metadata(path).ok()?;
+            let made = name_time_ns(&name).unwrap_or(0);
+            return Some(BackupInfo { name, kind, created: made / 1_000_000_000, size: 0, stored: 0, readable: false, made });
+        }
+    };
     let modified = mtime_ns(&meta);
-    // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기
-    let summary = zip::ZipArchive::new(File::open(path).ok()?)
-        .ok()
-        .and_then(|mut zip| zip.by_name(SUMMARY_V2).ok().and_then(|f| serde_json::from_reader::<_, SummaryV2>(f).ok()));
+    // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기.
+    // 열리고 매니페스트가 있어야 읽을 수 있다 (매니페스트 내용까지 읽지는 않는다: 목록마다 모두 풀면 느리다)
+    let zip = File::open(path).ok().and_then(|f| zip::ZipArchive::new(f).ok());
+    let readable = zip.as_ref().is_some_and(|z| z.file_names().any(|n| n == MANIFEST_V2 || n == MANIFEST));
+    let summary = zip.and_then(|mut zip| zip.by_name(SUMMARY_V2).ok().and_then(|f| serde_json::from_reader::<_, SummaryV2>(f).ok()));
     // 판 1은 0.1.8까지 만든 것이다: 수정 시각이 새로 찍힌 사본(옮겼다 되돌린 것)도 이름의 시각보다 새것으로 보지 않는다
     let v1_made = name_time_ns(&name).map_or(modified, |named| named.min(modified));
     let (size, stored, made) = summary.map_or((meta.len(), meta.len(), v1_made), |s| (s.size, s.stored, if s.started > 0 { s.started } else { modified }));
-    Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, made })
+    Some(BackupInfo { name, kind, created: made / 1_000_000_000, size, stored, readable, made })
 }
 
 /// 이름 앞의 지역 시각(`YYYYMMDD-HHMMSS`)을 유닉스 나노초로
@@ -585,7 +604,8 @@ fn checked(dir: &Path, name: &str) -> Result<PathBuf> {
         bail!("invalid backup name: {}", name);
     }
     let path = dir.join(name);
-    if !path.is_file() {
+    // 대상이 없는 링크도 목록에 보이므로 받는다 (지우면 링크만 지운다)
+    if !path.is_file() && !path.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
         bail!("backup not found: {}", name);
     }
     Ok(path)
@@ -1291,5 +1311,60 @@ mod tests {
         let w = world(tmp.path());
         let made = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
         assert_eq!(backup_names(&dir).unwrap(), vec![made]);
+    }
+
+    /// 603 P3-7: 백업 폴더가 백업할 폴더 안에 있으면 지난 백업(내용 파일·zip)을 다시 담아 백업마다 커졌다
+    #[test]
+    fn the_backup_folder_inside_a_backed_up_folder_is_left_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        world(tmp.path());
+        let dir = backups_dir(tmp.path());
+        let paths = [tmp.path().to_path_buf()];
+        let first = create(&dir, BackupKind::Manual, &paths).unwrap();
+        let second = create(&dir, BackupKind::Manual, &paths).unwrap();
+        assert_eq!(second.size, first.size, "the second backup holds the same server files only");
+        assert_eq!(second.stored, 0);
+    }
+
+    /// 603 P3-8·619 P3-1: 열지 못하는 백업은 쓰지 않는 내용의 정리를 멈춘다. 목록에 표시해 사용자가 알고 지울 수 있게 한다.
+    /// 백업 이름을 단 폴더는 백업이 아니다: 목록에도 없고 정리를 막지도 않는다
+    #[test]
+    fn backups_that_cannot_be_opened_are_marked_and_folders_are_not_backups() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let good = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        fs::write(dir.join("notes-manual.zip"), b"not a zip").unwrap();
+        fs::create_dir_all(dir.join("20200101-000000-000-scheduled.zip")).unwrap();
+        let listed: Vec<(String, bool)> = list(&dir).into_iter().map(|b| (b.name, b.readable)).collect();
+        assert!(listed.contains(&(good.clone(), true)), "{listed:?}");
+        assert!(listed.contains(&("notes-manual.zip".to_string(), false)), "{listed:?}");
+        assert_eq!(listed.len(), 2, "{listed:?}");
+
+        delete(&dir, "notes-manual.zip").unwrap();
+        delete(&dir, &good).unwrap();
+        assert!(objects(&dir).is_empty(), "a folder named like a backup must not keep unused content");
+    }
+
+    /// 리뷰 630 P3-2: 매니페스트가 없는 zip과 대상이 없는 링크도 정리를 멈추거나 복원할 수 없으니 열 수 없다고 표시한다
+    #[test]
+    fn a_zip_without_a_manifest_and_a_dangling_link_are_marked_unreadable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("backups");
+        fs::create_dir_all(&dir).unwrap();
+        let mut zip = zip::ZipWriter::new(File::create(dir.join("20200101-000000-000-manual.zip")).unwrap());
+        zip.start_file("other.txt", zip::write::FileOptions::default()).unwrap();
+        zip.finish().unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(tmp.path().join("gone.zip"), dir.join("20200102-000000-000-manual.zip")).unwrap();
+        let listed: Vec<(String, bool)> = list(&dir).into_iter().map(|b| (b.name, b.readable)).collect();
+        assert!(listed.contains(&("20200101-000000-000-manual.zip".to_string(), false)), "{listed:?}");
+        #[cfg(unix)]
+        {
+            assert!(listed.contains(&("20200102-000000-000-manual.zip".to_string(), false)), "{listed:?}");
+            // 목록에 보인 것은 지울 수 있다 (링크만 지운다)
+            delete(&dir, "20200102-000000-000-manual.zip").unwrap();
+            assert!(fs::symlink_metadata(dir.join("20200102-000000-000-manual.zip")).is_err());
+        }
     }
 }

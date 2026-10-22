@@ -317,6 +317,7 @@
       "backups": "💾 **バックアップ {{count}} 件**",
       "backups_empty": "📭 バックアップがありません",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_unreadable": "⚠️ 開けません",
       "backup_kind": {
         "manual": "手動",
         "scheduled": "予約",

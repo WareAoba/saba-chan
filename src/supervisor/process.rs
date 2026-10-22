@@ -360,7 +360,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn an_exited_process_with_an_open_handle_is_not_alive() {
-        let mut child = std::process::Command::new("cmd").args(["/C", "exit 23"]).spawn().unwrap();
+        let mut child = std::process::Command::new(saba_chan_updater_lib::process::system_tool("cmd")).args(["/C", "exit 23"]).spawn().unwrap();
         assert_eq!(child.wait().unwrap().code(), Some(23));
         assert!(!is_process_alive(child.id()), "an exited process counts as running");
     }

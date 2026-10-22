@@ -317,6 +317,7 @@
       "backups": "💾 **백업 {{count}}개**",
       "backups_empty": "📭 백업이 없어요",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_unreadable": "⚠️ 열 수 없음",
       "backup_kind": {
         "manual": "직접",
         "scheduled": "예약",
