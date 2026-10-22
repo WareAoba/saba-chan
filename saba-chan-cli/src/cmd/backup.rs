@@ -59,10 +59,22 @@ async fn list(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                     .and_then(Value::as_u64)
                     .map(output::ago)
                     .unwrap_or_default(),
-                size_cell(b, |stored| t!("backup.stored", size = stored)),
+                if unreadable(b) {
+                    t!("backup.unreadable")
+                } else {
+                    size_cell(b, |stored| t!("backup.stored", size = stored))
+                },
             ]);
         }
         output::print_table(t);
+        if let Some(w) = unreadable_warning(&items) {
+            ctx.out.warn(&w);
+            ctx.out.hint(&format!(
+                "saba-chan-cli backup delete {} <{}>",
+                shell_word(&sv.name),
+                t!("backup.col.name")
+            ));
+        }
     });
     Ok(())
 }
@@ -81,6 +93,8 @@ async fn create(ctx: &Ctx, server: Option<&str>) -> Result<()> {
 async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, Some(server)).await?;
     let name = pick(ctx, &sv, backup).await?;
+    // 열 수 없는 백업은 복원이 실패한다: 켜진 서버를 끄기 전에 멈춘다 (GUI는 복원 버튼을 막는다)
+    refuse_unreadable(&backups(ctx, &sv).await?, &name)?;
     let was_running = status_of(&runtime(ctx, &sv).await?) != "stopped";
     if was_running {
         ctx.ask
@@ -124,7 +138,13 @@ async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
 async fn pick(ctx: &Ctx, sv: &Server, query: Option<&str>) -> Result<String> {
     let mut items = backups(ctx, sv).await?;
     let what = t!("noun.backup");
-    let label = |b: &Value| format!("{} ({})", s(b, "name"), kind_label(s(b, "kind")));
+    let label = |b: &Value| {
+        let mut l = format!("{} ({})", s(b, "name"), kind_label(s(b, "kind")));
+        if unreadable(b) {
+            l = format!("{} · {}", l, t!("backup.unreadable"));
+        }
+        l
+    };
     let Some(query) = query.filter(|q| !q.trim().is_empty()) else {
         if items.is_empty() {
             return Err(crate::error::failed(t!("backup.none", name = sv.name)));
@@ -172,6 +192,25 @@ fn name_of(v: Option<&Value>) -> String {
     }
 }
 
+/// zip으로 열리지 않는 백업 (`readable:false`). 복원할 수 없고, 지울 때까지 데몬이 쓰지 않는 내용을 정리하지 못한다
+fn unreadable(b: &Value) -> bool {
+    b.get("readable") == Some(&Value::Bool(false))
+}
+
+/// 고른 백업이 열리지 않으면 복원하지 않는다
+fn refuse_unreadable(items: &[Value], name: &str) -> Result<()> {
+    if items.iter().any(|b| s(b, "name") == name && unreadable(b)) {
+        return Err(crate::error::failed(t!("backup.unreadable_restore", backup = name)));
+    }
+    Ok(())
+}
+
+/// 열리지 않는 백업이 있으면 몇 개인지와 지우기 권유
+fn unreadable_warning(items: &[Value]) -> Option<String> {
+    let n = items.iter().filter(|b| unreadable(b)).count();
+    (n > 0).then(|| t!("backup.unreadable_hint", count = n))
+}
+
 fn kind_label(kind: &str) -> String {
     crate::i18n::try_t(&format!("backup.kind.{}", kind)).unwrap_or_else(|| kind.to_string())
 }
@@ -215,6 +254,25 @@ mod tests {
         assert!(links_missed(&json!({ "links_not_restored": 2 })).is_some_and(|m| m.contains('2')));
         assert_eq!(links_missed(&json!({ "links_not_restored": 0 })), None);
         assert_eq!(links_missed(&json!({})), None, "an older daemon does not report it");
+    }
+
+    /// 열리지 않는 백업(`readable:false`, 데몬 #533)은 크기 대신 표시하고, 몇 개인지와 지우는 명령을 알린다. 옛 데몬은 칸이 없다
+    #[test]
+    fn backups_that_cannot_be_opened_are_marked_with_a_way_to_delete_them() {
+        crate::i18n::init("en");
+        let items = [
+            json!({ "name": "a.zip", "size": 10, "readable": true }),
+            json!({ "name": "b.zip", "size": 10, "readable": false }),
+            json!({ "name": "c.zip", "size": 10 }),
+        ];
+        assert!(!unreadable(&items[0]) && unreadable(&items[1]) && !unreadable(&items[2]));
+        let warn = unreadable_warning(&items).unwrap();
+        assert!(warn.contains('1') && !warn.contains("backup.unreadable"), "{warn}");
+        assert_eq!(unreadable_warning(&items[..1]), None);
+        assert_eq!(unreadable_warning(&[items[2].clone()]), None);
+        // 복원은 서버를 끄기 전에 거절한다 (리뷰 631 P3-2)
+        assert!(refuse_unreadable(&items, "b.zip").is_err());
+        assert!(refuse_unreadable(&items, "a.zip").is_ok() && refuse_unreadable(&items, "c.zip").is_ok());
     }
 
     /// 증분 백업(MK16)은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업이나 옛 데몬은 크기만

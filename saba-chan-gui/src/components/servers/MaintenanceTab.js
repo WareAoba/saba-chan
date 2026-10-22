@@ -234,17 +234,24 @@ function BackupsCard({ server }) {
                     {list.map((b) => {
                         const restoreKey = `restore:${b.name}`;
                         const deleteKey = `delete:${b.name}`;
+                        // zip으로 열리지 않는 백업: 복원할 수 없고 지울 때까지 데몬이 쓰지 않는 내용을 정리하지 못한다
+                        const unreadable = b.readable === false;
                         return (
                             <li key={b.name} className="dc-list-row">
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">{fmt(b.created)}</span>
-                                    <span className="dc-list-sub" title={b.name}>
-                                        {typeof b.stored === 'number' && b.stored !== b.size
-                                            ? t('maintenance.backup_size_stored', {
-                                                  size: formatBytes(b.size),
-                                                  stored: formatBytes(b.stored),
-                                              })
-                                            : formatBytes(b.size)}{' '}
+                                    <span
+                                        className={clsx('dc-list-sub', unreadable && 'warn')}
+                                        title={unreadable ? t('maintenance.backup_unreadable_hint') : b.name}
+                                    >
+                                        {unreadable
+                                            ? t('maintenance.backup_unreadable')
+                                            : typeof b.stored === 'number' && b.stored !== b.size
+                                              ? t('maintenance.backup_size_stored', {
+                                                    size: formatBytes(b.size),
+                                                    stored: formatBytes(b.stored),
+                                                })
+                                              : formatBytes(b.size)}{' '}
                                         · {b.name}
                                     </span>
                                 </span>
@@ -255,9 +262,13 @@ function BackupsCard({ server }) {
                                 <button
                                     type="button"
                                     className={clsx('btn btn-sm', armed === restoreKey ? 'btn-primary' : 'btn-ghost')}
-                                    disabled={!stopped || !!busy}
+                                    disabled={!stopped || !!busy || unreadable}
                                     title={
-                                        stopped ? t('maintenance.restore_hint') : t('maintenance.restore_stop_first')
+                                        unreadable
+                                            ? t('maintenance.backup_unreadable_hint')
+                                            : stopped
+                                              ? t('maintenance.restore_hint')
+                                              : t('maintenance.restore_stop_first')
                                     }
                                     onClick={() =>
                                         armed === restoreKey

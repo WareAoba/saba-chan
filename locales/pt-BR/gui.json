@@ -325,7 +325,9 @@
     "install_settings_failed": "A versão foi instalada, mas não foi possível salvar as configurações: {{error}}",
     "restart_required": "As configurações de {{name}} foram salvas. Reinicie o servidor para aplicar {{fields}}.",
     "restart_now": "Reiniciar agora",
-    "restart_later": "Depois"
+    "restart_later": "Depois",
+    "install_backup_failed": "Não foi possível fazer backup de {{file}} antes de instalar, então nada foi instalado. Verifique o espaço livre em disco e os arquivos .bak dessa pasta.",
+    "install_kept_backups": "Os arquivos que não puderam ser restaurados foram mantidos como cópia de antes da instalação: {{files}}"
   },
   "discord_bot": {
     "start_failed_toast": "Falha ao iniciar o bot Discord: {{error}}",
@@ -1041,7 +1043,9 @@
     "backup_keep_hint": "os mais antigos são excluídos primeiro",
     "err_every": "Informe um número inteiro de minutos, no mínimo 1.",
     "err_at": "O horário deve estar no formato HH:MM.",
-    "err_message": "Digite a mensagem do aviso."
+    "err_message": "Digite a mensagem do aviso.",
+    "backup_unreadable": "⚠ não pode ser aberto",
+    "backup_unreadable_hint": "Este backup não pode ser aberto. Ele não pode ser restaurado, e o conteúdo de backup não usado só é limpo depois que ele for excluído. Exclua-o."
   },
   "chatbot": {
     "nav": "Saba-chan falante",

@@ -325,7 +325,9 @@
     "install_settings_failed": "版本已安装，但保存设置失败：{{error}}",
     "restart_required": "已保存 {{name}} 的设置。{{fields}} 需要重启服务器才会生效。",
     "restart_now": "立即重启",
-    "restart_later": "稍后"
+    "restart_later": "稍后",
+    "install_backup_failed": "安装前无法备份 {{file}}，因此没有安装。请检查磁盘可用空间以及该文件夹中的 .bak 文件。",
+    "install_kept_backups": "无法还原的文件已保留安装前的副本：{{files}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 机器人启动失败：{{error}}",
@@ -1041,7 +1043,9 @@
     "backup_keep_hint": "个，超出时先删除最旧的",
     "err_every": "间隔请输入不小于 1 的整数分钟。",
     "err_at": "时间格式须为 HH:MM。",
-    "err_message": "请输入公告内容。"
+    "err_message": "请输入公告内容。",
+    "backup_unreadable": "⚠ 无法打开",
+    "backup_unreadable_hint": "此备份无法打开。它无法恢复，并且在删除之前不会清理未使用的备份内容。请删除它。"
   },
   "chatbot": {
     "nav": "会说话的 Saba-chan",
