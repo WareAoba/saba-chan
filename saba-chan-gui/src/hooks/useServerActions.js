@@ -693,9 +693,16 @@ export function useServerActions({
     // ── handleStop ──────────────────────────────────────────
     const handleStop = async (name) => {
         const stopNow = async (forced) => {
+            const undo = () => {
+                guiInitiatedOpsRef.current.delete(name);
+                revertOptimistic(name);
+            };
             try {
                 // Optimistic update: 즉시 'stopping' 상태 표시
-                optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
+                // 데몬은 stop_timeout까지 기다린 뒤 답하므로, 요청이 끝날 때까지는 목록 새로고침이 이 표시를 지우지 않는다.
+                // 그사이 꺼진 것도 GUI가 한 정지로 본다
+                optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now(), pending: true });
+                guiInitiatedOpsRef.current.add(name);
                 setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
 
                 const srv = servers.find((s) => s.name === name);
@@ -707,10 +714,12 @@ export function useServerActions({
                     srv?.id && window.api.instanceStop
                         ? await window.api.instanceStop(srv.id, { force: forceStop })
                         : await window.api.serverStop(name, { force: forceStop });
+                const opt = optimisticStatusRef.current.get(name);
+                if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
 
                 // ── extension_required 처리 ──
                 if (result.action_required === 'extension_required') {
-                    revertOptimistic(name);
+                    undo();
                     setModal({
                         type: 'question',
                         title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
@@ -742,14 +751,14 @@ export function useServerActions({
                 }
 
                 if (result.error_code === 'graceful_stop_unavailable') {
-                    revertOptimistic(name);
+                    undo();
                     askForceStop(name, () => stopNow(true));
                     return;
                 }
 
                 const blocked = blockedText(result, t);
                 if (result.success === false && (result.message || blocked)) {
-                    revertOptimistic(name);
+                    undo();
                     safeShowToast(
                         blocked ? t('servers.stop_failed_toast', { error: blocked }) : result.message,
                         'error',
@@ -759,11 +768,10 @@ export function useServerActions({
                 }
 
                 if (result.error) {
-                    revertOptimistic(name);
+                    undo();
                     const errorMsg = translateError(result.error);
                     safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                 } else {
-                    guiInitiatedOpsRef.current.add(name);
                     if (srv) {
                         closeConsole(srv.id);
                     }
@@ -803,7 +811,7 @@ export function useServerActions({
                 }
             } catch (error) {
                 setProgressBar(null);
-                revertOptimistic(name);
+                undo();
                 const errorMsg = translateError(error.message);
                 safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
             }

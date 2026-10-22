@@ -99,6 +99,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     const touchedFields = useRef(new Set());
     // 저장 값이 없어 기본값('' 포함)으로 연 뒤 실제 값도 사용자 입력도 없는 칸 (visible_when 비교에서 값 없음)
     const unsetFields = useRef(new Set());
+    // 열 때 게임 설정 파일에서 읽은 칸: 저장값과 같으면 파일과 캐시가 이미 맞는다
+    const liveFields = useRef(new Set());
     const openRequest = useRef(0);
 
     // ── Close animation ─────────────────────────────────────
@@ -130,6 +132,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         setSettingsSource('loading');
         const defaulted = new Set();
         unsetFields.current = new Set();
+        liveFields.current = new Set();
 
         // Initialize settings values from module schema
         // 우선순위: 실제 설정(아래에서 비동기로 덮음) > 저장된 값(savedValue) > 기본값.
@@ -224,6 +227,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                         );
                         // 읽기에 성공하면 데몬이 캐시도 맞춘다: 실제 값이 없는 칸은 캐시가 확인된 값이다 (기본값만 아니면)
                         if (v !== null || !defaulted.has(field.name)) unconfirmedFields.current.delete(field.name);
+                        if (v !== null) liveFields.current.add(field.name);
                         if (v === null || touchedFields.current.has(field.name)) continue;
                         unsetFields.current.delete(field.name);
                         patch[field.name] = v;
@@ -582,6 +586,17 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 });
             }
 
+            // 고치지 않았고 게임 설정 파일과 저장값이 같았던 칸은 싣지 않는다: 창이 열린 동안 다른 곳(CLI·디스코드)이 바꾼 값을
+            // 되돌리지 않는다. 파일이 저장값과 달랐거나 파일에 없던 칸은 맞추려고 싣는다
+            for (const name of Object.keys(convertedSettings)) {
+                if (!liveFields.current.has(name) || touchedFields.current.has(name)) continue;
+                if (launch?.settings && name in launch.settings) continue;
+                const saved = savedValue(settingsServer, name);
+                if (JSON.stringify(fieldValue(convertedSettings[name])) === JSON.stringify(saved)) {
+                    delete convertedSettings[name];
+                }
+            }
+
             // 램 상한: 바꿨을 때만 보낸다. 비우면 제한 없음(null), 형식 검사는 데몬이 한다 (invalid_format)
             const memoryLimit = String(settingsValues.memory_limit_mb ?? '').trim();
             if (settingsValues.memory_limit_mb !== undefined && memoryLimit !== memoryLimitOf(settingsServer)) {
@@ -596,9 +611,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
             // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)
             // 토글은 handleSettingChange를 거쳐 'true'·'false' 글자로 올 수 있다
+            // 바꿨을 때만 보낸다
+            const openedFlags = restartFlagsOf(settingsServer);
             for (const key of ['auto_restart', 'restart_on_unknown_exit']) {
                 const flag = asFlag(settingsValues[key], null);
-                if (flag !== null) convertedSettings[key] = flag;
+                if (flag !== null && flag !== openedFlags[key]) convertedSettings[key] = flag;
             }
 
             const protocols = module?.protocols || {};
@@ -613,9 +630,15 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
             if (launch?.extra_args) convertedSettings.extra_args = launch.extra_args;
 
-            // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 변경한 값을 그대로 전달
+            // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 바꾼 키만 전달 (데몬은 키마다 합친다)
             if (settingsValues._extension_data) {
-                convertedSettings.extension_data = { ...settingsValues._extension_data };
+                const opened = settingsServer.extension_data || {};
+                const changed = Object.fromEntries(
+                    Object.entries(settingsValues._extension_data).filter(
+                        ([key, value]) => JSON.stringify(value) !== JSON.stringify(opened[key]),
+                    ),
+                );
+                if (Object.keys(changed).length > 0) convertedSettings.extension_data = changed;
             }
 
             const result = await window.api.instanceUpdateSettings(settingsServer.id, convertedSettings);
