@@ -1295,7 +1295,11 @@
     "fail_title": "어라? 찾질 못했어요",
     "retry": "다시 시도",
     "recovering": "{{name}}이(가) 넘어졌어요! 다시 일으켜 세우는 중이에요…",
-    "stopped": "{{name}}을(를) 다시 세우지 못했어요… 상태를 확인해 주세요."
+    "stopped": "{{name}}을(를) 다시 세우지 못했어요… 상태를 확인해 주세요.",
+    "cooking": "서버 요리중…",
+    "cooked": "완성!",
+    "cook_failed": "실패…",
+    "settings_first": "설정 먼저 보기"
   },
   "activity": {
     "idle": "눌러서 데몬 콘솔 기록 보기",

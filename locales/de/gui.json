@@ -1295,7 +1295,11 @@
     "fail_title": "Hm? Nicht gefunden",
     "retry": "Erneut versuchen",
     "recovering": "{{name}} ist umgefallen! Wird wieder aufgestellt…",
-    "stopped": "{{name}} konnte nicht wieder aufgestellt werden… Bitte prüfe den Zustand."
+    "stopped": "{{name}} konnte nicht wieder aufgestellt werden… Bitte prüfe den Zustand.",
+    "cooking": "Server wird gekocht…",
+    "cooked": "Fertig!",
+    "cook_failed": "Fehlgeschlagen…",
+    "settings_first": "Zuerst Einstellungen"
   },
   "activity": {
     "idle": "Klicken, um das Daemon-Konsolenprotokoll anzuzeigen",

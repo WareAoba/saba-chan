@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { applyInstanceUpdate, dismissInstanceProvision, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
+import {
+    applyInstanceUpdate,
+    closeCookedCard,
+    dismissInstanceProvision,
+    useMaintenanceOf,
+} from '../../hooks/useInstanceMaintenance';
 import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -55,7 +60,7 @@ export function ServerDetail({
 }) {
     const { t } = useTranslation('gui');
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
-    const { provisionProgress, updateInfo, updatingServer } = useMaintenanceOf(server.id);
+    const { provisionProgress, cooked, updateInfo, updatingServer } = useMaintenanceOf(server.id);
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);
     const moduleFailure = useServerStore((st) =>
@@ -245,20 +250,28 @@ export function ServerDetail({
                 </div>
             )}
 
-            {server.provisioning && (
+            {(server.provisioning || cooked) && (
                 <div className="detail-provision">
-                    <ExtensionSlot
-                        slotId="ServerCard.provision"
-                        server={server}
-                        provisionProgress={provisionProgress}
-                        onDismiss={() => dismissInstanceProvision(server, setServers)}
-                        t={t}
-                    />
+                    {server.provisioning && (
+                        <ExtensionSlot
+                            slotId="ServerCard.provision"
+                            server={server}
+                            provisionProgress={provisionProgress}
+                            onDismiss={() => dismissInstanceProvision(server, setServers)}
+                            t={t}
+                        />
+                    )}
                     <NativeProvision
                         server={server}
                         provisionProgress={provisionProgress}
+                        cooked={cooked}
+                        icon={
+                            moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>
+                        }
                         onDismiss={() => dismissInstanceProvision(server, setServers)}
-                        t={t}
+                        onClose={() => closeCookedCard(server)}
+                        onStart={() => onStart(server.name, server.module)}
+                        onSettings={() => setTab('settings')}
                     />
                 </div>
             )}

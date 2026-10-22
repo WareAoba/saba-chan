@@ -1,122 +1,89 @@
 /**
- * NativeProvision — 네이티브 프로비저닝 진행 상태 UI
- * download 또는 설치 방식 익스텐션으로 서버 바이너리 설치 시 진행률 표시
+ * NativeProvision — 서버 설치(프로비저닝) 카드. 설치를 "요리"로 보여 준다.
+ * 설치 중: 요리하는 사바쨩 + 진행 막대 / 끝: 접시에 서버 아이콘을 올린 완성 카드 / 실패: 쓰러진 사바쨩.
  *
  * Props:
  *   server: 서버 인스턴스
- *   provisionProgress: 프로비저닝 상태 객체 (done, error, message, percent)
- *   onDismiss: 프로비저닝 해제 핸들러
- *   t: i18n 번역 함수
+ *   provisionProgress: 데몬의 설치 진행 상태 (done, error, message, percent)
+ *   cooked: 설치가 성공으로 끝난 것을 봤다 (데몬이 진행 표시를 지운 뒤에도 남는다)
+ *   icon: 접시에 올릴 서버 아이콘
+ *   onDismiss: 실패 카드 닫기 (실패한 새 인스턴스는 데몬이 롤백한다)
+ *   onClose: 완성 카드 닫기
+ *   onStart, onSettings: 완성 카드의 켜기·설정 먼저 보기
  */
-import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { Icon } from './Icon';
+import { SabaArt } from './ui/SabaArt';
 
-const SPINNER_ICON = (
-    <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        className="spin"
-    >
-        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-);
+export function NativeProvision({ server, provisionProgress, cooked, icon, onDismiss, onClose, onStart, onSettings }) {
+    const { t } = useTranslation('gui');
+    const error = provisionProgress?.error;
 
-const CHECK_ICON = (
-    <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-    >
-        <polyline points="20 6 9 17 4 12" />
-    </svg>
-);
-
-const ALERT_ICON = (
-    <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-    >
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="8" x2="12" y2="12" />
-        <line x1="12" y1="16" x2="12.01" y2="16" />
-    </svg>
-);
-
-export function NativeProvision({ server, provisionProgress, onDismiss, t }) {
-    if (!server.provisioning) return null;
-
-    const translate = t || ((key, opts) => opts?.defaultValue || key);
-
-    const isDone = provisionProgress?.done && !provisionProgress?.error;
-    const isError = !!provisionProgress?.error;
-    const percent = provisionProgress?.percent ?? 0;
-    const message = provisionProgress?.message || translate('servers.provisioning', { defaultValue: 'Installing...' });
-
-    // 상태 아이콘
-    const statusIcon = isDone ? CHECK_ICON : isError ? ALERT_ICON : SPINNER_ICON;
-
-    return (
-        <div className="sc-provision-wrap">
-            <div className="native-provision">
-                <div className="native-provision-header">
-                    <span className={`native-provision-icon ${isDone ? 'done' : isError ? 'error' : 'active'}`}>
-                        {statusIcon}
-                    </span>
-                    <span className="native-provision-title">
-                        {isDone
-                            ? translate('servers.provision_complete', { defaultValue: 'Installation complete' })
-                            : isError
-                              ? translate('servers.provision_failed', { defaultValue: 'Installation failed' })
-                              : translate('servers.provisioning', { defaultValue: 'Installing server...' })}
-                    </span>
-                </div>
-                {/* 진행 바 */}
-                <div className="as-provision-bar">
-                    {!isDone && !isError && percent > 0 ? (
-                        <div
-                            className="as-provision-bar-fill determinate"
-                            style={{ width: `${percent}%` }}
-                        />
-                    ) : (
-                        <div
-                            className={`as-provision-bar-fill ${isError ? 'error' : isDone ? 'done' : 'indeterminate'}`}
-                        />
-                    )}
-                </div>
-                {/* 메시지 + 퍼센트 */}
-                {message && (
-                    <p className="as-provision-message">
-                        {message}
-                        {percent > 0 && !isDone && !isError && (
-                            <span className="as-provision-pct"> ({percent}%)</span>
-                        )}
-                    </p>
-                )}
-                {/* 에러 */}
-                {isError && (
-                    <div className="as-provision-error-row">
-                        <p className="as-provision-error">{provisionProgress.error}</p>
-                        <button className="as-provision-dismiss" onClick={onDismiss}>
-                            {translate('common.dismiss', { defaultValue: 'Dismiss' })}
+    if (server.provisioning && error) {
+        return (
+            <div className="cook cook-failed" role="alert">
+                <SabaArt kind="stopped" size={140} />
+                <div className="cook-text">
+                    <p className="cook-title">{t('saba.cook_failed')}</p>
+                    <p className="cook-error mt-pre">{error}</p>
+                    <div className="cook-actions">
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss}>
+                            {t('modals.close')}
                         </button>
                     </div>
-                )}
+                </div>
             </div>
+        );
+    }
+
+    if (server.provisioning && !provisionProgress?.done) {
+        const percent = provisionProgress?.percent ?? 0;
+        return (
+            <div className="cook" aria-live="polite">
+                <SabaArt kind="cooking" size={140} />
+                <div className="cook-text">
+                    <p className="cook-title">{t('saba.cooking')}</p>
+                    <div className="cook-bar">
+                        <div
+                            className={`cook-bar-fill${percent > 0 ? '' : ' indeterminate'}`}
+                            style={percent > 0 ? { width: `${percent}%` } : undefined}
+                        />
+                    </div>
+                    <p className="cook-step">
+                        <span>{provisionProgress?.message}</span>
+                        {percent > 0 && <span className="cook-pct">{percent}%</span>}
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!cooked && !server.provisioning) return null;
+
+    const close = (then) => () => {
+        onClose?.();
+        then?.();
+    };
+    return (
+        <div className="cook cook-done" aria-live="polite">
+            <div className="cook-plate">
+                <SabaArt kind="served" size={140} />
+                <span className="cook-dish">{icon}</span>
+            </div>
+            <div className="cook-text">
+                <p className="cook-title">{t('saba.cooked')}</p>
+                <div className="cook-actions">
+                    <button type="button" className="btn btn-primary btn-sm" onClick={close(onStart)}>
+                        <Icon name="play" size="sm" /> {t('shell.start')}
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={close(onSettings)}>
+                        {t('saba.settings_first')}
+                    </button>
+                </div>
+            </div>
+            <button type="button" className="cook-close" onClick={close()} aria-label={t('modals.close')}>
+                <Icon name="x" size="sm" />
+            </button>
         </div>
     );
 }

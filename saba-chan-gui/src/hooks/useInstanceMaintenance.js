@@ -6,7 +6,7 @@ const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
 const PROVISION_POLL_MS = 1200;
 
 /**
- * 인스턴스별 "관리" 상태 — 게임 서버 업데이트 정보, 설치(프로비저닝) 진행률.
+ * 인스턴스별 "관리" 상태 — 게임 서버 업데이트 정보, 설치(프로비저닝) 진행률, 설치 완성 카드(cooked).
  * 목록 줄이 확인 작업을 돌리고(서버당 한 번), 상세 화면은 같은 값을 읽기만 한다.
  */
 export const useMaintenanceStore = create((set) => ({
@@ -14,7 +14,7 @@ export const useMaintenanceStore = create((set) => ({
     patch: (id, partial) => set((state) => ({ byId: { ...state.byId, [id]: { ...state.byId[id], ...partial } } })),
 }));
 
-const EMPTY = { provisionProgress: null, updateInfo: null, updatingServer: false };
+const EMPTY = { provisionProgress: null, cooked: false, updateInfo: null, updatingServer: false };
 
 /** 읽기 전용: 한 인스턴스의 관리 상태 */
 export function useMaintenanceOf(id) {
@@ -64,7 +64,11 @@ export function useInstanceMaintenance(server, module) {
                     if (cancelled) break;
                     if (result?.active) {
                         patch(server.id, { provisionProgress: result });
-                        if (result.done) break; // 끝났으면 폴링만 멈추고 화면은 유지
+                        if (result.done) {
+                            // 데몬은 성공한 설치 표시를 곧 지운다 — 완성 카드는 사용자가 닫을 때까지 남긴다
+                            if (!result.error) patch(server.id, { cooked: true });
+                            break; // 끝났으면 폴링만 멈추고 화면은 유지
+                        }
                     }
                 } catch {
                     // 무시
@@ -95,6 +99,11 @@ export async function applyInstanceUpdate(server, setServers) {
     } finally {
         patch(server.id, { updatingServer: false });
     }
+}
+
+/** 설치 완성 카드 닫기 */
+export function closeCookedCard(server) {
+    useMaintenanceStore.getState().patch(server.id, { cooked: false });
 }
 
 /** 설치 진행 표시 닫기. 설치 실패로 롤백됐으면 목록에서도 뺀다 */

@@ -1295,7 +1295,11 @@
     "fail_title": "あれ？見つかりませんでした",
     "retry": "もう一度",
     "recovering": "{{name}} が倒れました！立て直しています…",
-    "stopped": "{{name}} を立て直せませんでした…状態を確認してください。"
+    "stopped": "{{name}} を立て直せませんでした…状態を確認してください。",
+    "cooking": "サーバー調理中…",
+    "cooked": "完成！",
+    "cook_failed": "失敗…",
+    "settings_first": "先に設定を見る"
   },
   "activity": {
     "idle": "クリックしてデーモンコンソールの記録を見る",
