@@ -684,7 +684,8 @@
     "start_again": "Start {{name}} again?",
     "stored": "{{size}} newly stored",
     "unreadable": "⚠ cannot be opened",
-    "unreadable_hint": "{{count}} backup(s) cannot be opened. They cannot be restored, and unused backup content is not cleaned up until they are deleted. Please delete them."
+    "unreadable_hint": "{{count}} backup(s) cannot be opened. They cannot be restored, and unused backup content is not cleaned up until they are deleted. Please delete them.",
+    "unreadable_restore": "Backup {{backup}} cannot be opened, so it cannot be restored. Please delete it."
   },
   "schedule": {
     "col": {

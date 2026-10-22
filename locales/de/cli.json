@@ -569,7 +569,8 @@
     "start_again": "{{name}} wieder starten?",
     "stored": "{{size}} neu gespeichert",
     "unreadable": "⚠ kann nicht geöffnet werden",
-    "unreadable_hint": "{{count}} Backup(s) können nicht geöffnet werden. Sie lassen sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Bitte lösche sie."
+    "unreadable_hint": "{{count}} Backup(s) können nicht geöffnet werden. Sie lassen sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Bitte lösche sie.",
+    "unreadable_restore": "Backup {{backup}} kann nicht geöffnet und daher nicht wiederhergestellt werden. Bitte lösche es."
   },
   "schedule": {
     "col": {

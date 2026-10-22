@@ -879,7 +879,8 @@
     "start_again": "{{name}}을(를) 다시 켤까요?",
     "stored": "새로 저장 {{size}}",
     "unreadable": "⚠ 열 수 없음",
-    "unreadable_hint": "열 수 없는 백업이 {{count}}개 있어요. 복원할 수 없고, 지울 때까지 쓰지 않는 백업 내용이 정리되지 않아요. 지워 주세요."
+    "unreadable_hint": "열 수 없는 백업이 {{count}}개 있어요. 복원할 수 없고, 지울 때까지 쓰지 않는 백업 내용이 정리되지 않아요. 지워 주세요.",
+    "unreadable_restore": "백업 {{backup}}은(는) 열 수 없어 복원할 수 없어요. 지워 주세요."
   },
   "schedule": {
     "col": {

@@ -569,7 +569,8 @@
     "start_again": "¿Iniciar {{name}} de nuevo?",
     "stored": "{{size}} guardados nuevos",
     "unreadable": "⚠ no se puede abrir",
-    "unreadable_hint": "Hay {{count}} copia(s) de seguridad que no se pueden abrir. No se pueden restaurar y el contenido de copias sin usar no se limpia hasta que se eliminen. Elimínalas."
+    "unreadable_hint": "Hay {{count}} copia(s) de seguridad que no se pueden abrir. No se pueden restaurar y el contenido de copias sin usar no se limpia hasta que se eliminen. Elimínalas.",
+    "unreadable_restore": "La copia de seguridad {{backup}} no se puede abrir, así que no se puede restaurar. Elimínala."
   },
   "schedule": {
     "col": {

@@ -879,7 +879,8 @@
     "start_again": "要再次启动 {{name}} 吗？",
     "stored": "新存储 {{size}}",
     "unreadable": "⚠ 无法打开",
-    "unreadable_hint": "有 {{count}} 个备份无法打开。它们无法恢复，并且在删除之前不会清理未使用的备份内容。请删除它们。"
+    "unreadable_hint": "有 {{count}} 个备份无法打开。它们无法恢复，并且在删除之前不会清理未使用的备份内容。请删除它们。",
+    "unreadable_restore": "备份 {{backup}} 无法打开，因此无法恢复。请删除它。"
   },
   "schedule": {
     "col": {

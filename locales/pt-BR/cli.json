@@ -569,7 +569,8 @@
     "start_again": "Iniciar {{name}} novamente?",
     "stored": "{{size}} armazenados agora",
     "unreadable": "⚠ não pode ser aberto",
-    "unreadable_hint": "{{count}} backup(s) não podem ser abertos. Eles não podem ser restaurados, e o conteúdo de backup não usado só é limpo depois que forem excluídos. Exclua-os."
+    "unreadable_hint": "{{count}} backup(s) não podem ser abertos. Eles não podem ser restaurados, e o conteúdo de backup não usado só é limpo depois que forem excluídos. Exclua-os.",
+    "unreadable_restore": "O backup {{backup}} não pode ser aberto, então não pode ser restaurado. Exclua-o."
   },
   "schedule": {
     "col": {

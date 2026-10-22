@@ -569,7 +569,8 @@
     "start_again": "要再次啟動 {{name}} 嗎？",
     "stored": "新儲存 {{size}}",
     "unreadable": "⚠ 無法開啟",
-    "unreadable_hint": "有 {{count}} 個備份無法開啟。它們無法還原，而且在刪除之前不會清理未使用的備份內容。請刪除它們。"
+    "unreadable_hint": "有 {{count}} 個備份無法開啟。它們無法還原，而且在刪除之前不會清理未使用的備份內容。請刪除它們。",
+    "unreadable_restore": "備份 {{backup}} 無法開啟，因此無法還原。請刪除它。"
   },
   "schedule": {
     "col": {

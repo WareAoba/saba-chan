@@ -93,6 +93,8 @@ async fn create(ctx: &Ctx, server: Option<&str>) -> Result<()> {
 async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, Some(server)).await?;
     let name = pick(ctx, &sv, backup).await?;
+    // 열 수 없는 백업은 복원이 실패한다: 켜진 서버를 끄기 전에 멈춘다 (GUI는 복원 버튼을 막는다)
+    refuse_unreadable(&backups(ctx, &sv).await?, &name)?;
     let was_running = status_of(&runtime(ctx, &sv).await?) != "stopped";
     if was_running {
         ctx.ask
@@ -195,6 +197,14 @@ fn unreadable(b: &Value) -> bool {
     b.get("readable") == Some(&Value::Bool(false))
 }
 
+/// 고른 백업이 열리지 않으면 복원하지 않는다
+fn refuse_unreadable(items: &[Value], name: &str) -> Result<()> {
+    if items.iter().any(|b| s(b, "name") == name && unreadable(b)) {
+        return Err(crate::error::failed(t!("backup.unreadable_restore", backup = name)));
+    }
+    Ok(())
+}
+
 /// 열리지 않는 백업이 있으면 몇 개인지와 지우기 권유
 fn unreadable_warning(items: &[Value]) -> Option<String> {
     let n = items.iter().filter(|b| unreadable(b)).count();
@@ -260,6 +270,9 @@ mod tests {
         assert!(warn.contains('1') && !warn.contains("backup.unreadable"), "{warn}");
         assert_eq!(unreadable_warning(&items[..1]), None);
         assert_eq!(unreadable_warning(&[items[2].clone()]), None);
+        // 복원은 서버를 끄기 전에 거절한다 (리뷰 631 P3-2)
+        assert!(refuse_unreadable(&items, "b.zip").is_err());
+        assert!(refuse_unreadable(&items, "a.zip").is_ok() && refuse_unreadable(&items, "c.zip").is_ok());
     }
 
     /// 증분 백업(MK16)은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업이나 옛 데몬은 크기만

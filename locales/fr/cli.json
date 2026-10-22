@@ -569,7 +569,8 @@
     "start_again": "Redémarrer {{name}} ?",
     "stored": "{{size}} nouvellement stockés",
     "unreadable": "⚠ impossible à ouvrir",
-    "unreadable_hint": "{{count}} sauvegarde(s) ne peuvent pas être ouvertes. Elles ne peuvent pas être restaurées et le contenu de sauvegarde inutilisé n'est pas nettoyé tant qu'elles ne sont pas supprimées. Supprimez-les."
+    "unreadable_hint": "{{count}} sauvegarde(s) ne peuvent pas être ouvertes. Elles ne peuvent pas être restaurées et le contenu de sauvegarde inutilisé n'est pas nettoyé tant qu'elles ne sont pas supprimées. Supprimez-les.",
+    "unreadable_restore": "La sauvegarde {{backup}} ne peut pas être ouverte, elle ne peut donc pas être restaurée. Supprimez-la."
   },
   "schedule": {
     "col": {
