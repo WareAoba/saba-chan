@@ -81,6 +81,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: 'Detecting install location...', 
         uninstallProgressStop: 'Stopping processes...',
+        uninstallProgressSandbox: 'Removing isolation profiles and folder permissions...',
         uninstallProgressShortcuts: 'Removing shortcuts...',
         uninstallProgressFiles: 'Removing installation files...',
         uninstallProgressData: 'Removing user data and runtime environments...',
@@ -160,6 +161,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: '설치 위치 확인 중...', 
         uninstallProgressStop: '프로세스 종료 중...',
+        uninstallProgressSandbox: '격리 실행 프로필과 폴더 권한 정리 중...',
         uninstallProgressShortcuts: '바로가기 제거 중...',
         uninstallProgressFiles: '설치 파일 제거 중...',
         uninstallProgressData: '사용자 데이터 및 런타임 환경 제거 중...',
@@ -238,6 +240,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: 'インストール先を検出中...', 
         uninstallProgressStop: 'プロセスを停止中...',
+        uninstallProgressSandbox: '分離実行のプロファイルとフォルダー権限を削除中...',
         uninstallProgressShortcuts: 'ショートカットを削除中...',
         uninstallProgressFiles: 'インストールファイルを削除中...',
         uninstallProgressData: 'ユーザーデータとランタイム環境を削除中...',
@@ -316,6 +319,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: '正在检测安装位置...', 
         uninstallProgressStop: '正在停止进程...',
+        uninstallProgressSandbox: '正在删除隔离运行配置和文件夹权限...',
         uninstallProgressShortcuts: '正在删除快捷方式...',
         uninstallProgressFiles: '正在删除安装文件...',
         uninstallProgressData: '正在删除用户数据和运行时环境...',
@@ -394,6 +398,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: '正在偵測安裝位置...', 
         uninstallProgressStop: '正在停止處理程序...',
+        uninstallProgressSandbox: '正在刪除隔離執行設定檔和資料夾權限...',
         uninstallProgressShortcuts: '正在刪除捷徑...',
         uninstallProgressFiles: '正在刪除安裝檔案...',
         uninstallProgressData: '正在刪除使用者資料和執行環境...',
@@ -472,6 +477,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: 'Detectando ubicación de instalación...', 
         uninstallProgressStop: 'Deteniendo procesos...',
+        uninstallProgressSandbox: 'Eliminando perfiles de aislamiento y permisos de carpetas...',
         uninstallProgressShortcuts: 'Eliminando accesos directos...',
         uninstallProgressFiles: 'Eliminando archivos de instalación...',
         uninstallProgressData: 'Eliminando datos de usuario y entornos de ejecución...',
@@ -550,6 +556,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: 'Detectando local de instalação...', 
         uninstallProgressStop: 'Parando processos...',
+        uninstallProgressSandbox: 'Removendo perfis de isolamento e permissões de pastas...',
         uninstallProgressShortcuts: 'Removendo atalhos...',
         uninstallProgressFiles: 'Removendo arquivos de instalação...',
         uninstallProgressData: 'Removendo dados do usuário e ambientes de execução...',
@@ -628,6 +635,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: 'Определение места установки...',
         uninstallProgressStop: 'Остановка процессов...',
+        uninstallProgressSandbox: 'Удаление профилей изоляции и прав на папки...',
         uninstallProgressShortcuts: 'Удаление ярлыков...',
         uninstallProgressFiles: 'Удаление файлов установки...',
         uninstallProgressData: 'Удаление пользовательских данных и сред выполнения...',
@@ -706,6 +714,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: 'Installationsort wird erkannt...',
         uninstallProgressStop: 'Prozesse werden beendet...',
+        uninstallProgressSandbox: 'Isolationsprofile und Ordnerrechte werden entfernt...',
         uninstallProgressShortcuts: 'Verknüpfungen werden entfernt...',
         uninstallProgressFiles: 'Installationsdateien werden entfernt...',
         uninstallProgressData: 'Benutzerdaten und Laufzeitumgebungen werden entfernt...',
@@ -784,6 +793,7 @@ const T = {
         // Uninstall progress
         uninstallProgressDetect: 'Détection de l\'emplacement d\'installation...',
         uninstallProgressStop: 'Arrêt des processus...',
+        uninstallProgressSandbox: 'Suppression des profils d\'isolation et des droits sur les dossiers...',
         uninstallProgressShortcuts: 'Suppression des raccourcis...',
         uninstallProgressFiles: 'Suppression des fichiers d\'installation...',
         uninstallProgressData: 'Suppression des données utilisateur et des environnements d\'exécution...',
@@ -825,6 +835,7 @@ const INSTALL_STEP_KEYS = {
 const UNINSTALL_STEP_KEYS = {
     'detect': 'uninstallProgressDetect',
     'stop': 'uninstallProgressStop',
+    'sandbox': 'uninstallProgressSandbox',
     'shortcuts': 'uninstallProgressShortcuts',
     'files': 'uninstallProgressFiles',
     'data': 'uninstallProgressData',
