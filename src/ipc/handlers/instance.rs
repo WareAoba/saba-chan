@@ -2113,11 +2113,14 @@ mod tests {
             format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"manual\"\n"),
         )
         .unwrap();
-        // 설치는 끝났다고 답하지만, 그 사이 인스턴스 기록 자리가 폴더가 되어 실행 경로를 저장하지 못한다
+        // 설치는 끝났다고 답하지만, 그 사이 인스턴스 기록 자리가 폴더가 되어 실행 경로를 저장하지 못한다.
+        // 기록은 테스트가 망가뜨린다: Windows 격리 실행은 설치 폴더 밖(인스턴스 기록)에 쓰지 못한다
         std::fs::write(
             dir.join("lifecycle.py"),
-            "import json, os, sys\nctx = json.load(sys.stdin)\nrecord = os.path.join(os.path.dirname(ctx['install_dir']), 'instance.json')\n\
-             os.remove(record)\nos.mkdir(record)\nprint(json.dumps({'success': True, 'executable_path': os.path.join(ctx['install_dir'], 'server.bin')}))\n",
+            "import json, os, sys, time\nctx = json.load(sys.stdin)\nd = ctx['install_dir']\nos.makedirs(d, exist_ok=True)\n\
+             open(os.path.join(d, 'started'), 'w').close()\n\
+             for _ in range(300):\n    if os.path.exists(os.path.join(d, 'go')): break\n    time.sleep(0.1)\n\
+             print(json.dumps({'success': True, 'executable_path': os.path.join(d, 'server.bin')}))\n",
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
@@ -2128,6 +2131,19 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": name }))).await).await;
         assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let instance_dir = tmp.path().join("instances").join(&id);
+        let install_dir = instance_dir.join("server");
+        for _ in 0..300 {
+            if install_dir.join("started").exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        let record = instance_dir.join("instance.json");
+        std::fs::remove_file(&record).unwrap();
+        std::fs::create_dir(&record).unwrap();
+        std::fs::write(install_dir.join("go"), b"").unwrap();
 
         let progress = provisioned(&state, "a").await.expect("provisioning finished");
         let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
