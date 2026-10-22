@@ -9,6 +9,7 @@ pub mod release;
 pub mod runtime_bootstrap;
 #[cfg(target_os = "windows")]
 pub mod shortcuts;
+pub mod traces;
 pub mod uninstall;
 
 pub use release::VerifiedRelease;

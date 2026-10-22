@@ -127,6 +127,8 @@ const RUNTIME_ENTRIES: &[&str] = &[
     "pycache-sandbox",
     "python-guard",
     "sandbox-temp",
+    "temp",
+    "pip-cache",
     "_python_download.tar.gz",
     "daemon.lock",
     "daemon.lock.owner",
@@ -270,7 +272,7 @@ mod tests {
 
     #[test]
     fn runtime_entries_go_whatever_is_kept() {
-        for name in ["python-standalone", "python-env", "modules", "extensions", "updates", "daemon.log", "installs.json"] {
+        for name in ["python-standalone", "python-env", "modules", "extensions", "updates", "daemon.log", "installs.json", "temp", "pip-cache"] {
             assert!(removable_data_entry(name, Keep::ALL), "{name} is runtime");
         }
     }

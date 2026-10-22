@@ -144,9 +144,12 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
         left.extend(remove_appdata_entries(keep));
     }
 
-    // Step 6: 임시 파일 삭제
+    // Step 6: 데이터 폴더 밖의 흔적 (임시 파일·기록, 창 앱 데이터, 리눅스 캐시·바로가기). 무엇을 남기든 지운다.
+    // 이 창 제거기의 WebView 폴더는 끝날 때까지 잠겨 있어 정리 스크립트가 지운다
     emit("temp", "Cleaning temporary files...", 70);
-    remove_temp_files();
+    let roots = crate::traces::Roots::current();
+    let running: Option<Vec<u32>> = list_all().map(|l| proc_rows(&l).iter().map(|r| r.pid).collect());
+    left.extend(crate::traces::remove(&roots, running.as_deref(), cfg!(windows)));
 
     // Step 8: 레지스트리 삭제
     emit("registry", "Removing registry entries...", 90);
@@ -1051,7 +1054,7 @@ pub fn looks_like_install_dir(dir: &Path) -> bool {
 }
 
 /// 디렉토리 강제 삭제 (잠금 파일에 대한 재시도 포함)
-fn remove_dir_robust(dir: &PathBuf) -> anyhow::Result<()> {
+pub(crate) fn remove_dir_robust(dir: &PathBuf) -> anyhow::Result<()> {
     // 1차 시도
     if std::fs::remove_dir_all(dir).is_ok() {
         return Ok(());
@@ -1142,49 +1145,6 @@ fn remove_appdata_entries(keep: Keep) -> Vec<PathBuf> {
     left
 }
 
-fn remove_temp_files() {
-    let temp = std::env::temp_dir();
-
-    // saba-chan-installer, saba-chan-updater 등 임시 폴더
-    let patterns = ["saba-chan-installer", "saba-chan-updater", "saba-chan-temp"];
-    for pattern in &patterns {
-        let dir = temp.join(pattern);
-        if dir.exists() {
-            tracing::info!("[Uninstall] Removing temp: {:?}", dir);
-            let _ = remove_dir_robust(&dir);
-        }
-    }
-    // 설치가 도중에 끊겨 남은 프로세스별 작업 폴더 (`saba-chan-installer-<pid>`)
-    for dir in stale_work_dirs(&temp, list_all().as_deref()) {
-        tracing::info!("[Uninstall] Removing temp: {:?}", dir);
-        let _ = remove_dir_robust(&dir);
-    }
-}
-
-/// `temp`의 설치기 작업 폴더 중 그 PID가 프로세스 목록(`list_all`)에 없는 것. 다른 설치기가 아직 받고 있으면 둔다.
-/// 목록을 못 읽으면 어느 것이 끝났는지 모르므로 하나도 고르지 않는다
-fn stale_work_dirs(temp: &Path, listing: Option<&str>) -> Vec<PathBuf> {
-    let Some(listing) = listing else { return Vec::new() };
-    let running: Vec<u32> = proc_rows(listing).iter().map(|r| r.pid).collect();
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(temp)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|dir| installer_work_dir_pid(dir).is_some_and(|pid| !running.contains(&pid)))
-        .collect();
-    dirs.sort();
-    dirs
-}
-
-fn installer_work_dir_pid(path: &Path) -> Option<u32> {
-    if !path.is_dir() {
-        return None;
-    }
-    let pid = path.file_name()?.to_str()?.strip_prefix(crate::release::WORK_DIR_PREFIX)?;
-    pid.bytes().all(|b| b.is_ascii_digit()).then(|| pid.parse().ok()).flatten()
-}
-
 /// 정리 스크립트를 띄우는 cmd 인자 (스크립트 경로 앞). `/D` AutoRun 끄기, `/V:OFF` 경로의 `!`를 펼치지 않기
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 const CLEANUP_CMD_ARGS: [&str; 3] = ["/D", "/V:OFF", "/C"];
@@ -1202,8 +1162,17 @@ fn cleanup_script(
     install_dir: Option<&str>,
     dedicated: bool,
     parent: Option<&str>,
+    held: &[(String, bool)],
 ) -> String {
     let q = |p: &str| p.replace('%', "%%");
+    // 제거기가 끝나야 풀리는 흔적 (`traces::held_by_self`: WebView 데이터 폴더, 기록 파일). `(경로, 폴더인가)`
+    let extra_lines: String = held
+        .iter()
+        .map(|(p, dir)| match dir {
+            true => format!("if exist \"{0}\" rmdir /s /q \"{0}\"\r\n", q(p)),
+            false => format!("del /f /q \"{}\" 2>nul\r\n", q(p)),
+        })
+        .collect();
     // 전용 폴더가 아니면 비었을 때만 지운다 (사용자 파일이 남아 있을 수 있다)
     let rmdir_line = match install_dir {
         Some(dir) if dedicated => format!("if exist \"{0}\" rmdir /s /q \"{0}\"", q(dir)),
@@ -1228,6 +1197,7 @@ fn cleanup_script(
         del /f /q \"{self_exe}\"\r\n\
         {rmdir_line}\r\n\
         {parent_line}\r\n\
+        {extra_lines}\
         (goto) 2>nul & del /f /q \"%~f0\"\r\n",
         self_exe = q(self_exe),
     )
@@ -1264,6 +1234,10 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
             install_dir.map(|d| d.to_string_lossy()).as_deref(),
             dedicated,
             self_exe.parent().map(|p| p.to_string_lossy()).as_deref(),
+            &crate::traces::held_by_self(&crate::traces::Roots::current())
+                .iter()
+                .map(|p| (p.to_string_lossy().into_owned(), p.is_dir()))
+                .collect::<Vec<_>>(),
         );
 
         // 스크립트 파일 작성
@@ -1336,34 +1310,6 @@ mod tests {
         assert_eq!(args(&["--uninstall", "--remove-settings"]), Keep { settings: false, instances: true });
         assert_eq!(args(&["--uninstall", "--remove-instances"]), Keep { settings: true, instances: false });
         assert_eq!(args(&["--uninstall", "--remove-instances", "--remove-settings"]), Keep::NOTHING);
-    }
-
-    #[test]
-    fn only_numbered_installer_work_dirs_are_cleaned() {
-        let tmp = tempfile::tempdir().unwrap();
-        let work = tmp.path().join("saba-chan-installer-1234");
-        std::fs::create_dir_all(&work).unwrap();
-        let other = tmp.path().join("saba-chan-installer-backup");
-        std::fs::create_dir_all(&other).unwrap();
-        let log = tmp.path().join("saba-chan-installer-99");
-        std::fs::write(&log, b"").unwrap();
-
-        assert_eq!(stale_work_dirs(tmp.path(), Some("")), [work]);
-    }
-
-    /// 다른 설치기가 아직 돌고 있으면 그 작업 폴더는 두고, 프로세스 목록을 못 읽으면 아무것도 지우지 않는다
-    #[test]
-    fn a_running_installers_work_dir_is_kept() {
-        let tmp = tempfile::tempdir().unwrap();
-        let live = tmp.path().join("saba-chan-installer-1234");
-        let gone = tmp.path().join("saba-chan-installer-5678");
-        for dir in [&live, &gone] {
-            std::fs::create_dir_all(dir).unwrap();
-        }
-        let listing = "1234|1|5|saba-chan-cli.exe|C:/Saba/saba-chan-cli.exe\n";
-
-        assert_eq!(stale_work_dirs(tmp.path(), Some(listing)), [gone]);
-        assert!(stale_work_dirs(tmp.path(), None).is_empty());
     }
 
     /// 어느 설치의 것인지 모르는 데몬은 끄지 않고 사용자에게 먼저 끄라고 안내한다
@@ -1490,14 +1436,20 @@ mod tests {
             Some("C:\\%TEMP%\\Saba-chan"),
             true,
             Some("C:\\%TEMP%"),
+            &[
+                ("C:\\Users\\a\\AppData\\Local\\com.saba-chan.installer".to_string(), true),
+                ("C:\\%TEMP%\\saba-chan-installer.log".to_string(), false),
+            ],
         );
+        assert!(s.contains("del /f /q \"C:\\%%TEMP%%\\saba-chan-installer.log\" 2>nul"), "{s}");
+        assert!(s.contains("if exist \"C:\\Users\\a\\AppData\\Local\\com.saba-chan.installer\" rmdir /s /q"), "{s}");
         assert!(s.contains("if exist \"C:\\%%TEMP%%\\Saba-chan\" rmdir /s /q \"C:\\%%TEMP%%\\Saba-chan\""));
         assert!(s.contains("del /f /q \"C:\\%%TEMP%%\\Saba-chan\\saba-chan-installer.exe\""));
         assert!(s.contains("rmdir \"C:\\%%TEMP%%\" 2>nul"));
         // 스크립트 자신은 경로를 적지 않고 `%~f0`으로 지운다
         assert!(s.ends_with("(goto) 2>nul & del /f /q \"%~f0\"\r\n"));
         // 전용 폴더가 아니면 비었을 때만 지운다
-        let s = cleanup_script(7, "x.exe", Some("D:\\100%\\Saba"), false, None);
+        let s = cleanup_script(7, "x.exe", Some("D:\\100%\\Saba"), false, None, &[]);
         assert!(s.contains("rmdir \"D:\\100%%\\Saba\" 2>nul"));
         assert!(!s.contains("/s /q \"D:"));
     }
@@ -1506,7 +1458,7 @@ mod tests {
     // 지연 확장을 꺼야 경로의 `!`가 펼쳐지지 않는다
     #[test]
     fn the_cleanup_script_reads_non_ascii_paths_as_utf8_without_delayed_expansion() {
-        let s = cleanup_script(7, "C:\\사바쨩!\\saba-chan-installer.exe", Some("C:\\사바쨩!"), true, None);
+        let s = cleanup_script(7, "C:\\사바쨩!\\saba-chan-installer.exe", Some("C:\\사바쨩!"), true, None, &[]);
         let first_path = s.find("사바쨩").unwrap();
         let chcp = s.find("chcp 65001").expect("switches cmd to UTF-8");
         assert!(chcp < first_path);
@@ -1529,7 +1481,7 @@ mod tests {
         let pid = done.id();
         done.wait().unwrap();
         let script = root.join("정리.cmd");
-        let body = cleanup_script(pid, &exe.to_string_lossy(), Some(&dir.to_string_lossy()), true, None);
+        let body = cleanup_script(pid, &exe.to_string_lossy(), Some(&dir.to_string_lossy()), true, None, &[]);
         std::fs::write(&script, body).unwrap();
 
         // 실제 제거기처럼 창 없는 콘솔(CREATE_NO_WINDOW)에서 돌려 `chcp 65001`이 먹는지까지 본다
