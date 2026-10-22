@@ -604,7 +604,8 @@ fn checked(dir: &Path, name: &str) -> Result<PathBuf> {
         bail!("invalid backup name: {}", name);
     }
     let path = dir.join(name);
-    if !path.is_file() {
+    // 대상이 없는 링크도 목록에 보이므로 받는다 (지우면 링크만 지운다)
+    if !path.is_file() && !path.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
         bail!("backup not found: {}", name);
     }
     Ok(path)
@@ -1359,6 +1360,11 @@ mod tests {
         let listed: Vec<(String, bool)> = list(&dir).into_iter().map(|b| (b.name, b.readable)).collect();
         assert!(listed.contains(&("20200101-000000-000-manual.zip".to_string(), false)), "{listed:?}");
         #[cfg(unix)]
-        assert!(listed.contains(&("20200102-000000-000-manual.zip".to_string(), false)), "{listed:?}");
+        {
+            assert!(listed.contains(&("20200102-000000-000-manual.zip".to_string(), false)), "{listed:?}");
+            // 목록에 보인 것은 지울 수 있다 (링크만 지운다)
+            delete(&dir, "20200102-000000-000-manual.zip").unwrap();
+            assert!(fs::symlink_metadata(dir.join("20200102-000000-000-manual.zip")).is_err());
+        }
     }
 }
