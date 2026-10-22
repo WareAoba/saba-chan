@@ -117,7 +117,7 @@
                             updater/src/config_file.rs. `node.token`은 cloud relay 노드 토큰(sbn_<id>.<secret>,
                             handlers/relay.rs `load_node_token`·`write_node_token`). 내보내기 설정 절에서 뺀다
   settings.json 등           예전 개별 파일. 한 번 config.json으로 이관하고 원본은 두며 .migrated 사본을 남긴다.
-                            예전 `.node_token`(0.1.8까지)은 `node.token`에 넣은 뒤 사본 없이 지운다
+                            예전 `.node_token`(0.1.8까지)은 `node.token`에 넣은 뒤 사본 없이 지운다(다시 생기면 예전 판이 새로 페어링한 것이라 그 값이 이긴다)
   daemon.lock (+ .owner)    단일 인스턴스 잠금과 실행 중 데몬 pid·주소    instance_lock.rs
   daemon.log                CLI 부트 모드에서만 생성
   logs/daemon.log (+ .1)    그 밖의 모드의 데몬 로그·패닉 (GUI 로그 saba-chan-<시각>.log와 같은 폴더)    daemon_log.rs
