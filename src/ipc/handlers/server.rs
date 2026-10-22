@@ -721,25 +721,7 @@ fn module_install_paths(modules_dir: &std::path::Path, module_id: &str) -> (std:
 /// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
 fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
     crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
-    // 점으로 시작해 모듈 탐색이 건너뛴다. 남으면 다음 기동이 지운다 (제자리가 비었으면 되돌린다)
-    let mut old_name = std::ffi::OsString::from(".old-");
-    old_name.push(target_dir.file_name().unwrap_or_default());
-    let old = target_dir.with_file_name(old_name);
-    let _ = std::fs::remove_dir_all(&old);
-    let had_old = target_dir.exists();
-    if had_old {
-        std::fs::rename(target_dir, &old)?;
-    }
-    if let Err(e) = std::fs::rename(staging, target_dir) {
-        if had_old {
-            let _ = std::fs::rename(&old, target_dir);
-        }
-        return Err(e.into());
-    }
-    if had_old {
-        let _ = std::fs::remove_dir_all(&old);
-    }
-    Ok(())
+    crate::utils::swap_dir(staging, target_dir)
 }
 
 /// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)
