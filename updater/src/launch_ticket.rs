@@ -81,8 +81,7 @@ pub fn issue(staging_dir: &Path) -> std::io::Result<String> {
     ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes)
         .map_err(|_| std::io::Error::other("no system randomness"))?;
     let token: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
-    std::fs::create_dir_all(staging_dir)?;
-    std::fs::write(ticket_path(staging_dir), &token)?;
+    saba_atomic_file::write(&ticket_path(staging_dir), token.as_bytes(), saba_atomic_file::Mode::Secret)?;
     Ok(token)
 }
 

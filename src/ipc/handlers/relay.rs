@@ -116,14 +116,35 @@ pub(crate) async fn sync_host_id(state: &IPCServer, token: Option<&str>) {
     }
 }
 
+/// 노드 토큰 파일 (`<data_dir>/.node_token`)
+pub(crate) fn node_token_path() -> std::path::PathBuf {
+    saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token")
+}
+
 /// Load node token from the data directory file (.node_token).
 pub(crate) fn load_node_token() -> Option<String> {
-    let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-    let token_path = data_dir.join(".node_token");
-    std::fs::read_to_string(&token_path)
+    std::fs::read_to_string(node_token_path())
         .ok()
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
+}
+
+/// 노드 토큰을 쓴다 (원자적, 주인만 읽기). 같은 값이 이미 있으면 쓰지 않고 `Ok(false)`
+pub(crate) fn write_node_token(path: &std::path::Path, token: &str) -> std::io::Result<bool> {
+    if std::fs::read_to_string(path).is_ok_and(|t| t.trim() == token.trim()) {
+        return Ok(false);
+    }
+    saba_atomic_file::write(path, token.as_bytes(), saba_atomic_file::Mode::Secret)?;
+    Ok(true)
+}
+
+/// 토큰을 쓴 뒤 따라야 할 것: hostId를 토큰에 맞추고, 바뀌었으면 relay agent를 새 토큰으로 다시 띄운다.
+/// 토큰을 쓰는 곳(페어링 완료, 토큰 저장, 가져오기)이 모두 부른다
+pub(crate) async fn adopt_node_token(state: &IPCServer, token: &str, changed: bool) {
+    sync_host_id(state, Some(token)).await;
+    if changed {
+        crate::relay_agent::restart(state).await;
+    }
 }
 
 /// Generate HMAC-SHA256 signed headers for relay server authentication.
@@ -529,13 +550,11 @@ pub async fn poll_pairing_status(
     };
     // 페어링이 끝났으면 노드 토큰을 저장하고, 저장했는지를 `tokenSaved`로 알린다 (클라이언트는 이 값으로 "연결됨"을 보인다)
     if let Some("claimed") = data.get("status").and_then(|s| s.as_str()) {
-        let token_path = saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token");
         let token = data.get("nodeToken").and_then(|t| t.as_str()).map(str::to_string);
-        let stored = store_node_token(&token_path, token.as_deref());
-        if stored.changed {
+        let stored = store_node_token(&node_token_path(), token.as_deref());
+        if let (true, Some(token)) = (stored.changed, token.as_deref()) {
             tracing::info!("Node token saved via pairing completion");
-            sync_host_id(&state, token.as_deref()).await;
-            crate::relay_agent::restart(&state).await;
+            adopt_node_token(&state, token, true).await;
         }
         if let Some(obj) = data.as_object_mut() {
             obj.insert("tokenSaved".into(), json!(stored.saved));
@@ -560,14 +579,8 @@ fn store_node_token(path: &std::path::Path, token: Option<&str>) -> StoredToken 
         tracing::warn!("Pairing was claimed but the relay no longer hands out the node token");
         return StoredToken { saved: false, changed: false };
     };
-    if std::fs::read_to_string(path).is_ok_and(|t| t.trim() == token.trim()) {
-        return StoredToken { saved: true, changed: false };
-    }
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match std::fs::write(path, token) {
-        Ok(()) => StoredToken { saved: true, changed: true },
+    match write_node_token(path, token) {
+        Ok(changed) => StoredToken { saved: true, changed },
         Err(e) => {
             tracing::warn!("Failed to auto-save node token: {}", e);
             StoredToken { saved: false, changed: false }

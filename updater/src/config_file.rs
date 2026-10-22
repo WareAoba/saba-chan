@@ -186,21 +186,14 @@ impl ConfigFile {
 
     fn save_locked(&self, doc: &mut Map<String, Value>) -> std::io::Result<()> {
         doc.insert("schemaVersion".into(), Value::from(SCHEMA_VERSION));
-        std::fs::create_dir_all(&self.dir)?;
         let path = self.path();
-        let tmp = self.dir.join(format!("{}.tmp", FILE_NAME));
         let text = serde_json::to_string_pretty(doc).map_err(std::io::Error::other)?;
-        {
-            use std::io::Write;
-            let mut f = std::fs::File::create(&tmp)?;
-            f.write_all(text.as_bytes())?;
-            f.sync_all()?;
-        }
         if path.is_file() {
             // 직전 정상본을 .bak으로 (rename이 아니라 copy: 교체 순간에도 config.json이 있게)
             let _ = std::fs::copy(&path, self.backup_path());
         }
-        std::fs::rename(&tmp, &path)
+        // 챗봇 API 키 같은 비밀값이 들어 있다
+        saba_atomic_file::write(&path, text.as_bytes(), saba_atomic_file::Mode::Secret)
     }
 }
 

@@ -242,7 +242,11 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     uninstall::stop_daemon_before_install(&install_dir).await;
     let total = components.len().max(1);
     let mut installed = Vec::new();
-    let mut installed_versions = UpdateManager::load_installed_manifest();
+    // 깨진 기록은 사본으로 옮겨 두고 새로 쓴다 (빈 표로 읽어 덮어쓰면 그 내용이 흔적 없이 사라진다)
+    let mut installed_versions = UpdateManager::read_installed_manifest_for_update().unwrap_or_else(|e| {
+        tracing::warn!("installed-manifest.json could not be read: {}", e);
+        UpdateManager::load_installed_manifest()
+    });
     let temp_dir = release::work_dir();
     let _cleanup = RemoveOnDrop(temp_dir.clone());
     let _ = std::fs::create_dir_all(&temp_dir);

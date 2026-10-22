@@ -54,22 +54,26 @@ use version::SemVer;
 
 /// 같은 폴더의 임시 파일에 쓰고 이름을 바꿔 `path`를 통째로 바꾼다. 쓰다 끊겨도 반쯤 쓰인 파일이 남지 않는다
 pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    std::fs::create_dir_all(dir)?;
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp = dir.join(format!(".{}.{}-{}.tmp", name, std::process::id(), seq));
-    let written = std::fs::File::create(&tmp).and_then(|mut f| {
-        f.write_all(contents)?;
-        f.sync_all()
-    });
-    let result = written.and_then(|_| std::fs::rename(&tmp, path));
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+    saba_atomic_file::write(path, contents, saba_atomic_file::Mode::Plain)
+}
+
+/// 고쳐 쓰려고 기록 파일을 읽는다. 없으면 `None`. 내용이 깨졌으면(UTF-8이 아닌 것 포함) `<이름>.corrupt-<초>`로
+/// 옮겨 두고 `None`: 그대로 두면 기록이 영영 안 되고, 새 값으로 덮어쓰면 다른 항목이 흔적 없이 사라진다.
+/// 파일을 읽지 못하면(권한 등) 오류
+pub(crate) fn read_json_for_update<T: serde::de::DeserializeOwned>(path: &Path) -> std::result::Result<Option<T>, String> {
+    match read_json(path) {
+        Ok(value) => Ok(value),
+        Err(e) if path.is_file() && std::fs::read(path).is_ok() => {
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            let mut corrupt = path.as_os_str().to_os_string();
+            corrupt.push(format!(".corrupt-{secs}"));
+            let corrupt = PathBuf::from(corrupt);
+            std::fs::rename(path, &corrupt).map_err(|e| e.to_string())?;
+            tracing::warn!("{} was unreadable ({}); moved to {}", path.display(), e, corrupt.display());
+            Ok(None)
+        }
+        Err(e) => Err(e),
     }
-    result
 }
 
 /// JSON 파일을 읽는다. 없으면 `None`. 읽거나 해석할 수 없으면 오류: 고쳐 쓰는 쪽이 덮어쓰지 않게

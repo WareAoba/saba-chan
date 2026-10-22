@@ -328,7 +328,7 @@ impl Supervisor {
                     tracing::warn!("Failed to re-track '{}' (PID {}): {}", instance.name, pid, e);
                     continue;
                 }
-                let _ = std::fs::write(&pid_file, pid.to_string());
+                let _ = saba_atomic_file::write(&pid_file, pid.to_string().as_bytes(), saba_atomic_file::Mode::Plain);
                 self.managed_store.insert(&instance.id, proc).await;
                 reattached += 1;
                 tracing::info!("Reattached '{}' through saba-runner (PID {})", instance.name, pid);
@@ -2055,7 +2055,7 @@ impl Supervisor {
 
         // Persist PID to disk for orphan reattachment on daemon restart
         let pid_file = inst_dir.join("managed.pid");
-        if let Err(e) = std::fs::write(&pid_file, pid.to_string()) {
+        if let Err(e) = saba_atomic_file::write(&pid_file, pid.to_string().as_bytes(), saba_atomic_file::Mode::Plain) {
             tracing::warn!("Failed to write managed.pid for '{}': {}", instance.name, e);
         }
 
@@ -2847,7 +2847,7 @@ impl Supervisor {
         }
         match serde_json::to_vec(events) {
             Ok(bytes) => {
-                if let Err(e) = std::fs::write(&path, bytes) {
+                if let Err(e) = saba_atomic_file::write(&path, &bytes, saba_atomic_file::Mode::Plain) {
                     tracing::warn!("Failed to save exit history for '{}': {}", instance_id, e);
                 }
             }
@@ -3194,7 +3194,9 @@ fn is_daemon_entry(name: &str) -> bool {
     }
     let name = name.trim_end_matches(['.', ' ']);
     let same = |a: &str, b: &str| a.to_uppercase() == b.to_uppercase() || a.to_lowercase() == b.to_lowercase();
-    crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
+    // 원자적 저장의 임시 파일 `.<항목>.<pid>-<n>.tmp`
+    let temp = name.len() > 5 && name.starts_with('.') && name.is_char_boundary(name.len() - 4) && same(&name[name.len() - 4..], ".tmp");
+    temp || crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
 }
 
 #[cfg(test)]
@@ -3701,6 +3703,7 @@ mod tests {
             ("short", at("SETTIN~1.JSO")),
             ("stream", at("run:x")),
             ("long_s", at("ſettings.json.tmp")),
+            ("atomic_temp", at(".settings.json.42-0.TMP")),
             ("korean", at("세이브")),
             ("up", at("../other")),
             ("whole", root.to_string_lossy().into_owned()),

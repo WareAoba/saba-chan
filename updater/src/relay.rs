@@ -342,10 +342,7 @@ pub fn anon_client_id() -> String {
         }
     }
     let id = uuid::Uuid::new_v4().simple().to_string();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(&path, &id);
+    let _ = crate::write_atomic(&path, id.as_bytes());
     id
 }
 

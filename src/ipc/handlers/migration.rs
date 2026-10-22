@@ -46,10 +46,6 @@ fn absolute_path(path: &str) -> Result<PathBuf, Response> {
     Ok(p)
 }
 
-fn node_token_path() -> PathBuf {
-    saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token")
-}
-
 /// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정.
 /// 모듈을 읽지 못해 설정 종류를 모르면(`types`가 None) 모듈 설정을 모두 뺀다
 pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: Option<&HashMap<String, String>>) {
@@ -143,7 +139,7 @@ pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
 
 /// zip의 노드 토큰을 이 PC에 쓸 것인가: 이 PC가 아직 페어링되지 않았을 때만
 fn takes_node_token(bundle: &Bundle) -> bool {
-    bundle.node_token.is_some() && !std::fs::read_to_string(node_token_path()).is_ok_and(|t| !t.trim().is_empty())
+    bundle.node_token.is_some() && !std::fs::read_to_string(super::relay::node_token_path()).is_ok_and(|t| !t.trim().is_empty())
 }
 
 /// 가져올 인스턴스마다 넣을지 건너뛸지
@@ -220,7 +216,7 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
     };
     let config = state.config_store.portable_sections(req.secrets);
     let node_token = if req.secrets {
-        std::fs::read_to_string(node_token_path()).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+        std::fs::read_to_string(super::relay::node_token_path()).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
     } else {
         None
     };
@@ -339,12 +335,16 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     }
 
     // 이 PC가 이미 페어링돼 있으면 그 토큰을 둔다
+    let mut adopted = None;
     let node_token = match bundle.node_token {
         None => Value::Null,
         Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
-        Some(token) => match std::fs::write(node_token_path(), token) {
-            Ok(()) => json!("imported"),
+        Some(token) => match super::relay::write_node_token(&super::relay::node_token_path(), &token) {
+            Ok(changed) => {
+                adopted = Some((token, changed));
+                json!("imported")
+            }
             Err(e) => {
                 tracing::warn!("Import: could not write node token: {}", e);
                 Value::Null
@@ -374,16 +374,16 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             }
             Err(e) => {
                 // 토큰은 이미 저장했다: 다음 기동까지 미루지 않고 지금 그 토큰으로 잇는다
-                if node_token == json!("imported") {
-                    crate::relay_agent::restart(&state).await;
+                if let Some((token, _)) = &adopted {
+                    super::relay::adopt_node_token(&state, token, true).await;
                 }
                 return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
             }
         }
     };
-    // 토큰 저장 API와 같이: 가져온 토큰(과 릴레이 주소)으로 데몬 재시작 없이 연결한다
-    if !req.dry_run && node_token == json!("imported") {
-        crate::relay_agent::restart(&state).await;
+    // 토큰 저장 API와 같이: 가져온 토큰(과 릴레이 주소)으로 데몬 재시작 없이 연결한다. 토큰이 같아도 주소가 바뀌었을 수 있다
+    if let Some((token, _)) = adopted {
+        super::relay::adopt_node_token(&state, &token, true).await;
     }
 
     Json(json!({

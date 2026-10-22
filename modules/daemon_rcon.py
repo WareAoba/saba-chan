@@ -12,6 +12,7 @@ command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
     is_process_alive() / wait_for_exit() / force_kill()   PID-safe process checks and kills
     config_value()                               top level -> module_settings -> settings lookup
     load_setting_types() / coerce_setting()      cast file values by module.toml field type
+    atomic_write()                               replace a whole file without leaving it half written
     run_lifecycle()                              the `python lifecycle.py <function>` entry point
 
 Environment (the daemon sets these for every Python run):
@@ -26,8 +27,10 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 import urllib.error
@@ -283,6 +286,64 @@ def force_kill(pid, *, tree=True):
         if is_process_alive(pid):
             return False, str(e)
     return True, None
+
+
+# ─── 파일 저장 ─────────────────────────────────────────────────
+
+# ReplaceFileW가 새 파일을 옮기지 못했다: 원래 파일은 백업 이름에, 새 내용은 임시 파일 이름에 남아 있다
+_ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 = 1177
+
+
+def atomic_write(path, data):
+    """`path`를 `data`(bytes)로 통째로 바꾼다. 같은 폴더의 고유 임시 파일에 다 쓰고 디스크에 내린 뒤 바꾼다.
+    쓰다 끊겨도(강제 종료, 데몬 시간 초과) 원래 파일이나 새 파일 중 하나가 온전히 남고, 동시에 저장해도
+    서로의 임시 파일을 건드리지 않는다. 원래 파일의 접근 권한을 지킨다 (비밀번호가 든 설정이 넓게 열리지 않게).
+    Windows: ReplaceFileW가 원래 파일의 DACL 등을 옮긴다. 백업 이름을 주어 어느 단계에서 실패해도 원래 파일이 남는다.
+    POSIX: 권한 비트를 옮긴 뒤 os.replace"""
+    path = os.fspath(path)
+    folder = os.path.dirname(os.path.abspath(path))
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        _replace_keeping_access(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def _replace_keeping_access(tmp, path):
+    if not os.path.isfile(path):
+        if os.name != "nt":
+            # mkstemp은 0600으로 만든다: 새 파일은 open()으로 만든 것과 같은 권한으로
+            umask = os.umask(0)
+            os.umask(umask)
+            os.chmod(tmp, 0o666 & ~umask)
+        os.replace(tmp, path)
+        return
+    if os.name != "nt":
+        shutil.copymode(path, tmp)
+        os.replace(tmp, path)
+        return
+    import ctypes
+    replace = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
+    replace.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p]
+    replace.restype = ctypes.c_int
+    backup = f"{tmp}.bak"
+    if replace(path, tmp, backup, 0, None, None):
+        try:
+            os.remove(backup)
+        except OSError:
+            pass
+        return
+    err = ctypes.get_last_error()
+    if err == _ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 and not os.path.exists(path) and os.path.isfile(backup):
+        # 원래 파일(원래 ACL)을 제자리로 되돌린다. 새 값은 쓰지 못한 것으로 알린다
+        os.replace(backup, path)
+    raise ctypes.WinError(err)
 
 
 # ─── 설정 ─────────────────────────────────────────────────────

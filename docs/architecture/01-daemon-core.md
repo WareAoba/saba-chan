@@ -478,7 +478,8 @@ Relay 서명 방식(`relay.rs:115-161`):
   - `<root>/<id>/instance.json`: `module_settings`를 뺀 메타데이터
   - `<root>/<id>/settings.json`: `module_settings`. JSON이 아니면(손으로 고치다 깨진 경우) 빈 설정으로 올리고 경고를 남기며, 다음 저장이 덮기 전에 원본을 `settings.json.corrupt`(다른 내용이 이미 있으면 `.corrupt-<초>`, 같은 내용의 사본이 이미 있으면 새로 만들지 않는다, unix는 0600으로 만든다)로 남긴다. 사본을 남기지 못하면 그 인스턴스를 올리지 않는다(원본을 덮지 않게)
   - Unix에서는 두 파일 모두 0600으로 둔다.
-- `instance.json`·`settings.json`은 임시 파일에 쓰고 rename하는 원자적 쓰기다(`write_atomic`, `instance/mod.rs:502-513`). `order.json`은 그냥 덮어쓴다(`:472-476`).
+- 파일을 통째로 바꾸는 저장은 모두 공용 crate `saba-atomic-file`(`atomic-file/src/lib.rs` `write`)을 쓴다. 같은 폴더의 고유 임시 파일 `.<이름>.<pid>-<n>.tmp`에 다 쓰고 fsync한 뒤 rename한다(Unix는 폴더도 fsync). `Mode::Plain`은 원래 파일의 권한을 잇고, `Mode::Secret`은 처음부터 주인만 읽는다(Unix 0600, Windows는 폴더 ACL을 물려받는다). 비밀 모드: `instance.json`·`settings.json`(`instance/mod.rs` `write_atomic_bytes`), `rcon.json`, `.node_token`, IPC 토큰, 러너 토큰, 업데이터 실행 표, `config.json`(챗봇 API 키). 일반 모드: `order.json`, `managed.pid`, 종료 이력, AppContainer 기록, 루프백 응답, 러너 상태 파일, 업데이터 기록·staging 파일. 인스턴스 폴더의 임시 파일 이름(`.`로 시작하고 `.tmp`로 끝남)은 데몬 항목으로 보아 모듈 설정 경로로 받지 않는다(`supervisor/mod.rs` `is_daemon_entry`).
+- 노드 토큰은 `relay.rs`의 `node_token_path`·`write_node_token`(같은 값이면 쓰지 않음)·`adopt_node_token`(hostId를 맞추고 바뀌었으면 relay agent 재시작)으로만 쓴다. 페어링 완료, `PUT /api/config/node-token`, 가져오기가 모두 이것을 부른다(가져오기는 설정 절까지 저장한 뒤).
 - 쓰거나 지울 폴더는 id가 경로 한 칸이고 심볼릭 링크가 아니어야 한다(`checked_dir`, `:399-409`).
 - 로드할 때 `order.json` 순서로 정렬하고, 목록에 없는 인스턴스는 뒤에 붙인다.
 - `remove()`는 `<root>/<id>` 디렉토리를 통째로 지운다(`:343-354`). 기본 설치 위치인 `server/` 하위 게임 서버 파일과 `backups/`도 **함께 지워진다.**

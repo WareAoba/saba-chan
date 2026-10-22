@@ -4208,6 +4208,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
+name = "saba-atomic-file"
+version = "0.1.8"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "saba-chan-cli"
 version = "0.1.8"
 dependencies = [
@@ -4330,6 +4337,7 @@ dependencies = [
  "futures-util",
  "reqwest 0.11.27",
  "ring",
+ "saba-atomic-file",
  "serde",
  "serde_json",
  "sha2",
@@ -4366,6 +4374,7 @@ dependencies = [
  "regex",
  "regex-lite",
  "reqwest 0.11.27",
+ "saba-atomic-file",
  "saba-chan-updater-lib",
  "saba-runner",
  "schemars 0.8.22",
@@ -4398,6 +4407,7 @@ version = "0.1.8"
 dependencies = [
  "embed-resource",
  "portable-pty",
+ "saba-atomic-file",
  "serde",
  "serde_json",
  "strip-ansi-escapes",

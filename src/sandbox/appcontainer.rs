@@ -245,11 +245,9 @@ fn read_runtime_record(path: &Path) -> BTreeMap<String, BTreeSet<PathBuf>> {
 
 #[cfg_attr(not(windows), allow(dead_code))]
 fn write_runtime_record(path: &Path, record: &BTreeMap<String, BTreeSet<PathBuf>>) {
-    let tmp = path.with_extension("json.tmp");
     let saved = serde_json::to_vec_pretty(record)
         .map_err(std::io::Error::other)
-        .and_then(|bytes| std::fs::write(&tmp, bytes))
-        .and_then(|()| std::fs::rename(&tmp, path));
+        .and_then(|bytes| saba_atomic_file::write(path, &bytes, saba_atomic_file::Mode::Plain));
     if let Err(e) = saved {
         tracing::warn!("[Sandbox] could not save {}: {}", path.display(), e);
     }
