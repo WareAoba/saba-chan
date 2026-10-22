@@ -17,6 +17,12 @@ use std::path::{Path, PathBuf};
 /// AppContainer 프로필 이름 접두어. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다
 const PROFILE_PREFIX: &str = "saba-chan.untrusted.";
 
+/// 사바쨩이 만든 프로필 이름인가 (구성요소별 프로필과 예전 공용 프로필)
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn is_saba_profile(name: &str) -> bool {
+    name.starts_with(PROFILE_PREFIX) || name == PROFILE_PREFIX.trim_end_matches('.')
+}
+
 /// 구성요소 키(`module-<이름>`·`ext-<이름>`)를 짧게 줄인 꼬리표 (프로필 이름 64자 한도, 폴더 이름에도 쓴다)
 pub fn component_tag(key: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -272,7 +278,7 @@ fn same_final_path(final_path: &str, requested: &str) -> bool {
 }
 
 #[cfg(windows)]
-pub use imp::{clear_low_label_of, clear_low_labels, grant, revoke_stale_runtimes, spawn, Contained};
+pub use imp::{clear_low_label_of, clear_low_labels, grant, reset, revoke_stale_runtimes, spawn, Contained};
 
 #[cfg(windows)]
 mod imp {
@@ -1327,6 +1333,129 @@ mod imp {
         }
         record.retain(|_, paths| !paths.is_empty());
         super::write_runtime_record(&file, &record);
+    }
+
+    /// 제거기용 (`saba-core sandbox reset`): `labeled` 폴더의 낮은 무결성 표시를 덮고, 사바쨩 프로필마다
+    /// `targets`와 기록된 런타임 폴더에서 그 SID의 명시 ACE를 거둔 뒤 프로필을 지운다
+    /// (프로필 폴더 `%LOCALAPPDATA%\Packages\<이름>`과 레지스트리 매핑도 함께 지워진다). 지운 프로필 수
+    pub fn reset(targets: &[PathBuf], labeled: &[PathBuf]) -> Result<usize, Vec<String>> {
+        let mut failed: Vec<String> = Vec::new();
+        for dir in labeled.iter().filter(|d| d.is_dir()) {
+            if let Err(errs) = clear_low_labels(dir) {
+                failed.extend(errs.into_iter().map(|(p, e)| format!("{}: {}", p.display(), e)));
+            }
+        }
+        let _guard = acl_lock();
+        let file = super::runtime_record_path();
+        let record = super::read_runtime_record(&file);
+        let profiles = saba_profiles();
+        for profile in &profiles {
+            let sid = match container_sid(profile) {
+                Ok(sid) => sid,
+                Err(e) => {
+                    failed.push(format!("{}: {}", profile, e));
+                    continue;
+                }
+            };
+            let recorded = record.get(profile).into_iter().flatten();
+            for path in targets.iter().chain(recorded).filter(|p| p.exists()) {
+                // 이 SID의 명시 ACE가 있는 폴더만 고친다 (남의 폴더 DACL을 괜히 다시 쓰지 않게)
+                match has_own_ace(path, sid) {
+                    Ok(false) => {}
+                    Ok(true) => {
+                        if let Err(e) = remove_ace(path, sid) {
+                            failed.push(e);
+                        }
+                    }
+                    Err(e) => failed.push(e),
+                }
+            }
+            if let Err(e) = delete_profile(profile) {
+                failed.push(e);
+            }
+        }
+        if failed.is_empty() {
+            let _ = std::fs::remove_file(&file);
+            Ok(profiles.len())
+        } else {
+            Err(failed)
+        }
+    }
+
+    /// 이 사용자의 AppContainer 매핑 중 사바쨩 프로필 이름 (`HKCU\...\AppContainer\Mappings\<SID>`의 `Moniker`)
+    fn saba_profiles() -> Vec<String> {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        const MAPPINGS: &str = r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppContainer\Mappings";
+        let Ok(root) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(MAPPINGS) else { return Vec::new() };
+        let mut names: Vec<String> = root
+            .enum_keys()
+            .flatten()
+            .filter_map(|sid| root.open_subkey(&sid).ok()?.get_value::<String, _>("Moniker").ok())
+            .filter(|m| super::is_saba_profile(m))
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// 폴더 DACL에 `sid`의 명시(상속받지 않은) ACE가 있는가
+    fn has_own_ace(path: &Path, sid: PSID) -> Result<bool, String> {
+        use std::os::windows::io::AsRawHandle;
+        unsafe {
+            let dir = open_checked(path, 0)?;
+            let mut dacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetSecurityInfo(dir.as_raw_handle() as HANDLE, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), &mut dacl, null_mut(), &mut sd);
+            if rc != 0 {
+                return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            let mut found = false;
+            let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+            if !dacl.is_null()
+                && GetAclInformation(dacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) != 0
+            {
+                for i in 0..info.AceCount {
+                    let mut ace: *mut c_void = null_mut();
+                    if GetAce(dacl, i, &mut ace) == 0 || ace.is_null() {
+                        continue;
+                    }
+                    let header = &*(ace as *const ACE_HEADER);
+                    if header.AceType != ACCESS_ALLOWED_ACE_TYPE || header.AceFlags & super::ACE_INHERITED != 0 {
+                        continue;
+                    }
+                    let allowed = &*(ace as *const ACCESS_ALLOWED_ACE);
+                    if EqualSid(&allowed.SidStart as *const DWORD as PSID, sid) != 0 {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            LocalFree(sd);
+            Ok(found)
+        }
+    }
+
+    /// AppContainer 프로필을 지운다 (userenv `DeleteAppContainerProfile`. 없으면 이미 지워진 것)
+    fn delete_profile(profile: &str) -> Result<(), String> {
+        type DeleteProfile = unsafe extern "system" fn(*const u16) -> i32;
+        unsafe {
+            let lib = LoadLibraryW(wide(OsStr::new("userenv.dll")).as_ptr());
+            if lib.is_null() {
+                return Err(last_error("userenv.dll"));
+            }
+            let delete = GetProcAddress(lib, c"DeleteAppContainerProfile".as_ptr());
+            if delete.is_null() {
+                return Err("AppContainer is not supported on this Windows".into());
+            }
+            let delete: DeleteProfile = std::mem::transmute(delete);
+            let name = wide(OsStr::new(profile));
+            let hr = delete(name.as_ptr());
+            if hr < 0 {
+                return Err(format!("delete AppContainer profile {}: 0x{:08x}", profile, hr as u32));
+            }
+        }
+        Ok(())
     }
 
     fn pipe() -> Result<(OwnedHandle, OwnedHandle), String> {

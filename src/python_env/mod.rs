@@ -444,6 +444,11 @@ fn portable_python_exe(data_dir: &Path) -> PathBuf {
     }
 }
 
+/// 데몬 venv의 Python 실행 파일 (있든 없든 그 자리)
+pub fn venv_python() -> Option<PathBuf> {
+    resolve_data_dir().ok().map(|d| venv_python_exe(&d.join(VENV_DIR_NAME)))
+}
+
 /// venv 내 Python 실행 파일 경로
 fn venv_python_exe(venv_dir: &Path) -> PathBuf {
     #[cfg(target_os = "windows")]

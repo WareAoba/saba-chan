@@ -4537,6 +4537,7 @@ dependencies = [
  "ureq",
  "uuid",
  "winapi",
+ "winreg 0.52.0",
  "winres",
  "zip",
 ]

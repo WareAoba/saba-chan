@@ -109,6 +109,13 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
+    // 격리 실행의 프로필과 폴더 권한·표시를 데몬 실행 파일이 거둔다 (설치 폴더를 지우기 전에. 남기는 서버 폴더도)
+    let mut left = Vec::new();
+    if let Some(dir) = &install_dir {
+        emit("sandbox", "Removing isolation profiles and folder permissions...", 15);
+        left.extend(reset_sandbox(dir));
+    }
+
     // Step 3: 바로가기 제거
     emit("shortcuts", "Removing shortcuts...", 20);
     #[cfg(target_os = "windows")]
@@ -122,10 +129,9 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     // Step 4: 설치 디렉토리 삭제
     emit("files", "Removing installation files...", 35);
     let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
-    let mut left = Vec::new();
     if let Some(ref dir) = install_dir {
         if dir.exists() {
-            left = remove_install_dir(dir, dedicated);
+            left.extend(remove_install_dir(dir, dedicated));
             if left.is_empty() {
                 tracing::info!("[Uninstall] Removed install dir: {:?}", dir);
             }
@@ -176,6 +182,30 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     }, &left);
     tracing::info!("[Uninstall] Complete");
     left
+}
+
+/// 그 설치의 `saba-core sandbox reset`을 돌린다 (Windows). 거두지 못한 것을 `경로: 이유` 줄로 돌려준다.
+/// 큰 서버 폴더는 표시를 덮는 데 시간이 걸려 오래 기다린다
+fn reset_sandbox(install_dir: &Path) -> Vec<PathBuf> {
+    let core = install_dir.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE);
+    if !cfg!(windows) || !core.is_file() {
+        return Vec::new();
+    }
+    let mut cmd = std::process::Command::new(&core);
+    cmd.args(["sandbox", "reset"]);
+    saba_chan_updater_lib::process::hide_console(&mut cmd);
+    let Some(out) = output_within(&mut cmd, std::time::Duration::from_secs(600)) else {
+        tracing::warn!("[Uninstall] sandbox reset did not finish");
+        return vec![PathBuf::from(format!("{}: sandbox reset did not finish", core.display()))];
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    tracing::info!("[Uninstall] sandbox reset: {}", text.trim());
+    sandbox_failures(&text)
+}
+
+/// `sandbox reset` 출력의 실패 줄
+fn sandbox_failures(text: &str) -> Vec<PathBuf> {
+    text.lines().filter_map(|l| l.strip_prefix("FAIL  ")).map(PathBuf::from).collect()
 }
 
 /// 마지막 설치본을 다 지운 뒤 남긴 것을 알리는 문구
@@ -1301,6 +1331,14 @@ mod tests {
 
     // M15: 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
     // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다
+    #[test]
+    fn sandbox_reset_failures_are_reported_as_left_items() {
+        let out = "ok    removed 2 isolation profile(s)\n";
+        assert!(sandbox_failures(out).is_empty());
+        let out = "FAIL  D:\\Games\\pal: write ACL of D:\\Games\\pal: Access is denied.\nFAIL  saba-chan.untrusted.x: gone\n";
+        assert_eq!(sandbox_failures(out).len(), 2);
+    }
+
     /// 아무것도 정하지 않으면 설정과 인스턴스를 둘 다 남기고, 지울 것만 따로 고른다
     #[test]
     fn uninstall_keeps_settings_and_instances_unless_told_to_remove_each() {
