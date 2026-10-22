@@ -475,6 +475,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 );
                             } else {
                                 const deletedCount = result?.deleted?.length || 0;
+                                // 게임 설정 파일이 지워졌다: 열 때 읽은 파일 값은 더는 맞지 않으니 저장할 때 다시 쓴다
+                                liveFields.current = new Set();
                                 safeShowToast(
                                     t('server_settings.reset_success', {
                                         name: settingsServer.name,

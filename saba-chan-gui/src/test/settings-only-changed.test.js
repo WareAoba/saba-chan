@@ -85,4 +85,21 @@ describe('서버 설정 저장은 바뀐 것만 보낸다', () => {
         expect(sent).not.toHaveProperty('restart_on_unknown_exit');
         expect(sent).not.toHaveProperty('extension_data');
     });
+
+    it('서버를 초기화한 뒤 저장하면 보이는 값을 게임 설정 파일에 다시 쓴다', async () => {
+        window.api.serverList = vi.fn().mockResolvedValue({ servers: [srv] });
+        window.api.instanceResetServer = vi.fn().mockResolvedValue({ success: true, deleted: ['PalWorldSettings.ini'] });
+        const setModal = vi.fn();
+        const { result } = renderHook(() =>
+            useServerSettings({ servers: [srv], modules, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
+        );
+        await act(async () => result.current.handleOpenSettings(srv));
+        await act(async () => result.current.handleResetServer());
+        await act(async () => setModal.mock.calls.at(-1)[0].buttons[1].action());
+        expect(window.api.instanceResetServer).toHaveBeenCalled();
+        await act(async () => result.current.handleSaveSettings());
+        const sent = window.api.instanceUpdateSettings.mock.calls[0][1];
+        expect(sent.description).toBe('옛 설명');
+        expect(sent.max_players).toBe(8);
+    });
 });
