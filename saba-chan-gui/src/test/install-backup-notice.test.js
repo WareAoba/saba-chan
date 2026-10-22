@@ -30,13 +30,16 @@ describe('설치 실패 문구', () => {
         expect(installFailureText(t, { restore_failed: ['PalServer'], message: 'm' }, translate)).toBe('tr(m)');
     });
 
-    // 리뷰 630 P3-1: 모듈 오류의 낱말(timed out 등) 때문에 토스트 전체가 일반 문구로 바뀌어 남긴 사본 안내가 사라졌다
+    // 리뷰 630 P3-1: 모듈 오류의 낱말(timed out 등) 때문에 토스트 전체가 일반 문구로 바뀌어 남긴 사본 안내가 사라졌다.
+    // 데몬 #533(dc0849d9)부터 500도 restore_failed·kept_backups를 싣는다: 그 칸으로 보이고 모듈 오류만 번역한다
     it('500 오류의 되돌리지 못한 파일 안내는 번역에 묻히지 않는다', () => {
         const res = {
-            error: 'could not put back PalServer (kept as PalServer.1.bak), java (kept as java.bak): Plugin timed out after 1800s',
+            error: 'could not put back Pal(1) (kept as Pal(1).bak), java (kept as java.bak): Plugin timed out after 1800s',
+            restore_failed: ['Pal(1)', 'java'],
+            kept_backups: ['Pal(1).bak', 'java.bak'],
         };
         expect(installFailureText(t, res, translate)).toBe(
-            'tr(Plugin timed out after 1800s) server_settings.install_kept_backups{"files":"PalServer → PalServer.1.bak, java → java.bak"}',
+            'tr(Plugin timed out after 1800s) server_settings.install_kept_backups{"files":"Pal(1) → Pal(1).bak, java → java.bak"}',
         );
         expect(installFailureText(t, { error: 'Plugin timed out' }, translate)).toBe('tr(Plugin timed out)');
     });
