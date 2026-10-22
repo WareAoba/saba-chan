@@ -372,9 +372,19 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
                 }
                 keys
             }
-            Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string()),
+            Err(e) => {
+                // 토큰은 이미 저장했다: 다음 기동까지 미루지 않고 지금 그 토큰으로 잇는다
+                if node_token == json!("imported") {
+                    crate::relay_agent::restart(&state).await;
+                }
+                return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
+            }
         }
     };
+    // 토큰 저장 API와 같이: 가져온 토큰(과 릴레이 주소)으로 데몬 재시작 없이 연결한다
+    if !req.dry_run && node_token == json!("imported") {
+        crate::relay_agent::restart(&state).await;
+    }
 
     Json(json!({
         "success": true,

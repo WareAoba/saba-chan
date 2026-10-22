@@ -256,3 +256,24 @@ def test_host_id_follows_the_node_token(sandbox, relay, daemon_factory):
     assert d.api.ok("GET", "/api/config/bot")["cloud"]["hostId"] == relay.node_id
     d.api.ok("DELETE", "/api/config/node-token")
     assert d.api.ok("GET", "/api/config/bot")["cloud"].get("hostId", "") == ""
+
+
+def test_imported_node_token_starts_agent_without_restart(paired, relay, sandbox):
+    """다른 PC에서 가져온 노드 토큰으로도 데몬 재시작 없이 연결된다 (토큰 저장 API와 같게)."""
+    from harness.daemon import Daemon
+    from harness.sandbox import Sandbox
+
+    archive = sandbox.root / "export.zip"
+    paired.api.ok("POST", "/api/migration/export", {"path": str(archive), "secrets": True})
+    paired.api.ok("POST", "/api/relay/agent/stop")
+    seen = len(relay.heartbeats)
+
+    other = Sandbox(sandbox.root / "pc2")
+    d2 = Daemon(other).start()
+    try:
+        assert not d2.api.ok("GET", "/api/relay/agent")["running"]
+        d2.api.ok("POST", "/api/migration/import", {"path": str(archive)})
+        wait_until(lambda: len(relay.heartbeats) > seen, 30, "가져온 토큰으로 heartbeat")
+        assert d2.api.ok("GET", "/api/relay/agent")["running"]
+    finally:
+        d2.shutdown()

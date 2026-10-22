@@ -17,7 +17,9 @@ function loadCatalog() {
     if (!catalog) {
         catalog = Promise.resolve(window.api.actionsList({ surface: 'gui' }))
             .then((res) => {
-                const list = Array.isArray(res) ? res : res?.actions || [];
+                const list = Array.isArray(res) ? res : res?.actions;
+                // 브리지는 실패를 던지지 않고 `{ error }`로 답한다: 실패는 기억하지 않고 다음에 다시 묻는다
+                if (!Array.isArray(list)) throw new Error(res?.error || 'no action catalog');
                 return Object.fromEntries(list.filter((a) => a.cli).map((a) => [a.id, a.cli]));
             })
             .catch(() => {

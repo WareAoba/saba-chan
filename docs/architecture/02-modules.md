@@ -183,7 +183,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `beta` | String | — |
 | `requires_extensions` | Vec<String> | `[]`. 인스턴스 생성·non-managed 시작·`/api/module/:name/install` 때 필수 익스텐션 검증에 사용 (`instance.rs:233-252`, `mod.rs:572-629`, `managed.rs:526-`) |
 
-zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use_beta` 설정을 보고 정한다 (`M:zomboid/lifecycle.py:1250, 1273`).
+zomboid의 `beta_branch` 키는 지워졌다. lifecycle에는 `use_beta`를 보고 베타를 받는 분기가 남아 있지만(`M:zomboid/lifecycle.py:1342`), module.toml에 그 설정이 없고 데몬은 `install_server`에 설정을 최상위로 펼치지 않아(`settings{}`로 준다) 지금은 쓰이지 않는다.
 
 #### `[extensions.<익스텐션 id>]`
 익스텐션이 읽는 모듈별 설정. 데몬은 내용을 보지 않고 `ModuleMetadata.extensions`에 그대로 넘긴다 (`:618-622, 1139-1145`). 예전 `[docker]` 섹션(`ContainerSectionToml`)은 Docker 익스텐션과 함께 지워졌다.
@@ -308,14 +308,14 @@ players = "player_count"
 
 ### 2.2 모듈 측 디스패치 관례
 
-모든 모듈이 같은 구조를 따른다 (`M:minecraft/lifecycle.py:1834-1876`, `palworld:1453-1507`, `zomboid:1432-1492`, `__example:478-511`).
+세 모듈과 `__example` 모두 모듈 최상위에 `FUNCTIONS` 표를 두고 진입점은 공용 `daemon_rcon.run_lifecycle(FUNCTIONS)`이다(0.1.5 코어부터 있다). palworld는 표의 함수마다 `ExtensionMissing`을 `error_code: "extension_required"`로 바꾸는 감싸기를 더해 넘긴다.
 
 1. `sys.argv[1]`을 읽는다.
-2. stdin JSON을 읽는다. 비어 있으면 `{}`로 둔다.
-3. `FUNCTIONS[name](config)`를 호출한다.
-4. `print(json.dumps(result))`로 결과를 출력한다.
+2. stdin JSON을 읽는다. 비어 있으면 `{}`로 두고, 해석할 수 없으면 함수를 부르지 않고 `{"success":false,"message":"Invalid JSON config on stdin: ..."}`로 답한다.
+3. `FUNCTIONS[name](config)`를 호출한다. 함수 안의 예외도 `{"success":false,"message":"Error in <name>: ..."}`로 답한다(traceback은 stderr).
+4. 결과 JSON 한 줄을 stdout에 쓴다.
 
-모르는 함수 이름이 오면 `{"success":false,"message":"Unknown function: X"}`를 돌려주고 종료 코드는 네 모듈 모두 0이다 (zomboid는 `return`, `M:zomboid/lifecycle.py:1466-1473`).
+모르는 함수 이름이 오면 `{"success":false,"message":"Unknown function: X","available":[...]}`를 돌려준다. 어느 경우든 종료 코드는 0이다. 적합성 키트가 깨진 stdin과 예외 경로를 검사한다(`M:conformance/test_conformance.py` `test_bad_stdin_is_answered_not_run`, `test_a_crashing_function_still_answers_json`).
 
 예약 함수 `functions`(MK1): 모듈이 구현한 lifecycle 함수 이름(`FUNCTIONS`의 키, `functions` 자신은 빼고)을 `{"success": true, "functions": [...]}`로 돌려준다. 공용 진입점 `daemon_rcon.run_lifecycle(FUNCTIONS)`은 표에 `functions`가 없으면 이렇게 자동으로 답한다. 데몬은 이 목록을 `GET /api/modules`의 `functions`로 내보내고, 목록에 없는 선택 함수는 부르지 않고 `not_supported`로 답한다(01 §`GET /api/modules`). 답하지 못하는 옛 모듈은 목록을 모르는 것으로 다뤄 아무것도 숨기지 않는다. `functions`는 `[[queries]]`·`[status] players`의 `function`으로 쓸 수 없다.
 
@@ -395,9 +395,11 @@ players = "player_count"
 | install_server (호출) | ✔ | ✔ | ✔ | ✔ |
 | get_installed_version (호출) | ✔ | – | – | – |
 | import_settings (호출) | ✔ | ✔ | ✔ | ✔ |
-| backup_paths (hook일 때 호출) | – | ✔ | ✔ | – |
+| backup_paths (hook일 때 호출) | ✔ | ✔ | ✔ | – |
+| player_count (`[status] players`) | ✔ | ✔ | – | – |
+| instance_commands (호출) | ✔ | – | – | – |
 
-출처: `M:minecraft/lifecycle.py:1834-1851`, `M:palworld/lifecycle.py:1473-1490`, `M:zomboid/lifecycle.py:1432-1445`, `M:__example/__example__lifecycle.py:478-488`.
+출처: 각 lifecycle의 최상위 `FUNCTIONS` 표 (2026-10-22 대조).
 
 **영향**:
 - 데몬 초기화 때의 backfill은 palworld와 zomboid에서 매번 실패한다(debug 로그).
@@ -515,7 +517,7 @@ players = "player_count"
 - `locales/` 아래에 10개 언어 JSON이 있다: `de, en, es, fr, ja, ko, pt-BR, ru, zh-CN, zh-TW`.
 - `[aliases]`(한국어 별칭), `[errors]`(사용자용 오류 문구), `[backup]`, `config.announce_command`가 있다. 모두 `schema_version = 1`이다.
 
-### 4.1 minecraft (`M:minecraft/`, lifecycle 1,876줄, toml 1,138줄)
+### 4.1 minecraft (`M:minecraft/`, lifecycle 2,337줄, toml 1,303줄)
 
 | 항목 | 내용 |
 |---|---|
@@ -531,7 +533,7 @@ players = "player_count"
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:196-208`) |
 
-### 4.2 palworld (`M:palworld/`, lifecycle 1,507줄, toml 1,338줄)
+### 4.2 palworld (`M:palworld/`, lifecycle 1,637줄, toml 1,351줄)
 
 | 항목 | 내용 |
 |---|---|
@@ -545,7 +547,7 @@ players = "player_count"
 | 미등록 | `get_installed_version` |
 | 기타 | `list_versions`는 Steam 단일 버전 |
 
-### 4.3 zomboid (`M:zomboid/`, lifecycle 1,492줄, toml 1,554줄)
+### 4.3 zomboid (`M:zomboid/`, lifecycle 1,610줄, toml 1,580줄)
 
 | 항목 | 내용 |
 |---|---|
@@ -666,6 +668,6 @@ players = "player_count"
 ---
 
 ### 부록: 핵심 수치
-- 모듈 크기: minecraft lifecycle 1,876줄 / toml 1,138줄, palworld 1,507 / 1,338, zomboid 1,492 / 1,554, example 511 / 336.
+- 모듈 크기(2026-10-22): minecraft lifecycle 2,337줄 / toml 1,303줄, palworld 1,637 / 1,351, zomboid 1,610 / 1,580, example 520 / 408.
 - settings 필드 수: minecraft 66, palworld 117, zomboid 117, example 9. commands 수: 17 / 10 / 23 / 3.
 - 데몬의 lifecycle 호출 함수: 19종(§2.3). 모듈의 `start`는 지워졌다.

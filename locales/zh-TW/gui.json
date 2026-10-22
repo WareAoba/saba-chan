@@ -779,6 +779,7 @@
     "pair_expired": "代碼已過期",
     "pair_not_saved": "已在 Discord 中輸入，但無法在這台電腦上儲存連線資訊。請取得新代碼重新連線",
     "invalid_relay_url": "中繼位址必須以 https:// 開頭。http 只能在這台電腦上測試時使用（localhost、127.0.0.1、[::1]）",
+    "permission_keys_ignored": "權限設定無法在這裡變更，維持原值。其餘已儲存。請在權限頁面變更權限",
     "pair_error": "無法取得代碼，請檢查網路連線",
     "pair_again": "取得新代碼",
     "cancel": "取消",

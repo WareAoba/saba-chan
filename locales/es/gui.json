@@ -779,6 +779,7 @@
     "pair_expired": "El código ha caducado",
     "pair_not_saved": "El comando llegó a Discord, pero no se pudo guardar la conexión en este PC. Obtén un código nuevo y vuelve a conectar",
     "invalid_relay_url": "La dirección del relay debe empezar por https://. http solo sirve para pruebas en este PC (localhost, 127.0.0.1 o [::1])",
+    "permission_keys_ignored": "Los permisos no se cambian aquí y se quedaron como estaban. Lo demás se guardó. Cambia los permisos en la pantalla de permisos",
     "pair_error": "No se pudo obtener un código. Comprueba tu conexión a internet",
     "pair_again": "Obtener un código nuevo",
     "cancel": "Cancelar",

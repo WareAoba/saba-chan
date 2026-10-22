@@ -193,6 +193,12 @@ export const useDiscordStore = create((set, get) => ({
                 state,
                 changed.flatMap((k) => BOT_KEYS[k]),
             );
+            // 권한 키는 권한 화면으로만 바뀐다: 데몬이 저장하지 않은 키를 알린다 (L61, CLI와 같게)
+            if (Array.isArray(res?.ignored) && res.ignored.length > 0) {
+                safeShowToast(_t('discord.permission_keys_ignored'), 'warning', 6000);
+                // 화면이 저장되지 않은 값을 저장된 것처럼 보이지 않게 데몬 값으로 다시 읽는다
+                await get().loadConfig().catch(() => {});
+            }
             return true;
         } catch (error) {
             console.error('[Settings] Failed to save bot config:', error);

@@ -779,6 +779,7 @@
     "pair_expired": "Le code a expiré",
     "pair_not_saved": "La commande est arrivée sur Discord, mais la connexion n'a pas pu être enregistrée sur ce PC. Obtenez un nouveau code et reconnectez-vous",
     "invalid_relay_url": "L'adresse du relais doit commencer par https://. http ne sert qu'aux tests sur ce PC (localhost, 127.0.0.1 ou [::1])",
+    "permission_keys_ignored": "Les autorisations ne se modifient pas ici et sont restées inchangées. Le reste a été enregistré. Modifie les autorisations dans l'écran des autorisations",
     "pair_error": "Impossible d'obtenir un code. Vérifiez votre connexion Internet",
     "pair_again": "Obtenir un nouveau code",
     "cancel": "Annuler",

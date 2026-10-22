@@ -908,9 +908,17 @@ impl ExtensionManager {
             return Err(ExtensionError::in_use(ext_id, &using).into());
         }
 
-        self.enabled.remove(ext_id);
-        self.discovered.remove(ext_id);
-        self.save_state();
+        let was_enabled = self.enabled.remove(ext_id);
+        let mounted = self.discovered.remove(ext_id);
+        if let Err(e) = self.save_state() {
+            if was_enabled {
+                self.enabled.insert(ext_id.to_string());
+            }
+            if let Some(ext) = mounted {
+                self.discovered.insert(ext_id.to_string(), ext);
+            }
+            return Err(e);
+        }
         tracing::info!("Unmounted extension: {}", ext_id);
         Ok(())
     }
@@ -1048,7 +1056,10 @@ impl ExtensionManager {
         }
 
         self.enabled.insert(ext_id.to_string());
-        self.save_state();
+        if let Err(e) = self.save_state() {
+            self.enabled.remove(ext_id);
+            return Err(e);
+        }
         tracing::info!("Extension enabled: {}", ext_id);
         Ok(())
     }
@@ -1077,7 +1088,10 @@ impl ExtensionManager {
         }
 
         self.enabled.remove(ext_id);
-        self.save_state();
+        if let Err(e) = self.save_state() {
+            self.enabled.insert(ext_id.to_string());
+            return Err(e);
+        }
         tracing::info!("Extension disabled: {}", ext_id);
         Ok(())
     }
@@ -1110,10 +1124,15 @@ impl ExtensionManager {
                 .with_context(|| format!("Failed to remove extension directory: {}", ext_path.display()))?;
         }
         // extensionConfig에서 해당 익스텐션의 설정 제거
+        // 폴더는 이미 지웠다: 남은 기록을 못 지워도 제거는 끝났다 (다시 발견되지 않는다)
         if self.extension_config.remove(ext_id).is_some() {
-            self.save_extension_config();
+            if let Err(e) = self.save_extension_config() {
+                tracing::warn!("Removed extension {} but could not save its config removal: {}", ext_id, e);
+            }
         }
-        self.save_state();
+        if let Err(e) = self.save_state() {
+            tracing::warn!("Removed extension {} but could not save the extension state: {}", ext_id, e);
+        }
         tracing::info!("Extension removed: {}", ext_id);
         Ok(())
     }
@@ -1599,7 +1618,9 @@ impl ExtensionManager {
 
     /// 특정 익스텐션의 글로벌 설정을 업데이트합니다.
     /// 기존 키를 머지(덮어쓰기)하며, 디스크에 즉시 영속화합니다. 값이 null인 키는 지워 기본값으로 돌린다.
-    pub fn set_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
+    /// 저장에 실패하면 메모리 값도 되돌리고 오류를 돌려준다.
+    pub fn set_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) -> Result<()> {
+        let previous = self.extension_config.get(ext_id).cloned();
         let entry = self.extension_config
             .entry(ext_id.to_string())
             .or_default();
@@ -1610,12 +1631,19 @@ impl ExtensionManager {
                 entry.insert(k, v);
             }
         }
-        self.save_extension_config();
+        let saved = self.save_extension_config();
+        if saved.is_err() {
+            match previous {
+                Some(prev) => self.extension_config.insert(ext_id.to_string(), prev),
+                None => self.extension_config.remove(ext_id),
+            };
+        }
+        saved
     }
 
     /// `extensions` 네임스페이스의 한 키를 저장
-    fn persist(&self, key: &str, value: Value) {
-        let result = self.config_file.update(|doc| {
+    fn persist(&self, key: &str, value: Value) -> Result<()> {
+        self.config_file.update(|doc| {
             let section = doc
                 .entry("extensions".to_string())
                 .or_insert_with(|| Value::Object(Default::default()));
@@ -1623,25 +1651,22 @@ impl ExtensionManager {
                 *section = Value::Object(Default::default());
             }
             section.as_object_mut().expect("object").insert(key.to_string(), value);
-        });
-        if let Err(e) = result {
-            tracing::error!("Failed to save extension {}: {}", key, e);
-        }
+        })
+        .map(|_| ())
+        .with_context(|| format!("Failed to save extension {}", key))
     }
 
     /// enabled 목록 영속화
-    fn save_state(&self) {
+    fn save_state(&self) -> Result<()> {
         let mut list: Vec<&str> = self.enabled.iter().map(String::as_str).collect();
         list.sort_unstable();
-        self.persist("enabled", serde_json::json!(list));
+        self.persist("enabled", serde_json::json!(list))
     }
 
     /// 익스텐션 글로벌 설정 영속화
-    fn save_extension_config(&self) {
-        match serde_json::to_value(&self.extension_config) {
-            Ok(v) => self.persist("settings", v),
-            Err(e) => tracing::error!("Failed to serialize extension config: {}", e),
-        }
+    fn save_extension_config(&self) -> Result<()> {
+        let v = serde_json::to_value(&self.extension_config).context("Failed to serialize extension config")?;
+        self.persist("settings", v)
     }
 
     /// 저장된 enabled 목록과 글로벌 설정 로드
@@ -1901,6 +1926,42 @@ mod tests {
         assert!(!mgr.is_enabled("test_ext"));
     }
 
+    /// 설정 파일을 쓸 수 없으면 켜기·끄기·설정 저장이 실패로 답하고 메모리 상태도 그대로 둔다
+    #[test]
+    fn unsaved_state_is_reported_and_not_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("test_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), r#"{"id":"test_ext","name":"Test","version":"0.1.0"}"#).unwrap();
+        // 설정 폴더 자리에 파일이 있어 config.json을 만들 수 없다
+        let blocker = tmp.path().join("not-a-dir");
+        std::fs::write(&blocker, "").unwrap();
+        let mut mgr = ExtensionManager::with_config_file(tmp.path().to_str().unwrap(), ConfigFile::at(&blocker));
+        mgr.discover().unwrap();
+        let no_instances: Vec<(&str, &HashMap<String, Value>)> = vec![];
+
+        assert!(mgr.enable("test_ext").is_err());
+        assert!(!mgr.is_enabled("test_ext"));
+
+        mgr.enabled.insert("test_ext".to_string());
+        assert!(mgr.disable("test_ext", &no_instances).is_err());
+        assert!(mgr.is_enabled("test_ext"));
+
+        let values = HashMap::from([("a".to_string(), json!(1))]);
+        assert!(mgr.set_extension_config("test_ext", values).is_err());
+        assert!(mgr.get_extension_config("test_ext").is_empty());
+
+        assert!(mgr.unmount("test_ext", &no_instances).is_err());
+        assert!(mgr.is_enabled("test_ext") && mgr.discovered.contains_key("test_ext"));
+
+        // 켜진 채로는 끄기(저장)부터 실패해 폴더를 지우지 않는다. 꺼진 것은 폴더를 지우고 끝낸다
+        assert!(mgr.remove("test_ext", &no_instances).is_err());
+        assert!(ext_dir.exists());
+        mgr.enabled.remove("test_ext");
+        assert!(mgr.remove("test_ext", &no_instances).is_ok());
+        assert!(!ext_dir.exists());
+    }
+
     #[test]
     fn test_enable_unknown_extension() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2156,8 +2217,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         let set = |pairs: &[(&str, Value)]| pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<HashMap<_, _>>();
-        mgr.set_extension_config("box", set(&[("a", json!(1)), ("b", json!("x"))]));
-        mgr.set_extension_config("box", set(&[("a", Value::Null)]));
+        mgr.set_extension_config("box", set(&[("a", json!(1)), ("b", json!("x"))])).unwrap();
+        mgr.set_extension_config("box", set(&[("a", Value::Null)])).unwrap();
         assert_eq!(mgr.get_extension_config("box"), set(&[("b", json!("x"))]));
     }
 

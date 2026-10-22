@@ -40,19 +40,24 @@ export const openWithNotice = async (call) => {
 
 /**
  * Retry an async function with exponential backoff.
+ * 브리지는 데몬 실패를 `{ error }`로 돌려준다: 그 답도 실패로 보고 다시 시도하고, 끝까지 실패하면 마지막 답을 돌려준다.
  */
 export const retryWithBackoff = async (fn, maxRetries = 3, initialDelay = 500) => {
     for (let i = 0; i < maxRetries; i++) {
+        let failure;
         try {
-            return await fn();
+            const result = await fn();
+            if (!result?.error || i === maxRetries - 1) return result;
+            failure = result.error;
         } catch (error) {
             if (i === maxRetries - 1) {
                 throw error;
             }
-            const delay = initialDelay * 2 ** i;
-            debugWarn(`Attempt ${i + 1} failed, retrying in ${delay}ms...`, error.message);
-            await new Promise((resolve) => setTimeout(resolve, delay));
+            failure = error.message;
         }
+        const delay = initialDelay * 2 ** i;
+        debugWarn(`Attempt ${i + 1} failed, retrying in ${delay}ms...`, failure);
+        await new Promise((resolve) => setTimeout(resolve, delay));
     }
 };
 

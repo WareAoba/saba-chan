@@ -908,8 +908,8 @@ export function createApi({ invoke, hub }) {
         // 데몬이 bot-config의 원천. 최상위 키 단위로 병합되므로 부분 저장도 안전하다
         botConfigSave: async (config) => {
             try {
-                await put('/api/config/bot', config || {});
-                return { success: true, message: 'Bot config saved' };
+                // 데몬 본문을 그대로: 권한 키라 저장하지 않은 경로는 `ignored`로 온다 (L61)
+                return (await put('/api/config/bot', config || {})).data || { success: true };
             } catch (error) {
                 console.error('Failed to save bot config via daemon:', error.message);
                 // error_code(invalid_relay_url 등)를 렌더러가 쓸 수 있게 본문을 넘긴다

@@ -17,7 +17,7 @@ const DEFAULT_ACCENT_SECONDARY = '#764ba2';
 export const THEME_DEFAULTS = {
     accentColor: DEFAULT_ACCENT,
     accentSecondary: DEFAULT_ACCENT_SECONDARY,
-    useGradient: false,
+    useGradient: true,
     fontScale: 100,
     enableTransitions: true,
     consoleSyntaxHighlight: true,
