@@ -38,8 +38,7 @@ fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response
 }
 
 pub(crate) async fn is_running(state: &IPCServer, id: &str) -> bool {
-    let supervisor = state.supervisor.read().await;
-    supervisor.tracker.get_pid(id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id.to_string())
+    state.supervisor.read().await.is_running(id).await
 }
 
 /// 이름 하나로 게임 명령 실행 (저장·공지). 성공 여부만

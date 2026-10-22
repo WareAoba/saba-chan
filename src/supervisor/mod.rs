@@ -2086,6 +2086,12 @@ impl Supervisor {
     /// 콘솔 명령을 stdin으로 보내야 하는가.
     /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
     /// (RCON은 보안상 늘 꺼져 있다).
+    /// 서버가 켜져 있는가: 추적표(non-managed와 managed 모두 띄운 뒤 올린다)나 managed 저장소에 살아 있으면.
+    /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
+    pub async fn is_running(&self, instance_id: &str) -> bool {
+        self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
+    }
+
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
         if !self.module_accepts_stdin(instance_id) {
             return false;

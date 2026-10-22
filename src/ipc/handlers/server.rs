@@ -878,7 +878,7 @@ async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstan
 async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Response> {
     {
         let supervisor = state.supervisor.read().await;
-        if supervisor.tracker.get_pid(id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id.to_string()) {
+        if supervisor.is_running(id).await {
             return None;
         }
     }
@@ -1007,7 +1007,7 @@ async fn restart_instance(
         for _ in 0..240 {
             let alive = {
                 let supervisor = state.supervisor.read().await;
-                supervisor.tracker.get_pid(&inst_id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&inst_id)
+                supervisor.is_running(&inst_id).await
             };
             if !alive {
                 break;

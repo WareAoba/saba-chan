@@ -964,7 +964,7 @@ pub async fn rename_instance(
         return fail(StatusCode::CONFLICT, format!("An instance named '{}' already exists", new_name), "name_taken");
     }
     // 실행 중인 서버는 이름으로도 추적되므로 꺼진 뒤에만 바꾼다
-    let running = supervisor.tracker.get_pid(&id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id);
+    let running = supervisor.is_running(&id).await;
     if running {
         return fail(StatusCode::CONFLICT, "Stop the server before renaming it".into(), "server_running");
     }
@@ -1396,7 +1396,7 @@ pub async fn update_instance_settings(
     }
 
     // 06 §8.2: 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
-    let running = supervisor.tracker.get_pid(&id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id);
+    let running = supervisor.is_running(&id).await;
     let restart_required: Vec<String> = if running {
         // 공통 칸(port 등)은 PATCH 전 인스턴스 칸의 값과, 그 밖에는 module_settings와 비교한다
         let before = serde_json::to_value(instance).unwrap_or_default();
@@ -1676,7 +1676,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     };
 
     // 실행 중이면 업데이트 불가
-    if supervisor.tracker.get_pid(id).is_ok() {
+    if supervisor.is_running(id).await {
         return Err((
             StatusCode::CONFLICT,
             Json(json!({
