@@ -694,6 +694,8 @@
     "installing": "正在安裝",
     "not_writable": "無法寫入 {{dir}}。請用 --dir 選擇可寫入的資料夾（例如使用者資料夾下）",
     "running_inside": "此 CLI 正在 {{dir}} 內執行，無法安裝到該資料夾。請使用安裝資料夾以外的 saba-chan-cli 執行。",
+    "installed_elsewhere": "Saba-chan 已安裝在 {{dir}}。請用 saba-chan-cli update 更新該安裝，或先將其移除（每台電腦只能安裝一份）。",
+    "daemon_running": "正在執行的 Saba-chan 無法確定屬於哪個安裝。請先結束 Saba-chan 後再試。",
     "empty_dir": "安裝資料夾為空。請用 --dir 指定資料夾",
     "failed": "安裝失敗：{{reason}}（詳細記錄：{{log}}）",
     "failed_no_log": "安裝失敗：{{reason}}",

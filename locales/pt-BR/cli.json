@@ -694,6 +694,8 @@
     "installing": "Instalando",
     "not_writable": "Não é possível gravar em {{dir}}. Escolha com --dir uma pasta em que você possa gravar (por exemplo, dentro da sua pasta de usuário)",
     "running_inside": "Esta CLI está em execução dentro de {{dir}}, então não pode instalar lá. Execute um saba-chan-cli fora da pasta de instalação.",
+    "installed_elsewhere": "O Saba-chan já está instalado em {{dir}}. Atualize essa instalação com saba-chan-cli update ou remova-a primeiro (uma instalação por PC).",
+    "daemon_running": "O Saba-chan está em execução e o instalador não sabe a qual instalação ele pertence. Feche o Saba-chan primeiro e tente de novo.",
     "empty_dir": "A pasta de instalação está vazia. Informe uma pasta com --dir",
     "failed": "A instalação falhou: {{reason}} (detalhes: {{log}})",
     "failed_no_log": "A instalação falhou: {{reason}}",

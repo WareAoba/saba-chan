@@ -194,7 +194,8 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 아래 `lib.rs` 근거는 따로 적지 않으면 `installer/core/src/lib.rs`다.
 
 **설치 위치**
-- 기본 경로는 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`default_install_path`).
+- 기본 경로는 이미 설치된 폴더가 있으면 그 폴더, 없으면 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`default_install_path`, `existing_install`).
+- 한 PC에는 설치본 하나만 둔다(설치본들이 데이터 폴더를 함께 쓴다). 설치 목록(`<data_dir>/installs.json`)과 Windows 설치된 앱 항목 중 `saba-core`가 남은 다른 폴더가 있으면 설치를 시작하지 않고 `installed_elsewhere`로 그 폴더를 알린다(`other_install`). 데이터 폴더를 따로 정한 설치(`SABA_DATA_DIR`)는 그 폴더의 설치 목록만 본다. CLI `install`은 받기 전에 같은 검사로 거절한다.
 - 고른 폴더가 비어 있지 않고 사바쨩 설치(`saba-core`나 GUI exe)도 아니면 그 아래 `Saba-chan` 폴더에 설치한다. 찾아보기·직접 입력 모두 `set_install_path`가 바꾼 경로를 돌려줘 화면에 보인다(`lib.rs` `dedicated_install_dir`).
 - 설치기가 새로 만든 폴더에만 `.saba-chan-install` 표시 파일을 둔다(원래 있던 빈 폴더는 나중에 다른 파일이 생길 수 있어 표시하지 않는다). 제거기는 이 표시가 있을 때만 폴더를 통째로 지우고, 없으면(0.1.4 이전 설치, 사용자 파일이 있던 기존 설치 폴더) 사바쨩 실행 파일·`locales` 폴더·공유 모듈 파일만 지운 뒤 폴더가 비었을 때만 지운다(`uninstall.rs` `remove_install_dir`).
 - 쓰기에 실패하면 창 인스톨러는 UAC로 권한을 올려 디렉터리를 만든다(`installer/gui/src-tauri/src/lib.rs` `elevate_create_dir`). 창 없는 설치는 상승하지 않고 멈춘다.
@@ -205,12 +206,13 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 | 단계 | 내용 |
 |---|---|
-| 1 (0-5%) | install dir 생성, 쓰기 probe, 필요하면 권한 상승 |
-| 1.5 | 덮어쓰기 전에 이 설치 폴더의 프로세스를 끈다(`uninstall.rs` `stop_daemon_before_install`). `saba-core`는 실행 파일 경로(받은 경로와 실제 경로 둘 다)로 찾고, 못 찾으면 설정된 포트의 `/health` PID를 보고 그 exe가 이 폴더 안이거나 경로를 못 읽을 때만 대상으로 삼는다. `/api/daemon/shutdown`은 설정된 포트의 `/health` PID가 찾은 데몬일 때만 보낸다(다른 데이터 폴더·포트로 도는 다른 설치의 데몬이 그 포트에 답할 수 있다. `asks_to_shut_down`). 보낸 뒤 20초 안에 안 끝나면(보내지 않았거나 거절되면 바로) 그 PID만 kill. 이어서 이 폴더의 GUI exe와 `saba-chan-cli`를 그 PID만 끈다(트리째 끄면 데몬이 남았을 때 그 아래 게임 서버까지 죽는다). 포터블 GUI는 실행기가 임시 폴더에 풀어 띄우므로, 실행기를 끄기 전에 그 자손(`descendants_in`)을 찾고, 데몬을 끄기 전에 `GET /api/clients`에서 `installRoot`가 이 폴더인 GUI PID를 받아 둔다. 그 PID가 아직 GUI 이름의 프로세스일 때만 끈다. 단계마다 `%TEMP%\saba-chan-installer.log`에 남긴다 |
+| 1 (0-5%) | 다른 폴더의 설치본 검사(`installed_elsewhere`), install dir 생성, 쓰기 probe, 필요하면 권한 상승 |
 | 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs` `fetch_latest`) |
 | 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`install`의 `installer_outdated`) |
-| 3 (10-45%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs` `installable`, `install`의 3단계). 하나라도 실패하면 설치를 멈춘다 |
-| 3.5 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사(`install_shared_modules`) |
+| 3 (10-40%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 모두 R2에서 받아 SHA-256을 확인하고, 임시 폴더에 한 번 풀어 본다(`release.rs` `installable`, `fetch_all`). 하나라도 실패하면 설치 폴더를 건드리지 않고 멈춘다(`download_failed`·`extract_failed`) |
+| 3.2 | 받기와 검증이 모두 끝난 뒤, 덮어쓰기 전에 이 설치 폴더의 프로세스를 끈다(`uninstall.rs` `stop_daemon_before_install`). `saba-core`는 실행 파일 경로(받은 경로와 실제 경로 둘 다)로 찾고, 못 찾으면 설정된 포트의 `/health` PID를 보고 그 exe가 이 폴더 안일 때만 대상으로 삼는다. 경로를 못 읽어 어느 설치의 것인지 모르면 끄지 않고 `daemon_running`으로 멈춰 사용자가 먼저 끄게 한다(`port_daemon_to_stop`). `/api/daemon/shutdown`은 설정된 포트의 `/health` PID가 찾은 데몬일 때만 보낸다(다른 데이터 폴더·포트로 도는 다른 설치의 데몬이 그 포트에 답할 수 있다. `asks_to_shut_down`). 보낸 뒤 20초 안에 안 끝나면(보내지 않았거나 거절되면 바로) 그 PID만 kill. 이어서 이 폴더의 GUI exe와 `saba-chan-cli`를 그 PID만 끈다(트리째 끄면 데몬이 남았을 때 그 아래 게임 서버까지 죽는다). 포터블 GUI는 실행기가 임시 폴더에 풀어 띄우므로, 실행기를 끄기 전에 그 자손(`descendants_in`)을 찾고, 데몬을 끄기 전에 `GET /api/clients`에서 `installRoot`가 이 폴더인 GUI PID를 받아 둔다. 그 PID가 아직 GUI 이름의 프로세스일 때만 끈다. 단계마다 `%TEMP%\saba-chan-installer.log`에 남긴다 |
+| 3.5 (40-45%) | 3.2 뒤에 받은 zip을 `install_dir/<install_dir>`에 푼다. 푸는 중에 실패하면(디스크 부족 등) `extract_failed`로 멈춘다 |
+| 3.6 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사(`install_shared_modules`) |
 | 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`install`의 4단계, `install_required_extensions`). 푼 폴더는 데몬 카탈로그 설치와 같이 `installed-files.json`에 해시를, `official-components.json`에 키를 적어 신뢰 표시가 `verified`가 된다(`release.rs` `install_addon_zip`). 새 zip은 옆의 `.<이름>.new-<pid>`에 다 푼 뒤에 있던 폴더와 바꾸므로, 풀다가 실패하면(깨진 zip, 디스크 부족) 있던 모듈·익스텐션이 그대로 남는다. 기록하지 못하면 그 구성요소는 `unverified`로 격리되므로 설치 경고로 보인다. 실패는 경고로 남긴다 |
 | 5 (55-70%) | portable Python(python-build-standalone, 판과 SHA-256은 `updater/src/python_pin.rs`에 고정)과 venv (`runtime_bootstrap.rs:42-51`). 실패해도 치명적으로 처리하지 않는다 |
 | 6 | 없음: 로컬 Discord bot이 없어져 portable Node·npm install 단계도 지워졌다 |
@@ -219,7 +221,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | 10 | 바탕화면·시작 메뉴 바로가기. 대상은 설치 폴더의 GUI exe(`saba-chan-gui.exe` 또는 0.1.1의 `Saba-chan.exe`)다. 만들기 전에 언어별 옛 이름(`shortcuts::ALL_SHORTCUT_NAMES`)의 바로가기를 지우되, `.lnk` 대상이 이 설치 폴더 안인 것만 지우고 시작 메뉴 폴더는 비었을 때만 지운다(`shortcuts::remove_shortcuts_into`). 제거(uninstall)도 같은 함수를 쓴다 |
 | 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`install`의 10.5단계). 설치 폴더의 `saba-chan-installer.exe`가 지금 설치기와 같은 파일이면 `installer`에 자기 버전을 적는다(복사가 실패해 옛 사본이 남았으면 적지 않는다) |
 
-레지스트리·바로가기·모듈·익스텐션처럼 실패해도 계속하는 단계는 완료 이벤트의 `warnings`·`log_path`로 보내고, 완료 화면이 목록과 로그 경로를 남겨 보여 준다(`installer.js` `enterComplete`). 설치를 멈추는 실패는 `step:'error'`에 `error_code`(`elevation_failed`·`fetch_failed`·`installer_outdated`·`release_incomplete`·`download_failed`·`extract_failed`·`profile_failed`)와 `log_path`를 싣고, 화면은 코드별 번역 문구와 원문·로그 경로, [다시 시도](설정 시트로)를 보인다. "사바쨩 실행"이 실패하면 창을 닫지 않고 안내한다.
+레지스트리·바로가기·모듈·익스텐션처럼 실패해도 계속하는 단계는 완료 이벤트의 `warnings`·`log_path`로 보내고, 완료 화면이 목록과 로그 경로를 남겨 보여 준다(`installer.js` `enterComplete`). 설치를 멈추는 실패는 `step:'error'`에 `error_code`(`installed_elsewhere`·`elevation_failed`·`fetch_failed`·`installer_outdated`·`release_incomplete`·`download_failed`·`daemon_running`·`extract_failed`·`profile_failed`)와 `log_path`를 싣고, 화면은 코드별 번역 문구와 원문·로그 경로, [다시 시도](설정 시트로)를 보인다. "사바쨩 실행"이 실패하면 창을 닫지 않고 안내한다.
 
 코어 zip을 풀 때 덮어쓸 exe가 잠겨 있으면(켜진 서버의 `saba-runner` 등) 업데이터와 같은 `move_aside_binary`로 `.exe.old`로 비켜 두고 계속한다.
 

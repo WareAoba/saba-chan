@@ -756,7 +756,8 @@ fn descendants_of(_roots: &[u32], _install_dir: &Path) -> Vec<u32> {
 /// 파일이 잠겨 설치가 실패하지 않게 한다 (os error 32). 데몬은 먼저 `/api/daemon/shutdown`으로 정상 종료를
 /// 부탁하고, 20초 안에 안 끝나면 그 PID만 강제 종료한다 (트리째가 아니다: 게임 서버는 러너가 쥐고 있다).
 /// 단계마다 로그를 남긴다 (`%TEMP%\saba-chan-installer.log`).
-pub async fn stop_daemon_before_install(install_dir: &Path) {
+/// 포트에 답하는 데몬이 어느 설치의 것인지 모르면 끄지 않고, 사용자가 먼저 끄도록 이유를 돌려준다
+pub async fn stop_daemon_before_install(install_dir: &Path) -> Result<(), String> {
     // 받은 경로와 실제 경로 둘 다로 찾는다 (실행 파일 경로는 띄운 경로 그대로 보인다)
     let dir = comparable_dir(install_dir);
     let dirs = [install_dir.to_path_buf(), dir.clone()];
@@ -768,7 +769,7 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     let mut daemons: Vec<u32> = filter_in(&listing, &dirs, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
 
     let Some(api) = DaemonApi::from_config() else {
-        return;
+        return Ok(());
     };
     let port = api.port;
     // 데몬을 끄기 전에 이 설치에서 띄운 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
@@ -777,16 +778,9 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     // 실행 파일 경로로 못 찾았으면 (경로를 못 읽는 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다
     if daemons.is_empty() {
         if let Some(pid) = api.health_pid().await {
-            match daemon_owner(&listing, pid, &dirs) {
-                Owner::Here => daemons.push(pid),
-                Owner::Unknown => {
-                    tracing::info!("[Install] Daemon PID {} on port {} has no readable path; stopping it to be safe", pid, port);
-                    daemons.push(pid);
-                }
-                Owner::Elsewhere(exe) => {
-                    tracing::info!("[Install] Daemon PID {} on port {} belongs to another install ({}); leaving it", pid, port, exe)
-                }
-            }
+            let owner = daemon_owner(&listing, pid, &dirs);
+            tracing::info!("[Install] Daemon PID {} on port {}: {:?}", pid, port, owner);
+            daemons.extend(port_daemon_to_stop(owner, pid)?);
         }
     }
 
@@ -838,6 +832,20 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     for (pid, name) in filter_in(&list_named(&["saba-chan-cli"]).unwrap_or_default(), &dirs, &["saba-chan-cli"]) {
         tracing::info!("[Install] Closing {} (PID {})", name, pid);
         kill_pid(pid, false);
+    }
+    Ok(())
+}
+
+/// 포트에 답하는 데몬 중 설치기가 끌 것: 이 설치의 것만. 다른 설치의 것은 둔다.
+/// 어느 설치의 것인지 모르면(실행 파일 경로를 못 읽음) 끄지 않고 사용자가 먼저 끄도록 이유를 돌려준다
+fn port_daemon_to_stop(owner: Owner, pid: u32) -> Result<Option<u32>, String> {
+    match owner {
+        Owner::Here => Ok(Some(pid)),
+        Owner::Elsewhere(_) => Ok(None),
+        Owner::Unknown => Err(format!(
+            "A Saba-chan daemon (PID {}) is running and this installer cannot tell which install it belongs to. Quit Saba-chan first, then try again.",
+            pid
+        )),
     }
 }
 
@@ -1420,6 +1428,18 @@ mod tests {
 
         assert_eq!(stale_work_dirs(tmp.path(), Some(listing)), [gone]);
         assert!(stale_work_dirs(tmp.path(), None).is_empty());
+    }
+
+    /// 어느 설치의 것인지 모르는 데몬은 끄지 않고 사용자에게 먼저 끄라고 안내한다
+    #[test]
+    fn a_daemon_of_unknown_install_is_left_running_and_explained() {
+        assert_eq!(port_daemon_to_stop(Owner::Here, 7), Ok(Some(7)));
+        assert_eq!(
+            port_daemon_to_stop(Owner::Elsewhere("D:/other/saba-core.exe".into()), 7),
+            Ok(None)
+        );
+        let why = port_daemon_to_stop(Owner::Unknown, 7).unwrap_err();
+        assert!(why.contains("PID 7") && why.contains("Quit Saba-chan first"), "{}", why);
     }
 
     /// 설정된 포트에 다른 설치의 데몬이 답하면 그 데몬에 종료를 부탁하지 않는다 (찾은 PID만 끝낸다)

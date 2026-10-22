@@ -694,6 +694,8 @@
     "installing": "Instalando",
     "not_writable": "No se puede escribir en {{dir}}. Elige con --dir una carpeta en la que puedas escribir (por ejemplo, dentro de tu carpeta de usuario)",
     "running_inside": "Esta CLI se está ejecutando dentro de {{dir}}, por lo que no puede instalar ahí. Ejecuta un saba-chan-cli que esté fuera de la carpeta de instalación.",
+    "installed_elsewhere": "Saba-chan ya está instalado en {{dir}}. Actualiza esa instalación con saba-chan-cli update o desinstálala primero (una instalación por PC).",
+    "daemon_running": "Saba-chan está en ejecución y el instalador no sabe a qué instalación pertenece. Cierra Saba-chan primero y vuelve a intentarlo.",
     "empty_dir": "La carpeta de instalación está vacía. Indica una carpeta con --dir",
     "failed": "La instalación falló: {{reason}} (detalles: {{log}})",
     "failed_no_log": "La instalación falló: {{reason}}",
