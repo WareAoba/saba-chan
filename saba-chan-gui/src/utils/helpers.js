@@ -84,6 +84,19 @@ export function busyMessage(t, code, runningKey) {
     return null;
 }
 
+/** 설치 실패 문구: 백업을 못 해 설치하지 않았으면 그 파일(`backup_failed`의 `file`), 되돌리지 못한 파일은 남긴 사본(`kept_backups`)을 덧붙인다 */
+export function installFailureText(t, result, base) {
+    const text =
+        result?.error_code === 'backup_failed' && result.file
+            ? t('server_settings.install_backup_failed', { file: result.file })
+            : base;
+    const kept = Array.isArray(result?.kept_backups) ? result.kept_backups : [];
+    const pairs = (Array.isArray(result?.restore_failed) ? result.restore_failed : [])
+        .map((file, i) => kept[i] && `${file} → ${kept[i]}`)
+        .filter(Boolean);
+    return pairs.length ? `${text} ${t('server_settings.install_kept_backups', { files: pairs.join(', ') })}` : text;
+}
+
 /** 모듈이 lifecycle 함수 `fn`을 구현했는가 (`GET /api/modules`의 `functions`). 목록을 모르면(null) 있다고 본다 */
 export const moduleSupports = (module, fn) => !Array.isArray(module?.functions) || module.functions.includes(fn);
 

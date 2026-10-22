@@ -220,7 +220,9 @@
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
       "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。",
-      "agent_too_old": "檢查更新：saba-chan-cli update check"
+      "agent_too_old": "檢查更新：saba-chan-cli update check",
+      "install_backup_failed": "安裝前無法備份 {{file}}，因此沒有安裝。請檢查磁碟可用空間以及該資料夾中的 .bak 檔案。",
+      "kept_backups": "無法還原的檔案已保留安裝前的副本：{{files}}"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -565,7 +567,9 @@
     "pre_restore": "先前的世界已保留為備份 {{backup}}。",
     "links_not_restored": "還原已完成，但資料夾中有 {{count}} 個連結無法重新建立（例如 Windows 權限）。路徑請見守護程式記錄。",
     "start_again": "要再次啟動 {{name}} 嗎？",
-    "stored": "新儲存 {{size}}"
+    "stored": "新儲存 {{size}}",
+    "unreadable": "⚠ 無法開啟",
+    "unreadable_hint": "有 {{count}} 個備份無法開啟。它們無法還原，而且在刪除之前不會清理未使用的備份內容。請刪除它們。"
   },
   "schedule": {
     "col": {

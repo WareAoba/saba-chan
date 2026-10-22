@@ -275,7 +275,9 @@
         "too_many": "語は 10 個までです"
       },
       "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。",
-      "agent_too_old": "更新を確認: saba-chan-cli update check"
+      "agent_too_old": "更新を確認: saba-chan-cli update check",
+      "install_backup_failed": "インストール前に {{file}} をバックアップできなかったため、インストールしませんでした。ディスクの空き容量と同じフォルダーの .bak ファイルを確認してください。",
+      "kept_backups": "元に戻せなかったファイルは、インストール前のコピーを残しました: {{files}}"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -875,7 +877,9 @@
     "pre_restore": "以前のワールドはバックアップ {{backup}} として残してあります。",
     "links_not_restored": "復元は終わりましたが、フォルダー内のリンク {{count}} 個は作り直せませんでした（Windows の権限など）。パスはデーモンのログにあります。",
     "start_again": "{{name}} をもう一度起動しますか？",
-    "stored": "新規保存 {{size}}"
+    "stored": "新規保存 {{size}}",
+    "unreadable": "⚠ 開けません",
+    "unreadable_hint": "開けないバックアップが {{count}} 件あります。復元できず、削除するまで使われていないバックアップ内容が整理されません。削除してください。"
   },
   "schedule": {
     "col": {

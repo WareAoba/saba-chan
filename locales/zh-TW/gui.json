@@ -325,7 +325,9 @@
     "install_settings_failed": "版本已安裝，但儲存設定失敗：{{error}}",
     "restart_required": "已儲存 {{name}} 的設定。{{fields}} 需要重新啟動伺服器才會生效。",
     "restart_now": "立即重新啟動",
-    "restart_later": "稍後"
+    "restart_later": "稍後",
+    "install_backup_failed": "安裝前無法備份 {{file}}，因此沒有安裝。請檢查磁碟可用空間以及該資料夾中的 .bak 檔案。",
+    "install_kept_backups": "無法還原的檔案已保留安裝前的副本：{{files}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord 機器人啟動失敗：{{error}}",
@@ -1041,7 +1043,9 @@
     "backup_keep_hint": "個，超過時先刪除最舊的",
     "err_every": "間隔請輸入不小於 1 的整數分鐘。",
     "err_at": "時間格式須為 HH:MM。",
-    "err_message": "請輸入公告內容。"
+    "err_message": "請輸入公告內容。",
+    "backup_unreadable": "⚠ 無法開啟",
+    "backup_unreadable_hint": "此備份無法開啟。它無法還原，而且在刪除之前不會清理未使用的備份內容。請刪除它。"
   },
   "chatbot": {
     "nav": "會說話的 Saba-chan",

@@ -275,7 +275,9 @@
         "too_many": "낱말은 10개까지예요"
       },
       "not_supported": "지원하지 않는 명령은 saba-chan-cli module info에서 볼 수 있어요.",
-      "agent_too_old": "업데이트 확인: saba-chan-cli update check"
+      "agent_too_old": "업데이트 확인: saba-chan-cli update check",
+      "install_backup_failed": "설치 전에 {{file}}을(를) 백업하지 못해 설치하지 않았어요. 디스크 공간과 같은 폴더의 .bak 파일을 확인해 주세요.",
+      "kept_backups": "되돌리지 못한 파일은 설치 전 사본을 남겨 뒀어요: {{files}}"
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -875,7 +877,9 @@
     "pre_restore": "되돌리기 전 월드는 백업 {{backup}}으로 남겨 뒀어요.",
     "links_not_restored": "복원은 끝났지만 폴더 안 링크 {{count}}개는 되살리지 못했어요(Windows 권한 등). 자세한 경로는 데몬 로그에 있어요.",
     "start_again": "{{name}}을(를) 다시 켤까요?",
-    "stored": "새로 저장 {{size}}"
+    "stored": "새로 저장 {{size}}",
+    "unreadable": "⚠ 열 수 없음",
+    "unreadable_hint": "열 수 없는 백업이 {{count}}개 있어요. 복원할 수 없고, 지울 때까지 쓰지 않는 백업 내용이 정리되지 않아요. 지워 주세요."
   },
   "schedule": {
     "col": {

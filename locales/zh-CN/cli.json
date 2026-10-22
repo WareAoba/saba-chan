@@ -275,7 +275,9 @@
         "too_many": "最多 10 个称呼"
       },
       "not_supported": "可用 saba-chan-cli module info 查看不支持的命令。",
-      "agent_too_old": "检查更新：saba-chan-cli update check"
+      "agent_too_old": "检查更新：saba-chan-cli update check",
+      "install_backup_failed": "安装前无法备份 {{file}}，因此没有安装。请检查磁盘可用空间以及该文件夹中的 .bak 文件。",
+      "kept_backups": "无法还原的文件已保留安装前的副本：{{files}}"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -875,7 +877,9 @@
     "pre_restore": "之前的世界已保留为备份 {{backup}}。",
     "links_not_restored": "恢复已完成，但文件夹中有 {{count}} 个链接未能重新创建（例如 Windows 权限）。路径见守护进程日志。",
     "start_again": "要再次启动 {{name}} 吗？",
-    "stored": "新存储 {{size}}"
+    "stored": "新存储 {{size}}",
+    "unreadable": "⚠ 无法打开",
+    "unreadable_hint": "有 {{count}} 个备份无法打开。它们无法恢复，并且在删除之前不会清理未使用的备份内容。请删除它们。"
   },
   "schedule": {
     "col": {

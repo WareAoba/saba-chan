@@ -220,7 +220,9 @@
       "invalid_command": "Escribe la clave del comando como `<server>/<command>`. Una clave sin servidor debe ser un id de acción global.",
       "no_command_path": "Este servidor se inició fuera de Saba-chan, así que no tiene consola para recibir comandos. Reinícialo desde Saba-chan: saba-chan-cli restart <server>",
       "not_supported": "Consulta los comandos no admitidos con: saba-chan-cli module info",
-      "agent_too_old": "Buscar actualizaciones: saba-chan-cli update check"
+      "agent_too_old": "Buscar actualizaciones: saba-chan-cli update check",
+      "install_backup_failed": "No se pudo hacer copia de {{file}} antes de instalar, así que no se instaló nada. Revisa el espacio libre en disco y los archivos .bak de esa carpeta.",
+      "kept_backups": "Los archivos que no se pudieron restaurar se conservaron como copia previa a la instalación: {{files}}"
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
@@ -565,7 +567,9 @@
     "pre_restore": "El mundo anterior se conserva como copia de seguridad {{backup}}.",
     "links_not_restored": "La restauración terminó, pero no se pudieron recrear {{count}} enlace(s) dentro de la carpeta (por ejemplo, por permisos de Windows). Las rutas están en el registro del daemon.",
     "start_again": "¿Iniciar {{name}} de nuevo?",
-    "stored": "{{size}} guardados nuevos"
+    "stored": "{{size}} guardados nuevos",
+    "unreadable": "⚠ no se puede abrir",
+    "unreadable_hint": "Hay {{count}} copia(s) de seguridad que no se pueden abrir. No se pueden restaurar y el contenido de copias sin usar no se limpia hasta que se eliminen. Elimínalas."
   },
   "schedule": {
     "col": {

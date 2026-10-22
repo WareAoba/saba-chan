@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
     busyMessage,
     createTranslateError,
+    installFailureText,
     installedExecutable,
     moduleSupports,
     retryWithBackoff,
@@ -385,9 +386,13 @@ export function useServerActions({
                                             busyMessage(t, code, 'install_server_running') ||
                                                 (code === 'version_unknown'
                                                     ? t('servers.version_unknown', { error: installResult.error })
-                                                    : translateError(installResult.error || installResult.message)),
+                                                    : installFailureText(
+                                                          t,
+                                                          installResult,
+                                                          translateError(installResult.error || installResult.message),
+                                                      )),
                                             'error',
-                                            4000,
+                                            8000,
                                         );
                                         return;
                                     }

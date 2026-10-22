@@ -275,7 +275,9 @@
         "too_many": "at most 10 words"
       },
       "not_supported": "See unsupported commands with: saba-chan-cli module info",
-      "agent_too_old": "Check for updates: saba-chan-cli update check"
+      "agent_too_old": "Check for updates: saba-chan-cli update check",
+      "install_backup_failed": "{{file}} could not be backed up before installing, so nothing was installed. Check the free disk space and the .bak files in that folder.",
+      "kept_backups": "Files that could not be put back were kept as their pre-install copies: {{files}}"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -680,7 +682,9 @@
     "pre_restore": "The world from before is kept as backup {{backup}}.",
     "links_not_restored": "The restore finished, but {{count}} link(s) inside the folder could not be recreated (Windows permissions, for example). The daemon log lists the paths.",
     "start_again": "Start {{name}} again?",
-    "stored": "{{size}} newly stored"
+    "stored": "{{size}} newly stored",
+    "unreadable": "⚠ cannot be opened",
+    "unreadable_hint": "{{count}} backup(s) cannot be opened. They cannot be restored, and unused backup content is not cleaned up until they are deleted. Please delete them."
   },
   "schedule": {
     "col": {

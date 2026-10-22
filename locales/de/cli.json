@@ -220,7 +220,9 @@
       "invalid_command": "Schreibe den Befehlsschlüssel als `<server>/<command>`. Ein Schlüssel ohne Server muss eine globale Aktions-ID sein.",
       "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>",
       "not_supported": "Nicht unterstützte Befehle zeigt: saba-chan-cli module info",
-      "agent_too_old": "Nach Updates suchen: saba-chan-cli update check"
+      "agent_too_old": "Nach Updates suchen: saba-chan-cli update check",
+      "install_backup_failed": "{{file}} konnte vor der Installation nicht gesichert werden, daher wurde nichts installiert. Prüfe den freien Speicherplatz und die .bak-Dateien in diesem Ordner.",
+      "kept_backups": "Dateien, die nicht zurückgesetzt werden konnten, wurden als Kopie vor der Installation behalten: {{files}}"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -565,7 +567,9 @@
     "pre_restore": "Die vorherige Welt bleibt als Backup {{backup}} erhalten.",
     "links_not_restored": "Die Wiederherstellung ist fertig, aber {{count}} Verknüpfung(en) im Ordner konnten nicht wiederhergestellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Protokoll.",
     "start_again": "{{name}} wieder starten?",
-    "stored": "{{size}} neu gespeichert"
+    "stored": "{{size}} neu gespeichert",
+    "unreadable": "⚠ kann nicht geöffnet werden",
+    "unreadable_hint": "{{count}} Backup(s) können nicht geöffnet werden. Sie lassen sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Bitte lösche sie."
   },
   "schedule": {
     "col": {
