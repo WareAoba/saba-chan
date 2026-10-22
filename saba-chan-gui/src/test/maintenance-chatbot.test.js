@@ -126,6 +126,27 @@ describe('MaintenanceTab', () => {
         expect(screen.getByText(/2(\.0)? KB · a-manual\.zip/).textContent).not.toMatch(/new/);
     });
 
+    // 데몬 #533: zip으로 열리지 않는 백업은 표시하고 지우기를 권한다. 복원은 막는다 (옛 데몬은 readable이 없다)
+    it('열 수 없는 백업은 표시하고 복원을 막는다', async () => {
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            success: true,
+            backups: [
+                { name: 'b-manual.zip', kind: 'manual', created: 2, size: 9, stored: 9, readable: false },
+                { name: 'a-manual.zip', kind: 'manual', created: 1, size: 2048, stored: 2048 },
+            ],
+        });
+        render(<MaintenanceTab server={stopped} />);
+        const bad = await screen.findByText(/cannot be opened/);
+        expect(bad.closest('li').textContent).toMatch(/b-manual\.zip/);
+        const restores = screen.getAllByRole('button', { name: 'Restore' });
+        expect(restores[0].disabled).toBe(true);
+        expect(restores[0].title).toMatch(/delete/i);
+        expect(restores[1].disabled).toBe(false);
+    });
+
     it('복원·백업 거절은 데몬의 영어 원문 대신 이유를 알린다', async () => {
         window.showToast = vi.fn();
         window.api.instanceScheduleGet = vi

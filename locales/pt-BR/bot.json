@@ -317,6 +317,7 @@
       "backups": "💾 **{{count}} backups**",
       "backups_empty": "📭 Nenhum backup",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_unreadable": "⚠️ não pode ser aberto",
       "backup_kind": {
         "manual": "manual",
         "scheduled": "agendado",

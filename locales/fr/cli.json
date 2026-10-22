@@ -220,7 +220,9 @@
       "invalid_command": "Écrivez la clé de commande sous la forme `<server>/<command>`. Une clé sans serveur doit être un id d'action globale.",
       "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>",
       "not_supported": "Consultez les commandes non prises en charge avec : saba-chan-cli module info",
-      "agent_too_old": "Rechercher les mises à jour : saba-chan-cli update check"
+      "agent_too_old": "Rechercher les mises à jour : saba-chan-cli update check",
+      "install_backup_failed": "Impossible de sauvegarder {{file}} avant l'installation, rien n'a donc été installé. Vérifiez l'espace disque libre et les fichiers .bak de ce dossier.",
+      "kept_backups": "Les fichiers qui n'ont pas pu être remis en place ont été conservés en copie d'avant l'installation : {{files}}"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -565,7 +567,10 @@
     "pre_restore": "Le monde précédent est conservé dans la sauvegarde {{backup}}.",
     "links_not_restored": "La restauration est terminée, mais {{count}} lien(s) du dossier n'ont pas pu être recréés (droits Windows, par exemple). Les chemins figurent dans le journal du daemon.",
     "start_again": "Redémarrer {{name}} ?",
-    "stored": "{{size}} nouvellement stockés"
+    "stored": "{{size}} nouvellement stockés",
+    "unreadable": "⚠ impossible à ouvrir",
+    "unreadable_hint": "{{count}} sauvegarde(s) ne peuvent pas être ouvertes. Elles ne peuvent pas être restaurées et le contenu de sauvegarde inutilisé n'est pas nettoyé tant qu'elles ne sont pas supprimées. Supprimez-les.",
+    "unreadable_restore": "La sauvegarde {{backup}} ne peut pas être ouverte, elle ne peut donc pas être restaurée. Supprimez-la."
   },
   "schedule": {
     "col": {

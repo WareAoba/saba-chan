@@ -73,7 +73,7 @@ fn backups(result: &Value, cat: &Catalog) -> String {
             let kind = cat.t(&format!("actions.summary.backup_kind.{}", str_of(b, "kind")), &[]);
             let when = local_time(b.get("created").and_then(Value::as_u64).unwrap_or(0));
             let size = bytes(b.get("size").and_then(Value::as_u64).unwrap_or(0));
-            cat.t("actions.summary.backup_item", &[("name", str_of(b, "name")), ("kind", &kind), ("when", &when), ("size", &size)])
+            cat.t("actions.summary.backup_item", &[("name", str_of(b, "name")), ("kind", &kind), ("when", &when), ("size", &size)]) + &unreadable_note(b, cat)
         })
         .collect();
     with_rest(cat.t("actions.summary.backups", &[("count", &backups.len().to_string())]), lines, cat)
@@ -105,7 +105,16 @@ pub(super) fn label_backups(result: &mut Value, cat: &Catalog) {
         let kind = cat.t(&format!("actions.summary.backup_kind.{}", str_of(b, "kind")), &[]);
         let when = local_time(b.get("created").and_then(Value::as_u64).unwrap_or(0));
         let size = bytes(b.get("size").and_then(Value::as_u64).unwrap_or(0));
-        b["label"] = Value::String(format!("{} · {} · {}", when, kind, size));
+        let note = unreadable_note(b, cat);
+        b["label"] = Value::String(format!("{} · {} · {}{}", when, kind, size, note));
+    }
+}
+
+/// 열리지 않는 백업(`readable:false`)이면 ` · 열 수 없음` (옛 데몬처럼 칸이 없으면 붙이지 않는다)
+fn unreadable_note(b: &Value, cat: &Catalog) -> String {
+    match b.get("readable").and_then(Value::as_bool) {
+        Some(false) => format!(" · {}", cat.t("actions.summary.backup_unreadable", &[])),
+        _ => String::new(),
     }
 }
 

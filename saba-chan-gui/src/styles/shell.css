@@ -1915,6 +1915,10 @@ button.activity-line:hover {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.dc-list-sub.warn {
+    color: var(--warn);
+}
 .dc-avatar,
 .dc-srv-icon {
     flex: none;

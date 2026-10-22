@@ -1130,7 +1130,7 @@ fn extract_zip_does_not_write_through_a_junction() {
     let outside = tmp.path().join("outside");
     std::fs::create_dir_all(&target).unwrap();
     std::fs::create_dir_all(&outside).unwrap();
-    let made = std::process::Command::new("cmd")
+    let made = std::process::Command::new(crate::process::system_tool("cmd"))
         .args(["/D", "/C", "mklink", "/J"])
         .arg(target.join("sub"))
         .arg(&outside)

@@ -305,6 +305,13 @@ fn summaries_read_like_sentences() {
     let unknown = summary::text("backup.list", &json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] }), &ko).unwrap();
     assert!(!unknown.contains("1970"), "{unknown}");
 
+    // 열지 못하는 백업은 복원할 수 없다고 함께 알린다 (603 P3-8)
+    let mut broken = json!({ "backups": [{ "name": "bad", "kind": "manual", "created": 1_700_000_000, "size": 9, "readable": false }, { "name": "ok", "kind": "manual", "created": 1_699_000_000, "size": 9, "readable": true }] });
+    let text = summary::text("backup.list", &broken, &ko).unwrap();
+    assert!(text.lines().nth(1).unwrap().contains("열 수 없음") && !text.lines().nth(2).unwrap().contains("열 수 없음"), "{text}");
+    summary::label_backups(&mut broken, &ko);
+    assert!(broken["backups"][0]["label"].as_str().unwrap().contains("열 수 없음") && !broken["backups"][1]["label"].as_str().unwrap().contains("열 수 없음"), "{broken}");
+
     // 모듈 조회는 범용 포맷으로 (모양이 모듈마다 다르다)
     let players = summary::text("server.query:players", &json!({ "success": true, "players": [{ "name": "steve" }] }), &ko).unwrap();
     assert!(players.contains("steve") && !players.contains("success"), "{players}");

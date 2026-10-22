@@ -1540,7 +1540,7 @@ mod tests {
         let exe = dir.join("saba-chan-installer.exe");
         std::fs::write(&exe, b"x").unwrap();
         // 이미 끝난 프로세스의 PID: 스크립트가 기다리지 않고 바로 지운다
-        let mut done = std::process::Command::new("cmd").args(["/D", "/C", "exit"]).spawn().unwrap();
+        let mut done = std::process::Command::new(saba_chan_updater_lib::process::system_tool("cmd")).args(["/D", "/C", "exit"]).spawn().unwrap();
         let pid = done.id();
         done.wait().unwrap();
         let script = root.join("정리.cmd");
@@ -1549,7 +1549,7 @@ mod tests {
 
         // 실제 제거기처럼 창 없는 콘솔(CREATE_NO_WINDOW)에서 돌려 `chcp 65001`이 먹는지까지 본다
         use std::os::windows::process::CommandExt;
-        let status = std::process::Command::new("cmd")
+        let status = std::process::Command::new(saba_chan_updater_lib::process::system_tool("cmd"))
             .args(CLEANUP_CMD_ARGS)
             .arg(&script)
             .creation_flags(0x0800_0000)

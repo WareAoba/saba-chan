@@ -317,6 +317,7 @@
       "backups": "💾 **Резервных копий: {{count}}**",
       "backups_empty": "📭 Резервных копий нет",
       "backup_item": "• {{name}} ({{kind}}) · {{when}} · {{size}}",
+      "backup_unreadable": "⚠️ не открывается",
       "backup_kind": {
         "manual": "вручную",
         "scheduled": "по расписанию",

@@ -325,7 +325,9 @@
     "install_settings_failed": "The version was installed, but saving the settings failed: {{error}}",
     "restart_required": "Saved the settings for {{name}}. Restart the server to apply {{fields}}.",
     "restart_now": "Restart now",
-    "restart_later": "Later"
+    "restart_later": "Later",
+    "install_backup_failed": "{{file}} could not be backed up before installing, so nothing was installed. Check the free disk space and the .bak files in that folder.",
+    "install_kept_backups": "Files that could not be put back were kept as their pre-install copies: {{files}}"
   },
   "discord_bot": {
     "start_failed_toast": "Discord bot start failed: {{error}}",
@@ -1041,7 +1043,9 @@
     "backup_keep_hint": "older ones are deleted first",
     "err_every": "Enter a whole number of minutes, at least 1.",
     "err_at": "Time must be HH:MM.",
-    "err_message": "Enter a message to announce."
+    "err_message": "Enter a message to announce.",
+    "backup_unreadable": "⚠ cannot be opened",
+    "backup_unreadable_hint": "This backup cannot be opened. It cannot be restored, and unused backup content is not cleaned up until it is deleted. Please delete it."
   },
   "chatbot": {
     "nav": "Talking Saba-chan",

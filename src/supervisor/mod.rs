@@ -194,6 +194,20 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
     )
 }
 
+/// 설치가 모듈 오류로 끝났는데 되돌리지도 못한 파일 (`restore_failed`와 같은 순서의 남긴 백업 이름). 핸들러가 응답 칸으로 옮긴다
+#[derive(Debug)]
+pub struct PutBackFailed {
+    pub files: Vec<String>,
+    pub kept: Vec<String>,
+}
+
+impl std::fmt::Display for PutBackFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kept: Vec<String> = self.files.iter().zip(&self.kept).map(|(file, backup)| format!("{file} (kept as {backup})")).collect();
+        write!(f, "could not put back {}", kept.join(", "))
+    }
+}
+
 /// `original` 옆의 비어 있는 이름(`이름.bak`, `이름.1.bak`, …)에 복사본을 만든다. 이미 있는 파일은 덮지 않는다
 fn backup_beside(original: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
     let name = original.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -2523,14 +2537,15 @@ impl Supervisor {
                     return Ok(json!({
                         "success": false,
                         "error_code": "backup_failed",
+                        "file": original.file_name().unwrap_or_default().to_string_lossy(),
                         "message": format!("Could not back up {} before installing: {}", original.file_name().unwrap_or_default().to_string_lossy(), e),
                     }));
                 }
             }
         }
-        // 되돌리지 못한 파일은 백업을 남기고 그 이름을 돌려준다 (rename은 같은 폴더라 공간이 필요 없다).
+        // 되돌리지 못한 파일은 백업을 남기고 (파일 이름, 남긴 백업 이름)을 돌려준다 (rename은 같은 폴더라 공간이 필요 없다).
         // 심볼릭 링크가 그대로 있으면 링크를 두고 백업 내용을 링크 대상에 쓴다. 모듈이 링크를 바꿨으면 그 자리에 되돌린다
-        let restore = |why: &str| -> Vec<String> {
+        let restore = |why: &str| -> Vec<(String, String)> {
             let mut failed = Vec::new();
             for (original, backup, link_target) in &backups {
                 let still_linked = |target: &std::path::PathBuf| {
@@ -2548,7 +2563,8 @@ impl Supervisor {
                     }
                     Err(e) => {
                         tracing::error!("Failed to restore backup '{}': {}", backup.display(), e);
-                        failed.push(original.file_name().unwrap_or_default().to_string_lossy().into_owned());
+                        let name = |p: &std::path::Path| p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                        failed.push((name(original), name(backup)));
                     }
                 }
             }
@@ -2589,7 +2605,9 @@ impl Supervisor {
                     let failed = restore("failed install");
                     let mut val = val.clone();
                     if let (false, Some(obj)) = (failed.is_empty(), val.as_object_mut()) {
-                        obj.insert("restore_failed".into(), json!(failed));
+                        let (files, kept): (Vec<String>, Vec<String>) = failed.into_iter().unzip();
+                        obj.insert("restore_failed".into(), json!(files));
+                        obj.insert("kept_backups".into(), json!(kept));
                     }
                     Ok(val)
                 }
@@ -2600,7 +2618,8 @@ impl Supervisor {
                 if failed.is_empty() {
                     Err(e)
                 } else {
-                    Err(e.context(format!("could not put back {} (the .bak file is kept)", failed.join(", "))))
+                    let (files, kept) = failed.into_iter().unzip();
+                    Err(e.context(PutBackFailed { files, kept }))
                 }
             }
         }
