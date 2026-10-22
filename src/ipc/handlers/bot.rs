@@ -30,7 +30,7 @@ async fn write_bot_config(state: &IPCServer, mut config: Value, how: crate::conf
     let revision = crate::config_store::patch::take_revision(&mut config).filter(|_| how == crate::config_store::Apply::MergePatch);
     let old_relay = state.config_store.get_bot_config().await.cloud.relay_url;
     match state.config_store.write_bot(config, how, revision.as_deref()).await {
-        Ok((saved, ignored, revision)) => {
+        Ok((saved, ignored, _)) => {
             // 릴레이 주소가 바뀌면 에이전트 세션을 새 주소로 다시 시작한다 (예전 세션은 예전 주소에서 멈춘다)
             if saved.cloud.relay_url.trim() != old_relay.trim() && state.relay_agent.status().running {
                 crate::relay_agent::restart(state).await;
@@ -38,7 +38,8 @@ async fn write_bot_config(state: &IPCServer, mut config: Value, how: crate::conf
             // hostId는 노드 토큰이 기준이다: 클라이언트가 예전 값을 다시 보내도 토큰에 맞춘다
             let token = std::fs::read_to_string(super::relay::node_token_path()).ok();
             super::relay::sync_host_id(state, token.as_deref()).await;
-            let revision = if token.is_some() { state.config_store.bot_revision().await } else { revision };
+            // hostId를 토큰에 맞춘 뒤의 값
+            let revision = state.config_store.bot_revision().await;
             let mut body = json!({ "success": true, "message": "Bot config saved", "revision": revision });
             // 권한 키는 권한 API로만 바뀐다: 바꾸려던 값은 저장하지 않고 알린다 (L61)
             if !ignored.is_empty() {

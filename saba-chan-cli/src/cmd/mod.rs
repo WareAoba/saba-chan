@@ -365,7 +365,6 @@ pub fn get_path<'v>(root: &'v Value, path: &str) -> Option<&'v Value> {
     path.split('.').try_fold(root, |v, part| v.get(part))
 }
 
-/// 중첩 객체를 `a.b = 값` 줄로 펼친다
 /// 고친 경로만 담은 merge patch (null은 그 키를 지운다). 읽은 때의 revision을 실어, 그사이 다른 곳이 바꿨으면
 /// 데몬이 409 `settings_changed`로 거절한다
 pub fn config_patch(cfg: &Value, changes: Vec<(String, Value)>) -> Value {
@@ -391,6 +390,7 @@ pub fn config_patch(cfg: &Value, changes: Vec<(String, Value)>) -> Value {
     Value::Object(patch)
 }
 
+/// 중첩 객체를 `a.b = 값` 줄로 펼친다
 pub fn flatten(v: &Value, prefix: &str, out: &mut Vec<(String, Value)>) {
     match v {
         Value::Object(map) if !map.is_empty() => {
