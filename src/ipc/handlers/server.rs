@@ -663,6 +663,8 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         }
     }
 
+    // 여기부터 모듈 폴더에 쓴다: 폴더를 옮기는 중이면 끝나기를 기다리고, 끝날 때까지 옮기지 못하게 한다
+    let _dirs = super::paths::components_in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
@@ -736,6 +738,7 @@ pub async fn remove_module(
     let Some(_removing) = module_install_guard(&module_id) else {
         return module_busy(&module_id);
     };
+    let _dirs = super::paths::components_in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())

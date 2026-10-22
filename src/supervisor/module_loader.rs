@@ -1816,6 +1816,12 @@ impl ModuleLoader {
         &self.modules_dir
     }
 
+    /// 모듈 폴더를 옮긴 뒤 새 폴더를 보게 한다 (`/api/system/paths/move`). 캐시는 비운다
+    pub fn set_modules_dir(&mut self, modules_dir: &str) {
+        self.modules_dir = modules_dir.to_string();
+        self.invalidate_cache();
+    }
+
     /// 캐시를 무효화합니다 (새로운 모듈이 추가되었을 때 호출)
     pub fn invalidate_cache(&self) {
         *self.cached_modules.write().unwrap() = None;

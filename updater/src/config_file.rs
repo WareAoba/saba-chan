@@ -10,6 +10,7 @@
 //! | `updates` | 업데이트 설정 (데몬 `/api/updates/config`) |
 //! | `boot` | 부트 선택 기억 |
 //! | `extensions` | `{ enabled: [id], settings: { id: { key: value } } }` |
+//! | `paths` | 사용자가 고른 모듈·익스텐션 폴더 (`component_dirs`, 데몬 `/api/system/paths`) |
 //! | `cli` 등 기타 | 클라이언트별 자유 영역 (데몬 `/api/config/client/:kind`) |
 //!
 //! 새 기능은 자기 키 하나만 추가하면 된다(슬롯). 이 모듈은 키 안을 해석하지 않는다.
@@ -79,6 +80,16 @@ impl ConfigFile {
     /// 한 네임스페이스. 없으면 `Value::Null`.
     pub fn section(&self, key: &str) -> Value {
         self.load().remove(key).unwrap_or(Value::Null)
+    }
+
+    /// 한 네임스페이스를 읽기만 한다: 잠그지 않고 이관·복구·저장도 하지 않는다 (경로 해석처럼 자주, 어디서나 부르는 곳).
+    /// `config.json`을 못 읽으면 `.bak`을 본다. 둘 다 없거나 깨졌으면 `Value::Null`
+    pub fn peek_section(&self, key: &str) -> Value {
+        [self.path(), self.backup_path()]
+            .iter()
+            .find_map(|p| read_object(p).ok().flatten())
+            .and_then(|mut doc| doc.remove(key))
+            .unwrap_or(Value::Null)
     }
 
     /// 읽고 → 고치고 → 저장을 한 번에. 고친 뒤의 문서를 돌려준다.

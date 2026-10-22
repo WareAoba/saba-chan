@@ -79,6 +79,46 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &[
 ];
 
 // ══════════════════════════════════════════════════════
+//  기본 경로 — 단일 진실 원천
+// ══════════════════════════════════════════════════════
+
+/// 데이터 폴더 아래 모듈 폴더 이름. 사용자가 고른 위치에서도 이 이름을 쓴다 (`component_dirs::target_for`)
+pub const MODULES_DIR_NAME: &str = "modules";
+
+/// 데이터 폴더 아래 익스텐션 폴더 이름. Python이 `import extensions.<id>`로 불러 이 이름이어야 한다
+pub const EXTENSIONS_DIR_NAME: &str = "extensions";
+
+/// 데이터 폴더 아래 인스턴스 폴더 이름
+pub const INSTANCES_DIR_NAME: &str = "instances";
+
+/// 설치 폴더 이름 (기본 설치 위치의 마지막 이름, 비어 있지 않은 폴더를 골랐을 때 그 아래 만드는 폴더)
+pub const INSTALL_DIR_NAME: &str = "Saba-chan";
+
+/// 기본 설치 폴더 (이미 설치돼 있으면 설치기는 그 자리를 쓴다)
+///
+/// - Windows: `%ProgramFiles%\Saba-chan` (Windows가 알려 주는 Program Files, 없으면 `C:\Program Files`)
+/// - Unix:    `$HOME/.local/share/saba-chan`
+pub fn default_install_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        let program_files = ["ProgramW6432", "ProgramFiles"]
+            .iter()
+            .filter_map(|k| std::env::var_os(k))
+            .find(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));
+        program_files.join(INSTALL_DIR_NAME)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        match std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+            Some(home) => PathBuf::from(home).join(".local").join("share").join(APP_NAME),
+            None => PathBuf::from(APP_NAME),
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════
 //  경로 해석 — 단일 진실 원천
 // ══════════════════════════════════════════════════════
 
@@ -123,28 +163,14 @@ pub fn token_file_path() -> PathBuf {
     resolve_data_dir().join(".ipc_token")
 }
 
-/// 모듈 디렉토리 경로
-///
-/// `SABA_MODULES_PATH` 환경 변수로 오버라이드 가능.
+/// 모듈 디렉토리 경로: `SABA_MODULES_PATH` → `config.json`의 `paths.modules` → `<data_dir>/modules` (`component_dirs`)
 pub fn resolve_modules_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("SABA_MODULES_PATH") {
-        if !p.is_empty() {
-            return PathBuf::from(p);
-        }
-    }
-    resolve_data_dir().join("modules")
+    crate::component_dirs::resolve(crate::component_dirs::Kind::Modules).0
 }
 
-/// 익스텐션 디렉토리 경로
-///
-/// `SABA_EXTENSIONS_DIR` 환경 변수로 오버라이드 가능.
+/// 익스텐션 디렉토리 경로: `SABA_EXTENSIONS_DIR` → `config.json`의 `paths.extensions` → `<data_dir>/extensions`
 pub fn resolve_extensions_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("SABA_EXTENSIONS_DIR") {
-        if !p.is_empty() {
-            return PathBuf::from(p);
-        }
-    }
-    resolve_data_dir().join("extensions")
+    crate::component_dirs::resolve(crate::component_dirs::Kind::Extensions).0
 }
 
 /// 인스턴스 저장 디렉토리
@@ -156,7 +182,7 @@ pub fn resolve_instances_dir() -> PathBuf {
             return PathBuf::from(p);
         }
     }
-    resolve_data_dir().join("instances")
+    resolve_data_dir().join(INSTANCES_DIR_NAME)
 }
 
 /// 모듈·익스텐션 실행과 pip가 쓰는 임시 폴더 (`TEMP`·`TMP`·`TMPDIR`). 시스템 임시 폴더에 흔적을 남기지 않게
