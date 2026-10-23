@@ -1,4 +1,19 @@
 {
+  "module_errors": {
+    "module_timeout": "模块调用超时。请检查模块状态。",
+    "module_execution_failed": "无法运行模块。请检查运行环境和模块日志。",
+    "module_crashed": "模块进程因错误退出。请检查模块日志。",
+    "module_bad_output": "模块返回了无效结果。请更新模块或联系作者。",
+    "module_output_too_large": "模块输出超过了大小限制。请检查模块日志。",
+    "module_path_outside": "模块尝试访问允许文件夹之外的路径。请检查模块设置。",
+    "module_exception": "模块发生异常。请检查模块日志。",
+    "isolation_unsupported": "此操作系统不支持所需的隔离功能。"
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "此操作系统不支持隔离运行，因此未运行该组件。"
+    }
+  },
   "app_name": "Saba-chan",
   "app_description": "模块化游戏服务器管理平台",
   "success": "成功",

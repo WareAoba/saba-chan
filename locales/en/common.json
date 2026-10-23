@@ -1,4 +1,19 @@
 {
+  "module_errors": {
+    "module_timeout": "The module call timed out. Check the module status.",
+    "module_execution_failed": "The module could not run. Check the runtime and the module logs.",
+    "module_crashed": "The module process exited with an error. Check the module logs.",
+    "module_bad_output": "The module returned an invalid result. Update the module or contact its author.",
+    "module_output_too_large": "The module output exceeded the limit. Check the module logs.",
+    "module_path_outside": "The module tried to access a path outside the allowed folder. Check the module settings.",
+    "module_exception": "The module raised an exception. Check the module logs.",
+    "isolation_unsupported": "This operating system does not support the required isolation."
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "The component did not run because this operating system does not support isolation."
+    }
+  },
   "app_name": "Saba-chan",
   "app_description": "Modular Game Server Management Platform",
   "success": "Success",

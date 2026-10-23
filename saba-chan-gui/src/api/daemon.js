@@ -1,3 +1,14 @@
+import i18n from 'i18next';
+
+function moduleErrorBody(body) {
+    const key = `module_errors.${body?.error_code}`;
+    if (!i18n.exists(key, { ns: 'common' })) return body;
+    const details = [body.error || body.message];
+    if (body.module || body.function) details.push([body.module, body.function].filter(Boolean).join('.'));
+    if (Array.isArray(body.stderr_tail)) details.push(...body.stderr_tail);
+    return { ...body, error: [i18n.t(key, { ns: 'common' }), ...details.filter(Boolean)].join('\n') };
+}
+
 /**
  * 데몬 HTTP 요청 (Rust `daemon_request` 명령). main.js가 쓰던 axios 의미를 그대로 흉내 낸다:
  * 2xx면 {status, data}를 돌려주고, 그 밖의 HTTP 상태면 err.response = {status, data}인 오류를,
@@ -25,10 +36,10 @@ export function createDaemonClient(invoke) {
         }
         if (status < 200 || status >= 300) {
             const err = new Error(`Request failed with status code ${status}`);
-            err.response = { status, data: res.data };
+            err.response = { status, data: moduleErrorBody(res.data) };
             throw err;
         }
-        return { status, data: res.data };
+        return { status, data: moduleErrorBody(res.data) };
     }
 
     /** 데몬이 준 오류 본문(error_code, details 등)을 버리지 않고 렌더러에 넘긴다 (error가 없으면 모듈이 준 message) */

@@ -6,7 +6,7 @@
 //!   셸·스크립트 호스트(`cmd`, `powershell` 등)는 어디 있든 거부한다 (`launch_outside_instance`).
 //! - 백신 검사는 하지 않는다 (Defender·AMSI 검사는 오판정과 지연이 많아 뺐다). 격리 실행과 실행 대상 검사로 막는다.
 //!
-//! Linux·macOS는 아직 지원 대상이 아니라 지금처럼 실행한다.
+//! 격리할 수 없는 플랫폼은 파일 지문에 대한 사용자 동의가 있어야 미확인 코드를 실행한다.
 
 use saba_chan_updater_lib::integrity::Trust;
 use serde_json::Value;
@@ -73,6 +73,10 @@ pub fn trust_of_entry(entry: &Path) -> Trust {
 /// 제한을 거는가 (Windows이고 공식·그대로가 아닌 것)
 pub fn restricted(trust: Trust) -> bool {
     ENFORCED && trust != Trust::Verified
+}
+
+pub fn python_isolation_required(trust: Trust) -> bool {
+    trust != Trust::Verified
 }
 
 /// 확인되지 않은 모듈이 돌려준 폴더(설치 결과 `install_path` 등)를 받아들이는가. 그 폴더는 인스턴스 폴더 키로
@@ -175,13 +179,17 @@ pub struct Blocked {
 
 impl Blocked {
     pub fn to_json(&self, message: String) -> Value {
-        serde_json::json!({
+        let mut response = serde_json::json!({
             "success": false,
             "action_required": self.code,
             "message": message,
             "file": self.file,
             "detail": self.detail,
-        })
+        });
+        if !ENFORCED && self.code == "sandbox_unavailable" {
+            response["error_code"] = serde_json::json!("isolation_unsupported");
+        }
+        response
     }
 }
 
@@ -192,6 +200,7 @@ pub fn message(blocked: &Blocked) -> String {
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
         "server_in_sync_folder" => format!("The server folder is inside a sync folder such as OneDrive, so saba-chan cannot check it: {}. Move the server folder outside the sync folder.", file),
         "server_folder_label" => format!("Could not remove the low integrity mark from the server folder: {}. Check that this account can change the permissions of that folder.", file),
+        "sandbox_unavailable" if !ENFORCED => "This operating system cannot isolate this unverified component. Consent is required to run it without isolation.".to_string(),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
@@ -281,6 +290,11 @@ pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Pat
 pub fn extension_trust(ext_id: &str) -> Trust {
     let key = format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, ext_id);
     saba_chan_updater_lib::integrity::trust_of(&key, &extension_dir_in(&crate::plugin::resolve_extensions_dir(), ext_id))
+}
+
+pub fn extension_unisolated_allowed(ext_id: &str) -> bool {
+    let dir = extension_dir_in(&crate::plugin::resolve_extensions_dir(), ext_id);
+    unisolated_allowed(&format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, ext_id), &dir)
 }
 
 /// 익스텐션 폴더: 설치는 id의 '-'를 '_'로 바꾼 이름에 한다. 그 폴더가 없으면 id 그대로 (예전 설치)
@@ -744,7 +758,7 @@ fn runtime_executables(homes: Vec<PathBuf>) -> Vec<PathBuf> {
 /// 쓰기를 준다 (데몬이 넣는 값. 데이터 폴더 자체와 그 위는 `Grants::push`가 버린다)
 pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<Isolation> {
     use appcontainer::Access;
-    if !ENFORCED || !restricted(trust_of_entry(entry)) {
+    if !python_isolation_required(trust_of_entry(entry)) {
         return None;
     }
     let (key, dir) = component_of(entry).unwrap_or_else(|| {
@@ -989,8 +1003,45 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
+pub(crate) fn consent_test_component(entry: &Path) {
+    let (key, dir) = component_of(entry).unwrap_or_else(|| {
+        let dir = entry.parent().unwrap().to_path_buf();
+        (dir.to_string_lossy().into_owned(), dir)
+    });
+    consent_file().update(|cfg| {
+        let section = cfg.entry(CONSENT_SECTION).or_insert_with(|| serde_json::json!({}));
+        section["unisolated"][key.as_str()] = serde_json::json!(fingerprint(&dir));
+    }).unwrap();
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn python_isolation_policy_is_independent_of_launch_guard_platform() {
+        assert!(!python_isolation_required(Trust::Verified));
+        assert!(python_isolation_required(Trust::Unverified));
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("lifecycle.py");
+        std::fs::write(&entry, "").unwrap();
+        assert!(isolation_for(&entry, &serde_json::json!({}), Path::new("python")).is_some());
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn an_unsupported_isolation_run_is_refused_with_the_consent_action() {
+        let tmp = tempfile::tempdir().unwrap();
+        let iso = Isolation {
+            key: "module-no-platform-consent".into(), dir: tmp.path().to_path_buf(),
+            profile: String::new(), grants: appcontainer::Grants::default(),
+            pycache: PathBuf::new(), temp: PathBuf::new(), data: None, extension_root: PathBuf::new(),
+        };
+        let blocked = spawn_isolated(&std::process::Command::new("python"), &iso).await.err().unwrap();
+        let response = blocked.to_json(message(&blocked));
+        assert_eq!(response["action_required"], "sandbox_unavailable");
+        assert_eq!(response["error_code"], "isolation_unsupported");
+    }
 
     // 백로그 M7 (사용자 결정: 동기화 폴더 아래 서버는 계속 막는다). 막되 원인과 할 일을 알린다
     #[test]

@@ -116,7 +116,11 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
                 }
                 Some((ext_id, Err(e))) => InternalResponse {
                     status: StatusCode::INTERNAL_SERVER_ERROR,
-                    body: json!({ "error": e.to_string(), "extension": ext_id }),
+                    body: {
+                        let mut body = crate::plugin::error_response(&e);
+                        body["extension"] = json!(ext_id);
+                        body
+                    },
                 },
                 None => InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": "no handler" }) },
             };
@@ -226,7 +230,8 @@ async fn instance_commands(
         config.insert("working_dir".into(), json!(dir));
     }
     crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance, &instance_dir);
-    let loaded = match crate::plugin::run_plugin(&entry, "instance_commands", Value::Object(config)).await {
+    let loaded = match crate::plugin::PluginCall::new(entry, "instance_commands", Value::Object(config))
+        .in_instance(Some(state.host_context(&instance.id))).run().await {
         Ok(value) if value.get("success").and_then(Value::as_bool) != Some(false) => {
             crate::commands::InstanceCommands::parse(&value)
         }
@@ -333,7 +338,7 @@ async fn run_module_command(
             status: StatusCode::OK,
             body: json!({ "success": true, "message": message, "protocol": "module" }),
         },
-        Err(e) => InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e.to_string() }) },
+        Err(e) => InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: crate::plugin::error_response(&e) },
     }
 }
 
@@ -471,17 +476,30 @@ async fn via_rcon(access: &crate::protocol::rcon::Access, payload: &serde_json::
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
 /// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
 pub(crate) async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json::Value) -> axum::response::Response {
+    via_stdin_for(&state.supervisor, id, payload).await
+}
+
+pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
+    if !supervisor.read().await.module_accepts_stdin(id) {
+        return (StatusCode::CONFLICT, Json(json!({
+            "error": "This server does not take console input; use its commands instead", "error_code": "stdin_not_supported",
+        }))).into_response();
+    }
+    via_stdin_for(supervisor, id, payload).await
+}
+
+async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
     use crate::supervisor::managed_process::LogSource;
     let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
     };
-    let proc = state.supervisor.read().await.managed_store.get(id).await;
+    let proc = supervisor.read().await.managed_store.get(id).await;
     // 보내기 직전의 커서: 그 뒤에 나온 줄만 답으로 모은다
     let before = match &proc {
         Some(p) => p.console_cursor().await,
         None => 0,
     };
-    let sent = state.supervisor.read().await.send_stdin_command(id, command).await;
+    let sent = supervisor.read().await.send_stdin_command(id, command).await;
     let message = match sent {
         Ok(m) => m,
         Err(e) if e.downcast_ref::<crate::supervisor::managed_process::StdinFull>().is_some() => {
@@ -537,7 +555,17 @@ pub async fn execute_rest_command(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+    rest_for(&state.supervisor, &state.credentials, &id, payload, None).await
+}
+
+pub(crate) async fn rest_for(
+    sup: &tokio::sync::RwLock<crate::supervisor::Supervisor>,
+    credentials: &crate::ipc::CredentialsCache,
+    id: &str,
+    payload: Value,
+    response_limit: Option<usize>,
+) -> axum::response::Response {
+    let supervisor = sup.read().await;
 
     // 인스턴스 확인 (lock 해제 전에 clone)
     let instance = match supervisor.instance_store.get(&id).cloned() {
@@ -572,7 +600,10 @@ pub async fn execute_rest_command(
     // supervisor lock 해제 — run_plugin 전에 release
     drop(supervisor);
 
-    let file_credentials = instance_credentials(&state, &id, module_path.as_deref(), &working_dir).await;
+    let file_credentials = match instance_credentials(sup, credentials, &id, &instance.module_name, module_path.as_deref(), &working_dir).await {
+        Ok(credentials) => credentials,
+        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&error))).into_response(),
+    };
 
     // REST 엔드포인트 추출
     let endpoint = match payload.get("endpoint").and_then(|v| v.as_str()) {
@@ -629,6 +660,7 @@ pub async fn execute_rest_command(
         rest_port,
         use_https,
     );
+    if let Some(limit) = response_limit { client = client.with_response_limit(limit); }
 
     // Basic Auth — 게임 설정 파일에서만 읽음
     if let Some(ref creds) = file_credentials {
@@ -677,7 +709,7 @@ pub async fn execute_rest_command(
 
     // 인증 실패 등으로 접속 정보가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
     if !matches!(&outcome, Ok(response) if response.success) {
-        state.credentials.invalidate(&id);
+        credentials.invalidate(&id);
     }
 
     match outcome {
@@ -726,37 +758,45 @@ fn rest_execute_failure(e: &crate::protocol::ProtocolError) -> Value {
     if matches!(e, crate::protocol::ProtocolError::HttpStatus(401 | 403, _)) {
         body["error_code"] = json!("auth_failed");
     }
+    if matches!(e, crate::protocol::ProtocolError::ResponseTooLarge) {
+        body["error_code"] = json!("response_too_large");
+    }
     body
 }
 
 /// 게임 설정 파일의 접속 정보 (lifecycle.py `get_credentials`). 캐시가 있으면 Python을 띄우지 않는다.
 async fn instance_credentials(
-    state: &IPCServer,
+    supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>,
+    credentials: &crate::ipc::CredentialsCache,
     instance_id: &str,
+    module: &str,
     module_path: Option<&str>,
     working_dir: &str,
-) -> Option<Value> {
-    if let Some(creds) = state.credentials.get(instance_id) {
-        return Some(creds);
+) -> anyhow::Result<Option<Value>> {
+    if let Some(creds) = credentials.get(instance_id) {
+        return Ok(Some(creds));
     }
     let Some(module_path) = module_path else {
         tracing::warn!("get_credentials: no module_path for {}, skipping", instance_id);
-        return None;
+        return Ok(None);
     };
     let config = json!({ "working_dir": working_dir });
-    match crate::plugin::run_plugin(module_path, "get_credentials", config).await {
-        Ok(creds) if creds.get("success").and_then(|v| v.as_bool()).unwrap_or(false) => {
-            state.credentials.put(instance_id, creds.clone());
-            Some(creds)
+    // HTTP 역호출은 바깥 호출의 task-local을 물려받지 않는다. 자리를 기다리면 서로를 기다리게 된다
+    let host_context = supervisor.read().await.host_context(instance_id);
+    match crate::plugin::PluginCall::new(module_path, "get_credentials", config).in_instance(host_context).try_run().await? {
+        Some(creds) if creds.get("success").and_then(|v| v.as_bool()).unwrap_or(false) => {
+            credentials.put(instance_id, creds.clone());
+            Ok(Some(creds))
         }
-        Ok(creds) => {
+        Some(creds) if creds.get("error_code").and_then(Value::as_str) == Some("not_supported") => Ok(None),
+        Some(creds) => {
             tracing::warn!("get_credentials returned non-success for {}: {:?}", instance_id, creds.get("message"));
-            None
+            Err(crate::plugin::ModuleCallError::from_response(creds).into())
         }
-        Err(e) => {
-            tracing::warn!("get_credentials call failed for {}: {}", instance_id, e);
-            None
-        }
+        None => Err(crate::plugin::ModuleCallError::from_response(json!({
+            "success": false, "error_code": "module_execution_failed", "module": module, "function": "get_credentials",
+            "phase": "queue", "error": "Credentials are not cached and all module slots are occupied", "stderr_tail": [],
+        })).into()),
     }
 }
 

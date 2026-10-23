@@ -17,9 +17,20 @@ async fn server() -> (IPCServer, String, tempfile::TempDir) {
     let dir = modules.join("plain");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("module.toml"), MODULE).unwrap();
-    std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+    std::fs::write(dir.join("lifecycle.py"), r#"import json, sys
+json.load(sys.stdin)
+function = sys.argv[1]
+if function == "functions":
+    result = {"success": True, "functions": ["configure", "read_properties"]}
+elif function in ("configure", "read_properties"):
+    result = {"success": True}
+else:
+    result = {"success": False, "error_code": "not_supported", "message": "Fixture function not supported"}
+print(json.dumps(result))
+"#).unwrap();
     std::fs::create_dir_all(dir.join("locales")).unwrap();
     std::fs::write(dir.join("locales").join("ko.json"), MODULE_KO).unwrap();
+    crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
     let instances = tmp.path().join("instances");
     let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
     sup.initialize().await.unwrap();
@@ -454,6 +465,40 @@ fn chatbot_console_hides_addresses_and_secret_looking_values() {
     assert_eq!(lines[4], "Done (12.3s)! For help, type \"help\"");
 }
 
+#[test]
+fn remote_module_errors_hide_stderr_and_sensitive_text_at_every_depth() {
+    let mut body = json!({ "result": [{
+        "success": false, "error_code": "module_exception", "module": "plain", "function": "install_server",
+        "error": "peer 203.0.113.7 token=hunter2", "message": "failed at C:\\Users\\me\\server.py",
+        "path": "/home/me/server", "stderr_tail": ["traceback with private data"],
+        "details": { "stderr_tail": ["more private data"] }
+    }] });
+    strip_local_details(&mut body);
+    let error = &body["result"][0];
+    assert!(error.get("stderr_tail").is_none());
+    assert!(error["details"].get("stderr_tail").is_none());
+    assert_eq!(error["error"], "peer x.x.x.x token=***");
+    assert_eq!(error["message"], "failed at <path>");
+    assert_eq!(error["path"], "<path>");
+    assert_eq!(error["module"], "plain");
+    assert_eq!(error["function"], "install_server");
+    assert_eq!(error["error_code"], "module_exception");
+}
+
+#[test]
+fn remote_module_errors_hide_single_component_absolute_paths() {
+    let mut error = json!({ "success": false, "module": "plain", "function": "read", "error_code": "game_failed", "error": "open /tmp", "message": "open '/private' failed", "path": "/etc", "details": { "path": "/root" } });
+    strip_local_details(&mut error);
+    assert_eq!(error["error"], "open <path>");
+    assert_eq!(error["message"], "open '<path>' failed");
+    assert_eq!(error["path"], "<path>");
+    assert_eq!(error["details"]["path"], "<path>");
+    assert_eq!(error["error_code"], "game_failed");
+    let mut normal = json!({ "success": true, "message": "Use /help for commands" });
+    strip_local_details(&mut normal);
+    assert_eq!(normal["message"], "Use /help for commands");
+}
+
 #[tokio::test]
 async fn module_queries_are_safe_read_actions_on_every_surface() {
     let (state, id, tmp) = server().await;
@@ -619,7 +664,7 @@ async fn a_failed_step_stops_the_plan_and_the_rest_is_skipped() {
         { "id": "backup.create", "instance": "@1", "input": {} },
     ]);
     let planned = plan_steps(&state, &steps, &gui()).await.unwrap();
-    // 빈 lifecycle.py라 시작이 실패한다
+    // 모듈이 시작 함수를 지원하지 않아 시작이 실패한다
     let done = finished(run(&state, "", None, &Value::Null, planned["planId"].as_str(), &gui()).await.unwrap(), &gui()).await;
     assert_eq!((done["success"].as_bool(), done["stoppedAt"].as_i64()), (Some(false), Some(2)), "{}", done);
     let statuses: Vec<&str> = done["steps"].as_array().unwrap().iter().map(|s| s["status"].as_str().unwrap()).collect();

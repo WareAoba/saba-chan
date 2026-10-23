@@ -13,6 +13,7 @@ pub struct RestClient {
     use_https: bool,
     username: Option<String>,
     password: Option<String>,
+    response_limit: Option<usize>,
 }
 
 impl RestClient {
@@ -23,6 +24,7 @@ impl RestClient {
             use_https,
             username: None,
             password: None,
+            response_limit: None,
         }
     }
 
@@ -30,6 +32,10 @@ impl RestClient {
     pub fn set_basic_auth(&mut self, username: String, password: String) {
         self.username = Some(username);
         self.password = Some(password);
+    }
+
+    pub fn set_response_limit(&mut self, limit: usize) {
+        self.response_limit = Some(limit);
     }
 
     /// Base URL 생성
@@ -128,7 +134,16 @@ impl RestClient {
         };
 
         let status = resp.status();
-        let text = resp.into_string().unwrap_or_default();
+        let text = if let Some(limit) = self.response_limit {
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            resp.into_reader().take(limit as u64 + 1).read_to_end(&mut bytes)
+                .map_err(|error| ProtocolError::Protocol(error.to_string()))?;
+            if bytes.len() > limit { return Err(ProtocolError::ResponseTooLarge); }
+            String::from_utf8_lossy(&bytes).into_owned()
+        } else {
+            resp.into_string().unwrap_or_default()
+        };
         let data_json: Option<Value> = serde_json::from_str(&text).ok();
         let response_json = data_json.unwrap_or_else(|| json!({"raw": &text}));
 

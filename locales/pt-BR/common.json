@@ -1,4 +1,19 @@
 {
+  "module_errors": {
+    "module_timeout": "A chamada do módulo excedeu o tempo limite. Verifique o módulo.",
+    "module_execution_failed": "Não foi possível executar o módulo. Verifique o ambiente e os registros do módulo.",
+    "module_crashed": "O processo do módulo terminou com um erro. Verifique os registros.",
+    "module_bad_output": "O módulo retornou um resultado inválido. Atualize-o ou entre em contato com o autor.",
+    "module_output_too_large": "A saída do módulo excedeu o limite de tamanho. Verifique os registros.",
+    "module_path_outside": "O módulo tentou acessar um caminho fora da pasta permitida. Verifique as configurações.",
+    "module_exception": "O módulo gerou uma exceção. Verifique os registros.",
+    "isolation_unsupported": "Este sistema operacional não oferece o isolamento necessário."
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "O componente não foi executado porque este sistema operacional não oferece suporte ao isolamento."
+    }
+  },
   "app_name": "Saba-chan",
   "app_description": "Plataforma Modular de Gerenciamento de Servidores de Jogos",
   "success": "Sucesso",

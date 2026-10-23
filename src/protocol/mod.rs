@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 /// 프로토콜 통신 오류 타입
 #[derive(Error, Debug)]
 pub enum ProtocolError {
+    #[error("REST response exceeded the allowed size")]
+    ResponseTooLarge,
     #[error("Connection failed: {0}")]
     ConnectionError(String),
 

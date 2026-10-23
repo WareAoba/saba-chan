@@ -86,21 +86,18 @@ struct Plan {
     restore_roots: Vec<PathBuf>,
     save_command: Option<String>,
     keep: usize,
+    boundary: crate::module_paths::Boundary,
+    module_name: String,
 }
 
-/// 백업 경로의 기준 폴더: 작업 폴더, 없으면 실행 파일 폴더, 없으면 인스턴스 폴더
-fn server_base(instance: &crate::instance::ServerInstance, instance_dir: &FsPath) -> PathBuf {
-    instance
-        .working_dir
-        .clone()
-        .or_else(|| instance.executable_path.as_ref().and_then(|p| FsPath::new(p).parent()).map(|p| p.to_string_lossy().to_string()))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| instance_dir.to_path_buf())
+/// 백업 경로의 기준 폴더: 작업 폴더, 없으면 모듈 설치 폴더
+fn server_base(instance: &crate::instance::ServerInstance, instance_dir: &FsPath, metadata: Option<&crate::supervisor::module_loader::ModuleMetadata>) -> PathBuf {
+    crate::module_paths::server_dir(instance, instance_dir, metadata)
 }
 
 /// 모듈이 `[backup]`을 선언하지 않았으면 Ok(None)
 async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
-    let (spec, base, dir, keep, hook_call, lookup) = {
+    let (spec, base, dir, keep, hook_call, lookup, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
             return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
@@ -109,13 +106,16 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
         let Some(spec) = module.as_ref().and_then(|m| m.metadata.backup.clone()) else {
             return Ok(None);
         };
-        let base = server_base(&instance, &supervisor.instance_store.instance_dir(id));
+        let instance_dir = supervisor.instance_store.instance_dir(id);
+        let base = server_base(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
+        let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
         let hook_call = module.as_ref().filter(|_| spec.hook).map(|m| {
             let mut cfg = serde_json::Map::new();
             cfg.insert("working_dir".into(), json!(base.to_string_lossy()));
             cfg.insert("extension_data".into(), json!(&instance.extension_data));
             crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &instance, &supervisor.instance_store.instance_dir(id));
             crate::plugin::PluginCall::new(m.entry_path(), "backup_paths", Value::Object(cfg))
+                .in_instance(Some(state.host_context(id)))
         });
         // `{설정}` 자리: 인스턴스 설정 값, 없으면 module.toml 기본값
         let defaults = module.as_ref().map(|m| m.metadata.clone());
@@ -137,7 +137,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
             Some(value)
         };
         let keep = instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP);
-        (spec, base, backup::backups_dir(&supervisor.instance_store.instance_dir(id)), keep, hook_call, lookup)
+        (spec, base, backup::backups_dir(&instance_dir), keep, hook_call, lookup, boundary, instance.module_name)
     };
     let mut patterns = spec.paths.clone();
     let mut root_patterns = Vec::new();
@@ -150,16 +150,20 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
             }
             // 경로를 모르면 안전 백업 없이 업데이트·복원이 진행되니 여기서 멈춘다
             Ok(v) => {
-                let reason = v.get("message").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| v.to_string());
-                return Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", format!("backup_paths failed: {}", reason)));
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(v)).into_response());
             }
-            Err(e) => return Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", format!("backup_paths failed: {:#}", e))),
+            Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()),
         }
     }
-    let restore_roots = backup::fill_paths(&root_patterns, &base, &lookup);
-    let targets = backup::fill_paths(&patterns, &base, lookup);
+    let resolve = |paths: Vec<PathBuf>| -> Result<Vec<PathBuf>, Response> {
+        paths.into_iter().map(|path| boundary.resolve(&path).ok_or_else(|| {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_paths", path.display())))).into_response()
+        })).collect()
+    };
+    let restore_roots = resolve(backup::fill_paths(&root_patterns, &base, &lookup))?;
+    let targets = resolve(backup::fill_paths(&patterns, &base, lookup))?;
     let paths = targets.iter().filter(|p| p.exists()).cloned().collect();
-    Ok(Some(Plan { dir, paths, targets, restore_roots, save_command: spec.save_command, keep }))
+    Ok(Some(Plan { dir, paths, targets, restore_roots, save_command: spec.save_command, keep, boundary, module_name }))
 }
 
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
@@ -237,6 +241,8 @@ async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
         restore_roots: Vec::new(),
         save_command: None,
         keep: instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP),
+        boundary: crate::module_paths::Boundary::for_instance(instance, &supervisor.instance_store.instance_dir(id), supervisor.module_loader.get_module(&instance.module_name).ok().as_ref().map(|m| &m.metadata)),
+        module_name: instance.module_name.clone(),
     })
 }
 
@@ -273,9 +279,14 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
     }
-    let Plan { dir, paths, keep, .. } = plan;
+    let Plan { dir, paths, keep, boundary, module_name, .. } = plan;
     // 원격(디스코드·챗봇)은 백업을 지우지 못한다: 원격 복원을 거듭해 앞서 남긴 안전 백업을 밀어내지 않게, 정리는 이 PC의 다음 백업에 맡긴다 (D-B11)
     let result = tokio::task::spawn_blocking(move || {
+        for path in &paths {
+            if boundary.resolve(path).is_none() {
+                return Err(crate::module_paths::outside(&module_name, "backup_paths", path.display()));
+            }
+        }
         let made = backup::create(&dir, kind, &paths)?;
         // 방금 만든 백업은 보관 개수와 상관없이 남긴다
         let mut keep_names = vec![made.name.as_str()];
@@ -289,15 +300,21 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
             tracing::info!("Backed up '{}' as {} ({} bytes, pruned {})", id, made.name, made.size, pruned.len());
             Ok(made)
         }
-        Ok(Err(e)) => Err(format!("{:#}", e)),
-        Err(e) => Err(e.to_string()),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(e.into()),
     };
     let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
     crate::events::emit("backup.done", match &result {
         Ok(made) => json!({ "instanceId": id, "instance": instance, "kind": kind, "name": made.name, "ok": true }),
-        Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "error": e }),
+        Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "error": e.to_string() }),
     });
-    result.map(Some).map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e))
+    result.map(Some).map_err(|e| {
+        if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()
+        } else {
+            error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())
+        }
+    })
 }
 
 async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Response> {
@@ -354,13 +371,15 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
     let work = async move {
         let _guard = guard;
         // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
-        let mut roots = {
+        let (mut roots, boundary) = {
             let supervisor = state.supervisor.read().await;
             let Some(instance) = supervisor.instance_store.get(&id) else {
                 return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
             };
             let instance_dir = supervisor.instance_store.instance_dir(&id);
-            vec![server_base(instance, &instance_dir), instance_dir]
+            let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+            let metadata = module.as_ref().map(|m| &m.metadata);
+            (vec![server_base(instance, &instance_dir, metadata), instance_dir.clone()], crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata))
         };
         // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
         match plan(&state, &id).await {
@@ -372,7 +391,7 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
             Ok(t) => t,
             Err(e) => return Err(error(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
         };
-        if targets.iter().any(|t| !backup::is_inside(t, &roots)) {
+        if targets.iter().any(|t| boundary.resolve(t).is_none() || !backup::is_inside(t, &roots)) {
             return Err(error(
                 StatusCode::BAD_REQUEST,
                 "restore_outside",
@@ -384,6 +403,10 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         let safety = take_backup_locked(&state, &id, BackupKind::PreRestore, Some(name.clone()), &targets).await?.map(|b| b.name);
         // 설정 저장이 게임 파일을 쓰는 중이면 기다리고, 복원과 다시 읽기를 마칠 때까지 저장이 끼어들지 않게 한다
         let _files = super::instance::settings_files_lock(&id).await;
+        let checked = targets.iter().all(|t| boundary.resolve(t).is_some() && backup::is_inside(t, &roots));
+        if !checked {
+            return Err(error(StatusCode::BAD_REQUEST, "restore_outside", "The restore path changed outside this instance's allowed roots"));
+        }
         match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
             // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
             Ok(Ok(done)) => {
@@ -794,6 +817,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("module.toml"), module_toml).unwrap();
         std::fs::write(dir.join("lifecycle.py"), hook.unwrap_or("")).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let instances = tmp.path().join("instances");
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
         sup.initialize().await.unwrap();
@@ -826,6 +850,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn contract_paths_backup_stops_if_any_hook_path_or_restore_root_is_outside() {
+        for field in ["paths", "restore_roots"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let modules = crate::plugin::resolve_modules_dir();
+            let module = tempfile::Builder::new().prefix("paths-").tempdir_in(&modules).unwrap();
+            let name = module.path().file_name().unwrap().to_string_lossy();
+            let toml = format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[backup]\npaths = []\nhook = true\n");
+            std::fs::write(module.path().join("module.toml"), toml).unwrap();
+            let outside = tmp.path().join("unrelated");
+            std::fs::create_dir_all(&outside).unwrap();
+            std::fs::write(outside.join("private.txt"), "private").unwrap();
+            let result = json!({"success": true, field: [outside]});
+            let entry = module.path().join("lifecycle.py");
+            std::fs::write(&entry, format!("import sys\nprint('{{\"success\":true,\"functions\":[\"backup_paths\"]}}' if sys.argv[1] == 'functions' else {:?})\n", result.to_string())).unwrap();
+            crate::sandbox::consent_test_component(&entry);
+            let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+            sup.initialize().await.unwrap();
+            let mut instance = crate::instance::ServerInstance::new("g", &name);
+            instance.working_dir = Some(tmp.path().join("server").to_string_lossy().into_owned());
+            let id = instance.id.clone();
+            sup.instance_store.add(instance).unwrap();
+            let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+            let response = plan(&state, &id).await.err().expect("outside path must fail the whole backup plan");
+            let body = crate::ipc::internal::into_internal(response).await.body;
+            assert_eq!(body["error_code"], "module_path_outside", "{}: {}", field, body);
+        }
+    }
+
+    #[tokio::test]
     async fn modules_without_backup_skip_automatic_backups_but_reject_manual_ones() {
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
         assert!(matches!(take_backup(&state, &id, BackupKind::PreUpdate).await, Ok(None)), "an update must not be blocked");
@@ -850,7 +903,7 @@ mod tests {
     #[tokio::test]
     async fn a_failing_backup_paths_hook_stops_the_backup() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
-        let hook = "def backup_paths(config):\n    return {\"success\": False, \"message\": \"no world\"}\n";
+        let hook = "import json\nprint(json.dumps({'success': False, 'error_code': 'backup_failed', 'message': 'no world'}))\n";
         let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
         let err = take_backup(&state, &id, BackupKind::PreUpdate).await.err().expect("hook failure must not mean 'nothing to back up'");
         assert_eq!(code(err).await, "backup_failed");
@@ -976,7 +1029,7 @@ mod tests {
     /// 훅이 `restore_roots`로 넓힌 폴더 안의 옛 백업은 복원된다. 그 폴더는 새 백업 대상이 되지 않는다 (MA3)
     #[tokio::test]
     async fn restore_roots_let_an_older_backup_of_the_whole_data_folder_come_back() {
-        let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n\n[[settings.fields]]\nname = 'data_home'\ntype = 'file'\n\n[extensions.saba-core]\ndata_roots = ['{{data_home}}']\n");
         let data = tempfile::tempdir().unwrap();
         let server = data.path().join("Server");
         std::fs::create_dir_all(&server).unwrap();
@@ -988,6 +1041,13 @@ mod tests {
             root = server.to_string_lossy(),
         );
         let (state, id, _tmp) = server_with(&toml, Some(&hook)).await;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).cloned().unwrap();
+            instance.module_settings.insert("data_home".into(), json!(data.path()));
+            instance.user_settings.insert("data_home".into());
+            sup.instance_store.update(&id, instance).unwrap();
+        }
         // 예전 모듈은 데이터 폴더를 통째로 담았다
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
         let old = backup::create(&dir, BackupKind::Manual, std::slice::from_ref(&server)).unwrap().name;
@@ -1085,7 +1145,7 @@ mod tests {
     // 훅이나 설정이 서버 폴더 밖(예: 사용자 폴더의 게임 데이터)을 가리키면, 지금도 가리키는 동안은 복원할 수 있다
     #[tokio::test]
     async fn a_backup_of_a_folder_the_module_still_points_outside_can_be_restored() {
-        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{cache_dir}}\"]\n");
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{cache_dir}}\"]\n\n[[settings.fields]]\nname = 'cache_dir'\ntype = 'file'\n\n[extensions.saba-core]\ndata_roots = ['{{cache_dir}}']\n");
         let (state, id, tmp) = server_with(&toml, None).await;
         let outside = tmp.path().join("user-data");
         std::fs::create_dir_all(&outside).unwrap();
@@ -1094,6 +1154,7 @@ mod tests {
             let mut sup = state.supervisor.write().await;
             let mut inst = sup.instance_store.get(&id).cloned().unwrap();
             inst.module_settings.insert("cache_dir".into(), json!(outside.to_string_lossy()));
+            inst.user_settings.insert("cache_dir".into());
             sup.instance_store.update(&id, inst).unwrap();
         }
         let name = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;

@@ -7,7 +7,9 @@
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::Path;
+use std::process::Stdio;
 
 use crate::supervisor::module_loader::ModulePermissions;
 
@@ -33,15 +35,32 @@ pub fn undeclared(permissions: &ModulePermissions, findings: &[Finding]) -> Vec<
 
 /// `python`으로 `dir`의 .py 파일을 검사한다 (막히는 호출: 데몬 안에서는 `scan`)
 pub fn scan_blocking(python: &Path, dir: &Path) -> Result<Vec<Finding>> {
+    let manifest_path = dir.join("module.toml");
+    let sdk_minimum = if manifest_path.is_file() {
+        let source = std::fs::read_to_string(&manifest_path).with_context(|| format!("read {}", manifest_path.display()))?;
+        let manifest: toml::Value = toml::from_str(source.trim_start_matches('\u{feff}'))
+            .with_context(|| format!("parse {}", manifest_path.display()))?;
+        Some(manifest.get("module").and_then(|value| value.get("dependencies"))
+            .and_then(|value| value.get("saba-core")).and_then(toml::Value::as_str).unwrap_or("missing").to_string())
+    } else {
+        None
+    };
+    let metadata = serde_json::to_vec(&serde_json::json!({"sdk_source": include_str!("../modules/daemon_rcon.py"), "sdk_minimum": sdk_minimum}))?;
     // -I: 검사할 폴더의 파일이 import되지 않게 (현재 폴더·PYTHONPATH 무시)
-    let out = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new(python))
+    let mut child = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new(python))
         .arg("-I")
         .arg("-c")
         .arg(SCRIPT)
         .arg(dir)
+        .arg("--sdk-stdin")
         .env("PYTHONIOENCODING", "utf-8")
-        .output()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .with_context(|| format!("run {}", python.display()))?;
+    child.stdin.take().context("audit stdin")?.write_all(&metadata).context("write SDK audit metadata")?;
+    let out = child.wait_with_output().context("wait for module audit")?;
     #[derive(Deserialize)]
     struct Output {
         success: bool,
@@ -102,6 +121,28 @@ mod tests {
         let found = vec![finding("network"), finding("spawn_process"), finding("unparsable")];
         let left: Vec<String> = undeclared(&perms, &found).into_iter().map(|f| f.permission).collect();
         assert_eq!(left, vec!["spawn_process", "unparsable"]);
+    }
+
+    #[test]
+    fn sdk_imports_are_checked_against_the_embedded_table() {
+        let python = tool_python();
+        if !python_runs(&python) {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("lifecycle.py"), "from daemon_rcon import safe_join as join\nfrom i18n import I18n\n").unwrap();
+        let found = scan_blocking(&python, dir.path()).unwrap();
+        assert_eq!(found.len(), 2, "{:?}", found);
+        assert!(found.iter().all(|finding| finding.permission == "sdk_version"));
+        assert_eq!(undeclared(&ModulePermissions::default(), &found), found);
+        std::fs::write(dir.path().join("module.toml"), "[module.dependencies]\nsaba-core = \">=0.1.9\"\n").unwrap();
+        let found = scan_blocking(&python, dir.path()).unwrap();
+        assert_eq!(found.len(), 1, "{:?}", found);
+        assert!(found[0].detail.contains("daemon_rcon.safe_join"));
+        assert!(found[0].detail.contains(">=0.1.9"));
+        assert!(found[0].detail.contains("0.1.10"));
+        std::fs::write(dir.path().join("module.toml"), "[module.dependencies]\nsaba-core = \">=0.1.10\"\n").unwrap();
+        assert!(scan_blocking(&python, dir.path()).unwrap().is_empty());
     }
 
     #[tokio::test]

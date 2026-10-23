@@ -167,6 +167,12 @@ impl Out {
             for line in validation_lines(body) {
                 tell!("  {}", line);
             }
+            if let (Some(module), Some(function)) = (body.get("module").and_then(Value::as_str), body.get("function").and_then(Value::as_str)) {
+                tell!("  {}.{}", module, function);
+            }
+            for line in body.get("stderr_tail").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+                tell!("  {}", line);
+            }
         }
         if let Some(h) = err.hint() {
             tell!("  {}", style(h).dim());
@@ -355,6 +361,21 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    static SINK_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn module_call_errors_show_local_diagnostics() {
+        let _lock = SINK_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let rec = seen.clone();
+        let _guard = SinkGuard::install(Box::new(move |_, text| rec.lock().unwrap().push(console::strip_ansi_codes(text).to_string())));
+        let body = json!({ "success": false, "error_code": "module_exception", "module": "plain", "function": "install_server", "stderr_tail": ["traceback line"] });
+        Out { json: false }.error(&crate::error::CliError::Api { status: 500, code: Some("module_exception".into()), message: "bad value".into(), body: body.clone() });
+        let lines = seen.lock().unwrap().join("\n");
+        assert!(lines.contains("plain.install_server") && lines.contains("traceback line"), "{lines}");
+        assert_eq!(crate::error::CliError::Api { status: 500, code: Some("module_exception".into()), message: "bad value".into(), body: body.clone() }.to_json()["response"], body);
+    }
+
     /// `--json-stream`의 마지막 줄은 결과(실패면 오류 문서)를 한 줄로 싣는다
     #[test]
     fn stream_result_is_one_line() {
@@ -370,6 +391,7 @@ mod tests {
     /// 사람용 출력은 모두 한 창구를 지난다: 나중에 TUI가 창구를 바꿔 끼우면 명령 결과를 패널에 그릴 수 있다
     #[test]
     fn human_output_goes_through_the_installed_sink() {
+        let _lock = SINK_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(Stream, String)>::new()));
         let rec = seen.clone();
         let _guard = SinkGuard::install(Box::new(move |stream, text| {

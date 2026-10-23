@@ -8,6 +8,7 @@ command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
 
     daemon_post()                                call any daemon endpoint with the IPC token
     daemon_stdin_command()                       send a line to a managed server's stdin
+    daemon_rest()                                send a REST request through the daemon
     loopback_exchange() / loopback_http()        talk to this instance's own port on 127.0.0.1
     is_process_alive() / wait_for_exit() / force_kill()   PID-safe process checks and kills
     config_value()                               top level -> module_settings -> settings lookup
@@ -17,12 +18,14 @@ command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
 Environment (the daemon sets these for every Python run):
     SABA_IPC_URL     — base URL of the daemon (DAEMON_API_URL still overrides it)
     SABA_TOKEN_PATH  — file holding the X-Saba-Token value
+    SABA_HOST_DIR    — replies to instance-bound HOST requests (0.1.10+)
     SABA_LOOPBACK_DIR — set only for sandboxed runs, which cannot reach 127.0.0.1: the loopback
                         helpers then ask the daemon to make the connection (its own ports only)
 """
 
 import json
 import math
+import ntpath
 import os
 from pathlib import Path
 import re
@@ -35,6 +38,46 @@ import urllib.error
 # ─── Constants ────────────────────────────────────────────────
 
 _DEFAULT_DAEMON_URL = "http://127.0.0.1:57474"
+
+SINCE = {
+    "daemon_post": "0.1.2",
+    "daemon_stdin_command": "0.1.2",
+    "is_process_alive": "0.1.2",
+    "wait_for_exit": "0.1.2",
+    "force_kill": "0.1.2",
+    "config_value": "0.1.2",
+    "load_setting_types": "0.1.2",
+    "coerce_setting": "0.1.2",
+    "run_lifecycle": "0.1.2",
+    "loopback_exchange": "0.1.8",
+    "loopback_http": "0.1.8",
+    "i18n.I18n": "0.1.1",
+    "safe_join": "0.1.10",
+    "PathOutside": "0.1.10",
+    "daemon_rest": "0.1.10",
+}
+
+
+class PathOutside(ValueError):
+    """허용 루트 밖으로 나가는 경로."""
+
+    def __init__(self, path):
+        self.path = str(path)
+        super().__init__(f"Path is outside root: {self.path}")
+
+
+def safe_join(root, *parts):
+    """이름 조각을 루트 안의 실제 경로로 합친다."""
+    path = Path(root).joinpath(*parts)
+    for part in parts:
+        name = os.fspath(part)
+        if name == ".." or "/" in name or "\\" in name or ntpath.splitdrive(name)[0]:
+            raise PathOutside(path)
+    root = Path(root).resolve()
+    path = path.resolve()
+    if not path.is_relative_to(root):
+        raise PathOutside(path)
+    return path
 
 
 def _daemon_url():
@@ -86,7 +129,67 @@ def daemon_post(path, payload, timeout=10):
 
 def daemon_stdin_command(instance_id, command, *, timeout=10):
     """Send a line to a managed server's stdin via ``/api/instance/:id/stdin``."""
+    if os.environ.get("SABA_HOST_DIR"):
+        return _host_request("instance.stdin", {"command": command}, timeout)
     return daemon_post(f"/api/instance/{instance_id}/stdin", {"command": command}, timeout=timeout)
+
+
+def daemon_rest(instance_id, method, path, *, body=None, timeout=10):
+    """Send an instance REST request through HOST or the daemon HTTP API."""
+    args = {"method": method, "path": path}
+    if body is not None:
+        args["body"] = body
+    if os.environ.get("SABA_HOST_DIR"):
+        return _host_request("instance.rest", args, timeout)
+    payload = {"method": method, "endpoint": path}
+    if body is not None:
+        payload["body"] = body
+    return daemon_post(f"/api/instance/{instance_id}/rest", payload, timeout=timeout)
+
+
+def _host_error(code, message):
+    error = ConnectionError(f"Daemon host request failed ({code}): {message}")
+    error.error_code = code
+    return error
+
+
+def _host_request(op, args, timeout):
+    import uuid
+    request_id = uuid.uuid4().hex
+    request = "HOST:" + json.dumps({"id": request_id, "op": op, "args": args}, ensure_ascii=False, allow_nan=False)
+    if len(request.encode("utf-8")) > 64 * 1024:
+        raise _host_error("request_too_large", "request exceeds 64 KiB")
+    wait = float(timeout)
+    if not math.isfinite(wait) or wait < 0:
+        raise ValueError("timeout must be finite and non-negative")
+    reply_path = Path(os.environ["SABA_HOST_DIR"]) / f"{request_id}.json"
+    deadline = time.monotonic() + min(wait, 30)
+    print(request, file=sys.stderr, flush=True)
+    while not reply_path.exists():
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"no reply from the daemon for {op}")
+        time.sleep(0.02)
+    try:
+        with reply_path.open("rb") as reply_file:
+            raw = reply_file.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise _host_error("response_too_large", "response exceeds 1 MiB")
+        try:
+            reply = json.loads(raw)
+        except (UnicodeError, ValueError) as error:
+            raise _host_error("invalid_response", "response is not JSON") from error
+        if not isinstance(reply, dict) or not isinstance(reply.get("ok"), bool):
+            raise _host_error("invalid_response", "response has no boolean ok field")
+        if not reply["ok"]:
+            raise _host_error(reply.get("error_code") or "host_failed", reply.get("error") or "host request failed")
+        if "data" not in reply:
+            raise _host_error("invalid_response", "response has no data field")
+        return reply["data"]
+    finally:
+        try:
+            reply_path.unlink()
+        except OSError:
+            pass
 
 
 # ─── Loopback ─────────────────────────────────────────────────
@@ -359,7 +462,11 @@ def run_lifecycle(functions):
     (데몬은 0이 아닌 종료 코드를 HTTP 500으로 바꾼다).
     """
     def emit(result):
-        sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+        try:
+            output = json.dumps(result, ensure_ascii=False, allow_nan=False)
+        except Exception as e:
+            output = json.dumps({"success": False, "error_code": "module_bad_output", "message": str(e)}, ensure_ascii=False)
+        sys.stdout.write(output + "\n")
         sys.stdout.flush()
 
     if len(sys.argv) < 2:
@@ -385,8 +492,10 @@ def run_lifecycle(functions):
 
     try:
         result = fn(config)
+    except PathOutside as e:
+        result = {"success": False, "error_code": "module_path_outside", "message": str(e), "path": e.path}
     except Exception as e:  # 모듈 함수 오류도 JSON으로 돌려준다
         import traceback
         print(traceback.format_exc(), file=sys.stderr)
-        result = {"success": False, "message": f"Error in {name}: {e}"}
+        result = {"success": False, "error_code": "module_exception", "message": f"Error in {name}: {e}"}
     emit(result)

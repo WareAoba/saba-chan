@@ -103,6 +103,8 @@ async fn a_reconnect_neither_drops_waiting_commands_nor_the_results_of_running_o
     std::fs::create_dir_all(modules_dir.join("slowq")).unwrap();
     std::fs::write(modules_dir.join("slowq").join("module.toml"), MODULE).unwrap();
     std::fs::write(modules_dir.join("slowq").join("lifecycle.py"), LIFECYCLE).unwrap();
+    std::env::set_var("SABA_MODULES_PATH", &modules_dir);
+    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, "module-slowq", true).unwrap();
     let instances_dir = data_dir.join("instances");
     std::fs::create_dir_all(&instances_dir).unwrap();
     let mut sup = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), &instances_dir.to_string_lossy());

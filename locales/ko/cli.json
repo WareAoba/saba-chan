@@ -1,4 +1,14 @@
 {
+  "module_errors": {
+    "module_timeout": "모듈 호출 시간이 초과되었습니다. 모듈 상태를 확인해 주세요.",
+    "module_execution_failed": "모듈을 실행하지 못했습니다. 실행 환경과 모듈 로그를 확인해 주세요.",
+    "module_crashed": "모듈 프로세스가 오류로 종료되었습니다. 모듈 로그를 확인해 주세요.",
+    "module_bad_output": "모듈이 올바르지 않은 결과를 반환했습니다. 모듈을 업데이트하거나 제작자에게 문의해 주세요.",
+    "module_output_too_large": "모듈 출력이 크기 제한을 넘었습니다. 모듈 로그를 확인해 주세요.",
+    "module_path_outside": "모듈이 허용된 폴더 밖의 경로에 접근하려 했습니다. 모듈 설정을 확인해 주세요.",
+    "module_exception": "모듈에서 예외가 발생했습니다. 모듈 로그를 확인해 주세요.",
+    "isolation_unsupported": "이 운영체제는 필요한 격리 기능을 지원하지 않습니다."
+  },
   "add": {
     "created_settings_unsynced": "{{name}} 서버를 만들고 설정도 저장했지만, 게임 설정 파일에 쓰지 못했어요: {{error}}",
     "ask_folder": "서버 폴더",
@@ -957,6 +967,9 @@
     }
   },
   "sandbox": {
+    "isolation_unsupported": {
+      "message": "이 운영체제는 격리 실행을 지원하지 않아 구성요소를 실행하지 않았어요."
+    },
     "allowed": "{{component}}을(를) 격리 없이 돌리기로 했어요. 파일이 바뀌면 다시 물어요.",
     "confirm_allow": "{{component}}을(를) 격리 없이 돌릴까요? 확인되지 않은 코드가 이 PC의 파일과 네트워크에 제한 없이 닿게 돼요. 파일이 바뀌면 다시 물어요.",
     "confirm_gui": "{{component}}의 GUI 번들을 앱에 실을까요? 확인되지 않은 코드가 앱 화면 안에서 돌아요.",

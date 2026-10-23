@@ -281,7 +281,14 @@ fn strip_secrets(v: &mut Value, password_fields: &[String]) {
 /// 원격으로 나가는 결과에서 PC의 로컬 정보를 어느 깊이에서든 뺀다 (I3, 알림 push 경로와 같은 기준):
 /// 실행 파일·폴더·인자 키, 콘솔 줄이 든 종료 근거, 자동 재시작 실패 원문, 그리고 문자열 안의 절대 경로
 pub(crate) fn strip_local_details(v: &mut Value) {
-    const LOCAL_KEYS: [&str; 5] = ["working_dir", "executable_path", "extra_args", "extension_data", "install_path"];
+    const LOCAL_KEYS: [&str; 6] = ["working_dir", "executable_path", "extra_args", "extension_data", "install_path", "stderr_tail"];
+    if v.get("success").and_then(Value::as_bool) == Some(false) && v.get("module").is_some() && v.get("function").is_some() {
+        for (key, value) in v.as_object_mut().into_iter().flatten() {
+            if !matches!(key.as_str(), "module" | "function" | "error_code" | "phase") {
+                mask_console_with_paths(value, true);
+            }
+        }
+    }
     match v {
         Value::Object(m) => {
             m.retain(|k, _| !LOCAL_KEYS.contains(&k.as_str()));
@@ -296,7 +303,7 @@ pub(crate) fn strip_local_details(v: &mut Value) {
             m.values_mut().for_each(strip_local_details);
             if let Some(content) = file {
                 let masked = match content {
-                    Value::String(text) => Value::String(text.split('\n').map(|line| mask_local_text(line).unwrap_or_else(|| line.to_string())).collect::<Vec<_>>().join("\n")),
+                    Value::String(text) => Value::String(text.split('\n').map(|line| mask_local_text(line, false).unwrap_or_else(|| line.to_string())).collect::<Vec<_>>().join("\n")),
                     other => other,
                 };
                 if let (Some(text), true) = (masked.as_str(), m.contains_key("bytes")) {
@@ -307,7 +314,7 @@ pub(crate) fn strip_local_details(v: &mut Value) {
         }
         Value::Array(a) => a.iter_mut().for_each(strip_local_details),
         Value::String(s) => {
-            if let Some(masked) = mask_local_text(s) {
+            if let Some(masked) = mask_local_text(s, false) {
                 *s = masked;
             }
         }
@@ -322,7 +329,7 @@ pub fn overridable(id: &str) -> bool {
 }
 
 /// 문자열의 절대 경로를 `<path>`로 바꾸고, Python traceback은 마지막 줄(예외 문구)만 남긴다. 바뀐 것이 없으면 None
-fn mask_local_text(text: &str) -> Option<String> {
+fn mask_local_text(text: &str, single_component: bool) -> Option<String> {
     static QUOTED: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static PATHS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     // 따옴표로 시작하는 경로는 닫는 따옴표까지 (공백 포함)
@@ -343,8 +350,13 @@ fn mask_local_text(text: &str) -> Option<String> {
         let q = &c[0][..1];
         format!("{q}<path>{q}")
     });
-    let masked = paths.replace_all(&base, "${pre}<path>");
-    (masked != text).then(|| masked.into_owned())
+    let mut masked = paths.replace_all(&base, "${pre}<path>").into_owned();
+    if single_component {
+        static SINGLE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let paths = SINGLE.get_or_init(|| regex::Regex::new(r#"(?P<pre>^|[\s\"'(=:\[])~?/[^\s/\"'<>|][^\r\n\"'<>|]*"#).unwrap());
+        masked = paths.replace_all(&masked, "${pre}<path>").into_owned();
+    }
+    (masked != text).then_some(masked)
 }
 
 /// 이 길드에 열지 않은 인스턴스를 결과의 `servers`·`instances` 목록(어느 깊이든, 원소의 `id`)에서 뺀다
@@ -1413,6 +1425,10 @@ pub async fn query(server: &IPCServer, id: &str, instance: Option<&str>, input: 
 /// 챗봇에 보내는 콘솔에서 IP 주소(IPv4·IPv6)와 비밀처럼 보이는 값을 가린다
 /// (`password=…`·`token: …`의 값, 글자와 숫자가 섞인 32자 이상 문자열)
 pub(crate) fn mask_console(result: &mut Value) {
+    mask_console_with_paths(result, false);
+}
+
+fn mask_console_with_paths(result: &mut Value, module_paths: bool) {
     struct Masks {
         ipv4: regex::Regex,
         ipv6: regex::Regex,
@@ -1442,20 +1458,21 @@ pub(crate) fn mask_console(result: &mut Value) {
             })
             .into_owned()
     }
-    fn walk(v: &mut Value, m: &Masks) {
+    fn walk(v: &mut Value, m: &Masks, module_paths: bool) {
         match v {
             Value::String(s) => {
                 let masked = mask(s, m);
+                let masked = if module_paths { mask_local_text(&masked, true).unwrap_or(masked) } else { masked };
                 if masked != *s {
                     *s = masked;
                 }
             }
-            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, m)),
-            Value::Object(o) => o.values_mut().for_each(|x| walk(x, m)),
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, m, module_paths)),
+            Value::Object(o) => o.values_mut().for_each(|x| walk(x, m, module_paths)),
             _ => {}
         }
     }
-    walk(result, m);
+    walk(result, m, module_paths);
 }
 
 // ── 안에서 라우트 부르기 ─────────────────────────────────

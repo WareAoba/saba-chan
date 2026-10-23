@@ -39,6 +39,20 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         window.showToast = vi.fn();
     });
 
+    it('OS가 격리를 지원하지 않으면 동의 창에도 그 이유를 번역해 표시한다', async () => {
+        const unsupported = { ...unavailable, error_code: 'isolation_unsupported', detail: 'unsupported platform' };
+        const guidance = 'The component did not run because this operating system does not support isolation.';
+        expect(blockedText(unsupported, t)).toBe(guidance);
+        window.api.instanceStart = vi.fn().mockResolvedValue(unsupported);
+        window.api.sandboxAllowUnisolated = vi.fn();
+        const { result, setModal } = setup();
+        await act(async () => result.current.handleStart('Pal', 'palworld'));
+        const modal = setModal.mock.calls.at(-1)[0];
+        expect(modal.title).toBe('Run without isolation?');
+        expect(modal.message).toContain(guidance);
+        expect(modal.message).not.toContain('unsupported platform');
+    });
+
     it('그 구성요소만 격리 없이 돌릴지 묻고, 동의하면 저장한 뒤 다시 시작한다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValueOnce(unavailable).mockResolvedValue({ success: false });
         window.api.sandboxAllowUnisolated = vi.fn().mockResolvedValue({ success: true, component: 'module-palworld' });

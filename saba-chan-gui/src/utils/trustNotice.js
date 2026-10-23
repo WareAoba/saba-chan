@@ -25,6 +25,9 @@ const START_BLOCKED = [
 
 /** 응답이 위 이유로 막혔으면 알릴 문구, 아니면 null (모르는 코드는 원래 흐름대로) */
 export function blockedText(result, t) {
+    if (result?.error_code === 'isolation_unsupported') {
+        return t('common:sandbox.isolation_unsupported.message');
+    }
     // 활성 익스텐션 파일이 바뀌어 확인되지 않음: "설치하고 켜라"(extension_required)와 다르다
     if (result?.error_code === 'extension_not_verified' || result?.action_required === 'extension_not_verified') {
         const ids = Array.isArray(result.unverified_extensions) ? result.unverified_extensions : [];

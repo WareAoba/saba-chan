@@ -122,6 +122,8 @@ pub struct ModuleMetadata {
     pub player_join_patterns: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub player_leave_patterns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_roots: Vec<String>,
     /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<ModulePreset>,
@@ -1321,6 +1323,7 @@ impl ModuleToml {
             ready_timeout: None,
             player_join_patterns: Vec::new(),
             player_leave_patterns: Vec::new(),
+            data_roots: Vec::new(),
             module_aliases: self.aliases.as_ref()
                 .map(|a| a.module_aliases.clone())
                 .unwrap_or_default(),
@@ -1435,7 +1438,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 /// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
-const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns"];
+const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots"];
 /// `ready_timeout` 상한(초)
 pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
 
@@ -1473,6 +1476,22 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     meta.ready_patterns.extend(read_pattern_list(&table, "ready_patterns", false, &mut warnings));
     meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", true, &mut warnings));
     meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", true, &mut warnings));
+    match table.get("data_roots") {
+        None => {}
+        Some(serde_json::Value::Array(items)) => {
+            for item in items {
+                let valid = item.as_str().and_then(crate::module_paths::data_root_parts).is_some_and(|(key, _)| {
+                    key == "home" || meta.settings.iter().flat_map(|s| &s.fields).any(|f| f.name == key && (f.field_type == "file" || f.format.as_deref() == Some("path")))
+                });
+                if valid {
+                    meta.data_roots.push(item.as_str().unwrap().to_string());
+                } else {
+                    warnings.push(format!("extensions.{}.data_roots contains an invalid root {}; ignored", DAEMON_TABLE, item));
+                }
+            }
+        }
+        Some(_) => warnings.push(format!("extensions.{}.data_roots must be a list of strings; ignored", DAEMON_TABLE)),
+    }
     match table.get("ready_timeout") {
         None => {}
         Some(v) => match v.as_u64().filter(|n| *n > 0) {
@@ -2645,6 +2664,14 @@ entry = "lifecycle.py"
         assert_eq!(later.ready_timeout, Some(30), "a key from a newer daemon does not stop the module from loading");
         assert!(later.warnings.iter().any(|w| w.contains("from_a_later_core")), "{:?}", later.warnings);
         assert!(!crate::extension::is_valid_extension_id(DAEMON_TABLE), "the daemon table name is reserved");
+    }
+
+    #[test]
+    fn contract_paths_data_roots_reject_only_invalid_entries() {
+        let source = format!("{V1}\n[[settings.fields]]\nname = 'cache_dir'\ntype = 'file'\n\n[[settings.fields]]\nname = 'title'\ntype = 'text'\n\n[extensions.saba-core]\ndata_roots = ['{{cache_dir}}', '{{home}}/Worlds', '/tmp', '{{cache_dir}}/../escape', '{{title}}', '{{missing}}', '{{cache_dir}}/C:/escape', '{{home}}/{{cache_dir}}', 1]\n");
+        let meta = parse_module_toml(&source).unwrap();
+        assert_eq!(serde_json::to_value(&meta).unwrap()["data_roots"], serde_json::json!(["{cache_dir}", "{home}/Worlds"]));
+        assert_eq!(meta.warnings.len(), 7, "{:?}", meta.warnings);
     }
 
     #[test]

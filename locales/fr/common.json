@@ -1,4 +1,19 @@
 {
+  "module_errors": {
+    "module_timeout": "L’appel du module a dépassé le délai. Vérifiez le module.",
+    "module_execution_failed": "Le module n’a pas pu être exécuté. Vérifiez l’environnement et les journaux du module.",
+    "module_crashed": "Le processus du module s’est terminé avec une erreur. Vérifiez ses journaux.",
+    "module_bad_output": "Le module a renvoyé un résultat invalide. Mettez-le à jour ou contactez son auteur.",
+    "module_output_too_large": "La sortie du module a dépassé la limite de taille. Vérifiez ses journaux.",
+    "module_path_outside": "Le module a tenté d’accéder à un chemin hors du dossier autorisé. Vérifiez ses paramètres.",
+    "module_exception": "Une exception s’est produite dans le module. Vérifiez ses journaux.",
+    "isolation_unsupported": "Ce système d’exploitation ne prend pas en charge l’isolation requise."
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "Le composant n’a pas été exécuté, car ce système d’exploitation ne prend pas en charge l’isolation."
+    }
+  },
   "app_name": "Saba-chan",
   "app_description": "Plateforme de gestion des serveurs de jeux modulaire",
   "success": "Succès",

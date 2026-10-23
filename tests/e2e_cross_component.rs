@@ -107,6 +107,10 @@ server_not_running = "The test server is off"
         .expect("write test lifecycle.py");
 
     std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap());
+    for name in ["e2e-mock", "test-module"] {
+        saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("module-{name}"), true)
+            .expect("consent to the copied test module");
+    }
     tmp
 }
 
@@ -195,7 +199,7 @@ async fn wait_for_provision(base_url: &str, client: &reqwest::Client, name: &str
 fn find_python() -> Option<String> {
     // Windows: python.exe, Unix: python3
     let candidates = if cfg!(windows) {
-        vec!["python", "python3"]
+        vec!["python", "python3", "py"]
     } else {
         vec!["python3", "python"]
     };
@@ -630,6 +634,17 @@ async fn e2e_cross_component_simultaneous_operation() {
 // ═══════════════════════════════════════════════════════
 // 7. 모듈 Python lifecycle 직접 호출 검증
 // ═══════════════════════════════════════════════════════
+
+#[test]
+fn e2e_python_sdk_contract() {
+    let python = find_python().expect("Python 3 is required for the SDK contract");
+    let output = std::process::Command::new(python)
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/test_daemon_rcon.py"))
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .output()
+        .expect("run SDK contract");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
 
 #[tokio::test]
 async fn e2e_python_lifecycle_direct_call() {

@@ -96,7 +96,7 @@ pub fn refuse(proxy: &Proxy, line: &str, error: &str) {
 
 /// 다 쓴 뒤에 이름을 바꿔 둔다: 모듈이 반쯤 쓴 파일을 읽지 않게. 폴더는 격리 쪽도 쓸 수 있으므로
 /// 미리 놓인 `.part`(링크 등)를 따라 쓰지 않고 지운 뒤 새로 만든다
-fn write_reply(dir: &Path, id: &str, reply: &Value) -> std::io::Result<()> {
+pub(super) fn write_reply(dir: &Path, id: &str, reply: &Value) -> std::io::Result<()> {
     use std::io::Write;
     let part = dir.join(format!("{id}.part"));
     let _ = std::fs::remove_file(&part);

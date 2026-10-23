@@ -5,6 +5,7 @@ mod ipc;
 mod config_store;
 mod instance;
 mod backup;
+mod module_paths;
 mod scheduler;
 mod process_monitor;
 mod system_monitor;

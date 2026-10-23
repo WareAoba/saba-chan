@@ -9,6 +9,8 @@ SABA_E2E_LAYOUT=installed면 modules·extensions·토큰 경로 변수를 주지
 SABA_DATA_DIR만은 그 기본 위치 값을 그대로 준다(env() 주석).
 """
 
+import hashlib
+import json
 import os
 import shutil
 import socket
@@ -53,6 +55,16 @@ def _copy_repo(src: Path, dest: Path) -> None:
     shutil.copytree(src, dest, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "node_modules"))
 
 
+def _fingerprint(folder: Path) -> str:
+    lines = []
+    for root, _, files in os.walk(folder):
+        for name in files:
+            path = Path(root) / name
+            if path.is_file() and not path.is_symlink():
+                lines.append(f"{path.relative_to(folder).as_posix()}\t{hashlib.sha256(path.read_bytes()).hexdigest()}")
+    return hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()
+
+
 class Sandbox:
     def __init__(self, root: Path, *, modules: bool = True, extensions: bool = True):
         self.root = root
@@ -82,7 +94,20 @@ class Sandbox:
             _copy_repo(EXTENSIONS_REPO, self.extensions)
         else:
             self.extensions.mkdir(parents=True, exist_ok=True)
+        if not IS_WINDOWS:
+            for manifest in self.modules.glob("*/module.toml"):
+                self.consent_unisolated(f"module-{manifest.parent.name}", manifest.parent)
+            for manifest in self.extensions.glob("*/manifest.json"):
+                ext_id = json.loads(manifest.read_text(encoding="utf-8-sig"))["id"]
+                self.consent_unisolated(f"ext-{ext_id}", manifest.parent)
         self.ipc_port = free_port()
+
+    def consent_unisolated(self, key: str, folder: Path) -> None:
+        path = self.data / "config.json"
+        config = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        allowed = config.get("sandbox", {}).get("unisolated", {})
+        allowed[key] = _fingerprint(folder)
+        self.write_config({"sandbox": {"unisolated": allowed}})
 
     @property
     def token_path(self) -> Path:
@@ -128,8 +153,6 @@ class Sandbox:
 
     def write_config(self, patch: dict) -> None:
         """데몬이 뜨기 전에 config.json에 섹션을 합친다 (예: relay URL, 업데이트 relay_url)."""
-        import json
-
         path = self.data / "config.json"
         current = json.loads(path.read_text()) if path.exists() else {}
         for key, value in patch.items():
