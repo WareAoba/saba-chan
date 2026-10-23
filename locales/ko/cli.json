@@ -213,7 +213,12 @@
     "shutdown_refused": "데몬이 종료 요청을 받지 않았어요: {{error}}",
     "stopped": "데몬을 껐어요.",
     "stopping": "데몬을 끄는 중...",
-    "stops_with_launcher": "사바쨩 코어가 이 데몬을 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 데몬을 끈 뒤(saba-chan-cli daemon stop) 시작 메뉴의 사바쨩이나 일반 터미널에서 다시 켜 주세요."
+    "stops_with_launcher": "사바쨩 코어가 이 데몬을 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 데몬을 끈 뒤(saba-chan-cli daemon stop) 시작 메뉴의 사바쨩이나 일반 터미널에서 다시 켜 주세요.",
+    "no_clients": "데몬에 붙은 데스크톱 앱 창이 없어요.",
+    "col": {
+      "kind": "종류",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "{{name}} 로그에서 알려진 문제를 찾지 못했어요."
@@ -720,7 +725,12 @@
       "help": "명령 도움말 보기. --json이면 명령 트리·인자·종료 코드",
       "events": "데몬 이벤트를 실시간으로 따라가기 (--json이면 한 줄에 JSON 하나). Ctrl+C로 멈춰요",
       "tui": "전체 화면 메뉴 열기",
-      "install": "창 인스톨러 없이 이 PC에 사바쨩 설치"
+      "install": "창 인스톨러 없이 이 PC에 사바쨩 설치",
+      "server.players": "지금 접속한 사람",
+      "server.rcon": "서버가 명령을 받는 길(콘솔, 없으면 RCON)로 한 줄 보내고 답 보기",
+      "server.log": "지난 실행까지 저장된 로그 (콘솔은 지금 실행분만)",
+      "server.query": "게임 모듈이 제공하는 조회 (이름이 없으면 목록)",
+      "daemon.clients": "데몬에 붙은 데스크톱 앱 창"
     },
     "arg": {
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
@@ -837,7 +847,18 @@
       "install.dir": "설치 폴더 (없으면 물어봄)",
       "install.modules": "설치할 게임 모듈, 쉼표로 구분 (없으면 물어봄)",
       "install.gui": "화면이 없어도 데스크톱 앱까지 설치",
-      "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치"
+      "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치",
+      "server.log.source": "어느 실행 (`--runs`로 목록), 없으면 마지막",
+      "server.log.lines": "마지막 N줄",
+      "server.log.runs": "저장된 실행 목록",
+      "server.log.all": "한 실행분 전체 (파일로: `> 파일.log`)",
+      "server.query.name": "조회 이름",
+      "server.query.args": "입력 키=값",
+      "chatbot.show.guild": "디스코드 서버 하나가 실제로 쓰는 값 (공통 값 + 그 서버 값), 이름이나 id",
+      "do.action": "액션 id (예: server.restart, server.command:say)",
+      "do.steps": "여러 단계를 JSON으로: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (ACTION 대신)",
+      "do.run_id": "뒤에서 이어 가는 여러 단계 실행의 진행",
+      "do.server": "액션을 적용할 서버"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -979,7 +1000,13 @@
       "id": "액션",
       "title": "이름",
       "risk": "위험도"
-    }
+    },
+    "steps_array": "--steps는 단계 목록(JSON 배열)이어야 해요.",
+    "confirm_steps": "이 단계들을 실행할까요?",
+    "running": "단계를 실행하는 중…",
+    "done_steps": "모든 단계를 마쳤어요.",
+    "state_running": "실행 중",
+    "state_done": "끝남"
   },
   "perm": {
     "owner": "주인",
@@ -1091,5 +1118,25 @@
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}"
+  },
+  "players": {
+    "title": "{{server}} 접속자 {{count}}명",
+    "none": "지금 접속한 사람이 없어요."
+  },
+  "log": {
+    "none": "저장된 로그가 아직 없어요. 서버를 한 번 켜면 생겨요.",
+    "truncated": "로그가 너무 커서 앞부분만 가져왔어요.",
+    "col": {
+      "run": "실행",
+      "started": "시작"
+    }
+  },
+  "query": {
+    "none": "이 게임 모듈에는 조회가 없어요.",
+    "col": {
+      "name": "조회",
+      "about": "설명",
+      "inputs": "입력"
+    }
   }
 }

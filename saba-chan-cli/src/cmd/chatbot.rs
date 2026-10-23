@@ -14,7 +14,11 @@ use crate::resolve;
 
 pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
     match cmd {
-        ChatbotCmd::Show => show(ctx).await,
+        ChatbotCmd::Show { guild: None } => show(ctx).await,
+        ChatbotCmd::Show { guild: Some(g) } => {
+            let guild = resolve::guild(ctx, Some(&g)).await?;
+            show_guild(ctx, &guild).await
+        }
         ChatbotCmd::Set { pairs, guild } => {
             let guild = match guild {
                 Some(g) => Some(resolve::guild(ctx, Some(&g)).await?),
@@ -95,6 +99,16 @@ async fn show(ctx: &Ctx) -> Result<()> {
         if !key {
             ctx.out.hint("saba-chan-cli chatbot key");
         }
+    });
+    Ok(())
+}
+
+/// 디스코드 서버 하나에 실제로 쓰이는 값 (공통 값 위에 그 서버 값)
+async fn show_guild(ctx: &Ctx, guild: &str) -> Result<()> {
+    let r = ctx.api.chatbot_guild(guild).await?;
+    ctx.out.data(&r, |r| {
+        output::heading(&t!("chatbot.guild", guild = guild));
+        print_settings(r.get("settings").and_then(Value::as_object).unwrap_or(&Map::new()));
     });
     Ok(())
 }

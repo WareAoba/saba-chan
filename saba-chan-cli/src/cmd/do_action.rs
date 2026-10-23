@@ -18,6 +18,29 @@ fn parse_input(pairs: &[String]) -> Result<Map<String, Value>> {
     Ok(input)
 }
 
+/// 계획의 요약 줄 (`summary: [{label, value}]`)
+fn print_summary(p: &Value) {
+    let rows: Vec<(String, String)> = p
+        .get("summary")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|i| (s(i, "label").to_string(), i.get("value").map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).unwrap_or_default()))
+        .collect();
+    output::print_kv(&rows);
+}
+
+/// 실행 결과: 실패면 오류로, 아니면 끝난 알림
+fn finish(ctx: &Ctx, r: &Value, done: &str) -> Result<()> {
+    if r.get("success").and_then(Value::as_bool) == Some(false) {
+        let result = r.get("result").cloned().unwrap_or(Value::Null);
+        let msg = result.get("error").or_else(|| result.get("message")).and_then(Value::as_str).unwrap_or("failed").to_string();
+        return Err(crate::error::CliError::Failed(msg).into());
+    }
+    ctx.out.done(done, r);
+    Ok(())
+}
+
 pub async fn run(ctx: &Ctx, action: Option<&str>, server: Option<&str>, plan_only: bool, pairs: &[String]) -> Result<()> {
     let instance = match server {
         Some(q) => Some(crate::resolve::server(ctx, Some(q)).await?.id),
@@ -37,16 +60,7 @@ pub async fn run(ctx: &Ctx, action: Option<&str>, server: Option<&str>, plan_onl
     let input = parse_input(pairs)?;
     let body = json!({ "input": input, "instance": instance });
     let planned = ctx.api.action(action, "plan", body.clone()).await?;
-    let show = |p: &Value| {
-        let rows: Vec<(String, String)> = p
-            .get("summary")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(|i| (s(i, "label").to_string(), i.get("value").map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).unwrap_or_default()))
-            .collect();
-        output::print_kv(&rows);
-    };
+    let show = print_summary;
     if plan_only {
         ctx.out.data(&planned, show);
         return Ok(());
@@ -59,12 +73,65 @@ pub async fn run(ctx: &Ctx, action: Option<&str>, server: Option<&str>, plan_onl
     }
     let plan_id = s(&planned, "planId").to_string();
     let r = ctx.api.action(action, "run", json!({ "planId": plan_id })).await?;
-    if r.get("success").and_then(Value::as_bool) == Some(false) {
-        let result = r.get("result").cloned().unwrap_or(Value::Null);
-        let msg = result.get("error").or_else(|| result.get("message")).and_then(Value::as_str).unwrap_or("failed").to_string();
-        return Err(crate::error::CliError::Failed(msg).into());
+    finish(ctx, &r, &t!("do.done", action = action))
+}
+
+/// 뒤에서 이어 가는 여러 단계 실행을 다시 묻는 간격
+const POLL: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// `--steps`: 여러 단계를 한 번에 계획하고 실행한다. 오래 걸리면 데몬이 뒤에서 이어 가므로 끝날 때까지 진행을 묻는다
+pub async fn steps(ctx: &Ctx, raw: &str, plan_only: bool) -> Result<()> {
+    let steps: Value = serde_json::from_str(raw).map_err(|e| usage(t!("err.bad_json", error = e)))?;
+    if !steps.is_array() {
+        return Err(usage(t!("do.steps_array")));
     }
-    ctx.out.done(&t!("do.done", action = action), &r);
+    let planned = ctx.api.plan_steps(steps).await?;
+    let show = print_summary;
+    if plan_only {
+        ctx.out.data(&planned, show);
+        return Ok(());
+    }
+    if planned.get("needsConfirm").and_then(Value::as_bool) == Some(true) {
+        if !ctx.out.json {
+            show(&planned);
+        }
+        ctx.ask.ensure(&t!("do.confirm_steps"))?;
+    }
+    let mut r = ctx.api.action("plan", "run", json!({ "planId": s(&planned, "planId") })).await?;
+    if r.get("running").and_then(Value::as_bool) == Some(true) {
+        let run = s(&r, "runId").to_string();
+        let bar = crate::progress::spinner(&t!("do.running"));
+        loop {
+            tokio::time::sleep(POLL).await;
+            let status = ctx.api.action_run(&run).await?;
+            if status.get("done").and_then(Value::as_bool) == Some(true) {
+                r = status.get("result").cloned().unwrap_or(Value::Null);
+                break;
+            }
+        }
+        bar.finish_and_clear();
+    }
+    finish(ctx, &r, &t!("do.done_steps"))
+}
+
+/// `--run ID`: 여러 단계 실행의 진행
+pub async fn run_status(ctx: &Ctx, run_id: &str) -> Result<()> {
+    let r = ctx.api.action_run(run_id).await?;
+    ctx.out.data(&r, |r| {
+        let done = r.get("done").and_then(Value::as_bool) == Some(true);
+        let state = if done { t!("do.state_done") } else { t!("do.state_running") };
+        say!("{}  {}", run_id, state);
+        let steps = if done { r.pointer("/result/steps") } else { r.get("steps") };
+        for step in steps.and_then(Value::as_array).into_iter().flatten() {
+            let mark = match s(step, "status") {
+                "done" => "✓",
+                "failed" => "✗",
+                "running" => "…",
+                _ => "·",
+            };
+            say!("  {mark} {}. {}", step.get("n").and_then(Value::as_u64).unwrap_or(0), s(step, "actionId"));
+        }
+    });
     Ok(())
 }
 

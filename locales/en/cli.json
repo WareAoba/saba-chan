@@ -213,7 +213,12 @@
     "shutdown_refused": "The daemon did not accept the shutdown request: {{error}}",
     "stopped": "Daemon stopped.",
     "stopping": "Stopping the daemon...",
-    "stops_with_launcher": "The saba-chan core is running tied to the program that started it. If that program closes, the core and server management may stop with it. Stop the daemon (saba-chan-cli daemon stop) and start it again from the Start menu or a regular terminal."
+    "stops_with_launcher": "The saba-chan core is running tied to the program that started it. If that program closes, the core and server management may stop with it. Stop the daemon (saba-chan-cli daemon stop) and start it again from the Start menu or a regular terminal.",
+    "no_clients": "No desktop app windows are connected to the daemon.",
+    "col": {
+      "kind": "Kind",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "No known problems found in {{name}}'s logs."
@@ -642,7 +647,9 @@
       "install.dir": "Install folder (asked when omitted)",
       "install.modules": "Game modules to install, comma separated (asked when omitted)",
       "install.gui": "Install the desktop app too, even without a display",
-      "install.no_gui": "Install without the desktop app, even with a display"
+      "install.no_gui": "Install without the desktop app, even with a display",
+      "do.action": "Action id, e.g. server.restart or server.command:say",
+      "do.server": "Server the action works on"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -784,7 +791,13 @@
       "id": "Action",
       "title": "Name",
       "risk": "Risk"
-    }
+    },
+    "steps_array": "--steps must be a list of steps (a JSON array).",
+    "confirm_steps": "Run these steps?",
+    "running": "Running the steps…",
+    "done_steps": "All steps done.",
+    "state_running": "running",
+    "state_done": "finished"
   },
   "perm": {
     "owner": "Owner",
@@ -896,5 +909,25 @@
     "failed_no_log": "Install failed: {{reason}}",
     "done": "Installed to {{dir}}",
     "next": "Start the daemon with:\n{{command}}"
+  },
+  "players": {
+    "title": "{{server}}: {{count}} online",
+    "none": "Nobody is online."
+  },
+  "log": {
+    "none": "No saved log yet. One appears after the server runs once.",
+    "truncated": "The log was too big; only the first part came back.",
+    "col": {
+      "run": "Run",
+      "started": "Started"
+    }
+  },
+  "query": {
+    "none": "This game module has no lookups.",
+    "col": {
+      "name": "Lookup",
+      "about": "About",
+      "inputs": "Inputs"
+    }
   }
 }
