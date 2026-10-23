@@ -150,7 +150,17 @@ pub async fn run_status(ctx: &Ctx, run_id: &str) -> Result<()> {
             say!("  {mark} {}. {}", step.get("n").and_then(Value::as_u64).unwrap_or(0), s(step, "actionId"));
         }
     });
-    Ok(())
+    // 끝났는데 실패했으면 종료 코드로도 알린다 (스크립트가 성공으로 읽지 않게)
+    match finished_failure(&r) {
+        Some(why) => Err(crate::error::CliError::Failed(why).into()),
+        None => Ok(()),
+    }
+}
+
+/// `GET /api/actions/runs/:id`가 끝났고 실패했으면 그 원인
+fn finished_failure(r: &Value) -> Option<String> {
+    let result = r.get("result").filter(|_| r.get("done").and_then(Value::as_bool) == Some(true))?;
+    (result.get("success").and_then(Value::as_bool) == Some(false)).then(|| failure(result))
 }
 
 #[cfg(test)]
@@ -174,5 +184,14 @@ mod tests {
         ] });
         assert_eq!(failure(&r), "2. server.start: port_conflict");
         assert_eq!(failure(&json!({ "success": false, "result": { "error": "boom" } })), "boom");
+    }
+
+    /// `do --run`: 끝난 실행이 실패였으면 실패로, 아직 도는 중이거나 성공이면 아니다
+    #[test]
+    fn a_finished_failed_run_is_a_failure() {
+        let failed = json!({ "done": true, "result": { "success": false, "steps": [{ "n": 1, "actionId": "server.start", "status": "failed", "code": "x" }] } });
+        assert_eq!(finished_failure(&failed).as_deref(), Some("1. server.start: x"));
+        assert_eq!(finished_failure(&json!({ "done": true, "result": { "success": true } })), None);
+        assert_eq!(finished_failure(&json!({ "done": false, "steps": [] })), None);
     }
 }
