@@ -88,17 +88,19 @@ function SabaStorage({ onBack, isExiting, devMode }) {
 // ─────────────────────────────────────────────────────────────
 
 // 컴포넌트 데이터 파싱 — 순수 함수이므로 컴포넌트 밖에 정의
+// 모듈/익스텐션은 별도 탭이라 카드로 보이지 않지만(hidden), 모두 업데이트가 함께 받고 적용한다 (UP1).
+// locales는 백그라운드 자동 업데이트 — 다루지 않는다
 const parseComponents = (comps) =>
     (comps || [])
         .filter((c) => {
             const k = typeof c.component === 'string' ? c.component : String(c.component);
-            // 모듈/익스텐션은 별도 탭, locales는 백그라운드 자동 업데이트 — UI에 비표시
-            return !k.startsWith('module-') && !k.startsWith('ext-') && k !== 'locales';
+            return k !== 'locales';
         })
         .map((c) => {
             const key = typeof c.component === 'string' ? c.component : String(c.component);
             return {
                 key,
+                hidden: key.startsWith('module-') || key.startsWith('ext-'),
                 display: c.display_name || key,
                 icon: key.startsWith('module-')
                     ? 'gamepad'
@@ -551,7 +553,7 @@ function ComponentsTab({ devMode }) {
                 </div>
 
                 <div className="ss-cards">
-                    {components.map((c) => {
+                    {components.filter((c) => !c.hidden).map((c) => {
                         const isBusy = busyKeys.has(c.key) || busyAll;
                         const isDownloading = isBusy && downloadProgress.active && downloadProgress.component === c.key;
                         const pct = downloadProgress.percent;
