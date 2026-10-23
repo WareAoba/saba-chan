@@ -110,6 +110,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     ctx.in_shell = true;
     let menu = app::menu_from(&crate::cli::localized());
     let mut app = App::new(menu);
+    app.port = ctx.api.port;
     app.push_line(&t!("tui.welcome"));
 
     let (tx, mut rx) = unbounded_channel::<Msg>();

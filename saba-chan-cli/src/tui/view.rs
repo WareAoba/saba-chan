@@ -125,7 +125,7 @@ fn header(app: &App, width: u16) -> Line<'static> {
     let failed = snap.updates.as_ref().is_some_and(|u| !s(u, "error").is_empty());
     if updates > 0 {
         items.push((4, Span::styled(t!("tui.updates_n", count = updates), Style::default().fg(Color::Yellow))));
-    } else if !failed {
+    } else if snap.updates.is_some() && !failed {
         items.push((4, Span::styled(t!("tui.updates_none"), dim())));
     }
     const SEP: &str = "  │  ";
@@ -480,7 +480,10 @@ fn draw_updates(f: &mut Frame, app: &mut App, area: Rect) {
     let n = u.get("updates_available").and_then(Value::as_u64).unwrap_or(0);
     let failed = !s(&u, "error").is_empty();
     let mut lines = Vec::new();
-    if n > 0 {
+    if u.is_null() {
+        // 아직 답을 못 받았다: 최신인지 모른다
+        lines.push(Line::from(Span::styled(t!("tui.updates_checking"), dim())));
+    } else if n > 0 {
         lines.push(Line::from(Span::styled(t!("tui.updates_n", count = n), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
     } else if !failed {
         // 확인에 실패했으면 "최신"이라고 말하지 않는다
@@ -494,8 +497,8 @@ fn draw_updates(f: &mut Frame, app: &mut App, area: Rect) {
     }
     lines.push(Line::from(""));
     for c in u.get("components").and_then(Value::as_array).into_iter().flatten() {
-        let name = s(c, "name");
-        let name = if name.is_empty() { s(c, "key") } else { name };
+        let name = s(c, "display_name");
+        let name = if name.is_empty() { s(c, "component") } else { name };
         let cur = s(c, "current_version");
         let latest = s(c, "latest_version");
         let mark = if c.get("update_available").and_then(Value::as_bool) == Some(true) { Span::styled(" ↑", Style::default().fg(Color::Yellow)) } else { Span::raw("") };
@@ -509,7 +512,7 @@ fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
     let h = app.snap.health.clone().unwrap_or(Value::Null);
     let rows = vec![
         (t!("tui.settings.daemon"), format!("v{} · pid {}", s(&h, "version"), h.get("pid").map(|p| p.to_string()).unwrap_or_default())),
-        (t!("tui.settings.port"), crate::bootstrap::ipc_port().to_string()),
+        (t!("tui.settings.port"), app.port.to_string()),
         (t!("tui.settings.language"), crate::i18n::lang().to_string()),
     ];
     let mut lines = kv_lines(&rows);
@@ -729,6 +732,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     let job_lines = jobs(app);
     if area.width < MIN_WIDTH {
+        // 안내만 보이므로 예전 클릭 자리를 지운다 (보이지 않는 버튼이 눌리지 않게)
+        app.button_areas.clear();
+        app.nav_area = Rect::default();
+        app.list_area = Rect::default();
+        app.console_area = Rect::default();
         let rows = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(1), Constraint::Min(1)]).split(area);
         f.render_widget(Paragraph::new(header(app, rows[0].width)), rows[0]);
         f.render_widget(Paragraph::new(t!("tui.too_narrow")).alignment(Alignment::Center).wrap(Wrap { trim: true }), rows[1]);
@@ -845,6 +853,37 @@ mod tests {
         for y in r.y..r.y + r.height {
             assert!(buf[(r.x - 1, y)].symbol().width() < 2, "row {y}");
         }
+    }
+
+    /// 업데이트 상태를 아직 못 받았으면 "최신"이라고 하지 않고, 구성요소는 데몬이 주는 이름으로 보인다
+    #[test]
+    fn updates_are_not_up_to_date_before_the_daemon_answers() {
+        let mut app = app_with_data();
+        assert!(!screen(&mut app, 140, 34).lines().next().unwrap().contains("최신"));
+        app.page = Page::Updates;
+        assert!(!screen(&mut app, 140, 34).contains("최신"));
+        app.snap.updates = Some(json!({ "updates_available": 1, "components": [{ "component": "saba-core", "display_name": "SabaCore", "current_version": "0.1.9", "latest_version": "0.1.10", "update_available": true }] }));
+        assert!(screen(&mut app, 140, 34).contains("SabaCore"));
+    }
+
+    /// 설정 화면의 데몬 포트는 지금 붙은 데몬의 포트다
+    #[test]
+    fn settings_show_the_port_in_use() {
+        let mut app = app_with_data();
+        app.port = 41234;
+        app.page = Page::Settings;
+        assert!(screen(&mut app, 140, 34).contains("41234"));
+    }
+
+    /// 좁아져 안내만 보일 때 예전 버튼 자리가 클릭되지 않게 지운다
+    #[test]
+    fn a_too_narrow_screen_forgets_old_click_areas() {
+        let mut app = app_with_data();
+        app.page = Page::Servers;
+        screen(&mut app, 140, 34);
+        assert!(!app.button_areas.is_empty());
+        screen(&mut app, 50, 20);
+        assert!(app.button_areas.is_empty() && app.list_area == Rect::default() && app.console_area == Rect::default() && app.nav_area == Rect::default());
     }
 
     /// 쪽마다 그려지고 버튼 자리가 마우스용으로 남는다

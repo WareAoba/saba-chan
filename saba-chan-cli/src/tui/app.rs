@@ -281,6 +281,8 @@ pub struct App {
     pub jobs: BTreeMap<u64, Job>,
     pub running: bool,
     pub show_help: bool,
+    /// 지금 붙은 데몬의 포트 (설정 화면)
+    pub port: u16,
     /// 마지막으로 그린 자리 (마우스)
     pub nav_area: Rect,
     pub list_area: Rect,
@@ -298,6 +300,7 @@ impl App {
             back: Focus::Nav,
             list_state,
             picked: [0; Page::ALL.len()],
+            port: 0,
             button: 0,
             snap: Snapshot::default(),
             menu,
