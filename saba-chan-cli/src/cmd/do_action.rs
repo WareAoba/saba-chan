@@ -30,12 +30,26 @@ fn print_summary(p: &Value) {
     output::print_kv(&rows);
 }
 
+/// 실패한 실행의 원인: 단일 액션은 `result.error`, 여러 단계는 멈춘 단계의 `error`(없으면 `code`)
+fn failure(r: &Value) -> String {
+    let result = r.get("result").cloned().unwrap_or(Value::Null);
+    if let Some(m) = result.get("error").or_else(|| result.get("message")).and_then(Value::as_str) {
+        return m.to_string();
+    }
+    let failed = r.get("steps").and_then(Value::as_array).into_iter().flatten().find(|st| s(st, "status") == "failed");
+    match failed {
+        Some(st) => {
+            let why = st.get("error").or_else(|| st.get("code")).and_then(Value::as_str).unwrap_or("failed");
+            format!("{}. {}: {why}", st.get("n").and_then(Value::as_u64).unwrap_or(0), s(st, "actionId"))
+        }
+        None => "failed".to_string(),
+    }
+}
+
 /// 실행 결과: 실패면 오류로, 아니면 끝난 알림
 fn finish(ctx: &Ctx, r: &Value, done: &str) -> Result<()> {
     if r.get("success").and_then(Value::as_bool) == Some(false) {
-        let result = r.get("result").cloned().unwrap_or(Value::Null);
-        let msg = result.get("error").or_else(|| result.get("message")).and_then(Value::as_str).unwrap_or("failed").to_string();
-        return Err(crate::error::CliError::Failed(msg).into());
+        return Err(crate::error::CliError::Failed(failure(r)).into());
     }
     ctx.out.done(done, r);
     Ok(())
@@ -100,6 +114,10 @@ pub async fn steps(ctx: &Ctx, raw: &str, plan_only: bool) -> Result<()> {
     let mut r = ctx.api.action("plan", "run", json!({ "planId": s(&planned, "planId") })).await?;
     if r.get("running").and_then(Value::as_bool) == Some(true) {
         let run = s(&r, "runId").to_string();
+        // 기다리다 끊겨도 다시 볼 수 있게 실행 id를 먼저 알린다
+        if !ctx.out.json {
+            say!("{}", output::dim(&t!("do.run_hint", id = run)));
+        }
         let bar = crate::progress::spinner(&t!("do.running"));
         loop {
             tokio::time::sleep(POLL).await;
@@ -144,5 +162,17 @@ mod tests {
         let input = parse_input(&["count=3".into(), "on=true".into(), "name=world".into(), "list=[1,2]".into(), "quoted=\"x\"".into(), "msg=a=b".into()]).unwrap();
         assert_eq!(Value::Object(input), json!({ "count": 3, "on": true, "name": "world", "list": [1, 2], "quoted": "\"x\"", "msg": "a=b" }));
         assert!(parse_input(&["novalue".into()]).is_err());
+    }
+
+    /// 여러 단계가 실패하면 멈춘 단계와 그 원인을 알린다
+    #[test]
+    fn a_failed_step_says_which_step_and_why() {
+        let r = json!({ "success": false, "steps": [
+            { "n": 1, "actionId": "server.stop", "status": "done" },
+            { "n": 2, "actionId": "server.start", "status": "failed", "code": "port_conflict" },
+            { "n": 3, "actionId": "backup.create", "status": "skipped" },
+        ] });
+        assert_eq!(failure(&r), "2. server.start: port_conflict");
+        assert_eq!(failure(&json!({ "success": false, "result": { "error": "boom" } })), "boom");
     }
 }

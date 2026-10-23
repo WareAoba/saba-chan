@@ -797,7 +797,8 @@
     "running": "Running the steps…",
     "done_steps": "All steps done.",
     "state_running": "running",
-    "state_done": "finished"
+    "state_done": "finished",
+    "run_hint": "Running in the background (id {{id}}). It keeps going if you leave; check it with do --run {{id}}."
   },
   "perm": {
     "owner": "Owner",

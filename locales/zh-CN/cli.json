@@ -992,7 +992,8 @@
     "running": "正在运行步骤…",
     "done_steps": "所有步骤已完成。",
     "state_running": "运行中",
-    "state_done": "已完成"
+    "state_done": "已完成",
+    "run_hint": "正在后台运行（id {{id}}）。离开也会继续，可用 do --run {{id}} 查看进度。"
   },
   "perm": {
     "owner": "所有者",

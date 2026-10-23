@@ -1006,7 +1006,8 @@
     "running": "단계를 실행하는 중…",
     "done_steps": "모든 단계를 마쳤어요.",
     "state_running": "실행 중",
-    "state_done": "끝남"
+    "state_done": "끝남",
+    "run_hint": "뒤에서 실행 중이에요 (id {{id}}). 창을 닫아도 계속되고, 진행은 do --run {{id}} 로 볼 수 있어요."
   },
   "perm": {
     "owner": "주인",

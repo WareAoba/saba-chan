@@ -837,7 +837,8 @@
     "running": "Ejecutando los pasos…",
     "done_steps": "Todos los pasos terminaron.",
     "state_running": "en curso",
-    "state_done": "terminado"
+    "state_done": "terminado",
+    "run_hint": "Se ejecuta en segundo plano (id {{id}}). Sigue aunque salgas; consulta el avance con do --run {{id}}."
   },
   "players": {
     "title": "{{server}}: {{count}} conectados",

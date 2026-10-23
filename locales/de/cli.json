@@ -837,7 +837,8 @@
     "running": "Schritte werden ausgeführt…",
     "done_steps": "Alle Schritte erledigt.",
     "state_running": "läuft",
-    "state_done": "fertig"
+    "state_done": "fertig",
+    "run_hint": "Läuft im Hintergrund (ID {{id}}). Es läuft weiter, auch wenn du gehst; Fortschritt mit do --run {{id}}."
   },
   "players": {
     "title": "{{server}}: {{count}} online",

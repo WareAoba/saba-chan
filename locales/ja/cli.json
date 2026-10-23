@@ -997,7 +997,8 @@
     "running": "ステップを実行しています…",
     "done_steps": "すべてのステップが終わりました。",
     "state_running": "実行中",
-    "state_done": "完了"
+    "state_done": "完了",
+    "run_hint": "バックグラウンドで実行中です (id {{id}})。閉じても続き、進み具合は do --run {{id}} で見られます。"
   },
   "perm": {
     "owner": "オーナー",

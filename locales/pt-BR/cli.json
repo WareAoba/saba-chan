@@ -837,7 +837,8 @@
     "running": "Executando as etapas…",
     "done_steps": "Todas as etapas concluídas.",
     "state_running": "em andamento",
-    "state_done": "concluído"
+    "state_done": "concluído",
+    "run_hint": "Rodando em segundo plano (id {{id}}). Continua mesmo se você sair; acompanhe com do --run {{id}}."
   },
   "players": {
     "title": "{{server}}: {{count}} online",

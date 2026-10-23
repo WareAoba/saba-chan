@@ -837,7 +837,8 @@
     "running": "Étapes en cours…",
     "done_steps": "Toutes les étapes sont terminées.",
     "state_running": "en cours",
-    "state_done": "terminé"
+    "state_done": "terminé",
+    "run_hint": "Exécution en arrière-plan (id {{id}}). Elle continue même si vous partez ; suivez-la avec do --run {{id}}."
   },
   "players": {
     "title": "{{server}} : {{count}} en ligne",
