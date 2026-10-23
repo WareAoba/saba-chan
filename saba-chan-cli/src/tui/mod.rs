@@ -214,6 +214,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 Some(Action::Run(line)) => {
                     // 셸처럼 줄마다 포트를 다시 찾는다: 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다 (L62)
                     ctx.follow_daemon_port();
+                    app.port = ctx.api.port;
                     seq += 1;
                     task = start(&ctx, &mut app, &line, seq, tx.clone()).or(task);
                 }
@@ -223,6 +224,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             Msg::Term(Event::Mouse(m)) => match app.on_mouse(m) {
                 Some(Action::Run(line)) => {
                     ctx.follow_daemon_port();
+                    app.port = ctx.api.port;
                     seq += 1;
                     task = start(&ctx, &mut app, &line, seq, tx.clone()).or(task);
                 }
@@ -269,6 +271,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 app.running = false;
                 // 명령이 상태를 바꿨을 수 있으니(데몬 포트까지) 곧바로 다시 읽는다
                 ctx.follow_daemon_port();
+                app.port = ctx.api.port;
                 refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
             }
             Msg::Panicked => {
