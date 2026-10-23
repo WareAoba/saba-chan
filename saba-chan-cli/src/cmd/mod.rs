@@ -7,6 +7,7 @@ pub mod chatbot;
 pub mod config;
 pub mod console;
 pub mod daemon;
+pub mod discord_words;
 pub mod do_action;
 pub mod events;
 pub mod extension;

@@ -99,6 +99,7 @@
     "command_words": "Command words",
     "words_saved": "Saved the chat words of {{server}}.",
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
+    "words_not_used": "This Discord server doesn't use this server.",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
     "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
     "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
@@ -590,11 +591,11 @@
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
       "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
-      "bot.words": "What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
       "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
       "install": "Install Saba-chan on this PC without the window installer",
-      "uninstall": "Remove Saba-chan from this PC (settings and servers are kept unless removed)"
+      "uninstall": "Remove Saba-chan from this PC (settings and servers are kept unless removed)",
+      "server.discord": "What each Discord server calls this server and its commands in chat. No options: show"
     },
     "arg": {
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
@@ -632,9 +633,10 @@
       "bot.music.queue_lines": "Queue lines in the player panel (1-20)",
       "bot.music.refresh": "Player panel refresh in milliseconds (2000-10000)",
       "bot.music.normalize": "Even out loudness between tracks (on or off)",
-      "bot.words.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
-      "bot.words.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
-      "bot.words.clear": "Remove every word of this server",
+      "server.discord.guild": "Discord server by name or id (asked when several are paired and something changes)",
+      "server.discord.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
+      "server.discord.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
+      "server.discord.clear": "Remove every word of this server",
       "help.command": "Command path, e.g. `server start`",
       "events.kind": "Only these events; `instance` also takes `instance.exit` and the like",
       "events.server": "Only events of this server",
