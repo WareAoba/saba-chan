@@ -285,6 +285,8 @@ pub struct App {
     pub port: u16,
     /// 마지막으로 그린 자리 (마우스)
     pub nav_area: Rect,
+    /// 좁은 화면의 탭 자리 (쪽 순서대로, 화면 밖이면 빈 칸)
+    pub tab_areas: Vec<Rect>,
     pub list_area: Rect,
     pub button_areas: Vec<Rect>,
     pub console_area: Rect,
@@ -311,6 +313,7 @@ impl App {
             running: false,
             show_help: false,
             nav_area: Rect::default(),
+            tab_areas: Vec::new(),
             list_area: Rect::default(),
             button_areas: Vec::new(),
             console_area: Rect::default(),
@@ -662,6 +665,10 @@ impl App {
                     self.focus = Focus::Buttons;
                     self.button = i;
                     return self.press(i);
+                }
+                if let Some(i) = self.tab_areas.iter().position(|r| inside(*r)) {
+                    self.focus = Focus::Nav;
+                    return self.go(Page::ALL[i]);
                 }
                 if inside(self.nav_area) {
                     let page = row_in(self.nav_area).and_then(|i| Page::ALL.get(i).copied())?;

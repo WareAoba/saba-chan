@@ -154,6 +154,7 @@ fn draw_nav(f: &mut Frame, app: &mut App, area: Rect) {
     state.select(Page::ALL.iter().position(|p| *p == app.page));
     let list = List::new(items).block(panel(t!("tui.menu"), app.focus == Focus::Nav)).highlight_style(highlight(app.focus == Focus::Nav));
     app.nav_area = area;
+    app.tab_areas.clear();
     f.render_stateful_widget(list, area, &mut state);
 }
 
@@ -169,6 +170,20 @@ fn draw_tabs(f: &mut Frame, app: &mut App, area: Rect) {
     let mine = spans[at].content.width();
     let skip = (before + mine).saturating_sub(area.width as usize);
     app.nav_area = Rect::default();
+    // 앞을 자른 만큼 밀어서 보이는 부분만 클릭 자리로 남긴다
+    let mut x = 0usize;
+    app.tab_areas = spans
+        .iter()
+        .map(|s| {
+            let (start, end) = (x, x + s.content.width());
+            x = end;
+            let (l, r) = (start.max(skip) - skip, (end.saturating_sub(skip)).min(area.width as usize));
+            if r <= l {
+                return Rect::default();
+            }
+            Rect { x: area.x + l as u16, y: area.y, width: (r - l) as u16, height: 1 }
+        })
+        .collect();
     f.render_widget(Paragraph::new(Line::from(spans)).scroll((0, skip as u16)), area);
 }
 
@@ -735,6 +750,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         // 안내만 보이므로 예전 클릭 자리를 지운다 (보이지 않는 버튼이 눌리지 않게)
         app.button_areas.clear();
         app.nav_area = Rect::default();
+        app.tab_areas.clear();
         app.list_area = Rect::default();
         app.console_area = Rect::default();
         let rows = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(1), Constraint::Min(1)]).split(area);
@@ -883,7 +899,25 @@ mod tests {
         screen(&mut app, 140, 34);
         assert!(!app.button_areas.is_empty());
         screen(&mut app, 50, 20);
-        assert!(app.button_areas.is_empty() && app.list_area == Rect::default() && app.console_area == Rect::default() && app.nav_area == Rect::default());
+        assert!(app.button_areas.is_empty() && app.list_area == Rect::default() && app.console_area == Rect::default() && app.nav_area == Rect::default() && app.tab_areas.is_empty());
+    }
+
+    /// 80칸처럼 탭 줄로 그릴 때도 보이는 탭을 누르면 그 쪽으로 간다
+    #[test]
+    fn a_visible_tab_can_be_clicked() {
+        use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = app_with_data();
+        let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let first = Page::Servers.title().chars().next().unwrap().to_string();
+        // 탭 줄에서 "2 <쪽 이름>"이 놓인 칸을 찾는다
+        let (col, row) = (0..buf.area.height)
+            .flat_map(|y| (0..buf.area.width.saturating_sub(2)).map(move |x| (x, y)))
+            .find(|&(x, y)| buf[(x, y)].symbol() == "2" && buf[(x + 2, y)].symbol() == first)
+            .expect("servers tab is drawn");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: col, row, modifiers: KeyModifiers::NONE });
+        assert_eq!(app.page, Page::Servers);
     }
 
     /// 쪽마다 그려지고 버튼 자리가 마우스용으로 남는다

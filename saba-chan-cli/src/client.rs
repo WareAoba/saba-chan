@@ -632,13 +632,16 @@ impl Api {
         path.push_str(&format!("&locale={}", seg(crate::i18n::lang())));
         self.get(&path).await
     }
-    /// POST /api/actions/:id/plan·run `{input, instance?}` 또는 `{planId}`
-    pub async fn action(&self, id: &str, step: &str, body: Value) -> Result<Value> {
+    /// POST /api/actions/:id/plan·run `{input, instance?, locale}` 또는 `{planId, locale}`: 요약 문구는 CLI가 고른 언어로
+    pub async fn action(&self, id: &str, step: &str, mut body: Value) -> Result<Value> {
+        if let Some(m) = body.as_object_mut() {
+            m.entry("locale").or_insert_with(|| json!(crate::i18n::lang()));
+        }
         self.post_long(&format!("/api/actions/{}/{}", seg(id), step), body).await
     }
-    /// POST /api/actions/plan `{steps: [{id, instance?, input}]}` — 여러 단계 계획. 실행은 `action("plan", "run", {planId})`
+    /// POST /api/actions/plan `{steps: [{id, instance?, input}], locale}` — 여러 단계 계획. 실행은 `action("plan", "run", {planId})`
     pub async fn plan_steps(&self, steps: Value) -> Result<Value> {
-        self.post("/api/actions/plan", json!({ "steps": steps })).await
+        self.post("/api/actions/plan", json!({ "steps": steps, "locale": crate::i18n::lang() })).await
     }
     /// GET /api/actions/runs/:runId — 뒤에서 이어 가는 여러 단계 실행의 진행
     pub async fn action_run(&self, run_id: &str) -> Result<Value> {
@@ -1091,6 +1094,45 @@ mod tests {
         });
         Api::new(port, lang.map(str::to_string)).call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
         server.await.unwrap()
+    }
+
+    /// 한 번 받은 요청의 본문 (JSON)
+    async fn request_body(send: impl FnOnce(Api) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value>> + Send>>) -> Value {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let (mut req, mut buf) = (Vec::new(), [0; 4096]);
+            loop {
+                let n = sock.read(&mut buf).await.unwrap();
+                assert!(n > 0, "connection closed before the request ended");
+                req.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&req).to_string();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let len = head
+                        .lines()
+                        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap()))
+                        .unwrap_or(0);
+                    if body.len() >= len {
+                        sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
+                        return serde_json::from_str::<Value>(body).unwrap();
+                    }
+                }
+            }
+        });
+        send(Api::new(port, None)).await.unwrap();
+        server.await.unwrap()
+    }
+
+    /// 액션 계획·여러 단계 계획은 요약 문구를 CLI가 고른 언어로 받게 본문에 `locale`을 싣는다 (데몬은 머리가 아니라 본문을 본다)
+    #[tokio::test]
+    async fn action_plans_ask_for_the_cli_language() {
+        let lang = crate::i18n::lang().to_string();
+        let one = request_body(|api| Box::pin(async move { api.action("server.stop", "plan", json!({ "input": {} })).await })).await;
+        assert_eq!(one["locale"], json!(lang));
+        let many = request_body(|api| Box::pin(async move { api.plan_steps(json!([])).await })).await;
+        assert_eq!(many["locale"], json!(lang));
     }
 
     /// `--lang`을 주면 데몬 문구도 그 언어로 오게 요청마다 `Accept-Language`를 싣는다. 안 주면 데몬 설정을 따른다
