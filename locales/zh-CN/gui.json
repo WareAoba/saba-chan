@@ -936,6 +936,7 @@
     "perm_member_level": "{{name}} 的级别",
     "perm_reset_member": "恢复默认级别",
     "perm_reset_member_named": "将 {{name}} 恢复为默认级别",
+    "perm_default_members": "默认等级的成员",
     "perm_others": "其他成员使用默认级别（{{level}}）。",
     "perm_add": "授予级别",
     "perm_add_id": "Discord 用户 ID",

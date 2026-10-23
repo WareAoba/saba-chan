@@ -936,6 +936,7 @@
     "perm_member_level": "{{name}} のレベル",
     "perm_reset_member": "既定のレベルに戻す",
     "perm_reset_member_named": "{{name}} を既定のレベルに戻す",
+    "perm_default_members": "既定レベルのメンバー",
     "perm_others": "その他のメンバーは既定のレベル（{{level}}）です。",
     "perm_add": "レベルを付与",
     "perm_add_id": "Discord ユーザー ID",

@@ -936,6 +936,7 @@
     "perm_member_level": "Stufe für {{name}}",
     "perm_reset_member": "Zurück zur Standardstufe",
     "perm_reset_member_named": "{{name}} auf die Standardstufe zurücksetzen",
+    "perm_default_members": "Mitglieder mit Standardstufe",
     "perm_others": "Alle anderen haben die Standardstufe ({{level}}).",
     "perm_add": "Stufe vergeben",
     "perm_add_id": "Discord-Benutzer-ID",

@@ -936,6 +936,7 @@
     "perm_member_level": "{{name}}의 레벨",
     "perm_reset_member": "기본 레벨로",
     "perm_reset_member_named": "{{name}}을(를) 기본 레벨로 되돌리기",
+    "perm_default_members": "기본 레벨 멤버",
     "perm_others": "그 밖의 멤버는 기본 레벨({{level}})이에요.",
     "perm_add": "레벨 주기",
     "perm_add_id": "디스코드 사용자 ID",
