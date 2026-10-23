@@ -630,6 +630,21 @@ pub async fn install_module_from_manifest(
     .unwrap_or_else(|e| fail(e.to_string()))
 }
 
+/// 카탈로그 모듈의 `requires`를 못 맞춘 거절. 로드 실패·시작 응답과 같은 코드와 목록 꼴(`"saba-core >=0.1.10 (installed 0.1.9)"`)
+fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::DependencyIssue]) -> Value {
+    json!({
+        "ok": false,
+        "error": unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "),
+        "error_code": "module_dependency_unsatisfied",
+        "module": module_id,
+        "missing_dependencies": unmet
+            .iter()
+            .map(|i| format!("{} {} ({})", i.required_component, i.required_version,
+                i.installed_version.as_ref().map_or("not installed".to_string(), |v| format!("installed {v}"))))
+            .collect::<Vec<_>>(),
+    })
+}
+
 async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
     let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
     let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
@@ -655,7 +670,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
         let unmet = saba_chan_updater_lib::unmet_requires(&key, requires, &installed);
         if !unmet.is_empty() {
-            return fail(unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
+            return (StatusCode::OK, Json(unmet_requires_body(&module_id, &unmet))).into_response();
         }
     }
 
@@ -1831,6 +1846,20 @@ mod tests {
         let kept = sup.drain_port_conflict_stops();
         assert_eq!(kept.len(), crate::supervisor::PORT_CONFLICT_STOPS_KEPT);
         assert_eq!(kept.last().unwrap().port, 29, "the newest is kept");
+    }
+
+    /// 새 코어를 요구하는 카탈로그 모듈은 로드 실패·시작 응답과 같은 코드와 목록으로 거절한다 (클라이언트가 "업데이트가 필요해요"로 보인다)
+    #[test]
+    fn catalog_module_needing_newer_core_is_refused_with_dependency_code() {
+        let requires = std::collections::HashMap::from([("saba-core".to_string(), ">=99.0.0".to_string())]);
+        let installed = std::collections::HashMap::from([("saba-core".to_string(), "0.1.9".to_string())]);
+        let unmet = saba_chan_updater_lib::unmet_requires("module-future", &requires, &installed);
+        let body = unmet_requires_body("future", &unmet);
+        assert_eq!((body["ok"].clone(), body["module"].clone()), (json!(false), json!("future")));
+        assert_eq!(body["error_code"], "module_dependency_unsatisfied", "{body}");
+        assert_eq!(body["missing_dependencies"], json!(["saba-core >=99.0.0 (installed 0.1.9)"]), "{body}");
+        let missing = saba_chan_updater_lib::unmet_requires("module-future", &requires, &Default::default());
+        assert_eq!(unmet_requires_body("future", &missing)["missing_dependencies"], json!(["saba-core >=99.0.0 (not installed)"]));
     }
 
     /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)

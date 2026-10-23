@@ -163,12 +163,11 @@ pub fn state_badge(sv: &Value) -> String {
 pub fn discord_line(a: &Value) -> String {
     let flag = |k: &str| a.get(k).and_then(Value::as_bool).unwrap_or(false);
     // 에이전트는 돌고 있어도 릴레이가 이 앱 버전을 받지 않는다
-    if a.get("lastErrorCode").and_then(Value::as_str) == Some("agent_too_old") {
-        let min = a.get("minVersion").and_then(Value::as_str).unwrap_or("?");
+    if let Some(update) = crate::error::update_required(a, "") {
         format!(
             "{} {}  {}",
             console::style("●").red(),
-            console::style(t!("bot.agent_too_old", min = min)).red(),
+            console::style(update).red(),
             output::dim("saba-chan-cli update check")
         )
     } else if flag("running") {
@@ -334,7 +333,7 @@ mod tests {
         crate::i18n::init("ko");
         let line = |v: Value| console::strip_ansi_codes(&discord_line(&v)).to_string();
         let old = line(json!({ "running": true, "hasToken": true, "lastErrorCode": "agent_too_old", "minVersion": "0.1.9" }));
-        assert!(old.contains("0.1.9") && old.contains("saba-chan-cli update check"), "{old}");
+        assert!(old.contains("업데이트가 필요해요") && old.contains("0.1.9") && old.contains("saba-chan-cli update check"), "{old}");
         assert!(!old.contains(&t!("status.connected")), "{old}");
         assert!(line(json!({ "running": true, "hasToken": true })).contains(&t!("status.connected")));
     }

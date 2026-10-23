@@ -100,8 +100,7 @@
     "words_saved": "{{server}} のチャット用の語を保存しました。",
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
-    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
+    "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}"
   },
   "col": {
     "players": "接続者",
@@ -234,8 +233,7 @@
       "forbidden": "そのDiscordサーバーでこの操作をする権限がありません。",
       "expired": "コードの有効期限が切れました。最初からやり直してください。",
       "rate_limited": "リクエストが多すぎます。1分ほどしてからもう一度お試しください。",
-      "other": "リレーがリクエストを拒否しました（{{code}}）。",
-      "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
+      "other": "リレーがリクエストを拒否しました（{{code}}）。"
     },
     "ambiguous": "「{{query}}」に一致する{{what}}が複数あります。",
     "ambiguous_hint": "もっと具体的に指定してください: {{names}}",
@@ -354,8 +352,7 @@
     "removed": "モジュール {{id}} を削除しました。",
     "unmet": "{{component}} {{required}} が必要です（インストール済み: {{installed}}）",
     "load_failed": {
-      "invalid": "{{module}} モジュールを読み込めませんでした。module.toml が形式に合っていません:",
-      "unsupported": "{{module}} モジュールを読み込めませんでした。モジュール形式 {{required}} を読むには Saba-chan を更新してください。"
+      "invalid": "{{module}} モジュールを読み込めませんでした。module.toml が形式に合っていません:"
     }
   },
   "noun": {
@@ -1091,5 +1088,12 @@
     "failed_no_log": "インストールできませんでした: {{reason}}",
     "done": "{{dir}} にインストールしました",
     "next": "次のコマンドでデーモンを起動してください:\n{{command}}"
+  },
+  "update_required": {
+    "title": "アップデートが必要です",
+    "relay": "アップデートが必要です。リレーはサバちゃん {{version}} 以上を必要としています。",
+    "module": "アップデートが必要です。{{name}} モジュールはサバちゃん {{version}} 以上で動きます。",
+    "module_newer": "アップデートが必要です。{{name}} モジュールはより新しいサバちゃんで動きます。",
+    "extension": "アップデートが必要です。{{name}} 拡張機能はサバちゃん {{version}} 以上で動きます。"
   }
 }

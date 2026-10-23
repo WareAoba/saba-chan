@@ -100,8 +100,7 @@
     "words_saved": "Saved the chat words of {{server}}.",
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
-    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
-    "agent_too_old": "The relay no longer accepts this app version. Update the app to {{min}} or later."
+    "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}"
   },
   "col": {
     "players": "Players",
@@ -234,8 +233,7 @@
       "forbidden": "You don't have permission to do that in that Discord server.",
       "expired": "The code has expired. Start again.",
       "rate_limited": "Too many requests. Try again in about a minute.",
-      "other": "The relay refused the request ({{code}}).",
-      "agent_too_old": "The relay no longer accepts this app version. Update the app to {{min}} or later."
+      "other": "The relay refused the request ({{code}})."
     },
     "ambiguous": "More than one {{what}} matches \"{{query}}\".",
     "ambiguous_hint": "Be more specific: {{names}}",
@@ -354,8 +352,7 @@
     "removed": "Module {{id}} deleted.",
     "unmet": "Needs {{component}} {{required}} (installed: {{installed}})",
     "load_failed": {
-      "invalid": "Couldn't load the {{module}} module. Its module.toml doesn't match the format:",
-      "unsupported": "Couldn't load the {{module}} module. Update Saba-chan to read module format {{required}}."
+      "invalid": "Couldn't load the {{module}} module. Its module.toml doesn't match the format:"
     }
   },
   "noun": {
@@ -896,5 +893,12 @@
     "failed_no_log": "Install failed: {{reason}}",
     "done": "Installed to {{dir}}",
     "next": "Start the daemon with:\n{{command}}"
+  },
+  "update_required": {
+    "title": "Update required",
+    "relay": "Update required. The relay needs Saba-chan {{version}} or later.",
+    "module": "Update required. The {{name}} module needs Saba-chan {{version}} or later.",
+    "module_newer": "Update required. The {{name}} module needs a newer Saba-chan.",
+    "extension": "Update required. The {{name}} extension needs Saba-chan {{version}} or later."
   }
 }

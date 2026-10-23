@@ -1977,7 +1977,14 @@ impl ModuleLoader {
 
     /// 이름이 `name`인 모듈을 읽었지만 쓸 수 없었다면 그 기록
     pub fn load_failure(&self, name: &str) -> Option<ModuleLoadError> {
-        self.load_errors.read().unwrap().iter().find(|e| e.module.as_deref() == Some(name)).cloned()
+        // module.toml을 끝까지 읽지 못한 실패(더 새 스키마 등)는 이름이 없어 모듈 폴더 이름으로 찾는다
+        let folder = |e: &ModuleLoadError| Path::new(&e.path).file_name().is_some_and(|f| f == name);
+        self.load_errors
+            .read()
+            .unwrap()
+            .iter()
+            .find(|e| e.module.as_deref().map_or_else(|| folder(e), |m| m == name))
+            .cloned()
     }
 }
 

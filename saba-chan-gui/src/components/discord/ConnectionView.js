@@ -354,13 +354,13 @@ export function ConnectionView({
                 {agentMinVersion && (
                     <div className="notice tone-warn">
                         <Icon name="alertTriangle" size="sm" />
-                        <span>{t('discord.agent_too_old', { version: agentMinVersion })}</span>
+                        <span>{t('update_required.relay', { version: agentMinVersion })}</span>
                         <button
                             type="button"
                             className="btn btn-ghost btn-sm"
                             onClick={() => useUIStore.getState().openSettings('update')}
                         >
-                            {t('discord.agent_check_update')}
+                            {t('update_required.check')}
                         </button>
                     </div>
                 )}

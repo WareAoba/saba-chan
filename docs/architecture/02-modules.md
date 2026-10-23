@@ -65,7 +65,7 @@
 | `description` | String | ○ | None |
 | `icon` | String | ○ | 모듈 폴더 기준 상대경로. `/api/modules`가 base64로 인코딩해 응답 (`D:src/ipc/handlers/server.rs:342-348`). MIME은 무조건 `image/png` |
 | `log_pattern` | String(regex) | ○ | `(?P<level>…)` 명명 그룹 필수. 콘솔 레벨 파싱에 쓰임 (§3.3) |
-| `dependencies` | Table<String,String> | ○ | `[module.dependencies]`, 값은 `">=x.y.z"`. 두 단계로 강제된다. ① 로드: `saba-core` 요구 버전이 데몬보다 높으면 모듈을 로드하지 않고 `GET /api/modules`의 `failed[]`에 `error_code: "module_dependency_unsatisfied"`, `missing_dependencies`와 함께 싣는다 (`module_loader.rs:467-481, 508-546`, `D:src/ipc/handlers/server.rs:391`). ② 시작: 인스턴스 시작 전에 `saba-core`와 켜진 익스텐션(`ext-<id>`) 요구를 다시 확인하고, 못 맞추면 `module_dependency_unsatisfied`와 `missing_dependencies`로 시작을 거부한다 (`D:src/supervisor/mod.rs:501-544, 568, 1349`). 다른 키(`gui`, `cli` 등)는 데몬이 알 수 없어 넘긴다 |
+| `dependencies` | Table<String,String> | ○ | `[module.dependencies]`, 값은 `">=x.y.z"`. 두 단계로 강제된다. ① 로드: `saba-core` 요구 버전이 데몬보다 높으면 모듈을 로드하지 않고 `GET /api/modules`의 `failed[]`에 `error_code: "module_dependency_unsatisfied"`, `missing_dependencies`와 함께 싣는다 (`module_loader.rs:467-481, 508-546`, `D:src/ipc/handlers/server.rs:391`). ② 시작: 인스턴스 시작 전에 `saba-core`와 켜진 익스텐션(`ext-<id>`) 요구를 다시 확인하고, 못 맞추면 `module_dependency_unsatisfied`와 `missing_dependencies`, `module`(모듈 이름)로 시작을 거부한다 (`D:src/supervisor/mod.rs:501-544, 568, 1349`). 데몬보다 새 스키마라 로드되지 못한 모듈은 시작도 `module_schema_unsupported`와 `required`, `module`로 거부한다(로드 실패 항목은 `module`이 없으면 모듈 폴더 이름으로 찾는다, `load_failure`). 다른 키(`gui`, `cli` 등)는 데몬이 알 수 없어 넘긴다 |
 | `game_name`, `display_name`, `author` | String | ○ | 메타데이터에 실리고 `/api/modules` 응답에도 들어간다 (`D:src/ipc/mod.rs:246-251`) |
 
 #### `[update]` (없어짐)
@@ -593,6 +593,7 @@ players = "player_count"
   - 설치된 모듈 버전이 manifest 버전보다 높으면 받지 않는다(`version::is_downgrade`). 릴레이가 예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다.
   3. R2 URL에서 `<modules>/.tmp-module-<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
   4. `.staging-<id>`에 풀고 데몬과 같은 규칙(`load_module_dir`: `module.toml` 파싱, 진입 파일, `saba-core` 요구 버전)으로 읽힐 때만 기존 `<modules>/<id>`와 바꾼다(`install_staged_module`). 기존 폴더는 `.old-<id>`로 옮겨 두었다가 새 폴더가 자리를 잡으면 지우고, 옮기다 실패하면 되돌린다. 모듈 탐색은 점으로 시작하는 항목을 건너뛰고, 데몬은 기동할 때 모듈·익스텐션 폴더의 `.staging-*`·`.old-*`·`.tmp-*`를 지운다(`utils::remove_install_leftovers`, 설치 도중 끝났을 때 남은 것). 단일 실행 잠금을 못 잡고 계속 가는 경우에는 정리하지 않는다. 또 `.old-<id>`가 있는데 `<id>`가 없으면(옛 폴더를 옮긴 뒤 새 폴더를 두기 전에 끝났다) 지우지 않고 `<id>`로 되돌린다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
+  - manifest의 `requires`(예: `{"saba-core": ">=0.1.10"}`)를 못 맞추면 받지 않고 `{ok:false, error, error_code:"module_dependency_unsatisfied", module, missing_dependencies:["saba-core >=0.1.10 (installed 0.1.9)"]}`로 답한다(로드 실패·시작 응답과 같은 꼴, `unmet_requires_body`).
   - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
 - **신뢰 표시 알림**: 서명된 카탈로그에서 받지 않았거나(`unverified`) 받은 뒤 바뀐(`modified`) 모듈로 인스턴스를 만들면 `POST /api/instances` 응답에 `module_trust`와 `warnings[{code, module}]`가 실린다. 알림일 뿐 만들기·실행은 막지 않는다(`server.rs` `trust_warnings`). CLI는 경고 줄로 보인다.
 - **`DELETE /api/modules/:id`**: `..`·`/`·`\`가 든 `id`는 거부하고, `<modules>/<id>`를 `remove_dir_all`로 지운다. 여기서 `id`는 **디렉터리명**이다 (`server.rs:593-617`).

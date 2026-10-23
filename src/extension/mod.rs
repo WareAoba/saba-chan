@@ -1537,8 +1537,8 @@ impl ExtensionManager {
             if manifest.id != ext_id {
                 return Err(ExtensionError::id_mismatch(&manifest.id, ext_id).into());
             }
-            if let Some(reason) = Self::incompatibility(&manifest) {
-                anyhow::bail!("Cannot install '{}': {}", ext_id, reason);
+            if let Some(required) = manifest.min_app_version.as_deref().filter(|v| !version_satisfies(APP_VERSION, v)) {
+                return Err(ExtensionError::app_too_old(ext_id, required).into());
             }
             Ok(())
         })();
@@ -2154,6 +2154,16 @@ mod tests {
             {"id": "helper", "name": "H", "version": "0.1.0", "download_url": "x"}
         ])).unwrap();
         assert_eq!(mgr.missing_dependencies("box", &remote), ["helper"]);
+    }
+
+    /// 더 새 앱을 요구하는 패키지는 켤 때와 같은 app_version_unsatisfied로 거절한다 (클라이언트가 "업데이트가 필요해요"로 보인다)
+    #[test]
+    fn package_needing_newer_app_is_refused_with_version_code() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg = zip_package(json!({"id": "future", "name": "F", "version": "0.1.0", "min_app_version": "999.0.0"}), "x");
+        let err = ExtensionManager::stage_package(tmp.path(), "future", &pkg, None).unwrap_err();
+        let ext = err.downcast_ref::<ExtensionError>().expect("structured error");
+        assert_eq!((ext.error_code.as_str(), ext.related.clone()), ("app_version_unsatisfied", vec!["999.0.0".to_string()]));
     }
 
     #[test]

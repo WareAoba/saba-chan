@@ -213,11 +213,11 @@ describe('모듈 로드 실패 이유 (MK2)', () => {
         expect(text).not.toContain('raw');
     });
 
-    it('데몬보다 새 스키마면 필요한 스키마 버전과 업데이트 안내를 보인다', () => {
+    it('데몬보다 새 스키마면 업데이트가 필요하다고 보인다', () => {
         const f = { path: 'modules/game', error: 'raw', error_code: 'module_schema_unsupported', required: 3 };
         const text = failedModuleReason(f, t);
-        expect(text).toContain('modules.schema_unsupported');
-        expect(text).toContain('3');
+        expect(text).toContain('update_required.module_newer');
+        expect(text).not.toContain('raw');
     });
 });
 

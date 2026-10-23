@@ -74,8 +74,7 @@
     "link_declined": "Solicitud de conexión rechazada.",
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
-    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
-    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
+    "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}"
   },
   "col": {
     "players": "Jugadores",
@@ -187,8 +186,7 @@
       "forbidden": "No tienes permiso para hacer eso en ese servidor de Discord.",
       "expired": "El código caducó. Empieza de nuevo.",
       "rate_limited": "Demasiadas solicitudes. Inténtalo de nuevo en un minuto.",
-      "other": "El relay rechazó la solicitud ({{code}}).",
-      "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
+      "other": "El relay rechazó la solicitud ({{code}})."
     },
     "ambiguous": "Hay más de un {{what}} que coincide con «{{query}}».",
     "ambiguous_hint": "Sé más específico: {{names}}",
@@ -297,8 +295,7 @@
     "removed": "Módulo {{id}} eliminado.",
     "unmet": "Requiere {{component}} {{required}} (instalado: {{installed}})",
     "load_failed": {
-      "invalid": "No se pudo cargar el módulo {{module}}. Su module.toml no coincide con el formato:",
-      "unsupported": "No se pudo cargar el módulo {{module}}. Actualiza Saba-chan para leer el formato de módulo {{required}}."
+      "invalid": "No se pudo cargar el módulo {{module}}. Su module.toml no coincide con el formato:"
     }
   },
   "noun": {
@@ -699,5 +696,12 @@
     "failed_no_log": "La instalación falló: {{reason}}",
     "done": "Instalado en {{dir}}",
     "next": "Inicia el daemon con:\n{{command}}"
+  },
+  "update_required": {
+    "title": "Se necesita una actualización",
+    "relay": "Se necesita una actualización. El relé requiere Saba-chan {{version}} o posterior.",
+    "module": "Se necesita una actualización. El módulo {{name}} requiere Saba-chan {{version}} o posterior.",
+    "module_newer": "Se necesita una actualización. El módulo {{name}} requiere un Saba-chan más reciente.",
+    "extension": "Se necesita una actualización. La extensión {{name}} requiere Saba-chan {{version}} o posterior."
   }
 }

@@ -187,11 +187,7 @@ fn failed_lines(f: &Value) -> Vec<String> {
                     .map(str::to_string),
             )
             .collect(),
-        "module_schema_unsupported" => vec![t!(
-            "module.load_failed.unsupported",
-            module = module,
-            required = f.get("required").map(show).unwrap_or_default()
-        )],
+        _ if crate::error::update_required(f, &module).is_some() => crate::error::update_required(f, &module).into_iter().collect(),
         _ => {
             let what = if s(f, "module").is_empty() {
                 s(f, "path")
@@ -422,10 +418,10 @@ mod tests {
             ]
         );
         let newer = json!({ "path": "/m/ark", "error": "x", "error_code": "module_schema_unsupported", "required": 2 });
-        assert_eq!(
-            failed_lines(&newer),
-            vec![t!("module.load_failed.unsupported", module = "ark", required = 2)]
-        );
+        assert_eq!(failed_lines(&newer), vec![t!("update_required.module_newer", name = "ark")]);
+        let core = json!({ "path": "/m/pal", "error": "x", "error_code": "module_dependency_unsatisfied", "module": "palworld",
+            "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"] });
+        assert_eq!(failed_lines(&core), vec![t!("update_required.module", name = "palworld", version = "0.1.10")]);
         let other = json!({ "path": "/m/zz", "error": "boom" });
         assert_eq!(
             failed_lines(&other),

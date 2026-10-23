@@ -208,7 +208,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 | rescan | `POST /api/extensions/rescan` | 위 3.2 |
 | ~~force_disable~~ | — | → 해결: 함수가 삭제되었다 |
 
-에러 코드 → HTTP 매핑: `handlers/extension.rs:26-59`. not_found/not_mounted/manifest_not_found는 404, dependency_*·component_version_unsatisfied·app_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
+켜기(`POST /api/extensions/:id/enable`) 실패 본문에는 그 익스텐션 id `extension`이 실린다(`naming_extension`). 설치에서 패키지의 `min_app_version`을 못 맞추면 `install_failed` 대신 `app_version_unsatisfied`(`related[0]` = 요구 버전, `extension`)로 답한다(`stage_package`). 에러 코드 → HTTP 매핑: `handlers/extension.rs:26-59`. not_found/not_mounted/manifest_not_found는 404, dependency_*·component_version_unsatisfied·app_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
 
 ### 3.4 원격 목록 · 설치 · 업데이트
 

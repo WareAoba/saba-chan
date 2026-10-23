@@ -353,8 +353,7 @@
     "list_empty": "No se encontraron módulos",
     "fetch_failed_toast": "Falló la búsqueda de módulos: {{error}}",
     "load_error_title": "Error al cargar el módulo",
-    "schema_invalid": "module.toml no cumple el formato: {{problems}}",
-    "schema_unsupported": "Este módulo necesita una versión más nueva de Saba-chan (formato de módulo {{required}}). Actualiza Saba-chan."
+    "schema_invalid": "module.toml no cumple el formato: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -801,8 +800,6 @@
     "chain_discord": "Discord",
     "agent_desc": "Este PC recibe y ejecuta los comandos enviados desde Discord. Mientras esté apagada, el bot no responderá.",
     "agent_replaced": "La conexión de PC de esta cuenta de Discord se movió a otro PC, así que se detuvo aquí. Para volver a usar este PC, vuelve a emparejarlo desde este PC.",
-    "agent_too_old": "El servidor de retransmisión ya no acepta esta versión de la aplicación. Actualiza la aplicación a {{version}} o posterior.",
-    "agent_check_update": "Buscar actualizaciones",
     "agent_running": "Activada",
     "agent_connecting": "Iniciando",
     "agent_stopped": "Desactivada",
@@ -1457,5 +1454,13 @@
     "accepted": "Conectado a {{guild}}.",
     "expired": "La solicitud caducó. Pídela de nuevo desde Discord.",
     "failed": "No se pudo procesar la solicitud."
+  },
+  "update_required": {
+    "title": "Se necesita una actualización",
+    "relay": "Se necesita una actualización. El relé requiere Saba-chan {{version}} o posterior.",
+    "module": "Se necesita una actualización. El módulo {{name}} requiere Saba-chan {{version}} o posterior.",
+    "module_newer": "Se necesita una actualización. El módulo {{name}} requiere un Saba-chan más reciente.",
+    "extension": "Se necesita una actualización. La extensión {{name}} requiere Saba-chan {{version}} o posterior.",
+    "check": "Buscar actualizaciones"
   }
 }
