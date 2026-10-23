@@ -92,44 +92,55 @@ fn pct(v: Option<f64>) -> String {
 }
 
 /// 맨 위 한 줄: 이름·데몬·서버 수·CPU·메모리·디스코드·업데이트
-fn header(app: &App) -> Line<'static> {
+/// 맨 위 한 줄. 폭이 모자라면 덜 중요한 칸(메모리 → CPU → 업데이트 → 디스코드)부터 통째로 뺀다
+fn header(app: &App, width: u16) -> Line<'static> {
     let snap = &app.snap;
-    let sep = || Span::styled("  │  ", dim());
-    let mut spans = vec![Span::styled(
+    let brand = Span::styled(
         format!(" {} ", t!("tui.brand", version = env!("CARGO_PKG_VERSION"))),
         Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD),
-    )];
-    spans.push(Span::raw("  "));
-    match &snap.health {
-        Some(h) => spans.push(Span::styled(t!("tui.daemon_up", version = s(h, "version")), Style::default().fg(Color::Green))),
-        None => {
-            spans.push(Span::styled(t!("tui.daemon_down"), Style::default().fg(Color::Red)));
-            return Line::from(spans);
-        }
-    }
-    spans.push(sep());
-    spans.push(Span::raw(t!("tui.servers_running", running = snap.running(), total = snap.servers.len())));
+    );
+    let Some(h) = &snap.health else {
+        return Line::from(vec![brand, Span::raw("  "), Span::styled(t!("tui.daemon_down"), Style::default().fg(Color::Red))]);
+    };
+    // (뺄 차례: 클수록 먼저, 칸)
+    let mut items: Vec<(u8, Span<'static>)> = vec![
+        (0, Span::styled(t!("tui.daemon_up", version = s(h, "version")), Style::default().fg(Color::Green))),
+        (0, Span::raw(t!("tui.servers_running", running = snap.running(), total = snap.servers.len()))),
+    ];
     if let Some(m) = &snap.metrics {
-        spans.push(sep());
-        spans.push(Span::raw(format!("CPU {}", pct(m.pointer("/cpu/total_percent").and_then(Value::as_f64)))));
+        items.push((5, Span::raw(format!("CPU {}", pct(m.pointer("/cpu/total_percent").and_then(Value::as_f64))))));
         if let (Some(u), Some(t)) = (m.pointer("/memory/used_bytes").and_then(Value::as_f64), m.pointer("/memory/total_bytes").and_then(Value::as_f64)) {
-            spans.push(sep());
-            spans.push(Span::raw(t!("tui.memory_of", used = crate::cmd::monitor::bytes(u), total = crate::cmd::monitor::bytes(t))));
+            items.push((6, Span::raw(t!("tui.memory_of", used = crate::cmd::monitor::bytes(u), total = crate::cmd::monitor::bytes(t)))));
         }
     }
-    spans.push(sep());
     let relay = snap.agent.as_ref().and_then(|a| a.get("running")).and_then(Value::as_bool) == Some(true);
-    spans.push(Span::styled(
-        if relay { t!("tui.discord_on") } else { t!("tui.discord_off") },
-        Style::default().fg(if relay { Color::Green } else { Color::DarkGray }),
+    items.push((
+        3,
+        Span::styled(
+            if relay { t!("tui.discord_on") } else { t!("tui.discord_off") },
+            Style::default().fg(if relay { Color::Green } else { Color::DarkGray }),
+        ),
     ));
     let updates = snap.updates.as_ref().and_then(|u| u.get("updates_available")).and_then(Value::as_u64).unwrap_or(0);
-    spans.push(sep());
-    spans.push(if updates > 0 {
-        Span::styled(t!("tui.updates_n", count = updates), Style::default().fg(Color::Yellow))
-    } else {
-        Span::styled(t!("tui.updates_none"), dim())
-    });
+    let failed = snap.updates.as_ref().is_some_and(|u| !s(u, "error").is_empty());
+    if updates > 0 {
+        items.push((4, Span::styled(t!("tui.updates_n", count = updates), Style::default().fg(Color::Yellow))));
+    } else if !failed {
+        items.push((4, Span::styled(t!("tui.updates_none"), dim())));
+    }
+    const SEP: &str = "  │  ";
+    let used = |items: &[(u8, Span)]| brand.width() + 2 + items.iter().map(|(_, s)| s.width()).sum::<usize>() + SEP.width() * items.len().saturating_sub(1);
+    while used(&items) > width as usize {
+        let Some(at) = items.iter().enumerate().filter(|(_, (p, _))| *p > 0).max_by_key(|(_, (p, _))| *p).map(|(i, _)| i) else { break };
+        items.remove(at);
+    }
+    let mut spans = vec![brand, Span::raw("  ")];
+    for (i, (_, span)) in items.into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(SEP, dim()));
+        }
+        spans.push(span);
+    }
     Line::from(spans)
 }
 
@@ -467,15 +478,18 @@ fn draw_updates(f: &mut Frame, app: &mut App, area: Rect) {
     let body = with_buttons(f, app, area);
     let u = app.snap.updates.clone().unwrap_or(Value::Null);
     let n = u.get("updates_available").and_then(Value::as_u64).unwrap_or(0);
-    let mut lines = vec![Line::from(if n > 0 {
-        Span::styled(t!("tui.updates_n", count = n), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-    } else {
-        Span::styled(t!("tui.updates_none"), Style::default().fg(Color::Green))
-    })];
+    let failed = !s(&u, "error").is_empty();
+    let mut lines = Vec::new();
+    if n > 0 {
+        lines.push(Line::from(Span::styled(t!("tui.updates_n", count = n), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
+    } else if !failed {
+        // 확인에 실패했으면 "최신"이라고 말하지 않는다
+        lines.push(Line::from(Span::styled(t!("tui.updates_none"), Style::default().fg(Color::Green))));
+    }
     if u.get("checking").and_then(Value::as_bool) == Some(true) {
         lines.push(Line::from(Span::styled(t!("tui.updates_checking"), dim())));
     }
-    if !s(&u, "error").is_empty() {
+    if failed {
         lines.push(Line::from(Span::styled(t!("tui.updates_error"), Style::default().fg(Color::Red))));
     }
     lines.push(Line::from(""));
@@ -627,8 +641,9 @@ fn draw_console(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Paragraph::new(line), input_row);
 }
 
-/// 맨 아래 한 줄: 지금 할 수 있는 키 (콘솔에 있을 때와 아닐 때가 다르다)
-fn footer(app: &App) -> Line<'static> {
+/// 맨 아래 한 줄: 지금 할 수 있는 키 (콘솔에 있을 때와 아닐 때가 다르다).
+/// 폭이 모자라면 끝(나가기)은 두고 그 앞 안내부터 통째로 뺀다
+fn footer(app: &App, width: u16) -> Line<'static> {
     let text = if app.running {
         t!("tui.keys_running")
     } else if app.focus == Focus::Console {
@@ -636,7 +651,11 @@ fn footer(app: &App) -> Line<'static> {
     } else {
         t!("tui.keys")
     };
-    Line::from(Span::styled(text, dim()))
+    let mut parts: Vec<&str> = text.split(" · ").collect();
+    while parts.len() > 2 && parts.join(" · ").width() > width as usize {
+        parts.remove(parts.len() - 2);
+    }
+    Line::from(Span::styled(parts.join(" · "), dim()))
 }
 
 fn jobs(app: &App) -> Vec<Line<'static>> {
@@ -662,6 +681,15 @@ fn draw_popup(f: &mut Frame, title: &str, lines: Vec<Line>, area: Rect) {
     let height: usize = lines.iter().map(|l| wrap(&l.to_string(), inner_w).len()).sum::<usize>() + 2;
     let r = centered(area, width, height as u16);
     f.render_widget(Clear, r);
+    // 왼쪽 테두리에 걸친 두 칸 글자를 지운다 (남으면 터미널에서 테두리를 덮는다)
+    if r.x > 0 {
+        let buf = f.buffer_mut();
+        for y in r.y..r.y + r.height {
+            if buf[(r.x - 1, y)].symbol().width() > 1 {
+                buf[(r.x - 1, y)].set_symbol(" ");
+            }
+        }
+    }
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(panel(title.to_string(), true)), r);
 }
 
@@ -702,7 +730,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let job_lines = jobs(app);
     if area.width < MIN_WIDTH {
         let rows = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(1), Constraint::Min(1)]).split(area);
-        f.render_widget(Paragraph::new(header(app)), rows[0]);
+        f.render_widget(Paragraph::new(header(app, rows[0].width)), rows[0]);
         f.render_widget(Paragraph::new(t!("tui.too_narrow")).alignment(Alignment::Center).wrap(Wrap { trim: true }), rows[1]);
         // 명령이 묻는 중이면 좁아도 질문은 그린다
         draw_overlays(f, app, rows[1]);
@@ -719,7 +747,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Constraint::Length(1),
         ])
         .split(area);
-    f.render_widget(Paragraph::new(header(app)), rows[0]);
+    f.render_widget(Paragraph::new(header(app, rows[0].width)), rows[0]);
     let body = rows[1];
     let page_area = if area.width >= NAV_WIDTH_FROM {
         let cols = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Length(NAV_WIDTH), Constraint::Min(30)]).split(body);
@@ -733,7 +761,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_page(f, app, page_area);
     f.render_widget(Paragraph::new(job_lines), rows[2]);
     draw_console(f, app, rows[3]);
-    f.render_widget(Paragraph::new(footer(app)), rows[4]);
+    f.render_widget(Paragraph::new(footer(app, rows[4].width)), rows[4]);
     draw_overlays(f, app, area);
 }
 
@@ -784,6 +812,39 @@ mod tests {
         let mut app = app_with_data();
         let narrow = screen(&mut app, 50, 20);
         assert!(!narrow.contains("pal-1"));
+    }
+
+    /// 머리줄·키 안내가 폭을 넘으면 덜 중요한 칸을 통째로 뺀다: 숫자 중간에서 잘리지 않는다
+    #[test]
+    fn header_and_footer_drop_whole_items_when_narrow() {
+        for width in [60u16, 80] {
+            let mut app = app_with_data();
+            app.snap.metrics = Some(json!({ "cpu": { "total_percent": 3.0 }, "memory": { "used_bytes": 6.5e8, "total_bytes": 1.7e10 } }));
+            let t = screen(&mut app, width, 34);
+            let lines: Vec<&str> = t.lines().collect();
+            assert!(!lines[0].contains("메모리") || lines[0].contains("16GB"), "{width}: {}", lines[0]);
+            assert!(lines[0].contains("서버1/2실행"), "{width}: {}", lines[0]);
+            assert!(lines.last().unwrap().ends_with("q나가기"), "{width}: {}", lines.last().unwrap());
+        }
+    }
+
+    /// 창 왼쪽 테두리에 걸친 두 칸 글자는 지운다: 남아 있으면 터미널이 테두리 칸을 덮어 창이 깨져 보인다
+    #[test]
+    fn popup_edge_does_not_sit_under_a_wide_character() {
+        let mut term = Terminal::new(TestBackend::new(80, 12)).unwrap();
+        term.draw(|f| {
+            let area = f.area();
+            for y in 0..area.height {
+                f.render_widget(Paragraph::new("가".repeat(40)), Rect { x: 0, y, width: area.width, height: 1 });
+            }
+            draw_popup(f, "t", vec![Line::from("x")], area);
+        })
+        .unwrap();
+        let buf = term.backend().buffer();
+        let r = centered(Rect::new(0, 0, 80, 12), 53, 3);
+        for y in r.y..r.y + r.height {
+            assert!(buf[(r.x - 1, y)].symbol().width() < 2, "row {y}");
+        }
     }
 
     /// 쪽마다 그려지고 버튼 자리가 마우스용으로 남는다
