@@ -153,6 +153,23 @@ def _host_error(code, message):
     return error
 
 
+def _read_reply(reply_path, deadline, timeout_message, limit=None):
+    while True:
+        try:
+            with reply_path.open("rb") as reply_file:
+                raw = reply_file.read() if limit is None else reply_file.read(limit + 1)
+            if limit is not None and len(raw) > limit:
+                raise _host_error("response_too_large", "response exceeds 1 MiB")
+            return json.loads(raw)
+        except (FileNotFoundError, PermissionError) as error:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(timeout_message) from error
+        except (UnicodeError, json.JSONDecodeError):
+            if time.monotonic() >= deadline:
+                raise
+        time.sleep(0.02)
+
+
 def _host_request(op, args, timeout):
     import uuid
     request_id = uuid.uuid4().hex
@@ -165,17 +182,9 @@ def _host_request(op, args, timeout):
     reply_path = Path(os.environ["SABA_HOST_DIR"]) / f"{request_id}.json"
     deadline = time.monotonic() + min(wait, 30)
     print(request, file=sys.stderr, flush=True)
-    while not reply_path.exists():
-        if time.monotonic() >= deadline:
-            raise TimeoutError(f"no reply from the daemon for {op}")
-        time.sleep(0.02)
     try:
-        with reply_path.open("rb") as reply_file:
-            raw = reply_file.read(1024 * 1024 + 1)
-        if len(raw) > 1024 * 1024:
-            raise _host_error("response_too_large", "response exceeds 1 MiB")
         try:
-            reply = json.loads(raw)
+            reply = _read_reply(reply_path, deadline, f"no reply from the daemon for {op}", 1024 * 1024)
         except (UnicodeError, ValueError) as error:
             raise _host_error("invalid_response", "response is not JSON") from error
         if not isinstance(reply, dict) or not isinstance(reply.get("ok"), bool):
@@ -236,12 +245,8 @@ def loopback_exchange(port, data, *, timeout=5, idle_ms=None):
     print("LOOPBACK:" + json.dumps(request), file=sys.stderr, flush=True)
     reply_path = Path(relay) / f"{request_id}.json"
     deadline = time.monotonic() + timeout + 2
-    while not reply_path.exists():
-        if time.monotonic() > deadline:
-            raise TimeoutError(f"no reply from the daemon for 127.0.0.1:{port}")
-        time.sleep(0.02)
     try:
-        reply = json.loads(reply_path.read_text(encoding="utf-8"))
+        reply = _read_reply(reply_path, deadline, f"no reply from the daemon for 127.0.0.1:{port}")
     finally:
         try:
             reply_path.unlink()

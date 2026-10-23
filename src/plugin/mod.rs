@@ -1487,6 +1487,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let script = format!(r#"import json, sys, time
 from pathlib import Path
+sys.path.insert(0, {:?})
+from daemon_rcon import _read_reply
 sys.stdin.read()
 directory = Path({:?})
 codes = []
@@ -1495,11 +1497,9 @@ for number in range(65):
 for number in range(65):
     path = directory / (str(number) + '.json')
     deadline = time.monotonic() + 10
-    while not path.exists() and time.monotonic() < deadline:
-        time.sleep(.01)
-    codes.append(json.loads(path.read_text())['error_code'])
+    codes.append(_read_reply(path, deadline, 'host reply timed out', 1024 * 1024)['error_code'])
 print(json.dumps(codes))
-"#, dir.path().to_string_lossy());
+"#, std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules").to_string_lossy(), dir.path().to_string_lossy());
         let mut child = python_process(&script).await;
         let proxy = host::Proxy { dir: dir.path().into(), context: None };
         let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, Some(proxy), std::time::Duration::from_secs(15)).await.unwrap().unwrap();

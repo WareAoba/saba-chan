@@ -77,9 +77,11 @@ pub struct ServerInstance {
     /// 실행 대상 검사·격리 실행이 사용자가 고른 런타임(`java_path`)만 인정하는 데 쓴다
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub user_settings: std::collections::BTreeSet<String>,
-    /// 마이그레이션에서 import_settings가 판정한 경로형 설정 키. 값이 바뀌면 권한 근거를 지운다
+    /// 마이그레이션·시작 후 보충에서 import_settings가 판정한 경로형 설정 키. 값이 바뀌면 권한 근거를 지운다
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub imported_settings: std::collections::BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub data_roots_backfill_attempted: std::collections::BTreeSet<String>,
 }
 
 fn default_protocol_mode() -> String {
@@ -121,6 +123,7 @@ impl ServerInstance {
             accepted_agreements: Default::default(),
             user_settings: Default::default(),
             imported_settings: Default::default(),
+            data_roots_backfill_attempted: Default::default(),
         }
     }
 

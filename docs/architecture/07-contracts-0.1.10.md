@@ -21,8 +21,9 @@
 
 - 실제 경로·가장 가까운 기존 조상·백업/복원·설치/마이그레이션 검사는 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)에 이관했다.
 - `[extensions.saba-core] data_roots`와 `user_settings`·마이그레이션 출처 규칙은 [02 §2.1](02-modules.md#21-실행-방식-dsrcpluginmodrs266-463)에 이관했다.
+- 데몬은 시작 뒤 `data_roots`의 값이 없고 아직 보충을 시도하지 않은 설정을 인스턴스별로 모아 잠금 밖에서 일반 호출 제한으로 `import_settings`를 호출한다. 반환한 해당 루트 설정만 `imported_settings` 출처로 저장하고 사용자 값은 보존한다. 시도한 설정 이름은 `data_roots_backfill_attempted` 집합에 저장하며 빈 집합은 필드를 생략한다. 같은 설정의 빈 결과·실패는 반복하지 않고, 모듈 업데이트로 추가된 새 루트 설정은 보충한다.
 - 익스텐션 `i18n_dir`의 상대·실제 경로 검사는 [03](03-extensions.md)에 이관했다.
-- 남은 part 3: 좀보이드 `data_home` 호환 설정·마이그레이션·첫 로드 보존. 현재 선택한 INI 폴더는 바꾸지 않는다.
+- 좀보이드의 옛 외부 INI 배치는 모듈의 `import_settings`와 데몬의 시작 후 보충으로 `data_home`을 채운다. 현재 선택한 INI 폴더는 바꾸지 않는다.
 
 ## 3. 격리 없는 플랫폼의 확인되지 않은 구성요소 (합의안 C, 데몬 구현 완료)
 

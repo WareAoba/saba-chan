@@ -849,6 +849,211 @@ mod tests {
         crate::ipc::internal::into_internal(r).await.body["error_code"].as_str().unwrap_or_default().to_string()
     }
 
+    async fn data_roots_backfill_server(import_result: &str) -> (IPCServer, String, tempfile::TempDir, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = crate::plugin::resolve_modules_dir();
+        let module = tempfile::Builder::new().prefix("backfill-").tempdir_in(&modules).unwrap();
+        let name = module.path().file_name().unwrap().to_string_lossy();
+        let toml = format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[backup]\npaths = []\nhook = true\n\n\
+            [[settings.fields]]\nname = 'cache_dir'\ntype = 'file'\n\n\
+            [[settings.fields]]\nname = 'data_home'\ntype = 'text'\nformat = 'path'\n\n\
+            [[settings.fields]]\nname = 'missing_root'\ntype = 'file'\n\n\
+            [extensions.saba-core]\ndata_roots = ['{{cache_dir}}', '{{data_home}}', '{{missing_root}}', '{{home}}/Zomboid']\n");
+        let hook = format!(r#"import json, os, sys, time
+c = json.load(sys.stdin)
+if sys.argv[1] == 'functions':
+    print(json.dumps({{'success': True, 'functions': ['import_settings', 'backup_paths']}}))
+elif sys.argv[1] == 'import_settings':
+    with open(os.path.join(c['working_dir'], 'imports'), 'ab') as f:
+        f.write(b'called\n')
+    {import_result}
+else:
+    print(json.dumps({{'success': True, 'paths': [os.path.join(os.path.dirname(c['config_dir']), 'Saves')]}}))
+"#);
+        std::fs::write(module.path().join("module.toml"), toml).unwrap();
+        std::fs::write(module.path().join("lifecycle.py"), hook).unwrap();
+        crate::sandbox::consent_test_component(&module.path().join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", &name);
+        inst.working_dir = Some(tmp.path().join("server").to_string_lossy().into_owned());
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let data = tmp.path().join("legacy-data");
+        std::fs::create_dir_all(data.join("Server")).unwrap();
+        std::fs::create_dir_all(data.join("Saves")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("server")).unwrap();
+        std::fs::write(data.join("Saves").join("world.bin"), b"legacy world").unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("config_dir".into(), json!(data.join("Server")));
+            inst.module_settings.insert("cache_dir".into(), json!(tmp.path().join("cache")));
+            inst.module_settings.insert("server_name".into(), json!("chosen"));
+            inst.user_settings.insert("cache_dir".into());
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        (state, id, tmp, module)
+    }
+
+    const ROOT_IMPORT: &str = "print(json.dumps({'success': True, 'settings': {'data_home': os.path.dirname(c['config_dir']), 'cache_dir': 'replace-cache', 'server_name': 'replace-name', 'unrelated': '/outside'}}))";
+
+    #[tokio::test]
+    async fn data_roots_backfill_restores_legacy_backups_on_init() {
+        let (state, id, tmp, _module) = data_roots_backfill_server(ROOT_IMPORT).await;
+        state.supervisor.write().await.initialize().await.unwrap();
+        assert_eq!(code(plan(&state, &id).await.err().expect("legacy data has no allowed root")).await, "module_path_outside");
+
+        crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+        {
+            let sup = state.supervisor.read().await;
+            let inst = sup.instance_store.get(&id).unwrap();
+            assert_eq!(inst.module_settings.get("data_home"), Some(&json!(tmp.path().join("legacy-data"))));
+            assert!(inst.imported_settings.contains("data_home"));
+            assert!(!inst.user_settings.contains("data_home"));
+            assert_eq!(inst.module_settings["cache_dir"], json!(tmp.path().join("cache")));
+            assert_eq!(inst.module_settings["config_dir"], json!(tmp.path().join("legacy-data").join("Server")));
+            assert_eq!(inst.module_settings["server_name"], "chosen");
+            assert!(!inst.module_settings.contains_key("unrelated"));
+        }
+        let made = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert_eq!(backup::backed_up_paths(&dir, &made).unwrap(), vec![tmp.path().join("legacy-data").join("Saves")]);
+
+        state.supervisor.write().await.initialize().await.unwrap();
+        crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+        assert!(state.supervisor.read().await.instance_store.get(&id).unwrap().imported_settings.contains("data_home"));
+        assert_eq!(std::fs::read_to_string(tmp.path().join("server").join("imports")).unwrap(), "called\n");
+    }
+
+    #[tokio::test]
+    async fn data_roots_backfill_keeps_user_values() {
+        let (state, id, tmp, _module) = data_roots_backfill_server(ROOT_IMPORT).await;
+        let chosen = json!(tmp.path().join("chosen-data"));
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("data_home".into(), chosen.clone());
+            inst.user_settings.insert("data_home".into());
+            sup.instance_store.update(&id, inst).unwrap();
+            sup.initialize().await.unwrap();
+        }
+        crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+        let sup = state.supervisor.read().await;
+        let inst = sup.instance_store.get(&id).unwrap();
+        assert_eq!(inst.module_settings["data_home"], chosen);
+        assert!(inst.user_settings.contains("data_home"));
+        assert!(!inst.imported_settings.contains("data_home"));
+        assert_eq!(std::fs::read_to_string(tmp.path().join("server").join("imports")).unwrap(), "called\n");
+    }
+
+    #[tokio::test]
+    async fn data_roots_backfill_failure_does_not_block_init_or_repeat() {
+        for result in ["print(json.dumps({'success': False, 'message': 'cannot import'}))", "raise RuntimeError('cannot import')"] {
+            let (state, id, tmp, _module) = data_roots_backfill_server(result).await;
+            for _ in 0..2 {
+                state.supervisor.write().await.initialize().await.unwrap();
+                crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+                assert!(!state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings.contains_key("data_home"));
+            }
+            assert_eq!(std::fs::read_to_string(tmp.path().join("server").join("imports")).unwrap(), "called\n");
+        }
+    }
+
+    #[tokio::test]
+    async fn data_roots_backfill_keeps_a_value_saved_while_importing() {
+        let result = format!("open(os.path.join(c['working_dir'], 'import-started'), 'w').close()\n    \
+            while not os.path.exists(os.path.join(c['working_dir'], 'import-release')):\n        time.sleep(0.01)\n    {ROOT_IMPORT}");
+        let (state, id, tmp, _module) = data_roots_backfill_server(&result).await;
+        state.supervisor.write().await.initialize().await.unwrap();
+        let importing = tokio::spawn(crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()));
+        tokio::time::timeout(WORK_DEADLINE, async {
+            while !tmp.path().join("server").join("import-started").exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }).await.expect("import_settings did not start");
+        let chosen = json!(tmp.path().join("chosen-during-import"));
+        {
+            let mut sup = tokio::time::timeout(std::time::Duration::from_secs(5), state.supervisor.write()).await.expect("import_settings holds the daemon lock");
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("data_home".into(), chosen.clone());
+            inst.user_settings.insert("data_home".into());
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        std::fs::write(tmp.path().join("server").join("import-release"), b"").unwrap();
+        importing.await.unwrap();
+        let sup = state.supervisor.read().await;
+        let inst = sup.instance_store.get(&id).unwrap();
+        assert_eq!(inst.module_settings["data_home"], chosen);
+        assert!(inst.user_settings.contains("data_home"));
+        assert!(!inst.imported_settings.contains("data_home"));
+    }
+
+    #[tokio::test]
+    async fn data_roots_backfill_empty_import_is_not_repeated_after_reload() {
+        let (state, id, tmp, _module) = data_roots_backfill_server("print(json.dumps({'success': True, 'settings': {}}))").await;
+        for _ in 0..2 {
+            state.supervisor.write().await.initialize().await.unwrap();
+            crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+            assert!(!state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings.contains_key("data_home"));
+        }
+        assert_eq!(std::fs::read_to_string(tmp.path().join("server").join("imports")).unwrap(), "called\n");
+    }
+
+    #[tokio::test]
+    async fn data_roots_backfill_only_attempts_new_settings_after_module_update() {
+        let result = "settings = {'new_root': os.path.join(c['working_dir'], 'new-data')}\n    if c['server_name'] == 'updated':\n        settings['missing_root'] = 'must-not-retry'\n    print(json.dumps({'success': True, 'settings': settings}))";
+        let (state, id, tmp, module) = data_roots_backfill_server(result).await;
+        assert!(serde_json::to_value(state.supervisor.read().await.instance_store.get(&id).unwrap()).unwrap().get("data_roots_backfill_attempted").is_none());
+        crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+        assert!(!state.supervisor.read().await.instance_store.get(&id).unwrap().module_settings.contains_key("new_root"));
+
+        let manifest = module.path().join("module.toml");
+        let updated = std::fs::read_to_string(&manifest).unwrap()
+            .replace("[extensions.saba-core]", "[[settings.fields]]\nname = 'new_root'\ntype = 'file'\n\n[extensions.saba-core]")
+            .replace("'{missing_root}',", "'{missing_root}', '{new_root}',");
+        std::fs::write(manifest, updated).unwrap();
+        crate::sandbox::consent_test_component(&module.path().join("lifecycle.py"));
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.module_settings.insert("server_name".into(), json!("updated"));
+            sup.instance_store.update(&id, inst).unwrap();
+            sup.module_loader.invalidate_cache();
+            sup.initialize().await.unwrap();
+        }
+        crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+        state.supervisor.write().await.initialize().await.unwrap();
+        crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+        let sup = state.supervisor.read().await;
+        let inst = sup.instance_store.get(&id).unwrap();
+        assert_eq!(inst.module_settings.get("new_root"), Some(&json!(tmp.path().join("server").join("new-data"))));
+        assert!(inst.imported_settings.contains("new_root"));
+        assert!(!inst.module_settings.contains_key("data_home"));
+        assert!(!inst.module_settings.contains_key("missing_root"));
+        assert_eq!(serde_json::to_value(inst).unwrap()["data_roots_backfill_attempted"], json!(["data_home", "missing_root", "new_root"]));
+        assert_eq!(std::fs::read_to_string(tmp.path().join("server").join("imports")).unwrap(), "called\ncalled\n");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn data_roots_backfill_stores_an_isolated_import_result() {
+        let _logs = tracing::subscriber::set_default(tracing_subscriber::fmt().with_test_writer().with_max_level(tracing::Level::WARN).finish());
+        let result = format!("assert os.environ.get('SABA_LOOPBACK_DIR'), 'import_settings must run isolated'\n    {ROOT_IMPORT}");
+        let (state, id, tmp, module) = data_roots_backfill_server(&result).await;
+        let name = module.path().file_name().unwrap().to_string_lossy();
+        crate::sandbox::set_consent(crate::sandbox::Consent::Unisolated, &format!("module-{name}"), false).unwrap();
+        let entry = module.path().join("lifecycle.py");
+        assert_eq!(crate::sandbox::trust_of_entry(&entry), saba_chan_updater_lib::integrity::Trust::Unverified);
+        crate::supervisor::Supervisor::backfill_data_roots(state.supervisor.clone()).await;
+        state.supervisor.write().await.initialize().await.unwrap();
+        let sup = state.supervisor.read().await;
+        let inst = sup.instance_store.get(&id).unwrap();
+        assert_eq!(inst.module_settings.get("data_home"), Some(&json!(tmp.path().join("legacy-data"))));
+        assert!(inst.imported_settings.contains("data_home"));
+    }
+
     #[tokio::test]
     async fn contract_paths_backup_stops_if_any_hook_path_or_restore_root_is_outside() {
         for field in ["paths", "restore_roots"] {

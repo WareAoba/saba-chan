@@ -2700,6 +2700,69 @@ impl Supervisor {
             .collect()
     }
 
+    /// 기존 인스턴스의 누락 데이터 루트를 설정별로 한 번 가져온다. 모듈 호출은 데몬 잠금 밖에서 실행한다
+    pub async fn backfill_data_roots(sup: std::sync::Arc<tokio::sync::RwLock<Self>>) {
+        let ids: Vec<String> = sup.read().await.instance_store.list().iter().map(|i| i.id.clone()).collect();
+        for id in ids {
+            let (module_name, missing) = {
+                let mut s = sup.write().await;
+                let Some(mut instance) = s.instance_store.get(&id).cloned() else { continue };
+                let Ok(module) = s.module_loader.get_module(&instance.module_name) else { continue };
+                let missing: HashSet<String> = module.metadata.data_roots.iter()
+                    .filter_map(|pattern| crate::module_paths::data_root_parts(pattern))
+                    .map(|(key, _)| key)
+                    .filter(|key| *key != "home" && !instance.module_settings.contains_key(*key)
+                        && !instance.user_settings.contains(*key) && !instance.data_roots_backfill_attempted.contains(*key))
+                    .map(str::to_string)
+                    .collect();
+                if missing.is_empty() {
+                    continue;
+                }
+                // 빈 결과·실패·중단도 다음 기동에서 반복하지 않는다
+                instance.data_roots_backfill_attempted.extend(missing.iter().cloned());
+                let module_name = instance.module_name.clone();
+                if let Err(e) = s.instance_store.update(&id, instance) {
+                    tracing::warn!("Failed to record data root backfill for '{}': {}", id, e);
+                    continue;
+                }
+                (module_name, missing)
+            };
+            let result = match Self::manage_properties(&sup, &id, "import", None).await {
+                Ok(result) if result.get("success").and_then(Value::as_bool) == Some(true) => result,
+                Ok(result) => {
+                    tracing::warn!("Data root backfill skipped for '{}': {}", id, module_failure(&result, &module_name, "import_settings"));
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!("Data root backfill skipped for '{}': {}", id, e);
+                    continue;
+                }
+            };
+            let Some(settings) = result.get("settings").and_then(Value::as_object) else { continue };
+            let mut s = sup.write().await;
+            let Some(mut instance) = s.instance_store.get(&id).cloned() else { continue };
+            if instance.module_name != module_name {
+                continue;
+            }
+            let mut changed = false;
+            for key in missing {
+                if instance.module_settings.contains_key(&key) || instance.user_settings.contains(&key) {
+                    continue;
+                }
+                if let Some(value) = settings.get(&key) {
+                    instance.module_settings.insert(key.clone(), value.clone());
+                    instance.imported_settings.insert(key);
+                    changed = true;
+                }
+            }
+            if changed {
+                if let Err(e) = s.instance_store.update(&id, instance) {
+                    tracing::warn!("Failed to save data root backfill for '{}': {}", id, e);
+                }
+            }
+        }
+    }
+
     /// server_version이 비어있고 working_dir이 설정된 인스턴스에 대해
     /// 모듈의 get_installed_version을 호출하여 버전을 감지·저장합니다.
     /// 데몬 초기화 뒤 한 번 호출하여 기존 서버의 버전을 보충합니다.
@@ -4166,6 +4229,7 @@ mod tests {
             accepted_agreements: Default::default(),
             user_settings: Default::default(),
             imported_settings: Default::default(),
+            data_roots_backfill_attempted: Default::default(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -4227,6 +4291,7 @@ mod tests {
             accepted_agreements: Default::default(),
             user_settings: Default::default(),
             imported_settings: Default::default(),
+            data_roots_backfill_attempted: Default::default(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

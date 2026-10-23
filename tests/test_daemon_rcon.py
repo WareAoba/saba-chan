@@ -92,16 +92,17 @@ class SdkLifecycleTests(unittest.TestCase):
 
 
 class HostDaemon(io.StringIO):
-    def __init__(self, directory, reply):
+    def __init__(self, directory, reply, prefix="HOST:"):
         super().__init__()
         self.directory = Path(directory)
         self.reply = reply
+        self.prefix = prefix
         self.requests = []
 
     def write(self, text):
         result = super().write(text)
         if text.endswith("\n"):
-            request = json.loads(self.getvalue().splitlines()[-1].removeprefix("HOST:"))
+            request = json.loads(self.getvalue().splitlines()[-1].removeprefix(self.prefix))
             self.requests.append(request)
             if self.reply is not None:
                 body = self.reply if isinstance(self.reply, str) else json.dumps(self.reply)
@@ -197,6 +198,36 @@ class SdkHostTests(unittest.TestCase):
             post.assert_called_with("/api/instance/server-1/stdin", {"command": "stop"}, timeout=4)
             self.assertEqual(daemon_rcon.daemon_rest("server-1", "PUT", "/world", body={"x": 1}, timeout=6), {"success": True})
             post.assert_called_with("/api/instance/server-1/rest", {"method": "PUT", "endpoint": "/world", "body": {"x": 1}}, timeout=6)
+
+
+class SdkReplyTests(unittest.TestCase):
+    def test_host_and_loopback_retry_busy_and_partial_replies(self):
+        for relay in ("HOST", "LOOPBACK"):
+            with self.subTest(relay=relay), tempfile.TemporaryDirectory() as directory:
+                data = {"success": True} if relay == "HOST" else "YW5zd2Vy"
+                daemon = HostDaemon(directory, {"ok": True, "data": data}, prefix=f"{relay}:")
+                original_open = Path.open
+                reads = 0
+
+                def open_reply(path, mode="r", *args, **kwargs):
+                    nonlocal reads
+                    if "r" in mode and path.suffix == ".json":
+                        reads += 1
+                        if reads == 1:
+                            raise PermissionError("reply is still open by the writer")
+                        if reads == 2:
+                            return io.BytesIO(b'{"ok":') if "b" in mode else io.StringIO('{"ok":')
+                    return original_open(path, mode, *args, **kwargs)
+
+                with patch.dict(os.environ, {f"SABA_{relay}_DIR": directory}), patch.object(sys, "stderr", daemon):
+                    with patch.object(Path, "open", open_reply):
+                        if relay == "HOST":
+                            result = daemon_rcon.daemon_stdin_command("ignored-instance", "save", timeout=0.2)
+                            self.assertEqual(result, {"success": True})
+                        else:
+                            result = daemon_rcon.loopback_exchange(12345, b"request", timeout=0.2)
+                            self.assertEqual(result, b"answer")
+                self.assertEqual(list(Path(directory).iterdir()), [])
 
 
 class SdkVersionTests(unittest.TestCase):
