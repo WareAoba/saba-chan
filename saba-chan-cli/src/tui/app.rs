@@ -269,6 +269,8 @@ pub struct App {
     /// 콘솔에서 Esc로 돌아갈 곳
     back: Focus,
     pub list_state: ListState,
+    /// 쪽마다 마지막으로 고른 항목 (Page::ALL 순서)
+    picked: [usize; Page::ALL.len()],
     pub button: usize,
     pub snap: Snapshot,
     pub menu: Vec<MenuItem>,
@@ -295,6 +297,7 @@ impl App {
             focus: Focus::Nav,
             back: Focus::Nav,
             list_state,
+            picked: [0; Page::ALL.len()],
             button: 0,
             snap: Snapshot::default(),
             menu,
@@ -390,8 +393,10 @@ impl App {
         if self.page == page {
             return None;
         }
+        let slot = |p: Page| Page::ALL.iter().position(|x| *x == p).unwrap_or(0);
+        self.picked[slot(self.page)] = self.list_state.selected().unwrap_or(0);
         self.page = page;
-        self.list_state.select(Some(0));
+        self.list_state.select(Some(self.picked[slot(page)]));
         self.button = 0;
         Some(Action::Refresh)
     }
@@ -913,5 +918,20 @@ mod tests {
         assert_eq!(adapt(w("-y console pal")), w("-y console pal --follow"));
         assert_eq!(adapt(w("server logs pal")), w("server logs pal --follow"));
         assert_eq!(adapt(w("--json console pal")), w("--json console pal"));
+    }
+
+    /// 다른 쪽에 다녀와도 쪽마다 고른 항목이 남는다
+    #[test]
+    fn each_page_keeps_its_selection() {
+        crate::i18n::init("ko");
+        let mut app = App::new(menu_from(&crate::cli::localized()));
+        app.snap.servers = vec![serde_json::json!({ "id": "a" }), serde_json::json!({ "id": "b" }), serde_json::json!({ "id": "c" })];
+        app.go(Page::Servers);
+        app.list_state.select(Some(2));
+        app.go(Page::Dashboard);
+        app.go(Page::Servers);
+        assert_eq!(app.list_state.selected(), Some(2));
+        app.go(Page::Modules);
+        assert_eq!(app.list_state.selected(), Some(0));
     }
 }
