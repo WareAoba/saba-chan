@@ -41,6 +41,10 @@ async function loadExtensionBundle(ext) {
         return null;
     }
 
+    // 이 번들을 실행하기 직전의 전역과 이 번들이 남긴 전역. 실패하면 이 번들이 남긴 것만 되돌린다
+    // (같은 확장을 동시에 읽은 다른 로드가 이미 성공해 등록한 전역은 지우지 않는다)
+    let before;
+    let mine;
     try {
         // IPC를 통해 번들 JS 소스 가져오기 (인증 포함)
         const jsSource = await window.api.extensionGuiBundle(ext.id);
@@ -48,22 +52,40 @@ async function loadExtensionBundle(ext) {
         if (typeof jsSource !== 'string' || !jsSource) return LOAD_FAILED;
 
         // blob URL로 <script> 태그 삽입
+        // 번들 실행 중 throw는 window error로 오고 onload도 불린다: 그 오류를 실패로 본다
         await new Promise((resolve, reject) => {
             const blob = new Blob([jsSource], { type: 'application/javascript' });
             const url = URL.createObjectURL(blob);
             const script = document.createElement('script');
+            let thrown = null;
+            const onThrow = (ev) => {
+                if (ev.filename !== url) return;
+                thrown = ev.error || new Error(ev.message);
+                // 실행 중 오류는 실행과 같은 차례에 온다: 이때의 전역이 이 번들이 남긴 것이다
+                mine = window[globalName];
+            };
+            const done = () => {
+                window.removeEventListener('error', onThrow);
+                URL.revokeObjectURL(url);
+            };
+            window.addEventListener('error', onThrow);
+            before = window[globalName];
             script.src = url;
             script.async = true;
             script.onload = () => {
-                URL.revokeObjectURL(url);
-                resolve();
+                done();
+                if (thrown) reject(thrown);
+                else resolve();
             };
             script.onerror = () => {
-                URL.revokeObjectURL(url);
+                done();
                 reject(new Error(`Failed to execute bundle for '${ext.id}'`));
             };
             document.head.appendChild(script);
         });
+        // 전역을 만들지 못한 번들도 실패다 (다음 목록에서 다시 읽는다)
+        if (!window[globalName]) throw new Error(`Bundle for '${ext.id}' did not register ${globalName}`);
+        mine = window[globalName];
 
         // CSS 로드 (있으면)
         const cssSource = await window.api.extensionGuiStyles(ext.id);
@@ -74,9 +96,15 @@ async function loadExtensionBundle(ext) {
             document.head.appendChild(style);
         }
 
-        return window[globalName] || null;
+        return window[globalName];
     } catch (e) {
         console.warn(`[Extension] Failed to load GUI bundle for '${ext.id}':`, e);
+        // 실행이 실패한 번들이 먼저 등록한 전역은 남기지 않는다 (다음 로드가 성공으로 보지 않게).
+        // 그 뒤 다른 로드가 바꾼 전역은 그 로드의 것이라 두고, 실행 전에 있던 전역은 되살린다
+        if (mine !== undefined && window[globalName] === mine) {
+            if (before === undefined) delete window[globalName];
+            else window[globalName] = before;
+        }
         return LOAD_FAILED;
     }
 }
@@ -203,6 +231,14 @@ export function ExtensionProvider({ children }) {
                     // 기존 <style> 태그 제거
                     document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => el.remove());
                     console.info(`[Extension] Bundle invalidated for '${ext.id}' (${prevVersion} → ${ext.version})`);
+                }
+
+                // 로드됨으로 기억했는데 전역이 없다(겹친 로드의 실패 정리 등): 다시 읽는다
+                if (ext.gui && loadedRef.current.has(ext.id) && !window[globalName]) {
+                    loadedRef.current.delete(ext.id);
+                    document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => {
+                        el.remove();
+                    });
                 }
 
                 // ① 이미 로드된 익스텐션 (버전 동일)
