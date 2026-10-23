@@ -178,9 +178,11 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
 
     // 데몬 이벤트: 오면 최근 일에 적고 곧바로 다시 읽는다. 데몬이 꺼졌다 켜지면 다시 붙는다
     let events = {
-        let (tx, ctx) = (tx.clone(), ctx.clone());
+        let (tx, mut ctx) = (tx.clone(), ctx.clone());
         tokio::spawn(async move {
             loop {
+                // 다시 붙을 때마다 포트를 다시 본다 (TUI 안에서 포트를 바꾸고 데몬을 다시 켠 경우)
+                ctx.follow_daemon_port();
                 if let Ok(mut stream) = ctx.api.events(None).await {
                     while let Ok(Some(e)) = stream.next().await {
                         if tx.send(Msg::Event(e.kind, e.data)).is_err() {
