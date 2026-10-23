@@ -167,6 +167,37 @@ mod tests {
         assert!(missing.is_empty(), "ko is missing keys: {:?}", missing);
     }
 
+    /// TUI 화면 문구(`tui.*`)는 저장소의 모든 언어 파일에 있다: 한 언어만 영어로 섞여 보이지 않게
+    #[test]
+    fn tui_text_exists_in_every_language() {
+        fn tui_keys(v: &Value, prefix: &str, out: &mut Vec<String>) {
+            for (k, child) in v.as_object().into_iter().flatten() {
+                let path = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                if child.is_object() {
+                    tui_keys(child, &path, out)
+                } else if path.starts_with("tui.") {
+                    out.push(path)
+                }
+            }
+        }
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../locales");
+        let mut want = vec![];
+        tui_keys(&embedded("en").unwrap(), "", &mut want);
+        let mut problems = vec![];
+        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+            let Ok(text) = std::fs::read_to_string(e.path().join("cli.json")) else { continue };
+            let lang = e.file_name().to_string_lossy().to_string();
+            let mut have = vec![];
+            tui_keys(&serde_json::from_str(&text).unwrap(), "", &mut have);
+            let missing: Vec<_> = want.iter().filter(|k| !have.contains(k)).collect();
+            let stale: Vec<_> = have.iter().filter(|k| !want.contains(k)).collect();
+            if !missing.is_empty() || !stale.is_empty() {
+                problems.push(format!("{lang}: missing {missing:?}, not in en {stale:?}"));
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
     /// 코드가 `t!` 매크로로 부르는 고정 키는 en·ko에 있어야 한다: 없으면 키 이름이 그대로 찍힌다
     #[test]
     fn keys_used_in_code_exist_in_en_and_ko() {

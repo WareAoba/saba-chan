@@ -166,7 +166,12 @@
     "shutdown_refused": "O daemon não aceitou o pedido de encerramento: {{error}}",
     "stopped": "Daemon parado.",
     "stopping": "Parando o daemon...",
-    "stops_with_launcher": "O núcleo do saba-chan está rodando preso ao programa que o iniciou. Se esse programa fechar, o núcleo e o gerenciamento de servidores podem parar junto. Pare o daemon (saba-chan-cli daemon stop) e inicie de novo pelo menu Iniciar ou por um terminal comum."
+    "stops_with_launcher": "O núcleo do saba-chan está rodando preso ao programa que o iniciou. Se esse programa fechar, o núcleo e o gerenciamento de servidores podem parar junto. Pare o daemon (saba-chan-cli daemon stop) e inicie de novo pelo menu Iniciar ou por um terminal comum.",
+    "no_clients": "Nenhuma janela do app de desktop está conectada ao daemon.",
+    "col": {
+      "kind": "Tipo",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "Nenhum problema conhecido encontrado nos logs de {{name}}."
@@ -527,7 +532,9 @@
       "install.dir": "Pasta de instalação (perguntada se omitida)",
       "install.modules": "Módulos de jogo a instalar, separados por vírgula (perguntados se omitidos)",
       "install.gui": "Instalar também o app de desktop mesmo sem tela",
-      "install.no_gui": "Instalar sem o app de desktop mesmo com tela"
+      "install.no_gui": "Instalar sem o app de desktop mesmo com tela",
+      "do.action": "Id da ação, ex.: server.restart ou server.command:say",
+      "do.server": "Servidor em que a ação atua"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
@@ -652,34 +659,158 @@
     }
   },
   "tui": {
-    "daemon_up": "Daemon ● conectado (v{{version}})",
-    "daemon_down": "Daemon ○ desligado · iniciar: daemon start",
-    "servers_running": "{{running}} de {{total}} servidores rodando",
     "menu": "Menu",
-    "output": "Resultado",
-    "enter_to_run": "Enter para executar",
     "running_hint": "(executando · Ctrl+C para parar)",
-    "keys": "↑↓ mover · ←→ menu/lista · Enter executar · : comando · PgUp/PgDn resultado · ? ajuda · q sair",
     "yes": "Sim",
     "no": "Não",
-    "question": "Confirmar",
     "dialog_keys": "Enter escolher · Esc cancelar",
     "help_title": "Teclas",
-    "help": "↑↓  mover no menu ou na lista\n←→ / Tab  alternar entre menu e lista\nEnter  executar o item escolhido (abre a linha de comando se precisar de argumentos)\n:  linha de comando (os mesmos comandos que depois de saba-chan-cli, ↑↓ para os anteriores)\nPgUp/PgDn, roda do mouse  rolar o resultado\nCtrl+C  parar o comando em execução\nq  sair (o daemon e os servidores continuam rodando)",
     "too_narrow": "Aumente a janela para pelo menos 60 colunas.",
     "not_here": "Este comando não pode rodar dentro do menu em tela cheia. Saia com q e execute no terminal.",
     "cancelled": "Parado.",
-    "action": {
+    "needs_terminal": "O menu em tela cheia precisa de um terminal. Em scripts, use os subcomandos.",
+    "command_panicked": "O comando parou inesperadamente. Você pode continuar usando outros comandos.",
+    "daemon_up": "● daemon v{{version}}",
+    "daemon_down": "○ daemon desligado · digite daemon start",
+    "servers_running": "{{running}}/{{total}} servidores rodando",
+    "keys": "Tab próximo · ↑↓ escolher · Enter apertar · 1-9 páginas · : console · F2 console maior · ? ajuda · q sair",
+    "help": "Tab / Shift+Tab  ir de menu → lista → botões → console\n↑↓  escolher,  ←→  mover entre botões\nEnter  apertar um botão (botões com … preenchem o console para você)\n1-9  ir para uma página\n: ou /  digitar um comando (o que viria depois de saba-chan-cli, ↑↓ histórico)\nPgUp/PgDn, roda do mouse  rolar o console,  F2  console maior\nCtrl+C  parar o comando em andamento\nMouse  clique no menu, nas listas e nos botões\nq  sair (o daemon e os servidores continuam rodando)",
+    "brand": "Saba-chan {{version}}",
+    "memory_of": "memória {{used}} / {{total}}",
+    "discord_on": "Discord ● conectado",
+    "discord_off": "Discord ○ desconectado",
+    "updates_n": "{{count}} atualizações",
+    "updates_none": "atualizado",
+    "updates_checking": "verificando…",
+    "updates_error": "A última verificação falhou. Aperte [Procurar atualizações] de novo.",
+    "page": {
+      "dashboard": "Painel",
+      "servers": "Servidores",
+      "modules": "Módulos de jogo",
+      "extensions": "Extensões",
+      "discord": "Discord",
+      "updates": "Atualizações",
+      "settings": "Configurações",
+      "daemon_log": "Log do daemon",
+      "commands": "Todos os comandos"
+    },
+    "btn": {
+      "status": "Visão geral",
+      "monitor": "Uso",
+      "server_add": "Novo servidor",
+      "audit": "Histórico",
       "start": "Iniciar",
       "stop": "Parar",
       "restart": "Reiniciar",
-      "console": "Últimas linhas do console",
-      "info": "Informações",
-      "backup_create": "Criar backup",
-      "backup_list": "Backups"
+      "players": "Jogadores",
+      "run": "Comando do jogo",
+      "send": "Enviar ao console",
+      "info": "Info",
+      "settings": "Configurações",
+      "backup_create": "Fazer backup",
+      "backup_list": "Backups",
+      "schedule": "Agendar",
+      "log": "Log salvo",
+      "validate": "Verificar",
+      "remove": "Excluir",
+      "commands": "Comandos",
+      "versions": "Versões",
+      "available": "Disponíveis",
+      "refresh": "Recarregar",
+      "enable": "Ativar",
+      "disable": "Desativar",
+      "config": "Configurações",
+      "ext_update": "Atualizar",
+      "rescan": "Procurar de novo",
+      "bot_status": "Conexão",
+      "bot_pair": "Parear",
+      "bot_start": "Conectar",
+      "bot_stop": "Desconectar",
+      "bot_nodes": "Servidores do Discord",
+      "bot_channels": "Canais",
+      "bot_invite": "Link de convite",
+      "perm": "Permissões",
+      "chatbot": "Saba-chan falante",
+      "bot_config": "Configurações do bot",
+      "update_status": "Estado",
+      "update_check": "Procurar atualizações",
+      "update_download": "Baixar",
+      "update_last": "Último resultado",
+      "update_integrity": "Verificar arquivos",
+      "update_config": "Configurar atualizações",
+      "config_show": "Todas as configurações",
+      "config_set": "Mudar uma configuração",
+      "config_defaults": "Padrões",
+      "diagnostics": "Diagnóstico",
+      "version": "Versões",
+      "sandbox": "Consentimentos de isolamento",
+      "daemon_start": "Iniciar daemon",
+      "daemon_restart": "Reiniciar daemon",
+      "daemon_stop": "Parar daemon",
+      "clients": "Janelas do app",
+      "events": "Acompanhar eventos"
     },
-    "needs_terminal": "O menu em tela cheia precisa de um terminal. Em scripts, use os subcomandos.",
-    "command_panicked": "O comando parou inesperadamente. Você pode continuar usando outros comandos."
+    "col": {
+      "name": "Nome",
+      "game": "Jogo",
+      "status": "Estado",
+      "players": "Jogadores",
+      "port": "Porta",
+      "uptime": "Ativo",
+      "about": "Descrição",
+      "enabled": "Ativo"
+    },
+    "card": {
+      "servers": "Servidores",
+      "servers_sub": "ligados / total",
+      "players": "Jogadores",
+      "players_sub": "nos servidores ligados",
+      "memory": "Memória"
+    },
+    "no_servers": "Ainda não há servidores. Aperte [Novo servidor] ou digite server add",
+    "feed": "Recente",
+    "feed_empty": "Inícios e paradas aparecem aqui assim que acontecem.",
+    "empty": "(nenhum)",
+    "detail": "Detalhes",
+    "server_console": "Console",
+    "console_empty": "Ainda não há saída.",
+    "discord": {
+      "relay": "Relay",
+      "paired": "Pareado",
+      "handled": "Comandos atendidos",
+      "heartbeat": "Último sinal",
+      "error": "Último erro",
+      "pair_hint": "Aperte [Parear] para conectar ao Discord. O código aparece no console."
+    },
+    "settings": {
+      "daemon": "Daemon",
+      "port": "Porta do daemon",
+      "language": "Idioma",
+      "hint": "Para mudar um valor, aperte [Mudar uma configuração] e digite chave=valor (ex.: language=pt-BR)."
+    },
+    "console": "Console",
+    "console_hint": "aperte : para digitar um comando aqui (ex.: start pal, help)",
+    "keys_console": "Enter executar · ↑↓ histórico · PgUp/PgDn rolar · Esc sair · F2 console maior",
+    "keys_running": "Comando em andamento · Ctrl+C parar · PgUp/PgDn rolar · as outras páginas continuam funcionando",
+    "choose": "Escolher",
+    "enter_text": "Digitar",
+    "welcome": "Bem-vindo ao Saba-chan. Aperte um botão ou aperte : para digitar um comando.",
+    "busy": "Outro comando ainda está em andamento. Espere terminar ou pare com Ctrl+C e tente de novo.",
+    "pick_first": "Escolha primeiro um item da lista.",
+    "event": {
+      "instance_ready": "pronto",
+      "instance_exit": "parado",
+      "instance_player": "jogadores mudaram",
+      "instance_port_moved": "porta mudou",
+      "instance_restart_failed": "reinício automático falhou",
+      "backup_done": "backup concluído",
+      "plan_done": "execução em várias etapas concluída",
+      "action_run": "comando executado",
+      "relay_link_request": "pedido de vínculo do Discord",
+      "update_available": "atualização disponível"
+    },
+    "enter_to_run": "Enter para executar",
+    "question": "Confirmar"
   },
   "install": {
     "fetching": "Verificando a versão mais recente…",
@@ -699,5 +830,33 @@
     "failed_no_log": "A instalação falhou: {{reason}}",
     "done": "Instalado em {{dir}}",
     "next": "Inicie o daemon com:\n{{command}}"
+  },
+  "do": {
+    "steps_array": "--steps precisa ser uma lista de etapas (um array JSON).",
+    "confirm_steps": "Executar estas etapas?",
+    "running": "Executando as etapas…",
+    "done_steps": "Todas as etapas concluídas.",
+    "state_running": "em andamento",
+    "state_done": "concluído"
+  },
+  "players": {
+    "title": "{{server}}: {{count}} online",
+    "none": "Ninguém está online."
+  },
+  "log": {
+    "none": "Ainda não há log salvo. Ele aparece depois que o servidor roda uma vez.",
+    "truncated": "O log era grande demais; só veio a primeira parte.",
+    "col": {
+      "run": "Execução",
+      "started": "Início"
+    }
+  },
+  "query": {
+    "none": "Este módulo de jogo não tem consultas.",
+    "col": {
+      "name": "Consulta",
+      "about": "Descrição",
+      "inputs": "Entradas"
+    }
   }
 }

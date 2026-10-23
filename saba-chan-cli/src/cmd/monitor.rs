@@ -113,7 +113,7 @@ fn bar(parts: &[(Part, f64)], total: f64) -> String {
     out
 }
 
-fn bytes(n: f64) -> String {
+pub(crate) fn bytes(n: f64) -> String {
     let units = ["B", "KB", "MB", "GB", "TB"];
     let (mut v, mut i) = (n.max(0.0), 0);
     while v >= 1024.0 && i < units.len() - 1 {

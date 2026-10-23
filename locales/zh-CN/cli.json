@@ -213,7 +213,12 @@
     "shutdown_refused": "守护进程未接受关闭请求：{{error}}",
     "stopped": "守护进程已停止。",
     "stopping": "正在停止守护进程...",
-    "stops_with_launcher": "saba-chan 核心正依附于启动它的程序运行。该程序关闭时，核心和服务器管理可能会一起停止。请停止守护进程（saba-chan-cli daemon stop），然后从开始菜单或普通终端重新启动。"
+    "stops_with_launcher": "saba-chan 核心正依附于启动它的程序运行。该程序关闭时，核心和服务器管理可能会一起停止。请停止守护进程（saba-chan-cli daemon stop），然后从开始菜单或普通终端重新启动。",
+    "no_clients": "没有连接到守护进程的桌面应用窗口。",
+    "col": {
+      "kind": "类型",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "{{name}} 的日志中未发现已知问题。"
@@ -837,7 +842,9 @@
       "install.dir": "安装文件夹（省略时会询问）",
       "install.modules": "要安装的游戏模块，用逗号分隔（省略时会询问）",
       "install.gui": "即使没有显示器也安装桌面应用",
-      "install.no_gui": "即使有显示器也不安装桌面应用"
+      "install.no_gui": "即使有显示器也不安装桌面应用",
+      "do.action": "操作 id，例如 server.restart 或 server.command:say",
+      "do.server": "操作针对的服务器"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -979,7 +986,13 @@
       "id": "操作",
       "title": "名称",
       "risk": "风险"
-    }
+    },
+    "steps_array": "--steps 必须是步骤列表（JSON 数组）。",
+    "confirm_steps": "要运行这些步骤吗？",
+    "running": "正在运行步骤…",
+    "done_steps": "所有步骤已完成。",
+    "state_running": "运行中",
+    "state_done": "已完成"
   },
   "perm": {
     "owner": "所有者",
@@ -1044,34 +1057,158 @@
     "whole": "整台电脑（不拆分）"
   },
   "tui": {
-    "daemon_up": "守护进程 ● 已连接 (v{{version}})",
-    "daemon_down": "守护进程 ○ 未运行 · 启动: daemon start",
-    "servers_running": "{{total}} 个服务器中 {{running}} 个正在运行",
+    "daemon_up": "● 守护进程 v{{version}}",
+    "daemon_down": "○ 守护进程未运行 · 输入 daemon start",
+    "servers_running": "{{running}}/{{total}} 台服务器运行中",
     "menu": "菜单",
-    "output": "结果",
     "enter_to_run": "按 Enter 运行",
     "running_hint": "(运行中 · Ctrl+C 停止)",
-    "keys": "↑↓ 移动 · ←→ 菜单/列表 · Enter 运行 · : 命令 · PgUp/PgDn 结果 · ? 帮助 · q 退出",
+    "keys": "Tab 下一个 · ↑↓ 选择 · Enter 按下 · 1-9 页面 · : 控制台 · F2 放大控制台 · ? 帮助 · q 退出",
     "yes": "是",
     "no": "否",
     "question": "确认",
     "dialog_keys": "Enter 选择 · Esc 取消",
     "help_title": "快捷键",
-    "help": "↑↓  在菜单或列表中移动\n←→ / Tab  在菜单和列表之间切换\nEnter  运行所选项(需要参数时打开命令行)\n:  命令行(与 saba-chan-cli 后面输入的命令相同，↑↓ 查看历史)\nPgUp/PgDn、鼠标滚轮  滚动结果\nCtrl+C  停止正在运行的命令\nq  退出(守护进程和服务器继续运行)",
+    "help": "Tab / Shift+Tab  在 菜单 → 列表 → 按钮 → 控制台 之间移动\n↑↓  选择， ←→  在按钮间移动\nEnter  按下按钮（带 … 的按钮会把命令填进控制台）\n1-9  跳到页面\n: 或 /  输入命令（写在 saba-chan-cli 后面的部分，↑↓ 历史）\nPgUp/PgDn、鼠标滚轮  滚动控制台， F2  放大控制台\nCtrl+C  停止正在运行的命令\n鼠标  点击菜单、列表和按钮\nq  退出（守护进程和服务器会继续运行）",
     "too_narrow": "请将窗口加宽到至少 60 列。",
     "not_here": "此命令无法在全屏菜单中运行。按 q 退出后在终端中运行。",
     "cancelled": "已停止。",
-    "action": {
+    "needs_terminal": "全屏菜单只能在终端中打开。脚本中请使用子命令。",
+    "command_panicked": "命令意外停止了。其他命令仍可继续使用。",
+    "brand": "Saba-chan {{version}}",
+    "memory_of": "内存 {{used}} / {{total}}",
+    "discord_on": "Discord ● 已连接",
+    "discord_off": "Discord ○ 未连接",
+    "updates_n": "{{count}} 个更新",
+    "updates_none": "已是最新",
+    "updates_checking": "正在检查…",
+    "updates_error": "上次检查失败。请再按一次 [检查更新]。",
+    "page": {
+      "dashboard": "仪表盘",
+      "servers": "服务器",
+      "modules": "游戏模块",
+      "extensions": "扩展",
+      "discord": "Discord",
+      "updates": "更新",
+      "settings": "设置",
+      "daemon_log": "守护进程日志",
+      "commands": "全部命令"
+    },
+    "btn": {
+      "status": "总体状态",
+      "monitor": "使用量",
+      "server_add": "新服务器",
+      "audit": "记录",
       "start": "启动",
       "stop": "停止",
       "restart": "重启",
-      "console": "控制台最近几行",
+      "players": "在线玩家",
+      "run": "游戏命令",
+      "send": "发送到控制台",
       "info": "信息",
-      "backup_create": "创建备份",
-      "backup_list": "备份列表"
+      "settings": "设置",
+      "backup_create": "备份",
+      "backup_list": "备份列表",
+      "schedule": "计划",
+      "log": "已保存日志",
+      "validate": "检查",
+      "remove": "删除",
+      "commands": "命令",
+      "versions": "版本",
+      "available": "可获取",
+      "refresh": "重新加载",
+      "enable": "启用",
+      "disable": "停用",
+      "config": "设置",
+      "ext_update": "更新",
+      "rescan": "重新扫描",
+      "bot_status": "连接状态",
+      "bot_pair": "配对",
+      "bot_start": "连接",
+      "bot_stop": "断开",
+      "bot_nodes": "Discord 服务器",
+      "bot_channels": "频道",
+      "bot_invite": "邀请链接",
+      "perm": "权限",
+      "chatbot": "会说话的 Saba-chan",
+      "bot_config": "机器人设置",
+      "update_status": "状态",
+      "update_check": "检查更新",
+      "update_download": "下载",
+      "update_last": "上次结果",
+      "update_integrity": "校验文件",
+      "update_config": "更新设置",
+      "config_show": "全部设置",
+      "config_set": "修改设置",
+      "config_defaults": "默认值",
+      "diagnostics": "诊断",
+      "version": "版本",
+      "sandbox": "隔离同意",
+      "daemon_start": "启动守护进程",
+      "daemon_restart": "重启守护进程",
+      "daemon_stop": "停止守护进程",
+      "clients": "应用窗口",
+      "events": "查看事件"
     },
-    "needs_terminal": "全屏菜单只能在终端中打开。脚本中请使用子命令。",
-    "command_panicked": "命令意外停止了。其他命令仍可继续使用。"
+    "col": {
+      "name": "名称",
+      "game": "游戏",
+      "status": "状态",
+      "players": "在线",
+      "port": "端口",
+      "uptime": "运行",
+      "about": "说明",
+      "enabled": "启用"
+    },
+    "card": {
+      "servers": "服务器",
+      "servers_sub": "运行 / 全部",
+      "players": "在线玩家",
+      "players_sub": "运行中服务器的合计",
+      "memory": "内存"
+    },
+    "no_servers": "还没有服务器。按 [新服务器] 或输入 server add",
+    "feed": "最近动态",
+    "feed_empty": "服务器启动和停止会立即显示在这里。",
+    "empty": "（无）",
+    "detail": "详情",
+    "server_console": "控制台",
+    "console_empty": "还没有输出。",
+    "discord": {
+      "relay": "中继",
+      "paired": "已配对",
+      "handled": "已处理命令",
+      "heartbeat": "最后心跳",
+      "error": "最后错误",
+      "pair_hint": "要连接 Discord，请按 [配对]。配对码会显示在控制台。"
+    },
+    "settings": {
+      "daemon": "守护进程",
+      "port": "守护进程端口",
+      "language": "语言",
+      "hint": "要修改值，请按 [修改设置] 并输入 键=值（例如 language=zh-CN）。"
+    },
+    "console": "控制台",
+    "console_hint": "按 : 在这里输入命令（例如 start pal、help）",
+    "keys_console": "Enter 运行 · ↑↓ 历史 · PgUp/PgDn 滚动 · Esc 离开 · F2 放大控制台",
+    "keys_running": "命令运行中 · Ctrl+C 停止 · PgUp/PgDn 滚动 · 其他页面仍可使用",
+    "choose": "选择",
+    "enter_text": "输入",
+    "welcome": "欢迎使用 Saba-chan。按按钮，或按 : 输入命令。",
+    "busy": "另一个命令仍在运行。请等待它结束，或用 Ctrl+C 停止后再试。",
+    "pick_first": "请先从列表中选择一项。",
+    "event": {
+      "instance_ready": "已就绪",
+      "instance_exit": "已停止",
+      "instance_player": "玩家变动",
+      "instance_port_moved": "端口已更改",
+      "instance_restart_failed": "自动重启失败",
+      "backup_done": "备份完成",
+      "plan_done": "多步骤运行完成",
+      "action_run": "已运行命令",
+      "relay_link_request": "Discord 关联请求",
+      "update_available": "有可用更新"
+    }
   },
   "install": {
     "fetching": "正在检查最新版本…",
@@ -1091,5 +1228,25 @@
     "failed_no_log": "安装失败：{{reason}}",
     "done": "已安装到 {{dir}}",
     "next": "用以下命令启动守护进程：\n{{command}}"
+  },
+  "players": {
+    "title": "{{server}}：{{count}} 人在线",
+    "none": "没有人在线。"
+  },
+  "log": {
+    "none": "还没有保存的日志。服务器运行一次后就会有。",
+    "truncated": "日志太大，只收到了开头部分。",
+    "col": {
+      "run": "运行",
+      "started": "开始时间"
+    }
+  },
+  "query": {
+    "none": "此游戏模块没有可用的查询。",
+    "col": {
+      "name": "查询",
+      "about": "说明",
+      "inputs": "输入"
+    }
   }
 }
