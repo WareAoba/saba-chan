@@ -1,6 +1,6 @@
 [package]
 name = "saba-chan-gui"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 authors = ["WareAoba"]
 description = "Saba-chan desktop interface (Tauri shell)"
