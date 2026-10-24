@@ -15,6 +15,7 @@ import * as P from './nodePermissions';
 import { permissionsAvailable } from './PermissionsTab';
 import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
+import { SabaToggle } from '../ui/SabaUI';
 import { claimSavedToken, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
@@ -49,6 +50,7 @@ function BotSettingsView({ prefixes, setPrefixes, nodes, sampleModuleWord }) {
         if (prefixProblems(next, t).length === 0) setPrefixes(next);
     };
     const p = draft[0] || fallback;
+    const translate = useDiscordStore((s) => s.discordTranslateCommands);
     return (
         <div className="dc-view">
             <header className="dc-view-head">
@@ -74,6 +76,19 @@ function BotSettingsView({ prefixes, setPrefixes, nodes, sampleModuleWord }) {
                         <Icon name="alertTriangle" size="xs" /> {draftProblems.join(' · ')}
                     </p>
                 )}
+            </section>
+            <section className="dc-card">
+                <div className="cb-toggle-row">
+                    <span className="dc-list-text">
+                        <span className="dc-list-name">{t('discord.translate_commands_title')}</span>
+                        <span className="cb-hint">{t('discord.translate_commands_desc')}</span>
+                    </span>
+                    <SabaToggle
+                        checked={translate}
+                        aria-label={t('discord.translate_commands_title')}
+                        onChange={(on) => useDiscordStore.getState().update({ discordTranslateCommands: on })}
+                    />
+                </div>
             </section>
             <section className="dc-card">
                 <div className="dc-card-head">

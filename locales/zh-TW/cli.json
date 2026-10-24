@@ -75,7 +75,8 @@
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
     "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
-    "words_not_used": "此 Discord 伺服器未使用此伺服器。"
+    "words_not_used": "此 Discord 伺服器未使用此伺服器。",
+    "translate_commands": "翻譯指令名稱"
   },
   "col": {
     "players": "線上玩家",
@@ -234,6 +235,7 @@
       "backup_unsupported": "此遊戲的模組沒有說明要備份哪些內容。較新的模組可能支援：saba-chan-cli update check",
       "nothing_to_back_up": "世界尚不存在。請先啟動一次伺服器來建立它。",
       "backup_busy": "此伺服器已有備份或還原正在進行。請在完成後再試一次。",
+      "backup_file_locked": "伺服器正在使用檔案（{{file}}）。請關閉伺服器後重試：saba-chan-cli stop 名稱",
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
       "schedule_changed": "排程工作已在別處變更。請用 saba-chan-cli schedule show 重新確認後再試。",

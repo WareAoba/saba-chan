@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` выполняется...",
     "missing_required": "❌ Отсутствует обязательный аргумент: `{{arg_name}}`\nИспользование: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nОписание: {{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ Ошибка выполнения на **{{name}}**\n{{error}}",
     "unknown_command": "❓ Неизвестная команда: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ Неизвестная команда: \"{{command}}\" ({{resolved}})"
+    "no_available": "❓ Неизвестная команда: \"{{command}}\" ({{resolved}})",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
+    "players": "Игроки",
+    "invalid": {
+      "missing": "Укажите {{label}}.",
+      "not_number": "{{label}} должно быть числом. Получено: {{value}}",
+      "out_of_range": "{{label}} должно быть от {{min}} до {{max}}. Получено: {{value}}",
+      "not_option": "{{label}} должно быть одним из: {{options}}. Получено: {{value}}",
+      "not_boolean": "{{label}} должно быть on или off. Получено: {{value}}",
+      "line_break": "{{label}} не может содержать переносы строк.",
+      "one_word": "{{label}} должно быть одним словом без пробелов. Получено: {{value}}",
+      "quote": "{{label}} не может содержать двойные кавычки.",
+      "too_many": "Эта команда не принимает лишних слов. Получено: {{value}}"
+    }
   },
   "responses": {
     "info_title": "**Информация о сервере**",
@@ -348,5 +361,23 @@
       "player_item": "• {{name}}",
       "players_more": "…и ещё {{count}}"
     }
+  },
+  "reasons": {
+    "failed": "Не удалось выполнить",
+    "rejected": "Сервер не принял команду",
+    "server_not_running": "Сервер выключен",
+    "not_supported": "Эта игра это не поддерживает",
+    "not_found": "Не найдено",
+    "timeout": "Сервер не ответил вовремя",
+    "auth_failed": "Сервер отклонил вход",
+    "players_failed": "Не удалось прочитать игроков",
+    "backup_file_locked": "Сервер использует файл ({{file}}), поэтому резервную копию сделать не удалось. Остановите сервер и повторите",
+    "backup_failed": "Не удалось сделать резервную копию",
+    "backup_unsupported": "Эта игра не поддерживает резервные копии",
+    "nothing_to_back_up": "Пока нет мира для резервной копии",
+    "backup_limit": "Лимит удалённых копий исчерпан. Удалите старые копии на ПК",
+    "backup_busy": "Уже идёт другое копирование или восстановление",
+    "server_running": "Сервер включён. Сначала остановите его",
+    "no_command_path": "Сервер запущен вне Saba-chan и не может принимать команды"
   }
 }

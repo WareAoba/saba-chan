@@ -75,7 +75,8 @@
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
     "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
-    "words_not_used": "Este servidor de Discord no usa este servidor."
+    "words_not_used": "Este servidor de Discord no usa este servidor.",
+    "translate_commands": "Nombres de comandos traducidos"
   },
   "col": {
     "players": "Jugadores",
@@ -234,6 +235,7 @@
       "backup_unsupported": "El módulo de este juego no indica qué respaldar. Un módulo más reciente podría hacerlo: saba-chan-cli update check",
       "nothing_to_back_up": "El mundo aún no existe. Inicia el servidor una vez para crearlo.",
       "backup_busy": "Ya hay una copia de seguridad o restauración de este servidor en curso. Inténtalo de nuevo cuando termine.",
+      "backup_file_locked": "El servidor está usando un archivo ({{file}}). Detén el servidor e inténtalo de nuevo: saba-chan-cli stop <nombre>",
       "invalid_relay_url": "Solo se permiten direcciones de relay https:// (http solo para localhost, 127.0.0.1 o [::1] al probar en este PC).",
       "module_busy": "Este módulo ya se está instalando o eliminando. Inténtalo de nuevo cuando termine.",
       "schedule_changed": "La programación se cambió en otro lugar. Revísala con saba-chan-cli schedule show y vuelve a intentarlo.",

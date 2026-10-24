@@ -30,6 +30,8 @@ export function formatBytes(n) {
 const CODE_TEXT = {
     restore_outside: 'maintenance.err_restore_outside',
     backup_busy: 'maintenance.err_backup_busy',
+    // 켜진 서버가 쥐고 있는 파일 (`file`: 그 이름)
+    backup_file_locked: 'maintenance.err_backup_file_locked',
     schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',
 };
@@ -37,7 +39,7 @@ const CODE_TEXT = {
 const errorText = (res, fallback, t) => {
     const details = Array.isArray(res?.details) ? res.details.filter(Boolean) : [];
     const known = CODE_TEXT[res?.error_code];
-    return [known ? t(known) : res?.error || fallback, ...details].filter(Boolean).join('\n');
+    return [known ? t(known, { file: res?.file || '' }) : res?.error || fallback, ...details].filter(Boolean).join('\n');
 };
 
 // ── 예약 작업 초안 ↔ 데몬 형식 ──

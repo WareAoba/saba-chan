@@ -991,7 +991,9 @@
     "prefix_default_placeholder": "Laisser vide pour utiliser {{prefix}}",
     "prefix_default_hint": "Le préfixe par défaut {{prefix}} est utilisé. Il suit la langue de l’application.",
     "prefix_err_count": "{{max}} préfixes au maximum.",
-    "prefix_err_length": "Les préfixes font au plus {{max}} caractères : {{words}}"
+    "prefix_err_length": "Les préfixes font au plus {{max}} caractères : {{words}}",
+    "translate_commands_title": "Noms de commandes traduits",
+    "translate_commands_desc": "Affiche les noms et descriptions traduits des commandes du jeu dans les commandes slash Discord. Désactivé, seuls les noms du module (par exemple save-all) sont affichés."
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
@@ -1047,7 +1049,8 @@
     "err_at": "L'heure doit être au format HH:MM.",
     "err_message": "Saisissez le message à annoncer.",
     "backup_unreadable": "⚠ impossible à ouvrir",
-    "backup_unreadable_hint": "Cette sauvegarde ne peut pas être ouverte, elle ne peut donc pas être restaurée. Le contenu de sauvegarde inutilisé n'est pas nettoyé tant que vous ne la supprimez pas. Supprimez-la."
+    "backup_unreadable_hint": "Cette sauvegarde ne peut pas être ouverte, elle ne peut donc pas être restaurée. Le contenu de sauvegarde inutilisé n'est pas nettoyé tant que vous ne la supprimez pas. Supprimez-la.",
+    "err_backup_file_locked": "Le serveur utilise un fichier ({{file}}), la sauvegarde n’a pas pu être faite. Arrêtez le serveur et réessayez."
   },
   "chatbot": {
     "nav": "Saba-chan qui parle",

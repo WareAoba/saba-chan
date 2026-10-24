@@ -95,7 +95,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             return command_reply(
                 InternalResponse {
                     status: StatusCode::BAD_REQUEST,
-                    body: json!({ "error": e.message, "error_code": e.code, "field": e.field }),
+                    body: e.body(),
                 },
                 &request.name,
                 &errors,
@@ -142,7 +142,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             return command_reply(
                 InternalResponse {
                     status: StatusCode::BAD_REQUEST,
-                    body: json!({ "error": e.message, "error_code": e.code, "field": e.field }),
+                    body: e.body(),
                 },
                 &name,
                 &errors,

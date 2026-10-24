@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` wird ausgeführt...",
     "missing_required": "❌ Erforderliches Argument fehlt: `{{arg_name}}`\nVerwendung: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nBeschreibung: {{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ Ausführung auf **{{name}}** fehlgeschlagen\n{{error}}",
     "unknown_command": "❓ Unbekannter Befehl: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ Unbekannter Befehl: \"{{command}}\" ({{resolved}})"
+    "no_available": "❓ Unbekannter Befehl: \"{{command}}\" ({{resolved}})",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
+    "players": "Spieler",
+    "invalid": {
+      "missing": "Bitte {{label}} angeben.",
+      "not_number": "{{label}} muss eine Zahl sein. Erhalten: {{value}}",
+      "out_of_range": "{{label}} muss zwischen {{min}} und {{max}} liegen. Erhalten: {{value}}",
+      "not_option": "{{label}} muss eines davon sein: {{options}}. Erhalten: {{value}}",
+      "not_boolean": "{{label}} muss on oder off sein. Erhalten: {{value}}",
+      "line_break": "{{label}} darf keine Zeilenumbrüche enthalten.",
+      "one_word": "{{label}} muss ein Wort ohne Leerzeichen sein. Erhalten: {{value}}",
+      "quote": "{{label}} darf keine Anführungszeichen enthalten.",
+      "too_many": "Dieser Befehl nimmt keine zusätzlichen Wörter an. Erhalten: {{value}}"
+    }
   },
   "responses": {
     "info_title": "**Serverinformationen**",
@@ -348,5 +361,23 @@
       "player_item": "• {{name}}",
       "players_more": "…und {{count}} weitere"
     }
+  },
+  "reasons": {
+    "failed": "Konnte nicht ausgeführt werden",
+    "rejected": "Der Server hat den Befehl nicht angenommen",
+    "server_not_running": "Der Server ist aus",
+    "not_supported": "Dieses Spiel unterstützt das nicht",
+    "not_found": "Nicht gefunden",
+    "timeout": "Der Server hat nicht rechtzeitig geantwortet",
+    "auth_failed": "Die Anmeldung am Server ist fehlgeschlagen",
+    "players_failed": "Die Spieler konnten nicht gelesen werden",
+    "backup_file_locked": "Der Server benutzt eine Datei ({{file}}), daher konnte kein Backup erstellt werden. Server stoppen und erneut versuchen",
+    "backup_failed": "Das Backup konnte nicht erstellt werden",
+    "backup_unsupported": "Dieses Spiel unterstützt keine Backups",
+    "nothing_to_back_up": "Es gibt noch keine Welt zum Sichern",
+    "backup_limit": "Das Limit für Remote-Backups ist erreicht. Alte Backups am PC löschen",
+    "backup_busy": "Ein anderes Backup oder eine Wiederherstellung läuft",
+    "server_running": "Der Server läuft. Zuerst stoppen",
+    "no_command_path": "Der Server wurde außerhalb von Saba-chan gestartet und nimmt keine Befehle an"
   }
 }

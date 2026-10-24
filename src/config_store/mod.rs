@@ -132,6 +132,8 @@ pub struct BotConfig {
     pub node_settings: Value,
     pub cloud_nodes: Vec<Value>,
     pub cloud_members: HashMap<String, Value>,
+    /// 디스코드 슬래시 명령에 모듈 명령의 번역한 이름·설명을 단다 (모듈 locales). 끄면 module.toml 이름 그대로
+    pub translate_commands: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -155,6 +157,7 @@ impl Default for BotConfig {
             node_settings: Value::Object(serde_json::Map::new()),
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
+            translate_commands: true,
         }
     }
 }

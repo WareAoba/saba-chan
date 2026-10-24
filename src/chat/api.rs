@@ -41,6 +41,12 @@ pub struct ModuleView {
     pub errors: HashMap<String, String>,
     /// [[presets]] 추천 설정 묶음 (heartbeat로 relay에 id·이름만 나간다)
     pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
+    /// `[commands] failure_patterns`: 콘솔 답이 맞으면 실패
+    pub failure_patterns: Vec<String>,
+    /// 모듈 폴더 (`locales/<lang>.json`을 읽는다). 없으면 module.toml 문구만
+    pub locale_dir: Option<std::path::PathBuf>,
+    /// `[status] players`를 선언했다 (채팅 `players`가 접속자 조회)
+    pub players: bool,
 }
 
 impl ModuleView {
@@ -51,6 +57,16 @@ impl ModuleView {
     /// 명령의 module.toml 별칭 (없으면 빈 목록)
     pub fn aliases_of(&self, command: &str) -> &[String] {
         self.command_aliases.iter().find(|(c, _)| c == command).map(|(_, a)| a.as_slice()).unwrap_or(&[])
+    }
+
+    /// 모듈 locales의 문구 (`pointer`는 `/commands/say/done` 꼴). 그 언어에 없으면 영어
+    pub fn text(&self, lang: &str, pointer: &str) -> Option<String> {
+        let dir = self.locale_dir.as_ref()?;
+        let read = |lang: &str| -> Option<String> {
+            let raw = std::fs::read_to_string(dir.join("locales").join(format!("{}.json", lang))).ok()?;
+            serde_json::from_str::<serde_json::Value>(&raw).ok()?.pointer(pointer)?.as_str().map(str::to_string)
+        };
+        read(lang).or_else(|| read("en"))
     }
 }
 
@@ -64,6 +80,8 @@ pub trait DaemonApi {
     async fn stop(&self, server: &ServerView) -> InternalResponse;
     /// 게임 명령 (`POST /api/instance/:id/command`와 같은 경로). 인자는 순서대로.
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse;
+    /// 접속자 (`GET /api/instance/:id/players`)
+    async fn players(&self, server: &ServerView) -> InternalResponse;
 }
 
 impl DaemonApi for IPCServer {
@@ -88,6 +106,7 @@ impl DaemonApi for IPCServer {
         modules
             .into_iter()
             .map(|m| {
+                let locale_dir = Some(std::path::PathBuf::from(&m.path));
                 let meta = m.metadata;
                 let mut command_aliases: Vec<(String, Vec<String>)> = meta
                     .command_aliases
@@ -99,9 +118,12 @@ impl DaemonApi for IPCServer {
                     name: meta.name,
                     module_aliases: meta.module_aliases,
                     command_aliases,
+                    failure_patterns: meta.commands.as_ref().map(|c| c.failure_patterns.clone()).unwrap_or_default(),
                     commands: meta.commands.map(|c| c.fields).unwrap_or_default(),
                     errors: meta.errors,
                     presets: meta.presets,
+                    locale_dir,
+                    players: meta.players_function.is_some(),
                 }
             })
             .collect()
@@ -118,6 +140,11 @@ impl DaemonApi for IPCServer {
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {
         let req = CommandRequest { command: command.to_string(), args: json!(args) };
         into_internal(crate::ipc::handlers::command::execute_command(Path(instance_id.to_string()), State(self.clone()), Json(req)).await).await
+    }
+
+    async fn players(&self, server: &ServerView) -> InternalResponse {
+        use axum::response::IntoResponse;
+        into_internal(crate::ipc::handlers::managed::players_handler(Path(server.id.clone()), State(self.clone())).await.into_response()).await
     }
 }
 

@@ -991,7 +991,9 @@
     "prefix_default_placeholder": "留空則使用預設的 {{prefix}}",
     "prefix_default_hint": "目前使用預設的 {{prefix}}。變更應用程式語言後預設值也會跟著變。",
     "prefix_err_count": "前綴最多 {{max}} 個。",
-    "prefix_err_length": "前綴最多 {{max}} 個字元：{{words}}"
+    "prefix_err_length": "前綴最多 {{max}} 個字元：{{words}}",
+    "translate_commands_title": "翻譯指令名稱",
+    "translate_commands_desc": "在 Discord 斜線指令中顯示遊戲指令的翻譯名稱和說明。關閉時只顯示模組中的原始名稱（例如 save-all）。"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
@@ -1047,7 +1049,8 @@
     "err_at": "時間格式須為 HH:MM。",
     "err_message": "請輸入公告內容。",
     "backup_unreadable": "⚠ 無法開啟",
-    "backup_unreadable_hint": "此備份無法開啟。它無法還原，而且在刪除之前不會清理未使用的備份內容。請刪除它。"
+    "backup_unreadable_hint": "此備份無法開啟。它無法還原，而且在刪除之前不會清理未使用的備份內容。請刪除它。",
+    "err_backup_file_locked": "伺服器正在使用檔案（{{file}}），無法備份。請關閉伺服器後重試。"
   },
   "chatbot": {
     "nav": "會說話的 Saba-chan",

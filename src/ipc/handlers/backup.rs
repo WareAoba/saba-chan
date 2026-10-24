@@ -59,7 +59,8 @@ struct Plan {
     targets: Vec<PathBuf>,
     /// 훅이 더 돌려준 복원 허용 범위 (`restore_roots`). 백업 대상은 아니다 (MA3)
     restore_roots: Vec<PathBuf>,
-    save_command: Option<String>,
+    /// 켜진 서버에서의 저장·자동 저장 멈춤 명령과 뺄 파일 (`[backup]`, 선언이 없으면 빈 값)
+    spec: crate::supervisor::module_loader::ModuleBackup,
     keep: usize,
     boundary: crate::module_paths::Boundary,
     module_name: String,
@@ -138,7 +139,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Response> {
     let restore_roots = resolve(backup::fill_paths(&root_patterns, &base, &lookup))?;
     let targets = resolve(backup::fill_paths(&patterns, &base, lookup))?;
     let paths = targets.iter().filter(|p| p.exists()).cloned().collect();
-    Ok(Some(Plan { dir, paths, targets, restore_roots, save_command: spec.save_command, keep, boundary, module_name }))
+    Ok(Some(Plan { dir, paths, targets, restore_roots, spec, keep, boundary, module_name }))
 }
 
 /// 백업 하나를 만들고 오래된 자동 백업을 정리한다. 백업할 것이 없으면 Ok(None).
@@ -214,7 +215,7 @@ async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Response> {
         paths: Vec::new(),
         targets: Vec::new(),
         restore_roots: Vec::new(),
-        save_command: None,
+        spec: Default::default(),
         keep: instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP),
         boundary: crate::module_paths::Boundary::for_instance(instance, &supervisor.instance_store.instance_dir(id), supervisor.module_loader.get_module(&instance.module_name).ok().as_ref().map(|m| &m.metadata)),
         module_name: instance.module_name.clone(),
@@ -245,16 +246,19 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
             format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP),
         ));
     }
-    if let Some(cmd) = plan.save_command.as_deref() {
-        if is_running(state, id).await {
+    // 켜진 서버: 자동 저장을 멈추고(pause) 저장한 뒤 묶고, 끝나면(실패해도) 자동 저장을 되돌린다(resume)
+    let live = (plan.spec.save_command.is_some() || plan.spec.pause_command.is_some()) && is_running(state, id).await;
+    let resume = if live { plan.spec.resume_command.clone() } else { None };
+    if live {
+        for cmd in [plan.spec.pause_command.as_deref(), plan.spec.save_command.as_deref()].into_iter().flatten() {
             if !run_command(state, id, cmd, json!({})).await {
-                tracing::warn!("Save command '{}' failed before backing up '{}'", cmd, id);
+                tracing::warn!("Command '{}' failed before backing up '{}'", cmd, id);
             }
-            // 저장 명령은 대개 응답 뒤에도 디스크에 쓴다
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
+        // 저장 명령은 대개 응답 뒤에도 디스크에 쓴다
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
-    let Plan { dir, paths, keep, boundary, module_name, .. } = plan;
+    let Plan { dir, paths, keep, boundary, module_name, spec, .. } = plan;
     // 원격(디스코드·챗봇)은 백업을 지우지 못한다: 원격 복원을 거듭해 앞서 남긴 안전 백업을 밀어내지 않게, 정리는 이 PC의 다음 백업에 맡긴다 (D-B11)
     let result = tokio::task::spawn_blocking(move || {
         for path in &paths {
@@ -262,7 +266,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
                 return Err(crate::module_paths::outside(&module_name, "backup_paths", path.display()));
             }
         }
-        let made = backup::create(&dir, kind, &paths)?;
+        let made = backup::create_excluding(&dir, kind, &paths, &spec.exclude)?;
         // 방금 만든 백업은 보관 개수와 상관없이 남긴다
         let mut keep_names = vec![made.name.as_str()];
         keep_names.extend(protect.as_deref());
@@ -278,6 +282,11 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         Ok(Err(e)) => Err(e),
         Err(e) => Err(e.into()),
     };
+    if let Some(cmd) = resume.as_deref() {
+        if !run_command(state, id, cmd, json!({})).await {
+            tracing::warn!("Command '{}' failed after backing up '{}'; the server may not save automatically until it restarts", cmd, id);
+        }
+    }
     let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
     crate::events::emit("backup.done", match &result {
         Ok(made) => json!({ "instanceId": id, "instance": instance, "kind": kind, "name": made.name, "ok": true }),
@@ -286,6 +295,10 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     result.map(Some).map_err(|e| {
         if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
             (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()
+        } else if let Some(locked) = e.downcast_ref::<backup::LockedFile>() {
+            // 켜진 서버가 쥐고 있는 파일: 어느 파일인지 이름만 (경로는 PC 밖으로 내지 않는다)
+            let file = locked.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            (StatusCode::CONFLICT, Json(json!({ "success": false, "error": e.to_string(), "error_code": "backup_file_locked", "file": file }))).into_response()
         } else {
             error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())
         }

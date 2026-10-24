@@ -991,7 +991,9 @@
     "prefix_default_placeholder": "Déjalo vacío para usar {{prefix}}",
     "prefix_default_hint": "Ahora se usa el predeterminado {{prefix}}. Cambia con el idioma de la app.",
     "prefix_err_count": "Hasta {{max}} prefijos.",
-    "prefix_err_length": "Los prefijos tienen como máximo {{max}} caracteres: {{words}}"
+    "prefix_err_length": "Los prefijos tienen como máximo {{max}} caracteres: {{words}}",
+    "translate_commands_title": "Nombres de comandos traducidos",
+    "translate_commands_desc": "Muestra nombres y descripciones traducidos de los comandos del juego en los comandos de barra de Discord. Si está apagado, solo se ven los nombres del módulo (por ejemplo save-all)."
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",
@@ -1047,7 +1049,8 @@
     "err_at": "La hora debe tener el formato HH:MM.",
     "err_message": "Escribe el mensaje del aviso.",
     "backup_unreadable": "⚠ no se puede abrir",
-    "backup_unreadable_hint": "Esta copia de seguridad no se puede abrir, así que no se puede restaurar. El contenido de copias sin usar no se limpia hasta que la elimines. Elimínala."
+    "backup_unreadable_hint": "Esta copia de seguridad no se puede abrir, así que no se puede restaurar. El contenido de copias sin usar no se limpia hasta que la elimines. Elimínala.",
+    "err_backup_file_locked": "El servidor está usando un archivo ({{file}}), así que no se pudo hacer la copia. Detén el servidor e inténtalo de nuevo."
   },
   "chatbot": {
     "nav": "Saba-chan parlante",

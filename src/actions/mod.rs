@@ -1357,11 +1357,15 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         summary::label_backups(&mut result, &catalog(&caller.locale));
     }
     let mut out = json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result });
-    // 원격 화면은 JSON을 그리지 않으므로 요청 언어의 요약을 함께 준다
+    // 원격 화면은 JSON을 그리지 않으므로 요청 언어의 요약을 함께 준다. 실패면 짧은 이유 (`reason`)
     if let (true, Some(_)) = (ok, &caller.remote) {
         if let Some(text) = summary::text(&r.id, &out["result"], &catalog(&caller.locale)) {
             out["text"] = json!(text);
         }
+    }
+    if let (false, Some(_)) = (ok, &caller.remote) {
+        let code = crate::commands::error_code(resp.status.as_u16(), &out["result"]);
+        out["reason"] = json!(crate::chat::reason(&catalog(&caller.locale), &code, &out["result"]));
     }
     if let (true, Some((instance, before))) = (ok, previous) {
         if let Some(undo) = undo_plan(server, &instance, before, caller).await {

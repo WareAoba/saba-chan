@@ -111,7 +111,8 @@
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
     "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
-    "words_not_used": "This Discord server doesn't use this server."
+    "words_not_used": "This Discord server doesn't use this server.",
+    "translate_commands": "Translated command names"
   },
   "col": {
     "players": "Players",
@@ -291,6 +292,7 @@
       "backup_unsupported": "This game's module does not say what to back up. A newer module may: saba-chan-cli update check",
       "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
+      "backup_file_locked": "The server is using a file ({{file}}). Stop the server and try again: saba-chan-cli stop <name>",
       "invalid_relay_url": "Only https:// relay addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
       "module_busy": "This module is already being installed or removed. Try again when it finishes.",
       "schedule_changed": "The schedule was changed elsewhere. Check it again with saba-chan-cli schedule show, then retry.",

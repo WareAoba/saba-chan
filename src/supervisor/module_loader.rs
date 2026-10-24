@@ -239,6 +239,16 @@ pub struct ModuleBackup {
     /// 서버가 켜져 있을 때 묶기 전에 실행할 `[commands.fields]` 이름 (예: "save-all")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub save_command: Option<String>,
+    /// 서버가 켜져 있을 때 `save_command` 전에 실행해 백업하는 동안 서버의 자동 저장을 멈추는 `[commands.fields]` 이름
+    /// (예: "save-off"). 있으면 `resume_command`도 있어야 한다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pause_command: Option<String>,
+    /// 백업이 끝나면(실패해도) 실행해 자동 저장을 되돌리는 `[commands.fields]` 이름 (예: "save-on")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_command: Option<String>,
+    /// 백업할 폴더 안에서 담지 않을 파일 이름 패턴 (`*` 가능). 서버가 켜져 있는 동안 잠가 두는 파일용 (예: "session.lock")
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude: Vec<String>,
     /// true면 lifecycle `backup_paths(config)`가 `{"success": true, "paths": [...]}`로 경로를 준다
     /// (세이브 위치를 모듈 코드가 계산하는 게임용). `paths`에 더해진다
     #[serde(default)]
@@ -339,6 +349,9 @@ pub struct ModuleCommands {
     /// 해석은 `crate::commands::InstanceCommands`
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hook: bool,
+    /// 콘솔 답이 이 정규식과 맞으면 명령이 실패한 것이다 (`reason` 그룹이 있으면 그것이 이유). 채팅 답이 쓴다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failure_patterns: Vec<String>,
 }
 
 /// 콘솔 구문 하이라이팅 — 모듈별로 정의되는 로그 하이라이팅 규칙
@@ -391,6 +404,16 @@ pub struct CommandField {
     pub risk: Option<String>,
     #[serde(default)]
     pub inputs: Vec<CommandInput>,
+    /// false면 디스코드·챗봇에 내보내지 않는다 (데몬 기능이 같은 일을 하는 명령. 예: 접속자 목록은 `players`)
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub remote: bool,
+    /// 콘솔 답에서 값을 뽑는 정규식 (이름 있는 그룹). 맞으면 채팅 답이 모듈 locales `commands.<이름>.done`에 그 값을 넣는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_pattern: Option<String>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1072,6 +1095,9 @@ struct CommandsSection {
     /// lifecycle `instance_commands()`로 인스턴스별 명령을 더 받는다
     #[serde(default)]
     hook: bool,
+    /// 콘솔 답이 맞으면 실패로 보는 정규식 (`reason` 그룹이 이유)
+    #[serde(default)]
+    failure_patterns: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1097,6 +1123,12 @@ struct CommandFieldToml {
     risk: Option<String>,
     #[serde(default)]
     inputs: Vec<CommandInputToml>,
+    /// false면 디스코드·챗봇에 내보내지 않는다 (기본 true)
+    #[serde(default)]
+    remote: Option<bool>,
+    /// 콘솔 답에서 값을 뽑는 정규식 (이름 있는 그룹 → locales `commands.<이름>.done`의 자리)
+    #[serde(default)]
+    reply_pattern: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1230,8 +1262,10 @@ impl ModuleToml {
                 console_template: f.console_template,
                 risk: f.risk,
                 inputs: f.inputs.into_iter().map(CommandInput::from).collect(),
+                remote: f.remote.unwrap_or(true),
+                reply_pattern: f.reply_pattern,
             }).collect();
-            if fields.is_empty() && !c.hook { None } else { Some(ModuleCommands { fields, hook: c.hook }) }
+            if fields.is_empty() && !c.hook { None } else { Some(ModuleCommands { fields, hook: c.hook, failure_patterns: c.failure_patterns }) }
         } else {
             None
         };
@@ -1659,11 +1693,25 @@ impl ModuleToml {
         let refs = [
             ("config.announce_command", self.config.as_ref().and_then(|c| c.announce_command.as_deref())),
             ("backup.save_command", self.backup.as_ref().and_then(|b| b.save_command.as_deref())),
+            ("backup.pause_command", self.backup.as_ref().and_then(|b| b.pause_command.as_deref())),
+            ("backup.resume_command", self.backup.as_ref().and_then(|b| b.resume_command.as_deref())),
         ];
         for (key, name) in refs {
             if let Some(name) = name.filter(|n| !named(n)) {
                 problems.push(format!("{} '{}' is not a [[commands.fields]] name", key, name));
             }
+        }
+        for c in &self.commands {
+            let patterns = c.fields.iter().filter_map(|f| f.reply_pattern.as_ref().map(|p| (format!("commands.fields '{}' reply_pattern", f.name), p)));
+            let failures = c.failure_patterns.iter().map(|p| ("commands.failure_patterns".to_string(), p));
+            for (key, pattern) in patterns.chain(failures) {
+                if let Err(e) = regex::Regex::new(pattern) {
+                    problems.push(format!("{}: invalid regex ({})", key, e));
+                }
+            }
+        }
+        if self.backup.as_ref().is_some_and(|b| b.pause_command.is_some() && b.resume_command.is_none()) {
+            problems.push("backup.pause_command needs backup.resume_command".to_string());
         }
         problems
     }
@@ -2760,6 +2808,21 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         assert_eq!(meta.announce_command.as_deref(), Some("say"));
         let typo = toml.replace("save_command = \"save-all\"", "save_command = \"save_all\"");
         assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("backup.save_command"));
+    }
+
+    #[test]
+    fn schema_v1_reads_live_backup_keys() {
+        let toml = format!(
+            "{V1}\n[backup]\npaths = [\"world\"]\nexclude = [\"session.lock\"]\npause_command = \"save-off\"\nsave_command = \"save-all\"\nresume_command = \"save-on\"\n\n[[commands.fields]]\nname = \"save-all\"\n\n[[commands.fields]]\nname = \"save-off\"\n\n[[commands.fields]]\nname = \"save-on\"\n"
+        );
+        let backup = parse_module_toml(&toml).unwrap().backup.unwrap();
+        assert_eq!(backup.exclude, vec!["session.lock"]);
+        assert_eq!((backup.pause_command.as_deref(), backup.resume_command.as_deref()), (Some("save-off"), Some("save-on")));
+        let typo = toml.replace("resume_command = \"save-on\"", "resume_command = \"save_on\"");
+        assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("backup.resume_command"));
+        // 멈춤만 있고 되돌릴 명령이 없으면 자동 저장이 꺼진 채 남는다
+        let unpaired = toml.replace("resume_command = \"save-on\"\n", "");
+        assert!(parse_module_toml(&unpaired).unwrap_err().to_string().contains("backup.pause_command"));
     }
 
     #[test]

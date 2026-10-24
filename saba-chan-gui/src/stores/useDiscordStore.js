@@ -24,6 +24,7 @@ const BOT_KEYS = {
     nodeSettings: ['nodeSettings'],
     cloudNodes: ['cloudNodes'],
     cloudMembers: ['cloudMembers'],
+    translateCommands: ['discordTranslateCommands'],
 };
 // 마지막으로 데몬과 맞춘 값 (로드·저장 성공 때 갱신). 여기와 다른 필드만 바뀐 것으로 본다
 let synced = {};
@@ -53,6 +54,8 @@ const initialState = () => ({
     nodeSettings: {},
     cloudNodes: [],
     cloudMembers: {},
+    // 슬래시 명령에 모듈 명령의 번역한 이름·설명을 단다 (데몬 기본 켬)
+    discordTranslateCommands: true,
 
     // ── Runtime status ──
     // stopped: 에이전트 정지 / connecting: 에이전트 실행 중, 릴레이 미확인 / running: 둘 다 OK
@@ -114,6 +117,7 @@ export const useDiscordStore = create((set, get) => ({
                     discordCommandAliases: botCfg.commandAliases || {},
                     discordCloudRelayUrl: botCfg.cloud?.relayUrl || '',
                     discordCloudHostId: botCfg.cloud?.hostId || '',
+                    discordTranslateCommands: botCfg.translateCommands !== false,
                     _botConfigLoaded: true,
                 };
                 if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
@@ -385,6 +389,7 @@ const _discordSaveKeys = [
     'cloudMembers',
     'discordModuleAliases',
     'discordCommandAliases',
+    'discordTranslateCommands',
 ];
 useDiscordStore.subscribe((state, prevState) => {
     if (!state._settingsReady) return;

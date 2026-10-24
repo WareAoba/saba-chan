@@ -543,6 +543,7 @@ impl Session {
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
+        let translate = self.server.config_store.get_bot_config().await.translate_commands;
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
             crate::ipc::handlers::server::list_servers_internal(&self.server).await,
         )
@@ -567,10 +568,24 @@ impl Session {
             .await
             .into_iter()
             .map(|m| {
+                // 번역한 명령 이름 (봇 설정 `translateCommands`, 기본 켬): 모듈 locales를 언어마다 한 번 읽는다
+                let locales: std::collections::HashMap<&str, Value> = match (translate, &m.locale_dir) {
+                    (true, Some(dir)) => crate::chat::i18n::languages()
+                        .into_iter()
+                        .filter_map(|l| {
+                            let raw = std::fs::read_to_string(dir.join("locales").join(format!("{}.json", l))).ok()?;
+                            Some((l, serde_json::from_str(&raw).ok()?))
+                        })
+                        .collect(),
+                    _ => Default::default(),
+                };
+                let texts = |l: &str| locales.get(l).cloned().unwrap_or(Value::Null);
+                let texts: Option<&dyn Fn(&str) -> Value> = if translate { Some(&texts) } else { None };
                 json!({
                     "name": m.name,
                     "module_aliases": m.module_aliases,
-                    "commands": { "fields": m.commands.iter().map(|c| relay_command_entry(c, m.aliases_of(&c.name))).collect::<Vec<_>>() },
+                    // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
+                    "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
                 })
             })
@@ -823,7 +838,7 @@ impl Session {
                     locale: text("locale").unwrap_or_else(|| "en".into()),
                 };
                 let result = crate::audit::with_origin(origin, action_request(&self.server, action, &payload, &caller)).await;
-                action_result(result)
+                action_result(result, &caller.locale)
             }
             // 디스코드에서 코드 없이 `/사바쨩 연결` (J1-b): PC 화면에 알리기만 한다. 수락은 PC에서 사람이 누른다
             "link_request" => match link_request_event(cmd, &payload) {
@@ -1201,11 +1216,15 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
 }
 
 /// 릴레이 결과 모양: 성공 `{success:true, data}`, 실패 `{success:false, data:{code, error, args?, field?, reason?}}`
-fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
+/// `locale`: 요청 언어. 문구가 있는 실패 코드면 짧은 이유(`reason`)를 함께 준다
+fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &str) -> Value {
     let mut out = match result {
         Ok(v) => json!({ "success": v.get("success").and_then(Value::as_bool).unwrap_or(true), "data": v }),
         Err(e) => {
             let mut data = json!({ "code": e.code, "error": e.message });
+            if let Some(reason) = crate::chat::known_reason(&crate::chat::i18n::Catalog::for_language(locale), &e.code, &e.data) {
+                data["reason"] = json!(reason);
+            }
             if let Value::Object(extra) = &e.data {
                 for (k, v) in extra {
                     data[k] = v.clone();
@@ -1375,15 +1394,36 @@ fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
 
 /// 하트비트의 모듈 명령 한 줄: relay가 슬래시·챗봇 도구를 만드는 데 쓰는 필드만 (템플릿·엔드포인트는 PC 안에서만 쓴다).
 /// `aliases`는 module.toml `[aliases.commands]`의 별칭 — 별칭으로 친 명령도 relay가 위험도 확인을 거치게 한다
-fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String]) -> Value {
+/// `texts`: 언어 → 모듈 locales (번역한 명령 이름이 켜져 있을 때). 있으면 `commands.<이름>.label`·`description`과
+/// 칸의 `inputs.<칸>.label`을 언어별 `titles`·`descriptions`로 싣는다 (릴레이 슬래시 명령의 언어별 이름·설명)
+fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String], texts: Option<&dyn Fn(&str) -> Value>) -> Value {
+    let by_language = |pointer: &str| -> Option<serde_json::Map<String, Value>> {
+        let texts = texts?;
+        let map: serde_json::Map<String, Value> = crate::chat::i18n::languages()
+            .into_iter()
+            .filter_map(|l| Some((l.to_string(), json!(texts(l).pointer(pointer)?.as_str()?))))
+            .collect();
+        (!map.is_empty()).then_some(map)
+    };
     let inputs: Vec<Value> = c
         .inputs
         .iter()
-        .map(|i| json!({ "name": i.name, "label": i.label, "type": i.input_type, "required": i.required, "min": i.min, "max": i.max, "options": i.options }))
+        .map(|i| {
+            let mut input = json!({ "name": i.name, "label": i.label, "type": i.input_type, "required": i.required, "min": i.min, "max": i.max, "options": i.options });
+            if let Some(titles) = by_language(&format!("/commands/{}/inputs/{}/label", c.name, i.name)) {
+                input["titles"] = Value::Object(titles);
+            }
+            input
+        })
         .collect();
     let mut entry = json!({ "name": c.name, "label": c.label, "description": c.description, "risk": c.risk, "inputs": inputs });
     if !aliases.is_empty() {
         entry["aliases"] = json!(aliases);
+    }
+    for (key, text) in [("titles", "label"), ("descriptions", "description")] {
+        if let Some(map) = by_language(&format!("/commands/{}/{}", c.name, text)) {
+            entry[key] = Value::Object(map);
+        }
     }
     entry
 }
@@ -1806,12 +1846,34 @@ mod tests {
             "inputs": [{ "name": "player", "type": "text", "required": true }]
         }))
         .unwrap();
-        let entry = relay_command_entry(&field, &["추방".to_string()]);
+        let entry = relay_command_entry(&field, &["추방".to_string()], None);
         assert_eq!(entry["name"], "kick");
         assert_eq!(entry["aliases"], json!(["추방"]));
-        assert!(relay_command_entry(&field, &[]).get("aliases").is_none());
+        assert!(relay_command_entry(&field, &[], None).get("aliases").is_none());
         assert_eq!(entry["inputs"][0]["name"], "player");
         assert!(entry.get("console_template").is_none() && entry.get("endpoint_template").is_none() && entry.get("method").is_none());
+    }
+
+    /// 번역한 명령 이름이 켜져 있으면 모듈 locales의 이름·설명·칸 이름을 언어별로 싣는다 (슬래시 명령의 언어별 이름)
+    #[test]
+    fn heartbeat_commands_carry_translated_names_when_asked() {
+        let field: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
+            "name": "save-all", "label": "Save World", "description": "Save the game world",
+            "inputs": [{ "name": "flush", "type": "text" }]
+        }))
+        .unwrap();
+        let texts = |lang: &str| -> Value {
+            match lang {
+                "ko" => json!({ "commands": { "save-all": { "label": "월드 저장", "description": "게임 월드를 저장합니다", "inputs": { "flush": { "label": "바로 쓰기" } } } } }),
+                _ => Value::Null,
+            }
+        };
+        let entry = relay_command_entry(&field, &[], Some(&texts));
+        assert_eq!(entry["titles"]["ko"], "월드 저장");
+        assert_eq!(entry["descriptions"]["ko"], "게임 월드를 저장합니다");
+        assert_eq!(entry["inputs"][0]["titles"]["ko"], "바로 쓰기");
+        assert!(entry["titles"].get("en").is_none(), "no text for a language → nothing (the relay shows the plain name)");
+        assert!(relay_command_entry(&field, &[], None).get("titles").is_none(), "off → plain names only");
     }
 
     #[test]
@@ -1959,7 +2021,7 @@ mod tests {
         let out = action_result(Err(crate::actions::ActionError {
             status: 500, code: "module_exception", message: "peer 203.0.113.7 token=hunter2".into(),
             data: json!({ "success": false, "module": "plain", "function": "start", "path": "/home/me/server", "stderr_tail": ["private traceback"] }),
-        }));
+        }), "en");
         assert!(out["data"].get("stderr_tail").is_none());
         assert_eq!(out["data"]["error"], "peer x.x.x.x token=***");
         assert_eq!(out["data"]["path"], "<path>");

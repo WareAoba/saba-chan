@@ -30,6 +30,7 @@ pub fn languages() -> Vec<&'static str> {
 
 #[derive(Debug, Clone)]
 pub struct Catalog {
+    language: String,
     primary: Value,
     fallback: Value,
 }
@@ -44,7 +45,12 @@ impl Catalog {
         } else {
             load_bundle(FALLBACK_LANGUAGE)
         };
-        Self { primary, fallback }
+        Self { language, primary, fallback }
+    }
+
+    /// 정규화한 언어 코드 (모듈 locales 파일 이름과 같다)
+    pub fn language(&self) -> &str {
+        &self.language
     }
 
     /// 점 표기 키("errors.unknown_input")를 번역하고 `{{name}}` 자리를 채웁니다.
@@ -125,7 +131,7 @@ fn lookup<'a>(bundle: &'a Value, key: &str) -> Option<&'a str> {
     node.as_str()
 }
 
-fn interpolate(template: &str, vars: &[(&str, &str)]) -> String {
+pub(crate) fn interpolate(template: &str, vars: &[(&str, &str)]) -> String {
     let mut out = template.to_string();
     for (name, value) in vars {
         out = out.replace(&format!("{{{{{}}}}}", name), value);

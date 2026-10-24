@@ -991,7 +991,9 @@
     "prefix_default_placeholder": "Deixe vazio para usar {{prefix}}",
     "prefix_default_hint": "Usando o padrão {{prefix}}. Ele acompanha o idioma do app.",
     "prefix_err_count": "Até {{max}} prefixos.",
-    "prefix_err_length": "Prefixos têm no máximo {{max}} caracteres: {{words}}"
+    "prefix_err_length": "Prefixos têm no máximo {{max}} caracteres: {{words}}",
+    "translate_commands_title": "Nomes de comandos traduzidos",
+    "translate_commands_desc": "Mostra nomes e descrições traduzidos dos comandos do jogo nos comandos de barra do Discord. Desligado, mostra só os nomes do módulo (por exemplo save-all)."
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
@@ -1047,7 +1049,8 @@
     "err_at": "O horário deve estar no formato HH:MM.",
     "err_message": "Digite a mensagem do aviso.",
     "backup_unreadable": "⚠ não pode ser aberto",
-    "backup_unreadable_hint": "Este backup não pode ser aberto. Ele não pode ser restaurado, e o conteúdo de backup não usado só é limpo depois que ele for excluído. Exclua-o."
+    "backup_unreadable_hint": "Este backup não pode ser aberto. Ele não pode ser restaurado, e o conteúdo de backup não usado só é limpo depois que ele for excluído. Exclua-o.",
+    "err_backup_file_locked": "O servidor está usando um arquivo ({{file}}), então o backup não foi feito. Desligue o servidor e tente de novo."
   },
   "chatbot": {
     "nav": "Saba-chan falante",
