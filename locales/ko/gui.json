@@ -1113,6 +1113,7 @@
     "models_need_guild": "디스코드 서버를 연결하면 쓸 수 있는 모델을 불러와요.",
     "models_err_NO_API_KEY": "서버에 API 키가 아직 전달되지 않았어요. 잠시 뒤 다시 시도해 주세요.",
     "models_err_INVALID_API_KEY": "API 키가 맞지 않아요. 키를 다시 확인해 주세요.",
+    "models_err_KEY_PERMISSION": "API 키에 권한이 모자라요. OpenAI에서 키 권한을 All로 바꾸거나 Models 읽기와 Responses 쓰기를 허용해 주세요.",
     "models_err_QUOTA_EXCEEDED": "API 키의 사용 한도를 넘었어요.",
     "models_err_PROVIDER_UNAVAILABLE": "모델 제공자에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.",
     "models_err_FAILED": "모델 목록을 불러오지 못했어요.",

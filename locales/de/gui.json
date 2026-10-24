@@ -1113,6 +1113,7 @@
     "models_need_guild": "Verbinde einen Discord-Server, um die verfügbaren Modelle zu laden.",
     "models_err_NO_API_KEY": "Der API-Schlüssel ist noch nicht beim Server angekommen. Versuche es gleich noch einmal.",
     "models_err_INVALID_API_KEY": "Der API-Schlüssel wurde abgelehnt. Prüfe den Schlüssel.",
+    "models_err_KEY_PERMISSION": "Dem API-Schlüssel fehlen Berechtigungen. Stelle ihn bei OpenAI auf All oder erlaube Models (Lesen) und Responses (Schreiben).",
     "models_err_QUOTA_EXCEEDED": "Das Kontingent des API-Schlüssels ist aufgebraucht.",
     "models_err_PROVIDER_UNAVAILABLE": "Der Modellanbieter ist nicht erreichbar. Versuche es gleich noch einmal.",
     "models_err_FAILED": "Die Modellliste konnte nicht geladen werden.",

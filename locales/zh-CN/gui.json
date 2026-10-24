@@ -1113,6 +1113,7 @@
     "models_need_guild": "连接 Discord 服务器后会加载可用的模型。",
     "models_err_NO_API_KEY": "API 密钥尚未传到服务器。请稍后再试。",
     "models_err_INVALID_API_KEY": "API 密钥无效。请检查密钥。",
+    "models_err_KEY_PERMISSION": "API 密钥权限不足。请在 OpenAI 中将密钥权限设为 All，或允许 Models（读取）和 Responses（写入）。",
     "models_err_QUOTA_EXCEEDED": "API 密钥已超出使用额度。",
     "models_err_PROVIDER_UNAVAILABLE": "无法连接模型提供方。请稍后再试。",
     "models_err_FAILED": "无法加载模型列表。",
