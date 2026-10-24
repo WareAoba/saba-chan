@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { ServerDetail } from './ServerDetail';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
+import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
 
 function AddServerSheet({ api, onClose }) {
@@ -64,8 +65,10 @@ function ServerCard({ api, server, moduleData, modulesLoaded }) {
     const { t } = useTranslation();
     const openServer = useApp((s) => s.openServer);
     const control = useServerControl(api);
-    const status = viewStatus(server, moduleData, modulesLoaded);
-    const action = primaryAction(status);
+    const { view: provision } = useProvision(api, server);
+    const provisionFailed = provision?.state === 'failed';
+    const status = provisionFailed ? 'provision_failed' : viewStatus(server, moduleData, modulesLoaded);
+    const action = provisionFailed ? null : primaryAction(status);
     const players = playersText(server);
 
     return (

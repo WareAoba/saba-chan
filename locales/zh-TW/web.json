@@ -4,7 +4,13 @@
   "confirm": "確定",
   "cancel": "取消",
   "close": "關閉",
-  "tabs": { "label": "選單", "servers": "伺服器", "permissions": "權限", "modules": "模組", "more": "更多" },
+  "tabs": {
+    "label": "選單",
+    "servers": "伺服器",
+    "permissions": "權限",
+    "modules": "模組",
+    "more": "更多"
+  },
   "gate": {
     "connecting": "正在連線到你的電腦…",
     "again": "請在 Discord 中用 /사바쨩 웹 取得新連結。",
@@ -32,7 +38,15 @@
     "starting": "啟動中",
     "stopping": "停止中",
     "provisioning": "安裝中",
-    "missing": "無模組"
+    "missing": "無模組",
+    "provision_failed": "安裝失敗"
+  },
+  "provision": {
+    "running": "安裝中 {{percent}}%",
+    "failed": "無法安裝伺服器。",
+    "pc_needed": "需要在電腦上的 Saba-chan 應用程式中確認。",
+    "dismiss": "關閉",
+    "dismiss_hint": "如果是正在新建的伺服器，關閉時會一併刪除。"
   },
   "servers": {
     "add": "新增伺服器",
@@ -59,7 +73,11 @@
     "delete_title": "要刪除 {{name}} 嗎？",
     "delete_message": "伺服器的設定和檔案將被刪除，且無法復原。"
   },
-  "detail": { "console": "主控台", "settings": "設定", "backups": "備份" },
+  "detail": {
+    "console": "主控台",
+    "settings": "設定",
+    "backups": "備份"
+  },
   "console": {
     "empty": "尚無輸出。",
     "placeholder": "輸入指令",
@@ -97,7 +115,12 @@
     "delete_title": "要刪除此備份嗎？",
     "delete_message": "刪除 {{name}} 後無法復原。",
     "stop_first": "還原前請先停止伺服器。",
-    "kind": { "manual": "手動", "scheduled": "定時", "pre-update": "更新前", "pre-restore": "還原前" }
+    "kind": {
+      "manual": "手動",
+      "scheduled": "定時",
+      "pre-update": "更新前",
+      "pre-restore": "還原前"
+    }
   },
   "agreements": {
     "title": "需要同意",
@@ -114,7 +137,12 @@
     "owner": "擁有者",
     "use_default": "使用預設等級",
     "saved": "權限已變更。",
-    "level": { "2": "管理員", "1": "使用者", "0": "僅限會說話的 Saba-chan", "-1": "已封鎖" }
+    "level": {
+      "2": "管理員",
+      "1": "使用者",
+      "0": "僅限會說話的 Saba-chan",
+      "-1": "已封鎖"
+    }
   },
   "modules": {
     "games": "遊戲模組",
@@ -126,7 +154,8 @@
     "install": "安裝",
     "installed": "模組已安裝。",
     "busy": "此模組的其他作業尚未完成。請稍後再試。",
-    "official_only": "在網頁上只能安裝官方發佈的版本。"
+    "official_only": "在網頁上只能安裝官方發佈的版本。",
+    "catalog_failed": "無法取得已發佈的清單。請稍後再開啟。"
   },
   "plugins": {
     "installed_title": "已安裝的外掛",

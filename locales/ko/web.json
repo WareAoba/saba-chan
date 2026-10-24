@@ -4,7 +4,13 @@
   "confirm": "확인",
   "cancel": "취소",
   "close": "닫기",
-  "tabs": { "label": "메뉴", "servers": "서버", "permissions": "권한", "modules": "모듈", "more": "더보기" },
+  "tabs": {
+    "label": "메뉴",
+    "servers": "서버",
+    "permissions": "권한",
+    "modules": "모듈",
+    "more": "더보기"
+  },
   "gate": {
     "connecting": "PC에 연결하는 중이에요…",
     "again": "디스코드에서 /사바쨩 웹 으로 새 링크를 받아 주세요.",
@@ -32,7 +38,15 @@
     "starting": "켜는 중",
     "stopping": "끄는 중",
     "provisioning": "설치 중",
-    "missing": "모듈 없음"
+    "missing": "모듈 없음",
+    "provision_failed": "설치 실패"
+  },
+  "provision": {
+    "running": "설치 중 {{percent}}%",
+    "failed": "서버를 설치하지 못했어요.",
+    "pc_needed": "PC의 사바쨩 앱에서 확인이 필요해요.",
+    "dismiss": "닫기",
+    "dismiss_hint": "새로 만들던 서버라면 닫을 때 함께 지워져요."
   },
   "servers": {
     "add": "서버 추가",
@@ -59,7 +73,11 @@
     "delete_title": "{{name}} 서버를 지울까요?",
     "delete_message": "서버 설정과 파일이 지워지고 되돌릴 수 없어요."
   },
-  "detail": { "console": "콘솔", "settings": "설정", "backups": "백업" },
+  "detail": {
+    "console": "콘솔",
+    "settings": "설정",
+    "backups": "백업"
+  },
   "console": {
     "empty": "아직 출력이 없어요.",
     "placeholder": "명령 입력",
@@ -97,7 +115,12 @@
     "delete_title": "이 백업을 지울까요?",
     "delete_message": "{{name}} 백업을 지우면 되돌릴 수 없어요.",
     "stop_first": "되돌리기는 서버를 끈 뒤에 할 수 있어요.",
-    "kind": { "manual": "직접", "scheduled": "예약", "pre-update": "업데이트 전", "pre-restore": "되돌리기 전" }
+    "kind": {
+      "manual": "직접",
+      "scheduled": "예약",
+      "pre-update": "업데이트 전",
+      "pre-restore": "되돌리기 전"
+    }
   },
   "agreements": {
     "title": "약관 동의가 필요해요",
@@ -114,7 +137,12 @@
     "owner": "주인",
     "use_default": "기본 레벨 따르기",
     "saved": "권한을 바꿨어요.",
-    "level": { "2": "관리자", "1": "사용자", "0": "말하는 사바쨩만", "-1": "차단" }
+    "level": {
+      "2": "관리자",
+      "1": "사용자",
+      "0": "말하는 사바쨩만",
+      "-1": "차단"
+    }
   },
   "modules": {
     "games": "게임 모듈",
@@ -126,7 +154,8 @@
     "install": "설치",
     "installed": "모듈을 설치했어요.",
     "busy": "같은 모듈의 다른 작업이 끝나지 않았어요. 잠시 뒤 다시 눌러 주세요.",
-    "official_only": "웹에서는 공식 경로로 공개된 배포판만 설치할 수 있어요."
+    "official_only": "웹에서는 공식 경로로 공개된 배포판만 설치할 수 있어요.",
+    "catalog_failed": "공개된 목록을 받지 못했어요. 잠시 뒤 다시 열어 주세요."
   },
   "plugins": {
     "installed_title": "설치된 플러그인",

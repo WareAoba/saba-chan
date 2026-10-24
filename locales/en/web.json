@@ -4,7 +4,13 @@
   "confirm": "OK",
   "cancel": "Cancel",
   "close": "Close",
-  "tabs": { "label": "Menu", "servers": "Servers", "permissions": "Permissions", "modules": "Modules", "more": "More" },
+  "tabs": {
+    "label": "Menu",
+    "servers": "Servers",
+    "permissions": "Permissions",
+    "modules": "Modules",
+    "more": "More"
+  },
   "gate": {
     "connecting": "Connecting to your PC…",
     "again": "Get a new link with /saba web on Discord.",
@@ -32,7 +38,15 @@
     "starting": "Starting",
     "stopping": "Stopping",
     "provisioning": "Installing",
-    "missing": "No module"
+    "missing": "No module",
+    "provision_failed": "Install failed"
+  },
+  "provision": {
+    "running": "Installing {{percent}}%",
+    "failed": "Couldn't install the server.",
+    "pc_needed": "This needs to be confirmed in the Saba-chan app on the PC.",
+    "dismiss": "Close",
+    "dismiss_hint": "If this was a new server, closing also deletes it."
   },
   "servers": {
     "add": "Add server",
@@ -59,7 +73,11 @@
     "delete_title": "Delete {{name}}?",
     "delete_message": "The server settings and files will be deleted. This can't be undone."
   },
-  "detail": { "console": "Console", "settings": "Settings", "backups": "Backups" },
+  "detail": {
+    "console": "Console",
+    "settings": "Settings",
+    "backups": "Backups"
+  },
   "console": {
     "empty": "No output yet.",
     "placeholder": "Type a command",
@@ -97,7 +115,12 @@
     "delete_title": "Delete this backup?",
     "delete_message": "Deleting {{name}} can't be undone.",
     "stop_first": "Stop the server before restoring.",
-    "kind": { "manual": "Manual", "scheduled": "Scheduled", "pre-update": "Before update", "pre-restore": "Before restore" }
+    "kind": {
+      "manual": "Manual",
+      "scheduled": "Scheduled",
+      "pre-update": "Before update",
+      "pre-restore": "Before restore"
+    }
   },
   "agreements": {
     "title": "Agreement required",
@@ -114,7 +137,12 @@
     "owner": "Owner",
     "use_default": "Use default level",
     "saved": "Permission changed.",
-    "level": { "2": "Admin", "1": "User", "0": "Talking Saba-chan only", "-1": "Banned" }
+    "level": {
+      "2": "Admin",
+      "1": "User",
+      "0": "Talking Saba-chan only",
+      "-1": "Banned"
+    }
   },
   "modules": {
     "games": "Game modules",
@@ -126,7 +154,8 @@
     "install": "Install",
     "installed": "Module installed.",
     "busy": "Another task for this module isn't finished. Try again in a moment.",
-    "official_only": "On the web, you can install only officially published releases."
+    "official_only": "On the web, you can install only officially published releases.",
+    "catalog_failed": "Couldn't get the published list. Open this again in a moment."
   },
   "plugins": {
     "installed_title": "Installed plugins",

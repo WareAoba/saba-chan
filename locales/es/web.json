@@ -4,7 +4,13 @@
   "confirm": "Aceptar",
   "cancel": "Cancelar",
   "close": "Cerrar",
-  "tabs": { "label": "Menú", "servers": "Servidores", "permissions": "Permisos", "modules": "Módulos", "more": "Más" },
+  "tabs": {
+    "label": "Menú",
+    "servers": "Servidores",
+    "permissions": "Permisos",
+    "modules": "Módulos",
+    "more": "Más"
+  },
   "gate": {
     "connecting": "Conectando con tu PC…",
     "again": "Pide un enlace nuevo con /saba web en Discord.",
@@ -32,7 +38,15 @@
     "starting": "Iniciando",
     "stopping": "Deteniendo",
     "provisioning": "Instalando",
-    "missing": "Sin módulo"
+    "missing": "Sin módulo",
+    "provision_failed": "Error de instalación"
+  },
+  "provision": {
+    "running": "Instalando {{percent}}%",
+    "failed": "No se pudo instalar el servidor.",
+    "pc_needed": "Hay que confirmarlo en la app Saba-chan del PC.",
+    "dismiss": "Cerrar",
+    "dismiss_hint": "Si era un servidor nuevo, al cerrar también se elimina."
   },
   "servers": {
     "add": "Añadir servidor",
@@ -59,7 +73,11 @@
     "delete_title": "¿Eliminar {{name}}?",
     "delete_message": "Se eliminarán los ajustes y archivos del servidor. No se puede deshacer."
   },
-  "detail": { "console": "Consola", "settings": "Ajustes", "backups": "Copias" },
+  "detail": {
+    "console": "Consola",
+    "settings": "Ajustes",
+    "backups": "Copias"
+  },
   "console": {
     "empty": "Aún no hay salida.",
     "placeholder": "Escribe un comando",
@@ -97,7 +115,12 @@
     "delete_title": "¿Eliminar esta copia?",
     "delete_message": "Eliminar {{name}} no se puede deshacer.",
     "stop_first": "Detén el servidor antes de restaurar.",
-    "kind": { "manual": "Manual", "scheduled": "Programada", "pre-update": "Antes de actualizar", "pre-restore": "Antes de restaurar" }
+    "kind": {
+      "manual": "Manual",
+      "scheduled": "Programada",
+      "pre-update": "Antes de actualizar",
+      "pre-restore": "Antes de restaurar"
+    }
   },
   "agreements": {
     "title": "Se requiere aceptación",
@@ -114,7 +137,12 @@
     "owner": "Propietario",
     "use_default": "Usar nivel predeterminado",
     "saved": "Permiso cambiado.",
-    "level": { "2": "Administrador", "1": "Usuario", "0": "Solo Saba-chan parlante", "-1": "Bloqueado" }
+    "level": {
+      "2": "Administrador",
+      "1": "Usuario",
+      "0": "Solo Saba-chan parlante",
+      "-1": "Bloqueado"
+    }
   },
   "modules": {
     "games": "Módulos de juego",
@@ -126,7 +154,8 @@
     "install": "Instalar",
     "installed": "Módulo instalado.",
     "busy": "Otra tarea de este módulo no ha terminado. Inténtalo de nuevo en un momento.",
-    "official_only": "En la web solo puedes instalar versiones publicadas oficialmente."
+    "official_only": "En la web solo puedes instalar versiones publicadas oficialmente.",
+    "catalog_failed": "No se pudo obtener la lista publicada. Vuelve a abrirla en un momento."
   },
   "plugins": {
     "installed_title": "Plugins instalados",

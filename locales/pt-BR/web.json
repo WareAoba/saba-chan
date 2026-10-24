@@ -4,7 +4,13 @@
   "confirm": "OK",
   "cancel": "Cancelar",
   "close": "Fechar",
-  "tabs": { "label": "Menu", "servers": "Servidores", "permissions": "Permissões", "modules": "Módulos", "more": "Mais" },
+  "tabs": {
+    "label": "Menu",
+    "servers": "Servidores",
+    "permissions": "Permissões",
+    "modules": "Módulos",
+    "more": "Mais"
+  },
   "gate": {
     "connecting": "Conectando ao seu PC…",
     "again": "Peça um novo link com /saba web no Discord.",
@@ -32,7 +38,15 @@
     "starting": "Iniciando",
     "stopping": "Parando",
     "provisioning": "Instalando",
-    "missing": "Sem módulo"
+    "missing": "Sem módulo",
+    "provision_failed": "Falha na instalação"
+  },
+  "provision": {
+    "running": "Instalando {{percent}}%",
+    "failed": "Não foi possível instalar o servidor.",
+    "pc_needed": "É preciso confirmar no app Saba-chan no PC.",
+    "dismiss": "Fechar",
+    "dismiss_hint": "Se era um servidor novo, fechar também o exclui."
   },
   "servers": {
     "add": "Adicionar servidor",
@@ -59,7 +73,11 @@
     "delete_title": "Excluir {{name}}?",
     "delete_message": "As configurações e os arquivos do servidor serão excluídos. Isso não pode ser desfeito."
   },
-  "detail": { "console": "Console", "settings": "Configurações", "backups": "Backups" },
+  "detail": {
+    "console": "Console",
+    "settings": "Configurações",
+    "backups": "Backups"
+  },
   "console": {
     "empty": "Ainda não há saída.",
     "placeholder": "Digite um comando",
@@ -97,7 +115,12 @@
     "delete_title": "Excluir este backup?",
     "delete_message": "Excluir {{name}} não pode ser desfeito.",
     "stop_first": "Pare o servidor antes de restaurar.",
-    "kind": { "manual": "Manual", "scheduled": "Agendado", "pre-update": "Antes da atualização", "pre-restore": "Antes da restauração" }
+    "kind": {
+      "manual": "Manual",
+      "scheduled": "Agendado",
+      "pre-update": "Antes da atualização",
+      "pre-restore": "Antes da restauração"
+    }
   },
   "agreements": {
     "title": "Aceite necessário",
@@ -114,7 +137,12 @@
     "owner": "Dono",
     "use_default": "Usar nível padrão",
     "saved": "Permissão alterada.",
-    "level": { "2": "Administrador", "1": "Usuário", "0": "Só a Saba-chan falante", "-1": "Banido" }
+    "level": {
+      "2": "Administrador",
+      "1": "Usuário",
+      "0": "Só a Saba-chan falante",
+      "-1": "Banido"
+    }
   },
   "modules": {
     "games": "Módulos de jogo",
@@ -126,7 +154,8 @@
     "install": "Instalar",
     "installed": "Módulo instalado.",
     "busy": "Outra tarefa deste módulo não terminou. Tente de novo em instantes.",
-    "official_only": "Na web, você só pode instalar versões publicadas oficialmente."
+    "official_only": "Na web, você só pode instalar versões publicadas oficialmente.",
+    "catalog_failed": "Não foi possível obter a lista publicada. Abra de novo em instantes."
   },
   "plugins": {
     "installed_title": "Plugins instalados",

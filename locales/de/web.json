@@ -4,7 +4,13 @@
   "confirm": "OK",
   "cancel": "Abbrechen",
   "close": "Schließen",
-  "tabs": { "label": "Menü", "servers": "Server", "permissions": "Rechte", "modules": "Module", "more": "Mehr" },
+  "tabs": {
+    "label": "Menü",
+    "servers": "Server",
+    "permissions": "Rechte",
+    "modules": "Module",
+    "more": "Mehr"
+  },
   "gate": {
     "connecting": "Verbindung mit deinem PC wird hergestellt…",
     "again": "Hol dir mit /saba web in Discord einen neuen Link.",
@@ -32,7 +38,15 @@
     "starting": "Startet",
     "stopping": "Stoppt",
     "provisioning": "Wird installiert",
-    "missing": "Kein Modul"
+    "missing": "Kein Modul",
+    "provision_failed": "Installation fehlgeschlagen"
+  },
+  "provision": {
+    "running": "Wird installiert {{percent}}%",
+    "failed": "Der Server konnte nicht installiert werden.",
+    "pc_needed": "Das muss in der Saba-chan-App auf dem PC bestätigt werden.",
+    "dismiss": "Schließen",
+    "dismiss_hint": "War es ein neuer Server, wird er beim Schließen mit gelöscht."
   },
   "servers": {
     "add": "Server hinzufügen",
@@ -59,7 +73,11 @@
     "delete_title": "{{name}} löschen?",
     "delete_message": "Die Servereinstellungen und -dateien werden gelöscht. Das lässt sich nicht rückgängig machen."
   },
-  "detail": { "console": "Konsole", "settings": "Einstellungen", "backups": "Backups" },
+  "detail": {
+    "console": "Konsole",
+    "settings": "Einstellungen",
+    "backups": "Backups"
+  },
   "console": {
     "empty": "Noch keine Ausgabe.",
     "placeholder": "Befehl eingeben",
@@ -97,7 +115,12 @@
     "delete_title": "Dieses Backup löschen?",
     "delete_message": "Das Löschen von {{name}} lässt sich nicht rückgängig machen.",
     "stop_first": "Stoppe den Server vor dem Wiederherstellen.",
-    "kind": { "manual": "Manuell", "scheduled": "Geplant", "pre-update": "Vor dem Update", "pre-restore": "Vor der Wiederherstellung" }
+    "kind": {
+      "manual": "Manuell",
+      "scheduled": "Geplant",
+      "pre-update": "Vor dem Update",
+      "pre-restore": "Vor der Wiederherstellung"
+    }
   },
   "agreements": {
     "title": "Zustimmung erforderlich",
@@ -114,7 +137,12 @@
     "owner": "Besitzer",
     "use_default": "Standardstufe verwenden",
     "saved": "Recht geändert.",
-    "level": { "2": "Admin", "1": "Benutzer", "0": "Nur Sprechende Saba-chan", "-1": "Gesperrt" }
+    "level": {
+      "2": "Admin",
+      "1": "Benutzer",
+      "0": "Nur Sprechende Saba-chan",
+      "-1": "Gesperrt"
+    }
   },
   "modules": {
     "games": "Spielmodule",
@@ -126,7 +154,8 @@
     "install": "Installieren",
     "installed": "Modul installiert.",
     "busy": "Eine andere Aufgabe dieses Moduls läuft noch. Versuch es gleich noch einmal.",
-    "official_only": "Im Web kannst du nur offiziell veröffentlichte Versionen installieren."
+    "official_only": "Im Web kannst du nur offiziell veröffentlichte Versionen installieren.",
+    "catalog_failed": "Die veröffentlichte Liste konnte nicht geladen werden. Öffne sie gleich noch einmal."
   },
   "plugins": {
     "installed_title": "Installierte Plugins",

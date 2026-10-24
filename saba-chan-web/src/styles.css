@@ -308,6 +308,9 @@ textarea {
 .status-provisioning .status-dot {
     background: var(--info);
 }
+.status-provision_failed .status-dot {
+    background: var(--stop);
+}
 
 .segments {
     display: flex;

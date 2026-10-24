@@ -4,7 +4,13 @@
   "confirm": "OK",
   "cancel": "Annuler",
   "close": "Fermer",
-  "tabs": { "label": "Menu", "servers": "Serveurs", "permissions": "Droits", "modules": "Modules", "more": "Plus" },
+  "tabs": {
+    "label": "Menu",
+    "servers": "Serveurs",
+    "permissions": "Droits",
+    "modules": "Modules",
+    "more": "Plus"
+  },
   "gate": {
     "connecting": "Connexion à votre PC…",
     "again": "Obtenez un nouveau lien avec /saba web sur Discord.",
@@ -32,7 +38,15 @@
     "starting": "Démarrage",
     "stopping": "Arrêt",
     "provisioning": "Installation",
-    "missing": "Aucun module"
+    "missing": "Aucun module",
+    "provision_failed": "Échec de l'installation"
+  },
+  "provision": {
+    "running": "Installation {{percent}} %",
+    "failed": "Impossible d'installer le serveur.",
+    "pc_needed": "Il faut le confirmer dans l'app Saba-chan sur le PC.",
+    "dismiss": "Fermer",
+    "dismiss_hint": "S'il s'agissait d'un nouveau serveur, le fermer le supprime aussi."
   },
   "servers": {
     "add": "Ajouter un serveur",
@@ -59,7 +73,11 @@
     "delete_title": "Supprimer {{name}} ?",
     "delete_message": "Les réglages et fichiers du serveur seront supprimés. Impossible d'annuler."
   },
-  "detail": { "console": "Console", "settings": "Réglages", "backups": "Sauvegardes" },
+  "detail": {
+    "console": "Console",
+    "settings": "Réglages",
+    "backups": "Sauvegardes"
+  },
   "console": {
     "empty": "Aucune sortie pour l'instant.",
     "placeholder": "Saisissez une commande",
@@ -97,7 +115,12 @@
     "delete_title": "Supprimer cette sauvegarde ?",
     "delete_message": "La suppression de {{name}} est définitive.",
     "stop_first": "Arrêtez le serveur avant de restaurer.",
-    "kind": { "manual": "Manuelle", "scheduled": "Planifiée", "pre-update": "Avant mise à jour", "pre-restore": "Avant restauration" }
+    "kind": {
+      "manual": "Manuelle",
+      "scheduled": "Planifiée",
+      "pre-update": "Avant mise à jour",
+      "pre-restore": "Avant restauration"
+    }
   },
   "agreements": {
     "title": "Accord requis",
@@ -114,7 +137,12 @@
     "owner": "Propriétaire",
     "use_default": "Utiliser le niveau par défaut",
     "saved": "Droit modifié.",
-    "level": { "2": "Admin", "1": "Utilisateur", "0": "Saba-chan qui parle uniquement", "-1": "Banni" }
+    "level": {
+      "2": "Admin",
+      "1": "Utilisateur",
+      "0": "Saba-chan qui parle uniquement",
+      "-1": "Banni"
+    }
   },
   "modules": {
     "games": "Modules de jeu",
@@ -126,7 +154,8 @@
     "install": "Installer",
     "installed": "Module installé.",
     "busy": "Une autre tâche de ce module n'est pas terminée. Réessayez dans un instant.",
-    "official_only": "Sur le web, vous ne pouvez installer que les versions publiées officiellement."
+    "official_only": "Sur le web, vous ne pouvez installer que les versions publiées officiellement.",
+    "catalog_failed": "Impossible d'obtenir la liste publiée. Rouvrez-la dans un instant."
   },
   "plugins": {
     "installed_title": "Plugins installés",

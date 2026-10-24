@@ -6,6 +6,7 @@ import { useApp, useData } from '../store';
 import { BackupsPanel } from './BackupsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Button, errorText, failed, Segments, StatusDot } from './ui';
+import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
 
 const MAX_LINES = 500;
@@ -112,8 +113,10 @@ export function ServerDetail({ api, server }) {
     const control = useServerControl(api);
     const [view, setView] = useState('console');
     const moduleData = modules.find((m) => m.name === server.module);
-    const status = viewStatus(server, moduleData, modulesLoaded);
-    const action = primaryAction(status);
+    const provision = useProvision(api, server);
+    const provisionFailed = provision.view?.state === 'failed';
+    const status = provisionFailed ? 'provision_failed' : viewStatus(server, moduleData, modulesLoaded);
+    const action = provisionFailed ? null : primaryAction(status);
     const players = playersText(server);
 
     return (
@@ -132,6 +135,21 @@ export function ServerDetail({ api, server }) {
                 </div>
                 <StatusDot status={status} />
             </header>
+            {provision.view?.state === 'running' && (
+                <div className="banner banner-info">
+                    {t('provision.running', { percent: Math.round(provision.view.percent) })}
+                    {provision.view.message ? ` · ${provision.view.message}` : ''}
+                </div>
+            )}
+            {provisionFailed && (
+                <div className="banner banner-error">
+                    <p>{t('provision.failed')}</p>
+                    {provision.view.error && <p className="hint">{provision.view.error}</p>}
+                    {provision.view.pcNeeded && <p>{t('provision.pc_needed')}</p>}
+                    <p className="hint">{t('provision.dismiss_hint')}</p>
+                    <Button onClick={provision.dismiss}>{t('provision.dismiss')}</Button>
+                </div>
+            )}
             <div className="detail-actions">
                 {action === 'start' && (
                     <Button tone="accent" busy={control.busy} onClick={() => control.start(server)}>

@@ -4,7 +4,13 @@
   "confirm": "OK",
   "cancel": "キャンセル",
   "close": "閉じる",
-  "tabs": { "label": "メニュー", "servers": "サーバー", "permissions": "権限", "modules": "モジュール", "more": "その他" },
+  "tabs": {
+    "label": "メニュー",
+    "servers": "サーバー",
+    "permissions": "権限",
+    "modules": "モジュール",
+    "more": "その他"
+  },
   "gate": {
     "connecting": "PC に接続しています…",
     "again": "Discord の /사바쨩 웹 で新しいリンクを受け取ってください。",
@@ -32,7 +38,15 @@
     "starting": "起動中",
     "stopping": "停止中",
     "provisioning": "インストール中",
-    "missing": "モジュールなし"
+    "missing": "モジュールなし",
+    "provision_failed": "インストール失敗"
+  },
+  "provision": {
+    "running": "インストール中 {{percent}}%",
+    "failed": "サーバーをインストールできませんでした。",
+    "pc_needed": "PC のサバちゃんアプリで確認が必要です。",
+    "dismiss": "閉じる",
+    "dismiss_hint": "新しく作成中のサーバーなら、閉じると一緒に削除されます。"
   },
   "servers": {
     "add": "サーバーを追加",
@@ -59,7 +73,11 @@
     "delete_title": "{{name}} を削除しますか？",
     "delete_message": "サーバーの設定とファイルが削除されます。元に戻せません。"
   },
-  "detail": { "console": "コンソール", "settings": "設定", "backups": "バックアップ" },
+  "detail": {
+    "console": "コンソール",
+    "settings": "設定",
+    "backups": "バックアップ"
+  },
   "console": {
     "empty": "まだ出力がありません。",
     "placeholder": "コマンドを入力",
@@ -97,7 +115,12 @@
     "delete_title": "このバックアップを削除しますか？",
     "delete_message": "{{name}} を削除すると元に戻せません。",
     "stop_first": "復元する前にサーバーを停止してください。",
-    "kind": { "manual": "手動", "scheduled": "定期", "pre-update": "更新前", "pre-restore": "復元前" }
+    "kind": {
+      "manual": "手動",
+      "scheduled": "定期",
+      "pre-update": "更新前",
+      "pre-restore": "復元前"
+    }
   },
   "agreements": {
     "title": "同意が必要です",
@@ -114,7 +137,12 @@
     "owner": "オーナー",
     "use_default": "既定のレベルを使う",
     "saved": "権限を変更しました。",
-    "level": { "2": "管理者", "1": "ユーザー", "0": "おしゃべりサバちゃんのみ", "-1": "禁止" }
+    "level": {
+      "2": "管理者",
+      "1": "ユーザー",
+      "0": "おしゃべりサバちゃんのみ",
+      "-1": "禁止"
+    }
   },
   "modules": {
     "games": "ゲームモジュール",
@@ -126,7 +154,8 @@
     "install": "インストール",
     "installed": "モジュールをインストールしました。",
     "busy": "このモジュールの別の作業が終わっていません。しばらくしてからもう一度お試しください。",
-    "official_only": "ウェブでは公式に公開されたものだけをインストールできます。"
+    "official_only": "ウェブでは公式に公開されたものだけをインストールできます。",
+    "catalog_failed": "公開リストを取得できませんでした。しばらくしてからもう一度開いてください。"
   },
   "plugins": {
     "installed_title": "インストール済みのプラグイン",

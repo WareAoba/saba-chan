@@ -18,11 +18,12 @@ function GameModules({ api }) {
     useEffect(() => {
         api.moduleManifest().then((res) => {
             const mods = res?.manifest?.modules;
-            setCatalog(
-                mods && typeof mods === 'object' ? Object.entries(mods).map(([id, info]) => ({ id, ...info })) : [],
-            );
+            // 목록을 못 받았으면 "모두 설치했어요"가 아니라 받지 못한 이유를 보인다
+            if (failed(res) || !mods || typeof mods !== 'object')
+                return setCatalog({ error: t('modules.catalog_failed') });
+            setCatalog(Object.entries(mods).map(([id, info]) => ({ id, ...info })));
         });
-    }, [api]);
+    }, [api, t]);
 
     const install = async (id) => {
         setInstalling(id);
@@ -37,7 +38,7 @@ function GameModules({ api }) {
     };
 
     const installed = new Set(modules.map(moduleIdOf));
-    const available = (catalog ?? []).filter((m) => !installed.has(m.id));
+    const available = Array.isArray(catalog) ? catalog.filter((m) => !installed.has(m.id)) : [];
     return (
         <>
             <Section title={t('modules.installed_title')}>
@@ -59,6 +60,8 @@ function GameModules({ api }) {
             <Section title={t('modules.available_title')}>
                 {catalog === null ? (
                     <Loading />
+                ) : catalog.error ? (
+                    <Empty>{catalog.error}</Empty>
                 ) : available.length === 0 ? (
                     <Empty>{t('modules.all_installed')}</Empty>
                 ) : (
@@ -96,8 +99,8 @@ function Plugins({ api }) {
     const load = useCallback(async () => {
         const [mine, store] = await Promise.all([api.extensionList(), api.extensionFetchManifest()]);
         setList(Array.isArray(mine?.extensions) ? mine.extensions : []);
-        setCatalog(Array.isArray(store?.extensions) ? store.extensions : []);
-    }, [api]);
+        setCatalog(Array.isArray(store?.extensions) ? store.extensions : { error: t('modules.catalog_failed') });
+    }, [api, t]);
 
     useEffect(() => {
         load();
@@ -114,7 +117,7 @@ function Plugins({ api }) {
 
     if (list === null) return <Loading />;
     const installed = new Set(list.map((e) => e.id));
-    const available = (catalog ?? []).filter((e) => !installed.has(e.id));
+    const available = Array.isArray(catalog) ? catalog.filter((e) => !installed.has(e.id)) : [];
     return (
         <>
             <Section title={t('plugins.installed_title')}>
@@ -153,7 +156,9 @@ function Plugins({ api }) {
                 )}
             </Section>
             <Section title={t('plugins.available_title')}>
-                {available.length === 0 ? (
+                {catalog?.error ? (
+                    <Empty>{catalog.error}</Empty>
+                ) : available.length === 0 ? (
                     <Empty>{t('plugins.all_installed')}</Empty>
                 ) : (
                     <ul className="rows">
