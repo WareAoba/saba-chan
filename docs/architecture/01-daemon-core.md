@@ -105,7 +105,7 @@
 
 PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바쨩 웹)를 열면, 브라우저 요청이 릴레이 웹소켓을 거쳐 데몬에 온다.
 
-1. 릴레이가 명령 대기열로 `{action:'web_session', sessionId}`를 보내면 에이전트가 `remote::link::ensure`로 `<릴레이>/node/ws`(https→wss)에 `Authorization: Bearer <노드 토큰>`으로 붙는다. 연결은 프로세스에 하나다. 에이전트가 멈추거나 토큰이 바뀌면 `remote::link::stop`으로 닫는다.
+1. 릴레이가 명령 대기열로 `{action:'web_session'}`을 보내면 에이전트가 `remote::link::ensure`로 `<릴레이>/node/ws`(https→wss)에 `Authorization: Bearer <노드 토큰>`·`X-Saba-Client: 1`로 붙는다. 연결은 프로세스에 하나다. 에이전트가 멈추거나 토큰이 바뀌면 `remote::link::stop`으로 닫는다.
 2. 붙자마자 `{t:"hello", version, protocol:1}`을 보낸다. 릴레이는 `{t:"open", sid, user}`·`{t:"close", sid}`로 세션을 알리고, `{t:"req", sid, id, method, path, body?}`로 요청을 보낸다. 데몬은 `{t:"res", sid, id, status, body}`로 답한다. 열지 않은 세션의 요청은 답하지 않는다. 동시에 8건까지 실행한다. 한 메시지는 16 MiB까지다.
 3. 데몬 이벤트 버스(`/api/events`와 같은 것)는 `{t:"event", id, kind, data}`로 세션을 가리지 않고 한 번 보낸다(뒤처지면 `kind:"resync"`). 원격 알림(I3)과 달리 경로를 빼지 않는다. 받는 사람은 그 PC의 주인뿐이다.
 4. 세션이 하나도 없는 채로 60초가 지나면 닫는다. 세션이 남은 채 끊기면 1·2·4초 뒤 세 번까지 다시 붙는다. 25초마다 ping한다.

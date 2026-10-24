@@ -96,6 +96,7 @@ async fn connect_once(server: &IPCServer, url: &str, token: &str, cancel: &Cance
     let mut request = url.into_client_request().map_err(|e| e.to_string())?;
     let auth = format!("Bearer {token}").parse().map_err(|_| "bad token".to_string())?;
     request.headers_mut().insert("Authorization", auth);
+    request.headers_mut().insert("X-Saba-Client", tokio_tungstenite::tungstenite::http::HeaderValue::from_static("1"));
     let config = WebSocketConfig {
         max_message_size: Some(MAX_MESSAGE),
         max_frame_size: Some(MAX_MESSAGE),
@@ -254,6 +255,8 @@ mod tests {
                     .get("Authorization")
                     .map(|v| v.to_str().unwrap().to_string());
                 assert_eq!(req.uri().path(), "/node/ws");
+                // 운영 nginx 는 데몬 경로에 X-Saba-Client 를 요구한다
+                assert_eq!(req.headers().get("X-Saba-Client").map(|v| v.as_bytes()), Some(&b"1"[..]));
                 Ok(res)
             })
             .await
