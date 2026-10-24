@@ -409,8 +409,8 @@ def atomic_write(path, data):
     쓰다 끊겨도(강제 종료, 데몬 시간 초과) 원래 파일이나 새 파일 중 하나가 온전히 남고, 동시에 저장해도
     서로의 임시 파일을 건드리지 않는다. 원래 파일의 접근 권한을 지킨다 (비밀번호가 든 설정이 넓게 열리지 않게).
     Windows: ReplaceFileW가 원래 파일의 DACL 등을 옮긴다. 백업 이름을 주어 어느 단계에서 실패해도 원래 파일이 남는다.
-    격리된 모듈은 DACL을 옮길 권한이 없어 거부되는데, 원래 파일과 같은 폴더의 임시 파일이 DACL·무결성 표시가
-    똑같으면(둘 다 폴더 권한만 물려받은 흔한 경우) os.replace로 바꾼다. 다르면 그대로 거부한다.
+    격리된 모듈은 DACL을 옮길 권한이 없어 거부되는데, 원래 파일과 같은 폴더의 임시 파일이 소유자·DACL·무결성
+    표시가 똑같으면(둘 다 폴더 권한만 물려받은 흔한 경우) os.replace로 바꾼다. 다르면 그대로 거부한다.
     POSIX: 권한 비트를 옮긴 뒤 os.replace"""
     path = os.fspath(path)
     folder = os.path.dirname(os.path.abspath(path))
@@ -473,7 +473,7 @@ def _replace_file(path, tmp, backup):
 
 
 def _access_of(path):
-    """파일의 DACL과 무결성 표시(SDDL 문자열). 읽지 못하면 None"""
+    """파일의 소유자·DACL·무결성 표시(SDDL 문자열). 읽지 못하면 None"""
     import ctypes
     from ctypes import wintypes
     advapi = ctypes.WinDLL("advapi32", use_last_error=True)
@@ -485,8 +485,8 @@ def _access_of(path):
     advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
         ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.LPWSTR), ctypes.c_void_p]
     kernel.LocalFree.argtypes = [ctypes.c_void_p]
-    # SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION, SDDL_REVISION_1
-    se_file_object, info, sddl_revision_1 = 1, 0x4 | 0x10, 1
+    # SE_FILE_OBJECT, OWNER | DACL | LABEL_SECURITY_INFORMATION, SDDL_REVISION_1
+    se_file_object, info, sddl_revision_1 = 1, 0x1 | 0x4 | 0x10, 1
     sd = ctypes.c_void_p()
     if advapi.GetNamedSecurityInfoW(path, se_file_object, info, None, None, None, None, ctypes.byref(sd)) != 0:
         return None
