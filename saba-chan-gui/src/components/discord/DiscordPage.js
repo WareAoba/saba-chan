@@ -352,7 +352,10 @@ export function DiscordPage({
                   const res = await window.api.relayBotInvite(relayUrl);
                   const url = res?.url || res?.inviteUrl || res?.invite_url;
                   if (!url) throw new Error(res?.error || 'no invite url');
-                  const opened = await window.api.shell?.openExternal?.(url);
+                  // 외부 주소 열기는 셸 브리지(window.electron)에 있다
+                  const openExternal = window.electron?.shell?.openExternal;
+                  if (!openExternal) throw new Error('shell bridge unavailable');
+                  const opened = await openExternal(url);
                   if (opened?.error) throw new Error(opened.error);
               } catch (e) {
                   safeShowToast(t('discord.invite_failed', { error: e.message }), 'error', 4000);
