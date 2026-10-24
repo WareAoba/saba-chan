@@ -1494,7 +1494,7 @@ async fn call(server: &IPCServer, method: &str, uri: &str, body: Option<Value>) 
 }
 
 /// 데몬 라우터를 안에서 부른다 (인증·감사 미들웨어를 그대로 거친다). `origin`이 있으면 감사 출처로 쓴다
-async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
+pub(crate) async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
     use tower::ServiceExt;
     let mut req = axum::http::Request::builder()
         .method(method)

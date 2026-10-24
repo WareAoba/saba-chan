@@ -46,6 +46,15 @@ pub fn generate_and_save_token() -> anyhow::Result<Arc<String>> {
     Ok(Arc::new(token))
 }
 
+/// 시험에서 데몬 라우터를 안에서 부르기 전에: 토큰은 한 번만 만든다 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
+#[cfg(test)]
+pub(crate) fn ensure_test_token() {
+    static TOKEN: std::sync::Once = std::sync::Once::new();
+    TOKEN.call_once(|| {
+        generate_and_save_token().unwrap();
+    });
+}
+
 /// 토큰 파일에서 읽기 (클라이언트 측에서 사용)
 pub fn read_token_from_file() -> Option<String> {
     let path = token_file_path();

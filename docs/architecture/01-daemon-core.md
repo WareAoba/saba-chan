@@ -101,6 +101,17 @@
    - 같은 연결에서 `POST /events {events:[{id, type, data}]}`로 디스코드 알림 채널(I3)에 띄울 이벤트를 올린다(`relay_agent.rs` `events_loop`·`relay_event`). 올리는 것은 `instance.exit`(`crash`·`unknown_exit`만), `backup.done`, `update.available`, `schedule.warn`, `instance.ready`(`at, instanceId, instance, ok, code?`만), `plan.done`(뒤에서 마친 여러 단계 실행: `runId, guildId?, ok, steps, stoppedAt`, 단계 줄에는 원격이라 오류 코드만)뿐이다. 원격으로 나가므로 경로·콘솔 줄·오류 원문은 뺀다(`evidence`는 `exit code …`·`signal …`일 때만, `backup.done`의 `error`는 빼고 `ok`만). 첫 건이 오면 2초 모아 20건씩 보내고, 닿지 못하면 백오프하며 최근 50건만 들고 있는다. 4xx(429 말고)는 그 묶음을 버리고 429·5xx·네트워크 오류는 백오프 뒤 다시 보내며, 404면(relay에 경로가 아직 없음) 그 묶음을 버리고 10분 동안 올리지 않은 뒤 다음 이벤트로 다시 알아본다.
 4. 인증은 노드 토큰(`config.json` `node.token`) HMAC 서명이다(`relay_agent.rs:1-11`).
 
+### 1.4.1 사바쨩 웹 원격 (`src/remote/`)
+
+PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바쨩 웹)를 열면, 브라우저 요청이 릴레이 웹소켓을 거쳐 데몬에 온다.
+
+1. 릴레이가 명령 대기열로 `{action:'web_session', sessionId}`를 보내면 에이전트가 `remote::link::ensure`로 `<릴레이>/node/ws`(https→wss)에 `Authorization: Bearer <노드 토큰>`으로 붙는다. 연결은 프로세스에 하나다. 에이전트가 멈추거나 토큰이 바뀌면 `remote::link::stop`으로 닫는다.
+2. 붙자마자 `{t:"hello", version, protocol:1}`을 보낸다. 릴레이는 `{t:"open", sid, user}`·`{t:"close", sid}`로 세션을 알리고, `{t:"req", sid, id, method, path, body?}`로 요청을 보낸다. 데몬은 `{t:"res", sid, id, status, body}`로 답한다. 열지 않은 세션의 요청은 답하지 않는다. 동시에 8건까지 실행한다. 한 메시지는 16 MiB까지다.
+3. 데몬 이벤트 버스(`/api/events`와 같은 것)는 `{t:"event", id, kind, data}`로 세션을 가리지 않고 한 번 보낸다(뒤처지면 `kind:"resync"`). 원격 알림(I3)과 달리 경로를 빼지 않는다. 받는 사람은 그 PC의 주인뿐이다.
+4. 세션이 하나도 없는 채로 60초가 지나면 닫는다. 세션이 남은 채 끊기면 1·2·4초 뒤 세 번까지 다시 붙는다. 25초마다 ping한다.
+5. 요청은 `remote::exec::run`이 실행한다. `remote::gate::decide`가 라우트 표(`gate::ROUTES`)로 허용·거부를 정하고(표에 없으면 거부, 라우터처럼 리터럴 조각이 많은 패턴을 먼저 고른다), `..`·인코딩된 `/`·`\`·빈 조각이 있는 경로는 400 `remote_bad_path`, 거부는 403 `remote_not_allowed`다. 허용된 것도 `gate::blocked_fields`가 PC에서만 바꾸는 키를 막는다(403 `remote_field_blocked`, `fields`): 인스턴스 설정 `PATCH /api/instance/:id`의 `executable_path`·`working_dir`·`extra_args`·`process_name`·`auto_detect`·`rest_host`·`extension_data`와 그 모듈의 `file`·`path` 형식 설정, 인스턴스 만들기 `POST /api/instances`의 `executable_path`·`working_dir`·`migration_source`·`extension_data`·`module_settings.<file·path 형식>`, 플러그인 설치 `POST /api/extensions/:id/install`의 `download_url`·`sha256`(공식 목록에서만 받는다). 통과하면 `actions::call_as`로 라우터를 안에서 부르고(인증·감사 미들웨어를 그대로 거친다) 감사 출처는 `web`(+ 링크를 받은 디스코드 id)다. `web`은 HTTP 헤더로 흉내 낼 수 없는 출처다(`audit.rs` `INTERNAL_SOURCES`). 디스코드에만 거는 제한(원격 백업 개수, 원격 일정, 약관 동의는 PC에서만)은 `discord` 출처에만 걸리므로 웹에는 걸리지 않는다.
+6. 허용 범위: 서버·인스턴스 관리(시작·정지·재시작, 콘솔·입력·로그, 명령·RCON·REST, 설정·서버 설정 파일, 게임 서버 업데이트, 진단, 약관 동의), 백업·일정, 멤버 권한과 길드별 노출 서버, 공식 목록의 모듈 설치와 플러그인 설치·켜기·끄기, 데몬 콘솔 읽기, 시스템 사용량, 액션 목록 읽기. 막는 것: 진단·감사 정보, 모듈 폴더 감지·삭제·게임 서버 직접 설치(`/api/module/:name/install`), 플러그인 다시 읽기·붙이기·설정·삭제·GUI 번들, 데몬·앱 설정, 노드 토큰, 데이터 옮기기, 경로, 클라이언트 등록·데몬 종료, 디스코드 설정·채널·릴레이 연결·페어링, 챗봇, 샌드박스 예외, 액션 실행(안에서 라우터를 다시 불러 표를 비켜 가므로), 업데이트, Python 점검. 라우터의 모든 라우트가 표에 분류되어 있는지 `gate::tests::every_route_is_classified`가 `ipc/mod.rs`·`ipc/updates.rs`를 읽어 확인한다(새 라우트는 분류해야 테스트를 지난다).
+
 ### 1.5 파일/디렉토리 레이아웃 (`constants.rs`가 단일 진실 원천)
 
 `<data_dir>`는 다음 순서로 정해진다.
