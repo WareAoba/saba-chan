@@ -1351,7 +1351,9 @@
     "backup_done": "Backup de {{name}} concluído ({{kind}}).",
     "backup_failed": "O backup de {{name}} falhou. {{error}}",
     "schedule_restart": "{{name}} vai reiniciar conforme agendado em {{minutes}} min.",
-    "schedule_update": "{{name}} vai atualizar conforme agendado em {{minutes}} min."
+    "schedule_update": "{{name}} vai atualizar conforme agendado em {{minutes}} min.",
+    "module_update": "{{name}}: saiu a versão {{version}} do módulo {{module}}.",
+    "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor."
   },
   "terminal": {
     "open": "Abrir no terminal",

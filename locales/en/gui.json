@@ -1351,7 +1351,9 @@
     "backup_done": "Backed up {{name}} ({{kind}}).",
     "backup_failed": "Backup of {{name}} failed. {{error}}",
     "schedule_restart": "{{name}} will restart as scheduled in {{minutes}} min.",
-    "schedule_update": "{{name}} will update as scheduled in {{minutes}} min."
+    "schedule_update": "{{name}} will update as scheduled in {{minutes}} min.",
+    "module_update": "{{name}}: a new version {{version}} of the {{module}} module is out.",
+    "server_update": "{{name}}: a new game server version is out. If players can't join, update the server."
   },
   "terminal": {
     "open": "Open in terminal",

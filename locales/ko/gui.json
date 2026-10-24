@@ -1351,7 +1351,9 @@
     "backup_done": "{{name}} 백업을 마쳤어요 ({{kind}}).",
     "backup_failed": "{{name}} 백업에 실패했어요. {{error}}",
     "schedule_restart": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 다시 시작돼요.",
-    "schedule_update": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 업데이트돼요."
+    "schedule_update": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 업데이트돼요.",
+    "module_update": "{{name}}: {{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요.",
+    "server_update": "{{name}}: 게임 서버의 새 버전이 나왔어요. 접속이 막히면 서버를 업데이트해 주세요."
   },
   "terminal": {
     "open": "터미널로 열기",

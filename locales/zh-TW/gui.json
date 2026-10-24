@@ -1351,7 +1351,9 @@
     "backup_done": "{{name}} 已完成備份（{{kind}}）。",
     "backup_failed": "{{name}} 備份失敗。{{error}}",
     "schedule_restart": "{{name}} 將在 {{minutes}} 分鐘後依排程重啟。",
-    "schedule_update": "{{name}} 將在 {{minutes}} 分鐘後依排程更新。"
+    "schedule_update": "{{name}} 將在 {{minutes}} 分鐘後依排程更新。",
+    "module_update": "{{name}}：{{module}} 模組的新版本 {{version}} 已發布。",
+    "server_update": "{{name}}：遊戲伺服器有新版本。如果玩家無法連線，請更新伺服器。"
   },
   "terminal": {
     "open": "在終端機中開啟",

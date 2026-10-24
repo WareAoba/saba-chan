@@ -408,6 +408,7 @@
     "provisioning": "{{name}} est toujours en cours d'installation.",
     "requested": "Démarrage demandé pour {{name}}.",
     "port_moved": "Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}.",
+    "module_update": "La version {{version}} du module {{module}} est disponible. Lancez `saba-chan-cli update` pour mettre à jour.",
     "waiting": "Démarrage de {{name}}...",
     "exited": "{{name}} s'est arrêté juste après le démarrage. Dernières lignes ci-dessus."
   },

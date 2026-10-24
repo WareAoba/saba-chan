@@ -408,6 +408,7 @@
     "provisioning": "{{name}} wird noch installiert.",
     "requested": "Start für {{name}} angefordert.",
     "port_moved": "Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert.",
+    "module_update": "Version {{version}} des Moduls {{module}} ist verfügbar. Mit `saba-chan-cli update` aktualisieren.",
     "waiting": "{{name}} wird gestartet...",
     "exited": "{{name}} hat sich direkt nach dem Start beendet. Letzte Zeilen siehe oben."
   },

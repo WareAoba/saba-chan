@@ -1564,35 +1564,34 @@ pub async fn check_server_update(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+    match server_update_status(&state, &id).await {
+        Some(status) => (StatusCode::OK, Json(status)).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": format!("Instance not found: {}", id),
+                "error_code": "instance_not_found",
+            })),
+        )
+            .into_response(),
+    }
+}
 
-    let instance = match supervisor.instance_store.get(&id) {
-        Some(inst) => inst.clone(),
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": format!("Instance not found: {}", id),
-                    "error_code": "instance_not_found",
-                })),
-            )
-                .into_response();
-        }
-    };
+/// 게임 서버 업데이트 확인 결과 (`check-update`의 답). 인스턴스가 없으면 None.
+/// 서버를 켤 때도 뒤에서 불러 새 빌드가 있으면 알린다 (`server.rs` `announce_updates`)
+pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> {
+    let supervisor = state.supervisor.read().await;
+    let instance = supervisor.instance_store.get(id)?.clone();
 
     // extension_data 가 비어 있으면 hook 이 동작하지 않으므로 조기 반환
     if instance.extension_data.is_empty() {
-        return (
-            StatusCode::OK,
-            Json(json!({
-                "update_available": false,
-                "reason": "no_extension_data",
-            })),
-        )
-            .into_response();
+        return Some(json!({
+            "update_available": false,
+            "reason": "no_extension_data",
+        }));
     }
 
-    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    let instance_dir = supervisor.instance_store.instance_dir(id);
 
     // 모듈에서 install config 가져오기 (install_subdir, app_id 등)
     let install_config = supervisor
@@ -1615,7 +1614,7 @@ pub async fn check_server_update(
     drop(supervisor);
 
     let ctx = json!({
-        "instance_id": &id,
+        "instance_id": id,
         "instance_name": &instance.name,
         "module": &instance.module_name,
         "instance_dir": instance_dir.to_string_lossy(),
@@ -1627,21 +1626,17 @@ pub async fn check_server_update(
     let results = crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx).await;
 
     // 첫 번째 성공 결과를 클라이언트로 전달
-    for (_ext_id, result) in &results {
+    for (_ext_id, result) in results {
         if let Ok(val) = result {
-            return (StatusCode::OK, Json(val.clone())).into_response();
+            return Some(val);
         }
     }
 
     // hook이 등록되지 않았거나 모두 condition 불일치
-    (
-        StatusCode::OK,
-        Json(json!({
-            "update_available": false,
-            "reason": "no_hook_handled",
-        })),
-    )
-        .into_response()
+    Some(json!({
+        "update_available": false,
+        "reason": "no_hook_handled",
+    }))
 }
 
 /// POST /api/instance/:id/apply-update - 게임 서버 업데이트 적용

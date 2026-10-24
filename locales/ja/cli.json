@@ -466,6 +466,7 @@
     "provisioning": "{{name}} はまだインストール中です。",
     "requested": "{{name}} の起動をリクエストしました。",
     "port_moved": "Windows が管理用 REST ポート {{from}} を予約していたため {{to}} に変更しました。",
+    "module_update": "{{module}} モジュールの新しいバージョン {{version}} が出ました。`saba-chan-cli update` でアップデートできます。",
     "waiting": "{{name}} を起動しています...",
     "exited": "{{name}} は起動直後に終了しました。上の最後の行を確認してください。"
   },

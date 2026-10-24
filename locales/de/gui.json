@@ -1351,7 +1351,9 @@
     "backup_done": "Sicherung von {{name}} abgeschlossen ({{kind}}).",
     "backup_failed": "Sicherung von {{name}} fehlgeschlagen. {{error}}",
     "schedule_restart": "{{name}} startet planmäßig in {{minutes}} Min. neu.",
-    "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert."
+    "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert.",
+    "module_update": "{{name}}: Version {{version}} des Moduls {{module}} ist verfügbar.",
+    "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server."
   },
   "terminal": {
     "open": "Im Terminal öffnen",

@@ -408,6 +408,7 @@
     "provisioning": "{{name}} всё ещё устанавливается.",
     "requested": "Запрошен запуск {{name}}.",
     "port_moved": "Windows зарезервировала REST-порт {{from}}, поэтому он изменён на {{to}}.",
+    "module_update": "Вышла новая версия {{version}} модуля {{module}}. Обновить: `saba-chan-cli update`.",
     "waiting": "Запуск {{name}}...",
     "exited": "{{name}} завершился сразу после запуска. Последние строки выше."
   },

@@ -466,6 +466,7 @@
     "provisioning": "{{name}}은(는) 아직 설치 중이에요.",
     "requested": "{{name}} 시작을 요청했어요.",
     "port_moved": "Windows가 관리용 REST 포트 {{from}}을(를) 예약해 두어 {{to}}(으)로 바꿨어요.",
+    "module_update": "{{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요. `saba-chan-cli update`로 업데이트할 수 있어요.",
     "waiting": "{{name}} 켜는 중...",
     "exited": "{{name}}이(가) 켜지자마자 꺼졌어요. 위의 마지막 줄을 확인하세요."
   },

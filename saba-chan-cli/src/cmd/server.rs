@@ -979,7 +979,14 @@ fn port_moved_lines(body: &Value) -> Vec<String> {
         .collect()
 }
 
-/// 예약 범위를 피해 옮긴 포트는 시작이 실패해도 저장돼 있으므로, 답이 성공이든 오류든 알린다
+/// 시작 답의 `module_update: {module, latest}` → 모듈 업데이트 안내 줄
+fn module_update_line(body: &Value) -> Option<String> {
+    let update = body.get("module_update")?;
+    Some(t!("start.module_update", module = update.get("module")?.as_str()?, version = update.get("latest")?.as_str()?))
+}
+
+/// 예약 범위를 피해 옮긴 포트는 시작이 실패해도 저장돼 있으므로, 답이 성공이든 오류든 알린다.
+/// 켠 서버의 모듈에 새 버전이 있으면 그것도 알린다
 fn tell_moved_ports(ctx: &Ctx, res: &Result<Value>) {
     let body = match res {
         Ok(v) => Some(v),
@@ -989,6 +996,9 @@ fn tell_moved_ports(ctx: &Ctx, res: &Result<Value>) {
         },
     };
     for line in body.map(port_moved_lines).unwrap_or_default() {
+        ctx.out.note(&line);
+    }
+    if let Some(line) = body.and_then(module_update_line) {
         ctx.out.note(&line);
     }
 }
@@ -2167,6 +2177,15 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("8212") && lines[0].contains("8242"), "{}", lines[0]);
         assert!(port_moved_lines(&json!({ "success": true })).is_empty());
+    }
+
+    /// 켠 서버의 모듈에 새 버전이 있으면 시작과 함께 알린다 (데몬 `module_update`)
+    #[test]
+    fn a_newer_module_is_told_on_start() {
+        let body = json!({ "success": true, "module_update": { "module": "palworld", "current": "1.0.0", "latest": "1.1.0" } });
+        let line = module_update_line(&body).unwrap();
+        assert!(line.contains("palworld") && line.contains("1.1.0"), "{line}");
+        assert!(module_update_line(&json!({ "success": true })).is_none());
     }
 
     /// 약관 동의는 사람이 직접 답한다: `server agree`도 `--yes`로 동의하지 않는다 (확인 `ensure`가 아니라 동의 `agreed`)

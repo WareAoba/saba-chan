@@ -466,6 +466,7 @@
     "provisioning": "{{name}} 仍在安装中。",
     "requested": "已请求启动 {{name}}。",
     "port_moved": "Windows 预留了管理用 REST 端口 {{from}}，已改为 {{to}}。",
+    "module_update": "{{module}} 模块的新版本 {{version}} 已发布。运行 `saba-chan-cli update` 即可更新。",
     "waiting": "正在启动 {{name}}...",
     "exited": "{{name}} 启动后立即退出。最后几行见上方。"
   },

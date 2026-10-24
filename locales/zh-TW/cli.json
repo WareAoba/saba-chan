@@ -408,6 +408,7 @@
     "provisioning": "{{name}} 仍在安裝中。",
     "requested": "已要求啟動 {{name}}。",
     "port_moved": "Windows 保留了管理用 REST 連接埠 {{from}}，已改為 {{to}}。",
+    "module_update": "{{module}} 模組的新版本 {{version}} 已發布。執行 `saba-chan-cli update` 即可更新。",
     "waiting": "正在啟動 {{name}}...",
     "exited": "{{name}} 啟動後隨即結束。最後幾行請見上方。"
   },

@@ -105,6 +105,35 @@ describe('데몬 이벤트 스트림', () => {
         expect(stream.subs.size).toBe(0);
     });
 
+    it('켠 서버의 모듈·게임 서버에 새 버전이 있으면 알림을 남긴다 (모듈은 업데이트 화면으로)', async () => {
+        const stream = fakeStream();
+        window.__sabaNotice = { addNotice: vi.fn() };
+        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
+        await stream.emit({
+            id: 1,
+            type: 'instance.update_notice',
+            data: { instanceId: 'i', instance: 'Pal', kind: 'module', module: 'palworld', latest: '1.1.0' },
+        });
+        expect(window.__sabaNotice.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: '🔔 Pal: a new version 1.1.0 of the palworld module is out.',
+                action: 'openUpdateModal',
+            }),
+        );
+        await stream.emit({
+            id: 2,
+            type: 'instance.update_notice',
+            data: { instanceId: 'i', instance: 'Pal', kind: 'server' },
+        });
+        expect(window.__sabaNotice.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: "🔔 Pal: a new game server version is out. If players can't join, update the server.",
+            }),
+        );
+        delete window.__sabaNotice;
+        unmount();
+    });
+
     it('활동 줄은 action.run을 받으면 폴링을 기다리지 않고 바뀐다', async () => {
         const stream = fakeStream();
         window.api.auditList = vi.fn().mockResolvedValue({ entries: [] });

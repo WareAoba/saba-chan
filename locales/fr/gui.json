@@ -1351,7 +1351,9 @@
     "backup_done": "Sauvegarde de {{name}} terminée ({{kind}}).",
     "backup_failed": "La sauvegarde de {{name}} a échoué. {{error}}",
     "schedule_restart": "{{name}} redémarrera comme prévu dans {{minutes}} min.",
-    "schedule_update": "{{name}} sera mis à jour comme prévu dans {{minutes}} min."
+    "schedule_update": "{{name}} sera mis à jour comme prévu dans {{minutes}} min.",
+    "module_update": "{{name}} : la version {{version}} du module {{module}} est disponible.",
+    "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour."
   },
   "terminal": {
     "open": "Ouvrir dans le terminal",

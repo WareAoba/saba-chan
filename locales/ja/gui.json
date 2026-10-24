@@ -1351,7 +1351,9 @@
     "backup_done": "{{name}} のバックアップが完了しました（{{kind}}）。",
     "backup_failed": "{{name}} のバックアップに失敗しました。{{error}}",
     "schedule_restart": "{{name}} は{{minutes}}分後に予約どおり再起動します。",
-    "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。"
+    "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。",
+    "module_update": "{{name}}: {{module}} モジュールの新しいバージョン {{version}} が出ました。",
+    "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。"
   },
   "terminal": {
     "open": "ターミナルで開く",
