@@ -1,0 +1,35 @@
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useApp } from '../store';
+
+/** 남은 시간 "14:05" */
+export function remainingText(expiresAt, now) {
+    const left = Math.max(0, Math.floor(((expiresAt ?? now) - now) / 1000));
+    return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+
+export function SessionBar({ session }) {
+    const { t } = useTranslation();
+    const { expiresAt, warning, phase } = useApp((s) => s.session);
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    return (
+        <header className="topbar">
+            <div className="topbar-row">
+                <h1 className="topbar-title">{t('app_name')}</h1>
+                <div className={`timer${warning ? ' timer-warn' : ''}`} title={t('session.remaining')}>
+                    <span aria-hidden="true">⏱</span> {remainingText(expiresAt, now)}
+                </div>
+                <button type="button" className="btn btn-plain btn-small" onClick={() => session?.extend()}>
+                    {t('session.extend')}
+                </button>
+            </div>
+            {warning && <p className="banner banner-warn">{t('session.ending_soon')}</p>}
+            {phase === 'reconnecting' && <p className="banner banner-info">{t('session.reconnecting')}</p>}
+        </header>
+    );
+}
