@@ -1,7 +1,7 @@
 //! 사바쨩 완전 제거 (Uninstall)
 //!
 //! 설치 디렉토리, 저장 폴더(%APPDATA%/saba-chan), 임시 폴더, 레지스트리를 모두 삭제합니다.
-//! `--uninstall` 인자로 실행됩니다.
+//! `--uninstall` 인자로 실행됩니다. 남길 것은 [`keep_from_args`]가 정한다 (기본은 설정·인스턴스 모두 남김).
 //!
 //! ## 제거 대상
 //! 1. 설치 디렉토리: 제거기 자신이 든 폴더 (설치기가 `saba-chan-installer.exe`를 설치 폴더에 복사해 둔다).
@@ -14,6 +14,8 @@
 use saba_chan_updater_lib::constants;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+
+pub use saba_chan_updater_lib::uninstall_entry::Keep;
 
 #[cfg(target_os = "windows")]
 use crate::registry;
@@ -44,8 +46,14 @@ fn last_install(install_dir: Option<&Path>) -> bool {
     entry::is_last_install(&entry::entries(), Some(dir)) && !entry::other_listed_install(&file, dir)
 }
 
-/// GUI 모드 제거 실행. 단계마다 `on_progress`로 알린다
-pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallProgress)) {
+/// 제거 인자에서 남길 것. 지우려면 `--remove-settings`·`--remove-instances`를 붙인다
+pub fn keep_from_args(args: &[String]) -> Keep {
+    let has = |flag: &str| args.iter().any(|a| a == flag);
+    Keep { settings: !has("--remove-settings"), instances: !has("--remove-instances") }
+}
+
+/// 제거 실행 (창·명령창 공통). 단계마다 `on_progress`로 알리고, 지우지 못하고 남은 항목을 돌려준다
+pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) -> Vec<PathBuf> {
     let emit = |step: &str, msg: &str, pct: i32| {
         let p = UninstallProgress {
             step: step.to_string(),
@@ -101,6 +109,13 @@ pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallPr
     }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
+    // 격리 실행의 프로필과 폴더 권한·표시를 데몬 실행 파일이 거둔다 (설치 폴더를 지우기 전에. 남기는 서버 폴더도)
+    let mut left = Vec::new();
+    if let Some(dir) = &install_dir {
+        emit("sandbox", "Removing isolation profiles and folder permissions...", 15);
+        left.extend(reset_sandbox(dir));
+    }
+
     // Step 3: 바로가기 제거
     emit("shortcuts", "Removing shortcuts...", 20);
     #[cfg(target_os = "windows")]
@@ -114,38 +129,33 @@ pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallPr
     // Step 4: 설치 디렉토리 삭제
     emit("files", "Removing installation files...", 35);
     let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
-    let mut left = Vec::new();
     if let Some(ref dir) = install_dir {
         if dir.exists() {
-            left = remove_install_dir(dir, dedicated);
+            left.extend(remove_install_dir(dir, dedicated));
             if left.is_empty() {
                 tracing::info!("[Uninstall] Removed install dir: {:?}", dir);
             }
         }
     }
 
-    // Step 5: 사용자 데이터 삭제 (%APPDATA%/saba-chan)
-    // python-standalone, python-env, node-portable 등 런타임 디렉토리도 포함
+    // Step 5: 사용자 데이터 (%APPDATA%/saba-chan). 런타임·캐시는 늘 지우고, 설정·인스턴스는 고른 대로 남긴다
     if !last_install {
         emit("data-shared", "Keeping user data: another Saba-chan install still uses it", 55);
-    } else if keep_settings {
-        emit("data-keep", "Removing runtime environments (keeping settings)...", 55);
-        left.extend(remove_appdata_dir_keep_settings());
     } else {
-        emit("data", "Removing user data and runtime environments...", 55);
-        left.extend(remove_appdata_dir());
+        if keep == Keep::NOTHING {
+            emit("data", "Removing user data and runtime environments...", 55);
+        } else {
+            emit("data-keep", "Removing runtime environments (keeping what you chose)...", 55);
+        }
+        left.extend(remove_appdata_entries(keep));
     }
 
-    // Step 6: 임시 파일 삭제
+    // Step 6: 데이터 폴더 밖의 흔적 (임시 파일·기록, 창 앱 데이터, 리눅스 캐시·바로가기). 무엇을 남기든 지운다.
+    // 이 창 제거기의 WebView 폴더는 끝날 때까지 잠겨 있어 정리 스크립트가 지운다
     emit("temp", "Cleaning temporary files...", 70);
-    remove_temp_files();
-
-    // Step 7: 모듈 디렉토리 삭제 (%APPDATA%/saba-chan/modules)
-    // (앞서 appdata 전체를 삭제하므로 포함됨 — 혹시 남아있을 경우 대비)
-    if last_install && !keep_settings {
-        emit("modules", "Cleaning modules directory...", 80);
-        remove_modules_dir();
-    }
+    let roots = crate::traces::Roots::current();
+    let running: Option<Vec<u32>> = list_all().map(|l| proc_rows(&l).iter().map(|r| r.pid).collect());
+    left.extend(crate::traces::remove(&roots, running.as_deref(), cfg!(windows)));
 
     // Step 8: 레지스트리 삭제
     emit("registry", "Removing registry entries...", 90);
@@ -165,99 +175,69 @@ pub async fn do_uninstall(keep_settings: bool, on_progress: impl Fn(&UninstallPr
         "No Saba-chan install was found next to this uninstaller, so your settings and servers were kept."
     } else if !left.is_empty() {
         "Saba-chan was removed, but some files could not be deleted."
-    } else if last_install {
-        "Saba-chan has been completely removed."
-    } else {
+    } else if !last_install {
         "This Saba-chan install was removed. Your settings and servers were kept because another Saba-chan install still uses them."
+    } else {
+        kept_message(keep)
     }, &left);
     tracing::info!("[Uninstall] Complete");
+    left
 }
 
-/// 사일런트(GUI 없이) 제거. 지우지 못한 항목이 남으면 1을 돌려준다 (프로세스 종료 코드)
-pub async fn do_silent_uninstall() -> i32 {
-    eprintln!("Saba-chan Uninstaller (silent mode)");
-    let install_dir = target_dir();
-
-    // 프로세스 종료
-    eprintln!("  Stopping processes...");
-    if let Some(dir) = &install_dir {
-        stop_saba_processes(dir).await;
+/// 그 설치의 `saba-core sandbox reset`을 돌린다 (Windows). 거두지 못한 것을 `경로: 이유` 줄로 돌려준다.
+/// 큰 서버 폴더는 표시를 덮는 데 시간이 걸려 오래 기다린다
+fn reset_sandbox(install_dir: &Path) -> Vec<PathBuf> {
+    let core = install_dir.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE);
+    if !cfg!(windows) || !core.is_file() {
+        return Vec::new();
     }
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let mut cmd = std::process::Command::new(&core);
+    cmd.args(["sandbox", "reset"]);
+    saba_chan_updater_lib::process::hide_console(&mut cmd);
+    let Some(out) = output_within(&mut cmd, std::time::Duration::from_secs(600)) else {
+        tracing::warn!("[Uninstall] sandbox reset did not finish");
+        return vec![PathBuf::from(format!("{}: sandbox reset did not finish", core.display()))];
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    tracing::info!("[Uninstall] sandbox reset: {}", text.trim());
+    sandbox_failures(&text, out.status.success(), &core)
+}
 
-    // 바로가기 제거
-    eprintln!("  Removing shortcuts...");
-    #[cfg(target_os = "windows")]
-    {
-        // 어떤 언어로 설치했든 이 설치를 가리키는 것만 (다른 폴더의 설치 바로가기는 둔다)
-        if let Some(dir) = &install_dir {
-            shortcuts::remove_shortcuts_into(dir, shortcuts::ALL_SHORTCUT_NAMES);
+/// `sandbox reset` 출력의 실패 줄. 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 그 사실을 한 줄로
+fn sandbox_failures(text: &str, succeeded: bool, core: &Path) -> Vec<PathBuf> {
+    let mut failed: Vec<PathBuf> = text.lines().filter_map(|l| l.strip_prefix("FAIL  ")).map(PathBuf::from).collect();
+    if !succeeded && failed.is_empty() {
+        failed.push(PathBuf::from(format!("{}: sandbox reset failed", core.display())));
+    }
+    failed
+}
+
+/// 마지막 설치본을 다 지운 뒤 남긴 것을 알리는 문구
+fn kept_message(keep: Keep) -> &'static str {
+    match (keep.settings, keep.instances) {
+        (false, false) => "Saba-chan has been completely removed.",
+        (true, false) => "Saba-chan has been removed. Your settings were kept.",
+        (false, true) => "Saba-chan has been removed. Your servers were kept.",
+        (true, true) => "Saba-chan has been removed. Your settings and servers were kept.",
+    }
+}
+
+/// 명령창 제거. 창과 같은 단계를 밟고 진행을 표준 오류로 적는다. 지우지 못한 항목이 남으면 1 (프로세스 종료 코드)
+pub async fn do_silent_uninstall(keep: Keep) -> i32 {
+    eprintln!("Saba-chan Uninstaller (console)");
+    let left = do_uninstall(keep, |p| {
+        if p.complete {
+            for path in &p.left {
+                eprintln!("  Could not remove {}", path);
+            }
+            let tag = if p.left.is_empty() { "[OK]" } else { "[WARN]" };
+            eprintln!("{} {}", tag, p.message);
+        } else {
+            eprintln!("  {}", p.message);
         }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Linux: .desktop 파일 제거
-        if let Some(data_dir) = dirs::data_dir() {
-            let desktop_file = data_dir.join("applications/saba-chan.desktop");
-            let _ = std::fs::remove_file(desktop_file);
-        }
-    }
-
-    // 설치 디렉토리 삭제
-    let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
-    let mut left = Vec::new();
-    if let Some(dir) = &install_dir {
-        eprintln!("  Removing install directory: {}", dir.display());
-        left = remove_install_dir(dir, dedicated);
-    }
-
-    // 사용자 데이터: 다른 설치본이 남아 있으면 그대로 둔다
-    let last_install = last_install(install_dir.as_deref());
-    if last_install {
-        eprintln!("  Removing user data and runtime environments...");
-        left.extend(remove_appdata_dir());
-    } else if install_dir.is_none() {
-        eprintln!("  Keeping user data: no Saba-chan install was found next to this uninstaller");
-    } else {
-        eprintln!("  Keeping user data: another Saba-chan install still uses it");
-    }
-
-    // 임시 파일
-    eprintln!("  Cleaning temp files...");
-    remove_temp_files();
-
-    // 모듈
-    if last_install {
-        eprintln!("  Cleaning modules...");
-        remove_modules_dir();
-    }
-
-    // 레지스트리
-    eprintln!("  Removing registry entries...");
-    #[cfg(target_os = "windows")]
-    if let Some(dir) = &install_dir {
-        let _ = registry::remove_uninstall_entry(dir);
-    }
-
-    // 자기 자신 삭제
-    eprintln!("  Scheduling self-deletion...");
-    {
-        schedule_self_delete(install_dir.as_ref(), dedicated);
-    }
-
-    if !left.is_empty() {
-        for path in &left {
-            eprintln!("  Could not remove {}", path.display());
-        }
-        eprintln!("[WARN] Saba-chan was removed, but {} item(s) listed above could not be deleted.", left.len());
-        return 1;
-    }
-    if last_install {
-        eprintln!("[OK] Saba-chan has been completely removed.");
-    } else {
-        eprintln!("[OK] This install was removed; settings and servers were kept for the other install.");
-    }
-    0
+    })
+    .await;
+    i32::from(!left.is_empty())
 }
 
 // ═══════════════════════════════════════════════════════
@@ -332,7 +312,9 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
         ("Saba-chan", false), // 0.1.1 Electron GUI
         ("saba-chan-updater", false),
     ];
-    let found = processes_in(install_dir, &TARGETS.map(|(n, _)| n));
+    // 명령창 제거(`saba-chan-cli uninstall`)는 이 설치의 CLI 자신이 돌린다: 자기는 끄지 않는다
+    let me = std::process::id();
+    let found: Vec<(u32, String)> = processes_in(install_dir, &TARGETS.map(|(n, _)| n)).into_iter().filter(|(pid, _)| *pid != me).collect();
     // 포터블 GUI(saba-chan-gui.exe)는 실행기일 뿐이고 실제 GUI는 임시 폴더에 풀려 그 자식으로 돈다.
     // 실행기의 자손을 먼저 찾아 둔다 (실행기를 끝내면 부모 관계로 찾을 수 없다)
     let launchers: Vec<u32> =
@@ -756,7 +738,8 @@ fn descendants_of(_roots: &[u32], _install_dir: &Path) -> Vec<u32> {
 /// 파일이 잠겨 설치가 실패하지 않게 한다 (os error 32). 데몬은 먼저 `/api/daemon/shutdown`으로 정상 종료를
 /// 부탁하고, 20초 안에 안 끝나면 그 PID만 강제 종료한다 (트리째가 아니다: 게임 서버는 러너가 쥐고 있다).
 /// 단계마다 로그를 남긴다 (`%TEMP%\saba-chan-installer.log`).
-pub async fn stop_daemon_before_install(install_dir: &Path) {
+/// 포트에 답하는 데몬이 어느 설치의 것인지 모르면 끄지 않고, 사용자가 먼저 끄도록 이유를 돌려준다
+pub async fn stop_daemon_before_install(install_dir: &Path) -> Result<(), String> {
     // 받은 경로와 실제 경로 둘 다로 찾는다 (실행 파일 경로는 띄운 경로 그대로 보인다)
     let dir = comparable_dir(install_dir);
     let dirs = [install_dir.to_path_buf(), dir.clone()];
@@ -768,7 +751,7 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     let mut daemons: Vec<u32> = filter_in(&listing, &dirs, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
 
     let Some(api) = DaemonApi::from_config() else {
-        return;
+        return Ok(());
     };
     let port = api.port;
     // 데몬을 끄기 전에 이 설치에서 띄운 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
@@ -777,16 +760,9 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     // 실행 파일 경로로 못 찾았으면 (경로를 못 읽는 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다
     if daemons.is_empty() {
         if let Some(pid) = api.health_pid().await {
-            match daemon_owner(&listing, pid, &dirs) {
-                Owner::Here => daemons.push(pid),
-                Owner::Unknown => {
-                    tracing::info!("[Install] Daemon PID {} on port {} has no readable path; stopping it to be safe", pid, port);
-                    daemons.push(pid);
-                }
-                Owner::Elsewhere(exe) => {
-                    tracing::info!("[Install] Daemon PID {} on port {} belongs to another install ({}); leaving it", pid, port, exe)
-                }
-            }
+            let owner = daemon_owner(&listing, pid, &dirs);
+            tracing::info!("[Install] Daemon PID {} on port {}: {:?}", pid, port, owner);
+            daemons.extend(port_daemon_to_stop(owner, pid)?);
         }
     }
 
@@ -838,6 +814,20 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     for (pid, name) in filter_in(&list_named(&["saba-chan-cli"]).unwrap_or_default(), &dirs, &["saba-chan-cli"]) {
         tracing::info!("[Install] Closing {} (PID {})", name, pid);
         kill_pid(pid, false);
+    }
+    Ok(())
+}
+
+/// 포트에 답하는 데몬 중 설치기가 끌 것: 이 설치의 것만. 다른 설치의 것은 둔다.
+/// 어느 설치의 것인지 모르면(실행 파일 경로를 못 읽음) 끄지 않고 사용자가 먼저 끄도록 이유를 돌려준다
+fn port_daemon_to_stop(owner: Owner, pid: u32) -> Result<Option<u32>, String> {
+    match owner {
+        Owner::Here => Ok(Some(pid)),
+        Owner::Elsewhere(_) => Ok(None),
+        Owner::Unknown => Err(format!(
+            "A Saba-chan daemon (PID {}) is running and this installer cannot tell which install it belongs to. Quit Saba-chan first, then try again.",
+            pid
+        )),
     }
 }
 
@@ -1098,7 +1088,7 @@ pub fn looks_like_install_dir(dir: &Path) -> bool {
 }
 
 /// 디렉토리 강제 삭제 (잠금 파일에 대한 재시도 포함)
-fn remove_dir_robust(dir: &PathBuf) -> anyhow::Result<()> {
+pub(crate) fn remove_dir_robust(dir: &PathBuf) -> anyhow::Result<()> {
     // 1차 시도
     if std::fs::remove_dir_all(dir).is_ok() {
         return Ok(());
@@ -1144,14 +1134,14 @@ fn owned_data_dir() -> Option<PathBuf> {
     Some(constants::resolve_data_dir())
 }
 
-/// 사용자 데이터 폴더를 지운다. `keep_settings`면 런타임·캐시만 지운다.
+/// 사용자 데이터 폴더에서 `keep`이 남기지 않는 항목을 지운다 (런타임·캐시는 늘 지운다).
 /// 앱이 만들지 않는 항목(업데이트 서명 키 등)은 어느 쪽이든 남는다
 /// 지우지 못한 항목을 돌려준다 (몇 번 다시 시도한 뒤에도 남은 것)
-fn remove_appdata_entries(keep_settings: bool) -> Vec<PathBuf> {
+fn remove_appdata_entries(keep: Keep) -> Vec<PathBuf> {
     let Some(saba_dir) = owned_data_dir() else { return Vec::new() };
     let removable = |path: &Path| {
         path.file_name()
-            .is_some_and(|n| saba_chan_updater_lib::uninstall_entry::removable_data_entry(&n.to_string_lossy(), keep_settings))
+            .is_some_and(|n| saba_chan_updater_lib::uninstall_entry::removable_data_entry(&n.to_string_lossy(), keep))
     };
     let pending = |dir: &Path| -> Vec<PathBuf> {
         std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| removable(p)).collect()
@@ -1189,69 +1179,6 @@ fn remove_appdata_entries(keep_settings: bool) -> Vec<PathBuf> {
     left
 }
 
-fn remove_appdata_dir() -> Vec<PathBuf> {
-    remove_appdata_entries(false)
-}
-
-/// 설정 파일만 남기고 나머지 삭제 (바이너리, 런타임, 캐시 등)
-fn remove_appdata_dir_keep_settings() -> Vec<PathBuf> {
-    remove_appdata_entries(true)
-}
-
-fn remove_temp_files() {
-    let temp = std::env::temp_dir();
-
-    // saba-chan-installer, saba-chan-updater 등 임시 폴더
-    let patterns = ["saba-chan-installer", "saba-chan-updater", "saba-chan-temp"];
-    for pattern in &patterns {
-        let dir = temp.join(pattern);
-        if dir.exists() {
-            tracing::info!("[Uninstall] Removing temp: {:?}", dir);
-            let _ = remove_dir_robust(&dir);
-        }
-    }
-    // 설치가 도중에 끊겨 남은 프로세스별 작업 폴더 (`saba-chan-installer-<pid>`)
-    for dir in stale_work_dirs(&temp, list_all().as_deref()) {
-        tracing::info!("[Uninstall] Removing temp: {:?}", dir);
-        let _ = remove_dir_robust(&dir);
-    }
-}
-
-/// `temp`의 설치기 작업 폴더 중 그 PID가 프로세스 목록(`list_all`)에 없는 것. 다른 설치기가 아직 받고 있으면 둔다.
-/// 목록을 못 읽으면 어느 것이 끝났는지 모르므로 하나도 고르지 않는다
-fn stale_work_dirs(temp: &Path, listing: Option<&str>) -> Vec<PathBuf> {
-    let Some(listing) = listing else { return Vec::new() };
-    let running: Vec<u32> = proc_rows(listing).iter().map(|r| r.pid).collect();
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(temp)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|dir| installer_work_dir_pid(dir).is_some_and(|pid| !running.contains(&pid)))
-        .collect();
-    dirs.sort();
-    dirs
-}
-
-fn installer_work_dir_pid(path: &Path) -> Option<u32> {
-    if !path.is_dir() {
-        return None;
-    }
-    let pid = path.file_name()?.to_str()?.strip_prefix(crate::release::WORK_DIR_PREFIX)?;
-    pid.bytes().all(|b| b.is_ascii_digit()).then(|| pid.parse().ok()).flatten()
-}
-
-fn remove_modules_dir() {
-    if owned_data_dir().is_none() {
-        return;
-    }
-    let modules_dir = constants::resolve_modules_dir();
-    if modules_dir.exists() {
-        tracing::info!("[Uninstall] Removing modules: {:?}", modules_dir);
-        let _ = remove_dir_robust(&modules_dir);
-    }
-}
-
 /// 정리 스크립트를 띄우는 cmd 인자 (스크립트 경로 앞). `/D` AutoRun 끄기, `/V:OFF` 경로의 `!`를 펼치지 않기
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 const CLEANUP_CMD_ARGS: [&str; 3] = ["/D", "/V:OFF", "/C"];
@@ -1269,8 +1196,17 @@ fn cleanup_script(
     install_dir: Option<&str>,
     dedicated: bool,
     parent: Option<&str>,
+    held: &[(String, bool)],
 ) -> String {
     let q = |p: &str| p.replace('%', "%%");
+    // 제거기가 끝나야 풀리는 흔적 (`traces::held_by_self`: WebView 데이터 폴더, 기록 파일). `(경로, 폴더인가)`
+    let extra_lines: String = held
+        .iter()
+        .map(|(p, dir)| match dir {
+            true => format!("if exist \"{0}\" rmdir /s /q \"{0}\"\r\n", q(p)),
+            false => format!("del /f /q \"{}\" 2>nul\r\n", q(p)),
+        })
+        .collect();
     // 전용 폴더가 아니면 비었을 때만 지운다 (사용자 파일이 남아 있을 수 있다)
     let rmdir_line = match install_dir {
         Some(dir) if dedicated => format!("if exist \"{0}\" rmdir /s /q \"{0}\"", q(dir)),
@@ -1295,6 +1231,7 @@ fn cleanup_script(
         del /f /q \"{self_exe}\"\r\n\
         {rmdir_line}\r\n\
         {parent_line}\r\n\
+        {extra_lines}\
         (goto) 2>nul & del /f /q \"%~f0\"\r\n",
         self_exe = q(self_exe),
     )
@@ -1331,6 +1268,10 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
             install_dir.map(|d| d.to_string_lossy()).as_deref(),
             dedicated,
             self_exe.parent().map(|p| p.to_string_lossy()).as_deref(),
+            &crate::traces::held_by_self(&crate::traces::Roots::current())
+                .iter()
+                .map(|p| (p.to_string_lossy().into_owned(), p.is_dir()))
+                .collect::<Vec<_>>(),
         );
 
         // 스크립트 파일 작성
@@ -1395,31 +1336,37 @@ mod tests {
     // M15: 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
     // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다
     #[test]
-    fn only_numbered_installer_work_dirs_are_cleaned() {
-        let tmp = tempfile::tempdir().unwrap();
-        let work = tmp.path().join("saba-chan-installer-1234");
-        std::fs::create_dir_all(&work).unwrap();
-        let other = tmp.path().join("saba-chan-installer-backup");
-        std::fs::create_dir_all(&other).unwrap();
-        let log = tmp.path().join("saba-chan-installer-99");
-        std::fs::write(&log, b"").unwrap();
-
-        assert_eq!(stale_work_dirs(tmp.path(), Some("")), [work]);
+    fn sandbox_reset_failures_are_reported_as_left_items() {
+        let core = std::path::Path::new("C:\\Saba\\saba-core.exe");
+        let out = "ok    removed 2 isolation profile(s)\n";
+        assert!(sandbox_failures(out, true, core).is_empty());
+        let out = "FAIL  D:\\Games\\pal: write ACL of D:\\Games\\pal: Access is denied.\nFAIL  saba-chan.untrusted.x: gone\n";
+        assert_eq!(sandbox_failures(out, false, core).len(), 2);
+        // Codex 리뷰 #539: 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 성공으로 보았다
+        assert_eq!(sandbox_failures("usage: saba-core ...\n", false, core).len(), 1);
     }
 
-    /// 다른 설치기가 아직 돌고 있으면 그 작업 폴더는 두고, 프로세스 목록을 못 읽으면 아무것도 지우지 않는다
+    /// 아무것도 정하지 않으면 설정과 인스턴스를 둘 다 남기고, 지울 것만 따로 고른다
     #[test]
-    fn a_running_installers_work_dir_is_kept() {
-        let tmp = tempfile::tempdir().unwrap();
-        let live = tmp.path().join("saba-chan-installer-1234");
-        let gone = tmp.path().join("saba-chan-installer-5678");
-        for dir in [&live, &gone] {
-            std::fs::create_dir_all(dir).unwrap();
-        }
-        let listing = "1234|1|5|saba-chan-cli.exe|C:/Saba/saba-chan-cli.exe\n";
+    fn uninstall_keeps_settings_and_instances_unless_told_to_remove_each() {
+        let args = |a: &[&str]| keep_from_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(args(&["--uninstall"]), Keep::ALL);
+        assert_eq!(args(&["--uninstall", "--silent"]), Keep::ALL);
+        assert_eq!(args(&["--uninstall", "--remove-settings"]), Keep { settings: false, instances: true });
+        assert_eq!(args(&["--uninstall", "--remove-instances"]), Keep { settings: true, instances: false });
+        assert_eq!(args(&["--uninstall", "--remove-instances", "--remove-settings"]), Keep::NOTHING);
+    }
 
-        assert_eq!(stale_work_dirs(tmp.path(), Some(listing)), [gone]);
-        assert!(stale_work_dirs(tmp.path(), None).is_empty());
+    /// 어느 설치의 것인지 모르는 데몬은 끄지 않고 사용자에게 먼저 끄라고 안내한다
+    #[test]
+    fn a_daemon_of_unknown_install_is_left_running_and_explained() {
+        assert_eq!(port_daemon_to_stop(Owner::Here, 7), Ok(Some(7)));
+        assert_eq!(
+            port_daemon_to_stop(Owner::Elsewhere("D:/other/saba-core.exe".into()), 7),
+            Ok(None)
+        );
+        let why = port_daemon_to_stop(Owner::Unknown, 7).unwrap_err();
+        assert!(why.contains("PID 7") && why.contains("Quit Saba-chan first"), "{}", why);
     }
 
     /// 설정된 포트에 다른 설치의 데몬이 답하면 그 데몬에 종료를 부탁하지 않는다 (찾은 PID만 끝낸다)
@@ -1534,14 +1481,20 @@ mod tests {
             Some("C:\\%TEMP%\\Saba-chan"),
             true,
             Some("C:\\%TEMP%"),
+            &[
+                ("C:\\Users\\a\\AppData\\Local\\com.saba-chan.installer".to_string(), true),
+                ("C:\\%TEMP%\\saba-chan-installer.log".to_string(), false),
+            ],
         );
+        assert!(s.contains("del /f /q \"C:\\%%TEMP%%\\saba-chan-installer.log\" 2>nul"), "{s}");
+        assert!(s.contains("if exist \"C:\\Users\\a\\AppData\\Local\\com.saba-chan.installer\" rmdir /s /q"), "{s}");
         assert!(s.contains("if exist \"C:\\%%TEMP%%\\Saba-chan\" rmdir /s /q \"C:\\%%TEMP%%\\Saba-chan\""));
         assert!(s.contains("del /f /q \"C:\\%%TEMP%%\\Saba-chan\\saba-chan-installer.exe\""));
         assert!(s.contains("rmdir \"C:\\%%TEMP%%\" 2>nul"));
         // 스크립트 자신은 경로를 적지 않고 `%~f0`으로 지운다
         assert!(s.ends_with("(goto) 2>nul & del /f /q \"%~f0\"\r\n"));
         // 전용 폴더가 아니면 비었을 때만 지운다
-        let s = cleanup_script(7, "x.exe", Some("D:\\100%\\Saba"), false, None);
+        let s = cleanup_script(7, "x.exe", Some("D:\\100%\\Saba"), false, None, &[]);
         assert!(s.contains("rmdir \"D:\\100%%\\Saba\" 2>nul"));
         assert!(!s.contains("/s /q \"D:"));
     }
@@ -1550,7 +1503,7 @@ mod tests {
     // 지연 확장을 꺼야 경로의 `!`가 펼쳐지지 않는다
     #[test]
     fn the_cleanup_script_reads_non_ascii_paths_as_utf8_without_delayed_expansion() {
-        let s = cleanup_script(7, "C:\\사바쨩!\\saba-chan-installer.exe", Some("C:\\사바쨩!"), true, None);
+        let s = cleanup_script(7, "C:\\사바쨩!\\saba-chan-installer.exe", Some("C:\\사바쨩!"), true, None, &[]);
         let first_path = s.find("사바쨩").unwrap();
         let chcp = s.find("chcp 65001").expect("switches cmd to UTF-8");
         assert!(chcp < first_path);
@@ -1573,7 +1526,7 @@ mod tests {
         let pid = done.id();
         done.wait().unwrap();
         let script = root.join("정리.cmd");
-        let body = cleanup_script(pid, &exe.to_string_lossy(), Some(&dir.to_string_lossy()), true, None);
+        let body = cleanup_script(pid, &exe.to_string_lossy(), Some(&dir.to_string_lossy()), true, None, &[]);
         std::fs::write(&script, body).unwrap();
 
         // 실제 제거기처럼 창 없는 콘솔(CREATE_NO_WINDOW)에서 돌려 `chcp 65001`이 먹는지까지 본다

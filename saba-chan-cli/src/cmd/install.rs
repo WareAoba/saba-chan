@@ -128,6 +128,10 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         None => default_dir,
     };
 
+    // 한 PC에는 설치본 하나만 둔다: 다른 폴더에 있으면 무엇도 받기 전에 그 설치본을 안내한다
+    if let Some(other) = core::other_install(&dir) {
+        return Err(usage(t!("install.installed_elsewhere", dir = other.display())));
+    }
     // 설치는 그 폴더의 CLI를 모두 끄고 덮어쓴다: 거기서 도는 자신도 꺼지므로 다른 곳의 CLI로 하게 한다
     if std::env::current_exe().is_ok_and(|exe| runs_inside(&dir, &exe)) {
         return Err(usage(t!("install.running_inside", dir = dir.display())));
@@ -183,6 +187,9 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
     if let Some(err) = last.error.as_deref().filter(|_| !last.complete) {
         if last.error_code.as_deref() == Some("elevation_failed") {
             return Err(failed(t!("install.not_writable", dir = dir.display())));
+        }
+        if last.error_code.as_deref() == Some("daemon_running") {
+            return Err(failed(t!("install.daemon_running")));
         }
         return Err(failed(match last.log_path.as_deref().filter(|_| logged) {
             Some(log) => t!("install.failed", reason = err, log = log),

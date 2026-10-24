@@ -130,7 +130,7 @@ impl ManagedProcess {
         let _ = std::fs::remove_file(runner_file(&run));
         let _ = std::fs::remove_file(exit_file(&run));
         let token = uuid::Uuid::new_v4().to_string();
-        std::fs::write(run.join(TOKEN_FILE), &token)?;
+        saba_atomic_file::write(&run.join(TOKEN_FILE), token.as_bytes(), saba_atomic_file::Mode::Secret)?;
 
         let log = sessions_dir(instance_dir).join(format!("{}.log", saba_runner::session_stamp(current_timestamp())));
         std::fs::create_dir_all(sessions_dir(instance_dir))?;

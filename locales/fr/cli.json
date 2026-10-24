@@ -75,7 +75,8 @@
     "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI.",
     "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
     "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}",
-    "agent_too_old": "Le relais n'accepte plus cette version de l'application. Mettez l'application à jour en {{min}} ou plus récent."
+    "agent_too_old": "Le relais n'accepte plus cette version de l'application. Mettez l'application à jour en {{min}} ou plus récent.",
+    "words_not_used": "Ce serveur Discord n'utilise pas ce serveur."
   },
   "col": {
     "players": "Joueurs",
@@ -506,7 +507,9 @@
     "cmd": {
       "help": "Afficher l'aide d'une commande. Avec --json : l'arbre des commandes, les arguments et les codes de sortie",
       "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter",
-      "install": "Installer Saba-chan sur ce PC sans le programme d'installation fenêtré"
+      "install": "Installer Saba-chan sur ce PC sans le programme d'installation fenêtré",
+      "uninstall": "Supprimer Saba-chan de ce PC (paramètres et serveurs conservés sauf indication contraire)",
+      "server.discord": "Les mots par lesquels chaque serveur Discord appelle ce serveur et ses commandes dans le chat. Sans option : afficher"
     },
     "arg": {
       "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
@@ -527,7 +530,13 @@
       "install.dir": "Dossier d'installation (demandé s'il est omis)",
       "install.modules": "Modules de jeu à installer, séparés par des virgules (demandés s'ils sont omis)",
       "install.gui": "Installer aussi l'application de bureau, même sans écran",
-      "install.no_gui": "Installer sans l'application de bureau, même avec un écran"
+      "install.no_gui": "Installer sans l'application de bureau, même avec un écran",
+      "uninstall.remove_settings": "Supprimer aussi les paramètres et la connexion Discord",
+      "uninstall.remove_instances": "Supprimer aussi les serveurs (fichiers, mondes, copies)",
+      "server.discord.guild": "Serveur Discord par nom ou id (demandé si plusieurs sont associés et qu'une modification est faite)",
+      "server.discord.word": "Mots pour le serveur, séparés par des virgules (remplacent les actuels). --word \"\" les supprime",
+      "server.discord.command": "Mots pour une commande : COMMANDE=MOT,MOT (remplace les mots de cette commande, COMMANDE= les supprime). Répétable",
+      "server.discord.clear": "Supprimer tous les mots de ce serveur"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
@@ -694,10 +703,22 @@
     "installing": "Installation",
     "not_writable": "Impossible d'écrire dans {{dir}}. Choisissez avec --dir un dossier accessible en écriture (par exemple dans votre dossier utilisateur)",
     "running_inside": "Cette CLI s'exécute depuis {{dir}} et ne peut donc pas y installer. Lancez un saba-chan-cli situé hors du dossier d'installation.",
+    "installed_elsewhere": "Saba-chan est déjà installé dans {{dir}}. Mettez à jour cette installation avec saba-chan-cli update ou désinstallez-la d'abord (une installation par PC).",
+    "daemon_running": "Saba-chan est en cours d'exécution et le programme d'installation ne sait pas à quelle installation il appartient. Quittez d'abord Saba-chan, puis réessayez.",
     "empty_dir": "Le dossier d'installation est vide. Indiquez un dossier avec --dir",
     "failed": "L'installation a échoué : {{reason}} (détails : {{log}})",
     "failed_no_log": "L'installation a échoué : {{reason}}",
     "done": "Installé dans {{dir}}",
     "next": "Démarrez le démon avec :\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "Cette commande ne s'exécute pas depuis un dossier d'installation de Saba-chan : rien à supprimer.",
+    "confirm": "Supprimer Saba-chan de {{dir}} ? Le programme et tous ses fichiers seront supprimés ; {{kept}}.",
+    "kept_both": "les paramètres et les serveurs sont conservés",
+    "kept_settings": "les paramètres sont conservés, les serveurs supprimés",
+    "kept_instances": "les serveurs sont conservés, les paramètres supprimés",
+    "kept_nothing": "les paramètres et les serveurs sont aussi supprimés",
+    "done": "Saba-chan a été supprimé ; {{kept}}.",
+    "left": "Saba-chan a été supprimé, mais ces éléments n'ont pas pu être effacés. Fermez les programmes qui les utilisent et supprimez-les vous-même :\n{{paths}}"
   }
 }

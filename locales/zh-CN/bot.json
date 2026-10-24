@@ -151,7 +151,11 @@
     "module_missing": "找不到模块: {{error}}",
     "no_latest_version": "无法获取最新的服务器版本",
     "script_failed": "安装脚本出错退出。详情请查看守护进程日志",
-    "backup_failed": "更新前备份失败: {{reason}}"
+    "save_failed": "服务器文件已下载，但无法保存服务器信息。详情请查看守护进程日志",
+    "backup_failed": "更新前备份失败: {{reason}}",
+    "version_installing": "正在安装版本 {{version}}…",
+    "version_installed": "已安装该版本",
+    "install_backup_failed": "安装前备份失败，因此未进行安装：{{reason}}"
   },
   "actions": {
     "instance": {

@@ -9,7 +9,7 @@ license = "MIT"
 keywords = ["game-server", "palworld", "minecraft", "management"]
 
 [workspace]
-members = [".", "runner", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "installer/core", "saba-chan-cli", "saba-chan-gui/src-tauri"]
+members = [".", "atomic-file", "runner", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "installer/core", "saba-chan-cli", "saba-chan-gui/src-tauri"]
 
 [[bin]]
 name = "saba-core"
@@ -56,9 +56,11 @@ sha2 = "0.10"
 flate2 = "1"
 hex = "0.4"
 saba-chan-updater-lib = { path = "updater" }
+saba-atomic-file = { path = "atomic-file" }
 saba-runner = { path = "runner", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
+winreg = "0.52"
 winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi", "pdh", "libloaderapi", "userenv", "aclapi", "accctrl", "securitybaseapi", "jobapi2", "namedpipeapi", "synchapi", "minwinbase", "winbase", "fileapi", "iphlpapi", "tcpmib", "udpmib", "ws2def", "iprtrmib"] }
 
 [target.'cfg(unix)'.dependencies]
@@ -81,6 +83,7 @@ features = ["full"]
 mock-relay = ["saba-chan-updater-lib/mock-relay"]
 
 [dev-dependencies]
+proptest = "1"
 regex-lite = "0.1"
 saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
 

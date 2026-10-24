@@ -65,14 +65,12 @@ describe('작업 중에 다른 서버 설정을 열었을 때', () => {
         });
         await act(async () => result.current.handleOpenSettings(srvB));
         await act(async () => {
-            install.resolve({ success: true, jar_path: 'C:/a/server.jar' });
+            install.resolve({ success: true, provisioning: true, id: 'a' });
             await running;
         });
-        // A에는 저장됐고, B 창은 B의 버전 그대로다
-        expect(window.api.instanceUpdateSettings).toHaveBeenCalledWith(
-            'a',
-            expect.objectContaining({ server_version: '3.0' }),
-        );
+        // A의 설치가 시작돼도 B 창은 닫히지 않고 B의 버전 그대로다
+        expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
+        expect(result.current.showSettingsModal).toBe(true);
         expect(result.current.settingsServer.id).toBe('b');
         expect(result.current.settingsValues.server_version).toBe('2.0');
     });

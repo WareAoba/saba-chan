@@ -59,30 +59,22 @@ describe('서버 설정의 버전', () => {
         expect(window.api.instanceUpdateSettings.mock.calls.at(-1)[1]).not.toHaveProperty('server_version');
     });
 
-    it('jar 경로가 없는 설치도 설치한 버전을 기록한다', async () => {
-        const { result, setModal } = setup();
-        await act(async () => result.current.handleOpenSettings(srv));
-        act(() => result.current.handleSettingChange('server_version', '3.0'));
-        await act(async () => result.current.handleInstallVersion());
-        await act(async () => setModal.mock.calls.at(-1)[0].buttons[0].action());
-        expect(window.api.instanceUpdateSettings).toHaveBeenCalledWith(
-            'a',
-            expect.objectContaining({ server_version: '3.0' }),
+    // 0.1.10 결정 3: 설치는 데몬이 뒤에서 하고(설치 전 백업·실패 시 복원), 버전·실행 파일·작업 폴더도 데몬이 기록한다.
+    // 화면은 시작만 시키고 진행은 서버 목록의 설치 표시로 본다
+    it('설치를 뒤에서 시작시키고, 기록은 데몬에 맡긴다', async () => {
+        window.api.moduleInstallServer.mockResolvedValue({ success: true, provisioning: true, id: 'a', version: '3.0' });
+        const fetchServers = vi.fn();
+        const setModal = vi.fn();
+        const { result } = renderHook(() =>
+            useServerSettings({ servers: [srv], modules, setModal, setProgressBar: vi.fn(), fetchServers }),
         );
-    });
-
-    // 예전 실행 파일 경로가 남아 있으면 새 버전을 받아도 옛 jar를 켠다 (외부 감사 10-20 #5)
-    it('새 버전을 받으면 받은 실행 파일을 실행 파일로 기록한다', async () => {
-        window.api.moduleInstallServer.mockResolvedValue({ success: true, executable_path: 'C:/a/server.jar' });
-        const { result, setModal } = setup();
         await act(async () => result.current.handleOpenSettings(srv));
         act(() => result.current.handleSettingChange('server_version', '3.0'));
         await act(async () => result.current.handleInstallVersion());
         await act(async () => setModal.mock.calls.at(-1)[0].buttons[0].action());
-        expect(window.api.instanceUpdateSettings).toHaveBeenCalledWith('a', {
-            server_version: '3.0',
-            working_dir: 'C:/a',
-            executable_path: 'C:/a/server.jar',
-        });
+        expect(window.api.moduleInstallServer).toHaveBeenCalledWith('dl', expect.objectContaining({ background: true }));
+        expect(window.api.instanceUpdateSettings).not.toHaveBeenCalled();
+        expect(fetchServers).toHaveBeenCalled();
+        expect(result.current.showSettingsModal).toBe(false);
     });
 });

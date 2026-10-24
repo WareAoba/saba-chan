@@ -99,6 +99,7 @@
     "command_words": "명령 낱말",
     "words_saved": "{{server}}의 채팅 낱말을 저장했어요.",
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
+    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요.",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
     "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
@@ -579,6 +580,7 @@
       "server.console": "콘솔 보면서 입력하기",
       "server.run": "게임 명령 실행 (명령을 안 주면 목록을 보여 줘요)",
       "server.commands": "이 서버가 알아듣는 게임 명령",
+      "server.discord": "디스코드 서버마다 이 서버와 그 명령을 채팅에서 부르는 낱말. 옵션 없이: 보기",
       "server.send": "콘솔에 한 줄 그대로 보내기",
       "server.settings": "서버 설정 보기",
       "server.set": "설정 바꾸기: 키=값 ... (익스텐션 데이터는 ext.키, 빈 값은 지우기)",
@@ -716,11 +718,11 @@
       "bot.music": "디스코드 서버의 음악 플레이어 설정. 옵션이 없으면 보기",
       "bot.allow": "디스코드 서버가 보고 부를 수 있는 서버. 서버 없이: 보기, `--all`: 모든 서버",
       "bot.link": "디스코드에서 코드 없이 /사바쨩 연결로 온 연결 요청. ID 없이: 보기, ID: 수락, `--decline`: 거절",
-      "bot.words": "디스코드 서버에서 이 PC의 서버와 그 명령을 부르는 낱말. 서버 없이: 전부, 옵션 없이: 보기",
       "help": "명령 도움말 보기. --json이면 명령 트리·인자·종료 코드",
       "events": "데몬 이벤트를 실시간으로 따라가기 (--json이면 한 줄에 JSON 하나). Ctrl+C로 멈춰요",
       "tui": "전체 화면 메뉴 열기",
-      "install": "창 인스톨러 없이 이 PC에 사바쨩 설치"
+      "install": "창 인스톨러 없이 이 PC에 사바쨩 설치",
+      "uninstall": "이 PC에서 사바쨩 제거 (지정하지 않으면 설정과 서버는 남김)"
     },
     "arg": {
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
@@ -825,9 +827,10 @@
       "bot.music.queue_lines": "플레이어 패널의 대기열 줄 수 (1-20)",
       "bot.music.refresh": "플레이어 패널 새로고침 간격, 밀리초 (2000-10000)",
       "bot.music.normalize": "곡마다 음량 고르게 (on 또는 off)",
-      "bot.words.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
-      "bot.words.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
-      "bot.words.clear": "이 서버의 낱말 모두 지우기",
+      "server.discord.guild": "디스코드 서버 이름이나 id (여럿이 페어링돼 있으면 바꿀 때 물어봐요)",
+      "server.discord.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
+      "server.discord.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
+      "server.discord.clear": "이 서버의 낱말 모두 지우기",
       "bot.channels.guild": "디스코드 서버 이름이나 id. 없으면 페어링된 서버 전부 (바꾸기는 서버가 하나일 때만)",
       "help.command": "명령 경로 (예: `server start`)",
       "events.kind": "이 이벤트만. `instance`는 `instance.exit` 같은 아래 이벤트도 받아요",
@@ -837,7 +840,9 @@
       "install.dir": "설치 폴더 (없으면 물어봄)",
       "install.modules": "설치할 게임 모듈, 쉼표로 구분 (없으면 물어봄)",
       "install.gui": "화면이 없어도 데스크톱 앱까지 설치",
-      "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치"
+      "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치",
+      "uninstall.remove_settings": "설정과 디스코드 연결도 지움",
+      "uninstall.remove_instances": "게임 서버도 지움 (서버 파일, 월드, 백업)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1086,10 +1091,22 @@
     "installing": "설치하고 있어요",
     "not_writable": "{{dir}}에 쓸 수 없어요. --dir로 쓸 수 있는 폴더(예: 사용자 폴더 아래)를 고르세요",
     "running_inside": "이 CLI는 {{dir}} 안에서 실행 중이라 그 폴더에 설치할 수 없어요. 설치 폴더 밖에 있는 saba-chan-cli로 다시 실행해 주세요.",
+    "installed_elsewhere": "사바쨩이 이미 {{dir}}에 설치돼 있어요. 그 설치본을 saba-chan-cli update로 업데이트하거나 먼저 제거해 주세요 (한 PC에는 하나만 설치할 수 있어요).",
+    "daemon_running": "어느 설치본의 것인지 알 수 없는 사바쨩이 실행 중이에요. 사바쨩을 먼저 종료한 뒤 다시 시도해 주세요.",
     "empty_dir": "설치 폴더가 비어 있어요. --dir에 폴더를 적어 주세요",
     "failed": "설치하지 못했어요: {{reason}} (자세한 기록: {{log}})",
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}"
+  },
+  "uninstall": {
+    "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",
+    "confirm": "{{dir}}의 사바쨩을 제거할까요? 프로그램과 사바쨩이 만든 파일은 모두 지우고, {{kept}}.",
+    "kept_both": "설정과 게임 서버는 남깁니다",
+    "kept_settings": "설정은 남기고 게임 서버는 지웁니다",
+    "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
+    "kept_nothing": "설정과 게임 서버도 지웁니다",
+    "done": "사바쨩을 제거했습니다. {{kept}}.",
+    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
   }
 }

@@ -18,6 +18,8 @@ use saba_chan_updater_lib::config_file::ConfigFile;
 use std::path::Path;
 use tokio::sync::RwLock;
 
+pub mod patch;
+
 // ── GUI Settings (settings.json) ──
 
 /// GUI 설정 — settings.json에 저장되는 모든 필드
@@ -377,18 +379,30 @@ impl ConfigStore {
 
     /// JSON Value로 GUI 설정 교체 (API 요청 수용, 스키마 검증 포함)
     pub async fn set_gui_settings_from_json(&self, json: Value) -> Result<GuiSettings, ConfigStoreError> {
-        // 기존 설정을 base로 하여 부분 업데이트 지원. 읽기·병합·저장 동안 쓰기 잠금을 잡아 동시 저장이 서로 덮지 않게
+        Ok(self.write_gui(json, Apply::Overlay, None).await?.0)
+    }
+
+    /// GUI 설정의 지금 revision (GET 응답은 같은 읽기에서 계산한다)
+    #[cfg(test)]
+    pub async fn gui_revision(&self) -> String {
+        patch::revision(&serde_json::to_value(&*self.gui_settings.read().await).unwrap_or_default())
+    }
+
+    /// GUI 설정 저장. `revision`을 주면 그사이 바뀌었을 때 `RevisionConflict`로 거절한다. 저장한 설정과 새 revision을 돌려준다
+    pub async fn write_gui(&self, json: Value, how: Apply, revision: Option<&str>) -> Result<(GuiSettings, String), ConfigStoreError> {
+        // 읽기·병합·저장 동안 쓰기 잠금을 잡아 동시 저장이 서로 덮지 않게
         let mut current = self.gui_settings.write().await;
         let current_json = serde_json::to_value(&*current).unwrap_or_default();
+        check_revision(&current_json, revision)?;
 
-        // 기존 JSON에 새 JSON을 머지
-        let merged = merge_json(current_json, json);
+        let merged = how.apply(current_json, json);
 
         let settings: GuiSettings = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
-        self.file.set_section("gui", serde_json::to_value(&settings)?)?;
+        let saved = serde_json::to_value(&settings)?;
+        self.file.set_section("gui", saved.clone())?;
         *current = settings.clone();
-        Ok(settings)
+        Ok((settings, patch::revision(&saved)))
     }
 
     // ── Bot Config ──
@@ -406,21 +420,34 @@ impl ConfigStore {
 
     /// JSON Value로 봇 설정 교체 (API 요청 수용, 스키마 검증 포함)
     pub async fn set_bot_config_from_json(&self, json: Value) -> Result<BotConfig, ConfigStoreError> {
-        Ok(self.merge_bot_config(json, true).await?.0)
+        Ok(self.merge_bot_config(json, Apply::Overlay, None, true).await?.0)
     }
 
-    /// `set_bot_config_from_json`과 같고, 권한 키라 바꾸지 않고 둔 경로(`nodeSettings.<길드>.<키>`)도 돌려준다 (L61)
-    pub async fn save_bot_config_json(&self, json: Value) -> Result<(BotConfig, Vec<String>), ConfigStoreError> {
-        self.merge_bot_config(json, true).await
+    /// 봇 설정의 지금 revision (GET 응답에 싣는다)
+    pub async fn bot_revision(&self) -> String {
+        patch::revision(&serde_json::to_value(&*self.bot_config.read().await).unwrap_or_default())
+    }
+
+    /// 봇 설정 저장. 권한 키라 바꾸지 않고 둔 경로(`nodeSettings.<길드>.<키>`, L61)와 새 revision도 돌려준다.
+    /// `revision`을 주면 그사이 바뀌었을 때 `RevisionConflict`로 거절한다
+    pub async fn write_bot(&self, json: Value, how: Apply, revision: Option<&str>) -> Result<(BotConfig, Vec<String>, String), ConfigStoreError> {
+        self.merge_bot_config(json, how, revision, true).await
     }
 
     /// 부분 업데이트. 읽기·병합·저장 동안 쓰기 잠금을 잡아 그사이의 권한 변경(주인 고정 등)을 덮지 않는다.
     /// `keep_permissions`면 권한 키는 권한 API(`update_node_settings`)로만 바뀐다 (가져오기는 로컬 동작이라 false)
-    async fn merge_bot_config(&self, json: Value, keep_permissions: bool) -> Result<(BotConfig, Vec<String>), ConfigStoreError> {
+    async fn merge_bot_config(
+        &self,
+        json: Value,
+        how: Apply,
+        revision: Option<&str>,
+        keep_permissions: bool,
+    ) -> Result<(BotConfig, Vec<String>, String), ConfigStoreError> {
         let mut current = self.bot_config.write().await;
         let current_json = serde_json::to_value(&*current).unwrap_or_default();
+        check_revision(&current_json, revision)?;
 
-        let mut merged = merge_json(current_json.clone(), json);
+        let mut merged = how.apply(current_json.clone(), json);
         let reverted = if keep_permissions { keep_permission_keys(&mut merged, &current_json) } else { Vec::new() };
 
         let mut config: BotConfig = serde_json::from_value(merged)
@@ -434,9 +461,10 @@ impl ConfigStore {
                 return Err(ConfigStoreError::InvalidRelayUrl(problem));
             }
         }
-        self.file.set_section("relay", serde_json::to_value(&config)?)?;
+        let saved = serde_json::to_value(&config)?;
+        self.file.set_section("relay", saved.clone())?;
         *current = config.clone();
-        Ok((config, reverted))
+        Ok((config, reverted, patch::revision(&saved)))
     }
 
 
@@ -618,7 +646,7 @@ impl ConfigStore {
                 }
                 "relay" => {
                     // 내보낸 파일을 이 PC에서 가져오는 로컬 동작이라 권한 키도 함께 가져온다
-                    self.merge_bot_config(value, false).await?;
+                    self.merge_bot_config(value, Apply::Import, None, false).await?;
                 }
                 "chatbot" => {
                     let merged = merge_json(serde_json::to_value(self.get_chatbot())?, value);
@@ -688,6 +716,53 @@ pub enum ConfigStoreError {
     InvalidData(String),
     #[error("Invalid relay URL: {0}")]
     InvalidRelayUrl(String),
+    /// 읽을 때 받은 revision과 지금이 다르다. 지금 revision을 싣는다
+    #[error("Settings were changed elsewhere")]
+    RevisionConflict(String),
+}
+
+/// 저장 방식: `PUT`은 최상위 키만 얹고(예전 방식), `PATCH`는 JSON Merge Patch(바뀐 칸만, `null`은 지우기)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Apply {
+    Overlay,
+    MergePatch,
+    /// 설정 가져오기: `Overlay`와 같되 `nodeSettings`는 길드마다 키별로 얹는다 (zip에 없는 길드·키는 남긴다, EE8)
+    Import,
+}
+
+impl Apply {
+    fn apply(self, current: Value, body: Value) -> Value {
+        match self {
+            Apply::Overlay => merge_json(current, body),
+            Apply::MergePatch => {
+                let mut merged = current;
+                patch::merge_patch(&mut merged, &body);
+                merged
+            }
+            Apply::Import => {
+                let mut body = body;
+                if let (Some(Value::Object(incoming)), Some(Value::Object(nodes))) = (
+                    body.as_object_mut().and_then(|b| b.remove("nodeSettings")),
+                    current.get("nodeSettings").cloned().or_else(|| Some(Value::Object(Default::default()))),
+                ) {
+                    let mut nodes = nodes;
+                    for (guild, node) in incoming {
+                        let local = nodes.remove(&guild).unwrap_or(Value::Null);
+                        nodes.insert(guild, merge_json(local, node));
+                    }
+                    body["nodeSettings"] = Value::Object(nodes);
+                }
+                merge_json(current, body)
+            }
+        }
+    }
+}
+
+fn check_revision(current: &Value, revision: Option<&str>) -> Result<(), ConfigStoreError> {
+    match revision {
+        Some(seen) if seen != patch::revision(current) => Err(ConfigStoreError::RevisionConflict(patch::revision(current))),
+        _ => Ok(()),
+    }
 }
 
 // ── File helpers ──
@@ -1026,6 +1101,55 @@ mod tests {
         sections.insert("relay".into(), serde_json::json!({ "nodeSettings": { "h": { "ownerDiscordId": "x", "defaultLevel": -1 } } }));
         store.import_sections(sections).await.unwrap();
         assert_eq!(store.get_bot_config().await.node_settings["h"]["defaultLevel"], -1);
+    }
+
+    /// 가져오기는 zip에 있는 길드만 길드 안에서 키별로 얹는다: zip에 없는 길드와 키는 이 PC 것이 남는다 (EE8)
+    #[tokio::test]
+    async fn importing_node_settings_merges_guild_by_guild() {
+        use serde_json::json;
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.import_sections(serde_json::Map::from_iter([(
+            "relay".to_string(),
+            json!({"nodeSettings": {"g1": {"memo": "a", "members": {"u": 2}}, "g2": {"memo": "b"}}}),
+        )])).await.unwrap();
+        store.import_sections(serde_json::Map::from_iter([(
+            "relay".to_string(),
+            json!({"nodeSettings": {"g1": {"memo": "z"}, "g3": {"memo": "c"}}}),
+        )])).await.unwrap();
+        assert_eq!(
+            store.get_bot_config_json().await["nodeSettings"],
+            json!({"g1": {"memo": "z", "members": {"u": 2}}, "g2": {"memo": "b"}, "g3": {"memo": "c"}})
+        );
+    }
+
+    /// PATCH는 보낸 칸만 바꾸고(`null`은 지우기), 읽은 뒤 바뀐 설정에는 쓰지 않는다 (0.1.10 결정 1)
+    #[tokio::test]
+    async fn a_patch_changes_only_what_it_names_and_refuses_a_stale_revision() {
+        use serde_json::json;
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.set_bot_config_from_json(json!({"nodeSettings": {"g1": {"memo": "a", "x": 1}, "g2": {"memo": "b"}}})).await.unwrap();
+        let seen = store.bot_revision().await;
+
+        let (_, ignored, revision) = store.write_bot(json!({"nodeSettings": {"g1": {"memo": "c", "x": null}}}), Apply::MergePatch, Some(&seen)).await.unwrap();
+        assert!(ignored.is_empty());
+        assert_eq!(revision, store.bot_revision().await);
+        let nodes = store.get_bot_config_json().await["nodeSettings"].clone();
+        assert_eq!(nodes, json!({"g1": {"memo": "c"}, "g2": {"memo": "b"}}), "the other guild is left as it was");
+
+        let stale = store.write_bot(json!({"nodeSettings": {"g2": {"memo": "d"}}}), Apply::MergePatch, Some(&seen)).await;
+        assert!(matches!(stale, Err(ConfigStoreError::RevisionConflict(now)) if now == revision));
+        assert_eq!(store.get_bot_config_json().await["nodeSettings"]["g2"]["memo"], "b");
+
+        // 권한 키는 PATCH로도 바뀌지 않는다 (L61)
+        let (_, ignored, _) = store.write_bot(json!({"nodeSettings": {"g2": {"defaultLevel": 3}}}), Apply::MergePatch, None).await.unwrap();
+        assert_eq!(ignored, ["nodeSettings.g2.defaultLevel"]);
+
+        let gui_seen = store.gui_revision().await;
+        store.write_gui(json!({"language": "ja"}), Apply::MergePatch, Some(&gui_seen)).await.unwrap();
+        assert!(matches!(store.write_gui(json!({"language": "ko"}), Apply::MergePatch, Some(&gui_seen)).await, Err(ConfigStoreError::RevisionConflict(_))));
+        assert_eq!(store.get_gui_settings().await.language.as_deref(), Some("ja"));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
