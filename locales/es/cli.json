@@ -75,7 +75,8 @@
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
     "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
-    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
+    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior.",
+    "words_not_used": "Este servidor de Discord no usa este servidor."
   },
   "col": {
     "players": "Jugadores",
@@ -507,7 +508,8 @@
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
       "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
-      "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)"
+      "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)",
+      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -530,7 +532,11 @@
       "install.gui": "Instalar también la app de escritorio aunque no haya pantalla",
       "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla",
       "uninstall.remove_settings": "Eliminar también los ajustes y la conexión con Discord",
-      "uninstall.remove_instances": "Eliminar también los servidores (archivos, mundos, copias)"
+      "uninstall.remove_instances": "Eliminar también los servidores (archivos, mundos, copias)",
+      "server.discord.guild": "Servidor de Discord por nombre o id (se pregunta si hay varios vinculados y algo cambia)",
+      "server.discord.word": "Palabras para el servidor, separadas por comas (reemplazan las actuales). --word \"\" las elimina",
+      "server.discord.command": "Palabras para un comando: COMANDO=PALABRA,PALABRA (reemplaza las de ese comando, COMANDO= las elimina). Se puede repetir",
+      "server.discord.clear": "Eliminar todas las palabras de este servidor"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },

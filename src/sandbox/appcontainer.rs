@@ -1358,6 +1358,7 @@ mod imp {
                 }
             };
             let recorded = record.get(profile).into_iter().flatten();
+            let failed_before = failed.len();
             for path in targets.iter().chain(recorded).filter(|p| p.exists()) {
                 // 이 SID의 명시 ACE가 있는 폴더만 고친다 (남의 폴더 DACL을 괜히 다시 쓰지 않게)
                 match has_own_ace(path, sid) {
@@ -1369,6 +1370,10 @@ mod imp {
                     }
                     Err(e) => failed.push(e),
                 }
+            }
+            // 거두지 못한 ACE가 있으면 프로필을 남긴다: 다음 reset은 남은 프로필로 다시 찾는다
+            if failed.len() > failed_before {
+                continue;
             }
             if let Err(e) = delete_profile(profile) {
                 failed.push(e);
