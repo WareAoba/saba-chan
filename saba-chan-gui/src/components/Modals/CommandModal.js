@@ -1,9 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import './Modals.css';
 import { useInstanceCommands } from '../../hooks/useInstanceCommands';
-import { useModalClose } from '../../hooks/useModalClose';
 import { needsConfirm, withCommandAliases } from '../../utils/commandRisk';
 import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
@@ -11,10 +9,10 @@ import { CliText, commandCli } from '../CliLine';
 import { useUIStore } from '../../stores/useUIStore';
 import { commandErrorText } from '../../utils/commandReply';
 
-function CommandModal({ server, modules, onClose, onExecute, embedded = false }) {
+// 서버 상세의 "명령" 탭 (이름은 옛 모달에서 왔다)
+function CommandModal({ server, modules }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
-    const { isClosing, requestClose } = useModalClose(onClose);
     const [commandInput, setCommandInput] = useState('');
     const [loading, setLoading] = useState(false);
     const history = useUIStore((s) => s.commandHistoryMap[server.id]) || [];
@@ -189,26 +187,34 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
         }
     };
 
-    const body = (
-        <>
-            {/* ── 좌측: 입력 + 힌트 ── */}
-            <div className="command-modal-main">
-                {!embedded && <h2 className="modal-title">{t('command_modal.title', { name: server.name })}</h2>}
+    return (
+        <div className="cmd-runner">
+            {/* ── 왼쪽: 명령 목록 + 입력 ── */}
+            <section className="cmd-panel cmd-main">
+                <header className="cmd-panel-head">
+                    <Icon name="command" size="sm" />
+                    <h3>{t('command_modal.command_label')}</h3>
+                </header>
 
-                {/* 힌트 영역 (고정 높이) */}
-                <div className="cmd-hints-inline">
+                <div className="cmd-list" role="listbox" aria-label={t('command_modal.command_label')}>
                     {filteredHints.length > 0 ? (
                         filteredHints.map((cmd, idx) => (
+                            // biome-ignore lint/a11y/useKeyWithClickEvents: 키보드로는 입력 칸의 ↑↓·Tab으로 고른다
                             <div
                                 key={cmd.name}
-                                className={clsx('cmd-hint-chip', { 'cmd-hint-active': idx === highlightIdx })}
+                                role="option"
+                                tabIndex={-1}
+                                aria-selected={idx === highlightIdx}
+                                className={clsx('cmd-item', { active: idx === highlightIdx })}
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => {
                                     setCommandInput(cmd.name + ' ');
                                     inputRef.current?.focus();
                                 }}
                                 title={cmd.description}
                             >
-                                <span className="cmd-hint-name">{cmd.name}</span>
+                                <span className="cmd-item-name">{cmd.name}</span>
+                                {cmd.description && <span className="cmd-item-desc">{cmd.description}</span>}
                                 {cmd.group && (
                                     <span className="cmd-source" title={cmd.group}>
                                         <Icon name="extension" size="xs" /> {cmd.group}
@@ -224,24 +230,19 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                                         {t(`shell.risk_${cmd.risk}`)}
                                     </span>
                                 )}
-                                {cmd.description && <span className="cmd-hint-desc">{cmd.description}</span>}
                             </div>
                         ))
                     ) : (
-                        <span className="cmd-hints-empty">
+                        <p className="cmd-empty">
                             {commandInput.trim()
-                                ? t('command_modal.no_matching_hints', {
-                                      defaultValue: 'No matching commands — will send as raw command',
-                                  })
-                                : t('command_modal.type_to_filter', {
-                                      defaultValue: 'Type a command or select from the list',
-                                  })}
-                        </span>
+                                ? t('command_modal.no_matching_hints')
+                                : t('command_modal.type_to_filter')}
+                        </p>
                     )}
                 </div>
 
-                {/* 입력 라인 (항상 하단 고정) */}
-                <div className="cmd-input-fixed">
+                {/* 입력줄 (항상 아래 고정) */}
+                <div className="cmd-compose">
                     {confirmText && confirmText === commandInput.trim() && (
                         <div className="notice tone-stop risk-confirm" role="alert">
                             <Icon name="alertTriangle" size="sm" />
@@ -256,98 +257,76 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                             </button>
                         </div>
                     )}
-                    <div className="cli-input-wrapper">
-                        <span className="cli-prompt">$</span>
+                    <div className="cmd-input">
+                        <Icon name="chevronRight" size="sm" />
                         <input
                             ref={inputRef}
                             type="text"
-                            className="cli-input"
+                            className="cmd-field"
                             value={commandInput}
                             onChange={(e) => setCommandInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder={t('command_modal.command_placeholder')}
-                            autoFocus={!embedded}
+                            aria-label={t('command_modal.command_label')}
+                            autoComplete="off"
+                            spellCheck={false}
                             disabled={loading}
                         />
+                        <kbd className="cmd-tab-hint">Tab {t('command_modal.autocomplete')}</kbd>
                         <button
-                            className="console-send"
+                            type="button"
+                            className="term-send"
                             onClick={handleExecuteCommand}
                             disabled={!commandInput.trim() || loading}
                             title={t('command_modal.execute')}
+                            aria-label={t('command_modal.execute')}
                         >
-                            {loading ? '…' : t('console.send')}
+                            <Icon name={loading ? 'loader' : 'arrowUp'} size="sm" />
                         </button>
                     </div>
                     {cliLine && <CliText line={cliLine} />}
-                    <div className="cmd-input-meta">
-                        <span className="cmd-tab-hint">
-                            Tab ↹ {t('command_modal.autocomplete', { defaultValue: 'autocomplete' })}
-                        </span>
-                    </div>
                 </div>
-            </div>
+            </section>
 
-            {/* ── 우측: 실행 히스토리 ── */}
-            <div className="command-history-panel">
-                <div className="hints-panel-header">
+            {/* ── 오른쪽: 실행 기록 ── */}
+            <section className="cmd-panel cmd-history">
+                <header className="cmd-panel-head">
                     <Icon name="clock" size="sm" />
-                    {t('command_modal.history', { defaultValue: 'History' })}
-                </div>
+                    <h3>{t('command_modal.history')}</h3>
+                </header>
                 <div className="cmd-history-list">
-                    {history.length === 0 && (
-                        <div className="hints-empty">
-                            {t('command_modal.no_history', { defaultValue: 'No commands executed yet' })}
-                        </div>
-                    )}
-                    {history.map((entry) => (
-                        <div
-                            key={entry.id}
-                            className={clsx('cmd-history-item', `cmd-history-${entry.status}`, {
-                                'cmd-history-expanded': expandedId === entry.id,
-                            })}
-                            onClick={() => {
-                                setExpandedId((prev) => (prev === entry.id ? null : entry.id));
-                            }}
-                            title={t('command_modal.click_to_expand', { defaultValue: 'Click to view details' })}
-                        >
-                            <div className="cmd-history-top">
-                                <span className={clsx('cmd-history-dot', `dot-${entry.status}`)} />
-                                <span className="cmd-history-cmd">{entry.command}</span>
-                                <span className={clsx('cmd-history-status-label', `status-${entry.status}`)}>
-                                    {entry.status === 'success'
-                                        ? t('command_modal.success')
-                                        : t('command_modal.execution_failed')}
-                                </span>
-                                <span className="cmd-history-time">{entry.time}</span>
+                    {history.length === 0 && <p className="cmd-empty">{t('command_modal.no_history')}</p>}
+                    {history.map((entry) => {
+                        const expanded = expandedId === entry.id;
+                        const tone = entry.status === 'success' ? 'ok' : 'stop';
+                        return (
+                            <div key={entry.id} className={clsx('cmd-entry', { expanded })}>
+                                <button
+                                    type="button"
+                                    className="cmd-entry-head"
+                                    aria-expanded={expanded}
+                                    onClick={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))}
+                                    title={t('command_modal.click_to_expand')}
+                                >
+                                    <span className={clsx('status-chip-dot', `tone-${tone}`)} aria-hidden="true" />
+                                    <code className="cmd-entry-cmd">{entry.command}</code>
+                                    <span className={clsx('cmd-entry-status', `tone-${tone}`)}>
+                                        {entry.status === 'success'
+                                            ? t('command_modal.success')
+                                            : t('command_modal.execution_failed')}
+                                    </span>
+                                    <span className="cmd-entry-time">{entry.time}</span>
+                                </button>
+                                {entry.reply && !expanded && <pre className="cmd-entry-out">{entry.reply}</pre>}
+                                {expanded && (entry.message || entry.detail) && (
+                                    <pre className="cmd-entry-out">{entry.detail || entry.message}</pre>
+                                )}
                             </div>
-                            {entry.reply && expandedId !== entry.id && (
-                                <pre className="cmd-history-reply">{entry.reply}</pre>
-                            )}
-                            {expandedId === entry.id && (entry.message || entry.detail) && (
-                                <pre className="cmd-history-detail" onClick={(e) => e.stopPropagation()}>
-                                    {entry.detail || entry.message}
-                                </pre>
-                            )}
-                        </div>
-                    ))}
+                        );
+                    })}
                     <div ref={historyEndRef} />
                 </div>
-            </div>
-        </>
-    );
-
-    // 서버 상세의 "명령" 탭에 그대로 박아 넣을 때
-    if (embedded) return <div className="command-embedded">{body}</div>;
-
-    return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal command-modal-fixed" onClick={(e) => e.stopPropagation()}>
-                {/* 닫기 버튼 (우상단) */}
-                <button className="cmd-modal-close" onClick={requestClose} title={t('modals.close')}>
-                    &times;
-                </button>
-                {body}
-            </div>
+            </section>
         </div>
     );
 }
