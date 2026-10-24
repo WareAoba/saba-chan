@@ -153,7 +153,7 @@ pub fn rebase_at(path: &Path, from: &Path, to: &Path) -> Result<(), String> {
     crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
 }
 
-/// `file`이 `dir` 아래면 그 나머지 경로 (Windows는 대소문자를 가리지 않는다)
+/// `file`이 `dir` 아래면 그 나머지 경로 (Windows는 대소문자를 가리지 않는다. ASCII 밖 글자도)
 fn under(file: &Path, dir: &Path) -> Option<PathBuf> {
     if let Ok(rest) = file.strip_prefix(dir) {
         return Some(rest.to_path_buf());
@@ -162,7 +162,7 @@ fn under(file: &Path, dir: &Path) -> Option<PathBuf> {
         return None;
     }
     let (f, d): (Vec<_>, Vec<_>) = (file.components().collect(), dir.components().collect());
-    let same = |a: &std::path::Component, b: &std::path::Component| a.as_os_str().to_string_lossy().eq_ignore_ascii_case(&b.as_os_str().to_string_lossy());
+    let same = |a: &std::path::Component, b: &std::path::Component| a.as_os_str().to_string_lossy().to_lowercase() == b.as_os_str().to_string_lossy().to_lowercase();
     (f.len() > d.len() && d.iter().zip(&f).all(|(a, b)| same(a, b))).then(|| f[d.len()..].iter().collect())
 }
 
@@ -507,6 +507,14 @@ mod tests {
         assert_eq!(trust_at(&records, &official, "module-x", &new.join("x")), Trust::Modified);
         rebase_at(&records, &old, &new).unwrap();
         assert_eq!(trust_at(&records, &official, "module-x", &new.join("x")), Trust::Verified);
+    }
+
+    /// Codex 재검증 #544: Windows는 ASCII 밖 글자도 대소문자를 가리지 않는다 (`Ä` = `ä`)
+    #[cfg(windows)]
+    #[test]
+    fn a_record_under_the_same_folder_in_other_case_moves_too() {
+        assert_eq!(under(Path::new(r"C:\Ä\modules\x\a.py"), Path::new(r"C:\ä\Modules")), Some(PathBuf::from(r"x\a.py")));
+        assert_eq!(under(Path::new(r"C:\Ä\modulesx\a.py"), Path::new(r"C:\ä\modules")), None);
     }
 
     #[test]

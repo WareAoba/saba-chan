@@ -254,8 +254,10 @@ pub fn commit_move(
 ) -> std::io::Result<()> {
     let records = data_dir.join("installed-files.json");
     crate::integrity::rebase_at(&records, src, dst).map_err(std::io::Error::other)?;
-    save_choice(config, kind, dst, data_dir).inspect_err(|_| {
-        let _ = crate::integrity::rebase_at(&records, dst, src);
+    save_choice(config, kind, dst, data_dir).map_err(|e| match crate::integrity::rebase_at(&records, dst, src) {
+        Ok(()) => e,
+        // 기록이 새 폴더를 가리킨 채 남는다: 숨기지 않고 함께 알린다
+        Err(back) => std::io::Error::other(format!("{e}; the install record could not be put back: {back}")),
     })
 }
 
