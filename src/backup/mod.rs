@@ -181,7 +181,8 @@ fn dir_lock(dir: &Path) -> std::sync::Arc<std::sync::Mutex<()>> {
     LOCKS.lock().unwrap_or_else(|e| e.into_inner()).entry(dir.to_path_buf()).or_default().clone()
 }
 
-/// 새 백업을 만든다. 같은 초에 두 번 만들면 이름 뒤에 번호를 붙인다
+/// 새 백업을 만든다. 같은 초에 두 번 만들면 이름 뒤에 번호를 붙인다 (제품 코드는 `create_excluding`을 쓴다)
+#[cfg(test)]
 pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupInfo> {
     create_excluding(dir, kind, paths, &[])
 }
