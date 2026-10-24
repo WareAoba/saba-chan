@@ -757,7 +757,8 @@ impl Supervisor {
             }));
         }
         let unmet = match failed {
-            Some(f) if f.error_code.is_some() => f.missing_dependencies,
+            // 의존성 때문에 로드하지 못한 것만. 스키마가 틀린 모듈 등은 빈 의존성 오류로 바꾸지 않는다
+            Some(f) if f.error_code.as_deref() == Some("module_dependency_unsatisfied") => f.missing_dependencies,
             _ => self.unmet_module_dependencies(module_name).await?,
         };
         tracing::warn!("Module '{}' dependencies unmet for '{}': {}", module_name, instance_name, unmet.join(", "));
@@ -3599,6 +3600,27 @@ mod tests {
         let resp = supervisor.unmet_dependencies_response("future", "srv").await.unwrap();
         assert_eq!(resp["error_code"], "module_schema_unsupported", "{resp}");
         assert_eq!((resp["required"].clone(), resp["module"].clone()), (json!(99), json!("future")), "{resp}");
+    }
+
+    /// 스키마가 틀려 로드되지 못한 모듈(module_schema_invalid)은 빈 의존성 오류로 바꾸지 않는다
+    #[tokio::test]
+    async fn module_with_invalid_schema_is_not_reported_as_unmet_dependencies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("broken");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"broken\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let _ = supervisor.initialize().await;
+        assert_eq!(supervisor.module_loader.load_failure("broken").and_then(|f| f.error_code).as_deref(), Some("module_schema_invalid"));
+        assert_eq!(supervisor.unmet_dependencies_response("broken", "srv").await, None);
     }
 
     /// [module.dependencies]: 익스텐션이 없거나 낮으면 막고, 맞으면 통과. 데몬이 모르는 키(gui)는 넘긴다

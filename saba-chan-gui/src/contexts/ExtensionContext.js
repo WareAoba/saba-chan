@@ -427,7 +427,8 @@ export function ExtensionProvider({ children }) {
                 const result = await window.api.extensionInstall?.(extId, opts);
                 if (result?.success === false) {
                     const msg =
-                        updateRequiredText(t, result, extId) ||
+                        // 함께 받는 의존 익스텐션이 거절되면 그 이름(result.extension)으로
+                        updateRequiredText(t, result, result.extension || extId) ||
                         t('extensions.install_failed', {
                             id: extId,
                             error: result.error,

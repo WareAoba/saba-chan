@@ -101,4 +101,23 @@ describe('업데이트가 필요해요', () => {
             expect(text).not.toContain('raw');
         }
     });
+    it('함께 받는 의존 익스텐션이 더 새 앱을 요구하면 그 익스텐션 이름으로 알린다', async () => {
+        window.showToast = vi.fn();
+        window.api = {
+            extensionList: vi.fn().mockResolvedValue({ extensions: [] }),
+            extensionInstall: vi.fn().mockResolvedValue({
+                success: false,
+                error_code: 'app_version_unsatisfied',
+                extension: 'helper',
+                related: ['99.0.0'],
+            }),
+        };
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await act(async () => {
+            await result.current.installExtension('parent');
+        });
+        const text = window.showToast.mock.calls.find((c) => c[1] === 'error')?.[0];
+        expect(text).toContain('helper');
+        expect(text).not.toContain('parent');
+    });
 });
