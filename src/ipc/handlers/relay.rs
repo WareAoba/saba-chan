@@ -301,7 +301,39 @@ pub async fn list_host_nodes(
 ) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
     let path = format!("/api/hosts/{}/nodes", encode_path_segment(&host_id));
-    signed_get(&base, &path, empty_list).await
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    match send(apply_signed_headers(client.get(format!("{}{}", base, path)), "GET", &path, None)).await {
+        Ok((code, Some(data))) => {
+            if code.is_success() {
+                pin_listed_owners(&state.config_store, &data).await;
+            }
+            (code, Json(data)).into_response()
+        }
+        Ok((code, None)) => empty_list(code),
+        Err(r) => r,
+    }
+}
+
+/// 노드 목록이 알려 준 주인(디스코드에서 길드를 연결한 사람)을 아직 주인이 없는 길드에 고정한다.
+/// 명령이 처음 올 때와 같은 `pin_owner` 규칙이라, 고정된 주인은 바꾸지 않고 다른 값은 `relayOwnerDiscordId`에 적는다
+async fn pin_listed_owners(store: &crate::config_store::ConfigStore, nodes: &Value) {
+    for n in nodes.as_array().into_iter().flatten() {
+        let guild = n.get("guildId").and_then(Value::as_str).filter(|g| !g.is_empty());
+        let owner = n.get("ownerDiscordId").and_then(Value::as_str).filter(|o| !o.trim().is_empty());
+        let (Some(guild), Some(owner)) = (guild, owner) else { continue };
+        let pinned = store
+            .update_node_settings(guild, |node| {
+                let (_, changed, _) = crate::chat::permissions::pin_owner(node, Some(owner));
+                ((), changed)
+            })
+            .await;
+        if let Err(e) = pinned {
+            tracing::warn!("[Relay] could not pin the owner of guild {}: {}", guild, e);
+        }
+    }
 }
 
 // ── GET/PUT /api/relay/node/:guild_id/channels ──
@@ -702,6 +734,31 @@ mod tests {
         let base = mock_relay().await;
         let (code, data) = body(signed_post(&base, "/api/link-requests/r1", &json!({ "accept": true })).await).await;
         assert_eq!((code, data), (StatusCode::OK, json!({ "id": "r1", "accept": true })));
+    }
+
+    /// 노드 목록의 주인은 아직 주인이 없는 길드에만 고정한다 (명령이 처음 올 때와 같은 pin_owner 규칙)
+    #[tokio::test]
+    async fn listed_node_owners_pin_only_guilds_without_an_owner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crate::config_store::ConfigStore::new(tmp.path());
+        store
+            .update_node_settings("g2", |node| {
+                node.insert("ownerDiscordId".into(), json!("pinned"));
+                ((), true)
+            })
+            .await
+            .unwrap();
+        let nodes = json!([
+            { "guildId": "g1", "ownerDiscordId": "o1" },
+            { "guildId": "g2", "ownerDiscordId": "other" },
+            { "guildId": "g3" },
+        ]);
+        pin_listed_owners(&store, &nodes).await;
+        let settings = store.get_bot_config().await.node_settings;
+        assert_eq!(settings["g1"]["ownerDiscordId"], "o1");
+        assert_eq!(settings["g2"]["ownerDiscordId"], "pinned", "a pinned owner is never replaced");
+        assert_eq!(settings["g2"]["relayOwnerDiscordId"], "other", "the mismatch is shown, as with commands");
+        assert!(settings.get("g3").is_none(), "no owner reported, nothing written");
     }
 
     #[tokio::test]
