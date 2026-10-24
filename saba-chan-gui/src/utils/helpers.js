@@ -113,6 +113,11 @@ export function installFailureText(t, result, translate) {
     return `${text} ${t('server_settings.install_kept_backups', { files: list })}`;
 }
 
+export function moduleFailureText(t, result) {
+    const known = t(`common:module_errors.${result?.error_code}`, { defaultValue: '' });
+    return (known && result?.error) || result?.message || result?.error || '';
+}
+
 /** 모듈이 lifecycle 함수 `fn`을 구현했는가 (`GET /api/modules`의 `functions`). 목록을 모르면(null) 있다고 본다 */
 export const moduleSupports = (module, fn) => !Array.isArray(module?.functions) || module.functions.includes(fn);
 

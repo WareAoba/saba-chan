@@ -25,8 +25,6 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use std::fs;
 use serde_json::Value;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 
 // ═══════════════════════════════════════════════════════
 // 테스트 유틸리티

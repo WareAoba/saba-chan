@@ -1202,7 +1202,7 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
 
 /// 릴레이 결과 모양: 성공 `{success:true, data}`, 실패 `{success:false, data:{code, error, args?, field?, reason?}}`
 fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
-    match result {
+    let mut out = match result {
         Ok(v) => json!({ "success": v.get("success").and_then(Value::as_bool).unwrap_or(true), "data": v }),
         Err(e) => {
             let mut data = json!({ "code": e.code, "error": e.message });
@@ -1213,7 +1213,9 @@ fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
             }
             json!({ "success": false, "data": data })
         }
-    }
+    };
+    crate::actions::strip_local_details(&mut out);
+    out
 }
 
 /// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다.
@@ -1950,6 +1952,17 @@ mod tests {
         };
         let out = raw_command_result(denied, false).to_string();
         assert!(!out.contains("/home/me") && !out.contains("Games"), "{out}");
+    }
+
+    #[test]
+    fn remote_action_module_errors_hide_diagnostics_and_sensitive_text() {
+        let out = action_result(Err(crate::actions::ActionError {
+            status: 500, code: "module_exception", message: "peer 203.0.113.7 token=hunter2".into(),
+            data: json!({ "success": false, "module": "plain", "function": "start", "path": "/home/me/server", "stderr_tail": ["private traceback"] }),
+        }));
+        assert!(out["data"].get("stderr_tail").is_none());
+        assert_eq!(out["data"]["error"], "peer x.x.x.x token=***");
+        assert_eq!(out["data"]["path"], "<path>");
     }
 
     /// 챗봇이 부른 채팅 명령의 답은 액션 경로의 콘솔·조회 결과처럼 IP와 비밀처럼 보이는 값을 가린다

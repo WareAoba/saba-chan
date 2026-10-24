@@ -459,7 +459,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     async fn start(&self, server: &ServerView) -> Reply {
-        let resp = self.api.start(server).await;
+        let resp = self.remote_response(self.api.start(server).await);
         // 약관 동의는 PC에서만 받는다: 릴레이가 원문 링크와 함께 안내하도록 목록을 싣는다
         if resp.str_field("error_code") == Some("agreement_required") {
             let text = resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.error_title", &[]));
@@ -507,7 +507,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     async fn stop(&self, server: &ServerView) -> String {
-        let resp = self.api.stop(server).await;
+        let resp = self.remote_response(self.api.stop(server).await);
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         // 저장 후 종료를 요청할 길이 없어 서버를 그대로 두었다 (MK10). 강제 종료는 이 PC에서만 고른다
         if resp.str_field("error_code") == Some("graceful_stop_unavailable") {
@@ -530,8 +530,15 @@ impl<D: DaemonApi> Ctx<'_, D> {
     /// 정의된 명령 실행 — 해석·검증·라우팅은 데몬 명령 경로(`crate::commands`)가 한다
     async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &str) -> String {
         let args = split_quoted(extra);
-        let resp = self.api.command(&server.id, &field.name, args).await;
+        let resp = self.remote_response(self.api.command(&server.id, &field.name, args).await);
         self.render_result(server, module, field, alias, cmd_alias, resp)
+    }
+
+    fn remote_response(&self, mut resp: InternalResponse) -> InternalResponse {
+        if self.req.remote.is_some() {
+            crate::actions::strip_local_details(&mut resp.body);
+        }
+        resp
     }
 
     fn render_result(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, resp: InternalResponse) -> String {

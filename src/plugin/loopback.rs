@@ -96,7 +96,7 @@ pub fn refuse(proxy: &Proxy, line: &str, error: &str) {
 
 /// 다 쓴 뒤에 이름을 바꿔 둔다: 모듈이 반쯤 쓴 파일을 읽지 않게. 폴더는 격리 쪽도 쓸 수 있으므로
 /// 임시 파일은 늘 새로 만든다 (미리 놓인 링크를 따라 쓰지 않는다)
-fn write_reply(dir: &Path, id: &str, reply: &Value) -> std::io::Result<()> {
+pub(super) fn write_reply(dir: &Path, id: &str, reply: &Value) -> std::io::Result<()> {
     saba_atomic_file::write(&dir.join(format!("{id}.json")), &serde_json::to_vec(reply)?, saba_atomic_file::Mode::Plain)
 }
 
@@ -140,7 +140,7 @@ async fn exchange(proxy: &Proxy, request: &Value) -> Result<Vec<u8>, String> {
 }
 
 /// 그 포트에서 듣는 프로세스가 `server`이거나 그 자식인가
-fn served_by(port: u16, server: Option<u32>) -> bool {
+pub(super) fn served_by(port: u16, server: Option<u32>) -> bool {
     let Some(root) = server else {
         return false;
     };

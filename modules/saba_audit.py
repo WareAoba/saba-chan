@@ -65,7 +65,93 @@ def permission_of_import(name):
     return None
 
 
-def scan_file(path, rel):
+def sdk_versions(source=None):
+    if source is None:
+        source = Path(__file__).with_name("daemon_rcon.py").read_text(encoding="utf-8-sig")
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "SINCE" for target in node.targets):
+            versions = ast.literal_eval(node.value)
+            if isinstance(versions, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in versions.items()):
+                return versions
+    raise ValueError("the shared SDK has no SINCE table")
+
+
+def declared_sdk_version(root):
+    path = root / "module.toml"
+    try:
+        if path.is_file():
+            import tomllib
+            manifest = tomllib.loads(path.read_text(encoding="utf-8-sig")).get("module", {})
+        else:
+            path = root / "manifest.json"
+            if not path.is_file():
+                return "missing"
+            manifest = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ImportError as error:
+        raise RuntimeError("TOML parser unavailable; use saba-core module audit for this module") from error
+    except (OSError, UnicodeError, ValueError):
+        return f"invalid {path.name}"
+    dependencies = manifest.get("dependencies", {}) if isinstance(manifest, dict) else None
+    if path.name == "manifest.json" and isinstance(dependencies, list):
+        dependencies = {}
+    if not isinstance(dependencies, dict):
+        return f"invalid {path.name} dependencies"
+    declared = str(dependencies.get("saba-core", "missing"))
+    legacy = manifest.get("min_app_version") if path.name == "manifest.json" else None
+    if isinstance(legacy, str) and sdk_version(legacy) is not None:
+        if sdk_version(declared) is None or sdk_version(legacy) > sdk_version(declared):
+            return legacy
+    return declared
+
+
+def sdk_version(value):
+    version = value.removeprefix(">=").strip().split("+", 1)[0]
+    release, separator, prerelease = version.partition("-")
+    parts = release.split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts) or (separator and not prerelease):
+        return None
+    return tuple(int(part) for part in parts) + (not separator,)
+
+
+def sdk_findings(tree, rel, versions, declared):
+    minimum = sdk_version(declared)
+    out, seen, aliases, stars = [], set(), {}, set()
+
+    def add(module, name, node):
+        key = f"i18n.{name}" if module == "i18n" else name
+        required = versions.get(key)
+        if required is None or (minimum is not None and minimum >= sdk_version(required)):
+            return
+        public = f"{module}.{name}"
+        location = (node.lineno, public)
+        if location not in seen:
+            seen.add(location)
+            out.append({"permission": "sdk_version", "file": rel, "line": node.lineno,
+                        "detail": f"{public} requires saba-core >={required}; declared: {declared}"})
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for name in node.names:
+                if name.name in ("daemon_rcon", "i18n"):
+                    aliases[name.asname or name.name] = name.name
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module in ("daemon_rcon", "i18n"):
+            for name in node.names:
+                if name.name == "*":
+                    stars.add(node.module)
+                else:
+                    add(node.module, name.name, node)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            module = aliases.get(node.value.id)
+            if module:
+                add(module, node.attr, node)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            for module in stars:
+                add(module, node.id, node)
+    return out
+
+
+def scan_file(path, rel, versions=None, declared="missing"):
     try:
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     except (SyntaxError, UnicodeDecodeError, ValueError) as e:
@@ -107,6 +193,8 @@ def scan_file(path, rel):
                     if name == "__import__" and node.args and isinstance(node.args[0], ast.Constant):
                         continue
                     add(perm, node, f"{name}()")
+    if versions is not None:
+        out.extend(sdk_findings(tree, rel, versions, declared))
     return out
 
 
@@ -178,8 +266,10 @@ def shadow_findings(root):
     return out
 
 
-def scan(folder):
+def scan(folder, *, sdk_source=None, sdk_minimum=None):
     root = Path(folder)
+    versions = sdk_versions(sdk_source)
+    declared = declared_sdk_version(root) if sdk_minimum is None else sdk_minimum
     files = {}
     for path in sorted(root.rglob("*.py")):
         if "__pycache__" not in path.parts:
@@ -198,18 +288,36 @@ def scan(folder):
 
     findings = opaque_findings(root) + shadow_findings(root)
     for rel in sorted(targets):
-        findings.extend(scan_file(files[rel], rel))
+        findings.extend(scan_file(files[rel], rel, versions, declared))
     return findings
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 2 and not (len(sys.argv) == 3 and sys.argv[2] == "--sdk-stdin"):
         print(json.dumps({"success": False, "message": "usage: saba_audit.py <folder>"}))
         return
     if not Path(sys.argv[1]).is_dir():
         print(json.dumps({"success": False, "message": f"not a folder: {sys.argv[1]}"}))
         return
-    print(json.dumps({"success": True, "findings": scan(sys.argv[1])}, ensure_ascii=False))
+    try:
+        # 데몬은 -I로 띄워 PYTHONIOENCODING이 먹지 않는다: 로캘(cp1252 등)과 상관없이 바이트를 UTF-8로 읽는다
+        metadata = json.loads(sys.stdin.buffer.read().decode("utf-8")) if len(sys.argv) == 3 else {}
+        if not isinstance(metadata, dict):
+            raise ValueError("SDK audit metadata must be an object")
+        source, minimum = metadata.get("sdk_source"), metadata.get("sdk_minimum")
+        if (source is not None and not isinstance(source, str)) or (minimum is not None and not isinstance(minimum, str)):
+            raise ValueError("SDK audit metadata fields must be strings")
+        result = {"success": True, "findings": scan(sys.argv[1], sdk_source=source, sdk_minimum=minimum)}
+    except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+        result = {"success": False, "message": str(error)}
+    text = json.dumps(result, ensure_ascii=False)
+    # 로캘 인코딩으로 내보내면 한국어 등이 깨진다: 바이트 출력이 있으면 UTF-8로 쓴다
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout.flush()
+        sys.stdout.buffer.write((text + "\n").encode("utf-8"))
+        sys.stdout.buffer.flush()
+    else:
+        print(text)
 
 
 if __name__ == "__main__":

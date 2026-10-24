@@ -1,4 +1,19 @@
 {
+  "module_errors": {
+    "module_timeout": "モジュールの呼び出しがタイムアウトしました。モジュールの状態を確認してください。",
+    "module_execution_failed": "モジュールを実行できませんでした。実行環境とログを確認してください。",
+    "module_crashed": "モジュールのプロセスがエラーで終了しました。ログを確認してください。",
+    "module_bad_output": "モジュールが無効な結果を返しました。更新するか、作者に問い合わせてください。",
+    "module_output_too_large": "モジュールの出力が上限を超えました。ログを確認してください。",
+    "module_path_outside": "モジュールが許可されたフォルダーの外にアクセスしようとしました。設定を確認してください。",
+    "module_exception": "モジュールで例外が発生しました。ログを確認してください。",
+    "isolation_unsupported": "このOSは必要な隔離機能をサポートしていません。"
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "このオペレーティングシステムは分離実行をサポートしていないため、コンポーネントを実行しませんでした。"
+    }
+  },
   "app_name": "サバちゃん",
   "app_description": "モジュラーゲームサーバー管理プラットフォーム",
   "success": "成功",

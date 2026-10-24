@@ -6,6 +6,7 @@ pub mod ipc;
 pub mod config_store;  // 중앙 설정 저장소 (타입 안전 JSON 관리)
 pub mod instance;
 pub mod backup;  // 월드·세이브 백업 (A2)
+pub mod module_paths;
 pub mod scheduler;  // 인스턴스 예약 작업 (A3)
 pub mod process_monitor;
 pub mod system_monitor;

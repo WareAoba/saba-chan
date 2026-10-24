@@ -1572,7 +1572,16 @@ impl ExtensionManager {
         }
         let ext = self.discovered.get(ext_id)?;
         let i18n_dir = ext.manifest.i18n_dir.as_deref()?;
+        let relative = std::path::Path::new(i18n_dir);
+        if i18n_dir.is_empty() || relative.is_absolute() || !relative.components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir)) {
+            tracing::warn!("Extension '{}' i18n_dir must stay inside its folder; locales ignored", ext_id);
+            return None;
+        }
         let path = ext.dir.join(i18n_dir).join(format!("{}.json", locale));
+        if !crate::module_paths::is_inside(&path, std::slice::from_ref(&ext.dir)) {
+            tracing::warn!("Extension '{}' i18n_dir resolves outside its folder or through a link; locales ignored", ext_id);
+            return None;
+        }
         if !path.exists() {
             return None;
         }
@@ -1710,7 +1719,7 @@ impl HookPlan {
                 }
                 Err(e) => {
                     tracing::error!("Hook '{}' ext '{}' failed: {}", self.hook, call.ext_id, e);
-                    results.push((call.ext_id, Err(anyhow::anyhow!("Hook dispatch failed: {}", e))));
+                    results.push((call.ext_id, Err(e.context("Hook dispatch failed"))));
                 }
             }
         }
@@ -1750,6 +1759,22 @@ pub async fn run_hook_to(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn contract_paths_i18n_never_reads_outside_the_extension_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext = tmp.path().join("ext");
+        std::fs::create_dir_all(&ext).unwrap();
+        std::fs::write(tmp.path().join("ko.json"), r#"{"private":"outside"}"#).unwrap();
+        let mut manager = super::ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        let manifest = serde_json::from_value(serde_json::json!({ "id":"ext", "name":"Ext", "version":"1.0.0", "i18n_dir":".." })).unwrap();
+        manager.discovered.insert("ext".into(), super::DiscoveredExtension { manifest, dir: ext, warnings: vec![] });
+        assert!(manager.load_i18n("ext", "ko").is_none());
+        let ext = manager.discovered.get_mut("ext").unwrap();
+        std::fs::write(ext.dir.join("ko.json"), r#"{"label":"inside"}"#).unwrap();
+        ext.manifest.i18n_dir = Some(".".into());
+        assert_eq!(manager.load_i18n("ext", "ko").unwrap()["label"], "inside");
+    }
+
     /// FIRED_HOOKS의 이름마다 데몬 코드(이 파일 밖) 어딘가에서 그 이름으로 hook을 부른다
     #[test]
     fn every_listed_hook_is_fired_somewhere() {

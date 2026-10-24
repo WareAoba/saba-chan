@@ -162,6 +162,13 @@ pub fn update_required(body: &Value, name: &str) -> Option<String> {
 
 /// 데몬 오류 코드별 안내. 새 코드는 여기 한 줄.
 pub fn api_hint(code: &str, body: &Value) -> Option<String> {
+    if code == "isolation_unsupported" {
+        return crate::i18n::try_t("sandbox.isolation_unsupported.message")
+            .or_else(|| crate::i18n::try_t("module_errors.isolation_unsupported"));
+    }
+    if let Some(text) = crate::i18n::try_t(&format!("module_errors.{code}")) {
+        return Some(text);
+    }
     let list = |key: &str| {
         body.get(key)
             .and_then(Value::as_array)
@@ -298,6 +305,27 @@ pub fn classify(err: &anyhow::Error) -> std::borrow::Cow<'_, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn isolation_unsupported_uses_the_sandbox_guidance() {
+        crate::i18n::init("en");
+        for lang in ["en", "ko"] {
+            assert!(crate::i18n::try_t_in(lang, "sandbox.isolation_unsupported.message").is_some(), "{lang}");
+        }
+        assert_eq!(api_hint("isolation_unsupported", &json!({})), crate::i18n::try_t("sandbox.isolation_unsupported.message"));
+    }
+
+    #[test]
+    fn module_call_failures_have_localized_guidance() {
+        crate::i18n::init("en");
+        for code in ["module_timeout", "module_execution_failed", "module_crashed", "module_bad_output", "module_output_too_large", "module_path_outside", "module_exception", "isolation_unsupported"] {
+            let hint = api_hint(code, &json!({})).unwrap_or_default();
+            assert!(!hint.is_empty() && !hint.contains("module_errors."), "{code}: {hint}");
+            for lang in ["en", "ko"] {
+                assert!(crate::i18n::try_t_in(lang, &format!("module_errors.{code}")).is_some(), "{lang}: {code}");
+            }
+        }
+    }
 
     /// 데몬이 거절한 릴레이 주소는 쓸 수 있는 주소를 알려 준다 (R31)
     #[test]

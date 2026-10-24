@@ -299,6 +299,8 @@ fn same_final_path(final_path: &str, requested: &str) -> bool {
 
 #[cfg(windows)]
 pub use imp::{clear_low_label_of, clear_low_labels, grant, reset, revoke_stale_runtimes, spawn, Contained};
+#[cfg(windows)]
+pub(crate) use imp::check_existing_path;
 
 #[cfg(windows)]
 mod imp {
@@ -516,6 +518,10 @@ mod imp {
             }
             Ok(handle)
         }
+    }
+
+    pub(crate) fn check_existing_path(path: &Path) -> Result<(), String> {
+        open_checked(path, 0).map(|_| ())
     }
 
     /// 재분석 지점의 태그 (클라우드 파일 `IO_REPARSE_TAG_CLOUD`는 `0x9000_?01A` 묶음, 링크류는 이름 대리 비트 `0x2000_0000`)

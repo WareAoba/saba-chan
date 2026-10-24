@@ -680,9 +680,9 @@ fn open(dir: &Path, name: &str) -> Result<Opened> {
     Ok(Opened::V1(zip, manifest))
 }
 
-/// `path`가 `roots` 중 하나의 안(그 자체 포함)이고 `..`가 없는가 (글자 경로로 본다)
+/// 링크를 통과하지 않고 실제 경로가 허용 루트 안에 있는가. 없는 대상은 기존 조상부터 확인한다
 pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
-    !path.components().any(|c| matches!(c, std::path::Component::ParentDir)) && roots.iter().any(|r| path.starts_with(r))
+    crate::module_paths::is_inside(path, roots)
 }
 
 /// 복원 결과
@@ -875,6 +875,21 @@ fn extract_entry(zip: &mut zip::ZipArchive<File>, entry: &ManifestEntry) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn contract_paths_restore_rejects_an_intermediate_link_even_to_an_allowed_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("server");
+        let real = root.join("real");
+        fs::create_dir_all(&real).unwrap();
+        let link = root.join("linked");
+        #[cfg(windows)]
+        assert!(std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&link).arg(&real).output().unwrap().status.success());
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(is_inside(&root.join("new/deleted/world"), std::slice::from_ref(&root)));
+        assert!(!is_inside(&link.join("deleted/world"), &[root]));
+    }
 
     /// 0.1.8까지 만든 모양(판 1)의 백업
     fn v1_backup(dir: &Path, paths: &[PathBuf]) -> BackupInfo {

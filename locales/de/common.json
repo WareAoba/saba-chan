@@ -1,4 +1,19 @@
 {
+  "module_errors": {
+    "module_timeout": "Der Modulaufruf hat das Zeitlimit überschritten. Prüfen Sie das Modul.",
+    "module_execution_failed": "Das Modul konnte nicht ausgeführt werden. Prüfen Sie die Laufzeitumgebung und das Modulprotokoll.",
+    "module_crashed": "Der Modulprozess wurde mit einem Fehler beendet. Prüfen Sie das Modulprotokoll.",
+    "module_bad_output": "Das Modul hat ein ungültiges Ergebnis geliefert. Aktualisieren Sie es oder kontaktieren Sie den Autor.",
+    "module_output_too_large": "Die Modulausgabe hat die Größenbegrenzung überschritten. Prüfen Sie das Modulprotokoll.",
+    "module_path_outside": "Das Modul wollte auf einen Pfad außerhalb des erlaubten Ordners zugreifen. Prüfen Sie die Moduleinstellungen.",
+    "module_exception": "Im Modul ist eine Ausnahme aufgetreten. Prüfen Sie das Modulprotokoll.",
+    "isolation_unsupported": "Dieses Betriebssystem unterstützt die erforderliche Isolation nicht."
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "Die Komponente wurde nicht ausgeführt, da dieses Betriebssystem keine Isolation unterstützt."
+    }
+  },
   "app_name": "Saba-chan",
   "app_description": "Modulare Verwaltungsplattform für Spielserver",
   "success": "Erfolg",

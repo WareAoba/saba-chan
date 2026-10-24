@@ -1126,10 +1126,12 @@ pub async fn start_server_handler(
             } else {
                 (StatusCode::INTERNAL_SERVER_ERROR, "start_failed")
             };
-            let error = json!({
+            let error = if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
+                crate::plugin::error_response(&e)
+            } else { json!({
                 "error": format!("Failed to start server: {}", msg),
                 "error_code": error_code,
-            });
+            }) };
             (code, Json(error)).into_response()
         }
     };
@@ -1254,10 +1256,12 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
                 } else {
                     (StatusCode::INTERNAL_SERVER_ERROR, "stop_failed")
                 };
-                let error = json!({
+                let error = if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
+                    crate::plugin::error_response(&e)
+                } else { json!({
                     "error": format!("Failed to stop server: {}", msg),
                     "error_code": error_code,
-                });
+                }) };
                 (code, Json(error)).into_response()
             }
         }
@@ -1750,6 +1754,7 @@ mod tests {
             "import json, os, sys\ncfg = json.load(sys.stdin)\nif sys.argv[1] == 'accept_agreements':\n    open(os.path.join(cfg['working_dir'], 'agreed.txt'), 'w').write(','.join(cfg['accepted_agreements']))\nprint(json.dumps({'success': True}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let existing = tmp.path().join("existing");
         std::fs::create_dir_all(&existing).unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(

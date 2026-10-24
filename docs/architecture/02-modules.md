@@ -111,7 +111,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[backup]` (`ModuleBackup` `:215-230`)
 `paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
-- `hook = true`인데 `backup_paths()`가 실패하면 500 `backup_failed`로 멈춘다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
+- `hook = true`인데 `backup_paths()`가 실패하면 500으로 멈추며 모듈 호출 오류 필드를 유지한다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
 - 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더·백업 경로·훅의 `restore_roots` 밖이면 복원은 400 `restore_outside`다.
 - 백업 형식(MK16, 0.1.9~): 파일 내용은 `backups/objects/<해시 앞 두 글자>/<sha256>`에 한 번만 두고(deflate), 백업 zip에는 매니페스트 `saba-backup-v2.json`(항목별 원래 절대 경로, 파일마다 상대 경로·해시·크기·수정 시각·내용 파일 크기, 하위 폴더, 링크)과 요약 `saba-backup-v2-summary.json`(`size`·`stored`)만 담는다. 가장 새 백업과 크기·수정 시각이 같은 파일(그 백업 시작 2초 전보다 먼저 바뀐 것)은 내용 파일의 크기가 적어 둔 그대로일 때만 다시 읽지 않는다. 같은 해시의 내용 파일이 있는데 크기가 다르면 망가진 것으로 보고 새로 쓴 것으로 바꾼다. 새로 쓴 내용 파일은 매니페스트를 쓰기 전에 몇 갈래로 나눠 한꺼번에 디스크에 내린다. 백업을 지우거나 정리하면 남은 백업이 쓰지 않는 내용을 치운다. 이때 목록이 아니라 폴더의 백업 이름을 단 파일을 모두 보고(그 이름의 폴더는 백업이 아니다), 열거나 읽지 못하는 백업이 하나라도 있으면 치우지 않는다(열리지 않거나 매니페스트가 없는 것, 대상이 없는 링크는 목록에 `readable:false`로 보인다). 백업 폴더(`backups/`)가 백업할 폴더 안에 있으면(서버 폴더가 인스턴스 폴더이고 경로가 `.` 등) 그 폴더는 담지 않는다. 판 2 zip은 혼자서는 내용이 없으므로 옮길 때는 `backups/` 전체(`objects/` 포함)를 함께 옮겨야 하고, 이름을 바꾼 zip은 백업으로 보지 않아 다음 정리가 그 내용을 지운다. 재사용은 크기·수정 시각만 보므로(rsync 빠른 검사와 같다) 수정 시각을 보존하며 같은 크기로 내용만 바꾸는 도구, 파일 시스템 시계가 데몬과 어긋난 네트워크 드라이브에서는 바뀐 내용을 놓칠 수 있다. Windows에서 백신이 막 쓴 임시 내용 파일을 잡고 있어 이름 바꾸기가 실패하면 그 백업 전체가 실패로 끝난다(성공으로 알리지 않는다). 복원은 내용의 해시·크기를 확인하고 맞지 않으면 실패해 되돌린다. 0.1.8까지의 백업(`saba-backup.json`과 파일을 zip에 담은 판 1)도 그대로 복원한다. 판 2에는 `saba-backup.json`이 없어 0.1.8 데몬은 복원을 거절한다(`backup/mod.rs`). 만들기·지우기·정리·복원은 백업 폴더마다 하나씩 돈다.
 - 복원할 때 남기는 복원 전 백업이 오래된 자동 백업을 정리해도, 복원 대상 백업은 지우지 않는다 (`D:src/backup/mod.rs:200-210`, `backup.rs:230-231`). 백업 파일 이름에는 밀리초가 붙고, 같은 밀리초의 백업이 이미 있으면(종류가 달라도) 두 자리 번호를 붙여 이름순이 만든 순서가 된다 (`backup/mod.rs` `unique_name`). 다만 이름은 지역 시각이라 서머타임이 끝나는 시간에는 뒤바뀔 수 있어, 목록·정리의 순서는 만든 시각(판 2는 요약의 시작 시각, 판 1은 이름의 시각과 파일 수정 시각 중 이른 것. 판 1은 모두 0.1.8까지 만든 것이라 옮겼다 되돌려 수정 시각이 새로 찍혀도 판 2보다 새것으로 보지 않는다)으로 정하고 같으면 이름으로 정한다 (D-B12).
@@ -274,15 +274,16 @@ players = "player_count"
   - Python 실행파일은 `python_env::get_python_path()`가 정한다(데몬이 관리하는 venv).
   - cwd는 지정하지 않으므로 **데몬의 cwd를 상속**한다.
 - **stdin**: config 전체를 JSON 한 덩어리로 쓰고 바로 닫는다(`shutdown`).
-- **stdout**: 프로세스 종료 후 전체를 읽어 JSON으로 파싱한다. 전체가 JSON이 아니면 **마지막 비어 있지 않은 줄**을 JSON으로 본다 (`parse_plugin_output` `:468-477`). 앞에 찍힌 디버그 print는 괜찮지만, 마지막 줄이 JSON이 아니면 `Invalid JSON from plugin` 에러가 난다.
+- **stdout**: 최대 4 MiB를 모아 JSON으로 파싱한다. 전체가 JSON이 아니면 **마지막 비어 있지 않은 줄**을 JSON으로 본다(`parse_plugin_output`). JSON을 읽지 못하면 `module_bad_output`, 상한을 넘으면 `module_output_too_large`다.
 - **stderr**: 줄 단위로 스트리밍된다.
   - `PROGRESS:{json}` 형식의 줄은 `ExtensionProgress {percent, message, step, total, label}`로 파싱해 콜백에 넘긴다 (`:69-79, 391-408`). 설치 진행률 표시에 쓰인다.
-  - 나머지 줄은 `debug` 로그로만 남는다.
-- **종료 코드**: 0이 아니면, stdout에 `{"success":false,...}`가 있더라도 `Err("Plugin execution failed (exit ..)")`가 된다 (`:432-435`). 그래서 실제 모듈은 모르는 함수·예외도 JSON으로 답하고 종료 코드 0을 지킨다 (공용 `run_lifecycle`, `D:modules/daemon_rcon.py:260-`).
-- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120` (`:150`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
+  - `LOOPBACK:` 줄은 중계로 처리한다. 나머지는 계속 읽어 비우고 마지막 200줄, 합계 64 KiB를 보존한다. 앞의 줄은 `debug` 로그로만 남는다.
+- **종료 코드**: 0이 아니면 stdout의 JSON과 관계없이 `module_crashed`다. 공용 `run_lifecycle`은 모르는 함수·예외·직렬화 실패도 JSON으로 답하고 종료 코드 0을 지킨다.
+- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`이다. 기한은 자리 대기, 내부 `functions` 조회, Python 환경 준비, 실행과 출력 수집 전체를 포함한다. 기한·출력 상한에 걸리면 프로세스 트리를 끝내고 읽기 작업을 멈춘다. 동시 실행 자리와 단계별 오류는 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)을 따른다.
   - `install_server`는 어디서 부르든(프로비저닝, 업데이트, `POST /api/module/:name/install` → `Supervisor::install_server`) 1800초(`plugin::INSTALL_TIMEOUT_SECS`)를 쓴다.
   - 프로비저닝 설치는 끝날 때까지 인스턴스 작업 잠금(`InstanceLock`)을 쥔다: 그동안 시작·업데이트·삭제·복원은 `instance_busy`다.
-- **확인되지 않은 구성요소 (Windows)**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션은 Python을 격리해서 띄운다(`D:src/sandbox/`). 백신 검사(Defender `MpCmdRun`·AMSI)는 하지 않는다: 깨끗한 파일 오판정과 큰 jar 검사로 시작이 몇 분씩 멈추는 문제가 있어 0.1.7에서 뺐다. 예전 데몬이 남긴 `<data_dir>/scan-verdicts.json`은 읽지 않는다. 신뢰 표시의 키는 모듈이면 `module-<폴더 이름>`, 익스텐션이면 `ext-<manifest id>`다(폴더 이름은 id의 `-`를 `_`로 바꾼 것이라 다를 수 있다. 그 폴더 이름에 맞지 않는 id는 받지 않고 폴더 이름을 쓴다, `sandbox::component_of`).
+- **확인되지 않은 구성요소**: 신뢰 표시가 `verified`가 아닌 모듈·익스텐션의 Python은 격리를 요구한다(`D:src/sandbox/`). Windows는 AppContainer를 쓴다. Linux·macOS는 격리가 없으므로 기본으로 실행하지 않는다. 이때 응답은 `{success:false, action_required:"sandbox_unavailable", error_code:"isolation_unsupported", component, message}`다. 백신 검사는 하지 않으며 예전 `scan-verdicts.json`도 읽지 않는다. 신뢰 키는 모듈 `module-<폴더 이름>`, 익스텐션 `ext-<manifest id>`다.
+  - 비격리 동의는 기존 `POST /api/sandbox/unisolated/:component`와 `config.json`의 `sandbox.unisolated`를 쓴다. 이 PC의 현재 파일 지문(상대 경로와 sha256)에만 유효하다. `__pycache__` 안의 실행 코드도 예외가 아니므로 모든 실파일을 포함한다. 그 폴더가 있던 옛 동의는 다시 받아야 할 수 있다. 데몬의 정상 Python 캐시는 구성요소 밖에 둔다. 파일이 바뀌면 다시 동의해야 한다. GUI·CLI는 기존 동의 안내와 `sandbox.isolation_unsupported.message`를 쓴다. 게임 서버 프로세스의 격리 정책은 바꾸지 않는다.
   - Python을 그 구성요소만 쓰는 AppContainer `saba-chan.untrusted.<키 sha256 앞 16자>`(능력 `internetClient`만. 루프백 예외를 주지 않으므로 같은 PC의 데몬 API·로컬 프록시에는 닿지 못한다) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
     - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`, 그리고 데몬이 아는 Java 런타임 설치 폴더(`sandbox::runtime_homes`: 데몬 환경의 `JAVA_HOME`, 데몬 PATH의 모든 `java`, 알려진 설치 위치의 JDK·JRE(`SABA_JAVA_RUNTIMES`와 같은 목록). 링크를 따라간 실제 실행 파일이 `<폴더>/bin/java(w)`이고 그 폴더에 `release` 파일이 있을 때만. 모듈은 `java -version`으로 런타임을 확인하는데 AppContainer는 Program Files 밖 폴더를 읽지 못한다). 이 런타임 폴더는 권한을 주지 못하면(관리자가 설치한 폴더 등) 경고만 하고 빼고 띄운다. 모든 구성요소가 함께 읽는 이 폴더들(venv와 기반 Python, `modules_dir`, `extensions_dir`과 그 부모의 목록, `python-guard`, Java 런타임)은 프로필 SID가 아니라 ALL APPLICATION PACKAGES(`S-1-15-2-1`)에 한 번만 준다(`Grants::shared`). 프로필마다 주면 그 폴더 DACL에 구성요소 수만큼 ACE가 쌓여 64KB 한도에 닿고, 그 뒤로는 모든 격리 실행이 `build ACL … os error 87`로 멈춘다. 함께 쓰는 권한이라 런타임 기록(`sandbox-grants.json`)에는 남기지 않고 거두지도 않는다. 사용자가 정한 `java_path`(인스턴스 `user_settings`에 있는 것, 아래)는 설정을 저장할 때 같은 판정으로 그 구성요소 프로필에 읽기를 준다(`sandbox::open_user_runtime`. 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없어 쓰지 않는다). `java_path`는 파일 시스템에 묻기 전에 로컬 드라이브의 절대 경로이고 `..`가 없는지 본다(UNC·장치 경로는 거부, `\\?\C:\` 같은 로컬 드라이브 경로는 받는다, `sandbox::plain_local_path`). 읽기/쓰기는 `<data_dir>/pycache-sandbox/<꼬리표>`, `<data_dir>/sandbox-temp/<꼬리표>`(꼬리표는 프로필 이름과 같은 16자), 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`와 `instance_data_dirs`(이 폴더 키들은 데몬만 정하고 모듈 설정의 같은 키는 config에 싣지 않는다. `import_settings`로 아무 경로나 넣을 수 있어서다. `instance_data_dirs`는 데몬이 인스턴스를 가리키는 호출(처음 설치하는 `install_server` 포함)마다 모듈 설정 값 중 그 인스턴스 폴더 안을 가리키는 경로를 인스턴스 폴더 바로 아래 항목 단위로 모은 목록이다(`Supervisor::insert_instance_fields`): 좀보이드 `cache_dir`처럼 서버 폴더 옆에 둔 모듈 데이터를 쓸 수 있게 한다. 인스턴스 폴더 자체, `..`가 든 경로, 데몬 항목 `instance::DAEMON_ENTRIES`(`instance.json`·`settings.json`·`managed.pid`·`run`·`logs`·`backups`·`rcon.json`. 대소문자(유니코드)와 끝의 점·공백을 가리지 않고, `~`·`:`가 든 이름도 같은 항목으로 본다, `is_daemon_entry`)와 이미 있는 파일은 넣지 않는다. 익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서), 그리고 이 실행이 import한 익스텐션이 쓸 `<data_dir>/sandbox-data/<꼬리표>/extension-data`(`SABA_EXTENSION_DATA_ROOT`, 아래). `extensions_dir`의 부모와 인스턴스 폴더 키 각각의 바로 위 폴더에는 목록만 준다(`os.makedirs(..., exist_ok=True)`가 위 폴더부터 확인한다). 모듈이 쓸 인스턴스 폴더가 아직 없으면 데몬이 먼저 만든다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 목록 권한도 드라이브 루트와 사용자 폴더와 그 위에는 주지 않는다. 표시를 바꾸려면 그 폴더의 WRITE_OWNER가 있어야 하는데, 사용자가 `C:\` 바로 아래 만든 폴더(`C:\Games` 등)는 상속받은 "수정" 권한뿐이라 소유자에게도 없다. 이때는 소유자가 데몬 사용자일 때만, 소유자가 원래 가진 DACL 고치기 권한으로 그 폴더에 OWNER RIGHTS(`S-1-3-4`) `READ_CONTROL`·`WRITE_DAC`·`WRITE_OWNER` ACE를 잠깐 더해 핸들을 열고, 표시를 붙이기 전에 원래 DACL로 되돌린다(ACE는 남지 않는다). 그래서 사용자가 서버 폴더로 고른 `C:\` 바로 아래 폴더도 그 구성요소가 실제로 쓸 수 있게 된다(쓰기를 준 다른 폴더와 같다). 표시를 지원하지 않는 볼륨이라 붙이지 못하면 경고만 남기고 계속한다(그 폴더 쓰기가 안 될 수 있다). 권한은 그 프로필 SID에 대한 폴더 ACL로 남는다(한 번 주면 다시 쓰지 않는다. 서버 실행 파일의 낮은 수준은 아래 "서버 폴더의 낮은 수준 표시 걷기"에서 서버를 띄우기 전에 덮인다). 런타임 폴더 읽기 권한(데몬 런타임, 사용자 `java_path`) 중 그 프로필 SID의 명시 ACE로 열린 것(지금 더한 것, 예전 데몬이 더해 둔 것. 데몬이 더하는 권한·상속 표시와 똑같은 ACE만 데몬 것으로 보고, 관리자가 따로 준 다른 모양의 ACE는 기록하지 않는다. 위 폴더에서 상속받았거나 ALL APPLICATION PACKAGES로 이미 읽을 수 있는 폴더는 이 폴더에서 거둘 것이 없어 빼고, 판정은 격리 실행마다 `[Sandbox] runtime …` 로그 한 줄)은 `<data_dir>/sandbox-grants.json`(프로필 → 폴더)에 기록하고, 데몬이 시작할 때 지금 데몬이 아는 런타임도 아니고 그 프로필 모듈의 인스턴스가 쓰는 사용자 `java_path`도 아닌 것은 거둔다(`sandbox::reconcile_runtimes`, 그 SID의 명시 ACE를 뺀다). 폴더가 남아 있는데 거두지 못한 것은 기록에 두고 다음 시작 때 다시 시도한다. 폴더 ACL 고치기는 데몬 안에서 한 번에 하나씩 한다(같은 폴더에 동시에 쓰면 한쪽 ACE가 사라진다). AppContainer 프로세스는 낮은 무결성 수준으로 돌고, 표시가 없는 보통 폴더는 중간 수준(낮은 수준의 쓰기 금지)이라 DACL만으로는 쓰지 못한다. 그래서 읽기/쓰기를 준 폴더에는 하위까지 상속되는 낮은 수준 표시(`ML;OICI;NW;;;LW`)도 붙인다(이미 있으면 다시 쓰지 않는다). 그 폴더는 같은 사용자의 다른 낮은 수준 프로세스도 DACL이 허용하는 만큼 쓸 수 있다. 그 폴더의 서버 실행 파일은 데몬이 중간 수준으로 띄우므로, 낮은 수준 프로세스가 바꿔 둔 파일이 중간 수준으로 실행될 수 있다. 쓰기를 줄 경로나 그 위 폴더가 심볼릭 링크·정션이면 쓰기를 주지 않고(읽기는 준다), ACL과 표시는 경로를 다시 찾지 않고 연 핸들에 쓴다(핸들의 최종 경로가 확인한 경로와 다르거나 링크류 재분석 지점이면 실행을 멈춘다. 압축(WOF)·중복 제거처럼 이름 대리 표시가 없는 재분석 지점은 같은 파일이라 보통처럼 다룬다). 프로필이 구성요소마다 달라서 한 구성요소가 받은 권한을 다른 구성요소가 쓰지 못한다. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다. 제거기는 데몬을 끈 뒤 설치 폴더를 지우기 전에 `saba-core sandbox reset`을 부른다(`sandbox::reset`): 인스턴스 기록의 인스턴스 폴더·작업 폴더·실행 파일 폴더에서 낮은 수준 표시를 덮고, 이 사용자의 AppContainer 매핑(`HKCU\Software\Classes\Local Settings\…\AppContainer\Mappings`의 `Moniker`) 중 사바쨩 프로필(`saba-chan.untrusted.*`와 예전 공용 프로필, `is_saba_profile`)마다 그 폴더들과 바로 위 폴더, 데몬 Python의 기반 설치, `sandbox-grants.json`에 기록된 런타임 폴더에서 그 SID의 명시 ACE를 거둔 뒤(그 ACE가 있는 폴더만 고친다) `DeleteAppContainerProfile`로 프로필을 지운다(프로필 폴더 `%LOCALAPPDATA%\Packages\<이름>`과 매핑도 지워진다). 인스턴스를 남겨도 그 폴더의 권한·표시는 거둔다(다시 설치하면 격리 실행 때 다시 준다). 거두지 못한 것은 `FAIL  <경로>: <이유>` 줄로 찍고 종료 코드 1이며, 제거기는 그 줄을 남은 항목으로 보인다.
@@ -297,7 +298,7 @@ players = "player_count"
   - `PYTHONPATH` = `<python-guard>` + `<extensions_dir의 부모>` + `<modules_dir>` + 기존 `PYTHONPATH`.
     - 그래서 `import extensions.steamcmd`, `import daemon_rcon`, `import i18n`이 가능하다.
     - `python-guard/sitecustomize.py`는 활성 목록에 없는 `extensions.<이름>` import를 막는다 (`:114-126`).
-    - 격리 없이 도는 실행(확인된 모듈·익스텐션, Windows)은 확인된 익스텐션만 import한다: 확인되지 않은(공식이 아니거나 고쳐진) 활성 익스텐션은 `SABA_ENABLED_EXTENSIONS`에서 빠지고 `SABA_UNVERIFIED_EXTENSIONS`에 들어가, import하면 "not verified" `ModuleNotFoundError`가 난다(`plugin::importable_extensions`). 그 코드가 격리 없이 그 실행의 권한(토큰 경로 등)으로 돌지 않게 한다. 격리된 실행은 활성 익스텐션을 모두 import한다(같은 격리 안에서 돈다). 격리 준비가 실패해 사용자 동의로 격리 없이 도는 실행(`Spawned::Unisolated`)은 격리 없는 실행과 같이 확인된 익스텐션만 import한다(동의는 그 구성요소 하나에 대한 것이다). 단, 동의한 구성요소가 익스텐션이면 자기 패키지(`extensions.<자기 id>`)는 import할 수 있다(이미 그 실행의 코드다).
+    - 격리 없이 도는 실행은 플랫폼과 관계없이 확인된 익스텐션 또는 그 익스텐션의 현재 지문에 따로 비격리 동의한 익스텐션만 import한다. 모듈의 동의는 다른 익스텐션을 승인하지 않는다. 차단한 항목은 `SABA_UNVERIFIED_EXTENSIONS`에 넣는다. 격리된 실행은 활성 익스텐션을 같은 격리 안에서 import한다. 빠진 항목이 모두 미검증 차단 항목이면 모듈의 `extension_required`를 `extension_not_verified`로 바꾼 뒤 호출 진단 필드를 붙인다.
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:126-147`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:315-322`). 목록이 없으면 빈 값이다.
   - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-38`).
@@ -306,14 +307,31 @@ players = "player_count"
   - `SABA_JAVA_RUNTIMES` = 데몬이 찾은 Java 런타임의 JSON 배열 `[{java, home, version, major, arch}]`(`sandbox::java_runtimes`). 순서는 데몬 환경의 `JAVA_HOME`, PATH의 모든 `java`, 알려진 설치 위치(Windows는 Program Files 두 곳, 그 밖은 `/usr/lib`의 `<공급자>/<jdk>`, 공급자 폴더는 `JAVA_VENDOR_DIRS`)다. `release` 파일이 있는 실제 JDK·JRE만 들고(Oracle `javapath` 같은 바로가기는 빠진다), `version`은 그 `JAVA_VERSION`, `major`는 주 버전(`1.8.0_381`→8), `arch`는 `release`의 `OS_ARCH`(`amd64`·`x86` 등, 없으면 빈 문자열)다. 모듈은 필요한 주 버전 이상의 64비트 런타임을 여기서 고르고, 격리 실행에서도 이 폴더들은 읽을 수 있다. 사용자가 정한 `java_path`는 따로 config로 온다.
     - ~~문서는 `DAEMON_API_URL`을 주입한다고 한다~~ → 해결: 다시 쓴 개발 가이드는 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`이라고 적는다(`M:docs/module-development-guide.md:31`). `daemon_rcon.py`는 `DAEMON_API_URL`이 있으면 그것을, 없으면 `SABA_IPC_URL`을, 둘 다 없으면 `http://127.0.0.1:57474`를 쓴다 (`D:modules/daemon_rcon.py:36-42`).
 
+**반환 경로와 `data_roots` (0.1.10)**
+
+모듈이 돌려준 백업·복원·설치·마이그레이션 경로는 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)의 데몬 측 실제 경로 검사를 받는다. `verified`인 모듈도 예외가 아니다.
+
+서버 폴더 밖의 데이터가 필요하면 `module.toml`의 `[extensions.saba-core]` 예약 표에 `data_roots` 문자열 배열을 선언한다. 값은 `{home}` 또는 path형 설정 자리로 시작해야 한다. path형은 `type = "file"` 또는 `format = "path"`다. 다른 절대 경로, `..`, 다른 자리, 중간의 추가 자리·드라이브는 그 항목만 버리고 경고한다. 0.1.9 데몬은 이 키를 무시한다.
+
+```toml
+[extensions.saba-core]
+data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
+```
+
+`{home}`은 데몬 사용자의 홈 폴더다. `{설정}`은 사용자가 고른 값(`user_settings`) 또는 마이그레이션·시작 후 보충의 `import_settings`가 판정한 path형 값만 루트로 쓴다. 가져온 값의 출처 키는 인스턴스의 `imported_settings` 집합으로 저장한다. 값은 `module_settings` 한곳에만 둔다. 일반 재조회가 값을 바꾸면 그 키의 출처 기록을 지운다. 같은 값을 다시 읽었을 때는 기록을 유지한다. 모듈 기본값만으로 외부 폴더 접근을 허용하지 않는다. 데몬에 게임 이름 분기는 없다.
+
+`data_roots`의 `{설정}` 값이 없고 그 설정의 보충을 시도한 적이 없으면 데몬은 시작 뒤 `import_settings`를 호출한다. 호출은 인스턴스별로 누락 설정을 모아 잠금 밖에서 일반 호출 제한으로 실행한다. `{home}`은 보충 대상이 아니다. 데몬은 반환한 누락 루트 설정만 저장하고 `imported_settings`에 기록한다. 기존 값과 사용자가 정한 키는 저장 직전에도 확인해 보존한다. 호출 전 `instance.json`의 `data_roots_backfill_attempted` 집합에 시도할 설정 이름을 저장한다. 이 집합이 비면 필드를 생략한다. 같은 설정의 빈 결과·실패·중단은 다음 시작에 반복하지 않는다. 모듈 업데이트로 새 루트 설정이 추가되면 아직 시도하지 않은 설정만 보충한다. 실패는 로그에 남기고 데몬 기동은 계속한다.
+
+좀보이드 모듈은 옛 외부 INI 배치에서 부모의 `Saves`·`db`를 유지하도록 `import_settings`에서 `data_home`을 돌려준다. 데몬의 시작 후 보충은 기존 인스턴스에도 이 값을 저장한다. 현재 선택한 INI 폴더는 이 계약으로 바꾸지 않는다.
+
 ### 2.2 모듈 측 디스패치 관례
 
-세 모듈과 `__example` 모두 모듈 최상위에 `FUNCTIONS` 표를 두고 진입점은 공용 `daemon_rcon.run_lifecycle(FUNCTIONS)`이다(0.1.5 코어부터 있다). palworld는 표의 함수마다 `ExtensionMissing`을 `error_code: "extension_required"`로 바꾸는 감싸기를 더해 넘긴다.
+세 모듈과 `__example` 모두 모듈 최상위에 `FUNCTIONS` 표를 두고 진입점은 공용 `daemon_rcon.run_lifecycle(FUNCTIONS)`이다. SDK 최소 버전은 §2.5의 표를 따른다. palworld는 표의 함수마다 `ExtensionMissing`을 `error_code: "extension_required"`로 바꾸는 감싸기를 더해 넘긴다.
 
 1. `sys.argv[1]`을 읽는다.
 2. stdin JSON을 읽는다. 비어 있으면 `{}`로 두고, 해석할 수 없으면 함수를 부르지 않고 `{"success":false,"message":"Invalid JSON config on stdin: ..."}`로 답한다.
-3. `FUNCTIONS[name](config)`를 호출한다. 함수 안의 예외도 `{"success":false,"message":"Error in <name>: ..."}`로 답한다(traceback은 stderr).
-4. 결과 JSON 한 줄을 stdout에 쓴다.
+3. `FUNCTIONS[name](config)`를 호출한다. `PathOutside`는 `module_path_outside`와 `message`·`path`로 답한다. 그 밖의 함수 예외는 `module_exception`과 `message`로 답하고 traceback을 stderr에 쓴다.
+4. 결과 JSON 한 줄을 stdout에 쓴다. 직렬화할 수 없는 값은 `success:false`, `error_code:"module_bad_output"`, `message`로 바꾼다.
 
 모르는 함수 이름이 오면 `{"success":false,"message":"Unknown function: X","available":[...]}`를 돌려준다. 어느 경우든 종료 코드는 0이다. 적합성 키트가 깨진 stdin과 예외 경로를 검사한다(`M:conformance/test_conformance.py` `test_bad_stdin_is_answered_not_run`, `test_a_crashing_function_still_answers_json`).
 
@@ -321,6 +339,7 @@ players = "player_count"
 
 **에러 관례 (코드에서 관찰한 것)**:
 - 공통 응답: `success: bool`, `message: str`.
+- 데몬 호출 실패의 `error_code`·`module`·`function`·`phase`·`stderr_tail`은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)을 따른다. supervisor·훅·HTTP·비동기 설치 상태까지 필드를 유지한다. 모듈이 정한 실패 코드와 메시지는 바꾸지 않는다.
 - `get_launch_command` 성공: `program`, `args[]`, `working_dir`, `env_vars{}`. 그 밖의 선택 키:
   - `rest_credentials{rest_username, rest_password}`
   - credential_map의 게임 키(예: palworld의 `"AdminPassword"`)를 최상위나 `module_settings{}` 아래에 둔다.
@@ -414,6 +433,33 @@ players = "player_count"
   - `atomic_write(path, data)`(saba-core 0.1.10부터)는 같은 폴더의 고유 임시 파일(`.<이름>.*.tmp`)에 쓰고 fsync한 뒤 바꾼다. 원래 파일이 있으면 그 권한을 잇는다(Windows `ReplaceFileW`로 DACL, POSIX는 권한 비트). 모듈이 게임 설정 파일을 쓸 때 쓴다.
   - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다. RCON 접속에는 데몬이 만든 `rcon.json` 값만 쓴다(RCON 정책).
 - 배포: 데몬 실행 파일에 두 파일이 들어 있고, 첫 lifecycle 실행 때 modules 폴더에 맞춰 쓴다 (`D:src/plugin/mod.rs:126-147`). 코어 패키저도 둘을 싣고(`D:.github/scripts/package-release.py:55`), installer가 데이터 디렉터리의 `modules/`에 복사한다 (`installer/core/src/lib.rs` `install_shared_modules`). 모듈 리포의 zip에는 들어가지 않는다(리포에는 `__example/i18n.py` 복사본만 있다).
+
+**경로 도우미와 SDK 버전 (0.1.10)**
+
+`daemon_rcon.safe_join(root, *parts)`는 이름 조각을 합친 실제 경로가 `root` 안이면 `Path`로 돌려준다. 절대 경로, 드라이브, `..`, 구분자가 든 이름 조각과 루트 밖으로 나가는 링크는 `PathOutside`다. `run_lifecycle`은 이 예외를 `{success:false, error_code:"module_path_outside", message, path}`로 바꾼다.
+
+`daemon_rcon.py` 머리의 `SINCE`가 공용 SDK 이름의 최소 버전 표다. `i18n`의 이름도 같은 표에 넣는다.
+
+| 공개 이름 | 처음 제공한 코어 버전 |
+|---|---|
+| `i18n.I18n` | `0.1.1` |
+| `daemon_post`, `daemon_stdin_command` | `0.1.2` (릴리스 커밋 기준) |
+| `is_process_alive`, `wait_for_exit`, `force_kill` | `0.1.2` (릴리스 커밋 기준) |
+| `config_value`, `load_setting_types`, `coerce_setting`, `run_lifecycle` | `0.1.2` (릴리스 커밋 기준) |
+| `loopback_exchange`, `loopback_http` | `0.1.8` (릴리스 커밋 기준) |
+| `safe_join` | `0.1.10` |
+| `PathOutside` | `0.1.10` |
+| `daemon_rest` | `0.1.10` |
+
+이력 근거: 공개 태그 `test23`(`f493b78e`, 코어 `0.1.1`)에 `i18n.I18n`이 있다. 기존 통신·설정·프로세스 함수는 `97db8a0e`(`0.1.2` 릴리스 커밋)에 있다. 루프백 함수는 `1862c5c0`(`0.1.7` 릴리스 커밋)에는 없고 `77333cab`(`0.1.8` 릴리스 커밋)에 있다. 공개 origin에는 `test`~`test23` 태그만 있다. 따라서 `0.1.2`·`0.1.8` 값은 릴리스 커밋에 근거한 보수적 값이며 최초 공개 배포 태그로 확정한 값은 아니다. 이 미확정 부분은 07 §4에 남긴다.
+
+`saba_audit.py`는 `daemon_rcon`·`i18n`의 import와 별칭 사용을 표와 비교한다. 선언이 없거나 낮으면 `sdk_version` finding으로 실패하며 함수 이름·현재 선언·필요 버전을 알린다. 모듈은 `[module.dependencies] saba-core = ">=<버전>"`으로 최소 버전을 선언한다. 범위·상한은 지원하지 않는다. 익스텐션 감사의 기존 호환성은 manifest의 코어 의존성도 같은 방법으로 읽어 유지한다.
+
+데몬·CLI 감사는 Rust가 TOML 선언을 읽어 검사기에 넘기므로 Python 3.10도 지원한다. 단독 `saba_audit.py`로 `module.toml`을 읽으려면 `tomllib`이 필요하다. Python 3.10에서 이 단독 실행은 명확히 실패하며 `saba-core module audit` 사용을 안내한다. 선언 누락 finding으로 잘못 바꾸지 않는다.
+
+`daemon_stdin_command`와 `daemon_rest(instance_id, method, path, *, body=None, timeout=10)`는 `SABA_HOST_DIR`이 있으면 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)의 HOST 통로를 쓴다. 대상은 인자로 받은 `instance_id`가 아니라 데몬의 호출 문맥이다. 환경 변수가 없으면 기존 HTTP API를 쓴다. `daemon_rest`의 HTTP fallback은 `path`를 `endpoint`로 보낸다. HOST 실패는 `error_code` 속성이 있는 `ConnectionError`다. 일반 토큰 경로 `SABA_TOKEN_PATH`와 `daemon_post`는 옛 모듈 호환용으로 남아 있다. 공식 모듈의 SDK 전환은 part 3에서 한다.
+
+기존 `run_lifecycle`의 최초 제공 버전은 올리지 않는다. 0.1.10부터 `PathOutside`를 별도로 바꾸고, 일반 함수 예외에 `module_exception`을 넣는다. 결과 직렬화 실패에는 `module_bad_output`으로 답하며 종료 코드 0을 유지한다.
 
 ---
 

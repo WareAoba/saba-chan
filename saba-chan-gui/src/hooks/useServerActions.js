@@ -6,6 +6,7 @@ import {
     createTranslateError,
     installFailureText,
     moduleSupports,
+    moduleFailureText,
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
@@ -227,7 +228,10 @@ export function useServerActions({
         setModal({
             type: 'question',
             title: t('trust.sandbox.title'),
-            message: t('trust.sandbox.message', { component, detail: result.detail || result.message || '' }),
+            message: t('trust.sandbox.message', {
+                component,
+                detail: result.error_code === 'isolation_unsupported' ? blockedText(result, t) : result.detail || result.message || '',
+            }),
             buttons: [
                 {
                     label: t('trust.sandbox.allow'),
@@ -599,7 +603,7 @@ export function useServerActions({
             // ── success=false without specific action_required ──
             if (result.success === false) {
                 revertOptimistic(name);
-                const msg = result.message || result.error || 'Unknown error';
+                const msg = moduleFailureText(t, result) || 'Unknown error';
                 safeShowToast(translateError(msg), 'error', 5000);
                 return;
             }
@@ -762,7 +766,7 @@ export function useServerActions({
                 if (result.success === false && (result.message || blocked)) {
                     undo();
                     safeShowToast(
-                        blocked ? t('servers.stop_failed_toast', { error: blocked }) : result.message,
+                        blocked ? t('servers.stop_failed_toast', { error: blocked }) : moduleFailureText(t, result),
                         'error',
                         blocked ? 8000 : 5000,
                     );

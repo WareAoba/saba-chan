@@ -79,6 +79,11 @@ pub struct ServerInstance {
     /// 실행 대상 검사·격리 실행이 사용자가 고른 런타임(`java_path`)만 인정하는 데 쓴다
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub user_settings: std::collections::BTreeSet<String>,
+    /// 마이그레이션·시작 후 보충에서 import_settings가 판정한 경로형 설정 키. 값이 바뀌면 권한 근거를 지운다
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub imported_settings: std::collections::BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub data_roots_backfill_attempted: std::collections::BTreeSet<String>,
 }
 
 fn default_protocol_mode() -> String {
@@ -129,6 +134,8 @@ impl ServerInstance {
             memory_limit_mb: None,
             accepted_agreements: Default::default(),
             user_settings: Default::default(),
+            imported_settings: Default::default(),
+            data_roots_backfill_attempted: Default::default(),
         }
     }
 
@@ -193,9 +200,11 @@ impl ServerInstance {
     ) {
         for (key, value) in settings {
             let typed = coerce_setting_value(value, types.get(key).map(String::as_str));
+            if self.module_settings.get(key) != Some(&typed) {
+                self.imported_settings.remove(key);
+                self.user_settings.remove(key);
+            }
             self.module_settings.insert(key.clone(), typed);
-            // 모듈이 게임 파일에서 읽어 온 값이다
-            self.user_settings.remove(key);
         }
         // 인스턴스 필드는 이번에 읽은 키로만 맞춘다 (캐시에 남은 옛 값으로 되돌리지 않는다)
         let port = |key: &str| {
@@ -617,6 +626,19 @@ pub fn coerce_setting_value(value: &serde_json::Value, field_type: Option<&str>)
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn contract_paths_reading_the_same_selected_path_keeps_its_authorization() {
+        let mut instance = super::ServerInstance::new("g", "g");
+        instance.module_settings.insert("data_home".into(), serde_json::json!("/selected"));
+        instance.user_settings.insert("data_home".into());
+        let types = std::collections::HashMap::from([("data_home".to_string(), "file".to_string())]);
+        instance.apply_imported_settings(serde_json::json!({"data_home":"/selected"}).as_object().unwrap(), &Default::default(), &types);
+        assert!(instance.user_settings.contains("data_home"));
+        instance.imported_settings.insert("data_home".into());
+        instance.apply_imported_settings(serde_json::json!({"data_home":"/changed"}).as_object().unwrap(), &Default::default(), &types);
+        assert!(!instance.user_settings.contains("data_home"));
+        assert!(!instance.imported_settings.contains("data_home"));
+    }
     use super::*;
     use tempfile::TempDir;
 

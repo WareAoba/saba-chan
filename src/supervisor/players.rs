@@ -3,6 +3,7 @@
 //! 함수는 `{"success": true, "online": <정수>, "max": <정수>?}`를 돌려준다 (02-modules §2.3)
 
 use serde::{Deserialize, Serialize};
+use futures_util::StreamExt;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -103,7 +104,7 @@ pub fn parse(result: &Value) -> Option<PlayerCount> {
 
 /// 켜진 서버 중 모듈이 접속자 함수를 선언한 것만 묻고, 나머지는 기억을 지운다
 pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
-    let (calls, idle): (Vec<_>, Vec<_>) = {
+    let (mut calls, idle): (Vec<_>, Vec<_>) = {
         let s = sup.read().await;
         let mut calls = Vec::new();
         let mut idle = Vec::new();
@@ -124,25 +125,70 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
         set(&id, None);
         forget(&id);
     }
-    let mut asks = tokio::task::JoinSet::new();
+    static START: Mutex<usize> = Mutex::new(0);
+    calls.sort_by(|a, b| a.0.cmp(&b.0));
+    rotate_calls(&mut calls, &mut START.lock().unwrap_or_else(|e| e.into_inner()));
+    let mut asks = futures_util::stream::FuturesUnordered::new();
     for (id, pid, call) in calls {
-        asks.spawn(async move {
-            // `run`으로 불러야 서버 PID가 함께 간다 (격리 실행의 루프백 중계가 그 서버의 포트만 잇는다)
-            let result = call.timeout(CALL_TIMEOUT_SECS).run().await;
-            if let Err(e) = &result {
-                tracing::debug!("player count for {} failed: {}", id, e);
-            }
-            set(&id, result.as_ref().ok().and_then(parse));
-            record(&id, Some(pid), result.as_ref().map_err(|e| e.to_string()), std::time::Instant::now());
+        asks.push(async move {
+            // 앞에서 돌린 순서로 자리를 시도한다. 기다리는 인스턴스는 이번 갱신을 건너뛴다
+            let result = call.timeout(CALL_TIMEOUT_SECS).try_run().await;
+            apply_refresh(&id, Some(pid), result, std::time::Instant::now());
         });
     }
-    while asks.join_next().await.is_some() {}
+    while asks.next().await.is_some() {}
+}
+
+fn rotate_calls<T>(calls: &mut [T], start: &mut usize) {
+    if !calls.is_empty() {
+        calls.rotate_left(*start % calls.len());
+        *start = (*start + 1) % calls.len();
+    }
+}
+
+fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value>>, now: std::time::Instant) {
+    if matches!(result, Ok(None)) {
+        return;
+    }
+    let result = result.map(|value| value.expect("skipped above"));
+    if let Err(e) = &result {
+        tracing::debug!("player count for {} failed: {}", id, e);
+    }
+    set(id, result.as_ref().ok().and_then(parse));
+    record(id, pid, result.as_ref().map_err(|e| e.to_string()), now);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn each_refresh_rotates_the_first_instance() {
+        let mut calls = vec!["a", "b", "c"];
+        let mut start = 0;
+        let mut first = Vec::new();
+        for _ in 0..4 {
+            calls.sort();
+            rotate_calls(&mut calls, &mut start);
+            first.push(calls[0]);
+        }
+        assert_eq!(first, ["a", "b", "c", "a"]);
+    }
+
+    #[test]
+    fn skipping_a_busy_lane_preserves_count_and_failure_history() {
+        let id = "busy-lane-test";
+        let now = std::time::Instant::now();
+        set(id, Some(PlayerCount { online: 3, max: None }));
+        record(id, Some(123), Err("previous failure".into()), now);
+        apply_refresh(id, Some(123), Ok(None), now + UNRESPONSIVE_AFTER);
+        assert_eq!(get(id), Some(PlayerCount { online: 3, max: None }));
+        assert_eq!(unresponsive(id, Some(123), now + UNRESPONSIVE_AFTER), None);
+        assert_eq!(failures().lock().unwrap()[id].1, now);
+        set(id, None);
+        forget(id);
+    }
 
     #[test]
     fn a_module_reply_becomes_a_count_only_when_it_is_a_real_number() {

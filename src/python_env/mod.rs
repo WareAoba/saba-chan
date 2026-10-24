@@ -57,13 +57,12 @@ pub async fn get_python_path() -> Result<PathBuf> {
     if let Some(path) = VENV_PYTHON.get() {
         return Ok(path.clone());
     }
-    set_preflight(Preflight::Running);
-    let result = VENV_PYTHON.get_or_try_init(ensure_venv).await.cloned();
-    set_preflight(match &result {
-        Ok(_) => Preflight::Ready,
-        Err(e) => Preflight::Failed(format!("{:#}", e)),
-    });
-    result
+    VENV_PYTHON.get_or_try_init(|| async {
+        let mut preparing = Preparation::new(&PREFLIGHT);
+        let result = ensure_venv().await;
+        preparing.finish(&result);
+        result
+    }).await.cloned()
 }
 
 // ── 부팅 사전 점검 (GET /api/runtime/preflight) ──────────────────
@@ -79,8 +78,32 @@ pub enum Preflight {
 
 static PREFLIGHT: std::sync::Mutex<Preflight> = std::sync::Mutex::new(Preflight::Idle);
 
-fn set_preflight(state: Preflight) {
-    *PREFLIGHT.lock().unwrap_or_else(|e| e.into_inner()) = state;
+struct Preparation<'a> {
+    state: &'a std::sync::Mutex<Preflight>,
+    finished: bool,
+}
+
+impl<'a> Preparation<'a> {
+    fn new(state: &'a std::sync::Mutex<Preflight>) -> Self {
+        *state.lock().unwrap_or_else(|e| e.into_inner()) = Preflight::Running;
+        Self { state, finished: false }
+    }
+
+    fn finish<T>(&mut self, result: &Result<T>) {
+        *self.state.lock().unwrap_or_else(|e| e.into_inner()) = match result {
+            Ok(_) => Preflight::Ready,
+            Err(error) => Preflight::Failed(format!("{error:#}")),
+        };
+        self.finished = true;
+    }
+}
+
+impl Drop for Preparation<'_> {
+    fn drop(&mut self) {
+        if !self.finished {
+            *self.state.lock().unwrap_or_else(|e| e.into_inner()) = Preflight::Idle;
+        }
+    }
 }
 
 /// `{phase, percent, complete, error, components: {python}}`. complete는 성공·실패 모두 끝난 상태
@@ -147,7 +170,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     cmd.args(["-m", "venv", &venv_dir.to_string_lossy()]);
     apply_creation_flags(&mut cmd);
 
-    let output = cmd.output().await?;
+    let output = crate::plugin::preparation_output(&mut cmd).await?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(anyhow::anyhow!("venv 생성 실패: {}", stderr));
@@ -170,20 +193,23 @@ pub async fn detect_system_python() -> Result<String> {
     let candidates = ["python", "python3", "py"];
     for cmd_name in candidates {
         let mut cmd = Command::new(cmd_name);
-        cmd.arg("--version");
+        cmd.args(["-I", "-S", "-c", "import json, sys; print(json.dumps(['Python %d.%d' % sys.version_info[:2], sys.executable]))"]);
         apply_creation_flags(&mut cmd);
 
-        if let Ok(output) = cmd.output().await {
+        if let Ok(output) = crate::plugin::preparation_output(&mut cmd).await {
             if output.status.success() {
-                let ver = String::from_utf8_lossy(&output.stdout);
+                let Ok((ver, executable)) = serde_json::from_slice::<(String, String)>(&output.stdout) else { continue; };
                 if let Some((major, minor)) = parse_python_version(&ver) {
                     if (major, minor) >= MIN_PYTHON_VERSION {
+                        if !Path::new(&executable).is_file() {
+                            continue;
+                        }
                         tracing::info!(
                             "시스템 Python 발견: {} → {}",
-                            cmd_name,
+                            executable,
                             ver.trim()
                         );
-                        return Ok(cmd_name.to_string());
+                        return Ok(executable);
                     }
                     tracing::debug!(
                         "{} → {}.{} (최소 {}.{} 필요, 건너뜀)",
@@ -325,7 +351,7 @@ async fn download_file(url: &str, dest: &Path) -> Result<()> {
                 .env("SABA_DL_URL", url)
                 .env("SABA_DL_DEST", dest);
             apply_creation_flags(&mut cmd);
-            cmd.output().await?
+            crate::plugin::preparation_output(&mut cmd).await?
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -339,7 +365,7 @@ async fn download_file(url: &str, dest: &Path) -> Result<()> {
                 url,
             ]);
             apply_creation_flags(&mut cmd);
-            cmd.output().await?
+            crate::plugin::preparation_output(&mut cmd).await?
         }
     };
 
@@ -379,7 +405,7 @@ async fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<()> {
     ]);
     apply_creation_flags(&mut cmd);
 
-    let output = cmd.output().await?;
+    let output = crate::plugin::preparation_output(&mut cmd).await?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(anyhow::anyhow!("tar 추출 실패: {}", stderr));
@@ -481,7 +507,7 @@ async fn verify_python(exe: &Path) -> bool {
         "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro}')",
     ]);
     apply_creation_flags(&mut cmd);
-    matches!(cmd.output().await, Ok(o) if o.status.success())
+    matches!(crate::plugin::preparation_output(&mut cmd).await, Ok(o) if o.status.success())
 }
 
 /// pip 명령 실행
@@ -495,7 +521,7 @@ async fn run_pip(python_exe: &Path, args: &[&str]) -> Result<()> {
     }
     apply_creation_flags(&mut cmd);
 
-    let output = cmd.output().await?;
+    let output = crate::plugin::preparation_output(&mut cmd).await?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(anyhow::anyhow!("pip 실행 실패: {}", stderr));
@@ -546,6 +572,27 @@ fn dir_size_mb(dir: &Path) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cancelled_preparation_resets_state_and_allows_a_retry() {
+        let state = std::sync::Mutex::new(Preflight::Idle);
+        let cell = OnceCell::<PathBuf>::new();
+        let result = tokio::time::timeout(std::time::Duration::from_millis(10), cell.get_or_try_init(|| async {
+            let _preparing = Preparation::new(&state);
+            std::future::pending::<Result<PathBuf>>().await
+        })).await;
+        assert!(result.is_err());
+        assert_eq!(*state.lock().unwrap(), Preflight::Idle);
+        assert!(cell.get().is_none());
+        let path = cell.get_or_try_init(|| async {
+            let mut preparing = Preparation::new(&state);
+            let result = Ok(PathBuf::from("python"));
+            preparing.finish(&result);
+            result
+        }).await.unwrap();
+        assert_eq!(path, Path::new("python"));
+        assert_eq!(*state.lock().unwrap(), Preflight::Ready);
+    }
 
     #[test]
     fn test_parse_python_version() {

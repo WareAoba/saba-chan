@@ -96,6 +96,7 @@ pub struct Supervisor {
     run_generation: HashMap<String, u64>,
     /// 지금 시작 중인 인스턴스. 시작은 락을 놓고 진행하므로 중복 시작을 이것으로 막는다 (C12)
     starting: std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
+    pub(crate) host_runtime: std::sync::OnceLock<crate::plugin::host::Runtime>,
 }
 
 /// 시작하는 동안 쥐는 표시. 놓으면(drop) 지워진다
@@ -183,18 +184,31 @@ pub(crate) fn launch_args(launch_result: &Value, instance: &crate::instance::Ser
 
 /// 모듈 함수가 성공을 알리지 않았을 때 사용자에게 보일 이유. 모듈이 준 `message`·`error`를 쓰고,
 /// 둘 다 없으면 계약 위반(예: `success`·`program` 없이 옛 키만 돌려줌)을 그대로 알린다
-pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> String {
+pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> anyhow::Error {
     let field = |k: &str| result.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
-    if let Some(msg) = field("message").or_else(|| field("error")) {
-        return msg.to_string();
+    if result.get("success").and_then(Value::as_bool) == Some(false) || field("message").or_else(|| field("error")).is_some() {
+        let mut response = result.clone();
+        response["module"] = json!(module);
+        response["function"] = json!(function);
+        let error: anyhow::Error = crate::plugin::ModuleCallError::from_response(response).into();
+        return match field("message") {
+            Some(message) => error.context(message.to_string()),
+            None => error,
+        };
     }
     let keys: Vec<&str> = result.as_object().map(|o| o.keys().map(String::as_str).collect()).unwrap_or_default();
-    format!(
+    let message = format!(
         "Module '{}' {}() did not report success (returned: {})",
         module,
         function,
         if keys.is_empty() { "nothing".to_string() } else { keys.join(", ") }
-    )
+    );
+    let mut response = result.as_object().cloned().unwrap_or_default();
+    response.insert("success".into(), json!(false));
+    response.insert("module".into(), json!(module));
+    response.insert("function".into(), json!(function));
+    response.entry("error".to_string()).or_insert_with(|| json!(message));
+    crate::plugin::ModuleCallError::from_response(Value::Object(response)).into()
 }
 
 /// 설치는 끝났지만 `install_server`의 `commit`(인스턴스 기록 저장)이 실패해 파일을 설치 전으로 되돌렸다.
@@ -261,6 +275,10 @@ fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
 }
 
 impl Supervisor {
+    pub(crate) fn host_context(&self, id: &str) -> Option<crate::plugin::host::Context> {
+        self.host_runtime.get().map(|runtime| runtime.for_instance(id))
+    }
+
     pub fn new(modules_dir: &str) -> Self {
         let instances_dir = saba_chan_updater_lib::constants::resolve_instances_dir()
             .to_string_lossy()
@@ -286,6 +304,7 @@ impl Supervisor {
             pending_restarts: Vec::new(),
             run_generation: HashMap::new(),
             starting: Default::default(),
+            host_runtime: Default::default(),
         }
     }
 
@@ -600,7 +619,7 @@ impl Supervisor {
             Self::insert_instance_fields(&mut cfg, &preview_instance, &s.instance_store.instance_dir(&instance.id));
             cfg.insert("managed".to_string(), json!(s.uses_managed_start(&preview_instance)));
             cfg.insert("preview".to_string(), json!(true));
-            let call = crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", Value::Object(cfg));
+            let call = crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", Value::Object(cfg)).in_instance(s.host_context(&instance.id));
 
             let mut errors = draft_errors;
             errors.extend(bound.errors.clone());
@@ -622,15 +641,16 @@ impl Supervisor {
         let launch_result = call.run().await?;
         let obj = out.as_object_mut().expect("object");
         if launch_result.get("success").and_then(Value::as_bool) != Some(true) {
+            obj.extend(launch_result.as_object().cloned().unwrap_or_default());
             obj.insert("success".into(), json!(false));
             if let Some(action) = launch_result.get("action_required") {
                 obj.insert("action_required".into(), action.clone());
-            } else {
+            } else if launch_result.get("success").and_then(Value::as_bool) != Some(false) {
                 obj.insert("error".into(), json!("launch_command_failed"));
             }
             let message = launch_result.get("message").and_then(Value::as_str).map(str::to_string);
             let message = message.or_else(|| {
-                launch_result.get("action_required").is_none().then(|| module_failure(&launch_result, &preview_instance.module_name, "get_launch_command"))
+                launch_result.get("action_required").is_none().then(|| module_failure(&launch_result, &preview_instance.module_name, "get_launch_command").to_string())
             });
             if let Some(m) = message {
                 obj.insert("message".into(), json!(m));
@@ -975,7 +995,8 @@ impl Supervisor {
         let server_name = instance.name.as_str();
 
         if let Some((ext_mgr, ctx)) = hook {
-            let results = crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx).await;
+            let host_context = sup.read().await.host_context(&instance.id);
+            let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx)).await;
             for (ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
@@ -1113,7 +1134,7 @@ impl Supervisor {
             let final_config = Value::Object(cfg);
 
             let module = s.module_loader.get_module(module_name)?;
-            crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config)
+            crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config).in_instance(s.host_context(&instance.id))
         };
         let launch_result = call.run().await?;
 
@@ -1124,7 +1145,7 @@ impl Supervisor {
         }
 
         if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            return Err(anyhow::anyhow!("{}", module_failure(&launch_result, module_name, "get_launch_command")));
+            return Err(module_failure(&launch_result, module_name, "get_launch_command"));
         }
 
         let program = launch_result.get("program")
@@ -1267,7 +1288,8 @@ impl Supervisor {
         // ── Extension hook: server.stop ──
         // 정지 전에 불린다. 익스텐션(예: 컨테이너)이 정지를 맡으면 handled=true를 돌려준다.
         if let Some((ext_mgr, ctx)) = hook {
-            let results = crate::extension::run_hook(&ext_mgr, "server.stop", ctx).await;
+            let host_context = sup.read().await.host_context(&instance.id);
+            let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.stop", ctx)).await;
             for (_ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
@@ -1277,23 +1299,20 @@ impl Supervisor {
                 }
             }
             // 정지를 맡을 수 있는 익스텐션이 실패했으면 "안 돌고 있음"으로 덮지 않고 실패를 돌려준다
-            let failed = results.iter().find_map(|(ext_id, result)| match result {
-                Err(e) => Some(format!("{}: {}", ext_id, e)),
-                Ok(val) if val.get("success").and_then(Value::as_bool) == Some(false) => Some(format!(
-                    "{}: {}",
-                    ext_id,
-                    val.get("error").or_else(|| val.get("message")).and_then(Value::as_str).unwrap_or("stop failed")
-                )),
+            let failed = results.iter().find_map(|(_, result)| match result {
+                Err(e) => Some(crate::plugin::error_response(e)),
+                Ok(val) if val.get("success").and_then(Value::as_bool) == Some(false) => Some(val.clone()),
                 Ok(_) => None,
             });
-            if let Some(error) = failed {
-                return Ok(json!({ "success": false, "server": server_name, "error": error }));
+            if let Some(mut error) = failed {
+                error["server"] = json!(server_name);
+                return Ok(error);
             }
         }
 
         // ── Native 모드 ──
         // 모듈 정보와 모듈 stop()에 넘길 값은 읽기 락 안에서 만든다
-        let (module, stop_config, tracked_pid) = {
+        let (module, stop_config, tracked_pid, host_context) = {
             let s = sup.read().await;
             let module = s.module_loader.get_module(module_name)?;
             let mut config_obj = serde_json::Map::new();
@@ -1303,7 +1322,7 @@ impl Supervisor {
             config_obj.insert("stop_timeout".to_string(), json!(stop_timeout_of(&instance, module.metadata.stop_timeout)));
             // 추적표는 id로만 찾는다 (다른 인스턴스 id와 이름이 같아도 섞이지 않게)
             let tracked_pid = s.tracker.get_pid(&instance.id).ok();
-            (module, config_obj, tracked_pid)
+            (module, config_obj, tracked_pid, s.host_context(&instance.id))
         };
         let module_path = module.entry_path();
 
@@ -1341,7 +1360,7 @@ impl Supervisor {
                     if let Some(port) = instance.rest_port {
                         config_obj.insert("rest_port".to_string(), json!(port));
                     }
-                    match crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).run().await {
+                    match crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).in_instance(host_context.clone()).run().await {
                         // 저장 후 종료를 요청할 길이 없다: 기다렸다 강제 종료하지 않고 사용자가 고르게 돌려준다 (MK10)
                         Ok(result) if is_graceful_stop_unavailable(&result) => return Ok(graceful_stop_unavailable(server_name, &result)),
                         Ok(_) => {}
@@ -1449,7 +1468,7 @@ impl Supervisor {
         let config = Value::Object(config_obj);
 
         // Execute stop function
-        let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).timeout(limit).run().await?;
+        let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).in_instance(host_context).timeout(limit).run().await?;
 
         // Check if the module actually succeeded
         let plugin_success = result.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
@@ -1472,7 +1491,7 @@ impl Supervisor {
             }))
         } else {
             tracing::error!("Failed to stop server '{}': {}", server_name, plugin_message);
-            Err(anyhow::anyhow!("Failed to stop server '{}': {}", server_name, plugin_message))
+            Err(module_failure(&result, module_name, "stop"))
         }
     }
 
@@ -1508,7 +1527,8 @@ impl Supervisor {
 
         // ── Extension hook: server.status ──
         if let Some((ext_mgr, ctx)) = hook {
-            let results = crate::extension::run_hook(&ext_mgr, "server.status", ctx).await;
+            let host_context = sup.read().await.host_context(&instance.id);
+            let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.status", ctx)).await;
             for (_ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
@@ -1553,12 +1573,15 @@ impl Supervisor {
             for (key, value) in instance.module_settings.iter().filter(|(key, _)| !crate::sandbox::grants_write(key)) {
                 config_obj.entry(key.clone()).or_insert_with(|| value.clone());
             }
-            crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj)).serving(tracked_pid)
+            crate::plugin::PluginCall::new(module_path, "status", Value::Object(config_obj)).serving(tracked_pid).in_instance(s.host_context(&instance.id))
         };
 
         // Ask module for status
         match call.run().await {
             Ok(result) => {
+                if result.get("success").and_then(Value::as_bool) == Some(false) {
+                    return Ok(result);
+                }
                 let status = result.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
                 let pid = result.get("pid").and_then(|p| p.as_u64());
                 let start_time = match pid {
@@ -1574,11 +1597,11 @@ impl Supervisor {
             },
             Err(e) => {
                 tracing::error!("Failed to get status: {}", e);
-                Ok(json!({
-                    "server": server_name,
-                    "status": "unknown",
-                    "pid": null,
-                }))
+                let mut result = crate::plugin::error_response(&e);
+                result["server"] = json!(server_name);
+                result["status"] = json!("unknown");
+                result["pid"] = Value::Null;
+                Ok(result)
             }
         }
     }
@@ -1640,7 +1663,7 @@ impl Supervisor {
             });
 
             // 플러그인 실행
-            crate::plugin::PluginCall::new(module_path, "command", config).serving(pid)
+            crate::plugin::PluginCall::new(module_path, "command", config).serving(pid).in_instance(s.host_context(instance_id))
         };
         let result = call.run().await?;
 
@@ -1653,11 +1676,7 @@ impl Supervisor {
                     .unwrap_or_default();
                 Ok(message.to_string())
             } else {
-                let error_msg = result
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Command failed");
-                Err(anyhow::anyhow!("{}", error_msg))
+                Err(module_failure(&result, module_name, "command"))
             }
         } else {
             Err(anyhow::anyhow!("Invalid response from module"))
@@ -1778,7 +1797,8 @@ impl Supervisor {
 
         // ── 2) 익스텐션 hook (락 밖) ──
         if let Some((ext_mgr, ctx)) = hook {
-            let results = crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx).await;
+            let host_context = sup.read().await.host_context(&instance.id);
+            let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx)).await;
             for (ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
@@ -1919,7 +1939,7 @@ impl Supervisor {
             // 비밀번호류 설정값과 REST 비밀번호는 가려서 남긴다
             let (_, logged) = crate::audit::redact(Some(&module.metadata), Some(&instance), None, Some(&final_config));
             tracing::info!("get_launch_command config: {}", logged.unwrap_or_default());
-            (crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config), module)
+            (crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", final_config).in_instance(s.host_context(&instance.id)), module)
         };
         let launch_result = call.run().await?;
 
@@ -1930,7 +1950,7 @@ impl Supervisor {
         }
 
         if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            return Err(anyhow::anyhow!("{}", module_failure(&launch_result, module_name, "get_launch_command")));
+            return Err(module_failure(&launch_result, module_name, "get_launch_command"));
         }
 
         let program = launch_result.get("program")
@@ -2326,7 +2346,7 @@ impl Supervisor {
         let server = self.tracker.get_pid(instance_id).ok();
         cfg.insert("running".to_string(), json!(server.is_some()));
 
-        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).serving(server))
+        Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).serving(server).in_instance(self.host_context(instance_id)))
     }
 
     /// 게임 설정 파일 읽기·쓰기·초기화·가져오기 (모듈 configure/read_properties/reset_properties/import_settings)
@@ -2377,7 +2397,7 @@ impl Supervisor {
                 _ => "read_properties",
             };
 
-            crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg))
+            crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).in_instance(s.host_context(instance_id))
         };
         let result = call.run().await?;
         Ok(result)
@@ -2458,7 +2478,7 @@ impl Supervisor {
                 cfg.insert("log_lines".to_string(), json!(log_lines));
             }
 
-            crate::plugin::PluginCall::new(module_path, "diagnose_log", Value::Object(cfg))
+            crate::plugin::PluginCall::new(module_path, "diagnose_log", Value::Object(cfg)).in_instance(s.host_context(instance_id))
         };
         let result = call.run().await?;
         Ok(result)
@@ -2511,17 +2531,18 @@ impl Supervisor {
 
     /// 모듈 `list_versions`로 그 설정(서버 종류 등)에서 받을 수 있는 최신 버전 (`latest.release`, 예전 모양 `latest_release`).
     /// 찾지 못하면 그 까닭(모듈 실행 오류, 모듈이 준 메시지)
-    pub async fn latest_version(module_path: &str, settings: &Value) -> std::result::Result<String, String> {
+    pub async fn latest_version(module_path: &str, settings: &Value) -> Result<String> {
         match crate::plugin::run_plugin(module_path, "list_versions", json!({ "settings": settings })).await {
+            Ok(v) if v.get("success").and_then(Value::as_bool) == Some(false) => Err(module_failure(&v, v.get("module").and_then(Value::as_str).unwrap_or(""), "list_versions")),
             Ok(v) => v
                 .pointer("/latest/release")
                 .or_else(|| v.get("latest_release"))
                 .and_then(Value::as_str)
                 .map(str::to_string)
-                .ok_or_else(|| v.get("message").and_then(Value::as_str).unwrap_or("list_versions gave no latest release").to_string()),
+                .ok_or_else(|| anyhow::anyhow!("{}", v.get("message").and_then(Value::as_str).unwrap_or("list_versions gave no latest release"))),
             Err(e) => {
                 tracing::warn!("Failed to fetch versions from '{}': {}", module_path, e);
-                Err(e.to_string())
+                Err(e)
             }
         }
     }
@@ -2540,7 +2561,7 @@ impl Supervisor {
         executable: Option<&str>,
         accepted_agreements: &[String],
         initial_settings: Option<Value>,
-        instance: Option<(Value, Vec<String>)>,
+        instance: Option<(Value, Vec<String>, crate::module_paths::Boundary, crate::plugin::host::Context)>,
         keep_executable: Option<&str>,
         commit: Option<&InstallCommit<'_>>,
     ) -> Result<Value> {
@@ -2634,13 +2655,23 @@ impl Supervisor {
         if let Some(settings) = initial_settings {
             config["initial_settings"] = settings;
         }
-        if let Some((settings, data_dirs)) = instance {
+        let (path_boundary, host) = if let Some((settings, data_dirs, boundary, host)) = instance {
             config["settings"] = settings;
             config[crate::sandbox::INSTANCE_DATA_DIRS] = json!(data_dirs);
-        }
+            (crate::module_paths::Boundary::for_install(std::path::Path::new(install_dir), Some(boundary)), Some(host))
+        } else {
+            (crate::module_paths::Boundary::for_install(std::path::Path::new(install_dir), None), None)
+        };
 
         // 서버 파일과 Java를 받는다: 기본 120초로는 느린 회선에서 중간에 끊긴다 (처음 설치와 같은 한도)
-        let result = crate::plugin::run_plugin_with_timeout(&module_path, "install_server", config, crate::plugin::INSTALL_TIMEOUT_SECS).await;
+        let result = crate::plugin::PluginCall::new(module_path, "install_server", config)
+            .in_instance(host).timeout(crate::plugin::INSTALL_TIMEOUT_SECS).run().await
+            .and_then(|mut value| {
+                if value.get("success").and_then(Value::as_bool) == Some(true) {
+                    path_boundary.returned_paths(&mut value, module_name, "install_server")?;
+                }
+                Ok(value)
+            });
 
         match result {
             Ok(ref val) => {
@@ -2726,6 +2757,69 @@ impl Supervisor {
                 Some((self.module_loader.get_module(&inst.module_name).ok()?.entry_path(), java))
             })
             .collect()
+    }
+
+    /// 기존 인스턴스의 누락 데이터 루트를 설정별로 한 번 가져온다. 모듈 호출은 데몬 잠금 밖에서 실행한다
+    pub async fn backfill_data_roots(sup: std::sync::Arc<tokio::sync::RwLock<Self>>) {
+        let ids: Vec<String> = sup.read().await.instance_store.list().iter().map(|i| i.id.clone()).collect();
+        for id in ids {
+            let (module_name, missing) = {
+                let mut s = sup.write().await;
+                let Some(mut instance) = s.instance_store.get(&id).cloned() else { continue };
+                let Ok(module) = s.module_loader.get_module(&instance.module_name) else { continue };
+                let missing: HashSet<String> = module.metadata.data_roots.iter()
+                    .filter_map(|pattern| crate::module_paths::data_root_parts(pattern))
+                    .map(|(key, _)| key)
+                    .filter(|key| *key != "home" && !instance.module_settings.contains_key(*key)
+                        && !instance.user_settings.contains(*key) && !instance.data_roots_backfill_attempted.contains(*key))
+                    .map(str::to_string)
+                    .collect();
+                if missing.is_empty() {
+                    continue;
+                }
+                // 빈 결과·실패·중단도 다음 기동에서 반복하지 않는다
+                instance.data_roots_backfill_attempted.extend(missing.iter().cloned());
+                let module_name = instance.module_name.clone();
+                if let Err(e) = s.instance_store.update(&id, instance) {
+                    tracing::warn!("Failed to record data root backfill for '{}': {}", id, e);
+                    continue;
+                }
+                (module_name, missing)
+            };
+            let result = match Self::manage_properties(&sup, &id, "import", None).await {
+                Ok(result) if result.get("success").and_then(Value::as_bool) == Some(true) => result,
+                Ok(result) => {
+                    tracing::warn!("Data root backfill skipped for '{}': {}", id, module_failure(&result, &module_name, "import_settings"));
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!("Data root backfill skipped for '{}': {}", id, e);
+                    continue;
+                }
+            };
+            let Some(settings) = result.get("settings").and_then(Value::as_object) else { continue };
+            let mut s = sup.write().await;
+            let Some(mut instance) = s.instance_store.get(&id).cloned() else { continue };
+            if instance.module_name != module_name {
+                continue;
+            }
+            let mut changed = false;
+            for key in missing {
+                if instance.module_settings.contains_key(&key) || instance.user_settings.contains(&key) {
+                    continue;
+                }
+                if let Some(value) = settings.get(&key) {
+                    instance.module_settings.insert(key.clone(), value.clone());
+                    instance.imported_settings.insert(key);
+                    changed = true;
+                }
+            }
+            if changed {
+                if let Err(e) = s.instance_store.update(&id, instance) {
+                    tracing::warn!("Failed to save data root backfill for '{}': {}", id, e);
+                }
+            }
+        }
     }
 
     /// server_version이 비어있고 working_dir이 설정된 인스턴스에 대해
@@ -3236,18 +3330,19 @@ fn is_graceful_stop_unavailable(result: &Value) -> bool {
 /// 정지하지 않았다는 응답. 강제 종료(저장 없음)는 사용자가 `force`로 다시 요청한다
 fn graceful_stop_unavailable(server_name: &str, result: &Value) -> Value {
     tracing::warn!("Server '{}' has no way to save and exit; waiting for a force stop", server_name);
-    json!({
-        "success": false,
-        "server": server_name,
-        "error_code": "graceful_stop_unavailable",
-        "error": result.get("message").or_else(|| result.get("error")).and_then(Value::as_str).unwrap_or("graceful stop unavailable"),
-    })
+    let mut response = result.clone();
+    response["success"] = json!(false);
+    response["server"] = json!(server_name);
+    if response.get("error").is_none() {
+        response["error"] = result.get("message").cloned().unwrap_or_else(|| json!("graceful stop unavailable"));
+    }
+    response
 }
 
 /// 인스턴스 폴더 바로 아래 이름이 데몬 항목을 가리킬 수 있는가. Windows는 대소문자를 가리지 않고 끝의 점·공백을
 /// 떼며, 짧은 이름(`SETTIN~1.JSO`)과 스트림 표기(`run:x`)로도 같은 항목을 연다. 그런 이름은 모두 데몬 항목으로 본다.
 /// 대소문자는 유니코드로 견준다 (`ſ`도 대문자로는 `S`다)
-fn is_daemon_entry(name: &str) -> bool {
+pub(crate) fn is_daemon_entry(name: &str) -> bool {
     if name.contains(['~', ':']) {
         return true;
     }
@@ -3300,6 +3395,7 @@ mod tests {
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\n{detection}")).unwrap();
             std::fs::write(dir.join("lifecycle.py"), script(sh)).unwrap();
+            crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         }
         let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
@@ -3356,6 +3452,7 @@ mod tests {
              print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
              else:\n    print(json.dumps({{'success': True}}))\n"
         )).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("p-chatty", "chatty");
@@ -3549,6 +3646,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("lifecycle.py"), "import json, sys\nprint(json.dumps({'success': True, 'config': json.load(sys.stdin)}))\n").unwrap();
         std::fs::write(dir.join("module.toml"), "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = Supervisor::new_with_instances_dir(
             tmp.path().join("modules").to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
@@ -3709,11 +3807,35 @@ mod tests {
 
     #[test]
     fn a_module_failure_says_why_instead_of_unknown_error() {
-        assert_eq!(module_failure(&json!({"success": false, "message": "jar missing"}), "mc", "get_launch_command"), "jar missing");
-        assert_eq!(module_failure(&json!({"success": false, "error": "bad port"}), "mc", "get_launch_command"), "bad port");
-        let legacy = module_failure(&json!({"command": "sh", "args": []}), "e2e-mock", "get_launch_command");
+        assert_eq!(module_failure(&json!({"success": false, "message": "jar missing"}), "mc", "get_launch_command").to_string(), "jar missing");
+        assert_eq!(module_failure(&json!({"success": false, "error": "bad port"}), "mc", "get_launch_command").to_string(), "bad port");
+        let legacy = module_failure(&json!({"command": "sh", "args": []}), "e2e-mock", "get_launch_command").to_string();
         assert!(legacy.contains("e2e-mock") && legacy.contains("command") && legacy.contains("args"), "{}", legacy);
-        assert!(module_failure(&Value::Null, "m", "f").contains("nothing"));
+        assert!(module_failure(&Value::Null, "m", "f").to_string().contains("nothing"));
+    }
+
+    #[test]
+    fn a_module_failure_keeps_its_fields_through_supervisor_errors() {
+        let value = json!({ "success": false, "error_code": "module_path_outside", "message": "outside root", "path": "bad", "module": "game", "function": "get_launch_command" });
+        let error = anyhow::anyhow!(module_failure(&value, "game", "get_launch_command"));
+        assert_eq!(crate::plugin::error_response(&error), value);
+    }
+
+    #[test]
+    fn module_failure_uses_message_for_the_existing_http_status_selection() {
+        let value = json!({ "success": false, "error": "cannot start", "message": "jar missing", "module": "game", "function": "get_launch_command" });
+        let error = module_failure(&value, "game", "get_launch_command");
+        assert_eq!(error.to_string(), "jar missing");
+        assert_eq!(crate::plugin::error_response(&error), value);
+    }
+
+    #[test]
+    fn a_legacy_stop_unavailable_is_still_a_failure() {
+        let result = graceful_stop_unavailable("game", &json!({ "error_code": "graceful_stop_unavailable", "message": "no stop path", "module": "game", "function": "stop" }));
+        assert_eq!(result["success"], false);
+        assert_eq!(result["message"], "no stop path");
+        assert_eq!(result["module"], "game");
+        assert_eq!(result["function"], "stop");
     }
 
     // 0.1.7 업그레이드: 0.1.6에서 만든 팰월드는 기본 REST 8212를 저장해 두었다. 8212가 Windows 예약 범위(8135-8234)에
@@ -4212,6 +4334,8 @@ mod tests {
             memory_limit_mb: None,
             accepted_agreements: Default::default(),
             user_settings: Default::default(),
+            imported_settings: Default::default(),
+            data_roots_backfill_attempted: Default::default(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -4272,6 +4396,8 @@ mod tests {
             memory_limit_mb: None,
             accepted_agreements: Default::default(),
             user_settings: Default::default(),
+            imported_settings: Default::default(),
+            data_roots_backfill_attempted: Default::default(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);
@@ -4338,6 +4464,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -4393,6 +4520,8 @@ mod tests {
             ),
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        crate::sandbox::consent_test_component(&ext.join("m.py"));
         let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());
@@ -4447,6 +4576,8 @@ mod tests {
             ),
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        crate::sandbox::consent_test_component(&ext.join("m.py"));
         let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());

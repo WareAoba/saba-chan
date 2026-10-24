@@ -41,7 +41,7 @@ export function createApi({ invoke, hub }) {
     const extensionFailure = (extId, verb, error, related) => {
         const data = error.response?.data;
         console.warn(`[Extension] Failed to ${verb} '${extId}':`, data || error.message);
-        const body = { success: false, error: data?.error || error.message, error_code: data?.error_code || 'network' };
+        const body = { ...data, success: false, error: data?.error || error.message, error_code: data?.error_code || 'network' };
         if (related) body.related = data?.related || [];
         return body;
     };
@@ -194,6 +194,7 @@ export function createApi({ invoke, hub }) {
                 if (error.response) {
                     const status = error.response.status;
                     const data = error.response.data || {};
+                    if (data.module && data.function) return errorBody(error);
                     switch (status) {
                         case 400:
                             return { error: t('server.stop_failed', { error: data.error || t('info') }) };
@@ -478,6 +479,7 @@ export function createApi({ invoke, hub }) {
                 if (error.response) {
                     const status = error.response.status;
                     const data = error.response.data || {};
+                    if (data.module && data.function) return errorBody(error);
                     switch (status) {
                         case 400:
                             // 데몬의 검증 결과를 그대로: error_code가 invalid_format이면 renderer가 형식 오류를 띄운다
@@ -544,6 +546,7 @@ export function createApi({ invoke, hub }) {
                     const data = error.response.data || {};
                     // 데몬이 모듈 [errors] 문구(error_message) 또는 원인(error)을 준다
                     return {
+                        ...(data.module && data.function ? data : {}),
                         error:
                             data.error_message ||
                             data.error ||

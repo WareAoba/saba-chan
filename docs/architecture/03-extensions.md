@@ -57,7 +57,7 @@
 | `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:618-622,1139-1144`). |
 | `instance_fields` | `HashMap<String, FieldDef>` | `{}` | (a) disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`), (b) ~~목록 응답 → CLI가 자동 설정 슬롯을 만든다~~(PR #6 CLI는 쓰지 않는다). **default 값을 인스턴스에 주입하는 코드는 없다.** |
 | `config_fields` | `HashMap<String, FieldDef>` | `{}` | 목록 응답에만 실린다. 값 저장은 `config.json`의 `extensions.settings.<id>`. 스키마 검증은 없다. |
-| `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. locale은 한 단계 경로 이름이어야 한다(`ext/:1457-1469`). |
+| `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. `i18n_dir`은 `..` 없는 상대 경로이며 실제 경로도 익스텐션 폴더 안이어야 한다. 중간 링크·정션도 거부한다. 위반하면 locales를 비우고 경고한다. locale은 한 단계 경로 이름이어야 한다(`ext/:1457-1469`). |
 | `priority` | `i32` | `100` | 같은 hook·명령을 여러 익스텐션이 가질 때의 순서. 작을수록 먼저, 같으면 id 순(`ext/:265-267,1116-1127`). |
 | `commands` | `Vec<ExtensionCommand>` | `[]` | 인스턴스 명령 카탈로그에 더하는 명령(`ext/:273-293`). `GET /api/instance/:id/commands`에 실리고(모듈 명령이 우선, `handlers/command.rs:296-300`), `POST /api/instance/:id/command`가 `plan_command`로 실행한다(`handlers/command.rs:90-102`, `ext/:1143-1176`). |
 | `permissions` | `ModulePermissions` | 모두 false | 코드가 쓰는 위험한 능력 선언. 모듈 `[permissions]`와 같은 표다(02 문서 §1). 실행을 막거나 풀지 않고, `GET /api/extensions/:id/audit`(모듈 audit과 같은 모양)와 CLI 도구 `saba-core extension audit <폴더>...`가 코드와 대조해 선언하지 않은 능력을 알린다. |
@@ -110,8 +110,8 @@
 
 - **명령**: `<venv python> <절대경로 module.py> <function>`. Python 경로는 `python_env::get_python_path()`(`plg/:178`)에서 얻는다. 매 호출마다 새 프로세스를 띄우는 short-lived 방식이다.
 - **stdin**: context JSON 한 덩어리. 쓴 다음 바로 닫는다(`plg/:239-242`).
-- **stdout**: 전체를 하나의 JSON으로 파싱하고, 실패하면 비어 있지 않은 마지막 줄을 JSON으로 파싱한다(앞에 찍힌 print 무시, `plg/:322-332`). 둘 다 실패하면 Err. 종료 코드가 0이 아니어도 Err(`plg/:287-290`).
-- **stderr**: 줄 단위로 스트리밍한다. `PROGRESS:{json}` 줄은 `ExtensionProgress{percent,message,step,total,label}`(`plg/:39-50`)로 파싱해 콜백을 호출한다. 나머지 줄은 debug 로그로 남긴다.
+- **stdout**: 최대 4 MiB를 모아 하나의 JSON으로 파싱한다. 실패하면 비어 있지 않은 마지막 줄을 JSON으로 파싱한다(앞의 print 무시). 둘 다 실패하면 `module_bad_output`, 상한 초과면 `module_output_too_large`, 종료 코드가 0이 아니면 `module_crashed`다.
+- **stderr**: 줄 단위로 스트리밍한다. `PROGRESS:{json}` 줄은 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백을 호출하고 `LOOPBACK:`·`HOST:`는 중계로 처리하고 그 줄을 로그에 넣지 않는다. 나머지는 계속 비우고 마지막 200줄, 합계 64 KiB를 보존한다. 앞의 줄은 debug 로그로만 남긴다.
 - **env**:
   - `PYTHONIOENCODING=utf-8`, `PYTHONUNBUFFERED=1`
   - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`(토큰 파일 경로, 토큰 자체는 넣지 않음), `SABA_LANG`(요청의 `Accept-Language`, 없으면 config.json `gui.language`) (`plg/:14-37`).
@@ -119,10 +119,11 @@
   - `SABA_ENABLED_EXTENSIONS=<콤마 목록>`: ~~`%APPDATA%`나 cwd의 `extensions_state.json`을 읽어 Linux/macOS에서 대개 설정되지 않는다.~~ → 해결: `config.json`의 `extensions.enabled`에서 읽고, 목록이 없으면 빈 값으로 항상 설정한다(`plg/:200-205`).
   - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/:84-96`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).
   - 공용 모듈 `i18n.py`, `daemon_rcon.py`를 modules 디렉토리에 내장본과 같게 맞춘다(`plg/:98-116,217-224`).
-- **확인되지 않은 익스텐션 (Windows)**: 신뢰 표시가 `verified`가 아니면 모듈과 같은 규칙을 따른다(02 문서 §2.1). Python은 AppContainer 안에서 돈다(백신 검사는 하지 않는다)(준비하지 못하면 `sandbox_unavailable`과 `component`).
+- **확인되지 않은 익스텐션**: 플랫폼과 관계없이 모듈과 같은 거부·동의 정책을 따른다(02 문서 §2.1). Windows는 AppContainer를 쓴다. Linux·macOS는 격리할 수 없으므로 현재 파일 지문에 대한 동의가 없으면 `sandbox_unavailable`·`isolation_unsupported`와 `component`를 돌려준다. 모듈이 import하는 익스텐션도 각각 자기 동의가 있어야 격리 없이 실행할 수 있다. 모듈의 동의로 다른 익스텐션까지 승인하지 않는다.
   - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 모듈이 익스텐션을 import해 쓸 때(SteamCMD 등)는 `SABA_EXTENSION_DATA_ROOT/<id>`에 쓴다(격리된 모듈은 그 모듈만의 뿌리를 받는다, 02 §2.1). 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다.
   - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
-- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plg/:421-488`).
+- **타임아웃과 자리**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`이다. 함수 이름이 `install_server`면 설치 자리 2개를 쓰고, 훅을 포함한 나머지 호출은 일반 자리 8개를 쓴다. 기한은 자리 대기·내부 선조회·Python 환경 준비·실행 전체를 포함한다. 내부 선조회는 바깥 자리와 절대 기한을 재사용한다. 재진입은 바깥 자리를 빌리거나 캐시만 쓰고 캐시가 없으면 실패한다. 상한·정리 규칙은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)을 따른다.
+- **오류 필드**: 실행기와 훅은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)의 공통 오류를 유지한다. `error_code`·`module`·`function`·`phase`·`stderr_tail`을 문자열 하나로 바꾸지 않는다. 로컬은 stderr 끝을 보존하고 원격은 빼며, 원격 문자열의 IP·비밀값·절대 경로를 가린다. 모듈이 정한 실패 코드와 메시지는 유지한다.
 
 ### 2.2 디스패처 (`ext/:1213-1256`, `ext/:1557-1628`)
 

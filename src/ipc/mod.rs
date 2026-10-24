@@ -385,6 +385,22 @@ pub struct ProvisionProgress {
     /// Step labels provided by the extension (set once on first progress update)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<String>>,
+    #[serde(flatten)]
+    pub details: serde_json::Map<String, Value>,
+}
+
+impl ProvisionProgress {
+    pub fn with_failure(mut self, failure: Value) -> Self {
+        if let Value::Object(mut fields) = failure {
+            self.error = fields.remove("error").and_then(|v| v.as_str().map(str::to_string))
+                .or_else(|| fields.get("message").and_then(Value::as_str).map(str::to_string));
+            if let Some(Value::String(message)) = fields.remove("message") {
+                self.message = message;
+            }
+            self.details = fields;
+        }
+        self
+    }
 }
 
 /// Tracks provisioning progress per instance_id
@@ -643,6 +659,10 @@ impl IPCServer {
 
         let stop_requested = tokio_util::sync::CancellationToken::new();
         let client_registry = ClientRegistry::new();
+        let credentials = CredentialsCache::default();
+        if let Ok(sup) = supervisor.try_read() {
+            let _ = sup.host_runtime.set(crate::plugin::host::Runtime::new(&supervisor, credentials.clone()));
+        }
         Self {
             supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
@@ -656,7 +676,7 @@ impl IPCServer {
             extension_manager,
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL
             extension_init_tracker: ExtensionInitTracker::new(),
-            credentials: CredentialsCache::default(),
+            credentials,
             shutdown_token: tokio_util::sync::CancellationToken::new(),
             stop_requested,
             config_store,
@@ -667,6 +687,10 @@ impl IPCServer {
     }
 
     /// 응답을 먼저 보낼 수 있게 잠깐 뒤에 종료를 요청한다 (정리 경로는 main이 처리).
+    pub(crate) fn host_context(&self, id: &str) -> crate::plugin::host::Context {
+        crate::plugin::host::Runtime::new(&self.supervisor, self.credentials.clone()).for_instance(id)
+    }
+
     pub fn request_shutdown(&self) {
         let stop = self.stop_requested.clone();
         tokio::spawn(async move {
@@ -943,6 +967,24 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn module_failure_fields_survive_provision_progress() {
+        let failure = json!({
+            "success": false, "error_code": "module_exception", "module": "game", "function": "install_server",
+            "phase": "run", "error": "failed", "message": "original reason", "path": "bad-name", "stderr_tail": ["trace"],
+        });
+        let progress = ProvisionProgress {
+            step: 0, total: 1, label: "done".into(), message: "install failed".into(), done: true,
+            error: None, percent: None, steps: None, details: Default::default(),
+        }.with_failure(failure.clone());
+        let tracker = ProvisionTracker::new();
+        tracker.update("test-game", progress);
+        let value = serde_json::to_value(tracker.get("test-game").unwrap()).unwrap();
+        for (key, expected) in failure.as_object().unwrap() {
+            assert_eq!(&value[key], expected, "lost {key}");
+        }
+    }
+
+    #[test]
     fn credentials_cache_keeps_until_invalidated() {
         let cache = CredentialsCache::default();
         assert!(cache.get("a").is_none());
@@ -967,7 +1009,7 @@ mod tests {
     #[test]
     fn a_name_freed_by_delete_or_rename_carries_no_old_progress() {
         let failed = || ProvisionProgress {
-            step: 1, total: 3, label: "install".into(), message: String::new(), done: true, error: Some("boom".into()), percent: None, steps: None,
+            step: 1, total: 3, label: "install".into(), message: String::new(), done: true, error: Some("boom".into()), percent: None, steps: None, details: Default::default(),
         };
         let tracker = ProvisionTracker::new();
         tracker.update("b", failed());

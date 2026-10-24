@@ -72,7 +72,7 @@ pub async fn start_managed_handler(
             }
             None => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
+                Json(crate::plugin::error_response(&e)),
             )
                 .into_response(),
         },
@@ -113,16 +113,7 @@ pub async fn send_stdin_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     // 콘솔 입력을 받지 않는 모듈(예: REST 전용)은 보낸 척하지 않는다: 클라이언트가 명령 API로 넘어가게
-    let resp = if !state.supervisor.read().await.module_accepts_stdin(&id) {
-        (
-            StatusCode::CONFLICT,
-            Json(json!({ "error": "This server does not take console input; use its commands instead", "error_code": "stdin_not_supported" })),
-        )
-            .into_response()
-    } else {
-        // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
-        super::command::via_stdin(&state, &id, &payload).await.into_response()
-    };
+    let resp = super::command::stdin_for(&state.supervisor, &id, &payload).await;
     let line = payload.get("command").or_else(|| payload.get("line")).and_then(|v| v.as_str()).map(str::to_string);
     super::audited(&state, "stdin", &id, line.as_deref(), None, resp).await
 }
@@ -136,7 +127,7 @@ pub async fn validate_instance_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     }
@@ -177,22 +168,19 @@ pub async fn query_instance_handler(
     };
     match Supervisor::query_instance(&state.supervisor, &id, &query.function, args).await {
         Ok(serde_json::Value::Object(mut result)) => {
-            let success = result.remove("success").and_then(|v| v.as_bool()).unwrap_or(true);
-            let message = result.remove("message");
-            let data = result.remove("data").unwrap_or(serde_json::Value::Object(result));
-            let mut body = json!({ "success": success, "data": data });
-            if !success {
-                body["error"] = message.unwrap_or_else(|| json!("Query failed"));
-                body["error_code"] = json!("query_failed");
+            if result.get("success").and_then(Value::as_bool) == Some(false) {
+                return (StatusCode::OK, Json(Value::Object(result))).into_response();
             }
+            let success = result.remove("success").and_then(|v| v.as_bool()).unwrap_or(true);
+            result.remove("message");
+            let data = result.remove("data").unwrap_or(serde_json::Value::Object(result));
+            let body = json!({ "success": success, "data": data });
             (StatusCode::OK, Json(body)).into_response()
         }
         Ok(other) => (StatusCode::OK, Json(json!({ "success": true, "data": other }))).into_response(),
         Err(e) => {
-            // 원문에는 PC 경로나 모듈이 받은 설정값이 섞일 수 있어 원격에는 내보내지 않는다
             tracing::warn!("Query '{}' on '{}' failed: {}", name, id, e);
-            let message = if crate::audit::current().source == "discord" { "Query failed".to_string() } else { e.to_string() };
-            fail(StatusCode::INTERNAL_SERVER_ERROR, "query_failed", message, None)
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()
         }
     }
 }
@@ -242,13 +230,16 @@ pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServ
                 (StatusCode::OK, Json(body)).into_response()
             }
             None => {
+                if result.get("success").and_then(serde_json::Value::as_bool) == Some(false) {
+                    return (StatusCode::OK, Json(result)).into_response();
+                }
                 let message = result.get("message").and_then(serde_json::Value::as_str).unwrap_or("The module did not report players");
                 fail(StatusCode::OK, "players_failed", message.to_string())
             }
         },
         Err(e) => {
             tracing::warn!("Player list for '{}' failed: {}", id, e);
-            fail(StatusCode::OK, "players_failed", "The module did not answer".into())
+            (StatusCode::OK, Json(crate::plugin::error_response(&e))).into_response()
         }
     }
 }
@@ -262,7 +253,7 @@ pub async fn read_properties_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     }
@@ -282,7 +273,7 @@ pub async fn write_properties_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     };
@@ -309,7 +300,7 @@ pub async fn read_live_settings_handler(
             }
             (StatusCode::OK, Json(result)).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
 }
 
@@ -347,7 +338,7 @@ pub async fn reset_properties_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     }
@@ -405,14 +396,14 @@ pub async fn reset_server_handler(
         let (state, id) = (state.clone(), id.clone());
         crate::audit::spawn(async move {
             let _guard = guard;
-            Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await.map_err(|e| e.to_string())
+            Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await
         })
     };
-    let resp = match reset.await.unwrap_or_else(|e| Err(e.to_string())) {
+    let resp = match reset.await.unwrap_or_else(|e| Err(e.into())) {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     };
@@ -456,8 +447,7 @@ pub async fn accept_agreements_handler(
     match Supervisor::accept_agreements(&state.supervisor, &id, &ids).await {
         Ok(Ok(module_result)) => {
             if module_result.get("success").and_then(Value::as_bool) == Some(false) {
-                let message = module_result.get("message").and_then(Value::as_str).unwrap_or("Module failed to apply the agreement");
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": message }))).into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(module_result)).into_response();
             }
             let language = state.config_store.ui_language().await;
             let sup = state.supervisor.read().await;
@@ -471,7 +461,7 @@ pub async fn accept_agreements_handler(
         Err(e) if e.to_string().starts_with("Instance not found") => {
             (StatusCode::NOT_FOUND, Json(json!({ "error": e.to_string(), "error_code": "not_found" }))).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
 }
 
@@ -484,7 +474,7 @@ pub async fn diagnose_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     }
@@ -516,7 +506,7 @@ pub async fn list_versions_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     }
@@ -531,7 +521,7 @@ pub async fn get_version_details_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     }
@@ -586,7 +576,7 @@ pub async fn get_installed_version_handler(
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
     }
@@ -661,7 +651,9 @@ pub async fn install_server_handler(
                 return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
             };
             let dir = sup.instance_store.instance_dir(id);
-            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir), sup.resolve_executable(inst, &module_name))), Some(guard), Some(inst.name.clone()))
+            let module = sup.module_loader.get_module(&module_name).ok();
+            let boundary = crate::module_paths::Boundary::for_instance(inst, &dir, module.as_ref().map(|m| &m.metadata));
+            (Some((json!(&inst.module_settings), Supervisor::instance_data_dirs(inst, &dir), sup.resolve_executable(inst, &module_name), boundary, state.host_context(id))), Some(guard), Some(inst.name.clone()))
         }
         None => (None, None, None),
     };
@@ -735,11 +727,13 @@ pub async fn install_server_handler(
                 Ok(m) => m.entry_path(),
                 Err(e) => return (StatusCode::NOT_FOUND, Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)}))).into_response(),
             };
-            let settings = instance.as_ref().map(|(s, _, _)| s.clone()).unwrap_or_else(|| json!({}));
+            let settings = instance.as_ref().map(|(s, _, _, _, _)| s.clone()).unwrap_or_else(|| json!({}));
             match Supervisor::latest_version(&module_path, &settings).await {
                 Ok(v) => v,
                 Err(e) => {
-                    let error = json!({ "error": format!("Could not find the latest version of this server: {}", e), "error_code": "version_unknown" });
+                    let error = if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
+                        crate::plugin::error_response(&e)
+                    } else { json!({ "error": format!("Could not find the latest version of this server: {}", e), "error_code": "version_unknown" }) };
                     return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
                 }
             }
@@ -755,7 +749,7 @@ pub async fn install_server_handler(
     // 인스턴스의 버전 설치는 뒤에서 돌릴 수 있다: 설치 전 백업이 길어도 요청 한도에 걸리지 않게 (진행은 provision-progress)
     let background = instance_id.is_some() && payload.get("background").and_then(Value::as_bool) == Some(true);
     let executable = executable.map(str::to_string);
-    let keep_executable = instance.as_ref().and_then(|(_, _, exe)| exe.clone());
+    let keep_executable = instance.as_ref().and_then(|(_, _, exe, _, _)| exe.clone());
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     if let (true, Some(name)) = (background, &instance_name) {
         state.provision_tracker.take_creating(name);
@@ -793,14 +787,14 @@ pub async fn install_server_handler(
                 executable.as_deref(),
                 &accepted_agreements,
                 initial_settings,
-                instance.map(|(settings, dirs, _)| (settings, dirs)),
+                instance.map(|(settings, dirs, _, boundary, host)| (settings, dirs, boundary, host)),
                 keep_executable.as_deref(),
                 Some(&commit),
             )
             .await
             .map_err(|e| {
                 // 되돌리지 못한 파일은 422와 같은 칸으로도 싣는다
-                let mut body = json!({ "error": format!("{:#}", e) });
+                let mut body = crate::plugin::error_response(&e);
                 let commit_failed = e.downcast_ref::<crate::supervisor::CommitFailed>();
                 if let Some(put_back) = e.downcast_ref::<crate::supervisor::PutBackFailed>().or(commit_failed.map(|c| &c.0)).filter(|p| !p.files.is_empty()) {
                     body["restore_failed"] = json!(put_back.files);
@@ -919,6 +913,7 @@ fn version_progress(message: String, done: bool, error: Option<String>) -> crate
         error,
         percent: done.then_some(100),
         steps: None,
+        details: Default::default(),
     }
 }
 
@@ -958,6 +953,30 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
+    #[tokio::test]
+    async fn contract_paths_install_rejects_returned_paths_and_restores_the_old_binary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = crate::plugin::resolve_modules_dir();
+        let fixture = tempfile::Builder::new().prefix("install-paths-").tempdir_in(&modules).unwrap();
+        let module = fixture.path();
+        let name = module.file_name().unwrap().to_string_lossy().into_owned();
+        let files = tmp.path().join("server");
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::write(module.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[config]\nserver_executable = 'server.jar'\n")).unwrap();
+        std::fs::write(files.join("server.jar"), "old").unwrap();
+        let outside = tmp.path().join("outside.exe");
+        std::fs::write(&outside, "outside").unwrap();
+        std::fs::write(module.join("lifecycle.py"), format!("import json, os, sys\nc = json.load(sys.stdin)\nif sys.argv[1] == 'functions':\n    print(json.dumps({{'success': True, 'functions': ['install_server']}}))\nelse:\n    open(os.path.join(c['install_dir'], 'server.jar'), 'w').write('new')\n    print(json.dumps({{'success': True, 'executable_path': {outside:?}}}))\n", outside = outside.to_string_lossy())).unwrap();
+        crate::sandbox::consent_test_component(&module.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let done = crate::ipc::internal::into_internal(install_server_handler(Path(name), State(state), Json(json!({"version":"1.0", "install_dir":files}))).await.into_response()).await;
+        assert_eq!(done.body["error_code"], "module_path_outside", "{}", done.body);
+        assert_eq!(std::fs::read_to_string(files.join("server.jar")).unwrap(), "old");
+    }
+
     /// 플레이어 목록 (디스코드 검수 13번): 모듈 `[status] players` 함수를 `players_detail`로 불러 이름까지 받는다.
     /// 이름 말고 다른 값(IP 등)은 싣지 않는다. 함수가 없으면 not_supported, 꺼진 서버는 409
     #[tokio::test]
@@ -977,6 +996,7 @@ mod tests {
             .unwrap();
         }
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         for (id, module) in [("with", "game"), ("without", "plain")] {
             let mut inst = crate::instance::ServerInstance::new(id, module);
@@ -1019,6 +1039,7 @@ mod tests {
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
         inst.module_settings.insert("kind".into(), json!("b"));
@@ -1114,6 +1135,7 @@ mod tests {
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let files = tmp.path().join("files");
         std::fs::create_dir_all(&files).unwrap();
@@ -1160,6 +1182,7 @@ mod tests {
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let files = tmp.path().join("files");
         let elsewhere = tmp.path().join("elsewhere");
@@ -1249,7 +1272,7 @@ mod tests {
             assert_eq!(backups(), ["PalServer.1.bak", "PalServer.2.bak", "PalServer.bak"], "only the failed restores keep a backup");
         }
 
-        // 모듈이 오류로 끝나고 되돌리지도 못하면 500 `error`에 모듈 오류와 남긴 백업 이름이 함께 있다 (600 P3-2)
+        // 모듈 오류와 되돌리지 못한 백업은 구조화된 오류 응답의 각 칸으로 남긴다 (600 P3-2)
         let reset = || {
             let exe = files.join("PalServer");
             let _ = std::fs::remove_dir_all(&exe);
@@ -1262,7 +1285,9 @@ mod tests {
         let error = done.body["error"].as_str().unwrap_or_default();
         let kept: Vec<String> = backups().into_iter().filter(|b| !before.contains(b)).collect();
         assert_eq!(kept.len(), 1, "{}", done.body);
-        assert!(error.contains("boom") && error.contains(&kept[0]), "{}", done.body);
+        assert!(error.contains("install_server"), "{}", done.body);
+        assert_eq!(done.body["error_code"], "module_crashed");
+        assert!(done.body["stderr_tail"].as_array().unwrap().iter().any(|line| line.as_str().is_some_and(|line| line.contains("RuntimeError: boom"))), "{}", done.body);
         // 422와 같은 칸으로도 알린다: 클라이언트가 원문을 풀지 않고 현지화 문구를 고른다 (리뷰 631 P3-1)
         assert_eq!((&done.body["restore_failed"], &done.body["kept_backups"]), (&json!(["PalServer"]), &json!(kept)), "{}", done.body);
 
@@ -1357,6 +1382,7 @@ mod tests {
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let inst = crate::instance::ServerInstance::new("srv", "game");
         let id = inst.id.clone();

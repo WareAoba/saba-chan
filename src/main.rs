@@ -5,6 +5,7 @@ mod ipc;
 mod config_store;
 mod instance;
 mod backup;
+mod module_paths;
 mod scheduler;
 mod process_monitor;
 mod system_monitor;
@@ -391,6 +392,7 @@ async fn main() -> anyhow::Result<()> {
     }
     // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서)
     tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
+    tokio::spawn(supervisor::Supervisor::backfill_data_roots(supervisor.clone()));
 
     // Generate IPC auth token
     match ipc::auth::generate_and_save_token() {

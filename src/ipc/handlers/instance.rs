@@ -401,8 +401,9 @@ pub async fn create_instance(
                         "module": &module_name_owned,
                         "migration": migration_mode,
                     });
+                    let host_context = Some(state.host_context(&id));
                     tokio::spawn(async move {
-                        let _ = crate::extension::run_hook(&ext_mgr, "server.post_create", ctx).await;
+                        let _ = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.post_create", ctx)).await;
                     });
                 }
                 if !migration_mode {
@@ -454,7 +455,7 @@ pub async fn create_instance(
                             done: false,
                             error: None,
                             percent: Some(0),
-                            steps: None,
+                            steps: None, details: Default::default(),
                         });
 
                         let tracker_done = tracker.clone();
@@ -465,6 +466,7 @@ pub async fn create_instance(
                         let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
                         // 설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈(좀보이드 첫 INI)도 격리 실행에서 쓸 수 있게 넘긴다
                         let instance_data_dirs = crate::supervisor::Supervisor::instance_data_dirs(&instance, &instance_dir);
+                        let host_context = state.host_context(&id);
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
@@ -485,7 +487,7 @@ pub async fn create_instance(
                                             done: true,
                                             error: Some(text.t("provision.module_missing", &[("error", &e.to_string())])),
                                             percent: Some(100),
-                                            steps: None,
+                                            steps: None, details: Default::default(),
                                         });
                                         return;
                                     }
@@ -500,25 +502,25 @@ pub async fn create_instance(
                                 // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
                                 // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
                                 let version = if install_config.method == "download" {
-                                    crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await.ok()
+                                    match crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await {
+                                        Ok(version) => Some(version),
+                                        Err(e) => {
+                                            drop(install_guard.take());
+                                            tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                                                step: 0, total: 1,
+                                                label: "done".to_string(),
+                                                message: text.t("provision.install_failed", &[]),
+                                                done: true,
+                                                error: Some(text.t("provision.no_latest_version", &[])),
+                                                percent: Some(100),
+                                                steps: None, details: Default::default(),
+                                            }.with_failure(crate::plugin::error_response(&e)));
+                                            return;
+                                        }
+                                    }
                                 } else {
                                     None // 익스텐션 방식은 version 불필요
                                 };
-
-                                // download 방식인데 버전을 파악하지 못한 경우 에러
-                                if install_config.method == "download" && version.is_none() {
-                                    drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
-                                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                                        step: 0, total: 1,
-                                        label: "done".to_string(),
-                                        message: text.t("provision.install_failed", &[]),
-                                        done: true,
-                                        error: Some(text.t("provision.no_latest_version", &[])),
-                                        percent: Some(100),
-                                        steps: None,
-                                    });
-                                    return;
-                                }
 
                                 let mut config = serde_json::json!({
                                     "install_dir": &install_dir_str,
@@ -543,14 +545,29 @@ pub async fn create_instance(
                                         done: false,
                                         error: None,
                                         percent: Some(pct),
-                                        steps: None,
+                                        steps: None, details: Default::default(),
                                     });
                                 };
 
-                                crate::plugin::run_plugin_with_progress_and_timeout(
-                                    &module_path, "install_server", config, on_progress,
-                                    crate::plugin::INSTALL_TIMEOUT_SECS,
-                                ).await
+                                crate::plugin::PluginCall::new(&module_path, "install_server", config)
+                                    .in_instance(Some(host_context))
+                                    .timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
+                                    .run_with_progress(Box::new(on_progress)).await
+                            };
+
+                            let result = match result {
+                                Ok(mut value) if value.get("success").and_then(Value::as_bool) == Some(true) => {
+                                    let sup = supervisor_arc.read().await;
+                                    match sup.instance_store.get(&id_done) {
+                                        Some(inst) => {
+                                            let metadata = sup.module_loader.get_module(&inst.module_name).ok();
+                                            let boundary = crate::module_paths::Boundary::for_instance(inst, &sup.instance_store.instance_dir(&id_done), metadata.as_ref().map(|m| &m.metadata));
+                                            boundary.returned_paths(&mut value, &module_name_owned, "install_server").map(|()| value)
+                                        }
+                                        None => Err(anyhow::anyhow!("Instance disappeared during install")),
+                                    }
+                                }
+                                other => other,
                             };
 
                             match result {
@@ -575,7 +592,7 @@ pub async fn create_instance(
                                                             updated.executable_path = Some(exe.clone());
                                                         }
                                                     }
-                                                    if let Some(ref ip) = install_path {
+                                                    if let Some(ip) = install_path.as_ref().filter(|ip| !ip.trim().is_empty()) {
                                                         // 확인되지 않은 모듈은 인스턴스 폴더 안만 (서버 폴더는 다음 격리 실행에 쓰기를 받는다)
                                                         let root = sup.instance_store.instance_dir(&id_done);
                                                         if crate::sandbox::accepts_module_dir(std::path::Path::new(&module_path), ip, &root) {
@@ -602,7 +619,7 @@ pub async fn create_instance(
                                                 done: true,
                                                 error: Some(text.t("provision.save_failed", &[])),
                                                 percent: Some(100),
-                                                steps: None,
+                                                steps: None, details: Default::default(),
                                             });
                                             return;
                                         }
@@ -614,7 +631,7 @@ pub async fn create_instance(
                                             done: true,
                                             error: None,
                                             percent: Some(100),
-                                            steps: None,
+                                            steps: None, details: Default::default(),
                                         });
 
                                         // 5초 후 tracker 자동 정리
@@ -638,8 +655,8 @@ pub async fn create_instance(
                                             done: true,
                                             error: Some(err_msg),
                                             percent: Some(100),
-                                            steps: None,
-                                        });
+                                            steps: None, details: Default::default(),
+                                        }.with_failure(val));
                                     }
                                 }
                                 Err(e) => {
@@ -650,11 +667,10 @@ pub async fn create_instance(
                                         label: "done".to_string(),
                                         message: text.t("provision.install_failed", &[]),
                                         done: true,
-                                        // 스크립트 출력(stderr·경로)은 로그에만 남긴다
                                         error: Some(text.t("provision.script_failed", &[])),
                                         percent: Some(100),
-                                        steps: None,
-                                    });
+                                        steps: None, details: Default::default(),
+                                    }.with_failure(crate::plugin::error_response(&e)));
                                 }
                             }
                         });
@@ -692,34 +708,38 @@ pub async fn create_instance(
 
                     // ── 기존 INI 설정 import ──
                     // 모듈 호출은 데몬 락 밖에서 (C12). 필요한 값만 챙기고 락을 놓는다.
-                    let (credential_map, setting_types) = supervisor.module_loader.get_module(&module_name_owned)
-                        .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
-                        .unwrap_or_default();
+                    let metadata = supervisor.module_loader.get_module(&module_name_owned).ok().map(|m| m.metadata);
+                    let (credential_map, setting_types) = metadata.as_ref().map(|m| (m.credential_map.clone(), m.setting_types())).unwrap_or_default();
                     drop(supervisor);
                     let mut detected: Option<Value> = None;
                     if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
                         let import_config = json!({
                             "working_dir": instance.working_dir,
                         });
-                        match crate::plugin::run_plugin(lifecycle_path, "import_settings", import_config).await {
-                            Ok(result) => {
+                        match crate::plugin::PluginCall::new(lifecycle_path, "import_settings", import_config).in_instance(Some(state.host_context(&id))).run().await {
+                            Ok(mut result) => {
                                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                    let mut imported = instance.clone();
                                     if let Some(settings) = result.get("settings").and_then(|v| v.as_object()) {
-                                        instance.apply_imported_settings(settings, &credential_map, &setting_types);
+                                        imported.apply_imported_settings(settings, &credential_map, &setting_types);
+                                        for field in metadata.iter().flat_map(|m| m.settings.iter()).flat_map(|s| &s.fields) {
+                                            if (field.field_type == "file" || field.format.as_deref() == Some("path")) && settings.contains_key(&field.name) {
+                                                imported.imported_settings.insert(field.name.clone());
+                                            }
+                                        }
                                         tracing::info!("Migration import_settings: {} settings imported for '{}'", settings.len(), instance_name);
                                     }
+                                    let boundary = crate::module_paths::Boundary::for_instance(&imported, &instance_dir, metadata.as_ref());
+                                    if let Err(e) = boundary.returned_paths(&mut result, &module_name_owned, "import_settings") {
+                                        let mut failure = crate::plugin::error_response(&e);
+                                        failure["id"] = json!(&id);
+                                        return (StatusCode::UNPROCESSABLE_ENTITY, Json(failure)).into_response();
+                                    }
+                                    instance = imported;
                                     // 모듈이 서버 파일을 직접 찾았으면 (예: paper-1.21.4.jar) 그것을 쓴다
-                                    if let (Some(rel), Some(dir)) = (
-                                        result.get("executable_path").and_then(|v| v.as_str()),
-                                        instance.working_dir.as_deref(),
-                                    ) {
-                                        // `..`·심볼릭 링크로 폴더 밖을 가리키지 않게 정규화한 경로로 비교한다
-                                        let resolved = std::path::Path::new(dir).join(rel);
-                                        let inside = match (resolved.canonicalize(), std::path::Path::new(dir).canonicalize()) {
-                                            (Ok(file), Ok(root)) => file.starts_with(root),
-                                            _ => false,
-                                        };
-                                        if resolved.is_file() && inside {
+                                    if let Some(path) = result.get("executable_path").and_then(|v| v.as_str()).filter(|p| !p.trim().is_empty()) {
+                                        let resolved = std::path::Path::new(path);
+                                        if resolved.is_file() {
                                             instance.executable_path = Some(resolved.to_string_lossy().to_string());
                                         }
                                     }
@@ -810,21 +830,8 @@ pub async fn get_provision_progress(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     if let Some(progress) = state.provision_tracker.get(&name) {
-        let mut resp = json!({
-            "active": true,
-            "step": progress.step,
-            "total": progress.total,
-            "label": progress.label,
-            "message": progress.message,
-            "done": progress.done,
-            "error": progress.error,
-        });
-        if let Some(pct) = progress.percent {
-            resp["percent"] = json!(pct);
-        }
-        if let Some(ref steps) = progress.steps {
-            resp["steps"] = json!(steps);
-        }
+        let mut resp = serde_json::to_value(progress).expect("provision progress contains JSON fields");
+        resp["active"] = json!(true);
         (StatusCode::OK, Json(resp)).into_response()
     } else {
         (StatusCode::OK, Json(json!({
@@ -913,7 +920,7 @@ async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::R
             "module": &instance.module_name,
             "extension_data": &instance.extension_data,
         });
-        let results = crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx).await;
+        let results = crate::plugin::with_instance(Some(state.host_context(&id)), crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx)).await;
         let handled = results.iter().any(|(_id, r)| {
             r.as_ref()
                 .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
@@ -1019,8 +1026,8 @@ pub async fn launch_preview(
     };
     match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-        Err(e) if e.to_string().contains("not found") => (StatusCode::NOT_FOUND, Json(json!({ "error": e.to_string() }))).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": "preview_failed", "message": e.to_string() }))).into_response(),
+        Err(e) if e.to_string().contains("not found") => (StatusCode::NOT_FOUND, Json(crate::plugin::error_response(&e))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
 }
 
@@ -1446,6 +1453,7 @@ pub async fn update_instance_settings(
                 // 설정 화면은 고치지 않은 값도 함께 보낸다: 값이 바뀐 키만 사용자가 정한 것으로 기록한다
                 if updated.module_settings.get(key) != Some(value) {
                     updated.user_settings.insert(key.clone());
+                    updated.imported_settings.remove(key);
                 }
                 updated.module_settings.insert(key.clone(), value.clone());
             }
@@ -1515,7 +1523,7 @@ pub async fn update_instance_settings(
     drop(supervisor);
 
     // 게임 설정 파일 동기화 (변경된 항목이 있을 때만). 실패해도 저장은 남기고 응답에 싣는다
-    let mut sync_error: Option<String> = None;
+    let mut sync_error: Option<Value> = None;
     if !props_sync.is_empty() {
         // 값에는 비밀번호가 들 수 있어 키만 남긴다
         tracing::info!(
@@ -1531,12 +1539,12 @@ pub async fn update_instance_settings(
                 && !r.get("message").and_then(|v| v.as_str()).is_some_and(|m| m.starts_with("Unknown function")) => {
                 let message = r.get("message").or(r.get("error")).and_then(|v| v.as_str()).unwrap_or("configure failed");
                 tracing::warn!("Module could not write game settings for instance {}: {}", id, message);
-                sync_error = Some(message.to_string());
+                sync_error = Some(r);
             }
             Ok(_) => tracing::info!("Game config synced for instance {}", id),
             Err(e) => {
                 tracing::warn!("Failed to sync the game config for instance {}: {}", id, e);
-                sync_error = Some(e.to_string());
+                sync_error = Some(crate::plugin::error_response(&e));
             }
         }
     }
@@ -1553,14 +1561,18 @@ pub async fn update_instance_settings(
             "extension_data": &updated_clone.extension_data,
             "settings": hook_settings,
         });
-        let _results = crate::extension::run_hook(&ext_mgr, "server.settings_changed", ctx).await;
+        let _results = crate::plugin::with_instance(Some(state.host_context(&id)), crate::extension::run_hook(&ext_mgr, "server.settings_changed", ctx)).await;
     }
 
     // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
     state.credentials.invalidate(&id);
     let mut body = json!({ "success": true, "synced": sync_error.is_none(), "restart_required": restart_required, "revision": new_revision });
     if let Some(e) = sync_error {
-        body["sync_error"] = json!(e);
+        body["sync_error"] = e.get("message").or_else(|| e.get("error")).cloned().unwrap_or(Value::Null);
+        // 설정은 이미 저장했다: 게임 파일 동기화 실패의 칸(오류 코드 등)만 덧붙이고 성공 표시는 덮지 않는다 (Codex 리뷰 #550)
+        if let (Some(body), Some(fields)) = (body.as_object_mut(), e.as_object()) {
+            body.extend(fields.iter().filter(|(k, _)| k.as_str() != "success").map(|(k, v)| (k.clone(), v.clone())));
+        }
     }
     // RCON 키처럼 받되 쓰지 않는 것
     let ignored: Vec<&String> = settings.as_object().into_iter().flat_map(|o| o.keys()).filter(|k| IGNORED_FIELDS.contains(&k.as_str())).collect();
@@ -1637,13 +1649,15 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
         "extension_data": &instance.extension_data,
     });
 
-    let results = crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx).await;
+    let results = crate::plugin::with_instance(Some(state.host_context(id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
 
     // 첫 번째 성공 결과를 클라이언트로 전달
-    for (_ext_id, result) in results {
-        if let Ok(val) = result {
-            return Some(val);
-        }
+    if let Some(val) = results.iter().find_map(|(_, result)| result.as_ref().ok()) {
+        return Some(val.clone());
+    }
+    // 모두 실패했으면 그 오류를 구조화해 돌려준다
+    if let Some(error) = results.iter().find_map(|(_, result)| result.as_ref().err()) {
+        return Some(crate::plugin::error_response(error));
     }
 
     // hook이 등록되지 않았거나 모두 condition 불일치
@@ -1761,6 +1775,9 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let module_name_owned = instance.module_name.clone();
     let install_settings = instance.module_settings.clone();
     let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
+    let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+    let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
+    let host_context = state.host_context(id);
 
     // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
     tracker.take_creating(&instance_name);
@@ -1774,7 +1791,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
             done: false,
             error: None,
             percent: Some(0),
-            steps: None,
+            steps: None, details: Default::default(),
         },
     );
 
@@ -1791,7 +1808,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
         let _others = others;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
         if let Err(r) = super::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
-            let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
+            let failure = crate::ipc::internal::into_internal(r).await.body;
+            let reason = failure["error"].as_str().unwrap_or("backup failed").to_string();
             tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
             tracker_done.update(
                 &name_done,
@@ -1803,8 +1821,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                     done: true,
                     error: Some(text.t("provision.backup_failed", &[("reason", &reason)])),
                     percent: Some(100),
-                    steps: None,
-                },
+                    steps: None, details: Default::default(),
+                }.with_failure(failure),
             );
             return false;
         }
@@ -1825,7 +1843,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                             done: true,
                             error: Some(text.t("provision.module_missing", &[("error", &e.to_string())])),
                             percent: Some(100),
-                            steps: None,
+                            steps: None, details: Default::default(),
                         },
                     );
                     return false;
@@ -1857,19 +1875,20 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                         done: false,
                         error: None,
                         percent: Some(pct),
-                        steps: None,
+                        steps: None, details: Default::default(),
                     },
                 );
             };
 
-            crate::plugin::run_plugin_with_progress_and_timeout(
-                &lifecycle_path,
-                "install_server",
-                config,
-                on_progress,
-                crate::plugin::INSTALL_TIMEOUT_SECS,
-            )
-            .await
+            crate::plugin::PluginCall::new(&lifecycle_path, "install_server", config)
+                .in_instance(Some(host_context)).timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
+                .run_with_progress(Box::new(on_progress)).await
+                .and_then(|mut value| {
+                    if value.get("success").and_then(Value::as_bool) == Some(true) {
+                        boundary.returned_paths(&mut value, &module_name_owned, "install_server")?;
+                    }
+                    Ok(value)
+                })
         };
 
         let updated = match result {
@@ -1890,7 +1909,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                             done: true,
                             error: None,
                             percent: Some(100),
-                            steps: None,
+                            steps: None, details: Default::default(),
                         },
                     );
                 } else {
@@ -1911,8 +1930,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                             done: true,
                             error: Some(err_msg),
                             percent: Some(100),
-                            steps: None,
-                        },
+                            steps: None, details: Default::default(),
+                        }.with_failure(val.clone()),
                     );
                 }
                 success
@@ -1927,11 +1946,10 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                         label: "done".to_string(),
                         message: text.t("provision.update_failed", &[]),
                         done: true,
-                        // 스크립트 출력(stderr·경로)은 로그에만 남긴다
                         error: Some(text.t("provision.script_failed", &[])),
                         percent: Some(100),
-                        steps: None,
-                    },
+                        steps: None, details: Default::default(),
+                    }.with_failure(crate::plugin::error_response(&e)),
                 );
                 false
             }
@@ -1977,6 +1995,88 @@ fn settings_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMe
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn contract_paths_migration_reports_outside_executables_without_saving_them() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&server).unwrap();
+        let outside = tmp.path().join("outside.exe");
+        std::fs::write(&outside, "outside").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        let result = serde_json::json!({"success":true,"executable_path":outside,"settings":{"motd":"untrusted"}});
+        std::fs::write(dir.join("lifecycle.py"), format!("import sys\nprint('{{\"success\":true,\"functions\":[\"import_settings\"]}}' if sys.argv[1] == 'functions' else {:?})\n", result.to_string())).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server}))).await).await;
+        assert_eq!(response.status.as_u16(), 422, "{}", response.body);
+        assert_eq!(response.body["error_code"], "module_path_outside");
+        let sup = state.supervisor.read().await;
+        let instance = sup.instance_store.get(response.body["id"].as_str().unwrap()).unwrap();
+        assert_ne!(instance.executable_path.as_deref(), outside.to_str());
+        assert!(!instance.module_settings.contains_key("motd"));
+    }
+
+    #[tokio::test]
+    async fn contract_paths_migration_keeps_declared_external_data_roots_after_reload() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        let server = tmp.path().join("server");
+        let data = tmp.path().join("external-data");
+        for folder in [&dir, &server, &data] { std::fs::create_dir_all(folder).unwrap(); }
+        let executable = data.join("server.exe");
+        std::fs::write(&executable, "server").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'data_home'\ntype = 'file'\n\n[extensions.saba-core]\ndata_roots = ['{data_home}']\n").unwrap();
+        let result = serde_json::json!({"success":true,"executable_path":executable,"settings":{"data_home":data}});
+        std::fs::write(dir.join("lifecycle.py"), format!("import sys\nprint('{{\"success\":true,\"functions\":[\"import_settings\"]}}' if sys.argv[1] == 'functions' else {:?})\n", result.to_string())).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server}))).await).await;
+        assert_eq!(response.status.as_u16(), 201, "{}", response.body);
+        let mut sup = state.supervisor.write().await;
+        sup.instance_store.load().unwrap();
+        let instance = sup.instance_store.get(response.body["id"].as_str().unwrap()).unwrap();
+        assert_eq!(instance.executable_path.as_deref(), executable.to_str());
+        assert!(instance.imported_settings.contains("data_home"));
+        assert!(!instance.user_settings.contains("data_home"));
+        let metadata = sup.module_loader.get_module("game").unwrap().metadata;
+        let boundary = crate::module_paths::Boundary::for_instance(instance, &sup.instance_store.instance_dir(&instance.id), Some(&metadata));
+        assert!(boundary.resolve(&data.join("deleted/Saves")).is_some());
+    }
+
+    #[tokio::test]
+    async fn contract_paths_first_install_reports_an_outside_install_folder() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[install]\nmethod = 'manual'\n").unwrap();
+        let result = serde_json::json!({"success":true,"install_path":tmp.path().join("unrelated")});
+        std::fs::write(dir.join("lifecycle.py"), format!("import sys\nprint('{{\"success\":true,\"functions\":[\"install_server\"]}}' if sys.argv[1] == 'functions' else {:?})\n", result.to_string())).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game"}))).await).await;
+        assert_eq!(response.status.as_u16(), 201);
+        let progress = provisioned(&state, "g").await.unwrap();
+        assert_eq!(progress.details["error_code"], "module_path_outside");
+        assert!(progress.error.is_some());
+    }
+
     use super::{memory_limit_from, stop_timeout_from};
     use serde_json::json;
 
@@ -2037,6 +2137,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let create = |body: serde_json::Value| {
@@ -2064,7 +2165,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_crashed_install_script_reports_a_short_message_not_its_output() {
+    async fn a_crashed_install_script_keeps_the_short_error_and_structured_details() {
         use axum::extract::State;
         use axum::Json;
         let tmp = tempfile::tempdir().unwrap();
@@ -2076,20 +2177,23 @@ mod tests {
             "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"manual\"\n",
         )
         .unwrap();
-        std::fs::write(dir.join("lifecycle.py"), "import sys\nsys.stderr.write('Traceback: /home/me/secret.py line 3\\n')\nsys.exit(1)\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json, sys\nif sys.argv[1] == 'functions':\n    print(json.dumps({'success': True, 'functions': ['install_server']}))\nelse:\n    sys.stderr.write('Traceback: /home/me/secret.py line 3\\n')\n    sys.exit(1)\n").unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
         assert!(made.status.is_success(), "{:?}", made.body);
 
         let progress = provisioned(&state, "a").await;
-        let error = progress.expect("provisioning finished").error.unwrap();
-        let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
-        assert_eq!(error, text.t("provision.script_failed", &[]));
+        let progress = progress.expect("provisioning finished");
+        let error = progress.error.unwrap();
+        assert_eq!(progress.details["error_code"], "module_crashed");
+        assert_eq!(progress.details["function"], "install_server");
+        assert_eq!(progress.details["stderr_tail"][0], "Traceback: /home/me/secret.py line 3");
         assert!(!error.contains("Traceback") && !error.contains("stderr"));
     }
 
@@ -2164,6 +2268,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let body = json!({ "name": "a", "module_name": "game", "port": 25570 });
@@ -2207,13 +2312,15 @@ mod tests {
             dir.join("lifecycle.py"),
             format!(
                 "import json, sys, time\nconfig = json.load(sys.stdin)\nf = {:?}\n\
-                 if sys.argv[1] == 'import_settings':\n    print(json.dumps({{'success': True, 'settings': {{'motd': open(f).read()}}}}))\n\
+                 if sys.argv[1] == 'functions':\n    print(json.dumps({{'success': True, 'functions': ['configure', 'import_settings']}}))\n\
+                 elif sys.argv[1] == 'import_settings':\n    print(json.dumps({{'success': True, 'settings': {{'motd': open(f).read()}}}}))\n\
                  else:\n    time.sleep(1.0)\n    open(f, 'w').write((config.get('properties') or config.get('settings') or {{}}).get('motd', ''))\n    print(json.dumps({{'success': True}}))\n",
                 file.to_string_lossy()
             ),
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("a", &name);
         inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
@@ -2226,7 +2333,9 @@ mod tests {
         };
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         let live = crate::ipc::internal::into_internal(super::super::managed::read_live_settings_handler(Path(id.clone()), State(state.clone())).await).await;
-        assert!(save.await.unwrap().status.is_success());
+        let saved = save.await.unwrap();
+        assert!(saved.status.is_success(), "{}", saved.body);
+        assert_eq!(saved.body["synced"], true, "{}", saved.body);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "new");
         assert_eq!(live.body["settings"]["motd"], "new", "{}", live.body);
         let inst = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
@@ -2304,6 +2413,7 @@ mod tests {
         )
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("a", "game");
         inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
@@ -2367,6 +2477,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("a", "game");
         inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
@@ -2385,6 +2496,8 @@ mod tests {
         let saved = patch(json!({ "motd": "hi", "auto_restart": false, "enable_rcon": true })).await;
         assert!(saved.status.is_success(), "{:?}", saved.body);
         assert_eq!(saved.body["synced"], false);
+        // Codex 리뷰 #550: 모듈 실패 칸을 합치면서 저장 성공 표시를 false로 덮어 GUI가 저장 실패로 보였다
+        assert_eq!(saved.body["success"], true, "the settings were saved");
         assert_eq!(saved.body["sync_error"], "server.properties is read-only");
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
@@ -2460,6 +2573,7 @@ mod tests {
         .unwrap();
         std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("a", "game");
         inst.module_settings.insert("admins".into(), json!("Steve, Alex"));
@@ -2523,6 +2637,7 @@ mod tests {
         std::fs::write(dir.join("module.toml"), toml("text")).unwrap();
         std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game", "port": 25565 }))).await).await;
@@ -2578,6 +2693,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("a", "game");
         inst.working_dir = Some(tmp.path().to_string_lossy().to_string());
@@ -2624,6 +2740,7 @@ mod tests {
         .unwrap();
         std::fs::write(dir.join("lifecycle.py"), "").unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let shared = tmp.path().join("PalServer").to_string_lossy().to_string();
         // 예전에 만든 인스턴스는 다른 서버 폴더 안에 있을 수 있다: 같은 폴더처럼 잠근다
@@ -2674,6 +2791,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         crate::ipc::internal::into_internal(
@@ -2703,7 +2821,7 @@ mod tests {
         // 설치 중에 데이터 폴더에 첫 설정 파일을 쓰는 모듈 (좀보이드 첫 INI). 격리 실행은 그 폴더를 넘겨받아야 쓸 수 있다
         std::fs::write(
             dir.join("lifecycle.py"),
-            "import json, os, sys\nconfig = json.load(sys.stdin)\nnorm = lambda p: os.path.normcase(os.path.normpath(p))\n\
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'functions':\n    print(json.dumps({'success': True, 'functions': ['install_server']})); sys.exit(0)\nnorm = lambda p: os.path.normcase(os.path.normpath(p))\n\
              ok = norm(config['settings']['cache_dir']) in [norm(d) for d in config.get('instance_data_dirs', [])]\n\
              print(json.dumps({'success': ok, 'message': 'no data folder'}))\n",
         )
@@ -2712,6 +2830,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
@@ -2737,6 +2856,7 @@ mod tests {
         .unwrap();
         std::fs::write(modules.join("game").join("lifecycle.py"), "").unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
         let here = tmp.path().join("here").to_string_lossy().into_owned();
@@ -2809,6 +2929,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
@@ -2845,6 +2966,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let a = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
@@ -2896,6 +3018,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let create = |body: serde_json::Value| {
@@ -2940,6 +3063,7 @@ mod tests {
             tmp.path().join("modules").to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;
@@ -2975,6 +3099,7 @@ mod tests {
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await).await;

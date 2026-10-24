@@ -28,6 +28,11 @@ impl ProtocolClient {
         self
     }
 
+    pub fn with_response_limit(mut self, limit: usize) -> Self {
+        if let Some(rest) = &mut self.rest { rest.set_response_limit(limit); }
+        self
+    }
+
     /// REST만 연결
     pub fn connect_rest(&mut self, timeout: Duration) -> Result<(), ProtocolError> {
         if let Some(rest) = &mut self.rest {

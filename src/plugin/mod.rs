@@ -5,6 +5,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 use crate::utils::apply_creation_flags;
 
 mod loopback;
+pub(crate) mod host;
 
 /// 데몬 IPC 포트. 모듈이 데몬 API를 역호출할 때 쓴다(main이 기동 시 한 번 설정).
 static IPC_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
@@ -162,6 +163,268 @@ pub fn ensure_shared_modules(dir: &std::path::Path) -> std::io::Result<()> {
 /// 기본 플러그인 타임아웃 (초)
 pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 
+#[derive(Debug, Clone)]
+pub struct ModuleCallError {
+    response: Value,
+}
+
+impl ModuleCallError {
+    pub fn from_response(response: Value) -> Self {
+        Self { response }
+    }
+}
+
+impl std::fmt::Display for ModuleCallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.response.get("error").or_else(|| self.response.get("message")).and_then(Value::as_str).unwrap_or("Module call failed"))
+    }
+}
+
+impl std::error::Error for ModuleCallError {}
+
+pub fn error_response(error: &anyhow::Error) -> Value {
+    error.downcast_ref::<ModuleCallError>().map_or_else(
+        || serde_json::json!({"success": false, "error": error.to_string()}),
+        |error| error.response.clone(),
+    )
+}
+
+const INSTALL_SLOTS: usize = 2;
+const GENERAL_SLOTS: usize = 8;
+const STDOUT_LIMIT: usize = 4 * 1024 * 1024;
+const STDERR_LINES: usize = 200;
+const STDERR_BYTES: usize = 64 * 1024;
+
+tokio::task_local! {
+    static CALL_DEADLINE: CallDeadline;
+    static HOST_CONTEXT: Option<host::Context>;
+}
+
+#[derive(Clone, Default)]
+struct IsolationTime {
+    elapsed: std::time::Duration,
+    started: Option<tokio::time::Instant>,
+    waiting: usize,
+}
+
+impl IsolationTime {
+    fn elapsed(&self) -> std::time::Duration {
+        self.elapsed + self.started.map_or(std::time::Duration::ZERO, |started| started.elapsed())
+    }
+}
+
+#[derive(Clone)]
+struct CallDeadline {
+    at: tokio::time::Instant,
+    isolation: tokio::sync::watch::Sender<IsolationTime>,
+}
+
+struct IsolationWait(tokio::sync::watch::Sender<IsolationTime>);
+
+impl Drop for IsolationWait {
+    fn drop(&mut self) {
+        self.0.send_modify(|time| {
+            time.waiting -= 1;
+            if time.waiting == 0 {
+                time.elapsed += time.started.take().expect("isolation wait started").elapsed();
+            }
+        });
+    }
+}
+
+impl CallDeadline {
+    fn new(at: tokio::time::Instant) -> Self {
+        Self { at, isolation: tokio::sync::watch::channel(IsolationTime::default()).0 }
+    }
+
+    fn until(&self, at: tokio::time::Instant) -> Self {
+        Self { at: self.at.min(at - self.isolation.borrow().elapsed()), isolation: self.isolation.clone() }
+    }
+
+    fn remaining(&self) -> std::time::Duration {
+        (self.at + self.isolation.borrow().elapsed()).saturating_duration_since(tokio::time::Instant::now())
+    }
+
+    fn pause_isolation(&self) -> IsolationWait {
+        self.isolation.send_modify(|time| {
+            if time.waiting == 0 { time.started = Some(tokio::time::Instant::now()); }
+            time.waiting += 1;
+        });
+        IsolationWait(self.isolation.clone())
+    }
+
+    /// 격리 준비(프로필·폴더 권한)를 기다리는 동안은 기한에서 뺀다
+    async fn paused<T>(&self, work: impl std::future::Future<Output = T>) -> T {
+        let _waiting = self.pause_isolation();
+        work.await
+    }
+
+    async fn follow_isolation<T>(&self, source: &Self, work: impl std::future::Future<Output = T>) -> T {
+        if self.isolation.same_channel(&source.isolation) { return work.await; }
+        let source_start = source.isolation.borrow().elapsed();
+        let own_start = self.isolation.borrow().elapsed();
+        let mut isolation = source.isolation.subscribe();
+        let mut waiting = None;
+        tokio::pin!(work);
+        loop {
+            if isolation.borrow_and_update().waiting > 0 {
+                if waiting.is_none() { waiting = Some(self.pause_isolation()); }
+            } else {
+                waiting = None;
+            }
+            tokio::select! {
+                biased;
+                _ = isolation.changed() => {},
+                result = &mut work => {
+                    drop(waiting);
+                    let excluded = source.isolation.borrow().elapsed().saturating_sub(source_start);
+                    let followed = self.isolation.borrow().elapsed().saturating_sub(own_start);
+                    // watch는 중간 상태를 합칠 수 있으므로 다음 실행 전에 누적 제외 시간을 맞춘다.
+                    self.isolation.send_modify(|time| time.elapsed = (time.elapsed + excluded).saturating_sub(followed));
+                    return result;
+                },
+            }
+        }
+    }
+
+    async fn timeout<T>(&self, work: impl std::future::Future<Output = T>) -> std::result::Result<T, ()> {
+        let mut isolation = self.isolation.subscribe();
+        tokio::pin!(work);
+        loop {
+            let at = {
+                let time = isolation.borrow_and_update();
+                (time.waiting == 0).then_some(self.at + time.elapsed)
+            };
+            let timer = async {
+                if let Some(at) = at { tokio::time::sleep_until(at).await; }
+                else { std::future::pending::<()>().await; }
+            };
+            tokio::select! {
+                biased;
+                _ = isolation.changed() => {},
+                _ = timer => {
+                    let time = isolation.borrow();
+                    if time.waiting == 0 && tokio::time::Instant::now() >= self.at + time.elapsed { return Err(()); }
+                },
+                result = &mut work => return Ok(result),
+            }
+        }
+    }
+}
+
+pub(crate) async fn with_instance<T>(context: Option<host::Context>, work: impl std::future::Future<Output = T>) -> T {
+    HOST_CONTEXT.scope(context, work).await
+}
+
+struct CallLanes {
+    install: tokio::sync::Semaphore,
+    general: tokio::sync::Semaphore,
+}
+
+struct CallSlot<'a> {
+    _permit: Option<tokio::sync::SemaphorePermit<'a>>,
+}
+
+impl CallLanes {
+    const fn new() -> Self {
+        Self { install: tokio::sync::Semaphore::const_new(INSTALL_SLOTS), general: tokio::sync::Semaphore::const_new(GENERAL_SLOTS) }
+    }
+
+    async fn acquire(&self, function: &str, deadline: tokio::time::Instant, skip_busy: bool) -> std::result::Result<Option<CallSlot<'_>>, tokio::time::error::Elapsed> {
+        // 같은 작업의 내부 조회·재진입은 바깥 호출의 자리를 빌린다
+        if CALL_DEADLINE.try_with(|_| ()).is_ok() {
+            return Ok(Some(CallSlot { _permit: None }));
+        }
+        let lane = if function == "install_server" { &self.install } else { &self.general };
+        let permit = if skip_busy {
+            let Ok(permit) = lane.try_acquire() else { return Ok(None) };
+            permit
+        } else {
+            tokio::time::timeout_at(deadline, lane.acquire()).await?.expect("plugin lanes stay open")
+        };
+        Ok(Some(CallSlot { _permit: Some(permit) }))
+    }
+}
+
+#[cfg(not(test))]
+fn call_lanes() -> &'static CallLanes {
+    static CALL_LANES: CallLanes = CallLanes::new();
+    &CALL_LANES
+}
+
+#[cfg(test)]
+fn call_lanes() -> std::sync::Arc<CallLanes> {
+    // 각 테스트 런타임은 독립 데몬이다. 같은 런타임의 작업은 같은 상한을 쓴다.
+    static LANES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<tokio::runtime::Id, std::sync::Arc<CallLanes>>>> = std::sync::LazyLock::new(Default::default);
+    LANES.lock().unwrap_or_else(|e| e.into_inner())
+        .entry(tokio::runtime::Handle::current().id()).or_insert_with(|| std::sync::Arc::new(CallLanes::new())).clone()
+}
+
+fn module_name(entry: &str) -> String {
+    let path = std::path::Path::new(entry);
+    for dir in path.parent().into_iter().flat_map(std::path::Path::ancestors) {
+        if let Some(name) = std::fs::read_to_string(dir.join("module.toml")).ok().and_then(|text| text.parse::<toml::Value>().ok())
+            .and_then(|value| value.get("module")?.get("name")?.as_str().map(str::to_string)) {
+            return name;
+        }
+        if let Some(id) = std::fs::read_to_string(dir.join("manifest.json")).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|value| value.get("id")?.as_str().map(str::to_string)) {
+            return id;
+        }
+    }
+    path.parent().and_then(std::path::Path::file_name).unwrap_or_default().to_string_lossy().into_owned()
+}
+
+fn call_error(entry: &str, function: &str, code: &str, phase: &str, error: impl std::fmt::Display, stderr_tail: Vec<String>) -> anyhow::Error {
+    ModuleCallError::from_response(serde_json::json!({
+        "success": false, "error_code": code, "error": error.to_string(),
+        "module": module_name(entry), "function": function, "phase": phase, "stderr_tail": stderr_tail,
+    })).into()
+}
+
+fn sandbox_failure(entry: &str, function: &str, component: &str, blocked: &crate::sandbox::Blocked) -> Value {
+    let message = crate::sandbox::message(blocked);
+    let mut value = error_response(&call_error(entry, function, "module_execution_failed", "prepare", &message, Vec::new()));
+    if let Some(fields) = blocked.to_json(message).as_object() {
+        value.as_object_mut().expect("call error object").extend(fields.clone());
+    }
+    value["component"] = Value::String(component.to_string());
+    value
+}
+
+async fn prepare<T>(entry: &str, function: &str, deadline: CallDeadline, future: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    match deadline.timeout(future).await {
+        Ok(result) => result.map_err(|error| call_error(entry, function, "module_execution_failed", "prepare", error, Vec::new())),
+        Err(_) => Err(call_error(entry, function, "module_timeout", "prepare", format!("{}.{} preparation did not finish before the deadline", module_name(entry), function), Vec::new())),
+    }
+}
+
+fn decorate_result(entry: &str, function: &str, mut result: Value, stderr: &str) -> Value {
+    if result.get("success").and_then(Value::as_bool) == Some(false) {
+        result["module"] = Value::String(module_name(entry));
+        result["function"] = Value::String(function.to_string());
+        if result.get("error_code").and_then(Value::as_str) == Some("module_exception") {
+            result["stderr_tail"] = serde_json::json!(stderr_tail(stderr));
+        }
+    }
+    result
+}
+
+fn stderr_tail(stderr: &str) -> Vec<String> {
+    let lines: Vec<_> = stderr.lines().collect();
+    lines.iter().skip(lines.len().saturating_sub(20)).map(|line| (*line).to_string()).collect()
+}
+
+async fn in_call<T>(entry: &str, function: &str, timeout_secs: u64, skip_busy: bool, work: impl std::future::Future<Output = Result<T>>) -> Result<Option<T>> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    let call_deadline = CALL_DEADLINE.try_with(|outer| outer.until(deadline)).unwrap_or_else(|_| CallDeadline::new(deadline));
+    let lanes = call_lanes();
+    let slot = lanes.acquire(function, deadline, skip_busy).await
+        .map_err(|_| call_error(entry, function, "module_timeout", "queue", format!("{}.{} did not obtain a slot in {} s", module_name(entry), function, timeout_secs), Vec::new()))?;
+    let Some(_slot) = slot else { return Ok(None) };
+    CALL_DEADLINE.scope(call_deadline, work).await.map(Some)
+}
+
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 /// Called by Supervisor for module lifecycle management
@@ -180,11 +443,17 @@ pub struct PluginCall {
     /// 데몬이 추적하는 그 인스턴스의 서버 PID: 격리 실행의 루프백 중계는 이 프로세스(트리)가 듣는 포트로만 잇는다
     server: Option<u32>,
     timeout_secs: u64,
+    host: Option<host::Context>,
 }
 
 impl PluginCall {
     pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
-        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS }
+        Self { entry: entry.into(), function: function.to_string(), config, server: None, timeout_secs: DEFAULT_PLUGIN_TIMEOUT_SECS, host: None }
+    }
+
+    pub(crate) fn in_instance(mut self, host: Option<host::Context>) -> Self {
+        self.host = host;
+        self
     }
 
     pub fn serving(mut self, server: Option<u32>) -> Self {
@@ -212,7 +481,16 @@ impl PluginCall {
     }
 
     pub async fn run(self) -> Result<Value> {
-        run_plugin_inner(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server).await
+        HOST_CONTEXT.scope(self.host, run_plugin_inner(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server)).await
+    }
+
+    pub async fn run_with_progress(self, callback: Box<dyn Fn(ExtensionProgress) + Send>) -> Result<Value> {
+        HOST_CONTEXT.scope(self.host, run_plugin_inner(&self.entry, &self.function, self.config, Some(callback), self.timeout_secs, self.server)).await
+    }
+
+    pub async fn try_run(self) -> Result<Option<Value>> {
+        HOST_CONTEXT.scope(self.host, in_call(&self.entry, &self.function, self.timeout_secs, true,
+            run_requested_plugin(&self.entry, &self.function, self.config, None, self.timeout_secs, self.server))).await
     }
 }
 
@@ -222,21 +500,6 @@ pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
 
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, timeout_secs, None).await
-}
-
-/// Like `run_plugin_with_progress` but with a custom timeout.
-/// SteamCMD 다운로드 등 장시간 작업에 사용합니다.
-pub async fn run_plugin_with_progress_and_timeout<F>(
-    module_path: &str,
-    function: &str,
-    config: Value,
-    on_progress: F,
-    timeout_secs: u64,
-) -> Result<Value>
-where
-    F: Fn(ExtensionProgress) + Send + 'static,
-{
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs, None).await
 }
 
 type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
@@ -256,6 +519,23 @@ enum Process {
 }
 
 impl Process {
+    fn kill_now(&mut self, pid: Option<u32>) {
+        match self {
+            Process::Plain {
+                child,
+                #[cfg(windows)]
+                job,
+            } => {
+                #[cfg(windows)]
+                if let Some(job) = job { windows_job::terminate(job); }
+                if let Some(pid) = pid.or(child.id()) { kill_tree(pid); }
+                let _ = child.start_kill();
+            }
+            #[cfg(windows)]
+            Process::Contained(child) => child.kill(),
+        }
+    }
+
     fn pipes(&mut self) -> (Option<Writer>, Option<Reader>, Option<Reader>) {
         match self {
             Process::Plain { child, .. } => (
@@ -319,12 +599,50 @@ impl Process {
     }
 }
 
-fn plain(child: tokio::process::Child) -> Process {
-    Process::Plain {
+fn plain(cmd: &mut Command) -> std::io::Result<Process> {
+    #[cfg(windows)]
+    let (child, job) = windows_job::spawn(cmd)?;
+    #[cfg(not(windows))]
+    let child = cmd.spawn()?;
+    Ok(Process::Plain {
         #[cfg(windows)]
-        job: windows_job::contain(&child),
+        job: Some(job),
         child,
+    })
+}
+
+/// 환경 준비가 취소되어도 다운로드·venv 생성 프로세스와 그 자식은 남기지 않는다
+pub(crate) async fn preparation_output(cmd: &mut Command) -> std::io::Result<std::process::Output> {
+    cmd.kill_on_drop(true).stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    #[cfg(unix)]
+    cmd.process_group(0);
+    #[cfg(windows)]
+    let (child, job) = windows_job::spawn(cmd)?;
+    #[cfg(not(windows))]
+    let child = cmd.spawn()?;
+    struct Cleanup {
+        pid: Option<u32>,
+        #[cfg(windows)]
+        job: Option<std::os::windows::io::OwnedHandle>,
     }
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            if let Some(pid) = self.pid {
+                #[cfg(windows)]
+                if let Some(job) = &self.job { windows_job::terminate(job); }
+                kill_tree(pid);
+            }
+        }
+    }
+    let mut cleanup = Cleanup {
+        pid: child.id(),
+        #[cfg(windows)]
+        job: Some(job),
+    };
+    let output = child.wait_with_output().await;
+    if output.is_ok() { cleanup.pid = None; }
+    output
 }
 
 /// 평소대로 띄운 Python을 넣는 Job Object (Windows).
@@ -333,18 +651,37 @@ fn plain(child: tokio::process::Child) -> Process {
 #[cfg(windows)]
 mod windows_job {
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject, TerminateJobObject};
-    use winapi::um::winnt::{JobObjectExtendedLimitInformation, HANDLE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK};
+    use winapi::um::processthreadsapi::{OpenThread, ResumeThread};
+    use winapi::um::tlhelp32::{CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD};
+    use winapi::um::winbase::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
+    use winapi::um::winnt::{JobObjectExtendedLimitInformation, HANDLE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK, THREAD_SUSPEND_RESUME};
 
-    /// 띄운 직후에 넣는다. 그 전에 띄운 손자는 없다고 본다 (Python이 시작하는 데 걸리는 시간보다 짧다).
-    /// 실패하면 None: 예전처럼 `taskkill /T`만 쓴다
-    pub(super) fn contain(child: &tokio::process::Child) -> Option<OwnedHandle> {
-        let process = child.raw_handle()? as HANDLE;
+    // 실행기가 자식을 먼저 띄우면 Job 등록만으로는 이미 나온 자식을 포함하지 못한다.
+    pub(super) fn spawn(cmd: &mut tokio::process::Command) -> std::io::Result<(tokio::process::Child, OwnedHandle)> {
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
+        let mut child = cmd.spawn()?;
+        let ready = contain(&child).and_then(|job| {
+            let pid = child.id().ok_or_else(|| std::io::Error::other("Plugin process has no PID"))?;
+            resume(pid)?;
+            Ok(job)
+        });
+        match ready {
+            Ok(job) => Ok((child, job)),
+            Err(error) => {
+                let _ = child.start_kill();
+                Err(error)
+            }
+        }
+    }
+
+    fn contain(child: &tokio::process::Child) -> std::io::Result<OwnedHandle> {
+        let process = child.raw_handle().ok_or_else(|| std::io::Error::other("Plugin process has no handle"))? as HANDLE;
         unsafe {
             let job = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
             if job.is_null() {
-                tracing::warn!("Plugin job object: {}", std::io::Error::last_os_error());
-                return None;
+                return Err(std::io::Error::last_os_error());
             }
             let job = OwnedHandle::from_raw_handle(job as RawHandle);
             let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
@@ -357,10 +694,37 @@ mod windows_job {
             ) != 0
                 && AssignProcessToJobObject(job.as_raw_handle() as HANDLE, process) != 0;
             if !ok {
-                tracing::warn!("Plugin job object: {}", std::io::Error::last_os_error());
-                return None;
+                return Err(std::io::Error::last_os_error());
             }
-            Some(job)
+            Ok(job)
+        }
+    }
+
+    fn resume(pid: u32) -> std::io::Result<()> {
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if snapshot == INVALID_HANDLE_VALUE {
+                return Err(std::io::Error::last_os_error());
+            }
+            let snapshot = OwnedHandle::from_raw_handle(snapshot as RawHandle);
+            let mut entry: THREADENTRY32 = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+            let mut found = Thread32First(snapshot.as_raw_handle() as HANDLE, &mut entry);
+            while found != 0 {
+                if entry.th32OwnerProcessID == pid {
+                    let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID);
+                    if thread.is_null() {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    let thread = OwnedHandle::from_raw_handle(thread as RawHandle);
+                    if ResumeThread(thread.as_raw_handle() as HANDLE) == u32::MAX {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    return Ok(());
+                }
+                found = Thread32Next(snapshot.as_raw_handle() as HANDLE, &mut entry);
+            }
+            Err(std::io::Error::other("Plugin process has no initial thread"))
         }
     }
 
@@ -383,7 +747,8 @@ fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl 
 /// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다. 확인되지 않아 뺀 것을 돌려준다
 fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool, consented: Option<&str>) -> Vec<String> {
     let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
-        crate::sandbox::ENFORCED && crate::sandbox::restricted(crate::sandbox::extension_trust(id))
+        crate::sandbox::python_isolation_required(crate::sandbox::extension_trust(id))
+            && !crate::sandbox::extension_unisolated_allowed(id)
     }, consented);
     cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
     // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
@@ -391,8 +756,7 @@ fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, is
     unverified
 }
 
-/// 모듈이 import 실패를 삼키고 `extension_required`로 답해도(팰월드는 맨 위에서 ue4_ini import 실패를 받아 둔다),
-/// 빠진 익스텐션이 모두 확인되지 않아 막은 것이면 설치·활성화 안내 대신 `extension_not_verified`로 바꾼다
+/// 빠진 익스텐션이 모두 검증되지 않아 차단되었으면 설치 안내 대신 검증 실패를 알린다.
 fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
     if result.get("error_code").and_then(Value::as_str) != Some("extension_required") || unverified.is_empty() {
         return;
@@ -451,7 +815,18 @@ impl FunctionsAnswer {
 type FunctionCache = std::collections::HashMap<String, (Option<std::time::SystemTime>, FunctionsAnswer, std::time::Instant)>;
 static MODULE_FUNCTIONS: std::sync::LazyLock<std::sync::Mutex<FunctionCache>> = std::sync::LazyLock::new(Default::default);
 /// 진입 파일마다 하나: 동시에 온 요청이 Python을 따로 띄우지 않고 먼저 물은 답을 기다린다
-type FunctionLocks = std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>;
+struct FunctionQuery {
+    asking: tokio::sync::Mutex<()>,
+    isolation: tokio::sync::watch::Sender<IsolationTime>,
+}
+
+impl Default for FunctionQuery {
+    fn default() -> Self {
+        Self { asking: tokio::sync::Mutex::new(()), isolation: tokio::sync::watch::channel(IsolationTime::default()).0 }
+    }
+}
+
+type FunctionLocks = std::collections::HashMap<String, std::sync::Arc<FunctionQuery>>;
 static FUNCTIONS_ASKING: std::sync::LazyLock<std::sync::Mutex<FunctionLocks>> = std::sync::LazyLock::new(Default::default);
 
 /// `functions` 응답을 읽는다. 목록은 성공 응답의 문자열 배열에서만 읽는다
@@ -484,16 +859,31 @@ pub async fn module_functions(entry: &str) -> Option<Vec<String>> {
     if let Some(list) = cached_functions(entry) {
         return list;
     }
-    let lock = FUNCTIONS_ASKING.lock().unwrap_or_else(|e| e.into_inner()).entry(entry.to_string()).or_default().clone();
-    let _asking = lock.lock().await;
+    in_call(entry, FUNCTIONS_QUERY, FUNCTIONS_TIMEOUT_SECS, false, query_functions(entry)).await.ok().flatten().flatten()
+}
+
+async fn query_functions(entry: &str) -> Result<Option<Vec<String>>> {
     if let Some(list) = cached_functions(entry) {
-        return list;
+        return Ok(list);
     }
-    let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
-    let answer = functions_answer(spawn_plugin(entry, FUNCTIONS_QUERY, serde_json::json!({}), None, FUNCTIONS_TIMEOUT_SECS, None).await);
-    let list = answer.list();
-    MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(entry.to_string(), (modified, answer, std::time::Instant::now()));
-    list
+    let lock = FUNCTIONS_ASKING.lock().unwrap_or_else(|e| e.into_inner()).entry(entry.to_string()).or_default().clone();
+    let outer = CALL_DEADLINE.with(Clone::clone);
+    let deadline = CallDeadline {
+        at: tokio::time::Instant::now() + outer.remaining().min(std::time::Duration::from_secs(FUNCTIONS_TIMEOUT_SECS)) - lock.isolation.borrow().elapsed(),
+        isolation: lock.isolation.clone(),
+    };
+    outer.follow_isolation(&deadline, CALL_DEADLINE.scope(deadline.clone(), async {
+        let _asking = deadline.timeout(lock.asking.lock()).await
+            .map_err(|_| call_error(entry, FUNCTIONS_QUERY, "module_timeout", "run", "Function list query did not finish before the deadline", Vec::new()))?;
+        if let Some(list) = cached_functions(entry) {
+            return Ok(list);
+        }
+        let modified = std::fs::metadata(entry).and_then(|m| m.modified()).ok();
+        let answer = functions_answer(Box::pin(spawn_plugin(entry, FUNCTIONS_QUERY, serde_json::json!({}), None, FUNCTIONS_TIMEOUT_SECS, None)).await);
+        let list = answer.list();
+        MODULE_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(entry.to_string(), (modified, answer, std::time::Instant::now()));
+        Ok(list)
+    })).await
 }
 
 /// 목록 응답용: 캐시에 없으면 뒤에서 묻기 시작하고 `FUNCTIONS_LIST_WAIT_MS`까지만 기다린다
@@ -534,15 +924,27 @@ async fn run_plugin_inner(
     timeout_secs: u64,
     server: Option<u32>,
 ) -> Result<Value> {
+    in_call(module_path, function, timeout_secs, false,
+        run_requested_plugin(module_path, function, config, on_progress, timeout_secs, server)).await.map(Option::unwrap)
+}
+
+async fn run_requested_plugin(
+    module_path: &str,
+    function: &str,
+    config: Value,
+    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    timeout_secs: u64,
+    server: Option<u32>,
+) -> Result<Value> {
     // 모듈(옆에 module.toml이 있는 진입 파일)만: 익스텐션 hook 이름은 이 표와 상관없다
     let is_module = std::path::Path::new(module_path).parent().is_some_and(|d| d.join("module.toml").is_file());
     if is_module && OPTIONAL_MODULE_FUNCTIONS.contains(&function) {
-        if let Some(reply) = unsupported_reply(function, module_functions(module_path).await.as_deref()) {
+        if let Some(reply) = unsupported_reply(function, query_functions(module_path).await.unwrap_or(None).as_deref()) {
             tracing::debug!("Module {} does not implement {}", module_path, function);
-            return Ok(reply);
+            return Ok(decorate_result(module_path, function, reply, ""));
         }
     }
-    spawn_plugin(module_path, function, config, on_progress, timeout_secs, server).await
+    Box::pin(spawn_plugin(module_path, function, config, on_progress, timeout_secs, server)).await
 }
 
 async fn spawn_plugin(
@@ -555,8 +957,12 @@ async fn spawn_plugin(
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
-    let config_json = serde_json::to_string(&config)?;
-    let python_exe = crate::python_env::get_python_path().await?;
+    let deadline = CALL_DEADLINE.with(Clone::clone);
+    if !std::path::Path::new(module_path).is_file() {
+        return Err(call_error(module_path, function, "module_execution_failed", "prepare", "Module entry file does not exist", Vec::new()));
+    }
+    let config_json = serde_json::to_string(&config).map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
+    let python_exe = prepare(module_path, function, deadline.clone(), crate::python_env::get_python_path()).await?;
     tracing::debug!("Using Python: {}", python_exe.display());
 
     let mut cmd = Command::new(&python_exe);
@@ -660,11 +1066,22 @@ async fn spawn_plugin(
     };
     cmd.env("SABA_EXTENSION_DATA_ROOT", extension_root);
 
+    let host_root = isolation.as_ref().map(|iso| iso.temp.clone())
+        .unwrap_or_else(|| saba_chan_updater_lib::constants::resolve_data_dir().join("host-temp"));
+    std::fs::create_dir_all(&host_root).map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
+    let host_dir = tempfile::Builder::new().prefix("host-").tempdir_in(&host_root)
+        .map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
+    cmd.env("SABA_HOST_DIR", host_dir.path());
+    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: HOST_CONTEXT.try_with(Clone::clone).ok().flatten(), server };
+
     apply_creation_flags(&mut cmd);
 
+    if deadline.remaining().is_zero() {
+        return Err(call_error(module_path, function, "module_timeout", "prepare", "Process preparation exceeded the deadline", Vec::new()));
+    }
     let mut child = match &isolation {
-        None => plain(cmd.spawn()?),
-        Some(iso) => match crate::sandbox::spawn_isolated(cmd.as_std(), iso).await {
+        None => plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?,
+        Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
             Ok(crate::sandbox::Spawned::Unisolated) => {
                 // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
                 if let Some(enabled) = enabled_extensions {
@@ -673,54 +1090,117 @@ async fn spawn_plugin(
                 // 격리 없이 돌면 루프백에 직접 닿는다
                 cmd.env_remove("SABA_LOOPBACK_DIR");
                 loopback = None;
-                plain(cmd.spawn()?)
+                plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?
             }
             #[cfg(windows)]
             Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
             Err(blocked) => {
-                let mut value = blocked.to_json(crate::sandbox::message(&blocked));
-                value["component"] = Value::String(iso.key.clone());
-                return Ok(value);
+                return Ok(sandbox_failure(module_path, function, &iso.key, &blocked));
             }
         },
     };
-    let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, std::time::Duration::from_secs(timeout_secs)).await;
+    let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, Some(host_proxy), deadline.remaining()).await;
 
     match status {
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
             if !exit_status.success() {
                 tracing::error!("Plugin failed (exit {:?}):\n  stderr: {}\n  stdout: {}", exit_status.code(), stderr_str, stdout_str.trim());
-                return Err(anyhow::anyhow!("Plugin execution failed (exit {:?}):\nstderr: {}\nstdout: {}", exit_status.code(), stderr_str, stdout_str.trim()));
+                return Err(call_error(module_path, function, "module_crashed", "run", format!("{}.{} exited with {:?}", module_name(module_path), function, exit_status.code()), stderr_tail(&stderr_str)));
             }
 
             match parse_plugin_output(&stdout_str) {
                 Ok(mut result) => {
                     tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
                     explain_unverified_extensions(&mut result, &unverified_extensions);
-                    Ok(result)
+                    Ok(decorate_result(module_path, function, result, &stderr_str))
                 }
                 Err(e) => {
                     tracing::error!("Failed to parse plugin JSON: {} | stdout: {}", e, stdout_str);
-                    Err(anyhow::anyhow!("Invalid JSON from plugin: {}\nOutput: {}", e, stdout_str))
+                    Err(call_error(module_path, function, "module_bad_output", "run", format!("Invalid JSON from {}.{}: {}", module_name(module_path), function, e), stderr_tail(&stderr_str)))
                 }
             }
         }
         Ok(Err(e)) => {
             tracing::error!("Plugin process error: {}", e);
-            Err(anyhow::anyhow!("Plugin process error: {}", e))
+            let code = if e.error.get_ref().is_some_and(|error| error.is::<OutputTooLarge>()) { "module_output_too_large" } else { "module_execution_failed" };
+            Err(call_error(module_path, function, code, "run", &e.error, e.stderr_tail))
         }
-        Err(_) => {
+        Err(error) => {
             // 타임아웃 — drive가 프로세스 트리를 이미 끝냈다
             tracing::warn!(
                 "Plugin timed out after {}s: {} -> {} — killed process",
                 timeout_secs, module_path, function
             );
-            Err(anyhow::anyhow!("Plugin timed out after {}s", timeout_secs))
+            Err(call_error(module_path, function, "module_timeout", "run", format!("{}.{} did not finish in {} s", module_name(module_path), function, timeout_secs), error.stderr_tail))
         }
     }
 }
 
-type Collected = std::io::Result<(std::process::ExitStatus, String, String)>;
+#[derive(Debug, thiserror::Error)]
+#[error("Plugin stdout exceeds 4 MiB")]
+struct OutputTooLarge;
+
+#[derive(Debug, thiserror::Error)]
+#[error("{error}")]
+struct RunFailure {
+    error: std::io::Error,
+    stderr_tail: Vec<String>,
+}
+
+#[derive(Debug)]
+struct RunTimeout {
+    stderr_tail: Vec<String>,
+}
+
+type Collected = std::result::Result<(std::process::ExitStatus, String, String), RunFailure>;
+
+#[derive(Default)]
+struct StderrLog {
+    lines: std::collections::VecDeque<String>,
+    bytes: usize,
+}
+
+impl StderrLog {
+    fn push(&mut self, mut line: String) {
+        if line.len() >= STDERR_BYTES {
+            let mut start = line.len() - (STDERR_BYTES - 1);
+            while !line.is_char_boundary(start) { start += 1; }
+            line.drain(..start);
+        }
+        self.bytes += line.len() + 1;
+        self.lines.push_back(line);
+        while self.lines.len() > STDERR_LINES || self.bytes > STDERR_BYTES {
+            if let Some(line) = self.lines.pop_front() {
+                self.bytes -= line.len() + 1;
+            }
+        }
+    }
+
+    fn tail(&self) -> Vec<String> {
+        self.lines.iter().skip(self.lines.len().saturating_sub(20)).cloned().collect()
+    }
+
+    fn text(&self) -> String {
+        self.lines.iter().map(String::as_str).collect::<Vec<_>>().join("\n")
+    }
+}
+
+async fn next_stderr_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, lines: &mut saba_runner::Lines) -> std::io::Result<Option<(String, bool)>> {
+    use tokio::io::AsyncBufReadExt;
+    loop {
+        if let Some(line) = lines.next_line() {
+            let ended = lines.ends_line(&line);
+            return Ok(Some((lines.decode(&line), ended)));
+        }
+        let chunk = reader.fill_buf().await?;
+        if chunk.is_empty() {
+            return Ok(lines.finish().map(|line| (lines.decode(&line), true)));
+        }
+        let count = chunk.len();
+        lines.push(chunk);
+        reader.consume(count);
+    }
+}
 
 /// 입력 쓰기부터 종료 대기, stdout·stderr 수집까지 한 기한 안에 한다.
 /// 기한을 넘기거나 입출력이 실패하면 프로세스 트리를 끝내고 읽기 작업을 멈춘다.
@@ -730,8 +1210,9 @@ async fn drive(
     input: &[u8],
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
     loopback: Option<loopback::Proxy>,
+    host: Option<host::Proxy>,
     timeout: std::time::Duration,
-) -> std::result::Result<Collected, tokio::time::error::Elapsed> {
+) -> std::result::Result<Collected, RunTimeout> {
     let pid = match child {
         Process::Plain { child, .. } => child.id(),
         #[cfg(windows)]
@@ -739,22 +1220,57 @@ async fn drive(
     };
     let (stdin_pipe, stdout_pipe, stderr_pipe) = child.pipes();
 
-    // Stream stderr line-by-line to capture PROGRESS: events in real-time
+    let stderr = std::sync::Arc::new(std::sync::Mutex::new(StderrLog::default()));
+    let captured = stderr.clone();
+    let deadline = CALL_DEADLINE.try_with(Clone::clone).ok();
+    let run_deadline = deadline.clone().unwrap_or_else(|| CallDeadline::new(tokio::time::Instant::now() + timeout));
     let stderr_handle = tokio::spawn(async move {
-        let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
             let mut reader = BufReader::new(pipe);
             let mut lines = saba_runner::Lines::default();
             let mut relayed = 0;
+            let mut requests = tokio::task::JoinSet::new();
+            let mut hide_continuation = false;
             // UTF-8이 아닌 줄에서 멈추면 stderr 파이프가 차서 모듈이 시간 초과까지 멈춘다
-            while let Some(line) = crate::supervisor::managed_process::next_line(&mut reader, &mut lines).await {
+            while let Some((line, ended)) = next_stderr_line(&mut reader, &mut lines).await? {
+                if hide_continuation {
+                    hide_continuation = !ended;
+                    continue;
+                }
+                if let Some(request) = line.strip_prefix(host::PREFIX) {
+                    hide_continuation = !ended;
+                    match &host {
+                        Some(proxy) if relayed < loopback::MAX_REQUESTS => {
+                            relayed += 1;
+                            let (proxy, request) = (proxy.clone(), request.to_string());
+                            let deadline = deadline.clone();
+                            requests.spawn(async move {
+                                let serve = host::serve(&proxy, &request);
+                                if let Some(deadline) = deadline { CALL_DEADLINE.scope(deadline, serve).await; }
+                                else { serve.await; }
+                            });
+                        }
+                        Some(proxy) => host::refuse(proxy, request, "too_many_requests"),
+                        None => tracing::warn!("[Host] request without a channel ignored"),
+                    }
+                    continue;
+                }
                 // 중계 요청은 로그에 남기지 않는다 (인증 머리글이 들어 있을 수 있다)
                 if let Some(request) = line.strip_prefix(loopback::PREFIX) {
+                    hide_continuation = !ended;
                     match &loopback {
                         Some(proxy) if relayed < loopback::MAX_REQUESTS => {
                             relayed += 1;
                             let (proxy, request) = (proxy.clone(), request.to_string());
-                            tokio::spawn(async move { loopback::serve(&proxy, &request).await });
+                            let deadline = deadline.clone();
+                            requests.spawn(async move {
+                                let serve = loopback::serve(&proxy, &request);
+                                if let Some(deadline) = deadline {
+                                    CALL_DEADLINE.scope(deadline, serve).await;
+                                } else {
+                                    serve.await;
+                                }
+                            });
                         }
                         Some(proxy) => {
                             tracing::warn!("[Loopback] request limit of {} reached", loopback::MAX_REQUESTS);
@@ -770,45 +1286,76 @@ async fn drive(
                             cb(prog);
                         }
                     }
+                    continue;
                 } else {
                     tracing::debug!("Plugin stderr: {}", line);
                 }
-                log_lines.push(line);
+                captured.lock().unwrap_or_else(|e| e.into_inner()).push(line);
             }
         }
-        log_lines.join("\n")
+        Ok::<_, std::io::Error>(())
     });
 
-    // Read all of stdout (final JSON result)
     let stdout_handle = tokio::spawn(async move {
         let mut buf = Vec::new();
         if let Some(pipe) = stdout_pipe {
-            let mut reader = tokio::io::BufReader::new(pipe);
-            let _ = tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut buf).await;
+            let mut reader = tokio::io::AsyncReadExt::take(pipe, STDOUT_LIMIT as u64 + 1);
+            tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut buf).await?;
+            if buf.len() > STDOUT_LIMIT {
+                return Err(std::io::Error::other(OutputTooLarge));
+            }
         }
-        String::from_utf8_lossy(&buf).to_string()
+        Ok(String::from_utf8_lossy(&buf).to_string())
     });
 
     let readers = [stderr_handle.abort_handle(), stdout_handle.abort_handle()];
 
-    let work = async {
-        if let Some(mut stdin) = stdin_pipe {
-            stdin.write_all(input).await?;
-            stdin.shutdown().await?;
+    struct Running<'a> {
+        child: &'a mut Process,
+        pid: Option<u32>,
+        readers: [tokio::task::AbortHandle; 2],
+        finished: bool,
+    }
+    impl Drop for Running<'_> {
+        fn drop(&mut self) {
+            if !self.finished {
+                self.child.kill_now(self.pid);
+                for reader in &self.readers { reader.abort(); }
+            }
         }
-        let exit_status = child.wait().await?;
-        let stderr_str = stderr_handle.await.unwrap_or_default();
-        let stdout_str = stdout_handle.await.unwrap_or_default();
+    }
+    let mut running = Running { child, pid, readers, finished: false };
+
+    let work = async {
+        // 출력 상한은 프로세스 종료를 기다리지 않고 바로 끊는다
+        let (exit_status, stdout_str, ()) = tokio::try_join!(
+            async {
+                if let Some(mut stdin) = stdin_pipe {
+                    stdin.write_all(input).await?;
+                    stdin.shutdown().await?;
+                }
+                running.child.wait().await
+            },
+            async { stdout_handle.await.map_err(std::io::Error::other)? },
+            async { stderr_handle.await.map_err(std::io::Error::other)? },
+        )?;
+        let stderr_str = stderr.lock().unwrap_or_else(|e| e.into_inner()).text();
         Ok((exit_status, stdout_str, stderr_str))
     };
-    let result = tokio::time::timeout(timeout, work).await;
+    let result = run_deadline.timeout(work).await;
     if !matches!(result, Ok(Ok(_))) {
-        child.kill(pid).await;
-        for reader in readers {
+        running.child.kill(pid).await;
+        for reader in &running.readers {
             reader.abort();
         }
     }
-    result
+    running.finished = true;
+    let stderr_tail = stderr.lock().unwrap_or_else(|e| e.into_inner()).tail();
+    match result {
+        Ok(Ok(collected)) => Ok(Ok(collected)),
+        Ok(Err(error)) => Ok(Err(RunFailure { error, stderr_tail })),
+        Err(_) => Err(RunTimeout { stderr_tail }),
+    }
 }
 
 // detect_python_command()는 python_env::get_python_path()로 대체됨.
@@ -829,6 +1376,483 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn module_call_futures_fit_worker_stacks() {
+        fn size<F: std::future::Future>(_: impl FnOnce() -> F) -> usize {
+            std::mem::size_of::<F>()
+        }
+
+        let sizes = [
+            ("run_plugin", size(|| run_plugin("game/lifecycle.py", "status", Value::Null))),
+            ("PluginCall::run", size(|| PluginCall::new("game/lifecycle.py", "status", Value::Null).run())),
+            ("PluginCall::run_with_progress", size(|| PluginCall::new("game/lifecycle.py", "status", Value::Null).run_with_progress(Box::new(|_| {})))),
+            ("PluginCall::try_run", size(|| PluginCall::new("game/lifecycle.py", "status", Value::Null).try_run())),
+            ("module_functions", size(|| module_functions("game/lifecycle.py"))),
+        ];
+        eprintln!("module-call future sizes: {sizes:?}; spawn_plugin={}, query_functions={}, run_requested_plugin={}",
+            size(|| spawn_plugin("game/lifecycle.py", "status", Value::Null, None, 120, None)),
+            size(|| query_functions("game/lifecycle.py")),
+            size(|| run_requested_plugin("game/lifecycle.py", "status", Value::Null, None, 120, None)));
+        for (entry, bytes) in sizes {
+            assert!(bytes <= 16 * 1024, "{entry} future uses {bytes} bytes; keep module calls small on 2 MiB worker stacks");
+        }
+    }
+
+    #[test]
+    fn a_blocked_unverified_extension_is_reported_as_unverified() {
+        let unverified = vec!["ue4-ini".to_string()];
+        let mut blocked = json!({"success": false, "error_code": "extension_required", "missing_extensions": ["ue4_ini"], "message": "install it"});
+        explain_unverified_extensions(&mut blocked, &unverified);
+        let blocked = decorate_result("game/lifecycle.py", "start", blocked, "");
+        assert_eq!(blocked["error_code"], "extension_not_verified");
+        assert_eq!(blocked["unverified_extensions"], json!(["ue4-ini"]));
+        assert_eq!(blocked["module"], "game");
+        assert_eq!(blocked["function"], "start");
+        let mut missing = json!({"error_code": "extension_required", "missing_extensions": ["ue4-ini", "steamcmd"]});
+        explain_unverified_extensions(&mut missing, &unverified);
+        assert_eq!(missing["error_code"], "extension_required");
+    }
+
+    async fn python_process(script: &str) -> Process {
+        let python = crate::python_env::detect_system_python().await.expect("test Python");
+        let mut cmd = Command::new(python);
+        cmd.args(["-c", script]).stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+        #[cfg(unix)]
+        cmd.process_group(0);
+        apply_creation_flags(&mut cmd);
+        plain(&mut cmd).unwrap()
+    }
+
+    #[tokio::test]
+    async fn stdout_larger_than_four_mib_stops_the_run() {
+        let mut child = python_process("import sys; sys.stdin.read(); sys.stdout.write('x' * (4 * 1024 * 1024 + 1)); sys.stdout.flush()").await;
+        let result = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await;
+        assert!(matches!(result, Ok(Err(_))), "stdout beyond the cap must fail");
+    }
+
+    #[tokio::test]
+    async fn stdout_at_the_four_mib_boundary_is_allowed() {
+        let mut child = python_process("import sys; sys.stdin.read(); sys.stdout.write('x' * (4 * 1024 * 1024)); sys.stdout.flush()").await;
+        let (_, stdout, _) = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+        assert_eq!(stdout.len(), STDOUT_LIMIT);
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_run_preserves_its_last_twenty_stderr_lines() {
+        let mut child = python_process("import sys, time; sys.stdin.read(); [print(i, file=sys.stderr, flush=True) for i in range(30)]; time.sleep(60)").await;
+        let failure = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_millis(500)).await.unwrap_err();
+        assert_eq!(failure.stderr_tail.len(), 20);
+        assert_eq!(failure.stderr_tail.first().unwrap(), "10");
+        assert_eq!(failure.stderr_tail.last().unwrap(), "29");
+    }
+
+    #[tokio::test]
+    async fn stderr_keeps_only_the_last_two_hundred_lines_and_sixty_four_kib() {
+        let mut child = python_process("import sys; sys.stdin.read(); [print(str(i) + ':' + 'x' * 1000, file=sys.stderr) for i in range(300)]; print('{}')").await;
+        let (_, _, stderr) = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+        assert!(stderr.len() <= 64 * 1024, "retained {} bytes", stderr.len());
+        assert!(stderr.lines().count() <= 200);
+        assert!(stderr.lines().last().unwrap().starts_with("299:"));
+        assert!(!stderr.lines().any(|l| l.starts_with("0:")));
+    }
+
+    #[tokio::test]
+    async fn short_stderr_lines_keep_only_the_last_two_hundred() {
+        let mut child = python_process("import sys; sys.stdin.read(); [print(i, file=sys.stderr) for i in range(300)]; print('{}')").await;
+        let (_, _, stderr) = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+        assert_eq!(stderr.lines().count(), 200);
+        assert_eq!(stderr.lines().next(), Some("100"));
+        assert_eq!(stderr.lines().last(), Some("299"));
+    }
+
+    #[tokio::test]
+    async fn host_request_fragments_never_enter_stderr_diagnostics() {
+        for script in [
+            "import sys; sys.stdin.read(); print('HOST:' + 'sensitive' * 20000, file=sys.stderr); print('visible', file=sys.stderr); print('{}')",
+            "import sys; sys.stdin.read(); sys.stderr.buffer.write(('HOST:' + 'x'*32762 + '\\u0a41' + 'sensitive-tail\\nvisible\\n').encode('utf-16-le')); print('{}')",
+        ] {
+            let mut child = python_process(script).await;
+            let (_, _, stderr) = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+            assert!(stderr == "visible", "HOST fragments were retained ({} bytes)", stderr.len());
+        }
+    }
+
+    #[tokio::test]
+    async fn host_request_budget_refuses_the_sixty_fifth_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = format!(r#"import json, sys, time
+from pathlib import Path
+sys.path.insert(0, {:?})
+from daemon_rcon import _read_reply
+sys.stdin.read()
+directory = Path({:?})
+codes = []
+for number in range(65):
+    print('HOST:' + json.dumps({{'id': str(number), 'op': 'config.set', 'args': {{}}}}), file=sys.stderr, flush=True)
+for number in range(65):
+    path = directory / (str(number) + '.json')
+    deadline = time.monotonic() + 10
+    codes.append(_read_reply(path, deadline, 'host reply timed out', 1024 * 1024)['error_code'])
+print(json.dumps(codes))
+"#, std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules").to_string_lossy(), dir.path().to_string_lossy());
+        let mut child = python_process(&script).await;
+        let proxy = host::Proxy { dir: dir.path().into(), context: None, server: None };
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, Some(proxy), std::time::Duration::from_secs(15)).await.unwrap().unwrap();
+        assert!(status.success(), "{stderr}");
+        let codes = parse_plugin_output(&stdout).unwrap();
+        assert!(codes.as_array().unwrap()[..64].iter().all(|code| code == "op_not_allowed"));
+        assert_eq!(codes[64], "too_many_requests");
+        assert!(stderr.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stderr_read_errors_are_not_treated_as_a_clean_eof() {
+        struct Broken;
+        impl tokio::io::AsyncRead for Broken {
+            fn poll_read(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, _: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<std::io::Result<()>> {
+                std::task::Poll::Ready(Err(std::io::Error::other("broken stderr pipe")))
+            }
+        }
+        let mut reader = BufReader::new(Broken);
+        let mut lines = saba_runner::Lines::default();
+        assert!(next_stderr_line(&mut reader, &mut lines).await.is_err());
+    }
+
+    #[test]
+    fn module_failure_fields_survive_anyhow_context() {
+        let value = serde_json::json!({"success": false, "module": "game", "function": "start", "error_code": "module_exception", "message": "failed", "path": "world", "stderr_tail": ["detail"]});
+        let error = anyhow::Error::new(ModuleCallError::from_response(value.clone())).context("starting server");
+        assert_eq!(error_response(&error), value);
+    }
+
+    #[test]
+    fn isolation_preparation_failures_keep_common_error_fields_and_the_consent_action() {
+        let blocked = crate::sandbox::Blocked { code: "sandbox_unavailable", file: None, detail: Some("permission denied".into()) };
+        let value = sandbox_failure("game/lifecycle.py", "start", "module-game", &blocked);
+        assert_eq!(value["success"], false);
+        assert_eq!(value["error_code"], if crate::sandbox::ENFORCED { "module_execution_failed" } else { "isolation_unsupported" });
+        assert_eq!(value["phase"], "prepare");
+        assert_eq!(value["module"], "game");
+        assert_eq!(value["function"], "start");
+        assert_eq!(value["action_required"], "sandbox_unavailable");
+        assert_eq!(value["component"], "module-game");
+        assert_eq!(value["stderr_tail"], serde_json::json!([]));
+        assert!(value["error"].as_str().unwrap().contains(if crate::sandbox::ENFORCED { "permission denied" } else { "operating system" }));
+    }
+
+    #[tokio::test]
+    async fn install_and_general_slots_have_separate_limits() {
+        let lanes = CallLanes::new();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(50);
+        let mut installs = Vec::new();
+        let mut general = Vec::new();
+        for _ in 0..2 {
+            installs.push(lanes.acquire("install_server", deadline, true).await.unwrap().unwrap());
+        }
+        assert!(lanes.acquire("install_server", deadline, true).await.unwrap().is_none());
+        for function in ["stop", "start", "status", "command", "functions", "hook", "validate", "players"] {
+            general.push(lanes.acquire(function, deadline, true).await.unwrap().unwrap());
+        }
+        assert!(lanes.acquire("functions", deadline, true).await.unwrap().is_none());
+        assert!(lanes.acquire("status", deadline, false).await.is_err(), "queue consumes the deadline");
+    }
+
+    #[test]
+    fn separate_test_runtimes_do_not_share_call_slots() {
+        let first = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let second = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let lanes = first.block_on(async { call_lanes() });
+        let _slots = first.block_on(lanes.general.acquire_many(GENERAL_SLOTS as u32)).unwrap();
+        second.block_on(async {
+            assert!(in_call("game/lifecycle.py", "status", 1, true, async { Ok(()) }).await.unwrap().is_some(),
+                "a different test runtime represents an independent daemon");
+        });
+    }
+
+    #[tokio::test]
+    async fn a_reentrant_call_borrows_the_outer_slot_when_all_slots_are_taken() {
+        let lanes = CallLanes::new();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        let _all = lanes.general.acquire_many(8).await.unwrap();
+        CALL_DEADLINE.scope(CallDeadline::new(deadline), async {
+            assert!(lanes.acquire("get_credentials", deadline, true).await.unwrap().is_some());
+        }).await;
+    }
+
+    #[tokio::test]
+    async fn an_internal_query_cannot_extend_the_outer_deadline() {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);
+        let inherited = CALL_DEADLINE.scope(CallDeadline::new(deadline), in_call("game/lifecycle.py", "functions", 60, false, async {
+            Ok(CALL_DEADLINE.with(|deadline| deadline.at))
+        })).await.unwrap().unwrap();
+        assert_eq!(inherited, deadline);
+    }
+
+    #[tokio::test]
+    async fn an_http_credentials_callback_does_not_wait_for_a_full_general_lane() {
+        use axum::{extract::{Path, State}, http::StatusCode, Json};
+        use crate::ipc::{handlers::command, internal::into_internal, IPCServer};
+        let dir = tempfile::tempdir().unwrap();
+        let modules = dir.path().join("modules");
+        let module = modules.join("credentials-boundary");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("module.toml"), "[module]\nschema_version = 1\nname = \"credentials-boundary\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(module.join("lifecycle.py"), "raise AssertionError('a saturated credentials callback must not run Python')\n").unwrap();
+        let mut supervisor = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(), dir.path().join("instances").to_str().unwrap(),
+        );
+        supervisor.module_loader.discover_modules().unwrap();
+        let instance = crate::instance::ServerInstance::new("credentials", "credentials-boundary");
+        let id = instance.id.clone();
+        supervisor.instance_store.add(instance).unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(supervisor)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let lanes = call_lanes();
+        let _slots = lanes.general.acquire_many(GENERAL_SLOTS as u32).await.unwrap();
+        // HTTP 요청 작업은 바깥 모듈의 task-local을 물려받지 않는다
+        let mut callback = tokio::spawn(async move {
+            into_internal(command::execute_rest_command(Path(id), State(state), Json(serde_json::json!({"endpoint": "info"}))).await).await
+        });
+        let response = tokio::time::timeout(std::time::Duration::from_secs(1), &mut callback).await;
+        if response.is_err() {
+            callback.abort();
+            let _ = callback.await;
+        }
+        let response = response.expect("a cold credentials callback must fail immediately instead of deadlocking").unwrap();
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.body["error_code"], "module_execution_failed");
+        assert_eq!(response.body["phase"], "queue");
+        assert_eq!(response.body["module"], "credentials-boundary");
+        assert_eq!(response.body["function"], "get_credentials");
+    }
+
+    #[tokio::test]
+    async fn environment_preparation_shares_the_call_deadline() {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(20);
+        let result = prepare("game/lifecycle.py", "start", CallDeadline::new(deadline), async {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            Ok(())
+        }).await;
+        let error = error_response(&result.unwrap_err());
+        assert_eq!(error["error_code"], "module_timeout");
+        assert_eq!(error["module"], "game");
+        assert_eq!(error["function"], "start");
+        assert_eq!(error["phase"], "prepare");
+    }
+
+    #[tokio::test]
+    async fn isolation_preparation_keeps_its_slot_past_the_call_deadline() {
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("lifecycle.py");
+        std::fs::write(&entry, "import sys; sys.stdin.read(); print('{\"success\":true}')\n").unwrap();
+        let roots = crate::sandbox::LaunchRoots { dirs: Vec::new(), runtimes: Vec::new() };
+        let (_, gate) = crate::sandbox::guard_launch_for(
+            || saba_chan_updater_lib::integrity::Trust::Verified, "java", &[], std::path::Path::new("."), roots, &mut Vec::new(),
+        ).await.unwrap();
+        let lanes = call_lanes();
+        let (entered, observing) = tokio::sync::oneshot::channel();
+        let mut call = tokio::spawn(async move {
+            let entry = entry.to_str().unwrap();
+            in_call(entry, "status", 1, false, async {
+                assert!(entered.send(CALL_DEADLINE.with(|deadline| deadline.isolation.subscribe())).is_ok());
+                run_requested_plugin(entry, "status", json!({}), None, 1, None).await
+            }).await.map(Option::unwrap)
+        });
+        let mut isolation = observing.await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            while isolation.borrow_and_update().waiting == 0 {
+                isolation.changed().await.expect("the call reaches isolation preparation");
+            }
+        }).await.expect("isolation preparation starts");
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        let waiting = !call.is_finished();
+        let free_slots = lanes.general.available_permits();
+        drop(gate);
+        // 전역 LaunchGate 대기와 OS 권한 준비는 실행 완료 감시 시간에서도 제외한다.
+        let prepared = tokio::time::timeout(std::time::Duration::from_secs(DEFAULT_PLUGIN_TIMEOUT_SECS), async {
+            while isolation.borrow_and_update().waiting > 0 {
+                if isolation.changed().await.is_err() { break; }
+            }
+        }).await;
+        if prepared.is_err() { call.abort(); }
+        prepared.expect("isolation preparation finishes");
+        let result = tokio::time::timeout(std::time::Duration::from_secs(30), &mut call).await;
+        if result.is_err() { call.abort(); }
+        assert!(waiting, "isolation preparation must outlast the execution budget");
+        assert_eq!(free_slots, GENERAL_SLOTS - 1, "the isolation wait keeps its slot");
+        let result = result.expect("execution finishes after isolation preparation").unwrap().unwrap();
+        assert_ne!(result["error_code"], "module_timeout", "{result}");
+    }
+
+    #[tokio::test]
+    async fn concurrent_function_queries_exclude_the_shared_isolation_preparation() {
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("lifecycle.py");
+        std::fs::write(&entry, "import sys; sys.stdin.read(); print('{\"success\":true,\"functions\":[\"validate\"]}')\n").unwrap();
+        let roots = crate::sandbox::LaunchRoots { dirs: Vec::new(), runtimes: Vec::new() };
+        let (_, gate) = crate::sandbox::guard_launch_for(
+            || saba_chan_updater_lib::integrity::Trust::Verified, "java", &[], std::path::Path::new("."), roots, &mut Vec::new(),
+        ).await.unwrap();
+        let calls: Vec<_> = (0..3).map(|_| {
+            let entry = entry.clone();
+            tokio::spawn(async move {
+                let entry = entry.to_str().unwrap();
+                in_call(entry, FUNCTIONS_QUERY, 1, false, query_functions(entry)).await
+            })
+        }).collect();
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        drop(gate);
+        for call in calls {
+            let result = call.await.unwrap();
+            assert!(result.is_ok(), "shared isolation preparation consumed a caller's budget: {result:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_reentrant_isolation_wait_pauses_the_running_parent() {
+        let deadline = CallDeadline::new(tokio::time::Instant::now() + std::time::Duration::from_millis(100));
+        let parent = deadline.clone();
+        let result = CALL_DEADLINE.scope(deadline, parent.timeout(async {
+            in_call("game/lifecycle.py", "get_credentials", 120, false, async {
+                let nested = CALL_DEADLINE.with(Clone::clone);
+                let _waiting = nested.pause_isolation();
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                Ok(())
+            }).await
+        })).await;
+        assert!(result.unwrap().unwrap().is_some(), "the parent keeps its execution budget during reentry");
+    }
+
+    #[tokio::test]
+    async fn overlapping_isolation_waits_preserve_only_their_union() {
+        let deadline = CallDeadline::new(tokio::time::Instant::now() + std::time::Duration::from_millis(60));
+        let first = deadline.pause_isolation();
+        let second = deadline.pause_isolation();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        drop(first);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        drop(second);
+        assert!(deadline.timeout(tokio::time::sleep(std::time::Duration::from_millis(120))).await.is_err(),
+            "overlapping preparation must not grant extra execution time");
+    }
+
+    #[tokio::test]
+    async fn a_shared_query_preserves_preparation_time_between_observer_polls() {
+        let deadline = CallDeadline::new(tokio::time::Instant::now() + std::time::Duration::from_millis(100));
+        let query = CallDeadline::new(tokio::time::Instant::now() + std::time::Duration::from_secs(1));
+        deadline.follow_isolation(&query, async {
+            let _waiting = query.pause_isolation();
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        }).await;
+        assert!(prepare("game/lifecycle.py", "status", deadline, async {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            Ok(())
+        }).await.is_ok(),
+            "coalesced watch updates must preserve the caller's next execution budget");
+    }
+
+    #[test]
+    fn a_modules_own_failure_only_gains_context_except_for_exception_tail() {
+        let failure = serde_json::json!({"success": false, "error_code": "extension_required", "message": "keep me", "path": "world"});
+        let mut expected = failure.clone();
+        expected["module"] = serde_json::json!("game");
+        expected["function"] = serde_json::json!("install_server");
+        assert_eq!(decorate_result("game/lifecycle.py", "install_server", failure, "detail"), expected);
+        let exception = decorate_result("game/lifecycle.py", "start", serde_json::json!({"success": false, "error_code": "module_exception"}), &(0..30).map(|i| i.to_string()).collect::<Vec<_>>().join("\n"));
+        assert_eq!(exception["stderr_tail"].as_array().unwrap().len(), 20);
+        assert_eq!(exception["stderr_tail"][0], "10");
+    }
+
+    #[test]
+    fn nested_extension_calls_use_the_manifest_id() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("manifest.json"), r#"{"id":"extension-id"}"#).unwrap();
+        let entry = dir.path().join("python_modules/nested/hook.py");
+        assert_eq!(module_name(entry.to_str().unwrap()), "extension-id");
+    }
+
+    #[tokio::test]
+    async fn cancelled_environment_commands_kill_their_process_tree() {
+        let python = crate::python_env::detect_system_python().await.expect("test Python");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("processes.json");
+        let mut cmd = Command::new(&python);
+        cmd.args(["-c", "import json, os, subprocess, sys, time; child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); open(sys.argv[1], 'w').write(json.dumps([os.getpid(), child.pid])); time.sleep(60)"])
+            .arg(&path);
+        apply_creation_flags(&mut cmd);
+        let pending = tokio::spawn(async move { preparation_output(&mut cmd).await });
+        let pids: Vec<u32> = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    if let Ok(pids) = serde_json::from_str(&text) { break pids; }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        }).await.expect("the environment command started");
+        pending.abort();
+        let _ = pending.await;
+        for _ in 0..100 {
+            if pids.iter().all(|pid| !crate::supervisor::process::is_process_alive(*pid)) { return; }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("preparation child survived: {pids:?}");
+    }
+
+    #[tokio::test]
+    async fn cancelled_module_calls_kill_their_process_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("processes.json");
+        let script = format!("import json, os, subprocess, sys, time; sys.stdin.read(); child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); open({:?}, 'w').write(json.dumps([os.getpid(), child.pid])); time.sleep(60)", path.to_string_lossy());
+        let mut child = python_process(&script).await;
+        let pending = tokio::spawn(async move { drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(120)).await });
+        let pids: Vec<u32> = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    if let Ok(pids) = serde_json::from_str(&text) { break pids; }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        }).await.expect("the module started");
+        pending.abort();
+        let _ = pending.await;
+        for _ in 0..50 {
+            if pids.iter().all(|pid| !crate::supervisor::process::is_process_alive(*pid)) { return; }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        for pid in &pids { kill_tree(*pid); }
+        panic!("cancelled module child survived: {pids:?}");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_module_may_request_a_breakaway_server() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("child.pid");
+        let script = format!("import subprocess, sys, time\nsys.stdin.read()\ntry:\n child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(3)'], creationflags=subprocess.CREATE_BREAKAWAY_FROM_JOB)\nexcept OSError:\n print('{{}}')\nelse:\n open({:?}, 'w').write(str(child.pid))\n time.sleep(3)\n", path.to_string_lossy());
+        let mut child = python_process(&script).await;
+        let result = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_millis(500)).await;
+        if let Ok(Ok((status, _, stderr))) = &result { assert!(status.success(), "{stderr}"); }
+        if let Ok(pid) = std::fs::read_to_string(path) {
+            let pid = pid.trim().parse().unwrap();
+            let alive = crate::supervisor::process::is_process_alive(pid);
+            kill_tree(pid);
+            assert!(alive, "the explicitly requested breakaway server must survive the module job");
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_successful_start_leaves_its_server_running() {
+        let mut child = python_process("import json, subprocess, sys; sys.stdin.read(); server = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(3)'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); print(json.dumps({'pid': server.pid}))").await;
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+        assert!(status.success(), "{stderr}");
+        let pid = parse_plugin_output(&stdout).unwrap()["pid"].as_u64().unwrap() as u32;
+        assert!(crate::supervisor::process::is_process_alive(pid), "successful start must preserve its server");
+        child.kill(None).await;
+    }
 
     /// 모듈·익스텐션 문구도 그 요청의 언어를 따른다 (CLI `--lang`, Accept-Language)
     #[tokio::test]
@@ -868,6 +1892,24 @@ mod tests {
             (vec!["steamcmd".to_string(), "ue4-ini".to_string()], vec!["other".to_string()])
         );
         assert_eq!(importable_extensions(enabled, false, unverified, Some("module-ue4-ini")).1, vec!["ue4-ini".to_string(), "other".to_string()], "a module key is not an extension");
+    }
+
+    #[test]
+    fn unisolated_imports_require_each_extensions_current_fingerprint() {
+        let root = resolve_extensions_dir();
+        let first = tempfile::Builder::new().prefix("consent_first_").tempdir_in(&root).unwrap();
+        let second = tempfile::Builder::new().prefix("consent_second_").tempdir_in(&root).unwrap();
+        let id = |dir: &tempfile::TempDir| dir.path().file_name().unwrap().to_string_lossy().into_owned();
+        let (first_id, second_id) = (id(&first), id(&second));
+        for dir in [&first, &second] { std::fs::write(dir.path().join("run.py"), "original").unwrap(); }
+        crate::sandbox::set_consent(crate::sandbox::Consent::Unisolated, &format!("ext-{first_id}"), true).unwrap();
+        let enabled = vec![first_id.clone(), second_id.clone()];
+        let mut command = Command::new("python");
+        assert_eq!(set_extension_env(&mut command, enabled.clone(), false, Some("module-another")), vec![second_id.clone()]);
+        let allowed = command.as_std().get_envs().find(|(key, _)| *key == "SABA_ENABLED_EXTENSIONS").unwrap().1.unwrap();
+        assert_eq!(allowed, std::ffi::OsStr::new(&first_id));
+        std::fs::write(first.path().join("run.py"), "changed").unwrap();
+        assert_eq!(set_extension_env(&mut command, enabled.clone(), false, Some("module-another")), enabled);
     }
     use serde_json::json;
 
@@ -938,9 +1980,9 @@ mod tests {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        let mut child = plain(cmd.spawn().unwrap());
+        let mut child = plain(&mut cmd).unwrap();
         let proxy = loopback::Proxy { dir: relay.path().to_path_buf(), ports: vec![port], server: Some(std::process::id()) };
-        let (status, stdout, stderr) = drive(&mut child, b"{}", None, Some(proxy), std::time::Duration::from_secs(20)).await.unwrap().unwrap();
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, Some(proxy), None, std::time::Duration::from_secs(20)).await.unwrap().unwrap();
         assert!(status.success(), "{stderr}");
         assert_eq!(parse_plugin_output(&stdout).unwrap(), json!({ "status": 200, "body": { "currentplayernum": 3 } }));
         assert!(server.await.unwrap().starts_with("GET /v1/api/metrics HTTP/1.1\r\n"));
@@ -959,8 +2001,8 @@ mod tests {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .process_group(0);
-        let mut child = plain(cmd.spawn().unwrap());
-        let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
+        let mut child = plain(&mut cmd).unwrap();
+        let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await.unwrap().unwrap();
         assert!(status.success(), "the module was not cut off: {status:?}");
         assert_eq!(stdout.trim(), "{}");
         assert!(stderr.contains("xxxx"), "later stderr lines are still read");
@@ -980,9 +2022,9 @@ mod tests {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .process_group(0);
-        let mut child = plain(cmd.spawn().unwrap());
+        let mut child = plain(&mut cmd).unwrap();
         let started = std::time::Instant::now();
-        let result = drive(&mut child, b"{}", None, None, std::time::Duration::from_secs(1)).await;
+        let result = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(1)).await;
         assert!(result.is_err(), "timed out instead of waiting for the held pipe");
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
         let grandchild: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
@@ -1009,7 +2051,7 @@ mod tests {
         );
         let mut cmd = Command::new(saba_chan_updater_lib::process::system_tool("powershell"));
         cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-        let mut child = plain(cmd.spawn().unwrap());
+        let mut child = plain(&mut cmd).unwrap();
         let pid = match &child {
             Process::Plain { child, .. } => child.id(),
             Process::Contained(_) => None,
@@ -1068,21 +2110,6 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), "steamcmd blocked\nue4_ini ok");
     }
 
-    // PC 실사용: 바뀐 ue4-ini를 확인된 팰월드가 import하지 못했는데, 모듈이 실패를 삼켜 "설치하고 활성화하세요"가 떴다
-    #[test]
-    fn a_blocked_unverified_extension_is_reported_as_unverified() {
-        let unverified = vec!["ue4-ini".to_string()];
-        let mut blocked = json!({"success": false, "error_code": "extension_required", "missing_extensions": ["ue4_ini"], "message": "install it"});
-        explain_unverified_extensions(&mut blocked, &unverified);
-        assert_eq!(blocked["error_code"], "extension_not_verified");
-        assert_eq!(blocked["unverified_extensions"], json!(["ue4-ini"]));
-
-        // 정말 빠진 것이 섞여 있으면 설치 안내가 맞다
-        let mut missing = json!({"error_code": "extension_required", "missing_extensions": ["ue4-ini", "steamcmd"]});
-        explain_unverified_extensions(&mut missing, &unverified);
-        assert_eq!(missing["error_code"], "extension_required");
-    }
-
     #[test]
     fn plugin_result_is_whole_stdout_or_last_line() {
         assert_eq!(parse_plugin_output("{\n  \"ok\": 1\n}\n").unwrap(), json!({"ok": 1}));
@@ -1132,9 +2159,41 @@ mod tests {
         assert!(!still_valid(&(t, FunctionsAnswer::Listed(vec![]), now), Some(std::time::SystemTime::now())), "an updated module is asked again");
     }
 
+    #[tokio::test]
+    async fn failed_function_queries_do_not_prevent_the_requested_function() {
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        for query in ["raise RuntimeError('functions query failed')", "time.sleep(60); print(json.dumps({'success': True, 'functions': []}))"] {
+            let dir = tempfile::tempdir().unwrap();
+            let entry = dir.path().join("lifecycle.py");
+            std::fs::write(dir.path().join("module.toml"), "[module]\nname = 'query-fallback'\n").unwrap();
+            std::fs::write(&entry, format!(
+                "import json, sys, time\nsys.stdin.read()\n\
+                 if sys.argv[1] == 'functions':\n    {query}\n\
+                 elif sys.argv[1] == 'validate':\n    print(json.dumps({{'success': True, 'called': sys.argv[1]}}))\n\
+                 else:\n    raise RuntimeError('requested function failed')\n"
+            )).unwrap();
+            crate::sandbox::consent_test_component(&entry);
+            let entry = entry.to_str().unwrap();
+
+            let result = run_plugin(entry, "validate", json!({})).await
+                .expect("a failed functions query must not prevent validate");
+            assert_eq!(result, json!({"success": true, "called": "validate"}));
+            assert_eq!(cached_functions(entry), Some(None), "the failed query is cached as an unknown list");
+
+            let error = error_response(&run_plugin(entry, "reset_server", json!({})).await.unwrap_err());
+            assert_eq!(error["error_code"], "module_crashed");
+            assert_eq!(error["module"], "query-fallback");
+            assert_eq!(error["function"], "reset_server");
+            assert_eq!(error["phase"], "run");
+            assert!(error["stderr_tail"].as_array().unwrap().iter()
+                .any(|line| line.as_str().unwrap().contains("requested function failed")), "{error}");
+        }
+    }
+
     /// 동시에 온 요청은 Python을 한 번만 띄운다. 목록 응답은 느린 모듈을 짧게만 기다리고, 묻기는 뒤에서 마저 해 캐시에 남긴다
     #[tokio::test]
     async fn concurrent_asks_share_one_run_and_the_list_does_not_wait_for_a_slow_module() {
+        crate::python_env::get_python_path().await.expect("test Python ready");
         // Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다: 실행 횟수는 답에 실은 pid로 센다
         let dir = tempfile::tempdir().unwrap();
         let entry = dir.path().join("lifecycle.py");
@@ -1145,6 +2204,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(dir.path().join("delay.txt"), "0.5").unwrap();
+        crate::sandbox::consent_test_component(&entry);
         let entry = entry.to_string_lossy().into_owned();
         let first = std::time::Instant::now();
         let asks: Vec<_> = (0..3).map(|_| {
@@ -1153,7 +2213,7 @@ mod tests {
         }).collect();
         let mut answers = Vec::new();
         for ask in asks {
-            answers.push(ask.await.unwrap().expect("listed"));
+            answers.push(ask.await.unwrap().expect("the shared function query returned a list"));
         }
         // 이 러너에서 Python 한 번을 띄우는 데 드는 시간 (느린 Windows 러너에서는 수 초)
         let startup = first.elapsed().saturating_sub(std::time::Duration::from_millis(500));
@@ -1169,6 +2229,7 @@ mod tests {
         // 수정 시각 해상도가 거친 파일 시스템에서도 바뀐 것으로 보이게
         let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
         std::fs::File::options().write(true).open(&entry).unwrap().set_modified(later).unwrap();
+        crate::sandbox::consent_test_component(std::path::Path::new(&entry));
         let started = std::time::Instant::now();
         assert_eq!(module_functions_for_list(entry.clone()).await, None);
         assert!(started.elapsed() < std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS + 1500), "{:?}", started.elapsed());
@@ -1207,6 +2268,6 @@ mod tests {
             json!({"test": "data"})
         ).await;
 
-        assert!(result.is_err());
+        assert!(result.is_err(), "{result:?}");
     }
 }

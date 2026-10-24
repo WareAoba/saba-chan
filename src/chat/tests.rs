@@ -134,6 +134,25 @@ async fn start_via_alias_asks_the_daemon_to_start() {
 }
 
 #[tokio::test]
+async fn remote_module_failure_text_hides_addresses_secrets_and_paths() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        body: json!({ "success": false, "error_code": "game_failed", "module": "minecraft", "function": "start_server", "error": "203.0.113.7 token=hunter2 at C:\\Users\\me\\server.py", "stderr_tail": ["private traceback"] }),
+    });
+    for command in ["mc start", "mc stop"] {
+        let remote = run(&api, &settings(), command).await;
+        assert!(remote.contains("x.x.x.x") && remote.contains("token=***") && remote.contains("<path>"), "{remote}");
+        for private in ["203.0.113.7", "hunter2", "Users", "private traceback"] {
+            assert!(!remote.contains(private), "{remote}");
+        }
+        let req = ChatRequest { text: command.into(), ..Default::default() };
+        let local = process(&api, &settings(), &Catalog::for_language("en"), &req).await.text;
+        assert!(local.contains("203.0.113.7") && local.contains("hunter2") && local.contains("Users"), "{local}");
+    }
+}
+
+#[tokio::test]
 async fn defined_commands_go_to_the_daemon_command_path_by_canonical_name() {
     let api = fixture();
     run(&api, &settings(), "mc 추방 Steve").await;

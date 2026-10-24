@@ -470,6 +470,8 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `rest_host`, `rest_port`, `rest_username`, `rest_password` | Option | `rest_username`은 항상 "admin"으로 강제한다(`instance/mod.rs:218-223`) |
 | `protocol_mode` | String | 기본 `"auto"` |
 | `module_settings` | HashMap<String,Value> | settings.json으로 분리 저장 |
+| `user_settings` | BTreeSet<String> | 사용자가 직접 고른 설정 키. 외부 데이터 루트의 출처 판정에도 쓴다(02 §2.1) |
+| `imported_settings` | BTreeSet<String> | 마이그레이션 `import_settings`가 판정한 path형 설정 키. 기본은 빈 집합이며 값이 실제 바뀌면 해당 출처를 지운다. 값은 `module_settings`에만 둔다 |
 | `server_version` | Option<String> | |
 | `extension_data` | HashMap<String,Value> | 설치 방식 익스텐션 키(`install_method_<방식>`, `<방식>_<이름>`, `instance/mod.rs:142-166`) 등 |
 | `required_extensions` | Vec<String> | 모듈의 `install.requires_extensions`를 복사한다 |
@@ -593,6 +595,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 - 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.10 이상이어야 한다(`python_env/mod.rs:45`).
 - 탐색 순서: 이미 받은 포터블 Python, 시스템 Python, 자동 다운로드 순이다(`find_base_python`, `:209`). 찾은 인터프리터로 `<pyroot>/python-env` venv를 만들고 pip를 업그레이드한다(`ensure_venv`, `:114`).
+- 시스템 Python은 `sys.executable`로 확인한 실제 인터프리터 파일 경로를 사용한다.
 - 성공한 결과는 `OnceCell`에 캐시하고, 실패는 캐시하지 않아 다음 호출이 다시 시도한다(`get_python_path`, `:56`). 모든 `run_plugin` 호출이 여기를 거친다(`plugin/mod.rs:282`). 데몬은 기동하자마자 미리 준비를 시작하고(`main.rs:320-324`), 진행은 `/api/runtime/preflight`(`preflight_snapshot`, `python_env/mod.rs:86-106`)로 보인다.
 - 다운로드 URL: `https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz`(`python_pin.rs:41-49`). 지원 triple은 win x64, linux x64/arm64, mac x64/arm64다. `SABA_PYTHON_URL`로 미러를 쓸 수 있다.
 - 다운로드 방식: Windows는 PowerShell `Invoke-WebRequest`, 그 외는 `curl`이다. 압축 해제는 `tar`를 쓴다. 풀기 전에 triple별로 고정한 SHA-256과 비교하고 다르면 지운다(`python_env/mod.rs:257-261`, `python_pin.rs:11-17, 53-61`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
@@ -617,16 +620,96 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 - 실행 형태: `<venv python> <module_path> <function>`. stdin으로 config JSON을 한 번 쓰고 닫는다.
 - 결과: stdout 전체, 또는 마지막 비지 않은 줄이 JSON이어야 한다(앞에 찍힌 print는 무시, `parse_plugin_output`, `:467-476`). 종료 코드가 0이 아니면 Err다. 파싱에 실패해도 Err다.
-- 진행률: stderr의 `PROGRESS:{json}` 줄을 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백에 넘긴다(`:68-79, 391-410`). 그 밖의 stderr는 debug 로그로만 남긴다.
-- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`, `:150`), install 계열은 1800초다. 기한은 stdin 쓰기부터 종료 대기, stdout·stderr 수집까지 한 번에 잰다. 넘기면 프로세스 트리(Unix는 프로세스 그룹, Windows는 Python을 넣은 Job Object와 `taskkill /T`, 격리 실행은 AppContainer job. 부모가 먼저 끝난 손자도 Job으로 끝난다)를 끝내고 읽기 작업을 멈춘 뒤 Err (`plugin/mod.rs:421-488`).
+- 진행률: stderr의 `PROGRESS:{json}` 줄을 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백에 넘긴다. `LOOPBACK:`·`HOST:` 줄은 중계로 처리하고 로그에 넣지 않는다. 나머지 줄은 debug 로그로 남기며 아래 상한 안에서 보존한다.
+- 타임아웃: 기본 120초(`DEFAULT_PLUGIN_TIMEOUT_SECS`), `install_server`는 1800초(`INSTALL_TIMEOUT_SECS`)다. 기한은 아래의 자리 대기·선조회·환경 준비·실행 전체를 포함한다.
 - `PluginCall`(`:161-177`)은 데몬 락 안에서 호출을 만들고 락을 놓은 뒤 실행하기 위한 묶음이다.
+
+**실행 자원 상한 (0.1.10)**
+
+모듈·익스텐션 Python 호출(`plugin::run_plugin*`, 훅, `functions` 조회와 미리 읽기)에 적용한다. 신뢰 표시가 `verified`여도 같은 상한을 쓴다. 값은 설정 파일이 아닌 상수다.
+
+| 대상 | 상한과 동작 |
+|---|---|
+| stdout | 4 MiB까지 모은다. 넘으면 프로세스 트리를 끝내고 `module_output_too_large`로 실패한다 |
+| 일반 stderr | 계속 읽어 비운다. 마지막 200줄, 합계 64 KiB만 보존한다. 앞의 줄은 debug 로그로만 남긴다 |
+| 설치 자리 | 함수 이름이 `install_server`인 호출만 쓴다. 동시에 2개다 |
+| 일반 자리 | 그 밖의 모든 호출이 쓴다. 동시에 8개다. 설치 자리와 별개다 |
+
+- 자리를 기다리는 시간도 호출 기한에 든다. 기한 안에 자리를 얻지 못하면 `module_timeout`, `phase:"queue"`다.
+- 한 호출 안의 내부 선조회(`functions` 등)는 바깥 호출이 잡은 자리와 같은 절대 기한을 쓴다. 자리를 두 번 잡지 않는다.
+- 기한은 자리 대기, 함수 목록 조회, `python_env::get_python_path`, 실행을 모두 포함한다. 환경 준비 중 기한을 넘으면 준비 상태와 그 자식 프로세스도 정리한다.
+- 격리 실행 준비(권한 부여, 서버 시작 잠금 `LaunchGate` 대기)는 기한에 넣지 않는다(0.1.9와 같다). 서버 폴더 표시 걷기가 큰 폴더에서 수십 초 걸릴 수 있어서다. 격리 실행 준비 중에도 자리는 유지한다. 내부 조회·재진입·같은 함수 목록을 기다리는 호출에도 이 제외 시간을 적용한다.
+- 기한을 넘거나 출력 상한에 걸리면 프로세스 트리를 끝내고 읽기 작업을 멈춘다. Unix는 프로세스 그룹을, Windows는 Job Object와 `taskkill /T`를 쓴다. 격리 실행은 AppContainer job을 쓴다. 부모가 먼저 끝난 손자도 정리 대상이다.
+- Windows의 일반 실행과 환경 준비는 프로세스를 일시 정지 상태로 만들고 Job Object에 넣은 뒤 실행한다. Job 등록이나 실행 재개에 실패하면 프로세스를 끝내고 호출을 실패로 돌려준다. 실행기가 Job 등록 전에 자식을 띄우는 경합을 막는다.
+- 모듈 호출 중 데몬이 다른 모듈을 다시 부르면 바깥 호출의 자리를 빌려 쓴다. 자리 없이 캐시만 쓰는 경로는 캐시가 없으면 실패한다. 자리가 모두 차도 재진입으로 교착하지 않아야 한다.
+- 같은 작업의 재진입은 절대 기한도 함께 쓴다. 별도 HTTP 작업의 REST 자격증명 조회는 캐시를 먼저 쓴다. 캐시가 없으면 일반 자리를 즉시 시도하며, 자리가 없으면 `module_execution_failed`, `phase:"queue"`로 실패한다. 이 경로는 자리를 기다리지 않는다.
+- 1분 접속자 수 갱신(`supervisor/players.rs`)은 자리를 기다리지 않는다. 바로 얻지 못한 인스턴스는 이번 분을 건너뛴다. 실패로 세지 않고 마지막 값도 지우지 않는다. 매 분 순회 시작점을 돌린다.
+
+긴 원문을 돌려주는 진단이 4 MiB를 넘으면 `module_output_too_large`로 실패한다. 기존 진단이 실제로 이 상한을 넘는지는 아직 측정하지 않았다.
+
+**모듈 호출 오류 (0.1.10)**
+
+공통 자료형 `ModuleCallError`와 정규화 함수 하나로 모듈·익스텐션 호출 실패를 전달한다. 실행기 → supervisor → 훅 → HTTP 핸들러 → 비동기 설치 진행 상태에서도 필드를 문자열로 바꾸지 않는다. 각 라우트가 쓰던 HTTP 상태는 유지한다.
+
+```json
+{
+  "success": false,
+  "error_code": "module_timeout",
+  "error": "minecraft.install_server did not finish in 1800 s",
+  "module": "minecraft",
+  "function": "install_server",
+  "phase": "run",
+  "stderr_tail": ["...마지막 줄들..."]
+}
+```
+
+| `error_code` | 조건 |
+|---|---|
+| `module_timeout` | 호출 기한 초과. `phase`는 `queue`(자리 대기), `prepare`(환경 준비), `run`(실행) |
+| `module_execution_failed` | 환경 준비·프로세스 생성·입출력 실패. `phase`로 실패 단계를 구분한다 |
+| `module_crashed` | 종료 코드가 0이 아님 |
+| `module_bad_output` | stdout에서 결과 JSON을 읽지 못함. SDK 결과 직렬화 실패도 포함한다 |
+| `module_output_too_large` | stdout 4 MiB 초과 |
+| `module_path_outside` | SDK `safe_join` 또는 데몬의 반환 경로 검사가 허용 루트 밖 경로를 거부함 |
+| `module_exception` | SDK `run_lifecycle`이 함수 안의 예외를 잡음 |
+| `isolation_unsupported` | 격리할 수 없는 플랫폼에서 확인되지 않았고 현재 파일 지문에 대한 비격리 동의도 없는 구성요소 |
+
+- `stderr_tail`은 보존한 일반 stderr의 마지막 20줄이다. 시간 초과·강제 종료 때도 남긴다. 결과가 `module_exception`이면 traceback의 끝을 붙인다.
+- 모듈이 스스로 돌려준 `success:false`, `error_code`, `message`는 유지한다. 데몬은 `module`·`function`만 더한다. `module_exception`에는 위의 `stderr_tail`도 붙인다.
+- GUI·CLI의 로컬 응답은 오류 필드를 유지한다. 안내 문구 키는 locales `module_errors.<코드>`다. 기존 오류 표시 경로가 `module`·`function`·`stderr_tail`을 전달한다.
+- 원격(챗봇·디스코드·릴레이) 응답에서는 `stderr_tail`을 뺀다. `error`·`message`·`path` 같은 문자열의 IP·비밀값을 가리고, 절대 경로는 `<path>`로 바꾼다. [06 §3](06-contracts-0.1.9.md)과 같은 경로 가리기 함수를 쓴다.
+
+**반환 경로 경계 (0.1.10)**
+
+`module_paths::Boundary`는 신뢰 표시와 관계없이 반환 경로를 검사한다. 상대 경로는 서버 폴더(`working_dir`, 없으면 `instance_dir/<install_subdir>`) 기준이다. 허용 루트는 서버 폴더, 데몬 항목을 뺀 인스턴스 폴더, 데몬이 모은 `instance_data_dirs`, [02 §2.1](02-modules.md#21-실행-방식-dsrcpluginmodrs266-463)의 선언 데이터 루트다. `instance::DAEMON_ENTRIES`와 그 하위 경로는 다른 허용 루트와 겹쳐도 거부한다.
+
+- `backup_paths`의 `paths`·`restore_roots` 중 하나라도 벗어나면 백업·복원 전체가 `module_path_outside`로 실패한다. 일부만 담은 백업을 성공으로 남기지 않는다.
+- 마이그레이션 `import_settings`의 `executable_path`, `install_server`의 `install_path`·`executable_path`도 같은 검사를 받는다. 빈 실행 경로는 값이 없는 것으로 본다.
+- 마이그레이션 경로 위반은 422와 이미 생성한 인스턴스의 `id`를 돌려준다. 잘못된 실행 경로·설정은 저장하지 않으며 인스턴스를 자동으로 삭제하지 않는다.
+- 읽기·쓰기 직전에 기존 경로 구성요소를 검사한다. 링크·정션 같은 중간 재분석 지점은 거부한다. Windows는 `sandbox::appcontainer`의 핸들 검사와 최종 경로 비교를 함께 쓴다. 아직 없는 대상은 가장 가까운 기존 조상을 검사한다.
+- 복원 `backup::is_inside`도 이 실제 경로 함수를 쓴다. 별도 `guard_launch`와 `restore_outside` 정책은 유지한다.
+- 익스텐션 `i18n_dir`은 [03 §1](03-extensions.md)의 폴더 내부 검사에 실패하면 locales를 비우고 경고한다.
+
+**HOST 통로 (0.1.10)**
+
+모든 Python 호출에 실행별 임시 폴더 `SABA_HOST_DIR`을 준다. 모듈은 stderr에 `HOST:{id, op, args}` 한 줄을 쓴다. 데몬은 `<SABA_HOST_DIR>/<id>.json`에 `{ok:true, data}` 또는 `{ok:false, error_code, error}`를 원자적으로 쓴다. SDK가 결과 파일을 읽고 지우며 실행이 끝나면 데몬이 폴더를 정리한다.
+
+| 작업 | 인자 | 동작 |
+|---|---|---|
+| `instance.stdin` | `{command}` | 기존 인스턴스 stdin API와 같은 처리와 결과 |
+| `instance.rest` | `{method, path, body?}` | `path`를 REST API의 `endpoint`로 옮기고 기존 처리와 결과를 사용 |
+
+대상 인스턴스는 데몬이 만든 호출 문맥으로 정한다. 요청에서 인스턴스 id·PID·파일 경로를 받지 않는다. 인스턴스 문맥이 없으면 `no_instance`, 허용하지 않은 작업은 `op_not_allowed`다. 실행당 요청은 64건, 요청 시간은 30초, 보내기는 64 KiB, 받기는 1 MiB다. `LOOPBACK`과 요청 수를 함께 센다. 응답 상한을 넘으면 `response_too_large`로 실패하며 잘린 성공을 돌려주지 않는다. `HOST:` 줄과 그 연속 조각은 로그·stderr 진단에 남기지 않는다.
+
+REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자리와 절대 기한을 쓴다. 인스턴스 hook도 같은 문맥을 전달한다. 인스턴스 없는 목록·데몬 시작/종료 hook은 `no_instance`다. SDK의 HTTP 호환 경로와 일반 토큰 경로는 남아 있다.
 
 **자식 프로세스 환경**
 
 - `PYTHONPATH` = `<data_dir>/python-guard` + `<extensions_dir의 부모>` + `<modules_dir>` + 기존 값(`:313-350`). 앞의 둘은 `extensions_dir`가 디렉토리일 때만 넣는다. `python-guard/sitecustomize.py`는 활성 익스텐션만 import되게 막는다(`:113-125`).
 - `SABA_ENABLED_EXTENSIONS` = `config.json`의 `extensions.enabled`를 쉼표로 연결한 값. 목록이 없으면 빈 문자열이다(`:317-322`).
 - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`daemon_env`, `:14-38`).
-- 확인되지 않은 구성요소(Windows)는 AppContainer 안에서 띄우고 `SABA_TOKEN_PATH`를 빼며 `PYTHONPYCACHEPREFIX`·`TEMP`·`TMP`를 격리용 폴더로 바꾼다(`sandbox::isolation_for`, 02 문서 §2.1).
+- 확인되지 않은 구성요소는 격리를 요구한다. Windows는 AppContainer를 쓰며, Linux·macOS는 현재 파일 지문에 대한 비격리 동의가 없으면 실행을 거부한다(`sandbox::isolation_for`, 02 문서 §2.1). 격리를 요구한 실행은 `SABA_TOKEN_PATH`를 빼고 임시·캐시 폴더를 구성요소별로 나눈다.
+- `SABA_HOST_DIR`은 모든 호출에 있고, 실행 종료 후 정리한다. 대상 인스턴스는 이 환경 변수가 아니라 `PluginCall`의 데몬 측 문맥으로 정한다.
 - 첫 실행 때 내장 공용 유틸리티(`i18n.py`, `daemon_rcon.py`)를 모듈 폴더에 맞춰 쓴다(`:127-147, 335-341`).
 
 **모듈의 `lifecycle.py`가 응답해야 하는 함수** (코어에서 직접 호출하는 것만)

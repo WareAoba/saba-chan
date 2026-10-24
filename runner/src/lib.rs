@@ -245,6 +245,14 @@ impl Lines {
             decode_line(line)
         }
     }
+
+    pub fn ends_line(&self, line: &[u8]) -> bool {
+        if self.utf16 {
+            line.ends_with(&[b'\n', 0])
+        } else {
+            line.ends_with(b"\n")
+        }
+    }
 }
 
 /// `head`를 끊을 자리(포함). 끝의 UTF-8 글자가 잘리면 그 글자 앞에서 끊는다
