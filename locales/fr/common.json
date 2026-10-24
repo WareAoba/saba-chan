@@ -44,12 +44,12 @@
     "settings_save_failed": "Impossible d'enregistrer les paramètres: {{error}}"
   },
   "network": {
-    "connection_refused": "Impossible de se connecter au daemon. Veuillez vérifier que le daemon est en cours d'exécution",
+    "connection_refused": "Impossible de se connecter au daemon. Vérifiez que le daemon est en cours d'exécution",
     "timeout": "Délai d'attente de la demande dépassé: Le serveur n'a pas répondu",
-    "not_found": "Serveur non trouvé. Veuillez vérifier vos paramètres réseau"
+    "not_found": "Serveur non trouvé. Vérifiez vos paramètres réseau"
   },
   "port_conflict": {
-    "force_stop_title": "Conflit de port — {{name}} arrêté",
+    "force_stop_title": "Conflit de port : {{name}} arrêté",
     "force_stop_body": "{{stopped}} a été arrêté de force car le port {{port}} est en conflit avec {{existing}}"
   },
   "init": {
@@ -72,7 +72,7 @@
     "quit_all": "❌ Quitter complètement"
   },
   "updates": {
-    "notification_title": "Saba-chan — Mises à jour",
+    "notification_title": "Mises à jour de Saba-chan",
     "notification_body": "{{count}} mises à jour : {{names}}",
     "completed": "Mise à jour terminée !"
   },

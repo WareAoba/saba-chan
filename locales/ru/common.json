@@ -49,7 +49,7 @@
     "not_found": "Сервер не найден. Проверьте параметры сети"
   },
   "port_conflict": {
-    "force_stop_title": "Конфликт порта — {{name}} остановлен",
+    "force_stop_title": "Конфликт порта: {{name}} остановлен",
     "force_stop_body": "{{stopped}} был принудительно остановлен, так как порт {{port}} конфликтует с {{existing}}"
   },
   "init": {
@@ -72,7 +72,7 @@
     "quit_all": "❌ Выйти полностью"
   },
   "updates": {
-    "notification_title": "Saba-chan — Обновления",
+    "notification_title": "Обновления Saba-chan",
     "notification_body": "Обновлений: {{count}}: {{names}}",
     "completed": "Обновление завершено!"
   },

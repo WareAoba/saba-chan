@@ -96,7 +96,7 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
     let deadline = deadline_after(timeout);
     let mut next_line = 0;
     loop {
-        if !pending().lock().unwrap_or_else(|e| e.into_inner()).get(&id).is_some_and(|t| *t == token) {
+        if pending().lock().unwrap_or_else(|e| e.into_inner()).get(&id).is_none_or(|t| *t != token) {
             return;
         }
         for line in proc.get_console_since(next_line).await {

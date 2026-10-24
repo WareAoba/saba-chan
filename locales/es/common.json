@@ -44,12 +44,12 @@
     "settings_save_failed": "Error al guardar configuración: {{error}}"
   },
   "network": {
-    "connection_refused": "No se puede conectar al demonio. Por favor verifique si el demonio se está ejecutando",
+    "connection_refused": "No se puede conectar al demonio. Verifique que el demonio se esté ejecutando",
     "timeout": "Tiempo de solicitud agotado: El servidor no respondió",
-    "not_found": "Servidor no encontrado. Por favor verifique la configuración de red"
+    "not_found": "Servidor no encontrado. Verifique la configuración de red"
   },
   "port_conflict": {
-    "force_stop_title": "Conflicto de puerto — {{name}} detenido",
+    "force_stop_title": "Conflicto de puerto: {{name}} detenido",
     "force_stop_body": "{{stopped}} fue detenido forzosamente porque el puerto {{port}} entra en conflicto con {{existing}}"
   },
   "init": {
@@ -72,7 +72,7 @@
     "quit_all": "❌ Salir por completo"
   },
   "updates": {
-    "notification_title": "Saba-chan — Actualizaciones",
+    "notification_title": "Actualizaciones de Saba-chan",
     "notification_body": "{{count}} actualizaciones: {{names}}",
     "completed": "¡Actualización completada!"
   },

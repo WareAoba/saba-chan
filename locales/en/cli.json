@@ -101,7 +101,7 @@
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
     "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
-    "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
+    "agent_too_old": "The relay no longer accepts this app version. Update the app to {{min}} or later."
   },
   "col": {
     "players": "Players",
@@ -240,7 +240,7 @@
       "expired": "The code has expired. Start again.",
       "rate_limited": "Too many requests. Try again in about a minute.",
       "other": "The relay refused the request ({{code}}).",
-      "agent_too_old": "The relay no longer accepts this app version. Please update the app to {{min}} or later."
+      "agent_too_old": "The relay no longer accepts this app version. Update the app to {{min}} or later."
     },
     "ambiguous": "More than one {{what}} matches \"{{query}}\".",
     "ambiguous_hint": "Be more specific: {{names}}",
@@ -691,8 +691,8 @@
     "start_again": "Start {{name}} again?",
     "stored": "{{size}} newly stored",
     "unreadable": "⚠ cannot be opened",
-    "unreadable_hint": "{{count}} backup(s) cannot be opened. They cannot be restored, and unused backup content is not cleaned up until they are deleted. Please delete them.",
-    "unreadable_restore": "Backup {{backup}} cannot be opened, so it cannot be restored. Please delete it."
+    "unreadable_hint": "{{count}} backup(s) cannot be opened. They cannot be restored, and unused backup content is not cleaned up until they are deleted. Delete them.",
+    "unreadable_restore": "Backup {{backup}} cannot be opened, so it cannot be restored. Delete it."
   },
   "schedule": {
     "col": {

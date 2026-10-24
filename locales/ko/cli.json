@@ -205,7 +205,7 @@
     "offer_start": "사바쨩 데몬이 꺼져 있어요. 켤까요?",
     "spawn_failed": "데몬을 켜지 못했어요: {{error}}",
     "start_timeout": "데몬이 제때 응답하지 않았어요. 확인: saba-chan-cli daemon logs",
-    "exited_early": "데몬이 켜지자마자 꺼졌어요(종료 코드 {{code}}). 이미 다른 데몬이 돌고 있을 수 있어요. 확인: saba-chan-cli daemon status",
+    "exited_early": "데몬이 켜지자마자 꺼졌어요 (종료 코드 {{code}}). 이미 다른 데몬이 돌고 있을 수 있어요. 확인: saba-chan-cli daemon status",
     "started": "데몬을 켰어요 (v{{version}}).",
     "starting": "데몬을 켜는 중...",
     "stop_no_pid": "데몬이 PID를 알려 주지 않아 여기서 강제 종료할 수 없어요.",
@@ -228,7 +228,7 @@
       "channel_conflict": "한 채널에는 한 가지 용도만 지정할 수 있어요 (말하는 사바쨩·음악·알림 중 하나).",
       "unknown_channel": "그 채널을 디스코드 서버에서 찾지 못했어요. 채널 이름이나 id를 확인하세요.",
       "bot_unavailable": "사바쨩 봇이 지금 응답하지 않아요. 잠시 뒤 다시 시도하세요.",
-      "node_not_found": "릴레이가 이 PC를 모릅니다. 연결이 해제됐거나 다른 PC로 바뀌었어요.",
+      "node_not_found": "릴레이가 이 PC를 알지 못해요. 연결이 해제됐거나 다른 PC로 바뀌었어요.",
       "host_not_found": "릴레이에서 이 PC를 찾지 못했어요.",
       "missing_token": "이 PC가 아직 페어링되지 않았어요.",
       "invalid_token": "이 PC의 연결 토큰이 맞지 않아요.",
@@ -252,7 +252,7 @@
     "hint": {
       "executable_missing": "서버 파일이 없어요. 다시 설치하거나(saba-chan-cli server update) 실행 파일 경로를 지정하세요: saba-chan-cli server set 서버 executable_path=경로",
       "extension_required": "필요한 익스텐션을 설치하세요: saba-chan-cli extension install {{ids}}",
-      "extension_not_verified": "확장 파일이 바뀌어 확인되지 않았습니다: {{ids}}. 다시 설치하거나 원래대로 되돌려 주세요: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "익스텐션 파일이 바뀌어 확인되지 않았어요: {{ids}}. 다시 설치하거나 원래대로 되돌려 주세요: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "먼저 이 PC를 페어링하세요: saba-chan-cli bot pair",
       "server_not_running": "먼저 서버를 켜세요: saba-chan-cli start 이름",
       "server_running": "먼저 서버를 끄세요: saba-chan-cli stop 이름",
@@ -567,7 +567,7 @@
   },
   "launch_preview": {
     "no_args": "{{name}}의 모듈은 설정을 실행 인자로 쓰지 않아요.",
-    "invalid_format": "잘못된 형식입니다: {{arg}} ({{field}})"
+    "invalid_format": "형식이 잘못됐어요: {{arg}} ({{field}})"
   },
   "help": {
     "cmd": {
@@ -1237,7 +1237,7 @@
     "no_modules": "없음",
     "installing": "설치하고 있어요",
     "not_writable": "{{dir}}에 쓸 수 없어요. --dir로 쓸 수 있는 폴더(예: 사용자 폴더 아래)를 고르세요",
-    "running_inside": "이 CLI는 {{dir}} 안에서 실행 중이라 그 폴더에 설치할 수 없습니다. 설치 폴더 밖에 있는 saba-chan-cli로 다시 실행해 주세요.",
+    "running_inside": "이 CLI는 {{dir}} 안에서 실행 중이라 그 폴더에 설치할 수 없어요. 설치 폴더 밖에 있는 saba-chan-cli로 다시 실행해 주세요.",
     "empty_dir": "설치 폴더가 비어 있어요. --dir에 폴더를 적어 주세요",
     "failed": "설치하지 못했어요: {{reason}} (자세한 기록: {{log}})",
     "failed_no_log": "설치하지 못했어요: {{reason}}",
