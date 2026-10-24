@@ -1155,8 +1155,9 @@ async fn announce_updates(state: &IPCServer, id: &str, mut result: Value) -> Val
     let Some((name, module)) = state.supervisor.read().await.instance_store.get(id).map(|i| (i.name.clone(), i.module_name.clone())) else {
         return result;
     };
-    let status = state.update_state.manager.read().await.get_status();
-    if let Some(update) = module_update_of(&status, &module) {
+    // 받거나 적용하는 중이면 매니저가 잠겨 있다: 덧붙이는 안내 때문에 시작 답을 기다리게 하지 않는다
+    let status = state.update_state.manager.try_read().ok().map(|m| m.get_status());
+    if let Some(update) = status.as_ref().and_then(|s| module_update_of(s, &module)) {
         crate::events::emit(
             "instance.update_notice",
             json!({ "instanceId": id, "instance": name, "kind": "module", "module": module, "latest": update["latest"] }),

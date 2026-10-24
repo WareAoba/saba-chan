@@ -43,9 +43,11 @@ function saveNotices(notices) {
 function addNotice({ message, type = 'info', source = 'saba-chan', action = null, dedup = false, data = null }) {
     const notices = loadNotices();
 
-    // 중복 방지: 같은 source + action이 이미 있으면 기존 알림을 업데이트
-    if (dedup && action) {
-        const existIdx = notices.findIndex((n) => n.source === source && n.action === action);
+    // 중복 방지: 같은 source + action(액션이 없으면 같은 문구)이 이미 있으면 기존 알림을 업데이트
+    if (dedup) {
+        const existIdx = notices.findIndex(
+            (n) => n.source === source && (action ? n.action === action : !n.action && n.message === message),
+        );
         if (existIdx >= 0) {
             // 메시지만 업데이트하고 상단으로 이동
             const existing = notices.splice(existIdx, 1)[0];

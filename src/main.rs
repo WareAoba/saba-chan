@@ -564,12 +564,18 @@ async fn main() -> anyhow::Result<()> {
     let supervisor_shutdown = supervisor.clone();
     let ctrl_c_cancel = shutdown_token.clone();
     let stop_requested = stop_requested_token.clone();
+    let relay_shutdown = ipc_server.relay_agent.clone();
     tokio::spawn(async move {
         // 종료 경로는 하나: Ctrl+C·SIGTERM, API(/api/daemon/shutdown, unregister?shutdown=true, 업데이터) 모두 여기로
         tokio::select! {
             _ = tokio::signal::ctrl_c() => tracing::info!("Shutdown signal received, cleaning up..."),
             _ = sigterm() => tracing::info!("SIGTERM received, cleaning up..."),
             _ = stop_requested.cancelled() => tracing::info!("Shutdown requested, cleaning up..."),
+        }
+
+        // 0. 보내는 중인 원격 명령 결과(예: 원격 업데이트의 재시작 안내)가 릴레이에 닿도록 잠깐 기다린다
+        if !relay_shutdown.settle(std::time::Duration::from_secs(15)).await {
+            tracing::warn!("[Shutdown] Some relay results were still being sent after 15s");
         }
 
         // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
