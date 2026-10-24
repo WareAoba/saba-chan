@@ -252,6 +252,13 @@ pub fn stale_runtimes(
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
+/// 런타임 기록에서 데몬이 ALL APPLICATION PACKAGES에 더한 함께 읽는 권한의 키. 런타임(없어도 되는 것)은 쓰지 않게 되면 거두고,
+/// 나머지(Python·모듈·익스텐션 폴더)는 제거기(`reset`)만 거둔다
+#[cfg_attr(not(windows), allow(dead_code))]
+const SHARED_RUNTIMES: &str = "*all-app-packages*";
+#[cfg_attr(not(windows), allow(dead_code))]
+const SHARED_FIXED: &str = "*all-app-packages-fixed*";
+
 /// 런타임 읽기 권한 기록 (`<data_dir>/sandbox-grants.json`: 프로필 → 폴더)
 fn runtime_record_path() -> PathBuf {
     saba_chan_updater_lib::constants::resolve_data_dir().join("sandbox-grants.json")
@@ -1283,6 +1290,7 @@ mod imp {
         let sid = container_sid(profile)?;
         let everyone = all_app_packages()?;
         let mut runtimes = Vec::new();
+        let mut shared_added: Vec<(PathBuf, bool)> = Vec::new();
         for (path, access) in &grants.entries {
             // 상속되는 권한·표시는 하위 파일 전부에 퍼진다: 큰 폴더는 처음 한 번 오래 걸릴 수 있어 남긴다
             let started = std::time::Instant::now();
@@ -1300,6 +1308,10 @@ mod imp {
             // 없어도 되는 읽기 권한(런타임 폴더)은 이 SID의 명시 ACE(지금 더한 것, 예전 데몬이 더한 것)를 기록해 두었다가
             // 쓰지 않게 되면 거둔다. 상속받았거나 모든 앱 패키지로 읽을 수 있는 폴더는 이 폴더에서 거둘 것이 없다
             // 함께 쓰는 폴더의 권한은 한 구성요소가 거두면 다른 구성요소도 잃으므로 기록하지 않는다
+            // 그 대신 데몬이 모든 앱 패키지에 더한 것은 따로 기록해, 쓰지 않게 된 런타임이나 제거기(`reset`)에서 거둔다
+            if shared && existing != super::Existing::Elsewhere {
+                shared_added.push((path.clone(), optional));
+            }
             if optional && !shared && *access == Access::Read {
                 let state = match existing {
                     super::Existing::None => "granted",
@@ -1318,13 +1330,22 @@ mod imp {
                 }
             }
         }
-        if !runtimes.is_empty() {
+        if !runtimes.is_empty() || !shared_added.is_empty() {
             let file = super::runtime_record_path();
             let mut record = super::read_runtime_record(&file);
-            let known = record.entry(profile.to_string()).or_default();
-            let before = known.len();
-            known.extend(runtimes);
-            if known.len() != before {
+            let mut changed = false;
+            let mut add = |key: &str, paths: Vec<PathBuf>| {
+                let known = record.entry(key.to_string()).or_default();
+                let before = known.len();
+                known.extend(paths);
+                changed |= known.len() != before;
+            };
+            add(profile, runtimes);
+            let (shared_runtimes, shared_fixed): (Vec<_>, Vec<_>) = shared_added.into_iter().partition(|(_, optional)| *optional);
+            add(super::SHARED_RUNTIMES, shared_runtimes.into_iter().map(|(p, _)| p).collect());
+            add(super::SHARED_FIXED, shared_fixed.into_iter().map(|(p, _)| p).collect());
+            record.retain(|_, paths| !paths.is_empty());
+            if changed {
                 super::write_runtime_record(&file, &record);
             }
         }
@@ -1342,7 +1363,11 @@ mod imp {
             return;
         }
         for (profile, paths) in &stale {
-            let sid = match container_sid(profile) {
+            // 함께 읽는 고정 폴더는 런타임이 아니라 여기서 거두지 않는다 (제거기만)
+            if profile == super::SHARED_FIXED {
+                continue;
+            }
+            let sid = match if profile == super::SHARED_RUNTIMES { all_app_packages() } else { container_sid(profile) } {
                 Ok(sid) => sid,
                 Err(e) => {
                     tracing::warn!("[Sandbox] could not revoke runtimes of {}: {}", profile, e);
@@ -1411,6 +1436,24 @@ mod imp {
             if let Err(e) = delete_profile(profile) {
                 failed.push(e);
             }
+        }
+        // 데몬이 모든 앱 패키지에 더한 함께 읽는 권한도 거둔다 (기록된 것만: 원래 있던 권한은 두고)
+        let shared = [super::SHARED_RUNTIMES, super::SHARED_FIXED].into_iter().flat_map(|key| record.get(key).into_iter().flatten());
+        match all_app_packages() {
+            Ok(everyone) => {
+                for path in shared.filter(|p| p.exists()) {
+                    match has_own_ace(path, everyone) {
+                        Ok(false) => {}
+                        Ok(true) => {
+                            if let Err(e) = remove_ace(path, everyone) {
+                                failed.push(e);
+                            }
+                        }
+                        Err(e) => failed.push(e),
+                    }
+                }
+            }
+            Err(e) => failed.push(e),
         }
         if failed.is_empty() {
             let _ = std::fs::remove_file(&file);
