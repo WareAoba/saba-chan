@@ -200,16 +200,20 @@
     "server": {
       "status": {
         "title": "サーバーの状態",
-        "description": "1つのサーバーの状態"
+        "description": "1つのサーバーの状態",
+        "name": "状態"
       },
       "start": {
-        "title": "サーバーを起動"
+        "title": "サーバーを起動",
+        "name": "起動"
       },
       "stop": {
-        "title": "サーバーを停止"
+        "title": "サーバーを停止",
+        "name": "停止"
       },
       "restart": {
-        "title": "サーバーを再起動"
+        "title": "サーバーを再起動",
+        "name": "再起動"
       },
       "console": {
         "tail": {

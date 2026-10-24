@@ -200,16 +200,20 @@
     "server": {
       "status": {
         "title": "Status do servidor",
-        "description": "O estado de um servidor"
+        "description": "O estado de um servidor",
+        "name": "Status"
       },
       "start": {
-        "title": "Iniciar servidor"
+        "title": "Iniciar servidor",
+        "name": "Iniciar"
       },
       "stop": {
-        "title": "Parar servidor"
+        "title": "Parar servidor",
+        "name": "Parar"
       },
       "restart": {
-        "title": "Reiniciar servidor"
+        "title": "Reiniciar servidor",
+        "name": "Reiniciar"
       },
       "console": {
         "tail": {

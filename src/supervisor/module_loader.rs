@@ -1701,7 +1701,7 @@ impl ModuleToml {
                 problems.push(format!("{} '{}' is not a [[commands.fields]] name", key, name));
             }
         }
-        for c in &self.commands {
+        if let Some(c) = &self.commands {
             let patterns = c.fields.iter().filter_map(|f| f.reply_pattern.as_ref().map(|p| (format!("commands.fields '{}' reply_pattern", f.name), p)));
             let failures = c.failure_patterns.iter().map(|p| ("commands.failure_patterns".to_string(), p));
             for (key, pattern) in patterns.chain(failures) {

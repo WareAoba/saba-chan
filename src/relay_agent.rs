@@ -1222,7 +1222,7 @@ fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &st
         Ok(v) => json!({ "success": v.get("success").and_then(Value::as_bool).unwrap_or(true), "data": v }),
         Err(e) => {
             let mut data = json!({ "code": e.code, "error": e.message });
-            if let Some(reason) = crate::chat::known_reason(&crate::chat::i18n::Catalog::for_language(locale), &e.code, &e.data) {
+            if let Some(reason) = crate::chat::known_reason(&crate::chat::i18n::Catalog::for_language(locale), e.code, &e.data) {
                 data["reason"] = json!(reason);
             }
             if let Value::Object(extra) = &e.data {

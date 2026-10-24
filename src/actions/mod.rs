@@ -627,6 +627,12 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
                 cats.iter().filter_map(|(l, c)| Some((l.to_string(), json!(translated(c, &format!("actions.field.{}", name))?)))).collect()
             }),
         });
+        // 서버 슬래시 루트 아래 짧은 이름 (`/<서버> 상태`): 제목의 "서버"를 뺀 것. 문구가 있는 언어만
+        let name: Map<String, Value> =
+            cats.iter().filter_map(|(l, c)| Some((l.to_string(), json!(translated(c, &format!("actions.{}.name", d.id))?)))).collect();
+        if !name.is_empty() {
+            item["name"] = Value::Object(name);
+        }
         // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`)
         if let Some(level) = d.discord_level {
             item["level"] = json!(level);
