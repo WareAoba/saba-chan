@@ -193,7 +193,7 @@ fn new_lines<'a>(since: Option<u64>, cur: &Cursor, fresh: &Cursor, lines: &'a [V
 }
 
 pub fn format_line(l: &Value) -> String {
-    let text = s(l, "content");
+    let text = strip_terminal_controls(s(l, "content"));
     let base = |t: &str| match (s(l, "source"), s(l, "level")) {
         ("system", _) => style(t).cyan().to_string(),
         (_, "error") => style(t).red().to_string(),
@@ -206,9 +206,9 @@ pub fn format_line(l: &Value) -> String {
     } else {
         String::new()
     };
-    let spans = span_ranges(text, l.get("spans"));
+    let spans = span_ranges(&text, l.get("spans"));
     if spans.is_empty() {
-        return format!("{}{}", prefix, base(text));
+        return format!("{}{}", prefix, base(&text));
     }
     // 토큰 구간은 토큰 색, 나머지는 줄 레벨 색
     let mut out = prefix;
@@ -219,6 +219,31 @@ pub fn format_line(l: &Value) -> String {
         at = end;
     }
     out.push_str(&base(&text[at..]));
+    out
+}
+
+fn strip_terminal_controls(input: &str) -> String {
+    let mut chars = input.chars().peekable();
+    let mut out = String::with_capacity(input.len());
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            match chars.next() {
+                Some('[') => {
+                    for c in chars.by_ref() {
+                        if ('\u{40}'..='\u{7e}').contains(&c) { break; }
+                    }
+                }
+                Some(']') => {
+                    while let Some(c) = chars.next() {
+                        if c == '\u{7}' || (c == '\u{1b}' && chars.next_if_eq(&'\\').is_some()) { break; }
+                    }
+                }
+                Some(_) | None => {}
+            }
+        } else if !ch.is_control() {
+            out.push(ch);
+        }
+    }
     out
 }
 
@@ -525,6 +550,8 @@ mod tests {
         assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
         let plain = json!({"content": "x", "source": "system", "level": "info"});
         assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
+        let controlled = json!({"content": "safe\u{1b}]8;;https://example.invalid\u{7}label\u{1b}]8;;\u{7}", "source": "stdout", "level": "info"});
+        assert_eq!(format_line(&controlled), "safelabel");
     }
 
     /// TUI처럼 출력 창구를 바꿔 끼웠으면 입력 줄을 열지 않고 따라 읽는다: 입력 줄이 화면과 키를 가로챈다 (`start --console`)

@@ -59,6 +59,19 @@ pub(crate) fn expected_token() -> Option<String> {
     cached.or_else(read_token_from_file)
 }
 
+pub(crate) fn identity_proof(challenge: &str) -> Option<String> {
+    let token = expected_token()?;
+    Some(proof_for_token(&token, challenge))
+}
+
+fn proof_for_token(token: &str, challenge: &str) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(token.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(challenge.as_bytes());
+    mac.finalize().into_bytes().iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// 요청의 `X-Saba-Token`이 맞는지: `"valid"` | `"invalid"` | `"missing"`. 토큰 값은 드러내지 않는다
 pub fn token_status(headers: &axum::http::HeaderMap) -> &'static str {
     let provided = headers.get("X-Saba-Token").and_then(|v| v.to_str().ok()).unwrap_or("");
@@ -167,6 +180,12 @@ fn logged_target(uri: &axum::http::Uri) -> &str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn identity_proof_binds_the_response_to_a_fresh_challenge() {
+        let proof = super::proof_for_token("known-test-token", "fresh-challenge");
+        assert_ne!(super::proof_for_token("known-test-token", "different-challenge"), proof);
+    }
+
     #[test]
     fn a_failed_request_is_logged_without_its_query() {
         let uri: axum::http::Uri = "/api/relay/pair/AB12/status?secret=s3cr3t".parse().unwrap();

@@ -165,6 +165,21 @@ impl DaemonClient {
         }
     }
 
+    pub async fn identity_valid(&self, timeout_ms: u64) -> bool {
+        let token = self.token();
+        if token.is_empty() || !self.base_is_loopback() { return false; }
+        let challenge = uuid::Uuid::new_v4().to_string();
+        let result = self.http.get(format!("{}/health", self.base())).timeout(Duration::from_millis(timeout_ms))
+            .header("X-Saba-Challenge", &challenge).send().await;
+        let Ok(response) = result else { return false };
+        let Ok(body) = response.json::<Value>().await else { return false };
+        let Some(proof) = body.get("proof").and_then(Value::as_str) else { return false };
+        use hmac::{Hmac, Mac};
+        let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes()) else { return false };
+        mac.update(challenge.as_bytes());
+        hex::decode(proof).ok().is_some_and(|bytes| mac.verify_slice(&bytes).is_ok())
+    }
+
     pub fn base(&self) -> String {
         self.base.read().unwrap().clone()
     }
@@ -210,7 +225,7 @@ impl DaemonClient {
             .header("X-Saba-Client", "gui");
         // 토큰은 이 PC의 데몬에만 보낸다 (IPC_BASE가 다른 호스트를 가리켜도)
         let token = self.token();
-        if !token.is_empty() && self.base_is_loopback() {
+        if !token.is_empty() && self.base_is_loopback() && path != "/health" {
             req = req.header("X-Saba-Token", token);
         }
         req
@@ -509,7 +524,7 @@ mod tests {
         std::fs::write(&token_path, "secret").unwrap();
         let has_token = |base: &str| {
             let client = DaemonClient::new(base.into(), token_path.clone());
-            let req = client.builder(reqwest::Method::GET, "/health").build().unwrap();
+            let req = client.builder(reqwest::Method::GET, "/api/version").build().unwrap();
             req.headers().contains_key("X-Saba-Token")
         };
         assert!(has_token("http://127.0.0.1:57474"));
@@ -517,6 +532,8 @@ mod tests {
         assert!(has_token("http://[::1]:57474"));
         assert!(!has_token("http://192.168.0.10:57474"));
         assert!(!has_token("http://example.com:57474"));
+        let local = DaemonClient::new("http://127.0.0.1:57474".into(), token_path);
+        assert!(!local.builder(reqwest::Method::GET, "/health").build().unwrap().headers().contains_key("X-Saba-Token"));
     }
 
     #[tokio::test]

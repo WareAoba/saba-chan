@@ -1,10 +1,28 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use std::io::Read;
+use std::io::{Read, Seek};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use zip::ZipArchive;
+
+const MODULE_ARCHIVE_DOWNLOAD_LIMIT: u64 = 128 * 1024 * 1024;
+const MODULE_ARCHIVE_ENTRY_LIMIT: usize = 20_000;
+const MODULE_ARCHIVE_EXPANDED_LIMIT: u64 = 1024 * 1024 * 1024;
+
+fn check_module_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<()> {
+    if archive.len() > MODULE_ARCHIVE_ENTRY_LIMIT {
+        anyhow::bail!("Module archive has too many files");
+    }
+    let mut expanded = 0u64;
+    for index in 0..archive.len() {
+        expanded = expanded.saturating_add(archive.by_index(index)?.size());
+        if expanded > MODULE_ARCHIVE_EXPANDED_LIMIT {
+            anyhow::bail!("Module archive expands beyond the size limit");
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleMetadata {
@@ -1976,8 +1994,12 @@ impl ModuleLoader {
 
     /// ZIP 파일에서 모듈 로드 (압축 해제 후 임시 디렉토리 사용)
     fn load_module_from_zip(&self, zip_path: &Path) -> Result<LoadedModule> {
+        if fs::metadata(zip_path)?.len() > MODULE_ARCHIVE_DOWNLOAD_LIMIT {
+            anyhow::bail!("Module archive exceeds the download size limit");
+        }
         let file = fs::File::open(zip_path)?;
         let mut archive = ZipArchive::new(file)?;
+        check_module_archive(&mut archive)?;
 
         // ZIP 내부에서 가장 얕은 위치의 module.toml을 고른다
         // (`ends_with`로 고르면 `foo_module.toml`이나 하위 폴더 것이 먼저 잡힌다)
@@ -2007,6 +2029,7 @@ impl ModuleLoader {
         
         let file = fs::File::open(zip_path)?;
         let mut archive = ZipArchive::new(file)?;
+        check_module_archive(&mut archive)?;
         archive.extract(&extract_path)?;
 
         // 임시 디렉토리 경로를 영구적으로 유지 (tempdir는 Drop시 삭제되므로)

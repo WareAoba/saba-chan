@@ -407,9 +407,22 @@ pub fn extract_zip(
     target_dir: &Path,
     mut before_write: impl FnMut(&Path) -> Result<()>,
 ) -> Result<Vec<PathBuf>> {
+    const ENTRY_LIMIT: usize = 20_000;
+    const EXPANDED_LIMIT: u64 = 1024 * 1024 * 1024;
     let mut written = Vec::new();
     let file = std::fs::File::open(staged)?;
     let mut archive = zip::ZipArchive::new(file)?;
+    if archive.len() > ENTRY_LIMIT {
+        anyhow::bail!("Archive has too many files");
+    }
+    let mut declared = 0u64;
+    for i in 0..archive.len() {
+        declared = declared.saturating_add(archive.by_index(i)?.size());
+        if declared > EXPANDED_LIMIT {
+            anyhow::bail!("Archive expands beyond the size limit");
+        }
+    }
+    let mut expanded = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
         // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
@@ -435,7 +448,16 @@ pub fn extract_zip(
         partial.push(".update-new");
         let partial = PathBuf::from(partial);
         let wrote = std::fs::File::create(&partial).and_then(|mut f| {
-            std::io::copy(&mut entry, &mut f)?;
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                let count = std::io::Read::read(&mut entry, &mut buffer)?;
+                if count == 0 { break; }
+                expanded = expanded.saturating_add(count as u64);
+                if expanded > EXPANDED_LIMIT {
+                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Archive expands beyond the size limit"));
+                }
+                std::io::Write::write_all(&mut f, &buffer[..count])?;
+            }
             f.sync_all()
         });
         if let Err(e) = wrote.and_then(|_| std::fs::rename(&partial, &out_path)) {

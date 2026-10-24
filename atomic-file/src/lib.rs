@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub enum Mode {
     /// 있던 파일의 권한을 잇는다 (없으면 기본값)
     Plain,
-    /// 비밀값이 든 파일: 처음부터 주인만 읽고 쓴다 (Unix 0600, Windows는 폴더 ACL을 물려받는다)
+    /// 비밀값이 든 파일: 처음부터 주인만 읽고 쓴다 (Unix 0600, Windows는 폴더 ACL을 잇지 않는 보호 DACL)
     Secret,
 }
 
@@ -54,10 +54,98 @@ fn write_temp(tmp: &Path, path: &Path, contents: &[u8], mode: Mode) -> std::io::
         }
     }
     #[cfg(not(unix))]
-    let _ = (path, mode);
+    let _ = path;
     let mut file = options.open(tmp)?;
+    // 이름을 바꿔도 임시 파일의 ACL이 그대로 간다: 폴더에 준 격리 실행 권한이 비밀 파일로 상속되지 않게 미리 끊는다
+    #[cfg(windows)]
+    if mode == Mode::Secret {
+        restrict_to_user(tmp)?;
+    }
     file.write_all(contents)?;
     file.sync_all()
+}
+
+/// 폴더·파일의 DACL을 상속 없이 현재 사용자·SYSTEM·Administrators 전체 권한으로 바꾼다 (Windows).
+/// 폴더면 안의 항목도 이 권한을 물려받는다. 다른 계정이나 격리 실행에 준 권한이 위에서 내려오지 않는다
+#[cfg(windows)]
+pub fn restrict_to_user(path: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use std::ptr::{null, null_mut};
+    use windows_sys::Win32::Foundation::{LocalFree, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SetSecurityInfo, SE_FILE_OBJECT,
+    };
+    use windows_sys::Win32::Security::{
+        GetSecurityDescriptorDacl, GetTokenInformation, TokenUser, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+        TOKEN_QUERY, TOKEN_USER,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, OPEN_EXISTING, READ_CONTROL, WRITE_DAC};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let token = OwnedHandle::from_raw_handle(token);
+        let mut needed = 0;
+        GetTokenInformation(token.as_raw_handle(), TokenUser, null_mut(), 0, &mut needed);
+        let mut info = vec![0u8; needed as usize];
+        if GetTokenInformation(token.as_raw_handle(), TokenUser, info.as_mut_ptr().cast(), needed, &mut needed) == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let user = std::ptr::read_unaligned(info.as_ptr() as *const TOKEN_USER);
+        let mut sid = null_mut();
+        if ConvertSidToStringSidW(user.User.Sid, &mut sid) == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let mut len = 0;
+        while *sid.add(len) != 0 {
+            len += 1;
+        }
+        let user_sid = String::from_utf16_lossy(std::slice::from_raw_parts(sid, len));
+        LocalFree(sid.cast());
+        let sddl: Vec<u16> = format!("D:P(A;OICI;FA;;;{user_sid})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)").encode_utf16().chain(Some(0)).collect();
+        let mut descriptor = null_mut();
+        if ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.as_ptr(), 1, &mut descriptor, null_mut()) == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let (mut present, mut defaulted, mut dacl) = (0, 0, null_mut());
+        if GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted) == 0 || present == 0 {
+            let error = std::io::Error::last_os_error();
+            LocalFree(descriptor);
+            return Err(error);
+        }
+        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let handle = CreateFileW(wide.as_ptr(), WRITE_DAC | READ_CONTROL, 7, null(), OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, null_mut());
+        if handle == INVALID_HANDLE_VALUE {
+            let error = std::io::Error::last_os_error();
+            LocalFree(descriptor);
+            return Err(error);
+        }
+        let handle = OwnedHandle::from_raw_handle(handle);
+        let rc = SetSecurityInfo(
+            handle.as_raw_handle(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            dacl,
+            null(),
+        );
+        LocalFree(descriptor);
+        if rc != 0 {
+            return Err(std::io::Error::from_raw_os_error(rc as i32));
+        }
+    }
+    Ok(())
+}
+
+/// Unix에는 상속 ACL이 없다: 할 일이 없다
+#[cfg(not(windows))]
+pub fn restrict_to_user(_path: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// 이름 바꾸기까지 디스크에 남긴다 (Unix만. 실패해도 저장은 끝난 것이다)

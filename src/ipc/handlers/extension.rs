@@ -280,10 +280,12 @@ pub async fn serve_gui_bundle(
 }
 
 /// manifest의 GUI 파일 경로를 익스텐션 폴더 안의 실제 파일로 푼다. 허락은 폴더 안 파일의 지문에 묶이므로
-/// 폴더 밖(`..`·절대 경로)이나 링크(파일이든 거쳐 가는 폴더든)를 가리키면 서빙하지 않는다
+/// 폴더 밖(`..`·절대 경로)이나 링크(파일이든 거쳐 가는 폴더든)를 가리키면 서빙하지 않는다.
+/// 지문이 빼는 `__pycache__` 안의 파일도 서빙하지 않는다 (허락 뒤에 바뀌어도 지문이 같다)
 fn gui_file(dir: &std::path::Path, relative: &str) -> Option<std::path::PathBuf> {
     let rel = std::path::Path::new(relative);
-    if relative.is_empty() || !rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+    let plain = |c: std::path::Component| matches!(c, std::path::Component::Normal(n) if !n.to_string_lossy().eq_ignore_ascii_case("__pycache__"));
+    if relative.is_empty() || !rel.components().all(plain) {
         return None;
     }
     let mut path = dir.to_path_buf();
@@ -775,7 +777,9 @@ mod tests {
         std::fs::write(tmp.path().join("outside.js"), "x").unwrap();
         assert_eq!(gui_file(&dir, "gui/a.js"), Some(dir.join("gui").join("a.js")));
         let outside = tmp.path().join("outside.js");
-        for bad in ["../outside.js", "gui/../../outside.js", "", "gui", "missing.js", outside.to_str().unwrap()] {
+        std::fs::create_dir_all(dir.join("__pycache__")).unwrap();
+        std::fs::write(dir.join("__pycache__").join("b.js"), "x").unwrap();
+        for bad in ["../outside.js", "gui/../../outside.js", "", "gui", "missing.js", "__pycache__/b.js", outside.to_str().unwrap()] {
             assert_eq!(gui_file(&dir, bad), None, "{}", bad);
         }
         #[cfg(unix)]

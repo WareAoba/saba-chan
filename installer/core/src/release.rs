@@ -116,7 +116,7 @@ pub(crate) async fn install_addon(key: &str, info: &ManifestComponent, target: &
     let temp_dir = work_dir();
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     let zip = temp_dir.join(&info.filename);
-    download(info, &zip, |_, _| {}).await?;
+    download_with_limit(info, &zip, Some(128 * 1024 * 1024), |_, _| {}).await?;
     let result = install_addon_zip(key, &zip, target);
     let _ = std::fs::remove_file(&zip);
     result
@@ -176,6 +176,15 @@ pub async fn download(
     dest: &Path,
     on_progress: impl Fn(u64, Option<u64>),
 ) -> Result<(), String> {
+    download_with_limit(info, dest, None, on_progress).await
+}
+
+async fn download_with_limit(
+    info: &ManifestComponent,
+    dest: &Path,
+    limit: Option<u64>,
+    on_progress: impl Fn(u64, Option<u64>),
+) -> Result<(), String> {
     let http = reqwest::Client::builder()
         .user_agent(concat!("saba-chan-installer/", env!("CARGO_PKG_VERSION")))
         .build()
@@ -192,8 +201,13 @@ pub async fn download(
             on_progress(received, (total > 0).then_some(total));
         }
     };
+    let max_bytes = match (info.size_bytes, limit) {
+        (Some(size), Some(limit)) => Some(size.min(limit)),
+        (Some(size), None) => Some(size),
+        (None, limit) => limit,
+    };
     let result = tokio::select! {
-        r = download_verified(&http, &info.url, dest, Some(&info.sha256), info.size_bytes, Some(&progress)) => r,
+        r = download_verified(&http, &info.url, dest, Some(&info.sha256), max_bytes, Some(&progress)) => r,
         _ = ticker => unreachable!("the ticker never finishes"),
     };
     result.map(|_| ()).map_err(|e| e.to_string())
