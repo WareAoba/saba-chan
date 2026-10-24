@@ -779,6 +779,12 @@ pub async fn install_server_handler(
                 },
                 None => None,
             };
+            // 받은 파일로 켜도록 버전·실행 파일·작업 폴더를 함께 맞춘다 (클라이언트가 따로 저장하지 않는다).
+            // 실행 파일 백업을 지우기 전에 저장해, 저장하지 못하면 실행 파일도 되돌린다
+            let commit = |sup: &mut Supervisor, installed: &Value| match own {
+                Some((id, _)) => save_installed(sup, id, &version, installed, &install_dir),
+                None => Ok(()),
+            };
             let result = Supervisor::install_server(
                 &state.supervisor,
                 &module_name,
@@ -789,32 +795,32 @@ pub async fn install_server_handler(
                 initial_settings,
                 instance.map(|(settings, dirs, _)| (settings, dirs)),
                 keep_executable.as_deref(),
+                Some(&commit),
             )
             .await
             .map_err(|e| {
                 // 되돌리지 못한 파일은 422와 같은 칸으로도 싣는다
                 let mut body = json!({ "error": format!("{:#}", e) });
-                if let Some(put_back) = e.downcast_ref::<crate::supervisor::PutBackFailed>() {
+                let commit_failed = e.downcast_ref::<crate::supervisor::CommitFailed>();
+                if let Some(put_back) = e.downcast_ref::<crate::supervisor::PutBackFailed>().or(commit_failed.map(|c| &c.0)).filter(|p| !p.files.is_empty()) {
                     body["restore_failed"] = json!(put_back.files);
                     body["kept_backups"] = json!(put_back.kept);
+                }
+                if commit_failed.is_some() {
+                    tracing::error!("Installed the server files but could not save the instance: {:#}", e);
+                    body["success"] = json!(false);
+                    body["error"] = json!(format!("The server files were installed, but the server details could not be saved: {:#}", e));
+                    body["error_code"] = json!("save_failed");
                 }
                 body
             });
             let Some((id, guard)) = own else {
                 return result;
             };
-            let succeeded = result.as_ref().is_ok_and(|r| r.get("success").and_then(Value::as_bool) == Some(true));
-            let mut result = result;
-            if let (true, Ok(installed)) = (succeeded, &result) {
-                // 받은 파일로 켜도록 버전·실행 파일·작업 폴더를 함께 맞춘다 (클라이언트가 따로 저장하지 않는다)
-                let saved = save_installed(&mut *state.supervisor.write().await, id, &version, installed, &install_dir);
-                let Err(e) = saved else {
-                    return result;
-                };
-                // 기록과 파일이 어긋나지 않게 아래에서 설치 전 백업으로 되돌린다
-                tracing::error!("Installed '{}' but could not save it: {:#}", id, e);
-                result = Err(json!({ "success": false, "error": format!("The server files were installed, but the server details could not be saved: {}", e), "error_code": "save_failed" }));
+            if result.as_ref().is_ok_and(|r| r.get("success").and_then(Value::as_bool) == Some(true)) {
+                return result;
             }
+            let mut result = result;
             // 실패: 설치 전 백업으로 되돌린다
             if let Some(name) = before {
                 let restored = super::backup::restore_held(&state, id, &name, guard, false).await;
@@ -1292,12 +1298,13 @@ mod tests {
         .unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
-        let files = tmp.path().join("files");
+        let mut inst = crate::instance::ServerInstance::new("srv", &game);
+        let id = inst.id.clone();
+        // 확인되지 않은 모듈이 알려 준 새 폴더(v2)는 인스턴스 폴더 안이어야 받는다
+        let files = sup.instance_store.instance_dir(&id).join("files");
         std::fs::create_dir_all(files.join("world")).unwrap();
         std::fs::write(files.join("world").join("level.dat"), "old").unwrap();
-        let mut inst = crate::instance::ServerInstance::new("srv", &game);
         inst.working_dir = Some(files.to_string_lossy().into_owned());
-        let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let install = |version: &str| {
