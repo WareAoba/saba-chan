@@ -45,6 +45,9 @@ const SEEN_MAX: usize = 1000;
 /// 결과 전송(`POST /result/:id`)이 일시적으로 실패했을 때 다시 보내는 횟수. 그사이 그 명령의 실행 자리를 쥔다
 const RESULT_RETRIES: u32 = 5;
 
+/// 받지 않은 결과를 이만큼 들고 있으면 새 명령을 시작하지 않는다. 받아 둔 명령은 ack하지 않아 릴레이에 남는다
+const UNSENT_MAX: usize = 100;
+
 /// 결과를 다시 보내기 전 기다림: 1·2·4·8·16초 (시험에서는 짧게)
 fn result_retry_delay(attempt: u32) -> Duration {
     let unit = if cfg!(test) { Duration::from_millis(10) } else { Duration::from_secs(1) };
@@ -88,6 +91,16 @@ pub struct RelayAgent {
     inner: Arc<Mutex<Inner>>,
     /// 받은 명령 id. 다시 연결해도(토큰·주소 교체, 연결 해제 뒤 연결) 이어서 쓴다: 대기열에 남은 명령이 다시 와도 두 번 실행하지 않게
     seen: Arc<Mutex<SeenCommands>>,
+    /// 다시 보내도 릴레이가 받지 않은 결과. 같은 주소·토큰의 세션이 이어서 보낸다
+    unsent: Arc<Mutex<Vec<Unsent>>>,
+}
+
+/// 릴레이가 아직 받지 않은 명령 결과. 만든 세션의 주소·토큰을 함께 둔다: 다른 노드로 보내지 않게
+struct Unsent {
+    base: String,
+    token: String,
+    id: String,
+    body: String,
 }
 
 impl RelayAgent {
@@ -173,7 +186,7 @@ impl RelayAgent {
                     } => {}
                 }
             });
-            tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop());
+            tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop(), session.unsent_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
         });
@@ -294,7 +307,8 @@ enum Received {
     Done(Value),
 }
 
-/// 최근에 받은 명령 id (`SEEN_FOR` 동안, 최대 `SEEN_MAX`개). 끝난 명령은 결과도 기억해 다시 보낼 수 있게 한다
+/// 최근에 받은 명령 id. 끝난 명령은 결과도 기억해 다시 보낼 수 있게 한다 (`SEEN_FOR` 동안, 최대 `SEEN_MAX`개).
+/// 기다리거나 실행 중인 명령은 끝날 때까지(또는 세션이 끝나 `forget`할 때까지) 기억한다
 #[derive(Default)]
 struct SeenCommands {
     entries: std::collections::VecDeque<Seen>,
@@ -309,10 +323,9 @@ struct Seen {
 
 impl SeenCommands {
     /// 받은 id를 기록하고, 이 명령을 어떻게 다룰지 돌려준다. 처음 본 id는 처리 중으로 기록한다
+    /// 끝난 명령만 시간·개수로 잊는다. 기다리거나 실행 중인 명령은 작업량 상한 안에 있고, 잊으면 다시 오는 같은 명령을 또 실행한다
     fn receive(&mut self, id: &str, now: std::time::Instant) -> Received {
-        while self.entries.front().is_some_and(|e| now.saturating_duration_since(e.at) >= SEEN_FOR) {
-            self.entries.pop_front();
-        }
+        self.entries.retain(|e| e.result.is_none() || now.saturating_duration_since(e.at) < SEEN_FOR);
         if let Some(e) = self.entries.iter().find(|e| e.id == id) {
             return match &e.result {
                 Some(r) => Received::Done(r.clone()),
@@ -321,9 +334,12 @@ impl SeenCommands {
             };
         }
         self.entries.push_back(Seen { id: id.to_string(), at: now, started: false, result: None });
-        while self.entries.len() > SEEN_MAX {
-            self.entries.pop_front();
-        }
+        let mut over = self.entries.len().saturating_sub(SEEN_MAX);
+        self.entries.retain(|e| {
+            let drop = over > 0 && e.result.is_some();
+            over -= usize::from(drop);
+            !drop
+        });
         Received::New
     }
 
@@ -338,8 +354,10 @@ impl SeenCommands {
         }
     }
 
+    /// 끝난 명령의 보관 기간은 끝난 때부터 센다. 받은 때부터 세면 오래 기다린 명령을 끝나자마자 잊는다
     fn finish(&mut self, id: &str, result: &Value) {
         if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
+            e.at = std::time::Instant::now();
             e.result = Some(result.clone());
         }
     }
@@ -610,7 +628,8 @@ impl Session {
         while !self.cancel.is_cancelled() {
             // 시작하는 명령만 ack한다: 받아 두고 시작하지 못한 명령은 연결이 끝나면 릴레이가 다음 연결로 다시 보낸다
             let mut started = Vec::new();
-            while running.len() < COMMANDS_IN_FLIGHT && !waiting.is_empty() {
+            let backlogged = self.unsent_full();
+            while running.len() < COMMANDS_IN_FLIGHT && !waiting.is_empty() && !backlogged {
                 let cmd = waiting.remove(0);
                 if let Some(id) = cmd.get("id").and_then(Value::as_str) {
                     self.seen.lock().unwrap_or_else(|e| e.into_inner()).start(id);
@@ -634,6 +653,11 @@ impl Session {
                             let mut reack = Vec::new();
                             for cmd in commands {
                                 let Some(id) = cmd.get("id").and_then(Value::as_str).map(str::to_string) else { continue };
+                                // 결과를 아직 보내지 못한 명령: 다시 실행하지 않는다 (`unsent_loop`가 결과를 보낸다)
+                                if self.has_unsent(&id) {
+                                    reack.push(json!({ "id": id }));
+                                    continue;
+                                }
                                 let received = self.seen.lock().unwrap_or_else(|e| e.into_inner()).receive(&id, now);
                                 match received {
                                     Received::New => waiting.push(cmd),
@@ -665,6 +689,8 @@ impl Session {
                 }
                 Some(()) = running.next(), if !running.is_empty() => {}
                 Some(()) = side.next(), if !side.is_empty() => {}
+                // 받지 않은 결과가 줄었는지 가끔 본다 (그동안 받아 둔 명령은 시작하지 않는다)
+                _ = self.pause(result_retry_delay(RESULT_RETRIES)), if backlogged && !waiting.is_empty() => {}
                 _ = self.cancel.cancelled() => {}
             }
         }
@@ -928,7 +954,6 @@ impl Session {
     }
 
     async fn post_result(&self, id: &str, result: &Value) {
-        let path = format!("/result/{}", encode_segment(id));
         // 실행한 명령의 결과는 연결이 끝난 뒤에도 끝까지 보낸다: ack한 명령이라 릴레이가 다시 보내 주지 않는다.
         // 연결 오류·5xx·408·429는 `RESULT_RETRIES`번까지 간격을 늘려 다시 보낸다. 그 밖의 4xx는 릴레이가 받지 않는 것이라 그만둔다
         let body = result.to_string();
@@ -936,25 +961,85 @@ impl Session {
             if attempt > 0 {
                 tokio::time::sleep(result_retry_delay(attempt)).await;
             }
-            let sent = match self.request(reqwest::Method::POST, &path, Some(body.clone())) {
-                Ok(req) => req.send().await.map_err(|e| e.to_string()),
-                Err(e) => Err(e),
-            };
-            let status = match sent {
-                Ok(r) if r.status().is_success() => return,
-                Ok(r) => r.status(),
-                Err(e) => {
-                    tracing::warn!("[RelayAgent] result {} failed (try {}): {}", id, attempt + 1, e);
-                    continue;
-                }
-            };
-            let retry = status.is_server_error() || matches!(status.as_u16(), 408 | 429);
-            tracing::warn!("[RelayAgent] result {} rejected (try {}): {}", id, attempt + 1, status);
-            if !retry {
+            if self.send_result(id, &body, attempt).await {
                 return;
             }
         }
-        tracing::warn!("[RelayAgent] result {} not delivered after {} tries", id, RESULT_RETRIES + 1);
+        // 명령 자리는 놓고, 결과는 남겨 같은 주소·토큰의 세션이 이어서 보낸다
+        tracing::warn!("[RelayAgent] result {} not delivered after {} tries; keeping it", id, RESULT_RETRIES + 1);
+        self.keep_unsent(id, body);
+    }
+
+    /// 결과를 한 번 보낸다. 다시 보낼 일이 없으면(받았거나, 릴레이가 그 명령을 몰라 받지 않으면) `true`
+    async fn send_result(&self, id: &str, body: &str, attempt: u32) -> bool {
+        let path = format!("/result/{}", encode_segment(id));
+        let sent = match self.request(reqwest::Method::POST, &path, Some(body.to_string())) {
+            Ok(req) => req.send().await.map_err(|e| e.to_string()),
+            Err(e) => Err(e),
+        };
+        let status = match sent {
+            Ok(r) if r.status().is_success() => return true,
+            Ok(r) => r.status(),
+            Err(e) => {
+                tracing::warn!("[RelayAgent] result {} failed (try {}): {}", id, attempt + 1, e);
+                return false;
+            }
+        };
+        let retry = status.is_server_error() || matches!(status.as_u16(), 408 | 429);
+        tracing::warn!("[RelayAgent] result {} rejected (try {}): {}", id, attempt + 1, status);
+        !retry
+    }
+
+    fn unsent(&self) -> std::sync::MutexGuard<'_, Vec<Unsent>> {
+        self.agent.unsent.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn keep_unsent(&self, id: &str, body: String) {
+        let mut unsent = self.unsent();
+        if !unsent.iter().any(|u| u.id == id && u.base == self.base && u.token == self.token) {
+            unsent.push(Unsent { base: self.base.clone(), token: self.token.clone(), id: id.to_string(), body });
+        }
+    }
+
+    fn has_unsent(&self, id: &str) -> bool {
+        self.unsent().iter().any(|u| u.id == id && u.base == self.base && u.token == self.token)
+    }
+
+    fn unsent_full(&self) -> bool {
+        self.unsent().len() >= UNSENT_MAX
+    }
+
+    /// 받지 않은 결과를 세션이 끝날 때까지 간격을 두고 다시 보낸다. 명령은 다시 실행하지 않는다.
+    /// 다른 주소·토큰(다른 노드)이 만든 결과는 버린다
+    async fn unsent_loop(&self) {
+        while !self.cancel.is_cancelled() {
+            self.pause(result_retry_delay(RESULT_RETRIES)).await;
+            let due: Vec<(String, String)> = {
+                let mut unsent = self.unsent();
+                // 끝난 세션은 대기열을 정리하지 않는다: 기다리는 사이 시작한 새 세션(다른 주소·토큰)의 결과를 지우지 않게.
+                // 잠근 채 보므로 새 세션은 이 정리가 끝난 뒤에야 결과를 넣는다 (새 세션은 이 세션을 끝낸 뒤 시작한다)
+                if self.cancel.is_cancelled() {
+                    break;
+                }
+                unsent.retain(|u| u.base == self.base && u.token == self.token);
+                unsent.iter().map(|u| (u.id.clone(), u.body.clone())).collect()
+            };
+            for (id, body) in due {
+                if self.cancel.is_cancelled() {
+                    break;
+                }
+                if !self.send_result(&id, &body, RESULT_RETRIES + 1).await {
+                    // 못 보낸 결과는 맨 뒤로 보낸다: 한 결과만 계속 거절돼도 다음 회차엔 뒤 결과부터 보낸다
+                    let mut unsent = self.unsent();
+                    if let Some(i) = unsent.iter().position(|u| u.id == id && u.base == self.base && u.token == self.token) {
+                        let failed = unsent.remove(i);
+                        unsent.push(failed);
+                    }
+                    break;
+                }
+                self.unsent().retain(|u| u.id != id || u.base != self.base || u.token != self.token);
+            }
+        }
     }
 }
 
@@ -1419,6 +1504,200 @@ mod tests {
         assert_eq!(CALLS.swap(0, Ordering::SeqCst), 3, "two 503s, then taken");
         session.post_result("gone", &json!({ "success": true })).await;
         assert_eq!(CALLS.load(Ordering::SeqCst), 1, "a command the relay no longer has is not sent again");
+        assert!(session.agent.unsent.lock().unwrap().is_empty(), "a refused result is not kept");
+    }
+
+    /// 시험용 세션: 주어진 에이전트·주소·토큰으로
+    async fn test_session(agent: &RelayAgent, base: &str, token: &str, tmp: &std::path::Path) -> Session {
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.join("modules").to_str().unwrap(),
+            tmp.join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        Session {
+            agent: agent.clone(),
+            server,
+            client: http_client().unwrap(),
+            base: base.into(),
+            token: token.into(),
+            cancel: CancellationToken::new(),
+            generation: 1,
+            seen: Arc::default(),
+            ack_supported: std::sync::atomic::AtomicBool::new(true),
+        }
+    }
+
+    /// `unsent_loop`를 돌리다가 `done`이 참이 되거나 `wait`이 지나면 세션을 끝낸다
+    async fn run_unsent(session: &Session, wait: Duration, done: impl Fn() -> bool) {
+        tokio::join!(session.unsent_loop(), async {
+            let until = tokio::time::Instant::now() + wait;
+            while !done() && tokio::time::Instant::now() < until {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            session.cancel.cancel();
+        });
+    }
+
+    /// 외부 감사 10-23: 결과 전송이 여섯 번 다 실패하면 결과를 버렸다. ack한 명령이라 릴레이가 다시 보내 주지 않는다.
+    /// 받지 않은 결과는 남겨 두고, 릴레이가 살아나면 명령을 다시 실행하지 않고 같은 결과를 보낸다
+    #[tokio::test]
+    async fn a_result_kept_after_every_retry_failed_is_sent_once_the_relay_recovers() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        static BODY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+        async fn result(body: String) -> axum::http::StatusCode {
+            if CALLS.fetch_add(1, Ordering::SeqCst) < 7 {
+                return axum::http::StatusCode::SERVICE_UNAVAILABLE;
+            }
+            *BODY.lock().unwrap() = body;
+            axum::http::StatusCode::OK
+        }
+        let app = axum::Router::new().route("/result/:id", post(result));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        session.post_result("c1", &json!({ "success": true, "n": 1 })).await;
+        assert_eq!(CALLS.load(Ordering::SeqCst), (RESULT_RETRIES + 1) as usize);
+        assert_eq!(agent.unsent.lock().unwrap().len(), 1, "kept after the last retry");
+        run_unsent(&session, Duration::from_secs(5), || agent.unsent.lock().unwrap().is_empty()).await;
+        assert!(agent.unsent.lock().unwrap().is_empty(), "sent once the relay took it");
+        assert_eq!(CALLS.load(Ordering::SeqCst), 8);
+        assert_eq!(serde_json::from_str::<Value>(&BODY.lock().unwrap()).unwrap(), json!({ "success": true, "n": 1 }));
+    }
+
+    /// Codex 리뷰 #549: 대기열 맨 앞 결과만 계속 5xx를 받으면 매 회차 거기서 멈춰 뒤 결과를 보내지 않았다
+    #[tokio::test]
+    async fn one_result_the_relay_keeps_refusing_does_not_block_the_others() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static OTHER: AtomicUsize = AtomicUsize::new(0);
+        async fn result(axum::extract::Path(id): axum::extract::Path<String>) -> axum::http::StatusCode {
+            if id == "c1" {
+                return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
+            }
+            OTHER.fetch_add(1, Ordering::SeqCst);
+            axum::http::StatusCode::OK
+        }
+        let app = axum::Router::new().route("/result/:id", post(result));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        session.keep_unsent("c1", "{}".into());
+        session.keep_unsent("c2", "{}".into());
+        run_unsent(&session, Duration::from_secs(5), || OTHER.load(Ordering::SeqCst) > 0).await;
+        assert_eq!(OTHER.load(Ordering::SeqCst), 1, "the result behind the refused one is sent");
+        assert!(session.has_unsent("c1") && !session.has_unsent("c2"));
+    }
+
+    /// 받지 않은 결과는 그 결과를 만든 주소·토큰의 다음 세션만 보낸다. 다른 토큰(다른 노드)의 세션은 버린다
+    #[tokio::test]
+    async fn a_kept_result_goes_only_to_the_node_that_ran_the_command() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        let app = axum::Router::new().route(
+            "/result/:id",
+            post(|| async {
+                CALLS.fetch_add(1, Ordering::SeqCst);
+                axum::http::StatusCode::OK
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let first = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        first.keep_unsent("c1", "{}".into());
+        first.cancel.cancel();
+        // 같은 주소·토큰으로 다시 연결: 보낸다
+        let again = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        run_unsent(&again, Duration::from_secs(5), || CALLS.load(Ordering::SeqCst) > 0).await;
+        assert_eq!(CALLS.swap(0, Ordering::SeqCst), 1);
+        // 다른 토큰·다른 주소: 보내지 않고 버린다
+        first.keep_unsent("c2", "{}".into());
+        let other_node = test_session(&agent, &base, "sbn_other.secret", tmp.path()).await;
+        run_unsent(&other_node, result_retry_delay(RESULT_RETRIES) * 3, || false).await;
+        let other_relay = test_session(&agent, "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        run_unsent(&other_relay, result_retry_delay(RESULT_RETRIES) * 3, || false).await;
+        assert_eq!(CALLS.load(Ordering::SeqCst), 0);
+        assert!(agent.unsent.lock().unwrap().is_empty(), "another node's result is dropped");
+    }
+
+    /// 외부 감사: 끝난 세션의 `unsent_loop`가 기다림에서 깨어나 대기열을 정리하면서, 그 사이 시작한 새 세션(다른 토큰)의 결과를 지웠다
+    #[tokio::test]
+    async fn an_ended_session_does_not_drop_the_next_sessions_kept_results() {
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let old = test_session(&agent, "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let new = test_session(&agent, "http://127.0.0.1:9", "sbn_other.secret", tmp.path()).await;
+        // 옛 세션은 첫 차례에 기다림에 들어간다. 새 세션이 결과를 남긴 뒤 옛 세션이 끝난다
+        tokio::join!(old.unsent_loop(), async {
+            new.keep_unsent("c1", "{}".into());
+            old.cancel.cancel();
+        });
+        assert!(new.has_unsent("c1"), "the next session's result is kept");
+    }
+
+    /// 결과를 아직 보내지 못한 명령을 릴레이가 다시 보내도(기억한 id가 지난 뒤에도) 다시 실행하지 않고 ack만 한다
+    #[tokio::test]
+    async fn a_command_whose_result_is_kept_is_not_run_again() {
+        use axum::routing::{get, post};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static RESULTS: AtomicUsize = AtomicUsize::new(0);
+        static ACKS: AtomicUsize = AtomicUsize::new(0);
+        let app = axum::Router::new()
+            .route(
+                "/poll",
+                get(|| async {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    axum::Json(json!({ "commands": [{ "id": "c1", "payload": {} }] }))
+                }),
+            )
+            .route(
+                "/ack",
+                post(|| async {
+                    ACKS.fetch_add(1, Ordering::SeqCst);
+                    axum::http::StatusCode::OK
+                }),
+            )
+            .route(
+                "/result/:id",
+                post(|| async {
+                    RESULTS.fetch_add(1, Ordering::SeqCst);
+                    axum::http::StatusCode::OK
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        session.keep_unsent("c1", "{}".into());
+        tokio::join!(session.poll_loop(), async {
+            let until = tokio::time::Instant::now() + Duration::from_secs(5);
+            while ACKS.load(Ordering::SeqCst) == 0 && tokio::time::Instant::now() < until {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            session.cancel.cancel();
+        });
+        assert!(ACKS.load(Ordering::SeqCst) > 0, "the redelivered command is acked again");
+        assert_eq!(RESULTS.load(Ordering::SeqCst), 0, "not run again (running would post a new result)");
+        assert_eq!(agent.unsent.lock().unwrap().len(), 1);
     }
 
     /// 디스코드에서 바꾼 권한의 응답과 heartbeat는 같은 PC 시계의 `permissionsAt`을 싣는다.
@@ -1698,19 +1977,55 @@ mod tests {
     }
 
     #[test]
-    fn remembered_commands_are_forgotten_after_ten_minutes_or_past_the_cap() {
+    fn finished_commands_are_forgotten_after_ten_minutes_or_past_the_cap() {
         let mut seen = SeenCommands::default();
         let t = std::time::Instant::now();
         seen.receive("old", t);
-        assert_eq!(seen.receive("old", t + SEEN_FOR), Received::New);
+        seen.finish("old", &json!({"ok": true}));
+        assert_eq!(seen.receive("old", std::time::Instant::now() + SEEN_FOR), Received::New);
 
         let mut seen = SeenCommands::default();
         for i in 0..=SEEN_MAX {
             seen.receive(&format!("c{i}"), t);
+            seen.finish(&format!("c{i}"), &json!({"ok": true}));
         }
         assert_eq!(seen.entries.len(), SEEN_MAX);
         assert_eq!(seen.receive("c0", t), Received::New);
-        assert_eq!(seen.receive(&format!("c{SEEN_MAX}"), t), Received::Waiting);
+        assert_eq!(seen.receive(&format!("c{SEEN_MAX}"), t), Received::Done(json!({"ok": true})));
+    }
+
+    /// 외부 감사: 대기열이 밀려 10분 넘게 기다린 명령을 시작한 뒤 다시 받으면, 시간 정리가 그 명령까지 잊어 또 실행했다
+    #[test]
+    fn waiting_or_running_commands_are_not_forgotten_by_time_or_cap() {
+        let mut seen = SeenCommands::default();
+        let t = std::time::Instant::now();
+        seen.receive("waiting", t);
+        seen.receive("running", t);
+        seen.start("running");
+        seen.receive("done", t);
+        seen.finish("done", &json!({"ok": true}));
+        let later = t + SEEN_FOR + Duration::from_secs(1);
+        assert_eq!(seen.receive("waiting", later), Received::Waiting);
+        assert_eq!(seen.receive("running", later), Received::Running);
+        assert_eq!(seen.receive("done", later), Received::New, "a finished one is still forgotten");
+        // 개수를 넘으면 끝난 명령부터 잊는다
+        for i in 0..SEEN_MAX {
+            seen.receive(&format!("c{i}"), later);
+            seen.finish(&format!("c{i}"), &json!({"ok": true}));
+        }
+        assert_eq!(seen.receive("waiting", later), Received::Waiting);
+        assert_eq!(seen.receive("running", later), Received::Running);
+    }
+
+    /// 독립 리뷰: 10분 넘게 기다린 명령이 끝나자마자 다시 오면, 받은 시각 기준으로 잊혀 또 실행했다
+    #[test]
+    fn a_long_waiting_command_is_kept_for_ten_minutes_after_it_finishes() {
+        let mut seen = SeenCommands::default();
+        let now = std::time::Instant::now();
+        assert_eq!(seen.receive("c1", now - SEEN_FOR - Duration::from_secs(1)), Received::New);
+        seen.start("c1");
+        seen.finish("c1", &json!({"ok": true}));
+        assert_eq!(seen.receive("c1", now), Received::Done(json!({"ok": true})));
     }
 
     #[test]
