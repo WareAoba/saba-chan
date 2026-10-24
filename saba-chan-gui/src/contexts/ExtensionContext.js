@@ -22,6 +22,8 @@ const ExtensionContext = createContext(null);
 const GUI_UNAPPROVED = Symbol('extension_gui_unapproved');
 // 번들을 받지 못했다(데몬 응답 없음 등): 로드됨으로 기억하지 않아 다음에 다시 받는다
 const LOAD_FAILED = Symbol('load_failed');
+// 오류 없이 실행된 번들이 남긴 전역 → 그 로드. 실패한 로드가 다른 로드의 전역을 자기 것으로 보지 않게 한다
+const executedBy = new WeakMap();
 
 /**
  * 익스텐션 GUI 번들 동적 로드
@@ -45,6 +47,7 @@ async function loadExtensionBundle(ext) {
     // (같은 확장을 동시에 읽은 다른 로드가 이미 성공해 등록한 전역은 지우지 않는다)
     let before;
     let mine;
+    const load = {};
     try {
         // IPC를 통해 번들 JS 소스 가져오기 (인증 포함)
         const jsSource = await window.api.extensionGuiBundle(ext.id);
@@ -74,8 +77,11 @@ async function loadExtensionBundle(ext) {
             script.async = true;
             script.onload = () => {
                 done();
-                if (thrown) reject(thrown);
-                else resolve();
+                if (thrown) return reject(thrown);
+                // 실행 직후의 전역은 이 번들이 남긴 것이다 (onload는 실행과 같은 차례에 온다)
+                const value = window[globalName];
+                if (value && typeof value === 'object') executedBy.set(value, load);
+                resolve();
             };
             script.onerror = () => {
                 done();
@@ -101,7 +107,9 @@ async function loadExtensionBundle(ext) {
         console.warn(`[Extension] Failed to load GUI bundle for '${ext.id}':`, e);
         // 실행이 실패한 번들이 먼저 등록한 전역은 남기지 않는다 (다음 로드가 성공으로 보지 않게).
         // 그 뒤 다른 로드가 바꾼 전역은 그 로드의 것이라 두고, 실행 전에 있던 전역은 되살린다
-        if (mine !== undefined && window[globalName] === mine) {
+        // 다른 로드가 오류 없이 실행해 남긴 전역이면 그 로드의 것이다 (이 번들이 등록 전에 throw한 경우)
+        const owner = mine !== undefined && typeof mine === 'object' ? executedBy.get(mine) : undefined;
+        if (mine !== undefined && window[globalName] === mine && (owner === undefined || owner === load)) {
             if (before === undefined) delete window[globalName];
             else window[globalName] = before;
         }

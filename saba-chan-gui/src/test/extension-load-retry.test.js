@@ -122,6 +122,28 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         expect(result.current.slots['test.slot']).toEqual([Slot]);
     });
 
+    // Codex 리뷰 #549: 등록하기 전에 throw한 앞 로드가 그때 있던 겹친 로드의 전역을 자기 것으로 보고 지웠다
+    it('등록 전에 실패한 앞 로드는 겹친 로드가 등록한 전역을 지우지 않는다', async () => {
+        // A의 스크립트를 먼저 넣고, 나중에 넣은 B가 먼저 실행된다
+        let runFirst;
+        runs.push((el) => {
+            runFirst = () => {
+                window.dispatchEvent(new ErrorEvent('error', { filename: el.src, error: new Error('early throw') }));
+                el.onload();
+            };
+        }, ok);
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(runFirst).toBeDefined());
+        await act(async () => result.current.refreshExtensions());
+        await waitFor(() => expect(result.current.slots['test.slot']).toEqual([Slot]));
+        const loaded = window.SabaExtDocker;
+        await act(async () => {
+            runFirst();
+            await new Promise((r) => setTimeout(r, 0));
+        });
+        expect(window.SabaExtDocker).toBe(loaded);
+    });
+
     it('로드됨으로 기억했는데 전역이 사라졌으면 다음 목록에서 다시 읽는다', async () => {
         runs.push(ok, ok);
         const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });

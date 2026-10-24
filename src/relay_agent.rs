@@ -1025,7 +1025,16 @@ impl Session {
                 unsent.iter().map(|u| (u.id.clone(), u.body.clone())).collect()
             };
             for (id, body) in due {
-                if self.cancel.is_cancelled() || !self.send_result(&id, &body, RESULT_RETRIES + 1).await {
+                if self.cancel.is_cancelled() {
+                    break;
+                }
+                if !self.send_result(&id, &body, RESULT_RETRIES + 1).await {
+                    // 못 보낸 결과는 맨 뒤로 보낸다: 한 결과만 계속 거절돼도 다음 회차엔 뒤 결과부터 보낸다
+                    let mut unsent = self.unsent();
+                    if let Some(i) = unsent.iter().position(|u| u.id == id && u.base == self.base && u.token == self.token) {
+                        let failed = unsent.remove(i);
+                        unsent.push(failed);
+                    }
                     break;
                 }
                 self.unsent().retain(|u| u.id != id || u.base != self.base || u.token != self.token);
@@ -1560,6 +1569,34 @@ mod tests {
         assert!(agent.unsent.lock().unwrap().is_empty(), "sent once the relay took it");
         assert_eq!(CALLS.load(Ordering::SeqCst), 8);
         assert_eq!(serde_json::from_str::<Value>(&BODY.lock().unwrap()).unwrap(), json!({ "success": true, "n": 1 }));
+    }
+
+    /// Codex 리뷰 #549: 대기열 맨 앞 결과만 계속 5xx를 받으면 매 회차 거기서 멈춰 뒤 결과를 보내지 않았다
+    #[tokio::test]
+    async fn one_result_the_relay_keeps_refusing_does_not_block_the_others() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static OTHER: AtomicUsize = AtomicUsize::new(0);
+        async fn result(axum::extract::Path(id): axum::extract::Path<String>) -> axum::http::StatusCode {
+            if id == "c1" {
+                return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
+            }
+            OTHER.fetch_add(1, Ordering::SeqCst);
+            axum::http::StatusCode::OK
+        }
+        let app = axum::Router::new().route("/result/:id", post(result));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_host.secret", tmp.path()).await;
+        session.keep_unsent("c1", "{}".into());
+        session.keep_unsent("c2", "{}".into());
+        run_unsent(&session, Duration::from_secs(5), || OTHER.load(Ordering::SeqCst) > 0).await;
+        assert_eq!(OTHER.load(Ordering::SeqCst), 1, "the result behind the refused one is sent");
+        assert!(session.has_unsent("c1") && !session.has_unsent("c2"));
     }
 
     /// 받지 않은 결과는 그 결과를 만든 주소·토큰의 다음 세션만 보낸다. 다른 토큰(다른 노드)의 세션은 버린다
