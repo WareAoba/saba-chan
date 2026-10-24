@@ -28,7 +28,7 @@
     "help_stop": "Server stoppen",
     "help_status": "Server-Status überprüfen",
     "help_rest_title": "**REST-Befehle:**",
-    "enter_command": "Bitte gib einen Befehl ein."
+    "enter_command": "Gib einen Befehl ein."
   },
   "list": {
     "title": "🎮 **Serverliste**",
@@ -48,7 +48,7 @@
     "status_check": "📊 Status von **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Server läuft nicht. Bitte starten Sie zuerst den Server",
+    "not_running_default": "Der Server läuft nicht. Starten Sie zuerst den Server",
     "module_missing": "❌ Das Modul '{{module}}' ist nicht installiert. Dieser Server kann nicht gesteuert werden.",
     "port_moved": "🔀 Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert."
   },
@@ -75,7 +75,7 @@
     "announce_success": "✅ Ankündigung gesendet",
     "save_success": "✅ Welt gespeichert",
     "command_executed": "✅ Befehl ausgeführt",
-    "command_complete": "✅ Befehl erfolgreich ausgeführt!",
+    "command_complete": "✅ Befehl ausgeführt!",
     "empty_list": "(leer)"
   },
   "errors": {
@@ -86,7 +86,7 @@
     "preflight_failed": "Die Prüfung vor dem Start hat ein Problem gefunden, daher wurde der Server nicht gestartet ({{code}}). Details siehst du in Saba-chan auf dem PC.",
     "agreement_local_only": "Vereinbarungen können nur in Saba-chan auf diesem PC angenommen werden.",
     "no_command_path": "'{{name}}' ist mit keiner saba-chan-Konsole verbunden und kann keine Befehle annehmen. Starte den Server in saba-chan auf dem PC im verwalteten Modus neu.",
-    "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig — er passt auf mehrere Module: {{modules}}. Bitte verwende einen spezifischeren Alias.",
+    "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig. Er passt auf mehrere Module: {{modules}}. Verwende einen spezifischeren Alias.",
     "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias.",
     "auth_failed": "Authentifizierung fehlgeschlagen",
     "player_not_found": "Spieler nicht gefunden",
@@ -101,11 +101,11 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
-    "chatbot_not_allowed": "❌ Sprechende Saba-chan kann diesen Befehl nicht ausführen. Bitte führe ihn direkt aus.",
-    "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Aktuell auf {{count}} Servern. Bitte entferne den Bot von ungenutzten Servern."
+    "chatbot_not_allowed": "❌ Sprechende Saba-chan kann diesen Befehl nicht ausführen. Führe ihn direkt aus.",
+    "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Dieser Bot ist auf {{count}} Servern. Entferne ihn von den Servern, die du nicht nutzt."
   },
   "messages": {
-    "server_started": "Server erfolgreich gestartet",
+    "server_started": "Server gestartet",
     "server_stopped": "Server gestoppt",
     "server_not_running": "Server läuft nicht",
     "command_error": "Fehler beim Ausführen des Befehls",

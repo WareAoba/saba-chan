@@ -331,15 +331,22 @@ fn console_place_problem(template: &str, key: &str, value: &str) -> Option<&'sta
 }
 
 /// `{key}` 자리를 값으로 채우고, 남은 `{key}` 자리는 앞 공백과 함께 지운다.
+/// 템플릿을 한 번만 훑는다: 넣은 값 안의 `{key}`는 다시 채우지 않는다 (값이 다른 자리를 불러오지 못하게)
 pub fn render_template(template: &str, inputs: &Map<String, Value>) -> String {
-    let mut line = template.to_string();
-    for (key, value) in inputs {
-        let v = value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string());
-        line = line.replace(&format!("{{{}}}", key), &v);
-    }
-    static LEFTOVER: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = LEFTOVER.get_or_init(|| regex::Regex::new(r"\s*\{\w+\}").expect("valid regex"));
-    re.replace_all(&line, "").trim().to_string()
+    static PLACE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = PLACE.get_or_init(|| regex::Regex::new(r"(\s*)\{([^{}]+)\}").expect("valid regex"));
+    let line = re.replace_all(template, |caps: &regex::Captures| {
+        let key = &caps[2];
+        match inputs.get(key) {
+            Some(value) => {
+                let v = value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string());
+                format!("{}{}", &caps[1], v)
+            }
+            None if key.chars().all(|c| c.is_alphanumeric() || c == '_') => String::new(),
+            None => caps[0].to_string(),
+        }
+    });
+    line.trim().to_string()
 }
 
 /// 실패 응답의 오류 코드. 본문에 있으면 그것, 없으면 상태 코드로 정한다.

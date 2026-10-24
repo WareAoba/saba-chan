@@ -75,7 +75,7 @@
     "announce_success": "✅ 公告已傳送",
     "save_success": "✅ 世界已保存",
     "command_executed": "✅ 命令已執行",
-    "command_complete": "✅ 命令執行成功！",
+    "command_complete": "✅ 命令已執行！",
     "empty_list": "(空)"
   },
   "errors": {
@@ -86,7 +86,7 @@
     "preflight_failed": "啟動前檢查發現問題，因此未啟動伺服器（{{code}}）。詳情請在電腦上的 Saba-chan 中查看。",
     "agreement_local_only": "只能在這台電腦上的 Saba-chan 中同意協議。",
     "no_command_path": "「{{name}}」沒有連接 saba-chan 主控台，無法接收指令。請在電腦上的 saba-chan 中以託管模式重新啟動伺服器。",
-    "alias_conflict": "❌ 別名 '{{alias}}' 不明確 — 匹配多個模組：{{modules}}。請使用更具體的別名。",
+    "alias_conflict": "❌ 別名 '{{alias}}' 不明確。它匹配多個模組：{{modules}}。請使用更具體的別名。",
     "multiple_instances": "⚠️ 存在多個 '{{module}}' 實例。請使用實例名稱代替模組別名。",
     "auth_failed": "身份驗證失敗",
     "player_not_found": "找不到玩家",
@@ -105,7 +105,7 @@
     "local_single_guild_only": "⚠️ 本地機器人只能在一個伺服器中使用。目前已加入{{count}}個伺服器，請從不使用的伺服器中移除機器人。"
   },
   "messages": {
-    "server_started": "伺服器成功啟動",
+    "server_started": "伺服器已啟動",
     "server_stopped": "伺服器已停止",
     "server_not_running": "伺服器未執行",
     "command_error": "執行命令出錯",

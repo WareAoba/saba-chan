@@ -139,7 +139,7 @@ pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
 
 /// zip의 노드 토큰을 이 PC에 쓸 것인가: 이 PC가 아직 페어링되지 않았을 때만
 fn takes_node_token(bundle: &Bundle) -> bool {
-    bundle.node_token.is_some() && !std::fs::read_to_string(super::relay::node_token_path()).is_ok_and(|t| !t.trim().is_empty())
+    bundle.node_token.is_some() && super::relay::load_node_token().is_none()
 }
 
 /// 가져올 인스턴스마다 넣을지 건너뛸지
@@ -216,7 +216,7 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
     };
     let config = state.config_store.portable_sections(req.secrets);
     let node_token = if req.secrets {
-        std::fs::read_to_string(super::relay::node_token_path()).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+        super::relay::load_node_token()
     } else {
         None
     };
@@ -340,7 +340,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         None => Value::Null,
         Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
-        Some(token) => match super::relay::write_node_token(&super::relay::node_token_path(), &token) {
+        Some(token) => match super::relay::write_node_token(Some(&token)) {
             Ok(changed) => {
                 adopted = Some((token, changed));
                 json!("imported")

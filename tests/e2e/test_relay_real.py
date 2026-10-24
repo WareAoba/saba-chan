@@ -1,5 +1,7 @@
 """L2b 데몬 ↔ 실제 relay-server(임시 PostgreSQL). 디스코드 봇이 하던 일은 relay 하네스의 stdin op로 대신한다."""
 
+import json
+
 import pytest
 
 from harness import real_relay
@@ -37,7 +39,7 @@ def test_pairing_against_real_relay(sandbox, relay, daemon_factory):
     sandbox.write_config({"relay": {"cloud": {"relayUrl": relay.url}}})
     d = daemon_factory()
     _pair_via_daemon(d, relay)
-    assert (sandbox.data / ".node_token").read_text().startswith("sbn_")
+    assert json.loads((sandbox.data / "config.json").read_text(encoding="utf-8"))["node"]["token"].startswith("sbn_")
 
 
 @pytest.fixture

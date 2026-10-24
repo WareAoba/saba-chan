@@ -168,7 +168,7 @@ def test_pairing_flow_saves_token_and_starts_agent(sandbox, relay, daemon_factor
     relay.claim_pairing(code)
     claimed = d.api.ok("GET", f"/api/relay/pair/{code}/status?secret={poll_secret}&relayUrl={relay.url}")
     assert claimed["status"] == "claimed"
-    assert (sandbox.data / ".node_token").read_text().strip() == relay.node_token
+    assert json.loads((sandbox.data / "config.json").read_text(encoding="utf-8"))["node"]["token"] == relay.node_token
     secret_in_query = [r for r in relay.requests if "/status" in r["path"] and poll_secret in r["query"]]
     assert not secret_in_query, "poll secret이 URL 쿼리로 나감 (relay 로그에 남는다)"
     # 페어링을 마치면 데몬을 다시 켜지 않아도 바로 디스코드 명령을 받는다 (프리뷰 P1, #74)

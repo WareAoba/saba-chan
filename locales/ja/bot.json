@@ -75,7 +75,7 @@
     "announce_success": "✅ アナウンスを送信しました",
     "save_success": "✅ ワールドを保存しました",
     "command_executed": "✅ コマンドを実行しました",
-    "command_complete": "✅ コマンドを正常に実行しました!",
+    "command_complete": "✅ コマンドを実行しました！",
     "empty_list": "(空)"
   },
   "errors": {
@@ -105,7 +105,7 @@
     "multiple_instances": "⚠️ '{{module}}' モジュールのインスタンスが複数あるため、エイリアスでは区別できません。インスタンス名を使用してください。"
   },
   "messages": {
-    "server_started": "サーバーが正常に起動しました",
+    "server_started": "サーバーを起動しました",
     "server_stopped": "サーバーが停止しました",
     "server_not_running": "サーバーが実行されていません",
     "command_error": "コマンド実行エラー",

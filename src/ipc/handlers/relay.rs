@@ -17,6 +17,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::super::IPCServer;
+use saba_chan_updater_lib::config_file::ConfigFile;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -116,26 +117,17 @@ pub(crate) async fn sync_host_id(state: &IPCServer, token: Option<&str>) {
     }
 }
 
-/// 노드 토큰 파일 (`<data_dir>/.node_token`)
-pub(crate) fn node_token_path() -> std::path::PathBuf {
-    saba_chan_updater_lib::constants::resolve_data_dir().join(".node_token")
+/// 노드 토큰. 설정 파일 하나(config.json `node.token`)에 둔다
+pub(crate) fn load_node_token() -> Option<String> {
+    node_token_in(&ConfigFile::default_location())
 }
 
-/// Load node token from the data directory file (.node_token).
-pub(crate) fn load_node_token() -> Option<String> {
-    std::fs::read_to_string(node_token_path())
-        .ok()
+fn node_token_in(file: &ConfigFile) -> Option<String> {
+    file.section("node")
+        .get("token")
+        .and_then(Value::as_str)
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
-}
-
-/// 노드 토큰을 쓴다 (원자적, 주인만 읽기). 같은 값이 이미 있으면 쓰지 않고 `Ok(false)`
-pub(crate) fn write_node_token(path: &std::path::Path, token: &str) -> std::io::Result<bool> {
-    if std::fs::read_to_string(path).is_ok_and(|t| t.trim() == token.trim()) {
-        return Ok(false);
-    }
-    saba_atomic_file::write(path, token.as_bytes(), saba_atomic_file::Mode::Secret)?;
-    Ok(true)
 }
 
 /// 토큰을 쓴 뒤 따라야 할 것: hostId를 토큰에 맞추고, 바뀌었으면 relay agent를 새 토큰으로 다시 띄운다.
@@ -145,6 +137,29 @@ pub(crate) async fn adopt_node_token(state: &IPCServer, token: &str, changed: bo
     if changed {
         crate::relay_agent::restart(state).await;
     }
+}
+
+/// 노드 토큰을 바꾼다(`None`이나 빈 값이면 지운다). 값이 바뀌었으면 true
+pub(crate) fn write_node_token(token: Option<&str>) -> std::io::Result<bool> {
+    write_node_token_in(&ConfigFile::default_location(), token)
+}
+
+fn write_node_token_in(file: &ConfigFile, token: Option<&str>) -> std::io::Result<bool> {
+    let token = token.map(str::trim).filter(|t| !t.is_empty());
+    let mut changed = false;
+    file.update(|doc| {
+        let node = doc.entry("node").or_insert_with(|| json!({}));
+        if !node.is_object() {
+            *node = json!({});
+        }
+        let node = node.as_object_mut().expect("just made an object");
+        changed = node.get("token").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()) != token;
+        match token {
+            Some(t) => node.insert("token".into(), json!(t)),
+            None => node.remove("token"),
+        };
+    })?;
+    Ok(changed)
 }
 
 /// Generate HMAC-SHA256 signed headers for relay server authentication.
@@ -551,7 +566,7 @@ pub async fn poll_pairing_status(
     // 페어링이 끝났으면 노드 토큰을 저장하고, 저장했는지를 `tokenSaved`로 알린다 (클라이언트는 이 값으로 "연결됨"을 보인다)
     if let Some("claimed") = data.get("status").and_then(|s| s.as_str()) {
         let token = data.get("nodeToken").and_then(|t| t.as_str()).map(str::to_string);
-        let stored = store_node_token(&node_token_path(), token.as_deref());
+        let stored = store_node_token(&ConfigFile::default_location(), token.as_deref());
         if let (true, Some(token)) = (stored.changed, token.as_deref()) {
             tracing::info!("Node token saved via pairing completion");
             adopt_node_token(&state, token, true).await;
@@ -572,14 +587,17 @@ struct StoredToken {
     changed: bool,
 }
 
-/// 받은 토큰을 `.node_token`에 쓴다. 토큰이 없거나(수령 기한이 지남) 쓰지 못하면 저장하지 않은 것이고,
+/// 받은 토큰을 설정 파일에 쓴다. 토큰이 없거나(수령 기한이 지남) 쓰지 못하면 저장하지 않은 것이고,
 /// 같은 값이 이미 있으면 다시 쓰지 않는다 (폴링이 claimed를 여러 번 받는다)
-fn store_node_token(path: &std::path::Path, token: Option<&str>) -> StoredToken {
+fn store_node_token(file: &ConfigFile, token: Option<&str>) -> StoredToken {
     let Some(token) = token.filter(|t| !t.trim().is_empty()) else {
         tracing::warn!("Pairing was claimed but the relay no longer hands out the node token");
         return StoredToken { saved: false, changed: false };
     };
-    match write_node_token(path, token) {
+    if node_token_in(file).as_deref() == Some(token.trim()) {
+        return StoredToken { saved: true, changed: false };
+    }
+    match write_node_token_in(file, Some(token)) {
         Ok(changed) => StoredToken { saved: true, changed },
         Err(e) => {
             tracing::warn!("Failed to auto-save node token: {}", e);
@@ -590,20 +608,36 @@ fn store_node_token(path: &std::path::Path, token: Option<&str>) -> StoredToken 
 
 #[cfg(test)]
 mod tests {
+    use super::{node_token_in, store_node_token, write_node_token_in, StoredToken};
+    use saba_chan_updater_lib::config_file::ConfigFile;
+    use serde_json::json;
+
     /// 토큰을 저장하지 못했으면 연결된 것으로 보이면 안 된다. 같은 토큰을 다시 받으면 다시 쓰지 않는다
     #[test]
     fn a_claimed_pairing_reports_whether_the_token_was_saved() {
-        use super::{store_node_token, StoredToken};
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("data").join(".node_token");
-        assert_eq!(store_node_token(&path, None), StoredToken { saved: false, changed: false }, "claimed after the token expired");
-        assert_eq!(store_node_token(&path, Some("sbn_a.x")), StoredToken { saved: true, changed: true });
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "sbn_a.x");
-        assert_eq!(store_node_token(&path, Some("sbn_a.x")), StoredToken { saved: true, changed: false }, "the next poll sees claimed again");
+        let file = ConfigFile::at(&tmp.path().join("data"));
+        assert_eq!(store_node_token(&file, None), StoredToken { saved: false, changed: false }, "claimed after the token expired");
+        assert_eq!(store_node_token(&file, Some("sbn_a.x")), StoredToken { saved: true, changed: true });
+        assert_eq!(file.section("node")["token"], "sbn_a.x", "the token lives in config.json");
+        assert_eq!(store_node_token(&file, Some("sbn_a.x")), StoredToken { saved: true, changed: false }, "the next poll sees claimed again");
         // 쓸 수 없는 곳(폴더 자리에 파일)이면 저장하지 않은 것이다
         let blocked = tmp.path().join("file");
         std::fs::write(&blocked, "").unwrap();
-        assert_eq!(store_node_token(&blocked.join(".node_token"), Some("sbn_b.y")), StoredToken { saved: false, changed: false });
+        assert_eq!(store_node_token(&ConfigFile::at(&blocked), Some("sbn_b.y")), StoredToken { saved: false, changed: false });
+    }
+
+    /// 연결 해제는 토큰만 지우고 같은 파일의 다른 설정은 남긴다
+    #[test]
+    fn removing_the_node_token_keeps_the_rest_of_the_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(tmp.path());
+        file.set_section("gui", json!({ "language": "ko" })).unwrap();
+        assert!(write_node_token_in(&file, Some("sbn_a.x")).unwrap());
+        assert!(!write_node_token_in(&file, Some(" sbn_a.x ")).unwrap(), "same token, nothing changed");
+        assert!(write_node_token_in(&file, None).unwrap());
+        assert_eq!(node_token_in(&file), None);
+        assert_eq!(file.section("gui")["language"], "ko");
     }
 
     #[test]

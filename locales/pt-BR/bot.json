@@ -28,7 +28,7 @@
     "help_stop": "Parar servidor",
     "help_status": "Verificar status do servidor",
     "help_rest_title": "**Comandos REST:**",
-    "enter_command": "Por favor insira um comando."
+    "enter_command": "Insira um comando."
   },
   "list": {
     "title": "🎮 **Lista de Servidores**",
@@ -48,7 +48,7 @@
     "status_check": "📊 Status de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "O servidor não está em execução. Por favor, inicie o servidor primeiro",
+    "not_running_default": "O servidor não está em execução. Inicie o servidor primeiro",
     "module_missing": "❌ O módulo '{{module}}' não está instalado. Este servidor não pode ser controlado.",
     "port_moved": "🔀 O Windows reservou a porta REST {{from}}, então ela foi alterada para {{to}}."
   },
@@ -75,7 +75,7 @@
     "announce_success": "✅ Anúncio enviado",
     "save_success": "✅ Mundo salvo",
     "command_executed": "✅ Comando executado",
-    "command_complete": "✅ Comando executado com sucesso!",
+    "command_complete": "✅ Comando executado!",
     "empty_list": "(vazio)"
   },
   "errors": {
@@ -86,7 +86,7 @@
     "preflight_failed": "A verificação antes de iniciar encontrou um problema, então o servidor não foi iniciado ({{code}}). Veja os detalhes no Saba-chan do PC.",
     "agreement_local_only": "Os termos só podem ser aceitos no Saba-chan deste PC.",
     "no_command_path": "'{{name}}' não tem um console do saba-chan conectado, então não pode receber comandos. Reinicie-o no modo gerenciado pelo saba-chan no PC.",
-    "alias_conflict": "❌ O alias '{{alias}}' é ambíguo — corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
+    "alias_conflict": "❌ O alias '{{alias}}' é ambíguo. Ele corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
     "multiple_instances": "⚠️ Existem múltiplas instâncias de '{{module}}'. Use o nome da instância em vez do alias do módulo.",
     "auth_failed": "Falha na autenticação",
     "player_not_found": "Jogador não encontrado",
@@ -102,10 +102,10 @@
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Você não tem permissão para usar este comando.",
     "chatbot_not_allowed": "❌ A Saba-chan falante não pode executar este comando. Execute-o diretamente.",
-    "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Atualmente em {{count}} servidores. Remova o bot dos servidores não utilizados."
+    "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Este bot está em {{count}} servidores. Remova-o dos servidores que você não usa."
   },
   "messages": {
-    "server_started": "Servidor iniciado com sucesso",
+    "server_started": "Servidor iniciado",
     "server_stopped": "Servidor parado",
     "server_not_running": "O servidor não está em execução",
     "command_error": "Erro ao executar comando",

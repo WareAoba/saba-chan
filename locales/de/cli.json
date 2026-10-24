@@ -75,7 +75,7 @@
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
     "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
-    "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
+    "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Aktualisiere die App auf {{min}} oder neuer."
   },
   "col": {
     "players": "Spieler",
@@ -188,7 +188,7 @@
       "expired": "Der Code ist abgelaufen. Fang von vorne an.",
       "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
       "other": "Das Relay hat die Anfrage abgelehnt ({{code}}).",
-      "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
+      "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Aktualisiere die App auf {{min}} oder neuer."
     },
     "ambiguous": "Mehr als ein {{what}} passt zu „{{query}}“.",
     "ambiguous_hint": "Sei genauer: {{names}}",
@@ -572,8 +572,8 @@
     "start_again": "{{name}} wieder starten?",
     "stored": "{{size}} neu gespeichert",
     "unreadable": "⚠ kann nicht geöffnet werden",
-    "unreadable_hint": "{{count}} Backup(s) können nicht geöffnet werden. Sie lassen sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Bitte lösche sie.",
-    "unreadable_restore": "Backup {{backup}} kann nicht geöffnet und daher nicht wiederhergestellt werden. Bitte lösche es."
+    "unreadable_hint": "{{count}} Backup(s) können nicht geöffnet werden. Sie lassen sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Lösche sie.",
+    "unreadable_restore": "Backup {{backup}} kann nicht geöffnet und daher nicht wiederhergestellt werden. Lösche es."
   },
   "schedule": {
     "col": {
