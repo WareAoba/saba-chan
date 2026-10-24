@@ -454,8 +454,9 @@ def _replace_keeping_access(tmp, path):
         os.replace(backup, path)
     elif err == _ERROR_ACCESS_DENIED and os.path.isfile(path) and not os.path.exists(backup):
         access = _access_of(path)
-        # 원래 파일과 임시 파일이 같은 폴더에서 같은 권한을 물려받았다: 바꿔도 권한이 넓어지지 않는다
-        if access is not None and access == _access_of(tmp):
+        # 원래 파일과 임시 파일이 같은 폴더에서 같은 권한을 물려받았다: 바꿔도 권한이 넓어지지 않는다.
+        # EFS 암호화도 ReplaceFileW만 옮기므로 같아야 한다
+        if access is not None and access == _access_of(tmp) and _encrypted(path) == _encrypted(tmp):
             os.replace(tmp, path)
             return
     raise ctypes.WinError(err) if err > 0 else OSError(f"ReplaceFileW failed: {path}")
@@ -470,6 +471,10 @@ def _replace_file(path, tmp, backup):
     if replace(path, tmp, backup, 0, None, None):
         return 0
     return ctypes.get_last_error() or -1
+
+
+def _encrypted(path):
+    return bool(getattr(os.stat(path), "st_file_attributes", 0) & 0x4000)  # FILE_ATTRIBUTE_ENCRYPTED
 
 
 def _access_of(path):
