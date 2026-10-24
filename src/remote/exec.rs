@@ -41,8 +41,8 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
             )
         }
     };
-    let file_fields = file_fields(server, pattern, &req).await;
-    let blocked = gate::blocked_fields(&req.method, pattern, req.body.as_ref(), &file_fields);
+    let pc_only = pc_only_fields(server, pattern, &req).await;
+    let blocked = gate::blocked_fields(&req.method, pattern, req.body.as_ref(), &pc_only);
     if !blocked.is_empty() {
         let msg = "These settings can only be changed on the PC";
         return refusal(StatusCode::FORBIDDEN, "remote_field_blocked", msg, Some(blocked));
@@ -50,9 +50,13 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
     let mut origin = crate::audit::Origin::new("web");
     origin.user = user;
     let res = crate::actions::call_as(server, &req.method, &req.path, req.body, Some(origin)).await;
+    let mut body = res.body;
+    if gate::shows_instances(&req.method, pattern) {
+        hide_secrets(server, &mut body).await;
+    }
     Response {
         status: res.status.as_u16(),
-        body: res.body,
+        body,
     }
 }
 
@@ -67,8 +71,36 @@ fn refusal(status: StatusCode, code: &str, error: &str, fields: Option<Vec<Strin
     }
 }
 
-/// 이 요청이 고치는 인스턴스 모듈의 경로형 설정 키 (실행 파일·런타임 경로를 고르는 칸)
-async fn file_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec<String> {
+/// 모듈 설정 중 원격에서 읽지도 바꾸지도 않는 비밀값 칸
+fn is_secret(f: &crate::supervisor::module_loader::SettingField) -> bool {
+    f.field_type == "password"
+}
+
+/// 모듈 설정 중 원격에서 바꾸지 않는 칸: 비밀값과 경로(실행 파일·런타임·폴더를 고르는 칸)
+fn is_pc_only(f: &crate::supervisor::module_loader::SettingField) -> bool {
+    is_secret(f) || matches!(f.field_type.as_str(), "file" | "path") || f.format.as_deref() == Some("path")
+}
+
+fn module_fields(
+    supervisor: &crate::supervisor::Supervisor,
+    module: &str,
+    keep: fn(&crate::supervisor::module_loader::SettingField) -> bool,
+) -> Vec<String> {
+    let Ok(module) = supervisor.module_loader.get_module(module) else {
+        return Vec::new();
+    };
+    module
+        .metadata
+        .settings
+        .iter()
+        .flat_map(|s| s.fields.iter())
+        .filter(|f| keep(f))
+        .map(|f| f.name.clone())
+        .collect()
+}
+
+/// 이 요청이 고치는 인스턴스 모듈의 PC 전용 설정 키
+async fn pc_only_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec<String> {
     let supervisor = server.supervisor.read().await;
     let module = match pattern {
         "/api/instance/:id" => req
@@ -86,17 +118,42 @@ async fn file_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec<St
             .map(str::to_string),
         _ => None,
     };
-    let Some(module) = module.and_then(|m| supervisor.module_loader.get_module(&m).ok()) else {
-        return Vec::new();
-    };
     module
-        .metadata
-        .settings
-        .iter()
-        .flat_map(|s| s.fields.iter())
-        .filter(|f| matches!(f.field_type.as_str(), "file" | "path"))
-        .map(|f| f.name.clone())
-        .collect()
+        .map(|m| module_fields(&supervisor, &m, is_pc_only))
+        .unwrap_or_default()
+}
+
+/// 인스턴스를 담은 응답에서 비밀값(REST 비밀번호, 모듈의 비밀번호 칸)을 뺀다.
+/// 인스턴스 객체는 `module_name`(인스턴스) 또는 `module`(서버 목록)과 `module_settings`를 가진 객체다
+async fn hide_secrets(server: &IPCServer, body: &mut Value) {
+    let supervisor = server.supervisor.read().await;
+    let mut cache: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut stack = vec![body];
+    while let Some(v) = stack.pop() {
+        match v {
+            Value::Array(items) => stack.extend(items.iter_mut()),
+            Value::Object(map) => {
+                let module = map
+                    .get("module_name")
+                    .or_else(|| map.get("module"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                if let (Some(module), true) = (module, map.contains_key("module_settings")) {
+                    if let Some(p) = map.get_mut("rest_password") {
+                        *p = Value::Null;
+                    }
+                    let secrets = cache
+                        .entry(module.clone())
+                        .or_insert_with(|| module_fields(&supervisor, &module, is_secret));
+                    if let Some(settings) = map.get_mut("module_settings").and_then(Value::as_object_mut) {
+                        settings.retain(|k, _| !secrets.contains(k));
+                    }
+                }
+                stack.extend(map.values_mut());
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -166,6 +223,57 @@ mod tests {
         let res = run(&server, req("POST", "/api/instances", Some(body)), None).await;
         assert_eq!(res.status, 403, "{:?}", res.body);
         assert_eq!(res.body["fields"], json!(["module_settings.java_path"]));
+    }
+
+    /// 비밀번호 칸 하나, 경로 형식 글 칸 하나, 보통 칸 하나를 가진 모듈과 그 인스턴스
+    async fn secret_server(tmp: &std::path::Path) -> (IPCServer, String) {
+        let dir = tmp.join("modules").join("secret");
+        std::fs::create_dir_all(&dir).unwrap();
+        let toml = "[module]\nschema_version = 1\nname = \"secret\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"rcon_password\"\ntype = \"password\"\nlabel = \"rcon\"\n\n[[settings.fields]]\nname = \"world_dir\"\ntype = \"text\"\nformat = \"path\"\nlabel = \"world\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\nlabel = \"motd\"\n";
+        std::fs::write(dir.join("module.toml"), toml).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let server = server(tmp).await;
+        let mut inst = crate::instance::ServerInstance::new("s1", "secret");
+        inst.rest_password = Some("rest-secret".into());
+        inst.module_settings
+            .insert("rcon_password".into(), json!("rcon-secret"));
+        inst.module_settings.insert("motd".into(), json!("hi"));
+        let id = inst.id.clone();
+        server.supervisor.write().await.instance_store.add(inst).unwrap();
+        (server, id)
+    }
+
+    #[tokio::test]
+    async fn instance_reads_hide_credentials() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (server, id) = secret_server(tmp.path()).await;
+        for path in [
+            format!("/api/instance/{id}"),
+            "/api/instances".into(),
+            "/api/servers".into(),
+        ] {
+            let res = run(&server, req("GET", &path, None), None).await;
+            assert_eq!(res.status, 200, "{path}: {:?}", res.body);
+            let text = res.body.to_string();
+            assert!(
+                !text.contains("rest-secret") && !text.contains("rcon-secret"),
+                "{path}: {text}"
+            );
+            assert!(text.contains("\"motd\":\"hi\""), "{path}: {text}");
+        }
+    }
+
+    #[tokio::test]
+    async fn secret_and_path_format_settings_are_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (server, id) = secret_server(tmp.path()).await;
+        let body = json!({ "rcon_password": "x", "world_dir": "C:/", "rest_password": "y", "motd": "ok" });
+        let res = run(&server, req("PATCH", &format!("/api/instance/{id}"), Some(body)), None).await;
+        assert_eq!(res.status, 403, "{:?}", res.body);
+        assert_eq!(
+            res.body["fields"],
+            json!(["rcon_password", "rest_password", "world_dir"])
+        );
     }
 
     #[tokio::test]

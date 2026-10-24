@@ -211,7 +211,7 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - 세션(`src/session.js`): `hello{link}` → `ready{sid,key,expiresAt,hostId}`. 끊기면 25초 안에 `resume{sid,key}`로 다시 붙고(릴레이 유예 30초), 페이지를 떠나면(`pagehide`) `bye`. 요청은 `req{id,method,path,body}` → `res{id,status,body}`, 130초가 지나면 `remote_timeout`으로 끝낸다. 연장은 `extend`.
 - 브리지(`src/api.js`): GUI `createApi({invoke, hub}).api`를 그대로 쓰고 `invoke('daemon_request')`만 세션 요청으로 바꾼다. 다른 Tauri 명령(창·파일 대화상자·프로세스)은 `not_supported`로 막는다. 응답 가공과 오류 문구는 GUI와 같다. 릴레이 `event{kind,data}`는 `onDaemonEvent`로 `{type,data}`가 되어 온다.
 - GUI에서 가져오는 것은 `createApi`, `events`, `serverView`, `localizedText`, `commandRisk`, `tokens.css`뿐이다(`src/test/guiImports.test.js`). 화면은 따로 만든다.
-- 화면: 서버(목록·추가·시작/정지/재시작·EULA 동의·콘솔·설정·백업·삭제), 권한(`relayListHostNodes(hostId)` → 길드별 `permissionsGet`), 모듈(공식 매니페스트 설치, 플러그인 켜기/끄기/설치), 더보기(PC 사용량, 데몬 로그). 설정의 경로·파일 칸은 PC에서만 바꾼다(🔒). 확인 창은 GUI와 같은 경우에만 띄운다.
+- 화면: 서버(목록·추가·시작/정지/재시작·EULA 동의·콘솔·설정·백업·삭제), 권한(`relayListHostNodes(hostId)` → 길드별 `permissionsGet`), 모듈(공식 매니페스트 설치, 플러그인 켜기/끄기/설치), 더보기(PC 사용량, 데몬 로그). 설정의 경로·파일·비밀번호 칸은 PC에서만 바꾼다(🔒, 비밀번호는 데몬이 응답에서 뺀다). 확인 창은 GUI와 같은 경우에만 띄운다.
 - 문구: `locales/<lang>/web.json`(`web` ns)과 `common.json`(`common` ns, 브리지 오류 문구). 10개 언어 키·자리 표시자 일치는 `src/test/locales.test.js`가 검사한다.
 
 ---

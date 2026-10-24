@@ -30,6 +30,8 @@ const IDLE: Duration = if cfg!(test) {
 const PING: Duration = Duration::from_secs(25);
 /// 동시에 실행하는 원격 요청 수
 const IN_FLIGHT: usize = 8;
+/// 실행 중과 기다리는 요청을 합한 상한. 넘치면 쌓지 않고 바로 `remote_busy`로 답한다
+const QUEUED: usize = 32;
 /// 한 메시지 상한: 로그 내보내기(본문 8 MiB 남짓)가 들어간다
 const MAX_MESSAGE: usize = 16 << 20;
 /// 세션이 남은 채 끊기면 다시 붙어 보는 횟수 (1·2·4초 뒤)
@@ -53,12 +55,16 @@ pub fn ensure(server: IPCServer, relay_base: &str, token: &str) {
     let token = token.to_string();
     tokio::spawn(async move {
         let mut failures = 0;
-        loop {
+        while !cancel.is_cancelled() {
             match connect_once(&server, &url, &token, &cancel).await {
                 Ok(Ended::Idle) | Ok(Ended::Cancelled) => break,
                 Ok(Ended::Dropped) | Err(_) if failures < RECONNECTS => {
                     failures += 1;
-                    tokio::time::sleep(Duration::from_secs(1 << (failures - 1))).await;
+                    // 기다리는 중에 멈추면 다시 붙지 않는다
+                    tokio::select! {
+                        _ = cancel.cancelled() => break,
+                        _ = tokio::time::sleep(Duration::from_secs(1 << (failures - 1))) => {}
+                    }
                 }
                 Ok(Ended::Dropped) | Err(_) => break,
             }
@@ -96,7 +102,10 @@ async fn connect_once(server: &IPCServer, url: &str, token: &str, cancel: &Cance
     let mut request = url.into_client_request().map_err(|e| e.to_string())?;
     let auth = format!("Bearer {token}").parse().map_err(|_| "bad token".to_string())?;
     request.headers_mut().insert("Authorization", auth);
-    request.headers_mut().insert("X-Saba-Client", tokio_tungstenite::tungstenite::http::HeaderValue::from_static("1"));
+    request.headers_mut().insert(
+        "X-Saba-Client",
+        tokio_tungstenite::tungstenite::http::HeaderValue::from_static("1"),
+    );
     let config = WebSocketConfig {
         max_message_size: Some(MAX_MESSAGE),
         max_frame_size: Some(MAX_MESSAGE),
@@ -114,6 +123,7 @@ async fn connect_once(server: &IPCServer, url: &str, token: &str, cancel: &Cance
 
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
     let sessions: Arc<Mutex<HashMap<String, Option<String>>>> = Arc::default();
+    let queue = Arc::new(Semaphore::new(QUEUED));
     let slots = Arc::new(Semaphore::new(IN_FLIGHT));
     let mut events = crate::events::bus().subscribe(None).rx;
     let mut ping = tokio::time::interval(PING);
@@ -176,24 +186,51 @@ async fn connect_once(server: &IPCServer, url: &str, token: &str, cancel: &Cance
                             Some(user) => user.clone(),
                             None => continue,
                         };
-                        let id = frame.get("id").cloned().unwrap_or(Value::Null);
-                        let req = exec::Request {
-                            method: frame.get("method").and_then(Value::as_str).unwrap_or_default().to_string(),
-                            path: frame.get("path").and_then(Value::as_str).unwrap_or_default().to_string(),
-                            body: frame.get("body").cloned().filter(|b| !b.is_null()),
-                        };
-                        let (server, out, slots) = (server.clone(), out_tx.clone(), slots.clone());
-                        tokio::spawn(async move {
-                            let Ok(_slot) = slots.acquire_owned().await else { return };
-                            let res = exec::run(&server, req, user).await;
-                            let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": res.status, "body": res.body }));
-                        });
+                        dispatch(server, &frame, sid, user, &out_tx, &queue, &slots);
                     }
                     _ => {}
                 }
             }
         }
     }
+}
+
+/// 요청 한 건을 대기열에 넣는다. 자리가 없으면 바로 바쁘다고 답한다
+fn dispatch(
+    server: &IPCServer,
+    frame: &Value,
+    sid: String,
+    user: Option<String>,
+    out: &mpsc::UnboundedSender<Value>,
+    queue: &Arc<Semaphore>,
+    slots: &Arc<Semaphore>,
+) {
+    let id = frame.get("id").cloned().unwrap_or(Value::Null);
+    let Ok(place) = queue.clone().try_acquire_owned() else {
+        let body = json!({ "ok": false, "success": false, "error": "Too many requests", "error_code": "remote_busy" });
+        let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": 429, "body": body }));
+        return;
+    };
+    let req = exec::Request {
+        method: frame
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        path: frame
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        body: frame.get("body").cloned().filter(|b| !b.is_null()),
+    };
+    let (server, out, slots) = (server.clone(), out.clone(), slots.clone());
+    tokio::spawn(async move {
+        let _place = place;
+        let Ok(_slot) = slots.acquire_owned().await else { return };
+        let res = exec::run(&server, req, user).await;
+        let _ = out.send(json!({ "t": "res", "sid": sid, "id": id, "status": res.status, "body": res.body }));
+    });
 }
 
 #[cfg(test)]
@@ -256,7 +293,10 @@ mod tests {
                     .map(|v| v.to_str().unwrap().to_string());
                 assert_eq!(req.uri().path(), "/node/ws");
                 // 운영 nginx 는 데몬 경로에 X-Saba-Client 를 요구한다
-                assert_eq!(req.headers().get("X-Saba-Client").map(|v| v.as_bytes()), Some(&b"1"[..]));
+                assert_eq!(
+                    req.headers().get("X-Saba-Client").map(|v| v.as_bytes()),
+                    Some(&b"1"[..])
+                );
                 Ok(res)
             })
             .await
@@ -325,5 +365,51 @@ mod tests {
             "the daemon hangs up once no session is left"
         );
         stop();
+    }
+
+    /// 대기열이 차면 요청을 쌓지 않고 바로 바쁘다고 답한다
+    #[tokio::test]
+    async fn requests_beyond_the_queue_are_answered_busy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = server(tmp.path()).await;
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
+        let queue = Arc::new(Semaphore::new(0));
+        let slots = Arc::new(Semaphore::new(IN_FLIGHT));
+        let frame = json!({ "t": "req", "sid": "s1", "id": 7, "method": "GET", "path": "/health" });
+        dispatch(&server, &frame, "s1".into(), None, &out_tx, &queue, &slots);
+        let res = tokio::time::timeout(Duration::from_secs(1), out_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(res["id"], 7);
+        assert_eq!(res["status"], 429);
+        assert_eq!(res["body"]["error_code"], "remote_busy");
+    }
+
+    /// 다시 붙기를 기다리는 중에 멈추면 더 붙지 않는다
+    #[tokio::test]
+    async fn stop_during_backoff_does_not_reconnect() {
+        let _one = TEST_LOCK.lock().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let server = server(tmp.path()).await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = accepted.clone();
+        tokio::spawn(async move {
+            // 웹소켓이 아닌 상대: 받자마자 끊어서 연결 실패로 만든다
+            while let Ok((tcp, _)) = listener.accept().await {
+                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                drop(tcp);
+            }
+        });
+        ensure(server, &base, "sbn_host.secret");
+        while accepted.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        stop();
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

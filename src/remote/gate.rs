@@ -293,7 +293,12 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-/// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 경로형 설정 키다
+/// 응답에 인스턴스 설정을 담는 라우트 (비밀값을 빼고 돌려준다, `exec::hide_secrets`)
+pub fn shows_instances(method: &str, pattern: &str) -> bool {
+    method == "GET" && matches!(pattern, "/api/instances" | "/api/instance/:id" | "/api/servers")
+}
+
+/// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
 pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
     let Some(body) = body.and_then(Value::as_object) else {
         return Vec::new();
@@ -331,7 +336,7 @@ pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fi
     blocked
 }
 
-/// 인스턴스 설정에서 PC에서만 바꾸는 키: 실행 파일·실행 인자·폴더·프로세스 찾기·REST 대상·익스텐션 데이터.
+/// 인스턴스 설정에서 PC에서만 바꾸는 키: 실행 파일·실행 인자·폴더·프로세스 찾기·REST 대상과 비밀번호·익스텐션 데이터.
 /// 이것들이 열리면 "서버 시작"이 PC에서 아무 프로그램이나 실행하는 버튼이 된다
 const SETTINGS_PC_ONLY: &[&str] = &[
     "executable_path",
@@ -340,11 +345,18 @@ const SETTINGS_PC_ONLY: &[&str] = &[
     "process_name",
     "auto_detect",
     "rest_host",
+    "rest_password",
     "extension_data",
 ];
 
 /// 인스턴스를 만들 때 PC에서만 정하는 키 (기존 서버 폴더 가져오기 포함)
-const CREATE_PC_ONLY: &[&str] = &["executable_path", "working_dir", "migration_source", "extension_data"];
+const CREATE_PC_ONLY: &[&str] = &[
+    "executable_path",
+    "working_dir",
+    "migration_source",
+    "rest_password",
+    "extension_data",
+];
 
 #[cfg(test)]
 mod tests {

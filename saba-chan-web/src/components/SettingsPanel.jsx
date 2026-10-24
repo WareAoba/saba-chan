@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Button, Empty, errorText, failed, Section } from './ui';
 
-/** 데몬 문지기(src/remote/gate.rs SETTINGS_PC_ONLY)가 원격으로 받지 않는 칸. 모듈의 file·path 칸도 같다 */
+/** 데몬 문지기(src/remote/gate.rs SETTINGS_PC_ONLY)가 원격으로 받지 않는 칸. 모듈의 비밀번호·file·path 칸도 같다 (비밀번호는 읽어 오지도 않는다) */
 const PC_ONLY = new Set([
     'executable_path',
     'working_dir',
@@ -11,6 +11,7 @@ const PC_ONLY = new Set([
     'process_name',
     'auto_detect',
     'rest_host',
+    'rest_password',
     'extension_data',
 ]);
 
@@ -29,7 +30,7 @@ const TOP_LEVEL = new Set([
 ]);
 
 const typeOf = (f) => f.field_type || f.type || 'text';
-const pcOnly = (f) => PC_ONLY.has(f.name) || ['file', 'path'].includes(typeOf(f));
+const pcOnly = (f) => PC_ONLY.has(f.name) || ['file', 'path', 'password'].includes(typeOf(f)) || f.format === 'path';
 
 export function savedValue(server, field) {
     const top = server[field.name];
