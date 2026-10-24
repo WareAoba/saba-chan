@@ -51,6 +51,9 @@ pub struct Grants {
     pub entries: Vec<(PathBuf, Access)>,
     /// 주지 못해도 실행은 계속하는 폴더 (찾아 둔 런타임처럼 없어도 되는 것)
     pub optional: Vec<(PathBuf, Access)>,
+    /// 모든 구성요소가 함께 읽는 폴더(Python·모듈·익스텐션·Java 런타임): 프로필 SID가 아니라 ALL APPLICATION PACKAGES에 한 번 준다.
+    /// 프로필마다 주면 그 폴더 DACL에 구성요소 수만큼 ACE가 쌓여, 64KB 한도를 넘으면 ACL을 쓰지 못한다(os error 87)
+    pub shared: Vec<(PathBuf, Access)>,
 }
 
 /// 권한을 줄 수 없는 위치인가: 데이터 폴더와 그 위, 드라이브 루트, 사용자 폴더와 그 위
@@ -92,6 +95,16 @@ impl Grants {
         }
         if !self.entries.iter().any(|(p, a)| p == &real && *a == access) {
             self.entries.push((real, access));
+        }
+    }
+
+    /// `push`와 같지만 모든 구성요소가 함께 읽는 폴더로 둔다 (`shared`)
+    pub fn push_shared(&mut self, path: &Path, access: Access, data_dir: &Path, home: Option<&Path>) {
+        let before = self.entries.len();
+        self.push(path, access, data_dir, home);
+        if self.entries.len() > before {
+            let entry = self.entries[before].clone();
+            self.shared.push(entry);
         }
     }
 
@@ -1097,6 +1110,24 @@ mod imp {
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 0, "nothing left to clear");
         }
 
+        // 함께 읽는 폴더(Python 등)에 구성요소마다 ACE를 더하면 DACL이 64KB 한도에 닿아 "os error 87"로 격리 실행이
+        // 모두 멈췄다(이 PC에서 1,363개). 그 폴더는 ALL APPLICATION PACKAGES에 한 번만 준다
+        #[test]
+        fn a_shared_folder_gets_one_ace_whatever_the_number_of_components() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            let mut grants = super::Grants::default();
+            grants.entries.push((dir.clone(), super::Access::Read));
+            grants.shared.push((dir.clone(), super::Access::Read));
+            for name in ["saba-chan.untrusted.test-shared-a", "saba-chan.untrusted.test-shared-b"] {
+                super::apply(name, &grants).unwrap();
+                let sid = super::container_sid(name).unwrap();
+                assert!(!super::has_own_ace(&dir, sid).unwrap(), "{name} gets no ACE of its own");
+                let _ = super::delete_profile(name);
+            }
+            assert!(super::has_own_ace(&dir, super::all_app_packages().unwrap()).unwrap(), "one ACE for every component");
+        }
+
         // 압축된 게임 폴더(compact /exe, WOF)의 파일도 재분석 지점이지만 링크가 아니다: 막지 않고, 실행 파일은 덮는다
         #[test]
         fn compressed_server_files_do_not_block_the_start() {
@@ -1257,7 +1288,8 @@ mod imp {
             let started = std::time::Instant::now();
             let _slow = SlowGrant { path, access: *access, started };
             let optional = grants.optional.contains(&(path.clone(), *access));
-            let existing = match grant_one(path, sid, everyone, *access) {
+            let shared = grants.shared.contains(&(path.clone(), *access));
+            let existing = match grant_one(path, if shared { everyone } else { sid }, everyone, *access) {
                 Ok(existing) => existing,
                 Err(e) if optional => {
                     tracing::warn!("[Sandbox] skipping {}: {}", path.display(), e);
@@ -1267,7 +1299,8 @@ mod imp {
             };
             // 없어도 되는 읽기 권한(런타임 폴더)은 이 SID의 명시 ACE(지금 더한 것, 예전 데몬이 더한 것)를 기록해 두었다가
             // 쓰지 않게 되면 거둔다. 상속받았거나 모든 앱 패키지로 읽을 수 있는 폴더는 이 폴더에서 거둘 것이 없다
-            if optional && *access == Access::Read {
+            // 함께 쓰는 폴더의 권한은 한 구성요소가 거두면 다른 구성요소도 잃으므로 기록하지 않는다
+            if optional && !shared && *access == Access::Read {
                 let state = match existing {
                     super::Existing::None => "granted",
                     super::Existing::Own => "already granted to this profile",
