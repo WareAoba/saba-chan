@@ -669,6 +669,7 @@
     "tab_info": "Info",
     "console_offline": "Der Server ist gestoppt. Starte ihn, um hier sein Protokoll zu sehen.",
     "console_offline_input": "Starte den Server, um Befehle zu senden",
+    "console_read_only": "Dieser Server nimmt keine Konsoleneingabe an. Sende Befehle über den Tab „Befehle“",
     "console_popped_out": "Die Konsole ist in einem separaten Fenster geöffnet.",
     "console_popin": "Hierher zurückholen",
     "commands_offline": "Starte den Server, um Befehle zu senden.",

@@ -669,6 +669,7 @@
     "tab_info": "정보",
     "console_offline": "서버가 꺼져 있어요. 켜면 여기에 로그가 보여요.",
     "console_offline_input": "서버를 켜면 명령을 보낼 수 있어요",
+    "console_read_only": "이 서버는 콘솔 입력을 받지 않아요. 명령은 명령 탭에서 보내 주세요",
     "console_popped_out": "콘솔이 별도 창에서 열려 있어요.",
     "console_popin": "이 화면으로 가져오기",
     "commands_offline": "서버를 켜면 명령을 보낼 수 있어요.",
