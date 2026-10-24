@@ -125,7 +125,7 @@ fn header(app: &App, width: u16) -> Line<'static> {
     let failed = snap.updates.as_ref().is_some_and(|u| !s(u, "error").is_empty());
     if updates > 0 {
         items.push((4, Span::styled(t!("tui.updates_n", count = updates), Style::default().fg(Color::Yellow))));
-    } else if snap.updates.is_some() && !failed {
+    } else if snap.updates.as_ref().is_some_and(update_checked) && !failed {
         items.push((4, Span::styled(t!("tui.updates_none"), dim())));
     }
     const SEP: &str = "  │  ";
@@ -489,14 +489,19 @@ fn draw_discord(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Paragraph::new(lines).block(panel(t!("tui.page.discord"), false)).wrap(Wrap { trim: false }), body);
 }
 
+/// 데몬이 업데이트를 한 번이라도 확인했는가 (`last_check`가 없으면 결과가 비어 있어도 최신이라는 뜻이 아니다)
+fn update_checked(u: &Value) -> bool {
+    !s(u, "last_check").is_empty()
+}
+
 fn draw_updates(f: &mut Frame, app: &mut App, area: Rect) {
     let body = with_buttons(f, app, area);
     let u = app.snap.updates.clone().unwrap_or(Value::Null);
     let n = u.get("updates_available").and_then(Value::as_u64).unwrap_or(0);
     let failed = !s(&u, "error").is_empty();
     let mut lines = Vec::new();
-    if u.is_null() {
-        // 아직 답을 못 받았다: 최신인지 모른다
+    if u.is_null() || (n == 0 && !failed && !update_checked(&u)) {
+        // 아직 답을 못 받았거나 한 번도 확인하지 않았다: 최신인지 모른다
         lines.push(Line::from(Span::styled(t!("tui.updates_checking"), dim())));
     } else if n > 0 {
         lines.push(Line::from(Span::styled(t!("tui.updates_n", count = n), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
@@ -878,6 +883,14 @@ mod tests {
         assert!(!screen(&mut app, 140, 34).lines().next().unwrap().contains("최신"));
         app.page = Page::Updates;
         assert!(!screen(&mut app, 140, 34).contains("최신"));
+        // Codex 리뷰 #548: 데몬의 첫 상태(아직 확인 전, last_check 없음)를 받은 것만으로 "최신"이라고 했다
+        app.snap.updates = Some(json!({ "updates_available": 0, "components": [], "error": null, "last_check": null }));
+        assert!(!screen(&mut app, 140, 34).contains("최신"));
+        app.page = Page::Servers;
+        assert!(!screen(&mut app, 140, 34).lines().next().unwrap().contains("최신"));
+        app.page = Page::Updates;
+        app.snap.updates = Some(json!({ "updates_available": 0, "components": [], "last_check": "2026-10-24T00:00:00Z" }));
+        assert!(screen(&mut app, 140, 34).contains("최신"));
         app.snap.updates = Some(json!({ "updates_available": 1, "components": [{ "component": "saba-core", "display_name": "SabaCore", "current_version": "0.1.9", "latest_version": "0.1.10", "update_available": true }] }));
         assert!(screen(&mut app, 140, 34).contains("SabaCore"));
     }

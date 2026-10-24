@@ -1128,11 +1128,17 @@ mod tests {
     /// 액션 계획·여러 단계 계획은 요약 문구를 CLI가 고른 언어로 받게 본문에 `locale`을 싣는다 (데몬은 머리가 아니라 본문을 본다)
     #[tokio::test]
     async fn action_plans_ask_for_the_cli_language() {
-        let lang = crate::i18n::lang().to_string();
+        // 언어는 프로세스에 한 번 정해지는데, 다른 테스트가 도중에 정할 수 있다: 요청 앞뒤 값 중 하나면 된다
+        let either = |body: &Value, before: &str| {
+            let sent = body["locale"].as_str().unwrap_or_default().to_string();
+            assert!(sent == before || sent == crate::i18n::lang(), "{sent}");
+        };
+        let before = crate::i18n::lang();
         let one = request_body(|api| Box::pin(async move { api.action("server.stop", "plan", json!({ "input": {} })).await })).await;
-        assert_eq!(one["locale"], json!(lang));
+        either(&one, before);
+        let before = crate::i18n::lang();
         let many = request_body(|api| Box::pin(async move { api.plan_steps(json!([])).await })).await;
-        assert_eq!(many["locale"], json!(lang));
+        either(&many, before);
     }
 
     /// `--lang`을 주면 데몬 문구도 그 언어로 오게 요청마다 `Accept-Language`를 싣는다. 안 주면 데몬 설정을 따른다

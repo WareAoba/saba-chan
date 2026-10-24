@@ -46,10 +46,22 @@ fn failure(r: &Value) -> String {
     }
 }
 
+/// 실패한 실행의 오류. 여러 단계는 어디까지 됐는지(`steps`, `stoppedAt`)도 JSON 출력에 싣는다
+fn run_error(r: &Value) -> Option<crate::error::CliError> {
+    if r.get("success").and_then(Value::as_bool) != Some(false) {
+        return None;
+    }
+    Some(if r.get("steps").is_some() {
+        crate::error::CliError::Partial { message: failure(r), data: r.clone() }
+    } else {
+        crate::error::CliError::Failed(failure(r))
+    })
+}
+
 /// 실행 결과: 실패면 오류로, 아니면 끝난 알림
 fn finish(ctx: &Ctx, r: &Value, done: &str) -> Result<()> {
-    if r.get("success").and_then(Value::as_bool) == Some(false) {
-        return Err(crate::error::CliError::Failed(failure(r)).into());
+    if let Some(e) = run_error(r) {
+        return Err(e.into());
     }
     ctx.out.done(done, r);
     Ok(())
@@ -86,7 +98,8 @@ pub async fn run(ctx: &Ctx, action: Option<&str>, server: Option<&str>, plan_onl
         ctx.ask.ensure(&t!("do.confirm", action = action))?;
     }
     let plan_id = s(&planned, "planId").to_string();
-    let r = ctx.api.action(action, "run", json!({ "planId": plan_id })).await?;
+    // 실패한 실행도 2xx에 `success:false`로 온다: 원인을 보이도록 본문을 받는다
+    let r = crate::client::partial(ctx.api.action(action, "run", json!({ "planId": plan_id })).await)?;
     finish(ctx, &r, &t!("do.done", action = action))
 }
 
@@ -111,7 +124,8 @@ pub async fn steps(ctx: &Ctx, raw: &str, plan_only: bool) -> Result<()> {
         }
         ctx.ask.ensure(&t!("do.confirm_steps"))?;
     }
-    let mut r = ctx.api.action("plan", "run", json!({ "planId": s(&planned, "planId") })).await?;
+    // 빨리 실패한 실행은 바로 2xx에 `success:false`로 온다: 멈춘 단계와 원인을 보이도록 본문을 받는다
+    let mut r = crate::client::partial(ctx.api.action("plan", "run", json!({ "planId": s(&planned, "planId") })).await)?;
     if r.get("running").and_then(Value::as_bool) == Some(true) {
         let run = s(&r, "runId").to_string();
         // 기다리다 끊겨도 다시 볼 수 있게 실행 id를 먼저 알린다
@@ -151,8 +165,9 @@ pub async fn run_status(ctx: &Ctx, run_id: &str) -> Result<()> {
         }
     });
     // 끝났는데 실패했으면 종료 코드로도 알린다 (스크립트가 성공으로 읽지 않게)
+    // `--json`에서도 실행 상세가 남게 결과를 함께 싣는다
     match finished_failure(&r) {
-        Some(why) => Err(crate::error::CliError::Failed(why).into()),
+        Some(why) => Err(crate::error::CliError::Partial { message: why, data: r.clone() }.into()),
         None => Ok(()),
     }
 }
@@ -184,6 +199,24 @@ mod tests {
         ] });
         assert_eq!(failure(&r), "2. server.start: port_conflict");
         assert_eq!(failure(&json!({ "success": false, "result": { "error": "boom" } })), "boom");
+    }
+
+    /// Codex 리뷰 #548: 빨리 실패한 여러 단계 실행은 2xx `success:false`라 공통 검사가 `HTTP 200` 오류로 바꿨고,
+    /// `--json`에서는 멈춘 단계 상세가 사라졌다. 본문을 받아 원인과 단계를 함께 싣는다
+    #[test]
+    fn a_failed_multi_step_run_keeps_its_steps_and_cause() {
+        let body = json!({ "success": false, "stoppedAt": 1, "steps": [{ "n": 1, "actionId": "server.start", "status": "failed", "code": "port_conflict" }] });
+        let api = crate::error::CliError::Api { status: 200, code: None, message: "HTTP 200".into(), body: body.clone() };
+        let r = crate::client::partial(Err(api.into())).unwrap();
+        match run_error(&r) {
+            Some(crate::error::CliError::Partial { message, data }) => {
+                assert_eq!(message, "1. server.start: port_conflict");
+                assert_eq!(data["stoppedAt"], 1);
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(run_error(&json!({ "success": false, "result": { "error": "boom" } })), Some(crate::error::CliError::Failed(m)) if m == "boom"));
+        assert!(run_error(&json!({ "success": true })).is_none());
     }
 
     /// `do --run`: 끝난 실행이 실패였으면 실패로, 아직 도는 중이거나 성공이면 아니다
