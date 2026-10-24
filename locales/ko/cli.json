@@ -782,6 +782,7 @@
       "daemon.clients": "데몬에 붙은 데스크톱 앱 창"
     },
     "arg": {
+      "backup.create.from_snapshot": "지금 월드 대신 게임이 만든 가장 최근 자동 백업을 보관 (팰월드 등)",
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
       "bot.channels.no_notify": "알림 채널 해제",
       "bot.link.decline": "이 연결 요청 거절",

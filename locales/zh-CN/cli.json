@@ -772,6 +772,7 @@
       "daemon.clients": "连接到守护进程的桌面应用窗口"
     },
     "arg": {
+      "backup.create.from_snapshot": "保留游戏最新的自动备份，而不是现在复制世界（Palworld 等）",
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
       "bot.channels.no_notify": "取消通知频道",
       "bot.link.decline": "拒绝此连接请求",

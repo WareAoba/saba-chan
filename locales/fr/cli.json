@@ -559,6 +559,7 @@
       "daemon.clients": "Fenêtres de l'application de bureau connectées au démon"
     },
     "arg": {
+      "backup.create.from_snapshot": "Conserver la dernière sauvegarde automatique du jeu au lieu de copier le monde maintenant (Palworld, etc.)",
       "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
       "bot.channels.no_notify": "Retirer le salon des notifications",
       "bot.link.decline": "Refuser cette demande de connexion",

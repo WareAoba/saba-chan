@@ -650,6 +650,7 @@
       "server.discord": "What each Discord server calls this server and its commands in chat. No options: show"
     },
     "arg": {
+      "backup.create.from_snapshot": "Keep the game’s latest automatic backup instead of copying the world now (Palworld and others)",
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
       "bot.channels.no_notify": "Unassign the notification channel",
       "bot.link.decline": "Refuse this connection request",

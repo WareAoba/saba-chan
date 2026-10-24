@@ -559,6 +559,7 @@
       "daemon.clients": "Janelas do app de desktop conectadas ao daemon"
     },
     "arg": {
+      "backup.create.from_snapshot": "Guardar o backup automático mais recente do jogo em vez de copiar o mundo agora (Palworld e outros)",
       "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
       "bot.channels.no_notify": "Remover o canal de avisos",
       "bot.link.decline": "Recusar este pedido de conexão",

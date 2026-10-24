@@ -559,6 +559,7 @@
       "daemon.clients": "連到常駐程式的桌面應用程式視窗"
     },
     "arg": {
+      "backup.create.from_snapshot": "保留遊戲最新的自動備份，而不是現在複製世界（Palworld 等）",
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
       "bot.channels.no_notify": "取消通知頻道",
       "bot.link.decline": "拒絕此連線請求",

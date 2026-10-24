@@ -772,6 +772,7 @@
       "daemon.clients": "デーモンに接続しているデスクトップアプリのウィンドウ"
     },
     "arg": {
+      "backup.create.from_snapshot": "今のワールドの代わりにゲームが作った最新の自動バックアップを保管(パルワールドなど)",
       "bot.channels.notify": "通知チャンネル(クラッシュ・バックアップ・更新・予約再起動)、名前またはID",
       "bot.channels.no_notify": "通知チャンネルを解除",
       "bot.link.decline": "この接続リクエストを拒否",
