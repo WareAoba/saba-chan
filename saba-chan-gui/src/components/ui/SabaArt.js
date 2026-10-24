@@ -7,7 +7,7 @@ import './SabaArt.css';
  * 사바쨩 그림 (public/saba/*.webp).
  * 원칙: 한 화면에 한 명, 알리는 순간에만 쓴다. 다크·라이트는 그림자만 다르다 (--art-shadow).
  */
-export const SABA_ART = ['sleep', 'sleepy', 'cleaning', 'undefined', 'recovering', 'stopped', 'relay'];
+export const SABA_ART = ['sleep', 'sleepy', 'cleaning', 'undefined', 'recovering', 'stopped', 'relay', 'cooking', 'served'];
 
 export function SabaArt({ kind, className, size, alt = '' }) {
     if (!SABA_ART.includes(kind)) return null;
