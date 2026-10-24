@@ -324,9 +324,10 @@ describe('DiscordPage', () => {
         expect(document.querySelector('.dc-danger-zone')).not.toBeNull();
     });
 
-    it('봇 초대: 데몬이 준 초대 주소를 브라우저로 연다', async () => {
-        window.api.relayBotInvite = vi.fn().mockResolvedValue({ url: 'https://discord.com/invite-x' });
-        window.api.shell = { openExternal: vi.fn().mockResolvedValue({ success: true }) };
+    it('봇 초대: 릴레이가 준 초대 주소를 셸 브리지(window.electron)로 연다', async () => {
+        // 실제 릴레이 응답은 { clientId, inviteUrl, bot }이고, 셸 열기는 window.api가 아니라 window.electron에 있다
+        window.api.relayBotInvite = vi.fn().mockResolvedValue({ clientId: '1', inviteUrl: 'https://discord.com/invite-x' });
+        window.electron = { shell: { openExternal: vi.fn().mockResolvedValue({ success: true }) } };
         await act(async () => render(<Harness save={vi.fn()} />));
         const btn = await waitFor(() => {
             const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Invite the bot'));
@@ -335,6 +336,6 @@ describe('DiscordPage', () => {
         });
         await act(async () => fireEvent.click(btn));
         expect(window.api.relayBotInvite).toHaveBeenCalledWith('https://saba-chan.online');
-        expect(window.api.shell.openExternal).toHaveBeenCalledWith('https://discord.com/invite-x');
+        expect(window.electron.shell.openExternal).toHaveBeenCalledWith('https://discord.com/invite-x');
     });
 });
