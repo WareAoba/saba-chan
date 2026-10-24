@@ -20,7 +20,7 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
     let token = super::super::auth::token_status(&headers);
     let challenge = headers.get("X-Saba-Challenge").and_then(|v| v.to_str().ok());
-    let proof = challenge.and_then(|challenge| crate::ipc::auth::identity_proof(challenge));
+    let proof = challenge.and_then(crate::ipc::auth::identity_proof);
     (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
 }
 

@@ -516,15 +516,19 @@ fn instance_access(key: &str) -> appcontainer::Access {
 /// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 백업 폴더를 막는다)
 const PROTECTED_INSTANCE_ENTRIES: [&str; 4] = ["instance.json", "settings.json", "rcon.json", "backups"];
 
-fn protect_daemon_entries(instance_dir: &Path) {
+/// 하나라도 끊지 못하면 false: 그때는 인스턴스 폴더 권한을 주지 않는다 (상속으로 비밀이 열리지 않게)
+fn protect_daemon_entries(instance_dir: &Path) -> bool {
+    let mut protected = true;
     for name in PROTECTED_INSTANCE_ENTRIES {
         let path = instance_dir.join(name);
         if path.exists() {
             if let Err(e) = saba_atomic_file::restrict_to_user(&path) {
-                tracing::warn!("[Sandbox] cannot restrict {}: {}", path.display(), e);
+                tracing::warn!("[Sandbox] cannot restrict {}, not granting the instance folder: {}", path.display(), e);
+                protected = false;
             }
         }
     }
+    protected
 }
 
 /// 익스텐션 키면 그 익스텐션 전용 데이터 폴더
@@ -856,14 +860,16 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
     // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
     let access = instance_access(&key);
-    if let Some(instance_dir) = config.get("instance_dir").and_then(Value::as_str).filter(|d| !d.is_empty()) {
-        protect_daemon_entries(Path::new(instance_dir));
-    }
+    let instance_protected = config
+        .get("instance_dir")
+        .and_then(Value::as_str)
+        .filter(|d| !d.is_empty())
+        .is_none_or(|dir| protect_daemon_entries(Path::new(dir)));
     let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
     // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
     let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file());
     let fields = INSTANCE_DIR_FIELDS.iter().filter_map(|field| config.get(*field).and_then(Value::as_str));
-    for path in fields.chain(data_dirs) {
+    for path in fields.chain(data_dirs).filter(|_| instance_protected) {
         if !path.is_empty() {
             let path = Path::new(path);
             // 새로 설치할 폴더는 아직 없다: 권한은 있는 폴더에만 줄 수 있으므로 먼저 만든다
@@ -1479,7 +1485,7 @@ mod tests {
             std::fs::write(tmp.path().join(name), b"{}").unwrap();
         }
         std::fs::create_dir_all(tmp.path().join("backups")).unwrap();
-        protect_daemon_entries(tmp.path());
+        assert!(protect_daemon_entries(tmp.path()));
         // 주인은 계속 읽고 쓴다
         assert_eq!(std::fs::read(tmp.path().join("rcon.json")).unwrap(), b"{}");
         std::fs::write(tmp.path().join("backups").join("a"), b"x").unwrap();
