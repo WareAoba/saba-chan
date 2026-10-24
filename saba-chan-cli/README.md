@@ -22,13 +22,14 @@ saba-chan-cli chat 팰월드 시작      # 디스코드와 같은 채팅 처리
 | 갈래 | 하는 일 |
 |---|---|
 | `status`, `version` | 전체 상태, 설치된 부분의 버전 |
-| `server` (`start` `stop` `restart` `console` `run`은 바로 써도 됨) | 목록·정보·추가·삭제·켜기·끄기·콘솔·게임 명령·설정(`settings`, `set`)·게임 설정 파일(`properties`)·RCON·REST·버전·업데이트·설치 진행·종료 기록·점검(`validate`, `diagnose`)·EULA·초기화·순서 |
+| `server` (`start` `stop` `restart` `console` `run`은 바로 써도 됨) | 목록·정보·추가·삭제·켜기·끄기·콘솔·게임 명령·접속자(`players`)·한 줄 보내고 답 받기(`rcon`)·저장된 로그(`log`)·모듈 조회(`query`)·설정(`settings`, `set`)·게임 설정 파일(`properties`)·REST·버전·업데이트·설치 진행·종료 기록·점검(`validate`, `diagnose`)·EULA·초기화·순서 |
 | `module` | 게임 모듈 목록·정보·명령·설치할 수 있는 버전·받기·지우기·폴더 감지·서버 파일만 받기 |
 | `extension` | 익스텐션 목록·켜기·끄기·받기·업데이트·지우기·설정 |
 | `bot` | 디스코드 봇 연결: 페어링(코드 표시 → 디스코드에 입력)·연결·끊기·접두사·게임 별명·노드·멤버·설정 |
 | `update` | 사바쨩 업데이트 확인·받기·적용·마지막 결과·무결성 확인·설정 |
 | `config` | 앱 설정 보기·바꾸기 (`cli.키`는 CLI 전용 칸) |
-| `daemon` | 데몬 켜기·끄기·다시 켜기·로그 |
+| `daemon` | 데몬 켜기·끄기·다시 켜기·로그·붙은 앱 창(`clients`) |
+| `do` | 데몬 액션을 id로, 여러 단계는 `--steps`, 뒤에서 이어 가는 실행은 `--run` |
 | `shell`, `completions` | 대화형 셸, 셸 자동 완성 스크립트 |
 
 `saba-chan-cli <명령> --help`로 자세한 사용법을 볼 수 있습니다.

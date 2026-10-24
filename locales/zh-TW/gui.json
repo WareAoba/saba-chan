@@ -1299,7 +1299,11 @@
     "fail_title": "咦？沒找到",
     "retry": "重試",
     "recovering": "{{name}} 倒下了！正在重新扶起來…",
-    "stopped": "沒能重新扶起 {{name}}…請檢查狀態。"
+    "stopped": "沒能重新扶起 {{name}}…請檢查狀態。",
+    "cooking": "伺服器烹飪中…",
+    "cooked": "完成！",
+    "cook_failed": "失敗…",
+    "settings_first": "先看設定"
   },
   "activity": {
     "idle": "點擊查看常駐程式主控台記錄",
