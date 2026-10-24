@@ -1285,6 +1285,29 @@ mod imp {
         }
     }
 
+    /// 이 실행에서 기록할 권한: 프로필의 런타임 읽기, 데몬이 모든 앱 패키지에 더한 함께 읽는 권한
+    fn record_grants(profile: &str, runtimes: Vec<PathBuf>, shared_added: Vec<(PathBuf, bool)>) {
+        if !runtimes.is_empty() || !shared_added.is_empty() {
+            let file = super::runtime_record_path();
+            let mut record = super::read_runtime_record(&file);
+            let mut changed = false;
+            let mut add = |key: &str, paths: Vec<PathBuf>| {
+                let known = record.entry(key.to_string()).or_default();
+                let before = known.len();
+                known.extend(paths);
+                changed |= known.len() != before;
+            };
+            add(profile, runtimes);
+            let (shared_runtimes, shared_fixed): (Vec<_>, Vec<_>) = shared_added.into_iter().partition(|(_, optional)| *optional);
+            add(super::SHARED_RUNTIMES, shared_runtimes.into_iter().map(|(p, _)| p).collect());
+            add(super::SHARED_FIXED, shared_fixed.into_iter().map(|(p, _)| p).collect());
+            record.retain(|_, paths| !paths.is_empty());
+            if changed {
+                super::write_runtime_record(&file, &record);
+            }
+        }
+    }
+
     fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
         let _guard = acl_lock();
         let sid = container_sid(profile)?;
@@ -1303,13 +1326,17 @@ mod imp {
                     tracing::warn!("[Sandbox] skipping {}: {}", path.display(), e);
                     continue;
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    // 앞에서 더한 권한은 기록해 둔다 (거둘 수 있게)
+                    record_grants(profile, std::mem::take(&mut runtimes), std::mem::take(&mut shared_added));
+                    return Err(e);
+                }
             };
             // 없어도 되는 읽기 권한(런타임 폴더)은 이 SID의 명시 ACE(지금 더한 것, 예전 데몬이 더한 것)를 기록해 두었다가
             // 쓰지 않게 되면 거둔다. 상속받았거나 모든 앱 패키지로 읽을 수 있는 폴더는 이 폴더에서 거둘 것이 없다
             // 함께 쓰는 폴더의 권한은 한 구성요소가 거두면 다른 구성요소도 잃으므로 기록하지 않는다
             // 그 대신 데몬이 모든 앱 패키지에 더한 것은 따로 기록해, 쓰지 않게 된 런타임이나 제거기(`reset`)에서 거둔다
-            if shared && existing != super::Existing::Elsewhere {
+            if shared && existing == super::Existing::None {
                 shared_added.push((path.clone(), optional));
             }
             if optional && !shared && *access == Access::Read {
@@ -1330,25 +1357,7 @@ mod imp {
                 }
             }
         }
-        if !runtimes.is_empty() || !shared_added.is_empty() {
-            let file = super::runtime_record_path();
-            let mut record = super::read_runtime_record(&file);
-            let mut changed = false;
-            let mut add = |key: &str, paths: Vec<PathBuf>| {
-                let known = record.entry(key.to_string()).or_default();
-                let before = known.len();
-                known.extend(paths);
-                changed |= known.len() != before;
-            };
-            add(profile, runtimes);
-            let (shared_runtimes, shared_fixed): (Vec<_>, Vec<_>) = shared_added.into_iter().partition(|(_, optional)| *optional);
-            add(super::SHARED_RUNTIMES, shared_runtimes.into_iter().map(|(p, _)| p).collect());
-            add(super::SHARED_FIXED, shared_fixed.into_iter().map(|(p, _)| p).collect());
-            record.retain(|_, paths| !paths.is_empty());
-            if changed {
-                super::write_runtime_record(&file, &record);
-            }
-        }
+        record_grants(profile, runtimes, shared_added);
         Ok(sid)
     }
 
