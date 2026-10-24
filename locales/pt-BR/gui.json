@@ -936,6 +936,7 @@
     "perm_member_level": "Nível de {{name}}",
     "perm_reset_member": "Voltar ao nível padrão",
     "perm_reset_member_named": "Voltar {{name}} ao nível padrão",
+    "perm_default_members": "Membros no nível padrão",
     "perm_others": "Os demais usam o nível padrão ({{level}}).",
     "perm_add": "Dar um nível",
     "perm_add_id": "ID de usuário do Discord",

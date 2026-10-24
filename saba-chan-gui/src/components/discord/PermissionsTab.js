@@ -163,6 +163,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
         [legacy, members],
     );
     const candidates = useMemo(() => L.importCandidates(perm, legacy), [perm, legacy]);
+    const others = useMemo(() => L.defaultMembers(perm, members), [perm, members]);
 
     // 확인 상태는 잠깐만 둔다 (나중에 무심코 한 번 눌러 바뀌지 않게)
     useEffect(() => {
@@ -177,6 +178,8 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     const q = query.trim().toLowerCase();
     const matches = (id) => !q || `${nameOf(id)} ${byId.get(id)?.username || ''} ${id}`.toLowerCase().includes(q);
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
+    // 디스코드 멤버 중 레벨을 따로 받지 않은 사람: 여기서 바로 레벨을 줄 수 있다
+    const shownOthers = others.filter((m) => matches(String(m.id)));
     const preset = L.PRESETS.includes(perm.preset) ? perm.preset : 'default';
     const levelName = (l) => t(`discord.level_${L.levelKey(l)}`);
     const update = (patch) => write(() => window.api.permissionsUpdate(guildId, patch));
@@ -382,6 +385,39 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                     </section>
                 );
             })}
+            {membersLoading && (
+                <div className="dc-pair-wait pad">
+                    <SabaSpinner size="sm" /> {t('discord.members_loading')}
+                </div>
+            )}
+            {!membersLoading && !members?.length && <p className="muted pad">{t('discord.members_empty')}</p>}
+            {shownOthers.length > 0 && (
+                <section className="dc-level-group" aria-label={t('discord.perm_default_members')}>
+                    <h4 className={clsx('dc-level-title', `level-${L.levelKey(defaultLevel)}`)}>
+                        {t('discord.perm_default_members')} <span className="muted">{others.length}</span>
+                    </h4>
+                    <ul className="dc-list">
+                        {shownOthers.map((m) => {
+                            const id = String(m.id);
+                            return (
+                                <li key={id} className="dc-list-row">
+                                    <span className="dc-list-text">
+                                        <span className="dc-list-name">{nameOf(id)}</span>
+                                        {m.username && <span className="dc-list-sub">@{m.username}</span>}
+                                    </span>
+                                    <LevelSelect
+                                        value={defaultLevel}
+                                        levels={L.GRANTABLE}
+                                        label={t('discord.perm_member_level', { name: nameOf(id) })}
+                                        disabled={busy}
+                                        onChange={(l) => l !== defaultLevel && setMember(id, l)}
+                                    />
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </section>
+            )}
             <p className="dc-hint">{t('discord.perm_others', { level: levelName(defaultLevel) })}</p>
 
             <section className="dc-card">

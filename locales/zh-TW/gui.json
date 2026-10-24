@@ -936,6 +936,7 @@
     "perm_member_level": "{{name}} 的等級",
     "perm_reset_member": "恢復預設等級",
     "perm_reset_member_named": "將 {{name}} 恢復為預設等級",
+    "perm_default_members": "預設等級的成員",
     "perm_others": "其他成員使用預設等級（{{level}}）。",
     "perm_add": "授予等級",
     "perm_add_id": "Discord 使用者 ID",
