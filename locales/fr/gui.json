@@ -1296,7 +1296,11 @@
     "fail_title": "Hein ? Introuvable",
     "retry": "Réessayer",
     "recovering": "{{name}} est tombé ! Remise sur pied en cours…",
-    "stopped": "Impossible de relever {{name}}… Vérifie son état."
+    "stopped": "Impossible de relever {{name}}… Vérifie son état.",
+    "cooking": "Cuisson du serveur…",
+    "cooked": "Terminé !",
+    "cook_failed": "Échec…",
+    "settings_first": "Voir les réglages d'abord"
   },
   "activity": {
     "idle": "Cliquez pour voir le journal de la console du daemon",

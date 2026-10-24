@@ -1296,7 +1296,11 @@
     "fail_title": "咦？没找到",
     "retry": "重试",
     "recovering": "{{name}} 倒下了！正在重新扶起来…",
-    "stopped": "没能重新扶起 {{name}}…请检查状态。"
+    "stopped": "没能重新扶起 {{name}}…请检查状态。",
+    "cooking": "服务器烹饪中…",
+    "cooked": "完成！",
+    "cook_failed": "失败…",
+    "settings_first": "先看设置"
   },
   "activity": {
     "idle": "点击查看守护进程控制台记录",

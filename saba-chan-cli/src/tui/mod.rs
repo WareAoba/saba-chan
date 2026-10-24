@@ -1,10 +1,12 @@
 //! 전체 화면 TUI — 인자 없이 터미널에서 실행하면 열린다 (`saba-chan-cli tui`도 같다)
 //!
-//! 메뉴는 명령 표에서 만들고, 메뉴에서 고른 일은 같은 뜻의 명령 한 줄로 실행한다. 그래서 메뉴에서 되는 일은
-//! 명령으로도 되고, 결과 창 제목에 그 명령이 남는다. 출력·진행·묻기 창구를 바꿔 끼워 명령의 출력은 결과 창에,
-//! 진행은 아래 작업 줄에, 확인 질문은 화면 안 대화상자에 그린다. 상태는 몇 초마다 다시 읽는다.
+//! 대시보드·서버·모듈 같은 쪽과 버튼, 아래 콘솔로 이뤄진다. 버튼은 같은 뜻의 명령 한 줄로 실행하므로
+//! 버튼으로 되는 일은 콘솔에 쳐서도 되고, 콘솔 제목에 그 명령이 남는다. "모든 명령" 쪽은 명령 표에서 만든다.
+//! 출력·진행·묻기 창구를 바꿔 끼워 명령의 출력은 콘솔에, 진행은 콘솔 위 작업 줄에, 확인 질문은 화면 안 창에 그린다.
+//! 상태는 데몬 이벤트가 오면 곧바로, 아니면 몇 초마다 다시 읽는다.
 
 mod app;
+mod data;
 mod view;
 
 use crate::ctx::Ctx;
@@ -20,15 +22,19 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
-/// 상태를 다시 읽는 간격 (데몬 이벤트가 늘면 줄인다)
+/// 이벤트가 없어도 상태를 다시 읽는 간격 (사용량 그래프의 한 칸)
 const REFRESH: Duration = Duration::from_secs(3);
+/// 이벤트 스트림이 끊겼을 때 다시 붙기 전 기다림
+const RETRY: Duration = Duration::from_secs(3);
 
 enum Msg {
     Term(Event),
     Line(String),
     Progress(u64, crate::progress::Update),
     Ask(Dialog),
-    Refreshed(Option<Value>, Vec<Value>),
+    Refreshed(Box<data::Fetched>),
+    /// 데몬 이벤트 (종류, 내용)
+    Event(String, Value),
     /// 몇 번째로 시작한 명령이 끝났는지 (취소 뒤 늦게 온 끝 소식이 새 명령을 끝내지 않게)
     Done(u64),
     /// 명령 작업이 패닉함. 기본 훅이 대체 화면 위에 직접 쓴 글자를 지우도록 화면을 통째로 다시 그린다
@@ -104,6 +110,8 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     ctx.in_shell = true;
     let menu = app::menu_from(&crate::cli::localized());
     let mut app = App::new(menu);
+    app.port = ctx.api.port;
+    app.push_line(&t!("tui.welcome"));
 
     let (tx, mut rx) = unbounded_channel::<Msg>();
     // 명령 출력에는 색 코드를 넣지 않는다 (화면은 ratatui가 칠한다)
@@ -168,6 +176,25 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         })
     };
 
+    // 데몬 이벤트: 오면 최근 일에 적고 곧바로 다시 읽는다. 데몬이 꺼졌다 켜지면 다시 붙는다
+    let events = {
+        let (tx, mut ctx) = (tx.clone(), ctx.clone());
+        tokio::spawn(async move {
+            loop {
+                // 다시 붙을 때마다 포트를 다시 본다 (TUI 안에서 포트를 바꾸고 데몬을 다시 켠 경우)
+                ctx.follow_daemon_port();
+                if let Ok(mut stream) = ctx.api.events(None).await {
+                    while let Ok(Some(e)) = stream.next().await {
+                        if tx.send(Msg::Event(e.kind, e.data)).is_err() {
+                            return;
+                        }
+                    }
+                }
+                tokio::time::sleep(RETRY).await;
+            }
+        })
+    };
+
     let mut task: Option<tokio::task::AbortHandle> = None;
     let mut seq = 0u64;
     let mut refreshing = false;
@@ -187,22 +214,27 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 Some(Action::Run(line)) => {
                     // 셸처럼 줄마다 포트를 다시 찾는다: 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다 (L62)
                     ctx.follow_daemon_port();
+                    app.port = ctx.api.port;
                     seq += 1;
                     task = start(&ctx, &mut app, &line, seq, tx.clone()).or(task);
                 }
+                Some(Action::Refresh) => refreshing = refresh(&ctx, &app, tx.clone(), false),
                 None => {}
             },
-            Msg::Term(Event::Mouse(m)) => {
-                if let Some(Action::Run(line)) = app.on_mouse(m) {
+            Msg::Term(Event::Mouse(m)) => match app.on_mouse(m) {
+                Some(Action::Run(line)) => {
                     ctx.follow_daemon_port();
+                    app.port = ctx.api.port;
                     seq += 1;
                     task = start(&ctx, &mut app, &line, seq, tx.clone()).or(task);
                 }
-            }
+                Some(Action::Refresh) => refreshing = refresh(&ctx, &app, tx.clone(), false),
+                _ => {}
+            },
             Msg::Term(_) => {}
             Msg::Line(l) => {
                 app.push_line(&l);
-                app.scroll = 0;
+                app.console.scroll = 0;
             }
             Msg::Progress(id, u) => {
                 use crate::progress::Update;
@@ -239,18 +271,24 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
                 app.running = false;
                 // 명령이 상태를 바꿨을 수 있으니(데몬 포트까지) 곧바로 다시 읽는다
                 ctx.follow_daemon_port();
-                refreshing = refresh(&ctx, tx.clone(), refreshing);
+                app.port = ctx.api.port;
+                refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
             }
             Msg::Panicked => {
                 app.push_line(&t!("tui.command_panicked"));
-                app.scroll = 0;
+                app.console.scroll = 0;
                 term.clear()?;
             }
-            Msg::Tick => refreshing = refresh(&ctx, tx.clone(), refreshing),
-            Msg::Refreshed(h, servers) => {
+            Msg::Tick => refreshing = refresh(&ctx, &app, tx.clone(), refreshing),
+            Msg::Event(kind, data) => {
+                if kind != "resync" && kind != "provision.progress" {
+                    app.snap.note(&kind, &data);
+                }
+                refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
+            }
+            Msg::Refreshed(f) => {
                 refreshing = false;
-                app.health = h;
-                app.servers = servers;
+                app.snap.apply(*f);
             }
         }
         term.draw(|f| view::draw(f, &mut app))?;
@@ -258,6 +296,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
 
     stop.store(true, Ordering::Relaxed);
     ticker.abort();
+    events.abort();
     if let Some(t) = task {
         t.abort();
     }
@@ -270,25 +309,21 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-/// 데몬 상태와 서버 목록을 다시 읽는다 (이미 읽는 중이면 건너뛴다)
-fn refresh(ctx: &Ctx, tx: UnboundedSender<Msg>, busy: bool) -> bool {
+/// 데몬 상태와 지금 쪽에 필요한 것을 다시 읽는다 (이미 읽는 중이면 건너뛴다)
+fn refresh(ctx: &Ctx, app: &App, tx: UnboundedSender<Msg>, busy: bool) -> bool {
     if busy {
         return true;
     }
+    let want = data::Want {
+        modules: app.page == app::Page::Modules,
+        extensions: app.page == app::Page::Extensions,
+        daemon_log: app.page == app::Page::DaemonLog,
+        console_of: app.selected_server().map(|v| data::s(v, "id").to_string()),
+    };
     let ctx = ctx.clone();
     tokio::spawn(async move {
-        let health = ctx.api.health().await.ok();
-        let servers = match health {
-            Some(_) => ctx
-                .api
-                .servers(true)
-                .await
-                .ok()
-                .and_then(|v| v.get("servers").and_then(Value::as_array).cloned())
-                .unwrap_or_default(),
-            None => Vec::new(),
-        };
-        let _ = tx.send(Msg::Refreshed(health, servers));
+        let fetched = data::fetch(&ctx, &want).await;
+        let _ = tx.send(Msg::Refreshed(Box::new(fetched)));
     });
     true
 }
@@ -296,6 +331,7 @@ fn refresh(ctx: &Ctx, tx: UnboundedSender<Msg>, busy: bool) -> bool {
 /// 명령 한 줄을 실행한다. 결과 창 제목에 그 명령을 남긴다
 fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>) -> Option<tokio::task::AbortHandle> {
     if app.running {
+        app.push_line(&t!("tui.busy"));
         return None;
     }
     let Some(words) = shlex::split(line) else {
@@ -315,7 +351,7 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>
     app.push_line(&format!("› {shown}"));
     app.last_command = Some(shown);
     app.running = true;
-    app.scroll = 0;
+    app.console.scroll = 0;
     let ctx = ctx.clone();
     let work = tokio::spawn(async move {
         if let Err(e) = one(&ctx, &words).await {

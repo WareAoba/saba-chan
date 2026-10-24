@@ -382,7 +382,7 @@
 | Method | Path | Handler | 비고 |
 |---|---|---|---|
 | GET | `/api/relay/host/:host_id/status` | `relay.rs:235` | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명). 서명 요청의 `relayUrl`은 설정한 릴레이와 같거나 루프백일 때만 따른다(`signed_relay_url`, `relay.rs:46-67`) |
-| GET | `/api/relay/host/:host_id/nodes` | `relay.rs:247` | `/api/hosts/:id/nodes` |
+| GET | `/api/relay/host/:host_id/nodes` | `relay.rs` `list_host_nodes` | `/api/hosts/:id/nodes`. 답에 있는 노드 주인 `ownerDiscordId`를 아직 주인이 없는 길드에 고정한다(`pin_listed_owners`, 명령과 같은 `pin_owner` 규칙: 고정된 주인은 바꾸지 않고 다른 값은 `relayOwnerDiscordId`) |
 | GET | `/api/relay/node/:guild_id/chatbot/models` | `relay.rs` `get_node_chatbot_models` | `/api/nodes/:id/chatbot/models` 서명 프록시. 릴레이 답을 그대로 전달한다: 200 `{provider, models, selected, effectiveModel}`, 409 `NO_API_KEY`, 422 `INVALID_API_KEY`·`QUOTA_EXCEEDED`, 503 `PROVIDER_UNAVAILABLE` |
 | GET/PUT | `/api/relay/node/:guild_id/channels` | `relay.rs:261/282` | `/api/nodes/:id/channels` 서명 프록시. 챗봇 채널(여럿)·음악 채널(하나) 배정의 원본은 릴레이다. 응답 `{guildId, chatbot:[id], music:id\|null, botAvailable, channels:[{id,name,category}]}`, PUT 본문 `{chatbot?, music?}`(준 키만). 오류 본문 `{error: CODE, channelId?}`는 그대로 전달(객체가 아닌 본문은 데몬이 400 `INVALID_BODY`). 데몬 config의 `chatbot.guilds.*.channelIds`는 `ChatbotConfig::migrate`가 지운다 |
 | GET | `/api/relay/node/:guild_id/members` | `relay.rs` `list_node_members` | `/api/nodes/:id/discord-members`(15초 제한). 실패하면 `/members`(권한을 등록한 멤버만)로 폴백한다. query `withStatus=1`이면 `{members, partial, reason?}`로 답한다: 폴백이면 `partial:true`, `reason`은 `bot_unavailable`·`relay_error`·`relay_unreachable`. 없으면 예전처럼 배열만 |

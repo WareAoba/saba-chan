@@ -213,7 +213,12 @@
     "shutdown_refused": "デーモンが終了要求を受け付けませんでした: {{error}}",
     "stopped": "デーモンを停止しました。",
     "stopping": "デーモンを停止しています...",
-    "stops_with_launcher": "サバちゃんのコアが、デーモンを起動したプログラムに結び付いて動いています。そのプログラムが終了すると、コアとサーバー管理も一緒に止まることがあります。デーモンを止めて(saba-chan-cli daemon stop)、スタートメニューのサバちゃんか通常のターミナルから起動し直してください。"
+    "stops_with_launcher": "サバちゃんのコアが、デーモンを起動したプログラムに結び付いて動いています。そのプログラムが終了すると、コアとサーバー管理も一緒に止まることがあります。デーモンを止めて(saba-chan-cli daemon stop)、スタートメニューのサバちゃんか通常のターミナルから起動し直してください。",
+    "no_clients": "デーモンにつながっているデスクトップアプリのウィンドウはありません。",
+    "col": {
+      "kind": "種類",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "{{name}} のログに既知の問題は見つかりませんでした。"
@@ -578,7 +583,6 @@
       "server.console": "コンソールを見ながら入力する",
       "server.run": "ゲームコマンドを実行 (コマンドを省くと一覧を表示)",
       "server.commands": "このサーバーが受け付けるゲームコマンド",
-      "server.discord": "Discord サーバーごとに、チャットでこのサーバーとそのコマンドを呼ぶ語。オプションなし: 表示",
       "server.send": "コンソールに 1 行そのまま送る",
       "server.settings": "サーバー設定を表示",
       "server.set": "設定を変える: キー=値 ... (エクステンションのデータは ext.キー、空の値は削除)",
@@ -720,6 +724,12 @@
       "events": "デーモンのイベントをリアルタイムで追う(--json なら 1 行に JSON 1 つ)。Ctrl+C で止めます",
       "tui": "全画面メニューを開く",
       "install": "ウィンドウのインストーラーなしでこのPCにサバちゃんをインストール",
+      "server.players": "今接続している人",
+      "server.rcon": "サーバーがコマンドを受け取る経路(コンソール、なければRCON)で1行送って応答を見る",
+      "server.log": "過去の実行まで保存されたログ(コンソールは今回の実行分のみ)",
+      "server.query": "ゲームモジュールが提供する照会(名前がなければ一覧)",
+      "daemon.clients": "デーモンに接続しているデスクトップアプリのウィンドウ",
+      "server.discord": "Discord サーバーごとに、チャットでこのサーバーとそのコマンドを呼ぶ語。オプションなし: 表示",
       "uninstall": "この PC からサバちゃんを削除（指定しなければ設定とサーバーは残す）"
     },
     "arg": {
@@ -825,10 +835,6 @@
       "bot.music.queue_lines": "プレイヤーパネルのキューの行数 (1-20)",
       "bot.music.refresh": "プレイヤーパネルの更新間隔 (ミリ秒、2000-10000)",
       "bot.music.normalize": "曲ごとの音量をそろえる (on または off)",
-      "server.discord.guild": "Discord サーバーの名前または id (複数ペアリングしていて変更するときは確認します)",
-      "server.discord.word": "サーバーを呼ぶ語をカンマ区切りで (今の語を置き換える)。--word \"\" で消す",
-      "server.discord.command": "1 つのコマンドの語: コマンド=語,語 (そのコマンドの語を置き換える。コマンド= で消す)。繰り返し可",
-      "server.discord.clear": "このサーバーの語をすべて消す",
       "bot.channels.guild": "Discord サーバーの名前か ID。省くとペアリングしたサーバーすべて (変更はサーバーが 1 つのときだけ)",
       "help.command": "コマンドのパス(例: `server start`)",
       "events.kind": "このイベントだけ。`instance` は `instance.exit` などの下位イベントも受け取ります",
@@ -839,8 +845,23 @@
       "install.modules": "インストールするゲームモジュール、カンマ区切り（省略時は質問）",
       "install.gui": "画面がなくてもデスクトップアプリまでインストール",
       "install.no_gui": "画面があってもデスクトップアプリなしでインストール",
+      "do.action": "アクション id (例: server.restart, server.command:say)",
+      "do.server": "アクションの対象サーバー",
+      "server.discord.guild": "Discord サーバーの名前または id (複数ペアリングしていて変更するときは確認します)",
+      "server.discord.word": "サーバーを呼ぶ語をカンマ区切りで (今の語を置き換える)。--word \"\" で消す",
+      "server.discord.command": "1 つのコマンドの語: コマンド=語,語 (そのコマンドの語を置き換える。コマンド= で消す)。繰り返し可",
+      "server.discord.clear": "このサーバーの語をすべて消す",
       "uninstall.remove_settings": "設定と Discord 連携も削除",
-      "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）"
+      "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）",
+      "server.log.source": "どの実行か（`--runs` で一覧）、省略すると最新",
+      "server.log.lines": "最後の N 行",
+      "server.log.runs": "保存された実行の一覧",
+      "server.log.all": "1 回の実行分すべて（保存: `> file.log`）",
+      "server.query.name": "照会の名前",
+      "server.query.args": "入力 キー=値",
+      "chatbot.show.guild": "Discord サーバー 1 つが実際に使う値（共通値 + そのサーバーの値）、名前または id",
+      "do.steps": "複数の手順を JSON で: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（ACTION の代わり）",
+      "do.run_id": "バックグラウンドで続く複数手順の実行の進行状況"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -982,7 +1003,14 @@
       "id": "アクション",
       "title": "名前",
       "risk": "リスク"
-    }
+    },
+    "steps_array": "--steps はステップのリスト (JSON 配列) にしてください。",
+    "confirm_steps": "これらのステップを実行しますか?",
+    "running": "ステップを実行しています…",
+    "done_steps": "すべてのステップが終わりました。",
+    "state_running": "実行中",
+    "state_done": "完了",
+    "run_hint": "バックグラウンドで実行中です (id {{id}})。閉じても続き、進み具合は do --run {{id}} で見られます。"
   },
   "perm": {
     "owner": "オーナー",
@@ -1047,34 +1075,158 @@
     "whole": "PC 全体 (分けていません)"
   },
   "tui": {
-    "daemon_up": "デーモン ● 接続中 (v{{version}})",
-    "daemon_down": "デーモン ○ 停止中 · 起動: daemon start",
-    "servers_running": "サーバー {{total}} 台中 {{running}} 台が稼働中",
+    "daemon_up": "● デーモン v{{version}}",
+    "daemon_down": "○ デーモン停止中 · daemon start と入力",
+    "servers_running": "サーバー {{running}}/{{total}} 稼働",
     "menu": "メニュー",
-    "output": "結果",
-    "enter_to_run": "Enter で実行",
     "running_hint": "(実行中 · Ctrl+C で停止)",
-    "keys": "↑↓ 移動 · ←→ メニュー/一覧 · Enter 実行 · : コマンド · PgUp/PgDn 結果 · ? ヘルプ · q 終了",
+    "keys": "Tab 次へ · ↑↓ 選択 · Enter 押す · 1-9 ページ · : コンソール · F2 コンソール拡大 · ? ヘルプ · q 終了",
     "yes": "はい",
     "no": "いいえ",
     "question": "確認",
     "dialog_keys": "Enter 選択 · Esc キャンセル",
     "help_title": "キー操作",
-    "help": "↑↓  メニューや一覧で移動\n←→ / Tab  メニューと一覧を切り替え\nEnter  選んだ項目を実行(引数が必要ならコマンド行が開きます)\n:  コマンド行(saba-chan-cli の後に書くコマンドそのまま、↑↓ で履歴)\nPgUp/PgDn、マウスホイール  結果をスクロール\nCtrl+C  実行中のコマンドを止める\nq  終了(デーモンとサーバーは動き続けます)",
+    "help": "Tab / Shift+Tab  メニュー → リスト → ボタン → コンソールへ移動\n↑↓  選択、 ←→  ボタン間を移動\nEnter  ボタンを押す (… の付いたボタンはコンソールに入力を用意します)\n1-9  ページへ移動\n: または /  コマンドを入力 (saba-chan-cli の後ろに書く部分、↑↓ で履歴)\nPgUp/PgDn、マウスホイール  コンソールをスクロール、 F2  コンソール拡大\nCtrl+C  実行中のコマンドを止める\nマウス  メニュー・リスト・ボタンをクリック\nq  終了 (デーモンとサーバーは動き続けます)",
     "too_narrow": "ウィンドウを 60 桁以上に広げてください。",
     "not_here": "このコマンドは全画面メニューの中では実行できません。q で終了してから端末で実行してください。",
     "cancelled": "停止しました。",
-    "action": {
+    "needs_terminal": "全画面メニューは端末でのみ開けます。スクリプトではサブコマンドを使ってください。",
+    "command_panicked": "コマンドが予期せず止まりました。ほかのコマンドは引き続き使えます。",
+    "brand": "サバちゃん {{version}}",
+    "memory_of": "メモリ {{used}} / {{total}}",
+    "discord_on": "Discord ● 接続中",
+    "discord_off": "Discord ○ 未接続",
+    "updates_n": "更新 {{count}} 件",
+    "updates_none": "最新",
+    "page": {
+      "dashboard": "ダッシュボード",
+      "servers": "サーバー",
+      "modules": "ゲームモジュール",
+      "extensions": "拡張機能",
+      "discord": "Discord",
+      "updates": "アップデート",
+      "settings": "設定",
+      "daemon_log": "デーモンログ",
+      "commands": "すべてのコマンド"
+    },
+    "console": "コンソール",
+    "console_hint": ": を押すとここにコマンドを入力できます (例: start pal, help)",
+    "keys_console": "Enter 実行 · ↑↓ 履歴 · PgUp/PgDn スクロール · Esc 戻る · F2 コンソール拡大",
+    "keys_running": "コマンド実行中 · Ctrl+C 停止 · PgUp/PgDn スクロール · 他のページは使えます",
+    "welcome": "サバちゃんへようこそ。ボタンを押すか、: を押してコマンドを入力してください。",
+    "busy": "別のコマンドがまだ実行中です。終わるのを待つか Ctrl+C で止めてから、もう一度試してください。",
+    "pick_first": "先にリストから選んでください。",
+    "enter_to_run": "Enterで実行",
+    "updates_checking": "確認中…",
+    "updates_error": "前回の確認に失敗しました。[更新を確認] をもう一度押してください。",
+    "btn": {
+      "status": "全体の状態",
+      "monitor": "使用量",
+      "server_add": "新しいサーバー",
+      "audit": "履歴",
       "start": "起動",
       "stop": "停止",
       "restart": "再起動",
-      "console": "コンソールの最近の行",
+      "players": "接続者",
+      "run": "ゲームコマンド",
+      "send": "コンソールに送る",
       "info": "情報",
-      "backup_create": "バックアップを作成",
-      "backup_list": "バックアップ一覧"
+      "settings": "設定",
+      "backup_create": "バックアップ",
+      "backup_list": "バックアップ一覧",
+      "schedule": "予約",
+      "log": "保存ログ",
+      "validate": "点検",
+      "remove": "削除",
+      "commands": "コマンド",
+      "versions": "バージョン",
+      "available": "入手可能",
+      "refresh": "再読み込み",
+      "enable": "有効化",
+      "disable": "無効化",
+      "config": "設定",
+      "ext_update": "更新",
+      "rescan": "再スキャン",
+      "bot_status": "接続状態",
+      "bot_pair": "ペアリング",
+      "bot_start": "接続",
+      "bot_stop": "切断",
+      "bot_nodes": "Discord サーバー",
+      "bot_channels": "チャンネル",
+      "bot_invite": "招待リンク",
+      "perm": "権限",
+      "chatbot": "おしゃべりサバちゃん",
+      "bot_config": "ボット設定",
+      "update_status": "状態",
+      "update_check": "更新を確認",
+      "update_download": "ダウンロード",
+      "update_last": "前回の結果",
+      "update_integrity": "ファイル検証",
+      "update_config": "更新設定",
+      "config_show": "すべての設定",
+      "config_set": "設定を変更",
+      "config_defaults": "既定値",
+      "diagnostics": "診断",
+      "version": "バージョン",
+      "sandbox": "隔離の同意",
+      "daemon_start": "デーモン起動",
+      "daemon_restart": "デーモン再起動",
+      "daemon_stop": "デーモン停止",
+      "clients": "アプリのウィンドウ",
+      "events": "イベントを見る"
     },
-    "needs_terminal": "全画面メニューは端末でのみ開けます。スクリプトではサブコマンドを使ってください。",
-    "command_panicked": "コマンドが予期せず止まりました。ほかのコマンドは引き続き使えます。"
+    "col": {
+      "name": "名前",
+      "game": "ゲーム",
+      "status": "状態",
+      "players": "接続",
+      "port": "ポート",
+      "uptime": "稼働",
+      "about": "説明",
+      "enabled": "有効"
+    },
+    "card": {
+      "servers": "サーバー",
+      "servers_sub": "稼働 / 全体",
+      "players": "接続者",
+      "players_sub": "稼働中サーバーの合計",
+      "memory": "メモリ"
+    },
+    "no_servers": "サーバーはまだありません。[新しいサーバー] を押すか server add と入力してください",
+    "feed": "最近の出来事",
+    "feed_empty": "サーバーの起動・停止がここにすぐ表示されます。",
+    "empty": "(なし)",
+    "detail": "詳細",
+    "server_console": "コンソール",
+    "console_empty": "まだ出力はありません。",
+    "discord": {
+      "relay": "リレー",
+      "paired": "ペアリング",
+      "handled": "処理したコマンド",
+      "heartbeat": "最後の応答",
+      "error": "最後のエラー",
+      "pair_hint": "Discord とつなぐには [ペアリング] を押してください。コードがコンソールに表示されます。"
+    },
+    "settings": {
+      "daemon": "デーモン",
+      "port": "デーモンのポート",
+      "language": "言語",
+      "hint": "値を変えるには [設定を変更] を押して キー=値 を入力します (例: language=ja)。"
+    },
+    "choose": "選択",
+    "enter_text": "入力",
+    "event": {
+      "instance_ready": "準備完了",
+      "instance_exit": "停止",
+      "instance_player": "接続者が変化",
+      "instance_port_moved": "ポート変更",
+      "instance_restart_failed": "自動再起動に失敗",
+      "backup_done": "バックアップ完了",
+      "plan_done": "複数ステップの実行が完了",
+      "action_run": "コマンド実行",
+      "relay_link_request": "Discord 連携の要求",
+      "update_available": "アップデートあり"
+    }
   },
   "install": {
     "fetching": "最新リリースを確認しています…",
@@ -1113,5 +1265,25 @@
     "kept_nothing": "設定とゲームサーバーも削除します",
     "done": "サバちゃんを削除しました。{{kept}}。",
     "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}"
+  },
+  "players": {
+    "title": "{{server}}: {{count}} 人接続中",
+    "none": "接続している人はいません。"
+  },
+  "log": {
+    "none": "保存されたログはまだありません。サーバーを一度動かすとできます。",
+    "truncated": "ログが大きすぎるため、先頭の一部だけを受け取りました。",
+    "col": {
+      "run": "実行",
+      "started": "開始"
+    }
+  },
+  "query": {
+    "none": "このゲームモジュールには照会がありません。",
+    "col": {
+      "name": "照会",
+      "about": "説明",
+      "inputs": "入力"
+    }
   }
 }

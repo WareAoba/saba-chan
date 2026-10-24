@@ -1296,7 +1296,11 @@
     "fail_title": "Huh? Couldn't find it",
     "retry": "Try again",
     "recovering": "{{name}} fell over! Getting it back on its feet…",
-    "stopped": "Couldn't get {{name}} back up… Please check on it."
+    "stopped": "Couldn't get {{name}} back up… Please check on it.",
+    "cooking": "Cooking the server…",
+    "cooked": "Done!",
+    "cook_failed": "Failed…",
+    "settings_first": "Settings first"
   },
   "activity": {
     "idle": "Click to view the daemon console log",

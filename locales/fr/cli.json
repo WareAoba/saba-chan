@@ -166,7 +166,12 @@
     "shutdown_refused": "Le daemon n'a pas accepté la demande d'arrêt : {{error}}",
     "stopped": "Daemon arrêté.",
     "stopping": "Arrêt du daemon...",
-    "stops_with_launcher": "Le cœur de saba-chan tourne rattaché au programme qui l'a lancé. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Arrêtez le démon (saba-chan-cli daemon stop) puis relancez-le depuis le menu Démarrer ou un terminal normal."
+    "stops_with_launcher": "Le cœur de saba-chan tourne rattaché au programme qui l'a lancé. Si ce programme se ferme, le cœur et la gestion des serveurs peuvent s'arrêter avec lui. Arrêtez le démon (saba-chan-cli daemon stop) puis relancez-le depuis le menu Démarrer ou un terminal normal.",
+    "no_clients": "Aucune fenêtre de l'app de bureau n'est connectée au daemon.",
+    "col": {
+      "kind": "Type",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "Aucun problème connu trouvé dans les journaux de {{name}}."
@@ -507,7 +512,12 @@
       "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter",
       "install": "Installer Saba-chan sur ce PC sans le programme d'installation fenêtré",
       "uninstall": "Supprimer Saba-chan de ce PC (paramètres et serveurs conservés sauf indication contraire)",
-      "server.discord": "Les mots par lesquels chaque serveur Discord appelle ce serveur et ses commandes dans le chat. Sans option : afficher"
+      "server.discord": "Les mots par lesquels chaque serveur Discord appelle ce serveur et ses commandes dans le chat. Sans option : afficher",
+      "server.players": "Qui est connecté",
+      "server.rcon": "Envoyer une ligne comme le serveur reçoit les commandes (console, sinon RCON) et afficher la réponse",
+      "server.log": "Journal enregistré des exécutions passées (la console ne garde que l'actuelle)",
+      "server.query": "Consultations en lecture seule du module de jeu (sans nom : la liste)",
+      "daemon.clients": "Fenêtres de l'application de bureau connectées au démon"
     },
     "arg": {
       "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
@@ -529,12 +539,23 @@
       "install.modules": "Modules de jeu à installer, séparés par des virgules (demandés s'ils sont omis)",
       "install.gui": "Installer aussi l'application de bureau, même sans écran",
       "install.no_gui": "Installer sans l'application de bureau, même avec un écran",
+      "do.action": "Id de l'action, p. ex. server.restart ou server.command:say",
+      "do.server": "Serveur visé par l'action",
       "uninstall.remove_settings": "Supprimer aussi les paramètres et la connexion Discord",
       "uninstall.remove_instances": "Supprimer aussi les serveurs (fichiers, mondes, copies)",
       "server.discord.guild": "Serveur Discord par nom ou id (demandé si plusieurs sont associés et qu'une modification est faite)",
       "server.discord.word": "Mots pour le serveur, séparés par des virgules (remplacent les actuels). --word \"\" les supprime",
       "server.discord.command": "Mots pour une commande : COMMANDE=MOT,MOT (remplace les mots de cette commande, COMMANDE= les supprime). Répétable",
-      "server.discord.clear": "Supprimer tous les mots de ce serveur"
+      "server.discord.clear": "Supprimer tous les mots de ce serveur",
+      "server.log.source": "Quelle exécution (`--runs` les liste), la dernière par défaut",
+      "server.log.lines": "N dernières lignes",
+      "server.log.runs": "Lister les exécutions enregistrées",
+      "server.log.all": "Toute l'exécution (pour enregistrer : `> file.log`)",
+      "server.query.name": "Nom de la consultation",
+      "server.query.args": "Entrée sous forme CLÉ=VALEUR",
+      "chatbot.show.guild": "Les valeurs qu'un serveur Discord utilise réellement (communes + les siennes), par nom ou id",
+      "do.steps": "Plusieurs étapes en JSON : [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (à la place d'ACTION)",
+      "do.run_id": "Progression d'une exécution en plusieurs étapes qui continue en arrière-plan"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
@@ -659,34 +680,158 @@
     }
   },
   "tui": {
-    "daemon_up": "Démon ● connecté (v{{version}})",
-    "daemon_down": "Démon ○ arrêté · démarrer : daemon start",
-    "servers_running": "{{running}} serveur(s) sur {{total}} en marche",
     "menu": "Menu",
-    "output": "Résultat",
-    "enter_to_run": "Entrée pour lancer",
     "running_hint": "(en cours · Ctrl+C pour arrêter)",
-    "keys": "↑↓ déplacer · ←→ menu/liste · Entrée lancer · : commande · PgUp/PgDn résultat · ? aide · q quitter",
     "yes": "Oui",
     "no": "Non",
-    "question": "Confirmer",
     "dialog_keys": "Entrée choisir · Échap annuler",
     "help_title": "Touches",
-    "help": "↑↓  se déplacer dans le menu ou la liste\n←→ / Tab  passer du menu à la liste\nEntrée  lancer l'élément choisi (ouvre la ligne de commande s'il faut des arguments)\n:  ligne de commande (les mêmes commandes qu'après saba-chan-cli, ↑↓ pour les précédentes)\nPgUp/PgDn, molette  faire défiler le résultat\nCtrl+C  arrêter la commande en cours\nq  quitter (le démon et les serveurs continuent)",
     "too_narrow": "Élargissez la fenêtre à au moins 60 colonnes.",
     "not_here": "Cette commande ne peut pas s'exécuter dans le menu plein écran. Quittez avec q et lancez-la dans le terminal.",
     "cancelled": "Arrêté.",
-    "action": {
+    "needs_terminal": "Le menu plein écran a besoin d'un terminal. Dans un script, utilisez les sous-commandes.",
+    "command_panicked": "La commande s'est arrêtée de façon inattendue. Les autres commandes restent utilisables.",
+    "daemon_up": "● daemon v{{version}}",
+    "daemon_down": "○ daemon arrêté · tapez daemon start",
+    "servers_running": "{{running}}/{{total}} serveurs en marche",
+    "keys": "Tab suivant · ↑↓ choisir · Entrée appuyer · 1-9 pages · : console · F2 grande console · ? aide · q quitter",
+    "help": "Tab / Maj+Tab  passer de menu → liste → boutons → console\n↑↓  choisir,  ←→  passer d'un bouton à l'autre\nEntrée  appuyer sur un bouton (les boutons avec … préremplissent la console)\n1-9  aller à une page\n: ou /  taper une commande (ce qui suivrait saba-chan-cli, ↑↓ historique)\nPgPréc/PgSuiv, molette  faire défiler la console,  F2  grande console\nCtrl+C  arrêter la commande en cours\nSouris  cliquez sur le menu, les listes et les boutons\nq  quitter (le daemon et les serveurs continuent de tourner)",
+    "brand": "Saba-chan {{version}}",
+    "memory_of": "mémoire {{used}} / {{total}}",
+    "discord_on": "Discord ● connecté",
+    "discord_off": "Discord ○ déconnecté",
+    "updates_n": "{{count}} mises à jour",
+    "updates_none": "à jour",
+    "updates_checking": "vérification…",
+    "updates_error": "La dernière vérification a échoué. Appuyez à nouveau sur [Rechercher des mises à jour].",
+    "page": {
+      "dashboard": "Tableau de bord",
+      "servers": "Serveurs",
+      "modules": "Modules de jeu",
+      "extensions": "Extensions",
+      "discord": "Discord",
+      "updates": "Mises à jour",
+      "settings": "Réglages",
+      "daemon_log": "Journal du daemon",
+      "commands": "Toutes les commandes"
+    },
+    "btn": {
+      "status": "État général",
+      "monitor": "Utilisation",
+      "server_add": "Nouveau serveur",
+      "audit": "Historique",
       "start": "Démarrer",
       "stop": "Arrêter",
       "restart": "Redémarrer",
-      "console": "Dernières lignes de console",
+      "players": "Joueurs",
+      "run": "Commande de jeu",
+      "send": "Envoyer à la console",
       "info": "Infos",
-      "backup_create": "Créer une sauvegarde",
-      "backup_list": "Sauvegardes"
+      "settings": "Réglages",
+      "backup_create": "Sauvegarder",
+      "backup_list": "Sauvegardes",
+      "schedule": "Planifier",
+      "log": "Journal enregistré",
+      "validate": "Vérifier",
+      "remove": "Supprimer",
+      "commands": "Commandes",
+      "versions": "Versions",
+      "available": "Disponibles",
+      "refresh": "Recharger",
+      "enable": "Activer",
+      "disable": "Désactiver",
+      "config": "Réglages",
+      "ext_update": "Mettre à jour",
+      "rescan": "Réanalyser",
+      "bot_status": "Connexion",
+      "bot_pair": "Associer",
+      "bot_start": "Connecter",
+      "bot_stop": "Déconnecter",
+      "bot_nodes": "Serveurs Discord",
+      "bot_channels": "Salons",
+      "bot_invite": "Lien d'invitation",
+      "perm": "Permissions",
+      "chatbot": "Saba-chan qui parle",
+      "bot_config": "Réglages du bot",
+      "update_status": "État",
+      "update_check": "Rechercher des mises à jour",
+      "update_download": "Télécharger",
+      "update_last": "Dernier résultat",
+      "update_integrity": "Vérifier les fichiers",
+      "update_config": "Réglages des mises à jour",
+      "config_show": "Tous les réglages",
+      "config_set": "Modifier un réglage",
+      "config_defaults": "Valeurs par défaut",
+      "diagnostics": "Diagnostic",
+      "version": "Versions",
+      "sandbox": "Consentements d'isolation",
+      "daemon_start": "Démarrer le daemon",
+      "daemon_restart": "Redémarrer le daemon",
+      "daemon_stop": "Arrêter le daemon",
+      "clients": "Fenêtres de l'app",
+      "events": "Suivre les événements"
     },
-    "needs_terminal": "Le menu plein écran a besoin d'un terminal. Dans un script, utilisez les sous-commandes.",
-    "command_panicked": "La commande s'est arrêtée de façon inattendue. Les autres commandes restent utilisables."
+    "col": {
+      "name": "Nom",
+      "game": "Jeu",
+      "status": "État",
+      "players": "Joueurs",
+      "port": "Port",
+      "uptime": "En ligne",
+      "about": "Description",
+      "enabled": "Actif"
+    },
+    "card": {
+      "servers": "Serveurs",
+      "servers_sub": "allumés / total",
+      "players": "Joueurs",
+      "players_sub": "sur les serveurs allumés",
+      "memory": "Mémoire"
+    },
+    "no_servers": "Pas encore de serveur. Appuyez sur [Nouveau serveur] ou tapez server add",
+    "feed": "Récent",
+    "feed_empty": "Les démarrages et arrêts s'affichent ici dès qu'ils ont lieu.",
+    "empty": "(aucun)",
+    "detail": "Détails",
+    "server_console": "Console",
+    "console_empty": "Pas encore de sortie.",
+    "discord": {
+      "relay": "Relais",
+      "paired": "Associé",
+      "handled": "Commandes traitées",
+      "heartbeat": "Dernier signal",
+      "error": "Dernière erreur",
+      "pair_hint": "Appuyez sur [Associer] pour vous connecter à Discord. Le code s'affiche dans la console."
+    },
+    "settings": {
+      "daemon": "Daemon",
+      "port": "Port du daemon",
+      "language": "Langue",
+      "hint": "Pour changer une valeur, appuyez sur [Modifier un réglage] et tapez clé=valeur (p. ex. language=fr)."
+    },
+    "console": "Console",
+    "console_hint": "appuyez sur : pour taper une commande ici (p. ex. start pal, help)",
+    "keys_console": "Entrée lancer · ↑↓ historique · PgPréc/PgSuiv défiler · Échap sortir · F2 grande console",
+    "keys_running": "Commande en cours · Ctrl+C arrêter · PgPréc/PgSuiv défiler · les autres pages restent utilisables",
+    "choose": "Choisir",
+    "enter_text": "Saisir",
+    "welcome": "Bienvenue dans Saba-chan. Appuyez sur un bouton, ou sur : pour taper une commande.",
+    "busy": "Une autre commande est encore en cours. Attendez qu'elle finisse ou arrêtez-la avec Ctrl+C, puis réessayez.",
+    "pick_first": "Choisissez d'abord un élément dans la liste.",
+    "event": {
+      "instance_ready": "prêt",
+      "instance_exit": "arrêté",
+      "instance_player": "joueurs modifiés",
+      "instance_port_moved": "port modifié",
+      "instance_restart_failed": "échec du redémarrage automatique",
+      "backup_done": "sauvegarde terminée",
+      "plan_done": "exécution en plusieurs étapes terminée",
+      "action_run": "commande lancée",
+      "relay_link_request": "demande de liaison Discord",
+      "update_available": "mise à jour disponible"
+    },
+    "enter_to_run": "Entrée pour lancer",
+    "question": "Confirmer"
   },
   "install": {
     "fetching": "Vérification de la dernière version…",
@@ -725,5 +870,34 @@
     "kept_nothing": "les paramètres et les serveurs sont aussi supprimés",
     "done": "Saba-chan a été supprimé ; {{kept}}.",
     "left": "Saba-chan a été supprimé, mais ces éléments n'ont pas pu être effacés. Fermez les programmes qui les utilisent et supprimez-les vous-même :\n{{paths}}"
+  },
+  "do": {
+    "steps_array": "--steps doit être une liste d'étapes (un tableau JSON).",
+    "confirm_steps": "Lancer ces étapes ?",
+    "running": "Étapes en cours…",
+    "done_steps": "Toutes les étapes sont terminées.",
+    "state_running": "en cours",
+    "state_done": "terminé",
+    "run_hint": "Exécution en arrière-plan (id {{id}}). Elle continue même si vous partez ; suivez-la avec do --run {{id}}."
+  },
+  "players": {
+    "title": "{{server}} : {{count}} en ligne",
+    "none": "Personne n'est en ligne."
+  },
+  "log": {
+    "none": "Pas encore de journal enregistré. Il apparaît après un premier lancement du serveur.",
+    "truncated": "Le journal était trop gros ; seule la première partie est revenue.",
+    "col": {
+      "run": "Exécution",
+      "started": "Début"
+    }
+  },
+  "query": {
+    "none": "Ce module de jeu n'a aucune requête.",
+    "col": {
+      "name": "Requête",
+      "about": "Description",
+      "inputs": "Entrées"
+    }
   }
 }

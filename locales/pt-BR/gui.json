@@ -1296,7 +1296,11 @@
     "fail_title": "Ué? Não encontrei",
     "retry": "Tentar de novo",
     "recovering": "{{name}} caiu! Colocando de pé de novo…",
-    "stopped": "Não foi possível levantar {{name}}… Verifique o estado."
+    "stopped": "Não foi possível levantar {{name}}… Verifique o estado.",
+    "cooking": "Cozinhando o servidor…",
+    "cooked": "Pronto!",
+    "cook_failed": "Falhou…",
+    "settings_first": "Ver configurações primeiro"
   },
   "activity": {
     "idle": "Clique para ver o registro do console do daemon",

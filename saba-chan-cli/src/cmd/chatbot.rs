@@ -14,7 +14,11 @@ use crate::resolve;
 
 pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
     match cmd {
-        ChatbotCmd::Show => show(ctx).await,
+        ChatbotCmd::Show { guild: None } => show(ctx).await,
+        ChatbotCmd::Show { guild: Some(g) } => {
+            let guild = resolve::guild(ctx, Some(&g)).await?;
+            show_guild(ctx, &guild).await
+        }
         ChatbotCmd::Set { pairs, guild } => {
             let guild = match guild {
                 Some(g) => Some(resolve::guild(ctx, Some(&g)).await?),
@@ -97,6 +101,21 @@ async fn show(ctx: &Ctx) -> Result<()> {
         }
     });
     Ok(())
+}
+
+/// 디스코드 서버 하나에 실제로 쓰이는 값 (공통 값 위에 그 서버 값)
+async fn show_guild(ctx: &Ctx, guild: &str) -> Result<()> {
+    let r = ctx.api.chatbot_guild(guild).await?;
+    ctx.out.data(&r, |r| print_guild(guild, r));
+    Ok(())
+}
+
+fn print_guild(guild: &str, r: &Value) {
+    let key = r.get("hasApiKey").and_then(Value::as_bool).unwrap_or(false);
+    output::print_kv(&[(t!("chatbot.api_key"), output::yes_no(key))]);
+    say!();
+    output::heading(&t!("chatbot.guild", guild = guild));
+    print_settings(r.get("settings").and_then(Value::as_object).unwrap_or(&Map::new()));
 }
 
 fn print_settings(m: &Map<String, Value>) {
@@ -275,6 +294,21 @@ mod tests {
         let r = json!({ "provider": "openai", "models": ["a", "b"], "selected": "gone", "effectiveModel": "b" });
         let lines: Vec<String> = model_lines(&r).iter().map(|l| console::strip_ansi_codes(l).to_string()).collect();
         assert_eq!(lines, vec!["  a", "● b"]);
+    }
+
+    /// 서버별 보기도 공통 보기처럼 API 키 저장 여부를 보인다
+    #[test]
+    fn the_guild_view_says_whether_a_key_is_saved() {
+        crate::i18n::init("ko");
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let rec = seen.clone();
+        let _guard = output::SinkGuard::install(Box::new(move |_, text| {
+            rec.lock().unwrap().push(console::strip_ansi_codes(text).to_string())
+        }));
+        print_guild("1", &json!({ "guildId": "1", "settings": {}, "hasApiKey": true }));
+        let got = seen.lock().unwrap().clone();
+        let row = format!("{}  {}", t!("chatbot.api_key"), console::strip_ansi_codes(&output::yes_no(true)));
+        assert!(got.iter().any(|l| l.contains(&row)), "{got:?}");
     }
 
     /// 바꿀 수 있는 키는 데몬이 주는 기본값 표에서 온다: 바꾸지 않은 키도 기본값과 함께 보인다
