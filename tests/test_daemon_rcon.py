@@ -1,3 +1,4 @@
+import ctypes  # os.name을 "nt"로 바꾼 동안에는 처음 import하지 못한다
 import io
 import json
 import os
@@ -241,6 +242,48 @@ class SdkVersionTests(unittest.TestCase):
         self.assertEqual(set(daemon_rcon.SINCE), public | {"i18n.I18n"})
         self.assertEqual(daemon_rcon.SINCE["i18n.I18n"], "0.1.1")
         self.assertEqual(daemon_rcon.SINCE["daemon_rest"], "0.1.10")
+
+
+class SdkAtomicWriteTests(unittest.TestCase):
+    """Windows 격리 모듈은 기존 파일의 DACL을 옮길 권한(WRITE_DAC)이 없어 ReplaceFileW가 거부된다"""
+
+    def replace_denied(self, same_access):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "serverconfig.txt"
+            path.write_bytes(b"old")
+            with patch.object(os, "name", "nt"), \
+                    patch.object(daemon_rcon, "_replace_file", return_value=5), \
+                    patch.object(daemon_rcon, "_access_of", side_effect=lambda p: "D:AI(A;ID;FA;;;SY)" if same_access or p.endswith("serverconfig.txt") else "D:AI(A;ID;FA;;;WD)"), \
+                    patch("ctypes.WinError", lambda code: PermissionError(13, f"WinError {code}"), create=True):
+                try:
+                    daemon_rcon.atomic_write(path, b"new")
+                    error = None
+                except OSError as e:
+                    error = e
+            return path.read_bytes(), error, sorted(p.name for p in Path(directory).iterdir())
+
+    def test_denied_replace_falls_back_when_the_temp_file_has_the_same_access(self):
+        data, error, names = self.replace_denied(same_access=True)
+        self.assertIsNone(error)
+        self.assertEqual(data, b"new")
+        self.assertEqual(names, ["serverconfig.txt"])
+
+    def test_denied_replace_keeps_a_file_with_its_own_access(self):
+        data, error, names = self.replace_denied(same_access=False)
+        self.assertIsInstance(error, PermissionError)
+        self.assertEqual(data, b"old")
+        self.assertEqual(names, ["serverconfig.txt"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows DACL")
+    def test_access_of_tells_an_explicit_grant_apart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            a, b = Path(directory) / "a.txt", Path(directory) / "b.txt"
+            a.write_bytes(b"a")
+            b.write_bytes(b"b")
+            self.assertIsNotNone(daemon_rcon._access_of(str(a)))
+            self.assertEqual(daemon_rcon._access_of(str(a)), daemon_rcon._access_of(str(b)))
+            subprocess.run(["icacls", str(a), "/grant", "*S-1-1-0:(R)"], check=True, capture_output=True)
+            self.assertNotEqual(daemon_rcon._access_of(str(a)), daemon_rcon._access_of(str(b)))
 
 
 if __name__ == "__main__":

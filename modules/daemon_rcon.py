@@ -401,6 +401,7 @@ def force_kill(pid, *, tree=True):
 
 # ReplaceFileW가 새 파일을 옮기지 못했다: 원래 파일은 백업 이름에, 새 내용은 임시 파일 이름에 남아 있다
 _ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 = 1177
+_ERROR_ACCESS_DENIED = 5
 
 
 def atomic_write(path, data):
@@ -408,6 +409,8 @@ def atomic_write(path, data):
     쓰다 끊겨도(강제 종료, 데몬 시간 초과) 원래 파일이나 새 파일 중 하나가 온전히 남고, 동시에 저장해도
     서로의 임시 파일을 건드리지 않는다. 원래 파일의 접근 권한을 지킨다 (비밀번호가 든 설정이 넓게 열리지 않게).
     Windows: ReplaceFileW가 원래 파일의 DACL 등을 옮긴다. 백업 이름을 주어 어느 단계에서 실패해도 원래 파일이 남는다.
+    격리된 모듈은 DACL을 옮길 권한이 없어 거부되는데, 원래 파일과 같은 폴더의 임시 파일이 소유자·DACL·무결성
+    표시가 똑같으면(둘 다 폴더 권한만 물려받은 흔한 경우) os.replace로 바꾼다. 다르면 그대로 거부한다.
     POSIX: 권한 비트를 옮긴 뒤 os.replace"""
     path = os.fspath(path)
     folder = os.path.dirname(os.path.abspath(path))
@@ -438,21 +441,70 @@ def _replace_keeping_access(tmp, path):
         os.replace(tmp, path)
         return
     import ctypes
-    replace = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
-    replace.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p]
-    replace.restype = ctypes.c_int
     backup = f"{tmp}.bak"
-    if replace(path, tmp, backup, 0, None, None):
+    err = _replace_file(path, tmp, backup)
+    if not err:
         try:
             os.remove(backup)
         except OSError:
             pass
         return
-    err = ctypes.get_last_error()
     if err == _ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 and not os.path.exists(path) and os.path.isfile(backup):
         # 원래 파일(원래 ACL)을 제자리로 되돌린다. 새 값은 쓰지 못한 것으로 알린다
         os.replace(backup, path)
-    raise ctypes.WinError(err)
+    elif err == _ERROR_ACCESS_DENIED and os.path.isfile(path) and not os.path.exists(backup):
+        access = _access_of(path)
+        # 원래 파일과 임시 파일이 같은 폴더에서 같은 권한을 물려받았다: 바꿔도 권한이 넓어지지 않는다.
+        # EFS 암호화도 ReplaceFileW만 옮기므로 같아야 한다
+        if access is not None and access == _access_of(tmp) and _encrypted(path) == _encrypted(tmp):
+            os.replace(tmp, path)
+            return
+    raise ctypes.WinError(err) if err > 0 else OSError(f"ReplaceFileW failed: {path}")
+
+
+def _replace_file(path, tmp, backup):
+    """ReplaceFileW. 반환: 0이면 성공, 아니면 Windows 오류 코드"""
+    import ctypes
+    replace = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
+    replace.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p]
+    replace.restype = ctypes.c_int
+    if replace(path, tmp, backup, 0, None, None):
+        return 0
+    return ctypes.get_last_error() or -1
+
+
+def _encrypted(path):
+    return bool(getattr(os.stat(path), "st_file_attributes", 0) & 0x4000)  # FILE_ATTRIBUTE_ENCRYPTED
+
+
+def _access_of(path):
+    """파일의 소유자·DACL·무결성 표시(SDDL 문자열). 읽지 못하면 None"""
+    import ctypes
+    from ctypes import wintypes
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+    advapi.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
+        ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.LPWSTR), ctypes.c_void_p]
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    # SE_FILE_OBJECT, OWNER | DACL | LABEL_SECURITY_INFORMATION, SDDL_REVISION_1
+    se_file_object, info, sddl_revision_1 = 1, 0x1 | 0x4 | 0x10, 1
+    sd = ctypes.c_void_p()
+    if advapi.GetNamedSecurityInfoW(path, se_file_object, info, None, None, None, None, ctypes.byref(sd)) != 0:
+        return None
+    try:
+        text = wintypes.LPWSTR()
+        if not advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW(sd, sddl_revision_1, info, ctypes.byref(text), None):
+            return None
+        try:
+            return text.value
+        finally:
+            kernel.LocalFree(text)
+    finally:
+        kernel.LocalFree(sd)
 
 
 # ─── 설정 ─────────────────────────────────────────────────────
