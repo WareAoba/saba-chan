@@ -95,8 +95,6 @@ function App() {
     const setShowModuleManager = useUIStore((s) => s.setShowModuleManager);
     const page = useUIStore((s) => s.activeTab);
     const setPage = useUIStore((s) => s.setActiveTab);
-    // 다른 화면에서 디스코드 페이지의 특정 메뉴로 보낼 때 (예: 서버 설정 → 명령어 단어)
-    const [discordView, setDiscordView] = useState(null);
     const settingsInitialView = useUIStore((s) => s.settingsInitialView);
     const contextMenu = useUIStore((s) => s.contextMenu);
     const setContextMenu = useUIStore((s) => s.setContextMenu);
@@ -748,10 +746,6 @@ function App() {
         resettingServer,
         savingSettings,
         isClosing: isSettingsClosing,
-        onOpenDiscordWords: (server) => {
-            setDiscordView({ kind: 'words', server });
-            setPage('discord');
-        },
     };
 
     const anyPopoverOpen = showBackgroundSection || showNoticeSection;
@@ -772,10 +766,7 @@ function App() {
                     <Toast />
                     <AppBar
                         page={page}
-                        onNavigate={(p) => {
-                            setDiscordView(null);
-                            setPage(p);
-                        }}
+                        onNavigate={setPage}
                         daemonStatus={backgroundDaemonStatus}
                         daemonInParentJob={daemonInParentJob}
                         discordStatus={discordBotStatus}
@@ -828,7 +819,7 @@ function App() {
                                 settingsProps={settingsProps}
                             />
                         )}
-                        {page === 'discord' && <DiscordPage {...discordPageProps} initialView={discordView} />}
+                        {page === 'discord' && <DiscordPage {...discordPageProps} />}
                         {page === 'settings' && (
                             <div className="page page-scroll page-settings">
                                 <SettingsModal

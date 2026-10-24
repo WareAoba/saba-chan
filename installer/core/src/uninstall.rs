@@ -202,12 +202,16 @@ fn reset_sandbox(install_dir: &Path) -> Vec<PathBuf> {
     };
     let text = String::from_utf8_lossy(&out.stdout);
     tracing::info!("[Uninstall] sandbox reset: {}", text.trim());
-    sandbox_failures(&text)
+    sandbox_failures(&text, out.status.success(), &core)
 }
 
-/// `sandbox reset` 출력의 실패 줄
-fn sandbox_failures(text: &str) -> Vec<PathBuf> {
-    text.lines().filter_map(|l| l.strip_prefix("FAIL  ")).map(PathBuf::from).collect()
+/// `sandbox reset` 출력의 실패 줄. 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 그 사실을 한 줄로
+fn sandbox_failures(text: &str, succeeded: bool, core: &Path) -> Vec<PathBuf> {
+    let mut failed: Vec<PathBuf> = text.lines().filter_map(|l| l.strip_prefix("FAIL  ")).map(PathBuf::from).collect();
+    if !succeeded && failed.is_empty() {
+        failed.push(PathBuf::from(format!("{}: sandbox reset failed", core.display())));
+    }
+    failed
 }
 
 /// 마지막 설치본을 다 지운 뒤 남긴 것을 알리는 문구
@@ -1410,10 +1414,13 @@ mod tests {
     // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다
     #[test]
     fn sandbox_reset_failures_are_reported_as_left_items() {
+        let core = std::path::Path::new("C:\\Saba\\saba-core.exe");
         let out = "ok    removed 2 isolation profile(s)\n";
-        assert!(sandbox_failures(out).is_empty());
+        assert!(sandbox_failures(out, true, core).is_empty());
         let out = "FAIL  D:\\Games\\pal: write ACL of D:\\Games\\pal: Access is denied.\nFAIL  saba-chan.untrusted.x: gone\n";
-        assert_eq!(sandbox_failures(out).len(), 2);
+        assert_eq!(sandbox_failures(out, false, core).len(), 2);
+        // Codex 리뷰 #539: 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 성공으로 보았다
+        assert_eq!(sandbox_failures("usage: saba-core ...\n", false, core).len(), 1);
     }
 
     /// 아무것도 정하지 않으면 설정과 인스턴스를 둘 다 남기고, 지울 것만 따로 고른다

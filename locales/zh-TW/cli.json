@@ -75,7 +75,8 @@
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
     "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
-    "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。"
+    "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。",
+    "words_not_used": "此 Discord 伺服器未使用此伺服器。"
   },
   "col": {
     "players": "線上玩家",
@@ -507,7 +508,8 @@
       "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
       "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan",
-      "uninstall": "從此電腦刪除 Saba-chan（除非指定，否則保留設定和伺服器）"
+      "uninstall": "從此電腦刪除 Saba-chan（除非指定，否則保留設定和伺服器）",
+      "server.discord": "每個 Discord 伺服器在聊天中用來稱呼此伺服器及其指令的詞。不帶選項：查看"
     },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
@@ -530,7 +532,11 @@
       "install.gui": "即使沒有螢幕也安裝桌面應用程式",
       "install.no_gui": "即使有螢幕也不安裝桌面應用程式",
       "uninstall.remove_settings": "同時刪除設定和 Discord 連線",
-      "uninstall.remove_instances": "同時刪除遊戲伺服器（伺服器檔案、世界、備份）"
+      "uninstall.remove_instances": "同時刪除遊戲伺服器（伺服器檔案、世界、備份）",
+      "server.discord.guild": "Discord 伺服器名稱或 id（配對了多個且要修改時會詢問）",
+      "server.discord.word": "稱呼伺服器的詞，多個用逗號分隔（取代目前的詞）。--word \"\" 表示刪除",
+      "server.discord.command": "單一指令的稱呼：指令=稱呼,稱呼（只更改該指令，指令= 表示刪除）。可多次使用",
+      "server.discord.clear": "刪除此伺服器的所有稱呼"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

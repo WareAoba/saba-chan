@@ -75,7 +75,8 @@
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
     "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
-    "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
+    "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Aktualisiere die App auf {{min}} oder neuer.",
+    "words_not_used": "Dieser Discord-Server verwendet diesen Server nicht."
   },
   "col": {
     "players": "Spieler",
@@ -188,7 +189,7 @@
       "expired": "Der Code ist abgelaufen. Fang von vorne an.",
       "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
       "other": "Das Relay hat die Anfrage abgelehnt ({{code}}).",
-      "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Bitte aktualisiere die App auf {{min}} oder neuer."
+      "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Aktualisiere die App auf {{min}} oder neuer."
     },
     "ambiguous": "Mehr als ein {{what}} passt zu „{{query}}“.",
     "ambiguous_hint": "Sei genauer: {{names}}",
@@ -507,7 +508,8 @@
       "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
       "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
       "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren",
-      "uninstall": "Saba-chan von diesem PC entfernen (Einstellungen und Server bleiben, sofern nicht anders angegeben)"
+      "uninstall": "Saba-chan von diesem PC entfernen (Einstellungen und Server bleiben, sofern nicht anders angegeben)",
+      "server.discord": "Wie jeder Discord-Server diesen Server und seine Befehle im Chat nennt. Ohne Optionen: anzeigen"
     },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
@@ -530,7 +532,11 @@
       "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
       "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
       "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
-      "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)"
+      "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)",
+      "server.discord.guild": "Discord-Server per Name oder ID (wird gefragt, wenn mehrere gekoppelt sind und sich etwas ändert)",
+      "server.discord.word": "Wörter für den Server, durch Kommas getrennt (ersetzt die aktuellen). --word \"\" entfernt sie",
+      "server.discord.command": "Wörter für einen Befehl: BEFEHL=WORT,WORT (ersetzt die Wörter dieses Befehls, BEFEHL= entfernt sie). Mehrfach möglich",
+      "server.discord.clear": "Alle Wörter dieses Servers entfernen"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -572,8 +578,8 @@
     "start_again": "{{name}} wieder starten?",
     "stored": "{{size}} neu gespeichert",
     "unreadable": "⚠ kann nicht geöffnet werden",
-    "unreadable_hint": "{{count}} Backup(s) können nicht geöffnet werden. Sie lassen sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Bitte lösche sie.",
-    "unreadable_restore": "Backup {{backup}} kann nicht geöffnet und daher nicht wiederhergestellt werden. Bitte lösche es."
+    "unreadable_hint": "{{count}} Backup(s) können nicht geöffnet werden. Sie lassen sich nicht wiederherstellen, und ungenutzte Backup-Inhalte werden erst nach dem Löschen aufgeräumt. Lösche sie.",
+    "unreadable_restore": "Backup {{backup}} kann nicht geöffnet und daher nicht wiederhergestellt werden. Lösche es."
   },
   "schedule": {
     "col": {

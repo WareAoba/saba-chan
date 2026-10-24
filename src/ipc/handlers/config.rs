@@ -152,10 +152,8 @@ pub async fn save_client_config(
 
 /// GET /api/config/node-token
 pub async fn get_node_token(State(_state): State<IPCServer>) -> impl IntoResponse {
-    match std::fs::read_to_string(super::relay::node_token_path()) {
-        Ok(token) => (StatusCode::OK, Json(json!({ "token": token.trim() }))).into_response(),
-        Err(_) => (StatusCode::OK, Json(json!({ "token": "" }))).into_response(),
-    }
+    let token = super::relay::load_node_token().unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "token": token }))).into_response()
 }
 
 /// PUT /api/config/node-token
@@ -168,7 +166,7 @@ pub async fn save_node_token(
         .and_then(|v| v.as_str())
         .unwrap_or("");
     // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
-    match super::relay::write_node_token(&super::relay::node_token_path(), token) {
+    match super::relay::write_node_token(Some(token)) {
         Ok(changed) => {
             super::relay::adopt_node_token(&state, token, changed).await;
             (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
@@ -186,16 +184,12 @@ pub async fn save_node_token(
 /// 토큰이 없으면 다음 기동 때도 자동 시작하지 않는다.
 pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
     state.relay_agent.stop();
-    let token_path = super::relay::node_token_path();
-
-    if token_path.exists() {
-        if let Err(e) = std::fs::remove_file(&token_path) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("Failed to delete node token: {}", e) })),
-            )
-                .into_response();
-        }
+    if let Err(e) = super::relay::write_node_token(None) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to delete node token: {}", e) })),
+        )
+            .into_response();
     }
     super::relay::sync_host_id(&state, None).await;
     (StatusCode::OK, Json(json!({ "ok": true }))).into_response()

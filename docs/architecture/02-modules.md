@@ -106,7 +106,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `common_paths`와 `[detection.linux]`는 스키마에 없고, 실제 모듈에서도 지워졌다.
 
 #### `[launch]` (`LaunchSection` `:694-702`)
-`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다. 줄은 출력과 같이 `MAX_LINE`(64 KiB)에서 끊고, 파일이 줄어들면 처음부터 읽으며 끝나지 않았던 앞 조각은 버린다, `runner/src/main.rs` `read_new`), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
+`log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다. 줄은 출력과 같이 `MAX_LINE`(64 KiB)에서 끊고, 파일이 줄어들거나 읽은 자리 앞의 바이트(끝 64바이트와 끝나지 않은 조각 전체 중 긴 쪽)가 달라지면 새로 쓴 파일로 보고 처음부터 읽으며 끝나지 않았던 앞 조각은 버린다, `runner/src/main.rs` `read_new`), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
 
 #### `[backup]` (`ModuleBackup` `:215-230`)
 `paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
@@ -153,7 +153,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `method` | String | `console`(템플릿을 채워 콘솔 stdin으로. 예전 이름 `rcon`은 읽을 때 `console`로 바뀐다, `D:src/supervisor/module_loader.rs:1067`) / `rest` / `module`(lifecycle `command()`, 예전 이름 `dual`·`both`도 받음) / 생략(=`module`). 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:167-191`) |
 | `http_method` | String | REST 전용. 기본 `GET` |
 | `endpoint_template` | String | REST 전용. 없으면 `/<name>` |
-| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:362-363, 941`). 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다. 값은 자기 자리만 채운다(`commands::console_place_problem`): 뒤에 템플릿 글자가 더 있는 자리의 값은 공백이 있으면 400 `invalid_argument`(`must be one word`), 따옴표로 감싼 자리(`"{player}"`)는 공백을 받되 따옴표가 있으면 400(`must not contain quotes`). 마지막 자리는 남은 말을 모두 받는다. 중간 자리에 여러 단어가 필요하면 템플릿에서 따옴표로 감싼다 |
+| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:362-363, 941`). 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다. 값은 자기 자리만 채운다(`commands::console_place_problem`): 뒤에 템플릿 글자가 더 있는 자리의 값은 공백이 있으면 400 `invalid_argument`(`must be one word`), 따옴표로 감싼 자리(`"{player}"`)는 공백을 받되 따옴표가 있으면 400(`must not contain quotes`). 마지막 자리는 남은 말을 모두 받는다. 템플릿은 한 번만 채운다(`commands::render_template`): 값 안의 `{key}`는 다시 채우지 않는다. 중간 자리에 여러 단어가 필요하면 템플릿에서 따옴표로 감싼다 |
 | `risk` | String | `safe` / `caution` / `danger`, 없으면 caution |
 | `inputs` | Vec<CommandInput> | |
 

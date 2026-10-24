@@ -804,17 +804,18 @@ pub async fn install_server_handler(
                 return result;
             };
             let succeeded = result.as_ref().is_ok_and(|r| r.get("success").and_then(Value::as_bool) == Some(true));
+            let mut result = result;
             if let (true, Ok(installed)) = (succeeded, &result) {
                 // 받은 파일로 켜도록 버전·실행 파일·작업 폴더를 함께 맞춘다 (클라이언트가 따로 저장하지 않는다)
                 let saved = save_installed(&mut *state.supervisor.write().await, id, &version, installed, &install_dir);
-                if let Err(e) = saved {
-                    tracing::error!("Installed '{}' but could not save it: {:#}", id, e);
-                    return Err(json!({ "success": false, "error": format!("The server files were installed, but the server details could not be saved: {}", e), "error_code": "save_failed" }));
-                }
-                return result;
+                let Err(e) = saved else {
+                    return result;
+                };
+                // 기록과 파일이 어긋나지 않게 아래에서 설치 전 백업으로 되돌린다
+                tracing::error!("Installed '{}' but could not save it: {:#}", id, e);
+                result = Err(json!({ "success": false, "error": format!("The server files were installed, but the server details could not be saved: {}", e), "error_code": "save_failed" }));
             }
             // 실패: 설치 전 백업으로 되돌린다
-            let mut result = result;
             if let Some(name) = before {
                 let restored = super::backup::restore_held(&state, id, &name, guard, false).await;
                 let body = match &mut result {
@@ -930,6 +931,15 @@ fn save_installed(sup: &mut Supervisor, id: &str, version: &str, result: &Value,
             .map(str::to_string)
             .or_else(|| std::path::Path::new(exe).parent().map(|p| p.to_string_lossy().into_owned()))
             .unwrap_or_else(|| install_dir.to_string());
+        // 확인되지 않은 모듈이 알려 준 폴더는 인스턴스 폴더 안만 (작업 폴더는 다음 격리 실행에 쓰기를 받는다)
+        let entry = sup.module_loader.get_module(&inst.module_name).ok().map(|m| m.entry_path());
+        let root = sup.instance_store.instance_dir(id);
+        let folder = if folder == install_dir || entry.is_some_and(|e| crate::sandbox::accepts_module_dir(std::path::Path::new(&e), &folder, &root)) {
+            folder
+        } else {
+            tracing::warn!("Ignoring a server folder outside the instance folder from an unverified module: {}", folder);
+            install_dir.to_string()
+        };
         inst.executable_path = Some(exe.to_string());
         inst.working_dir = Some(folder);
     }
@@ -1039,6 +1049,42 @@ mod tests {
         // 버전을 정해 보내면 그대로 쓴다 (예전 클라이언트)
         let pinned = install(json!({ "install_dir": files, "instance_id": id, "version": "1.0" })).await;
         assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
+    }
+
+    // Codex 리뷰 #539 P1: 확인되지 않은 모듈이 돌려준 `install_path`(없으면 실행 파일의 폴더)를 그대로 작업 폴더로 저장해,
+    // 다음 격리 실행에서 인스턴스 밖 폴더가 쓰기를 받았다. 인스턴스 폴더 안이 아니면 설치 폴더를 둔다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn an_unverified_module_cannot_point_the_server_folder_outside_the_instance() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let root = sup.instance_store.instance_dir(&id);
+        let inside = root.join("server");
+        let outside = tmp.path().join("elsewhere");
+        for d in [&inside, &outside] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let install_dir = inside.to_string_lossy().into_owned();
+        let saved_dir = |sup: &Supervisor| sup.instance_store.get(&id).unwrap().working_dir.clone().unwrap();
+
+        let exe = outside.join("server.exe").to_string_lossy().into_owned();
+        save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe }), &install_dir).unwrap();
+        assert_eq!(saved_dir(&sup), install_dir, "the executable's folder outside the instance is not taken");
+        save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe, "install_path": outside }), &install_dir).unwrap();
+        assert_eq!(saved_dir(&sup), install_dir, "install_path outside the instance is not taken");
+        let nested = inside.join("bin");
+        std::fs::create_dir_all(&nested).unwrap();
+        save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe, "install_path": nested }), &install_dir).unwrap();
+        assert_eq!(saved_dir(&sup), nested.to_string_lossy(), "a folder inside the instance is kept");
     }
 
     // 외부 감사 P1: 업데이트 전 백업이 모듈 `server_executable`(server.jar)만 담아, 모듈이 인스턴스의 실제 실행 파일

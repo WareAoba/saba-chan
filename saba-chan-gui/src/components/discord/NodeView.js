@@ -6,7 +6,6 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChannelsTab, channelsAvailable } from './ChannelsTab';
-import { InstanceWordsTab, instanceWordsAvailable } from './InstanceWordsTab';
 import * as P from './nodePermissions';
 import { PermissionPanel, permissionsAvailable } from './PermissionsTab';
 
@@ -326,7 +325,6 @@ export function NodeView({
     membersLoading,
     membersFailed,
     membersPartial,
-    initialTab,
     onRefreshMembers,
     memberId,
     onOpenMember,
@@ -335,9 +333,7 @@ export function NodeView({
     saveState,
 }) {
     const { t } = useTranslation('gui');
-    const [tab, setTab] = useState(
-        initialTab === 'words' && !instanceWordsAvailable() ? 'instances' : initialTab || 'instances',
-    );
+    const [tab, setTab] = useState('instances');
     const member = useMemo(() => (members || []).find((m) => m.id === memberId), [members, memberId]);
     const mode = P.instanceMode(settings, node.guildId);
     const visibleCount = visibleServers(settings, node.guildId, servers).length;
@@ -393,15 +389,6 @@ export function NodeView({
                               },
                           ]
                         : []),
-                    ...(instanceWordsAvailable()
-                        ? [
-                              {
-                                  id: 'words',
-                                  label: t('discord.tab_words'),
-                                  icon: <Icon name="messageSquare" size="sm" />,
-                              },
-                          ]
-                        : []),
                     ...(channelsAvailable()
                         ? [{ id: 'channels', label: t('discord.tab_channels'), icon: <Icon name="hash" size="sm" /> }]
                         : []),
@@ -436,7 +423,6 @@ export function NodeView({
                     update={(fn) => updateAllowed(node.guildId, fn)}
                 />
             )}
-            {activeTab === 'words' && <InstanceWordsTab key={node.guildId} node={node} />}
             {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
             {activeTab === 'bot' && <BotSettingsTab key={node.guildId} node={node} />}
             {levels && (activeTab === 'members' || activeTab === 'commands') && (

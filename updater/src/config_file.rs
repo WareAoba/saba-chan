@@ -11,6 +11,7 @@
 //! | `boot` | 부트 선택 기억 |
 //! | `extensions` | `{ enabled: [id], settings: { id: { key: value } } }` |
 //! | `paths` | 사용자가 고른 모듈·익스텐션 폴더 (`component_dirs`, 데몬 `/api/system/paths`) |
+//! | `node` | 이 PC의 릴레이(디스코드) 노드 토큰 `{ token }` (데몬 `/api/config/node-token`, 내보내기에서 뺀다) |
 //! | `cli` 등 기타 | 클라이언트별 자유 영역 (데몬 `/api/config/client/:kind`) |
 //!
 //! 새 기능은 자기 키 하나만 추가하면 된다(슬롯). 이 모듈은 키 안을 해석하지 않는다.
@@ -21,7 +22,9 @@
 //!   `config.json.corrupt-<시각>`으로 옮겨 둔다(덮어쓰지 않는다).
 //! - 이관: 예전 개별 파일(`settings.json` 등)이 있고 해당 키가 아직 없으면 읽어 넣고,
 //!   예전 파일은 그대로 두고 `.migrated` 사본을 남긴다. 예전 판(다운그레이드·다른 설치본)이 계속 읽을 수 있고,
-//!   사본이 있는 파일은 다시 이관하지 않는다.
+//!   사본이 있는 파일은 다시 이관하지 않는다. 예전 노드 토큰 파일(`.node_token`)만은 비밀값이라
+//!   `node.token`에 넣은 뒤 사본 없이 지운다. 이 판은 그 파일을 쓰지 않으므로, 다시 생긴 파일(예전 판이
+//!   새로 페어링함)은 `node.token`을 덮어쓴다.
 //!
 //! 같은 프로세스 안의 쓰기는 전역 잠금으로 직렬화한다. 데몬이 떠 있는 동안 다른
 //! 프로세스(GUI·CLI·설치기)는 데몬 API로만 쓴다. 데몬이 없을 때의 부트스트랩
@@ -44,6 +47,9 @@ const LEGACY_FILES: &[(&str, &[&str])] = &[
     ("extensions_state.json", &["extensions", "enabled"]),
     ("extensionConfig.json", &["extensions", "settings"]),
 ];
+
+/// 예전 노드 토큰 파일 (평문 한 줄) → `node.token`
+const LEGACY_NODE_TOKEN: &str = ".node_token";
 
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
@@ -144,20 +150,49 @@ impl ConfigFile {
             }
         };
 
-        if self.migrate_legacy(&mut doc) {
+        let token = self.migrate_node_token(&mut doc);
+        let migrated = self.migrate_legacy(&mut doc);
+        if migrated || token {
             if let Err(e) = self.save_locked(&mut doc) {
                 tracing::error!("[Config] Failed to save migrated settings: {}", e);
                 return doc;
             }
-            for (name, _) in LEGACY_FILES {
-                let legacy = self.dir.join(name);
-                let marker = self.dir.join(format!("{}.migrated", name));
-                if legacy.is_file() && !marker.exists() {
-                    let _ = std::fs::copy(&legacy, &marker);
+            if migrated {
+                for (name, _) in LEGACY_FILES {
+                    let legacy = self.dir.join(name);
+                    let marker = self.dir.join(format!("{}.migrated", name));
+                    if legacy.is_file() && !marker.exists() {
+                        let _ = std::fs::copy(&legacy, &marker);
+                    }
+                }
+            }
+            if token {
+                if let Err(e) = std::fs::remove_file(self.dir.join(LEGACY_NODE_TOKEN)) {
+                    tracing::warn!("[Config] Failed to remove the old node token file: {}", e);
                 }
             }
         }
         doc
+    }
+
+    /// 예전 노드 토큰 파일을 읽어 `node.token`에 넣는다. 읽었으면 true (저장 뒤 파일을 지운다).
+    /// 이 판은 그 파일을 쓰지 않으므로, 옮긴 뒤 다시 생긴 파일은 예전 판이 새로 페어링한 토큰이다: 파일 값이 이긴다
+    /// (빈 파일은 지우기만 한다)
+    fn migrate_node_token(&self, doc: &mut Map<String, Value>) -> bool {
+        let Ok(text) = std::fs::read_to_string(self.dir.join(LEGACY_NODE_TOKEN)) else {
+            return false;
+        };
+        let token = text.trim();
+        let node = doc.entry("node").or_insert_with(|| Value::Object(Map::new()));
+        if !node.is_object() {
+            *node = Value::Object(Map::new());
+        }
+        let node = node.as_object_mut().expect("just made an object");
+        if !token.is_empty() && node.get("token").and_then(Value::as_str) != Some(token) {
+            tracing::info!("[Config] Migrating the node token into config.json");
+            node.insert("token".into(), Value::from(token));
+        }
+        true
     }
 
     /// 예전 파일을 읽어 비어 있는 키에 넣는다. 하나라도 있으면 true.
@@ -284,6 +319,25 @@ mod tests {
         // 이관한 뒤 지운 값은 남은 예전 파일에서 되살아나지 않는다
         cfg.set_section("relay", json!({})).unwrap();
         assert!(cfg.load()["relay"].get("prefix").is_none());
+    }
+
+    #[test]
+    fn the_old_node_token_file_moves_into_the_node_section_and_is_removed() {
+        let (d, cfg) = file();
+        std::fs::write(d.path().join(".node_token"), "sbn_a.secret\n").unwrap();
+
+        assert_eq!(cfg.section("node")["token"], "sbn_a.secret");
+        assert!(!d.path().join(".node_token").exists(), "the token must live in one place");
+        assert!(!d.path().join(".node_token.migrated").exists(), "no second copy of a secret");
+
+        // 옮긴 뒤 이 판은 그 파일을 쓰지 않는다: 다시 생겼으면 예전 판(0.1.8)이 새로 페어링한 토큰이라 그것을 쓴다
+        std::fs::write(d.path().join(".node_token"), "sbn_b.newer").unwrap();
+        assert_eq!(cfg.section("node")["token"], "sbn_b.newer");
+        assert!(!d.path().join(".node_token").exists());
+        // 빈 파일은 지우기만 한다
+        std::fs::write(d.path().join(".node_token"), "").unwrap();
+        assert_eq!(cfg.section("node")["token"], "sbn_b.newer");
+        assert!(!d.path().join(".node_token").exists());
     }
 
     #[test]

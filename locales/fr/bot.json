@@ -28,7 +28,7 @@
     "help_stop": "Arrêter le serveur",
     "help_status": "Vérifier l'état du serveur",
     "help_rest_title": "**Commandes REST:**",
-    "enter_command": "Veuillez saisir une commande."
+    "enter_command": "Saisissez une commande."
   },
   "list": {
     "title": "🎮 **Liste des serveurs**",
@@ -48,7 +48,7 @@
     "status_check": "📊 Statut de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Le serveur n'est pas en cours d'exécution. Veuillez d'abord démarrer le serveur",
+    "not_running_default": "Le serveur n'est pas en cours d'exécution. Démarrez d'abord le serveur",
     "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé.",
     "port_moved": "🔀 Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}."
   },
@@ -75,7 +75,7 @@
     "announce_success": "✅ Annonce envoyée",
     "save_success": "✅ Monde sauvegardé",
     "command_executed": "✅ Commande exécutée",
-    "command_complete": "✅ Commande exécutée avec succès!",
+    "command_complete": "✅ Commande exécutée !",
     "empty_list": "(vide)"
   },
   "errors": {
@@ -86,7 +86,7 @@
     "preflight_failed": "La vérification avant démarrage a trouvé un problème, le serveur n'a donc pas été démarré ({{code}}). Voyez les détails dans Saba-chan sur le PC.",
     "agreement_local_only": "Les accords ne peuvent être acceptés que dans Saba-chan sur ce PC.",
     "no_command_path": "'{{name}}' n'a pas de console saba-chan connectée et ne peut pas recevoir de commandes. Redémarrez-le en mode géré depuis saba-chan sur le PC.",
-    "alias_conflict": "❌ L'alias '{{alias}}' est ambigu — il correspond à plusieurs modules : {{modules}}. Utilisez un alias plus spécifique.",
+    "alias_conflict": "❌ L'alias '{{alias}}' est ambigu. Il correspond à plusieurs modules : {{modules}}. Utilisez un alias plus spécifique.",
     "multiple_instances": "⚠️ Plusieurs instances de '{{module}}' existent. Utilisez le nom de l'instance au lieu de l'alias du module.",
     "auth_failed": "Échec de l'authentification",
     "player_not_found": "Joueur introuvable",
@@ -102,10 +102,10 @@
     "command_not_found": "❌ La commande n'existe pas.",
     "permission_denied": "❌ Vous n'avez pas la permission d'utiliser cette commande.",
     "chatbot_not_allowed": "❌ Saba-chan qui parle ne peut pas exécuter cette commande. Exécutez-la directement.",
-    "local_single_guild_only": "⚠️ Le bot local ne peut être utilisé que sur un seul serveur. Actuellement présent sur {{count}} serveurs. Veuillez retirer le bot des serveurs inutilisés."
+    "local_single_guild_only": "⚠️ Le bot local ne peut être utilisé que sur un seul serveur. Ce bot est sur {{count}} serveurs. Retirez-le des serveurs que vous n'utilisez pas."
   },
   "messages": {
-    "server_started": "Serveur démarré avec succès",
+    "server_started": "Serveur démarré",
     "server_stopped": "Serveur arrêté",
     "server_not_running": "Le serveur n'est pas en cours d'exécution",
     "command_error": "Erreur lors de l'exécution de la commande",
