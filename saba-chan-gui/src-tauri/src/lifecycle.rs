@@ -236,10 +236,6 @@ pub fn start_daemon(app: &AppHandle) {
         .env("SABA_LANG", settings::language(&s))
         .env("SABA_IPC_PORT", settings::ipc_port(&s).to_string())
         .env("SABA_INSTANCES_PATH", state.data_dir.join("instances"))
-        .env(
-            "SABA_MODULES_PATH",
-            saba_chan_updater_lib::constants::resolve_modules_dir(),
-        )
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

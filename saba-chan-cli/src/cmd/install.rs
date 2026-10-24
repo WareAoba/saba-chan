@@ -127,6 +127,9 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         Some(d) => install_target(&d).ok_or_else(|| usage(t!("install.empty_dir")))?,
         None => default_dir,
     };
+    if core::check_install_dir(&dir, &saba_chan_updater_lib::component_dirs::Layout::current()).is_err() {
+        return Err(usage(t!("install.invalid_dir", dir = dir.display())));
+    }
 
     // 한 PC에는 설치본 하나만 둔다: 다른 폴더에 있으면 무엇도 받기 전에 그 설치본을 안내한다
     if let Some(other) = core::other_install(&dir) {
@@ -160,6 +163,18 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
             modules.join(", ")
         }
     );
+    if let Some(chosen) = &args.components_dir {
+        let chosen = std::path::absolute(chosen).unwrap_or_else(|_| chosen.clone());
+        if let Err(e) = core::check_components_dir(&chosen, &saba_chan_updater_lib::component_dirs::Layout::current(), &dir) {
+            let hint = crate::i18n::try_t(&format!("err.hint.paths_{}", e.code)).unwrap_or(e.detail);
+            return Err(usage(t!(
+                "install.components_dir_invalid",
+                dir = chosen.display(),
+                reason = hint
+            )));
+        }
+        ctx.out.hint(&t!("install.components_dir", dir = chosen.display()));
+    }
     ctx.ask.ensure(&summary)?;
 
     let hooks = Hooks {
@@ -177,6 +192,10 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         release: Some(manifest),
         // 창 제거기를 두지 않는다: Windows 앱 목록에도 나오지 않고, 지울 때는 데몬을 끄고 설치 폴더를 지운다
         uninstaller_exe: None,
+        components_dir: args
+            .components_dir
+            .as_ref()
+            .map(|d| std::path::absolute(d).unwrap_or_else(|_| d.clone())),
     };
     // 한 번만 도는 명령이라 전역으로 둔다: 설치 라이브러리는 띄운 작업 안에서도 기록한다
     let logged =

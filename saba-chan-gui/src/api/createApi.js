@@ -106,6 +106,8 @@ export function createApi({ invoke, hub }) {
     const relayQs = (relayUrl) => (relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '');
     // 큰 월드는 묶고 푸는 데 몇 분 걸린다
     const BACKUP_TIMEOUT = 10 * 60 * 1000;
+    // 모듈·익스텐션 폴더 옮기기: 다른 드라이브면 복사와 검증까지 한다
+    const PATHS_MOVE_TIMEOUT = 30 * 60 * 1000;
 
     const minimizeWindow = () => send('window_minimize');
     const maximizeWindow = () => send('window_maximize');
@@ -1072,6 +1074,11 @@ export function createApi({ invoke, hub }) {
         onboarding: () => daemonJson('get', '/api/onboarding'),
         // 문제를 물어볼 때 붙여 넣는 데몬 진단 (비밀은 데몬이 싣지 않는다)
         daemonDiagnostics: () => daemonJson('get', '/api/diagnostics'),
+        // 폴더 위치: 데이터·프로그램·인스턴스·모듈·익스텐션 폴더와 기본값
+        systemPaths: () => daemonJson('get', '/api/system/paths'),
+        // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
+        systemPathsMove: (kind, target) =>
+            daemonJson('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),
         instanceBackups: (id) => daemonJson('get', instancePath(id, '/backups')),
         instanceBackupCreate: (id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT),
         instanceBackupDelete: (id, name) =>

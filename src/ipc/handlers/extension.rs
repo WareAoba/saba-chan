@@ -439,6 +439,7 @@ pub async fn install_extension(
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
     let (explicit_url, explicit_sha) = (field("download_url"), field("sha256"));
 
+    let _dirs = super::paths::components_in_use().await;
     let extensions_dir = state.extension_manager.read().await.extensions_dir().to_path_buf();
     let remote = ExtensionManager::fetch_remote().await;
     let fail = |error: String, code: &str| Json(json!({ "success": false, "error": error, "error_code": code }));

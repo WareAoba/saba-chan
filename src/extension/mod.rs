@@ -1474,6 +1474,12 @@ impl ExtensionManager {
         &self.extensions_dir
     }
 
+    /// 익스텐션 폴더를 옮긴 뒤 새 폴더를 보게 하고 다시 읽는다 (`/api/system/paths/move`)
+    pub fn set_extensions_dir(&mut self, extensions_dir: PathBuf) -> Result<Vec<String>> {
+        self.extensions_dir = extensions_dir;
+        self.rescan()
+    }
+
     /// 받은 zip을 검사하고 `extensions/.staging-<id>-<uuid>`에 푼다. 락 없이 부르면 된다.
     /// sha256(있으면), manifest 스키마, manifest id, min_app_version을 여기서 확인하므로
     /// 실패해도 설치된 익스텐션은 그대로다. 폴더는 호출마다 새로 만들어, 같은 id를 겹쳐 설치해도
@@ -1724,6 +1730,8 @@ pub async fn run_hook_timed(
     context: Value,
     timeout_secs: u64,
 ) -> Vec<(String, Result<Value>)> {
+    // 계획(옛 경로)부터 실행이 끝날 때까지 익스텐션 폴더를 옮기지 못하게 한다 (hook이 그 폴더의 파일을 실행하고 쓴다)
+    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, None);
     plan.run(timeout_secs).await
 }
@@ -1735,6 +1743,7 @@ pub async fn run_hook_to(
     hook_name: &str,
     context: Value,
 ) -> Option<Result<Value>> {
+    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, Some(ext_id));
     plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next().map(|(_, r)| r)
 }

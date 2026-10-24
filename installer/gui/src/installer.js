@@ -16,6 +16,15 @@ const T = {
         welcome: 'Welcome to Saba-chan Installer',
         btnNext: 'Next',
         labelPath: 'Install Location',
+        labelComponents: 'Modules and Extensions Location',
+        hintComponents: 'Modules and extensions go in the modules and extensions folders here. Files already installed are moved.',
+        compNotAbsolute: 'Choose a full folder path, such as D:\\Games\\Saba.',
+        compRootOrHome: 'Choose a folder inside a drive or your user folder, not the drive itself or your user folder.',
+        compOverlap: 'This folder overlaps the current modules or extensions folder. Choose another folder.',
+        compInsideInstall: 'This folder is inside the install folder, or would put modules and extensions inside each other. Choose another folder.',
+        compInvalid: 'Saba-chan can\'t use this folder for modules and extensions. Choose another folder.',
+        errComponentsDir: 'Couldn\'t move the modules and extensions. Nothing was changed. Choose another folder or try again.',
+        errInstallDir: 'This folder can\'t hold Saba-chan. Choose a folder that isn\'t a drive root, your home folder, or the settings folder.',
         labelModules: 'Game Modules',
         hintModules: 'You can add more later.',
         labelOptions: 'Options',
@@ -68,6 +77,7 @@ const T = {
         progressFetch: 'Fetching release information...',
         progressDownload: 'Downloading...',
         progressExtract: 'Extracting...',
+        progressComponentsDir: 'Moving modules and extensions...',
         progressModulesShared: 'Installing shared module utilities...',
         progressModulesDownload: 'Downloading game modules...',
         progressModulesExtract: 'Extracting game modules...',
@@ -96,6 +106,15 @@ const T = {
         welcome: '사바쨩 인스톨러에 오신 것을 환영합니다',
         btnNext: '다음',
         labelPath: '설치 경로',
+        labelComponents: '모듈·익스텐션 위치',
+        hintComponents: '이 폴더 아래 modules, extensions 폴더에 모듈과 익스텐션을 둡니다. 이미 설치된 파일은 옮깁니다.',
+        compNotAbsolute: 'D:\\Games\\Saba처럼 전체 경로를 골라 주세요.',
+        compRootOrHome: '드라이브나 사용자 폴더 자체 말고, 그 안의 폴더를 골라 주세요.',
+        compOverlap: '지금 모듈·익스텐션 폴더와 겹칩니다. 다른 폴더를 골라 주세요.',
+        compInsideInstall: '설치 폴더 안이거나, 모듈 폴더와 익스텐션 폴더가 서로 겹치게 됩니다. 다른 폴더를 골라 주세요.',
+        compInvalid: '이 폴더는 모듈·익스텐션 위치로 쓸 수 없습니다. 다른 폴더를 골라 주세요.',
+        errComponentsDir: '모듈과 익스텐션을 옮기지 못했습니다. 바뀐 것은 없습니다. 다른 폴더를 고르거나 다시 시도해 주세요.',
+        errInstallDir: '이 폴더에는 사바쨩을 설치할 수 없습니다. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요.',
         labelModules: '게임 모듈',
         hintModules: '나중에 추가할 수도 있어요.',
         labelOptions: '옵션',
@@ -148,6 +167,7 @@ const T = {
         progressFetch: '릴리즈 정보 확인 중...',
         progressDownload: '다운로드 중...',
         progressExtract: '압축 해제 중...',
+        progressComponentsDir: '모듈·익스텐션 옮기는 중...',
         progressModulesShared: '공용 모듈 유틸리티 설치 중...',
         progressModulesDownload: '게임 모듈 다운로드 중...',
         progressModulesExtract: '게임 모듈 압축 해제 중...',
@@ -176,6 +196,15 @@ const T = {
         welcome: 'サバちゃん インストーラーへようこそ',
         btnNext: '次へ',
         labelPath: 'インストール先',
+        labelComponents: 'モジュール・拡張機能の場所',
+        hintComponents: 'このフォルダーの modules と extensions フォルダーにモジュールと拡張機能を置きます。インストール済みのファイルは移動します。',
+        compNotAbsolute: 'D:\\Games\\Saba のようにフルパスで選んでください。',
+        compRootOrHome: 'ドライブやユーザーフォルダーそのものではなく、その中のフォルダーを選んでください。',
+        compOverlap: '現在のモジュール・拡張機能フォルダーと重なっています。別のフォルダーを選んでください。',
+        compInsideInstall: 'インストール先フォルダーの中か、モジュールと拡張機能のフォルダーが互いに重なります。別のフォルダーを選んでください。',
+        compInvalid: 'このフォルダーはモジュール・拡張機能の場所に使えません。別のフォルダーを選んでください。',
+        errComponentsDir: 'モジュールと拡張機能を移動できませんでした。何も変更していません。別のフォルダーを選ぶか、もう一度お試しください。',
+        errInstallDir: 'このフォルダーにはサバちゃんをインストールできません。ドライブのルート、ホームフォルダー、設定フォルダー以外を選んでください。',
         labelModules: 'ゲームモジュール',
         hintModules: '後から追加もできます。',
         labelOptions: 'オプション',
@@ -227,6 +256,7 @@ const T = {
         progressFetch: 'リリース情報を取得中...',
         progressDownload: 'ダウンロード中...',
         progressExtract: '展開中...',
+        progressComponentsDir: 'モジュールと拡張機能を移動中...',
         progressModulesShared: '共有モジュールユーティリティをインストール中...',
         progressModulesDownload: 'ゲームモジュールをダウンロード中...',
         progressModulesExtract: 'ゲームモジュールを展開中...',
@@ -255,6 +285,15 @@ const T = {
         welcome: '欢迎使用 Saba-chan 安装程序',
         btnNext: '下一步',
         labelPath: '安装位置',
+        labelComponents: '模块和扩展位置',
+        hintComponents: '模块和扩展将放在此文件夹下的 modules 和 extensions 文件夹中。已安装的文件会被移动。',
+        compNotAbsolute: '请选择完整路径，例如 D:\\Games\\Saba。',
+        compRootOrHome: '请选择驱动器或用户文件夹内的文件夹，而不是它们本身。',
+        compOverlap: '该文件夹与当前的模块或扩展文件夹重叠。请选择其他文件夹。',
+        compInsideInstall: '该文件夹位于安装文件夹内，或会使模块和扩展文件夹相互重叠。请选择其他文件夹。',
+        compInvalid: '此文件夹不能用作模块和扩展位置。请选择其他文件夹。',
+        errComponentsDir: '无法移动模块和扩展。没有做任何更改。请选择其他文件夹或重试。',
+        errInstallDir: '无法安装到此文件夹。请选择驱动器根目录、主文件夹和设置文件夹以外的文件夹。',
         labelModules: '游戏模块',
         hintModules: '之后也可以添加。',
         labelOptions: '选项',
@@ -306,6 +345,7 @@ const T = {
         progressFetch: '正在获取版本信息...',
         progressDownload: '正在下载...',
         progressExtract: '正在解压...',
+        progressComponentsDir: '正在移动模块和扩展...',
         progressModulesShared: '正在安装共享模块工具...',
         progressModulesDownload: '正在下载游戏模块...',
         progressModulesExtract: '正在解压游戏模块...',
@@ -334,6 +374,15 @@ const T = {
         welcome: '歡迎使用 Saba-chan 安裝程式',
         btnNext: '下一步',
         labelPath: '安裝位置',
+        labelComponents: '模組與擴充功能位置',
+        hintComponents: '模組與擴充功能會放在此資料夾下的 modules 和 extensions 資料夾。已安裝的檔案會被移動。',
+        compNotAbsolute: '請選擇完整路徑，例如 D:\\Games\\Saba。',
+        compRootOrHome: '請選擇磁碟機或使用者資料夾內的資料夾，而不是它們本身。',
+        compOverlap: '此資料夾與目前的模組或擴充功能資料夾重疊。請選擇其他資料夾。',
+        compInsideInstall: '此資料夾位於安裝資料夾內，或會使模組和擴充功能資料夾互相重疊。請選擇其他資料夾。',
+        compInvalid: '此資料夾無法作為模組與擴充功能位置。請選擇其他資料夾。',
+        errComponentsDir: '無法移動模組與擴充功能。沒有做任何變更。請選擇其他資料夾或再試一次。',
+        errInstallDir: '無法安裝到此資料夾。請選擇磁碟機根目錄、主資料夾和設定資料夾以外的資料夾。',
         labelModules: '遊戲模組',
         hintModules: '之後也可以新增。',
         labelOptions: '選項',
@@ -385,6 +434,7 @@ const T = {
         progressFetch: '正在取得版本資訊...',
         progressDownload: '正在下載...',
         progressExtract: '正在解壓縮...',
+        progressComponentsDir: '正在移動模組和擴充功能...',
         progressModulesShared: '正在安裝共用模組工具...',
         progressModulesDownload: '正在下載遊戲模組...',
         progressModulesExtract: '正在解壓縮遊戲模組...',
@@ -413,6 +463,15 @@ const T = {
         welcome: 'Bienvenido al instalador de Saba-chan',
         btnNext: 'Siguiente',
         labelPath: 'Ubicación de instalación',
+        labelComponents: 'Ubicación de módulos y extensiones',
+        hintComponents: 'Los módulos y extensiones van en las carpetas modules y extensions de aquí. Los archivos ya instalados se mueven.',
+        compNotAbsolute: 'Elige una ruta completa, como D:\\Games\\Saba.',
+        compRootOrHome: 'Elige una carpeta dentro de una unidad o de tu carpeta de usuario, no la unidad ni la carpeta de usuario.',
+        compOverlap: 'Esta carpeta se solapa con la carpeta actual de módulos o extensiones. Elige otra.',
+        compInsideInstall: 'Esta carpeta está dentro de la carpeta de instalación o haría que módulos y extensiones se solapen. Elige otra.',
+        compInvalid: 'Saba-chan no puede usar esta carpeta para módulos y extensiones. Elige otra.',
+        errComponentsDir: 'No se pudieron mover los módulos y extensiones. No se cambió nada. Elige otra carpeta o inténtalo de nuevo.',
+        errInstallDir: 'No se puede instalar en esta carpeta. Elige una carpeta que no sea la raíz de una unidad, tu carpeta personal ni la carpeta de ajustes.',
         labelModules: 'Módulos de juego',
         hintModules: 'Puedes añadir más después.',
         labelOptions: 'Opciones',
@@ -464,6 +523,7 @@ const T = {
         progressFetch: 'Obteniendo información de la versión...',
         progressDownload: 'Descargando...',
         progressExtract: 'Extrayendo...',
+        progressComponentsDir: 'Moviendo módulos y extensiones...',
         progressModulesShared: 'Instalando utilidades de módulos compartidos...',
         progressModulesDownload: 'Descargando módulos de juego...',
         progressModulesExtract: 'Extrayendo módulos de juego...',
@@ -492,6 +552,15 @@ const T = {
         welcome: 'Bem-vindo ao instalador do Saba-chan',
         btnNext: 'Próximo',
         labelPath: 'Local de instalação',
+        labelComponents: 'Local de módulos e extensões',
+        hintComponents: 'Módulos e extensões ficam nas pastas modules e extensions daqui. Arquivos já instalados são movidos.',
+        compNotAbsolute: 'Escolha um caminho completo, como D:\\Games\\Saba.',
+        compRootOrHome: 'Escolha uma pasta dentro de uma unidade ou da sua pasta de usuário, não a própria unidade ou pasta de usuário.',
+        compOverlap: 'Esta pasta se sobrepõe à pasta atual de módulos ou extensões. Escolha outra.',
+        compInsideInstall: 'Esta pasta fica dentro da pasta de instalação ou faria módulos e extensões se sobreporem. Escolha outra.',
+        compInvalid: 'O Saba-chan não pode usar esta pasta para módulos e extensões. Escolha outra.',
+        errComponentsDir: 'Não foi possível mover os módulos e extensões. Nada foi alterado. Escolha outra pasta ou tente de novo.',
+        errInstallDir: 'Não é possível instalar nesta pasta. Escolha uma pasta que não seja a raiz de uma unidade, a sua pasta pessoal nem a pasta de configurações.',
         labelModules: 'Módulos de jogo',
         hintModules: 'Você pode adicionar mais depois.',
         labelOptions: 'Opções',
@@ -543,6 +612,7 @@ const T = {
         progressFetch: 'Obtendo informações da versão...',
         progressDownload: 'Baixando...',
         progressExtract: 'Extraindo...',
+        progressComponentsDir: 'Movendo módulos e extensões...',
         progressModulesShared: 'Instalando utilitários de módulos compartilhados...',
         progressModulesDownload: 'Baixando módulos de jogo...',
         progressModulesExtract: 'Extraindo módulos de jogo...',
@@ -571,6 +641,15 @@ const T = {
         welcome: 'Добро пожаловать в установщик Saba-chan',
         btnNext: 'Далее',
         labelPath: 'Путь установки',
+        labelComponents: 'Расположение модулей и расширений',
+        hintComponents: 'Модули и расширения будут в папках modules и extensions внутри этой папки. Уже установленные файлы будут перенесены.',
+        compNotAbsolute: 'Укажите полный путь, например D:\\Games\\Saba.',
+        compRootOrHome: 'Выберите папку внутри диска или папки пользователя, а не сам диск или папку пользователя.',
+        compOverlap: 'Эта папка пересекается с текущей папкой модулей или расширений. Выберите другую.',
+        compInsideInstall: 'Эта папка внутри папки установки или папки модулей и расширений окажутся друг в друге. Выберите другую.',
+        compInvalid: 'Saba-chan не может использовать эту папку для модулей и расширений. Выберите другую.',
+        errComponentsDir: 'Не удалось перенести модули и расширения. Ничего не изменено. Выберите другую папку или повторите попытку.',
+        errInstallDir: 'В эту папку нельзя установить программу. Выберите папку, которая не является корнем диска, домашней папкой или папкой настроек.',
         labelModules: 'Игровые модули',
         hintModules: 'Можно добавить позже.',
         labelOptions: 'Параметры',
@@ -622,6 +701,7 @@ const T = {
         progressFetch: 'Получение информации о версии...',
         progressDownload: 'Загрузка...',
         progressExtract: 'Извлечение...',
+        progressComponentsDir: 'Перемещение модулей и расширений...',
         progressModulesShared: 'Установка общих утилит модулей...',
         progressModulesDownload: 'Загрузка игровых модулей...',
         progressModulesExtract: 'Извлечение игровых модулей...',
@@ -650,6 +730,15 @@ const T = {
         welcome: 'Willkommen beim Saba-chan Installationsprogramm',
         btnNext: 'Weiter',
         labelPath: 'Installationsort',
+        labelComponents: 'Speicherort für Module und Erweiterungen',
+        hintComponents: 'Module und Erweiterungen kommen hier in die Ordner modules und extensions. Bereits installierte Dateien werden verschoben.',
+        compNotAbsolute: 'Wähle einen vollständigen Pfad, z. B. D:\\Games\\Saba.',
+        compRootOrHome: 'Wähle einen Ordner innerhalb eines Laufwerks oder deines Benutzerordners, nicht das Laufwerk oder den Benutzerordner selbst.',
+        compOverlap: 'Dieser Ordner überschneidet sich mit dem aktuellen Modul- oder Erweiterungsordner. Wähle einen anderen.',
+        compInsideInstall: 'Dieser Ordner liegt im Installationsordner oder würde Modul- und Erweiterungsordner ineinander legen. Wähle einen anderen.',
+        compInvalid: 'Saba-chan kann diesen Ordner nicht für Module und Erweiterungen verwenden. Wähle einen anderen.',
+        errComponentsDir: 'Module und Erweiterungen konnten nicht verschoben werden. Es wurde nichts geändert. Wähle einen anderen Ordner oder versuche es erneut.',
+        errInstallDir: 'In diesen Ordner kann nicht installiert werden. Wähle einen Ordner, der kein Laufwerksstamm, kein Benutzerordner und nicht der Einstellungsordner ist.',
         labelModules: 'Spielmodule',
         hintModules: 'Weitere können später hinzugefügt werden.',
         labelOptions: 'Optionen',
@@ -701,6 +790,7 @@ const T = {
         progressFetch: 'Versionsinformationen werden abgerufen...',
         progressDownload: 'Herunterladen...',
         progressExtract: 'Entpacken...',
+        progressComponentsDir: 'Module und Erweiterungen werden verschoben...',
         progressModulesShared: 'Gemeinsame Modul-Dienstprogramme werden installiert...',
         progressModulesDownload: 'Spielmodule werden heruntergeladen...',
         progressModulesExtract: 'Spielmodule werden entpackt...',
@@ -729,6 +819,15 @@ const T = {
         welcome: 'Bienvenue dans l\'installateur de Saba-chan',
         btnNext: 'Suivant',
         labelPath: 'Emplacement d\'installation',
+        labelComponents: 'Emplacement des modules et extensions',
+        hintComponents: 'Les modules et extensions vont dans les dossiers modules et extensions d\'ici. Les fichiers déjà installés sont déplacés.',
+        compNotAbsolute: 'Choisissez un chemin complet, par exemple D:\\Games\\Saba.',
+        compRootOrHome: 'Choisissez un dossier à l\'intérieur d\'un lecteur ou de votre dossier utilisateur, pas le lecteur ni le dossier utilisateur lui-même.',
+        compOverlap: 'Ce dossier chevauche le dossier actuel des modules ou extensions. Choisissez-en un autre.',
+        compInsideInstall: 'Ce dossier est dans le dossier d\'installation ou placerait les modules et extensions l\'un dans l\'autre. Choisissez-en un autre.',
+        compInvalid: 'Saba-chan ne peut pas utiliser ce dossier pour les modules et extensions. Choisissez-en un autre.',
+        errComponentsDir: 'Impossible de déplacer les modules et extensions. Rien n\'a été modifié. Choisissez un autre dossier ou réessayez.',
+        errInstallDir: 'Impossible d\'installer dans ce dossier. Choisissez un dossier qui n\'est ni la racine d\'un lecteur, ni votre dossier personnel, ni le dossier des paramètres.',
         labelModules: 'Modules de jeu',
         hintModules: 'Vous pourrez en ajouter d\'autres plus tard.',
         labelOptions: 'Options',
@@ -780,6 +879,7 @@ const T = {
         progressFetch: 'Récupération des informations de version...',
         progressDownload: 'Téléchargement...',
         progressExtract: 'Extraction...',
+        progressComponentsDir: 'Déplacement des modules et extensions...',
         progressModulesShared: 'Installation des utilitaires de modules partagés...',
         progressModulesDownload: 'Téléchargement des modules de jeu...',
         progressModulesExtract: 'Extraction des modules de jeu...',
@@ -820,6 +920,7 @@ const INSTALL_STEP_KEYS = {
     'elevate': 'progressElevate',
     'fetch': 'progressFetch',
     'download': 'progressDownload',
+    'components-dir': 'progressComponentsDir',
     'extract': 'progressExtract',
     'modules-shared': 'progressModulesShared',
     'modules-download': 'progressModulesDownload',
@@ -861,6 +962,8 @@ function applyTranslations() {
     s('status-text', 'welcome');
     s('btn-next-text', 'btnNext');
     s('label-path', 'labelPath');
+    s('label-components', 'labelComponents');
+    s('hint-components', 'hintComponents');
     s('label-modules', 'labelModules');
     s('hint-modules', 'hintModules');
     s('label-options', 'labelOptions');
@@ -1008,6 +1111,18 @@ const ERROR_KEYS = {
     extract_failed: 'errExtract',
     installed_elsewhere: 'errElsewhere',
     daemon_running: 'errDaemonRunning',
+    components_dir_invalid: 'errComponentsDir',
+    components_dir_failed: 'errComponentsDir',
+    invalid_install_dir: 'errInstallDir',
+};
+
+// 모듈·익스텐션 위치를 거절한 이유 (`component_dirs::PathError` 코드) → 번역 키
+const COMPONENT_DIR_KEYS = {
+    not_absolute: 'compNotAbsolute',
+    root_or_home: 'compRootOrHome',
+    overlaps_current: 'compOverlap',
+    overlaps_other: 'compOverlap',
+    overlaps_install: 'compInsideInstall',
 };
 
 function enterError(p, titleKey = 'installFailed', canRetry = true) {
@@ -1048,6 +1163,28 @@ document.getElementById('btn-browse')?.addEventListener('click', async () => {
         if (r) { $installPath.value = await invoke('set_install_path', { path: r }); }
     } catch (_) {}
 });
+
+// 모듈·익스텐션 위치: 설치기가 확인하고, 쓸 수 없으면 이유를 칸 아래에 보인다. 성공하면 true
+const $componentsPath = document.getElementById('components-path');
+const $componentsError = document.getElementById('components-error');
+async function setComponentsDir(path) {
+    try {
+        $componentsPath.value = await invoke('set_components_dir', { path });
+        $componentsError.hidden = true;
+        return true;
+    } catch (code) {
+        $componentsError.textContent = tr(COMPONENT_DIR_KEYS[code] || 'compInvalid');
+        $componentsError.hidden = false;
+        return false;
+    }
+}
+document.getElementById('btn-browse-components')?.addEventListener('click', async () => {
+    try {
+        const r = await invoke('browse_components_folder');
+        if (r) await setComponentsDir(r);
+    } catch (_) {}
+});
+$componentsPath?.addEventListener('change', () => setComponentsDir($componentsPath.value));
 
 // 비어 있지 않은 폴더를 고르면 설치기가 그 아래 Saba-chan 폴더로 바꿔 돌려준다
 $installPath?.addEventListener('change', async () => {
@@ -1120,6 +1257,7 @@ function toggleMod(id, on) {
 document.getElementById('btn-install')?.addEventListener('click', async () => {
     // 옵션 저장
     $installPath.value = await invoke('set_install_path', { path: $installPath.value });
+    if (!(await setComponentsDir($componentsPath.value))) return;
     await invoke('set_language', { language: lang }); // 설치 직전 최종 동기화
     await invoke('set_shortcut_options', {
         desktop: document.getElementById('chk-desktop').checked,
@@ -1464,6 +1602,7 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     try {
         const st = await invoke('get_installer_state');
         if ($installPath) $installPath.value = st.install_path || '';
+        if ($componentsPath) $componentsPath.value = st.components_dir || '';
     } catch (_) {}
 
     // 모듈 로드

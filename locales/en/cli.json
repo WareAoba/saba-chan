@@ -168,7 +168,23 @@
       "name_taken": "a server with this name exists",
       "busy": "being installed, updated, backed up or restored"
     },
-    "import_token_moved": "The bot pairing moved too. Disconnect the old PC (on the old PC: saba-chan-cli bot unpair)."
+    "import_token_moved": "The bot pairing moved too. Disconnect the old PC (on the old PC: saba-chan-cli bot unpair).",
+    "paths": {
+      "data": "Data and settings",
+      "install": "Program",
+      "default_install": "Default program folder",
+      "instances": "Game servers",
+      "modules": "Modules",
+      "extensions": "Extensions",
+      "source_default": "default",
+      "source_config": "chosen",
+      "source_env": "fixed by an environment variable",
+      "default_is": "default: {{path}}"
+    },
+    "confirm_move_modules": "Move the modules to {{dir}}? Installed modules are copied, checked and then removed from the old folder.",
+    "confirm_move_extensions": "Move the extensions to {{dir}}? Installed extensions are copied, checked and then removed from the old folder.",
+    "moved": "Moved to {{path}}.",
+    "move_left_behind": "These old files could not be removed. Delete them yourself: {{files}}"
   },
   "console": {
     "attach_help": "Attached to {{name}}. Type a command, :help for help, :q to leave (the server keeps running).",
@@ -281,7 +297,24 @@
       "not_supported": "See unsupported commands with: saba-chan-cli module info",
       "agent_too_old": "Check for updates: saba-chan-cli update check",
       "install_backup_failed": "{{file}} could not be backed up before installing, so nothing was installed. Check the free disk space and the .bak files in that folder.",
-      "kept_backups": "Files that could not be put back were kept as their pre-install copies: {{files}}"
+      "kept_backups": "Files that could not be put back were kept as their pre-install copies: {{files}}",
+      "paths_busy": "An install, update, backup or other server task is running. Try again when it finishes.",
+      "paths_servers_running": "Stop these servers first, then try again.",
+      "paths_env_fixed": "This folder is fixed by an environment variable. Remove the variable to choose a folder.",
+      "paths_not_absolute": "Give a full folder path, such as D:\\Games\\Saba.",
+      "paths_root_or_home": "Choose a folder inside a drive or your user folder, not the drive itself or your user folder.",
+      "paths_contains_data_dir": "That folder contains Saba-chan's data folder. Choose another folder.",
+      "paths_same_as_current": "It is already in that folder.",
+      "paths_overlaps_current": "That folder is inside the current folder, or the other way around. Choose another folder.",
+      "paths_overlaps_other": "That folder overlaps the modules or extensions folder. Choose another folder.",
+      "paths_not_empty": "The modules or extensions folder there already has files. Choose an empty place.",
+      "paths_not_writable": "Saba-chan can't write there. Choose a folder you can write to.",
+      "paths_has_link": "The folder has a link (shortcut folder) inside. Remove it, then try again.",
+      "paths_copy_failed": "Copying failed. Nothing was changed. Check the free space and try again.",
+      "paths_verify_failed": "The copy did not match the original. Nothing was changed. Try again.",
+      "paths_commit_failed": "Saving the setting failed. The files were put back where they were.",
+      "paths_unknown_kind": "Choose modules or extensions.",
+      "paths_overlaps_install": "It can't go inside the install folder. Choose a folder outside it."
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -598,6 +631,8 @@
       "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
       "install": "Install Saba-chan on this PC without the window installer",
       "uninstall": "Remove Saba-chan from this PC (settings and servers are kept unless removed)",
+      "config.paths": "Where Saba-chan keeps its data, modules and extensions, and the default folders",
+      "config.move": "Move modules or extensions to another folder. Installed files are moved; servers must be stopped",
       "server.discord": "What each Discord server calls this server and its commands in chat. No options: show"
     },
     "arg": {
@@ -652,7 +687,10 @@
       "server.discord.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
       "server.discord.clear": "Remove every word of this server",
       "uninstall.remove_settings": "Remove settings and the Discord connection too",
-      "uninstall.remove_instances": "Remove game servers too (server files, worlds, backups)"
+      "uninstall.remove_instances": "Remove game servers too (server files, worlds, backups)",
+      "config.move.kind": "What to move: modules or extensions",
+      "config.move.folder": "Folder to use. Saba-chan makes a modules or extensions folder inside it",
+      "components_dir": "Folder for modules and extensions. Saba-chan makes modules and extensions folders inside it and moves installed files"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -1038,7 +1076,10 @@
     "failed": "Install failed: {{reason}} (details: {{log}})",
     "failed_no_log": "Install failed: {{reason}}",
     "done": "Installed to {{dir}}",
-    "next": "Start the daemon with:\n{{command}}"
+    "next": "Start the daemon with:\n{{command}}",
+    "components_dir": "Modules and extensions go in {{dir}}.",
+    "components_dir_invalid": "Can't use {{dir}} for modules and extensions: {{reason}}",
+    "invalid_dir": "Can't install into {{dir}}. Choose a folder that isn't a drive root, your home folder, or the settings folder"
   },
   "update_required": {
     "title": "Update required",

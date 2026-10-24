@@ -2124,6 +2124,17 @@ impl Supervisor {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
     }
 
+    /// 켜져 있는 서버 인스턴스 id (`is_running` 판정)
+    pub async fn running_instances(&self) -> Vec<String> {
+        let mut running = Vec::new();
+        for instance in self.instance_store.list() {
+            if self.is_running(&instance.id).await {
+                running.push(instance.id.clone());
+            }
+        }
+        running
+    }
+
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
         if !self.module_accepts_stdin(instance_id) {
             return false;
