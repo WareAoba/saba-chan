@@ -22,7 +22,25 @@ pub async fn run(ctx: &Ctx, cmd: DaemonCmd) -> Result<()> {
             ctx.ensure_daemon().await?;
             crate::cmd::console::daemon_logs(ctx, lines, follow).await
         }
+        DaemonCmd::Clients => clients(ctx).await,
     }
+}
+
+async fn clients(ctx: &Ctx) -> Result<()> {
+    let r = ctx.api.clients().await?;
+    ctx.out.data(&r, |r| {
+        let list = r.get("clients").and_then(Value::as_array).cloned().unwrap_or_default();
+        if list.is_empty() {
+            say!("{}", output::dim(&t!("daemon.no_clients")));
+            return;
+        }
+        let mut t = output::table(&[t!("daemon.col.kind"), t!("daemon.col.pid"), t!("col.folder")]);
+        for c in &list {
+            t.add_row(vec![s(c, "kind").to_string(), c.get("pid").map(|p| p.to_string()).unwrap_or_default(), s(c, "installRoot").to_string()]);
+        }
+        output::print_table(t);
+    });
+    Ok(())
 }
 
 fn is_down(e: &anyhow::Error) -> bool {

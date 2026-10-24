@@ -140,6 +140,12 @@ pub enum Cmd {
         /// Input as key=value (values that read as JSON stay JSON)
         #[arg(value_name = "KEY=VALUE")]
         input: Vec<String>,
+        /// Several steps as JSON: [{"id": "...", "instance": "...", "input": {...}}, ...] (instead of ACTION)
+        #[arg(long, value_name = "JSON", conflicts_with = "action")]
+        steps: Option<String>,
+        /// Progress of a multi-step run that continues in the background
+        #[arg(long = "run", value_name = "RUN_ID", conflicts_with_all = ["action", "steps"])]
+        run_id: Option<String>,
     },
     /// Versions of every installed part
     Version,
@@ -318,7 +324,11 @@ pub enum ScheduleCmd {
 #[derive(Subcommand, Debug)]
 pub enum ChatbotCmd {
     /// Settings and whether an API key is saved
-    Show,
+    Show {
+        /// What one Discord server actually uses (common values + its own), name or id
+        #[arg(long)]
+        guild: Option<String>,
+    },
     /// Change settings: KEY=VALUE ... (keys and their defaults: `chatbot show`; e.g. enabled=true; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
@@ -374,6 +384,39 @@ pub enum ServerCmd {
     Run(RunArgs),
     /// Game commands this server understands
     Commands { server: Option<String> },
+    /// Who is online
+    Players { server: Option<String> },
+    /// Send one line the way the server takes commands (console, else RCON) and show its reply
+    Rcon {
+        server: String,
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, value_name = "LINE")]
+        line: Vec<String>,
+    },
+    /// Saved log of past runs (the console keeps only the current one)
+    Log {
+        server: Option<String>,
+        /// Which run (`--runs` lists them), default the latest
+        #[arg(long)]
+        source: Option<String>,
+        /// Last N lines
+        #[arg(short = 'n', long)]
+        lines: Option<usize>,
+        /// List the saved runs
+        #[arg(long, conflicts_with_all = ["lines", "all"])]
+        runs: bool,
+        /// The whole run (to save: `> file.log`)
+        #[arg(long)]
+        all: bool,
+    },
+    /// Read-only lookups the game module offers (lists them when none is given)
+    Query {
+        server: String,
+        /// Query name
+        name: Option<String>,
+        /// Input as KEY=VALUE
+        #[arg(value_name = "KEY=VALUE")]
+        args: Vec<String>,
+    },
     /// What each Discord server calls this server and its commands in chat. No options: show
     Discord {
         server: Option<String>,
@@ -596,6 +639,8 @@ pub enum DaemonCmd {
         #[arg(short = 'f', long)]
         follow: bool,
     },
+    /// Desktop app windows connected to the daemon
+    Clients,
 }
 
 // ── module ──

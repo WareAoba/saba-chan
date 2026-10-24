@@ -180,6 +180,10 @@ impl Api {
     pub async fn shutdown(&self) -> Result<Value> {
         self.post("/api/daemon/shutdown", json!({})).await
     }
+    /// GET /api/clients — 데몬에 붙어 있는 GUI 창들 `{clients: [{id, kind, pid, installRoot}]}`
+    pub async fn clients(&self) -> Result<Value> {
+        self.get("/api/clients").await
+    }
     /// GET /api/daemon/console?since=&count=
     pub async fn daemon_console(&self, since: Option<u64>, count: Option<usize>) -> Result<Value> {
         self.get(&with_query(
@@ -306,6 +310,37 @@ impl Api {
         self.post(&format!("/api/instance/{}/stdin", seg(id)), json!({ "command": line }))
             .await
     }
+    /// POST /api/instance/:id/rcon `{command}` — 한 줄을 서버가 받는 길(콘솔, 없으면 RCON)로 보내고 답을 받는다
+    pub async fn rcon(&self, id: &str, line: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/rcon", seg(id)), json!({ "command": line }))
+            .await
+    }
+    /// GET /api/instance/:id/players — `{online, max?, players: [{name}]}`. 꺼져 있으면 409 server_not_running
+    pub async fn players(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/players", seg(id))).await
+    }
+    /// GET /api/instance/:id/logs?source=&lines=&before= — 저장된 실행 로그 `{sources, source, lines, before?}`
+    pub async fn logs(&self, id: &str, source: Option<&str>, lines: Option<usize>, before: Option<u64>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/instance/{}/logs", seg(id)),
+            &[
+                ("source", source.map(str::to_string)),
+                ("lines", lines.map(|v| v.to_string())),
+                ("before", before.map(|v| v.to_string())),
+            ],
+        ))
+        .await
+    }
+    /// GET /api/instance/:id/logs/export?source= — 로그 한 실행분 전체 `{fileName, bytes, truncated, content}`
+    pub async fn export_log(&self, id: &str, source: Option<&str>) -> Result<Value> {
+        self.get_slow(&with_query(&format!("/api/instance/{}/logs/export", seg(id)), &[("source", source.map(str::to_string))]))
+            .await
+    }
+    /// POST /api/instance/:id/query/:name `{args}` — 모듈이 선언한 조회 (`[[queries]]`) `{success, data}`
+    pub async fn query(&self, id: &str, name: &str, args: Value) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/query/{}", seg(id), seg(name)), json!({ "args": args }))
+            .await
+    }
     /// GET /api/instance/:id/console?since=&count=&spans=1 (색을 쓸 때만 하이라이팅 구간을 받는다)
     pub async fn console(&self, id: &str, since: Option<u64>, count: Option<usize>) -> Result<Value> {
         self.get(&with_query(
@@ -425,6 +460,10 @@ impl Api {
     /// GET /api/module/:name/locales — 모듈 문구 (라벨 번역)
     pub async fn module_locales(&self, name: &str) -> Result<Value> {
         self.get(&format!("/api/module/{}/locales", seg(name))).await
+    }
+    /// GET /api/module/:name — 모듈 하나의 전체 선언 `{name, version, description, path, metadata}`
+    pub async fn module_metadata(&self, name: &str) -> Result<Value> {
+        self.get(&format!("/api/module/{}", seg(name))).await
     }
     /// GET /api/module/:name/versions
     pub async fn module_versions(&self, name: &str, snapshots: bool, page: u32, per_page: u32) -> Result<Value> {
@@ -597,9 +636,20 @@ impl Api {
         path.push_str(&format!("&locale={}", seg(crate::i18n::lang())));
         self.get(&path).await
     }
-    /// POST /api/actions/:id/plan·run `{input, instance?}` 또는 `{planId}`
-    pub async fn action(&self, id: &str, step: &str, body: Value) -> Result<Value> {
+    /// POST /api/actions/:id/plan·run `{input, instance?, locale}` 또는 `{planId, locale}`: 요약 문구는 CLI가 고른 언어로
+    pub async fn action(&self, id: &str, step: &str, mut body: Value) -> Result<Value> {
+        if let Some(m) = body.as_object_mut() {
+            m.entry("locale").or_insert_with(|| json!(crate::i18n::lang()));
+        }
         self.post_long(&format!("/api/actions/{}/{}", seg(id), step), body).await
+    }
+    /// POST /api/actions/plan `{steps: [{id, instance?, input}], locale}` — 여러 단계 계획. 실행은 `action("plan", "run", {planId})`
+    pub async fn plan_steps(&self, steps: Value) -> Result<Value> {
+        self.post("/api/actions/plan", json!({ "steps": steps, "locale": crate::i18n::lang() })).await
+    }
+    /// GET /api/actions/runs/:runId — 뒤에서 이어 가는 여러 단계 실행의 진행
+    pub async fn action_run(&self, run_id: &str) -> Result<Value> {
+        self.get(&format!("/api/actions/runs/{}", seg(run_id))).await
     }
     /// POST /api/migration/export — 데몬이 `path`에 zip을 쓴다
     pub async fn export_config(&self, path: &str, secrets: bool) -> Result<Value> {
@@ -809,6 +859,10 @@ impl Api {
     /// DELETE /api/chatbot — 설정과 키를 모두 지운다
     pub async fn clear_chatbot(&self) -> Result<Value> {
         self.delete("/api/chatbot").await
+    }
+    /// GET /api/chatbot/guilds/:guild — 디스코드 서버 하나에 실제로 쓰이는 값 (공통 값 + 그 서버 값) `{guildId, settings, hasApiKey}`
+    pub async fn chatbot_guild(&self, guild: &str) -> Result<Value> {
+        self.get(&format!("/api/chatbot/guilds/{}", seg(guild))).await
     }
     /// DELETE /api/chatbot/memory?guildId= — 장기 기억 (없으면 모든 길드)
     pub async fn forget_chatbot(&self, guild: Option<&str>) -> Result<Value> {
@@ -1050,6 +1104,51 @@ mod tests {
         server.await.unwrap()
     }
 
+    /// 한 번 받은 요청의 본문 (JSON)
+    async fn request_body(send: impl FnOnce(Api) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value>> + Send>>) -> Value {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let (mut req, mut buf) = (Vec::new(), [0; 4096]);
+            loop {
+                let n = sock.read(&mut buf).await.unwrap();
+                assert!(n > 0, "connection closed before the request ended");
+                req.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&req).to_string();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let len = head
+                        .lines()
+                        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap()))
+                        .unwrap_or(0);
+                    if body.len() >= len {
+                        sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
+                        return serde_json::from_str::<Value>(body).unwrap();
+                    }
+                }
+            }
+        });
+        send(Api::new(port, None)).await.unwrap();
+        server.await.unwrap()
+    }
+
+    /// 액션 계획·여러 단계 계획은 요약 문구를 CLI가 고른 언어로 받게 본문에 `locale`을 싣는다 (데몬은 머리가 아니라 본문을 본다)
+    #[tokio::test]
+    async fn action_plans_ask_for_the_cli_language() {
+        // 언어는 프로세스에 한 번 정해지는데, 다른 테스트가 도중에 정할 수 있다: 요청 앞뒤 값 중 하나면 된다
+        let either = |body: &Value, before: &str| {
+            let sent = body["locale"].as_str().unwrap_or_default().to_string();
+            assert!(sent == before || sent == crate::i18n::lang(), "{sent}");
+        };
+        let before = crate::i18n::lang();
+        let one = request_body(|api| Box::pin(async move { api.action("server.stop", "plan", json!({ "input": {} })).await })).await;
+        either(&one, before);
+        let before = crate::i18n::lang();
+        let many = request_body(|api| Box::pin(async move { api.plan_steps(json!([])).await })).await;
+        either(&many, before);
+    }
+
     /// `--lang`을 주면 데몬 문구도 그 언어로 오게 요청마다 `Accept-Language`를 싣는다. 안 주면 데몬 설정을 따른다
     #[tokio::test]
     async fn the_chosen_language_goes_to_the_daemon() {
@@ -1225,6 +1324,70 @@ fn parse_sse(block: &str) -> Option<DaemonEvent> {
     }
     let data = serde_json::from_str(&data.join("\n")).ok()?;
     Some(DaemonEvent { id, kind, data })
+}
+
+#[cfg(test)]
+mod route_coverage {
+    /// 데몬 라우트 중 CLI가 부르지 않는 것과 그 까닭. 여기 없는 라우트는 모두 CLI(그래서 TUI)에서 닿아야 한다
+    const NOT_FOR_CLI: &[(&str, &str)] = &[
+        ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
+        ("/api/client/:id/heartbeat", "GUI 창 수명"),
+        ("/api/client/:id/unregister", "GUI 창 수명"),
+        ("/api/clients/launch", "GUI가 새 터미널에 CLI를 띄우는 길"),
+        ("/api/extensions/:id/gui", "GUI 번들"),
+        ("/api/extensions/:id/gui/styles", "GUI 번들"),
+        ("/api/extensions/:id/icon", "GUI 그림"),
+        ("/api/extensions/:id/i18n/:locale", "GUI 번들 문구"),
+        ("/api/server/:name/status", "이름 기반 옛 길 (CLI는 인스턴스 id 길)"),
+        ("/api/server/:name/start", "이름 기반 옛 길"),
+        ("/api/server/:name/stop", "이름 기반 옛 길"),
+        ("/api/instance/:id/managed/start", "start가 관리 모드를 데몬에 맡긴다"),
+    ];
+
+    /// 라우터 소스에서 `.route("…"` 경로를 모은다 (여러 줄에 걸친 것도)
+    fn routes(src: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = src;
+        while let Some(i) = rest.find(".route(") {
+            rest = &rest[i + 7..];
+            let start = rest.find('"').unwrap() + 1;
+            let end = start + rest[start..].find('"').unwrap();
+            out.push(rest[start..end].to_string());
+        }
+        out
+    }
+
+    /// CLI 소스의 `"/api…"`·`"/health"` 문자열 (쿼리는 뗀다)
+    fn calls(src: &str) -> Vec<String> {
+        src.split('"')
+            .map(|s| s.strip_prefix("{}").unwrap_or(s))
+            .filter(|s| (s.starts_with("/api/") || *s == "/health") && !s.contains(' '))
+            .map(|s| s.split('?').next().unwrap().to_string())
+            .collect()
+    }
+
+    /// `:x`와 `{}`는 아무 한 조각
+    fn same(route: &str, call: &str) -> bool {
+        let (r, c): (Vec<&str>, Vec<&str>) = (route.split('/').collect(), call.split('/').collect());
+        r.len() == c.len() && r.iter().zip(&c).all(|(a, b)| a == b || a.starts_with(':') || *b == "{}")
+    }
+
+    #[test]
+    fn every_daemon_route_is_reachable_from_the_cli() {
+        let mut all = routes(include_str!("../../src/ipc/mod.rs"));
+        all.extend(routes(include_str!("../../src/ipc/updates.rs")));
+        let used = calls(include_str!("client.rs"));
+        assert!(all.len() > 100, "router parse: {}", all.len());
+        let missing: Vec<&String> = all
+            .iter()
+            .filter(|r| !NOT_FOR_CLI.iter().any(|(n, _)| n == r) && !used.iter().any(|c| same(r, c)))
+            .collect();
+        assert!(missing.is_empty(), "routes the CLI cannot reach: {missing:#?}");
+        // 빼 둔 목록도 실제 라우트여야 한다 (지운 라우트가 남지 않게)
+        for (n, _) in NOT_FOR_CLI {
+            assert!(all.iter().any(|r| r == n), "{n} is not a daemon route any more");
+        }
+    }
 }
 
 #[cfg(test)]
