@@ -1649,16 +1649,15 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
         "extension_data": &instance.extension_data,
     });
 
-    let results = crate::plugin::with_instance(Some(state.host_context(&id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
+    let results = crate::plugin::with_instance(Some(state.host_context(id)), crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx)).await;
 
     // 첫 번째 성공 결과를 클라이언트로 전달
-    for (_ext_id, result) in results {
-        if let Ok(val) = result {
-            return Some(val);
-        }
+    if let Some(val) = results.iter().find_map(|(_, result)| result.as_ref().ok()) {
+        return Some(val.clone());
     }
+    // 모두 실패했으면 그 오류를 구조화해 돌려준다
     if let Some(error) = results.iter().find_map(|(_, result)| result.as_ref().err()) {
-        return (StatusCode::OK, Json(crate::plugin::error_response(error))).into_response();
+        return Some(crate::plugin::error_response(error));
     }
 
     // hook이 등록되지 않았거나 모두 condition 불일치
