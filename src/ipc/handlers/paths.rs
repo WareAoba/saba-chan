@@ -98,7 +98,8 @@ async fn move_component_dir(
     let target = component_dirs::target_for(kind, chosen, &layout)?;
     // 설치 폴더 안은 받지 않는다: 다음 설치가 그 설치 폴더를 거절하고, 제거기가 설치 폴더째 지운다 (설치기와 같은 규칙)
     if let Some(install) = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf)) {
-        if saba_chan_updater_lib::paths_overlap(&install, &target) {
+        let real = component_dirs::real_path;
+        if saba_chan_updater_lib::paths_overlap(&install, &target) || saba_chan_updater_lib::paths_overlap(&real(&install), &real(&target)) {
             return Err(PathError::new("overlaps_install", target.display().to_string()));
         }
     }

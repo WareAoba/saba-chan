@@ -575,6 +575,10 @@ pub fn check_components_dir(
     let mut finals = Vec::new();
     for kind in component_dirs::Kind::ALL {
         match component_dirs::target_for(kind, chosen, layout) {
+            // 옮길 자리는 비어 있어야 한다: 하나를 옮긴 뒤에야 다른 하나가 막혀 반쯤 옮겨지지 않게 미리 본다
+            Ok(target) if std::fs::read_dir(&target).is_ok_and(|mut it| it.next().is_some()) || target.is_file() => {
+                return Err(component_dirs::PathError::new("not_empty", target.display().to_string()));
+            }
             Ok(target) => finals.push(target),
             Err(e) if e.code == "same_as_current" => finals.push(layout.dir(kind).to_path_buf()),
             Err(e) => return Err(e),
@@ -583,7 +587,9 @@ pub fn check_components_dir(
     if saba_chan_updater_lib::paths_overlap(&finals[0], &finals[1]) {
         return Err(component_dirs::PathError::new("overlaps_other", finals[1].display().to_string()));
     }
-    if let Some(inside) = finals.iter().find(|t| saba_chan_updater_lib::paths_overlap(t, install_dir)) {
+    let real = component_dirs::real_path;
+    let inside_install = |t: &PathBuf| saba_chan_updater_lib::paths_overlap(t, install_dir) || saba_chan_updater_lib::paths_overlap(&real(t), &real(install_dir));
+    if let Some(inside) = finals.iter().find(|t| inside_install(t)) {
         return Err(component_dirs::PathError::new("overlaps_install", inside.display().to_string()));
     }
     Ok(())

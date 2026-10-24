@@ -378,7 +378,7 @@ pub fn staging_dir(dst: &Path) -> PathBuf {
 }
 
 /// 있는 가장 가까운 위 폴더까지 링크를 풀고 나머지를 붙인 경로 (없는 경로도 비교할 수 있게)
-fn real_path(path: &Path) -> PathBuf {
+pub fn real_path(path: &Path) -> PathBuf {
     let mut rest = Vec::new();
     let mut cur = path;
     loop {
