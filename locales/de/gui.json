@@ -1051,7 +1051,14 @@
     "backup_unreadable": "⚠ kann nicht geöffnet werden",
     "backup_unreadable_hint": "Dieses Backup kann nicht geöffnet und daher nicht wiederhergestellt werden. Ungenutzte Backup-Inhalte werden erst aufgeräumt, wenn du es löschst. Lösche es.",
     "err_backup_file_locked": "Der Server benutzt eine Datei ({{file}}), daher konnte kein Backup erstellt werden. Server stoppen und erneut versuchen.",
-    "err_autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten."
+    "err_autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten.",
+    "kind_snapshot": "Behaltenes Spiel-Backup",
+    "kind_game-snapshot": "Spiel-Autobackup",
+    "backup_keep_snapshot": "Spiel-Backup behalten",
+    "backup_keep_snapshot_hint": "Das neueste automatische Backup des Spiels als Saba-chan-Backup behalten. Sicher, auch wenn der Server läuft.",
+    "backup_snapshot_kept": "Das automatische Backup des Spiels wurde behalten",
+    "backup_game_snapshot": "Vom Spiel erstellt · nur wiederherstellen",
+    "err_snapshot_not_found": "Das Spiel hat kein automatisches Backup."
   },
   "chatbot": {
     "nav": "Sprechende Saba-chan",

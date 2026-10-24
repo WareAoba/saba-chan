@@ -828,9 +828,9 @@ impl Api {
     pub async fn backups(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/backups", seg(id))).await
     }
-    /// POST /api/instance/:id/backups — `{backup}`
-    pub async fn create_backup(&self, id: &str) -> Result<Value> {
-        self.post_long(&format!("/api/instance/{}/backups", seg(id)), json!({}))
+    /// POST /api/instance/:id/backups — `{backup}`. `body`: `{}`(지금 상태) 또는 `{source: "snapshot", snapshot?}`(게임 자동 백업 보관)
+    pub async fn create_backup(&self, id: &str, body: Value) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups", seg(id)), body)
             .await
     }
     pub async fn delete_backup(&self, id: &str, name: &str) -> Result<Value> {

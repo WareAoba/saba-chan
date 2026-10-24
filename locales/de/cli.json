@@ -237,6 +237,7 @@
       "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist.",
       "backup_file_locked": "Der Server benutzt eine Datei ({{file}}). Server stoppen und erneut versuchen: saba-chan-cli stop <Name>",
       "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
+      "snapshot_not_found": "Das Spiel hat kein automatisches Backup.",
       "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
       "module_busy": "Dieses Modul wird bereits installiert oder entfernt. Versuche es erneut, wenn das abgeschlossen ist.",
       "schedule_changed": "Der Zeitplan wurde an anderer Stelle geändert. Prüfe ihn mit saba-chan-cli schedule show und versuche es erneut.",
@@ -622,10 +623,13 @@
       "manual": "manuell",
       "scheduled": "geplant",
       "pre-update": "vor Update",
-      "pre-restore": "vor Wiederherstellung"
+      "pre-restore": "vor Wiederherstellung",
+      "snapshot": "Behaltenes Spiel-Backup",
+      "game-snapshot": "Spiel-Autobackup"
     },
     "none": "{{name}} hat noch keine Backups.",
     "creating": "{{name}} wird gesichert...",
+    "keeping_snapshot": "Spiel-Backup von {{name}} wird behalten…",
     "created": "Backup {{backup}} erstellt.",
     "confirm_delete": "Backup {{backup}} von {{name}} löschen? Das kann nicht rückgängig gemacht werden.",
     "deleted": "Backup {{backup}} gelöscht.",

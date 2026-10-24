@@ -210,6 +210,27 @@ describe('MaintenanceTab', () => {
         render(<MaintenanceTab server={{ id: 's', status: 'running' }} />);
         expect(await screen.findByRole('button', { name: 'Restore' })).toBeDisabled();
     });
+
+    it('게임 자동 백업: 보관 버튼은 스냅샷 원본으로 만들고, 목록의 게임 백업은 되돌리기만 된다', async () => {
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            snapshots_supported: true,
+            backups: [{ name: 'game-snapshot:S1', kind: 'game-snapshot', created: 1, readable: true }],
+        });
+        window.api.instanceBackupCreate = vi
+            .fn()
+            .mockResolvedValue({ success: true, backup: { name: 'x-snapshot.zip' } });
+        render(<MaintenanceTab server={stopped} />);
+        expect(await screen.findByText(/Made by the game/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Restore' })).toBeEnabled();
+        expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: /Keep game backup/ }));
+        await waitFor(() =>
+            expect(window.api.instanceBackupCreate).toHaveBeenCalledWith('srv1', { source: 'snapshot' }),
+        );
+    });
 });
 
 describe('챗봇 설정 변환', () => {

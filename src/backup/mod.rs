@@ -32,6 +32,8 @@ pub enum BackupKind {
     Scheduled,
     PreUpdate,
     PreRestore,
+    /// 게임이 스스로 만든 자동 백업(스냅샷)을 보관한 것. 수동처럼 정리하지 않는다
+    Snapshot,
 }
 
 impl BackupKind {
@@ -41,12 +43,13 @@ impl BackupKind {
             BackupKind::Scheduled => "scheduled",
             BackupKind::PreUpdate => "pre-update",
             BackupKind::PreRestore => "pre-restore",
+            BackupKind::Snapshot => "snapshot",
         }
     }
 
     fn from_name(name: &str) -> Option<Self> {
         let stem = name.strip_suffix(".zip")?;
-        [Self::Manual, Self::Scheduled, Self::PreUpdate, Self::PreRestore]
+        [Self::Manual, Self::Scheduled, Self::PreUpdate, Self::PreRestore, Self::Snapshot]
             .into_iter()
             .find(|k| stem.ends_with(&format!("-{}", k.as_str())))
     }
@@ -210,7 +213,13 @@ fn read_error(e: io::Error, path: &Path) -> anyhow::Error {
 
 /// `exclude`: 폴더 안에서 담지 않을 파일 이름 패턴 (`*` 가능. 예: 서버가 쥐고 있는 `session.lock`)
 pub fn create_excluding(dir: &Path, kind: BackupKind, paths: &[PathBuf], exclude: &[String]) -> Result<BackupInfo> {
-    if paths.is_empty() {
+    let entries: Vec<(PathBuf, PathBuf)> = paths.iter().map(|p| (p.clone(), p.clone())).collect();
+    create_from(dir, kind, &entries, exclude)
+}
+
+/// `entries`: (읽을 곳, 복원할 곳). 게임 스냅샷처럼 다른 자리의 내용을 원래 자리로 되돌릴 백업을 만든다
+pub fn create_from(dir: &Path, kind: BackupKind, entries: &[(PathBuf, PathBuf)], exclude: &[String]) -> Result<BackupInfo> {
+    if entries.is_empty() {
         bail!("nothing to back up: none of the module's backup paths exist");
     }
     fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
@@ -223,7 +232,7 @@ pub fn create_excluding(dir: &Path, kind: BackupKind, paths: &[PathBuf], exclude
     let final_path = dir.join(&name);
     let partial = dir.join(format!("{}.partial", name));
     let exclude: Vec<glob::Pattern> = exclude.iter().filter_map(|p| glob::Pattern::new(p).ok()).collect();
-    let written = write_v2(dir, &partial, paths, &exclude);
+    let written = write_v2(dir, &partial, entries, &exclude);
     if let Err(e) = written {
         let _ = fs::remove_file(&partial);
         // 이번에 넣은 내용은 어느 백업도 쓰지 않는다
@@ -420,7 +429,7 @@ impl V2Writer<'_> {
     }
 }
 
-fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf], exclude: &[glob::Pattern]) -> Result<()> {
+fn write_v2(dir: &Path, target: &Path, entries: &[(PathBuf, PathBuf)], exclude: &[glob::Pattern]) -> Result<()> {
     let started = now_ns();
     let mut w = V2Writer {
         dir,
@@ -431,13 +440,13 @@ fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf], exclude: &[glob::Patte
         manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started },
         summary: SummaryV2 { started, ..Default::default() },
     };
-    for (i, path) in paths.iter().enumerate() {
+    for (i, (source, path)) in entries.iter().enumerate() {
         let entry = i.to_string();
-        let is_file = path.is_file();
+        let is_file = source.is_file();
         if is_file {
-            w.add_file(path, &entry, "")?;
+            w.add_file(source, &entry, "")?;
         } else {
-            w.add_dir(path, &entry, "")?;
+            w.add_dir(source, &entry, "")?;
         }
         w.manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file });
     }
@@ -660,7 +669,7 @@ pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
     let mut seen: std::collections::HashMap<BackupKind, usize> = std::collections::HashMap::new();
     let removed: Vec<String> = list(dir)
         .into_iter()
-        .filter(|b| b.kind != BackupKind::Manual)
+        .filter(|b| !matches!(b.kind, BackupKind::Manual | BackupKind::Snapshot))
         .filter(|b| {
             let n = seen.entry(b.kind).or_default();
             *n += 1;

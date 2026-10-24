@@ -284,6 +284,7 @@
       "backup_busy": "このサーバーのバックアップまたは復元がすでに実行中です。終わってからもう一度試してください。",
       "backup_file_locked": "サーバーが使用中のファイル({{file}})があります。サーバーを停止してからやり直してください: saba-chan-cli stop 名前",
       "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
+      "snapshot_not_found": "ゲームが作った自動バックアップがありません.",
       "invalid_relay_url": "リレーのアドレスは https:// のみ使えます(この PC でのテスト用に localhost・127.0.0.1・[::1] の http だけは使えます)。",
       "module_busy": "このモジュールはすでにインストールまたは削除中です。終わってからもう一度試してください。",
       "schedule_changed": "予約タスクが別の場所で変更されました。saba-chan-cli schedule show で確認してからやり直してください。",
@@ -928,10 +929,13 @@
       "manual": "手動",
       "scheduled": "スケジュール",
       "pre-update": "アップデート前",
-      "pre-restore": "復元前"
+      "pre-restore": "復元前",
+      "snapshot": "ゲーム自動バックアップの保管",
+      "game-snapshot": "ゲーム自動バックアップ"
     },
     "none": "{{name}} にはまだバックアップがありません。",
     "creating": "{{name}} をバックアップしています...",
+    "keeping_snapshot": "{{name}} のゲームバックアップを保管中…",
     "created": "バックアップ {{backup}} を作成しました。",
     "confirm_delete": "{{name}} のバックアップ {{backup}} を削除しますか？元に戻せません。",
     "deleted": "バックアップ {{backup}} を削除しました。",

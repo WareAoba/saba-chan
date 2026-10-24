@@ -326,7 +326,8 @@
       "memory": "기억",
       "webSearch": "웹 검색",
       "disabledTools": "끈 도구 묶음",
-      "step": "단계"
+      "step": "단계",
+      "from_snapshot": "게임 자동 백업에서"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -339,7 +340,9 @@
         "manual": "직접",
         "scheduled": "예약",
         "pre-update": "업데이트 전",
-        "pre-restore": "복원 전"
+        "pre-restore": "복원 전",
+        "snapshot": "게임 자동 백업 보관",
+        "game-snapshot": "게임 자동 백업"
       },
       "events": "📜 **최근 시작·종료 기록**",
       "events_empty": "📭 기록이 없어요",
@@ -379,6 +382,8 @@
     "backup_busy": "다른 백업이나 되돌리기가 진행 중이에요",
     "server_running": "서버가 켜져 있어요. 먼저 꺼 주세요",
     "no_command_path": "사바쨩 밖에서 켠 서버라 명령을 보낼 수 없어요",
-    "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요"
+    "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요",
+    "snapshot_not_found": "게임이 만든 자동 백업이 없어요",
+    "snapshot_not_deletable": "게임이 만든 자동 백업은 사바쨩에서 지울 수 없어요"
   }
 }

@@ -294,6 +294,7 @@
       "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요.",
       "backup_file_locked": "서버가 쓰고 있는 파일({{file}})이 있어요. 서버를 끈 뒤 다시 하세요: saba-chan-cli stop 이름",
       "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요: saba-chan-cli restart <name>",
+      "snapshot_not_found": "게임이 만든 자동 백업이 없어요.",
       "invalid_relay_url": "릴레이 주소는 https:// 주소만 쓸 수 있어요(이 PC에서 시험할 때만 localhost·127.0.0.1·[::1]의 http를 쓸 수 있어요).",
       "module_busy": "이 모듈을 이미 설치하거나 지우는 중이에요. 끝난 뒤 다시 해 주세요.",
       "schedule_changed": "다른 곳에서 예약 작업이 바뀌었어요. saba-chan-cli schedule show로 다시 확인한 뒤 해 주세요.",
@@ -938,10 +939,13 @@
       "manual": "직접",
       "scheduled": "예약",
       "pre-update": "업데이트 전",
-      "pre-restore": "되돌리기 전"
+      "pre-restore": "되돌리기 전",
+      "snapshot": "게임 자동 백업 보관",
+      "game-snapshot": "게임 자동 백업"
     },
     "none": "{{name}}에는 아직 백업이 없어요.",
     "creating": "{{name}} 백업하는 중...",
+    "keeping_snapshot": "{{name}}의 게임 자동 백업을 보관하는 중…",
     "created": "백업 {{backup}}을(를) 만들었어요.",
     "confirm_delete": "{{name}}의 백업 {{backup}}을(를) 지울까요? 되돌릴 수 없어요.",
     "deleted": "백업 {{backup}}을(를) 지웠어요.",

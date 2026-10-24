@@ -249,6 +249,11 @@ pub struct ModuleBackup {
     /// 백업할 폴더 안에서 담지 않을 파일 이름 패턴 (`*` 가능). 서버가 켜져 있는 동안 잠가 두는 파일용 (예: "session.lock")
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exclude: Vec<String>,
+    /// true면 lifecycle `backup_snapshots(config)`가 게임이 스스로 만든 자동 백업(스냅샷)을
+    /// `{"success": true, "snapshots": [{"id", "created", "paths": [{"from", "to"}]}]}`(새것부터)로 준다.
+    /// 백업 목록에 함께 보이고, 사바쨩 백업으로 보관하거나 바로 복원할 수 있다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub snapshots: bool,
     /// true면 lifecycle `backup_paths(config)`가 `{"success": true, "paths": [...]}`로 경로를 준다
     /// (세이브 위치를 모듈 코드가 계산하는 게임용). `paths`에 더해진다
     #[serde(default)]

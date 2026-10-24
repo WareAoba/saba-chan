@@ -326,7 +326,8 @@
       "memory": "记忆",
       "webSearch": "网页搜索",
       "disabledTools": "已关闭的工具组",
-      "step": "步骤"
+      "step": "步骤",
+      "from_snapshot": "来自游戏自动备份"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -339,7 +340,9 @@
         "manual": "手动",
         "scheduled": "计划",
         "pre-update": "更新前",
-        "pre-restore": "恢复前"
+        "pre-restore": "恢复前",
+        "snapshot": "保留的游戏备份",
+        "game-snapshot": "游戏自动备份"
       },
       "events": "📜 **最近的启动与停止记录**",
       "events_empty": "📭 没有记录",
@@ -379,6 +382,8 @@
     "backup_busy": "另一个备份或还原正在进行",
     "server_running": "服务器正在运行。请先关闭",
     "no_command_path": "服务器是在 Saba-chan 之外启动的，无法接收命令",
-    "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器"
+    "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器",
+    "snapshot_not_found": "游戏没有自动备份",
+    "snapshot_not_deletable": "Saba-chan 不能删除游戏自己的自动备份"
   }
 }

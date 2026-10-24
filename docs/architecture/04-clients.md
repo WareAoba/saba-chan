@@ -140,7 +140,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceAgreements (956) | POST /api/instance/:id/agreements `{accept:[id]}` (모듈 약관 동의) | ✓ 687 |
 | onboarding (957) | GET /api/onboarding (J1-a 다음 할 일) | ✓ 639 |
 | daemonDiagnostics | GET /api/diagnostics(버전·pid·데이터 폴더·토큰 파일 유무·최근 경고). 실패하면 `{success:false, error}`(설정 > 고급 `DiagnosticsPanel`) | ✓ 674 |
-| instanceBackups…instanceScheduleSave (958-970) | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 690-693 |
+| instanceBackups…instanceScheduleSave (958-970) | GET/POST …/backups(`instanceBackupCreate(id, body?)`: `{source:"snapshot"}`이면 게임 자동 백업 보관), DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 690-693 |
 | chatbotGet/Save/Clear/ClearMemory (971-975) | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 793-794 (chatbotClear 미사용) |
 | chatbotModels | GET /api/relay/node/:guildId/chatbot/models (릴레이 답 그대로: `{models, selected, effectiveModel}`, 409 NO_API_KEY·422·503) | ✓ 챗봇 화면 모델 드롭다운. 고른 모델을 대신 쓰는 중이면(`effectiveModel`≠`model`) 알리고 그 모델을 고른 상태로 둔다 |
 | relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 782-783 |

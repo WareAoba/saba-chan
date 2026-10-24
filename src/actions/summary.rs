@@ -104,9 +104,12 @@ pub(super) fn label_backups(result: &mut Value, cat: &Catalog) {
     for b in result.get_mut("backups").and_then(Value::as_array_mut).into_iter().flatten() {
         let kind = cat.t(&format!("actions.summary.backup_kind.{}", str_of(b, "kind")), &[]);
         let when = local_time(b.get("created").and_then(Value::as_u64).unwrap_or(0));
-        let size = bytes(b.get("size").and_then(Value::as_u64).unwrap_or(0));
         let note = unreadable_note(b, cat);
-        b["label"] = Value::String(format!("{} · {} · {}{}", when, kind, size, note));
+        // 게임 자동 백업(game-snapshot)은 크기를 재지 않는다
+        b["label"] = Value::String(match b.get("size").and_then(Value::as_u64) {
+            Some(size) => format!("{} · {} · {}{}", when, kind, bytes(size), note),
+            None => format!("{} · {}{}", when, kind, note),
+        });
     }
 }
 

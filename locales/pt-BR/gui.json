@@ -1051,7 +1051,14 @@
     "backup_unreadable": "⚠ não pode ser aberto",
     "backup_unreadable_hint": "Este backup não pode ser aberto. Ele não pode ser restaurado, e o conteúdo de backup não usado só é limpo depois que ele for excluído. Exclua-o.",
     "err_backup_file_locked": "O servidor está usando um arquivo ({{file}}), então o backup não foi feito. Desligue o servidor e tente de novo.",
-    "err_autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor."
+    "err_autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor.",
+    "kind_snapshot": "Backup do jogo guardado",
+    "kind_game-snapshot": "Backup automático do jogo",
+    "backup_keep_snapshot": "Guardar backup do jogo",
+    "backup_keep_snapshot_hint": "Guarda o backup automático mais recente do jogo como backup do Saba-chan. Seguro mesmo com o servidor ligado.",
+    "backup_snapshot_kept": "O backup automático do jogo foi guardado",
+    "backup_game_snapshot": "Feito pelo jogo · só restaurar",
+    "err_snapshot_not_found": "O jogo não tem backup automático."
   },
   "chatbot": {
     "nav": "Saba-chan falante",
