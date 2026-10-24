@@ -805,24 +805,25 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         let _ = std::fs::create_dir_all(d);
     }
     let mut grants = appcontainer::Grants::default();
-    let mut add = |path: &Path, access| grants.push(path, access, &data_dir, home);
+    // 모든 구성요소가 함께 읽는 폴더는 프로필마다 주지 않고 한 번만 준다 (ACE가 구성요소 수만큼 쌓이지 않게)
     // Python: venv와 그 기반 설치
     if let Some(venv) = python_exe.parent().and_then(Path::parent) {
-        add(venv, Access::Read);
+        grants.push_shared(venv, Access::Read, &data_dir, home);
     }
     if let Some(base) = appcontainer::venv_home(python_exe) {
-        add(&base, Access::Read);
+        grants.push_shared(&base, Access::Read, &data_dir, home);
     }
-    add(&dir, Access::Read);
     let modules = crate::plugin::resolve_modules_dir();
     let extensions = crate::plugin::resolve_extensions_dir();
-    add(&modules, Access::Read);
-    add(&extensions, Access::Read);
+    grants.push_shared(&modules, Access::Read, &data_dir, home);
+    grants.push_shared(&extensions, Access::Read, &data_dir, home);
     // PYTHONPATH의 익스텐션 상위 폴더: `import extensions.x`에 목록만 필요하다
     if let Some(parent) = extensions.parent() {
-        add(parent, Access::List);
+        grants.push_shared(parent, Access::List, &data_dir, home);
     }
-    add(&data_dir.join("python-guard"), Access::Read);
+    grants.push_shared(&data_dir.join("python-guard"), Access::Read, &data_dir, home);
+    let mut add = |path: &Path, access| grants.push(path, access, &data_dir, home);
+    add(&dir, Access::Read);
     add(&pycache, Access::Write);
     add(&temp, Access::Write);
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
@@ -856,7 +857,11 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     add(&extension_root, Access::Write);
     // 런타임은 없어도 되는 권한: 주지 못하면 그 폴더만 빼고 띄운다 (Java를 쓰지 않는 구성요소까지 막지 않게)
     for runtime in runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
+        let before = grants.entries.len();
         grants.push_optional(&runtime, Access::Read, &data_dir, home);
+        if let Some(entry) = grants.entries.get(before).cloned() {
+            grants.shared.push(entry);
+        }
     }
     let profile = appcontainer::profile_for(&key);
     Some(Isolation { key, dir, profile, grants, pycache, temp, data, extension_root })
