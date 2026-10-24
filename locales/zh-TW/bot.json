@@ -200,16 +200,20 @@
     "server": {
       "status": {
         "title": "伺服器狀態",
-        "description": "單一伺服器的狀態"
+        "description": "單一伺服器的狀態",
+        "name": "狀態"
       },
       "start": {
-        "title": "啟動伺服器"
+        "title": "啟動伺服器",
+        "name": "啟動"
       },
       "stop": {
-        "title": "停止伺服器"
+        "title": "停止伺服器",
+        "name": "停止"
       },
       "restart": {
-        "title": "重新啟動伺服器"
+        "title": "重新啟動伺服器",
+        "name": "重新啟動"
       },
       "console": {
         "tail": {

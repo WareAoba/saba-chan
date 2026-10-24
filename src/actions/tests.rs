@@ -205,6 +205,22 @@ fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
     assert!(actions.iter().all(|a| a["id"] != "instance.delete" && a["id"] != "extension.enable"));
 }
 
+// 사용자 요청(2026-10-24): 서버 슬래시 루트 아래 이름은 "서버-상태"가 아니라 "상태"처럼 짧게. 제목은 그대로 두고
+// 짧은 이름(`actions.<id>.name`)을 따로 싣는다. 이름이 없는 액션은 `name` 키가 없다
+#[test]
+fn heartbeat_actions_carry_short_names_for_the_server_root() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = |id: &str| actions.iter().find(|a| a["id"] == id).unwrap().clone();
+    for (id, ko, en) in [("server.status", "상태", "Status"), ("server.start", "시작", "Start"), ("server.stop", "정지", "Stop"), ("server.restart", "재시작", "Restart")] {
+        let a = item(id);
+        assert_eq!(a["name"]["ko"], ko, "{id}");
+        assert_eq!(a["name"]["en"], en, "{id}");
+        assert_eq!(a["name"].as_object().unwrap().len(), crate::chat::i18n::languages().len(), "{id} in every locale");
+        assert!(a["title"]["ko"].as_str().unwrap().starts_with("서버"), "{id} title stays");
+    }
+    assert!(item("backup.create").get("name").is_none());
+}
+
 // 실사용: 디스코드 "/작업"에 길드 설정 작업이 "guild" 필수 칸과 함께 보였다. 길드 설정은 "/사바쨩" 전용 명령이
 // 같은 액션을 부르므로 메뉴에는 싣지 않고, 원격 요청이 스스로 채우는 길드 칸은 어느 메뉴 입력에도 두지 않는다
 #[test]

@@ -200,16 +200,20 @@
     "server": {
       "status": {
         "title": "서버 상태",
-        "description": "서버 하나의 상태"
+        "description": "서버 하나의 상태",
+        "name": "상태"
       },
       "start": {
-        "title": "서버 시작"
+        "title": "서버 시작",
+        "name": "시작"
       },
       "stop": {
-        "title": "서버 정지"
+        "title": "서버 정지",
+        "name": "정지"
       },
       "restart": {
-        "title": "서버 재시작"
+        "title": "서버 재시작",
+        "name": "재시작"
       },
       "console": {
         "tail": {

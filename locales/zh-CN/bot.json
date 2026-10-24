@@ -200,16 +200,20 @@
     "server": {
       "status": {
         "title": "服务器状态",
-        "description": "单个服务器的状态"
+        "description": "单个服务器的状态",
+        "name": "状态"
       },
       "start": {
-        "title": "启动服务器"
+        "title": "启动服务器",
+        "name": "启动"
       },
       "stop": {
-        "title": "停止服务器"
+        "title": "停止服务器",
+        "name": "停止"
       },
       "restart": {
-        "title": "重启服务器"
+        "title": "重启服务器",
+        "name": "重启"
       },
       "console": {
         "tail": {
