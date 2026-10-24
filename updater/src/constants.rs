@@ -103,7 +103,7 @@ pub fn default_install_dir() -> PathBuf {
     {
         let program_files = ["ProgramW6432", "ProgramFiles"]
             .iter()
-            .filter_map(|k| std::env::var_os(k))
+            .filter_map(std::env::var_os)
             .find(|v| !v.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));

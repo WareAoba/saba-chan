@@ -594,16 +594,35 @@ pub fn check_components_dir(
 fn move_components(chosen: &Path) -> Result<Vec<PathBuf>, component_dirs::PathError> {
     let config = ConfigFile::default_location();
     let mut left = Vec::new();
+    // 옮긴 것 (종류, 원래 폴더, 새 폴더): 다음 것이 실패하면 되돌려 둘 다 원래 자리에 둔다
+    let mut done: Vec<(component_dirs::Kind, PathBuf, PathBuf)> = Vec::new();
     for kind in component_dirs::Kind::ALL {
         if component_dirs::resolve(kind).1 == component_dirs::Source::Env {
             tracing::warn!("{} is fixed by {}; not moving it", kind.dir_name(), kind.env_var());
             continue;
         }
         // 앞에서 옮긴 폴더가 반영되게 매번 다시 읽는다
-        if let Some((path, moved)) = component_dirs::move_to(kind, chosen, &component_dirs::Layout::current(), &config)?
-        {
-            tracing::info!("Moved {} to {}", kind.dir_name(), path.display());
-            left.extend(moved.left_behind);
+        let layout = component_dirs::Layout::current();
+        let before = layout.dir(kind).to_path_buf();
+        match component_dirs::move_to(kind, chosen, &layout, &config) {
+            Ok(Some((path, moved))) => {
+                tracing::info!("Moved {} to {}", kind.dir_name(), path.display());
+                left.extend(moved.left_behind);
+                done.push((kind, before, path));
+            }
+            Ok(None) => {}
+            Err(mut e) => {
+                for (kind, old, new) in done.into_iter().rev() {
+                    let back = component_dirs::relocate(&new, &old, || {
+                        component_dirs::save_choice(&config, kind, &old, &layout.data_dir)
+                    });
+                    if let Err(back) = back {
+                        tracing::error!("Could not move {} back to {}: {}", kind.dir_name(), old.display(), back);
+                        e.detail = format!("{}; {} stayed in {}", e.detail, kind.dir_name(), new.display());
+                    }
+                }
+                return Err(e);
+            }
         }
     }
     Ok(left)

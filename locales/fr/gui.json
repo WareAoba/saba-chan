@@ -1497,6 +1497,7 @@
     "err_has_link": "Le dossier contient un lien ({{detail}}). Supprimez-le puis réessayez.",
     "err_copy_failed": "La copie a échoué. Rien n'a été modifié. Vérifiez l'espace libre et réessayez.",
     "err_verify_failed": "La copie ne correspondait pas à l'original. Rien n'a été modifié. Réessayez.",
-    "err_commit_failed": "Impossible d'enregistrer le paramètre. Les fichiers ont été remis en place."
+    "err_commit_failed": "Impossible d'enregistrer le paramètre. Les fichiers ont été remis en place.",
+    "err_overlaps_install": "Impossible de le placer dans le dossier d'installation de Saba-chan. Choisissez un dossier en dehors."
   }
 }

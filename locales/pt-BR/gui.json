@@ -1497,6 +1497,7 @@
     "err_has_link": "A pasta tem um link dentro ({{detail}}). Remova-o e tente de novo.",
     "err_copy_failed": "A cópia falhou. Nada foi alterado. Verifique o espaço livre e tente de novo.",
     "err_verify_failed": "A cópia não confere com o original. Nada foi alterado. Tente de novo.",
-    "err_commit_failed": "Não foi possível salvar a configuração. Os arquivos voltaram para onde estavam."
+    "err_commit_failed": "Não foi possível salvar a configuração. Os arquivos voltaram para onde estavam.",
+    "err_overlaps_install": "Não pode ficar dentro da pasta de instalação do Saba-chan. Escolha uma pasta fora dela."
   }
 }

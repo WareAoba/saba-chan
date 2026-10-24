@@ -96,6 +96,12 @@ async fn move_component_dir(
 ) -> Result<(PathBuf, component_dirs::Relocated), PathError> {
     let busy = |what: &str| PathError::new("busy", what.to_string());
     let target = component_dirs::target_for(kind, chosen, &layout)?;
+    // 설치 폴더 안은 받지 않는다: 다음 설치가 그 설치 폴더를 거절하고, 제거기가 설치 폴더째 지운다 (설치기와 같은 규칙)
+    if let Some(install) = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf)) {
+        if saba_chan_updater_lib::paths_overlap(&install, &target) {
+            return Err(PathError::new("overlaps_install", target.display().to_string()));
+        }
+    }
     let source = layout.dir(kind).to_path_buf();
 
     let Ok(_dirs) = IN_USE.try_write() else {
@@ -219,6 +225,10 @@ mod tests {
                 .unwrap_err();
             assert_eq!((err.code, err.detail.as_str()), ("busy", "update"));
         }
+        // Codex 리뷰 #544: 설치 폴더(데몬 실행 파일 폴더) 안은 설치기처럼 거절한다
+        let install = std::env::current_exe().unwrap().parent().unwrap().join("games");
+        let err = move_component_dir(&state, Kind::Modules, &install, layout.clone(), config.clone()).await.unwrap_err();
+        assert_eq!(err.code, "overlaps_install");
         assert!(old.join("pathgame").join("module.toml").is_file());
         assert!(!chosen.exists());
         assert_eq!(

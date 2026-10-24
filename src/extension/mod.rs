@@ -1689,8 +1689,6 @@ impl HookPlan {
     /// 실패한 익스텐션은 기록만 하고 다음으로 넘어간다.
     pub async fn run(self, timeout_secs: u64) -> Vec<(String, Result<Value>)> {
         let mut results = Vec::new();
-        // 도는 동안 익스텐션 폴더를 옮기지 못하게 한다 (hook이 그 폴더에 파일을 쓸 수 있다)
-        let _in_use = if self.calls.is_empty() { None } else { Some(crate::ipc::handlers::paths::components_in_use().await) };
         for call in self.calls {
             let (module_path, function) = match call.target {
                 Ok(t) => t,
@@ -1732,6 +1730,8 @@ pub async fn run_hook_timed(
     context: Value,
     timeout_secs: u64,
 ) -> Vec<(String, Result<Value>)> {
+    // 계획(옛 경로)부터 실행이 끝날 때까지 익스텐션 폴더를 옮기지 못하게 한다 (hook이 그 폴더의 파일을 실행하고 쓴다)
+    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, None);
     plan.run(timeout_secs).await
 }
@@ -1743,6 +1743,7 @@ pub async fn run_hook_to(
     hook_name: &str,
     context: Value,
 ) -> Option<Result<Value>> {
+    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, Some(ext_id));
     plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next().map(|(_, r)| r)
 }

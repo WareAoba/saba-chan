@@ -17,6 +17,7 @@ const MOVE_ERRORS = [
     'same_as_current',
     'overlaps_current',
     'overlaps_other',
+    'overlaps_install',
     'not_empty',
     'not_writable',
     'has_link',
