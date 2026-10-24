@@ -243,6 +243,22 @@ pub fn save_choice(
         .map(|_| ())
 }
 
+/// 옮기기를 확정한다: 설치 기록(`installed-files.json`, 절대 경로)을 새 폴더로 바꾸고 `config.json`에 적는다.
+/// 설정을 쓰지 못하면 기록도 되돌린다 ([`relocate`]의 `commit`으로 부른다)
+pub fn commit_move(
+    config: &crate::config_file::ConfigFile,
+    kind: Kind,
+    src: &Path,
+    dst: &Path,
+    data_dir: &Path,
+) -> std::io::Result<()> {
+    let records = data_dir.join("installed-files.json");
+    crate::integrity::rebase_at(&records, src, dst).map_err(std::io::Error::other)?;
+    save_choice(config, kind, dst, data_dir).inspect_err(|_| {
+        let _ = crate::integrity::rebase_at(&records, dst, src);
+    })
+}
+
 /// 고른 폴더로 옮기고 설정에 적는다. 이미 그 폴더면 아무것도 하지 않는다 (`Ok(None)`).
 /// 아무것도 그 폴더를 쓰지 않을 때만 부른다 (설치기는 데몬을 끈 뒤, 데몬은 [`relocate`]를 잠금 안에서 직접 부른다)
 pub fn move_to(
@@ -256,7 +272,7 @@ pub fn move_to(
         other => other?,
     };
     let moved = relocate(layout.dir(kind), &target, || {
-        save_choice(config, kind, &target, &layout.data_dir)
+        commit_move(config, kind, layout.dir(kind), &target, &layout.data_dir)
     })?;
     Ok(Some((target, moved)))
 }

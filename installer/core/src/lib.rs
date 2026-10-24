@@ -625,7 +625,7 @@ fn move_components(chosen: &Path) -> Result<Vec<PathBuf>, component_dirs::PathEr
             Err(mut e) => {
                 for (kind, old, new) in done.into_iter().rev() {
                     let back = component_dirs::relocate(&new, &old, || {
-                        component_dirs::save_choice(&config, kind, &old, &layout.data_dir)
+                        component_dirs::commit_move(&config, kind, &new, &old, &layout.data_dir)
                     });
                     if let Err(back) = back {
                         tracing::error!("Could not move {} back to {}: {}", kind.dir_name(), old.display(), back);
