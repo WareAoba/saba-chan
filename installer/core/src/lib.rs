@@ -579,6 +579,11 @@ pub fn check_components_dir(
             Ok(target) if std::fs::read_dir(&target).is_ok_and(|mut it| it.next().is_some()) || target.is_file() => {
                 return Err(component_dirs::PathError::new("not_empty", target.display().to_string()));
             }
+            // 원본 안 링크도 미리 본다: 옮기는 도중에 거절되면 앞서 옮긴 폴더를 되돌리지 못할 수 있다
+            Ok(_) if component_dirs::first_link(layout.dir(kind)).is_some() => {
+                let link = component_dirs::first_link(layout.dir(kind)).unwrap_or_default();
+                return Err(component_dirs::PathError::new("has_link", link.display().to_string()));
+            }
             Ok(target) => finals.push(target),
             Err(e) if e.code == "same_as_current" => finals.push(layout.dir(kind).to_path_buf()),
             Err(e) => return Err(e),

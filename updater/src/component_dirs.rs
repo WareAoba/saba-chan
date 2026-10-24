@@ -410,7 +410,7 @@ pub fn is_owned(dir: &Path) -> bool {
     dir.join(OWNED_MARKER).is_file()
 }
 
-fn first_link(root: &Path) -> Option<PathBuf> {
+pub fn first_link(root: &Path) -> Option<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
