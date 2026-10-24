@@ -110,19 +110,7 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
     }
     // 읽을 수 없는 기록을 이 키 하나로 덮어쓰면 다른 컴포넌트의 기록이 사라진다.
     // 내용이 깨진 기록(UTF-8이 아닌 것 포함)은 옆으로 옮겨 두고 새로 쓴다. 그대로 두면 기록이 영영 안 되어 모든 모듈·익스텐션이 다시 받기 대상으로 남는다
-    let mut records: InstalledFiles = match crate::read_json(path) {
-        Ok(records) => records.unwrap_or_default(),
-        Err(e) if path.is_file() && std::fs::read(path).is_ok() => {
-            let corrupt = path.with_extension(format!(
-                "json.corrupt-{}",
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-            ));
-            std::fs::rename(path, &corrupt).map_err(|e| e.to_string())?;
-            tracing::warn!("[Integrity] {} was unreadable ({}); moved to {}", path.display(), e, corrupt.display());
-            InstalledFiles::default()
-        }
-        Err(e) => return Err(e),
-    };
+    let mut records: InstalledFiles = crate::read_json_for_update(path)?.unwrap_or_default();
     records.insert(component_key.to_string(), hashes);
     let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
     crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())

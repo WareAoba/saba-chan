@@ -54,22 +54,26 @@ use version::SemVer;
 
 /// 같은 폴더의 임시 파일에 쓰고 이름을 바꿔 `path`를 통째로 바꾼다. 쓰다 끊겨도 반쯤 쓰인 파일이 남지 않는다
 pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    std::fs::create_dir_all(dir)?;
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp = dir.join(format!(".{}.{}-{}.tmp", name, std::process::id(), seq));
-    let written = std::fs::File::create(&tmp).and_then(|mut f| {
-        f.write_all(contents)?;
-        f.sync_all()
-    });
-    let result = written.and_then(|_| std::fs::rename(&tmp, path));
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+    saba_atomic_file::write(path, contents, saba_atomic_file::Mode::Plain)
+}
+
+/// 고쳐 쓰려고 기록 파일을 읽는다. 없으면 `None`. 내용이 깨졌으면(UTF-8이 아닌 것 포함) `<이름>.corrupt-<초>`로
+/// 옮겨 두고 `None`: 그대로 두면 기록이 영영 안 되고, 새 값으로 덮어쓰면 다른 항목이 흔적 없이 사라진다.
+/// 파일을 읽지 못하면(권한 등) 오류
+pub(crate) fn read_json_for_update<T: serde::de::DeserializeOwned>(path: &Path) -> std::result::Result<Option<T>, String> {
+    match read_json(path) {
+        Ok(value) => Ok(value),
+        Err(e) if path.is_file() && std::fs::read(path).is_ok() => {
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            let mut corrupt = path.as_os_str().to_os_string();
+            corrupt.push(format!(".corrupt-{secs}"));
+            let corrupt = PathBuf::from(corrupt);
+            std::fs::rename(path, &corrupt).map_err(|e| e.to_string())?;
+            tracing::warn!("{} was unreadable ({}); moved to {}", path.display(), e, corrupt.display());
+            Ok(None)
+        }
+        Err(e) => Err(e),
     }
-    result
 }
 
 /// JSON 파일을 읽는다. 없으면 `None`. 읽거나 해석할 수 없으면 오류: 고쳐 쓰는 쪽이 덮어쓰지 않게
@@ -477,6 +481,8 @@ pub struct UpdateManager {
     staging_dir: PathBuf,
     /// 설치 루트 디렉터리 (다운로드/적용 기준)
     install_root: PathBuf,
+    /// 설치 기록(installed-manifest.json). 적용 결과를 여기에 적는다
+    installed_manifest_file: PathBuf,
     /// 마지막으로 받은 서명 검증된 manifest. 무결성·의존성 검사와 다운로드가 같이 쓴다
     cached_manifest: Option<ReleaseManifest>,
     /// 마지막으로 확인한 릴리즈 (버전·패치노트). 받아 둘 때 적용 결과에 실으려고 남긴다 (A5)
@@ -524,6 +530,7 @@ impl UpdateManager {
             extensions_dir,
             staging_dir,
             install_root,
+            installed_manifest_file: crate::constants::resolve_installed_manifest_path(),
             cached_manifest: None,
             latest_release: None,
             download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
@@ -1203,6 +1210,7 @@ impl UpdateManager {
     /// 적용 중 꺼져 남은 파일을 정리한다 (설치 폴더 바로 안만). 적용하는 프로세스만 적용 직전에 부른다:
     /// 다른 프로세스(데몬 시작 등)가 적용 도중에 부르면 비켜 둔 백업을 되돌리고 쓰는 중인 파일을 지운다
     pub fn settle_interrupted_updates(&self) {
+        self.restore_moved_aside_exes();
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
@@ -1225,21 +1233,53 @@ impl UpdateManager {
         }
     }
 
+    /// 설치 폴더의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`).
+    /// (경로, 실행 파일 이름 줄기, 번호(`.old`는 0), GUI인가)
+    fn old_exe_backups(&self) -> Vec<(PathBuf, String, u32, bool)> {
+        let Ok(entries) = std::fs::read_dir(&self.install_root) else { return Vec::new() };
+        let mut found = Vec::new();
+        for path in entries.flatten().map(|e| e.path()) {
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            let Some((stem, tail)) = name.split_once(".exe.old") else { continue };
+            let number = match tail.strip_prefix('.') {
+                None if tail.is_empty() => 0,
+                Some(n) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => n.parse().unwrap_or(u32::MAX),
+                _ => continue,
+            };
+            let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
+            if gui || stem.starts_with("saba-") {
+                found.push((path.clone(), stem.to_string(), number, gui));
+            }
+        }
+        found
+    }
+
+    /// 실행 파일이 아예 없는 것: 비켜 둔 뒤 새 판을 두기 전에 적용이 끊겼다. 가장 최근 사본(번호가 가장 큰 것)을 되돌린다.
+    /// (낮은 번호가 남아 있는 것은 그때 아직 쥐고 있어 지우지 못한 더 옛 사본이다)
+    fn restore_moved_aside_exes(&self) {
+        let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
+        for (path, stem, number, gui) in self.old_exe_backups() {
+            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(format!("{stem}.exe")).exists() };
+            if present {
+                continue;
+            }
+            if latest.get(&stem).is_none_or(|(_, n)| number > *n) {
+                latest.insert(stem, (path, number));
+            }
+        }
+        for (stem, (path, _)) in latest {
+            let exe = self.install_root.join(format!("{stem}.exe"));
+            match std::fs::rename(&path, &exe) {
+                Ok(()) => tracing::warn!("[Updater] Restored {} from {} (an earlier apply was interrupted)", exe.display(), path.display()),
+                Err(e) => tracing::warn!("[Updater] Cannot restore {} from {}: {}", exe.display(), path.display(), e),
+            }
+        }
+    }
+
     /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old`(`.exe.old.<n>` 포함) 백업을 지운다 (설치 폴더 바로 안만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
     pub fn cleanup_old_files(&self) {
-        let Ok(entries) = std::fs::read_dir(&self.install_root) else { return };
-        for path in entries.flatten().map(|e| e.path()) {
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
-            // `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`)
-            let Some((stem, tail)) = name.split_once(".exe.old") else { continue };
-            if !(tail.is_empty() || tail.strip_prefix('.').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))) {
-                continue;
-            }
-            let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
-            if !(gui || stem.starts_with("saba-")) {
-                continue;
-            }
+        for (path, stem, _, gui) in self.old_exe_backups() {
             // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
             let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(format!("{stem}.exe")).exists() };
             if !replaced {
@@ -1348,7 +1388,8 @@ impl UpdateManager {
             if let Some(comp_state) = self.status.components.iter()
                 .find(|c| &c.component == component)
             {
-                if let Err(e) = Self::update_installed_version(
+                if let Err(e) = Self::update_installed_version_at(
+                    &self.installed_manifest_file,
                     &component.manifest_key(),
                     &comp_state.current_version,
                 ) {

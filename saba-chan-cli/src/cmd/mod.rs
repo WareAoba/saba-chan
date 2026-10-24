@@ -7,6 +7,7 @@ pub mod chatbot;
 pub mod config;
 pub mod console;
 pub mod daemon;
+pub mod discord_words;
 pub mod do_action;
 pub mod events;
 pub mod extension;
@@ -18,6 +19,7 @@ pub mod sandbox;
 pub mod schedule;
 pub mod server;
 pub mod status;
+pub mod uninstall;
 pub mod update;
 
 use crate::cli::Cmd;
@@ -65,6 +67,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
         Cmd::Tui => Box::pin(crate::tui::run(ctx)).await,
         Cmd::Install(a) => install::run(ctx, a).await,
+        Cmd::Uninstall(a) => uninstall::run(ctx, a).await,
     }
 }
 
@@ -100,6 +103,7 @@ fn needs_daemon(cmd: &Cmd) -> bool {
             | Cmd::Shell
             | Cmd::Tui
             | Cmd::Install(_)
+            | Cmd::Uninstall(_)
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
 }
@@ -365,6 +369,31 @@ pub fn set_path(root: &mut Value, path: &str, value: Value) {
 
 pub fn get_path<'v>(root: &'v Value, path: &str) -> Option<&'v Value> {
     path.split('.').try_fold(root, |v, part| v.get(part))
+}
+
+/// 고친 경로만 담은 merge patch (null은 그 키를 지운다). 읽은 때의 revision을 실어, 그사이 다른 곳이 바꿨으면
+/// 데몬이 409 `settings_changed`로 거절한다
+pub fn config_patch(cfg: &Value, changes: Vec<(String, Value)>) -> Value {
+    let mut patch = Map::new();
+    if let Some(revision) = cfg.get("revision") {
+        patch.insert("revision".into(), revision.clone());
+    }
+    for (key, value) in changes {
+        let mut cur = &mut patch;
+        let mut parts = key.split('.').peekable();
+        while let Some(part) = parts.next() {
+            if parts.peek().is_none() {
+                cur.insert(part.to_string(), value);
+                break;
+            }
+            let next = cur.entry(part.to_string()).or_insert_with(|| Value::Object(Map::new()));
+            if !next.is_object() {
+                *next = Value::Object(Map::new());
+            }
+            cur = next.as_object_mut().expect("object");
+        }
+    }
+    Value::Object(patch)
 }
 
 /// 중첩 객체를 `a.b = 값` 줄로 펼친다

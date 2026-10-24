@@ -1,0 +1,14 @@
+[package]
+name = "saba-atomic-file"
+version = "0.1.8"
+edition = "2021"
+authors = ["WareAoba"]
+description = "Whole-file replace through a temp file, shared by every saba-chan crate"
+repository = "https://github.com/WareAoba/saba-chan"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+tempfile = "3.8"

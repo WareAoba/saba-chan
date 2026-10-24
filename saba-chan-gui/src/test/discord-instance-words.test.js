@@ -1,12 +1,18 @@
 /**
  * 길드·인스턴스별 부르는 말 (계약 integration/discord-instance-commands.md §7).
- * 데몬 GET /api/guilds/:guild/instances, PUT .../instances/:id/words.
+ * 서버 상세의 디스코드 탭: 페어링된 디스코드 서버마다 그 서버의 낱말을 고친다.
+ * 데몬 GET /api/relay/host/:host/nodes, GET /api/guilds/:guild/instances, PUT .../instances/:id/words.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { errorsByField, InstanceWordsTab } from '../components/discord/InstanceWordsTab';
+import { errorsByField, InstanceDiscordTab } from '../components/discord/InstanceWordsTab';
+import { useDiscordStore } from '../stores/useDiscordStore';
 
-const node = { guildId: 'g1', guildName: '사바 마을' };
+const server = { id: 's1', name: '야생', module: 'minecraft' };
+const nodes = [
+    { guildId: 'g1', guildName: '사바 마을' },
+    { guildId: 'g2', guildName: '옆 마을' },
+];
 const items = () => [
     {
         id: 's1',
@@ -26,11 +32,14 @@ async function addChip(label, word) {
     await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
 }
 
-describe('InstanceWordsTab', () => {
+describe('InstanceDiscordTab', () => {
     beforeEach(() => {
         window.showToast = vi.fn();
+        useDiscordStore.setState({ discordCloudHostId: 'host-1', discordCloudRelayUrl: '' });
         window.api = {
-            guildInstances: vi.fn().mockResolvedValue(items()),
+            relayListHostNodes: vi.fn().mockResolvedValue(nodes),
+            // g2는 이 서버를 쓰지 않는다 (allowedInstances)
+            guildInstances: vi.fn(async (g) => (g === 'g1' ? items() : [])),
             // 데몬 응답 모양: 빈 명령 목록은 빠진다
             guildInstanceWordsSave: vi.fn(async (_g, id, body) => ({
                 success: true,
@@ -41,10 +50,15 @@ describe('InstanceWordsTab', () => {
         };
     });
 
-    it('길드의 인스턴스마다 부르는 말과 명령 낱말을 배열로 저장한다', async () => {
-        await act(async () => render(<InstanceWordsTab node={node} />));
-        await screen.findByText('야생');
+    it('디스코드 서버마다 이 서버의 부르는 말과 명령 낱말을 배열로 저장한다', async () => {
+        await act(async () => render(<InstanceDiscordTab server={server} />));
+        await screen.findByText('사바 마을');
+        expect(window.api.relayListHostNodes).toHaveBeenCalledWith('host-1', '');
         expect(window.api.guildInstances).toHaveBeenCalledWith('g1');
+        expect(window.api.guildInstances).toHaveBeenCalledWith('g2');
+        // 이 서버를 쓰지 않는 디스코드 서버는 이름과 안내만 보인다
+        expect(screen.getByText('옆 마을')).toBeTruthy();
+        expect(screen.getAllByLabelText('Names for 야생')).toHaveLength(1);
         await addChip('Names for 야생', '야섭');
         await addChip('Kick', '킥');
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Save/ })));
@@ -63,8 +77,8 @@ describe('InstanceWordsTab', () => {
             error_code: 'validation_failed',
             details: [{ field: 'words', reason: 'conflict', word: '팰', conflictWith: 'palworld' }],
         });
-        await act(async () => render(<InstanceWordsTab node={node} />));
-        await screen.findByText('야생');
+        await act(async () => render(<InstanceDiscordTab server={server} />));
+        await screen.findByText('사바 마을');
         await addChip('Names for 야생', '팰');
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Save/ })));
         await waitFor(() => expect(screen.getByText(/palworld/)).toBeTruthy());
@@ -73,8 +87,15 @@ describe('InstanceWordsTab', () => {
 
     it('목록을 못 받으면 이유와 다시 시도를 보인다', async () => {
         window.api.guildInstances = vi.fn().mockResolvedValue({ ok: false, error: 'relay down' });
-        await act(async () => render(<InstanceWordsTab node={node} />));
+        await act(async () => render(<InstanceDiscordTab server={server} />));
         expect(await screen.findByText(/relay down/)).toBeTruthy();
+    });
+
+    it('디스코드에 연결하지 않았으면 목록을 부르지 않고 안내만 보인다', async () => {
+        useDiscordStore.setState({ discordCloudHostId: '' });
+        await act(async () => render(<InstanceDiscordTab server={server} />));
+        expect(window.api.relayListHostNodes).not.toHaveBeenCalled();
+        expect(document.querySelector('.dc-tab .muted')).toBeTruthy();
     });
 
     it('details의 field를 칸별로 나눈다', () => {

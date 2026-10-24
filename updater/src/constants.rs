@@ -159,6 +159,17 @@ pub fn resolve_instances_dir() -> PathBuf {
     resolve_data_dir().join("instances")
 }
 
+/// 모듈·익스텐션 실행과 pip가 쓰는 임시 폴더 (`TEMP`·`TMP`·`TMPDIR`). 시스템 임시 폴더에 흔적을 남기지 않게
+/// 데이터 폴더 안에 두고, 제거기가 늘 지운다 (`uninstall_entry::RUNTIME_ENTRIES`)
+pub fn resolve_temp_dir() -> PathBuf {
+    resolve_data_dir().join("temp")
+}
+
+/// pip 내려받기 캐시 (`PIP_CACHE_DIR`). 사용자 pip 캐시(`%LOCALAPPDATA%\pip`)에 섞지 않는다
+pub fn resolve_pip_cache_dir() -> PathBuf {
+    resolve_data_dir().join("pip-cache")
+}
+
 /// 테스트 빌드에서 사용자 데이터 폴더 대신 쓰는 프로세스별 임시 루트.
 ///
 /// `test-isolation` 기능은 saba-core의 dev-dependency에서만 켜지므로

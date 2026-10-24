@@ -114,8 +114,8 @@ describe('봇 설정 로드 실패 시 저장', () => {
         window.api.botConfigSave = vi.fn().mockResolvedValue({ success: true });
         useDiscordStore.setState({ _botConfigLoaded: true, discordCloudHostId: 'h2' });
         await useDiscordStore.getState().saveConfig();
-        // relayUrl은 바꾸지 않았으므로 데몬의 지금 값을 쓴다
-        expect(window.api.botConfigSave.mock.calls[0][0]).toEqual({ cloud: { relayUrl: 'https://r', hostId: 'h2' } });
+        // relayUrl은 바꾸지 않았으므로 싣지 않는다 (PATCH가 데몬의 지금 값을 둔다)
+        expect(window.api.botConfigSave.mock.calls[0][0]).toEqual({ cloud: { hostId: 'h2' } });
     });
 
     it('노드 캐시만 바뀌면 앱 시작 때 읽은 nodeSettings·접두사를 다시 보내지 않는다 (CLI가 바꾼 값을 되돌리지 않게)', async () => {

@@ -3,7 +3,8 @@
 //! ## 실행 모드
 //! - `saba-chan-installer`                     → GUI 설치 모드 (5-page wizard)
 //! - `saba-chan-installer --uninstall`          → GUI 제거 모드
-//! - `saba-chan-installer --uninstall --silent` → 사일런트 제거 (GUI 없음)
+//! - `saba-chan-installer --uninstall --silent` → 명령창 제거 (GUI 없음)
+//! - 둘 다 `--remove-settings`·`--remove-instances`로 지울 것을 고른다. 없으면 설정·인스턴스를 남긴다
 //!
 //! 설치 순서는 `saba-chan-installer-core`에 있다 (`saba-chan-cli install`과 같은 코드)
 
@@ -52,6 +53,8 @@ impl Default for InstallerState {
 pub struct AppMode {
     pub uninstall: bool,
     pub silent: bool,
+    /// 제거 화면 체크박스의 처음 값 (인자에서)
+    pub keep: Option<uninstall::Keep>,
 }
 
 type SharedState = Arc<RwLock<InstallerState>>;
@@ -228,12 +231,12 @@ impl InstallHooks for WindowHooks {
 // ═══════════════════════════════════════════════════════
 
 #[tauri::command]
-async fn start_uninstall(app: AppHandle, keep_settings: Option<bool>) -> Result<(), String> {
+async fn start_uninstall(app: AppHandle, keep_settings: bool, keep_instances: bool) -> Result<(), String> {
     let guard = WorkGuard::try_begin().ok_or_else(|| "busy".to_string())?;
-    let preserve = keep_settings.unwrap_or(false);
+    let keep = uninstall::Keep { settings: keep_settings, instances: keep_instances };
     tauri::async_runtime::spawn(async move {
         let _guard = guard;
-        uninstall::do_uninstall(preserve, |p| {
+        uninstall::do_uninstall(keep, |p| {
             app.emit("uninstall:progress", p).ok();
         })
         .await;
@@ -246,6 +249,8 @@ async fn get_app_mode(mode: State<'_, AppMode>) -> Result<serde_json::Value, Str
     Ok(serde_json::json!({
         "uninstall": mode.uninstall,
         "silent": mode.silent,
+        "keepSettings": mode.keep.is_none_or(|k| k.settings),
+        "keepInstances": mode.keep.is_none_or(|k| k.instances),
     }))
 }
 
@@ -541,7 +546,7 @@ pub fn run() {
         init_logging();
 
         let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-        let code = rt.block_on(uninstall::do_silent_uninstall());
+        let code = rt.block_on(uninstall::do_silent_uninstall(uninstall::keep_from_args(&args)));
         if code != 0 {
             std::process::exit(code);
         }
@@ -554,6 +559,7 @@ pub fn run() {
     let app_mode = AppMode {
         uninstall: is_uninstall,
         silent: is_silent,
+        keep: is_uninstall.then(|| uninstall::keep_from_args(&args)),
     };
 
     let mut initial = InstallerState::default();

@@ -27,6 +27,7 @@ import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
+import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { AuditLog, auditAvailable } from './AuditTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
@@ -81,6 +82,11 @@ export function ServerDetail({
             id: 'maintenance',
             label: t('shell.tab_maintenance'),
             icon: <Icon name="clock" size="sm" />,
+        },
+        instanceWordsAvailable() && {
+            id: 'discord',
+            label: t('shell.tab_discord'),
+            icon: <Icon name="discord" size="sm" />,
         },
         auditAvailable() && { id: 'audit', label: t('shell.tab_audit'), icon: <Icon name="file" size="sm" /> },
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
@@ -316,6 +322,7 @@ export function ServerDetail({
                             />
                         )}
                         {activeTab === 'maintenance' && <MaintenanceTab server={server} />}
+                        {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
                         {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (
                             <InfoTab

@@ -47,7 +47,13 @@ describe('jar 복구의 설정 저장 실패', () => {
         expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
     });
 
+    // 받은 파일의 기록은 데몬이 설치를 마치며 한다: 그 저장이 실패하면 데몬이 save_failed로 실패를 돌려준다
     it('새로 설치: 저장이 실패하면 설치 완료라고 하지 않는다', async () => {
+        window.api.moduleInstallServer.mockResolvedValue({
+            success: false,
+            error: 'The server files were installed, but the server details could not be saved: disk full',
+            error_code: 'save_failed',
+        });
         const { result } = setup();
         await act(async () => result.current.handleStart('A', 'game'));
         await act(async () => setModal.mock.calls.at(-1)[0].buttons[1].action());

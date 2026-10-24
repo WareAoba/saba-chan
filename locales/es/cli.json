@@ -75,7 +75,8 @@
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
     "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
-    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
+    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior.",
+    "words_not_used": "Este servidor de Discord no usa este servidor."
   },
   "col": {
     "players": "Jugadores",
@@ -511,7 +512,9 @@
     "cmd": {
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
-      "install": "Instalar Saba-chan en este PC sin el instalador con ventana"
+      "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
+      "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)",
+      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -534,7 +537,13 @@
       "install.gui": "Instalar también la app de escritorio aunque no haya pantalla",
       "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla",
       "do.action": "Id de la acción, p. ej. server.restart o server.command:say",
-      "do.server": "Servidor sobre el que actúa la acción"
+      "do.server": "Servidor sobre el que actúa la acción",
+      "uninstall.remove_settings": "Eliminar también los ajustes y la conexión con Discord",
+      "uninstall.remove_instances": "Eliminar también los servidores (archivos, mundos, copias)",
+      "server.discord.guild": "Servidor de Discord por nombre o id (se pregunta si hay varios vinculados y algo cambia)",
+      "server.discord.word": "Palabras para el servidor, separadas por comas (reemplazan las actuales). --word \"\" las elimina",
+      "server.discord.command": "Palabras para un comando: COMANDO=PALABRA,PALABRA (reemplaza las de ese comando, COMANDO= las elimina). Se puede repetir",
+      "server.discord.clear": "Eliminar todas las palabras de este servidor"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -825,6 +834,8 @@
     "installing": "Instalando",
     "not_writable": "No se puede escribir en {{dir}}. Elige con --dir una carpeta en la que puedas escribir (por ejemplo, dentro de tu carpeta de usuario)",
     "running_inside": "Esta CLI se está ejecutando dentro de {{dir}}, por lo que no puede instalar ahí. Ejecuta un saba-chan-cli que esté fuera de la carpeta de instalación.",
+    "installed_elsewhere": "Saba-chan ya está instalado en {{dir}}. Actualiza esa instalación con saba-chan-cli update o desinstálala primero (una instalación por PC).",
+    "daemon_running": "Saba-chan está en ejecución y el instalador no sabe a qué instalación pertenece. Cierra Saba-chan primero y vuelve a intentarlo.",
     "empty_dir": "La carpeta de instalación está vacía. Indica una carpeta con --dir",
     "failed": "La instalación falló: {{reason}} (detalles: {{log}})",
     "failed_no_log": "La instalación falló: {{reason}}",
@@ -859,5 +870,15 @@
       "about": "Descripción",
       "inputs": "Entradas"
     }
+  },
+  "uninstall": {
+    "not_installed": "Este comando no se ejecuta desde una carpeta de instalación de Saba-chan; no hay nada que eliminar.",
+    "confirm": "¿Eliminar Saba-chan de {{dir}}? Se borran el programa y todos sus archivos; {{kept}}.",
+    "kept_both": "se conservan los ajustes y los servidores",
+    "kept_settings": "se conservan los ajustes y se eliminan los servidores",
+    "kept_instances": "se conservan los servidores y se eliminan los ajustes",
+    "kept_nothing": "también se eliminan los ajustes y los servidores",
+    "done": "Se eliminó Saba-chan; {{kept}}.",
+    "left": "Se eliminó Saba-chan, pero no se pudieron borrar estos elementos. Cierre los programas que los usan y bórrelos usted:\n{{paths}}"
   }
 }

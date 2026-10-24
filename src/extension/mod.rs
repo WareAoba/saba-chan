@@ -733,7 +733,7 @@ impl ExtensionManager {
             }
         };
         let dest = self.extensions_dir.join(Self::python_safe_dir_name(&ext_id));
-        Self::swap_into_place(&staging, &dest)?;
+        crate::utils::swap_dir(&staging, &dest)?;
         Self::record_files(&ext_id, &dest, false);
         if let Err(e) = std::fs::remove_file(zip_path) {
             tracing::warn!("Failed to remove zip after extraction: {}", e);
@@ -751,36 +751,6 @@ impl ExtensionManager {
         if let Err(e) = recorded {
             tracing::warn!("Could not record installed files for extension '{}': {}", ext_id, e);
         }
-    }
-
-    /// `staged` 폴더를 `dest` 자리에 둔다. 옛 `dest`는 새 폴더가 자리를 잡은 뒤에 지우고,
-    /// 실패하면 옛 폴더를 되돌린다.
-    fn swap_into_place(staged: &std::path::Path, dest: &std::path::Path) -> Result<()> {
-        let backup = dest.with_file_name(format!(
-            ".old-{}",
-            dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
-        ));
-        if backup.exists() {
-            std::fs::remove_dir_all(&backup)?;
-        }
-        let had_old = dest.exists();
-        if had_old {
-            std::fs::rename(dest, &backup)
-                .with_context(|| format!("Failed to move old {} aside", dest.display()))?;
-        }
-        if let Err(e) = std::fs::rename(staged, dest) {
-            if had_old {
-                let _ = std::fs::rename(&backup, dest);
-            }
-            let _ = std::fs::remove_dir_all(staged);
-            anyhow::bail!("Failed to put {} in place: {}", dest.display(), e);
-        }
-        if had_old {
-            if let Err(e) = std::fs::remove_dir_all(&backup) {
-                tracing::warn!("Failed to remove old extension files {}: {}", backup.display(), e);
-            }
-        }
-        Ok(())
     }
 
     fn load_manifest(&self, path: &std::path::Path) -> Result<(ExtensionManifest, Vec<String>)> {
@@ -1568,7 +1538,7 @@ impl ExtensionManager {
             return Err(ExtensionError::in_use(ext_id, &using).into());
         }
         let dest = self.ext_dir_on_disk(ext_id);
-        Self::swap_into_place(staged, &dest)?;
+        crate::utils::swap_dir(staged, &dest)?;
         Self::record_files(ext_id, &dest, official);
         self.mount(ext_id)?;
         tracing::info!("Extension '{}' installed", ext_id);

@@ -65,6 +65,9 @@ impl PortConflictStops {
     }
 }
 
+/// `install_server`가 설치에 성공한 뒤 백업을 지우기 전에 부르는 저장 단계
+pub type InstallCommit<'a> = dyn Fn(&mut Supervisor, &Value) -> Result<()> + Sync + 'a;
+
 pub struct Supervisor {
     pub tracker: ProcessTracker,
     pub module_loader: ModuleLoader,
@@ -192,6 +195,21 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
         function,
         if keys.is_empty() { "nothing".to_string() } else { keys.join(", ") }
     )
+}
+
+/// 설치는 끝났지만 `install_server`의 `commit`(인스턴스 기록 저장)이 실패해 파일을 설치 전으로 되돌렸다.
+/// 되돌리지 못한 파일은 `PutBackFailed`와 같은 모양으로 싣는다
+#[derive(Debug)]
+pub struct CommitFailed(pub PutBackFailed);
+
+impl std::fmt::Display for CommitFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the server details could not be saved")?;
+        if !self.0.files.is_empty() {
+            write!(f, "; {}", self.0)?;
+        }
+        Ok(())
+    }
 }
 
 /// 설치가 모듈 오류로 끝났는데 되돌리지도 못한 파일 (`restore_failed`와 같은 순서의 남긴 백업 이름). 핸들러가 응답 칸으로 옮긴다
@@ -328,7 +346,7 @@ impl Supervisor {
                     tracing::warn!("Failed to re-track '{}' (PID {}): {}", instance.name, pid, e);
                     continue;
                 }
-                let _ = std::fs::write(&pid_file, pid.to_string());
+                let _ = saba_atomic_file::write(&pid_file, pid.to_string().as_bytes(), saba_atomic_file::Mode::Plain);
                 self.managed_store.insert(&instance.id, proc).await;
                 reattached += 1;
                 tracing::info!("Reattached '{}' through saba-runner (PID {})", instance.name, pid);
@@ -2055,7 +2073,7 @@ impl Supervisor {
 
         // Persist PID to disk for orphan reattachment on daemon restart
         let pid_file = inst_dir.join("managed.pid");
-        if let Err(e) = std::fs::write(&pid_file, pid.to_string()) {
+        if let Err(e) = saba_atomic_file::write(&pid_file, pid.to_string().as_bytes(), saba_atomic_file::Mode::Plain) {
             tracing::warn!("Failed to write managed.pid for '{}': {}", instance.name, e);
         }
 
@@ -2086,6 +2104,12 @@ impl Supervisor {
     /// 콘솔 명령을 stdin으로 보내야 하는가.
     /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
     /// (RCON은 보안상 늘 꺼져 있다).
+    /// 서버가 켜져 있는가: 추적표(non-managed와 managed 모두 띄운 뒤 올린다)나 managed 저장소에 살아 있으면.
+    /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
+    pub async fn is_running(&self, instance_id: &str) -> bool {
+        self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
+    }
+
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
         if !self.module_accepts_stdin(instance_id) {
             return false;
@@ -2481,6 +2505,7 @@ impl Supervisor {
     /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
     /// `instance`: 그 인스턴스의 설정과 격리 실행이 쓸 데이터 폴더 (처음 설치와 같은 값을 받는다)
     /// `keep_executable`: 그 인스턴스가 실제로 띄우는 파일 (모듈 실행 파일과 다르면 함께 백업한다)
+    /// `commit`: 설치가 성공하면 백업을 지우기 전에 부른다 (인스턴스 기록 저장). 실패하면 백업으로 되돌리고 그 오류를 돌려준다
     #[allow(clippy::too_many_arguments)]
     pub async fn install_server(
         sup: &tokio::sync::RwLock<Self>,
@@ -2492,6 +2517,7 @@ impl Supervisor {
         initial_settings: Option<Value>,
         instance: Option<(Value, Vec<String>)>,
         keep_executable: Option<&str>,
+        commit: Option<&InstallCommit<'_>>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
@@ -2594,6 +2620,14 @@ impl Supervisor {
         match result {
             Ok(ref val) => {
                 if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
+                    // 기록을 저장하지 못하면 파일도 설치 전으로 되돌린다 (옛 기록과 새 실행 파일이 섞이지 않게)
+                    if let Some(commit) = commit {
+                        let saved = commit(&mut *sup.write().await, val);
+                        if let Err(e) = saved {
+                            let (files, kept) = restore("unsaved install").into_iter().unzip();
+                            return Err(e.context(CommitFailed(PutBackFailed { files, kept })));
+                        }
+                    }
                     // 설치 성공 → 백업 파일 정리
                     for (_, backup, _) in &backups {
                         let _ = std::fs::remove_file(backup);
@@ -2847,7 +2881,7 @@ impl Supervisor {
         }
         match serde_json::to_vec(events) {
             Ok(bytes) => {
-                if let Err(e) = std::fs::write(&path, bytes) {
+                if let Err(e) = saba_atomic_file::write(&path, &bytes, saba_atomic_file::Mode::Plain) {
                     tracing::warn!("Failed to save exit history for '{}': {}", instance_id, e);
                 }
             }
@@ -3194,7 +3228,9 @@ fn is_daemon_entry(name: &str) -> bool {
     }
     let name = name.trim_end_matches(['.', ' ']);
     let same = |a: &str, b: &str| a.to_uppercase() == b.to_uppercase() || a.to_lowercase() == b.to_lowercase();
-    crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
+    // 원자적 저장의 임시 파일 `.<항목>.<pid>-<n>.tmp`
+    let temp = name.len() > 5 && name.starts_with('.') && name.is_char_boundary(name.len() - 4) && same(&name[name.len() - 4..], ".tmp");
+    temp || crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
 }
 
 #[cfg(test)]
@@ -3701,6 +3737,7 @@ mod tests {
             ("short", at("SETTIN~1.JSO")),
             ("stream", at("run:x")),
             ("long_s", at("ſettings.json.tmp")),
+            ("atomic_temp", at(".settings.json.42-0.TMP")),
             ("korean", at("세이브")),
             ("up", at("../other")),
             ("whole", root.to_string_lossy().into_owned()),

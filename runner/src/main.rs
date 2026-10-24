@@ -170,14 +170,30 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
 
 type Stdin = Mutex<Option<Box<dyn Write + Send>>>;
 
+/// 인증 전에 받는 첫 줄(토큰)의 길이와 시간 상한. 같은 PC의 다른 프로세스가 끝없는 줄로 러너 메모리를 채우거나
+/// 연결만 열어 둔 채 스레드를 쌓지 못하게 한다
+const AUTH_LINE_MAX: u64 = 256;
+const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// stdin 연결 하나: 첫 줄이 토큰이면 이후 줄을 자식 stdin으로 넘긴다.
 /// 의사 콘솔은 Enter를 `\r`로 받는다.
 fn serve_stdin(conn: TcpStream, token: &str, stdin: &Stdin, enter: &str) {
-    let mut lines = BufReader::new(conn).lines();
-    if lines.next().and_then(Result::ok).as_deref() != Some(token) {
+    if conn.set_read_timeout(Some(AUTH_TIMEOUT)).is_err() {
         return;
     }
-    for line in lines.map_while(Result::ok) {
+    let mut reader = BufReader::new(conn);
+    let mut first = Vec::new();
+    if (&mut reader).take(AUTH_LINE_MAX).read_until(b'\n', &mut first).is_err() {
+        return;
+    }
+    let first = first.strip_suffix(b"\n").unwrap_or(&first);
+    if first.strip_suffix(b"\r").unwrap_or(first) != token.as_bytes() {
+        return;
+    }
+    if reader.get_ref().set_read_timeout(None).is_err() {
+        return;
+    }
+    for line in reader.lines().map_while(Result::ok) {
         let mut guard = match stdin.lock() {
             Ok(g) => g,
             Err(_) => return,
@@ -528,6 +544,39 @@ mod tests {
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
         }
+    }
+
+    // EE6: 인증 전 첫 줄은 길이와 시간에 상한이 있다. 맞는 토큰 뒤의 줄만 서버 stdin으로 간다
+    #[test]
+    fn stdin_connections_must_send_the_token_quickly_and_briefly() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sink = Sink::default();
+        let stdin: std::sync::Arc<super::Stdin> = std::sync::Arc::new(std::sync::Mutex::new(Some(Box::new(sink.clone()))));
+        let serve = |stdin: std::sync::Arc<super::Stdin>| {
+            let (conn, _) = listener.accept().unwrap();
+            std::thread::spawn(move || super::serve_stdin(conn, "tok", &stdin, "\n"))
+        };
+
+        // 끝없는 첫 줄: 상한에서 끊고 닫는다
+        let mut long = std::net::TcpStream::connect(addr).unwrap();
+        let server = serve(stdin.clone());
+        let _ = long.write_all(&vec![b'x'; 64 * 1024]);
+        server.join().unwrap();
+
+        // 아무것도 보내지 않는 연결: 시간 상한 뒤 닫는다
+        let started = std::time::Instant::now();
+        let _idle = std::net::TcpStream::connect(addr).unwrap();
+        serve(stdin.clone()).join().unwrap();
+        assert!(started.elapsed() < super::AUTH_TIMEOUT + Duration::from_secs(3));
+
+        let mut good = std::net::TcpStream::connect(addr).unwrap();
+        let server = serve(stdin.clone());
+        good.write_all(b"tok\r\nsay hi\n").unwrap();
+        drop(good);
+        server.join().unwrap();
+        assert_eq!(sink.0.lock().unwrap().as_slice(), b"say hi\n");
     }
 
     // 실제 PC: ConPTY가 처음 보낸 커서 위치 요청(줄 끝 없음)에 아무도 답하지 않아 팰월드가 출력 0줄로

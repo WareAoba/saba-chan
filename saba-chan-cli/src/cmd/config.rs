@@ -5,7 +5,7 @@
 //! `reset`은 데몬이 기본값으로 되돌린다 (CLI 칸은 기본값이 없어 키를 지운다).
 
 use crate::cli::ConfigCmd;
-use crate::cmd::{coerce, flatten, get_path, split_pairs};
+use crate::cmd::{coerce, config_patch, flatten, get_path, split_pairs};
 use crate::ctx::Ctx;
 use crate::error::{usage, Result};
 use crate::output;
@@ -20,7 +20,8 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
                 let mut rows = Vec::new();
                 flatten(&all["app"], "", &mut rows);
                 flatten(&all["cli"], "cli", &mut rows);
-                rows.retain(|(k, _)| !k.is_empty() && k != "cli");
+                // revision은 저장 확인용 표식이라 설정 칸이 아니다
+                rows.retain(|(k, _)| !k.is_empty() && k != "cli" && k != "revision");
                 output::print_kv(
                     &rows
                         .iter()
@@ -205,26 +206,36 @@ async fn set(ctx: &Ctx, pairs: &[String]) -> Result<()> {
             continue;
         }
         let doc = load(ctx, root).await?;
-        // 최상위 키 단위로 머지되므로, 바뀐 최상위 키는 현재 값 전체에 덮어써서 보낸다
-        let mut full = doc.clone();
-        let mut touched: Vec<String> = Vec::new();
-        for (key, raw) in &mine {
-            let path = split_key(key).1;
-            let current = get_path(&doc, path);
-            if root == Root::App && current.is_none() {
-                return Err(not_found(key, &doc, root));
+        let r = if root == Root::App {
+            // 앱 설정은 고친 경로만 merge patch로, 읽은 때의 revision과 함께 보낸다
+            let mut changes = Vec::new();
+            for (key, raw) in &mine {
+                let path = split_key(key).1;
+                let current = get_path(&doc, path).filter(|_| path != "revision");
+                let Some(current) = current else {
+                    return Err(not_found(key, &doc, root));
+                };
+                changes.push((path.to_string(), coerce(raw, Some(current))?));
             }
-            crate::cmd::set_path(&mut full, path, coerce(raw, current)?);
-            let top = path.split('.').next().unwrap_or("").to_string();
-            if !touched.contains(&top) {
-                touched.push(top);
+            ctx.api.patch_app_config(config_patch(&doc, changes)).await?
+        } else {
+            // CLI 칸은 최상위 키 단위로 머지되므로, 바뀐 최상위 키는 현재 값 전체에 덮어써서 보낸다
+            let mut full = doc.clone();
+            let mut touched: Vec<String> = Vec::new();
+            for (key, raw) in &mine {
+                let path = split_key(key).1;
+                crate::cmd::set_path(&mut full, path, coerce(raw, get_path(&doc, path))?);
+                let top = path.split('.').next().unwrap_or("").to_string();
+                if !touched.contains(&top) {
+                    touched.push(top);
+                }
             }
-        }
-        let patch: Map<String, Value> = touched
-            .iter()
-            .map(|k| (k.clone(), full.get(k).cloned().unwrap_or(Value::Null)))
-            .collect();
-        let r = save(ctx, root, Value::Object(patch)).await?;
+            let patch: Map<String, Value> = touched
+                .iter()
+                .map(|k| (k.clone(), full.get(k).cloned().unwrap_or(Value::Null)))
+                .collect();
+            save(ctx, root, Value::Object(patch)).await?
+        };
         done.insert(if root == Root::App { "app" } else { "cli" }.into(), r);
     }
     let keys: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();

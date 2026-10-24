@@ -193,14 +193,6 @@ describe('DiscordPage', () => {
         expect(document.querySelector('.dc-save-state')).toBeNull();
     });
 
-    it('서버 설정의 명령어 단어 링크는 그 서버를 쓰는 길드의 부르는 말 탭을 연다', async () => {
-        window.api.guildInstances = vi.fn().mockResolvedValue([]);
-        window.api.guildInstanceWordsSave = vi.fn();
-        await act(async () => render(<Harness save={vi.fn()} initialView={{ kind: 'words', server: 's1' }} />));
-        await waitFor(() => expect(window.api.guildInstances).toHaveBeenCalledWith('g1'));
-        expect(document.querySelector('.detail-head h1').textContent).toBe('사바 마을');
-    });
-
     it('인스턴스 제한은 데몬 길드 API로 바로 저장하고 bot-config 일괄 저장으로 보내지 않는다', async () => {
         const { useDiscordStore } = await import('../stores/useDiscordStore');
         window.api.guildAllowedInstancesSave = vi.fn(async (guildId, instances) => ({

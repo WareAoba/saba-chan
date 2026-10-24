@@ -197,6 +197,9 @@ pub struct ServerInfo {
     /// 설정 필드에 없는 추가 실행 인자 (`ServerInstance::extra_args`)
     #[serde(default)]
     pub extra_args: Vec<String>,
+    /// 설정 저장의 revision (`ServerInstance::settings_revision`). `PATCH /api/instance/:id`에 실으면 그사이 바뀐 설정을 덮지 않는다
+    #[serde(default)]
+    pub revision: String,
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
@@ -742,9 +745,9 @@ impl IPCServer {
             .route("/api/module/:name/install", post(handlers::managed::install_server_handler))
             .route("/api/instance/:id/installed-version", get(handlers::managed::get_installed_version_handler))
             // ── Bot config ──
-            .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config))
+            .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config).patch(handlers::bot::patch_bot_config))
             // ── GUI config (settings.json) ──
-            .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config))
+            .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config).patch(handlers::config::patch_gui_config))
             .route("/api/config/client/:kind", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
             .route("/api/config/:kind/defaults", get(handlers::config::get_config_defaults))
             .route("/api/config/:kind/reset", post(handlers::config::reset_config))

@@ -99,6 +99,7 @@
     "command_words": "命令称呼",
     "words_saved": "已保存 {{server}} 的聊天称呼。",
     "words_bad_command": "{{spec}}：请写成 命令=称呼,称呼（命令= 表示删除）。",
+    "words_not_used": "此 Discord 服务器未使用此服务器。",
     "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
     "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}",
     "agent_too_old": "中继不再接受此应用版本。请将应用更新到 {{min}} 或更高版本。"
@@ -584,6 +585,7 @@
       "server.console": "边看控制台边输入",
       "server.run": "执行游戏命令（不指定命令则显示列表）",
       "server.commands": "此服务器能识别的游戏命令",
+      "server.discord": "每个 Discord 服务器在聊天中用来称呼此服务器及其命令的词。不带选项：查看",
       "server.send": "向控制台原样发送一行",
       "server.settings": "查看服务器设置",
       "server.set": "更改设置：键=值 ...（扩展数据用 ext.键，空值表示删除）",
@@ -721,11 +723,11 @@
       "bot.music": "Discord 服务器的音乐播放器设置。不带选项则查看",
       "bot.allow": "Discord 服务器可以查看和调用的服务器。不指定服务器：查看，`--all`：所有服务器",
       "bot.link": "在 Discord 中不带代码使用 /사바쨩 연결 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
-      "bot.words": "Discord 服务器中用来称呼这台电脑上的服务器及其命令的词。不指定服务器：全部，不带选项：查看",
       "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码",
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
       "tui": "打开全屏菜单",
-      "install": "不使用窗口安装程序，在此电脑上安装 Saba-chan"
+      "install": "不使用窗口安装程序，在此电脑上安装 Saba-chan",
+      "uninstall": "从此电脑删除 Saba-chan（除非指定，否则保留设置和服务器）"
     },
     "arg": {
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
@@ -830,9 +832,6 @@
       "bot.music.queue_lines": "播放器面板的队列行数（1-20）",
       "bot.music.refresh": "播放器面板刷新间隔，毫秒（2000-10000）",
       "bot.music.normalize": "使每首歌的音量一致（on 或 off）",
-      "bot.words.word": "称呼服务器的词，多个用逗号分隔（替换当前的词）。--word \"\" 表示删除",
-      "bot.words.command": "单个命令的称呼：命令=称呼,称呼（只更改该命令，命令= 表示删除）。可多次使用",
-      "bot.words.clear": "删除此服务器的所有称呼",
       "bot.channels.guild": "Discord 服务器名称或 id。省略则为所有已配对的服务器（只有一个服务器时才能更改）",
       "help.command": "命令路径（例如 `server start`）",
       "events.kind": "只看这些事件；`instance` 也包括 `instance.exit` 等下级事件",
@@ -844,7 +843,13 @@
       "install.gui": "即使没有显示器也安装桌面应用",
       "install.no_gui": "即使有显示器也不安装桌面应用",
       "do.action": "操作 id，例如 server.restart 或 server.command:say",
-      "do.server": "操作针对的服务器"
+      "do.server": "操作针对的服务器",
+      "server.discord.guild": "Discord 服务器名称或 id（配对了多个且要修改时会询问）",
+      "server.discord.word": "称呼服务器的词，多个用逗号分隔（替换当前的词）。--word \"\" 表示删除",
+      "server.discord.command": "单个命令的称呼：命令=称呼,称呼（只更改该命令，命令= 表示删除）。可多次使用",
+      "server.discord.clear": "删除此服务器的所有称呼",
+      "uninstall.remove_settings": "同时删除设置和 Discord 连接",
+      "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1224,6 +1229,8 @@
     "installing": "正在安装",
     "not_writable": "无法写入 {{dir}}。请用 --dir 选择可写入的文件夹（例如用户文件夹下）",
     "running_inside": "此 CLI 正在 {{dir}} 内运行，无法安装到该文件夹。请使用安装文件夹之外的 saba-chan-cli 运行。",
+    "installed_elsewhere": "Saba-chan 已安装在 {{dir}}。请用 saba-chan-cli update 更新该安装，或先将其卸载（每台电脑只能安装一份）。",
+    "daemon_running": "正在运行的 Saba-chan 无法确定属于哪个安装。请先退出 Saba-chan 后重试。",
     "empty_dir": "安装文件夹为空。请用 --dir 指定文件夹",
     "failed": "安装失败：{{reason}}（详情：{{log}}）",
     "failed_no_log": "安装失败：{{reason}}",
@@ -1249,5 +1256,15 @@
       "about": "说明",
       "inputs": "输入"
     }
+  },
+  "uninstall": {
+    "not_installed": "此命令不是从 Saba-chan 安装文件夹运行的，没有可删除的安装。",
+    "confirm": "要删除 {{dir}} 中的 Saba-chan 吗？程序及其创建的文件将全部删除，{{kept}}。",
+    "kept_both": "设置和游戏服务器将保留",
+    "kept_settings": "设置将保留，游戏服务器将删除",
+    "kept_instances": "游戏服务器将保留，设置将删除",
+    "kept_nothing": "设置和游戏服务器也将删除",
+    "done": "已删除 Saba-chan，{{kept}}。",
+    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}"
   }
 }

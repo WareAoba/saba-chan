@@ -126,12 +126,12 @@ pub(crate) fn read_bundle(path: &Path) -> anyhow::Result<Bundle> {
     Ok(Bundle { meta, config, instances, node_token })
 }
 
-/// 릴레이 연결 정보(`relay.cloud`의 relayUrl·hostId, 노드 캐시)는 노드 토큰과 한 묶음이다.
+/// 릴레이 연결 정보(`relay.cloud`의 relayUrl·hostId, 노드 캐시, 길드 설정 `nodeSettings`)는 노드 토큰과 한 묶음이다.
 /// 토큰을 가져오지 않을 때는 이 PC 것을 둔다: 이 PC 토큰에 옛 PC hostId가 붙거나, 낯선 zip이
 /// relayUrl을 바꿔 이 PC 토큰을 다른 곳으로 보내지 않게
 pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
     if let Some(Value::Object(relay)) = sections.get_mut("relay") {
-        for key in ["cloud", "cloudNodes", "cloudMembers"] {
+        for key in ["cloud", "cloudNodes", "cloudMembers", "nodeSettings"] {
             relay.remove(key);
         }
     }
@@ -306,7 +306,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             // 설치·백업·복원이 쥔 인스턴스는 바꾸지 않는다. 잠금은 저장하는 동안만 쥔다
             let guard = match verdict {
                 Verdict::Skip(_) => None,
-                _ => super::backup::BusyGuard::take(&inst.id),
+                _ => super::backup::InstanceLock::try_take_for_writes(&inst.id),
             };
             if guard.is_none() && !matches!(verdict, Verdict::Skip(_)) {
                 verdict = Verdict::Skip("busy");
@@ -335,12 +335,16 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     }
 
     // 이 PC가 이미 페어링돼 있으면 그 토큰을 둔다
+    let mut adopted = None;
     let node_token = match bundle.node_token {
         None => Value::Null,
         Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
         Some(token) => match super::relay::write_node_token(Some(&token)) {
-            Ok(_) => json!("imported"),
+            Ok(changed) => {
+                adopted = Some((token, changed));
+                json!("imported")
+            }
             Err(e) => {
                 tracing::warn!("Import: could not write node token: {}", e);
                 Value::Null
@@ -370,16 +374,16 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             }
             Err(e) => {
                 // 토큰은 이미 저장했다: 다음 기동까지 미루지 않고 지금 그 토큰으로 잇는다
-                if node_token == json!("imported") {
-                    crate::relay_agent::restart(&state).await;
+                if let Some((token, _)) = &adopted {
+                    super::relay::adopt_node_token(&state, token, true).await;
                 }
                 return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
             }
         }
     };
-    // 토큰 저장 API와 같이: 가져온 토큰(과 릴레이 주소)으로 데몬 재시작 없이 연결한다
-    if !req.dry_run && node_token == json!("imported") {
-        crate::relay_agent::restart(&state).await;
+    // 토큰 저장 API와 같이: 가져온 토큰(과 릴레이 주소)으로 데몬 재시작 없이 연결한다. 토큰이 같아도 주소가 바뀌었을 수 있다
+    if let Some((token, _)) = adopted {
+        super::relay::adopt_node_token(&state, &token, true).await;
     }
 
     Json(json!({
@@ -518,7 +522,7 @@ mod tests {
         new.name = "new".into();
         let bundle = Bundle { meta: meta(), config: Map::new(), instances: vec![new], node_token: None };
         let (state, path) = import_state(dir.path(), bundle, Some(old)).await;
-        let _task = super::super::backup::BusyGuard::take("held-by-import-test").unwrap();
+        let _task = super::super::backup::InstanceLock::take("held-by-import-test").unwrap();
         for dry in [true, false] {
             let req: ImportRequest = serde_json::from_value(json!({ "path": path, "overwrite": true, "dryRun": dry })).unwrap();
             let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
@@ -600,8 +604,9 @@ mod tests {
         let mut sections = Map::new();
         sections.insert(
             "relay".into(),
-            json!({ "prefix": "!s", "cloud": { "hostId": "old", "relayUrl": "https://x" }, "cloudNodes": [1], "cloudMembers": {} }),
+            json!({ "prefix": "!s", "cloud": { "hostId": "old", "relayUrl": "https://x" }, "cloudNodes": [1], "cloudMembers": {}, "nodeSettings": { "g": { "members": {} } } }),
         );
+        // 길드 설정(금지 멤버·주인·허용 서버·명령 레벨)도 그 페어링의 것이다 (EE8)
         keep_local_pairing(&mut sections);
         assert_eq!(sections["relay"], json!({ "prefix": "!s" }));
     }
