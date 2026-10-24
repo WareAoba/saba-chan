@@ -5,7 +5,7 @@ import { settleLaunchArgs } from '../hooks/useServerSettings';
 
 const fields = [
     { name: 'port', field_type: 'number' },
-    { name: 'ram', field_type: 'text' },
+    { name: 'ram', field_type: 'text', label: 'RAM' },
     { name: 'nogui', field_type: 'boolean' },
 ];
 const settle = () =>
@@ -109,7 +109,8 @@ describe('LaunchPreview', () => {
         const { rerender } = render(<LaunchPreview {...props} extraArgs="-Xmx4096" />);
         await settle();
         expect(window.showToast).toHaveBeenCalledTimes(1);
-        expect(window.showToast.mock.calls[0][0]).toBe('Invalid format.');
+        // 어느 칸인지 이름표로 알린다 (모듈 번역이 없으면 module.toml의 label, 그것도 없으면 이름)
+        expect(window.showToast.mock.calls[0][0]).toBe('Some values are not in the right format: RAM');
         rerender(<LaunchPreview {...props} extraArgs="-Xmx4096 " />);
         await settle();
         expect(window.showToast).toHaveBeenCalledTimes(1);

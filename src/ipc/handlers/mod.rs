@@ -12,7 +12,7 @@ pub mod backup;
 pub mod logs;
 pub mod chatbot;
 pub mod discord;
-pub mod guild_words;
+pub mod words;
 pub mod events;
 pub mod migration;
 pub mod diagnostics;

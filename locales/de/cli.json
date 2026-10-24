@@ -75,7 +75,6 @@
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
     "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
-    "words_not_used": "Dieser Discord-Server verwendet diesen Server nicht.",
     "translate_commands": "Übersetzte Befehlsnamen"
   },
   "col": {
@@ -548,7 +547,7 @@
       "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
       "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren",
       "uninstall": "Saba-chan von diesem PC entfernen (Einstellungen und Server bleiben, sofern nicht anders angegeben)",
-      "server.discord": "Wie jeder Discord-Server diesen Server und seine Befehle im Chat nennt. Ohne Optionen: anzeigen",
+      "server.discord": "Wörter, mit denen der Discord-Chat diesen Server und seine Befehle aufruft (in jedem Discord-Server gleich). Ohne Optionen: anzeigen",
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
@@ -579,7 +578,6 @@
       "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
       "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
       "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)",
-      "server.discord.guild": "Discord-Server per Name oder ID (wird gefragt, wenn mehrere gekoppelt sind und sich etwas ändert)",
       "server.discord.word": "Wörter für den Server, durch Kommas getrennt (ersetzt die aktuellen). --word \"\" entfernt sie",
       "server.discord.command": "Wörter für einen Befehl: BEFEHL=WORT,WORT (ersetzt die Wörter dieses Befehls, BEFEHL= entfernt sie). Mehrfach möglich",
       "server.discord.clear": "Alle Wörter dieses Servers entfernen",

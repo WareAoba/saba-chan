@@ -819,10 +819,7 @@
     "disconnect_desc": "Desconecta este PC de todos os servidores do Discord.",
     "tab_instances": "Instâncias",
     "tab_members": "Membros",
-    "iw_desc": "Defina as palavras que cada servidor do Discord usa para chamar este servidor e seus comandos. Outros servidores do Discord não são afetados.",
-    "iw_not_linked": "Ainda não conectado ao Discord. Conecte-se primeiro na tela do Discord.",
-    "iw_no_guilds": "Nenhum servidor do Discord vinculado.",
-    "iw_not_used": "Este servidor do Discord não usa este servidor. Você pode ativá-lo na aba Instâncias da tela do Discord.",
+    "iw_desc": "Escolha as palavras que chamam este servidor e seus comandos. Elas funcionam igual em todos os servidores do Discord conectados.",
     "iw_server_words": "Nomes do servidor",
     "iw_server_words_aria": "Nomes para {{name}}",
     "iw_default": "Padrão: {{words}}",
@@ -1288,6 +1285,7 @@
     "extra_placeholder": "ex.: -players=16 -useperfthreads",
     "unknown_args": "Argumentos sem configuração correspondente são passados como estão: {{args}}",
     "invalid_format": "Formato inválido.",
+    "invalid_fields": "Alguns valores não estão no formato correto: {{fields}}",
     "unchecked": "Não foi possível verificar os argumentos de inicialização extras, então nada foi salvo"
   },
   "saba": {

@@ -23,9 +23,9 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Console(a) => crate::cmd::console::run(ctx, a).await,
         ServerCmd::Run(a) => run_command(ctx, a).await,
         ServerCmd::Commands { server } => commands(ctx, server.as_deref()).await,
-        ServerCmd::Discord { server, guild, word, command, clear } => {
+        ServerCmd::Discord { server, word, command, clear } => {
             let change = crate::cmd::discord_words::WordsChange { words: word, commands: command, clear };
-            crate::cmd::discord_words::run(ctx, server.as_deref(), guild.as_deref(), change).await
+            crate::cmd::discord_words::run(ctx, server.as_deref(), change).await
         }
         ServerCmd::Send { server, line } => send(ctx, &server, &line.join(" ")).await,
         ServerCmd::Players { server } => players(ctx, server.as_deref()).await,

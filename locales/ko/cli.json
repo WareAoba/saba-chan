@@ -111,7 +111,6 @@
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
-    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요.",
     "translate_commands": "명령 이름 번역"
   },
   "col": {
@@ -629,7 +628,7 @@
       "server.console": "콘솔 보면서 입력하기",
       "server.run": "게임 명령 실행 (명령을 안 주면 목록을 보여 줘요)",
       "server.commands": "이 서버가 알아듣는 게임 명령",
-      "server.discord": "디스코드 서버마다 이 서버와 그 명령을 채팅에서 부르는 낱말. 옵션 없이: 보기",
+      "server.discord": "디스코드 채팅에서 이 서버와 그 명령을 부르는 낱말 (모든 디스코드 서버에서 같아요). 옵션 없이: 보기",
       "server.send": "콘솔에 한 줄 그대로 보내기",
       "server.settings": "서버 설정 보기",
       "server.set": "설정 바꾸기: 키=값 ... (익스텐션 데이터는 ext.키, 빈 값은 지우기)",
@@ -883,7 +882,6 @@
       "bot.music.queue_lines": "플레이어 패널의 대기열 줄 수 (1-20)",
       "bot.music.refresh": "플레이어 패널 새로고침 간격, 밀리초 (2000-10000)",
       "bot.music.normalize": "곡마다 음량 고르게 (on 또는 off)",
-      "server.discord.guild": "디스코드 서버 이름이나 id (여럿이 페어링돼 있으면 바꿀 때 물어봐요)",
       "server.discord.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
       "server.discord.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
       "server.discord.clear": "이 서버의 낱말 모두 지우기",

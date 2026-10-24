@@ -819,10 +819,7 @@
     "disconnect_desc": "Disconnects this PC from every Discord server.",
     "tab_instances": "Instances",
     "tab_members": "Members",
-    "iw_desc": "Set the words each Discord server uses to call this server and its commands. Other Discord servers are not affected.",
-    "iw_not_linked": "Not connected to Discord yet. Connect on the Discord screen first.",
-    "iw_no_guilds": "No Discord servers are linked.",
-    "iw_not_used": "This Discord server doesn't use this server. Turn it on in the Instances tab of the Discord screen.",
+    "iw_desc": "Choose the words that call this server and its commands. They work the same in every connected Discord server.",
     "iw_server_words": "Names for the server",
     "iw_server_words_aria": "Names for {{name}}",
     "iw_default": "Default: {{words}}",
@@ -1288,6 +1285,7 @@
     "extra_placeholder": "e.g. -players=16 -useperfthreads",
     "unknown_args": "Arguments without a matching setting are passed as is: {{args}}",
     "invalid_format": "Invalid format.",
+    "invalid_fields": "Some values are not in the right format: {{fields}}",
     "unchecked": "Couldn't check the extra launch arguments, so nothing was saved"
   },
   "saba": {

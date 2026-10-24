@@ -3,7 +3,7 @@
 //! 모듈 별명: 모듈 이름 → module.toml [aliases].module_aliases 순으로
 //! 등록하고, 같은 별명을 두 모듈이 가지면 먼저 등록한 쪽을 쓰되 충돌로 기록합니다.
 //! 명령어 별명은 모듈 단위로 해석합니다 (다른 모듈의 별명과 섞이지 않음).
-//! 사용자가 정하는 낱말은 길드·인스턴스별이다 (`words`).
+//! 사용자가 정하는 낱말은 인스턴스별이다 (`words`).
 
 use super::api::ModuleView;
 
@@ -82,7 +82,7 @@ impl ModuleAliases {
 }
 
 /// 명령어 별명 → 명령어 이름 (모듈 범위). 우선순위: module.toml → 내장/정의 명령 이름.
-/// 길드·인스턴스별 사용자 낱말은 호출하는 쪽이 먼저 본다 (`words::command_for`)
+/// 인스턴스별 사용자 낱말은 호출하는 쪽이 먼저 본다 (`words::command_for`)
 pub fn resolve_command(module: Option<&ModuleView>, input: &str) -> String {
     let mut table: Vec<(String, String)> = Vec::new();
     if let Some(m) = module {

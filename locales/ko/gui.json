@@ -819,10 +819,7 @@
     "disconnect_desc": "이 PC와 모든 디스코드 서버의 연결을 끊어요.",
     "tab_instances": "인스턴스",
     "tab_members": "멤버",
-    "iw_desc": "디스코드 서버마다 이 서버와 명령을 부를 말을 따로 정해요. 다른 디스코드 서버에는 영향이 없어요.",
-    "iw_not_linked": "디스코드에 아직 연결하지 않았어요. 디스코드 화면에서 먼저 연결하세요.",
-    "iw_no_guilds": "연결된 디스코드 서버가 없어요.",
-    "iw_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요. 디스코드 화면의 인스턴스 탭에서 켤 수 있어요.",
+    "iw_desc": "이 서버와 명령을 부를 말을 정해요. 연결된 모든 디스코드 서버에서 같은 말로 불러요.",
     "iw_server_words": "서버를 부르는 말",
     "iw_server_words_aria": "{{name}}을(를) 부르는 말",
     "iw_default": "기본: {{words}}",
@@ -1288,6 +1285,7 @@
     "extra_placeholder": "예: -players=16 -useperfthreads",
     "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}",
     "invalid_format": "잘못된 형식입니다.",
+    "invalid_fields": "형식이 맞지 않는 값이 있어요: {{fields}}",
     "unchecked": "추가 인자를 확인하지 못해 저장하지 않았어요"
   },
   "saba": {

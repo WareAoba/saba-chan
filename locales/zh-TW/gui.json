@@ -819,10 +819,7 @@
     "disconnect_desc": "中斷這台電腦與所有 Discord 伺服器的連線。",
     "tab_instances": "實例",
     "tab_members": "成員",
-    "iw_desc": "為每個 Discord 伺服器分別設定呼叫此伺服器及其指令的詞語。不會影響其他 Discord 伺服器。",
-    "iw_not_linked": "尚未連線 Discord。請先在 Discord 頁面連線。",
-    "iw_no_guilds": "沒有已連結的 Discord 伺服器。",
-    "iw_not_used": "此 Discord 伺服器未使用此伺服器。可在 Discord 頁面的實例分頁中開啟。",
+    "iw_desc": "設定呼叫此伺服器及其指令的詞。在所有已連線的 Discord 伺服器中都一樣。",
     "iw_server_words": "伺服器的稱呼",
     "iw_server_words_aria": "{{name}} 的稱呼",
     "iw_default": "預設：{{words}}",
@@ -1288,6 +1285,7 @@
     "extra_placeholder": "例如：-players=16 -useperfthreads",
     "unknown_args": "沒有對應設定的參數將原樣傳遞：{{args}}",
     "invalid_format": "格式無效。",
+    "invalid_fields": "部分值格式不正確：{{fields}}",
     "unchecked": "無法檢查額外啟動參數，因此未儲存"
   },
   "saba": {

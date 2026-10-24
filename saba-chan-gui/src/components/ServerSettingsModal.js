@@ -670,6 +670,7 @@ export function ServerSettingsModal({
                     <LaunchPreview
                         key={settingsServer.id}
                         serverId={settingsServer.id}
+                        modNs={`mod_${settingsServer.module}`}
                         fields={module?.settings?.fields}
                         values={settingsValues}
                         extraArgs={settingsValues._launch_extra_args}

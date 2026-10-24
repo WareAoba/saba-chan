@@ -101,7 +101,6 @@
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "words_not_used": "この Discord サーバーではこのサーバーを使っていません。",
     "translate_commands": "コマンド名の翻訳"
   },
   "col": {
@@ -619,7 +618,7 @@
       "server.console": "コンソールを見ながら入力する",
       "server.run": "ゲームコマンドを実行 (コマンドを省くと一覧を表示)",
       "server.commands": "このサーバーが受け付けるゲームコマンド",
-      "server.discord": "Discord サーバーごとに、チャットでこのサーバーとそのコマンドを呼ぶ語。オプションなし: 表示",
+      "server.discord": "Discord のチャットでこのサーバーとそのコマンドを呼ぶ言葉 (どの Discord サーバーでも同じ)。オプションなし: 表示",
       "server.send": "コンソールに 1 行そのまま送る",
       "server.settings": "サーバー設定を表示",
       "server.set": "設定を変える: キー=値 ... (エクステンションのデータは ext.キー、空の値は削除)",
@@ -873,7 +872,6 @@
       "bot.music.queue_lines": "プレイヤーパネルのキューの行数 (1-20)",
       "bot.music.refresh": "プレイヤーパネルの更新間隔 (ミリ秒、2000-10000)",
       "bot.music.normalize": "曲ごとの音量をそろえる (on または off)",
-      "server.discord.guild": "Discord サーバーの名前または id (複数ペアリングしていて変更するときは確認します)",
       "server.discord.word": "サーバーを呼ぶ語をカンマ区切りで (今の語を置き換える)。--word \"\" で消す",
       "server.discord.command": "1 つのコマンドの語: コマンド=語,語 (そのコマンドの語を置き換える。コマンド= で消す)。繰り返し可",
       "server.discord.clear": "このサーバーの語をすべて消す",
