@@ -60,6 +60,16 @@ export function membersByLevel(perm) {
     return groups;
 }
 
+/** 디스코드 멤버 중 따로 레벨이 없는 사람 (소유자 제외): 길드 기본 레벨을 쓴다 */
+export function defaultMembers(perm, discordMembers) {
+    const members = perm?.members || {};
+    const owner = String(perm?.ownerDiscordId ?? '');
+    return (discordMembers || []).filter((m) => {
+        const id = String(m?.id ?? '');
+        return id && id !== owner && !(id in members);
+    });
+}
+
 /**
  * 릴레이에 남은 부여값 중 데몬과 다른 것 (가져오기 후보).
  * 데몬은 자동으로 가져오지 않는다: 원본이 둘이 되지 않게 사용자가 골라서 데몬에 쓴다.

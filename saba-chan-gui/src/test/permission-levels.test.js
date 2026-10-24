@@ -57,6 +57,11 @@ describe('권한 레벨 계산', () => {
         ]);
     });
 
+    it('기본 레벨 멤버는 디스코드 멤버 중 소유자도 아니고 레벨도 없는 사람', () => {
+        expect(L.defaultMembers(base(), relayMembers).map((m) => m.id)).toEqual(['1003']);
+        expect(L.defaultMembers(base(), undefined)).toEqual([]);
+    });
+
     it('가져오기 후보는 데몬 값과 다른 릴레이 부여값만 (소유자 제외)', () => {
         expect(L.importCandidates(base(), relayMembers).map((m) => m.id)).toEqual(['1003']);
     });
@@ -106,6 +111,25 @@ describe('권한 화면', () => {
         fireEvent.click(screen.getByRole('tab', { name: 'Strict' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { preset: 'strict' });
+    });
+
+    it('레벨이 없는 디스코드 멤버도 기본 레벨 묶음에 보이고, 거기서 레벨을 줄 수 있다', async () => {
+        renderPanel();
+        await flush();
+        const others = screen.getByRole('region', { name: 'Members on the default level' });
+        expect(within(others).getByText('Newbie')).toBeInTheDocument();
+        expect(within(others).queryByText('Mint')).toBeNull();
+
+        pickOption(screen.getByLabelText('Level for Newbie'), 'Admin');
+        await flush();
+        expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1003', 2);
+    });
+
+    it('디스코드 멤버를 못 받았으면 레벨 목록 아래에 그렇다고 알린다', async () => {
+        renderPanel('members', { members: [] });
+        await flush();
+        expect(screen.getByText(/Couldn't load members/)).toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: 'Members on the default level' })).toBeNull();
     });
 
     it('데몬이 거절하면 알림을 띄우고 화면은 데몬 값 그대로 둔다', async () => {

@@ -361,7 +361,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     } else {
         s(&module, "display_name").to_string()
     };
-    if from.is_none() && !module.get("install").is_some_and(|i| !i.is_null()) {
+    if from.is_none() && module.get("install").is_none_or(|i| i.is_null()) {
         ctx.out.warn(&t!("add.no_installer", game = display));
     }
 
