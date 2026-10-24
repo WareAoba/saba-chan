@@ -854,7 +854,16 @@
       "server.discord.command": "1 つのコマンドの語: コマンド=語,語 (そのコマンドの語を置き換える。コマンド= で消す)。繰り返し可",
       "server.discord.clear": "このサーバーの語をすべて消す",
       "uninstall.remove_settings": "設定と Discord 連携も削除",
-      "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）"
+      "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）",
+      "server.log.source": "どの実行か（`--runs` で一覧）、省略すると最新",
+      "server.log.lines": "最後の N 行",
+      "server.log.runs": "保存された実行の一覧",
+      "server.log.all": "1 回の実行分すべて（保存: `> file.log`）",
+      "server.query.name": "照会の名前",
+      "server.query.args": "入力 キー=値",
+      "chatbot.show.guild": "Discord サーバー 1 つが実際に使う値（共通値 + そのサーバーの値）、名前または id",
+      "do.steps": "複数の手順を JSON で: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（ACTION の代わり）",
+      "do.run_id": "バックグラウンドで続く複数手順の実行の進行状況"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

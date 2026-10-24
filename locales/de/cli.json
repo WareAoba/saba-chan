@@ -514,7 +514,12 @@
       "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
       "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren",
       "uninstall": "Saba-chan von diesem PC entfernen (Einstellungen und Server bleiben, sofern nicht anders angegeben)",
-      "server.discord": "Wie jeder Discord-Server diesen Server und seine Befehle im Chat nennt. Ohne Optionen: anzeigen"
+      "server.discord": "Wie jeder Discord-Server diesen Server und seine Befehle im Chat nennt. Ohne Optionen: anzeigen",
+      "server.players": "Wer gerade online ist",
+      "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
+      "server.log": "Gespeichertes Protokoll früherer Läufe (die Konsole hält nur den aktuellen)",
+      "server.query": "Nur lesende Abfragen des Spielmoduls (ohne Namen: Liste)",
+      "daemon.clients": "Desktop-App-Fenster, die mit dem Daemon verbunden sind"
     },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
@@ -543,7 +548,16 @@
       "server.discord.guild": "Discord-Server per Name oder ID (wird gefragt, wenn mehrere gekoppelt sind und sich etwas ändert)",
       "server.discord.word": "Wörter für den Server, durch Kommas getrennt (ersetzt die aktuellen). --word \"\" entfernt sie",
       "server.discord.command": "Wörter für einen Befehl: BEFEHL=WORT,WORT (ersetzt die Wörter dieses Befehls, BEFEHL= entfernt sie). Mehrfach möglich",
-      "server.discord.clear": "Alle Wörter dieses Servers entfernen"
+      "server.discord.clear": "Alle Wörter dieses Servers entfernen",
+      "server.log.source": "Welcher Lauf (`--runs` listet sie), standardmäßig der letzte",
+      "server.log.lines": "Letzte N Zeilen",
+      "server.log.runs": "Gespeicherte Läufe auflisten",
+      "server.log.all": "Den ganzen Lauf (zum Speichern: `> file.log`)",
+      "server.query.name": "Name der Abfrage",
+      "server.query.args": "Eingabe als SCHLÜSSEL=WERT",
+      "chatbot.show.guild": "Die Werte, die ein Discord-Server tatsächlich nutzt (gemeinsam + eigene), per Name oder ID",
+      "do.steps": "Mehrere Schritte als JSON: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (statt ACTION)",
+      "do.run_id": "Fortschritt eines im Hintergrund weiterlaufenden Mehrschrittlaufs"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

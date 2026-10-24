@@ -514,7 +514,12 @@
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
       "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
       "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)",
-      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar"
+      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar",
+      "server.players": "Quién está conectado",
+      "server.rcon": "Enviar una línea como el servidor recibe comandos (consola, si no RCON) y ver la respuesta",
+      "server.log": "Registro guardado de ejecuciones anteriores (la consola solo guarda la actual)",
+      "server.query": "Consultas de solo lectura del módulo del juego (sin nombre: la lista)",
+      "daemon.clients": "Ventanas de la app de escritorio conectadas al daemon"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -543,7 +548,16 @@
       "server.discord.guild": "Servidor de Discord por nombre o id (se pregunta si hay varios vinculados y algo cambia)",
       "server.discord.word": "Palabras para el servidor, separadas por comas (reemplazan las actuales). --word \"\" las elimina",
       "server.discord.command": "Palabras para un comando: COMANDO=PALABRA,PALABRA (reemplaza las de ese comando, COMANDO= las elimina). Se puede repetir",
-      "server.discord.clear": "Eliminar todas las palabras de este servidor"
+      "server.discord.clear": "Eliminar todas las palabras de este servidor",
+      "server.log.source": "Qué ejecución (`--runs` las lista), por defecto la última",
+      "server.log.lines": "Últimas N líneas",
+      "server.log.runs": "Listar las ejecuciones guardadas",
+      "server.log.all": "Toda la ejecución (para guardar: `> file.log`)",
+      "server.query.name": "Nombre de la consulta",
+      "server.query.args": "Entrada como CLAVE=VALOR",
+      "chatbot.show.guild": "Los valores que usa de verdad un servidor de Discord (comunes + los suyos), por nombre o id",
+      "do.steps": "Varios pasos en JSON: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (en lugar de ACTION)",
+      "do.run_id": "Progreso de una ejecución de varios pasos que sigue en segundo plano"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },

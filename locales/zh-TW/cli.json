@@ -514,7 +514,12 @@
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
       "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan",
       "uninstall": "從此電腦刪除 Saba-chan（除非指定，否則保留設定和伺服器）",
-      "server.discord": "每個 Discord 伺服器在聊天中用來稱呼此伺服器及其指令的詞。不帶選項：查看"
+      "server.discord": "每個 Discord 伺服器在聊天中用來稱呼此伺服器及其指令的詞。不帶選項：查看",
+      "server.players": "目前在線的人",
+      "server.rcon": "依伺服器接收指令的方式（主控台，沒有則用 RCON）送出一行並查看回覆",
+      "server.log": "儲存的歷次執行記錄（主控台只保留本次）",
+      "server.query": "遊戲模組提供的查詢（不指定名稱則列出）",
+      "daemon.clients": "連到常駐程式的桌面應用程式視窗"
     },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
@@ -543,7 +548,16 @@
       "server.discord.guild": "Discord 伺服器名稱或 id（配對了多個且要修改時會詢問）",
       "server.discord.word": "稱呼伺服器的詞，多個用逗號分隔（取代目前的詞）。--word \"\" 表示刪除",
       "server.discord.command": "單一指令的稱呼：指令=稱呼,稱呼（只更改該指令，指令= 表示刪除）。可多次使用",
-      "server.discord.clear": "刪除此伺服器的所有稱呼"
+      "server.discord.clear": "刪除此伺服器的所有稱呼",
+      "server.log.source": "哪一次執行（用 `--runs` 列出），預設最新",
+      "server.log.lines": "最後 N 行",
+      "server.log.runs": "列出儲存的執行",
+      "server.log.all": "一次執行的全部內容（儲存：`> file.log`）",
+      "server.query.name": "查詢名稱",
+      "server.query.args": "輸入 鍵=值",
+      "chatbot.show.guild": "某個 Discord 伺服器實際使用的值（共用值 + 該伺服器的值），名稱或 id",
+      "do.steps": "用 JSON 寫多個步驟：[{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（取代 ACTION）",
+      "do.run_id": "在背景繼續的多步驟執行的進度"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

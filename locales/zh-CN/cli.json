@@ -727,7 +727,12 @@
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
       "tui": "打开全屏菜单",
       "install": "不使用窗口安装程序，在此电脑上安装 Saba-chan",
-      "uninstall": "从此电脑删除 Saba-chan（除非指定，否则保留设置和服务器）"
+      "uninstall": "从此电脑删除 Saba-chan（除非指定，否则保留设置和服务器）",
+      "server.players": "当前在线的人",
+      "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
+      "server.log": "保存的历次运行日志（控制台只保留本次）",
+      "server.query": "游戏模块提供的查询（不指定名称则列出）",
+      "daemon.clients": "连接到守护进程的桌面应用窗口"
     },
     "arg": {
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
@@ -849,7 +854,16 @@
       "server.discord.command": "单个命令的称呼：命令=称呼,称呼（只更改该命令，命令= 表示删除）。可多次使用",
       "server.discord.clear": "删除此服务器的所有称呼",
       "uninstall.remove_settings": "同时删除设置和 Discord 连接",
-      "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）"
+      "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）",
+      "server.log.source": "哪一次运行（用 `--runs` 列出），默认最新",
+      "server.log.lines": "最后 N 行",
+      "server.log.runs": "列出保存的运行",
+      "server.log.all": "一次运行的全部内容（保存：`> file.log`）",
+      "server.query.name": "查询名称",
+      "server.query.args": "输入 键=值",
+      "chatbot.show.guild": "某个 Discord 服务器实际使用的值（公共值 + 该服务器的值），名称或 id",
+      "do.steps": "用 JSON 写多个步骤：[{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（代替 ACTION）",
+      "do.run_id": "在后台继续的多步骤运行的进度"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
