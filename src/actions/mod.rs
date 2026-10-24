@@ -190,7 +190,8 @@ pub static ACTIONS: &[Def] = &[
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
     },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
-    Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/apply") },
+    // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
+    Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/install") },
 ];
 
 /// 길드를 받는 액션의 경로 필드 (원격이면 요청이 온 길드로 고정)

@@ -75,7 +75,6 @@
     "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI.",
     "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
     "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}",
-    "agent_too_old": "Le relais n'accepte plus cette version de l'application. Mettez l'application à jour en {{min}} ou plus récent.",
     "words_not_used": "Ce serveur Discord n'utilise pas ce serveur."
   },
   "col": {
@@ -209,8 +208,7 @@
       "forbidden": "Vous n'avez pas la permission de faire cela sur ce serveur Discord.",
       "expired": "Le code a expiré. Recommencez.",
       "rate_limited": "Trop de requêtes. Réessayez dans une minute environ.",
-      "other": "Le relais a refusé la requête ({{code}}).",
-      "agent_too_old": "Le relais n'accepte plus cette version de l'application. Mettez l'application à jour en {{min}} ou plus récent."
+      "other": "Le relais a refusé la requête ({{code}})."
     },
     "ambiguous": "Plusieurs {{what}} correspondent à « {{query}} ».",
     "ambiguous_hint": "Soyez plus précis : {{names}}",
@@ -336,8 +334,7 @@
     "removed": "Module {{id}} supprimé.",
     "unmet": "Nécessite {{component}} {{required}} (installé : {{installed}})",
     "load_failed": {
-      "invalid": "Impossible de charger le module {{module}}. Son module.toml ne respecte pas le format :",
-      "unsupported": "Impossible de charger le module {{module}}. Mettez à jour Saba-chan pour lire le format de module {{required}}."
+      "invalid": "Impossible de charger le module {{module}}. Son module.toml ne respecte pas le format :"
     }
   },
   "noun": {
@@ -450,6 +447,7 @@
     "provisioning": "{{name}} est toujours en cours d'installation.",
     "requested": "Démarrage demandé pour {{name}}.",
     "port_moved": "Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}.",
+    "module_update": "La version {{version}} du module {{module}} est disponible. Lancez `saba-chan-cli update` pour mettre à jour.",
     "waiting": "Démarrage de {{name}}...",
     "exited": "{{name}} s'est arrêté juste après le démarrage. Dernières lignes ci-dessus."
   },
@@ -896,6 +894,23 @@
     "components_dir": "Les modules et extensions vont dans {{dir}}.",
     "components_dir_invalid": "Impossible d'utiliser {{dir}} pour les modules et extensions : {{reason}}",
     "invalid_dir": "Impossible d'installer dans {{dir}}. Choisissez un dossier qui n'est ni la racine d'un lecteur, ni votre dossier personnel, ni le dossier des paramètres"
+  },
+  "uninstall": {
+    "not_installed": "Cette commande ne s'exécute pas depuis un dossier d'installation de Saba-chan : rien à supprimer.",
+    "confirm": "Supprimer Saba-chan de {{dir}} ? Le programme et tous ses fichiers seront supprimés ; {{kept}}.",
+    "kept_both": "les paramètres et les serveurs sont conservés",
+    "kept_settings": "les paramètres sont conservés, les serveurs supprimés",
+    "kept_instances": "les serveurs sont conservés, les paramètres supprimés",
+    "kept_nothing": "les paramètres et les serveurs sont aussi supprimés",
+    "done": "Saba-chan a été supprimé ; {{kept}}.",
+    "left": "Saba-chan a été supprimé, mais ces éléments n'ont pas pu être effacés. Fermez les programmes qui les utilisent et supprimez-les vous-même :\n{{paths}}"
+  },
+  "update_required": {
+    "title": "Mise à jour nécessaire",
+    "relay": "Mise à jour nécessaire. Le relais demande Saba-chan {{version}} ou plus récent.",
+    "module": "Mise à jour nécessaire. Le module {{name}} demande Saba-chan {{version}} ou plus récent.",
+    "module_newer": "Mise à jour nécessaire. Le module {{name}} demande un Saba-chan plus récent.",
+    "extension": "Mise à jour nécessaire. L'extension {{name}} demande Saba-chan {{version}} ou plus récent."
   },
   "uninstall": {
     "not_installed": "Cette commande ne s'exécute pas depuis un dossier d'installation de Saba-chan : rien à supprimer.",

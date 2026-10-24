@@ -99,10 +99,9 @@
     "command_words": "命令称呼",
     "words_saved": "已保存 {{server}} 的聊天称呼。",
     "words_bad_command": "{{spec}}：请写成 命令=称呼,称呼（命令= 表示删除）。",
-    "words_not_used": "此 Discord 服务器未使用此服务器。",
     "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
     "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}",
-    "agent_too_old": "中继不再接受此应用版本。请将应用更新到 {{min}} 或更高版本。"
+    "words_not_used": "此 Discord 服务器未使用此服务器。"
   },
   "col": {
     "players": "在线玩家",
@@ -256,8 +255,7 @@
       "forbidden": "你没有在该 Discord 服务器上执行此操作的权限。",
       "expired": "代码已过期。请重新开始。",
       "rate_limited": "请求过于频繁。请约一分钟后再试。",
-      "other": "中继拒绝了请求（{{code}}）。",
-      "agent_too_old": "中继不再接受此应用版本。请将应用更新到 {{min}} 或更高版本。"
+      "other": "中继拒绝了请求（{{code}}）。"
     },
     "ambiguous": "有多个{{what}}匹配“{{query}}”。",
     "ambiguous_hint": "请更具体一些：{{names}}",
@@ -393,8 +391,7 @@
     "removed": "已删除模块 {{id}}。",
     "unmet": "需要 {{component}} {{required}}（已安装：{{installed}}）",
     "load_failed": {
-      "invalid": "无法加载 {{module}} 模块。module.toml 不符合格式:",
-      "unsupported": "无法加载 {{module}} 模块。请更新 Saba-chan 以读取模块格式 {{required}}。"
+      "invalid": "无法加载 {{module}} 模块。module.toml 不符合格式:"
     }
   },
   "noun": {
@@ -508,6 +505,7 @@
     "provisioning": "{{name}} 仍在安装中。",
     "requested": "已请求启动 {{name}}。",
     "port_moved": "Windows 预留了管理用 REST 端口 {{from}}，已改为 {{to}}。",
+    "module_update": "{{module}} 模块的新版本 {{version}} 已发布。运行 `saba-chan-cli update` 即可更新。",
     "waiting": "正在启动 {{name}}...",
     "exited": "{{name}} 启动后立即退出。最后几行见上方。"
   },
@@ -1291,6 +1289,23 @@
     "components_dir": "模块和扩展放在 {{dir}}。",
     "components_dir_invalid": "无法将 {{dir}} 用于模块和扩展：{{reason}}",
     "invalid_dir": "无法安装到 {{dir}}。请选择不是驱动器根目录、用户主文件夹或设置文件夹的文件夹"
+  },
+  "uninstall": {
+    "not_installed": "此命令不是从 Saba-chan 安装文件夹运行的，没有可删除的安装。",
+    "confirm": "要删除 {{dir}} 中的 Saba-chan 吗？程序及其创建的文件将全部删除，{{kept}}。",
+    "kept_both": "设置和游戏服务器将保留",
+    "kept_settings": "设置将保留，游戏服务器将删除",
+    "kept_instances": "游戏服务器将保留，设置将删除",
+    "kept_nothing": "设置和游戏服务器也将删除",
+    "done": "已删除 Saba-chan，{{kept}}。",
+    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}"
+  },
+  "update_required": {
+    "title": "需要更新",
+    "relay": "需要更新。中继需要 Saba-chan {{version}} 或更高版本。",
+    "module": "需要更新。{{name}} 模块需要 Saba-chan {{version}} 或更高版本。",
+    "module_newer": "需要更新。{{name}} 模块需要更新版本的 Saba-chan。",
+    "extension": "需要更新。{{name}} 扩展需要 Saba-chan {{version}} 或更高版本。"
   },
   "uninstall": {
     "not_installed": "此命令不是从 Saba-chan 安装文件夹运行的，没有可删除的安装。",

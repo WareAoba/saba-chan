@@ -93,6 +93,17 @@ pub struct RelayAgent {
     seen: Arc<Mutex<SeenCommands>>,
     /// 다시 보내도 릴레이가 받지 않은 결과. 같은 주소·토큰의 세션이 이어서 보낸다
     unsent: Arc<Mutex<Vec<Unsent>>>,
+    /// 보내는 중인 명령 결과 수. 데몬이 꺼질 때 이것이 끝나기를 잠깐 기다린다 (원격 업데이트 뒤 재시작 안내 등)
+    posting: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// 보내는 중인 결과 하나 (끝나면 수를 줄인다)
+struct Posting(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for Posting {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 /// 릴레이가 아직 받지 않은 명령 결과. 만든 세션의 주소·토큰을 함께 둔다: 다른 노드로 보내지 않게
@@ -191,6 +202,18 @@ impl RelayAgent {
             tracing::info!("[RelayAgent] stopped");
         });
         Ok(())
+    }
+
+    /// 보내는 중인 명령 결과가 끝나기를 `max`까지 기다린다 (데몬 종료 직전). 다 끝났으면 true
+    pub async fn settle(&self, max: std::time::Duration) -> bool {
+        let until = tokio::time::Instant::now() + max;
+        while self.posting.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            if tokio::time::Instant::now() >= until {
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        true
     }
 
     pub fn stop(&self) {
@@ -957,6 +980,8 @@ impl Session {
         // 실행한 명령의 결과는 연결이 끝난 뒤에도 끝까지 보낸다: ack한 명령이라 릴레이가 다시 보내 주지 않는다.
         // 연결 오류·5xx·408·429는 `RESULT_RETRIES`번까지 간격을 늘려 다시 보낸다. 그 밖의 4xx는 릴레이가 받지 않는 것이라 그만둔다
         let body = result.to_string();
+        self.agent.posting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let _posting = Posting(self.agent.posting.clone());
         for attempt in 0..=RESULT_RETRIES {
             if attempt > 0 {
                 tokio::time::sleep(result_retry_delay(attempt)).await;
@@ -1077,6 +1102,8 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
         "instance.ready" => pick(&["at", "instanceId", "instance", "ok", "code"]),
+        // 켠 서버의 모듈 새 버전·게임 서버 새 빌드 (시작을 시킨 사람에게만 알린다)
+        "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         _ => return None,
@@ -1571,6 +1598,36 @@ mod tests {
         assert_eq!(serde_json::from_str::<Value>(&BODY.lock().unwrap()).unwrap(), json!({ "success": true, "n": 1 }));
     }
 
+    /// Codex 리뷰 #553: 원격 업데이트 뒤 데몬이 0.5초 만에 꺼져, 첫 전송이 실패한 결과(재시작 안내)를 다시 보내기 전에 잃었다.
+    /// 종료 전에 보내는 중인 결과가 끝나기를 기다린다
+    #[tokio::test]
+    async fn shutdown_waits_for_a_result_still_being_sent() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        async fn result() -> axum::http::StatusCode {
+            if CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
+                return axum::http::StatusCode::SERVICE_UNAVAILABLE;
+            }
+            axum::http::StatusCode::OK
+        }
+        let app = axum::Router::new().route("/result/:id", post(result));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = Arc::new(test_session(&agent, &base, "sbn_host.secret", tmp.path()).await);
+        assert!(agent.settle(Duration::from_millis(10)).await, "nothing to wait for");
+        let sending = session.clone();
+        let task = tokio::spawn(async move { sending.post_result("c1", &json!({ "success": true })).await });
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        assert!(agent.settle(Duration::from_secs(5)).await);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 2, "the retry went out before settle returned");
+        task.await.unwrap();
+    }
+
     /// Codex 리뷰 #549: 대기열 맨 앞 결과만 계속 5xx를 받으면 매 회차 거기서 멈춰 뒤 결과를 보내지 않았다
     #[tokio::test]
     async fn one_result_the_relay_keeps_refusing_does_not_block_the_others() {
@@ -1930,6 +1987,9 @@ mod tests {
         // R39 준비 알림은 계약 필드만 (디스코드 "다 켜졌어요")
         let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
         assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));
+        // 켠 서버의 업데이트 알림은 종류·모듈·새 버전만
+        let notice = ev("instance.update_notice", json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0", "path": "C:\\x"}));
+        assert_eq!(relay_event(&notice).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0"}));
         // 여러 단계 실행은 디스코드에서 시작한 것만
         assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
         assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");

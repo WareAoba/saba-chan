@@ -354,8 +354,7 @@
     "list_empty": "A lista de módulos está vazia",
     "fetch_failed_toast": "Falha na busca de módulos: {{error}}",
     "load_error_title": "Erro ao carregar o módulo",
-    "schema_invalid": "O module.toml não segue o formato: {{problems}}",
-    "schema_unsupported": "Este módulo precisa de um Saba-chan mais novo (formato de módulo {{required}}). Atualize o Saba-chan."
+    "schema_invalid": "O module.toml não segue o formato: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "Este PC recebe e executa os comandos enviados pelo Discord. Enquanto estiver desligado, o bot não responde.",
     "agent_replaced": "A conexão de PC desta conta do Discord foi movida para outro PC, então parou aqui. Para usar este PC de novo, pareie-o novamente a partir deste PC.",
-    "agent_too_old": "O servidor de retransmissão não aceita mais esta versão do aplicativo. Atualize o aplicativo para {{version}} ou mais recente.",
-    "agent_check_update": "Verificar atualizações",
     "agent_running": "Ligado",
     "agent_connecting": "Iniciando",
     "agent_stopped": "Desligado",
@@ -1362,7 +1359,9 @@
     "backup_done": "Backup de {{name}} concluído ({{kind}}).",
     "backup_failed": "O backup de {{name}} falhou. {{error}}",
     "schedule_restart": "{{name}} vai reiniciar conforme agendado em {{minutes}} min.",
-    "schedule_update": "{{name}} vai atualizar conforme agendado em {{minutes}} min."
+    "schedule_update": "{{name}} vai atualizar conforme agendado em {{minutes}} min.",
+    "module_update": "{{name}}: saiu a versão {{version}} do módulo {{module}}.",
+    "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor."
   },
   "terminal": {
     "open": "Abrir no terminal",
@@ -1503,5 +1502,13 @@
     "err_verify_failed": "A cópia não confere com o original. Nada foi alterado. Tente de novo.",
     "err_commit_failed": "Não foi possível salvar a configuração. Os arquivos voltaram para onde estavam.",
     "err_overlaps_install": "Não pode ficar dentro da pasta de instalação do Saba-chan. Escolha uma pasta fora dela."
+  },
+  "update_required": {
+    "title": "Atualização necessária",
+    "relay": "Atualização necessária. O relay precisa do Saba-chan {{version}} ou mais recente.",
+    "module": "Atualização necessária. O módulo {{name}} precisa do Saba-chan {{version}} ou mais recente.",
+    "module_newer": "Atualização necessária. O módulo {{name}} precisa de um Saba-chan mais recente.",
+    "extension": "Atualização necessária. A extensão {{name}} precisa do Saba-chan {{version}} ou mais recente.",
+    "check": "Verificar atualizações"
   }
 }

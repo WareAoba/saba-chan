@@ -99,10 +99,9 @@
     "command_words": "명령 낱말",
     "words_saved": "{{server}}의 채팅 낱말을 저장했어요.",
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
-    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요.",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
-    "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
+    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요."
   },
   "col": {
     "players": "접속자",
@@ -256,8 +255,7 @@
       "forbidden": "그 디스코드 서버에서 이 작업을 할 권한이 없어요.",
       "expired": "코드가 만료됐어요. 처음부터 다시 시도하세요.",
       "rate_limited": "요청이 너무 잦아요. 1분쯤 뒤 다시 시도하세요.",
-      "other": "릴레이가 요청을 거절했어요 ({{code}}).",
-      "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
+      "other": "릴레이가 요청을 거절했어요 ({{code}})."
     },
     "ambiguous": "\"{{query}}\"에 맞는 {{what}} 후보가 여럿이에요.",
     "ambiguous_hint": "더 정확히 적어 주세요: {{names}}",
@@ -393,8 +391,7 @@
     "removed": "모듈 {{id}}를 지웠어요.",
     "unmet": "{{component}} {{required}} 필요 (설치됨: {{installed}})",
     "load_failed": {
-      "invalid": "{{module}} 모듈을 읽지 못했어요. module.toml이 형식에 맞지 않아요:",
-      "unsupported": "{{module}} 모듈을 읽지 못했어요. 모듈 형식 {{required}}을(를) 읽으려면 사바쨩을 업데이트하세요."
+      "invalid": "{{module}} 모듈을 읽지 못했어요. module.toml이 형식에 맞지 않아요:"
     }
   },
   "noun": {
@@ -508,6 +505,7 @@
     "provisioning": "{{name}}은(는) 아직 설치 중이에요.",
     "requested": "{{name}} 시작을 요청했어요.",
     "port_moved": "Windows가 관리용 REST 포트 {{from}}을(를) 예약해 두어 {{to}}(으)로 바꿨어요.",
+    "module_update": "{{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요. `saba-chan-cli update`로 업데이트할 수 있어요.",
     "waiting": "{{name}} 켜는 중...",
     "exited": "{{name}}이(가) 켜지자마자 꺼졌어요. 위의 마지막 줄을 확인하세요."
   },
@@ -1291,6 +1289,23 @@
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
     "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"
+  },
+  "uninstall": {
+    "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",
+    "confirm": "{{dir}}의 사바쨩을 제거할까요? 프로그램과 사바쨩이 만든 파일은 모두 지우고, {{kept}}.",
+    "kept_both": "설정과 게임 서버는 남깁니다",
+    "kept_settings": "설정은 남기고 게임 서버는 지웁니다",
+    "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
+    "kept_nothing": "설정과 게임 서버도 지웁니다",
+    "done": "사바쨩을 제거했습니다. {{kept}}.",
+    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
+  },
+  "update_required": {
+    "title": "업데이트가 필요해요",
+    "relay": "업데이트가 필요해요. 릴레이가 사바쨩 {{version}} 이상을 요구해요.",
+    "module": "업데이트가 필요해요. {{name}} 모듈은 사바쨩 {{version}} 이상에서 돌아가요.",
+    "module_newer": "업데이트가 필요해요. {{name}} 모듈은 더 새 사바쨩에서 돌아가요.",
+    "extension": "업데이트가 필요해요. {{name}} 익스텐션은 사바쨩 {{version}} 이상에서 돌아가요."
   },
   "uninstall": {
     "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",

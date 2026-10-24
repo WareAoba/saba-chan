@@ -298,8 +298,7 @@
     "list_empty": "モジュールが見つかりません",
     "fetch_failed_toast": "モジュール検索失敗: {{error}}",
     "load_error_title": "モジュールの読み込み中にエラー",
-    "schema_invalid": "module.tomlが形式に合っていません: {{problems}}",
-    "schema_unsupported": "このモジュールには新しいサバちゃんが必要です(モジュール形式 {{required}})。サバちゃんを更新してください。"
+    "schema_invalid": "module.tomlが形式に合っていません: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "Discordから送られたコマンドをこのPCが受け取って実行します。オフの間はボットが応答しません。",
     "agent_replaced": "このDiscordアカウントのPC接続が別のPCに移ったため、ここでは停止しました。このPCをまた使うには、このPCで再度ペアリングしてください。",
-    "agent_too_old": "リレーサーバーがこのアプリのバージョンを受け付けません。アプリを {{version}} 以上に更新してください。",
-    "agent_check_update": "アップデートを確認",
     "agent_running": "オン",
     "agent_connecting": "起動中",
     "agent_stopped": "オフ",
@@ -1362,7 +1359,9 @@
     "backup_done": "{{name}} のバックアップが完了しました（{{kind}}）。",
     "backup_failed": "{{name}} のバックアップに失敗しました。{{error}}",
     "schedule_restart": "{{name}} は{{minutes}}分後に予約どおり再起動します。",
-    "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。"
+    "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。",
+    "module_update": "{{name}}: {{module}} モジュールの新しいバージョン {{version}} が出ました。",
+    "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。"
   },
   "terminal": {
     "open": "ターミナルで開く",
@@ -1503,5 +1502,13 @@
     "err_verify_failed": "コピーが元と一致しなかったため移していません。何も変更していません。もう一度試してください。",
     "err_commit_failed": "設定を保存できなかったため、ファイルを元の場所に戻しました。",
     "err_overlaps_install": "サバちゃんのインストール先フォルダーの中には置けません。その外のフォルダーを選んでください。"
+  },
+  "update_required": {
+    "title": "アップデートが必要です",
+    "relay": "アップデートが必要です。リレーはサバちゃん {{version}} 以上を必要としています。",
+    "module": "アップデートが必要です。{{name}} モジュールはサバちゃん {{version}} 以上で動きます。",
+    "module_newer": "アップデートが必要です。{{name}} モジュールはより新しいサバちゃんで動きます。",
+    "extension": "アップデートが必要です。{{name}} 拡張機能はサバちゃん {{version}} 以上で動きます。",
+    "check": "アップデートを確認"
   }
 }

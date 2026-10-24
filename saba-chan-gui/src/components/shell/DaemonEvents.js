@@ -42,6 +42,25 @@ export function DaemonEvents({ onServersChanged }) {
                 }
                 return;
             }
+            if (ev.type === 'instance.update_notice') {
+                // 켠 서버의 모듈 새 버전(업데이트 화면으로)·게임 서버 새 빌드 — 어디서 켰든 앱에도 남긴다
+                const d = ev.data;
+                const name = d.instance || nameOf(d.instanceId);
+                const module = d.kind === 'module';
+                if (!module && d.kind !== 'server') return;
+                window.__sabaNotice?.addNotice({
+                    message: `🔔 ${
+                        module
+                            ? tr('events.module_update', { name, module: d.module, version: d.latest })
+                            : tr('events.server_update', { name })
+                    }`,
+                    type: 'info',
+                    source: 'Updater',
+                    ...(module ? { action: 'openUpdateModal' } : {}),
+                    dedup: true,
+                });
+                return;
+            }
             if (ev.type === 'instance.port_moved') {
                 // 자동·예약 재시작처럼 시작 응답을 아무도 보지 않는 경로도 알린다
                 const d = ev.data;

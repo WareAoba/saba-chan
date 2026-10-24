@@ -354,8 +354,7 @@
     "list_empty": "Keine Module gefunden",
     "fetch_failed_toast": "Modulsuche fehlgeschlagen: {{error}}",
     "load_error_title": "Fehler beim Laden des Moduls",
-    "schema_invalid": "module.toml entspricht nicht dem Format: {{problems}}",
-    "schema_unsupported": "Dieses Modul braucht ein neueres Saba-chan (Modulformat {{required}}). Aktualisiere Saba-chan."
+    "schema_invalid": "module.toml entspricht nicht dem Format: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "Dieser PC empfängt und führt die aus Discord gesendeten Befehle aus. Solange sie aus ist, antwortet der Bot nicht.",
     "agent_replaced": "Die PC-Verbindung dieses Discord-Kontos wurde auf einen anderen PC verschoben und hier beendet. Um diesen PC wieder zu nutzen, kopple ihn erneut von diesem PC aus.",
-    "agent_too_old": "Der Relay-Server akzeptiert diese App-Version nicht mehr. Aktualisiere die App auf {{version}} oder neuer.",
-    "agent_check_update": "Nach Updates suchen",
     "agent_running": "An",
     "agent_connecting": "Startet",
     "agent_stopped": "Aus",
@@ -1362,7 +1359,9 @@
     "backup_done": "Sicherung von {{name}} abgeschlossen ({{kind}}).",
     "backup_failed": "Sicherung von {{name}} fehlgeschlagen. {{error}}",
     "schedule_restart": "{{name}} startet planmäßig in {{minutes}} Min. neu.",
-    "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert."
+    "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert.",
+    "module_update": "{{name}}: Version {{version}} des Moduls {{module}} ist verfügbar.",
+    "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server."
   },
   "terminal": {
     "open": "Im Terminal öffnen",
@@ -1503,5 +1502,13 @@
     "err_verify_failed": "Die Kopie stimmte nicht mit dem Original überein. Nichts wurde geändert. Versuche es erneut.",
     "err_commit_failed": "Die Einstellung konnte nicht gespeichert werden. Die Dateien wurden zurückgelegt.",
     "err_overlaps_install": "Das geht nicht im Installationsordner von Saba-chan. Wähle einen Ordner außerhalb davon."
+  },
+  "update_required": {
+    "title": "Update erforderlich",
+    "relay": "Update erforderlich. Das Relay braucht Saba-chan {{version}} oder neuer.",
+    "module": "Update erforderlich. Das Modul {{name}} braucht Saba-chan {{version}} oder neuer.",
+    "module_newer": "Update erforderlich. Das Modul {{name}} braucht ein neueres Saba-chan.",
+    "extension": "Update erforderlich. Die Erweiterung {{name}} braucht Saba-chan {{version}} oder neuer.",
+    "check": "Nach Updates suchen"
   }
 }

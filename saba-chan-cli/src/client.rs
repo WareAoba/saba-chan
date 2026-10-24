@@ -1019,7 +1019,7 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
         };
         let message = match key {
             // 릴레이가 요구하는 최소 버전을 그대로 보인다
-            "agent_too_old" => Some(t!("err.relay.agent_too_old", min = pick("minVersion").unwrap_or_else(|| "?".into()))),
+            "agent_too_old" => crate::error::update_required(&body, ""),
             key => crate::i18n::try_t(&format!("err.relay.{}", key)),
         }
         .unwrap_or_else(|| {
@@ -1043,6 +1043,8 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
         .or_else(|| pick("error"))
         .or_else(|| body.as_str().map(str::to_string))
         .unwrap_or_else(|| format!("HTTP {}", status));
+    // 사바쨩이 낮아 거절됐으면(모듈·익스텐션이 더 새 앱을 요구) 일반 실패 문구 대신 업데이트가 필요하다고 보인다
+    let message = crate::error::update_required(&body, "").unwrap_or(message);
     Err(CliError::Api {
         status,
         code,
@@ -1215,8 +1217,41 @@ mod tests {
         crate::i18n::init("ko");
         let e = api_err(check(426, json!({ "error": "AGENT_TOO_OLD", "minVersion": "0.1.9", "message": "Update Saba-chan to 0.1.9 or later." })));
         assert_eq!(e.code(), "agent_too_old");
+        assert!(e.to_string().starts_with("업데이트가 필요해요"), "{}", e);
         assert!(e.to_string().contains("0.1.9") && !e.to_string().contains("AGENT_TOO_OLD"), "{}", e);
         assert!(e.hint().is_some_and(|h| h.contains("saba-chan-cli update check")), "{:?}", e.hint());
+    }
+
+    // 모듈·익스텐션이 더 새 사바쨩을 요구해 거절되면 일반 실패 대신 "업데이트가 필요해요"와 그 이름·버전을 보인다
+    #[test]
+    fn a_dependency_that_wants_a_newer_app_asks_for_an_update() {
+        crate::i18n::init("ko");
+        let module = api_err(check(200, json!({
+            "success": false, "error": "module_dependency_unsatisfied", "error_code": "module_dependency_unsatisfied",
+            "message": "Cannot start 'A': module 'palworld' needs saba-core >=0.1.10 (installed 0.1.9)",
+            "module": "palworld", "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"],
+        })));
+        assert_eq!(module.code(), "module_dependency_unsatisfied");
+        let text = module.to_string();
+        assert!(text.starts_with("업데이트가 필요해요") && text.contains("palworld") && text.contains("0.1.10") && !text.contains(">="), "{text}");
+        assert!(module.hint().is_some_and(|h| h.contains("saba-chan-cli update check")), "{:?}", module.hint());
+
+        let newer = api_err(check(200, json!({ "success": false, "error_code": "module_schema_unsupported", "module": "ark", "required": 3 }))).to_string();
+        assert!(newer.starts_with("업데이트가 필요해요") && newer.contains("ark"), "{newer}");
+
+        let ext = api_err(check(422, json!({
+            "success": false, "error": "raw", "error_code": "app_version_unsatisfied", "related": ["0.1.10"], "extension": "steamcmd",
+        })));
+        let text = ext.to_string();
+        assert!(text.starts_with("업데이트가 필요해요") && text.contains("steamcmd") && text.contains("0.1.10"), "{text}");
+        assert!(ext.hint().is_some_and(|h| h.contains("saba-chan-cli update check")), "{:?}", ext.hint());
+
+        // 익스텐션만 모자라면 업데이트 안내가 아니다
+        let only_ext = api_err(check(200, json!({
+            "success": false, "error_code": "module_dependency_unsatisfied", "message": "needs ext",
+            "module": "palworld", "missing_dependencies": ["ext-steamcmd >=1.0.0 (not installed)"],
+        })));
+        assert_eq!(only_ext.to_string(), "needs ext");
     }
 
     #[test]
@@ -1339,6 +1374,7 @@ mod route_coverage {
     /// 데몬 라우트 중 CLI가 부르지 않는 것과 그 까닭. 여기 없는 라우트는 모두 CLI(그래서 TUI)에서 닿아야 한다
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
+        ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
         ("/api/client/:id/heartbeat", "GUI 창 수명"),
         ("/api/client/:id/unregister", "GUI 창 수명"),
         ("/api/clients/launch", "GUI가 새 터미널에 CLI를 띄우는 길"),

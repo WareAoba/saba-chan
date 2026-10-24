@@ -354,8 +354,7 @@
     "list_empty": "No modules found",
     "fetch_failed_toast": "Module search failed: {{error}}",
     "load_error_title": "Error loading module",
-    "schema_invalid": "module.toml does not match the format: {{problems}}",
-    "schema_unsupported": "This module needs a newer Saba-chan (module format {{required}}). Update Saba-chan."
+    "schema_invalid": "module.toml does not match the format: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "This PC receives and runs the commands sent from Discord. While it is off, the bot won't answer.",
     "agent_replaced": "This Discord account's PC connection moved to another PC, so it stopped here. To use this PC again, pair it again from this PC.",
-    "agent_too_old": "The relay server no longer accepts this app version. Update the app to {{version}} or later.",
-    "agent_check_update": "Check for updates",
     "agent_running": "On",
     "agent_connecting": "Starting",
     "agent_stopped": "Off",
@@ -1362,7 +1359,9 @@
     "backup_done": "Backed up {{name}} ({{kind}}).",
     "backup_failed": "Backup of {{name}} failed. {{error}}",
     "schedule_restart": "{{name}} will restart as scheduled in {{minutes}} min.",
-    "schedule_update": "{{name}} will update as scheduled in {{minutes}} min."
+    "schedule_update": "{{name}} will update as scheduled in {{minutes}} min.",
+    "module_update": "{{name}}: a new version {{version}} of the {{module}} module is out.",
+    "server_update": "{{name}}: a new game server version is out. If players can't join, update the server."
   },
   "terminal": {
     "open": "Open in terminal",
@@ -1503,5 +1502,13 @@
     "err_verify_failed": "The copy did not match the original. Nothing was changed. Try again.",
     "err_commit_failed": "Saving the setting failed. The files were put back where they were.",
     "err_overlaps_install": "It can't go inside the Saba-chan install folder. Choose a folder outside it."
+  },
+  "update_required": {
+    "title": "Update required",
+    "relay": "Update required. The relay needs Saba-chan {{version}} or later.",
+    "module": "Update required. The {{name}} module needs Saba-chan {{version}} or later.",
+    "module_newer": "Update required. The {{name}} module needs a newer Saba-chan.",
+    "extension": "Update required. The {{name}} extension needs Saba-chan {{version}} or later.",
+    "check": "Check for updates"
   }
 }

@@ -99,10 +99,9 @@
     "command_words": "コマンド語",
     "words_saved": "{{server}} のチャット用の語を保存しました。",
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
-    "words_not_used": "この Discord サーバーではこのサーバーを使っていません。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
+    "words_not_used": "この Discord サーバーではこのサーバーを使っていません。"
   },
   "col": {
     "players": "接続者",
@@ -256,8 +255,7 @@
       "forbidden": "そのDiscordサーバーでこの操作をする権限がありません。",
       "expired": "コードの有効期限が切れました。最初からやり直してください。",
       "rate_limited": "リクエストが多すぎます。1分ほどしてからもう一度お試しください。",
-      "other": "リレーがリクエストを拒否しました（{{code}}）。",
-      "agent_too_old": "リレーがこのアプリのバージョンを受け付けません。アプリを {{min}} 以上に更新してください。"
+      "other": "リレーがリクエストを拒否しました（{{code}}）。"
     },
     "ambiguous": "「{{query}}」に一致する{{what}}が複数あります。",
     "ambiguous_hint": "もっと具体的に指定してください: {{names}}",
@@ -393,8 +391,7 @@
     "removed": "モジュール {{id}} を削除しました。",
     "unmet": "{{component}} {{required}} が必要です（インストール済み: {{installed}}）",
     "load_failed": {
-      "invalid": "{{module}} モジュールを読み込めませんでした。module.toml が形式に合っていません:",
-      "unsupported": "{{module}} モジュールを読み込めませんでした。モジュール形式 {{required}} を読むには Saba-chan を更新してください。"
+      "invalid": "{{module}} モジュールを読み込めませんでした。module.toml が形式に合っていません:"
     }
   },
   "noun": {
@@ -508,6 +505,7 @@
     "provisioning": "{{name}} はまだインストール中です。",
     "requested": "{{name}} の起動をリクエストしました。",
     "port_moved": "Windows が管理用 REST ポート {{from}} を予約していたため {{to}} に変更しました。",
+    "module_update": "{{module}} モジュールの新しいバージョン {{version}} が出ました。`saba-chan-cli update` でアップデートできます。",
     "waiting": "{{name}} を起動しています...",
     "exited": "{{name}} は起動直後に終了しました。上の最後の行を確認してください。"
   },
@@ -1291,6 +1289,23 @@
     "components_dir": "モジュール・拡張機能は {{dir}} に置きます。",
     "components_dir_invalid": "{{dir}} はモジュール・拡張機能の場所に使えません: {{reason}}",
     "invalid_dir": "{{dir}} にはインストールできません。ドライブのルート、ホームフォルダー、設定フォルダー以外を選んでください"
+  },
+  "uninstall": {
+    "not_installed": "このコマンドはサバちゃんのインストールフォルダーから実行されていないため、削除するものがありません。",
+    "confirm": "{{dir}} のサバちゃんを削除しますか？プログラムとサバちゃんが作ったファイルはすべて削除し、{{kept}}。",
+    "kept_both": "設定とゲームサーバーは残します",
+    "kept_settings": "設定は残し、ゲームサーバーは削除します",
+    "kept_instances": "ゲームサーバーは残し、設定は削除します",
+    "kept_nothing": "設定とゲームサーバーも削除します",
+    "done": "サバちゃんを削除しました。{{kept}}。",
+    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}"
+  },
+  "update_required": {
+    "title": "アップデートが必要です",
+    "relay": "アップデートが必要です。リレーはサバちゃん {{version}} 以上を必要としています。",
+    "module": "アップデートが必要です。{{name}} モジュールはサバちゃん {{version}} 以上で動きます。",
+    "module_newer": "アップデートが必要です。{{name}} モジュールはより新しいサバちゃんで動きます。",
+    "extension": "アップデートが必要です。{{name}} 拡張機能はサバちゃん {{version}} 以上で動きます。"
   },
   "uninstall": {
     "not_installed": "このコマンドはサバちゃんのインストールフォルダーから実行されていないため、削除するものがありません。",

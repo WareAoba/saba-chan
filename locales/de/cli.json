@@ -75,7 +75,6 @@
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
     "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
-    "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Aktualisiere die App auf {{min}} oder neuer.",
     "words_not_used": "Dieser Discord-Server verwendet diesen Server nicht."
   },
   "col": {
@@ -209,8 +208,7 @@
       "forbidden": "Du hast auf diesem Discord-Server keine Berechtigung dafür.",
       "expired": "Der Code ist abgelaufen. Fang von vorne an.",
       "rate_limited": "Zu viele Anfragen. Versuche es in etwa einer Minute erneut.",
-      "other": "Das Relay hat die Anfrage abgelehnt ({{code}}).",
-      "agent_too_old": "Das Relay akzeptiert diese App-Version nicht mehr. Aktualisiere die App auf {{min}} oder neuer."
+      "other": "Das Relay hat die Anfrage abgelehnt ({{code}})."
     },
     "ambiguous": "Mehr als ein {{what}} passt zu „{{query}}“.",
     "ambiguous_hint": "Sei genauer: {{names}}",
@@ -336,8 +334,7 @@
     "removed": "Modul {{id}} gelöscht.",
     "unmet": "Benötigt {{component}} {{required}} (installiert: {{installed}})",
     "load_failed": {
-      "invalid": "Das Modul {{module}} konnte nicht geladen werden. Seine module.toml entspricht nicht dem Format:",
-      "unsupported": "Das Modul {{module}} konnte nicht geladen werden. Aktualisiere Saba-chan, um das Modulformat {{required}} zu lesen."
+      "invalid": "Das Modul {{module}} konnte nicht geladen werden. Seine module.toml entspricht nicht dem Format:"
     }
   },
   "noun": {
@@ -450,6 +447,7 @@
     "provisioning": "{{name}} wird noch installiert.",
     "requested": "Start für {{name}} angefordert.",
     "port_moved": "Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert.",
+    "module_update": "Version {{version}} des Moduls {{module}} ist verfügbar. Mit `saba-chan-cli update` aktualisieren.",
     "waiting": "{{name}} wird gestartet...",
     "exited": "{{name}} hat sich direkt nach dem Start beendet. Letzte Zeilen siehe oben."
   },
@@ -896,6 +894,23 @@
     "components_dir": "Module und Erweiterungen kommen nach {{dir}}.",
     "components_dir_invalid": "{{dir}} kann nicht für Module und Erweiterungen verwendet werden: {{reason}}",
     "invalid_dir": "Installation in {{dir}} nicht möglich. Wähle einen Ordner, der kein Laufwerksstamm, kein Benutzerordner und nicht der Einstellungsordner ist"
+  },
+  "uninstall": {
+    "not_installed": "Dieser Befehl läuft nicht aus einem Saba-chan-Installationsordner, es gibt nichts zu entfernen.",
+    "confirm": "Saba-chan aus {{dir}} entfernen? Das Programm und alle seine Dateien werden gelöscht; {{kept}}.",
+    "kept_both": "Einstellungen und Server bleiben erhalten",
+    "kept_settings": "Einstellungen bleiben, Server werden entfernt",
+    "kept_instances": "Server bleiben, Einstellungen werden entfernt",
+    "kept_nothing": "Einstellungen und Server werden ebenfalls entfernt",
+    "done": "Saba-chan wurde entfernt; {{kept}}.",
+    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}"
+  },
+  "update_required": {
+    "title": "Update erforderlich",
+    "relay": "Update erforderlich. Das Relay braucht Saba-chan {{version}} oder neuer.",
+    "module": "Update erforderlich. Das Modul {{name}} braucht Saba-chan {{version}} oder neuer.",
+    "module_newer": "Update erforderlich. Das Modul {{name}} braucht ein neueres Saba-chan.",
+    "extension": "Update erforderlich. Die Erweiterung {{name}} braucht Saba-chan {{version}} oder neuer."
   },
   "uninstall": {
     "not_installed": "Dieser Befehl läuft nicht aus einem Saba-chan-Installationsordner, es gibt nichts zu entfernen.",

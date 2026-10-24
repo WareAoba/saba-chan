@@ -234,6 +234,15 @@ fn remote_menu_items_carry_their_fixed_level() {
     assert!(item("server.start").get("level").is_none());
 }
 
+// 원격 업데이트(디스코드 `/사바쨩 업데이트`)는 한 번에 받고·적용하고·필요하면 업데이터까지 띄운다. 주인만, 말하는 사바쨩은 못 부른다
+#[test]
+fn remote_update_installs_in_one_step_for_the_owner_only() {
+    let def = find("update.apply").unwrap();
+    assert_eq!((def.method, def.path), ("POST", "/api/updates/install"));
+    assert_eq!((def.discord_level, def.risk), (Some(crate::chat::permissions::OWNER), "danger"));
+    assert!(def.surfaces.contains(&Discord) && !def.surfaces.contains(&Chatbot));
+}
+
 // 실사용: 디스코드 입력칸이 "name"·"backup_keep" 같은 내부 이름으로 보였다. 칸마다 언어별 제목을 싣는다
 #[test]
 fn remote_inputs_carry_localized_field_titles() {

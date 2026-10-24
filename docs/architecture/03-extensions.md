@@ -153,7 +153,7 @@
 | `server.post_create` | `handlers/instance.rs:357-370` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | `instance_id, instance_dir, instance, module, migration`. `instance`의 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)은 `***`로 가린다(D-E2) | 결과를 버린다. 프로비저닝과 동시에 돈다 |
 | `server.pre_delete` | `handlers/instance.rs:826-846` | 인스턴스 삭제 | 동기, 120s | `instance_id, instance_name, module, extension_data` | `handled`이면 2초 대기한다(파일 잠금 해제용) |
 | `server.settings_changed` | `handlers/instance.rs:1350-1364` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | `instance_id, instance_dir, instance, module_extensions(module.toml [extensions.*] 전체), extension_data, settings`. `instance`와 `settings`의 비밀 값은 `server.post_create`와 같이 `***`로 가린다(D-E2) | 결과를 버린다(`_results`) |
-| `server.check_update` | `handlers/instance.rs:1384-1470` | `GET /api/instance/:id/check-update` | 동기, 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 첫 번째 Ok를 그대로 응답한다. 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1433-1437`) |
+| `server.check_update` | `handlers/instance.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 첫 번째 Ok를 그대로 응답한다. 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1433-1437`) |
 | `command.<name>` (익스텐션 명령) | `handlers/command.rs:90-102` | `POST /api/instance/:id/command`에서 모듈에 없는 명령 | 동기, 120s | `instance_id, instance_name, module, extension_data, running, args` | 결과를 명령 응답으로 돌려준다 |
 
 ~~**manifest에 선언됐지만 daemon이 발화하지 않는 hook** 7종~~ → 해결: 현재 manifest에는 없고, 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/:387-390`).
@@ -208,7 +208,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 | rescan | `POST /api/extensions/rescan` | 위 3.2 |
 | ~~force_disable~~ | — | → 해결: 함수가 삭제되었다 |
 
-에러 코드 → HTTP 매핑: `handlers/extension.rs:26-59`. not_found/not_mounted/manifest_not_found는 404, dependency_*·component_version_unsatisfied·app_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
+켜기(`POST /api/extensions/:id/enable`) 실패 본문에는 그 익스텐션 id `extension`이 실린다(`naming_extension`). 설치에서 패키지의 `min_app_version`을 못 맞추면 `install_failed` 대신 `app_version_unsatisfied`(`related[0]` = 요구 버전, `extension`)로 답한다(`stage_package`). 에러 코드 → HTTP 매핑: `handlers/extension.rs:26-59`. not_found/not_mounted/manifest_not_found는 404, dependency_*·component_version_unsatisfied·app_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
 
 ### 3.4 원격 목록 · 설치 · 업데이트
 

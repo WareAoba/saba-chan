@@ -75,7 +75,6 @@
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
     "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
-    "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。",
     "words_not_used": "此 Discord 伺服器未使用此伺服器。"
   },
   "col": {
@@ -209,8 +208,7 @@
       "forbidden": "你沒有在該 Discord 伺服器執行此操作的權限。",
       "expired": "代碼已過期。請重新開始。",
       "rate_limited": "請求過於頻繁。請約一分鐘後再試。",
-      "other": "中繼拒絕了請求（{{code}}）。",
-      "agent_too_old": "中繼不再接受此應用程式版本。請將應用程式更新到 {{min}} 或更新版本。"
+      "other": "中繼拒絕了請求（{{code}}）。"
     },
     "ambiguous": "有多個{{what}}符合「{{query}}」。",
     "ambiguous_hint": "請更明確一點：{{names}}",
@@ -336,8 +334,7 @@
     "removed": "已刪除模組 {{id}}。",
     "unmet": "需要 {{component}} {{required}}（已安裝：{{installed}}）",
     "load_failed": {
-      "invalid": "無法載入 {{module}} 模組。module.toml 不符合格式:",
-      "unsupported": "無法載入 {{module}} 模組。請更新 Saba-chan 以讀取模組格式 {{required}}。"
+      "invalid": "無法載入 {{module}} 模組。module.toml 不符合格式:"
     }
   },
   "noun": {
@@ -450,6 +447,7 @@
     "provisioning": "{{name}} 仍在安裝中。",
     "requested": "已要求啟動 {{name}}。",
     "port_moved": "Windows 保留了管理用 REST 連接埠 {{from}}，已改為 {{to}}。",
+    "module_update": "{{module}} 模組的新版本 {{version}} 已發布。執行 `saba-chan-cli update` 即可更新。",
     "waiting": "正在啟動 {{name}}...",
     "exited": "{{name}} 啟動後隨即結束。最後幾行請見上方。"
   },
@@ -896,6 +894,23 @@
     "components_dir": "模組和擴充放在 {{dir}}。",
     "components_dir_invalid": "無法將 {{dir}} 用於模組和擴充：{{reason}}",
     "invalid_dir": "無法安裝到 {{dir}}。請選擇不是磁碟機根目錄、使用者主資料夾或設定資料夾的資料夾"
+  },
+  "uninstall": {
+    "not_installed": "此命令不是從 Saba-chan 安裝資料夾執行的，沒有可刪除的安裝。",
+    "confirm": "要刪除 {{dir}} 中的 Saba-chan 嗎？程式及其建立的檔案將全部刪除，{{kept}}。",
+    "kept_both": "設定和遊戲伺服器將保留",
+    "kept_settings": "設定將保留，遊戲伺服器將刪除",
+    "kept_instances": "遊戲伺服器將保留，設定將刪除",
+    "kept_nothing": "設定和遊戲伺服器也將刪除",
+    "done": "已刪除 Saba-chan，{{kept}}。",
+    "left": "已刪除 Saba-chan，但無法刪除以下項目。請關閉正在使用它們的程式後手動刪除：\n{{paths}}"
+  },
+  "update_required": {
+    "title": "需要更新",
+    "relay": "需要更新。中繼需要 Saba-chan {{version}} 或更新版本。",
+    "module": "需要更新。{{name}} 模組需要 Saba-chan {{version}} 或更新版本。",
+    "module_newer": "需要更新。{{name}} 模組需要更新版本的 Saba-chan。",
+    "extension": "需要更新。{{name}} 擴充功能需要 Saba-chan {{version}} 或更新版本。"
   },
   "uninstall": {
     "not_installed": "此命令不是從 Saba-chan 安裝資料夾執行的，沒有可刪除的安裝。",
