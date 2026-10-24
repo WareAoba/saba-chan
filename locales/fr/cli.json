@@ -122,7 +122,23 @@
     "saved": "Enregistré : {{keys}}",
     "confirm_reset_all": "Réinitialiser tous les paramètres par défaut ?",
     "confirm_reset": "Réinitialiser {{keys}} à la valeur par défaut ?",
-    "all": "tous les paramètres"
+    "all": "tous les paramètres",
+    "paths": {
+      "data": "Données et paramètres",
+      "install": "Programme",
+      "default_install": "Dossier du programme par défaut",
+      "instances": "Serveurs de jeu",
+      "modules": "Modules",
+      "extensions": "Extensions",
+      "source_default": "par défaut",
+      "source_config": "choisi",
+      "source_env": "fixé par une variable d'environnement",
+      "default_is": "par défaut : {{path}}"
+    },
+    "confirm_move_modules": "Déplacer les modules vers {{dir}} ? Les modules installés sont copiés, vérifiés, puis supprimés de l'ancien dossier.",
+    "confirm_move_extensions": "Déplacer les extensions vers {{dir}} ? Les extensions installées sont copiées, vérifiées, puis supprimées de l'ancien dossier.",
+    "moved": "Déplacé vers {{path}}.",
+    "move_left_behind": "Ces anciens fichiers n'ont pas pu être supprimés. Supprimez-les vous-même : {{files}}"
   },
   "console": {
     "attach_help": "Connecté à {{name}}. Tapez une commande, :help pour l'aide, :q pour quitter (le serveur continue de tourner).",
@@ -223,7 +239,23 @@
       "not_supported": "Consultez les commandes non prises en charge avec : saba-chan-cli module info",
       "agent_too_old": "Rechercher les mises à jour : saba-chan-cli update check",
       "install_backup_failed": "Impossible de sauvegarder {{file}} avant l'installation, rien n'a donc été installé. Vérifiez l'espace disque libre et les fichiers .bak de ce dossier.",
-      "kept_backups": "Les fichiers qui n'ont pas pu être remis en place ont été conservés en copie d'avant l'installation : {{files}}"
+      "kept_backups": "Les fichiers qui n'ont pas pu être remis en place ont été conservés en copie d'avant l'installation : {{files}}",
+      "paths_busy": "Une installation, une mise à jour, une sauvegarde ou une autre tâche serveur est en cours. Réessayez quand elle sera terminée.",
+      "paths_servers_running": "Arrêtez d'abord ces serveurs, puis réessayez.",
+      "paths_env_fixed": "Ce dossier est fixé par une variable d'environnement. Supprimez la variable pour choisir un dossier.",
+      "paths_not_absolute": "Indiquez un chemin de dossier complet, par exemple D:\\Games\\Saba.",
+      "paths_root_or_home": "Choisissez un dossier à l'intérieur d'un lecteur ou de votre dossier utilisateur, pas le lecteur lui-même ni votre dossier utilisateur.",
+      "paths_contains_data_dir": "Ce dossier contient le dossier de données de Saba-chan. Choisissez un autre dossier.",
+      "paths_same_as_current": "Il est déjà dans ce dossier.",
+      "paths_overlaps_current": "Ce dossier est dans le dossier actuel, ou l'inverse. Choisissez un autre dossier.",
+      "paths_overlaps_other": "Ce dossier chevauche le dossier des modules ou des extensions. Choisissez un autre dossier.",
+      "paths_not_empty": "Le dossier des modules ou des extensions à cet endroit contient déjà des fichiers. Choisissez un emplacement vide.",
+      "paths_not_writable": "Saba-chan ne peut pas écrire à cet endroit. Choisissez un dossier accessible en écriture.",
+      "paths_has_link": "Le dossier contient un lien (dossier raccourci). Supprimez-le, puis réessayez.",
+      "paths_copy_failed": "La copie a échoué. Rien n'a été modifié. Vérifiez l'espace libre et réessayez.",
+      "paths_verify_failed": "La copie ne correspond pas à l'original. Rien n'a été modifié. Réessayez.",
+      "paths_commit_failed": "L'enregistrement du paramètre a échoué. Les fichiers ont été remis en place.",
+      "paths_unknown_kind": "Choisissez modules ou extensions."
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -509,7 +541,9 @@
       "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter",
       "install": "Installer Saba-chan sur ce PC sans le programme d'installation fenêtré",
       "uninstall": "Supprimer Saba-chan de ce PC (paramètres et serveurs conservés sauf indication contraire)",
-      "server.discord": "Les mots par lesquels chaque serveur Discord appelle ce serveur et ses commandes dans le chat. Sans option : afficher"
+      "server.discord": "Les mots par lesquels chaque serveur Discord appelle ce serveur et ses commandes dans le chat. Sans option : afficher",
+      "config.paths": "Où Saba-chan garde ses données, modules et extensions, et les dossiers par défaut",
+      "config.move": "Déplacer les modules ou les extensions vers un autre dossier. Les fichiers installés sont déplacés ; les serveurs doivent être arrêtés"
     },
     "arg": {
       "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
@@ -536,7 +570,10 @@
       "server.discord.guild": "Serveur Discord par nom ou id (demandé si plusieurs sont associés et qu'une modification est faite)",
       "server.discord.word": "Mots pour le serveur, séparés par des virgules (remplacent les actuels). --word \"\" les supprime",
       "server.discord.command": "Mots pour une commande : COMMANDE=MOT,MOT (remplace les mots de cette commande, COMMANDE= les supprime). Répétable",
-      "server.discord.clear": "Supprimer tous les mots de ce serveur"
+      "server.discord.clear": "Supprimer tous les mots de ce serveur",
+      "config.move.kind": "Ce qu'il faut déplacer : modules ou extensions",
+      "config.move.folder": "Dossier à utiliser. Saba-chan y crée un dossier modules ou extensions",
+      "components_dir": "Dossier des modules et extensions. Saba-chan y crée les dossiers modules et extensions et déplace les fichiers installés"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
@@ -709,7 +746,10 @@
     "failed": "L'installation a échoué : {{reason}} (détails : {{log}})",
     "failed_no_log": "L'installation a échoué : {{reason}}",
     "done": "Installé dans {{dir}}",
-    "next": "Démarrez le démon avec :\n{{command}}"
+    "next": "Démarrez le démon avec :\n{{command}}",
+    "components_dir": "Les modules et extensions vont dans {{dir}}.",
+    "components_dir_invalid": "Impossible d'utiliser {{dir}} pour les modules et extensions : {{reason}}",
+    "invalid_dir": "Impossible d'installer dans {{dir}}. Choisissez un dossier qui n'est ni la racine d'un lecteur, ni votre dossier personnel, ni le dossier des paramètres"
   },
   "uninstall": {
     "not_installed": "Cette commande ne s'exécute pas depuis un dossier d'installation de Saba-chan : rien à supprimer.",

@@ -122,7 +122,23 @@
     "saved": "已儲存：{{keys}}",
     "confirm_reset_all": "要將所有設定還原為預設值嗎？",
     "confirm_reset": "要將 {{keys}} 還原為預設值嗎？",
-    "all": "所有設定"
+    "all": "所有設定",
+    "paths": {
+      "data": "資料與設定",
+      "install": "程式",
+      "default_install": "預設程式資料夾",
+      "instances": "遊戲伺服器",
+      "modules": "模組",
+      "extensions": "擴充",
+      "source_default": "預設",
+      "source_config": "已選擇",
+      "source_env": "由環境變數固定",
+      "default_is": "預設：{{path}}"
+    },
+    "confirm_move_modules": "要把模組移到 {{dir}} 嗎？已安裝的模組會先複製、驗證，然後從舊資料夾刪除。",
+    "confirm_move_extensions": "要把擴充移到 {{dir}} 嗎？已安裝的擴充會先複製、驗證，然後從舊資料夾刪除。",
+    "moved": "已移到 {{path}}。",
+    "move_left_behind": "無法刪除以下舊檔案，請手動刪除：{{files}}"
   },
   "console": {
     "attach_help": "已連接到 {{name}}。輸入指令，:help 查看說明，:q 離開（伺服器會繼續運作）。",
@@ -223,7 +239,23 @@
       "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。",
       "agent_too_old": "檢查更新：saba-chan-cli update check",
       "install_backup_failed": "安裝前無法備份 {{file}}，因此沒有安裝。請檢查磁碟可用空間以及該資料夾中的 .bak 檔案。",
-      "kept_backups": "無法還原的檔案已保留安裝前的副本：{{files}}"
+      "kept_backups": "無法還原的檔案已保留安裝前的副本：{{files}}",
+      "paths_busy": "有安裝、更新、備份或其他伺服器工作正在進行。請等它結束後再試。",
+      "paths_servers_running": "請先停止這些伺服器，然後再試。",
+      "paths_env_fixed": "此資料夾由環境變數固定。移除該變數後才能選擇資料夾。",
+      "paths_not_absolute": "請填寫完整的資料夾路徑，例如 D:\\Games\\Saba。",
+      "paths_root_or_home": "請選擇磁碟機或使用者資料夾裡面的資料夾，而不是磁碟機本身或使用者資料夾。",
+      "paths_contains_data_dir": "該資料夾包含 Saba-chan 的資料資料夾。請選擇其他資料夾。",
+      "paths_same_as_current": "已經在該資料夾中。",
+      "paths_overlaps_current": "該資料夾位於目前資料夾內，或反之。請選擇其他資料夾。",
+      "paths_overlaps_other": "該資料夾與模組或擴充資料夾重疊。請選擇其他資料夾。",
+      "paths_not_empty": "那裡的模組或擴充資料夾已有檔案。請選擇空的位置。",
+      "paths_not_writable": "Saba-chan 無法寫入該位置。請選擇可寫入的資料夾。",
+      "paths_has_link": "資料夾內有連結（捷徑資料夾）。移除後再試。",
+      "paths_copy_failed": "複製失敗，未做任何變更。請檢查可用空間後再試。",
+      "paths_verify_failed": "複本與原件不一致，未做任何變更。請再試一次。",
+      "paths_commit_failed": "儲存設定失敗，檔案已放回原處。",
+      "paths_unknown_kind": "請選擇 modules 或 extensions。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -509,7 +541,9 @@
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
       "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan",
       "uninstall": "從此電腦刪除 Saba-chan（除非指定，否則保留設定和伺服器）",
-      "server.discord": "每個 Discord 伺服器在聊天中用來稱呼此伺服器及其指令的詞。不帶選項：查看"
+      "server.discord": "每個 Discord 伺服器在聊天中用來稱呼此伺服器及其指令的詞。不帶選項：查看",
+      "config.paths": "Saba-chan 存放資料、模組和擴充的位置，以及預設資料夾",
+      "config.move": "把模組或擴充移到其他資料夾。已安裝的檔案會一起移動；必須先停止伺服器"
     },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
@@ -536,7 +570,10 @@
       "server.discord.guild": "Discord 伺服器名稱或 id（配對了多個且要修改時會詢問）",
       "server.discord.word": "稱呼伺服器的詞，多個用逗號分隔（取代目前的詞）。--word \"\" 表示刪除",
       "server.discord.command": "單一指令的稱呼：指令=稱呼,稱呼（只更改該指令，指令= 表示刪除）。可多次使用",
-      "server.discord.clear": "刪除此伺服器的所有稱呼"
+      "server.discord.clear": "刪除此伺服器的所有稱呼",
+      "config.move.kind": "要移動的內容：modules 或 extensions",
+      "config.move.folder": "要使用的資料夾。Saba-chan 會在其中建立 modules 或 extensions 資料夾",
+      "components_dir": "模組和擴充的資料夾。Saba-chan 會在其中建立 modules 和 extensions 資料夾並移動已安裝的檔案"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -709,7 +746,10 @@
     "failed": "安裝失敗：{{reason}}（詳細記錄：{{log}}）",
     "failed_no_log": "安裝失敗：{{reason}}",
     "done": "已安裝到 {{dir}}",
-    "next": "用以下指令啟動常駐程式：\n{{command}}"
+    "next": "用以下指令啟動常駐程式：\n{{command}}",
+    "components_dir": "模組和擴充放在 {{dir}}。",
+    "components_dir_invalid": "無法將 {{dir}} 用於模組和擴充：{{reason}}",
+    "invalid_dir": "無法安裝到 {{dir}}。請選擇不是磁碟機根目錄、使用者主資料夾或設定資料夾的資料夾"
   },
   "uninstall": {
     "not_installed": "此命令不是從 Saba-chan 安裝資料夾執行的，沒有可刪除的安裝。",

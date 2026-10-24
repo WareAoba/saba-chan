@@ -122,7 +122,23 @@
     "saved": "Salvo: {{keys}}",
     "confirm_reset_all": "Redefinir todas as configurações para o padrão?",
     "confirm_reset": "Redefinir {{keys}} para o padrão?",
-    "all": "todas as configurações"
+    "all": "todas as configurações",
+    "paths": {
+      "data": "Dados e configurações",
+      "install": "Programa",
+      "default_install": "Pasta padrão do programa",
+      "instances": "Servidores de jogo",
+      "modules": "Módulos",
+      "extensions": "Extensões",
+      "source_default": "padrão",
+      "source_config": "escolhido",
+      "source_env": "fixado por uma variável de ambiente",
+      "default_is": "padrão: {{path}}"
+    },
+    "confirm_move_modules": "Mover os módulos para {{dir}}? Os módulos instalados são copiados, conferidos e depois removidos da pasta antiga.",
+    "confirm_move_extensions": "Mover as extensões para {{dir}}? As extensões instaladas são copiadas, conferidas e depois removidas da pasta antiga.",
+    "moved": "Movido para {{path}}.",
+    "move_left_behind": "Não foi possível remover estes arquivos antigos. Apague-os você mesmo: {{files}}"
   },
   "console": {
     "attach_help": "Conectado a {{name}}. Digite um comando, :help para ajuda, :q para sair (o servidor continua rodando).",
@@ -223,7 +239,23 @@
       "not_supported": "Veja os comandos sem suporte com: saba-chan-cli module info",
       "agent_too_old": "Verificar atualizações: saba-chan-cli update check",
       "install_backup_failed": "Não foi possível fazer backup de {{file}} antes de instalar, então nada foi instalado. Verifique o espaço livre em disco e os arquivos .bak dessa pasta.",
-      "kept_backups": "Os arquivos que não puderam ser restaurados foram mantidos como cópia de antes da instalação: {{files}}"
+      "kept_backups": "Os arquivos que não puderam ser restaurados foram mantidos como cópia de antes da instalação: {{files}}",
+      "paths_busy": "Uma instalação, atualização, backup ou outra tarefa de servidor está em andamento. Tente de novo quando terminar.",
+      "paths_servers_running": "Pare estes servidores primeiro e tente de novo.",
+      "paths_env_fixed": "Esta pasta é fixada por uma variável de ambiente. Remova a variável para escolher uma pasta.",
+      "paths_not_absolute": "Informe o caminho completo da pasta, como D:\\Games\\Saba.",
+      "paths_root_or_home": "Escolha uma pasta dentro de uma unidade ou da sua pasta de usuário, não a unidade em si nem a pasta de usuário.",
+      "paths_contains_data_dir": "Essa pasta contém a pasta de dados do Saba-chan. Escolha outra pasta.",
+      "paths_same_as_current": "Já está nessa pasta.",
+      "paths_overlaps_current": "Essa pasta está dentro da pasta atual, ou o contrário. Escolha outra pasta.",
+      "paths_overlaps_other": "Essa pasta se sobrepõe à pasta de módulos ou de extensões. Escolha outra pasta.",
+      "paths_not_empty": "A pasta de módulos ou de extensões nesse local já tem arquivos. Escolha um local vazio.",
+      "paths_not_writable": "O Saba-chan não consegue gravar ali. Escolha uma pasta com permissão de gravação.",
+      "paths_has_link": "A pasta tem um link (pasta de atalho) dentro. Remova-o e tente de novo.",
+      "paths_copy_failed": "A cópia falhou. Nada foi alterado. Verifique o espaço livre e tente de novo.",
+      "paths_verify_failed": "A cópia não correspondeu ao original. Nada foi alterado. Tente de novo.",
+      "paths_commit_failed": "Não foi possível salvar a configuração. Os arquivos foram devolvidos ao lugar.",
+      "paths_unknown_kind": "Escolha modules ou extensions."
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
@@ -509,7 +541,9 @@
       "events": "Acompanha os eventos do daemon ao vivo (com --json: um JSON por linha). Ctrl+C para parar",
       "install": "Instalar o Saba-chan neste PC sem o instalador com janela",
       "uninstall": "Remover o Saba-chan deste PC (configurações e servidores são mantidos, salvo indicação)",
-      "server.discord": "Como cada servidor do Discord chama este servidor e seus comandos no chat. Sem opções: mostrar"
+      "server.discord": "Como cada servidor do Discord chama este servidor e seus comandos no chat. Sem opções: mostrar",
+      "config.paths": "Onde o Saba-chan guarda dados, módulos e extensões, e as pastas padrão",
+      "config.move": "Mover módulos ou extensões para outra pasta. Os arquivos instalados são movidos; os servidores devem estar parados"
     },
     "arg": {
       "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
@@ -536,7 +570,10 @@
       "server.discord.guild": "Servidor do Discord por nome ou id (perguntado quando há vários pareados e algo muda)",
       "server.discord.word": "Palavras para o servidor, separadas por vírgula (substituem as atuais). --word \"\" as remove",
       "server.discord.command": "Palavras para um comando: COMANDO=PALAVRA,PALAVRA (substitui as desse comando, COMANDO= as remove). Pode repetir",
-      "server.discord.clear": "Remover todas as palavras deste servidor"
+      "server.discord.clear": "Remover todas as palavras deste servidor",
+      "config.move.kind": "O que mover: modules ou extensions",
+      "config.move.folder": "Pasta a usar. O Saba-chan cria dentro dela uma pasta modules ou extensions",
+      "components_dir": "Pasta para módulos e extensões. O Saba-chan cria dentro dela as pastas modules e extensions e move os arquivos instalados"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
@@ -709,7 +746,10 @@
     "failed": "A instalação falhou: {{reason}} (detalhes: {{log}})",
     "failed_no_log": "A instalação falhou: {{reason}}",
     "done": "Instalado em {{dir}}",
-    "next": "Inicie o daemon com:\n{{command}}"
+    "next": "Inicie o daemon com:\n{{command}}",
+    "components_dir": "Os módulos e extensões ficam em {{dir}}.",
+    "components_dir_invalid": "Não é possível usar {{dir}} para módulos e extensões: {{reason}}",
+    "invalid_dir": "Não é possível instalar em {{dir}}. Escolha uma pasta que não seja a raiz de uma unidade, sua pasta pessoal ou a pasta de configurações"
   },
   "uninstall": {
     "not_installed": "Este comando não está sendo executado de uma pasta de instalação do Saba-chan; não há nada para remover.",

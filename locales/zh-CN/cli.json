@@ -169,7 +169,23 @@
       "name_taken": "已有同名服务器",
       "busy": "正在安装、更新、备份或恢复"
     },
-    "import_token_moved": "机器人配对也一并迁移了。请断开旧电脑（在旧电脑上运行：saba-chan-cli bot unpair）。"
+    "import_token_moved": "机器人配对也一并迁移了。请断开旧电脑（在旧电脑上运行：saba-chan-cli bot unpair）。",
+    "paths": {
+      "data": "数据和设置",
+      "install": "程序",
+      "default_install": "默认程序文件夹",
+      "instances": "游戏服务器",
+      "modules": "模块",
+      "extensions": "扩展",
+      "source_default": "默认",
+      "source_config": "已选择",
+      "source_env": "由环境变量固定",
+      "default_is": "默认：{{path}}"
+    },
+    "confirm_move_modules": "要把模块移到 {{dir}} 吗？已安装的模块会先复制、校验，然后从旧文件夹删除。",
+    "confirm_move_extensions": "要把扩展移到 {{dir}} 吗？已安装的扩展会先复制、校验，然后从旧文件夹删除。",
+    "moved": "已移到 {{path}}。",
+    "move_left_behind": "无法删除以下旧文件，请手动删除：{{files}}"
   },
   "console": {
     "attach_help": "已连接到 {{name}}。输入命令，:help 查看帮助，:q 退出（服务器会继续运行）。",
@@ -278,7 +294,23 @@
       "not_supported": "可用 saba-chan-cli module info 查看不支持的命令。",
       "agent_too_old": "检查更新：saba-chan-cli update check",
       "install_backup_failed": "安装前无法备份 {{file}}，因此没有安装。请检查磁盘可用空间以及该文件夹中的 .bak 文件。",
-      "kept_backups": "无法还原的文件已保留安装前的副本：{{files}}"
+      "kept_backups": "无法还原的文件已保留安装前的副本：{{files}}",
+      "paths_busy": "有安装、更新、备份或其他服务器任务正在进行。请等它结束后重试。",
+      "paths_servers_running": "请先停止这些服务器，然后重试。",
+      "paths_env_fixed": "此文件夹由环境变量固定。删除该变量后才能选择文件夹。",
+      "paths_not_absolute": "请填写完整的文件夹路径，例如 D:\\Games\\Saba。",
+      "paths_root_or_home": "请选择驱动器或用户文件夹里面的文件夹，而不是驱动器本身或用户文件夹。",
+      "paths_contains_data_dir": "该文件夹包含 Saba-chan 的数据文件夹。请选择其他文件夹。",
+      "paths_same_as_current": "已经在该文件夹中。",
+      "paths_overlaps_current": "该文件夹位于当前文件夹内，或反之。请选择其他文件夹。",
+      "paths_overlaps_other": "该文件夹与模块或扩展文件夹重叠。请选择其他文件夹。",
+      "paths_not_empty": "那里的模块或扩展文件夹已有文件。请选择空的位置。",
+      "paths_not_writable": "Saba-chan 无法写入该位置。请选择可写入的文件夹。",
+      "paths_has_link": "文件夹内有链接（快捷方式文件夹）。删除后重试。",
+      "paths_copy_failed": "复制失败，未做任何更改。请检查可用空间后重试。",
+      "paths_verify_failed": "副本与原件不一致，未做任何更改。请重试。",
+      "paths_commit_failed": "保存设置失败，文件已放回原处。",
+      "paths_unknown_kind": "请选择 modules 或 extensions。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -722,7 +754,9 @@
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
       "tui": "打开全屏菜单",
       "install": "不使用窗口安装程序，在此电脑上安装 Saba-chan",
-      "uninstall": "从此电脑删除 Saba-chan（除非指定，否则保留设置和服务器）"
+      "uninstall": "从此电脑删除 Saba-chan（除非指定，否则保留设置和服务器）",
+      "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
+      "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器"
     },
     "arg": {
       "bot.channels.notify": "通知频道(崩溃、备份、更新、定时重启),名称或 ID",
@@ -842,7 +876,10 @@
       "install.gui": "即使没有显示器也安装桌面应用",
       "install.no_gui": "即使有显示器也不安装桌面应用",
       "uninstall.remove_settings": "同时删除设置和 Discord 连接",
-      "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）"
+      "uninstall.remove_instances": "同时删除游戏服务器（服务器文件、世界、备份）",
+      "config.move.kind": "要移动的内容：modules 或 extensions",
+      "config.move.folder": "要使用的文件夹。Saba-chan 会在其中创建 modules 或 extensions 文件夹",
+      "components_dir": "模块和扩展的文件夹。Saba-chan 会在其中创建 modules 和 extensions 文件夹并移动已安装的文件"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1097,7 +1134,10 @@
     "failed": "安装失败：{{reason}}（详情：{{log}}）",
     "failed_no_log": "安装失败：{{reason}}",
     "done": "已安装到 {{dir}}",
-    "next": "用以下命令启动守护进程：\n{{command}}"
+    "next": "用以下命令启动守护进程：\n{{command}}",
+    "components_dir": "模块和扩展放在 {{dir}}。",
+    "components_dir_invalid": "无法将 {{dir}} 用于模块和扩展：{{reason}}",
+    "invalid_dir": "无法安装到 {{dir}}。请选择不是驱动器根目录、用户主文件夹或设置文件夹的文件夹"
   },
   "uninstall": {
     "not_installed": "此命令不是从 Saba-chan 安装文件夹运行的，没有可删除的安装。",

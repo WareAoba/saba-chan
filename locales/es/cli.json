@@ -122,7 +122,23 @@
     "saved": "Guardado: {{keys}}",
     "confirm_reset_all": "¿Restablecer todos los ajustes a sus valores predeterminados?",
     "confirm_reset": "¿Restablecer {{keys}} al valor predeterminado?",
-    "all": "todos los ajustes"
+    "all": "todos los ajustes",
+    "paths": {
+      "data": "Datos y ajustes",
+      "install": "Programa",
+      "default_install": "Carpeta del programa predeterminada",
+      "instances": "Servidores de juego",
+      "modules": "Módulos",
+      "extensions": "Extensiones",
+      "source_default": "predeterminado",
+      "source_config": "elegido",
+      "source_env": "fijado por una variable de entorno",
+      "default_is": "predeterminado: {{path}}"
+    },
+    "confirm_move_modules": "¿Mover los módulos a {{dir}}? Los módulos instalados se copian, se comprueban y luego se eliminan de la carpeta anterior.",
+    "confirm_move_extensions": "¿Mover las extensiones a {{dir}}? Las extensiones instaladas se copian, se comprueban y luego se eliminan de la carpeta anterior.",
+    "moved": "Movido a {{path}}.",
+    "move_left_behind": "No se pudieron eliminar estos archivos antiguos. Bórralos tú: {{files}}"
   },
   "console": {
     "attach_help": "Conectado a {{name}}. Escribe un comando, :help para ayuda, :q para salir (el servidor sigue en marcha).",
@@ -223,7 +239,23 @@
       "not_supported": "Consulta los comandos no admitidos con: saba-chan-cli module info",
       "agent_too_old": "Buscar actualizaciones: saba-chan-cli update check",
       "install_backup_failed": "No se pudo hacer copia de {{file}} antes de instalar, así que no se instaló nada. Revisa el espacio libre en disco y los archivos .bak de esa carpeta.",
-      "kept_backups": "Los archivos que no se pudieron restaurar se conservaron como copia previa a la instalación: {{files}}"
+      "kept_backups": "Los archivos que no se pudieron restaurar se conservaron como copia previa a la instalación: {{files}}",
+      "paths_busy": "Hay una instalación, actualización, copia de seguridad u otra tarea de servidor en curso. Inténtalo de nuevo cuando termine.",
+      "paths_servers_running": "Detén primero estos servidores y vuelve a intentarlo.",
+      "paths_env_fixed": "Esta carpeta está fijada por una variable de entorno. Quita la variable para elegir una carpeta.",
+      "paths_not_absolute": "Indica una ruta de carpeta completa, como D:\\Games\\Saba.",
+      "paths_root_or_home": "Elige una carpeta dentro de una unidad o de tu carpeta de usuario, no la unidad en sí ni tu carpeta de usuario.",
+      "paths_contains_data_dir": "Esa carpeta contiene la carpeta de datos de Saba-chan. Elige otra carpeta.",
+      "paths_same_as_current": "Ya está en esa carpeta.",
+      "paths_overlaps_current": "Esa carpeta está dentro de la carpeta actual, o al revés. Elige otra carpeta.",
+      "paths_overlaps_other": "Esa carpeta se solapa con la carpeta de módulos o de extensiones. Elige otra carpeta.",
+      "paths_not_empty": "La carpeta de módulos o de extensiones de ese lugar ya tiene archivos. Elige un lugar vacío.",
+      "paths_not_writable": "Saba-chan no puede escribir ahí. Elige una carpeta en la que se pueda escribir.",
+      "paths_has_link": "La carpeta tiene un enlace (carpeta de acceso directo) dentro. Quítalo y vuelve a intentarlo.",
+      "paths_copy_failed": "La copia falló. No se cambió nada. Comprueba el espacio libre y vuelve a intentarlo.",
+      "paths_verify_failed": "La copia no coincidía con el original. No se cambió nada. Vuelve a intentarlo.",
+      "paths_commit_failed": "No se pudo guardar el ajuste. Los archivos se devolvieron a su lugar.",
+      "paths_unknown_kind": "Elige modules o extensions."
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
@@ -509,7 +541,9 @@
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
       "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
       "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)",
-      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar"
+      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar",
+      "config.paths": "Dónde guarda Saba-chan sus datos, módulos y extensiones, y las carpetas predeterminadas",
+      "config.move": "Mover los módulos o las extensiones a otra carpeta. Los archivos instalados se mueven; los servidores deben estar detenidos"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -536,7 +570,10 @@
       "server.discord.guild": "Servidor de Discord por nombre o id (se pregunta si hay varios vinculados y algo cambia)",
       "server.discord.word": "Palabras para el servidor, separadas por comas (reemplazan las actuales). --word \"\" las elimina",
       "server.discord.command": "Palabras para un comando: COMANDO=PALABRA,PALABRA (reemplaza las de ese comando, COMANDO= las elimina). Se puede repetir",
-      "server.discord.clear": "Eliminar todas las palabras de este servidor"
+      "server.discord.clear": "Eliminar todas las palabras de este servidor",
+      "config.move.kind": "Qué mover: modules o extensions",
+      "config.move.folder": "Carpeta que se usará. Saba-chan crea dentro una carpeta modules o extensions",
+      "components_dir": "Carpeta para módulos y extensiones. Saba-chan crea dentro las carpetas modules y extensions y mueve los archivos instalados"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -709,7 +746,10 @@
     "failed": "La instalación falló: {{reason}} (detalles: {{log}})",
     "failed_no_log": "La instalación falló: {{reason}}",
     "done": "Instalado en {{dir}}",
-    "next": "Inicia el daemon con:\n{{command}}"
+    "next": "Inicia el daemon con:\n{{command}}",
+    "components_dir": "Los módulos y extensiones van en {{dir}}.",
+    "components_dir_invalid": "No se puede usar {{dir}} para módulos y extensiones: {{reason}}",
+    "invalid_dir": "No se puede instalar en {{dir}}. Elige una carpeta que no sea la raíz de una unidad, tu carpeta personal ni la carpeta de ajustes"
   },
   "uninstall": {
     "not_installed": "Este comando no se ejecuta desde una carpeta de instalación de Saba-chan; no hay nada que eliminar.",
