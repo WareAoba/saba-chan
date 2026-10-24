@@ -106,6 +106,12 @@ describe('모델 고르기 (chatbot-settings-v2 §1)', () => {
         expect(screen.getByLabelText('Model')).toBeDisabled();
     });
 
+    it('권한이 모자란 키는 틀린 키와 다르게 알린다', async () => {
+        window.api.chatbotModels = vi.fn().mockResolvedValue({ error: 'KEY_PERMISSION' });
+        render(<ModelField value="m" saved="m" onChange={() => {}} guildId="g1" hasApiKey />);
+        expect(await screen.findByText(/lacks the permissions/)).toBeTruthy();
+    });
+
     it('챗봇 화면에 대화 유지시간·끼어들기·호출어 칸이 없다', async () => {
         window.api.chatbotGet = vi
             .fn()

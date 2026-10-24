@@ -804,7 +804,7 @@ impl Api {
         .await
     }
     /// GET /api/relay/node/:guild/chatbot/models — `{provider, models: [이름], selected, effectiveModel}`
-    /// (409 NO_API_KEY, 422 INVALID_API_KEY·QUOTA_EXCEEDED, 503 PROVIDER_UNAVAILABLE)
+    /// (409 NO_API_KEY, 422 INVALID_API_KEY·KEY_PERMISSION·QUOTA_EXCEEDED, 503 PROVIDER_UNAVAILABLE)
     pub async fn chatbot_models(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
         self.get(&with_query(
             &format!("/api/relay/node/{}/chatbot/models", seg(guild_id)),

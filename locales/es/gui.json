@@ -1113,6 +1113,7 @@
     "models_need_guild": "Conecta un servidor de Discord para cargar los modelos disponibles.",
     "models_err_NO_API_KEY": "La clave de API aún no llegó al servidor. Inténtalo de nuevo en un momento.",
     "models_err_INVALID_API_KEY": "La clave de API fue rechazada. Revísala.",
+    "models_err_KEY_PERMISSION": "A la clave de API le faltan permisos. En OpenAI, ponla en All o permite Models (lectura) y Responses (escritura).",
     "models_err_QUOTA_EXCEEDED": "La clave de API superó su cuota de uso.",
     "models_err_PROVIDER_UNAVAILABLE": "No se pudo contactar con el proveedor de modelos. Inténtalo de nuevo en un momento.",
     "models_err_FAILED": "No se pudo cargar la lista de modelos.",

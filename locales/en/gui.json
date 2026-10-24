@@ -1113,6 +1113,7 @@
     "models_need_guild": "Connect a Discord server to load the available models.",
     "models_err_NO_API_KEY": "The API key has not reached the server yet. Try again shortly.",
     "models_err_INVALID_API_KEY": "The API key was rejected. Check the key.",
+    "models_err_KEY_PERMISSION": "The API key lacks the permissions it needs. In OpenAI, set the key to All or allow Models (read) and Responses (write).",
     "models_err_QUOTA_EXCEEDED": "The API key is over its usage quota.",
     "models_err_PROVIDER_UNAVAILABLE": "Could not reach the model provider. Try again shortly.",
     "models_err_FAILED": "Could not load the model list.",

@@ -496,7 +496,7 @@ export function ModelField({ value, saved, onChange, guildId, hasApiKey }) {
         : !guildId
           ? 'chatbot.models_need_guild'
           : res?.error
-            ? `chatbot.models_err_${['NO_API_KEY', 'INVALID_API_KEY', 'QUOTA_EXCEEDED', 'PROVIDER_UNAVAILABLE'].includes(res.error) ? res.error : 'FAILED'}`
+            ? `chatbot.models_err_${['NO_API_KEY', 'INVALID_API_KEY', 'KEY_PERMISSION', 'QUOTA_EXCEEDED', 'PROVIDER_UNAVAILABLE'].includes(res.error) ? res.error : 'FAILED'}`
             : null;
 
     return (

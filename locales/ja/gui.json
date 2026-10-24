@@ -1113,6 +1113,7 @@
     "models_need_guild": "Discordサーバーをつなぐと使えるモデルを読み込みます。",
     "models_err_NO_API_KEY": "APIキーがまだサーバーに届いていません。少ししてからもう一度試してください。",
     "models_err_INVALID_API_KEY": "APIキーが正しくありません。キーを確認してください。",
+    "models_err_KEY_PERMISSION": "APIキーの権限が足りません。OpenAIでキーの権限をAllにするか、Modelsの読み取りとResponsesの書き込みを許可してください。",
     "models_err_QUOTA_EXCEEDED": "APIキーの利用上限を超えています。",
     "models_err_PROVIDER_UNAVAILABLE": "モデル提供元に接続できませんでした。少ししてからもう一度試してください。",
     "models_err_FAILED": "モデル一覧を読み込めませんでした。",
