@@ -306,6 +306,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "inputs": field.inputs,
                 "source": "module",
                 "group": extra.groups.get(&field.name),
+                "remote": field.remote,
             }));
         }
     }
