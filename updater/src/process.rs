@@ -46,20 +46,31 @@ fn system_tool_in(sys: Option<std::path::PathBuf>, name: &str) -> std::path::Pat
 pub struct ProcessChecker;
 
 impl ProcessChecker {
-    /// 프로세스 이름으로 실행 중인지 확인
+    /// 프로세스 이름(실행 파일 이름, 대소문자 무시)으로 실행 중인지 확인.
+    /// 종료 대기에서 0.5초마다 부르므로 tasklist를 띄우지 않고 프로세스 목록을 OS에 직접 묻는다 (띄울 때마다 콘솔 창이 깜빡였다)
     #[cfg(target_os = "windows")]
     pub fn is_running(process_name: &str) -> bool {
-        use std::process::Command;
+        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+        };
 
-        let output = hide_console(Command::new(system_tool("tasklist")).args(["/FI", &format!("IMAGENAME eq {}", process_name)])).output();
-
-        match output {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout.contains(process_name)
-            }
-            Err(_) => false,
+        // SAFETY: 스냅숏 핸들은 이 함수 안에서만 쓰고 닫는다. entry는 dwSize를 채운 뒤 넘긴다
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return false;
         }
+        let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut found = false;
+        let mut more = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+        while more && !found {
+            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+            found = String::from_utf16_lossy(&entry.szExeFile[..len]).eq_ignore_ascii_case(process_name);
+            more = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+        }
+        unsafe { CloseHandle(snapshot) };
+        found
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -77,17 +88,27 @@ impl ProcessChecker {
         }
     }
 
-    /// PID로 실행 중인지 확인 (이름이 같은 다른 프로세스와 헷갈리지 않는다)
+    /// PID로 실행 중인지 확인 (이름이 같은 다른 프로세스와 헷갈리지 않는다).
+    /// Windows는 tasklist를 띄우지 않고 프로세스를 직접 연다. 열 권한이 없으면 살아 있는 것으로 본다
+    #[cfg(target_os = "windows")]
     pub fn is_pid_running(pid: u32) -> bool {
-        use std::process::Command;
-        if cfg!(target_os = "windows") {
-            hide_console(Command::new(system_tool("tasklist")).args(["/FI", &format!("PID eq {}", pid), "/NH"]))
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().any(|w| w == pid.to_string()))
-                .unwrap_or(false)
-        } else {
-            Command::new("kill").args(["-0", &pid.to_string()]).output().map(|o| o.status.success()).unwrap_or(false)
+        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ACCESS_DENIED, STILL_ACTIVE};
+        use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+        // SAFETY: 연 핸들은 이 함수 안에서만 쓰고 닫는다
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return unsafe { GetLastError() } == ERROR_ACCESS_DENIED;
         }
+        let mut code = 0u32;
+        let alive = unsafe { GetExitCodeProcess(handle, &mut code) } != 0 && code == STILL_ACTIVE as u32;
+        unsafe { CloseHandle(handle) };
+        alive
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn is_pid_running(pid: u32) -> bool {
+        std::process::Command::new("kill").args(["-0", &pid.to_string()]).output().map(|o| o.status.success()).unwrap_or(false)
     }
 
     /// 프로세스 종료 대기
@@ -134,6 +155,28 @@ mod tests {
         assert_eq!(system_tool_in(Some(sys.clone()), "taskkill"), sys.join("taskkill.exe"));
         assert_eq!(system_tool_in(Some(sys.clone()), "tar"), sys.join("tar.exe"));
         assert_eq!(system_tool_in(Some(sys.clone()), "powershell"), sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"));
+    }
+
+    // 업데이트 중 종료 대기는 0.5초마다 확인한다. 확인마다 tasklist를 띄우면 그만큼 콘솔 창이 깜빡였다:
+    // 프로세스 확인은 다른 프로그램을 띄우지 않고 OS에 직접 묻는다
+    #[cfg(windows)]
+    #[test]
+    fn process_checks_ask_windows_directly() {
+        let me = std::env::current_exe().unwrap();
+        let name = me.file_name().unwrap().to_str().unwrap();
+        assert!(ProcessChecker::is_running(name));
+        // tasklist의 IMAGENAME 필터처럼 대소문자를 가리지 않는다
+        assert!(ProcessChecker::is_running(&name.to_uppercase()));
+        assert!(!ProcessChecker::is_running("saba-no-such-process.exe"));
+        // 이름의 일부만 같은 것은 같은 프로세스가 아니다
+        assert!(!ProcessChecker::is_running(&name[1..]));
+
+        assert!(ProcessChecker::is_pid_running(std::process::id()));
+        let mut child = std::process::Command::new(system_tool("cmd")).args(["/C", "exit"]).spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        drop(child);
+        assert!(!ProcessChecker::is_pid_running(pid));
     }
 
     // 시스템 폴더를 묻지 못했거나 빈 답이면 상대 경로가 되지 않게 기본 위치로 간다 (환경변수는 보지 않는다)
