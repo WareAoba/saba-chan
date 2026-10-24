@@ -45,9 +45,11 @@ pub fn merged_env(base: impl IntoIterator<Item = (String, String)>, overrides: &
 
 /// Windows: 프로그램을 새 콘솔 창에 띄운다 ("터미널로 열기" CLI, non-managed 게임 서버). 데몬의 표준 스트림(파이프·NUL·숨긴 콘솔)을
 /// 넘기지 않아야 프로그램이 새 창의 콘솔을 자기 입출력으로 쓴다. `std::process::Command`는 표준 핸들을 넘기므로
-/// `CreateProcessW`를 직접 부른다 (`STARTF_USESTDHANDLES` 없이, 핸들 상속 없이). `env`가 비면 데몬 환경을 물려준다. pid를 돌려준다
+/// `CreateProcessW`를 직접 부른다 (`STARTF_USESTDHANDLES` 없이, 핸들 상속 없이). `env`가 비면 데몬 환경을 물려준다. pid와 프로세스 핸들을 돌려준다
+/// (핸들은 taskkill이 실패할 때 직접 끝내는 데 쓴다)
 #[cfg(windows)]
-pub fn spawn_in_new_console(program: &std::path::Path, args: &[String], dir: Option<&std::path::Path>, env: &[(String, String)]) -> std::io::Result<u32> {
+pub fn spawn_in_new_console(program: &std::path::Path, args: &[String], dir: Option<&std::path::Path>, env: &[(String, String)]) -> std::io::Result<(u32, std::os::windows::io::OwnedHandle)> {
+    use std::os::windows::io::FromRawHandle;
     use std::os::windows::ffi::OsStrExt;
     use winapi::um::handleapi::CloseHandle;
     use winapi::um::processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW};
@@ -91,8 +93,7 @@ pub fn spawn_in_new_console(program: &std::path::Path, args: &[String], dir: Opt
             return Err(std::io::Error::last_os_error());
         }
         CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        Ok(pi.dwProcessId)
+        Ok((pi.dwProcessId, std::os::windows::io::OwnedHandle::from_raw_handle(pi.hProcess as _)))
     }
 }
 

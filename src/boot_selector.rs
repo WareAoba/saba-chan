@@ -499,7 +499,7 @@ pub fn spawn_cli() -> std::io::Result<std::process::Child> {
 /// Windows: CLI를 새 콘솔 창에 띄운다 ("터미널로 열기", I4). CLI가 새 창의 콘솔을 자기 입출력으로 쓰고 대화형이 된다. pid를 돌려준다
 #[cfg(windows)]
 pub fn spawn_cli_in_new_console(cli: &std::path::Path, args: &[String]) -> std::io::Result<u32> {
-    crate::utils::spawn_in_new_console(cli, args, cli.parent(), &[])
+    crate::utils::spawn_in_new_console(cli, args, cli.parent(), &[]).map(|(pid, _)| pid)
 }
 
 /// Windows: 데몬 콘솔 창 숨기기 (GUI 모드에서 사용)

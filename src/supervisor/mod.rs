@@ -1178,12 +1178,17 @@ impl Supervisor {
         let console = crate::utils::new_console_program(program, std::path::Path::new(working_dir), &env_vars);
         #[cfg(not(windows))]
         let console: Option<std::path::PathBuf> = None;
+        // 새 콘솔로 띄운 서버는 tokio Child가 없다. 정지 대비로 프로세스 핸들을 들고 있는다
+        #[cfg(windows)]
+        let mut console_handle: Option<std::os::windows::io::OwnedHandle> = None;
         let (pid, mut child) = match console {
             #[cfg(windows)]
             Some(exe) => {
                 let spawned = crate::utils::spawn_in_new_console(&exe, &args, Some(std::path::Path::new(working_dir)), &env_vars);
                 drop(gate);
-                (spawned.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?, None)
+                let (pid, handle) = spawned.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+                console_handle = Some(handle);
+                (pid, None)
             }
             _ => {
                 let mut cmd = TokioCommand::new(program);
@@ -1220,6 +1225,11 @@ impl Supervisor {
                     tracing::warn!("Could not stop '{}' after a stop request during start: {}", server_name, e);
                     if let Some(child) = child.as_mut() {
                         let _ = child.kill().await;
+                    }
+                    #[cfg(windows)]
+                    if let Some(handle) = console_handle.as_ref() {
+                        use std::os::windows::io::AsRawHandle;
+                        unsafe { winapi::um::processthreadsapi::TerminateProcess(handle.as_raw_handle() as _, 1) };
                     }
                 }
                 if let Some(child) = child.as_mut() {

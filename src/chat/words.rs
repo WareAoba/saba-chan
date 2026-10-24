@@ -7,7 +7,7 @@
 use super::api::{ModuleView, ServerView};
 use super::aliases::BUILTIN_COMMANDS;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 /// 0.1.10까지 길드마다 낱말을 두던 `nodeSettings[guild]` 안의 키. 시작할 때 `serverWords`로 옮긴다 (`migrate`)
@@ -254,6 +254,7 @@ pub fn heartbeat(server_words: &HashMap<String, InstanceWords>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn server(id: &str, name: &str, module: &str) -> ServerView {
         ServerView { id: id.into(), name: name.into(), module: module.into(), status: "stopped".into(), pid: None }
