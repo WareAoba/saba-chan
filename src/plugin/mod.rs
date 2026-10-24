@@ -253,6 +253,12 @@ impl CallDeadline {
         IsolationWait(self.isolation.clone())
     }
 
+    /// 격리 준비(프로필·폴더 권한)를 기다리는 동안은 기한에서 뺀다
+    async fn paused<T>(&self, work: impl std::future::Future<Output = T>) -> T {
+        let _waiting = self.pause_isolation();
+        work.await
+    }
+
     async fn follow_isolation<T>(&self, source: &Self, work: impl std::future::Future<Output = T>) -> T {
         if self.isolation.same_channel(&source.isolation) { return work.await; }
         let source_start = source.isolation.borrow().elapsed();
@@ -494,21 +500,6 @@ pub const INSTALL_TIMEOUT_SECS: u64 = 1800;
 
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, timeout_secs, None).await
-}
-
-/// Like `run_plugin_with_progress` but with a custom timeout.
-/// SteamCMD 다운로드 등 장시간 작업에 사용합니다.
-pub async fn run_plugin_with_progress_and_timeout<F>(
-    module_path: &str,
-    function: &str,
-    config: Value,
-    on_progress: F,
-    timeout_secs: u64,
-) -> Result<Value>
-where
-    F: Fn(ExtensionProgress) + Send + 'static,
-{
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs, None).await
 }
 
 type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
@@ -1090,10 +1081,7 @@ async fn spawn_plugin(
     }
     let mut child = match &isolation {
         None => plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?,
-        Some(iso) => match {
-            let _waiting = deadline.pause_isolation();
-            crate::sandbox::spawn_isolated(cmd.as_std(), iso).await
-        } {
+        Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
             Ok(crate::sandbox::Spawned::Unisolated) => {
                 // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
                 if let Some(enabled) = enabled_extensions {

@@ -568,7 +568,7 @@ pub(crate) async fn rest_for(
     let supervisor = sup.read().await;
 
     // 인스턴스 확인 (lock 해제 전에 clone)
-    let instance = match supervisor.instance_store.get(&id).cloned() {
+    let instance = match supervisor.instance_store.get(id).cloned() {
         Some(instance) => instance,
         None => {
             return (
@@ -593,14 +593,14 @@ pub(crate) async fn rest_for(
         };
 
     // 게임 설정 파일에서 실제 credential을 읽어옴 (메모리 동기화 문제 방지)
-    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    let instance_dir = supervisor.instance_store.instance_dir(id);
     let working_dir = instance.working_dir.clone()
         .unwrap_or_else(|| instance_dir.join("server").to_string_lossy().to_string());
 
     // supervisor lock 해제 — run_plugin 전에 release
     drop(supervisor);
 
-    let file_credentials = match instance_credentials(sup, credentials, &id, &instance.module_name, module_path.as_deref(), &working_dir).await {
+    let file_credentials = match instance_credentials(sup, credentials, id, &instance.module_name, module_path.as_deref(), &working_dir).await {
         Ok(credentials) => credentials,
         Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&error))).into_response(),
     };
@@ -709,7 +709,7 @@ pub(crate) async fn rest_for(
 
     // 인증 실패 등으로 접속 정보가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
     if !matches!(&outcome, Ok(response) if response.success) {
-        credentials.invalidate(&id);
+        credentials.invalidate(id);
     }
 
     match outcome {
