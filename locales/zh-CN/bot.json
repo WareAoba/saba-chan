@@ -253,7 +253,7 @@
       },
       "apply": {
         "title": "应用更新",
-        "description": "安装已下载的更新并重启应用"
+        "description": "下载新的更新、安装并重启应用"
       }
     },
     "discord": {

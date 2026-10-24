@@ -253,7 +253,7 @@
       },
       "apply": {
         "title": "Update anwenden",
-        "description": "Installiert das heruntergeladene Update und startet die App neu"
+        "description": "Lädt das neue Update herunter, installiert es und startet die App neu"
       }
     },
     "discord": {

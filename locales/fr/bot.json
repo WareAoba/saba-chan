@@ -253,7 +253,7 @@
       },
       "apply": {
         "title": "Appliquer la mise à jour",
-        "description": "Installe la mise à jour téléchargée et redémarre l'application"
+        "description": "Télécharge la nouvelle mise à jour, l'installe et redémarre l'application"
       }
     },
     "discord": {

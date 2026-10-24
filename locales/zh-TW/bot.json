@@ -253,7 +253,7 @@
       },
       "apply": {
         "title": "套用更新",
-        "description": "安裝已下載的更新並重新啟動應用程式"
+        "description": "下載新的更新、安裝並重新啟動應用程式"
       }
     },
     "discord": {
