@@ -1569,8 +1569,9 @@ pub async fn update_instance_settings(
     let mut body = json!({ "success": true, "synced": sync_error.is_none(), "restart_required": restart_required, "revision": new_revision });
     if let Some(e) = sync_error {
         body["sync_error"] = e.get("message").or_else(|| e.get("error")).cloned().unwrap_or(Value::Null);
+        // 설정은 이미 저장했다: 게임 파일 동기화 실패의 칸(오류 코드 등)만 덧붙이고 성공 표시는 덮지 않는다 (Codex 리뷰 #550)
         if let (Some(body), Some(fields)) = (body.as_object_mut(), e.as_object()) {
-            body.extend(fields.clone());
+            body.extend(fields.iter().filter(|(k, _)| k.as_str() != "success").map(|(k, v)| (k.clone(), v.clone())));
         }
     }
     // RCON 키처럼 받되 쓰지 않는 것
@@ -2501,6 +2502,8 @@ mod tests {
         let saved = patch(json!({ "motd": "hi", "auto_restart": false, "enable_rcon": true })).await;
         assert!(saved.status.is_success(), "{:?}", saved.body);
         assert_eq!(saved.body["synced"], false);
+        // Codex 리뷰 #550: 모듈 실패 칸을 합치면서 저장 성공 표시를 false로 덮어 GUI가 저장 실패로 보였다
+        assert_eq!(saved.body["success"], true, "the settings were saved");
         assert_eq!(saved.body["sync_error"], "server.properties is read-only");
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
         let instance = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();

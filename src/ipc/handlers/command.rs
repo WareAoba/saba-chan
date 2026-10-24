@@ -100,7 +100,9 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             );
         }
         if let Some(Ok(plan)) = planned {
-            let resp = match plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next() {
+            // 다른 인스턴스 hook처럼 이 인스턴스를 문맥으로 준다 (익스텐션이 daemon_stdin_command·daemon_rest를 쓴다)
+            let ran = crate::plugin::with_instance(Some(state.host_context(&instance.id)), plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS)).await;
+            let resp = match ran.into_iter().next() {
                 Some((ext_id, Ok(value))) => {
                     let failed = value.get("success").and_then(Value::as_bool) == Some(false);
                     let mut body = match value {

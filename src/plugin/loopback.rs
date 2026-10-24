@@ -140,7 +140,7 @@ async fn exchange(proxy: &Proxy, request: &Value) -> Result<Vec<u8>, String> {
 }
 
 /// 그 포트에서 듣는 프로세스가 `server`이거나 그 자식인가
-fn served_by(port: u16, server: Option<u32>) -> bool {
+pub(super) fn served_by(port: u16, server: Option<u32>) -> bool {
     let Some(root) = server else {
         return false;
     };

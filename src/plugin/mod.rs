@@ -1072,7 +1072,7 @@ async fn spawn_plugin(
     let host_dir = tempfile::Builder::new().prefix("host-").tempdir_in(&host_root)
         .map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
     cmd.env("SABA_HOST_DIR", host_dir.path());
-    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: HOST_CONTEXT.try_with(Clone::clone).ok().flatten() };
+    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: HOST_CONTEXT.try_with(Clone::clone).ok().flatten(), server };
 
     apply_creation_flags(&mut cmd);
 
@@ -1498,7 +1498,7 @@ for number in range(65):
 print(json.dumps(codes))
 "#, std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules").to_string_lossy(), dir.path().to_string_lossy());
         let mut child = python_process(&script).await;
-        let proxy = host::Proxy { dir: dir.path().into(), context: None };
+        let proxy = host::Proxy { dir: dir.path().into(), context: None, server: None };
         let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, Some(proxy), std::time::Duration::from_secs(15)).await.unwrap().unwrap();
         assert!(status.success(), "{stderr}");
         let codes = parse_plugin_output(&stdout).unwrap();
