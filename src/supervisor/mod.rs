@@ -194,6 +194,21 @@ pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> St
     )
 }
 
+/// 설치는 끝났지만 `install_server`의 `commit`(인스턴스 기록 저장)이 실패해 파일을 설치 전으로 되돌렸다.
+/// 되돌리지 못한 파일은 `PutBackFailed`와 같은 모양으로 싣는다
+#[derive(Debug)]
+pub struct CommitFailed(pub PutBackFailed);
+
+impl std::fmt::Display for CommitFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the server details could not be saved")?;
+        if !self.0.files.is_empty() {
+            write!(f, "; {}", self.0)?;
+        }
+        Ok(())
+    }
+}
+
 /// 설치가 모듈 오류로 끝났는데 되돌리지도 못한 파일 (`restore_failed`와 같은 순서의 남긴 백업 이름). 핸들러가 응답 칸으로 옮긴다
 #[derive(Debug)]
 pub struct PutBackFailed {
@@ -2498,6 +2513,7 @@ impl Supervisor {
     /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
     /// `instance`: 그 인스턴스의 설정과 격리 실행이 쓸 데이터 폴더 (처음 설치와 같은 값을 받는다)
     /// `keep_executable`: 그 인스턴스가 실제로 띄우는 파일 (모듈 실행 파일과 다르면 함께 백업한다)
+    /// `commit`: 설치가 성공하면 백업을 지우기 전에 부른다 (인스턴스 기록 저장). 실패하면 백업으로 되돌리고 그 오류를 돌려준다
     #[allow(clippy::too_many_arguments)]
     pub async fn install_server(
         sup: &tokio::sync::RwLock<Self>,
@@ -2509,6 +2525,7 @@ impl Supervisor {
         initial_settings: Option<Value>,
         instance: Option<(Value, Vec<String>)>,
         keep_executable: Option<&str>,
+        commit: Option<&(dyn Fn(&mut Self, &Value) -> Result<()> + Sync)>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
@@ -2611,6 +2628,14 @@ impl Supervisor {
         match result {
             Ok(ref val) => {
                 if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
+                    // 기록을 저장하지 못하면 파일도 설치 전으로 되돌린다 (옛 기록과 새 실행 파일이 섞이지 않게)
+                    if let Some(commit) = commit {
+                        let saved = commit(&mut *sup.write().await, val);
+                        if let Err(e) = saved {
+                            let (files, kept) = restore("unsaved install").into_iter().unzip();
+                            return Err(e.context(CommitFailed(PutBackFailed { files, kept })));
+                        }
+                    }
                     // 설치 성공 → 백업 파일 정리
                     for (_, backup, _) in &backups {
                         let _ = std::fs::remove_file(backup);
