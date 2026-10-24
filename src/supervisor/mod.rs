@@ -65,6 +65,9 @@ impl PortConflictStops {
     }
 }
 
+/// `install_server`가 설치에 성공한 뒤 백업을 지우기 전에 부르는 저장 단계
+pub type InstallCommit<'a> = dyn Fn(&mut Supervisor, &Value) -> Result<()> + Sync + 'a;
+
 pub struct Supervisor {
     pub tracker: ProcessTracker,
     pub module_loader: ModuleLoader,
@@ -2525,7 +2528,7 @@ impl Supervisor {
         initial_settings: Option<Value>,
         instance: Option<(Value, Vec<String>)>,
         keep_executable: Option<&str>,
-        commit: Option<&(dyn Fn(&mut Self, &Value) -> Result<()> + Sync)>,
+        commit: Option<&InstallCommit<'_>>,
     ) -> Result<Value> {
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
