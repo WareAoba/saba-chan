@@ -459,8 +459,9 @@ fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
 fn command_view(cmd: &Value) -> Option<Value> {
     let name = cmd.get("name")?.as_str()?;
     let risk = crate::commands::risk_of(cmd.get("risk").and_then(Value::as_str));
-    // danger 명령도 챗봇이 고를 수 있다: 늘 확인 계획을 거치고 요청자가 확인한다 (`needs_confirm`)
-    let surfaces = vec!["gui", "cli", "discord", "chatbot"];
+    // danger 명령도 챗봇이 고를 수 있다: 늘 확인 계획을 거치고 요청자가 확인한다 (`needs_confirm`).
+    // `remote = false` 명령은 이 PC 화면에서만
+    let surfaces = if cmd.get("remote").and_then(Value::as_bool) == Some(false) { vec!["gui", "cli"] } else { vec!["gui", "cli", "discord", "chatbot"] };
     let inputs = cmd.get("inputs").cloned().unwrap_or(json!([]));
     let props: Map<String, Value> = inputs
         .as_array()

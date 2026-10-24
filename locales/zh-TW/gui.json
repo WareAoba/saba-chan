@@ -1050,7 +1050,8 @@
     "err_message": "請輸入公告內容。",
     "backup_unreadable": "⚠ 無法開啟",
     "backup_unreadable_hint": "此備份無法開啟。它無法還原，而且在刪除之前不會清理未使用的備份內容。請刪除它。",
-    "err_backup_file_locked": "伺服器正在使用檔案（{{file}}），無法備份。請關閉伺服器後重試。"
+    "err_backup_file_locked": "伺服器正在使用檔案（{{file}}），無法備份。請關閉伺服器後重試。",
+    "err_autosave_not_resumed": "備份已完成，但無法重新開啟伺服器的自動儲存。請重新啟動伺服器."
   },
   "chatbot": {
     "nav": "會說話的 Saba-chan",

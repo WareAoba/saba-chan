@@ -283,6 +283,7 @@
       "nothing_to_back_up": "ワールドがまだありません。一度サーバーを起動して作成してください。",
       "backup_busy": "このサーバーのバックアップまたは復元がすでに実行中です。終わってからもう一度試してください。",
       "backup_file_locked": "サーバーが使用中のファイル({{file}})があります。サーバーを停止してからやり直してください: saba-chan-cli stop 名前",
+      "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
       "invalid_relay_url": "リレーのアドレスは https:// のみ使えます(この PC でのテスト用に localhost・127.0.0.1・[::1] の http だけは使えます)。",
       "module_busy": "このモジュールはすでにインストールまたは削除中です。終わってからもう一度試してください。",
       "schedule_changed": "予約タスクが別の場所で変更されました。saba-chan-cli schedule show で確認してからやり直してください。",

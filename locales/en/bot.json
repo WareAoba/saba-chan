@@ -378,6 +378,7 @@
     "backup_limit": "The remote backup limit is full. Delete old backups on the PC",
     "backup_busy": "Another backup or restore is in progress",
     "server_running": "The server is on. Stop it first",
-    "no_command_path": "The server was started outside Saba-chan, so it cannot take commands"
+    "no_command_path": "The server was started outside Saba-chan, so it cannot take commands",
+    "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server"
   }
 }

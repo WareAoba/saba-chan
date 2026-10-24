@@ -51,6 +51,20 @@ async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bo
     resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false)
 }
 
+/// 백업은 만들었지만 `resume_command`가 실패해 서버의 자동 저장이 멈춘 채다 (`autosave_not_resumed`)
+#[derive(Debug)]
+struct AutosaveNotResumed {
+    backup: String,
+}
+
+impl std::fmt::Display for AutosaveNotResumed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "backup {} was made but the server's autosave could not be turned back on; restart the server", self.backup)
+    }
+}
+
+impl std::error::Error for AutosaveNotResumed {}
+
 /// 이 인스턴스의 백업 폴더와 백업할 경로
 struct Plan {
     dir: PathBuf,
@@ -274,7 +288,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         anyhow::Ok((made, pruned))
     })
     .await;
-    let result = match result {
+    let mut result = match result {
         Ok(Ok((made, pruned))) => {
             tracing::info!("Backed up '{}' as {} ({} bytes, pruned {})", id, made.name, made.size, pruned.len());
             Ok(made)
@@ -285,6 +299,10 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     if let Some(cmd) = resume.as_deref() {
         if !run_command(state, id, cmd, json!({})).await {
             tracing::warn!("Command '{}' failed after backing up '{}'; the server may not save automatically until it restarts", cmd, id);
+            // 백업은 남았어도 서버가 자동 저장을 하지 않는다: 성공으로 알리지 않는다
+            if let Ok(made) = &result {
+                result = Err(AutosaveNotResumed { backup: made.name.clone() }.into());
+            }
         }
     }
     let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
@@ -295,6 +313,8 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     result.map(Some).map_err(|e| {
         if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
             (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()
+        } else if let Some(paused) = e.downcast_ref::<AutosaveNotResumed>() {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "autosave_not_resumed", "backup": paused.backup }))).into_response()
         } else if let Some(locked) = e.downcast_ref::<backup::LockedFile>() {
             // 켜진 서버가 쥐고 있는 파일: 어느 파일인지 이름만 (경로는 PC 밖으로 내지 않는다)
             let file = locked.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

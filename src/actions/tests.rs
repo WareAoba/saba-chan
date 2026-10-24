@@ -973,3 +973,12 @@ async fn a_failed_remote_action_carries_a_short_reason() {
     let local = query(&state, "server.query:players", Some(&id), &json!({}), &gui()).await.unwrap();
     assert!(local.get("reason").is_none(), "{local}");
 }
+
+/// `remote = false` 명령은 디스코드·챗봇 액션으로도 부를 수 없다 (GUI·CLI에서만)
+#[test]
+fn a_command_kept_off_remote_surfaces_is_not_a_remote_action() {
+    let hidden = command_view(&json!({ "name": "save-off", "risk": "caution", "inputs": [], "remote": false })).unwrap();
+    assert_eq!(hidden["surfaces"], json!(["gui", "cli"]));
+    let shown = command_view(&json!({ "name": "say", "risk": "safe", "inputs": [] })).unwrap();
+    assert_eq!(shown["surfaces"], json!(["gui", "cli", "discord", "chatbot"]));
+}

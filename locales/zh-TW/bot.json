@@ -378,6 +378,7 @@
     "backup_limit": "遠端備份數量已滿。請在電腦上刪除舊備份",
     "backup_busy": "另一個備份或還原正在進行",
     "server_running": "伺服器正在執行。請先關閉",
-    "no_command_path": "伺服器是在 Saba-chan 之外啟動的，無法接收指令"
+    "no_command_path": "伺服器是在 Saba-chan 之外啟動的，無法接收指令",
+    "autosave_not_resumed": "備份已完成，但無法重新開啟伺服器的自動儲存。請重新啟動伺服器"
   }
 }

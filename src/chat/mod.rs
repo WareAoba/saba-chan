@@ -385,9 +385,11 @@ impl<D: DaemonApi> Ctx<'_, D> {
             out.push_str(&format!("• `{} {} {}` - {}\n", prefix, alias, cmd, self.t(key, &[])));
         }
         if let Some(module) = self.module(&module_name) {
-            if !module.commands.is_empty() {
+            // 디스코드·챗봇에 내보내지 않는 명령은 원격 도움말에도 없다
+            let shown: Vec<&CommandField> = module.commands.iter().filter(|c| c.remote || self.req.remote.is_none()).collect();
+            if !shown.is_empty() {
                 out.push_str(&format!("\n{}\n", self.t("modules.help_rest_title", &[])));
-                for c in &module.commands {
+                for c in shown {
                     let inputs: Vec<String> = c
                         .inputs
                         .iter()

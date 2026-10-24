@@ -1050,7 +1050,8 @@
     "err_message": "Saisissez le message à annoncer.",
     "backup_unreadable": "⚠ impossible à ouvrir",
     "backup_unreadable_hint": "Cette sauvegarde ne peut pas être ouverte, elle ne peut donc pas être restaurée. Le contenu de sauvegarde inutilisé n'est pas nettoyé tant que vous ne la supprimez pas. Supprimez-la.",
-    "err_backup_file_locked": "Le serveur utilise un fichier ({{file}}), la sauvegarde n’a pas pu être faite. Arrêtez le serveur et réessayez."
+    "err_backup_file_locked": "Le serveur utilise un fichier ({{file}}), la sauvegarde n’a pas pu être faite. Arrêtez le serveur et réessayez.",
+    "err_autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur."
   },
   "chatbot": {
     "nav": "Saba-chan qui parle",

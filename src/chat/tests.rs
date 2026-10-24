@@ -576,4 +576,6 @@ async fn a_command_kept_off_remote_surfaces_is_unknown_there() {
     assert!(api.calls().is_empty());
     process(&api, &settings(), &Catalog::for_language("en"), &ChatRequest { text: "mc say hi".into(), ..Default::default() }).await;
     assert_eq!(api.calls().len(), 1);
+    // 원격 도움말에도 보이지 않는다
+    assert!(!r.args["help"].as_str().unwrap_or_default().contains(" say"), "{}", r.args["help"]);
 }

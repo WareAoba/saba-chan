@@ -1050,7 +1050,8 @@
     "err_message": "Gib eine Nachricht für die Ankündigung ein.",
     "backup_unreadable": "⚠ kann nicht geöffnet werden",
     "backup_unreadable_hint": "Dieses Backup kann nicht geöffnet und daher nicht wiederhergestellt werden. Ungenutzte Backup-Inhalte werden erst aufgeräumt, wenn du es löschst. Lösche es.",
-    "err_backup_file_locked": "Der Server benutzt eine Datei ({{file}}), daher konnte kein Backup erstellt werden. Server stoppen und erneut versuchen."
+    "err_backup_file_locked": "Der Server benutzt eine Datei ({{file}}), daher konnte kein Backup erstellt werden. Server stoppen und erneut versuchen.",
+    "err_autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten."
   },
   "chatbot": {
     "nav": "Sprechende Saba-chan",

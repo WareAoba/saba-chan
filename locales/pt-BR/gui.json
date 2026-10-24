@@ -1050,7 +1050,8 @@
     "err_message": "Digite a mensagem do aviso.",
     "backup_unreadable": "⚠ não pode ser aberto",
     "backup_unreadable_hint": "Este backup não pode ser aberto. Ele não pode ser restaurado, e o conteúdo de backup não usado só é limpo depois que ele for excluído. Exclua-o.",
-    "err_backup_file_locked": "O servidor está usando um arquivo ({{file}}), então o backup não foi feito. Desligue o servidor e tente de novo."
+    "err_backup_file_locked": "O servidor está usando um arquivo ({{file}}), então o backup não foi feito. Desligue o servidor e tente de novo.",
+    "err_autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor."
   },
   "chatbot": {
     "nav": "Saba-chan falante",

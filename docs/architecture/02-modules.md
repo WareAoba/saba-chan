@@ -110,7 +110,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 
 #### `[backup]` (`ModuleBackup` `:215-230`)
 `paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `pause_command`·`resume_command`(켜진 서버에서 저장 전에 자동 저장을 멈추고 백업이 끝나면 실패해도 되돌리는 명령 이름. `pause_command`만 있으면 로드 실패), `exclude`(폴더 안에서 담지 않을 파일 이름 패턴, `*` 가능. 켜진 서버가 잠가 두는 파일용), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다. 세 명령 이름은 `[[commands.fields]]` 이름이어야 한다.
-- 켜진 서버가 잠근 파일(Windows 공유·잠금 위반 32·33)을 읽지 못하면 백업은 409 `backup_file_locked`(`file`: 파일 이름만)로 실패한다. 반쪽 백업을 만들지 않는다 (`backup::LockedFile`).
+- 켜진 서버가 잠근 파일(Windows 공유·잠금 위반 32·33)을 읽지 못하면 백업은 409 `backup_file_locked`(`file`: 파일 이름만)로 실패한다. 반쪽 백업을 만들지 않는다 (`backup::LockedFile`). 백업 뒤 `resume_command`가 실패하면 백업은 남기되 500 `autosave_not_resumed`(`backup`: 백업 이름)로 실패를 알린다(서버를 다시 시작해야 자동 저장이 돌아온다). `remote = false` 명령은 `GET /api/instance/:id/commands`에 `remote:false`로 실리고, 액션 `server.command:<이름>`의 표면이 GUI·CLI뿐이다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500으로 멈추며 모듈 호출 오류 필드를 유지한다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
 - 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더·백업 경로·훅의 `restore_roots` 밖이면 복원은 400 `restore_outside`다.

@@ -32,6 +32,8 @@ const CODE_TEXT = {
     backup_busy: 'maintenance.err_backup_busy',
     // 켜진 서버가 쥐고 있는 파일 (`file`: 그 이름)
     backup_file_locked: 'maintenance.err_backup_file_locked',
+    // 백업은 만들었지만 자동 저장을 되돌리지 못했다 ([backup] resume_command)
+    autosave_not_resumed: 'maintenance.err_autosave_not_resumed',
     schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',
 };

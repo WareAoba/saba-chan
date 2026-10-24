@@ -378,6 +378,7 @@
     "backup_limit": "La limite de sauvegardes à distance est atteinte. Supprimez d’anciennes sauvegardes sur le PC",
     "backup_busy": "Une autre sauvegarde ou restauration est en cours",
     "server_running": "Le serveur est allumé. Arrêtez-le d’abord",
-    "no_command_path": "Le serveur a été lancé hors de Saba-chan et ne peut pas recevoir de commandes"
+    "no_command_path": "Le serveur a été lancé hors de Saba-chan et ne peut pas recevoir de commandes",
+    "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur"
   }
 }

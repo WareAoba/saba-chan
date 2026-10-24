@@ -378,6 +378,7 @@
     "backup_limit": "O limite de backups remotos está cheio. Apague backups antigos no PC",
     "backup_busy": "Outro backup ou restauração está em andamento",
     "server_running": "O servidor está ligado. Desligue-o primeiro",
-    "no_command_path": "O servidor foi iniciado fora do Saba-chan e não pode receber comandos"
+    "no_command_path": "O servidor foi iniciado fora do Saba-chan e não pode receber comandos",
+    "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor"
   }
 }

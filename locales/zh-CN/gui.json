@@ -1050,7 +1050,8 @@
     "err_message": "请输入公告内容。",
     "backup_unreadable": "⚠ 无法打开",
     "backup_unreadable_hint": "此备份无法打开。它无法恢复，并且在删除之前不会清理未使用的备份内容。请删除它。",
-    "err_backup_file_locked": "服务器正在使用文件（{{file}}），无法备份。请关闭服务器后重试。"
+    "err_backup_file_locked": "服务器正在使用文件（{{file}}），无法备份。请关闭服务器后重试。",
+    "err_autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器."
   },
   "chatbot": {
     "nav": "会说话的 Saba-chan",

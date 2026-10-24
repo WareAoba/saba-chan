@@ -284,6 +284,8 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "inputs": field.inputs,
                 "source": "module",
                 "aliases": aliases,
+                // false면 디스코드·챗봇 액션으로 부를 수 없다 (`actions::command_view`)
+                "remote": field.remote,
             }));
         }
     }

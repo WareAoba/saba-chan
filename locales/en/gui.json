@@ -1050,7 +1050,8 @@
     "err_message": "Enter a message to announce.",
     "backup_unreadable": "⚠ cannot be opened",
     "backup_unreadable_hint": "This backup cannot be opened, so it cannot be restored. Unused backup content is not cleaned up until you delete it. Delete it.",
-    "err_backup_file_locked": "The server is using a file ({{file}}), so the backup could not be made. Stop the server and try again."
+    "err_backup_file_locked": "The server is using a file ({{file}}), so the backup could not be made. Stop the server and try again.",
+    "err_autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server."
   },
   "chatbot": {
     "nav": "Talking Saba-chan",
