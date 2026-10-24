@@ -154,9 +154,31 @@ fn extension_tool(args: &[String]) -> i32 {
     i32::from(failed > 0)
 }
 
+/// `saba-core sandbox reset` — 제거기가 데몬을 끈 뒤 부른다. 격리 실행의 프로필과 폴더 권한·표시를 거둔다
+/// (실패한 것이 있으면 적고 종료 코드 1)
+fn sandbox_tool(args: &[String]) -> i32 {
+    if args != ["reset"] {
+        eprintln!("usage: saba-core sandbox reset");
+        return 2;
+    }
+    match sandbox::reset() {
+        Ok(profiles) => {
+            println!("ok    removed {} isolation profile(s)", profiles);
+            0
+        }
+        Err(failed) => {
+            for f in &failed {
+                println!("FAIL  {}", f);
+            }
+            1
+        }
+    }
+}
+
 const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
        saba-core module schema | module validate <dir>... | module audit <dir>...
        saba-core extension validate <dir>... | extension audit <dir>...
+       saba-core sandbox reset   (the uninstaller: remove isolation profiles and folder permissions)
        saba-core --version | --help
 
   --spawned   started by the GUI/CLI (skips the boot selector)";
@@ -193,6 +215,9 @@ async fn main() -> anyhow::Result<()> {
     }
     if args.get(1).map(String::as_str) == Some("extension") {
         std::process::exit(extension_tool(&args[2..]));
+    }
+    if args.get(1).map(String::as_str) == Some("sandbox") {
+        std::process::exit(sandbox_tool(&args[2..]));
     }
     // 데이터 폴더를 건드리기 전에 인자를 본다: 모르는 인자로 데몬이 떠서 설정을 이관하면 안 된다
     match daemon_args(&args[1..]) {

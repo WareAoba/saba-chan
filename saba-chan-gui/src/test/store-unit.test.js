@@ -598,7 +598,7 @@ describe('bot-config 저장 계약', () => {
 
         const payload = window.api.botConfigSave.mock.calls[0][0];
         expect(payload.prefixes).toEqual(['!x']);
-        expect(payload.cloud).toEqual({ relayUrl: '', hostId: 'h1' });
+        expect(payload.cloud).toEqual({ hostId: 'h1' });
         for (const legacy of ['token', 'autoStart', 'mode', 'musicEnabled', 'musicChannelId', 'musicUISettings']) {
             expect(payload).not.toHaveProperty(legacy);
         }

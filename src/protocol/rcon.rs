@@ -56,25 +56,8 @@ pub fn ensure(instance_dir: &Path, default_port: u16, taken: &[u16]) -> anyhow::
         return Ok(access);
     }
     let access = Access { port: pick_port(default_port, taken)?, password: crate::instance::generate_random_password() };
-    std::fs::create_dir_all(instance_dir)?;
     let path = instance_dir.join(ACCESS_FILE);
-    let tmp = instance_dir.join(format!("{}.tmp", ACCESS_FILE));
-    {
-        use std::io::Write;
-        // 앞선 실행이 남긴 tmp의 권한을 물려받지 않게 지우고 새로 만든다
-        let _ = std::fs::remove_file(&tmp);
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&tmp)?;
-        file.write_all(serde_json::to_string_pretty(&access)?.as_bytes())?;
-        file.sync_all()?;
-    }
-    std::fs::rename(&tmp, &path)?;
+    saba_atomic_file::write(&path, serde_json::to_string_pretty(&access)?.as_bytes(), saba_atomic_file::Mode::Secret)?;
     Ok(access)
 }
 

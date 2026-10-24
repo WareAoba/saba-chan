@@ -170,14 +170,30 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
 
 type Stdin = Mutex<Option<Box<dyn Write + Send>>>;
 
+/// 인증 전에 받는 첫 줄(토큰)의 길이와 시간 상한. 같은 PC의 다른 프로세스가 끝없는 줄로 러너 메모리를 채우거나
+/// 연결만 열어 둔 채 스레드를 쌓지 못하게 한다
+const AUTH_LINE_MAX: u64 = 256;
+const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// stdin 연결 하나: 첫 줄이 토큰이면 이후 줄을 자식 stdin으로 넘긴다.
 /// 의사 콘솔은 Enter를 `\r`로 받는다.
 fn serve_stdin(conn: TcpStream, token: &str, stdin: &Stdin, enter: &str) {
-    let mut lines = BufReader::new(conn).lines();
-    if lines.next().and_then(Result::ok).as_deref() != Some(token) {
+    if conn.set_read_timeout(Some(AUTH_TIMEOUT)).is_err() {
         return;
     }
-    for line in lines.map_while(Result::ok) {
+    let mut reader = BufReader::new(conn);
+    let mut first = Vec::new();
+    if (&mut reader).take(AUTH_LINE_MAX).read_until(b'\n', &mut first).is_err() {
+        return;
+    }
+    let first = first.strip_suffix(b"\n").unwrap_or(&first);
+    if first.strip_suffix(b"\r").unwrap_or(first) != token.as_bytes() {
+        return;
+    }
+    if reader.get_ref().set_read_timeout(None).is_err() {
+        return;
+    }
+    for line in reader.lines().map_while(Result::ok) {
         let mut guard = match stdin.lock() {
             Ok(g) => g,
             Err(_) => return,
@@ -191,27 +207,24 @@ fn serve_stdin(conn: TcpStream, token: &str, stdin: &Stdin, enter: &str) {
 }
 
 /// 로그 파일들을 따라 읽는다. 시작 때 있던 파일은 끝에서부터, 새로 생긴 파일은 처음부터.
-/// 파일이 줄어들면(새로 쓰기 시작) 처음부터 다시.
+/// 파일이 줄어들거나 이미 읽은 끝부분이 바뀌면(새로 쓰기 시작) 처음부터 다시.
 fn follow_files(patterns: Vec<PathBuf>, log: Log) {
     std::thread::spawn(move || {
-        let mut offsets: std::collections::HashMap<PathBuf, u64> = patterns
+        let mut followed: std::collections::HashMap<PathBuf, Followed> = patterns
             .iter()
             .flat_map(|p| matching_files(p))
             .map(|f| {
-                let len = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
-                (f, len)
+                let at = Followed::at_end(&f);
+                (f, at)
             })
             .collect();
-        let mut partial: std::collections::HashMap<PathBuf, Lines> = Default::default();
         loop {
             std::thread::sleep(std::time::Duration::from_millis(500));
             let files: Vec<PathBuf> = patterns.iter().flat_map(|p| matching_files(p)).collect();
             // 회전으로 사라진 파일은 잊는다 (날짜 붙은 로그가 쌓여도 맵이 늘지 않게)
-            offsets.retain(|f, _| files.contains(f));
-            partial.retain(|f, _| files.contains(f));
+            followed.retain(|f, _| files.contains(f));
             for file in files {
-                let pos = offsets.entry(file.clone()).or_insert(0);
-                for line in read_new(&file, pos, partial.entry(file.clone()).or_default()) {
+                for line in read_new(&file, followed.entry(file.clone()).or_default()) {
                     write_log(&log, Stream::Stdout, &line);
                 }
             }
@@ -219,20 +232,54 @@ fn follow_files(patterns: Vec<PathBuf>, log: Log) {
     });
 }
 
-/// 파일에서 `pos` 뒤에 새로 쓰인 줄들. 줄은 `Lines`로 자른다(끝나지 않는 줄은 `MAX_LINE`에서 끊는다).
-/// 파일이 줄어들었으면(새로 쓰기 시작) 처음부터 읽고, 끝나지 않았던 앞 조각은 버린다
-fn read_new(file: &std::path::Path, pos: &mut u64, lines: &mut Lines) -> Vec<String> {
-    let len = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
-    if len < *pos {
-        *pos = 0;
-        *lines = Lines::default();
+/// 이미 읽은 끝부분을 이만큼 기억해 파일을 새로 썼는지 본다
+const MARK: usize = 64;
+
+/// 따라 읽는 파일 하나의 상태
+#[derive(Default)]
+struct Followed {
+    /// 다음에 읽을 자리
+    pos: u64,
+    /// `pos` 바로 앞의 바이트들(최대 `MARK`)
+    mark: Vec<u8>,
+    /// 끝나지 않은 줄
+    lines: Lines,
+}
+
+impl Followed {
+    /// 시작 때 있던 파일: 끝에서부터 읽는다
+    fn at_end(file: &std::path::Path) -> Self {
+        let pos = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+        let mark = File::open(file).ok().and_then(|mut f| read_at(&mut f, pos.saturating_sub(MARK as u64), pos)).unwrap_or_default();
+        Self { pos, mark, lines: Lines::default() }
     }
-    if len == *pos {
+}
+
+/// `from`..`to` 자리의 바이트들
+fn read_at(f: &mut File, from: u64, to: u64) -> Option<Vec<u8>> {
+    use std::io::Seek;
+    f.seek(std::io::SeekFrom::Start(from)).ok()?;
+    let mut bytes = vec![0u8; (to - from) as usize];
+    f.read_exact(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+/// 파일에서 `pos` 뒤에 새로 쓰인 줄들. 줄은 `Lines`로 자른다(끝나지 않는 줄은 `MAX_LINE`에서 끊는다).
+/// 파일이 줄어들었거나 `pos` 앞의 바이트가 기억과 다르면(새로 쓰기 시작) 처음부터 읽고, 끝나지 않았던 앞 조각은 버린다.
+/// 끝나지 않은 조각(`MAX_LINE` 미만)이 기억한 끝부분보다 길면 조각 전체를 견준다: 끝 64바이트만 같은 새 내용에 옛 조각을 붙이지 않는다
+fn read_new(file: &std::path::Path, at: &mut Followed) -> Vec<String> {
+    let len = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+    let Ok(mut f) = File::open(file) else { return Vec::new() };
+    let seen: &[u8] = if at.lines.pending().len() > at.mark.len() { at.lines.pending() } else { &at.mark };
+    let seen_from = at.pos - seen.len() as u64;
+    if len < at.pos || read_at(&mut f, seen_from, at.pos).is_none_or(|bytes| bytes != seen) {
+        *at = Followed::default();
+    }
+    if len == at.pos {
         return Vec::new();
     }
-    let Ok(mut f) = File::open(file) else { return Vec::new() };
     use std::io::Seek;
-    if f.seek(std::io::SeekFrom::Start(*pos)).is_err() {
+    if f.seek(std::io::SeekFrom::Start(at.pos)).is_err() {
         return Vec::new();
     }
     // 조각씩 읽어 그때마다 줄로 내보낸다: 한 번에 많이 쓰인 로그도 남은 조각이 `MAX_LINE`+조각 크기를 넘지 않는다
@@ -243,13 +290,15 @@ fn read_new(file: &std::path::Path, pos: &mut u64, lines: &mut Lines) -> Vec<Str
             Ok(0) | Err(_) => break,
             Ok(n) => n,
         };
-        *pos += n as u64;
-        lines.push(&buf[..n]);
-        while let Some(line) = lines.next_line() {
-            out.push(lines.decode(&line));
+        at.pos += n as u64;
+        at.mark.extend_from_slice(&buf[n.saturating_sub(MARK)..n]);
+        at.mark.drain(..at.mark.len().saturating_sub(MARK));
+        at.lines.push(&buf[..n]);
+        while let Some(line) = at.lines.next_line() {
+            out.push(at.lines.decode(&line));
         }
     }
-    lines.shrink();
+    at.lines.shrink();
     out
 }
 
@@ -497,6 +546,39 @@ mod tests {
         }
     }
 
+    // EE6: 인증 전 첫 줄은 길이와 시간에 상한이 있다. 맞는 토큰 뒤의 줄만 서버 stdin으로 간다
+    #[test]
+    fn stdin_connections_must_send_the_token_quickly_and_briefly() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sink = Sink::default();
+        let stdin: std::sync::Arc<super::Stdin> = std::sync::Arc::new(std::sync::Mutex::new(Some(Box::new(sink.clone()))));
+        let serve = |stdin: std::sync::Arc<super::Stdin>| {
+            let (conn, _) = listener.accept().unwrap();
+            std::thread::spawn(move || super::serve_stdin(conn, "tok", &stdin, "\n"))
+        };
+
+        // 끝없는 첫 줄: 상한에서 끊고 닫는다
+        let mut long = std::net::TcpStream::connect(addr).unwrap();
+        let server = serve(stdin.clone());
+        let _ = long.write_all(&vec![b'x'; 64 * 1024]);
+        server.join().unwrap();
+
+        // 아무것도 보내지 않는 연결: 시간 상한 뒤 닫는다
+        let started = std::time::Instant::now();
+        let _idle = std::net::TcpStream::connect(addr).unwrap();
+        serve(stdin.clone()).join().unwrap();
+        assert!(started.elapsed() < super::AUTH_TIMEOUT + Duration::from_secs(3));
+
+        let mut good = std::net::TcpStream::connect(addr).unwrap();
+        let server = serve(stdin.clone());
+        good.write_all(b"tok\r\nsay hi\n").unwrap();
+        drop(good);
+        server.join().unwrap();
+        assert_eq!(sink.0.lock().unwrap().as_slice(), b"say hi\n");
+    }
+
     // 실제 PC: ConPTY가 처음 보낸 커서 위치 요청(줄 끝 없음)에 아무도 답하지 않아 팰월드가 출력 0줄로
     // 멈춰 있었다(직접 실행하면 5초 만에 REST가 뜸). 요청이 두 번 읽기에 걸쳐 와도 답한다
     #[test]
@@ -530,17 +612,49 @@ mod tests {
     fn a_followed_file_cuts_endless_lines_and_forgets_them_when_it_starts_over() {
         let path = std::env::temp_dir().join(format!("saba-runner-follow-{}.log", std::process::id()));
         std::fs::write(&path, "x".repeat(saba_runner::MAX_LINE * 3)).unwrap();
-        let (mut pos, mut lines) = (0u64, saba_runner::Lines::default());
-        let read = super::read_new(&path, &mut pos, &mut lines);
+        let mut at = super::Followed::default();
+        let read = super::read_new(&path, &mut at);
         assert_eq!(read.len(), 3, "cut at MAX_LINE");
         assert!(read.iter().all(|l| l.len() <= saba_runner::MAX_LINE));
         std::fs::write(&path, "y".repeat(100)).unwrap();
-        let _ = super::read_new(&path, &mut pos, &mut lines);
+        let _ = super::read_new(&path, &mut at);
         // 짧아졌다: 처음부터, 앞의 조각 없이
         std::fs::write(&path, "new\n").unwrap();
-        let read = super::read_new(&path, &mut pos, &mut lines);
+        let read = super::read_new(&path, &mut at);
         let _ = std::fs::remove_file(&path);
         assert_eq!(read, vec!["new".to_string()]);
+    }
+
+    // 외부 감사: 끝나지 않은 줄을 읽은 뒤 파일을 같거나 더 긴 내용으로 새로 쓰면 옛 조각과 옛 자리에서 이어 읽었다
+    #[test]
+    fn a_followed_file_rewritten_to_the_same_or_a_longer_length_starts_over() {
+        let path = std::env::temp_dir().join(format!("saba-runner-rewrite-{}.log", std::process::id()));
+        let mut at = super::Followed::default();
+        std::fs::write(&path, "old").unwrap();
+        assert!(super::read_new(&path, &mut at).is_empty());
+        std::fs::write(&path, "NEW-LINE\n").unwrap();
+        let longer = super::read_new(&path, &mut at);
+        std::fs::write(&path, "abcdefgh\n").unwrap();
+        let same = super::read_new(&path, &mut at);
+        std::fs::write(&path, "abcdefgh\nmore\n").unwrap();
+        let appended = super::read_new(&path, &mut at);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(longer, vec!["NEW-LINE".to_string()]);
+        assert_eq!(same, vec!["abcdefgh".to_string()]);
+        assert_eq!(appended, vec!["more".to_string()]);
+    }
+
+    // 외부 감사: 끝나지 않은 조각이 기억한 끝부분(64바이트)보다 길면, 끝만 같은 새 내용으로 새로 써도 옛 조각을 붙였다
+    #[test]
+    fn a_rewrite_that_only_shares_the_remembered_tail_starts_over() {
+        let path = std::env::temp_dir().join(format!("saba-runner-tail-{}.log", std::process::id()));
+        let mut at = super::Followed::default();
+        std::fs::write(&path, format!("old{}", "x".repeat(64))).unwrap();
+        assert!(super::read_new(&path, &mut at).is_empty());
+        std::fs::write(&path, format!("NEW{}\n", "x".repeat(64))).unwrap();
+        let read = super::read_new(&path, &mut at);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(read, vec![format!("NEW{}", "x".repeat(64))]);
     }
 
     /// 한 번 읽은 양 안에서 긴 줄이 끝나도 `MAX_LINE`에서 끊고, 많이 쌓인 파일도 조각씩 읽어 남은 조각이 상한을 넘지 않는다
@@ -550,13 +664,13 @@ mod tests {
         let mut text = "x".repeat(saba_runner::MAX_LINE * 4);
         text.push_str("\nnext\n");
         std::fs::write(&path, &text).unwrap();
-        let (mut pos, mut lines) = (0u64, saba_runner::Lines::default());
-        let read = super::read_new(&path, &mut pos, &mut lines);
+        let mut at = super::Followed::default();
+        let read = super::read_new(&path, &mut at);
         let _ = std::fs::remove_file(&path);
         assert!(read.iter().all(|l| l.len() <= saba_runner::MAX_LINE), "{:?}", read.iter().map(String::len).collect::<Vec<_>>());
         assert_eq!(read.iter().map(String::len).sum::<usize>(), saba_runner::MAX_LINE * 4 + 4);
         assert_eq!(read.last().map(String::as_str), Some("next"));
-        assert!(lines.pending().is_empty());
+        assert!(at.lines.pending().is_empty());
     }
 
     #[test]

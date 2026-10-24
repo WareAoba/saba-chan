@@ -109,6 +109,7 @@
     "command_words": "명령 낱말",
     "words_saved": "{{server}}의 채팅 낱말을 저장했어요.",
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
+    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요.",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
     "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
@@ -215,7 +216,7 @@
     "offer_start": "사바쨩 데몬이 꺼져 있어요. 켤까요?",
     "spawn_failed": "데몬을 켜지 못했어요: {{error}}",
     "start_timeout": "데몬이 제때 응답하지 않았어요. 확인: saba-chan-cli daemon logs",
-    "exited_early": "데몬이 켜지자마자 꺼졌어요(종료 코드 {{code}}). 이미 다른 데몬이 돌고 있을 수 있어요. 확인: saba-chan-cli daemon status",
+    "exited_early": "데몬이 켜지자마자 꺼졌어요 (종료 코드 {{code}}). 이미 다른 데몬이 돌고 있을 수 있어요. 확인: saba-chan-cli daemon status",
     "started": "데몬을 켰어요 (v{{version}}).",
     "starting": "데몬을 켜는 중...",
     "stop_no_pid": "데몬이 PID를 알려 주지 않아 여기서 강제 종료할 수 없어요.",
@@ -223,7 +224,12 @@
     "shutdown_refused": "데몬이 종료 요청을 받지 않았어요: {{error}}",
     "stopped": "데몬을 껐어요.",
     "stopping": "데몬을 끄는 중...",
-    "stops_with_launcher": "사바쨩 코어가 이 데몬을 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 데몬을 끈 뒤(saba-chan-cli daemon stop) 시작 메뉴의 사바쨩이나 일반 터미널에서 다시 켜 주세요."
+    "stops_with_launcher": "사바쨩 코어가 이 데몬을 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 데몬을 끈 뒤(saba-chan-cli daemon stop) 시작 메뉴의 사바쨩이나 일반 터미널에서 다시 켜 주세요.",
+    "no_clients": "데몬에 붙은 데스크톱 앱 창이 없어요.",
+    "col": {
+      "kind": "종류",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "{{name}} 로그에서 알려진 문제를 찾지 못했어요."
@@ -233,7 +239,7 @@
       "channel_conflict": "한 채널에는 한 가지 용도만 지정할 수 있어요 (말하는 사바쨩·음악·알림 중 하나).",
       "unknown_channel": "그 채널을 디스코드 서버에서 찾지 못했어요. 채널 이름이나 id를 확인하세요.",
       "bot_unavailable": "사바쨩 봇이 지금 응답하지 않아요. 잠시 뒤 다시 시도하세요.",
-      "node_not_found": "릴레이가 이 PC를 모릅니다. 연결이 해제됐거나 다른 PC로 바뀌었어요.",
+      "node_not_found": "릴레이가 이 PC를 알지 못해요. 연결이 해제됐거나 다른 PC로 바뀌었어요.",
       "host_not_found": "릴레이에서 이 PC를 찾지 못했어요.",
       "missing_token": "이 PC가 아직 페어링되지 않았어요.",
       "invalid_token": "이 PC의 연결 토큰이 맞지 않아요.",
@@ -257,7 +263,7 @@
     "hint": {
       "executable_missing": "서버 파일이 없어요. 다시 설치하거나(saba-chan-cli server update) 실행 파일 경로를 지정하세요: saba-chan-cli server set 서버 executable_path=경로",
       "extension_required": "필요한 익스텐션을 설치하세요: saba-chan-cli extension install {{ids}}",
-      "extension_not_verified": "확장 파일이 바뀌어 확인되지 않았습니다: {{ids}}. 다시 설치하거나 원래대로 되돌려 주세요: saba-chan-cli extension install {{ids}}",
+      "extension_not_verified": "익스텐션 파일이 바뀌어 확인되지 않았어요: {{ids}}. 다시 설치하거나 원래대로 되돌려 주세요: saba-chan-cli extension install {{ids}}",
       "node_token_missing": "먼저 이 PC를 페어링하세요: saba-chan-cli bot pair",
       "server_not_running": "먼저 서버를 켜세요: saba-chan-cli start 이름",
       "server_running": "먼저 서버를 끄세요: saba-chan-cli stop 이름",
@@ -572,7 +578,7 @@
   },
   "launch_preview": {
     "no_args": "{{name}}의 모듈은 설정을 실행 인자로 쓰지 않아요.",
-    "invalid_format": "잘못된 형식입니다: {{arg}} ({{field}})"
+    "invalid_format": "형식이 잘못됐어요: {{arg}} ({{field}})"
   },
   "help": {
     "cmd": {
@@ -726,11 +732,17 @@
       "bot.music": "디스코드 서버의 음악 플레이어 설정. 옵션이 없으면 보기",
       "bot.allow": "디스코드 서버가 보고 부를 수 있는 서버. 서버 없이: 보기, `--all`: 모든 서버",
       "bot.link": "디스코드에서 코드 없이 /사바쨩 연결로 온 연결 요청. ID 없이: 보기, ID: 수락, `--decline`: 거절",
-      "bot.words": "디스코드 서버에서 이 PC의 서버와 그 명령을 부르는 낱말. 서버 없이: 전부, 옵션 없이: 보기",
       "help": "명령 도움말 보기. --json이면 명령 트리·인자·종료 코드",
       "events": "데몬 이벤트를 실시간으로 따라가기 (--json이면 한 줄에 JSON 하나). Ctrl+C로 멈춰요",
       "tui": "전체 화면 메뉴 열기",
-      "install": "창 인스톨러 없이 이 PC에 사바쨩 설치"
+      "install": "창 인스톨러 없이 이 PC에 사바쨩 설치",
+      "server.players": "지금 접속한 사람",
+      "server.rcon": "서버가 명령을 받는 길(콘솔, 없으면 RCON)로 한 줄 보내고 답 보기",
+      "server.log": "지난 실행까지 저장된 로그 (콘솔은 지금 실행분만)",
+      "server.query": "게임 모듈이 제공하는 조회 (이름이 없으면 목록)",
+      "daemon.clients": "데몬에 붙은 데스크톱 앱 창",
+      "server.discord": "디스코드 서버마다 이 서버와 그 명령을 채팅에서 부르는 낱말. 옵션 없이: 보기",
+      "uninstall": "이 PC에서 사바쨩 제거 (지정하지 않으면 설정과 서버는 남김)"
     },
     "arg": {
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
@@ -835,9 +847,6 @@
       "bot.music.queue_lines": "플레이어 패널의 대기열 줄 수 (1-20)",
       "bot.music.refresh": "플레이어 패널 새로고침 간격, 밀리초 (2000-10000)",
       "bot.music.normalize": "곡마다 음량 고르게 (on 또는 off)",
-      "bot.words.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
-      "bot.words.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
-      "bot.words.clear": "이 서버의 낱말 모두 지우기",
       "bot.channels.guild": "디스코드 서버 이름이나 id. 없으면 페어링된 서버 전부 (바꾸기는 서버가 하나일 때만)",
       "help.command": "명령 경로 (예: `server start`)",
       "events.kind": "이 이벤트만. `instance`는 `instance.exit` 같은 아래 이벤트도 받아요",
@@ -847,7 +856,24 @@
       "install.dir": "설치 폴더 (없으면 물어봄)",
       "install.modules": "설치할 게임 모듈, 쉼표로 구분 (없으면 물어봄)",
       "install.gui": "화면이 없어도 데스크톱 앱까지 설치",
-      "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치"
+      "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치",
+      "server.log.source": "어느 실행 (`--runs`로 목록), 없으면 마지막",
+      "server.log.lines": "마지막 N줄",
+      "server.log.runs": "저장된 실행 목록",
+      "server.log.all": "한 실행분 전체 (파일로: `> 파일.log`)",
+      "server.query.name": "조회 이름",
+      "server.query.args": "입력 키=값",
+      "chatbot.show.guild": "디스코드 서버 하나가 실제로 쓰는 값 (공통 값 + 그 서버 값), 이름이나 id",
+      "do.action": "액션 id (예: server.restart, server.command:say)",
+      "do.steps": "여러 단계를 JSON으로: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (ACTION 대신)",
+      "do.run_id": "뒤에서 이어 가는 여러 단계 실행의 진행",
+      "do.server": "액션을 적용할 서버",
+      "server.discord.guild": "디스코드 서버 이름이나 id (여럿이 페어링돼 있으면 바꿀 때 물어봐요)",
+      "server.discord.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
+      "server.discord.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
+      "server.discord.clear": "이 서버의 낱말 모두 지우기",
+      "uninstall.remove_settings": "설정과 디스코드 연결도 지움",
+      "uninstall.remove_instances": "게임 서버도 지움 (서버 파일, 월드, 백업)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -992,7 +1018,14 @@
       "id": "액션",
       "title": "이름",
       "risk": "위험도"
-    }
+    },
+    "steps_array": "--steps는 단계 목록(JSON 배열)이어야 해요.",
+    "confirm_steps": "이 단계들을 실행할까요?",
+    "running": "단계를 실행하는 중…",
+    "done_steps": "모든 단계를 마쳤어요.",
+    "state_running": "실행 중",
+    "state_done": "끝남",
+    "run_hint": "뒤에서 실행 중이에요 (id {{id}}). 창을 닫아도 계속되고, 진행은 do --run {{id}} 로 볼 수 있어요."
   },
   "perm": {
     "owner": "주인",
@@ -1057,34 +1090,158 @@
     "whole": "PC 전체(나누지 않음)"
   },
   "tui": {
-    "daemon_up": "데몬 ● 연결됨 (v{{version}})",
-    "daemon_down": "데몬 ○ 꺼짐 · 켜기: daemon start",
-    "servers_running": "서버 {{total}}개 중 {{running}}개 실행 중",
+    "daemon_up": "● 데몬 v{{version}}",
+    "daemon_down": "○ 데몬 꺼짐 · 콘솔에 daemon start",
+    "servers_running": "서버 {{running}}/{{total}} 실행",
     "menu": "메뉴",
-    "output": "결과",
-    "enter_to_run": "Enter로 실행",
     "running_hint": "(실행 중 · Ctrl+C로 멈춤)",
-    "keys": "↑↓ 이동 · ←→ 메뉴/목록 · Enter 실행 · : 명령 · PgUp/PgDn 결과 넘기기 · ? 도움말 · q 나가기",
+    "keys": "Tab 다음 칸 · ↑↓ 고르기 · Enter 누르기 · 1-9 쪽 · : 콘솔 · F2 콘솔 크게 · ? 도움말 · q 나가기",
     "yes": "예",
     "no": "아니오",
     "question": "확인",
     "dialog_keys": "Enter 고르기 · Esc 취소",
     "help_title": "단축키",
-    "help": "↑↓  메뉴나 목록에서 이동\n←→ / Tab  메뉴와 목록 오가기\nEnter  고른 일 실행 (인자가 필요하면 명령 줄이 열려요)\n:  명령 줄 (saba-chan-cli 뒤에 쓰는 명령 그대로, ↑↓ 지난 명령)\nPgUp/PgDn, 마우스 휠  결과 넘기기\nCtrl+C  실행 중인 명령 멈추기\nq  나가기 (데몬과 서버는 계속 돌아요)",
+    "help": "Tab / Shift+Tab  메뉴 → 목록 → 버튼 → 콘솔 순서로 옮기기\n↑↓  고르기,  ←→  버튼 옮기기\nEnter  버튼 누르기 (… 이 붙은 버튼은 콘솔에 명령을 채워 줘요)\n1-9  쪽 바로 가기\n: 또는 /  콘솔에 명령 치기 (saba-chan-cli 뒤에 쓰는 그대로, ↑↓ 지난 명령)\nPgUp/PgDn, 마우스 휠  콘솔 넘기기,  F2  콘솔 크게\nCtrl+C  실행 중인 명령 멈추기\n마우스  메뉴·목록·버튼을 눌러도 돼요\nq  나가기 (데몬과 서버는 계속 돌아요)",
     "too_narrow": "창을 60칸 이상으로 넓혀 주세요.",
     "not_here": "이 명령은 전체 화면 메뉴 안에서는 실행할 수 없어요. q로 나간 뒤 터미널에서 실행하세요.",
     "cancelled": "멈췄어요.",
-    "action": {
+    "needs_terminal": "이 메뉴는 터미널에서만 열려요. 스크립트에서는 하위 명령을 쓰세요.",
+    "command_panicked": "명령이 예기치 않게 멈췄어요. 다른 명령은 계속 쓸 수 있어요.",
+    "brand": "사바쨩 {{version}}",
+    "memory_of": "메모리 {{used}} / {{total}}",
+    "discord_on": "디스코드 ● 연결",
+    "discord_off": "디스코드 ○ 끊김",
+    "updates_n": "업데이트 {{count}}개",
+    "updates_none": "최신 버전",
+    "updates_checking": "확인하는 중…",
+    "updates_error": "마지막 확인이 실패했어요. 업데이트 확인을 다시 눌러 보세요.",
+    "page": {
+      "dashboard": "대시보드",
+      "servers": "서버",
+      "modules": "게임 모듈",
+      "extensions": "익스텐션",
+      "discord": "디스코드",
+      "updates": "업데이트",
+      "settings": "설정",
+      "daemon_log": "데몬 로그",
+      "commands": "모든 명령"
+    },
+    "btn": {
+      "status": "전체 상태",
+      "monitor": "사용량",
+      "server_add": "새 서버",
+      "audit": "기록",
       "start": "시작",
       "stop": "정지",
       "restart": "재시작",
-      "console": "콘솔 최근 줄",
+      "players": "접속자",
+      "run": "게임 명령",
+      "send": "콘솔에 보내기",
       "info": "정보",
-      "backup_create": "백업 만들기",
-      "backup_list": "백업 목록"
+      "settings": "설정",
+      "backup_create": "백업",
+      "backup_list": "백업 목록",
+      "schedule": "예약",
+      "log": "저장된 로그",
+      "validate": "점검",
+      "remove": "지우기",
+      "commands": "명령",
+      "versions": "버전",
+      "available": "받을 수 있는 것",
+      "refresh": "다시 읽기",
+      "enable": "켜기",
+      "disable": "끄기",
+      "config": "설정",
+      "ext_update": "업데이트",
+      "rescan": "다시 찾기",
+      "bot_status": "연결 상태",
+      "bot_pair": "페어링",
+      "bot_start": "연결",
+      "bot_stop": "끊기",
+      "bot_nodes": "디스코드 서버",
+      "bot_channels": "채널",
+      "bot_invite": "초대 링크",
+      "perm": "권한",
+      "chatbot": "말하는 사바쨩",
+      "bot_config": "봇 설정",
+      "update_status": "상태",
+      "update_check": "업데이트 확인",
+      "update_download": "받기",
+      "update_last": "마지막 결과",
+      "update_integrity": "파일 점검",
+      "update_config": "업데이트 설정",
+      "config_show": "모든 설정",
+      "config_set": "설정 바꾸기",
+      "config_defaults": "기본값",
+      "diagnostics": "진단",
+      "version": "버전",
+      "sandbox": "격리 동의",
+      "daemon_start": "데몬 켜기",
+      "daemon_restart": "데몬 다시 켜기",
+      "daemon_stop": "데몬 끄기",
+      "clients": "붙은 앱 창",
+      "events": "이벤트 따라가기"
     },
-    "needs_terminal": "이 메뉴는 터미널에서만 열려요. 스크립트에서는 하위 명령을 쓰세요.",
-    "command_panicked": "명령이 예기치 않게 멈췄어요. 다른 명령은 계속 쓸 수 있어요."
+    "col": {
+      "name": "이름",
+      "game": "게임",
+      "status": "상태",
+      "players": "접속",
+      "port": "포트",
+      "uptime": "가동",
+      "about": "설명",
+      "enabled": "켜짐"
+    },
+    "card": {
+      "servers": "서버",
+      "servers_sub": "켜짐 / 전체",
+      "players": "접속자",
+      "players_sub": "켜진 서버의 합",
+      "memory": "메모리"
+    },
+    "no_servers": "아직 서버가 없어요. [새 서버]를 누르거나 콘솔에 server add",
+    "feed": "최근 일",
+    "feed_empty": "서버를 켜고 끄면 여기에 바로 보여요.",
+    "empty": "(없음)",
+    "detail": "자세히",
+    "server_console": "콘솔 최근 줄",
+    "console_empty": "아직 출력이 없어요.",
+    "discord": {
+      "relay": "릴레이",
+      "paired": "페어링",
+      "handled": "처리한 명령",
+      "heartbeat": "마지막 신호",
+      "error": "마지막 오류",
+      "pair_hint": "디스코드와 연결하려면 [페어링]을 누르세요. 코드가 콘솔에 나와요."
+    },
+    "settings": {
+      "daemon": "데몬",
+      "port": "데몬 포트",
+      "language": "언어",
+      "hint": "값 바꾸기: [설정 바꾸기]를 누르고 키=값을 이어 쓰세요 (예: language=ko)."
+    },
+    "console": "콘솔",
+    "console_hint": ": 를 누르면 여기에 명령을 쳐요 (예: start pal, help)",
+    "keys_console": "Enter 실행 · ↑↓ 지난 명령 · PgUp/PgDn 넘기기 · Esc 나가기 · F2 콘솔 크게",
+    "keys_running": "명령 실행 중 · Ctrl+C 멈추기 · PgUp/PgDn 넘기기 · 다른 쪽은 계속 볼 수 있어요",
+    "choose": "고르기",
+    "enter_text": "입력",
+    "welcome": "사바쨩에 오신 걸 환영해요. 버튼을 누르거나 : 를 눌러 명령을 치세요.",
+    "busy": "다른 명령이 아직 실행 중이에요. 끝나기를 기다리거나 Ctrl+C로 멈춘 뒤 다시 해 주세요.",
+    "pick_first": "먼저 목록에서 하나를 고르세요.",
+    "event": {
+      "instance_ready": "준비 완료",
+      "instance_exit": "멈춤",
+      "instance_player": "접속자 변화",
+      "instance_port_moved": "포트 바뀜",
+      "instance_restart_failed": "자동 재시작 실패",
+      "backup_done": "백업 끝",
+      "plan_done": "여러 단계 실행 끝",
+      "action_run": "명령 실행",
+      "relay_link_request": "디스코드 연결 요청",
+      "update_available": "새 업데이트"
+    },
+    "enter_to_run": "Enter로 실행"
   },
   "install": {
     "fetching": "최신 릴리스를 확인하고 있어요…",
@@ -1098,11 +1255,43 @@
     "no_modules": "없음",
     "installing": "설치하고 있어요",
     "not_writable": "{{dir}}에 쓸 수 없어요. --dir로 쓸 수 있는 폴더(예: 사용자 폴더 아래)를 고르세요",
-    "running_inside": "이 CLI는 {{dir}} 안에서 실행 중이라 그 폴더에 설치할 수 없습니다. 설치 폴더 밖에 있는 saba-chan-cli로 다시 실행해 주세요.",
+    "running_inside": "이 CLI는 {{dir}} 안에서 실행 중이라 그 폴더에 설치할 수 없어요. 설치 폴더 밖에 있는 saba-chan-cli로 다시 실행해 주세요.",
+    "installed_elsewhere": "사바쨩이 이미 {{dir}}에 설치돼 있어요. 그 설치본을 saba-chan-cli update로 업데이트하거나 먼저 제거해 주세요 (한 PC에는 하나만 설치할 수 있어요).",
+    "daemon_running": "어느 설치본의 것인지 알 수 없는 사바쨩이 실행 중이에요. 사바쨩을 먼저 종료한 뒤 다시 시도해 주세요.",
     "empty_dir": "설치 폴더가 비어 있어요. --dir에 폴더를 적어 주세요",
     "failed": "설치하지 못했어요: {{reason}} (자세한 기록: {{log}})",
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}"
+  },
+  "players": {
+    "title": "{{server}} 접속자 {{count}}명",
+    "none": "지금 접속한 사람이 없어요."
+  },
+  "log": {
+    "none": "저장된 로그가 아직 없어요. 서버를 한 번 켜면 생겨요.",
+    "truncated": "로그가 너무 커서 앞부분만 가져왔어요.",
+    "col": {
+      "run": "실행",
+      "started": "시작"
+    }
+  },
+  "query": {
+    "none": "이 게임 모듈에는 조회가 없어요.",
+    "col": {
+      "name": "조회",
+      "about": "설명",
+      "inputs": "입력"
+    }
+  },
+  "uninstall": {
+    "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",
+    "confirm": "{{dir}}의 사바쨩을 제거할까요? 프로그램과 사바쨩이 만든 파일은 모두 지우고, {{kept}}.",
+    "kept_both": "설정과 게임 서버는 남깁니다",
+    "kept_settings": "설정은 남기고 게임 서버는 지웁니다",
+    "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
+    "kept_nothing": "설정과 게임 서버도 지웁니다",
+    "done": "사바쨩을 제거했습니다. {{kept}}.",
+    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
   }
 }

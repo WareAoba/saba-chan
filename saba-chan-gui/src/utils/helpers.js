@@ -223,6 +223,3 @@ export function createTranslateError(t) {
         return msg;
     };
 }
-
-/** install_server가 받은 실행 파일 (계약은 executable_path, 예전 모듈은 jar_path만 준다) */
-export const installedExecutable = (result) => result?.executable_path || result?.jar_path || '';

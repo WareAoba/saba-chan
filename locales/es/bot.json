@@ -28,7 +28,7 @@
     "help_stop": "Detener servidor",
     "help_status": "Verificar estado del servidor",
     "help_rest_title": "**Comandos REST:**",
-    "enter_command": "Por favor ingresa un comando."
+    "enter_command": "Ingresa un comando."
   },
   "list": {
     "title": "🎮 **Lista de servidores**",
@@ -48,7 +48,7 @@
     "status_check": "📊 Estado de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ No se encontró servidor para el módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "El servidor no se está ejecutando. Por favor inicie el servidor primero",
+    "not_running_default": "El servidor no se está ejecutando. Inicie primero el servidor",
     "module_missing": "❌ El módulo '{{module}}' no está instalado. Este servidor no puede ser controlado.",
     "port_moved": "🔀 Windows reservó el puerto REST {{from}}, así que se cambió a {{to}}."
   },
@@ -75,7 +75,7 @@
     "announce_success": "✅ Anuncio enviado",
     "save_success": "✅ Mundo guardado",
     "command_executed": "✅ Comando ejecutado",
-    "command_complete": "✅ ¡Comando ejecutado exitosamente!",
+    "command_complete": "✅ ¡Comando ejecutado!",
     "empty_list": "(vacío)"
   },
   "errors": {
@@ -86,7 +86,7 @@
     "preflight_failed": "La comprobación previa encontró un problema, así que el servidor no se inició ({{code}}). Consulta los detalles en Saba-chan en el PC.",
     "agreement_local_only": "Los acuerdos solo se pueden aceptar en Saba-chan en este PC.",
     "no_command_path": "'{{name}}' no tiene una consola de saba-chan conectada, así que no puede recibir comandos. Reinícialo en modo gestionado desde saba-chan en el PC.",
-    "alias_conflict": "❌ El alias '{{alias}}' es ambiguo — coincide con varios módulos: {{modules}}. Usa un alias más específico.",
+    "alias_conflict": "❌ El alias '{{alias}}' es ambiguo. Coincide con varios módulos: {{modules}}. Usa un alias más específico.",
     "multiple_instances": "⚠️ Existen múltiples instancias de '{{module}}'. Usa el nombre de la instancia en lugar del alias del módulo.",
     "auth_failed": "Falló la autenticación",
     "player_not_found": "Jugador no encontrado",
@@ -102,10 +102,10 @@
     "command_not_found": "❌ El comando no existe.",
     "permission_denied": "❌ No tienes permiso para usar este comando.",
     "chatbot_not_allowed": "❌ Saba-chan parlante no puede ejecutar este comando. Ejecútalo directamente.",
-    "local_single_guild_only": "⚠️ El bot local solo puede usarse en un servidor. Actualmente está en {{count}} servidores. Elimina el bot de los servidores no utilizados."
+    "local_single_guild_only": "⚠️ El bot local solo puede usarse en un servidor. Este bot está en {{count}} servidores. Elimínalo de los servidores que no uses."
   },
   "messages": {
-    "server_started": "Servidor iniciado exitosamente",
+    "server_started": "Servidor iniciado",
     "server_stopped": "Servidor detenido",
     "server_not_running": "El servidor no se está ejecutando",
     "command_error": "Error al ejecutar comando",
@@ -151,7 +151,11 @@
     "module_missing": "Módulo no encontrado: {{error}}",
     "no_latest_version": "No se pudo obtener la última versión del servidor",
     "script_failed": "El script de instalación terminó con un error. Consulta el registro del daemon para más detalles",
-    "backup_failed": "Falló la copia de seguridad previa a la actualización: {{reason}}"
+    "save_failed": "Se descargaron los archivos del servidor, pero no se pudieron guardar sus datos. Consulta el registro del daemon para más detalles",
+    "backup_failed": "Falló la copia de seguridad previa a la actualización: {{reason}}",
+    "version_installing": "Instalando la versión {{version}}…",
+    "version_installed": "Versión instalada",
+    "install_backup_failed": "La copia de seguridad previa falló, así que no se instaló nada: {{reason}}"
   },
   "actions": {
     "instance": {

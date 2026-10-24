@@ -4,7 +4,6 @@ import {
     busyMessage,
     createTranslateError,
     installFailureText,
-    installedExecutable,
     moduleSupports,
     moduleFailureText,
     retryWithBackoff,
@@ -397,29 +396,7 @@ export function useServerActions({
                                         return;
                                     }
 
-                                    setProgressBar({ message: t('servers.progress_configuring'), percent: 90 });
-
-                                    const exe = installedExecutable(installResult);
-                                    if (s && exe) {
-                                        // 받은 파일로 켠다: 예전 실행 파일 경로가 남아 있으면 그 파일을 다시 찾는다
-                                        const saved = await window.api.instanceUpdateSettings(s.id, {
-                                            working_dir: installResult.install_path || exe.replace(/[/\\][^/\\]+$/, ''),
-                                            executable_path: exe,
-                                        });
-                                        if (!saved || saved.error || saved.success === false) {
-                                            setProgressBar(null);
-                                            safeShowToast(
-                                                t('server_settings.install_settings_failed', {
-                                                    error: translateError(saved?.error || saved?.message || ''),
-                                                }),
-                                                'error',
-                                                6000,
-                                            );
-                                            await fetchServers();
-                                            return;
-                                        }
-                                    }
-
+                                    // 받은 실행 파일·작업 폴더는 데몬이 그 인스턴스에 기록했다
                                     setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
                                     setTimeout(() => setProgressBar(null), 2000);
 

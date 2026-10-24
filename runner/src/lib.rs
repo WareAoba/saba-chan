@@ -69,9 +69,7 @@ pub fn exit_file(run_dir: &Path) -> PathBuf {
 
 /// 다른 쪽이 반쯤 쓴 파일을 읽지 않도록 임시 파일에 쓰고 이름을 바꾼다.
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(value)?)?;
-    std::fs::rename(&tmp, path)
+    saba_atomic_file::write(path, &serde_json::to_vec_pretty(value)?, saba_atomic_file::Mode::Plain)
 }
 
 pub fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {

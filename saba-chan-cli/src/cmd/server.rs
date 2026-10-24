@@ -23,7 +23,15 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Console(a) => crate::cmd::console::run(ctx, a).await,
         ServerCmd::Run(a) => run_command(ctx, a).await,
         ServerCmd::Commands { server } => commands(ctx, server.as_deref()).await,
+        ServerCmd::Discord { server, guild, word, command, clear } => {
+            let change = crate::cmd::discord_words::WordsChange { words: word, commands: command, clear };
+            crate::cmd::discord_words::run(ctx, server.as_deref(), guild.as_deref(), change).await
+        }
         ServerCmd::Send { server, line } => send(ctx, &server, &line.join(" ")).await,
+        ServerCmd::Players { server } => players(ctx, server.as_deref()).await,
+        ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
+        ServerCmd::Log { server, source, lines, runs, all } => log(ctx, server.as_deref(), source.as_deref(), lines, runs, all).await,
+        ServerCmd::Query { server, name, args } => query(ctx, &server, name.as_deref(), &args).await,
         ServerCmd::Settings { server } => settings(ctx, server.as_deref()).await,
         ServerCmd::Set { server, pairs } => set(ctx, &server, &pairs).await,
         ServerCmd::Properties { server, action } => properties(ctx, server.as_deref(), action).await,
@@ -361,7 +369,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     } else {
         s(&module, "display_name").to_string()
     };
-    if from.is_none() && !module.get("install").is_some_and(|i| !i.is_null()) {
+    if from.is_none() && module.get("install").is_none_or(|i| i.is_null()) {
         ctx.out.warn(&t!("add.no_installer", game = display));
     }
 
@@ -1163,6 +1171,95 @@ async fn send(ctx: &Ctx, query: &str, line: &str) -> Result<()> {
     let sv = resolve::server(ctx, Some(query)).await?;
     let r = ctx.api.stdin(&sv.id, line).await?;
     print_result(ctx, &r);
+    Ok(())
+}
+
+async fn rcon(ctx: &Ctx, query: &str, line: &str) -> Result<()> {
+    let sv = resolve::server(ctx, Some(query)).await?;
+    let r = ctx.api.rcon(&sv.id, line).await?;
+    print_result(ctx, &r);
+    Ok(())
+}
+
+async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let r = ctx.api.players(&sv.id).await?;
+    ctx.out.data(&r, |r| {
+        let online = r.get("online").and_then(Value::as_u64).unwrap_or(0);
+        let count = match r.get("max").and_then(Value::as_u64) {
+            Some(max) => format!("{online}/{max}"),
+            None => online.to_string(),
+        };
+        output::heading(&t!("players.title", server = sv.name, count = count));
+        let names: Vec<&str> = r.get("players").and_then(Value::as_array).into_iter().flatten().map(|p| s(p, "name")).filter(|n| !n.is_empty()).collect();
+        if names.is_empty() {
+            say!("{}", output::dim(&t!("players.none")));
+        }
+        for n in names {
+            say!("  {}", n);
+        }
+    });
+    Ok(())
+}
+
+async fn log(ctx: &Ctx, query: Option<&str>, source: Option<&str>, lines: Option<usize>, runs: bool, all: bool) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    if all {
+        let r = ctx.api.export_log(&sv.id, source).await?;
+        ctx.out.data(&r, |r| {
+            say!("{}", s(r, "content").trim_end());
+            if r.get("truncated").and_then(Value::as_bool) == Some(true) {
+                ctx.out.warn(&t!("log.truncated"));
+            }
+        });
+        return Ok(());
+    }
+    let r = ctx.api.logs(&sv.id, source, lines, None).await?;
+    ctx.out.data(&r, |r| {
+        let sources = r.get("sources").and_then(Value::as_array).cloned().unwrap_or_default();
+        if sources.is_empty() {
+            say!("{}", output::dim(&t!("log.none")));
+            return;
+        }
+        if runs {
+            let mut t = output::table(&[t!("log.col.run"), t!("log.col.started")]);
+            for src in &sources {
+                t.add_row(vec![s(src, "id"), s(src, "label")]);
+            }
+            output::print_table(t);
+            return;
+        }
+        for l in r.get("lines").and_then(Value::as_array).into_iter().flatten() {
+            say!("{}", l.as_str().unwrap_or_default());
+        }
+    });
+    Ok(())
+}
+
+async fn query(ctx: &Ctx, server: &str, name: Option<&str>, args: &[String]) -> Result<()> {
+    let sv = resolve::server(ctx, Some(server)).await?;
+    let Some(name) = name else {
+        let m = ctx.api.module_metadata(&sv.module).await?;
+        let list = m.pointer("/metadata/queries").cloned().unwrap_or(Value::Array(Vec::new()));
+        ctx.out.data(&list, |list| {
+            let items = list.as_array().cloned().unwrap_or_default();
+            if items.is_empty() {
+                say!("{}", output::dim(&t!("query.none")));
+                return;
+            }
+            let mut t = output::table(&[t!("query.col.name"), t!("query.col.about"), t!("query.col.inputs")]);
+            for q in &items {
+                let about = q.get("label").or_else(|| q.get("description")).and_then(Value::as_str).unwrap_or("");
+                let inputs: Vec<&str> = q.get("inputs").and_then(Value::as_array).into_iter().flatten().map(|i| s(i, "name")).collect();
+                t.add_row(vec![s(q, "name").to_string(), about.to_string(), inputs.join(", ")]);
+            }
+            output::print_table(t);
+        });
+        return Ok(());
+    };
+    let input: serde_json::Map<String, Value> = crate::cmd::split_pairs(args)?.into_iter().map(|(k, v)| (k, crate::cmd::guess(&v))).collect();
+    let r = ctx.api.query(&sv.id, name, Value::Object(input)).await?;
+    ctx.out.data(&r, |r| print_value(r.get("data").unwrap_or(&Value::Null)));
     Ok(())
 }
 

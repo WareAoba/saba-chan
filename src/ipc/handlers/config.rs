@@ -13,21 +13,35 @@ use super::super::IPCServer;
 
 /// GET /api/config/gui — GUI 설정(config.json의 gui) 조회
 pub async fn get_gui_config(State(state): State<IPCServer>) -> impl IntoResponse {
-    let json = state.config_store.get_gui_settings_json().await;
+    let mut json = state.config_store.get_gui_settings_json().await;
+    json["revision"] = json!(crate::config_store::patch::revision(&json));
     (StatusCode::OK, Json(json)).into_response()
 }
 
-/// PUT /api/config/gui — GUI 설정 전체 저장
-pub async fn save_gui_config(
-    State(state): State<IPCServer>,
-    Json(settings): Json<Value>,
-) -> impl IntoResponse {
-    match state.config_store.set_gui_settings_from_json(settings).await {
-        Ok(saved) => {
+/// PUT /api/config/gui — GUI 설정 저장 (최상위 키 단위로 얹는다)
+pub async fn save_gui_config(State(state): State<IPCServer>, Json(settings): Json<Value>) -> impl IntoResponse {
+    write_gui_config(&state, settings, crate::config_store::Apply::Overlay).await
+}
+
+/// PATCH /api/config/gui — 바뀐 칸만 (JSON Merge Patch, `null`은 지우기). `revision`을 주면 그사이 바뀌었을 때 409 `settings_changed`
+pub async fn patch_gui_config(State(state): State<IPCServer>, Json(settings): Json<Value>) -> impl IntoResponse {
+    write_gui_config(&state, settings, crate::config_store::Apply::MergePatch).await
+}
+
+async fn write_gui_config(state: &IPCServer, mut settings: Value, how: crate::config_store::Apply) -> axum::response::Response {
+    // PUT은 예전처럼 revision을 보지 않는다 (GET 본문을 그대로 돌려보내는 클라이언트가 있다)
+    let revision = crate::config_store::patch::take_revision(&mut settings).filter(|_| how == crate::config_store::Apply::MergePatch);
+    match state.config_store.write_gui(settings, how, revision.as_deref()).await {
+        Ok((saved, revision)) => {
             // 저장에 성공한 뒤에만 런타임 포트 검사 플래그를 맞춘다
             state.supervisor.read().await.skip_port_check.store(!saved.port_conflict_check, std::sync::atomic::Ordering::Relaxed);
-            (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+            (StatusCode::OK, Json(json!({ "ok": true, "revision": revision }))).into_response()
         }
+        Err(crate::config_store::ConfigStoreError::RevisionConflict(revision)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "ok": false, "error": "The settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": revision })),
+        )
+            .into_response(),
         Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "ok": false, "error": msg, "error_code": "invalid_request" })),
@@ -154,10 +168,7 @@ pub async fn save_node_token(
     // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
     match super::relay::write_node_token(Some(token)) {
         Ok(changed) => {
-            super::relay::sync_host_id(&state, Some(token)).await;
-            if changed {
-                crate::relay_agent::restart(&state).await;
-            }
+            super::relay::adopt_node_token(&state, token, changed).await;
             (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
         }
         Err(e) => (

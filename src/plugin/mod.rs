@@ -18,6 +18,8 @@ pub fn set_ipc_port(port: u16) {
 /// - `SABA_IPC_PORT`, `SABA_IPC_URL`: 데몬 API 주소
 /// - `SABA_TOKEN_PATH`: `X-Saba-Token` 값이 든 파일 (토큰 자체는 env에 넣지 않는다)
 /// - `SABA_LANG`: 요청이 고른 언어(Accept-Language), 없으면 지금 GUI 언어(고르기 전에는 OS 언어). 언어를 바꿔도 데몬은 재시작하지 않으므로 매번 읽는다.
+/// - `TEMP`·`TMP`·`TMPDIR`·`PIP_CACHE_DIR`: 데이터 폴더 안 (제거기가 지운다. 시스템 임시 폴더·사용자 pip 캐시에 흔적을 남기지 않는다).
+///   격리 실행은 그 뒤에 자기 임시 폴더로 덮는다
 fn daemon_env() -> Vec<(&'static str, String)> {
     let port = *IPC_PORT.get().unwrap_or(&saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
     let mut env = vec![
@@ -39,6 +41,13 @@ fn daemon_env() -> Vec<(&'static str, String)> {
             .unwrap_or_else(crate::chat::i18n::os_language)
     });
     env.push(("SABA_LANG", lang));
+    let temp = saba_chan_updater_lib::constants::resolve_temp_dir();
+    if let Err(e) = std::fs::create_dir_all(&temp) {
+        tracing::warn!("Cannot create {}: {}", temp.display(), e);
+    }
+    let temp = temp.to_string_lossy().into_owned();
+    env.extend([("TEMP", temp.clone()), ("TMP", temp.clone()), ("TMPDIR", temp)]);
+    env.push(("PIP_CACHE_DIR", saba_chan_updater_lib::constants::resolve_pip_cache_dir().to_string_lossy().into_owned()));
     env
 }
 
@@ -1863,6 +1872,17 @@ print(json.dumps(codes))
         let origin = crate::audit::Origin { lang: Some("ko".into()), ..crate::audit::Origin::new("cli") };
         let env = crate::audit::with_origin(origin, async { super::daemon_env() }).await;
         assert!(env.iter().any(|(k, v)| *k == "SABA_LANG" && v == "ko"), "{env:?}");
+    }
+
+    /// 모듈·익스텐션의 임시 파일과 pip 캐시는 데이터 폴더 안에 둔다 (제거기가 지운다)
+    #[test]
+    fn python_temp_files_and_pip_cache_stay_in_the_data_folder() {
+        let env = super::daemon_env();
+        let data = saba_chan_updater_lib::constants::resolve_data_dir();
+        for key in ["TEMP", "TMP", "TMPDIR", "PIP_CACHE_DIR"] {
+            let value = env.iter().find(|(k, _)| *k == key).map(|(_, v)| std::path::PathBuf::from(v));
+            assert!(value.as_deref().is_some_and(|v| v.starts_with(&data)), "{key}: {value:?}");
+        }
     }
 
     /// 격리 없이 도는 실행은 확인된 익스텐션만 import한다. 격리된 실행은 활성 익스텐션을 모두 쓴다(같은 격리 안에서 돈다)

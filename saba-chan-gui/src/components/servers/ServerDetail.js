@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { applyInstanceUpdate, dismissInstanceProvision, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
+import {
+    applyInstanceUpdate,
+    closeCookedCard,
+    dismissInstanceProvision,
+    useMaintenanceOf,
+} from '../../hooks/useInstanceMaintenance';
 import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -27,6 +32,7 @@ import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
+import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { AuditLog, auditAvailable } from './AuditTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
@@ -55,7 +61,7 @@ export function ServerDetail({
 }) {
     const { t } = useTranslation('gui');
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
-    const { provisionProgress, updateInfo, updatingServer } = useMaintenanceOf(server.id);
+    const { provisionProgress, cooked, updateInfo, updatingServer } = useMaintenanceOf(server.id);
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);
     const moduleFailure = useServerStore((st) =>
@@ -81,6 +87,11 @@ export function ServerDetail({
             id: 'maintenance',
             label: t('shell.tab_maintenance'),
             icon: <Icon name="clock" size="sm" />,
+        },
+        instanceWordsAvailable() && {
+            id: 'discord',
+            label: t('shell.tab_discord'),
+            icon: <Icon name="discord" size="sm" />,
         },
         auditAvailable() && { id: 'audit', label: t('shell.tab_audit'), icon: <Icon name="file" size="sm" /> },
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
@@ -245,20 +256,28 @@ export function ServerDetail({
                 </div>
             )}
 
-            {server.provisioning && (
+            {(server.provisioning || cooked) && (
                 <div className="detail-provision">
-                    <ExtensionSlot
-                        slotId="ServerCard.provision"
-                        server={server}
-                        provisionProgress={provisionProgress}
-                        onDismiss={() => dismissInstanceProvision(server, setServers)}
-                        t={t}
-                    />
+                    {server.provisioning && (
+                        <ExtensionSlot
+                            slotId="ServerCard.provision"
+                            server={server}
+                            provisionProgress={provisionProgress}
+                            onDismiss={() => dismissInstanceProvision(server, setServers)}
+                            t={t}
+                        />
+                    )}
                     <NativeProvision
                         server={server}
                         provisionProgress={provisionProgress}
+                        cooked={cooked}
+                        icon={
+                            moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>
+                        }
                         onDismiss={() => dismissInstanceProvision(server, setServers)}
-                        t={t}
+                        onClose={() => closeCookedCard(server)}
+                        onStart={() => onStart(server.name, server.module)}
+                        onSettings={() => setTab('settings')}
                     />
                 </div>
             )}
@@ -316,6 +335,7 @@ export function ServerDetail({
                             />
                         )}
                         {activeTab === 'maintenance' && <MaintenanceTab server={server} />}
+                        {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
                         {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (
                             <InfoTab

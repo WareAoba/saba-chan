@@ -470,6 +470,11 @@ fn portable_python_exe(data_dir: &Path) -> PathBuf {
     }
 }
 
+/// 데몬 venv의 Python 실행 파일 (있든 없든 그 자리)
+pub fn venv_python() -> Option<PathBuf> {
+    resolve_data_dir().ok().map(|d| venv_python_exe(&d.join(VENV_DIR_NAME)))
+}
+
 /// venv 내 Python 실행 파일 경로
 fn venv_python_exe(venv_dir: &Path) -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -508,6 +513,8 @@ async fn verify_python(exe: &Path) -> bool {
 /// pip 명령 실행
 async fn run_pip(python_exe: &Path, args: &[&str]) -> Result<()> {
     let mut cmd = Command::new(python_exe);
+    // 받은 패키지 캐시는 데이터 폴더에 (사용자 pip 캐시에 남기지 않는다. 제거기가 지운다)
+    cmd.env("PIP_CACHE_DIR", saba_chan_updater_lib::constants::resolve_pip_cache_dir());
     cmd.arg("-m").arg("pip");
     for arg in args {
         cmd.arg(arg);

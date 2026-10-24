@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { readPrefixes } from '../components/discord/prefixes';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
+import { mergePatchDiff } from '../utils/mergePatch';
 
 // i18n translate function — set after store creation
 let _t = (key, fallback) => fallback || key;
@@ -13,8 +14,8 @@ export const setDiscordI18n = (t) => {
 
 const RELAY_URL_FALLBACK = 'https://saba-chan.online';
 
-// bot-config 최상위 키 ↔ 스토어 필드. 데몬은 최상위 키 단위로 통째로 바꾸므로
-// 바뀐 키만 보낸다: 다른 경로(CLI·원격)가 그사이 바꾼 값을 옛 스냅샷으로 되돌리지 않게
+// bot-config 최상위 키 ↔ 스토어 필드. 바뀐 칸만 PATCH(JSON Merge Patch)로 보낸다:
+// 다른 경로(CLI·원격·다른 길드 설정)가 그사이 바꾼 값을 옛 스냅샷으로 되돌리지 않게
 const BOT_KEYS = {
     prefixes: ['discordPrefixes'],
     cloud: ['discordCloudRelayUrl', 'discordCloudHostId'],
@@ -167,18 +168,13 @@ export const useDiscordStore = create((set, get) => ({
 
             const payload = {};
             for (const k of changed) {
-                if (k === 'cloud') {
-                    // relayUrl·hostId는 한 키로 간다. 바꾸지 않은 쪽은 데몬의 지금 값을 쓴다
-                    const fresh = (await window.api.botConfigLoad().catch(() => null))?.cloud || {};
-                    const pickCloud = (f, sub) =>
-                        sameValue(state[f], base(f)) && typeof fresh[sub] === 'string' ? fresh[sub] : state[f];
-                    payload.cloud = {
-                        relayUrl: pickCloud('discordCloudRelayUrl', 'relayUrl'),
-                        hostId: pickCloud('discordCloudHostId', 'hostId'),
-                    };
-                } else {
-                    payload[k] = state[BOT_KEYS[k][0]];
-                }
+                // relayUrl·hostId는 한 키(cloud) 안의 두 칸이다
+                const value = (pick) =>
+                    k === 'cloud'
+                        ? { relayUrl: pick('discordCloudRelayUrl'), hostId: pick('discordCloudHostId') }
+                        : pick(BOT_KEYS[k][0]);
+                const patch = mergePatchDiff(value(base), value((f) => state[f]));
+                if (patch !== undefined) payload[k] = patch;
             }
             const res = await window.api.botConfigSave(payload);
             if (res?.error) {

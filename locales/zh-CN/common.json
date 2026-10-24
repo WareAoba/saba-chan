@@ -64,7 +64,7 @@
     "not_found": "找不到服务器。请检查网络设置"
   },
   "port_conflict": {
-    "force_stop_title": "端口冲突 — {{name}} 已停止",
+    "force_stop_title": "端口冲突：{{name}} 已停止",
     "force_stop_body": "{{stopped}} 因端口 {{port}} 与 {{existing}} 冲突而被强制停止"
   },
   "init": {
@@ -87,7 +87,7 @@
     "quit_all": "❌ 完全退出"
   },
   "updates": {
-    "notification_title": "Saba酱 — 更新通知",
+    "notification_title": "Saba酱 更新通知",
     "notification_body": "{{count}} 个更新: {{names}}",
     "completed": "更新完成!"
   },

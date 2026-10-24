@@ -51,7 +51,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             );
         };
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
-        let running = supervisor.tracker.get_pid(&instance.id).is_ok();
+        let running = supervisor.is_running(&instance.id).await;
         let stdin_route = supervisor.routes_commands_to_stdin(&instance.id).await;
         let rcon_route = !stdin_route && supervisor.rcon_route(&instance.id).is_some();
         (instance, module, running, stdin_route, rcon_route)
@@ -424,7 +424,7 @@ pub async fn execute_rcon_command(
     // 마지막 경로다 (`rcon_route`). GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다
     let stdin_ok = supervisor.routes_commands_to_stdin(&id).await;
     let rcon = if stdin_ok { None } else { supervisor.rcon_route(&id) };
-    let running = supervisor.tracker.get_pid(&id).is_ok();
+    let running = supervisor.is_running(&id).await;
     drop(supervisor);
     if stdin_ok {
         return via_stdin(&state, &id, &payload).await;

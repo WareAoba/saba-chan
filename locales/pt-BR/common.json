@@ -64,7 +64,7 @@
     "not_found": "Servidor não encontrado. Verifique as configurações de rede"
   },
   "port_conflict": {
-    "force_stop_title": "Conflito de porta — {{name}} parado",
+    "force_stop_title": "Conflito de porta: {{name}} parado",
     "force_stop_body": "{{stopped}} foi parado forçosamente porque a porta {{port}} conflita com {{existing}}"
   },
   "init": {
@@ -87,7 +87,7 @@
     "quit_all": "❌ Sair completamente"
   },
   "updates": {
-    "notification_title": "Saba-chan — Atualizações",
+    "notification_title": "Atualizações do Saba-chan",
     "notification_body": "{{count}} atualizações: {{names}}",
     "completed": "Atualização concluída!"
   },

@@ -5,7 +5,6 @@ import {
     busyMessage,
     createTranslateError,
     installFailureText,
-    installedExecutable,
     moduleSupports,
     safeShowToast,
 } from '../utils/helpers';
@@ -102,6 +101,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     const unsetFields = useRef(new Set());
     // 열 때 게임 설정 파일에서 읽은 칸: 저장값과 같으면 파일과 캐시가 이미 맞는다
     const liveFields = useRef(new Set());
+    // 저장에 실을 revision: 연 때의 값에서, 창이 연 뒤 데몬이 인스턴스를 고친 응답(실제 값 읽기·버전 감지·설치)이 오면 그 값으로
+    const revision = useRef(null);
     const openRequest = useRef(0);
 
     // ── Close animation ─────────────────────────────────────
@@ -128,6 +129,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         if (request !== openRequest.current) return;
 
         setSettingsServer(latestServer);
+        revision.current = latestServer.revision || null;
         unconfirmedFields.current = new Set();
         touchedFields.current = new Set();
         setSettingsSource('loading');
@@ -218,6 +220,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             try {
                 const live = await window.api.instanceReadLiveSettings(latestServer.id);
                 if (request !== openRequest.current) return;
+                if (live?.revision) revision.current = live.revision;
                 if (live?.success && live.settings && typeof live.settings === 'object') {
                     const patch = {};
                     for (const field of module.settings.fields) {
@@ -279,6 +282,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 try {
                     const detected = await window.api.instanceGetInstalledVersion(latestServer.id);
                     if (request !== openRequest.current) return;
+                    if (detected?.revision) revision.current = detected.revision;
                     if (detected?.success && detected.version) {
                         setSettingsValues((prev) => ({
                             ...prev,
@@ -354,6 +358,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 version,
                                 install_dir: targetDir,
                                 instance_id: settingsServer.id,
+                                background: true,
                             });
 
                             const blocked = blockedText(installResult, t);
@@ -389,36 +394,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                 return;
                             }
 
-                            // 설치한 버전만 기록한다 (설정 저장은 버전을 보내지 않는다)
-                            const update = { server_version: version };
-                            // 받은 파일로 켠다: 예전 실행 파일 경로(paper-…-130.jar 등)가 남아 있으면 옛 버전이 뜬다
-                            const exe = installedExecutable(installResult);
-                            if (exe) {
-                                update.working_dir = installResult.install_path || exe.replace(/[/\\][^/\\]+$/, '');
-                                update.executable_path = exe;
-                            }
-                            const saved = await window.api.instanceUpdateSettings(settingsServer.id, update);
-                            if (!saved || saved.error || saved.success === false) {
-                                setProgressBar(null);
-                                safeShowToast(
-                                    t('server_settings.install_settings_failed', {
-                                        error: translateError(saved?.error || saved?.message || ''),
-                                    }),
-                                    'error',
-                                    6000,
-                                );
-                                await fetchServers();
-                                return;
-                            }
-                            if (request === openRequest.current) handleSettingChange('server_version', version);
-
-                            setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
-                            setTimeout(() => setProgressBar(null), 2000);
-
-                            const msg = installResult.java_warning
-                                ? `${t('servers.install_completed', { game, version })}\n⚠️ ${installResult.java_warning}`
-                                : t('servers.install_completed', { game, version });
-                            safeShowToast(msg, 'success', 5000);
+                            // 데몬이 뒤에서 설치하고(설치 전 백업·실패 시 복원) 버전·실행 파일·작업 폴더를 기록한다.
+                            // 진행은 서버 목록의 설치 표시로 본다
+                            setProgressBar(null);
+                            safeShowToast(t('server_settings.install_started', { game, version }), 'info', 5000);
+                            if (request === openRequest.current) setShowSettingsModal(false);
                             await fetchServers();
                         } catch (err) {
                             setProgressBar(null);
@@ -494,6 +474,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                             const updated = serverList.servers.find((s) => s.id === settingsServer.id);
                                             if (updated && request === openRequest.current) {
                                                 setSettingsServer(updated);
+                                                revision.current = updated.revision || null;
                                                 // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
                                                 setSettingsValues((prev) => ({
                                                     ...prev,
@@ -644,10 +625,20 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 if (Object.keys(changed).length > 0) convertedSettings.extension_data = changed;
             }
 
+            // 연 때의 revision(그 뒤 데몬이 준 값): 그사이 다른 곳이 설정을 바꿨으면 데몬이 settings_changed로 거절한다
+            if (revision.current) convertedSettings.revision = revision.current;
+
             const result = await window.api.instanceUpdateSettings(settingsServer.id, convertedSettings);
             const stillOpen = request === openRequest.current;
 
-            if (result.error && result.error_code === 'invalid_format') {
+            if (result.error && result.error_code === 'settings_changed') {
+                setModal({
+                    type: 'failure',
+                    title: t('settings.save_failed_title'),
+                    message: t('server_settings.settings_changed'),
+                });
+                fetchServers();
+            } else if (result.error && result.error_code === 'invalid_format') {
                 // 형식이 틀린 값: 칸마다 따로 알리지 않고 토스트 하나로 (미리보기와 같은 문구)
                 safeShowToast(t('launch_preview.invalid_format'), 'warning', 4000);
             } else if (result.error && result.error_code === 'unknown_setting') {

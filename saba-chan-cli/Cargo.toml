@@ -29,6 +29,8 @@ shlex = "1.3"
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../updater" }
 ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+unicode-width = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 saba-chan-installer-core = { path = "../installer/core" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

@@ -33,6 +33,34 @@ pub fn is_inner_relative_path(path: &str) -> bool {
     !path.is_empty() && !p.is_absolute() && p.components().all(|c| matches!(c, std::path::Component::Normal(_)))
 }
 
+/// 준비해 둔 `staged` 폴더를 `dest` 자리에 둔다. 옛 `dest`는 `.old-<이름>`으로 옆에 두었다가 새 폴더가 자리를 잡은 뒤 지우고,
+/// 바꾸다 실패하면 되돌린다. `.old-`는 점으로 시작해 탐색이 건너뛰고, 중간에 끝나면 다음 기동의 `remove_install_leftovers`가 되돌린다
+pub fn swap_dir(staged: &std::path::Path, dest: &std::path::Path) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let mut old_name = std::ffi::OsString::from(".old-");
+    old_name.push(dest.file_name().unwrap_or_default());
+    let old = dest.with_file_name(old_name);
+    if old.exists() {
+        std::fs::remove_dir_all(&old).with_context(|| format!("Failed to clear {}", old.display()))?;
+    }
+    let had_old = dest.exists();
+    if had_old {
+        std::fs::rename(dest, &old).with_context(|| format!("Failed to move old {} aside", dest.display()))?;
+    }
+    if let Err(e) = std::fs::rename(staged, dest) {
+        if had_old {
+            let _ = std::fs::rename(&old, dest);
+        }
+        return Err(anyhow::Error::new(e).context(format!("Failed to put {} in place", dest.display())));
+    }
+    if had_old {
+        if let Err(e) = std::fs::remove_dir_all(&old) {
+            tracing::warn!("Failed to remove the old files {}: {}", old.display(), e);
+        }
+    }
+    Ok(())
+}
+
 /// 설치 도중 데몬이 끝나 남은 준비·옛 폴더와 받다 만 파일 (`.staging-*`·`.old-*`·`.tmp-*`)을 지운다.
 /// 옛 폴더를 옆으로 옮긴 뒤 새 폴더를 두기 전에 끝났으면(제자리가 비었으면) 옛 폴더를 되돌린다.
 /// 설치가 돌 수 없는 기동 때만 부른다

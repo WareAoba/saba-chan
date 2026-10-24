@@ -59,12 +59,12 @@
     "settings_save_failed": "Speichern der Einstellungen fehlgeschlagen: {{error}}"
   },
   "network": {
-    "connection_refused": "Verbindung zum Daemon nicht möglich. Bitte überprüfen Sie, ob der Daemon läuft",
+    "connection_refused": "Verbindung zum Daemon nicht möglich. Prüfen Sie, ob der Daemon läuft",
     "timeout": "Anfrage-Zeitüberschreitung: Server antwortete nicht",
-    "not_found": "Server nicht gefunden. Bitte überprüfen Sie die Netzwerkeinstellungen"
+    "not_found": "Server nicht gefunden. Prüfen Sie die Netzwerkeinstellungen"
   },
   "port_conflict": {
-    "force_stop_title": "Portkonflikt — {{name}} gestoppt",
+    "force_stop_title": "Portkonflikt: {{name}} gestoppt",
     "force_stop_body": "{{stopped}} wurde erzwungen gestoppt, da Port {{port}} mit {{existing}} kollidiert"
   },
   "init": {
@@ -87,7 +87,7 @@
     "quit_all": "❌ Vollständig beenden"
   },
   "updates": {
-    "notification_title": "Saba-chan — Updates",
+    "notification_title": "Saba-chan Updates",
     "notification_body": "{{count}} Updates: {{names}}",
     "completed": "Update abgeschlossen!"
   },

@@ -75,7 +75,8 @@
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
     "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
-    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior."
+    "agent_too_old": "El relay ya no acepta esta versión de la app. Actualiza la app a {{min}} o posterior.",
+    "words_not_used": "Este servidor de Discord no usa este servidor."
   },
   "col": {
     "players": "Jugadores",
@@ -166,7 +167,12 @@
     "shutdown_refused": "El daemon no aceptó la solicitud de cierre: {{error}}",
     "stopped": "Daemon detenido.",
     "stopping": "Deteniendo el daemon...",
-    "stops_with_launcher": "El núcleo de saba-chan se está ejecutando ligado al programa que lo inició. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Detén el daemon (saba-chan-cli daemon stop) y vuelve a iniciarlo desde el menú Inicio o una terminal normal."
+    "stops_with_launcher": "El núcleo de saba-chan se está ejecutando ligado al programa que lo inició. Si ese programa se cierra, el núcleo y la gestión de servidores pueden detenerse con él. Detén el daemon (saba-chan-cli daemon stop) y vuelve a iniciarlo desde el menú Inicio o una terminal normal.",
+    "no_clients": "No hay ventanas de la app de escritorio conectadas al daemon.",
+    "col": {
+      "kind": "Tipo",
+      "pid": "PID"
+    }
   },
   "diagnose": {
     "ok": "No se encontraron problemas conocidos en los registros de {{name}}."
@@ -506,7 +512,14 @@
     "cmd": {
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
-      "install": "Instalar Saba-chan en este PC sin el instalador con ventana"
+      "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
+      "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)",
+      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar",
+      "server.players": "Quién está conectado",
+      "server.rcon": "Enviar una línea como el servidor recibe comandos (consola, si no RCON) y ver la respuesta",
+      "server.log": "Registro guardado de ejecuciones anteriores (la consola solo guarda la actual)",
+      "server.query": "Consultas de solo lectura del módulo del juego (sin nombre: la lista)",
+      "daemon.clients": "Ventanas de la app de escritorio conectadas al daemon"
     },
     "arg": {
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
@@ -527,7 +540,24 @@
       "install.dir": "Carpeta de instalación (se pregunta si se omite)",
       "install.modules": "Módulos de juego a instalar, separados por comas (se pregunta si se omite)",
       "install.gui": "Instalar también la app de escritorio aunque no haya pantalla",
-      "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla"
+      "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla",
+      "do.action": "Id de la acción, p. ej. server.restart o server.command:say",
+      "do.server": "Servidor sobre el que actúa la acción",
+      "uninstall.remove_settings": "Eliminar también los ajustes y la conexión con Discord",
+      "uninstall.remove_instances": "Eliminar también los servidores (archivos, mundos, copias)",
+      "server.discord.guild": "Servidor de Discord por nombre o id (se pregunta si hay varios vinculados y algo cambia)",
+      "server.discord.word": "Palabras para el servidor, separadas por comas (reemplazan las actuales). --word \"\" las elimina",
+      "server.discord.command": "Palabras para un comando: COMANDO=PALABRA,PALABRA (reemplaza las de ese comando, COMANDO= las elimina). Se puede repetir",
+      "server.discord.clear": "Eliminar todas las palabras de este servidor",
+      "server.log.source": "Qué ejecución (`--runs` las lista), por defecto la última",
+      "server.log.lines": "Últimas N líneas",
+      "server.log.runs": "Listar las ejecuciones guardadas",
+      "server.log.all": "Toda la ejecución (para guardar: `> file.log`)",
+      "server.query.name": "Nombre de la consulta",
+      "server.query.args": "Entrada como CLAVE=VALOR",
+      "chatbot.show.guild": "Los valores que usa de verdad un servidor de Discord (comunes + los suyos), por nombre o id",
+      "do.steps": "Varios pasos en JSON: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (en lugar de ACTION)",
+      "do.run_id": "Progreso de una ejecución de varios pasos que sigue en segundo plano"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -652,34 +682,158 @@
     }
   },
   "tui": {
-    "daemon_up": "Daemon ● conectado (v{{version}})",
-    "daemon_down": "Daemon ○ apagado · iniciar: daemon start",
-    "servers_running": "{{running}} de {{total}} servidores en marcha",
     "menu": "Menú",
-    "output": "Resultado",
-    "enter_to_run": "Enter para ejecutar",
     "running_hint": "(en curso · Ctrl+C para detener)",
-    "keys": "↑↓ mover · ←→ menú/lista · Enter ejecutar · : comando · PgUp/PgDn resultado · ? ayuda · q salir",
     "yes": "Sí",
     "no": "No",
-    "question": "Confirmar",
     "dialog_keys": "Enter elegir · Esc cancelar",
     "help_title": "Teclas",
-    "help": "↑↓  moverse por el menú o la lista\n←→ / Tab  cambiar entre menú y lista\nEnter  ejecutar lo elegido (abre la línea de comandos si necesita argumentos)\n:  línea de comandos (los mismos comandos que tras saba-chan-cli, ↑↓ para los anteriores)\nPgUp/PgDn, rueda del ratón  desplazar el resultado\nCtrl+C  detener el comando en curso\nq  salir (el daemon y los servidores siguen en marcha)",
     "too_narrow": "Amplía la ventana a 60 columnas como mínimo.",
     "not_here": "Este comando no puede ejecutarse dentro del menú a pantalla completa. Sal con q y ejecútalo en la terminal.",
     "cancelled": "Detenido.",
-    "action": {
+    "needs_terminal": "El menú a pantalla completa necesita una terminal. En scripts, usa los subcomandos.",
+    "command_panicked": "El comando se detuvo de forma inesperada. Puedes seguir usando otros comandos.",
+    "daemon_up": "● daemon v{{version}}",
+    "daemon_down": "○ daemon apagado · escribe daemon start",
+    "servers_running": "{{running}}/{{total}} servidores en marcha",
+    "keys": "Tab siguiente · ↑↓ elegir · Enter pulsar · 1-9 páginas · : consola · F2 consola grande · ? ayuda · q salir",
+    "help": "Tab / Shift+Tab  pasar de menú → lista → botones → consola\n↑↓  elegir,  ←→  moverse entre botones\nEnter  pulsar un botón (los botones con … rellenan la consola por ti)\n1-9  saltar a una página\n: o /  escribir un comando (lo que escribirías tras saba-chan-cli, ↑↓ historial)\nRePág/AvPág, rueda del ratón  desplazar la consola,  F2  consola grande\nCtrl+C  detener el comando en curso\nRatón  haz clic en el menú, las listas y los botones\nq  salir (el daemon y los servidores siguen funcionando)",
+    "brand": "Saba-chan {{version}}",
+    "memory_of": "memoria {{used}} / {{total}}",
+    "discord_on": "Discord ● conectado",
+    "discord_off": "Discord ○ desconectado",
+    "updates_n": "{{count}} actualizaciones",
+    "updates_none": "al día",
+    "updates_checking": "comprobando…",
+    "updates_error": "La última comprobación falló. Pulsa de nuevo [Buscar actualizaciones].",
+    "page": {
+      "dashboard": "Panel",
+      "servers": "Servidores",
+      "modules": "Módulos de juego",
+      "extensions": "Extensiones",
+      "discord": "Discord",
+      "updates": "Actualizaciones",
+      "settings": "Ajustes",
+      "daemon_log": "Registro del daemon",
+      "commands": "Todos los comandos"
+    },
+    "btn": {
+      "status": "Estado general",
+      "monitor": "Uso",
+      "server_add": "Nuevo servidor",
+      "audit": "Historial",
       "start": "Iniciar",
       "stop": "Detener",
       "restart": "Reiniciar",
-      "console": "Últimas líneas de consola",
-      "info": "Información",
-      "backup_create": "Crear copia",
-      "backup_list": "Copias"
+      "players": "Jugadores",
+      "run": "Comando de juego",
+      "send": "Enviar a la consola",
+      "info": "Info",
+      "settings": "Ajustes",
+      "backup_create": "Copia de seguridad",
+      "backup_list": "Copias",
+      "schedule": "Programar",
+      "log": "Registro guardado",
+      "validate": "Comprobar",
+      "remove": "Eliminar",
+      "commands": "Comandos",
+      "versions": "Versiones",
+      "available": "Disponibles",
+      "refresh": "Recargar",
+      "enable": "Activar",
+      "disable": "Desactivar",
+      "config": "Ajustes",
+      "ext_update": "Actualizar",
+      "rescan": "Volver a buscar",
+      "bot_status": "Conexión",
+      "bot_pair": "Vincular",
+      "bot_start": "Conectar",
+      "bot_stop": "Desconectar",
+      "bot_nodes": "Servidores de Discord",
+      "bot_channels": "Canales",
+      "bot_invite": "Enlace de invitación",
+      "perm": "Permisos",
+      "chatbot": "Saba-chan parlante",
+      "bot_config": "Ajustes del bot",
+      "update_status": "Estado",
+      "update_check": "Buscar actualizaciones",
+      "update_download": "Descargar",
+      "update_last": "Último resultado",
+      "update_integrity": "Verificar archivos",
+      "update_config": "Ajustes de actualización",
+      "config_show": "Todos los ajustes",
+      "config_set": "Cambiar un ajuste",
+      "config_defaults": "Valores por defecto",
+      "diagnostics": "Diagnóstico",
+      "version": "Versiones",
+      "sandbox": "Permisos de aislamiento",
+      "daemon_start": "Iniciar daemon",
+      "daemon_restart": "Reiniciar daemon",
+      "daemon_stop": "Detener daemon",
+      "clients": "Ventanas de la app",
+      "events": "Seguir eventos"
     },
-    "needs_terminal": "El menú a pantalla completa necesita una terminal. En scripts, usa los subcomandos.",
-    "command_panicked": "El comando se detuvo de forma inesperada. Puedes seguir usando otros comandos."
+    "col": {
+      "name": "Nombre",
+      "game": "Juego",
+      "status": "Estado",
+      "players": "Jugadores",
+      "port": "Puerto",
+      "uptime": "Activo",
+      "about": "Descripción",
+      "enabled": "Activo"
+    },
+    "card": {
+      "servers": "Servidores",
+      "servers_sub": "en marcha / total",
+      "players": "Jugadores",
+      "players_sub": "en servidores en marcha",
+      "memory": "Memoria"
+    },
+    "no_servers": "Aún no hay servidores. Pulsa [Nuevo servidor] o escribe server add",
+    "feed": "Reciente",
+    "feed_empty": "Los arranques y paradas aparecen aquí en cuanto ocurren.",
+    "empty": "(ninguno)",
+    "detail": "Detalles",
+    "server_console": "Consola",
+    "console_empty": "Aún no hay salida.",
+    "discord": {
+      "relay": "Relay",
+      "paired": "Vinculado",
+      "handled": "Comandos atendidos",
+      "heartbeat": "Último latido",
+      "error": "Último error",
+      "pair_hint": "Pulsa [Vincular] para conectar con Discord. El código aparece en la consola."
+    },
+    "settings": {
+      "daemon": "Daemon",
+      "port": "Puerto del daemon",
+      "language": "Idioma",
+      "hint": "Para cambiar un valor pulsa [Cambiar un ajuste] y escribe clave=valor (p. ej. language=es)."
+    },
+    "console": "Consola",
+    "console_hint": "pulsa : para escribir aquí un comando (p. ej. start pal, help)",
+    "keys_console": "Enter ejecutar · ↑↓ historial · RePág/AvPág desplazar · Esc salir · F2 consola grande",
+    "keys_running": "Comando en curso · Ctrl+C detener · RePág/AvPág desplazar · las demás páginas siguen funcionando",
+    "choose": "Elegir",
+    "enter_text": "Escribir",
+    "welcome": "Bienvenido a Saba-chan. Pulsa un botón o pulsa : para escribir un comando.",
+    "busy": "Otro comando sigue en curso. Espera a que termine o detenlo con Ctrl+C y vuelve a intentarlo.",
+    "pick_first": "Elige primero un elemento de la lista.",
+    "event": {
+      "instance_ready": "listo",
+      "instance_exit": "detenido",
+      "instance_player": "cambiaron los jugadores",
+      "instance_port_moved": "cambió el puerto",
+      "instance_restart_failed": "falló el reinicio automático",
+      "backup_done": "copia terminada",
+      "plan_done": "ejecución de varios pasos terminada",
+      "action_run": "comando ejecutado",
+      "relay_link_request": "solicitud de vínculo de Discord",
+      "update_available": "actualización disponible"
+    },
+    "enter_to_run": "Enter para ejecutar",
+    "question": "Confirmar"
   },
   "install": {
     "fetching": "Comprobando la última versión…",
@@ -694,10 +848,51 @@
     "installing": "Instalando",
     "not_writable": "No se puede escribir en {{dir}}. Elige con --dir una carpeta en la que puedas escribir (por ejemplo, dentro de tu carpeta de usuario)",
     "running_inside": "Esta CLI se está ejecutando dentro de {{dir}}, por lo que no puede instalar ahí. Ejecuta un saba-chan-cli que esté fuera de la carpeta de instalación.",
+    "installed_elsewhere": "Saba-chan ya está instalado en {{dir}}. Actualiza esa instalación con saba-chan-cli update o desinstálala primero (una instalación por PC).",
+    "daemon_running": "Saba-chan está en ejecución y el instalador no sabe a qué instalación pertenece. Cierra Saba-chan primero y vuelve a intentarlo.",
     "empty_dir": "La carpeta de instalación está vacía. Indica una carpeta con --dir",
     "failed": "La instalación falló: {{reason}} (detalles: {{log}})",
     "failed_no_log": "La instalación falló: {{reason}}",
     "done": "Instalado en {{dir}}",
     "next": "Inicia el daemon con:\n{{command}}"
+  },
+  "do": {
+    "steps_array": "--steps debe ser una lista de pasos (un array JSON).",
+    "confirm_steps": "¿Ejecutar estos pasos?",
+    "running": "Ejecutando los pasos…",
+    "done_steps": "Todos los pasos terminaron.",
+    "state_running": "en curso",
+    "state_done": "terminado",
+    "run_hint": "Se ejecuta en segundo plano (id {{id}}). Sigue aunque salgas; consulta el avance con do --run {{id}}."
+  },
+  "players": {
+    "title": "{{server}}: {{count}} conectados",
+    "none": "No hay nadie conectado."
+  },
+  "log": {
+    "none": "Aún no hay registro guardado. Aparece después de que el servidor funcione una vez.",
+    "truncated": "El registro era demasiado grande; solo llegó la primera parte.",
+    "col": {
+      "run": "Ejecución",
+      "started": "Inicio"
+    }
+  },
+  "query": {
+    "none": "Este módulo de juego no tiene consultas.",
+    "col": {
+      "name": "Consulta",
+      "about": "Descripción",
+      "inputs": "Entradas"
+    }
+  },
+  "uninstall": {
+    "not_installed": "Este comando no se ejecuta desde una carpeta de instalación de Saba-chan; no hay nada que eliminar.",
+    "confirm": "¿Eliminar Saba-chan de {{dir}}? Se borran el programa y todos sus archivos; {{kept}}.",
+    "kept_both": "se conservan los ajustes y los servidores",
+    "kept_settings": "se conservan los ajustes y se eliminan los servidores",
+    "kept_instances": "se conservan los servidores y se eliminan los ajustes",
+    "kept_nothing": "también se eliminan los ajustes y los servidores",
+    "done": "Se eliminó Saba-chan; {{kept}}.",
+    "left": "Se eliminó Saba-chan, pero no se pudieron borrar estos elementos. Cierre los programas que los usan y bórrelos usted:\n{{paths}}"
   }
 }

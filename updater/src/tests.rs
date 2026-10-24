@@ -1001,6 +1001,7 @@ async fn components_applied_before_a_failure_are_recorded() {
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     manager.install_root = tmp.path().join("install");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
     std::fs::create_dir_all(&manager.install_root).unwrap();
     let ext = Component::Extension(format!("l3-{}", std::process::id()));
     let ext_zip = tmp.path().join("ext.zip");
@@ -1014,7 +1015,8 @@ async fn components_applied_before_a_failure_are_recorded() {
 
     assert!(manager.apply_components(&[]).await.is_err());
 
-    assert_eq!(UpdateManager::load_installed_manifest().get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
+    let recorded = UpdateManager::load_installed_manifest_at(&manager.installed_manifest_file);
+    assert_eq!(recorded.get(&ext.manifest_key()).map(String::as_str), Some("0.2.0"));
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&format!("l3-{}", std::process::id())));
 }
 
@@ -1040,6 +1042,25 @@ fn a_failed_new_install_leaves_no_folder() {
 
     assert!(manager.replace_dir(&target, &bad, "fresh_backup").is_err());
     assert!(!target.exists());
+}
+
+// EE4: 코어를 `.exe.old`로 비켜 둔 뒤 새 exe를 두기 전에 끊기면, 다음 정리는 가장 최근 사본을 되돌린다 (그대로면 데몬이 뜨지 못한다)
+#[test]
+fn an_exe_moved_aside_by_an_interrupted_apply_is_put_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::write(tmp.path().join("saba-core.exe.old"), b"older, still held").unwrap();
+    std::fs::write(tmp.path().join("saba-core.exe.old.1"), b"latest").unwrap();
+    std::fs::write(tmp.path().join("saba-chan-cli.exe"), b"new").unwrap();
+    std::fs::write(tmp.path().join("saba-chan-cli.exe.old"), b"old cli").unwrap();
+    std::fs::write(tmp.path().join("notepad.exe.old"), b"not ours").unwrap();
+
+    manager.settle_interrupted_updates();
+
+    assert_eq!(std::fs::read(tmp.path().join("saba-core.exe")).unwrap(), b"latest");
+    assert_eq!(std::fs::read(tmp.path().join("saba-chan-cli.exe")).unwrap(), b"new", "an exe that is there stays");
+    assert!(!tmp.path().join("notepad.exe").exists());
 }
 
 // L3(c): 적용 중 꺼져 남은 `.update-bak`은 다음 정리 때 원래 파일이 있으면 지우고, 없으면 되돌린다

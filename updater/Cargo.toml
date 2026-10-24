@@ -7,6 +7,7 @@ description = "Update/installer logic library for Saba-chan"
 
 [dependencies]
 anyhow = "1"
+saba-atomic-file = { path = "../atomic-file" }
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

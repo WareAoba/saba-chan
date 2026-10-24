@@ -140,6 +140,12 @@ pub enum Cmd {
         /// Input as key=value (values that read as JSON stay JSON)
         #[arg(value_name = "KEY=VALUE")]
         input: Vec<String>,
+        /// Several steps as JSON: [{"id": "...", "instance": "...", "input": {...}}, ...] (instead of ACTION)
+        #[arg(long, value_name = "JSON", conflicts_with = "action")]
+        steps: Option<String>,
+        /// Progress of a multi-step run that continues in the background
+        #[arg(long = "run", value_name = "RUN_ID", conflicts_with_all = ["action", "steps"])]
+        run_id: Option<String>,
     },
     /// Versions of every installed part
     Version,
@@ -160,6 +166,18 @@ pub enum Cmd {
     },
     /// Install Saba-chan on this PC without the window installer
     Install(InstallArgs),
+    /// Remove Saba-chan from this PC. Settings and servers are kept unless removed
+    Uninstall(UninstallArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct UninstallArgs {
+    /// Remove settings and the Discord connection too
+    #[arg(long)]
+    pub remove_settings: bool,
+    /// Remove game servers too (server files, worlds, backups)
+    #[arg(long)]
+    pub remove_instances: bool,
 }
 
 #[derive(Args, Debug)]
@@ -306,7 +324,11 @@ pub enum ScheduleCmd {
 #[derive(Subcommand, Debug)]
 pub enum ChatbotCmd {
     /// Settings and whether an API key is saved
-    Show,
+    Show {
+        /// What one Discord server actually uses (common values + its own), name or id
+        #[arg(long)]
+        guild: Option<String>,
+    },
     /// Change settings: KEY=VALUE ... (keys and their defaults: `chatbot show`; e.g. enabled=true; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
@@ -362,6 +384,55 @@ pub enum ServerCmd {
     Run(RunArgs),
     /// Game commands this server understands
     Commands { server: Option<String> },
+    /// Who is online
+    Players { server: Option<String> },
+    /// Send one line the way the server takes commands (console, else RCON) and show its reply
+    Rcon {
+        server: String,
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, value_name = "LINE")]
+        line: Vec<String>,
+    },
+    /// Saved log of past runs (the console keeps only the current one)
+    Log {
+        server: Option<String>,
+        /// Which run (`--runs` lists them), default the latest
+        #[arg(long)]
+        source: Option<String>,
+        /// Last N lines
+        #[arg(short = 'n', long)]
+        lines: Option<usize>,
+        /// List the saved runs
+        #[arg(long, conflicts_with_all = ["lines", "all"])]
+        runs: bool,
+        /// The whole run (to save: `> file.log`)
+        #[arg(long)]
+        all: bool,
+    },
+    /// Read-only lookups the game module offers (lists them when none is given)
+    Query {
+        server: String,
+        /// Query name
+        name: Option<String>,
+        /// Input as KEY=VALUE
+        #[arg(value_name = "KEY=VALUE")]
+        args: Vec<String>,
+    },
+    /// What each Discord server calls this server and its commands in chat. No options: show
+    Discord {
+        server: Option<String>,
+        /// Discord server by name or id (asked when several are paired and something changes)
+        #[arg(long)]
+        guild: Option<String>,
+        /// Words for the server, comma-separated or repeated (replace the current ones). `--word ""` removes them
+        #[arg(long, value_delimiter = ',', requires = "server", conflicts_with = "clear")]
+        word: Option<Vec<String>>,
+        /// Words for one command: COMMAND=WORD,WORD (replace that command's words, `COMMAND=` removes them). Repeatable
+        #[arg(long, value_name = "COMMAND=WORDS", requires = "server", conflicts_with = "clear")]
+        command: Vec<String>,
+        /// Remove every word of this server
+        #[arg(long, requires = "server")]
+        clear: bool,
+    },
     /// Send one raw line to the server console
     Send {
         server: String,
@@ -568,6 +639,8 @@ pub enum DaemonCmd {
         #[arg(short = 'f', long)]
         follow: bool,
     },
+    /// Desktop app windows connected to the daemon
+    Clients,
 }
 
 // ── module ──
@@ -773,20 +846,6 @@ pub enum BotCmd {
         /// No limit: every server of this PC
         #[arg(long)]
         all: bool,
-    },
-    /// What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show
-    Words {
-        guild: String,
-        server: Option<String>,
-        /// Words for the server, comma-separated or repeated (replace the current ones). `--word ""` removes them
-        #[arg(long, value_delimiter = ',', requires = "server", conflicts_with = "clear")]
-        word: Option<Vec<String>>,
-        /// Words for one command: COMMAND=WORD,WORD (replace that command's words, `COMMAND=` removes them). Repeatable
-        #[arg(long, value_name = "COMMAND=WORDS", requires = "server", conflicts_with = "clear")]
-        command: Vec<String>,
-        /// Remove every word of this server
-        #[arg(long, requires = "server")]
-        clear: bool,
     },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
@@ -1065,15 +1124,18 @@ mod tests {
             }
             _ => panic!("run did not parse"),
         }
-        match p(&["bot", "words", "123", "mc", "--word", "크리,크", "--command", "start=켜,on", "--command", "stop="]).unwrap().cmd {
-            Some(Cmd::Bot(BotCmd::Words { server, word, command, .. })) => {
+        match p(&["server", "discord", "mc", "--guild", "123", "--word", "크리,크", "--command", "start=켜,on", "--command", "stop="]).unwrap().cmd {
+            Some(Cmd::Server(ServerCmd::Discord { server, guild, word, command, .. })) => {
                 assert_eq!(server.as_deref(), Some("mc"));
+                assert_eq!(guild.as_deref(), Some("123"));
                 assert_eq!(word, Some(vec!["크리".to_string(), "크".to_string()]));
                 assert_eq!(command, vec!["start=켜,on", "stop="]);
             }
-            _ => panic!("bot words did not parse"),
+            _ => panic!("server discord did not parse"),
         }
-        assert!(p(&["bot", "words", "123", "--word", "크리"]).is_err(), "--word needs a server");
+        assert!(p(&["server", "discord", "--word", "크리"]).is_err(), "--word needs a server");
+        // 서버마다 부르는 말은 서버 명령으로 옮겼다
+        assert!(p(&["bot", "words", "123"]).is_err());
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
         assert!(matches!(p(&["bot", "channels"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Channels { guild: None, .. }))));
         assert!(matches!(p(&["bot", "members"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Members { guild: None }))));

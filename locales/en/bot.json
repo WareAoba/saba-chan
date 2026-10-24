@@ -28,7 +28,7 @@
     "help_stop": "Stop server",
     "help_status": "Check server status",
     "help_rest_title": "**REST Commands:**",
-    "enter_command": "Please enter a command."
+    "enter_command": "Enter a command."
   },
   "list": {
     "title": "🎮 **Server List**",
@@ -48,7 +48,7 @@
     "status_check": "📊 **{{name}}** status: {{status}} {{pid_info}}",
     "not_found": "❌ No server found for module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Server is not running. Please start the server first",
+    "not_running_default": "The server is not running. Start the server first",
     "module_missing": "❌ Module '{{module}}' is not installed. This server cannot be controlled.",
     "port_moved": "🔀 Windows reserved the REST port {{from}}, so it was changed to {{to}}."
   },
@@ -75,7 +75,7 @@
     "announce_success": "✅ Announcement sent",
     "save_success": "✅ World saved",
     "command_executed": "✅ Command executed",
-    "command_complete": "✅ Command executed successfully!",
+    "command_complete": "✅ Command executed!",
     "empty_list": "(empty)"
   },
   "errors": {
@@ -86,7 +86,7 @@
     "preflight_failed": "The pre-start check found a problem, so the server was not started ({{code}}). See Saba-chan on the PC for details.",
     "agreement_local_only": "Agreements can only be accepted in Saba-chan on this PC.",
     "no_command_path": "'{{name}}' has no saba-chan console attached, so it can't take commands. Restart it in managed mode from saba-chan on the PC.",
-    "alias_conflict": "❌ Alias '{{alias}}' is ambiguous — it matches multiple modules: {{modules}}. Please use a more specific alias.",
+    "alias_conflict": "❌ Alias '{{alias}}' is ambiguous. It matches multiple modules: {{modules}}. Use a more specific alias.",
     "multiple_instances": "⚠️ Multiple '{{module}}' instances exist. Use an instance name instead of the module alias.",
     "auth_failed": "Authentication failed",
     "player_not_found": "Player not found",
@@ -101,11 +101,11 @@
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
     "permission_denied": "❌ You don't have permission to use this command.",
-    "chatbot_not_allowed": "❌ Talking Saba-chan can't run this command. Please run it directly.",
-    "local_single_guild_only": "⚠️ Local bots can only be used in one server. Currently in {{count}} servers. Please remove the bot from unused servers."
+    "chatbot_not_allowed": "❌ Talking Saba-chan can't run this command. Run it directly.",
+    "local_single_guild_only": "⚠️ Local bots can only be used in one server. This bot is in {{count}} servers. Remove it from the servers you do not use."
   },
   "messages": {
-    "server_started": "Server started successfully",
+    "server_started": "Server started",
     "server_stopped": "Server stopped",
     "server_not_running": "Server is not running",
     "command_error": "Error executing command",
@@ -114,7 +114,7 @@
   },
   "cloud": {
     "not_configured": "❌ Cloud mode is not configured.",
-    "register_complete": "✅ Registration complete! Token sent via DM.",
+    "register_complete": "✅ Registration complete! The token was sent by DM.",
     "register_failed": "❌ Registration failed: {{error}}",
     "already_registered": "ℹ️ Already registered. Host ID: {{hostId}}",
     "status_online": "🟢 Online",
@@ -151,7 +151,11 @@
     "module_missing": "Module not found: {{error}}",
     "no_latest_version": "Couldn't find the latest server version",
     "script_failed": "The install script ended with an error. See the daemon log for details",
-    "backup_failed": "Pre-update backup failed: {{reason}}"
+    "save_failed": "The server files were downloaded, but the server details could not be saved. See the daemon log for details",
+    "backup_failed": "Pre-update backup failed: {{reason}}",
+    "version_installing": "Installing version {{version}}…",
+    "version_installed": "Installed the version",
+    "install_backup_failed": "The pre-install backup failed, so nothing was installed: {{reason}}"
   },
   "actions": {
     "instance": {
