@@ -58,7 +58,8 @@ export function NativeProvision({ server, provisionProgress, cooked, icon, onDis
         );
     }
 
-    if (!cooked && !server.provisioning) return null;
+    // 완성 카드는 사용자가 닫을 때까지만 (데몬이 진행 표시를 지우기 전에 닫아도 사라진다)
+    if (!cooked) return null;
 
     const close = (then) => () => {
         onClose?.();

@@ -81,6 +81,23 @@ describe('서버 설치 카드 (요리)', () => {
         expect(useMaintenanceStore.getState().byId['mc-1'].cooked).toBe(true);
     });
 
+    // Codex 리뷰 #546: 성공 뒤 같은 서버의 업데이트가 실패하면, 실패 표시를 닫은 뒤 예전 완성 카드가 다시 보였다
+    it('새 설치·업데이트가 시작되면 예전 완성 카드를 지운다', async () => {
+        useMaintenanceStore.getState().patch('mc-1', { cooked: true });
+        window.api.instanceProvisionProgress = vi.fn().mockResolvedValue({ active: true, done: true, error: 'x' });
+        renderHook(() => useInstanceMaintenance(server, null));
+        await act(async () => {});
+        expect(useMaintenanceStore.getState().byId['mc-1'].cooked).toBe(false);
+    });
+
+    // Codex 리뷰 #546: 데몬이 진행 표시를 지우기 전(provisioning=true)에는 닫아도 완성 카드가 남았다
+    it('완성 카드는 데몬이 진행 표시를 지우기 전에도 닫으면 사라진다', () => {
+        const { container } = render(
+            <NativeProvision server={server} provisionProgress={{ done: true, percent: 100 }} cooked={false} />,
+        );
+        expect(container.querySelector('.cook')).toBeNull();
+    });
+
     it('실패로 끝난 설치는 완성으로 치지 않는다', async () => {
         window.api.instanceProvisionProgress = vi.fn().mockResolvedValue({ active: true, done: true, error: 'x' });
         renderHook(() => useInstanceMaintenance(server, null));

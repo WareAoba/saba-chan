@@ -56,6 +56,8 @@ export function useInstanceMaintenance(server, module) {
             patch(server.id, { provisionProgress: null });
             return;
         }
+        // 새 설치·업데이트가 시작됐다: 예전 완성 카드는 지운다 (이번에 실패하면 다시 보이지 않게)
+        patch(server.id, { cooked: false });
         let cancelled = false;
         const poll = async () => {
             while (!cancelled) {
